@@ -125,7 +125,7 @@ fn natural_segment_order(a: &str, b: &str) -> std::cmp::Ordering {
 /// The layout file is keyed by the path of a part (ADR 0032), so a saved placement does not move
 /// when letters change. It was checked two ways: a test
 /// (`a_layout_entry_still_places_its_part_when_the_designator_letters_change` in
-/// `crates/netsmith/tests/kicad_drc.rs`) places a part by its path, renames every designator of
+/// `crates/netsmith-fabricate/tests/kicad_drc.rs`) places a part by its path, renames every designator of
 /// the design, and finds the part at the same place and turn; and a build of
 /// `examples/outline_and_pours.nsm` with a layout file that locks `stage.regulator` and
 /// `stage.output_cap`, once from before ADR 0044 and once after, had every part, the two locked
@@ -149,7 +149,7 @@ fn designator_of(model: &Model, part: InstId, errors: &mut Vec<String>) -> Strin
 
 /// Whether a kind of part is through-hole and soldered by hand, so the manufacturer does not
 /// assemble it. A kind a CAD mapping marks through-hole is also hand-soldered; see
-/// `netsmith::build`.
+/// `netsmith_pipeline::build`.
 fn hand_soldered(kind: &str) -> bool {
     kind.starts_with("Header") || kind.starts_with("Socket")
 }

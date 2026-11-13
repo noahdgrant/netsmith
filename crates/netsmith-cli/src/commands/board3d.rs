@@ -78,8 +78,8 @@ fn run_board3d(
         Err(code) => return code,
     };
     let (report, scene) = match made {
-        netsmith::board3d::Made::Board(made) => *made,
-        netsmith::board3d::Made::System(made) => {
+        netsmith_fabricate::board3d::Made::Board(made) => *made,
+        netsmith_fabricate::board3d::Made::System(made) => {
             let (report, scene) = *made;
             for m in &scene.members {
                 for w in &m.scene.warnings {

@@ -1,0 +1,46 @@
+[package]
+name = "netsmith-tools"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+# The tests are one executable, tests/main.rs, with the other files of the folder as its modules
+# (#190): without this, cargo builds and links every file of the folder as well.
+autotests = false
+
+[[test]]
+name = "main"
+path = "tests/main.rs"
+
+[dependencies]
+netsmith-core = { path = "../netsmith-core" }
+netsmith-dxf = { path = "../netsmith-dxf" }
+netsmith-fab = { path = "../netsmith-fab" }
+netsmith-fabricate = { path = "../netsmith-fabricate" }
+netsmith-geom = { path = "../netsmith-geom" }
+netsmith-kicad = { path = "../netsmith-kicad" }
+netsmith-lang = { path = "../netsmith-lang" }
+netsmith-netlist = { path = "../netsmith-netlist" }
+netsmith-pcb = { path = "../netsmith-pcb" }
+netsmith-pipeline = { path = "../netsmith-pipeline" }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = { version = "1.0.154", features = ["float_roundtrip"] }
+# The SHA-256 of a port's reference netlist, in the tables the port writes.
+sha2 = "0.11.1"
+toml = "1.1.8"
+
+[dev-dependencies]
+automod = "1.0.17"
+netsmith-check = { path = "../netsmith-check" }
+netsmith-design = { path = "../netsmith-design" }
+netsmith-kicad = { path = "../netsmith-kicad", features = ["test-support"] }
+# `Libraries::sample()`, over the sample libraries of netsmith-testkit.
+netsmith-pipeline = { path = "../netsmith-pipeline", features = ["test-support"] }
+netsmith-placer = { path = "../netsmith-placer" }
+netsmith-solve = { path = "../netsmith-solve" }
+netsmith-testkit = { path = "../netsmith-testkit" }
+# The editor's backend, for the tests that open a board in it (`scale`, `project`).
+netsmith-workspace = { path = "../netsmith-workspace" }
+netsmith-view = { path = "../netsmith-view" }
+netsmith-editor = { path = "../netsmith-editor" }
+netsmith-router = { path = "../netsmith-router" }
+zip = { version = "6", default-features = false, features = ["deflate-flate2-zlib-rs"] }

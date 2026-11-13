@@ -3,9 +3,9 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use clap::Args as ClapArgs;
-use netsmith::findings::{BoardOut, Finding, Format, NotesMode, Report, Severity};
-use netsmith::{outcome_with, render_problems};
 use netsmith_core::timings;
+use netsmith_pipeline::{outcome_with, render_problems};
+use netsmith_tools::findings::{BoardOut, Finding, Format, NotesMode, Report, Severity};
 
 use super::common::{self, libraries, no_boards, sync_pins, target};
 
@@ -85,12 +85,12 @@ pub(super) struct BuildRun<'a> {
 }
 
 /// What a board said that did not stop it: printed as text, or kept for the JSON report.
-fn tell_built(b: &netsmith::Built, run: &BuildRun, report: &mut Report) {
+fn tell_built(b: &netsmith_pipeline::Built, run: &BuildRun, report: &mut Report) {
     if run.format == Format::Json {
         report.add_built(b, run.notes);
         return;
     }
-    let notes = netsmith::findings::notes(b);
+    let notes = netsmith_tools::findings::notes(b);
     match run.notes {
         NotesMode::All => {
             for (_, note) in &notes {
@@ -98,7 +98,7 @@ fn tell_built(b: &netsmith::Built, run: &BuildRun, report: &mut Report) {
             }
         }
         NotesMode::Summary => {
-            if let Some(line) = netsmith::findings::summary_line(&b.label(), &notes) {
+            if let Some(line) = netsmith_tools::findings::summary_line(&b.label(), &notes) {
                 eprintln!("{line}");
             }
         }
@@ -145,14 +145,17 @@ pub(super) fn run_build(run: &BuildRun) -> ExitCode {
         };
 
         // The pick lock beside the source holds the parts it names to their rows.
-        let (held, using) =
-            match netsmith::pick_lock::open(&source.path, &catalogs, run.locked && run.write) {
-                Ok(opened) => opened,
-                Err(e) => {
-                    eprintln!("{e}");
-                    return ExitCode::from(2);
-                }
-            };
+        let (held, using) = match netsmith_pipeline::pick_lock::open(
+            &source.path,
+            &catalogs,
+            run.locked && run.write,
+        ) {
+            Ok(opened) => opened,
+            Err(e) => {
+                eprintln!("{e}");
+                return ExitCode::from(2);
+            }
+        };
         let catalogs = held.as_ref().unwrap_or(&catalogs);
         let outcome = match outcome_with(&source.name, &text, &loader, catalogs, Some(&libraries)) {
             Ok(outcome) => outcome,
@@ -161,7 +164,7 @@ pub(super) fn run_build(run: &BuildRun) -> ExitCode {
                 if json {
                     report
                         .findings
-                        .extend(netsmith::findings::of_problems(&problems));
+                        .extend(netsmith_tools::findings::of_problems(&problems));
                 } else {
                     eprint!("{}", render_problems(&problems));
                 }
@@ -171,7 +174,8 @@ pub(super) fn run_build(run: &BuildRun) -> ExitCode {
         // `build` writes the lock when there is none, and says how the picks differ from one;
         // `check` writes nothing and only says how they differ.
         let lock_notes = if run.write {
-            match netsmith::pick_lock::settle(&using, catalogs.pick_lock(), &outcome.lock) {
+            match netsmith_pipeline::pick_lock::settle(&using, catalogs.pick_lock(), &outcome.lock)
+            {
                 Ok(settled) => {
                     if let Some(file) = &settled.wrote
                         && !json
@@ -200,7 +204,7 @@ pub(super) fn run_build(run: &BuildRun) -> ExitCode {
             };
             let notes: Vec<String> = catalogs
                 .pick_lock()
-                .map(|old| netsmith::pick_lock::compare(old, &outcome.lock).lines())
+                .map(|old| netsmith_pipeline::pick_lock::compare(old, &outcome.lock).lines())
                 .filter(|lines| !lines.is_empty())
                 .map(|lines| {
                     vec![format!(
@@ -225,11 +229,11 @@ pub(super) fn run_build(run: &BuildRun) -> ExitCode {
         // The STEP models parts are drawn from and the case models, found on disk (ADR 0108,
         // ADR 0109): a path outside the project stops the file, a file that is not there is a
         // warning.
-        let places = netsmith::models::Places::of(&target);
+        let places = netsmith_fabricate::models::Places::of(&target);
         let mut misplaced = false;
         for b in &mut boards {
             let label = b.label();
-            let found = netsmith::models::locate(&mut b.design, &places);
+            let found = netsmith_fabricate::models::locate(&mut b.design, &places);
             // A case model that is not there leaves the fit unchecked (ADR 0109): a warning
             // here, and an error from `fab` when constraints are strict.
             for warning in found.warnings.iter().chain(&found.unchecked) {
@@ -261,12 +265,15 @@ pub(super) fn run_build(run: &BuildRun) -> ExitCode {
         // What the requirements prove cannot be placed is said now, with no placing
         // (ADR 0045 section 14); the layout file's locks count.
         let names: Vec<String> = boards.iter().map(|b| b.design.name.clone()).collect();
-        let layout = netsmith::layout::read(&netsmith::layout::layout_path(&source.path), &names)
-            .ok()
-            .flatten();
+        let layout = netsmith_fabricate::layout::read(
+            &netsmith_fabricate::layout::layout_path(&source.path),
+            &names,
+        )
+        .ok()
+        .flatten();
         let mut unplaceable = false;
         for b in &boards {
-            let found = netsmith::fab::precheck_board(
+            let found = netsmith_fabricate::fab::precheck_board(
                 b,
                 layout.as_ref().map(|l| &l.0),
                 &libraries,

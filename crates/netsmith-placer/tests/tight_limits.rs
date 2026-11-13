@@ -498,7 +498,7 @@ fn pegs(seed: u64) -> Result<Board, BoardError> {
 #[test]
 fn a_hole_pinned_inside_a_keepout_for_parts_is_refused_before_placing_for_every_seed() {
     // A requirement that pins a part does not override a keepout that forbids parts (the rule
-    // of `crates/netsmith/tests/conflicts.rs`, ADR 0045 section 13), and the lines prove it
+    // of `crates/netsmith-fabricate/tests/conflicts.rs`, ADR 0045 section 13), and the lines prove it
     // before the placer starts (section 14): the refusal is the same for every seed, because
     // no seed is tried, and it names both holes and the keepout (issue #99).
     let texts: Vec<String> = (0..8)

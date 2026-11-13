@@ -11,7 +11,7 @@
 //! pin named `~` is unnamed and accepted); the symbol pin's electrical type suits the kind. Every
 //! message names the part, the package and both sides. `build` and `fab` run it for every part with
 //! a pin table before the schematic is written, and stop with all the messages
-//! (`crates/netsmith/tests/pinout.rs`, with invented libraries). `crates/netsmith/tests/kicad_rows.rs`
+//! (`crates/netsmith-pipeline/tests/pinout.rs`, with invented libraries). `crates/netsmith-pipeline/tests/kicad_rows.rs`
 //! takes each row of `std/kicad.toml` and the pinout of its kind in that package from the standard
 //! library's own source, and checks it against the installed libraries (skipped without KiCad) and,
 //! for the kinds they hold, against the sample libraries.

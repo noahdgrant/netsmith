@@ -21,7 +21,7 @@
 //! power-flag rule from the symbol's electrical types. The schematic is a grid of cells with
 //! labels and no wires. On the five examples that existed when the loader was written, the export
 //! was byte for byte what it was before, and passed KiCad's electrical rules check with no
-//! violation (`crates/netsmith/tests/erc.rs` runs it).
+//! violation (`crates/netsmith-pipeline/tests/erc.rs` runs it).
 
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;

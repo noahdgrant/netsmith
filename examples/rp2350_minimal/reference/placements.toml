@@ -1,5 +1,5 @@
 # Reference placements, read from a KiCad board file by
-#   cargo run -p netsmith --example reference_table -- <file.kicad_pcb>
+#   cargo run -p netsmith-tools --example reference_table -- <file.kicad_pcb>
 # Do not edit: run the program again. A test checks that this file is its output.
 #
 # Units are millimetres and degrees, as in the KiCad file. The origin is the file's own page

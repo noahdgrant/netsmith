@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Runs the fab tests (`fab::` in the `netsmith` crate's one test executable) that start Windows
+# Runs the fab tests (`fab::` in the `netsmith-fabricate` crate's one test executable) that start Windows
 # KiCad many times, several copies at once, to find a flaky launch.
 # Usage: scripts/stress-kicad.sh [runs] [processes] [test filter...]
 #
@@ -20,10 +20,10 @@ if [ ${#filters[@]} -eq 0 ]; then
     )
 fi
 cd "$(dirname "$0")/.." || exit 2
-bin=$(cargo test -p netsmith --test main --no-run 2>&1 | sed -n 's/^ *Executable tests\/main.rs (\(.*\))$/\1/p')
+bin=$(cargo test -p netsmith-fabricate --test main --no-run 2>&1 | sed -n 's/^ *Executable tests\/main.rs (\(.*\))$/\1/p')
 [ -x "$bin" ] || { echo "cannot find the netsmith test binary" >&2; exit 2; }
 out=$(mktemp -d /tmp/stress-kicad.XXXXXX)
-cd crates/netsmith || exit 2
+cd crates/netsmith-fabricate || exit 2
 per=$(( (runs + procs - 1) / procs ))
 for p in $(seq 1 "$procs"); do
     (

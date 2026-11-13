@@ -3,8 +3,8 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 
 use clap::Args as ClapArgs;
-use netsmith::compare::{Request, Verdict, compare_files};
-use netsmith::findings::Format;
+use netsmith_tools::compare::{Request, Verdict, compare_files};
+use netsmith_tools::findings::Format;
 
 use super::common;
 

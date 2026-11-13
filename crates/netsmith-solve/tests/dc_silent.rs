@@ -66,7 +66,7 @@ board B {{
 /// Reproduced: with the range stated on the module's port the pass finds no source, extracts
 /// nothing and says nothing. This pins that behaviour and changes none: a range on a module's
 /// port is also how a design seeds a node that a circuit sets (ADR 0076 amendment 17; the board
-/// of `crates/netsmith/tests/build.rs::an_incomplete_balance_is_noted...` states its stage's
+/// of `crates/netsmith-pipeline/tests/build.rs::an_incomplete_balance_is_noted...` states its stage's
 /// output that way), so a note on every such rail would be noise on boards that mean it, and
 /// whether the rail is a source or a seed is the language's to say (owner question in the
 /// pull request that added this test).

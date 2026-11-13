@@ -1,11 +1,11 @@
 //! `netsmith port skeleton` (#452) as a command: it writes the source and the parts file, prints
 //! the counts, the lines marked `TODO tolerance` and the gaps, and overwrites neither file. What
-//! the skeleton holds is tested in the library (`crates/netsmith/tests/port_skeleton.rs`).
+//! the skeleton holds is tested in the library (`crates/netsmith-tools/tests/port_skeleton.rs`).
 
 use std::fs;
 use std::process::Command;
 
-use netsmith::port::PortParts;
+use netsmith_tools::port::PortParts;
 use netsmith_testkit::TempDir;
 
 /// A board of a resistor and a part with a file of its own, and a part with none.

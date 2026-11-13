@@ -12,7 +12,7 @@
 use std::fs;
 use std::path::Path;
 
-use netsmith::Libraries;
+use netsmith_pipeline::Libraries;
 use netsmith_kicad::{Mapping, SymbolLib};
 use netsmith_pcb::FootprintLibrary;
 use netsmith_testkit::{TempDir, sample_footprints, sample_symbols};

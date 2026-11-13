@@ -2,7 +2,7 @@
 //!
 //! The solver reads a lock through [`Catalogs::with_pick_lock`](crate::Catalogs::with_pick_lock)
 //! and offers a locked part only its locked row, judged by everything the design says. The file a
-//! lock is kept in, and what a command does with it, are in the `netsmith` crate.
+//! lock is kept in, and what a command does with it, are in `netsmith-pipeline` (`pick_lock`) and `netsmith-cli`.
 //!
 //! A hand pick (`.lcsc &= "C307331"` or `.mpn &= ...` in the source, ADR 0118) comes before the
 //! lock: the lock records the solver's picks, and a hand pick is a requirement of the design.

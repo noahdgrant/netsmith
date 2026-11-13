@@ -16,7 +16,7 @@ Work from the front of the pipeline. Finish and test each stage before the next.
 3. `crates/netsmith-solve`: propagation, picking, verification. Catalog rows are CSV in `data/jlcpcb/catalog/` (`src/table.rs` reads them, `src/jlcpcb.rs` loads the embedded ones).
 4. `crates/netsmith-design` and `crates/netsmith-core`: the tool-independent `Design`.
 5. Exporters: `netsmith-kicad`, `netsmith-pcb`, `netsmith-fab`, `netsmith-view`, and the editor (`netsmith-editor`, `crates/netsmith-workspace/src/`) if it shows the construct.
-6. `crates/netsmith`: commands and the project manifest.
+6. `crates/netsmith-fabricate` (the project manifest, `fab`), `crates/netsmith-tools` (support for the commands) and `crates/netsmith-cli` (the commands).
 
 Tests live in each crate's `tests/`. Add a test for the behaviour and one for each failure message, asserting that it names the numbers and fields.
 
@@ -35,7 +35,7 @@ Put it in `std/**.nsm` with `///` docs that state its source for any number. A n
 
 ## Update the documents
 
-- `docs/LANGUAGE.md`: the construct's section, its example and its message. Examples marked `nsm` are run by `crates/netsmith/tests/guide.rs`. Run `GUIDE_BLESS=1 cargo test -p netsmith --test main guide::` to refresh message blocks, then read the diff.
+- `docs/LANGUAGE.md`: the construct's section, its example and its message. Examples marked `nsm` are run by `crates/netsmith-tools/tests/guide.rs`. Run `GUIDE_BLESS=1 cargo test -p netsmith-tools --test main guide::` to refresh message blocks, then read the diff.
 - `GLOSSARY.md` for new terms, `docs/DESIGN-RULES.md` for design rules, a GitHub issue for what stays open, an ADR when the choice qualifies.
 
 ## Finish

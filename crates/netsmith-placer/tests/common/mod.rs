@@ -80,7 +80,7 @@ pub fn process_with(narrowings: &[&str]) -> netsmith_core::Process {
 }
 
 /// The process of the one board of `source`, as the check, the solver and the design stage
-/// resolve it: what `netsmith::build_with` gives. These tests do not depend on the netsmith
+/// resolve it: what `netsmith_pipeline::build_with` gives. These tests do not depend on the netsmith
 /// crate, so that they are not among the dependents of every crate it links (issue #518).
 fn process_of(source: &str) -> netsmith_core::Process {
     let checked = netsmith_check::check("t.nsm", source, &netsmith_check::Loader::std());

@@ -841,7 +841,7 @@ error: string | null,
 summary: string, 
 /**
  * What the refresh does and never writes, why JLCPCB is not asked, and what is unchecked
- * (`netsmith::refresh::NOTICE`), the same words as the command prints.
+ * (`netsmith_fabricate::refresh::NOTICE`), the same words as the command prints.
  */
 notice: string, };
 

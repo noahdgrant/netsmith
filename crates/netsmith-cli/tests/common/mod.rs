@@ -5,7 +5,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use netsmith::parity::{DesignatorMap, Tolerances, check_text};
+use netsmith_tools::parity::{DesignatorMap, Tolerances, check_text};
 
 /// What a gate on the parity of a ported board says: where the project is, and what to expect
 /// of it.
@@ -39,7 +39,7 @@ pub struct ParityGate<'a> {
 /// deterministic, and the router has no say in where the parts are.
 pub fn fab_matches_the_reference(gate: &ParityGate) {
     let reference = gate.project.join("reference");
-    let parts = netsmith::port::PortParts::read(&reference.join("parts.toml"))
+    let parts = netsmith_tools::port::PortParts::read(&reference.join("parts.toml"))
         .unwrap_or_else(|e| panic!("{e}"));
     let out = netsmith_testkit::TempDir::unused(gate.tag);
     // `--locked` ends the run when the pick lock is not current and never writes it, so the test
@@ -157,7 +157,11 @@ fn find_pcb(dir: &Path) -> Option<PathBuf> {
     found.pop()
 }
 
-/// The project helpers of netsmith's own tests, shared with these.
-#[path = "../../../netsmith/tests/common/mod.rs"]
+/// The project helpers of netsmith-pipeline's tests, shared with these.
+#[path = "../../../netsmith-pipeline/tests/common/mod.rs"]
 mod shared;
 pub use shared::*;
+
+// The fake LCSC endpoint of netsmith-fabricate's tests.
+#[path = "../../../netsmith-fabricate/tests/common/endpoints.rs"]
+pub mod endpoints;

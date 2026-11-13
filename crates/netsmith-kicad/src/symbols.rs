@@ -26,7 +26,7 @@
 //! fixed gap). A part's cell on the sheet is as large as its units and, for a symbol of more than
 //! four pins, the labels that run from them; a small part keeps the grid it had, so the existing
 //! exports did not move. KiCad's ERC passes on a dual op-amp-like symbol with two amplifier units
-//! and a supply unit, and on one with a pin in the shared unit (`crates/netsmith/tests/erc.rs`).
+//! and a supply unit, and on one with a pin in the shared unit (`crates/netsmith-pipeline/tests/erc.rs`).
 //! The viewer reads from this loader too (`netsmith-view`'s `Glyph::for_part` takes the mapping
 //! and the [`SymbolLib`]; the units of a symbol are drawn one below the other; the box drawn where
 //! there is no symbol lists every pin of the package from the part's pin facts, supplies on top,

@@ -16,16 +16,19 @@ name = "main"
 path = "tests/main.rs"
 
 [dependencies]
-netsmith = { path = "../netsmith" }
 netsmith-check = { path = "../netsmith-check" }
 netsmith-core = { path = "../netsmith-core" }
 netsmith-dxf = { path = "../netsmith-dxf" }
 netsmith-editor = { path = "../netsmith-editor" }
 netsmith-fab = { path = "../netsmith-fab" }
+netsmith-fabricate = { path = "../netsmith-fabricate" }
 netsmith-kicad = { path = "../netsmith-kicad" }
 netsmith-pcb = { path = "../netsmith-pcb" }
+netsmith-pipeline = { path = "../netsmith-pipeline" }
 netsmith-3d = { path = "../netsmith-3d" }
 netsmith-solve = { path = "../netsmith-solve" }
+netsmith-tools = { path = "../netsmith-tools" }
+netsmith-workspace = { path = "../netsmith-workspace" }
 clap = { version = "4.6.7", features = ["derive", "wrap_help"] }
 serde_json = "1.0.154"
 ureq = "3"
@@ -34,7 +37,8 @@ ureq = "3"
 automod = "1.0.17"
 # The test helpers, and the `test-support` features that only tests turn on (a release build of
 # the binary has none of them).
-netsmith = { path = "../netsmith", features = ["test-support"] }
+netsmith-fabricate = { path = "../netsmith-fabricate", features = ["test-support"] }
+netsmith-pipeline = { path = "../netsmith-pipeline", features = ["test-support"] }
 netsmith-catalog = { path = "../netsmith-catalog" }
 netsmith-kicad = { path = "../netsmith-kicad", features = ["test-support"] }
 netsmith-testkit = { path = "../netsmith-testkit" }

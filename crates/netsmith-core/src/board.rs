@@ -127,7 +127,7 @@ pub struct StepModel {
     /// The file on disk, inside the project. Filled by the caller that knows where the files
     /// that state it are; `None` otherwise, and when the file is not there, so that the part
     /// is drawn with its generated shape. A design file leaves it out: it is a path on this
-    /// machine, and a reader finds the file again (`netsmith::models::locate`).
+    /// machine, and a reader finds the file again (`netsmith_fabricate::models::locate`).
     #[serde(skip)]
     pub resolved: Option<std::path::PathBuf>,
 }

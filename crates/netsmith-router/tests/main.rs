@@ -8,5 +8,5 @@
 automod::dir!("tests");
 #[path = "../../netsmith-placer/tests/common/mod.rs"]
 mod common;
-// KiCad's design rule check of a board, shared with the netsmith crate's `kicad_drc` (`#[path]` there).
+// KiCad's design rule check of a board, shared with netsmith-fabricate's `kicad_drc` (`#[path]` there).
 mod drc_kit;

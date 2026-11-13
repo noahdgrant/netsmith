@@ -109,7 +109,7 @@
 //!
 //! # Cost, and what is not settled
 //!
-//! A new dependency, `ureq` (with rustls), in the `netsmith` crate only; the solver, the language
+//! A new dependency, `ureq` (with rustls), in the `netsmith-catalog` crate only; the solver, the language
 //! and the checker have none. The tests never reach the network: a server on `127.0.0.1` answers
 //! from `tests/fixtures/catalog-refresh/`, the responses of twelve parts captured once from the
 //! live endpoints on 2026-11-02 (public data), reduced to the fields netsmith reads because the

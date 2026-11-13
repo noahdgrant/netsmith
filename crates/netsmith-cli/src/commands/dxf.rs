@@ -58,7 +58,7 @@ pub fn run(args: Args) -> ExitCode {
     match args.command {
         Command::Import(a) => run_dxf_import(
             &a.file,
-            &netsmith::dxf::Request {
+            &netsmith_tools::dxf::Request {
                 layers: a.layers,
                 holes_layers: a.holes_layers,
                 units: a.units,
@@ -73,11 +73,11 @@ pub fn run(args: Args) -> ExitCode {
 /// stderr. With `--write`, the places go into the layout file and the diff is printed.
 fn run_dxf_import(
     file: &Path,
-    request: &netsmith::dxf::Request,
+    request: &netsmith_tools::dxf::Request,
     board: Option<&str>,
     write: Option<&Path>,
 ) -> ExitCode {
-    use netsmith::dxf;
+    use netsmith_tools::dxf;
     let fail = |e: String| {
         eprintln!("error: {e}");
         ExitCode::FAILURE

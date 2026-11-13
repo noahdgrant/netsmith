@@ -48,7 +48,7 @@ fn from_symbol(args: &FromSymbolArgs) -> ExitCode {
         Ok(found) => {
             print!(
                 "{}",
-                netsmith::part_draft::draft(&found, &shown, &args.symbol)
+                netsmith_tools::part_draft::draft(&found, &shown, &args.symbol)
             );
             ExitCode::SUCCESS
         }

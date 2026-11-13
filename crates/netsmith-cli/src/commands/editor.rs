@@ -3,8 +3,8 @@ use std::process::ExitCode;
 use std::sync::Arc;
 
 use clap::Args as ClapArgs;
-use netsmith::editor::Workspace;
-use netsmith::project::Target;
+use netsmith_fabricate::project::Target;
+use netsmith_workspace::Workspace;
 
 use super::common::DEFAULT_PORT;
 
@@ -58,7 +58,7 @@ fn run_editor(file: Option<&str>, port: u16) -> ExitCode {
     };
     // A comparison's scratch folder is removed when it ends; one that a killed editor (or a
     // Ctrl-C that the system ended at once) left behind is removed now.
-    let swept = netsmith::editor::sweep_scratch();
+    let swept = netsmith_workspace::sweep_scratch();
     if swept > 0 {
         eprintln!("removed {swept} leftover scratch folder(s) of earlier comparisons");
     }

@@ -62,7 +62,7 @@ are netsmith's** (MIT, like the rest of the repository).
   the mounting holes and, for every footprint, its place, rotation and pads. The header of the
   file says what the origin and axes are, and which entries must match (`must_match = true`).
   Regenerate it with
-  `cargo run -p netsmith --example reference_table -- reference/RPI-RP2350A-MINIMAL_R4-S1.kicad_pcb > reference/placements.toml`
+  `cargo run -p netsmith-tools --example reference_table -- reference/RPI-RP2350A-MINIMAL_R4-S1.kicad_pcb > reference/placements.toml`
   (run from this folder); a test checks that the file is what the program prints.
 - `reference/parts.toml`: the parts file of the port, Raspberry Pi's designator of each part by its
   member path (see Parity): all 43, the four mounting holes `hole1` to `hole4` as MH1 to MH4. The
@@ -272,8 +272,8 @@ It prints one line per item and `must-match: N ok, M failed`, writes the overlay
 one scale: Raspberry Pi's in blue, netsmith's in orange, a failing must-match item in red with
 its offset) and exits 1 when a must-match item fails. The test
 `rp2350_minimal_pcb_matches_raspberry_pi` runs `fab` and the checker in CI and fails when a
-must-match item is not `ok`. The checking is `netsmith::parity`;
-`crates/netsmith/tests/rp2350_parity.rs` tests it, also on Raspberry Pi's own board against
+must-match item is not `ok`. The checking is `netsmith_tools::parity`;
+`crates/netsmith-tools/tests/rp2350_parity.rs` tests it, also on Raspberry Pi's own board against
 itself.
 
 **The test does not wait for the router.** It runs `netsmith fab --locked --route-timeout 20`
@@ -502,7 +502,7 @@ put them. Open it in a browser.
 
 ### Same nets
 
-`cargo test -p netsmith --test main rp2350_minimal::board::` runs these (none needs KiCad):
+`cargo test -p netsmith-tools --test main rp2350_minimal::board::` runs these (none needs KiCad):
 
 - `every_pad_has_the_same_pads_on_its_net_as_in_raspberry_pis_board`: reads the committed
   `.kicad_pcb` as a file (`Netlist::from_kicad_pcb`, netsmith's own s-expression reader, the one

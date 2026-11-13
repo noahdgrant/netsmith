@@ -78,7 +78,7 @@ netsmith's** (MIT, like the rest of the repository).
   outline, the holes and, for every footprint, its place, rotation and pads. The header of the
   file says what the origin and axes are, and which entries must match (`must_match = true`).
   Regenerate it with
-  `cargo run -p netsmith --example reference_table -- --must-match reference/must_match.toml reference/Easyduino_ESP32S3.kicad_pcb > reference/placements.toml`
+  `cargo run -p netsmith-tools --example reference_table -- --must-match reference/must_match.toml reference/Easyduino_ESP32S3.kicad_pcb > reference/placements.toml`
   (run from this folder); a test checks that the file is what the program prints.
 
 ## Run it
@@ -150,12 +150,12 @@ netsmith parity fab/EasyduinoEsp32s3/EasyduinoEsp32s3.kicad_pcb \
     --svg reference/parity-overlay.svg
 ```
 
-The checker (`netsmith::parity`, from the RP2350A Minimal's) reads both files from the upper-left
+The checker (`netsmith_tools::parity`, from the RP2350A Minimal's) reads both files from the upper-left
 corner of the outline and exits 1 when a must-match item fails. `reference/parts.toml` names
 Easyduino's designator of each of its 35 parts by the member path, and `fab` writes each
 footprint's member path on the board (`netsmith_path`), so the checker pairs every part with the
 one `fab` wrote whatever designator it got (the headers are J3 on our board, the bridge U2, the
-regulator U3: references follow declaration order). The nets proof reads the same file. The gate is `crates/netsmith/tests/easyduino_parity.rs`
+regulator U3: references follow declaration order). The nets proof reads the same file. The gate is `crates/netsmith-cli/tests/easyduino_parity.rs`
 (`NETSMITH_NO_KICAD=1`, `fab --locked --route-timeout 20`, every must-match item `ok`, and the
 committed overlay equal to the one the board gives). `reference/parity-overlay.svg` is the
 checker's picture of the run: Easyduino's outline, holes, parts and pads in blue and the
@@ -184,7 +184,7 @@ runs it.
 
 ## Same nets
 
-`crates/netsmith/tests/easyduino.rs`, module `board` (no KiCad needed; the ERC test skips where
+`crates/netsmith-tools/tests/easyduino.rs`, module `board` (no KiCad needed; the ERC test skips where
 there is no `kicad-cli`). The reference's connectivity is read from the committed
 `reference/Easyduino_ESP32S3.kicad_pcb` as a file with `Netlist::from_kicad_pcb` (netsmith's own
 s-expression reader, which `compare` uses), and the board's from the built design.
@@ -393,7 +393,7 @@ Numbers are mm; the origin and axes of every footprint are those of the referenc
 down, the part seen from the component side). A drawing's copyright or confidentiality notice is
 about the document: nothing was copied, only dimensions and facts. Each footprint is in
 `libs/easyduino_must_match.pretty` (no KiCad install is needed) and is compared pad for pad with
-`reference/placements.toml` by `crates/netsmith/tests/easyduino.rs` (number, centre, size, shape,
+`reference/placements.toml` by `crates/netsmith-tools/tests/easyduino.rs` (number, centre, size, shape,
 kind, angle and drill, all within 0.05 mm: the parity rule's tolerance). Every symbol is drawn from
 the part's pin table.
 
@@ -502,7 +502,7 @@ the part's pin table.
 ### The module, the bridge, the regulator, the transistors and the diodes (U1, U3, U5, Q1, Q2, D2, D3)
 
 None of these is a must-match part of the parity checker: they build, are sourced and are close
-to the reference board's pads, and `crates/netsmith/tests/easyduino.rs` (module `ics`) says how
+to the reference board's pads, and `crates/netsmith-tools/tests/easyduino.rs` (module `ics`) says how
 close. Every pin table was **written by hand** from the maker's datasheet, which is copyrighted:
 only facts were taken (pad numbers, names, kinds), no table or text. A fixture board of the
 test's own (never the project's board) builds with the parts and no KiCad install. The symbols

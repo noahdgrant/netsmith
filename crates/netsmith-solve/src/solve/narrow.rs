@@ -42,7 +42,7 @@
 //! What does not change (ADR 0057, issue #184): the picks, every message and every build. For a
 //! group that is solved, `Solution::trials` counts the candidates actually tried, so it is lower
 //! (a skipped candidate is not a trial, and no message counts it); one count that a test pinned
-//! moved (`two_boards` in `crates/netsmith/tests/std_generics.rs`, 72 trials, now 67, with the same picks). The work of
+//! moved (`two_boards` in `crates/netsmith-pipeline/tests/std_generics.rs`, 72 trials, now 67, with the same picks). The work of
 //! the questions is counted in `Solution::work` and so against `SearchBudget::work`. A part with a
 //! count (a bank), a part with a generic candidate (a column left open for the design), and a
 //! part of 16 candidates or fewer are not narrowed. How it is checked: `tests/narrowing.rs`

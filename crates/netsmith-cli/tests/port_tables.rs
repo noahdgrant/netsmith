@@ -1,12 +1,12 @@
 //! `netsmith port tables` (#560) as a command: it writes `netlist.xml`, `placements.toml` and a
 //! new `source.toml` into the reference folder, holds the original against an existing
 //! `source.toml`, and with `--check` writes nothing and fails on a stale table. That the derived
-//! netlist is a port's own is tested in the library (`crates/netsmith/tests/power_manifold.rs`).
+//! netlist is a port's own is tested in the library (`crates/netsmith-tools/tests/power_manifold.rs`).
 
 use std::fs;
 use std::process::{Command, Output};
 
-use netsmith::port_tables::{Source, sha256_hex};
+use netsmith_tools::port_tables::{Source, sha256_hex};
 use netsmith_netlist::Netlist;
 use netsmith_testkit::TempDir;
 

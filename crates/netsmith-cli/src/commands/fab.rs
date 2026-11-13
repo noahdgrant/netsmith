@@ -4,12 +4,12 @@ use std::process::ExitCode;
 use std::time::Duration;
 
 use clap::{Args as ClapArgs, ValueEnum};
-use netsmith::fab::{FabOptions, fab_detailed};
-use netsmith::findings::{BoardOut, Finding, Format, NotesMode, Report, Severity};
-use netsmith::order::OrderLocks;
-use netsmith::project::Target;
 use netsmith_core::timings;
 use netsmith_fab::{KicadCli, KicadCliExe};
+use netsmith_fabricate::fab::{FabOptions, fab_detailed};
+use netsmith_fabricate::order::OrderLocks;
+use netsmith_fabricate::project::Target;
+use netsmith_tools::findings::{BoardOut, Finding, Format, NotesMode, Report, Severity};
 
 use super::common::{self, libraries, no_boards, sync_pins, target};
 
@@ -169,14 +169,14 @@ pub fn run(args: Args) -> ExitCode {
 }
 
 /// Whether constraints were asked to be strict, for this target and this run's
-/// `--constraints` (see [`netsmith::fab::constraints_strict`]).
+/// `--constraints` (see [`netsmith_fabricate::fab::constraints_strict`]).
 /// The project's `track_margin`, or the default.
 fn track_margin(target: &Target) -> f64 {
     target
         .project
         .as_ref()
         .and_then(|p| p.manifest.track_margin)
-        .unwrap_or(netsmith::fab::DEFAULT_TRACK_MARGIN)
+        .unwrap_or(netsmith_fabricate::fab::DEFAULT_TRACK_MARGIN)
 }
 
 /// Whether `fab` writes the board's 3D scene: `--no-glb` for this run leaves it out, else `glb`
@@ -202,7 +202,7 @@ fn step_wanted(target: &Target, no_step: bool) -> bool {
 }
 
 fn strict_heights(target: &Target, flag: Option<bool>) -> bool {
-    netsmith::fab::constraints_strict(
+    netsmith_fabricate::fab::constraints_strict(
         target
             .project
             .as_ref()
@@ -219,8 +219,11 @@ fn pins_mode(
     target: &Target,
     flag: Option<bool>,
     locked: bool,
-) -> (netsmith::fab::PinsMode, netsmith::fab::LockedBy) {
-    use netsmith::fab::{LockedBy, PinsMode};
+) -> (
+    netsmith_fabricate::fab::PinsMode,
+    netsmith_fabricate::fab::LockedBy,
+) {
+    use netsmith_fabricate::fab::{LockedBy, PinsMode};
     if locked {
         return (PinsMode::Locked, LockedBy::LockedFlag);
     }
@@ -279,7 +282,7 @@ fn run_fab(
     let kicad = KicadCliExe::locate();
     if kicad.is_none() {
         if cross_check {
-            match netsmith::fab::kicad_switched_off(&netsmith_kicad::Search::machine()) {
+            match netsmith_fabricate::fab::kicad_switched_off(&netsmith_kicad::Search::machine()) {
                 Some(off) => eprintln!(
                     "error: --cross-check compares with KiCad's own files and needs kicad-cli, and {off}"
                 ),
@@ -291,7 +294,7 @@ fn run_fab(
         }
         eprintln!(
             "{}",
-            netsmith::fab::no_kicad_note(&netsmith_kicad::Search::machine())
+            netsmith_fabricate::fab::no_kicad_note(&netsmith_kicad::Search::machine())
         );
     }
     let options = FabOptions {
@@ -317,9 +320,9 @@ fn run_fab(
         glb: glb_wanted(&target, no_glb),
         step: step_wanted(&target, no_step),
         save_placed,
-        models: Some(netsmith::models::Places::of(&target)),
-        place_seeds: netsmith::layout::place_seeds(target.project.as_ref()),
-        seed_writes: netsmith::fab::SeedWrites::Write,
+        models: Some(netsmith_fabricate::models::Places::of(&target)),
+        place_seeds: netsmith_fabricate::layout::place_seeds(target.project.as_ref()),
+        seed_writes: netsmith_fabricate::fab::SeedWrites::Write,
     };
     let (pins_mode, locked_by) = pins_mode(&target, pins_locked, locked);
     let mut code = ExitCode::SUCCESS;
@@ -331,20 +334,24 @@ fn run_fab(
                 return ExitCode::from(2);
             }
         };
-        let (held, using) = match netsmith::pick_lock::open(&source.path, &catalogs, locked) {
-            Ok(opened) => opened,
-            Err(e) => {
-                eprintln!("{e}");
-                return ExitCode::from(2);
-            }
-        };
+        let (held, using) =
+            match netsmith_pipeline::pick_lock::open(&source.path, &catalogs, locked) {
+                Ok(opened) => opened,
+                Err(e) => {
+                    eprintln!("{e}");
+                    return ExitCode::from(2);
+                }
+            };
         let options = FabOptions {
-            layout: Some(netsmith::layout::layout_path(&source.path)),
+            layout: Some(netsmith_fabricate::layout::layout_path(&source.path)),
             lock: Some(using),
             pin_map_source: Some(source.stable_name(target.project.as_ref())),
-            pins: Some(netsmith::fab::PinsUse {
+            pins: Some(netsmith_fabricate::fab::PinsUse {
                 locked_by,
-                ..netsmith::fab::PinsUse::new(pins_mode, netsmith::pins::pins_path(&source.path))
+                ..netsmith_fabricate::fab::PinsUse::new(
+                    pins_mode,
+                    netsmith_fabricate::pins::pins_path(&source.path),
+                )
             }),
             ..options.clone()
         };
@@ -370,7 +377,7 @@ fn run_fab(
                     } else {
                         report
                             .findings
-                            .extend(netsmith::findings::of_problems(&failure.problems));
+                            .extend(netsmith_tools::findings::of_problems(&failure.problems));
                     }
                 } else {
                     eprint!("{}", failure.text);
@@ -517,7 +524,7 @@ fn run_order(
         .unwrap_or_default();
     let name = match request {
         OrderRequest::List => {
-            print!("{}", netsmith::order::list(orders));
+            print!("{}", netsmith_fabricate::order::list(orders));
             return ExitCode::SUCCESS;
         }
         OrderRequest::Make(name) => name,
@@ -562,13 +569,13 @@ fn run_order(
         glb: glb_wanted(&target, no_glb),
         step: step_wanted(&target, no_step),
         save_placed: false,
-        models: Some(netsmith::models::Places::of(&target)),
-        place_seeds: netsmith::layout::place_seeds(target.project.as_ref()),
+        models: Some(netsmith_fabricate::models::Places::of(&target)),
+        place_seeds: netsmith_fabricate::layout::place_seeds(target.project.as_ref()),
         // An order is a release: a seed that would change stops it (issue #458).
-        seed_writes: netsmith::fab::SeedWrites::Order,
+        seed_writes: netsmith_fabricate::fab::SeedWrites::Order,
     };
     let out = out.unwrap_or(&target.fab_out);
-    match netsmith::order::fab_order(
+    match netsmith_fabricate::order::fab_order(
         order,
         &target,
         &loader,

@@ -47,9 +47,9 @@ row() {
 
 # --- the fixture tree ---------------------------------------------------------------------
 pure='use netsmith_testkit::TempDir;
-use netsmith::{Libraries, build_with};
+use netsmith_pipeline::{Libraries, build_with};
 fn t() { build_with(name, text, &loader, &catalogs, &Libraries::with_mapping(m, s, f)); }'
-file crates/netsmith/tests/pure.rs "$pure"
+file crates/netsmith-tools/tests/pure.rs "$pure"
 file crates/netsmith-cli/tests/pure.rs "$pure"
 file crates/netsmith-fab/tests/pure.rs "$pure"
 file crates/netsmith-pcb/tests/pure.rs "$pure"
@@ -62,27 +62,27 @@ KicadCliExe::locate_runnable()"
 file crates/netsmith-design/tests/pure.rs "$pure"
 file crates/netsmith-workspace/src/tests.rs "$pure"
 file crates/netsmith-fab/src/tests.rs "$pure"
-file crates/netsmith/tests/main.rs "mod pure;"
+file crates/netsmith-tools/tests/main.rs "mod pure;"
 i=0
 for token in 'KicadCliExe::locate_runnable()' 'skip_without_kicad_libraries()' 'kicad_libraries_installed()' \
-    'Libraries::standard()' 'SymbolLib::installed()' 'Libraries::for_project(p)' 'Search::machine()' 'install::locate(Kind::Symbols)' 'use netsmith::build;' 'use netsmith::{Built, build};' 'use netsmith::{build, Built};' 'netsmith::build(a, b, c)' 'use netsmith::{
+    'Libraries::standard()' 'SymbolLib::installed()' 'Libraries::for_project(p)' 'Search::machine()' 'install::locate(Kind::Symbols)' 'use netsmith_pipeline::build;' 'use netsmith_pipeline::{Built, build};' 'use netsmith_pipeline::{build, Built};' 'netsmith_pipeline::build(a, b, c)' 'use netsmith_pipeline::{
     Built,
     build,
 }' 'Workspace::open(t)' \
     'env!("CARGO_BIN_EXE_netsmith")' 'Command::new("git")' '.env("KICAD_CLI", x)' \
     '.env("NETSMITH_KICAD_SYMBOLS", x)' 'std::env::set_var("NETSMITH_KICAD_SYMBOLS", x)' 'std::env::var("KICAD_X")' 'install::SYMBOLS_VARIABLE' 'eprintln!("skipped: no KiCad")' 'let cli: &dyn KicadCli = c;'; do
     i=$((i + 1))
-    file "crates/netsmith/tests/asks$i.rs" "$pure
+    file "crates/netsmith-tools/tests/asks$i.rs" "$pure
 $token"
 done
 # Names a variable only in a message it expects: no process, no lookup.
-file crates/netsmith/tests/message.rs "$pure
+file crates/netsmith-tools/tests/message.rs "$pure
 assert!(e.contains(\"NETSMITH_KICAD_SYMBOLS\"), \"{e}\");"
-file crates/netsmith/tests/mapping.rs "$pure
+file crates/netsmith-tools/tests/mapping.rs "$pure
 std::env::var("STD_PRINT").is_ok(); SymbolLib::installed_by(&machine); let m = Mapping::standard(); let n = netsmith_kicad::Mapping::for_project(Some(d)).unwrap();
-use netsmith::{Built, build_with};"
-file crates/netsmith/tests/common/mod.rs "$pure"
-file crates/netsmith/tests/fixtures/board.nsm "board B {}"
+use netsmith_pipeline::{Built, build_with};"
+file crates/netsmith-tools/tests/common/mod.rs "$pure"
+file crates/netsmith-tools/tests/fixtures/board.nsm "board B {}"
 file crates/netsmith-view/tests/asks.rs "KicadCliExe::locate()"
 file crates/netsmith-catalog/src/refresh/mod.rs "KicadCliExe::locate()"
 
@@ -162,13 +162,13 @@ row "1 1 1 1 1 1" examples/outline_and_pours.pcb.toml examples/four_layer.nsm ex
 row "1 1 1 1 1 1" examples/notes.txt
 
 # --- the crates that reach KiCad: their source is what the tests, and the binary, run ---------
-row "1 1 1 1 1 1" crates/netsmith/src/lib.rs
-row "1 1 1 1 1 1" crates/netsmith/src/parity.rs crates/netsmith/src/compare.rs
+row "1 1 1 1 1 1" crates/netsmith-tools/src/lib.rs
+row "1 1 1 1 1 1" crates/netsmith-tools/src/parity.rs crates/netsmith-tools/src/compare.rs
 row "1 1 1 1 1 1" crates/netsmith-pipeline/src/pick_lock.rs
 row "1 1 1 1 1 1" crates/netsmith-cli/src/main.rs
 row "1 1 1 1 1 1" crates/netsmith-cli/src/commands/fab.rs crates/netsmith-cli/src/commands/mod.rs
 row "1 1 1 1 1 1" crates/netsmith-cli/Cargo.toml
-row "1 1 1 1 1 1" crates/netsmith/Cargo.toml
+row "1 1 1 1 1 1" crates/netsmith-tools/Cargo.toml
 row "1 1 1 1 1 1" crates/netsmith-kicad/src/symbols.rs
 row "1 1 1 1 1 1" crates/netsmith-core/src/lib.rs crates/netsmith-design/src/lib.rs
 row "1 1 1 1 1 1" crates/netsmith-core/src/lib.rs
@@ -219,12 +219,12 @@ row "1 1 0 0 0 0" crates/netsmith-placer/tests/main.rs
 row "1 0 0 0 0 0" crates/netsmith-router/tests/pure.rs
 row "1 1 0 0 0 0" crates/netsmith-router/tests/asks.rs
 row "1 1 0 0 0 0" crates/netsmith-router/tests/main.rs
-# The router's shared KiCad check is a module folder (`tests/drc_kit`, which the netsmith crate includes): every test
+# The router's shared KiCad check is a module folder (`tests/drc_kit`, which netsmith-fabricate includes): every test
 # file of both crates uses it, so a change to it runs `kicad`.
 row "1 1 0 0 0 0" crates/netsmith-router/tests/drc_kit/mod.rs
 # The 3D scene (issue #518): in the binary and the editor's 3D view, and no test of it asks for KiCad.
 row "1 0 1 1 0 0" crates/netsmith-3d/src/gltf.rs
-# `netsmith render`'s drawing (it was the netsmith crate's `render.rs`): the 3D crate's, after the design stage, with the recipes.
+# `netsmith render`'s drawing (it was a file of the retired netsmith crate): the 3D crate's, after the design stage, with the recipes.
 row "1 0 1 1 0 0" crates/netsmith-3d/src/render.rs
 row "1 0 1 1 0 0" crates/netsmith-3d/Cargo.toml
 row "1 0 0 0 0 0" crates/netsmith-3d/tests/scene3d.rs
@@ -234,31 +234,31 @@ row "1 0 1 0 0 0" crates/netsmith-catalog/src/refresh/mod.rs crates/netsmith-fab
 row "1 0 1 0 0 0" crates/netsmith-catalog/src/refresh/http.rs crates/netsmith-catalog/src/refresh/csvfile.rs
 
 # --- test files of those crates: KiCad only when the file can ask; never the recipes ----------
-row "1 0 0 0 0 0" crates/netsmith/tests/pure.rs
+row "1 0 0 0 0 0" crates/netsmith-tools/tests/pure.rs
 row "1 0 0 0 0 0" crates/netsmith-fab/tests/pure.rs crates/netsmith-pcb/tests/pure.rs crates/netsmith-design/tests/pure.rs
 row "1 0 0 0 0 0" crates/netsmith-workspace/src/tests.rs crates/netsmith-fab/src/tests.rs
-row "1 0 0 0 0 0" crates/netsmith/tests/pure.rs crates/netsmith-pcb/tests/pure.rs
-row "1 0 0 0 0 0" crates/netsmith/tests/message.rs crates/netsmith/tests/mapping.rs
+row "1 0 0 0 0 0" crates/netsmith-tools/tests/pure.rs crates/netsmith-pcb/tests/pure.rs
+row "1 0 0 0 0 0" crates/netsmith-tools/tests/message.rs crates/netsmith-tools/tests/mapping.rs
 for n in $(seq 1 "$i"); do
-    row "1 1 0 0 0 0" "crates/netsmith/tests/asks$n.rs"
+    row "1 1 0 0 0 0" "crates/netsmith-tools/tests/asks$n.rs"
 done
-row "1 1 0 0 0 0" crates/netsmith/tests/common/mod.rs
-row "1 1 0 0 0 0" crates/netsmith/tests/main.rs
+row "1 1 0 0 0 0" crates/netsmith-tools/tests/common/mod.rs
+row "1 1 0 0 0 0" crates/netsmith-tools/tests/main.rs
 row "1 0 0 0 0 0" crates/netsmith-cli/tests/pure.rs
 row "1 1 0 0 0 0" crates/netsmith-cli/tests/main.rs crates/netsmith-cli/tests/common/mod.rs
-row "1 1 0 0 0 0" crates/netsmith/tests/fixtures/board.nsm
-row "1 1 0 0 0 0" crates/netsmith/tests/deleted.rs
+row "1 1 0 0 0 0" crates/netsmith-tools/tests/fixtures/board.nsm
+row "1 1 0 0 0 0" crates/netsmith-tools/tests/deleted.rs
 row "1 1 0 0 0 0" crates/netsmith-core/tests/deleted.rs
 row "1 1 0 0 0 0" crates/netsmith-fab/tests/unknown/data.json
-row "1 1 0 0 0 0" crates/netsmith/tests/pure.rs crates/netsmith/tests/asks1.rs
+row "1 1 0 0 0 0" crates/netsmith-tools/tests/pure.rs crates/netsmith-tools/tests/asks1.rs
 # A KiCad-backed test next to a change that has nothing to do with it: the flags add up.
-row "1 1 1 1 1 1" crates/netsmith/tests/pure.rs crates/netsmith/src/lib.rs
-row "1 0 1 1 0 0" crates/netsmith/tests/pure.rs crates/netsmith-editor/src/api.rs
-row "1 0 0 0 0 0" crates/netsmith/tests/pure.rs docs/adr/0081-a-pin-states-its-own-swing.md README.md
-row "1 0 0 0 0 0" docs/LANGUAGE.md crates/netsmith/tests/pure.rs
-row "1 1 0 0 0 0" docs/LANGUAGE.md crates/netsmith/tests/asks1.rs
+row "1 1 1 1 1 1" crates/netsmith-tools/tests/pure.rs crates/netsmith-tools/src/lib.rs
+row "1 0 1 1 0 0" crates/netsmith-tools/tests/pure.rs crates/netsmith-editor/src/api.rs
+row "1 0 0 0 0 0" crates/netsmith-tools/tests/pure.rs docs/adr/0081-a-pin-states-its-own-swing.md README.md
+row "1 0 0 0 0 0" docs/LANGUAGE.md crates/netsmith-tools/tests/pure.rs
+row "1 1 0 0 0 0" docs/LANGUAGE.md crates/netsmith-tools/tests/asks1.rs
 # A path with a blank line between: blank lines are skipped.
-row "1 0 0 0 0 0" crates/netsmith/tests/pure.rs ""
+row "1 0 0 0 0 0" crates/netsmith-tools/tests/pure.rs ""
 
 # --- crates=: the crates whose tests (and dependents' tests) run; empty is every test ---------
 crates_of() {
@@ -277,7 +277,7 @@ crates_row "netsmith-view" crates/netsmith-view/src/layout.rs
 crates_row "netsmith-editor" crates/netsmith-editor/web/src/app.ts
 crates_row "netsmith-view" crates/netsmith-view/src/layout.rs crates/netsmith-view/tests/layout.rs
 crates_row "netsmith-view netsmith-solve" crates/netsmith-view/src/layout.rs crates/netsmith-solve/src/solve.rs
-crates_row "netsmith" crates/netsmith/tests/pure.rs
+crates_row "netsmith-tools" crates/netsmith-tools/tests/pure.rs
 crates_row "netsmith-catalog" crates/netsmith-catalog/src/picks.rs crates/netsmith-catalog/tests/supply.rs
 crates_row "netsmith-cli" crates/netsmith-cli/src/commands/fab.rs crates/netsmith-cli/tests/pure.rs
 crates_row "netsmith-pcb" crates/netsmith-pcb/src/footprint.rs
@@ -292,36 +292,36 @@ crates_row "netsmith-placer" crates/netsmith-placer/src/place.rs
 crates_row "netsmith-placer netsmith-router" crates/netsmith-placer/src/place.rs crates/netsmith-router/src/route.rs
 crates_row "netsmith-router" crates/netsmith-router/src/meander.rs
 # The synthetic boards the tests share are netsmith-placer's: its dependents (netsmith-router,
-# netsmith-3d, the netsmith crate) run too.
+# netsmith-3d) run too.
 crates_row "netsmith-placer" crates/netsmith-placer/tests/common/mod.rs
 crates_row "netsmith-editor" crates/netsmith-editor/Cargo.toml
 # The test helpers: every crate that dev-depends on them runs (rdeps).
 crates_row "netsmith-testkit" crates/netsmith-testkit/src/lib.rs
 crates_row "netsmith-view" crates/netsmith-view/src/layout.rs README.md docs/DESIGN-RULES.md
-# The guide, the gallery and the skills are read by the netsmith crate alone (and its dependent, the
+# The guide, the gallery and the skills are read by the netsmith-tools crate alone (and its dependent, the
 # command line, runs with it by `rdeps`).
-crates_row "netsmith" docs/LANGUAGE.md
-crates_row "netsmith" docs/symbol-gallery.html
-crates_row "netsmith" .agents/skills/netsmith-write-nsm/SKILL.md
-crates_row "netsmith" .agents/skills/netsmith-dev-verify-editor/SKILL.md
-crates_row "netsmith" docs/LANGUAGE.md docs/symbol-gallery.html .agents/skills/netsmith-read-errors/SKILL.md crates/netsmith/tests/pure.rs
-crates_row "netsmith-view netsmith" crates/netsmith-view/src/layout.rs docs/LANGUAGE.md
-crates_row "netsmith-view netsmith" crates/netsmith-view/src/layout.rs .agents/skills/netsmith-write-nsm/SKILL.md
-# An example is read by the crates whose tests include it, and by the netsmith crate for all of them.
-crates_row "netsmith" examples/orbit/src/main.nsm
-crates_row "netsmith" examples/orbit/netsmith.toml examples/orbit/reference/orbit.kicad_pcb
-crates_row "netsmith" examples/two_buck/src/main.nsm
-crates_row "netsmith netsmith-fabricate netsmith-workspace" examples/led_panel.physical.nsm examples/led_panel.lock.toml
-crates_row "netsmith netsmith-fabricate netsmith-workspace" examples/outline_and_pours.pcb.toml examples/outline_and_pours.physical.nsm
-crates_row "netsmith netsmith-design netsmith-placer netsmith-router netsmith-fabricate" examples/four_layer.nsm
-crates_row "netsmith netsmith-design netsmith-placer netsmith-router netsmith-fabricate" examples/six_layer.lock.toml examples/ten_layer.nsm
-crates_row "netsmith netsmith-check netsmith-solve" examples/carrier_and_cards.nsm
-crates_row "netsmith netsmith-core netsmith-check netsmith-solve netsmith-design netsmith-fabricate netsmith-workspace netsmith-placer netsmith-router" examples/two_boards.nsm examples/linear_regulator.lock.toml
-crates_row "netsmith netsmith-core netsmith-lang netsmith-check netsmith-solve netsmith-design netsmith-placer netsmith-router netsmith-fabricate netsmith-workspace" examples/led.nsm
-crates_row "netsmith netsmith-lang netsmith-check netsmith-solve netsmith-design netsmith-placer netsmith-router netsmith-core netsmith-fabricate netsmith-workspace" examples/status_indicator.nsm examples/led.lock.toml
-crates_row "netsmith netsmith-design netsmith-placer netsmith-router netsmith-fabricate" examples/four_layer.nsm examples/ten_layer.nsm examples/six_layer.nsm
-crates_row "netsmith netsmith-workspace" examples/schematic_bench/src/main.nsm
-crates_row "netsmith netsmith-view" examples/orbit/src/main.nsm crates/netsmith-view/src/layout.rs
+crates_row "netsmith-tools" docs/LANGUAGE.md
+crates_row "netsmith-tools" docs/symbol-gallery.html
+crates_row "netsmith-tools" .agents/skills/netsmith-write-nsm/SKILL.md
+crates_row "netsmith-tools" .agents/skills/netsmith-dev-verify-editor/SKILL.md
+crates_row "netsmith-tools" docs/LANGUAGE.md docs/symbol-gallery.html .agents/skills/netsmith-read-errors/SKILL.md crates/netsmith-tools/tests/pure.rs
+crates_row "netsmith-view netsmith-tools" crates/netsmith-view/src/layout.rs docs/LANGUAGE.md
+crates_row "netsmith-view netsmith-tools" crates/netsmith-view/src/layout.rs .agents/skills/netsmith-write-nsm/SKILL.md
+# An example is read by the crates whose tests include it, and by the crates of `any_example` for all of them.
+crates_row "netsmith-tools netsmith-workspace" examples/orbit/src/main.nsm
+crates_row "netsmith-tools netsmith-workspace" examples/orbit/netsmith.toml examples/orbit/reference/orbit.kicad_pcb
+crates_row "netsmith-tools netsmith-workspace netsmith-fabricate" examples/two_buck/src/main.nsm
+crates_row "netsmith-tools netsmith-workspace netsmith-fabricate" examples/led_panel.physical.nsm examples/led_panel.lock.toml
+crates_row "netsmith-tools netsmith-workspace netsmith-fabricate" examples/outline_and_pours.pcb.toml examples/outline_and_pours.physical.nsm
+crates_row "netsmith-tools netsmith-workspace netsmith-design netsmith-pipeline netsmith-placer netsmith-router netsmith-fabricate" examples/four_layer.nsm
+crates_row "netsmith-tools netsmith-workspace netsmith-design netsmith-pipeline netsmith-placer netsmith-router netsmith-fabricate" examples/six_layer.lock.toml examples/ten_layer.nsm
+crates_row "netsmith-tools netsmith-workspace netsmith-check netsmith-solve" examples/carrier_and_cards.nsm
+crates_row "netsmith-tools netsmith-workspace netsmith-core netsmith-check netsmith-solve netsmith-design netsmith-pipeline netsmith-fabricate netsmith-placer netsmith-router" examples/two_boards.nsm examples/linear_regulator.lock.toml
+crates_row "netsmith-tools netsmith-workspace netsmith-core netsmith-lang netsmith-check netsmith-solve netsmith-design netsmith-pipeline netsmith-placer netsmith-router netsmith-fabricate" examples/led.nsm
+crates_row "netsmith-tools netsmith-workspace netsmith-lang netsmith-check netsmith-solve netsmith-design netsmith-pipeline netsmith-placer netsmith-router netsmith-core netsmith-fabricate" examples/status_indicator.nsm examples/led.lock.toml
+crates_row "netsmith-tools netsmith-workspace netsmith-design netsmith-pipeline netsmith-placer netsmith-router netsmith-fabricate" examples/four_layer.nsm examples/ten_layer.nsm examples/six_layer.nsm
+crates_row "netsmith-tools netsmith-workspace" examples/schematic_bench/src/main.nsm
+crates_row "netsmith-tools netsmith-workspace netsmith-view" examples/orbit/src/main.nsm crates/netsmith-view/src/layout.rs
 # A path outside the crates that names no crate keeps the whole run wide, whatever else is there.
 crates_row "" examples/orbit/src/main.nsm std/kicad.toml
 crates_row "" docs/LANGUAGE.md std/kicad.toml

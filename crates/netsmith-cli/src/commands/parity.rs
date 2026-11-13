@@ -1,10 +1,10 @@
-use netsmith::project::Target;
+use netsmith_fabricate::project::Target;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use clap::Args as ClapArgs;
-use netsmith::findings::Format;
+use netsmith_tools::findings::Format;
 
 use super::common;
 
@@ -59,8 +59,8 @@ fn run_parity(
     svg: Option<&Path>,
     format: Format,
 ) -> ExitCode {
-    use netsmith::parity::{DesignatorMap, Tolerances, check_text};
-    use netsmith::port::PortParts;
+    use netsmith_tools::parity::{DesignatorMap, Tolerances, check_text};
+    use netsmith_tools::port::PortParts;
     let reference = Target::resolve(None)
         .ok()
         .and_then(|t| t.project.map(|p| p.root))
@@ -68,7 +68,7 @@ fn run_parity(
         .join("reference");
     let read =
         |path: &Path| fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()));
-    let run = || -> Result<netsmith::parity::ParityReport, String> {
+    let run = || -> Result<netsmith_tools::parity::ParityReport, String> {
         let table_path = table.map_or_else(|| reference.join("placements.toml"), Path::to_path_buf);
         let parts_path = parts.map_or_else(|| reference.join("parts.toml"), Path::to_path_buf);
         let parts = PortParts::read(&parts_path)?;

@@ -9,7 +9,7 @@
 //! transistors), a RESET and a BOOT button, a power LED and a GPIO38 LED, and the development
 //! board's two 22-pin headers.
 //!
-//! Its nets are Easyduino's, and the proof is the test `board` of `crates/netsmith/tests/easyduino.rs`
+//! Its nets are Easyduino's, and the proof is the test `board` of `crates/netsmith-tools/tests/easyduino.rs`
 //! (`README.md`, "Same nets"). The pin-to-signal map of the headers (U2), of the receptacles and
 //! of the buttons is Easyduino's too, and it is FIXED: the board joins each header pin to a
 //! named pin of the module (`.module.gpio4`) and never to a request for "any GPIO" (ADR 0101), so

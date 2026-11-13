@@ -88,7 +88,7 @@ folder are netsmith's** (MIT, like the rest of the repository).
   checker's picture of the gate's run.
 - `reference/placements.toml`: the facts the checker needs, read from the board file: the
   outline, the holes and, for every footprint, its place, rotation and pads. Regenerate it with
-  `cargo run -p netsmith --example reference_table -- --must-match reference/must_match.toml reference/charger-module.kicad_pcb > reference/placements.toml`
+  `cargo run -p netsmith-tools --example reference_table -- --must-match reference/must_match.toml reference/charger-module.kicad_pcb > reference/placements.toml`
   (run from this folder); a test checks that the file is what the program prints.
 
 ## Run it
@@ -99,7 +99,7 @@ From this folder:
 netsmith build    # the schematic, in out/ (no KiCad install needed)
 ```
 
-The checks are in `crates/netsmith/tests/power_manifold.rs` (the board and the table),
+The checks are in `crates/netsmith-tools/tests/power_manifold.rs` (the board and the table),
 `power_manifold_ics.rs` and `power_manifold_parts.rs` (the parts).
 
 ## The PCB
@@ -158,7 +158,7 @@ netsmith parity fab/PowerManifoldCharger/PowerManifoldCharger.kicad_pcb \
     --svg reference/parity-overlay.svg
 ```
 
-The gate is `crates/netsmith/tests/power_manifold_parity.rs` (`NETSMITH_NO_KICAD=1`,
+The gate is `crates/netsmith-cli/tests/power_manifold_parity.rs` (`NETSMITH_NO_KICAD=1`,
 `fab --locked --route-timeout 20`, every must-match item `ok` but the two known failures of the
 outline, which it names, and the committed overlay equal to the one the board gives).
 
@@ -171,7 +171,7 @@ is 0.000 mm. **Reported, not gated:** every other part's place and turn.
 
 ## Same nets
 
-`crates/netsmith/tests/power_manifold.rs`, module `board` (no KiCad needed; the ERC test skips
+`crates/netsmith-tools/tests/power_manifold.rs`, module `board` (no KiCad needed; the ERC test skips
 where there is no `kicad-cli`). The reference's connectivity is read from the committed
 `reference/charger-module.kicad_pcb` with `Netlist::from_kicad_pcb` (netsmith's own reader), and
 the board's from the built design. `PARTS` pairs the 89 parts by member path with the design's
@@ -356,14 +356,13 @@ Files (all under examples/power_manifold_charger/ unless noted), nothing committ
 src/stm32g071c8.nsm, src/tps55288.nsm, src/tcpp02_m18.nsm; catalogs/stm32g071c8.csv, catalogs/tps55288.csv,
 catalogs/tcpp02_m18.csv; kicad.toml (new: library `power_manifold_ics` + 3 [[part]] rows);
 libs/power_manifold_ics.pretty/{LQFP-48_7x7mm_P0.5mm_ST_DS12232, VQFN-HR-26_3.5x4mm_P0.5mm_TI_RPM0026A,
-QFN-18-1EP_3.5x3.5mm_P0.5mm_EP2.2x2.2mm_ST}.kicad_mod; crates/netsmith/tests/power_manifold_ics.rs (12 tests) and the
-line `mod power_manifold_ics;` in crates/netsmith/tests/main.rs. Footprint generator script (not in the repo):
+QFN-18-1EP_3.5x3.5mm_P0.5mm_EP2.2x2.2mm_ST}.kicad_mod; crates/netsmith-fabricate/tests/power_manifold_ics.rs (12 tests). Footprint generator script (not in the repo):
 .../scratchpad/genfp.py. Every pin table was written by hand (facts only: numbers, names, kinds). Symbols are drawn from
 the pin tables (no `symbol` key). Documents fetched 2026-11-11.
 
 ##
-`cargo test -p netsmith --test main power_manifold_ics::` 12 passed (also `power_manifold::`, 17 total); `cargo fmt --all --check`
-clean; `cargo clippy -p netsmith --all-targets` clean. The fixture board (the test's own) builds with no KiCad install.
+`cargo test -p netsmith-fabricate --test main power_manifold_ics::` 12 passed (also `power_manifold::`, 17 total); `cargo fmt --all --check`
+clean; `cargo clippy -p netsmith-fabricate --all-targets` clean. The fixture board (the test's own) builds with no KiCad install.
 Not run: the workspace suite, `netsmith lock --check`, any KiCad ERC/DRC.
 
 #### U1, kind `Stm32G071C8` (src/stm32g071c8.nsm), package "LQFP-48(7x7)", 48 pads
@@ -438,7 +437,7 @@ Catalog (C3662929, Extended): JLCPCB and LCSC pages returned C3662929 = TCPP02-M
 ### The other parts
 
 Evidence method: LCSC record = wmsc.lcsc.com product endpoint (the data behind the product page; WebFetch of the page only for C108342); JLCPCB library type = WebFetch of jlcpcb.com/partdetail/C...; datasheets = the PDF LCSC links (SHA-256 prefixes are in each row's `source`).
-Files: src/{gt_usb_7004,pcie_x1_edge_fingers,bsc059n04ls6,lp2985,usblc6_2sc6,tlv7022,antc1608_ntc}.nsm; catalogs/{capacitor,resistor,inductor,fuse,ferrite_bead,tvs,gt_usb_7004,bsc059n04ls6,lp2985,usblc6_2sc6,tlv7022,antc1608_ntc}.csv; libs/power_manifold_must_match.pretty (2 files), libs/power_manifold_parts.pretty (8 files); blocks appended to kicad.toml; crates/netsmith/tests/power_manifold_parts.rs and its `mod` line.
+Files: src/{gt_usb_7004,pcie_x1_edge_fingers,bsc059n04ls6,lp2985,usblc6_2sc6,tlv7022,antc1608_ntc}.nsm; catalogs/{capacitor,resistor,inductor,fuse,ferrite_bead,tvs,gt_usb_7004,bsc059n04ls6,lp2985,usblc6_2sc6,tlv7022,antc1608_ntc}.csv; libs/power_manifold_must_match.pretty (2 files), libs/power_manifold_parts.pretty (8 files); blocks appended to kicad.toml; crates/netsmith-fabricate/tests/power_manifold_parts.rs and its `mod` line.
 
 STD KINDS, PROJECT ROWS (all Extended, JLCPCB page; price/stock not recorded; LCSC record agrees on mpn+package unless noted)
 - Capacitor (catalogs/capacitor.csv): C108342 FH 0603B475K100NT 4.7u 10V X7R 0603 (no curve/temp/height: FH datasheet not used; LCSC stock 0); C95841 Samsung CL21B106KOQNNNE 10u 16V X7R 0805; C1713 CL21A106KOQNNNE 10u 16V X5R 0805 (LCSC stock 0); C13533 CL05C331JB5NNNC 330p 50V C0G 0402 (flat curve 0:1 then 0.99, Samsung library); C5199872 CL10B105KB8NQNC 1u 50V X7R 0603 (curve from Samsung library, 1 Vrms 1 kHz, 20 steps, margin 0.01, deep: 0.88 at 5 V); C50254 CL31B225KBHNNNE 2.2u 50V X7R 1206 (library EMPTY: page shows only the word Basic, no field); C89632 CL31B106KBHNNNE 10u 50V X7R 1206. Samsung rows: temp from Samsung MLCC catalog p.5 (C5199872: its own spec p.2), height = library page Thickness+tol; class II >= 2.2u have no curve by the README rule.

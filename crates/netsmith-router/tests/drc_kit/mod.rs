@@ -1,7 +1,7 @@
 //! KiCad's design rule check of a board netsmith wrote, for the tests that lay a board out and
 //! then ask KiCad (`kicad-cli`, found as `netsmith_fab::KicadCliExe::locate_runnable` does) what it
 //! finds: skipped where it is not installed. Shared by this crate's `kicad_drc` and by the
-//! netsmith crate's (`#[path]` module there), whose boards come from source text.
+//! netsmith-fabricate's (`#[path]` module there), whose boards come from source text.
 
 #![allow(dead_code)]
 

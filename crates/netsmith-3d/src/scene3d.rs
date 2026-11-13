@@ -347,7 +347,7 @@ pub struct Body {
 }
 
 /// A part's STEP model as read, for [`Scene::draw_models`] to place: what the caller that reads
-/// the file found (`netsmith::models`).
+/// the file found (`netsmith_fabricate::models`).
 #[derive(Debug, Clone)]
 pub struct ModelUse {
     /// The part's path.
@@ -728,7 +728,7 @@ const TOLERANCE: f64 = 1e-6;
 
 impl Scene {
     /// The scene of `board`. `provenance` says where each part's height came from, by path
-    /// (`netsmith::heights::provenance`); a part it does not name is `stated` if it has a height
+    /// (`netsmith_pipeline::heights::provenance`); a part it does not name is `stated` if it has a height
     /// and `unknown` if not. A part with no height is `unknown` whatever it says.
     pub fn of(board: &Board, provenance: &BTreeMap<String, HeightProvenance>) -> Scene {
         let frame = Frame::of(board);

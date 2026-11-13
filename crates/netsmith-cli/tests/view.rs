@@ -13,8 +13,8 @@ use std::{
     time::Duration,
 };
 
-use netsmith::editor::Workspace;
-use netsmith::project::Target;
+use netsmith_workspace::Workspace;
+use netsmith_fabricate::project::Target;
 use netsmith_editor::api::{
     CameraPlace, CaseMode, ClientMessage, ColourBy, RenderView, ServerMessage, ViewChange,
     ViewState,

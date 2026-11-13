@@ -2,8 +2,8 @@
 //! `.kicad_pro` written beside them, for the boards the router routes: the example boards (from
 //! their design files), invented boards of holes and custom pads, land grids, and the synthetic
 //! boards. These run `kicad-cli` (found as `netsmith_fab::KicadCliExe::locate` does: `$KICAD_CLI`,
-//! `PATH`, Windows KiCad under WSL), and are skipped where it is not installed. The boards that the
-//! netsmith crate builds from source text (outlines, cutouts, pours, keepouts, layout files) are
+//! `PATH`, Windows KiCad under WSL), and are skipped where it is not installed. The boards that
+//! netsmith-fabricate builds from source text (outlines, cutouts, pours, keepouts, layout files) are
 //! checked by `kicad_drc.rs` there.
 
 use std::process::Command;

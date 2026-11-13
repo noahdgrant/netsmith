@@ -1,4 +1,4 @@
-use netsmith::fab::FabOptions;
+use netsmith_fabricate::fab::FabOptions;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -56,7 +56,7 @@ pub struct Args {
     /// full, and the search then pays for a step outside a line's tiles where the plan fills
     /// the tile. The header of the router's `plan.rs` has what it was measured to do.
     #[arg(long, value_name = "WHEN", value_parser = parse_plan)]
-    pub plan: Option<netsmith::placed::CoarsePlan>,
+    pub plan: Option<netsmith_fabricate::placed::CoarsePlan>,
     /// Route the lines by class, the most important first, with the protection: `off`, `every`
     /// try, or `later`, from the second try on (the router's own).
     ///
@@ -64,7 +64,7 @@ pub struct Args {
     /// copper against a later class are in the language guide's "How the router orders the
     /// nets".
     #[arg(long, value_name = "WHEN", value_parser = parse_classes)]
-    pub classes: Option<netsmith::placed::LineClasses>,
+    pub classes: Option<netsmith_fabricate::placed::LineClasses>,
     /// The largest radius of the arc drawn at each bend, in widths of its track (the router's own
     /// is 4); 0 draws none, and every bend keeps its 45 degree corner.
     ///
@@ -76,7 +76,7 @@ pub struct Args {
 
 /// Routes the saved board again, alone, the way `fab` does, and writes its board files.
 pub fn run(args: Args) -> ExitCode {
-    let request = netsmith::placed::RouteRequest {
+    let request = netsmith_fabricate::placed::RouteRequest {
         route_timeout: match args.route_timeout {
             Some(0) => None,
             Some(secs) => Some(Duration::from_secs(secs)),
@@ -97,10 +97,14 @@ pub fn run(args: Args) -> ExitCode {
 /// `netsmith route`: route the placed board that `fab --save-placed` wrote, alone, and write
 /// its board files into `out` (`out/` when `None`). Exits 1 when connections are left, 2 when
 /// the file cannot be read or the files cannot be written.
-fn run_route(file: &Path, out: Option<&Path>, request: netsmith::placed::RouteRequest) -> ExitCode {
+fn run_route(
+    file: &Path,
+    out: Option<&Path>,
+    request: netsmith_fabricate::placed::RouteRequest,
+) -> ExitCode {
     let placed = match fs::read_to_string(file)
         .map_err(|e| e.to_string())
-        .and_then(|text| netsmith::placed::from_json(&text))
+        .and_then(|text| netsmith_fabricate::placed::from_json(&text))
     {
         Ok(p) => p,
         Err(e) => {
@@ -109,13 +113,14 @@ fn run_route(file: &Path, out: Option<&Path>, request: netsmith::placed::RouteRe
         }
     };
     let out = out.unwrap_or(Path::new("out"));
-    let routed = match netsmith::placed::route(placed, out, &request, &|m| eprintln!("{m}")) {
-        Ok(r) => r,
-        Err(e) => {
-            eprintln!("error: {e}");
-            return ExitCode::from(2);
-        }
-    };
+    let routed =
+        match netsmith_fabricate::placed::route(placed, out, &request, &|m| eprintln!("{m}")) {
+            Ok(r) => r,
+            Err(e) => {
+                eprintln!("error: {e}");
+                return ExitCode::from(2);
+            }
+        };
     for path in &routed.written {
         println!("wrote {}", path.display());
     }
@@ -155,8 +160,8 @@ fn parse_turn(given: &str) -> Result<i64, String> {
         })
 }
 
-fn parse_plan(given: &str) -> Result<netsmith::placed::CoarsePlan, String> {
-    use netsmith::placed::CoarsePlan;
+fn parse_plan(given: &str) -> Result<netsmith_fabricate::placed::CoarsePlan, String> {
+    use netsmith_fabricate::placed::CoarsePlan;
     match given {
         "off" => Ok(CoarsePlan::Off),
         "every" => Ok(CoarsePlan::EveryTry),
@@ -191,8 +196,8 @@ fn parse_margin(given: &str) -> Result<f64, String> {
         })
 }
 
-fn parse_classes(given: &str) -> Result<netsmith::placed::LineClasses, String> {
-    use netsmith::placed::LineClasses;
+fn parse_classes(given: &str) -> Result<netsmith_fabricate::placed::LineClasses, String> {
+    use netsmith_fabricate::placed::LineClasses;
     match given {
         "off" => Ok(LineClasses::Off),
         "every" => Ok(LineClasses::EveryTry),
@@ -298,9 +303,12 @@ mod tests {
             );
         }
         for (given, plan) in [
-            ("off", netsmith::placed::CoarsePlan::Off),
-            ("every", netsmith::placed::CoarsePlan::EveryTry),
-            ("later", netsmith::placed::CoarsePlan::FromSecondTry),
+            ("off", netsmith_fabricate::placed::CoarsePlan::Off),
+            ("every", netsmith_fabricate::placed::CoarsePlan::EveryTry),
+            (
+                "later",
+                netsmith_fabricate::placed::CoarsePlan::FromSecondTry,
+            ),
         ] {
             match parse(&["route", "b.placed.json", "--plan", given]) {
                 Ok(Command::Route(args)) => assert_eq!(args.plan, Some(plan), "{given}"),

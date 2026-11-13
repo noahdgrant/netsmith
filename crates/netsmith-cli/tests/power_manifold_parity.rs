@@ -2,7 +2,7 @@
 //! project in `examples/power_manifold_charger` must match the original where the owner said it
 //! must (the holes and the parts of `reference/must_match.toml`: the programming pads J2, the
 //! card-edge connector J3 and the USB-C receptacle J4), as judged by the parity checker
-//! (`netsmith::parity`). The outline is the one known exception: the original's is a rectangle
+//! (`netsmith_tools::parity`). The outline is the one known exception: the original's is a rectangle
 //! with a card tab and a key slot (14 lines and an arc) and the language's `Outline` is a rounded
 //! rectangle (README, "The PCB"). Everything else of the board is reported and not gated.
 
