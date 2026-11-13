@@ -11,7 +11,7 @@ each part to the row it names; and the pin file (`<stem>.pins.toml`, ADR 0101, p
 Written against `main` at `b504854`. Where a name in the code differs from the name a person
 would expect, the diagram says so. The code is the authority: `crates/netsmith-pipeline/src/lib.rs`
 (`outcome_observed`) for stages 1 to 4, `crates/netsmith-fabricate/src/fab.rs` (`fab_board`) for stage 5,
-and `crates/netsmith-solve/src/solve.rs` (`solve_model`) for the solver. The pick files, the
+and `crates/netsmith-solve/src/solve.rs` (`solve_model`) for the solver. The editor's backend, which runs the stages again on each edit and answers the page with what they make, is `crates/netsmith-workspace` (`Workspace`). The pick files, the
 generic parts the solver leaves to the catalogs and the supply providers are in `crates/netsmith-catalog`.
 
 ## The stages

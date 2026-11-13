@@ -59,7 +59,7 @@
 //!   and the placer runs as before; the two faults about a part are errors, since they are not
 //!   requirements. A suspicion that is not proved is left to the check after placing.
 //! - The editor shows the same as `constraint` findings at the sheet's origin, since there is no
-//!   place (`precheck_findings` in `crates/netsmith/src/editor/findings.rs`).
+//!   place (`precheck_findings` in `crates/netsmith-workspace/src/findings.rs`).
 //!
 //! A part that states a face against its module's face is refused by the checker when the board
 //! is built (`enclosure_sensor.rs`), also before any placing. The report of where the placer

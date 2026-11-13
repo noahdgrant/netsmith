@@ -13,7 +13,7 @@ use std::path::Path;
 use netsmith_check::{PinsOutcome, SpaceRequest};
 use netsmith_editor::api::{PickLockInfo, PinOffer, PinRequestInfo};
 
-use crate::project::Target;
+use netsmith_fabricate::project::Target;
 
 /// The pin requests that ask the part at `part_path` (of the board defined as `board`) for a
 /// pin: the ones that got a pin first in the byte order of their paths, merged with the ones
@@ -103,7 +103,9 @@ pub(super) fn lock_info(target: &Target, name: &str) -> Option<PickLockInfo> {
         .display()
         .to_string();
     let source = target.files.iter().find(|f| f.name == name)?;
-    if let Err(error) = crate::pick_lock::read(&crate::pick_lock::lock_path(&source.path)) {
+    if let Err(error) =
+        netsmith_pipeline::pick_lock::read(&netsmith_pipeline::pick_lock::lock_path(&source.path))
+    {
         return Some(PickLockInfo {
             file: shown,
             exists: true,
@@ -115,7 +117,9 @@ pub(super) fn lock_info(target: &Target, name: &str) -> Option<PickLockInfo> {
     }
     let text = std::fs::read_to_string(&source.path).ok()?;
     let (loader, catalogs) = (target.loader().ok()?, target.catalogs().ok()?);
-    let found = crate::pick_lock::refresh(&source.path, name, &text, &loader, &catalogs).ok()?;
+    let found =
+        netsmith_pipeline::pick_lock::refresh(&source.path, name, &text, &loader, &catalogs)
+            .ok()?;
     Some(PickLockInfo {
         file: shown,
         exists: found.existed,

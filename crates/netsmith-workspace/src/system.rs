@@ -10,7 +10,7 @@ use netsmith_editor::{
 };
 
 use super::analysis::{Snapshot, api_location};
-use crate::locate;
+use netsmith_pipeline::locate;
 
 /// More members than this on one net is a supply or a ground, not a connection.
 const MOST_ON_A_NET: usize = 4;

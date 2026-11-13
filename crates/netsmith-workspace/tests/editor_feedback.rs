@@ -7,7 +7,8 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use netsmith::{editor::Workspace, project::Target};
+use netsmith_fabricate::project::Target;
+use netsmith_workspace::Workspace;
 use netsmith_editor::{
     AnalysisEvent, Backend,
     api::{ProblemStage, Severity},

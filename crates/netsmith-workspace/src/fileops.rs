@@ -20,7 +20,7 @@ use netsmith_editor::{
 };
 
 use super::Workspace;
-use crate::project::{MANIFEST, SOURCE_DIR, is_identifier};
+use netsmith_fabricate::project::{MANIFEST, SOURCE_DIR, is_identifier};
 
 /// A new file's text is a source file, not a download.
 const MAX_TEXT: usize = 1 << 20;
@@ -380,7 +380,7 @@ impl Workspace {
                     return Err(ApiError::conflict(format!("`{shown}` is already there")));
                 }
                 // The physical file beside the source goes with it.
-                let side = crate::physical::physical_path(&abs);
+                let side = netsmith_fabricate::physical::physical_path(&abs);
                 let side_to = parent.join(format!("{stem}.physical.nsm"));
                 let moves_side = side.is_file();
                 if moves_side && taken(&parent, &format!("{stem}.physical.nsm")) {
@@ -436,7 +436,7 @@ impl Workspace {
                 }
                 fs::remove_file(&abs).map_err(|e| io_error(path, &e))?;
                 // The physical file beside a source would be left with nothing to describe.
-                let side = crate::physical::physical_path(&abs);
+                let side = netsmith_fabricate::physical::physical_path(&abs);
                 if !physical && side.is_file() {
                     fs::remove_file(&side).map_err(|e| io_error(path, &e))?;
                 }

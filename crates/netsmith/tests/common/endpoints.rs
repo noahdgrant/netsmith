@@ -18,7 +18,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use netsmith::refresh::{Endpoints, Network};
+use netsmith_catalog::refresh::{Endpoints, Network};
 
 /// One request the server got.
 #[derive(Debug, Clone)]

@@ -64,11 +64,9 @@ use super::{
     git::{self, Place, Scratch},
     millis, pcb, power, system,
 };
-use crate::{
-    locate,
-    project::{MANIFEST, Project, SourceFile, Target},
-    resolve::resolve_generics,
-};
+use netsmith_catalog::resolve::resolve_generics;
+use netsmith_fabricate::project::{MANIFEST, Project, SourceFile, Target};
+use netsmith_pipeline::locate;
 
 /// What `GET /api/git/file?ref=` takes for the files on disk instead of a commit.
 pub const WORKTREE: &str = ":worktree";

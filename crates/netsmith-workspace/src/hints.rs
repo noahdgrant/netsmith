@@ -32,7 +32,7 @@
 //! program, analyses the project again once, as a change to the source does. There is no
 //! separate bookkeeping for the editor's own writes, as the PCB layout file has: the file
 //! changes the drawing, which the analysis makes, so a write of our own is one analysis and not
-//! an echo. `crates/netsmith/tests/editor_hints.rs` counts the analyses that begin across a
+//! an echo. `crates/netsmith-workspace/tests/editor_hints.rs` counts the analyses that begin across a
 //! `PUT`, three more rounds of reads, a change by another program and a delete: exactly one each.
 //!
 //! **The `PUT`** takes the **text** of the file as a `text/plain` body (as `PUT /api/file` does,

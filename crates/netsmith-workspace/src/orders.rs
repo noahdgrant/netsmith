@@ -12,8 +12,8 @@ use super::{
     Workspace,
     progress::{Reporting, forward},
 };
-use crate::fab::FabOptions;
-use crate::order::{BOM_FILE, OrderLocks, SUMMARY_FILE, fab_order};
+use netsmith_fabricate::fab::FabOptions;
+use netsmith_fabricate::order::{BOM_FILE, OrderLocks, SUMMARY_FILE, fab_order};
 
 /// The files of an order the page offers, by the name it asks for them with.
 const DOWNLOADS: [(&str, &str); 2] = [("summary", SUMMARY_FILE), ("bom", BOM_FILE)];
@@ -67,9 +67,10 @@ impl Workspace {
         };
         let loader = target.loader().map_err(ApiError::internal)?;
         let catalogs = target.catalogs().map_err(ApiError::internal)?;
-        let libraries =
-            crate::Libraries::for_project(target.project.as_ref().map(|p| p.root.as_path()))
-                .map_err(ApiError::internal)?;
+        let libraries = netsmith_pipeline::Libraries::for_project(
+            target.project.as_ref().map(|p| p.root.as_path()),
+        )
+        .map_err(ApiError::internal)?;
         // The stages `netsmith fab` prints to stderr go to the page instead.
         let _reporting = Reporting::to(say);
         let made = fab_order(
@@ -82,8 +83,8 @@ impl Workspace {
             &FabOptions {
                 progress: Some(forward),
                 allow_drc_violations,
-                place_seeds: crate::layout::place_seeds(target.project.as_ref()),
-                seed_writes: crate::fab::SeedWrites::Order,
+                place_seeds: netsmith_fabricate::layout::place_seeds(target.project.as_ref()),
+                seed_writes: netsmith_fabricate::fab::SeedWrites::Order,
                 ..FabOptions::default()
             },
             // The editor does not read or write the pick lock yet.

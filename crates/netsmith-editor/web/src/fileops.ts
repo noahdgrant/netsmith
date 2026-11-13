@@ -1,6 +1,6 @@
 // What the tree's file operations need to decide, apart from drawing it: whether a name is
 // good, what a new file starts with, where "new here" is, and what each row may do. The server
-// checks the same rules again (crates/netsmith/src/editor/fileops.rs); this is so that a
+// checks the same rules again (crates/netsmith-workspace/src/fileops.rs); this is so that a
 // mistake is said while it is typed.
 
 import type { Node } from './tree';

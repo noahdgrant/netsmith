@@ -5,8 +5,8 @@
 use std::fs;
 use std::path::Path;
 
-use netsmith::editor::Workspace;
-use netsmith::project::Target;
+use netsmith_workspace::Workspace;
+use netsmith_fabricate::project::Target;
 use netsmith_editor::{
     Backend,
     api::{PinLock, PinMove, PinRequestInfo},

@@ -4,7 +4,8 @@
 
 use std::{fs, path::Path};
 
-use netsmith::{editor::Workspace, project::Target};
+use netsmith_fabricate::project::Target;
+use netsmith_workspace::Workspace;
 use netsmith_editor::{Backend, api::FileRole};
 use netsmith_testkit::TempDir;
 

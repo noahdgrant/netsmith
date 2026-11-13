@@ -11,9 +11,9 @@ use netsmith_editor::{
 use netsmith_solve::Catalogs;
 
 use super::analysis::BoardData;
-use crate::refresh;
-use crate::resolve::resolve_generics;
-use crate::supply::{Lookup, PartKey, Quote, Supply};
+use netsmith_catalog::refresh;
+use netsmith_catalog::resolve::resolve_generics;
+use netsmith_catalog::supply::{Lookup, PartKey, Quote, Supply};
 
 /// Parts that are the same kind, value, package and number go on one line.
 pub fn bom(

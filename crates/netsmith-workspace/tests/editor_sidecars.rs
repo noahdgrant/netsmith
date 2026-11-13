@@ -5,8 +5,8 @@
 use std::fs;
 use std::path::Path;
 
-use netsmith::editor::Workspace;
-use netsmith::project::Target;
+use netsmith_workspace::Workspace;
+use netsmith_fabricate::project::Target;
 use netsmith_editor::{
     Backend,
     api::{PickLockInfo, PinRequestInfo},
@@ -270,7 +270,7 @@ fn write_lock(root: &Path) {
     let target = Target::resolve_from(root, None).unwrap();
     let source = &target.files[0];
     let text = fs::read_to_string(&source.path).unwrap();
-    let found = netsmith::pick_lock::refresh(
+    let found = netsmith_pipeline::pick_lock::refresh(
         &source.path,
         &source.name,
         &text,

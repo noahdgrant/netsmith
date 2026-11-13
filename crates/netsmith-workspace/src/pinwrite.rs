@@ -196,8 +196,8 @@ impl Workspace {
             .ok_or_else(|| {
                 ApiError::internal(format!("{} is not a file of the project", data.file))
             })?;
-        let path = crate::pins::pins_path(&source);
-        let shown = crate::pins::file_name(&data.file);
+        let path = netsmith_fabricate::pins::pins_path(&source);
+        let shown = netsmith_fabricate::pins::file_name(&data.file);
         let text = match fs::read_to_string(&path) {
             Ok(text) => text,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),

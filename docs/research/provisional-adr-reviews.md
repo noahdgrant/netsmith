@@ -112,7 +112,7 @@ The front matter of 0021, 0022, 0031, 0033, 0034 and 0037 says `accepted (user r
 **Cost to reverse.** High; it replaced KiCad as the gate. Low for individual rules.
 
 **Findings.**
-- The ADR says a finding's rule is "named as KiCad names it". Later work adds rules that are not KiCad's: the editor reports `constraint` (ADR 0045 section 8), `too_tall` and `height_unchecked` (section 11), in `crates/netsmith/src/editor/findings.rs`. The rules table in 0037 does not list them. Not wrong, but the ADR is the place a reader looks.
+- The ADR says a finding's rule is "named as KiCad names it". Later work adds rules that are not KiCad's: the editor reports `constraint` (ADR 0045 section 8), `too_tall` and `height_unchecked` (section 11), in `crates/netsmith-workspace/src/findings.rs`. The rules table in 0037 does not list them. Not wrong, but the ADR is the place a reader looks.
 - The severities for silkscreen and mask web are a policy ("a fabricator clips silkscreen ... neither stops a board being made"). The reasoning is in the ADR, but the rule list in `crates/netsmith-pcb/src/rules.rs` (lines near 143) encodes it. Nobody has confirmed it as a decision.
 - The ADR lists what is not checked (a pour's fill, islands, starved thermals, differential pairs, impedance, custom rules). The gate therefore passes boards that KiCad's flags in those categories. It also says so for ADR 0033.
 - The statement that "`--allow-drc-violations` waives only real violations" now has an exception: it never waives a placement requirement (ADR 0045 section 8). Both are documented, in different ADRs.

@@ -1,6 +1,6 @@
 // A throwaway git repository for the Compare recipe, made from the scratch project (`launch --git`). The files on
 // disk are the project as launched, so every other recipe sees the project it expects; the history is what differs:
-// an earlier design of the same boards. Mirrors what crates/netsmith/tests/editor_compare.rs does for the server.
+// an earlier design of the same boards. Mirrors what crates/netsmith-workspace/tests/editor_compare.rs does for the server.
 //
 //   main     first   the earlier design (tag v1.0): a debug header on the LED board, no input capacitor on the regulator,
 //                    the LED's resistor fixed at 150 ohm, the output rail named VOUT and drawing up to 30 mA
