@@ -27,6 +27,8 @@ netsmith-place-route = { path = "../netsmith-place-route" }
 netsmith-quantity = { path = "../netsmith-quantity" }
 netsmith-solve = { path = "../netsmith-solve" }
 netsmith-view = { path = "../netsmith-view" }
+# The SHA-256 of a part's STEP model, in the .glb and the STEP export so that a changed model
+# shows in a diff (ADR 0108).
 serde = { version = "1.0.229", features = ["derive"] }
 # `float_roundtrip`: a placed board read back (`netsmith route`) has the numbers it was saved with.
 serde_json = { version = "1.0.154", features = ["float_roundtrip"] }

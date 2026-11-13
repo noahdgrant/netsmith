@@ -9,12 +9,18 @@
 //! found the same way. One that is not there leaves the board's fit in its case unchecked: a
 //! warning, and an error when constraints are strict.
 //!
-//! Only the file's place is settled here. It is not read: the model never gives the part a
-//! height, and a case model never gives the board an outline, a hole or a height limit.
+//! [`locate`] settles a part model's place; [`uses`] reads it ([`read`], once per change of its
+//! bytes) for the scene to draw. The model never gives the part a height, and a case model
+//! never gives the board an outline, a hole or a height limit.
 
+use std::collections::BTreeMap;
 use std::path::{Component, Path, PathBuf};
+use std::sync::{Arc, Mutex};
 
+use netsmith_3d::scene3d::ModelUse;
+use netsmith_3d::step::read::ReadModel;
 use netsmith_core::Design;
+use sha2::{Digest, Sha256};
 
 use crate::physical::physical_path;
 use crate::project::Target;
@@ -222,4 +228,66 @@ fn shown(file: &Path, root: &Path) -> String {
             .join("/"),
         Err(_) => file.display().to_string(),
     }
+}
+
+/// A model file read and drawn, by its place on disk: its SHA-256 and what reading it gave.
+type Read = (String, Result<Arc<ReadModel>, String>);
+
+/// The files read so far, by path, with the SHA-256 of the bytes they were read from: a file
+/// is read again only when its bytes change, so a build, the editor's rebuilds and `fab` of
+/// several boards read and tessellate each model once.
+static CACHE: Mutex<BTreeMap<PathBuf, Read>> = Mutex::new(BTreeMap::new());
+
+/// The SHA-256 of `bytes`, in lower-case hex.
+pub fn sha256(bytes: &[u8]) -> String {
+    Sha256::digest(bytes)
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect()
+}
+
+/// Reads the file at `path` (ADR 0108), or takes it from the files read before when its bytes
+/// are the same: its SHA-256, and its model or why it cannot be read.
+pub fn read(path: &Path) -> Result<(String, Arc<ReadModel>), String> {
+    let bytes = std::fs::read(path).map_err(|e| e.to_string())?;
+    let sha = sha256(&bytes);
+    let mut cache = CACHE.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some((known, read)) = cache.get(path)
+        && *known == sha
+    {
+        return read.clone().map(|r| (sha, r));
+    }
+    let read = netsmith_3d::step::read::load(&bytes)
+        .map(Arc::new)
+        .map_err(|e| e.to_string());
+    cache.insert(path.to_path_buf(), (sha.clone(), read.clone()));
+    read.map(|r| (sha, r))
+}
+
+/// The models of `design` found on disk ([`locate`]), each read ([`read`]), for the scene to
+/// draw; and a warning for each that cannot be read, whose part keeps its generated shape.
+pub fn uses(design: &Design) -> (Vec<ModelUse>, Vec<String>) {
+    let mut uses = Vec::new();
+    let mut warnings = Vec::new();
+    for model in &design.features.models {
+        let Some(file) = &model.resolved else {
+            continue;
+        };
+        let path = &model.path;
+        match read(file) {
+            Ok((sha256, read)) => uses.push(ModelUse {
+                path: path.clone(),
+                file: model.file.clone(),
+                sha256,
+                offset: model.offset,
+                rotation: model.rotation,
+                read,
+            }),
+            Err(e) => warnings.push(format!(
+                "`{path}.model.file` names `{}` ({}), which netsmith cannot read as a STEP model ({e}), so `{path}` is drawn with its generated shape",
+                model.file, model.source
+            )),
+        }
+    }
+    (uses, warnings)
 }

@@ -32,6 +32,14 @@ fn body(path: &str, refdes: &str, min: Plan, max: Plan, height: Option<f64>) -> 
         standard: None,
         pins: Pins::None,
         shape: None,
+        place: crate::scene3d::Placement {
+            origin: plan(0.0, 0.0),
+            ex: plan(1.0, 0.0),
+            ey: plan(0.0, -1.0),
+            z_face: 0.0,
+            out: 1.0,
+        },
+        model: None,
     }
 }
 
@@ -129,6 +137,7 @@ fn scene() -> Scene {
             }],
             ..Findings::default()
         },
+        warnings: Vec::new(),
     }
 }
 
@@ -248,6 +257,7 @@ fn the_nodes_carry_the_ids_of_the_contract() {
             "standard": null,
             "height_mm": 2.0, "z_bottom_mm": 0.0, "z_top_mm": 2.0,
             "part_kind": "Thing", "category": "ic", "margin_mm": -1.0, "margin_limit": "lid",
+            "model": null,
         })
     );
     assert_eq!(material_of(&doc, "U1"), "body");

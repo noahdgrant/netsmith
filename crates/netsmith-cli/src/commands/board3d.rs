@@ -79,6 +79,11 @@ fn run_board3d(
         netsmith::board3d::Made::Board(made) => *made,
         netsmith::board3d::Made::System(made) => {
             let (report, scene) = *made;
+            for m in &scene.members {
+                for w in &m.scene.warnings {
+                    eprintln!("warning: {}/{}: {w}", scene.name, m.name);
+                }
+            }
             let files = [
                 glb.map(|out| (out, netsmith_3d::gltf::system_glb(&scene))),
                 step.map(|out| (out, netsmith_3d::step::system_step(&scene).into_bytes())),
@@ -98,6 +103,9 @@ fn run_board3d(
         }
     };
     let label = &report.board.name;
+    for w in &scene.warnings {
+        eprintln!("warning: {label}: {w}");
+    }
     let files = [
         glb.map(|out| (out, netsmith_3d::gltf::glb(&scene, label))),
         step.map(|out| (out, netsmith_3d::step::step(&scene, label).into_bytes())),

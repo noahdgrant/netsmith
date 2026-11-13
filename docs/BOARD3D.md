@@ -121,6 +121,8 @@ from `z = -thickness` down to `z = -thickness - height`.
 | `unknown_heights` | Each part of unknown height, with the reason (no `.height` and no catalog row, or a row whose `height` cell is empty) and the limits it stands under, whose check it leaves unchecked. |
 | `coverage` | _Height coverage_: how many parts have a known height, of all of them, and how many of those are stated, from catalog rows and package standards (`standard`, counted in `known`). The same count as the coverage line of `fab-notes.txt`. A fiducial, a mounting hole and a pad-only test point state `.height &= 0mm` in std, so they count as stated (`stated`, 0 mm, nothing drawn for the body) and not as unknown. |
 | `tallest` | The tallest part of known height on each face. |
+| `parts[].model` | For a part drawn from its STEP model ([below](#a-parts-step-model)): `file` (as the design states it), `sha256` (of the file's bytes) and `top` (how far the model reaches out of the part's face, mm). A drawing only: `height`, `provenance` and every check are the part's own. Left out for a part with no model, or whose file is not there or cannot be read. |
+| `warnings` | What finding and drawing the models found: a file that is not there or cannot be read (the part keeps its generated shape), a model whose top is above its part's height. Each is printed as a `warning:` line on stderr too. Added without a new schema. |
 
 Schema 2 added `copper`: raised, though a field added does not require it, so that a reader can tell a report that has the copper summary from one that has not. The `.glb` file draws the copper, the mask and the silkscreen (below).
 
@@ -256,7 +258,7 @@ raises `schema`, a field added does not):
 |---|---|
 | `board` (the root) | `kind: "board"`, `schema`, `board` (the label, `system/member` for a board of a system), `thickness_mm`, `stack_thickness_mm`, `width_mm`, `height_mm`, `layers: [{name, kind, thickness_mm, z_top_mm, z_bottom_mm}]` (the stackup top face down, as `board.layers` of the report; `kind` is `mask`, `copper`, `core` or `prepreg`; added in schema 1), `coverage: {known, total, standard}` (`standard`, the known heights that are a package standard's, added without a new schema), `findings: [{code, message, parts: [path...], limit?, face}]` with `code` `too_tall`, `height_unchecked` or `body_overlap` |
 | `substrate` | `kind: "substrate"`: the laminate, between the outer copper layers. Children `mask:top`, `mask:bottom` (`kind: "mask"`, `face`: the mask with its openings cut out, two primitives: material `mask-top` or `mask-bottom` over bare laminate and `mask-over-copper` where copper is under it), one per plated hole, `hole:<refdes>.<pad>` (`kind: "hole"`, `path`, `refdes`, `pad`) or `via:<net>` (`kind: "hole"`, `net`), the barrel, and last `silk:top`, `silk:bottom` (`kind: "silk"`, `face`): the silkscreen (the legend Gerber's ink, kept off the mask's openings and the holes), flat 0.015 mm off the mask, material `mark` |
-| one per part, named by its designator | `kind: "part"`, `path`, `refdes`, `side` (`top` or `bottom`), `provenance` (`stated`, `catalog`, `standard` or `unknown`), `standard` (for a `standard` height, the standard and the drawing; else `null`; added without a new schema, like the word `standard`, because no field changed meaning), `height_mm`, `z_bottom_mm`, `z_top_mm`, `part_kind`, `category`, `margin_mm`, `margin_limit`. A known height is a solid (material `body`); an unknown one is the body's flat outline (material `body-unknown`), and `height_mm` and the far end (`z_top_mm` on the top face, `z_bottom_mm` on the bottom) are `null`: never a guessed height. `part_kind` is the part's kind as the design names it (`Resistor`, `Header1x2`). `category` is what sort of part it is, from the standard generic it provides (`Connector`, `Resistor`, `NMosfet`...), else from the designator letters its kind states (`R`, `U`...; never `J`: a connector is one by its generic only): `resistor`, `capacitor`, `inductor`, `diode`, `transistor`, `crystal`, `fuse`, `ic`, `connector`, `mechanical` or `other`. `margin_mm` is the part's least margin to a height limit over it on its face (the limit less its height, negative when too tall), and `margin_limit` names that limit; both `null` when no limit is over it or its height is unknown |
+| one per part, named by its designator | `kind: "part"`, `path`, `refdes`, `side` (`top` or `bottom`), `provenance` (`stated`, `catalog`, `standard` or `unknown`), `standard` (for a `standard` height, the standard and the drawing; else `null`; added without a new schema, like the word `standard`, because no field changed meaning), `height_mm`, `z_bottom_mm`, `z_top_mm`, `part_kind`, `category`, `margin_mm`, `margin_limit`. A known height is a solid (material `body`); an unknown one is the body's flat outline (material `body-unknown`), and `height_mm` and the far end (`z_top_mm` on the top face, `z_bottom_mm` on the bottom) are `null`: never a guessed height. `part_kind` is the part's kind as the design names it (`Resistor`, `Header1x2`). `category` is what sort of part it is, from the standard generic it provides (`Connector`, `Resistor`, `NMosfet`...), else from the designator letters its kind states (`R`, `U`...; never `J`: a connector is one by its generic only): `resistor`, `capacitor`, `inductor`, `diode`, `transistor`, `crystal`, `fuse`, `ic`, `connector`, `mechanical` or `other`. `margin_mm` is the part's least margin to a height limit over it on its face (the limit less its height, negative when too tall), and `margin_limit` names that limit; both `null` when no limit is over it or its height is unknown. `model` is `{file, sha256, top_mm}` for a part drawn from its STEP model, else `null` (added without a new schema), so that a changed model shows in a diff of the file |
 | `limits` | one child per face of each height limit, `limit:<name>:<face>`: `kind: "height_limit"`, `name`, `face`, `max_height_mm`, `tallest` (a path or `null`), `margin_mm` (or `null`), `violated`, `unknown` (the paths of parts of unknown height under it), `under` (the paths of every part under it on that face); its volume is the mesh |
 | `protrusions` | one child per part whose pins stand out of the far face by a stated length, `pins:<refdes>`: `kind: "protrusion"`, `path`, `length_mm` |
 | `copper:<layer>` | one per copper layer, top face down, after `protrusions`: `kind: "copper_layer"`, `layer`, `z_top_mm`, `z_bottom_mm`. One child per net with copper on the layer, `copper:<layer>:<net>` (`copper:<layer>:(no net)` for the copper with no net, first): `kind: "copper"`, `layer`, `net` (`null` for no net). Its mesh is the net's pads, tracks, pours or plane and via rings joined, the drills open, through the layer's thickness: material `copper` under the mask (and on inner layers), `finish` where the mask is open. No copper groups when the copper cannot be drawn |
@@ -356,6 +358,38 @@ writes it for each board of the order.
 - **If it cannot be written** (the folder is not writable, say) `fab` goes on: the package is
   complete without it, and a `warning:` line in the run's output and in `fab-notes.txt` says
   which file was not written.
+
+## A part's STEP model
+
+A part whose `.model.file` names a STEP file of the project (ADR 0108; the guide's _A part's
+STEP model_) is drawn from that model in place of its generated shape. netsmith reads the file
+with its own reader (`crates/netsmith-3d/src/step/read/`), once per build and again only when
+its bytes change, and draws its triangles at 0.01 mm.
+
+- **Where it goes.** The model's frame is the one KiCad gives a footprint's model, so that the
+  numbers of a footprint's `(model ... (offset (xyz x y z)) (rotate (xyz rx ry rz)))` line can
+  be copied into `.model.x` ... `.model.rz`: x along the footprint's x, **y up the footprint as
+  the footprint editor shows it** (a footprint's own y runs down, so the model's `+y` is the
+  footprint's `-y`), z out of the part's face. Each point is turned about x by `-rx`, then about
+  y by `-ry`, then about z by `-rz` (a positive angle turns clockwise seen from the axis's
+  positive end, as KiCad turns a model), then moved by the offset, then put on the board as the
+  footprint is: turned with the part, mirrored and hanging down on the bottom face. This is KiCad
+  9's order (`STEP_PCB_MODEL::getModelLocation`: "aOrientation is applied -Z*-Y*-X, b. aOffset
+  is applied", the footprint's y negated and the offset's not), and `crates/netsmith-3d/tests/step_model.rs`
+  checks every vertex against that chain on both faces.
+- **A drawing, never a height.** The height, its provenance, the height limits, the overlaps and
+  every report measure the part as before. A model whose top is above the part's height by more
+  than the reader's 0.01 mm is a warning naming both figures:
+
+  ```text
+  warning: Board: the model of `usb` (`models/usb.step`) stands 3.260 mm out of its face, above the part's height of 3.160 mm (catalog); the model is drawn and never gives a height, so if the model is right state `.usb.height &= 3.26mm`
+  ```
+
+- **When it is not drawn.** A file that is not there, or that the reader refuses (an entity it
+  does not read, a face it cannot cut into triangles: the message names the entity and its
+  line), is a warning, and the part keeps its generated shape. A model is never half drawn.
+- **Where it shows.** `board3d --json` lists it per part (`parts[].model`), and the `.glb`
+  records its SHA-256 in the part's node.
 
 ## The editor's 3D view
 

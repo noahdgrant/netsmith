@@ -26,12 +26,19 @@ pub const SCHEMA: u32 = 2;
 /// The frame, as the report states it for a reader that has not read this module.
 pub const FRAME: &str = "millimetres, right-handed, z up; the origin is the outline's bottom-left corner on the board's top face (z = 0), x right, y up toward the outline's top edge, the bottom face at z = -thickness; a layout-file point (x, y) (from the top-left corner, y down) is (x, outline height - y) here";
 
-/// The scene of a placed board, with where each height came from as `heights.rs` says.
+/// The scene of a placed board, with where each height came from as `heights.rs` says, and
+/// each part whose STEP model was found on disk ([`crate::models::locate`]) drawn from it (ADR
+/// 0108). A model that cannot be read is a warning in `scene.warnings`, and its part keeps its
+/// generated shape.
 pub fn scene(built: &Built, board: &Board) -> Scene {
-    Scene::of(
+    let mut scene = Scene::of(
         board,
         &crate::heights::provenance(&built.design, &built.catalog_heights),
-    )
+    );
+    let (uses, unread) = crate::models::uses(&built.design);
+    scene.draw_models(&uses);
+    scene.warnings.splice(0..0, unread);
+    scene
 }
 
 /// The scene of a placed board as a `.glb` file (`netsmith_3d::gltf`), labelled as the report
@@ -61,6 +68,21 @@ pub struct Report {
     pub standard_passes: Vec<StandardPassReport>,
     pub coverage: CoverageReport,
     pub tallest: TallestReport,
+    /// What finding and drawing the parts' STEP models found (ADR 0108): a file that is not
+    /// there or cannot be read (the part keeps its generated shape), a model whose top is
+    /// above its part's height. The command prints each as a `warning:` line too.
+    pub warnings: Vec<String>,
+}
+
+/// The STEP model a part is drawn from (ADR 0108).
+#[derive(Debug, Serialize)]
+pub struct ModelReport {
+    /// The file as the design states it.
+    pub file: String,
+    pub sha256: String,
+    /// How far the model reaches out of the part's face, in mm. A drawing, never the part's
+    /// height.
+    pub top: f64,
 }
 
 #[derive(Debug, Serialize)]
@@ -180,6 +202,10 @@ pub struct PartReport {
     /// The pins below the far face, for a part with plated holes.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub pins: Option<PinsReport>,
+    /// The STEP model the part is drawn from, for a part that names one and whose file was
+    /// read.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model: Option<ModelReport>,
 }
 
 #[derive(Debug, Serialize)]
@@ -477,6 +503,11 @@ pub fn report(
                     .flatten(),
                 standard: b.standard.map(|s| s.cited()),
                 pins,
+                model: b.model.as_ref().map(|m| ModelReport {
+                    file: m.file.clone(),
+                    sha256: m.sha256.clone(),
+                    top: m.top,
+                }),
             }
         })
         .collect();
@@ -612,6 +643,7 @@ pub fn report(
             top: tallest(scene.tallest(Side::Front), None),
             bottom: tallest(scene.tallest(Side::Back), None),
         },
+        warnings: scene.warnings.clone(),
     })
 }
 
@@ -756,6 +788,14 @@ impl Report {
                 u.refdes, u.path, u.reason
             );
         }
+        for p in &self.parts {
+            if let Some(m) = &p.model {
+                text += &format!(
+                    "drawn from a STEP model: {} (`{}`) from `{}`, {:.2} mm out of its face\n",
+                    p.refdes, p.path, m.file, m.top
+                );
+            }
+        }
         text
     }
 }
@@ -782,10 +822,12 @@ pub fn run(
         layout,
         board,
         crate::layout::DEFAULT_PLACE_SEEDS,
+        None,
     )
 }
 
-/// [`run`] with the number of seeds the placer tries (`place_seeds` in `netsmith.toml`).
+/// [`run`] with the number of seeds the placer tries (`place_seeds` in `netsmith.toml`) and
+/// where the target's files are, to find the parts' STEP models (ADR 0108).
 #[allow(clippy::too_many_arguments)]
 fn run_with(
     name: &str,
@@ -796,6 +838,7 @@ fn run_with(
     layout: Option<&std::path::Path>,
     board: Option<&str>,
     seeds: u32,
+    models: Option<&crate::models::Places>,
 ) -> Result<(Report, Scene), String> {
     placed(
         name,
@@ -806,9 +849,11 @@ fn run_with(
         layout,
         board,
         seeds,
-        |built, board| {
+        models,
+        |built, board, found| {
             let (sourcing, _) = crate::resolve::resolve_generics(&built.sourcing, catalogs);
-            let scene = scene(built, board);
+            let mut scene = scene(built, board);
+            scene.warnings.splice(0..0, found);
             match report(built, &scene, &sourcing) {
                 Ok(report) => Ok((report, scene)),
                 Err(e) => Err(format!("error: {}: {e}\n", built.label())),
@@ -852,8 +897,16 @@ pub fn scene_and_label(
         layout,
         board,
         crate::layout::DEFAULT_PLACE_SEEDS,
-        |built, board| (scene(built, board), built.label()),
+        None,
+        |built, board, found| (scene_with(built, board, found), built.label()),
     )
+}
+
+/// [`scene`] with the warnings of finding its models ([`crate::models::locate`]) first.
+fn scene_with(built: &Built, board: &Board, found: Vec<String>) -> Scene {
+    let mut scene = scene(built, board);
+    scene.warnings.splice(0..0, found);
+    scene
 }
 
 /// One source file and what builds and places its board: the arguments of [`run`] and
@@ -871,6 +924,10 @@ pub struct Placed<'a> {
     pub board: Option<&'a str>,
     /// How many seeds the placer tries (`place_seeds` in `netsmith.toml`).
     pub seeds: u32,
+    /// Where the target's files are, to find the STEP models its parts are drawn from (ADR
+    /// 0108): a path outside the project is an error, a file that is not there a warning in
+    /// the scene. `None` finds none, and every part is drawn with its generated shape.
+    pub models: Option<crate::models::Places>,
 }
 
 impl Placed<'_> {
@@ -885,6 +942,7 @@ impl Placed<'_> {
             Some(&self.layout),
             self.board,
             self.seeds,
+            self.models.as_ref(),
         )
     }
 
@@ -899,7 +957,8 @@ impl Placed<'_> {
             Some(&self.layout),
             self.board,
             self.seeds,
-            |built, board| (scene(built, board), built.label()),
+            self.models.as_ref(),
+            |built, board, found| (scene_with(built, board, found), built.label()),
         )
     }
 }
@@ -930,15 +989,16 @@ impl Placed<'_> {
             self.board,
             true,
             self.seeds,
-            |built, board| {
+            self.models.as_ref(),
+            |built, board, found| {
                 let (sourcing, _) = crate::resolve::resolve_generics(&built.sourcing, catalogs);
-                let scene = scene(built, board);
+                let scene = scene_with(built, board, found);
                 report(built, &scene, &sourcing)
                     .map(|r| Made::Board(Box::new((r, scene))))
                     .map_err(|e| format!("error: {}: {e}\n", built.label()))
             },
-            |solved, members| {
-                let system = crate::system3d::scene(solved, members);
+            |solved, members, found| {
+                let system = system_with(solved, members, found);
                 let mut reports = Vec::new();
                 for ((built, _), member) in members.iter().zip(&system.members) {
                     let (sourcing, _) = crate::resolve::resolve_generics(&built.sourcing, catalogs);
@@ -966,10 +1026,32 @@ impl Placed<'_> {
             self.board,
             true,
             self.seeds,
-            |built, board| AnyScene::Board(Box::new(scene(built, board)), built.label()),
-            |solved, members| AnyScene::System(Box::new(crate::system3d::scene(solved, members))),
+            self.models.as_ref(),
+            |built, board, found| {
+                AnyScene::Board(Box::new(scene_with(built, board, found)), built.label())
+            },
+            |solved, members, found| {
+                AnyScene::System(Box::new(system_with(solved, members, found)))
+            },
         )
     }
+}
+
+/// The system scene of `members`, each member's parts drawn from their STEP models as a
+/// board's are, with the warnings of finding each member's models (`found`, by its label)
+/// first among its scene's.
+fn system_with(
+    solved: &crate::SolvedSystem,
+    members: &[(&Built, &Board)],
+    found: &BTreeMap<String, Vec<String>>,
+) -> netsmith_3d::system::SystemScene {
+    let mut system = crate::system3d::scene(solved, members);
+    for ((built, _), member) in members.iter().zip(&mut system.members) {
+        if let Some(found) = found.get(&built.label()) {
+            member.scene.warnings.splice(0..0, found.iter().cloned());
+        }
+    }
+    system
 }
 
 /// A board's scene with its label, or a system's scene.
@@ -989,7 +1071,8 @@ fn placed<T>(
     layout: Option<&std::path::Path>,
     board: Option<&str>,
     seeds: u32,
-    then: impl FnOnce(&Built, &Board) -> T,
+    models: Option<&crate::models::Places>,
+    then: impl FnOnce(&Built, &Board, Vec<String>) -> T,
 ) -> Result<T, String> {
     let then = std::cell::Cell::new(Some(then));
     picked(
@@ -1002,14 +1085,17 @@ fn placed<T>(
         board,
         false,
         seeds,
-        |built, board| (then.take().expect("called once"))(built, board),
-        |_, _| unreachable!("systems are not asked for"),
+        models,
+        |built, board, found| (then.take().expect("called once"))(built, board, found),
+        |_, _, _| unreachable!("systems are not asked for"),
     )
 }
 
 /// `board` or `system` of what `want` picks: a board, built and placed, or with `systems` the
 /// name of a system, each of its members built and placed in the order it declares them (ADR
-/// 0110).
+/// 0110). With `models`, the STEP models of the boards' parts are found on disk first (ADR
+/// 0108): a path outside the project of a board it builds is the error, and the warnings of a
+/// file that is not there are given to `board`, or to `system` by each member's label.
 #[allow(clippy::too_many_arguments)]
 fn picked<T>(
     name: &str,
@@ -1021,11 +1107,28 @@ fn picked<T>(
     want: Option<&str>,
     systems: bool,
     seeds: u32,
-    board: impl FnOnce(&Built, &Board) -> T,
-    system: impl FnOnce(&crate::SolvedSystem, &[(&Built, &Board)]) -> T,
+    models: Option<&crate::models::Places>,
+    board: impl FnOnce(&Built, &Board, Vec<String>) -> T,
+    system: impl FnOnce(&crate::SolvedSystem, &[(&Built, &Board)], &BTreeMap<String, Vec<String>>) -> T,
 ) -> Result<T, String> {
-    let outcome = crate::outcome_with(name, text, loader, catalogs, Some(libraries))
+    let mut outcome = crate::outcome_with(name, text, loader, catalogs, Some(libraries))
         .map_err(|problems| crate::render_problems(&problems))?;
+    // The STEP models the parts are drawn from, found on disk (ADR 0108), by board label.
+    let mut found: BTreeMap<String, crate::models::Located> = BTreeMap::new();
+    if let Some(places) = models {
+        for b in &mut outcome.boards {
+            found.insert(b.label(), crate::models::locate(&mut b.design, places));
+        }
+    }
+    let located = |label: &str| -> Result<Vec<String>, String> {
+        match found.get(label) {
+            Some(l) => match l.errors.first() {
+                Some(e) => Err(format!("error: {label}: {e}\n")),
+                None => Ok(l.warnings.clone()),
+            },
+            None => Ok(Vec::new()),
+        }
+    };
     let names: Vec<String> = outcome
         .boards
         .iter()
@@ -1061,11 +1164,13 @@ fn picked<T>(
         let layout = read_layout(want)?;
         let members = crate::system3d::members(solved, &outcome.boards);
         let mut placed = Vec::new();
+        let mut warnings = BTreeMap::new();
         for built in &members {
+            warnings.insert(built.label(), located(&built.label())?);
             placed.push(place(built, layout.as_ref())?);
         }
         let pairs: Vec<(&Built, &Board)> = members.iter().copied().zip(&placed).collect();
-        return Ok(system(solved, &pairs));
+        return Ok(system(solved, &pairs, &warnings));
     }
     let built = match want {
         Some(want) => outcome
@@ -1090,7 +1195,8 @@ fn picked<T>(
             }
         },
     };
+    let warnings = located(&built.label())?;
     let layout = read_layout(&built.label())?;
     let placed = place(built, layout.as_ref())?;
-    Ok(board(built, &placed))
+    Ok(board(built, &placed, warnings))
 }

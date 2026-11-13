@@ -35,6 +35,14 @@ fn body(path: &str, refdes: &str, min: Plan, max: Plan, height: Option<f64>) -> 
         standard: None,
         pins: Pins::None,
         shape: None,
+        place: crate::scene3d::Placement {
+            origin: plan(0.0, 0.0),
+            ex: plan(1.0, 0.0),
+            ey: plan(0.0, -1.0),
+            z_face: 0.0,
+            out: 1.0,
+        },
+        model: None,
     }
 }
 
@@ -171,6 +179,7 @@ pub(crate) fn scene() -> Scene {
         ],
         limits: Vec::new(),
         findings: Findings::default(),
+        warnings: Vec::new(),
     }
 }
 

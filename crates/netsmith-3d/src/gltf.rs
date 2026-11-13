@@ -54,7 +54,9 @@
 //!     `mechanical` or `other`). `margin_mm` is the least margin of the part to a height limit
 //!     over it on its face (the limit less the part's height, negative when too tall) and
 //!     `margin_limit` names that limit; both are `null` when no limit is over the part or its
-//!     height is unknown. (These four were added in schema 1.)
+//!     height is unknown. (These four were added in schema 1.) `model` is `{file, sha256,
+//!     top_mm}` for a part drawn from its STEP model (ADR 0108), else `null`: added without a
+//!     new schema.
 //!   - `limits`: one child per face of each height limit, `limit:<name>:<face>`:
 //!     `{kind: "height_limit", name, face, max_height_mm, tallest: path | null, margin_mm:
 //!     number | null, violated, unknown: [path...], under: [path...]}`, its volume as the
@@ -471,6 +473,11 @@ fn board_node(b: &mut Builder, scene: &Scene, board: &str, member: Option<&str>)
                 "category": body.category.word(),
                 "margin_mm": margin.map(|(m, _)| m),
                 "margin_limit": margin.map(|(_, name)| name),
+                "model": body.model.as_ref().map(|m| json!({
+                    "file": m.file,
+                    "sha256": m.sha256,
+                    "top_mm": m.top,
+                })),
             }),
         );
         if let Some(member) = member {

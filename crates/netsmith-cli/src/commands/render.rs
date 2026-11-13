@@ -109,12 +109,22 @@ fn run_render(
     };
     let (drawn, label) = match scene {
         netsmith::board3d::AnyScene::Board(scene, label) => {
+            for w in &scene.warnings {
+                eprintln!("warning: {label}: {w}");
+            }
             (netsmith::render::draw(&scene, request), label)
         }
-        netsmith::board3d::AnyScene::System(system) => (
-            netsmith::render::draw_system(&system, request),
-            system.name.clone(),
-        ),
+        netsmith::board3d::AnyScene::System(system) => {
+            for m in &system.members {
+                for w in &m.scene.warnings {
+                    eprintln!("warning: {}/{}: {w}", system.name, m.name);
+                }
+            }
+            (
+                netsmith::render::draw_system(&system, request),
+                system.name.clone(),
+            )
+        }
     };
     let png = match drawn {
         Ok(png) => png,

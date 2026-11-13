@@ -304,6 +304,9 @@ pub struct Mesh {
     /// hidden by another and need not be drawn. An open mesh (a flat outline) is drawn from
     /// both sides.
     pub closed: bool,
+    /// A colour of its own, sRGB, in place of its material's: a face of a part's STEP model
+    /// that the file colours (ADR 0108). `None` for every other mesh, drawn in the material's.
+    pub colour: Option<[u8; 3]>,
 }
 
 impl Mesh {
@@ -316,6 +319,7 @@ impl Mesh {
             normals: Some(Vec::new()),
             indices: Vec::new(),
             closed: true,
+            colour: None,
         }
     }
 
