@@ -84,7 +84,8 @@
 //! 5. Lines still left are **negotiated** for (PathFinder in a small form): each is routed
 //!    where it would go if no other net were in the way, the nets it comes near are ripped up,
 //!    the cells they fought over cost more from then on, and what was ripped up is routed
-//!    again. Six rounds, and the best state is kept. The earlier
+//!    again. At most six rounds, fewer when a round spreads the lines left (see "What a try
+//!    costs"), and the best state is kept. The earlier
 //!    rip-up put the nets back if the line did not fit; this one lets lines fail for a round so
 //!    the others can move.
 //!
@@ -217,18 +218,30 @@
 //!   print (the other nets' copper within reach, hard or soft, the net's own vias, the
 //!   negotiation's history of the cells) is unchanged finds what it found before. The joins
 //!   with the net's own tracks are checked each time. A quarter of the repairs' searches.
-//! - **Not kept: the negotiation stopping after a round that does not improve.** On RP2350 at
-//!   0.15 mm no round ever did, so it saved time there with the same copper. But at the least
-//!   track (0.1 mm), Orbit's first try routed completely only through a round that improved
-//!   after one that did not: with the early stop it left a line after six tries. All six rounds
-//!   are run.
+//! - **The negotiation stops when a round spreads the lines left** ([`spreads`]): after a round
+//!   that leaves more than twice the lines of the best state seen and [`SPREAD_BEYOND`] 3 more.
+//!   Such rounds push the conflict onto other lines instead of trading it: RP2350's rounds left
+//!   7 to 20 lines against a start of 2 to 4 at both margins and every turn cost, and none ever
+//!   left fewer. A negotiation that trades lines stays near its best: Orbit leaves 1, 3, 2, 1,
+//!   1 and routes in round 5 at the least track (1, 2, 2, 2, 1, 1 and round 6 at 0.15 mm), and
+//!   over 77 negotiations (the three boards at both margins and turn costs 24 to 27, tight and
+//!   mixed seeds 0 to 11) no round before an improvement left more than twice the best and
+//!   one. The first form of a stop, after any round that did not improve, lost Orbit at the
+//!   least track, which only improves after four such rounds; so did "the best and five more"
+//!   on a tight seed.
 //!
 //! Measured on the same machine, back to back with main at fda6cd4f, the copper byte-identical:
 //! RP2350's `fab` takes 136 and 133 s against main's 138 and 166 s (a loaded machine, load
 //! average 6 to 12), and Orbit routed at the least track from a saved placement
-//! (`netsmith route --margin 1 --route-timeout 0`) takes 18.5 s against 32.6 s. With the
-//! negotiation's early stop as well (not kept, above), one RP2350 try took a third to two
-//! fifths of main's time: most of a try at 0.15 mm was negotiation rounds that changed nothing.
+//! (`netsmith route --margin 1 --route-timeout 0`) takes 18.5 s against 32.6 s.
+//!
+//! The negotiation's stop, measured back to back with main at 8691e071 (the two runs side by
+//! side), the copper byte-identical everywhere and the same lines left: one RP2350 try
+//! (`netsmith route --tries 1 --route-timeout 0 --turn T`, T = 24 to 27) takes 28 to 43 s
+//! against 47 to 68 s at the least track and 59 to 64 s against 95 to 101 s with the 0.15 mm
+//! trial first; RP2350's `fab` 103 s against 119 s. Orbit and EasyDuino take what they took
+//! (their negotiations never spread). The tight and mixed seeds 0 to 11 take 857 and 607 s
+//! against 979 and 852 s, the same copper.
 //!
 //! Not done: a cache keyed on the whole board (searches repeat only where little changed),
 //! smaller first windows (a line found in 4 mm is cheap already), fewer soft searches (one a
@@ -496,8 +509,20 @@ const REPORT_EVERY: Duration = Duration::from_secs(2);
 /// over costs for each time they did, and the most it counts.
 const NEGOTIATION_ROUNDS: usize = 6;
 
+/// A negotiation stops after a round that leaves more than twice the lines of the best state it
+/// has seen and this many more ([`spreads`]): its rounds spread the lines left instead of
+/// trading them, and no later round of the boards measured left fewer.
+const SPREAD_BEYOND: usize = 3;
+
 const HISTORY_COST: i64 = 40;
 const HISTORY_MOST: u8 = 25;
+
+/// Whether a round of the negotiation that leaves `left` lines, when the best state it has seen
+/// leaves `best`, has spread the lines left so far that the negotiation stops (see "What a try
+/// costs" in the module's header).
+fn spreads(best: usize, left: usize) -> bool {
+    left > 2 * best + SPREAD_BEYOND
+}
 
 /// The last resort for a line that is still left ([`Router::rip_up_chain`]): how many levels of
 /// lines ripped up for lines ripped up it goes down, how many searches it may spend on one
@@ -4265,7 +4290,8 @@ impl<'a> Router<'a> {
     /// if no other net were in the way, and the nets it then comes near are ripped up. The
     /// cells they fought over are made dearer for all, so the lines ripped up find another
     /// way round, and the ones that find none are the next to be negotiated for. This goes
-    /// on for a few rounds, and the best state seen is kept.
+    /// on for a few rounds, or until a round spreads the lines left ([`spreads`]), and the best
+    /// state seen is kept.
     fn negotiate(&self, state: &mut State, room: f64, attempt: usize, attempts: usize) {
         let cells = self.grid.nx * self.grid.ny;
         *self.history.borrow_mut() = [vec![0; cells], vec![0; cells]];
@@ -4317,6 +4343,9 @@ impl<'a> Router<'a> {
             }
             if state.failed.len() < best.failed.len() {
                 best = state.clone();
+            }
+            if spreads(best.failed.len(), state.failed.len()) {
+                break;
             }
         }
         *state = best;
@@ -4934,6 +4963,52 @@ mod tests {
             ..Extras::default()
         };
         search(masks, from, goal, extras, &|| false).ok()
+    }
+
+    /// How many rounds a negotiation that starts with `start` lines left runs, when its rounds
+    /// leave `rounds` lines: [`Router::negotiate`]'s stopping, replayed.
+    fn rounds_run(start: usize, rounds: &[usize]) -> usize {
+        let mut best = start;
+        for (round, &left) in rounds.iter().enumerate().take(NEGOTIATION_ROUNDS) {
+            best = best.min(left);
+            if left == 0 || spreads(best, left) {
+                return round + 1;
+            }
+        }
+        rounds.len().min(NEGOTIATION_ROUNDS)
+    }
+
+    #[test]
+    fn a_negotiation_that_improves_after_rounds_that_do_not_still_gets_the_round_that_does() {
+        // Measured traces (lines left at the start, then after each round) of negotiations whose
+        // best state came after rounds that left as many lines as it started with or more: Orbit
+        // at the least track and at 0.15 mm (every turn cost from 24 to 27), and seeds of the
+        // tight and mixed boards.
+        let traces: [(usize, &[usize], usize); 7] = [
+            (1, &[3, 2, 1, 1, 0], 5),
+            (1, &[2, 2, 2, 1, 1, 0], 6),
+            (1, &[1, 2, 2, 2, 0], 5),
+            (7, &[10, 6, 5, 7, 7, 7], 3),
+            (13, &[16, 17, 10, 10, 16, 16], 3),
+            (11, &[17, 13, 14, 10, 13, 11], 4),
+            (5, &[9, 7, 7, 4, 6, 7], 4),
+        ];
+        for (start, rounds, improves) in traces {
+            assert!(
+                rounds_run(start, rounds) >= improves,
+                "{start} then {rounds:?} must run to round {improves}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_negotiation_whose_rounds_spread_the_lines_left_stops() {
+        // RP2350 at both track margins: every round leaves several times the lines it started
+        // with, and none ever leaves fewer.
+        assert_eq!(rounds_run(2, &[9, 16, 15, 16, 13, 19]), 1);
+        assert_eq!(rounds_run(3, &[12, 11, 13, 15, 16, 15]), 1);
+        assert_eq!(rounds_run(4, &[17, 16, 17, 13, 12, 19]), 1);
+        assert_eq!(rounds_run(4, &[7, 12, 18, 11, 13, 16]), 2);
     }
 
     #[test]
