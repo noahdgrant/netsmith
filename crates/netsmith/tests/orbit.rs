@@ -1946,7 +1946,7 @@ mod board {
     /// the two pads of a resistor are interchangeable, and the board's are the other way.
     const PORT: Port = Port {
         folder: "orbit",
-        board: REFERENCE,
+        board: Some(REFERENCE),
         original: "ORBIT",
         swapped: &["R9", "R10"],
         renumbered: &[],

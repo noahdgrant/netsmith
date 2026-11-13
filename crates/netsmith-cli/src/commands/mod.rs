@@ -62,7 +62,7 @@ pub enum Command {
     Catalog(catalog::Args),
     /// Import an enclosure's DXF drawing.
     Dxf(dxf::Args),
-    /// Start a port of a KiCad board: its first source and its parts file.
+    /// Start a port of a KiCad board (its first source and its parts file), or derive its tables.
     Port(port::Args),
 }
 
