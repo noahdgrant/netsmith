@@ -527,11 +527,29 @@ pub fn emit_schematic(
     })
 }
 
+/// The `generator` every sheet netsmith writes carries in its header, and the mark by which
+/// [`is_netsmith_sheet`] knows one. KiCad writes its own name there when it saves a sheet, so a
+/// sheet a person edited in KiCad is no longer netsmith's.
+const GENERATOR: &str = "netsmith";
+
+/// Whether `text` is a `.kicad_sch` that netsmith wrote and nobody has saved since: a build
+/// removes such a sheet that it no longer writes (issue #575), and no other file.
+pub fn is_netsmith_sheet(text: &str) -> bool {
+    Sexp::parse(text).is_ok_and(|sheet| {
+        sheet.head() == Some("kicad_sch")
+            && sheet
+                .find("generator")
+                .and_then(|g| g.args().first())
+                .and_then(Sexp::text)
+                == Some(GENERATOR)
+    })
+}
+
 /// The first items of a `.kicad_sch`.
 fn header(uuid: &str, lib_symbols: Vec<Sexp>) -> Vec<Sexp> {
     vec![
         Sexp::node("version", vec![Sexp::atom("20250114")]),
-        Sexp::node("generator", vec![Sexp::string("netsmith")]),
+        Sexp::node("generator", vec![Sexp::string(GENERATOR)]),
         Sexp::node(
             "generator_version",
             vec![Sexp::string(env!("CARGO_PKG_VERSION"))],
@@ -1647,6 +1665,23 @@ mod tests {
             .nth(nth)
             .unwrap()
             .clone()
+    }
+
+    #[test]
+    fn a_sheet_is_netsmiths_by_the_generator_of_its_header() {
+        assert!(is_netsmith_sheet(
+            "(kicad_sch (version 20250114) (generator \"netsmith\") (uuid \"u\"))"
+        ));
+        // Saved by KiCad, written by someone else, not a schematic, not text a parser reads.
+        for text in [
+            "(kicad_sch (version 20250114) (generator \"eeschema\"))",
+            "(kicad_sch (version 20250114))",
+            "(kicad_symbol_lib (generator \"netsmith\"))",
+            "(kicad_sch (generator \"netsmith\"",
+            "",
+        ] {
+            assert!(!is_netsmith_sheet(text), "{text}");
+        }
     }
 
     #[test]

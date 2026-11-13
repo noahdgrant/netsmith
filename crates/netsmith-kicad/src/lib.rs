@@ -21,7 +21,9 @@ pub use mapping::{
 };
 pub use netsmith_core::{PartPin, PinKind, PowerFlow};
 pub use pinout::Pinout;
-pub use schematic::{EmitError, Schematic, emit_schematic, needs_power_flag, project_file};
+pub use schematic::{
+    EmitError, Schematic, emit_schematic, is_netsmith_sheet, needs_power_flag, project_file,
+};
 pub use symbols::{
     PinGeometry, PinType, Symbol, SymbolError, SymbolLib, SymbolPin, symbol_in, symbol_names_in,
 };
