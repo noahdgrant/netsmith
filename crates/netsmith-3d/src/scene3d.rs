@@ -695,6 +695,25 @@ impl Scene {
     }
 }
 
+/// The centre of each pad of the part at `path` on `board`, in the plan of the board's scene,
+/// with its number, in the footprint's order: what the system scene lines two mated connectors
+/// up by (ADR 0110). Empty when the board has no part at `path`.
+pub fn pad_centres(board: &Board, path: &str) -> Vec<(String, Plan)> {
+    let frame = Frame::of(board);
+    board
+        .parts
+        .iter()
+        .find(|p| p.path == path)
+        .map(|p| {
+            p.footprint
+                .pads
+                .iter()
+                .map(|pad| (pad.number.clone(), frame.point(p.to_board(pad.at))))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 fn tallest_of<'a>(bodies: impl Iterator<Item = &'a Body>) -> Option<Tallest> {
     let mut best: Option<&Body> = None;
     for b in bodies {

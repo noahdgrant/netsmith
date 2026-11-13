@@ -904,6 +904,80 @@ impl Placed<'_> {
     }
 }
 
+/// What `board3d` made of what `--board` names: a board's report and scene, or a system's.
+pub enum Made {
+    Board(Box<(Report, Scene)>),
+    System(
+        Box<(
+            crate::system3d::SystemReport,
+            netsmith_3d::system::SystemScene,
+        )>,
+    ),
+}
+
+impl Placed<'_> {
+    /// [`run`], or for the name of a system its system scene and report (ADR 0110), each member
+    /// placed as `--board System/member` places it.
+    pub fn run_any(&self) -> Result<Made, String> {
+        let catalogs = self.catalogs;
+        picked(
+            self.name,
+            self.text,
+            self.loader,
+            self.catalogs,
+            self.libraries,
+            Some(&self.layout),
+            self.board,
+            true,
+            self.seeds,
+            |built, board| {
+                let (sourcing, _) = crate::resolve::resolve_generics(&built.sourcing, catalogs);
+                let scene = scene(built, board);
+                report(built, &scene, &sourcing)
+                    .map(|r| Made::Board(Box::new((r, scene))))
+                    .map_err(|e| format!("error: {}: {e}\n", built.label()))
+            },
+            |solved, members| {
+                let system = crate::system3d::scene(solved, members);
+                let mut reports = Vec::new();
+                for ((built, _), member) in members.iter().zip(&system.members) {
+                    let (sourcing, _) = crate::resolve::resolve_generics(&built.sourcing, catalogs);
+                    reports.push(
+                        report(built, &member.scene, &sourcing)
+                            .map_err(|e| format!("error: {}: {e}\n", built.label()))?,
+                    );
+                }
+                let report = crate::system3d::report(&system, reports);
+                Ok(Made::System(Box::new((report, system))))
+            },
+        )
+        .and_then(|made| made)
+    }
+
+    /// [`Placed::scene_and_label`], or for the name of a system its system scene and name.
+    pub fn any_scene(&self) -> Result<AnyScene, String> {
+        picked(
+            self.name,
+            self.text,
+            self.loader,
+            self.catalogs,
+            self.libraries,
+            Some(&self.layout),
+            self.board,
+            true,
+            self.seeds,
+            |built, board| AnyScene::Board(Box::new(scene(built, board)), built.label()),
+            |solved, members| AnyScene::System(Box::new(crate::system3d::scene(solved, members))),
+        )
+    }
+}
+
+/// A board's scene with its label, or a system's scene.
+pub enum AnyScene {
+    Board(Box<Scene>, String),
+    System(Box<netsmith_3d::system::SystemScene>),
+}
+
 /// `then` of the board [`run`] picks, built and placed.
 #[allow(clippy::too_many_arguments)]
 fn placed<T>(
@@ -917,6 +991,39 @@ fn placed<T>(
     seeds: u32,
     then: impl FnOnce(&Built, &Board) -> T,
 ) -> Result<T, String> {
+    let then = std::cell::Cell::new(Some(then));
+    picked(
+        name,
+        text,
+        loader,
+        catalogs,
+        libraries,
+        layout,
+        board,
+        false,
+        seeds,
+        |built, board| (then.take().expect("called once"))(built, board),
+        |_, _| unreachable!("systems are not asked for"),
+    )
+}
+
+/// `board` or `system` of what `want` picks: a board, built and placed, or with `systems` the
+/// name of a system, each of its members built and placed in the order it declares them (ADR
+/// 0110).
+#[allow(clippy::too_many_arguments)]
+fn picked<T>(
+    name: &str,
+    text: &str,
+    loader: &netsmith_check::Loader,
+    catalogs: &netsmith_solve::Catalogs,
+    libraries: &crate::Libraries,
+    layout: Option<&std::path::Path>,
+    want: Option<&str>,
+    systems: bool,
+    seeds: u32,
+    board: impl FnOnce(&Built, &Board) -> T,
+    system: impl FnOnce(&crate::SolvedSystem, &[(&Built, &Board)]) -> T,
+) -> Result<T, String> {
     let outcome = crate::outcome_with(name, text, loader, catalogs, Some(libraries))
         .map_err(|problems| crate::render_problems(&problems))?;
     let names: Vec<String> = outcome
@@ -924,8 +1031,43 @@ fn placed<T>(
         .iter()
         .map(|b| b.design.name.clone())
         .collect();
-    let labels: Vec<String> = outcome.boards.iter().map(Built::label).collect();
-    let built = match board {
+    let mut labels: Vec<String> = outcome.boards.iter().map(Built::label).collect();
+    if systems {
+        labels.extend(outcome.systems.iter().map(|s| s.name.clone()));
+    }
+    let read_layout = |label: &str| -> Result<_, String> {
+        match layout {
+            Some(file) => crate::layout::read(file, &names)
+                .map_err(|what| format!("error: {label}: {what}\n")),
+            None => Ok(None),
+        }
+    };
+    let place = |built: &Built, layout: Option<&(netsmith_pcb::Layout, String)>| {
+        let fail = |what: String| format!("error: {}: {what}\n", built.label());
+        crate::layout::place(
+            &built.design,
+            layout,
+            libraries,
+            catalogs.constraints_warn(),
+            seeds,
+        )
+        .map(|placed| placed.board)
+        .map_err(|e| fail(e.message()))
+    };
+    if systems
+        && let Some(want) = want
+        && let Some(solved) = outcome.systems.iter().find(|s| s.name == want)
+    {
+        let layout = read_layout(want)?;
+        let members = crate::system3d::members(solved, &outcome.boards);
+        let mut placed = Vec::new();
+        for built in &members {
+            placed.push(place(built, layout.as_ref())?);
+        }
+        let pairs: Vec<(&Built, &Board)> = members.iter().copied().zip(&placed).collect();
+        return Ok(system(solved, &pairs));
+    }
+    let built = match want {
         Some(want) => outcome
             .boards
             .iter()
@@ -948,19 +1090,7 @@ fn placed<T>(
             }
         },
     };
-    let fail = |what: String| format!("error: {}: {what}\n", built.label());
-    let layout = match layout {
-        Some(file) => crate::layout::read(file, &names).map_err(fail)?,
-        None => None,
-    };
-    let board = crate::layout::place(
-        &built.design,
-        layout.as_ref(),
-        libraries,
-        catalogs.constraints_warn(),
-        seeds,
-    )
-    .map_err(|e| fail(e.message()))?
-    .board;
-    Ok(then(built, &board))
+    let layout = read_layout(&built.label())?;
+    let placed = place(built, layout.as_ref())?;
+    Ok(board(built, &placed))
 }

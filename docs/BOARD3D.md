@@ -11,6 +11,7 @@ and no KiCad. The editor's 3D view displays the same scene ([below](#the-editors
 netsmith board3d examples/led.nsm                 # a short summary
 netsmith board3d examples/led.nsm --json          # the report below, on stdout
 netsmith board3d examples/two_boards.nsm --board TwoBoards/led --json
+netsmith board3d examples/two_boards.nsm --board TwoBoards --json   # the system scene (below)
 netsmith board3d examples/led.nsm --glb led.glb   # the scene as glTF 2.0 binary (below)
 netsmith board3d examples/led.nsm --step led.step # the board and its parts as STEP, for CAD (below)
 ```
@@ -25,7 +26,8 @@ netsmith board3d examples/led.nsm --step led.step # the board and its parts as S
 - No KiCad is needed (ADR 0097); the `no-kicad` job runs it with KiCad hidden.
 - The same source gives the same bytes: every list is in a fixed order and every length is
   rounded to a nanometre.
-- A file of several boards needs `--board` (`Name`, or `System/member` for a board of a system).
+- A file of several boards needs `--board` (`Name`, or `System/member` for a board of a system;
+  `System` alone is the [system scene](#a-systems-boards-together-the-system-scene)).
   With no file it acts on the project's top-level file; a project of several needs `--board` or a
   file.
 - Exit 0 when the report is printed (and the file written), 1 when the board does not build or
@@ -121,6 +123,81 @@ from `z = -thickness` down to `z = -thickness - height`.
 | `tallest` | The tallest part of known height on each face. |
 
 Schema 2 added `copper`: raised, though a field added does not require it, so that a reader can tell a report that has the copper summary from one that has not. The `.glb` file draws the copper, the mask and the silkscreen (below).
+
+## A system's boards together: the system scene
+
+`board3d --board System` places each board of a system as `--board System/member` places it,
+and puts the boards against each other by their mates (ADR 0110, the _System scene_,
+`crates/netsmith-3d/src/system.rs`). It is in the frame of the **base**, the first member the
+system declares, so the base's numbers are those of `--board System/base`.
+
+- **Each member moves as one rigid piece**: a turn about z, and a flip over when its connector
+  would face the same way as its partner (both on top faces, or both on bottom faces), and an
+  offset. A point `p` of the member's own frame is `turn(flip(p)) + offset`, where the flip is
+  `(x, y, z) -> (x, -y, -z)` and the turn is counterclockwise seen from above.
+- **A mate places a member.** The mates are read in the order the system states them: a mate
+  with one end on a placed member places the member at its other end. Contact N meets contact
+  N (pad N of a std header or socket), so the turn and offset are the least-squares fit that puts
+  each pad centre of the one connector on its partner's; the two boards' faces are the mate's
+  _Mated height_ apart, the least of it (the worst case for the checks). Only straight-through
+  connectors on parallel boards are placed: every std header and socket is one.
+- **A second mate of two placed members is checked, not used** (a card on two headers, a loop
+  of three boards): each pad must land within 0.1 mm of its partner and the faces must be the
+  mated height apart, else `mate_misaligned`. The mate that placed a member is checked the same
+  way, so a pinout that fits only mirrored is found.
+- **What no mate places is drawn apart**, never at a guessed height: a member whose mate has no
+  mated height (a seat nobody states), whose connector has no body or fewer than two pads of one
+  number, or that no mate reaches (joined by `~` alone). It is put beside the placed members
+  along +x, 10 mm past their bounds, unturned, with the reason, and nothing across boards is
+  checked for it.
+
+The report (`--json`; with no `--json` a short summary):
+
+```json
+{
+  "schema": 1, "units": "mm", "frame": "the frame of the base, ...",
+  "system": "TwoBoards", "base": "power",
+  "members": [
+    { "member": "power", "board": "TwoBoards/power",
+      "motion": { "matrix": [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]], "turn": 0.0, "flip": false, "offset": [0, 0, 0] },
+      "placed": { "base": true }, "report": { "...": "as --board TwoBoards/power --json" } },
+    { "member": "led", "board": "TwoBoards/led",
+      "motion": { "matrix": [[-1, 0, 0, 25], [0, 1, 0, 2.1], [0, 0, -1, 10.65], [0, 0, 0, 1]], "turn": 180.0, "flip": true, "offset": [25, 2.1, 10.65] },
+      "placed": { "mate": 0 }, "report": { "...": "..." } }
+  ],
+  "mates": [
+    { "a": "power.power_out", "b": "led.power_in", "a_member": "power", "b_member": "led",
+      "contacts": 2, "mated_height": { "min": 10.65, "max": 11.35 },
+      "seats": { "a": { "min": 2.3, "max": 2.7 }, "b": { "min": 8.35, "max": 8.65 } },
+      "residual": 0.0, "gap": 10.65 }
+  ],
+  "findings": []
+}
+```
+
+| Field | What it is |
+|---|---|
+| `schema` | The version of this shape, apart from the board report's. |
+| `members[]` | As the system declares them. `motion.matrix` is the motion by rows, acting on `(x, y, z, 1)` of the member's frame; `turn` (degrees), `flip` and `offset` are its parts. `placed` is `{"base": true}` or `{"mate": i}` (the index into `mates` of the mate that placed it); a member drawn apart has `apart: {"reason"}` in its place. `report` is the member's own report, in its own frame. |
+| `mates[]` | As the system states them: the two connectors by path in the system and their members, `contacts` (the pads of one number on both), `mated_height` (the two `seats` added; `null` when a seat is unknown), and once both members are placed `residual` (the largest distance in plan from a pad to its partner) and `gap` (the distance between the two connectors' faces). |
+| `findings[]` | `code`, `severity` (`error` or `warning`), `error_when_strict` (an error with strict constraints, `--constraints error`), `message`, `members`, `parts` (`member/path`; a board is `member/`), and for some `mate`, `z_bottom` and `z_top` (the z both fill) and `distance` (how far into each other in plan, or how far a pad lands from its partner). |
+
+The findings, checked only between placed members, with exact geometry: every body (its box to
+its height), pin protrusion of a stated length and board (its outline with its rounded corners)
+is a prism, a convex polygon in plan and a z interval, so a collision is a z overlap and a plan
+overlap measured as the depth one reaches into the other. The two connectors of a mate are
+exempt against each other, and a body wholly inside another board's cutout does not meet it.
+
+| Code | When | Severity |
+|---|---|---|
+| `system_collision` | A body, pins or a board reaches more than 0.01 mm into another member's, in plan and in z, each of a stated or catalog height (or a board, or pins of a stated length). | error |
+| `mate_misaligned` | A mate's pad lands more than 0.1 mm from its partner, the connectors face the same way, or the faces are not the mated height apart (to within 0.1 mm). | error |
+| `system_unchecked` | A collision in which a height is a package standard's maximum (a part in that package may be lower), or a part of unknown height whose face looks at another member's board over it. | warning, an error with strict constraints |
+| `system_apart` | A member drawn apart, with the reason. | warning, an error with strict constraints |
+
+Not checked yet: a clearance between members (ADR 0110's `system_clearance`, which waits for its
+std figure), right-angle and edge connectors, cables, and a case round a system. Each such member
+is drawn apart until it is modelled.
 
 ## The `.glb` file
 

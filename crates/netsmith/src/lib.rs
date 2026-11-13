@@ -37,6 +37,7 @@ pub mod resolve;
 mod stock;
 pub mod supply;
 pub mod symbol_gallery;
+pub mod system3d;
 mod values;
 
 use std::path::{Path, PathBuf};

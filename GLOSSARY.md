@@ -708,6 +708,10 @@ _Avoid_: 3D viewer, 3D model (netsmith bundles none), render (a render is a pict
 The one three-dimensional description of a board that the Rust side builds and writes as glTF binary (`.glb`): the board, the copper and the part bodies, each node with stable ids in its `extras` (part path, designator, net, finding code, _Height provenance_). The 3D view displays it, netsmith's own rasterizer draws PNG renders of it (ADR 0105), and it is written as a _STEP file_ for CAD (ADR 0107).
 _Avoid_: Model, mesh (a mesh is one piece of it), 3D export
 
+**System scene**:
+The boards of a _System_ placed against each other by their _Mates_, in one scene (ADR 0110): each member's _Scene_ as it is alone, moved by one rigid motion (a turn about z, a flip when it faces the other way, an offset) so that each mated connector's pad centres land on its partner's and the boards' faces are the least _Mated height_ apart, in the frame of the first member. A member no mate places is drawn apart with its reason, never at a guessed height. `netsmith board3d --board System` reports it, with the findings across boards (`system_collision`, `system_unchecked`, `mate_misaligned`, `system_apart`).
+_Avoid_: Assembly (that is `.assembly`, who solders the parts), stack, system model
+
 **STEP file**:
 The board and its parts as exact solids for mechanical CAD (ISO 10303-21, AP214), that `netsmith board3d --step` writes from the _Scene_ and `netsmith fab` writes into the fab package as `<board>.step`: an assembly with the board and one product per part, named by its designator; a part of unknown height is its outline only, never a solid (ADR 0107). netsmith reads no STEP file.
 _Avoid_: STEP model (a maker's or KiCad's file of one part, the next term), 3D export, MCAD export
