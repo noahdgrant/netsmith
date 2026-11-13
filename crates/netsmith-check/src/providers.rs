@@ -11,7 +11,8 @@
 //! one pad, so the two cannot be mistaken), or an empty table `pins { }`, which says "a part,
 //! whose pins are its own" and asks for no pin (`Connector`); narrowings, relations (`==`, `>=`, `<=`), defaults
 //! (`?=`), `bridge` and `.designator &= "J"`; and an optional `.mpn: String`, which a provider's
-//! catalog lists as a column (not implicit, because a generic of modules has none). A relation
+//! catalog lists as a column (every part has `.mpn` and `.lcsc` anyway, ADR 0122, and a generic of
+//! modules has neither). A relation
 //! or narrowing in a generic is a check that every provider meets and every user may rely on; the
 //! solver evaluates it on whichever provider is tried. All providers of one generic are parts or
 //! all are modules, and a generic is placed as the kind its providers have; the mixed case is an
@@ -63,7 +64,7 @@
 //! `.name: Generic { ... }` takes the same statements as any member's block, over the generic's
 //! members only. A path through a use to a member the generic does not declare is an error (the
 //! module rule of ADR 0004), which is what makes the board independent of the pick; the
-//! built-in members (`assembly`, `designator`, `height`, `pin_protrusion`, `model`, `place`) are exempt.
+//! built-in members (`assembly`, `designator`, `lcsc`, `mpn`, `height`, `pin_protrusion`, `model`, `place`) are exempt.
 //! A module's user chooses a provider of a use inside it by narrowing the use from outside
 //! (`.jack.receptacle.mpn &= "ACME-USBC-16"`, ADR 0116).
 //!
@@ -116,9 +117,11 @@ pub(crate) struct ProviderRef {
 
 /// The members every part has whatever its definition says, which a use of a generic may
 /// name too.
-const BUILT_IN: [&str; 9] = [
+const BUILT_IN: [&str; 11] = [
     "assembly",
     "designator",
+    "lcsc",
+    "mpn",
     "height",
     "temp_min",
     "temp_max",
@@ -381,6 +384,13 @@ impl Checker<'_> {
     /// A member of a provider that the generic declared already, or one the provider
     /// declared twice: the message for it.
     pub(crate) fn redeclared(&self, owner: InstId, name: &str, d: &Decl) -> String {
+        if crate::checker::HAND_PICK.contains(&name)
+            && self.model.instance(owner).kind == InstKind::Part
+        {
+            return format!(
+                "`{name}` is a member every part has, as text: the number of the catalog row it is (ADR 0122); declare it as `.{name}: String` or not at all, and narrow it with `.{name} &= \"...\"`"
+            );
+        }
         let Some(generic) = self.generic_members.get(&(owner, name.to_string())) else {
             return format!("`{name}` is already declared in this block");
         };

@@ -14,7 +14,7 @@ use netsmith_check::FieldKind;
 use netsmith_quantity::Quantity;
 
 use crate::generic::{Generic, Sense, Series};
-use crate::lock::{PickLock, Picks};
+use crate::lock::PickLock;
 use crate::table::Table;
 
 /// What a source of stock knows about a part (ADR 0047). The solver never asks: only the
@@ -251,7 +251,6 @@ pub struct Catalogs {
     availability: Option<Arc<dyn Availability>>,
     pins: Vec<(String, String)>,
     pick_lock: Option<Arc<PickLock>>,
-    picks: Option<Arc<Picks>>,
     search_budget: SearchBudget,
     no_narrowing: bool,
     narrowing_audit: bool,
@@ -389,19 +388,6 @@ impl Catalogs {
     /// The pick lock these catalogs hold parts to, if any.
     pub fn pick_lock(&self) -> Option<&PickLock> {
         self.pick_lock.as_deref()
-    }
-
-    /// Hold the parts a picks file names to the rows a person chose for them (#462). A chosen
-    /// row comes before the lock's for its part, and, as a locked row, is judged by everything
-    /// the design says: one that fails stops the run, and no other row is tried.
-    pub fn with_picks(mut self, picks: Picks) -> Self {
-        self.picks = Some(Arc::new(picks));
-        self
-    }
-
-    /// The picks these catalogs hold parts to, if any.
-    pub fn picks(&self) -> Option<&Picks> {
-        self.picks.as_deref()
     }
 
     /// A catalog made in code. It replaces any file of the same name.

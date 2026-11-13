@@ -28,7 +28,7 @@ pub use generic::{
     nearest, resolve,
 };
 pub use levels::NotEvaluated;
-pub use lock::{ChosenRow, LockedProvider, LockedRow, PickLock, Picks};
+pub use lock::{LockedProvider, LockedRow, PickLock};
 pub use place::{PlaceOffset, Window, offsets, window};
 pub use solve::{
     CurrentBound, DcSummary, HeldBy, NetCurrent, OpenCircle, Pick, Seeded, Solution,

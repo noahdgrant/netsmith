@@ -217,6 +217,10 @@ const PRELUDE: &str = include_str!("../../../std/prelude.nsm");
 /// Its module name, as `import` would write it.
 pub const PRELUDE_MODULE: &str = "std::prelude";
 
+/// The members of every part that name the catalog row it is (ADR 0122): narrowing either is a
+/// hand pick.
+pub(crate) const HAND_PICK: [&str; 2] = ["lcsc", "mpn"];
+
 fn builtin(name: &str) -> Option<Builtin> {
     use Dimension as D;
     let q = |d| Some(Builtin::Quantity(d));
@@ -1060,6 +1064,13 @@ impl<'a> Checker<'a> {
                 let field = self.model.add_field(id, name, kind);
                 self.model.add_member(id, name, Member::Field(field));
             }
+            // And two for the numbers of the catalog row it is (ADR 0122): the supplier's part
+            // number and the manufacturer's. A design that narrows either holds a part that
+            // picks from a catalog to the row with that number (a hand pick), before the lock.
+            for name in HAND_PICK {
+                let field = self.model.add_field(id, name, FieldKind::Text);
+                self.model.add_member(id, name, Member::Field(field));
+            }
             // And one for how tall its body stands above the board (ADR 0045, "Height
             // limits"): the part or the board states it, and the design stage reads it.
             // A part that does not has no height, which is not a height of zero.
@@ -1378,6 +1389,17 @@ impl<'a> Checker<'a> {
                 continue;
             }
             let name = d.name.segments[0].name.clone();
+            // A part's own `.mpn: String` (or `.lcsc: String`) is the member every part has
+            // (ADR 0122): the declaration says what is already so.
+            if HAND_PICK.contains(&name.as_str())
+                && d.body.is_none()
+                && !d.ty.of_member
+                && self.model.instance(cur).kind == InstKind::Part
+                && matches!(self.model.member(cur, &name), Some(Member::Field(f)) if self.model.field(f).kind == FieldKind::Text)
+                && matches!(self.resolve_type(&d.ty), Ty::Builtin(Builtin::Text))
+            {
+                continue;
+            }
             if self.model.member(cur, &name).is_some() {
                 let message = self.redeclared(cur, &name, d);
                 self.error(d.name.span, message);

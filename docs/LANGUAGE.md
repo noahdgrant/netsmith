@@ -4764,7 +4764,7 @@ error: `u` is an `Mcu32`; name the part with .mpn: MCU32-A, MCU32-B
   |     ^^^^^^^^^
 ```
 
-A name is needed only when the board must choose. `.mpn &= "MCU32-B"` picks that row:
+A name is needed only when the board must choose. `.mpn &= "MCU32-B"` picks that row (a hand pick, _A hand pick_ below; `.lcsc &=` would too):
 
 ```nsm evaluate catalogs=ic
 import src::mcu::Mcu32
@@ -5237,7 +5237,7 @@ board Radio {
 ```
 
 ```text
-rf is a CoaxReceptacle: picked AcmeMicroCoax; passed over AcmeBasicCoax (the `acme_basic_coax` catalog has nothing for `rf`, which needs mpn within "ACME-MC-1")
+rf is a CoaxReceptacle: picked AcmeMicroCoax; passed over AcmeBasicCoax (`rf` is held by `.mpn &= "ACME-MC-1"` to a row of the `acme_basic_coax` catalog, and the catalog has no row with the manufacturer part number ACME-MC-1: no other row was tried for it; change the narrowing to a number the catalog has, or remove it to let the solver pick)
 ```
 
 When no provider works, one error at the line of the use says so in a headline (the generic, the use and its line) and lists the providers in scope, in the order they were tried, each with the first requirement it failed and the numbers. A provider whose own pick from its catalog failed has the closest candidate and the requirement as a sub-list under it. The closest provider (the trial with the fewest failures; ties in candidate order) is marked. `--json` carries the same text in the finding's `message`, with the lines separated by newlines:
@@ -9288,27 +9288,62 @@ Each case of the list above ends in a line of that diff:
 
 The editor does not hold the parts to the lock: it solves from the source, as before. It shows the lock of the selected board's source file and writes nothing: the schematic's inspector has a _Pick lock_ section that says whether the file exists and whether it is current, and lists the diff that `lock --check` would print (a source that does not build has none). It is read again when the lock file changes on disk, which the editor watches.
 
-### The picks file
+### A hand pick
 
-A generic part is picked as the first row that fits, and a port of an existing design, or a bill of materials someone else wrote, often names another row that fits as well: a 50 V capacitor where the solver would take a 16 V one. `<stem>.picks.toml` beside the source (`board.nsm` has `board.picks.toml`) holds the rows a person chose (#462). netsmith never writes it.
+A generic part is picked as the first row that fits, and a port of an existing design, or a bill of materials someone else wrote, often names another row that fits as well: a 50 V capacitor where the solver would take a 16 V one. The design then states the row's number on the part, and the part is held to that row (a hand pick, ADR 0122). Every part has two members for it, as it has `.designator`: `.lcsc`, the supplier's part number, and `.mpn`, the manufacturer's. Both are text, and a narrowing of either is the hand pick:
 
-```toml
-version = 1
+```nsm evaluate
+import std::parts::passive::{Resistor, Led}
+import std::sources::Rail
 
-[PowerManifoldCharger.parts."boot1_cap"]
-catalog = "capacitor"
-lcsc = "C307331"
+board HandPicked {
+    .supply: Rail {
+        .voltage &= 5V +/- 5%
+        .pos.net &= "VCC"
+        .neg.net &= "GND"
+    }
+    .led: Led { .current &= 5mA..15mA }
+    // The solver would take a 330 ohm 0402 resistor; the bill of materials names this one.
+    .r1: Resistor { .lcsc &= "C23151" }
+    .supply.pos ~> .r1 ~> .led ~> .supply.neg
+}
 ```
 
-It has the lock's shape: a table for each board or system, by its name, and an entry for each part, by its path. An entry names the catalog and the row's LCSC number, which is what a bill of materials gives. A project's own catalog with no LCSC column names the row by `mpn` in place of `lcsc`; an entry has exactly one of the two.
+The solver offers the part only the row with that number (and, with both, the row that has both), and judges it by everything the design states and every relation, as it judges a locked row. A hand pick comes before the pick lock: the lock records what the solver picked, and a hand pick is a requirement. A board whose hand pick differs from its lock builds with the hand-picked row and says that the lock differs (`--locked` makes that an error), and `lock --update` records the new row. A part inside a module is picked from the board as any member inside it is narrowed (`.stage.output_cap.lcsc &= "C307331"`, ADR 0116). A part whose catalog has a column `mpn` and lists `.mpn` in its `catalog` statement (`catalog mcu by .mpn`, above) names its row the same way; its `.mpn: String` declares the member every part has, and may be left out.
 
-The solver offers each part the file names only the row it names, before the lock, and judges that row by everything the design states and every relation, as it judges a locked row. The lock then records the chosen row as it records any pick, so `lock --update` keeps it. What happens next is told for each part:
+What happens next is told for each part:
 
 - **The row passes.** It is the pick.
-- **The row fails, or the catalog has no row with that number, or the part picks from another catalog.** The run stops with the reason, and says that the row is the picks file's and that no other row was tried (`` `r1` is picked as the row with lcsc C25879 of the `resistor` catalog by main.picks.toml, and no other row was tried for it ``). `lock --check` and `lock --update` cannot tell either, and exit 2 with the same reason.
-- **An entry belongs to a part the board no longer has** (it is stale). As for a stale lock entry, `build` and `fab` print a note and `--locked` makes it an error; `lock --check` lists it and exits 1, and `lock --update` lists it and leaves the file alone.
+- **The row fails a relation.** The run stops with the relation and its numbers, and a second message at the narrowing says that no other row was tried (`` `r1` is held by `.lcsc &= "C25879"` to one row of the `resistor` catalog, and no other row was tried for it ``).
+- **The catalog has no row with the number.** The run stops at the narrowing:
 
-The editor solves with the picks file too, and does not read the lock.
+```nsm fails
+import std::parts::passive::{Resistor, Led}
+import std::sources::Rail
+
+board NoSuchRow {
+    .supply: Rail {
+        .voltage &= 5V +/- 5%
+        .pos.net &= "VCC"
+        .neg.net &= "GND"
+    }
+    .led: Led { .current &= 5mA..15mA }
+    .r1: Resistor { .lcsc &= "C0000000" }
+    .supply.pos ~> .r1 ~> .led ~> .supply.neg
+}
+```
+
+```text
+error: `r1` is held by `.lcsc &= "C0000000"` to a row of the `resistor` catalog, and the catalog has no row with the LCSC number C0000000: no other row was tried for it; change the narrowing to a number the catalog has, or remove it to let the solver pick
+   --> main.nsm:11:21
+   |
+11 |     .r1: Resistor { .lcsc &= "C0000000" }
+   |                     ^^^^^^^^^^^^^^^^^^^
+```
+
+Two narrowings of one part's `.lcsc` that differ are a `contradiction`, as any two narrowings of one text are, and `.lcsc` on a part that picks from no catalog (a `Switch`) is an error at the narrowing. The editor solves with the hand picks too, since they are the source.
+
+netsmith once read hand picks from a file beside the source, `<stem>.picks.toml`. It no longer does: a source with that file beside it stops `build`, `fab`, `lock` and the editor with an error that lists the narrowing to write for each entry, by board (`.boot1_cap.lcsc &= "C307331"` in `board PowerManifoldCharger`); write them, and delete the file.
 
 ## Imports
 

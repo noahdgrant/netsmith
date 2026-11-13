@@ -323,15 +323,10 @@ fn a_key_no_row_has_is_a_catalog_miss_not_a_listing() {
     let (_, s) = solved(&src, &mcu_catalogs());
     let msgs = messages(&s);
     assert_eq!(msgs.len(), 1, "{msgs:#?}");
-    assert!(
-        msgs[0].starts_with("the `mcu` catalog has nothing for `u`, which needs"),
-        "{}",
-        msgs[0]
-    );
-    assert!(
-        msgs[0].contains("mpn within \"NO-SUCH-PART\""),
-        "{}",
-        msgs[0]
+    // A named key is a hand pick (ADR 0122), so the miss is said at the narrowing.
+    assert_eq!(
+        msgs[0],
+        "`u` is held by `.mpn &= \"NO-SUCH-PART\"` to a row of the `mcu` catalog, and the catalog has no row with the manufacturer part number NO-SUCH-PART: no other row was tried for it; change the narrowing to a number the catalog has, or remove it to let the solver pick"
     );
 }
 
