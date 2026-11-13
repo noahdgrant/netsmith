@@ -2440,7 +2440,7 @@ impl<'a> Router<'a> {
             .enumerate()
             .map(|(i, n)| (n.name.as_str(), i))
             .collect();
-        let lines = Ratsnest::of(board).lines;
+        let lines = crate::decouple::lines(board, Ratsnest::of(board).lines);
         let nets = lines.iter().map(|l| net_index[l.net.as_str()]).collect();
         let ends = lines
             .iter()

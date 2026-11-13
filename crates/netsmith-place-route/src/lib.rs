@@ -21,6 +21,7 @@
 
 mod anneal;
 mod board;
+mod decouple;
 mod fit;
 pub mod parallel;
 mod place;
