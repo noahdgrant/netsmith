@@ -323,7 +323,7 @@ pub fn check(pcb: &Path, kicad: &dyn KicadCli, limits: &Limits) -> Result<Report
     let pours: Vec<String> = art
         .zones
         .iter()
-        .filter(|z| z.keepout.is_none())
+        .filter(|z| z.keepout.is_none() && !z.teardrop)
         .flat_map(|z| z.layers.iter().cloned())
         .collect();
     let mut report = compare(

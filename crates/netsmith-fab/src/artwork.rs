@@ -372,6 +372,7 @@ impl Artwork {
             });
             let by_zone = self.zones.iter().any(|z| {
                 z.keepout.is_none()
+                    && !z.teardrop
                     && z.net == pad.net
                     && z.layers.iter().any(|l| l == layer)
                     && z.outlines.iter().any(|o| crate::geom::contains(o, pad.at))
