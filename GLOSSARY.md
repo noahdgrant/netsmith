@@ -339,7 +339,7 @@ A typed bundle of pins and quantities that is connected as one. A bundle of quan
 _Avoid_: Bus (for an interface in general: a **Bus** is the interfaces of one definition that share a net, and the _Bus drawing_ is how the schematic draws the members of one), bundle, group
 
 **Module**:
-A reusable sub-circuit that is placed on a board or inside another module. Its interfaces, pins, and declared values are joined and set from outside; a value of a part or module inside it can only be narrowed (`&=`, ADR 0116).
+A reusable sub-circuit that is placed on a board or inside another module. Its interfaces, pins, and declared values are joined and set from outside; a value of a part or module inside it can only be narrowed (`&=`, ADR 0116), and the pins of the IC its user named for a type parameter joined (`.reg.ic.pg` of `Buck<Lt8641>`, ADR 0120).
 _Avoid_: Circuit, block, sheet, subcircuit
 
 **Generic**:

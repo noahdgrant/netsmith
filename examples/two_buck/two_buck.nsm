@@ -12,6 +12,7 @@
 //! section) and asks for nothing the standard rows cannot give. Every other part is a standard
 //! generic and is picked from the standard catalogs. Nothing here is a design to build.
 
+import std::bus::PullUp
 import std::parts::connector::Header1x2
 import std::parts::diode::{Schottky, Tvs}
 import std::parts::mechanical::TestPoint
@@ -64,7 +65,9 @@ part BenchBuck provides BuckIc {
 }
 
 /// One buck stage: the IC with its own circuit (inductor, input and output capacitor banks,
-/// the feedback divider, the bootstrap capacitor and the enable divider) and the power light.
+/// the feedback divider, the bootstrap capacitor and the enable divider), a power-good
+/// pull-up with its test point, and the power light. `BuckIc` has no power-good pin, but this
+/// module names the IC (`Buck<BenchBuck>`), so it joins `BenchBuck`'s `.pg` (ADR 0120).
 module BuckSupply {
     .vin: Rail
     .vout: Rail
@@ -75,9 +78,14 @@ module BuckSupply {
     .decoupling: Capacitor { .capacitance &= 100nF +/- 20% }
     .bulk: Capacitor { .capacitance &= 22uF +/- 20% }
     .input_decoupling: Capacitor { .capacitance &= 100nF +/- 20% }
+    .pg_pullup: PullUp { .resistance &= 100kohm +/- 5% }
+    .pg_test: TestPoint
 
     .vin ~ .stage.vin
     .stage.vout ~ .vout
+    .pg_pullup.supply ~ .vout
+    .pg_pullup.line ~ .stage.ic.pg
+    .pg_test.p1 ~ .stage.ic.pg
     .vout.pos ~> .light_resistor ~> .light ~> .vout.neg
     .vout.pos ~> .decoupling ~> .vout.neg
     .vout.pos ~> .bulk ~> .vout.neg

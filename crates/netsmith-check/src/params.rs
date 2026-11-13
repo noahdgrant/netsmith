@@ -395,6 +395,21 @@ impl Checker<'_> {
         Some(id)
     }
 
+    /// Whether a member made from a type parameter is inside `owner`, at any depth: `owner` is a
+    /// parametric module, or holds one.
+    pub(crate) fn holds_type_param(&self, owner: InstId) -> bool {
+        self.param_insts.keys().any(|&id| {
+            let mut at = self.model.instance(id).parent;
+            while let Some(p) = at {
+                if p == owner {
+                    return true;
+                }
+                at = self.model.instance(p).parent;
+            }
+            false
+        })
+    }
+
     /// A path through a member made from a type parameter to a member its bound does not
     /// declare: reported, with the parameter, when `owner` is such a member.
     pub(crate) fn report_outside_bound(

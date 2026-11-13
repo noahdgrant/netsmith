@@ -28,8 +28,9 @@ fn a_board_narrows_a_support_part_of_the_ic_a_parametric_module_holds() {
 }
 
 #[test]
-fn a_join_does_not_reach_the_ic_of_a_parametric_module() {
-    // Only a narrowing reaches inside; joining a pin of the named IC is issue #666.
+fn a_join_reaches_the_named_ic_but_not_its_support_parts() {
+    // A join reaches the named IC's own pins (ADR 0120), and not the parts of its support
+    // section, which only a narrowing reaches.
     let c = check(
         "t.nsm",
         &board("    .reg: Buck<Lt8641>\n    .reg.ic.soft_start.a ~ .vin.neg\n"),
@@ -38,8 +39,7 @@ fn a_join_does_not_reach_the_ic_of_a_parametric_module() {
     assert!(!c.is_ok());
     let text = c.render();
     assert!(
-        text.contains("`ic` is inside `Buck<Lt8641>`")
-            && text.contains("only narrowing (`&=`) reaches inside a module"),
+        text.contains("`soft_start` is a part of the `support` section of `Lt8641`, inside `Buck<Lt8641>`: a join reaches only the named IC's own pins and interfaces"),
         "{text}"
     );
 }

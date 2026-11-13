@@ -63,7 +63,10 @@ impl Checker<'_> {
     }
 
     fn endpoint(&mut self, p: &ast::Path) -> Option<End> {
-        match self.resolve_path(p) {
+        self.joining = true;
+        let res = self.resolve_path(p);
+        self.joining = false;
+        match res {
             Res::Inst(i) => {
                 let touch = crate::unused::Touch {
                     inst: i,

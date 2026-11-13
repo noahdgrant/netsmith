@@ -187,9 +187,16 @@ pub(crate) struct Checker<'a> {
     /// The members made from a type parameter, with the parameter's name: a path through one
     /// reaches only the members of the parameter's bound.
     pub(crate) param_insts: HashMap<InstId, String>,
+    /// The modules made with type arguments, each parameter of theirs with the parameter of
+    /// the enclosing module it was given (`.buck: Buck<Ic>` gives `Ic` for `Ic`), or `None`
+    /// where a part was named (`Buck<Lt8641>`). A join follows it to the IC (ADR 0120).
+    pub(crate) param_args: HashMap<InstId, Vec<(String, Option<String>)>>,
     /// Set while the left side of a `&=` is resolved: the one place a path may reach the
     /// parts and modules inside a module (ADR 0116).
     pub(crate) narrowing: bool,
+    /// Set while an end of a `~` or `~>` is resolved: a join reaches the pins of the IC that a
+    /// module's user named for its type parameter (ADR 0120).
+    pub(crate) joining: bool,
     /// Set while the `support` section of a part is read (ADR 0115).
     pub(crate) in_support: bool,
 }
@@ -249,6 +256,7 @@ impl<'a> Checker<'a> {
             attached: HashMap::new(),
             phys: None,
             narrowing: false,
+            joining: false,
             stated: HashSet::new(),
             unused_stmts: Vec::new(),
             touches: Vec::new(),
@@ -271,6 +279,7 @@ impl<'a> Checker<'a> {
             params: None,
             next_args: None,
             param_insts: HashMap::new(),
+            param_args: HashMap::new(),
             in_support: false,
         }
     }
@@ -799,6 +808,7 @@ impl<'a> Checker<'a> {
         self.params = None;
         self.next_args = None;
         self.param_insts.clear();
+        self.param_args.clear();
         self.use_site = None;
         self.scope.clear();
         self.uf.clear();
@@ -1343,6 +1353,18 @@ impl<'a> Checker<'a> {
                         self.model.add_member(cur, &name, Member::Poison);
                         continue;
                     };
+                    // Which arguments are this module's own parameters (ADR 0120).
+                    let given: Vec<(String, Option<String>)> =
+                        d.ty.args
+                            .iter()
+                            .zip(&def.params)
+                            .map(|(arg, p)| {
+                                let own = (arg.segments.len() == 1)
+                                    .then(|| arg.segments[0].name.clone())
+                                    .filter(|n| self.param_named(n).is_some());
+                                (p.name.name.clone(), own)
+                            })
+                            .collect();
                     if !args.is_empty() {
                         self.next_args = Some(args);
                     }
@@ -1355,6 +1377,9 @@ impl<'a> Checker<'a> {
                         self.model.add_member(cur, &name, Member::Poison);
                         continue;
                     };
+                    if !given.is_empty() {
+                        self.param_args.insert(child, given);
+                    }
                     self.model.instances[child.0].docs = d.docs.clone();
                     if !d.docs.is_empty() && !self.is_library(self.cur_source()) {
                         let at = self.line_in(self.cur_source(), d.span);
@@ -1558,11 +1583,70 @@ impl<'a> Checker<'a> {
 
     // ---- names ---------------------------------------------------------------
 
+    /// Whether `owner` is the IC that a parametric module's user named (`.ic` of
+    /// `Buck<Lt8641>`), reached from outside the module by a narrowing (ADR 0116) or a join
+    /// (ADR 0120): then it is the part it is, not its parameter's bound.
+    fn named_ic(&self, owner: InstId) -> bool {
+        if !self.param_insts.contains_key(&owner) {
+            return false;
+        }
+        let outside = self
+            .model
+            .instance(owner)
+            .parent
+            .is_some_and(|p| self.model.instance(p).def != self.cur_def);
+        (self.narrowing && outside) || (self.joining && self.joined_through(owner))
+    }
+
+    /// Whether a join from the definition being read may enter `inst`: a member made from a
+    /// type parameter (`.ic: Ic`), or a module given one (`.buck: Buck<Ic>`), whose parameter
+    /// leads, through the modules around it, to a part this definition named (ADR 0120).
+    pub(crate) fn joined_through(&self, inst: InstId) -> bool {
+        let Some(parent) = self.model.instance(inst).parent else {
+            return false;
+        };
+        if let Some(param) = self.param_insts.get(&inst) {
+            return self.param_named_here(parent, param);
+        }
+        self.param_args.get(&inst).is_some_and(|given| {
+            given
+                .iter()
+                .filter_map(|(_, own)| own.as_deref())
+                .any(|own| self.param_named_here(parent, own))
+        })
+    }
+
+    /// Whether the parameter `param` of the module `module` stands for a part that the
+    /// definition being read named, directly (`.reg: Buck<Zbk2>`) or through the parameters of
+    /// the modules between (`.reg: Converter<Zbk2>` holding `.buck: Buck<Ic>`).
+    fn param_named_here(&self, module: InstId, param: &str) -> bool {
+        let Some(given) = self.param_args.get(&module) else {
+            return false;
+        };
+        let Some((_, own)) = given.iter().find(|(p, _)| p == param) else {
+            return false;
+        };
+        let Some(parent) = self.model.instance(module).parent else {
+            return false;
+        };
+        match own {
+            // A part named where the module was placed: open only to that definition.
+            None => self.model.instance(parent).def == self.cur_def,
+            // The parameter of the module around it: follow it outward, unless that module is
+            // the one being read, whose own text sees only the bound (ADR 0115).
+            Some(outer) => {
+                self.model.instance(parent).def != self.cur_def
+                    && self.param_named_here(parent, outer)
+            }
+        }
+    }
+
     /// Whether `member` of `owner` may be named from the definition being written.
     ///
     /// A module is configured through its interface: its rails, pins and values. The parts
     /// and modules inside it may be named from outside only on the left of a `&=`, which
-    /// narrows a value inside it (ADR 0116).
+    /// narrows a value inside it (ADR 0116), and in a join to a pin of the IC that the user
+    /// named for a type parameter (ADR 0120).
     fn visible(&mut self, owner: InstId, member: Member, name: &netsmith_lang::ast::Ident) -> bool {
         // A board's physical file names a part inside a module by its path (ADR 0048). It
         // may only state physical intent about it: `physical_gate` refuses the rest.
@@ -1570,15 +1654,10 @@ impl<'a> Checker<'a> {
             return true;
         }
         // A narrowing from outside a parametric module reaches its IC as the part it is: the
-        // board named it (`Buck<Lt8641>`), so its `support` parts are there (ADR 0116). The
-        // module's own text still reaches only the bound's members.
-        let named_ic = self.narrowing
-            && self.param_insts.contains_key(&owner)
-            && self
-                .model
-                .instance(owner)
-                .parent
-                .is_some_and(|p| self.model.instance(p).def != self.cur_def);
+        // board named it (`Buck<Lt8641>`), so its `support` parts are there (ADR 0116). A join
+        // from outside reaches the named IC's own pins and interfaces (ADR 0120). The module's
+        // own text still reaches only the bound's members.
+        let named_ic = self.named_ic(owner);
         // A use of a generic reaches the members the generic declares, so that the board works
         // with whichever provider is picked (ADR 0068).
         if let Some(generic) = self
@@ -1589,6 +1668,16 @@ impl<'a> Checker<'a> {
                 return false;
             }
             let ty = self.model.instance(owner).type_name.clone();
+            if self.joining && self.holds_type_param(owner) {
+                self.error(
+                    name.span,
+                    format!(
+                        "`{}` is not declared by `{generic}`: this use picks its IC through the generic, so the IC and its pins are not known here, and a join reaches the pins of a module's IC only where the IC is named, as in `{ty}`; name it as the type, or join what `{generic}` declares",
+                        name.name
+                    ),
+                );
+                return false;
+            }
             self.error(
                 name.span,
                 format!(
@@ -1656,10 +1745,44 @@ impl<'a> Checker<'a> {
             );
             return false;
         }
+        // A join reaches the named IC's own pins and interfaces, not the parts of its `support`
+        // section (ADR 0120).
+        if named_ic && !self.narrowing && internal {
+            let ic = inst.type_name.clone();
+            let module = inst
+                .parent
+                .map(|p| self.model.instance(p).type_name.clone())
+                .unwrap_or_default();
+            self.error(
+                name.span,
+                format!(
+                    "`{}` is a part of the `support` section of `{ic}`, inside `{module}`: a join reaches only the named IC's own pins and interfaces; narrow a value of `{}` with `&=`",
+                    name.name, name.name
+                ),
+            );
+            return false;
+        }
+        // The member a module's user named a part for (`.ic: Ic` of `Buck<Lt8641>`) is open to
+        // a join, so its pins can be wired (ADR 0120).
+        let named_param =
+            matches!(member, Member::Inst(child) if self.joining && self.joined_through(child));
         // A module's user may narrow any member inside it by its path, and do nothing else
         // there (ADR 0116): `.stage.divider.rtop.resistance &= 100kohm +/- 1%`.
-        if outside && internal && !self.narrowing {
+        if outside && internal && !self.narrowing && !named_param {
             let ty = inst.type_name.clone();
+            // A member that holds the IC of a type parameter that no part was named for here.
+            let carries = matches!(member, Member::Inst(child)
+                if self.param_insts.contains_key(&child) || self.param_args.contains_key(&child));
+            if self.joining && carries {
+                self.error(
+                    name.span,
+                    format!(
+                        "`{}` is inside `{ty}`, and the part it holds was not named here: a join reaches the pins of a module's IC only where its user names the part (`.reg: Buck<Lt8641>`), and a module's own text reaches only its parameter's bound",
+                        name.name
+                    ),
+                );
+                return false;
+            }
             self.error(
                 name.span,
                 format!(
@@ -1777,7 +1900,7 @@ impl<'a> Checker<'a> {
                         member = m;
                     }
                     None => {
-                        if self.report_outside_bound(i, seg) {
+                        if !self.named_ic(i) && self.report_outside_bound(i, seg) {
                             return Res::Bad;
                         }
                         if let Some(hint) = self.group_hint(i, &seg.name) {
