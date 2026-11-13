@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: accepted
 ---
 
 # A module takes a part as a type parameter, and a part carries its application circuit
@@ -23,11 +23,11 @@ Checking each instantiation instead of the definition (C++ templates): a module 
 
 A part may now hold parts, so the model has parts inside parts: the design stage, the placer and the exporters see them as parts at a longer path. A board cannot reach the inside of `Buck<Lt8641>` (ADR 0004), so what a board wired by hand before (the RT resistor, BIAS to the output, SYNC/MODE grounded, a soft-start capacitor, an `.mpn`) is the support section's default until a module's user may narrow its inner parts (#626). `examples/two_buck` lost its power-good pull-ups and test points, which no `BuckIc` member reaches. A parametric provider multiplies the candidates of a generic, so a pick over many ICs reaches the bound sooner.
 
+## Owner decisions (2026-11-13)
+
+- A parametric module placed without arguments (`.reg: Buck`) is refused, and so is a generic that is not its own provider as an argument (`Buck<BuckIc>`). A pick among ICs is written only through the generic the module provides (`.reg: BuckConverter`), as ADR 0001 asks.
+- The `support` section inside the part is the form. Its parts are reachable from a board that places the part alone (`.u.boost`), since a part has no private members. A support part's ratings are its part's statements, with no default margin.
+
 ## Left open
 
-Proposed, for the owner:
-
-- A parametric module placed without arguments (`.reg: Buck`) is refused; it could instead pick the IC as `BuckConverter` does.
-- A generic that is not its own provider is not an argument (`Buck<BuckIc>`); it could mean a pick over the bound only.
-- The section's keyword `support`, its place in the part, and support parts reachable from a board that places the part alone (`.u.boost`), since a part has no private members.
-- A support part's ratings are its part's statements (the `Lt8641` rates its input capacitors for `.vin.voltage`); no default margin applies.
+- A board cannot join a pin of the named IC that the bound does not declare. For example, two_buck's power-good pull-ups needed `.reg.ic.pg`, which `BuckIc` lacks. The owner chose that a parametric module exposes its IC: a board that names the IC (`Buck<Lt8641>`) may join any of that IC's pins, rather than every bound growing optional members. That is issue #666.
