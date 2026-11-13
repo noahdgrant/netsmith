@@ -424,6 +424,63 @@
 //! decoupling counts every two-pad capacitor between a pour and a part of 8 pads or more, some of
 //! them bulk or crystal capacitors the placer does not pair, which keep their length.
 //!
+//! # Fewer vias (issue #431)
+//!
+//! KiCad's push-and-shove optimizer has a pass that removes vias, kept only where the result is
+//! clean and cheaper. This is its equivalent.
+//!
+//! **What is built** ([`Router::fewer_vias`]). When a try has routed every line, after the
+//! pairs' pass, the pass off the pours and the decoupling vias, and so before the pairs'
+//! meanders (which match the lengths it leaves), the stitching, the teardrops and the arcs,
+//! each line with vias is routed again, the most vias first, against all the other
+//! copper with a via costing [`DEAR_VIA`] more (three times [`VIA`], 45 mm of track), at the
+//! usual room and failing that at the least. The new copper is kept only if it has fewer vias,
+//! is at most [`VIA_SLACK`] longer (2 mm a via, and no more than 10 % of the line, of 20 mm at
+//! least) and lays at most [`VIA_POUR`] (5 mm) more track a via on another net's pour
+//! ([`keeps_fewer_vias`]), and it passed the exact checks every search's copper passes. A line
+//! that cannot lose a via so is tried once more with the one line its cheapest way crosses
+//! ([`Router::contested_lines`]) ripped up too, at most [`VIA_NEIGHBOURS`]: the line first, the
+//! other after, both with dear vias, kept only if both route and the two together lose vias as
+//! [`keeps_fewer_vias`] weighs them. Left alone ([`Router::may_lose_vias`]): a line to a plane,
+//! every line of a net that is a plane or a pour (its vias join it), a decoupling capacitor's
+//! via to the pour, a net whose current needs vias side by side, and the nets of a diff pair
+//! (the pairs' pass shaped them). A line is never left and a board routes as completely as
+//! before. One sweep ([`VIA_SWEEPS`]).
+//!
+//! **Measured** (2026-11-13, decided by the agent under the owner's delegation; the placed
+//! boards of `fab`, one try, `netsmith route --tries 1 --route-timeout 0`; vias, length over the
+//! spanning length, other nets' track on the GND pour):
+//!
+//! | | RP2350 | Orbit | EasyDuino |
+//! |---|---|---|---|
+//! | main | 142, 1.33x, 432 mm | 94, 1.19x, 302 mm | 105, 1.22x, 508 + 353 mm |
+//! | the line alone, no line in its way ripped up | 140 | 92 | 101 |
+//! | **and one line in its way (built)** | **134**, 1.30x, 397 mm | **85**, 1.19x, 305 mm | **98**, 1.21x, 505 + 352 mm |
+//! | up to 2 or 4 lines in its way | 134, the pass 13 and 24 s | 85 | |
+//! | via price 0 more / 1000 more | 138 / 136 | 92 / 88 | 101 / 99 |
+//! | three sweeps | 134, 10 to 13 s | 85 | 98 |
+//! | 5 mm and 25 % a via | 134 | 83, 317 mm | 96, 514 + 345 mm |
+//! | the pour unbounded, 5 mm and 25 % | 117, 506 mm | 80, 366 mm | 96 |
+//! | the search pays for the pour too (pour bound as the length's) | | 90 | 99 |
+//!
+//! The pass takes 6 to 8 s of RP2350's try (75 to 130 s), 5 to 6 s of Orbit's and 2 s of
+//! EasyDuino's. Most of the vias that might go would go only by laying track on the GND pour,
+//! which the pass off the pours took off it: the two targets of the epic pull against each other
+//! here, and a looser pour bound buys Orbit two vias for 12 mm of pour. Of the vias left, the
+//! pour's net's own (RP2350 36, Orbit 28, many of them the joins to the pour and the capacitors'
+//! vias) and the power nets' are not this pass's to take; the rest need a line that crosses
+//! several others to move, which more lines ripped up with it did not find.
+//!
+//! Robustness (one try at turn costs 24 / 25 / 26 / 27, the default margin and `--margin 1`, main
+//! at 804705a4 against this): no board leaves a line, as on main, every run has fewer vias and
+//! none is longer: RP2350 142 / 142 / 129 / 129 to 134 / 134 / 127 / 127, and at `--margin 1` 142
+//! / 142 / 138 / 157 to 134 / 134 / 132 / 144; Orbit 94 / 94 / 97 / 103 to 85 / 85 / 88 / 99 (101
+//! / 101 / 103 / 103 to 97 / 97 / 99 / 99); EasyDuino 105 to 98 (103 to 96). The pairs' meanders
+//! come after the pass, and every pair's lengths, skew and coupling are main's. `fab` writes the
+//! same board on every run; back to back with main it took 115 / 103 s on RP2350 against 130 / 96
+//! s, 20 / 17 s on Orbit against 16 / 13 s and 9 / 10 s on EasyDuino against 7 / 8 s (the first
+//! round at a load of 5 to 20, the second at 1 to 2).
+//!
 //! # Classes of lines (issue #416, S5 of #431)
 //!
 //! Every line has a [`Class`], derived from the board with nothing in the source, in a fixed
