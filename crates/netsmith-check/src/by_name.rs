@@ -72,7 +72,11 @@ impl Checker<'_> {
         except_list: &[Ident],
         span: Span,
     ) -> bool {
-        let (li, ri) = match (self.resolve_path(left), self.resolve_path(right)) {
+        // Each side is an end of a join (ADR 0119).
+        self.joining = true;
+        let sides = (self.resolve_path(left), self.resolve_path(right));
+        self.joining = false;
+        let (li, ri) = match sides {
             (Res::Inst(a), Res::Inst(c)) => (a, c),
             (Res::Poison | Res::Bad, _) | (_, Res::Poison | Res::Bad) => return true,
             _ => return false,
