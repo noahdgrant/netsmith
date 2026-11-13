@@ -409,6 +409,15 @@ What it is:
     its own, under a "Preview" label that says how many parts it stands up and that it is not a
     height (ADR 0105). Nothing else reads it: not the coverage chip, a check, a finding, a report
     or a written file. It is off at every start.
+- **A system's boards together.** On a board of a system, the list at the start of the view's
+  bar has `System <name>` above the system's boards: it shows the
+  [system scene](#a-systems-boards-together-the-system-scene), every board placed against the
+  others by its mates (`GET /api/pcb/3d?board=<System>` serves the system's `.glb`, each board as
+  the 2D view has it placed). A chip says how many boards and the mated heights, and lists the
+  findings across the boards; a click on one flies the camera to its parts. A part of another
+  board picked here makes that board the page's (its 2D board and schematic follow) and selects
+  it there; the view stays on the system. The section and the layers apart are not for a system
+  (`render --board System --section` cuts it).
 - **Findings in 3D.** A finding picked in the problems dock or the board's findings list flies
   the camera to its parts (or to its limit, when it names no part) and lights them; the limit it is
   about is lit too, and a broken limit's volume pulses once (not with reduced motion).

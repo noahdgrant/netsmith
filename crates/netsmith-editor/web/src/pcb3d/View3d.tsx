@@ -18,15 +18,15 @@ import { type Hover, hover as sharedHover, hoverEnter, hoverLeave, resolveHover,
 import { scene as scene2d, select, selection as pcbSelection } from '../pcbstore';
 import { partPathsOf, revealRequest, selection as sharedSelection } from '../selection';
 import { reducedMotion, settings } from '../settings';
-import { analysis, detail, pcbStamp, pickNet, pickPart } from '../store';
+import { analysis, chooseBoard, detail, pcbStamp, pickNet, pickPart } from '../store';
 import { InspectBar, InspectLegend, PreviewLabel } from './InspectBar';
 import { KINDS, MARGIN_TOKENS, findingTargets, litNets } from './inspect';
 import { type Ids, litIds, planChange, sectionText } from './control';
 import { colourBy, focus3d, heightPreview, xray } from './inspectMode';
 import { MeasurePanel, Overlay3d, type Readout, SectionPanel } from './Tools3d';
 import { type Axis, type Measurement, type Snap, axisRange, defaultCut, faceZ, nearestView, partReadout, renderCommand } from './tools';
-import { type LimitInfo, type PartInfo3d, coverageLine, limitTip, partTip, provenanceCounts, unknownParts } from './model';
-import { view3d } from './mode';
+import { type LimitInfo, type MemberInfo, type PartInfo3d, type SystemInfo, coverageLine, limitTip, partTip, provenanceCounts, systemLine, unknownParts } from './model';
+import { systemShown, view3d } from './mode';
 import { LOOKS, type Role, TOKENS } from './palette';
 import { PRESETS, type Preset } from './presets';
 import { type Colours, type Hit, type PadPoint, Viewer } from './viewer';
@@ -102,6 +102,9 @@ export function View3d({ board }: { board: string }) {
   const [cut, setCut] = useState<{ axis: Axis; at: number } | null>(null);
   const [exploded, setExploded] = useState(false);
   const [canExplode, setCanExplode] = useState(false);
+  // A system's scene (ADR 0110): its root and members once loaded, and whether its findings list is open.
+  const [sysInfo, setSysInfo] = useState<{ system: SystemInfo; members: MemberInfo[] } | null>(null);
+  const [sysOpen, setSysOpen] = useState(false);
   const nextId = useRef(1);
   const boardRef = useRef(board);
   boardRef.current = board;
@@ -111,6 +114,15 @@ export function View3d({ board }: { board: string }) {
   const loadedBoard = useRef<string | null>(null);
   const failure = useRef<string | null>(null);
 
+  // The system the board is a member of, and whether its scene is shown in place of the board.
+  const sys = (analysis.value?.systems ?? []).find((x) => x.boards.includes(board)) ?? null;
+  const showSys = sys && systemShown.value === sys.name ? sys.name : null;
+  const shown = showSys ?? board;
+  const member = sys ? board.slice(sys.name.length + 1) : '';
+  const shownRef = useRef({ showSys, member });
+  shownRef.current = { showSys, member };
+  /** A part path of the board (the selection's) as the drawn scene names it: `member/path` in a system's. */
+  const toScene = (paths: string[]) => (shownRef.current.showSys ? paths.map((p) => `${shownRef.current.member}/${p}`) : paths);
   const stamp = scene2d.value?.board === board ? scene2d.value.layoutStamp : null;
   const routed = pcbStamp.value;
   const version = analysis.value?.version;
@@ -231,7 +243,7 @@ export function View3d({ board }: { board: string }) {
     const ask = new AbortController();
     void (async () => {
       try {
-        const r = await fetch(`/api/pcb/3d?board=${encodeURIComponent(board)}`, { cache: 'no-store', signal: ask.signal });
+        const r = await fetch(`/api/pcb/3d?board=${encodeURIComponent(shown)}`, { cache: 'no-store', signal: ask.signal });
         if (!r.ok) throw new Error((await r.text()) || `the server answered ${r.status}`);
         const bytes = await r.arrayBuffer();
         if (ask.signal.aborted) return;
@@ -240,10 +252,11 @@ export function View3d({ board }: { board: string }) {
         setLimits(v.limitList());
         setCoverage(v.board?.coverage ?? null);
         setCanExplode(v.canExplode());
-        loadedBoard.current = board;
+        setSysInfo(v.system ? { system: v.system, members: v.members } : null);
+        loadedBoard.current = shown;
         failure.current = null;
         v.setPads(padsOf());
-        v.highlight(pcbSelection.peek(), []);
+        v.highlight(toScene(pcbSelection.peek()), []);
         if (host.current) host.current.dataset.stamp = r.headers.get('X-Netsmith-Layout-Stamp') ?? '';
       } catch (e) {
         if (!ask.signal.aborted) {
@@ -253,7 +266,7 @@ export function View3d({ board }: { board: string }) {
       }
     })();
     return () => ask.abort();
-  }, [board, stamp, routed, version]);
+  }, [shown, stamp, routed, version]);
 
   // The theme's colours, again when the theme changes; reduced motion when the setting does.
   // The page's theme is the `data-theme` of <html>: watched, so any way it changes repaints the view.
@@ -277,9 +290,9 @@ export function View3d({ board }: { board: string }) {
   const pickedNet = shared?.kind === 'net' ? shared.key : null;
   useEffect(() => {
     const lit = h ? resolveHover(d, h) : null;
-    viewer.current?.highlight(picked, lit ? [...lit.paths] : []);
+    viewer.current?.highlight(toScene(picked), toScene(lit ? [...lit.paths] : []));
     viewer.current?.setLook({ nets: litNets(pickedNet, lit ? lit.nets : []) });
-  }, [picked, h, d, parts, pickedNet]);
+  }, [picked, h, d, parts, pickedNet, showSys]);
 
   // The pads' nets, from the 2D scene: a pad's barrel lights with its net.
   const sc2 = scene2d.value;
@@ -317,7 +330,7 @@ export function View3d({ board }: { board: string }) {
   useEffect(() => {
     if (!ask || ask.board !== board) return;
     const paths = partPathsOf(detail.peek(), ask.sel);
-    if (paths.length) viewer.current?.frameParts(paths);
+    if (paths.length) viewer.current?.frameParts(toScene(paths));
   }, [ask?.nonce]);
 
   // ---- the tools ----
@@ -326,7 +339,8 @@ export function View3d({ board }: { board: string }) {
   const padsOf = (): PadPoint[] => {
     const s = scene2d.peek();
     const b = viewer.current?.board;
-    if (!s || s.board !== board || !b) return [];
+    // A system's members are moved: the 2D scene's pads are in the board's own frame.
+    if (!s || s.board !== board || !b || shownRef.current.showSys) return [];
     const o = s.outline;
     // A pad's centre is on its copper's outer surface (under the mask's opening), else on the face.
     const coppers = b.layers.filter((l) => l.kind === 'copper');
@@ -357,8 +371,21 @@ export function View3d({ board }: { board: string }) {
     const file = analysis.peek()?.boards.find((b) => b.name === name)?.file ?? '<file.nsm>';
     // What is lit, named as `/api/view` and `render --highlight` name it: the parts picked, the net picked, the limits lit.
     const sel = sharedSelection.peek();
-    const lit = litIds(pcbSelection.peek(), sel?.kind === 'net' ? sel.key : null, litLimits(v), v.partList());
     const t = pageTheme.peek();
+    if (shownRef.current.showSys) {
+      // `render --board System` lights a part as `member/path`.
+      const sysFile = analysis.peek()?.systems.find((x) => x.name === shownRef.current.showSys)?.file ?? file;
+      return renderCommand({
+        file: sysFile,
+        board: shownRef.current.showSys,
+        view: nearestView(v.towardEye()).view,
+        section: tools.current.cut,
+        highlight: toScene(pcbSelection.peek()),
+        dark: t === 'dark' || t === 'hc-dark',
+        perspective: !v.isOrtho(),
+      });
+    }
+    const lit = litIds(pcbSelection.peek(), sel?.kind === 'net' ? sel.key : null, litLimits(v), v.partList());
     return renderCommand({
       file,
       board: name,
@@ -481,7 +508,15 @@ export function View3d({ board }: { board: string }) {
   const moveFrame = useRef(0);
   const hoverOf = (path: string): Hover => ({ kind: 'part', key: path });
   const hoverOfHit = (hit: Hit | null | undefined): Hover | null =>
-    hit?.kind === 'part' ? hoverOf(hit.info.path) : hit?.kind === 'copper' && hit.info.net ? { kind: 'net', key: hit.info.net } : null;
+    hit?.kind === 'part'
+      ? hit.info.member
+        ? hit.info.member === shownRef.current.member
+          ? hoverOf(hit.info.path.slice(hit.info.member.length + 1))
+          : null
+        : hoverOf(hit.info.path)
+      : hit?.kind === 'copper' && hit.info.net && !shownRef.current.showSys
+        ? { kind: 'net', key: hit.info.net }
+        : null;
   const tipFor = (hit: Hit, x: number, y: number): Tip => {
     if (hit.kind === 'copper') {
       const net = hit.info.net ?? '';
@@ -547,9 +582,21 @@ export function View3d({ board }: { board: string }) {
   const counts = provenanceCounts(parts);
   const over = limits.some((l) => l.violated);
   const choose = (path: string) => {
-    select([path]);
+    const p = parts.find((x) => x.path === path);
+    if (p?.member) pickMemberPart(p);
+    else select([path]);
     viewer.current?.frameParts([path]);
   };
+  /** A part of a system's scene picked: its member's board becomes the page's (its 2D board and
+   * schematic follow), and the part is selected there; the 3D view stays on the system. */
+  const pickMemberPart = (p: PartInfo3d) => {
+    const m = p.member!;
+    const own = p.path.slice(m.length + 1);
+    if (sys && m !== member) chooseBoard(`${sys.name}/${m}`);
+    select([own]);
+  };
+  /** A finding across boards picked: fly to its parts and light them. */
+  const flyTo = (f: { parts: string[] }) => viewer.current?.focusFinding(f.parts.filter((x) => !x.endsWith('/')), []);
 
   return (
     <div class="v3-wrap">
@@ -583,14 +630,15 @@ export function View3d({ board }: { board: string }) {
           }
           const hit = v?.pick(e.clientX, e.clientY);
           v?.clearFocus();
-          if (hit?.kind === 'part') select(e.shiftKey ? [...new Set([...pcbSelection.peek(), hit.info.path])] : [hit.info.path]);
+          if (hit?.kind === 'part' && hit.info.member) pickMemberPart(hit.info);
+          else if (hit?.kind === 'part') select(e.shiftKey ? [...new Set([...pcbSelection.peek(), hit.info.path])] : [hit.info.path]);
           else if (hit?.kind === 'copper' && hit.info.net) pickNet(pickedNet === hit.info.net ? null : hit.info.net);
           else if (!e.shiftKey) select([]);
         }}
         onDblClick={(e) => {
           if (measuring) return;
           const hit = viewer.current?.pick(e.clientX, e.clientY);
-          if (hit?.kind === 'part') pickPart(hit.info.refdes, true);
+          if (hit?.kind === 'part' && !hit.info.member) pickPart(hit.info.refdes, true);
           else viewer.current?.fit();
         }}
         onPointerMove={onMove}
@@ -638,6 +686,33 @@ export function View3d({ board }: { board: string }) {
       {status.state === 'ready' && (
         <>
           <div class="v3-bar no-pan" role="toolbar" aria-label="3D view" data-toast-clear>
+            {sys && (
+              <>
+                <label class="v3-shown" data-tip="Show this board alone, or its system: every board placed against the others by its mates">
+                  <span class="sr-only">Show</span>
+                  <select
+                    data-testid="view-system"
+                    value={showSys ? `system:${sys.name}` : board}
+                    onChange={(e) => {
+                      const v = (e.currentTarget as HTMLSelectElement).value;
+                      if (v.startsWith('system:')) systemShown.value = sys.name;
+                      else {
+                        systemShown.value = null;
+                        if (v !== board) chooseBoard(v);
+                      }
+                    }}
+                  >
+                    <option value={`system:${sys.name}`}>System {sys.name}</option>
+                    {sys.boards.map((b) => (
+                      <option key={b} value={b}>
+                        {b}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <span class="tb-sep" aria-hidden="true" />
+              </>
+            )}
             <Segmented<Preset | ''>
               label="View from"
               value={preset ?? ''}
@@ -680,7 +755,8 @@ export function View3d({ board }: { board: string }) {
             <button
               class={`tool ${cut ? 'on' : ''}`}
               aria-pressed={!!cut}
-              data-tip="Section plane: cut the board across X, Y or Z to see the stackup"
+              disabled={!!showSys}
+              data-tip={showSys ? 'A section of the system: netsmith render --board ' + showSys + ' --section' : 'Section plane: cut the board across X, Y or Z to see the stackup'}
               data-tip-keys="S"
               data-testid="tool-section"
               onClick={() => view3d.current?.toggleSection()}
@@ -692,7 +768,7 @@ export function View3d({ board }: { board: string }) {
               class={`tool ${exploded ? 'on' : ''}`}
               aria-pressed={exploded}
               disabled={!canExplode}
-              data-tip={canExplode ? 'Pull the stackup apart: each layer with its thickness' : 'The scene file has no stackup to pull apart'}
+              data-tip={canExplode ? 'Pull the stackup apart: each layer with its thickness' : showSys ? "A system's boards are not pulled apart" : 'The scene file has no stackup to pull apart'}
               data-tip-keys="E"
               data-testid="tool-explode"
               onClick={() => view3d.current?.toggleExplode()}
@@ -737,7 +813,35 @@ export function View3d({ board }: { board: string }) {
             />
           )}
           <div class="v3-info no-pan" data-toast-clear>
-            {coverage && (
+            {showSys && sysInfo && (
+              <div class="v3-cov-wrap">
+                <button
+                  class={`chip v3-cov v3-sys ${sysInfo.system.findings.some((f) => f.severity === 'error') ? 'bad' : sysInfo.system.findings.length ? 'warn' : 'ok'}`}
+                  aria-expanded={sysOpen}
+                  data-testid="system-chip"
+                  data-tip={sysInfo.system.findings.length ? 'Show the findings across the boards' : 'Nothing across the boards collides'}
+                  onClick={() => sysInfo.system.findings.length && setSysOpen(!sysOpen)}
+                >
+                  <Icon name={sysInfo.system.findings.some((f) => f.severity === 'error') ? 'error' : sysInfo.system.findings.length ? 'warning' : 'check-circle'} size={12} />
+                  System {sysInfo.system.system}: {systemLine(sysInfo.system, sysInfo.members)}
+                  {sysInfo.system.findings.length > 0 && ` · ${sysInfo.system.findings.length} finding${sysInfo.system.findings.length === 1 ? '' : 's'}`}
+                  {sysInfo.system.findings.length > 0 && <Icon name={sysOpen ? 'chevron-up' : 'chevron-down'} size={12} />}
+                </button>
+                {sysOpen && sysInfo.system.findings.length > 0 && (
+                  <div class="v3-unknown" role="list" aria-label="Findings across the boards" data-testid="system-findings">
+                    <div class="v3-unknown-head">Across the boards: click one to fly to it</div>
+                    {sysInfo.system.findings.map((f, i) => (
+                      <button key={i} role="listitem" class="v3-unknown-row v3-sys-row" data-code={f.code} title={f.message} onClick={() => flyTo(f)}>
+                        <Icon name={f.severity === 'error' ? 'error' : 'warning'} size={12} />
+                        <b class="mono">{f.code}</b>
+                        <span class="v3-sys-msg">{f.message}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+            {coverage && !showSys && (
               <div class="v3-cov-wrap">
                 <button
                   class={`chip v3-cov ${coverage.known === coverage.total ? 'ok' : ''}`}

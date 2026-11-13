@@ -41,7 +41,10 @@ export interface BoardInfo {
 
 export interface PartInfo3d {
   kind: 'part';
+  /** The part's path; in a system's file `member/path` (ADR 0110), so two members' parts do not meet. */
   path: string;
+  /** In a system's file, the member it is on. */
+  member?: string;
   refdes: string;
   side: Face;
   provenance: Provenance;
@@ -80,7 +83,43 @@ export interface LimitInfo {
   under: string[];
 }
 
-export type Info = BoardInfo | PartInfo3d | LimitInfo | CopperInfo | { kind: string };
+/** A finding of the system scene across its boards (ADR 0110). Its parts are `member/path`; a
+ * board itself is `member/`. */
+export interface SystemFinding {
+  code: string;
+  severity: 'error' | 'warning';
+  message: string;
+  parts: string[];
+  members: string[];
+}
+
+/** A mate of the system, with the mated height its seats give (null when a seat is unknown). */
+export interface SystemMate {
+  a: string;
+  b: string;
+  minMm: number | null;
+  maxMm: number | null;
+}
+
+/** The root of a system's file: the system, its base and mates, and the findings across boards. */
+export interface SystemInfo {
+  kind: 'system';
+  system: string;
+  base: string;
+  mates: SystemMate[];
+  findings: SystemFinding[];
+}
+
+/** A member of a system's file: placed by a mate (or the base), or drawn apart with the reason. */
+export interface MemberInfo {
+  kind: 'member';
+  member: string;
+  board: string;
+  placed: boolean;
+  apart: string | null;
+}
+
+export type Info = BoardInfo | PartInfo3d | LimitInfo | CopperInfo | SystemInfo | MemberInfo | { kind: string };
 
 const num = (v: unknown, or = 0): number => (typeof v === 'number' && Number.isFinite(v) ? v : or);
 const numOrNull = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : null);
@@ -119,9 +158,11 @@ export function readInfo(userData: unknown): Info | null {
     }
     case 'part': {
       const p = n.provenance;
+      const member = typeof n.member === 'string' ? n.member : undefined;
       return {
         kind: 'part',
-        path: str(n.path),
+        path: member ? `${member}/${str(n.path)}` : str(n.path),
+        ...(member ? { member } : {}),
         refdes: str(n.refdes),
         side: face(n.side),
         provenance: p === 'stated' || p === 'catalog' || p === 'standard' ? p : 'unknown',
@@ -153,9 +194,42 @@ export function readInfo(userData: unknown): Info | null {
         unknown: strings(n.unknown),
         under: strings(n.under),
       };
+    case 'system':
+      return {
+        kind: 'system',
+        system: str(n.system),
+        base: str(n.base),
+        mates: (Array.isArray(n.mates) ? n.mates : []).map((m: Record<string, unknown>) => {
+          const h = (m.mated_height_mm ?? null) as Record<string, unknown> | null;
+          return { a: str(m.a), b: str(m.b), minMm: h ? numOrNull(h.min) : null, maxMm: h ? numOrNull(h.max) : null };
+        }),
+        findings: (Array.isArray(n.findings) ? n.findings : []).map((f: Record<string, unknown>) => ({
+          code: str(f.code),
+          severity: f.severity === 'error' ? 'error' : 'warning',
+          message: str(f.message),
+          parts: strings(f.parts),
+          members: strings(f.members),
+        })),
+      };
+    case 'member':
+      return {
+        kind: 'member',
+        member: str(n.member),
+        board: str(n.board),
+        placed: n.placed === true,
+        apart: typeof n.apart === 'string' ? n.apart : null,
+      };
     default:
       return { kind: n.kind };
   }
+}
+
+/** What the system's chip says: how many boards, and the mated heights. */
+export function systemLine(s: SystemInfo, members: MemberInfo[]): string {
+  const apart = members.filter((m) => !m.placed).length;
+  const heights = [...new Set(s.mates.filter((m) => m.minMm !== null && m.maxMm !== null).map((m) => `${m.minMm}–${m.maxMm} mm`))];
+  const stacked = heights.length ? `, mated at ${heights.join(', ')}` : '';
+  return `${plural(members.length, 'board')}${stacked}${apart ? `, ${apart} apart` : ''}`;
 }
 
 /** A length in mm for a person: at most two decimals, no trailing zeros. */

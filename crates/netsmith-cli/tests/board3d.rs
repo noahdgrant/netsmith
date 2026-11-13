@@ -759,6 +759,59 @@ fn the_editor_serves_the_bytes_that_board3d_writes_for_the_placement_it_draws() 
     assert_eq!(status, 404);
 }
 
+/// The editor serves a system's name as its system scene (ADR 0110): the bytes `board3d --board
+/// System --glb` writes, each member placed as the 2D view has it, and the members' stamps.
+#[test]
+fn the_editor_serves_the_system_scene_that_board3d_writes() {
+    let dir = netsmith_kicad::testlib::TempDir::new("board3d-editor-system");
+    std::fs::copy(
+        repo().join("examples/two_boards.nsm"),
+        dir.join("two_boards.nsm"),
+    )
+    .unwrap();
+    std::fs::copy(
+        repo().join("examples/two_boards.lock.toml"),
+        dir.join("two_boards.lock.toml"),
+    )
+    .unwrap();
+    let file = dir.join("cli.glb");
+    let run = Command::new(env!("CARGO_BIN_EXE_netsmith"))
+        .args(["board3d", "two_boards.nsm", "--board", "TwoBoards", "--glb"])
+        .arg(&file)
+        .current_dir(dir.path())
+        .output()
+        .unwrap();
+    assert!(
+        run.status.success(),
+        "{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    let written = std::fs::read(&file).unwrap();
+
+    let target = netsmith::project::Target::resolve_from(
+        dir.path(),
+        Some(dir.join("two_boards.nsm").to_str().unwrap()),
+    )
+    .unwrap();
+    let editor = netsmith::editor::Workspace::open(target).unwrap();
+    let listener = std::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0)).unwrap();
+    let port = listener.local_addr().unwrap().port();
+    std::thread::spawn(move || netsmith_editor::serve(listener, std::sync::Arc::new(editor)));
+
+    let (status, head, served) = http_bytes(port, "/api/pcb/3d?board=TwoBoards");
+    assert_eq!(status, 200, "{head}");
+    assert!(head.contains("content-type: model/gltf-binary"), "{head}");
+    assert!(served == written, "the editor's file is the command's");
+    let doc = glb_json(&served);
+    assert_eq!(doc["nodes"][0]["name"], "system");
+    // One stamp per member, in the system's order.
+    let stamp = head
+        .lines()
+        .find_map(|l| l.strip_prefix("x-netsmith-layout-stamp: "))
+        .unwrap_or_default();
+    assert_eq!(stamp.split(',').count(), 2, "{head}");
+}
+
 // ---- `netsmith render`: the scene drawn to a PNG (ADR 0105) --------------------------------
 
 /// `netsmith render <args>` in `dir`, with KiCad switched off: the command needs none.

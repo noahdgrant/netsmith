@@ -58,7 +58,7 @@ import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 
 import { DIM, type KindSwatch, type MarginBand, type NetState, extrudeFlat, kindSwatch, litReport, marginColour, pieceNet, xrayOpacity } from './inspect';
 import type { ColourBy } from './inspectMode';
-import { type BoardInfo, type CopperInfo, type Info, type LimitInfo, type PartInfo3d, type StackLayer, readInfo } from './model';
+import { type BoardInfo, type CopperInfo, type Info, type LimitInfo, type MemberInfo, type PartInfo3d, type StackLayer, type SystemInfo, readInfo } from './model';
 import { LOOKS, type Role, lit, roleOf } from './palette';
 import { type Preset, type Vec3, distanceFor, easeOut, fitPoints, fitHalfHeight, flipped, halfHeightAt, orbit, presetDirection, presetOf, slerpDir } from './presets';
 import { type Axis, type LimitPlan, type P3, type Slot, type Snap, bestSnap, easeInOut, explodeGap, explodeSlots, faceSlot, keepBelow, slabRole } from './tools';
@@ -291,6 +291,9 @@ export class Viewer {
   private baseBox = this.box.clone();
   private drawHooks = new Set<() => void>();
   board: BoardInfo | null = null;
+  /** A system's file (ADR 0110): its root and its members, in order; null and none for a board's. */
+  system: SystemInfo | null = null;
+  members: MemberInfo[] = [];
   /** Whether camera moves are instant (reduced motion). */
   still = false;
 
@@ -469,6 +472,8 @@ export class Viewer {
     this.pickable = [];
     this.infoOf.clear();
     this.board = null;
+    this.system = null;
+    this.members = [];
     this.copper = [];
     this.clearPreview();
     this.focusedLimits.clear();
@@ -486,12 +491,15 @@ export class Viewer {
     const laminates: Object3D[] = [];
     root.traverse((o) => {
       const info = readInfo(o.userData);
-      if (info?.kind === 'board') this.board = info as BoardInfo;
+      // A system's file has a board per member: the base's, the first, is the frame's.
+      if (info?.kind === 'board' && !this.board) this.board = info as BoardInfo;
+      if (info?.kind === 'system') this.system = info as SystemInfo;
+      if (info?.kind === 'member') this.members.push(info as MemberInfo);
       if (info?.kind === 'substrate') laminates.push(o);
     });
     // The laminate's own nodes (its masks, barrels, silkscreen) beside it instead of under it, so
-    // the laminate can be hidden (a section, the layers apart) and they stay. No node of the file
-    // has a transform, so nothing moves.
+    // the laminate can be hidden (a section, the layers apart) and they stay. `attach` keeps where
+    // each is (a member of a system's file has a transform; the board's own nodes have none).
     for (const lam of laminates) for (const c of [...lam.children]) if (readInfo(c.userData)) lam.parent?.attach(c);
     root.traverse((o) => {
       if (!(o instanceof Mesh)) return;
@@ -778,6 +786,8 @@ export class Viewer {
 
   /** Whether the file has the stackup the exploded view needs. */
   canExplode(): boolean {
+    // A system's boards are turned and flipped: one stackup does not pull them apart.
+    if (this.system) return false;
     return this.stackSlots().length > 0;
   }
 

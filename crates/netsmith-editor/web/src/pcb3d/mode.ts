@@ -25,6 +25,10 @@ export const PRESETS: { id: Preset; label: string; key?: string }[] = [
 /** 2D or 3D, for the session (a reload opens 2D, where the board is edited). */
 export const pcbMode = signal<PcbMode>('2d');
 
+/** The system whose _System scene_ the 3D view shows in place of the board (ADR 0110): its name,
+ * while the board is one of its members; null shows the board alone. */
+export const systemShown = signal<string | null>(null);
+
 export function togglePcbMode() {
   pcbMode.value = pcbMode.peek() === '3d' ? '2d' : '3d';
 }

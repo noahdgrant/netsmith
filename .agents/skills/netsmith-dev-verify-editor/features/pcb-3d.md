@@ -27,6 +27,16 @@ The bar under the camera's (`[data-testid=tool-measure]`, `tool-section`, `tool-
 3. **Layers apart**: `E`. Each layer has a label `[data-testid=stack-label]` with `data-layer`: `In1.Cu copper · 0.015 mm`. `E` again puts them back.
 4. **Copy as command**: the `…` menu shows `[data-testid=render-command-text]`, e.g. `netsmith render src/main.nsm --board FourLayerExample --view front --section y=3.87 --theme dark`, with a copy button.
 
+## A system's boards together (recipe `pcb-3d-system`, fixture `two_boards`)
+
+The _System scene_ (ADR 0110): `scripts/editor-verify launch --fixture two_boards`, then `drive pcb-3d-system`. On a board of a system (`TwoBoards/power`) the 3D bar starts with a list (`[data-testid=view-system]`): `System TwoBoards` first, then its boards. The page's board picker (top bar) is not changed: it still lists boards only, for the sections that show one board.
+
+1. `System TwoBoards` (value `system:TwoBoards`) fetches `GET /api/pcb/3d?board=TwoBoards` (the system's `.glb`, each member as the 2D view has it placed, its `X-Netsmith-Layout-Stamp` the members' stamps joined with `,`) and draws both boards: the LED board face down on the power board, its socket over the header, 10.65 mm up (the least mated height). The view's parts are named `member/path` (`led/power_in`, `view3d.parts()`). The chip `[data-testid=system-chip]` says `System TwoBoards: 2 boards, mated at 10.65–11.35 mm`, with `· N findings` when there are some (class `bad` with an error, `warn` with warnings). The coverage chip is hidden; the legend counts every member's parts.
+2. A click on a part of another member makes that member the page's board (the top bar shows `TwoBoards/led`, its 2D board and schematic follow) and selects the part there; the 3D view stays on the system (it is drawn again after the PCB section changes board). A part of the board shown is lit when it is picked anywhere.
+3. The chip opens the findings across the boards (`[data-testid=system-findings]`, a row per finding with `data-code`: `system_collision`, `mate_misaligned`, `system_unchecked`, `system_apart`); a click on a row flies the camera to its parts. The recipe makes one by writing `.power_out: Header1x2 { .height &= 12mm }` into the scratch project (a header taller than the stack), and puts the file back.
+4. Not in a system's scene: `Section` and `Layers apart` are disabled (`render --board TwoBoards --section` draws a cut), the measure tool snaps to no pad, a net is not lit, and `/api/view` reports the board's state, not the system's. The `…` menu's command is `netsmith render <file> --board TwoBoards`, with `--highlight member/path` for the part picked.
+5. Choosing a board in the list shows that board alone again.
+
 ## Ways of looking (recipe `pcb-3d-inspect`, fixture `inspect_3d`)
 
 `scripts/editor-verify launch --fixture inspect_3d`, then `drive pcb-3d-inspect`. The fixture has seven parts of several kinds: under the lid (3 mm, the left half) a header too tall (`power_in`, 9 mm), an LED with 0.6 mm to spare (`led`), a capacitor with plenty (`input_cap`), a resistor and a 2x3 header of unknown height (`r1`, `bare`); outside it the regulator and its output capacitor.

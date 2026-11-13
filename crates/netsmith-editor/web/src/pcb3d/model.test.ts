@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { coverageLine, heightLine, limitTip, partTip, provenanceCounts, readInfo, unknownParts, type PartInfo3d } from './model';
+import { coverageLine, heightLine, limitTip, partTip, provenanceCounts, readInfo, systemLine, unknownParts, type MemberInfo, type PartInfo3d, type SystemInfo } from './model';
 
 const part = (path: string, refdes: string, provenance: 'stated' | 'catalog' | 'standard' | 'unknown', heightMm: number | null): PartInfo3d => ({
   kind: 'part',
@@ -134,5 +134,37 @@ describe('the words of the view', () => {
     const parts = [part('a', 'J10', 'unknown', null), part('b', 'J2', 'unknown', null), part('c', 'R1', 'catalog', 0.5), part('d', 'J1', 'stated', 9), part('e', 'U1', 'standard', 1.75)];
     expect(unknownParts(parts).map((p) => p.refdes)).toEqual(['J2', 'J10']);
     expect(provenanceCounts(parts)).toEqual({ stated: 1, catalog: 1, standard: 1, unknown: 2 });
+  });
+});
+
+describe('readInfo: a system scene (ADR 0110)', () => {
+  it('names a part of a member by `member/path`, so two members do not share an id', () => {
+    const info = readInfo({ netsmith: { kind: 'part', member: 'led', path: 'power_in', refdes: 'J1', side: 'top', provenance: 'catalog', height_mm: 8.65 } }) as PartInfo3d;
+    expect(info.path).toBe('led/power_in');
+    expect(info.member).toBe('led');
+    const alone = readInfo({ netsmith: { kind: 'part', path: 'power_in', refdes: 'J1', side: 'top', provenance: 'catalog', height_mm: 8.65 } }) as PartInfo3d;
+    expect(alone.path).toBe('power_in');
+    expect(alone.member).toBeUndefined();
+  });
+
+  it('reads the system root and its members, and says them in one line', () => {
+    const system = readInfo({
+      netsmith: {
+        kind: 'system',
+        system: 'TwoBoards',
+        base: 'power',
+        mates: [{ a: 'power.power_out', b: 'led.power_in', mated_height_mm: { min: 10.65, max: 11.35 } }],
+        findings: [{ code: 'system_collision', severity: 'error', message: 'J2 and the board `led`', parts: ['power/power_out', 'led/'], members: ['power', 'led'] }],
+      },
+    }) as SystemInfo;
+    expect(system.mates[0]).toEqual({ a: 'power.power_out', b: 'led.power_in', minMm: 10.65, maxMm: 11.35 });
+    expect(system.findings[0].severity).toBe('error');
+    const members = [
+      readInfo({ netsmith: { kind: 'member', member: 'power', board: 'TwoBoards/power', placed: true, apart: null } }),
+      readInfo({ netsmith: { kind: 'member', member: 'led', board: 'TwoBoards/led', placed: true, apart: null } }),
+    ] as MemberInfo[];
+    expect(systemLine(system, members)).toBe('2 boards, mated at 10.65–11.35 mm');
+    const apart = { ...members[1], placed: false, apart: 'no mated height' };
+    expect(systemLine({ ...system, mates: [{ ...system.mates[0], minMm: null, maxMm: null }] }, [members[0], apart])).toBe('2 boards, 1 apart');
   });
 });
