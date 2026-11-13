@@ -152,9 +152,9 @@
 //! to three lines); and the room round a part with more than 66 pads, which is still the plain
 //! gap plus its escape space at the plain weight (the "escape rings" are not built; issue #58).
 //!
-//! **Measured** on the two synthetic boards of `crates/netsmith-place-route/tests/synthetic.rs` (the
+//! **Measured** on the two synthetic boards of `crates/netsmith-router/tests/synthetic.rs` (the
 //! only boards in this repository, so anyone can re-measure; `cargo test --release -p
-//! netsmith-place-route --test main synthetic::the_placement_of_the_big_boards_is_measured -- --nocapture` prints the numbers): the big board (70 parts, an
+//! netsmith-router --test main synthetic::the_placement_of_the_big_boards_is_measured -- --nocapture` prints the numbers): the big board (70 parts, an
 //! 80-pad four-sided package, 106 nets, four layers) and the same with the structure of a
 //! design in modules (78 parts, instance paths of eight parts, 8 decoupling capacitors between
 //! 3V3 and GND, `power` pins on the package). Before is the row layout, after is this

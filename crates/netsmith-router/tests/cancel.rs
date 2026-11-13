@@ -7,7 +7,7 @@ use crate::common;
 use std::time::{Duration, Instant};
 
 use netsmith_core::job::{self, Cancel, Cancelled};
-use netsmith_place_route::{RouteOptions, route_with};
+use netsmith_router::{RouteOptions, route_with};
 
 use common::{hard_boards, synthetic_board};
 

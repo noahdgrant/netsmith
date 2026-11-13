@@ -31,7 +31,7 @@
 //! (decided by the implementing agent under the owner's delegation, 2026-11-13). A pair with
 //! no room keeps the skew it has, and [`add`] says what each pair was left with.
 //!
-//! The router draws them (`netsmith_place_route::route::route_with`) once the board is routed,
+//! The router draws them (`netsmith_router::route::route_with`) once the board is routed,
 //! before the vias beside vias, the stitching of pours, the teardrops and the arcs at bends, so
 //! those are drawn round the meander and its turns are rounded; it measures an arc along its
 //! curve and draws meanders on straight tracks only, so it can top a pair up after the arcs. The

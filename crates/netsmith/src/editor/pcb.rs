@@ -53,7 +53,7 @@ use netsmith_pcb::{
     layout::{BoardLayout, Face, KeepoutPlace, PartPlace, copper_layers},
     svg,
 };
-use netsmith_place_route::{RouteOptions, route_with};
+use netsmith_router::{RouteOptions, route_with};
 
 use super::{
     analysis::BoardData,

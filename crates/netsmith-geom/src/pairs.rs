@@ -1,5 +1,5 @@
 //! Diff pairs: which two nets make one, and how near their tracks run to count as coupled. The
-//! router runs the pairs side by side (`netsmith_place_route`'s route module, issue #431), the
+//! router runs the pairs side by side (`netsmith_router`'s route module, issue #431), the
 //! meanders match their lengths (`netsmith_pcb::meander`), and the route scorecard
 //! (`netsmith_fab::score`) measures them.
 
@@ -8,7 +8,7 @@
 pub const COUPLED: f64 = 0.5;
 /// The suffixes that make two nets a diff pair: the net that ends in the first and the one that
 /// ends in the second, with the same name before them. The router runs the same pairs side by
-/// side (`netsmith_place_route`'s route module, issue #431).
+/// side (`netsmith_router`'s route module, issue #431).
 pub const PAIR_SUFFIXES: [(&str, &str); 7] = [
     ("dp", "dm"),
     ("DP", "DM"),

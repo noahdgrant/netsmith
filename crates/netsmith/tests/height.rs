@@ -91,7 +91,7 @@ fn place(parts: usize, extra: &str, sides: &[(&str, Side)]) -> Board {
     for (refdes, side) in sides {
         options.sides.insert((*refdes).to_string(), *side);
     }
-    netsmith_place_route::board_from_design_placed(
+    netsmith_placer::board_from_design_placed(
         design,
         &libraries.mapping,
         &libraries.footprints,

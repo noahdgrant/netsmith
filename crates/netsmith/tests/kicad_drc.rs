@@ -14,7 +14,7 @@ use netsmith_pcb::{
     Board, BoardKeepout, CopperLayer, FootprintLibrary, Layout, PlaceOptions, Pt, Ratsnest, Rect,
     Track, Via, apply_layout, kicad_pcb, kicad_pro,
 };
-use netsmith_place_route::route;
+use netsmith_router::route;
 use netsmith_solve::Catalogs;
 use netsmith_testkit::TempDir;
 
@@ -147,7 +147,7 @@ fn board_with(path: &str, text: &str, physical: Option<&str>) -> Board {
         .ok()
         .and_then(|s| s.parse().ok())
         .unwrap_or(0);
-    netsmith_place_route::board_from_design_placed(
+    netsmith_placer::board_from_design_placed(
         &built[0].design,
         &libraries.mapping,
         &libraries.footprints,
@@ -475,7 +475,7 @@ fn board_of(parts: &[(&str, &str, f64, f64)], nets: Vec<Net>) -> Board {
         parts: parts.iter().map(|(r, k, ..)| part(r, k)).collect(),
         nets,
     };
-    let mut board = netsmith_place_route::board_from_design(&design, &mapping, &library).unwrap();
+    let mut board = netsmith_placer::board_from_design(&design, &mapping, &library).unwrap();
     for (placed, (_, _, x, y)) in board.parts.iter_mut().zip(parts) {
         placed.at = Pt::new(*x, *y);
         placed.rotation = 0.0;
@@ -786,7 +786,7 @@ fn an_outline_too_small_for_the_parts_is_refused_with_the_overflow() {
     let (text, loader) = split(path, &text);
     let built =
         netsmith::build_with(path, &text, &loader, &Catalogs::sample(), &libraries).unwrap();
-    let err = netsmith_place_route::board_from_design(
+    let err = netsmith_placer::board_from_design(
         &built[0].design,
         &libraries.mapping,
         &libraries.footprints,
@@ -1328,7 +1328,7 @@ fn laid(members: &str, layout_text: &str) -> Board {
         netsmith::build_with(REGULATOR, &source, &loader, &Catalogs::sample(), &libraries).unwrap();
     let design = &built[0].design;
     let layout = layout(&layout_text.replace('@', &design.name));
-    let mut b = netsmith_place_route::board_from_design_placed(
+    let mut b = netsmith_placer::board_from_design_placed(
         design,
         &libraries.mapping,
         &libraries.footprints,
@@ -1381,7 +1381,7 @@ fn a_layout_entry_still_places_its_part_when_the_designator_letters_change() {
     );
     let at = |design: &netsmith_core::Design| {
         let layout = layout(&text);
-        let mut b = netsmith_place_route::board_from_design_placed(
+        let mut b = netsmith_placer::board_from_design_placed(
             design,
             &libraries.mapping,
             &libraries.footprints,

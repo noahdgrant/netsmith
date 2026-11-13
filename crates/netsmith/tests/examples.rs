@@ -6,7 +6,7 @@
 use netsmith_pcb::{
     Board, CopperLayer, FootprintLibrary, Pt, Ratsnest, Rect, Track, kicad_pcb, svg,
 };
-use netsmith_place_route::route;
+use netsmith_router::route;
 use netsmith_solve::Catalogs;
 
 use crate::boards as common;
@@ -28,7 +28,7 @@ fn board(example: &str, library: &FootprintLibrary) -> Board {
     )
     .unwrap();
     assert_eq!(built.len(), 1);
-    netsmith_place_route::board_from_design(
+    netsmith_placer::board_from_design(
         &built[0].design,
         &netsmith_kicad::Mapping::standard(),
         library,
@@ -280,7 +280,7 @@ fn led_board_narrowed(lines: &[&str]) -> Board {
         &netsmith::Libraries::sample(),
     )
     .unwrap();
-    netsmith_place_route::board_from_design(
+    netsmith_placer::board_from_design(
         &built[0].design,
         &netsmith_kicad::Mapping::standard(),
         &fixtures(),
@@ -360,7 +360,7 @@ fn a_board_with_no_process_cannot_become_a_pcb() {
         &netsmith::Libraries::sample(),
     )
     .unwrap();
-    let err = netsmith_place_route::board_from_design(
+    let err = netsmith_placer::board_from_design(
         &built[0].design,
         &netsmith_kicad::Mapping::standard(),
         &fixtures(),

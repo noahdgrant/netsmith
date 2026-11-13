@@ -582,12 +582,9 @@ fn a_board_around_the_ic_builds_with_the_symbol_and_exports_the_footprint_and_th
     assert!(libraries.uses_std_library(&b.design));
 
     // The PCB places the 20 pads of the footprint, and the `.kicad_pcb` carries it by its name.
-    let board = netsmith_place_route::board_from_design(
-        &b.design,
-        &libraries.mapping,
-        &libraries.footprints,
-    )
-    .unwrap_or_else(|e| panic!("{e}"));
+    let board =
+        netsmith_placer::board_from_design(&b.design, &libraries.mapping, &libraries.footprints)
+            .unwrap_or_else(|e| panic!("{e}"));
     let pcb = kicad_pcb(&board);
     assert!(
         pcb.contains(OWN_FOOTPRINT),

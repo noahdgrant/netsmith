@@ -1323,7 +1323,7 @@ pub struct Track {
     pub width: f64,
     /// For an arc, a point on it halfway from `from` to `to`, as KiCad's `(arc (start) (mid)
     /// (end))` stores one. The router draws arcs only where a track bends (the header of
-    /// netsmith-place-route's `arcs.rs`); `None` is a straight track.
+    /// netsmith-router's `arcs.rs`); `None` is a straight track.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mid: Option<Pt>,
 }
@@ -1618,7 +1618,7 @@ impl Board {
     /// go (the face each is on, the size the board must be): the footprints on the faces they
     /// were given, the requirements of the physical file turned into what the placer is told
     /// (ADR 0045), the nets and the planes. What is wrong with the design is refused here,
-    /// before any placing. The placer (`netsmith-place-route`) places the parts and makes the
+    /// before any placing. The placer (`netsmith-placer`) places the parts and makes the
     /// board with [`Unplaced::into_board`].
     pub fn unplaced(
         design: &Design,
@@ -2762,7 +2762,7 @@ pub(crate) mod tests {
         }
     }
 
-    /// `design` placed by the placer (`netsmith_place_route::board_from_design`) with the
+    /// `design` placed by the placer (`netsmith_placer::board_from_design`) with the
     /// standard mapping and these fixtures: the board most tests of this crate check. The placer
     /// links the netsmith-pcb that is not this test build, so the board comes back as the JSON
     /// of a placed board (`fab --save-placed`), which reads back equal
@@ -2777,15 +2777,15 @@ pub(crate) mod tests {
     }
 
     fn placed_as(design: &Design, layout: Option<&str>) -> Board {
-        use netsmith_place_route::netsmith_pcb as theirs;
+        use netsmith_placer::netsmith_pcb as theirs;
         let library = theirs::FootprintLibrary::at(netsmith_testkit::sample_footprints());
         let mapping = netsmith_kicad::Mapping::standard();
         let board = match layout {
-            None => netsmith_place_route::board_from_design(design, &mapping, &library),
+            None => netsmith_placer::board_from_design(design, &mapping, &library),
             Some(text) => {
                 let layout = theirs::Layout::parse(text, "test.pcb.toml").expect("it reads back");
                 let options = theirs::place_options(design, Some(&layout));
-                netsmith_place_route::board_from_design_placed(design, &mapping, &library, &options)
+                netsmith_placer::board_from_design_placed(design, &mapping, &library, &options)
             }
         }
         .unwrap_or_else(|e| panic!("{e}"));

@@ -56,8 +56,8 @@ flowchart TD
         resolve["Generic parts become catalog rows"]
         sup["Every assembled part has a supplier number"]
         pre["Precheck the physical constraints"]
-        place["Place"]
-        route["Route"]
+        place["Place (netsmith-placer)"]
+        route["Route (netsmith-router)"]
         drc["Design rules check (netsmith's own)"]
         pack["Write board, Gerbers, drill, bom.csv, cpl.csv, fab-notes.txt,<br/>3D scene (.glb), board as STEP (.step),<br/>pin map for firmware (.pins.h, .pins.json) when there are requests"]
         resolve --> sup --> pre --> place --> route --> drc --> pack

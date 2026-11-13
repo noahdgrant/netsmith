@@ -725,8 +725,9 @@ dependencies = [
  "netsmith-lang",
  "netsmith-netlist",
  "netsmith-pcb",
- "netsmith-place-route",
+ "netsmith-placer",
  "netsmith-quantity",
+ "netsmith-router",
  "netsmith-solve",
  "netsmith-testkit",
  "netsmith-view",
@@ -750,7 +751,7 @@ dependencies = [
  "netsmith-design",
  "netsmith-kicad",
  "netsmith-pcb",
- "netsmith-place-route",
+ "netsmith-placer",
  "netsmith-solve",
  "netsmith-testkit",
  "serde_json",
@@ -915,7 +916,7 @@ dependencies = [
  "netsmith-design",
  "netsmith-geom",
  "netsmith-kicad",
- "netsmith-place-route",
+ "netsmith-placer",
  "netsmith-solve",
  "netsmith-testkit",
  "serde",
@@ -925,7 +926,29 @@ dependencies = [
 ]
 
 [[package]]
-name = "netsmith-place-route"
+name = "netsmith-placer"
+version = "0.1.0"
+dependencies = [
+ "automod",
+ "netsmith-check",
+ "netsmith-core",
+ "netsmith-design",
+ "netsmith-fab",
+ "netsmith-kicad",
+ "netsmith-pcb",
+ "netsmith-solve",
+ "netsmith-testkit",
+]
+
+[[package]]
+name = "netsmith-quantity"
+version = "0.1.0"
+dependencies = [
+ "automod",
+]
+
+[[package]]
+name = "netsmith-router"
 version = "0.1.0"
 dependencies = [
  "automod",
@@ -936,17 +959,11 @@ dependencies = [
  "netsmith-geom",
  "netsmith-kicad",
  "netsmith-pcb",
+ "netsmith-placer",
  "netsmith-solve",
  "netsmith-testkit",
  "serde",
  "serde_json",
-]
-
-[[package]]
-name = "netsmith-quantity"
-version = "0.1.0"
-dependencies = [
- "automod",
 ]
 
 [[package]]

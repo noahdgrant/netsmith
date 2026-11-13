@@ -26,6 +26,6 @@ netsmith-testkit = { path = "../netsmith-testkit" }
 netsmith-check = { path = "../netsmith-check" }
 netsmith-design = { path = "../netsmith-design" }
 # The placer: the scene's tests place their boards (`tests/scene3d.rs`).
-netsmith-place-route = { path = "../netsmith-place-route" }
+netsmith-placer = { path = "../netsmith-placer" }
 netsmith-kicad = { path = "../netsmith-kicad" }
 netsmith-solve = { path = "../netsmith-solve" }

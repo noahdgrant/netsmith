@@ -157,12 +157,9 @@ fn each_module_of_the_board_is_a_sheet_and_each_part_is_placed_once() {
 fn each_footprint_names_its_symbol_and_the_sheet_it_is_on() {
     let b = built();
     let libraries = Libraries::sample();
-    let board = netsmith_place_route::board_from_design(
-        &b.design,
-        &libraries.mapping,
-        &libraries.footprints,
-    )
-    .unwrap_or_else(|e| panic!("{e}"));
+    let board =
+        netsmith_placer::board_from_design(&b.design, &libraries.mapping, &libraries.footprints)
+            .unwrap_or_else(|e| panic!("{e}"));
     let pcb = Sexp::parse(&netsmith_pcb::kicad_pcb(&board)).unwrap();
     let root = Sexp::parse(&b.schematic).unwrap();
     let root_uuid = uuid(&root);

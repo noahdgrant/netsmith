@@ -7,7 +7,7 @@ use netsmith_fab::geom::Pt as FabPt;
 use netsmith_fab::raster::{self, Image, View};
 use netsmith_pcb::copper::{self, Area, Copper};
 use netsmith_pcb::{Board, kicad_pcb, kicad_pro};
-use netsmith_place_route::route;
+use netsmith_router::route;
 use netsmith_solve::Catalogs;
 
 /// Pixels per millimetre: 25 µm pixels.
@@ -36,7 +36,7 @@ fn routed(example: &str, process: &str) -> Board {
     let libraries = netsmith::Libraries::sample();
     let built =
         netsmith::build_with(&path, &text, &loader, &Catalogs::sample(), &libraries).unwrap();
-    let mut board = netsmith_place_route::board_from_design(
+    let mut board = netsmith_placer::board_from_design(
         &built[0].design,
         &libraries.mapping,
         &libraries.footprints,

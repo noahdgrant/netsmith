@@ -10,8 +10,8 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use netsmith_pcb::{Board, kicad_pcb, kicad_pro, svg};
-pub use netsmith_place_route::{CoarsePlan, LineClasses};
-use netsmith_place_route::{Costs, RouteOptions};
+pub use netsmith_router::{CoarsePlan, LineClasses};
+use netsmith_router::{Costs, RouteOptions};
 use serde::{Deserialize, Serialize};
 
 use crate::fab::{

@@ -3,7 +3,7 @@
 use crate::common;
 
 use netsmith_pcb::{Board, Pt, Ratsnest, Rect};
-use netsmith_place_route::{Costs, RouteOptions, SnapshotStage, Stage, route, route_with};
+use netsmith_router::{Costs, RouteOptions, SnapshotStage, Stage, route, route_with};
 
 use common::{edge_gap, hard_boards};
 
@@ -17,11 +17,11 @@ const FIRST_ONLY: RouteOptions = RouteOptions {
     costs: Costs::DEFAULT,
     snapshots: false,
     most_tries: None,
-    plan: netsmith_place_route::CoarsePlan::Off,
+    plan: netsmith_router::CoarsePlan::Off,
     plan_cost: None,
-    classes: netsmith_place_route::LineClasses::FromSecondTry,
+    classes: netsmith_router::LineClasses::FromSecondTry,
     teardrops: true,
-    arcs: netsmith_place_route::arcs::ARC_WIDTHS,
+    arcs: netsmith_router::arcs::ARC_WIDTHS,
     meanders: true,
 };
 const RETRY_ONLY: RouteOptions = RouteOptions {
@@ -34,11 +34,11 @@ const RETRY_ONLY: RouteOptions = RouteOptions {
     costs: Costs::DEFAULT,
     snapshots: false,
     most_tries: None,
-    plan: netsmith_place_route::CoarsePlan::Off,
+    plan: netsmith_router::CoarsePlan::Off,
     plan_cost: None,
-    classes: netsmith_place_route::LineClasses::FromSecondTry,
+    classes: netsmith_router::LineClasses::FromSecondTry,
     teardrops: true,
-    arcs: netsmith_place_route::arcs::ARC_WIDTHS,
+    arcs: netsmith_router::arcs::ARC_WIDTHS,
     meanders: true,
 };
 const RIP_UP_ONLY: RouteOptions = RouteOptions {
@@ -51,11 +51,11 @@ const RIP_UP_ONLY: RouteOptions = RouteOptions {
     costs: Costs::DEFAULT,
     snapshots: false,
     most_tries: None,
-    plan: netsmith_place_route::CoarsePlan::Off,
+    plan: netsmith_router::CoarsePlan::Off,
     plan_cost: None,
-    classes: netsmith_place_route::LineClasses::FromSecondTry,
+    classes: netsmith_router::LineClasses::FromSecondTry,
     teardrops: true,
-    arcs: netsmith_place_route::arcs::ARC_WIDTHS,
+    arcs: netsmith_router::arcs::ARC_WIDTHS,
     meanders: true,
 };
 
@@ -69,11 +69,11 @@ const NEGOTIATE_ONLY: RouteOptions = RouteOptions {
     costs: Costs::DEFAULT,
     snapshots: false,
     most_tries: None,
-    plan: netsmith_place_route::CoarsePlan::Off,
+    plan: netsmith_router::CoarsePlan::Off,
     plan_cost: None,
-    classes: netsmith_place_route::LineClasses::FromSecondTry,
+    classes: netsmith_router::LineClasses::FromSecondTry,
     teardrops: true,
-    arcs: netsmith_place_route::arcs::ARC_WIDTHS,
+    arcs: netsmith_router::arcs::ARC_WIDTHS,
     meanders: true,
 };
 

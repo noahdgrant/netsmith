@@ -22,7 +22,7 @@ use netsmith_fab::panel::{CellFacts, CellInput, Spec};
 use netsmith_fab::{BomEntry, Fit, KicadCli, Options, Package, Side, package};
 use netsmith_kicad::Mapping;
 use netsmith_pcb::{Board, Trim, kicad_pcb, kicad_pro, place_options, svg};
-use netsmith_place_route::{RouteOptions, route_with};
+use netsmith_router::{RouteOptions, route_with};
 use netsmith_solve::Catalogs;
 
 use crate::order::{BoardFacts, PanelFacts};
@@ -556,7 +556,7 @@ pub fn precheck_board(
     };
     let mut placement = place_options(&built.design, layout);
     placement.lines_warn = constraints_warn;
-    match netsmith_place_route::precheck(
+    match netsmith_placer::precheck(
         &built.design,
         &libraries.mapping,
         &libraries.footprints,
@@ -960,7 +960,7 @@ fn fab_board(
         });
         // A diff pair whose meanders could not match it says the skew it keeps (issue #431, S11).
         for p in &routing.pairs {
-            if p.after > netsmith_place_route::netsmith_pcb::meander::SKEW_TARGET {
+            if p.after > netsmith_router::netsmith_pcb::meander::SKEW_TARGET {
                 say(format!(
                     "{}: diff pair {}/{} keeps a skew of {:.2} mm (from {:.2} mm): no straight run of its shorter net has room for more meander",
                     built.label(),
@@ -1913,10 +1913,10 @@ impl Incomplete {
 }
 
 /// The text of [`ROUTING_REPORT`]: why each line is left and the crowding map (see
-/// [`netsmith_place_route::Routing`]), in the board's own coordinates.
+/// [`netsmith_router::Routing`]), in the board's own coordinates.
 pub fn routing_report(
-    why: &[netsmith_place_route::LineReport],
-    crowding: &netsmith_place_route::Crowding,
+    why: &[netsmith_router::LineReport],
+    crowding: &netsmith_router::Crowding,
 ) -> String {
     let report = serde_json::json!({
         "why": why,
@@ -1933,7 +1933,7 @@ pub fn routing_failure(
     origin: netsmith_pcb::Pt,
     left: &netsmith_pcb::Ratsnest,
     tries: usize,
-    why: &[netsmith_place_route::LineReport],
+    why: &[netsmith_router::LineReport],
 ) -> String {
     let at = |p: netsmith_pcb::Pt| (p.x - origin.x, p.y - origin.y);
     let mut text = format!(
@@ -2270,7 +2270,7 @@ pub fn route_with_margin(
     base: RouteOptions,
     track_margin: f64,
     say: &dyn Fn(String),
-) -> netsmith_place_route::Routing {
+) -> netsmith_router::Routing {
     let route = |board: &mut Board, time: Option<Duration>, full: bool| {
         route_with(
             board,
@@ -2322,7 +2322,7 @@ pub(crate) fn drc_extras(board: &Board) -> netsmith_fab::drc::Extras {
         npth_drill: Some(board.rules.npth_drill),
         pad_ring: Some(board.rules.min_annular_ring),
         least_widths: board.least_widths(),
-        neck_reach: netsmith_place_route::route::NECK_REACH,
+        neck_reach: netsmith_router::route::NECK_REACH,
         via_counts: board.via_counts(),
         track_angle: true,
     }
@@ -2755,14 +2755,14 @@ mod tests {
             ],
         };
         let why = vec![
-            netsmith_place_route::LineReport {
+            netsmith_router::LineReport {
                 line: left.lines[0].clone(),
-                stage: netsmith_place_route::Stage::Chain,
+                stage: netsmith_router::Stage::Chain,
                 blockers: vec!["GND".into(), "SIG_C".into()],
             },
-            netsmith_place_route::LineReport {
+            netsmith_router::LineReport {
                 line: left.lines[1].clone(),
-                stage: netsmith_place_route::Stage::OutOfTime,
+                stage: netsmith_router::Stage::OutOfTime,
                 blockers: vec![],
             },
         ];

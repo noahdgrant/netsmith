@@ -35,5 +35,5 @@ netsmith-design = { path = "../netsmith-design" }
 # The placer, for the tests that check the board model on a placed board. It links the
 # netsmith-pcb that is not the unit tests' build, so they read its board back through the JSON
 # of a placed board (`board::tests::placed`).
-netsmith-place-route = { path = "../netsmith-place-route" }
+netsmith-placer = { path = "../netsmith-placer" }
 netsmith-solve = { path = "../netsmith-solve" }

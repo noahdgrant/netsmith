@@ -7,7 +7,7 @@ use crate::common;
 use netsmith_core::{Design, Features, Net, Outline, Part, PinRef};
 use netsmith_fab::drc::{self, Extras};
 use netsmith_pcb::{Board, FootprintLibrary, Pt, Rect, kicad_pcb, kicad_pro};
-use netsmith_place_route::route;
+use netsmith_router::route;
 use netsmith_testkit::TempDir;
 
 use common::process;
@@ -114,7 +114,7 @@ fn board(pad: &str, whole: &str) -> (Board, f64) {
     let mapping = netsmith_kicad::Mapping::standard().merged(mapping).unwrap();
     let library = FootprintLibrary::at(netsmith_testkit::sample_footprints())
         .with_library("t", folder.path());
-    let mut board = netsmith_place_route::board_from_design(&design, &mapping, &library).unwrap();
+    let mut board = netsmith_placer::board_from_design(&design, &mapping, &library).unwrap();
     let at = [(4.0, 6.0), (10.0, 6.0), (16.0, 6.0), (10.0, 10.0)];
     for (p, (x, y)) in board.parts.iter_mut().zip(at) {
         p.at = Pt::new(x, y);
@@ -174,7 +174,7 @@ fn check(board: &Board) -> drc::Report {
         npth_drill: Some(board.rules.npth_drill),
         pad_ring: Some(board.rules.min_annular_ring),
         least_widths: board.least_widths(),
-        neck_reach: netsmith_place_route::route::NECK_REACH,
+        neck_reach: netsmith_router::route::NECK_REACH,
         via_counts: board.via_counts(),
         track_angle: true,
     };

@@ -1,8 +1,8 @@
 //! The board model: footprints from a tool-independent `Design`, the board before and after
 //! placing, what the placer is told and answers ([`placement`]), the requirements and their
-//! checks, a ratsnest, and export to KiCad and SVG. The placer and the router are in
-//! `netsmith-place-route`, and the 3D scene and its glTF, STEP and PNG writers in `netsmith-3d`;
-//! both depend on this crate.
+//! checks, a ratsnest, how good a placement is ([`quality`]), and export to KiCad and SVG. The
+//! placer is in `netsmith-placer`, the router in `netsmith-router`, and the 3D scene and its
+//! glTF, STEP and PNG writers in `netsmith-3d`; all three depend on this crate.
 //!
 //! ```text
 //! Design --Board::unplaced--> Unplaced --(the placer)--> Board --(the router)--> Board (with tracks and vias)
@@ -45,6 +45,7 @@ pub mod overhang;
 pub mod placement;
 pub mod polygon;
 pub mod protrusion;
+pub mod quality;
 pub mod ratsnest;
 pub mod rules;
 pub mod shape;
