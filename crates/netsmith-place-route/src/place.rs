@@ -22,9 +22,10 @@
 //! # Faces, the layout file and the limit of a size (ADR 0031, ADR 0033)
 //!
 //! **Parts on the back.** A part has a `Side`: `Front` or `Back`. A part on the back is its
-//! footprint mirrored in its own frame (x negated), then turned by its rotation, as KiCad flips
-//! a footprint; its surface-mount pads are on `B.Cu`, and in the `.kicad_pcb` the footprint is
-//! written already flipped, on the back layers, with mirrored text. The router starts and ends
+//! footprint mirrored in its own frame (x negated), then turned by its rotation; its
+//! surface-mount pads are on `B.Cu`, and in the `.kicad_pcb` the footprint is written already
+//! flipped as KiCad flips it (y negated and turned a half more, which is the same place), on the
+//! back layers, with mirrored text. The router starts and ends
 //! a line on the layers a pad has, so lines between faces use vias as lines between layers do.
 //! Two courtyards on opposite faces may overlap unless one part has a hole through the board.
 //! A part with a hole takes its courtyard on both faces only if its footprint draws the

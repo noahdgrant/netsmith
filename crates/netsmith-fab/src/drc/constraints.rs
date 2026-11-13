@@ -8,8 +8,11 @@
 //! footprint's own frame and turned with it, as the placer finds it; a finding says which was
 //! used. Positions
 //! are in the frame of the layout file: the origin is the top left corner of the box round
-//! `Edge.Cuts`, x grows to the right and y downward. `rotation` is the footprint's angle in
-//! degrees, counterclockwise on screen, and `side` is the face it is on.
+//! `Edge.Cuts`, x grows to the right and y downward. `rotation` is the footprint's turn as
+//! `.place.rotation` says it, in degrees counterclockwise on screen ([`Footprint::turn`]: the
+//! file's angle, less a half turn on the back), and `side` is the face it is on.
+//!
+//! [`Footprint::turn`]: crate::artwork::Footprint::turn
 //!
 //! This is netsmith's own rule (`constraint`): KiCad has none. The requirements are not in
 //! the board file, so the caller that made the board says them ([`Constraints`]).
@@ -335,7 +338,7 @@ impl Constraints {
                     c.parts.join(", ")
                 ));
             };
-            let r = fp.angle.rem_euclid(360.0);
+            let r = fp.turn();
             // The turn nearest the range, counting whole turns.
             let over = [r - 360.0, r, r + 360.0]
                 .into_iter()

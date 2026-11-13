@@ -255,8 +255,9 @@ impl<'a> NetNumbers<'a> {
 fn footprint(board: &Board, part: &Placed, nets: &NetNumbers) -> Sexp {
     let key = format!("{}/{}", board.name, part.refdes);
     let mut at = vec![Sexp::num(part.at.x), Sexp::num(part.at.y)];
-    if part.rotation != 0.0 {
-        at.push(Sexp::num(part.rotation));
+    let orientation = file_orientation(part);
+    if orientation != 0.0 {
+        at.push(Sexp::num(orientation));
     }
     let mut items = vec![
         Sexp::atom("footprint"),
@@ -362,11 +363,34 @@ fn other_face(layer: &str) -> String {
     }
 }
 
-/// The node as it is written for a footprint on the back of the board: every x in the
-/// footprint's frame is negated (`start`, `end`, `mid`, `center`, `xy`, `at`), the layers
-/// are the other face's, text is mirrored, and the turn of text and of a pad (its own turn
-/// together with the footprint's, as KiCad writes it, so with the footprint's already in
-/// it) is not touched here. `parent` is the head of the node it is in.
+/// The footprint's orientation as the file writes it. On the front it is the part's
+/// rotation. On the back it is the rotation plus a half turn: netsmith mirrors a back part in
+/// x in its own frame (`Placed::to_board`), and KiCad's flip mirrors it in y (`FOOTPRINT::Flip`
+/// mirrors around the x axis, and its 3D viewer and STEP exporter place a back footprint's
+/// model by its orientation and a mirror in y). A mirror in x is a mirror in y turned by a
+/// half, so the file says the turn plus 180 with every point of the footprint's frame mirrored
+/// in y: the pads and drawings land where netsmith puts them, and so does the 3D model (#553).
+fn file_orientation(part: &Placed) -> f64 {
+    if part.mirrored() {
+        let a = (part.rotation + 180.0).rem_euclid(360.0);
+        if a.abs() < 1e-9 || (a - 360.0).abs() < 1e-9 {
+            0.0
+        } else {
+            a
+        }
+    } else {
+        part.rotation
+    }
+}
+
+/// The node as it is written for a footprint on the back of the board, as KiCad's flip leaves
+/// it (`FOOTPRINT::Flip`, `PAD::Flip`): every y in the footprint's frame and in a pad's own is
+/// negated (`start`, `end`, `mid`, `center`, `xy`, `at`, `offset`, a trapezoid's
+/// `rect_delta`; see [`file_orientation`]), a chamfer's corners swap top and bottom, the layers
+/// are the other face's, and text is mirrored. The turn of a pad is written by [`pad`]. Text,
+/// whose turn the file writes absolute, keeps where and how it is drawn: its turn is negated and
+/// its left and right swapped, as a mirror in x would draw it. `parent` is the head of the node
+/// it is in.
 fn flipped(node: &Sexp, parent: Option<&str>) -> Sexp {
     let Sexp::List(items) = node else {
         return node.clone();
@@ -376,14 +400,13 @@ fn flipped(node: &Sexp, parent: Option<&str>) -> Sexp {
     for (k, item) in items.iter().enumerate() {
         out.push(match (head, item) {
             (Some("layer" | "layers"), Sexp::Str(name)) if k > 0 => Sexp::string(other_face(name)),
-            (Some("start" | "end" | "mid" | "center" | "xy" | "at" | "offset"), Sexp::Atom(x))
-                if k == 1 =>
-            {
-                match x.parse::<f64>() {
-                    Ok(v) => Sexp::num(-v),
-                    Err(_) => item.clone(),
-                }
-            }
+            (
+                Some("start" | "end" | "mid" | "center" | "xy" | "at" | "offset" | "rect_delta"),
+                Sexp::Atom(y),
+            ) if k == 2 => match y.parse::<f64>() {
+                Ok(v) => Sexp::num(-v),
+                Err(_) => item.clone(),
+            },
             // Text turns the other way when it is mirrored.
             (Some("at"), Sexp::Atom(angle))
                 if k == 3 && matches!(parent, Some("property" | "fp_text")) =>
@@ -393,11 +416,19 @@ fn flipped(node: &Sexp, parent: Option<&str>) -> Sexp {
                     Err(_) => item.clone(),
                 }
             }
+            // A text box's angle is written less the footprint's orientation (unlike other
+            // text), so the half turn more of a back footprint is taken off it again.
+            (Some("angle"), Sexp::Atom(angle)) if k == 1 && parent == Some("fp_text_box") => {
+                match angle.parse::<f64>() {
+                    Ok(v) => Sexp::num((v - 180.0).rem_euclid(360.0)),
+                    Err(_) => item.clone(),
+                }
+            }
             (Some("chamfer"), Sexp::Atom(corner)) if k > 0 => Sexp::atom(match corner.as_str() {
-                "top_left" => "top_right",
-                "top_right" => "top_left",
-                "bottom_left" => "bottom_right",
-                "bottom_right" => "bottom_left",
+                "top_left" => "bottom_left",
+                "bottom_left" => "top_left",
+                "top_right" => "bottom_right",
+                "bottom_right" => "top_right",
                 other => other,
             }),
             (Some("justify"), Sexp::Atom(a)) if k > 0 && a == "left" => Sexp::atom("right"),
@@ -474,7 +505,8 @@ fn text_no_smaller(node: &Sexp, rules: &Rules) -> Sexp {
 }
 
 /// A pad with its net, and its angle on the board (KiCad writes the pad's turn including
-/// the footprint's).
+/// the footprint's). On the back the pad's own turn is negated, as KiCad's flip does, and the
+/// footprint's is the file's ([`file_orientation`]).
 fn pad(child: &Sexp, part: &Placed, nets: &NetNumbers, key: &str) -> Sexp {
     let number = child
         .args()
@@ -495,7 +527,7 @@ fn pad(child: &Sexp, part: &Placed, nets: &NetNumbers, key: &str) -> Sexp {
                 .unwrap_or(0.0);
             let mut at = args[..2].to_vec();
             let angle = if part.mirrored() {
-                part.rotation - own
+                file_orientation(part) - own
             } else {
                 own + part.rotation
             };
@@ -922,13 +954,16 @@ mod tests {
         assert_eq!(r1.find("layer").unwrap().args()[0].text(), Some("B.Cu"));
         let at = r1.find("at").unwrap();
         assert_eq!(at.args()[0].text(), Some(fmt(r1_at.x).as_str()));
-        // The pad's x is negated, and it is on the back layers.
+        // KiCad's flip mirrors in y and turns by a half (#553): the footprint is turned 180, the
+        // pad's y is negated, and it is on the back layers.
+        assert_eq!(at.args()[2].text(), Some("180"));
         let pad2 = r1
             .find_all("pad")
             .find(|p| p.args()[0].text() == Some("2"))
             .unwrap();
         let pad_at = pad2.find("at").unwrap();
-        assert_eq!(pad_at.args()[0].text(), Some(fmt(-r1_pad2.x).as_str()));
+        assert_eq!(pad_at.args()[0].text(), Some(fmt(r1_pad2.x).as_str()));
+        assert_eq!(pad_at.args()[1].text(), Some(fmt(-r1_pad2.y).as_str()));
         let layers: Vec<&str> = pad2
             .find("layers")
             .unwrap()
@@ -959,6 +994,100 @@ mod tests {
         // The others are still on the front.
         let d1 = footprint_of(&pcb, "D1");
         assert_eq!(d1.find("layer").unwrap().args()[0].text(), Some("F.Cu"));
+    }
+
+    /// A number of the file.
+    fn number(node: &Sexp, k: usize) -> f64 {
+        node.args()
+            .get(k)
+            .and_then(Sexp::text)
+            .map_or(0.0, |t| t.parse().unwrap())
+    }
+
+    /// A back-face footprint with nothing symmetric about it, turned 30: KiCad reads the file
+    /// as its `at`, its orientation and points of its frame mirrored in y (`FOOTPRINT::Flip`),
+    /// and places the 3D model with the same mirror (`RENDER_3D_OPENGL`, `STEP_PCB_MODEL::
+    /// getModelLocation`). Read that way, the pads, the drawings and the model
+    /// are where netsmith puts them (`Placed::to_board`), which a mirror in x at the same
+    /// angle puts a half turn away (#553).
+    #[test]
+    fn kicad_reads_a_back_footprint_where_netsmith_places_it() {
+        let mut board = led();
+        let r1 = board.parts.iter_mut().find(|p| p.refdes == "R1").unwrap();
+        r1.footprint = crate::footprint::Footprint::parse(
+            "T:Lopsided",
+            r#"(footprint "Lopsided"
+                (property "Reference" "REF**" (at 0 -2 0) (layer "F.SilkS")
+                    (effects (font (size 1 1) (thickness 0.15))))
+                (fp_line (start 1 1) (end 2.5 -0.5) (stroke (width 0.1) (type solid))
+                    (layer "F.SilkS"))
+                (pad "1" smd roundrect (at 1.2 0.4 90) (size 0.6 0.9) (layers "F.Cu" "F.Mask"))
+                (pad "2" smd rect (at -0.7 -1.3) (size 0.5 0.5) (layers "F.Cu" "F.Mask"))
+                (model "${KICAD9_3DMODEL_DIR}/X.wrl" (offset (xyz 0 0 0)) (scale (xyz 1 1 1))
+                    (rotate (xyz 0 0 0))))"#,
+        )
+        .unwrap();
+        r1.side = crate::board::Side::Back;
+        r1.rotation = 30.0;
+        let part = board.part("R1").unwrap().clone();
+        let pcb = parsed(&board);
+        let r1 = footprint_of(&pcb, "R1");
+        let at = r1.find("at").unwrap();
+        let (origin, angle) = (Pt::new(number(at, 0), number(at, 1)), number(at, 2));
+        assert_eq!(
+            angle, 210.0,
+            "KiCad's orientation is netsmith's plus a half"
+        );
+        let kicad = |local: Pt| origin + local.rotate(angle);
+        let close =
+            |a: Pt, b: Pt| assert!((a.x - b.x).hypot(a.y - b.y) < 1e-9, "{a:?} against {b:?}");
+        for (pad, file) in part.footprint.pads.iter().zip(r1.find_all("pad")) {
+            let at = file.find("at").unwrap();
+            close(
+                kicad(Pt::new(number(at, 0), number(at, 1))),
+                part.pad_centre(pad),
+            );
+        }
+        // Pad 1's own turn of 90 is negated with the footprint's flip, and the file writes it
+        // with the footprint's: 210 - 90.
+        let pad1 = r1.find("pad").unwrap();
+        assert_eq!(number(pad1.find("at").unwrap(), 2), 120.0);
+        let line = r1.find("fp_line").unwrap();
+        let point = |n: &str| {
+            let p = line.find(n).unwrap();
+            kicad(Pt::new(number(p, 0), number(p, 1)))
+        };
+        close(point("start"), part.to_board(Pt::new(1.0, 1.0)));
+        close(point("end"), part.to_board(Pt::new(2.5, -0.5)));
+        // The model: KiCad mirrors a point of it in y in the footprint's frame on the back.
+        for m in [Pt::new(1.0, 0.0), Pt::new(0.3, 2.0)] {
+            close(kicad(Pt::new(m.x, -m.y)), part.to_board(m));
+        }
+    }
+
+    #[test]
+    fn a_front_footprint_keeps_its_rotation_and_its_points() {
+        let mut board = led();
+        board
+            .parts
+            .iter_mut()
+            .find(|p| p.refdes == "R1")
+            .unwrap()
+            .rotation = 30.0;
+        let part = board.part("R1").unwrap().clone();
+        let pcb = parsed(&board);
+        let r1 = footprint_of(&pcb, "R1");
+        let at = r1.find("at").unwrap();
+        assert_eq!(number(at, 2), 30.0);
+        let pad = r1.find("pad").unwrap();
+        let local = part.footprint.pads[0].at;
+        assert_eq!(
+            (
+                number(pad.find("at").unwrap(), 0),
+                number(pad.find("at").unwrap(), 1)
+            ),
+            (local.x, local.y)
+        );
     }
 
     #[test]

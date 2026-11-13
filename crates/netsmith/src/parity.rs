@@ -424,7 +424,7 @@ fn origin_lines(
                 refdes: found.reference.clone(),
                 path: paths.get(&found.reference).cloned().unwrap_or_default(),
                 side: side(&found.layer),
-                rotation: tidy(found.rotation.rem_euclid(360.0)),
+                rotation: tidy(place_rotation(found.rotation, back)),
                 origin,
                 body_centre: centre,
                 offset,
@@ -437,10 +437,17 @@ fn origin_lines(
                 ]
             }),
             reference_side: side(&part.layer),
-            reference_rotation: tidy(part.rotation.rem_euclid(360.0)),
+            reference_rotation: tidy(place_rotation(part.rotation, part.layer.starts_with('B'))),
         });
     }
     lines
+}
+
+/// A footprint's orientation in a board file as `.place.rotation` says it, 0 to 360: a half
+/// turn less on the back, where KiCad's flip mirrors in y and netsmith's in x (#553).
+fn place_rotation(file: f64, back: bool) -> f64 {
+    let half = if back { 180.0 } else { 0.0 };
+    (file - half).rem_euclid(360.0)
 }
 
 impl ParityReport {

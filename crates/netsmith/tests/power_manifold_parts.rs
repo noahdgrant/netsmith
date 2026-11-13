@@ -256,9 +256,10 @@ fn shape_word(pad: &netsmith_pcb::Pad) -> &'static str {
 /// footprint, with `tolerance` mm on centre, size and drill: number, centre in the footprint's
 /// own frame, size, drill, shape, kind and angle. Empty when they are the same. A `connect` pad
 /// of the file (an edge-connector pad: copper on one face) is a surface pad. A footprint that the
-/// reference has on the back face (`B.Cu`) is written by `fab` with every x negated, so the
-/// project's footprint of it is drawn as seen from the back: x is read negated, and since `fab`
-/// also moves every layer to the other face, a pad's copper layers are read on the other face.
+/// reference has on the back face (`B.Cu`) is stored as KiCad's flip leaves it: every y negated
+/// and every layer on the other face (`fab` writes netsmith's back-face footprints the same way,
+/// #553). The project's footprint of it is drawn as before the flip, so y is read negated and a
+/// pad's copper layers are read on the other face.
 fn pad_differences(
     footprint: &Footprint,
     table: &toml::Table,
@@ -290,8 +291,8 @@ fn pad_differences(
         let pad = pad.as_table().unwrap();
         let (n, x, y) = (
             pad["number"].as_str().unwrap(),
-            number(pad, "x") * mirror,
-            number(pad, "y"),
+            number(pad, "x"),
+            number(pad, "y") * mirror,
         );
         let found = footprint.pads.iter().enumerate().find(|(i, own)| {
             !used[*i]
@@ -340,9 +341,10 @@ fn pad_differences(
                 own.kind
             ));
         }
-        // The file's pad angle includes the footprint's rotation; a turn of 180 degrees
-        // leaves a rectangle, a circle or an oval as it was.
-        let turn = pad.get("angle").map_or(0.0, |_| number(pad, "angle")) - rotation - own.angle;
+        // The file's pad angle includes the footprint's rotation, and a flip negates the pad's
+        // own; a turn of 180 degrees leaves a rectangle, a circle or an oval as it was.
+        let turn =
+            pad.get("angle").map_or(0.0, |_| number(pad, "angle")) - rotation - own.angle * mirror;
         let off = turn.rem_euclid(180.0).min(180.0 - turn.rem_euclid(180.0));
         if off > 1e-6 {
             differences.push(format!(

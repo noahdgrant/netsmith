@@ -18,7 +18,9 @@ physical for PowerManifoldCharger {
 
     .slot.place.x &= 3.45mm
     .slot.place.y &= 10.15mm
-    .slot.place.rotation &= 90
+    // Their J3 is turned 90 on the back. KiCad's flip mirrors a footprint in y and netsmith
+    // mirrors it in x, a half turn apart, so the same place is netsmith's 270.
+    .slot.place.rotation &= 270
     .slot.place.side &= "bottom"
 
     .usb.place.x &= 97.405mm
