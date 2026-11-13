@@ -347,13 +347,37 @@ impl Built {
 
     /// Write the KiCad schematic (the root sheet and the sheet of each module file) and the
     /// project file into this board's directory under `out`, and return the directory.
+    ///
+    /// A `.kicad_sch` in the directory that this does not write and that netsmith wrote
+    /// before (its header's `generator` is `netsmith`, [`netsmith_kicad::is_netsmith_sheet`])
+    /// is removed: the sheet of a module that was renamed or removed. Any other file stays,
+    /// also a sheet a person saved in KiCad.
     pub fn write(&self, out: &Path) -> std::io::Result<PathBuf> {
         let dir = self.dir(out);
         std::fs::create_dir_all(&dir)?;
         let name = &self.design.name;
-        std::fs::write(dir.join(format!("{name}.kicad_sch")), &self.schematic)?;
+        let root = format!("{name}.kicad_sch");
+        std::fs::write(dir.join(&root), &self.schematic)?;
         for (file, text) in &self.sheets {
             std::fs::write(dir.join(file), text)?;
+        }
+        for entry in std::fs::read_dir(&dir)? {
+            let entry = entry?;
+            let file = entry.file_name();
+            let Some(file) = file.to_str() else { continue };
+            let written = file == root || self.sheets.iter().any(|(f, _)| f == file);
+            if written
+                || !file.ends_with(".kicad_sch")
+                || !entry.file_type().is_ok_and(|t| t.is_file())
+            {
+                continue;
+            }
+            // A file that is not text, or cannot be read, is not netsmith's.
+            if std::fs::read_to_string(entry.path())
+                .is_ok_and(|text| netsmith_kicad::is_netsmith_sheet(&text))
+            {
+                std::fs::remove_file(entry.path())?;
+            }
         }
         std::fs::write(dir.join(format!("{name}.kicad_pro")), &self.project)?;
         Ok(dir)

@@ -304,3 +304,76 @@ fn kicads_erc_accepts_the_sheets() {
         .collect();
     assert_eq!(found, Vec::<String>::new());
 }
+
+/// The `.kicad_sch` files of a folder, by name.
+fn sch_files(dir: &Path) -> Vec<String> {
+    let mut names: Vec<String> = std::fs::read_dir(dir)
+        .unwrap()
+        .map(|e| e.unwrap().file_name().into_string().unwrap())
+        .filter(|n| n.ends_with(".kicad_sch"))
+        .collect();
+    names.sort();
+    names
+}
+
+/// Issue #575: a build removes the sheets an earlier build wrote there and no longer writes (a
+/// module renamed), recognised by the `generator` netsmith writes in each sheet's header, and
+/// leaves every other `.kicad_sch`, a person's own or one KiCad saved.
+#[test]
+fn a_build_removes_the_sheets_of_a_renamed_module_and_no_other_file() {
+    let out = TempDir::new("sheets_renamed");
+    let build_of = |src: &str| {
+        build_with(
+            "module_sheets.nsm",
+            src,
+            &Loader::std(),
+            &Catalogs::jlcpcb(),
+            &Libraries::sample(),
+        )
+        .unwrap_or_else(|e| panic!("{e}"))
+        .remove(0)
+    };
+    let first = build_of(SHEETS);
+    let dir = first.write(out.path()).unwrap();
+    assert_eq!(
+        sch_files(&dir),
+        [
+            "Light.kicad_sch",
+            "Light_2.kicad_sch",
+            "Pair.kicad_sch",
+            "Sheets.kicad_sch"
+        ]
+    );
+
+    // A person's sheet, one KiCad saved from a netsmith sheet, and one that is no text.
+    std::fs::write(
+        dir.join("Mine.kicad_sch"),
+        "(kicad_sch (version 20250114) (generator \"someone\"))\n",
+    )
+    .unwrap();
+    let saved = std::fs::read_to_string(dir.join("Pair.kicad_sch"))
+        .unwrap()
+        .replace("(generator \"netsmith\")", "(generator \"eeschema\")");
+    std::fs::write(dir.join("Saved.kicad_sch"), saved).unwrap();
+    std::fs::write(dir.join("Binary.kicad_sch"), [0xff, 0xfe, 0x00]).unwrap();
+    std::fs::write(dir.join("notes.txt"), "keep").unwrap();
+
+    let renamed = SHEETS
+        .replace("module Light", "module Lamp")
+        .replace(": Light", ": Lamp");
+    let second = build_of(&renamed);
+    assert_eq!(second.write(out.path()).unwrap(), dir);
+    assert_eq!(
+        sch_files(&dir),
+        [
+            "Binary.kicad_sch",
+            "Lamp.kicad_sch",
+            "Lamp_2.kicad_sch",
+            "Mine.kicad_sch",
+            "Pair.kicad_sch",
+            "Saved.kicad_sch",
+            "Sheets.kicad_sch"
+        ]
+    );
+    assert!(dir.join("notes.txt").exists());
+}
