@@ -168,6 +168,22 @@ pub fn four_layer_process_with(narrowings: &[&str]) -> netsmith_core::Process {
     process_of(&source)
 }
 
+/// ACME's `TenLayer` (a fictional fabricator, ADR 0112): GND on the first inner layer, 3V3 on the
+/// last, and signal layers between them.
+pub fn ten_layer_process() -> netsmith_core::Process {
+    let body: String = (1..=8)
+        .map(|n| match n {
+            1 => "        .inner1.net &= \"GND\"\n".to_string(),
+            8 => "        .inner8.net &= \"3V3\"\n".to_string(),
+            n => format!("        .inner{n}.use &= \"signal\"\n"),
+        })
+        .collect();
+    let source = format!(
+        "import std::mfg::acme::TenLayer\nimport std::parts::passive::Resistor\nboard T {{\n    .process: TenLayer {{\n{body}    }}\n    .r: Resistor {{\n        .a.net &= \"GND\"\n        .b.net &= \"3V3\"\n    }}\n}}\n"
+    );
+    process_of(&source)
+}
+
 /// A four-sided fine-pitch package: `per_side` pads on each side at 0.5 mm, numbered round
 /// from the top left, the footprint a `.kicad_mod` file.
 fn quad_footprint(per_side: usize) -> String {

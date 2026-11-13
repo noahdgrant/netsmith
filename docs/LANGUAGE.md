@@ -6382,7 +6382,7 @@ Rules.
 - A board must choose `.stackup.thickness`. The process offers 0.4 mm to 2 mm, and netsmith will not pick.
 - A board with no `process` builds and views as a schematic. `fab` stops and says to add `import std::mfg::jlcpcb::TwoLayer` and `.process: TwoLayer`. There is no default.
 - `.max_temperature_rise` is the rise in kelvin that the track width check designs to (see Track width against current). The process leaves it unstated and it is 10 K when the board does too: `.process.max_temperature_rise &= 20K`.
-- `std::mfg::jlcpcb::FourLayer` has two inner layers and `std::mfg::jlcpcb::SixLayer` four (`.inner1` to `.inner4`, counted from the top). The board says what each is (ADR 0111). A plane is one sheet of copper on a net, and the board names the net: `.process.inner1.net &= "GND"`. A signal layer names no net: `.process.inner2.use &= "signal"`. The router draws on the outer layers only, so a signal layer stays empty for now; it is written to the board file as a signal layer, plotted as an inner copper Gerber and checked like the outer layers. An inner layer that is neither is an error, and so is a plane on a net the board does not have. See `examples/four_layer.nsm` and `examples/six_layer.nsm`. Each offers 1.6 mm only, the one thickness whose build-up JLCPCB's impedance page gives (`JLC04161H-7628`, `JLC06161H-3313`); `fab-notes.txt` names the build-up and says what each inner layer is. JLCPCB's pages give no build-up of 8 or 10 layers, so std has no process for them yet.
+- `std::mfg::jlcpcb::FourLayer` has two inner layers and `std::mfg::jlcpcb::SixLayer` four (`.inner1` to `.inner4`, counted from the top). The board says what each is (ADR 0111). A plane is one sheet of copper on a net, and the board names the net: `.process.inner1.net &= "GND"`. A signal layer names no net: `.process.inner2.use &= "signal"`. The router draws on the outer layers only, so a signal layer stays empty for now; it is written to the board file as a signal layer, plotted as an inner copper Gerber and checked like the outer layers. An inner layer that is neither is an error, and so is a plane on a net the board does not have. See `examples/four_layer.nsm` and `examples/six_layer.nsm`. Each offers 1.6 mm only, the one thickness whose build-up JLCPCB's impedance page gives (`JLC04161H-7628`, `JLC06161H-3313`); `fab-notes.txt` names the build-up and says what each inner layer is. JLCPCB's pages give no build-up of 8 or 10 layers, so std has no JLCPCB process for them; see the fictional fabricator below.
 
 A six-layer board with planes outside and signal layers inside:
 
@@ -6397,6 +6397,31 @@ board Six {
         .inner2.use &= "signal"
         .inner3.use &= "signal"
         .inner4.net &= "5V"
+    }
+    .supply: Rail {
+        .pos.net &= "5V"
+        .neg.net &= "GND"
+    }
+    .r1: Resistor { .resistance &= 1kohm +/- 1% }
+    .supply.pos ~> .r1 ~> .supply.neg
+}
+```
+
+A board of eight or ten layers is made on ACME's process, `std::mfg::acme::EightLayer` (`.inner1` to `.inner6`) or `std::mfg::acme::TenLayer` (`.inner1` to `.inner8`). ACME is a fictional fabricator (ADR 0112). Its numbers were chosen, not sourced, and stand for no real fabricator's capability: the rules are JLCPCB's multilayer rows, and each build-up is a symmetric 1.6 mm stack of common prepregs and cores (`ACME-8L-1.6`, `ACME-10L-1.6`, listed in `std/mfg/acme.nsm`). The inner layers are planes or signal layers, as above. `fab` writes the package as for any process: a Gerber for each copper layer, the stackup in the board file, the 3D scene. `fab-notes.txt` says the process is fictional and the package is not for ordering, and `fab --order` refuses an order that names the board. See `examples/ten_layer.nsm`.
+
+```nsm
+import std::parts::passive::Resistor
+import std::sources::Rail
+import std::mfg::acme::EightLayer
+
+board Eight {
+    .process: EightLayer {
+        .inner1.net &= "GND"
+        .inner2.use &= "signal"
+        .inner3.use &= "signal"
+        .inner4.use &= "signal"
+        .inner5.use &= "signal"
+        .inner6.net &= "5V"
     }
     .supply: Rail {
         .pos.net &= "5V"
@@ -13659,6 +13684,8 @@ Parts are numbered by their letters in the order the design declares them (a mod
 | `std::mfg::jlcpcb::TwoLayer` | JLCPCB's two-layer board, 1 oz copper. Rules from `.min_track` to `.min_mask_bridge`, `.max_temperature_rise` (the rise the track width check designs to, unstated by the process), `.via_in_pad` (the largest via the fabricator fills and caps so that it may stand in a pad: an upper bound, `0mm` refuses vias in pads), `.stackup`, and the outer pours `.top` and `.bottom`. Thickness 0.4 mm to 2 mm, chosen by the board. |
 | `std::mfg::jlcpcb::FourLayer` | JLCPCB's four-layer board, 1 oz outer and 0.5 oz inner copper, 1.6 mm, build-up `JLC04161H-7628`. Inner layers `.inner1` and `.inner2`, each a plane on a net the board names or a signal layer. |
 | `std::mfg::jlcpcb::SixLayer` | JLCPCB's six-layer board, 1 oz outer and 0.5 oz inner copper, 1.6 mm, build-up `JLC06161H-3313`. Inner layers `.inner1` to `.inner4`, each a plane on a net the board names or a signal layer. |
+| `std::mfg::acme::EightLayer` | ACME's eight-layer board. ACME is a fictional fabricator: the numbers were chosen, not sourced, and the board cannot be ordered (ADR 0112). JLCPCB's multilayer rules, 1 oz outer and 0.5 oz inner copper, 1.6 mm, build-up `ACME-8L-1.6`. Inner layers `.inner1` to `.inner6`, each a plane or a signal layer. |
+| `std::mfg::acme::TenLayer` | ACME's ten-layer board, as `EightLayer`, build-up `ACME-10L-1.6`. Inner layers `.inner1` to `.inner8`. |
 | `std::mfg::jlcpcb::VCutPanel` | JLCPCB's V-cut panel, the member `.fab` of a `panel`: `.columns`, `.rows` and `.rail`, and the limits of the board house (panel size, lines, line spacing, copper clearance, thickness, tooling holes and fiducials), each with its source. |
 
-Every number in a process cites its source in a doc comment in `std/mfg/jlcpcb.nsm`.
+Every number in a JLCPCB process cites its source in a doc comment in `std/mfg/jlcpcb.nsm`; ACME's say they were chosen.

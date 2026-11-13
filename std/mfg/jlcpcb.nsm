@@ -398,7 +398,8 @@ interface FourLayer {
 /// Relative permittivity, from the same page: 3313 prepreg 4.1, 2116 prepreg 4.16, core 4.6.
 /// The page's thickness selector offers 1.2, 1.6 and 2.0 mm for six layers, but its text holds
 /// the 1.6 mm tables only, so `SixLayer` offers 1.6 mm only. The page states no build-up of 8
-/// or 10 layers, so std has no process for them yet.
+/// or 10 layers, so JLCPCB has no process for them here; `std::mfg::acme` has fictional ones,
+/// not for ordering (ADR 0112).
 interface SixLayer {
     /// Who makes it, and where the numbers are published.
     .fabricator: String

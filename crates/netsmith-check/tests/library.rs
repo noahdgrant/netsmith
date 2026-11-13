@@ -22,6 +22,10 @@ fn every_standard_library_file_checks_clean() {
             "std/mfg/jlcpcb.nsm",
             include_str!("../../../std/mfg/jlcpcb.nsm"),
         ),
+        (
+            "std/mfg/acme.nsm",
+            include_str!("../../../std/mfg/acme.nsm"),
+        ),
         ("std/env.nsm", include_str!("../../../std/env.nsm")),
         ("std/sources.nsm", include_str!("../../../std/sources.nsm")),
         ("std/logic.nsm", include_str!("../../../std/logic.nsm")),

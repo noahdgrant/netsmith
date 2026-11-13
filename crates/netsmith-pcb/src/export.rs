@@ -1471,6 +1471,80 @@ mod tests {
     }
 
     #[test]
+    fn a_ten_layer_board_lists_ten_copper_layers_and_its_build_up() {
+        let board = crate::board::tests::placed(&crate::board::tests::ten_layer_design());
+        let pcb = parsed(&board);
+        let copper: Vec<(&str, &str, &str)> = pcb
+            .find("layers")
+            .unwrap()
+            .args()
+            .iter()
+            .take(10)
+            .map(|l| {
+                (
+                    l.head().unwrap(),
+                    l.args()[0].text().unwrap(),
+                    l.args()[1].text().unwrap(),
+                )
+            })
+            .collect();
+        assert_eq!(
+            copper,
+            [
+                ("0", "F.Cu", "signal"),
+                ("4", "In1.Cu", "power"),
+                ("6", "In2.Cu", "signal"),
+                ("8", "In3.Cu", "signal"),
+                ("10", "In4.Cu", "signal"),
+                ("12", "In5.Cu", "signal"),
+                ("14", "In6.Cu", "signal"),
+                ("16", "In7.Cu", "signal"),
+                ("18", "In8.Cu", "power"),
+                ("2", "B.Cu", "signal")
+            ]
+        );
+        let stackup = pcb.find("setup").unwrap().find("stackup").unwrap();
+        let rows: Vec<(&str, f64)> = stackup
+            .args()
+            .iter()
+            .filter(|l| l.head() == Some("layer"))
+            .filter_map(|l| {
+                let name = l.args()[0].text()?;
+                (name.ends_with(".Cu") || name.starts_with("dielectric"))
+                    .then(|| (name, numbers(l, "thickness")[0]))
+            })
+            .collect();
+        let names: Vec<&str> = rows.iter().map(|r| r.0).collect();
+        assert_eq!(
+            names,
+            [
+                "F.Cu",
+                "dielectric 1",
+                "In1.Cu",
+                "dielectric 2",
+                "In2.Cu",
+                "dielectric 3",
+                "In3.Cu",
+                "dielectric 4",
+                "In4.Cu",
+                "dielectric 5",
+                "In5.Cu",
+                "dielectric 6",
+                "In6.Cu",
+                "dielectric 7",
+                "In7.Cu",
+                "dielectric 8",
+                "In8.Cu",
+                "dielectric 9",
+                "B.Cu"
+            ]
+        );
+        let total: f64 = rows.iter().map(|r| r.1).sum();
+        assert!((total - 1.6168).abs() < 1e-9, "{total}");
+        assert_eq!(kicad_pcb(&board).matches("(zone").count(), 2);
+    }
+
+    #[test]
     fn a_four_layer_stackup_is_the_one_the_process_states() {
         let pcb = parsed(&four());
         let stackup = pcb.find("setup").unwrap().find("stackup").unwrap();

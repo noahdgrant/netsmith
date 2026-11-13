@@ -432,9 +432,43 @@ pub(crate) fn six_layer_process() -> Process {
     process_of(&source)
 }
 
+/// ACME's `EightLayer` or `TenLayer` (`layers` 8 or 10, ADR 0112) with GND on its first inner
+/// layer, 3V3 on its last and signal layers between them.
+#[cfg(test)]
+pub(crate) fn acme_process(layers: u32) -> Process {
+    let inner = layers - 2;
+    let body: String = (1..=inner)
+        .map(|n| match n {
+            1 => format!("        .inner{n}.net &= \"GND\"\n"),
+            n if n == inner => format!("        .inner{n}.net &= \"3V3\"\n"),
+            _ => format!("        .inner{n}.use &= \"signal\"\n"),
+        })
+        .collect();
+    let name = if layers == 8 {
+        "EightLayer"
+    } else {
+        "TenLayer"
+    };
+    let source = format!(
+        "import std::mfg::acme::{name}\nimport std::parts::passive::Resistor\nboard T {{\n    .process: {name} {{\n{body}    }}\n    .r: Resistor {{\n        .a.net &= \"GND\"\n        .b.net &= \"3V3\"\n    }}\n}}\n"
+    );
+    process_of(&source)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn eight_and_ten_layer_processes_are_routed_on_the_outer_layers() {
+        for layers in [8, 10] {
+            let p = acme_process(layers);
+            assert_eq!(p.stackup.layers, layers);
+            let r = Rules::for_process(&p).unwrap_or_else(|e| panic!("{layers}: {e}"));
+            assert_eq!(r.plane_clearance, 0.3);
+            assert_eq!(r.min_track_width, 0.09);
+        }
+    }
 
     #[test]
     fn a_six_layer_process_with_signal_layers_is_routed_on_the_outer_layers() {

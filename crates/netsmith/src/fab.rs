@@ -2830,7 +2830,7 @@ mod tests {
 
     /// The fields of a process that are not a rule the router and the design rules check keep,
     /// each with the reason (issue #431).
-    const NOT_A_COPPER_RULE: [(&str, &str); 14] = [
+    const NOT_A_COPPER_RULE: [(&str, &str); 18] = [
         (
             "hole_plating",
             "the track width check rates a via for current by it (issue #431); the counts it gives are the router's",
@@ -2847,6 +2847,10 @@ mod tests {
         ("inner2", "a plane or a signal layer, which the board says"),
         ("inner3", "a plane or a signal layer, which the board says"),
         ("inner4", "a plane or a signal layer, which the board says"),
+        ("inner5", "a plane or a signal layer, which the board says"),
+        ("inner6", "a plane or a signal layer, which the board says"),
+        ("inner7", "a plane or a signal layer, which the board says"),
+        ("inner8", "a plane or a signal layer, which the board says"),
         ("fabricator", "a name, for the notes"),
         ("source", "where the numbers are published, for the notes"),
         (
@@ -2865,10 +2869,10 @@ mod tests {
         ),
     ];
 
-    /// The fields declared at the top level of `interface <name>` in `std/mfg/jlcpcb.nsm`, with
-    /// the value its `&=` or `?=` line gives, if any.
+    /// The fields declared at the top level of `interface <name>` in `std/mfg/jlcpcb.nsm` or
+    /// `std/mfg/acme.nsm`, with the value its `&=` or `?=` line gives, if any.
     fn process_fields(name: &str) -> Vec<(String, Option<String>)> {
-        let text = include_str!("../../../std/mfg/jlcpcb.nsm");
+        let (_, text) = std_module(name);
         let start = text
             .find(&format!("interface {name} {{"))
             .expect("the process is in the file");
@@ -2897,15 +2901,30 @@ mod tests {
         fields
     }
 
+    /// The std module that defines the process `name`, and its text.
+    fn std_module(name: &str) -> (&'static str, &'static str) {
+        if matches!(name, "EightLayer" | "TenLayer") {
+            ("acme", include_str!("../../../std/mfg/acme.nsm"))
+        } else {
+            ("jlcpcb", include_str!("../../../std/mfg/jlcpcb.nsm"))
+        }
+    }
+
     /// The process of a board that states each of `narrowings` inside `.process { }`.
     fn process(name: &str, narrowings: &[String]) -> netsmith_core::Process {
         let mut lines: Vec<String> = narrowings.to_vec();
-        let nets = if name == "FourLayer" || name == "SixLayer" {
+        let inner = match name {
+            "FourLayer" => 2,
+            "SixLayer" => 4,
+            "EightLayer" => 6,
+            "TenLayer" => 8,
+            _ => 0,
+        };
+        let nets = if inner > 0 {
             lines.push(".inner1.net &= \"GND\"".into());
             lines.push(".inner2.net &= \"3V3\"".into());
-            if name == "SixLayer" {
-                lines.push(".inner3.use &= \"signal\"".into());
-                lines.push(".inner4.use &= \"signal\"".into());
+            for n in 3..=inner {
+                lines.push(format!(".inner{n}.use &= \"signal\""));
             }
             "        .a.net &= \"GND\"\n        .b.net &= \"3V3\"\n"
         } else {
@@ -2913,8 +2932,9 @@ mod tests {
             ""
         };
         let body: String = lines.iter().map(|l| format!("        {l}\n")).collect();
+        let (module, _) = std_module(name);
         let source = format!(
-            "import std::mfg::jlcpcb::{name}\nimport std::parts::passive::Resistor\nboard T {{\n    .process: {name} {{\n{body}    }}\n    .r: Resistor {{\n{nets}    }}\n}}\n"
+            "import std::mfg::{module}::{name}\nimport std::parts::passive::Resistor\nboard T {{\n    .process: {name} {{\n{body}    }}\n    .r: Resistor {{\n{nets}    }}\n}}\n"
         );
         crate::build_with(
             "t.nsm",
@@ -2958,7 +2978,13 @@ mod tests {
     /// a rule is listed with its reason (issue #431).
     #[test]
     fn every_rule_a_process_states_reaches_the_router_and_the_check() {
-        for name in ["TwoLayer", "FourLayer", "SixLayer"] {
+        for name in [
+            "TwoLayer",
+            "FourLayer",
+            "SixLayer",
+            "EightLayer",
+            "TenLayer",
+        ] {
             let base = what_is_kept(&process(name, &[])).unwrap();
             for (field, value) in process_fields(name) {
                 if NOT_A_COPPER_RULE.iter().any(|(f, _)| *f == field) {

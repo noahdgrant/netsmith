@@ -65,6 +65,30 @@ fn an_order_without_kicad_is_made_and_its_boards_pass_the_check() {
 }
 
 #[test]
+fn the_program_refuses_to_order_a_board_of_a_fictional_fabricator() {
+    let root = project("fictional", "\n[order.big.boards]\nTenLayerExample = 1\n");
+    fs::write(
+        root.join("src/ten.nsm"),
+        include_str!("../../../examples/ten_layer.nsm"),
+    )
+    .unwrap();
+    let manifest = fs::read_to_string(root.join("netsmith.toml"))
+        .unwrap()
+        .replace("\"src/two.nsm\"]", "\"src/two.nsm\", \"src/ten.nsm\"]");
+    fs::write(root.join("netsmith.toml"), manifest).unwrap();
+    let refused = netsmith(&root, &["fab", "--order", "big"]);
+    assert!(!refused.status.success());
+    let said = String::from_utf8_lossy(&refused.stderr);
+    assert!(
+        said.contains(
+            "TenLayerExample is made by ACME's `TenLayer`, and ACME is a fictional fabricator"
+        ) && said.contains("cannot be ordered"),
+        "{said}"
+    );
+    assert!(!root.join("fab/orders/big").exists());
+}
+
+#[test]
 fn the_program_lists_the_orders_and_refuses_an_unknown_one() {
     let root = project("cli", ORDERS);
     let listed = netsmith(&root, &["fab", "--order"]);
