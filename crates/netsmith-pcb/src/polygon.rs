@@ -10,10 +10,10 @@
 //! itself ([`Polygon::depth`], [`Polygon::box_depth`]); `Edge.Cuts` (and so the Gerbers, which
 //! are plotted from it) and the editor's sheet draw its pieces; the placer keeps courtyards
 //! out of the part of the bounding box that is outside the polygon as boxes
-//! ([`Polygon::outside_boxes`]), as it keeps them out of cutouts. The router does not know the
-//! polygon: it routes inside the bounding box with its rounded rectangle (owner, 2026-11-12;
-//! routing to the polygon's own edge is issue #495), and the design rules check, which reads
-//! `Edge.Cuts`, holds the copper's distance from the real edge.
+//! ([`Polygon::outside_boxes`]), as it keeps them out of cutouts. The router closes the cells
+//! of its grid outside the polygon ([`Polygon::contains`]) and keeps its copper from the
+//! polygon's straight pieces ([`Polygon::segments`]) (issue #495), and the design rules check,
+//! which reads `Edge.Cuts`, holds the copper's distance from the real edge.
 
 use crate::geometry::{Pt, Rect};
 use crate::shape::{Edge, RoundRect};

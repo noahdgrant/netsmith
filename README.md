@@ -163,9 +163,8 @@ netsmith analyzes a worst-case DC operating point of the picked parts: every vol
 - netsmith writes its own Gerbers, drill and placement files, and JLCPCB has not yet taken
   them (#12, #61).
 - A board outline is a rectangle with equal rounded corners or a `polygon` of corners, fillets
-  and arcs; the router routes inside a polygon's bounding box (#495), and a cutout is a rounded
-  rectangle, a slot or a circle (#57). A panel repeats one board
-  on a V-cut grid (#62).
+  and arcs, and a cutout is a rounded rectangle, a slot or a circle (#57). A panel repeats
+  one board on a V-cut grid (#62).
 - The placer and router can leave a tight board unrouted (#3, #58).
 - Physical intent (the outline, cutouts, holes, keepouts and where parts must be) is in a file of
   its own beside a board, `<stem>.physical.nsm`, and the same lines in the board are an error

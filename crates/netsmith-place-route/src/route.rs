@@ -8,6 +8,13 @@
 //! the clearance round it, stays off every pad, track and via of other nets and off the
 //! board edge. Every size and space comes from the board's [`Rules`].
 //!
+//! The board edge is [`Board::edge`]: the outline's rounded rectangle, or its polygon (issue
+//! #495). The grid lies over the outline's bounding box, and a cell outside a polygon (in a
+//! notch, past an arc) is closed to tracks and vias; the edge's lines and arcs, as short
+//! straight pieces, are obstacles at the copper to edge space, as each cutout's edge is. The
+//! coarse plan, the arcs and the clean-up take the edge from these, and the meanders and
+//! teardrops from `Edge.Cuts`, so all of them keep to the polygon.
+//!
 //! No track bends by more than 45 degrees (issue #415). The first pass of each try, which gives
 //! most lines the copper they keep, searches in eight directions: a state remembers the
 //! direction it came in, a turn of 45 degrees costs [`TURN`] (or [`Costs::turn`] of the options)
@@ -1184,10 +1191,13 @@ impl Base {
     fn new(board: &Board, grid: &Grid, fixed: &Obstacles, reach: Reach) -> Base {
         let mut counts = Counts::new(Window::full(grid));
         let (outline, rules) = (&board.outline, &board.rules);
+        // The grid lies over the outline's bounding box; a cell outside a polygon outline
+        // (in a notch, past an arc) is closed to everything, as a cell off the box is.
+        let polygon = board.polygon.as_ref();
         for j in 0..grid.ny {
             for i in 0..grid.nx {
                 let p = grid.centre(i, j);
-                if !outline.contains(&Rect::new(p, p)) {
+                if !outline.contains(&Rect::new(p, p)) || polygon.is_some_and(|s| !s.contains(p)) {
                     let at = counts.window.index(i, j);
                     counts.track[FRONT][at] += 1;
                     counts.track[BACK][at] += 1;
@@ -2312,10 +2322,15 @@ pub(crate) fn initial_obstacles(board: &Board) -> Obstacles {
             via_keepouts.push((Form::Rect(k.rect), rules.via_diameter / 2.0 + PITCH / 2.0));
         }
     }
-    // The board edge: the outline, with its rounded corners, and the edge of each cutout.
-    let edges = std::iter::once(board.outline_shape())
-        .chain(board.cutout_shapes().into_iter().map(|(_, shape)| shape));
-    for (from, to) in edges.flat_map(|shape| shape.segments()) {
+    // The board edge: the outline (its rounded rectangle, or its polygon's lines and arcs as
+    // short straight pieces) and the edge of each cutout.
+    let edges = board.edge().segments().into_iter().chain(
+        board
+            .cutout_shapes()
+            .into_iter()
+            .flat_map(|(_, shape)| shape.segments()),
+    );
+    for (from, to) in edges {
         list.push(Obstacle {
             net: None,
             layers: [true, true],
