@@ -364,11 +364,26 @@ pub(crate) fn case_models(
             }
         };
         let (offset, rotation) = placement_of(model, id, &path, errors);
+        let mut figures = netsmith_core::CaseFigures::default();
+        for (slot, name) in [
+            (&mut figures.clearance, "clearance"),
+            (&mut figures.reach, "reach"),
+            (&mut figures.boss_gap, "boss_gap"),
+        ] {
+            match exact(model, id, name, errors) {
+                Some(v) if v < 0.0 => errors.push(format!(
+                    "`{path}.{name}` is {v}mm, and a gap is not negative: state it with `&= 0mm` or more"
+                )),
+                Some(v) => *slot = v,
+                None => {}
+            }
+        }
         found.push(CaseModel {
             name: path,
             file,
             offset,
             rotation,
+            figures,
             source: String::new(),
             stated_in: Vec::new(),
             resolved: None,

@@ -72,6 +72,85 @@ pub struct Report {
     /// there or cannot be read (the part keeps its generated shape), a model whose top is
     /// above its part's height. The command prints each as a `warning:` line too.
     pub warnings: Vec<String>,
+    /// The board's case models (ADR 0109), by name: each file, whether it was read, and its
+    /// solids.
+    pub case_models: Vec<CaseModelReport>,
+    /// What the fit check found, in the check's order (`netsmith_3d::case::check`).
+    pub case_findings: Vec<CaseFindingReport>,
+}
+
+/// A case model of the board (ADR 0109).
+#[derive(Debug, Serialize)]
+pub struct CaseModelReport {
+    pub name: String,
+    /// As the design states it, relative to the physical file.
+    pub file: String,
+    /// `read`, `missing` (the file is not there) or `unreadable` (netsmith's reader cannot read
+    /// it).
+    pub status: &'static str,
+    /// Of the file's bytes, in hex; `null` when it was not read.
+    pub sha256: Option<String>,
+    /// The placement, in the scene's frame: degrees about x, then y, then z, then mm.
+    pub rotation: [f64; 3],
+    pub offset: [f64; 3],
+    /// The check's figures, in mm (`.clearance`, `.reach`, `.boss_gap`).
+    pub clearance: f64,
+    pub reach: f64,
+    pub boss_gap: f64,
+    pub triangles: usize,
+    pub solids: Vec<CaseSolidReport>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct CaseSolidReport {
+    pub name: String,
+    pub triangles: usize,
+    /// Whether its shell is closed: one that is not gets no test of a body wholly inside it.
+    pub closed: bool,
+    pub min: [f64; 3],
+    pub max: [f64; 3],
+}
+
+/// One finding of the fit check.
+#[derive(Debug, Serialize)]
+pub struct CaseFindingReport {
+    /// `case_collision`, `case_clearance`, `case_reach`, `case_boss` or `case_unchecked`.
+    pub kind: &'static str,
+    /// `error` (stops `fab`, never waived) or `warning`.
+    pub severity: &'static str,
+    /// Whether it is an error when constraints are strict (`case_unchecked`).
+    pub strict_error: bool,
+    /// The case model (several joined by `, ` for a `case_boss`).
+    pub case: String,
+    /// The case solid; empty when it is about no one solid.
+    pub solid: String,
+    /// `part`, `board`, `solid` or `model`.
+    pub subject: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub refdes: Option<String>,
+    /// Where to look, in the scene's frame.
+    pub at: [f64; 3],
+    /// How far the case is inside the body or the board (`case_collision`, a standard height's
+    /// `case_unchecked`); `null` there for one wholly inside a solid.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub depth: Option<Option<f64>>,
+    /// The gap to the surface (`case_clearance`) or the most a solid may be from a hole's ring
+    /// (`case_boss`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub gap: Option<f64>,
+    /// The figure it is measured against (`.clearance`, `.reach`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub limit: Option<f64>,
+    /// How far out from a connector's face the case material is (`case_reach`, blocked), or how
+    /// far inside the wall's outer face the face stands (`case_reach`, too deep).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub distance: Option<f64>,
+    /// The board edge a `case_reach` connector stands at.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub edge: Option<&'static str>,
+    pub message: String,
 }
 
 /// The STEP model a part is drawn from (ADR 0108).
@@ -597,6 +676,7 @@ pub fn report(
         }
     }
     let coverage = scene.coverage();
+    let fit = crate::case_fit::check(&built.design, scene);
     Ok(Report {
         schema: SCHEMA,
         units: "mm",
@@ -644,7 +724,113 @@ pub fn report(
             bottom: tallest(scene.tallest(Side::Back), None),
         },
         warnings: scene.warnings.clone(),
+        case_models: case_models_report(built, &fit),
+        case_findings: fit.findings.iter().map(case_finding_report).collect(),
     })
+}
+
+/// Each case model of the design, read or not.
+fn case_models_report(built: &Built, fit: &crate::case_fit::CaseFit) -> Vec<CaseModelReport> {
+    use netsmith_3d::case::Why;
+    built
+        .design
+        .features
+        .case_models
+        .iter()
+        .map(|c| {
+            let read = fit.cases.iter().find(|p| p.name == c.name);
+            let status = match read {
+                Some(_) => "read",
+                None if fit
+                    .findings
+                    .iter()
+                    .any(|f| f.case == c.name && matches!(f.why, Why::Unreadable { .. })) =>
+                {
+                    "unreadable"
+                }
+                None => "missing",
+            };
+            CaseModelReport {
+                name: c.name.clone(),
+                file: c.file.clone(),
+                status,
+                sha256: read.map(|p| p.sha256.clone()),
+                rotation: c.rotation,
+                offset: c.offset,
+                clearance: c.figures.clearance,
+                reach: c.figures.reach,
+                boss_gap: c.figures.boss_gap,
+                triangles: read.map_or(0, |p| p.triangle_count()),
+                solids: read
+                    .map(|p| {
+                        p.solids
+                            .iter()
+                            .map(|s| CaseSolidReport {
+                                name: s.name.clone(),
+                                triangles: s.triangles.len(),
+                                closed: s.closed,
+                                min: s.bounds.min,
+                                max: s.bounds.max,
+                            })
+                            .collect()
+                    })
+                    .unwrap_or_default(),
+            }
+        })
+        .collect()
+}
+
+fn case_finding_report(f: &netsmith_3d::case::FitFinding) -> CaseFindingReport {
+    use netsmith_3d::case::{Subject, Weight, Why};
+    let (path, refdes, subject) = match &f.subject {
+        Subject::Part { path, refdes } => (Some(path.clone()), Some(refdes.clone()), "part"),
+        Subject::Board => (None, None, "board"),
+        Subject::Solid => (None, None, "solid"),
+        Subject::Model => (None, None, "model"),
+    };
+    let (mut depth, mut gap, mut limit, mut distance, mut edge) = (None, None, None, None, None);
+    match &f.why {
+        Why::Collision { depth: d, .. } | Why::Standard { depth: d, .. } => depth = Some(*d),
+        Why::Clearance { gap: g, least } => {
+            gap = Some(*g);
+            limit = Some(*least);
+        }
+        Why::ReachBlocked {
+            edge: e,
+            distance: d,
+        } => {
+            distance = Some(*d);
+            edge = Some(*e);
+        }
+        Why::ReachDeep {
+            edge: e,
+            depth: d,
+            most,
+        } => {
+            distance = Some(*d);
+            limit = Some(*most);
+            edge = Some(*e);
+        }
+        Why::Boss { gap: g } => gap = Some(*g),
+        _ => {}
+    }
+    CaseFindingReport {
+        kind: f.kind.word(),
+        severity: f.severity(false),
+        strict_error: f.weight() == Weight::Unchecked,
+        case: f.case.clone(),
+        solid: f.solid.clone(),
+        subject,
+        path,
+        refdes,
+        at: f.at,
+        depth,
+        gap,
+        limit,
+        distance,
+        edge,
+        message: f.to_string(),
+    }
 }
 
 /// An area to 1e-4 mm², with no negative zero.
@@ -795,6 +981,21 @@ impl Report {
                     p.refdes, p.path, m.file, m.top
                 );
             }
+        }
+        for c in &self.case_models {
+            text += &match &c.sha256 {
+                Some(_) => format!(
+                    "case model `{}` (`{}`): {} solid(s), {} triangles\n",
+                    c.name,
+                    c.file,
+                    c.solids.len(),
+                    c.triangles
+                ),
+                None => format!("case model `{}` (`{}`): {}\n", c.name, c.file, c.status),
+            };
+        }
+        for f in &self.case_findings {
+            text += &format!("{}: {}: {}\n", f.severity, f.kind, f.message);
         }
         text
     }

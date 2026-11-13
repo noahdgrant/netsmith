@@ -398,7 +398,7 @@ fn cased(circuit: &str, case: &str) -> Result<Design, Vec<String>> {
 fn a_case_model_is_carried_with_its_offset_and_rotation() {
     let d = cased(
         "",
-        "        .shell: CaseModel {\n            .file &= \"case/box.step\"\n            .x &= -2mm\n            .z &= -1.6mm\n            .rx &= 180\n        }\n        .lid: CaseModel {\n            .file &= \"case/lid.step\"\n            .rz &= 90\n        }\n",
+        "        .shell: CaseModel {\n            .file &= \"case/box.step\"\n            .x &= -2mm\n            .z &= -1.6mm\n            .rx &= 180\n            .clearance &= 0.3mm\n        }\n        .lid: CaseModel {\n            .file &= \"case/lid.step\"\n            .rz &= 90\n        }\n",
     )
     .unwrap();
     assert_eq!(
@@ -409,6 +409,12 @@ fn a_case_model_is_carried_with_its_offset_and_rotation() {
                 file: "case/lid.step".into(),
                 offset: [0.0, 0.0, 0.0],
                 rotation: [0.0, 0.0, 90.0],
+                // std's figures, as `CaseModel` offers them with `?=`.
+                figures: netsmith_core::CaseFigures {
+                    clearance: 0.5,
+                    reach: 1.5,
+                    boss_gap: 0.5,
+                },
                 source: String::new(),
                 stated_in: Vec::new(),
                 resolved: None,
@@ -418,6 +424,10 @@ fn a_case_model_is_carried_with_its_offset_and_rotation() {
                 file: "case/box.step".into(),
                 offset: [-2.0, 0.0, -1.6],
                 rotation: [180.0, 0.0, 0.0],
+                figures: netsmith_core::CaseFigures {
+                    clearance: 0.3,
+                    ..netsmith_core::CaseFigures::default()
+                },
                 source: String::new(),
                 stated_in: Vec::new(),
                 resolved: None,
@@ -427,6 +437,22 @@ fn a_case_model_is_carried_with_its_offset_and_rotation() {
     // A case model is a drawing and a check: it gives the board no outline, hole or limit.
     assert!(d.features.outline.is_none());
     assert!(d.features.cutouts.is_empty() && d.features.keepouts.is_empty());
+}
+
+#[test]
+fn a_case_models_figure_is_one_length_and_not_negative() {
+    let errors = cased(
+        "",
+        "        .shell: CaseModel {\n            .file &= \"case/box.step\"\n            .clearance &= -1mm\n            .reach &= 1mm..2mm\n        }\n",
+    )
+    .unwrap_err()
+    .join("\n");
+    assert!(
+        errors.contains("`shell.clearance` is -1mm, and a gap is not negative"),
+        "{errors}"
+    );
+    assert!(errors.contains("`shell.reach` is"), "{errors}");
+    assert!(errors.contains("a range"), "{errors}");
 }
 
 #[test]

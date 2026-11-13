@@ -1,0 +1,35 @@
+import std::parts::mechanical::MountingHole
+import std::pcb::{CaseModel, Outline}
+
+physical for Cased {
+    case {
+        .outline: Outline {
+            .width &= 40mm
+            .height &= 24mm
+        }
+        .hole1: MountingHole
+        .hole2: MountingHole
+
+        // The box: a floor, four walls 0.3 mm off the board's edges and a boss under `hole1`,
+        // drawn with the board's bottom-left corner at (2.3, 2.3) and the floor's top at z = 0.
+        .base: CaseModel {
+            .file &= "case_fit/base.step"
+            .x &= -2.3mm
+            .y &= -2.3mm
+            .z &= -6mm
+            // The maker asks for 1 mm round every part.
+            .clearance &= 1mm
+        }
+        // The lid, drawn with its underside at z = 0: 8 mm above the board's top face.
+        .lid: CaseModel {
+            .file &= "case_fit/lid.step"
+            .x &= -2.3mm
+            .y &= -2.3mm
+            .z &= 8mm
+        }
+    }
+
+    // Datasheet heights, above the face of the board.
+    .tall.height &= 9mm
+    .edge.height &= 2.5mm
+}

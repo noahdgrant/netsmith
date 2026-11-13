@@ -2,6 +2,7 @@
 
 pub mod board3d;
 mod bus_roles;
+pub mod case_fit;
 pub mod compare;
 pub mod constraints;
 pub mod dxf;

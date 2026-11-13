@@ -10,8 +10,9 @@
 //! warning, and an error when constraints are strict.
 //!
 //! [`locate`] settles a part model's place; [`uses`] reads it ([`read`], once per change of its
-//! bytes) for the scene to draw. The model never gives the part a height, and a case model
-//! never gives the board an outline, a hole or a height limit.
+//! bytes) for the scene to draw, and [`crate::case_fit`] reads a case model the same way. The
+//! model never gives the part a height, and a case model never gives the board an outline, a
+//! hole or a height limit.
 
 use std::collections::BTreeMap;
 use std::path::{Component, Path, PathBuf};

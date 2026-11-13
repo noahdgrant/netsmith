@@ -878,6 +878,37 @@ fn fab_board(
         for pass in board.standard_passes() {
             say(format!("{}: note: {pass}", built.label()));
         }
+        // The board's fit in its case models (ADR 0109), measured on the placement before
+        // routing: a collision stops `fab` whatever the flags say, an unchecked fit does when
+        // constraints are strict, the rest are warnings. A file that is not there was said by
+        // `models::locate` above; it is in the notes too.
+        let fit = if built.design.features.case_models.is_empty() {
+            crate::case_fit::CaseFit::default()
+        } else {
+            timings::stage("fab.case", &label, || {
+                crate::case_fit::check(&built.design, &crate::board3d::scene(built, &board))
+            })
+        };
+        let refused: Vec<String> = fit
+            .findings
+            .iter()
+            .filter(|f| f.severity(options.strict_heights) == "error")
+            .map(|f| fail(case_refusal(f)))
+            .collect();
+        if !refused.is_empty() {
+            return Err(refused.concat());
+        }
+        for f in fit
+            .findings
+            .iter()
+            .filter(|f| !matches!(f.why, netsmith_3d::case::Why::Missing { .. }))
+        {
+            say(format!(
+                "{}: warning: {}: {f}",
+                built.label(),
+                f.kind.word()
+            ));
+        }
         // A trim is a step a person does with a cutter. The statement stays a warning for as
         // long as it stands (ADR 0045 section 15).
         for trim in board.trims() {
@@ -1044,6 +1075,7 @@ fn fab_board(
             &built.catalog_heights,
             &board,
         ));
+        extras.extend(fit.notes());
         extras.extend(
             board
                 .trims()
@@ -1342,6 +1374,23 @@ fn model_notes(scene: &netsmith_3d::scene3d::Scene) -> Vec<String> {
         "note: drawn from a STEP model in the .glb and the .step (never measured: heights are the parts' own): {}; share those two files only as the models' licenses allow",
         drawn.join(", ")
     )]
+}
+
+/// Why a finding of the case fit check stops `fab` (ADR 0109), and what to do.
+fn case_refusal(f: &netsmith_3d::case::FitFinding) -> String {
+    use netsmith_3d::case::{Weight, Why};
+    let kind = f.kind.word();
+    match (f.weight(), &f.why) {
+        (Weight::Error, Why::Unreadable { .. }) => format!(
+            "{kind}: {f}; a case model netsmith cannot read stops `fab`, and `--allow-drc-violations` does not waive it"
+        ),
+        (Weight::Error, _) => format!(
+            "{kind}: {f}; a collision with the case stops `fab`, and neither `--allow-drc-violations` nor `--constraints warn` waives it: move or lower the part, or correct the case model's placement (`.x`, `.y`, `.z`, `.rx`, `.ry`, `.rz`)"
+        ),
+        _ => format!(
+            "{kind}: {f}; this is an error because constraints are strict (`--constraints error` or `constraints = \"error\"`), and `--allow-drc-violations` does not waive it: state the height, close the shell, or run with `--constraints warn`"
+        ),
+    }
 }
 
 /// A board the router left connections of: the board as it was placed, for the pin optimizer,

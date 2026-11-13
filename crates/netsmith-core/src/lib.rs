@@ -468,6 +468,11 @@ pub struct CaseModel {
     pub offset: [f64; 3],
     /// The rotation in degrees about x, then y, then z, applied before the offset.
     pub rotation: [f64; 3],
+    /// The fit check's figures, in mm (`.clearance`, `.reach`, `.boss_gap`; std's defaults
+    /// unless the board states them): the least gap from a body to a case surface, how far
+    /// inside a wall's outer face a connector at the edge may stand, and how far from a
+    /// mounting hole's ring a case solid may be and still hold it.
+    pub figures: CaseFigures,
     /// The lines that state the file, separated by commas. Filled by the caller that knows the
     /// source files; empty otherwise.
     pub source: String,
@@ -477,6 +482,25 @@ pub struct CaseModel {
     /// The file on disk, inside the project. Filled by the caller that knows where the files
     /// are; `None` otherwise, and when the file is not there, so that the fit is not checked.
     pub resolved: Option<std::path::PathBuf>,
+}
+
+/// The figures of a case model's fit check (ADR 0109), in mm.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct CaseFigures {
+    pub clearance: f64,
+    pub reach: f64,
+    pub boss_gap: f64,
+}
+
+impl Default for CaseFigures {
+    /// std's defaults (`std::pcb::CaseModel`).
+    fn default() -> CaseFigures {
+        CaseFigures {
+            clearance: 0.5,
+            reach: 1.5,
+            boss_gap: 0.5,
+        }
+    }
 }
 
 /// A line of silkscreen text: a `Label` part. The part's value is the text.

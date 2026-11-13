@@ -14,6 +14,7 @@
 //! `netsmith-pcb`; this crate depends on it, never the reverse (issue #518), so that a change to
 //! the 3D code runs only its own tests and its dependents', not the placer's and the router's.
 
+pub mod case;
 pub mod gltf;
 pub mod mesh;
 pub mod raster3d;
