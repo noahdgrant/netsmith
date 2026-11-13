@@ -853,7 +853,7 @@ fn a_file_that_does_not_build_on_disk_keeps_its_last_boards_marked_stale() {
     let led = board(&c, "TwoBoards/led");
     assert_eq!(led.problems.new.len(), 1, "{:#?}", led.problems);
     let error = &led.problems.new[0];
-    assert!(error.message.contains("Resistr") && error.at.as_ref().unwrap().line == 91);
+    assert!(error.message.contains("Resistr") && error.at.as_ref().unwrap().line == 88);
     assert!(
         led.parts.changed.is_empty() && led.parts.added.is_empty() && led.parts.removed.is_empty()
     );

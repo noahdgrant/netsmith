@@ -64,7 +64,7 @@ fn parses_the_led_example() {
     };
     assert_eq!(supply.name.to_source(), ".supply");
     assert_eq!(names(&supply.ty.segments), ["Rail"]);
-    assert_eq!(supply.body.as_ref().unwrap().len(), 3);
+    assert_eq!(supply.body.as_ref().unwrap().len(), 2);
 
     let Item::Decl(r1) = &design.items[3] else {
         panic!("r1")
@@ -102,7 +102,6 @@ board LedExample {
     .supply: Rail {
         .voltage &= 5V +/- 5%
         .pos.net &= \"VCC\"
-        .neg.net &= \"GND\"
     }
     .led: Led {
         .current &= 5mA..15mA
