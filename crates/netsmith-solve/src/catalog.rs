@@ -435,16 +435,30 @@ impl Catalogs {
     /// error names the file and line of the cell. If the project states an E-series, the
     /// generic parts of that series come after the rows (ADR 0047), so a value with a row is
     /// picked as before and only a value without one is new.
+    ///
+    /// `offered` is the series the part's definition offers (its `#[series(...)]`, ADR 0123):
+    /// the generic parts are of the project's series when it is offered, else of the finest
+    /// offered series coarser than it ([`Series::within`]). A catalog of a project's own that
+    /// has no file and whose part offers a series is the generic parts alone; a standard
+    /// catalog with no file is none.
     pub fn resolve(
         &self,
         name: &str,
         columns: &[(String, FieldKind)],
         optional: &[String],
+        offered: &[Series],
     ) -> Option<Result<Catalog, String>> {
-        let mut found = self.identity(name, columns, optional)?;
-        if let (Ok(catalog), Some(series)) = (&mut found, self.series)
-            && let Some(generic) = crate::generic::candidates(series, name, columns)
-        {
+        let generic = crate::generic::candidates(self.series, offered, name, columns);
+        let own = crate::standard::Standard::of_catalog(name).is_none();
+        let mut found = match (self.identity(name, columns, optional), &generic) {
+            (Some(found), _) => found,
+            (None, Some(_)) if own => Ok(Catalog {
+                name: name.to_string(),
+                candidates: Vec::new(),
+            }),
+            (None, _) => return None,
+        };
+        if let (Ok(catalog), Some(generic)) = (&mut found, generic) {
             catalog.candidates.extend(generic);
         }
         Some(found)

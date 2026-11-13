@@ -188,6 +188,48 @@ impl Parser {
         }
     }
 
+    /// `#[name]` and `#[name(arg, ...)]` lines, each on its own line or before the next on the
+    /// same one (ADR 0123). An argument is a name or a text.
+    fn attributes(&mut self) -> Res<Vec<Attribute>> {
+        let mut attrs = Vec::new();
+        while self.at(&Tok::HashBracket) {
+            let start = self.bump().span.start;
+            let name = self.ident("the name of an attribute after `#[`, such as `#[bank]`")?;
+            let mut args = Vec::new();
+            if self.eat(&Tok::LParen) {
+                loop {
+                    self.skip_newlines();
+                    if self.eat(&Tok::RParen) {
+                        break;
+                    }
+                    let t = self.peek().clone();
+                    match t.tok {
+                        Tok::Str(text) => {
+                            self.bump();
+                            args.push(AttrArg::Text { text, span: t.span });
+                        }
+                        _ => args.push(AttrArg::Name(
+                            self.ident("a name or a text as an argument of the attribute")?,
+                        )),
+                    }
+                    self.skip_newlines();
+                    if !self.eat(&Tok::Comma) {
+                        self.expect(&Tok::RParen, "`,` or `)` in the attribute's arguments")?;
+                        break;
+                    }
+                }
+            }
+            self.expect(&Tok::RBracket, "`]` to close the attribute")?;
+            attrs.push(Attribute {
+                name,
+                args,
+                span: self.span_from(start),
+            });
+            self.skip_separators();
+        }
+        Ok(attrs)
+    }
+
     fn misplaced_inner_doc(&mut self) -> Option<ParseError> {
         let t = self.peek().clone();
         matches!(t.tok, Tok::DocInner(_)).then(|| {
@@ -211,14 +253,25 @@ impl Parser {
                 return Err(e);
             }
             let docs = self.outer_docs();
+            let attrs = self.attributes()?;
             let t = self.peek().clone();
+            if let Some(first) = attrs.first()
+                && !matches!(&t.tok, Tok::Ident(k) if DefKind::from_keyword(k).is_some())
+            {
+                return Err(ParseError::new(
+                    first.span,
+                    "an attribute belongs on a definition or a member declaration, and nothing follows this one",
+                ));
+            }
             match &t.tok {
                 Tok::Eof if docs.is_empty() => return Ok(file),
                 Tok::Ident(k) if k == "import" && docs.is_empty() => {
                     file.imports.push(self.import()?)
                 }
                 Tok::Ident(k) if DefKind::from_keyword(k).is_some() => {
-                    file.definitions.push(self.definition(docs)?)
+                    let mut def = self.definition(docs)?;
+                    def.attrs = attrs;
+                    file.definitions.push(def)
                 }
                 Tok::Ident(k)
                     if k == "physical"
@@ -326,6 +379,7 @@ impl Parser {
         };
         Ok(Definition {
             docs: docs.lines,
+            attrs: Vec::new(),
             inner_docs,
             kind,
             name,
@@ -409,6 +463,15 @@ impl Parser {
                 return Err(e);
             }
             let docs = self.outer_docs();
+            let attrs = self.attributes()?;
+            if let Some(first) = attrs.first()
+                && matches!(self.peek().tok, Tok::RBrace | Tok::Eof)
+            {
+                return Err(ParseError::new(
+                    first.span,
+                    "this attribute is not followed by a declaration",
+                ));
+            }
             match self.peek().tok {
                 Tok::RBrace | Tok::Eof if !docs.is_empty() => {
                     return Err(ParseError::new(
@@ -423,7 +486,19 @@ impl Parser {
                 Tok::Eof => return Err(ParseError::new(open, "this `{` is never closed")),
                 _ => {}
             }
-            items.push(self.item(docs)?);
+            let mut item = self.item(docs)?;
+            if let Some(first) = attrs.first() {
+                match &mut item {
+                    Item::Decl(d) => d.attrs = attrs,
+                    _ => {
+                        return Err(ParseError::new(
+                            first.span,
+                            "an attribute belongs on a member declaration (`#[role(bias)] .bias: Voltage`), not on a statement",
+                        ));
+                    }
+                }
+            }
+            items.push(item);
             self.end_statement(true)?;
         }
     }
@@ -551,12 +626,13 @@ impl Parser {
                             "a group is declared by one name of its own, such as `.{}: {} x {}`, not by a path into a member",
                             name.segments.last().expect("a path has a segment").name,
                             count.n,
-                            ty.segments.last().map_or("Capacitor", |s| s.name.as_str())
+                            ty.segments.last().map_or("Kind", |s| s.name.as_str())
                         ),
                     ));
                 }
                 Ok(Item::Decl(Decl {
                     docs,
+                    attrs: Vec::new(),
                     name,
                     ty,
                     count,
@@ -2059,6 +2135,7 @@ fn describe(tok: &Tok) -> String {
         Tok::Slash => symbol("/"),
         Tok::PlusMinus => symbol("+/-"),
         Tok::DocOuter(_) => "a doc comment".into(),
+        Tok::HashBracket => "`#[`".into(),
         Tok::DocInner(_) => "an inner doc comment".into(),
         Tok::Newline => "end of line".into(),
         Tok::Eof => "end of file".into(),

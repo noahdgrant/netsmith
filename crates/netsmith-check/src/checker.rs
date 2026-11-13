@@ -4,6 +4,7 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::rc::Rc;
 
+use netsmith_core::PartClass;
 use netsmith_lang::ast::{Decl, DefKind, Definition, Import, Item, Path, Physical, TypePath};
 use netsmith_lang::{Span, parse};
 use netsmith_quantity::Dimension;
@@ -468,6 +469,7 @@ impl<'a> Checker<'a> {
         }
         let defs: Vec<Rc<Definition>> = file.definitions.into_iter().map(Rc::new).collect();
 
+        self.check_attributes(source, &defs);
         let id = self.modules.len();
         let mut scope = HashMap::new();
         for (i, def) in defs.iter().enumerate() {
@@ -1053,6 +1055,7 @@ impl<'a> Checker<'a> {
             standard: Vec::new(),
             placed_as: placed.as_ref().map(|(_, n)| n.clone()),
             placed_def: placed.map(|(d, _)| d),
+            marks: Default::default(),
         });
         // Every part has a field for who assembles it (ADR 0024): the board narrows it, the
         // catalog row may state a default, and the design stage reads it. It has one for the letters
@@ -1141,11 +1144,14 @@ impl<'a> Checker<'a> {
                     .map(|(g, _)| g.name.name.clone()),
             )
             .collect();
+        let provided: Vec<Rc<Definition>> = generics.iter().map(|(g, _)| g.clone()).collect();
+        self.model.instances[id.0].marks = self.marks_of(def, &provided);
         for (g, gref) in &generics {
             let items = self.generic_items(g, def, kind);
             let before = self.model.instance(id).children.len();
             let saved = self.enter_def(*gref);
             self.declare(&items);
+            self.apply_roles(id, &items);
             self.leave_def(saved);
             let names: Vec<String> = self.model.instance(id).children[before..]
                 .iter()
@@ -1161,6 +1167,7 @@ impl<'a> Checker<'a> {
             self.declare_default_environment(&def.items, def.span);
         }
         self.declare(&def.items);
+        self.apply_roles(id, &def.items);
         for (g, gref) in &generics {
             let items = self.generic_items(g, def, kind);
             let saved = self.enter_def(*gref);
@@ -1312,6 +1319,7 @@ impl<'a> Checker<'a> {
             standard: Vec::new(),
             placed_as: None,
             placed_def: None,
+            marks: Default::default(),
         });
         let module = self.model.instance(owner).kind == InstKind::Module;
         let fields = [
@@ -1638,6 +1646,7 @@ impl<'a> Checker<'a> {
             standard: Vec::new(),
             placed_as: None,
             placed_def: None,
+            marks: Default::default(),
         });
         for field in ["function", "net"] {
             let f = self.model.add_field(pin, field, FieldKind::Text);
@@ -2123,9 +2132,12 @@ impl Checker<'_> {
             (DefKind::Interface, "Cutout") => ("a cutout", true),
             (DefKind::Interface, "CaseModel") => ("a case model", true),
             (DefKind::Interface, "Keepout") => ("a keepout that a board draws", false),
-            (DefKind::Part, "MountingHole") => ("a mounting hole", true),
-            (DefKind::Part, "Fiducial") => ("a fiducial", true),
-            (DefKind::Part, "Label") => ("a label", true),
+            (DefKind::Part, _) => match self.marks_of(def, &[]).class {
+                Some(PartClass::MountingHole) => ("a mounting hole", true),
+                Some(PartClass::Fiducial) => ("a fiducial", true),
+                Some(PartClass::Label) => ("a label", true),
+                _ => return None,
+            },
             _ => return None,
         };
         Some(PhysicalType { noun, in_case })

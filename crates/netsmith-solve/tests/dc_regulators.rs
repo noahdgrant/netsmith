@@ -22,6 +22,7 @@ part Link {
     }
     .resistance: Resistance
     .rated_current: Current
+    #[role(current)]
     .current: Current
     .drop: Voltage
     .drop == .current * .resistance

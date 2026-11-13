@@ -1450,6 +1450,7 @@ mod tests {
     fn part(kind: &str, package: Option<&str>) -> Part {
         Part {
             provides: Vec::new(),
+            class: netsmith_testkit::std_class(kind).and_then(netsmith_core::PartClass::from_word),
             refdes: "X1".into(),
             kind: kind.into(),
             value: "v".into(),

@@ -138,6 +138,7 @@ part Sink {{
         .a passive "A" "1"
         .b passive "B" "2"
     }}
+    #[role(current)]
     .current: Current
     bridge .a ~> .b
 }}
@@ -289,6 +290,7 @@ part Link {
     }
     .resistance: Resistance
     .rated_current: Current
+    #[role(current)]
     .current: Current
     .drop: Voltage
     .drop == .current * .resistance

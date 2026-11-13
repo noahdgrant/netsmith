@@ -293,6 +293,7 @@ fn part(refdes: &str, kind: &str) -> Part {
     let resistor = kind == "Resistor";
     Part {
         provides: Vec::new(),
+        class: netsmith_testkit::std_class(kind).and_then(netsmith_core::PartClass::from_word),
         refdes: refdes.into(),
         kind: kind.into(),
         value: "1k".into(),

@@ -2,6 +2,7 @@
 //! quantities, checks dimensions, and builds a model for the solver.
 
 mod assign;
+mod attrs;
 mod buses;
 mod busnets;
 mod by_name;
@@ -30,6 +31,7 @@ mod support;
 mod unused;
 
 pub use assign::{PartSpace, PinsOutcome, RootPins, SpaceRequest, Unserved};
+pub use attrs::{Marks, MemberRole, SERIES_NAMES};
 pub use busnets::{
     BusEnds, BusGroup, bidirectional_rows, bus_beside, bus_groups, joined_without_role,
     unstated_roles,

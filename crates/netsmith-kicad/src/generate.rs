@@ -625,6 +625,7 @@ mod tests {
             refdes: "U3".into(),
             kind: kind.into(),
             provides: Vec::new(),
+            class: netsmith_testkit::std_class(kind).and_then(netsmith_core::PartClass::from_word),
             value: String::new(),
             package: package.map(str::to_string),
             path: "u".into(),

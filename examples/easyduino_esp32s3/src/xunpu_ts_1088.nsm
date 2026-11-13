@@ -19,6 +19,7 @@ part XunpuTs1088 {
     .rated_current: Current
     .rated_voltage: Voltage
     /// Through-current, a to b, while pressed.
+    #[role(current)]
     .current: Current
 
     .current <= .rated_current

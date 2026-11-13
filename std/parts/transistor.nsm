@@ -47,6 +47,7 @@
 /// guarantee at 5 V. The figure is at 25 C and is not derated. The name `.on_resistance_vgs`
 /// (a magnitude as `.gate_source_voltage` is), the relation being the part's, and the solver
 /// rule above are accepted as built (the owner, 2026-11-11).
+#[class(transistor)]
 generic NMosfet {
     .designator &= "Q"
 
@@ -70,6 +71,7 @@ generic NMosfet {
     /// The gate-source voltage while on. A design states it.
     .gate_source_voltage: Voltage
     /// Through-current, drain to source.
+    #[role(current)]
     .current: Current
 
     .drain_source_voltage <= .max_drain_source_voltage
@@ -103,6 +105,7 @@ generic NMosfet {
 /// and stated every rating by hand now has requirements that a row or a provider must meet; no
 /// example and no test of the repository did. `crates/netsmith-check/tests/std_generics.rs` lists
 /// the generics and the parts that stay parts. A first real row, with its source, is open.
+#[class(transistor)]
 generic PMosfet {
     .designator &= "Q"
 
@@ -126,6 +129,7 @@ generic PMosfet {
     /// The magnitude of the gate-source voltage while on. A design states it.
     .gate_source_voltage: Voltage
     /// Through-current, source to drain.
+    #[role(current)]
     .current: Current
 
     .drain_source_voltage <= .max_drain_source_voltage

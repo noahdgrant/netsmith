@@ -120,6 +120,7 @@ fn body(path: &str, min: [f64; 2], max: [f64; 2], height: Option<f64>) -> Body {
         path: path.into(),
         refdes: format!("U_{path}"),
         kind: "Thing".into(),
+        class: netsmith_testkit::std_class("Thing").and_then(netsmith_core::PartClass::from_word),
         category: PartCategory::Other,
         side: Side::Front,
         layout_at: (0.0, 0.0),

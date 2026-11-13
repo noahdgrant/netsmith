@@ -34,6 +34,7 @@ const ROW: &str = "(footprint \"Row2\" (version 20241229) (generator \"netsmith-
 fn part(refdes: &str, kind: &str, path: &str) -> Part {
     Part {
         provides: Vec::new(),
+        class: netsmith_testkit::std_class(kind).and_then(netsmith_core::PartClass::from_word),
         refdes: refdes.into(),
         kind: kind.into(),
         value: kind.into(),

@@ -70,6 +70,7 @@ interface Mating {
 /// provides Connector { ... }`, ADR 0068). The schematic and the placer ask a part for this
 /// generic to know that it is a connector, never its name or its designator. It has no pads and
 /// no catalog, so it is no part until a provider stands for it.
+#[class(connector)]
 generic Connector {
     .designator &= "J"
 
@@ -78,6 +79,8 @@ generic Connector {
 }
 
 /// A single-row header with two pins. It is where a board's wires attach.
+#[value("Conn_01x02")]
+#[assembly(hand)]
 part Header1x2 provides Connector {
     pins {
         .p1 passive "P1" "1"
@@ -97,6 +100,7 @@ part Header1x2 provides Connector {
 }
 
 /// A single-row header with 4 pins, `p1` to `p4`, pin N on pad N.
+#[assembly(hand)]
 part Header1x4 provides Connector {
     pins {
         .p1 passive "P1" "1"
@@ -118,6 +122,7 @@ part Header1x4 provides Connector {
 }
 
 /// A single-row header with 8 pins, `p1` to `p8`, pin N on pad N.
+#[assembly(hand)]
 part Header1x8 provides Connector {
     pins {
         .p1 passive "P1" "1"
@@ -143,6 +148,7 @@ part Header1x8 provides Connector {
 }
 
 /// A single-row header with 10 pins, `p1` to `p10`, pin N on pad N.
+#[assembly(hand)]
 part Header1x10 provides Connector {
     pins {
         .p1 passive "P1" "1"
@@ -171,6 +177,7 @@ part Header1x10 provides Connector {
 
 /// A single-row socket with 2 positions, `p1` to `p2`, position N on pad N. It is the
 /// mate of `Header1x2`, a different part on the bill of materials.
+#[assembly(hand)]
 part Socket1x2 provides Connector {
     pins {
         .p1 passive "P1" "1"
@@ -191,6 +198,7 @@ part Socket1x2 provides Connector {
 
 /// A single-row socket with 4 positions, `p1` to `p4`, position N on pad N. It is the
 /// mate of `Header1x4`, a different part on the bill of materials.
+#[assembly(hand)]
 part Socket1x4 provides Connector {
     pins {
         .p1 passive "P1" "1"
@@ -213,6 +221,7 @@ part Socket1x4 provides Connector {
 
 /// A single-row socket with 8 positions, `p1` to `p8`, position N on pad N. It is the
 /// mate of `Header1x8`, a different part on the bill of materials.
+#[assembly(hand)]
 part Socket1x8 provides Connector {
     pins {
         .p1 passive "P1" "1"
@@ -239,6 +248,7 @@ part Socket1x8 provides Connector {
 
 /// A single-row socket with 10 positions, `p1` to `p10`, position N on pad N. It is the
 /// mate of `Header1x10`, a different part on the bill of materials.
+#[assembly(hand)]
 part Socket1x10 provides Connector {
     pins {
         .p1 passive "P1" "1"
@@ -291,6 +301,7 @@ part Header2x3 provides Connector {
 
 /// A two-row header with 10 pins, `p1` to `p10`, pin N on pad N. Which pins are in which
 /// row is the footprint's: the part states only the pads.
+#[assembly(hand)]
 part Header2x5 provides Connector {
     pins {
         .p1 passive "P1" "1"
@@ -318,6 +329,7 @@ part Header2x5 provides Connector {
 
 /// A two-row header with 20 pins, `p1` to `p20`, pin N on pad N. Which pins are in which
 /// row is the footprint's: the part states only the pads.
+#[assembly(hand)]
 part Header2x10 provides Connector {
     pins {
         .p1 passive "P1" "1"

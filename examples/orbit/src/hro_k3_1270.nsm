@@ -32,6 +32,7 @@ part HroK3_1270 {
     .rated_current: Current
     .rated_voltage: Voltage
     /// Through-current, a to common, in position A.
+    #[role(current)]
     .current: Current
 
     .current <= .rated_current

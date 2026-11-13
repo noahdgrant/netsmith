@@ -2442,6 +2442,7 @@ part SimpleResistor {
 
     .resistance: Resistance
     /// Through-current, a to b.
+    #[role(current)]
     .current: Current
     /// Voltage at a relative to b.
     .drop: Voltage
@@ -11587,6 +11588,7 @@ part Link {
         .b passive "B" "2"
     }
     .resistance: Resistance
+    #[role(current)]
     .current: Current
     .drop: Voltage
     .drop == .current * .resistance
@@ -11602,6 +11604,7 @@ part Drop {
         .cathode passive "K" "2"
     }
     .forward_voltage: Voltage
+    #[role(current)]
     .current: Current
     .drop: Voltage
     bridge .anode ~> .cathode
@@ -11673,6 +11676,7 @@ part Link {
         .b passive "B" "2"
     }
     .resistance: Resistance
+    #[role(current)]
     .current: Current
     .drop: Voltage
     .drop == .current * .resistance
@@ -11810,6 +11814,7 @@ part LowSideSwitch {
     }
     .gate_threshold: Voltage
     .on_resistance: Resistance
+    #[role(current)]
     .current: Current
     bridge .drain ~> .source
     dc nmos .gate .drain .source .gate_threshold .on_resistance
@@ -11921,6 +11926,7 @@ part Link {
         .b passive "B" "2"
     }
     .resistance: Resistance
+    #[role(current)]
     .current: Current
     bridge .a ~> .b
     dc resistor .a .b .resistance
@@ -11972,6 +11978,7 @@ part Link {
         .b passive "B" "2"
     }
     .resistance: Resistance
+    #[role(current)]
     .current: Current
     bridge .a ~> .b
     dc resistor .a .b .resistance

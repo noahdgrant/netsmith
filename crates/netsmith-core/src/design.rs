@@ -96,6 +96,7 @@ mod tests {
     fn part(refdes: &str) -> Part {
         Part {
             provides: Vec::new(),
+            class: Some(crate::PartClass::Resistor),
             refdes: refdes.into(),
             kind: "Resistor".into(),
             value: "1k".into(),

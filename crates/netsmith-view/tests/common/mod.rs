@@ -11,19 +11,11 @@ pub mod rowcol;
 
 use netsmith_core::{Design, Net, Part, PartPin, PinKind, PinRef, PowerFlow};
 
-/// What the design stage records as the generics a standard kind provides: a fixture that
+/// What the design stage records as the class of a standard kind (ADR 0123): a fixture that
 /// names a kind of the standard library gives it the same, so that the layout finds the
-/// connectors the way it does on a real board (`Connector`, ADR 0068).
-pub fn provides_of(kind: &str) -> Vec<String> {
-    let connector = kind.starts_with("Header")
-        || kind.starts_with("Socket")
-        || kind.starts_with("UsbC")
-        || matches!(kind, "Coax" | "Obd2M" | "ProgrammingPads6");
-    if connector {
-        vec![netsmith_core::CONNECTOR_GENERIC.to_string()]
-    } else {
-        Vec::new()
-    }
+/// connectors and the parts in series the way it does on a real board.
+pub fn class_of(kind: &str) -> Option<netsmith_core::PartClass> {
+    netsmith_testkit::std_class(kind).and_then(netsmith_core::PartClass::from_word)
 }
 
 pub fn design(
@@ -41,7 +33,8 @@ pub fn design(
         parts: parts
             .iter()
             .map(|&(refdes, kind, value, package)| Part {
-                provides: provides_of(kind),
+                provides: Vec::new(),
+                class: class_of(kind),
                 refdes: refdes.into(),
                 kind: kind.into(),
                 value: value.into(),
@@ -176,7 +169,8 @@ pub fn supplies(modules: usize) -> (Design, Vec<netsmith_view::Group>) {
             (name("D"), "Led", "LED", None),
         ] {
             parts.push(Part {
-                provides: provides_of(kind),
+                provides: Vec::new(),
+                class: class_of(kind),
                 refdes,
                 kind: kind.into(),
                 value: value.into(),

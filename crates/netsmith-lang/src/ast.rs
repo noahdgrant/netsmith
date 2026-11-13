@@ -71,6 +71,9 @@ pub struct Definition {
     pub docs: Vec<String>,
     /// `//!` lines at the start of the body.
     pub inner_docs: Vec<String>,
+    /// `#[bank]`, `#[series(E24, E96)]`, ... above the definition, in the order written
+    /// (ADR 0123). The checker says which a definition may carry.
+    pub attrs: Vec<Attribute>,
     pub kind: DefKind,
     pub name: Ident,
     /// The generics a `part` or a `module` provides (`part X provides A, B`, ADR 0068), in the
@@ -83,6 +86,35 @@ pub struct Definition {
     /// The variants of an `enum` (ADR 0054), in the order written. Empty for every other kind.
     pub variants: Vec<Variant>,
     pub span: Span,
+}
+
+/// `#[series(E24, E96)]`: an attribute, which says what a definition or a member is to the
+/// tools, in a way a project's own definition can say too (ADR 0123). The parser takes any
+/// name and arguments; the checker knows the attributes and refuses the rest.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Attribute {
+    /// `series`.
+    pub name: Ident,
+    /// `E24` and `E96`, in the order written. Empty for `#[bank]`, and for `#[bank()]`.
+    pub args: Vec<AttrArg>,
+    /// From `#[` to `]`.
+    pub span: Span,
+}
+
+/// One argument of an [`Attribute`]: a name (`E24`, `bias`) or a text (`"LED"`).
+#[derive(Debug, Clone, PartialEq)]
+pub enum AttrArg {
+    Name(Ident),
+    Text { text: String, span: Span },
+}
+
+impl AttrArg {
+    pub fn span(&self) -> Span {
+        match self {
+            Self::Name(i) => i.span,
+            Self::Text { span, .. } => *span,
+        }
+    }
 }
 
 /// `Ic: BuckIc` in `module Buck<Ic: BuckIc>`: a type parameter of a module, a part that
@@ -531,6 +563,8 @@ pub struct Catalog {
 pub struct Decl {
     /// `///` lines above the declaration.
     pub docs: Vec<String>,
+    /// `#[role(bias)]`, ... above the declaration, in the order written (ADR 0123).
+    pub attrs: Vec<Attribute>,
     pub name: Path,
     pub ty: TypePath,
     /// `4 x` before the type: a group of that many identical members, `.decoupling[0]` to

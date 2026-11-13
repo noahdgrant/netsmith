@@ -78,6 +78,7 @@ impl Board {
                     path: part.path.clone(),
                     kind: part.kind.clone(),
                     provides: part.provides.clone(),
+                    class: part.class,
                     value: part.value.clone(),
                     footprint: Footprint::label(&part.value, height, rules.min_text_thickness),
                     power_pads: Vec::new(),
@@ -118,6 +119,7 @@ impl Board {
                 path: part.path.clone(),
                 kind: part.kind.clone(),
                 provides: part.provides.clone(),
+                class: part.class,
                 value: part.value.clone(),
                 footprint: loaded[&mapped.footprint].clone(),
                 power_pads: part

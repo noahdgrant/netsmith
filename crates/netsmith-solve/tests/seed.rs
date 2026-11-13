@@ -23,6 +23,7 @@ part Link {{
         .b passive "B" "2"
     }}
     .resistance: Resistance
+    #[role(current)]
     .current: Current
     .drop: Voltage
     .drop == .current * .resistance

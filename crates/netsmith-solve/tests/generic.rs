@@ -93,7 +93,7 @@ fn a_catalog_that_has_no_generic_parts_gets_none() {
         "rated_current".to_string(),
         FieldKind::Quantity(Dimension::CURRENT),
     )];
-    let got = c.resolve("fuse", &kinds, &[]).unwrap().unwrap();
+    let got = c.resolve("fuse", &kinds, &[], &[]).unwrap().unwrap();
     assert_eq!(got.candidates.len(), 1);
     assert!(got.candidates[0].generic.is_none());
 }

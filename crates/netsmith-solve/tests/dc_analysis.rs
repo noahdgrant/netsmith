@@ -29,6 +29,7 @@ part Sink {{
         .a passive "A" "1"
         .b passive "B" "2"
     }}
+    #[role(current)]
     .current: Current
     bridge .a ~> .b
 }}
@@ -398,6 +399,7 @@ part Rx {
         .b passive "B" "2"
     }
     .resistance: Resistance
+    #[role(current)]
     .current: Current
     .drop: Voltage
     .drop == .current * .resistance

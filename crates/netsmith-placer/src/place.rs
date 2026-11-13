@@ -135,12 +135,9 @@ pub(crate) struct Context<'a> {
     pub pours: bool,
 }
 
-/// A connector is a part that provides the standard generic `Connector` (ADR 0068), whatever
-/// its name.
+/// A connector is a part of the class `connector` (ADR 0123), whatever its name.
 pub(crate) fn is_connector(part: &Placed) -> bool {
-    part.provides
-        .iter()
-        .any(|g| g == netsmith_core::CONNECTOR_GENERIC)
+    part.class == Some(netsmith_core::PartClass::Connector)
 }
 
 /// A box of courtyards laid out relative to its own top left corner.
@@ -1742,11 +1739,8 @@ mod tests {
     fn part(refdes: &str, kind: &str, package: Option<&str>) -> Part {
         Part {
             // What the design stage records for a standard connector (ADR 0068).
-            provides: if kind.starts_with("Header") || kind.starts_with("Socket") {
-                vec![netsmith_core::CONNECTOR_GENERIC.to_string()]
-            } else {
-                Vec::new()
-            },
+            provides: Vec::new(),
+            class: netsmith_testkit::std_class(kind).and_then(netsmith_core::PartClass::from_word),
             refdes: refdes.into(),
             kind: kind.into(),
             value: "1".into(),

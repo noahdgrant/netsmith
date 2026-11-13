@@ -78,6 +78,7 @@ pub(crate) fn part_of(kind: &str, package: &str) -> netsmith_core::Part {
         refdes: "U1".into(),
         kind: kind.into(),
         provides: Vec::new(),
+        class: netsmith_testkit::std_class(kind).and_then(netsmith_core::PartClass::from_word),
         value: String::new(),
         package: Some(package.into()),
         path: "u1".into(),

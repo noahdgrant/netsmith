@@ -14,7 +14,8 @@ fn body(path: &str, refdes: &str, min: Plan, max: Plan, height: Option<f64>) -> 
         path: path.into(),
         refdes: refdes.into(),
         kind: "Thing".into(),
-        category: crate::scene3d::PartCategory::of("Thing", &[], refdes),
+        class: netsmith_testkit::std_class("Thing").and_then(netsmith_core::PartClass::from_word),
+        category: crate::scene3d::PartCategory::of(None, refdes),
         side: Side::Front,
         layout_at: (0.0, 0.0),
         rotation: 0.0,
@@ -293,7 +294,8 @@ fn a_part_says_its_sort_and_its_margin_to_the_limit_over_it() {
     // A resistor of 0.5 mm under the lid as well, and the lid's list of the parts under it.
     let mut r = body("r1", "R1", plan(2.0, 2.0), plan(4.0, 3.0), Some(0.5));
     r.kind = "Resistor".into();
-    r.category = crate::scene3d::PartCategory::of("Resistor", &[], "R1");
+    r.class = Some(netsmith_core::PartClass::Resistor);
+    r.category = crate::scene3d::PartCategory::of(r.class, "R1");
     sc.bodies.push(r);
     sc.limits[0].faces[0].under = vec!["u1".into(), "r1".into()];
     let doc = json_chunk(&glb(&sc, "Demo")).unwrap();
@@ -312,20 +314,18 @@ fn a_part_says_its_sort_and_its_margin_to_the_limit_over_it() {
 }
 
 #[test]
-fn a_part_is_sorted_by_the_generic_it_provides_before_its_letters() {
+fn a_part_is_sorted_by_its_class_before_its_letters() {
     use crate::scene3d::PartCategory as C;
-    let provides = |g: &str| vec![g.to_string()];
-    assert_eq!(
-        C::of("Header1x2", &provides("Connector"), "J1"),
-        C::Connector
-    );
-    // A connector is one by its generic only: the letters J say nothing.
-    assert_eq!(C::of("Thing", &[], "J2"), C::Other);
-    assert_eq!(C::of("Esp32", &[], "U3"), C::Ic);
-    assert_eq!(C::of("Bss138", &provides("NMosfet"), "Q1"), C::Transistor);
-    assert_eq!(C::of("Led", &[], "D4"), C::Diode);
-    assert_eq!(C::of("Thing", &provides("Capacitor"), "X1"), C::Capacitor);
-    assert_eq!(C::of("Hole", &[], "H1"), C::Mechanical);
+    use netsmith_core::PartClass;
+    assert_eq!(C::of(Some(PartClass::Connector), "J1"), C::Connector);
+    // A connector is one by its class only: the letters J say nothing.
+    assert_eq!(C::of(None, "J2"), C::Other);
+    assert_eq!(C::of(None, "U3"), C::Ic);
+    assert_eq!(C::of(Some(PartClass::Transistor), "Q1"), C::Transistor);
+    assert_eq!(C::of(Some(PartClass::Led), "D4"), C::Diode);
+    assert_eq!(C::of(Some(PartClass::Capacitor), "X1"), C::Capacitor);
+    assert_eq!(C::of(None, "H1"), C::Mechanical);
+    assert_eq!(C::of(Some(PartClass::MountingHole), "H2"), C::Mechanical);
 }
 
 #[test]

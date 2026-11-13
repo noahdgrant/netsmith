@@ -345,6 +345,7 @@ pub(crate) mod tests {
     fn part(refdes: &str, kind: &str, package: &str, pins: Vec<PartPin>) -> Part {
         Part {
             provides: Vec::new(),
+            class: netsmith_testkit::std_class(kind).and_then(netsmith_core::PartClass::from_word),
             refdes: refdes.into(),
             kind: kind.into(),
             value: "1".into(),

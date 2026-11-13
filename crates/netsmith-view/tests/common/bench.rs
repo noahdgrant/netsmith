@@ -361,11 +361,9 @@ pub fn bench() -> Bench {
             .iter()
             .map(|&(refdes, kind, value, package)| Part {
                 // What the design stage records for a standard connector (ADR 0068).
-                provides: if kind.starts_with("Header") || kind.starts_with("Socket") {
-                    vec![netsmith_core::CONNECTOR_GENERIC.to_string()]
-                } else {
-                    Vec::new()
-                },
+                provides: Vec::new(),
+                class: netsmith_testkit::std_class(kind)
+                    .and_then(netsmith_core::PartClass::from_word),
                 refdes: refdes.into(),
                 kind: kind.into(),
                 value: value.into(),

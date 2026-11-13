@@ -148,7 +148,7 @@ fn catalog(name: &str) -> Catalog {
         _ => Vec::new(),
     };
     Catalogs::jlcpcb()
-        .resolve(name, &columns(name), &optional)
+        .resolve(name, &columns(name), &optional, &[])
         .unwrap_or_else(|| panic!("no {name} catalog"))
         .unwrap_or_else(|e| panic!("{e}"))
 }
@@ -775,7 +775,7 @@ fn the_only_regulator_is_the_xc6206_in_sot23() {
 fn the_sample_catalogs_are_a_full_e24_set_and_ascending() {
     let sample = Catalogs::sample();
     let resistors = sample
-        .resolve("resistor", &columns("resistor"), &[])
+        .resolve("resistor", &columns("resistor"), &[], &[])
         .unwrap()
         .unwrap();
     let values: Vec<f64> = resistors
@@ -790,11 +790,11 @@ fn the_sample_catalogs_are_a_full_e24_set_and_ascending() {
     assert!(values.contains(&300.0));
     assert_eq!(resistors.candidates.len(), 24 * 7);
     assert!(resistors.candidates.iter().all(|c| c.lcsc.is_none()));
-    assert!(sample.resolve("led", &columns("led"), &[]).is_none());
+    assert!(sample.resolve("led", &columns("led"), &[], &[]).is_none());
     // `3.3V +/- 2%` in source and the sample's 3.3 V regulator are the same interval, or the
     // regulator would never match.
     let ldos = sample
-        .resolve("ldo", &columns("ldo"), &[])
+        .resolve("ldo", &columns("ldo"), &[], &[])
         .unwrap()
         .unwrap();
     let Some(Value::Quantity(v)) = ldos.candidates[2].column("vout.voltage") else {

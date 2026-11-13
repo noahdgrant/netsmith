@@ -17,6 +17,8 @@ pub enum Tok {
     /// `[` and `]` around the index of one part of a group (`.decoupling[2]`, ADR 0119).
     LBracket,
     RBracket,
+    /// `#[`, which opens an attribute (`#[bank]`, `#[role(bias)]`, ADR 0123).
+    HashBracket,
     Comma,
     Semi,
     Colon,
@@ -337,7 +339,8 @@ impl Lexer<'_> {
             });
         }
         // Longer spellings first.
-        let table: [(&str, Tok); 26] = [
+        let table: [(&str, Tok); 27] = [
+            ("#[", Tok::HashBracket),
             ("::", Tok::ColonColon),
             ("~>", Tok::TildeArrow),
             ("&=", Tok::AmpEq),

@@ -1658,11 +1658,10 @@ fn levels(part_nets: &[Vec<usize>], connector: &[bool], ground: &[bool]) -> Vec<
 // Columns
 
 /// Whether a part hangs in series on the wire it is in rather than across it: an inductor, a
-/// ferrite bead or a fuse, or a provider of one (ADR 0068), whatever its own name.
+/// ferrite bead or a fuse by its class (ADR 0123), whatever its own name.
 pub(crate) fn is_series_kind(part: &netsmith_core::Part) -> bool {
-    std::iter::once(part.kind.as_str())
-        .chain(part.provides.iter().map(String::as_str))
-        .any(|k| matches!(k, "Inductor" | "FerriteBead" | "Fuse"))
+    part.class
+        .is_some_and(netsmith_core::PartClass::hangs_in_series)
 }
 
 /// A part with two pins on one axis, facing opposite ways, can stand in a stack.
@@ -2387,22 +2386,23 @@ mod tests {
     }
 
     #[test]
-    fn a_provider_of_an_inductor_hangs_in_series_whatever_its_name() {
-        let part = |kind: &str, provides: &[&str]| netsmith_core::Part {
+    fn a_part_of_a_series_class_hangs_in_series_whatever_its_name() {
+        use netsmith_core::PartClass;
+        let part = |class: Option<PartClass>| netsmith_core::Part {
             refdes: "L1".into(),
-            kind: kind.into(),
-            provides: provides.iter().map(|g| g.to_string()).collect(),
+            kind: "AcmeChoke".into(),
+            provides: Vec::new(),
+            class,
             value: String::new(),
             package: None,
             path: String::new(),
             pins: Vec::new(),
         };
-        for kind in ["Inductor", "FerriteBead", "Fuse"] {
-            assert!(is_series_kind(&part(kind, &[])), "{kind}");
-            assert!(is_series_kind(&part("AcmeChoke", &[kind])), "{kind}");
+        for class in [PartClass::Inductor, PartClass::FerriteBead, PartClass::Fuse] {
+            assert!(is_series_kind(&part(Some(class))), "{class:?}");
         }
-        assert!(!is_series_kind(&part("AcmeChoke", &[])));
-        assert!(!is_series_kind(&part("AcmeChoke", &["Resistor"])));
+        assert!(!is_series_kind(&part(None)));
+        assert!(!is_series_kind(&part(Some(PartClass::Resistor))));
     }
 
     #[test]

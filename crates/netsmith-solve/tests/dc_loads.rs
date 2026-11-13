@@ -25,6 +25,7 @@ generic Bead {
     }
     .rated_current: Current
     .dc_resistance: Resistance
+    #[role(current)]
     .current: Current
     .drop: Voltage
     .drop == .current * .dc_resistance
@@ -43,6 +44,7 @@ generic Shunt {
     }
     .resistance: Resistance
     .max_power: Power
+    #[role(current)]
     .current: Current
     .drop: Voltage
     .drop == .current * .resistance

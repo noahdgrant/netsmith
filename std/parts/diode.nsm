@@ -53,6 +53,7 @@
 /// would contradict the analysis for every blocking diode). A diode between two rails (an
 /// OR-ing diode) is across no rail and is not checked. The name, and the field-name convention
 /// (ADR 0105), are accepted as built (the owner, 2026-11-11).
+#[class(diode)]
 part Diode {
     .designator &= "D"
 
@@ -67,22 +68,27 @@ part Diode {
     /// The largest continuous (average) forward current.
     .max_forward_current: Current
     /// Through-current, anode to cathode.
+    #[role(current)]
     .current: Current
     /// Voltage at the anode relative to the cathode.
     .drop: Voltage
     /// The DC voltage across the diode in the direction it blocks, cathode relative to anode:
     /// negative when it conducts.
+    #[role(bias)]
     .bias: Voltage
     /// The voltage at the anode relative to the cathode. A diode across a rail takes it from
     /// the rail, the way round it is wired.
+    #[role(bridge_voltage)]
     .bridge_voltage: Voltage optional
     /// The most current that can reach the diode through the part in front of it in its `~>`
     /// chain that limits it (a fuse's rating), which the checker gives it (ADR 0091). A diode
     /// with no such part in front of it has none, and the relation is left out.
+    #[role(supply_fault_current)]
     .supply_fault_current: Current optional
     /// The highest voltage the supply of the `~>` chain the diode is first in (to have one) reaches the
     /// wrong way round: the `.reverse_peak` of the rail the chain starts on, as a positive
     /// number, which the checker gives it (ADR 0091). The diode blocks it.
+    #[role(supply_reverse_peak)]
     .supply_reverse_peak: Voltage optional
 
     .drop == .forward_voltage
@@ -102,6 +108,7 @@ part Diode {
 /// same fields and ratings, and is its own kind because it is a different symbol and a
 /// different catalog, and because a design says which it needs ("a Schottky for the
 /// reverse-polarity drop").
+#[class(diode)]
 generic Schottky {
     .designator &= "D"
 
@@ -116,22 +123,27 @@ generic Schottky {
     /// The largest continuous (average) forward current.
     .max_forward_current: Current
     /// Through-current, anode to cathode.
+    #[role(current)]
     .current: Current
     /// Voltage at the anode relative to the cathode.
     .drop: Voltage
     /// The DC voltage across the diode in the direction it blocks, cathode relative to anode:
     /// negative when it conducts.
+    #[role(bias)]
     .bias: Voltage
     /// The voltage at the anode relative to the cathode. A diode across a rail takes it from
     /// the rail, the way round it is wired.
+    #[role(bridge_voltage)]
     .bridge_voltage: Voltage optional
     /// The most current that can reach the diode through the part in front of it in its `~>`
     /// chain that limits it (a fuse's rating), which the checker gives it (ADR 0091). A diode
     /// with no such part in front of it has none, and the relation is left out.
+    #[role(supply_fault_current)]
     .supply_fault_current: Current optional
     /// The highest voltage the supply of the `~>` chain the diode is first in (to have one) reaches the
     /// wrong way round: the `.reverse_peak` of the rail the chain starts on, as a positive
     /// number, which the checker gives it (ADR 0091). The diode blocks it.
+    #[role(supply_reverse_peak)]
     .supply_reverse_peak: Voltage optional
 
     .drop == .forward_voltage
@@ -244,6 +256,7 @@ generic Schottky {
 ///
 /// The unit of the coefficient, the name and kind of the shift, which marker guards what, and the
 /// relation's form are accepted as built by the owner, 2026-11-11.
+#[class(diode)]
 generic Zener {
     .designator &= "D"
 
@@ -269,11 +282,14 @@ generic Zener {
     /// `.zener_voltage` over `.temperature_shift`, in the worst case.
     .voltage_over_temperature: Voltage
     /// Through-current in the breakdown direction, cathode to anode.
+    #[role(current)]
     .current: Current
     /// The DC voltage across the diode, cathode relative to anode. A Zener placed between a
     /// rail's `pos` and `neg` takes it from that rail, with the sign of the way it is wired.
+    #[role(bias)]
     .bias: Voltage
     /// The voltage from the cathode to the anode: the same as `.bias`, as it is the bridge's.
+    #[role(bridge_voltage)]
     .bridge_voltage: Voltage optional
 
     .bias == .bridge_voltage
@@ -359,6 +375,7 @@ generic Zener {
 ///
 /// The written record, the rejected alternatives and the placement of the optional-column rule are
 /// accepted as built by the owner, 2026-11-11.
+#[class(diode)]
 generic Tvs {
     .designator &= "D"
 
@@ -381,13 +398,16 @@ generic Tvs {
     .protected_limit: Voltage
     /// The DC voltage across the diode, cathode relative to anode. A TVS diode placed between a
     /// rail's `pos` and `neg` takes it from that rail, with the sign of the way it is wired.
+    #[role(bias)]
     .bias: Voltage
     /// The voltage from the cathode to the anode: the same as `.bias`, as it is the bridge's.
+    #[role(bridge_voltage)]
     .bridge_voltage: Voltage optional
     /// The highest voltage the supply of the `~>` chain the diode is first in (to have one)
     /// reaches the wrong way round, as a positive number, which the checker gives it (ADR
     /// 0091). A unidirectional TVS diode conducts when it is reversed: the voltage across it
     /// would be `-.supply_reverse_peak`, which `-.supply_reverse_peak >= 0V` refuses.
+    #[role(supply_reverse_peak)]
     .supply_reverse_peak: Voltage optional
 
     .bias == .bridge_voltage
@@ -443,6 +463,7 @@ generic Tvs {
 /// ESD arrays are not covered; each is its own part. The Littelfuse rows are Extended parts;
 /// no Basic bidirectional row was read. The name, the pin names and the member-or-generic
 /// choice are accepted as built (the owner, 2026-11-11).
+#[class(diode)]
 generic TvsBidirectional {
     .designator &= "D"
 
@@ -465,6 +486,7 @@ generic TvsBidirectional {
     .protected_limit: Voltage
     /// The DC voltage across the diode, taken from the rail it is across whichever way round
     /// it is wired.
+    #[role(bias)]
     .bias: Voltage
 
     .bias <= .standoff_voltage

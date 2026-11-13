@@ -6,6 +6,8 @@ use super::{Coupling, Job, Mark, Pick, Solver, Step, Unresolved};
 use netsmith_check::{Domain, FieldId, FieldKind, InstId, InstKind};
 use netsmith_core::job;
 
+use crate::generic::Series;
+
 impl Solver<'_> {
     pub(super) fn pick_parts(&mut self) {
         let mut parts: Vec<(String, InstId)> = self
@@ -22,7 +24,8 @@ impl Solver<'_> {
         // takes longer than the search of a part with a few rows).
         type Kinds = Vec<(String, FieldKind)>;
         type Resolved = Option<Result<crate::catalog::Catalog, String>>;
-        let mut resolved_before: Vec<(String, Kinds, Vec<String>, Resolved)> = Vec::new();
+        let mut resolved_before: Vec<(String, Kinds, Vec<String>, Vec<Series>, Resolved)> =
+            Vec::new();
         let to_prepare = parts.len() as u64;
         for (n, (path, part)) in parts.into_iter().enumerate() {
             job::checkpoint();
@@ -55,17 +58,29 @@ impl Solver<'_> {
                 .filter(|(f, _)| catalog.optional.contains(f))
                 .map(|(_, key)| key.clone())
                 .collect();
-            let found = match resolved_before
+            // The series its definition offers (`#[series(...)]`, ADR 0123); the checker has
+            // refused a name that is not one.
+            let offered: Vec<Series> = self
+                .model
+                .instance(part)
+                .marks
+                .series
                 .iter()
-                .find(|(name, k, o, _)| *name == catalog.name && *k == kinds && *o == optional)
-            {
-                Some((_, _, _, found)) => found.clone(),
+                .filter_map(|s| Series::parse(s))
+                .collect();
+            let found = match resolved_before.iter().find(|(name, k, o, s, _)| {
+                *name == catalog.name && *k == kinds && *o == optional && *s == offered
+            }) {
+                Some((_, _, _, _, found)) => found.clone(),
                 None => {
-                    let found = self.catalogs.resolve(&catalog.name, &kinds, &optional);
+                    let found = self
+                        .catalogs
+                        .resolve(&catalog.name, &kinds, &optional, &offered);
                     resolved_before.push((
                         catalog.name.clone(),
                         kinds.clone(),
                         optional.clone(),
+                        offered.clone(),
                         found.clone(),
                     ));
                     found

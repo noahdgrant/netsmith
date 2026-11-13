@@ -27,8 +27,8 @@ use netsmith_check::{
 };
 use netsmith_core::{
     Design, DielectricLayer, InnerLayers, InnerUse, InterfaceInstance, InterfaceMember,
-    ModuleInstance, Net, Note, NoteAt, NoteKind, PanelRules, PanelSpec, Part, PartPin, PinRef,
-    PowerFlow, Process, Stackup,
+    ModuleInstance, Net, Note, NoteAt, NoteKind, PanelRules, PanelSpec, Part, PartClass, PartPin,
+    PinRef, PowerFlow, Process, Stackup,
 };
 use netsmith_solve::{Library, Solution};
 
@@ -147,13 +147,6 @@ fn designator_of(model: &Model, part: InstId, errors: &mut Vec<String>) -> Strin
     word
 }
 
-/// Whether a kind of part is through-hole and soldered by hand, so the manufacturer does not
-/// assemble it. A kind a CAD mapping marks through-hole is also hand-soldered; see
-/// `netsmith_pipeline::build`.
-fn hand_soldered(kind: &str) -> bool {
-    kind.starts_with("Header") || kind.starts_with("Socket")
-}
-
 /// Who puts a part on the board (ADR 0024).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Assembly {
@@ -207,13 +200,13 @@ impl Assembly {
     }
 }
 
-/// What a part shows as its value when the solver did not choose one for it.
-fn default_value(kind: &str) -> String {
-    match kind {
-        "Led" => "LED".to_string(),
-        "Header1x2" => "Conn_01x02".to_string(),
-        other => other.to_string(),
-    }
+/// What a part shows as its value when the solver did not choose one for it: the
+/// `#[value(...)]` of its definition (ADR 0123), else the name of its kind.
+fn default_value(inst: &netsmith_check::Instance, kind: &str) -> String {
+    inst.marks
+        .value
+        .clone()
+        .unwrap_or_else(|| kind.to_string())
 }
 
 fn text_of(model: &Model, inst: InstId, field: &str) -> Option<String> {
@@ -1239,19 +1232,27 @@ fn design_model(name: &str, model: &Model, solution: &Solution) -> Result<Design
         let kind = &kinds[id];
         let pick = solution.picks.iter().find(|p| p.part == *id);
         // A label's value is the text it prints.
-        let value = match (kind.as_str(), text_of(model, *id, "text")) {
-            ("Label", Some(text)) => text,
+        let value = match (inst.marks.class, text_of(model, *id, "text")) {
+            (Some(PartClass::Label), Some(text)) => text,
             _ => pick
                 .map(|p| p.label.clone())
-                .unwrap_or_else(|| default_value(kind)),
+                .unwrap_or_else(|| default_value(inst, kind)),
         };
         let package = text_of(model, *id, "package");
         let (assembly, assembly_stated) = match assembly_of(model, *id, pick, &mut errors) {
             Some(a) => (a, true),
             None => match project_default {
                 Some(a) => (a, true),
-                None if hand_soldered(kind) => (Assembly::Hand, false),
-                None => (Assembly::Fab, false),
+                // The kind's own default, its `#[assembly(...)]` (ADR 0123): a header is
+                // through-hole and soldered by hand.
+                None => (
+                    inst.marks
+                        .assembly
+                        .as_deref()
+                        .and_then(Assembly::parse)
+                        .unwrap_or(Assembly::Fab),
+                    false,
+                ),
             },
         };
         fitted.push(environment::Fitted {
@@ -1299,6 +1300,7 @@ fn design_model(name: &str, model: &Model, solution: &Solution) -> Result<Design
                 // Only the generics of the standard library: a tool reads them by name, and a
                 // project's own generic of the same name is not that one.
                 provides: provides.clone(),
+                class: inst.marks.class,
                 value: value.clone(),
                 package: package.clone(),
                 path,
@@ -1633,9 +1635,9 @@ mod tests {
         }
     }
 
-    /// The layout and the placer find connectors by the generic `Connector`, not by a name or by
-    /// the letters of a designator: every standard kind that has the letters `J` provides it,
-    /// and no other does.
+    /// The layout and the placer find connectors by the class `connector`, which the standard
+    /// `Connector` states (ADR 0123), not by a name or by the letters of a designator: every
+    /// standard kind that has the letters `J` provides it, and no other does.
     #[test]
     fn every_standard_connector_kind_provides_the_connector_generic() {
         // A generic provides nothing itself: a generic with the letters `J` (the USB-C sink
@@ -1646,10 +1648,8 @@ mod tests {
                 continue;
             }
             assert_eq!(
-                provides
-                    .iter()
-                    .any(|g| g == netsmith_core::CONNECTOR_GENERIC),
-                letters.as_deref() == Some("J") && name != netsmith_core::CONNECTOR_GENERIC,
+                provides.iter().any(|g| g == "Connector"),
+                letters.as_deref() == Some("J") && name != "Connector",
                 "{name} has letters {letters:?} and provides {provides:?}"
             );
         }
