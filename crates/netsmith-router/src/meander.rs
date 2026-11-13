@@ -16,10 +16,10 @@
 //!
 //! **Where.** On a straight track of the shorter net, the longest first, no nearer than one pitch
 //! to its ends, on an interval of it that runs no nearer than the scorecard's coupled distance
-//! (`netsmith_geom::pairs::COUPLED`, 0.5 mm) to the partner's track on its layer, so the pair's
+//! (`netsmith_geom::COUPLED`, 0.5 mm) to the partner's track on its layer, so the pair's
 //! coupled run is left as it was. The meander's copper keeps every space the design rules check
 //! asks of a track from the other nets' copper, holes, the edge, mask openings and rule areas
-//! (`netsmith_geom::drc::Room`, the teardrops' room), and the pitch's gap from its own net's pads,
+//! (`netsmith_geom::Room`, the teardrops' room), and the pitch's gap from its own net's pads,
 //! vias and other tracks. A run that cannot take all the length takes what it can (three
 //! quarters, a half, a quarter) and the next run the rest. No other net moves and no connection
 //! changes: the meander replaces the middle of one track with a longer path between the same two
@@ -37,8 +37,7 @@
 //! curve and draws meanders on straight tracks only, so it can top a pair up after the arcs. The
 //! same board gives the same meanders: pairs, runs and places are taken in a fixed order.
 
-use netsmith_geom::drc::{self, Room, shape::Shape};
-use netsmith_geom::geom::Pt as FPt;
+use netsmith_geom::{DrcRules, DrcShape, Pt as FPt, Room, shape_gap};
 
 use netsmith_pcb::{Board, Pt, Track};
 
@@ -63,7 +62,7 @@ const PLACES: usize = 24;
 /// A diff pair and its skew before and after the meanders.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Matched {
-    /// The two nets, in the order of `netsmith_geom::pairs::PAIR_SUFFIXES` (`dp` then `dm`).
+    /// The two nets, in the order of `netsmith_geom::PAIR_SUFFIXES` (`dp` then `dm`).
     pub p: String,
     pub n: String,
     /// The difference of the two nets' track lengths before, in mm.
@@ -73,14 +72,14 @@ pub struct Matched {
 }
 
 /// The diff pairs of the board's routed nets: two nets whose names differ only in a suffix pair
-/// of `netsmith_geom::pairs::PAIR_SUFFIXES`, in the order of their first net's name.
+/// of `netsmith_geom::PAIR_SUFFIXES`, in the order of their first net's name.
 fn pairs(board: &Board) -> Vec<(String, String)> {
     let mut nets: Vec<&str> = board.tracks.iter().map(|t| t.net.as_str()).collect();
     nets.sort_unstable();
     nets.dedup();
     let mut out = Vec::new();
     for &p in &nets {
-        for (sp, sn) in netsmith_geom::pairs::PAIR_SUFFIXES {
+        for (sp, sn) in netsmith_geom::PAIR_SUFFIXES {
             let Some(stem) = p.strip_suffix(sp) else {
                 continue;
             };
@@ -157,7 +156,7 @@ fn lengthen(board: &mut Board, net: &str, partner: &str, want: f64) {
     let Ok(art) = netsmith_pcb::copper_artwork(board) else {
         return;
     };
-    let rules = drc::Rules::from_project(&netsmith_pcb::kicad_pro(board)).unwrap_or_default();
+    let rules = DrcRules::from_project(&netsmith_pcb::kicad_pro(board)).unwrap_or_default();
     let extras = crate::teardrop::extras(board);
     let room = Room::new(&art, &rules, &extras);
     let mut runs: Vec<usize> = (0..board.tracks.len())
@@ -174,7 +173,7 @@ fn lengthen(board: &mut Board, net: &str, partner: &str, want: f64) {
         .cloned()
         .collect();
     // The meanders drawn so far on this net, which later ones keep their gap from.
-    let mut drawn: Vec<(usize, Shape)> = Vec::new();
+    let mut drawn: Vec<(usize, DrcShape)> = Vec::new();
     let mut left = want;
     // What replaces each track that gets a meander.
     let mut replaced: Vec<(usize, Vec<Pt>)> = Vec::new();
@@ -193,7 +192,7 @@ fn lengthen(board: &mut Board, net: &str, partner: &str, want: f64) {
                 .flatten()
         });
         if let Some(plan) = plan {
-            let shape = Shape::stroke(
+            let shape = DrcShape::stroke(
                 plan.points.iter().map(|&p| fpt(p)).collect(),
                 track.width / 2.0,
             );
@@ -290,7 +289,7 @@ fn plan(
     layer: usize,
     want: f64,
     partner: &[Track],
-    drawn: &[(usize, Shape)],
+    drawn: &[(usize, DrcShape)],
 ) -> Option<Plan> {
     let w = track.width;
     let gap = (SPACING_WIDTHS * w).max(room.clearance(&track.net));
@@ -323,7 +322,7 @@ fn plan(
         let steps = ((x1 - x0) / 0.05).ceil().max(1.0) as usize;
         (0..=steps).any(|k| {
             let p = along(x0 + (x1 - x0) * k as f64 / steps as f64);
-            distance_to(partner, track.layer, p) <= netsmith_geom::pairs::COUPLED
+            distance_to(partner, track.layer, p) <= netsmith_geom::COUPLED
         })
     };
     let most = (usable / (2.0 * g)).floor() as usize + 1;
@@ -362,7 +361,7 @@ fn plan(
             for v in sides {
                 let points = bumps(along(x0), u, v, count, a, g);
                 let path: Vec<FPt> = points.iter().map(|&p| fpt(p)).collect();
-                let shape = Shape::stroke(path.clone(), w / 2.0);
+                let shape = DrcShape::stroke(path.clone(), w / 2.0);
                 if !room.fits(&shape, &track.net, layer, false) {
                     continue;
                 }
@@ -375,7 +374,7 @@ fn plan(
                         (d.x * v.x + d.y * v.y).abs() > 1e-9
                     })
                     .collect();
-                let own = Shape::stroke(raised, w / 2.0);
+                let own = DrcShape::stroke(raised, w / 2.0);
                 let from = fpt(track.from);
                 let to = fpt(track.to);
                 let same = |a: FPt, b: FPt| {
@@ -387,7 +386,7 @@ fn plan(
                 }
                 if drawn
                     .iter()
-                    .any(|(l, d)| *l == layer && drc::shape::gap(&own, d).d < gap)
+                    .any(|(l, d)| *l == layer && shape_gap(&own, d).d < gap)
                 {
                     continue;
                 }
@@ -402,6 +401,7 @@ fn plan(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use netsmith_geom::{DrcRule, drc_check_artwork};
     use netsmith_pcb::{BoardNet, CopperLayer, Rect};
 
     /// The LED board grown to the right, with the nets `usb.dp` and `usb.dm` and no tracks.
@@ -448,13 +448,13 @@ mod tests {
     /// touch nothing (these tracks join no pads).
     fn findings(board: &Board) -> Vec<String> {
         let art = netsmith_pcb::copper_artwork(board).unwrap();
-        let rules = drc::Rules::from_project(&netsmith_pcb::kicad_pro(board)).unwrap();
+        let rules = DrcRules::from_project(&netsmith_pcb::kicad_pro(board)).unwrap();
         let mut extras = crate::teardrop::extras(board);
         extras.track_angle = true;
-        drc::check_artwork(&art, &rules, &extras, false)
+        drc_check_artwork(&art, &rules, &extras, false)
             .findings
             .iter()
-            .filter(|f| f.rule != drc::Rule::TrackDangling)
+            .filter(|f| f.rule != DrcRule::TrackDangling)
             .filter(|f| {
                 f.items
                     .iter()

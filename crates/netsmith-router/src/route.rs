@@ -204,7 +204,7 @@
 //! router never searches round them; a board's vias are the same with them or without.
 //! netsmith draws them itself, with the check's geometry, and writes them as KiCad 9's teardrop
 //! zones (decided by the implementing agent under the owner's delegation, 2026-11-13); the sizes,
-//! the rules and why are in the header of `netsmith_geom::drc::teardrop`.
+//! the rules and why are in the header of `netsmith_geom::teardrops`.
 //!
 //! # Length-matching meanders (issue #431, S11)
 //!
@@ -216,7 +216,7 @@
 //! clearance, if larger), at most 2 mm high, the fewest bumps first; on an interval of the track
 //! more than the scorecard's coupled 0.5 mm from the partner, away from the partner's side first,
 //! a pitch from the track's ends, and only where it keeps every space the design rules check asks
-//! of a track (`netsmith_geom::drc::Room`, the teardrops' check) and the pitch from its own net's
+//! of a track (`netsmith_geom::Room`, the teardrops' check) and the pitch from its own net's
 //! other copper. A run short of room takes what it can and the next the rest. No other copper
 //! moves and no line is left; [`Routing::pairs`] has each pair's skew before and after, and
 //! `fab` says which pair keeps a skew over the target. The target, 0.1 mm (the grid), and the
@@ -720,7 +720,7 @@ const DIAGONAL: i64 = 14;
 const FOLLOW: (i64, i64) = (1, 2);
 /// How far from the centre line of a pair's partner a cell counts as beside it, in mm: the
 /// scorecard's coupled distance.
-const PAIR_NEAR: f64 = netsmith_geom::pairs::COUPLED;
+const PAIR_NEAR: f64 = netsmith_geom::COUPLED;
 /// What a bend of 45 degrees costs by default ([`Costs::turn`]).
 const TURN: i64 = 25;
 /// What a right-angle turn costs, which the router cuts into two bends of 45 degrees after the

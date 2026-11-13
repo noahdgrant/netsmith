@@ -52,7 +52,7 @@ pub trait KicadCli {
     fn version(&self) -> Result<String, CliError>;
     /// KiCad's design rules check as its JSON report, with every severity and every
     /// violation of tracks, so that it can be compared with netsmith's own
-    /// ([`crate::drc::kicad`]). The text has `violations` and `unconnected_items`, each with
+    /// ([`crate::kicad_drc`]). The text has `violations` and `unconnected_items`, each with
     /// `type`, `description`, `severity` and `items` that carry a `pos` in mm.
     fn drc_json(&self, pcb: &Path) -> Result<String, CliError>;
     /// Gerber files for the given layers (`F.Cu`, `Edge.Cuts`, ...), named

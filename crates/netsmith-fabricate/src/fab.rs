@@ -18,8 +18,10 @@ use std::time::Duration;
 use netsmith_check::{Loader, PartSpace, PinFile};
 use netsmith_core::{PanelSpec, timings};
 use netsmith_design::{Assembly, Sourced};
-use netsmith_fab::panel::{CellFacts, CellInput, Spec};
-use netsmith_fab::{BomEntry, Fit, KicadCli, Options, Package, Side, package};
+use netsmith_fab::{
+    BomEntry, Fit, KicadCli, Options, Package, PanelBuildSpec, PanelCellFacts, PanelCellInput,
+    Side, package,
+};
 use netsmith_kicad::Mapping;
 use netsmith_pcb::{Board, Trim, kicad_pcb, kicad_pro, place_options, render_svg};
 use netsmith_router::{RouteOptions, route_with};
@@ -1169,10 +1171,10 @@ fn fab_board(
                 )
             })?;
             say(format!("{}: cross-checking against KiCad", built.label()));
-            let report = netsmith_fab::crosscheck::check(
+            let report = netsmith_fab::cross_check(
                 &pcb_path,
                 kicad,
-                &netsmith_fab::crosscheck::Limits {
+                &netsmith_fab::CrossCheckLimits {
                     pictures: true,
                     ..Default::default()
                 },
@@ -2045,18 +2047,18 @@ fn fab_panel(
         fs::read_to_string(&run.pcb).map_err(|e| fail(format!("{}: {e}", run.pcb.display())))?;
     let pro = fs::read_to_string(run.pcb.with_extension("kicad_pro")).ok();
     let assembled = &run.package.plan.assembled;
-    let panel = Spec {
+    let panel = PanelBuildSpec {
         name: spec.name.clone(),
         columns: spec.columns,
         rows: spec.rows,
         rail: spec.rail,
         rules: panel_rules(&spec.rules),
     };
-    let input = CellInput {
+    let input = PanelCellInput {
         pcb: &pcb,
         pro: pro.as_deref(),
         entries: &run.entries,
-        facts: CellFacts {
+        facts: PanelCellFacts {
             board: spec.cell.clone(),
             thickness: run.board.process.stackup.chosen_thickness(),
             edge_clearance: run.board.process.min_edge_clearance,
@@ -2068,7 +2070,7 @@ fn fab_panel(
         fit: run.fit.clone(),
         ..run.options.clone()
     };
-    let pkg = netsmith_fab::panel::build(&panel, &input, &package_options)
+    let pkg = netsmith_fab::build_panel(&panel, &input, &package_options)
         .map_err(|e| fail(e.to_string()))?;
     let mut files = pkg.write(dir).map_err(|e| fail(e.to_string()))?;
     let mut notes = pkg.notes.clone();
@@ -2080,10 +2082,10 @@ fn fab_panel(
             )
         })?;
         say(format!("{}: cross-checking against KiCad", spec.name));
-        let report = netsmith_fab::crosscheck::check(
+        let report = netsmith_fab::cross_check(
             &dir.join(format!("{}.kicad_pcb", spec.name)),
             kicad,
-            &netsmith_fab::crosscheck::Limits {
+            &netsmith_fab::CrossCheckLimits {
                 pictures: true,
                 ..Default::default()
             },
@@ -2136,8 +2138,8 @@ fn fab_panel(
 }
 
 /// The rules of the board house for the writer, from the language's.
-fn panel_rules(r: &netsmith_core::PanelRules) -> netsmith_fab::panel::Rules {
-    netsmith_fab::panel::Rules {
+fn panel_rules(r: &netsmith_core::PanelRules) -> netsmith_fab::PanelBuildRules {
+    netsmith_fab::PanelBuildRules {
         fabricator: r.fabricator.clone(),
         source: r.source.clone(),
         min_rail: r.min_rail,
@@ -2315,8 +2317,8 @@ pub fn route_with_margin(
 /// web and widest filled via, the rules a project file cannot say and the least width of the
 /// nets that carry current (issue #431), and the
 /// courtyards a protruding pin excuses (ADR 0045 section 15).
-pub fn drc_extras(board: &Board) -> netsmith_fab::drc::Extras {
-    netsmith_fab::drc::Extras {
+pub fn drc_extras(board: &Board) -> netsmith_geom::DrcExtras {
+    netsmith_geom::DrcExtras {
         mask_web: Some(board.rules.mask_bridge),
         via_in_pad: Some(board.process.via_in_pad),
         excused_courtyards: board.excused_courtyards(),
@@ -2975,7 +2977,7 @@ mod tests {
     /// router's rules, and the project file with the extras `fab` passes.
     fn what_is_kept(p: &netsmith_core::Process) -> Result<(String, String), String> {
         let rules = netsmith_pcb::Rules::for_process(p)?;
-        let board_extras = netsmith_fab::drc::Extras {
+        let board_extras = netsmith_geom::DrcExtras {
             mask_web: Some(rules.mask_bridge),
             via_in_pad: Some(p.via_in_pad),
             hole_to_track: Some(rules.hole_clearance),

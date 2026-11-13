@@ -1069,7 +1069,7 @@ fn the_outline_and_pours_example_passes_kicads_check_with_its_layout_file() {
     assert!(made[0].gerber_files.iter().any(|f| f.contains("F_Cu")));
     // KiCad plots the same board, with its outline, slot, keepout, pours and fiducials, and
     // agrees with netsmith's files.
-    let report = netsmith_fab::crosscheck::check(
+    let report = netsmith_fab::cross_check(
         &dir.join("fab/OutlineAndPours/OutlineAndPours.kicad_pcb"),
         &KicadCliExe::locate_runnable().expect("checked above"),
         &Default::default(),

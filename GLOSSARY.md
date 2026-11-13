@@ -236,7 +236,7 @@ One line on stderr for each stage of a run (`timing: solve LedExample 12.3 ms`),
 _Avoid_: Profile, trace (a `Trace` is what a build knows about its source), benchmark
 
 **Route scorecard**:
-The numbers that say how good a board's routing is, read from its `.kicad_pcb` and `.kicad_pro` (`netsmith_fab::score`), so that a board netsmith routed and one a person routed in KiCad are measured by the same code: connections left, track length against the shortest tree between each routed net's pads, vias, bends by angle, track narrower than its net class, how much other nets' track cuts each pour and the pieces it falls into, decoupling track length and the skew of diff pairs. A measurement and never a check: `scripts/route-scorecard` prints it for the example boards beside their references (issue #431).
+The numbers that say how good a board's routing is, read from its `.kicad_pcb` and `.kicad_pro` (`netsmith_fab::Scorecard`), so that a board netsmith routed and one a person routed in KiCad are measured by the same code: connections left, track length against the shortest tree between each routed net's pads, vias, bends by angle, track narrower than its net class, how much other nets' track cuts each pour and the pieces it falls into, decoupling track length and the skew of diff pairs. A measurement and never a check: `scripts/route-scorecard` prints it for the example boards beside their references (issue #431).
 _Avoid_: Score (alone), quality (the placer's `Quality` is a measure of a placement), benchmark
 
 **Escape lane**:
@@ -248,7 +248,7 @@ How important a connection of the router is, derived from the board: escape (to 
 _Avoid_: Net class (KiCad's, the width and clearance the `.kicad_pro` gives a net), priority, importance (alone)
 
 **Diff pair**:
-Two nets whose names differ only in a pair of suffixes (`dp` and `dm`, `D+` and `D-`, `_P` and `_N`, `.p` and `.n`, and the like: `netsmith_fab::score::PAIR_SUFFIXES`), such as the nets of the fields of `std::bus::Usb2`. Nothing in the source marks one: the names say it. When a try of the router has routed every line, it routes each net of a pair again beside the other and keeps that copper only where more of it runs coupled at no more length or vias; the route scorecard reports each pair's skew and how much of it runs coupled (issue #431).
+Two nets whose names differ only in a pair of suffixes (`dp` and `dm`, `D+` and `D-`, `_P` and `_N`, `.p` and `.n`, and the like: `netsmith_geom::PAIR_SUFFIXES`), such as the nets of the fields of `std::bus::Usb2`. Nothing in the source marks one: the names say it. When a try of the router has routed every line, it routes each net of a pair again beside the other and keeps that copper only where more of it runs coupled at no more length or vias; the route scorecard reports each pair's skew and how much of it runs coupled (issue #431).
 _Avoid_: Differential pair marking, pair class
 
 **Route robustness**:

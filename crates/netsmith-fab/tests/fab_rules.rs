@@ -5,7 +5,7 @@
 use crate::common;
 
 use common::*;
-use netsmith_fab::drc::{self, Extras, Report, Rule};
+use netsmith_geom::{drc_check, DrcExtras, DrcReport, DrcRule};
 
 const NONE: Draw = Draw {
     courtyard: None,
@@ -14,8 +14,8 @@ const NONE: Draw = Draw {
 };
 
 /// JLCPCB's two-layer figures, as `fab` passes them.
-fn jlcpcb() -> Extras {
-    Extras {
+fn jlcpcb() -> DrcExtras {
+    DrcExtras {
         hole_to_track: Some(0.2),
         plated_hole_clearance: Some(0.28),
         pad_to_pad: Some(0.15),
@@ -25,13 +25,13 @@ fn jlcpcb() -> Extras {
         npth_slot: Some(1.0),
         npth_drill: Some(0.5),
         pad_ring: Some(0.18),
-        ..Extras::default()
+        ..DrcExtras::default()
     }
 }
 
-fn check(b: &mut Pcb, extras: &Extras) -> Report {
+fn check(b: &mut Pcb, extras: &DrcExtras) -> DrcReport {
     let (pcb, pro) = (b.pcb(), b.pro());
-    drc::check(&pcb, Some(&pro), extras).unwrap_or_else(|e| panic!("{e}"))
+    drc_check(&pcb, Some(&pro), extras).unwrap_or_else(|e| panic!("{e}"))
 }
 
 #[test]
@@ -56,7 +56,7 @@ fn a_track_keeps_more_from_a_plated_hole_than_from_a_hole_with_no_plating() {
         let found: Vec<_> = r
             .findings
             .iter()
-            .filter(|f| f.rule == Rule::HoleToTrack)
+            .filter(|f| f.rule == DrcRule::HoleToTrack)
             .collect();
         let on = |part: &str| {
             found
@@ -80,7 +80,7 @@ fn a_pad_of_a_footprint_may_sit_nearer_its_own_hole_than_a_track_may() {
         NONE,
     );
     let r = check(&mut b, &jlcpcb());
-    assert_eq!(r.count(Rule::HoleToTrack), 0, "{r}");
+    assert_eq!(r.count(DrcRule::HoleToTrack), 0, "{r}");
 }
 
 #[test]
@@ -98,10 +98,10 @@ fn surface_pads_of_different_nets_keep_the_pad_to_pad_space() {
             NONE,
         );
         let r = check(&mut b, &jlcpcb());
-        assert_eq!(r.count(Rule::PadToPad), count, "gap {gap}\n{r}");
-        let none = check(&mut b, &Extras::default());
+        assert_eq!(r.count(DrcRule::PadToPad), count, "gap {gap}\n{r}");
+        let none = check(&mut b, &DrcExtras::default());
         assert_eq!(
-            none.count(Rule::PadToPad),
+            none.count(DrcRule::PadToPad),
             0,
             "not checked without the process"
         );
@@ -117,7 +117,7 @@ fn a_track_keeps_its_space_from_another_nets_mask_opening() {
         let y = 10.3 + gap + 0.05;
         b.track("B", "F.Cu", (8.0, y), (12.0, y), 0.1);
         let r = check(&mut b, &jlcpcb());
-        assert_eq!(r.count(Rule::MaskToTrack), count, "gap {gap}\n{r}");
+        assert_eq!(r.count(DrcRule::MaskToTrack), count, "gap {gap}\n{r}");
     }
 }
 
@@ -147,22 +147,22 @@ fn slots_small_holes_thin_rings_and_near_pad_holes_are_named() {
     );
     b.part("H2", (20.95, 20.0), 0.0, &[hole(0.0, 0.0, 0.6)], NONE);
     let r = check(&mut b, &jlcpcb());
-    assert_eq!(r.count(Rule::SlotWidth), 1, "{r}");
-    assert_eq!(r.count(Rule::NpthDrill), 1, "{r}");
-    assert_eq!(r.count(Rule::PlatedRing), 1, "{r}");
-    assert_eq!(r.count(Rule::PadHoleToHole), 1, "{r}");
-    assert_eq!(r.count(Rule::HoleToHole), 0, "{r}");
+    assert_eq!(r.count(DrcRule::SlotWidth), 1, "{r}");
+    assert_eq!(r.count(DrcRule::NpthDrill), 1, "{r}");
+    assert_eq!(r.count(DrcRule::PlatedRing), 1, "{r}");
+    assert_eq!(r.count(DrcRule::PadHoleToHole), 1, "{r}");
+    assert_eq!(r.count(DrcRule::HoleToHole), 0, "{r}");
     assert!(
         r.findings
             .iter()
-            .all(|f| f.rule != Rule::PlatedRing || f.items[0].part.as_deref() == Some("J1"))
+            .all(|f| f.rule != DrcRule::PlatedRing || f.items[0].part.as_deref() == Some("J1"))
     );
-    let none = check(&mut b, &Extras::default());
+    let none = check(&mut b, &DrcExtras::default());
     for rule in [
-        Rule::SlotWidth,
-        Rule::NpthDrill,
-        Rule::PlatedRing,
-        Rule::PadHoleToHole,
+        DrcRule::SlotWidth,
+        DrcRule::NpthDrill,
+        DrcRule::PlatedRing,
+        DrcRule::PadHoleToHole,
     ] {
         assert_eq!(none.count(rule), 0, "{rule:?} without the process");
     }
@@ -171,19 +171,19 @@ fn slots_small_holes_thin_rings_and_near_pad_holes_are_named() {
 #[test]
 fn the_fabricators_rules_are_netsmiths_and_not_compared_with_kicad() {
     for rule in [
-        Rule::HoleToTrack,
-        Rule::PadToPad,
-        Rule::PadHoleToHole,
-        Rule::MaskToTrack,
-        Rule::SlotWidth,
-        Rule::NpthDrill,
-        Rule::PlatedRing,
-        Rule::TrackCurrent,
-        Rule::ViaCurrent,
-        Rule::TrackAngle,
+        DrcRule::HoleToTrack,
+        DrcRule::PadToPad,
+        DrcRule::PadHoleToHole,
+        DrcRule::MaskToTrack,
+        DrcRule::SlotWidth,
+        DrcRule::NpthDrill,
+        DrcRule::PlatedRing,
+        DrcRule::TrackCurrent,
+        DrcRule::ViaCurrent,
+        DrcRule::TrackAngle,
     ] {
         assert!(rule.is_netsmiths(), "{rule:?}");
-        assert_eq!(Rule::from_id(rule.id()), Some(rule));
+        assert_eq!(DrcRule::from_id(rule.id()), Some(rule));
     }
 }
 
@@ -191,7 +191,7 @@ fn the_fabricators_rules_are_netsmiths_and_not_compared_with_kicad() {
 fn a_track_narrower_than_its_current_needs_is_named_unless_it_is_near_its_pads() {
     // A 1 A net that needs 0.4 mm: a 0.2 mm track 10 mm long between two pads, and a 0.2 mm
     // neck of 0.5 mm out of a pad.
-    let extras = Extras {
+    let extras = DrcExtras {
         least_widths: vec![("P".to_string(), 0.4)],
         neck_reach: 1.0,
         ..jlcpcb()
@@ -203,7 +203,7 @@ fn a_track_narrower_than_its_current_needs_is_named_unless_it_is_near_its_pads()
     b.track("P", "F.Cu", (10.5, 10.0), (20.0, 10.0), 0.4);
     let r = check(&mut b, &extras);
     assert_eq!(
-        r.count(Rule::TrackCurrent),
+        r.count(DrcRule::TrackCurrent),
         0,
         "a neck out of a pad passes\n{r}"
     );
@@ -215,7 +215,7 @@ fn a_track_narrower_than_its_current_needs_is_named_unless_it_is_near_its_pads()
     let found: Vec<_> = r
         .findings
         .iter()
-        .filter(|f| f.rule == Rule::TrackCurrent)
+        .filter(|f| f.rule == DrcRule::TrackCurrent)
         .collect();
     assert_eq!(found.len(), 1, "{r}");
     assert!(
@@ -225,7 +225,7 @@ fn a_track_narrower_than_its_current_needs_is_named_unless_it_is_near_its_pads()
     );
     let none = check(&mut b, &jlcpcb());
     assert_eq!(
-        none.count(Rule::TrackCurrent),
+        none.count(DrcRule::TrackCurrent),
         0,
         "not checked when no current is known"
     );
@@ -233,9 +233,9 @@ fn a_track_narrower_than_its_current_needs_is_named_unless_it_is_near_its_pads()
 
 #[test]
 fn a_bend_of_45_degrees_passes_and_a_right_or_acute_corner_does_not_outside_a_pad() {
-    let angles = Extras {
+    let angles = DrcExtras {
         track_angle: true,
-        ..Extras::default()
+        ..DrcExtras::default()
     };
     type Segment = ((f64, f64), (f64, f64));
     let count = |segments: &[Segment]| {
@@ -246,9 +246,9 @@ fn a_bend_of_45_degrees_passes_and_a_right_or_acute_corner_does_not_outside_a_pa
             b.track("A", "F.Cu", a, c, 0.2);
         }
         let r = check(&mut b, &angles);
-        let none = check(&mut b, &Extras::default());
-        assert_eq!(none.count(Rule::TrackAngle), 0, "not checked unless asked");
-        r.count(Rule::TrackAngle)
+        let none = check(&mut b, &DrcExtras::default());
+        assert_eq!(none.count(DrcRule::TrackAngle), 0, "not checked unless asked");
+        r.count(DrcRule::TrackAngle)
     };
     // Right 4, diagonal 6 by 6 (two 45 degree bends): passes.
     assert_eq!(
@@ -288,9 +288,9 @@ fn a_bend_of_45_degrees_passes_and_a_right_or_acute_corner_does_not_outside_a_pa
 
 #[test]
 fn a_tangent_arc_at_a_bend_is_no_corner_and_a_kinked_arc_is_one() {
-    let angles = Extras {
+    let angles = DrcExtras {
         track_angle: true,
-        ..Extras::default()
+        ..DrcExtras::default()
     };
     // The 45 degree bend at (14, 10) of a track from (10, 10) to (20, 16), cut by an arc of
     // radius 2 tangent to both straight pieces.
@@ -310,7 +310,7 @@ fn a_tangent_arc_at_a_bend_is_no_corner_and_a_kinked_arc_is_one() {
         b.track("A", "F.Cu", (10.0, 10.0), p, 0.2);
         b.track("A", "F.Cu", q, (20.0, 16.0), 0.2);
         b.arc("A", "F.Cu", [p, mid, q], 0.2);
-        check(&mut b, &angles).count(Rule::TrackAngle)
+        check(&mut b, &angles).count(DrcRule::TrackAngle)
     };
     assert_eq!(count(mid), 0, "a tangent arc");
     // The same ends through a point well outside the bend: the arc leaves both straight

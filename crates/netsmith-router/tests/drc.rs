@@ -7,7 +7,8 @@
 use netsmith_testkit::TempDir;
 use std::time::Instant;
 
-use netsmith_fab::drc::{self, Extras, Report, kicad};
+use netsmith_fab::{KicadDrcComparison, compare_kicad_drc, parse_kicad_drc};
+use netsmith_geom::{DrcRule, drc_check, DrcExtras, DrcReport};
 use netsmith_fab::{KicadCli, KicadCliExe};
 use netsmith_pcb::{Board, Ratsnest, kicad_pcb, kicad_pro};
 use netsmith_router::{RouteOptions, route, route_with};
@@ -17,8 +18,8 @@ use crate::common;
 use common::{hard_boards, synthetic_board};
 
 /// The check as `fab` runs it on the files it writes for `board`.
-fn ours(board: &Board) -> Report {
-    let extras = Extras {
+fn ours(board: &Board) -> DrcReport {
+    let extras = DrcExtras {
         mask_web: Some(board.rules.mask_bridge),
         via_in_pad: Some(board.process.via_in_pad),
         excused_courtyards: board.excused_courtyards(),
@@ -36,12 +37,12 @@ fn ours(board: &Board) -> Report {
         via_counts: board.via_counts(),
         track_angle: true,
     };
-    drc::check(&kicad_pcb(board), Some(&kicad_pro(board)), &extras)
+    drc_check(&kicad_pcb(board), Some(&kicad_pro(board)), &extras)
         .unwrap_or_else(|e| panic!("{}: {e}", board.name))
 }
 
 /// KiCad's check of the same files compared with ours, or `None` if KiCad is not here.
-fn against_kicad(name: &str, board: &Board, mine: &Report) -> Option<kicad::Comparison> {
+fn against_kicad(name: &str, board: &Board, mine: &DrcReport) -> Option<KicadDrcComparison> {
     let cli = KicadCliExe::locate_runnable()?;
     let dir = TempDir::new(&format!("pcb-drc-{name}"));
     let path = dir.join(format!("{name}.kicad_pcb"));
@@ -50,7 +51,7 @@ fn against_kicad(name: &str, board: &Board, mine: &Report) -> Option<kicad::Comp
     let json = cli
         .drc_json(&path)
         .unwrap_or_else(|e| panic!("{name}: {e}"));
-    Some(kicad::compare(mine, &kicad::parse(&json).unwrap(), 0.1))
+    Some(compare_kicad_drc(mine, &parse_kicad_drc(&json).unwrap(), 0.1))
 }
 
 #[test]
@@ -63,7 +64,7 @@ fn a_hundred_boards_from_a_hundred_seeds_route_to_no_error_and_the_count_of_miss
         // Before routing, the missing connections are the ratsnest's; after, those it left.
         let mine = ours(&board);
         assert_eq!(
-            mine.count(drc::Rule::UnconnectedItems),
+            mine.count(DrcRule::UnconnectedItems),
             Ratsnest::of(&board).len(),
             "board {n}: {mine}"
         );
@@ -81,11 +82,11 @@ fn unrouted_boards_have_exactly_the_ratsnests_missing_connections_and_nothing_el
     for mut board in hard_boards(10) {
         let mine = ours(&board);
         assert_eq!(
-            mine.count(drc::Rule::UnconnectedItems),
+            mine.count(DrcRule::UnconnectedItems),
             Ratsnest::of(&board).len()
         );
         assert!(
-            mine.errors().all(|f| f.rule == drc::Rule::UnconnectedItems),
+            mine.errors().all(|f| f.rule == DrcRule::UnconnectedItems),
             "{mine}"
         );
         let _ = route(&mut board);
@@ -168,7 +169,7 @@ fn seventy_parts() -> (Board, String, String) {
 #[test]
 fn a_board_of_seventy_parts_passes_the_check() {
     let (_, text, pro) = seventy_parts();
-    let report = drc::check(&text, Some(&pro), &Extras::default()).unwrap();
+    let report = drc_check(&text, Some(&pro), &DrcExtras::default()).unwrap();
     assert!(report.is_clean(), "{report}");
 }
 
@@ -180,7 +181,7 @@ fn a_board_of_seventy_parts_passes_the_check() {
 fn measured() {
     let (board, text, pro) = seventy_parts();
     let started = Instant::now();
-    let report = drc::check(&text, Some(&pro), &Extras::default()).unwrap();
+    let report = drc_check(&text, Some(&pro), &DrcExtras::default()).unwrap();
     eprintln!(
         "70 parts, {} tracks, {} vias: checked in {:?}, {} finding(s)",
         board.tracks.len(),
@@ -275,7 +276,7 @@ fn routed_boards_bend_by_arcs_that_the_check_passes_and_the_same_lines_route() {
         let file = kicad_pcb(&round);
         assert_eq!(file.matches("(arc").count(), drawn, "board {n}");
         let mine = ours(&round);
-        assert_eq!(mine.count(drc::Rule::TrackAngle), 0, "board {n}: {mine}");
+        assert_eq!(mine.count(DrcRule::TrackAngle), 0, "board {n}: {mine}");
         if left.is_empty() {
             let errors: Vec<_> = mine.errors().map(ToString::to_string).collect();
             assert_eq!(errors, Vec::<String>::new(), "board {n}");

@@ -204,7 +204,7 @@ pub fn gap(a: &Shape, b: &Shape) -> Gap {
 
 /// Whether the shape reaches anything of `polygon` (a solid area): used for rule areas and
 /// zones.
-pub fn touches_area(s: &Shape, polygon: &[Pt]) -> bool {
+pub(crate) fn touches_area(s: &Shape, polygon: &[Pt]) -> bool {
     let area = Shape::polygon(polygon.to_vec(), 0.0);
     gap(s, &area).d == 0.0
 }
@@ -212,7 +212,7 @@ pub fn touches_area(s: &Shape, polygon: &[Pt]) -> bool {
 /// Pairs `(i, j)` with `i < j` whose boxes, each grown by `margin / 2`, overlap: the pairs
 /// that can be less than `margin` apart. A pair is reported once. Linear in the number of
 /// boxes for a board's usual spread of sizes.
-pub fn near_pairs(boxes: &[Bounds], margin: f64) -> Vec<(usize, usize)> {
+pub(crate) fn near_pairs(boxes: &[Bounds], margin: f64) -> Vec<(usize, usize)> {
     use std::collections::HashMap;
     const CELL: f64 = 2.0;
     let grown: Vec<Bounds> = boxes.iter().map(|b| b.expanded(margin / 2.0)).collect();

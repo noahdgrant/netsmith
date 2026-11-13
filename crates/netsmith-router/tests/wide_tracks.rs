@@ -8,7 +8,8 @@
 
 use crate::common;
 
-use netsmith_fab::drc;
+use netsmith_geom::{DrcExtras, DrcRule, drc_check};
+
 use netsmith_pcb::{Board, BoardKeepout, Pt};
 use netsmith_router::{RouteOptions, route_with};
 
@@ -16,7 +17,7 @@ use common::{hard_boards, synthetic_board};
 
 /// The errors netsmith's check finds on `board`, as `fab` runs it.
 fn errors(board: &Board) -> Vec<String> {
-    let report = drc::check(
+    let report = drc_check(
         &netsmith_pcb::kicad_pcb(board),
         Some(&netsmith_pcb::kicad_pro(board)),
         &Default::default(),
@@ -172,18 +173,18 @@ fn a_rail_sized_by_its_current_is_necked_down_only_near_its_own_pads() {
             );
         }
         // The design rules check, told the least widths, agrees.
-        let extras = drc::Extras {
+        let extras = DrcExtras {
             least_widths: board.least_widths(),
             neck_reach: reach,
-            ..drc::Extras::default()
+            ..DrcExtras::default()
         };
-        let report = drc::check(
+        let report = drc_check(
             &netsmith_pcb::kicad_pcb(&board),
             Some(&netsmith_pcb::kicad_pro(&board)),
             &extras,
         )
         .unwrap();
-        assert_eq!(report.count(drc::Rule::TrackCurrent), 0, "{name}\n{report}");
+        assert_eq!(report.count(DrcRule::TrackCurrent), 0, "{name}\n{report}");
     }
 }
 
@@ -203,32 +204,32 @@ fn a_rail_whose_current_one_via_does_not_carry_changes_layer_through_vias_side_b
         Vec::new(),
         "every via of a rail stands with two more"
     );
-    let extras = drc::Extras {
+    let extras = DrcExtras {
         via_counts: board.via_counts(),
-        ..drc::Extras::default()
+        ..DrcExtras::default()
     };
-    let report = drc::check(
+    let report = drc_check(
         &netsmith_pcb::kicad_pcb(&board),
         Some(&netsmith_pcb::kicad_pro(&board)),
         &extras,
     )
     .unwrap();
-    assert_eq!(report.count(drc::Rule::ViaCurrent), 0, "{report}");
+    assert_eq!(report.count(DrcRule::ViaCurrent), 0, "{report}");
     assert_eq!(errors(&board), Vec::<String>::new());
     // And the check counts: with four needed, the clusters of three are short.
-    let more = drc::Extras {
+    let more = DrcExtras {
         via_counts: board
             .via_counts()
             .into_iter()
             .map(|(n, _)| (n, 4))
             .collect(),
-        ..drc::Extras::default()
+        ..DrcExtras::default()
     };
-    let report = drc::check(
+    let report = drc_check(
         &netsmith_pcb::kicad_pcb(&board),
         Some(&netsmith_pcb::kicad_pro(&board)),
         &more,
     )
     .unwrap();
-    assert!(report.count(drc::Rule::ViaCurrent) >= 1, "{report}");
+    assert!(report.count(DrcRule::ViaCurrent) >= 1, "{report}");
 }

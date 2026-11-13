@@ -1,5 +1,5 @@
 use super::*;
-use crate::artwork::Artwork;
+use netsmith_geom::Artwork;
 
 /// A board of 40 x 30 mm: a resistor, a pin header with a hole, a ground track on the front,
 /// a supply track through a via on the back, and a plain outline.
@@ -389,10 +389,10 @@ fn one_outline_with_the_cut_lines_and_their_marks_on_edge_cuts() {
     let g = &pkg.geometry;
     assert_eq!((g.width, g.height), (90.0, 100.0));
     let art = Artwork::parse(&pkg.pcb).unwrap();
-    let outline = edge::outline(&art).unwrap();
+    let outline = netsmith_geom::edge_outline(&art).unwrap();
     assert_eq!(outline.outer.len(), 4);
     assert!(outline.cutouts.is_empty());
-    assert_eq!(edge::cut_lines(&art).len(), 7);
+    assert_eq!(netsmith_geom::edge_cut_lines(&art).len(), 7);
     // The Gerber outline holds the rectangle (20, 20) to (110, 120) of the file, which is
     // (-5, 5) to (85, -95) from the drill and place origin (25, 25) with y up, the lines
     // across it and the marks beyond it.

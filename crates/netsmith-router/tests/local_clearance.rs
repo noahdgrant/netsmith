@@ -5,7 +5,7 @@
 use crate::common;
 
 use netsmith_core::{Design, Features, Net, Outline, Part, PinRef};
-use netsmith_fab::drc::{self, Extras};
+use netsmith_geom::{DrcReport, drc_check, DrcExtras};
 use netsmith_pcb::{Board, FootprintLibrary, Pt, Rect, kicad_pcb, kicad_pro};
 use netsmith_router::route;
 use netsmith_testkit::TempDir;
@@ -159,8 +159,8 @@ fn least_gap(board: &Board) -> f64 {
         .fold(f64::MAX, f64::min)
 }
 
-fn check(board: &Board) -> drc::Report {
-    let extras = Extras {
+fn check(board: &Board) -> DrcReport {
+    let extras = DrcExtras {
         mask_web: Some(board.rules.mask_bridge),
         via_in_pad: Some(board.process.via_in_pad),
         excused_courtyards: board.excused_courtyards(),
@@ -178,7 +178,7 @@ fn check(board: &Board) -> drc::Report {
         via_counts: board.via_counts(),
         track_angle: true,
     };
-    drc::check(&kicad_pcb(board), Some(&kicad_pro(board)), &extras).unwrap()
+    drc_check(&kicad_pcb(board), Some(&kicad_pro(board)), &extras).unwrap()
 }
 
 #[test]

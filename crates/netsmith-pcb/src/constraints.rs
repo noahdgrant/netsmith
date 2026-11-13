@@ -18,7 +18,7 @@
 //! A module's `.place` is the box of all its parts. The placer enforces the half of it that
 //! keeps the module in: no part of it has its left or top edge below a lower bound of the
 //! module's, or its right or bottom edge above an upper bound. The rest of a module's
-//! requirements is measured by the check after placement ([`netsmith_geom::drc`]).
+//! requirements is measured by the check after placement ([`netsmith_geom::drc_check`]).
 //!
 //! **Why a requirement is on the body, in the design's source** (ADR 0045 sections 3 and 8; the
 //! owner decided on 2026-11-02). A requirement is true of this product's case and not of the
@@ -58,7 +58,7 @@
 //! places to 0.01 mm, so a saved layout may differ from the exact place by 0.005 mm and the
 //! check's half micrometre is not guaranteed for so narrow a window after the editor saves.
 //! `plan` measures relations between parts that stay, and a relation that cannot be met is an
-//! error before placing. The check is `netsmith_geom::drc::constraints::Relation`, the rule
+//! error before placing. The check is `netsmith_geom::ConstraintRelation`, the rule
 //! `constraint`: an error, or a warning with `constraints = "warn"`, never waived by
 //! `--allow-drc-violations`. A `row` statement of the physical file lowers to these relations
 //! (`netsmith-check/src/row.rs`). Not planned until a board needs it: a module's box or a turn

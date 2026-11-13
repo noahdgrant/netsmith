@@ -28,16 +28,16 @@ use crate::kicad::CliError;
 
 /// The longest one launch waits for the others (a launch takes seconds; a whole test run
 /// queued ahead of it takes minutes).
-pub const LOCK_WAIT: Duration = Duration::from_secs(30 * 60);
+pub(crate) const LOCK_WAIT: Duration = Duration::from_secs(30 * 60);
 
 /// How many times a program is started when the interop channel fails it.
-pub const ATTEMPTS: u32 = 3;
+pub(crate) const ATTEMPTS: u32 = 3;
 
 /// The pause after the first failed attempt; the second waits twice as long.
-pub const BACKOFF: Duration = Duration::from_secs(2);
+pub(crate) const BACKOFF: Duration = Duration::from_secs(2);
 
 /// The lock file every process on the machine shares: it is in the system's temp directory.
-pub fn lock_path() -> PathBuf {
+pub(crate) fn lock_path() -> PathBuf {
     std::env::temp_dir().join("netsmith-kicad.lock")
 }
 
@@ -45,14 +45,14 @@ static IN_PROCESS: Mutex<()> = Mutex::new(());
 
 /// Held while one KiCad program runs; releases both locks when dropped.
 #[derive(Debug)]
-pub struct Guard {
+pub(crate) struct Guard {
     _file: File,
     _threads: MutexGuard<'static, ()>,
 }
 
 /// Takes the lock on `path`, waiting up to `wait` for the other launches (of this process,
 /// then of other processes) to finish.
-pub fn lock(path: &Path, wait: Duration) -> Result<Guard, String> {
+pub(crate) fn lock(path: &Path, wait: Duration) -> Result<Guard, String> {
     let started = std::time::Instant::now();
     let threads = IN_PROCESS.lock().unwrap_or_else(|e| e.into_inner());
     let file = File::options()
@@ -130,7 +130,7 @@ fn describe(output: &Output) -> String {
 
 /// Why a finished program's failure is WSL's or the system's and not the program's, or
 /// `None` if it succeeded or failed for its own reasons (those are not repeated).
-pub fn transient(output: &Output) -> Option<String> {
+pub(crate) fn transient(output: &Output) -> Option<String> {
     if output.status.success() {
         return None;
     }
@@ -156,7 +156,7 @@ pub fn run(make: impl Fn() -> Command) -> Result<Ran, CliError> {
 }
 
 /// [`run`] with its lock file, patience and pause chosen.
-pub fn run_with(
+pub(crate) fn run_with(
     make: impl Fn() -> Command,
     lock_file: &Path,
     wait: Duration,
@@ -203,7 +203,7 @@ pub fn run_with(
 /// A name for a scratch directory that no other directory made by this process, by another
 /// process, or by an earlier run that used the same process id has: the process id, a
 /// counter of this process, and the time.
-pub fn scratch_name() -> String {
+pub(crate) fn scratch_name() -> String {
     static COUNTER: AtomicU64 = AtomicU64::new(0);
     let nanos = SystemTime::now()
         .duration_since(UNIX_EPOCH)

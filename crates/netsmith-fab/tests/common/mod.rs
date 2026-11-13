@@ -432,7 +432,7 @@ pub fn kicad_findings(
     name: &str,
     pcb: &str,
     pro: &str,
-) -> Option<Vec<netsmith_fab::drc::kicad::Reported>> {
+) -> Option<Vec<netsmith_fab::KicadDrcReported>> {
     use std::sync::atomic::{AtomicUsize, Ordering};
     static RUNS: AtomicUsize = AtomicUsize::new(0);
     let cli = netsmith_fab::KicadCliExe::locate_runnable()?;
@@ -448,5 +448,5 @@ pub fn kicad_findings(
     let json = cli
         .drc_json(&path)
         .unwrap_or_else(|e| panic!("{name}: {e}"));
-    Some(netsmith_fab::drc::kicad::parse(&json).unwrap())
+    Some(netsmith_fab::parse_kicad_drc(&json).unwrap())
 }

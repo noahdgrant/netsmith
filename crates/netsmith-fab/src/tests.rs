@@ -465,7 +465,7 @@ fn warnings_do_not_stop_a_package_and_are_listed_in_the_notes() {
     let pkg = package(&pcb, &sample_bom(), &Options::default()).unwrap();
     assert_eq!(pkg.drc, DrcOutcome::Passed);
     assert_eq!(
-        pkg.drc_report.count(drc::Rule::SilkOverCopper),
+        pkg.drc_report.count(netsmith_geom::DrcRule::SilkOverCopper),
         2,
         "{}",
         pkg.drc_report
@@ -507,14 +507,10 @@ fn part_number_errors_come_before_the_check_runs() {
     ));
 }
 
-/// The thermal spokes of a pour (`netsmith_geom::fill`), seen in the Gerber's picture drawn by
+/// The thermal spokes of a pour (`netsmith_geom::fill_pour`), seen in the Gerber's picture drawn by
 /// the rasteriser.
 mod spokes {
-    use netsmith_geom::artwork::Artwork;
-    use netsmith_geom::fill::pour;
-    use netsmith_geom::gbr::Gerber;
-    use netsmith_geom::geom::Pt;
-    use netsmith_geom::plot::Rules;
+    use netsmith_geom::{Artwork, Gerber, PlotRules, Pt, fill_pour};
 
     fn art(items: &str) -> Artwork {
         Artwork::parse(&format!(
@@ -530,14 +526,14 @@ mod spokes {
     }
 
     fn poured(a: &Artwork) -> String {
-        let edge = netsmith_geom::edge::outline(a).unwrap();
+        let edge = netsmith_geom::edge_outline(a).unwrap();
         let mut g = Gerber::new(Pt::default());
-        pour(
+        fill_pour(
             &mut g,
             a,
             "F.Cu",
             &edge,
-            &Rules {
+            &PlotRules {
                 edge_clearance: 0.2,
                 hole_clearance: None,
             },

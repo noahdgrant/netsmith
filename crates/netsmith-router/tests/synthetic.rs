@@ -288,8 +288,8 @@ fn the_placement_of_the_big_boards_is_measured() {
 
 /// Writes the board, plots it with netsmith's own writers and with KiCad, and compares the
 /// two (ADR 0034). `None` where KiCad is not installed.
-fn crosscheck(name: &str, board: &netsmith_pcb::Board) -> Option<netsmith_fab::crosscheck::Report> {
-    use netsmith_fab::crosscheck::{Limits, check};
+fn crosscheck(name: &str, board: &netsmith_pcb::Board) -> Option<netsmith_fab::CrossCheckReport> {
+    use netsmith_fab::{CrossCheckLimits, cross_check};
     let cli = netsmith_fab::KicadCliExe::locate_runnable()?;
     let dir = TempDir::new(&format!("pcb-cross-{name}"));
     let pcb = dir.join(format!("{name}.kicad_pcb"));
@@ -299,7 +299,7 @@ fn crosscheck(name: &str, board: &netsmith_pcb::Board) -> Option<netsmith_fab::c
         netsmith_pcb::kicad_pro(board),
     )
     .ok()?;
-    let report = check(&pcb, &cli, &Limits::default()).unwrap_or_else(|e| panic!("{e}"));
+    let report = cross_check(&pcb, &cli, &CrossCheckLimits::default()).unwrap_or_else(|e| panic!("{e}"));
     Some(report)
 }
 
@@ -360,7 +360,7 @@ fn the_boards_of_seventy_parts_the_placer_makes_pass_netsmiths_own_design_rules_
         };
         let routing = route_with(&mut board, RouteOptions::default());
         assert!(routing.left.is_empty(), "{name}: {:?}", routing.left.lines);
-        let report = netsmith_fab::drc::check(
+        let report = netsmith_geom::drc_check(
             &netsmith_pcb::kicad_pcb(&board),
             Some(&netsmith_pcb::kicad_pro(&board)),
             &Default::default(),

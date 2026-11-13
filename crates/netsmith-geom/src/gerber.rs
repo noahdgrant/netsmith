@@ -1,6 +1,6 @@
 //! The Gerber layers: which layers a board gets and what the files are called. The files
 //! themselves are made by [`crate::plot`] and [`crate::drill`]; the zip JLCPCB takes is
-//! `netsmith_fab::gerber::zip`.
+//! `netsmith_fab::gerber_zip`.
 //!
 //! The layout follows a package JLCPCB accepted (verified against that package, not in this repository): a top folder `gerber/` holding
 //! `<board>-F_Cu.gbr`, `-B_Cu.gbr`, `-In1_Cu.gbr`..., `-F_Mask.gbr`, `-B_Mask.gbr`,
@@ -68,7 +68,7 @@ pub fn plot_layers(copper: &[String]) -> Result<Vec<String>, GerberError> {
 }
 
 /// Layers that stay in the package even when nothing is drawn on them.
-pub fn required(layer: &str) -> bool {
+pub(crate) fn required(layer: &str) -> bool {
     !matches!(layer, "B.Paste" | "B.SilkS")
 }
 

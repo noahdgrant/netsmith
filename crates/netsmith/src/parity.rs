@@ -365,7 +365,7 @@ fn origin_lines(
     pcb: &str,
     map: &DesignatorMap,
 ) -> Vec<OriginLine> {
-    let Ok(art) = netsmith_fab::artwork::Artwork::parse(pcb) else {
+    let Ok(art) = netsmith_geom::Artwork::parse(pcb) else {
         return Vec::new();
     };
     let paths: BTreeMap<String, String> = netsmith_kicad::Sexp::parse(pcb)
@@ -405,7 +405,7 @@ fn origin_lines(
             continue;
         };
         let back = found.layer.starts_with('B');
-        let Some((body, _)) = netsmith_fab::drc::constraints::body_of(&art, &found.reference, back)
+        let Some((body, _)) = netsmith_geom::constraint_body_of(&art, &found.reference, back)
         else {
             continue;
         };

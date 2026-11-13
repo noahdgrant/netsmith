@@ -603,7 +603,7 @@ fn pour_covers(name: &str, b: &Board, net: &str, points: &[Pt]) -> Option<Vec<bo
             eprintln!("skipped: no KiCad Python at {}", python.display());
             return None;
         }
-    } else if !netsmith_fab::exclusive::run(|| {
+    } else if !netsmith_fab::run_exclusive(|| {
         let mut command = Command::new(&python);
         command.args(["-c", "import pcbnew"]);
         command
@@ -634,7 +634,7 @@ fn pour_covers(name: &str, b: &Board, net: &str, points: &[Pt]) -> Option<Vec<bo
     std::fs::write(dir.join("hit.py"), script).ok()?;
     let script = cli.arg(&dir.join("hit.py")).ok()?;
     let board = cli.arg(&dir.join("b.kicad_pcb")).ok()?;
-    let ran = netsmith_fab::exclusive::run(|| {
+    let ran = netsmith_fab::run_exclusive(|| {
         let mut command = Command::new(&python);
         command.arg(&script).arg(&board);
         command

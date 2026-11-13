@@ -19,7 +19,7 @@ pub(crate) struct Out<'a> {
 }
 
 impl Out<'_> {
-    pub fn push(
+    pub(super) fn push(
         &mut self,
         rule: Rule,
         message: String,
@@ -90,7 +90,7 @@ fn boxes_within(a: &Bounds, b: &Bounds, d: f64) -> bool {
 
 impl Model<'_> {
     /// The largest space any rule asks for between two things.
-    pub fn max_gap(&self) -> f64 {
+    pub(crate) fn max_gap(&self) -> f64 {
         let r = self.rules;
         let classes = r
             .classes

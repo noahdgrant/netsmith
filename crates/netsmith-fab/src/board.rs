@@ -70,7 +70,7 @@ impl BoardPart {
 }
 
 /// `Resistor_SMD:R_0603_1608Metric` -> `R_0603_1608Metric`.
-pub fn footprint_name(footprint: &str) -> &str {
+pub(crate) fn footprint_name(footprint: &str) -> &str {
     footprint.rsplit_once(':').map_or(footprint, |(_, n)| n)
 }
 

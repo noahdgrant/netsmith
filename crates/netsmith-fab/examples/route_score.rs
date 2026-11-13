@@ -1,11 +1,12 @@
-//! Prints the route scorecard ([`netsmith_fab::score`]) of each board file given, with the
+//! Prints the route scorecard ([`netsmith_fab::Scorecard`]) of each board file given, with the
 //! `.kicad_pro` beside it if there is one; `--json` prints them as one JSON object keyed by
 //! the file name instead.
 //!
 //! `cargo run --release -p netsmith-fab --example route_score -- [--json] a.kicad_pcb b.kicad_pcb ...`
 
-use netsmith_fab::drc;
-use netsmith_fab::score::Scorecard;
+use netsmith_fab::Scorecard;
+use netsmith_geom::drc_project_of;
+
 use std::path::Path;
 
 fn main() {
@@ -20,7 +21,7 @@ fn main() {
     for file in files {
         let path = Path::new(file);
         let text = std::fs::read_to_string(path).unwrap_or_else(|e| panic!("{file}: {e}"));
-        let card = Scorecard::of(&text, drc::project_of(path).as_deref())
+        let card = Scorecard::of(&text, drc_project_of(path).as_deref())
             .unwrap_or_else(|e| panic!("{file}: {e}"));
         if json {
             all.insert(

@@ -16,7 +16,7 @@
 //! part on the bottom side (no board in the evidence has one).
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub enum Pattern {
+pub(crate) enum Pattern {
     /// The whole footprint name.
     Exact(&'static str),
     /// The start of the footprint name.
@@ -33,7 +33,7 @@ impl Pattern {
 }
 
 /// Degrees added to KiCad's rotation to get JLCPCB's.
-pub const TABLE: &[(Pattern, f64)] = &[
+pub(crate) const TABLE: &[(Pattern, f64)] = &[
     (Pattern::Prefix("R_0402_"), 0.0),              // 18 parts
     (Pattern::Prefix("R_0603_"), 0.0),              // 3
     (Pattern::Prefix("R_0805_"), 0.0),              // 1
@@ -50,13 +50,13 @@ pub const TABLE: &[(Pattern, f64)] = &[
 
 /// What is known about a footprint's rotation.
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub enum Correction {
+pub(crate) enum Correction {
     Offset(f64),
     Unverified,
 }
 
 /// `name` is the footprint's name without its library, such as `R_0603_1608Metric`.
-pub fn lookup(name: &str) -> Correction {
+pub(crate) fn lookup(name: &str) -> Correction {
     TABLE
         .iter()
         .find(|(p, _)| p.matches(name))
@@ -64,7 +64,7 @@ pub fn lookup(name: &str) -> Correction {
 }
 
 /// `degrees` in `[0, 360)`.
-pub fn normalize(degrees: f64) -> f64 {
+pub(crate) fn normalize(degrees: f64) -> f64 {
     let r = degrees.rem_euclid(360.0);
     // Rounds away float noise such as 359.99999999999994 and avoids a negative zero.
     let r = (r * 1e6).round() / 1e6;

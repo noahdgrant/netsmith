@@ -304,7 +304,7 @@ fn the_six_layer_example_has_two_planes_two_empty_signal_layers_and_routes_on_th
 /// What netsmith's own design rules check (ADR 0037) finds on a routed board the placer made:
 /// nothing, with no KiCad needed. `kicad_drc.rs` compares the two checks where KiCad is here.
 fn own_findings(board: &Board) -> Vec<String> {
-    let report = netsmith_fab::drc::check(
+    let report = netsmith_geom::drc_check(
         &kicad_pcb(board),
         Some(&netsmith_pcb::kicad_pro(board)),
         &Default::default(),

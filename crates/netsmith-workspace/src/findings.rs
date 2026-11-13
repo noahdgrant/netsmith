@@ -11,10 +11,9 @@ use netsmith_editor::{
     Say,
     api::{FindingSource, KicadState, Location, PcbBox, PcbFinding, Severity},
 };
-use netsmith_fab::{
-    KicadCli, KicadCliExe,
-    artwork::Artwork,
-    drc::{self, Rule, constraints::Constraints},
+use netsmith_fab::{KicadCli, KicadCliExe};
+use netsmith_geom::{
+    Artwork, Constraints, DrcFinding, DrcRule, DrcSeverity, constraint_outcome_findings, drc_check,
 };
 use netsmith_pcb::{Board, PlacementProblem, Pt, Ratsnest, Rect, kicad_pcb, kicad_pro};
 
@@ -364,7 +363,7 @@ pub fn unrouted_findings(board: &Board) -> Vec<PcbFinding> {
 /// courtyards that overlap, which are the placement check's. KiCad is not involved.
 pub fn drc_findings(board: &Board) -> Vec<PcbFinding> {
     let extras = netsmith_fabricate::fab::drc_extras(board);
-    let report = match drc::check(&kicad_pcb(board), Some(&kicad_pro(board)), &extras) {
+    let report = match drc_check(&kicad_pcb(board), Some(&kicad_pro(board)), &extras) {
         Ok(report) => report,
         // The board file is netsmith's own, so this is a mistake in netsmith; say so.
         Err(e) => {
@@ -383,15 +382,20 @@ pub fn drc_findings(board: &Board) -> Vec<PcbFinding> {
     report
         .findings
         .iter()
-        .filter(|f| !matches!(f.rule, Rule::UnconnectedItems | Rule::CourtyardsOverlap))
+        .filter(|f| {
+            !matches!(
+                f.rule,
+                DrcRule::UnconnectedItems | DrcRule::CourtyardsOverlap
+            )
+        })
         .map(|f| from_drc(f, board, &mut ids))
         .collect()
 }
 
 /// A finding of netsmith's design rules check as the page shows it.
-fn from_drc(f: &drc::Finding, board: &Board, ids: &mut Ids) -> PcbFinding {
+fn from_drc(f: &DrcFinding, board: &Board, ids: &mut Ids) -> PcbFinding {
     let severity = match f.severity {
-        drc::Severity::Error => Severity::Error,
+        DrcSeverity::Error => Severity::Error,
         _ => Severity::Warning,
     };
     let points: Vec<Pt> = std::iter::once(Pt::new(f.at.x, f.at.y))
@@ -492,10 +496,7 @@ pub fn constraint_findings(board: &Board, constraints: &Constraints) -> Vec<PcbF
     let violated = outcomes.iter().filter(|o| !o.satisfied);
     let mut ids = Ids(Vec::new());
     violated
-        .zip(drc::constraints::outcome_findings(
-            &outcomes,
-            constraints.severity,
-        ))
+        .zip(constraint_outcome_findings(&outcomes, constraints.severity))
         .map(|(outcome, f)| {
             let mut finding = from_drc(&f, board, &mut ids);
             // The message already names the part and the numbers; the generic listing of
@@ -679,7 +680,7 @@ mod tests {
     #[test]
     fn a_requirement_on_where_a_part_goes_is_a_finding_with_its_numbers_and_the_requirements_name()
     {
-        use drc::constraints::{Constraint, Measure};
+        use netsmith_geom::{Constraint, ConstraintMeasure as Measure};
         let board = placed("led");
         let part = board.parts[0].refdes.clone();
         let constraints = |severity| Constraints {
@@ -695,7 +696,7 @@ mod tests {
             relations: Vec::new(),
             severity,
         };
-        let found = constraint_findings(&board, &constraints(drc::Severity::Error));
+        let found = constraint_findings(&board, &constraints(DrcSeverity::Error));
         assert_eq!(found.len(), 1, "{found:#?}");
         let f = &found[0];
         assert_eq!(f.id, "constraint:supply.place.left");
@@ -724,9 +725,9 @@ mod tests {
             f.message
         );
         // The project can make it a warning, and a met requirement is no finding.
-        let warned = constraint_findings(&board, &constraints(drc::Severity::Warning));
+        let warned = constraint_findings(&board, &constraints(DrcSeverity::Warning));
         assert_eq!(warned[0].severity, Severity::Warning);
-        let mut met = constraints(drc::Severity::Error);
+        let mut met = constraints(DrcSeverity::Error);
         met.list[0].lo = f64::NEG_INFINITY;
         met.list[0].hi = f64::INFINITY;
         assert_eq!(constraint_findings(&board, &met), []);
@@ -734,7 +735,10 @@ mod tests {
 
     #[test]
     fn an_unmet_relation_between_two_parts_is_a_finding_that_names_both() {
-        use drc::constraints::{Measure, Relation, RelationEnd};
+        use netsmith_geom::{
+            ConstraintMeasure as Measure, ConstraintRelation as Relation,
+            ConstraintRelationEnd as RelationEnd,
+        };
         let board = placed("led");
         let end = |i: usize| RelationEnd {
             part: board.parts[i].refdes.clone(),
@@ -752,7 +756,7 @@ mod tests {
                 lo: 500.0,
                 hi: 501.0,
             }],
-            severity: drc::Severity::Error,
+            severity: DrcSeverity::Error,
         };
         let found = constraint_findings(&board, &constraints);
         assert_eq!(found.len(), 1, "{found:#?}");

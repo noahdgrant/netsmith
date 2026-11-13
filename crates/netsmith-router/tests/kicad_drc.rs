@@ -756,18 +756,18 @@ fn a_track_keeps_the_process_space_from_a_hole_s_solder_mask_opening() {
         least < 0.3,
         "the track passes near the opening: {least:.3} mm"
     );
-    let extras = netsmith_fab::drc::Extras {
+    let extras = netsmith_geom::DrcExtras {
         mask_to_track: Some(r.mask_to_track),
         ..Default::default()
     };
-    let report = netsmith_fab::drc::check(
+    let report = netsmith_geom::drc_check(
         &netsmith_pcb::kicad_pcb(&b),
         Some(&netsmith_pcb::kicad_pro(&b)),
         &extras,
     )
     .unwrap();
     assert_eq!(
-        report.count(netsmith_fab::drc::Rule::MaskToTrack),
+        report.count(netsmith_geom::DrcRule::MaskToTrack),
         0,
         "{report}"
     );
@@ -983,7 +983,7 @@ fn kicad_draws_a_back_footprints_model_and_pads_where_netsmith_puts_them() {
             cli.arg(&dir.join("b.kicad_pcb")).unwrap(),
             cli.arg(&dir.join(out)).unwrap(),
         );
-        let ran = netsmith_fab::exclusive::run(|| {
+        let ran = netsmith_fab::run_exclusive(|| {
             let mut command = Command::new(cli.exe());
             command
                 .args(["pcb", "export", "stl", "--user-origin", "0x0mm", "-f", "-o"])

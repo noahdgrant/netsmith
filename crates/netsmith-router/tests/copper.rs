@@ -2,9 +2,9 @@
 //! routed example boards, each copper layer drawn from the data and the layer fab writes are
 //! rasterised and compared, and so are the pours alone against the filler's own output.
 
-use netsmith_fab::gbr::{Contour, Gerber};
-use netsmith_fab::geom::Pt as FabPt;
-use netsmith_fab::raster::{self, Image, View};
+use netsmith_fab::{compare_tolerant, gerber_extent, render_gerber};
+use netsmith_geom::{Contour, Gerber, Pt as FabPt};
+use netsmith_fab::{RasterImage, RasterView};
 use netsmith_pcb::{copper_of, Area, Copper, Board, kicad_pcb, kicad_pro};
 use netsmith_router::route;
 
@@ -52,11 +52,11 @@ fn area_gerber(origin: FabPt, a: &Area) -> String {
 
 /// The union of the areas, rasterised on `view`: each drawn alone, so one area's hole never
 /// clears another area.
-fn render_areas<'a>(origin: FabPt, areas: impl Iterator<Item = &'a Area>, view: &View) -> Image {
+fn render_areas<'a>(origin: FabPt, areas: impl Iterator<Item = &'a Area>, view: &RasterView) -> RasterImage {
     let mut out =
-        raster::render_gerber(&Gerber::new(origin).text("Other", false, "x"), view, SCALE).unwrap();
+        render_gerber(&Gerber::new(origin).text("Other", false, "x"), view, SCALE).unwrap();
     for a in areas {
-        let img = raster::render_gerber(&area_gerber(origin, a), view, SCALE).unwrap();
+        let img = render_gerber(&area_gerber(origin, a), view, SCALE).unwrap();
         for (o, b) in out.bits.iter_mut().zip(&img.bits) {
             *o |= b;
         }
@@ -65,7 +65,7 @@ fn render_areas<'a>(origin: FabPt, areas: impl Iterator<Item = &'a Area>, view: 
 }
 
 /// A copper layer from the data: pours, pads, drawings, tracks and vias.
-fn render_layer(c: &Copper, layer: &str, origin: FabPt, view: &View) -> Image {
+fn render_layer(c: &Copper, layer: &str, origin: FabPt, view: &RasterView) -> RasterImage {
     let l = c.layers.iter().find(|l| l.layer == layer).unwrap();
     let areas = l
         .pours
@@ -81,13 +81,13 @@ fn render_layer(c: &Copper, layer: &str, origin: FabPt, view: &View) -> Image {
     }
     for v in &c.vias {
         g.flash(
-            netsmith_fab::gbr::Ap::Circle(v.diameter),
+            netsmith_geom::Ap::Circle(v.diameter),
             None,
             fab_pt(v.at),
             &[],
         );
     }
-    let strokes = raster::render_gerber(&g.text("Other", false, "x"), view, SCALE).unwrap();
+    let strokes = render_gerber(&g.text("Other", false, "x"), view, SCALE).unwrap();
     for (o, b) in img.bits.iter_mut().zip(&strokes.bits) {
         *o |= b;
     }
@@ -102,10 +102,10 @@ fn suffix(layer: &str) -> String {
 fn compare(example: &str, pours: &[&str]) {
     let board = routed(example, pours);
     let c = copper_of(&board).unwrap();
-    let art = netsmith_fab::artwork::Artwork::parse(&kicad_pcb(&board)).unwrap();
-    let rules = netsmith_fab::plot_rules_of(Some(&kicad_pro(&board)));
-    let plot = netsmith_fab::plot::plot(&art, "b", &rules).unwrap();
-    let edge = netsmith_fab::edge::outline(&art).unwrap();
+    let art = netsmith_geom::Artwork::parse(&kicad_pcb(&board)).unwrap();
+    let rules = netsmith_geom::plot_rules_of(Some(&kicad_pro(&board)));
+    let plot = netsmith_geom::plot_layer(&art, "b", &rules).unwrap();
+    let edge = netsmith_geom::edge_outline(&art).unwrap();
     let mut pours = 0;
     for layer in &art.copper {
         let file = plot
@@ -114,11 +114,11 @@ fn compare(example: &str, pours: &[&str]) {
             .find(|f| f.name == format!("b-{}.gbr", suffix(layer)))
             .unwrap();
         let text = String::from_utf8(file.bytes.clone()).unwrap();
-        let view = raster::gerber_extent(&text).unwrap().grow(0.5);
+        let view = gerber_extent(&text).unwrap().grow(0.5);
 
-        let want = raster::render_gerber(&text, &view, SCALE).unwrap();
+        let want = render_gerber(&text, &view, SCALE).unwrap();
         let got = render_layer(&c, layer, art.origin, &view);
-        let diff = raster::compare_tolerant(&want, &got, 1).unwrap();
+        let diff = compare_tolerant(&want, &got, 1).unwrap();
         assert!(
             diff.only_a + diff.only_b == 0 && want.lit() > 0,
             "{example} {layer}: {diff:?}"
@@ -126,11 +126,11 @@ fn compare(example: &str, pours: &[&str]) {
 
         // The pours alone, against the filler writing them into a Gerber of their own.
         let mut g = Gerber::new(art.origin);
-        netsmith_fab::fill::pour(&mut g, &art, layer, &edge, &rules).unwrap();
-        let want = raster::render_gerber(&g.text("Copper", false, "b"), &view, SCALE).unwrap();
+        netsmith_geom::fill_pour(&mut g, &art, layer, &edge, &rules).unwrap();
+        let want = render_gerber(&g.text("Copper", false, "b"), &view, SCALE).unwrap();
         let l = c.layers.iter().find(|l| l.layer == *layer).unwrap();
         let got = render_areas(art.origin, l.pours.iter().map(|p| &p.area), &view);
-        let diff = raster::compare_tolerant(&want, &got, 1).unwrap();
+        let diff = compare_tolerant(&want, &got, 1).unwrap();
         assert!(
             diff.only_a + diff.only_b == 0,
             "{example} {layer} pours: {diff:?}"

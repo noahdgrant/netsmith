@@ -89,22 +89,22 @@ fn a_panel_of_six_boards_has_six_times_the_holes_parts_and_one_outline() {
 
     // The panel is 3 x 2 boards of 40 x 30 mm and 5 mm rails: 130 x 70 mm.
     let pcb = fs::read_to_string(dir.join("LedPanel/LedPanel.kicad_pcb")).unwrap();
-    let art = netsmith_fab::artwork::Artwork::parse(&pcb).unwrap();
-    let outline = netsmith_fab::edge::outline(&art).unwrap();
-    let bounds = netsmith_fab::geom::Bounds::of(outline.outer.iter().copied()).unwrap();
+    let art = netsmith_geom::Artwork::parse(&pcb).unwrap();
+    let outline = netsmith_geom::edge_outline(&art).unwrap();
+    let bounds = netsmith_geom::Bounds::of(outline.outer.iter().copied()).unwrap();
     let (w, h) = (bounds.max.x - bounds.min.x, bounds.max.y - bounds.min.y);
     assert_eq!((w, h), (130.0, 70.0));
-    assert_eq!(netsmith_fab::edge::cut_lines(&art).len(), 4 + 3);
+    assert_eq!(netsmith_geom::edge_cut_lines(&art).len(), 4 + 3);
     // The Gerber outline holds that, and the marks beside it; the copper lies inside it.
     let edge =
-        netsmith_fab::raster::gerber_extent(&zipped(&dir, "LedPanel", "LedPanel", "Edge_Cuts.gbr"))
+        netsmith_fab::gerber_extent(&zipped(&dir, "LedPanel", "LedPanel", "Edge_Cuts.gbr"))
             .unwrap();
     assert!(
         edge.max.0 - edge.min.0 >= 130.0 && edge.max.1 - edge.min.1 >= 70.0,
         "{edge:?}"
     );
     let copper =
-        netsmith_fab::raster::gerber_extent(&zipped(&dir, "LedPanel", "LedPanel", "F_Cu.gbr"))
+        netsmith_fab::gerber_extent(&zipped(&dir, "LedPanel", "LedPanel", "F_Cu.gbr"))
             .unwrap();
     assert!(
         copper.min.0 > edge.min.0 && copper.max.0 < edge.max.0,

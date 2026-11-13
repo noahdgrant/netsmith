@@ -11,7 +11,7 @@
 //! package a board that fails netsmith's design rules check, and `--allow-missing-lcsc` to
 //! list parts without a part number as unassembled. KiCad is not needed.
 
-use netsmith_fab::{Board, Options, bom, package};
+use netsmith_fab::{Board, Options, bom_from_board, package, parse_bom_csv};
 use std::path::PathBuf;
 use std::process::ExitCode;
 
@@ -54,12 +54,12 @@ fn run() -> Result<(), String> {
         Some(file) => {
             let text = std::fs::read_to_string(&file)
                 .map_err(|e| format!("cannot read {}: {e}", file.display()))?;
-            bom::parse_csv(&text).map_err(|e| e.to_string())?
+            parse_bom_csv(&text).map_err(|e| e.to_string())?
         }
         None => {
             let text = std::fs::read_to_string(&pcb)
                 .map_err(|e| format!("cannot read {}: {e}", pcb.display()))?;
-            bom::from_board(&Board::parse(&text).map_err(|e| e.to_string())?, &property)
+            bom_from_board(&Board::parse(&text).map_err(|e| e.to_string())?, &property)
         }
     };
     let package = package(&pcb, &entries, &options).map_err(|e| e.to_string())?;

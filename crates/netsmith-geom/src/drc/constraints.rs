@@ -162,7 +162,7 @@ fn n(v: f64) -> String {
 }
 
 /// A range as a person says it.
-pub fn range_text(lo: f64, hi: f64, unit: &str) -> String {
+pub(crate) fn range_text(lo: f64, hi: f64, unit: &str) -> String {
     match (lo.is_finite(), hi.is_finite()) {
         (true, true) if (hi - lo).abs() < 1e-9 => format!("{} {unit}", n(lo)),
         (true, true) => format!("{} to {} {unit}", n(lo), n(hi)),

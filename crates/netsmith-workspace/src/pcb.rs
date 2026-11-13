@@ -88,7 +88,7 @@ pub struct Entry {
     /// for, and forgotten when the board is routed again.
     drc: OnceLock<Vec<PcbFinding>>,
     /// What the design requires of where the parts go (ADR 0045), if it says anything.
-    constraints: Option<netsmith_fab::drc::constraints::Constraints>,
+    constraints: Option<netsmith_geom::Constraints>,
     /// Those requirements measured on the placed board: made when first asked for. Routing
     /// does not move a part, so it stays.
     constraint_findings: OnceLock<Vec<PcbFinding>>,

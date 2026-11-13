@@ -16,7 +16,7 @@ use crate::artwork::{Artwork, PadKind, TrackShape};
 use crate::geom::{Bounds, Pt};
 
 /// How much more than each rule's space new copper keeps, in mm.
-pub const MARGIN: f64 = 0.001;
+pub(super) const MARGIN: f64 = 0.001;
 
 /// A pad's solder mask opening on a face: the pad's net, the opening's shapes and their box.
 type Opening = (Option<String>, Vec<Shape>, Bounds);

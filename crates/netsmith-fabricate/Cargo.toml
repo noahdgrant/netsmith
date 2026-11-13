@@ -18,6 +18,7 @@ netsmith-check = { path = "../netsmith-check" }
 netsmith-core = { path = "../netsmith-core" }
 netsmith-design = { path = "../netsmith-design" }
 netsmith-fab = { path = "../netsmith-fab" }
+netsmith-geom = { path = "../netsmith-geom" }
 netsmith-kicad = { path = "../netsmith-kicad" }
 netsmith-lang = { path = "../netsmith-lang" }
 netsmith-pcb = { path = "../netsmith-pcb" }

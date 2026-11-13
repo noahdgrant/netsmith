@@ -17,16 +17,16 @@
 //! that is no multiple of 90, a side that is not `"top"` or `"bottom"`, a bound that uses
 //! `outline.width` or `outline.height` when the outline does not state that size as one value,
 //! a window outside a fixed outline); satisfaction is measured where a placement exists. The
-//! measurement is one rule on the board file (`netsmith_fab::drc::constraints`), so `fab`, the
+//! measurement is one rule on the board file (`netsmith_geom::Constraints`), so `fab`, the
 //! editor's findings and the cross-check share it. The tolerance is half a micrometre, as for
 //! the rest of the check.
 
 use netsmith_check::{SourceId, Sources};
 use netsmith_core::{Design, PlaceField};
 use netsmith_design::Sites;
-use netsmith_fab::drc::Severity;
-use netsmith_fab::drc::constraints::{
-    Constraint, Constraints, Measure, Relation, RelationEnd, SideRule,
+use netsmith_geom::{
+    Constraint, ConstraintMeasure, ConstraintRelation, ConstraintRelationEnd, Constraints,
+    DrcSeverity, SideRule,
 };
 use netsmith_lang::Span;
 
@@ -134,15 +134,15 @@ pub fn name_case_model_sources(
     }
 }
 
-fn measure(field: PlaceField) -> Measure {
+fn measure(field: PlaceField) -> ConstraintMeasure {
     match field {
-        PlaceField::X => Measure::X,
-        PlaceField::Y => Measure::Y,
-        PlaceField::Left => Measure::Left,
-        PlaceField::Right => Measure::Right,
-        PlaceField::Top => Measure::Top,
-        PlaceField::Bottom => Measure::Bottom,
-        PlaceField::Rotation => Measure::Rotation,
+        PlaceField::X => ConstraintMeasure::X,
+        PlaceField::Y => ConstraintMeasure::Y,
+        PlaceField::Left => ConstraintMeasure::Left,
+        PlaceField::Right => ConstraintMeasure::Right,
+        PlaceField::Top => ConstraintMeasure::Top,
+        PlaceField::Bottom => ConstraintMeasure::Bottom,
+        PlaceField::Rotation => ConstraintMeasure::Rotation,
     }
 }
 
@@ -194,7 +194,7 @@ pub fn of_design(design: &Design, warn: bool) -> Option<Constraints> {
             .parts
             .iter()
             .find(|part| part.path == path)
-            .map(|part| RelationEnd {
+            .map(|part| ConstraintRelationEnd {
                 part: part.refdes.clone(),
                 path: path.to_string(),
                 measure: measure(field),
@@ -205,7 +205,7 @@ pub fn of_design(design: &Design, warn: bool) -> Option<Constraints> {
         .offsets
         .iter()
         .filter_map(|o| {
-            Some(Relation {
+            Some(ConstraintRelation {
                 id: format!(
                     "{}.place.{} - {}.place.{}",
                     o.b.path,
@@ -226,9 +226,9 @@ pub fn of_design(design: &Design, warn: bool) -> Option<Constraints> {
         sides,
         relations,
         severity: if warn {
-            Severity::Warning
+            DrcSeverity::Warning
         } else {
-            Severity::Error
+            DrcSeverity::Error
         },
     })
 }

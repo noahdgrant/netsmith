@@ -5,13 +5,9 @@
 use crate::common;
 
 use common::*;
-use netsmith_fab::artwork::Artwork;
-use netsmith_fab::drc::constraints::{
-    Constraint, Constraints, Measure, Relation, RelationEnd, SideRule,
-};
-use netsmith_fab::drc::{Rule, Severity};
+use netsmith_geom::{Artwork, Constraint, Constraints, ConstraintMeasure, ConstraintRelation, ConstraintRelationEnd, SideRule, DrcRule, DrcSeverity};
 
-fn want(id: &str, parts: &[&str], measure: Measure, lo: f64, hi: f64) -> Constraint {
+fn want(id: &str, parts: &[&str], measure: ConstraintMeasure, lo: f64, hi: f64) -> Constraint {
     Constraint {
         id: id.into(),
         source: "widget.nsm:14".into(),
@@ -27,7 +23,7 @@ fn set(list: Vec<Constraint>) -> Constraints {
         list,
         sides: Vec::new(),
         relations: Vec::new(),
-        severity: Severity::Error,
+        severity: DrcSeverity::Error,
     }
 }
 
@@ -63,7 +59,7 @@ fn with_fab(at: (f64, f64), angle: f64, back: bool) -> String {
     b.pcb()
 }
 
-fn measure(c: &Constraints, pcb: &str) -> Vec<netsmith_fab::drc::constraints::Outcome> {
+fn measure(c: &Constraints, pcb: &str) -> Vec<netsmith_geom::ConstraintOutcome> {
     c.measure(&Artwork::parse(pcb).unwrap())
 }
 
@@ -71,12 +67,12 @@ fn measure(c: &Constraints, pcb: &str) -> Vec<netsmith_fab::drc::constraints::Ou
 fn a_body_is_measured_from_the_top_left_corner_of_the_outline() {
     // The body is the courtyard here: x from 9 to 11, y from 9.3 to 10.7.
     let c = set(vec![
-        want("j.place.x", &["J1"], Measure::X, 10.0, 10.0),
-        want("j.place.y", &["J1"], Measure::Y, 10.0, 10.0),
-        want("j.place.left", &["J1"], Measure::Left, 9.0, 9.0),
-        want("j.place.right", &["J1"], Measure::Right, 11.0, 11.0),
-        want("j.place.top", &["J1"], Measure::Top, 9.3, 9.3),
-        want("j.place.bottom", &["J1"], Measure::Bottom, 10.7, 10.7),
+        want("j.place.x", &["J1"], ConstraintMeasure::X, 10.0, 10.0),
+        want("j.place.y", &["J1"], ConstraintMeasure::Y, 10.0, 10.0),
+        want("j.place.left", &["J1"], ConstraintMeasure::Left, 9.0, 9.0),
+        want("j.place.right", &["J1"], ConstraintMeasure::Right, 11.0, 11.0),
+        want("j.place.top", &["J1"], ConstraintMeasure::Top, 9.3, 9.3),
+        want("j.place.bottom", &["J1"], ConstraintMeasure::Bottom, 10.7, 10.7),
     ]);
     let all = measure(&c, &board());
     assert!(all.iter().all(|o| o.satisfied), "{all:#?}");
@@ -96,13 +92,13 @@ fn the_frame_moves_with_the_outline() {
         &[smd("1", 0.0, 0.0, 0.5, 0.5, "A")],
         Draw::default(),
     );
-    let c = set(vec![want("j.place.x", &["J1"], Measure::X, 10.0, 10.0)]);
+    let c = set(vec![want("j.place.x", &["J1"], ConstraintMeasure::X, 10.0, 10.0)]);
     assert!(measure(&c, &b.pcb())[0].satisfied);
 }
 
 #[test]
 fn a_violation_gives_the_measure_the_range_and_how_far_over() {
-    let c = set(vec![want("j.place.left", &["J1"], Measure::Left, 2.0, 3.0)]);
+    let c = set(vec![want("j.place.left", &["J1"], ConstraintMeasure::Left, 2.0, 3.0)]);
     let pcb = board();
     let all = measure(&c, &pcb);
     assert!(!all[0].satisfied);
@@ -113,14 +109,14 @@ fn a_violation_gives_the_measure_the_range_and_how_far_over() {
     );
     let findings = c.findings(&Artwork::parse(&pcb).unwrap());
     assert_eq!(findings.len(), 1);
-    assert_eq!(findings[0].rule, Rule::Constraint);
-    assert_eq!(findings[0].severity, Severity::Error);
+    assert_eq!(findings[0].rule, DrcRule::Constraint);
+    assert_eq!(findings[0].severity, DrcSeverity::Error);
     assert_eq!(findings[0].parts(), ["J1"]);
 }
 
 #[test]
 fn a_satisfied_constraint_says_by_how_much_room_it_has() {
-    let c = set(vec![want("j.place.x", &["J1"], Measure::X, 9.5, 11.0)]);
+    let c = set(vec![want("j.place.x", &["J1"], ConstraintMeasure::X, 9.5, 11.0)]);
     let all = measure(&c, &board());
     assert!(all[0].satisfied);
     assert!((all[0].margin - 0.5).abs() < 1e-9);
@@ -132,9 +128,9 @@ fn a_satisfied_constraint_says_by_how_much_room_it_has() {
 
 #[test]
 fn half_a_micrometre_short_passes_as_in_kicads_check() {
-    let c = set(vec![want("a", &["J1"], Measure::X, 10.0004, 12.0)]);
+    let c = set(vec![want("a", &["J1"], ConstraintMeasure::X, 10.0004, 12.0)]);
     assert!(measure(&c, &board())[0].satisfied);
-    let c = set(vec![want("a", &["J1"], Measure::X, 10.001, 12.0)]);
+    let c = set(vec![want("a", &["J1"], ConstraintMeasure::X, 10.001, 12.0)]);
     assert!(!measure(&c, &board())[0].satisfied);
 }
 
@@ -143,9 +139,9 @@ fn the_fabrication_layer_is_the_body_when_the_footprint_draws_one() {
     // The drawing spans x from 11 to 17 and y from 11 to 15 for a footprint at (12, 12).
     let pcb = with_fab((12.0, 12.0), 0.0, false);
     let c = set(vec![
-        want("u.place.left", &["U1"], Measure::Left, 11.0, 11.0),
-        want("u.place.x", &["U1"], Measure::X, 14.0, 14.0),
-        want("u.place.bottom", &["U1"], Measure::Bottom, 15.0, 15.0),
+        want("u.place.left", &["U1"], ConstraintMeasure::Left, 11.0, 11.0),
+        want("u.place.x", &["U1"], ConstraintMeasure::X, 14.0, 14.0),
+        want("u.place.bottom", &["U1"], ConstraintMeasure::Bottom, 15.0, 15.0),
     ]);
     let all = measure(&c, &pcb);
     assert!(all.iter().all(|o| o.satisfied), "{all:#?}");
@@ -158,7 +154,7 @@ fn a_part_on_the_back_is_measured_on_its_back_fabrication_layer() {
     let c = set(vec![want(
         "u.place.left",
         &["U1"],
-        Measure::Left,
+        ConstraintMeasure::Left,
         11.0,
         11.0,
     )]);
@@ -181,7 +177,7 @@ fn the_rotation_is_the_footprints_turn_and_a_full_turn_is_none() {
     let ok = set(vec![want(
         "j.place.rotation",
         &["J1"],
-        Measure::Rotation,
+        ConstraintMeasure::Rotation,
         270.0,
         270.0,
     )]);
@@ -189,7 +185,7 @@ fn the_rotation_is_the_footprints_turn_and_a_full_turn_is_none() {
     let wrapped = set(vec![want(
         "j.place.rotation",
         &["J1"],
-        Measure::Rotation,
+        ConstraintMeasure::Rotation,
         -90.0,
         -90.0,
     )]);
@@ -197,7 +193,7 @@ fn the_rotation_is_the_footprints_turn_and_a_full_turn_is_none() {
     let bad = set(vec![want(
         "j.place.rotation",
         &["J1"],
-        Measure::Rotation,
+        ConstraintMeasure::Rotation,
         0.0,
         0.0,
     )]);
@@ -217,7 +213,7 @@ fn the_rotation_of_a_back_footprint_is_the_files_less_a_half_turn() {
     let c = set(vec![want(
         "u.place.rotation",
         &["U1"],
-        Measure::Rotation,
+        ConstraintMeasure::Rotation,
         120.0,
         120.0,
     )]);
@@ -233,18 +229,18 @@ fn a_module_is_measured_on_the_box_round_all_its_parts() {
     b.part("R1", (10.0, 10.0), 0.0, &pad, Draw::default());
     b.part("R2", (20.0, 18.0), 0.0, &pad, Draw::default());
     let c = set(vec![
-        want("block.place.left", &["R1", "R2"], Measure::Left, 9.0, 9.0),
+        want("block.place.left", &["R1", "R2"], ConstraintMeasure::Left, 9.0, 9.0),
         want(
             "block.place.right",
             &["R1", "R2"],
-            Measure::Right,
+            ConstraintMeasure::Right,
             21.0,
             21.0,
         ),
         want(
             "block.place.bottom",
             &["R1", "R2"],
-            Measure::Bottom,
+            ConstraintMeasure::Bottom,
             18.0,
             18.0,
         ),
@@ -272,7 +268,7 @@ fn a_face_is_checked_too() {
             side: "bottom".into(),
         }],
         relations: Vec::new(),
-        severity: Severity::Error,
+        severity: DrcSeverity::Error,
     };
     let o = &measure(&c, &board())[0];
     assert!(!o.satisfied);
@@ -284,7 +280,7 @@ fn a_face_is_checked_too() {
 
 #[test]
 fn a_part_that_is_not_on_the_board_is_a_violation_that_says_so() {
-    let c = set(vec![want("x.place.x", &["U9"], Measure::X, 1.0, 2.0)]);
+    let c = set(vec![want("x.place.x", &["U9"], ConstraintMeasure::X, 1.0, 2.0)]);
     let o = &measure(&c, &board())[0];
     assert!(!o.satisfied);
     assert!(
@@ -296,11 +292,11 @@ fn a_part_that_is_not_on_the_board_is_a_violation_that_says_so() {
 
 #[test]
 fn a_warning_setting_makes_warnings_and_ignore_makes_none() {
-    let mut c = set(vec![want("j.place.left", &["J1"], Measure::Left, 2.0, 3.0)]);
+    let mut c = set(vec![want("j.place.left", &["J1"], ConstraintMeasure::Left, 2.0, 3.0)]);
     let art = Artwork::parse(&board()).unwrap();
-    c.severity = Severity::Warning;
-    assert_eq!(c.findings(&art)[0].severity, Severity::Warning);
-    c.severity = Severity::Ignore;
+    c.severity = DrcSeverity::Warning;
+    assert_eq!(c.findings(&art)[0].severity, DrcSeverity::Warning);
+    c.severity = DrcSeverity::Ignore;
     assert!(c.findings(&art).is_empty());
 }
 
@@ -309,7 +305,7 @@ fn an_open_range_has_one_end() {
     let c = set(vec![want(
         "j.place.left",
         &["J1"],
-        Measure::Left,
+        ConstraintMeasure::Left,
         9.5,
         f64::INFINITY,
     )]);
@@ -327,7 +323,7 @@ fn a_board_with_no_outline_cannot_be_measured() {
     let mut b = Pcb::new(2);
     b.outline = (0.0, 0.0, 0.0, 0.0);
     let pcb = board().replace("Edge.Cuts", "Dwgs.User");
-    let c = set(vec![want("j.place.x", &["J1"], Measure::X, 10.0, 10.0)]);
+    let c = set(vec![want("j.place.x", &["J1"], ConstraintMeasure::X, 10.0, 10.0)]);
     let o = &measure(&c, &pcb)[0];
     assert!(!o.satisfied);
     assert!(o.message.contains("no outline"), "{}", o.message);
@@ -349,19 +345,19 @@ fn two_bodies(a: (f64, f64), b: (f64, f64)) -> String {
     p.pcb()
 }
 
-fn between(measure: Measure, lo: f64, hi: f64) -> Constraints {
+fn between(measure: ConstraintMeasure, lo: f64, hi: f64) -> Constraints {
     Constraints {
         list: Vec::new(),
         sides: Vec::new(),
-        relations: vec![Relation {
+        relations: vec![ConstraintRelation {
             id: "radio.row_b.place.x - radio.row_a.place.x".into(),
             source: "radio.physical.nsm:12".into(),
-            a: RelationEnd {
+            a: ConstraintRelationEnd {
                 part: "U1".into(),
                 path: "radio.row_a".into(),
                 measure,
             },
-            b: RelationEnd {
+            b: ConstraintRelationEnd {
                 part: "U2".into(),
                 path: "radio.row_b".into(),
                 measure,
@@ -369,13 +365,13 @@ fn between(measure: Measure, lo: f64, hi: f64) -> Constraints {
             lo,
             hi,
         }],
-        severity: Severity::Error,
+        severity: DrcSeverity::Error,
     }
 }
 
 #[test]
 fn a_relation_between_two_parts_is_measured_on_their_bodies() {
-    let c = between(Measure::X, 17.45, 17.55);
+    let c = between(ConstraintMeasure::X, 17.45, 17.55);
     let all = measure(&c, &two_bodies((10.0, 10.0), (27.5, 10.0)));
     assert_eq!(all.len(), 1);
     assert!(all[0].satisfied, "{}", all[0].message);
@@ -388,7 +384,7 @@ fn a_relation_between_two_parts_is_measured_on_their_bodies() {
 
 #[test]
 fn an_unmet_relation_names_both_parts_the_offset_the_window_and_the_line() {
-    let c = between(Measure::X, 17.45, 17.55);
+    let c = between(ConstraintMeasure::X, 17.45, 17.55);
     let pcb = two_bodies((10.0, 10.0), (27.0, 10.0));
     let all = measure(&c, &pcb);
     assert!(!all[0].satisfied);
@@ -400,17 +396,17 @@ fn an_unmet_relation_names_both_parts_the_offset_the_window_and_the_line() {
     );
     let findings = c.findings(&Artwork::parse(&pcb).unwrap());
     assert_eq!(findings.len(), 1);
-    assert_eq!(findings[0].rule, Rule::Constraint);
-    assert_eq!(findings[0].severity, Severity::Error);
+    assert_eq!(findings[0].rule, DrcRule::Constraint);
+    assert_eq!(findings[0].severity, DrcSeverity::Error);
     assert_eq!(findings[0].parts(), ["U2", "U1"]);
 }
 
 #[test]
 fn a_relation_along_y_and_between_edges_is_measured_too() {
     // The bodies are 4 mm high: bottom of U1 (y 3 of its origin) against top of U2 (-1).
-    let mut c = between(Measure::Y, 0.0, 0.0);
-    c.relations[0].a.measure = Measure::Bottom;
-    c.relations[0].b.measure = Measure::Top;
+    let mut c = between(ConstraintMeasure::Y, 0.0, 0.0);
+    c.relations[0].a.measure = ConstraintMeasure::Bottom;
+    c.relations[0].b.measure = ConstraintMeasure::Top;
     let ok = measure(&c, &two_bodies((10.0, 10.0), (30.0, 14.0)));
     assert!(ok[0].satisfied, "{}", ok[0].message);
     let bad = measure(&c, &two_bodies((10.0, 10.0), (30.0, 16.0)));
@@ -427,15 +423,15 @@ fn a_relation_along_y_and_between_edges_is_measured_too() {
 
 #[test]
 fn a_relation_is_a_warning_when_the_project_says_warn() {
-    let mut c = between(Measure::X, 17.45, 17.55);
-    c.severity = Severity::Warning;
+    let mut c = between(ConstraintMeasure::X, 17.45, 17.55);
+    c.severity = DrcSeverity::Warning;
     let findings = c.findings(&Artwork::parse(&two_bodies((10.0, 10.0), (27.0, 10.0))).unwrap());
-    assert_eq!(findings[0].severity, Severity::Warning);
+    assert_eq!(findings[0].severity, DrcSeverity::Warning);
 }
 
 #[test]
 fn a_relation_whose_part_is_not_on_the_board_is_violated() {
-    let c = between(Measure::X, 17.45, 17.55);
+    let c = between(ConstraintMeasure::X, 17.45, 17.55);
     let all = measure(&c, &board());
     assert!(!all[0].satisfied);
     assert!(
@@ -471,12 +467,12 @@ fn a_footprint_with_no_courtyard_is_measured_by_its_turned_pads_and_the_placers_
     // and turned 90 degrees about (10, 10) the body is x 7.6 to 12.4 and y 8.4 to 10.6. The
     // pads' sizes not turned put the centre at x 10.275 (0.275 mm off).
     let c = set(vec![
-        want("j.place.x", &["J1"], Measure::X, 10.0, 10.0),
-        want("j.place.y", &["J1"], Measure::Y, 9.5, 9.5),
-        want("j.place.left", &["J1"], Measure::Left, 7.6, 7.6),
-        want("j.place.right", &["J1"], Measure::Right, 12.4, 12.4),
-        want("j.place.top", &["J1"], Measure::Top, 8.4, 8.4),
-        want("j.place.bottom", &["J1"], Measure::Bottom, 10.6, 10.6),
+        want("j.place.x", &["J1"], ConstraintMeasure::X, 10.0, 10.0),
+        want("j.place.y", &["J1"], ConstraintMeasure::Y, 9.5, 9.5),
+        want("j.place.left", &["J1"], ConstraintMeasure::Left, 7.6, 7.6),
+        want("j.place.right", &["J1"], ConstraintMeasure::Right, 12.4, 12.4),
+        want("j.place.top", &["J1"], ConstraintMeasure::Top, 8.4, 8.4),
+        want("j.place.bottom", &["J1"], ConstraintMeasure::Bottom, 10.6, 10.6),
     ]);
     let all = measure(&c, &bare_fingers());
     assert!(all.iter().all(|o| o.satisfied), "{all:#?}");
@@ -502,7 +498,7 @@ fn a_hole_that_reaches_past_the_courtyard_is_in_the_body() {
     let c = set(vec![want(
         "j.place.right",
         &["J1"],
-        Measure::Right,
+        ConstraintMeasure::Right,
         15.5,
         15.5,
     )]);

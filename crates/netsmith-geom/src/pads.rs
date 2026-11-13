@@ -220,7 +220,7 @@ fn unit(v: Pt) -> Pt {
 
 /// A rounded rectangle (a rectangle if `r` is 0, a stadium if `r` is half the shorter side)
 /// as a polygon, turned by `angle` about its centre.
-pub fn rounded_rect_polygon(c: Pt, w: f64, h: f64, r: f64, angle: f64) -> Vec<Pt> {
+pub(crate) fn rounded_rect_polygon(c: Pt, w: f64, h: f64, r: f64, angle: f64) -> Vec<Pt> {
     let r = r.min(w.min(h) / 2.0).max(0.0);
     let (hx, hy) = (w / 2.0 - r, h / 2.0 - r);
     let mut pts = Vec::new();
@@ -260,7 +260,7 @@ fn positive(poly: &[Pt]) -> Vec<Pt> {
 
 /// A convex polygon moved outward by `d` with round corners (`d` > 0), or inward (`d` < 0).
 /// `None` if nothing is left.
-pub fn offset_convex(poly: &[Pt], d: f64) -> Option<Vec<Pt>> {
+pub(crate) fn offset_convex(poly: &[Pt], d: f64) -> Option<Vec<Pt>> {
     let poly = positive(poly);
     let n = poly.len();
     if n < 3 {

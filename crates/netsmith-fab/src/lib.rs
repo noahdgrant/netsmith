@@ -61,29 +61,64 @@
 //! and are named in the notes. Without a `.kicad_pro` beside the board the zone fill uses no
 //! edge clearance and the zone's own hole clearance (netsmith always writes one).
 
-pub mod board;
-pub mod bom;
-pub mod cpl;
-pub mod crosscheck;
+#![cfg_attr(not(test), warn(unreachable_pub))]
+
+mod board;
+mod bom;
+mod cpl;
+mod crosscheck;
 mod csv;
-pub mod drc;
-pub mod exclusive;
-pub mod gerber;
-pub mod kicad;
-pub mod panel;
-pub mod raster;
-pub mod rotation;
-pub mod score;
+mod exclusive;
+mod gerber;
+mod kicad;
+mod kicad_drc;
+mod panel;
+mod raster;
+mod rotation;
+mod score;
 
 // The board's geometry, the drawing of its layers and the design rules check are
-// `netsmith-geom`'s, which the board model and the router share (issue #611).
-pub use netsmith_geom::{
-    artwork, drill, edge, fill, font, gbr, geom, pads, plot, plot_rules_of, polygons,
+// `netsmith-geom`'s, which the board model and the router share (issue #611); the code here
+// names them as modules, and other crates import them from `netsmith_geom`.
+use netsmith_geom::{
+    ConstraintOutcome, Constraints, DrcCounts, DrcError, DrcExtras, DrcFinding, DrcReport, DrcRule,
+    constraint_outcome_findings, drc_check, drc_project_of,
 };
 
-pub use board::{Board, BoardPart, Fit, Side};
-pub use bom::BomEntry;
+use netsmith_geom::{
+    Artwork, ArtworkError, GerberError, PlotRules, drill_files, plot_layer, plot_rules_of,
+};
+
+pub use board::{Board, BoardError as FabBoardError, BoardPart, Fit, Side};
+pub use bom::{BomEntry, BomError, from_board as bom_from_board, parse_csv as parse_bom_csv};
+pub use cpl::CplError;
+pub use crosscheck::{
+    Error as CrossCheckError, LayerResult as CrossCheckLayerResult, Limits as CrossCheckLimits,
+    Report as CrossCheckReport, check as cross_check,
+};
+pub use csv::CsvError;
+pub use exclusive::{Ran, run as run_exclusive};
+pub use gerber::zip as gerber_zip;
 pub use kicad::{CliError, KicadCli, KicadCliExe, Output};
+pub use kicad_drc::{
+    Comparison as KicadDrcComparison, OUT_OF_SCOPE as KICAD_DRC_OUT_OF_SCOPE,
+    Reported as KicadDrcReported, compare as compare_kicad_drc, parse as parse_kicad_drc,
+};
+pub use panel::{
+    Cell as PanelCell, CellFacts as PanelCellFacts, CellInput as PanelCellInput,
+    Finding as PanelFinding, Geometry as PanelGeometry, PanelPackage, Rules as PanelBuildRules,
+    Spec as PanelBuildSpec, build as build_panel, check as check_panel, geometry as panel_geometry,
+    mm as panel_mm, svg as panel_svg,
+};
+pub use raster::{
+    Canvas, Diff as RasterDiff, Hole as ExcellonHole, Image as RasterImage, Point as RasterPoint,
+    RasterError, View as RasterView, capsule as raster_capsule, compare_tolerant,
+    disc as raster_disc, gerber_extent, parse_excellon, render_gerber,
+};
+pub use score::{
+    Bends as ScoreBends, Corner as ScoreCorner, Decoupling as ScoreDecoupling, PairScore,
+    PourScore, Scorecard,
+};
 
 use std::path::{Path, PathBuf};
 
@@ -95,10 +130,10 @@ pub struct Options {
     pub allow_drc_violations: bool,
     /// What the design rules check needs that the board file does not say (the process's
     /// mask web and the widest via it fills).
-    pub drc: drc::Extras,
+    pub drc: DrcExtras,
     /// The design's requirements on where parts go (ADR 0045), which the board file does not
     /// hold: each is measured on the board and is a finding of the check if it is not met.
-    pub constraints: Option<drc::constraints::Constraints>,
+    pub constraints: Option<Constraints>,
     /// Package even though some parts have no LCSC part number. Those parts are left out
     /// of the BOM and placement file and listed in the notes as unassembled.
     pub allow_missing_lcsc: bool,
@@ -132,12 +167,12 @@ pub enum Error {
     /// Parts to be assembled that have no LCSC part number: `(designators, value, footprint)`.
     MissingLcsc(Vec<(Vec<String>, String, String)>),
     Cli(CliError),
-    Artwork(artwork::ArtworkError),
+    Artwork(ArtworkError),
     /// The design rules check cannot read the board or its project file.
-    DrcInput(drc::Error),
+    DrcInput(DrcError),
     /// The design rules check found errors and the caller did not allow going on.
     Drc {
-        counts: drc::Counts,
+        counts: DrcCounts,
         /// The errors, one to a line.
         report: String,
     },
@@ -149,7 +184,7 @@ pub enum Error {
         /// The errors, one to a line.
         report: String,
     },
-    Gerber(gerber::GerberError),
+    Gerber(GerberError),
     Cpl(cpl::CplError),
     /// A panel that cannot be made, one line for each reason, each with the numbers.
     Panel(Vec<String>),
@@ -220,13 +255,13 @@ impl From<bom::BomError> for Error {
         Self::Bom(e)
     }
 }
-impl From<artwork::ArtworkError> for Error {
-    fn from(e: artwork::ArtworkError) -> Self {
+impl From<ArtworkError> for Error {
+    fn from(e: ArtworkError) -> Self {
         Self::Artwork(e)
     }
 }
-impl From<drc::Error> for Error {
-    fn from(e: drc::Error) -> Self {
+impl From<DrcError> for Error {
+    fn from(e: DrcError) -> Self {
         Self::DrcInput(e)
     }
 }
@@ -235,8 +270,8 @@ impl From<CliError> for Error {
         Self::Cli(e)
     }
 }
-impl From<gerber::GerberError> for Error {
-    fn from(e: gerber::GerberError) -> Self {
+impl From<GerberError> for Error {
+    fn from(e: GerberError) -> Self {
         Self::Gerber(e)
     }
 }
@@ -396,7 +431,7 @@ fn sorted(mut v: Vec<String>) -> Vec<String> {
 pub enum DrcOutcome {
     Passed,
     /// Failed, but [`Options::allow_drc_violations`] let packaging go on.
-    Waived(drc::Counts),
+    Waived(DrcCounts),
 }
 
 /// The finished package, ready to write.
@@ -413,9 +448,9 @@ pub struct Package {
     pub plan: Plan,
     pub drc: DrcOutcome,
     /// Everything the design rules check found, warnings included.
-    pub drc_report: drc::Report,
+    pub drc_report: DrcReport,
     /// Each requirement on where a part goes, measured: met or not, with the numbers.
-    pub constraints: Vec<drc::constraints::Outcome>,
+    pub constraints: Vec<ConstraintOutcome>,
     /// Designators whose rotation or side the package could not verify against JLCPCB's
     /// order preview (the "unverified" lines of the notes), sorted.
     pub unverified: Vec<String>,
@@ -483,14 +518,14 @@ pub fn package(pcb: &Path, entries: &[BomEntry], options: &Options) -> Result<Pa
         .unwrap_or_default();
     let plan = plan(&board, entries, options)?;
 
-    let mut drc_report = drc::check(&src, drc::project_of(pcb).as_deref(), &options.drc)?;
+    let mut drc_report = drc_check(&src, drc_project_of(pcb).as_deref(), &options.drc)?;
     // The design's requirements on positions are measured on the same file (ADR 0045).
     let outcomes = match &options.constraints {
         Some(c) => {
-            let outcomes = c.measure(&artwork::Artwork::parse(&src)?);
+            let outcomes = c.measure(&Artwork::parse(&src)?);
             drc_report
                 .findings
-                .extend(drc::constraints::outcome_findings(&outcomes, c.severity));
+                .extend(constraint_outcome_findings(&outcomes, c.severity));
             drc_report
                 .findings
                 .sort_by_key(|f| std::cmp::Reverse(f.severity));
@@ -501,7 +536,7 @@ pub fn package(pcb: &Path, entries: &[BomEntry], options: &Options) -> Result<Pa
     // A requirement of the design is not a design rule: waiving the rules does not waive it.
     let unmet: Vec<String> = drc_report
         .errors()
-        .filter(|f| f.rule == drc::Rule::Constraint)
+        .filter(|f| f.rule == DrcRule::Constraint)
         .map(ToString::to_string)
         .collect();
     let drc = if drc_report.is_clean() {
@@ -524,10 +559,10 @@ pub fn package(pcb: &Path, entries: &[BomEntry], options: &Options) -> Result<Pa
         });
     };
 
-    let art = artwork::Artwork::parse(&src)?;
-    let plotted = plot::plot(&art, &name, &plot_rules(pcb))?;
+    let art = Artwork::parse(&src)?;
+    let plotted = plot_layer(&art, &name, &plot_rules(pcb))?;
     let mut files = plotted.files;
-    files.extend(drill::files(&art, &name));
+    files.extend(drill_files(&art, &name));
     files.sort_by(|a, b| a.name.cmp(&b.name));
     let gerber_zip = gerber::zip(&files)?;
 
@@ -579,13 +614,13 @@ pub fn package(pcb: &Path, entries: &[BomEntry], options: &Options) -> Result<Pa
 
 /// The rules the plot needs from the project file beside the board (`kicad_pro`), which
 /// say nothing if there is no such file.
-pub(crate) fn plot_rules(pcb: &Path) -> plot::Rules {
+pub(crate) fn plot_rules(pcb: &Path) -> PlotRules {
     let pro = std::fs::read_to_string(pcb.with_extension("kicad_pro")).unwrap_or_default();
     plot_rules_of(Some(&pro))
 }
 
 /// Lines for the notes about the fill of zones and anything the writers left out.
-fn fill_notes(art: &artwork::Artwork, plotted: &[String]) -> Vec<String> {
+fn fill_notes(art: &Artwork, plotted: &[String]) -> Vec<String> {
     let mut lines = Vec::new();
     let filled_by_us: Vec<String> = art
         .zones
@@ -614,8 +649,8 @@ fn notes(
     board: &Board,
     plan: &Plan,
     placed: &cpl::Cpl,
-    (drc, report): (DrcOutcome, &drc::Report),
-    constraints: &[drc::constraints::Outcome],
+    (drc, report): (DrcOutcome, &DrcReport),
+    constraints: &[ConstraintOutcome],
     process: Option<&str>,
     extras: &[String],
     trim: &[String],
@@ -710,7 +745,7 @@ fn notes(
         });
     }
     // Warnings do not stop a package, but a person should read them.
-    let warnings: Vec<&drc::Finding> = report.warnings().collect();
+    let warnings: Vec<&DrcFinding> = report.warnings().collect();
     if !warnings.is_empty() {
         lines.push(format!("design rules warnings: {}", warnings.len()));
         lines.extend(warnings.iter().take(10).map(|w| format!("  {w}")));

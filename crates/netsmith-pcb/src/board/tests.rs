@@ -713,7 +713,7 @@ fn the_placer_and_the_fab_check_measure_one_body_for_a_footprint_with_no_courtya
     // back and turned, with pads off its origin. The placer's body (`Placed::body`) and
     // the one the fab check measures on the written board are one box, at a right angle
     // and at any other.
-    use netsmith_geom::drc::constraints::{Constraint, Constraints, Measure};
+    use netsmith_geom::{Constraint, ConstraintMeasure, Constraints};
     let mut board = led_board();
     let bare = crate::footprint::Footprint::parse(
         "T:Fingers",
@@ -742,17 +742,16 @@ fn the_placer_and_the_fab_check_measure_one_body_for_a_footprint_with_no_courtya
         };
         let constraints = Constraints {
             list: vec![
-                want(Measure::Left),
-                want(Measure::Right),
-                want(Measure::Top),
-                want(Measure::Bottom),
+                want(ConstraintMeasure::Left),
+                want(ConstraintMeasure::Right),
+                want(ConstraintMeasure::Top),
+                want(ConstraintMeasure::Bottom),
             ],
             sides: Vec::new(),
             relations: Vec::new(),
-            severity: netsmith_geom::drc::Severity::Error,
+            severity: netsmith_geom::DrcSeverity::Error,
         };
-        let art =
-            netsmith_geom::artwork::Artwork::parse(&crate::export::kicad_pcb(&board)).unwrap();
+        let art = netsmith_geom::Artwork::parse(&crate::export::kicad_pcb(&board)).unwrap();
         let checked: Vec<f64> = constraints
             .measure(&art)
             .iter()

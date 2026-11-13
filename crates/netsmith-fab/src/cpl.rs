@@ -14,10 +14,10 @@ use crate::csv::{self, CsvError};
 use crate::rotation::{self, Correction};
 use std::collections::BTreeMap;
 
-pub const HEADER: [&str; 5] = ["Designator", "Mid X", "Mid Y", "Layer", "Rotation"];
+pub(crate) const HEADER: [&str; 5] = ["Designator", "Mid X", "Mid Y", "Layer", "Rotation"];
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct Placement {
+pub(crate) struct Placement {
     pub designator: String,
     pub x: f64,
     pub y: f64,
@@ -77,7 +77,7 @@ impl From<CsvError> for CplError {
 
 /// The placement rows plus what could not be checked about them.
 #[derive(Debug, PartialEq)]
-pub struct Cpl {
+pub(crate) struct Cpl {
     pub rows: Vec<Placement>,
     /// Footprint name -> designators whose rotation offset has not been measured.
     pub unverified: BTreeMap<String, Vec<String>>,
@@ -87,7 +87,7 @@ pub struct Cpl {
 
 /// Placements for `parts`: where each footprint's origin is, from the drill/place `origin`
 /// (the page corner if the board sets none), with y up, and its turn as the file has it.
-pub fn build(origin: Option<(f64, f64)>, parts: &[&BoardPart]) -> Cpl {
+pub(crate) fn build(origin: Option<(f64, f64)>, parts: &[&BoardPart]) -> Cpl {
     let (ox, oy) = origin.unwrap_or((0.0, 0.0));
     finish(
         parts
@@ -99,7 +99,7 @@ pub fn build(origin: Option<(f64, f64)>, parts: &[&BoardPart]) -> Cpl {
 
 /// Placements for `parts` from the text of KiCad's CSV position file (millimetres), which
 /// `kicad-cli pcb export pos --use-drill-file-origin` writes. Only the cross-check reads it.
-pub fn from_kicad_pos(pos_csv: &str, parts: &[&BoardPart]) -> Result<Cpl, CplError> {
+pub(crate) fn from_kicad_pos(pos_csv: &str, parts: &[&BoardPart]) -> Result<Cpl, CplError> {
     let table = csv::parse(pos_csv)?;
     let Some((header, body)) = table.split_first() else {
         return Err(CplError::Csv(CsvError::MissingColumn("Ref".into())));
@@ -183,7 +183,7 @@ fn finish(raw: Vec<(&BoardPart, f64, f64, Side, f64)>) -> Cpl {
 }
 
 /// A coordinate with at most six decimals and no trailing zeros: `19.2`, `270`, `0`.
-pub fn number(v: f64) -> String {
+pub(crate) fn number(v: f64) -> String {
     let s = format!("{v:.6}");
     let s = s.trim_end_matches('0').trim_end_matches('.');
     if s == "-0" || s.is_empty() {
@@ -194,7 +194,7 @@ pub fn number(v: f64) -> String {
 }
 
 /// The text of `cpl.csv`.
-pub fn render(rows: &[Placement]) -> String {
+pub(crate) fn render(rows: &[Placement]) -> String {
     let rows: Vec<Vec<String>> = rows
         .iter()
         .map(|p| {
@@ -216,7 +216,8 @@ pub fn render(rows: &[Placement]) -> String {
 
 /// Reads a placement file with the columns [`render`] writes, or the Fabrication Toolkit's
 /// `positions.csv` (`Designator,Mid X,Mid Y,Rotation,Layer`): columns are found by name.
-pub fn parse(src: &str) -> Result<Vec<Placement>, CplError> {
+#[cfg(test)]
+pub(crate) fn parse(src: &str) -> Result<Vec<Placement>, CplError> {
     let table = csv::parse(src)?;
     let Some((header, body)) = table.split_first() else {
         return Ok(Vec::new());

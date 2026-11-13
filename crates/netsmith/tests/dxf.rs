@@ -539,7 +539,7 @@ fn a_board_with_the_imported_outline_goes_through_fab_with_the_holes_where_the_c
     // Eight arcs: the corners of the outline and of the slot.
     assert_eq!(pcb.matches("(gr_arc").count(), 8);
     if let Some(cli) = cli {
-        let report = netsmith_fab::crosscheck::check(
+        let report = netsmith_fab::cross_check(
             &dir.join("fab/OutlineAndPours/OutlineAndPours.kicad_pcb"),
             &cli,
             &Default::default(),

@@ -5,13 +5,13 @@
 //! server's SVG.
 //!
 //! **The same copper as the Gerbers.** The board is read into the plotting model of
-//! `netsmith-geom` ([`netsmith_geom::artwork::Artwork`]) from the tree of the `.kicad_pcb` that
+//! `netsmith-geom` ([`netsmith_geom::Artwork`]) from the tree of the `.kicad_pcb` that
 //! [`crate::kicad_pcb`] writes, in memory: no file, no text and no KiCad in between. Then every
 //! shape is drawn by the code that writes the Gerbers, into a pen that keeps polygons
-//! ([`netsmith_geom::polygons::Polygons`]) instead of a file: a pad with
-//! [`netsmith_geom::pads::Outline::draw`], a pour with [`netsmith_geom::fill::pour`] (the filler
+//! ([`netsmith_geom::Polygons`]) instead of a file: a pad with
+//! [`netsmith_geom::PadOutline::draw`], a pour with [`netsmith_geom::fill_pour`] (the filler
 //! `fab` uses, with the clearances, thermal reliefs and edge band the copper files get), the
-//! mask with [`netsmith_geom::plot::mask`]. So the pours here are the fill the Gerbers hold,
+//! mask with [`netsmith_geom::plot_mask`]. So the pours here are the fill the Gerbers hold,
 //! cut into straight pieces no further than 2 µm from its curves, and a footprint on the back,
 //! a turned pad or a custom pad is where and what the file says, by one code.
 //!
@@ -30,10 +30,12 @@
 
 use std::collections::HashMap;
 
-use netsmith_geom::artwork::{self, Artwork, TrackShape};
-use netsmith_geom::geom;
-use netsmith_geom::polygons::{self, Polygons};
-use netsmith_geom::{drill, edge, fill, gbr, pads, plot};
+use netsmith_geom::{
+    Artwork, ArtworkPadKind, Pen, PolygonArea, Pt as GeomPt, TrackShape, drill_holes, edge_outline,
+    fill_pour, gerber_escape, pad_outline, plot_drawings, plot_mask,
+};
+
+use netsmith_geom::Polygons;
 
 use crate::board::Board;
 use crate::footprint::{Drill, PadKind};
@@ -155,12 +157,12 @@ impl TrackCopper {
     /// than 2 µm from their curves.
     pub fn outline(&self) -> Area {
         let mut pen = Polygons::new();
-        gbr::Pen::line(
+        Pen::line(
             &mut pen,
             self.width,
             None,
-            geom::Pt::new(self.from.x, self.from.y),
-            geom::Pt::new(self.to.x, self.to.y),
+            GeomPt::new(self.from.x, self.from.y),
+            GeomPt::new(self.to.x, self.to.y),
             &[],
         );
         areas(&pen).into_iter().next().unwrap_or(Area {
@@ -241,11 +243,11 @@ pub fn artwork(board: &Board) -> Result<Artwork, CopperError> {
     Artwork::from_sexp(&tree).map_err(|e| CopperError(e.to_string()))
 }
 
-fn pt(p: geom::Pt) -> Pt {
+fn pt(p: GeomPt) -> Pt {
     Pt::new(p.x, p.y)
 }
 
-fn area(a: polygons::Area) -> Area {
+fn area(a: PolygonArea) -> Area {
     Area {
         outer: a.outer.into_iter().map(pt).collect(),
         holes: a
@@ -260,11 +262,11 @@ fn areas(pen: &Polygons) -> Vec<Area> {
     pen.areas().into_iter().map(area).collect()
 }
 
-fn kind(k: artwork::PadKind) -> PadKind {
+fn kind(k: ArtworkPadKind) -> PadKind {
     match k {
-        artwork::PadKind::Smd | artwork::PadKind::Connect => PadKind::Smd,
-        artwork::PadKind::Thru => PadKind::ThruHole,
-        artwork::PadKind::Npth => PadKind::NpThruHole,
+        ArtworkPadKind::Smd | ArtworkPadKind::Connect => PadKind::Smd,
+        ArtworkPadKind::Thru => PadKind::ThruHole,
+        ArtworkPadKind::Npth => PadKind::NpThruHole,
     }
 }
 
@@ -272,7 +274,7 @@ fn kind(k: artwork::PadKind) -> PadKind {
 pub fn copper(board: &Board) -> Result<Copper, CopperError> {
     let art = artwork(board)?;
     let rules = netsmith_geom::plot_rules_of(Some(&crate::export::kicad_pro(board)));
-    let outline = edge::outline(&art).map_err(CopperError)?;
+    let outline = edge_outline(&art).map_err(CopperError)?;
     let paths: HashMap<&str, &str> = board
         .parts
         .iter()
@@ -288,7 +290,7 @@ pub fn copper(board: &Board) -> Result<Copper, CopperError> {
         let mut pads_here = Vec::new();
         for pad in art.pads.iter().filter(|p| art.pad_copper_on(p, layer)) {
             let mut pen = Polygons::new();
-            pads::outline(pad).draw(&mut pen, None, &[]);
+            pad_outline(pad).draw(&mut pen, None, &[]);
             pads_here.push(PadCopper {
                 part: path_of(&pad.part),
                 refdes: pad.part.clone(),
@@ -325,7 +327,7 @@ pub fn copper(board: &Board) -> Result<Copper, CopperError> {
         }
 
         let mut pen = Polygons::new();
-        fill::pour(&mut pen, &art, layer, &outline, &rules).map_err(CopperError)?;
+        fill_pour(&mut pen, &art, layer, &outline, &rules).map_err(CopperError)?;
         let mut pours = Vec::new();
         for (tag, pieces) in pen.areas_by_net() {
             let net = net_of(&art, tag.as_deref());
@@ -355,7 +357,7 @@ pub fn copper(board: &Board) -> Result<Copper, CopperError> {
             .collect();
 
         let mut pen = Polygons::new();
-        plot::drawings(&mut pen, &art, layer, None, &mut notes);
+        plot_drawings(&mut pen, &art, layer, None, &mut notes);
         layers.push(LayerCopper {
             layer: layer.clone(),
             pads: pads_here,
@@ -379,7 +381,7 @@ pub fn copper(board: &Board) -> Result<Copper, CopperError> {
         })
         .collect();
 
-    let holes = drill::holes(&art)
+    let holes = drill_holes(&art)
         .into_iter()
         .map(|h| Hole {
             at: pt(h.at),
@@ -402,7 +404,7 @@ pub fn copper(board: &Board) -> Result<Copper, CopperError> {
     let mut mask = Vec::new();
     for layer in ["F.Mask", "B.Mask"] {
         let mut pen = Polygons::new();
-        plot::mask(&mut pen, &art, layer, &mut notes).map_err(|e| CopperError(e.to_string()))?;
+        plot_mask(&mut pen, &art, layer, &mut notes).map_err(|e| CopperError(e.to_string()))?;
         mask.push(MaskOpenings {
             layer: layer.to_string(),
             areas: areas(&pen),
@@ -412,7 +414,7 @@ pub fn copper(board: &Board) -> Result<Copper, CopperError> {
     let mut silk = Vec::new();
     for layer in ["F.SilkS", "B.SilkS"] {
         let mut pen = Polygons::new();
-        plot::drawings(&mut pen, &art, layer, None, &mut notes);
+        plot_drawings(&mut pen, &art, layer, None, &mut notes);
         silk.push(SilkInk {
             layer: layer.to_string(),
             areas: areas(&pen),
@@ -435,7 +437,7 @@ fn net_of(art: &Artwork, tag: Option<&str>) -> Option<String> {
     art.zones
         .iter()
         .filter_map(|z| z.net.as_deref())
-        .find(|n| tag == format!("N,{}", gbr::escape(n)))
+        .find(|n| tag == format!("N,{}", gerber_escape(n)))
         .map(str::to_string)
 }
 

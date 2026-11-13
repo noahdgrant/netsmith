@@ -5,7 +5,7 @@
 #
 # Defaults: 50 runs split over 3 processes, of the three tests that agree with KiCad's own
 # plot or check. Every test thread of a copy and every copy take turns at KiCad through
-# `netsmith_fab::exclusive`, so 0 failures is the expected result; a failure prints the
+# `netsmith_fab::run_exclusive`, so 0 failures is the expected result; a failure prints the
 # test's full output (which has KiCad's stdout, stderr, exit status and earlier attempts).
 set -u
 runs=${1:-50}

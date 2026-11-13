@@ -57,7 +57,7 @@ pub(crate) fn erc_sheets(
     let sch = cli
         .arg(&dir.join(format!("{name}.kicad_sch")))
         .unwrap_or_else(|e| panic!("{e}"));
-    let ran = netsmith_fab::exclusive::run(|| {
+    let ran = netsmith_fab::run_exclusive(|| {
         let mut command = Command::new(cli.exe());
         command.args([
             "sch",
