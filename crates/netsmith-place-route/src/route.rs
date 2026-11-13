@@ -221,6 +221,52 @@
 //! smaller first windows (a line found in 4 mm is cheap already), fewer soft searches (one a
 //! failed line a pass already), and incremental masks (12 % at most, S3).
 //!
+//! # Diff pairs side by side (issue #431, S9)
+//!
+//! A diff pair is two nets whose names differ only in a suffix pair of the scorecard's
+//! `PAIR_SUFFIXES` (`dp`/`dm`, `D+`/`D-`, `_P`/`_N`, `.p`/`.n` and the like), so the fields
+//! of a std interface such as `Usb2.dp` and `.dm` make one with no marking (decided by the agent
+//! under the owner's 2026-11-11 delegation: a marking would be a language choice, and the names
+//! already say it).
+//!
+//! **What is built** ([`Router::side_by_side`]). When a try has routed every line, the lines of
+//! each net of a pair, the second net and then the first, are routed again against all the other
+//! copper, where a step within [`PAIR_NEAR`] (the scorecard's coupled 0.5 mm) of the partner's
+//! track, and no nearer than the rules allow, costs [`FOLLOW`] (half) of its length, and the
+//! search's estimate is cut to match, so the search goes out of its way for it. The new copper
+//! is kept only if more of the net runs coupled and it is no more than [`PAIR_SLACK`] 0.2 mm
+//! longer, with no more vias ([`keeps_pair`]). A line is never left and no other net moves, so
+//! a board routes exactly as completely as before; the pass takes 0.1 to 0.3 s.
+//!
+//! **Measured** (2026-11-12, `netsmith fab`; coupled, skew; length over the spanning length,
+//! vias). On main at 1852adb8 (the escape lanes and #550's cheaper try):
+//!
+//! | | RP2350 `mcu.usb` / `usb` | Orbit `usb` | EasyDuino `bridge` |
+//! |---|---|---|---|
+//! | main | 64 %, 15.07 mm / 0 %, 0.86 mm; 1.40x, 137 vias | 0 %, 0.77 mm; 1.28x, 87 vias | 23 %, 0.75 mm; 1.22x, 105 vias |
+//! | **the pass (built)** | **69 %, 13.50 mm** / 0 %; 1.40x, 137 | = main | **54 %**, 0.85 mm; 1.22x, 105 |
+//! | the pass, skew kept from growing | = built | = main | = main (nothing kept) |
+//!
+//! Orbit's pair would run 35 % and 75 % coupled, but only with 2 vias more, which the pass
+//! does not take. On main before #548 moved the examples' parts (at e9e558b7), where the forms
+//! were compared:
+//!
+//! | | RP2350 `mcu.usb` / `usb` | Orbit `usb` | EasyDuino `bridge` |
+//! |---|---|---|---|
+//! | main | 7 %, 1.59 mm / 0 %, 0.60 mm; 1.49x, 160 vias | 4 %, 1.74 mm; 1.25x, 87 vias | 79 %, 1.19 mm; 1.18x, 118 vias |
+//! | the discount in every search of every try, estimate kept | 35 %, 0.12 mm; 1.52x, 174 vias | 21 %, 1.41 mm | **48 %**, 1.72 mm, 123 vias |
+//! | from the second try (the lanes' way) | = main: every board routes on its first try | = main | = main |
+//! | the pass (built) | 7 % / **18 %**, 0.69 mm; 1.49x, 160 | **27 %, 0.73 mm**; 1.24x, 87 | **85 %, 0.93 mm**; 1.18x, 118 |
+//! | the pass, the estimate kept | | 26 %, 0.73 mm | 79 % (nothing kept) |
+//! | the pass, a slack of 0.05 mm | 7 % / 0 % (nothing kept) | 27 % | 85 % |
+//!
+//! Robustness (one try at turn costs 24 to 27) is main's: RP2350 0 / 0 / 0 / 1, Orbit and
+//! EasyDuino 0 / 0 / 0 / 0 lines left, and at the least track (`netsmith route --margin 1`) every
+//! board routes completely, as on main: the pass runs only on a try that routed every line and
+//! never leaves one. In every search, earlier (before the lanes), the discount with the
+//! estimate cut to match left RP2350 with 2 connections at 300 s; in the pass the same pull
+//! costs nothing it does not gain.
+//!
 //! # What the router says about a board it leaves (issue #431, S3b)
 //!
 //! An agent cannot fix what it cannot see, so [`Routing`] says why each line is left and where
@@ -376,6 +422,14 @@ const MOST_TRIES: usize = 5;
 /// What a move costs, in tenths of a millimetre of track, straight and diagonal.
 const STEP: i64 = 10;
 const DIAGONAL: i64 = 14;
+/// The share of its length a step of a pair's net costs on a cell beside its routed partner, as
+/// a fraction, in [`Router::side_by_side`]: half (issue #431, S9). The search's estimate is cut
+/// as much, so the search goes out of its way to run beside the partner; the pass keeps the
+/// new copper only if it is no longer than the old.
+const FOLLOW: (i64, i64) = (1, 2);
+/// How far from the centre line of a pair's partner a cell counts as beside it, in mm: the
+/// scorecard's coupled distance.
+const PAIR_NEAR: f64 = netsmith_fab::score::COUPLED;
 /// What a bend of 45 degrees costs by default ([`Costs::turn`]).
 const TURN: i64 = 25;
 /// What a right-angle turn costs, which the router cuts into two bends of 45 degrees after the
@@ -691,6 +745,13 @@ struct Masks {
     /// The cells outside the line's corridor of the coarse plan ([`crate::plan`]), which a
     /// track pays the corridor cost to use; and that cost. `None` when the try follows no plan.
     off_plan: Option<(Vec<bool>, i64)>,
+    /// For a net of a diff pair whose partner is routed, the cells beside the partner's tracks
+    /// (within [`PAIR_NEAR`] of their centre lines), by layer: a step onto one costs [`FOLLOW`]
+    /// of its length, so the net runs beside its partner (issue #431, S9). Empty when unset.
+    follow: [Vec<bool>; 2],
+    /// The share of the octile distance the search's estimate is, as a fraction: whole, or
+    /// [`FOLLOW`] where a step may cost that little.
+    estimate: (i64, i64),
 }
 
 struct Soft {
@@ -714,6 +775,8 @@ impl Masks {
             turn: TURN,
             lane: None,
             off_plan: None,
+            follow: [Vec::new(), Vec::new()],
+            estimate: (1, 1),
         }
     }
 
@@ -759,6 +822,15 @@ impl Masks {
         match &self.soft {
             Some(soft) if soft.via[self.at(i, j)] => SOFT_VIA,
             _ => 0,
+        }
+    }
+
+    /// What a step of `length` costs onto a cell: less by [`FOLLOW`] on a cell beside a
+    /// pair's partner.
+    fn follow_cost(&self, layer: usize, i: usize, j: usize, length: i64) -> i64 {
+        match self.follow[layer].get(self.at(i, j)) {
+            Some(true) => length * FOLLOW.0 / FOLLOW.1,
+            _ => length,
         }
     }
 
@@ -1152,11 +1224,12 @@ fn search(
                 .iter()
                 .map(|&(ti, tj, _)| {
                     let (a, b) = (i.abs_diff(ti) as i64, j.abs_diff(tj) as i64);
-                    if extras.coarse {
+                    let d = if extras.coarse {
                         (a + b) * STEP
                     } else {
                         a.min(b) * DIAGONAL + (a - b).abs() * STEP
-                    }
+                    };
+                    d * masks.estimate.0 / masks.estimate.1
                 })
                 .min()
                 .unwrap_or(0),
@@ -1309,8 +1382,12 @@ fn moves(
         relax(
             next,
             d,
-            if diagonal { DIAGONAL } else { STEP }
-                + turn
+            masks.follow_cost(
+                layer,
+                next.0,
+                next.1,
+                if diagonal { DIAGONAL } else { STEP },
+            ) + turn
                 + neck
                 + masks.history_cost(layer, next.0, next.1)
                 + masks.soft_cost(layer, next.0, next.1)
@@ -1946,6 +2023,17 @@ enum Unsettled {
 /// How far from a right angle, in mm, the clean-up tries to cut it, the farthest first.
 const CHAMFERS: [f64; 4] = [0.3, 0.2, 0.1, 0.05];
 
+/// How much longer, in mm, a net of a diff pair may become when [`Router::side_by_side`] runs
+/// it beside its partner: what a grid path of the same length measures differently once drawn.
+const PAIR_SLACK: f64 = 0.2;
+
+/// Whether [`Router::side_by_side`] keeps a net's new copper, from its length in mm, its vias
+/// and the share of it that runs coupled, before and after: more of it coupled, by a point at
+/// least, no longer than [`PAIR_SLACK`] more, and no more vias.
+fn keeps_pair(before: (f64, usize, f64), after: (f64, usize, f64)) -> bool {
+    after.2 > before.2 + 0.01 && after.0 <= before.0 + PAIR_SLACK + 1e-6 && after.1 <= before.1
+}
+
 /// The faces whose solder mask a pad opens, on the board: front first.
 fn mask_sides(part: &netsmith_pcb::board::Placed, pad: &netsmith_pcb::footprint::Pad) -> [bool; 2] {
     let has = |name: &str| pad.layers.iter().any(|l| l == name || l == "*.Mask");
@@ -1984,6 +2072,9 @@ struct MemoKey {
     escaping: bool,
     /// Whether the search pays for leaving its corridor of the coarse plan, which never moves.
     planned: bool,
+    /// Whether the search runs a pair's net beside its partner ([`Router::side_by_side`]):
+    /// the partner's tracks are in the print.
+    pairing: bool,
     window: Window,
     print: u128,
     /// 0 for the flood ([`link`]), and 1 on for the searches in turn.
@@ -2071,6 +2162,10 @@ struct Router<'a> {
     /// How far beyond a window copper is in its print: farther than any mask, check or via
     /// keeps from it.
     print_reach: f64,
+    /// The other net of each net's diff pair ([`diff_pair_partners`]).
+    partners: Vec<Option<usize>>,
+    /// Whether this try's searches run a pair's net beside its partner ([`Masks::follow`]).
+    pairing: Cell<bool>,
 }
 
 impl<'a> Router<'a> {
@@ -2184,6 +2279,8 @@ impl<'a> Router<'a> {
             plan_cost: options.plan_cost.unwrap_or(OFF_PLAN),
             memo: RefCell::new(HashMap::new()),
             print_reach,
+            partners: diff_pair_partners(board),
+            pairing: Cell::new(false),
         }
     }
 
@@ -2287,6 +2384,42 @@ impl<'a> Router<'a> {
             }
         }
         masks.free_turn = free;
+    }
+
+    /// [`Masks::follow`] for a line of `net`: the cells from the pair's spacing (half of each
+    /// width and the clearance) out to [`PAIR_NEAR`] from the centre line of the partner's
+    /// routed tracks, on their layers; empty when the net has no routed partner.
+    fn follow_cells(
+        &self,
+        net: usize,
+        routed: &[&Routed],
+        w: Window,
+        width: f64,
+    ) -> [Vec<bool>; 2] {
+        let Some(partner) = self.partners[net] else {
+            return [Vec::new(), Vec::new()];
+        };
+        let tracks: Vec<&Track> = routed
+            .iter()
+            .filter(|r| self.nets[r.line] == partner)
+            .flat_map(|r| r.tracks.iter())
+            .collect();
+        if tracks.is_empty() {
+            return [Vec::new(), Vec::new()];
+        }
+        let mut cells = [vec![false; w.cells()], vec![false; w.cells()]];
+        for t in tracks {
+            let spacing = t.width / 2.0 + width / 2.0 + self.board.rules.clearance;
+            let layer = usize::from(t.layer == CopperLayer::Back);
+            let form = Form::Segment(t.from, t.to, 0.0);
+            for (i, j) in self.grid.cells_near(&w, &form.bounds(), PAIR_NEAR) {
+                let d = point_to_line(self.grid.centre(i, j), t.from, t.to);
+                if d >= spacing - PITCH * 0.75 && d <= PAIR_NEAR {
+                    cells[layer][w.index(i, j)] = true;
+                }
+            }
+        }
+        cells
     }
 
     /// How many vias side by side the line's net needs where it changes layer.
@@ -2538,6 +2671,7 @@ impl<'a> Router<'a> {
                 fine: self.fine.get(),
                 escaping: self.escaping.get(),
                 planned: self.planned.get(),
+                pairing: self.pairing.get(),
                 window,
                 print,
                 step,
@@ -2552,6 +2686,17 @@ impl<'a> Router<'a> {
                         (hard, hard_keepouts),
                         (soft_list, soft_keepouts),
                     ));
+                    if self.pairing.get()
+                        && let Some(masks) = built.as_mut()
+                    {
+                        masks.follow = self.follow_cells(net, &others, window, self.width_of(line));
+                        // The estimate is cut to match, so that the search does go out of its
+                        // way to run beside the partner; the pass keeps the new copper only if
+                        // it is no longer.
+                        if !masks.follow[FRONT].is_empty() {
+                            masks.estimate = FOLLOW;
+                        }
+                    }
                 }
             };
             let own: Vec<&Routed> = others
@@ -3260,9 +3405,100 @@ impl<'a> Router<'a> {
         if let Some(snapshots) = &self.snapshots {
             snapshots.borrow_mut().clear();
         }
-        let state = self.run_stages(order, rip_up, attempt, attempts);
+        let mut state = self.run_stages(order, rip_up, attempt, attempts);
+        if state.failed.is_empty() {
+            self.side_by_side(&mut state);
+        }
         self.snapshot(SnapshotStage::Final, &state);
         state
+    }
+
+    /// The track length of the lines of `net`, their vias, and the share of that length within
+    /// [`PAIR_NEAR`] of a track of `partner` on the same layer.
+    fn pair_measure(&self, state: &State, net: usize, partner: usize) -> (f64, usize, f64) {
+        let theirs: Vec<&Track> = state
+            .routed
+            .iter()
+            .filter(|r| self.nets[r.line] == partner)
+            .flat_map(|r| r.tracks.iter())
+            .collect();
+        let (mut length, mut near, mut vias) = (0.0, 0.0, 0);
+        for r in state.routed.iter().filter(|r| self.nets[r.line] == net) {
+            vias += r.vias.len();
+            for t in &r.tracks {
+                let l = t.from.distance(t.to);
+                length += l;
+                let n = (l / 0.05).ceil().max(1.0) as usize;
+                for k in 0..n {
+                    let f = (k as f64 + 0.5) / n as f64;
+                    let p = Pt::new(
+                        t.from.x + (t.to.x - t.from.x) * f,
+                        t.from.y + (t.to.y - t.from.y) * f,
+                    );
+                    if theirs.iter().any(|o| {
+                        o.layer == t.layer && point_to_line(p, o.from, o.to) <= PAIR_NEAR + 1e-9
+                    }) {
+                        near += l / n as f64;
+                    }
+                }
+            }
+        }
+        (length, vias, if length > 0.0 { near / length } else { 0.0 })
+    }
+
+    /// Run each net of a diff pair beside its partner on a try that routed every line (issue
+    /// #431, S9): the lines of one net are routed again against all the other copper, a step
+    /// beside the partner's track costing [`FOLLOW`] of its length, and the new copper is kept
+    /// only if the share that runs coupled grows and the net is no longer and has no more vias.
+    /// A line is never left unrouted, and a board with no pair is unchanged.
+    fn side_by_side(&self, state: &mut State) {
+        let failed_in = self.failed_in.borrow().clone();
+        self.pairing.set(true);
+        self.fine.set(true);
+        for n in 0..self.partners.len() {
+            let Some(p) = self.partners[n] else { continue };
+            if p < n {
+                continue;
+            }
+            for (x, y) in [(p, n), (n, p)] {
+                if self.out_of_time() {
+                    break;
+                }
+                let (len0, vias0, c0) = self.pair_measure(state, x, y);
+                if len0 == 0.0 || self.pair_measure(state, y, x).0 == 0.0 {
+                    continue;
+                }
+                let mut trial = state.clone();
+                let (gone, kept): (Vec<Routed>, Vec<Routed>) =
+                    trial.routed.drain(..).partition(|r| self.nets[r.line] == x);
+                trial.routed = kept;
+                let mut again: Vec<usize> = gone.iter().map(|r| r.line).collect();
+                again.sort_by(|&a, &b| self.lines[a].length().total_cmp(&self.lines[b].length()));
+                let mut ok = true;
+                for l in again {
+                    match self
+                        .try_line(l, &trial, &[], ROOM_LOOSE, false)
+                        .or_else(|| self.try_line(l, &trial, &[], ROOM_TIGHT, false))
+                    {
+                        Some((r, _)) => trial.routed.push(r),
+                        None => {
+                            ok = false;
+                            break;
+                        }
+                    }
+                }
+                if !ok {
+                    continue;
+                }
+                let (len1, vias1, c1) = self.pair_measure(&trial, x, y);
+                if keeps_pair((len0, vias0, c0), (len1, vias1, c1)) {
+                    *state = trial;
+                }
+            }
+        }
+        *self.failed_in.borrow_mut() = failed_in;
+        self.fine.set(false);
+        self.pairing.set(false);
     }
 
     /// The stages of [`Self::run`].
@@ -4295,6 +4531,38 @@ mod tests {
             }
         }
         assert!(joined > 50 && apart > 50, "{joined} joined, {apart} apart");
+    }
+
+    #[test]
+    fn a_pairs_net_goes_out_of_its_way_to_run_beside_its_partner() {
+        // On a grid of 10 mm by 1.5 mm, from row 2 at the left to row 2 at the right. The
+        // partner's cells are row 6, from column 10 to 90: a step there costs half, and with the
+        // estimate cut to match, the path leaves its straight way to run on them.
+        let grid = Grid::over(&Rect::new(Pt::new(0.0, 0.0), Pt::new(10.0, 1.5)));
+        let mut masks = Masks::open(Window::full(&grid));
+        let mut beside = vec![false; masks.window.cells()];
+        for i in 10..=90 {
+            beside[masks.at(i, 6)] = true;
+        }
+        masks.follow = [beside, vec![false; masks.window.cells()]];
+        masks.estimate = FOLLOW;
+        let path = find(&masks, &[(0, 2, FRONT)], Goal::Spots(&[(100, 2, FRONT)])).unwrap();
+        let on = path.iter().filter(|s| s.1 == 6).count();
+        assert!(on >= 70, "{on} cells beside the partner");
+        // With nothing to follow, it runs straight.
+        let masks = Masks::open(Window::full(&grid));
+        let path = find(&masks, &[(0, 2, FRONT)], Goal::Spots(&[(100, 2, FRONT)])).unwrap();
+        assert!(path.iter().all(|s| s.1 == 2));
+    }
+
+    #[test]
+    fn a_pairs_new_copper_is_kept_only_if_more_is_coupled_at_no_more_length_or_vias() {
+        let before = (10.0, 2, 0.30);
+        assert!(keeps_pair(before, (10.0, 2, 0.60)));
+        assert!(keeps_pair(before, (10.0 + PAIR_SLACK, 1, 0.60)));
+        assert!(!keeps_pair(before, (10.5, 2, 0.60)), "longer");
+        assert!(!keeps_pair(before, (9.0, 3, 0.60)), "a via more");
+        assert!(!keeps_pair(before, (9.0, 2, 0.305)), "no more coupled");
     }
 
     #[test]
