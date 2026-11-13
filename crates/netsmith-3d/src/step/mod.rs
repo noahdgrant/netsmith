@@ -15,7 +15,8 @@
 //!   the part's path, its name the designator, and its description the part's kind and where its
 //!   height came from (`Resistor; height catalog`).
 //! - **Exact solids.** Each solid is a closed shell of planes and cylinders: the
-//!   board is its outline with its rounded corners, its cutouts and every drilled hole (round,
+//!   board is its outline (its rounded rectangle, or a polygon's own lines and arcs), its
+//!   cutouts and every drilled hole (round,
 //!   or a slot) through the board's chosen thickness. A part's _Package shape_ is its solids
 //!   ([`netsmith_pcb::body3d`]: boxes, prisms, cylinders), named `body`, `metal` or `mark`, each with
 //!   the 3D view's colour; a part with no package record is its body box from its face to its
@@ -48,7 +49,7 @@ use writer::{Id, Writer, cross, dot, list, polygon, real, string};
 use crate::mesh::package::{BALL_RINGS, ROUND_SEGMENTS, settled};
 use crate::mesh::trig::sin_cos_turns;
 use crate::raster3d::Theme;
-use crate::scene3d::{BoardSolid, Body, DrawnModel, Pins, PlacedShape, Plan, Scene};
+use crate::scene3d::{BoardSolid, Body, DrawnModel, OutlineEdge, Pins, PlacedShape, Plan, Scene};
 use crate::system::SystemScene;
 use netsmith_pcb::body3d::{Axis, Material as Made, Primitive};
 use netsmith_pcb::stackup::LayerKind;
@@ -661,13 +662,52 @@ fn xy(p: Plan) -> [f64; 2] {
     [p.x, p.y]
 }
 
-/// The board through its chosen thickness, with its cutouts and drilled holes.
+/// A polygon outline's pieces as a loop: a line as itself, an arc as a true arc round the
+/// circle through its three points (issue #543), so a CAD tool gets a cylindrical side face.
+fn outline_loop(edges: &[OutlineEdge]) -> Loop {
+    edges
+        .iter()
+        .map(|e| match *e {
+            OutlineEdge::Line { from, .. } => Segment::Line { start: xy(from) },
+            OutlineEdge::Arc { start, mid, end } => {
+                let (a, b, c) = (xy(start), xy(mid), xy(end));
+                match centre(a, b, c) {
+                    // Seen from above: the turn from start through mid to end.
+                    Some(centre) => Segment::Arc {
+                        start: a,
+                        centre,
+                        ccw: (b[0] - a[0]) * (c[1] - b[1]) - (b[1] - a[1]) * (c[0] - b[0]) > 0.0,
+                    },
+                    None => Segment::Line { start: a },
+                }
+            }
+        })
+        .collect()
+}
+
+/// The centre of the circle through three points, or `None` when they are on a line.
+fn centre(a: [f64; 2], b: [f64; 2], c: [f64; 2]) -> Option<[f64; 2]> {
+    let d = 2.0 * (a[0] * (b[1] - c[1]) + b[0] * (c[1] - a[1]) + c[0] * (a[1] - b[1]));
+    if d.abs() < 1e-12 {
+        return None;
+    }
+    let sq = |p: [f64; 2]| p[0] * p[0] + p[1] * p[1];
+    let (a2, b2, c2) = (sq(a), sq(b), sq(c));
+    Some([
+        (a2 * (b[1] - c[1]) + b2 * (c[1] - a[1]) + c2 * (a[1] - b[1])) / d,
+        (a2 * (c[0] - b[0]) + b2 * (a[0] - c[0]) + c2 * (b[0] - a[0])) / d,
+    ])
+}
+
+/// The board through its chosen thickness, with its cutouts and drilled holes: its outline is
+/// the rounded rectangle, or a polygon's own lines and arcs.
 fn board_solid(solid: &BoardSolid) -> Option<Extrusion> {
-    let mut loops = vec![rounded(
-        [0.0, 0.0],
-        [solid.width, solid.height],
-        solid.corner_radius,
-    )];
+    let outer = if solid.outline_edges.is_empty() {
+        rounded([0.0, 0.0], [solid.width, solid.height], solid.corner_radius)
+    } else {
+        outline_loop(&solid.outline_edges)
+    };
+    let mut loops = vec![outer];
     for c in &solid.cutouts {
         loops.push(rounded(xy(c.at.min), xy(c.at.max), c.radius));
     }

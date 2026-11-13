@@ -77,6 +77,7 @@ use netsmith_pcb::body3d::Solid;
 use netsmith_pcb::copper::{self, CopperError};
 use netsmith_pcb::footprint::{Drill, PadKind};
 use netsmith_pcb::geometry::{Pt, Rect};
+use netsmith_pcb::shape::Edge;
 use netsmith_pcb::stackup::{LayerKind, StackLayer};
 
 /// Where a part's height came from (the glossary's _Height provenance_), strongest first.
@@ -206,6 +207,9 @@ pub struct BoardSolid {
     /// A polygon outline's edge as a ring counterclockwise seen from above (issue #57); empty
     /// for the rectangle of `width`, `height` and `corner_radius`.
     pub outline: Vec<Plan>,
+    /// The same edge as its own pieces, its lines and arcs, in the same order (issue #543): what
+    /// the STEP file writes, exactly. Empty for the rectangle.
+    pub outline_edges: Vec<OutlineEdge>,
     /// The thickness the board chose, which the board house is asked for: the bottom face is at
     /// `-thickness`.
     pub thickness: f64,
@@ -216,6 +220,21 @@ pub struct BoardSolid {
     pub layers: Vec<SceneLayer>,
     pub cutouts: Vec<SceneCutout>,
     pub holes: Vec<Hole>,
+}
+
+/// A piece of a polygon outline in plan.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum OutlineEdge {
+    Line {
+        from: Plan,
+        to: Plan,
+    },
+    /// An arc from `start` through `mid` to `end`.
+    Arc {
+        start: Plan,
+        mid: Plan,
+        end: Plan,
+    },
 }
 
 /// A layer of the stackup at its height.
@@ -992,6 +1011,26 @@ fn solid(board: &Board, frame: &Frame, thickness: f64) -> BoardSolid {
             .polygon
             .as_ref()
             .map(|p| p.segments().iter().map(|s| frame.point(s.0)).collect())
+            .unwrap_or_default(),
+        outline_edges: board
+            .polygon
+            .as_ref()
+            .map(|p| {
+                p.edges()
+                    .iter()
+                    .map(|e| match *e {
+                        Edge::Line(from, to) => OutlineEdge::Line {
+                            from: frame.point(from),
+                            to: frame.point(to),
+                        },
+                        Edge::Arc { start, mid, end } => OutlineEdge::Arc {
+                            start: frame.point(start),
+                            mid: frame.point(mid),
+                            end: frame.point(end),
+                        },
+                    })
+                    .collect()
+            })
             .unwrap_or_default(),
         thickness,
         stack_thickness: clean(-z),

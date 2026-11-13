@@ -10,7 +10,7 @@ use netsmith_3d::scene3d::{
     CopperLayer as CopperLayer3, CopperPad, HeightProvenance, Pins, Plan, PlanArea, Scene,
     SceneCopper,
 };
-use netsmith_core::{Design, Features, Net, Outline, Part, PinRef};
+use netsmith_core::{Design, Features, Net, Outline, OutlineVertex, Part, PinRef};
 use netsmith_kicad::testlib::TempDir;
 use netsmith_pcb::protrusion::Protrusion;
 use netsmith_pcb::{
@@ -59,6 +59,12 @@ pub(crate) fn board() -> Board {
 
 /// [`board`] made with `process`.
 pub(crate) fn board_with(process: netsmith_core::Process) -> Board {
+    board_outlined(process, None)
+}
+
+/// [`board`] made with `process` and, when given, a `polygon` outline in place of the 30 x 20 mm
+/// rectangle.
+fn board_outlined(process: netsmith_core::Process, polygon: Option<Vec<OutlineVertex>>) -> Board {
     let folder = TempDir::new("scene3d");
     std::fs::write(folder.join("Box.kicad_mod"), BOX).unwrap();
     std::fs::write(folder.join("Row2.kicad_mod"), ROW).unwrap();
@@ -80,7 +86,7 @@ pub(crate) fn board_with(process: netsmith_core::Process) -> Board {
                 width: (30.0, 30.0),
                 height: (20.0, 20.0),
                 corner_radius: 0.0,
-                polygon: None,
+                polygon,
             }),
             ..Features::default()
         },
@@ -152,6 +158,88 @@ fn limit(name: &str, at: (f64, f64), size: (f64, f64), layers: &[&str], max: f64
 pub(crate) fn scene(board: &Board) -> Scene {
     let provenance = BTreeMap::from([("b".to_string(), HeightProvenance::Catalog)]);
     Scene::of(board, &provenance)
+}
+
+#[test]
+fn a_polygon_board_is_written_to_step_as_its_lines_and_arcs() {
+    // The 30 x 20 mm board with a 6 x 3 mm notch in its bottom edge and its bottom-left corner
+    // an arc of radius 5 mm, clockwise on screen (y down).
+    let corner = |x: f64, y: f64| OutlineVertex {
+        at: (x, y),
+        through: None,
+    };
+    let polygon = vec![
+        corner(0.0, 0.0),
+        corner(30.0, 0.0),
+        corner(30.0, 20.0),
+        corner(20.0, 20.0),
+        corner(20.0, 17.0),
+        corner(14.0, 17.0),
+        corner(14.0, 20.0),
+        OutlineVertex {
+            at: (5.0, 20.0),
+            // On the circle round (5, 15): 4 left and 3 down.
+            through: Some((1.0, 18.0)),
+        },
+        corner(0.0, 15.0),
+    ];
+    let s = scene(&board_outlined(common::process(), Some(polygon)));
+    let step = netsmith_3d::step::step(&s, "Scene");
+    // The arc is a true arc: a cylinder of its radius, as the rounded corners are.
+    assert!(
+        step.contains("CYLINDRICAL_SURFACE('',") && step.contains(",5.);"),
+        "no arc of radius 5 mm"
+    );
+    let read = netsmith_3d::step::read::read(step.as_bytes()).unwrap();
+    let board = read
+        .pieces
+        .iter()
+        .find(|p| p.mesh.id == "board")
+        .expect("a solid named board");
+    assert!(board.mesh.closed);
+    // Its outline's area less the notch, the corner outside the arc and the row's two 1 mm
+    // holes, through 1.6 mm: not the 600 mm² of the box round it.
+    let area = 600.0
+        - 18.0
+        - (25.0 - std::f64::consts::PI * 25.0 / 4.0)
+        - 2.0 * std::f64::consts::PI * 0.25;
+    let v = volume(&board.mesh);
+    assert!(
+        (v - area * 1.6).abs() < 0.2,
+        "volume {v}, want {}",
+        area * 1.6
+    );
+    // In the notch (17, 1.5 with y up) and in the cut corner (0.5, 0.5) there is no board;
+    // beside the notch and just inside the arc there is: its top face and its bottom face.
+    for (x, y, faces) in [
+        (17.0, 1.5, 0),
+        (0.5, 0.5, 0),
+        (12.0, 1.5, 2),
+        (21.5, 1.5, 2),
+        (1.6, 1.6, 2),
+    ] {
+        assert_eq!(covers(&board.mesh, [x, y]), faces, "at ({x}, {y})");
+    }
+    let b = board.mesh.bounds().unwrap();
+    assert_eq!(
+        (b.min[0], b.min[1], b.max[0], b.max[1]),
+        (0.0, 0.0, 30.0, 20.0)
+    );
+}
+
+/// How many of a mesh's triangles lie over or under a point of the plan (walls, edge-on, are
+/// not counted): 0 outside a solid, 2 inside a slab.
+fn covers(m: &netsmith_3d::mesh::Mesh, p: [f64; 2]) -> usize {
+    let side =
+        |a: [f64; 3], b: [f64; 3]| (b[0] - a[0]) * (p[1] - a[1]) - (b[1] - a[1]) * (p[0] - a[0]);
+    m.indices
+        .chunks(3)
+        .filter(|t| {
+            let [a, b, c] = [0, 1, 2].map(|k| m.positions[t[k] as usize]);
+            let s = [side(a, b), side(b, c), side(c, a)];
+            s.iter().all(|&v| v > 0.0) || s.iter().all(|&v| v < 0.0)
+        })
+        .count()
 }
 
 #[test]
