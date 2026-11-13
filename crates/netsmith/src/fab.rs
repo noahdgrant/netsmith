@@ -46,6 +46,9 @@ pub struct Fabricated {
     pub files: Vec<PathBuf>,
     /// The numbers an order's summary is made of.
     pub facts: BoardFacts,
+    /// Where each part's footprint origin is and how far it is from its body's centre (#457);
+    /// none for a panel.
+    pub origins: Vec<netsmith_pcb::PartOrigin>,
 }
 
 /// What `netsmith fab` says when it finds no KiCad, and why there is none: KiCad is switched off
@@ -991,6 +994,7 @@ fn fab_board(
             notes,
             files,
             facts: BoardFacts::of(&board, &pkg),
+            origins: board.origins(),
         };
         Ok(BoardRun {
             fabricated,
@@ -1793,6 +1797,7 @@ fn fab_panel(
         notes,
         files,
         facts,
+        origins: Vec::new(),
     })
 }
 

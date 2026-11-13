@@ -261,6 +261,30 @@ mod board {
         .unwrap_or_else(|e| panic!("{e:?}"))
     }
 
+    /// #457: seeds 3 to 14 stopped with the courtyards of J2 (`usb`) and C37 overlapping by
+    /// 0.04 to 0.09 mm2. The requirements pin J2 at x 97.405 mm, off the placer's 0.05 mm grid,
+    /// and the placer measured a part that stays at the grid's nearest point, so it put C37
+    /// against a courtyard the check found 0.005 mm nearer. Seed 3 places now.
+    #[test]
+    fn seed_3_places_with_no_courtyards_overlapping() {
+        let file = "main.pcb.toml".to_string();
+        let layout =
+            netsmith_pcb::Layout::parse("version = 1\n[PowerManifoldCharger]\nseed = 3\n", &file)
+                .unwrap();
+        let built = built();
+        let Ok((board, _)) =
+            netsmith::layout::place(&built.design, Some(&(layout, file)), &libraries(), false)
+        else {
+            panic!("seed 3 does not place");
+        };
+        let problems: Vec<String> = board
+            .check_placement()
+            .iter()
+            .map(ToString::to_string)
+            .collect();
+        assert!(problems.is_empty(), "{problems:#?}");
+    }
+
     #[test]
     fn the_board_builds_with_no_kicad_and_has_the_89_parts_of_the_charger_board() {
         PORT.assert_has_the_parts(&built(), 89, 89);

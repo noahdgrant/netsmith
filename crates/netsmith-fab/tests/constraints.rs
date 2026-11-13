@@ -430,3 +430,65 @@ fn a_relation_whose_part_is_not_on_the_board_is_violated() {
         all[0].message
     );
 }
+
+/// A footprint on the back, turned 90 degrees, that draws no courtyard and no fabrication
+/// layer, with pads not centred on its origin (a miniature of an edge connector's fingers),
+/// as netsmith writes it: each pad's place in the footprint's frame (x already negated for the
+/// back) and its turn on the board.
+fn bare_fingers() -> String {
+    let mut b = Pcb::new(2);
+    b.raw(
+        "(footprint \"Test:J1\" (layer \"B.Cu\") (at 10 10 90)
+            (property \"Reference\" \"J1\" (at 0 -3 0) (layer \"B.Fab\") (hide yes) (effects (font (size 1 1) (thickness 0.15))))
+            (pad \"1\" connect rect (at 0 0.55 90) (size 0.7 3.2) (layers \"B.Cu\" \"B.Mask\"))
+            (pad \"2\" connect rect (at 1 0 90) (size 0.7 4.3) (layers \"B.Cu\" \"B.Mask\")))",
+    );
+    b.pcb()
+}
+
+#[test]
+fn a_footprint_with_no_courtyard_is_measured_by_its_turned_pads_and_the_placers_margin() {
+    // #457: the body of a footprint that draws neither layer is its pads and 0.25 mm, as the
+    // placer measures it (`BARE_COURTYARD_MARGIN`), taken in the footprint's frame and turned
+    // with it. In that frame the pads span x -0.35 to 1.35 and y -2.15 to 2.15; with the margin
+    // and turned 90 degrees about (10, 10) the body is x 7.6 to 12.4 and y 8.4 to 10.6. The
+    // pads' sizes not turned put the centre at x 10.275 (0.275 mm off).
+    let c = set(vec![
+        want("j.place.x", &["J1"], Measure::X, 10.0, 10.0),
+        want("j.place.y", &["J1"], Measure::Y, 9.5, 9.5),
+        want("j.place.left", &["J1"], Measure::Left, 7.6, 7.6),
+        want("j.place.right", &["J1"], Measure::Right, 12.4, 12.4),
+        want("j.place.top", &["J1"], Measure::Top, 8.4, 8.4),
+        want("j.place.bottom", &["J1"], Measure::Bottom, 10.6, 10.6),
+    ]);
+    let all = measure(&c, &bare_fingers());
+    assert!(all.iter().all(|o| o.satisfied), "{all:#?}");
+    assert_eq!(
+        all[0].message,
+        "constraint j.place.x (widget.nsm:14) is satisfied: the centre of the body of J1 (pads and 0.25 mm) is 10 mm from the left edge of the outline, and it allows 10 mm"
+    );
+}
+
+#[test]
+fn a_hole_that_reaches_past_the_courtyard_is_in_the_body() {
+    // The placer's courtyard takes in every hole (a mounting hole, a pogo-pin pad), and so
+    // does the body the check measures: a 3 mm hole at (4, 0) of a part whose courtyard is
+    // 2 by 1.4 mm reaches x 5.5.
+    let mut b = Pcb::new(2);
+    b.part(
+        "J1",
+        (10.0, 10.0),
+        0.0,
+        &[thru("1", 4.0, 0.0, 3.2, 3.0, "A")],
+        Draw::default(),
+    );
+    let c = set(vec![want(
+        "j.place.right",
+        &["J1"],
+        Measure::Right,
+        15.5,
+        15.5,
+    )]);
+    let all = measure(&c, &b.pcb());
+    assert!(all[0].satisfied, "{all:#?}");
+}

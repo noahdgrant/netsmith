@@ -39,6 +39,7 @@ pub mod footprint;
 pub mod generate;
 pub mod geometry;
 pub mod layout;
+pub mod origin;
 pub mod overhang;
 pub mod placement;
 pub mod protrusion;
@@ -63,6 +64,7 @@ pub use footprint::{
 };
 pub use geometry::{Pt, Rect};
 pub use layout::{BoardLayout, Layout, LayoutError, apply_layout, place_options};
+pub use origin::{ORIGINS_HEAD, PartOrigin, origins_text};
 pub use overhang::{Edge, Edges, Overhang};
 pub use placement::{
     DoesNotFit, Ended, Fixed, HeightZone, ORIGIN, OutsideAt, OverlapAt, Oversize, PartState,

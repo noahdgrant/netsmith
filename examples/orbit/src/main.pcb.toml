@@ -3,9 +3,10 @@ version = 1
 # The layout file keeps a solution, never a requirement (docs/LANGUAGE.md, "The layout file").
 # Everything the board must match of ORBIT's is in `main.physical.nsm`; the placer puts every
 # other part (the ICs, the crystal, the inductor, the LEDs, the resistors and capacitors), and a
-# seed is another arrangement of them. Seed 7 routes this board completely, in 5 s of routing
-# (a debug build, an otherwise idle machine); the seeds 0 to 6 and 8 to 11 each leave one
-# connection of the USB data pair (J1.2 or J1.3 to U4) unrouted after four tries. No part is
-# locked: the file records no position.
+# seed is another arrangement of them. Seed 1 routes this board completely: `fab` took 57 s in a
+# debug build on a machine running other builds (#457, where the placer began to measure the
+# parts the requirements pin where they are, not on its grid, which changed every arrangement);
+# seeds 5 and 8 route too, more slowly, and seeds 0, 2, 3, 4, 6 and 7 did not finish in 120 s. No
+# part is locked: the file records no position.
 [Orbit]
-seed = 7
+seed = 1

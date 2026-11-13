@@ -10,8 +10,9 @@ use crate::geometry::{Pt, Rect};
 /// The environment variable that names the folder holding the `.pretty` libraries.
 pub const ROOT_VARIABLE: &str = install::FOOTPRINTS_VARIABLE;
 
-/// Space added around the pads when a footprint draws no courtyard.
-const BARE_COURTYARD_MARGIN: f64 = 0.25;
+// Space added around the pads when a footprint draws no courtyard: the fab check's own, so
+// that the placer and the check measure one body (#457).
+use netsmith_fab::drc::constraints::BARE_COURTYARD_MARGIN;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FootprintError {

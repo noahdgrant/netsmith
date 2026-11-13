@@ -1228,3 +1228,114 @@ fn the_designator_map_says_what_it_cannot_read() {
     assert!(DesignatorMap::parse("J1 = 3").unwrap_err().contains("J1"));
     assert!(DesignatorMap::parse("J1 =").is_err());
 }
+
+// ---- #457: what a pad difference is on each side, and where a part's origin is -------------
+
+#[test]
+fn a_pad_difference_says_what_the_board_has_and_what_the_reference_has() {
+    // A `connect` pad and an `smd` pad of one size are two pads to the checker, and the
+    // footprint's author needs to know which one the original has.
+    let smd = r#"(pad "1" smd rect (at 0 0 0) (size 1.6 1.2)"#;
+    differs_in(
+        &run(&edited(&[(J2_PAD_1, smd)])),
+        "part J2 pad 1",
+        "type (the board's smd, the reference's thru_hole)",
+    );
+    let swapped = r#"(pad "1" thru_hole rect (at 0 0 0) (size 1.2 1.6)"#;
+    differs_in(
+        &run(&edited(&[(J2_PAD_1, swapped)])),
+        "part J2 pad 1",
+        "size (the board's 1.2 x 1.6, the reference's 1.6 x 1.2)",
+    );
+    let oval = r#"(pad "1" thru_hole oval (at 0 0 0) (size 1.6 1.2)"#;
+    differs_in(
+        &run(&edited(&[(J2_PAD_1, oval)])),
+        "part J2 pad 1",
+        "shape (the board's oval, the reference's rect)",
+    );
+    let drill = r#"(pad "3" thru_hole rect (at 2.54 0 0) (size 1.6 1.2) (drill 0.8)"#;
+    differs_in(
+        &run(&edited(&[(J2_PAD_3, drill)])),
+        "part J2 pad 3",
+        "drill (the board's 0.8, the reference's 1)",
+    );
+    // A part that need not match says which pads differ, and in what.
+    let report = run(&edited(&[(
+        r#"(pad "1" smd rect (at -3 0 0)"#,
+        r#"(pad "1" connect rect (at -3 0 0)"#,
+    )]));
+    let note = &item(&report, "part U1 pads").note;
+    assert!(
+        note.starts_with("1 pads differ (1 in type (the board's connect, the reference's smd)); "),
+        "{note}"
+    );
+}
+
+/// J2 with the member path `fab` writes on its footprint.
+const J2_REFERENCE: &str = r#"(property "Reference" "J2" (at 0 0 0) (layer "F.SilkS"))"#;
+
+#[test]
+fn the_report_says_where_each_must_match_parts_origin_is_and_the_lines_that_put_it_there() {
+    // J2 at (28, 15), turned 0: its pads span x -0.8 to 8.42 and y -0.6 to 3.14 in its frame,
+    // and with the margin of a footprint that draws no courtyard (0.25 mm) the body's centre is
+    // (3.81, 1.27) from the origin. To put the origin at the reference's (28, 15) the body's
+    // centre is at (31.81, 16.27).
+    let with_path = format!(
+        "{J2_REFERENCE}\n\t\t(property \"netsmith_path\" \"header\" (at 0 0 0) (layer \"F.SilkS\") (hide yes))"
+    );
+    let report = run(&edited(&[(J2_REFERENCE, &with_path)]));
+    let j2 = report
+        .origins
+        .iter()
+        .find(|o| o.reference == "J2")
+        .unwrap_or_else(|| panic!("no origin of J2:\n{}", report.text()));
+    assert_eq!(
+        j2.line(),
+        "part J2 (`header`, J2 on the board) top, turned 0: origin (28, 15), body centre (31.81, 16.27), dx -3.81 dy -1.27; the reference's origin is (28, 15): `.header.place.x &= 31.81mm` and `.header.place.y &= 16.27mm` put it there"
+    );
+    assert!(
+        report
+            .text()
+            .contains(&format!("\norigin  {}\n", j2.line())),
+        "{}",
+        report.text()
+    );
+    let doc: serde_json::Value = serde_json::from_str(&report.json()).unwrap();
+    let origin = doc["origins"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|o| o["reference"] == "J2")
+        .unwrap();
+    assert_eq!(
+        origin["place"],
+        serde_json::json!([31.81, 16.27]),
+        "{origin:#}"
+    );
+    assert_eq!(origin["board"]["offset"], serde_json::json!([-3.81, -1.27]));
+    // Only the parts that must match: U1 need not.
+    assert!(report.origins.iter().all(|o| o.reference != "U1"));
+}
+
+#[test]
+fn a_part_turned_otherwise_than_the_references_is_told_to_match_the_turn_first() {
+    // The offset of the origin from the body's centre turns with the part, so the lines that
+    // put the origin in place are written once the part is turned as the reference's.
+    let report = run(&Spec {
+        sw1_rotation: 90.0,
+        ..Spec::default()
+    });
+    let sw1 = report
+        .origins
+        .iter()
+        .find(|o| o.reference == "SW1")
+        .unwrap();
+    assert_eq!(sw1.place, None);
+    assert!(
+        sw1.line().ends_with(
+            "; the reference's origin is (20, 25), on the top turned 0: put the part on that face and turned so, and run fab and parity again for its offset there"
+        ),
+        "{}",
+        sw1.line()
+    );
+}

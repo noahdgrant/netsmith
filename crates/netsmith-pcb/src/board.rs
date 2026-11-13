@@ -2824,6 +2824,72 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn the_placer_and_the_fab_check_measure_one_body_for_a_footprint_with_no_courtyard() {
+        // #457: a footprint that draws neither a courtyard nor a fabrication layer, on the
+        // back and turned, with pads off its origin. The placer's body (`Placed::body`) and
+        // the one the fab check measures on the written board are one box, at a right angle
+        // and at any other.
+        use netsmith_fab::drc::constraints::{Constraint, Constraints, Measure};
+        let mut board = placed(&led_design());
+        let bare = crate::footprint::Footprint::parse(
+            "T:Fingers",
+            r#"(footprint "Fingers"
+                (property "Reference" "REF**" (at 0 -3 0) (layer "F.SilkS"))
+                (pad "1" connect rect (at 0 0.55) (size 0.7 3.2) (layers "F.Cu" "F.Mask"))
+                (pad "2" connect rect (at -1 0) (size 0.7 4.3) (layers "F.Cu" "F.Mask")))"#,
+        )
+        .unwrap();
+        assert!(bare.body_is_courtyard);
+        for rotation in [90.0, 30.0] {
+            let r1 = board.parts.iter_mut().find(|p| p.refdes == "R1").unwrap();
+            r1.footprint = bare.clone();
+            r1.side = Side::Back;
+            r1.at = Pt::new(15.0, 12.0);
+            r1.rotation = rotation;
+            let placer = r1.body();
+            let o = board.outline.min;
+            let want = |measure| Constraint {
+                id: "r1".into(),
+                source: "t.nsm:1".into(),
+                parts: vec!["R1".into()],
+                measure,
+                lo: f64::NEG_INFINITY,
+                hi: f64::INFINITY,
+            };
+            let constraints = Constraints {
+                list: vec![
+                    want(Measure::Left),
+                    want(Measure::Right),
+                    want(Measure::Top),
+                    want(Measure::Bottom),
+                ],
+                sides: Vec::new(),
+                relations: Vec::new(),
+                severity: netsmith_fab::drc::Severity::Error,
+            };
+            let art =
+                netsmith_fab::artwork::Artwork::parse(&crate::export::kicad_pcb(&board)).unwrap();
+            let checked: Vec<f64> = constraints
+                .measure(&art)
+                .iter()
+                .map(|m| m.measured.unwrap_or_else(|| panic!("{}", m.message)))
+                .collect();
+            let expected = [
+                placer.min.x - o.x,
+                placer.max.x - o.x,
+                placer.min.y - o.y,
+                placer.max.y - o.y,
+            ];
+            for (c, e) in checked.iter().zip(expected) {
+                assert!(
+                    (c - e).abs() < 1e-6,
+                    "turned {rotation}: the check measures {checked:?} and the placer {expected:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
     fn a_net_that_names_a_missing_pad_says_which() {
         let mut design = led_design();
         design.nets[0].pins[0].pin = "7".into();

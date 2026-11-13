@@ -211,12 +211,16 @@ pub fn summary_line(board: &str, notes: &[(Cause, Finding)]) -> Option<String> {
 }
 
 /// A board a command built or made, for the report.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct BoardOut {
     pub board: String,
     /// The folder it wrote, if it wrote one.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub dir: Option<String>,
+    /// For `fab`: where each part's footprint origin is and how far it is from its body's
+    /// centre (#457).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub parts: Vec<netsmith_pcb::PartOrigin>,
 }
 
 /// The count of the notes of the run, for each cause, whether or not they are listed.
@@ -227,7 +231,7 @@ pub struct NoteCounts {
 }
 
 /// What `--format json` prints: one document for the whole run.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Report {
     pub command: &'static str,
     /// Whether the run did what it was asked; its exit status is 0 then.

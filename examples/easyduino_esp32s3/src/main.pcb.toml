@@ -8,8 +8,11 @@ version = 1
 # header rows, above the buttons, on the top face, not turned. Easyduino's own module sits 7 mm
 # higher with its antenna 5.9 mm past the top edge of the board; this one is wholly on the board,
 # so no overhang is stated. The module need not match, and nothing is gated on this entry.
+# Seed 3 routes the board completely (`fab` took 15 s in a debug build on a busy machine); seed 0
+# leaves one connection after the router's five tries since the placer measures the parts the
+# requirements pin where they are, not on its grid (#457), and seeds 1 and 4 route too.
 [EasyduinoEsp32s3]
-seed = 0
+seed = 3
 
 [EasyduinoEsp32s3.parts."module"]
 at = [12.96, 18.5]    # the footprint's origin, mm from the outline's top left corner

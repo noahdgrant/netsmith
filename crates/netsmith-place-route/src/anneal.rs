@@ -1167,10 +1167,12 @@ impl<'a> Engine<'a> {
         }
         order.sort_unstable();
         let order: Vec<(usize, usize)> = order.into_iter().map(|(_, i, ax)| (i, ax)).collect();
-        // A part that stays is where it is, exactly, though its pose is on the grid.
+        // A part that stays is where it is, exactly, though its pose is on the grid: the
+        // check measures it there, so its courtyard and pads are measured there too, whether
+        // or not it is in a relation (#457).
         let mut sub = vec![Pt::default(); n];
         for (i, q) in parts.iter().enumerate() {
-            if p.fixed[i] && !links_of[i].is_empty() {
+            if p.fixed[i] {
                 sub[i] = Pt::new(
                     q.at.x - poses[i].x as f64 * UNIT,
                     q.at.y - poses[i].y as f64 * UNIT,
@@ -3023,6 +3025,50 @@ mod tests {
         let one = run(&mut board, &[Edges::default(), bottom]);
         assert!(one.hard == 0.0, "{one:?}");
     }
+    #[test]
+    fn a_part_that_stays_off_the_grid_is_measured_where_the_check_measures_it() {
+        // #457: a part the requirements pin at x 97.405 mm (off the placer's 0.05 mm grid)
+        // and in no relation was measured at the grid's nearest point, 0.005 mm off, so the
+        // placer put a neighbour against a courtyard the check found 0.005 mm wider.
+        let mut board = resistors(&["", ""]);
+        board.parts[0].at = Pt::new(10.025, 7.0);
+        board.parts[0].rotation = 90.0;
+        let outline = Rect::new(Pt::new(0.0, 0.0), Pt::new(20.0, 20.0));
+        let fixed = [true, false];
+        let problem = Problem {
+            nets: &board.nets.clone(),
+            rules: &board.rules.clone(),
+            planes: &[],
+            region: outline,
+            corner_radius: 0.0,
+            fixed: &fixed,
+            keepouts: &[],
+            zones: &[],
+            carried: &[],
+            cutouts: &[],
+            pours: false,
+            seed: 0,
+            wants: &[],
+            offsets: &[],
+            overhangs: &[],
+            outline,
+        };
+        let checked = board.parts[0].courtyard();
+        let e = Engine::new(&mut board.parts, &problem);
+        let placer = e.court(0);
+        for (a, b) in [
+            (placer.min.x, checked.min.x),
+            (placer.max.x, checked.max.x),
+            (placer.min.y, checked.min.y),
+            (placer.max.y, checked.max.y),
+        ] {
+            assert!(
+                (a - b).abs() < 1e-9,
+                "the placer's courtyard {placer:?} is the check's {checked:?}"
+            );
+        }
+    }
+
     /// A 30 by 10 mm board with a zone over its left 20 mm and a free strip 10 mm wide
     /// beside it. `R1` is 14 mm tall with a body 6 by 4 mm; its courtyard goes 4.5 mm past
     /// the body on one side (an edge connector's shell), so that the whole courtyard needs

@@ -28,6 +28,12 @@
 //! against its edge does not. The corner of the two boxes, as the files state them, is reported
 //! as an `info` line.
 //!
+//! **Where to put a part.** For each part that must match, the report says where its footprint's
+//! origin is on the board, how far that is from its body's centre (the box `.place.x` and
+//! `.place.y` measure, as the fab check finds it), and the two lines that put the origin on the
+//! reference's ([`OriginLine`], #457). A pad difference says what the board has and what the
+//! reference has (`type (the board's smd, the reference's connect)`).
+//!
 //! **Parts** are matched by reference through a map ([`DesignatorMap`]): the original's reference
 //! to the reference of the part in the board `fab` wrote, made from the port's `parts.toml` and
 //! the member path that `fab` writes on each footprint ([`DesignatorMap::from_parts`], #456). A
@@ -280,6 +286,161 @@ pub struct ParityReport {
     pub reference: Board,
     pub actual: Board,
     map: DesignatorMap,
+    /// For each part that must match, where its footprint origin is on the board and the
+    /// `.place.x` and `.place.y` that put it where the reference's is (#457). Only
+    /// [`check_text`], which has the board file, finds them.
+    pub origins: Vec<OriginLine>,
+}
+
+/// A part that must match: where its footprint origin is on the board, how far that is from the
+/// centre of its body (what `.place.x` and `.place.y` measure, as `fab` measures it), and the two
+/// lines that put the origin where the reference's is (#457).
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+pub struct OriginLine {
+    /// The original's reference of the part.
+    pub reference: String,
+    /// The part on the board, from the outline's corner.
+    pub board: netsmith_pcb::PartOrigin,
+    /// The reference's origin, from its outline's corner.
+    pub reference_origin: [f64; 2],
+    /// The `.place.x` and `.place.y` that put the origin at `reference_origin`: `None` when the
+    /// part is on another face or turned otherwise than the reference's, which changes the
+    /// offset.
+    pub place: Option<[f64; 2]>,
+    /// The reference's face and turn, for the line that says to match them first.
+    pub reference_side: &'static str,
+    pub reference_rotation: f64,
+}
+
+impl OriginLine {
+    /// `part J2 (`usb`, J4 on the board) top, turned 90: origin (97.405, 12), body centre
+    /// (96.9, 12), dx 0.505 dy 0; the reference's origin is (97.405, 12): write ...`.
+    pub fn line(&self) -> String {
+        use netsmith_pcb::origin::mm;
+        let b = &self.board;
+        let path = if b.path.is_empty() { "<path>" } else { &b.path };
+        let mut s = format!(
+            "part {} (`{}`, {} on the board) {}, turned {}: origin ({}, {}), body centre ({}, {}), dx {} dy {}; the reference's origin is ({}, {})",
+            self.reference,
+            path,
+            b.refdes,
+            b.side,
+            mm(b.rotation),
+            mm(b.origin[0]),
+            mm(b.origin[1]),
+            mm(b.body_centre[0]),
+            mm(b.body_centre[1]),
+            mm(b.offset[0]),
+            mm(b.offset[1]),
+            mm(self.reference_origin[0]),
+            mm(self.reference_origin[1]),
+        );
+        match self.place {
+            Some([x, y]) => {
+                let _ = write!(
+                    s,
+                    ": `.{path}.place.x &= {}mm` and `.{path}.place.y &= {}mm` put it there",
+                    mm(x),
+                    mm(y)
+                );
+            }
+            None => {
+                let _ = write!(
+                    s,
+                    ", on the {} turned {}: put the part on that face and turned so, and run fab and parity again for its offset there",
+                    self.reference_side,
+                    mm(self.reference_rotation)
+                );
+            }
+        }
+        s
+    }
+}
+
+/// The [`OriginLine`] of each part of `reference` that must match and that `map` pairs with a
+/// part of the board file `pcb`. Empty when netsmith's reader of board files cannot read `pcb`.
+fn origin_lines(
+    reference: &Board,
+    actual: &Board,
+    pcb: &str,
+    map: &DesignatorMap,
+) -> Vec<OriginLine> {
+    let Ok(art) = netsmith_fab::artwork::Artwork::parse(pcb) else {
+        return Vec::new();
+    };
+    let paths: BTreeMap<String, String> = netsmith_kicad::sexp::Sexp::parse(pcb)
+        .map(|root| {
+            root.find_all("footprint")
+                .filter_map(|f| {
+                    let property = |name: &str| {
+                        f.find_all("property")
+                            .find(|p| p.args().first().and_then(|a| a.text()) == Some(name))
+                            .and_then(|p| {
+                                p.args().get(1).and_then(|a| a.text()).map(str::to_string)
+                            })
+                    };
+                    Some((
+                        property("Reference")?,
+                        property(netsmith_pcb::PATH_PROPERTY)?,
+                    ))
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    let (rc, ac) = (corner(reference), corner(actual));
+    let tidy = |v: f64| (v * 1e4).round() / 1e4;
+    let side = |layer: &str| {
+        if layer.starts_with('B') {
+            "bottom"
+        } else {
+            "top"
+        }
+    };
+    let mut lines = Vec::new();
+    for part in reference.parts.iter().filter(|p| p.must_match) {
+        let Some(found) = map
+            .get(&part.reference)
+            .and_then(|to| actual.parts.iter().find(|p| p.reference == to))
+        else {
+            continue;
+        };
+        let back = found.layer.starts_with('B');
+        let Some((body, _)) = netsmith_fab::drc::constraints::body_of(&art, &found.reference, back)
+        else {
+            continue;
+        };
+        let origin = [tidy(found.x - ac.0), tidy(found.y - ac.1)];
+        let centre = [
+            tidy((body.min.x + body.max.x) / 2.0 - ac.0),
+            tidy((body.min.y + body.max.y) / 2.0 - ac.1),
+        ];
+        let offset = [tidy(origin[0] - centre[0]), tidy(origin[1] - centre[1])];
+        let reference_origin = [tidy(part.x - rc.0), tidy(part.y - rc.1)];
+        let same = found.layer == part.layer
+            && angle_diff(found.rotation, part.rotation).abs() <= Tolerances::default().rotation;
+        lines.push(OriginLine {
+            reference: part.reference.clone(),
+            board: netsmith_pcb::PartOrigin {
+                refdes: found.reference.clone(),
+                path: paths.get(&found.reference).cloned().unwrap_or_default(),
+                side: side(&found.layer),
+                rotation: tidy(found.rotation.rem_euclid(360.0)),
+                origin,
+                body_centre: centre,
+                offset,
+            },
+            reference_origin,
+            place: same.then(|| {
+                [
+                    tidy(reference_origin[0] - offset[0]),
+                    tidy(reference_origin[1] - offset[1]),
+                ]
+            }),
+            reference_side: side(&part.layer),
+            reference_rotation: tidy(part.rotation.rem_euclid(360.0)),
+        });
+    }
+    lines
 }
 
 impl ParityReport {
@@ -336,6 +497,7 @@ impl ParityReport {
             "passed": self.passed(),
             "must_match": { "ok": ok, "failed": failed },
             "items": items,
+            "origins": self.origins,
             "warnings": self.warnings,
         });
         let mut text = serde_json::to_string_pretty(&doc).expect("plain data");
@@ -395,6 +557,9 @@ impl ParityReport {
                 let _ = write!(out, "  {}", item.note);
             }
             out.push('\n');
+        }
+        for o in &self.origins {
+            let _ = writeln!(out, "origin  {}", o.line());
         }
         for w in &self.warnings {
             let _ = writeln!(out, "warning: {w}");
@@ -462,7 +627,9 @@ pub fn check_text(
 ) -> Result<ParityReport, String> {
     let reference = Board::from_table(table)?;
     let actual = read_board(pcb, "the board")?;
-    Ok(check(&reference, &actual, map, tolerances))
+    let mut report = check(&reference, &actual, map, tolerances);
+    report.origins = origin_lines(&reference, &actual, pcb, map);
+    Ok(report)
 }
 
 /// Compare `actual` (the board `fab` wrote) with `reference` (Raspberry Pi's).
@@ -496,6 +663,7 @@ pub fn check(
         reference: reference.clone(),
         actual: actual.clone(),
         map: map.clone(),
+        origins: Vec::new(),
     }
 }
 
@@ -961,14 +1129,26 @@ fn judge_pair(rp: &Part, pad: &Pad, ap: &Part, q: &Pad, tol: &Tolerances) -> Pad
     if dsize.is_some_and(|(w, h)| w.abs() > tol.pad_size + EPS || h.abs() > tol.pad_size + EPS)
         || fr.size.is_some() != fa.size.is_some()
     {
-        why.push("size".to_string());
+        let wh = |s: Option<(f64, f64)>| {
+            s.map_or("none".to_string(), |(w, h)| {
+                format!("{} x {}", num(w), num(h))
+            })
+        };
+        why.push(format!(
+            "size (the board's {}, the reference's {})",
+            wh(fa.size),
+            wh(fr.size)
+        ));
     }
     if pad.shape != q.shape {
-        why.push(format!("shape ({} against {})", q.shape, pad.shape));
+        why.push(format!(
+            "shape (the board's {}, the reference's {})",
+            q.shape, pad.shape
+        ));
     }
     if angle_diff(fa.angle, fr.angle).abs() > tol.rotation {
         why.push(format!(
-            "angle ({} against {})",
+            "angle (the board's {}, the reference's {})",
             num(fa.angle),
             num(fr.angle)
         ));
@@ -985,10 +1165,22 @@ fn judge_pair(rp: &Part, pad: &Pad, ap: &Part, q: &Pad, tol: &Tolerances) -> Pad
         why.push("extent of its polygon".to_string());
     }
     if drill_wrong {
-        why.push("drill".to_string());
+        let drill = |h: Option<(f64, f64)>| match h {
+            None => "none".to_string(),
+            Some((w, h)) if (w - h).abs() < EPS => num(w),
+            Some((w, h)) => format!("{} x {}", num(w), num(h)),
+        };
+        why.push(format!(
+            "drill (the board's {}, the reference's {})",
+            drill(hole(q, &fa)),
+            drill(hole(pad, &fr))
+        ));
     }
     if pad.kind != q.kind {
-        why.push(format!("type ({} against {})", q.kind, pad.kind));
+        why.push(format!(
+            "type (the board's {}, the reference's {})",
+            q.kind, pad.kind
+        ));
     }
     let good = why.is_empty();
     PadMeasure {
@@ -1047,9 +1239,11 @@ fn pad_items(r: &Part, a: &Part, tol: &Tolerances, items: &mut Vec<Item>) {
         let mut bad = Vec::new();
         let mut worst: Option<(f64, f64, &str)> = None;
         for (label, _, pad, q) in &paired.pairs {
-            let PadMeasure { dx, dy, good, .. } = judge_pair(r, pad, a, q, tol);
+            let PadMeasure {
+                dx, dy, good, why, ..
+            } = judge_pair(r, pad, a, q, tol);
             if !good {
-                bad.push(label.as_str());
+                bad.push(format!("{label} in {why}"));
             }
             if worst.is_none_or(|w| dist(dx, dy) > dist(w.0, w.1)) {
                 worst = Some((dx, dy, label));
@@ -1067,8 +1261,13 @@ fn pad_items(r: &Part, a: &Part, tol: &Tolerances, items: &mut Vec<Item>) {
         }
         if !bad.is_empty() || missing > 0 {
             item.note = format!(
-                "{} pads differ in centre, size, shape, angle, drill or type{}; {}",
+                "{} pads differ{}{}; {}",
                 bad.len(),
+                if bad.is_empty() {
+                    String::new()
+                } else {
+                    format!(" ({})", bad.join("; "))
+                },
                 if missing > 0 {
                     format!(" and {missing} have no partner")
                 } else {
