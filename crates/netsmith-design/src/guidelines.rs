@@ -166,6 +166,14 @@
 //! carries is that of the width less the tolerance (1 mm carries what 0.8 mm does), and the finding
 //! says so. `ipc2221_width` and `ipc2221_current` are the plain formula and do not change.
 //!
+//! **Heat only, not voltage drop (issue #431, decided by the agent under the owner's delegation,
+//! 2026-11-13).** A net is sized for the heat its current makes, not for a drop budget. The width
+//! is chosen before the board is routed, and the drop depends on the length the router then
+//! draws, so a drop rule needs the routed board: a later check, not this sizing. The drop is not
+//! always small: 2 A through 50 mm of a 0.98 mm track in 1 oz copper drops about 0.1 V (2 % of
+//! 5 V), and 0.5 A through 50 mm of 0.2 mm about 0.06 V (1.9 % of 3.3 V). A design where it
+//! matters states a wider `.min_track` on the rail.
+//!
 //! **As built, not done.** A net whose rail states a `.min_track` gets no note when a current on it
 //! is not known (the guideline names the missing carriers instead), and the note is not a guideline
 //! that `--strict` can turn into an error. **Provisional:** the IPC constants below, until someone
