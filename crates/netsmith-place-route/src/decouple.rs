@@ -4,17 +4,24 @@
 //! joined to the rail by a line to a neighbour pin or another part, and its capacitor hang off
 //! somewhere else: the current the pin draws then does not pass the capacitor. For each
 //! decoupling pair the placer derives ([`crate::quality::decoupling_pairs`]), the router takes
-//! the capacitor's supply pad and the nearest power pin it decouples and makes the line between
-//! them part of the tree, and the pin a leaf: no other line of the net ends on it, so the rest
-//! of the net joins at the capacitor (pin, capacitor, rail). On a net poured as a plane, the
-//! pin's line to the plane becomes the line to the capacitor, whose own via is the pin's way to
-//! the plane. Only the lines change, not the search.
+//! the capacitor's supply pad and the nearest power pin it decouples, at most [`NEAR`] away, and
+//! makes the line between them the first of the net's tree; the rest of the tree is the
+//! shortest over all the net's pads as before, so the rest of the rail joins at the capacitor
+//! or at the pin, whichever is nearer. On a net poured as a plane, the pin's line to the plane
+//! becomes the line to the capacitor, whose own via is the pin's way to the plane. Only the
+//! lines change, not the search. These lines are what the router's decoupling class is
+//! ([`decouples`]), so from the second try they are routed early and not ripped up.
+//!
+//! Making the pin a leaf as well (no other line ends on it, so the rail always goes on from the
+//! capacitor) was measured and not kept: on RP2350 it ran the 3.3 V rail from capacitor to
+//! capacitor round the QFN, 1.42x the spanning length against 1.29x and 162 vias against 129;
+//! letting the pin join pins of its own part only made the same copper as the form built.
 //!
 //! Of the pair's two nets, the return is left as the ratsnest has it: the net with a pour or a
 //! plane, and if both or neither has one, the net with more pads (ground is the net most pads
-//! are on). The capacitor's pad on the return gets its own short via to the pour
-//! ([`return_pads`], [`crate::route`]'s pass after a complete try). A net with copper on it
-//! already is left as it is.
+//! are on). The capacitor's pad on a poured return gets its own short via to the pour
+//! ([`return_lines`], [`crate::route`]'s `to_the_pours`, after a complete try). A net with
+//! copper on it already is left as it is.
 
 use std::collections::{HashMap, HashSet};
 

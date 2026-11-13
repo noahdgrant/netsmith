@@ -252,7 +252,7 @@ The placer's way of choosing where parts go: from the circuit alone, with nothin
 _Avoid_: Autoplace, autorouter placement
 
 **Decoupling pair**:
-A two-pad capacitor whose pads are on two different nets that one same other part has `power` pins on, together with that part. Nothing in the source says so: the netlist and the pin kinds do. Of several such parts the ones that share most of the capacitor's instance path are kept (ADR 0033).
+A two-pad capacitor whose pads are on two different nets that one same other part has `power` pins on, together with that part. Nothing in the source says so: the netlist and the pin kinds do. Of several such parts the ones that share most of the capacitor's instance path are kept (ADR 0033). The router routes the pin to the capacitor's pad first and gives the capacitor's pad on a poured return net (ground) a short via of its own (`decouple.rs` in `netsmith-place-route`, issue #431).
 _Avoid_: Bypass capacitor (a bypass capacitor is the datasheet's word for the same part, but only a pair the placer finds is meant here)
 
 **Seed**:
