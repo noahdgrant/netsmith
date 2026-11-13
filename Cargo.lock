@@ -814,7 +814,9 @@ dependencies = [
 name = "netsmith-core"
 version = "0.1.0"
 dependencies = [
+ "automod",
  "flate2",
+ "netsmith-testkit",
  "serde",
  "serde_json",
 ]
@@ -883,6 +885,7 @@ dependencies = [
 name = "netsmith-kicad"
 version = "0.1.0"
 dependencies = [
+ "automod",
  "netsmith-core",
  "netsmith-sexp",
  "netsmith-testkit",
@@ -902,6 +905,7 @@ dependencies = [
 name = "netsmith-netlist"
 version = "0.1.0"
 dependencies = [
+ "automod",
  "netsmith-sexp",
  "roxmltree",
 ]

@@ -3,6 +3,13 @@ name = "netsmith-kicad"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+# The tests are one executable, tests/main.rs, with the other files of the folder as its modules
+# (#190): without this, cargo builds and links every file of the folder as well.
+autotests = false
+
+[[test]]
+name = "main"
+path = "tests/main.rs"
 
 [dependencies]
 netsmith-core = { path = "../netsmith-core" }
@@ -18,3 +25,4 @@ test-support = []
 
 [dev-dependencies]
 netsmith-testkit = { path = "../netsmith-testkit" }
+automod = "1.0.17"
