@@ -11,7 +11,7 @@ use std::process::ExitCode;
 use clap::{Args as ClapArgs, Subcommand};
 use netsmith_fabricate::board3d::Placed;
 use netsmith_fabricate::routes as lib;
-use netsmith_pcb::{Board, Layout, LayoutFace as Face};
+use netsmith_pcb::{Board, Layout, LayoutFace as Face, ZonePads};
 use netsmith_tools::routes_import::{self, Import};
 
 use super::common;
@@ -51,6 +51,12 @@ pub enum Command {
     /// Add a via to a net, refused if it breaks the design rules.
     #[command(name = "add-via")]
     AddVia(AddViaArgs),
+    /// Add a zone (copper area) of a net on a layer, refused if it breaks the design rules.
+    #[command(
+        name = "add-zone",
+        after_long_help = "The outline is a polygon given by `--outline X,Y` once for each corner (three or more, in order), by `--rect X,Y,W,H` for a rectangle, or by `--board-outline` for the board's whole outline. Places are mm from the outline's top left corner, y down, as for `add-track`. The zone is filled inside the outline on each `--layer` (`top`, `bottom`, `inner1`, ...; repeat the flag for several), joined to its net; where two zones of a layer overlap the higher `--priority` has the area, and two zones of different nets with the same priority must not overlap. Without a setting the zone has the design's own plane's: the clearance the process's planes keep, a minimum width of 0.25 mm, thermal relief gap and spokes of 0.5 mm, priority 0, a thermal relief at each pad of its net.\n\nA layer that has a zone of the routes file takes its zones from the file alone: the design's pour or plane on it is not drawn (the command says so when this zone makes that so). A zone is refused when a corner is off the board, a setting is wrong, or the design rules check finds an error with it that the board did not have (a short, a clearance, a track of another net it covers); the file is then as it was. The zone is written to the net's record (made, with the net's pad hash, if the net has none); `routes show` numbers it, and `delete`, `lock` and `unlock` name it with `--zone N`."
+    )]
+    AddZone(AddZoneArgs),
     /// Delete a net's record, or one of its shapes; a locked one is refused.
     Delete(ShapeArgs),
     /// Lock a net (the router adds no copper to it) or one shape (kept when the net's pads move).
@@ -138,6 +144,63 @@ pub struct AddViaArgs {
 }
 
 #[derive(Debug, PartialEq, ClapArgs)]
+#[command(group = clap::ArgGroup::new("outline_of").required(true).multiple(false))]
+pub struct AddZoneArgs {
+    #[command(flatten)]
+    pub target: Target,
+    /// The net, by its name in the design.
+    #[arg(long, value_name = "NET")]
+    pub net: String,
+    /// `top`, `bottom` or an inner layer (`inner1`, ...); repeat for a zone on several.
+    #[arg(long, value_name = "LAYER", default_value = "top")]
+    pub layer: Vec<String>,
+    /// One corner of the outline, `X,Y` in mm from the outline's top left corner; repeat it for
+    /// each corner, in order.
+    #[arg(long, value_name = "X,Y", value_parser = parse_point, allow_hyphen_values = true, group = "outline_of")]
+    pub outline: Vec<[f64; 2]>,
+    /// A rectangle for the outline: `X,Y,W,H`, its top left corner and its size in mm.
+    #[arg(long, value_name = "X,Y,W,H", value_parser = parse_rect, allow_hyphen_values = true, group = "outline_of")]
+    pub rect: Option<[f64; 4]>,
+    /// The board's whole outline for the zone's.
+    #[arg(long, group = "outline_of")]
+    pub board_outline: bool,
+    /// The space from other nets' copper, in mm (default: the process's plane clearance).
+    #[arg(long, value_name = "MM")]
+    pub clearance: Option<f64>,
+    /// The narrowest copper the zone keeps, in mm (default: 0.25).
+    #[arg(long, value_name = "MM")]
+    pub min_width: Option<f64>,
+    /// The gap of a thermal relief, in mm (default: 0.5).
+    #[arg(long, value_name = "MM")]
+    pub thermal_gap: Option<f64>,
+    /// The width of a thermal relief's spokes, in mm (default: 0.5).
+    #[arg(long, value_name = "MM")]
+    pub spoke_width: Option<f64>,
+    /// Where two zones of a layer overlap, the higher has the area.
+    #[arg(long, value_name = "N", default_value_t = 0)]
+    pub priority: u32,
+    /// How the zone joins its net's pads.
+    #[arg(long, value_enum, default_value = "thermal")]
+    pub pads: PadConnection,
+    /// Lock the zone: it is kept when the net's pads move.
+    #[arg(long)]
+    pub lock: bool,
+}
+
+/// How a zone joins the pads of its net.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
+pub enum PadConnection {
+    /// Solid copper up to the pad.
+    Solid,
+    /// A gap round the pad crossed by four spokes.
+    Thermal,
+    /// Not joined: the pad keeps the zone's clearance.
+    None,
+    /// A thermal relief at through-hole pads, solid copper at surface-mount pads.
+    ThruHoleOnly,
+}
+
+#[derive(Debug, PartialEq, ClapArgs)]
 pub struct ShapeArgs {
     #[command(flatten)]
     pub target: Target,
@@ -145,11 +208,14 @@ pub struct ShapeArgs {
     #[arg(long, value_name = "NET")]
     pub net: String,
     /// One track of the net, numbered from 1 as `routes show` lists them.
-    #[arg(long, value_name = "N", conflicts_with = "via")]
+    #[arg(long, value_name = "N", conflicts_with_all = ["via", "zone"])]
     pub track: Option<usize>,
     /// One via of the net, numbered from 1 as `routes show` lists them.
-    #[arg(long, value_name = "N")]
+    #[arg(long, value_name = "N", conflicts_with = "zone")]
     pub via: Option<usize>,
+    /// One zone of the net, numbered from 1 as `routes show` lists them.
+    #[arg(long, value_name = "N")]
+    pub zone: Option<usize>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
@@ -172,55 +238,71 @@ fn parse_point(text: &str) -> Result<[f64; 2], String> {
     Ok([n(x)?, n(y)?])
 }
 
+fn parse_rect(text: &str) -> Result<[f64; 4], String> {
+    let parts: Vec<&str> = text.split(',').collect();
+    let [x, y, w, h] = parts[..] else {
+        return Err(format!("`{text}` is not X,Y,W,H"));
+    };
+    let n = |v: &str| {
+        v.trim()
+            .parse::<f64>()
+            .ok()
+            .filter(|v| v.is_finite())
+            .ok_or_else(|| format!("`{v}` is not a number"))
+    };
+    let r = [n(x)?, n(y)?, n(w)?, n(h)?];
+    if r[2] <= 0.0 || r[3] <= 0.0 {
+        return Err(format!("`{text}`: the width and height must be above 0"));
+    }
+    Ok(r)
+}
+
 pub fn run(args: Args) -> ExitCode {
     match args.command {
         Command::Import(a) => import(&a),
         Command::Show(a) => show(&a),
-        Command::AddTrack(a) => edit(
-            &a.target,
-            &lib::Edit::AddTrack {
-                net: a.net.clone(),
-                layer: face(a.layer),
-                width: a.width,
-                from: a.from,
-                mid: a.mid,
-                to: a.to,
-                lock: a.lock,
-            },
-        ),
-        Command::AddVia(a) => edit(
-            &a.target,
-            &lib::Edit::AddVia {
-                net: a.net.clone(),
-                at: a.at,
-                diameter: a.diameter,
-                drill: a.drill,
-                lock: a.lock,
-            },
-        ),
-        Command::Delete(a) => edit(
-            &a.target,
-            &lib::Edit::Delete {
-                net: a.net.clone(),
-                shape: shape(&a),
-            },
-        ),
-        Command::Lock(a) => edit(
-            &a.target,
-            &lib::Edit::Lock {
-                net: a.net.clone(),
-                shape: shape(&a),
-                on: true,
-            },
-        ),
-        Command::Unlock(a) => edit(
-            &a.target,
-            &lib::Edit::Lock {
-                net: a.net.clone(),
-                shape: shape(&a),
-                on: false,
-            },
-        ),
+        Command::AddTrack(a) => edit(&a.target, |_| lib::Edit::AddTrack {
+            net: a.net.clone(),
+            layer: face(a.layer),
+            width: a.width,
+            from: a.from,
+            mid: a.mid,
+            to: a.to,
+            lock: a.lock,
+        }),
+        Command::AddVia(a) => edit(&a.target, |_| lib::Edit::AddVia {
+            net: a.net.clone(),
+            at: a.at,
+            diameter: a.diameter,
+            drill: a.drill,
+            lock: a.lock,
+        }),
+        Command::AddZone(a) => edit(&a.target, |board| lib::Edit::AddZone {
+            net: a.net.clone(),
+            layers: a.layer.clone(),
+            outline: zone_outline(&a, board),
+            clearance: a.clearance,
+            min_width: a.min_width,
+            thermal_gap: a.thermal_gap,
+            spoke_width: a.spoke_width,
+            priority: a.priority,
+            pads: pad_connection(a.pads),
+            lock: a.lock,
+        }),
+        Command::Delete(a) => edit(&a.target, |_| lib::Edit::Delete {
+            net: a.net.clone(),
+            shape: shape(&a),
+        }),
+        Command::Lock(a) => edit(&a.target, |_| lib::Edit::Lock {
+            net: a.net.clone(),
+            shape: shape(&a),
+            on: true,
+        }),
+        Command::Unlock(a) => edit(&a.target, |_| lib::Edit::Lock {
+            net: a.net.clone(),
+            shape: shape(&a),
+            on: false,
+        }),
     }
 }
 
@@ -232,10 +314,31 @@ fn face(layer: Layer) -> Face {
 }
 
 fn shape(args: &ShapeArgs) -> Option<lib::Shape> {
-    match (args.track, args.via) {
-        (Some(n), _) => Some(lib::Shape::Track(n)),
-        (None, Some(n)) => Some(lib::Shape::Via(n)),
-        (None, None) => None,
+    match (args.track, args.via, args.zone) {
+        (Some(n), _, _) => Some(lib::Shape::Track(n)),
+        (None, Some(n), _) => Some(lib::Shape::Via(n)),
+        (None, None, Some(n)) => Some(lib::Shape::Zone(n)),
+        (None, None, None) => None,
+    }
+}
+
+fn pad_connection(pads: PadConnection) -> ZonePads {
+    match pads {
+        PadConnection::Solid => ZonePads::Solid,
+        PadConnection::Thermal => ZonePads::Thermal,
+        PadConnection::None => ZonePads::None,
+        PadConnection::ThruHoleOnly => ZonePads::ThruHoleOnly,
+    }
+}
+
+/// The outline of `add-zone`: the corners, the rectangle or the board's own.
+fn zone_outline(args: &AddZoneArgs, board: &Board) -> Vec<[f64; 2]> {
+    if let Some([x, y, w, h]) = args.rect {
+        vec![[x, y], [x + w, y], [x + w, y + h], [x, y + h]]
+    } else if args.board_outline {
+        lib::board_outline(board)
+    } else {
+        args.outline.clone()
     }
 }
 
@@ -275,13 +378,17 @@ fn show(args: &ShowArgs) -> ExitCode {
 }
 
 /// Make `change` to the routes file of the target's board (`netsmith_fabricate::routes::edit`,
-/// which the editor's PCB view calls too): exit 0 when it is written, 1 when it is refused, 2
-/// when it could not be tried.
-fn edit(target: &Target, change: &lib::Edit) -> ExitCode {
+/// which the editor's PCB view calls too): `change` is made from the placed board; exit 0 when
+/// it is written, 1 when it is refused, 2 when it could not be tried.
+fn edit(target: &Target, change: impl Fn(&Board) -> lib::Edit) -> ExitCode {
     let outcome =
         common::with_placed_board(target.file.as_deref(), target.board.as_deref(), |placed| {
             let board = placed.with_board(|_, board| board.clone())?;
-            Ok(lib::edit_file(&board, &routes_file(placed), change))
+            Ok(lib::edit_file(
+                &board,
+                &routes_file(placed),
+                &change(&board),
+            ))
         });
     match outcome {
         Ok(Ok(said)) => {
@@ -445,11 +552,68 @@ mod tests {
                 command: routes::Command::Delete(routes::ShapeArgs { via: Some(2), .. })
             }))
         ));
+        assert!(matches!(
+            parse(&[
+                "routes", "add-zone", "--net", "GND", "--layer", "top", "--layer", "bottom",
+                "--rect", "1,-2,3,4.5", "--pads", "thru-hole-only", "--priority", "2"
+            ]),
+            Ok(Command::Routes(routes::Args {
+                command: routes::Command::AddZone(routes::AddZoneArgs {
+                    rect: Some([1.0, -2.0, 3.0, 4.5]),
+                    priority: 2,
+                    pads: routes::PadConnection::ThruHoleOnly,
+                    ref layer,
+                    ..
+                })
+            })) if layer == &["top", "bottom"]
+        ));
+        assert!(matches!(
+            parse(&[
+                "routes", "add-zone", "--net", "GND", "--outline", "1,1", "--outline", "5,1",
+                "--outline", "3,4"
+            ]),
+            Ok(Command::Routes(routes::Args {
+                command: routes::Command::AddZone(routes::AddZoneArgs { ref outline, .. })
+            })) if outline.len() == 3
+        ));
+        assert!(matches!(
+            parse(&["routes", "unlock", "--net", "GND", "--zone", "2"]),
+            Ok(Command::Routes(routes::Args {
+                command: routes::Command::Unlock(routes::ShapeArgs { zone: Some(2), .. })
+            }))
+        ));
         assert_eq!(
             kind(&[
                 "routes", "lock", "--net", "GND", "--track", "1", "--via", "1"
             ]),
             ErrorKind::ArgumentConflict
+        );
+        assert_eq!(
+            kind(&[
+                "routes", "lock", "--net", "GND", "--via", "1", "--zone", "1"
+            ]),
+            ErrorKind::ArgumentConflict
+        );
+        // One way to say the outline, and one is needed; a rectangle has a size.
+        assert_eq!(
+            kind(&["routes", "add-zone", "--net", "GND"]),
+            ErrorKind::MissingRequiredArgument
+        );
+        assert_eq!(
+            kind(&[
+                "routes",
+                "add-zone",
+                "--net",
+                "GND",
+                "--rect",
+                "1,1,2,2",
+                "--board-outline"
+            ]),
+            ErrorKind::ArgumentConflict
+        );
+        assert_eq!(
+            kind(&["routes", "add-zone", "--net", "GND", "--rect", "1,1,0,2"]),
+            ErrorKind::ValueValidation
         );
         assert_eq!(
             kind(&["routes", "add-via", "--net", "GND", "--at", "1"]),

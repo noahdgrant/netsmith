@@ -7,7 +7,8 @@
 use std::path::{Path, PathBuf};
 
 use netsmith_pcb::{
-    Board, LayoutFace as Face, NetRoutes, RouteTrack, RouteVia, Routes, apply_routes,
+    Board, LayoutFace as Face, NetRoutes, Pt, RouteTrack, RouteVia, RouteZone, Routes, ZonePads,
+    apply_routes,
 };
 
 /// The routes file of a source file: `led.nsm` has `led.routes.toml`.
@@ -101,7 +102,9 @@ pub fn with_routes(board: &Board, routes: &Routes) -> Result<(Board, Vec<String>
 /// The errors of netsmith's design rules check of `board` as it is, each as a line, less those of
 /// copper not yet drawn: the connections left (the router makes them) and a track or via end that
 /// touches nothing (a route is drawn one shape at a time, so its first shape ends in the open
-/// until the next is added; `fab`'s check still finds an end left so).
+/// until the next is added; `fab`'s check still finds an end left so). The place of each is in
+/// the routes file's frame (mm from the outline's top left corner, y down), the frame the
+/// commands that edit the file take their places in, not KiCad's page.
 pub fn drc_errors(board: &Board) -> Result<Vec<String>, String> {
     let report = netsmith_geom::drc_check(
         &netsmith_pcb::kicad_pcb(board),
@@ -119,7 +122,14 @@ pub fn drc_errors(board: &Board) -> Result<Vec<String>, String> {
                     | netsmith_geom::DrcRule::ViaDangling
             )
         })
-        .map(ToString::to_string)
+        .map(|f| {
+            let mut f = f.clone();
+            f.at = netsmith_geom::Pt {
+                x: f.at.x - board.outline.min.x,
+                y: f.at.y - board.outline.min.y,
+            };
+            f.to_string()
+        })
         .collect())
 }
 
@@ -139,15 +149,42 @@ pub fn new_errors(before: &Board, after: &Board) -> Result<Vec<String>, String> 
     Ok(new)
 }
 
+/// The board's own outline as a zone's outline, in the routes file's places: the corners of a
+/// polygon outline, or the rectangle drawn in by the least space to the edge (and as far as a
+/// rounded corner needs, so that its corners stay on the board). The fill keeps the edge's space
+/// whatever the outline. Places are to 0.000001 mm, as the file keeps them.
+pub fn board_outline(board: &Board) -> Vec<[f64; 2]> {
+    let corners: Vec<Pt> = match &board.polygon {
+        Some(p) => p.corners(),
+        None => {
+            let round = board.corner_radius * (1.0 - std::f64::consts::FRAC_1_SQRT_2);
+            board
+                .outline
+                .expanded(-board.rules.copper_to_edge.max(round))
+                .corners()
+                .to_vec()
+        }
+    };
+    corners
+        .iter()
+        .map(|c| {
+            let c = *c - board.outline.min;
+            let to_um = |v: f64| (v * 1e6).round() / 1e6;
+            [to_um(c.x), to_um(c.y)]
+        })
+        .collect()
+}
+
 /// One shape of a net's record, numbered from 1 as `netsmith routes show` lists them.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Shape {
     Track(usize),
     Via(usize),
+    Zone(usize),
 }
 
-/// One change to the routes file: what `netsmith routes add-track`, `add-via`, `delete`, `lock`
-/// and `unlock` do, and the editor's PCB view with them. [`edit`] is the one implementation.
+/// One change to the routes file: what `netsmith routes add-track`, `add-via`, `add-zone`,
+/// `delete`, `lock` and `unlock` do, and the editor's PCB view with them. [`edit`] is the one implementation.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Edit {
     /// A track of `net`; `width` `None` is the net's own width.
@@ -166,6 +203,22 @@ pub enum Edit {
         at: [f64; 2],
         diameter: Option<f64>,
         drill: Option<f64>,
+        lock: bool,
+    },
+    /// A zone of `net` on `layers` (`top`, `bottom`, `inner1`, ...) inside the polygon
+    /// `outline`, in the routes file's places. A setting that is `None` is the design's own
+    /// plane's ([`RouteZone::new`]). A zone is refused when it is wrong in itself, off the
+    /// board, or brings an error of the design rules check.
+    AddZone {
+        net: String,
+        layers: Vec<String>,
+        outline: Vec<[f64; 2]>,
+        clearance: Option<f64>,
+        min_width: Option<f64>,
+        thermal_gap: Option<f64>,
+        spoke_width: Option<f64>,
+        priority: u32,
+        pads: ZonePads,
         lock: bool,
     },
     /// The net's whole record (`shape` `None`), or one shape of it. A locked one is refused.
@@ -207,6 +260,7 @@ impl Edit {
         match self {
             Edit::AddTrack { net, .. }
             | Edit::AddVia { net, .. }
+            | Edit::AddZone { net, .. }
             | Edit::Delete { net, .. }
             | Edit::Lock { net, .. }
             | Edit::MoveTrack { net, .. }
@@ -273,6 +327,7 @@ pub fn edit_all(board: &Board, routes: &mut Routes, changes: &[Edit]) -> Result<
             c,
             Edit::AddTrack { .. }
                 | Edit::AddVia { .. }
+                | Edit::AddZone { .. }
                 | Edit::MoveTrack { .. }
                 | Edit::MoveVia { .. }
                 | Edit::Restore { .. }
@@ -280,6 +335,11 @@ pub fn edit_all(board: &Board, routes: &mut Routes, changes: &[Edit]) -> Result<
         )
     });
     let mut next = routes.clone();
+    let zoned = next
+        .boards
+        .get(&board.name)
+        .map(zoned_layers)
+        .unwrap_or_default();
     let table = next.boards.entry(board.name.clone()).or_default();
     let mut said: Vec<String> = Vec::new();
     for change in changes {
@@ -304,7 +364,7 @@ pub fn edit_all(board: &Board, routes: &mut Routes, changes: &[Edit]) -> Result<
                 pads: hash.clone(),
                 ..NetRoutes::default()
             });
-        said.push(change_record(board, record, change)?);
+        said.push(change_record(board, record, change, &zoned)?);
         if matches!(change, Edit::Lock { on: true, .. }) {
             record.pads = hash.clone();
         }
@@ -318,6 +378,11 @@ pub fn edit_all(board: &Board, routes: &mut Routes, changes: &[Edit]) -> Result<
     if check {
         let before = with_routes(board, routes)?.0;
         let after = with_routes(board, &next)?.0;
+        if let Some(e) = new_zone_error(&before, &after) {
+            return Err(Refusal::Refused(format!(
+                "refused: {e}, and the routes file is not changed"
+            )));
+        }
         let new = new_errors(&before, &after)?;
         if !new.is_empty() {
             return Err(Refusal::Refused(format!(
@@ -329,6 +394,22 @@ pub fn edit_all(board: &Board, routes: &mut Routes, changes: &[Edit]) -> Result<
     }
     *routes = next;
     Ok(summary(&said))
+}
+
+/// What stops the zones of `after` being filled (two zones of different nets with the same
+/// priority that overlap, say), when it did not stop those of `before`: the design rules check
+/// does not fill them, and `fab` stops on it.
+fn new_zone_error(before: &Board, after: &Board) -> Option<String> {
+    let error = |b: &Board| {
+        if b.zones.is_empty() {
+            return None;
+        }
+        netsmith_pcb::zone_fills(b)
+            .err()
+            .map(|e| e.0.trim_start_matches("the board's copper: ").to_string())
+    };
+    let new = error(after)?;
+    (error(before).as_ref() != Some(&new)).then_some(new)
 }
 
 /// What several changes did, in a line: each thing said once, with how many times.
@@ -399,7 +480,22 @@ pub fn record_of_text(
         .ok_or_else(|| format!("the text holds no record of net {net} of {board}"))
 }
 
-fn change_record(board: &Board, record: &mut NetRoutes, change: &Edit) -> Result<String, Refusal> {
+/// `board`'s KiCad layers that a zone of the routes file's table is on.
+fn zoned_layers(table: &netsmith_pcb::BoardRoutes) -> Vec<String> {
+    table
+        .nets
+        .values()
+        .flat_map(|r| r.zones.iter().flat_map(|z| z.layers.iter()))
+        .filter_map(|l| netsmith_pcb::routes_kicad_layer(l))
+        .collect()
+}
+
+fn change_record(
+    board: &Board,
+    record: &mut NetRoutes,
+    change: &Edit,
+    zoned: &[String],
+) -> Result<String, Refusal> {
     let missing = |net: &str, what: &str, n: usize, have: usize| {
         Refusal::Refused(format!(
             "net {net} has no {what} {n} in the routes file (it has {have}; `netsmith routes show` numbers them)"
@@ -440,10 +536,78 @@ fn change_record(board: &Board, record: &mut NetRoutes, change: &Edit) -> Result
             });
             Ok(format!("added a via to net {net}"))
         }
+        Edit::AddZone {
+            net,
+            layers,
+            outline,
+            clearance,
+            min_width,
+            thermal_gap,
+            spoke_width,
+            priority,
+            pads,
+            lock,
+        } => {
+            let mut zone = RouteZone::new(board, layers.clone(), outline.clone());
+            zone.clearance = clearance.unwrap_or(zone.clearance);
+            zone.min_width = min_width.unwrap_or(zone.min_width);
+            zone.thermal_gap = thermal_gap.unwrap_or(zone.thermal_gap);
+            zone.spoke_width = spoke_width.unwrap_or(zone.spoke_width);
+            zone.priority = *priority;
+            zone.pads = *pads;
+            zone.lock = *lock;
+            zone.check(board).map_err(Refusal::Refused)?;
+            if zone.clearance < board.rules.clearance {
+                return Err(Refusal::Refused(format!(
+                    "the zone's clearance {} mm is less than the process's space between copper, {} mm",
+                    zone.clearance, board.rules.clearance
+                )));
+            }
+            if zone.min_width < board.rules.min_track_width {
+                return Err(Refusal::Refused(format!(
+                    "the zone's minimum width {} mm is less than the narrowest track the process makes, {} mm",
+                    zone.min_width, board.rules.min_track_width
+                )));
+            }
+            let edge = board.edge();
+            if let Some(p) = zone
+                .outline
+                .iter()
+                .find(|p| !edge.contains(board.outline.min + Pt::new(p[0], p[1])))
+            {
+                return Err(Refusal::Refused(format!(
+                    "the zone's corner ({}, {}) is off the board (the places are mm from the outline's top left corner, which is (0, 0); the board is {} by {} mm)",
+                    p[0],
+                    p[1],
+                    board.outline.width(),
+                    board.outline.height()
+                )));
+            }
+            let words = layers.join(" and ");
+            record.zones.push(zone);
+            let replaced: Vec<String> = layers
+                .iter()
+                .filter_map(|l| {
+                    let kicad = netsmith_pcb::routes_kicad_layer(l)?;
+                    let had = board.pours.iter().any(|p| p.layer.name() == kicad)
+                        || board.planes.iter().any(|p| p.layer == kicad);
+                    (had && !zoned.contains(&kicad)).then(|| l.clone())
+                })
+                .collect();
+            let mut said = format!("added a zone to net {net} on {words}");
+            if !replaced.is_empty() {
+                said.push_str(&format!(
+                    "; the design's pour or plane on {} is not drawn now: that layer takes its zones from the routes file alone",
+                    replaced.join(" and ")
+                ));
+            }
+            Ok(said)
+        }
         Edit::Delete { net, shape: None } => {
             let locked = record.lock
                 || record.tracks.iter().any(|t| t.lock)
-                || record.vias.iter().any(|v| v.lock);
+                || record.vias.iter().any(|v| v.lock)
+                || record.zones.iter().any(|z| z.lock);
             if locked {
                 return Err(Refusal::Refused(format!(
                     "net {net} or a shape of it is locked: unlock it first (`netsmith routes unlock`)"
@@ -452,6 +616,7 @@ fn change_record(board: &Board, record: &mut NetRoutes, change: &Edit) -> Result
             let n = record.shapes();
             record.tracks.clear();
             record.vias.clear();
+            record.zones.clear();
             Ok(format!("deleted net {net}'s record ({n} shape(s))"))
         }
         Edit::Delete {
@@ -488,6 +653,23 @@ fn change_record(board: &Board, record: &mut NetRoutes, change: &Edit) -> Result
             record.vias.remove(n - 1);
             Ok(format!("deleted via {n} of net {net}"))
         }
+        Edit::Delete {
+            net,
+            shape: Some(Shape::Zone(n)),
+        } => {
+            let have = record.zones.len();
+            let z = record
+                .zones
+                .get(n.wrapping_sub(1))
+                .ok_or_else(|| missing(net, "zone", *n, have))?;
+            if z.lock {
+                return Err(Refusal::Refused(format!(
+                    "zone {n} of net {net} is locked: unlock it first"
+                )));
+            }
+            record.zones.remove(n - 1);
+            Ok(format!("deleted zone {n} of net {net}"))
+        }
         Edit::Lock {
             net,
             shape: None,
@@ -523,6 +705,15 @@ fn change_record(board: &Board, record: &mut NetRoutes, change: &Edit) -> Result
                         .ok_or_else(|| missing(net, "via", n, have))?
                         .lock = *on;
                     Ok(format!("{word} via {n} of net {net}"))
+                }
+                Shape::Zone(n) => {
+                    let have = record.zones.len();
+                    record
+                        .zones
+                        .get_mut(n.wrapping_sub(1))
+                        .ok_or_else(|| missing(net, "zone", n, have))?
+                        .lock = *on;
+                    Ok(format!("{word} zone {n} of net {net}"))
                 }
             }
         }
@@ -738,5 +929,191 @@ mod tests {
             routes_path(Path::new("src/main.nsm")),
             PathBuf::from("src/main.routes.toml")
         );
+    }
+
+    /// The LED example placed, a fixture of `netsmith-pcb` (12 by 8 mm; nets GND, VCC and
+    /// `net-led.anode`).
+    fn led() -> Board {
+        serde_json::from_str(include_str!(
+            "../../netsmith-pcb/tests/fixtures/led.board.json"
+        ))
+        .expect("a fixture is the JSON of a Board")
+    }
+
+    fn zone(net: &str, outline: Vec<[f64; 2]>, priority: u32) -> Edit {
+        Edit::AddZone {
+            net: net.into(),
+            layers: vec!["top".into()],
+            outline,
+            clearance: None,
+            min_width: None,
+            thermal_gap: None,
+            spoke_width: None,
+            priority,
+            pads: ZonePads::Thermal,
+            lock: false,
+        }
+    }
+
+    fn rect(x: f64, y: f64, w: f64, h: f64) -> Vec<[f64; 2]> {
+        vec![[x, y], [x + w, y], [x + w, y + h], [x, y + h]]
+    }
+
+    fn refusal(r: Result<String, Refusal>) -> String {
+        match r {
+            Err(Refusal::Refused(e)) => e,
+            other => panic!("expected a refusal, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_zone_takes_the_designs_plane_settings_and_the_nets_record_is_made() {
+        let board = led();
+        let mut routes = Routes::default();
+        let said = edit(&board, &mut routes, &zone("GND", board_outline(&board), 0)).unwrap();
+        assert_eq!(said, "added a zone to net GND on top");
+        let record = &routes.boards[&board.name].nets["GND"];
+        assert_eq!(record.pads, netsmith_pcb::pad_hash(&board, "GND").unwrap());
+        let z = &record.zones[0];
+        assert_eq!(z.layers, ["top"]);
+        assert_eq!(z.clearance, board.rules.plane_clearance);
+        assert_eq!(
+            (z.min_width, z.thermal_gap, z.spoke_width),
+            (0.25, 0.5, 0.5)
+        );
+        // The board's outline is drawn in by the least space to the edge.
+        let e = board.rules.copper_to_edge;
+        assert_eq!(z.outline[0], [e, e]);
+        assert_eq!(
+            z.outline[2],
+            [board.outline.width() - e, board.outline.height() - e]
+        );
+    }
+
+    #[test]
+    fn a_zone_is_numbered_locked_and_deleted_like_a_track() {
+        let board = led();
+        let mut routes = Routes::default();
+        let add = |routes: &mut Routes, x| {
+            edit(&board, routes, &zone("GND", rect(x, 1.0, 3.0, 3.0), 0)).unwrap()
+        };
+        add(&mut routes, 1.0);
+        add(&mut routes, 5.0);
+        let lock = |on| Edit::Lock {
+            net: "GND".into(),
+            shape: Some(Shape::Zone(2)),
+            on,
+        };
+        let delete = |n| Edit::Delete {
+            net: "GND".into(),
+            shape: Some(Shape::Zone(n)),
+        };
+        edit(&board, &mut routes, &lock(true)).unwrap();
+        let before = routes.clone();
+        let said = refusal(edit(&board, &mut routes, &delete(2)));
+        assert!(said.contains("zone 2 of net GND is locked"), "{said}");
+        // A locked zone keeps the record from being deleted whole.
+        let whole = Edit::Delete {
+            net: "GND".into(),
+            shape: None,
+        };
+        let said = refusal(edit(&board, &mut routes, &whole));
+        assert!(said.contains("is locked"), "{said}");
+        assert_eq!(routes, before);
+        // A zone the record does not have is refused, with how many it has.
+        let said = refusal(edit(&board, &mut routes, &delete(3)));
+        assert!(
+            said.contains("has no zone 3 in the routes file (it has 2"),
+            "{said}"
+        );
+        edit(&board, &mut routes, &lock(false)).unwrap();
+        edit(&board, &mut routes, &delete(2)).unwrap();
+        assert_eq!(routes.boards[&board.name].nets["GND"].zones.len(), 1);
+        // Delete of the record takes its zones, and the board's table with it.
+        edit(&board, &mut routes, &whole).unwrap();
+        assert!(routes.boards.is_empty(), "{routes:?}");
+    }
+
+    #[test]
+    fn a_zone_off_the_board_or_against_another_nets_is_refused_and_the_file_kept() {
+        let board = led();
+        let mut routes = Routes::default();
+        edit(
+            &board,
+            &mut routes,
+            &zone("GND", rect(1.0, 1.0, 6.0, 5.0), 0),
+        )
+        .unwrap();
+        let before = routes.clone();
+        let mut refused = |change: Edit| {
+            let said = refusal(edit(&board, &mut routes, &change));
+            assert_eq!(routes, before, "{said}");
+            said
+        };
+
+        // A corner past the board's edge, quoted in the routes file's places.
+        let said = refused(zone("VCC", rect(8.0, 1.0, 6.0, 2.0), 0));
+        assert!(said.contains("corner (14, 1) is off the board"), "{said}");
+        // Two zones of different nets with the same priority that overlap: KiCad would choose.
+        let said = refused(zone("VCC", rect(5.0, 2.0, 5.0, 3.0), 0));
+        assert!(said.contains("have the same priority (0)"), "{said}");
+        assert!(said.contains("the routes file is not changed"), "{said}");
+        // A clearance the process does not make.
+        let mut thin = zone("VCC", rect(8.0, 2.0, 2.0, 2.0), 0);
+        if let Edit::AddZone { clearance, .. } = &mut thin {
+            *clearance = Some(0.01);
+        }
+        let said = refused(thin);
+        assert!(
+            said.contains("less than the process's space between copper"),
+            "{said}"
+        );
+        // A layer the board does not have, a zone of two corners, a net it does not have.
+        let mut inner = zone("VCC", rect(8.0, 2.0, 2.0, 2.0), 0);
+        if let Edit::AddZone { layers, .. } = &mut inner {
+            *layers = vec!["inner1".into()];
+        }
+        assert!(refused(inner).contains("`inner1`"));
+        assert!(refused(zone("VCC", vec![[1.0, 1.0], [2.0, 2.0]], 0)).contains("three or more"));
+        let said = refused(zone("NOPE", rect(1.0, 1.0, 1.0, 1.0), 0));
+        assert!(said.contains("has no net `NOPE`"), "{said}");
+
+        // With the higher priority the zone has the area, and is added.
+        edit(
+            &board,
+            &mut routes,
+            &zone("VCC", rect(5.0, 2.0, 5.0, 3.0), 1),
+        )
+        .unwrap();
+        assert_eq!(routes.boards[&board.name].nets["VCC"].zones[0].priority, 1);
+    }
+
+    #[test]
+    fn a_zone_that_takes_the_place_of_a_pour_says_so() {
+        let mut board = led();
+        board.pours.push(netsmith_pcb::BoardPour {
+            layer: netsmith_pcb::CopperLayer::Front,
+            net: "GND".into(),
+            stitch_pitch: None,
+        });
+        let mut routes = Routes::default();
+        let said = edit(
+            &board,
+            &mut routes,
+            &zone("GND", rect(1.0, 1.0, 3.0, 3.0), 0),
+        )
+        .unwrap();
+        assert!(
+            said.contains("the design's pour or plane on top is not drawn now"),
+            "{said}"
+        );
+        // Once the file has a zone there, the next says nothing of it.
+        let said = edit(
+            &board,
+            &mut routes,
+            &zone("GND", rect(5.0, 1.0, 3.0, 3.0), 0),
+        )
+        .unwrap();
+        assert_eq!(said, "added a zone to net GND on top");
     }
 }

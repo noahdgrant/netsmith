@@ -24,10 +24,10 @@ use crate::stackup::LayerKind;
 const VERSION: &str = "20241229";
 
 /// The thinnest copper a plane may be left with, in mm: KiCad's default for a zone.
-const ZONE_MIN_THICKNESS: f64 = 0.25;
+pub(crate) const ZONE_MIN_THICKNESS: f64 = 0.25;
 
 /// The gap and the spoke width of a thermal relief, in mm: KiCad's defaults.
-const THERMAL: f64 = 0.5;
+pub(crate) const THERMAL: f64 = 0.5;
 
 /// Width of the board edge line, in mm.
 const EDGE_WIDTH: f64 = 0.05;
