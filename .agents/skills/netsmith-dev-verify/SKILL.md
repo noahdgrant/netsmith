@@ -48,7 +48,7 @@ No built page is committed (ADR 0114). `crates/netsmith-editor/build.rs` builds 
 
 ## Language guide
 
-`cargo test -p netsmith-tools --test main guide::` runs every `nsm` block of `docs/LANGUAGE.md`, compares every message block with what the tool prints, and checks the skills. After you change a message or a std definition, run it with `GUIDE_BLESS=1` to rewrite the message blocks, then read the diff. List a new std definition in the guide's catalogue.
+`cargo test -p netsmith-tools --test main guide::` runs every `nsm` block of the chapters in `docs/language/`, compares every message block with what the tool prints, and checks the skills. After you change a message or a std definition, run it with `GUIDE_BLESS=1` to rewrite the message blocks, then read the diff. List a new std definition in the guide's catalogue.
 
 ## KiCad
 

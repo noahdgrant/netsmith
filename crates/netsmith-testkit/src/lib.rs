@@ -13,6 +13,8 @@
 //!   itself without KiCad (`netsmith_kicad::skip_without_kicad_libraries`, behind
 //!   netsmith-kicad's `test-support` feature).
 //! - [`split_physical`]: a source written before the physical file, split into the two files.
+//! - [`guide_chapters`] and [`guide_text`]: the language guide, one file for each chapter in
+//!   `docs/language/` (issue #615).
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -705,6 +707,39 @@ pub fn sample_root() -> PathBuf {
         }
     }
     target
+}
+
+/// The chapters of the language guide: every `docs/language/*.md`, in file-name order, as the
+/// path from the repository root (`docs/language/02-quick-start.md`) and the text. The guide
+/// is a file for each chapter so that two changes to different chapters never conflict
+/// (issue #615); `docs/LANGUAGE.md` is only its index.
+pub fn guide_chapters() -> Vec<(String, String)> {
+    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../docs/language");
+    let mut files: Vec<PathBuf> = std::fs::read_dir(&dir)
+        .unwrap_or_else(|e| panic!("{}: {e}", dir.display()))
+        .map(|entry| entry.expect("a folder entry").path())
+        .filter(|path| path.extension().is_some_and(|e| e == "md"))
+        .collect();
+    files.sort();
+    files
+        .into_iter()
+        .map(|path| {
+            let name = path.file_name().unwrap().to_string_lossy().to_string();
+            let text = std::fs::read_to_string(&path)
+                .unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+            (format!("docs/language/{name}"), text)
+        })
+        .collect()
+}
+
+/// The whole language guide: the text of every chapter, in order. For a test that looks for
+/// a section by its heading wherever it is.
+pub fn guide_text() -> String {
+    guide_chapters()
+        .into_iter()
+        .map(|(_, text)| text)
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 /// Our sample symbol libraries.

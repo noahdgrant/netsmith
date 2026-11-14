@@ -139,8 +139,9 @@ with, the parts you solder yourself (`hand-solder:`) and the parts you ship to t
 
 ## Where to read next
 
-- `docs/LANGUAGE.md`: the language guide, with a quick start, every construct with a tested
-  example and the real error you get when you misuse it, and the standard library.
+- `docs/LANGUAGE.md`: the language guide's index; its chapters are in `docs/language/`, with a quick
+  start, every construct with a tested example and the real error you get when you misuse it, and the
+  standard library.
 - `docs/PIPELINE.md`: the stages a design goes through, from source to a fab package, with diagrams.
 - `docs/BOARD3D.md`: `netsmith board3d`, the board's 3D scene as a JSON report and as a `.glb` file, and `netsmith render`, the same scene as a PNG, and `netsmith view`, which drives the 3D view of a running editor.
 - `docs/CONCEPTS.md`: how parts, modules, boards and systems combine.
@@ -148,7 +149,7 @@ with, the parts you solder yourself (`hand-solder:`) and the parts you ship to t
 - `docs/symbol-gallery.html` (open it in a browser): every symbol netsmith draws, beside the KiCad
   symbol it replaces. `cargo run -p netsmith-tools --example symbol_gallery -- --out docs --file
   symbol-gallery.html` writes it again.
-- `GLOSSARY.md`: the vocabulary. `docs/DESIGN-RULES.md`: the rules the language follows.
+- `GLOSSARY.md`: the vocabulary (an index of `docs/glossary/`). `docs/DESIGN-RULES.md`: the rules the language follows.
   `docs/adr/`: the decisions behind the design.
 - Contributors and agents: `AGENTS.md`. Open work is in the
   [GitHub issues](https://github.com/noahdgrant/netsmith/issues).

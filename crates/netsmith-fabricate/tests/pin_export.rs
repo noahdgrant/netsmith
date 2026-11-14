@@ -4,7 +4,6 @@
 //! provisional (owner decision of 2026-11-11).
 
 use std::fs;
-use std::path::Path;
 
 use netsmith_fabricate::pin_export::{PinMap, render};
 use netsmith_check::Loader;
@@ -148,9 +147,7 @@ fn the_output_is_the_same_on_two_runs() {
 /// The blocks of the guide's section "A pin by capability": the part, the board, the header
 /// and the JSON map.
 fn guide_blocks() -> (String, String, String, String) {
-    let guide =
-        fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join("../../docs/LANGUAGE.md"))
-            .unwrap();
+    let guide = netsmith_testkit::guide_text();
     let section = guide.split("### A pin by capability").nth(1).unwrap();
     let fenced = |fence: &str| -> String {
         let start = section.find(fence).unwrap() + fence.len();

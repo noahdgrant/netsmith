@@ -5,7 +5,7 @@ description: Design a circuit board with netsmith from requirements to a fab pac
 
 # Design a board with netsmith
 
-This skill assumes only the `netsmith` command and the project. Entry point: the project's `AGENTS.md`. The language guide (`docs/netsmith/LANGUAGE.md`; `docs/LANGUAGE.md` in netsmith's own repository) defines the syntax. Read its quick start and the sections you use.
+This skill assumes only the `netsmith` command and the project. Entry point: the project's `AGENTS.md`. The language guide (`docs/netsmith/LANGUAGE.md`, the index of the chapters in `docs/netsmith/language/`; `docs/LANGUAGE.md` and `docs/language/` in netsmith's own repository) defines the syntax. Read its quick start and the chapters you use.
 
 ## Steps
 

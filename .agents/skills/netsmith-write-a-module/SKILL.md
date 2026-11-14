@@ -5,7 +5,7 @@ description: Turn a repeated or reusable circuit into a netsmith module or inter
 
 # Write a module
 
-The language guide (`docs/netsmith/LANGUAGE.md`) has the sections "Modules", "Interfaces" and "Imports".
+The language guide (`docs/netsmith/LANGUAGE.md` lists its chapters, in `docs/netsmith/language/`) has the chapters "Modules", "Interfaces" and "Imports".
 
 ## When
 

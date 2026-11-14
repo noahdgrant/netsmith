@@ -11,7 +11,7 @@ This is a netsmith project. Boards are written in `.nsm` files under `src/`; `ne
 
 ## Where to read
 
-- `docs/netsmith/LANGUAGE.md` is the language guide: the syntax, a runnable example and the real error for each construct, and a catalogue of the standard library. Read it before you write `.nsm`.
+- `docs/netsmith/LANGUAGE.md` is the language guide's index; its chapters, a file each, are in `docs/netsmith/language/`: the syntax, a runnable example and the real error for each construct, and a catalogue of the standard library. Read it before you write `.nsm`.
 - `.agents/skills/` has the netsmith skills (`.claude/skills` links to it). Use the one that matches the task:
   - `netsmith-design-a-board`: requirements to a fab package.
   - `netsmith-write-nsm`: a cheat sheet for `.nsm`.

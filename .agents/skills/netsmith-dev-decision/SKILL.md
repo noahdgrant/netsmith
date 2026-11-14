@@ -5,7 +5,7 @@ description: Decide whether a choice needs an ADR, write ADRs and GLOSSARY entri
 
 # Decisions in netsmith
 
-Entry point: `AGENTS.md`. Read `docs/adr/*` and `GLOSSARY.md` before you write either.
+Entry point: `AGENTS.md`. Read `docs/adr/*` and the glossary (`GLOSSARY.md` is the index of `docs/glossary/`) before you write either.
 
 ## Who decides
 
@@ -26,7 +26,7 @@ Check any choice against the rules in `docs/DESIGN-RULES.md`: one correct way, s
 
 These are not ADRs:
 
-- A part's or a check's model rule, a threshold, a std interface detail: put it in `docs/LANGUAGE.md`, the std doc comments and a test.
+- A part's or a check's model rule, a threshold, a std interface detail: put it in the guide (`docs/language/`), the std doc comments and a test.
 - A feature plan with stages or a to-do list: open a GitHub issue.
 - Progress ("stage 2 implemented"): the git history and the issue have it.
 
@@ -44,8 +44,8 @@ File `docs/adr/NNNN-short-kebab-title.md`, numbered after the highest one in the
 
 ## Upkeep after a decision
 
-- `GLOSSARY.md`: add each new term with a one-line definition and an `_Avoid_:` line. Use these terms in code, messages and docs.
-- `docs/LANGUAGE.md`: update the construct's section and its tested examples (`netsmith-dev-extend-language`).
+- `docs/glossary/<first letter of the term>.md` (`GLOSSARY.md` is the index): add each new term where it sorts, with a one-line definition and an `_Avoid_:` line. Use these terms in code, messages and docs.
+- `docs/language/`: update the chapter of the construct and its tested examples (`netsmith-dev-extend-language`).
 - `docs/DESIGN-RULES.md`: the design rules.
 - Nothing is left as a known bug. If it cannot be fixed now, open a GitHub issue for it.
 - Notes live in the repository, not in memory.

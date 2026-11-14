@@ -5,7 +5,7 @@ description: Add a real part, a capacitor bias curve or a catalog column to nets
 
 # Add a part to the JLCPCB catalogs
 
-Entry point: `AGENTS.md`. The rules and every past source are in `data/jlcpcb/README.md`. Read it first. The format of the files is ADR 0022 and the "Catalog files" section of `docs/LANGUAGE.md`.
+Entry point: `AGENTS.md`. The rules and every past source are in `data/jlcpcb/README.md`. Read it first. The format of the files is ADR 0022 and the "Catalog files" section of `docs/language/12-catalogs-and-how-the-solver-picks-parts.md`.
 
 ## The sourcing rule
 
@@ -55,7 +55,7 @@ A new package needs a footprint in `crates/netsmith-kicad/src/mapping.rs` (the r
 
 Run `cargo test -p netsmith-solve` first. It checks that every row has its source, the file order, every curve, and that nothing in `considered.csv` is offered. Update counts in those tests when you add rows. Then run the gates in `netsmith-dev-verify`.
 
-Then run `cargo test -p netsmith-tools --test main guide::`. A new row changes the counts in the guide's messages (`the closest of the 6 that fit`): run it with `GUIDE_BLESS=1` and read the diff. A guide example that is meant to fail must fail for a reason no row can remove (a rating or a value far beyond any real part, or a requirement that contradicts itself), never because the catalog happens to lack a row; if a new row makes one build, change the example (`docs/LANGUAGE.md`), not the row.
+Then run `cargo test -p netsmith-tools --test main guide::`. A new row changes the counts in the guide's messages (`the closest of the 6 that fit`): run it with `GUIDE_BLESS=1` and read the diff. A guide example that is meant to fail must fail for a reason no row can remove (a rating or a value far beyond any real part, or a requirement that contradicts itself), never because the catalog happens to lack a row; if a new row makes one build, change the example (in `docs/language/`), not the row.
 
 ## Refuse
 

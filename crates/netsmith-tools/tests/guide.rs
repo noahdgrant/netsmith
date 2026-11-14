@@ -1,4 +1,8 @@
-//! `docs/LANGUAGE.md` and the agent skills cannot rot: every example in the guide is run.
+//! The language guide and the agent skills cannot rot: every example in the guide is run.
+//!
+//! The guide is one file for each chapter, `docs/language/NN-topic.md`, read in file-name order
+//! (issue #615); `docs/LANGUAGE.md` is its index. A message that names a block names the chapter
+//! file and the line in it, `docs/language/02-quick-start.md:41`.
 //!
 //! Fenced blocks are marked by what they promise:
 //!
@@ -68,13 +72,20 @@ struct Block {
     /// The words after the opening fence.
     info: Vec<String>,
     text: String,
-    /// The 1-based line of the opening fence.
+    /// The chapter the block is in, as the path from the repository root.
+    file: String,
+    /// The 1-based line of the opening fence, in that file.
     line: usize,
     /// The range of lines (0-based, end exclusive) holding `text`.
     body: (usize, usize),
 }
 
 impl Block {
+    /// Where the block is, for a message: `docs/language/02-quick-start.md:41`.
+    fn at(&self) -> String {
+        format!("{}:{}", self.file, self.line)
+    }
+
     fn is(&self, word: &str) -> bool {
         self.info.first().is_some_and(|w| w == word)
     }
@@ -90,7 +101,7 @@ impl Block {
     }
 }
 
-fn blocks(markdown: &str) -> Vec<Block> {
+fn blocks(file: &str, markdown: &str) -> Vec<Block> {
     let lines: Vec<&str> = markdown.lines().collect();
     let mut out = Vec::new();
     let mut i = 0;
@@ -104,6 +115,7 @@ fn blocks(markdown: &str) -> Vec<Block> {
             out.push(Block {
                 info: info.split_whitespace().map(str::to_string).collect(),
                 text: lines[start..end].join("\n"),
+                file: file.to_string(),
                 line: i + 1,
                 body: (start, end),
             });
@@ -115,8 +127,29 @@ fn blocks(markdown: &str) -> Vec<Block> {
     out
 }
 
+/// The chapters of the guide, in order, with the path of each from the repository root.
+fn chapters() -> Vec<(String, String)> {
+    let chapters = netsmith_testkit::guide_chapters();
+    assert!(
+        chapters.len() >= 10,
+        "docs/language/ holds only {} chapters",
+        chapters.len()
+    );
+    chapters
+}
+
+/// The text of the whole guide, the chapters one after the other.
 fn guide() -> String {
-    fs::read_to_string(root().join("docs/LANGUAGE.md")).expect("docs/LANGUAGE.md exists")
+    netsmith_testkit::guide_text()
+}
+
+/// Every fenced block of the guide, the chapters in order. A block is read with the blocks
+/// next to it (the message block that follows it), but only those of its own chapter.
+fn guide_blocks() -> Vec<Block> {
+    chapters()
+        .iter()
+        .flat_map(|(file, text)| blocks(file, text))
+        .collect()
 }
 
 fn loader(blocks: &[Block]) -> Loader {
@@ -142,7 +175,7 @@ fn catalog_sets(blocks: &[Block]) -> HashMap<String, Result<Catalogs, String>> {
         let set = b.value("set").unwrap_or("").to_string();
         let file = b
             .value("file")
-            .unwrap_or_else(|| panic!("docs/LANGUAGE.md:{}: a csv block needs file=", b.line));
+            .unwrap_or_else(|| panic!("{}: a csv block needs file=", b.at()));
         let name = Path::new(file).file_stem().unwrap().to_str().unwrap();
         let entry = sets.entry(set).or_insert_with(|| Ok(Catalogs::jlcpcb()));
         if let Ok(catalogs) = entry
@@ -202,15 +235,14 @@ fn same(a: &str, b: &str) -> bool {
 
 #[test]
 fn every_manifest_in_the_guide_is_a_manifest() {
-    let guide = guide();
     let mut found = 0;
-    for b in blocks(&guide)
+    for b in guide_blocks()
         .iter()
         .filter(|b| b.is("toml") && b.text.starts_with("[project]"))
     {
         found += 1;
         netsmith_fabricate::project::Manifest::parse(&b.text)
-            .unwrap_or_else(|e| panic!("docs/LANGUAGE.md:{}: {e}", b.line));
+            .unwrap_or_else(|e| panic!("{}: {e}", b.at()));
     }
     assert!(found >= 3, "found only {found} manifests");
 }
@@ -219,14 +251,13 @@ fn every_manifest_in_the_guide_is_a_manifest() {
 /// it is shown, one shape a line.
 #[test]
 fn the_routes_file_in_the_guide_is_a_routes_file() {
-    let guide = guide();
-    let blocks = blocks(&guide);
+    let blocks = guide_blocks();
     let block = blocks
         .iter()
         .find(|b| b.is("toml") && b.text.contains(".nets."))
         .expect("the guide shows a routes file");
     let routes = netsmith_pcb::Routes::parse(&block.text, "the guide")
-        .unwrap_or_else(|e| panic!("docs/LANGUAGE.md:{}: {e}", block.line));
+        .unwrap_or_else(|e| panic!("{}: {e}", block.at()));
     let shown: Vec<&str> = block
         .text
         .lines()
@@ -236,8 +267,8 @@ fn the_routes_file_in_the_guide_is_a_routes_file() {
     assert_eq!(
         routes.to_text().trim(),
         shown.join("\n").trim(),
-        "docs/LANGUAGE.md:{}",
-        block.line
+        "{}",
+        block.at()
     );
 }
 
@@ -247,7 +278,7 @@ fn the_routes_file_in_the_guide_is_a_routes_file() {
 fn the_orders_in_the_guide_are_read_and_their_error_is_the_real_one() {
     use netsmith_fabricate::order::resolve;
     let guide = guide();
-    let blocks = blocks(&guide);
+    let blocks = guide_blocks();
     let manifest = blocks
         .iter()
         .find(|b| b.is("toml") && b.text.contains("[order.devkit.boards]"))
@@ -280,8 +311,7 @@ fn the_orders_in_the_guide_are_read_and_their_error_is_the_real_one() {
 
 #[test]
 fn every_fence_says_what_it_is() {
-    let guide = guide();
-    for b in blocks(&guide) {
+    for b in guide_blocks() {
         let known = [
             "nsm",
             "nsm-physical",
@@ -293,8 +323,8 @@ fn every_fence_says_what_it_is() {
         ];
         assert!(
             b.info.first().is_some_and(|w| known.contains(&w.as_str())),
-            "docs/LANGUAGE.md:{}: a fenced block must start with one of {known:?}, not {:?}",
-            b.line,
+            "{}: a fenced block must start with one of {known:?}, not {:?}",
+            b.at(),
             b.info
         );
     }
@@ -302,8 +332,7 @@ fn every_fence_says_what_it_is() {
 
 #[test]
 fn every_complete_example_checks_solves_and_fails_as_the_guide_says() {
-    let markdown = guide();
-    let blocks = blocks(&markdown);
+    let blocks = guide_blocks();
     let loader = loader(&blocks);
     let sets = catalog_sets(&blocks);
     for (set, loaded) in &sets {
@@ -313,16 +342,16 @@ fn every_complete_example_checks_solves_and_fails_as_the_guide_says() {
     }
     let standard = Catalogs::jlcpcb();
     let bless = std::env::var_os("GUIDE_BLESS").is_some();
-    // (first line, last line, new text) of message blocks to rewrite.
-    let mut rewrites: Vec<(usize, usize, String)> = Vec::new();
+    // (file, first line, last line, new text) of message blocks to rewrite.
+    let mut rewrites: Vec<(String, usize, usize, String)> = Vec::new();
     let mut ran = 0;
     let mut with_physical = 0;
 
     for (n, b) in blocks.iter().enumerate() {
         if b.is("nsm-physical") {
-            let at = format!("docs/LANGUAGE.md:{}", b.line);
+            let at = b.at();
             assert!(
-                n > 0 && blocks[n - 1].is("nsm"),
+                n > 0 && blocks[n - 1].file == b.file && blocks[n - 1].is("nsm"),
                 "{at}: an nsm-physical block is the physical file of the nsm block right before it"
             );
             if let Some(file) = b.value("file") {
@@ -331,7 +360,7 @@ fn every_complete_example_checks_solves_and_fails_as_the_guide_says() {
             }
         }
         if b.is("csv") && b.has("fails") {
-            let at = format!("docs/LANGUAGE.md:{}", b.line);
+            let at = b.at();
             let file = b.value("file").expect("a csv block needs file=");
             let name = Path::new(file).file_stem().unwrap().to_str().unwrap();
             let message = match Catalogs::jlcpcb().add_file(name, file, &b.text) {
@@ -340,10 +369,10 @@ fn every_complete_example_checks_solves_and_fails_as_the_guide_says() {
             };
             let next = blocks
                 .get(n + 1)
-                .filter(|next| next.is("text"))
+                .filter(|next| next.file == b.file && next.is("text"))
                 .unwrap_or_else(|| panic!("{at}: the next block must be a ```text block"));
             if bless {
-                rewrites.push((next.body.0, next.body.1, message.trim_end().to_string()));
+                rewrites.push((next.file.clone(), next.body.0, next.body.1, message.trim_end().to_string()));
             } else {
                 assert!(
                     same(&next.text, &message),
@@ -357,14 +386,16 @@ fn every_complete_example_checks_solves_and_fails_as_the_guide_says() {
             continue;
         }
         ran += 1;
-        let at = format!("docs/LANGUAGE.md:{}", b.line);
+        let at = b.at();
         if let Some(file) = b.value("file") {
             let real = fs::read_to_string(root().join(file)).expect("the named file exists");
             assert!(same(&b.text, &real), "{at}: the block differs from {file}");
         }
         // The physical file of this block, if the block after it is one; the message block
         // follows it.
-        let physical = blocks.get(n + 1).filter(|next| next.is("nsm-physical"));
+        let physical = blocks
+            .get(n + 1)
+            .filter(|next| next.file == b.file && next.is("nsm-physical"));
         let after = n + 1 + usize::from(physical.is_some());
         let block_loader = match physical {
             Some(p) => {
@@ -384,7 +415,7 @@ fn every_complete_example_checks_solves_and_fails_as_the_guide_says() {
             taken.set(k + 1);
             blocks
                 .get(after + k)
-                .filter(|next| next.is("text"))
+                .filter(|next| next.file == b.file && next.is("text"))
                 .unwrap_or_else(|| panic!("{at}: the next block must be a ```text block"))
         };
         let name = "main.nsm";
@@ -410,7 +441,7 @@ fn every_complete_example_checks_solves_and_fails_as_the_guide_says() {
             };
             let next = next_text();
             if bless {
-                rewrites.push((next.body.0, next.body.1, message.trim_end().to_string()));
+                rewrites.push((next.file.clone(), next.body.0, next.body.1, message.trim_end().to_string()));
             } else {
                 assert!(
                     same(&next.text, &message),
@@ -452,7 +483,7 @@ fn every_complete_example_checks_solves_and_fails_as_the_guide_says() {
                 );
                 let next = next_text();
                 if bless {
-                    rewrites.push((next.body.0, next.body.1, warnings));
+                    rewrites.push((next.file.clone(), next.body.0, next.body.1, warnings));
                 } else {
                     assert!(
                         same(&next.text, &warnings),
@@ -475,7 +506,7 @@ fn every_complete_example_checks_solves_and_fails_as_the_guide_says() {
                 );
                 let next = next_text();
                 if bless {
-                    rewrites.push((next.body.0, next.body.1, notes));
+                    rewrites.push((next.file.clone(), next.body.0, next.body.1, notes));
                 } else {
                     assert!(
                         same(&next.text, &notes),
@@ -498,7 +529,7 @@ fn every_complete_example_checks_solves_and_fails_as_the_guide_says() {
                 );
                 let next = next_text();
                 if bless {
-                    rewrites.push((next.body.0, next.body.1, notes));
+                    rewrites.push((next.file.clone(), next.body.0, next.body.1, notes));
                 } else {
                     assert!(
                         same(&next.text, &notes),
@@ -521,7 +552,7 @@ fn every_complete_example_checks_solves_and_fails_as_the_guide_says() {
                 );
                 let next = next_text();
                 if bless {
-                    rewrites.push((next.body.0, next.body.1, notes));
+                    rewrites.push((next.file.clone(), next.body.0, next.body.1, notes));
                 } else {
                     assert!(
                         same(&next.text, &notes),
@@ -544,7 +575,7 @@ fn every_complete_example_checks_solves_and_fails_as_the_guide_says() {
                 );
                 let next = next_text();
                 if bless {
-                    rewrites.push((next.body.0, next.body.1, notes));
+                    rewrites.push((next.file.clone(), next.body.0, next.body.1, notes));
                 } else {
                     assert!(
                         same(&next.text, &notes),
@@ -567,7 +598,7 @@ fn every_complete_example_checks_solves_and_fails_as_the_guide_says() {
                     let next = next_text();
                     let text = findings.join("\n");
                     if bless {
-                        rewrites.push((next.body.0, next.body.1, text));
+                        rewrites.push((next.file.clone(), next.body.0, next.body.1, text));
                     } else {
                         assert!(
                             same(&next.text, &text),
@@ -587,7 +618,7 @@ fn every_complete_example_checks_solves_and_fails_as_the_guide_says() {
                 let report: String = built.iter().map(|x| x.report.clone()).collect();
                 let next = next_text();
                 if bless {
-                    rewrites.push((next.body.0, next.body.1, report.trim_end().to_string()));
+                    rewrites.push((next.file.clone(), next.body.0, next.body.1, report.trim_end().to_string()));
                 } else {
                     assert!(
                         same(&next.text, &report),
@@ -613,7 +644,7 @@ fn every_complete_example_checks_solves_and_fails_as_the_guide_says() {
             );
             let next = next_text();
             if bless {
-                rewrites.push((next.body.0, next.body.1, warnings));
+                rewrites.push((next.file.clone(), next.body.0, next.body.1, warnings));
             } else {
                 assert!(
                     same(&next.text, &warnings),
@@ -640,7 +671,7 @@ fn every_complete_example_checks_solves_and_fails_as_the_guide_says() {
             );
             let next = next_text();
             if bless {
-                rewrites.push((next.body.0, next.body.1, lines));
+                rewrites.push((next.file.clone(), next.body.0, next.body.1, lines));
             } else {
                 assert!(
                     same(&next.text, &lines),
@@ -687,12 +718,116 @@ fn every_complete_example_checks_solves_and_fails_as_the_guide_says() {
     );
 
     if bless && !rewrites.is_empty() {
-        let mut lines: Vec<String> = markdown.lines().map(str::to_string).collect();
-        rewrites.sort_by_key(|r| std::cmp::Reverse(r.0));
-        for (start, end, text) in rewrites {
-            lines.splice(start..end, text.lines().map(str::to_string));
+        // Each chapter that has a message to rewrite is written back, the last block first so
+        // that the line numbers of the ones before it hold.
+        for (file, text) in chapters() {
+            let mut mine: Vec<_> = rewrites.iter().filter(|r| r.0 == file).collect();
+            if mine.is_empty() {
+                continue;
+            }
+            let mut lines: Vec<String> = text.lines().map(str::to_string).collect();
+            mine.sort_by_key(|r| std::cmp::Reverse(r.1));
+            for (_, start, end, new) in mine {
+                lines.splice(*start..*end, new.lines().map(str::to_string));
+            }
+            fs::write(root().join(&file), lines.join("\n") + "\n").unwrap();
         }
-        fs::write(root().join("docs/LANGUAGE.md"), lines.join("\n") + "\n").unwrap();
+    }
+}
+
+/// `docs/LANGUAGE.md` links every chapter, once, in the order of the files.
+#[test]
+fn the_index_links_every_chapter_in_order() {
+    let index = fs::read_to_string(root().join("docs/LANGUAGE.md")).expect("docs/LANGUAGE.md exists");
+    let linked: Vec<String> = index
+        .lines()
+        .filter_map(|l| l.split("](language/").nth(1))
+        .filter_map(|rest| rest.strip_suffix(')'))
+        .map(str::to_string)
+        .collect();
+    let files: Vec<String> = chapters()
+        .iter()
+        .map(|(path, _)| path.trim_start_matches("docs/language/").to_string())
+        .collect();
+    assert_eq!(
+        linked, files,
+        "docs/LANGUAGE.md must link each file of docs/language/ once, in the order of the file names"
+    );
+}
+
+/// The anchors GitHub gives the headings of a Markdown file (outside fenced blocks).
+fn anchors(markdown: &str) -> Vec<String> {
+    let mut seen: HashMap<String, usize> = HashMap::new();
+    let mut inside = false;
+    let mut out = Vec::new();
+    for line in markdown.lines() {
+        if line.starts_with("```") {
+            inside = !inside;
+        } else if !inside
+            && line.starts_with('#')
+            && let Some(heading) = line.trim_start_matches('#').strip_prefix(' ')
+        {
+            let slug: String = heading
+                .trim()
+                .to_lowercase()
+                .chars()
+                .filter(|c| c.is_alphanumeric() || matches!(c, '_' | '-' | ' '))
+                .map(|c| if c == ' ' { '-' } else { c })
+                .collect();
+            let n = seen.entry(slug.clone()).or_insert(0);
+            out.push(if *n == 0 { slug } else { format!("{slug}-{n}") });
+            *n += 1;
+        }
+    }
+    out
+}
+
+/// A link of the guide that goes to a file or a heading lands: the guide is a file for each
+/// chapter, so a link to a heading of another chapter names that chapter's file
+/// (`04-members.md#heading`), and a bare `#heading` must be in the file it is written in.
+#[test]
+fn every_link_of_the_guide_lands() {
+    let mut pages = chapters();
+    pages.push((
+        "docs/LANGUAGE.md".to_string(),
+        fs::read_to_string(root().join("docs/LANGUAGE.md")).expect("docs/LANGUAGE.md exists"),
+    ));
+    for (file, text) in &pages {
+        let dir = Path::new(file).parent().unwrap();
+        let mut inside = false;
+        for (n, line) in text.lines().enumerate() {
+            if line.starts_with("```") {
+                inside = !inside;
+                continue;
+            }
+            if inside {
+                continue;
+            }
+            for target in line.split("](").skip(1).filter_map(|r| r.split(')').next()) {
+                if target.contains("://") || target.starts_with("mailto:") {
+                    continue;
+                }
+                let at = format!("{file}:{}", n + 1);
+                let (path, anchor) = match target.split_once('#') {
+                    Some((path, anchor)) => (path, Some(anchor)),
+                    None => (target, None),
+                };
+                let (to, to_text) = if path.is_empty() {
+                    (file.clone(), text.clone())
+                } else {
+                    let to = dir.join(path);
+                    let read = fs::read_to_string(root().join(&to))
+                        .unwrap_or_else(|e| panic!("{at}: the link ({target}) goes nowhere: {e}"));
+                    (to.display().to_string(), read)
+                };
+                if let Some(anchor) = anchor {
+                    assert!(
+                        anchors(&to_text).iter().any(|a| a == anchor),
+                        "{at}: {to} has no heading #{anchor} (a heading of another chapter is linked as `NN-topic.md#heading`)"
+                    );
+                }
+            }
+        }
     }
 }
 
@@ -753,7 +888,7 @@ fn the_catalogue_lists_every_standard_library_definition_and_nothing_else() {
     for path in &real {
         assert!(
             guide.contains(&format!("`{path}`")),
-            "docs/LANGUAGE.md does not list `{path}` in the catalogue"
+            "docs/language/ does not list `{path}` in the catalogue"
         );
     }
     // Every `std::a::b::Name` the guide puts in backticks is a real definition.
@@ -766,7 +901,7 @@ fn the_catalogue_lists_every_standard_library_definition_and_nothing_else() {
         if span.starts_with("std::") && span.matches("::").count() >= 2 && upper {
             assert!(
                 real.iter().any(|r| r == span),
-                "docs/LANGUAGE.md mentions `{span}`, which is not in std/"
+                "docs/language/ mentions `{span}`, which is not in std/"
             );
         }
     }

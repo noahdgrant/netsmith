@@ -4,8 +4,9 @@
 //! either exists it refuses, lists what exists, and writes nothing. `README.md` is left
 //! alone if there is one, and `.gitignore` only gains the lines it lacks. For the agents
 //! that work in the project it also writes `AGENTS.md`, the user skills in
-//! `.agents/skills/` (linked from `.claude/skills`) and the language guide (ADR 0015);
-//! each of those that exists is kept.
+//! `.agents/skills/` (linked from `.claude/skills`) and the language guide (ADR 0015): its index
+//! as `docs/netsmith/LANGUAGE.md` and its chapters in `docs/netsmith/language/`. Each of those
+//! that exists is kept.
 
 use std::{fs, io, path::Path};
 
@@ -24,6 +25,7 @@ const README: &str = "README.md";
 const GITIGNORE: &str = ".gitignore";
 const AGENTS: &str = "AGENTS.md";
 const GUIDE: &str = "docs/netsmith/LANGUAGE.md";
+const GUIDE_CHAPTERS_DIR: &str = "docs/netsmith/language";
 const SKILLS_DIR: &str = ".agents/skills";
 const SKILLS_LINK: &str = ".claude/skills";
 
@@ -31,8 +33,13 @@ const SKILLS_LINK: &str = ".claude/skills";
 /// is for people working on netsmith.
 const AGENTS_TEXT: &str = include_str!("../templates/AGENTS.md");
 
-/// The language guide, the one `docs/LANGUAGE.md` of this repository.
+/// The language guide's index, the one `docs/LANGUAGE.md` of this repository. It links the
+/// chapters as `language/NN-topic.md`, and they are written beside it.
 const GUIDE_TEXT: &str = include_str!("../../../docs/LANGUAGE.md");
+
+// `GUIDE_CHAPTERS`: the file name and the text of every `docs/language/*.md` of this
+// repository, in order (listed by build.rs).
+include!(concat!(env!("OUT_DIR"), "/guide_chapters.rs"));
 
 /// The skills for working in a project: the repository's own `netsmith-*` skills, not the
 /// `netsmith-dev-*` ones that are for working on netsmith. A test checks that this lists
@@ -186,7 +193,16 @@ pub fn init(dir: &Path, name: Option<&str>) -> Result<String, String> {
         report.push_str(&format!("kept {GUIDE}\n"));
     } else {
         write(GUIDE, GUIDE_TEXT)?;
-        report.push_str(&format!("created {GUIDE} (the language guide)\n"));
+        for (name, text) in GUIDE_CHAPTERS {
+            let path = format!("{GUIDE_CHAPTERS_DIR}/{name}");
+            if dir.join(&path).symlink_metadata().is_err() {
+                write(&path, text)?;
+            }
+        }
+        report.push_str(&format!(
+            "created {GUIDE} (the language guide: this page, and its {} chapters in {GUIDE_CHAPTERS_DIR}/)\n",
+            GUIDE_CHAPTERS.len()
+        ));
     }
 
     let mut made = Vec::new();
@@ -360,6 +376,10 @@ mod tests {
     fn the_scaffolded_guide_and_skills_are_the_repository_files() {
         let read = |path: &str| fs::read_to_string(repo(path)).unwrap();
         assert_eq!(GUIDE_TEXT, read("docs/LANGUAGE.md"));
+        assert!(GUIDE_CHAPTERS.len() >= 10);
+        for (name, text) in GUIDE_CHAPTERS {
+            assert_eq!(text, read(&format!("docs/language/{name}")));
+        }
         assert_eq!(
             AGENTS_TEXT,
             read("crates/netsmith-tools/templates/AGENTS.md")

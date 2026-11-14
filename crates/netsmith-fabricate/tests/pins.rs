@@ -172,9 +172,7 @@ fn a_stale_entry_is_said_and_dropped_and_a_locked_one_stops_the_build() {
 
 /// The blocks of the guide's section "A pin by capability": the part, the board and the file.
 fn guide_blocks() -> (String, String, String) {
-    let guide =
-        fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join("../../docs/LANGUAGE.md"))
-            .unwrap();
+    let guide = netsmith_testkit::guide_text();
     let section = guide.split("### A pin by capability").nth(1).unwrap();
     let fenced = |fence: &str| -> String {
         let start = section.find(fence).unwrap() + fence.len();

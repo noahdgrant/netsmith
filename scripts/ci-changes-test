@@ -89,7 +89,7 @@ file crates/netsmith-catalog/src/refresh/mod.rs "KicadCliExe::locate()"
 # --- prose and files nothing reads: no job -------------------------------------------------
 row "0 0 0 0 0 0" README.md
 row "0 0 0 0 0 0" AGENTS.md CLAUDE.md CHANGELOG.md
-row "0 0 0 0 0 0" GLOSSARY.md
+row "0 0 0 0 0 0" GLOSSARY.md docs/glossary/a.md docs/glossary/r.md
 row "0 0 0 0 0 0" LICENSE LICENSE-MIT
 row "0 0 0 0 0 0" .gitignore .gitattributes .editorconfig
 row "0 0 0 0 0 0" docs/DESIGN-RULES.md docs/adr/0081-a-pin-states-its-own-swing.md
@@ -99,6 +99,8 @@ row "0 0 0 0 0 0" # an empty change
 
 # --- what a test or the editor skill reads: the tests, not KiCad or the recipes -------------
 row "1 0 0 0 0 0" docs/LANGUAGE.md
+row "1 0 0 0 0 0" docs/language/05-values.md
+row "1 0 0 0 0 0" docs/language/05-values.md docs/language/23-the-shape-of-a-board.md
 row "1 0 0 0 0 0" docs/symbol-gallery.html
 row "1 0 0 0 0 0" .agents/skills/netsmith-dev-verify/SKILL.md .agents/skills/netsmith-write-nsm/SKILL.md
 row "1 0 0 0 0 0" .claude/settings.json
@@ -301,6 +303,8 @@ crates_row "netsmith-view" crates/netsmith-view/src/layout.rs README.md docs/DES
 # The guide, the gallery and the skills are read by the netsmith-tools crate alone (and its dependent, the
 # command line, runs with it by `rdeps`).
 crates_row "netsmith-tools" docs/LANGUAGE.md
+crates_row "netsmith-tools" docs/language/05-values.md
+crates_row "netsmith-tools" docs/language/05-values.md docs/language/23-the-shape-of-a-board.md docs/glossary/a.md
 crates_row "netsmith-tools" docs/symbol-gallery.html
 crates_row "netsmith-tools" .agents/skills/netsmith-write-nsm/SKILL.md
 crates_row "netsmith-tools" .agents/skills/netsmith-dev-verify-editor/SKILL.md
@@ -325,6 +329,7 @@ crates_row "netsmith-tools netsmith-workspace netsmith-view" examples/orbit/src/
 # A path outside the crates that names no crate keeps the whole run wide, whatever else is there.
 crates_row "" examples/orbit/src/main.nsm std/kicad.toml
 crates_row "" docs/LANGUAGE.md std/kicad.toml
+crates_row "" docs/language/05-values.md std/kicad.toml
 crates_row "" docs/LANGUAGE.md .claude/settings.json
 crates_row "" crates/netsmith-view/src/layout.rs std/kicad.toml
 crates_row "" crates/netsmith-view/src/layout.rs data/jlcpcb/resistor.csv

@@ -5,7 +5,7 @@ description: A cheat sheet for writing correct .nsm source files, with pointers 
 
 # Write `.nsm`
 
-Read the language guide (`docs/netsmith/LANGUAGE.md`) for any construct you are unsure of. It has the syntax, an example and the real error for each construct, and a catalogue of the standard library at the end.
+Read the language guide (`docs/netsmith/LANGUAGE.md` lists its chapters, a file each in `docs/netsmith/language/`) for any construct you are unsure of. It has the syntax, an example and the real error for each construct, and a catalogue of the standard library at the end.
 
 ## Shape of a file
 

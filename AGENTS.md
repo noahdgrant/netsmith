@@ -19,7 +19,7 @@ A language and tools for designing electronics as code. `README.md` says what it
 - No test passes or fails by the speed of the machine it runs on. A browser recipe (`scripts/editor-verify-js/recipes`) waits on what the page signals (`whenIdle(page)` from `settle.mjs`, which waits on the page's own `window.__netsmith.idle()`, `crates/netsmith-editor/web/src/idle.ts`) or on the thing the step expects, never for a time: no `waitForTimeout`, no `timeout:` of its own. A timeout is a hang guard only (`HANG_MS` in `settle.mjs`, the default of every wait, set once) and its failure says the page hung. No assertion compares a duration with a limit: a duration that is useful is printed. Where the page gives no signal, add one in the page. `scripts/editor-verify waits` checks the recipes' text and CI runs it.
 - No Rust test compares a duration or a CPU time with a limit. A test that wants to say how much work was done counts the work: the checkpoints a call reached (`Cancel::checkpoints`, and `Cancel::at_checkpoint(n)` for a cancel asked at a known place, `netsmith_core::job`), the work a stage reports (`job::reporting`), or a count the code exposes (the solver's `trials` and `work` and the router's `tries`). A cancel test asserts that the stage reports cancelled and that no more work follows the cancel; a scaling test compares counts between two sizes. A speed that is useful is printed by an `#[ignore]`d `measured` test (`mixed::measured`), never asserted. A time limit that a test passes is a hang guard of a minute or more (`time_limit: Some(120 s)`), and its failure message says the code hung. Where the code exposes no count, add a small, documented one.
 - A test should take under about 2 minutes on CI (nextest names a test past a minute as SLOW, `.config/nextest.toml`). A board that needs longer becomes several tests, one per seed or case, or a `measured` test that is `#[ignore]`d, as `mixed::measured` is.
-- `docs/LANGUAGE.md` is the language guide, and `crates/netsmith-tools/tests/guide.rs` runs its examples. Change the guide with the language.
+- The language guide is one file for each chapter, `docs/language/NN-topic.md` (`docs/LANGUAGE.md` is its index), and `crates/netsmith-tools/tests/guide.rs` runs the examples of every chapter. Change the guide with the language, in the chapter of the construct.
 
 ## Data
 
@@ -27,7 +27,7 @@ A part number goes into a catalog only with a recorded source (`data/jlcpcb/READ
 
 ## Vocabulary and decisions
 
-- Use the terms in `GLOSSARY.md` and avoid the ones listed under _Avoid_.
+- Use the terms in the glossary and avoid the ones listed under _Avoid_. It is one file for each first letter, `docs/glossary/<letter>.md`, the terms in alphabetical order (`GLOSSARY.md` is its index); `grep -h '^_Avoid_' docs/glossary/*.md` lists the words to avoid.
 - `docs/adr/README.md` says what an ADR is and is not (one page, no stage plans or progress, no amendments); `scripts/adr-check` enforces the size and the status words.
 - Decisions that are hard to reverse are in `docs/adr/`; the language's design rules are in `docs/DESIGN-RULES.md`.
 - Language-design choices (syntax, semantics) are the owner's. Present options and ask.

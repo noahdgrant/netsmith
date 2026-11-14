@@ -31,12 +31,12 @@ Tests live in each crate's `tests/`. Add a test for the behaviour and one for ea
 
 ## Adding a std definition
 
-Put it in `std/**.nsm` with `///` docs that state its source for any number. A new `part` states its designator letters (`.designator &= "R"`, IEEE 315 and ASME Y14.44 usage); a test fails without them. A new file also needs an entry in `Loader::std()` in `crates/netsmith-check/src/loader.rs`. List the definition in the catalogue at the end of `docs/LANGUAGE.md`. The guide test fails until you do.
+Put it in `std/**.nsm` with `///` docs that state its source for any number. A new `part` states its designator letters (`.designator &= "R"`, IEEE 315 and ASME Y14.44 usage); a test fails without them. A new file also needs an entry in `Loader::std()` in `crates/netsmith-check/src/loader.rs`. List the definition in the catalogue in the last chapter of the guide (`docs/language/29-the-standard-library.md`). The guide test fails until you do.
 
 ## Update the documents
 
-- `docs/LANGUAGE.md`: the construct's section, its example and its message. Examples marked `nsm` are run by `crates/netsmith-tools/tests/guide.rs`. Run `GUIDE_BLESS=1 cargo test -p netsmith-tools --test main guide::` to refresh message blocks, then read the diff.
-- `GLOSSARY.md` for new terms, `docs/DESIGN-RULES.md` for design rules, a GitHub issue for what stays open, an ADR when the choice qualifies.
+- `docs/language/`: the guide is a file for each chapter (`docs/LANGUAGE.md` is its index): edit the chapter of the construct, its example and its message, so a change to another chapter never conflicts. Examples marked `nsm` are run by `crates/netsmith-tools/tests/guide.rs`. Run `GUIDE_BLESS=1 cargo test -p netsmith-tools --test main guide::` to refresh message blocks, then read the diff.
+- `docs/glossary/<first letter>.md` for new terms (`GLOSSARY.md` is its index), `docs/DESIGN-RULES.md` for design rules, a GitHub issue for what stays open, an ADR when the choice qualifies.
 
 ## Finish
 

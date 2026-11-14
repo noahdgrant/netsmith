@@ -12,9 +12,7 @@ use netsmith_testkit::TempDir;
 
 /// The fenced blocks of the guide's section, as (words after the fence, text).
 fn section() -> Vec<(Vec<String>, String)> {
-    let guide =
-        fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join("../../docs/LANGUAGE.md"))
-            .expect("the guide exists");
+    let guide = netsmith_testkit::guide_text();
     let heading = "### A part of your own, with no KiCad installed";
     let start = guide.find(heading).expect("the guide has the section");
     let body = &guide[start + heading.len()..];
