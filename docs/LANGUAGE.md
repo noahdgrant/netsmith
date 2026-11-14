@@ -5725,10 +5725,10 @@ board PowerBoard {
 ```
 
 ```text
-reg is a BuckConverter: picked Buck<Tps54202>; passed over Buck<Lmr16006y> (the DC analysis does not model the current of `reg.ic.catch`: it joins `GND` and `net-reg.ic.boost.b`, which sources hold, and the current an ideal diode moves between two ideal sources is not a number; the load of the regulator on that net is what its own `.current` states, not a sum; state the current it carries (`reg.ic.catch.current &= 0A..100mA`) or put a resistance in series with it), Buck<Lt8641> (the `lt8641` catalog has nothing for `reg.ic`, which needs nothing in particular), Buck<Rt8059> (no `rt8059` candidate satisfies `reg.ic`: the closest of the 1 that fit, RT8059GJ5 2.8-5.5V 1A 1.5MHz buck TSOT-23-5 C20542, fails because reg.vin.voltage must always be at most reg.ic.max_input_voltage, but 11.4V..12.6V is not always below 5.5V (`reg.input_cap.effective_capacitance` is unknown for some candidates, so they were not used: no derating data for 27 and data only up to 10 V, but the bias reaches 12.6 V, for 6))
+reg is a BuckConverter: picked Buck<Lmr16006y>
 ```
 
-The `Lmr16006y` comes first and takes this board, but its trial cannot be judged: its catch diode joins ground and the switch node, two nets the DC analysis holds, and the analysis leaves the current between them as a note that is not judged, whatever the diode's `.current` states. The search prefers a candidate that can be judged (ADR 0068), so it takes the `Tps54202`; a board that wants the LMR16006Y names it, `.reg: Buck<Lmr16006y>`.
+The `Lmr16006y` comes first and takes this board: 12 V is in its input range, 500 mA is under its 0.6 A, and its reference and the 1 % divider hold the output. Its catch diode joins ground and the switch node, two nets the DC analysis holds, where the current an ideal diode moves is not a number the analysis can work out; the diode states it (`.catch.current`, the output current over the part of each period the switch is off), so the trial is judged with that. A diode between two held nets that states no `.current` is a note, and a candidate with such a note is passed over for one that can be judged (ADR 0068). A board that wants another IC names it, `.reg: Buck<Tps54202>`.
 
 The output asks for 5 % and not less: each standard IC's reference is good to 2 % or 2.5 % in the worst case, and the divider's 1 % resistors add about 1.5 % at 3.3 V, so 3 % holds for none of them. `examples/buck_converter.nsm` is this board with its connectors, built and made into a fab package.
 

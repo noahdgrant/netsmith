@@ -303,3 +303,78 @@ fn a_diode_in_series_with_a_load_is_still_modelled() {
         "{m:?}"
     );
 }
+
+/// Issue #710: the note asks for the diode's current, and a diode that states it is judged with
+/// it. On a regulator's output the regulator's load stays what its own `.current` states (a
+/// buck's catch diode moves the load's own current into the switch node), which the balance of
+/// its net makes `out`'s 100 mA to 200 mA and the diode's up to 100 mA: the network in front of
+/// it is solved with that, and there is no note.
+#[test]
+fn a_diode_on_a_regulator_output_that_states_its_current_is_not_noted() {
+    let src = board(ORED).replace(
+        ".max_reverse_voltage &= 40V }",
+        ".max_reverse_voltage &= 40V; .current &= 0A..100mA }",
+    );
+    let s = solved(&src);
+    let m = notes(&s);
+    assert!(
+        !m.iter().any(|m| m.contains("does not model the current")),
+        "{m:?}"
+    );
+    assert!(m.is_empty(), "{m:?}");
+    let (lo, hi) = range(&s, "link.current").expect("the network in front of `reg` is solved");
+    assert!(
+        (lo - 0.1).abs() < 1e-9 && (hi - 0.3).abs() < 1e-9,
+        "{lo}..{hi}"
+    );
+}
+
+/// A diode between two sources that no regulator holds: two board rails.
+fn two_sources(diode: &str, budget: &str) -> String {
+    board(&format!(
+        "    .alt: Rail {{
+        .voltage &= 5V
+        .pos.net &= \"V5\"
+        .neg.net &= \"GND\"
+    }}
+    .d: Diode {{ .forward_voltage &= 0.5V..0.8V; .max_forward_current &= 3A; .max_reverse_voltage &= 40V{diode} }}
+    .supply.pos ~> .d ~> .alt.pos
+    .alt.neg ~ .supply.neg
+"
+    ))
+    .replace("        .voltage &= 12V\n", &format!("        .voltage &= 12V\n{budget}"))
+}
+
+/// Issue #710: a diode between two board rails that states no current is noted, and one that
+/// states it is not.
+#[test]
+fn a_diode_between_two_sources_is_noted_only_when_it_states_no_current() {
+    let s = solved(&two_sources("", ""));
+    let m = notes(&s);
+    assert!(
+        m.iter().any(|m| m.contains(
+            "the DC analysis does not model the current of `d`: it joins `VIN` and `V5`"
+        ) && !m.contains("not a sum")),
+        "{m:?}"
+    );
+    let s = solved(&two_sources("; .current &= 0A..100mA", ""));
+    assert!(notes(&s).is_empty(), "{:?}", notes(&s));
+}
+
+/// The stated current is what the diode draws from the supply it is on: a supply that gives at
+/// most 500 mA is short of a diode that moves 600 mA to 1 A, and has enough for one that moves
+/// at most 100 mA.
+#[test]
+fn a_diode_between_two_sources_draws_its_stated_current_from_the_supply() {
+    let budget = "        .current &= -500mA..0A\n";
+    let s = solved(&two_sources("; .current &= 600mA..1A", budget));
+    let m: Vec<String> = s.diagnostics.iter().map(|d| d.message.clone()).collect();
+    assert!(
+        m.iter().any(|m| m.contains("the currents on net `VIN` do not add up")
+            && m.contains("`d.current` is 600mA..1A")),
+        "{m:?}"
+    );
+    let s = solved(&two_sources("; .current &= 0A..100mA", budget));
+    assert!(s.diagnostics.is_empty(), "{:?}", s.diagnostics);
+    assert!(notes(&s).is_empty(), "{:?}", notes(&s));
+}
