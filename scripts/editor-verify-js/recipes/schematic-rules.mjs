@@ -255,7 +255,7 @@ export async function run({ page, shot, step, expect }) {
   const bst = pin(B, ic.ref, '13'), sw = pin(B, ic.ref, '10');
   const boot = part(B, (p) => p.title.includes(' 100n '));
   expect(Math.abs(cy(boot) - (bst.y + sw.y) / 2) < 12 && (boot.box.x > ic.box.x + ic.box.width - 1 || boot.box.x + boot.box.width < ic.box.x + 1), 'the bootstrap capacitor is between the BST and SW pins, outside the IC');
-  const ind = part(B, (p) => p.title.includes(' 4.7u '));
+  const ind = part(B, (p) => p.kind === 'Inductor');
   const outcap = part(B, (p) => p.title.includes(' 22u '));
   expect(Math.abs(cy(ind) - sw.y) < 40 && Math.abs(cx(outcap) - cx(ind)) < 60, 'the inductor from SW outward and the output capacitor next to it');
 

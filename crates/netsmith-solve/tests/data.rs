@@ -216,7 +216,7 @@ fn every_standard_file_reads_and_every_part_in_it_has_its_source() {
 }
 
 /// How many rows of the standard catalogs have a `height` (ADR 0094). Update it with the rows.
-const ROWS_WITH_HEIGHT: usize = 99;
+const ROWS_WITH_HEIGHT: usize = 106;
 
 #[test]
 fn every_height_is_one_length_that_a_document_says_and_its_source_names_where() {
@@ -1084,6 +1084,31 @@ fn the_inductors_give_the_saturation_current_and_the_largest_resistance() {
     let m = row_of("inductor", "C337905");
     assert_eq!(value(&m, "saturation_current"), quantity(1.25, "A"));
     assert_eq!(value(&m, "inductance"), tolerance(3.3, "uH", 30.0));
+}
+
+/// The molded 1210 inductors that a buck above 5.6 uH and 1 A needs (issue #703): the rating a
+/// row states is the datasheet's maximum column (Isat for a 30 % drop, the largest Rdc), and not
+/// the typical figure that the LCSC record lists as `Isat`.
+#[test]
+fn the_molded_1210_inductors_give_the_datasheets_maximum_isat_and_rdc() {
+    // (lcsc, mpn, microhenries, Isat max, Rdc max)
+    let rows = [
+        ("C17701262", "MTQH322512S4R7MBT", 4.7, 2.6, 0.135),
+        ("C17701263", "MTQH322512S6R8MBT", 6.8, 2.4, 0.21),
+        ("C17701264", "MTQH322512S100MBT", 10.0, 1.9, 0.23),
+        ("C39846661", "XRTC322512S100MBCA", 10.0, 1.9, 0.23),
+        ("C48945755", "ZETC322512S4R7MBT-LF", 4.7, 2.8, 0.135),
+        ("C48945791", "ZETC322512S6R8MBT-LF", 6.8, 2.6, 0.21),
+        ("C48945862", "ZEPIM322520T220MLF", 22.0, 1.8, 0.364),
+    ];
+    for (lcsc, mpn, uh, isat, rdc) in rows {
+        let r = row_of("inductor", lcsc);
+        assert_eq!(r.mpn.as_deref(), Some(mpn));
+        assert_eq!(value(&r, "inductance"), tolerance(uh, "uH", 20.0), "{mpn}");
+        assert_eq!(value(&r, "saturation_current"), quantity(isat, "A"), "{mpn}");
+        assert_eq!(value(&r, "dc_resistance"), quantity(rdc, "ohm"), "{mpn}");
+        assert_eq!(r.column("package"), Some(&Value::Text("1210".into())));
+    }
 }
 
 /// Every standard capacitor row states the class its listing prints, as a variant of
