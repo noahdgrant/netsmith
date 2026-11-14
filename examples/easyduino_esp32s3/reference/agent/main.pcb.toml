@@ -1,7 +1,7 @@
 version = 1
 
 [EasyduinoEsp32s3]
-seed = 2
+seed = 1
 
 [EasyduinoEsp32s3.parts."auto_reset.q_boot"]
 at = [16.895, 30.1486]

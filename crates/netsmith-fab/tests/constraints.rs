@@ -484,9 +484,10 @@ fn a_footprint_with_no_courtyard_is_measured_by_its_turned_pads_and_the_placers_
 
 #[test]
 fn a_hole_that_reaches_past_the_courtyard_is_in_the_body() {
-    // The placer's courtyard takes in every hole (a mounting hole, a pogo-pin pad), and so
-    // does the body the check measures: a 3 mm hole at (4, 0) of a part whose courtyard is
-    // 2 by 1.4 mm reaches x 5.5.
+    // The placer's courtyard takes in every hole (a mounting hole, a pogo-pin pad), and every
+    // pad that reaches past it with 0.15 mm round it, and so does the body the check measures:
+    // a 3 mm hole at (4, 0) of a part whose courtyard is 2 by 1.4 mm reaches x 5.5, and its
+    // 3.2 mm pad x 5.6, which with the 0.15 mm is x 5.75.
     let mut b = Pcb::new(2);
     b.part(
         "J1",
@@ -499,8 +500,8 @@ fn a_hole_that_reaches_past_the_courtyard_is_in_the_body() {
         "j.place.right",
         &["J1"],
         ConstraintMeasure::Right,
-        15.5,
-        15.5,
+        15.75,
+        15.75,
     )]);
     let all = measure(&c, &b.pcb());
     assert!(all[0].satisfied, "{all:#?}");
