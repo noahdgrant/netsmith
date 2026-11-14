@@ -1658,7 +1658,10 @@ mod tests {
         let names: Vec<String> = std_parts().into_iter().map(|(n, _)| n).collect();
         assert!(!names.iter().any(|n| n == "BuckConverter"), "{names:?}");
         for part_shaped in ["Connector", "BuckIc", "Resistor"] {
-            assert!(names.iter().any(|n| n == part_shaped), "{part_shaped}: {names:?}");
+            assert!(
+                names.iter().any(|n| n == part_shaped),
+                "{part_shaped}: {names:?}"
+            );
         }
     }
 
