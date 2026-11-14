@@ -432,7 +432,9 @@ pub fn import(
                 } else {
                     Face::Top
                 },
-                text: ours.reference_side.into(),
+                // The reference text above the part, whatever side the placer gave it before:
+                // the import's places do not depend on an earlier arrangement.
+                text: Default::default(),
                 lock: true,
                 source: Some(netsmith_pcb::IMPORT_SOURCE.to_string()),
             },

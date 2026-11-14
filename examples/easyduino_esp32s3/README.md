@@ -218,13 +218,13 @@ other way round, so that each pad stands where theirs of its net does.
 
 - **The 3.3 V zone on F.Cu.** Easyduino's board has a +3.3V zone on the top layer besides the
   ground there; the design pours ground on F.Cu and +3.3V on In2.Cu (a layer pours one net), so
-  `fab` leaves 1 connection on `+3.3V` (C6.1, which their zone joins) and writes the board marked
-  INCOMPLETE. The 6 vias the check calls dangling stand in that zone.
-- **Q1 and Q2, the SS8050s.** Netsmith's SOT-23 footprint has pads 1.475
-  x 0.6 mm reaching 0.2 mm from the part's centre, where Easyduino's are 1.0 x 0.7 mm: their
-  emitter track of Q1 runs over netsmith's pad 1 (the base), a short the design rules check finds,
-  and their base track of Q2 passes 0.095 mm from netsmith's pad 3 (0.1 mm is the least). The
-  reproduction is not a board to order.
+  `fab` leaves 1 connection on `+3.3V` (a capacitor's pad to the plane, which their zone joins)
+  and writes the board marked INCOMPLETE. The 6 vias the check calls dangling stand in that zone.
+- **The SS8050s, `auto_reset.q_en` and `auto_reset.q_boot` (their Q1 and Q2).** Netsmith's SOT-23
+  footprint has pads 1.475 x 0.6 mm reaching 0.2 mm from the part's centre, where Easyduino's are
+  1.0 x 0.7 mm: their emitter track of Q1 runs over netsmith's pad 1 (the base), a short the
+  design rules check finds, and their base track of Q2 passes 0.095 mm from netsmith's pad 3
+  (0.1 mm is the least). The reproduction is not a board to order.
 
 ## Same nets
 

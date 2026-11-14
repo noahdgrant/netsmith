@@ -14,7 +14,6 @@ source = "import"
 at = [30.2, 24.95]
 rotation = -90.0
 side = "top"
-text = "right"
 lock = true
 source = "import"
 
@@ -29,7 +28,6 @@ source = "import"
 at = [28.0, 22.8]
 rotation = 0.0
 side = "top"
-text = "right"
 lock = true
 source = "import"
 
@@ -79,7 +77,6 @@ source = "import"
 at = [26.0, 30.0]
 rotation = 0.0
 side = "top"
-text = "left"
 lock = true
 source = "import"
 
@@ -115,7 +112,6 @@ source = "import"
 at = [34.0, 12.85]
 rotation = -90.0
 side = "top"
-text = "right"
 lock = true
 source = "import"
 
@@ -165,7 +161,6 @@ source = "import"
 at = [26.8, 36.88]
 rotation = -90.0
 side = "top"
-text = "right"
 lock = true
 source = "import"
 
@@ -173,7 +168,6 @@ source = "import"
 at = [33.08, 29.4]
 rotation = 0.0
 side = "top"
-text = "below"
 lock = true
 source = "import"
 
@@ -181,7 +175,6 @@ source = "import"
 at = [28.0, 24.45]
 rotation = 0.0
 side = "top"
-text = "right"
 lock = true
 source = "import"
 
@@ -189,7 +182,6 @@ source = "import"
 at = [22.185, 12.83]
 rotation = 180.0
 side = "top"
-text = "right"
 lock = true
 source = "import"
 
@@ -197,7 +189,6 @@ source = "import"
 at = [23.9, 22.6]
 rotation = 90.0
 side = "top"
-text = "left"
 lock = true
 source = "import"
 
@@ -205,7 +196,6 @@ source = "import"
 at = [19.515, 26.6]
 rotation = 180.0
 side = "top"
-text = "right"
 lock = true
 source = "import"
 
@@ -220,7 +210,6 @@ source = "import"
 at = [19.515, 31.4]
 rotation = 180.0
 side = "top"
-text = "right"
 lock = true
 source = "import"
 
@@ -228,7 +217,6 @@ source = "import"
 at = [31.685, 34.0]
 rotation = 0.0
 side = "top"
-text = "below"
 lock = true
 source = "import"
 
@@ -236,7 +224,6 @@ source = "import"
 at = [32.485, 27.0]
 rotation = 0.0
 side = "top"
-text = "left"
 lock = true
 source = "import"
 
@@ -244,7 +231,6 @@ source = "import"
 at = [24.2, 36.08]
 rotation = -90.0
 side = "top"
-text = "below"
 lock = true
 source = "import"
 
@@ -252,7 +238,6 @@ source = "import"
 at = [35.025, 19.0]
 rotation = 0.0
 side = "top"
-text = "left"
 lock = true
 source = "import"
 
@@ -260,7 +245,6 @@ source = "import"
 at = [11.115, 8.0]
 rotation = 0.0
 side = "top"
-text = "left"
 lock = true
 source = "import"
 
@@ -275,6 +259,5 @@ source = "import"
 at = [33.9375, 6.5]
 rotation = 0.0
 side = "top"
-text = "right"
 lock = true
 source = "import"

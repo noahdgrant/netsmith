@@ -1,7 +1,7 @@
 version = 1
 
 [EasyduinoEsp32s3]
-seed = 3
+seed = 0
 
 [EasyduinoEsp32s3.parts."auto_reset.q_boot"]
 at = [16.895, 30.1486]
@@ -14,7 +14,6 @@ source = "import"
 at = [9.095, 30.1486]
 rotation = 180.0
 side = "top"
-text = "below"
 lock = true
 source = "import"
 
@@ -22,7 +21,6 @@ source = "import"
 at = [15.295, 26.7486]
 rotation = 90.0
 side = "top"
-text = "below"
 lock = true
 source = "import"
 
@@ -44,7 +42,6 @@ source = "import"
 at = [7.095, 48.4486]
 rotation = 90.0
 side = "top"
-text = "right"
 lock = true
 source = "import"
 
@@ -52,7 +49,6 @@ source = "import"
 at = [11.595, 49.5486]
 rotation = 180.0
 side = "top"
-text = "below"
 lock = true
 source = "import"
 
@@ -74,7 +70,6 @@ source = "import"
 at = [9.295, 26.6686]
 rotation = 90.0
 side = "top"
-text = "left"
 lock = true
 source = "import"
 
@@ -96,7 +91,6 @@ source = "import"
 at = [13.495, 55.3586]
 rotation = -90.0
 side = "top"
-text = "left"
 lock = true
 source = "import"
 
@@ -111,7 +105,6 @@ source = "import"
 at = [13.595, 40.3486]
 rotation = 0.0
 side = "top"
-text = "right"
 lock = true
 source = "import"
 
@@ -133,7 +126,6 @@ source = "import"
 at = [21.795, 55.2386]
 rotation = 90.0
 side = "top"
-text = "below"
 lock = true
 source = "import"
 
@@ -141,7 +133,6 @@ source = "import"
 at = [17.045, 55.2486]
 rotation = -90.0
 side = "top"
-text = "below"
 lock = true
 source = "import"
 
@@ -156,7 +147,6 @@ source = "import"
 at = [8.595, 55.2486]
 rotation = 90.0
 side = "top"
-text = "below"
 lock = true
 source = "import"
 
@@ -164,7 +154,6 @@ source = "import"
 at = [9.745, 55.2661]
 rotation = -90.0
 side = "top"
-text = "right"
 lock = true
 source = "import"
 
@@ -172,7 +161,6 @@ source = "import"
 at = [18.58, 47.3486]
 rotation = 180.0
 side = "top"
-text = "left"
 lock = true
 source = "import"
 
@@ -194,7 +182,6 @@ source = "import"
 at = [19.845, 40.7486]
 rotation = 90.0
 side = "top"
-text = "left"
 lock = true
 source = "import"
 
@@ -202,7 +189,6 @@ source = "import"
 at = [13.895, 23.9486]
 rotation = 0.0
 side = "top"
-text = "below"
 lock = true
 source = "import"
 
@@ -210,7 +196,6 @@ source = "import"
 at = [9.745, 53.0486]
 rotation = -90.0
 side = "top"
-text = "right"
 lock = true
 source = "import"
 
@@ -218,7 +203,6 @@ source = "import"
 at = [10.945, 53.0486]
 rotation = -90.0
 side = "top"
-text = "below"
 lock = true
 source = "import"
 

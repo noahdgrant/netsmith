@@ -502,8 +502,9 @@ three again, with what netsmith's design rules check finds on the reproduction.
 
 **What matches:** all 352 segments and 40 vias of Raspberry Pi's board, each on its layer and
 net. The import places every part where their board has it, locked (the physical file pins the
-connectors and buttons at the same places); U2, the regulator, is turned by 90 degrees from their footprint, because netsmith's
-SOT-223 is drawn a quarter turn from theirs, so that its pads stand where theirs do.
+connectors and buttons at the same places); `regulator` (their U2) is turned by 90 degrees from
+their footprint, because netsmith's SOT-223 is drawn a quarter turn from theirs, so that its pads
+stand where theirs do.
 
 **What does not, and why:**
 
@@ -514,12 +515,13 @@ SOT-223 is drawn a quarter turn from theirs, so that its pads stand where theirs
   end in those zones.
 - **VREG_LX** has no track in their board, so the routes file has no record of it and the router
   routes it: 3 segments (net `net-core_inductor.b`) that are not theirs.
-- **Courtyards.** R1 and L1, L1 and R4, H1 and C4 overlap (L1's footprint is the datasheet's land
-  pattern, its courtyard 3.5 x 2.1 mm against their 2.2 x 1.8 mm; the hole's keepout circle is
-  6.3 mm against their 6 mm). Parts that both stand where an imported board has them may share
-  courtyard area: `fab` warns, and does not stop.
-- **Pads.** L1's pads are 2 mm apart where theirs are 1.4 mm, and U1's leads 0.80 x 0.20 mm where
-  theirs are 0.70 x 0.23 mm; their copper still ends inside netsmith's pads.
+- **Courtyards.** `core_inductor` overlaps `avdd_filter` and `usb_dm_series` (their L1, R3 and
+  R8), and `hole1` overlaps `v3v3_bulk[1]` (their MH1 and C19): the inductor's footprint is the
+  datasheet's land pattern, its courtyard 3.5 x 2.1 mm against their 2.2 x 1.8 mm, and the hole's
+  keepout circle is 6.3 mm against their 6 mm. Parts that both stand where an imported board has
+  them may share courtyard area: `fab` warns, and does not stop.
+- **Pads.** The inductor's pads are 2 mm apart where theirs are 1.4 mm, and the MCU's leads 0.80 x
+  0.20 mm where theirs are 0.70 x 0.23 mm; their copper still ends inside netsmith's pads.
 
 Netsmith's design rules check finds nothing else: no short and no clearance.
 

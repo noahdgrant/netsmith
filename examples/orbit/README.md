@@ -755,8 +755,8 @@ each pad stands where theirs of its net does.
   B.Cu only (`.bottom.net`), so `fab` leaves 31 connections on `GND`, the pads on the top that the
   zone joins, and writes the board marked INCOMPLETE. The 4 track ends and 18 vias that the check
   calls dangling end in that zone.
-- **Courtyards.** U3, the MCU, overlaps C8 and C9: netsmith's LQFP-48 courtyard is wider than
-  ORBIT's, whose capacitors stand within it. Parts that both stand where an imported board
+- **Courtyards.** `mcu` overlaps `v3v3_100n[2]` and `v3v3_100n[3]`: netsmith's LQFP-48 courtyard
+  is wider than ORBIT's, whose capacitors stand within it. Parts that both stand where an imported board
   has them may share courtyard area: `fab` warns, and does not stop.
 
 Netsmith's design rules check finds nothing else: no short and no clearance.

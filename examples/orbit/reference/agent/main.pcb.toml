@@ -1,13 +1,12 @@
 version = 1
 
 [Orbit]
-seed = 1
+seed = 4
 
 [Orbit.parts.boot_pulldown]
 at = [9.0, 13.5]
 rotation = 180.0
 side = "top"
-text = "below"
 lock = true
 source = "import"
 
@@ -43,7 +42,6 @@ source = "import"
 at = [38.75, 28.5]
 rotation = 0.0
 side = "top"
-text = "left"
 lock = true
 source = "import"
 
@@ -51,7 +49,6 @@ source = "import"
 at = [34.75, 21.75]
 rotation = 180.0
 side = "top"
-text = "below"
 lock = true
 source = "import"
 
@@ -59,7 +56,6 @@ source = "import"
 at = [38.0, 21.75]
 rotation = 0.0
 side = "top"
-text = "below"
 lock = true
 source = "import"
 
@@ -102,7 +98,6 @@ source = "import"
 at = [33.75, 12.75]
 rotation = 180.0
 side = "top"
-text = "below"
 lock = true
 source = "import"
 
@@ -117,7 +112,6 @@ source = "import"
 at = [12.425, 22.0]
 rotation = 0.0
 side = "top"
-text = "right"
 lock = true
 source = "import"
 
@@ -125,7 +119,6 @@ source = "import"
 at = [12.425, 23.75]
 rotation = 0.0
 side = "top"
-text = "below"
 lock = true
 source = "import"
 
@@ -161,7 +154,6 @@ source = "import"
 at = [25.0, 27.5]
 rotation = 90.0
 side = "top"
-text = "right"
 lock = true
 source = "import"
 
@@ -197,7 +189,6 @@ source = "import"
 at = [18.5, 16.84]
 rotation = 180.0
 side = "top"
-text = "left"
 lock = true
 source = "import"
 
@@ -212,7 +203,6 @@ source = "import"
 at = [19.25, 11.0]
 rotation = 180.0
 side = "top"
-text = "left"
 lock = true
 source = "import"
 
@@ -220,7 +210,6 @@ source = "import"
 at = [23.25, 12.75]
 rotation = 0.0
 side = "top"
-text = "right"
 lock = true
 source = "import"
 
@@ -277,7 +266,6 @@ source = "import"
 at = [19.5, 31.75]
 rotation = 180.0
 side = "top"
-text = "left"
 lock = true
 source = "import"
 
@@ -285,7 +273,6 @@ source = "import"
 at = [30.25, 22.5]
 rotation = 90.0
 side = "top"
-text = "left"
 lock = true
 source = "import"
 
@@ -293,6 +280,5 @@ source = "import"
 at = [32.0, 22.5]
 rotation = 90.0
 side = "top"
-text = "below"
 lock = true
 source = "import"
