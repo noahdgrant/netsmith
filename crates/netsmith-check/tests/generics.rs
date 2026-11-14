@@ -1417,3 +1417,133 @@ board B {
     assert!(!c.is_ok());
     assert!(c.board("B").unwrap().model.provider_conflicts.is_empty());
 }
+
+// ---- a generic's row limit is a contract every provider meets (ADR 0126) ----------------
+
+/// A generic that is its own provider, with the limits of `.in` in its row.
+const LIMITED: &str = "import std::sources::Rail
+generic Limited {
+    .designator &= \"U\"
+    .vcc: Rail
+    pins {
+        .vcc.pos power \"VCC\" \"1\"
+        .vcc.neg power \"GND\" \"2\"
+        .in input \"IN\" \"3\" optional abs_min -0.5V abs_max 6V
+    }
+    .package: Package
+    catalog limited { .package }
+}
+";
+
+/// A provider of `Limited` with `tail` at the end of the row of `.in`.
+fn limited_provider(tail: &str) -> String {
+    format!(
+        "import src::limited::Limited
+part Prov provides Limited {{
+    pins {{
+        .vcc.pos power \"VCC\" \"1\"
+        .vcc.neg power \"GND\" \"2\"
+        .in input \"IN\" \"3\" optional{tail}
+    }}
+    catalog prov {{ .package }}
+}}
+"
+    )
+}
+
+fn limited_board(generic: &str, provider: &str) -> Checked {
+    run(
+        "import src::prov::Prov\nimport std::sources::Rail\nboard B {\n    .m: Prov\n    .s: Rail { .voltage &= 3V\n .pos.net &= \"V\"\n .neg.net &= \"G\" }\n    .s ~ .m.vcc\n}\n",
+        &[("src::limited", generic), ("src::prov", provider)],
+    )
+}
+
+fn limit_of(c: &Checked, field: &str) -> Option<(f64, f64)> {
+    let model = &c.board("B").unwrap().model;
+    match model.domain_at(&format!("m.in.{field}")) {
+        Some(Domain::Quantity(q)) => Some((q.lo(), q.hi())),
+        _ => None,
+    }
+}
+
+#[test]
+fn a_provider_whose_row_states_no_limit_has_the_generics() {
+    let c = limited_board(LIMITED, &limited_provider(""));
+    ok(&c);
+    assert_eq!(limit_of(&c, "abs_max"), Some((6.0, 6.0)));
+    assert_eq!(limit_of(&c, "abs_min"), Some((-0.5, -0.5)));
+    let model = &c.board("B").unwrap().model;
+    let row = model.pin_row(model.inst_at("m.in").unwrap()).unwrap();
+    assert_eq!(row.limits.as_ref().unwrap().text, "abs_min -0.5V abs_max 6V");
+}
+
+#[test]
+fn a_provider_that_states_one_limit_inherits_the_other() {
+    let c = limited_board(LIMITED, &limited_provider(" abs_max 5V"));
+    ok(&c);
+    assert_eq!(limit_of(&c, "abs_max"), Some((5.0, 5.0)));
+    assert_eq!(limit_of(&c, "abs_min"), Some((-0.5, -0.5)));
+}
+
+#[test]
+fn a_stricter_provider_keeps_its_own_limits() {
+    let c = limited_board(LIMITED, &limited_provider(" abs_min 0V abs_max 5V"));
+    ok(&c);
+    assert_eq!(limit_of(&c, "abs_max"), Some((5.0, 5.0)));
+    assert_eq!(limit_of(&c, "abs_min"), Some((0.0, 0.0)));
+}
+
+#[test]
+fn a_looser_provider_is_refused_at_its_row_naming_the_generics_limit() {
+    let c = limited_board(LIMITED, &limited_provider(" abs_max 7V"));
+    assert_eq!(
+        messages(&c),
+        ["`.in` has `abs_max 7V` here, but `Limited`, which `Prov` provides, limits it with `abs_max 6V`: a provider's limit is at least as strict as its generic's, so `abs_max` is at most 6V"]
+    );
+    let c = limited_board(LIMITED, &limited_provider(" abs_min -1V"));
+    assert_eq!(
+        messages(&c),
+        ["`.in` has `abs_min -1V` here, but `Limited`, which `Prov` provides, limits it with `abs_min -0.5V`: a provider's limit is at least as strict as its generic's, so `abs_min` is at least -500mV"]
+    );
+}
+
+#[test]
+fn a_generics_limit_that_is_a_member_is_the_providers_member() {
+    let generic = LIMITED
+        .replace(".package: Package", ".in_max: Voltage\n    .package: Package")
+        .replace("abs_max 6V", "abs_max .in_max");
+    let provider = limited_provider("").replace("catalog prov", ".in_max &= 4V\n    catalog prov");
+    let c = limited_board(&generic, &provider);
+    ok(&c);
+    // The field holds the member as a relation, which the solver resolves.
+    assert_eq!(limit_of(&c, "abs_max"), None);
+    // A provider's own number against the member waits for the pick: the relation `<=` takes
+    // the place of the generic's narrowing, which the provider's own limit replaces.
+    let provider = limited_provider(" abs_max 7V").replace("catalog prov", ".in_max &= 4V\n    catalog prov");
+    let c = limited_board(&generic, &provider);
+    ok(&c);
+    let own = c.board("B").unwrap().model.relations().len();
+    let inherited = limited_board(&generic, &limited_provider("").replace("catalog prov", ".in_max &= 4V\n    catalog prov"));
+    assert_eq!(own, inherited.board("B").unwrap().model.relations().len());
+}
+
+#[test]
+fn a_generic_with_no_pads_may_state_a_limit_its_providers_meet() {
+    let generic = "generic Pure {\n    .designator &= \"U\"\n    pins {\n        .in input abs_max 6V from .gnd\n        .gnd passive\n    }\n}\n";
+    let provider = |tail: &str| format!("import src::pure::Pure\npart Prov provides Pure {{\n    pins {{\n        .in input \"IN\" \"1\" optional{tail}\n        .gnd passive \"GND\" \"2\"\n    }}\n}}\n");
+    let board = "import src::prov::Prov\nboard B {\n    .m: Prov\n}\n";
+    let run_with = |tail: &str| run(board, &[("src::pure", generic), ("src::prov", &provider(tail))]);
+    let c = run_with("");
+    ok(&c);
+    let model = &c.board("B").unwrap().model;
+    match model.domain_at("m.in.abs_max") {
+        Some(Domain::Quantity(q)) => assert_eq!((q.lo(), q.hi()), (6.0, 6.0)),
+        other => panic!("{other:?}"),
+    }
+    let c = run_with(" abs_max 8V from .gnd");
+    assert!(
+        messages(&c).iter().any(|m| m.starts_with("`.in` has `abs_max 8V` here, but `Pure`")),
+        "{:?}",
+        messages(&c)
+    );
+}

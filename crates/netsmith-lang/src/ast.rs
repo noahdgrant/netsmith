@@ -396,19 +396,27 @@ pub struct PinRow {
     /// What the pin can be, in the order written. Empty for a pin with one purpose.
     pub functions: Vec<PinFunction>,
     pub requirement: Option<(Requirement, Span)>,
-    /// `abs_max 65V` or `abs_max 4V from .gnd` at the end of the row.
-    pub abs_max: Option<AbsMax>,
+    /// `abs_max 65V` or `abs_min -0.5V abs_max 4V from .gnd` at the end of the row.
+    pub limits: Option<PinLimits>,
     pub span: Span,
 }
 
-/// `abs_max 4V from .gnd` at the end of a pin row: the pin's absolute maximum, the voltage its
-/// net must not exceed above the reference pin (ADR 0124). With no `from` the reference is the
-/// ground of the pin's `Logic`, else the one rail ground of the table.
+/// `abs_min -0.5V abs_max 4V from .gnd` at the end of a pin row: the voltages the pin survives,
+/// measured from the reference pin (ADR 0124, ADR 0126). Either limit may be missing, never both,
+/// and `abs_min` is written first. With no `from` the reference is the ground of the pin's
+/// `Logic` or bus, else the one rail ground of the table.
 #[derive(Debug, Clone, PartialEq)]
-pub struct AbsMax {
-    pub value: Expr,
+pub struct PinLimits {
+    pub min: Option<PinLimit>,
+    pub max: Option<PinLimit>,
     pub from: Option<Path>,
-    /// The word `abs_max`.
+}
+
+/// One limit of a row: the value after `abs_min` or `abs_max`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PinLimit {
+    pub value: Expr,
+    /// The word `abs_min` or `abs_max`.
     pub span: Span,
 }
 

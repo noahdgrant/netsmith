@@ -40,14 +40,14 @@ mpn,name,max_drain_source_voltage,max_drain_current,max_gate_source_voltage,gate
 ZP-60,ZP-60 60V 8A P-MOSFET,60V,8A,20V,1V..3V,0.03ohm,SOT-23,Extended,https://example.invalid/zp-60
 ";
 
-/// An invented provider of `LevelTranslator`.
+/// An invented provider of `LevelTranslator`; `{A_LIMIT}` is the end of the row of `.a.line`.
 const ZT_PROVIDER: &str = "\
 import std::parts::logic::LevelTranslator
 
 part ZtWide provides LevelTranslator {
     pins {
         .nc      no_connect \"NC\"  \"1\"
-        .a.line  input      \"A\"   \"2\"
+        .a.line  input      \"A\"   \"2\"{A_LIMIT}
         .vcc.neg power      \"GND\" \"3\"
         .y.line  output     \"Y\"   \"4\"
         .vcc.pos power      \"VCC\" \"5\"
@@ -55,6 +55,11 @@ part ZtWide provides LevelTranslator {
     catalog zt_wide { .vcc_min, .vcc_max, .vcc_abs_max, .a_abs_max, .vt_plus_max, .vt_minus_min, .max_output_current, .max_supply_current, .package }
 }
 ";
+
+/// The provider with `limit` at the end of its row of `.a.line`.
+fn zt_provider(limit: &str) -> String {
+    ZT_PROVIDER.replace("{A_LIMIT}", limit)
+}
 
 const ZT_WIDE_CSV: &str = "\
 mpn,name,vcc_min,vcc_max,vcc_abs_max,a_abs_max,vt_plus_max,vt_minus_min,max_output_current,max_supply_current,package,library,source
@@ -312,7 +317,7 @@ fn a_translator_supply_outside_its_range_or_a_stress_beyond_its_maxima_is_refuse
 #[test]
 fn an_invented_provider_of_the_translator_conforms_and_serves_a_5v_supply() {
     let w = world(
-        &[("src::zt", ZT_PROVIDER)],
+        &[("src::zt", &zt_provider(""))],
         &[("level_translator", ZT_ROWS), ("zt_wide", ZT_WIDE_CSV)],
     );
     let imports = "import src::zt::ZtWide\n";
@@ -363,5 +368,36 @@ fn a_picked_translator_row_puts_its_own_supply_current_on_the_rail() {
     assert!(
         m.contains("`supply.current` must stay within -500nA..0A, but the others on it work out to -750nA..0A"),
         "{m}"
+    );
+}
+
+/// The limit a translator's row gives its input is a contract of the generic (ADR 0126): the
+/// provider's own row says nothing and has it, a stricter one keeps its own, and a looser
+/// one fails against the row's `.a_abs_max`, 6.5 V here.
+#[test]
+fn a_providers_input_limit_is_the_generics_or_stricter() {
+    let imports = "import src::zt::ZtWide\n";
+    let source = translated(imports, "5V +/- 5%", "")
+        .replace("vcc_peak &= 3.6V", "vcc_peak &= 5.5V")
+        .replace("a_peak &= 1.98V", "a_peak &= 5.5V");
+    let run = |limit: &str| {
+        let w = world(
+            &[("src::zt", &zt_provider(limit))],
+            &[("level_translator", ZT_ROWS), ("zt_wide", ZT_WIDE_CSV)],
+        );
+        build(&w, &source)
+    };
+    // Nothing in the provider's row: the generic's `abs_max .a_abs_max`.
+    let o = run("").unwrap_or_else(|e| panic!("{e:?}"));
+    assert_eq!(mpn_of(&o.boards[0], "U1"), Some("ZT-55"));
+    // Stricter than the row's 6.5 V.
+    run(" abs_max 6V").unwrap_or_else(|e| panic!("{e:?}"));
+    // Looser than the row's 6.5 V: the relation against the member fails.
+    let problems = run(" abs_max 7V").err().expect("a looser limit must fail");
+    let text: Vec<_> = problems.iter().map(|p| p.message.clone()).collect();
+    assert!(
+        text.iter()
+            .any(|m| m.contains("u.a.line.abs_max") && m.contains("u.a_abs_max")),
+        "{text:#?}"
     );
 }

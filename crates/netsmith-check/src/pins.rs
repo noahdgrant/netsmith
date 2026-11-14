@@ -129,6 +129,7 @@ impl Checker<'_> {
                 kind: row.kind,
                 requirement: built.requirement,
                 generic: generic.clone(),
+                limits: row.limits.clone(),
             });
         }
     }
@@ -252,13 +253,14 @@ impl Checker<'_> {
             let Some(mut built) = self.table_row(pin, row) else {
                 continue;
             };
-            if let Some(limit) = &row.abs_max {
-                match self.row_limit(pin, row, limit) {
+            if let Some(limits) = &row.limits {
+                match self.row_limits(pin, row, limits) {
                     Some((built_limit, needs_ground)) => {
+                        self.stricter_than_generic(pin, row, limits);
                         if needs_ground {
-                            grounded.push((rows.len(), limit.span));
+                            grounded.push((rows.len(), limits_span(limits)));
                         }
-                        built.abs_max = Some(built_limit);
+                        built.limits = Some(built_limit);
                     }
                     None => continue,
                 }
@@ -276,7 +278,7 @@ impl Checker<'_> {
             grounds.dedup();
             if let [ground] = grounds[..] {
                 for (i, _) in &grounded {
-                    if let Some(limit) = &mut rows[*i].abs_max {
+                    if let Some(limit) = &mut rows[*i].limits {
                         limit.reference = Some(ground);
                     }
                 }
@@ -296,7 +298,7 @@ impl Checker<'_> {
                     self.error(
                         span,
                         format!(
-                            "the `abs_max` of `{pin}` is measured from the part's ground, the `neg` of its rail, and {found}; name the pin it is measured from, such as `abs_max 65V from .gnd`"
+                            "the limits of `{pin}` are measured from the part's ground, the `neg` of its rail, and {found}; name the pin they are measured from, such as `abs_max 65V from .gnd`"
                         ),
                     );
                 }
@@ -321,19 +323,19 @@ impl Checker<'_> {
         }
     }
 
-    /// The `abs_max` at the end of a row (ADR 0124): the limit as the model keeps it, and
-    /// whether it is measured from the table's rail ground, which the caller finds once every
-    /// row is read. The value narrows the pin's `.abs_max`, once for the part, however many
-    /// tables state it.
-    fn row_limit(
+    /// The limits at the end of a row (ADR 0124, ADR 0126): the limits as the model keeps
+    /// them, and whether they are measured from the table's rail ground, which the caller
+    /// finds once every row is read. The values narrow the pin's `.abs_min` and `.abs_max`,
+    /// once for the part, however many tables state them.
+    fn row_limits(
         &mut self,
         pin: InstId,
         row: &ast::PinRow,
-        limit: &ast::AbsMax,
+        limits: &ast::PinLimits,
     ) -> Option<(RowLimit, bool)> {
         let text = row.pin.to_source();
         let by_levels = self.model.grounded_by_levels(pin);
-        let (reference, needs_ground) = match &limit.from {
+        let (reference, needs_ground) = match &limits.from {
             Some(from) if by_levels => {
                 self.error(
                     from.span,
@@ -356,32 +358,34 @@ impl Checker<'_> {
             }
             None => (None, !by_levels),
         };
-        let mut written = limit.value.to_source();
-        if let Some(from) = &limit.from {
-            written = format!("{written} from {}", from.to_source());
-        }
+        let written = limits.to_source().trim_start().to_string();
         let part = self.current();
         let stated = self
             .model
             .instance(part)
             .tables
             .iter()
-            .any(|t| t.row(pin).is_some_and(|r| r.abs_max.is_some()));
+            .any(|t| t.row(pin).is_some_and(|r| r.limits.is_some()));
         if !stated {
-            let mut path = row.pin.clone();
-            path.segments.push(ast::Ident {
-                name: "abs_max".to_string(),
-                quoted: false,
-                span: limit.span,
-            });
-            path.span = Span::new(row.pin.span.start, limit.span.end);
-            self.constraint(&ast::Constraint {
-                lhs: ast::Expr::Path(path),
-                op: ast::CmpOp::Narrow,
-                rhs: limit.value.clone(),
-                at: None,
-                span: Span::new(limit.span.start, limit.value.span().end),
-            });
+            for (field, limit) in [("abs_min", &limits.min), ("abs_max", &limits.max)] {
+                let Some(limit) = limit else { continue };
+                let mut path = row.pin.clone();
+                path.segments.push(ast::Ident {
+                    name: field.to_string(),
+                    quoted: false,
+                    span: limit.span,
+                });
+                path.span = Span::new(row.pin.span.start, limit.span.end);
+                self.stating_row_limits = true;
+                self.constraint(&ast::Constraint {
+                    lhs: ast::Expr::Path(path),
+                    op: ast::CmpOp::Narrow,
+                    rhs: limit.value.clone(),
+                    at: None,
+                    span: Span::new(limit.span.start, limit.value.span().end),
+                });
+                self.stating_row_limits = false;
+            }
         }
         Some((
             RowLimit {
@@ -390,6 +394,151 @@ impl Checker<'_> {
             },
             needs_ground,
         ))
+    }
+
+    /// A provider's limits are at least as strict as its generic's (ADR 0126): `abs_max` no
+    /// higher, `abs_min` no lower. Numbers are compared now and refused at the provider's row;
+    /// a value that waits for a pick (`abs_max .a_abs_max`) becomes a relation the solver holds.
+    fn stricter_than_generic(&mut self, pin: InstId, row: &ast::PinRow, limits: &ast::PinLimits) {
+        let part = self.current();
+        let Some(contract) = self
+            .contract_rows
+            .iter()
+            .find(|r| r.inst == part && r.pin == pin && r.limits.is_some())
+            .cloned()
+        else {
+            return;
+        };
+        let Some(theirs) = contract.limits else {
+            return;
+        };
+        let provider = self
+            .cur_def
+            .map(|(m, i)| self.modules[m].defs[i].name.name.clone())
+            .unwrap_or_default();
+        let text = row.pin.to_source();
+        let pairs = [
+            ("abs_min", &limits.min, &theirs.min),
+            ("abs_max", &limits.max, &theirs.max),
+        ];
+        for (word, own, generic) in pairs {
+            let (Some(own), Some(generic)) = (own, generic) else {
+                continue;
+            };
+            let (own_text, generic_text) = (own.value.to_source(), generic.value.to_source());
+            if own_text == generic_text {
+                continue;
+            }
+            let (Some(a), Some(b)) = (self.lower(&own.value), self.lower(&generic.value)) else {
+                continue;
+            };
+            let upper = word == "abs_max";
+            if let (crate::model::RExpr::Const(a), crate::model::RExpr::Const(b)) = (&a.e, &b.e) {
+                let (ok, way) = if upper {
+                    (a.hi() <= b.lo(), "at most")
+                } else {
+                    (a.lo() >= b.hi(), "at least")
+                };
+                if !ok {
+                    self.error(
+                        own.span,
+                        format!(
+                            "`{text}` has `{word} {own_text}` here, but `{}`, which `{provider}` provides, limits it with `{word} {generic_text}`: a provider's limit is at least as strict as its generic's, so `{word}` is {way} {b}",
+                            contract.generic
+                        ),
+                    );
+                }
+                continue;
+            }
+            let mut path = row.pin.clone();
+            path.segments.push(ast::Ident {
+                name: word.to_string(),
+                quoted: false,
+                span: own.span,
+            });
+            path.span = Span::new(row.pin.span.start, own.span.end);
+            self.constraint(&ast::Constraint {
+                lhs: ast::Expr::Path(path),
+                op: if upper {
+                    ast::CmpOp::Le
+                } else {
+                    ast::CmpOp::Ge
+                },
+                rhs: generic.value.clone(),
+                at: None,
+                span: Span::new(own.span.start, own.value.span().end),
+            });
+        }
+    }
+
+    /// The items of a provider with the limits of its generics' rows written into its own
+    /// rows that state none (ADR 0126): the limit a generic puts on a pin is a contract, so
+    /// a provider that says nothing has the generic's, and one that states `abs_max` alone
+    /// has the generic's `abs_min`. A provider's own limit stays, and is compared with the
+    /// generic's where its row is read (`stricter_than_generic`).
+    pub(crate) fn with_inherited_limits<'a>(
+        &mut self,
+        def: &'a ast::Definition,
+        generics: &[(std::rc::Rc<ast::Definition>, (usize, usize))],
+        kind: InstKind,
+    ) -> std::borrow::Cow<'a, [ast::Item]> {
+        use std::collections::HashMap;
+        let mut inherited: HashMap<String, ast::PinLimits> = HashMap::new();
+        for (g, _) in generics {
+            for item in self.generic_items(g, def, kind) {
+                if let ast::Item::Pins(table) = item {
+                    for row in table.rows {
+                        if let Some(limits) = row.limits {
+                            inherited.entry(row.pin.to_source()).or_insert(limits);
+                        }
+                    }
+                }
+            }
+        }
+        if inherited.is_empty() {
+            return std::borrow::Cow::Borrowed(&def.items);
+        }
+        let mut items = def.items.clone();
+        let mut changed = false;
+        for item in &mut items {
+            let ast::Item::Pins(table) = item else {
+                continue;
+            };
+            for row in &mut table.rows {
+                let Some(generic) = inherited.get(&row.pin.to_source()) else {
+                    continue;
+                };
+                if row.is_contract() {
+                    continue;
+                }
+                let own = row.limits.as_ref();
+                let take = |own: Option<&ast::PinLimit>, generic: &Option<ast::PinLimit>| {
+                    own.cloned().or_else(|| {
+                        generic.as_ref().map(|g| ast::PinLimit {
+                            value: g.value.clone(),
+                            span: row.span,
+                        })
+                    })
+                };
+                let merged = ast::PinLimits {
+                    min: take(own.and_then(|l| l.min.as_ref()), &generic.min),
+                    max: take(own.and_then(|l| l.max.as_ref()), &generic.max),
+                    from: match own {
+                        Some(l) => l.from.clone(),
+                        None => generic.from.clone(),
+                    },
+                };
+                if own != Some(&merged) {
+                    row.limits = Some(merged);
+                    changed = true;
+                }
+            }
+        }
+        if changed {
+            std::borrow::Cow::Owned(items)
+        } else {
+            std::borrow::Cow::Borrowed(&def.items)
+        }
     }
 
     /// The row as the model keeps it, if it makes sense by itself.
@@ -462,7 +611,7 @@ impl Checker<'_> {
                 })
                 .collect(),
             requirement: row.requirement.map(|(r, _)| r),
-            abs_max: None,
+            limits: None,
             span: row.span,
         })
     }
@@ -482,13 +631,13 @@ impl Checker<'_> {
                 .map(|q| format!(" ({})", q.word()))
                 .unwrap_or_default();
             let limit = r
-                .abs_max
+                .limits
                 .as_ref()
-                .map(|l| format!(" with `abs_max {}`", l.text))
+                .map(|l| format!(" with `{}`", l.text))
                 .unwrap_or_default();
             format!("{} named `{}`{requirement}{limit}", article(r.kind), r.name)
         };
-        let limit = |r: &PinRow| r.abs_max.as_ref().map(|l| l.text.clone());
+        let limit = |r: &PinRow| r.limits.as_ref().map(|l| l.text.clone());
         let earlier = self
             .model
             .instance(part)
@@ -506,7 +655,7 @@ impl Checker<'_> {
         self.error(
             written.span,
             format!(
-                "`{}` is {} in `{here}` but {} in `{table}`; a pin has one kind, one datasheet name and one absolute maximum in every package",
+                "`{}` is {} in `{here}` but {} in `{table}`; a pin has one kind, one datasheet name and one set of absolute limits in every package",
                 written.pin.to_source(),
                 describe(row),
                 describe(&other),
@@ -558,4 +707,10 @@ pub(crate) fn article(kind: PinKind) -> &'static str {
         PinKind::TriState => "a tri_state output",
         PinKind::OpenDrain => "an open_drain output",
     }
+}
+
+/// Where a row's limits start: the first of its words.
+fn limits_span(limits: &ast::PinLimits) -> Span {
+    let first = limits.min.as_ref().or(limits.max.as_ref());
+    first.map_or(Span::new(0, 0), |l| l.span)
 }

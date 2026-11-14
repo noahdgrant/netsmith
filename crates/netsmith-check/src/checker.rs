@@ -62,6 +62,8 @@ pub(crate) struct ContractRow {
     pub requirement: Option<netsmith_lang::ast::Requirement>,
     /// The generic that stated it.
     pub generic: String,
+    /// The limits the row ends with (ADR 0126): every provider has them, or stricter ones.
+    pub limits: Option<netsmith_lang::ast::PinLimits>,
 }
 
 /// A `physical for` unit and the module (the physical file) that holds it.
@@ -201,6 +203,9 @@ pub(crate) struct Checker<'a> {
     /// Set while an end of a `~` or `~>` is resolved: a join reaches the pins of the IC that a
     /// module's user named for its type parameter (ADR 0120).
     pub(crate) joining: bool,
+    /// Set while the checker states the limits a pin row ends with as the narrowing of the
+    /// pin's `.abs_min` and `.abs_max`: a statement of them in source is refused (ADR 0126).
+    pub(crate) stating_row_limits: bool,
     /// Set while the `support` section of a part is read (ADR 0115).
     pub(crate) in_support: bool,
 }
@@ -264,6 +269,7 @@ impl<'a> Checker<'a> {
             attached: HashMap::new(),
             phys: None,
             narrowing: false,
+            stating_row_limits: false,
             joining: false,
             stated: HashSet::new(),
             unused_stmts: Vec::new(),
@@ -1147,6 +1153,9 @@ impl<'a> Checker<'a> {
             .collect();
         let provided: Vec<Rc<Definition>> = generics.iter().map(|(g, _)| g.clone()).collect();
         self.model.instances[id.0].marks = self.marks_of(def, &provided);
+        // The limits the generics put on pins that a provider's row leaves unlimited are the
+        // row's own (ADR 0126): the provider's table is read with them written in.
+        let provider_items = self.with_inherited_limits(def, &generics, kind);
         for (g, gref) in &generics {
             let items = self.generic_items(g, def, kind);
             let before = self.model.instance(id).children.len();
@@ -1167,7 +1176,7 @@ impl<'a> Checker<'a> {
         if kind == InstKind::Board {
             self.declare_default_environment(&def.items, def.span);
         }
-        self.declare(&def.items);
+        self.declare(&provider_items);
         self.apply_roles(id, &def.items);
         for (g, gref) in &generics {
             let items = self.generic_items(g, def, kind);
@@ -1175,7 +1184,7 @@ impl<'a> Checker<'a> {
             self.process(&items);
             self.leave_def(saved);
         }
-        self.process(&def.items);
+        self.process(&provider_items);
         if kind == InstKind::Part {
             self.finish_classes(id);
             self.finish_rules(id);

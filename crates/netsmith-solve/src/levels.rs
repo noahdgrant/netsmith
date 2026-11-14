@@ -19,10 +19,10 @@
 //! `Logic` line that drives it (between its reference rail's pins) and each rail or ground a
 //! resistor joins it to (ADR 0046). A level is the datasheet's guaranteed number, so `voh` and
 //! `vih` are minimums and `vol` and `vil` maximums, and they are ranges when the rail is. The
-//! checks that cannot be made are the ones listed above, and also a pin that is not the `.line` of
-//! a `Logic` and whose pin row states no `abs_max` (it has no ground; a row's limit names its
-//! ground, ADR 0124), a net that a driver which is not a `Logic` line drives, and a rail
-//! on another ground. The voltage of a net is not followed through anything but resistors, so a
+//! checks that cannot be made are the ones listed above, and also a net that a driver which is
+//! not a `Logic` line drives, and a rail on another ground. A limit is stated only in a pin row
+//! (ADR 0126), which names the pin's ground (ADR 0124): the `Logic`'s or the bus's, the row's
+//! `from`, or the one rail ground of the part's table. The voltage of a net is not followed through anything but resistors, so a
 //! net that a plain output drives is not evaluated, and a level check does not know the load (the
 //! part states the load of its numbers in its comment).
 //!
@@ -787,7 +787,7 @@ impl Run<'_> {
                             vec![owner],
                             Cause::PartModel,
                             format!(
-                                "not evaluated: the absolute maximum of `{path}`: it is not the `line` of a `Logic` or a pin of an interface with `levels`, and its pin row states no `abs_max`, so its ground is not known"
+                                "not evaluated: the absolute maximum of `{path}`: it is not the `line` of a `Logic` or a pin of an interface with `levels`, and its pin row names no ground, so its ground is not known"
                             ),
                         );
                         continue;

@@ -19,8 +19,9 @@ import std::sources::Rail
 /// After the rails are solved, the solver requires of each output on a net that its `voh`
 /// is always at least the `vih` of every input there, and its `vol` at most their `vil`; it
 /// says "not evaluated" when a level has no value or the two grounds are not the same net.
-/// The pin `.line` has `.abs_min` and `.abs_max`, which the solver checks against the
-/// worst-case voltage of its net in the same way.
+/// The pin `.line` has `.abs_min` and `.abs_max`, which a part states in the pin row of
+/// `.line` (`.a.line input "A" "2" abs_min -0.5V abs_max 6.5V`, ADR 0126) and the solver
+/// checks against the worst-case voltage of its net in the same way.
 ///
 /// `.swing` is the range of voltage the line can have, relative to the rail's `neg` (the
 /// line's ground, as the four levels are), for a part whose output swings to a supply that
@@ -92,7 +93,8 @@ interface Logic {
 /// supply: the four voltages of `Logic` and the rail they are relative to. A bus interface
 /// (`std::bus::Spi`, `Uart`, `I2c`, `Swd`) has one as `.levels`, so a part that has a bus states
 /// them once for the interface: `.spi.levels.reference ~ .vdd`, `.spi.levels.vih &= 0.7 *
-/// .vdd.voltage`, and an input's `.spi.sclk.abs_max &= .vdd.voltage + 0.3V`. The solver judges
+/// .vdd.voltage`, and an input's limit in its pin row (`.spi.sclk input "SCK" "1" abs_max
+/// .vdd.voltage + 0.3V`, ADR 0126). The solver judges
 /// a bus pin as it judges the `.line` of a `Logic`, with the numbers of ADR 0046; which lines
 /// a part drives and which it reads is what its pin table says. `~` between two bus interfaces
 /// joins no levels (each belongs to its own part, and the reference rail is that part's
