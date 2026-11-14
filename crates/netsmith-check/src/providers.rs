@@ -131,8 +131,9 @@ const BUILT_IN: [&str; 11] = [
 ];
 
 /// Whether a generic is made as a part: it has a `pins` table or a catalog. A generic with
-/// neither is made as a module.
-pub(crate) fn generic_is_part_shaped(def: &Definition) -> bool {
+/// neither is made as a module (a module-shaped generic, ADR 0068, such as `BuckConverter`):
+/// its providers are modules, and it is never a placed part itself.
+pub fn generic_is_part_shaped(def: &Definition) -> bool {
     def.items
         .iter()
         .any(|i| matches!(i, Item::Pins(_) | Item::Catalog(_)))
