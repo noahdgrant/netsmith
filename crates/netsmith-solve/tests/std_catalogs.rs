@@ -114,7 +114,7 @@ board Rated {
 ";
 
 /// A part of the project's that lists the `resistor` catalog, which is read by name, and offers
-/// the series of the standard resistor (`#[series(...)]`, ADR 0123), so the solver makes it the
+/// the series of the standard resistor (`#[series(...)]`, ADR 0125), so the solver makes it the
 /// same synthesized parts.
 const TAP: &str = "\
 #[series(E12, E24, E96)]

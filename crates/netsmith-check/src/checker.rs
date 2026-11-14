@@ -498,6 +498,7 @@ impl<'a> Checker<'a> {
         for import in &imports {
             self.apply_import(id, import);
         }
+        self.check_bank_kinds(id);
         let loader = self.loader;
         if let Some((physical_name, physical_text)) = loader.physical_of(name) {
             self.add_physical(id, physical_name, physical_text);
@@ -1964,17 +1965,14 @@ impl<'a> Checker<'a> {
         })
     }
 
-    /// What to add to "has no member `count`" for a `Capacitor` (ADR 0123): a capacitor is one
-    /// part, and several are a `CapacitorBank` or `N x Capacitor`. Empty for any other name or
-    /// part.
+    /// What to add to "has no member `count`" for a capacitor that is not a bank (ADR 0123, its
+    /// `#[kind(capacitor)]`, ADR 0125): a capacitor is one part, and several are a
+    /// `CapacitorBank` or `N x Capacitor`. Empty for any other name or part.
     fn count_hint(&self, inst: InstId, name: &str) -> &'static str {
+        let marks = &self.model.instance(inst).marks;
         if name == "count"
-            && self
-                .model
-                .instance(inst)
-                .standard
-                .iter()
-                .any(|g| g == "Capacitor")
+            && marks.declared_kind == Some(PartKind::Capacitor)
+            && marks.bank.is_none()
         {
             ": a `Capacitor` is one part; for a count the solver chooses write a `CapacitorBank` \
              (`.bulk: CapacitorBank { .count &= 1..8 }`), and for a number you know write \

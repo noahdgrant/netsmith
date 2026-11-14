@@ -11,7 +11,7 @@ pub mod rowcol;
 
 use netsmith_core::{Design, Net, Part, PartPin, PinKind, PinRef, PowerFlow};
 
-/// What the design stage records as the kind of a standard kind (ADR 0123): a fixture that
+/// What the design stage records as the kind of a standard kind (ADR 0125): a fixture that
 /// names a kind of the standard library gives it the same, so that the layout finds the
 /// connectors and the parts in series the way it does on a real board.
 pub fn declared_kind_of(kind: &str) -> Option<netsmith_core::PartKind> {

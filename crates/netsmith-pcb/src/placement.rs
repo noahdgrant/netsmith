@@ -795,7 +795,7 @@ pub fn short(v: f64) -> String {
 }
 
 /// Whether a part is a mechanical item that belongs in the corners of a fixed outline: a hole
-/// or a fiducial, by its kind (ADR 0123). A test point is on a net and is placed with the
+/// or a fiducial, by its kind (ADR 0125). A test point is on a net and is placed with the
 /// circuit.
 pub fn is_mechanical(declared_kind: Option<netsmith_core::PartKind>) -> bool {
     declared_kind.is_some_and(netsmith_core::PartKind::is_mechanical)

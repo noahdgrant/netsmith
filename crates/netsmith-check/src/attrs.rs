@@ -1,4 +1,4 @@
-//! Attributes (ADR 0123): `#[bank]`, `#[series(E24, E96)]`, `#[kind(resistor)]`,
+//! Attributes (ADR 0125): `#[bank]`, `#[series(E24, E96)]`, `#[kind(resistor)]`,
 //! `#[value("LED")]` and `#[assembly(hand)]` on a `generic` or a `part`, and `#[role(bias)]` on a member of one. They
 //! say what a definition or a member is to the checker, the solver and the tools, in a way a
 //! project's own definition can say too, so that no list in Rust names a definition of the
@@ -33,7 +33,7 @@ const MEMBER_ATTRIBUTES: [&str; 1] = ["role"];
 /// values (`netsmith-solve`, `Series`); the checker knows the names to refuse a misspelt one.
 pub const SERIES_NAMES: [&str; 3] = ["E12", "E24", "E96"];
 
-/// What a member is to the checker and the solver, whatever its name (ADR 0123, which
+/// What a member is to the checker and the solver, whatever its name (ADR 0125, which
 /// replaces the list of names of ADR 0105). A part opts in by declaring the member with the
 /// role; the member then gets its value from where the role says.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -110,12 +110,14 @@ impl MemberRole {
     }
 }
 
-/// What the attributes of a part's definition and of the generics it provides say (ADR 0123).
+/// What the attributes of a part's definition and of the generics it provides say (ADR 0125).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Marks {
-    /// `#[bank]`: a part of it stands for a number of identical parts in parallel, its
-    /// `#[role(count)]` member (ADR 0052).
-    pub bank: bool,
+    /// `#[bank]` or `#[bank(Capacitor)]`: a part of it stands for a number of identical parts in
+    /// parallel, its `#[role(count)]` member (ADR 0052). The name of the definition that
+    /// carries it (`CapacitorBank`), and the kind each of its parts is: the argument
+    /// (`Capacitor`), else that definition itself.
+    pub bank: Option<(String, String)>,
     /// `#[series(E24, E96)]`: the E-series its catalog's synthesized parts may take their
     /// values from (ADR 0047), by name, as written. Empty for none.
     pub series: Vec<String>,
@@ -229,8 +231,12 @@ impl Checker<'_> {
             }
             match name {
                 "bank" => {
-                    if let Some(a) = attr.args.first() {
-                        self.report(source, a.span(), "`#[bank]` takes no arguments");
+                    if !matches!(attr.args.as_slice(), [] | [AttrArg::Name(_)]) {
+                        self.report(
+                            source,
+                            attr.span,
+                            "`#[bank]` takes no argument, or the name of the generic or part each of its parts is: `#[bank(Capacitor)]`",
+                        );
                     }
                 }
                 "series" => self.check_series(source, def, attr),
@@ -444,6 +450,37 @@ impl Checker<'_> {
         }
     }
 
+    /// Refuse a `#[bank(K)]` of module `module` whose `K` is not a generic or a part the file
+    /// can name: the design makes parts of that kind. Run once the file's imports are read.
+    pub(crate) fn check_bank_kinds(&mut self, module: usize) {
+        let source = self.modules[module].source;
+        let defs = self.modules[module].defs.clone();
+        for def in &defs {
+            for attr in def.attrs.iter().filter(|a| a.name.name == "bank") {
+                let [AttrArg::Name(kind)] = attr.args.as_slice() else {
+                    continue;
+                };
+                let found = match self.modules[module].scope.get(&kind.name) {
+                    Some(crate::checker::Binding::Def(m, i)) => matches!(
+                        self.modules[*m].defs[*i].kind,
+                        DefKind::Generic | DefKind::Part
+                    ),
+                    _ => false,
+                };
+                if !found {
+                    self.report(
+                        source,
+                        kind.span,
+                        format!(
+                            "`#[bank({})]` names the kind each part of the bank is, and `{}` is not a generic or a part this file defines or imports",
+                            kind.name, kind.name
+                        ),
+                    );
+                }
+            }
+        }
+    }
+
     /// What the attributes of `def` and of the generics it provides say, for an instance of it.
     /// The definition's own come first; a kind or a value it does not state is the first
     /// provided generic's that does. Attributes the file pass refused are left out.
@@ -455,7 +492,13 @@ impl Checker<'_> {
             }
             for attr in &d.attrs {
                 match attr.name.name.as_str() {
-                    "bank" => marks.bank = true,
+                    "bank" if marks.bank.is_none() => {
+                        let member = match attr.args.as_slice() {
+                            [AttrArg::Name(i)] => i.name.clone(),
+                            _ => d.name.name.clone(),
+                        };
+                        marks.bank = Some((d.name.name.clone(), member));
+                    }
                     "series" if marks.series.is_empty() => {
                         marks.series = attr
                             .args

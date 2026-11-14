@@ -5812,11 +5812,11 @@ How the parts that have no row are made (ADR 0047: their packages, tolerances an
 
 ## Attributes
 
-An attribute says what a definition or a member is to the checker, the solver and the tools, in a way a project's own definition says it too (ADR 0123). It is written `#[name]` or `#[name(argument, ...)]` on its own line, after the `///` lines and before a `generic` or a `part`, or before a member of one. The standard library states its own with the same attributes, so a project's generic can do whatever a standard one does.
+An attribute says what a definition or a member is to the checker, the solver and the tools, in a way a project's own definition says it too (ADR 0125). It is written `#[name]` or `#[name(argument, ...)]` on its own line, after the `///` lines and before a `generic` or a `part`, or before a member of one. The standard library states its own with the same attributes, so a project's generic can do whatever a standard one does.
 
 | Attribute | On | What it says |
 |---|---|---|
-| `#[bank]` | a generic or a part | A part of it stands for a number of identical parts in parallel, its `#[role(count)]` member (see "A bank of capacitors in parallel"). |
+| `#[bank]`, `#[bank(Capacitor)]` | a generic or a part | A part of it stands for a number of identical parts in parallel, its `#[role(count)]` member (see "A bank of capacitors in parallel"). The argument names the generic or part each of them is in the design (`CapacitorBank`'s parts are `Capacitor`s); without it, each is of the bank's own kind. |
 | `#[series(E12, E24, E96)]` | a generic or a part with a `catalog` | The E-series the solver may make values from when no row serves (ADR 0047). The project's `series` picks one: itself when offered, else the finest offered series below it, so a capacitor that offers E12 and E24 gets E24 values in an E96 project. |
 | `#[kind(resistor)]` | a generic or a part | What the tools treat it as, its declared kind: `resistor`, `capacitor`, `inductor`, `ferrite_bead`, `fuse`, `led`, `diode`, `transistor`, `crystal`, `ic`, `connector`, `mounting_hole`, `plated_hole`, `fiducial` or `label`. The placer decouples with a `capacitor`, the schematic draws an `inductor`, a `ferrite_bead` and a `fuse` in series, the placer keeps a `connector` at the edge and a `mounting_hole` in a corner, and `unused` follows a `resistor`, a `fuse` and a `ferrite_bead` (ADR 0083). |
 | `#[value("LED")]` | a generic or a part | What a schematic shows as its value when the solver chose no row. Without it, the name of the kind. |
@@ -10911,9 +10911,9 @@ board Budget {
 
 ```text
 error: no `fuse` candidate satisfies `fuse`: the closest of the 8 that fit, 1206HV-3A fuse 3A 125V 1206 C21261120, fails because fuse.current must always be at most fuse.rated_current, but 100mA..1kA is not always below 3A (the currents on net `VFUSED`: -fuse.current (100mA..1kA) + load.current (100mA..1kA) add up to zero; net `VIN`: fuse.current (100mA..1kA) + input.current (-1kA..-100mA) add up to zero)
-    --> std/parts/passive.nsm:372:5
+    --> std/parts/passive.nsm:396:5
     |
-372 |     .current <= .rated_current
+396 |     .current <= .rated_current
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -10937,9 +10937,9 @@ board Saturates {
 
 ```text
 error: no `inductor` candidate satisfies `l`: the closest of the 1 that fit, MHCD322512A-2R2M-A8S 2.2uH 3.6A inductor 1210 C285758, fails because l.current must always be at most l.saturation_current, but 500A is not always below 3.6A
-    --> std/parts/passive.nsm:254:5
+    --> std/parts/passive.nsm:271:5
     |
-254 |     .current <= .saturation_current
+271 |     .current <= .saturation_current
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -11003,9 +11003,9 @@ board Arcs {
 
 ```text
 error: no `fuse` candidate satisfies `fuse`: the closest of the 8 that fit, 1206HV-3A fuse 3A 125V 1206 C21261120, fails because fuse.supply_peak must always be at most fuse.rated_voltage, but 5kV is not always below 125V
-    --> std/parts/passive.nsm:373:5
+    --> std/parts/passive.nsm:397:5
     |
-373 |     .supply_peak <= .rated_voltage
+397 |     .supply_peak <= .rated_voltage
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 

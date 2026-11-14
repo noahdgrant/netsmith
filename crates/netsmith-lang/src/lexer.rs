@@ -17,7 +17,7 @@ pub enum Tok {
     /// `[` and `]` around the index of one part of a group (`.decoupling[2]`, ADR 0119).
     LBracket,
     RBracket,
-    /// `#[`, which opens an attribute (`#[bank]`, `#[role(bias)]`, ADR 0123).
+    /// `#[`, which opens an attribute (`#[bank]`, `#[role(bias)]`, ADR 0125).
     HashBracket,
     Comma,
     Semi,

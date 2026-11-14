@@ -1658,7 +1658,7 @@ fn levels(part_nets: &[Vec<usize>], connector: &[bool], ground: &[bool]) -> Vec<
 // Columns
 
 /// Whether a part hangs in series on the wire it is in rather than across it: an inductor, a
-/// ferrite bead or a fuse by its kind (ADR 0123), whatever its own name.
+/// ferrite bead or a fuse by its kind (ADR 0125), whatever its own name.
 pub(crate) fn is_series_kind(part: &netsmith_core::Part) -> bool {
     part.declared_kind
         .is_some_and(netsmith_core::PartKind::hangs_in_series)

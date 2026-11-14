@@ -135,7 +135,7 @@ pub(crate) struct Context<'a> {
     pub pours: bool,
 }
 
-/// A connector is a part of the kind `connector` (ADR 0123), whatever its name.
+/// A connector is a part of the kind `connector` (ADR 0125), whatever its name.
 pub(crate) fn is_connector(part: &Placed) -> bool {
     part.declared_kind == Some(netsmith_core::PartKind::Connector)
 }

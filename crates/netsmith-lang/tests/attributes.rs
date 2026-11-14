@@ -1,4 +1,4 @@
-//! `#[name]` and `#[name(arg, ...)]` above a definition or a member declaration (ADR 0123).
+//! `#[name]` and `#[name(arg, ...)]` above a definition or a member declaration (ADR 0125).
 //! The parser takes any name; the checker knows the attributes.
 
 use netsmith_lang::ast::*;

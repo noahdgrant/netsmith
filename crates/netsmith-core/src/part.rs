@@ -13,7 +13,7 @@ pub struct Part {
     /// not listed. Empty for a part that provides no standard generic.
     pub provides: Vec<String>,
     /// What the tools treat the part as, from the `#[kind(...)]` of its definition or of a
-    /// generic it provides (ADR 0123). `None` for a part whose definitions state none.
+    /// generic it provides (ADR 0125). `None` for a part whose definitions state none.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub declared_kind: Option<PartKind>,
     /// What a schematic shows as the part's value: `300`.
@@ -32,14 +32,14 @@ pub struct Part {
 
 impl Part {
     /// Whether the part is a connector, the way in and out of a board: its kind is
-    /// `connector` (ADR 0123). It is the kind that says so, never the part's name or its
+    /// `connector` (ADR 0125). It is the kind that says so, never the part's name or its
     /// reference designator, which is a label that counts parts and may change (issue #166).
     pub fn is_connector(&self) -> bool {
         self.declared_kind == Some(PartKind::Connector)
     }
 }
 
-/// What the tools treat a part as: the word of a definition's `#[kind(...)]` (ADR 0123). A
+/// What the tools treat a part as: the word of a definition's `#[kind(...)]` (ADR 0125). A
 /// tool that draws, places or routes a kind of part in its own way reads this, never the
 /// name of the part's definition, so a project's own part is treated the same way when its
 /// definition, or a generic it provides, states the kind.

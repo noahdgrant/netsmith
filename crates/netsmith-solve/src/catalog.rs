@@ -436,7 +436,7 @@ impl Catalogs {
     /// generic parts of that series come after the rows (ADR 0047), so a value with a row is
     /// picked as before and only a value without one is new.
     ///
-    /// `offered` is the series the part's definition offers (its `#[series(...)]`, ADR 0123):
+    /// `offered` is the series the part's definition offers (its `#[series(...)]`, ADR 0125):
     /// the generic parts are of the project's series when it is offered, else of the finest
     /// offered series coarser than it ([`Series::within`]). A catalog of a project's own that
     /// has no file and whose part offers a series is the generic parts alone; a standard

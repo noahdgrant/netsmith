@@ -189,7 +189,7 @@ impl Parser {
     }
 
     /// `#[name]` and `#[name(arg, ...)]` lines, each on its own line or before the next on the
-    /// same one (ADR 0123). An argument is a name or a text.
+    /// same one (ADR 0125). An argument is a name or a text.
     fn attributes(&mut self) -> Res<Vec<Attribute>> {
         let mut attrs = Vec::new();
         while self.at(&Tok::HashBracket) {

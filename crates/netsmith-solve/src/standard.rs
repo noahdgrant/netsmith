@@ -1,5 +1,5 @@
 //! What the solver knows about the standard catalogs that have synthesized parts (ADR 0068
-//! stage 3, ADR 0123).
+//! stage 3, ADR 0125).
 //!
 //! The catalogs `resistor`, `capacitor`, `inductor` and `led` have, besides their rows, a
 //! provider with no supplier, the synthesized one of ADR 0047. How it makes its parts (the
@@ -9,7 +9,7 @@
 //! one of them in its `catalog` statement gets these parts, a project's own part too.
 //!
 //! Which E-series the values come from is the definition's, not Rust's: its
-//! `#[series(E12, E24, E96)]` (ADR 0123), with the project's `series` key choosing among them
+//! `#[series(E12, E24, E96)]` (ADR 0125), with the project's `series` key choosing among them
 //! ([`Series::within`]). A part whose definition offers no series is given no synthesized
 //! parts of a catalog that is made of a series; an LED has no value, and its catalog's parts
 //! need no series. A project's own catalog with a `#[series(...)]` gets the plain values of

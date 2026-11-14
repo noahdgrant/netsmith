@@ -1,4 +1,4 @@
-//! What the attributes of a project's own definition do in the design (ADR 0123): a `#[bank]`
+//! What the attributes of a project's own definition do in the design (ADR 0125): a `#[bank]`
 //! is one part for each of its count, and `#[kind(...)]` and `#[value(...)]` reach the
 //! design's parts. The parts are invented for these tests.
 

@@ -59,7 +59,7 @@ impl Solver<'_> {
                 .filter(|(f, _)| catalog.optional.contains(f))
                 .map(|(_, key)| key.clone())
                 .collect();
-            // The series its definition offers (`#[series(...)]`, ADR 0123); the checker has
+            // The series its definition offers (`#[series(...)]`, ADR 0125); the checker has
             // refused a name that is not one.
             let offered: Vec<Series> = self
                 .model

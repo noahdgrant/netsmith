@@ -145,7 +145,7 @@ impl PartCategory {
         }
     }
 
-    /// The category of a part of the kind `kind` (ADR 0123), designated `refdes`: by its
+    /// The category of a part of the kind `kind` (ADR 0125), designated `refdes`: by its
     /// kind when that names one, else by the letters of its designator.
     pub fn of(declared_kind: Option<PartKind>, refdes: &str) -> PartCategory {
         let by_kind = declared_kind.and_then(|c| match c {
@@ -308,7 +308,7 @@ pub struct Body {
     pub path: String,
     pub refdes: String,
     pub kind: String,
-    /// What the tools treat it as (ADR 0123).
+    /// What the tools treat it as (ADR 0125).
     pub declared_kind: Option<PartKind>,
     /// What sort of part it is, for colouring by kind.
     pub category: PartCategory,

@@ -125,7 +125,7 @@ pub struct Instance {
     pub placed_as: Option<String>,
     /// The definition of the generic a use was placed as.
     pub(crate) placed_def: Option<(usize, usize)>,
-    /// What the attributes of its definition and of the generics it provides say (ADR 0123).
+    /// What the attributes of its definition and of the generics it provides say (ADR 0125).
     pub marks: Marks,
 }
 
@@ -629,7 +629,7 @@ pub struct Field {
     /// Where `optional` marks the declaration (ADR 0074): the relations that read the member
     /// are skipped when nothing states it.
     pub optional: Option<OptionalMark>,
-    /// What the member is to the checker and the solver, from its `#[role(...)]` (ADR 0123).
+    /// What the member is to the checker and the solver, from its `#[role(...)]` (ADR 0125).
     pub roles: Vec<MemberRole>,
 }
 
@@ -1598,7 +1598,7 @@ impl Model {
     }
 
     /// The two ends of a series passive for `unused` (the pins of its `bridge`, ADR 0083): a part
-    /// of the kind `resistor`, `fuse` or `ferrite_bead` (ADR 0123), whatever its provider names
+    /// of the kind `resistor`, `fuse` or `ferrite_bead` (ADR 0125), whatever its provider names
     /// its pins. The narrowest reading; a capacitor, an inductor, a diode and a switch are not in
     /// it (a decision of the owner's). None for any other part.
     pub fn series_ends(&self, part: InstId) -> Option<(InstId, InstId)> {
@@ -1961,7 +1961,7 @@ impl Model {
         self.chain_field_of(part, MemberRole::LimitCurrent)
     }
 
-    /// The member of a part with a `bridge` that has `role` (ADR 0123).
+    /// The member of a part with a `bridge` that has `role` (ADR 0125).
     fn chain_field_of(&self, part: InstId, role: MemberRole) -> Option<FieldId> {
         if self.instance(part).kind != InstKind::Part {
             return None;

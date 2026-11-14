@@ -153,7 +153,7 @@ impl Series {
             .collect()
     }
 
-    /// The series a part whose definition offers `offered` (its `#[series(...)]`, ADR 0123) is
+    /// The series a part whose definition offers `offered` (its `#[series(...)]`, ADR 0125) is
     /// given values of, when the project states this one: this one if it is offered, else the
     /// finest offered series coarser than it (a project on E96 gives a capacitor that offers
     /// E12 and E24 its E24 values), else none.
@@ -340,7 +340,7 @@ pub enum Spec {
         forward_voltage: Need,
     },
     /// A value of an E-series in a catalog of a project's own generic that declares
-    /// `#[series(...)]` (ADR 0123): the first column of its `catalog` statement is the value,
+    /// `#[series(...)]` (ADR 0125): the first column of its `catalog` statement is the value,
     /// with the series' own tolerance, and every other column is what the design states.
     Series {
         series: Series,
@@ -625,7 +625,7 @@ pub fn candidates(
 const SERIES_DECADES: std::ops::RangeInclusive<i32> = -12..=9;
 
 /// The parts the solver makes for a catalog of a project's own generic that declares
-/// `#[series(...)]` (ADR 0123): each value of the series in [`SERIES_DECADES`], in its first
+/// `#[series(...)]` (ADR 0125): each value of the series in [`SERIES_DECADES`], in its first
 /// column, with the series' tolerance, and every other column left to what the design states.
 /// `None` when the first column is not a quantity.
 fn series_values(

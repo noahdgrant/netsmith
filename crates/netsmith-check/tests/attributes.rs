@@ -1,4 +1,4 @@
-//! Attributes on a generic, a part and a member (ADR 0123): what a project's own definition
+//! Attributes on a generic, a part and a member (ADR 0125): what a project's own definition
 //! gets from them, and the refusals of an unknown or misplaced one. The parts are invented
 //! for these tests.
 
@@ -41,7 +41,7 @@ fn a_project_generic_declared_bank_is_a_bank_with_its_count_role() {
     let c = ok(src);
     let m = &c.boards[0].model;
     let cell = instance(&c, "c");
-    assert!(m.is_bank(cell));
+    assert!(m.bank(cell).is_some());
     let count = m.bank_count(cell).expect("the bank has its count");
     assert_eq!(m.path_of_field(count), "c.cells");
 }
@@ -51,8 +51,19 @@ fn a_part_that_provides_a_bank_generic_is_a_bank_too() {
     let src = "#[bank]\ngeneric Cell {\n    #[role(count)]\n    .count: Number\n}\npart AcmeCell provides Cell {\n    .designator &= \"C\"\n    pins {\n        .a passive \"A\" \"1\"\n        .b passive \"B\" \"2\"\n    }\n}\nboard B {\n    .c: AcmeCell\n}\n";
     let c = ok(src);
     let m = &c.boards[0].model;
-    assert!(m.is_bank(instance(&c, "c")));
+    assert!(m.bank(instance(&c, "c")).is_some());
     assert!(m.bank_count(instance(&c, "c")).is_some());
+}
+
+#[test]
+fn a_bank_names_the_kind_its_parts_are() {
+    let c = ok(
+        "import std::parts::passive::{Capacitor, CapacitorBank}\nboard B {\n    .bulk: CapacitorBank\n}\n",
+    );
+    let m = &c.boards[0].model;
+    let bank = m.bank(instance(&c, "bulk")).expect("the standard bank is one");
+    assert_eq!((bank.generic.as_str(), bank.member.as_str()), ("CapacitorBank", "Capacitor"));
+    assert_eq!(m.path_of_field(bank.count), "bulk.count");
 }
 
 #[test]
@@ -63,7 +74,7 @@ fn without_bank_a_count_role_makes_no_bank() {
     );
     let c = ok(&src);
     let m = &c.boards[0].model;
-    assert!(!m.is_bank(instance(&c, "t")));
+    assert!(m.bank(instance(&c, "t")).is_none());
     assert!(m.bank_count(instance(&c, "t")).is_none());
 }
 
@@ -231,8 +242,16 @@ fn an_attribute_written_twice_or_with_wrong_arguments_is_refused() {
     );
     let message = refused(&part("#[bank(3)]", ""));
     assert!(message.contains("expected a name or a text"), "{message}");
-    let message = refused(&part("#[bank(x)]", ""));
-    assert!(message.contains("`#[bank]` takes no arguments"), "{message}");
+    let message = refused(&part("#[bank(\"x\")]", ""));
+    assert!(
+        message.contains("`#[bank]` takes no argument, or the name of the generic or part"),
+        "{message}"
+    );
+    let message = refused(&part("#[bank(Nothing)]", ""));
+    assert!(
+        message.contains("`#[bank(Nothing)]` names the kind each part of the bank is, and `Nothing` is not a generic or a part this file defines or imports"),
+        "{message}"
+    );
     let message = refused(&part("#[value(LED)]", ""));
     assert!(message.contains("`#[value(...)]` takes one text"), "{message}");
 }

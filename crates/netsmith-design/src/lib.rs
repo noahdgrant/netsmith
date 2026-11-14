@@ -201,12 +201,9 @@ impl Assembly {
 }
 
 /// What a part shows as its value when the solver did not choose one for it: the
-/// `#[value(...)]` of its definition (ADR 0123), else the name of its kind.
+/// `#[value(...)]` of its definition (ADR 0125), else the name of its kind.
 fn default_value(inst: &netsmith_check::Instance, kind: &str) -> String {
-    inst.marks
-        .value
-        .clone()
-        .unwrap_or_else(|| kind.to_string())
+    inst.marks.value.clone().unwrap_or_else(|| kind.to_string())
 }
 
 fn text_of(model: &Model, inst: InstId, field: &str) -> Option<String> {
@@ -1243,7 +1240,7 @@ fn design_model(name: &str, model: &Model, solution: &Solution) -> Result<Design
             Some(a) => (a, true),
             None => match project_default {
                 Some(a) => (a, true),
-                // The kind's own default, its `#[assembly(...)]` (ADR 0123): a header is
+                // The kind's own default, its `#[assembly(...)]` (ADR 0125): a header is
                 // through-hole and soldered by hand.
                 None => (
                     inst.marks
@@ -1636,7 +1633,7 @@ mod tests {
     }
 
     /// The layout and the placer find connectors by the kind `connector`, which the standard
-    /// `Connector` states (ADR 0123), not by a name or by the letters of a designator: every
+    /// `Connector` states (ADR 0125), not by a name or by the letters of a designator: every
     /// standard kind that has the letters `J` provides it, and no other does.
     #[test]
     fn every_standard_connector_kind_provides_the_connector_generic() {

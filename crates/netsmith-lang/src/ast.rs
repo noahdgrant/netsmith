@@ -72,7 +72,7 @@ pub struct Definition {
     /// `//!` lines at the start of the body.
     pub inner_docs: Vec<String>,
     /// `#[bank]`, `#[series(E24, E96)]`, ... above the definition, in the order written
-    /// (ADR 0123). The checker says which a definition may carry.
+    /// (ADR 0125). The checker says which a definition may carry.
     pub attrs: Vec<Attribute>,
     pub kind: DefKind,
     pub name: Ident,
@@ -89,7 +89,7 @@ pub struct Definition {
 }
 
 /// `#[series(E24, E96)]`: an attribute, which says what a definition or a member is to the
-/// tools, in a way a project's own definition can say too (ADR 0123). The parser takes any
+/// tools, in a way a project's own definition can say too (ADR 0125). The parser takes any
 /// name and arguments; the checker knows the attributes and refuses the rest.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Attribute {
@@ -563,7 +563,7 @@ pub struct Catalog {
 pub struct Decl {
     /// `///` lines above the declaration.
     pub docs: Vec<String>,
-    /// `#[role(bias)]`, ... above the declaration, in the order written (ADR 0123).
+    /// `#[role(bias)]`, ... above the declaration, in the order written (ADR 0125).
     pub attrs: Vec<Attribute>,
     pub name: Path,
     pub ty: TypePath,

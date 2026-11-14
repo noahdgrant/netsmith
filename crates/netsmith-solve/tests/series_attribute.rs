@@ -1,4 +1,4 @@
-//! `#[series(...)]` on a project's own generic (ADR 0123): the solver makes it the values of the
+//! `#[series(...)]` on a project's own generic (ADR 0125): the solver makes it the values of the
 //! series, and the project's `series` key chooses among the series it offers. All parts here
 //! are invented.
 

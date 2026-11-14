@@ -31,7 +31,7 @@ pub struct DecouplingPair {
     pub nets: [PairNet; 2],
 }
 
-/// A capacitor by its kind (ADR 0123), whatever its own name.
+/// A capacitor by its kind (ADR 0125), whatever its own name.
 fn is_capacitor(part: &Placed) -> bool {
     part.declared_kind == Some(netsmith_core::PartKind::Capacitor)
 }

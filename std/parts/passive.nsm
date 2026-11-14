@@ -151,6 +151,9 @@ generic Capacitor {
 /// (`?=`, as `Buck` did for its banks); a range (`.count &= 1..4`) limits the choice. It takes
 /// the fewest for which every check that mentions the part holds, together with the catalog row,
 /// trying one capacitor of every row before two of any.
+#[bank(Capacitor)]
+#[kind(capacitor)]
+#[series(E12, E24)]
 generic CapacitorBank {
     .designator &= "C"
 
@@ -164,9 +167,11 @@ generic CapacitorBank {
     /// The capacitance one capacitor keeps at `.bias`, as `Capacitor.effective_capacitance`.
     .effective_capacitance: Capacitance
     /// The DC voltage across the bank, in either direction.
+    #[role(bias)]
     .bias: Voltage
     .max_voltage: Voltage
     /// How many capacitors stand in parallel.
+    #[role(count)]
     .count: Number
     .count ?= 1..8
     /// The marked value of the whole bank: `.count` times `.capacitance`.

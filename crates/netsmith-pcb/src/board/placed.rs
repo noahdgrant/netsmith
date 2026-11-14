@@ -59,7 +59,7 @@ pub struct Placed {
     /// The generics the part's definition provides (ADR 0068), by name, as the design has
     /// them: a provider of `Capacitor` is a capacitor to the placer whatever its own name.
     pub provides: Vec<String>,
-    /// What the tools treat the part as, as the design has it (ADR 0123): a part of the kind
+    /// What the tools treat the part as, as the design has it (ADR 0125): a part of the kind
     /// `capacitor` is a capacitor to the placer whatever its own name.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub declared_kind: Option<netsmith_core::PartKind>,
