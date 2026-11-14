@@ -243,7 +243,6 @@ part Mcu32 {
     }
 
     .package: Package
-    .mpn: String
     catalog mcu by .mpn { .mpn, .package }
 }
 

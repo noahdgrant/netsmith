@@ -792,7 +792,6 @@ part Lt8641 provides BuckIc {
         .fb       input    "FB"         "20"
     }
 
-    .mpn: String
     .package: Package
     catalog lt8641 { .mpn, .package }
 

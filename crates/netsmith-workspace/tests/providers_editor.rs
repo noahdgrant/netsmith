@@ -16,7 +16,6 @@ generic CoaxReceptacle {
         .shield passive
     }
     .max_frequency: Frequency
-    .mpn: String
 }
 ";
 

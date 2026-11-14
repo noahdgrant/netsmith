@@ -75,7 +75,6 @@ part Cp2102n {
         .dtr      output         "DTR"           "28"
     }
 
-    .mpn: String
     .package: Package
     catalog cp2102n by .mpn { .mpn, .package }
 }

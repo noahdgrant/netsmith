@@ -235,7 +235,6 @@ part Zz9 {
         .vout.pos      power       "OUT"    "5"
     }
 
-    .mpn: String
     .package: Package
     catalog zz9 by .mpn { .mpn, .vout.voltage, .dropout, .max_current, .package }
 }

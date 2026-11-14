@@ -452,7 +452,6 @@ generic UsbCSinkReceptacle {
     }
 
     .package: Package
-    .mpn: String
 }
 
 /// The receptacle of a port that gives power to a USB Type-C device: a charger, or a host's
@@ -484,7 +483,6 @@ generic UsbCSourceReceptacle {
     }
 
     .package: Package
-    .mpn: String
 }
 
 /// The receptacle of a dual-role USB Type-C port, which takes power from the cable or gives it,
@@ -512,7 +510,6 @@ generic UsbCDualRoleReceptacle {
     }
 
     .package: Package
-    .mpn: String
 }
 
 /// The standard receptacle of `UsbCSink`: sixteen contacts for USB 2.0 in the footprint of the

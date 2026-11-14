@@ -24,6 +24,5 @@ part Bsc059n04ls6 provides NMosfet {
         .drain  passive "D"   "5"
     }
 
-    .mpn: String
     catalog bsc059n04ls6 by .mpn { .mpn, .package, .max_drain_source_voltage, .max_drain_current, .max_gate_source_voltage, .gate_threshold, .on_resistance, .on_resistance_vgs }
 }

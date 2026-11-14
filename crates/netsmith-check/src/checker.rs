@@ -1389,17 +1389,6 @@ impl<'a> Checker<'a> {
                 continue;
             }
             let name = d.name.segments[0].name.clone();
-            // A part's own `.mpn: String` (or `.lcsc: String`) is the member every part has
-            // (ADR 0122): the declaration says what is already so.
-            if HAND_PICK.contains(&name.as_str())
-                && d.body.is_none()
-                && !d.ty.of_member
-                && self.model.instance(cur).kind == InstKind::Part
-                && matches!(self.model.member(cur, &name), Some(Member::Field(f)) if self.model.field(f).kind == FieldKind::Text)
-                && matches!(self.resolve_type(&d.ty), Ty::Builtin(Builtin::Text))
-            {
-                continue;
-            }
             if self.model.member(cur, &name).is_some() {
                 let message = self.redeclared(cur, &name, d);
                 self.error(d.name.span, message);

@@ -39,7 +39,6 @@ part At24C128C {
         .vcc   power          "VCC"  "8"
     }
 
-    .mpn: String
     .package: Package
     catalog at24c128c by .mpn { .mpn, .package }
 }

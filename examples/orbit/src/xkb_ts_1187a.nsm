@@ -28,7 +28,6 @@ part XkbTs1187a {
     .current <= .rated_current
     bridge .a ~> .b
 
-    .mpn: String
     .package: Package
     catalog xkb_ts_1187a by .mpn { .mpn, .package, .rated_current, .rated_voltage }
 }

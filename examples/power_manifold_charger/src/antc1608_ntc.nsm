@@ -30,6 +30,5 @@ part Antc1608Ntc provides NtcThermistor {
     /// The permissible operating current at 25 C.
     .max_current: Current
 
-    .mpn: String
     catalog antc1608_ntc by .mpn { .mpn, .package, .resistance_25c, .cold_resistance, .hot_resistance, .b_constant_25_50, .b_constant_25_85, .rated_power, .max_current }
 }

@@ -14,11 +14,11 @@ The owner decided on 2026-11-13 (issue #629, epic #638) that a person who choose
 
 **Rejected.** *Keep the picks file with a format of its own*: a second hand-written file beside the source, read by the solver, for what one line in the source says; adding one IC already touches up to nine files. *`.lcsc` declared on each standard generic's `catalog` statement*: fifteen copies of one line, and a project's parts would need it too. *A hand pick that loses to the lock*: the lock would have to be deleted to make a person's choice take effect.
 
-**Cost.** Every part has two members more, including parts with no catalog. `.mpn` was already declared as `.mpn: String` by 32 parts and generics (std's `Lt8641` and connectors, the examples' ICs); the declaration is still accepted and is now redundant. `lcsc` is the name of one supplier's numbering in the language, because it is the column every standard catalog has. A `.mpn &=` that chose a row of a keyed catalog (`catalog mcu by .mpn`) is now a hand pick too, so it comes before that part's lock entry; the rows of every example are unchanged (`scripts/check-example-locks.sh`).
+**Cost.** Every part has two members more, including parts with no catalog. `.mpn` was already declared as `.mpn: String` by 32 parts and generics (std's `Lt8641` and connectors, the examples' ICs); the declaration says what is already so, and the checker refuses it (issue #696). `lcsc` is the name of one supplier's numbering in the language, because it is the column every standard catalog has. A `.mpn &=` that chose a row of a keyed catalog (`catalog mcu by .mpn`) is now a hand pick too, so it comes before that part's lock entry; the rows of every example are unchanged (`scripts/check-example-locks.sh`).
 
 **Owner decisions (2026-11-13).**
 
-- `.lcsc` and `.mpn` are members of every part, given by the checker, rather than declared in std. A part's own `.mpn: String` or `.lcsc: String` is to be refused and the 32 declarations removed (issue #696).
+- `.lcsc` and `.mpn` are members of every part, given by the checker, rather than declared in std. A part's own `.mpn: String` or `.lcsc: String` is refused, and the 32 declarations are removed (issue #696).
 - `.lcsc` narrowed on a part with no catalog is an error at the narrowing (`` `sw.lcsc` holds the part to a catalog row, but `sw` (`Switch`) picks from no catalog ``). `.mpn` on such a part is not, since it may choose a provider of a generic (ADR 0116's `.receptacle.mpn`).
 - A picks file left beside a source is an error with the narrowings to write, rather than a note or a silent skip.
 

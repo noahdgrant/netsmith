@@ -89,7 +89,6 @@ part Stm32F030C8 {
         .pb9     bidirectional  "PB9"            "46"  fn GPIO
     }
 
-    .mpn: String
     .package: Package
     catalog stm32f030c8 by .mpn { .mpn, .package }
 }

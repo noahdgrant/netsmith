@@ -51,7 +51,6 @@ part Tps63802 {
     .vref: Voltage
     .vref &= 0.5V +/- 1%
 
-    .mpn: String
     .package: Package
     catalog tps63802 by .mpn { .mpn, .package }
 }

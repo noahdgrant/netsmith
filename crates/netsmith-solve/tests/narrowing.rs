@@ -289,7 +289,6 @@ part Zbk2 provides BuckIc {
         .en            input   "EN"   "5"
         .rt            passive "RT"   "6"
     }
-    .mpn: String
     .package: Package
     catalog zbk2 { .mpn, .package }
 

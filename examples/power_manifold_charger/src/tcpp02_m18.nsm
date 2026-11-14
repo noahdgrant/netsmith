@@ -96,7 +96,6 @@ part Tcpp02M18 {
         .flgn     output         "FLGn"       "18"
     }
 
-    .mpn: String
     .package: Package
     catalog tcpp02_m18 by .mpn { .mpn, .package }
 }

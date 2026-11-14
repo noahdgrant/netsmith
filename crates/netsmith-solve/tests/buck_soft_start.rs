@@ -37,7 +37,6 @@ part Zbk2 provides BuckIc {{
         .sw.pos        power   "SW"   "3"
         .fb            input   "FB"   "4"
     }}
-    .mpn: String
     .package: Package
     catalog zbk2 {{ .mpn, .package }}
 }}

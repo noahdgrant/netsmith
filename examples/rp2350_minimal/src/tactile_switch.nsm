@@ -27,7 +27,6 @@ part TactileSwitch {
     .current <= .rated_current
     bridge .a ~> .b
 
-    .mpn: String
     .package: Package
     catalog tactile_switch by .mpn { .mpn, .package, .rated_current, .rated_voltage }
 }

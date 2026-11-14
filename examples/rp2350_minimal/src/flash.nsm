@@ -35,7 +35,6 @@ part W25Q128Jv {
         .vcc      power          "VCC"                "8"
     }
 
-    .mpn: String
     .package: Package
     catalog w25q128jv by .mpn { .mpn, .package }
 }
