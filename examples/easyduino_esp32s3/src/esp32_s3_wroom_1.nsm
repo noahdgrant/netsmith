@@ -96,7 +96,6 @@ part Esp32S3Wroom1 {
         .gpio1  bidirectional "IO1"    "39"
     }
 
-    .mpn: String
     .package: Package
     catalog esp32_s3_wroom_1 by .mpn { .mpn, .package }
 }

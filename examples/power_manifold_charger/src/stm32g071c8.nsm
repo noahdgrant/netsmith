@@ -105,7 +105,6 @@ part Stm32G071C8 {
         .pb9     bidirectional  "PB9"             "48"
     }
 
-    .mpn: String
     .package: Package
     catalog stm32g071c8 by .mpn { .mpn, .package }
 }

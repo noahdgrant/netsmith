@@ -17,7 +17,6 @@ generic CoaxReceptacle {
     .impedance: Resistance
     .impedance &= 50ohm
     .max_frequency: Frequency
-    .mpn: String
     .max_frequency >= 1GHz
 }
 ";
@@ -60,7 +59,6 @@ fn a_generic_holds_every_statement_of_a_part() {
             "pins",
             "decl",
             "constraint",
-            "decl",
             "decl",
             "constraint"
         ]

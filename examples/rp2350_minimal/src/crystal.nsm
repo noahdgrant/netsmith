@@ -37,7 +37,6 @@ part Abm8272T3 {
     .load_capacitance: Capacitance
     .esr_max: Resistance
 
-    .mpn: String
     .package: Package
     catalog abm8_272_t3 by .mpn { .mpn, .package, .frequency, .load_capacitance, .esr_max }
 }

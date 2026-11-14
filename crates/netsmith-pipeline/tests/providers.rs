@@ -17,7 +17,6 @@ generic CoaxReceptacle {
     .impedance: Resistance
     .impedance &= 50ohm
     .max_frequency: Frequency
-    .mpn: String
 }
 ";
 
@@ -958,8 +957,8 @@ fn when_no_provider_can_be_judged_the_first_stands_and_the_bound_is_named() {
 fn a_relation_of_the_generic_holds_for_each_provider_and_decides_the_pick() {
     let mut w = world(&[ALPHA, BETA]);
     let generic = GENERIC.replace(
-        "    .mpn: String\n",
-        "    .mpn: String\n    .max_frequency >= 2GHz\n",
+        "    .max_frequency: Frequency\n",
+        "    .max_frequency: Frequency\n    .max_frequency >= 2GHz\n",
     );
     w.loader.insert("src::rf", "src/rf.nsm", &generic);
     // The board states nothing: the generic's own bound fails the first provider.

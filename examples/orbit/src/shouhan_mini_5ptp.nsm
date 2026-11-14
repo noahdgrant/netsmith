@@ -25,7 +25,6 @@ part ShouHanMini5ptp provides Connector {
         .shield   passive       "SHIELD"   "6" "7" "8" "9"
     }
 
-    .mpn: String
     .package: Package
     catalog usb_mini_b by .mpn { .mpn, .package }
 }

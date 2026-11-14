@@ -1,5 +1,6 @@
 //! `.lcsc` and `.mpn` are members of every part (ADR 0122): a board narrows them to hold a part to
-//! a catalog row, and a part that declares `.mpn: String` declares what it already has.
+//! a catalog row, and a part that declares either declares what it already has: the checker
+//! refuses it (issue #696).
 
 use netsmith_check::{Domain, Loader, check};
 
@@ -39,27 +40,47 @@ fn every_part_has_lcsc_and_mpn_as_text() {
 }
 
 #[test]
-fn a_part_may_declare_them_as_text() {
-    for decl in [".mpn: String", ".lcsc: String"] {
-        let checked = check(
-            "main.nsm",
-            &source(decl, ".mpn &= \"ZZ-1\""),
-            &Loader::std(),
-        );
-        assert!(checked.is_ok(), "{decl}: {}", checked.render());
+fn a_part_may_not_declare_them_at_all() {
+    for name in ["mpn", "lcsc"] {
+        for ty in ["String", "Voltage"] {
+            let checked = check(
+                "main.nsm",
+                &source(&format!(".{name}: {ty}"), ""),
+                &Loader::std(),
+            );
+            assert!(
+                checked.render().contains(&format!(
+                    "`{name}` is a member every part has, as text: the number of the catalog row it is (ADR 0122); do not declare it, and narrow it with `.{name} &= \"...\"`"
+                )),
+                ".{name}: {ty}: {}",
+                checked.render()
+            );
+        }
     }
 }
 
 #[test]
-fn a_part_may_not_declare_them_as_anything_else() {
-    let checked = check("main.nsm", &source(".lcsc: Voltage", ""), &Loader::std());
+fn a_generic_may_not_declare_them_either() {
+    let checked = check(
+        "main.nsm",
+        "generic G {\n    pins { }\n    .mpn: String\n}\n",
+        &Loader::std(),
+    );
     assert!(
-        checked.render().contains(
-            "`lcsc` is a member every part has, as text: the number of the catalog row it is (ADR 0122); declare it as `.lcsc: String` or not at all, and narrow it with `.lcsc &= \"...\"`"
-        ),
+        checked.render().contains("`mpn` is a member every part has"),
         "{}",
         checked.render()
     );
+}
+
+#[test]
+fn narrowing_them_stays_fine() {
+    let checked = check(
+        "main.nsm",
+        &source("", ".mpn &= \"ZZ-1\"; .lcsc &= \"C1\""),
+        &Loader::std(),
+    );
+    assert!(checked.is_ok(), "{}", checked.render());
 }
 
 #[test]

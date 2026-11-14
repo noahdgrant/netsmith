@@ -92,7 +92,6 @@ part Rp2350A {
         .gnd          power         "GND"          "61"
     }
 
-    .mpn: String
     .package: Package
     catalog rp2350a by .mpn { .mpn, .package }
 }

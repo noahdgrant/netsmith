@@ -50,7 +50,6 @@ part SamtecTsw11807LD provides Connector {
         .p36 passive "36" "36"
     }
 
-    .mpn: String
     .package: Package
     catalog samtec_tsw_118 by .mpn { .mpn, .package }
 }

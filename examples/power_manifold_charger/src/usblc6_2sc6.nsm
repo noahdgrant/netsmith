@@ -34,7 +34,6 @@ part Usblc62sc6 {
         .vbus passive "VBUS"  "5"
     }
 
-    .mpn: String
     .package: Package
     catalog usblc6_2sc6 by .mpn { .mpn, .package }
 }

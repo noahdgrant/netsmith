@@ -32,7 +32,6 @@ part Ss8050 {
         .collector passive  "C"   "3"
     }
 
-    .mpn: String
     .package: Package
     catalog ss8050 by .mpn { .mpn, .package }
 }

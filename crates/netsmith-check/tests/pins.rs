@@ -544,15 +544,15 @@ fn a_pin_is_declared_once_by_its_table_and_not_set_by_pad() {
 #[test]
 fn a_catalog_may_name_the_column_that_picks_a_row() {
     let c = run(
-        "part P {\n    .mpn: String\n    .package: Package\n    catalog mcu by .mpn { .mpn, .package }\n}\n",
+        "part P {\n    .package: Package\n    catalog mcu by .mpn { .mpn, .package }\n}\n",
     );
     assert!(c.is_ok(), "{}", c.render());
     part_error(
-        "    .mpn: String\n    .package: Package\n    catalog mcu by .mpn { .package }",
+        "    .package: Package\n    catalog mcu by .mpn { .package }",
         "the key `.mpn` of a catalog must be one of its columns",
     );
     part_error(
-        "    .mpn: String\n    .r: Rail\n    catalog mcu by .r { .mpn }",
+        "    .r: Rail\n    catalog mcu by .r { .mpn }",
         "`.r` is not a plain value, so it cannot be a key",
     );
 }

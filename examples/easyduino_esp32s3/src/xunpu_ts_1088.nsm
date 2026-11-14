@@ -24,7 +24,6 @@ part XunpuTs1088 {
     .current <= .rated_current
     bridge .a ~> .b
 
-    .mpn: String
     .package: Package
     catalog xunpu_ts_1088 by .mpn { .mpn, .package, .rated_current, .rated_voltage }
 }

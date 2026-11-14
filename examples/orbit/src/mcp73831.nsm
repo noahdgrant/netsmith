@@ -64,7 +64,6 @@ part Mcp73831 {
     /// The regulated battery voltage of the order code, a column of the catalog row.
     .vreg: Voltage
 
-    .mpn: String
     .package: Package
     catalog mcp73831 by .mpn { .mpn, .package, .vreg }
 }

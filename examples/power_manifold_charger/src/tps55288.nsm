@@ -132,7 +132,6 @@ part Tps55288 {
         .sw1      passive        "SW1"        "23"
     }
 
-    .mpn: String
     .package: Package
     catalog tps55288 by .mpn { .mpn, .package }
 }

@@ -37,7 +37,6 @@ part HroK3_1270 {
     .current <= .rated_current
     bridge .a ~> .com
 
-    .mpn: String
     .package: Package
     catalog hro_k3_1270 by .mpn { .mpn, .package, .rated_current, .rated_voltage }
 }

@@ -47,7 +47,6 @@ part Tlv7022 {
         .supply.pos power  "VCC"   "8"
     }
 
-    .mpn: String
     .package: Package
     catalog tlv7022 by .mpn { .mpn, .package }
 }

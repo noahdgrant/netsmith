@@ -34,6 +34,5 @@ part Lp2985 provides LinearRegulator {
     // -40 C to 125 C (95 uA at 25 C), with the output unloaded.
     .quiescent_current &= 0A..125uA
 
-    .mpn: String
     catalog lp2985 by .mpn { .mpn, .package, .vout.voltage, .dropout, .max_current }
 }

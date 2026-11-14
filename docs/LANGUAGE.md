@@ -3064,7 +3064,6 @@ part Mcu32 {
     }
 
     .package: Package
-    .mpn: String
     catalog mcu by .mpn { .mpn, .package }
 }
 ```
@@ -5181,8 +5180,6 @@ generic CoaxReceptacle {
     .impedance &= 50ohm
     /// The highest frequency it is specified for.
     .max_frequency: Frequency
-    /// The manufacturer's number, so that a design can name the part.
-    .mpn: String
 }
 ```
 
@@ -5191,7 +5188,7 @@ Rules.
 - A generic holds values, pins and interfaces, and statements (`&=`, `?=`, `==`, `>=`, `<=`). It holds no parts and no modules, and no connections between parts.
 - Its `pins` table has rows of a kind and no datasheet name and no pads: `.signal passive required`. The kind is what every provider's row must say, because the kind decides what the checker asks of the board. `required` and `optional` hold for the provider's row too, and a provider may leave the word out.
 - A relation or a narrowing in a generic holds for every provider and for every use. The solver judges it with the values of whichever provider is tried.
-- `.mpn: String` is an ordinary value. A provider whose catalog lists `.mpn` as a column has the number in its row, and a board that states `.mpn &=` finds that provider.
+- A generic does not declare `.mpn` or `.lcsc`: every part has both, as text, and the checker refuses a declaration with an error. A provider whose catalog lists `.mpn` as a column has the number in its row, and a board that states `.mpn &=` finds that provider.
 - A doc comment (`///`) goes before a declaration, not before a statement; use `//` there.
 
 ### A provider

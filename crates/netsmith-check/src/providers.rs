@@ -10,9 +10,8 @@
 //! and no name and no pads (stored as a row with empty `pads`: every row of a part has at least
 //! one pad, so the two cannot be mistaken), or an empty table `pins { }`, which says "a part,
 //! whose pins are its own" and asks for no pin (`Connector`); narrowings, relations (`==`, `>=`, `<=`), defaults
-//! (`?=`), `bridge` and `.designator &= "J"`; and an optional `.mpn: String`, which a provider's
-//! catalog lists as a column (every part has `.mpn` and `.lcsc` anyway, ADR 0122, and a generic of
-//! modules has neither). A relation
+//! (`?=`), `bridge` and `.designator &= "J"`; and no `.mpn` or `.lcsc` declaration (every part has both, ADR 0122, and a
+//! provider's catalog lists them as columns; a generic of modules has neither). A relation
 //! or narrowing in a generic is a check that every provider meets and every user may rely on; the
 //! solver evaluates it on whichever provider is tried. All providers of one generic are parts or
 //! all are modules, and a generic is placed as the kind its providers have; the mixed case is an
@@ -389,7 +388,7 @@ impl Checker<'_> {
             && self.model.instance(owner).kind == InstKind::Part
         {
             return format!(
-                "`{name}` is a member every part has, as text: the number of the catalog row it is (ADR 0122); declare it as `.{name}: String` or not at all, and narrow it with `.{name} &= \"...\"`"
+                "`{name}` is a member every part has, as text: the number of the catalog row it is (ADR 0122); do not declare it, and narrow it with `.{name} &= \"...\"`"
             );
         }
         let Some(generic) = self.generic_members.get(&(owner, name.to_string())) else {

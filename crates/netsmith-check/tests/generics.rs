@@ -17,7 +17,6 @@ generic CoaxReceptacle {
     .impedance: Resistance
     .impedance &= 50ohm
     .max_frequency: Frequency
-    .mpn: String
 }
 ";
 
@@ -413,8 +412,8 @@ fn the_providers_own_checks_apply_to_a_use() {
 #[test]
 fn the_generics_relations_hold_for_each_provider() {
     let generic = RF.replace(
-        "    .mpn: String\n",
-        "    .mpn: String\n    .max_frequency >= 1GHz\n",
+        "    .max_frequency: Frequency\n",
+        "    .max_frequency: Frequency\n    .max_frequency >= 1GHz\n",
     );
     let c = run(BOARD, &[("src::rf", &generic), ("src::acme", ACME)]);
     ok(&c);

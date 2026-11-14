@@ -21,7 +21,6 @@ part JstSm03bSrssTb provides Connector {
         .mount    passive "MOUNT"   "4" "5"
     }
 
-    .mpn: String
     .package: Package
     catalog jst_srss by .mpn { .mpn, .package }
 }

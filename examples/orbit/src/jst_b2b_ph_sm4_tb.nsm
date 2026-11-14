@@ -19,7 +19,6 @@ part JstB2bPhSm4Tb provides Connector {
         .mount    passive "MP"      "MP"
     }
 
-    .mpn: String
     .package: Package
     catalog jst_ph_smt by .mpn { .mpn, .package }
 }
