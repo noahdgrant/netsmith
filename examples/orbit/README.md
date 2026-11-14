@@ -735,7 +735,7 @@ via on its layer and net.
 
 | Copper | Segments | Arcs | Vias | Track length |
 |---|---|---|---|---|
-| Automatic board | 777 | 181 | 85 | 1170.8 mm |
+| Automatic board | 803 | 209 | 94 | 1250.7 mm |
 | Reproduction | 299 | 0 | 49 | 885.4 mm |
 | ORBIT's | 299 | 0 | 49 | 885.4 mm |
 

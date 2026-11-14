@@ -492,7 +492,7 @@ via on its layer and net.
 
 | Copper | Segments | Arcs | Vias | Track length |
 |---|---|---|---|---|
-| Automatic board | 1265 | 357 | 166 | 1909.3 mm |
+| Automatic board | 1351 | 387 | 182 | 2012.5 mm |
 | Reproduction | 355 | 0 | 40 | 1090.1 mm |
 | Raspberry Pi's | 352 | 0 | 40 | 1086.0 mm |
 

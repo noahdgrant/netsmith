@@ -200,7 +200,7 @@ via on its layer and net.
 
 | Copper | Segments | Arcs | Vias | Track length |
 |---|---|---|---|---|
-| Automatic board | 685 | 151 | 98 | 902.7 mm |
+| Automatic board | 743 | 200 | 106 | 936.6 mm |
 | Reproduction | 703 | 0 | 137 | 1095.2 mm |
 | Easyduino's | 703 | 0 | 137 | 1095.2 mm |
 
