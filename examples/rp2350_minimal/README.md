@@ -488,12 +488,13 @@ They are kept out of `src/`, so `fab` here still makes the automatic board; `scr
 `reproduce::the_rp2350_reproduction_has_the_originals_copper` (`crates/netsmith-cli/tests/reproduce.rs`) imports again and requires the
 committed files, puts them into `src/` of a copy, runs `fab` with no KiCad and compares the copper
 of the board it writes with Raspberry Pi's, shape by shape, as sets, to 0.1 µm: every segment, arc and
-via on its layer and net.
+via on its layer and net, and every zone on its layers with its outline, holes and settings
+(issue #724).
 
 | Copper | Segments | Arcs | Vias | Track length |
 |---|---|---|---|---|
 | Automatic board | 1351 | 387 | 182 | 2012.5 mm |
-| Reproduction | 355 | 0 | 40 | 1090.1 mm |
+| Reproduction | 352 | 0 | 40 | 1086.0 mm |
 | Raspberry Pi's | 352 | 0 | 40 | 1086.0 mm |
 
 The automatic board's figures are of 2026-11-14 and change with the placer and the router;
@@ -501,20 +502,25 @@ The automatic board's figures are of 2026-11-14 and change with the placer and t
 three again, with what netsmith's design rules check finds on the reproduction.
 
 **What matches:** all 352 segments and 40 vias of Raspberry Pi's board, each on its layer and
-net. The import places every part where their board has it, locked (the physical file pins the
+net, and nothing more, and all 10 of its zones (VBUS, +3V3, +1V1, GND and VREG_LX on F.Cu, nine
+of them, and GND on B.Cu), each on its layer and net with its outline, holes, priority and
+settings: the routes file holds them, and the board file `fab` writes holds them as KiCad's zones,
+in place of the design's ground pour on B.Cu. The zones join their nets as their fill reaches, so
+the router draws nothing: VREG_LX, which their board joins by a zone alone, gets no track. The import places every part where their board has it, locked (the physical file pins the
 connectors and buttons at the same places); `regulator` (their U2) is turned by 90 degrees from
 their footprint, because netsmith's SOT-223 is drawn a quarter turn from theirs, so that its pads
 stand where theirs do.
 
 **What does not, and why:**
 
-- **Zones.** Their board joins +1V1, +3V3, GND and VBUS with copper zones on F.Cu (and VREG_LX,
-  the inductor's other end, with a zone alone). The design pours ground on B.Cu only, and a layer
-  pours one net, so the zones are not drawn: `fab` leaves 33 connections on those four nets and
-  writes the board marked INCOMPLETE. The 7 track ends and 10 vias that the check calls dangling
-  end in those zones.
-- **VREG_LX** has no track in their board, so the routes file has no record of it and the router
-  routes it: 3 segments (net `net-core_inductor.b`) that are not theirs.
+- **The RP2350's exposed pad.** Their footprint puts nine plated holes in the chip's ground pad
+  (pad 61, through-hole), which join it to the ground zone on B.Cu; netsmith's footprint has
+  none, so `fab` leaves 1 connection on `GND` (`mcu`'s pad 61, U2.61) and writes the board marked
+  INCOMPLETE, and the design rules check calls the pad unconnected (a footprint difference, issue
+  #728).
+- **The fill.** `fab`'s Gerbers hold netsmith's fill of the zones, which keeps every clearance
+  but removes no island and trims no sliver narrower than a zone's minimum width; KiCad's fill of
+  the board file (the zones are written unfilled) removes them, as their board's does.
 - **Courtyards.** `core_inductor` overlaps `avdd_filter` and `usb_dm_series` (their L1, R3 and
   R8), and `hole1` overlaps `v3v3_bulk[1]` (their MH1 and C19): the inductor's footprint is the
   datasheet's land pattern, its courtyard 3.5 x 2.1 mm against their 2.2 x 1.8 mm, and the hole's

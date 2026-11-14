@@ -142,6 +142,17 @@ vias = [
   { at = [13.75, 32.5], diameter = 0.8, drill = 0.4 },
 ]
 
+[[Orbit.nets.GND.zones]]
+layers = ["top", "bottom"]
+priority = 0
+clearance = 0.5
+min_width = 0.25
+pads = "thermal"
+thermal_gap = 0.5
+spoke_width = 0.5
+islands = "remove"
+outline = [[-1.5, -2.5], [-1.5, 52.5], [51.0, 52.5], [51.0, -2.5]]
+
 [Orbit.nets.VBUS]
 pads = "c47cb258f4cc49ba"
 lock = true

@@ -40,7 +40,7 @@ pub struct Target {
 pub enum Command {
     /// Write the routes file (and the layout file's places) from a KiCad board.
     #[command(
-        after_long_help = "Every track, arc and through via of F.Cu and B.Cu becomes the copper of the design's net its pads are on: a KiCad net is the design's net that most of its pads are on, with the parts paired by a port's parts file (`--parts`, default `reference/parts.toml` of the project when there is one; without one, by reference designator). A KiCad net on no pad of a part the design has keeps its name if the design has a net of that name, and is left out otherwise; copper on an inner layer is left out (netsmith draws tracks on the outer layers only); each is said. Zones are not imported: the design's pours are its own.\n\nEach part of the design that the KiCad board has is written to the layout file at the KiCad board's place, turn and face, locked (`source = \"import\"`), unless `--no-places`, or the physical file pins it (its requirement places it). Places are from the top left corner of the KiCad board's Edge.Cuts box. Then the board is placed again and each net's record takes its pads as they are. Every net is locked (the router adds nothing to it) unless `--unlocked`. The routes file is written over; the layout file keeps its seed, keepouts and the parts the import does not place."
+        after_long_help = "Every track, arc and through via of F.Cu and B.Cu becomes the copper of the design's net its pads are on: a KiCad net is the design's net that most of its pads are on, with the parts paired by a port's parts file (`--parts`, default `reference/parts.toml` of the project when there is one; without one, by reference designator). A KiCad net on no pad of a part the design has keeps its name if the design has a net of that name, and is left out otherwise; copper on an inner layer is left out (netsmith draws tracks on the outer layers only); each is said. Each zone of copper becomes a zone of its net's record, on its layers, with its outline, holes and the settings that change its copper (priority, clearance, minimum thickness, pad connection, thermal gap and spoke width, island removal); a layer with such a zone takes its zones from the routes file alone, and the design's pour or plane on it is not drawn. Rule areas, teardrops and hatched zones are left out and said.\n\nEach part of the design that the KiCad board has is written to the layout file at the KiCad board's place, turn and face, locked (`source = \"import\"`), unless `--no-places`, or the physical file pins it (its requirement places it). Places are from the top left corner of the KiCad board's Edge.Cuts box. Then the board is placed again and each net's record takes its pads as they are. Every net is locked (the router adds nothing to it) unless `--unlocked`. The routes file is written over; the layout file keeps its seed, keepouts and the parts the import does not place."
     )]
     Import(ImportArgs),
     /// Print the routes file's copper and what the router would still route.
@@ -351,6 +351,7 @@ fn import(args: &ImportArgs) -> ExitCode {
         Err(code) => return code,
     };
     let (tracks, arcs, vias) = import.counts();
+    let zones = import.zones();
     match &parts_file {
         Some(p) => println!("parts paired by {}", p.display()),
         None => println!("parts paired by reference designator"),
@@ -367,7 +368,7 @@ fn import(args: &ImportArgs) -> ExitCode {
         println!("note: {s}");
     }
     println!(
-        "wrote {}: {} net(s), {tracks} track(s), {arcs} arc(s), {vias} via(s){}",
+        "wrote {}: {} net(s), {tracks} track(s), {arcs} arc(s), {vias} via(s), {zones} zone(s){}",
         file.display(),
         import.nets.len(),
         if args.no_places {

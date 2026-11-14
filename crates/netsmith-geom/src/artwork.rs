@@ -218,8 +218,14 @@ pub struct Keepout {
 pub struct Zone {
     pub net: Option<String>,
     pub layers: Vec<String>,
-    /// The outline of each `(polygon` of the zone.
+    /// The zone's outline: its first `(polygon`, which KiCad writes as the outline (none for a
+    /// zone with no polygon).
     pub outlines: Vec<Vec<Pt>>,
+    /// Its holes: each further `(polygon`, which KiCad writes as a cutout of the outline.
+    pub holes: Vec<Vec<Pt>>,
+    /// Its priority (`(priority N)`, 0 when the file gives none): where two zones of one layer
+    /// overlap, the higher one has the area (see `crate::fill`).
+    pub priority: u32,
     /// The fill the file already holds: `(layer, polygon)`.
     pub filled: Vec<(String, Vec<Pt>)>,
     /// A rule area, not a pour.
@@ -661,7 +667,7 @@ impl<'a> Reader<'a> {
     }
 
     fn zone(&mut self, item: &Sexp) -> Result<(), ArtworkError> {
-        let layers: Vec<String> = match item.find("layers") {
+        let named: Vec<String> = match item.find("layers") {
             Some(l) => l
                 .items()
                 .iter()
@@ -671,6 +677,15 @@ impl<'a> Reader<'a> {
                 .collect(),
             None => vec![layer_of(item)],
         };
+        // KiCad's shorthands for copper layers: `F&B.Cu` is both outer ones, `*.Cu` every one.
+        let mut layers = Vec::new();
+        for l in named {
+            match l.as_str() {
+                "F&B.Cu" => layers.extend(["F.Cu".to_string(), "B.Cu".to_string()]),
+                "*.Cu" => layers.extend(self.copper.iter().cloned()),
+                _ => layers.push(l),
+            }
+        }
         let keepout = item.find("keepout").map(|k| {
             let not_allowed = |name: &str| {
                 k.find(name).and_then(|c| c.items().get(1)?.text()) == Some("not_allowed")
@@ -711,10 +726,15 @@ impl<'a> Reader<'a> {
                 layers.join(", ")
             )));
         }
-        let outlines = item
+        let mut outlines = item
             .find_all("polygon")
             .map(|p| points_of(p, "a zone's polygon"))
             .collect::<Result<Vec<_>, _>>()?;
+        let holes = if outlines.len() > 1 {
+            outlines.split_off(1)
+        } else {
+            Vec::new()
+        };
         let mut filled = Vec::new();
         for f in item.find_all("filled_polygon") {
             filled.push((layer_of(f), points_of(f, "a zone's filled polygon")?));
@@ -723,6 +743,8 @@ impl<'a> Reader<'a> {
             net: self.net_name(item),
             layers,
             outlines,
+            holes,
+            priority: child_num(item, "priority").map_or(0, |p| p.max(0.0) as u32),
             filled,
             keepout,
             owner: String::new(),
@@ -942,7 +964,7 @@ impl<'a> Reader<'a> {
                     self.zone(item)?;
                     if let Some(z) = self.out.zones.last_mut() {
                         z.owner = frame.part.clone();
-                        for o in &mut z.outlines {
+                        for o in z.outlines.iter_mut().chain(z.holes.iter_mut()) {
                             for p in o.iter_mut() {
                                 *p = frame.world(*p);
                             }

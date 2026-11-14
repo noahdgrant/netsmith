@@ -97,10 +97,15 @@ impl Board {
                 .planes
                 .iter()
                 .map(|pl| {
-                    (
-                        pl.layer.clone(),
-                        format!("{} is a plane on {}", pl.layer, pl.net),
-                    )
+                    let text = if self.zoned(&pl.layer) {
+                        format!(
+                            "{} has the routes file's zones instead of a plane on {}",
+                            pl.layer, pl.net
+                        )
+                    } else {
+                        format!("{} is a plane on {}", pl.layer, pl.net)
+                    };
+                    (pl.layer.clone(), text)
                 })
                 .chain(signals.iter().map(|l| {
                     (
@@ -113,11 +118,17 @@ impl Board {
             let list: Vec<String> = inner
                 .into_iter()
                 .map(|(_, text)| text)
-                .chain(
-                    self.pours
-                        .iter()
-                        .map(|po| format!("{} is a pour on {}", po.layer.name(), po.net)),
-                )
+                .chain(self.pours.iter().map(|po| {
+                    let layer = po.layer.name();
+                    if self.zoned(layer) {
+                        format!(
+                            "{layer} has the routes file's zones instead of a pour on {}",
+                            po.net
+                        )
+                    } else {
+                        format!("{layer} is a pour on {}", po.net)
+                    }
+                }))
                 .collect();
             format!(" ({})", list.join(", "))
         };

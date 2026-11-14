@@ -29,8 +29,14 @@
 //! lists no rule about spokes), and matching KiCad costs nothing, so the file is the same as the
 //! one the designer sees (`crates/netsmith-fab/tests/known_differences.rs`). A via of the
 //! pour's net is joined solid, as KiCad joins it. Fills the file already holds
-//! (`filled_polygon`) are used as they are, and two zones of different nets that overlap on one
-//! layer are refused. The pour's difference from KiCad's is islands and spokes: KiCad removes a
+//! (`filled_polygon`) are used as they are.
+//!
+//! **Several nets on a layer.** The zones of a layer that are all of one net and have no holes
+//! (netsmith's own pours and planes, one zone a layer) are drawn as above, together. A layer
+//! with zones of more than one net, or a zone with holes (a KiCad zone's further `(polygon`s,
+//! as an imported routes file has them), is filled zone by zone by KiCad's priority rule
+//! ([`pour_by_priority`]), with polygon arithmetic, and each piece written as a dark region with
+//! its holes cleared. The pour's difference from KiCad's is islands and spokes: KiCad removes a
 //! spoke or a patch of copper that no pad of the net reaches, and netsmith leaves it. It is copper
 //! outside every clearance, so it cannot make a short, but it is dead copper.
 
@@ -40,6 +46,7 @@ use crate::gbr::{Contour, Pen};
 use crate::geom::{self, Arc, Bounds, Pt};
 use crate::pads::{self, Outline};
 use crate::plot::Rules;
+use crate::polygons::{Area, Polygons, difference, grown, overlap};
 
 /// KiCad's clearance when a zone gives none.
 const DEFAULT_CLEARANCE: f64 = 0.2;
@@ -69,19 +76,10 @@ pub fn pour(
     if zones.is_empty() {
         return Ok(());
     }
-    for (i, a) in zones.iter().enumerate() {
-        for b in zones.iter().skip(i + 1) {
-            let (ba, bb) = (zone_bounds(a), zone_bounds(b));
-            if a.net != b.net && ba.zip(bb).is_some_and(|(x, y)| x.overlaps(&y)) {
-                return Err(format!(
-                    "two zones on {layer} overlap and are on different nets ({} and {}); netsmith fills one net's pour per area of a layer",
-                    a.net.as_deref().unwrap_or("no net"),
-                    b.net.as_deref().unwrap_or("no net")
-                ));
-            }
-        }
+    let one_net = zones.iter().all(|z| z.net == zones[0].net);
+    if !one_net || zones.iter().any(|z| !z.holes.is_empty()) {
+        return pour_by_priority(g, art, layer, edge, rules, &zones);
     }
-
     g.polarity(true);
     for z in &zones {
         for o in &z.outlines {
@@ -97,6 +95,16 @@ pub fn pour(
 
     g.polarity(false);
     keep_out_of_the_edge(g, art, edge, rules.edge_clearance, &zones);
+    keep_out_of_rule_areas(g, art, layer);
+    for z in &zones {
+        around_copper(g, art, layer, z, rules)?;
+    }
+    g.polarity(true);
+    Ok(())
+}
+
+/// Clears the rule areas of `layer` that forbid pours.
+fn keep_out_of_rule_areas(g: &mut dyn Pen, art: &Artwork, layer: &str) {
     for k in art.zones.iter().filter(|z| {
         z.keepout.as_ref().is_some_and(|k| k.copperpour) && z.layers.iter().any(|l| l == layer)
     }) {
@@ -106,8 +114,117 @@ pub fn pour(
             }
         }
     }
-    for z in &zones {
-        around_copper(g, art, layer, z, rules)?;
+}
+
+/// A zone's clearance, KiCad's default when it gives none.
+fn clearance_of(z: &Zone) -> f64 {
+    if z.clearance > 0.0 {
+        z.clearance
+    } else {
+        DEFAULT_CLEARANCE
+    }
+}
+
+/// A zone's outline less its holes.
+fn outline_area(z: &Zone) -> Vec<Area> {
+    let mut p = Polygons::new();
+    for o in z.outlines.iter().filter(|o| o.len() >= 3) {
+        p.region(Contour::polygon(o), None, &[]);
+    }
+    p.polarity(false);
+    for h in z.holes.iter().filter(|h| h.len() >= 3) {
+        p.region(Contour::polygon(h), None, &[]);
+    }
+    p.areas()
+}
+
+/// The fill of a layer whose zones are of more than one net, or have holes, by KiCad's rule for
+/// zones that overlap: each zone is filled as [`pour`] fills one alone (its outline less its
+/// holes, the edge band, the rule areas and its clearances round other nets' copper, with its
+/// thermal reliefs); then, from the highest priority down, a zone gives up the outline of every
+/// zone of its net with a higher priority (that zone's settings hold there), and the fill of
+/// every zone of another net with a higher priority, grown by the larger of the two zones'
+/// clearances. Of two zones of one net with the same priority, the one first in the file is
+/// taken as the higher; two zones of different nets with the same priority whose outlines
+/// overlap are refused, since which one has the area would be KiCad's choice by an identifier
+/// (the zone's uuid), not the design's. Each piece of copper is then written as one dark region
+/// with its holes cleared, the pieces with the largest box first, so that clearing a hole never
+/// takes copper drawn before it (a piece inside a hole is smaller than the piece round it).
+fn pour_by_priority(
+    g: &mut dyn Pen,
+    art: &Artwork,
+    layer: &str,
+    edge: &BoardEdge,
+    rules: &Rules,
+    zones: &[&Zone],
+) -> Result<(), String> {
+    let outlines: Vec<Vec<Area>> = zones.iter().map(|z| outline_area(z)).collect();
+    for (i, a) in zones.iter().enumerate() {
+        for (j, b) in zones.iter().enumerate().skip(i + 1) {
+            if a.net != b.net && a.priority == b.priority && overlap(&outlines[i], &outlines[j]) {
+                return Err(format!(
+                    "two zones on {layer} overlap, are on different nets ({} and {}) and have the same priority ({}); give the one that is to have the area the higher priority",
+                    a.net.as_deref().unwrap_or("no net"),
+                    b.net.as_deref().unwrap_or("no net"),
+                    a.priority
+                ));
+            }
+        }
+    }
+    // The highest priority first; of equal ones, the one first in the file.
+    let mut order: Vec<usize> = (0..zones.len()).collect();
+    order.sort_by(|&a, &b| zones[b].priority.cmp(&zones[a].priority).then(a.cmp(&b)));
+    let mut filled: Vec<(usize, Vec<Area>)> = Vec::new();
+    for &i in &order {
+        let z = zones[i];
+        let mut p = Polygons::new();
+        for o in z.outlines.iter().filter(|o| o.len() >= 3) {
+            p.region(Contour::polygon(o), None, &[]);
+        }
+        p.polarity(false);
+        for h in z.holes.iter().filter(|h| h.len() >= 3) {
+            p.region(Contour::polygon(h), None, &[]);
+        }
+        keep_out_of_the_edge(&mut p, art, edge, rules.edge_clearance, &[z]);
+        keep_out_of_rule_areas(&mut p, art, layer);
+        around_copper(&mut p, art, layer, z, rules)?;
+        let mut fill = p.areas();
+        let mut taken: Vec<Area> = Vec::new();
+        for (j, higher) in &filled {
+            let h = zones[*j];
+            if h.net == z.net {
+                taken.extend(outlines[*j].iter().cloned());
+            } else {
+                taken.extend(grown(higher, clearance_of(z).max(clearance_of(h))));
+            }
+        }
+        if !taken.is_empty() {
+            fill = difference(&fill, &taken);
+        }
+        filled.push((i, fill));
+    }
+    let mut pieces: Vec<(f64, &Zone, &Area)> = Vec::new();
+    for (i, areas) in &filled {
+        for a in areas {
+            let size = Bounds::of(a.outer.iter().copied())
+                .map_or(0.0, |b| (b.max.x - b.min.x) * (b.max.y - b.min.y));
+            pieces.push((size, zones[*i], a));
+        }
+    }
+    pieces.sort_by(|a, b| b.0.total_cmp(&a.0));
+    for (_, z, a) in pieces {
+        g.polarity(true);
+        g.region(
+            Contour::polygon(&a.outer),
+            Some("Conductor"),
+            &net_attr(z.net.as_deref()),
+        );
+        if !a.holes.is_empty() {
+            g.polarity(false);
+            for h in &a.holes {
+                g.region(Contour::polygon(h), None, &[]);
+            }
+        }
     }
     g.polarity(true);
     Ok(())
@@ -519,6 +636,75 @@ mod tests {
             err.contains("GND") && err.contains("SIG") && err.contains("F.Cu"),
             "{err}"
         );
+    }
+
+    /// The fill of F.Cu of `a` as polygons, by net.
+    fn fill_by_net(a: &Artwork) -> Vec<(Option<String>, Vec<Area>)> {
+        let edge = crate::edge::outline(a).unwrap();
+        let mut p = Polygons::new();
+        pour(&mut p, a, "F.Cu", &edge, &Rules::default()).unwrap();
+        p.areas_by_net()
+    }
+
+    fn size(areas: &[(Option<String>, Vec<Area>)], net: &str) -> f64 {
+        areas
+            .iter()
+            .filter(|(n, _)| n.as_deref() == Some(&format!("N,{net}")))
+            .flat_map(|(_, a)| a.iter().map(Area::size))
+            .sum()
+    }
+
+    #[test]
+    fn of_two_zones_of_different_nets_that_overlap_the_higher_priority_has_the_area() {
+        // SIG, priority 1, over the middle of the GND zone (priority 0): GND keeps 0.3 mm
+        // (the larger clearance) away from SIG's fill.
+        let a = art(
+            r#"(zone (net 2) (net_name "SIG") (layer "F.Cu") (priority 1) (connect_pads (clearance 0.2))
+              (polygon (pts (xy 5 5) (xy 15 5) (xy 15 15) (xy 5 15))))"#,
+        );
+        let by_net = fill_by_net(&a);
+        let sig = size(&by_net, "SIG");
+        let gnd = size(&by_net, "GND");
+        assert!((sig - 100.0).abs() < 1e-6, "{sig}");
+        // GND: the board less its edge band (19.6 - 2 * 0.2 on each side, 0.2 mm band from
+        // the edge at 0) less SIG's square grown by 0.3 with round corners.
+        let grown = 10.6 * 10.6 - (4.0 - std::f64::consts::PI) * 0.3 * 0.3;
+        let board = 19.6 * 19.6;
+        assert!((gnd - (board - grown)).abs() < 0.01, "{gnd}");
+        // The other way round, GND has the middle and SIG nothing.
+        let b = art(
+            r#"(zone (net 2) (net_name "SIG") (layer "F.Cu") (priority 0) (connect_pads (clearance 0.2))
+              (polygon (pts (xy 5 5) (xy 15 5) (xy 15 15) (xy 5 15))))"#,
+        );
+        let b = Artwork {
+            zones: b
+                .zones
+                .into_iter()
+                .map(|mut z| {
+                    if z.net.as_deref() == Some("GND") {
+                        z.priority = 2;
+                    }
+                    z
+                })
+                .collect(),
+            ..b
+        };
+        assert_eq!(size(&fill_by_net(&b), "SIG"), 0.0);
+    }
+
+    #[test]
+    fn a_zones_further_polygons_are_holes() {
+        let a = Artwork::parse(
+            r#"(kicad_pcb (layers (0 "F.Cu" signal)) (net 1 "GND")
+            (gr_rect (start 0 0) (end 20 20) (stroke (width 0.05) (type default)) (fill no) (layer "Edge.Cuts"))
+            (zone (net 1) (net_name "GND") (layer "F.Cu") (connect_pads (clearance 0.3))
+              (polygon (pts (xy 2 2) (xy 18 2) (xy 18 18) (xy 2 18)))
+              (polygon (pts (xy 5 5) (xy 10 5) (xy 10 10) (xy 5 10)))))"#,
+        )
+        .unwrap();
+        assert_eq!((a.zones[0].outlines.len(), a.zones[0].holes.len()), (1, 1));
+        let gnd = size(&fill_by_net(&a), "GND");
+        assert!((gnd - (256.0 - 25.0)).abs() < 1e-6, "{gnd}");
     }
 
     #[test]

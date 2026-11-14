@@ -430,6 +430,45 @@ pub fn copper(board: &Board) -> Result<Copper, CopperError> {
     })
 }
 
+/// The fill of one net on one layer that has zones of a routes file ([`zone_fills`]).
+#[derive(Debug, Clone, PartialEq)]
+pub struct ZoneFill {
+    /// KiCad's name of the layer: `F.Cu`, `In1.Cu`.
+    pub layer: String,
+    pub net: String,
+    /// Its pieces, as [`LayerCopper::pours`] has them.
+    pub areas: Vec<Area>,
+}
+
+/// The fill of each layer that has a zone of a routes file ([`Board::zoned`]), by net: what
+/// the Gerbers hold, filled by `netsmith_geom::fill` from the board file in memory (each zone
+/// less its clearances round other nets' copper, by KiCad's priority rule where zones overlap).
+/// Empty for a board with no such zone, at no cost.
+pub fn zone_fills(board: &Board) -> Result<Vec<ZoneFill>, CopperError> {
+    if board.zones.is_empty() {
+        return Ok(Vec::new());
+    }
+    let art = artwork(board)?;
+    let rules = netsmith_geom::plot_rules_of(Some(&crate::export::kicad_pro(board)));
+    let outline = edge_outline(&art).map_err(CopperError)?;
+    let mut fills = Vec::new();
+    for layer in art.copper.iter().filter(|l| board.zoned(l)) {
+        let mut pen = Polygons::new();
+        fill_pour(&mut pen, &art, layer, &outline, &rules).map_err(CopperError)?;
+        for (tag, pieces) in pen.areas_by_net() {
+            let Some(net) = net_of(&art, tag.as_deref()) else {
+                continue;
+            };
+            fills.push(ZoneFill {
+                layer: layer.clone(),
+                net,
+                areas: pieces.into_iter().map(area).collect(),
+            });
+        }
+    }
+    Ok(fills)
+}
+
 /// The net whose zone the filler drew with the attribute `tag` (`N,<net>`, escaped as a
 /// Gerber attribute is; `N,N/C` is no net).
 fn net_of(art: &Artwork, tag: Option<&str>) -> Option<String> {

@@ -1,12 +1,12 @@
 //! The import of a KiCad board's copper into a routes file (`netsmith routes import`, issue
-//! #599): its tracks, arcs and vias by the design's net names, and where its parts stand, for the
-//! layout file. The routes file itself is `netsmith_fabricate::routes`.
+//! #599): its tracks, arcs, vias and zones (issue #724) by the design's net names, and where its
+//! parts stand, for the layout file. The routes file itself is `netsmith_fabricate::routes`.
 
 use std::collections::BTreeMap;
 
-use crate::copper::Kind;
+use crate::copper::{Kind, ZoneKind};
 use netsmith_pcb::{
-    Board, BoardRoutes, LayoutFace as Face, NetRoutes, PartPlace, RouteTrack, RouteVia,
+    Board, BoardRoutes, LayoutFace as Face, NetRoutes, PartPlace, RouteTrack, RouteVia, RouteZone,
 };
 
 /// What [`import`] read from a KiCad board for one board of the design.
@@ -24,7 +24,8 @@ pub struct Import {
     /// the part by its path and says how and why.
     pub refitted: Vec<String>,
     /// What could not be taken, each a sentence: a net no pad maps, a net whose pads map to two of
-    /// the design's, a shape on an inner layer, a part the design does not have.
+    /// the design's, a shape on an inner layer, a part the design does not have, a rule area, a
+    /// teardrop, a hatched zone.
     pub skipped: Vec<String>,
 }
 
@@ -46,6 +47,11 @@ impl Import {
             );
         }
         BoardRoutes { nets }
+    }
+
+    /// How many zones were taken.
+    pub fn zones(&self) -> usize {
+        self.nets.values().map(|n| n.zones.len()).sum()
     }
 
     /// How many tracks, arcs and vias were taken.
@@ -378,7 +384,8 @@ fn fit(
 /// reference designator. Places are in mm from the outline's top left corner, which for the KiCad
 /// board is the top left of its Edge.Cuts' box, as the parity checker reads it. `lock` locks every
 /// net imported. Copper on an inner layer, and copper of a net that maps to none of the design's,
-/// is left out and said.
+/// is left out and said. Each zone of copper is taken whole (its layers, outline, holes and
+/// settings, [`RouteZone`]); a rule area, a teardrop and a hatched zone are left out and said.
 pub fn import(
     board: &Board,
     pcb: &str,
@@ -493,6 +500,78 @@ pub fn import(
             to: shape.to,
             lock: false,
         });
+    }
+    let (zones, unread) = crate::copper::read_zones(pcb, "the KiCad board")?;
+    out.skipped.extend(unread);
+    let (mut rule_areas, mut teardrops) = (0, 0);
+    for zone in zones {
+        match zone.kind {
+            ZoneKind::RuleArea => {
+                rule_areas += 1;
+                continue;
+            }
+            ZoneKind::Teardrop => {
+                teardrops += 1;
+                continue;
+            }
+            ZoneKind::Copper => {}
+        }
+        let theirs = &zone.net;
+        let Some((ours, _)) = map.get(theirs) else {
+            *lost.entry(theirs.clone()).or_default() += 1;
+            continue;
+        };
+        if zone.hatched {
+            out.skipped.push(format!(
+                "a zone of net `{theirs}` filled with hatching: netsmith fills solid zones only; left out"
+            ));
+            continue;
+        }
+        let words: Option<Vec<String>> = zone
+            .layers
+            .iter()
+            .map(|l| netsmith_pcb::routes_layer_word(l))
+            .collect();
+        let Some(layers) = words.filter(|w| !w.is_empty()) else {
+            out.skipped.push(format!(
+                "a zone of net `{theirs}` on {}: not a copper layer; left out",
+                zone.layers.join(", ")
+            ));
+            continue;
+        };
+        if zone.smoothed {
+            out.skipped.push(format!(
+                "a zone of net `{theirs}` has smoothed corners: taken with its outline's corners as they are"
+            ));
+        }
+        let record = out.nets.entry(ours.clone()).or_insert_with(|| NetRoutes {
+            lock,
+            ..NetRoutes::default()
+        });
+        record.zones.push(RouteZone {
+            layers,
+            priority: zone.priority,
+            clearance: zone.clearance,
+            min_width: zone.min_width,
+            pads: zone.pads,
+            thermal_gap: zone.thermal_gap,
+            spoke_width: zone.spoke_width,
+            islands: zone.islands,
+            island_min_area: zone.island_min_area,
+            outline: zone.outline,
+            holes: zone.holes,
+            lock: false,
+        });
+    }
+    if rule_areas > 0 {
+        out.skipped.push(format!(
+            "{rule_areas} rule area(s) of the KiCad board: left out (the design's keepouts are its own)"
+        ));
+    }
+    if teardrops > 0 {
+        out.skipped.push(format!(
+            "{teardrops} teardrop(s) of the KiCad board: left out (`fab` draws its own)"
+        ));
     }
     for (net, count) in lost {
         out.skipped.push(format!(

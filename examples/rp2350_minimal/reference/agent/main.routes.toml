@@ -37,6 +37,28 @@ vias = [
   { at = [28.1495, 29.6], diameter = 0.6, drill = 0.25 },
 ]
 
+[[Rp2350Minimal.nets."+1V1".zones]]
+layers = ["top"]
+priority = 3
+clearance = 0.15
+min_width = 0.2
+pads = "thermal"
+thermal_gap = 0.3
+spoke_width = 0.3
+islands = "remove"
+outline = [[28.2, 32.2], [23.8, 32.2], [23.8, 27.8], [28.2, 27.8]]
+
+[[Rp2350Minimal.nets."+1V1".zones]]
+layers = ["top"]
+priority = 6
+clearance = 0.15
+min_width = 0.15
+pads = "solid"
+thermal_gap = 0.5
+spoke_width = 0.5
+islands = "remove"
+outline = [[27.65, 24.7], [27.65, 23.325], [27.65, 21.95], [26.95, 21.95], [26.95, 23.8], [27.25, 24.1], [27.25, 24.25], [27.05, 24.25], [26.7, 23.9], [26.5, 23.9], [26.2, 24.2], [26.2, 24.8], [26.5, 25.1], [27.0, 25.1], [27.0, 24.9], [27.55, 24.9], [27.55, 24.7]]
+
 [Rp2350Minimal.nets."+3V3"]
 pads = "00a3baf55c97f374"
 lock = true
@@ -80,6 +102,43 @@ vias = [
   { at = [21.4, 3.3], diameter = 0.6, drill = 0.25 },
   { at = [30.6, 3.3], diameter = 0.6, drill = 0.25 },
 ]
+
+[[Rp2350Minimal.nets."+3V3".zones]]
+layers = ["top"]
+priority = 1
+clearance = 0.15
+min_width = 0.15
+pads = "solid"
+thermal_gap = 0.508
+spoke_width = 0.508
+islands = "remove"
+outline = [[28.8, 32.8], [23.2, 32.8], [23.2, 27.2], [28.8, 27.2]]
+
+[[Rp2350Minimal.nets."+3V3".zones]]
+layers = ["top"]
+priority = 0
+clearance = 0.15
+min_width = 0.15
+pads = "thermal"
+thermal_gap = 0.3
+spoke_width = 0.3
+islands = "remove"
+outline = [[51.5, 50.5], [0.5, 50.5], [0.5, 0.5], [51.5, 0.5]]
+holes = [
+  [[46.32, 4.0], [37.4, 12.89], [37.4, 22.415], [32.999649, 26.8], [31.1, 26.8], [30.5, 27.4], [28.9, 27.4], [28.8, 27.5], [28.8, 27.8], [18.8, 27.8], [12.4, 21.4], [12.4, 13.2], [5.8, 6.6], [4.41, 6.6], [4.41, 44.64], [5.68, 44.64], [13.32535, 36.99465], [22.599822, 37.000178], [24.0, 35.6], [24.2, 35.6], [24.2, 38.4], [40.0, 38.4], [46.32, 44.64], [47.59, 44.64], [47.59, 4.0]],
+  [[24.8, 6.2], [24.8, 15.2], [15.4, 15.2], [15.4, 12.6], [14.0, 12.6], [13.2, 13.4], [13.2, 20.4], [18.2, 25.4], [21.6, 25.4], [23.4, 27.2], [28.7, 27.2], [29.75, 26.15], [29.75, 21.15], [27.6, 21.15], [27.6, 6.2]],
+]
+
+[[Rp2350Minimal.nets."+3V3".zones]]
+layers = ["top"]
+priority = 7
+clearance = 0.15
+min_width = 0.15
+pads = "solid"
+thermal_gap = 0.5
+spoke_width = 0.5
+islands = "remove"
+outline = [[27.5, 27.3], [27.5, 25.95], [27.25, 25.7], [27.25, 25.15], [27.7, 25.15], [27.7, 27.3]]
 
 [Rp2350Minimal.nets.GND]
 pads = "af583534886848ed"
@@ -159,6 +218,39 @@ vias = [
   { at = [18.275, 5.075], diameter = 0.6, drill = 0.25 },
 ]
 
+[[Rp2350Minimal.nets.GND.zones]]
+layers = ["top"]
+priority = 1
+clearance = 0.2
+min_width = 0.2
+pads = "thermal"
+thermal_gap = 0.3
+spoke_width = 0.3
+islands = "remove"
+outline = [[23.2, 38.0], [28.8, 38.0], [29.2, 38.4], [29.2, 44.7], [22.8, 44.7], [22.8, 38.4]]
+
+[[Rp2350Minimal.nets.GND.zones]]
+layers = ["top"]
+priority = 4
+clearance = 0.15
+min_width = 0.15
+pads = "solid"
+thermal_gap = 0.5
+spoke_width = 0.5
+islands = "remove"
+outline = [[28.3, 26.85], [28.3, 25.15], [28.45, 25.15], [28.45, 24.7], [28.3, 24.7], [28.3, 24.2], [29.1, 24.2], [29.4, 24.5], [29.4, 25.25], [28.5, 26.15], [28.5, 26.85]]
+
+[[Rp2350Minimal.nets.GND.zones]]
+layers = ["bottom"]
+priority = 0
+clearance = 0.2
+min_width = 0.2
+pads = "thermal"
+thermal_gap = 0.3
+spoke_width = 0.3
+islands = "remove"
+outline = [[51.5, 50.5], [0.5, 50.5], [0.5, 0.5], [51.5, 0.5]]
+
 [Rp2350Minimal.nets.VBUS]
 pads = "04cd5344dd2e7314"
 lock = true
@@ -166,6 +258,17 @@ tracks = [
   { layer = "top", width = 0.4, from = [27.3, 5.5], to = [28.1, 6.3] },
   { layer = "top", width = 0.4, from = [27.3, 4.525], to = [27.3, 5.5] },
 ]
+
+[[Rp2350Minimal.nets.VBUS.zones]]
+layers = ["top"]
+priority = 3
+clearance = 0.2
+min_width = 0.25
+pads = "thermal"
+thermal_gap = 0.508
+spoke_width = 0.508
+islands = "remove"
+outline = [[34.0, 8.0], [32.1, 8.0], [32.1, 11.6], [27.6, 11.6], [27.6, 5.8], [30.3, 5.8], [30.3, 5.0], [34.0, 5.0]]
 
 [Rp2350Minimal.nets."net-avdd_filter.b"]
 pads = "238630d29a0711c2"
@@ -199,6 +302,21 @@ tracks = [
   { layer = "top", width = 0.15, from = [13.6, 13.49], to = [14.39, 12.7] },
   { layer = "top", width = 0.15, from = [14.39, 12.7], to = [14.39, 11.3] },
 ]
+
+[Rp2350Minimal.nets."net-core_inductor.b"]
+pads = "b888e2e7b52bb389"
+lock = true
+
+[[Rp2350Minimal.nets."net-core_inductor.b".zones]]
+layers = ["top"]
+priority = 5
+clearance = 0.15
+min_width = 0.15
+pads = "solid"
+thermal_gap = 0.5
+spoke_width = 0.5
+islands = "remove"
+outline = [[27.9, 26.85], [27.9, 26.05], [27.85, 26.0], [27.85, 23.85], [28.35, 23.35], [28.35, 21.95], [29.05, 21.95], [29.05, 23.65], [28.75, 23.95], [28.3, 23.95], [28.15, 24.1], [28.15, 26.0], [28.1, 26.05], [28.1, 26.85]]
 
 [Rp2350Minimal.nets."net-debug.p1"]
 pads = "008245048fff8841"

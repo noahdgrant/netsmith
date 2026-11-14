@@ -45,6 +45,61 @@ pub struct BoardPour {
     pub stitch_pitch: Option<f64>,
 }
 
+/// How a zone joins the pads of its net: KiCad's `connect_pads` (`yes`, nothing, `no`,
+/// `thru_hole_only`).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ZonePads {
+    /// Solid copper up to the pad.
+    Solid,
+    /// A thermal relief: a gap round the pad, crossed by four spokes.
+    #[default]
+    Thermal,
+    /// Not joined: the pad keeps the zone's clearance, as another net's would.
+    None,
+    /// A thermal relief round a through-hole pad, solid copper up to a surface pad.
+    ThruHoleOnly,
+}
+
+/// Which pieces of a zone's fill that join nothing KiCad removes: KiCad's
+/// `island_removal_mode` 0, 1 and 2. netsmith's own fill removes none (`netsmith_geom::fill`).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ZoneIslands {
+    #[default]
+    Remove,
+    Keep,
+    /// Removes those smaller than [`BoardZone::island_min_area`].
+    RemoveBelow,
+}
+
+/// A zone a routes file fixed ([`crate::routes`]): copper filled inside `outline`, less its
+/// holes, on each of `layers`, joined to `net`, with the settings of KiCad's zone that change
+/// the copper. A layer that has one takes its zones from the routes file alone: the design's
+/// pour or plane on it is not drawn ([`Board::zoned`]).
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct BoardZone {
+    pub net: String,
+    /// KiCad's names of its copper layers: `F.Cu`, `In1.Cu`, `B.Cu`.
+    pub layers: Vec<String>,
+    /// On the sheet, as the board's other copper.
+    pub outline: Vec<Pt>,
+    pub holes: Vec<Vec<Pt>>,
+    /// Where two zones of a layer overlap, the higher one has the area (KiCad's rule).
+    pub priority: u32,
+    /// The space it keeps from copper of other nets, in mm.
+    pub clearance: f64,
+    /// KiCad's `min_thickness`: the narrowest copper KiCad's fill keeps, in mm.
+    pub min_width: f64,
+    pub pads: ZonePads,
+    /// The gap of a thermal relief and the width of its spokes, in mm.
+    pub thermal_gap: f64,
+    pub spoke_width: f64,
+    pub islands: ZoneIslands,
+    /// For [`ZoneIslands::RemoveBelow`], in mm².
+    pub island_min_area: Option<f64>,
+}
+
 /// An area where tracks, vias, copper or parts are not allowed (ADR 0029).
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct BoardKeepout {

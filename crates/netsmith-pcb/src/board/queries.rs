@@ -3,6 +3,15 @@
 use super::*;
 
 impl Board {
+    /// Whether a routes file fixed a zone on `layer` (KiCad's name, `F.Cu`): then the layer's
+    /// zones are the file's alone, and the design's pour or plane on it is not drawn, nor
+    /// counted as joining its net.
+    pub fn zoned(&self, layer: &str) -> bool {
+        self.zones
+            .iter()
+            .any(|z| z.layers.iter().any(|l| l == layer))
+    }
+
     pub fn part(&self, refdes: &str) -> Option<&Placed> {
         self.parts.iter().find(|p| p.refdes == refdes)
     }

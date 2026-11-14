@@ -591,6 +591,7 @@ pub struct ShownNet {
     pub lock: bool,
     pub tracks: Vec<RouteTrack>,
     pub vias: Vec<RouteVia>,
+    pub zones: Vec<netsmith_pcb::RouteZone>,
 }
 
 /// [`Shown`] of `board` (placed, with no routes) and `routes`.
@@ -607,6 +608,7 @@ pub fn show(board: &Board, routes: &Routes) -> Result<Shown, String> {
                     lock: r.lock,
                     tracks: r.tracks.clone(),
                     vias: r.vias.clone(),
+                    zones: r.zones.clone(),
                 })
                 .collect()
         })
@@ -638,11 +640,16 @@ impl Shown {
         for n in &self.nets {
             let _ = writeln!(
                 s,
-                "net {}{}: {} track(s), {} via(s)",
+                "net {}{}: {} track(s), {} via(s){}",
                 n.net,
                 if n.lock { " (locked)" } else { "" },
                 n.tracks.len(),
-                n.vias.len()
+                n.vias.len(),
+                if n.zones.is_empty() {
+                    String::new()
+                } else {
+                    format!(", {} zone(s)", n.zones.len())
+                }
             );
             for (i, t) in n.tracks.iter().enumerate() {
                 let layer = if t.layer == Face::Top {
@@ -673,6 +680,19 @@ impl Shown {
                     v.diameter,
                     v.drill,
                     if v.lock { " (locked)" } else { "" }
+                );
+            }
+            for (i, z) in n.zones.iter().enumerate() {
+                let _ = writeln!(
+                    s,
+                    "  zone {}: {}, priority {}, {} corners from {}, {} hole(s){}",
+                    i + 1,
+                    z.layers.join(" and "),
+                    z.priority,
+                    z.outline.len(),
+                    pt(z.outline.first().copied().unwrap_or_default()),
+                    z.holes.len(),
+                    if z.lock { " (locked)" } else { "" }
                 );
             }
         }

@@ -16,10 +16,20 @@
 //! meet, and a pour joins the pads, tracks and vias of its net on its layer, as the design rules
 //! check takes it (its fill is not computed). Other nets are not: the router routes them to
 //! every pad as before.
+//!
+//! A zone of a routes file ([`crate::BoardZone`]) joins what of its net its fill reaches, on
+//! every net, locked or not: the fill is computed ([`crate::zone_fills`], the Gerbers' fill, each
+//! zone less its clearances round other nets' copper), and each piece of it joins the pads of
+//! its net with copper on its layer whose centre it covers or whose box holds a corner of it
+//! (a thermal relief's spokes reach the pad's centre; a pad the zone does not join keeps its
+//! clearance), the vias whose centre it covers, and the tracks of its layer that run into it. On
+//! a layer with such a zone, the design's pour or plane is not drawn, and does not join its net.
 
+use crate::board::rect_distance;
 use crate::board::{
     Board, BoardNet, BoardPour, CopperLayer, FixedCopper, PadRef, Placed, Plane, Track, Via,
 };
+use crate::copper::{Area, ZoneFill};
 use crate::geometry::{Pt, Rect};
 
 /// Copper this close to a pad, or to other copper, touches it.
@@ -200,6 +210,13 @@ fn segment_meets_box(a: Pt, b: Pt, r: &Rect) -> bool {
 impl Ratsnest {
     /// The ratsnest of a board as it is placed and routed. Nets are taken in board order.
     pub fn of(board: &Board) -> Ratsnest {
+        // A fill that cannot be made (the Gerbers say why) joins nothing.
+        let fills = crate::copper::zone_fills(board).unwrap_or_default();
+        let zoned: Vec<&str> = board
+            .zones
+            .iter()
+            .flat_map(|z| z.layers.iter().map(String::as_str))
+            .collect();
         Self::from_parts(
             &board.parts,
             &board.nets,
@@ -207,6 +224,7 @@ impl Ratsnest {
             &board.tracks,
             &board.vias,
             &board.fixed,
+            (&zoned, &fills),
         )
     }
 
@@ -217,25 +235,34 @@ impl Ratsnest {
         tracks: &[Track],
         vias: &[Via],
         fixed: &FixedCopper,
+        (zoned, fills): (&[&str], &[ZoneFill]),
     ) -> Ratsnest {
         let mut lines = Vec::new();
         for net in nets {
             let nodes = nodes_of(parts, net);
             let tracks: Vec<&Track> = tracks.iter().filter(|t| t.net == net.name).collect();
             let vias: Vec<&Via> = vias.iter().filter(|v| v.net == net.name).collect();
-            let plane = planes.iter().any(|p| p.net == net.name);
+            let plane = planes
+                .iter()
+                .any(|p| p.net == net.name && !zoned.contains(&p.layer.as_str()));
             // A locked net's pours join it (the module's header).
             let poured: Vec<CopperLayer> = if fixed.is_locked(&net.name) {
                 pours
                     .iter()
-                    .filter(|p| p.net == net.name)
+                    .filter(|p| p.net == net.name && !zoned.contains(&p.layer.name()))
                     .map(|p| p.layer)
                     .collect()
             } else {
                 Vec::new()
             };
+            let pieces: Vec<Piece> = fills
+                .iter()
+                .filter(|f| f.net == net.name)
+                .flat_map(|f| f.areas.iter().filter_map(|a| Piece::of(&f.layer, a)))
+                .collect();
+            let joined = join_pieces(&nodes, &tracks, &vias, &pieces);
             lines.extend(spanning_tree(
-                &net.name, &nodes, &tracks, &vias, plane, &poured,
+                &net.name, &nodes, &tracks, &vias, plane, &poured, &joined,
             ));
         }
         Ratsnest { lines }
@@ -258,8 +285,138 @@ impl Ratsnest {
     }
 }
 
-/// Kruskal's algorithm, starting with everything the routed copper already joins. Of equal
-/// lines, the one between the pads listed first wins.
+/// A piece of a zone's fill on a layer, with its box.
+struct Piece<'a> {
+    /// `Some` on an outer layer; `None` on an inner one, which only through-hole pads and vias
+    /// reach.
+    layer: Option<CopperLayer>,
+    area: &'a Area,
+    bounds: Rect,
+}
+
+impl<'a> Piece<'a> {
+    fn of(layer: &str, area: &'a Area) -> Option<Piece<'a>> {
+        let first = *area.outer.first()?;
+        let mut bounds = Rect::new(first, first);
+        for p in &area.outer {
+            bounds.min.x = bounds.min.x.min(p.x);
+            bounds.min.y = bounds.min.y.min(p.y);
+            bounds.max.x = bounds.max.x.max(p.x);
+            bounds.max.y = bounds.max.y.max(p.y);
+        }
+        Some(Piece {
+            layer: match layer {
+                "F.Cu" => Some(CopperLayer::Front),
+                "B.Cu" => Some(CopperLayer::Back),
+                _ => None,
+            },
+            area,
+            bounds: bounds.expanded(TOUCH),
+        })
+    }
+
+    fn covers(&self, p: Pt) -> bool {
+        self.bounds.contains(&Rect::new(p, p))
+            && inside(&self.area.outer, p)
+            && !self.area.holes.iter().any(|h| inside(h, p))
+    }
+
+    /// Whether a track of its layer runs into it: a point of its centre line is in it, or the
+    /// centre line crosses one of its rings.
+    fn meets(&self, track: &Track) -> bool {
+        let line = track.centre_line();
+        line.iter().any(|&p| self.covers(p))
+            || std::iter::once(&self.area.outer)
+                .chain(&self.area.holes)
+                .any(|ring| {
+                    (0..ring.len()).any(|i| {
+                        let (a, b) = (ring[i], ring[(i + 1) % ring.len()]);
+                        line.windows(2).any(|w| crosses(w[0], w[1], a, b))
+                    })
+                })
+    }
+}
+
+/// Whether `p` is inside the ring (the even-odd rule).
+fn inside(ring: &[Pt], p: Pt) -> bool {
+    let mut odd = false;
+    let mut j = ring.len().wrapping_sub(1);
+    for i in 0..ring.len() {
+        let (a, b) = (ring[i], ring[j]);
+        if (a.y > p.y) != (b.y > p.y) && p.x < (b.x - a.x) * (p.y - a.y) / (b.y - a.y) + a.x {
+            odd = !odd;
+        }
+        j = i;
+    }
+    odd
+}
+
+/// What the pieces of a net's zones join, as pairs of items in [`spanning_tree`]'s numbering
+/// (pads, then tracks, then vias): for each piece, each item it reaches with the first one.
+fn join_pieces(
+    nodes: &[Node],
+    tracks: &[&Track],
+    vias: &[&Via],
+    pieces: &[Piece],
+) -> Vec<(usize, usize)> {
+    let (n, t) = (nodes.len(), tracks.len());
+    let mut pairs = Vec::new();
+    for piece in pieces {
+        let mut reached: Vec<usize> = Vec::new();
+        for (ni, node) in nodes.iter().enumerate() {
+            let on = match piece.layer {
+                Some(CopperLayer::Front) => node.front,
+                Some(CopperLayer::Back) => node.back,
+                None => node.front && node.back,
+            };
+            let near = node.bounds.expanded(TOUCH);
+            if on
+                && rect_distance(&near, &piece.bounds) == 0.0
+                && (piece.covers(node.centre)
+                    || piece
+                        .area
+                        .outer
+                        .iter()
+                        .any(|&p| near.contains(&Rect::new(p, p))))
+            {
+                reached.push(ni);
+            }
+        }
+        // A pad whose copper overlaps that of a pad the piece reaches, on a layer both have, is
+        // reached too (a connector's shield pad made of a through-hole oval and a surface
+        // rectangle of one number: the thermal relief of one cuts the other's spokes, but their
+        // copper touches, as KiCad counts it).
+        let direct = reached.clone();
+        for (ni, node) in nodes.iter().enumerate() {
+            let touches = |&ri: &usize| {
+                let other = &nodes[ri];
+                ((node.front && other.front) || (node.back && other.back))
+                    && rect_distance(&node.bounds, &other.bounds) <= TOUCH
+            };
+            if !reached.contains(&ni) && direct.iter().any(touches) {
+                reached.push(ni);
+            }
+        }
+        for (ti, track) in tracks.iter().enumerate() {
+            if piece.layer == Some(track.layer) && piece.meets(track) {
+                reached.push(n + ti);
+            }
+        }
+        for (vi, via) in vias.iter().enumerate() {
+            if piece.covers(via.at) {
+                reached.push(n + t + vi);
+            }
+        }
+        if let Some((&first, rest)) = reached.split_first() {
+            pairs.extend(rest.iter().map(|&other| (first, other)));
+        }
+    }
+    pairs
+}
+
+/// Kruskal's algorithm, starting with everything the routed copper already joins (`joined`:
+/// pairs of items a zone joins, [`join_pieces`]). Of equal lines, the one between the pads listed
+/// first wins.
 fn spanning_tree(
     net: &str,
     nodes: &[Node],
@@ -267,6 +424,7 @@ fn spanning_tree(
     vias: &[&Via],
     plane: bool,
     poured: &[CopperLayer],
+    joined: &[(usize, usize)],
 ) -> Vec<Ratline> {
     let (n, t) = (nodes.len(), tracks.len());
     // Items 0..n are pads, then tracks, then vias, then the net's plane, then its pours on the
@@ -274,6 +432,9 @@ fn spanning_tree(
     let plane_item = n + t + vias.len();
     let pour_item = |layer: CopperLayer| plane_item + 1 + usize::from(layer == CopperLayer::Back);
     let mut sets = Sets::new(plane_item + 3);
+    for &(a, b) in joined {
+        sets.join(a, b);
+    }
     for (ti, track) in tracks.iter().enumerate() {
         for (ni, node) in nodes.iter().enumerate() {
             let touches = [track.from, track.to]
@@ -759,5 +920,57 @@ mod tests {
         // A pour on the back does not reach the pads on the front.
         board.pours[0].layer = CopperLayer::Back;
         assert!(Ratsnest::of(&board).lines.iter().any(|l| l.net == "GND"));
+    }
+
+    fn whole_board_zone(board: &Board, net: &str, layer: &str) -> crate::board::BoardZone {
+        let r = board.outline.expanded(-0.3);
+        crate::board::BoardZone {
+            net: net.into(),
+            layers: vec![layer.into()],
+            outline: r.corners().to_vec(),
+            holes: Vec::new(),
+            priority: 0,
+            clearance: 0.2,
+            min_width: 0.2,
+            pads: crate::board::ZonePads::Thermal,
+            thermal_gap: 0.3,
+            spoke_width: 0.3,
+            islands: crate::board::ZoneIslands::Remove,
+            island_min_area: None,
+        }
+    }
+
+    #[test]
+    fn a_zone_joins_the_pads_its_fill_reaches_on_its_layer_locked_or_not() {
+        let mut board = crate::board::tests::led_board();
+        assert!(Ratsnest::of(&board).lines.iter().any(|l| l.net == "GND"));
+        board.zones.push(whole_board_zone(&board, "GND", "F.Cu"));
+        let lines = Ratsnest::of(&board).lines;
+        assert!(lines.iter().all(|l| l.net != "GND"), "{lines:?}");
+        assert!(lines.iter().any(|l| l.net == "VCC"));
+        // On the back it reaches the connector's through-hole pad, not the LED's surface pad.
+        board.zones[0].layers = vec!["B.Cu".into()];
+        assert!(Ratsnest::of(&board).lines.iter().any(|l| l.net == "GND"));
+        // A zone that does not join pads keeps its clearance from them.
+        board.zones[0].layers = vec!["F.Cu".into()];
+        board.zones[0].pads = crate::board::ZonePads::None;
+        assert!(Ratsnest::of(&board).lines.iter().any(|l| l.net == "GND"));
+    }
+
+    #[test]
+    fn a_zoned_layer_takes_no_join_from_the_designs_pour() {
+        let mut board = crate::board::tests::led_board();
+        board.pours.push(BoardPour {
+            layer: CopperLayer::Front,
+            net: "GND".into(),
+            stitch_pitch: None,
+        });
+        board.fixed.locked.insert("GND".into());
+        assert!(Ratsnest::of(&board).lines.iter().all(|l| l.net != "GND"));
+        // A VCC zone on the front: the GND pour is not drawn there, and GND is left.
+        board.zones.push(whole_board_zone(&board, "VCC", "F.Cu"));
+        let lines = Ratsnest::of(&board).lines;
+        assert!(lines.iter().any(|l| l.net == "GND"), "{lines:?}");
+        assert!(lines.iter().all(|l| l.net != "VCC"), "{lines:?}");
     }
 }

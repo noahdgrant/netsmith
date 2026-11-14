@@ -60,10 +60,10 @@ mod svg;
 mod validate;
 
 pub use board::{
-    Board, BoardCutout, BoardError, BoardKeepout, BoardNet, BoardPour, CopperLayer, FixedCopper,
-    Hang, HeightUnchecked, HoleNeighbour, KeepoutArea, Loaded as LoadedBoard, PadRef, Placed,
-    PlacementProblem, Plane, ReferenceSide, Side, StandardPass, Teardrop, Track, Trim, Unplaced,
-    Via, member as board_member, outline_box, rect_distance,
+    Board, BoardCutout, BoardError, BoardKeepout, BoardNet, BoardPour, BoardZone, CopperLayer,
+    FixedCopper, Hang, HeightUnchecked, HoleNeighbour, KeepoutArea, Loaded as LoadedBoard, PadRef,
+    Placed, PlacementProblem, Plane, ReferenceSide, Side, StandardPass, Teardrop, Track, Trim,
+    Unplaced, Via, ZoneIslands, ZonePads, member as board_member, outline_box, rect_distance,
 };
 pub use body3d::{
     Axis as BodyAxis, Material as BodyMaterial, Primitive as BodyPrimitive, Solid as BodySolid,
@@ -74,7 +74,8 @@ pub use constraints::{
     plan as constraint_plan, quarter as constraint_quarter,
 };
 pub use copper::{
-    Area, Copper, CopperError, SilkInk, artwork as copper_artwork, copper as copper_of,
+    Area, Copper, CopperError, SilkInk, ZoneFill, artwork as copper_artwork, copper as copper_of,
+    zone_fills,
 };
 pub use explain::{
     Fault, Precheck, RequirementReport, before_placing, explain as explain_requirements,
@@ -108,8 +109,9 @@ pub use quality::{
 };
 pub use ratsnest::{Node as RatNode, Ratline, Ratsnest, nodes_of as ratsnest_nodes_of};
 pub use routes::{
-    BoardRoutes, NetRoutes, RouteTrack, RouteVia, Routes, RoutesError, RoutesNote,
-    VERSION as ROUTES_VERSION, apply_routes, pad_hash, record_of, routes_path,
+    BoardRoutes, NetRoutes, RouteTrack, RouteVia, RouteZone, Routes, RoutesError, RoutesNote,
+    VERSION as ROUTES_VERSION, apply_routes, kicad_layer as routes_kicad_layer,
+    layer_word as routes_layer_word, pad_hash, record_of, routes_path,
 };
 pub use rules::Rules;
 pub use shape::{Edge as ShapeEdge, RoundRect};
