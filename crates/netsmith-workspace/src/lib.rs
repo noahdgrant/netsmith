@@ -18,6 +18,7 @@ mod outline;
 mod panel;
 mod pcb;
 mod pinwrite;
+mod pours;
 pub(crate) mod power;
 mod progress;
 mod release;
@@ -919,6 +920,29 @@ impl Backend for Workspace {
             state.pcb.entry(board.to_string()).or_insert(entry);
         }
         Ok(glb)
+    }
+
+    fn pcb_pours(&self, board: &str) -> Result<netsmith_editor::api::PcbPours, ApiError> {
+        // The placement `pcb_scene` draws, kept in `state.pcb`; placed here only when the board
+        // has not been placed since the files were read, and then kept for the 2D view too.
+        let (version, data) = {
+            let state = self.fresh();
+            let data = state.snapshot.board_handle(board)?;
+            if let Some(entry) = state.pcb.get(board) {
+                // Copied out: the fill runs with no lock held.
+                let placement = pours::Placement::of(entry);
+                drop(state);
+                return Ok(placement.pours(board));
+            }
+            (state.version, data)
+        };
+        let entry = pcb::place(&data, board)?;
+        let answer = pours::Placement::of(&entry).pours(board);
+        let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        if state.version == version {
+            state.pcb.entry(board.to_string()).or_insert(entry);
+        }
+        Ok(answer)
     }
 
     fn pcb_findings(&self, board: &str) -> Result<PcbFindings, ApiError> {

@@ -66,6 +66,15 @@ The fixture is `scripts/editor-verify-js/fixtures/routed_led.nsm` (the LED examp
 - **Stale records**: a record whose pads moved, or for a net the board does not have, is a warning in the Findings tab (rule `routes_pads_moved` or `routes_no_net`, tag `routes file`) and in the problems dock (stage Routing), with the message `fab` prints. Locking the net again writes the record with its pads as they are.
 - A change to the routes file by another program (`netsmith routes ...` in a terminal) places the board again, as a change to the layout file does.
 
+## The pours and zones (epic #599): `launch --fixture routed_pours`, `drive pcb-pours`
+
+The fixture is the routed LED board on four layers (`scripts/editor-verify-js/fixtures/routed_pours.nsm`): a ground plane on the first inner layer, a plane on the second, ground poured on the back, and in the routes file a ground zone on the front with a hole in it and, over it at a higher priority, a zone of the anode net.
+
+- **Drawn**: the fill of each pour, plane and routes-file zone, per copper layer and net (`.l-pours > path.pour[data-layer][data-net]`), under the planes' outlines, the pads, tracks, vias and labels and over the board. It is the fill `fab` plots and the 3D view shows (netsmith's own filler: clearances round other nets' copper, thermal reliefs, holes, the edge band), **not** KiCad's refill of a zone. The server sends it apart from the scene (`GET /api/pcb/pours`, `PcbPours`: an SVG path for each net on each layer, points rounded to a micrometre and simplified within 2 micrometres), so the board is drawn first and the fill when it arrives; `[data-testid=pours][data-current=true]` is the fill of the placement drawn (`false` while an edit's new fill is on its way: the old one stays, never a bare board).
+- **Colour**: the layer's, never the net's: the front's and the back's copper colour, a plane's tone (`--pcb-plane-1` to `-4`, `data-plane`), with transparency (`fill-opacity`) and a thin edge; light and dark themes have their own tokens. The pointer goes through it (`pointer-events: none`).
+- **Layers menu**: Front copper and Back copper hide the fill of their layer with the tracks, Planes hides the planes' fill. A hole of the fill is a hole (`isPointInFill` is false in it); a zone of higher priority has the area.
+- Not drawn: KiCad's own fill of a zone, a fill that follows a part while it is dragged (it is made again once the part is dropped), the zones' outlines as marks (the fill is the only thing shown).
+
 ## Panels (ADR 0040)
 
 `drive panel` (fixture `led_panel`). A `panel` is listed in the tree with the badge `N`; a click on it opens the PCB view of the board it repeats with the panel drawn instead of the board (`data-testid="panel-preview"`): the boards outlined and named (`LedTile 1` ... `LedTile 6`), the cut lines dashed, the rails with their tooling holes and fiducials, and the panel checks beneath (errors and advice, from `GET /api/panel?name=`). It is read only: the grid is in the source. "Show the board" returns to the board; a board that a panel repeats has a "Panel <name>" button in its toolbar.

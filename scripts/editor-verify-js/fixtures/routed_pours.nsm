@@ -1,0 +1,37 @@
+//! The board of `routed_led.nsm` on four layers, for the PCB view's copper fill (epic #599): the
+//! design's own planes (ground inside, 5 V inside) and pour (ground on the back), and, in the routes
+//! file (`routed_pours.routes.toml`: the tracks and via of `routed_led`, and zones added by hand),
+//! a ground zone on the front with a hole in it and, over it, a zone of the anode net.
+
+import std::parts::connector::Header1x2
+import std::parts::passive::{Resistor, Led}
+import std::sources::Rail
+import std::mfg::jlcpcb::FourLayer
+
+board LedExample {
+    /// Made by JLCPCB's four-layer process: a ground plane on the first inner layer, a 5 V plane
+    /// on the second, and ground poured on the back.
+    .process: FourLayer {
+        .inner1.net &= "GND"
+        .inner2.net &= "VCC"
+        .bottom.net &= "GND"
+    }
+
+    .supply: Rail {
+        .voltage &= 5V +/- 5%
+        .pos.net &= "VCC"
+    }
+
+    .led: Led {
+        .current &= 5mA..15mA
+    }
+
+    .r1: Resistor {}
+
+    /// The supply comes in through this header.
+    .power_in: Header1x2
+    .supply.pos ~ .power_in.p1
+    .supply.neg ~ .power_in.p2
+
+    .supply.pos ~> .r1 ~> .led ~> .supply.neg
+}

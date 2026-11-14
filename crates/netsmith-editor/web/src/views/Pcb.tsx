@@ -18,6 +18,7 @@ import { Panel } from '../pcb/Panel';
 import { PanelPreview } from '../pcb/PanelPreview';
 import { prepare } from '../pcb/drawing';
 import { type Pt, unite } from '../pcb/geometry';
+import { POUR_HIDDEN, fills, poursMarkup } from '../pcb/pours';
 import {
   GRIDS,
   findings,
@@ -25,6 +26,7 @@ import {
   keepoutDefaults,
   loadScene,
   pickedFinding,
+  pours,
   recheck,
   redo,
   scene,
@@ -129,14 +131,21 @@ export function Pcb() {
 
   const sc = scene.value && scene.value.board === name ? scene.value : null;
   const found = findings.value && findings.value.board === name ? findings.value : null;
-  const drawing = useMemo(() => (sc ? prepare(sc.svg) : null), [sc?.svg]);
+  // The pours and zones go into the drawing under the copper. They come after the board (the server fills after it has
+  // placed), and while the board changes the last fill stays, marked as not current, rather than the board going bare.
+  const poured = pours.value && pours.value.board === name ? pours.value : null;
+  const pouredNow = fills(poured, sc);
+  const drawing = useMemo(() => (sc ? prepare(sc.svg, poursMarkup(poured, pouredNow)) : null), [sc?.svg, poured, pouredNow]);
   // The planes layer takes the planes' labels with it: a name on nothing is noise.
   // The marks of the routes file's copper go with the layer of their copper.
   const fixedOf: Record<string, string> = { 'front-copper': '[data-layer=top]', 'back-copper': '[data-layer=bottom]', vias: '.fixed-via' };
   const css = useMemo(
     () =>
       hidden
-        .map((l) => `.pcb-host .l-${l}${l === 'planes' ? ', .pcb-host .l-plane-labels' : ''}${fixedOf[l] ? `, .pcb-host .fixed-shape${fixedOf[l]}` : ''}{display:none}`)
+        .map(
+          (l) =>
+            `.pcb-host .l-${l}${l === 'planes' ? ', .pcb-host .l-plane-labels' : ''}${fixedOf[l] ? `, .pcb-host .fixed-shape${fixedOf[l]}` : ''}${POUR_HIDDEN[l] ? `, .pcb-host .l-pours ${POUR_HIDDEN[l]}` : ''}{display:none}`,
+        )
         .join(''),
     [hidden],
   );

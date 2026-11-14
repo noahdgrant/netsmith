@@ -977,6 +977,33 @@ netWidths: Array<PcbNetWidth>,
  */
 viaDiameter: number, viaDrill: number, };
 
+export type PcbPours = { board: string, 
+/**
+ * [`PcbScene::layout_stamp`], [`PcbScene::routes_stamp`] and [`PcbScene::routed`] of the
+ * placement that was filled.
+ */
+layoutStamp: string, routesStamp: string, routed: boolean, 
+/**
+ * Each copper layer that has a fill, front to back.
+ */
+layers: Array<PcbPourLayer>, 
+/**
+ * Why the board could not be filled, if it could not: then `layers` is empty.
+ */
+error: string | null, };
+
+export type PcbPourLayer = { 
+/**
+ * KiCad's name of the layer: `F.Cu`, `In1.Cu`, `B.Cu`.
+ */
+layer: string, 
+/**
+ * One entry for each net that has a fill on the layer (and one for a fill of no net).
+ */
+nets: Array<PcbPourNet>, };
+
+export type PcbPourNet = { net: string | null, d: string, };
+
 export type PcbPoint = { x: number, y: number, };
 
 export type PcbRouteNet = { net: string, 

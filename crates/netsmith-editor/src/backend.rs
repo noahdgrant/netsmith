@@ -6,8 +6,8 @@ use netsmith_core::job::Cancel;
 use crate::api::{
     Analysis, BoardDetail, Bom, BuildReport, CatalogRefresh, Changed, Compare, Definition,
     FabReport, FileContent, GitInfo, OrderInfo, OrderReport, PanelView, PcbEdit, PcbEdited,
-    PcbFindings, PcbReport, PcbScene, PinLock, PinMove, PinWritten, PowerTree, Project, Saved,
-    SchematicHints, SystemView,
+    PcbFindings, PcbPours, PcbReport, PcbScene, PinLock, PinMove, PinWritten, PowerTree, Project,
+    Saved, SchematicHints, SystemView,
 };
 
 /// A refusal, with the HTTP status that says why.
@@ -290,6 +290,15 @@ pub trait Backend: Send + Sync + 'static {
     fn pcb_3d(&self, board: &str) -> Result<Pcb3d, ApiError> {
         Err(ApiError::not_found(format!(
             "there is no 3D scene of `{board}`"
+        )))
+    }
+    /// The fill of the board's pours, planes and routes-file zones as [`Backend::pcb_scene`] has
+    /// it placed (and routed): what the 3D scene and the Gerbers hold, for the 2D view to draw
+    /// under the copper. A board that cannot be filled is answered with the reason in the
+    /// answer, not as a failure.
+    fn pcb_pours(&self, board: &str) -> Result<PcbPours, ApiError> {
+        Err(ApiError::not_found(format!(
+            "there are no pours of `{board}`"
         )))
     }
     /// What is wrong with the board as it is placed (and routed) now, with where: netsmith's

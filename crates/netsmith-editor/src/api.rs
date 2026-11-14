@@ -1257,6 +1257,46 @@ pub struct PcbScene {
     pub via_drill: f64,
 }
 
+/// The copper pours of a board as the PCB view draws them under the tracks and pads: the fill of
+/// each pour, plane and routes-file zone, as `netsmith fab` plots it, by copper layer. It is a
+/// separate answer from [`PcbScene`] because filling a board takes longer than placing it: the
+/// page draws the board first and the fill when it arrives, and drops an answer whose stamps
+/// are not those of the scene it shows.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct PcbPours {
+    pub board: String,
+    /// [`PcbScene::layout_stamp`], [`PcbScene::routes_stamp`] and [`PcbScene::routed`] of the
+    /// placement that was filled.
+    pub layout_stamp: String,
+    pub routes_stamp: String,
+    pub routed: bool,
+    /// Each copper layer that has a fill, front to back.
+    pub layers: Vec<PcbPourLayer>,
+    /// Why the board could not be filled, if it could not: then `layers` is empty.
+    pub error: Option<String>,
+}
+
+/// The fill of one copper layer, drawn in the layer's own colour.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+pub struct PcbPourLayer {
+    /// KiCad's name of the layer: `F.Cu`, `In1.Cu`, `B.Cu`.
+    pub layer: String,
+    /// One entry for each net that has a fill on the layer (and one for a fill of no net).
+    pub nets: Vec<PcbPourNet>,
+}
+
+/// The fill of one net on one layer, as an SVG path on the sheet, in mm: a closed subpath for
+/// each outline and for each hole of a piece of copper (an island is a piece of its own), the
+/// outlines clockwise on the screen and the holes the other way, so the path is filled by the
+/// non-zero rule. The points are rounded to a micrometre, and a point within 2 micrometres of
+/// the line between its neighbours is left out.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+pub struct PcbPourNet {
+    pub net: Option<String>,
+    pub d: String,
+}
+
 /// A point on the sheet, in mm.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, TS)]
 pub struct PcbPoint {
@@ -1828,6 +1868,9 @@ pub fn typescript() -> String {
         PcbKeepout,
         PcbCutout,
         PcbScene,
+        PcbPours,
+        PcbPourLayer,
+        PcbPourNet,
         PcbPoint,
         PcbRouteNet,
         PcbRouteTrack,
