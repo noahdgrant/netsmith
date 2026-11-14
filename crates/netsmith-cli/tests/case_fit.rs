@@ -114,7 +114,7 @@ fn board3d_lists_the_case_models_and_every_finding_with_its_numbers() {
     let tall = &all[2];
     assert_eq!(tall["depth"], 1.0);
     assert_eq!(tall["case"], "lid");
-    assert_eq!(tall["refdes"], "J1");
+    assert_eq!(tall["refdes"], "J3");
     assert_eq!(tall["at"][2], 8.0);
     assert!(
         tall["message"]
@@ -140,7 +140,7 @@ fn board3d_lists_the_case_models_and_every_finding_with_its_numbers() {
         "{text}"
     );
     assert!(
-        text.contains("error: case_collision: J1 (`tall`)"),
+        text.contains("error: case_collision: J3 (`tall`)"),
         "{text}"
     );
 }
@@ -158,7 +158,7 @@ fn fab_refuses_a_collision_with_the_case_whatever_the_flags_say() {
         let err = String::from_utf8_lossy(&run.stderr);
         assert_eq!(run.status.code(), Some(1), "{flags:?}: {err}");
         assert!(
-            err.contains("error: Cased: case_collision: J1 (`tall`), 9.00 mm tall (stated), is inside the solid `lid`")
+            err.contains("error: Cased: case_collision: J3 (`tall`), 9.00 mm tall (stated), is inside the solid `lid`")
                 && err.contains("neither `--allow-drc-violations` nor `--constraints warn` waives it"),
             "{err}"
         );
@@ -182,7 +182,7 @@ fn fab_writes_the_case_findings_in_the_notes_and_strict_constraints_refuse_an_un
     for line in [
         "note: case model `base` (`case_fit/base.step`, SHA-256 ",
         "note: case model `lid` (`case_fit/lid.step`, SHA-256 ",
-        "warning: case_unchecked: J3 (`bare`) has no height and stands under the solid `lid`",
+        "warning: case_unchecked: J1 (`bare`) has no height and stands under the solid `lid`",
         "warning: case_clearance: J2 (`edge`) is 0.83 mm from the solid `wall_right`",
         "warning: case_reach: J2 (`edge`), a connector at the board's right edge",
         "warning: case_boss: the mounting hole H2 (`hole2`)",
@@ -208,7 +208,7 @@ fn fab_writes_the_case_findings_in_the_notes_and_strict_constraints_refuse_an_un
     let err = String::from_utf8_lossy(&run.stderr);
     assert_eq!(run.status.code(), Some(1), "{err}");
     assert!(
-        err.contains("error: Cased: case_unchecked: J3 (`bare`) has no height")
+        err.contains("error: Cased: case_unchecked: J1 (`bare`) has no height")
             && err.contains("this is an error because constraints are strict"),
         "{err}"
     );

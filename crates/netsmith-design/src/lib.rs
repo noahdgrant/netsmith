@@ -416,11 +416,11 @@ fn interfaces_of(model: &Model, nets: &[Net]) -> Vec<InterfaceInstance> {
     out
 }
 
-/// The module instances of the design, in the model's order (the source's, a module inside a
-/// module after it), each with its own members that are on one of `nets`: its pins and the pins
-/// of the interfaces it declares, through interfaces inside interfaces, named by their path in
-/// the module (`vin.pos`), in the order the module declares them. A part's pins are not the
-/// module's.
+/// The module instances of the design, by path in natural order, each with its own members
+/// that are on one of `nets`: its pins and the pins of the interfaces it declares, through
+/// interfaces inside interfaces, named by their path in the module (`vin.pos`), in natural
+/// order too. A part's pins are not the module's. Neither order is the source's, so moving a
+/// statement moves no sheet pin (issue #634).
 fn modules_of(model: &Model, nets: &[Net]) -> Vec<ModuleInstance> {
     let kept: std::collections::HashSet<&str> = nets.iter().map(|n| n.name.as_str()).collect();
     let mut net_of: HashMap<InstId, &str> = HashMap::new();
@@ -457,19 +457,22 @@ fn modules_of(model: &Model, nets: &[Net]) -> Vec<ModuleInstance> {
             }
         }
     }
-    model
+    let mut modules: Vec<ModuleInstance> = model
         .instances()
         .filter(|(_, inst)| inst.kind == InstKind::Module)
         .map(|(id, inst)| {
             let mut ports = Vec::new();
             walk(model, id, "", &net_of, &mut ports);
+            ports.sort_by(|a, b| natural_path_order(&a.name, &b.name));
             ModuleInstance {
                 path: model.path_of(id),
                 type_name: inst.type_name.clone(),
                 ports,
             }
         })
-        .collect()
+        .collect();
+    modules.sort_by(|a, b| natural_path_order(&a.path, &b.path));
+    modules
 }
 
 /// The most parts an interface's doc comment may be anchored on: a rail that most of a sheet
@@ -514,8 +517,9 @@ fn drawn_part_of(
 }
 
 /// The notes a drawing may show: the doc comments of the board, of each module, of each part
-/// declaration and of each interface declaration, and every `==` relation the source states, in
-/// the order the model has them (the source's). Only what the source already says: ordinary
+/// declaration and of each interface declaration, and every `==` relation the source states:
+/// the doc comments before the relations, each by path in natural order and then by text, not
+/// in the source's order, so moving a statement moves no note (issue #634). Only what the source already says: ordinary
 /// `//` comments are gone before the model, the standard library's own docs are not kept
 /// (`Instance::doc_at`), and a relation of a physical file states where parts go, not what the
 /// circuit is. `drawn` has the parts of the design, with their references.
@@ -751,6 +755,12 @@ fn notes_of(model: &Model, drawn: &HashMap<InstId, Vec<String>>) -> Vec<Note> {
             derived,
         });
     }
+    notes.sort_by(|a, b| {
+        a.kind
+            .cmp(&b.kind)
+            .then_with(|| natural_path_order(&a.path, &b.path))
+            .then_with(|| a.text.cmp(&b.text))
+    });
     notes
 }
 
@@ -1170,14 +1180,12 @@ fn design_model(name: &str, model: &Model, solution: &Solution) -> Result<Design
         found
     });
 
-    // Parts are numbered in declaration order (owner decision 2026-11-09, issue #166): the
-    // order in which the design declares them, a module's parts where the module is declared.
-    // The checker makes an instance when it reads the declaration, and the parts of a module
-    // right after the module, so the order of the instances in the model is that order, depth
-    // first. It does not depend on the layout engine, on KiCad or on how a part is drawn.
-    // The parts of the design stay in path order (a number at the end of a segment counts as
-    // a number, `tp2` before `tp10`, ADR 0048), as before: the placer and the drawing read
-    // that order, so only the numbers change, and the boards do not.
+    // Parts are numbered by path (owner decision 2026-11-13, issue #634): within each set of
+    // letters, the parts sorted by their full path in the board in natural order (a number at
+    // the end of a segment counts as a number, `tp2` before `tp10`, and an index too,
+    // `decoupling[2]` before `decoupling[10]`), from 1. The path alone decides it, so the order
+    // of statements, the layout engine, KiCad and how a part is drawn change nothing. The
+    // parts of the design are in the same order, which the placer and the drawing read.
     let declared: Vec<InstId> = model
         .instances()
         .filter(|(_, i)| i.kind == InstKind::Part)
@@ -1191,7 +1199,8 @@ fn design_model(name: &str, model: &Model, solution: &Solution) -> Result<Design
     // part in the design for each of its capacitors, numbered one after the other, ADR 0052).
     let mut counters: BTreeMap<String, usize> = BTreeMap::new();
     let mut lettered: HashMap<InstId, (String, usize, usize)> = HashMap::new();
-    for &id in &declared {
+    for (_, id) in &ids {
+        let id = *id;
         netsmith_core::job::checkpoint();
         let letters = designator_of(model, id, &mut errors);
         let bank = bank_of(model, id, &mut errors);
