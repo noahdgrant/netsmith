@@ -288,6 +288,7 @@ impl Solver<'_> {
                         }
                     }
                     let supplies = planned.supplies.clone();
+                    let on = self.driven_runs(&planned);
                     let run = Rc::new(Run {
                         island: planned.island,
                         report,
@@ -303,7 +304,9 @@ impl Solver<'_> {
                     }
                     if solved_any && !inferred {
                         for m in &planned.parts {
-                            summary.written += self.dc_write(m, &run, !planned.outputs.is_empty());
+                            let on = on.get(&m.part);
+                            summary.written +=
+                                self.dc_write(m, &run, on, !planned.outputs.is_empty());
                         }
                         covered.extend(planned.parts.iter().filter_map(|m| m.drop));
                         rails.extend(planned.rails.iter().map(|r| (*r, Rc::clone(&run))));
@@ -508,7 +511,7 @@ impl Solver<'_> {
             }
             return 0;
         }
-        let written = self.dc_field(rail.rail, rail.field, solved, ends, false);
+        let written = self.dc_field(rail.rail, rail.field, solved, ends, None, false);
         if written {
             // The members of the class that `~` joins take the range from the one written, and
             // are as much the analysis's as it is: a relation that reads one of them (a
@@ -973,7 +976,7 @@ impl Solver<'_> {
                 which: Which::Drop(element),
                 flipped: false,
             };
-            self.dc_field(part, field, solved, ends, false);
+            self.dc_field(part, field, solved, ends, None, false);
         }
         let mut done: Vec<FieldId> = Vec::new();
         for (rail, run) in written {
@@ -1219,53 +1222,116 @@ impl Solver<'_> {
         self.report(source, span, message);
     }
 
-    /// Write one part's current and drop. Returns how many fields were written.
-    fn dc_write(&mut self, m: &Modelled, run: &Rc<Run>, past_regulator: bool) -> usize {
-        let report = &run.report;
+    /// For each part of a `~>` chain that a logic pin of the island drives (ADR 0127), the
+    /// island solved with each such pin in the state that drives the chain: a window the design
+    /// states on the chain's current is what the chain carries when it is on, and is judged
+    /// there. With the pin in its other state the chain is off, and the current is zero.
+    fn driven_runs(&self, planned: &dc::Planned) -> HashMap<InstId, Rc<Run>> {
+        let mut by_states: HashMap<Vec<(usize, bool)>, Option<Rc<Run>>> = HashMap::new();
+        let mut out = HashMap::new();
+        for m in &planned.parts {
+            let mut states: Vec<(usize, bool)> = self
+                .model
+                .chains()
+                .iter()
+                .filter(|c| c.parts.contains(&m.part))
+                .flat_map(|c| c.pins.iter())
+                .filter_map(|p| {
+                    let &(_, element) = planned.pins.iter().find(|(pin, _)| *pin == p.pin)?;
+                    Some((element, p.high))
+                })
+                .collect();
+            if states.is_empty() {
+                continue;
+            }
+            states.sort_unstable();
+            states.dedup();
+            let run = by_states
+                .entry(states.clone())
+                .or_insert_with(|| {
+                    let island = states
+                        .iter()
+                        .fold(planned.island.clone(), |island, &(element, high)| {
+                            island.driving(element, high)
+                        });
+                    let report = island.analyze(dc::MAX_COMBINATIONS).ok()?;
+                    (report.consistent > 0).then(|| Rc::new(Run { island, report }))
+                })
+                .clone();
+            if let Some(run) = run {
+                out.insert(m.part, run);
+            }
+        }
+        out
+    }
+
+    /// Write one part's current and drop. Returns how many fields were written. `on` is the
+    /// island with the pins that drive the part's chain in their driving state, if any: a window
+    /// the design states is judged there (ADR 0127).
+    fn dc_write(
+        &mut self,
+        m: &Modelled,
+        run: &Rc<Run>,
+        on: Option<&Rc<Run>>,
+        past_regulator: bool,
+    ) -> usize {
         let mut written = 0;
-        let flip = |lo: f64, hi: f64, m: &Modelled| if m.flipped { (-hi, -lo) } else { (lo, hi) };
         let cases = [
             (m.current, Dimension::CURRENT, Which::Current(m.element)),
             (m.drop, Dimension::VOLTAGE, Which::Drop(m.element)),
         ];
         for (field, dim, which) in cases {
             let Some(field) = field else { continue };
-            let r = report.range(which);
-            if r.is_empty() || !r.lo.is_finite() || !r.hi.is_finite() {
-                continue;
-            }
-            // A diode never carries a current below zero in its own direction.
-            let lo_end = if m.diode && dim == Dimension::CURRENT {
-                r.lo.max(0.0)
-            } else {
-                r.lo
-            };
-            let (lo, hi) = flip(lo_end, r.hi, m);
-            let (lo, hi) = widen(dim, lo, hi);
-            // The widening does not take a diode's current across zero either.
-            let (lo, hi) = if m.diode && dim == Dimension::CURRENT {
-                if m.flipped {
-                    (lo, hi.min(0.0))
-                } else {
-                    (lo.max(0.0), hi)
-                }
-            } else {
-                (lo, hi)
-            };
-            let Ok(solved) = Quantity::interval(dim, lo, hi) else {
+            let Some((solved, ends)) = Self::dc_range(m, run, dim, which) else {
                 continue;
             };
-            let ends = DcEnds {
-                range: solved,
-                run: Rc::clone(run),
-                which,
-                flipped: m.flipped,
-            };
-            if self.dc_field(m.part, field, solved, ends, !past_regulator) {
+            let on = on.and_then(|on| Self::dc_range(m, on, dim, which));
+            if self.dc_field(m.part, field, solved, ends, on, !past_regulator) {
                 written += 1;
             }
         }
         written
+    }
+
+    /// The range an island's run gives a part's current or drop, in the part's own direction
+    /// and widened a little, and where its ends come from.
+    fn dc_range(
+        m: &Modelled,
+        run: &Rc<Run>,
+        dim: Dimension,
+        which: Which,
+    ) -> Option<(Quantity, DcEnds)> {
+        let flip = |lo: f64, hi: f64, m: &Modelled| if m.flipped { (-hi, -lo) } else { (lo, hi) };
+        let r = run.report.range(which);
+        if r.is_empty() || !r.lo.is_finite() || !r.hi.is_finite() {
+            return None;
+        }
+        // A diode never carries a current below zero in its own direction.
+        let lo_end = if m.diode && dim == Dimension::CURRENT {
+            r.lo.max(0.0)
+        } else {
+            r.lo
+        };
+        let (lo, hi) = flip(lo_end, r.hi, m);
+        let (lo, hi) = widen(dim, lo, hi);
+        // The widening does not take a diode's current across zero either.
+        let (lo, hi) = if m.diode && dim == Dimension::CURRENT {
+            if m.flipped {
+                (lo, hi.min(0.0))
+            } else {
+                (lo.max(0.0), hi)
+            }
+        } else {
+            (lo, hi)
+        };
+        let solved = Quantity::interval(dim, lo, hi).ok()?;
+        let ends = DcEnds {
+            range: solved,
+            run: Rc::clone(run),
+            which,
+            flipped: m.flipped,
+        };
+        Some((solved, ends))
     }
 
     /// Write what the circuit gives a field, or check it against what the design states.
@@ -1273,12 +1339,15 @@ impl Solver<'_> {
     /// `~` class is a budget (amendment 17); it is not for a regulator's input past another
     /// regulator's output, where the stated window is the rail the part holds (amendment 5,
     /// choice 3).
+    /// `on` is what the circuit gives the field with the pins that drive its `~>` chain in their
+    /// driving state (ADR 0127), which a stated window is judged against.
     fn dc_field(
         &mut self,
         part: InstId,
         field: FieldId,
         solved: Quantity,
         ends: DcEnds,
+        on: Option<(Quantity, DcEnds)>,
         whole_class: bool,
     ) -> bool {
         match self.domain(field) {
@@ -1299,6 +1368,7 @@ impl Solver<'_> {
                     self.stated_in(&[field])
                 };
                 if let Some(by) = stated {
+                    let (solved, ends) = on.unwrap_or((solved, ends));
                     self.dc_check_stated(part, by, solved, &ends);
                     return false;
                 }

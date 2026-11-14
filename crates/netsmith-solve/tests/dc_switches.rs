@@ -131,7 +131,8 @@ fn near(got: f64, want: f64, rel: f64) {
 const PULLDOWN: &str = "    .mcu: Mcu\n    .pd: Resistor { .resistance &= 10kohm +/- 1% }\n    .logic ~ .mcu.vdd\n    .mcu.gpio.line ~ .pd.a\n    .pd.b ~ .logic.neg\n";
 
 /// A pin with a 10 kohm +/- 1 % pull-down. The pull-down carries the supply over the
-/// resistance when the pin is high: `3.399 V / (9.9 kohm + 1 mohm)` at the most, and nothing when
+/// resistance when the pin is high: `3.399 V / 9.9 kohm` at the most (the pin's output resistance
+/// runs down to zero, a branch), and nothing when
 /// the pin is low. Nothing states the current, and the equations cannot say it.
 #[test]
 fn a_pull_down_on_a_pin_carries_what_the_pin_drives_through_it() {
@@ -139,10 +140,10 @@ fn a_pull_down_on_a_pin_carries_what_the_pin_drives_through_it() {
     assert!(messages(&s).is_empty(), "{:?}", messages(&s));
     assert_eq!(s.dc.pins, 1, "{:?}", s.dc);
     let (lo, hi) = range(&s, "pd.current").expect("pd.current has a value");
-    near(hi, 3.399 / (9900.0 + 1e-3), 1e-6);
+    near(hi, 3.399 / 9900.0, 1e-6);
     assert!(lo.abs() < 1e-9, "{lo}");
     let (_, drop_hi) = range(&s, "pd.drop").expect("pd.drop has a value");
-    near(drop_hi, 3.399 * 9900.0 / (9900.0 + 1e-3), 1e-6);
+    near(drop_hi, 3.399, 1e-6);
 }
 
 /// The output resistance is the datasheet's: `(VDD - VOH) / IOH` is 0.4 V / 2 mA = 200 ohm,
@@ -155,8 +156,8 @@ fn the_output_resistance_is_the_stated_drop_over_its_test_current() {
     );
     let s = solved(&src);
     let (_, hi) = range(&s, "pd.current").expect("pd.current has a value");
-    // The most current is at the highest supply and the least output resistance, 1 mohm.
-    near(hi, 3.399 / (100.0 + 1e-3), 1e-6);
+    // The most current is at the highest supply and the least output resistance, none.
+    near(hi, 3.399 / 100.0, 1e-6);
     // The least high: the supply's least with the pin's greatest resistance gives the
     // smallest current when high, which the range does not show (it starts at zero); the largest
     // output resistance is seen in the states of the end that is not the greatest.

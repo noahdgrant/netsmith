@@ -42,12 +42,12 @@ pub use faults::{pin_faults, pin_faults_solved};
 pub use loader::Loader;
 pub use lower::closest;
 pub use model::{
-    Balance, Bank, Bookmark, Catalog, Chain, Checkpoint, Contact, ContactSide, DcElement, DcKind,
-    Domain, Draw, EnumId, EnumInfo, Field, FieldId, FieldKind, GenericUse, GroundGroup, GroundNet,
-    InstId, InstKind, Instance, LevelTest, Mate, Member, Model, Net, OptionalMark, OutlinePolygon,
-    PartRules, Peripheral, PeripheralBus, PeripheralFunction, PinAssignment, PinKind, PinRequest,
-    PinRow, PinTable, Pinout, PolygonCorner, Provider, RExpr, RangeEnd, Relation, Requirement,
-    Role, RowLimit, SharedMember, SharedRes, Snapshot, Tie, Unused, Written,
+    Balance, Bank, Bookmark, Catalog, Chain, ChainPin, Checkpoint, Contact, ContactSide, DcElement,
+    DcKind, Domain, Draw, EnumId, EnumInfo, Field, FieldId, FieldKind, GenericUse, GroundGroup,
+    GroundNet, InstId, InstKind, Instance, LevelTest, Mate, Member, Model, Net, OptionalMark,
+    OutlinePolygon, PartRules, Peripheral, PeripheralBus, PeripheralFunction, PinAssignment,
+    PinKind, PinRequest, PinRow, PinTable, Pinout, PolygonCorner, Provider, RExpr, RangeEnd,
+    Relation, Requirement, Role, RowLimit, SharedMember, SharedRes, Snapshot, Tie, Unused, Written,
 };
 pub use pinedit::edit_entry;
 pub use pinfile::{EntrySource, PinEntry, PinFile, PinFileError};

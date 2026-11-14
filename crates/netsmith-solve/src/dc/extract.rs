@@ -150,6 +150,9 @@ pub(crate) struct Planned {
     /// current written for a part, a voltage written for a rail) are not made from them, since
     /// the inference may call a push-pull pin that left its high out open drain.
     pub open_drain: Vec<usize>,
+    /// The logic pins that drive (each pin's terminal and its element), for the state a `~>`
+    /// chain's window is judged in (ADR 0127).
+    pub pins: Vec<(InstId, usize)>,
     /// The fields the island's numbers are read from (a resistance, a current), and whether some
     /// of them are not listed (a pin's levels, a switch's gate): the picks that the island's
     /// result depends on are the ones that those fields are worked out from.
@@ -846,6 +849,7 @@ fn extract_in(
         }
     }
     let mut open_drain_names: HashSet<String> = HashSet::new();
+    let mut driver_names: HashMap<String, InstId> = HashMap::new();
     for d in drivers
         .into_iter()
         .filter(|d| pushing.get(&d.net).is_none_or(|&p| p == 0) || per_net[&d.net] == 1)
@@ -853,6 +857,7 @@ fn extract_in(
         if d.open_drain {
             open_drain_names.insert(model.path_of(d.terminal));
         }
+        driver_names.insert(model.path_of(d.terminal), d.terminal);
         accounted.insert(d.terminal);
         items.push(Item {
             kind: Kind::Pin {
@@ -1591,6 +1596,13 @@ fn extract_in(
             })
             .map(|(i, _)| i)
             .collect();
+        let pins = island
+            .elements
+            .iter()
+            .enumerate()
+            .filter(|(_, e)| matches!(e.kind, Kind::Pin { .. }))
+            .filter_map(|(i, e)| Some((*driver_names.get(&e.name)?, i)))
+            .collect();
         let supplies = held_nets
             .iter()
             .enumerate()
@@ -1613,6 +1625,7 @@ fn extract_in(
             supplies,
             ground,
             open_drain,
+            pins,
             reads,
             opaque,
         });
@@ -1731,7 +1744,7 @@ fn driver_of(
             Some(r) => r,
             None => {
                 let (_, vol_range, iol) = level("vol")?;
-                Range::new(MIN_RESISTANCE, (vol_range.hi / iol).max(MIN_RESISTANCE))
+                Range::new(0.0, (vol_range.hi / iol).max(MIN_RESISTANCE))
             }
         };
         return Some(Driver {
@@ -1755,14 +1768,14 @@ fn driver_of(
             // the most the supply can be above the lowest high.
             let drop =
                 stated_drop(model, voh, net_of, pos).unwrap_or(supply.range.hi - voh_range.lo);
-            Range::new(MIN_RESISTANCE, (drop / ioh).max(MIN_RESISTANCE))
+            Range::new(0.0, (drop / ioh).max(MIN_RESISTANCE))
         }
     };
     let rol = match stated("rol") {
         Some(r) => r,
         None => {
             let (_, vol_range, iol) = level("vol")?;
-            Range::new(MIN_RESISTANCE, (vol_range.hi / iol).max(MIN_RESISTANCE))
+            Range::new(0.0, (vol_range.hi / iol).max(MIN_RESISTANCE))
         }
     };
     Some(Driver {

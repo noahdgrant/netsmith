@@ -442,6 +442,30 @@ fn ohms(v: f64) -> String {
 }
 
 impl Island {
+    /// The island with a logic pin held in one state: driving high (`high`) or driving low, and
+    /// never letting go of its line. A `~>` chain that the pin drives is on in that state, and
+    /// its window is judged there (ADR 0127); in the others the chain is off.
+    pub fn driving(&self, element: usize, high: bool) -> Island {
+        let mut island = self.clone();
+        if let Kind::Pin {
+            high: h,
+            low: l,
+            z,
+            leak,
+            ..
+        } = &mut island.elements[element].kind
+        {
+            if high {
+                *l = None;
+            } else {
+                *h = None;
+            }
+            *z = false;
+            *leak = None;
+        }
+        island
+    }
+
     pub fn nodes(&self) -> usize {
         self.free + self.held.len()
     }
@@ -604,15 +628,24 @@ impl Island {
                     let mut v = Vec::new();
                     for (word, side) in [("high", high), ("low", low)] {
                         let Some((to, r)) = side else { continue };
+                        // An output resistance down to zero is a branch, as a resistor's is
+                        // (amendment 16): the pin is then exactly at its supply or its ground.
+                        let branch_ok = node != to && (*node < self.free || *to < self.free);
                         for r in r.corners() {
-                            v.push((
-                                format!("{word} through {}", ohms(r)),
-                                Variant::Point(Point::R {
+                            let point = if r < MIN_RESISTANCE && branch_ok {
+                                Point::Branch {
                                     a: *node,
                                     b: *to,
                                     r,
-                                }),
-                            ));
+                                }
+                            } else {
+                                Point::R {
+                                    a: *node,
+                                    b: *to,
+                                    r: r.max(MIN_RESISTANCE),
+                                }
+                            };
+                            v.push((format!("{word} through {}", ohms(r)), Variant::Point(point)));
                         }
                     }
                     if *z {
@@ -701,6 +734,10 @@ impl Island {
                 .filter(|e| match e.kind {
                     Kind::Diode { .. } => true,
                     Kind::Resistor { r, .. } => r.lo < MIN_RESISTANCE,
+                    Kind::Pin { high, low, .. } => [high, low]
+                        .into_iter()
+                        .flatten()
+                        .any(|(_, r)| r.lo < MIN_RESISTANCE),
                     _ => false,
                 })
                 .count()) as u64;
@@ -1434,7 +1471,7 @@ pub(crate) fn check_interior(island: &Island, report: &Report, samples: usize) -
                         states.push(Point::R {
                             a: *node,
                             b: *to,
-                            r: r.lo + (r.hi - r.lo) * rng(),
+                            r: (r.lo + (r.hi - r.lo) * rng()).max(MIN_RESISTANCE),
                         });
                     }
                     if *z {
