@@ -1074,7 +1074,7 @@
         "provides": [],
         "value": "ESP32-S3-WROOM-1-N4",
         "package": "SMD, 25.5x18mm",
-        "path": "module",
+        "path": "mcu",
         "pins": [
           {
             "name": "vdd.neg",
@@ -3710,7 +3710,7 @@
         ]
       },
       {
-        "path": "module.vdd",
+        "path": "mcu.vdd",
         "type_name": "Rail",
         "members": [
           {
@@ -3852,7 +3852,7 @@
     ],
     "notes": [
       {
-        "path": "module",
+        "path": "mcu",
         "kind": "doc",
         "text": "The module (U1): 4 MB of flash, PCB antenna.",
         "at": {
@@ -3860,7 +3860,7 @@
           "line": 47
         },
         "anchors": [
-          "module"
+          "mcu"
         ],
         "result": null
       },

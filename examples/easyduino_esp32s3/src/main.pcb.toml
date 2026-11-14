@@ -14,7 +14,7 @@ version = 1
 [EasyduinoEsp32s3]
 seed = 3
 
-[EasyduinoEsp32s3.parts."module"]
+[EasyduinoEsp32s3.parts."mcu"]
 at = [12.96, 18.5]    # the footprint's origin, mm from the outline's top left corner
 rotation = 0
 side = "top"

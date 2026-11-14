@@ -2041,7 +2041,7 @@ mod board {
 
     /// The same comparison on the source: the text of the module part with its pins for the pads
     /// IO4 and IO5 swapped in their names (the pin `.gpio4` is on pad 5 and `.gpio5` on pad 4, so
-    /// the join `.headers ~ .module` puts the header's GPIO4 on the module's IO5 and GPIO5 on
+    /// the join `.headers ~ .mcu` puts the header's GPIO4 on the module's IO5 and GPIO5 on
     /// IO4) is built, and the comparison finds exactly that. (The test above edits the computed
     /// map; this one edits what a person writes.)
     #[test]
@@ -2237,7 +2237,7 @@ mod board {
             .design
             .parts
             .iter()
-            .find(|p| p.path == "module")
+            .find(|p| p.path == "mcu")
             .unwrap();
         let net = built.design.nets.iter().find(|n| n.name == net_name)?;
         net.pins
@@ -2305,7 +2305,7 @@ mod board {
         // Every header pin is joined to a named pin, not to a request: the source has no `.GPIO`.
         let source = read("src/main.nsm");
         assert!(
-            !source.contains(": .module."),
+            !source.contains(": .mcu."),
             "a request for a pin of the module"
         );
         assert!(
@@ -2313,7 +2313,7 @@ mod board {
                 .design
                 .parts
                 .iter()
-                .find(|p| p.path == "module")
+                .find(|p| p.path == "mcu")
                 .unwrap()
                 .pins
                 .iter()
@@ -2485,7 +2485,7 @@ mod board {
         let built = built();
         let listed = |needle: &str| built.notes.iter().any(|n| n.contains(needle));
         // Checked (not listed): the supply window of the module, the regulator's current.
-        assert!(!listed("module.vdd"), "{:?}", built.notes);
+        assert!(!listed("mcu.vdd"), "{:?}", built.notes);
         assert!(!listed(
             "not evaluated: -regulator.vout.current <= regulator.max_current"
         ));
@@ -2507,7 +2507,7 @@ mod board {
     /// regulator that is within its own row can break the real window: the window is tested
     /// with a COPY of the module whose window is narrower (3.3 V at the most), where the row's
     /// range is no longer inside it. The build is refused, and the message names the module's
-    /// relation (`module.vdd.voltage`, its limit) and the regulator's range; with the window
+    /// relation (`mcu.vdd.voltage`, its limit) and the regulator's range; with the window
     /// as wide as the datasheet's (or 3.4 V) the same board builds, so the window alone is the
     /// cause.
     #[test]
@@ -2524,7 +2524,7 @@ mod board {
             .err()
             .expect("3.399 V is above a 3.3 V window");
         assert!(
-            message.contains("module.vdd.voltage") && message.contains("3.3V"),
+            message.contains("mcu.vdd.voltage") && message.contains("3.3V"),
             "{message}"
         );
         assert!(message.contains("3.399V"), "{message}");
@@ -2540,8 +2540,8 @@ mod board {
     fn a_rail_stated_at_3v7_is_refused_by_the_catalog_and_by_the_modules_window() {
         let text = source();
         let wrong = text.replace(
-            "    .module.vdd ~ .v3v3\n",
-            "    .module.vdd ~ .v3v3\n    .v3v3.voltage &= 3.7V +/- 1%\n",
+            "    .mcu.vdd ~ .v3v3\n",
+            "    .mcu.vdd ~ .v3v3\n    .v3v3.voltage &= 3.7V +/- 1%\n",
         );
         assert_ne!(wrong, text);
         let message = built_from(&wrong, &[])
@@ -2554,7 +2554,7 @@ mod board {
         );
         assert!(
             message.contains(
-                "module.vdd.voltage must always be at most 3.6V, but 3.663V..3.737V is not \
+                "mcu.vdd.voltage must always be at most 3.6V, but 3.663V..3.737V is not \
                  always below 3.6V"
             ),
             "{message}"

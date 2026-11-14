@@ -343,7 +343,7 @@ The reference of a part on the schematic, the bill of materials and the placemen
 _Avoid_: Reference letter, prefix
 
 **Part**:
-A component with pins and quantities, such as a resistor or a regulator.
+A component on a board, with pins and quantities, a designator and a line in the bill of materials. A `part` definition makes one (`.u1: Lt8641`), and so does a generic that is its own provider (`.r1: Resistor`). The part is the member `.r1`; `Resistor` is a **generic**, a definition and not a part. A generic with no pads (`CoaxReceptacle`) is placed through a provider, and the provider is the part. A checker message says "part" of a definition that is placed as one, `Resistor` included.
 _Avoid_: Component, device
 
 **Interface**:
@@ -355,7 +355,7 @@ A reusable sub-circuit that is placed on a board or inside another module. Its i
 _Avoid_: Circuit, block, sheet, subcircuit
 
 **Generic**:
-A definition, `generic Name { ... }`, of what a board may rely on of any part or module that provides it: pins with their kinds (a `pins` table whose rows have a kind and no name and no pads), values with their types, and the relations, narrowings and defaults that hold for every provider. It has no pads, no package and no catalog, unless it is its own provider: the standard `Resistor`, `Capacitor`, `Led`, `Inductor`, `FerriteBead`, `Crystal`, `Fuse`, `Schottky`, `Zener`, `Tvs`, `NMosfet` and `LinearRegulator` are, so each has a pin table with pads and a catalog, is the first candidate for its own use, and keeps its kind name (ADR 0068 stage 2). A board uses it with a member of its type, `.rf: CoaxReceptacle { .max_frequency >= 1.61GHz }`, and the solver picks a provider (ADR 0068). Do not confuse it with a **generic part**, which is a pick, not a definition.
+A definition, `generic Name { ... }`, of what a board may rely on of any part or module that provides it: pins with their kinds (a `pins` table whose rows have a kind and no name and no pads), values with their types, and the relations, narrowings and defaults that hold for every provider. It has no pads, no package and no catalog, unless it is its own provider: the standard `Resistor`, `Capacitor`, `CapacitorBank`, `Led`, `Inductor`, `FerriteBead`, `Crystal`, `Fuse`, `NtcThermistor`, `Schottky`, `Zener`, `Tvs`, `TvsBidirectional`, `NMosfet`, `PMosfet`, `LinearRegulator` and `LevelTranslator` are, so each has a pin table with pads and a catalog, is the first candidate for its own use, and keeps its kind name (ADR 0068 stage 2). A board uses it with a member of its type, `.rf: CoaxReceptacle { .max_frequency >= 1.61GHz }`, and the solver picks a provider (ADR 0068). A generic is a definition, never a part: the part is a member of its type, or the provider the solver picks for it. Do not confuse it with a **generic part**, which is a pick, not a definition.
 _Avoid_: Abstract part, trait, protocol, role (a **Role** is a part's end of a bus, not a name for a generic), family, spec
 
 **Provider**:
