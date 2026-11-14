@@ -2701,7 +2701,7 @@ pins "DFN-8-EP" {
 tie .sense ~ .vout.pos
 ```
 
-A row is `.path kind "NAME" "pad" ["pad" ...] [fn FUNCTION[:kind] [class] ...] [optional | required] [abs_max VALUE [from .pin]]`, on one line, or ended by `;`. The names and pads are text, so they are quoted. A function is a plain name, with a kind of its own after a colon when the datasheet gives one, and `class` after it when the board may choose it on many pins (see Functions).
+A row is `.path kind "NAME" "pad" ["pad" ...] [fn FUNCTION[:kind] [class] ...] [optional | required] [abs_min VALUE] [abs_max VALUE] [from .pin]`, on one line, or ended by `;`. The names and pads are text, so they are quoted. A function is a plain name, with a kind of its own after a colon when the datasheet gives one, and `class` after it when the board may choose it on many pins (see Functions).
 
 | Kind | Meaning | Must be connected? |
 |---|---|---|
@@ -2787,7 +2787,7 @@ Rules.
 
 - A row names a plain pin of the part (`.sense`), which the row declares, or a pin of one of its interfaces (`.vout.pos`). Naming a pin that is already declared with `: Pin`, or an interface, or a value, is an error.
 - A part has one unnamed table or one table for each package, not both. A table that names a package needs a `.package: Package` in the part. Several packages with the same pads share one table, `pins "SOT-23" "SOT-223" { ... }` (next section); a package is named once, in one header.
-- A pin has one kind, one datasheet name, one `optional` or `required` and one `abs_max` in every package. Its pads and functions may differ. A pin that only some packages have does not exist in the others.
+- A pin has one kind, one datasheet name, one `optional` or `required` and one set of absolute limits in every package. Its pads and functions may differ. A pin that only some packages have does not exist in the others.
 - Several pads on a row are one pin that the package brings out more than once: `"1" "2"`. Each becomes a pin of the net in the schematic.
 - A pin that has no row but is joined inside the part to one that has (`.vout.neg` and `.vin.neg` above) is an alias and needs no pad. A pin with no row and no alias that is on a net is an error, once for the part.
 - A pad belongs to one pin, unless the part joins the pins that share it.
@@ -2942,17 +2942,17 @@ error: `u` is a `Ldo9` in package `SOT23-5`, which has no pin table; its tables 
   |                ^^^^^^^^^^^^^^^^^^^^^
 ```
 
-### Several packages, and an absolute maximum in the row
+### Several packages, and the absolute limits in the row
 
 A header may list several packages that have the same pads: they share the table (ADR 0124). The table is the table of each of them, as if it were written once for each.
 
-A row may end with the pin's absolute maximum from the datasheet's Absolute Maximum Ratings: `abs_max 65V`. It is the pin's `.abs_max` (see "Logic levels and absolute maximums"), and the solver holds the worst-case voltage of the pin's net against it. A voltage is measured from a ground, and the row says which:
+A row may end with the pin's limits from the datasheet's Absolute Maximum Ratings: `abs_max 65V`, or `abs_min -0.5V abs_max 6.5V` when the datasheet gives both (`abs_min` first, then `abs_max`). They are the pin's `.abs_min` and `.abs_max` (see "Logic levels and absolute maximums"), and the solver holds the worst-case voltage of the pin's net against them. This is the only place a limit is written (ADR 0126): a statement of it, `.x.abs_max &= 65V` or `.x.abs_min &= -0.5V`, is an error that names the row, for a `Logic` line and a bus pin as for a plain pin. A voltage is measured from a ground, and the row says which:
 
-- `abs_max 4V from .agnd` measures it from the pin named after `from`, a pin of the part.
-- With no `from`, a pin that is the `.line` of a `Logic`, or a pin of a bus interface with `.levels`, is measured from that interface's ground, the `neg` of its reference rail, as its `.abs_max` always is; `from` is refused there.
+- `abs_max 4V from .agnd` measures the limits from the pin named after `from`, a pin of the part; it ends the row, after `abs_min` and `abs_max`.
+- With no `from`, a pin that is the `.line` of a `Logic`, or a pin of a bus interface with `.levels`, is measured from that interface's ground, the `neg` of its reference rail, as it always was; `from` is refused there.
 - With no `from`, any other pin is measured from the part's ground: the one row of the table that is the `neg` of a rail (`.vin.neg`). A table with none, or with the grounds of several rails, needs `from`.
 
-A value can be any expression a narrowing takes, `abs_max .vdd.voltage + 0.3V`. A pin that a part joins to nothing outside it is not judged, and a pin with only a capacitor on it is a `not evaluated` note, as for any absolute maximum.
+A value can be any expression a narrowing takes, `abs_max .vdd.voltage + 0.3V`. A limit in a generic's row is a contract of its providers (see Generics): a provider whose row states none has the generic's, and one that states its own must be at least as strict, `abs_max` no higher and `abs_min` no lower, or the row is an error that names the generic's limit. A pin that a part joins to nothing outside it is not judged, and a pin with only a capacitor on it is a `not evaluated` note, as for any absolute maximum.
 
 ```nsm module=src::en_ldo
 import std::sources::Rail
@@ -3034,11 +3034,38 @@ part NoGround {
 ```
 
 ```text
-error: the `abs_max` of `.en` is measured from the part's ground, the `neg` of its rail, and this table has no rail's `neg` to be it; name the pin it is measured from, such as `abs_max 65V from .gnd`
+error: the limits of `.en` are measured from the part's ground, the `neg` of its rail, and this table has no rail's `neg` to be it; name the pin they are measured from, such as `abs_max 65V from .gnd`
   --> main.nsm:4:31
   |
 4 |         .en   input "EN"  "2" abs_max 6V
   |                               ^^^^^^^
+```
+
+The statement form of a limit is refused, with the row that says it:
+
+```nsm fails
+import std::logic::Logic
+import std::sources::Rail
+
+part Statement {
+    .vdd: Rail
+    .in: Logic
+    .in.reference ~ .vdd
+    .in.line.abs_max &= 3.6V
+    pins {
+        .vdd.pos  power "VDD" "1"
+        .vdd.neg  power "GND" "2"
+        .in.line  input "IN"  "3"
+    }
+}
+```
+
+```text
+error: a pin's absolute maximum is written in its pin row, not with `&=`: end the row of `.in.line` in the `pins` table of its part with `abs_max 3.6V`, such as `.in.line input "NAME" "3" abs_max 3.6V` (ADR 0126)
+  --> main.nsm:8:5
+  |
+8 |     .in.line.abs_max &= 3.6V
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### Functions
@@ -4493,7 +4520,7 @@ board Empty {
 ```
 
 ```text
-error: `.x` is an output named `X` in `pins "B"` but an input named `X` in `pins "A"`; a pin has one kind, one datasheet name and one absolute maximum in every package
+error: `.x` is an output named `X` in `pins "B"` but an input named `X` in `pins "A"`; a pin has one kind, one datasheet name and one set of absolute limits in every package
   --> main.nsm:7:9
   |
 7 |         .x output "X" "1"
@@ -5188,6 +5215,7 @@ Rules.
 
 - A generic holds values, pins and interfaces, and statements (`&=`, `?=`, `==`, `>=`, `<=`). It holds no parts and no modules, and no connections between parts.
 - Its `pins` table has rows of a kind and no datasheet name and no pads: `.signal passive required`. The kind is what every provider's row must say, because the kind decides what the checker asks of the board. `required` and `optional` hold for the provider's row too, and a provider may leave the word out.
+- A row may also end with the pin's limits, `.in input abs_max 6V` (`abs_min`, `abs_max` and `from`, as in "Several packages, and the absolute limits in the row"). They are a contract of the providers (ADR 0126): a provider whose row for the pin states no `abs_max` has the generic's, and likewise `abs_min`, written into its row. A provider that states its own must be at least as strict, `abs_max` no higher and `abs_min` no lower. A value that waits for a pick, `abs_max .in_max`, is the provider's own member.
 - A relation or a narrowing in a generic holds for every provider and for every use. The solver judges it with the values of whichever provider is tried.
 - A generic does not declare `.mpn` or `.lcsc`: every part has both, as text, and the checker refuses a declaration with an error. A provider whose catalog lists `.mpn` as a column has the number in its row, and a board that states `.mpn &=` finds that provider.
 - A doc comment (`///`) goes before a declaration, not before a statement; use `//` there.
@@ -5493,6 +5521,33 @@ error: only a part, a module or an interface provides a generic; a board does no
   |
 5 | board Plate provides Pad {
   |             ^^^^^^^^
+```
+
+A provider's limit is at least as strict as the generic's:
+
+```nsm fails
+generic Limited {
+    .designator &= "U"
+    pins {
+        .gnd passive required
+        .in input abs_max 6V from .gnd
+    }
+}
+
+part Loose provides Limited {
+    pins {
+        .gnd passive "GND" "1"
+        .in input "IN" "2" abs_max 7V from .gnd
+    }
+}
+```
+
+```text
+error: `.in` has `abs_max 7V` here, but `Limited`, which `Loose` provides, limits it with `abs_max 6V`: a provider's limit is at least as strict as its generic's, so `abs_max` is at most 6V
+   --> main.nsm:12:28
+   |
+12 |         .in input "IN" "2" abs_max 7V from .gnd
+   |                            ^^^^^^^
 ```
 
 ### A module that provides a generic
@@ -12088,12 +12143,12 @@ error: `supply.current` is stated -500mA..0A, so the supply `supply` gives at mo
 
 ### Logic levels and absolute maximums
 
-A digital line is a `Logic` (`std::logic::Logic`): a pin `.line` and the rail `.reference` whose `neg` is its ground. It also has four voltages, `.vih`, `.vil`, `.voh` and `.vol`, as a datasheet gives them (ADR 0046). A part states those it has, with fixed volts or with an equation on its rail: `.in.vih &= 2V`, `.in.vih &= 0.7 * .vdd.voltage`, `.out.voh &= .vdd.voltage - 0.1V`. Every pin also has `.abs_min` and `.abs_max`, the voltages it survives relative to its ground, stated the same way: `.in.line.abs_max &= 3.6V`. A pin that is no `Logic` line states its absolute maximum at the end of its pin row, `abs_max 65V`, which also says the ground it is measured from ("Several packages, and an absolute maximum in the row").
+A digital line is a `Logic` (`std::logic::Logic`): a pin `.line` and the rail `.reference` whose `neg` is its ground. It also has four voltages, `.vih`, `.vil`, `.voh` and `.vol`, as a datasheet gives them (ADR 0046). A part states those it has, with fixed volts or with an equation on its rail: `.in.vih &= 2V`, `.in.vih &= 0.7 * .vdd.voltage`, `.out.voh &= .vdd.voltage - 0.1V`. Every pin also has `.abs_min` and `.abs_max`, the voltages it survives relative to its ground. A part writes them at the end of the pin's row, `abs_min -0.5V abs_max 3.6V` (ADR 0126), and nowhere else: a statement such as `.in.line.abs_max &= 3.6V` is an error that names the row. A `Logic` line or a bus pin is measured from its interface's ground; any other pin names its ground in the row, or takes the part's ("Several packages, and the absolute limits in the row").
 
 After the rails are solved, the solver checks two things. A fault is an error; a check that cannot be made is a note `not evaluated: ...`, never a pass.
 
 - **Levels.** For every output or bidirectional `Logic` line on a net and every input or bidirectional `Logic` line on it, the output's `voh` must always be at least the input's `vih`, and its `vol` at most the input's `vil`, in the worst case of both ranges. A level with no value, or two lines whose grounds (`reference.neg`) are not on one net or in one ground group, is not evaluated. A pair in which neither line states a level is not looked at. An output that states a `vol` and no `voh` is open-drain, and the line's high is what its pull-up gives it (see "An open-drain line" below).
-- **Absolute maximum.** A pin with `.abs_min` or `.abs_max` must have a net whose worst-case voltage relative to its ground stays within them. A net that the DC analysis solved (a divider's middle, a net behind a chain of resistors and diodes: see "DC analysis") has the range of voltage the analysis finds for it over every corner of the ranges and every state of the parts around it, and the finding says `(the DC analysis of the network it is in)` (ADR 0076, amendment 12). Any other net's voltage is the hull of: its ground (0 V), each rail whose `pos` is on it, each `Logic` line that drives it (between its reference rail's `neg` and its voltage), and each rail or ground that a resistor joins it to (a pull-up or a pull-down). It is not evaluated for a pin that is not the `.line` of a `Logic` and whose pin row states no `abs_max` (its ground is not known), for a net that something drives that is not a `Logic` line, for a rail or driver on another ground, and for a net nothing sets. A pin that nothing outside its own part is joined to (an optional pin left to float, such as the `TR/SS` of the LT8641) has no voltage to judge and is skipped, with no note; a pin with only a capacitor on it is the note "nothing sets its voltage".
+- **Absolute maximum.** A pin with `.abs_min` or `.abs_max` must have a net whose worst-case voltage relative to its ground stays within them. A net that the DC analysis solved (a divider's middle, a net behind a chain of resistors and diodes: see "DC analysis") has the range of voltage the analysis finds for it over every corner of the ranges and every state of the parts around it, and the finding says `(the DC analysis of the network it is in)` (ADR 0076, amendment 12). Any other net's voltage is the hull of: its ground (0 V), each rail whose `pos` is on it, each `Logic` line that drives it (between its reference rail's `neg` and its voltage), and each rail or ground that a resistor joins it to (a pull-up or a pull-down). It is not evaluated for a net that something drives that is not a `Logic` line, for a rail or driver on another ground, and for a net nothing sets. A pin that nothing outside its own part is joined to (an optional pin left to float, such as the `TR/SS` of the LT8641) has no voltage to judge and is skipped, with no note; a pin with only a capacitor on it is the note "nothing sets its voltage".
 
 A 5 V rail through a divider into a pin that survives 3.6 V is judged by the voltage the divider gives, not by the rail: 10 kohm over 20 kohm from 5.25 V is at most 3.52 V, inside the maximum, and the same divider over 30 kohm is 3.96 V, which is refused. The parts are invented.
 
@@ -12107,12 +12162,10 @@ part Pad {
     .vdd: Rail
     .in: Logic
     .in.reference ~ .vdd
-    .in.line.abs_min &= -0.5V
-    .in.line.abs_max &= 3.6V
     pins {
         .vdd.pos  power "VDD" "1"
         .vdd.neg  power "GND" "2"
-        .in.line  input "IN"  "3"
+        .in.line  input "IN"  "3" abs_min -0.5V abs_max 3.6V
     }
 }
 
@@ -12271,7 +12324,7 @@ board Inverters {
 
 The note, in `netsmith build`'s output: `not evaluated: the absolute maximum of `u1.a.line` against net `net-j.p1`: nothing sets its voltage: no rail is on it and no `Logic` line drives it`.
 
-The level checks apply to the lines that are `Logic` and to the pins of a bus interface that states `.levels` (see "Logic levels of a bus" below). A rating of any other pin is judged when its pin row states it (`abs_max 65V`), which names its ground; one stated as a narrowing on a plain pin (`.x.abs_max &= 65V`) has no ground and is listed as not evaluated.
+The level checks apply to the lines that are `Logic` and to the pins of a bus interface that states `.levels` (see "Logic levels of a bus" below). A rating of any other pin is judged the same way, from its pin row (`abs_max 65V`), which names its ground. A rating is stated nowhere but in the row, so no pin has one whose ground is not known.
 
 #### Levels that are fractions of one supply
 
@@ -12416,11 +12469,10 @@ part Sensor {
     .vdd: Rail
     .in: Logic
     .in.reference ~ .vdd
-    .in.line.abs_max &= 2.1V
     pins {
         .vdd.pos  power "VDD" "1"
         .vdd.neg  power "GND" "2"
-        .in.line  input "IN"  "3"
+        .in.line  input "IN"  "3" abs_max 2.1V
     }
 }
 
@@ -12466,11 +12518,10 @@ part Sensor {
     .vdd: Rail
     .in: Logic
     .in.reference ~ .vdd
-    .in.line.abs_max &= 1V
     pins {
         .vdd.pos  power "VDD" "1"
         .vdd.neg  power "GND" "2"
-        .in.line  input "IN"  "3"
+        .in.line  input "IN"  "3" abs_max 1V
     }
 }
 
@@ -12493,9 +12544,9 @@ board Telemetry {
 
 ```text
 error: net `net-m.status.line` reaches 1.8V above its ground `GND` (`m.status.line`, a line that states a swing of 0V..1.8V) but `s.in.line.abs_max` is 1V: it must not exceed 1V
-   --> main.nsm:41:5
+   --> main.nsm:40:5
    |
-41 |     .s: Sensor
+40 |     .s: Sensor
    |     ^^^^^^^^^^
 ```
 
@@ -12709,7 +12760,7 @@ error: `.out.voh` is already stated at 2mA (at main.nsm:8): a level is one value
 `std::parts::logic::LevelTranslator` is the generic of a single-supply translating buffer: a gate whose input accepts a lower level than its own supply and whose output swings between ground and that supply, so a signal from a 1.8 V part reaches a 3.3 V one. It has the rail `vcc` and the lines `a` (an input `Logic`, which must be connected) and `y` (an output `Logic`), and the pin `nc`, in the pad order of the 5-pin single-gate packages (SOT-23-5 and SOT-353_SC-70-5, drawn from the pin table as a box). Join `.a.line` and `.y.line`, as for any `Logic`. A part states what its datasheet gives, as columns of the catalog `level_translator`:
 
 - `.vcc_min` and `.vcc_max`: the supply range; the rail on `vcc` must be inside it.
-- `.vcc_abs_max` and `.a_abs_max`: the absolute maximums of the supply and of the input. The design states the highest voltage it can put on each, transients included, as `.vcc_peak` and `.a_peak`, and each must be at most its maximum. The input line's `.abs_max` is `.a_abs_max` too, so the solver also checks the worst voltage of the input's net against it (ADR 0046).
+- `.vcc_abs_max` and `.a_abs_max`: the absolute maximums of the supply and of the input. The design states the highest voltage it can put on each, transients included, as `.vcc_peak` and `.a_peak`, and each must be at most its maximum. The row of `.a.line` ends with `abs_max .a_abs_max`, so the solver also checks the worst voltage of the input's net against it (ADR 0046); a provider has that limit too, and may state a stricter one in its own row of `.a.line` (a looser one fails against the row's `.a_abs_max`).
 - `.vt_plus_max` and `.vt_minus_min`: the input thresholds. An input is a high for sure above the first (the positive-going threshold's highest value) and a low for sure below the second (the negative-going threshold's lowest value). They are the input's levels: `.a.vih` is `.vt_plus_max` and `.a.vil` is `.vt_minus_min`, so the solver judges the driver on the net of `.a.line` with no statement of the design: its `voh` must always be at least the first and its `vol` at most the second.
 - `.y` states no level, because the catalog has no column for the output's `voh` and `vol` (a datasheet gives them at a stated load). A receiver on `.y.line` that states its own levels is listed as not evaluated against it; a design that has the datasheet's pair states it, `.u.y.voh &= .u.vcc.voltage - 0.1V`.
 - `.max_output_current`: the output may source or sink that much, and `.output_current`, which the design states, is at most that.
@@ -12807,7 +12858,7 @@ error: net `net-sensor.out.line`: `sensor.out.voh` is 275mV..325mV but `u.a.vih`
 
 ### Logic levels of a bus
 
-Every bus interface but `Usb2` has `.levels`, an interface `std::logic::Levels` with the rail `.reference` and the four voltages `.vih`, `.vil`, `.voh` and `.vol` of a `Logic` (ADR 0064). A datasheet gives one set for the supply of a group of pins, so a part states them once for the interface, in the way it states a `Logic`: `.spi.levels.reference ~ .vdd`, `.spi.levels.vih &= 0.7 * .vdd.voltage`, and the absolute maximum of an input on the pin, `.spi.sclk.abs_max &= 2.1V`. Which lines a part drives and which it reads is what its pin table says (`output` and `tri_state` drive, `input` reads, `bidirectional` does both), so `voh` and `vol` judge the lines it drives and `vih` and `vil` the lines it reads. The checks are those of the previous section, with the same numbers and the same notes: a pair of pins of which neither states a level is not looked at, and one that states them on one side only is a note. A part that has two supplies for two groups of pins states two interfaces.
+Every bus interface but `Usb2` has `.levels`, an interface `std::logic::Levels` with the rail `.reference` and the four voltages `.vih`, `.vil`, `.voh` and `.vol` of a `Logic` (ADR 0064). A datasheet gives one set for the supply of a group of pins, so a part states them once for the interface, in the way it states a `Logic`: `.spi.levels.reference ~ .vdd`, `.spi.levels.vih &= 0.7 * .vdd.voltage`, and the absolute maximum of an input at the end of its pin row, `.spi.sclk input "SCL" "1" abs_max 2.1V` (ADR 0126), measured from the ground of `.levels.reference`. Which lines a part drives and which it reads is what its pin table says (`output` and `tri_state` drive, `input` reads, `bidirectional` does both), so `voh` and `vol` judge the lines it drives and `vih` and `vil` the lines it reads. The checks are those of the previous section, with the same numbers and the same notes: a pair of pins of which neither states a level is not looked at, and one that states them on one side only is a note. A part that has two supplies for two groups of pins states two interfaces.
 
 The reference rail is a reference for the checker, not a load: `Levels` states `.reference.current &= 0A` itself, so a part that joins it to its supply (`.spi.levels.reference ~ .vdd`) does not state a current for it, and the net of that supply keeps no term that nobody can settle. The part's whole draw is `.vdd.current`.
 
@@ -12855,19 +12906,16 @@ part Zsense {
     .spi.levels.vil &= 0.3 * .vddio.voltage
     .spi.levels.voh &= .vddio.voltage - 0.2V
     .spi.levels.vol &= 0.2V
-    .spi.sclk.abs_max &= 2.1V
-    .spi.mosi.abs_max &= 2.1V
-    .spi.cs.abs_max &= 2.1V
 
     pins {
         .vdd.pos   power     "VDD"   "8"
         .vddio.pos power     "VDDIO" "5"
         .vdd.neg   power     "GND"   "6" "7"
-        .spi.sclk  input     "SCL"   "1"
-        .spi.mosi  input     "SDI"   "2"
+        .spi.sclk  input     "SCL"   "1" abs_max 2.1V
+        .spi.mosi  input     "SDI"   "2" abs_max 2.1V
         // Table 14: SDO is "high impedance while CS is high".
         .spi.miso  tri_state "SDO"   "3"
-        .spi.cs    input     "CS"    "4"
+        .spi.cs    input     "CS"    "4" abs_max 2.1V
     }
 }
 
@@ -12891,22 +12939,18 @@ part Zshift {
     .b.levels.vil &= 0.3 * .vccb.voltage
     .b.levels.voh &= .vccb.voltage - 0.2V
     .b.levels.vol &= 0.2V
-    .a.sclk.abs_max &= 3.6V
-    .a.mosi.abs_max &= 3.6V
-    .a.cs.abs_max &= 3.6V
-    .b.miso.abs_max &= 2.1V
 
     pins {
         .vcca.pos  power     "VCCA" "1"
         .vccb.pos  power     "VCCB" "2"
         .vcca.neg  power     "GND"  "3"
-        .a.sclk    input     "A1"   "4"
-        .a.mosi    input     "A2"   "5"
+        .a.sclk    input     "A1"   "4" abs_max 3.6V
+        .a.mosi    input     "A2"   "5" abs_max 3.6V
         .a.miso    tri_state "A3"   "6"
-        .a.cs      input     "A4"   "7"
+        .a.cs      input     "A4"   "7" abs_max 3.6V
         .b.sclk    output    "B1"   "8"
         .b.mosi    output    "B2"   "9"
-        .b.miso    input     "B3"   "10"
+        .b.miso    input     "B3"   "10" abs_max 2.1V
         .b.cs      output    "B4"   "11"
     }
 }

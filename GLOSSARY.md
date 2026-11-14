@@ -414,7 +414,7 @@ The interfaces of one definition that share a net: the processor's `spi` and a f
 _Avoid_: Interface (the type), network
 
 **Pinout**:
-The pin table of a part in one package: for each pin its kind, the name the datasheet prints, its pads, and its functions. Written as a `pins "PACKAGE" { ... }` block in the part, `pins "SOT-23" "SOT-223" { ... }` for packages that share it (ADR 0124), or an unnamed `pins { ... }` for a part whose pads do not depend on the package. A row may end with the pin's **absolute maximum**, `abs_max 65V`. A pin that a package lacks does not exist in that package. It names no CAD tool (ADR 0002, ADR 0016).
+The pin table of a part in one package: for each pin its kind, the name the datasheet prints, its pads, and its functions. Written as a `pins "PACKAGE" { ... }` block in the part, `pins "SOT-23" "SOT-223" { ... }` for packages that share it (ADR 0124), or an unnamed `pins { ... }` for a part whose pads do not depend on the package. A row may end with the pin's **absolute maximum**, `abs_min -0.5V abs_max 65V` (ADR 0126). A pin that a package lacks does not exist in that package. It names no CAD tool (ADR 0002, ADR 0016).
 _Avoid_: Pin table, pin map (the pin map is the pins that requests got, _Pin map_)
 
 **Alias**:
@@ -491,7 +491,7 @@ A rail whose `.voltage`, or the `.voltage` of any rail joined to it by `~`, a st
 _Avoid_: Seed (the start window of a circle, which is one use of a stated rail), claim, assumed window (it is never kept, and is not stated)
 
 **Absolute maximum**:
-The voltages a pin survives, `.abs_min` and `.abs_max` of the pin, relative to its ground. The solver holds them against the worst-case voltage of the pin's net (ADR 0046), which for a net the DC analysis solved is the range of its node voltage (ADR 0076, amendment 12). A pin of a part that is not a `Logic` line states its limit at the end of its pin row, `abs_max 6V`, measured from the part's ground or from the pin `from` names (the `Lt8641`'s `SYNC/MODE`, ADR 0124); a pin joined to nothing outside its part is not judged.
+The voltages a pin survives, `.abs_min` and `.abs_max` of the pin, relative to its ground. The solver holds them against the worst-case voltage of the pin's net (ADR 0046), which for a net the DC analysis solved is the range of its node voltage (ADR 0076, amendment 12). A part states a pin's limits only at the end of its pin row, `abs_min -0.5V abs_max 6V` (ADR 0124, ADR 0126), never with a statement; a `Logic` line or a bus pin is measured from its interface's ground, any other pin from the part's ground or from the pin `from` names (the `Lt8641`'s `SYNC/MODE`); a pin joined to nothing outside its part is not judged.
 _Avoid_: Rating (a rating is a field such as `.max_power`)
 
 **Terminal**:

@@ -1424,7 +1424,8 @@ impl Parser {
     }
 
     /// `.pin kind "NAME" "pad" ["pad" ...] [fn FUNCTION ...] [optional | required]
-    /// [abs_max VALUE [from .pin]]`
+    /// [abs_min VALUE] [abs_max VALUE] [from .pin]`. A generic's row may stop after the kind,
+    /// or after the limits that every provider must meet.
     fn pin_row(&mut self) -> Res<PinRow> {
         let start = self.peek().span.start;
         if !self.at(&Tok::LeadingDot) {
@@ -1459,7 +1460,9 @@ impl Parser {
         let contract = self.in_generic
             && match &t.tok {
                 Tok::Newline | Tok::Semi | Tok::RBrace | Tok::Eof => true,
-                Tok::Ident(w) => w == "optional" || w == "required",
+                Tok::Ident(w) => {
+                    w == "optional" || w == "required" || w == "abs_min" || w == "abs_max"
+                }
                 _ => false,
             };
         if contract {
@@ -1471,6 +1474,7 @@ impl Parser {
             if requirement.is_some() {
                 self.bump();
             }
+            let limits = self.row_limits(&pin_text)?;
             return Ok(PinRow {
                 pin,
                 kind,
@@ -1479,7 +1483,7 @@ impl Parser {
                 pads: Vec::new(),
                 functions: Vec::new(),
                 requirement,
-                abs_max: None,
+                limits,
                 span: self.span_from(start),
             });
         }
@@ -1532,7 +1536,12 @@ impl Parser {
             loop {
                 let t = self.peek().clone();
                 match &t.tok {
-                    Tok::Ident(w) if w != "optional" && w != "required" && w != "abs_max" => {
+                    Tok::Ident(w)
+                        if w != "optional"
+                            && w != "required"
+                            && w != "abs_min"
+                            && w != "abs_max" =>
+                    {
                         let name = self.ident("a function name")?;
                         let kind = self.function_kind(&name)?;
                         // `class` right after a function's name (and its kind) is that function's
@@ -1576,7 +1585,7 @@ impl Parser {
         if requirement.is_some() {
             self.bump();
         }
-        let abs_max = self.row_abs_max(&pin_text)?;
+        let limits = self.row_limits(&pin_text)?;
 
         Ok(PinRow {
             pin,
@@ -1586,46 +1595,77 @@ impl Parser {
             pads,
             functions,
             requirement,
-            abs_max,
+            limits,
             span: self.span_from(start),
         })
     }
 
-    /// `abs_max VALUE [from .pin]` at the end of a pin row, if the row has it.
-    fn row_abs_max(&mut self, pin_text: &str) -> Res<Option<AbsMax>> {
-        if !matches!(&self.peek().tok, Tok::Ident(w) if w == "abs_max") {
+    /// `[abs_min VALUE] [abs_max VALUE] [from .pin]` at the end of a pin row, if the row has
+    /// any of it.
+    fn row_limits(&mut self, pin_text: &str) -> Res<Option<PinLimits>> {
+        let min = self.row_limit("abs_min", pin_text, "abs_min -0.5V")?;
+        let max = self.row_limit("abs_max", pin_text, "abs_max 65V")?;
+        if min.is_none() && max.is_none() {
+            let t = self.peek().clone();
+            if matches!(&t.tok, Tok::Ident(w) if w == "from") {
+                return Err(ParseError::new(
+                    t.span,
+                    format!(
+                        "`from` names the pin a limit is measured from, so it follows `abs_min` or `abs_max`: `abs_max 65V from .gnd`; `{pin_text}` states no limit"
+                    ),
+                ));
+            }
             return Ok(None);
         }
-        let span = self.bump().span;
         let t = self.peek().clone();
-        let missing = match &t.tok {
-            Tok::Newline | Tok::Semi | Tok::RBrace | Tok::Eof => true,
-            Tok::Ident(w) => w == "from",
-            _ => false,
-        };
-        if missing {
+        if min.is_none() && matches!(&t.tok, Tok::Ident(w) if w == "abs_min") {
             return Err(ParseError::new(
-                span,
-                format!(
-                    "`abs_max` needs a value: the voltage `{pin_text}` must not exceed, such as `abs_max 65V`"
-                ),
+                t.span,
+                "write `abs_min` before `abs_max` at the end of a pin row",
             ));
         }
-        let value = self.expr()?;
         let from = if matches!(&self.peek().tok, Tok::Ident(w) if w == "from") {
             self.bump();
             if !self.at(&Tok::LeadingDot) {
                 let t = self.peek().clone();
                 return Err(unexpected(
                     &t,
-                    "the pin the limit is measured from after `from`, such as `from .gnd`",
+                    "the pin the limits are measured from after `from`, such as `from .gnd`",
                 ));
             }
             Some(self.path()?)
         } else {
             None
         };
-        Ok(Some(AbsMax { value, from, span }))
+        Ok(Some(PinLimits { min, max, from }))
+    }
+
+    /// `abs_min VALUE` or `abs_max VALUE` in a pin row, if the row is at that word.
+    fn row_limit(&mut self, word: &str, pin_text: &str, example: &str) -> Res<Option<PinLimit>> {
+        if !matches!(&self.peek().tok, Tok::Ident(w) if w == word) {
+            return Ok(None);
+        }
+        let span = self.bump().span;
+        let t = self.peek().clone();
+        let missing = match &t.tok {
+            Tok::Newline | Tok::Semi | Tok::RBrace | Tok::Eof => true,
+            Tok::Ident(w) => w == "from" || w == "abs_min" || w == "abs_max",
+            _ => false,
+        };
+        if missing {
+            let what = if word == "abs_min" {
+                "the voltage `{pin}` must not go below"
+            } else {
+                "the voltage `{pin}` must not exceed"
+            }
+            .replace("{pin}", pin_text);
+            return Err(ParseError::new(
+                span,
+                format!("`{word}` needs a value: {what}, such as `{example}`"),
+            ));
+        }
+        let value = self.expr()?;
+        Ok(Some(PinLimit { value, span }))
     }
 
     /// The kind after a function's name, `UART1_TX:output`, if it has one. The colon touches

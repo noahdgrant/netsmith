@@ -704,6 +704,9 @@ impl Checker<'_> {
             _ => None,
         };
         match (target, rhs) {
+            (Res::Field(f), _) if self.is_pin_limit(f) && !self.stating_row_limits => {
+                self.refuse_limit_statement(p, c);
+            }
             (Res::Field(f), rhs) => {
                 self.refuse_own_statement(f, symbol, c.span);
                 if let Some(t) = &rhs {
@@ -743,6 +746,41 @@ impl Checker<'_> {
             _ => {}
         }
         stated
+    }
+
+    /// Whether the field is the `.abs_min` or the `.abs_max` that every pin has.
+    fn is_pin_limit(&self, field: FieldId) -> bool {
+        let f = self.model.field(field);
+        matches!(f.name.as_str(), "abs_min" | "abs_max")
+            && self.model.instance(f.owner).kind == InstKind::Pin
+    }
+
+    /// A pin's absolute limit is written in its pin row and nowhere else (ADR 0126): the
+    /// statement `.x.abs_max &= 65V` is refused, with the row that says it.
+    fn refuse_limit_statement(&mut self, path: &ast::Path, c: &ast::Constraint) {
+        let word = path
+            .segments
+            .last()
+            .map_or("abs_max", |s| s.name.as_str())
+            .to_string();
+        let pin = {
+            let mut owner = path.clone();
+            owner.segments.pop();
+            owner.to_source()
+        };
+        let value = c.rhs.to_source();
+        let what = if word == "abs_min" {
+            "minimum"
+        } else {
+            "maximum"
+        };
+        self.error(
+            c.span,
+            format!(
+                "a pin's absolute {what} is written in its pin row, not with `{}`: end the row of `{pin}` in the `pins` table of its part with `{word} {value}`, such as `{pin} input \"NAME\" \"3\" {word} {value}` (ADR 0126)",
+                c.op.symbol()
+            ),
+        );
     }
 
     /// A whole number written as the `.count` of a board's own `CapacitorBank` is `N x Capacitor`

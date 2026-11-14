@@ -20,12 +20,10 @@ part Pad {
     .in.reference ~ .vdd
     .in.vih &= 2V
     .in.vil &= 0.8V
-    .in.line.abs_min &= -0.5V
-    .in.line.abs_max &= 3.6V
     pins {
         .vdd.pos   power "VDD" "1"
         .vdd.neg   power "GND" "2"
-        .in.line   input "IN"  "3"
+        .in.line   input "IN"  "3" abs_min -0.5V abs_max 3.6V
     }
 }
 "#;

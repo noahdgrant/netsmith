@@ -112,6 +112,23 @@ impl PinFunction {
     }
 }
 
+impl PinLimits {
+    /// The limits as a row ends with them, with the space before them.
+    pub fn to_source(&self) -> String {
+        let mut out = String::new();
+        if let Some(min) = &self.min {
+            let _ = write!(out, " abs_min {}", min.value.to_source());
+        }
+        if let Some(max) = &self.max {
+            let _ = write!(out, " abs_max {}", max.value.to_source());
+        }
+        if let Some(from) = &self.from {
+            let _ = write!(out, " from {}", from.to_source());
+        }
+        out
+    }
+}
+
 impl PinRow {
     pub fn to_source(&self) -> String {
         let mut out = format!("{} {}", self.pin.to_source(), self.kind.word());
@@ -129,11 +146,8 @@ impl PinRow {
         if let Some((requirement, _)) = self.requirement {
             let _ = write!(out, " {}", requirement.word());
         }
-        if let Some(limit) = &self.abs_max {
-            let _ = write!(out, " abs_max {}", limit.value.to_source());
-            if let Some(from) = &limit.from {
-                let _ = write!(out, " from {}", from.to_source());
-            }
+        if let Some(limits) = &self.limits {
+            out.push_str(&limits.to_source());
         }
         out
     }

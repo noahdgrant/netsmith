@@ -58,19 +58,14 @@ part Sn74lvc1g04 {
     .y.voh &= .vcc.voltage - 0.1V at 100uA
     .y.vol &= 0.1V at 100uA
 
-    // Table 5.1.
-    .a.line.abs_min &= -0.5V
-    .a.line.abs_max &= 6.5V
-    .y.line.abs_min &= -0.5V
-    .y.line.abs_max &= .vcc.voltage + 0.5V
-
-    // Section 4, Pin Functions: pad 1 NC, 2 A, 3 GND, 4 Y, 5 VCC (DBV, DCK and DRL).
+    // Section 4, Pin Functions: pad 1 NC, 2 A, 3 GND, 4 Y, 5 VCC (DBV, DCK and DRL), and
+    // Table 5.1, Absolute Maximum Ratings, in the rows of A and Y.
     pins "SOT-23-5" {
         .nc       no_connect "NC"  "1"
         .vcc.neg  power      "GND" "3"
         .vcc.pos  power      "VCC" "5"
-        .a.line   input      "A"   "2"
-        .y.line   output     "Y"   "4"
+        .a.line   input      "A"   "2" abs_min -0.5V abs_max 6.5V
+        .y.line   output     "Y"   "4" abs_min -0.5V abs_max .vcc.voltage + 0.5V
     }
 
     .package: Package
@@ -91,8 +86,9 @@ part Sn74lvc1g04 {
 ///   threshold can be, so an input driven below it is a low for sure. They are the input's
 ///   levels: `.a.vih` is `.vt_plus_max` and `.a.vil` is `.vt_minus_min`, so the solver judges
 ///   the driver of `.a.line` against them with no statement of the design (ADR 0046), and
-///   `.a.line.abs_max` is `.a_abs_max`, which the solver checks against the worst voltage of
-///   the input's net.
+///   the `abs_max` in the pin row of `.a.line` is `.a_abs_max`, which the solver checks against
+///   the worst voltage of the input's net. A provider has that limit in its row of `.a.line`
+///   unless it states its own, which must not be higher (ADR 0126).
 /// - `.y` is a `Logic` line on the supply that states no level: the catalog has no column for
 ///   the output's `voh` and `vol`, which a datasheet gives only at a stated load. A receiver on
 ///   `.y.line` that states its own levels is therefore listed as not evaluated against it, and
@@ -240,17 +236,17 @@ generic LevelTranslator {
     .a_peak <= .a_abs_max
     .output_current <= .max_output_current
 
-    // The input's levels are the thresholds' worst cases, and its absolute maximum the rating.
+    // The input's levels are the thresholds' worst cases, and its absolute maximum, in its pin
+    // row, the rating.
     .a.vih &= .vt_plus_max
     .a.vil &= .vt_minus_min
-    .a.line.abs_max &= .a_abs_max
 
     // The part's own draw, which its rail carries.
     .vcc.current &= 0A .. .max_supply_current
 
     pins "SOT-23-5" "SOT-353_SC-70-5" {
         .nc       no_connect "NC"  "1"
-        .a.line   input      "A"   "2"
+        .a.line   input      "A"   "2" abs_max .a_abs_max
         .vcc.neg  power      "GND" "3"
         .y.line   output     "Y"   "4"
         .vcc.pos  power      "VCC" "5"

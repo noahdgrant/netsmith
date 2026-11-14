@@ -88,12 +88,10 @@ part Pad {
     .in.reference ~ .vdd
     .in.vih &= 2V
     .in.vil &= 0.8V
-    .in.line.abs_min &= -0.5V
-    .in.line.abs_max &= 3.6V
     pins {
         .vdd.pos   power "VDD" "1"
         .vdd.neg   power "GND" "2"
-        .in.line   input "IN"  "3"
+        .in.line   input "IN"  "3" abs_min -0.5V abs_max 3.6V
     }
 }
 
@@ -153,11 +151,10 @@ part Pad1 {
     .vdd: Rail
     .in: Logic
     .in.reference ~ .vdd
-    .in.line.abs_max &= 1V
     pins {
         .vdd.pos   power "VDD" "1"
         .vdd.neg   power "GND" "2"
-        .in.line   input "IN"  "3"
+        .in.line   input "IN"  "3" abs_max 1V
     }
 }
 
@@ -166,12 +163,10 @@ part Pad0 {
     .vdd: Rail
     .in: Logic
     .in.reference ~ .vdd
-    .in.line.abs_min &= 0V
-    .in.line.abs_max &= 3.6V
     pins {
         .vdd.pos   power "VDD" "1"
         .vdd.neg   power "GND" "2"
-        .in.line   input "IN"  "3"
+        .in.line   input "IN"  "3" abs_min 0V abs_max 3.6V
     }
 }
 

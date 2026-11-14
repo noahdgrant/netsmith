@@ -37,11 +37,10 @@ part Zport {
     .vdd: Rail
     .in: Logic
     .in.reference ~ .vdd
-    .in.line.abs_max &= 3.6V
     pins {
         .vdd.pos  power "VDD" "1"
         .vdd.neg  power "GND" "2"
-        .in.line  input "IN"  "3"
+        .in.line  input "IN"  "3" abs_max 3.6V
     }
 }
 

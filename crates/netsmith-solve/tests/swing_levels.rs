@@ -75,11 +75,10 @@ part FragileOpenDrain {
     .status: Logic
     .status.reference ~ .vbat
     .status.vol &= 0.2V
-    .status.line.abs_max &= 1.5V
     pins {
         .vbat.pos     power      "VBAT"   "1"
         .vbat.neg     power      "GND"    "2"
-        .status.line  open_drain "STATUS" "3"
+        .status.line  open_drain "STATUS" "3" abs_max 1.5V
     }
 }
 
@@ -90,11 +89,10 @@ part Fragile {
     .in.reference ~ .vdd
     .in.vih &= 1.2V
     .in.vil &= 0.4V
-    .in.line.abs_max &= 2V
     pins {
         .vdd.pos  power "VDD" "1"
         .vdd.neg  power "GND" "2"
-        .in.line  input "IN"  "3"
+        .in.line  input "IN"  "3" abs_max 2V
     }
 }
 

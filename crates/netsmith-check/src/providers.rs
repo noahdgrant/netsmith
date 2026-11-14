@@ -371,7 +371,6 @@ impl Checker<'_> {
                         row.name = String::new();
                         row.pads = Vec::new();
                         row.functions = Vec::new();
-                        row.abs_max = None;
                         merged.rows.push(row);
                     }
                 }

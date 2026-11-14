@@ -101,21 +101,17 @@ part Zshift {
     .b.levels.vil &= 0.3 * .vccb.voltage
     .b.levels.voh &= .vccb.voltage - 0.2V
     .b.levels.vol &= 0.2V
-    .a.sclk.abs_max &= 3.6V
-    .a.mosi.abs_max &= 3.6V
-    .a.cs.abs_max &= 3.6V
-    .b.miso.abs_max &= 2.1V
     pins {
         .vcca.pos  power     "VCCA" "1"
         .vccb.pos  power     "VCCB" "2"
         .vcca.neg  power     "GND"  "3"
-        .a.sclk    input     "A1"   "4"
-        .a.mosi    input     "A2"   "5"
+        .a.sclk    input     "A1"   "4" abs_max 3.6V
+        .a.mosi    input     "A2"   "5" abs_max 3.6V
         .a.miso    tri_state "A3"   "6"
-        .a.cs      input     "A4"   "7"
+        .a.cs      input     "A4"   "7" abs_max 3.6V
         .b.sclk    output    "B1"   "8"
         .b.mosi    output    "B2"   "9"
-        .b.miso    input     "B3"   "10"
+        .b.miso    input     "B3"   "10" abs_max 2.1V
         .b.cs      output    "B4"   "11"
     }
 }
@@ -128,11 +124,10 @@ fn slave(name: &str, abs: &str) -> String {
          .spi.role &= SpiRole::Slave\n .spi.levels.reference ~ .vddio\n \
          .spi.levels.vih &= 0.7 * .vddio.voltage\n .spi.levels.vil &= 0.3 * .vddio.voltage\n \
          .spi.levels.voh &= .vddio.voltage - 0.2V\n .spi.levels.vol &= 0.2V\n \
-         .spi.sclk.abs_max &= {abs}\n .spi.mosi.abs_max &= {abs}\n .spi.cs.abs_max &= {abs}\n \
          pins {{\n .vdd.pos power \"VDD\" \"8\"\n .vddio.pos power \"VDDIO\" \"5\"\n \
-         .vdd.neg power \"GND\" \"6\" \"7\"\n .spi.sclk input \"SCL\" \"1\"\n \
-         .spi.mosi input \"SDI\" \"2\"\n .spi.miso tri_state \"SDO\" \"3\"\n \
-         .spi.cs input \"CS\" \"4\"\n }}\n}}\n"
+         .vdd.neg power \"GND\" \"6\" \"7\"\n .spi.sclk input \"SCL\" \"1\" abs_max {abs}\n \
+         .spi.mosi input \"SDI\" \"2\" abs_max {abs}\n .spi.miso tri_state \"SDO\" \"3\"\n \
+         .spi.cs input \"CS\" \"4\" abs_max {abs}\n }}\n}}\n"
     )
 }
 

@@ -67,10 +67,10 @@ impl Model {
         self.instance(part).tables.iter().find_map(|t| t.row(pin))
     }
 
-    /// The pin an absolute maximum of the pin's row is measured from (ADR 0124), if its row
-    /// states one with a reference of its own.
+    /// The pin the absolute limits of the pin's row are measured from (ADR 0124), if its row
+    /// states any with a reference of its own.
     pub fn limit_reference(&self, pin: InstId) -> Option<InstId> {
-        self.pin_facts(pin)?.abs_max.as_ref()?.reference
+        self.pin_facts(pin)?.limits.as_ref()?.reference
     }
 
     /// Whether the pin's ground is that of an interface it belongs to: it is the `.line` of a

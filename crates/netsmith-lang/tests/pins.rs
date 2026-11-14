@@ -568,9 +568,10 @@ fn a_row_ends_with_its_absolute_maximum_and_the_pin_it_is_measured_from() {
     let Item::Pins(table) = &file.definitions[0].items[0] else {
         panic!()
     };
-    let limit = table.rows[0].abs_max.as_ref().expect("a limit");
-    assert_eq!(limit.value.to_source(), "65V");
-    assert!(limit.from.is_none());
+    let limits = table.rows[0].limits.as_ref().expect("a limit");
+    assert_eq!(limits.max.as_ref().unwrap().value.to_source(), "65V");
+    assert!(limits.min.is_none());
+    assert!(limits.from.is_none());
     assert_eq!(
         table.rows[0].requirement.map(|r| r.0),
         Some(Requirement::Optional)
@@ -583,9 +584,15 @@ fn a_row_ends_with_its_absolute_maximum_and_the_pin_it_is_measured_from() {
     };
     let r = &table.rows[0];
     assert_eq!(r.functions.len(), 2);
-    let limit = r.abs_max.as_ref().expect("a limit");
-    assert_eq!(limit.value.to_source(), ".vcc.voltage + 0.3V");
-    assert_eq!(limit.from.as_ref().map(Path::to_source).as_deref(), Some(".gnd"));
+    let limits = r.limits.as_ref().expect("a limit");
+    assert_eq!(
+        limits.max.as_ref().unwrap().value.to_source(),
+        ".vcc.voltage + 0.3V"
+    );
+    assert_eq!(
+        limits.from.as_ref().map(Path::to_source).as_deref(),
+        Some(".gnd")
+    );
     assert_eq!(
         r.to_source(),
         ".fb input \"FB\" \"4\" fn A B abs_max .vcc.voltage + 0.3V from .gnd"
@@ -599,12 +606,19 @@ fn abs_max_needs_a_value_and_from_needs_a_pin() {
         msg,
         "`abs_max` needs a value: the voltage `.en` must not exceed, such as `abs_max 65V`"
     );
+    let (msg, ..) = row_error(".en input \"EN\" \"3\" abs_min");
+    assert_eq!(
+        msg,
+        "`abs_min` needs a value: the voltage `.en` must not go below, such as `abs_min -0.5V`"
+    );
+    let (msg, ..) = row_error(".en input \"EN\" \"3\" abs_min abs_max 6V");
+    assert!(msg.starts_with("`abs_min` needs a value"), "{msg}");
     assert_eq!((line, col), (3, 28), "at the word `abs_max`");
     let (msg, ..) = row_error(".en input \"EN\" \"3\" abs_max from .gnd");
     assert!(msg.starts_with("`abs_max` needs a value"), "{msg}");
     let (msg, ..) = row_error(".en input \"EN\" \"3\" abs_max 65V from");
     assert!(
-        msg.contains("the pin the limit is measured from after `from`, such as `from .gnd`"),
+        msg.contains("the pin the limits are measured from after `from`, such as `from .gnd`"),
         "{msg}"
     );
     let (msg, ..) = row_error(".en input \"EN\" \"3\" abs_max 65V from gnd");
@@ -612,4 +626,66 @@ fn abs_max_needs_a_value_and_from_needs_a_pin() {
     // The limit ends the row.
     let (msg, ..) = row_error(".en input \"EN\" \"3\" abs_max 65V optional");
     assert!(msg.contains("end of line or `;`, found `optional`"), "{msg}");
+}
+
+#[test]
+fn a_row_may_state_both_limits_and_abs_min_comes_first() {
+    let src = row(".in input \"IN\" \"3\" abs_min -0.5V abs_max .vcc.voltage + 0.5V from .gnd");
+    let file = parse(&src).unwrap();
+    let Item::Pins(table) = &file.definitions[0].items[0] else {
+        panic!()
+    };
+    let r = &table.rows[0];
+    let limits = r.limits.as_ref().expect("limits");
+    assert_eq!(limits.min.as_ref().unwrap().value.to_source(), "-0.5V");
+    assert_eq!(
+        limits.max.as_ref().unwrap().value.to_source(),
+        ".vcc.voltage + 0.5V"
+    );
+    assert_eq!(
+        r.to_source(),
+        ".in input \"IN\" \"3\" abs_min -0.5V abs_max .vcc.voltage + 0.5V from .gnd"
+    );
+    // `abs_min` alone, with `from`.
+    let src = row(".in input \"IN\" \"3\" abs_min -0.5V from .gnd");
+    let file = parse(&src).unwrap();
+    let Item::Pins(table) = &file.definitions[0].items[0] else {
+        panic!()
+    };
+    let limits = table.rows[0].limits.as_ref().unwrap();
+    assert!(limits.max.is_none());
+    assert_eq!(limits.min.as_ref().unwrap().value.to_source(), "-0.5V");
+}
+
+#[test]
+fn the_limits_have_one_order_and_from_needs_one() {
+    let (msg, ..) = row_error(".in input \"IN\" \"3\" abs_max 6V abs_min -0.5V");
+    assert_eq!(msg, "write `abs_min` before `abs_max` at the end of a pin row");
+    let (msg, ..) = row_error(".in input \"IN\" \"3\" from .gnd");
+    assert!(
+        msg.contains("`from` names the pin a limit is measured from, so it follows `abs_min` or `abs_max`"),
+        "{msg}"
+    );
+}
+
+#[test]
+fn a_generics_row_may_state_the_limits_every_provider_meets() {
+    let src = "generic G {\n    pins {\n        .in input abs_min -0.5V abs_max 6V from .gnd\n        .en input optional abs_max .vmax\n        .gnd passive required\n    }\n}\n";
+    let file = parse(src).unwrap();
+    let Item::Pins(table) = &file.definitions[0].items[0] else {
+        panic!()
+    };
+    assert!(table.rows.iter().all(PinRow::is_contract));
+    let limits = table.rows[0].limits.as_ref().expect("limits");
+    assert_eq!(limits.max.as_ref().unwrap().value.to_source(), "6V");
+    assert_eq!(limits.min.as_ref().unwrap().value.to_source(), "-0.5V");
+    assert_eq!(table.rows[1].limits.as_ref().unwrap().min, None);
+    assert!(table.rows[1].requirement.is_some());
+    assert_eq!(
+        table.rows[0].to_source(),
+        ".in input abs_min -0.5V abs_max 6V from .gnd"
+    );
+    // A part's row still needs its name and pads before a limit.
+    let (msg, ..) = row_error(".en input abs_max 6V");
+    assert!(msg.contains("the datasheet name of `.en`"), "{msg}");
 }
