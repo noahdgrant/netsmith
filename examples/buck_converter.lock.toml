@@ -1,0 +1,79 @@
+# The catalog row each part of each board was picked as, written by `netsmith build` and
+# `netsmith fab` when this file does not exist. Commit it: a change to a catalog or to the
+# solver that would move a pick shows here and not only in the bill of materials. Refresh it
+# with `netsmith lock --update`. Nothing in it is edited by hand.
+version = 1
+
+[BuckConverterExample.providers."process"]
+generic = "TwoLayer"
+provider = "std::mfg::jlcpcb::JlcTwoLayer1oz"
+
+[BuckConverterExample.providers."reg"]
+generic = "BuckConverter"
+provider = "std::parts::regulator::Buck<std::parts::regulator::Lmr16006y>"
+
+[BuckConverterExample.parts."power_in"]
+catalog = "header"
+row = "PH2.54-1X2P-H25 2-pin 2.54mm header C42431798"
+lcsc = "C42431798"
+mpn = "PH2.54-1X2P-H25"
+
+[BuckConverterExample.parts."power_out"]
+catalog = "header"
+row = "PH2.54-1X2P-H25 2-pin 2.54mm header C42431798"
+lcsc = "C42431798"
+mpn = "PH2.54-1X2P-H25"
+
+[BuckConverterExample.parts."reg.divider.rbottom"]
+catalog = "resistor"
+row = "330Ω 1% 0402 C25104"
+lcsc = "C25104"
+mpn = "0402WGF3300TCE"
+
+[BuckConverterExample.parts."reg.divider.rtop"]
+catalog = "resistor"
+row = "1.1kΩ 1% 0402 C25860"
+lcsc = "C25860"
+mpn = "0402WGF1101TCE"
+
+[BuckConverterExample.parts."reg.ic"]
+catalog = "lmr16006y"
+row = "LMR16006YDDCR 4-60V 0.6A 2.1MHz buck SOT-23-6 C290195"
+lcsc = "C290195"
+mpn = "LMR16006YDDCR"
+
+[BuckConverterExample.parts."reg.ic.boost"]
+catalog = "capacitor"
+row = "100nF 10% 16V X7R 0402 C1525"
+lcsc = "C1525"
+mpn = "CL05B104KO5NNNC"
+
+[BuckConverterExample.parts."reg.ic.catch"]
+catalog = "schottky"
+row = "1N5819WS 40V 1A Schottky SOD-323 C191023"
+lcsc = "C191023"
+mpn = "1N5819WS"
+
+[BuckConverterExample.parts."reg.ic.shdn_pullup"]
+catalog = "resistor"
+row = "100kΩ 1% 0402 C25741"
+lcsc = "C25741"
+mpn = "0402WGF1003TCE"
+
+[BuckConverterExample.parts."reg.inductor"]
+catalog = "inductor"
+row = "LQH32PN100MN0L 10uH 750mA inductor 1210 C98020"
+lcsc = "C98020"
+mpn = "LQH32PN100MN0L"
+
+[BuckConverterExample.parts."reg.input_cap"]
+catalog = "capacitor"
+row = "2.2uF 10% 100V X7R 1210 C55151"
+lcsc = "C55151"
+mpn = "CL32B225KCJSNNE"
+
+[BuckConverterExample.parts."reg.output_cap"]
+catalog = "capacitor"
+row = "47uF 20% 6.3V X5R 0805 C16780"
+lcsc = "C16780"
+mpn = "CL21A476MQYNNNE"

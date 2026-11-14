@@ -4,10 +4,14 @@
 //! and one for each output. It is the regulator-heavy board of about
 //! sixty parts that `docs/solver-timings.md` times (stage by stage, with `NETSMITH_TIMINGS=1`).
 //!
-//! The buck IC, `BenchBuck`, is invented: the standard library's one buck IC (`Lt8641`) has no
-//! catalog row and no standard inductor has the DC resistance it asks for, so no `Buck` around it
-//! can be solved with the standard catalogs alone. The invented IC states the same kind of
-//! numbers (it provides `BuckIc`, writes one relation from its output to its input current and
+//! The buck IC, `BenchBuck`, is invented, and the stages name it rather than pick one with
+//! `BuckConverter`, for three reasons. Each stage carries 1.5 A at up to 15.8 V: of the standard
+//! library's buck ICs with a catalog row only the `Tps54202` takes that, and no standard inductor
+//! carries the load and half its ripple at the 5.6 uH it asks for (the `Lt8641` takes it too, but
+//! has no catalog row). Each stage joins the IC's power-good pin, which a board or module reaches
+//! only where it names the IC (ADR 0120). And the picks and the timings of this board stay as
+//! they were. `examples/buck_converter.nsm` picks a real IC with `BuckConverter`. The invented IC
+//! states the same kind of numbers (it provides `BuckIc`, writes one relation from its output to its input current and
 //! its element at DC, and carries its bootstrap capacitor and enable divider in its `support`
 //! section) and asks for nothing the standard rows cannot give. Every other part is a standard
 //! generic and is picked from the standard catalogs. Nothing here is a design to build.

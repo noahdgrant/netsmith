@@ -843,20 +843,30 @@ fn a_parametric_converter_tries_each_ic_of_its_bound_in_order() {
         build(&w, &picked_converter("12V +/- 5%")).unwrap_or_else(|e| panic!("{:?}", messages(&e)));
     let b = &o.boards[0];
     assert_eq!(b.providers[0].chosen, "Converter<Zbk9>");
-    // The standard library's IC first (its catalog has no row here), then the project's.
+    // The standard library's ICs first, by name (none of them makes 3.3 V of 4 % at 1 A from
+    // 12 V with the standard rows), then the project's.
     let passed: Vec<&str> = b.providers[0]
         .passed_over
         .iter()
         .map(|(n, _)| n.as_str())
         .collect();
-    assert_eq!(passed, ["Converter<Lt8641>", "Converter<Zbk2>"]);
-    assert_eq!(b.providers[0].candidates, 3);
+    assert_eq!(
+        passed,
+        [
+            "Converter<Lmr16006y>",
+            "Converter<Lt8641>",
+            "Converter<Rt8059>",
+            "Converter<Tps54202>",
+            "Converter<Zbk2>"
+        ]
+    );
+    assert_eq!(b.providers[0].candidates, 6);
     assert!(
-        b.providers[0].passed_over[1]
+        b.providers[0].passed_over[4]
             .1
             .contains("reg.buck.ic.max_input_voltage"),
         "{}",
-        b.providers[0].passed_over[1].1
+        b.providers[0].passed_over[4].1
     );
     // The IC and its circuit are parts at paths through the use.
     let paths: Vec<&str> = b.design.parts.iter().map(|p| p.path.as_str()).collect();

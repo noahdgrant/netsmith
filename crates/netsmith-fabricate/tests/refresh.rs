@@ -632,8 +632,9 @@ fn the_standard_catalogs_refresh_with_the_saved_responses_and_change_only_checke
     let root = dir("std");
     let names = copy_std(&root.join("catalog"));
     // Thirteen with rows and, since ADR 0063, `p_mosfet` and `level_translator` with a header
-    // only, and `lt8641` (a buck IC with no row of recorded stock) with a header only too.
-    assert_eq!(names.len(), 17, "seventeen catalogs");
+    // only, `lt8641` (a buck IC with no row of recorded stock) with a header only too, and the
+    // three buck ICs of issue #620 with a row each.
+    assert_eq!(names.len(), 20, "twenty catalogs");
     let before: Vec<String> = names
         .iter()
         .map(|n| fs::read_to_string(root.join("catalog").join(n)).unwrap())
@@ -708,7 +709,7 @@ fn the_standard_catalogs_refresh_with_the_saved_responses_and_change_only_checke
 #[test]
 fn every_standard_catalog_has_a_checked_column_just_after_date() {
     let targets = resolve_targets(Path::new(STD), &[PathBuf::from(".")]).unwrap();
-    assert_eq!(targets.len(), 17);
+    assert_eq!(targets.len(), 20);
     for t in targets {
         let text = fs::read_to_string(&t.path).unwrap();
         let header = parse_csv(&text).unwrap()[0].1.clone();
@@ -919,7 +920,7 @@ fn with_no_argument_outside_a_project_and_the_repository_there_is_nothing_to_act
     let repo = dir("repo");
     copy_std(&repo.join("data/jlcpcb/catalog"));
     let targets = resolve_targets(&repo, &[]).unwrap();
-    assert_eq!(targets.len(), 17);
+    assert_eq!(targets.len(), 20);
     assert_eq!(targets[0].shown, "data/jlcpcb/catalog/capacitor.csv");
 }
 

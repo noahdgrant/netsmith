@@ -1,6 +1,7 @@
 //! Voltage regulators.
 
 import std::logic::Logic
+import std::parts::diode::Schottky
 import std::parts::passive::{Capacitor, CapacitorBank, Inductor, Resistor}
 import std::sources::Rail
 
@@ -232,6 +233,98 @@ generic BuckIc {
     .min_output_capacitance: Capacitance
 }
 
+/// Any buck converter: a supply that steps its input rail down to its output rail, whatever IC
+/// and circuit make it (ADR 0068, ADR 0115). A board places one by what it needs and lets the
+/// solver pick the IC:
+///
+/// ```text
+/// .reg: BuckConverter { .vout.voltage &= 3.3V +/- 5% }
+/// .v12 ~ .reg.vin
+/// .reg.vout ~ .v3v3
+/// ```
+///
+/// The standard library's provider is `Buck<Ic>`, which stands for one candidate for each part
+/// in scope that provides `BuckIc` (ADR 0115): the standard ones are `Lmr16006y`, `Lt8641`,
+/// `Rt8059` and `Tps54202`, tried in that order (the order of names in this file), then a
+/// project's own. The pick is the first for which every check of the board holds (ADR 0068):
+/// the input's range against the IC's, the load against its largest output current, the output
+/// voltage against what its reference and the 1 % resistors of the divider can hold in the
+/// worst case, and a catalog row for every part of it. A board that wants one IC names it,
+/// `.reg: Buck<Tps54202>`, and may then join the IC's own pins (ADR 0120).
+///
+/// The output's tolerance must leave room for the reference: each standard IC's is good to 2 %
+/// or 2.5 % in the worst case, and the divider's 1 % resistors add about 1.5 % at 3.3 V, so a
+/// 3.3 V output of 3 % holds for none of them and one of 5 % holds for each.
+///
+/// What a board narrows here is what it needs of a buck and nothing of how one is built: the
+/// output voltage (`.vout.voltage`), the load (the `.current` of the rail joined to `.vout`),
+/// the input (the rail joined to `.vin`, its `.voltage` and its `.peak`) and, when it states the
+/// ESR of the output capacitors, the ripple of the output voltage. The two grounds are one and
+/// the output is never above the input, for every provider.
+///
+/// Decided by the agent while the owner was away (2026-11-13, issue #620): the members are the
+/// two rails and the ripple with the ESR it needs, the members `Buck` had that say what the
+/// board gets rather than how it is made. Not taken: the soft-start time and the capacitors'
+/// `.voltage_margin` (they stay on `Buck`, for a board that names the IC: a bound on a
+/// soft-start time that an IC does not state would be not evaluated, and a trial that cannot be
+/// judged does not hold, so the bound would refuse every such IC); a `.max_output_current`
+/// requirement (the load on `.vout` already says it, and the IC's own limit is checked against
+/// it); one generic per input range (the input rail says it).
+generic BuckConverter {
+    .vin: Rail
+    .vout: Rail
+    .vin.neg ~ .vout.neg
+    .vin.voltage >= .vout.voltage
+    /// The peak-to-peak ripple of the output voltage, a closed-form estimate (not a
+    /// simulation). Each provider states how it is made; in `Buck` it is the charge the
+    /// capacitor bank takes from the triangular ripple current plus the drop of that current
+    /// across the bank's ESR,
+    /// `.ripple / (8 * fsw * total_effective_capacitance) + .ripple * .output_esr / count`.
+    /// The first term is the charge balance of a capacitor that takes the ripple current of
+    /// the inductor and nothing of the load (Erickson and Maksimovic, *Fundamentals of Power
+    /// Electronics*, chapter 2; the equation number was not looked up; TI SLVA477B gives the
+    /// same two terms, read as a summary only). The two terms are 90 degrees apart in a
+    /// ceramic capacitor, so adding them is the conservative sum. A board bounds it
+    /// (`.reg.output_ripple <= 20mV`) and the bound holds in the worst case the ranges
+    /// give: the highest input, the lowest inductance (its tolerance), the lowest switching
+    /// frequency (its tolerance), the lowest effective capacitance (its tolerance and its DC
+    /// bias) and the highest ESR. Each is monotone in it, so the range is exact.
+    ///
+    /// What it assumes: the converter switches at its programmed frequency every period at
+    /// the ripple current of `.ripple` (the on-time and off-time checks hold the frequency,
+    /// ADR 0093); the load draws a steady current, so the capacitor takes only the ripple;
+    /// the capacitors of the bank share the ripple current equally; `.output_esr` is the
+    /// ESR at the switching frequency, at the DC bias and over the temperature range.
+    ///
+    /// Wrong, and optimistic, when: the converter skips pulses or runs in burst mode at
+    /// light load, where the ripple is larger and the frequency lower (a part with such a
+    /// mode, as the LT8641 has, is judged at its programmed frequency); the output has
+    /// spikes at the switch edges that the capacitors' ESL makes (there is no inductance of
+    /// the capacitor in the formula); a constant-on-time or hysteretic converter, whose
+    /// ripple the ESR sets by design; the bank's capacitors differ (the ESR of one divided by
+    /// the count, as the ripple current is shared equally); a load that steps, or the
+    /// regulator's loop (neither is in a closed form, issue #306). It is the ripple of the
+    /// capacitor bank, not of the board: the traces' resistance and the load's own ripple are
+    /// not in it.
+    ///
+    /// Not evaluated until the board states `.output_esr`, since the capacitor term alone
+    /// would be too small. A bound on this member with no ESR stated is listed as not
+    /// evaluated, never a pass.
+    .output_ripple: Voltage
+    /// The ESR of one capacitor of the output bank at the switching frequency, at the
+    /// highest the board accepts (a range gives the worst case: use the datasheet's maximum
+    /// and not its typical figure, at the DC bias and the temperature of the board).
+    /// Optional (ADR 0074): a board that states nothing here has no ripple of the output
+    /// voltage and nothing is checked against it. The standard capacitor catalog has no ESR
+    /// column yet (a column needs a number from the maker's datasheet or tool, with its
+    /// conditions as the recorded source), so this is the board's own figure, the last
+    /// resort of the design rules: a board states it from the datasheet of the capacitor
+    /// it means to fit, and the solver picks `.output_cap` without checking it against this
+    /// number. Whether the board states it here or the capacitor carries it is the owner's
+    /// to confirm.
+    .output_esr: Resistance optional
+}
+
 /// A buck converter: the IC, a part that provides `BuckIc` and stands for the parameter `Ic`,
 /// and everything around it that every buck IC needs (ADR 0025, ADR 0115): the inductor, the
 /// input and output capacitors, and the feedback divider that sets the output. What one IC
@@ -328,64 +421,15 @@ generic BuckIc {
 /// writes (`.fsw == 24GHz * 1ohm / .rt_value`, tested). The naming of
 /// `FeedbackDivider` and of the catalogs is accepted as built by the owner, 2026-11-11; the
 /// IC as a type parameter and the names `Buck` and `BuckIc` are ADR 0115's.
-module Buck<Ic: BuckIc> {
+module Buck<Ic: BuckIc> provides BuckConverter {
     /// The IC, a part that provides `BuckIc`.
     .ic: Ic
-    .vin: Rail
-    .vout: Rail
     .divider: FeedbackDivider
     .inductor: Inductor
     .input_cap: CapacitorBank
     .output_cap: CapacitorBank
     /// The peak-to-peak ripple current of the inductor.
     .ripple: Current
-    /// The peak-to-peak ripple of the output voltage, a closed-form estimate (not a
-    /// simulation): the charge the capacitor bank takes from the triangular ripple current
-    /// plus the drop of that current across the bank's ESR,
-    /// `.ripple / (8 * fsw * total_effective_capacitance) + .ripple * .output_esr / count`.
-    /// The first term is the charge balance of a capacitor that takes the ripple current of
-    /// the inductor and nothing of the load (Erickson and Maksimovic, *Fundamentals of Power
-    /// Electronics*, chapter 2; the equation number was not looked up; TI SLVA477B gives the
-    /// same two terms, read as a summary only). The two terms are 90 degrees apart in a
-    /// ceramic capacitor, so adding them is the conservative sum. A board bounds it
-    /// (`.reg.output_ripple <= 20mV`) and the bound holds in the worst case the ranges
-    /// give: the highest input, the lowest inductance (its tolerance), the lowest switching
-    /// frequency (its tolerance), the lowest effective capacitance (its tolerance and its DC
-    /// bias) and the highest ESR. Each is monotone in it, so the range is exact.
-    ///
-    /// What it assumes: the converter switches at its programmed frequency every period at
-    /// the ripple current of `.ripple` (the on-time and off-time checks hold the frequency,
-    /// ADR 0093); the load draws a steady current, so the capacitor takes only the ripple;
-    /// the capacitors of the bank share the ripple current equally; `.output_esr` is the
-    /// ESR at the switching frequency, at the DC bias and over the temperature range.
-    ///
-    /// Wrong, and optimistic, when: the converter skips pulses or runs in burst mode at
-    /// light load, where the ripple is larger and the frequency lower (a part with such a
-    /// mode, as the LT8641 has, is judged at its programmed frequency); the output has
-    /// spikes at the switch edges that the capacitors' ESL makes (there is no inductance of
-    /// the capacitor in the formula); a constant-on-time or hysteretic converter, whose
-    /// ripple the ESR sets by design; the bank's capacitors differ (the ESR of one divided by
-    /// the count, as the ripple current is shared equally); a load that steps, or the
-    /// regulator's loop (neither is in a closed form, issue #306). It is the ripple of the
-    /// capacitor bank, not of the board: the traces' resistance and the load's own ripple are
-    /// not in it.
-    ///
-    /// Not evaluated until the board states `.output_esr`, since the capacitor term alone
-    /// would be too small. A bound on this member with no ESR stated is listed as not
-    /// evaluated, never a pass.
-    .output_ripple: Voltage
-    /// The ESR of one capacitor of the output bank at the switching frequency, at the
-    /// highest the board accepts (a range gives the worst case: use the datasheet's maximum
-    /// and not its typical figure, at the DC bias and the temperature of the board).
-    /// Optional (ADR 0074): a board that states nothing here has no ripple of the output
-    /// voltage and nothing is checked against it. The standard capacitor catalog has no ESR
-    /// column yet (a column needs a number from the maker's datasheet or tool, with its
-    /// conditions as the recorded source), so this is the board's own figure, the last
-    /// resort of the design rules: a board states it from the datasheet of the capacitor
-    /// it means to fit, and the solver picks `.output_cap` without checking it against this
-    /// number. Whether the board states it here or the capacitor carries it is the owner's
-    /// to confirm.
-    .output_esr: Resistance optional
     /// How long the high-side switch is on in a period, `vout / (vin * fsw)` (the ideal duty
     /// cycle over the frequency), and how long it is off, `(vin - vout) / (vin * fsw)`: the
     /// module's check of the IC's `min_on_time` and `min_off_time` (ADR 0093).
@@ -442,7 +486,6 @@ module Buck<Ic: BuckIc> {
 
     // A bank is from one to eight capacitors unless the board says otherwise (its own default).
 
-    .vin.neg ~ .vout.neg
     .ic.sw.voltage == .vout.voltage
     .divider.top ~ .vout.pos
     .divider.bottom ~ .vout.neg
@@ -457,7 +500,6 @@ module Buck<Ic: BuckIc> {
 
     .vin.voltage >= .ic.min_input_voltage
     .vin.voltage <= .ic.max_input_voltage
-    .vin.voltage >= .vout.voltage
     -.vout.current <= .ic.max_output_current
     .input_cap.max_voltage >= .vin.voltage * .voltage_margin
     .output_cap.max_voltage >= .vout.voltage * .voltage_margin
@@ -818,5 +860,265 @@ part Lt8641 provides BuckIc {
         .bias ~ .vin.neg
         .bias_voltage &= 0V
         .en_uv ~ .vin.pos
+    }
+}
+
+/// The LMR16006Y, Texas Instruments' 4 V to 60 V, 0.6 A buck regulator (SIMPLE SWITCHER), the
+/// 2.1 MHz version, in its 6-pin SOT (DDC). It is asynchronous: the low side is a Schottky
+/// diode outside the IC, which its `support` section carries. The 0.7 MHz version, the
+/// LMR16006X, is another part (another switching frequency and other recommended inductors),
+/// and is not here. The catalog `lmr16006y` has the LCSC row of `LMR16006YDDCR` (C290195), which
+/// JLCPCB lists as Extended (`data/jlcpcb/README.md`).
+///
+/// Datasheet: Texas Instruments, LMR16006 SIMPLE SWITCHER 60 V 0.6 A Buck Regulators With High
+/// Efficiency ECO Mode, SNVSA24 (October 2014, 26 pages), the file that LCSC links for C290195.
+/// Page numbers are the printed ones, which are the PDF's. Every number was read from the PDF
+/// text with `pdftotext -layout`, except the efficiency, read off a curve, and the minimum
+/// on-time, whose column was read off the page image; each says so.
+///
+/// - Input: 4 V to 60 V (Recommended Operating Conditions, p.4; Electrical Characteristics,
+///   p.5). The absolute maximum of VIN and SHDN to GND is 65 V (Absolute Maximum Ratings, p.4),
+///   stated in their pin rows (ADR 0124).
+/// - Reference: `.vref` is 0.747 V to 0.782 V, over the junction temperature range of -40 C
+///   to 125 C at VIN = 12 V (Electrical Characteristics, p.5, VFB).
+/// - Switching frequency: 1785 kHz to 2415 kHz for the LMR16006Y (Switching Characteristics,
+///   p.5, fSW).
+/// - Output current: 0.6 A ("Output Current up to 600 mA", front page, p.1; Application
+///   Information, p.11).
+/// - Minimum on-time: 80 ns at 2.1 MHz is in the typical column only ("ensured by design",
+///   p.5, read off the page image), so `.min_on_time` is not stated: the datasheet gives no
+///   largest figure. The maximum duty cycle, 97 % typical (p.5), is not stated either.
+/// - Inductor: `.min_inductance` is 6.8 uH, the smaller of the two the LMR16006Y's row of
+///   Table 2 recommends (6.8 uH at 5 V, 10 uH at 12 V; p.14). The datasheet states no
+///   saturation current the inductor must have beyond the load and its ripple (it suggests a
+///   rating near 1.6 A so the IC limits its current before the inductor saturates, p.12, which
+///   is advice for a short circuit and not stated), and no largest DC resistance.
+/// - Capacitors: `.min_input_capacitance` is 1 uF, the low end of "Use a 1 uF-10 uF value with
+///   X5R or X7R dielectric" (Input Capacitor Selection, p.13). The datasheet states no
+///   minimum output capacitance: its design example uses 10 uF and Table 2 recommends 10 uF for
+///   both outputs of the LMR16006Y (p.13 and p.14), so `.min_output_capacitance` is 10 uF by
+///   default (`?=`): an application value, not a datasheet minimum, as the `Lt8641`'s is.
+/// - Efficiency: `.efficiency` is 0.75 to 0.90, **read off the curves** of Figure 3 (p.6,
+///   VIN = 12 V, fSW = 2.1 MHz, 3.3 V and 5 V out): from 10 mA to 600 mA the lowest point is
+///   about 77 % (3.3 V out at 10 mA), rounded down, and the highest about 89 % (5 V out),
+///   rounded up. Below 10 mA the curves fall to about 40 % at 0.1 mA. The datasheet has no
+///   curve of the LMR16006Y at another input, and states no minimum.
+/// - Quiescent current: 28 uA typical, not switching (p.5), with no maximum, so the part
+///   states none and the input draws what the output asks.
+/// - Soft-start: internal (p.1), with no time in the tables, so `.soft_start_time` is not
+///   stated.
+///
+/// Pins (Pin Configuration and Functions, p.3): 1 CB, 2 GND, 3 FB, 4 SHDN, 5 VIN, 6 SW. CB must
+/// have its bootstrap capacitor. SHDN has an internal pull-up and may float to enable (p.3).
+/// `FB` (7 V, p.4) states no limit, for the `Lt8641`'s reason: the solver reads the tap of the
+/// divider as the hull from ground to the output, so a limit would refuse outputs above it.
+/// `SW` and `CB` state none: the solver sees the switch node at its average, the output.
+///
+/// The `support` section is the application circuit of Figure 9 (p.11) and the selection
+/// rules of p.13 and p.14: the bootstrap capacitor, 100 nF from CB to SW, rated 10 V or more
+/// ("a voltage rating of 10 V or higher is recommended", p.14); the catch diode D1, a
+/// Schottky from ground (anode) to SW (cathode), rated for 1.25 times the input ("the
+/// breakdown voltage rating of the diode is preferred to be 25 % higher than the maximum input
+/// voltage", p.13) and for the output current ("the current rating for the diode should be
+/// equal or greater to the maximum output current", p.13), carrying on average the output
+/// current over the part of each period the switch is off, "approximately (1-D) x IOUT"
+/// (p.13), which is its `.current` (the DC analysis cannot work it out between two sources);
+/// and the 100 kohm from VIN to SHDN of Figure 9. `Buck` makes the inductor, the capacitors and the divider (R1 and R2).
+part Lmr16006y provides BuckIc {
+    .vref &= 0.747V..0.782V
+    .fsw &= 1785kHz..2415kHz
+    .min_input_voltage &= 4V
+    .max_input_voltage &= 60V
+    .max_output_current &= 0.6A
+    .efficiency &= 0.75..0.90
+    .min_inductance &= 6.8uH
+    .min_input_capacitance &= 1uF
+    .min_output_capacitance ?= 10uF
+    .vin.current == -.sw.current * .sw.voltage / (.vin.voltage * .efficiency)
+    dc switching_regulator .vin .sw .efficiency
+
+    pins {
+        //  pin     kind     name    pads, and the absolute maximums of p.4
+        .cb       passive  "CB"    "1" required
+        .vin.neg  power    "GND"   "2"
+        .fb       input    "FB"    "3"
+        .shdn     input    "SHDN"  "4" optional abs_max 65V
+        .vin.pos  power    "VIN"   "5" abs_max 65V
+        .sw.pos   power    "SW"    "6"
+    }
+
+    .package: Package
+    catalog lmr16006y { .mpn, .package }
+
+    // Figure 9 (p.11) and the selection rules of p.13 and p.14 (see the doc comment above).
+    support {
+        .boost: Capacitor { .capacitance &= 100nF +/- 20% }
+        .cb ~> .boost ~> .sw.pos
+        .boost.max_voltage >= 10V
+        .catch: Schottky
+        .catch.anode ~ .vin.neg
+        .catch.cathode ~ .sw.pos
+        .catch.max_reverse_voltage >= .vin.voltage * 1.25
+        .catch.max_forward_current >= -.sw.current
+        .catch.current == -.sw.current * (1 - .sw.voltage / .vin.voltage)
+        .shdn_pullup: Resistor { .resistance &= 100kohm +/- 1% }
+        .vin.pos ~> .shdn_pullup ~> .shdn
+    }
+}
+
+/// The RT8059, Richtek's 2.8 V to 5.5 V, 1 A synchronous buck converter at 1.5 MHz, in its
+/// TSOT-23-5 (`J5`). The catalog `rt8059` has the LCSC row of `RT8059GJ5` (C20542), which JLCPCB
+/// lists as Extended (`data/jlcpcb/README.md`).
+///
+/// Datasheet: Richtek, RT8059 1.5MHz, 1A, High Efficiency PWM Step-Down DC/DC Converter,
+/// DS8059-06 (May 2016, 11 pages), from richtek.com (LCSC links an older copy, DS8059-04,
+/// whose tables give the same numbers). Page numbers are the printed ones, which are the PDF's.
+/// Every number was read from the PDF text, except the efficiency, read off a curve.
+///
+/// - Input: 2.8 V to 5.5 V (Recommended Operating Conditions, p.4). The absolute maximum of
+///   VIN is 6.5 V (Absolute Maximum Ratings, p.4), stated in its pin row (ADR 0124).
+/// - Reference: `.vref` is 0.588 V to 0.612 V (Electrical Characteristics, p.4). The table's
+///   conditions are TA = 25 C, and it gives no figure over temperature (the front page says
+///   "2% accuracy", p.1, and the curve of p.6 stays within 0.585 V to 0.62 V from -50 C to
+///   125 C), so the range is the datasheet's only one and holds at 25 C.
+/// - Switching frequency: 1.2 MHz to 1.8 MHz at IOUT = 100 mA (Electrical Characteristics,
+///   p.4, fOSC), at 25 C as the table is.
+/// - Output current: 1 A (front page, p.1).
+/// - Inductor: `.min_inductance` is 1.5 uH, the smallest of Table 1 (p.2: 1.5 uH for 1 V and
+///   1.2 V, 2.2 uH for 1.8 V to 3.3 V). The datasheet states no saturation current beyond
+///   "do not allow the core to saturate" (p.8), which `Buck` checks with the load and half the
+///   ripple, and no largest DC resistance.
+/// - Capacitors: 4.7 uF at the input and 10 uF at the output, "the suggested values, referring
+///   to the effective capacitances, subject to any de-rating effect, like a DC Bias" (Table 1
+///   and its note, p.2): `.min_input_capacitance` and `.min_output_capacitance`.
+/// - Efficiency: `.efficiency` is 0.75 to 0.97, **read off the curves** of Efficiency vs.
+///   Load Current (p.6, 3.3 V and 5.5 V in, 1.2 V and 2.5 V out, 10 mA to 1 A): the lowest
+///   point is about 76 % (3.3 V to 1.2 V at 1 A), rounded down, and the highest about 97 %
+///   (3.3 V to 2.5 V near 0.1 A). The datasheet states no minimum and no curve below 10 mA.
+/// - Quiescent current: 78 uA typical (p.4), with no maximum, so the part states none.
+/// - The minimum on-time, the soft-start time and the current limit (1.5 A) are typical
+///   figures or absent (p.4), so none is stated.
+///
+/// Pins (Pin Configurations, p.1, and Functional Pin Description, p.2): 1 EN, 2 GND, 3 LX, 4 VIN,
+/// 5 FB. "Do not leave the EN pin floating" (p.2): the `support` section ties it to VIN, the
+/// Typical Application Circuit's choice (p.2), so the converter runs whenever its input is up.
+/// EN and FB are rated "VIN + 0.6V" (p.4), a limit that moves with the input, which a pin
+/// row's `abs_max` would judge against the input's lowest value plus 0.6 V and refuse a wide
+/// input for a pin that sits at the input; they state none. The feed-forward capacitor CFF of
+/// Table 1 (0 pF to 8.2 pF at 1.8 V and above) is across the divider's top resistor, which
+/// `Buck` makes and a part's `support` section cannot reach, and is not carried; the loop's
+/// stability is not modelled.
+part Rt8059 provides BuckIc {
+    .vref &= 0.588V..0.612V
+    .fsw &= 1.2MHz..1.8MHz
+    .min_input_voltage &= 2.8V
+    .max_input_voltage &= 5.5V
+    .max_output_current &= 1A
+    .efficiency &= 0.75..0.97
+    .min_inductance &= 1.5uH
+    .min_input_capacitance &= 4.7uF
+    .min_output_capacitance &= 10uF
+    .vin.current == -.sw.current * .sw.voltage / (.vin.voltage * .efficiency)
+    dc switching_regulator .vin .sw .efficiency
+
+    pins {
+        //  pin     kind     name   pads, and the absolute maximum of p.4
+        .en       input    "EN"   "1"
+        .vin.neg  power    "GND"  "2"
+        .sw.pos   power    "LX"   "3"
+        .vin.pos  power    "VIN"  "4" abs_max 6.5V
+        .fb       input    "FB"   "5"
+    }
+
+    .package: Package
+    catalog rt8059 { .mpn, .package }
+
+    // The Typical Application Circuit (p.2): EN to VIN.
+    support {
+        .en ~ .vin.pos
+    }
+}
+
+/// The TPS54202, Texas Instruments' 4.5 V to 28 V, 2 A synchronous buck converter at 500 kHz,
+/// in its 6-pin SOT-23 (DDC). The catalog `tps54202` has the LCSC row of `TPS54202DDCR`
+/// (C191884), which JLCPCB lists as Extended (`data/jlcpcb/README.md`).
+///
+/// Datasheet: Texas Instruments, TPS54202 4.5-V to 28-V Input, 2-A Output, EMI Friendly
+/// Synchronous Step Down Converter, SLVSD26A (April 2016, revised January 2017, 28 pages), the
+/// file that LCSC links for C191884. Page numbers are the printed ones, which are the PDF's.
+/// Every number was read from the PDF text, except the efficiency, read off a curve, and the
+/// minimum on-time, whose column was read off the page image.
+///
+/// - Input: 4.5 V to 28 V (Recommended Operating Conditions, p.4; Electrical
+///   Characteristics, p.5, over TJ = -40 C to 125 C). The absolute maximum of VIN is 30 V and
+///   of EN 7 V (Absolute Maximum Ratings, p.4), stated in their pin rows (ADR 0124).
+/// - Reference: `.vref` is 0.581 V to 0.611 V at VIN = 12 V, over the junction temperature
+///   range (Electrical Characteristics, p.5, VFB).
+/// - Switching frequency: 390 kHz to 590 kHz (p.5, Fsw, the centre frequency; the part
+///   spreads it by 1/512 for EMI, p.12, which the range does not include).
+/// - Output current: 2 A (front page, p.1).
+/// - Minimum on-time: 110 ns, typical only and "not production tested" (Timing
+///   Requirements, p.5, read off the page image), so `.min_on_time` is not stated.
+/// - Inductor: `.min_inductance` is 5.6 uH, the smallest of Table 2 (p.17: 5.6 uH at 1.8 V,
+///   up to 22 uH at 12 V, for VIN = 28 V). The datasheet asks for no saturation current beyond
+///   the peak of Equation 10 (p.15), the load and half the ripple, which `Buck` checks, and for
+///   no largest DC resistance.
+/// - Capacitors: `.min_input_capacitance` is 10 uF ("A ceramic capacitor over 10 uF is
+///   recommended for the decoupling capacitor", Input Capacitor Selection, p.14). The
+///   datasheet states no minimum output capacitance: Table 2 gives 44 uF for 2.5 V to 12 V
+///   and 66 uF for 1.8 V (p.17), so `.min_output_capacitance` is 44 uF by default (`?=`), an
+///   application value as the `Lt8641`'s is; a 1.8 V board states 66 uF.
+/// - Efficiency: `.efficiency` is 0.75 to 0.95, **read off the curves** of Figure 17 (p.18,
+///   12 V and 24 V in, 5 V out): from 10 mA to 2 A the lowest point is about 78 % (24 V at
+///   10 mA), rounded down, and the highest about 94 % (12 V near 1 A), rounded up. Below 10 mA
+///   the curves fall to about 35 % at 1 mA. The datasheet states no minimum.
+/// - Quiescent current: 45 uA typical, not switching (p.5), with no maximum, so none is
+///   stated.
+/// - Soft-start: 5 ms, typical only (Timing Requirements, p.5), so `.soft_start_time` is not
+///   stated.
+///
+/// Pins (Pin Configuration and Functions, p.3): 1 GND, 2 SW, 3 VIN, 4 FB, 5 EN, 6 BOOT. "Float
+/// the EN pin to enable" (p.3), so EN may float; the undervoltage divider of Figure 16 (R4 and
+/// R5, p.13) is an option for a higher start voltage (p.14), not carried. `FB` (7 V) states no
+/// limit, for the `Lt8641`'s reason.
+///
+/// The `support` section is what the application circuit needs beyond `Buck`: the 0.1 uF
+/// bootstrap capacitor from BOOT to SW ("must be connected", p.14), rated for the 7 V that
+/// BOOT-SW may reach at most (p.4). Not carried: the optional 0.1 uF beside the input capacitor
+/// (C2, "optional", p.14), the 49.9 ohm resistor R1 ("a convenient location to break the
+/// control loop for stability testing", p.14) and the feed-forward capacitor C6 across the
+/// divider's top resistor (p.17), which `Buck` makes and a `support` section cannot reach; the
+/// loop's stability is not modelled.
+part Tps54202 provides BuckIc {
+    .vref &= 0.581V..0.611V
+    .fsw &= 390kHz..590kHz
+    .min_input_voltage &= 4.5V
+    .max_input_voltage &= 28V
+    .max_output_current &= 2A
+    .efficiency &= 0.75..0.95
+    .min_inductance &= 5.6uH
+    .min_input_capacitance &= 10uF
+    .min_output_capacitance ?= 44uF
+    .vin.current == -.sw.current * .sw.voltage / (.vin.voltage * .efficiency)
+    dc switching_regulator .vin .sw .efficiency
+
+    pins {
+        //  pin     kind     name    pads, and the absolute maximums of p.4
+        .vin.neg  power    "GND"   "1"
+        .sw.pos   power    "SW"    "2"
+        .vin.pos  power    "VIN"   "3" abs_max 30V
+        .fb       input    "FB"    "4"
+        .en       input    "EN"    "5" optional abs_max 7V
+        .boot     passive  "BOOT"  "6" required
+    }
+
+    .package: Package
+    catalog tps54202 { .mpn, .package }
+
+    // The bootstrap capacitor of Figure 16 (p.13; see the doc comment above).
+    support {
+        .boost: Capacitor { .capacitance &= 100nF +/- 20% }
+        .boot ~> .boost ~> .sw.pos
+        .boost.max_voltage >= 7V
     }
 }

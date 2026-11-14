@@ -24,10 +24,15 @@ NETSMITH_TIMINGS=1 netsmith build --out out    # one line per stage on stderr
 
 The buck IC, `BenchBuck` (an SOIC-8, 4.5 V to 60 V, 3 A), is invented, and so is its footprint
 mapping in `kicad.toml` (a footprint a generator answers, no symbol: the IC is drawn from its
-pin table). The standard library's one buck IC, `Lt8641`, has no row in its catalog (no stock
-above zero is recorded) and no standard inductor has the DC resistance its datasheet asks for
-(0.04 ohm, the four rows have 0.085 ohm and more), so no stage around it solves with the standard
-catalogs alone, and a row of a project's own would be a new sourcing question. `BenchBuck` states
+pin table). Each stage carries 1.5 A at up to 15.8 V. Of the standard library's buck ICs, the
+`Lt8641` has no row in its catalog (no stock above zero is recorded) and no standard inductor has
+the DC resistance its datasheet asks for (0.04 ohm, the four rows have 0.085 ohm and more); the
+`Tps54202` takes the input and the load, but no standard inductor carries 1.5 A and half the
+ripple at the 5.6 uH it asks for; and the `Lmr16006y` (0.6 A) and `Rt8059` (5.5 V) do not take
+the stage at all. So no stage solves with a standard IC and the standard catalogs alone, and a
+row of a project's own would be a new sourcing question. The stages also join the IC's
+power-good pin, which needs the IC named (ADR 0120), so they do not pick it through
+`BuckConverter`; `examples/buck_converter.nsm` does. `BenchBuck` states
 the same kind of numbers (it provides `BuckIc`, writes one relation from its output to its input
 current and `dc switching_regulator`, and carries its bootstrap capacitor and enable divider in
 its `support` section) and asks for what the standard rows can give. Every other part is a

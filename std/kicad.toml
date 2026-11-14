@@ -735,3 +735,22 @@ footprint = "Package_TO_SOT_SMD:SOT-353_SC-70-5"
 kind = "Lt8641"
 package = "UDC20(18)"
 footprint = "netsmith:UDC-QFN-18-2EP_3x4mm_P0.5mm_ExpPadAA"
+
+# The standard buck converter ICs of `std/parts/regulator.nsm` (issue #620). Each footprint is
+# generated (ADR 0043). TI's DDC package (`Lmr16006y`, `Tps54202`) is what LCSC calls SOT-23-6,
+# and Richtek's TSOT-23-5 (`Rt8059`) has the SOT-23-5's land pattern: 0.95 mm pitch and 2.8 mm
+# across the leads (DS8059-06, p.11), on a body 1 mm high at most rather than 1.45 mm.
+[[part]]
+kind = "Lmr16006y"
+package = "SOT-23-6"
+footprint = "Package_TO_SOT_SMD:SOT-23-6"
+
+[[part]]
+kind = "Rt8059"
+package = "TSOT-23-5"
+footprint = "Package_TO_SOT_SMD:SOT-23-5"
+
+[[part]]
+kind = "Tps54202"
+package = "SOT-23-6"
+footprint = "Package_TO_SOT_SMD:SOT-23-6"
