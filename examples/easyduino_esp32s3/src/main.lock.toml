@@ -84,7 +84,7 @@ row = "10kΩ 1% 0402 C25744"
 lcsc = "C25744"
 mpn = "0402WGF1002TCE"
 
-[EasyduinoEsp32s3.parts."module"]
+[EasyduinoEsp32s3.parts."mcu"]
 catalog = "esp32_s3_wroom_1"
 row = "ESP32-S3-WROOM-1-N4"
 lcsc = "C2913197"

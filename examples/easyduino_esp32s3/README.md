@@ -214,7 +214,7 @@ s-expression reader, which `compare` uses), and the board's from the built desig
   ground and shield, each CC on its own 5.1 kohm resistor, D+ and D-, the sideband contacts open)
   and `the_buttons_have_easyduinos_nets_on_their_pads` (SW1 pad 2 on EN, SW2 pad 2 on GPIO0, pad
   1 on ground). Every header pad is joined to a **named pin of the module** in the source
-  (`.headers ~ .module`, so `.headers.gpio4 ~ .module.gpio4`), never to a request, and the module's table has no function
+  (`.headers ~ .mcu`, so `.headers.gpio4 ~ .mcu.gpio4`), never to a request, and the module's table has no function
   rows at all, so the pin optimizer (ADR 0101) has nothing it can move:
   `the_optimizer_cannot_move_a_header_pad` checks that the check's spaces for the board are empty
   and that there is no pin file.

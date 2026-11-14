@@ -12,7 +12,7 @@
 //! Its nets are Easyduino's, and the proof is the test `board` of `crates/netsmith-tools/tests/easyduino.rs`
 //! (`README.md`, "Same nets"). The pin-to-signal map of the headers (U2), of the receptacles and
 //! of the buttons is Easyduino's too, and it is FIXED: the board joins each header pin to a
-//! named pin of the module (`.module.gpio4`) and never to a request for "any GPIO" (ADR 0101), so
+//! named pin of the module (`.mcu.gpio4`) and never to a request for "any GPIO" (ADR 0101), so
 //! the pin optimizer of `fab` has nothing to move and the firmware's pin map cannot change.
 
 import src::auto_reset::AutoReset
@@ -44,7 +44,7 @@ board EasyduinoEsp32s3 {
     // ---- The chips: U1, U3, U5 ----
 
     /// The module (U1): 4 MB of flash, PCB antenna.
-    .module: Esp32S3Wroom1
+    .mcu: Esp32S3Wroom1
     /// The USB-UART bridge (U3), on the first receptacle.
     .bridge: Cp2102n { .mpn &= "CP2102N-A02-GQFN28" }
     /// The 3.3 V regulator (U5), an AMS1117-3.3 in a SOT-223 (a row of the project's catalog).
@@ -112,11 +112,11 @@ board EasyduinoEsp32s3 {
 
     // ---- The module (U1) ----
 
-    .module.vdd ~ .v3v3
+    .mcu.vdd ~ .v3v3
     // The module's own USB, on the second receptacle with no part between (the reference has
     // none): IO19 is D- and IO20 is D+.
-    .usb_native.dm ~ .module.gpio19
-    .usb_native.dp ~ .module.gpio20
+    .usb_native.dm ~ .mcu.gpio19
+    .usb_native.dp ~ .mcu.gpio20
 
     // ---- The bridge (U3), on the first receptacle ----
 
@@ -126,8 +126,8 @@ board EasyduinoEsp32s3 {
     .bridge.vregin ~ .vbus.pos
     .bridge.gnd ~ .vbus.neg
     // The bridge's TXD is the module's RXD0 (GPIO44) and its RXD the module's TXD0 (GPIO43).
-    .bridge.txd ~ .module.rxd0
-    .bridge.rxd ~ .module.txd0
+    .bridge.txd ~ .mcu.rxd0
+    .bridge.rxd ~ .mcu.txd0
     /// C3: the decoupling of the bridge's own 3.3 V (VDD), which the board does not use as a
     /// supply (the author's notes: it gives 100 mA only).
     .bridge_vdd_cap: Capacitor { .capacitance &= 100nF +/- 10%; .package &= "0402" }
@@ -147,19 +147,19 @@ board EasyduinoEsp32s3 {
     .auto_reset: AutoReset
     .auto_reset.dtr ~ .bridge.dtr
     .auto_reset.rts ~ .bridge.rts
-    .auto_reset.en ~ .module.en
-    .auto_reset.boot ~ .module.gpio0
+    .auto_reset.en ~ .mcu.en
+    .auto_reset.boot ~ .mcu.gpio0
 
     // ---- The buttons (SW1, SW2) and EN's pull-up ----
 
     .reset.a ~ .vbus.neg
-    .reset.b ~ .module.en
+    .reset.b ~ .mcu.en
     .boot.a ~ .vbus.neg
-    .boot.b ~ .module.gpio0
+    .boot.b ~ .mcu.gpio0
     /// R1: EN's 10 kohm pull-up (Espressif's circuit; the module needs EN driven).
     .en_pullup: PullUp { .resistor.resistance &= 10kohm +/- 1%; .resistor.package &= "0402" }
     .en_pullup.supply ~ .v3v3
-    .en_pullup.line ~ .module.en
+    .en_pullup.line ~ .mcu.en
 
     // ---- The LEDs: D1 (power) and D4 (GPIO38) ----
 
@@ -178,7 +178,7 @@ board EasyduinoEsp32s3 {
         .forward_voltage &= 2.6V..3.2V
     }
     .user_led_resistor: Resistor { .resistance &= 2.4kohm +/- 1%; .package &= "0402" }
-    .module.gpio38 ~ .user_led_resistor.b
+    .mcu.gpio38 ~ .user_led_resistor.b
     .user_led_resistor.a ~ .user_led.anode
     .user_led.cathode ~ .vbus.neg
 
@@ -202,8 +202,8 @@ board EasyduinoEsp32s3 {
     .vbus.pos ~> .vbus_22u ~> .vbus.neg
     .v3v3.pos ~> .v3v3_100n ~> .v3v3.neg
     .v3v3.pos ~> .v3v3_22u ~> .v3v3.neg
-    .module.en ~> .en_100n ~> .vbus.neg
-    .module.gpio0 ~> .boot_100n ~> .vbus.neg
+    .mcu.en ~> .en_100n ~> .vbus.neg
+    .mcu.gpio0 ~> .boot_100n ~> .vbus.neg
 
     // ---- The headers (U2): Easyduino's pin map (fixed) ----
 
@@ -213,5 +213,5 @@ board EasyduinoEsp32s3 {
     // Each header pin is named as the module's pin of that GPIO (`.gpio4` for the silkscreen's
     // GPIO4), so the join needs no rename map but for the two pins that the module names after
     // the UART signal (the pads `RXD0` and `TXD0`, GPIO44 and GPIO43).
-    .headers ~ .module { gpio44 = rxd0; gpio43 = txd0 } except { v3v3 vbus gnd vdd }
+    .headers ~ .mcu { gpio44 = rxd0; gpio43 = txd0 } except { v3v3 vbus gnd vdd }
 }
