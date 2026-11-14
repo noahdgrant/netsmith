@@ -5652,6 +5652,8 @@ board PowerBoard {
 reg is a BuckConverter: picked Buck<Tps54202>; passed over Buck<Lmr16006y> (the DC analysis does not model the current of `reg.ic.catch`: it joins `GND` and `net-reg.ic.boost.b`, which sources hold, and the current an ideal diode moves between two ideal sources is not a number; the load of the regulator on that net is what its own `.current` states, not a sum; state the current it carries (`reg.ic.catch.current &= 0A..100mA`) or put a resistance in series with it), Buck<Lt8641> (the `lt8641` catalog has nothing for `reg.ic`, which needs nothing in particular), Buck<Rt8059> (no `rt8059` candidate satisfies `reg.ic`: the closest of the 1 that fit, RT8059GJ5 2.8-5.5V 1A 1.5MHz buck TSOT-23-5 C20542, fails because reg.vin.voltage must always be at most reg.ic.max_input_voltage, but 11.4V..12.6V is not always below 5.5V (`reg.input_cap.effective_capacitance` is unknown for some candidates, so they were not used: no derating data for 27 and data only up to 10 V, but the bias reaches 12.6 V, for 6))
 ```
 
+The `Lmr16006y` comes first and takes this board, but its trial cannot be judged: its catch diode joins ground and the switch node, two nets the DC analysis holds, and the analysis leaves the current between them as a note that is not judged, whatever the diode's `.current` states. The search prefers a candidate that can be judged (ADR 0068), so it takes the `Tps54202`; a board that wants the LMR16006Y names it, `.reg: Buck<Lmr16006y>`.
+
 The output asks for 5 % and not less: each standard IC's reference is good to 2 % or 2.5 % in the worst case, and the divider's 1 % resistors add about 1.5 % at 3.3 V, so 3 % holds for none of them. `examples/buck_converter.nsm` is this board with its connectors, built and made into a fab package.
 
 A project's own IC joins the candidates when its file is imported. `Zbk9` is an invented IC for 4.5 V to 60 V and 3.5 A:
@@ -5688,7 +5690,7 @@ part Zbk9 provides BuckIc {
 }
 ```
 
-At 1 A every standard IC is passed over, each for its own reason, and `Buck<Zbk9>` is the pick:
+From 36 V at 1 A no standard IC serves: the `Lmr16006y` takes the input but gives 0.6 A at most, the `Rt8059` and the `Tps54202` stop at 5.5 V and 28 V, and the `Lt8641` has no catalog row. Each is passed over for its own reason, and `Buck<Zbk9>` is the pick:
 
 ```nsm evaluate picks
 import std::parts::regulator::BuckConverter
@@ -5697,7 +5699,7 @@ import std::sources::Rail
 
 board PowerBoard {
     .input: Rail {
-        .voltage &= 12V +/- 5%
+        .voltage &= 36V +/- 5%
         .pos.net &= "VIN"
     }
     .output: Rail {
@@ -5712,7 +5714,7 @@ board PowerBoard {
 ```
 
 ```text
-reg is a BuckConverter: picked Buck<Tps54202>; passed over Buck<Lmr16006y> (no `lmr16006y` candidate satisfies `reg.ic`: the closest of the 1 that fit, LMR16006YDDCR 4-60V 0.6A 2.1MHz buck SOT-23-6 C290195, fails because -reg.ic.sw.current must always be at most reg.ic.max_output_current, but 0A..1A is not always below 600mA (the currents on net `net-reg.ic.boost.b` in `reg`: reg.ic.sw.current (-1A..0A) + reg.inductor.current (0A..1A) add up to zero; net `3V3` in `reg`: -reg.inductor.current (0A..1A) + -reg.vout.current (-1A..0A) add up to zero, but the balance is incomplete: `reg.divider.rtop.a` is not modelled; net `3V3`: output.current (0A..1A) + reg.vout.current (-1A..0A) add up to zero) (`reg.input_cap.effective_capacitance` is unknown for some candidates, so they were not used: no derating data for 27 and data only up to 10 V, but the bias reaches 12.6 V, for 6)), Buck<Lt8641> (the `lt8641` catalog has nothing for `reg.ic`, which needs nothing in particular), Buck<Rt8059> (no `rt8059` candidate satisfies `reg.ic`: the closest of the 1 that fit, RT8059GJ5 2.8-5.5V 1A 1.5MHz buck TSOT-23-5 C20542, fails because reg.vin.voltage must always be at most reg.ic.max_input_voltage, but 11.4V..12.6V is not always below 5.5V (`reg.input_cap.effective_capacitance` is unknown for some candidates, so they were not used: no derating data for 27 and data only up to 10 V, but the bias reaches 12.6 V, for 6))
+reg is a BuckConverter: picked Buck<Zbk9>; passed over Buck<Lmr16006y> (no `lmr16006y` candidate satisfies `reg.ic`: the closest of the 1 that fit, LMR16006YDDCR 4-60V 0.6A 2.1MHz buck SOT-23-6 C290195, fails because -reg.ic.sw.current must always be at most reg.ic.max_output_current, but 0A..1A is not always below 600mA (the currents on net `net-reg.ic.boost.b` in `reg`: reg.ic.sw.current (-1A..0A) + reg.inductor.current (0A..1A) add up to zero; net `3V3` in `reg`: -reg.inductor.current (0A..1A) + -reg.vout.current (-1A..0A) add up to zero, but the balance is incomplete: `reg.divider.rtop.a` is not modelled; net `3V3`: output.current (0A..1A) + reg.vout.current (-1A..0A) add up to zero) (`reg.input_cap.effective_capacitance` is unknown for some candidates, so they were not used: no derating data for 27 and data only up to 25 V, but the bias reaches 37.8 V, for 11)), Buck<Lt8641> (the `lt8641` catalog has nothing for `reg.ic`, which needs nothing in particular), Buck<Rt8059> (no `rt8059` candidate satisfies `reg.ic`: the closest of the 1 that fit, RT8059GJ5 2.8-5.5V 1A 1.5MHz buck TSOT-23-5 C20542, fails because reg.vin.voltage must always be at most reg.ic.max_input_voltage, but 34.2V..37.8V is not always below 5.5V (`reg.input_cap.effective_capacitance` is unknown for some candidates, so they were not used: no derating data for 27 and data only up to 25 V, but the bias reaches 37.8 V, for 11)), Buck<Tps54202> (no `tps54202` candidate satisfies `reg.ic`: the closest of the 1 that fit, TPS54202DDCR 4.5-28V 2A 500kHz buck SOT-23-6 C191884, fails because reg.vin.voltage must always be at most reg.ic.max_input_voltage, but 34.2V..37.8V is not always below 28V (`reg.input_cap.effective_capacitance` is unknown for some candidates, so they were not used: no derating data for 27 and data only up to 25 V, but the bias reaches 37.8 V, for 11))
 ```
 
 Naming the part, with no pick: `.reg: Buck<Zbk9> { .vout.voltage &= 3.3V +/- 5% }`. A board joins a module provider through its interface, `.reg.vin` and `.reg.vout`, never `.reg.inductor`.
@@ -10572,9 +10574,9 @@ error: -reg.ic.sw.current must always be at most reg.ic.max_output_current, but 
 195 |     -.sw.current <= .max_output_current
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 error: -reg.vout.current must always be at most reg.ic.max_output_current, but 6.402uA..3A is not always below 2A (the currents on net `1V8`: output.current (0A..3A) + reg.vout.current (-3A..-6.402uA) add up to zero; net `1V8` in `reg`: -reg.inductor.current (6.402uA..3A) + -reg.vout.current (-3A..-6.402uA) add up to zero, but the balance is incomplete: `reg.divider.rtop.a` is not modelled; net `net-reg.ic.sw.pos` in `reg`: reg.ic.sw.current (-3A..-6.402uA) + reg.inductor.current (6.402uA..3A) add up to zero)
-    --> std/parts/regulator.nsm:503:5
+    --> std/parts/regulator.nsm:509:5
     |
-503 |     -.vout.current <= .ic.max_output_current
+509 |     -.vout.current <= .ic.max_output_current
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -10636,9 +10638,9 @@ board HighInput {
 
 ```text
 error: reg.on_time must always be at least reg.ic.min_on_time, but 122ns..490.8ns is not always above 150ns
-    --> std/parts/regulator.nsm:514:5
+    --> std/parts/regulator.nsm:520:5
     |
-514 |     .on_time >= .ic.min_on_time
+520 |     .on_time >= .ic.min_on_time
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -10701,9 +10703,9 @@ board TooQuiet {
 
 ```text
 error: no `capacitor` candidate satisfies `reg.output_cap`: the closest of the 34 that fit, 1 x 10uF 20% 10V X5R 0402 C315248, fails because reg.output_cap.total_effective_capacitance must always be at least reg.ic.min_output_capacitance, but 4.908uF..7.686uF is not always above 10uF (`reg.output_cap.effective_capacitance` is unknown for some candidates, so they were not used: no derating data for 27)
-    --> std/parts/regulator.nsm:521:5
+    --> std/parts/regulator.nsm:527:5
     |
-521 |     .output_cap.total_effective_capacitance >= .ic.min_output_capacitance
+527 |     .output_cap.total_effective_capacitance >= .ic.min_output_capacitance
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -10911,7 +10913,7 @@ mpn,package,library,source
 LT8641IUDC#WPBF,UDC20(18),Extended,"datasheet Rev. C, Order Information p.2 (automotive products)"
 ```
 
-The datasheet asks for a DC resistance of 0.04 ohm at most (p.16), and the four inductors of the standard catalog have more, so a converter around the IC needs an inductor of the project's own. This one is invented, like the part numbers of the other files of this guide:
+The datasheet asks for a DC resistance of 0.04 ohm at most (p.16), and every inductor of the standard catalog has more (0.085 ohm at the least), so a converter around the IC needs an inductor of the project's own. This one is invented, like the part numbers of the other files of this guide:
 
 ```csv file=catalogs/inductor.csv set=lt8641
 mpn,name,inductance,saturation_current,dc_resistance,package,library,source

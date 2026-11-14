@@ -5,12 +5,12 @@
 //! sixty parts that `docs/solver-timings.md` times (stage by stage, with `NETSMITH_TIMINGS=1`).
 //!
 //! The buck IC, `BenchBuck`, is invented, and the stages name it rather than pick one with
-//! `BuckConverter`, for three reasons. Each stage carries 1.5 A at up to 15.8 V: of the standard
-//! library's buck ICs with a catalog row only the `Tps54202` takes that, and no standard inductor
-//! carries the load and half its ripple at the 5.6 uH it asks for (the `Lt8641` takes it too, but
-//! has no catalog row). Each stage joins the IC's power-good pin, which a board or module reaches
-//! only where it names the IC (ADR 0120). And the picks and the timings of this board stay as
-//! they were. `examples/buck_converter.nsm` picks a real IC with `BuckConverter`. The invented IC
+//! `BuckConverter`, for two reasons. Each stage joins the IC's power-good pin, which a board or
+//! module reaches only where it names the IC (ADR 0120). And the picks and the timings of this
+//! board stay as they were. Each stage carries 1.5 A at up to 15.8 V, which of the standard
+//! library's buck ICs with a catalog row the `Tps54202` now takes with the standard 1210
+//! inductors (the 3.3 V stage solves with it), so the stages could move to it; it has no
+//! power-good pin, and the move is a follow-up. `examples/buck_converter.nsm` picks a real IC with `BuckConverter`. The invented IC
 //! states the same kind of numbers (it provides `BuckIc`, writes one relation from its output to its input current and
 //! its element at DC, and carries its bootstrap capacitor and enable divider in its `support`
 //! section) and asks for nothing the standard rows cannot give. Every other part is a standard

@@ -252,6 +252,12 @@ generic BuckIc {
 /// worst case, and a catalog row for every part of it. A board that wants one IC names it,
 /// `.reg: Buck<Tps54202>`, and may then join the IC's own pins (ADR 0120).
 ///
+/// A candidate whose trial cannot be judged is passed over for one that can (ADR 0068), and
+/// the `Lmr16006y`'s trial is never judged: its catch diode joins ground and the switch node,
+/// two nets the DC analysis holds, and the analysis leaves that diode's current as a note it
+/// does not judge, whatever the diode states. So the `Lmr16006y` is picked through this generic
+/// only where no other IC serves; a board that wants it names it.
+///
 /// The output's tolerance must leave room for the reference: each standard IC's is good to 2 %
 /// or 2.5 % in the worst case, and the divider's 1 % resistors add about 1.5 % at 3.3 V, so a
 /// 3.3 V output of 3 % holds for none of them and one of 5 % holds for each.
