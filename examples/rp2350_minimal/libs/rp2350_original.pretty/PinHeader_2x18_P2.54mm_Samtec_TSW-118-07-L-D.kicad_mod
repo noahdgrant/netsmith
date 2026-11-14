@@ -1,4 +1,4 @@
-(footprint "samtec_tsw-118-07-l-d"
+(footprint "PinHeader_2x18_P2.54mm_Samtec_TSW-118-07-L-D"
 	(version 20260206)
 	(generator "netsmith")
 	(layer "F.Cu")
@@ -14,7 +14,7 @@
 			(justify left)
 		)
 	)
-	(property "Value" "samtec_tsw-118-07-l-d"
+	(property "Value" "PinHeader_2x18_P2.54mm_Samtec_TSW-118-07-L-D"
 		(at 2.54 1)
 		(layer "F.Fab")
 		(hide yes)

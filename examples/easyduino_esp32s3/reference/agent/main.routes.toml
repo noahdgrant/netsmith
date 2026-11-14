@@ -212,7 +212,7 @@ islands = "remove"
 outline = [[27.895, -2.6514], [27.895, 68.3486], [-2.105, 68.3486], [-2.105, -2.6514]]
 
 [EasyduinoEsp32s3.nets.VBUS]
-pads = "0c888475374604fa"
+pads = "3848292eb9a5d801"
 lock = true
 tracks = [
   { layer = "top", width = 0.2, from = [8.595, 51.240542], to = [9.745, 52.390542] },
@@ -1265,7 +1265,7 @@ vias = [
 ]
 
 [EasyduinoEsp32s3.nets."net-power_led.anode"]
-pads = "76e442027af744d1"
+pads = "7569914e43d75462"
 lock = true
 tracks = [
   { layer = "top", width = 0.15, from = [12.345, 55.8586], to = [13.48, 55.8586] },

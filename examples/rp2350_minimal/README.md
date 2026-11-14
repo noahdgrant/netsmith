@@ -5,7 +5,12 @@ A port of Raspberry Pi's open **RP2350A Minimal** reference board to netsmith, a
 theirs, proved net by net by a test. **The physical file is done** (`src/main.physical.nsm`: the
 outline, the four mounting holes, the places of the connectors and buttons), and `netsmith fab`
 writes a PCB that the parity checker finds equal to Raspberry Pi's in every way that must match
-(see Parity and The result). It routes completely, in about 35 s.
+(see Parity and The result). Since its parts are drawn with Raspberry Pi's footprints (#728,
+see Parts), whose courtyards are the parts' bodies, the placer packs them closer and the router
+leaves one connection after its 300 s (seed 3; seed 1 leaves three after 200 s), where it routed
+completely in about 35 s before; and its design rules check finds the nine thin rings of the
+RP2350's vias that their board has (see The reproduction). The figures of The result are from
+before.
 
 ## Source
 
@@ -542,6 +547,14 @@ overlap, and netsmith's design rules check finds no short, no clearance and no o
   but removes no island and trims no sliver narrower than a zone's minimum width; KiCad's fill of
   the board file (the zones are written unfilled) removes them, as their board's does.
 - **U2's tab** is numbered 2, not 4 (see Parts): the same copper on the same net.
+- **What their board breaks of JLCPCB's rules.** `fab`'s design rules check (with the process's
+  rules) finds two things on the reproduction, both on their board too, which the test measures
+  by running the check on their file: the nine vias in the RP2350's exposed pad are 0.6 mm pads
+  round 0.25 mm holes, a ring of 0.175 mm where JLCPCB asks 0.18 mm (`plated_ring`, 9), and three
+  bends of their +3V3 tracks are sharper than the 45 degrees netsmith allows (`track_angle`, 3).
+  The board is packaged with `--allow-drc-violations` and `fab-notes.txt` lists them. Because the
+  automatic board draws the RP2350 with their footprint too, its check finds the nine rings as
+  well.
 
 Netsmith's design rules check finds nothing else: no short, no clearance and no courtyard
 overlap.

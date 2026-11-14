@@ -6,15 +6,17 @@ version = 1
 # Easyduino's do (it puts the module on the back face or over the header pads, and `fab` stops
 # with the courtyards in each other), so the module is recorded here and locked: inside the two
 # header rows, above the buttons, on the top face, not turned. Easyduino's own module sits 7 mm
-# higher with its antenna 5.9 mm past the top edge of the board; this one is wholly on the board,
+# higher with its antenna 6.2 mm past the top edge of the board; this one is wholly on the board,
 # so no overhang is stated. The module need not match, and nothing is gated on this entry.
-# Seed 0 routes the board completely, and seeds 2, 5, 6, 7 and 8 route too; seeds 1, 3 and 4
-# leave one connection of a USB pair (`net-bridge.dp`). The seed was 3 until designators were
+# Seed 2 routes the board completely, and seeds 1, 5, 6, 7 and 8 route too; seed 0 leaves one
+# connection of a USB pair (`net-bridge.dp`) since the parts are drawn with Easyduino's own
+# footprints (#728), and seeds 3 and 4 did before it
+# (not tried since). The seed was 3 until designators were
 # numbered by path (#634), which reorders the pins of each net that the placer and router read
 # and so changes every arrangement; that the router misses one wire of a USB pair on some
 # arrangements is #718.
 [EasyduinoEsp32s3]
-seed = 0
+seed = 2
 
 [EasyduinoEsp32s3.parts."mcu"]
 at = [12.96, 18.5]    # the footprint's origin, mm from the outline's top left corner

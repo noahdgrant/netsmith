@@ -33,5 +33,6 @@ fn easyduino_pcb_matches_the_original_where_it_must() {
                      --table reference/placements.toml --svg \
                      reference/parity-overlay.svg",
         known_failures: &[],
+        waive_drc: None,
     });
 }

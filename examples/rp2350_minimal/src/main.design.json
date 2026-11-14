@@ -4066,12 +4066,12 @@
         {
           "path": "header_high",
           "length": 0.94,
-          "source": "src/main.physical.nsm:89"
+          "source": "src/main.physical.nsm:91"
         },
         {
           "path": "header_low",
           "length": 0.94,
-          "source": "src/main.physical.nsm:88"
+          "source": "src/main.physical.nsm:90"
         }
       ],
       "models": [],
@@ -4141,23 +4141,23 @@
               "field": "x",
               "lo": 17.2,
               "hi": 17.2,
-              "source": "src/main.physical.nsm:101"
+              "source": "src/main.physical.nsm:103"
             },
             {
               "field": "y",
               "lo": 5.2,
               "hi": 5.2,
-              "source": "src/main.physical.nsm:102"
+              "source": "src/main.physical.nsm:104"
             },
             {
               "field": "rotation",
               "lo": 270.0,
               "hi": 270.0,
-              "source": "src/main.physical.nsm:103"
+              "source": "src/main.physical.nsm:105"
             }
           ],
           "side": "top",
-          "side_source": "src/main.physical.nsm:104"
+          "side_source": "src/main.physical.nsm:106"
         },
         {
           "path": "debug",
@@ -4167,23 +4167,23 @@
               "field": "x",
               "lo": 33.6,
               "hi": 33.6,
-              "source": "src/main.physical.nsm:94"
+              "source": "src/main.physical.nsm:96"
             },
             {
               "field": "y",
-              "lo": 42.675,
-              "hi": 42.675,
-              "source": "src/main.physical.nsm:95"
+              "lo": 42.9,
+              "hi": 42.9,
+              "source": "src/main.physical.nsm:97"
             },
             {
               "field": "rotation",
               "lo": 0.0,
               "hi": 0.0,
-              "source": "src/main.physical.nsm:96"
+              "source": "src/main.physical.nsm:98"
             }
           ],
           "side": "top",
-          "side_source": "src/main.physical.nsm:97"
+          "side_source": "src/main.physical.nsm:99"
         },
         {
           "path": "header_high",
@@ -4193,23 +4193,23 @@
               "field": "x",
               "lo": 48.86,
               "hi": 48.86,
-              "source": "src/main.physical.nsm:80"
+              "source": "src/main.physical.nsm:82"
             },
             {
               "field": "y",
               "lo": 25.59,
               "hi": 25.59,
-              "source": "src/main.physical.nsm:81"
+              "source": "src/main.physical.nsm:83"
             },
             {
               "field": "rotation",
               "lo": 270.0,
               "hi": 270.0,
-              "source": "src/main.physical.nsm:82"
+              "source": "src/main.physical.nsm:84"
             }
           ],
           "side": "top",
-          "side_source": "src/main.physical.nsm:83"
+          "side_source": "src/main.physical.nsm:85"
         },
         {
           "path": "header_low",
@@ -4219,23 +4219,23 @@
               "field": "x",
               "lo": 3.14,
               "hi": 3.14,
-              "source": "src/main.physical.nsm:76"
+              "source": "src/main.physical.nsm:78"
             },
             {
               "field": "y",
               "lo": 25.59,
               "hi": 25.59,
-              "source": "src/main.physical.nsm:77"
+              "source": "src/main.physical.nsm:79"
             },
             {
               "field": "rotation",
               "lo": 270.0,
               "hi": 270.0,
-              "source": "src/main.physical.nsm:78"
+              "source": "src/main.physical.nsm:80"
             }
           ],
           "side": "top",
-          "side_source": "src/main.physical.nsm:79"
+          "side_source": "src/main.physical.nsm:81"
         },
         {
           "path": "hole1",
@@ -4325,23 +4325,23 @@
               "field": "x",
               "lo": 37.8,
               "hi": 37.8,
-              "source": "src/main.physical.nsm:105"
+              "source": "src/main.physical.nsm:107"
             },
             {
               "field": "y",
               "lo": 37.475,
               "hi": 37.475,
-              "source": "src/main.physical.nsm:106"
+              "source": "src/main.physical.nsm:108"
             },
             {
               "field": "rotation",
               "lo": 180.0,
               "hi": 180.0,
-              "source": "src/main.physical.nsm:107"
+              "source": "src/main.physical.nsm:109"
             }
           ],
           "side": "top",
-          "side_source": "src/main.physical.nsm:108"
+          "side_source": "src/main.physical.nsm:110"
         },
         {
           "path": "usb",
@@ -4351,35 +4351,41 @@
               "field": "x",
               "lo": 26.0,
               "hi": 26.0,
-              "source": "src/main.physical.nsm:69"
+              "source": "src/main.physical.nsm:70"
             },
             {
               "field": "y",
-              "lo": 3.03,
-              "hi": 3.03,
-              "source": "src/main.physical.nsm:70"
+              "lo": 1.915,
+              "hi": 1.915,
+              "source": "src/main.physical.nsm:71"
+            },
+            {
+              "field": "top",
+              "lo": "-inf",
+              "hi": 0.0,
+              "source": "src/main.physical.nsm:72"
             },
             {
               "field": "rotation",
               "lo": 180.0,
               "hi": 180.0,
-              "source": "src/main.physical.nsm:71"
+              "source": "src/main.physical.nsm:73"
             }
           ],
           "side": "top",
-          "side_source": "src/main.physical.nsm:72"
+          "side_source": "src/main.physical.nsm:74"
         }
       ],
       "offsets": [],
       "line_texts": {
-        "src/main.physical.nsm:101": ".bootsel.place.x &= 17.2mm",
-        "src/main.physical.nsm:102": ".bootsel.place.y &= 5.2mm",
-        "src/main.physical.nsm:103": ".bootsel.place.rotation &= 270",
-        "src/main.physical.nsm:104": ".bootsel.place.side &= \"top\"",
-        "src/main.physical.nsm:105": ".reset.place.x &= 37.8mm",
-        "src/main.physical.nsm:106": ".reset.place.y &= 37.475mm",
-        "src/main.physical.nsm:107": ".reset.place.rotation &= 180",
-        "src/main.physical.nsm:108": ".reset.place.side &= \"top\"",
+        "src/main.physical.nsm:103": ".bootsel.place.x &= 17.2mm",
+        "src/main.physical.nsm:104": ".bootsel.place.y &= 5.2mm",
+        "src/main.physical.nsm:105": ".bootsel.place.rotation &= 270",
+        "src/main.physical.nsm:106": ".bootsel.place.side &= \"top\"",
+        "src/main.physical.nsm:107": ".reset.place.x &= 37.8mm",
+        "src/main.physical.nsm:108": ".reset.place.y &= 37.475mm",
+        "src/main.physical.nsm:109": ".reset.place.rotation &= 180",
+        "src/main.physical.nsm:110": ".reset.place.side &= \"top\"",
         "src/main.physical.nsm:56": ".hole1.place.x &= 12.03mm",
         "src/main.physical.nsm:57": ".hole1.place.y &= 4mm",
         "src/main.physical.nsm:58": ".hole2.place.x &= 39.97mm",
@@ -4388,24 +4394,25 @@
         "src/main.physical.nsm:61": ".hole3.place.y &= 47.18mm",
         "src/main.physical.nsm:62": ".hole4.place.x &= 12.03mm",
         "src/main.physical.nsm:63": ".hole4.place.y &= 47.18mm",
-        "src/main.physical.nsm:69": ".usb.place.x &= 26mm",
-        "src/main.physical.nsm:70": ".usb.place.y &= 3.03mm",
-        "src/main.physical.nsm:71": ".usb.place.rotation &= 180",
-        "src/main.physical.nsm:72": ".usb.place.side &= \"top\"",
-        "src/main.physical.nsm:76": ".header_low.place.x &= 3.14mm",
-        "src/main.physical.nsm:77": ".header_low.place.y &= 25.59mm",
-        "src/main.physical.nsm:78": ".header_low.place.rotation &= 270",
-        "src/main.physical.nsm:79": ".header_low.place.side &= \"top\"",
-        "src/main.physical.nsm:80": ".header_high.place.x &= 48.86mm",
-        "src/main.physical.nsm:81": ".header_high.place.y &= 25.59mm",
-        "src/main.physical.nsm:82": ".header_high.place.rotation &= 270",
-        "src/main.physical.nsm:83": ".header_high.place.side &= \"top\"",
-        "src/main.physical.nsm:88": ".header_low.pin_protrusion &= 0.94mm",
-        "src/main.physical.nsm:89": ".header_high.pin_protrusion &= 0.94mm",
-        "src/main.physical.nsm:94": ".debug.place.x &= 33.6mm",
-        "src/main.physical.nsm:95": ".debug.place.y &= 42.675mm",
-        "src/main.physical.nsm:96": ".debug.place.rotation &= 0",
-        "src/main.physical.nsm:97": ".debug.place.side &= \"top\""
+        "src/main.physical.nsm:70": ".usb.place.x &= 26mm",
+        "src/main.physical.nsm:71": ".usb.place.y &= 1.915mm",
+        "src/main.physical.nsm:72": ".usb.place.top <= 0mm",
+        "src/main.physical.nsm:73": ".usb.place.rotation &= 180",
+        "src/main.physical.nsm:74": ".usb.place.side &= \"top\"",
+        "src/main.physical.nsm:78": ".header_low.place.x &= 3.14mm",
+        "src/main.physical.nsm:79": ".header_low.place.y &= 25.59mm",
+        "src/main.physical.nsm:80": ".header_low.place.rotation &= 270",
+        "src/main.physical.nsm:81": ".header_low.place.side &= \"top\"",
+        "src/main.physical.nsm:82": ".header_high.place.x &= 48.86mm",
+        "src/main.physical.nsm:83": ".header_high.place.y &= 25.59mm",
+        "src/main.physical.nsm:84": ".header_high.place.rotation &= 270",
+        "src/main.physical.nsm:85": ".header_high.place.side &= \"top\"",
+        "src/main.physical.nsm:90": ".header_low.pin_protrusion &= 0.94mm",
+        "src/main.physical.nsm:91": ".header_high.pin_protrusion &= 0.94mm",
+        "src/main.physical.nsm:96": ".debug.place.x &= 33.6mm",
+        "src/main.physical.nsm:97": ".debug.place.y &= 42.9mm",
+        "src/main.physical.nsm:98": ".debug.place.rotation &= 0",
+        "src/main.physical.nsm:99": ".debug.place.side &= \"top\""
       }
     },
     "interfaces": [

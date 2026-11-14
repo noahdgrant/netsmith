@@ -437,6 +437,14 @@ fn the_option_waives_the_gate_and_the_notes_say_so() {
         pkg.notes
     );
     assert!(!pkg.drc_report.is_clean());
+    // Each waived error is listed under the line, so the person ordering reads it.
+    for e in pkg
+        .drc_report
+        .errors()
+        .filter(|e| e.rule != DrcRule::UnconnectedItems)
+    {
+        assert!(pkg.notes.contains(&format!("  {e}")), "{e}\n{}", pkg.notes);
+    }
 }
 
 #[test]

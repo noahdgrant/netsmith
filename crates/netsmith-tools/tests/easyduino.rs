@@ -645,12 +645,12 @@ board InterfaceBare {
             (
                 "ShouhanTypeC16Pin",
                 "SMD",
-                "easyduino_must_match:USB_C_Receptacle_Shouhan_TYPE-C-16PIN-2MD-073",
+                "easyduino_original:USB_C_Receptacle_G-Switch_GT-USB-7010ASV",
             ),
             (
                 "XunpuTs1088",
                 "SMD,4x3mm",
-                "easyduino_must_match:SW_XUNPU_TS-1088-AR02016",
+                "easyduino_original:SW_Push_SPST_NO_Alps_SKRK",
             ),
             (
                 "Esp32S3DevKitCHeaders",
@@ -661,10 +661,10 @@ board InterfaceBare {
             let mapped = mapping.map(kind, Some(package)).unwrap();
             assert_eq!(mapped.footprint, footprint, "{kind}");
             assert_eq!(mapped.lib_id, None, "{kind}: drawn from the pin table");
-            let file = footprint.trim_start_matches("easyduino_must_match:");
+            let (library, file) = footprint.split_once(':').unwrap();
             assert!(
                 project()
-                    .join("libs/easyduino_must_match.pretty")
+                    .join(format!("libs/{library}.pretty"))
                     .join(format!("{file}.kicad_mod"))
                     .is_file(),
                 "{file}"
@@ -1262,8 +1262,8 @@ board IcsFixture {
             used[i] = true;
             far = far.max(d);
             size = size
-                .max((own[i].width - w).abs())
-                .max((own[i].height - h).abs());
+                .max((own[i].width.max(own[i].height) - w.max(*h)).abs())
+                .max((own[i].width.min(own[i].height) - w.min(*h)).abs());
         }
         (far, size)
     }
@@ -1413,7 +1413,8 @@ board IcsFixture {
     fn the_module_footprint_is_the_land_pattern_of_the_datasheet_and_of_the_reference() {
         let built = built();
         let footprint = footprint_of(&built, "Esp32S3Wroom1");
-        assert_eq!(footprint.name, "ESP32-S3-WROOM-1_18x25.5mm_P1.27mm");
+        // Easyduino's own footprint, Espressif's (#728).
+        assert_eq!(footprint.name, "ESP32-S3-WROOM-1");
         assert_eq!(
             footprint.pads.len(),
             49,
@@ -1430,11 +1431,8 @@ board IcsFixture {
         let pad = |n: &str| footprint.pads.iter().find(|p| p.number == n).unwrap();
         for n in 1..=40 {
             let p = pad(&n.to_string());
-            let (long, short) = if (15..=26).contains(&n) {
-                (p.height, p.width)
-            } else {
-                (p.width, p.height)
-            };
+            // Espressif's footprint turns the pads of the bottom row by a quarter.
+            let (long, short) = (p.width.max(p.height), p.width.min(p.height));
             assert_eq!((long, short), (1.5, 0.9), "pad {n}");
         }
         assert!((pad("40").at.x - pad("1").at.x - 17.5).abs() < 1e-9);
@@ -1696,7 +1694,7 @@ board IcsFixture {
             ]
         );
         let footprint = footprint_of(&built, "Ss8050");
-        assert_eq!(footprint.name, "SOT-23");
+        assert_eq!(footprint.name, "SOT-23W");
         assert_eq!(numbered(&footprint), pad_numbers(&pins));
     }
 
@@ -1722,22 +1720,17 @@ board IcsFixture {
     }
 
     #[test]
-    fn the_transistor_footprint_is_the_generators_sot_23_and_the_reference_has_the_wide_one() {
+    fn the_transistor_footprint_is_easyduinos_wide_sot_23() {
         let built = built();
         let footprint = footprint_of(&built, "Ss8050");
         let (far, size) = closeness(&footprint, "Q1");
-        // Easyduino's SOT-23W has its pads 1.0 x 0.7 mm at +-1.2 mm; the generator's SOT-23
-        // pads are 1.475 x 0.6 mm at +-0.9375 mm, and the datasheet's soldering footprint
-        // (page 4) has pads 0.80 x 0.90 mm with the single pad 2.00 mm from the other two's line. Pad numbers and sides agree.
-        assert!(
-            far < 0.27,
-            "the farthest pad centre is {far} mm from the SOT-23W's"
-        );
-        assert!(size < 0.48, "{size}");
+        // Easyduino's own footprint (#728), KiCad's SOT-23W: pads 1.0 x 0.7 mm at +-1.2 mm. The
+        // generator's SOT-23 (1.475 x 0.6 mm at +-0.9375 mm) put Easyduino's emitter track of
+        // Q1 over its pad 1; the datasheet's soldering footprint (page 4) has pads 0.80 x 0.90
+        // mm with the single pad 2.00 mm from the other two's line.
+        assert!(far <= 0.01 && size <= 0.01, "{far} {size}");
         let pad = |n: &str| footprint.pads.iter().find(|p| p.number == n).unwrap();
-        // The generator's pads: 1.475 x 0.6 mm at +-0.9375 mm (1.875 mm between the columns).
-        assert_eq!((pad("1").width, pad("1").height), (1.475, 0.6));
-        assert!((pad("3").at.x - pad("1").at.x - 1.875).abs() < 1e-9);
+        assert!((pad("3").at.x - pad("1").at.x - 2.4).abs() < 1e-9);
         assert!(pad("1").at.x < 0.0 && pad("2").at.x < 0.0 && pad("3").at.x > 0.0);
         assert!(pad("1").at.y < 0.0 && pad("2").at.y > 0.0);
     }
@@ -1766,31 +1759,24 @@ board IcsFixture {
     }
 
     #[test]
-    fn the_diode_footprint_is_rohms_land_and_says_how_far_it_is_from_the_reference() {
+    fn the_diode_footprint_is_easyduinos_0402_land() {
         let built = built();
         let footprint = footprint_of(&built, "Schottky");
-        assert_eq!(footprint.name, "D_ROHM_SMD1006");
+        // Easyduino's own footprint (#728), KiCad's 0402 diode: pads 0.59 x 0.64 mm, 0.97 mm
+        // apart. ROHM's land (RB161QS-40, Rev.001, page 1) is 0.35 x 0.60 mm pads 0.65 mm apart.
+        assert_eq!(footprint.name, "D_0402_1005Metric");
         assert_eq!(
             numbered(&footprint),
             BTreeSet::from(["1".to_string(), "2".to_string()])
         );
-        // ROHM RB161QS-40, Rev.001 (2016.02), page 1, Land Size Figure: pads 0.6 wide and 0.35
-        // long, 0.65 mm between their centres.
         let pad = |n: &str| footprint.pads.iter().find(|p| p.number == n).unwrap();
-        assert_eq!((pad("1").width, pad("1").height), (0.35, 0.6));
-        assert_eq!((pad("2").width, pad("2").height), (0.35, 0.6));
-        assert!((pad("2").at.x - pad("1").at.x - 0.65).abs() < 1e-9);
+        assert!((pad("2").at.x - pad("1").at.x - 0.97).abs() < 1e-9);
         assert!(
             pad("1").at.x < 0.0,
             "the cathode on the left, as KiCad's diodes"
         );
-        // Easyduino's pads are the generator's 0402 diode: 0.59 x 0.64 mm, 0.97 mm apart. The
-        // pad centres are 0.16 mm nearer in ROHM's land, and each pad is 0.24 mm shorter.
-        let reference = reference_part("D2");
-        let ref_pads = reference["pads"].as_array().unwrap();
-        let distance = |p: &toml::Value| number(p.as_table().unwrap(), "x").abs();
-        assert!(ref_pads.iter().all(|p| (distance(p) - 0.485).abs() < 1e-9));
-        assert!((0.485 - 0.325f64 - 0.16).abs() < 1e-9);
+        let (far, size) = closeness(&footprint, "D2");
+        assert!(far <= 0.01 && size <= 0.01, "{far} {size}");
     }
 
     // ---- the catalogs and the library ----
@@ -1851,38 +1837,39 @@ board IcsFixture {
     fn the_projects_own_footprints_are_in_the_library_and_the_rows_name_them() {
         let mapping = Mapping::for_project(Some(&project())).unwrap();
         for (kind, package, footprint) in [
+            // Easyduino's own footprints (#728).
             (
                 "Esp32S3Wroom1",
                 "SMD, 25.5x18mm",
-                "easyduino_ics:ESP32-S3-WROOM-1_18x25.5mm_P1.27mm",
+                "easyduino_original:ESP32-S3-WROOM-1",
             ),
-            ("Schottky", "SMD1006", "easyduino_ics:D_ROHM_SMD1006"),
+            ("Schottky", "SMD1006", "easyduino_original:D_0402_1005Metric"),
+            ("Ss8050", "SOT-23", "easyduino_original:SOT-23W"),
+            (
+                "Capacitor",
+                "CASE-A-3216-18",
+                "easyduino_ics:CP_EIA-3216-18_Tantalum_A",
+            ),
         ] {
             let mapped = mapping.map(kind, Some(package)).unwrap();
             assert_eq!(mapped.footprint, footprint, "{kind}");
-            let file = footprint.trim_start_matches("easyduino_ics:");
+            let (library, file) = footprint.split_once(':').unwrap();
             assert!(
                 project()
-                    .join("libs/easyduino_ics.pretty")
+                    .join(format!("libs/{library}.pretty"))
                     .join(format!("{file}.kicad_mod"))
                     .is_file(),
                 "{file}"
             );
         }
-        // The two generated footprints are not in the library: the generators answer them.
-        for (kind, package, footprint) in [
-            (
-                "Cp2102n",
-                "QFN-28-EP(5x5)",
-                "Package_DFN_QFN:QFN-28-1EP_5x5mm_P0.5mm_EP3.35x3.35mm",
-            ),
-            ("Ss8050", "SOT-23", "Package_TO_SOT_SMD:SOT-23"),
-        ] {
-            assert_eq!(
-                mapping.map(kind, Some(package)).unwrap().footprint,
-                footprint
-            );
-        }
+        // The generated footprint is not in the library: the generator answers it.
+        assert_eq!(
+            mapping
+                .map("Cp2102n", Some("QFN-28-EP(5x5)"))
+                .unwrap()
+                .footprint,
+            "Package_DFN_QFN:QFN-28-1EP_5x5mm_P0.5mm_EP3.35x3.35mm"
+        );
     }
 }
 

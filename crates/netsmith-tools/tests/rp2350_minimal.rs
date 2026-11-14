@@ -10,7 +10,7 @@
 //! and the symbol is drawn from the pin table.
 //!
 //! The connectors (J1 micro-USB, J2 and J3 the 2 x 18 headers, J4 JST-SH) are the project's own
-//! parts with footprints in its own library (`libs/netsmith_rp2350.pretty`): their pads are
+//! parts with Raspberry Pi's footprints in its own library (`libs/rp2350_original.pretty`): their pads are
 //! compared with those of Raspberry Pi's board, pad by pad, and the board builds with no KiCad
 //! installed.
 
@@ -345,7 +345,7 @@ fn the_board_checks_and_solves() {
 /// of `catalogs/inductor.csv` and a footprint of the project's library) and SW1 and SW2 (the
 /// Wurth 434133025816, the project's `TactileSwitch`, its catalog and its footprint). Nothing
 /// here needs KiCad: the regulator's footprint is netsmith's generator, the other two are files
-/// of `libs/rp2350_minimal.pretty`, and the symbols are drawn by netsmith.
+/// of `libs/rp2350_original.pretty` (Raspberry Pi's), and the symbols are drawn by netsmith.
 mod regulator_inductor_switch {
     use std::collections::{BTreeMap, BTreeSet};
 
@@ -584,7 +584,7 @@ board Fixture {
     }
 
     #[test]
-    fn the_inductors_pads_are_its_two_pins_and_the_land_pattern_is_abracons() {
+    fn the_inductors_pads_are_its_two_pins_and_the_land_pattern_is_raspberry_pis() {
         let built = built();
         let pads = pads_of(&built, "L1");
         assert_eq!(pads["a"], ["1"]);
@@ -594,15 +594,16 @@ board Fixture {
             unique_pads(&footprint),
             BTreeSet::from(["1".to_string(), "2".to_string()])
         );
-        // Abracon, revision A of 9/13/2024, page 4: two pads 1.00 x 1.60 mm with 1.00 mm
-        // between them, so centres 2.00 mm apart.
+        // Raspberry Pi's footprint (#728): two pads 0.70 x 1.70 mm with centres 1.40 mm apart.
+        // Abracon's recommended land (revision A of 9/13/2024, page 4) is 1.00 x 1.60 mm pads
+        // 2.00 mm apart.
         let at = |n: &str| footprint.pads_numbered(n).next().unwrap().clone();
         let (one, two) = (at("1"), at("2"));
         for pad in [&one, &two] {
-            assert_eq!((pad.width, pad.height), (1.0, 1.6));
+            assert_eq!((pad.width, pad.height), (0.7, 1.7));
             assert_eq!(pad.at.y, 0.0);
         }
-        assert!((two.at.x - one.at.x - 2.0).abs() < 1e-9);
+        assert!((two.at.x - one.at.x - 1.4).abs() < 1e-9);
     }
 
     #[test]
@@ -958,9 +959,10 @@ fn the_footprint_has_the_pitch_the_pad_count_and_the_exposed_pad_of_the_datashee
     );
     assert_eq!(
         mapped.footprint,
-        "Package_DFN_QFN:QFN-60-1EP_7x7mm_P0.4mm_EP3.4x3.4mm"
+        "rp2350_original:rpi_rp2350a_vias"
     );
     let footprint = FootprintLibrary::at(netsmith_testkit::sample_footprints())
+        .with_library("rp2350_original", project().join("libs/rp2350_original.pretty"))
         .with_generators()
         .load(&mapped.footprint)
         .unwrap();
@@ -975,7 +977,11 @@ fn the_footprint_has_the_pitch_the_pad_count_and_the_exposed_pad_of_the_datashee
     };
     let (one, two) = (pad("1"), pad("2"));
     assert!(((two.at.y - one.at.y).abs() - 0.4).abs() < 1e-9, "pitch");
-    let ep = pad("61");
+    // The exposed pad, the largest of the pads 61 (the other nine are the vias in it).
+    let ep = footprint
+        .pads_numbered("61")
+        .max_by(|a, b| a.width.total_cmp(&b.width))
+        .unwrap();
     assert_eq!((ep.width, ep.height), (3.4, 3.4));
 }
 
@@ -1091,6 +1097,7 @@ board FlashAndCrystal {
             "the symbol is drawn from the pin table"
         );
         FootprintLibrary::at(netsmith_testkit::sample_footprints())
+            .with_library("rp2350_original", project().join("libs/rp2350_original.pretty"))
             .with_generators()
             .load(&mapped.footprint)
             .unwrap_or_else(|e| panic!("{}: {e}", mapped.footprint))
@@ -1236,7 +1243,8 @@ board FlashAndCrystal {
                 (size[0].as_float().unwrap(), size[1].as_float().unwrap()),
                 (1.7, 0.65)
             );
-            assert_eq!((mine.width, mine.height), (1.6, 0.6));
+            // The footprint is Raspberry Pi's (#728).
+            assert_eq!((mine.width, mine.height), (1.7, 0.65));
         }
     }
 
@@ -1541,26 +1549,26 @@ fn the_connectors_build_with_no_kicad_and_their_footprints_are_the_projects_own(
         (
             "Amphenol10103594",
             "SMD",
-            "netsmith_rp2350:USB_Micro-B_Amphenol_10103594-0001LF",
+            "rp2350_original:amphenol_10103594-0001lf",
         ),
         (
             "JstSm03bSrssTb",
             "SMD,P=1mm,Surface Mount,Right Angle",
-            "netsmith_rp2350:JST_SM03B-SRSS-TB_1x03-2MP_P1.00mm_Horizontal",
+            "rp2350_original:jst_sm03b-srss-tb-lf--sn-",
         ),
         (
             "SamtecTsw11807LD",
             "TSW-118-07-L-D",
-            "netsmith_rp2350:PinHeader_2x18_P2.54mm_Samtec_TSW-118-07-L-D",
+            "rp2350_original:PinHeader_2x18_P2.54mm_Samtec_TSW-118-07-L-D",
         ),
     ] {
         let mapped = mapping.map(kind, Some(package)).unwrap();
         assert_eq!(mapped.footprint, footprint, "{kind}");
         assert_eq!(mapped.lib_id, None, "{kind}: drawn from the pin table");
-        let file = footprint.trim_start_matches("netsmith_rp2350:");
+        let file = footprint.trim_start_matches("rp2350_original:");
         assert!(
             project()
-                .join("libs/netsmith_rp2350.pretty")
+                .join("libs/rp2350_original.pretty")
                 .join(format!("{file}.kicad_mod"))
                 .is_file(),
             "{file}"

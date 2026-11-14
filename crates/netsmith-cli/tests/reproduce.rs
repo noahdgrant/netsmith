@@ -35,6 +35,10 @@ use netsmith_tools::reference_table::natural_key;
 /// routes file's are the same to 1 nm, and the board file writes them to 0.1 µm.
 const TOLERANCE: f64 = 1e-4;
 
+/// The least ring of copper round a plated hole JLCPCB makes, in mm (its capabilities page, as
+/// `std::mfg::jlcpcb` states it): what `fab` checks the reproductions' plated pads by.
+const JLCPCB_RING: f64 = 0.18;
+
 /// A port and what its reproduction is known to lack, each with why (its README says the same).
 struct Port {
     /// The folder under `examples/`.
@@ -56,11 +60,12 @@ struct Port {
     /// anything [`footprint_diff`] compares (place, turn, face, pads and their nets, courtyard),
     /// by the original's designator, each with why. Every other part is the original's.
     footprints: &'static [(&'static str, &'static str)],
-    /// The errors of netsmith's design rules check of the reproduction that are not copper left
-    /// unjoined (a connection or a dangling end, which `left` and the zones account for): the
-    /// rule, the original's designators of the parts it names, and why. A courtyard overlap must
-    /// be one the original's own courtyards have ([`footprint_diff::courtyard_overlaps`]).
-    findings: &'static [(&'static str, [&'static str; 2], &'static str)],
+    /// The errors of the design rules check `fab` runs on the reproduction with the process's
+    /// rules: the rule, the original's designators of the parts it names, how many, and why.
+    /// Each must be the original's own, measured on its board by the same rule: a courtyard
+    /// overlap its own courtyards have ([`footprint_diff::courtyard_overlaps`]), a plated pad
+    /// whose ring is thinner than the process's in its own footprint.
+    findings: &'static [(&'static str, &'static [&'static str], usize, &'static str)],
     /// The courtyard overlaps `fab`'s placement check warns of (two parts that both stand where
     /// the import put them may share courtyard area), by the parts' paths, each with why.
     overlaps: &'static [([&'static str; 2], &'static str)],
@@ -81,7 +86,22 @@ const RP2350: Port = Port {
          KiCad's SOT-223-3_TabPin2) has it as a second pad 2, the output, so the project's copy \
          numbers it 2: the same copper on the same net",
     )],
-    findings: &[],
+    findings: &[
+        (
+        "plated_ring",
+        &["U1"],
+        9,
+        "Raspberry Pi's own: the nine vias in the RP2350's exposed pad are pads of 0.6 mm round a \
+         0.25 mm hole, a ring of 0.175 mm where JLCPCB asks 0.18 mm",
+        ),
+        (
+            "track_angle",
+            &[],
+            3,
+            "Raspberry Pi's own: three bends of their +3V3 tracks are of 90 degrees (one of 45 \
+             between two short tracks), where netsmith's rule allows 45 at most",
+        ),
+    ],
     overlaps: &[],
 };
 
@@ -109,13 +129,22 @@ const ORBIT: Port = Port {
     findings: &[
         (
             "courtyards_overlap",
-            ["U16", "C5"],
+            &["U16", "C5"],
+            1,
             "ORBIT's own: the courtyard of its LQFP-48 covers 1.65 mm2 of C5's",
         ),
         (
             "courtyards_overlap",
-            ["U16", "C6"],
+            &["U16", "C6"],
+            1,
             "ORBIT's own: the courtyard of its LQFP-48 covers 1.03 mm2 of C6's",
+        ),
+        (
+            "track_angle",
+            &[],
+            1,
+            "ORBIT's own: one bend of its tracks is sharper than 45 degrees, which netsmith's rule \
+             does not allow",
         ),
     ],
     overlaps: &[
@@ -144,9 +173,20 @@ const EASYDUINO: Port = Port {
     board: "EasyduinoEsp32s3",
     left: &[],
     extra: &[],
-    refitted: &["bridge_reset_pullup.resistor"],
+    refitted: &["bridge_reset_pullup.resistor", "power_led_resistor"],
     footprints: &[
         ("R11", CROSSED),
+        (
+            "R6",
+            "Easyduino joins its pad 1 to the LED and pad 2 to VBUS, and the design's chain \
+             enters it at pad 1 from VBUS (a chain enters a resistor at pad 1 only, and joined \
+             pin by pin the LED's current is not modelled): turned by half a turn, as R11",
+        ),
+        (
+            "D1",
+            "its pad 2 (the anode) shares a net with pad 1 of R6 in Easyduino and with pad 2 in \
+             netsmith's design: R6 above",
+        ),
         (
             "U3",
             "its pad 9 (RSTb) shares a net with pad 1 of R11 in Easyduino and with pad 2 in \
@@ -160,7 +200,13 @@ const EASYDUINO: Port = Port {
              only",
         ),
     ],
-    findings: &[],
+    findings: &[(
+        "track_angle",
+        &[],
+        4,
+        "Easyduino's own: four bends of their tracks are sharper than 45 degrees, which netsmith's rule \
+         does not allow",
+    )],
     overlaps: &[],
 };
 
@@ -420,8 +466,9 @@ fn assert_footprints(port: &Port, made: &Made) {
         port.dir
     );
 
-    // The design rules check: each error that is not copper left unjoined, by rule and the
-    // original's designators of its parts.
+    // The design rules check, as `fab` ran it with the process's rules: each error it waived
+    // (`fab-notes.txt` lists them under its line), by rule and the original's designators of
+    // its parts, with how many of each.
     let ours_to_theirs: BTreeMap<String, String> = {
         let map = DesignatorMap::from_parts(&parts, &pcb).unwrap();
         parts
@@ -429,59 +476,83 @@ fn assert_footprints(port: &Port, made: &Made) {
             .filter_map(|(_, theirs)| Some((map.get(theirs)?.to_string(), theirs.to_string())))
             .collect()
     };
-    let project = fs::read_to_string(made.pcb(port).with_extension("kicad_pro")).ok();
-    let report =
-        netsmith_geom::drc_check(&pcb, project.as_deref(), &netsmith_geom::DrcExtras::default())
-            .unwrap();
-    let mut found: Vec<(String, Vec<String>)> = report
-        .errors()
-        .filter(|f| {
-            !matches!(
-                f.rule,
-                DrcRule::UnconnectedItems | DrcRule::TrackDangling | DrcRule::ViaDangling
-            )
-        })
-        .map(|f| {
-            let mut theirs: Vec<String> = f
-                .message
-                .split(|c: char| !c.is_ascii_alphanumeric())
-                .filter_map(|w| ours_to_theirs.get(w).cloned())
-                .collect();
-            theirs.sort();
-            (f.rule.id().to_string(), theirs)
-        })
-        .collect();
-    found.sort();
-    let mut expected: Vec<(String, Vec<String>)> = port
+    let notes = fs::read_to_string(made.pcb(port).with_file_name("fab-notes.txt")).unwrap();
+    let mut found: BTreeMap<(String, Vec<String>), usize> = BTreeMap::new();
+    for line in notes.lines() {
+        let Some(rest) = line.strip_prefix("  error [") else {
+            continue;
+        };
+        let (rule, message) = rest.split_once(']').unwrap();
+        let mut theirs: Vec<String> = message
+            .split(|c: char| !c.is_ascii_alphanumeric())
+            .filter_map(|w| ours_to_theirs.get(w).cloned())
+            .collect();
+        theirs.sort();
+        theirs.dedup();
+        *found.entry((rule.to_string(), theirs)).or_default() += 1;
+    }
+    let expected: BTreeMap<(String, Vec<String>), usize> = port
         .findings
         .iter()
-        .map(|(rule, pair, _)| {
-            let mut pair: Vec<String> = pair.iter().map(|r| r.to_string()).collect();
-            pair.sort();
-            (rule.to_string(), pair)
+        .map(|(rule, designators, count, _)| {
+            let mut designators: Vec<String> = designators.iter().map(|r| r.to_string()).collect();
+            designators.sort();
+            ((rule.to_string(), designators), *count)
         })
         .collect();
-    expected.sort();
     assert_eq!(
         found, expected,
-        "the errors of netsmith's design rules check of the reproduction of {} that are not copper \
-         left unjoined, by rule and the original's designators",
+        "the errors of the design rules check `fab` ran on the reproduction of {}, by rule and the \
+         original's designators:\n{notes}",
         port.dir
     );
-    // A courtyard overlap it finds is one the original's own courtyards have.
-    let own = footprint_diff::courtyard_overlaps(
-        &netsmith_tools::reference_table::read_board(&original, "the original").unwrap(),
-    );
-    for (rule, pair, why) in port.findings {
-        if *rule == "courtyards_overlap" {
-            assert!(
-                own.iter().any(|(a, b, _)| {
-                    (a == pair[0] && b == pair[1]) || (a == pair[1] && b == pair[0])
-                }),
-                "{pair:?} is said to be the original's own overlap ({why}), but the original's \
-                 courtyards that overlap are {own:?}"
-            );
-        }
+    // Each is the original's own: netsmith's design rules check of the original's board itself,
+    // with the process's least ring and its rule on the angles of tracks, finds the same, by the
+    // original's designators, as many times.
+    let extras = netsmith_geom::DrcExtras {
+        pad_ring: Some(JLCPCB_RING),
+        track_angle: true,
+        ..netsmith_geom::DrcExtras::default()
+    };
+    let report = netsmith_geom::drc_check(&original, None, &extras).unwrap();
+    let mut theirs: BTreeMap<(String, Vec<String>), usize> = BTreeMap::new();
+    for f in report.errors() {
+        let mut designators: Vec<String> = f
+            .message
+            .split(|c: char| !c.is_ascii_alphanumeric())
+            .filter(|w| parts.path_of(w).is_some())
+            .map(str::to_string)
+            .collect();
+        designators.sort();
+        designators.dedup();
+        *theirs
+            .entry((f.rule.id().to_string(), designators))
+            .or_default() += 1;
+    }
+    // The overlaps of the original's courtyards by the rule netsmith's check measures the
+    // reproduction's: the boxes of the courtyards, turned with the parts (the check run on the
+    // original's own file reports none of its overlaps).
+    theirs.retain(|(rule, _), _| rule != "courtyards_overlap");
+    let board = netsmith_tools::reference_table::read_board(&original, "the original").unwrap();
+    for (a, b, _) in footprint_diff::courtyard_overlaps(&board) {
+        let mut pair = vec![a, b];
+        pair.sort();
+        *theirs
+            .entry(("courtyards_overlap".to_string(), pair))
+            .or_default() += 1;
+    }
+    for ((rule, designators), count) in &expected {
+        let why = port
+            .findings
+            .iter()
+            .find(|f| f.0 == rule)
+            .map_or("", |f| f.3);
+        assert_eq!(
+            theirs.get(&(rule.clone(), designators.clone())),
+            Some(count),
+            "{rule} {designators:?} is said to be the original's own ({why}), but netsmith's check \
+             of the original finds {theirs:?}"
+        );
     }
 
     // The placement check's warnings of courtyards that overlap, by the parts' paths.

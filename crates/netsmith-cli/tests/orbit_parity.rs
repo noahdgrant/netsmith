@@ -33,5 +33,6 @@ fn orbit_pcb_matches_the_original() {
                      reference/placements.toml --svg \
                      reference/parity-overlay.svg",
         known_failures: &[],
+        waive_drc: None,
     });
 }

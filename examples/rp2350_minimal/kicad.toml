@@ -66,12 +66,13 @@ package = "SMD,P=1mm,Surface Mount,Right Angle"
 default = true
 footprint = "rp2350_original:jst_sm03b-srss-tb-lf--sn-"
 
-# J2 and J3: Samtec TSW-118-07-L-D.
+# J2 and J3: Samtec TSW-118-07-L-D. Raspberry Pi's `samtec_tsw-118-07-l-d`, the file named as KiCad
+# names a header (`PinHeader_2x18_P2.54mm_...`) so that the 3D view draws it as one.
 [[part]]
 kind = "SamtecTsw11807LD"
 package = "TSW-118-07-L-D"
 default = true
-footprint = "rp2350_original:samtec_tsw-118-07-l-d"
+footprint = "rp2350_original:PinHeader_2x18_P2.54mm_Samtec_TSW-118-07-L-D"
 
 # The four mounting holes: 2.75 mm, non-plated, for M2.5 screws. The standard rows have only M2
 # (2.2 mm) and M3 (3.2 mm). The symbol is netsmith's own.

@@ -220,11 +220,13 @@ headers U2 (below), and the import places the parts the physical file does not p
 board has them, as their board turns them, locked, the module included. The test compares each
 footprint of the reproduction with Easyduino's (`netsmith_tools::footprint_diff`: place, turn,
 face, every pad's number, centre, size, shape, drill, layers and net, and the courtyard, to 5
-µm): every part is Easyduino's but R11, U3's pad 9 on its net, and U2's courtyard (below). No two
+µm): every part is Easyduino's but R6 and R11, D1's pad 2 and U3's pad 9 on their nets, and U2's courtyard (below). No two
 courtyards overlap, and netsmith's design rules check finds no short, no clearance and no
 overlap: the short under Q1 and the 0.095 mm at Q2 that the reproduction had with netsmith's
 SOT-23 were netsmith's footprint, not Easyduino's (with their SOT-23W, which the board now has,
-the clearance at Q2 is above 0.1 mm).
+the clearance at Q2 is above 0.1 mm). It finds four bends of their tracks sharper than the 45
+degrees netsmith allows (`track_angle`), on their board too, which the test measures by running
+the check on their file.
 
 **What does not, and why:**
 
@@ -232,14 +234,15 @@ the clearance at Q2 is above 0.1 mm).
   but removes no island (their ground zone on F.Cu removes those under 30 mm²) and trims no sliver
   narrower than a zone's minimum width; KiCad's fill of the board file (the zones are written
   unfilled) removes them, as Easyduino's does.
-- **The reset pull-up `bridge_reset_pullup.resistor` (their R11)** stands turned by 180 degrees
-  from Easyduino's: Easyduino joins its pad 1 to the bridge's RSTb and pad 2 to VBUS, and the
-  standard `PullUp` module the design uses joins pad 1 to the supply. The import turns it half a
-  turn so that each pad stands where Easyduino's pad of its net does: the copper is the same, the
-  rotation and the pads' nets (and so the net of U3's pad 9, as R11's pad 1) are crossed. A
-  design cannot say which pad of a standard module's resistor is which; that is for the owner
-  (the PR of #728 lists the options). The power LED's resistor (R6), a plain `Resistor` of the
-  board, is joined as Easyduino joins it (pad 2 on VBUS) and stands as theirs does.
+- **The two resistors whose pads are exchanged, R6 and R11** (`power_led_resistor` and
+  `bridge_reset_pullup.resistor`), stand turned by 180 degrees from Easyduino's: Easyduino joins
+  pad 1 of each to the LED and to the bridge's RSTb and pad 2 to VBUS, and the design enters
+  each at pad 1 from VBUS (a chain and the standard `PullUp` enter a resistor at pad 1; see
+  Differences from the reference). The import turns each half a turn so that every pad stands
+  where Easyduino's pad of its net does: the copper is the same, the rotation and the pads' nets
+  (and so the nets of D1's pad 2 and U3's pad 9) are crossed. A design cannot say which pad of a
+  chain's or a standard module's resistor is which; that is for the owner (the PR of #728 lists
+  the options).
 - **U2's courtyard.** Easyduino's footprint of the headers draws no courtyard, and draws the
   board's outline on `Edge.Cuts`; netsmith gives a footprint with no courtyard its pads and 0.25
   mm as one, which would be the whole board on both faces. So U2 keeps the project's footprint:
@@ -292,6 +295,8 @@ s-expression reader, which `compare` uses), and the board's from the built desig
   1, so ours have pad 1 on VBUS. A resistor has no polarity. The test reads the reference's two
   resistors with the pads exchanged (`SWAPPED`), and `only_r6_and_r11_have_their_pads_exchanged`
   shows that without the exchange the two boards differ at exactly the pads on those two nets.
+  (A board could join R6 pin by pin as Easyduino does, but a chain enters a resistor at pad 1
+  only, and joined with `~` the LED's current is no longer modelled; see #728.)
 - **U3 is not the same chip number.** The reference's BOM and board say C6568, which is the older
   CP2102 (see U3 below); the port is the CP2102N that its schematic names (C1550553). Same pins.
 - **The designators differ** (declaration order: the module's parts are declared in the

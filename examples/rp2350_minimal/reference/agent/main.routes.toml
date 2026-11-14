@@ -304,7 +304,7 @@ tracks = [
 ]
 
 [Rp2350Minimal.nets."net-core_inductor.b"]
-pads = "b888e2e7b52bb389"
+pads = "524b8dc56e71049b"
 lock = true
 
 [[Rp2350Minimal.nets."net-core_inductor.b".zones]]

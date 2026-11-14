@@ -292,7 +292,9 @@ impl Glyph {
         if part.kind == "Label" {
             return None;
         }
-        let mapped = mapping.map_part(&part.path, &part.kind, part.package.as_deref()).ok()?;
+        let mapped = mapping
+            .map_part(&part.path, &part.kind, part.package.as_deref())
+            .ok()?;
         let symbol = lib.symbol_of(part, &mapped).ok()?;
         if symbol.units() < 2 {
             return None;

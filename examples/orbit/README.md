@@ -788,7 +788,9 @@ and U17 that share their nets.
   Parts that both stand where an imported board has them may share courtyard area: `fab` warns,
   and does not stop.
 
-Netsmith's design rules check finds nothing else: no short and no clearance.
+`fab`'s design rules check (with the process's rules) also finds one bend of their tracks sharper
+than the 45 degrees netsmith allows (`track_angle`), on their board too. It finds nothing else:
+no short and no clearance.
 
 ## For the owner
 
