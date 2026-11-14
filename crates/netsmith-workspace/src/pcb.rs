@@ -66,8 +66,8 @@ use netsmith_editor::{
         ComparePcbPlace, CompareSize, DrawnKeepout, KeepoutOrigin, KeepoutPlacement, KicadState,
         PartPlacement, PcbBox, PcbChange, PcbCrossed, PcbCrossedTrack, PcbCrossedVia, PcbCutout,
         PcbFinding, PcbFindings, PcbKeepout, PcbNetWidth, PcbPad, PcbPart, PcbPoint, PcbReport,
-        PcbRouteNet, PcbRouteTrack, PcbRouteVia, PcbScene, PcbSide, PcbWalk, PcbWalked,
-        RoutesChange, Severity,
+        PcbRouteNet, PcbRouteTrack, PcbRouteVia, PcbScene, PcbShoved, PcbShovedTrack, PcbShovedVia,
+        PcbSide, PcbWalk, PcbWalked, RoutesChange, Severity,
     },
 };
 use netsmith_pcb::{
@@ -838,6 +838,55 @@ impl Entry {
         board
     }
 
+    /// The board a shove is asked about (issue 726, the third slice): [`Entry::board_for_walk`]
+    /// without the shapes that may move, and those shapes. A shape may move when it is a straight
+    /// track or a via of the routes file that is not locked, in a record that is not locked and
+    /// is current (its pads are where it was written). Everything else of the routes file stays
+    /// on the board.
+    pub fn board_for_shove(&self) -> (Board, Vec<Movable>) {
+        let mut routes = self.routes.clone();
+        let mut movable = Vec::new();
+        if let Some(table) = routes.boards.get_mut(&self.placed.name) {
+            for (net, record) in table.nets.iter_mut() {
+                let current = netsmith_pcb::pad_hash(&self.placed, net)
+                    .is_some_and(|hash| hash == record.pads);
+                if record.lock || !current {
+                    continue;
+                }
+                let mut n = 0u32;
+                record.tracks.retain(|t| {
+                    n += 1;
+                    if t.lock || t.mid.is_some() {
+                        return true;
+                    }
+                    movable.push(Movable {
+                        net: net.clone(),
+                        number: n,
+                        shape: MovableShape::Track(t.on(&self.placed, net)),
+                    });
+                    false
+                });
+                let mut n = 0u32;
+                record.vias.retain(|v| {
+                    n += 1;
+                    if v.lock {
+                        return true;
+                    }
+                    movable.push(Movable {
+                        net: net.clone(),
+                        number: n,
+                        shape: MovableShape::Via(v.on(&self.placed, net)),
+                    });
+                    false
+                });
+            }
+        }
+        let mut board = self.placed.clone();
+        // A file that does not apply is the scene's finding; the walk is then of the board as placed.
+        let _ = netsmith_pcb::apply_routes(&mut board, &routes, "the routes file");
+        (board, movable)
+    }
+
     /// The router's copper on the board, if it was routed: what the board has beyond the copper
     /// of the routes file (`walk_board`, [`Entry::board_for_walk`]), pieces equal to it counted
     /// once each.
@@ -876,7 +925,12 @@ pub struct RouterCopper {
 /// The way for a straight track from its last corner to a point on `board` (the copper a track
 /// is checked against, [`Entry::board_for_walk`]): the corners of `netsmith_router::walk`, or
 /// the reason there are none. A way not found is an answer, not an error.
-pub fn walk(board: &Board, router: &RouterCopper, walk: &PcbWalk) -> Result<PcbWalked, ApiError> {
+pub fn walk(
+    board: &Board,
+    router: &RouterCopper,
+    shove: Option<&(Board, Vec<Movable>)>,
+    walk: &PcbWalk,
+) -> Result<PcbWalked, ApiError> {
     use netsmith_pcb::CopperLayer;
     let layer = match walk.layer.as_str() {
         "top" => CopperLayer::Front,
@@ -903,13 +957,60 @@ pub fn walk(board: &Board, router: &RouterCopper, walk: &PcbWalk) -> Result<PcbW
         to: point(&walk.to),
         heading: walk.heading.as_ref().map(point),
     };
-    let walked = ground.walker().path(&asked);
+    // The corners of the track so far.
+    let mut so_far: Vec<netsmith_pcb::Pt> = walk.track.iter().map(point).collect();
+    if so_far.last().is_none_or(|l| l.distance(asked.from) > 1e-9) {
+        so_far.push(asked.from);
+    }
+    let mut shoved = PcbShoved::default();
+    let mut stuck: Option<String> = None;
+    let mut walked = None;
+    if let Some((shove_board, movable)) = shove {
+        // The way through the copper that may move, and then that copper out of the way of it;
+        // where that cannot be done, the way round all of it below.
+        let g = netsmith_router::walk::Ground::of(shove_board).map_err(ApiError::internal)?;
+        match g.walker().path(&asked) {
+            Ok(found) => {
+                let mut corners = so_far.clone();
+                corners.extend(found.points.iter().skip(1).copied());
+                let pieces: Vec<netsmith_router::shove::Piece> = movable
+                    .iter()
+                    .enumerate()
+                    .map(|(id, m)| netsmith_router::shove::Piece {
+                        id,
+                        what: match &m.shape {
+                            MovableShape::Track(t) => {
+                                netsmith_router::shove::What::Track(t.clone())
+                            }
+                            MovableShape::Via(v) => netsmith_router::shove::What::Via(v.clone()),
+                        },
+                    })
+                    .collect();
+                let drawn = netsmith_router::shove::Drawn {
+                    net: &walk.net,
+                    layer,
+                    width: asked.width,
+                    corners: &corners,
+                };
+                match g.shove(&drawn, &pieces) {
+                    Ok(done) => {
+                        shoved = shoved_of(movable, &done);
+                        walked = Some(Ok(found));
+                    }
+                    Err(why) => stuck = Some(stuck_text(movable, &why)),
+                }
+            }
+            // No way even through the copper that may move: the way round it has none either.
+            Err(blocked) => walked = Some(Err(blocked)),
+        }
+    }
+    let walked = match walked {
+        Some(w) => w,
+        None => ground.walker().path(&asked),
+    };
     // The router's copper the track crosses: the track so far and the way found. The router's
     // copper is no obstacle to the walk (an edit discards it), so this only says what gives way.
-    let mut corners: Vec<netsmith_pcb::Pt> = walk.track.iter().map(point).collect();
-    if corners.last().is_none_or(|l| l.distance(asked.from) > 1e-9) {
-        corners.push(asked.from);
-    }
+    let mut corners = so_far;
     if let Ok(found) = &walked {
         corners.extend(found.points.iter().skip(1).copied());
     }
@@ -934,14 +1035,92 @@ pub fn walk(board: &Board, router: &RouterCopper, walk: &PcbWalk) -> Result<PcbW
             reason: None,
             tried: found.tried as u32,
             crossed,
+            shoved,
+            stuck,
         },
         Err(blocked) => PcbWalked {
             points: None,
             reason: Some(blocked.to_string()),
             tried: blocked.tried() as u32,
             crossed,
+            shoved,
+            stuck,
         },
     })
+}
+
+/// A shape of the routes file that a shove may move (`Entry::board_for_shove`): its net, its
+/// number in the net's record from 1, and the shape on the sheet.
+pub struct Movable {
+    pub net: String,
+    pub number: u32,
+    pub shape: MovableShape,
+}
+
+pub enum MovableShape {
+    Track(netsmith_pcb::Track),
+    Via(netsmith_pcb::Via),
+}
+
+/// The shapes a shove moved, each with where it was and where it goes.
+fn shoved_of(movable: &[Movable], done: &netsmith_router::shove::Shoved) -> PcbShoved {
+    use netsmith_router::shove::Moved;
+    let at = |p: netsmith_pcb::Pt| PcbPoint { x: p.x, y: p.y };
+    let mut out = PcbShoved::default();
+    for m in &done.moved {
+        let found = &movable[m.id()];
+        match (m, &found.shape) {
+            (Moved::Track { from, to, .. }, MovableShape::Track(t)) => {
+                out.tracks.push(PcbShovedTrack {
+                    net: found.net.clone(),
+                    track: found.number,
+                    layer: if t.layer == netsmith_pcb::CopperLayer::Back {
+                        "bottom".to_string()
+                    } else {
+                        "top".to_string()
+                    },
+                    width: t.width,
+                    was_from: at(t.from),
+                    was_to: at(t.to),
+                    from: at(*from),
+                    to: at(*to),
+                });
+            }
+            (Moved::Via { at: now, .. }, MovableShape::Via(v)) => out.vias.push(PcbShovedVia {
+                net: found.net.clone(),
+                via: found.number,
+                diameter: v.diameter,
+                was_at: at(v.at),
+                at: at(*now),
+            }),
+            _ => {}
+        }
+    }
+    out
+}
+
+/// What a shove that cannot be done says: the shape that cannot move out of the way, by name.
+fn stuck_text(movable: &[Movable], why: &netsmith_router::shove::Stuck) -> String {
+    use netsmith_router::shove::Stuck;
+    match why {
+        Stuck::Blocked { by: Some(id), .. } => {
+            let m = &movable[*id];
+            let what = match m.shape {
+                MovableShape::Track(_) => "track",
+                MovableShape::Via(_) => "via",
+            };
+            format!(
+                "{what} {} of net {} cannot be moved out of the way (copper that stays is too near, or its ends are held)",
+                m.number, m.net
+            )
+        }
+        Stuck::Blocked { by: None, .. } => {
+            "the copper in the way cannot be moved out of the way".to_string()
+        }
+        Stuck::TooMany { .. } => {
+            "too many shapes would have to be moved out of the way".to_string()
+        }
+    }
 }
 
 /// The pieces of the router's copper at `crossed`'s indexes, with their places.

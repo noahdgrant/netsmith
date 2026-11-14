@@ -25,6 +25,7 @@ pub mod meander;
 pub mod parallel;
 mod plan;
 pub mod route;
+pub mod shove;
 mod stitch;
 pub mod teardrop;
 pub mod walk;

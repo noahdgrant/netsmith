@@ -70,9 +70,9 @@ const MOST_TURN: f64 = 45.0 + 1e-3;
 /// What a walk is checked against: the board's copper as the design rules check reads it. Built
 /// once for a board ([`Ground::of`]) and asked as often as needed ([`Ground::walker`]).
 pub struct Ground {
-    art: Artwork,
-    rules: DrcRules,
-    extras: DrcExtras,
+    pub(crate) art: Artwork,
+    pub(crate) rules: DrcRules,
+    pub(crate) extras: DrcExtras,
     /// The board's edge, for the nodes the lattice may not use.
     edge: netsmith_pcb::BoardEdge,
 }
@@ -251,12 +251,12 @@ pub struct Walker<'a> {
     edge: &'a netsmith_pcb::BoardEdge,
 }
 
-fn fpt(p: Pt) -> FPt {
+pub(crate) fn fpt(p: Pt) -> FPt {
     FPt::new(p.x, p.y)
 }
 
 /// The copper of a straight track of `width` from `a` to `b` (a disc where they are the same).
-fn segment(a: Pt, b: Pt, width: f64) -> DrcShape {
+pub(crate) fn segment(a: Pt, b: Pt, width: f64) -> DrcShape {
     if a.distance(b) < 1e-9 {
         DrcShape::disc(fpt(a), width / 2.0)
     } else {
@@ -265,7 +265,7 @@ fn segment(a: Pt, b: Pt, width: f64) -> DrcShape {
 }
 
 /// The angle between two directions, in degrees.
-fn angle_between(a: Pt, b: Pt) -> f64 {
+pub(crate) fn angle_between(a: Pt, b: Pt) -> f64 {
     let dot = a.x * b.x + a.y * b.y;
     let n = (a.x.hypot(a.y) * b.x.hypot(b.y)).max(1e-18);
     (dot / n).clamp(-1.0, 1.0).acos().to_degrees()
