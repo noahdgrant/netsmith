@@ -1,0 +1,29 @@
+//! A board with a `defaults` block (issue #625): one resistor takes its package from the block,
+//! one states its own, and the line for LEDs reaches nothing on the board.
+import std::parts::connector::Header1x2
+import std::parts::passive::{Resistor, Led}
+import std::sources::Rail
+import std::mfg::jlcpcb::TwoLayer
+
+board Defaults {
+    defaults {
+        Resistor.package ?= "0402"
+        Led.package ?= "0603"
+    }
+    .process: TwoLayer {
+        .stackup.thickness &= 1.6mm
+    }
+    .supply: Rail {
+        .voltage &= 5V +/- 5%
+        .pos.net &= "VCC"
+    }
+    .power_in: Header1x2
+    .supply.pos ~ .power_in.p1
+    .supply.neg ~ .power_in.p2
+    .from_block: Resistor { .resistance &= 1kohm +/- 5% }
+    .own: Resistor {
+        .resistance &= 10kohm +/- 5%
+        .package &= "0805"
+    }
+    .supply.pos ~> .from_block ~> .own ~> .supply.neg
+}

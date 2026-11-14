@@ -1014,6 +1014,14 @@ fn notes(solution: &Solution, board: Option<InstId>) -> Vec<Noted> {
                 .filter(|seed| inside(whole.field(seed.field).owner))
                 .map(|seed| (started_note(model, seed), Cause::Circular)),
         )
+        // A line of the board's `defaults` that reaches no field (issue #625).
+        .chain(
+            whole
+                .default_notes
+                .iter()
+                .filter(|n| inside(n.board))
+                .map(|n| (n.message.clone(), Cause::Other)),
+        )
         .collect()
 }
 

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { BoardDetail, ModuleUse, PartInfo, PowerTree, Problem, Project, Solved } from '../api';
-import { type CardContext, boardsUsing, cardFor, definitionCard, netCard, offersBoards, partCard, pinsOf, rangeText, solvedRows, targetAt } from './card';
+import { type CardContext, boardsUsing, cardFor, definitionCard, netCard, offersBoards, partCard, pinsOf, rangeText, solvedRows, targetAt, valueFromText } from './card';
 import { scanSymbols } from './symbols';
 
 const loc = (file: string, line: number) => ({ file, line, column: 5, endLine: line, endColumn: 30 });
@@ -92,6 +92,15 @@ describe('partCard', () => {
   it('counts the problems on the declaration', () => {
     const problems: Problem[] = [{ severity: 'error', message: 'm', rendered: '', at: loc('src/main.nsm', 24) }, { severity: 'note', message: 'n', rendered: '', at: loc('src/main.nsm', 24) }];
     expect(partCard(ctx({ problems }), detail.parts[1]).problems).toBe(1);
+  });
+  it('says which statement gave the package, and nothing when none did (issue 625)', () => {
+    const from = { at: loc('src/main.nsm', 6), how: 'boardDefault' as const };
+    const c = partCard(ctx(), { ...detail.parts[1], packageFrom: from });
+    expect(c.packageFrom).toEqual(from);
+    expect(valueFromText(from)).toBe('board default, main.nsm:6');
+    expect(valueFromText({ ...from, how: 'default' })).toBe('default, main.nsm:6');
+    expect(valueFromText({ ...from, how: 'stated' })).toBe('stated, main.nsm:6');
+    expect(partCard(ctx(), detail.parts[1]).packageFrom).toBeNull();
   });
 });
 

@@ -21,9 +21,9 @@ module Oscillator {
         .package &= "5032"
     }
     /// 30 pF C0G on the input side (ORBIT's value).
-    .load_in: Capacitor { .capacitance &= 30pF +/- 5%; .package &= "0603" }
+    .load_in: Capacitor { .capacitance &= 30pF +/- 5% }
     /// 30 pF C0G on the output side.
-    .load_out: Capacitor { .capacitance &= 30pF +/- 5%; .package &= "0603" }
+    .load_out: Capacitor { .capacitance &= 30pF +/- 5% }
 
     .xin ~ .crystal.a
     .xin ~ .load_in.a

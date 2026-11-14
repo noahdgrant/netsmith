@@ -34,6 +34,11 @@ import std::parts::passive::{Capacitor, Resistor}
 import std::sources::Rail
 
 board Orbit {
+    defaults {
+        Capacitor.package ?= "0603"
+        Resistor.package ?= "0603"
+    }
+
     .process: TwoLayer {
         .stackup.thickness &= 1.6mm
         // Ground is the copper poured over the board, as in ORBIT (a `GND` zone on both layers).
@@ -100,8 +105,8 @@ board Orbit {
     .mcu.vssa ~ .vbus.neg
 
     /// C2, 4.7 uF, and C3 to C6, 100 nF, on the 3.3 V rail.
-    .v3v3_bulk: Capacitor { .capacitance &= 4.7uF +/- 10%; .package &= "0603" }
-    .v3v3_100n: 4 x Capacitor { .capacitance &= 100nF +/- 10%; .package &= "0603" }
+    .v3v3_bulk: Capacitor { .capacitance &= 4.7uF +/- 10% }
+    .v3v3_100n: 4 x Capacitor { .capacitance &= 100nF +/- 10% }
     .v3v3.pos ~> .v3v3_bulk ~> .v3v3.neg
     .v3v3.pos ~> .v3v3_100n ~> .v3v3.neg
 
@@ -119,7 +124,7 @@ board Orbit {
     /// SW1, RESET: pulls NRST to ground.
     .reset_button: XkbTs1187a
     /// C9, on NRST.
-    .reset_cap: Capacitor { .capacitance &= 100nF +/- 10%; .package &= "0603" }
+    .reset_cap: Capacitor { .capacitance &= 100nF +/- 10% }
     .mcu.nrst ~ .reset_button.a
     .reset_button.b ~ .vbus.neg
     .mcu.nrst ~ .reset_cap.a
@@ -134,7 +139,7 @@ board Orbit {
     /// pad 2 on the switch, so this is a plain resistor with its pads joined that way and not a
     /// `PullDown` (which puts its resistor's pad 1 on the line): BOOT0's pad 1 is on the net of
     /// R2's pad 2 in ORBIT's board, and the parity checker compares the pad.
-    .boot_pulldown: Resistor { .resistance &= 10kohm +/- 1%; .package &= "0603" }
+    .boot_pulldown: Resistor { .resistance &= 10kohm +/- 1% }
     .boot_pulldown.a ~ .vbus.neg
     .boot_pulldown.b ~ .boot_switch.a
     .boot_switch.b ~ .v3v3.pos
@@ -146,13 +151,13 @@ board Orbit {
     /// and a 100 nF capacitor take it to the MCU's pin.
     .user_button: XkbTs1187a
     /// R12.
-    .user_pulldown: PullDown { .resistor.resistance &= 100kohm +/- 1%; .resistor.package &= "0603" }
+    .user_pulldown: PullDown { .resistor.resistance &= 100kohm +/- 1% }
     /// C18.
-    .user_node_cap: Capacitor { .capacitance &= 10pF +/- 5%; .package &= "0603" }
+    .user_node_cap: Capacitor { .capacitance &= 10pF +/- 5% }
     /// R11.
-    .user_series: Resistor { .resistance &= 1kohm +/- 1%; .package &= "0603" }
+    .user_series: Resistor { .resistance &= 1kohm +/- 1% }
     /// C19, on the MCU's pin.
-    .user_pin_cap: Capacitor { .capacitance &= 100nF +/- 10%; .package &= "0603" }
+    .user_pin_cap: Capacitor { .capacitance &= 100nF +/- 10% }
     .user_button.a ~ .v3v3.pos
     .user_button.b ~ .user_pulldown.line
     .user_pulldown.reference ~ .v3v3
@@ -169,11 +174,11 @@ board Orbit {
 
     /// D2 and R4, on PA5.
     .led1: Everlight19217Ghc
-    .led1_resistor: Resistor { .resistance &= 1.5kohm +/- 1%; .package &= "0603" }
+    .led1_resistor: Resistor { .resistance &= 1.5kohm +/- 1% }
     .mcu.pa5 ~> .led1_resistor ~> .led1 ~> .vbus.neg
     /// D3 and R5, on PA4.
     .led2: Everlight19217Bhc
-    .led2_resistor: Resistor { .resistance &= 1.5kohm +/- 1%; .package &= "0603" }
+    .led2_resistor: Resistor { .resistance &= 1.5kohm +/- 1% }
     .mcu.pa4 ~> .led2_resistor ~> .led2 ~> .vbus.neg
 
     // ---- USB and the serial link (USB1, U22) ----
@@ -202,7 +207,7 @@ board Orbit {
     .mcu.pb6 ~ .eeprom.scl
     .mcu.pb7 ~ .eeprom.sda
     /// R9 and R10: 2.2 kohm on each line to 3.3 V.
-    .i2c_pullups: I2cPullups { .resistance &= 2.2kohm +/- 1%; .package &= "0603" }
+    .i2c_pullups: I2cPullups { .resistance &= 2.2kohm +/- 1% }
     .i2c_pullups.supply ~ .v3v3
     .i2c_pullups.bus.levels.reference ~ .v3v3
     .i2c_pullups.bus.scl ~ .mcu.pb6

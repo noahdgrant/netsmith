@@ -35,6 +35,12 @@ import std::parts::passive::{Capacitor, Color, FerriteBead, Fuse, Inductor, Led,
 import std::sources::Rail
 
 board PowerManifoldCharger {
+    defaults {
+        Capacitor.package ?= "0402"
+        Resistor.package ?= "0402"
+        TestPoint.package ?= "D1.5mm"
+    }
+
     .process: FourLayer {
         .stackup.thickness &= 1.6mm
         // The pours of the design: ground on both outer layers and the first inner layer (its
@@ -92,11 +98,11 @@ board PowerManifoldCharger {
     /// J2: TC2030
     .swd: ProgrammingPads6 { .package &= "TC2030-NL-connect" }
     /// J1: TX
-    .tp_tx: TestPoint { .package &= "D1.5mm" }
+    .tp_tx: TestPoint
     /// J5: GND
-    .tp_gnd: TestPoint { .package &= "D1.5mm" }
+    .tp_gnd: TestPoint
     /// J6: RX
-    .tp_rx: TestPoint { .package &= "D1.5mm" }
+    .tp_rx: TestPoint
 
     // ---- Protection, the indicator and the sensors ----
 
@@ -112,68 +118,68 @@ board PowerManifoldCharger {
     // ---- The resistors ----
 
     /// R1
-    .en_pulldown: Resistor { .resistance &= 100kohm +/- 1%; .package &= "0402" }
+    .en_pulldown: Resistor { .resistance &= 100kohm +/- 1% }
     /// R2
-    .ovp_ref_pulldown: Resistor { .resistance &= 100kohm +/- 1%; .package &= "0402" }
+    .ovp_ref_pulldown: Resistor { .resistance &= 100kohm +/- 1% }
     /// R3
-    .sda_pullup: Resistor { .resistance &= 4.7kohm +/- 1%; .package &= "0402" }
+    .sda_pullup: Resistor { .resistance &= 4.7kohm +/- 1% }
     /// R4
-    .scl_pullup: Resistor { .resistance &= 4.7kohm +/- 1%; .package &= "0402" }
+    .scl_pullup: Resistor { .resistance &= 4.7kohm +/- 1% }
     /// R5
-    .usb_sda_pullup: Resistor { .resistance &= 4.7kohm +/- 1%; .package &= "0402" }
+    .usb_sda_pullup: Resistor { .resistance &= 4.7kohm +/- 1% }
     /// R6
-    .usb_scl_pullup: Resistor { .resistance &= 4.7kohm +/- 1%; .package &= "0402" }
+    .usb_scl_pullup: Resistor { .resistance &= 4.7kohm +/- 1% }
     /// R7
-    .led_resistor: Resistor { .resistance &= 1kohm +/- 1%; .package &= "0402" }
+    .led_resistor: Resistor { .resistance &= 1kohm +/- 1% }
     /// R8
-    .tcpp_en_series: Resistor { .resistance &= 4.7kohm +/- 1%; .package &= "0402" }
+    .tcpp_en_series: Resistor { .resistance &= 4.7kohm +/- 1% }
     /// R9
-    .tcpp_en_pulldown: Resistor { .resistance &= 100kohm +/- 1%; .package &= "0402" }
+    .tcpp_en_pulldown: Resistor { .resistance &= 100kohm +/- 1% }
     /// R10
-    .fault_pullup: Resistor { .resistance &= 100kohm +/- 1%; .package &= "0402" }
+    .fault_pullup: Resistor { .resistance &= 100kohm +/- 1% }
     /// R11
-    .fsw_resistor: Resistor { .resistance &= 49.9kohm +/- 1%; .package &= "0402" }
+    .fsw_resistor: Resistor { .resistance &= 49.9kohm +/- 1% }
     /// R12
-    .ntc_converter_pullup: Resistor { .resistance &= 10kohm +/- 1%; .package &= "0402" }
+    .ntc_converter_pullup: Resistor { .resistance &= 10kohm +/- 1% }
     /// R13
-    .flag_pullup: Resistor { .resistance &= 47kohm +/- 1%; .package &= "0402" }
+    .flag_pullup: Resistor { .resistance &= 47kohm +/- 1% }
     /// R14
-    .gate_high_resistor: Resistor { .resistance &= 1ohm +/- 1%; .package &= "0402" }
+    .gate_high_resistor: Resistor { .resistance &= 1ohm +/- 1% }
     /// R16
-    .ntc_plug_pullup: Resistor { .resistance &= 10kohm +/- 1%; .package &= "0402" }
+    .ntc_plug_pullup: Resistor { .resistance &= 10kohm +/- 1% }
     /// R17
-    .vout_divider_top: Resistor { .resistance &= 100kohm +/- 1%; .package &= "0402" }
+    .vout_divider_top: Resistor { .resistance &= 100kohm +/- 1% }
     /// R18
-    .vout_divider_bottom: Resistor { .resistance &= 10kohm +/- 1%; .package &= "0402" }
+    .vout_divider_bottom: Resistor { .resistance &= 10kohm +/- 1% }
     /// R19
-    .vbus_divider_top: Resistor { .resistance &= 100kohm +/- 1%; .package &= "0402" }
+    .vbus_divider_top: Resistor { .resistance &= 100kohm +/- 1% }
     /// R20
-    .vbus_divider_bottom: Resistor { .resistance &= 10kohm +/- 1%; .package &= "0402" }
+    .vbus_divider_bottom: Resistor { .resistance &= 10kohm +/- 1% }
     /// R21
-    .gate_low_resistor: Resistor { .resistance &= 1ohm +/- 1%; .package &= "0402" }
+    .gate_low_resistor: Resistor { .resistance &= 1ohm +/- 1% }
     /// R22
-    .mode_resistor: Resistor { .resistance &= 75kohm +/- 1%; .package &= "0402" }
+    .mode_resistor: Resistor { .resistance &= 75kohm +/- 1% }
     /// R23
-    .ilim_resistor: Resistor { .resistance &= 45.3kohm +/- 1%; .package &= "0402" }
+    .ilim_resistor: Resistor { .resistance &= 45.3kohm +/- 1% }
     /// R24
-    .comp_resistor: Resistor { .resistance &= 56.2kohm +/- 1%; .package &= "0402" }
+    .comp_resistor: Resistor { .resistance &= 56.2kohm +/- 1% }
     /// R25
-    .ovp_ceil_top: Resistor { .resistance &= 57.6kohm +/- 1%; .package &= "0402" }
+    .ovp_ceil_top: Resistor { .resistance &= 57.6kohm +/- 1% }
     /// R26
-    .ovp_ceil_bottom: Resistor { .resistance &= 100kohm +/- 1%; .package &= "0402" }
+    .ovp_ceil_bottom: Resistor { .resistance &= 100kohm +/- 1% }
 
     // ---- The capacitors ----
 
     /// C1
     .v3v3_4u7: Capacitor { .capacitance &= 4.7uF +/- 10%; .package &= "0603"; .lcsc &= "C108342" }
     /// C2
-    .v3v3_100n_a: Capacitor { .capacitance &= 100nF +/- 10%; .package &= "0402"; .lcsc &= "C307331" }
+    .v3v3_100n_a: Capacitor { .capacitance &= 100nF +/- 10%; .lcsc &= "C307331" }
     /// C3
-    .v3v3_100n_b: Capacitor { .capacitance &= 100nF +/- 10%; .package &= "0402"; .lcsc &= "C307331" }
+    .v3v3_100n_b: Capacitor { .capacitance &= 100nF +/- 10%; .lcsc &= "C307331" }
     /// C4
-    .v3v3_100n_c: Capacitor { .capacitance &= 100nF +/- 10%; .package &= "0402"; .lcsc &= "C307331" }
+    .v3v3_100n_c: Capacitor { .capacitance &= 100nF +/- 10%; .lcsc &= "C307331" }
     /// C5
-    .reset_100n: Capacitor { .capacitance &= 100nF +/- 10%; .package &= "0402"; .lcsc &= "C307331" }
+    .reset_100n: Capacitor { .capacitance &= 100nF +/- 10%; .lcsc &= "C307331" }
     /// C6
     .emi_vin_100u: Capacitor { .capacitance &= 100uF +/- 20%; .package &= "SMD,D6.3xL7.7mm" }
     /// C7
@@ -183,47 +189,47 @@ board PowerManifoldCharger {
     /// C9
     .emi_vin_10u_b: Capacitor { .capacitance &= 10uF +/- 10%; .package &= "1206" }
     /// C10
-    .emi_vin_100n: Capacitor { .capacitance &= 100nF +/- 10%; .package &= "0402"; .lcsc &= "C307331" }
+    .emi_vin_100n: Capacitor { .capacitance &= 100nF +/- 10%; .lcsc &= "C307331" }
     /// C11
-    .ldo_bypass: Capacitor { .capacitance &= 10nF +/- 10%; .package &= "0402" }
+    .ldo_bypass: Capacitor { .capacitance &= 10nF +/- 10% }
     /// C12
     .v3v3_10u: Capacitor { .capacitance &= 10uF +/- 10%; .package &= "0805" }
     /// C13
-    .dither_10n: Capacitor { .capacitance &= 10nF +/- 10%; .package &= "0402" }
+    .dither_10n: Capacitor { .capacitance &= 10nF +/- 10% }
     /// C14
-    .ntc_converter_100n: Capacitor { .capacitance &= 100nF +/- 10%; .package &= "0402"; .lcsc &= "C307331" }
+    .ntc_converter_100n: Capacitor { .capacitance &= 100nF +/- 10%; .lcsc &= "C307331" }
     /// C15
     .emi_vin_1u: Capacitor { .capacitance &= 1uF +/- 10%; .package &= "0603"; .lcsc &= "C5199872" }
     /// C16
-    .ntc_plug_100n: Capacitor { .capacitance &= 100nF +/- 10%; .package &= "0402"; .lcsc &= "C307331" }
+    .ntc_plug_100n: Capacitor { .capacitance &= 100nF +/- 10%; .lcsc &= "C307331" }
     /// C18
-    .vout_sense_1n: Capacitor { .capacitance &= 1nF +/- 10%; .package &= "0402" }
+    .vout_sense_1n: Capacitor { .capacitance &= 1nF +/- 10% }
     /// C19
-    .vbus_sense_10n: Capacitor { .capacitance &= 10nF +/- 10%; .package &= "0402" }
+    .vbus_sense_10n: Capacitor { .capacitance &= 10nF +/- 10% }
     /// C20
-    .boot1_cap: Capacitor { .capacitance &= 100nF +/- 10%; .package &= "0402"; .lcsc &= "C307331" }
+    .boot1_cap: Capacitor { .capacitance &= 100nF +/- 10%; .lcsc &= "C307331" }
     /// C21
-    .boot2_cap: Capacitor { .capacitance &= 100nF +/- 10%; .package &= "0402"; .lcsc &= "C307331" }
+    .boot2_cap: Capacitor { .capacitance &= 100nF +/- 10%; .lcsc &= "C307331" }
     /// C22
-    .cc1_330p: Capacitor { .capacitance &= 330pF +/- 10%; .package &= "0402" }
+    .cc1_330p: Capacitor { .capacitance &= 330pF +/- 10% }
     /// C23
     .vcc_10u: Capacitor { .capacitance &= 10uF +/- 10%; .package &= "0805"; .lcsc &= "C1713" }
     /// C24
-    .cc2_330p: Capacitor { .capacitance &= 330pF +/- 10%; .package &= "0402" }
+    .cc2_330p: Capacitor { .capacitance &= 330pF +/- 10% }
     /// C25
-    .comp_cap_series: Capacitor { .capacitance &= 4.7nF +/- 10%; .package &= "0402" }
+    .comp_cap_series: Capacitor { .capacitance &= 4.7nF +/- 10% }
     /// C26
-    .iana_100n: Capacitor { .capacitance &= 100nF +/- 10%; .package &= "0402" }
+    .iana_100n: Capacitor { .capacitance &= 100nF +/- 10% }
     /// C27
-    .cbias_100n: Capacitor { .capacitance &= 100nF +/- 10%; .package &= "0402"; .lcsc &= "C307331" }
+    .cbias_100n: Capacitor { .capacitance &= 100nF +/- 10%; .lcsc &= "C307331" }
     /// C28
-    .vcc_100n: Capacitor { .capacitance &= 100nF +/- 10%; .package &= "0402"; .lcsc &= "C307331" }
+    .vcc_100n: Capacitor { .capacitance &= 100nF +/- 10%; .lcsc &= "C307331" }
     /// C29
-    .comp_cap: Capacitor { .capacitance &= 100pF +/- 10%; .package &= "0402" }
+    .comp_cap: Capacitor { .capacitance &= 100pF +/- 10% }
     /// C30
-    .v3v3_100n_d: Capacitor { .capacitance &= 100nF +/- 10%; .package &= "0402"; .lcsc &= "C307331" }
+    .v3v3_100n_d: Capacitor { .capacitance &= 100nF +/- 10%; .lcsc &= "C307331" }
     /// C31
-    .gate_47p: Capacitor { .capacitance &= 47pF +/- 10%; .package &= "0402" }
+    .gate_47p: Capacitor { .capacitance &= 47pF +/- 10% }
     /// C32
     .vout_conv_10u_a: Capacitor { .capacitance &= 10uF +/- 10%; .package &= "1206" }
     /// C33
@@ -231,7 +237,7 @@ board PowerManifoldCharger {
     /// C34
     .v5_1u: Capacitor { .capacitance &= 1uF +/- 10%; .package &= "0603"; .lcsc &= "C5199872" }
     /// C35
-    .v5_100n: Capacitor { .capacitance &= 100nF +/- 10%; .package &= "0402"; .lcsc &= "C307331" }
+    .v5_100n: Capacitor { .capacitance &= 100nF +/- 10%; .lcsc &= "C307331" }
     /// C36
     .vout_conv_10u_c: Capacitor { .capacitance &= 10uF +/- 10%; .package &= "1206" }
     /// C37

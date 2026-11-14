@@ -4,7 +4,7 @@
 // tree, the project's files) and, for a definition, the text of its file. Nothing is fetched here:
 // a card that needs a file's text or the power tree is built without it and again when it is there.
 
-import type { Analysis, Budget, Def, BoardDetail, Definition, Location, ModuleUse, PartInfo, PowerTree, Problem, Project, Range, Solved } from '../api';
+import type { Analysis, Budget, Def, BoardDetail, Definition, Location, ModuleUse, PartInfo, PowerTree, Problem, Project, Range, Solved, ValueFrom } from '../api';
 import { tokenize } from '../nsm';
 import { type Selection, type ModuleInfo, modulesOf, netSel, partSel, moduleSel } from '../selection';
 import { spaceUnits } from '../util';
@@ -75,6 +75,8 @@ export interface PartCard {
   partKind: string;
   value: string;
   package: string | null;
+  /** The statement that gave the package, and whether it is a `&=`, a `?=` or a line of the board's `defaults` (issue 625). */
+  packageFrom: ValueFrom | null;
   path: string;
   /** The modules above the part, as a path (`stage`), or null for a part of the board itself. */
   module: string | null;
@@ -171,6 +173,13 @@ export interface CardContext {
   served?: Definition | null;
 }
 
+/** What a value's source says in a card: `board default`, `default` or `stated`, and the file and line. */
+export function valueFromText(from: ValueFrom): string {
+  const how = { boardDefault: 'board default', default: 'default', stated: 'stated' }[from.how];
+  const file = from.at.file.slice(from.at.file.lastIndexOf('/') + 1);
+  return `${how}, ${file}:${from.at.line}`;
+}
+
 const byPin = (a: string, b: string) => a.localeCompare(b, undefined, { numeric: true });
 
 /** The pins of a part with the net each is on, in pin order. */
@@ -223,6 +232,7 @@ export function partCard(ctx: CardContext, part: PartInfo, also: PartInfo[] = []
     partKind: part.kind,
     value: part.value,
     package: part.package,
+    packageFrom: part.packageFrom ?? null,
     path: part.path,
     module: moduleOf(part.path),
     lcsc: part.lcsc,

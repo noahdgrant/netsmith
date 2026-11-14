@@ -208,6 +208,11 @@ pub(crate) struct Checker<'a> {
     pub(crate) stating_row_limits: bool,
     /// Set while the `support` section of a part is read (ADR 0115).
     pub(crate) in_support: bool,
+    /// The lines of the `defaults` blocks of the boards read so far (issue #625), until every
+    /// statement has been read.
+    pub(crate) board_defaults: Vec<crate::defaults::BoardDefault>,
+    /// The fields whose pending default came from a board's `defaults`.
+    pub(crate) board_defaulted: HashSet<crate::model::FieldId>,
 }
 
 /// The pin file of the top-level source (ADR 0101): where it is among the loaded files, and
@@ -226,6 +231,16 @@ pub const PRELUDE_MODULE: &str = "std::prelude";
 /// The members of every part that name the catalog row it is (ADR 0122): narrowing either is a
 /// hand pick.
 pub(crate) const HAND_PICK: [&str; 2] = ["lcsc", "mpn"];
+
+/// The type of a value member that a built-in type name gives: `Some(Some(d))` for a
+/// quantity, `Some(None)` for text, `None` for a name that is no built-in value.
+pub(crate) fn builtin_value(name: &str) -> Option<Option<Dimension>> {
+    match builtin(name)? {
+        Builtin::Quantity(d) => Some(Some(d)),
+        Builtin::Text => Some(None),
+        _ => None,
+    }
+}
 
 fn builtin(name: &str) -> Option<Builtin> {
     use Dimension as D;
@@ -295,6 +310,8 @@ impl<'a> Checker<'a> {
             param_insts: HashMap::new(),
             param_args: HashMap::new(),
             in_support: false,
+            board_defaults: Vec::new(),
+            board_defaulted: HashSet::new(),
         }
     }
 
@@ -875,7 +892,7 @@ impl<'a> Checker<'a> {
     }
 
     /// A definition of the prelude by name.
-    fn prelude_def(&mut self, name: &str) -> Option<(usize, usize)> {
+    pub(crate) fn prelude_def(&mut self, name: &str) -> Option<(usize, usize)> {
         let module = self.prelude();
         match self.modules[module].scope.get(name) {
             Some(Binding::Def(m, i)) => Some((*m, *i)),
@@ -956,6 +973,8 @@ impl<'a> Checker<'a> {
         self.unused_stmts.clear();
         self.touches.clear();
         self.defaults.clear();
+        self.board_defaults.clear();
+        self.board_defaulted.clear();
         self.enum_ids.clear();
         self.bus_def_failed.clear();
         self.source_override = None;
@@ -965,6 +984,7 @@ impl<'a> Checker<'a> {
             .instantiate(&def, (module, index), &name, None)
             .expect("the root is made inside nothing, so nothing repeats");
         self.model.root = root;
+        self.apply_board_defaults();
         self.resolve_defaults();
         match def.kind {
             DefKind::Board | DefKind::System => self.assign_pins(&name, true),
@@ -1702,6 +1722,7 @@ impl<'a> Checker<'a> {
                         }
                     }
                 }
+                Item::Defaults(block) => self.defaults_block(block),
                 Item::Support(support) => {
                     if self.support_allowed() {
                         let items = crate::support::wiring(support);

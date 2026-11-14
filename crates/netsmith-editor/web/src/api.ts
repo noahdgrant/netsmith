@@ -372,7 +372,13 @@ solved?: Solved,
  * computes the assignment in memory; the page's padlock and move write only the `lock`, `pin` and
  * `source` lines of one entry (`POST /api/pins/lock`, `/api/pins/move`).
  */
-pinRequests?: Array<PinRequestInfo>, };
+pinRequests?: Array<PinRequestInfo>, 
+/**
+ * The statement that gave the part its package, and what kind of statement it is (issue
+ * 625): a `&=`, a `?=` on the field, or a line of the board's `defaults`. Absent when no
+ * statement states the package (the solver chose it with the row).
+ */
+packageFrom?: ValueFrom, };
 
 export type PinRequestInfo = { 
 /**
@@ -417,6 +423,14 @@ message?: string,
  * has now is among them), in the byte order of the paths. Empty for a request with no pin.
  */
 offers: Array<PinOffer>, };
+
+export type ValueFrom = { 
+/**
+ * The statement: the last one that narrowed the field.
+ */
+at: Location, how: ValueHow, };
+
+export type ValueHow = "stated" | "default" | "boardDefault";
 
 export type PinOffer = { 
 /**

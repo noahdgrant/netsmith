@@ -268,18 +268,25 @@ impl<'a> Run<'a> {
                     .map(|p| format!("; did you mean \"{p}\"?"))
                     .unwrap_or_default();
                 // At the statement that names the package, where there is one (ADR 0118).
-                let at = match model.member(part, "package") {
-                    Some(crate::model::Member::Field(f)) => {
-                        model.field(f).narrowed_at.last().copied()
-                    }
+                let field = match model.member(part, "package") {
+                    Some(crate::model::Member::Field(f)) => Some(f),
                     _ => None,
-                }
-                .unwrap_or_else(|| model.instance(part).at());
-                let message = format!(
-                    "`{}` is a `{ty}` in package `{package}`, which has no pin table; its tables are for {}{hint}",
-                    model.path_of(part),
-                    list(&packages)
-                );
+                };
+                let at = field
+                    .and_then(|f| model.field(f).narrowed_at.last().copied())
+                    .unwrap_or_else(|| model.instance(part).at());
+                // A line of the board's `defaults` is named once, for every part it reached.
+                let message = match field.and_then(|f| model.board_default_line(f)) {
+                    Some(line) => format!(
+                        "`{line}` in the board's `defaults` puts a `{ty}` in package `{package}`, which has no pin table; its tables are for {}{hint}",
+                        list(&packages)
+                    ),
+                    None => format!(
+                        "`{}` is a `{ty}` in package `{package}`, which has no pin table; its tables are for {}{hint}",
+                        model.path_of(part),
+                        list(&packages)
+                    ),
+                };
                 // Another provider of the use may have a table for it (ADR 0113).
                 if model.in_varied_use(part) {
                     self.conflicts.push(Diagnostic {

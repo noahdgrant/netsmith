@@ -34,10 +34,10 @@ pub(crate) struct Typed {
 
 /// A `?=` statement that has been checked and waits to be resolved.
 pub(crate) struct PendingDefault {
-    field: FieldId,
-    value: Typed,
-    source: SourceId,
-    span: Span,
+    pub(crate) field: FieldId,
+    pub(crate) value: Typed,
+    pub(crate) source: SourceId,
+    pub(crate) span: Span,
 }
 
 /// What decides whether a net default applies, by class of pins joined with `~`.
@@ -50,7 +50,7 @@ pub(crate) struct NetClasses {
 
 impl Checker<'_> {
     /// What a value of this type is called in a message.
-    fn describe(&self, ty: VTy) -> String {
+    pub(crate) fn describe(&self, ty: VTy) -> String {
         match ty {
             VTy::Q(d) => d.to_string(),
             VTy::Text => "text".to_string(),
@@ -59,7 +59,7 @@ impl Checker<'_> {
     }
 
     /// What a field holds, for a message.
-    fn describe_kind(&self, kind: FieldKind) -> String {
+    pub(crate) fn describe_kind(&self, kind: FieldKind) -> String {
         match kind {
             FieldKind::Quantity(d) => d.to_string(),
             FieldKind::Text => "text".to_string(),
@@ -165,7 +165,7 @@ impl Checker<'_> {
     /// is a function when `beside` is the `function` of a pin (ADR 0118); a function is a name
     /// of the part's pin table, which no import brings in. Anything else is lowered as it
     /// always is.
-    fn lower_beside(&mut self, beside: &Typed, e: &Expr) -> Option<Typed> {
+    pub(crate) fn lower_beside(&mut self, beside: &Typed, e: &Expr) -> Option<Typed> {
         let function = matches!(beside.e, RExpr::Field(f) if self.model.is_pin_function(f));
         if function {
             if let Some(name) = bare_name(e) {
@@ -873,6 +873,12 @@ impl Checker<'_> {
         }
         for d in apply {
             self.source_override = Some(d.source);
+            let from = if self.board_defaulted.contains(&d.field) {
+                crate::model::DefaultFrom::Board
+            } else {
+                crate::model::DefaultFrom::Field
+            };
+            self.model.fields[d.field.0].default_from = Some(from);
             self.apply_checked(d.field, d.value, CmpOp::Narrow, d.span);
         }
         self.source_override = None;

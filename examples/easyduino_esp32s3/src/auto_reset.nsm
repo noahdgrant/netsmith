@@ -22,8 +22,8 @@ module AutoReset {
 
     .q_en: Ss8050
     .q_boot: Ss8050
-    .r_dtr: Resistor { .resistance &= 10kohm +/- 1%; .package &= "0402" }
-    .r_rts: Resistor { .resistance &= 10kohm +/- 1%; .package &= "0402" }
+    .r_dtr: Resistor { .resistance &= 10kohm +/- 1% }
+    .r_rts: Resistor { .resistance &= 10kohm +/- 1% }
 
     .dtr ~> .r_dtr ~> .q_en.base
     .en ~ .q_en.emitter

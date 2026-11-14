@@ -24,13 +24,13 @@ module UsbUart {
     /// U22: the CP2102-GMR (LCSC C6568).
     .ic: Cp2102
     /// C20, on the chip's regulator output.
-    .vdd_bulk: Capacitor { .capacitance &= 4.7uF +/- 10%; .package &= "0603" }
+    .vdd_bulk: Capacitor { .capacitance &= 4.7uF +/- 10% }
     /// C21, on the chip's regulator output.
-    .vdd_100n: Capacitor { .capacitance &= 100nF +/- 10%; .package &= "0603" }
+    .vdd_100n: Capacitor { .capacitance &= 100nF +/- 10% }
     /// C23, on `VBUS`.
-    .vbus_1u: Capacitor { .capacitance &= 1uF +/- 10%; .package &= "0603" }
+    .vbus_1u: Capacitor { .capacitance &= 1uF +/- 10% }
     /// C24, on `VBUS`.
-    .vbus_100n: Capacitor { .capacitance &= 100nF +/- 10%; .package &= "0603" }
+    .vbus_100n: Capacitor { .capacitance &= 100nF +/- 10% }
 
     .ic.regin ~ .vbus.pos
     .ic.vbus ~ .vbus.pos

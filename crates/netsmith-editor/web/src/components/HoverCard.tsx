@@ -8,7 +8,7 @@ import { useEffect, useState } from 'preact/hooks';
 import { hoverEnter, hoverLeave } from '../hover';
 import type { BomLine, Solved } from '../api';
 import { partSel, selectAndReveal, setSelection, netSel } from '../selection';
-import { type Card, type CardContext, type DefinitionCard, type ModuleCard, type NetCard, type PartCard, type Target, boardsUsing, cardFor, offersBoards, solvedRows, usesOf } from '../source/card';
+import { type Card, type CardContext, type DefinitionCard, type ModuleCard, type NetCard, type PartCard, type Target, boardsUsing, cardFor, offersBoards, solvedRows, usesOf, valueFromText } from '../source/card';
 import { bomLineOf, bomLines, detailOfBoard, ensureBoardDetail, ensureBom, ensureDefinition, ensurePower, ensureText, power, servedDefinition, textOfFile } from '../source/boarddata';
 import { analysis, board, chooseBoard, detail, goTo, openFiles, project, revealSection, shown, viewBoardOfDefinition } from '../store';
 import { dollars, plural } from '../util';
@@ -56,7 +56,20 @@ function ShowRow({ sel, sections, done }: { sel: ReturnType<typeof partSel>; sec
 
 function catalogRows(card: PartCard, line: BomLine | undefined) {
   const rows: { label: string; value: preact.ComponentChildren; mono?: boolean }[] = [];
-  if (card.package) rows.push({ label: 'Package', value: card.package, mono: true });
+  if (card.package) {
+    const from = card.packageFrom;
+    const value = from ? (
+      <>
+        {card.package}{' '}
+        <button type="button" class="link hc-from" data-testid="hc-package-from" title="Go to the statement that gives the package" onClick={() => void goTo(from.at)}>
+          {valueFromText(from)}
+        </button>
+      </>
+    ) : (
+      card.package
+    );
+    rows.push({ label: 'Package', value, mono: true });
+  }
   const cat = [card.lcsc, line?.library].filter(Boolean).join(' · ');
   if (cat) rows.push({ label: 'Catalog', value: cat, mono: true });
   if (line?.mpn) rows.push({ label: 'MPN', value: line.mpn, mono: true });

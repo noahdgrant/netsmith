@@ -546,6 +546,33 @@ pub struct PartInfo {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub pin_requests: Option<Vec<PinRequestInfo>>,
+    /// The statement that gave the part its package, and what kind of statement it is (issue
+    /// 625): a `&=`, a `?=` on the field, or a line of the board's `defaults`. Absent when no
+    /// statement states the package (the solver chose it with the row).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub package_from: Option<ValueFrom>,
+}
+
+/// Where in the source a value of a part came from (issue 625).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct ValueFrom {
+    /// The statement: the last one that narrowed the field.
+    pub at: Location,
+    pub how: ValueHow,
+}
+
+/// What kind of statement gave a value.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub enum ValueHow {
+    /// A `&=` on the field, in the part, a module around it or the board.
+    Stated,
+    /// A `?=` on the field, which nothing replaced (ADR 0051).
+    Default,
+    /// A line of the board's `defaults` block, for every part of the kind (issue 625).
+    BoardDefault,
 }
 
 /// One pin request of a part: what it asked for and what it got.
@@ -1612,6 +1639,8 @@ pub fn typescript() -> String {
         Pending,
         PartInfo,
         PinRequestInfo,
+        ValueFrom,
+        ValueHow,
         PinOffer,
         Solved,
         Tolerance,

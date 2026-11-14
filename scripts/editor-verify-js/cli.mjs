@@ -63,6 +63,8 @@ const FIXTURES = {
   pin_map: 'scripts/editor-verify-js/fixtures/pin_map.nsm',
   // An L-shaped polygon outline with fillets and an arc (issue #57): the PCB view draws its edge.
   polygon_outline: 'scripts/editor-verify-js/fixtures/polygon_outline.nsm',
+  // A board with a `defaults` block (issue #625): the part card says which statement gave a package.
+  board_defaults: 'scripts/editor-verify-js/fixtures/board_defaults.nsm',
   // A project with no board: the views say where to write the first one.
   empty: 'scripts/editor-verify-js/fixtures/empty.nsm',
   // A part drawn from its own STEP model (ADR 0108), for pcb-3d-model.

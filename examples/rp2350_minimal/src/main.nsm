@@ -27,6 +27,11 @@ import std::parts::regulator::LinearRegulator
 import std::sources::Rail
 
 board Rp2350Minimal {
+    defaults {
+        Capacitor.package ?= "0402"
+        Resistor.package ?= "0402"
+    }
+
     .process: TwoLayer {
         .stackup.thickness &= 1.6mm
         // Ground is the copper poured over the back of the board, as on Raspberry Pi's (a
@@ -104,8 +109,8 @@ board Rp2350Minimal {
     .core_inductor.a ~ .v1v1.pos
 
     /// The filter of the core regulator's analog supply: 33 ohm and 4.7 uF.
-    .avdd_filter: Resistor { .resistance &= 33ohm +/- 1%; .package &= "0402" }
-    .avdd_filter_cap: Capacitor { .capacitance &= 4.7uF +/- 20%; .package &= "0402" }
+    .avdd_filter: Resistor { .resistance &= 33ohm +/- 1% }
+    .avdd_filter_cap: Capacitor { .capacitance &= 4.7uF +/- 20% }
     .v3v3.pos ~ .avdd_filter.a
     .avdd_filter.b ~ .mcu.vreg_avdd
     .mcu.vreg_avdd ~ .avdd_filter_cap.a
@@ -116,10 +121,10 @@ board Rp2350Minimal {
 
     .vbus_bulk: Capacitor { .capacitance &= 10uF +/- 10%; .package &= "0805" }
     .v3v3_bulk: 2 x Capacitor { .capacitance &= 10uF +/- 10%; .package &= "0805" }
-    .v3v3_bulk_c: Capacitor { .capacitance &= 4.7uF +/- 20%; .package &= "0402" }
-    .v1v1_bulk: Capacitor { .capacitance &= 4.7uF +/- 20%; .package &= "0402" }
-    .v3v3_100n: 8 x Capacitor { .capacitance &= 100nF +/- 10%; .package &= "0402" }
-    .v1v1_100n: 3 x Capacitor { .capacitance &= 100nF +/- 10%; .package &= "0402" }
+    .v3v3_bulk_c: Capacitor { .capacitance &= 4.7uF +/- 20% }
+    .v1v1_bulk: Capacitor { .capacitance &= 4.7uF +/- 20% }
+    .v3v3_100n: 8 x Capacitor { .capacitance &= 100nF +/- 10% }
+    .v1v1_100n: 3 x Capacitor { .capacitance &= 100nF +/- 10% }
     .vbus.pos ~> .vbus_bulk ~> .vbus.neg
     .v3v3.pos ~> .v3v3_bulk ~> .v3v3.neg
     .v3v3.pos ~> .v3v3_bulk_c ~> .v3v3.neg
@@ -136,8 +141,8 @@ board Rp2350Minimal {
 
     // ---- USB: 27 ohm in series with each data line ----
 
-    .usb_dp_series: Resistor { .resistance &= 27ohm +/- 1%; .package &= "0402" }
-    .usb_dm_series: Resistor { .resistance &= 27ohm +/- 1%; .package &= "0402" }
+    .usb_dp_series: Resistor { .resistance &= 27ohm +/- 1% }
+    .usb_dm_series: Resistor { .resistance &= 27ohm +/- 1% }
     .usb.dp ~ .usb_dp_series.a
     .usb_dp_series.b ~ .mcu.usb_dp
     .usb.dm ~ .usb_dm_series.a
@@ -155,9 +160,9 @@ board Rp2350Minimal {
 
     // The flash's chip select reaches the MCU's QSPI_SS through a 0 ohm link, and GPIO0
     // through another; both can be left off. A 10 kohm resistor holds it high.
-    .ss_link: Resistor { .resistance &= 0ohm..0.05ohm; .package &= "0402" }
-    .gpio0_link: Resistor { .resistance &= 0ohm..0.05ohm; .package &= "0402" }
-    .ss_pullup: PullUp { .resistor.resistance &= 10kohm +/- 1%; .resistor.package &= "0402" }
+    .ss_link: Resistor { .resistance &= 0ohm..0.05ohm }
+    .gpio0_link: Resistor { .resistance &= 0ohm..0.05ohm }
+    .ss_pullup: PullUp { .resistor.resistance &= 10kohm +/- 1% }
     .flash.cs ~ .ss_link.b
     .ss_link.a ~ .mcu.qspi_ss
     .flash.cs ~ .gpio0_link.b
@@ -170,13 +175,13 @@ board Rp2350Minimal {
     /// BOOTSEL: held at power-up it pulls QSPI_SS to ground through 1 kohm, so the chip boots
     /// from USB.
     .bootsel: TactileSwitch
-    .bootsel_series: Resistor { .resistance &= 1kohm +/- 1%; .package &= "0402" }
+    .bootsel_series: Resistor { .resistance &= 1kohm +/- 1% }
     .mcu.qspi_ss ~ .bootsel_series.a
     .bootsel_series.b ~ .bootsel.b
     .bootsel.a ~ .vbus.neg
     /// RESET: pulls RUN to ground through 1 kohm.
     .reset: TactileSwitch
-    .reset_series: Resistor { .resistance &= 1kohm +/- 1%; .package &= "0402" }
+    .reset_series: Resistor { .resistance &= 1kohm +/- 1% }
     .mcu.run ~ .reset.b
     .reset.a ~ .reset_series.a
     .reset_series.b ~ .vbus.neg

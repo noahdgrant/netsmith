@@ -936,6 +936,7 @@ impl Workspace {
                     scopes,
                     solved: super::solved::of(model, inst, source),
                     pin_requests,
+                    package_from: value_from(model, &trace.sources, inst, "package"),
                 }
             })
             .collect();
@@ -1126,9 +1127,17 @@ pub(super) use netsmith_pipeline::power::api_location;
 /// incomplete are notes, which say what the solver left alone and are mostly expected.
 fn note_problem(built: &Built, note: &str, cause: Cause, from_design: bool) -> Problem {
     let model = &built.trace.model;
-    let at = note_path_at(model, note).map(|inst| {
-        let (src, span) = model.instance(inst).at();
-        api_location(locate(&built.trace.sources, src, span))
+    // A line of the board's `defaults` that reaches nothing is at that line (issue #625).
+    let line = model
+        .default_notes
+        .iter()
+        .find(|n| n.message == note)
+        .map(|n| api_location(locate(&built.trace.sources, n.source, n.span)));
+    let at = line.or_else(|| {
+        note_path_at(model, note).map(|inst| {
+            let (src, span) = model.instance(inst).at();
+            api_location(locate(&built.trace.sources, src, span))
+        })
     });
     let severity = if note.contains(": not chosen") {
         Severity::Warning
@@ -1153,6 +1162,31 @@ fn note_problem(built: &Built, note: &str, cause: Cause, from_design: bool) -> P
             .filter(|p| !p.is_empty()),
         cause,
     }
+}
+
+/// The statement that gave the field `name` of `inst` its value, if one did (issue #625).
+fn value_from(
+    model: &netsmith_check::Model,
+    sources: &netsmith_check::Sources,
+    inst: netsmith_check::InstId,
+    name: &str,
+) -> Option<netsmith_editor::api::ValueFrom> {
+    use netsmith_check::DefaultFrom;
+    use netsmith_editor::api::{ValueFrom, ValueHow};
+    let Some(netsmith_check::Member::Field(f)) = model.member(inst, name) else {
+        return None;
+    };
+    let field = model.field(f);
+    let &(src, span) = field.narrowed_at.last()?;
+    let how = match field.default_from {
+        None => ValueHow::Stated,
+        Some(DefaultFrom::Field) => ValueHow::Default,
+        Some(DefaultFrom::Board) => ValueHow::BoardDefault,
+    };
+    Some(ValueFrom {
+        at: api_location(locate(sources, src, span)),
+        how,
+    })
 }
 
 /// What finding a part's STEP model found (ADR 0108), for the board `label`.

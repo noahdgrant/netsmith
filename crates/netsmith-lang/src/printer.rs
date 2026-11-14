@@ -463,6 +463,10 @@ fn write_block(out: &mut String, inner_docs: &[String], items: &[Item], depth: u
                 out.push_str("support ");
                 write_block(out, &[], &c.items, depth + 1);
             }
+            Item::Defaults(c) => {
+                out.push_str("defaults ");
+                write_block(out, &[], &c.items, depth + 1);
+            }
             Item::Polygon(p) => {
                 out.push_str("polygon");
                 let point = |p: &Point| format!("({}, {})", p.x.to_source(), p.y.to_source());

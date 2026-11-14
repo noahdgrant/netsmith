@@ -527,6 +527,7 @@ impl Parser {
                     | Item::Lines(_)
                     | Item::Case(_)
                     | Item::Support(_)
+                    | Item::Defaults(_)
                     | Item::Row(_)
                     | Item::Polygon(_)
                     | Item::Constraint(_)
@@ -578,6 +579,15 @@ impl Parser {
                     let open = self.bump();
                     let items = self.block(open.span)?;
                     return only_decls(Item::Support(Support {
+                        items,
+                        span: self.span_from(start),
+                    }));
+                }
+                "defaults" if matches!(self.peek_second(), Tok::LBrace) => {
+                    self.bump();
+                    let open = self.bump();
+                    let items = self.block(open.span)?;
+                    return only_decls(Item::Defaults(Defaults {
                         items,
                         span: self.span_from(start),
                     }));

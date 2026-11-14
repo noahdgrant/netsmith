@@ -709,6 +709,10 @@ Restricting a field to the values that both its current limit and a new constrai
 A value a module or part offers for a field and a board may replace, written `.field ?= value` (ADR 0051, proposed). It applies only when no `&=` statement states that field; a value that reaches the field through a relation or a join does not count as stated. A board's statement drops the default and need not overlap it, and two defaults for one field are an error.
 _Avoid_: Initial value, preset, fallback, soft constraint, weak narrowing
 
+**Board default**:
+A value a board offers to every part or module of a kind on it, written as a line of its `defaults` block, `defaults { Resistor.package ?= "0402" }` (issue #625, ADR 0128). It reaches every part of the kind at any depth whose value no statement reaches (no `&=` or `?=` on it, or on a value `==` or a join holds equal to it); a line that reaches nothing is a note.
+_Avoid_: Project default, global default, house style, scoped default
+
 **Unconstrained pick**:
 A part of a catalog with a value column (a resistor's resistance, a capacitor's capacitance, an inductor's inductance) that was picked while nothing limited the value, so the solver took the first row that fits (ADR 0065). A value is limited by a statement (`&=`, an applied default, a range a member carries in), by a bound that reaches it, or by a check or a current budget that the pick decides and that was judged once the board was solved (a budget counts only if the pick changes whether it holds); a check that holds whatever the size of the values is, such as the output voltage of a divider, limits their ratio and not their size, and the finding says so; a bound on a rating and a relation a part's own definition states do not limit it. A guideline finding: a warning by default, an error with `--strict` or `guidelines = "error"`. A range, however wide, is how a board says that any value will do.
 _Avoid_: Unset value, free pick, default pick, loose part

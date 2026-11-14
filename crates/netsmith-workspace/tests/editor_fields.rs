@@ -630,3 +630,53 @@ fn a_project_with_no_module_in_use_leaves_module_uses_out() {
     assert_eq!(json["moduleUses"][0]["name"], "LdoStage");
     assert_eq!(json["moduleUses"][0]["usedBy"][0], "TwoBoards/power");
 }
+
+#[test]
+fn a_part_says_which_statement_gave_its_package() {
+    // Issue #625: the card shows where a value came from, a line of the board's `defaults`, a
+    // `?=` on the field or a `&=`; and a line that reaches nothing is a note at that line.
+    let src = r#"import std::parts::passive::{Resistor, Led}
+import std::sources::Rail
+
+board B {
+    defaults {
+        Resistor.package ?= "0402"
+        Led.package ?= "0603"
+    }
+    .supply: Rail {
+        .voltage &= 5V +/- 5%
+        .pos.net &= "VCC"
+    }
+    .r1: Resistor { .resistance &= 1kohm +/- 5% }
+    .r2: Resistor { .resistance &= 1kohm +/- 5%; .package ?= "0603" }
+    .r3: Resistor { .resistance &= 1kohm +/- 5%; .package &= "0805" }
+    .supply.pos ~> .r1 ~> .r2 ~> .r3 ~> .supply.neg
+}
+"#;
+    let (_root, editor) = project_of("package-from", &[("src/main.nsm", src)]);
+    let board = editor.board("B").unwrap();
+    let from = |refdes: &str| {
+        let part = board.parts.iter().find(|p| p.refdes == refdes).unwrap();
+        let from = part.package_from.clone().expect("a statement gave the package");
+        (from.how, from.at.file, from.at.line)
+    };
+    use netsmith_editor::api::ValueHow;
+    assert_eq!(from("R1"), (ValueHow::BoardDefault, "src/main.nsm".into(), 6));
+    assert_eq!(from("R2"), (ValueHow::Default, "src/main.nsm".into(), 14));
+    assert_eq!(from("R3"), (ValueHow::Stated, "src/main.nsm".into(), 15));
+    let json = serde_json::to_value(
+        board.parts.iter().find(|p| p.refdes == "R1").unwrap(),
+    )
+    .unwrap();
+    assert_eq!(json["packageFrom"]["how"], "boardDefault");
+
+    let analysis = editor.analysis();
+    let note = analysis
+        .problems
+        .iter()
+        .find(|p| p.message.contains("the default for `Led.package` reaches nothing"))
+        .unwrap_or_else(|| panic!("{:#?}", analysis.problems));
+    assert_eq!(note.severity, netsmith_editor::api::Severity::Note);
+    let at = note.at.as_ref().expect("at the line");
+    assert_eq!((at.file.as_str(), at.line), ("src/main.nsm", 7));
+}

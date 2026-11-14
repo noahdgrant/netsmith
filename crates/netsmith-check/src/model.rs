@@ -631,6 +631,29 @@ pub struct Field {
     pub optional: Option<OptionalMark>,
     /// What the member is to the checker and the solver, from its `#[role(...)]` (ADR 0125).
     pub roles: Vec<MemberRole>,
+    /// Where its value came from, when a default gave it (ADR 0051, issue #625): the last of
+    /// `narrowed_at` is then that default's line.
+    pub default_from: Option<DefaultFrom>,
+}
+
+/// Which kind of default gave a field its value.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DefaultFrom {
+    /// A `?=` on the field itself, in the part, a module around it or the board (ADR 0051).
+    Field,
+    /// A line of the board's `defaults` block, for every part of a kind (issue #625).
+    Board,
+}
+
+/// A line of a board's `defaults` block that gave its value to no field (issue #625): a note
+/// of the build, not an error.
+#[derive(Debug, Clone)]
+pub struct DefaultNote {
+    /// The board whose block it is in.
+    pub board: InstId,
+    pub source: SourceId,
+    pub span: Span,
+    pub message: String,
 }
 
 /// The place of an `optional` marker, and the definition whose text declared the member (for
@@ -1076,6 +1099,9 @@ pub struct Model {
     pub(crate) sources: SourceTexts,
     /// The `polygon` statements of `Outline`s (issue #57), in the order they were read.
     pub(crate) polygons: Vec<OutlinePolygon>,
+    /// The lines of the boards' `defaults` blocks that gave their value to no field (issue
+    /// #625), in the order they were read.
+    pub default_notes: Vec<DefaultNote>,
     /// The domains that [`Model::set_domain`] replaced while a checkpoint was open or a
     /// bookmark was held, oldest first, with the field. Empty when neither is.
     journal: Vec<(FieldId, Domain)>,
@@ -1225,6 +1251,7 @@ impl Model {
             bus_defs: std::collections::BTreeMap::new(),
             sources: SourceTexts::default(),
             polygons: Vec::new(),
+            default_notes: Vec::new(),
             journal: Vec::new(),
             bookmarks: Holders::default(),
             open_checkpoints: 0,
@@ -1559,6 +1586,17 @@ impl Model {
     /// `file:line` of a statement of this model, if its file is known.
     pub fn place_of_statement(&self, source: SourceId, span: Span) -> Option<String> {
         self.sources.0.as_ref()?.place(source, span)
+    }
+
+    /// The line of a board's `defaults` that gave the field its value, as written (issue #625):
+    /// a message about the value names the line once, not each part it reached.
+    pub fn board_default_line(&self, field: FieldId) -> Option<String> {
+        let f = self.field(field);
+        if f.default_from != Some(DefaultFrom::Board) {
+            return None;
+        }
+        let &(source, span) = f.narrowed_at.last()?;
+        self.statement_text(source, span)
     }
 
     /// A statement of this model as it was written, on one line, if its file is known.
@@ -2125,6 +2163,7 @@ impl Model {
             narrowed_at: Vec::new(),
             optional: None,
             roles: Vec::new(),
+            default_from: None,
         });
         FieldId(self.fields.len() - 1)
     }
