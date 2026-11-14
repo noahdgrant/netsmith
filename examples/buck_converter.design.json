@@ -73,7 +73,7 @@
         "kind": "Resistor",
         "provides": [],
         "declared_kind": "resistor",
-        "value": "330",
+        "value": "15k",
         "package": "0402",
         "path": "reg.divider.rbottom",
         "pins": [
@@ -104,8 +104,8 @@
         "kind": "Resistor",
         "provides": [],
         "declared_kind": "resistor",
-        "value": "1.1k",
-        "package": "0402",
+        "value": "49.9k",
+        "package": "0603",
         "path": "reg.divider.rtop",
         "pins": [
           {
@@ -594,8 +594,8 @@
         },
         {
           "net": "3V3",
-          "current": 0.5024741291086562,
-          "least_width": 0.14532271290904758,
+          "current": 0.5000544322573658,
+          "least_width": 0.14435833883579147,
           "vias": 1
         },
         {
@@ -606,8 +606,8 @@
         },
         {
           "net": "net-reg.divider.rbottom.a",
-          "current": 0.002474129108656199,
-          "least_width": 0.0000953478597083845,
+          "current": 0.00005443225736580124,
+          "least_width": 4.931885656475306e-7,
           "vias": 1
         },
         {

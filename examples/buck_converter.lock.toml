@@ -26,15 +26,15 @@ mpn = "PH2.54-1X2P-H25"
 
 [BuckConverterExample.parts."reg.divider.rbottom"]
 catalog = "resistor"
-row = "330Ω 1% 0402 C25104"
-lcsc = "C25104"
-mpn = "0402WGF3300TCE"
+row = "15kΩ 1% 0402 C25756"
+lcsc = "C25756"
+mpn = "0402WGF1502TCE"
 
 [BuckConverterExample.parts."reg.divider.rtop"]
 catalog = "resistor"
-row = "1.1kΩ 1% 0402 C25860"
-lcsc = "C25860"
-mpn = "0402WGF1101TCE"
+row = "49.9kΩ 1% 0603 C23184"
+lcsc = "C23184"
+mpn = "0603WAF4992T5E"
 
 [BuckConverterExample.parts."reg.ic"]
 catalog = "lmr16006y"

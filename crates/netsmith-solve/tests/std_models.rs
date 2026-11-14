@@ -582,6 +582,48 @@ fn the_buck_stage_states_the_current_its_divider_draws() {
     assert!(i.lo() > 0.0 && i.hi() < 1e-3, "{i}");
 }
 
+/// The current through `stage.divider`, which must lie inside `lo..hi` amperes.
+fn assert_divider_current_within(s: &Solution, lo: f64, hi: f64) {
+    let i = range(s, "stage.divider.current");
+    assert!(
+        i.lo() >= lo - 1e-12 && i.hi() <= hi + 1e-12,
+        "{i} is not inside {lo}..{hi}"
+    );
+}
+
+#[test]
+fn the_buck_stage_bounds_its_divider_current_by_default_so_the_pick_is_sized() {
+    // The IC states no figure, so `Buck`'s default of 10 uA to 1 mA holds (#702): the two
+    // resistors are sized by it, and no finding says their size was left to the first row.
+    let s = run(&converter(&guide_ic(), "0mA..1A", ""));
+    assert!(messages(&s).is_empty(), "{:?}", messages(&s));
+    assert_divider_current_within(&s, 10e-6, 1e-3);
+    assert!(s.unconstrained.is_empty(), "{:?}", s.unconstrained);
+}
+
+#[test]
+fn an_ics_recommended_divider_current_replaces_the_stages_default() {
+    let ic = ic_with(".recommended_divider_current &= 100uA..250uA");
+    let s = run(&converter(&ic, "0mA..1A", ""));
+    assert!(messages(&s).is_empty(), "{:?}", messages(&s));
+    assert_divider_current_within(&s, 100e-6, 250e-6);
+    assert!(s.unconstrained.is_empty(), "{:?}", s.unconstrained);
+}
+
+#[test]
+fn a_board_that_narrows_the_divider_current_replaces_the_ics_figure() {
+    // The board's narrowing from outside (ADR 0116) is a statement of the field, so it replaces
+    // `Buck`'s default, and with it the IC's figure: 400 uA to 600 uA is outside the IC's.
+    let ic = ic_with(".recommended_divider_current &= 100uA..250uA");
+    let s = run(&converter(
+        &ic,
+        "0mA..1A",
+        "    .stage.divider.current &= 400uA..600uA\n",
+    ));
+    assert!(messages(&s).is_empty(), "{:?}", messages(&s));
+    assert_divider_current_within(&s, 400e-6, 600e-6);
+}
+
 /// The invented IC with `limits` added to its statements.
 fn ic_with(limits: &str) -> String {
     guide_ic().replace(

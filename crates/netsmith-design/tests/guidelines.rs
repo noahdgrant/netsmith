@@ -872,13 +872,14 @@ fn a_known_current_beside_an_unknown_one_sizes_the_net_for_the_known_part() {
 #[test]
 fn a_net_whose_known_current_needs_less_than_the_least_track_keeps_the_least() {
     // 5 mA is known beside an unknown current: the least track carries it, so the net is at
-    // the process's least, and the note says what the least track carries.
+    // the process's least, and the note says what the least track carries (the load and the
+    // feedback divider's few microamps, which `Buck`'s bound on it sizes, #702).
     let l = designed_of(&converter_of(true, "5mA", ""));
     assert_eq!(width_of(&l, "GND"), None);
     let gnd = note_of(&l, "GND").unwrap_or_else(|| panic!("{:?}", l.notes));
     assert!(
         gnd.contains(
-            "are the process's least, 0.1 mm, a lower bound: it carries the 5.01 mA that is known, not the whole current"
+            "are the process's least, 0.1 mm, a lower bound: it carries the 5.02 mA that is known, not the whole current"
         ),
         "{gnd}"
     );

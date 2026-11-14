@@ -46,15 +46,15 @@ mpn = "0402WGF1003TCE"
 
 [TwoBuck.parts."buck_3v3.stage.divider.rbottom"]
 catalog = "resistor"
-row = "330Ω 1% 0402 C25104"
-lcsc = "C25104"
-mpn = "0402WGF3300TCE"
+row = "2.2kΩ 1% 0402 C25879"
+lcsc = "C25879"
+mpn = "0402WGF2201TCE"
 
 [TwoBuck.parts."buck_3v3.stage.divider.rtop"]
 catalog = "resistor"
-row = "1kΩ 1% 0402 C11702"
-lcsc = "C11702"
-mpn = "0402WGF1001TCE"
+row = "6.8kΩ 1% 0603 C23212"
+lcsc = "C23212"
+mpn = "0603WAF6801T5E"
 
 [TwoBuck.parts."buck_3v3.stage.ic.boost"]
 catalog = "capacitor"
@@ -130,15 +130,15 @@ mpn = "0402WGF1003TCE"
 
 [TwoBuck.parts."buck_5v.stage.divider.rbottom"]
 catalog = "resistor"
-row = "510Ω 1% 0402 C25123"
-lcsc = "C25123"
-mpn = "0402WGF5100TCE"
+row = "1kΩ 1% 0402 C11702"
+lcsc = "C11702"
+mpn = "0402WGF1001TCE"
 
 [TwoBuck.parts."buck_5v.stage.divider.rtop"]
 catalog = "resistor"
-row = "2.7kΩ 1% 0603 C13167"
-lcsc = "C13167"
-mpn = "0603WAF2701T5E"
+row = "5.1kΩ 1% 0603 C23186"
+lcsc = "C23186"
+mpn = "0603WAF5101T5E"
 
 [TwoBuck.parts."buck_5v.stage.ic.boost"]
 catalog = "capacitor"

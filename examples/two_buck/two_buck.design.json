@@ -213,7 +213,7 @@
         "kind": "Resistor",
         "provides": [],
         "declared_kind": "resistor",
-        "value": "330",
+        "value": "2.2k",
         "package": "0402",
         "path": "buck_3v3.stage.divider.rbottom",
         "pins": [
@@ -244,8 +244,8 @@
         "kind": "Resistor",
         "provides": [],
         "declared_kind": "resistor",
-        "value": "1k",
-        "package": "0402",
+        "value": "6.8k",
+        "package": "0603",
         "path": "buck_3v3.stage.divider.rtop",
         "pins": [
           {
@@ -781,7 +781,7 @@
         "kind": "Resistor",
         "provides": [],
         "declared_kind": "resistor",
-        "value": "510",
+        "value": "1k",
         "package": "0402",
         "path": "buck_5v.stage.divider.rbottom",
         "pins": [
@@ -812,7 +812,7 @@
         "kind": "Resistor",
         "provides": [],
         "declared_kind": "resistor",
-        "value": "2.7k",
+        "value": "5.1k",
         "package": "0603",
         "path": "buck_5v.stage.divider.rtop",
         "pins": [
@@ -2497,7 +2497,7 @@
         ],
         [
           "GND",
-          6.63
+          6.62
         ],
         [
           "VIN",
@@ -2519,8 +2519,8 @@
       "net_currents": [
         {
           "net": "3V3",
-          "current": 1.5042561607968266,
-          "least_width": 0.6594353817217172,
+          "current": 1.5020976720399042,
+          "least_width": 0.6581305815939393,
           "vias": 3
         },
         {
@@ -2531,14 +2531,14 @@
         },
         {
           "net": "5V",
-          "current": 1.556858329282126,
-          "least_width": 0.6914513336886948,
+          "current": 1.5560555156436617,
+          "least_width": 0.6909595809587172,
           "vias": 3
         },
         {
           "net": "GND",
-          "current": 8.008455473957154,
-          "least_width": 6.620100961733186,
+          "current": 8.006503428919533,
+          "least_width": 6.617875359254233,
           "vias": 15
         },
         {
@@ -2567,8 +2567,8 @@
         },
         {
           "net": "net-buck_3v3.stage.divider.rbottom.a",
-          "current": 0.002539342615008365,
-          "least_width": 0.00009883157048356366,
+          "current": 0.00038085385808607345,
+          "least_width": 7.217637853343578e-6,
           "vias": 1
         },
         {
@@ -2597,8 +2597,8 @@
         },
         {
           "net": "net-buck_5v.stage.divider.rbottom.a",
-          "current": 0.0016386323124291044,
-          "least_width": 0.000054012712887801536,
+          "current": 0.0008358186739648418,
+          "least_width": 0.000021341640094787027,
           "vias": 1
         },
         {
@@ -2652,10 +2652,6 @@
           "height": 0.0
         },
         {
-          "path": "buck_3v3.stage.divider.rtop",
-          "height": 0.4
-        },
-        {
           "path": "buck_3v3.stage.ic.boost",
           "height": 0.55
         },
@@ -2694,6 +2690,10 @@
         {
           "path": "buck_5v.pg_test",
           "height": 0.0
+        },
+        {
+          "path": "buck_5v.stage.divider.rbottom",
+          "height": 0.4
         },
         {
           "path": "buck_5v.stage.ic.boost",
