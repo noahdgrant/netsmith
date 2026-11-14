@@ -188,7 +188,7 @@ Beside the board that `netsmith fab` makes of this project (the automatic board,
 routed by netsmith), the port keeps a reproduction of Easyduino's own copper (issue #599; the
 language guide's "Reproducing a KiCad board"): `reference/agent/main.routes.toml` and
 `reference/agent/main.pcb.toml`, which `netsmith routes import reference/Easyduino_ESP32S3.kicad_pcb` writes, and `reference/agent/main.physical.nsm`, the physical file with one line
-more, written by hand: `.mcu.place.top <= 0mm`, because their module hangs 5.9 mm over the top
+more, written by hand: `.mcu.place.top <= 0mm`, because their module hangs 6.2 mm over the top
 edge and a place in the layout file allows no overhang (the test requires the file to be
 `src/main.physical.nsm` with that block added).
 They are kept out of `src/`, so `fab` here still makes the automatic board; `scripts/reproductions
@@ -213,10 +213,18 @@ three again, with what netsmith's design rules check finds on the reproduction.
 and nothing more, and all 5 of its zones (+3.3V and GND on F.Cu, GND on In1.Cu and B.Cu, +3.3V on
 In2.Cu), each on its layer and net with its outline, priority and settings: the board file `fab`
 writes holds them as KiCad's zones, in place of the design's pours and planes, and their fill
-joins every pad of their nets, so `fab` leaves no connection. The import places the parts the physical file does not pin where their board
-has them, locked, the module included; `bridge_reset_pullup.resistor` and `power_led_resistor`
-are turned by 180 degrees from their footprints, because Easyduino numbers their two pads the
-other way round, so that each pad stands where theirs of its net does.
+joins every pad of their nets, so `fab` leaves no connection. Every part is drawn with
+Easyduino's footprint (KiCad's generated ones where netsmith's generator makes the same, and
+otherwise Easyduino's own, copied into `libs/easyduino_original.pretty`; see Parts), but the
+headers U2 (below), and the import places the parts the physical file does not pin where their
+board has them, as their board turns them, locked, the module included. The test compares each
+footprint of the reproduction with Easyduino's (`netsmith_tools::footprint_diff`: place, turn,
+face, every pad's number, centre, size, shape, drill, layers and net, and the courtyard, to 5
+µm): every part is Easyduino's but R11, U3's pad 9 on its net, and U2's courtyard (below). No two
+courtyards overlap, and netsmith's design rules check finds no short, no clearance and no
+overlap: the short under Q1 and the 0.095 mm at Q2 that the reproduction had with netsmith's
+SOT-23 were netsmith's footprint, not Easyduino's (with their SOT-23W, which the board now has,
+the clearance at Q2 is above 0.1 mm).
 
 **What does not, and why:**
 
@@ -224,11 +232,18 @@ other way round, so that each pad stands where theirs of its net does.
   but removes no island (their ground zone on F.Cu removes those under 30 mm²) and trims no sliver
   narrower than a zone's minimum width; KiCad's fill of the board file (the zones are written
   unfilled) removes them, as Easyduino's does.
-- **The SS8050s, `auto_reset.q_en` and `auto_reset.q_boot` (their Q1 and Q2).** Netsmith's SOT-23
-  footprint has pads 1.475 x 0.6 mm reaching 0.2 mm from the part's centre, where Easyduino's are
-  1.0 x 0.7 mm: their emitter track of Q1 runs over netsmith's pad 1 (the base), a short the
-  design rules check finds, and their base track of Q2 passes 0.095 mm from netsmith's pad 3
-  (0.1 mm is the least). The reproduction is not a board to order.
+- **The reset pull-up `bridge_reset_pullup.resistor` (their R11)** stands turned by 180 degrees
+  from Easyduino's: Easyduino joins its pad 1 to the bridge's RSTb and pad 2 to VBUS, and the
+  standard `PullUp` module the design uses joins pad 1 to the supply. The import turns it half a
+  turn so that each pad stands where Easyduino's pad of its net does: the copper is the same, the
+  rotation and the pads' nets (and so the net of U3's pad 9, as R11's pad 1) are crossed. A
+  design cannot say which pad of a standard module's resistor is which; that is for the owner
+  (the PR of #728 lists the options). The power LED's resistor (R6), a plain `Resistor` of the
+  board, is joined as Easyduino joins it (pad 2 on VBUS) and stands as theirs does.
+- **U2's courtyard.** Easyduino's footprint of the headers draws no courtyard, and draws the
+  board's outline on `Edge.Cuts`; netsmith gives a footprint with no courtyard its pads and 0.25
+  mm as one, which would be the whole board on both faces. So U2 keeps the project's footprint:
+  Easyduino's pads (to 4 µm) with the courtyard on `B.CrtYd` only (see The PCB).
 
 ## Same nets
 
@@ -437,6 +452,15 @@ prepreg (the author's notes name JLCPCB's JLC04161H-7628 for the USB pair's impe
 
 ## Parts
 
+**Every part is drawn with Easyduino's footprint** (#728) but the headers U2: where Easyduino's is
+KiCad's generated one and netsmith's generator makes the same pads and courtyard (the 0402
+passives and LEDs, the CP2102N, the SOT-223), the row names the generator; J1, J2, SW1, SW2, U1,
+Q1, Q2, D2 and D3 are drawn with Easyduino's own footprints, written out of their board into
+`libs/easyduino_original.pretty` by `cargo run -p netsmith-tools --example footprint_from_board
+-- reference/Easyduino_ESP32S3.kicad_pcb <REF> libs/easyduino_original.pretty` with what the board
+adds taken off (`kicad.toml`). U2 keeps the project's file (its courtyard, below). What follows of
+each maker's drawing is how the project's earlier footprints were written.
+
 Numbers are mm; the origin and axes of every footprint are those of the reference's (x right, y
 down, the part seen from the component side). A drawing's copyright or confidentiality notice is
 about the document: nothing was copied, only dimensions and facts. Each footprint is in
@@ -579,7 +603,9 @@ that need a number are listed as not evaluated. Documents were fetched on 2026-1
   the two with one `~` (`.mcu.UART0 ~ .bridge.uart`, ADR 0129), which crosses the lines.
   **Left out on purpose:** the other alternate functions of the pads (the table's last column), every level and rating, and the other variants' differences (footnotes b
   and c of Table 3-1).
-- **U1 footprint** (`libs/easyduino_ics.pretty/ESP32-S3-WROOM-1_18x25.5mm_P1.27mm.kicad_mod`,
+- **U1 footprint** (since #728 Easyduino's own, Espressif's `ESP32-S3-WROOM-1` in
+  `libs/easyduino_original.pretty`, whose pads are those below and whose courtyard is theirs;
+  before, `libs/easyduino_ics.pretty/ESP32-S3-WROOM-1_18x25.5mm_P1.27mm.kicad_mod`,
   written for this project, not copied from Espressif's library): 49 pads, the 40 edge pads and
   nine squares numbered 41.
   - **Read** (Figure 11-1, page 45; Figure 10-1, page 42): edge pads 1.5 x 0.9 mm (`40 x1.5`,
@@ -659,7 +685,9 @@ that need a number are listed as not evaluated. Documents were fetched on 2026-1
   part, those lines are on the emitters. The port follows the pads (the nets are the reference's). Whether the author meant it, and
   whether the reset circuit works with the emitter on `/EN`, is not checked here and is for the
   owner to decide.
-  - **Footprint** (`kicad.toml`): the generator's `SOT-23`: pads 1.475 x 0.6 mm at +-0.9375 mm
+  - **Footprint** (`kicad.toml`): Easyduino's `SOT-23W` (KiCad's, in `libs/easyduino_original.pretty`
+    since #728), pads 1.0 x 0.7 mm at +-1.2 mm. Before #728 the project used the generator's
+    `SOT-23`: pads 1.475 x 0.6 mm at +-0.9375 mm
     (1.875 mm between the columns). The reference has `SOT-23W`, whose pads are 1.0 x 0.7 mm at
     +-1.2 mm (2.4 mm between the columns), and the datasheet's soldering footprint (page 4) has
     0.80 x 0.90 mm pads with the single pad 2.00 mm from the line of the other two. The numbers
@@ -672,7 +700,9 @@ that need a number are listed as not evaluated. Documents were fetched on 2026-1
   IO, VF at most 600 mV at 1 A, the package (SMD1006, 1.0 x 0.6 mm, thickness 0.22 mm), the
   structure (the cathode at the marked end) and the Land Size Figure. The catalog row
   (`catalogs/schottky.csv`) has the worst-case forward voltage, 0.6 V, as the standard rows do.
-  - **Footprint** (`libs/easyduino_ics.pretty/D_ROHM_SMD1006.kicad_mod`): ROHM's land,
+  - **Footprint** (`kicad.toml`): Easyduino's, KiCad's `D_0402_1005Metric` (in
+    `libs/easyduino_original.pretty` since #728). Before #728 the project drew ROHM's land,
+    `libs/easyduino_ics.pretty/D_ROHM_SMD1006.kicad_mod`:
     **read**: pads 0.6 mm wide and 0.35 mm long with 0.65 mm between their centres (page 1, Land
     Size Figure). **Assumed:** pad 1 (cathode) on the left, the origin at the body's centre,
     rectangular pads, paste and mask on both, courtyard 0.25 mm round, the body outline and the

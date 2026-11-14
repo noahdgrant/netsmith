@@ -53,7 +53,15 @@ fn block(kind: &str, needle: &str) -> String {
 
 /// The `[[part]]` blocks of the guide's section that map `Sensor`.
 fn sensor_row(footprint_starts: &str) -> String {
-    block("toml", &format!("footprint = \"{footprint_starts}"))
+    section()
+        .into_iter()
+        .find(|(info, text)| {
+            info.first().is_some_and(|k| k == "toml")
+                && text.contains("[[part]]")
+                && text.contains(&format!("footprint = \"{footprint_starts}"))
+        })
+        .unwrap_or_else(|| panic!("the guide has no row with {footprint_starts:?}"))
+        .1
 }
 
 fn no_kicad() -> (TempDir, Search) {
@@ -336,4 +344,42 @@ fn a_gen_footprint_with_fewer_pads_than_the_part_has_pins_names_the_row_and_its_
         e.contains("`gen:SOT23(pins=3)` of kicad.toml line 5, and it makes 3 pads"),
         "{e}"
     );
+}
+
+/// The guide's project with its footprint file and the `[[member]]` block, whose path is `path`.
+fn member_project(dir: &Path, path: &str) {
+    let member = block("toml", "[[member]]").replace("path = \"s\"", &format!("path = \"{path}\""));
+    project(dir, &format!("{}\n{member}", block("toml", "[[library]]")));
+    fs::create_dir_all(dir.join("libs/own.pretty")).unwrap();
+    fs::write(
+        dir.join("libs/own.pretty/Sensor.kicad_mod"),
+        block("text", "(footprint \"Sensor\""),
+    )
+    .unwrap();
+}
+
+#[test]
+fn a_member_row_draws_one_part_with_its_own_footprint() {
+    let dir = TempDir::new("own-part-member");
+    member_project(&dir, "s");
+    let (_empty, search) = no_kicad();
+
+    let pcb = fab_probe(&dir, &search).unwrap_or_else(|e| panic!("{e}"));
+
+    // The sensor is the member row's generated SOT-23, not its row's `own:Sensor`.
+    assert!(pcb.contains("(footprint \"gen:SOT23_pins3\""), "{pcb}");
+    assert!(!pcb.contains("(footprint \"own:Sensor\""), "{pcb}");
+}
+
+#[test]
+fn a_member_row_of_another_path_leaves_the_part_its_rows_footprint() {
+    // A project's files may be several boards, and a row names one board's part: on a board
+    // with no part at its path it is not used.
+    let dir = TempDir::new("own-part-member-other");
+    member_project(&dir, "t");
+    let (_empty, search) = no_kicad();
+
+    let pcb = fab_probe(&dir, &search).unwrap_or_else(|e| panic!("{e}"));
+
+    assert!(pcb.contains("(footprint \"own:Sensor\""), "{pcb}");
 }

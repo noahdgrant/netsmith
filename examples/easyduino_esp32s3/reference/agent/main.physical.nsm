@@ -36,16 +36,17 @@ physical for EasyduinoEsp32s3 {
     // 58.6686) and (22.735, 58.6686) of the board.
 
     // J1 (the bridge's receptacle) and J2 (the module's own USB): their J1 is at (133.08,
-    // 119.925) and J2 at (146.95, 119.925), both not turned. The body is the courtyard (the
-    // footprint draws no `F.Fab` outline): x -4.82 to 4.82 and y -4.7 to 2.2 of the footprint,
-    // so its centre is 1.25 mm above the origin: (5.975, 61.2736 - 1.25) and (19.845, 61.2736 -
-    // 1.25).
+    // 119.925) and J2 at (146.95, 119.925), both not turned. The body (`F.Fab`) is centred on
+    // the origin (x -4.47 to 4.47, y -3.675 to 3.675): (5.975, 61.2736) and (19.845, 61.2736).
+    // Both hang 1.05 mm over the bottom edge (the body reaches y 64.9486), as in their board.
     .usb_uart.receptacle.place.x &= 5.975mm
-    .usb_uart.receptacle.place.y &= 60.0236mm
+    .usb_uart.receptacle.place.y &= 61.2736mm
+    .usb_uart.receptacle.place.bottom >= .outline.height
     .usb_uart.receptacle.place.rotation &= 0
     .usb_uart.receptacle.place.side &= "top"
     .usb_native.receptacle.place.x &= 19.845mm
-    .usb_native.receptacle.place.y &= 60.0236mm
+    .usb_native.receptacle.place.y &= 61.2736mm
+    .usb_native.receptacle.place.bottom >= .outline.height
     .usb_native.receptacle.place.rotation &= 0
     .usb_native.receptacle.place.side &= "top"
 
@@ -71,7 +72,7 @@ physical for EasyduinoEsp32s3 {
     .headers.place.side &= "top"
 
     // The reproduction of Easyduino's copper (`reference/agent/`, issue #599) puts the module
-    // where their board has it, its origin at (12.965, 9.8486) mm, with its antenna 5.9 mm past
+    // where their board has it, its origin at (12.965, 9.8486) mm, with its antenna 6.2 mm past
     // the top edge. A place in the layout file allows no overhang, so the reproduction states it
     // here; the example's own physical file (`src/main.physical.nsm`) keeps the module on the
     // board.

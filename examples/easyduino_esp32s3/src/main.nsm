@@ -174,7 +174,9 @@ board EasyduinoEsp32s3 {
         .forward_voltage &= 2.6V..3.2V
     }
     .power_led_resistor: Resistor { .resistance &= 5.1kohm +/- 1% }
-    .vbus.pos ~> .power_led_resistor ~> .power_led ~> .vbus.neg
+    // R6's pad 2 is on VBUS and pad 1 on the LED, as in Easyduino's schematic and board.
+    .vbus.pos ~ .power_led_resistor.b
+    .power_led_resistor.a ~> .power_led ~> .vbus.neg
     /// D4: GPIO38 through R9.
     .user_led: Led {
         .color &= Color::Blue

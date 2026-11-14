@@ -187,7 +187,7 @@ impl Glyph {
         if part.kind == "Label" {
             return Glyph::text_box(part);
         }
-        let mapped = match mapping.map(&part.kind, part.package.as_deref()) {
+        let mapped = match mapping.map_part(&part.path, &part.kind, part.package.as_deref()) {
             Ok(m) => m,
             Err(e) => return Glyph::fallback(part, used, pinout, e.to_string()),
         };
@@ -292,7 +292,7 @@ impl Glyph {
         if part.kind == "Label" {
             return None;
         }
-        let mapped = mapping.map(&part.kind, part.package.as_deref()).ok()?;
+        let mapped = mapping.map_part(&part.path, &part.kind, part.package.as_deref()).ok()?;
         let symbol = lib.symbol_of(part, &mapped).ok()?;
         if symbol.units() < 2 {
             return None;

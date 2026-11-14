@@ -167,6 +167,17 @@ can group them as the RP2350 board did.
 
 ## Parts
 
+**Every part is drawn with ORBIT's footprint** (#728). Where ORBIT's is KiCad's generated one
+and netsmith's generator makes the same pads and courtyard (the 0603 passives and LEDs, the
+crystal, the headers, the SOT-23-5 and the LQFP-48), the row names the generator; the others are
+ORBIT's own footprints, written out of their board into `libs/orbit_original.pretty` by `cargo
+run -p netsmith-tools --example footprint_from_board -- reference/ORBIT.kicad_pcb <REF>
+libs/orbit_original.pretty` with what the board adds taken off: USB1, BAT1, SW1 and SW2, BOOT0
+and PWR1, L1, U15, U17 and U22 (`kicad.toml`). So the reproduction stands every part as ORBIT
+does, with ORBIT's pads and courtyards. The mounting holes keep the project's plated-pad
+footprints (below). What the sections below say of each maker's drawing is how the project's
+earlier footprints were written, and how they compared with ORBIT's pads.
+
 ### The connectors, switches, crystal, LEDs and inductor
 
 The non-passive, non-IC parts of ORBIT's board are the nine kinds below, plus the four mounting
@@ -180,8 +191,8 @@ the board's (the standard crystal's letter is `Y`, the standard connector's `J`)
 must-match footprint is compared pad for pad with `reference/placements.toml` by a test
 (`crates/netsmith-tools/tests/orbit.rs`, module `small_parts`): number, centre in the footprint's own
 frame (0.05 mm), size, shape, kind, drill and angle; the fixture board of the tests builds with
-all the parts and no KiCad install. The footprints are files of the project's own library,
-`libs/orbit_small_parts.pretty`, listed in `kicad.toml`. **No dimension was guessed**: what is
+all the parts and no KiCad install. The footprints were files of the project's own library,
+`libs/orbit_small_parts.pretty` (now ORBIT's, in `libs/orbit_original.pretty`). **No dimension was guessed**: what is
 not on a drawing is listed as assumed, and where the board differs from a drawing the footprint
 of a must-match part follows the board and says so. Numbers are mm; x is to the right and y
 down, the part seen from the component side, as in the reference table. Every PDF was fetched
@@ -332,7 +343,7 @@ on 2026-11-10.
   the board's schematic is a test of its own (see "What was not run"): it runs only where
   `kicad-cli` is found, and skips elsewhere.
 
-### The five ICs (`src/`, `catalogs/`, `kicad.toml`, `libs/orbit_ics.pretty/`)
+### The five ICs (`src/`, `catalogs/`, `kicad.toml`)
 
 Each IC of ORBIT is a netsmith part with a pin table written by hand from the maker's
 datasheet (the datasheets are copyrighted: only facts, that is numbers, names and kinds, are
@@ -403,7 +414,7 @@ What is not what it seems:
 - Not modelled: logic levels, ratings and timing of any part, so the bus's levels and the I2C
   rise time are not judged.
 
-#### Footprints (`kicad.toml`, `libs/orbit_ics.pretty/`)
+#### Footprints (`kicad.toml`; before #728)
 
 Parity requires only the connectors, buttons, switches and headers to match the reference; for
 the ICs the closeness of each footprint to ORBIT's pads (number, centre, size) is a test, and
@@ -747,19 +758,35 @@ three again, with what netsmith's design rules check finds on the reproduction.
 **What matches:** all 299 segments and 49 vias of ORBIT's board, each on its layer and net, and
 nothing more, and its ground zone on both layers, with its outline and settings: the board file
 `fab` writes holds it as KiCad's zone, in place of the design's ground pour on B.Cu, and its fill
-joins every ground pad, so `fab` leaves no connection. The import places the parts the physical file does not pin where their board has
-them, locked; the two I2C pull-ups, `i2c_pullups.scl_pullup` and `.sda_pullup`, are turned by 180
-degrees from their footprints, because ORBIT numbers their two pads the other way round, so that
-each pad stands where theirs of its net does.
+joins every ground pad, so `fab` leaves no connection. Every part is drawn with ORBIT's footprint
+(KiCad's generated ones where netsmith's generator makes the same, and otherwise ORBIT's own,
+copied into `libs/orbit_original.pretty`; see Parts), and the import places the parts the
+physical file does not pin where their board has them, as their board turns them, locked. The
+test compares each footprint of the reproduction with ORBIT's (`netsmith_tools::footprint_diff`:
+place, turn, face, every pad's number, centre, size, shape, drill, layers and net, and the
+courtyard, to 5 µm): every part is ORBIT's but the two I2C pull-ups (below) and the pads of U16
+and U17 that share their nets.
 
 **What does not, and why:**
 
 - **The fill.** `fab`'s Gerbers hold netsmith's fill of the zone, which keeps every clearance
   but removes no island and trims no sliver narrower than the zone's minimum width; KiCad's fill
   of the board file (the zone is written unfilled) removes them, as ORBIT's does.
-- **Courtyards.** `mcu` overlaps `v3v3_100n[2]` and `v3v3_100n[3]`: netsmith's LQFP-48 courtyard
-  is wider than ORBIT's, whose capacitors stand within it. Parts that both stand where an imported board
-  has them may share courtyard area: `fab` warns, and does not stop.
+- **The I2C pull-ups** `i2c_pullups.scl_pullup` and `.sda_pullup` (their R9 and R10) stand turned
+  by 180 degrees from ORBIT's: ORBIT joins pad 1 of each to its line and pad 2 to +3.3V, and the
+  standard `I2cPullups` module the design uses joins pad 1 to the supply. The import turns each
+  half a turn so that every pad stands where ORBIT's pad of its net does: the copper is the same,
+  the rotation and the pads' nets (and so the nets of U16's pads 42 and 43 and U17's 5 and 6, as
+  pads 1 and 2 of the resistors) are crossed. A design cannot say which pad of a standard
+  module's resistor is which; that is for the owner (the PR of #728 lists the options).
+- **Courtyards ORBIT's own.** The courtyard of the LQFP-48 (`mcu`, their U16) covers 1.65 mm2 of
+  C5's and 1.03 mm2 of C6's (`v3v3_100n[2]` and `[3]`), on ORBIT's board as on the reproduction:
+  netsmith's design rules check reports both overlaps, and the test requires them to be the ones
+  ORBIT's own courtyards have. `fab` also warns of a third, `usb_uart.ic` (their U22) with
+  `usb_uart.vdd_bulk` (C11), 0.03 mm2: ORBIT's QFN-28 footprint draws no courtyard, and netsmith
+  takes its pads and 0.25 mm for one, where KiCad passes a footprint with no courtyard over.
+  Parts that both stand where an imported board has them may share courtyard area: `fab` warns,
+  and does not stop.
 
 Netsmith's design rules check finds nothing else: no short and no clearance.
 

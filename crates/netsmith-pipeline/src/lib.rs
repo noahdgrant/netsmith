@@ -1368,7 +1368,11 @@ fn export(
             // agree with the part's pin table (ADR 0016, decision 8).
             let mut disagreements = Vec::new();
             for (s, part) in sourcing.iter_mut().zip(&design.parts) {
-                let Ok(mapped) = libraries.mapping.map(&s.kind, s.package.as_deref()) else {
+                let Ok(mapped) =
+                    libraries
+                        .mapping
+                        .map_part(&part.path, &s.kind, s.package.as_deref())
+                else {
                     // The schematic names the part the mapping lacks.
                     continue;
                 };
@@ -1513,7 +1517,7 @@ fn report(heading: &str, design: &Design, sourcing: &[Sourced], mapping: &Mappin
             "silkscreen text".to_string()
         } else {
             mapping
-                .map(&p.kind, p.package.as_deref())
+                .map_part(&p.path, &p.kind, p.package.as_deref())
                 .map(|m| m.footprint)
                 .unwrap_or_else(|e| format!("({e})"))
         };

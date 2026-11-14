@@ -41,6 +41,19 @@ pub fn check_generated_footprints(mapping: &Mapping) -> Result<(), String> {
             ));
         }
     }
+    for member in mapping.members() {
+        if let Some(spec) = netsmith_kicad::FootprintSpec::from_id(&member.footprint)
+            && let Err(why) = netsmith_pcb::generate_footprint_spec(&spec)
+        {
+            return Err(format!(
+                "{}:{}: member `{}`: footprint `{}`: {why}",
+                member.source,
+                member.line,
+                member.path,
+                spec.spelling()
+            ));
+        }
+    }
     Ok(())
 }
 
@@ -301,7 +314,7 @@ impl Libraries {
         !self.generated_symbols(design).is_empty()
             || design.parts.iter().any(|part| {
                 self.mapping
-                    .map(&part.kind, part.package.as_deref())
+                    .map_part(&part.path, &part.kind, part.package.as_deref())
                     .is_ok_and(|m| is_library_id(&m.footprint))
             })
     }

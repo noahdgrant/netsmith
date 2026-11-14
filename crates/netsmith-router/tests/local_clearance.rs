@@ -197,3 +197,24 @@ fn a_pad_with_a_clearance_of_its_own_keeps_it_from_the_route_and_the_check_passe
         assert_eq!(errors, Vec::<String>::new());
     }
 }
+
+#[test]
+fn a_pad_with_a_mask_margin_of_its_own_keeps_the_mask_space_from_its_opening() {
+    // ORBIT's SOIC and QFN footprints open the mask 0.102 mm round each pad (#728): a track of
+    // another net keeps the process's mask to track space from the opening, not the pad.
+    for (pad, whole) in [
+        ("(solder_mask_margin 0.3)", ""),
+        ("", "(solder_mask_margin 0.3)"),
+    ] {
+        let (mut board, base) = board(pad, whole);
+        let keep = 0.3 + board.rules.mask_to_track;
+        assert!(base < keep, "the board's clearance is {base}");
+        let left = route(&mut board);
+        assert!(left.is_empty(), "{left:?}");
+        let gap = least_gap(&board);
+        assert!(gap >= keep - 1e-6, "the route is {gap} mm from the pad");
+        let report = check(&board);
+        let errors: Vec<_> = report.errors().map(ToString::to_string).collect();
+        assert_eq!(errors, Vec::<String>::new());
+    }
+}

@@ -75,13 +75,26 @@ pub(crate) fn initial_obstacles(board: &Board) -> Obstacles {
                     clearance: keep + MARGIN,
                 });
             }
+            // A pad whose opening in the solder mask reaches past its copper by a margin of
+            // its own keeps a track of another net the process's mask to track space from
+            // the opening.
+            let mask_keep = match pad.mask_margin {
+                Some(margin) if margin > 0.0 && mask_sides(part, pad) != [false, false] => {
+                    margin + rules.mask_to_track
+                }
+                _ => 0.0,
+            };
             list.push(Obstacle {
                 net: pad_net,
                 layers: [front, back],
                 form: Form::Rect(bounds),
                 // The larger of the board's clearance and the pad's own, as the design
-                // rules check applies it.
-                clearance: rules.clearance.max(pad.clearance.unwrap_or(0.0)) + MARGIN,
+                // rules check applies it, and of the space from its mask opening.
+                clearance: rules
+                    .clearance
+                    .max(pad.clearance.unwrap_or(0.0))
+                    .max(mask_keep)
+                    + MARGIN,
             });
             // A via keeps off every pad, and keeps its hole clear of a pad's hole.
             let reach = match pad.drill {

@@ -37,7 +37,7 @@ pub fn bom(
     {
         let footprint = libraries
             .mapping
-            .map(&source.kind, source.package.as_deref())
+            .map_part(&part.path, &source.kind, source.package.as_deref())
             .ok()
             .map(|m| {
                 m.footprint

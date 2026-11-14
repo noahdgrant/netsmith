@@ -96,7 +96,7 @@ source = "import"
 
 [EasyduinoEsp32s3.parts.power_led_resistor]
 at = [12.345, 55.3486]
-rotation = -90.0
+rotation = 90.0
 side = "top"
 lock = true
 source = "import"

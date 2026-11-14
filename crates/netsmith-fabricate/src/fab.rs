@@ -1091,7 +1091,8 @@ fn fab_board(
             .write_tables(&dir, &built.design)
             .map_err(|e| fail(format!("{}: {e}", dir.display())))?;
 
-        let entries = bom_entries(&sourcing, &libraries.mapping).map_err(fail)?;
+        let paths: Vec<String> = built.design.parts.iter().map(|p| p.path.clone()).collect();
+        let entries = bom_entries(&sourcing, &paths, &libraries.mapping).map_err(fail)?;
         // Guidelines that the design goes against (ADR 0036) are for the person ordering, so
         // they are in `fab-notes.txt`.
         let mut extras = board.process_extras();
@@ -2238,11 +2239,20 @@ fn fit_of(sourcing: &[Sourced]) -> BTreeMap<String, Fit> {
 /// Where it is not shown: the editor's bill of materials shows a consigned part as an ordinary
 /// line with no number and no price (its API has a `hand_solder` flag and no consigned one, and
 /// a new field changes the generated types; not built, issue #19).
-pub fn bom_entries(sourcing: &[Sourced], mapping: &Mapping) -> Result<Vec<BomEntry>, String> {
+///
+/// `paths` is the member path of each part of `sourcing`, in its order, so that a part a
+/// `[[member]]` row of `kicad.toml` gives its own footprint is listed with it; a part past its
+/// end takes the footprint of its kind and package.
+pub fn bom_entries(
+    sourcing: &[Sourced],
+    paths: &[String],
+    mapping: &Mapping,
+) -> Result<Vec<BomEntry>, String> {
     let mut entries: Vec<BomEntry> = Vec::new();
-    for s in sourcing.iter().filter(|s| s.assembled()) {
+    for (i, s) in sourcing.iter().enumerate().filter(|(_, s)| s.assembled()) {
+        let path = paths.get(i).map_or("", String::as_str);
         let footprint = mapping
-            .map(&s.kind, s.package.as_deref())
+            .map_part(path, &s.kind, s.package.as_deref())
             .map_err(|e| format!("{}: {e}", s.refdes))?
             .footprint;
         // The board names a footprint without its library: `R_0402_1005Metric`.
@@ -2655,6 +2665,7 @@ mod tests {
                     Assembly::Fab,
                 ),
             ],
+            &[],
             &Mapping::standard(),
         )
         .unwrap();
@@ -2682,6 +2693,7 @@ mod tests {
                     Assembly::Fab,
                 ),
             ],
+            &[],
             &Mapping::standard(),
         )
         .unwrap();
@@ -2693,6 +2705,7 @@ mod tests {
     fn an_assembled_part_without_a_number_is_kept_so_it_can_be_refused_by_name() {
         let entries = bom_entries(
             &[sourced("D1", "Led", "LED", None, None, Assembly::Fab)],
+            &[],
             &Mapping::standard(),
         )
         .unwrap();
@@ -2720,6 +2733,7 @@ mod tests {
                     Assembly::Fab,
                 ),
             ],
+            &[],
             &Mapping::standard(),
         )
         .unwrap();

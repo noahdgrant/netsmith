@@ -1,7 +1,7 @@
 version = 1
 
 [Rp2350Minimal.nets."+1V1"]
-pads = "318c5c52fe7dda09"
+pads = "7fe986841cb0f5cb"
 lock = true
 tracks = [
   { layer = "top", width = 0.2, from = [26.0, 33.4375], to = [26.0, 35.1] },
@@ -60,7 +60,7 @@ islands = "remove"
 outline = [[27.65, 24.7], [27.65, 23.325], [27.65, 21.95], [26.95, 21.95], [26.95, 23.8], [27.25, 24.1], [27.25, 24.25], [27.05, 24.25], [26.7, 23.9], [26.5, 23.9], [26.2, 24.2], [26.2, 24.8], [26.5, 25.1], [27.0, 25.1], [27.0, 24.9], [27.55, 24.9], [27.55, 24.7]]
 
 [Rp2350Minimal.nets."+3V3"]
-pads = "00a3baf55c97f374"
+pads = "a521f1ff1f810512"
 lock = true
 tracks = [
   { layer = "top", width = 0.2, from = [24.2, 35.6], to = [23.5, 36.3] },
@@ -141,7 +141,7 @@ islands = "remove"
 outline = [[27.5, 27.3], [27.5, 25.95], [27.25, 25.7], [27.25, 25.15], [27.7, 25.15], [27.7, 27.3]]
 
 [Rp2350Minimal.nets.GND]
-pads = "af583534886848ed"
+pads = "6a58627635eb3cd5"
 lock = true
 tracks = [
   { layer = "top", width = 0.15, from = [23.9, 21.4], to = [23.9, 22.12] },
@@ -252,7 +252,7 @@ islands = "remove"
 outline = [[51.5, 50.5], [0.5, 50.5], [0.5, 0.5], [51.5, 0.5]]
 
 [Rp2350Minimal.nets.VBUS]
-pads = "04cd5344dd2e7314"
+pads = "80339d927ea856be"
 lock = true
 tracks = [
   { layer = "top", width = 0.4, from = [27.3, 5.5], to = [28.1, 6.3] },
@@ -271,7 +271,7 @@ islands = "remove"
 outline = [[34.0, 8.0], [32.1, 8.0], [32.1, 11.6], [27.6, 11.6], [27.6, 5.8], [30.3, 5.8], [30.3, 5.0], [34.0, 5.0]]
 
 [Rp2350Minimal.nets."net-avdd_filter.b"]
-pads = "238630d29a0711c2"
+pads = "1039e9fbbfcd29e3"
 lock = true
 tracks = [
   { layer = "top", width = 0.15, from = [29.64, 25.56], to = [29.64, 25.03] },
@@ -282,7 +282,7 @@ tracks = [
 ]
 
 [Rp2350Minimal.nets."net-bootsel.b"]
-pads = "7f45cf37a0d07a5f"
+pads = "779326a6963149cf"
 lock = true
 tracks = [
   { layer = "top", width = 0.15, from = [16.125, 7.25], to = [16.125, 3.125] },
@@ -291,7 +291,7 @@ tracks = [
 ]
 
 [Rp2350Minimal.nets."net-bootsel_series.a"]
-pads = "77f37666d480e626"
+pads = "61ffbad8e427be80"
 lock = true
 tracks = [
   { layer = "top", width = 0.15, from = [23.2, 26.3], to = [21.9, 25.0] },
@@ -347,7 +347,7 @@ tracks = [
 ]
 
 [Rp2350Minimal.nets."net-flash.qspi.cs"]
-pads = "87b3d85329e36adc"
+pads = "98e6a6b65d3503e8"
 lock = true
 tracks = [
   { layer = "top", width = 0.15, from = [15.45, 15.37], to = [14.93, 15.37] },
@@ -419,7 +419,7 @@ tracks = [
 ]
 
 [Rp2350Minimal.nets."net-gpio0_link.a"]
-pads = "279e13e4fb3a6800"
+pads = "3522b64e241c2b4f"
 lock = true
 tracks = [
   { layer = "top", width = 0.15, from = [22.5625, 27.6], to = [22.0, 27.6] },
@@ -760,7 +760,7 @@ tracks = [
 ]
 
 [Rp2350Minimal.nets."net-mcu.usb_dm"]
-pads = "2d0fbf1b000c4ca3"
+pads = "0a998a17aee24b45"
 lock = true
 tracks = [
   { layer = "top", width = 0.15, from = [26.8, 26.5625], to = [26.775, 26.5375] },
@@ -770,7 +770,7 @@ tracks = [
 ]
 
 [Rp2350Minimal.nets."net-mcu.usb_dp"]
-pads = "2fed99f0b5c0720a"
+pads = "c7b93fbbcdd10830"
 lock = true
 tracks = [
   { layer = "top", width = 0.15, from = [26.4, 26.0], to = [26.4, 26.5625] },
@@ -779,7 +779,7 @@ tracks = [
 ]
 
 [Rp2350Minimal.nets."net-mcu.xin"]
-pads = "d68b6104151a814e"
+pads = "9fae7c3b8d45b9c6"
 lock = true
 tracks = [
   { layer = "top", width = 0.15, from = [25.2, 35.4], to = [25.0, 35.6] },
@@ -792,14 +792,14 @@ tracks = [
 ]
 
 [Rp2350Minimal.nets."net-mcu.xout"]
-pads = "c0ae8483b19501b7"
+pads = "2b1fade17de17164"
 lock = true
 tracks = [
   { layer = "top", width = 0.15, from = [25.6, 33.4375], to = [25.6, 36.4] },
 ]
 
 [Rp2350Minimal.nets."net-oscillator.crystal.xtal_b"]
-pads = "46491c3181cb4430"
+pads = "5c306254325b95cb"
 lock = true
 tracks = [
   { layer = "top", width = 0.15, from = [26.4, 39.5125], to = [26.4, 41.05] },
@@ -811,7 +811,7 @@ tracks = [
 ]
 
 [Rp2350Minimal.nets."net-reset.a"]
-pads = "e86fad2dbd773ebb"
+pads = "c70016490488a724"
 lock = true
 tracks = [
   { layer = "top", width = 0.15, from = [39.875, 38.55], to = [35.725, 38.55] },
@@ -820,7 +820,7 @@ tracks = [
 ]
 
 [Rp2350Minimal.nets."net-usb.dm"]
-pads = "199131510c513bac"
+pads = "5c2fcef7bf2247a5"
 lock = true
 tracks = [
   { layer = "top", width = 0.8, from = [25.9, 18.043502], to = [25.9, 22.12] },
@@ -831,7 +831,7 @@ tracks = [
 ]
 
 [Rp2350Minimal.nets."net-usb.dp"]
-pads = "8a0a0e7b1f375972"
+pads = "449f93719d45854f"
 lock = true
 tracks = [
   { layer = "top", width = 0.4, from = [26.0, 5.8], to = [25.725, 6.075] },

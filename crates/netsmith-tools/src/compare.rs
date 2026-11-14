@@ -245,7 +245,7 @@ pub fn netlist_of_design(design: &Design, mapping: &Mapping) -> Result<Netlist, 
     // Silkscreen text is not in the circuit.
     for p in design.parts.iter().filter(|p| p.kind != "Label") {
         let mapped = mapping
-            .map(&p.kind, p.package.as_deref())
+            .map_part(&p.path, &p.kind, p.package.as_deref())
             .map_err(|e| format!("{}: {e}", p.refdes))?;
         components.push((p.refdes.clone(), p.value.clone(), mapped.footprint));
     }

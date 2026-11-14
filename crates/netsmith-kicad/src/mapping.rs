@@ -144,9 +144,28 @@ pub struct Row {
     pub line: usize,
 }
 
+/// A `[[member]]` row of a project's `kicad.toml`: the footprint of one part of the design, by
+/// its member path, in place of the footprint of its (kind, package) row. A port uses it to
+/// draw a part with the original's own land pattern where the standard row's differs (a
+/// project may not map a pair the standard mapping maps, and two parts of one kind and package
+/// may have two land patterns in the original). The symbol and pin names stay the row's.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MemberRow {
+    /// The member path of the part on its board (`pullups[1]`, `oscillator.load_in`), as the
+    /// layout file and a port's parts file name it.
+    pub path: String,
+    /// A `Library:Name` id, or the id of a generated footprint (`gen:...`).
+    pub footprint: String,
+    /// The file the row is from, for messages.
+    pub source: String,
+    /// The line of the row's `footprint` in `source`, 1-based.
+    pub line: usize,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Mapping {
     rows: Vec<Row>,
+    members: Vec<MemberRow>,
     libraries: Vec<ProjectLibrary>,
 }
 
@@ -156,7 +175,16 @@ struct File {
     #[serde(default)]
     part: Vec<RawPart>,
     #[serde(default)]
+    member: Vec<RawMember>,
+    #[serde(default)]
     library: Vec<RawLibrary>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawMember {
+    path: String,
+    footprint: Spanned<String>,
 }
 
 #[derive(Deserialize)]
@@ -183,6 +211,32 @@ struct RawLibrary {
 /// `Library:Name`
 fn is_id(text: &str) -> bool {
     matches!(text.split_once(':'), Some((l, n)) if !l.is_empty() && !n.is_empty() && !n.contains(':'))
+}
+
+/// The id of a row's `footprint`: an id as written, or a generator and its parameters
+/// (`gen:QFN(...)`, ADR 0104), which the rest of netsmith knows by the id it spells. `at` names
+/// the row in a message.
+fn footprint_id(
+    footprint: String,
+    source: &str,
+    line: usize,
+    at: &str,
+) -> Result<String, MapError> {
+    if footprint_spec::is_spelling(&footprint) {
+        Ok(FootprintSpec::parse(&footprint)
+            .map_err(|why| {
+                MapError::Invalid(format!(
+                    "{source}:{line}: {at}: footprint {footprint:?}: {why}"
+                ))
+            })?
+            .id())
+    } else if is_id(&footprint) {
+        Ok(footprint)
+    } else {
+        Err(MapError::Invalid(format!(
+            "{source}: {at}: footprint {footprint:?} is not `Library:Name` or `gen:Generator(key=value, ...)`"
+        )))
+    }
 }
 
 /// Expand `${NAME}` from the environment. Nothing else is expanded.
@@ -232,23 +286,7 @@ impl Mapping {
                     "{at}: symbol {symbol:?} is not `Library:Name`"
                 )));
             }
-            // A footprint is an id, or a generator and its parameters (`gen:QFN(...)`, ADR 0104),
-            // which the rest of netsmith knows by the id it spells.
-            let footprint = if footprint_spec::is_spelling(&footprint) {
-                FootprintSpec::parse(&footprint)
-                    .map_err(|why| {
-                        MapError::Invalid(format!(
-                            "{source}:{line}: {at}: footprint {footprint:?}: {why}"
-                        ))
-                    })?
-                    .id()
-            } else if is_id(&footprint) {
-                footprint
-            } else {
-                return Err(invalid(format!(
-                    "{at}: footprint {footprint:?} is not `Library:Name` or `gen:Generator(key=value, ...)`"
-                )));
-            };
+            let footprint = footprint_id(footprint, source, line, &at)?;
             if p.symbol.is_none() && !p.pin_names.is_empty() {
                 return Err(invalid(format!(
                     "{at}: `pin_names` rename pins of a library symbol, and the row has no `symbol`: \
@@ -277,6 +315,24 @@ impl Mapping {
                 symbol: p.symbol,
                 footprint,
                 pin_names: p.pin_names,
+                source: source.to_string(),
+                line,
+            });
+        }
+        for m in file.member {
+            let at = format!("member `{}`", m.path);
+            if m.path.is_empty() {
+                return Err(invalid("a member row's path must not be empty".to_string()));
+            }
+            let line = text[..m.footprint.span().start].matches('\n').count() + 1;
+            let footprint = m.footprint.into_inner();
+            let footprint = footprint_id(footprint, source, line, &at)?;
+            if mapping.members.iter().any(|r| r.path == m.path) {
+                return Err(invalid(format!("{at} is given a footprint twice")));
+            }
+            mapping.members.push(MemberRow {
+                path: m.path,
+                footprint,
                 source: source.to_string(),
                 line,
             });
@@ -355,6 +411,15 @@ impl Mapping {
             }
             self.rows.push(row);
         }
+        for member in other.members {
+            if let Some(first) = self.members.iter().find(|m| m.path == member.path) {
+                return Err(MapError::Invalid(format!(
+                    "{}: member `{}` is already given a footprint by {}",
+                    member.source, member.path, first.source
+                )));
+            }
+            self.members.push(member);
+        }
         for lib in other.libraries {
             if self.libraries.iter().any(|l| l.name == lib.name) {
                 return Err(MapError::Invalid(format!(
@@ -390,6 +455,28 @@ impl Mapping {
     /// Every row, in file order.
     pub fn rows(&self) -> &[Row] {
         &self.rows
+    }
+
+    /// Every `[[member]]` row, in file order.
+    pub fn members(&self) -> &[MemberRow] {
+        &self.members
+    }
+
+    /// The symbol and footprint of the part at member path `path`, of `kind` in `package`: the
+    /// row of the kind and package ([`Mapping::map`]), with the footprint of the `[[member]]`
+    /// row of `path` when the project has one.
+    pub fn map_part(
+        &self,
+        path: &str,
+        kind: &str,
+        package: Option<&str>,
+    ) -> Result<Mapped, MapError> {
+        let mut mapped = self.map(kind, package)?;
+        if let Some(member) = self.members.iter().find(|m| m.path == path) {
+            mapped.footprint = member.footprint.clone();
+            mapped.origin = format!("{} line {}", member.source, member.line);
+        }
+        Ok(mapped)
     }
 
     /// The symbol and footprint of a kind of part in a package. A part never given a
@@ -734,6 +821,54 @@ SENSE = "SNS"
             ),
             "{e}"
         );
+    }
+
+    #[test]
+    fn a_member_row_gives_one_part_its_own_footprint() {
+        let project = Mapping::parse(
+            "[[member]]\npath = \"pullups[1]\"\nfootprint = \"own:R_0402_Wide\"\n",
+            "kicad.toml",
+            Path::new("."),
+        )
+        .unwrap();
+        let m = standard().merged(project).unwrap();
+        let own = m.map_part("pullups[1]", "Resistor", Some("0402")).unwrap();
+        let row = m.map("Resistor", Some("0402")).unwrap();
+        assert_eq!(own.footprint, "own:R_0402_Wide");
+        assert_eq!(own.origin, "kicad.toml line 3");
+        // The symbol and the pin names are the kind's row's.
+        assert_eq!(own.lib_id, row.lib_id);
+        // Another member, and a part of no member row, take the kind's row.
+        assert_eq!(
+            m.map_part("pullups[0]", "Resistor", Some("0402")).unwrap(),
+            row
+        );
+        // A member row gives a footprint, not a kind or a package: a part the mapping does
+        // not know is still unknown.
+        assert!(m.map_part("pullups[1]", "Nothing", Some("0402")).is_err());
+    }
+
+    #[test]
+    fn a_member_twice_or_in_the_standard_mapping_is_refused() {
+        let row = "[[member]]\npath = \"r1\"\nfootprint = \"own:R\"\n";
+        let e = Mapping::parse(&format!("{row}{row}"), "kicad.toml", Path::new("."))
+            .unwrap_err()
+            .to_string();
+        assert_eq!(e, "kicad.toml: member `r1` is given a footprint twice");
+        let e = Mapping::parse(row, "kicad.toml", Path::new("."))
+            .unwrap()
+            .merged(Mapping::parse(row, "other.toml", Path::new(".")).unwrap())
+            .unwrap_err()
+            .to_string();
+        assert!(e.contains("member `r1`"), "{e}");
+        let e = Mapping::parse(
+            "[[member]]\npath = \"r1\"\nfootprint = \"no id\"\n",
+            "kicad.toml",
+            Path::new("."),
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(e.contains("not `Library:Name`"), "{e}");
     }
 
     #[test]

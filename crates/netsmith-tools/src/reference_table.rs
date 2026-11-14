@@ -514,6 +514,8 @@ impl Board {
                     })?,
                 reference,
                 pads,
+                courtyard: None,
+                courtyard_layer: None,
             });
         }
         if parts.is_empty() {
@@ -829,6 +831,14 @@ pub struct Part {
     /// Set by a table; a board read from a `.kicad_pcb` has `false` (see [`MUST_MATCH`]).
     pub must_match: bool,
     pub pads: Vec<Pad>,
+    /// The box `[min_x, min_y, max_x, max_y]` that the footprint's courtyard drawing spans in its
+    /// own frame, stroke widths left out: on `F.CrtYd` if it draws one there, else on `B.CrtYd`,
+    /// as netsmith's footprint takes its courtyard. `None` for a footprint that draws none, and
+    /// for a part read from a table (`placements.toml` does not hold it).
+    pub courtyard: Option<[f64; 4]>,
+    /// The layer of [`Part::courtyard`] as the file states it (`F.CrtYd` or `B.CrtYd`; a board
+    /// stores a footprint on the back with its layers already on the other face).
+    pub courtyard_layer: Option<String>,
 }
 
 impl Part {
@@ -937,6 +947,16 @@ fn part(footprint: &Sexp) -> Result<Part, String> {
         .find_all("pad")
         .map(|p| pad(p).map_err(|e| format!("{reference}: {e}")))
         .collect::<Result<Vec<_>, _>>()?;
+    // The front layer's box if the footprint draws one there, else the back layer's, as
+    // netsmith's footprint takes it.
+    let mut courtyard = None;
+    for layer in ["F.CrtYd", "B.CrtYd"] {
+        if let Some(b) = courtyard_of(footprint, layer).map_err(|e| format!("{reference}: {e}"))? {
+            courtyard = Some((b, layer.to_string()));
+            break;
+        }
+    }
+    let (courtyard, courtyard_layer) = courtyard.unzip();
     Ok(Part {
         reference,
         footprint: name.to_string(),
@@ -946,7 +966,86 @@ fn part(footprint: &Sexp) -> Result<Part, String> {
         rotation,
         must_match: false,
         pads,
+        courtyard,
+        courtyard_layer,
     })
+}
+
+/// The box `[min_x, min_y, max_x, max_y]` over a footprint's courtyard drawing (its lines,
+/// rectangles, circles, arcs and polygons) on the layer `layer` (`F.CrtYd` or `B.CrtYd`), in the
+/// footprint's frame, rounded to 0.1 micrometre; `None` when it draws none there.
+fn courtyard_of(footprint: &Sexp, layer: &str) -> Result<Option<[f64; 4]>, String> {
+    let mut e = [
+        f64::INFINITY,
+        f64::INFINITY,
+        f64::NEG_INFINITY,
+        f64::NEG_INFINITY,
+    ];
+    let mut take = |(x, y): (f64, f64)| {
+        e[0] = e[0].min(x);
+        e[1] = e[1].min(y);
+        e[2] = e[2].max(x);
+        e[3] = e[3].max(y);
+    };
+    for item in footprint.args() {
+        let Some(head) = item.head() else { continue };
+        let on_courtyard = item
+            .find("layer")
+            .and_then(first_text)
+            .is_some_and(|l| l == layer);
+        if !on_courtyard {
+            continue;
+        }
+        match head {
+            "fp_line" | "fp_rect" => {
+                take(point(item, "start")?);
+                take(point(item, "end")?);
+            }
+            "fp_circle" => {
+                let (cx, cy) = point(item, "center")?;
+                let (ex, ey) = point(item, "end")?;
+                let r = (ex - cx).hypot(ey - cy);
+                take((cx - r, cy - r));
+                take((cx + r, cy + r));
+            }
+            "fp_arc" => {
+                let (start, mid, end) = (
+                    point(item, "start")?,
+                    point(item, "mid")?,
+                    point(item, "end")?,
+                );
+                take(start);
+                take(end);
+                for p in Arc::through(start, mid, end)?.extremes() {
+                    take(p);
+                }
+            }
+            "fp_poly" => {
+                let pts = item
+                    .find("pts")
+                    .ok_or("a courtyard fp_poly has no (pts ...)")?;
+                for xy in pts.find_all("xy") {
+                    let [x, y] = numbers(xy)[..] else {
+                        return Err("a courtyard polygon's point is not (xy x y)".to_string());
+                    };
+                    take((x, y));
+                }
+            }
+            // Text on the courtyard layer marks nothing out.
+            "fp_text" | "fp_text_box" | "property" => {}
+            other => {
+                return Err(format!(
+                    "the courtyard drawing {other} is not read (lines, rectangles, circles, arcs \
+                     and polygons are)"
+                ));
+            }
+        }
+    }
+    if !e[0].is_finite() {
+        return Ok(None);
+    }
+    let round = |v: f64| (v * 1e4).round() / 1e4;
+    Ok(Some(e.map(round)))
 }
 
 fn pad(pad: &Sexp) -> Result<Pad, String> {
