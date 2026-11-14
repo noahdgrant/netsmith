@@ -9,6 +9,7 @@ mod by_name;
 mod checker;
 mod connect;
 mod dc;
+mod defaults;
 mod diag;
 pub mod environment;
 mod faults;
@@ -43,11 +44,12 @@ pub use loader::Loader;
 pub use lower::closest;
 pub use model::{
     Balance, Bank, Bookmark, Catalog, Chain, ChainPin, Checkpoint, Contact, ContactSide, DcElement,
-    DcKind, Domain, Draw, EnumId, EnumInfo, Field, FieldId, FieldKind, GenericUse, GroundGroup,
-    GroundNet, InstId, InstKind, Instance, LevelTest, Mate, Member, Model, Net, OptionalMark,
-    OutlinePolygon, PartRules, Peripheral, PeripheralBus, PeripheralFunction, PinAssignment,
-    PinKind, PinRequest, PinRow, PinTable, Pinout, PolygonCorner, Provider, RExpr, RangeEnd,
-    Relation, Requirement, Role, RowLimit, SharedMember, SharedRes, Snapshot, Tie, Unused, Written,
+    DcKind, DefaultFrom, DefaultNote, Domain, Draw, EnumId, EnumInfo, Field, FieldId, FieldKind,
+    GenericUse, GroundGroup, GroundNet, InstId, InstKind, Instance, LevelTest, Mate, Member, Model,
+    Net, OptionalMark, OutlinePolygon, PartRules, Peripheral, PeripheralBus, PeripheralFunction,
+    PinAssignment, PinKind, PinRequest, PinRow, PinTable, Pinout, PolygonCorner, Provider, RExpr,
+    RangeEnd, Relation, Requirement, Role, RowLimit, SharedMember, SharedRes, Snapshot, Tie,
+    Unused, Written,
 };
 pub use pinedit::edit_entry;
 pub use pinfile::{EntrySource, PinEntry, PinFile, PinFileError};

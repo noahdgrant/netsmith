@@ -71,3 +71,25 @@ fn a_colour_cell_that_is_no_variant_of_color_is_refused() {
         "{all:?}"
     );
 }
+
+#[test]
+fn a_package_no_row_is_in_from_the_boards_defaults_is_refused_once_at_the_line() {
+    // Issue #625: the line reaches two LEDs, and the message names the line, once.
+    let source = "import std::parts::passive::Led\nboard B {\n    defaults {\n        Led.package ?= \"603\"\n    }\n    .a: Led\n    .b: Led\n}\n";
+    let c = check("t.nsm", source, &Loader::std());
+    assert!(c.is_ok(), "{}", c.render());
+    let mut catalogs = Catalogs::empty();
+    catalogs.add_file("led", "catalogs/led.csv", LEDS).unwrap();
+    let s = solve(&c.boards[0], &catalogs);
+    assert_eq!(
+        messages(&s),
+        [
+            "`Led.package ?= \"603\"` in the board's `defaults`: no row of the `led` catalog is in package \"603\"; its packages are \"0402\", \"0603\"; did you mean \"0603\"?"
+        ]
+    );
+    let d = &s.diagnostics[0];
+    assert_eq!(
+        c.sources.statement(d.source, d.span).as_deref(),
+        Some("Led.package ?= \"603\"")
+    );
+}

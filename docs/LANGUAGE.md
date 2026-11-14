@@ -1031,6 +1031,82 @@ error: connected values disagree: `input.voltage` is 4.75V..5.25V but `sensor.su
 
 State the voltage on the sensor's supply, `.sensor.supply.voltage &= 5V +/- 5%`, and the default is dropped.
 
+### Defaults for every part of a kind
+
+A board that wants one package for all its resistors says it once, in a `defaults` block (issue #625, ADR 0128). Each line names a kind, one of its values and `?=`, and offers the value to every part or module of that kind on the board, at any depth inside its modules, that states nothing on the value itself.
+
+```nsm solve report
+import std::parts::passive::{Resistor, Led}
+import std::sources::Rail
+
+/// An LED with the resistor that sets its current.
+module Lamp {
+    .supply: Rail
+    .led: Led { .current &= 2mA..3mA }
+    .r1: Resistor
+    .supply.pos ~> .r1 ~> .led ~> .supply.neg
+}
+
+board Panel {
+    defaults {
+        Resistor.package ?= "0402"
+    }
+    .input: Rail {
+        .voltage &= 5V +/- 5%
+        .pos.net &= "VCC"
+    }
+    .lamp: Lamp
+    .input ~ .lamp.supply
+    .pull: Resistor {
+        .resistance &= 10kohm +/- 5%
+        .package &= "0603"
+    }
+    .input.pos ~> .pull ~> .input.neg
+}
+```
+
+```text
+board Panel
+  D1   Led             XL-1608SURC-06  LED_SMD:LED_0603_1608Metric                                C965799 Extended
+  R1   Resistor        1.2k            Resistor_SMD:R_0402_1005Metric                             C25862 Extended
+  R2   Resistor        10k             Resistor_SMD:R_0603_1608Metric                             C25804 Basic
+  net GND: D1.1, R2.2
+  net VCC: R1.1, R2.1
+  net net-lamp.led.anode: D1.2, R1.2
+```
+
+The lamp's resistor is in 0402, from the line. `.pull` states its own package, so the line does not reach it.
+
+Rules.
+
+- A line is `Kind.value ?= v`. The kind is a part, a module or a generic in scope; a generic reaches every part that provides it, a part's name reaches that part only, and a module's name reaches the module's own value (`FeedbackDivider.package`). A bank is its own kind (ADR 0123): `CapacitorBank.package` reaches a bank, whose package is that of each capacitor in it, and `Capacitor.package` reaches each `Capacitor`, the members of `3 x Capacitor` among them. The value is one the kind declares, not a pin, a part inside it or a built-in member such as `.assembly`.
+- Anything a statement says of the value replaces the line: a `&=` on it anywhere (the board, a module around it, the part), a `?=` on it (the part's own default, a module's, a member's on the board), and a `&=` or `?=` on a value that `==` or a join holds equal to it. A `FeedbackDivider` whose `.package` the board states keeps its two resistors to it, and a line for `Resistor` does not reach them. Where nothing states it, the line is the value, as a `?=` that applied is: it narrows the candidates, and the checks of a package (its pin tables and its catalog) name the line once.
+- The value is a number with a unit, a range, `x +/- y%`, text or a variant, of the type the value holds. A value read from a field is refused: the line is about every part of the kind, and a field of one of them is not.
+- One kind and value has one line. Two lines that reach one part (`Resistor.package` and `Thin.package` for a `part Thin provides Resistor`) are an error at the second line: state that part's package with `&=`.
+- A line that reaches nothing, because the board has no part of the kind or every one states the value itself, is a note and not an error.
+- Only a board holds `defaults`, in its source and not in its physical file. A project-wide setting in `netsmith.toml` was not taken: a board says what its parts are. The editor's card for a part says which statement gave its package: a line of `defaults`, a `?=` or a `&=`, with its file and line.
+
+Misuse: a kind that is not in scope.
+
+```nsm fails
+import std::parts::passive::Resistor
+
+board Typo {
+    defaults {
+        Resistr.package ?= "0402"
+    }
+    .r1: Resistor
+}
+```
+
+```text
+error: no part, module or generic `Resistr` is in scope; did you mean `Resistor`?
+  --> main.nsm:5:9
+  |
+5 |         Resistr.package ?= "0402"
+  |         ^^^^^^^
+```
+
 ### A value that nobody stated
 
 A board that leaves a number to the solver builds. The solver takes the first row of a catalog that fits, and a check that reads a value that nothing gives is listed as not evaluated. Two 330 ohm resistors that each drew 8 mA were once picked for a balancing resistance that nobody had stated, and the only trace was a note. Two findings say so (ADR 0065). They are guidelines, like the track width one (ADR 0036): a `warning:` line by default and an error with `--strict` or `guidelines = "error"` in `netsmith.toml`, because the design may be right and a board in progress should build.

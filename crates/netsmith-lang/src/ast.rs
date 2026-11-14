@@ -47,6 +47,16 @@ pub struct Support {
     pub span: Span,
 }
 
+/// `defaults { Resistor.package ?= "0402" }`: values a board offers to every part or module of
+/// a kind on it that states nothing on the field (issue #625). Each item is a `?=` statement
+/// whose left side names a kind and one of its fields; the checker refuses anything else. Only
+/// a board may hold one.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Defaults {
+    pub items: Vec<Item>,
+    pub span: Span,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Ident {
     pub name: String,
@@ -212,6 +222,9 @@ pub enum Item {
     /// A `support { ... }` section: the parts a part's datasheet application circuit puts
     /// around it and their connections to its pins; only a part may hold one (ADR 0115).
     Support(Support),
+    /// A `defaults { ... }` section: the values a board offers to the parts and modules of a
+    /// kind (issue #625); only a board may hold one.
+    Defaults(Defaults),
     /// A `row .a1 .. .a12 along x pitch 2.54mm` statement; only a physical file may hold one.
     Row(Row),
     /// A `polygon (0mm, 0mm) (40mm, 0mm) ...` statement; only an `Outline` in a physical

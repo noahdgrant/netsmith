@@ -333,14 +333,18 @@ impl Solver<'_> {
             .map(|p| format!("; did you mean \"{p}\"?"))
             .unwrap_or_default();
         let listed: Vec<String> = packages.iter().map(|p| format!("\"{p}\"")).collect();
-        self.report(
-            source,
-            span,
-            format!(
+        // A line of the board's `defaults` is named once, for every part it reached.
+        let message = match self.model.board_default_line(*field) {
+            Some(line) => format!(
+                "`{line}` in the board's `defaults`: no row of the `{catalog}` catalog is in package \"{stated}\"; its packages are {}{hint}",
+                listed.join(", ")
+            ),
+            None => format!(
                 "`{path}.package` is \"{stated}\", and no row of the `{catalog}` catalog is in that package; its packages are {}{hint}",
                 listed.join(", ")
             ),
-        );
+        };
+        self.report(source, span, message);
         self.unresolved.push(Unresolved {
             part,
             reason: format!("no row of the `{catalog}` catalog is in package \"{stated}\""),
