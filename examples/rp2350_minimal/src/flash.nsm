@@ -15,24 +15,34 @@
 //! in Standard and Dual SPI and IO3 in Quad SPI (note 2: the hold function is only there for
 //! Standard and Dual SPI); the 8-pin package has no pin for a reset of its own.
 //!
+//! The serial interface is a `Qspi` (`std::bus`) in which the flash is the slave: `CLK` is its
+//! `sclk`, `/CS` its `cs` and `IO0` to `IO3` its `io0` to `io3` (in Standard SPI, `DI` is on
+//! `io0` and `DO` on `io1`), so a board joins the bus with `~`.
+//!
 //! What is deliberately left out: the levels, ratings and timing (the part is a boundary of the
 //! design: the checks that need a number are listed as not evaluated) and the other packages.
+
+import std::bus::{Qspi, QspiRole}
 
 /// The W25Q128JV, a 128 Mbit (16 MB) NOR flash with a Standard, Dual and Quad SPI interface, in
 /// the 8-pin SOIC 208-mil package. The pad numbers are the datasheet's pin numbers.
 part W25Q128Jv {
     .designator &= "U"
 
+    /// The serial interface: `CLK`, `/CS` and `IO0` to `IO3`.
+    .qspi: Qspi
+    .qspi.role &= QspiRole::Slave
+
     pins "SOIC-8-208mil" {
         //  pin     kind           name                 pads
-        .cs       input          "CS#"                "1"
-        .do_io1   bidirectional  "DO(IO1)"            "2"
-        .wp_io2   bidirectional  "WP#(IO2)"           "3"
-        .gnd      power          "GND"                "4"
-        .di_io0   bidirectional  "DI(IO0)"            "5"
-        .clk      input          "CLK"                "6"
-        .hold_io3 bidirectional  "HOLD#/RESET#(IO3)"  "7"
-        .vcc      power          "VCC"                "8"
+        .qspi.cs   input          "CS#"                "1"
+        .qspi.io1  bidirectional  "DO(IO1)"            "2"
+        .qspi.io2  bidirectional  "WP#(IO2)"           "3"
+        .gnd       power          "GND"                "4"
+        .qspi.io0  bidirectional  "DI(IO0)"            "5"
+        .qspi.sclk input          "CLK"                "6"
+        .qspi.io3  bidirectional  "HOLD#/RESET#(IO3)"  "7"
+        .vcc       power          "VCC"                "8"
     }
 
     .package: Package

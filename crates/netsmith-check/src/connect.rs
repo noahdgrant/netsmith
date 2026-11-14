@@ -80,7 +80,7 @@ impl Checker<'_> {
         root
     }
 
-    fn union(&mut self, a: InstId, b: InstId) {
+    pub(crate) fn union(&mut self, a: InstId, b: InstId) {
         let (ra, rb) = (self.find(a.0), self.find(b.0));
         if ra != rb {
             self.uf.insert(ra, rb);
@@ -247,6 +247,12 @@ impl Checker<'_> {
                 c.span,
                 "a panel joins nothing: it repeats one board in a grid, and the boards stay apart",
             );
+            return;
+        }
+        // A peripheral that is an end of a bus joins as a port (ADR 0129).
+        if let [(ConnectOp::Same, right)] = c.rest.as_slice()
+            && self.join_peripheral(&c.first, right, c.span)
+        {
             return;
         }
         // Two ports (parts, modules, interfaces of different kinds) are joined member by

@@ -20,6 +20,7 @@ mod mate;
 mod model;
 mod optional;
 mod params;
+mod periph_join;
 mod pinedit;
 mod pinfile;
 mod pinout;

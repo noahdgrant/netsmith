@@ -1093,19 +1093,20 @@ board IcsFixture {
     .module: Header1x8
     .u1.en ~ .module.p1
     .u1.gpio0 ~ .module.p2
-    .u1.rxd0 ~ .u3.txd
-    .u1.txd0 ~ .u3.rxd
+    .u1.txd0.function &= U0TXD
+    .u1.rxd0.function &= U0RXD
+    .u1.UART0 ~ .u3.uart
     .u1.gpio19 ~ .module.p3
     .u1.gpio20 ~ .module.p4
 
     .bridge: Header1x8
     .u3.dp ~ .bridge.p1
     .u3.dm ~ .bridge.p2
-    .u3.rts ~ .q1.collector
+    .u3.uart.rts ~ .q1.collector
     .u3.dtr ~ .q2.collector
     .u3.rstb ~ .bridge.p3
     .u3.dcd ~ .bridge.p4
-    .u3.cts ~ .bridge.p5
+    .u3.uart.cts ~ .bridge.p5
     .u3.dsr ~ .bridge.p6
 
     .reset: Header1x4
@@ -2308,17 +2309,19 @@ mod board {
             !source.contains(": .mcu."),
             "a request for a pin of the module"
         );
-        assert!(
-            built
-                .design
-                .parts
-                .iter()
-                .find(|p| p.path == "mcu")
-                .unwrap()
-                .pins
-                .iter()
-                .all(|p| p.function.is_none())
-        );
+        // The only functions are the UART's, which the source chooses on the named pads.
+        let functions: Vec<(&str, &str)> = built
+            .design
+            .parts
+            .iter()
+            .find(|p| p.path == "mcu")
+            .unwrap()
+            .pins
+            .iter()
+            .filter_map(|p| Some((p.name.as_str(), p.function.as_deref()?)))
+            .collect();
+        assert_eq!(functions, [("rxd0", "U0RXD"), ("txd0", "U0TXD")]);
+        assert!(source.contains(".mcu.txd0.function &= U0TXD"));
     }
 
     /// The receptacles carry Easyduino's signals on each contact: VBUS on the net behind the

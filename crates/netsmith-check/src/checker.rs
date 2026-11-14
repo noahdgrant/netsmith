@@ -213,6 +213,9 @@ pub(crate) struct Checker<'a> {
     pub(crate) board_defaults: Vec<crate::defaults::BoardDefault>,
     /// The fields whose pending default came from a board's `defaults`.
     pub(crate) board_defaulted: HashSet<crate::model::FieldId>,
+    /// The joins with a peripheral that is an end of a bus, whose pins are joined once every
+    /// function is chosen (ADR 0129).
+    pub(crate) periph_joins: Vec<crate::periph_join::PeripheralJoin>,
 }
 
 /// The pin file of the top-level source (ADR 0101): where it is among the loaded files, and
@@ -286,6 +289,7 @@ impl<'a> Checker<'a> {
             narrowing: false,
             stating_row_limits: false,
             joining: false,
+            periph_joins: Vec::new(),
             stated: HashSet::new(),
             unused_stmts: Vec::new(),
             touches: Vec::new(),
@@ -972,6 +976,7 @@ impl<'a> Checker<'a> {
         self.stated.clear();
         self.unused_stmts.clear();
         self.touches.clear();
+        self.periph_joins.clear();
         self.defaults.clear();
         self.board_defaults.clear();
         self.board_defaulted.clear();
@@ -991,6 +996,7 @@ impl<'a> Checker<'a> {
             DefKind::Module => self.assign_pins(&name, false),
             _ => {}
         }
+        self.join_peripheral_ports();
         self.finalize_nets();
         self.apply_unused();
         self.skip_unstated_optional();
@@ -2110,6 +2116,23 @@ impl<'a> Checker<'a> {
                             return Res::Bad;
                         }
                         let ty = self.model.instance(i).type_name.clone();
+                        if self
+                            .model
+                            .instance(i)
+                            .rules
+                            .peripherals
+                            .iter()
+                            .any(|q| q.name == seg.name)
+                        {
+                            self.error(
+                                seg.span,
+                                format!(
+                                    "`{}` is a peripheral of `{ty}`, not a member: a peripheral that is an end of a bus is joined alone, `~` with an interface of its bus (`.u.{} ~ .other.bus`, ADR 0129), and its pins are chosen with `.function &=`",
+                                    seg.name, seg.name
+                                ),
+                            );
+                            return Res::Bad;
+                        }
                         let hint = self.count_hint(i, &seg.name);
                         self.error(
                             seg.span,

@@ -152,23 +152,27 @@ board Rp2350Minimal {
 
     .flash.vcc ~ .v3v3.pos
     .flash.gnd ~ .vbus.neg
-    .flash.clk ~ .mcu.qspi_sclk
-    .flash.di_io0 ~ .mcu.qspi_sd0
-    .flash.do_io1 ~ .mcu.qspi_sd1
-    .flash.wp_io2 ~ .mcu.qspi_sd2
-    .flash.hold_io3 ~ .mcu.qspi_sd3
+    // The QSPI bus: the clock and the four data lines. The select is not joined with them: it
+    // reaches the flash through the links below, so `QSPI_SS` is not chosen on its pin and the
+    // join leaves the master's `cs`, which is optional, alone.
+    .mcu.qspi_sclk.function &= QSPI_SCLK
+    .mcu.qspi_sd0.function &= QSPI_SD0
+    .mcu.qspi_sd1.function &= QSPI_SD1
+    .mcu.qspi_sd2.function &= QSPI_SD2
+    .mcu.qspi_sd3.function &= QSPI_SD3
+    .mcu.QSPI ~ .flash.qspi
 
     // The flash's chip select reaches the MCU's QSPI_SS through a 0 ohm link, and GPIO0
     // through another; both can be left off. A 10 kohm resistor holds it high.
     .ss_link: Resistor { .resistance &= 0ohm..0.05ohm }
     .gpio0_link: Resistor { .resistance &= 0ohm..0.05ohm }
     .ss_pullup: PullUp { .resistor.resistance &= 10kohm +/- 1% }
-    .flash.cs ~ .ss_link.b
+    .flash.qspi.cs ~ .ss_link.b
     .ss_link.a ~ .mcu.qspi_ss
-    .flash.cs ~ .gpio0_link.b
+    .flash.qspi.cs ~ .gpio0_link.b
     .gpio0_link.a ~ .mcu.gpio0
     .ss_pullup.supply ~ .v3v3
-    .ss_pullup.line ~ .flash.cs
+    .ss_pullup.line ~ .flash.qspi.cs
 
     // ---- The buttons ----
 

@@ -128,9 +128,11 @@ board EasyduinoEsp32s3 {
     .bridge.vbus ~ .vbus.pos
     .bridge.vregin ~ .vbus.pos
     .bridge.gnd ~ .vbus.neg
-    // The bridge's TXD is the module's RXD0 (GPIO44) and its RXD the module's TXD0 (GPIO43).
-    .bridge.txd ~ .mcu.rxd0
-    .bridge.rxd ~ .mcu.txd0
+    // The module's UART0 (TXD0 is GPIO43, RXD0 GPIO44) on the bridge's: `~` crosses the lines,
+    // so the bridge's TXD is on the module's RXD0 and its RXD on TXD0.
+    .mcu.txd0.function &= U0TXD
+    .mcu.rxd0.function &= U0RXD
+    .mcu.UART0 ~ .bridge.uart
     /// C3: the decoupling of the bridge's own 3.3 V (VDD), which the board does not use as a
     /// supply (the author's notes: it gives 100 mA only).
     .bridge_vdd_cap: Capacitor { .capacitance &= 100nF +/- 10% }
@@ -149,7 +151,7 @@ board EasyduinoEsp32s3 {
 
     .auto_reset: AutoReset
     .auto_reset.dtr ~ .bridge.dtr
-    .auto_reset.rts ~ .bridge.rts
+    .auto_reset.rts ~ .bridge.uart.rts
     .auto_reset.en ~ .mcu.en
     .auto_reset.boot ~ .mcu.gpio0
 

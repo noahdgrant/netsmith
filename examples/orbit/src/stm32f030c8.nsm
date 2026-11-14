@@ -22,23 +22,43 @@
 //! `BOOT0`, type `I`, is `input`.
 //!
 //! The functions: every I/O has `GPIO`. The alternate and additional functions of Table 11 and
-//! Table 12 are NOT all written (as the RP2350 part leaves its peripherals out): only the ones
-//! of the pins ORBIT's board uses, from the table's rows and with no direction (the table gives
-//! none): the 8 MHz oscillator on `PF0` and `PF1`, the 32 kHz one on `PC14` and `PC15`,
+//! Table 12 are NOT all written (as the RP2350 part leaves out its GPIOs' peripherals): only
+//! the ones of the pins ORBIT's board uses, from the table's rows and with no direction (the
+//! table gives none): the 8 MHz oscillator on `PF0` and `PF1`, the 32 kHz one on `PC14` and `PC15`,
 //! `USART1_TX` on `PA9` and `USART1_RX` on `PA10`, `I2C1_SCL` on `PB6` and `I2C1_SDA` on `PB7`,
 //! and the debug port, `SWDIO` on `PA13` and `SWCLK` on `PA14` (the datasheet's note 7: they
 //! are those after a reset). A board that connects a pin with more than one function chooses
 //! it: `.u.pa9.function &= USART1_TX`.
 //!
+//! The two serial units ORBIT uses are peripherals that are ends of a bus (ADR 0064), so a board
+//! joins each as a bus (`.mcu.USART1 ~ .bridge.uart`, ADR 0129) once it chose the functions on
+//! the pins. `USART1` is a `Uart`, with the functions of Table 11's rows for `PA9` and `PA10`.
+//! `I2C1` is an `I2c` controller, with those of `PB6` and `PB7`: ORBIT's firmware is the
+//! controller of its EEPROM, and the unit can also be a target, which a board that uses it so
+//! states on another part. The kinds are the units' and not the table's (which gives none): a
+//! transmitter drives `TX` and a receiver reads `RX`, and the I2C lines are open drain, which the
+//! `bidirectional` rows already say (the function states no kind of its own).
+//!
 //! What is deliberately left out: levels, ratings, the clock, timing and every model (the part
 //! is a boundary of the design: the checks that need a number are listed as not evaluated), and
 //! the other alternate functions.
+
+import std::bus::{I2c, I2cRole, Uart}
 
 /// The STM32F030C8: an Arm Cortex-M0 microcontroller with 64 KB of flash, in the 48-pin LQFP
 /// package. Pin names are the datasheet's (the table's `PA13 (SWDIO)` is `PA13` here, and
 /// `PF0-OSC_IN` is written as it is). The pad numbers are the datasheet's LQFP48 pin numbers.
 part Stm32F030C8 {
     .designator &= "U"
+
+    peripheral USART1 as Uart {
+        USART1_TX:output as tx
+        USART1_RX:input  as rx
+    }
+    peripheral I2C1 as I2c I2cRole::Controller {
+        I2C1_SCL as scl
+        I2C1_SDA as sda
+    }
 
     pins "LQFP-48(7x7)" {
         //  pin     kind           name             pads

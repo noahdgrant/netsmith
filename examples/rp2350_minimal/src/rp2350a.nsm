@@ -26,6 +26,17 @@
 //! any number of pins), and GPIO26 to GPIO29 also their ADC input (`ADC0` to `ADC3`, an input
 //! as the pin type of Table 1673 says); a board that connects one of those four chooses with
 //! `.u.gpio26.function &= GPIO` or `ADC0`.
+//!
+//! The one bus the RP2350A Minimal board uses is the QSPI interface to its program flash, the
+//! pins `QSPI_SCLK`, `QSPI_SS` and `QSPI_SD0` to `QSPI_SD3` of the pin list. It is a peripheral
+//! that is an end of a bus (ADR 0064), `QSPI`, a `Qspi` master (`std::bus`), and each of those
+//! pins lists its one function, named as the pin: a board that joins the flash chooses it on
+//! each pin (`.u.qspi_sclk.function &= QSPI_SCLK`) and joins the bus (`.u.QSPI ~ .flash.qspi`,
+//! ADR 0129). The kinds of the clock and the select are the interface's: the chip drives them
+//! (the pins are I/O in Table 1673 because they can also be GPIOs); the data pins are
+//! bidirectional, as their rows are.
+
+import std::bus::{Qspi, QspiRole}
 
 /// The RP2350A: a dual Cortex-M33 or Hazard3 microcontroller with 30 GPIOs, four of them ADC
 /// inputs, an on-chip buck regulator for the core (`VREG_*`), a crystal oscillator, USB and
@@ -33,6 +44,15 @@
 /// an external one. Pin names are the datasheet's.
 part Rp2350A {
     .designator &= "U"
+
+    peripheral QSPI as Qspi QspiRole::Master {
+        QSPI_SCLK:output as sclk
+        QSPI_SS:output   as cs
+        QSPI_SD0         as io0
+        QSPI_SD1         as io1
+        QSPI_SD2         as io2
+        QSPI_SD3         as io3
+    }
 
     pins "QFN-60-EP(7x7)" {
         //  pin           kind           name           pads
@@ -83,12 +103,12 @@ part Rp2350A {
         .usb_dp       bidirectional "USB_DP"       "52"
         .usb_otp_vdd  power         "USB_OTP_VDD"  "53"
         .qspi_iovdd   power         "QSPI_IOVDD"   "54"
-        .qspi_sd3     bidirectional "QSPI_SD3"     "55"
-        .qspi_sclk    bidirectional "QSPI_SCLK"    "56"
-        .qspi_sd0     bidirectional "QSPI_SD0"     "57"
-        .qspi_sd2     bidirectional "QSPI_SD2"     "58"
-        .qspi_sd1     bidirectional "QSPI_SD1"     "59"
-        .qspi_ss      bidirectional "QSPI_SS"      "60"
+        .qspi_sd3     bidirectional "QSPI_SD3"     "55"  fn QSPI_SD3
+        .qspi_sclk    bidirectional "QSPI_SCLK"    "56"  fn QSPI_SCLK
+        .qspi_sd0     bidirectional "QSPI_SD0"     "57"  fn QSPI_SD0
+        .qspi_sd2     bidirectional "QSPI_SD2"     "58"  fn QSPI_SD2
+        .qspi_sd1     bidirectional "QSPI_SD1"     "59"  fn QSPI_SD1
+        .qspi_ss      bidirectional "QSPI_SS"      "60"  fn QSPI_SS
         .gnd          power         "GND"          "61"
     }
 
