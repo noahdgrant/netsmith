@@ -141,7 +141,7 @@ export async function run(tools) {
   await written('the drag to be undone');
   expect(near(vcc().vias[0].at, corner) && near(vcc().tracks[0].to, corner), 'undo puts the via and the ends back on the corner');
 
-  step('a track from a VCC pad onto a GND pad is refused with the reason; the draft comes back, Esc drops it');
+  step('a track from a VCC pad onto a GND pad: the walkaround refuses the click on the top, and the check refuses the track at its end');
   const gnd = s.parts.flatMap((x) => x.pads).find((x) => x.net === 'GND');
   const before = text();
   await page.keyboard.press('x');
@@ -154,7 +154,23 @@ export async function run(tools) {
   p = await at(gnd);
   await page.mouse.click(p.x, p.y);
   await whenIdle(page);
+  await page.locator('.toast', { hasText: 'no room for a track there' }).first().waitFor();
+  expect((await page.locator('[data-testid=track-draft]').getAttribute('data-points')) === '1', 'the click on the pad of another net added no corner (the walkaround, issue #726)');
+  await page.keyboard.press('Escape');
+  await page.waitForSelector('[data-testid=track-draft]', { state: 'detached' });
+  // The bottom has no copper under the ground pad (a surface-mount pad): the walkaround lets the track end there. The layer is
+  // changed to the top before the track is ended, so the check, which has the last word, refuses it.
+  await page.selectOption('[data-testid=track-layer]', 'bottom');
+  p = await at(pads[1]);
+  await page.mouse.click(p.x, p.y);
+  await whenIdle(page);
+  await page.waitForSelector('[data-testid=track-draft][data-net="VCC"]');
+  p = await at(gnd);
+  await page.mouse.click(p.x, p.y);
+  await whenIdle(page);
   await page.waitForSelector('[data-testid=track-draft][data-points="2"]');
+  await page.selectOption('[data-testid=track-layer]', 'top');
+  await whenIdle(page);
   await page.keyboard.press('Enter');
   await page.locator('.toast', { hasText: 'the design rules check finds' }).first().waitFor();
   await page.waitForSelector('[data-testid=track-draft][data-points="2"]');

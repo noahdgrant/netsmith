@@ -1053,6 +1053,23 @@ export type PcbRoutesEdited = { scene: PcbScene, said: string, undo: RoutesUndo,
 
 export type RoutesUndo = { net: string, before: string | null, after: string | null, };
 
+export type PcbWalk = { board: string, net: string, 
+/**
+ * `top` or `bottom`.
+ */
+layer: string, 
+/**
+ * `None` is the net's width from the board's rules, as in [`RoutesChange::AddTrack`].
+ */
+width: number | null, from: PcbPoint, to: PcbPoint, 
+/**
+ * The direction of the segment that arrives at `from`, if one does: the way the first
+ * segment may turn from by 45 degrees at most.
+ */
+heading: PcbPoint | null, };
+
+export type PcbWalked = { points: Array<PcbPoint> | null, reason: string | null, tried: number, };
+
 export type PcbNetWidth = { net: string, width: number, };
 
 export type PartPlacement = { x: number, y: number, rotation: number, side: PcbSide, locked: boolean, 

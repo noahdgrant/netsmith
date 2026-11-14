@@ -4,11 +4,13 @@
 
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 
-import type { PcbBox, PcbKeepout, PcbPart, PcbScene } from '../api';
+import type { PcbBox, PcbKeepout, PcbPart, PcbScene, PcbWalk } from '../api';
 import { PanZoom } from '../components/PanZoom';
 import { hoverEnter, hoverLeave } from '../hover';
 import {
+  askWalk,
   changeRoutes,
+  clearWalk,
   commit,
   findings,
   grid,
@@ -23,6 +25,8 @@ import {
   tool,
   trackLayer,
   undo,
+  walkNow,
+  walked,
 } from '../pcbstore';
 import {
   type Anchor,
@@ -43,6 +47,7 @@ import {
   shapeOf,
   trackPath,
 } from './routes';
+import { headingOf, walkKey } from './walk';
 import { pickPart, say } from '../store';
 import {
   addKeepout,
@@ -190,6 +195,61 @@ export function Canvas(props: {
     if (activeTool !== 'track' && activeTool !== 'via') setGhost(null);
   }, [activeTool]);
 
+  // The walkaround (issue 726): the next segment of the track goes from its last corner to the pointer round the copper in the
+  // way, as the server works it out (netsmith_router::walk), and the preview and the click use that path.
+  const layerNow = trackLayer.value;
+  const walkAsk = (d: Draft, to: Pt, layer: 'top' | 'bottom' = trackLayer.value): PcbWalk => ({
+    board: sc.board,
+    net: d.net,
+    layer,
+    width: null,
+    from: d.points[d.points.length - 1],
+    to,
+    heading: headingOf(d.points),
+  });
+  useEffect(() => {
+    const last = draft?.points[draft.points.length - 1];
+    if (activeTool === 'track' && draft && ghost && last && !samePoint(last, ghost)) askWalk(walkAsk(draft, ghost, layerNow));
+    else clearWalk();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draft, ghost, layerNow, sc, activeTool]);
+  useEffect(() => clearWalk, []);
+  // What the server said of the segment the pointer is at the end of, once it has said it.
+  const answer = walked.value;
+  const walk = draft && ghost && answer && answer.key === walkKey(walkAsk(draft, ghost, layerNow)) ? answer : null;
+  // The reason a walk has no way is a tip at the pointer.
+  const pointer = useRef<{ x: number; y: number } | null>(null);
+  const tipped = useRef(false);
+  const noWay = !!walk && !walk.points;
+  useEffect(() => {
+    if (noWay && pointer.current) {
+      tipped.current = true;
+      props.onTip({ ...pointer.current, title: 'No way there', lines: [walk?.reason ?? 'no way found'] });
+    } else if (tipped.current) {
+      tipped.current = false;
+      props.onTip(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [noWay, walk?.key]);
+
+  /** The corners the track takes to `to`, one click at a time (the walkaround is asked, so a click waits for its answer, and the
+   * end of the track waits for the clicks before it). A click with no way is refused with the reason, and the track is as it was. */
+  const corners = useRef<Promise<void>>(Promise.resolve());
+  function addCorner(to: Pt) {
+    corners.current = corners.current.then(async () => {
+      const d = draftRef.current;
+      if (!d || samePoint(d.points[d.points.length - 1], to)) return;
+      const found = await walkNow(walkAsk(d, to));
+      // Dropped, ended or taken back meanwhile: the click is moot.
+      if (draftRef.current !== d) return;
+      if (!found.points) {
+        say(found.reason ?? 'No way there', true);
+        return;
+      }
+      setDraft({ ...d, points: [...d.points, ...found.points.slice(1)] });
+    });
+  }
+
   /** A point on the grid of the layout file's frame. */
   const onGrid = (p: Pt): Pt => ({ x: snap(p.x - sc.originX, step) + sc.originX, y: snap(p.y - sc.originY, step) + sc.originY });
 
@@ -213,7 +273,9 @@ export function Canvas(props: {
 
   /** End the track being drawn: one edit of the routes file with a track for each segment. A refused one comes back to be
    * changed (Backspace takes its last point off). */
-  function finishTrack() {
+  async function finishTrack() {
+    // The corners clicked before it are in the draft first.
+    await corners.current;
     const d = draftRef.current;
     setDraft(null);
     setGhost(null);
@@ -344,7 +406,7 @@ export function Canvas(props: {
         return;
       }
       const at = anchorAt(target, p, scale, now.net)?.at ?? onGrid(p);
-      if (!samePoint(now.points[now.points.length - 1], at)) setDraft({ ...now, points: [...now.points, at] });
+      if (!samePoint(now.points[now.points.length - 1], at)) addCorner(at);
       return;
     }
     if (tool.value === 'via') {
@@ -418,6 +480,7 @@ export function Canvas(props: {
     if (!at) return;
     const { p } = at;
     props.onCursor({ x: p.x - sc.originX, y: p.y - sc.originY });
+    pointer.current = tipNear(e);
     const g = gesture.current;
     // Where the next corner of the track, or the via, would go.
     const now = draftRef.current;
@@ -573,7 +636,7 @@ export function Canvas(props: {
         return;
       } else if (draftRef.current && k === 'enter') {
         used();
-        finishTrack();
+        void finishTrack();
       } else if (draftRef.current && k === 'escape') {
         used();
         setDraft(null);
@@ -689,7 +752,7 @@ export function Canvas(props: {
         onPointerOver={(e) => props.onHoverNet((e.target as Element).closest('[data-net]')?.getAttribute('data-net') ?? null)}
         onDblClick={(e) => {
           if (tool.value === 'track') {
-            if (draftRef.current) finishTrack();
+            if (draftRef.current) void finishTrack();
             return;
           }
           const at = toBoard(e);
@@ -722,18 +785,34 @@ export function Canvas(props: {
             </>
           )}
           <FixedCopper scene={sc} picked={pickedRoute.value} reach={REACH / (SCALE * zoom)} drag={preview.route ?? null} />
-          {draft && (
-            <g class={`track-draft layer-${trackLayer.value}`} data-testid="track-draft" data-net={draft.net} data-points={draft.points.length}>
-              <polyline
-                points={[...draft.points, ...(ghost ? [ghost] : [])].map((q) => `${q.x},${q.y}`).join(' ')}
-                stroke-width={widthOf(draft.net)}
-              />
-              <polyline class="track-draft-line" points={[...draft.points, ...(ghost ? [ghost] : [])].map((q) => `${q.x},${q.y}`).join(' ')} />
-              {draft.points.map((q, i) => (
-                <circle key={i} class="track-draft-corner" cx={q.x} cy={q.y} r={widthOf(draft.net) * 0.75} />
-              ))}
-            </g>
-          )}
+          {draft &&
+            (() => {
+              // The segment under the pointer: the way the server found round the copper in the way, else (while it is
+              // asked, or when there is none) straight to the pointer, marked as refused when there is none.
+              const found = walk?.points ?? null;
+              const ahead = found ? found.slice(1) : ghost ? [ghost] : [];
+              const line = [...draft.points, ...ahead].map((q) => `${q.x},${q.y}`).join(' ');
+              const state = !walk ? 'asked' : found ? 'path' : 'refused';
+              return (
+                <g
+                  class={`track-draft layer-${trackLayer.value} walk-${state}`}
+                  data-testid="track-draft"
+                  data-net={draft.net}
+                  data-points={draft.points.length}
+                  data-walk={state}
+                  data-walk-corners={found ? Math.max(found.length - 2, 0) : 0}
+                >
+                  <polyline points={line} stroke-width={widthOf(draft.net)} />
+                  <polyline class="track-draft-line" points={line} />
+                  {draft.points.map((q, i) => (
+                    <circle key={i} class="track-draft-corner" cx={q.x} cy={q.y} r={widthOf(draft.net) * 0.75} />
+                  ))}
+                  {found?.slice(1, -1).map((q, i) => (
+                    <circle key={`w${i}`} class="track-draft-corner walk-corner" cx={q.x} cy={q.y} r={widthOf(draft.net) * 0.6} />
+                  ))}
+                </g>
+              );
+            })()}
           {activeTool === 'via' && ghost && (
             <circle class="via-ghost" data-testid="via-ghost" cx={ghost.x} cy={ghost.y} r={sc.viaDiameter / 2} />
           )}

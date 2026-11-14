@@ -1421,6 +1421,34 @@ pub struct RoutesUndo {
     pub after: Option<String>,
 }
 
+/// A question of the track tool: the way for a straight track of `net` on `layer` from its last
+/// corner `from` to `to`, round the copper of the board as the routes file's check reads it
+/// (issue #726). Nothing is written.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+pub struct PcbWalk {
+    pub board: String,
+    pub net: String,
+    /// `top` or `bottom`.
+    pub layer: String,
+    /// `None` is the net's width from the board's rules, as in [`RoutesChange::AddTrack`].
+    pub width: Option<f64>,
+    pub from: PcbPoint,
+    pub to: PcbPoint,
+    /// The direction of the segment that arrives at `from`, if one does: the way the first
+    /// segment may turn from by 45 degrees at most.
+    pub heading: Option<PcbPoint>,
+}
+
+/// The answer to a [`PcbWalk`]: the corners from `from` to `to`, both included, or why there is
+/// no way. Having no way is an answer, not an error. `tried` counts the states the search took
+/// (0 where the straight segment or one bend was free).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+pub struct PcbWalked {
+    pub points: Option<Vec<PcbPoint>>,
+    pub reason: Option<String>,
+    pub tried: u32,
+}
+
 /// The width of a net's tracks by the board's rules.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 pub struct PcbNetWidth {
@@ -1879,6 +1907,8 @@ pub fn typescript() -> String {
         PcbRoutesEdit,
         PcbRoutesEdited,
         RoutesUndo,
+        PcbWalk,
+        PcbWalked,
         PcbNetWidth,
         PartPlacement,
         DrawnKeepout,

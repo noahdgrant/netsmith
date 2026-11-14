@@ -37,9 +37,16 @@
 //! undo and sends back turned round (`Restore`). The routes file is watched with the layout
 //! file.
 //!
+//! **Walkaround** (`POST /api/pcb/walk`, issue #726): while a track is drawn the page asks, for
+//! the point under the pointer, the way from the track's last corner round the copper there
+//! ([`walk`], `netsmith_router::walk`). The board it asks about is the one the check reads when
+//! the track is ended ([`Entry::board_for_walk`]: as placed with the routes file's copper, not
+//! the router's), so the corners it offers are ones the check accepts (the check still decides
+//! when the track is ended). Writes nothing.
+//!
 //! **Not built** (ADR 0030, issue #59): waivers (the page has no way to write one),
-//! regeneration of one module, partial routing, push and shove while a track is drawn, a copy
-//! of the findings for an agent, and `layout show` overlays.
+//! regeneration of one module, partial routing, shove (moving copper out of the way of a track
+//! being drawn, #726), a copy of the findings for an agent, and `layout show` overlays.
 
 use std::{
     collections::HashMap,
@@ -56,7 +63,7 @@ use netsmith_editor::{
         ComparePcbPlace, CompareSize, DrawnKeepout, KeepoutOrigin, KeepoutPlacement, KicadState,
         PartPlacement, PcbBox, PcbChange, PcbCutout, PcbFinding, PcbFindings, PcbKeepout,
         PcbNetWidth, PcbPad, PcbPart, PcbPoint, PcbReport, PcbRouteNet, PcbRouteTrack, PcbRouteVia,
-        PcbScene, PcbSide, RoutesChange, Severity,
+        PcbScene, PcbSide, PcbWalk, PcbWalked, RoutesChange, Severity,
     },
 };
 use netsmith_pcb::{
@@ -812,6 +819,68 @@ pub fn routes_edit(
             net: net.clone(),
             before: record(before, net)?,
             after: record(after, net)?,
+        },
+    })
+}
+
+impl Entry {
+    /// The board a track drawn now is checked against: as placed, with the copper of the routes
+    /// file on it and none of the router's, which an edit of the routes file discards, as
+    /// `netsmith_fabricate::routes::edit_all` reads it.
+    pub fn board_for_walk(&self) -> Board {
+        let mut board = self.placed.clone();
+        // A file that does not apply is the scene's finding; the walk is then of the board as placed.
+        let _ = netsmith_pcb::apply_routes(&mut board, &self.routes, "the routes file");
+        board
+    }
+}
+
+/// The way for a straight track from its last corner to a point on `board` (the copper a track
+/// is checked against, [`Entry::board_for_walk`]): the corners of `netsmith_router::walk`, or
+/// the reason there are none. A way not found is an answer, not an error.
+pub fn walk(board: &Board, walk: &PcbWalk) -> Result<PcbWalked, ApiError> {
+    use netsmith_pcb::CopperLayer;
+    let layer = match walk.layer.as_str() {
+        "top" => CopperLayer::Front,
+        "bottom" => CopperLayer::Back,
+        other => {
+            return Err(ApiError::bad_request(format!(
+                "a track is drawn on `top` or `bottom`, not `{other}`"
+            )));
+        }
+    };
+    if !board.nets.iter().any(|n| n.name == walk.net) {
+        return Err(ApiError::bad_request(format!(
+            "the board {} has no net `{}`",
+            board.name, walk.net
+        )));
+    }
+    let ground = netsmith_router::walk::Ground::of(board).map_err(ApiError::internal)?;
+    let point = |p: &PcbPoint| netsmith_pcb::Pt::new(p.x, p.y);
+    let asked = netsmith_router::walk::Walk {
+        net: &walk.net,
+        layer,
+        width: walk.width.unwrap_or_else(|| board.track_width(&walk.net)),
+        from: point(&walk.from),
+        to: point(&walk.to),
+        heading: walk.heading.as_ref().map(point),
+    };
+    Ok(match ground.walker().path(&asked) {
+        Ok(found) => PcbWalked {
+            points: Some(
+                found
+                    .points
+                    .iter()
+                    .map(|p| PcbPoint { x: p.x, y: p.y })
+                    .collect(),
+            ),
+            reason: None,
+            tried: found.tried as u32,
+        },
+        Err(blocked) => PcbWalked {
+            points: None,
+            reason: Some(blocked.to_string()),
+            tried: blocked.tried() as u32,
         },
     })
 }

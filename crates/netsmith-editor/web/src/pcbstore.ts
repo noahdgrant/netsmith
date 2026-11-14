@@ -4,10 +4,11 @@
 
 import { signal } from '@preact/signals';
 
-import type { PcbChange, PcbFindings, PcbPours, PcbRoutesEdited, PcbScene, RoutesChange } from './api';
+import type { PcbChange, PcbFindings, PcbPours, PcbRoutesEdited, PcbScene, PcbWalk, RoutesChange } from './api';
 import { ApiFailure, api } from './client';
 import { type History, NO_HISTORY, type Run, type Step, record, redoing, undoing } from './pcb/edits';
 import { labelOf } from './pcb/routes';
+import { type Answer, answerTo, latestOnly, walkKey } from './pcb/walk';
 import { type Selection, partSel, sameSelection, selection as shared, setSelection } from './selection';
 import { beginJob, endJob, pcbReports, say } from './store';
 
@@ -161,6 +162,35 @@ export async function loadPours(board: string): Promise<void> {
   } catch {
     // The scene's own load says why the board cannot be placed; the board is drawn with no fill.
     if (mine === poursAsked) pours.value = null;
+  }
+}
+
+/** The server's last answer to where the track being drawn goes next (issue 726), with the ask it answers (`Answer.key`). */
+export const walked = signal<Answer | null>(null);
+
+/** Ask where a track would go: the answer lands in `walked`. Asks come one at a time, the newest first (`latestOnly`), so a
+ * pointer that outruns the server asks for where it is. The page is busy while a request is out (`api` holds it), so a recipe
+ * that waits for the page to be idle sees the answer. */
+export const askWalk = latestOnly(
+  (w: PcbWalk) => api.pcbWalk(w),
+  (w, got) => {
+    walked.value = answerTo(w, got);
+  },
+);
+
+/** Forget the answer: no track is being drawn. */
+export function clearWalk() {
+  if (walked.value) walked.value = null;
+}
+
+/** The answer for `w`: the one the page has, or a request made now. */
+export async function walkNow(w: PcbWalk): Promise<Answer> {
+  const have = walked.value;
+  if (have && have.key === walkKey(w)) return have;
+  try {
+    return answerTo(w, await api.pcbWalk(w));
+  } catch (e) {
+    return answerTo(w, e instanceof Error ? e : new Error(String(e)));
   }
 }
 
