@@ -10,6 +10,10 @@
 //! `arcs.rs`). The meanders that match the lengths of a diff pair ([`meander`]) and the teardrops
 //! ([`teardrop`]) are steps of it too; they were in `netsmith-pcb` until issue #608.
 //!
+//! [`walk`] is not a step of routing: the query the editor's track tool asks while a track is drawn
+//! (issue #726), whether a segment is free and the way round the copper in the way, with the
+//! design rules check's own spaces.
+//!
 //! The board model and the decoupling pairs ([`netsmith_pcb::Quality`]) are in `netsmith-pcb`,
 //! the placer in `netsmith-placer`. This crate depends on `netsmith-pcb`, never the reverse
 //! (issue #518), and not on the placer (issue #607): only its tests place their boards with
@@ -23,6 +27,7 @@ mod plan;
 pub mod route;
 mod stitch;
 pub mod teardrop;
+pub mod walk;
 
 #[cfg(test)]
 mod testlib;
