@@ -27,6 +27,11 @@
 //! which is what the check reads when the track is ended, and not the router's own copper, which
 //! an edit discards). Copper of the walked net is never an obstacle to it.
 //!
+//! **The router's copper** gives way ([`Ground::crossed`], the second slice of #726): it is
+//! never an obstacle, since an edit of the routes file discards it; [`Ground::crossed`] says
+//! which of it the track drawn would cross, so the editor can show it as copper that will be
+//! routed again.
+//!
 //! **The search.** Corners are at 45 degrees: a lattice [`LATTICE`] (0.1 mm, the router's cell)
 //! apart anchored at the start, moves in eight directions that turn by at most 45 degrees at
 //! a bend (the check's `track_angle` refuses more), A* with the router's costs (a step 10, a
@@ -36,7 +41,8 @@
 //! not timed: [`Walked::tried`] is the number of states the search took off its queue, at most
 //! [`MOST_TRIED`], so a board that has no way round says so after a bounded effort.
 //!
-//! **Not done:** a track never changes layer, never moves other copper (shove) and does not
+//! **Not done:** a track never changes layer, never moves routes-file copper (shove, the third
+//! slice of #726) and does not
 //! look for the shortest way over the whole board: the area is the ends' box widened by
 //! [`REACH`].
 
@@ -44,7 +50,7 @@ use std::cmp::Reverse;
 use std::collections::{BinaryHeap, HashMap};
 
 use netsmith_geom::{Artwork, DrcExtras, DrcRules, DrcShape, Pt as FPt, Room};
-use netsmith_pcb::{Board, CopperLayer, Pt};
+use netsmith_pcb::{Board, CopperLayer, Pt, Track, Via};
 
 /// The distance between the lattice's nodes, in mm: the router's cell.
 pub const LATTICE: f64 = 0.1;
@@ -85,6 +91,71 @@ impl Ground {
         })
     }
 
+    /// The copper of the router that a track drawn through `corners` crosses (issue #726, the
+    /// second slice): the tracks and vias of `tracks` and `vias`, copper of other nets than
+    /// `net`, that keep every space on this ground as they are but not once the track is there.
+    /// An edit of the routes file throws the router's copper away, so none of it is an obstacle
+    /// to [`Walker::path`]; this says which of it the way found would have been in, for the
+    /// editor to show it giving way. Indexes into the two slices, in their order. A track is
+    /// asked on its own layer and a via (a through via) on the track's. The track is `width`
+    /// wide on `layer`; a layer the board does not have, or fewer than one corner, crosses
+    /// nothing.
+    pub fn crossed(
+        &self,
+        net: &str,
+        layer: CopperLayer,
+        width: f64,
+        corners: &[Pt],
+        tracks: &[Track],
+        vias: &[Via],
+    ) -> Crossed {
+        let room = Room::new(&self.art, &self.rules, &self.extras);
+        let Some(layer_ix) = room.layer(layer.name()) else {
+            return Crossed::default();
+        };
+        if corners.is_empty() {
+            return Crossed::default();
+        }
+        let track_shape = |t: &Track| {
+            DrcShape::stroke(
+                t.centre_line().into_iter().map(fpt).collect(),
+                t.width / 2.0,
+            )
+        };
+        let via_shape = |v: &Via| DrcShape::disc(fpt(v.at), v.diameter / 2.0);
+        // The copper that keeps its spaces as it is: what is judged once the track is kept.
+        let track_ix: Vec<usize> = (0..tracks.len())
+            .filter(|&i| {
+                let t = &tracks[i];
+                t.net != net
+                    && t.layer == layer
+                    && room.fits(&track_shape(t), &t.net, layer_ix, false)
+            })
+            .collect();
+        let via_ix: Vec<usize> = (0..vias.len())
+            .filter(|&i| {
+                let v = &vias[i];
+                v.net != net && room.fits(&via_shape(v), &v.net, layer_ix, false)
+            })
+            .collect();
+        for w in corners.windows(2) {
+            room.keep(net, layer_ix, segment(w[0], w[1], width));
+        }
+        if corners.len() == 1 {
+            room.keep(net, layer_ix, segment(corners[0], corners[0], width));
+        }
+        Crossed {
+            tracks: track_ix
+                .into_iter()
+                .filter(|&i| !room.fits(&track_shape(&tracks[i]), &tracks[i].net, layer_ix, false))
+                .collect(),
+            vias: via_ix
+                .into_iter()
+                .filter(|&i| !room.fits(&via_shape(&vias[i]), &vias[i].net, layer_ix, false))
+                .collect(),
+        }
+    }
+
     /// The questions about this ground.
     pub fn walker(&self) -> Walker<'_> {
         Walker {
@@ -92,6 +163,14 @@ impl Ground {
             edge: &self.edge,
         }
     }
+}
+
+/// The router's copper a walked track crosses ([`Ground::crossed`]): indexes of the tracks and
+/// of the vias that were asked.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Crossed {
+    pub tracks: Vec<usize>,
+    pub vias: Vec<usize>,
 }
 
 /// One track to walk: its net, layer and width, and where it goes. `from` is its last corner,
@@ -176,6 +255,15 @@ fn fpt(p: Pt) -> FPt {
     FPt::new(p.x, p.y)
 }
 
+/// The copper of a straight track of `width` from `a` to `b` (a disc where they are the same).
+fn segment(a: Pt, b: Pt, width: f64) -> DrcShape {
+    if a.distance(b) < 1e-9 {
+        DrcShape::disc(fpt(a), width / 2.0)
+    } else {
+        DrcShape::stroke(vec![fpt(a), fpt(b)], width / 2.0)
+    }
+}
+
 /// The angle between two directions, in degrees.
 fn angle_between(a: Pt, b: Pt) -> f64 {
     let dot = a.x * b.x + a.y * b.y;
@@ -218,12 +306,7 @@ impl Walker<'_> {
     }
 
     fn fits(&self, net: &str, layer: usize, width: f64, a: Pt, b: Pt) -> bool {
-        let shape = if a.distance(b) < 1e-9 {
-            DrcShape::disc(fpt(a), width / 2.0)
-        } else {
-            DrcShape::stroke(vec![fpt(a), fpt(b)], width / 2.0)
-        };
-        self.room.fits(&shape, net, layer, false)
+        self.room.fits(&segment(a, b, width), net, layer, false)
     }
 
     /// The way for a track from `walk.from` to `walk.to`, or why there is none. See the module's

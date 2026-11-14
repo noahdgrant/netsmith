@@ -1026,16 +1026,23 @@ impl Backend for Workspace {
         let (data, board) = {
             let state = self.fresh();
             let data = state.snapshot.board_handle(name)?;
-            let board = state.pcb.get(name).map(pcb::Entry::board_for_walk);
+            let board = state.pcb.get(name).map(|entry| {
+                let board = entry.board_for_walk();
+                let router = entry.router_copper(&board);
+                (board, router)
+            });
             (data, board)
         };
-        let board = match board {
-            Some(board) => board,
-            None => pcb::place_checked(&data, name)
-                .map_err(pcb::PlaceError::read)?
-                .board_for_walk(),
+        let (board, router) = match board {
+            Some(both) => both,
+            None => (
+                pcb::place_checked(&data, name)
+                    .map_err(pcb::PlaceError::read)?
+                    .board_for_walk(),
+                pcb::RouterCopper::default(),
+            ),
         };
-        pcb::walk(&board, edit)
+        pcb::walk(&board, &router, edit)
     }
 
     fn pin_lock(&self, edit: &PinLock) -> Result<PinWritten, ApiError> {

@@ -42,11 +42,14 @@
 //! ([`walk`], `netsmith_router::walk`). The board it asks about is the one the check reads when
 //! the track is ended ([`Entry::board_for_walk`]: as placed with the routes file's copper, not
 //! the router's), so the corners it offers are ones the check accepts (the check still decides
-//! when the track is ended). Writes nothing.
+//! when the track is ended). Writes nothing. The router's copper is no obstacle to it, since
+//! the edit discards it ([`Entry::router_copper`]); the answer says which of it the track
+//! crosses, for the page to show it giving way ([`PcbWalked::crossed`], the second slice of
+//! #726).
 //!
 //! **Not built** (ADR 0030, issue #59): waivers (the page has no way to write one),
-//! regeneration of one module, partial routing, shove (moving copper out of the way of a track
-//! being drawn, #726), a copy of the findings for an agent, and `layout show` overlays.
+//! regeneration of one module, partial routing, shove of the routes file's copper (moving it out
+//! of the way of a track being drawn, #726), a copy of the findings for an agent, and `layout show` overlays.
 
 use std::{
     collections::HashMap,
@@ -61,9 +64,10 @@ use netsmith_editor::{
     ApiError, Say,
     api::{
         ComparePcbPlace, CompareSize, DrawnKeepout, KeepoutOrigin, KeepoutPlacement, KicadState,
-        PartPlacement, PcbBox, PcbChange, PcbCutout, PcbFinding, PcbFindings, PcbKeepout,
-        PcbNetWidth, PcbPad, PcbPart, PcbPoint, PcbReport, PcbRouteNet, PcbRouteTrack, PcbRouteVia,
-        PcbScene, PcbSide, PcbWalk, PcbWalked, RoutesChange, Severity,
+        PartPlacement, PcbBox, PcbChange, PcbCrossed, PcbCrossedTrack, PcbCrossedVia, PcbCutout,
+        PcbFinding, PcbFindings, PcbKeepout, PcbNetWidth, PcbPad, PcbPart, PcbPoint, PcbReport,
+        PcbRouteNet, PcbRouteTrack, PcbRouteVia, PcbScene, PcbSide, PcbWalk, PcbWalked,
+        RoutesChange, Severity,
     },
 };
 use netsmith_pcb::{
@@ -833,12 +837,46 @@ impl Entry {
         let _ = netsmith_pcb::apply_routes(&mut board, &self.routes, "the routes file");
         board
     }
+
+    /// The router's copper on the board, if it was routed: what the board has beyond the copper
+    /// of the routes file (`walk_board`, [`Entry::board_for_walk`]), pieces equal to it counted
+    /// once each.
+    pub fn router_copper(&self, walk_board: &Board) -> RouterCopper {
+        if !self.routed {
+            return RouterCopper::default();
+        }
+        fn beyond<T: PartialEq + Clone>(all: &[T], fixed: &[T]) -> Vec<T> {
+            let mut left: Vec<&T> = fixed.iter().collect();
+            all.iter()
+                .filter(|t| match left.iter().position(|f| f == t) {
+                    Some(i) => {
+                        left.swap_remove(i);
+                        false
+                    }
+                    None => true,
+                })
+                .cloned()
+                .collect()
+        }
+        RouterCopper {
+            tracks: beyond(&self.board.tracks, &walk_board.tracks),
+            vias: beyond(&self.board.vias, &walk_board.vias),
+        }
+    }
+}
+
+/// The router's copper on a board: the tracks and vias a routing added to the copper of the
+/// routes file, which an edit of the routes file discards.
+#[derive(Debug, Clone, Default)]
+pub struct RouterCopper {
+    pub tracks: Vec<netsmith_pcb::Track>,
+    pub vias: Vec<netsmith_pcb::Via>,
 }
 
 /// The way for a straight track from its last corner to a point on `board` (the copper a track
 /// is checked against, [`Entry::board_for_walk`]): the corners of `netsmith_router::walk`, or
 /// the reason there are none. A way not found is an answer, not an error.
-pub fn walk(board: &Board, walk: &PcbWalk) -> Result<PcbWalked, ApiError> {
+pub fn walk(board: &Board, router: &RouterCopper, walk: &PcbWalk) -> Result<PcbWalked, ApiError> {
     use netsmith_pcb::CopperLayer;
     let layer = match walk.layer.as_str() {
         "top" => CopperLayer::Front,
@@ -865,7 +903,26 @@ pub fn walk(board: &Board, walk: &PcbWalk) -> Result<PcbWalked, ApiError> {
         to: point(&walk.to),
         heading: walk.heading.as_ref().map(point),
     };
-    Ok(match ground.walker().path(&asked) {
+    let walked = ground.walker().path(&asked);
+    // The router's copper the track crosses: the track so far and the way found. The router's
+    // copper is no obstacle to the walk (an edit discards it), so this only says what gives way.
+    let mut corners: Vec<netsmith_pcb::Pt> = walk.track.iter().map(point).collect();
+    if corners.last().is_none_or(|l| l.distance(asked.from) > 1e-9) {
+        corners.push(asked.from);
+    }
+    if let Ok(found) = &walked {
+        corners.extend(found.points.iter().skip(1).copied());
+    }
+    let crossed = ground.crossed(
+        &walk.net,
+        layer,
+        asked.width,
+        &corners,
+        &router.tracks,
+        &router.vias,
+    );
+    let crossed = crossed_of(router, &crossed);
+    Ok(match walked {
         Ok(found) => PcbWalked {
             points: Some(
                 found
@@ -876,13 +933,53 @@ pub fn walk(board: &Board, walk: &PcbWalk) -> Result<PcbWalked, ApiError> {
             ),
             reason: None,
             tried: found.tried as u32,
+            crossed,
         },
         Err(blocked) => PcbWalked {
             points: None,
             reason: Some(blocked.to_string()),
             tried: blocked.tried() as u32,
+            crossed,
         },
     })
+}
+
+/// The pieces of the router's copper at `crossed`'s indexes, with their places.
+fn crossed_of(router: &RouterCopper, crossed: &netsmith_router::walk::Crossed) -> PcbCrossed {
+    let at = |p: netsmith_pcb::Pt| PcbPoint { x: p.x, y: p.y };
+    PcbCrossed {
+        tracks: crossed
+            .tracks
+            .iter()
+            .map(|&i| {
+                let t = &router.tracks[i];
+                PcbCrossedTrack {
+                    net: t.net.clone(),
+                    layer: if t.layer == netsmith_pcb::CopperLayer::Back {
+                        "bottom".to_string()
+                    } else {
+                        "top".to_string()
+                    },
+                    width: t.width,
+                    from: at(t.from),
+                    mid: t.mid.map(at),
+                    to: at(t.to),
+                }
+            })
+            .collect(),
+        vias: crossed
+            .vias
+            .iter()
+            .map(|&i| {
+                let v = &router.vias[i];
+                PcbCrossedVia {
+                    net: v.net.clone(),
+                    at: at(v.at),
+                    diameter: v.diameter,
+                }
+            })
+            .collect(),
+    }
 }
 
 /// `before` is what the page last saw of an entry and `now` what the file has: the same, to

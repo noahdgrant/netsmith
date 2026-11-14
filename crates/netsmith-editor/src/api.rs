@@ -1437,6 +1437,11 @@ pub struct PcbWalk {
     /// The direction of the segment that arrives at `from`, if one does: the way the first
     /// segment may turn from by 45 degrees at most.
     pub heading: Option<PcbPoint>,
+    /// The corners of the track drawn so far, the last of them `from`: the router's copper that
+    /// the whole track crosses is answered in [`PcbWalked::crossed`], not only what the one
+    /// segment crosses. Empty: the segment alone.
+    #[serde(default)]
+    pub track: Vec<PcbPoint>,
 }
 
 /// The answer to a [`PcbWalk`]: the corners from `from` to `to`, both included, or why there is
@@ -1447,6 +1452,38 @@ pub struct PcbWalked {
     pub points: Option<Vec<PcbPoint>>,
     pub reason: Option<String>,
     pub tried: u32,
+    /// The router's copper that the track (`PcbWalk::track`, then `points`) crosses: copper the
+    /// edit discards, which the walk does not go round (issue 726). Empty on a board the
+    /// router has not routed.
+    pub crossed: PcbCrossed,
+}
+
+/// The router's copper a track crosses, as the PCB view draws it giving way: each piece with
+/// its place, so the page needs no lookup.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, TS)]
+pub struct PcbCrossed {
+    pub tracks: Vec<PcbCrossedTrack>,
+    pub vias: Vec<PcbCrossedVia>,
+}
+
+/// A track of the router that is crossed. `mid` is set for an arc.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+pub struct PcbCrossedTrack {
+    pub net: String,
+    /// `top` or `bottom`.
+    pub layer: String,
+    pub width: f64,
+    pub from: PcbPoint,
+    pub mid: Option<PcbPoint>,
+    pub to: PcbPoint,
+}
+
+/// A via of the router that is crossed.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+pub struct PcbCrossedVia {
+    pub net: String,
+    pub at: PcbPoint,
+    pub diameter: f64,
 }
 
 /// The width of a net's tracks by the board's rules.
@@ -1909,6 +1946,9 @@ pub fn typescript() -> String {
         RoutesUndo,
         PcbWalk,
         PcbWalked,
+        PcbCrossed,
+        PcbCrossedTrack,
+        PcbCrossedVia,
         PcbNetWidth,
         PartPlacement,
         DrawnKeepout,

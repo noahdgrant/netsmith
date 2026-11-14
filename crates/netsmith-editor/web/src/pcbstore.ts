@@ -4,11 +4,11 @@
 
 import { signal } from '@preact/signals';
 
-import type { PcbChange, PcbFindings, PcbPours, PcbRoutesEdited, PcbScene, PcbWalk, RoutesChange } from './api';
+import type { PcbChange, PcbCrossed, PcbFindings, PcbPours, PcbRoutesEdited, PcbScene, PcbWalk, RoutesChange } from './api';
 import { ApiFailure, api } from './client';
 import { type History, NO_HISTORY, type Run, type Step, record, redoing, undoing } from './pcb/edits';
 import { labelOf } from './pcb/routes';
-import { type Answer, answerTo, latestOnly, walkKey } from './pcb/walk';
+import { type Answer, answerTo, latestOnly, saidOf, walkKey } from './pcb/walk';
 import { type Selection, partSel, sameSelection, selection as shared, setSelection } from './selection';
 import { beginJob, endJob, pcbReports, say } from './store';
 
@@ -168,6 +168,9 @@ export async function loadPours(board: string): Promise<void> {
 /** The server's last answer to where the track being drawn goes next (issue 726), with the ask it answers (`Answer.key`). */
 export const walked = signal<Answer | null>(null);
 
+/** The router's copper the track being drawn crosses, as the canvas shows it (null: none, or no track): the toolbar says so too. */
+export const crossedShown = signal<PcbCrossed | null>(null);
+
 /** Ask where a track would go: the answer lands in `walked`. Asks come one at a time, the newest first (`latestOnly`), so a
  * pointer that outruns the server asks for where it is. The page is busy while a request is out (`api` holds it), so a recipe
  * that waits for the page to be idle sees the answer. */
@@ -253,9 +256,10 @@ async function sendRoutes(changes: RoutesChange[]): Promise<PcbRoutesEdited | nu
 export function changeRoutes(changes: RoutesChange[]): Promise<boolean> {
   if (changes.length === 0) return Promise.resolve(false);
   return enqueue(async () => {
+    const wasRouted = scene.value?.routed ?? false;
     const answer = await sendRoutes(changes);
     if (!answer) return false;
-    say(answer.said);
+    say(saidOf(answer.said, wasRouted));
     if (answer.undo.before !== answer.undo.after) {
       history.value = record(history.value, { label: labelOf(changes), routes: answer.undo });
     }
