@@ -477,6 +477,54 @@ a failing must-match item red): the outline, the holes, the four edge connectors
 buttons coincide, and the chip, the flash, the regulator and the rest are where the placer
 put them. Open it in a browser.
 
+## The reproduction
+
+Beside the board that `netsmith fab` makes of this project (the automatic board, placed and
+routed by netsmith), the port keeps a reproduction of Raspberry Pi's own copper (issue #599; the
+language guide's "Reproducing a KiCad board"): `reference/agent/main.routes.toml` and
+`reference/agent/main.pcb.toml`, which `netsmith routes import reference/RPI-RP2350A-MINIMAL_R4-S1.kicad_pcb` writes.
+They are kept out of `src/`, so `fab` here still makes the automatic board; `scripts/reproductions
+--update` writes them again when a footprint, the placer or the importer changes. The test
+`reproduce::the_rp2350_reproduction_has_the_originals_copper` (`crates/netsmith-cli/tests/reproduce.rs`) imports again and requires the
+committed files, puts them into `src/` of a copy, runs `fab` with no KiCad and compares the copper
+of the board it writes with Raspberry Pi's, shape by shape, as sets, to 0.1 µm: every segment, arc and
+via on its layer and net.
+
+| Copper | Segments | Arcs | Vias | Track length |
+|---|---|---|---|---|
+| Automatic board | 1351 | 387 | 182 | 2012.5 mm |
+| Reproduction | 355 | 0 | 40 | 1090.1 mm |
+| Raspberry Pi's | 352 | 0 | 40 | 1086.0 mm |
+
+The automatic board's figures are of 2026-11-14 and change with the placer and the router;
+`cargo test -p netsmith-cli --test main reproduce::measured -- --ignored --nocapture` prints all
+three again, with what netsmith's design rules check finds on the reproduction.
+
+**What matches:** all 352 segments and 40 vias of Raspberry Pi's board, each on its layer and
+net. The import places every part where their board has it, locked (the physical file pins the
+connectors and buttons at the same places); `regulator` (their U2) is turned by 90 degrees from
+their footprint, because netsmith's SOT-223 is drawn a quarter turn from theirs, so that its pads
+stand where theirs do.
+
+**What does not, and why:**
+
+- **Zones.** Their board joins +1V1, +3V3, GND and VBUS with copper zones on F.Cu (and VREG_LX,
+  the inductor's other end, with a zone alone). The design pours ground on B.Cu only, and a layer
+  pours one net, so the zones are not drawn: `fab` leaves 33 connections on those four nets and
+  writes the board marked INCOMPLETE. The 7 track ends and 10 vias that the check calls dangling
+  end in those zones.
+- **VREG_LX** has no track in their board, so the routes file has no record of it and the router
+  routes it: 3 segments (net `net-core_inductor.b`) that are not theirs.
+- **Courtyards.** `core_inductor` overlaps `avdd_filter` and `usb_dm_series` (their L1, R3 and
+  R8), and `hole1` overlaps `v3v3_bulk[1]` (their MH1 and C19): the inductor's footprint is the
+  datasheet's land pattern, its courtyard 3.5 x 2.1 mm against their 2.2 x 1.8 mm, and the hole's
+  keepout circle is 6.3 mm against their 6 mm. Parts that both stand where an imported board has
+  them may share courtyard area: `fab` warns, and does not stop.
+- **Pads.** The inductor's pads are 2 mm apart where theirs are 1.4 mm, and the MCU's leads 0.80 x
+  0.20 mm where theirs are 0.70 x 0.23 mm; their copper still ends inside netsmith's pads.
+
+Netsmith's design rules check finds nothing else: no short and no clearance.
+
 ## The board
 
 `src/main.nsm` is the circuit of Raspberry Pi's board in netsmith's words, not a netlist:

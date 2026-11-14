@@ -12,7 +12,23 @@ impl Board {
     /// past that edge, and takes only the room its courtyard has inside the outline: that is
     /// the part of it that overlaps other courtyards, keepouts and cutouts. Its pads are
     /// checked as ever.
+    ///
+    /// Two parts that the layout file puts where an imported KiCad board has them
+    /// ([`Board::imported`]) may share courtyard area: that board was made with its own
+    /// footprints, whose courtyards can be smaller than netsmith's. Such an overlap is not here
+    /// but in [`Board::imported_overlaps`], which `fab` says as a warning.
     pub fn check_placement(&self) -> Vec<PlacementProblem> {
+        self.placement_findings().0
+    }
+
+    /// The courtyards that overlap of two parts that both stand where an imported KiCad board
+    /// has them ([`Board::imported`]), which [`Board::check_placement`] leaves out.
+    pub fn imported_overlaps(&self) -> Vec<PlacementProblem> {
+        self.placement_findings().1
+    }
+
+    /// The placement check's problems, and the overlaps of imported parts that it excuses.
+    fn placement_findings(&self) -> (Vec<PlacementProblem>, Vec<PlacementProblem>) {
         let courtyards: Vec<Rect> = self.parts.iter().map(Placed::courtyard).collect();
         // Where a part's room is: its courtyard, clipped to the outline if it may hang over.
         let may: Vec<crate::overhang::Edges> = self
@@ -39,6 +55,7 @@ impl Board {
         let cutouts = self.cutout_shapes();
         let zones = self.height_zones();
         let mut problems = Vec::new();
+        let mut excused = Vec::new();
         for c in self.cutouts.iter().filter(|c| c.at.is_none()) {
             problems.push(PlacementProblem::NoPosition {
                 what: "cutout",
@@ -193,17 +210,19 @@ impl Board {
                 // Parts on opposite faces may share the board's area, unless one has a hole
                 // through the board that takes room there (`Placed::room_on`).
                 if a.rooms_overlap(rooms[i], b, rooms[j], self.rules.clearance, &zones) {
-                    problems.push(PlacementProblem::overlap_of(
-                        a,
-                        b,
-                        self.rules.clearance,
-                        &zones,
-                    ));
+                    let problem = PlacementProblem::overlap_of(a, b, self.rules.clearance, &zones);
+                    let imported =
+                        self.imported.contains(&a.refdes) && self.imported.contains(&b.refdes);
+                    if imported && matches!(problem, PlacementProblem::Overlap { .. }) {
+                        excused.push(problem);
+                    } else {
+                        problems.push(problem);
+                    }
                 }
                 self.check_holes(a, b, true, &mut problems);
                 self.check_holes(b, a, false, &mut problems);
             }
         }
-        problems
+        (problems, excused)
     }
 }

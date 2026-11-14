@@ -329,6 +329,29 @@ fn courtyards_of_opposite_faces_may_overlap_unless_one_part_has_a_hole() {
 }
 
 #[test]
+fn two_parts_placed_by_an_import_may_share_courtyard_area_and_are_said_apart() {
+    let mut board = led_board();
+    let d1 = board.part("D1").unwrap().at;
+    let shifted = Pt::new(d1.x + 0.3, d1.y);
+    board
+        .parts
+        .iter_mut()
+        .find(|p| p.refdes == "R1")
+        .unwrap()
+        .at = shifted;
+    let overlap = |p: &PlacementProblem| matches!(p, PlacementProblem::Overlap { a, b, .. } if a == "D1" && b == "R1");
+    assert!(board.check_placement().iter().any(overlap));
+    // One of them where an imported board has it is not enough.
+    board.imported.insert("R1".into());
+    assert!(board.check_placement().iter().any(overlap));
+    assert!(board.imported_overlaps().is_empty());
+    // Both: the check leaves it out, and it is said apart.
+    board.imported.insert("D1".into());
+    assert!(!board.check_placement().iter().any(overlap));
+    assert!(board.imported_overlaps().iter().any(overlap));
+}
+
+#[test]
 fn an_overlap_names_both_members_by_path_with_the_designator_and_by_how_much() {
     let mut board = led_board();
     for p in &mut board.parts {

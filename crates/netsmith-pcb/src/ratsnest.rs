@@ -9,7 +9,7 @@
 //! where they stand; any other pad needs a via to it, and has a line to the plane until
 //! one is dropped.
 //!
-//! Copper joins where it touches: a track's end on a pad, two tracks of one layer whose copper
+//! Copper joins where it touches: a track's end on a pad or a track over a pad, two tracks of one layer whose copper
 //! meets (end to end, or an end on the other's middle, as a hand-routed board has them), and a
 //! via on a pad or on a track. A net a routes file locks ([`crate::routes`]) is joined by its
 //! pours on the outer layers too: the router adds nothing to it, so the pour is how its pads
@@ -156,6 +156,47 @@ fn on_pad(node: &Node, at: Pt, layer: Option<CopperLayer>) -> bool {
     on_layer && node.bounds.expanded(TOUCH).contains(&Rect::new(at, at))
 }
 
+/// Whether the track's centre line runs through the pad (its box) on the track's layer: a
+/// track drawn over a pad of its net, as a hand-routed board has it, joins the pad.
+fn runs_over(node: &Node, track: &Track) -> bool {
+    let on_layer = match track.layer {
+        CopperLayer::Front => node.front,
+        CopperLayer::Back => node.back,
+    };
+    let b = node.bounds.expanded(TOUCH);
+    on_layer
+        && track
+            .centre_line()
+            .windows(2)
+            .any(|w| segment_meets_box(w[0], w[1], &b))
+}
+
+/// Whether segment `a`-`b` has a point inside box `r` (Liang and Barsky's clipping).
+fn segment_meets_box(a: Pt, b: Pt, r: &Rect) -> bool {
+    let (dx, dy) = (b.x - a.x, b.y - a.y);
+    let (mut lo, mut hi) = (0.0_f64, 1.0_f64);
+    for (p, q) in [
+        (-dx, a.x - r.min.x),
+        (dx, r.max.x - a.x),
+        (-dy, a.y - r.min.y),
+        (dy, r.max.y - a.y),
+    ] {
+        if p == 0.0 {
+            if q < 0.0 {
+                return false;
+            }
+        } else {
+            let t = q / p;
+            if p < 0.0 {
+                lo = lo.max(t);
+            } else {
+                hi = hi.min(t);
+            }
+        }
+    }
+    lo <= hi
+}
+
 impl Ratsnest {
     /// The ratsnest of a board as it is placed and routed. Nets are taken in board order.
     pub fn of(board: &Board) -> Ratsnest {
@@ -237,7 +278,8 @@ fn spanning_tree(
         for (ni, node) in nodes.iter().enumerate() {
             let touches = [track.from, track.to]
                 .iter()
-                .any(|&end| on_pad(node, end, Some(track.layer)));
+                .any(|&end| on_pad(node, end, Some(track.layer)))
+                || runs_over(node, track);
             if touches {
                 sets.join(ni, n + ti);
             }
@@ -683,6 +725,22 @@ mod tests {
         assert!(Ratsnest::of(&board).lines.iter().all(|l| l.net != "VCC"));
         // On the other layer it does not.
         board.tracks[1].layer = CopperLayer::Back;
+        assert!(Ratsnest::of(&board).lines.iter().any(|l| l.net == "VCC"));
+    }
+
+    #[test]
+    fn a_track_that_runs_over_a_pad_of_its_net_joins_it() {
+        let mut board = crate::board::tests::led_board();
+        let (a, b) = pad_centres(&board, "VCC");
+        // From beyond the first pad, through it, to the second: KiCad counts the pad joined,
+        // as a hand-routed board has it.
+        let before = Pt::new(a.x - (b.x - a.x), a.y - (b.y - a.y));
+        board
+            .tracks
+            .push(Track::straight("VCC", CopperLayer::Front, before, b, 0.2));
+        assert!(Ratsnest::of(&board).lines.iter().all(|l| l.net != "VCC"));
+        // On the other layer it does not.
+        board.tracks[0].layer = CopperLayer::Back;
         assert!(Ratsnest::of(&board).lines.iter().any(|l| l.net == "VCC"));
     }
 

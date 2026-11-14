@@ -515,6 +515,9 @@ fn import(args: &ImportArgs) -> ExitCode {
             println!("net {ours} is KiCad's {theirs} ({votes} pad(s))");
         }
     }
+    for said in &import.refitted {
+        println!("{said}");
+    }
     for s in &import.skipped {
         println!("note: {s}");
     }

@@ -1,0 +1,619 @@
+version = 1
+
+[Orbit.nets."+3.3V"]
+pads = "8429f2553f5746d1"
+lock = true
+tracks = [
+  { layer = "top", width = 0.25, from = [13.5, 19.0], to = [16.9638, 22.4638] },
+  { layer = "top", width = 0.25, from = [5.75, 42.65], to = [5.75, 41.0] },
+  { layer = "top", width = 0.25, from = [22.1625, 31.75], to = [22.25, 31.6625] },
+  { layer = "top", width = 0.25, from = [38.0, 24.75], to = [38.0, 23.75] },
+  { layer = "top", width = 0.25, from = [35.525, 19.025], to = [35.525, 21.75] },
+  { layer = "top", width = 0.25, from = [26.5, 25.5], to = [27.25, 24.75] },
+  { layer = "top", width = 0.25, from = [20.275, 30.8125], to = [20.8375, 30.25] },
+  { layer = "top", width = 0.25, from = [21.75, 30.25], to = [24.025, 27.975] },
+  { layer = "top", width = 0.25, from = [11.6, 22.0], to = [11.6, 23.75] },
+  { layer = "top", width = 0.25, from = [24.449695, 27.525], to = [24.475, 27.525] },
+  { layer = "top", width = 0.25, from = [35.525, 22.975], to = [35.525, 21.75] },
+  { layer = "top", width = 0.25, from = [32.0, 23.275], to = [35.225, 23.275] },
+  { layer = "top", width = 0.25, from = [20.275, 33.5], to = [20.275, 31.75] },
+  { layer = "top", width = 0.25, from = [24.025, 27.949695], to = [24.449695, 27.525] },
+  { layer = "top", width = 0.25, from = [32.0, 24.25], to = [32.0, 23.275] },
+  { layer = "top", width = 0.25, from = [9.6, 46.5], to = [5.75, 42.65] },
+  { layer = "top", width = 0.25, from = [26.25, 33.725], to = [26.225, 33.75] },
+  { layer = "top", width = 0.25, from = [27.25, 24.75], to = [27.75, 24.75] },
+  { layer = "top", width = 0.25, from = [35.225, 23.275], to = [35.525, 22.975] },
+  { layer = "top", width = 0.25, from = [20.275, 31.75], to = [22.1625, 31.75] },
+  { layer = "top", width = 0.25, from = [12.0362, 25.0362], to = [11.6, 24.6] },
+  { layer = "top", width = 0.25, from = [15.4, 46.5], to = [9.6, 46.5] },
+  { layer = "top", width = 0.25, from = [26.25, 31.6625], to = [26.25, 33.725] },
+  { layer = "top", width = 0.25, from = [38.0, 23.75], to = [37.175, 22.925] },
+  { layer = "top", width = 0.25, from = [26.25, 31.6625], to = [26.25, 30.125] },
+  { layer = "top", width = 0.25, from = [11.6, 19.0], to = [13.5, 19.0] },
+  { layer = "top", width = 0.25, from = [11.6, 24.6], to = [11.6, 23.75] },
+  { layer = "top", width = 0.25, from = [24.475, 27.525], to = [26.5, 25.5] },
+  { layer = "top", width = 0.25, from = [10.75, 11.5], to = [5.0, 11.5] },
+  { layer = "top", width = 0.25, from = [11.6, 22.0], to = [11.6, 19.0] },
+  { layer = "top", width = 0.25, from = [12.0362, 26.865], to = [12.0362, 25.595] },
+  { layer = "top", width = 0.25, from = [27.75, 24.75], to = [29.1625, 24.75] },
+  { layer = "top", width = 0.25, from = [11.6, 12.35], to = [10.75, 11.5] },
+  { layer = "top", width = 0.25, from = [4.53, 39.78], to = [5.75, 41.0] },
+  { layer = "top", width = 0.25, from = [16.9638, 22.4638], to = [16.9638, 25.595] },
+  { layer = "top", width = 0.25, from = [27.75, 19.0], to = [35.5, 19.0] },
+  { layer = "top", width = 0.25, from = [2.5, 39.78], to = [4.53, 39.78] },
+  { layer = "top", width = 0.25, from = [26.25, 30.125], to = [27.75, 28.625] },
+  { layer = "top", width = 0.25, from = [35.5, 19.0], to = [35.525, 19.025] },
+  { layer = "top", width = 0.25, from = [31.5, 24.75], to = [32.0, 24.25] },
+  { layer = "top", width = 0.25, from = [35.525, 21.75], to = [37.175, 21.75] },
+  { layer = "top", width = 0.25, from = [20.8375, 30.25], to = [21.75, 30.25] },
+  { layer = "top", width = 0.25, from = [37.175, 22.925], to = [37.175, 21.75] },
+  { layer = "top", width = 0.25, from = [11.6, 19.0], to = [11.6, 12.35] },
+  { layer = "top", width = 0.25, from = [12.0362, 25.595], to = [12.0362, 25.0362] },
+  { layer = "top", width = 0.25, from = [29.1625, 24.75], to = [31.5, 24.75] },
+  { layer = "top", width = 0.25, from = [32.0, 23.275], to = [30.25, 23.275] },
+  { layer = "top", width = 0.25, from = [20.275, 31.75], to = [20.275, 30.8125] },
+  { layer = "top", width = 0.25, from = [37.175, 20.0], to = [37.175, 21.75] },
+  { layer = "top", width = 0.25, from = [27.75, 28.625], to = [27.75, 24.75] },
+  { layer = "top", width = 0.25, from = [24.025, 27.975], to = [24.025, 27.949695] },
+  { layer = "bottom", width = 0.25, from = [32.75, 25.5], to = [34.25, 27.0] },
+  { layer = "bottom", width = 0.25, from = [34.25, 39.0], to = [32.25, 41.0] },
+  { layer = "bottom", width = 0.25, from = [32.25, 41.0], to = [5.75, 41.0] },
+  { layer = "bottom", width = 0.25, from = [26.5, 25.5], to = [32.75, 25.5] },
+  { layer = "bottom", width = 0.25, from = [34.25, 27.0], to = [34.25, 39.0] },
+  { layer = "bottom", width = 0.25, from = [11.6, 19.0], to = [27.75, 19.0] },
+]
+vias = [
+  { at = [5.75, 41.0], diameter = 0.8, drill = 0.4 },
+  { at = [26.5, 25.5], diameter = 0.8, drill = 0.4 },
+  { at = [11.6, 19.0], diameter = 0.8, drill = 0.4 },
+  { at = [27.75, 19.0], diameter = 0.8, drill = 0.4 },
+]
+
+[Orbit.nets."+BATT"]
+pads = "b5c6c62bcc48c87b"
+lock = true
+tracks = [
+  { layer = "top", width = 0.25, from = [37.975, 26.775], to = [38.0, 26.75] },
+  { layer = "top", width = 0.25, from = [43.225, 15.5], to = [45.0, 15.5] },
+  { layer = "top", width = 0.25, from = [37.975, 28.5], to = [37.975, 26.775] },
+  { layer = "top", width = 0.25, from = [38.6875, 12.75], to = [38.6375, 12.8] },
+  { layer = "top", width = 0.25, from = [38.0, 26.75], to = [39.65, 26.75] },
+  { layer = "top", width = 0.25, from = [40.475, 12.75], to = [38.6875, 12.75] },
+  { layer = "top", width = 0.25, from = [39.65, 26.75], to = [41.25, 26.75] },
+  { layer = "top", width = 0.25, from = [45.0, 23.0], to = [45.0, 15.5] },
+  { layer = "top", width = 0.25, from = [41.25, 26.75], to = [45.0, 23.0] },
+  { layer = "top", width = 0.25, from = [40.475, 12.75], to = [43.225, 15.5] },
+]
+
+[Orbit.nets.GND]
+pads = "1bfc861e756ed026"
+lock = true
+tracks = [
+  { layer = "top", width = 0.25, from = [39.65, 25.75], to = [40.75, 25.75] },
+  { layer = "top", width = 0.25, from = [32.975, 12.75], to = [32.975, 11.275] },
+  { layer = "top", width = 0.25, from = [21.84, 17.34], to = [22.25, 17.75] },
+  { layer = "top", width = 0.25, from = [32.75, 25.25], to = [33.5, 24.5] },
+  { layer = "top", width = 0.25, from = [12.25, 39.275], to = [12.1, 39.275] },
+  { layer = "top", width = 0.25, from = [32.975, 11.275], to = [33.0, 11.25] },
+  { layer = "top", width = 0.25, from = [39.65, 26.25], to = [39.65, 25.75] },
+  { layer = "top", width = 0.25, from = [37.175, 18.25], to = [36.25, 18.25] },
+  { layer = "top", width = 0.25, from = [21.09, 17.34], to = [21.84, 17.34] },
+  { layer = "top", width = 0.25, from = [38.2, 25.75], to = [39.65, 25.75] },
+  { layer = "top", width = 0.25, from = [36.25, 18.25], to = [35.75, 17.75] },
+  { layer = "top", width = 0.25, from = [25.75, 29.0], to = [25.75, 31.6625] },
+  { layer = "top", width = 0.25, from = [29.1625, 25.25], to = [32.75, 25.25] },
+  { layer = "top", width = 0.25, from = [32.925, 12.8], to = [32.975, 12.75] },
+  { layer = "top", width = 0.25, from = [20.8375, 29.75], to = [19.0, 29.75] },
+  { layer = "top", width = 0.25, from = [26.5, 28.25], to = [25.75, 29.0] },
+  { layer = "top", width = 0.25, from = [12.1, 39.275], to = [10.5, 37.675] },
+  { layer = "top", width = 0.25, from = [32.925, 14.5], to = [32.925, 12.8] },
+]
+vias = [
+  { at = [18.5, 24.25], diameter = 0.8, drill = 0.4 },
+  { at = [17.5, 15.84], diameter = 0.8, drill = 0.4 },
+  { at = [43.0, 19.5], diameter = 0.8, drill = 0.4 },
+  { at = [43.0, 17.0], diameter = 0.8, drill = 0.4 },
+  { at = [17.5, 17.84], diameter = 0.8, drill = 0.4 },
+  { at = [24.5, 5.25], diameter = 0.8, drill = 0.4 },
+  { at = [26.5, 28.25], diameter = 0.8, drill = 0.4 },
+  { at = [18.5, 17.84], diameter = 0.8, drill = 0.4 },
+  { at = [43.0, 20.75], diameter = 0.8, drill = 0.4 },
+  { at = [27.25, 21.0], diameter = 0.8, drill = 0.4 },
+  { at = [19.5, 15.84], diameter = 0.8, drill = 0.4 },
+  { at = [43.0, 9.75], diameter = 0.8, drill = 0.4 },
+  { at = [41.75, 9.75], diameter = 0.8, drill = 0.4 },
+  { at = [20.25, 5.25], diameter = 0.8, drill = 0.4 },
+  { at = [10.0, 32.5], diameter = 0.8, drill = 0.4 },
+  { at = [18.5, 16.84], diameter = 0.8, drill = 0.4 },
+  { at = [12.75, 20.25], diameter = 0.8, drill = 0.4 },
+  { at = [19.5, 17.84], diameter = 0.8, drill = 0.4 },
+  { at = [26.75, 11.25], diameter = 0.8, drill = 0.4 },
+  { at = [12.5, 32.5], diameter = 0.8, drill = 0.4 },
+  { at = [18.5, 15.84], diameter = 0.8, drill = 0.4 },
+  { at = [19.5, 16.84], diameter = 0.8, drill = 0.4 },
+  { at = [33.0, 11.25], diameter = 0.8, drill = 0.4 },
+  { at = [22.75, 17.75], diameter = 0.8, drill = 0.4 },
+  { at = [43.0, 18.25], diameter = 0.8, drill = 0.4 },
+  { at = [17.5, 16.84], diameter = 0.8, drill = 0.4 },
+  { at = [39.25, 9.75], diameter = 0.8, drill = 0.4 },
+  { at = [33.5, 24.5], diameter = 0.8, drill = 0.4 },
+  { at = [11.25, 32.5], diameter = 0.8, drill = 0.4 },
+  { at = [40.5, 9.75], diameter = 0.8, drill = 0.4 },
+  { at = [13.75, 32.5], diameter = 0.8, drill = 0.4 },
+]
+
+[Orbit.nets.VBUS]
+pads = "c47cb258f4cc49ba"
+lock = true
+tracks = [
+  { layer = "top", width = 0.25, from = [26.6, 10.15], to = [26.6, 7.95] },
+  { layer = "top", width = 0.25, from = [34.525, 12.75], to = [34.525, 11.025] },
+  { layer = "top", width = 0.25, from = [32.0, 16.25], to = [31.25, 15.5] },
+  { layer = "top", width = 0.25, from = [20.025, 12.75], to = [20.025, 14.225] },
+  { layer = "top", width = 0.25, from = [29.995, 3.995], to = [19.505, 3.995] },
+  { layer = "top", width = 0.25, from = [20.025, 11.0], to = [25.75, 11.0] },
+  { layer = "top", width = 0.25, from = [20.025, 14.225], to = [20.0, 14.25] },
+  { layer = "top", width = 0.25, from = [21.09, 15.34], to = [21.09, 13.09] },
+  { layer = "top", width = 0.25, from = [19.505, 3.995], to = [18.25, 5.25] },
+  { layer = "top", width = 0.25, from = [34.525, 11.025], to = [31.25, 7.75] },
+  { layer = "top", width = 0.25, from = [21.09, 13.09], to = [20.75, 12.75] },
+  { layer = "top", width = 0.25, from = [25.75, 11.0], to = [26.6, 10.15] },
+  { layer = "top", width = 0.25, from = [18.25, 5.25], to = [18.25, 8.75] },
+  { layer = "top", width = 0.25, from = [31.25, 5.25], to = [29.995, 3.995] },
+  { layer = "top", width = 0.25, from = [20.025, 10.525], to = [20.025, 11.0] },
+  { layer = "top", width = 0.25, from = [34.575, 12.8], to = [34.525, 12.75] },
+  { layer = "top", width = 0.25, from = [36.3625, 12.8], to = [34.575, 12.8] },
+  { layer = "top", width = 0.25, from = [20.025, 12.75], to = [20.025, 11.0] },
+  { layer = "top", width = 0.25, from = [31.25, 7.75], to = [31.25, 5.25] },
+  { layer = "top", width = 0.25, from = [20.75, 12.75], to = [20.025, 12.75] },
+  { layer = "top", width = 0.25, from = [31.25, 15.5], to = [31.25, 7.75] },
+  { layer = "top", width = 0.25, from = [32.925, 16.25], to = [32.0, 16.25] },
+  { layer = "top", width = 0.25, from = [18.25, 8.75], to = [20.025, 10.525] },
+]
+
+[Orbit.nets."net-battery.p2"]
+pads = "4a91735e101931d6"
+lock = true
+tracks = [
+  { layer = "top", width = 0.25, from = [45.0, 9.5], to = [41.5, 6.0] },
+  { layer = "top", width = 0.25, from = [45.0, 11.5], to = [45.0, 9.5] },
+  { layer = "top", width = 0.25, from = [41.5, 6.0], to = [38.0, 6.0] },
+]
+
+[Orbit.nets."net-boot_pulldown.b"]
+pads = "9906bef236ab4067"
+lock = true
+tracks = [
+  { layer = "top", width = 0.25, from = [8.175, 13.5], to = [5.0, 13.5] },
+]
+
+[Orbit.nets."net-boot_switch.com"]
+pads = "16b38385523202da"
+lock = true
+tracks = [
+  { layer = "top", width = 0.25, from = [20.8375, 28.25], to = [22.25, 28.25] },
+  { layer = "top", width = 0.25, from = [22.25, 28.25], to = [25.0, 25.5] },
+  { layer = "top", width = 0.25, from = [8.0, 9.5], to = [5.0, 9.5] },
+  { layer = "bottom", width = 0.25, from = [28.0, 10.0], to = [27.5, 9.5] },
+  { layer = "bottom", width = 0.25, from = [25.0, 25.5], to = [30.25, 20.25] },
+  { layer = "bottom", width = 0.25, from = [27.5, 9.5], to = [8.0, 9.5] },
+  { layer = "bottom", width = 0.25, from = [30.25, 20.25], to = [30.25, 13.0] },
+  { layer = "bottom", width = 0.25, from = [30.25, 12.25], to = [28.0, 10.0] },
+  { layer = "bottom", width = 0.25, from = [30.25, 13.0], to = [30.25, 12.25] },
+]
+vias = [
+  { at = [25.0, 25.5], diameter = 0.8, drill = 0.4 },
+  { at = [8.0, 9.5], diameter = 0.8, drill = 0.4 },
+]
+
+[Orbit.nets."net-buck_boost.divider.rbottom.a"]
+pads = "b841e9e23f4b14a1"
+lock = true
+tracks = [
+  { layer = "top", width = 0.25, from = [41.25, 24.027298], to = [41.25, 21.25] },
+  { layer = "top", width = 0.25, from = [41.25, 21.25], to = [40.0, 20.0] },
+  { layer = "top", width = 0.25, from = [40.027298, 25.25], to = [41.25, 24.027298] },
+  { layer = "top", width = 0.25, from = [40.0, 20.0], to = [38.825, 20.0] },
+  { layer = "top", width = 0.25, from = [38.825, 18.25], to = [38.825, 20.0] },
+  { layer = "top", width = 0.25, from = [39.65, 25.25], to = [40.027298, 25.25] },
+]
+
+[Orbit.nets."net-buck_boost.ic.l1"]
+pads = "4724fab71b691c51"
+lock = true
+tracks = [
+  { layer = "top", width = 0.25, from = [38.0, 26.25], to = [37.472702, 26.25] },
+  { layer = "top", width = 0.25, from = [36.502702, 27.22], to = [35.75, 27.22] },
+  { layer = "top", width = 0.25, from = [37.472702, 26.25], to = [36.502702, 27.22] },
+]
+
+[Orbit.nets."net-buck_boost.ic.l2"]
+pads = "fb720ded8965704f"
+lock = true
+tracks = [
+  { layer = "top", width = 0.25, from = [35.75, 25.5], to = [36.0, 25.25] },
+  { layer = "top", width = 0.25, from = [36.0, 25.25], to = [38.0, 25.25] },
+]
+
+[Orbit.nets."net-buck_boost.ic.pg"]
+pads = "c6035ae56f7fb4c5"
+lock = true
+tracks = [
+  { layer = "top", width = 0.25, from = [38.825, 21.75], to = [38.825, 23.075] },
+  { layer = "top", width = 0.25, from = [39.75, 24.65], to = [39.65, 24.75] },
+  { layer = "top", width = 0.25, from = [39.75, 24.0], to = [39.75, 24.65] },
+  { layer = "top", width = 0.25, from = [38.825, 23.075], to = [39.75, 24.0] },
+]
+
+[Orbit.nets."net-charger.ic.prog"]
+pads = "7cfefa55756071e4"
+lock = true
+tracks = [
+  { layer = "top", width = 0.25, from = [34.775, 14.7], to = [34.575, 14.5] },
+  { layer = "top", width = 0.25, from = [36.3625, 14.7], to = [34.775, 14.7] },
+]
+
+[Orbit.nets."net-charger.ic.stat"]
+pads = "9cfb3efb287c100d"
+lock = true
+tracks = [
+  { layer = "top", width = 0.25, from = [38.7875, 14.85], to = [38.6375, 14.7] },
+  { layer = "top", width = 0.25, from = [38.7875, 16.5], to = [38.7875, 14.85] },
+]
+
+[Orbit.nets."net-charger.status_led.anode"]
+pads = "627ef680e62ea310"
+lock = true
+tracks = [
+  { layer = "top", width = 0.25, from = [34.825, 16.5], to = [34.575, 16.25] },
+  { layer = "top", width = 0.25, from = [37.2125, 16.5], to = [34.825, 16.5] },
+]
+
+[Orbit.nets."net-eeprom.i2c.scl"]
+pads = "8ba8efef6f51d622"
+lock = true
+tracks = [
+  { layer = "top", width = 0.25, from = [18.615, 28.135], to = [19.5, 27.25] },
+  { layer = "top", width = 0.25, from = [15.135, 28.135], to = [16.9638, 28.135] },
+  { layer = "top", width = 0.25, from = [14.5, 23.25], to = [14.5, 27.5] },
+  { layer = "top", width = 0.25, from = [14.5, 27.5], to = [15.135, 28.135] },
+  { layer = "top", width = 0.25, from = [16.9638, 28.135], to = [18.615, 28.135] },
+  { layer = "top", width = 0.25, from = [19.5, 27.25], to = [20.8375, 27.25] },
+  { layer = "top", width = 0.25, from = [13.25, 22.0], to = [14.5, 23.25] },
+]
+
+[Orbit.nets."net-eeprom.i2c.sda"]
+pads = "d0136d0117d9a1ed"
+lock = true
+tracks = [
+  { layer = "top", width = 0.25, from = [19.75, 27.75], to = [20.8375, 27.75] },
+  { layer = "top", width = 0.25, from = [14.0, 24.5], to = [13.25, 23.75] },
+  { layer = "top", width = 0.25, from = [14.0, 27.75], to = [14.0, 24.5] },
+  { layer = "top", width = 0.25, from = [16.9638, 29.405], to = [15.655, 29.405] },
+  { layer = "top", width = 0.25, from = [16.9638, 29.405], to = [18.095, 29.405] },
+  { layer = "top", width = 0.25, from = [18.095, 29.405], to = [19.75, 27.75] },
+  { layer = "top", width = 0.25, from = [15.655, 29.405], to = [14.0, 27.75] },
+]
+
+[Orbit.nets."net-header_east.p2"]
+pads = "6f83cfffc1e27a2f"
+lock = true
+tracks = [
+  { layer = "top", width = 0.25, from = [40.25, 30.81], to = [46.52, 24.54] },
+  { layer = "top", width = 0.25, from = [46.52, 24.54], to = [47.5, 24.54] },
+  { layer = "top", width = 0.25, from = [36.901168, 30.81], to = [40.25, 30.81] },
+  { layer = "top", width = 0.25, from = [29.1625, 25.75], to = [31.841168, 25.75] },
+  { layer = "top", width = 0.25, from = [31.841168, 25.75], to = [36.901168, 30.81] },
+]
+
+[Orbit.nets."net-header_east.p3"]
+pads = "68cff84749d644d1"
+lock = true
+tracks = [
+  { layer = "top", width = 0.25, from = [44.616396, 27.08], to = [47.5, 27.08] },
+  { layer = "top", width = 0.25, from = [40.436396, 31.26], to = [44.616396, 27.08] },
+  { layer = "top", width = 0.25, from = [31.704772, 26.25], to = [36.714772, 31.26] },
+  { layer = "top", width = 0.25, from = [29.1625, 26.25], to = [31.704772, 26.25] },
+  { layer = "top", width = 0.25, from = [36.714772, 31.26], to = [40.436396, 31.26] },
+]
+
+[Orbit.nets."net-header_east.p4"]
+pads = "861da60c42f464c0"
+lock = true
+tracks = [
+  { layer = "top", width = 0.25, from = [31.568376, 26.75], to = [36.528376, 31.71] },
+  { layer = "top", width = 0.25, from = [47.38, 29.5], to = [47.5, 29.62] },
+  { layer = "top", width = 0.25, from = [40.622792, 31.71], to = [42.832792, 29.5] },
+  { layer = "top", width = 0.25, from = [36.528376, 31.71], to = [40.622792, 31.71] },
+  { layer = "top", width = 0.25, from = [42.832792, 29.5], to = [47.38, 29.5] },
+  { layer = "top", width = 0.25, from = [29.1625, 26.75], to = [31.568376, 26.75] },
+]
+
+[Orbit.nets."net-header_east.p5"]
+pads = "f3937a7d86a72386"
+lock = true
+tracks = [
+  { layer = "top", width = 0.25, from = [29.1625, 27.25], to = [31.43198, 27.25] },
+  { layer = "top", width = 0.25, from = [31.43198, 27.25], to = [36.34198, 32.16] },
+  { layer = "top", width = 0.25, from = [36.34198, 32.16], to = [47.5, 32.16] },
+]
+
+[Orbit.nets."net-header_east.p6"]
+pads = "acbb79a37ada6d0f"
+lock = true
+tracks = [
+  { layer = "top", width = 0.25, from = [46.263604, 33.463604], to = [47.5, 34.7] },
+  { layer = "top", width = 0.25, from = [29.1625, 27.75], to = [31.295584, 27.75] },
+  { layer = "top", width = 0.25, from = [37.009188, 33.463604], to = [46.263604, 33.463604] },
+  { layer = "top", width = 0.25, from = [31.295584, 27.75], to = [37.009188, 33.463604] },
+]
+
+[Orbit.nets."net-header_east.p7"]
+pads = "381d3adb3910f689"
+lock = true
+tracks = [
+  { layer = "top", width = 0.25, from = [36.822792, 33.913604], to = [44.173604, 33.913604] },
+  { layer = "top", width = 0.25, from = [31.159188, 28.25], to = [36.822792, 33.913604] },
+  { layer = "top", width = 0.25, from = [44.173604, 33.913604], to = [47.5, 37.24] },
+  { layer = "top", width = 0.25, from = [29.1625, 28.25], to = [31.159188, 28.25] },
+]
+
+[Orbit.nets."net-header_east.p8"]
+pads = "fc3088f7d9f5a461"
+lock = true
+tracks = [
+  { layer = "top", width = 0.25, from = [36.636396, 34.363604], to = [42.083604, 34.363604] },
+  { layer = "top", width = 0.25, from = [42.083604, 34.363604], to = [47.5, 39.78] },
+  { layer = "top", width = 0.25, from = [29.1625, 28.75], to = [31.022792, 28.75] },
+  { layer = "top", width = 0.25, from = [31.022792, 28.75], to = [36.636396, 34.363604] },
+]
+
+[Orbit.nets."net-header_west.p2"]
+pads = "f0e3152bb716a23d"
+lock = true
+tracks = [
+  { layer = "top", width = 0.25, from = [2.5, 24.54], to = [4.71, 24.54] },
+  { layer = "top", width = 0.25, from = [4.71, 24.54], to = [6.0, 23.25] },
+  { layer = "top", width = 0.25, from = [23.25, 25.5], to = [23.25, 23.3375] },
+  { layer = "bottom", width = 0.25, from = [21.0, 23.25], to = [6.0, 23.25] },
+  { layer = "bottom", width = 0.25, from = [23.25, 25.5], to = [21.0, 23.25] },
+]
+vias = [
+  { at = [6.0, 23.25], diameter = 0.8, drill = 0.4 },
+  { at = [23.25, 25.5], diameter = 0.8, drill = 0.4 },
+]
+
+[Orbit.nets."net-header_west.p3"]
+pads = "03def2d2f9174ead"
+lock = true
+tracks = [
+  { layer = "top", width = 0.25, from = [2.5, 27.08], to = [4.67, 27.08] },
+  { layer = "top", width = 0.25, from = [20.8375, 24.75], to = [19.5, 24.75] },
+  { layer = "top", width = 0.25, from = [19.5, 24.75], to = [19.0, 25.25] },
+  { layer = "top", width = 0.25, from = [19.0, 25.25], to = [19.0, 25.75] },
+  { layer = "top", width = 0.25, from = [4.67, 27.08], to = [6.0, 25.75] },
+  { layer = "bottom", width = 0.25, from = [19.0, 25.75], to = [6.0, 25.75] },
+]
+vias = [
+  { at = [19.0, 25.75], diameter = 0.8, drill = 0.4 },
+  { at = [6.0, 25.75], diameter = 0.8, drill = 0.4 },
+]
+
+[Orbit.nets."net-header_west.p4"]
+pads = "4aeff1880403b091"
+lock = true
+tracks = [
+  { layer = "top", width = 0.25, from = [25.25, 34.525], to = [26.225, 35.5] },
+  { layer = "top", width = 0.25, from = [25.25, 28.5], to = [25.25, 31.6625] },
+  { layer = "top", width = 0.25, from = [34.6, 42.5], to = [29.25, 42.5] },
+  { layer = "top", width = 0.25, from = [2.5, 29.62], to = [4.63, 29.62] },
+  { layer = "top", width = 0.25, from = [40.4, 42.5], to = [34.6, 42.5] },
+  { layer = "top", width = 0.25, from = [26.225, 39.475], to = [26.225, 35.5] },
+  { layer = "top", width = 0.25, from = [25.0, 28.25], to = [25.25, 28.5] },
+  { layer = "top", width = 0.25, from = [4.63, 29.62], to = [6.0, 28.25] },
+  { layer = "top", width = 0.25, from = [25.25, 31.6625], to = [25.25, 34.525] },
+  { layer = "top", width = 0.25, from = [29.25, 42.5], to = [26.225, 39.475] },
+  { layer = "bottom", width = 0.25, from = [25.0, 28.25], to = [6.0, 28.25] },
+]
+vias = [
+  { at = [6.0, 28.25], diameter = 0.8, drill = 0.4 },
+  { at = [25.0, 28.25], diameter = 0.8, drill = 0.4 },
+]
+
+[Orbit.nets."net-header_west.p5"]
+pads = "5db79f73d8ab7c60"
+lock = true
+tracks = [
+  { layer = "top", width = 0.25, from = [4.41, 32.16], to = [2.5, 32.16] },
+  { layer = "top", width = 0.25, from = [7.5, 35.25], to = [4.41, 32.16] },
+  { layer = "top", width = 0.25, from = [23.25, 31.6625], to = [23.25, 33.75] },
+  { layer = "top", width = 0.25, from = [21.75, 35.25], to = [7.5, 35.25] },
+  { layer = "top", width = 0.25, from = [23.25, 33.75], to = [21.75, 35.25] },
+]
+
+[Orbit.nets."net-header_west.p6"]
+pads = "398688c1a01eab38"
+lock = true
+tracks = [
+  { layer = "top", width = 0.25, from = [29.5, 32.5], to = [29.5, 32.0] },
+  { layer = "top", width = 0.25, from = [4.45, 34.7], to = [5.75, 36.0] },
+  { layer = "top", width = 0.25, from = [29.1625, 31.6625], to = [27.75, 31.6625] },
+  { layer = "top", width = 0.25, from = [29.5, 32.0], to = [29.1625, 31.6625] },
+  { layer = "top", width = 0.25, from = [2.5, 34.7], to = [4.45, 34.7] },
+  { layer = "bottom", width = 0.25, from = [26.0, 36.0], to = [29.5, 32.5] },
+  { layer = "bottom", width = 0.25, from = [5.75, 36.0], to = [26.0, 36.0] },
+]
+vias = [
+  { at = [29.5, 32.5], diameter = 0.8, drill = 0.4 },
+  { at = [5.75, 36.0], diameter = 0.8, drill = 0.4 },
+]
+
+[Orbit.nets."net-header_west.p7"]
+pads = "5c8aa4741f6d38c1"
+lock = true
+tracks = [
+  { layer = "top", width = 0.25, from = [31.25, 32.5], to = [31.25, 31.0] },
+  { layer = "top", width = 0.25, from = [31.25, 31.0], to = [30.5, 30.25] },
+  { layer = "top", width = 0.25, from = [4.49, 37.24], to = [5.75, 38.5] },
+  { layer = "top", width = 0.25, from = [30.5, 30.25], to = [29.1625, 30.25] },
+  { layer = "top", width = 0.25, from = [2.5, 37.24], to = [4.49, 37.24] },
+  { layer = "bottom", width = 0.25, from = [25.25, 38.5], to = [5.75, 38.5] },
+  { layer = "bottom", width = 0.25, from = [31.25, 32.5], to = [25.25, 38.5] },
+]
+vias = [
+  { at = [5.75, 38.5], diameter = 0.8, drill = 0.4 },
+  { at = [31.25, 32.5], diameter = 0.8, drill = 0.4 },
+]
+
+[Orbit.nets."net-led1.anode"]
+pads = "e2432fe3bd92fb97"
+lock = true
+tracks = [
+  { layer = "top", width = 0.25, from = [39.5975, 37.6725], to = [41.25, 39.325] },
+  { layer = "top", width = 0.25, from = [39.5, 37.6725], to = [39.5975, 37.6725] },
+]
+
+[Orbit.nets."net-led1_resistor.a"]
+pads = "cc68af8713ec3202"
+lock = true
+tracks = [
+  { layer = "top", width = 0.25, from = [40.063604, 34.813604], to = [36.45, 34.813604] },
+  { layer = "top", width = 0.25, from = [36.45, 34.813604], to = [30.886396, 29.25] },
+  { layer = "top", width = 0.25, from = [41.25, 36.0], to = [40.063604, 34.813604] },
+  { layer = "top", width = 0.25, from = [41.25, 37.675], to = [41.25, 36.0] },
+  { layer = "top", width = 0.25, from = [30.886396, 29.25], to = [29.1625, 29.25] },
+]
+
+[Orbit.nets."net-led2.anode"]
+pads = "0271dc74417fa35d"
+lock = true
+tracks = [
+  { layer = "top", width = 0.25, from = [36.0975, 39.325], to = [37.75, 37.6725] },
+  { layer = "top", width = 0.25, from = [36.0, 39.325], to = [36.0975, 39.325] },
+]
+
+[Orbit.nets."net-led2_resistor.a"]
+pads = "0a4f72da73ddc636"
+lock = true
+tracks = [
+  { layer = "top", width = 0.25, from = [36.0, 35.0], to = [30.75, 29.75] },
+  { layer = "top", width = 0.25, from = [30.75, 29.75], to = [29.1625, 29.75] },
+  { layer = "top", width = 0.25, from = [36.0, 37.675], to = [36.0, 35.0] },
+]
+
+[Orbit.nets."net-mcu.pa10"]
+pads = "4b893821c0151e25"
+lock = true
+tracks = [
+  { layer = "top", width = 0.25, from = [19.75, 21.25], to = [19.0, 20.5] },
+  { layer = "top", width = 0.25, from = [19.0, 20.5], to = [19.0, 19.43] },
+  { layer = "top", width = 0.25, from = [24.0, 21.25], to = [19.75, 21.25] },
+  { layer = "top", width = 0.25, from = [24.75, 23.3375], to = [24.75, 22.0] },
+  { layer = "top", width = 0.25, from = [24.75, 22.0], to = [24.0, 21.25] },
+]
+
+[Orbit.nets."net-mcu.pa9"]
+pads = "940603bd6b9703d3"
+lock = true
+tracks = [
+  { layer = "top", width = 0.25, from = [25.25, 22.534314], to = [25.25, 20.0] },
+  { layer = "top", width = 0.25, from = [25.25, 23.3375], to = [25.25, 22.534314] },
+  { layer = "top", width = 0.25, from = [18.5, 22.25], to = [18.5, 19.43] },
+  { layer = "bottom", width = 0.25, from = [20.625, 22.25], to = [22.875, 20.0] },
+  { layer = "bottom", width = 0.25, from = [18.5, 22.25], to = [20.625, 22.25] },
+  { layer = "bottom", width = 0.25, from = [22.875, 20.0], to = [25.25, 20.0] },
+]
+vias = [
+  { at = [25.25, 20.0], diameter = 0.8, drill = 0.4 },
+  { at = [18.5, 22.25], diameter = 0.8, drill = 0.4 },
+]
+
+[Orbit.nets."net-mcu.pc15"]
+pads = "db9f3bf606f06c57"
+lock = true
+tracks = [
+  { layer = "top", width = 0.25, from = [14.0, 37.675], to = [12.3, 37.675] },
+  { layer = "top", width = 0.25, from = [23.75, 36.25], to = [23.75, 31.6625] },
+  { layer = "top", width = 0.25, from = [14.0, 37.675], to = [22.325, 37.675] },
+  { layer = "top", width = 0.25, from = [12.3, 37.675], to = [12.25, 37.725] },
+  { layer = "top", width = 0.25, from = [22.325, 37.675], to = [23.75, 36.25] },
+]
+
+[Orbit.nets."net-mcu.pf0"]
+pads = "ee371460f93374cc"
+lock = true
+tracks = [
+  { layer = "top", width = 0.25, from = [20.775, 44.5], to = [23.15, 44.5] },
+  { layer = "top", width = 0.25, from = [23.15, 40.35], to = [23.15, 44.5] },
+  { layer = "top", width = 0.25, from = [24.25, 39.25], to = [23.15, 40.35] },
+  { layer = "top", width = 0.25, from = [24.25, 31.6625], to = [24.25, 39.25] },
+]
+
+[Orbit.nets."net-mcu.pf1"]
+pads = "95737c29d64ff75b"
+lock = true
+tracks = [
+  { layer = "top", width = 0.25, from = [24.75, 39.25], to = [26.85, 41.35] },
+  { layer = "top", width = 0.25, from = [26.85, 41.35], to = [26.85, 44.5] },
+  { layer = "top", width = 0.25, from = [24.75, 31.6625], to = [24.75, 39.25] },
+  { layer = "top", width = 0.25, from = [26.85, 44.5], to = [29.225, 44.5] },
+]
+
+[Orbit.nets."net-usb.dm"]
+pads = "d0dd230dfb52fe54"
+lock = true
+tracks = [
+  { layer = "top", width = 0.2, from = [26.25, 6.225], to = [25.8, 6.675] },
+  { layer = "top", width = 0.2, from = [26.649104, 6.22998], to = [26.644124, 6.225] },
+  { layer = "top", width = 0.2, from = [25.8, 6.675], to = [25.8, 7.95] },
+  { layer = "top", width = 0.2, from = [21.790001, 16.365], to = [26.569314, 16.365] },
+  { layer = "top", width = 0.2, from = [27.525, 6.5932], to = [27.16178, 6.22998] },
+  { layer = "top", width = 0.2, from = [27.16178, 6.22998], to = [26.649104, 6.22998] },
+  { layer = "top", width = 0.2, from = [26.644124, 6.225], to = [26.25, 6.225] },
+  { layer = "top", width = 0.2, from = [26.569314, 16.365], to = [27.525, 15.409314] },
+  { layer = "top", width = 0.2, from = [27.525, 15.409314], to = [27.525, 6.5932] },
+  { layer = "top", width = 0.2, from = [21.765001, 16.34], to = [21.790001, 16.365] },
+  { layer = "top", width = 0.2, from = [21.09, 16.34], to = [21.765001, 16.34] },
+]
+
+[Orbit.nets."net-usb.dp"]
+pads = "75a80f7f87973aff"
+lock = true
+tracks = [
+  { layer = "top", width = 0.2, from = [27.3482, 5.78], to = [27.975, 6.4068] },
+  { layer = "top", width = 0.2, from = [25.0, 7.95], to = [25.0, 6.85] },
+  { layer = "top", width = 0.2, from = [26.830492, 5.775], to = [26.835492, 5.78] },
+  { layer = "top", width = 0.2, from = [27.975, 15.525], to = [26.685, 16.815] },
+  { layer = "top", width = 0.2, from = [26.835492, 5.78], to = [27.3482, 5.78] },
+  { layer = "top", width = 0.2, from = [21.790001, 16.815], to = [21.765001, 16.84] },
+  { layer = "top", width = 0.2, from = [26.075, 5.775], to = [26.830492, 5.775] },
+  { layer = "top", width = 0.2, from = [26.685, 16.815], to = [21.790001, 16.815] },
+  { layer = "top", width = 0.2, from = [21.765001, 16.84], to = [21.09, 16.84] },
+  { layer = "top", width = 0.2, from = [27.975, 6.4068], to = [27.975, 15.525] },
+  { layer = "top", width = 0.2, from = [25.0, 6.85], to = [26.075, 5.775] },
+]
+
+[Orbit.nets."net-usb_uart.ic.vdd"]
+pads = "2f00ca50aa744296"
+lock = true
+tracks = [
+  { layer = "top", width = 0.25, from = [21.09, 15.84], to = [22.16, 15.84] },
+  { layer = "top", width = 0.25, from = [22.475, 15.525], to = [22.475, 14.5] },
+  { layer = "top", width = 0.25, from = [22.475, 14.5], to = [22.475, 12.75] },
+  { layer = "top", width = 0.25, from = [22.16, 15.84], to = [22.475, 15.525] },
+]
+
+[Orbit.nets."net-user_button.b"]
+pads = "f51a1ff580e95c70"
+lock = true
+tracks = [
+  { layer = "top", width = 0.25, from = [9.6, 42.1], to = [9.6, 42.5] },
+  { layer = "top", width = 0.25, from = [10.5, 39.325], to = [8.8, 39.325] },
+  { layer = "top", width = 0.25, from = [8.8, 39.325], to = [8.75, 39.275] },
+  { layer = "top", width = 0.25, from = [15.25, 42.5], to = [15.4, 42.5] },
+  { layer = "top", width = 0.25, from = [8.75, 39.275], to = [8.75, 41.25] },
+  { layer = "top", width = 0.25, from = [14.0, 39.325], to = [14.0, 41.25] },
+  { layer = "top", width = 0.25, from = [15.4, 42.5], to = [9.6, 42.5] },
+  { layer = "top", width = 0.25, from = [8.75, 41.25], to = [9.6, 42.1] },
+  { layer = "top", width = 0.25, from = [14.0, 41.25], to = [15.25, 42.5] },
+]

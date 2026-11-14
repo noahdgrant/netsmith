@@ -1,0 +1,74 @@
+#!/usr/bin/env bash
+# The reproductions of the ported boards (issue #599): for each port whose original is a KiCad
+# board in its `reference/` folder, the routes file and the layout file that `netsmith routes
+# import` writes from that board, kept in `reference/agent/` of the example (not in `src/`, so
+# that the example's own build, the automatic board, stays the placer's and the router's).
+# `crates/netsmith-cli/tests/reproduce.rs` copies an example to a temporary folder, puts the
+# files of its `reference/agent/` into `src/`, runs `fab` and compares the copper with the
+# original's; it also imports again and fails when the committed files are not what the import
+# writes now (a footprint, the placer or the importer changed).
+#
+# Each example is copied to a temporary folder (the example itself is never written), `netsmith
+# routes import reference/<board>.kicad_pcb` is run there, and its `src/main.routes.toml` and
+# `src/main.pcb.toml` are compared with those of `reference/agent/` (default) or written there
+# (`--update`; review the diff). Other files of `reference/agent/` (a physical file the
+# reproduction needs) are written by hand and left alone.
+#
+# Usage: scripts/reproductions [--update] [path/to/netsmith]
+# Without a binary it builds the debug one with `cargo build -p netsmith-cli` first.
+set -euo pipefail
+
+repo="$(cd "$(dirname "$0")/.." && pwd)"
+update=false
+if [ "${1:-}" = "--update" ]; then
+    update=true
+    shift
+fi
+if [ "$#" -ge 1 ]; then
+    bin="$(realpath "$1")"
+else
+    (cd "$repo" && cargo build --quiet -p netsmith-cli)
+    bin="$repo/target/debug/netsmith"
+fi
+[ -x "$bin" ] || { echo "error: $bin is not an executable (build it, or name the binary)" >&2; exit 2; }
+
+# Each port and its original's board file in its reference/ folder.
+ports=(
+    "rp2350_minimal RPI-RP2350A-MINIMAL_R4-S1.kicad_pcb"
+    "orbit ORBIT.kicad_pcb"
+    "easyduino_esp32s3 Easyduino_ESP32S3.kicad_pcb"
+)
+
+work="$(mktemp -d)"
+trap 'rm -rf "$work"' EXIT
+failed=0
+for entry in "${ports[@]}"; do
+    read -r port board <<< "$entry"
+    example="$repo/examples/$port"
+    copy="$work/$port"
+    mkdir -p "$copy"
+    (cd "$example" && tar --exclude=./out --exclude=./fab -cf - .) | (cd "$copy" && tar -xf -)
+    rm -f "$copy/src/main.routes.toml"
+    if ! (cd "$copy" && NETSMITH_NO_KICAD=1 "$bin" routes import "reference/$board" > "$work/$port.log" 2>&1); then
+        cat "$work/$port.log"
+        echo "FAIL  $port: the import failed"
+        failed=1
+        continue
+    fi
+    mkdir -p "$example/reference/agent"
+    for name in main.routes.toml main.pcb.toml; do
+        made="$copy/src/$name"
+        kept="$example/reference/agent/$name"
+        if [ "$update" = true ]; then
+            cp "$made" "$kept"
+            echo "wrote examples/$port/reference/agent/$name"
+        elif ! cmp -s "$made" "$kept"; then
+            diff -u "$kept" "$made" | head -40 || true
+            echo "FAIL  examples/$port/reference/agent/$name is not what the import writes now: run scripts/reproductions --update and review the diff"
+            failed=1
+        else
+            echo "ok    examples/$port/reference/agent/$name"
+        fi
+    done
+done
+exit "$failed"

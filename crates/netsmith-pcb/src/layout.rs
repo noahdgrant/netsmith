@@ -128,9 +128,21 @@ pub struct PartPlace {
     /// The placer leaves a locked part where it is.
     #[serde(default)]
     pub lock: bool,
-    /// Who wrote the entry: `hand`, `auto` or `regen`. Kept as written.
+    /// Who wrote the entry: `hand`, `auto`, `regen` or `import` ([`IMPORT_SOURCE`]: two
+    /// parts placed by an import may share courtyard area). Kept as written.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source: Option<String>,
+}
+
+/// The `source` of an entry that `netsmith routes import` wrote: the part stands where a KiCad
+/// board has it. Two such parts may share courtyard area ([`crate::Board::imported`]).
+pub const IMPORT_SOURCE: &str = "import";
+
+impl PartPlace {
+    /// Whether the entry puts the part where an imported KiCad board has it.
+    pub fn is_imported(&self) -> bool {
+        self.source.as_deref() == Some(IMPORT_SOURCE)
+    }
 }
 
 /// Where a keepout or a cutout is, when its source does not say.
@@ -632,6 +644,9 @@ pub fn place_options(design: &Design, layout: Option<&Layout>) -> PlaceOptions {
                 options.sides.insert(part.refdes.clone(), side);
                 // A part moved by hand is put where it was moved afterwards, and the
                 // findings say what it overlaps; only a locked part is placed round.
+                if place.lock && place.is_imported() {
+                    options.imported.insert(part.refdes.clone());
+                }
                 if place.lock {
                     options.fixed.insert(
                         part.refdes.clone(),
@@ -870,8 +885,12 @@ pub fn apply_layout(board: &mut Board, layout: &Layout, file: &str) -> Result<()
     }
 
     let origin = board.outline.min;
+    board.imported.clear();
     for part in &mut board.parts {
         if let Some(place) = entries.parts.get(&part.path) {
+            if place.is_imported() {
+                board.imported.insert(part.refdes.clone());
+            }
             part.at = origin + Pt::new(place.at[0], place.at[1]);
             part.rotation = place.rotation;
             part.reference_side = place.text.into();

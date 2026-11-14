@@ -40,6 +40,7 @@ automod = "1.0.17"
 netsmith-fabricate = { path = "../netsmith-fabricate", features = ["test-support"] }
 netsmith-pipeline = { path = "../netsmith-pipeline", features = ["test-support"] }
 netsmith-catalog = { path = "../netsmith-catalog" }
+netsmith-geom = { path = "../netsmith-geom" }
 netsmith-kicad = { path = "../netsmith-kicad", features = ["test-support"] }
 netsmith-testkit = { path = "../netsmith-testkit" }
 netsmith-lang = { path = "../netsmith-lang" }

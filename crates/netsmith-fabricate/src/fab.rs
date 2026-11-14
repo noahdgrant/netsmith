@@ -867,6 +867,14 @@ fn fab_board(
         for hang in board.hangs() {
             say(format!("{}: warning: {hang}", built.label()));
         }
+        // Two parts where an imported KiCad board has them may share courtyard area: that
+        // board was made with its own footprints (`Board::imported`).
+        for overlap in board.imported_overlaps() {
+            say(format!(
+                "{}: warning: {overlap}: both stand where the imported KiCad board has them (`source = \"import\"` in the layout file), which was made with its own footprints",
+                built.label()
+            ));
+        }
         // A part under a height limit that states no height is not a pass (ADR 0045,
         // "Height limits"): it is named, here and in the notes.
         let unchecked = board.heights_unchecked();

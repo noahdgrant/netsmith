@@ -1,0 +1,263 @@
+version = 1
+
+[Rp2350Minimal]
+seed = 3
+
+[Rp2350Minimal.parts.avdd_filter]
+at = [30.2, 23.1]
+rotation = -90.0
+side = "top"
+lock = true
+source = "import"
+
+[Rp2350Minimal.parts.avdd_filter_cap]
+at = [30.2, 24.95]
+rotation = -90.0
+side = "top"
+lock = true
+source = "import"
+
+[Rp2350Minimal.parts.bootsel_series]
+at = [14.9, 11.3]
+rotation = 0.0
+side = "top"
+lock = true
+source = "import"
+
+[Rp2350Minimal.parts.core_inductor]
+at = [28.0, 22.8]
+rotation = 0.0
+side = "top"
+lock = true
+source = "import"
+
+[Rp2350Minimal.parts.flash]
+at = [19.05, 17.275]
+rotation = 0.0
+side = "top"
+lock = true
+source = "import"
+
+[Rp2350Minimal.parts.gpio0_link]
+at = [17.3, 12.2]
+rotation = -90.0
+side = "top"
+lock = true
+source = "import"
+
+[Rp2350Minimal.parts.hole1]
+at = [12.03, 4.0]
+rotation = 0.0
+side = "top"
+lock = true
+source = "import"
+
+[Rp2350Minimal.parts.hole2]
+at = [39.97, 4.0]
+rotation = 0.0
+side = "top"
+lock = true
+source = "import"
+
+[Rp2350Minimal.parts.hole3]
+at = [39.97, 47.18]
+rotation = 0.0
+side = "top"
+lock = true
+source = "import"
+
+[Rp2350Minimal.parts.hole4]
+at = [12.03, 47.18]
+rotation = 0.0
+side = "top"
+lock = true
+source = "import"
+
+[Rp2350Minimal.parts.mcu]
+at = [26.0, 30.0]
+rotation = 0.0
+side = "top"
+lock = true
+source = "import"
+
+[Rp2350Minimal.parts."oscillator.crystal"]
+at = [26.0, 42.4]
+rotation = 0.0
+side = "top"
+lock = true
+source = "import"
+
+[Rp2350Minimal.parts."oscillator.damping"]
+at = [25.6, 36.9]
+rotation = -90.0
+side = "top"
+lock = true
+source = "import"
+
+[Rp2350Minimal.parts."oscillator.load_in"]
+at = [24.6, 39.0]
+rotation = 180.0
+side = "top"
+lock = true
+source = "import"
+
+[Rp2350Minimal.parts."oscillator.load_out"]
+at = [27.58, 39.0]
+rotation = 0.0
+side = "top"
+lock = true
+source = "import"
+
+[Rp2350Minimal.parts.regulator]
+at = [34.0, 12.85]
+rotation = -90.0
+side = "top"
+lock = true
+source = "import"
+
+[Rp2350Minimal.parts.reset_series]
+at = [41.4, 39.1]
+rotation = -90.0
+side = "top"
+lock = true
+source = "import"
+
+[Rp2350Minimal.parts.ss_link]
+at = [14.9, 12.7]
+rotation = 0.0
+side = "top"
+lock = true
+source = "import"
+
+[Rp2350Minimal.parts."ss_pullup.resistor"]
+at = [19.0, 12.2]
+rotation = -90.0
+side = "top"
+lock = true
+source = "import"
+
+[Rp2350Minimal.parts.usb_dm_series]
+at = [25.9, 22.6]
+rotation = -90.0
+side = "top"
+lock = true
+source = "import"
+
+[Rp2350Minimal.parts.usb_dp_series]
+at = [24.9, 22.6]
+rotation = -90.0
+side = "top"
+lock = true
+source = "import"
+
+[Rp2350Minimal.parts."v1v1_100n[0]"]
+at = [19.52, 29.0]
+rotation = 180.0
+side = "top"
+lock = true
+source = "import"
+
+[Rp2350Minimal.parts."v1v1_100n[1]"]
+at = [26.8, 36.88]
+rotation = -90.0
+side = "top"
+lock = true
+source = "import"
+
+[Rp2350Minimal.parts."v1v1_100n[2]"]
+at = [33.08, 29.4]
+rotation = 0.0
+side = "top"
+lock = true
+source = "import"
+
+[Rp2350Minimal.parts.v1v1_bulk]
+at = [28.0, 24.45]
+rotation = 0.0
+side = "top"
+lock = true
+source = "import"
+
+[Rp2350Minimal.parts."v3v3_100n[0]"]
+at = [22.185, 12.83]
+rotation = 180.0
+side = "top"
+lock = true
+source = "import"
+
+[Rp2350Minimal.parts."v3v3_100n[1]"]
+at = [23.9, 22.6]
+rotation = 90.0
+side = "top"
+lock = true
+source = "import"
+
+[Rp2350Minimal.parts."v3v3_100n[2]"]
+at = [19.515, 26.6]
+rotation = 180.0
+side = "top"
+lock = true
+source = "import"
+
+[Rp2350Minimal.parts."v3v3_100n[3]"]
+at = [33.085, 30.4]
+rotation = 0.0
+side = "top"
+lock = true
+source = "import"
+
+[Rp2350Minimal.parts."v3v3_100n[4]"]
+at = [19.515, 31.4]
+rotation = 180.0
+side = "top"
+lock = true
+source = "import"
+
+[Rp2350Minimal.parts."v3v3_100n[5]"]
+at = [31.685, 34.0]
+rotation = 0.0
+side = "top"
+lock = true
+source = "import"
+
+[Rp2350Minimal.parts."v3v3_100n[6]"]
+at = [32.485, 27.0]
+rotation = 0.0
+side = "top"
+lock = true
+source = "import"
+
+[Rp2350Minimal.parts."v3v3_100n[7]"]
+at = [24.2, 36.08]
+rotation = -90.0
+side = "top"
+lock = true
+source = "import"
+
+[Rp2350Minimal.parts."v3v3_bulk[0]"]
+at = [35.025, 19.0]
+rotation = 0.0
+side = "top"
+lock = true
+source = "import"
+
+[Rp2350Minimal.parts."v3v3_bulk[1]"]
+at = [11.115, 8.0]
+rotation = 0.0
+side = "top"
+lock = true
+source = "import"
+
+[Rp2350Minimal.parts.v3v3_bulk_c]
+at = [28.0, 25.39]
+rotation = 0.0
+side = "top"
+lock = true
+source = "import"
+
+[Rp2350Minimal.parts.vbus_bulk]
+at = [33.9375, 6.5]
+rotation = 0.0
+side = "top"
+lock = true
+source = "import"
