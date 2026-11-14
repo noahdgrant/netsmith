@@ -1152,3 +1152,34 @@ board Feed {
         "{why}"
     );
 }
+
+/// A board that names its process (two providers in scope, one per copper weight) and asks a
+/// converter for what no IC gives: the failure is the converter's, not the process's (#701).
+#[test]
+fn an_unmeetable_converter_on_a_board_with_a_process_names_the_converter() {
+    let w = buck_world();
+    let source = converter("12V +/- 5%", "70V")
+        .replacen(
+            "import std::sources::Rail\n",
+            "import std::sources::Rail\nimport std::mfg::jlcpcb::TwoLayer\n",
+            1,
+        )
+        .replacen(
+            "board Converter {\n",
+            "board Converter {\n    .process: TwoLayer {}\n",
+            1,
+        );
+    let e = build(&w, &source).err().unwrap();
+    let m = &e[0].message;
+    assert!(
+        m.starts_with("no BuckConverter provider satisfies `reg` at "),
+        "{:?}",
+        messages(&e)
+    );
+    assert!(m.contains("\n  Zbk9Buck (the closest):\n"), "{m}");
+    assert!(
+        m.contains("\n    reg.vin_abs_max must always be at least 70V, but 65V is not always above 70V"),
+        "{m}"
+    );
+    assert_eq!(e.len(), 1, "{:?}", messages(&e));
+}
