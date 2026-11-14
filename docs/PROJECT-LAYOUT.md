@@ -11,7 +11,7 @@ my-project/
 ├── netsmith.toml          the manifest: name, top-level files, out and fab directories
 ├── AGENTS.md              guidance for coding agents (written by init)
 ├── .agents/skills/        the netsmith-* skills (init writes them; .claude/skills links here)
-├── docs/netsmith/LANGUAGE.md   the language guide
+├── docs/netsmith/LANGUAGE.md   the language guide (its chapters are in docs/netsmith/language/)
 ├── src/
 │   └── main.nsm           a first board
 ├── out/                   generated schematics            (git-ignored)
@@ -56,6 +56,7 @@ product-repo/
 ├── AGENTS.md
 ├── .agents/skills/netsmith-*/        .claude/skills -> ../.agents/skills
 ├── docs/netsmith/LANGUAGE.md
+├── docs/netsmith/language/           the guide's chapters
 ├── catalogs/                         project catalogs (CSV rows with sources), ADR 0022
 │   ├── regulator_ic.csv
 │   └── sensor_ic.csv

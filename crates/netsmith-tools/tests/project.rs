@@ -82,6 +82,11 @@ fn init_makes_the_project_files_and_says_what_to_run() {
     ]
     .map(String::from)
     .into();
+    // The guide's chapters, a file each (issue #615).
+    let chapters = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../docs/language");
+    expected.extend(fs::read_dir(chapters).unwrap().map(|e| {
+        format!("docs/netsmith/language/{}", e.unwrap().file_name().to_string_lossy())
+    }));
     // `.claude/skills` is a link, so the walk finds the skills a second time through it.
     expected.extend(
         expected
@@ -257,6 +262,12 @@ fn init_writes_the_agent_guidance_and_the_project_agrees_with_the_repository() {
         read(&root, "docs/netsmith/LANGUAGE.md"),
         repo_file("docs/LANGUAGE.md")
     );
+    // The index links `language/NN-topic.md`: the chapters are beside it, as in the repository.
+    let chapters = netsmith_testkit::guide_chapters();
+    assert!(chapters.len() >= 10);
+    for (path, text) in chapters {
+        assert_eq!(read(&root, &path.replacen("docs/", "docs/netsmith/", 1)), text);
+    }
     let agents = read(&root, "AGENTS.md");
     for must in [
         "netsmith build",
@@ -332,6 +343,7 @@ fn init_keeps_a_guide_a_skill_and_a_claude_directory_that_exist() {
     write(&root, ".claude/skills/other/SKILL.md", "other\n");
     let said = init(&root, None).unwrap();
     assert_eq!(read(&root, "docs/netsmith/LANGUAGE.md"), "old guide\n");
+    assert!(!root.join("docs/netsmith/language").exists());
     assert_eq!(
         read(&root, ".agents/skills/netsmith-write-nsm/SKILL.md"),
         "my skill\n"

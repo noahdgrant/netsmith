@@ -5,7 +5,7 @@ description: Read netsmith's checker, solver, design-stage and design-rule messa
 
 # Read netsmith's messages
 
-Fix errors one at a time, from the first one. Later errors are often caused by earlier ones. The language guide (`docs/netsmith/LANGUAGE.md`) has each message with its cause, under the construct it belongs to.
+Fix errors one at a time, from the first one. Later errors are often caused by earlier ones. The language guide (`docs/netsmith/LANGUAGE.md` lists its chapters, in `docs/netsmith/language/`) has each message with its cause, under the construct it belongs to.
 
 ## The shape
 

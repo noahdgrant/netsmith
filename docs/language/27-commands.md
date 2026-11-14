@@ -1,0 +1,15 @@
+## Commands
+
+`netsmith --help` and `netsmith <command> --help` document every command and flag.
+
+### The editor
+
+`netsmith editor` serves the editor on `127.0.0.1` and prints the address to open: a project tree, the source with the compiler's and solver's messages beside the lines they are about, and views of the selected board (schematic, power tree, system, bill of materials, PCB) with buttons for `build` and `fab` (ADR 0019). A board of more than 16 parts is drawn in a box for each module instance. A rail is drawn with the ground and supply symbols at its pins. Errors and warnings are listed first, and the notes (relations not evaluated, balances left incomplete) in a closed section. It checks the text as you type without writing it, saves with `Ctrl+S`, reads a file again when it changes on disk, and with no file acts on the project like `build`.
+
+In the schematic, a part can be dragged on the grid, nudged with the arrow keys, turned with `r` and mirrored with `m`. The editor writes where it was put to `<stem>.sch.toml` beside the source file (`src/main.nsm` has `src/main.sch.toml`), so the drawing stays as arranged across edits; the file never holds a wire or a net, an entry that no longer matches the design is listed in the problems and ignored, and deleting the file gives the automatic drawing back (ADR 0061). The editor can also compare the project with a git ref, or with a second ref, and say what changed in the circuit (parts, nets, rails, systems, the PCB, the bill of materials, problems) and not which lines (ADR 0059). An analysis, a comparison, a build and `fab` can be cancelled with their Cancel button; a cancelled analysis leaves the last reading (ADR 0062).
+
+The editor's bill of materials marks the lines whose price and stock are old (as `netsmith catalog age` lists them), says `unknown` for the rest, and has a "Check parts against LCSC" button for the project's own catalogs.
+
+### Power findings
+
+The power model's findings come from `netsmith`, not from the editor's page: `build`, the editor's analysis (its `power` stage, the Problems dock's `Power` group) and the power tree it draws all carry the same ones. A rail that can draw more than the supply that states what it can give (`max_current`) is an error that stops the build, where the solver had no relation to check it against; `--strict` is not needed. The notes do not stop it, with or without `--strict`: a rail nothing supplies (`V5 has no source: nothing supplies it`), a rail with loads whose current the solver has not settled, and a converter whose efficiency it has not settled. The Problems dock lists the notes of a board grouped by their cause, with a count for each (the server says it for every note: `not_stated`, `part_model`, `unjudged`, `circular`, `supply`, `pick`, `track`, `other`), so a long list of notes reads as the few things to do about them: a rail nothing supplies and a load not settled are `supply`, a level or an input current a part's definition leaves out is `part_model`, a value nothing states is `not_stated`.

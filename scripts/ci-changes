@@ -31,8 +31,8 @@
 #            run (issue #511), and that `build` compiles and `clippy` lints (issue #618): the
 #            folder names under crates/ the change touches, space-separated; scripts/ci-rdeps works
 #            out the dependents from them. A path outside crates/ that turns
-#            `rust` on names the crates whose tests read it, when only some do: docs/LANGUAGE.md,
-#            docs/symbol-gallery.html and the skills in .agents/skills are read by the netsmith-tools
+#            `rust` on names the crates whose tests read it, when only some do: docs/LANGUAGE.md and
+#            docs/language/ (the guide, a file for each chapter), docs/symbol-gallery.html and the skills in .agents/skills are read by the netsmith-tools
 #            crate's tests (the guide's runner, the gallery) and by init.rs (`include_str!`), so they
 #            name `netsmith-tools` (its dependents, netsmith-cli, run too); an example names the crates whose tests read it
 #            (`example_readers`, below: `any_example` for each, and the stage crates that include it).
@@ -77,7 +77,7 @@
 #
 # A change to the workflows, the actions (.github/actions) or to scripts/ runs everything, and so does a path nothing here knows:
 # when in doubt, the job runs. Only files that nothing builds or tests read (prose, the licence,
-# the issue templates) leave clippy and the tests out. A test does read docs/LANGUAGE.md and
+# the issue templates) leave clippy and the tests out. A test does read docs/LANGUAGE.md, every chapter in docs/language/ and
 # the skills in .agents/skills (crates/netsmith-tools/tests/guide.rs, src/init.rs), so those count as code
 # (of the netsmith-tools crate, whose dependents run too: no other crate reads them);
 # so does docs/symbol-gallery.html (crates/netsmith-tools/tests/symbol_gallery.rs compares it with the rendered page).
@@ -191,7 +191,7 @@ while IFS= read -r path; do
         .github/ISSUE_TEMPLATE/* | .github/*.md | .github/CODEOWNERS | .github/dependabot.yml | .github/PULL_REQUEST_TEMPLATE*) ;;
         .gitignore | .gitattributes | .editorconfig | LICENSE* | GLOSSARY.md) ;;
         # Read by the netsmith-tools crate's tests and by its init.rs, and by no other crate.
-        docs/LANGUAGE.md | docs/symbol-gallery.html) rust=true mapped=netsmith-tools ;;
+        docs/LANGUAGE.md | docs/language/* | docs/symbol-gallery.html) rust=true mapped=netsmith-tools ;;
         docs/*) ;;
         .agents/skills/netsmith-dev-verify-editor/*) rust=true recipes=true mapped=netsmith-tools ;;
         .agents/skills/*) rust=true mapped=netsmith-tools ;;
