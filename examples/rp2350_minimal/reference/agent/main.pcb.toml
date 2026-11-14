@@ -1,7 +1,7 @@
 version = 1
 
 [Rp2350Minimal]
-seed = 3
+seed = 4
 
 [Rp2350Minimal.parts.avdd_filter]
 at = [30.2, 23.1]
