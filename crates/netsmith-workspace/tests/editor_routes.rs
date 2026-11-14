@@ -1,7 +1,9 @@
 //! The routes file in the editor's PCB view (epic #599, R5): its records are in the scene with
 //! what of them is drawn, a record that is not used as written is a finding, and a change from the
-//! page (delete, lock, unlock) is made as `netsmith routes` makes it, refused with the reason when
-//! it is locked and with 409 when the file changed, and the view is placed again from the file.
+//! page (draw or move a track or via, delete, lock, unlock) is made as `netsmith routes` makes it,
+//! refused with the reason when it is locked or breaks the rules and with 409 when the file
+//! changed, and the view is placed again from the file. Each edit answers with the net's record
+//! before and after, and putting it back is the edit's undo.
 
 use std::{
     fs,
@@ -13,7 +15,9 @@ use std::{
 
 use netsmith_editor::{
     Backend,
-    api::{FindingSource, PcbRoutesEdit, PcbScene, RoutesChange, Severity},
+    api::{
+        FindingSource, PcbPoint, PcbRoutesEdit, PcbScene, RoutesChange, RoutesUndo, Severity,
+    },
 };
 use netsmith_fabricate::project::Target;
 use netsmith_pcb::{LayoutFace, RouteTrack, Routes};
@@ -52,7 +56,7 @@ fn change(scene: &PcbScene, change: RoutesChange) -> PcbRoutesEdit {
     PcbRoutesEdit {
         board: BOARD.into(),
         stamp: scene.routes_stamp.clone(),
-        change,
+        changes: vec![change],
     }
 }
 
@@ -292,7 +296,7 @@ fn a_refused_change_is_a_422_with_the_reason_over_the_wire() {
         serde_json::to_string(&PcbRoutesEdit {
             board: BOARD.into(),
             stamp: scene.routes_stamp.clone(),
-            change,
+            changes: vec![change],
         })
         .unwrap()
     };
@@ -315,4 +319,294 @@ fn a_refused_change_is_a_422_with_the_reason_over_the_wire() {
     );
     assert_eq!(status, 200, "{answer}");
     assert!(answer.contains("\"said\":\"locked net VCC"), "{answer}");
+}
+
+/// The pads of `net` on the sheet.
+fn pads_of(scene: &PcbScene, net: &str) -> Vec<PcbPoint> {
+    scene
+        .parts
+        .iter()
+        .flat_map(|p| &p.pads)
+        .filter(|p| p.net.as_deref() == Some(net))
+        .map(|p| PcbPoint { x: p.x, y: p.y })
+        .collect()
+}
+
+fn edit_of(scene: &PcbScene, changes: Vec<RoutesChange>) -> PcbRoutesEdit {
+    PcbRoutesEdit {
+        board: BOARD.into(),
+        stamp: scene.routes_stamp.clone(),
+        changes,
+    }
+}
+
+fn track(net: &str, layer: &str, from: PcbPoint, to: PcbPoint) -> RoutesChange {
+    RoutesChange::AddTrack {
+        net: net.into(),
+        layer: layer.into(),
+        width: None,
+        from,
+        to,
+    }
+}
+
+/// Where a path from `a` to `b` that goes at 45 degrees first and straight after turns.
+fn diagonal(a: PcbPoint, b: PcbPoint) -> PcbPoint {
+    let (dx, dy) = (b.x - a.x, b.y - a.y);
+    let m = dx.abs().min(dy.abs());
+    PcbPoint {
+        x: a.x + m * dx.signum(),
+        y: a.y + m * dy.signum(),
+    }
+}
+
+/// The point `t` of the way from `a` to `b`.
+fn along(a: PcbPoint, b: PcbPoint, t: f64) -> PcbPoint {
+    PcbPoint {
+        x: a.x + t * (b.x - a.x),
+        y: a.y + t * (b.y - a.y),
+    }
+}
+
+/// The undo of an edit: its record put back as it was.
+fn undo_of(undo: &RoutesUndo) -> RoutesChange {
+    RoutesChange::Restore {
+        net: undo.net.clone(),
+        before: undo.after.clone(),
+        after: undo.before.clone(),
+    }
+}
+
+fn redo_of(undo: &RoutesUndo) -> RoutesChange {
+    RoutesChange::Restore {
+        net: undo.net.clone(),
+        before: undo.before.clone(),
+        after: undo.after.clone(),
+    }
+}
+
+#[test]
+fn a_track_drawn_in_the_view_creates_the_file_and_undo_and_redo_put_it_back() {
+    let (root, editor) = project("draw");
+    let scene = editor.pcb_scene(BOARD).unwrap();
+    assert!(!routes_file(&root).exists());
+    let width = scene
+        .net_widths
+        .iter()
+        .find(|w| w.net == "VCC")
+        .expect("the scene has VCC's width")
+        .width;
+    assert!(width > 0.0);
+    assert!(scene.via_diameter > scene.via_drill && scene.via_drill > 0.0);
+    // Two segments from one VCC pad to the other, on the bottom, by a corner of 45 degrees (the
+    // rules refuse a right angle): one edit.
+    let pads = pads_of(&scene, "VCC");
+    assert_eq!(pads.len(), 2, "{pads:?}");
+    let corner = diagonal(pads[0], pads[1]);
+    let drawn = editor
+        .pcb_routes(&edit_of(
+            &scene,
+            vec![
+                track("VCC", "bottom", pads[0], corner),
+                track("VCC", "bottom", corner, pads[1]),
+            ],
+        ))
+        .unwrap_or_else(|e| panic!("{}", e.message));
+    assert!(
+        drawn
+            .said
+            .starts_with("added a track to net VCC (2 times); wrote main.routes.toml"),
+        "{}",
+        drawn.said
+    );
+    let text = fs::read_to_string(routes_file(&root)).unwrap();
+    assert!(text.contains("[LedExample.nets.VCC]\npads = \""), "{text}");
+    assert_eq!(text.matches("layer = \"bottom\"").count(), 2, "{text}");
+    let record = &drawn.scene.routes[0];
+    assert_eq!(record.tracks.len(), 2);
+    assert!(record.tracks.iter().all(|t| t.drawn && t.width == width));
+    // The step of undo: no record before, the record after.
+    assert_eq!(drawn.undo.net, "VCC");
+    assert_eq!(drawn.undo.before, None);
+    assert_eq!(drawn.undo.after.as_deref(), Some(text.as_str()));
+
+    // Undo: the record goes, and with it the file.
+    let undone = editor
+        .pcb_routes(&edit_of(&drawn.scene, vec![undo_of(&drawn.undo)]))
+        .unwrap_or_else(|e| panic!("{}", e.message));
+    assert_eq!(undone.scene.routes, []);
+    assert!(!routes_file(&root).exists());
+    // Redo: the same file again.
+    let redone = editor
+        .pcb_routes(&edit_of(&undone.scene, vec![redo_of(&drawn.undo)]))
+        .unwrap_or_else(|e| panic!("{}", e.message));
+    assert_eq!(fs::read_to_string(routes_file(&root)).unwrap(), text);
+    assert_eq!(redone.scene.routes[0].tracks, record.tracks);
+    // A second redo is refused: the record is not what the step says it was before.
+    let twice = editor
+        .pcb_routes(&edit_of(&redone.scene, vec![redo_of(&drawn.undo)]))
+        .unwrap_err();
+    assert_eq!(twice.status, 422, "{}", twice.message);
+    assert!(
+        twice.message.contains("changed since that edit"),
+        "{}",
+        twice.message
+    );
+    assert_eq!(fs::read_to_string(routes_file(&root)).unwrap(), text);
+}
+
+#[test]
+fn a_track_end_and_a_via_are_moved_and_a_lock_or_the_rules_refuse_it() {
+    let (root, editor) = project("move");
+    let scene = editor.pcb_scene(BOARD).unwrap();
+    let pads = pads_of(&scene, "VCC");
+    // A straight path from pad to pad, in two tracks that meet half way.
+    let corner = along(pads[0], pads[1], 0.5);
+    let scene = editor
+        .pcb_routes(&edit_of(
+            &scene,
+            vec![
+                track("VCC", "bottom", pads[0], corner),
+                track("VCC", "bottom", corner, pads[1]),
+            ],
+        ))
+        .unwrap_or_else(|e| panic!("{}", e.message))
+        .scene;
+    // A via where they meet, of the process's size.
+    let placed = editor
+        .pcb_routes(&edit_of(
+            &scene,
+            vec![RoutesChange::AddVia {
+                net: "VCC".into(),
+                at: corner,
+            }],
+        ))
+        .unwrap_or_else(|e| panic!("{}", e.message));
+    let via = &placed.scene.routes[0].vias[0];
+    assert_eq!(
+        (via.diameter, via.drill),
+        (scene.via_diameter, scene.via_drill)
+    );
+    assert!(placed.said.starts_with("added a via to net VCC"));
+
+    // The point dragged along the path: both tracks that meet there move, and the via with
+    // them, in one edit.
+    let moved_to = along(pads[0], pads[1], 0.4);
+    let before = placed.scene.routes[0].clone();
+    let moved = editor
+        .pcb_routes(&edit_of(
+            &placed.scene,
+            vec![
+                RoutesChange::MoveTrack {
+                    net: "VCC".into(),
+                    track: 1,
+                    from: pads[0],
+                    to: moved_to,
+                },
+                RoutesChange::MoveTrack {
+                    net: "VCC".into(),
+                    track: 2,
+                    from: moved_to,
+                    to: pads[1],
+                },
+                RoutesChange::MoveVia {
+                    net: "VCC".into(),
+                    via: 1,
+                    at: moved_to,
+                },
+            ],
+        ))
+        .unwrap_or_else(|e| panic!("{}", e.message));
+    let record = &moved.scene.routes[0];
+    let at = |p: PcbPoint| (p.x - moved_to.x).abs() < 1e-5 && (p.y - moved_to.y).abs() < 1e-5;
+    assert!(at(record.tracks[0].to) && at(record.tracks[1].from) && at(record.vias[0].at));
+    assert!(
+        moved
+            .said
+            .starts_with("moved track 1 of net VCC; moved track 2 of net VCC; moved via 1"),
+        "{}",
+        moved.said
+    );
+    // One undo puts all three back.
+    let undone = editor
+        .pcb_routes(&edit_of(&moved.scene, vec![undo_of(&moved.undo)]))
+        .unwrap_or_else(|e| panic!("{}", e.message));
+    assert_eq!(undone.scene.routes[0], before);
+
+    // A locked track is not moved, and an undo puts back a lock as it was.
+    let locked = editor
+        .pcb_routes(&edit_of(&undone.scene, vec![lock("VCC", Some(1), true)]))
+        .unwrap();
+    let file = fs::read_to_string(routes_file(&root)).unwrap();
+    let refused = editor
+        .pcb_routes(&edit_of(
+            &locked.scene,
+            vec![RoutesChange::MoveTrack {
+                net: "VCC".into(),
+                track: 1,
+                from: pads[0],
+                to: moved_to,
+            }],
+        ))
+        .unwrap_err();
+    assert_eq!(refused.status, 422, "{}", refused.message);
+    assert!(
+        refused.message.contains("track 1 of net VCC is locked"),
+        "{}",
+        refused.message
+    );
+    assert_eq!(fs::read_to_string(routes_file(&root)).unwrap(), file);
+    let unlocked = editor
+        .pcb_routes(&edit_of(&locked.scene, vec![undo_of(&locked.undo)]))
+        .unwrap_or_else(|e| panic!("{}", e.message));
+    assert!(!unlocked.scene.routes[0].tracks[0].lock);
+
+    // A via moved onto a GND pad breaks the rules: refused with the check's errors.
+    let gnd = pads_of(&unlocked.scene, "GND")[0];
+    let file = fs::read_to_string(routes_file(&root)).unwrap();
+    let shorted = editor
+        .pcb_routes(&edit_of(
+            &unlocked.scene,
+            vec![RoutesChange::MoveVia {
+                net: "VCC".into(),
+                via: 1,
+                at: gnd,
+            }],
+        ))
+        .unwrap_err();
+    assert_eq!(shorted.status, 422, "{}", shorted.message);
+    assert!(
+        shorted.message.contains("the design rules check finds"),
+        "{}",
+        shorted.message
+    );
+    assert_eq!(fs::read_to_string(routes_file(&root)).unwrap(), file);
+}
+
+#[test]
+fn an_edit_is_of_one_net_and_a_track_is_on_an_outer_layer() {
+    let (root, editor) = project("one-net");
+    let scene = editor.pcb_scene(BOARD).unwrap();
+    let vcc = pads_of(&scene, "VCC")[0];
+    let gnd = pads_of(&scene, "GND")[0];
+    let near = |p: PcbPoint| PcbPoint { x: p.x, y: p.y + 0.5 };
+    let two = editor
+        .pcb_routes(&edit_of(
+            &scene,
+            vec![
+                track("VCC", "top", vcc, near(vcc)),
+                track("GND", "top", gnd, near(gnd)),
+            ],
+        ))
+        .unwrap_err();
+    assert_eq!(two.status, 422, "{}", two.message);
+    assert!(two.message.contains("of one net"), "{}", two.message);
+    let inner = editor
+        .pcb_routes(&edit_of(
+            &scene,
+            vec![track("VCC", "inner1", vcc, near(vcc))],
+        ))
+        .unwrap_err();
+    assert_eq!(inner.status, 400, "{}", inner.message);
+    assert!(!routes_file(&root).exists());
 }

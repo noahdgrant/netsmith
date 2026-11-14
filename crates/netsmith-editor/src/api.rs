@@ -1249,6 +1249,12 @@ pub struct PcbScene {
     /// Its records for this board, by net: the fixed copper, drawn on the board before the
     /// router's.
     pub routes: Vec<PcbRouteNet>,
+    /// The width of each net's tracks by the board's rules: what a track drawn in the view
+    /// gets.
+    pub net_widths: Vec<PcbNetWidth>,
+    /// The process's via, which a via placed in the view gets: diameter and drill in mm.
+    pub via_diameter: f64,
+    pub via_drill: f64,
 }
 
 /// A point on the sheet, in mm.
@@ -1299,9 +1305,10 @@ pub struct PcbRouteVia {
     pub drawn: bool,
 }
 
-/// A change the PCB view makes to the routes file, as `netsmith routes delete`, `lock` and
-/// `unlock` make it (one implementation, `netsmith_fabricate::routes::edit`). `track` and `via`
-/// name one shape of the net's record, numbered from 1; with neither it is the whole record.
+/// A change the PCB view makes to the routes file, as `netsmith routes add-track`, `add-via`,
+/// `delete`, `lock` and `unlock` make it (one implementation, `netsmith_fabricate::routes::edit`).
+/// `track` and `via` name one shape of the net's record, numbered from 1; with neither it is the
+/// whole record. Places are on the sheet, as the scene's are.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[serde(tag = "what", rename_all = "snake_case")]
 pub enum RoutesChange {
@@ -1317,21 +1324,68 @@ pub enum RoutesChange {
         /// Lock, or unlock.
         lock: bool,
     },
+    /// A straight track of the net on `layer` (`top` or `bottom`); `width` `None` is the net's
+    /// width from the board's rules.
+    AddTrack {
+        net: String,
+        layer: String,
+        width: Option<f64>,
+        from: PcbPoint,
+        to: PcbPoint,
+    },
+    /// A via of the net, of the process's size.
+    AddVia { net: String, at: PcbPoint },
+    /// A straight track of the net with its ends at `from` and `to`; refused while it is
+    /// locked.
+    MoveTrack {
+        net: String,
+        track: u32,
+        from: PcbPoint,
+        to: PcbPoint,
+    },
+    /// A via of the net at `at`; refused while it is locked.
+    MoveVia { net: String, via: u32, at: PcbPoint },
+    /// The net's record put back as `after`, refused unless the file has `before` now: the
+    /// undo (and redo) of an edit, with the texts its [`RoutesUndo`] gave.
+    Restore {
+        net: String,
+        before: Option<String>,
+        after: Option<String>,
+    },
 }
 
+/// One edit of the routes file: its changes are all of one net, and all are made or none.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 pub struct PcbRoutesEdit {
     pub board: String,
     /// `PcbScene::routes_stamp` as the page read it.
     pub stamp: String,
-    pub change: RoutesChange,
+    pub changes: Vec<RoutesChange>,
 }
 
-/// The board after a change to the routes file was written, and what was done.
+/// The board after a change to the routes file was written, what was done, and how to undo it.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 pub struct PcbRoutesEdited {
     pub scene: PcbScene,
     pub said: String,
+    pub undo: RoutesUndo,
+}
+
+/// The net's record before and after an edit, each as the text the routes file has of it
+/// (`None`: no record). The page keeps it as a step of undo and hands it back unread, turned
+/// round, in [`RoutesChange::Restore`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+pub struct RoutesUndo {
+    pub net: String,
+    pub before: Option<String>,
+    pub after: Option<String>,
+}
+
+/// The width of a net's tracks by the board's rules.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+pub struct PcbNetWidth {
+    pub net: String,
+    pub width: f64,
 }
 
 /// Where a part is in the layout file: millimetres from the outline's top left corner.
@@ -1781,6 +1835,8 @@ pub fn typescript() -> String {
         RoutesChange,
         PcbRoutesEdit,
         PcbRoutesEdited,
+        RoutesUndo,
+        PcbNetWidth,
         PartPlacement,
         DrawnKeepout,
         KeepoutPlacement,

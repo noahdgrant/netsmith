@@ -312,6 +312,18 @@ export const P: Record<string, ComponentChildren> = {
       <path d="M4.6 11.5C7.6 9.8 6.2 7.5 8.3 6.6c1.9-.8 2.4-1.8 3.1-2.1" />
     </>
   ),
+  track: (
+    <>
+      <circle cx="3.4" cy="12.6" r="1.4" />
+      <path d="M4.5 11.5 8 8h5" />
+    </>
+  ),
+  via: (
+    <>
+      <circle cx="8" cy="8" r="5" />
+      <circle cx="8" cy="8" r="1.9" />
+    </>
+  ),
   user: (
     <>
       <circle cx="8" cy="5.5" r="2.7" />

@@ -304,11 +304,12 @@ pub trait Backend: Send + Sync + 'static {
     /// is not as the change says it was, and with 400 if an entry is wrong; then nothing is
     /// written.
     fn pcb_edit(&self, edit: &PcbEdit) -> Result<PcbEdited, ApiError>;
-    /// Make a change to the routes file beside the board's source, as `netsmith routes` makes
-    /// it, and answer with the board as it is placed now (unrouted) and what was done. Refused
-    /// with 409 if the file is not as the page read it, and with 422 and the reason when the
-    /// change is refused (a locked shape, a shape the record does not have, a new error of the
-    /// design rules check); then nothing is written.
+    /// Make the changes of one edit to the routes file beside the board's source, as `netsmith
+    /// routes` makes them, and answer with the board as it is placed now (unrouted), what was
+    /// done, and the net's record before and after (the step of undo). Refused with 409 if the
+    /// file is not as the page read it, and with 422 and the reason when the edit is refused (a
+    /// locked shape, a shape the record does not have, a new error of the design rules check, a
+    /// record to put back that changed since); then nothing is written.
     fn pcb_routes(
         &self,
         edit: &crate::api::PcbRoutesEdit,

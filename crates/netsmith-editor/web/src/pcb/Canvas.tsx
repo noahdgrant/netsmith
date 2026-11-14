@@ -21,9 +21,28 @@ import {
   select,
   selection,
   tool,
+  trackLayer,
   undo,
 } from '../pcbstore';
-import { deleteChange, lockChange, lockedOf, middleOf, nameOf, pickAt, samePick, shapeOf, trackPath } from './routes';
+import {
+  type Anchor,
+  anchorsOf,
+  deleteChange,
+  dragChanges,
+  dragged,
+  drawChanges,
+  endNear,
+  lockChange,
+  lockedOf,
+  middleOf,
+  nameOf,
+  nearestAnchor,
+  pickAt,
+  samePick,
+  samePoint,
+  shapeOf,
+  trackPath,
+} from './routes';
 import { pickPart, say } from '../store';
 import {
   addKeepout,
@@ -70,7 +89,9 @@ type Gesture =
   | { kind: 'box'; start: Pt; screen: Pt; additive: boolean; active: boolean }
   | { kind: 'draw'; start: Pt }
   | { kind: 'kmove'; start: Pt; screen: Pt; name: string; box0: PcbBox; active: boolean }
-  | { kind: 'kresize'; start: Pt; name: string; handle: Handle; box0: PcbBox };
+  | { kind: 'kresize'; start: Pt; name: string; handle: Handle; box0: PcbBox }
+  /** A place of the routes file's record of `net` dragged: a track's end or a via, with what meets there. */
+  | { kind: 'rdrag'; start: Pt; screen: Pt; net: string; from: Pt; active: boolean };
 
 /** What is drawn over the board while a gesture is on. */
 interface Preview {
@@ -82,6 +103,14 @@ interface Preview {
   draw?: PcbBox;
   /** A keepout as it will be once the move or resize ends. */
   keepout?: { name: string; box: PcbBox };
+  /** A place of a net's record of the routes file being dragged. */
+  route?: { net: string; from: Pt; to: Pt };
+}
+
+/** A track being drawn: its net and the points clicked so far, the first on an anchor. */
+interface Draft {
+  net: string;
+  points: Pt[];
 }
 
 const NONE: Pt = { x: 0, y: 0 };
@@ -143,6 +172,61 @@ export function Canvas(props: {
   // The keepout the picked finding is about, lit with its limit.
   const litKeepout = findings.value?.findings.find((f) => f.id === pickedFinding.value)?.keepout ?? null;
   const svgEl = () => holder.current?.querySelector('svg') as SVGSVGElement | null;
+  // The track being drawn, and where its next point (or the via to place) would go under the pointer.
+  // The handlers read the draft from a ref: a key pressed before the page has re-rendered (the window's key listener is bound
+  // again after each paint) still sees the draft as the last event left it.
+  const [draft, showDraft] = useState<Draft | null>(null);
+  const draftRef = useRef<Draft | null>(null);
+  const setDraft = (d: Draft | null) => {
+    draftRef.current = d;
+    showDraft(d);
+  };
+  const [ghost, setGhost] = useState<Pt | null>(null);
+  const anchors = useMemo(() => anchorsOf(sc), [sc]);
+  const widthOf = (net: string) => sc.netWidths.find((w) => w.net === net)?.width ?? 0.2;
+  // A track being drawn is dropped when the tool changes.
+  useEffect(() => {
+    if (activeTool !== 'track') setDraft(null);
+    if (activeTool !== 'track' && activeTool !== 'via') setGhost(null);
+  }, [activeTool]);
+
+  /** A point on the grid of the layout file's frame. */
+  const onGrid = (p: Pt): Pt => ({ x: snap(p.x - sc.originX, step) + sc.originX, y: snap(p.y - sc.originY, step) + sc.originY });
+
+  /** The anchor a press or the pointer is on: the pad under it (its centre), else a pad, a track's end or a via within reach;
+   * of `net` when one is named, and never one at `skip` (the place being dragged). */
+  function anchorAt(target: Element | null, p: Pt, scale: number, net?: string, skip?: Pt): Anchor | null {
+    const pad = target?.closest?.('[data-pad][data-net]');
+    const padNet = pad?.getAttribute('data-net');
+    if (padNet && (net == null || padNet === net)) {
+      const a = nearestAnchor(
+        anchors.filter((x) => x.what === 'pad'),
+        p,
+        5,
+        padNet,
+      );
+      if (a) return a;
+    }
+    const near = anchors.filter((x) => !skip || !samePoint(x.at, skip));
+    return nearestAnchor(near, p, Math.max(REACH / scale, 0.3), net);
+  }
+
+  /** End the track being drawn: one edit of the routes file with a track for each segment. A refused one comes back to be
+   * changed (Backspace takes its last point off). */
+  function finishTrack() {
+    const d = draftRef.current;
+    setDraft(null);
+    setGhost(null);
+    if (!d) return;
+    const changes = drawChanges(d.net, trackLayer.value, d.points);
+    if (changes.length === 0) {
+      say('A track needs a second point: click where it goes, then double-click or press Enter');
+      return;
+    }
+    void changeRoutes(changes).then((ok) => {
+      if (!ok) setDraft(d);
+    });
+  }
 
   // Nets of the selected parts are lit, unless the pointer is on a net or one is picked.
   useEffect(() => {
@@ -244,6 +328,39 @@ export function Canvas(props: {
       setPreview({ draw: boxFrom(p, p) });
       return;
     }
+    if (tool.value === 'track') {
+      // The first click is on a pad, a track's end or a via, whose net the track takes; each next click adds a corner, on an
+      // anchor of the net near it or on the grid.
+      const target = e.target as Element;
+      const now = draftRef.current;
+      if (!now) {
+        const a = anchorAt(target, p, scale);
+        if (!a) {
+          say('A track starts on a pad, the end of a fixed track or a via');
+          return;
+        }
+        setDraft({ net: a.net, points: [a.at] });
+        setGhost(a.at);
+        return;
+      }
+      const at = anchorAt(target, p, scale, now.net)?.at ?? onGrid(p);
+      if (!samePoint(now.points[now.points.length - 1], at)) setDraft({ ...now, points: [...now.points, at] });
+      return;
+    }
+    if (tool.value === 'via') {
+      // A via of the net under the pointer: a fixed shape's, a pad's or the routed copper's; on an anchor of it, or the grid.
+      const target = e.target as Element;
+      const a = anchorAt(target, p, scale);
+      const copper = target.closest('.l-front-copper [data-net], .l-back-copper [data-net], .l-vias [data-net]');
+      const net = pickAt(target)?.net ?? a?.net ?? copper?.getAttribute('data-net');
+      if (!net) {
+        say('A via goes on a pad, a track or a via of a net: there is none under the pointer');
+        return;
+      }
+      const at = a && a.net === net ? a.at : onGrid(p);
+      void changeRoutes([{ what: 'add_via', net, at }]);
+      return;
+    }
     const additive = e.shiftKey || e.ctrlKey || e.metaKey;
     const k = keepoutAt(pickedKeepout.value);
     if (k?.area && k.origin === 'drawn') {
@@ -254,10 +371,16 @@ export function Canvas(props: {
       }
     }
     const target = e.target as Element;
-    // A shape of the routes file: picked (the side panel shows it, L locks it, Delete deletes it).
+    // A shape of the routes file: picked (the side panel shows it, L locks it, Delete deletes it). A press at a straight track's
+    // end, or on a via, may become a drag of that place, and of what meets there.
     const route = pickAt(target);
     if (route && !additive) {
       pickRoute(route);
+      const record = sc.routes.find((n) => n.net === route.net);
+      const t = route.track != null ? record?.tracks[route.track - 1] : undefined;
+      const v = route.via != null ? record?.vias[route.via - 1] : undefined;
+      const from = t && !t.mid ? endNear(t, p, Math.max(REACH / scale, t.width)) : (v?.at ?? null);
+      if (from) gesture.current = { kind: 'rdrag', start: p, screen, net: route.net, from, active: false };
       return;
     }
     const net = target.closest('.l-front-copper [data-net], .l-back-copper [data-net], .l-vias [data-net]');
@@ -296,6 +419,12 @@ export function Canvas(props: {
     const { p } = at;
     props.onCursor({ x: p.x - sc.originX, y: p.y - sc.originY });
     const g = gesture.current;
+    // Where the next corner of the track, or the via, would go.
+    const now = draftRef.current;
+    if ((tool.value === 'track' && now) || tool.value === 'via') {
+      const next = anchorAt(e.target as Element, p, at.scale, now?.net)?.at ?? onGrid(p);
+      if (!ghost || !samePoint(ghost, next)) setGhost(next);
+    }
     if (!g) {
       props.onTip(describe(e, p));
       const part = hitBox(sc.parts, p);
@@ -343,6 +472,12 @@ export function Canvas(props: {
     } else if (g.kind === 'kresize') {
       const d = snapMove({ x: 0, y: 0 }, by, step);
       setPreview({ keepout: { name: g.name, box: resizeBox(g.box0, g.handle, d) } });
+    } else if (g.kind === 'rdrag') {
+      if (!g.active && far) g.active = true;
+      if (!g.active) return;
+      // Onto a pad, track end or via of the same net near the pointer (not the place itself), else the grid.
+      const to = anchorAt(null, p, at.scale, g.net, g.from)?.at ?? onGrid(p);
+      setPreview({ route: { net: g.net, from: g.from, to } });
     }
   }
 
@@ -396,6 +531,14 @@ export function Canvas(props: {
       setPreview({ keepout: { name: g.name, box } });
       await changeKeepout(k, { area: box }, `${g.kind === 'kmove' ? 'move' : 'resize'} keepout ${k.name}`);
       setPreview({});
+    } else if (g.kind === 'rdrag') {
+      const record = sc.routes.find((n) => n.net === g.net);
+      const drag = pv.route;
+      if (!g.active || !record || !drag) return;
+      // The shapes stay where they were dragged until the server answers; a refusal puts them back.
+      setPreview({ route: drag });
+      await changeRoutes(dragChanges(record, drag.from, drag.to));
+      setPreview({});
     }
   }
 
@@ -428,6 +571,21 @@ export function Canvas(props: {
         selectAll();
       } else if (ctrl || e.altKey) {
         return;
+      } else if (draftRef.current && k === 'enter') {
+        used();
+        finishTrack();
+      } else if (draftRef.current && k === 'escape') {
+        used();
+        setDraft(null);
+        setGhost(null);
+      } else if (draftRef.current && k === 'backspace') {
+        used();
+        const d = draftRef.current;
+        setDraft(d.points.length > 1 ? { ...d, points: d.points.slice(0, -1) } : null);
+      } else if ((k === 'x' || k === 'v') && sc.routesFile) {
+        used();
+        const next = k === 'x' ? 'track' : 'via';
+        tool.value = tool.value === next ? 'select' : next;
       } else if (k === 'r') {
         used();
         void rotateSelection(e.shiftKey ? -90 : 90);
@@ -438,7 +596,7 @@ export function Canvas(props: {
         used();
         const pick = pickedRoute.value;
         const record = sc.routes.find((n) => n.net === pick.net);
-        if (record) void changeRoutes(lockChange(pick, !lockedOf(record, pick)));
+        if (record) void changeRoutes([lockChange(pick, !lockedOf(record, pick))]);
       } else if (k === 'l') {
         used();
         void toggleLock();
@@ -462,7 +620,7 @@ export function Canvas(props: {
       } else if (k === 'delete' || k === 'backspace') {
         if (pickedRoute.value) {
           used();
-          void changeRoutes(deleteChange(pickedRoute.value));
+          void changeRoutes([deleteChange(pickedRoute.value)]);
         } else if (pickedKeepout.value) {
           used();
           void deleteKeepout(pickedKeepout.value);
@@ -530,6 +688,10 @@ export function Canvas(props: {
         onPointerLeave={leave}
         onPointerOver={(e) => props.onHoverNet((e.target as Element).closest('[data-net]')?.getAttribute('data-net') ?? null)}
         onDblClick={(e) => {
+          if (tool.value === 'track') {
+            if (draftRef.current) finishTrack();
+            return;
+          }
           const at = toBoard(e);
           const part = at && hitBox(sc.parts, at.p);
           if (part) pickPart(part.refdes, true);
@@ -559,7 +721,22 @@ export function Canvas(props: {
               <rect x={o.x} y={o.y} width={o.width} height={o.height} fill="url(#pcb-grid)" class="pcb-grid-dots" />
             </>
           )}
-          <FixedCopper scene={sc} picked={pickedRoute.value} reach={REACH / (SCALE * zoom)} />
+          <FixedCopper scene={sc} picked={pickedRoute.value} reach={REACH / (SCALE * zoom)} drag={preview.route ?? null} />
+          {draft && (
+            <g class={`track-draft layer-${trackLayer.value}`} data-testid="track-draft" data-net={draft.net} data-points={draft.points.length}>
+              <polyline
+                points={[...draft.points, ...(ghost ? [ghost] : [])].map((q) => `${q.x},${q.y}`).join(' ')}
+                stroke-width={widthOf(draft.net)}
+              />
+              <polyline class="track-draft-line" points={[...draft.points, ...(ghost ? [ghost] : [])].map((q) => `${q.x},${q.y}`).join(' ')} />
+              {draft.points.map((q, i) => (
+                <circle key={i} class="track-draft-corner" cx={q.x} cy={q.y} r={widthOf(draft.net) * 0.75} />
+              ))}
+            </g>
+          )}
+          {activeTool === 'via' && ghost && (
+            <circle class="via-ghost" data-testid="via-ghost" cx={ghost.x} cy={ghost.y} r={sc.viaDiameter / 2} />
+          )}
           {preview.keepout &&
             (() => {
               const k = keepoutAt(preview.keepout.name);
@@ -652,13 +829,28 @@ function Outline(props: { box?: PcbBox; class: string }) {
 /** The copper of the routes file that is on the board, marked over the drawing: a line along each track and
  * a ring round each via, dashed while its net is open to the router and solid once the net is locked, a
  * padlock on a locked shape, and the picked shape lit. Each mark is also what a click picks, `reach` (mm)
- * wide at the least. A record not drawn (its pads moved) is only listed in the side panel. */
-function FixedCopper(props: { scene: PcbScene; picked: { net: string; track?: number; via?: number } | null; reach: number }) {
+ * wide at the least. A record not drawn (its pads moved) is only listed in the side panel. A place of a net being dragged
+ * (`drag`) is drawn where it is going, with every shape that meets there. */
+function FixedCopper(props: {
+  scene: PcbScene;
+  picked: { net: string; track?: number; via?: number } | null;
+  reach: number;
+  drag: { net: string; from: Pt; to: Pt } | null;
+}) {
   const { scene: sc, picked, reach } = props;
   return (
     <g class="fixed-copper" data-testid="fixed-copper">
-      {sc.routes.map((net) => (
-        <g key={net.net} class={`fixed-net ${net.lock ? 'net-locked' : ''}`} data-fixed-net={net.net}>
+      {sc.routes.map((record) => {
+        const drag = props.drag?.net === record.net ? props.drag : null;
+        const net = drag
+          ? {
+              ...record,
+              tracks: record.tracks.map((t) => (t.mid ? t : { ...t, from: dragged(t.from, drag), to: dragged(t.to, drag) })),
+              vias: record.vias.map((v) => ({ ...v, at: dragged(v.at, drag) })),
+            }
+          : record;
+        return (
+        <g key={net.net} class={`fixed-net ${net.lock ? 'net-locked' : ''} ${drag ? 'dragging' : ''}`} data-fixed-net={net.net}>
           {net.tracks.map((t, i) => {
             if (!t.drawn) return null;
             const pick = { net: net.net, track: i + 1 };
@@ -688,7 +880,8 @@ function FixedCopper(props: { scene: PcbScene; picked: { net: string; track?: nu
             );
           })}
         </g>
-      ))}
+        );
+      })}
     </g>
   );
 }

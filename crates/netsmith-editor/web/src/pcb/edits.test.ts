@@ -172,14 +172,27 @@ describe('history', () => {
     h = record(h, step('b'));
     const u = undoing(h)!;
     expect(u.step.label).toBe('b');
-    const [done] = u.step.changes;
-    const [run] = u.run;
-    expect(run).toMatchObject({ path: 'b', before: done.what === 'part' ? done.after : null, after: null });
+    const done = 'changes' in u.step ? u.step.changes[0] : null;
+    const run = 'layout' in u.run ? u.run.layout[0] : null;
+    expect(run).toMatchObject({ path: 'b', before: done?.what === 'part' ? done.after : null, after: null });
     expect(u.next.undo.map((s) => s.label)).toEqual(['a']);
     const r = redoing(u.next)!;
     expect(r.step.label).toBe('b');
-    expect(r.run).toEqual(u.step.changes);
+    expect(r.run).toEqual({ layout: 'changes' in u.step ? u.step.changes : [] });
     expect(r.next.redo).toEqual([]);
+  });
+
+  it('undoes an edit of the routes file by putting the net\'s record back, and redoes it the other way', () => {
+    const routes = { net: 'VCC', before: null, after: 'version = 1\n\n[B.nets.VCC]\npads = "00"\n' };
+    const h = record(record(NO_HISTORY, step('a')), { label: 'draw a track', routes });
+    const u = undoing(h)!;
+    expect(u.run).toEqual({ routes: { what: 'restore', net: 'VCC', before: routes.after, after: null } });
+    const r = redoing(u.next)!;
+    expect(r.run).toEqual({ routes: { what: 'restore', net: 'VCC', before: null, after: routes.after } });
+    // Undone again, then the layout step under it.
+    const u2 = undoing(r.next)!;
+    expect(u2.step.label).toBe('draw a track');
+    expect('layout' in undoing(u2.next)!.run).toBe(true);
   });
 
   it('forgets what could be redone when something new is done', () => {

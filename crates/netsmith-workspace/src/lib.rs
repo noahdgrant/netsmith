@@ -579,7 +579,6 @@ impl Workspace {
     ) -> Result<netsmith_editor::api::PcbRoutesEdited, ApiError> {
         let _one_at_a_time = self.editing.lock().unwrap_or_else(|e| e.into_inner());
         let name = &edit.board;
-        let change = pcb::routes_edit(&edit.change)?;
         // The board as the page last saw it placed, or placed now.
         let (version, data, entry) = {
             let state = self.fresh();
@@ -605,14 +604,33 @@ impl Workspace {
                 "{shown} changed on disk since the board was read: reload the board"
             )));
         }
-        let said = netsmith_fabricate::routes::edit_file(entry.placed(), &file, &change).map_err(
-            |refusal| match refusal {
+        let changes = edit
+            .changes
+            .iter()
+            .map(|c| pcb::routes_edit(entry.placed(), c))
+            .collect::<Result<Vec<_>, _>>()?;
+        let net = changes
+            .first()
+            .map(|c| c.net().to_string())
+            .ok_or_else(|| ApiError::bad_request("an edit of the routes file names a change"))?;
+        // The net's record before and after, as the file has it: the step of undo.
+        let record = |file: &Path| -> Result<Option<String>, ApiError> {
+            let routes = netsmith_fabricate::routes::load(file).map_err(ApiError::internal)?;
+            Ok(netsmith_fabricate::routes::record_text(
+                name,
+                &net,
+                routes.boards.get(name).and_then(|b| b.nets.get(&net)),
+            ))
+        };
+        let before = record(&file)?;
+        let said = netsmith_fabricate::routes::edit_file_all(entry.placed(), &file, &changes)
+            .map_err(|refusal| match refusal {
                 netsmith_fabricate::routes::Refusal::Refused(e) => {
                     ApiError::unprocessable(e, "routes_refused", &[("board", name)])
                 }
                 netsmith_fabricate::routes::Refusal::Failed(e) => ApiError::internal(e),
-            },
-        )?;
+            })?;
+        let after = record(&file)?;
         let entry = entry
             .routes_changed(&data, name)
             .map_err(pcb::PlaceError::read)?;
@@ -625,6 +643,7 @@ impl Workspace {
         }
         Ok(netsmith_editor::api::PcbRoutesEdited {
             scene,
+            undo: netsmith_editor::api::RoutesUndo { net, before, after },
             said: said.replace(
                 &format!("; wrote {}", file.display()),
                 &format!("; wrote {shown}"),

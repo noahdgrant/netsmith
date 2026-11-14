@@ -94,6 +94,17 @@
 .pcb-overlay .fixed-glow { fill: none; stroke: var(--sel); stroke-opacity: .5; stroke-linecap: round; filter: drop-shadow(0 0 .3px var(--sel)); }
 .pcb-overlay .fixed-via .fixed-glow { fill: color-mix(in srgb, var(--sel) 35%, transparent); stroke-opacity: 1; stroke-width: calc(1.5 * var(--px, .04)); }
 .pcb-overlay .fixed-shape.picked .fixed-mark { stroke: var(--sel); stroke-opacity: 1; stroke-width: calc(2 * var(--px, .04)); }
+/* a place being dragged: the shapes that meet there are drawn where they are going, in the selection's colour */
+.pcb-overlay .fixed-net.dragging .fixed-mark { stroke: var(--sel); stroke-opacity: 1; }
+
+/* a track being drawn: the copper it will be, in its layer's colour and at its net's width, with a hairline down its middle in the
+ * selection's colour and a dot at each corner; a via about to be placed is a ring of the process's via */
+.pcb-overlay .track-draft polyline { fill: none; stroke: var(--pcb-front); stroke-opacity: .8; stroke-linecap: round; stroke-linejoin: round; }
+.pcb-overlay .track-draft.layer-bottom polyline { stroke: var(--pcb-back); }
+.pcb-overlay .track-draft polyline.track-draft-line { stroke: var(--sel); stroke-opacity: 1; stroke-width: calc(1.25 * var(--px, .04)); stroke-dasharray: calc(5 * var(--px, .04)) calc(3 * var(--px, .04)); }
+.pcb-overlay .track-draft-corner { fill: var(--sel); }
+.pcb-overlay .via-ghost { fill: color-mix(in srgb, var(--sel) 25%, transparent); stroke: var(--sel); stroke-width: calc(1.5 * var(--px, .04)); stroke-dasharray: calc(3 * var(--px, .04)) calc(2 * var(--px, .04)); pointer-events: none; }
+.pcb-overlay .track-draft { pointer-events: none; }
 
 /* the routes list: a net's record, its shapes indented under it; a shape not on the board is faint */
 .route-rows .route-shape { padding-left: 1.5rem; }
