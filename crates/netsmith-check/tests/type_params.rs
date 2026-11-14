@@ -160,13 +160,21 @@ fn a_parametric_provider_stands_for_one_candidate_per_part_of_its_bound() {
     let model = &c.board("B").unwrap().model;
     let u = model.uses.iter().find(|u| u.path == "reg").unwrap();
     let names: Vec<&str> = u.candidates.iter().map(|p| p.name.as_str()).collect();
-    // The standard library's provider of the bound first, then the project's, by module path.
+    // The standard library's providers of the bound first, by name, then the project's, by
+    // module path.
     assert_eq!(
         names,
-        ["Converter<Lt8641>", "Converter<Zbk2>", "Converter<Zbk9>"]
+        [
+            "Converter<Lmr16006y>",
+            "Converter<Lt8641>",
+            "Converter<Rt8059>",
+            "Converter<Tps54202>",
+            "Converter<Zbk2>",
+            "Converter<Zbk9>"
+        ]
     );
     assert_eq!(
-        u.candidates[1].id,
+        u.candidates[4].id,
         "src::converter::Converter<src::zbk2::Zbk2>"
     );
     assert!(u.candidates.iter().all(|p| p.kind == InstKind::Module));

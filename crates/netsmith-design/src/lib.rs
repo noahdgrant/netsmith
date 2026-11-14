@@ -1468,7 +1468,9 @@ fn design_model(name: &str, model: &Model, solution: &Solution) -> Result<Design
 mod tests {
     /// The `part` and `generic` names of the standard library (a standard generic is a part
     /// that is its own first provider, ADR 0068) and the letters their body states (`None` for
-    /// none), and the generics each provides. A provider has the letters of its generic.
+    /// none), and the generics each provides. A provider has the letters of its generic. A
+    /// module-shaped generic (`BuckConverter`, which modules provide) is left out: it is never
+    /// a placed part (`netsmith_check::generic_is_part_shaped`).
     fn std_definitions() -> Vec<(String, Option<String>, Vec<String>)> {
         let std = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../std");
         let mut parts = Vec::new();
@@ -1482,6 +1484,19 @@ mod tests {
                     dirs.push(path);
                 } else if path.extension().is_some_and(|e| e == "nsm") {
                     let text = std::fs::read_to_string(&path).unwrap();
+                    // A module-shaped generic (no `pins` table and no catalog, ADR 0068) is
+                    // made as a module and never placed, so it has no designator: the parts
+                    // inside its providers carry theirs. The checker's own rule says which.
+                    let file = netsmith_lang::parse(&text).unwrap();
+                    let module_shaped: Vec<String> = file
+                        .definitions
+                        .iter()
+                        .filter(|d| {
+                            d.kind == netsmith_lang::ast::DefKind::Generic
+                                && !netsmith_check::generic_is_part_shaped(d)
+                        })
+                        .map(|d| d.name.name.clone())
+                        .collect();
                     let mut current: Option<usize> = None;
                     for line in text.lines() {
                         if let Some((_, g)) = line
@@ -1495,6 +1510,10 @@ mod tests {
                             .or_else(|| line.strip_prefix("generic "))
                         {
                             let name = rest.split([' ', '{']).next().unwrap();
+                            if module_shaped.iter().any(|m| m == name) {
+                                current = None;
+                                continue;
+                            }
                             let provides: Vec<String> = rest
                                 .split_once(" provides ")
                                 .map(|(_, g)| {
@@ -1628,6 +1647,20 @@ mod tests {
             assert!(
                 !letters.is_empty() && letters.chars().all(|c| c.is_ascii_uppercase()),
                 "{name} has letters {letters:?}"
+            );
+        }
+    }
+
+    /// Only definitions that become a placed part need letters: a module-shaped generic is
+    /// left out, a part-shaped one (a pin table or a catalog) is checked like a part.
+    #[test]
+    fn a_module_shaped_generic_needs_no_letters_and_a_part_shaped_one_does() {
+        let names: Vec<String> = std_parts().into_iter().map(|(n, _)| n).collect();
+        assert!(!names.iter().any(|n| n == "BuckConverter"), "{names:?}");
+        for part_shaped in ["Connector", "BuckIc", "Resistor"] {
+            assert!(
+                names.iter().any(|n| n == part_shaped),
+                "{part_shaped}: {names:?}"
             );
         }
     }

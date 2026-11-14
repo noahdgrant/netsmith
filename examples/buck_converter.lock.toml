@@ -1,0 +1,67 @@
+# The catalog row each part of each board was picked as, written by `netsmith build` and
+# `netsmith fab` when this file does not exist. Commit it: a change to a catalog or to the
+# solver that would move a pick shows here and not only in the bill of materials. Refresh it
+# with `netsmith lock --update`. Nothing in it is edited by hand.
+version = 1
+
+[BuckConverterExample.providers."process"]
+generic = "TwoLayer"
+provider = "std::mfg::jlcpcb::JlcTwoLayer1oz"
+
+[BuckConverterExample.providers."reg"]
+generic = "BuckConverter"
+provider = "std::parts::regulator::Buck<std::parts::regulator::Tps54202>"
+
+[BuckConverterExample.parts."power_in"]
+catalog = "header"
+row = "PH2.54-1X2P-H25 2-pin 2.54mm header C42431798"
+lcsc = "C42431798"
+mpn = "PH2.54-1X2P-H25"
+
+[BuckConverterExample.parts."power_out"]
+catalog = "header"
+row = "PH2.54-1X2P-H25 2-pin 2.54mm header C42431798"
+lcsc = "C42431798"
+mpn = "PH2.54-1X2P-H25"
+
+[BuckConverterExample.parts."reg.divider.rbottom"]
+catalog = "resistor"
+row = "330Ω 1% 0402 C25104"
+lcsc = "C25104"
+mpn = "0402WGF3300TCE"
+
+[BuckConverterExample.parts."reg.divider.rtop"]
+catalog = "resistor"
+row = "1.5kΩ 1% 0603 C22843"
+lcsc = "C22843"
+mpn = "0603WAF1501T5E"
+
+[BuckConverterExample.parts."reg.ic"]
+catalog = "tps54202"
+row = "TPS54202DDCR 4.5-28V 2A 500kHz buck SOT-23-6 C191884"
+lcsc = "C191884"
+mpn = "TPS54202DDCR"
+
+[BuckConverterExample.parts."reg.ic.boost"]
+catalog = "capacitor"
+row = "100nF 10% 16V X7R 0402 C1525"
+lcsc = "C1525"
+mpn = "CL05B104KO5NNNC"
+
+[BuckConverterExample.parts."reg.inductor"]
+catalog = "inductor"
+row = "MTQH322512S100MBT 10uH 1.9A inductor 1210 C17701264"
+lcsc = "C17701264"
+mpn = "MTQH322512S100MBT"
+
+[BuckConverterExample.parts."reg.input_cap"]
+catalog = "capacitor"
+row = "2.2uF 10% 100V X7R 1210 C55151"
+lcsc = "C55151"
+mpn = "CL32B225KCJSNNE"
+
+[BuckConverterExample.parts."reg.output_cap"]
+catalog = "capacitor"
+row = "47uF 20% 6.3V X5R 0805 C16780"
+lcsc = "C16780"
+mpn = "CL21A476MQYNNNE"

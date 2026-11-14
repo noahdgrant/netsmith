@@ -5595,36 +5595,68 @@ error: `.in` has `abs_max 7V` here, but `Limited`, which `Loose` provides, limit
 
 ### A module that provides a generic
 
-An IC alone cannot stand for a regulator: its feedback pin and its switch node need a circuit around them. A module can provide a module-shaped generic, which has values and interfaces and no `pins` table:
+An IC alone cannot stand for a regulator: its feedback pin and its switch node need a circuit around them. A module can provide a module-shaped generic, which has values and interfaces and no `pins` table. The standard library's `BuckConverter` (`std::parts::regulator`, issue #620) is one: any buck converter, by what a board needs of it. Its members are the two rails, the ripple of the output voltage and the ESR of the output capacitors that the ripple needs, and two statements every provider holds:
 
-```nsm module=src::buck
-import std::sources::Rail
-
-/// A buck regulator with everything around it. A board states the input, the output and the
-/// load; the provider is an IC with its circuit.
+```nsm-fragment
 generic BuckConverter {
     .vin: Rail
     .vout: Rail
+    .vin.neg ~ .vout.neg
+    .vin.voltage >= .vout.voltage
+    .output_ripple: Voltage
+    .output_esr: Resistance optional
 }
 ```
+
+A board narrows the output's voltage, the load (the current of the rail it joins to `.vout`), the input (the rail it joins to `.vin`) and, with `.output_esr` stated, a bound on `.output_ripple`. It reaches nothing of how the converter is built. The soft-start time and the capacitors' `.voltage_margin` stay on `Buck`, for a board that names the IC: an IC that states no soft-start time cannot be judged against a bound on it, and a candidate that cannot be judged is not picked, so the bound would refuse every such IC (decided by the agent while the owner was away, 2026-11-13).
 
 ### A module that takes a part
 
-The circuit around a buck IC is the same for every IC, and only the IC differs. A module takes the IC as a **type parameter**, bounded by a generic that parts provide (ADR 0115): `module Converter<Ic: BuckIc>` is a module for every part that provides `BuckIc`, written once. The standard library's `Buck<Ic: BuckIc>` (`std::parts::regulator`, see _Switching regulators_) is the IC with its inductor, capacitors and feedback divider. This project's provider of `BuckConverter` passes its own parameter on to it:
+The circuit around a buck IC is the same for every IC, and only the IC differs. A module takes the IC as a **type parameter**, bounded by a generic that parts provide (ADR 0115): `module Buck<Ic: BuckIc>` is a module for every part that provides `BuckIc`, written once. The standard library's `Buck` (`std::parts::regulator`, see _Switching regulators_) is the IC with its inductor, capacitors and feedback divider, and it provides `BuckConverter`:
 
-```nsm module=src::converter
-import std::parts::regulator::{Buck, BuckIc}
-import src::buck::BuckConverter
-
-/// Any buck IC with the standard circuit around it.
-module Converter<Ic: BuckIc> provides BuckConverter {
-    .buck: Buck<Ic>
-    .buck.vin ~ .vin
-    .buck.vout ~ .vout
+```nsm-fragment
+module Buck<Ic: BuckIc> provides BuckConverter {
+    .ic: Ic
+    .inductor: Inductor
+    .ic.vin ~ .vin
+    .ic.sw.pos ~> .inductor ~> .vout.pos
+    // the capacitor banks, the divider and the checks that join them
 }
 ```
 
-`Zbk2` is this guide's invented IC for 4.5 V to 6 V (_Switching regulators_). `Zbk9` is another, for 4.5 V to 60 V and 3.5 A:
+The standard library's buck ICs, each a part that provides `BuckIc` with its datasheet's numbers and application circuit, and a catalog row of its own (`data/jlcpcb/README.md`): `Lmr16006y` (4 V to 60 V, 0.6 A, 2.1 MHz), `Lt8641` (3 V to 65 V, 3.5 A; its catalog has no row, since no record of it showed stock), `Rt8059` (2.8 V to 5.5 V, 1 A, 1.5 MHz) and `Tps54202` (4.5 V to 28 V, 2 A, 500 kHz).
+
+A board that picks by requirement, with the standard library alone. `Buck` stands for one candidate for each provider of `BuckIc` in scope, in the order of their files and names: the four of the standard library, then a project's own. The first that holds every check of the board is the pick. A 3.3 V rail of 500 mA from 12 V:
+
+```nsm evaluate picks
+import std::parts::regulator::BuckConverter
+import std::sources::Rail
+
+board PowerBoard {
+    .input: Rail {
+        .voltage &= 12V +/- 5%
+        .pos.net &= "VIN"
+    }
+    .output: Rail {
+        .pos.net &= "3V3"
+        .current &= 0mA..500mA
+    }
+
+    .reg: BuckConverter { .vout.voltage &= 3.3V +/- 5% }
+    .input ~ .reg.vin
+    .reg.vout ~ .output
+}
+```
+
+```text
+reg is a BuckConverter: picked Buck<Tps54202>; passed over Buck<Lmr16006y> (the DC analysis does not model the current of `reg.ic.catch`: it joins `GND` and `net-reg.ic.boost.b`, which sources hold, and the current an ideal diode moves between two ideal sources is not a number; the load of the regulator on that net is what its own `.current` states, not a sum; state the current it carries (`reg.ic.catch.current &= 0A..100mA`) or put a resistance in series with it), Buck<Lt8641> (the `lt8641` catalog has nothing for `reg.ic`, which needs nothing in particular), Buck<Rt8059> (no `rt8059` candidate satisfies `reg.ic`: the closest of the 1 that fit, RT8059GJ5 2.8-5.5V 1A 1.5MHz buck TSOT-23-5 C20542, fails because reg.vin.voltage must always be at most reg.ic.max_input_voltage, but 11.4V..12.6V is not always below 5.5V (`reg.input_cap.effective_capacitance` is unknown for some candidates, so they were not used: no derating data for 27 and data only up to 10 V, but the bias reaches 12.6 V, for 6))
+```
+
+The `Lmr16006y` comes first and takes this board, but its trial cannot be judged: its catch diode joins ground and the switch node, two nets the DC analysis holds, and the analysis leaves the current between them as a note that is not judged, whatever the diode's `.current` states. The search prefers a candidate that can be judged (ADR 0068), so it takes the `Tps54202`; a board that wants the LMR16006Y names it, `.reg: Buck<Lmr16006y>`.
+
+The output asks for 5 % and not less: each standard IC's reference is good to 2 % or 2.5 % in the worst case, and the divider's 1 % resistors add about 1.5 % at 3.3 V, so 3 % holds for none of them. `examples/buck_converter.nsm` is this board with its connectors, built and made into a fab package.
+
+A project's own IC joins the candidates when its file is imported. `Zbk9` is an invented IC for 4.5 V to 60 V and 3.5 A:
 
 ```nsm module=src::zbk9
 import std::parts::regulator::BuckIc
@@ -5658,18 +5690,16 @@ part Zbk9 provides BuckIc {
 }
 ```
 
-A board that picks by requirement. `Converter` stands for one candidate for each provider of `BuckIc` in scope: the standard library's `Lt8641` first, then `Zbk2` and `Zbk9`. The project here has no row for the `Lt8641`'s catalog, and its input is 12 V, which `Zbk2` cannot take, so the pick is `Converter<Zbk9>`:
+From 36 V at 1 A no standard IC serves: the `Lmr16006y` takes the input but gives 0.6 A at most, the `Rt8059` and the `Tps54202` stop at 5.5 V and 28 V, and the `Lt8641` has no catalog row. Each is passed over for its own reason, and `Buck<Zbk9>` is the pick:
 
 ```nsm evaluate picks
-import src::buck::BuckConverter
-import src::converter::Converter   // not used by name: brings the provider in scope
-import src::zbk2::Zbk2             // the same, for the parts it takes
-import src::zbk9::Zbk9
+import std::parts::regulator::BuckConverter
+import src::zbk9::Zbk9   // not used by name: brings the IC in scope
 import std::sources::Rail
 
 board PowerBoard {
     .input: Rail {
-        .voltage &= 12V +/- 5%
+        .voltage &= 36V +/- 5%
         .pos.net &= "VIN"
     }
     .output: Rail {
@@ -5677,27 +5707,27 @@ board PowerBoard {
         .current &= 0mA..1A
     }
 
-    .reg: BuckConverter { .vout.voltage &= 3.3V +/- 4% }
+    .reg: BuckConverter { .vout.voltage &= 3.3V +/- 5% }
     .input ~ .reg.vin
     .reg.vout ~ .output
 }
 ```
 
 ```text
-reg is a BuckConverter: picked Converter<Zbk9>; passed over Converter<Lt8641> (the `lt8641` catalog has nothing for `reg.buck.ic`, which needs nothing in particular), Converter<Zbk2> (reg.buck.vin.voltage must always be at most reg.buck.ic.max_input_voltage, but 11.4V..12.6V is not always below 6V)
+reg is a BuckConverter: picked Buck<Zbk9>; passed over Buck<Lmr16006y> (no `lmr16006y` candidate satisfies `reg.ic`: the closest of the 1 that fit, LMR16006YDDCR 4-60V 0.6A 2.1MHz buck SOT-23-6 C290195, fails because -reg.ic.sw.current must always be at most reg.ic.max_output_current, but 0A..1A is not always below 600mA (the currents on net `net-reg.ic.boost.b` in `reg`: reg.ic.sw.current (-1A..0A) + reg.inductor.current (0A..1A) add up to zero; net `3V3` in `reg`: -reg.inductor.current (0A..1A) + -reg.vout.current (-1A..0A) add up to zero, but the balance is incomplete: `reg.divider.rtop.a` is not modelled; net `3V3`: output.current (0A..1A) + reg.vout.current (-1A..0A) add up to zero) (`reg.input_cap.effective_capacitance` is unknown for some candidates, so they were not used: no derating data for 27 and data only up to 25 V, but the bias reaches 37.8 V, for 11)), Buck<Lt8641> (the `lt8641` catalog has nothing for `reg.ic`, which needs nothing in particular), Buck<Rt8059> (no `rt8059` candidate satisfies `reg.ic`: the closest of the 1 that fit, RT8059GJ5 2.8-5.5V 1A 1.5MHz buck TSOT-23-5 C20542, fails because reg.vin.voltage must always be at most reg.ic.max_input_voltage, but 34.2V..37.8V is not always below 5.5V (`reg.input_cap.effective_capacitance` is unknown for some candidates, so they were not used: no derating data for 27 and data only up to 25 V, but the bias reaches 37.8 V, for 11)), Buck<Tps54202> (no `tps54202` candidate satisfies `reg.ic`: the closest of the 1 that fit, TPS54202DDCR 4.5-28V 2A 500kHz buck SOT-23-6 C191884, fails because reg.vin.voltage must always be at most reg.ic.max_input_voltage, but 34.2V..37.8V is not always below 28V (`reg.input_cap.effective_capacitance` is unknown for some candidates, so they were not used: no derating data for 27 and data only up to 25 V, but the bias reaches 37.8 V, for 11))
 ```
 
-Naming the part, with no pick: `.reg: Converter<Zbk9> { .vout.voltage &= 3.3V +/- 4% }`. A board joins a module provider through its interface, `.reg.vin` and `.reg.vout`, never `.reg.buck`.
+Naming the part, with no pick: `.reg: Buck<Zbk9> { .vout.voltage &= 3.3V +/- 5% }`. A board joins a module provider through its interface, `.reg.vin` and `.reg.vout`, never `.reg.inductor`.
 
 Rules.
 
-- Only a `module` takes type parameters, written after its name: `module Converter<Ic: BuckIc>`, or several, `<A: G1, B: G2>`. The bound is a generic that parts provide (it has a `pins` table); a module is not an argument.
+- Only a `module` takes type parameters, written after its name: `module Buck<Ic: BuckIc>`, or several, `<A: G1, B: G2>`. The bound is a generic that parts provide (it has a `pins` table); a module is not an argument.
 - Inside the module a parameter is the type of a member (`.ic: Ic`) or the argument of another module (`Buck<Ic>`), and nothing else. A member made from it reaches only the members its bound declares, as a use of the generic does, so that the module works with every part that provides the bound.
 - The module is checked where it is written, with the bound standing for the parameter: a mistake is said at the module's line, never at a board that names a part.
-- What only some parts need (a bootstrap capacitor, a resistor on `RT`, an enable divider) is in each part's own `support` section (_Switching regulators_), which comes with the part wherever it is placed. The module wires only what the bound has.
-- A board names the part, `.reg: Converter<Zbk9>`: the argument is a part that provides the bound, or the bound itself when it is its own provider (`Resistor`). A module with parameters is never placed without its arguments; to let the solver pick, a board uses a generic the module provides.
-- A board, or a module, that names the part (`.reg: Buck<Zbk2>`) may join any pin or interface of that part through the member made from the parameter, `.reg.ic.en ~ .tp.p1`, even one the bound does not declare (ADR 0120). Only a join (`~`, `~>`) reaches it there, besides a narrowing (ADR 0116); the parts of the IC's `support` section are not joined from outside. A board that picks through a generic the module provides (`.reg: BuckConverter`) does not know the IC, so it reaches only what the generic declares. The join follows the parameter: a module that passes its parameter on (`.buck: Buck<Ic>` in `Converter<Ic>`) exposes the inner IC too, so a board that names `Converter<Zbk2>` joins `.reg.buck.ic.en`, and nothing else of `.reg.buck`. A part named inside a module (`.stage: Buck<Zbk2>` in a module `Supply`) is open to that module's text, not to the board that places `Supply`, and a parametric module's own text reaches only its bound, even through a module it gives its parameter to.
-- A module with parameters that provides a generic stands for one candidate for each provider of its bound (with several parameters, for each combination, the last varying fastest), in the order of the bound's providers, at the module's own place in the order of the generic's. `Converter<Zbk2>` is the provider's name in the notes and its type in the design. Each candidate is one trial of the search, counted against its bound of 64.
+- What only some parts need (a bootstrap capacitor, a resistor on `RT`, an enable divider, a catch diode) is in each part's own `support` section (_Switching regulators_), which comes with the part wherever it is placed. The module wires only what the bound has.
+- A board names the part, `.reg: Buck<Zbk9>`: the argument is a part that provides the bound, or the bound itself when it is its own provider (`Resistor`). A module with parameters is never placed without its arguments; to let the solver pick, a board uses a generic the module provides.
+- A board, or a module, that names the part (`.reg: Buck<Zbk2>`) may join any pin or interface of that part through the member made from the parameter, `.reg.ic.en ~ .tp.p1`, even one the bound does not declare (ADR 0120). Only a join (`~`, `~>`) reaches it there, besides a narrowing (ADR 0116); the parts of the IC's `support` section are not joined from outside. A board that picks through a generic the module provides (`.reg: BuckConverter`) does not know the IC, so it reaches only what the generic declares. The join follows the parameter: a module that passes its parameter on (`.buck: Buck<Ic>` in a `Converter<Ic>`) exposes the inner IC too, so a board that names `Converter<Zbk2>` joins `.reg.buck.ic.en`, and nothing else of `.reg.buck`. A part named inside a module (`.stage: Buck<Zbk2>` in a module `Supply`) is open to that module's text, not to the board that places `Supply`, and a parametric module's own text reaches only its bound, even through a module it gives its parameter to.
+- A module with parameters that provides a generic stands for one candidate for each provider of its bound (with several parameters, for each combination, the last varying fastest), in the order of the bound's providers, at the module's own place in the order of the generic's. `Buck<Zbk9>` is the provider's name in the notes and its type in the design. Each candidate is one trial of the search, counted against its bound of 64.
 
 A module reaches only what the bound declares. `en` is a pin of `Zbk2` and `Zbk9`, but not of `BuckIc`, so a part that provides `BuckIc` with no `en` would leave the line with nothing to join:
 
@@ -5752,59 +5782,58 @@ board Probed {
 A board that lets the solver pick the IC cannot join its pins, since which pins there are is decided later:
 
 ```nsm fails
-import src::buck::BuckConverter
-import src::converter::Converter
+import std::parts::regulator::BuckConverter
 import src::zbk2::Zbk2
 
 board Unknown {
     .reg: BuckConverter
-    .reg.buck.ic.en ~ .reg.vin.pos
+    .reg.ic.en ~ .reg.vin.pos
 }
 ```
 
 ```text
-error: `buck` is not declared by `BuckConverter`: this use picks its IC through the generic, so the IC and its pins are not known here, and a join reaches the pins of a module's IC only where the IC is named, as in `Converter<Lt8641>`; name it as the type, or join what `BuckConverter` declares
-  --> main.nsm:7:10
+error: `ic` is not declared by `BuckConverter`: this use picks its IC through the generic, so the IC and its pins are not known here, and a join reaches the pins of a module's IC only where the IC is named, as in `Buck<Lmr16006y>`; name it as the type, or join what `BuckConverter` declares
+  --> main.nsm:6:10
   |
-7 |     .reg.buck.ic.en ~ .reg.vin.pos
-  |          ^^^^
+6 |     .reg.ic.en ~ .reg.vin.pos
+  |          ^^
 ```
 
 The argument provides the bound:
 
 ```nsm fails
-import src::converter::Converter
+import std::parts::regulator::Buck
 import std::parts::passive::Resistor
 
 board Wrong {
-    .reg: Converter<Resistor>
+    .reg: Buck<Resistor>
 }
 ```
 
 ```text
-error: `Resistor` is not an argument for `Ic` of `Converter`, which is a part that provides `BuckIc`: it does not provide `BuckIc`; name a part that does
-  --> main.nsm:5:21
+error: `Resistor` is not an argument for `Ic` of `Buck`, which is a part that provides `BuckIc`: it does not provide `BuckIc`; name a part that does
+  --> main.nsm:5:16
   |
-5 |     .reg: Converter<Resistor>
-  |                     ^^^^^^^^
+5 |     .reg: Buck<Resistor>
+  |                ^^^^^^^^
 ```
 
 A module with parameters is given its arguments:
 
 ```nsm fails
-import src::converter::Converter
+import std::parts::regulator::Buck
 
 board Bare {
-    .reg: Converter
+    .reg: Buck
 }
 ```
 
 ```text
-error: `Converter` takes a part for `Ic` (a part that provides `BuckIc`): name it, `Converter<...>`, or let the solver pick one by using a generic that `Converter` provides
+error: `Buck` takes a part for `Ic` (a part that provides `BuckIc`): name it, `Buck<...>`, or let the solver pick one by using a generic that `Buck` provides
   --> main.nsm:4:11
   |
-4 |     .reg: Converter
-  |           ^^^^^^^^^
+4 |     .reg: Buck
+  |           ^^^^
 ```
 
 ### An interface that provides a generic: a process
@@ -7092,9 +7121,9 @@ board Overload {
 
 ```text
 error: no `ldo` candidate satisfies `stage.regulator`: the closest of the 1 that fit, XC6206P332MR-G 3.3V 100mA LDO SOT-23 C5446, fails because -stage.regulator.vout.current must always be at most stage.regulator.max_current, but 0A..50A is not always below 100mA (the currents on net `3V3` in `stage`: stage.regulator.vout.current (-50A..0A) + -stage.vout.current (-50A..0A) add up to zero; net `3V3`: output.current (0A..50A) + stage.vout.current (-50A..0A) add up to zero)
-   --> std/parts/regulator.nsm:41:5
+   --> std/parts/regulator.nsm:42:5
    |
-41 |     -.vout.current <= .max_current
+42 |     -.vout.current <= .max_current
    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -10368,9 +10397,9 @@ board TooTight {
 
 ```text
 error: no combination of candidates satisfies `divider.rbottom` and `divider.rtop` together: the closest, divider.rbottom = 20kΩ 1% 0402 C25765 and divider.rtop = 56kΩ 1% 0603 C23206, fails because `divider.vout` must stay within 3.762V..3.838V, but (divider.vref * (1 + (divider.rtop.resistance / divider.rbottom.resistance))) works out to 3.707V..3.896V
-    --> std/parts/regulator.nsm:103:5
+    --> std/parts/regulator.nsm:104:5
     |
-103 |     .vout == .vref * (1 + .rtop.resistance / .rbottom.resistance)
+104 |     .vout == .vref * (1 + .rtop.resistance / .rbottom.resistance)
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -10540,14 +10569,14 @@ board Overload {
 
 ```text
 error: -reg.ic.sw.current must always be at most reg.ic.max_output_current, but 6.402uA..3A is not always below 2A (the currents on net `net-reg.ic.sw.pos` in `reg`: reg.ic.sw.current (-3A..-6.402uA) + reg.inductor.current (6.402uA..3A) add up to zero; net `1V8` in `reg`: -reg.inductor.current (6.402uA..3A) + -reg.vout.current (-3A..-6.402uA) add up to zero, but the balance is incomplete: `reg.divider.rtop.a` is not modelled; net `1V8`: output.current (0A..3A) + reg.vout.current (-3A..-6.402uA) add up to zero)
-    --> std/parts/regulator.nsm:194:5
+    --> std/parts/regulator.nsm:195:5
     |
-194 |     -.sw.current <= .max_output_current
+195 |     -.sw.current <= .max_output_current
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 error: -reg.vout.current must always be at most reg.ic.max_output_current, but 6.402uA..3A is not always below 2A (the currents on net `1V8`: output.current (0A..3A) + reg.vout.current (-3A..-6.402uA) add up to zero; net `1V8` in `reg`: -reg.inductor.current (6.402uA..3A) + -reg.vout.current (-3A..-6.402uA) add up to zero, but the balance is incomplete: `reg.divider.rtop.a` is not modelled; net `net-reg.ic.sw.pos` in `reg`: reg.ic.sw.current (-3A..-6.402uA) + reg.inductor.current (6.402uA..3A) add up to zero)
-    --> std/parts/regulator.nsm:461:5
+    --> std/parts/regulator.nsm:509:5
     |
-461 |     -.vout.current <= .ic.max_output_current
+509 |     -.vout.current <= .ic.max_output_current
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -10609,9 +10638,9 @@ board HighInput {
 
 ```text
 error: reg.on_time must always be at least reg.ic.min_on_time, but 122ns..490.8ns is not always above 150ns
-    --> std/parts/regulator.nsm:472:5
+    --> std/parts/regulator.nsm:520:5
     |
-472 |     .on_time >= .ic.min_on_time
+520 |     .on_time >= .ic.min_on_time
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -10674,9 +10703,9 @@ board TooQuiet {
 
 ```text
 error: no `capacitor` candidate satisfies `reg.output_cap`: the closest of the 34 that fit, 1 x 10uF 20% 10V X5R 0402 C315248, fails because reg.output_cap.total_effective_capacitance must always be at least reg.ic.min_output_capacitance, but 4.908uF..7.686uF is not always above 10uF (`reg.output_cap.effective_capacitance` is unknown for some candidates, so they were not used: no derating data for 27)
-    --> std/parts/regulator.nsm:479:5
+    --> std/parts/regulator.nsm:527:5
     |
-479 |     .output_cap.total_effective_capacitance >= .ic.min_output_capacitance
+527 |     .output_cap.total_effective_capacitance >= .ic.min_output_capacitance
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -10877,14 +10906,14 @@ error: a part holds other parts only in its `support` section, the circuit its d
 
 What is not modelled: the divider's current is not added to the load, and the IC's quiescent current is not in the inductor's (it is in the IC's own input current, if the IC states it, as the `Lt8641` does), the loop and its stability are not checked (the IC's capacitor and inductor ranges stand for them), the inductor's saturation is its datasheet current at a fall of the inductance (30% for the catalog's parts) and not a curve, and the ripple current of the capacitors is not modelled, so it is not shared out between the capacitors of a bank.
 
-The library has one real buck IC, `std::parts::regulator::Lt8641`, Analog Devices' 3 V to 65 V, 3.5 A LT8641 in its 18-lead 3 x 4 mm QFN (datasheet Rev. C). It is written as above, with each number's datasheet page and table in its doc comment and in `data/jlcpcb/README.md`: the reference 0.79 V to 0.822 V, the input range, 3.5 A, the efficiency, `min_inductance` from the datasheet's Equation 10, a DCR of at most 0.04 ohm, 2.2 uF at the input, and 47 uF at the output by default (every Typical Application of the datasheet uses it; the datasheet states no minimum). The switching frequency follows the resistor on RT, `.fsw == 46.5MHz * 1kohm / (.rt_resistance + 5.2kohm)` with the oscillator's accuracy (Equation 3 and Table 1); the part refuses a resistor outside 18.2 kohm to 60.4 kohm (2 MHz to 700 kHz), the span the datasheet gives the accuracy for. It also refuses an input and output at which the datasheet's Equations 4 and 5 say the frequency is no longer held, because the converter computes its ripple at the programmed frequency. Its `support` section is the datasheet's application circuit: 0.1 uF from BST to SW, 1 uF on INTVCC, 1 uF at VIN1 and at VIN2, 10 nF on TR/SS, the resistor on RT (47 kohm, 0.89 MHz, by default), BIAS to ground and EN/UV to the input; SYNC/MODE and PG are left open. The automotive ordering code `LT8641IUDC#WPBF` is the same die and tables as the other grades. The standard `lt8641` catalog has a header and no row, like `p_mosfet` (a row needs a stock above zero on a record that was read), so the board's project has the row, in its own file of that name (the part number is the datasheet's Order Information; a project adds the LCSC number it has read). The catalog is not keyed by `.mpn`: the solver takes the first row that fits, and a board that wants one ordering code narrows `.reg.ic.mpn` (ADR 0116).
+The library has four real buck ICs. `Lmr16006y` (TI LMR16006Y, 4 V to 60 V, 0.6 A, asynchronous, with its catch diode in its `support` section), `Rt8059` (Richtek RT8059, 2.8 V to 5.5 V, 1 A) and `Tps54202` (TI TPS54202, 4.5 V to 28 V, 2 A) each have a catalog row, so a board picks among them with `BuckConverter` (_A module that takes a part_); their datasheet figures, pages and what each leaves unstated are in their doc comments and `data/jlcpcb/README.md`. The fourth is `std::parts::regulator::Lt8641`, Analog Devices' 3 V to 65 V, 3.5 A LT8641 in its 18-lead 3 x 4 mm QFN (datasheet Rev. C). It is written as above, with each number's datasheet page and table in its doc comment and in `data/jlcpcb/README.md`: the reference 0.79 V to 0.822 V, the input range, 3.5 A, the efficiency, `min_inductance` from the datasheet's Equation 10, a DCR of at most 0.04 ohm, 2.2 uF at the input, and 47 uF at the output by default (every Typical Application of the datasheet uses it; the datasheet states no minimum). The switching frequency follows the resistor on RT, `.fsw == 46.5MHz * 1kohm / (.rt_resistance + 5.2kohm)` with the oscillator's accuracy (Equation 3 and Table 1); the part refuses a resistor outside 18.2 kohm to 60.4 kohm (2 MHz to 700 kHz), the span the datasheet gives the accuracy for. It also refuses an input and output at which the datasheet's Equations 4 and 5 say the frequency is no longer held, because the converter computes its ripple at the programmed frequency. Its `support` section is the datasheet's application circuit: 0.1 uF from BST to SW, 1 uF on INTVCC, 1 uF at VIN1 and at VIN2, 10 nF on TR/SS, the resistor on RT (47 kohm, 0.89 MHz, by default), BIAS to ground and EN/UV to the input; SYNC/MODE and PG are left open. The automotive ordering code `LT8641IUDC#WPBF` is the same die and tables as the other grades. The standard `lt8641` catalog has a header and no row, like `p_mosfet` (a row needs a stock above zero on a record that was read), so the board's project has the row, in its own file of that name (the part number is the datasheet's Order Information; a project adds the LCSC number it has read). The catalog is not keyed by `.mpn`: the solver takes the first row that fits, and a board that wants one ordering code narrows `.reg.ic.mpn` (ADR 0116).
 
 ```csv file=catalogs/lt8641.csv set=lt8641
 mpn,package,library,source
 LT8641IUDC#WPBF,UDC20(18),Extended,"datasheet Rev. C, Order Information p.2 (automotive products)"
 ```
 
-The datasheet asks for a DC resistance of 0.04 ohm at most (p.16), and the four inductors of the standard catalog have more, so a converter around the IC needs an inductor of the project's own. This one is invented, like the part numbers of the other files of this guide:
+The datasheet asks for a DC resistance of 0.04 ohm at most (p.16), and every inductor of the standard catalog has more (0.085 ohm at the least), so a converter around the IC needs an inductor of the project's own. This one is invented, like the part numbers of the other files of this guide:
 
 ```csv file=catalogs/inductor.csv set=lt8641
 mpn,name,inductance,saturation_current,dc_resistance,package,library,source
@@ -14504,6 +14533,9 @@ Parts are numbered by their letters in the order the design declares them (a mod
 | `std::parts::transistor::PMosfet` | A P-channel MOSFET: as `NMosfet` with bridge `source ~> drain`; voltages are magnitudes. A generic with the catalog `p_mosfet`, whose standard file has no rows: a project adds its own. |
 | `std::parts::logic::Sn74lvc1g04` | A single inverter, TI SN74LVC1G04 (SCES214AF), for a supply of 3 V to 3.6 V: rail `vcc`, lines `a` (input) and `y` (output) as `Logic` with the levels and absolute maximums of the datasheet, SOT-23-5. No catalog row. |
 | `std::parts::regulator::Lt8641` | The LT8641 buck converter IC, Analog Devices (datasheet Rev. C): a provider of `BuckIc` with the datasheet's numbers, the frequency from the resistor on RT (`.rt_resistance`), a pin table for the 18-lead 3 x 4 mm QFN, and its application circuit in a `support` section (ADR 0115). A catalog `lt8641` (`.mpn`, `.package`) whose standard file has no row: a project adds its own. Mapped in `std/kicad.toml` to netsmith's own footprint (`netsmith:`, ADR 0087); its symbol is drawn from the pin table (ADR 0097). |
+| `std::parts::regulator::Lmr16006y` | The LMR16006Y buck converter IC, Texas Instruments (SNVSA24): a provider of `BuckIc` for 4 V to 60 V and 0.6 A at 2.1 MHz, asynchronous, in its SOT-23-6, with its bootstrap capacitor, catch Schottky and SHDN pull-up in its `support` section. Catalog `lmr16006y`, one row. |
+| `std::parts::regulator::Rt8059` | The RT8059 buck converter IC, Richtek (DS8059-06): a provider of `BuckIc` for 2.8 V to 5.5 V and 1 A at 1.5 MHz, in its TSOT-23-5, with EN tied to VIN in its `support` section. Catalog `rt8059`, one row. |
+| `std::parts::regulator::Tps54202` | The TPS54202 buck converter IC, Texas Instruments (SLVSD26A): a provider of `BuckIc` for 4.5 V to 28 V and 2 A at 500 kHz, in its SOT-23-6, with its bootstrap capacitor in its `support` section. Catalog `tps54202`, one row. |
 | `std::parts::logic::LevelTranslator` | A single-supply level translator, a buffer whose input takes a lower level than its supply and whose output swings to the supply: rail `vcc`, the `Logic` lines `a` (input) and `y` (output) and the pin `nc`, one pin table for SOT-23-5 and SOT-353_SC-70-5. `.vcc_min` and `.vcc_max` bound the supply; the stresses `.vcc_peak`, `.a_peak` and `.output_current` are at most `.vcc_abs_max`, `.a_abs_max` and `.max_output_current`; `.vt_plus_max` and `.vt_minus_min` are the input's `.vih` and `.vil`, and `.y` states no level; `.vcc.current` is 0 up to `.max_supply_current`, stated by the part. A generic with the catalog `level_translator`, whose standard file has no rows: a project adds its own. |
 | `std::parts::mechanical::MountingHole` | A drill with no copper. No pins. |
 | `std::parts::mechanical::PlatedHole` | A plated mounting hole. One pin `p1`, the plating, that the board joins to a net or leaves open. |
@@ -14517,6 +14549,7 @@ Parts are numbered by their letters in the order the design declares them (a mod
 |---|---|
 | `std::sources::Rail` | A DC rail: pins `pos` and `neg`, a `.voltage`, a `.current` (the draw), a `.peak` (the highest voltage, transients included), an optional `.reverse_peak` (the highest the wrong way round, as a positive number, ADR 0091) and a `.min_track` (the narrowest track of its nets). |
 | `std::parts::regulator::BuckIc` | A generic, what a buck converter IC says about itself: its supply `vin`, the switching node `sw` (a rail the IC supplies), the feedback pin `fb`, `vref`, `fsw`, the input range, `max_output_current`, `efficiency`, `min_inductance`, the optional `min_inductor_saturation` and `max_inductor_dcr`, and the capacitance asked for on each side. It states `-.sw.current <= .max_output_current`: the switch node supplies what the datasheet allows and no more (ADR 0076, amendment 6). A concrete IC is a part that provides it (ADR 0025, ADR 0115). |
+| `std::parts::regulator::BuckConverter` | A generic, any buck converter by what a board needs of it: rails `vin` and `vout` on one ground with the output at most the input, `output_ripple` and the optional `output_esr` it needs. Provided by `Buck<Ic>`, one candidate for each provider of `BuckIc` in scope (issue #620). |
 | `std::logic::Levels` | The logic levels of all the lines of a bus interface, the member `.levels` of `Uart`, `Spi`, `I2c` and `Swd`: the rail `.reference` and the four voltages `.vih`, `.vil`, `.voh` and `.vol` (ADR 0064). |
 | `std::logic::Logic` | A digital line `.line`, the `.reference` rail that defines its levels, and the levels `.vih`, `.vil`, `.voh` and `.vol` a part may state (ADR 0046). |
 | `std::bus::Uart` | Pins `tx`, `rx`, `rts`, `cts`, named by the device, and `.baud`. `~` between two joins `tx` to `rx` and `rts` to `cts`; two ends make a bus (`lines limit 2`). |
@@ -14548,7 +14581,7 @@ Parts are numbered by their letters in the order the design declares them (a mod
 | Definition | What it is |
 |---|---|
 | `std::parts::regulator::FeedbackDivider` | The resistors that set an adjustable output: pins `top`, `fb`, `bottom`, voltages `vref` and `vout`, the `current` it draws, with `vout == vref * (1 + rtop / rbottom)` in the worst case. |
-| `std::parts::regulator::Buck` | A buck converter, `Buck<Ic: BuckIc>`: the IC, a part that provides `BuckIc` (ADR 0115), with the inductor, input and output capacitors and a `FeedbackDivider`, with ports `vin` and `vout`, and the values `ripple`, `divider_current` and `voltage_margin`. How many capacitors stand in parallel on each side (1 to 8, chosen by the solver) is the `.count` of `input_cap` and `output_cap`, which a board narrows by path. Checks the input range, the output current, the ripple and the inductor's saturation, the inductor limits the IC states, the capacitance the IC asks for of each side's bank, and that each capacitor is rated for the rail's voltage and for its `.peak`, each times `.voltage_margin` (1 unless the board states it, ADR 0085). |
+| `std::parts::regulator::Buck` | A buck converter, `Buck<Ic: BuckIc>`, a provider of `BuckConverter`: the IC, a part that provides `BuckIc` (ADR 0115), with the inductor, input and output capacitors and a `FeedbackDivider`, with ports `vin` and `vout`, and the values `ripple`, `divider_current` and `voltage_margin`. How many capacitors stand in parallel on each side (1 to 8, chosen by the solver) is the `.count` of `input_cap` and `output_cap`, which a board narrows by path. Checks the input range, the output current, the ripple and the inductor's saturation, the inductor limits the IC states, the capacitance the IC asks for of each side's bank, and that each capacitor is rated for the rail's voltage and for its `.peak`, each times `.voltage_margin` (1 unless the board states it, ADR 0085). |
 | `std::bus::PullUp` | A pull-up resistor from a rail's `pos` to one line: a `supply` (`Rail`), a `line` (`Pin`), a `.resistor` whose `.resistance` the board states, `.line_low`, the share of the time the line is low (0 to 1), and the offers `.overdrive` (0 V) and `.supply_top` (`supply.voltage`). It states what it draws from `supply`: its resistor carries 0 up to `supply.voltage / resistance` (below 0 when a stated `.overdrive` lets a driver push current back), so the net it is on is solved and the checks after it are evaluated. |
 | `std::bus::PullDown` | A pull-down resistor from one line to the `neg` of a rail: a `reference` (`Rail`, a reference and not a load: `reference.current` is 0 A), a `line` (`Pin`), a `.resistor` whose `.resistance` the board states, `.line_high`, the share of the time the line is high (0 to 1), and the offer `.line_top` (`reference.voltage`, the highest the line is held at). Its resistor carries 0 up to `line_top / resistance`, so its drop and power are evaluated; it draws nothing from a rail. |
 | `std::bus::I2cPullups` | The two pull-up resistors of an I2C bus: a `bus` (`I2c`), a `supply` (`Rail`) and a `.resistance` the board states. It states what it draws from `supply`: each line's pull-up carries 0 up to `supply.voltage / resistance` (`.sda_low` and `.scl_low`, 0 to 1, are the share; `.overdrive` and `.supply_top` are offered as for `PullUp`), and `supply.current` is the sum, so the net it is on is solved and the checks after it are evaluated. `.rise_time` is `0.8473 * resistance * bus_capacitance`, a closed-form check the board bounds (`.pullups.rise_time <= 300ns`), with the optional `.bus_capacitance`, which the checker derives as the sum of the pins' `.capacitance` of the parts on the bus and the board's own optional `.trace_capacitance` (ADR 0102; a board may state `.bus_capacitance` itself); with no capacitance the bound is listed as not evaluated and the part with no figure is named. `.resistance >= (supply.voltage - low_level) / sink_current` is the lower bound from a driver's sink current: the checker states it for each part on the bus with the part's own figures, and a board may state the optional `.sink_current` and `.low_level` itself instead; the supply counts at its greatest. |

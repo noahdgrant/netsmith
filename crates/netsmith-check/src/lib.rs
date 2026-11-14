@@ -51,6 +51,7 @@ pub use model::{
 };
 pub use pinedit::edit_entry;
 pub use pinfile::{EntrySource, PinEntry, PinFile, PinFileError};
+pub use providers::generic_is_part_shaped;
 
 use std::collections::BTreeMap;
 

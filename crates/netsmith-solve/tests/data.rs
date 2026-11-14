@@ -127,6 +127,8 @@ fn columns(name: &str) -> Vec<(String, FieldKind)> {
             q("mating.pin_current", Dimension::CURRENT),
             q("mating.seat", Dimension::LENGTH),
         ],
+        // The buck converter ICs (issue #620): one row each, the package the only column.
+        "lmr16006y" | "rt8059" | "tps54202" => vec![t("package")],
         other => panic!("no columns for {other}"),
     }
 }
@@ -169,7 +171,7 @@ fn tolerance(value: f64, unit: &str, percent: f64) -> Quantity {
     Quantity::tolerance(&quantity(value, unit), &quantity(percent, "%"), true).unwrap()
 }
 
-const CATALOGS: [&str; 14] = [
+const CATALOGS: [&str; 17] = [
     "resistor",
     "capacitor",
     "led",
@@ -184,6 +186,9 @@ const CATALOGS: [&str; 14] = [
     "n_mosfet",
     "crystal",
     "header",
+    "lmr16006y",
+    "rt8059",
+    "tps54202",
 ];
 
 #[test]
