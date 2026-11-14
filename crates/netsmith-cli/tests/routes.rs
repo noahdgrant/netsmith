@@ -216,3 +216,275 @@ fn routes_lock_writes_a_record_whose_pads_moved_again() {
     assert!(!said.contains("are not where"), "{said}");
     assert!(said.contains("routing 0 connections"), "{said}");
 }
+
+/// A folder with `examples/led.nsm` and its pick lock, and no routes file.
+fn led(tag: &str) -> TempDir {
+    let dir = TempDir::new(tag);
+    for name in ["led.nsm", "led.lock.toml"] {
+        fs::copy(repo().join("examples").join(name), dir.join(name)).unwrap();
+    }
+    dir
+}
+
+/// `netsmith routes <args> --into led.nsm`.
+fn routes(dir: &Path, args: &[&str]) -> Output {
+    let mut all = vec!["routes"];
+    all.extend_from_slice(args);
+    all.extend_from_slice(&["--into", "led.nsm"]);
+    netsmith(dir, &all)
+}
+
+#[test]
+fn add_zone_writes_a_zone_that_show_lists_and_fab_draws() {
+    let dir = led("routes-add-zone");
+    let shown = ok(&routes(&dir, &["show"]));
+    assert!(
+        shown.contains("the router would route 3 connection(s)"),
+        "{shown}"
+    );
+
+    // The board is 14 by 7 mm: the whole outline on top, joined to GND.
+    let said = ok(&routes(
+        &dir,
+        &["add-zone", "--net", "GND", "--board-outline"],
+    ));
+    assert!(said.contains("added a zone to net GND on top"), "{said}");
+    assert!(said.contains("wrote led.routes.toml"), "{said}");
+    let file = fs::read_to_string(dir.join("led.routes.toml")).unwrap();
+    assert!(file.contains("[LedExample.nets.GND]"), "{file}");
+    assert!(file.contains("[[LedExample.nets.GND.zones]]"), "{file}");
+    assert!(file.contains("layers = [\"top\"]"), "{file}");
+    assert!(
+        file.contains("outline = [[0.2, 0.2], [13.8, 0.2], [13.8, 6.8], [0.2, 6.8]]"),
+        "{file}"
+    );
+
+    // A second, on the bottom, by a rectangle and with its own settings.
+    let said = ok(&routes(
+        &dir,
+        &[
+            "add-zone",
+            "--net",
+            "VCC",
+            "--layer",
+            "bottom",
+            "--rect",
+            "1,1,6,4",
+            "--priority",
+            "2",
+            "--pads",
+            "solid",
+            "--clearance",
+            "0.3",
+        ],
+    ));
+    assert!(said.contains("added a zone to net VCC on bottom"), "{said}");
+    let file = fs::read_to_string(dir.join("led.routes.toml")).unwrap();
+    assert!(file.contains("priority = 2"), "{file}");
+    assert!(file.contains("clearance = 0.3"), "{file}");
+    assert!(file.contains("pads = \"solid\""), "{file}");
+
+    // `show` numbers it as tracks and vias are, and the top zone joins GND's pads.
+    let shown = ok(&routes(&dir, &["show"]));
+    assert!(
+        shown.contains("net GND: 0 track(s), 0 via(s), 1 zone(s)"),
+        "{shown}"
+    );
+    assert!(
+        shown.contains("zone 1: top, priority 0, 4 corners from (0.2, 0.2), 0 hole(s)"),
+        "{shown}"
+    );
+    assert!(shown.contains("zone 1: bottom, priority 2"), "{shown}");
+    assert!(
+        shown.contains("the router would route 2 connection(s)"),
+        "{shown}"
+    );
+    assert!(!shown.contains("net GND: D1.1 to J1.2"), "{shown}");
+
+    // `fab` writes them into the board and draws them; GND has no connection left to route.
+    let said = ok(&netsmith(
+        &dir,
+        &["fab", "led.nsm", "--locked", "--out", "out"],
+    ));
+    assert!(said.contains("routing 2 connections"), "{said}");
+    assert!(said.contains("netsmith filled GND on F.Cu"), "{said}");
+    assert!(said.contains("design rules check: passed"), "{said}");
+    let pcb = fs::read_to_string(dir.join("out/LedExample/LedExample.kicad_pcb")).unwrap();
+    // Each zone is in the board file, on KiCad's page: the outline's corner is at (20, 20).
+    assert!(
+        pcb.contains("(xy 20.2 20.2) (xy 33.8 20.2) (xy 33.8 26.8) (xy 20.2 26.8)"),
+        "{pcb}"
+    );
+    assert!(
+        pcb.contains("(xy 21 21) (xy 27 21) (xy 27 25) (xy 21 25)"),
+        "{pcb}"
+    );
+}
+
+#[test]
+fn a_zone_that_is_refused_leaves_the_file_as_it_was() {
+    let dir = led("routes-zone-refused");
+    ok(&routes(
+        &dir,
+        &["add-zone", "--net", "GND", "--rect", "1,1,8,5"],
+    ));
+    let file = dir.join("led.routes.toml");
+    let before = fs::read_to_string(&file).unwrap();
+    let refused = |args: &[&str], reason: &str| {
+        let mut all = vec!["add-zone"];
+        all.extend_from_slice(args);
+        let run = routes(&dir, &all);
+        let said = text(&run);
+        assert_eq!(run.status.code(), Some(1), "{said}");
+        assert!(said.contains(reason), "{reason}: {said}");
+        assert_eq!(fs::read_to_string(&file).unwrap(), before, "{said}");
+        said
+    };
+    // Another net's zone over it with the same priority: KiCad would choose by an identifier.
+    let said = refused(
+        &["--net", "VCC", "--rect", "4,2,6,3"],
+        "have the same priority (0)",
+    );
+    assert!(said.contains("the routes file is not changed"), "{said}");
+    // A corner off the board, said in the routes file's places.
+    refused(
+        &["--net", "VCC", "--rect", "10,2,6,3", "--priority", "1"],
+        "corner (16, 2) is off the board",
+    );
+    // A clearance the process does not make.
+    refused(
+        &["--net", "VCC", "--rect", "10,2,2,3", "--clearance", "0.01"],
+        "less than the process's space between copper",
+    );
+    // A layer the board lacks, a net it lacks.
+    refused(
+        &["--net", "VCC", "--rect", "10,2,2,3", "--layer", "inner1"],
+        "`inner1`",
+    );
+    refused(&["--net", "NOPE", "--rect", "10,2,2,3"], "has no net `NOPE`");
+    // An outline of two corners.
+    refused(
+        &["--net", "VCC", "--outline", "1,1", "--outline", "2,2"],
+        "three or more",
+    );
+    // The outline is asked for once, in one way.
+    let run = routes(&dir, &["add-zone", "--net", "VCC"]);
+    assert_eq!(run.status.code(), Some(2), "{}", text(&run));
+    let run = routes(
+        &dir,
+        &[
+            "add-zone",
+            "--net",
+            "VCC",
+            "--rect",
+            "1,1,2,2",
+            "--board-outline",
+        ],
+    );
+    assert_eq!(run.status.code(), Some(2), "{}", text(&run));
+
+    // The same zone with the higher priority is drawn: it takes the area.
+    ok(&routes(
+        &dir,
+        &[
+            "add-zone",
+            "--net",
+            "VCC",
+            "--rect",
+            "4,2,6,3",
+            "--priority",
+            "1",
+        ],
+    ));
+}
+
+#[test]
+fn a_zone_over_another_nets_pad_keeps_its_clearance_round_it_and_is_no_short() {
+    let dir = led("routes-zone-over-pads");
+    // VCC's zone covers the whole top, including the GND and anode pads.
+    ok(&routes(
+        &dir,
+        &["add-zone", "--net", "VCC", "--board-outline"],
+    ));
+    let said = ok(&netsmith(
+        &dir,
+        &["fab", "led.nsm", "--locked", "--out", "out"],
+    ));
+    assert!(said.contains("design rules check: passed"), "{said}");
+}
+
+#[test]
+fn a_locked_zone_is_not_deleted_until_unlocked() {
+    let dir = led("routes-zone-locks");
+    ok(&routes(
+        &dir,
+        &["add-zone", "--net", "GND", "--rect", "1,1,4,4", "--lock"],
+    ));
+    ok(&routes(
+        &dir,
+        &["add-zone", "--net", "GND", "--rect", "6,1,4,4"],
+    ));
+    let shown = ok(&routes(&dir, &["show"]));
+    assert!(
+        shown.contains("zone 1: top, priority 0, 4 corners from (1, 1), 0 hole(s) (locked)"),
+        "{shown}"
+    );
+    assert!(
+        shown.contains("zone 2: top, priority 0, 4 corners from (6, 1), 0 hole(s)\n"),
+        "{shown}"
+    );
+
+    let run = routes(&dir, &["delete", "--net", "GND", "--zone", "1"]);
+    assert_eq!(run.status.code(), Some(1), "{}", text(&run));
+    assert!(
+        text(&run).contains("zone 1 of net GND is locked"),
+        "{}",
+        text(&run)
+    );
+    // So is the net's whole record.
+    let run = routes(&dir, &["delete", "--net", "GND"]);
+    assert_eq!(run.status.code(), Some(1), "{}", text(&run));
+
+    ok(&routes(&dir, &["unlock", "--net", "GND", "--zone", "1"]));
+    ok(&routes(&dir, &["lock", "--net", "GND", "--zone", "2"]));
+    ok(&routes(&dir, &["unlock", "--net", "GND", "--zone", "2"]));
+    ok(&routes(&dir, &["delete", "--net", "GND", "--zone", "1"]));
+    let shown = ok(&routes(&dir, &["show"]));
+    assert!(
+        shown.contains("net GND: 0 track(s), 0 via(s), 1 zone(s)"),
+        "{shown}"
+    );
+    assert!(
+        shown.contains("zone 1: top, priority 0, 4 corners from (6, 1)"),
+        "{shown}"
+    );
+
+    // A zone the record does not have is refused, with how many it has.
+    let run = routes(&dir, &["delete", "--net", "GND", "--zone", "2"]);
+    assert_eq!(run.status.code(), Some(1), "{}", text(&run));
+    assert!(text(&run).contains("has no zone 2"), "{}", text(&run));
+    // The record goes with its last zone, and the file with the record.
+    ok(&routes(&dir, &["delete", "--net", "GND", "--zone", "1"]));
+    assert!(!dir.join("led.routes.toml").exists());
+}
+
+#[test]
+fn a_refusal_of_a_track_quotes_the_routes_files_places() {
+    let dir = imported("routes-frame");
+    let run = routes(
+        &dir,
+        &[
+            "add-track",
+            "--net",
+            "VCC",
+            "--from",
+            "5.3,2.8",
+            "--to",
+            "5.3,1.0",
+        ],
+    );
+    let said = text(&run);
+    assert_eq!(run.status.code(), Some(1), "{said}");
+    // The crossing is at (5.3, 1.6) from the outline's corner, not (25.3, 21.6) on KiCad's page.
+    assert!(said.contains("at (5.300, 1.600) on F.Cu"), "{said}");
+}

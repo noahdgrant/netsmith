@@ -635,8 +635,29 @@ impl RouteZone {
         }
     }
 
+    /// A zone of the design's own plane settings, on `layers` (the file's words, `top`,
+    /// `bottom`, `inner1`...) with `outline` (the file's places): the clearance the process's
+    /// planes keep, the minimum width and the thermal relief of KiCad's defaults, priority 0, a
+    /// thermal relief at each pad, islands removed, no holes, not locked.
+    pub fn new(board: &Board, layers: Vec<String>, outline: Vec<[f64; 2]>) -> RouteZone {
+        RouteZone {
+            layers,
+            priority: 0,
+            clearance: board.rules.plane_clearance,
+            min_width: crate::export::ZONE_MIN_THICKNESS,
+            pads: ZonePads::default(),
+            thermal_gap: crate::export::THERMAL,
+            spoke_width: crate::export::THERMAL,
+            islands: ZoneIslands::default(),
+            island_min_area: None,
+            outline,
+            holes: Vec::new(),
+            lock: false,
+        }
+    }
+
     /// An error for a zone that is wrong in itself, or on a layer `board` does not have.
-    fn check(&self, board: &Board) -> Result<(), String> {
+    pub fn check(&self, board: &Board) -> Result<(), String> {
         let mut have = vec!["F.Cu".to_string(), "B.Cu".to_string()];
         have.extend(board.inner_layers());
         if self.layers.is_empty() {
