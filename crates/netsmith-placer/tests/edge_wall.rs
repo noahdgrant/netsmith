@@ -153,14 +153,26 @@ fn a_board_the_courtyards_fit_but_the_pads_do_not_is_refused_not_placed_with_pad
                 .contains("part(s) do not fit the outline of 3.9 x 7.0 mm"),
             "{e}"
         ),
-        Ok(b) => assert!(
-            matches!(
+        // Since a pad that reaches past the courtyard is in it (with 0.15 mm, #728), the placer
+        // may also find a place that keeps the pads their space from the edge.
+        Ok(b) => {
+            let near = matches!(
                 b.check_placement()[..],
                 [PlacementProblem::PadNearEdge { .. }]
-            ),
-            "{:?}",
-            b.check_placement()
-        ),
+            );
+            let want = b.rules.copper_to_edge;
+            let kept = b.parts.iter().all(|p| {
+                p.footprint.pads.iter().all(|pad| {
+                    let r = p.pad_bounds(pad);
+                    (r.min.x - b.outline.min.x)
+                        .min(b.outline.max.x - r.max.x)
+                        .min(r.min.y - b.outline.min.y)
+                        .min(b.outline.max.y - r.max.y)
+                        >= want - 1e-9
+                })
+            });
+            assert!(near || (kept && b.check_placement().is_empty()), "{:?}", b.check_placement());
+        }
     }
     let b = board(1, (4.6, 7.0)).unwrap_or_else(|e| panic!("{e}"));
     assert_eq!(b.check_placement(), vec![]);
