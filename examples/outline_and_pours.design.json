@@ -613,23 +613,25 @@
     ],
     "notes": [
       {
+        "path": "hole1",
+        "kind": "doc",
+        "text": "Mounting holes go in the corners of the outline, and so do the fiducials.",
+        "at": {
+          "file": "outline_and_pours.physical.nsm",
+          "line": 25
+        },
+        "anchors": [
+          "hole1"
+        ],
+        "result": null
+      },
+      {
         "path": "input",
         "kind": "doc",
         "text": "The input rail is supplied from outside the board, and carries up to an amp: its nets are drawn at least 0.4 mm wide, and so is the ground they return on.",
         "at": {
           "file": "outline_and_pours.nsm",
           "line": 52
-        },
-        "anchors": [],
-        "result": null
-      },
-      {
-        "path": "stage",
-        "kind": "doc",
-        "text": "A linear regulator with a capacitor on its input and on its output.",
-        "at": {
-          "file": "outline_and_pours.nsm",
-          "line": 16
         },
         "anchors": [],
         "result": null
@@ -646,19 +648,6 @@
         "result": null
       },
       {
-        "path": "hole1",
-        "kind": "doc",
-        "text": "Mounting holes go in the corners of the outline, and so do the fiducials.",
-        "at": {
-          "file": "outline_and_pours.physical.nsm",
-          "line": 25
-        },
-        "anchors": [
-          "hole1"
-        ],
-        "result": null
-      },
-      {
         "path": "revision",
         "kind": "doc",
         "text": "Text on the silkscreen, placed like any other part.",
@@ -670,6 +659,17 @@
           "revision"
         ],
         "result": null
+      },
+      {
+        "path": "stage",
+        "kind": "doc",
+        "text": "A linear regulator with a capacitor on its input and on its output.",
+        "at": {
+          "file": "outline_and_pours.nsm",
+          "line": 16
+        },
+        "anchors": [],
+        "result": null
       }
     ],
     "modules": [
@@ -678,20 +678,20 @@
         "type_name": "LdoStage",
         "ports": [
           {
+            "name": "vin.neg",
+            "net": "GND"
+          },
+          {
             "name": "vin.pos",
             "net": "VIN"
           },
           {
-            "name": "vin.neg",
+            "name": "vout.neg",
             "net": "GND"
           },
           {
             "name": "vout.pos",
             "net": "3V3"
-          },
-          {
-            "name": "vout.neg",
-            "net": "GND"
           }
         ]
       }

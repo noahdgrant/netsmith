@@ -149,7 +149,7 @@ fn the_summary_names_the_tallest_part_and_what_is_unknown() {
     );
     assert!(text.contains("heights: 2 of 3 parts known"), "{text}");
     assert!(text.contains("margin -6.00 mm"), "{text}");
-    assert!(text.contains("unknown height: J3 (`bare`)"), "{text}");
+    assert!(text.contains("unknown height: J1 (`bare`)"), "{text}");
 }
 
 #[test]
@@ -571,10 +571,10 @@ fn an_unknown_height_is_flat_in_the_glb_and_the_limit_it_breaks_is_marked() {
         String::from_utf8_lossy(&run.stderr)
     );
     let doc = glb_json(&std::fs::read(&file).unwrap());
-    let bare = &glb_node(&doc, "J3")["extras"]["netsmith"];
+    let bare = &glb_node(&doc, "J1")["extras"]["netsmith"];
     assert_eq!(bare["provenance"], "unknown");
     assert!(bare["height_mm"].is_null() && bare["z_top_mm"].is_null());
-    let mesh = glb_node(&doc, "J3")["mesh"].as_u64().unwrap() as usize;
+    let mesh = glb_node(&doc, "J1")["mesh"].as_u64().unwrap() as usize;
     let material = doc["meshes"][mesh]["primitives"][0]["material"]
         .as_u64()
         .unwrap() as usize;
@@ -677,11 +677,11 @@ fn an_unknown_height_is_an_outline_in_the_step_and_never_a_solid() {
         String::from_utf8_lossy(&run.stderr)
     );
     let step = std::fs::read_to_string(&file).unwrap();
-    assert!(step.contains("PRODUCT('bare','J3','"));
+    assert!(step.contains("PRODUCT('bare','J1','"));
     assert!(step.contains("; height unknown: outline only'"));
-    assert!(step.contains("GEOMETRICALLY_BOUNDED_WIREFRAME_SHAPE_REPRESENTATION('J3',"));
-    assert!(!step.contains("ADVANCED_BREP_SHAPE_REPRESENTATION('J3',"));
-    assert!(step.contains("ADVANCED_BREP_SHAPE_REPRESENTATION('J1',"));
+    assert!(step.contains("GEOMETRICALLY_BOUNDED_WIREFRAME_SHAPE_REPRESENTATION('J1',"));
+    assert!(!step.contains("ADVANCED_BREP_SHAPE_REPRESENTATION('J1',"));
+    assert!(step.contains("ADVANCED_BREP_SHAPE_REPRESENTATION('J3',"));
 }
 
 /// A GET over a socket: the status, the head (lower case) and the body's bytes.

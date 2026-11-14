@@ -77,7 +77,7 @@ Read it from the top.
 
 The report shows what the solver chose: a 330 ohm resistor and a red LED, both from JLCPCB's Basic library. The chain decides it. With the supply at 4.75 V to 5.25 V, a forward voltage of 1.8 V to 2.4 V and a 1% 330 ohm resistor, the current stays between 5 mA and 15 mA (about 7.05 mA to 10.56 mA, in fact). The resistor is a 0402 part: its 62.5 mW rating holds for the current it really carries (see Resistor power).
 
-The rest of this guide explains each construct. Statement order never matters to what a design means, so you may write the statements of a block in any order. The one thing it shows in is the number of a part's designator (see Designators).
+The rest of this guide explains each construct. Statement order never matters, so you may write the statements of a block in any order: the design, the schematic, the board, the bill of materials and the placement file come out the same (only the source lines that a message or a note points at move with the statement).
 
 ## Definitions: board, part, interface, module, system, panel
 
@@ -312,12 +312,12 @@ board Groups {
 
 ```text
 board Groups
-  C5   Capacitor       10u             Capacitor_SMD:C_0603_1608Metric                            C19702 Basic
-  C6   Capacitor       10u             Capacitor_SMD:C_0603_1608Metric                            C19702 Basic
-  C1   Capacitor       100n            Capacitor_SMD:C_0402_1005Metric                            C1525 Basic
-  C2   Capacitor       100n            Capacitor_SMD:C_0402_1005Metric                            C1525 Basic
+  C1   Capacitor       10u             Capacitor_SMD:C_0603_1608Metric                            C19702 Basic
+  C2   Capacitor       10u             Capacitor_SMD:C_0603_1608Metric                            C19702 Basic
   C3   Capacitor       100n            Capacitor_SMD:C_0402_1005Metric                            C1525 Basic
-  C4   Capacitor       100n            Capacitor_SMD:C_0603_1608Metric                            C14663 Basic
+  C4   Capacitor       100n            Capacitor_SMD:C_0402_1005Metric                            C1525 Basic
+  C5   Capacitor       100n            Capacitor_SMD:C_0402_1005Metric                            C1525 Basic
+  C6   Capacitor       100n            Capacitor_SMD:C_0603_1608Metric                            C14663 Basic
   net 3V3: C1.1, C2.1, C3.1, C4.1, C5.1, C6.1
   net GND: C1.2, C2.2, C3.2, C4.2, C5.2, C6.2
 ```
@@ -328,7 +328,7 @@ Rules.
 - The block holds for every member. One member is narrowed further by its index, `.decoupling[3].package &= "0603"`, as any member is; the index counts from 0. A path to the whole group outside its block (`.decoupling.package`) is an error that names the members.
 - A chain passes through a group only with the group alone between its two ends, every operator `~>`. To join one member to something else, name it: `.decoupling[0].a ~ .u.vdd`.
 - A group written in a chain is named from its kind and the chain's two ends: `2 x Capacitor` between `.supply.pos` and `.supply.neg` is `capacitor_supply_pos_supply_neg[0]` and `[1]`. Two such groups of one kind between the same ends would have one name, which is an error: name each group yourself.
-- Each member is a part of the design with a designator of its own. The members are declared where the group is, one after another in index order, so they are numbered in index order (Designators, below); the group's doc comment is one note, on the first.
+- Each member is a part of the design with a designator of its own. The members' paths differ only in the index, which sorts as a number, so they are numbered one after the other in index order (Designators, below); the group's doc comment is one note, on the first.
 - A physical file and a layout file name a member by its path with the index: `.decoupling[2].place.side &= "bottom"`, `[Groups.parts."decoupling[2]"]`. A pick lock has an entry for each member.
 
 A group is not a bank (A bank of capacitors in parallel, below). A bank is one member whose count the solver may choose, and its capacitors are identical and have no paths a board can narrow. A group's count is the board's, and its members are members.
@@ -2732,7 +2732,7 @@ error: `j` is inside `Block` and is not part of its interface: only narrowing (`
 
 ### Designators
 
-Every part has a text field `.designator` that it does not declare (declaring it again is an error), as it has `.assembly`. It holds the letters of the part's reference designator on the schematic, the bill of materials and the placement file, and the letters come from the part's kind (below). The number after them counts the parts that have the same letters, from 1, in the order the design declares the parts (owner decision, 2026-11-09, issue #166): the parts of a board in the order of its statements, and a module's parts, and those of a module inside it, where the module is declared, one module after another and each module's parts in its own order, depth first. So a board that declares `.power_in` and then `.enable_in`, two headers, has `J1` and `J2`, and a resistor in a module declared between two resistors of the board is the second. It is the order of the source text and nothing else: not the order of the sheets, how the schematic is drawn, the placement, or anything KiCad does, so the netlist, the bill of materials and the board are the same with every layout. It is also the one place where the order of statements shows: moving a part's declaration above another part of the same letters swaps their numbers (a layout file is keyed by path, so no placement moves). A number at the end of a name (`.tp2`) is part of the name and counts for nothing. The members of a group (`.decoupling: 4 x Capacitor`) are declared where the group is, in index order, so `decoupling[0]` to `decoupling[3]` have numbers one after the other, and where parts are listed by path an index sorts as a number (`decoupling[2]` before `decoupling[10]`). The letters follow IEEE 315 and ASME Y14.44 usage: `K` a relay, `BZ` a buzzer, `BT` a battery, `T` a transformer, `U` an integrated circuit.
+Every part has a text field `.designator` that it does not declare (declaring it again is an error), as it has `.assembly`. It holds the letters of the part's reference designator on the schematic, the bill of materials and the placement file, and the letters come from the part's kind (below). The number after them counts the parts that have the same letters, from 1, in the order of their paths (owner decision, 2026-11-13, issue #634; it replaces the order of declaration of 2026-11-09): each part's full path in the board (`power_in`, `status.led`, `buck.divider.rtop`), a module's parts with the board's own, compared segment by segment, with a number at the end of a segment compared as a number (`tp2` before `tp10`) and the index of a group's member too (`decoupling[2]` before `decoupling[10]`). So a board with the headers `.power_in` and `.enable_in` has `enable_in` as `J1` and `power_in` as `J2`, whichever it declares first, and a resistor `.buck.rtop` comes after a resistor `.audio.rbias` and before `.status.r`. The path decides it and nothing else: not the order of the statements, the order of the sheets, how the schematic is drawn, the placement, or anything KiCad does, so the netlist, the bill of materials and the board are the same with every layout and with the statements in any order. Adding, removing or renaming a part may renumber the parts that sort after it with the same letters (a layout file is keyed by path, so no placement moves). Each board is numbered on its own, from 1, the boards of a system too (the paths are the board's own, without the system's name for it); a panel's cells keep the board's numbers and add the cell (`R1_3`). How the numbering spans modules and the boards of a system was decided by the orchestrating agent while the owner was away (2026-11-13). A number at the end of a name (`.tp2`) is part of the path and counts only as the path sorts: `.tp2` is numbered before `.tp10`, but it is `TP1` if it is the first test point. The letters follow IEEE 315 and ASME Y14.44 usage: `K` a relay, `BZ` a buzzer, `BT` a battery, `T` a transformer, `U` an integrated circuit.
 
 Each standard kind states its own letters, because they are always true of it, and nothing can change them: `Resistor` is `"R"`, `Capacitor` `"C"`, `Inductor` `"L"`, `FerriteBead` `"FB"`, `Led`, `Diode`, `Schottky`, `Zener` and `Tvs` `"D"`, `NMosfet` and `PMosfet` `"Q"`, `Crystal` `"Y"`, `Fuse` `"F"`, `Switch` `"SW"`, every connector (a part that provides `Connector`, see _A connector of your own_: every header, socket, `Coax`, `UsbCPower`, `UsbC2`, `UsbCReceptacle16P`, `Obd2M` and `ProgrammingPads6`) `"J"`, `TestPoint` `"TP"`, `MountingHole` and `PlatedHole` `"H"`, `Fiducial` `"FID"`, `Label` `"LBL"` and `LinearRegulator` `"U"`. A part you define states its own letters in its body, `.designator &= "BZ"`, or leaves them out; a part with none is `"U"`. A board may give the letters to a part of its own that states none, with the same `&=`. A test fails when a part of the standard library has no letters, so a new kind gets them on purpose.
 
@@ -2764,7 +2764,7 @@ board Letters {
 }
 ```
 
-Each part is numbered among the parts with its letters, in declaration order. Here the TVS is declared first, so it is `D1` and the diode `D2`; the fuse is `F1` and the header, a second kind with its own count, `J1`:
+Each part is numbered among the parts with its letters, in the order of their paths. Here `clamp` sorts before `rectifier`, so the TVS is `D1` and the diode `D2`, though the diode is declared first; the fuse is `F1` and the header, a second kind with its own count, `J1`:
 
 ```nsm
 import std::parts::connector::Header1x2
@@ -2772,12 +2772,12 @@ import std::parts::diode::{Diode, Tvs}
 import std::parts::passive::Fuse
 
 board Order {
-    /// `J1`, though `.zz_in` would sort after the others.
+    /// `D2`: `rectifier` sorts after `clamp`.
+    .rectifier: Diode
+    /// `J1`, the one part with the letters `J`.
     .zz_in: Header1x2
     /// `D1`.
     .clamp: Tvs
-    /// `D2`.
-    .rectifier: Diode
     /// `F1`.
     .fuse: Fuse
 }
@@ -4784,11 +4784,11 @@ board Bounded {
 
 ```text
 board Bounded
-  R2   Resistor        22k             Resistor_SMD:R_0402_1005Metric                             C25768 Basic
   R1   Resistor        22k             Resistor_SMD:R_0402_1005Metric                             C25768 Basic
-  net GND: R2.2
-  net VCC: R1.1
-  net net-lamp.bottom.a: R1.2, R2.1
+  R2   Resistor        22k             Resistor_SMD:R_0402_1005Metric                             C25768 Basic
+  net GND: R1.2
+  net VCC: R2.1
+  net net-lamp.bottom.a: R1.1, R2.2
 ```
 
 When no row meets the bound, the message says which statements make it a bound on the part:
@@ -7388,8 +7388,8 @@ board Caps {
 
 ```text
 board Caps
-  C2   Capacitor       4.7u            Capacitor_SMD:C_0402_1005Metric                            C23733 Basic
-  C1   Capacitor       100n            Capacitor_SMD:C_0402_1005Metric                            C1525 Basic
+  C1   Capacitor       4.7u            Capacitor_SMD:C_0402_1005Metric                            C23733 Basic
+  C2   Capacitor       100n            Capacitor_SMD:C_0402_1005Metric                            C1525 Basic
   net 3V3: C1.1, C2.1
   net GND: C1.2, C2.2
 ```
@@ -14644,7 +14644,7 @@ Forgetful: unconstrained pick guideline: `pull.resistor` (Resistor) was chosen w
 
 The library is `.nsm` source in `std/`. It states only what is always true of a part. Import a definition by its full path, for example `import std::parts::passive::Resistor`.
 
-Parts are numbered by their letters in the order the design declares them (a module's parts where the module is declared, depth first; see Designators), and every kind states its own letters in its definition (`.designator &= "R"` in `Resistor`): `R` resistor, `C` capacitor, `L` inductor, `FB` ferrite bead, `D` LED, diode, Schottky, Zener and TVS, `Q` MOSFET, `Y` crystal, `F` fuse, `RT` thermistor (IEEE 315), `SW` switch, `J` header, socket, coax, USB-C and programming pads, `TP` test point, `H` mounting hole and plated hole, `FID` fiducial, `LBL` label, `U` linear regulator (ADR 0046; see Designators).
+Parts are numbered by their letters in the order of their paths in the board (a module's parts by their full paths, with the board's own; see Designators), and every kind states its own letters in its definition (`.designator &= "R"` in `Resistor`): `R` resistor, `C` capacitor, `L` inductor, `FB` ferrite bead, `D` LED, diode, Schottky, Zener and TVS, `Q` MOSFET, `Y` crystal, `F` fuse, `RT` thermistor (IEEE 315), `SW` switch, `J` header, socket, coax, USB-C and programming pads, `TP` test point, `H` mounting hole and plated hole, `FID` fiducial, `LBL` label, `U` linear regulator (ADR 0046; see Designators).
 
 ### Parts
 

@@ -3,7 +3,7 @@
     "name": "EasyduinoEsp32s3",
     "parts": [
       {
-        "refdes": "Q2",
+        "refdes": "Q1",
         "kind": "Ss8050",
         "provides": [],
         "value": "SS8050",
@@ -43,7 +43,7 @@
         ]
       },
       {
-        "refdes": "Q1",
+        "refdes": "Q2",
         "kind": "Ss8050",
         "provides": [],
         "value": "SS8050",
@@ -83,7 +83,7 @@
         ]
       },
       {
-        "refdes": "R7",
+        "refdes": "R1",
         "kind": "Resistor",
         "provides": [],
         "declared_kind": "resistor",
@@ -114,7 +114,7 @@
         ]
       },
       {
-        "refdes": "R8",
+        "refdes": "R2",
         "kind": "Resistor",
         "provides": [],
         "declared_kind": "resistor",
@@ -145,7 +145,7 @@
         ]
       },
       {
-        "refdes": "SW2",
+        "refdes": "SW1",
         "kind": "XunpuTs1088",
         "provides": [],
         "value": "TS-1088-AR02016",
@@ -175,7 +175,7 @@
         ]
       },
       {
-        "refdes": "C10",
+        "refdes": "C1",
         "kind": "Capacitor",
         "provides": [],
         "declared_kind": "capacitor",
@@ -206,7 +206,7 @@
         ]
       },
       {
-        "refdes": "U2",
+        "refdes": "U1",
         "kind": "Cp2102n",
         "provides": [],
         "value": "CP2102N-A02-GQFN28",
@@ -497,7 +497,7 @@
         ]
       },
       {
-        "refdes": "R5",
+        "refdes": "R3",
         "kind": "Resistor",
         "provides": [],
         "declared_kind": "resistor",
@@ -528,7 +528,7 @@
         ]
       },
       {
-        "refdes": "C1",
+        "refdes": "C2",
         "kind": "Capacitor",
         "provides": [],
         "declared_kind": "capacitor",
@@ -559,7 +559,7 @@
         ]
       },
       {
-        "refdes": "C8",
+        "refdes": "C3",
         "kind": "Capacitor",
         "provides": [],
         "declared_kind": "capacitor",
@@ -590,7 +590,7 @@
         ]
       },
       {
-        "refdes": "C9",
+        "refdes": "C4",
         "kind": "Capacitor",
         "provides": [],
         "declared_kind": "capacitor",
@@ -621,7 +621,7 @@
         ]
       },
       {
-        "refdes": "R9",
+        "refdes": "R4",
         "kind": "Resistor",
         "provides": [],
         "declared_kind": "resistor",
@@ -652,7 +652,7 @@
         ]
       },
       {
-        "refdes": "J3",
+        "refdes": "J1",
         "kind": "Esp32S3DevKitCHeaders",
         "provides": [
           "Connector"
@@ -1069,7 +1069,7 @@
         ]
       },
       {
-        "refdes": "U1",
+        "refdes": "U2",
         "kind": "Esp32S3Wroom1",
         "provides": [],
         "value": "ESP32-S3-WROOM-1-N4",
@@ -1471,7 +1471,7 @@
         ]
       },
       {
-        "refdes": "D3",
+        "refdes": "D1",
         "kind": "Led",
         "provides": [],
         "declared_kind": "led",
@@ -1502,7 +1502,7 @@
         ]
       },
       {
-        "refdes": "R10",
+        "refdes": "R5",
         "kind": "Resistor",
         "provides": [],
         "declared_kind": "resistor",
@@ -1574,7 +1574,7 @@
         ]
       },
       {
-        "refdes": "SW1",
+        "refdes": "SW2",
         "kind": "XunpuTs1088",
         "provides": [],
         "value": "TS-1088-AR02016",
@@ -1635,7 +1635,7 @@
         ]
       },
       {
-        "refdes": "R3",
+        "refdes": "R7",
         "kind": "Resistor",
         "provides": [],
         "declared_kind": "resistor",
@@ -1666,7 +1666,7 @@
         ]
       },
       {
-        "refdes": "R4",
+        "refdes": "R8",
         "kind": "Resistor",
         "provides": [],
         "declared_kind": "resistor",
@@ -1840,7 +1840,7 @@
         ]
       },
       {
-        "refdes": "R1",
+        "refdes": "R9",
         "kind": "Resistor",
         "provides": [],
         "declared_kind": "resistor",
@@ -1871,7 +1871,7 @@
         ]
       },
       {
-        "refdes": "R2",
+        "refdes": "R10",
         "kind": "Resistor",
         "provides": [],
         "declared_kind": "resistor",
@@ -1902,7 +1902,7 @@
         ]
       },
       {
-        "refdes": "J1",
+        "refdes": "J3",
         "kind": "ShouhanTypeC16Pin",
         "provides": [
           "UsbCSinkReceptacle",
@@ -2014,7 +2014,7 @@
         ]
       },
       {
-        "refdes": "D1",
+        "refdes": "D3",
         "kind": "Schottky",
         "provides": [],
         "declared_kind": "diode",
@@ -2200,7 +2200,7 @@
         ]
       },
       {
-        "refdes": "C3",
+        "refdes": "C8",
         "kind": "Capacitor",
         "provides": [],
         "declared_kind": "capacitor",
@@ -2231,7 +2231,7 @@
         ]
       },
       {
-        "refdes": "C2",
+        "refdes": "C9",
         "kind": "Capacitor",
         "provides": [],
         "declared_kind": "capacitor",
@@ -2262,7 +2262,7 @@
         ]
       },
       {
-        "refdes": "C4",
+        "refdes": "C10",
         "kind": "Capacitor",
         "provides": [],
         "declared_kind": "capacitor",
@@ -2310,19 +2310,19 @@
             "pin": "1"
           },
           {
-            "refdes": "J3",
+            "refdes": "J1",
             "pin": "1"
           },
           {
-            "refdes": "J3",
+            "refdes": "J1",
             "pin": "2"
           },
           {
-            "refdes": "R9",
+            "refdes": "R4",
             "pin": "1"
           },
           {
-            "refdes": "U1",
+            "refdes": "U2",
             "pin": "2"
           },
           {
@@ -2375,7 +2375,7 @@
             "pin": "2"
           },
           {
-            "refdes": "D3",
+            "refdes": "D1",
             "pin": "1"
           },
           {
@@ -2384,78 +2384,78 @@
           },
           {
             "refdes": "J1",
-            "pin": "A1"
-          },
-          {
-            "refdes": "J1",
-            "pin": "A12"
-          },
-          {
-            "refdes": "J1",
-            "pin": "B1"
-          },
-          {
-            "refdes": "J1",
-            "pin": "B12"
-          },
-          {
-            "refdes": "J1",
-            "pin": "S1"
-          },
-          {
-            "refdes": "J2",
-            "pin": "A1"
-          },
-          {
-            "refdes": "J2",
-            "pin": "A12"
-          },
-          {
-            "refdes": "J2",
-            "pin": "B1"
-          },
-          {
-            "refdes": "J2",
-            "pin": "B12"
-          },
-          {
-            "refdes": "J2",
-            "pin": "S1"
-          },
-          {
-            "refdes": "J3",
             "pin": "22"
           },
           {
-            "refdes": "J3",
+            "refdes": "J1",
             "pin": "23"
           },
           {
-            "refdes": "J3",
+            "refdes": "J1",
             "pin": "24"
           },
           {
-            "refdes": "J3",
+            "refdes": "J1",
             "pin": "44"
           },
           {
-            "refdes": "R1",
-            "pin": "2"
+            "refdes": "J2",
+            "pin": "A1"
           },
           {
-            "refdes": "R2",
-            "pin": "2"
+            "refdes": "J2",
+            "pin": "A12"
           },
           {
-            "refdes": "R3",
-            "pin": "2"
+            "refdes": "J2",
+            "pin": "B1"
           },
           {
-            "refdes": "R4",
+            "refdes": "J2",
+            "pin": "B12"
+          },
+          {
+            "refdes": "J2",
+            "pin": "S1"
+          },
+          {
+            "refdes": "J3",
+            "pin": "A1"
+          },
+          {
+            "refdes": "J3",
+            "pin": "A12"
+          },
+          {
+            "refdes": "J3",
+            "pin": "B1"
+          },
+          {
+            "refdes": "J3",
+            "pin": "B12"
+          },
+          {
+            "refdes": "J3",
+            "pin": "S1"
+          },
+          {
+            "refdes": "R10",
             "pin": "2"
           },
           {
             "refdes": "R6",
+            "pin": "2"
+          },
+          {
+            "refdes": "R7",
+            "pin": "2"
+          },
+          {
+            "refdes": "R8",
+            "pin": "2"
+          },
+          {
+            "refdes": "R9",
             "pin": "2"
           },
           {
@@ -2468,23 +2468,23 @@
           },
           {
             "refdes": "U1",
-            "pin": "1"
-          },
-          {
-            "refdes": "U1",
-            "pin": "40"
-          },
-          {
-            "refdes": "U1",
-            "pin": "41"
-          },
-          {
-            "refdes": "U2",
             "pin": "29"
           },
           {
-            "refdes": "U2",
+            "refdes": "U1",
             "pin": "3"
+          },
+          {
+            "refdes": "U2",
+            "pin": "1"
+          },
+          {
+            "refdes": "U2",
+            "pin": "40"
+          },
+          {
+            "refdes": "U2",
+            "pin": "41"
           },
           {
             "refdes": "U3",
@@ -2496,19 +2496,15 @@
         "name": "VBUS",
         "pins": [
           {
-            "refdes": "C2",
+            "refdes": "C10",
             "pin": "1"
           },
           {
-            "refdes": "C3",
+            "refdes": "C8",
             "pin": "1"
           },
           {
-            "refdes": "C4",
-            "pin": "1"
-          },
-          {
-            "refdes": "D1",
+            "refdes": "C9",
             "pin": "1"
           },
           {
@@ -2516,11 +2512,15 @@
             "pin": "1"
           },
           {
-            "refdes": "J3",
+            "refdes": "D3",
+            "pin": "1"
+          },
+          {
+            "refdes": "J1",
             "pin": "21"
           },
           {
-            "refdes": "R10",
+            "refdes": "R3",
             "pin": "1"
           },
           {
@@ -2528,11 +2528,11 @@
             "pin": "1"
           },
           {
-            "refdes": "U2",
+            "refdes": "U1",
             "pin": "7"
           },
           {
-            "refdes": "U2",
+            "refdes": "U1",
             "pin": "8"
           },
           {
@@ -2545,23 +2545,23 @@
         "name": "VBUS1",
         "pins": [
           {
-            "refdes": "D1",
+            "refdes": "D3",
             "pin": "2"
           },
           {
-            "refdes": "J1",
+            "refdes": "J3",
             "pin": "A4"
           },
           {
-            "refdes": "J1",
+            "refdes": "J3",
             "pin": "A9"
           },
           {
-            "refdes": "J1",
+            "refdes": "J3",
             "pin": "B4"
           },
           {
-            "refdes": "J1",
+            "refdes": "J3",
             "pin": "B9"
           }
         ]
@@ -2595,11 +2595,11 @@
         "name": "net-auto_reset.q_boot.base",
         "pins": [
           {
-            "refdes": "Q2",
+            "refdes": "Q1",
             "pin": "1"
           },
           {
-            "refdes": "R8",
+            "refdes": "R2",
             "pin": "2"
           }
         ]
@@ -2608,15 +2608,15 @@
         "name": "net-auto_reset.q_boot.collector",
         "pins": [
           {
-            "refdes": "Q2",
+            "refdes": "Q1",
             "pin": "3"
           },
           {
-            "refdes": "R7",
+            "refdes": "R1",
             "pin": "1"
           },
           {
-            "refdes": "U2",
+            "refdes": "U1",
             "pin": "28"
           }
         ]
@@ -2625,23 +2625,23 @@
         "name": "net-auto_reset.q_boot.emitter",
         "pins": [
           {
-            "refdes": "C10",
+            "refdes": "C1",
             "pin": "1"
           },
           {
-            "refdes": "J3",
+            "refdes": "J1",
             "pin": "31"
           },
           {
-            "refdes": "Q2",
+            "refdes": "Q1",
             "pin": "2"
           },
           {
-            "refdes": "SW2",
+            "refdes": "SW1",
             "pin": "2"
           },
           {
-            "refdes": "U1",
+            "refdes": "U2",
             "pin": "27"
           }
         ]
@@ -2650,11 +2650,11 @@
         "name": "net-auto_reset.q_en.base",
         "pins": [
           {
-            "refdes": "Q1",
+            "refdes": "Q2",
             "pin": "1"
           },
           {
-            "refdes": "R7",
+            "refdes": "R1",
             "pin": "2"
           }
         ]
@@ -2663,15 +2663,15 @@
         "name": "net-auto_reset.q_en.collector",
         "pins": [
           {
-            "refdes": "Q1",
+            "refdes": "Q2",
             "pin": "3"
           },
           {
-            "refdes": "R8",
+            "refdes": "R2",
             "pin": "1"
           },
           {
-            "refdes": "U2",
+            "refdes": "U1",
             "pin": "24"
           }
         ]
@@ -2680,31 +2680,31 @@
         "name": "net-auto_reset.q_en.emitter",
         "pins": [
           {
-            "refdes": "C8",
+            "refdes": "C3",
             "pin": "1"
           },
           {
-            "refdes": "C9",
+            "refdes": "C4",
             "pin": "1"
           },
           {
-            "refdes": "J3",
+            "refdes": "J1",
             "pin": "3"
           },
           {
-            "refdes": "Q1",
+            "refdes": "Q2",
             "pin": "2"
           },
           {
-            "refdes": "R9",
+            "refdes": "R4",
             "pin": "2"
           },
           {
-            "refdes": "SW1",
+            "refdes": "SW2",
             "pin": "2"
           },
           {
-            "refdes": "U1",
+            "refdes": "U2",
             "pin": "3"
           }
         ]
@@ -2713,15 +2713,15 @@
         "name": "net-bridge.dm",
         "pins": [
           {
-            "refdes": "J1",
+            "refdes": "J3",
             "pin": "A7"
           },
           {
-            "refdes": "J1",
+            "refdes": "J3",
             "pin": "B7"
           },
           {
-            "refdes": "U2",
+            "refdes": "U1",
             "pin": "5"
           }
         ]
@@ -2730,15 +2730,15 @@
         "name": "net-bridge.dp",
         "pins": [
           {
-            "refdes": "J1",
+            "refdes": "J3",
             "pin": "A6"
           },
           {
-            "refdes": "J1",
+            "refdes": "J3",
             "pin": "B6"
           },
           {
-            "refdes": "U2",
+            "refdes": "U1",
             "pin": "4"
           }
         ]
@@ -2747,11 +2747,11 @@
         "name": "net-bridge.rstb",
         "pins": [
           {
-            "refdes": "R5",
+            "refdes": "R3",
             "pin": "2"
           },
           {
-            "refdes": "U2",
+            "refdes": "U1",
             "pin": "9"
           }
         ]
@@ -2764,7 +2764,7 @@
             "pin": "1"
           },
           {
-            "refdes": "U2",
+            "refdes": "U1",
             "pin": "11"
           }
         ]
@@ -2773,16 +2773,16 @@
         "name": "net-bridge.uart.rx",
         "pins": [
           {
-            "refdes": "J3",
+            "refdes": "J1",
             "pin": "43"
           },
           {
             "refdes": "U1",
-            "pin": "37"
+            "pin": "25"
           },
           {
             "refdes": "U2",
-            "pin": "25"
+            "pin": "37"
           }
         ]
       },
@@ -2790,16 +2790,16 @@
         "name": "net-bridge.uart.tx",
         "pins": [
           {
-            "refdes": "J3",
+            "refdes": "J1",
             "pin": "42"
           },
           {
             "refdes": "U1",
-            "pin": "36"
+            "pin": "26"
           },
           {
             "refdes": "U2",
-            "pin": "26"
+            "pin": "36"
           }
         ]
       },
@@ -2807,11 +2807,11 @@
         "name": "net-bridge.vdd",
         "pins": [
           {
-            "refdes": "C1",
+            "refdes": "C2",
             "pin": "1"
           },
           {
-            "refdes": "U2",
+            "refdes": "U1",
             "pin": "6"
           }
         ]
@@ -2820,11 +2820,11 @@
         "name": "net-headers.gpio1",
         "pins": [
           {
-            "refdes": "J3",
+            "refdes": "J1",
             "pin": "41"
           },
           {
-            "refdes": "U1",
+            "refdes": "U2",
             "pin": "39"
           }
         ]
@@ -2833,11 +2833,11 @@
         "name": "net-headers.gpio10",
         "pins": [
           {
-            "refdes": "J3",
+            "refdes": "J1",
             "pin": "16"
           },
           {
-            "refdes": "U1",
+            "refdes": "U2",
             "pin": "18"
           }
         ]
@@ -2846,11 +2846,11 @@
         "name": "net-headers.gpio11",
         "pins": [
           {
-            "refdes": "J3",
+            "refdes": "J1",
             "pin": "17"
           },
           {
-            "refdes": "U1",
+            "refdes": "U2",
             "pin": "19"
           }
         ]
@@ -2859,11 +2859,11 @@
         "name": "net-headers.gpio12",
         "pins": [
           {
-            "refdes": "J3",
+            "refdes": "J1",
             "pin": "18"
           },
           {
-            "refdes": "U1",
+            "refdes": "U2",
             "pin": "20"
           }
         ]
@@ -2872,11 +2872,11 @@
         "name": "net-headers.gpio13",
         "pins": [
           {
-            "refdes": "J3",
+            "refdes": "J1",
             "pin": "19"
           },
           {
-            "refdes": "U1",
+            "refdes": "U2",
             "pin": "21"
           }
         ]
@@ -2885,11 +2885,11 @@
         "name": "net-headers.gpio14",
         "pins": [
           {
-            "refdes": "J3",
+            "refdes": "J1",
             "pin": "20"
           },
           {
-            "refdes": "U1",
+            "refdes": "U2",
             "pin": "22"
           }
         ]
@@ -2898,11 +2898,11 @@
         "name": "net-headers.gpio15",
         "pins": [
           {
-            "refdes": "J3",
+            "refdes": "J1",
             "pin": "8"
           },
           {
-            "refdes": "U1",
+            "refdes": "U2",
             "pin": "8"
           }
         ]
@@ -2911,11 +2911,11 @@
         "name": "net-headers.gpio16",
         "pins": [
           {
-            "refdes": "J3",
+            "refdes": "J1",
             "pin": "9"
           },
           {
-            "refdes": "U1",
+            "refdes": "U2",
             "pin": "9"
           }
         ]
@@ -2924,11 +2924,11 @@
         "name": "net-headers.gpio17",
         "pins": [
           {
-            "refdes": "J3",
+            "refdes": "J1",
             "pin": "10"
           },
           {
-            "refdes": "U1",
+            "refdes": "U2",
             "pin": "10"
           }
         ]
@@ -2937,11 +2937,11 @@
         "name": "net-headers.gpio18",
         "pins": [
           {
-            "refdes": "J3",
+            "refdes": "J1",
             "pin": "11"
           },
           {
-            "refdes": "U1",
+            "refdes": "U2",
             "pin": "11"
           }
         ]
@@ -2949,6 +2949,10 @@
       {
         "name": "net-headers.gpio19",
         "pins": [
+          {
+            "refdes": "J1",
+            "pin": "25"
+          },
           {
             "refdes": "J2",
             "pin": "A7"
@@ -2958,11 +2962,7 @@
             "pin": "B7"
           },
           {
-            "refdes": "J3",
-            "pin": "25"
-          },
-          {
-            "refdes": "U1",
+            "refdes": "U2",
             "pin": "13"
           }
         ]
@@ -2971,11 +2971,11 @@
         "name": "net-headers.gpio2",
         "pins": [
           {
-            "refdes": "J3",
+            "refdes": "J1",
             "pin": "40"
           },
           {
-            "refdes": "U1",
+            "refdes": "U2",
             "pin": "38"
           }
         ]
@@ -2983,6 +2983,10 @@
       {
         "name": "net-headers.gpio20",
         "pins": [
+          {
+            "refdes": "J1",
+            "pin": "26"
+          },
           {
             "refdes": "J2",
             "pin": "A6"
@@ -2992,11 +2996,7 @@
             "pin": "B6"
           },
           {
-            "refdes": "J3",
-            "pin": "26"
-          },
-          {
-            "refdes": "U1",
+            "refdes": "U2",
             "pin": "14"
           }
         ]
@@ -3005,11 +3005,11 @@
         "name": "net-headers.gpio21",
         "pins": [
           {
-            "refdes": "J3",
+            "refdes": "J1",
             "pin": "27"
           },
           {
-            "refdes": "U1",
+            "refdes": "U2",
             "pin": "23"
           }
         ]
@@ -3018,11 +3018,11 @@
         "name": "net-headers.gpio3",
         "pins": [
           {
-            "refdes": "J3",
+            "refdes": "J1",
             "pin": "13"
           },
           {
-            "refdes": "U1",
+            "refdes": "U2",
             "pin": "15"
           }
         ]
@@ -3031,11 +3031,11 @@
         "name": "net-headers.gpio35",
         "pins": [
           {
-            "refdes": "J3",
+            "refdes": "J1",
             "pin": "32"
           },
           {
-            "refdes": "U1",
+            "refdes": "U2",
             "pin": "28"
           }
         ]
@@ -3044,11 +3044,11 @@
         "name": "net-headers.gpio36",
         "pins": [
           {
-            "refdes": "J3",
+            "refdes": "J1",
             "pin": "33"
           },
           {
-            "refdes": "U1",
+            "refdes": "U2",
             "pin": "29"
           }
         ]
@@ -3057,11 +3057,11 @@
         "name": "net-headers.gpio37",
         "pins": [
           {
-            "refdes": "J3",
+            "refdes": "J1",
             "pin": "34"
           },
           {
-            "refdes": "U1",
+            "refdes": "U2",
             "pin": "30"
           }
         ]
@@ -3070,7 +3070,7 @@
         "name": "net-headers.gpio38",
         "pins": [
           {
-            "refdes": "J3",
+            "refdes": "J1",
             "pin": "35"
           },
           {
@@ -3078,7 +3078,7 @@
             "pin": "2"
           },
           {
-            "refdes": "U1",
+            "refdes": "U2",
             "pin": "31"
           }
         ]
@@ -3087,11 +3087,11 @@
         "name": "net-headers.gpio39",
         "pins": [
           {
-            "refdes": "J3",
+            "refdes": "J1",
             "pin": "36"
           },
           {
-            "refdes": "U1",
+            "refdes": "U2",
             "pin": "32"
           }
         ]
@@ -3100,11 +3100,11 @@
         "name": "net-headers.gpio4",
         "pins": [
           {
-            "refdes": "J3",
+            "refdes": "J1",
             "pin": "4"
           },
           {
-            "refdes": "U1",
+            "refdes": "U2",
             "pin": "4"
           }
         ]
@@ -3113,11 +3113,11 @@
         "name": "net-headers.gpio40",
         "pins": [
           {
-            "refdes": "J3",
+            "refdes": "J1",
             "pin": "37"
           },
           {
-            "refdes": "U1",
+            "refdes": "U2",
             "pin": "33"
           }
         ]
@@ -3126,11 +3126,11 @@
         "name": "net-headers.gpio41",
         "pins": [
           {
-            "refdes": "J3",
+            "refdes": "J1",
             "pin": "38"
           },
           {
-            "refdes": "U1",
+            "refdes": "U2",
             "pin": "34"
           }
         ]
@@ -3139,11 +3139,11 @@
         "name": "net-headers.gpio42",
         "pins": [
           {
-            "refdes": "J3",
+            "refdes": "J1",
             "pin": "39"
           },
           {
-            "refdes": "U1",
+            "refdes": "U2",
             "pin": "35"
           }
         ]
@@ -3152,11 +3152,11 @@
         "name": "net-headers.gpio45",
         "pins": [
           {
-            "refdes": "J3",
+            "refdes": "J1",
             "pin": "30"
           },
           {
-            "refdes": "U1",
+            "refdes": "U2",
             "pin": "26"
           }
         ]
@@ -3165,11 +3165,11 @@
         "name": "net-headers.gpio46",
         "pins": [
           {
-            "refdes": "J3",
+            "refdes": "J1",
             "pin": "14"
           },
           {
-            "refdes": "U1",
+            "refdes": "U2",
             "pin": "16"
           }
         ]
@@ -3178,11 +3178,11 @@
         "name": "net-headers.gpio47",
         "pins": [
           {
-            "refdes": "J3",
+            "refdes": "J1",
             "pin": "28"
           },
           {
-            "refdes": "U1",
+            "refdes": "U2",
             "pin": "24"
           }
         ]
@@ -3191,11 +3191,11 @@
         "name": "net-headers.gpio48",
         "pins": [
           {
-            "refdes": "J3",
+            "refdes": "J1",
             "pin": "29"
           },
           {
-            "refdes": "U1",
+            "refdes": "U2",
             "pin": "25"
           }
         ]
@@ -3204,11 +3204,11 @@
         "name": "net-headers.gpio5",
         "pins": [
           {
-            "refdes": "J3",
+            "refdes": "J1",
             "pin": "5"
           },
           {
-            "refdes": "U1",
+            "refdes": "U2",
             "pin": "5"
           }
         ]
@@ -3217,11 +3217,11 @@
         "name": "net-headers.gpio6",
         "pins": [
           {
-            "refdes": "J3",
+            "refdes": "J1",
             "pin": "6"
           },
           {
-            "refdes": "U1",
+            "refdes": "U2",
             "pin": "6"
           }
         ]
@@ -3230,11 +3230,11 @@
         "name": "net-headers.gpio7",
         "pins": [
           {
-            "refdes": "J3",
+            "refdes": "J1",
             "pin": "7"
           },
           {
-            "refdes": "U1",
+            "refdes": "U2",
             "pin": "7"
           }
         ]
@@ -3243,11 +3243,11 @@
         "name": "net-headers.gpio8",
         "pins": [
           {
-            "refdes": "J3",
+            "refdes": "J1",
             "pin": "12"
           },
           {
-            "refdes": "U1",
+            "refdes": "U2",
             "pin": "12"
           }
         ]
@@ -3256,11 +3256,11 @@
         "name": "net-headers.gpio9",
         "pins": [
           {
-            "refdes": "J3",
+            "refdes": "J1",
             "pin": "15"
           },
           {
-            "refdes": "U1",
+            "refdes": "U2",
             "pin": "17"
           }
         ]
@@ -3269,11 +3269,11 @@
         "name": "net-power_led.anode",
         "pins": [
           {
-            "refdes": "D3",
+            "refdes": "D1",
             "pin": "2"
           },
           {
-            "refdes": "R10",
+            "refdes": "R5",
             "pin": "2"
           }
         ]
@@ -3286,7 +3286,7 @@
             "pin": "A5"
           },
           {
-            "refdes": "R3",
+            "refdes": "R7",
             "pin": "1"
           }
         ]
@@ -3299,7 +3299,7 @@
             "pin": "B5"
           },
           {
-            "refdes": "R4",
+            "refdes": "R8",
             "pin": "1"
           }
         ]
@@ -3308,11 +3308,11 @@
         "name": "net-usb_uart.cc1_rd.a",
         "pins": [
           {
-            "refdes": "J1",
+            "refdes": "J3",
             "pin": "A5"
           },
           {
-            "refdes": "R1",
+            "refdes": "R9",
             "pin": "1"
           }
         ]
@@ -3321,11 +3321,11 @@
         "name": "net-usb_uart.cc2_rd.a",
         "pins": [
           {
-            "refdes": "J1",
+            "refdes": "J3",
             "pin": "B5"
           },
           {
-            "refdes": "R2",
+            "refdes": "R10",
             "pin": "1"
           }
         ]
@@ -3870,15 +3870,26 @@
     ],
     "notes": [
       {
-        "path": "mcu",
+        "path": "auto_reset",
         "kind": "doc",
-        "text": "The module (U1): 4 MB of flash, PCB antenna.",
+        "text": "The auto-reset pair. `.dtr` and `.rts` go to the bridge's DTR and RTS, `.en` to the module's EN and `.boot` to its GPIO0.",
+        "at": {
+          "file": "src/auto_reset.nsm",
+          "line": 17
+        },
+        "anchors": [],
+        "result": null
+      },
+      {
+        "path": "boot",
+        "kind": "doc",
+        "text": "SW2, BOOT: pulls GPIO0 to ground.",
         "at": {
           "file": "src/main.nsm",
-          "line": 54
+          "line": 85
         },
         "anchors": [
-          "mcu"
+          "boot"
         ],
         "result": null
       },
@@ -3896,36 +3907,49 @@
         "result": null
       },
       {
-        "path": "regulator",
+        "path": "bridge_reset_pullup",
         "kind": "doc",
-        "text": "The 3.3 V regulator (U5), an AMS1117-3.3 in a SOT-223 (a row of the project's catalog).",
+        "text": "R11: pulls the bridge's reset line up to VBUS.",
         "at": {
           "file": "src/main.nsm",
-          "line": 58
-        },
-        "anchors": [
-          "regulator"
-        ],
-        "result": null
-      },
-      {
-        "path": "usb_uart",
-        "kind": "doc",
-        "text": "J1: the receptacle of the bridge.",
-        "at": {
-          "file": "src/main.nsm",
-          "line": 71
+          "line": 142
         },
         "anchors": [],
         "result": null
       },
       {
-        "path": "usb_native",
+        "path": "bridge_vdd_cap",
         "kind": "doc",
-        "text": "J2: the receptacle of the module's own USB.",
+        "text": "C3: the decoupling of the bridge's own 3.3 V (VDD), which the board does not use as a supply (the author's notes: it gives 100 mA only).",
         "at": {
           "file": "src/main.nsm",
-          "line": 76
+          "line": 138
+        },
+        "anchors": [
+          "bridge_vdd_cap"
+        ],
+        "result": null
+      },
+      {
+        "path": "en_100n[0]",
+        "kind": "doc",
+        "text": "C4 and C8 on EN (the module's 100 nF for power-up timing, and the second), C9 on GPIO0.",
+        "at": {
+          "file": "src/main.nsm",
+          "line": 201
+        },
+        "anchors": [
+          "en_100n[0]"
+        ],
+        "result": null
+      },
+      {
+        "path": "en_pullup",
+        "kind": "doc",
+        "text": "R1: EN's 10 kohm pull-up (Espressif's circuit; the module needs EN driven).",
+        "at": {
+          "file": "src/main.nsm",
+          "line": 165
         },
         "anchors": [],
         "result": null
@@ -3944,6 +3968,45 @@
         "result": null
       },
       {
+        "path": "mcu",
+        "kind": "doc",
+        "text": "The module (U1): 4 MB of flash, PCB antenna.",
+        "at": {
+          "file": "src/main.nsm",
+          "line": 54
+        },
+        "anchors": [
+          "mcu"
+        ],
+        "result": null
+      },
+      {
+        "path": "power_led",
+        "kind": "doc",
+        "text": "D1: lit from VBUS through R6.",
+        "at": {
+          "file": "src/main.nsm",
+          "line": 172
+        },
+        "anchors": [
+          "power_led"
+        ],
+        "result": null
+      },
+      {
+        "path": "regulator",
+        "kind": "doc",
+        "text": "The 3.3 V regulator (U5), an AMS1117-3.3 in a SOT-223 (a row of the project's catalog).",
+        "at": {
+          "file": "src/main.nsm",
+          "line": 58
+        },
+        "anchors": [
+          "regulator"
+        ],
+        "result": null
+      },
+      {
         "path": "reset",
         "kind": "doc",
         "text": "SW1, RESET: pulls EN to ground.",
@@ -3957,36 +4020,34 @@
         "result": null
       },
       {
-        "path": "boot",
+        "path": "suspend_pulldown",
         "kind": "doc",
-        "text": "SW2, BOOT: pulls GPIO0 to ground.",
+        "text": "R10: holds the bridge's SUSPENDb output low.",
         "at": {
           "file": "src/main.nsm",
-          "line": 85
-        },
-        "anchors": [
-          "boot"
-        ],
-        "result": null
-      },
-      {
-        "path": "vbus",
-        "kind": "doc",
-        "text": "VBUS behind the two diodes: the bridge's supply, the regulator's input and the header's 5 V pin.",
-        "at": {
-          "file": "src/main.nsm",
-          "line": 97
+          "line": 146
         },
         "anchors": [],
         "result": null
       },
       {
-        "path": "v3v3",
+        "path": "usb_native",
         "kind": "doc",
-        "text": "The 3.3 V of the regulator: the module's supply and the header's 3.3 V pins.",
+        "text": "J2: the receptacle of the module's own USB.",
         "at": {
           "file": "src/main.nsm",
-          "line": 101
+          "line": 76
+        },
+        "anchors": [],
+        "result": null
+      },
+      {
+        "path": "usb_uart",
+        "kind": "doc",
+        "text": "J1: the receptacle of the bridge.",
+        "at": {
+          "file": "src/main.nsm",
+          "line": 71
         },
         "anchors": [],
         "result": null
@@ -4005,76 +4066,6 @@
         "result": null
       },
       {
-        "path": "bridge_vdd_cap",
-        "kind": "doc",
-        "text": "C3: the decoupling of the bridge's own 3.3 V (VDD), which the board does not use as a supply (the author's notes: it gives 100 mA only).",
-        "at": {
-          "file": "src/main.nsm",
-          "line": 138
-        },
-        "anchors": [
-          "bridge_vdd_cap"
-        ],
-        "result": null
-      },
-      {
-        "path": "bridge_reset_pullup",
-        "kind": "doc",
-        "text": "R11: pulls the bridge's reset line up to VBUS.",
-        "at": {
-          "file": "src/main.nsm",
-          "line": 142
-        },
-        "anchors": [],
-        "result": null
-      },
-      {
-        "path": "suspend_pulldown",
-        "kind": "doc",
-        "text": "R10: holds the bridge's SUSPENDb output low.",
-        "at": {
-          "file": "src/main.nsm",
-          "line": 146
-        },
-        "anchors": [],
-        "result": null
-      },
-      {
-        "path": "auto_reset",
-        "kind": "doc",
-        "text": "The auto-reset pair. `.dtr` and `.rts` go to the bridge's DTR and RTS, `.en` to the module's EN and `.boot` to its GPIO0.",
-        "at": {
-          "file": "src/auto_reset.nsm",
-          "line": 17
-        },
-        "anchors": [],
-        "result": null
-      },
-      {
-        "path": "en_pullup",
-        "kind": "doc",
-        "text": "R1: EN's 10 kohm pull-up (Espressif's circuit; the module needs EN driven).",
-        "at": {
-          "file": "src/main.nsm",
-          "line": 165
-        },
-        "anchors": [],
-        "result": null
-      },
-      {
-        "path": "power_led",
-        "kind": "doc",
-        "text": "D1: lit from VBUS through R6.",
-        "at": {
-          "file": "src/main.nsm",
-          "line": 172
-        },
-        "anchors": [
-          "power_led"
-        ],
-        "result": null
-      },
-      {
         "path": "user_led",
         "kind": "doc",
         "text": "D4: GPIO38 through R9.",
@@ -4085,6 +4076,41 @@
         "anchors": [
           "user_led"
         ],
+        "result": null
+      },
+      {
+        "path": "v3v3",
+        "kind": "doc",
+        "text": "The 3.3 V of the regulator: the module's supply and the header's 3.3 V pins.",
+        "at": {
+          "file": "src/main.nsm",
+          "line": 101
+        },
+        "anchors": [],
+        "result": null
+      },
+      {
+        "path": "v3v3_100n",
+        "kind": "doc",
+        "text": "C5, C7 and C10: the module's 100 nF and 22 uF on 3.3 V, and the regulator's output capacitor (22 uF).",
+        "at": {
+          "file": "src/main.nsm",
+          "line": 198
+        },
+        "anchors": [
+          "v3v3_100n"
+        ],
+        "result": null
+      },
+      {
+        "path": "vbus",
+        "kind": "doc",
+        "text": "VBUS behind the two diodes: the bridge's supply, the regulator's input and the header's 5 V pin.",
+        "at": {
+          "file": "src/main.nsm",
+          "line": 97
+        },
+        "anchors": [],
         "result": null
       },
       {
@@ -4114,32 +4140,6 @@
         "result": null
       },
       {
-        "path": "v3v3_100n",
-        "kind": "doc",
-        "text": "C5, C7 and C10: the module's 100 nF and 22 uF on 3.3 V, and the regulator's output capacitor (22 uF).",
-        "at": {
-          "file": "src/main.nsm",
-          "line": 198
-        },
-        "anchors": [
-          "v3v3_100n"
-        ],
-        "result": null
-      },
-      {
-        "path": "en_100n[0]",
-        "kind": "doc",
-        "text": "C4 and C8 on EN (the module's 100 nF for power-up timing, and the second), C9 on GPIO0.",
-        "at": {
-          "file": "src/main.nsm",
-          "line": 201
-        },
-        "anchors": [
-          "en_100n[0]"
-        ],
-        "result": null
-      },
-      {
         "path": "",
         "kind": "relation",
         "text": ".power_led_resistor.current == (.vbus.voltage - .power_led.forward_voltage) / .power_led_resistor.resistance",
@@ -4157,46 +4157,24 @@
     ],
     "modules": [
       {
-        "path": "usb_uart",
-        "type_name": "UsbCSink",
+        "path": "auto_reset",
+        "type_name": "AutoReset",
         "ports": [
           {
-            "name": "vbus.pos",
-            "net": "VBUS1"
+            "name": "boot",
+            "net": "net-auto_reset.q_boot.emitter"
           },
           {
-            "name": "vbus.neg",
-            "net": "GND"
+            "name": "dtr",
+            "net": "net-auto_reset.q_boot.collector"
           },
           {
-            "name": "dp",
-            "net": "net-bridge.dp"
+            "name": "en",
+            "net": "net-auto_reset.q_en.emitter"
           },
           {
-            "name": "dm",
-            "net": "net-bridge.dm"
-          }
-        ]
-      },
-      {
-        "path": "usb_native",
-        "type_name": "UsbCSink",
-        "ports": [
-          {
-            "name": "vbus.pos",
-            "net": "VBUS2"
-          },
-          {
-            "name": "vbus.neg",
-            "net": "GND"
-          },
-          {
-            "name": "dp",
-            "net": "net-headers.gpio20"
-          },
-          {
-            "name": "dm",
-            "net": "net-headers.gpio19"
+            "name": "rts",
+            "net": "net-auto_reset.q_en.collector"
           }
         ]
       },
@@ -4205,56 +4183,16 @@
         "type_name": "PullUp",
         "ports": [
           {
-            "name": "supply.pos",
-            "net": "VBUS"
+            "name": "line",
+            "net": "net-bridge.rstb"
           },
           {
             "name": "supply.neg",
             "net": "GND"
           },
           {
-            "name": "line",
-            "net": "net-bridge.rstb"
-          }
-        ]
-      },
-      {
-        "path": "suspend_pulldown",
-        "type_name": "PullDown",
-        "ports": [
-          {
-            "name": "reference.pos",
+            "name": "supply.pos",
             "net": "VBUS"
-          },
-          {
-            "name": "reference.neg",
-            "net": "GND"
-          },
-          {
-            "name": "line",
-            "net": "net-bridge.suspendb"
-          }
-        ]
-      },
-      {
-        "path": "auto_reset",
-        "type_name": "AutoReset",
-        "ports": [
-          {
-            "name": "dtr",
-            "net": "net-auto_reset.q_boot.collector"
-          },
-          {
-            "name": "rts",
-            "net": "net-auto_reset.q_en.collector"
-          },
-          {
-            "name": "en",
-            "net": "net-auto_reset.q_en.emitter"
-          },
-          {
-            "name": "boot",
-            "net": "net-auto_reset.q_boot.emitter"
           }
         ]
       },
@@ -4263,16 +4201,78 @@
         "type_name": "PullUp",
         "ports": [
           {
-            "name": "supply.pos",
-            "net": "+3.3V"
+            "name": "line",
+            "net": "net-auto_reset.q_en.emitter"
           },
           {
             "name": "supply.neg",
             "net": "GND"
           },
           {
+            "name": "supply.pos",
+            "net": "+3.3V"
+          }
+        ]
+      },
+      {
+        "path": "suspend_pulldown",
+        "type_name": "PullDown",
+        "ports": [
+          {
             "name": "line",
-            "net": "net-auto_reset.q_en.emitter"
+            "net": "net-bridge.suspendb"
+          },
+          {
+            "name": "reference.neg",
+            "net": "GND"
+          },
+          {
+            "name": "reference.pos",
+            "net": "VBUS"
+          }
+        ]
+      },
+      {
+        "path": "usb_native",
+        "type_name": "UsbCSink",
+        "ports": [
+          {
+            "name": "dm",
+            "net": "net-headers.gpio19"
+          },
+          {
+            "name": "dp",
+            "net": "net-headers.gpio20"
+          },
+          {
+            "name": "vbus.neg",
+            "net": "GND"
+          },
+          {
+            "name": "vbus.pos",
+            "net": "VBUS2"
+          }
+        ]
+      },
+      {
+        "path": "usb_uart",
+        "type_name": "UsbCSink",
+        "ports": [
+          {
+            "name": "dm",
+            "net": "net-bridge.dm"
+          },
+          {
+            "name": "dp",
+            "net": "net-bridge.dp"
+          },
+          {
+            "name": "vbus.neg",
+            "net": "GND"
+          },
+          {
+            "name": "vbus.pos",
+            "net": "VBUS1"
           }
         ]
       }
