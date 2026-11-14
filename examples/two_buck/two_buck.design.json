@@ -3,7 +3,7 @@
     "name": "TwoBuck",
     "parts": [
       {
-        "refdes": "C16",
+        "refdes": "C1",
         "kind": "Capacitor",
         "provides": [],
         "declared_kind": "capacitor",
@@ -34,7 +34,7 @@
         ]
       },
       {
-        "refdes": "C15",
+        "refdes": "C2",
         "kind": "Capacitor",
         "provides": [],
         "declared_kind": "capacitor",
@@ -65,7 +65,7 @@
         ]
       },
       {
-        "refdes": "C17",
+        "refdes": "C3",
         "kind": "Capacitor",
         "provides": [],
         "declared_kind": "capacitor",
@@ -96,7 +96,7 @@
         ]
       },
       {
-        "refdes": "D4",
+        "refdes": "D1",
         "kind": "Led",
         "provides": [],
         "declared_kind": "led",
@@ -127,7 +127,7 @@
         ]
       },
       {
-        "refdes": "R11",
+        "refdes": "R1",
         "kind": "Resistor",
         "provides": [],
         "declared_kind": "resistor",
@@ -158,7 +158,7 @@
         ]
       },
       {
-        "refdes": "R12",
+        "refdes": "R2",
         "kind": "Resistor",
         "provides": [],
         "declared_kind": "resistor",
@@ -189,7 +189,7 @@
         ]
       },
       {
-        "refdes": "TP2",
+        "refdes": "TP1",
         "kind": "TestPoint",
         "provides": [],
         "value": "TestPoint",
@@ -209,7 +209,7 @@
         ]
       },
       {
-        "refdes": "R10",
+        "refdes": "R3",
         "kind": "Resistor",
         "provides": [],
         "declared_kind": "resistor",
@@ -240,7 +240,7 @@
         ]
       },
       {
-        "refdes": "R9",
+        "refdes": "R4",
         "kind": "Resistor",
         "provides": [],
         "declared_kind": "resistor",
@@ -271,7 +271,7 @@
         ]
       },
       {
-        "refdes": "U2",
+        "refdes": "U1",
         "kind": "BenchBuck",
         "provides": [
           "BuckIc"
@@ -354,7 +354,7 @@
         ]
       },
       {
-        "refdes": "C11",
+        "refdes": "C4",
         "kind": "Capacitor",
         "provides": [],
         "declared_kind": "capacitor",
@@ -385,7 +385,7 @@
         ]
       },
       {
-        "refdes": "R8",
+        "refdes": "R5",
         "kind": "Resistor",
         "provides": [],
         "declared_kind": "resistor",
@@ -416,7 +416,7 @@
         ]
       },
       {
-        "refdes": "R7",
+        "refdes": "R6",
         "kind": "Resistor",
         "provides": [],
         "declared_kind": "resistor",
@@ -447,7 +447,7 @@
         ]
       },
       {
-        "refdes": "L2",
+        "refdes": "L1",
         "kind": "Inductor",
         "provides": [],
         "declared_kind": "inductor",
@@ -478,7 +478,7 @@
         ]
       },
       {
-        "refdes": "C12",
+        "refdes": "C5",
         "kind": "Capacitor",
         "provides": [],
         "declared_kind": "capacitor",
@@ -509,7 +509,7 @@
         ]
       },
       {
-        "refdes": "C13",
+        "refdes": "C6",
         "kind": "Capacitor",
         "provides": [],
         "declared_kind": "capacitor",
@@ -540,7 +540,7 @@
         ]
       },
       {
-        "refdes": "C14",
+        "refdes": "C7",
         "kind": "Capacitor",
         "provides": [],
         "declared_kind": "capacitor",
@@ -571,7 +571,7 @@
         ]
       },
       {
-        "refdes": "C9",
+        "refdes": "C8",
         "kind": "Capacitor",
         "provides": [],
         "declared_kind": "capacitor",
@@ -602,7 +602,7 @@
         ]
       },
       {
-        "refdes": "C8",
+        "refdes": "C9",
         "kind": "Capacitor",
         "provides": [],
         "declared_kind": "capacitor",
@@ -664,7 +664,7 @@
         ]
       },
       {
-        "refdes": "D3",
+        "refdes": "D2",
         "kind": "Led",
         "provides": [],
         "declared_kind": "led",
@@ -695,7 +695,7 @@
         ]
       },
       {
-        "refdes": "R5",
+        "refdes": "R7",
         "kind": "Resistor",
         "provides": [],
         "declared_kind": "resistor",
@@ -726,7 +726,7 @@
         ]
       },
       {
-        "refdes": "R6",
+        "refdes": "R8",
         "kind": "Resistor",
         "provides": [],
         "declared_kind": "resistor",
@@ -757,7 +757,7 @@
         ]
       },
       {
-        "refdes": "TP1",
+        "refdes": "TP2",
         "kind": "TestPoint",
         "provides": [],
         "value": "TestPoint",
@@ -777,7 +777,7 @@
         ]
       },
       {
-        "refdes": "R4",
+        "refdes": "R9",
         "kind": "Resistor",
         "provides": [],
         "declared_kind": "resistor",
@@ -808,7 +808,7 @@
         ]
       },
       {
-        "refdes": "R3",
+        "refdes": "R10",
         "kind": "Resistor",
         "provides": [],
         "declared_kind": "resistor",
@@ -839,7 +839,7 @@
         ]
       },
       {
-        "refdes": "U1",
+        "refdes": "U2",
         "kind": "BenchBuck",
         "provides": [
           "BuckIc"
@@ -922,7 +922,7 @@
         ]
       },
       {
-        "refdes": "C4",
+        "refdes": "C11",
         "kind": "Capacitor",
         "provides": [],
         "declared_kind": "capacitor",
@@ -953,7 +953,7 @@
         ]
       },
       {
-        "refdes": "R2",
+        "refdes": "R11",
         "kind": "Resistor",
         "provides": [],
         "declared_kind": "resistor",
@@ -984,7 +984,7 @@
         ]
       },
       {
-        "refdes": "R1",
+        "refdes": "R12",
         "kind": "Resistor",
         "provides": [],
         "declared_kind": "resistor",
@@ -1015,7 +1015,7 @@
         ]
       },
       {
-        "refdes": "L1",
+        "refdes": "L2",
         "kind": "Inductor",
         "provides": [],
         "declared_kind": "inductor",
@@ -1046,7 +1046,7 @@
         ]
       },
       {
-        "refdes": "C5",
+        "refdes": "C12",
         "kind": "Capacitor",
         "provides": [],
         "declared_kind": "capacitor",
@@ -1077,7 +1077,7 @@
         ]
       },
       {
-        "refdes": "C6",
+        "refdes": "C13",
         "kind": "Capacitor",
         "provides": [],
         "declared_kind": "capacitor",
@@ -1108,7 +1108,7 @@
         ]
       },
       {
-        "refdes": "C7",
+        "refdes": "C14",
         "kind": "Capacitor",
         "provides": [],
         "declared_kind": "capacitor",
@@ -1139,7 +1139,7 @@
         ]
       },
       {
-        "refdes": "C20",
+        "refdes": "C15",
         "kind": "Capacitor",
         "provides": [],
         "declared_kind": "capacitor",
@@ -1170,7 +1170,7 @@
         ]
       },
       {
-        "refdes": "C1",
+        "refdes": "C16",
         "kind": "Capacitor",
         "provides": [],
         "declared_kind": "capacitor",
@@ -1201,7 +1201,7 @@
         ]
       },
       {
-        "refdes": "C2",
+        "refdes": "C17",
         "kind": "Capacitor",
         "provides": [],
         "declared_kind": "capacitor",
@@ -1232,7 +1232,7 @@
         ]
       },
       {
-        "refdes": "C3",
+        "refdes": "C18",
         "kind": "Capacitor",
         "provides": [],
         "declared_kind": "capacitor",
@@ -1263,7 +1263,7 @@
         ]
       },
       {
-        "refdes": "D6",
+        "refdes": "D3",
         "kind": "Led",
         "provides": [],
         "declared_kind": "led",
@@ -1294,7 +1294,7 @@
         ]
       },
       {
-        "refdes": "R14",
+        "refdes": "R13",
         "kind": "Resistor",
         "provides": [],
         "declared_kind": "resistor",
@@ -1366,7 +1366,7 @@
         ]
       },
       {
-        "refdes": "C21",
+        "refdes": "C19",
         "kind": "Capacitor",
         "provides": [],
         "declared_kind": "capacitor",
@@ -1397,7 +1397,7 @@
         ]
       },
       {
-        "refdes": "C18",
+        "refdes": "C20",
         "kind": "Capacitor",
         "provides": [],
         "declared_kind": "capacitor",
@@ -1428,7 +1428,7 @@
         ]
       },
       {
-        "refdes": "D5",
+        "refdes": "D4",
         "kind": "Led",
         "provides": [],
         "declared_kind": "led",
@@ -1459,7 +1459,7 @@
         ]
       },
       {
-        "refdes": "R13",
+        "refdes": "R14",
         "kind": "Resistor",
         "provides": [],
         "declared_kind": "resistor",
@@ -1490,7 +1490,7 @@
         ]
       },
       {
-        "refdes": "C19",
+        "refdes": "C21",
         "kind": "Capacitor",
         "provides": [],
         "declared_kind": "capacitor",
@@ -1521,7 +1521,7 @@
         ]
       },
       {
-        "refdes": "J3",
+        "refdes": "J1",
         "kind": "Header1x2",
         "provides": [
           "Connector"
@@ -1554,7 +1554,7 @@
         ]
       },
       {
-        "refdes": "J4",
+        "refdes": "J2",
         "kind": "Header1x2",
         "provides": [
           "Connector"
@@ -1587,7 +1587,7 @@
         ]
       },
       {
-        "refdes": "J2",
+        "refdes": "J3",
         "kind": "Header1x2",
         "provides": [
           "Connector"
@@ -1620,7 +1620,7 @@
         ]
       },
       {
-        "refdes": "J1",
+        "refdes": "J4",
         "kind": "Header1x2",
         "provides": [
           "Connector"
@@ -1653,7 +1653,7 @@
         ]
       },
       {
-        "refdes": "D1",
+        "refdes": "D5",
         "kind": "Schottky",
         "provides": [],
         "declared_kind": "diode",
@@ -1684,7 +1684,7 @@
         ]
       },
       {
-        "refdes": "D2",
+        "refdes": "D6",
         "kind": "Tvs",
         "provides": [],
         "declared_kind": "diode",
@@ -1715,7 +1715,7 @@
         ]
       },
       {
-        "refdes": "TP5",
+        "refdes": "TP3",
         "kind": "TestPoint",
         "provides": [],
         "value": "TestPoint",
@@ -1735,7 +1735,7 @@
         ]
       },
       {
-        "refdes": "TP6",
+        "refdes": "TP4",
         "kind": "TestPoint",
         "provides": [],
         "value": "TestPoint",
@@ -1755,7 +1755,7 @@
         ]
       },
       {
-        "refdes": "TP4",
+        "refdes": "TP5",
         "kind": "TestPoint",
         "provides": [],
         "value": "TestPoint",
@@ -1775,7 +1775,7 @@
         ]
       },
       {
-        "refdes": "TP7",
+        "refdes": "TP6",
         "kind": "TestPoint",
         "provides": [],
         "value": "TestPoint",
@@ -1795,7 +1795,7 @@
         ]
       },
       {
-        "refdes": "TP9",
+        "refdes": "TP7",
         "kind": "TestPoint",
         "provides": [],
         "value": "TestPoint",
@@ -1835,7 +1835,7 @@
         ]
       },
       {
-        "refdes": "TP3",
+        "refdes": "TP9",
         "kind": "TestPoint",
         "provides": [],
         "value": "TestPoint",
@@ -1860,39 +1860,39 @@
         "name": "3V3",
         "pins": [
           {
-            "refdes": "C14",
+            "refdes": "C1",
             "pin": "1"
           },
           {
-            "refdes": "C15",
+            "refdes": "C2",
             "pin": "1"
           },
           {
-            "refdes": "C16",
+            "refdes": "C7",
             "pin": "1"
           },
           {
-            "refdes": "J3",
+            "refdes": "J1",
             "pin": "1"
           },
           {
-            "refdes": "L2",
+            "refdes": "L1",
             "pin": "2"
           },
           {
-            "refdes": "R11",
+            "refdes": "R1",
             "pin": "1"
           },
           {
-            "refdes": "R12",
+            "refdes": "R2",
             "pin": "1"
           },
           {
-            "refdes": "R9",
+            "refdes": "R4",
             "pin": "1"
           },
           {
-            "refdes": "TP5",
+            "refdes": "TP3",
             "pin": "1"
           }
         ]
@@ -1909,15 +1909,15 @@
             "pin": "1"
           },
           {
-            "refdes": "J4",
+            "refdes": "J2",
             "pin": "1"
           },
           {
-            "refdes": "R13",
+            "refdes": "R14",
             "pin": "1"
           },
           {
-            "refdes": "TP6",
+            "refdes": "TP4",
             "pin": "1"
           },
           {
@@ -1930,15 +1930,15 @@
         "name": "5V",
         "pins": [
           {
-            "refdes": "C18",
+            "refdes": "C14",
+            "pin": "1"
+          },
+          {
+            "refdes": "C15",
             "pin": "1"
           },
           {
             "refdes": "C20",
-            "pin": "1"
-          },
-          {
-            "refdes": "C7",
             "pin": "1"
           },
           {
@@ -1950,27 +1950,27 @@
             "pin": "1"
           },
           {
-            "refdes": "J2",
+            "refdes": "J3",
             "pin": "1"
           },
           {
-            "refdes": "L1",
+            "refdes": "L2",
             "pin": "2"
           },
           {
-            "refdes": "R3",
+            "refdes": "R10",
             "pin": "1"
           },
           {
-            "refdes": "R5",
+            "refdes": "R7",
             "pin": "1"
           },
           {
-            "refdes": "R6",
+            "refdes": "R8",
             "pin": "1"
           },
           {
-            "refdes": "TP4",
+            "refdes": "TP5",
             "pin": "1"
           },
           {
@@ -2059,8 +2059,12 @@
             "pin": "2"
           },
           {
+            "refdes": "D1",
+            "pin": "1"
+          },
+          {
             "refdes": "D2",
-            "pin": "2"
+            "pin": "1"
           },
           {
             "refdes": "D3",
@@ -2071,12 +2075,8 @@
             "pin": "1"
           },
           {
-            "refdes": "D5",
-            "pin": "1"
-          },
-          {
             "refdes": "D6",
-            "pin": "1"
+            "pin": "2"
           },
           {
             "refdes": "J1",
@@ -2095,27 +2095,27 @@
             "pin": "2"
           },
           {
-            "refdes": "R10",
+            "refdes": "R11",
             "pin": "2"
           },
           {
-            "refdes": "R2",
+            "refdes": "R3",
             "pin": "2"
           },
           {
-            "refdes": "R4",
+            "refdes": "R5",
             "pin": "2"
           },
           {
-            "refdes": "R8",
+            "refdes": "R9",
             "pin": "2"
           },
           {
-            "refdes": "TP7",
+            "refdes": "TP6",
             "pin": "1"
           },
           {
-            "refdes": "TP9",
+            "refdes": "TP7",
             "pin": "1"
           },
           {
@@ -2144,10 +2144,6 @@
         "name": "VIN",
         "pins": [
           {
-            "refdes": "C1",
-            "pin": "1"
-          },
-          {
             "refdes": "C10",
             "pin": "1"
           },
@@ -2160,11 +2156,15 @@
             "pin": "1"
           },
           {
+            "refdes": "C16",
+            "pin": "1"
+          },
+          {
             "refdes": "C17",
             "pin": "1"
           },
           {
-            "refdes": "C2",
+            "refdes": "C18",
             "pin": "1"
           },
           {
@@ -2180,23 +2180,23 @@
             "pin": "1"
           },
           {
-            "refdes": "D1",
+            "refdes": "D5",
             "pin": "1"
           },
           {
-            "refdes": "R1",
+            "refdes": "R12",
             "pin": "1"
           },
           {
-            "refdes": "R14",
+            "refdes": "R13",
             "pin": "1"
           },
           {
-            "refdes": "R7",
+            "refdes": "R6",
             "pin": "1"
           },
           {
-            "refdes": "TP3",
+            "refdes": "TP9",
             "pin": "1"
           },
           {
@@ -2213,15 +2213,15 @@
         "name": "VIN_RAW",
         "pins": [
           {
-            "refdes": "D1",
+            "refdes": "D5",
             "pin": "2"
           },
           {
-            "refdes": "D2",
+            "refdes": "D6",
             "pin": "1"
           },
           {
-            "refdes": "J1",
+            "refdes": "J4",
             "pin": "1"
           },
           {
@@ -2234,11 +2234,11 @@
         "name": "net-buck_3v3.light.anode",
         "pins": [
           {
-            "refdes": "D4",
+            "refdes": "D1",
             "pin": "2"
           },
           {
-            "refdes": "R11",
+            "refdes": "R1",
             "pin": "2"
           }
         ]
@@ -2247,101 +2247,7 @@
         "name": "net-buck_3v3.pg_pullup.resistor.b",
         "pins": [
           {
-            "refdes": "R12",
-            "pin": "2"
-          },
-          {
-            "refdes": "TP2",
-            "pin": "1"
-          },
-          {
-            "refdes": "U2",
-            "pin": "4"
-          }
-        ]
-      },
-      {
-        "name": "net-buck_3v3.stage.divider.rbottom.a",
-        "pins": [
-          {
-            "refdes": "R10",
-            "pin": "1"
-          },
-          {
-            "refdes": "R9",
-            "pin": "2"
-          },
-          {
-            "refdes": "U2",
-            "pin": "5"
-          }
-        ]
-      },
-      {
-        "name": "net-buck_3v3.stage.ic.boost.a",
-        "pins": [
-          {
-            "refdes": "C11",
-            "pin": "1"
-          },
-          {
-            "refdes": "U2",
-            "pin": "1"
-          }
-        ]
-      },
-      {
-        "name": "net-buck_3v3.stage.ic.boost.b",
-        "pins": [
-          {
-            "refdes": "C11",
-            "pin": "2"
-          },
-          {
-            "refdes": "L2",
-            "pin": "1"
-          },
-          {
-            "refdes": "U2",
-            "pin": "8"
-          }
-        ]
-      },
-      {
-        "name": "net-buck_3v3.stage.ic.en",
-        "pins": [
-          {
-            "refdes": "R7",
-            "pin": "2"
-          },
-          {
-            "refdes": "R8",
-            "pin": "1"
-          },
-          {
-            "refdes": "U2",
-            "pin": "3"
-          }
-        ]
-      },
-      {
-        "name": "net-buck_5v.light.anode",
-        "pins": [
-          {
-            "refdes": "D3",
-            "pin": "2"
-          },
-          {
-            "refdes": "R5",
-            "pin": "2"
-          }
-        ]
-      },
-      {
-        "name": "net-buck_5v.pg_pullup.resistor.b",
-        "pins": [
-          {
-            "refdes": "R6",
+            "refdes": "R2",
             "pin": "2"
           },
           {
@@ -2355,15 +2261,15 @@
         ]
       },
       {
-        "name": "net-buck_5v.stage.divider.rbottom.a",
+        "name": "net-buck_3v3.stage.divider.rbottom.a",
         "pins": [
           {
             "refdes": "R3",
-            "pin": "2"
+            "pin": "1"
           },
           {
             "refdes": "R4",
-            "pin": "1"
+            "pin": "2"
           },
           {
             "refdes": "U1",
@@ -2372,7 +2278,7 @@
         ]
       },
       {
-        "name": "net-buck_5v.stage.ic.boost.a",
+        "name": "net-buck_3v3.stage.ic.boost.a",
         "pins": [
           {
             "refdes": "C4",
@@ -2385,7 +2291,7 @@
         ]
       },
       {
-        "name": "net-buck_5v.stage.ic.boost.b",
+        "name": "net-buck_3v3.stage.ic.boost.b",
         "pins": [
           {
             "refdes": "C4",
@@ -2402,15 +2308,15 @@
         ]
       },
       {
-        "name": "net-buck_5v.stage.ic.en",
+        "name": "net-buck_3v3.stage.ic.en",
         "pins": [
           {
-            "refdes": "R1",
-            "pin": "2"
+            "refdes": "R5",
+            "pin": "1"
           },
           {
-            "refdes": "R2",
-            "pin": "1"
+            "refdes": "R6",
+            "pin": "2"
           },
           {
             "refdes": "U1",
@@ -2419,14 +2325,108 @@
         ]
       },
       {
-        "name": "net-input_light.anode",
+        "name": "net-buck_5v.light.anode",
         "pins": [
           {
-            "refdes": "D6",
+            "refdes": "D2",
             "pin": "2"
           },
           {
-            "refdes": "R14",
+            "refdes": "R7",
+            "pin": "2"
+          }
+        ]
+      },
+      {
+        "name": "net-buck_5v.pg_pullup.resistor.b",
+        "pins": [
+          {
+            "refdes": "R8",
+            "pin": "2"
+          },
+          {
+            "refdes": "TP2",
+            "pin": "1"
+          },
+          {
+            "refdes": "U2",
+            "pin": "4"
+          }
+        ]
+      },
+      {
+        "name": "net-buck_5v.stage.divider.rbottom.a",
+        "pins": [
+          {
+            "refdes": "R10",
+            "pin": "2"
+          },
+          {
+            "refdes": "R9",
+            "pin": "1"
+          },
+          {
+            "refdes": "U2",
+            "pin": "5"
+          }
+        ]
+      },
+      {
+        "name": "net-buck_5v.stage.ic.boost.a",
+        "pins": [
+          {
+            "refdes": "C11",
+            "pin": "1"
+          },
+          {
+            "refdes": "U2",
+            "pin": "1"
+          }
+        ]
+      },
+      {
+        "name": "net-buck_5v.stage.ic.boost.b",
+        "pins": [
+          {
+            "refdes": "C11",
+            "pin": "2"
+          },
+          {
+            "refdes": "L2",
+            "pin": "1"
+          },
+          {
+            "refdes": "U2",
+            "pin": "8"
+          }
+        ]
+      },
+      {
+        "name": "net-buck_5v.stage.ic.en",
+        "pins": [
+          {
+            "refdes": "R11",
+            "pin": "1"
+          },
+          {
+            "refdes": "R12",
+            "pin": "2"
+          },
+          {
+            "refdes": "U2",
+            "pin": "3"
+          }
+        ]
+      },
+      {
+        "name": "net-input_light.anode",
+        "pins": [
+          {
+            "refdes": "D3",
+            "pin": "2"
+          },
+          {
+            "refdes": "R13",
             "pin": "2"
           }
         ]
@@ -2435,11 +2435,11 @@
         "name": "net-ldo_light.anode",
         "pins": [
           {
-            "refdes": "D5",
+            "refdes": "D4",
             "pin": "2"
           },
           {
-            "refdes": "R13",
+            "refdes": "R14",
             "pin": "2"
           }
         ]
@@ -3121,34 +3121,60 @@
     ],
     "notes": [
       {
+        "path": "buck_3v3",
+        "kind": "doc",
+        "text": "One buck stage: the IC with its own circuit (inductor, input and output capacitor banks, the feedback divider, the bootstrap capacitor and the enable divider), a power-good pull-up with its test point, and the power light. `BuckIc` has no power-good pin, but this module names the IC (`Buck<BenchBuck>`), so it joins `BenchBuck`'s `.pg` (ADR 0120).",
+        "at": {
+          "file": "two_buck.nsm",
+          "line": 75
+        },
+        "anchors": [],
+        "result": null
+      },
+      {
+        "path": "buck_3v3.stage.ic",
+        "kind": "doc",
+        "text": "The IC, a part that provides `BuckIc`.",
+        "at": {
+          "file": "two_buck.nsm",
+          "line": 32
+        },
+        "anchors": [
+          "buck_3v3.stage.ic"
+        ],
+        "result": null
+      },
+      {
+        "path": "buck_5v",
+        "kind": "doc",
+        "text": "One buck stage: the IC with its own circuit (inductor, input and output capacitor banks, the feedback divider, the bootstrap capacitor and the enable divider), a power-good pull-up with its test point, and the power light. `BuckIc` has no power-good pin, but this module names the IC (`Buck<BenchBuck>`), so it joins `BenchBuck`'s `.pg` (ADR 0120).",
+        "at": {
+          "file": "two_buck.nsm",
+          "line": 75
+        },
+        "anchors": [],
+        "result": null
+      },
+      {
+        "path": "buck_5v.stage.ic",
+        "kind": "doc",
+        "text": "The IC, a part that provides `BuckIc`.",
+        "at": {
+          "file": "two_buck.nsm",
+          "line": 32
+        },
+        "anchors": [
+          "buck_5v.stage.ic"
+        ],
+        "result": null
+      },
+      {
         "path": "input",
         "kind": "doc",
         "text": "The 12 V supply, from outside the board: 9 V to 16 V.",
         "at": {
           "file": "two_buck.nsm",
           "line": 106
-        },
-        "anchors": [],
-        "result": null
-      },
-      {
-        "path": "vin",
-        "kind": "doc",
-        "text": "The input after the reverse-polarity diode.",
-        "at": {
-          "file": "two_buck.nsm",
-          "line": 111
-        },
-        "anchors": [],
-        "result": null
-      },
-      {
-        "path": "out_5v",
-        "kind": "doc",
-        "text": "The 5 V rail, made by the first buck stage and the load it carries.",
-        "at": {
-          "file": "two_buck.nsm",
-          "line": 116
         },
         "anchors": [],
         "result": null
@@ -3173,6 +3199,30 @@
           "line": 126
         },
         "anchors": [],
+        "result": null
+      },
+      {
+        "path": "out_5v",
+        "kind": "doc",
+        "text": "The 5 V rail, made by the first buck stage and the load it carries.",
+        "at": {
+          "file": "two_buck.nsm",
+          "line": 116
+        },
+        "anchors": [],
+        "result": null
+      },
+      {
+        "path": "power_in",
+        "kind": "doc",
+        "text": "The input and each output leave through a header of their own.",
+        "at": {
+          "file": "two_buck.nsm",
+          "line": 153
+        },
+        "anchors": [
+          "power_in"
+        ],
         "result": null
       },
       {
@@ -3202,95 +3252,15 @@
         "result": null
       },
       {
-        "path": "buck_5v",
+        "path": "vin",
         "kind": "doc",
-        "text": "One buck stage: the IC with its own circuit (inductor, input and output capacitor banks, the feedback divider, the bootstrap capacitor and the enable divider), a power-good pull-up with its test point, and the power light. `BuckIc` has no power-good pin, but this module names the IC (`Buck<BenchBuck>`), so it joins `BenchBuck`'s `.pg` (ADR 0120).",
+        "text": "The input after the reverse-polarity diode.",
         "at": {
           "file": "two_buck.nsm",
-          "line": 75
+          "line": 111
         },
         "anchors": [],
         "result": null
-      },
-      {
-        "path": "buck_5v.stage.ic",
-        "kind": "doc",
-        "text": "The IC, a part that provides `BuckIc`.",
-        "at": {
-          "file": "two_buck.nsm",
-          "line": 32
-        },
-        "anchors": [
-          "buck_5v.stage.ic"
-        ],
-        "result": null
-      },
-      {
-        "path": "buck_3v3",
-        "kind": "doc",
-        "text": "One buck stage: the IC with its own circuit (inductor, input and output capacitor banks, the feedback divider, the bootstrap capacitor and the enable divider), a power-good pull-up with its test point, and the power light. `BuckIc` has no power-good pin, but this module names the IC (`Buck<BenchBuck>`), so it joins `BenchBuck`'s `.pg` (ADR 0120).",
-        "at": {
-          "file": "two_buck.nsm",
-          "line": 75
-        },
-        "anchors": [],
-        "result": null
-      },
-      {
-        "path": "buck_3v3.stage.ic",
-        "kind": "doc",
-        "text": "The IC, a part that provides `BuckIc`.",
-        "at": {
-          "file": "two_buck.nsm",
-          "line": 32
-        },
-        "anchors": [
-          "buck_3v3.stage.ic"
-        ],
-        "result": null
-      },
-      {
-        "path": "power_in",
-        "kind": "doc",
-        "text": "The input and each output leave through a header of their own.",
-        "at": {
-          "file": "two_buck.nsm",
-          "line": 153
-        },
-        "anchors": [
-          "power_in"
-        ],
-        "result": null
-      },
-      {
-        "path": "buck_5v",
-        "kind": "relation",
-        "text": ".light_resistor.current == (.vout.voltage - .light.forward_voltage) / .light_resistor.resistance",
-        "at": {
-          "file": "two_buck.nsm",
-          "line": 93
-        },
-        "anchors": [
-          "buck_5v.light_resistor",
-          "buck_5v.light"
-        ],
-        "result": "light_resistor.current = 2.326mA..3.485mA",
-        "derived": true
-      },
-      {
-        "path": "buck_3v3",
-        "kind": "relation",
-        "text": ".light_resistor.current == (.vout.voltage - .light.forward_voltage) / .light_resistor.resistance",
-        "at": {
-          "file": "two_buck.nsm",
-          "line": 93
-        },
-        "anchors": [
-          "buck_3v3.light_resistor",
-          "buck_3v3.light"
-        ],
-        "result": "light_resistor.current = 727.7uA..1.682mA",
-        "derived": true
       },
       {
         "path": "",
@@ -3321,148 +3291,58 @@
         ],
         "result": "ldo_light_resistor.current = 727.7uA..1.682mA",
         "derived": true
+      },
+      {
+        "path": "buck_3v3",
+        "kind": "relation",
+        "text": ".light_resistor.current == (.vout.voltage - .light.forward_voltage) / .light_resistor.resistance",
+        "at": {
+          "file": "two_buck.nsm",
+          "line": 93
+        },
+        "anchors": [
+          "buck_3v3.light_resistor",
+          "buck_3v3.light"
+        ],
+        "result": "light_resistor.current = 727.7uA..1.682mA",
+        "derived": true
+      },
+      {
+        "path": "buck_5v",
+        "kind": "relation",
+        "text": ".light_resistor.current == (.vout.voltage - .light.forward_voltage) / .light_resistor.resistance",
+        "at": {
+          "file": "two_buck.nsm",
+          "line": 93
+        },
+        "anchors": [
+          "buck_5v.light_resistor",
+          "buck_5v.light"
+        ],
+        "result": "light_resistor.current = 2.326mA..3.485mA",
+        "derived": true
       }
     ],
     "modules": [
-      {
-        "path": "buck_5v",
-        "type_name": "BuckSupply",
-        "ports": [
-          {
-            "name": "vin.pos",
-            "net": "VIN"
-          },
-          {
-            "name": "vin.neg",
-            "net": "GND"
-          },
-          {
-            "name": "vout.pos",
-            "net": "5V"
-          },
-          {
-            "name": "vout.neg",
-            "net": "GND"
-          }
-        ]
-      },
-      {
-        "path": "buck_5v.stage",
-        "type_name": "Buck<BenchBuck>",
-        "ports": [
-          {
-            "name": "vin.pos",
-            "net": "VIN"
-          },
-          {
-            "name": "vin.neg",
-            "net": "GND"
-          },
-          {
-            "name": "vout.pos",
-            "net": "5V"
-          },
-          {
-            "name": "vout.neg",
-            "net": "GND"
-          }
-        ]
-      },
-      {
-        "path": "buck_5v.stage.divider",
-        "type_name": "FeedbackDivider",
-        "ports": [
-          {
-            "name": "top",
-            "net": "5V"
-          },
-          {
-            "name": "fb",
-            "net": "net-buck_5v.stage.divider.rbottom.a"
-          },
-          {
-            "name": "bottom",
-            "net": "GND"
-          }
-        ]
-      },
-      {
-        "path": "buck_5v.pg_pullup",
-        "type_name": "PullUp",
-        "ports": [
-          {
-            "name": "supply.pos",
-            "net": "5V"
-          },
-          {
-            "name": "supply.neg",
-            "net": "GND"
-          },
-          {
-            "name": "line",
-            "net": "net-buck_5v.pg_pullup.resistor.b"
-          }
-        ]
-      },
       {
         "path": "buck_3v3",
         "type_name": "BuckSupply",
         "ports": [
           {
-            "name": "vin.pos",
-            "net": "VIN"
-          },
-          {
             "name": "vin.neg",
             "net": "GND"
           },
-          {
-            "name": "vout.pos",
-            "net": "3V3"
-          },
-          {
-            "name": "vout.neg",
-            "net": "GND"
-          }
-        ]
-      },
-      {
-        "path": "buck_3v3.stage",
-        "type_name": "Buck<BenchBuck>",
-        "ports": [
           {
             "name": "vin.pos",
             "net": "VIN"
           },
           {
-            "name": "vin.neg",
+            "name": "vout.neg",
             "net": "GND"
           },
           {
             "name": "vout.pos",
             "net": "3V3"
-          },
-          {
-            "name": "vout.neg",
-            "net": "GND"
-          }
-        ]
-      },
-      {
-        "path": "buck_3v3.stage.divider",
-        "type_name": "FeedbackDivider",
-        "ports": [
-          {
-            "name": "top",
-            "net": "3V3"
-          },
-          {
-            "name": "fb",
-            "net": "net-buck_3v3.stage.divider.rbottom.a"
-          },
-          {
-            "name": "bottom",
-            "net": "GND"
           }
         ]
       },
@@ -3471,16 +3351,136 @@
         "type_name": "PullUp",
         "ports": [
           {
-            "name": "supply.pos",
-            "net": "3V3"
+            "name": "line",
+            "net": "net-buck_3v3.pg_pullup.resistor.b"
           },
           {
             "name": "supply.neg",
             "net": "GND"
           },
           {
+            "name": "supply.pos",
+            "net": "3V3"
+          }
+        ]
+      },
+      {
+        "path": "buck_3v3.stage",
+        "type_name": "Buck<BenchBuck>",
+        "ports": [
+          {
+            "name": "vin.neg",
+            "net": "GND"
+          },
+          {
+            "name": "vin.pos",
+            "net": "VIN"
+          },
+          {
+            "name": "vout.neg",
+            "net": "GND"
+          },
+          {
+            "name": "vout.pos",
+            "net": "3V3"
+          }
+        ]
+      },
+      {
+        "path": "buck_3v3.stage.divider",
+        "type_name": "FeedbackDivider",
+        "ports": [
+          {
+            "name": "bottom",
+            "net": "GND"
+          },
+          {
+            "name": "fb",
+            "net": "net-buck_3v3.stage.divider.rbottom.a"
+          },
+          {
+            "name": "top",
+            "net": "3V3"
+          }
+        ]
+      },
+      {
+        "path": "buck_5v",
+        "type_name": "BuckSupply",
+        "ports": [
+          {
+            "name": "vin.neg",
+            "net": "GND"
+          },
+          {
+            "name": "vin.pos",
+            "net": "VIN"
+          },
+          {
+            "name": "vout.neg",
+            "net": "GND"
+          },
+          {
+            "name": "vout.pos",
+            "net": "5V"
+          }
+        ]
+      },
+      {
+        "path": "buck_5v.pg_pullup",
+        "type_name": "PullUp",
+        "ports": [
+          {
             "name": "line",
-            "net": "net-buck_3v3.pg_pullup.resistor.b"
+            "net": "net-buck_5v.pg_pullup.resistor.b"
+          },
+          {
+            "name": "supply.neg",
+            "net": "GND"
+          },
+          {
+            "name": "supply.pos",
+            "net": "5V"
+          }
+        ]
+      },
+      {
+        "path": "buck_5v.stage",
+        "type_name": "Buck<BenchBuck>",
+        "ports": [
+          {
+            "name": "vin.neg",
+            "net": "GND"
+          },
+          {
+            "name": "vin.pos",
+            "net": "VIN"
+          },
+          {
+            "name": "vout.neg",
+            "net": "GND"
+          },
+          {
+            "name": "vout.pos",
+            "net": "5V"
+          }
+        ]
+      },
+      {
+        "path": "buck_5v.stage.divider",
+        "type_name": "FeedbackDivider",
+        "ports": [
+          {
+            "name": "bottom",
+            "net": "GND"
+          },
+          {
+            "name": "fb",
+            "net": "net-buck_5v.stage.divider.rbottom.a"
+          },
+          {
+            "name": "top",
+            "net": "5V"
           }
         ]
       }

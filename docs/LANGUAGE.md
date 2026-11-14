@@ -4784,11 +4784,11 @@ board Bounded {
 
 ```text
 board Bounded
-  R2   Resistor        22k             Resistor_SMD:R_0402_1005Metric                             C25768 Basic
   R1   Resistor        22k             Resistor_SMD:R_0402_1005Metric                             C25768 Basic
-  net GND: R2.2
-  net VCC: R1.1
-  net net-lamp.bottom.a: R1.2, R2.1
+  R2   Resistor        22k             Resistor_SMD:R_0402_1005Metric                             C25768 Basic
+  net GND: R1.2
+  net VCC: R2.1
+  net net-lamp.bottom.a: R1.1, R2.2
 ```
 
 When no row meets the bound, the message says which statements make it a bound on the part:
@@ -7388,8 +7388,8 @@ board Caps {
 
 ```text
 board Caps
-  C2   Capacitor       4.7u            Capacitor_SMD:C_0402_1005Metric                            C23733 Basic
-  C1   Capacitor       100n            Capacitor_SMD:C_0402_1005Metric                            C1525 Basic
+  C1   Capacitor       4.7u            Capacitor_SMD:C_0402_1005Metric                            C23733 Basic
+  C2   Capacitor       100n            Capacitor_SMD:C_0402_1005Metric                            C1525 Basic
   net 3V3: C1.1, C2.1
   net GND: C1.2, C2.2
 ```

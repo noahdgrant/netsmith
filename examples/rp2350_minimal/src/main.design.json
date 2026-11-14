@@ -97,7 +97,7 @@
         ]
       },
       {
-        "refdes": "R8",
+        "refdes": "R2",
         "kind": "Resistor",
         "provides": [],
         "declared_kind": "resistor",
@@ -159,7 +159,7 @@
         ]
       },
       {
-        "refdes": "J4",
+        "refdes": "J1",
         "kind": "JstSm03bSrssTb",
         "provides": [
           "Connector"
@@ -213,7 +213,7 @@
         ]
       },
       {
-        "refdes": "U3",
+        "refdes": "U1",
         "kind": "W25Q128Jv",
         "provides": [],
         "value": "W25Q128JVSIQ",
@@ -303,7 +303,7 @@
         ]
       },
       {
-        "refdes": "R6",
+        "refdes": "R3",
         "kind": "Resistor",
         "provides": [],
         "declared_kind": "resistor",
@@ -334,7 +334,7 @@
         ]
       },
       {
-        "refdes": "J3",
+        "refdes": "J2",
         "kind": "SamtecTsw11807LD",
         "provides": [
           "Connector"
@@ -707,7 +707,7 @@
         ]
       },
       {
-        "refdes": "J2",
+        "refdes": "J3",
         "kind": "SamtecTsw11807LD",
         "provides": [
           "Connector"
@@ -1120,7 +1120,7 @@
         "pins": []
       },
       {
-        "refdes": "U1",
+        "refdes": "U2",
         "kind": "Rp2350A",
         "provides": [],
         "value": "RP2350A",
@@ -1727,7 +1727,7 @@
         ]
       },
       {
-        "refdes": "R2",
+        "refdes": "R4",
         "kind": "Resistor",
         "provides": [],
         "declared_kind": "resistor",
@@ -1758,7 +1758,7 @@
         ]
       },
       {
-        "refdes": "C18",
+        "refdes": "C2",
         "kind": "Capacitor",
         "provides": [],
         "declared_kind": "capacitor",
@@ -1789,7 +1789,7 @@
         ]
       },
       {
-        "refdes": "C19",
+        "refdes": "C3",
         "kind": "Capacitor",
         "provides": [],
         "declared_kind": "capacitor",
@@ -1820,7 +1820,7 @@
         ]
       },
       {
-        "refdes": "U2",
+        "refdes": "U3",
         "kind": "LinearRegulator",
         "provides": [],
         "declared_kind": "ic",
@@ -1893,7 +1893,7 @@
         ]
       },
       {
-        "refdes": "R9",
+        "refdes": "R5",
         "kind": "Resistor",
         "provides": [],
         "declared_kind": "resistor",
@@ -1924,7 +1924,7 @@
         ]
       },
       {
-        "refdes": "R5",
+        "refdes": "R6",
         "kind": "Resistor",
         "provides": [],
         "declared_kind": "resistor",
@@ -1986,7 +1986,7 @@
         ]
       },
       {
-        "refdes": "J1",
+        "refdes": "J4",
         "kind": "Amphenol10103594",
         "provides": [
           "Connector"
@@ -2064,7 +2064,7 @@
         ]
       },
       {
-        "refdes": "R4",
+        "refdes": "R8",
         "kind": "Resistor",
         "provides": [],
         "declared_kind": "resistor",
@@ -2095,7 +2095,7 @@
         ]
       },
       {
-        "refdes": "R3",
+        "refdes": "R9",
         "kind": "Resistor",
         "provides": [],
         "declared_kind": "resistor",
@@ -2126,7 +2126,7 @@
         ]
       },
       {
-        "refdes": "C15",
+        "refdes": "C4",
         "kind": "Capacitor",
         "provides": [],
         "declared_kind": "capacitor",
@@ -2157,7 +2157,7 @@
         ]
       },
       {
-        "refdes": "C16",
+        "refdes": "C5",
         "kind": "Capacitor",
         "provides": [],
         "declared_kind": "capacitor",
@@ -2188,7 +2188,7 @@
         ]
       },
       {
-        "refdes": "C17",
+        "refdes": "C6",
         "kind": "Capacitor",
         "provides": [],
         "declared_kind": "capacitor",
@@ -2219,7 +2219,7 @@
         ]
       },
       {
-        "refdes": "C6",
+        "refdes": "C7",
         "kind": "Capacitor",
         "provides": [],
         "declared_kind": "capacitor",
@@ -2250,7 +2250,7 @@
         ]
       },
       {
-        "refdes": "C7",
+        "refdes": "C8",
         "kind": "Capacitor",
         "provides": [],
         "declared_kind": "capacitor",
@@ -2281,7 +2281,7 @@
         ]
       },
       {
-        "refdes": "C8",
+        "refdes": "C9",
         "kind": "Capacitor",
         "provides": [],
         "declared_kind": "capacitor",
@@ -2312,7 +2312,7 @@
         ]
       },
       {
-        "refdes": "C9",
+        "refdes": "C10",
         "kind": "Capacitor",
         "provides": [],
         "declared_kind": "capacitor",
@@ -2343,7 +2343,7 @@
         ]
       },
       {
-        "refdes": "C10",
+        "refdes": "C11",
         "kind": "Capacitor",
         "provides": [],
         "declared_kind": "capacitor",
@@ -2374,7 +2374,7 @@
         ]
       },
       {
-        "refdes": "C11",
+        "refdes": "C12",
         "kind": "Capacitor",
         "provides": [],
         "declared_kind": "capacitor",
@@ -2405,7 +2405,7 @@
         ]
       },
       {
-        "refdes": "C12",
+        "refdes": "C13",
         "kind": "Capacitor",
         "provides": [],
         "declared_kind": "capacitor",
@@ -2436,7 +2436,7 @@
         ]
       },
       {
-        "refdes": "C13",
+        "refdes": "C14",
         "kind": "Capacitor",
         "provides": [],
         "declared_kind": "capacitor",
@@ -2467,7 +2467,7 @@
         ]
       },
       {
-        "refdes": "C14",
+        "refdes": "C15",
         "kind": "Capacitor",
         "provides": [],
         "declared_kind": "capacitor",
@@ -2498,7 +2498,7 @@
         ]
       },
       {
-        "refdes": "C3",
+        "refdes": "C16",
         "kind": "Capacitor",
         "provides": [],
         "declared_kind": "capacitor",
@@ -2529,7 +2529,7 @@
         ]
       },
       {
-        "refdes": "C4",
+        "refdes": "C17",
         "kind": "Capacitor",
         "provides": [],
         "declared_kind": "capacitor",
@@ -2560,7 +2560,7 @@
         ]
       },
       {
-        "refdes": "C5",
+        "refdes": "C18",
         "kind": "Capacitor",
         "provides": [],
         "declared_kind": "capacitor",
@@ -2591,7 +2591,7 @@
         ]
       },
       {
-        "refdes": "C2",
+        "refdes": "C19",
         "kind": "Capacitor",
         "provides": [],
         "declared_kind": "capacitor",
@@ -2627,15 +2627,11 @@
         "name": "+1V1",
         "pins": [
           {
-            "refdes": "C15",
+            "refdes": "C4",
             "pin": "1"
           },
           {
-            "refdes": "C16",
-            "pin": "1"
-          },
-          {
-            "refdes": "C17",
+            "refdes": "C5",
             "pin": "1"
           },
           {
@@ -2643,23 +2639,27 @@
             "pin": "1"
           },
           {
+            "refdes": "C7",
+            "pin": "1"
+          },
+          {
             "refdes": "L1",
             "pin": "1"
           },
           {
-            "refdes": "U1",
+            "refdes": "U2",
             "pin": "23"
           },
           {
-            "refdes": "U1",
+            "refdes": "U2",
             "pin": "39"
           },
           {
-            "refdes": "U1",
+            "refdes": "U2",
             "pin": "50"
           },
           {
-            "refdes": "U1",
+            "refdes": "U2",
             "pin": "6"
           }
         ]
@@ -2688,19 +2688,19 @@
             "pin": "1"
           },
           {
-            "refdes": "C3",
+            "refdes": "C15",
             "pin": "1"
           },
           {
-            "refdes": "C4",
+            "refdes": "C16",
             "pin": "1"
           },
           {
-            "refdes": "C5",
+            "refdes": "C17",
             "pin": "1"
           },
           {
-            "refdes": "C7",
+            "refdes": "C18",
             "pin": "1"
           },
           {
@@ -2712,7 +2712,7 @@
             "pin": "1"
           },
           {
-            "refdes": "J2",
+            "refdes": "J3",
             "pin": "2"
           },
           {
@@ -2725,51 +2725,51 @@
           },
           {
             "refdes": "U1",
-            "pin": "1"
-          },
-          {
-            "refdes": "U1",
-            "pin": "11"
-          },
-          {
-            "refdes": "U1",
-            "pin": "20"
-          },
-          {
-            "refdes": "U1",
-            "pin": "30"
-          },
-          {
-            "refdes": "U1",
-            "pin": "38"
-          },
-          {
-            "refdes": "U1",
-            "pin": "44"
-          },
-          {
-            "refdes": "U1",
-            "pin": "45"
-          },
-          {
-            "refdes": "U1",
-            "pin": "49"
-          },
-          {
-            "refdes": "U1",
-            "pin": "53"
-          },
-          {
-            "refdes": "U1",
-            "pin": "54"
+            "pin": "8"
           },
           {
             "refdes": "U2",
-            "pin": "2"
+            "pin": "1"
+          },
+          {
+            "refdes": "U2",
+            "pin": "11"
+          },
+          {
+            "refdes": "U2",
+            "pin": "20"
+          },
+          {
+            "refdes": "U2",
+            "pin": "30"
+          },
+          {
+            "refdes": "U2",
+            "pin": "38"
+          },
+          {
+            "refdes": "U2",
+            "pin": "44"
+          },
+          {
+            "refdes": "U2",
+            "pin": "45"
+          },
+          {
+            "refdes": "U2",
+            "pin": "49"
+          },
+          {
+            "refdes": "U2",
+            "pin": "53"
+          },
+          {
+            "refdes": "U2",
+            "pin": "54"
           },
           {
             "refdes": "U3",
-            "pin": "8"
+            "pin": "2"
           }
         ]
       },
@@ -2854,163 +2854,147 @@
           },
           {
             "refdes": "J1",
-            "pin": "10"
+            "pin": "2"
           },
           {
             "refdes": "J1",
-            "pin": "11"
+            "pin": "4"
           },
           {
             "refdes": "J1",
             "pin": "5"
           },
           {
-            "refdes": "J1",
-            "pin": "6"
-          },
-          {
-            "refdes": "J1",
-            "pin": "7"
-          },
-          {
-            "refdes": "J1",
-            "pin": "8"
-          },
-          {
-            "refdes": "J1",
-            "pin": "9"
-          },
-          {
             "refdes": "J2",
-            "pin": "1"
-          },
-          {
-            "refdes": "J2",
-            "pin": "11"
-          },
-          {
-            "refdes": "J2",
-            "pin": "13"
-          },
-          {
-            "refdes": "J2",
-            "pin": "15"
-          },
-          {
-            "refdes": "J2",
-            "pin": "17"
-          },
-          {
-            "refdes": "J2",
-            "pin": "19"
-          },
-          {
-            "refdes": "J2",
-            "pin": "21"
-          },
-          {
-            "refdes": "J2",
-            "pin": "23"
-          },
-          {
-            "refdes": "J2",
-            "pin": "25"
-          },
-          {
-            "refdes": "J2",
-            "pin": "27"
-          },
-          {
-            "refdes": "J2",
-            "pin": "29"
-          },
-          {
-            "refdes": "J2",
-            "pin": "3"
-          },
-          {
-            "refdes": "J2",
-            "pin": "31"
-          },
-          {
-            "refdes": "J2",
-            "pin": "33"
-          },
-          {
-            "refdes": "J2",
-            "pin": "35"
-          },
-          {
-            "refdes": "J2",
-            "pin": "36"
-          },
-          {
-            "refdes": "J2",
-            "pin": "5"
-          },
-          {
-            "refdes": "J2",
-            "pin": "7"
-          },
-          {
-            "refdes": "J2",
-            "pin": "9"
-          },
-          {
-            "refdes": "J3",
             "pin": "10"
           },
           {
-            "refdes": "J3",
+            "refdes": "J2",
             "pin": "12"
           },
           {
-            "refdes": "J3",
+            "refdes": "J2",
             "pin": "14"
           },
           {
-            "refdes": "J3",
+            "refdes": "J2",
             "pin": "16"
           },
           {
-            "refdes": "J3",
+            "refdes": "J2",
             "pin": "18"
           },
           {
-            "refdes": "J3",
+            "refdes": "J2",
             "pin": "2"
           },
           {
-            "refdes": "J3",
+            "refdes": "J2",
             "pin": "20"
           },
           {
-            "refdes": "J3",
+            "refdes": "J2",
             "pin": "22"
           },
           {
-            "refdes": "J3",
+            "refdes": "J2",
             "pin": "24"
           },
           {
-            "refdes": "J3",
+            "refdes": "J2",
             "pin": "26"
           },
           {
-            "refdes": "J3",
+            "refdes": "J2",
             "pin": "28"
           },
           {
-            "refdes": "J3",
+            "refdes": "J2",
             "pin": "30"
           },
           {
-            "refdes": "J3",
+            "refdes": "J2",
             "pin": "32"
           },
           {
-            "refdes": "J3",
+            "refdes": "J2",
             "pin": "34"
+          },
+          {
+            "refdes": "J2",
+            "pin": "35"
+          },
+          {
+            "refdes": "J2",
+            "pin": "36"
+          },
+          {
+            "refdes": "J2",
+            "pin": "4"
+          },
+          {
+            "refdes": "J2",
+            "pin": "6"
+          },
+          {
+            "refdes": "J2",
+            "pin": "8"
+          },
+          {
+            "refdes": "J3",
+            "pin": "1"
+          },
+          {
+            "refdes": "J3",
+            "pin": "11"
+          },
+          {
+            "refdes": "J3",
+            "pin": "13"
+          },
+          {
+            "refdes": "J3",
+            "pin": "15"
+          },
+          {
+            "refdes": "J3",
+            "pin": "17"
+          },
+          {
+            "refdes": "J3",
+            "pin": "19"
+          },
+          {
+            "refdes": "J3",
+            "pin": "21"
+          },
+          {
+            "refdes": "J3",
+            "pin": "23"
+          },
+          {
+            "refdes": "J3",
+            "pin": "25"
+          },
+          {
+            "refdes": "J3",
+            "pin": "27"
+          },
+          {
+            "refdes": "J3",
+            "pin": "29"
+          },
+          {
+            "refdes": "J3",
+            "pin": "3"
+          },
+          {
+            "refdes": "J3",
+            "pin": "31"
+          },
+          {
+            "refdes": "J3",
+            "pin": "33"
           },
           {
             "refdes": "J3",
@@ -3022,30 +3006,46 @@
           },
           {
             "refdes": "J3",
-            "pin": "4"
+            "pin": "5"
           },
           {
             "refdes": "J3",
-            "pin": "6"
+            "pin": "7"
           },
           {
             "refdes": "J3",
-            "pin": "8"
+            "pin": "9"
           },
           {
             "refdes": "J4",
-            "pin": "2"
+            "pin": "10"
           },
           {
             "refdes": "J4",
-            "pin": "4"
+            "pin": "11"
           },
           {
             "refdes": "J4",
             "pin": "5"
           },
           {
-            "refdes": "R9",
+            "refdes": "J4",
+            "pin": "6"
+          },
+          {
+            "refdes": "J4",
+            "pin": "7"
+          },
+          {
+            "refdes": "J4",
+            "pin": "8"
+          },
+          {
+            "refdes": "J4",
+            "pin": "9"
+          },
+          {
+            "refdes": "R5",
             "pin": "2"
           },
           {
@@ -3058,19 +3058,19 @@
           },
           {
             "refdes": "U1",
-            "pin": "47"
-          },
-          {
-            "refdes": "U1",
-            "pin": "61"
+            "pin": "4"
           },
           {
             "refdes": "U2",
-            "pin": "1"
+            "pin": "47"
+          },
+          {
+            "refdes": "U2",
+            "pin": "61"
           },
           {
             "refdes": "U3",
-            "pin": "4"
+            "pin": "1"
           },
           {
             "refdes": "X1",
@@ -3086,15 +3086,15 @@
         "name": "VBUS",
         "pins": [
           {
-            "refdes": "C2",
+            "refdes": "C19",
             "pin": "1"
           },
           {
-            "refdes": "J1",
+            "refdes": "J4",
             "pin": "1"
           },
           {
-            "refdes": "U2",
+            "refdes": "U3",
             "pin": "3"
           }
         ]
@@ -3111,7 +3111,7 @@
             "pin": "2"
           },
           {
-            "refdes": "U1",
+            "refdes": "U2",
             "pin": "46"
           }
         ]
@@ -3120,7 +3120,7 @@
         "name": "net-bootsel.b",
         "pins": [
           {
-            "refdes": "R8",
+            "refdes": "R2",
             "pin": "2"
           },
           {
@@ -3137,15 +3137,15 @@
         "name": "net-bootsel_series.a",
         "pins": [
           {
-            "refdes": "R5",
+            "refdes": "R2",
             "pin": "1"
           },
           {
-            "refdes": "R8",
+            "refdes": "R6",
             "pin": "1"
           },
           {
-            "refdes": "U1",
+            "refdes": "U2",
             "pin": "60"
           }
         ]
@@ -3158,7 +3158,7 @@
             "pin": "2"
           },
           {
-            "refdes": "U1",
+            "refdes": "U2",
             "pin": "48"
           }
         ]
@@ -3167,15 +3167,15 @@
         "name": "net-debug.p1",
         "pins": [
           {
-            "refdes": "J3",
-            "pin": "33"
-          },
-          {
-            "refdes": "J4",
+            "refdes": "J1",
             "pin": "1"
           },
           {
-            "refdes": "U1",
+            "refdes": "J2",
+            "pin": "33"
+          },
+          {
+            "refdes": "U2",
             "pin": "24"
           }
         ]
@@ -3184,15 +3184,15 @@
         "name": "net-debug.p3",
         "pins": [
           {
-            "refdes": "J3",
-            "pin": "31"
-          },
-          {
-            "refdes": "J4",
+            "refdes": "J1",
             "pin": "3"
           },
           {
-            "refdes": "U1",
+            "refdes": "J2",
+            "pin": "31"
+          },
+          {
+            "refdes": "U2",
             "pin": "25"
           }
         ]
@@ -3201,7 +3201,7 @@
         "name": "net-flash.qspi.cs",
         "pins": [
           {
-            "refdes": "R5",
+            "refdes": "R3",
             "pin": "2"
           },
           {
@@ -3213,7 +3213,7 @@
             "pin": "2"
           },
           {
-            "refdes": "U3",
+            "refdes": "U1",
             "pin": "1"
           }
         ]
@@ -3223,11 +3223,11 @@
         "pins": [
           {
             "refdes": "U1",
-            "pin": "57"
+            "pin": "5"
           },
           {
-            "refdes": "U3",
-            "pin": "5"
+            "refdes": "U2",
+            "pin": "57"
           }
         ]
       },
@@ -3236,11 +3236,11 @@
         "pins": [
           {
             "refdes": "U1",
-            "pin": "59"
+            "pin": "2"
           },
           {
-            "refdes": "U3",
-            "pin": "2"
+            "refdes": "U2",
+            "pin": "59"
           }
         ]
       },
@@ -3249,11 +3249,11 @@
         "pins": [
           {
             "refdes": "U1",
-            "pin": "58"
+            "pin": "3"
           },
           {
-            "refdes": "U3",
-            "pin": "3"
+            "refdes": "U2",
+            "pin": "58"
           }
         ]
       },
@@ -3262,11 +3262,11 @@
         "pins": [
           {
             "refdes": "U1",
-            "pin": "55"
+            "pin": "7"
           },
           {
-            "refdes": "U3",
-            "pin": "7"
+            "refdes": "U2",
+            "pin": "55"
           }
         ]
       },
@@ -3275,11 +3275,11 @@
         "pins": [
           {
             "refdes": "U1",
-            "pin": "56"
+            "pin": "6"
           },
           {
-            "refdes": "U3",
-            "pin": "6"
+            "refdes": "U2",
+            "pin": "56"
           }
         ]
       },
@@ -3287,15 +3287,15 @@
         "name": "net-gpio0_link.a",
         "pins": [
           {
-            "refdes": "J2",
+            "refdes": "J3",
             "pin": "4"
           },
           {
-            "refdes": "R6",
+            "refdes": "R3",
             "pin": "1"
           },
           {
-            "refdes": "U1",
+            "refdes": "U2",
             "pin": "2"
           }
         ]
@@ -3304,11 +3304,11 @@
         "name": "net-header_high.p1",
         "pins": [
           {
-            "refdes": "J3",
+            "refdes": "J2",
             "pin": "1"
           },
           {
-            "refdes": "U1",
+            "refdes": "U2",
             "pin": "43"
           }
         ]
@@ -3317,11 +3317,11 @@
         "name": "net-header_high.p11",
         "pins": [
           {
-            "refdes": "J3",
+            "refdes": "J2",
             "pin": "11"
           },
           {
-            "refdes": "U1",
+            "refdes": "U2",
             "pin": "36"
           }
         ]
@@ -3330,11 +3330,11 @@
         "name": "net-header_high.p13",
         "pins": [
           {
-            "refdes": "J3",
+            "refdes": "J2",
             "pin": "13"
           },
           {
-            "refdes": "U1",
+            "refdes": "U2",
             "pin": "35"
           }
         ]
@@ -3343,11 +3343,11 @@
         "name": "net-header_high.p15",
         "pins": [
           {
-            "refdes": "J3",
+            "refdes": "J2",
             "pin": "15"
           },
           {
-            "refdes": "U1",
+            "refdes": "U2",
             "pin": "34"
           }
         ]
@@ -3356,11 +3356,11 @@
         "name": "net-header_high.p17",
         "pins": [
           {
-            "refdes": "J3",
+            "refdes": "J2",
             "pin": "17"
           },
           {
-            "refdes": "U1",
+            "refdes": "U2",
             "pin": "33"
           }
         ]
@@ -3369,11 +3369,11 @@
         "name": "net-header_high.p19",
         "pins": [
           {
-            "refdes": "J3",
+            "refdes": "J2",
             "pin": "19"
           },
           {
-            "refdes": "U1",
+            "refdes": "U2",
             "pin": "32"
           }
         ]
@@ -3382,11 +3382,11 @@
         "name": "net-header_high.p21",
         "pins": [
           {
-            "refdes": "J3",
+            "refdes": "J2",
             "pin": "21"
           },
           {
-            "refdes": "U1",
+            "refdes": "U2",
             "pin": "31"
           }
         ]
@@ -3395,11 +3395,11 @@
         "name": "net-header_high.p23",
         "pins": [
           {
-            "refdes": "J3",
+            "refdes": "J2",
             "pin": "23"
           },
           {
-            "refdes": "U1",
+            "refdes": "U2",
             "pin": "29"
           }
         ]
@@ -3408,11 +3408,11 @@
         "name": "net-header_high.p25",
         "pins": [
           {
-            "refdes": "J3",
+            "refdes": "J2",
             "pin": "25"
           },
           {
-            "refdes": "U1",
+            "refdes": "U2",
             "pin": "28"
           }
         ]
@@ -3421,11 +3421,11 @@
         "name": "net-header_high.p27",
         "pins": [
           {
-            "refdes": "J3",
+            "refdes": "J2",
             "pin": "27"
           },
           {
-            "refdes": "U1",
+            "refdes": "U2",
             "pin": "27"
           }
         ]
@@ -3434,7 +3434,7 @@
         "name": "net-header_high.p29",
         "pins": [
           {
-            "refdes": "J3",
+            "refdes": "J2",
             "pin": "29"
           },
           {
@@ -3446,7 +3446,7 @@
             "pin": "4"
           },
           {
-            "refdes": "U1",
+            "refdes": "U2",
             "pin": "26"
           }
         ]
@@ -3455,11 +3455,11 @@
         "name": "net-header_high.p3",
         "pins": [
           {
-            "refdes": "J3",
+            "refdes": "J2",
             "pin": "3"
           },
           {
-            "refdes": "U1",
+            "refdes": "U2",
             "pin": "42"
           }
         ]
@@ -3468,11 +3468,11 @@
         "name": "net-header_high.p5",
         "pins": [
           {
-            "refdes": "J3",
+            "refdes": "J2",
             "pin": "5"
           },
           {
-            "refdes": "U1",
+            "refdes": "U2",
             "pin": "41"
           }
         ]
@@ -3481,11 +3481,11 @@
         "name": "net-header_high.p7",
         "pins": [
           {
-            "refdes": "J3",
+            "refdes": "J2",
             "pin": "7"
           },
           {
-            "refdes": "U1",
+            "refdes": "U2",
             "pin": "40"
           }
         ]
@@ -3494,11 +3494,11 @@
         "name": "net-header_high.p9",
         "pins": [
           {
-            "refdes": "J3",
+            "refdes": "J2",
             "pin": "9"
           },
           {
-            "refdes": "U1",
+            "refdes": "U2",
             "pin": "37"
           }
         ]
@@ -3507,11 +3507,11 @@
         "name": "net-header_low.p10",
         "pins": [
           {
-            "refdes": "J2",
+            "refdes": "J3",
             "pin": "10"
           },
           {
-            "refdes": "U1",
+            "refdes": "U2",
             "pin": "5"
           }
         ]
@@ -3520,11 +3520,11 @@
         "name": "net-header_low.p12",
         "pins": [
           {
-            "refdes": "J2",
+            "refdes": "J3",
             "pin": "12"
           },
           {
-            "refdes": "U1",
+            "refdes": "U2",
             "pin": "7"
           }
         ]
@@ -3533,11 +3533,11 @@
         "name": "net-header_low.p14",
         "pins": [
           {
-            "refdes": "J2",
+            "refdes": "J3",
             "pin": "14"
           },
           {
-            "refdes": "U1",
+            "refdes": "U2",
             "pin": "8"
           }
         ]
@@ -3546,11 +3546,11 @@
         "name": "net-header_low.p16",
         "pins": [
           {
-            "refdes": "J2",
+            "refdes": "J3",
             "pin": "16"
           },
           {
-            "refdes": "U1",
+            "refdes": "U2",
             "pin": "9"
           }
         ]
@@ -3559,11 +3559,11 @@
         "name": "net-header_low.p18",
         "pins": [
           {
-            "refdes": "J2",
+            "refdes": "J3",
             "pin": "18"
           },
           {
-            "refdes": "U1",
+            "refdes": "U2",
             "pin": "10"
           }
         ]
@@ -3572,11 +3572,11 @@
         "name": "net-header_low.p20",
         "pins": [
           {
-            "refdes": "J2",
+            "refdes": "J3",
             "pin": "20"
           },
           {
-            "refdes": "U1",
+            "refdes": "U2",
             "pin": "12"
           }
         ]
@@ -3585,11 +3585,11 @@
         "name": "net-header_low.p22",
         "pins": [
           {
-            "refdes": "J2",
+            "refdes": "J3",
             "pin": "22"
           },
           {
-            "refdes": "U1",
+            "refdes": "U2",
             "pin": "13"
           }
         ]
@@ -3598,11 +3598,11 @@
         "name": "net-header_low.p24",
         "pins": [
           {
-            "refdes": "J2",
+            "refdes": "J3",
             "pin": "24"
           },
           {
-            "refdes": "U1",
+            "refdes": "U2",
             "pin": "14"
           }
         ]
@@ -3611,11 +3611,11 @@
         "name": "net-header_low.p26",
         "pins": [
           {
-            "refdes": "J2",
+            "refdes": "J3",
             "pin": "26"
           },
           {
-            "refdes": "U1",
+            "refdes": "U2",
             "pin": "15"
           }
         ]
@@ -3624,11 +3624,11 @@
         "name": "net-header_low.p28",
         "pins": [
           {
-            "refdes": "J2",
+            "refdes": "J3",
             "pin": "28"
           },
           {
-            "refdes": "U1",
+            "refdes": "U2",
             "pin": "16"
           }
         ]
@@ -3637,11 +3637,11 @@
         "name": "net-header_low.p30",
         "pins": [
           {
-            "refdes": "J2",
+            "refdes": "J3",
             "pin": "30"
           },
           {
-            "refdes": "U1",
+            "refdes": "U2",
             "pin": "17"
           }
         ]
@@ -3650,11 +3650,11 @@
         "name": "net-header_low.p32",
         "pins": [
           {
-            "refdes": "J2",
+            "refdes": "J3",
             "pin": "32"
           },
           {
-            "refdes": "U1",
+            "refdes": "U2",
             "pin": "18"
           }
         ]
@@ -3663,11 +3663,11 @@
         "name": "net-header_low.p34",
         "pins": [
           {
-            "refdes": "J2",
+            "refdes": "J3",
             "pin": "34"
           },
           {
-            "refdes": "U1",
+            "refdes": "U2",
             "pin": "19"
           }
         ]
@@ -3676,11 +3676,11 @@
         "name": "net-header_low.p6",
         "pins": [
           {
-            "refdes": "J2",
+            "refdes": "J3",
             "pin": "6"
           },
           {
-            "refdes": "U1",
+            "refdes": "U2",
             "pin": "3"
           }
         ]
@@ -3689,11 +3689,11 @@
         "name": "net-header_low.p8",
         "pins": [
           {
-            "refdes": "J2",
+            "refdes": "J3",
             "pin": "8"
           },
           {
-            "refdes": "U1",
+            "refdes": "U2",
             "pin": "4"
           }
         ]
@@ -3702,11 +3702,11 @@
         "name": "net-mcu.usb_dm",
         "pins": [
           {
-            "refdes": "R4",
+            "refdes": "R8",
             "pin": "2"
           },
           {
-            "refdes": "U1",
+            "refdes": "U2",
             "pin": "51"
           }
         ]
@@ -3715,11 +3715,11 @@
         "name": "net-mcu.usb_dp",
         "pins": [
           {
-            "refdes": "R3",
+            "refdes": "R9",
             "pin": "2"
           },
           {
-            "refdes": "U1",
+            "refdes": "U2",
             "pin": "52"
           }
         ]
@@ -3728,11 +3728,11 @@
         "name": "net-mcu.xin",
         "pins": [
           {
-            "refdes": "C18",
+            "refdes": "C2",
             "pin": "1"
           },
           {
-            "refdes": "U1",
+            "refdes": "U2",
             "pin": "21"
           },
           {
@@ -3745,11 +3745,11 @@
         "name": "net-mcu.xout",
         "pins": [
           {
-            "refdes": "R2",
+            "refdes": "R4",
             "pin": "1"
           },
           {
-            "refdes": "U1",
+            "refdes": "U2",
             "pin": "22"
           }
         ]
@@ -3758,11 +3758,11 @@
         "name": "net-oscillator.crystal.xtal_b",
         "pins": [
           {
-            "refdes": "C19",
+            "refdes": "C3",
             "pin": "1"
           },
           {
-            "refdes": "R2",
+            "refdes": "R4",
             "pin": "2"
           },
           {
@@ -3775,7 +3775,7 @@
         "name": "net-reset.a",
         "pins": [
           {
-            "refdes": "R9",
+            "refdes": "R5",
             "pin": "1"
           },
           {
@@ -3792,11 +3792,11 @@
         "name": "net-usb.dm",
         "pins": [
           {
-            "refdes": "J1",
+            "refdes": "J4",
             "pin": "2"
           },
           {
-            "refdes": "R4",
+            "refdes": "R8",
             "pin": "1"
           }
         ]
@@ -3805,11 +3805,11 @@
         "name": "net-usb.dp",
         "pins": [
           {
-            "refdes": "J1",
+            "refdes": "J4",
             "pin": "3"
           },
           {
-            "refdes": "R3",
+            "refdes": "R9",
             "pin": "1"
           }
         ]
@@ -4526,41 +4526,41 @@
     ],
     "notes": [
       {
-        "path": "usb",
+        "path": "avdd_filter",
         "kind": "doc",
-        "text": "The micro-USB B receptacle: the only supply of the board, and its USB port.",
+        "text": "The filter of the core regulator's analog supply: 33 ohm and 4.7 uF.",
         "at": {
           "file": "src/main.nsm",
-          "line": 46
+          "line": 112
         },
         "anchors": [
-          "usb"
+          "avdd_filter"
         ],
         "result": null
       },
       {
-        "path": "header_low",
+        "path": "bootsel",
         "kind": "doc",
-        "text": "J2: ground, +3V3 and GPIO0 to GPIO15, as Raspberry Pi's header has them.",
+        "text": "BOOTSEL: held at power-up it pulls QSPI_SS to ground through 1 kohm, so the chip boots from USB.",
         "at": {
           "file": "src/main.nsm",
-          "line": 48
+          "line": 181
         },
         "anchors": [
-          "header_low"
+          "bootsel"
         ],
         "result": null
       },
       {
-        "path": "header_high",
+        "path": "core_inductor",
         "kind": "doc",
-        "text": "J3: GPIO29 down to GPIO16, RUN, SWD and SWCLK.",
+        "text": "The inductor of the core regulator, from the chip's switch node to the core rail.",
         "at": {
           "file": "src/main.nsm",
-          "line": 50
+          "line": 104
         },
         "anchors": [
-          "header_high"
+          "core_inductor"
         ],
         "result": null
       },
@@ -4578,32 +4578,6 @@
         "result": null
       },
       {
-        "path": "mcu",
-        "kind": "doc",
-        "text": "The microcontroller. Every pin that a header or a part uses is named here, so none moves.",
-        "at": {
-          "file": "src/main.nsm",
-          "line": 57
-        },
-        "anchors": [
-          "mcu"
-        ],
-        "result": null
-      },
-      {
-        "path": "regulator",
-        "kind": "doc",
-        "text": "The 3.3 V regulator, an NCP1117 in a SOT-223 (a row of the project's catalog).",
-        "at": {
-          "file": "src/main.nsm",
-          "line": 59
-        },
-        "anchors": [
-          "regulator"
-        ],
-        "result": null
-      },
-      {
         "path": "flash",
         "kind": "doc",
         "text": "The QSPI flash that holds the program: 16 MB.",
@@ -4617,61 +4591,41 @@
         "result": null
       },
       {
-        "path": "vbus",
+        "path": "header_high",
         "kind": "doc",
-        "text": "USB's VBUS, the only input. 5 V +/- 5% is USB's 4.75 V to 5.25 V.",
+        "text": "J3: GPIO29 down to GPIO16, RUN, SWD and SWCLK.",
         "at": {
           "file": "src/main.nsm",
-          "line": 70
-        },
-        "anchors": [],
-        "result": null
-      },
-      {
-        "path": "v3v3",
-        "kind": "doc",
-        "text": "The IO supply, from the regulator.",
-        "at": {
-          "file": "src/main.nsm",
-          "line": 75
-        },
-        "anchors": [],
-        "result": null
-      },
-      {
-        "path": "v1v1",
-        "kind": "doc",
-        "text": "The core supply, made by the MCU's own switching regulator with the inductor and a capacitor. Its voltage is the chip's choice (the datasheet's), and nothing here states it.",
-        "at": {
-          "file": "src/main.nsm",
-          "line": 81
-        },
-        "anchors": [],
-        "result": null
-      },
-      {
-        "path": "core_inductor",
-        "kind": "doc",
-        "text": "The inductor of the core regulator, from the chip's switch node to the core rail.",
-        "at": {
-          "file": "src/main.nsm",
-          "line": 104
+          "line": 50
         },
         "anchors": [
-          "core_inductor"
+          "header_high"
         ],
         "result": null
       },
       {
-        "path": "avdd_filter",
+        "path": "header_low",
         "kind": "doc",
-        "text": "The filter of the core regulator's analog supply: 33 ohm and 4.7 uF.",
+        "text": "J2: ground, +3V3 and GPIO0 to GPIO15, as Raspberry Pi's header has them.",
         "at": {
           "file": "src/main.nsm",
-          "line": 112
+          "line": 48
         },
         "anchors": [
-          "avdd_filter"
+          "header_low"
+        ],
+        "result": null
+      },
+      {
+        "path": "mcu",
+        "kind": "doc",
+        "text": "The microcontroller. Every pin that a header or a part uses is named here, so none moves.",
+        "at": {
+          "file": "src/main.nsm",
+          "line": 57
+        },
+        "anchors": [
+          "mcu"
         ],
         "result": null
       },
@@ -4684,6 +4638,19 @@
           "line": 12
         },
         "anchors": [],
+        "result": null
+      },
+      {
+        "path": "oscillator.damping",
+        "kind": "doc",
+        "text": "1 kohm between the chip's XOUT and the crystal (Raspberry Pi's value).",
+        "at": {
+          "file": "src/oscillator.nsm",
+          "line": 23
+        },
+        "anchors": [
+          "oscillator.damping"
+        ],
         "result": null
       },
       {
@@ -4713,28 +4680,15 @@
         "result": null
       },
       {
-        "path": "oscillator.damping",
+        "path": "regulator",
         "kind": "doc",
-        "text": "1 kohm between the chip's XOUT and the crystal (Raspberry Pi's value).",
-        "at": {
-          "file": "src/oscillator.nsm",
-          "line": 23
-        },
-        "anchors": [
-          "oscillator.damping"
-        ],
-        "result": null
-      },
-      {
-        "path": "bootsel",
-        "kind": "doc",
-        "text": "BOOTSEL: held at power-up it pulls QSPI_SS to ground through 1 kohm, so the chip boots from USB.",
+        "text": "The 3.3 V regulator, an NCP1117 in a SOT-223 (a row of the project's catalog).",
         "at": {
           "file": "src/main.nsm",
-          "line": 181
+          "line": 59
         },
         "anchors": [
-          "bootsel"
+          "regulator"
         ],
         "result": null
       },
@@ -4750,6 +4704,52 @@
           "reset"
         ],
         "result": null
+      },
+      {
+        "path": "usb",
+        "kind": "doc",
+        "text": "The micro-USB B receptacle: the only supply of the board, and its USB port.",
+        "at": {
+          "file": "src/main.nsm",
+          "line": 46
+        },
+        "anchors": [
+          "usb"
+        ],
+        "result": null
+      },
+      {
+        "path": "v1v1",
+        "kind": "doc",
+        "text": "The core supply, made by the MCU's own switching regulator with the inductor and a capacitor. Its voltage is the chip's choice (the datasheet's), and nothing here states it.",
+        "at": {
+          "file": "src/main.nsm",
+          "line": 81
+        },
+        "anchors": [],
+        "result": null
+      },
+      {
+        "path": "v3v3",
+        "kind": "doc",
+        "text": "The IO supply, from the regulator.",
+        "at": {
+          "file": "src/main.nsm",
+          "line": 75
+        },
+        "anchors": [],
+        "result": null
+      },
+      {
+        "path": "vbus",
+        "kind": "doc",
+        "text": "USB's VBUS, the only input. 5 V +/- 5% is USB's 4.75 V to 5.25 V.",
+        "at": {
+          "file": "src/main.nsm",
+          "line": 70
+        },
+        "anchors": [],
+        "result": null
       }
     ],
     "modules": [
@@ -4758,16 +4758,16 @@
         "type_name": "Oscillator",
         "ports": [
           {
+            "name": "gnd",
+            "net": "GND"
+          },
+          {
             "name": "xin",
             "net": "net-mcu.xin"
           },
           {
             "name": "xout",
             "net": "net-mcu.xout"
-          },
-          {
-            "name": "gnd",
-            "net": "GND"
           }
         ]
       },
@@ -4776,16 +4776,16 @@
         "type_name": "PullUp",
         "ports": [
           {
-            "name": "supply.pos",
-            "net": "+3V3"
+            "name": "line",
+            "net": "net-flash.qspi.cs"
           },
           {
             "name": "supply.neg",
             "net": "GND"
           },
           {
-            "name": "line",
-            "net": "net-flash.qspi.cs"
+            "name": "supply.pos",
+            "net": "+3V3"
           }
         ]
       }

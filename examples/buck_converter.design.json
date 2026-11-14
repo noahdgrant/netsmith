@@ -69,7 +69,7 @@
         ]
       },
       {
-        "refdes": "R3",
+        "refdes": "R1",
         "kind": "Resistor",
         "provides": [],
         "declared_kind": "resistor",
@@ -265,7 +265,7 @@
         ]
       },
       {
-        "refdes": "R1",
+        "refdes": "R3",
         "kind": "Resistor",
         "provides": [],
         "declared_kind": "resistor",
@@ -402,7 +402,7 @@
             "pin": "1"
           },
           {
-            "refdes": "R1",
+            "refdes": "R3",
             "pin": "1"
           },
           {
@@ -456,7 +456,7 @@
             "pin": "2"
           },
           {
-            "refdes": "R3",
+            "refdes": "R1",
             "pin": "2"
           },
           {
@@ -469,12 +469,12 @@
         "name": "net-reg.divider.rbottom.a",
         "pins": [
           {
-            "refdes": "R2",
-            "pin": "2"
+            "refdes": "R1",
+            "pin": "1"
           },
           {
-            "refdes": "R3",
-            "pin": "1"
+            "refdes": "R2",
+            "pin": "2"
           },
           {
             "refdes": "U1",
@@ -520,7 +520,7 @@
         "name": "net-reg.ic.shdn",
         "pins": [
           {
-            "refdes": "R1",
+            "refdes": "R3",
             "pin": "2"
           },
           {
@@ -785,20 +785,20 @@
         "type_name": "Buck<Lmr16006y>",
         "ports": [
           {
+            "name": "vin.neg",
+            "net": "GND"
+          },
+          {
             "name": "vin.pos",
             "net": "12V"
           },
           {
-            "name": "vin.neg",
+            "name": "vout.neg",
             "net": "GND"
           },
           {
             "name": "vout.pos",
             "net": "3V3"
-          },
-          {
-            "name": "vout.neg",
-            "net": "GND"
           }
         ]
       },
@@ -807,16 +807,16 @@
         "type_name": "FeedbackDivider",
         "ports": [
           {
-            "name": "top",
-            "net": "3V3"
+            "name": "bottom",
+            "net": "GND"
           },
           {
             "name": "fb",
             "net": "net-reg.divider.rbottom.a"
           },
           {
-            "name": "bottom",
-            "net": "GND"
+            "name": "top",
+            "net": "3V3"
           }
         ]
       }
