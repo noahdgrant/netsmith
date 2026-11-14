@@ -448,8 +448,8 @@
         "kind": "Inductor",
         "provides": [],
         "declared_kind": "inductor",
-        "value": "4.7u",
-        "package": "0402",
+        "value": "MTQH322512S4R7MBT",
+        "package": "1210",
         "path": "buck.l",
         "pins": [
           {
@@ -3590,6 +3590,10 @@
         {
           "path": "buck.c_vcc",
           "height": 0.6
+        },
+        {
+          "path": "buck.l",
+          "height": 1.2
         },
         {
           "path": "ldo.c_in",

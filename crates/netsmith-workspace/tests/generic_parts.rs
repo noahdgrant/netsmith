@@ -147,9 +147,10 @@ fn fab_refuses_each_unresolved_generic_part_by_name() {
 
 #[test]
 fn each_alternative_is_checked_again_and_the_message_says_which_pass() {
-    // An inductor of 3.3 uH +/- 20% that carries 2 A. The two nearest 3.3 uH and 4.7 uH rows
-    // saturate at 1.25 A and 1 A, so with either in its place the design fails its own
-    // check; the 2.2 uH row saturates at 3.6 A and passes.
+    // An inductor of 3.3 uH +/- 20% that carries 3 A. The 4.7 uH rows nearest to it saturate at
+    // 2.8 A and 2.6 A, so with either in its place the design fails its own check; the 2.2 uH row
+    // saturates at 3.6 A and passes. (The load was 2 A until the 4.7 uH rows of 2.6 A and 2.8 A
+    // were added: they pass at 2 A and are nearer than the 1.25 A and 1 A rows were.)
     let root = TempDir::new("generic-parts-recheck");
     fs::create_dir_all(root.join("src")).unwrap();
     fs::write(
@@ -171,11 +172,11 @@ board Saturates {
     .load: Rail {
         .pos.net &= "OUT"
         .neg.net &= "GND"
-        .current &= 2A
+        .current &= 3A
     }
     .l: Inductor {
         .inductance &= 3.3uH +/- 20%
-        .current &= 2A
+        .current &= 3A
     }
     .supply.pos ~> .l ~> .load.pos
     .supply.neg ~ .load.neg
@@ -186,9 +187,9 @@ board Saturates {
     let bom = bom_of(&open(&root));
     let l = bom.lines.iter().find(|l| l.kind == "Inductor").unwrap();
     let why = l.unresolved.as_deref().expect("an unresolved inductor");
-    assert!(why.contains("saturation current at least 2 A"), "{why}");
+    assert!(why.contains("saturation current at least 3 A"), "{why}");
     assert!(
-        why.contains("LQH32PN3R3NN0L 3.3uH 1.25A inductor 1210 C337905 fails: l.current must always be at most l.saturation_current, but 2A is not always below 1.25A"),
+        why.contains("ZETC322512S4R7MBT-LF 4.7uH 2.8A inductor 1210 C48945755 fails: l.current must always be at most l.saturation_current, but 3A is not always below 2.8A"),
         "{why}"
     );
     assert!(

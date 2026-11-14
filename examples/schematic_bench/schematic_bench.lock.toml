@@ -56,7 +56,9 @@ mpn = "CL05A105KA5NQNC"
 
 [SchematicBench.parts."buck.l"]
 catalog = "inductor"
-row = "generic 4.7 uH 20% 0402 (E24)"
+row = "MTQH322512S4R7MBT 4.7uH 2.6A inductor 1210 C17701262"
+lcsc = "C17701262"
+mpn = "MTQH322512S4R7MBT"
 
 [SchematicBench.parts."buck.r_bottom"]
 catalog = "resistor"
