@@ -141,13 +141,14 @@ export function keepoutEntry(
 }
 
 /** One step of undo: what the user did, as the changes to the layout file that did it, or as the
- * record of the routes file it changed (the net's record before and after, as the server gave
- * them: a delete renumbers the shapes after it, so the inverse is the record put back, not a
- * change turned round). */
-export type Step = { label: string; changes: PcbChange[] } | { label: string; routes: RoutesUndo };
+ * records of the routes file it changed (each net's record before and after, as the server gave
+ * them: a delete renumbers the shapes after it, so the inverse is the records put back, not a
+ * change turned round). An edit that shoved the copper of other nets (issue 726) changed several
+ * records: one step puts them all back, and redoes them all. */
+export type Step = { label: string; changes: PcbChange[] } | { label: string; routes: RoutesUndo[] };
 
-/** What undoing or redoing a step sends: changes to the layout file, or a record of the routes file put back. */
-export type Run = { layout: PcbChange[] } | { routes: RoutesChange };
+/** What undoing or redoing a step sends: changes to the layout file, or records of the routes file put back (one edit). */
+export type Run = { layout: PcbChange[] } | { routes: RoutesChange[] };
 
 export interface History {
   undo: Step[];
@@ -169,7 +170,7 @@ export function restore(u: RoutesUndo, back: boolean): RoutesChange {
 }
 
 function runOf(step: Step, back: boolean): Run {
-  if ('routes' in step) return { routes: restore(step.routes, back) };
+  if ('routes' in step) return { routes: step.routes.map((u) => restore(u, back)) };
   return { layout: back ? invert(step.changes) : step.changes };
 }
 

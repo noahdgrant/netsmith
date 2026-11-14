@@ -426,25 +426,25 @@ fn a_track_drawn_in_the_view_creates_the_file_and_undo_and_redo_put_it_back() {
     assert_eq!(record.tracks.len(), 2);
     assert!(record.tracks.iter().all(|t| t.drawn && t.width == width));
     // The step of undo: no record before, the record after.
-    assert_eq!(drawn.undo.net, "VCC");
-    assert_eq!(drawn.undo.before, None);
-    assert_eq!(drawn.undo.after.as_deref(), Some(text.as_str()));
+    assert_eq!(drawn.undo[0].net, "VCC");
+    assert_eq!(drawn.undo[0].before, None);
+    assert_eq!(drawn.undo[0].after.as_deref(), Some(text.as_str()));
 
     // Undo: the record goes, and with it the file.
     let undone = editor
-        .pcb_routes(&edit_of(&drawn.scene, vec![undo_of(&drawn.undo)]))
+        .pcb_routes(&edit_of(&drawn.scene, vec![undo_of(&drawn.undo[0])]))
         .unwrap_or_else(|e| panic!("{}", e.message));
     assert_eq!(undone.scene.routes, []);
     assert!(!routes_file(&root).exists());
     // Redo: the same file again.
     let redone = editor
-        .pcb_routes(&edit_of(&undone.scene, vec![redo_of(&drawn.undo)]))
+        .pcb_routes(&edit_of(&undone.scene, vec![redo_of(&drawn.undo[0])]))
         .unwrap_or_else(|e| panic!("{}", e.message));
     assert_eq!(fs::read_to_string(routes_file(&root)).unwrap(), text);
     assert_eq!(redone.scene.routes[0].tracks, record.tracks);
     // A second redo is refused: the record is not what the step says it was before.
     let twice = editor
-        .pcb_routes(&edit_of(&redone.scene, vec![redo_of(&drawn.undo)]))
+        .pcb_routes(&edit_of(&redone.scene, vec![redo_of(&drawn.undo[0])]))
         .unwrap_err();
     assert_eq!(twice.status, 422, "{}", twice.message);
     assert!(
@@ -529,7 +529,7 @@ fn a_track_end_and_a_via_are_moved_and_a_lock_or_the_rules_refuse_it() {
     );
     // One undo puts all three back.
     let undone = editor
-        .pcb_routes(&edit_of(&moved.scene, vec![undo_of(&moved.undo)]))
+        .pcb_routes(&edit_of(&moved.scene, vec![undo_of(&moved.undo[0])]))
         .unwrap_or_else(|e| panic!("{}", e.message));
     assert_eq!(undone.scene.routes[0], before);
 
@@ -557,7 +557,7 @@ fn a_track_end_and_a_via_are_moved_and_a_lock_or_the_rules_refuse_it() {
     );
     assert_eq!(fs::read_to_string(routes_file(&root)).unwrap(), file);
     let unlocked = editor
-        .pcb_routes(&edit_of(&locked.scene, vec![undo_of(&locked.undo)]))
+        .pcb_routes(&edit_of(&locked.scene, vec![undo_of(&locked.undo[0])]))
         .unwrap_or_else(|e| panic!("{}", e.message));
     assert!(!unlocked.scene.routes[0].tracks[0].lock);
 
@@ -584,23 +584,12 @@ fn a_track_end_and_a_via_are_moved_and_a_lock_or_the_rules_refuse_it() {
 }
 
 #[test]
-fn an_edit_is_of_one_net_and_a_track_is_on_an_outer_layer() {
-    let (root, editor) = project("one-net");
+fn a_track_is_on_an_outer_layer_and_an_edit_of_two_nets_is_one_step_of_undo() {
+    let (root, editor) = project("two-nets");
     let scene = editor.pcb_scene(BOARD).unwrap();
     let vcc = pads_of(&scene, "VCC")[0];
     let gnd = pads_of(&scene, "GND")[0];
     let near = |p: PcbPoint| PcbPoint { x: p.x, y: p.y + 0.5 };
-    let two = editor
-        .pcb_routes(&edit_of(
-            &scene,
-            vec![
-                track("VCC", "top", vcc, near(vcc)),
-                track("GND", "top", gnd, near(gnd)),
-            ],
-        ))
-        .unwrap_err();
-    assert_eq!(two.status, 422, "{}", two.message);
-    assert!(two.message.contains("of one net"), "{}", two.message);
     let inner = editor
         .pcb_routes(&edit_of(
             &scene,
@@ -609,6 +598,214 @@ fn an_edit_is_of_one_net_and_a_track_is_on_an_outer_layer() {
         .unwrap_err();
     assert_eq!(inner.status, 400, "{}", inner.message);
     assert!(!routes_file(&root).exists());
+
+    // Changes of two nets are one edit (issue 726, the third slice): each net's record gets its
+    // own, and the answer has one step of undo for each.
+    let two = editor
+        .pcb_routes(&edit_of(
+            &scene,
+            vec![
+                track("VCC", "top", vcc, near(vcc)),
+                track("GND", "top", gnd, near(gnd)),
+            ],
+        ))
+        .unwrap_or_else(|e| panic!("{}", e.message));
+    let nets: Vec<&str> = two.undo.iter().map(|u| u.net.as_str()).collect();
+    assert_eq!(nets, ["VCC", "GND"], "{:?}", two.undo);
+    assert!(two.undo.iter().all(|u| u.before.is_none() && u.after.is_some()));
+    assert_eq!(two.scene.routes.len(), 2);
+    let text = fs::read_to_string(routes_file(&root)).unwrap();
+
+    // One edit puts both back, and one puts both again.
+    let undone = editor
+        .pcb_routes(&edit_of(&two.scene, two.undo.iter().map(undo_of).collect()))
+        .unwrap_or_else(|e| panic!("{}", e.message));
+    assert_eq!(undone.scene.routes, []);
+    assert!(!routes_file(&root).exists());
+    assert_eq!(undone.undo.len(), 2);
+    let redone = editor
+        .pcb_routes(&edit_of(&undone.scene, two.undo.iter().map(redo_of).collect()))
+        .unwrap_or_else(|e| panic!("{}", e.message));
+    assert_eq!(redone.scene.routes.len(), 2);
+    assert_eq!(fs::read_to_string(routes_file(&root)).unwrap(), text);
+
+    // All or none: a change that is refused (the net has no such track) stops the whole edit, with the
+    // file as it was, and an edit made against a file that changed since is a 409.
+    let refused = editor
+        .pcb_routes(&edit_of(
+            &redone.scene,
+            vec![
+                track("VCC", "top", near(vcc), near(near(vcc))),
+                RoutesChange::MoveTrack {
+                    net: "GND".into(),
+                    track: 9,
+                    from: gnd,
+                    to: near(gnd),
+                },
+            ],
+        ))
+        .unwrap_err();
+    assert_eq!(refused.status, 422, "{}", refused.message);
+    assert_eq!(fs::read_to_string(routes_file(&root)).unwrap(), text);
+    let stale = edit_of(&redone.scene, vec![lock("VCC", None, true), lock("GND", None, true)]);
+    editor
+        .pcb_routes(&edit_of(&redone.scene, vec![lock("VCC", None, true)]))
+        .unwrap();
+    let conflict = editor.pcb_routes(&stale).unwrap_err();
+    assert_eq!(conflict.status, 409, "{}", conflict.message);
+}
+
+/// A shove on the LED board: a ground track hangs down from D1's ground pad (a track of the
+/// routes file, unlocked), and a VCC track is to be drawn across it at `y`, from the left to `to_x`.
+struct Hang {
+    root: TempDir,
+    editor: Workspace,
+    scene: PcbScene,
+    /// The ground track's two ends, on the sheet.
+    pad: PcbPoint,
+    foot: PcbPoint,
+}
+
+fn hang(name: &str) -> Hang {
+    let (root, editor) = project(name);
+    let scene = editor.pcb_scene(BOARD).unwrap();
+    let d1 = scene.parts.iter().find(|p| p.refdes == "D1").unwrap();
+    let pad = d1.pads.iter().find(|p| p.net.as_deref() == Some("GND")).unwrap();
+    let pad = PcbPoint { x: pad.x, y: pad.y };
+    let foot = PcbPoint { x: pad.x, y: pad.y + 2.25 };
+    let drawn = editor
+        .pcb_routes(&edit_of(&scene, vec![track("GND", "top", pad, foot)]))
+        .unwrap_or_else(|e| panic!("{}", e.message));
+    Hang {
+        root,
+        editor,
+        scene: drawn.scene,
+        pad,
+        foot,
+    }
+}
+
+fn shove_walk(from: PcbPoint, to: PcbPoint) -> PcbWalk {
+    PcbWalk {
+        shove: true,
+        ..walk_of("VCC", "top", from, to)
+    }
+}
+
+#[test]
+fn a_walk_that_shoves_moves_an_unlocked_track_and_the_edit_is_one_step_of_undo_of_two_nets() {
+    let h = hang("shove");
+    let y = h.pad.y + 1.45;
+    let from = PcbPoint { x: h.pad.x - 2.8, y };
+    let to = PcbPoint { x: h.pad.x + 0.2, y };
+    let beyond = PcbPoint { x: h.pad.x + 1.0, y };
+    // The walkaround alone bends round the ground track, and moves nothing.
+    let round = h.editor.pcb_walk(&walk_of("VCC", "top", from, beyond)).unwrap();
+    assert!(round.points.as_ref().is_some_and(|p| p.len() >= 3), "{round:?}");
+    assert!(round.shoved.tracks.is_empty() && round.stuck.is_none());
+    // With the shove it goes straight and the ground track turns about its pad, out of the way.
+    let walked = h.editor.pcb_walk(&shove_walk(from, to)).unwrap();
+    assert_eq!(walked.points, Some(vec![from, to]), "{walked:?}");
+    assert_eq!(walked.tried, 0);
+    assert!(walked.stuck.is_none(), "{walked:?}");
+    let [shoved] = walked.shoved.tracks.as_slice() else {
+        panic!("{walked:?}");
+    };
+    assert_eq!((shoved.net.as_str(), shoved.track), ("GND", 1));
+    assert_eq!((shoved.was_from, shoved.was_to), (h.pad, h.foot));
+    assert_eq!(shoved.from, h.pad, "the end on the pad stays");
+    assert!(shoved.to.x > h.foot.x + 0.3 && shoved.to.y == h.foot.y, "{shoved:?}");
+    assert!(walked.shoved.vias.is_empty());
+
+    // The edit: the drawn track and the move, two nets, one design rules check.
+    let moves = RoutesChange::MoveTrack {
+        net: "GND".into(),
+        track: shoved.track,
+        from: shoved.from,
+        to: shoved.to,
+    };
+    let before = fs::read_to_string(routes_file(&h.root)).unwrap();
+    let edited = h
+        .editor
+        .pcb_routes(&edit_of(&h.scene, vec![track("VCC", "top", from, to), moves]))
+        .unwrap_or_else(|e| panic!("{}", e.message));
+    let nets: Vec<&str> = edited.undo.iter().map(|u| u.net.as_str()).collect();
+    assert_eq!(nets, ["VCC", "GND"]);
+    let gnd = edited.scene.routes.iter().find(|n| n.net == "GND").unwrap();
+    let close = |a: PcbPoint, b: PcbPoint| (a.x - b.x).abs() < 1e-6 && (a.y - b.y).abs() < 1e-6;
+    assert!(close(gnd.tracks[0].from, shoved.from) && close(gnd.tracks[0].to, shoved.to));
+    assert_eq!(edited.scene.routes.iter().find(|n| n.net == "VCC").unwrap().tracks.len(), 1);
+    // The track is drawn where it was shown, and with the ground track moved there is nothing
+    // left of it in the way: the walk of the same segment is free.
+    let again = h.editor.pcb_walk(&walk_of("VCC", "top", from, to)).unwrap();
+    assert_eq!(again.points, Some(vec![from, to]));
+
+    // One undo restores both records; one redo puts both again.
+    let after = fs::read_to_string(routes_file(&h.root)).unwrap();
+    let undone = h
+        .editor
+        .pcb_routes(&edit_of(&edited.scene, edited.undo.iter().map(undo_of).collect()))
+        .unwrap_or_else(|e| panic!("{}", e.message));
+    assert_eq!(fs::read_to_string(routes_file(&h.root)).unwrap(), before);
+    assert!(undone.scene.routes.iter().all(|n| n.net != "VCC"));
+    let redone = h
+        .editor
+        .pcb_routes(&edit_of(&undone.scene, edited.undo.iter().map(redo_of).collect()))
+        .unwrap_or_else(|e| panic!("{}", e.message));
+    assert_eq!(fs::read_to_string(routes_file(&h.root)).unwrap(), after);
+    assert_eq!(redone.scene.routes.len(), 2);
+}
+
+#[test]
+fn a_locked_track_is_not_shoved_the_walk_goes_round_it_and_a_pinch_names_the_track() {
+    let h = hang("shove-locked");
+    let y = h.pad.y + 1.45;
+    let from = PcbPoint { x: h.pad.x - 2.8, y };
+    let beyond = PcbPoint { x: h.pad.x + 1.0, y };
+    // Locked, the ground track is copper that stays: the walk bends round it, with nothing to shove.
+    let locked = h
+        .editor
+        .pcb_routes(&edit_of(&h.scene, vec![lock("GND", Some(1), true)]))
+        .unwrap();
+    let round = h.editor.pcb_walk(&shove_walk(from, beyond)).unwrap();
+    assert!(round.points.as_ref().is_some_and(|p| p.len() >= 3), "{round:?}");
+    assert!(round.shoved.tracks.is_empty() && round.stuck.is_none(), "{round:?}");
+    // So is a track of a locked net.
+    let net = h
+        .editor
+        .pcb_routes(&edit_of(
+            &locked.scene,
+            vec![lock("GND", Some(1), false), lock("GND", None, true)],
+        ))
+        .unwrap();
+    let round = h.editor.pcb_walk(&shove_walk(from, beyond)).unwrap();
+    assert!(round.points.as_ref().is_some_and(|p| p.len() >= 3), "{round:?}");
+    assert!(round.shoved.tracks.is_empty() && round.stuck.is_none(), "{round:?}");
+
+    // Unlocked again, with a locked track of another net close on the other side, the ground track
+    // cannot move far enough: the walk says which track, and goes round instead.
+    let open = h
+        .editor
+        .pcb_routes(&edit_of(&net.scene, vec![lock("GND", None, false)]))
+        .unwrap();
+    let wall_top = PcbPoint { x: h.pad.x + 1.58, y: h.pad.y };
+    let wall_foot = PcbPoint { x: wall_top.x, y: h.foot.y };
+    let walled = h
+        .editor
+        .pcb_routes(&edit_of(
+            &open.scene,
+            vec![track("net-led.anode", "top", wall_top, wall_foot)],
+        ))
+        .unwrap_or_else(|e| panic!("{}", e.message));
+    h.editor
+        .pcb_routes(&edit_of(&walled.scene, vec![lock("net-led.anode", Some(1), true)]))
+        .unwrap();
+    let pinched_to = PcbPoint { x: h.pad.x + 0.75, y };
+    let pinched = h.editor.pcb_walk(&shove_walk(from, pinched_to)).unwrap();
+    assert!(pinched.shoved.tracks.is_empty(), "{pinched:?}");
+    let why = pinched.stuck.as_deref().unwrap_or_else(|| panic!("{pinched:?}"));
+    assert!(why.contains("track 1 of net GND"), "{why}");
+    assert!(pinched.points.as_ref().is_some_and(|p| p.len() >= 3), "{pinched:?}");
 }
 
 fn walk_of(net: &str, layer: &str, from: PcbPoint, to: PcbPoint) -> PcbWalk {
@@ -621,6 +818,7 @@ fn walk_of(net: &str, layer: &str, from: PcbPoint, to: PcbPoint) -> PcbWalk {
         to,
         heading: None,
         track: Vec::new(),
+        shove: false,
     }
 }
 

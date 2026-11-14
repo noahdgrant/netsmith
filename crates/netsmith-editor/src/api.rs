@@ -1394,7 +1394,9 @@ pub enum RoutesChange {
     },
 }
 
-/// One edit of the routes file: its changes are all of one net, and all are made or none.
+/// One edit of the routes file: all its changes are made or none. They may be of several nets
+/// (a track drawn with the copper of other nets shoved out of its way, issue 726), each made to
+/// its own net's record, and the design rules check is made once for all of them.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 pub struct PcbRoutesEdit {
     pub board: String,
@@ -1408,7 +1410,9 @@ pub struct PcbRoutesEdit {
 pub struct PcbRoutesEdited {
     pub scene: PcbScene,
     pub said: String,
-    pub undo: RoutesUndo,
+    /// One for each net the edit changed, in the order the nets first appear in its changes: all
+    /// of them are one step of undo (and of redo).
+    pub undo: Vec<RoutesUndo>,
 }
 
 /// The net's record before and after an edit, each as the text the routes file has of it
@@ -1442,6 +1446,11 @@ pub struct PcbWalk {
     /// segment crosses. Empty: the segment alone.
     #[serde(default)]
     pub track: Vec<PcbPoint>,
+    /// Shove the unlocked shapes of the routes file out of the way of the track (issue 726, the
+    /// third slice) before going round them: `false` (also when the field is missing) is the
+    /// walkaround alone.
+    #[serde(default)]
+    pub shove: bool,
 }
 
 /// The answer to a [`PcbWalk`]: the corners from `from` to `to`, both included, or why there is
@@ -1456,6 +1465,48 @@ pub struct PcbWalked {
     /// edit discards, which the walk does not go round (issue 726). Empty on a board the
     /// router has not routed.
     pub crossed: PcbCrossed,
+    /// The unlocked shapes of the routes file that the way found shoves out of its way, in their
+    /// new places (`PcbWalk::shove`). Empty where nothing is in the way or the walk went round.
+    #[serde(default)]
+    pub shoved: PcbShoved,
+    /// Why nothing was shoved though a shove was asked and something is in the way: the shape
+    /// that cannot move far enough, and the walkaround was used instead.
+    #[serde(default)]
+    pub stuck: Option<String>,
+}
+
+/// The shapes of the routes file a track shoves, each with where it was and where it goes.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, TS)]
+pub struct PcbShoved {
+    pub tracks: Vec<PcbShovedTrack>,
+    pub vias: Vec<PcbShovedVia>,
+}
+
+/// A track of a record, shoved: `track` numbers it in its net's record from 1, and the page makes
+/// `RoutesChange::MoveTrack { net, track, from, to }` of it.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct PcbShovedTrack {
+    pub net: String,
+    pub track: u32,
+    /// `top` or `bottom`.
+    pub layer: String,
+    pub width: f64,
+    pub was_from: PcbPoint,
+    pub was_to: PcbPoint,
+    pub from: PcbPoint,
+    pub to: PcbPoint,
+}
+
+/// A via of a record, shoved: `via` numbers it in its net's record from 1.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct PcbShovedVia {
+    pub net: String,
+    pub via: u32,
+    pub diameter: f64,
+    pub was_at: PcbPoint,
+    pub at: PcbPoint,
 }
 
 /// The router's copper a track crosses, as the PCB view draws it giving way: each piece with
@@ -1949,6 +2000,9 @@ pub fn typescript() -> String {
         PcbCrossed,
         PcbCrossedTrack,
         PcbCrossedVia,
+        PcbShoved,
+        PcbShovedTrack,
+        PcbShovedVia,
         PcbNetWidth,
         PartPlacement,
         DrawnKeepout,

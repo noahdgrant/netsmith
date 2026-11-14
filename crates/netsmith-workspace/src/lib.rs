@@ -610,20 +610,33 @@ impl Workspace {
             .iter()
             .map(|c| pcb::routes_edit(entry.placed(), c))
             .collect::<Result<Vec<_>, _>>()?;
-        let net = changes
-            .first()
-            .map(|c| c.net().to_string())
-            .ok_or_else(|| ApiError::bad_request("an edit of the routes file names a change"))?;
-        // The net's record before and after, as the file has it: the step of undo.
-        let record = |file: &Path| -> Result<Option<String>, ApiError> {
+        // The nets the edit changes, in the order they first appear.
+        let mut nets: Vec<String> = Vec::new();
+        for c in &changes {
+            if !nets.iter().any(|n| n == c.net()) {
+                nets.push(c.net().to_string());
+            }
+        }
+        if nets.is_empty() {
+            return Err(ApiError::bad_request(
+                "an edit of the routes file names a change",
+            ));
+        }
+        // Each net's record before and after, as the file has it: the steps of undo.
+        let records = |file: &Path| -> Result<Vec<Option<String>>, ApiError> {
             let routes = netsmith_fabricate::routes::load(file).map_err(ApiError::internal)?;
-            Ok(netsmith_fabricate::routes::record_text(
-                name,
-                &net,
-                routes.boards.get(name).and_then(|b| b.nets.get(&net)),
-            ))
+            Ok(nets
+                .iter()
+                .map(|net| {
+                    netsmith_fabricate::routes::record_text(
+                        name,
+                        net,
+                        routes.boards.get(name).and_then(|b| b.nets.get(net)),
+                    )
+                })
+                .collect())
         };
-        let before = record(&file)?;
+        let before = records(&file)?;
         let said = netsmith_fabricate::routes::edit_file_all(entry.placed(), &file, &changes)
             .map_err(|refusal| match refusal {
                 netsmith_fabricate::routes::Refusal::Refused(e) => {
@@ -631,7 +644,17 @@ impl Workspace {
                 }
                 netsmith_fabricate::routes::Refusal::Failed(e) => ApiError::internal(e),
             })?;
-        let after = record(&file)?;
+        let after = records(&file)?;
+        let undo = nets
+            .iter()
+            .zip(before)
+            .zip(after)
+            .map(|((net, before), after)| netsmith_editor::api::RoutesUndo {
+                net: net.clone(),
+                before,
+                after,
+            })
+            .collect();
         let entry = entry
             .routes_changed(&data, name)
             .map_err(pcb::PlaceError::read)?;
@@ -644,7 +667,7 @@ impl Workspace {
         }
         Ok(netsmith_editor::api::PcbRoutesEdited {
             scene,
-            undo: netsmith_editor::api::RoutesUndo { net, before, after },
+            undo,
             said: said.replace(
                 &format!("; wrote {}", file.display()),
                 &format!("; wrote {shown}"),
@@ -1029,20 +1052,23 @@ impl Backend for Workspace {
             let board = state.pcb.get(name).map(|entry| {
                 let board = entry.board_for_walk();
                 let router = entry.router_copper(&board);
-                (board, router)
+                let shove = edit.shove.then(|| entry.board_for_shove());
+                (board, router, shove)
             });
             (data, board)
         };
-        let (board, router) = match board {
-            Some(both) => both,
-            None => (
-                pcb::place_checked(&data, name)
-                    .map_err(pcb::PlaceError::read)?
-                    .board_for_walk(),
-                pcb::RouterCopper::default(),
-            ),
+        let (board, router, shove) = match board {
+            Some(all) => all,
+            None => {
+                let entry = pcb::place_checked(&data, name).map_err(pcb::PlaceError::read)?;
+                (
+                    entry.board_for_walk(),
+                    pcb::RouterCopper::default(),
+                    edit.shove.then(|| entry.board_for_shove()),
+                )
+            }
         };
-        pcb::walk(&board, &router, edit)
+        pcb::walk(&board, &router, shove.as_ref(), edit)
     }
 
     fn pin_lock(&self, edit: &PinLock) -> Result<PinWritten, ApiError> {

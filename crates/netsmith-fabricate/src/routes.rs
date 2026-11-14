@@ -4,6 +4,7 @@
 //! `fab`, the editor's PCB view and the `netsmith routes` commands. The import of a KiCad
 //! board's copper is `netsmith_tools::routes_import`.
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use netsmith_pcb::{
@@ -302,26 +303,29 @@ pub fn edit(board: &Board, routes: &mut Routes, change: &Edit) -> Result<String,
     edit_all(board, routes, std::slice::from_ref(change))
 }
 
-/// [`edit`] of several changes to one net's record at once (a track drawn in several segments,
-/// the tracks that meet at a corner moved together): all are made, or none. The design rules
-/// check is made once, on the board with all of them.
+/// [`edit`] of several changes at once (a track drawn in several segments, the tracks that meet
+/// at a corner moved together, a track drawn with the copper of other nets shoved out of its way
+/// in the editor): all are made, or none. The changes may be of several nets, each made to its
+/// own net's record in the order given. The design rules check is made once, on the board with
+/// all of them.
 pub fn edit_all(board: &Board, routes: &mut Routes, changes: &[Edit]) -> Result<String, Refusal> {
-    let Some(first) = changes.first() else {
+    if changes.is_empty() {
         return Err(Refusal::Refused("no change to make".to_string()));
-    };
-    let net = first.net();
-    if let Some(other) = changes.iter().find(|c| c.net() != net) {
-        return Err(Refusal::Refused(format!(
-            "the changes of one edit are of one net, not of {net} and {}",
-            other.net()
-        )));
     }
-    let Some(hash) = netsmith_pcb::pad_hash(board, net) else {
-        return Err(Refusal::Refused(format!(
-            "the board {} has no net `{net}`",
-            board.name
-        )));
-    };
+    let mut hashes: HashMap<&str, String> = HashMap::new();
+    for change in changes {
+        let net = change.net();
+        if hashes.contains_key(net) {
+            continue;
+        }
+        let Some(hash) = netsmith_pcb::pad_hash(board, net) else {
+            return Err(Refusal::Refused(format!(
+                "the board {} has no net `{net}`",
+                board.name
+            )));
+        };
+        hashes.insert(net, hash);
+    }
     let check = changes.iter().any(|c| {
         matches!(
             c,
@@ -343,6 +347,8 @@ pub fn edit_all(board: &Board, routes: &mut Routes, changes: &[Edit]) -> Result<
     let table = next.boards.entry(board.name.clone()).or_default();
     let mut said: Vec<String> = Vec::new();
     for change in changes {
+        let net = change.net();
+        let hash = &hashes[net];
         if let Edit::Restore { before, after, .. } = change {
             let now = record_text(&board.name, net, table.nets.get(net));
             if now != record_text(&board.name, net, before.as_ref()) {

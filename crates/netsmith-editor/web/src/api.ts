@@ -1049,7 +1049,12 @@ export type PcbRoutesEdit = { board: string,
  */
 stamp: string, changes: Array<RoutesChange>, };
 
-export type PcbRoutesEdited = { scene: PcbScene, said: string, undo: RoutesUndo, };
+export type PcbRoutesEdited = { scene: PcbScene, said: string, 
+/**
+ * One for each net the edit changed, in the order the nets first appear in its changes: all
+ * of them are one step of undo (and of redo).
+ */
+undo: Array<RoutesUndo>, };
 
 export type RoutesUndo = { net: string, before: string | null, after: string | null, };
 
@@ -1072,7 +1077,13 @@ heading: PcbPoint | null,
  * the whole track crosses is answered in [`PcbWalked::crossed`], not only what the one
  * segment crosses. Empty: the segment alone.
  */
-track: Array<PcbPoint>, };
+track: Array<PcbPoint>, 
+/**
+ * Shove the unlocked shapes of the routes file out of the way of the track (issue 726, the
+ * third slice) before going round them: `false` (also when the field is missing) is the
+ * walkaround alone.
+ */
+shove: boolean, };
 
 export type PcbWalked = { points: Array<PcbPoint> | null, reason: string | null, tried: number, 
 /**
@@ -1080,7 +1091,17 @@ export type PcbWalked = { points: Array<PcbPoint> | null, reason: string | null,
  * edit discards, which the walk does not go round (issue 726). Empty on a board the
  * router has not routed.
  */
-crossed: PcbCrossed, };
+crossed: PcbCrossed, 
+/**
+ * The unlocked shapes of the routes file that the way found shoves out of its way, in their
+ * new places (`PcbWalk::shove`). Empty where nothing is in the way or the walk went round.
+ */
+shoved: PcbShoved, 
+/**
+ * Why nothing was shoved though a shove was asked and something is in the way: the shape
+ * that cannot move far enough, and the walkaround was used instead.
+ */
+stuck: string | null, };
 
 export type PcbCrossed = { tracks: Array<PcbCrossedTrack>, vias: Array<PcbCrossedVia>, };
 
@@ -1091,6 +1112,16 @@ export type PcbCrossedTrack = { net: string,
 layer: string, width: number, from: PcbPoint, mid: PcbPoint | null, to: PcbPoint, };
 
 export type PcbCrossedVia = { net: string, at: PcbPoint, diameter: number, };
+
+export type PcbShoved = { tracks: Array<PcbShovedTrack>, vias: Array<PcbShovedVia>, };
+
+export type PcbShovedTrack = { net: string, track: number, 
+/**
+ * `top` or `bottom`.
+ */
+layer: string, width: number, wasFrom: PcbPoint, wasTo: PcbPoint, from: PcbPoint, to: PcbPoint, };
+
+export type PcbShovedVia = { net: string, via: number, diameter: number, wasAt: PcbPoint, at: PcbPoint, };
 
 export type PcbNetWidth = { net: string, width: number, };
 

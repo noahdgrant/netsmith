@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { PcbRouteNet } from '../api';
+import type { PcbRouteNet, RoutesChange } from '../api';
 import {
   anchorsOf,
   boxOf,
@@ -116,5 +116,10 @@ describe('drawing and moving copper', () => {
     expect(labelOf(drawChanges('VCC', 'top', [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 1, y: 2 }]))).toBe('draw a track of 2 segments on net VCC');
     expect(labelOf([{ what: 'move_via', net: 'GND', via: 1, at: { x: 0, y: 0 } }])).toBe('move via 1 of net GND');
     expect(labelOf(dragChanges(corner, { x: 1, y: 1 }, { x: 2, y: 2 }))).toBe('move 3 shapes of net GND');
+    // A track drawn with other copper shoved out of its way: the moves are said too.
+    const track = drawChanges('VCC', 'top', [{ x: 0, y: 0 }, { x: 1, y: 0 }]);
+    const move: RoutesChange = { what: 'move_track', net: 'GND', track: 1, from: { x: 0, y: 0 }, to: { x: 1, y: 1 } };
+    expect(labelOf([...track, move])).toBe('draw a track on net VCC, shoving 1 shape');
+    expect(labelOf([...track, move, move])).toBe('draw a track on net VCC, shoving 2 shapes');
   });
 });

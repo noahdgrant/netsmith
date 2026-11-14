@@ -69,6 +69,25 @@ impl<'a> Room<'a> {
     /// Whether `shape`, copper of `net` on `layer`, keeps every space; `smd` when it lies on a
     /// surface-mount pad, so that it keeps the space between such pads too.
     pub fn fits(&self, shape: &Shape, net: &str, layer: usize, smd: bool) -> bool {
+        self.fits_with(shape, net, layer, smd, &[])
+    }
+
+    /// The number of copper layers.
+    pub fn layers(&self) -> usize {
+        self.m.layers.len()
+    }
+
+    /// [`Room::fits`] with more copper counted besides what is kept: `extra` is the net, layer
+    /// and shape of each piece, which is not remembered. A shove asks about a piece of copper
+    /// in a place it may be moved to, with the other pieces where they are now.
+    pub fn fits_with(
+        &self,
+        shape: &Shape,
+        net: &str,
+        layer: usize,
+        smd: bool,
+        extra: &[(&str, usize, &Shape)],
+    ) -> bool {
         let m = &self.m;
         let r = m.rules;
         let x = m.extras;
@@ -95,6 +114,14 @@ impl<'a> Room<'a> {
         }
         for (n, l, s) in self.kept.borrow().iter() {
             if n != net && *l == layer {
+                let need = own_class.max(r.net_clearance(Some(n)));
+                if near(&s.bounds, need) && gap(shape, s).d < need + MARGIN {
+                    return false;
+                }
+            }
+        }
+        for (n, l, s) in extra {
+            if *n != net && *l == layer {
                 let need = own_class.max(r.net_clearance(Some(n)));
                 if near(&s.bounds, need) && gap(shape, s).d < need + MARGIN {
                     return false;

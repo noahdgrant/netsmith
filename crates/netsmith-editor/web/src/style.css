@@ -530,6 +530,9 @@ svg.edges { position: absolute; left: 0; top: 0; overflow: visible; pointer-even
 .pcb-tip { position: absolute; z-index: 6; pointer-events: none; background: var(--pop); border: 1px solid var(--pop-border); border-radius: var(--r-sm); padding: 0.375rem 0.625rem; font-size: var(--fs-sm); box-shadow: var(--elev-2); max-width: 17.5rem; }
 .pcb-note { position: absolute; z-index: 6; left: 0.875rem; bottom: 0.875rem; pointer-events: none; background: var(--pop); border: 1px solid var(--pop-border); border-radius: var(--r-sm); padding: 0.375rem 0.625rem; font-size: var(--fs-sm); box-shadow: var(--elev-2); max-width: 22rem; }
 .pcb-note.warn { background: var(--warning-bg); border-color: var(--warning-line); }
+/* the notes of the track being drawn stack in one place, the first at the bottom (issue 726) */
+.pcb-notes { position: absolute; z-index: 6; left: 0.875rem; bottom: 0.875rem; pointer-events: none; display: flex; flex-direction: column-reverse; gap: 0.375rem; max-width: 22rem; }
+.pcb-notes .pcb-note { position: static; }
 .pcb-note b { display: block; color: var(--warning-text); }
 .pcb-note div { color: var(--text-muted); }
 .pcb-tip b { font-family: var(--mono); color: var(--text); display: block; }

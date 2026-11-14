@@ -183,16 +183,43 @@ describe('history', () => {
   });
 
   it('undoes an edit of the routes file by putting the net\'s record back, and redoes it the other way', () => {
-    const routes = { net: 'VCC', before: null, after: 'version = 1\n\n[B.nets.VCC]\npads = "00"\n' };
+    const routes = [{ net: 'VCC', before: null, after: 'version = 1\n\n[B.nets.VCC]\npads = "00"\n' }];
     const h = record(record(NO_HISTORY, step('a')), { label: 'draw a track', routes });
     const u = undoing(h)!;
-    expect(u.run).toEqual({ routes: { what: 'restore', net: 'VCC', before: routes.after, after: null } });
+    expect(u.run).toEqual({ routes: [{ what: 'restore', net: 'VCC', before: routes[0].after, after: null }] });
     const r = redoing(u.next)!;
-    expect(r.run).toEqual({ routes: { what: 'restore', net: 'VCC', before: null, after: routes.after } });
+    expect(r.run).toEqual({ routes: [{ what: 'restore', net: 'VCC', before: null, after: routes[0].after }] });
     // Undone again, then the layout step under it.
     const u2 = undoing(r.next)!;
     expect(u2.step.label).toBe('draw a track');
     expect('layout' in undoing(u2.next)!.run).toBe(true);
+  });
+
+  it('undoes an edit of several nets (a track drawn with copper shoved out of its way) as one step, and redoes it as one', () => {
+    const routes = [
+      { net: 'VCC', before: null, after: 'vcc after' },
+      { net: 'GND', before: 'gnd before', after: 'gnd after' },
+    ];
+    const h = record(NO_HISTORY, { label: 'draw a track on net VCC, shoving 1 shape', routes });
+    expect(h.undo).toHaveLength(1);
+    const u = undoing(h)!;
+    // One run with a restore for each net: the server makes them as one edit.
+    expect(u.run).toEqual({
+      routes: [
+        { what: 'restore', net: 'VCC', before: 'vcc after', after: null },
+        { what: 'restore', net: 'GND', before: 'gnd after', after: 'gnd before' },
+      ],
+    });
+    expect(u.next.undo).toEqual([]);
+    expect(u.next.redo).toHaveLength(1);
+    const r = redoing(u.next)!;
+    expect(r.run).toEqual({
+      routes: [
+        { what: 'restore', net: 'VCC', before: null, after: 'vcc after' },
+        { what: 'restore', net: 'GND', before: 'gnd before', after: 'gnd after' },
+      ],
+    });
+    expect(r.next.undo).toHaveLength(1);
   });
 
   it('forgets what could be redone when something new is done', () => {

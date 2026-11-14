@@ -127,6 +127,19 @@
 .pcb-overlay .shoved-fade { fill: none; stroke: var(--pcb-board); stroke-opacity: .7; stroke-linecap: round; stroke-linejoin: round; }
 .pcb-overlay .shoved-fade.shoved-via { fill: var(--pcb-board); fill-opacity: .7; stroke: none; }
 .pcb-overlay .track-draft { pointer-events: none; }
+/* the copper of the routes file that the track being drawn shoves aside (issue 726): where it was is faded inside a dashed halo of the
+   selection's colour, where it goes is drawn in its layer's colour inside a solid halo of the same */
+.pcb-overlay .shove-preview { pointer-events: none; }
+.pcb-overlay .shove-preview path, .pcb-overlay .shove-preview circle { stroke-linecap: round; stroke-linejoin: round; }
+.pcb-overlay .shove-was-halo { fill: none; stroke: var(--sel); stroke-opacity: .55; stroke-dasharray: calc(4 * var(--px, .04)) calc(3 * var(--px, .04)); }
+.pcb-overlay .shove-was-halo.shove-via { fill: var(--sel); fill-opacity: .3; stroke: none; }
+.pcb-overlay .shove-was-fade { fill: none; stroke: var(--pcb-board); stroke-opacity: .8; }
+.pcb-overlay .shove-was-fade.shove-via { fill: var(--pcb-board); fill-opacity: .8; stroke: none; }
+.pcb-overlay .shove-now-halo { fill: none; stroke: var(--sel); stroke-opacity: .9; }
+.pcb-overlay .shove-now-halo.shove-via { fill: var(--sel); fill-opacity: .9; stroke: none; }
+.pcb-overlay .shove-now { fill: none; stroke: var(--pcb-front); stroke-opacity: 1; }
+.pcb-overlay .shove-track.layer-bottom .shove-now { stroke: var(--pcb-back); }
+.pcb-overlay .shove-now.shove-via { fill: var(--pcb-front); stroke: none; }
 
 /* the routes list: a net's record, its shapes indented under it; a shape not on the board is faint */
 .route-rows .route-shape { padding-left: 1.5rem; }

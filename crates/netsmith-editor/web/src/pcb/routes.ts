@@ -113,8 +113,13 @@ export function labelOf(changes: RoutesChange[]): string {
       return `delete ${nameOf(pick(c))}`;
     case 'lock':
       return `${c.lock ? 'lock' : 'unlock'} ${nameOf(pick(c))}`;
-    case 'add_track':
-      return changes.length > 1 ? `draw a track of ${changes.length} segments on net ${c.net}` : `draw a track on net ${c.net}`;
+    case 'add_track': {
+      // The moves after the track are the copper of other nets that it shoved out of its way.
+      const drawn = changes.filter((x) => x.what === 'add_track').length;
+      const shoved = changes.filter((x) => x.what === 'move_track' || x.what === 'move_via').length;
+      const base = drawn > 1 ? `draw a track of ${drawn} segments on net ${c.net}` : `draw a track on net ${c.net}`;
+      return shoved > 0 ? `${base}, shoving ${shoved} shape${shoved === 1 ? '' : 's'}` : base;
+    }
     case 'add_via':
       return `place a via on net ${c.net}`;
     case 'move_track':

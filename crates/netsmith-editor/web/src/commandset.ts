@@ -1036,7 +1036,7 @@ export const LOCAL_KEYS: { group: string; keys: [string, string][] }[] = [
       ['F', 'flip to the other side'],
       ['L', 'lock or unlock'],
       ['K', 'keepout tool; Esc returns to Select'],
-      ['X', 'track tool: click a pad, then each corner (the track bends round the copper in the way, in corners of 45 degrees; router copper is not in the way: it is shown faded and the edit discards it); double-click or Enter ends it, Backspace takes a corner off, Esc drops it'],
+      ['X', 'track tool: click a pad, then each corner (unlocked copper of the routes file in the way is shoved aside, locked copper and pads are gone round, in corners of 45 degrees; router copper is not in the way: it is shown faded and the edit discards it); double-click or Enter ends it, Backspace takes a corner off, Esc drops it'],
       ['V', 'via tool: click a pad, a track or a via of the net'],
       ['Drag', "a fixed track's end or a via, with what meets there"],
       ['Arrow keys', 'nudge (Shift for a larger step)'],
