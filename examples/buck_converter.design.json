@@ -69,7 +69,7 @@
         ]
       },
       {
-        "refdes": "R3",
+        "refdes": "R2",
         "kind": "Resistor",
         "provides": [],
         "declared_kind": "resistor",
@@ -100,12 +100,12 @@
         ]
       },
       {
-        "refdes": "R2",
+        "refdes": "R1",
         "kind": "Resistor",
         "provides": [],
         "declared_kind": "resistor",
-        "value": "1.1k",
-        "package": "0402",
+        "value": "1.5k",
+        "package": "0603",
         "path": "reg.divider.rtop",
         "pins": [
           {
@@ -132,18 +132,18 @@
       },
       {
         "refdes": "U1",
-        "kind": "Lmr16006y",
+        "kind": "Tps54202",
         "provides": [
           "BuckIc"
         ],
-        "value": "LMR16006Y",
+        "value": "TPS54202",
         "package": "SOT-23-6",
         "path": "reg.ic",
         "pins": [
           {
-            "name": "cb",
-            "datasheet": "CB",
-            "kind": "passive",
+            "name": "vin.neg",
+            "datasheet": "GND",
+            "kind": "power",
             "pads": [
               "1"
             ],
@@ -151,28 +151,28 @@
             "power_flow": null
           },
           {
-            "name": "vin.neg",
-            "datasheet": "GND",
+            "name": "sw.pos",
+            "datasheet": "SW",
             "kind": "power",
             "pads": [
               "2"
             ],
             "function": null,
-            "power_flow": null
+            "power_flow": "gives"
           },
           {
-            "name": "fb",
-            "datasheet": "FB",
-            "kind": "input",
+            "name": "vin.pos",
+            "datasheet": "VIN",
+            "kind": "power",
             "pads": [
               "3"
             ],
             "function": null,
-            "power_flow": null
+            "power_flow": "takes"
           },
           {
-            "name": "shdn",
-            "datasheet": "SHDN",
+            "name": "fb",
+            "datasheet": "FB",
             "kind": "input",
             "pads": [
               "4"
@@ -181,24 +181,24 @@
             "power_flow": null
           },
           {
-            "name": "vin.pos",
-            "datasheet": "VIN",
-            "kind": "power",
+            "name": "en",
+            "datasheet": "EN",
+            "kind": "input",
             "pads": [
               "5"
             ],
             "function": null,
-            "power_flow": "takes"
+            "power_flow": null
           },
           {
-            "name": "sw.pos",
-            "datasheet": "SW",
-            "kind": "power",
+            "name": "boot",
+            "datasheet": "BOOT",
+            "kind": "passive",
             "pads": [
               "6"
             ],
             "function": null,
-            "power_flow": "gives"
+            "power_flow": null
           }
         ]
       },
@@ -234,73 +234,11 @@
         ]
       },
       {
-        "refdes": "D1",
-        "kind": "Schottky",
-        "provides": [],
-        "declared_kind": "diode",
-        "value": "1N5819WS",
-        "package": "SOD-323",
-        "path": "reg.ic.catch",
-        "pins": [
-          {
-            "name": "anode",
-            "datasheet": "A",
-            "kind": "passive",
-            "pads": [
-              "2"
-            ],
-            "function": null,
-            "power_flow": null
-          },
-          {
-            "name": "cathode",
-            "datasheet": "K",
-            "kind": "passive",
-            "pads": [
-              "1"
-            ],
-            "function": null,
-            "power_flow": null
-          }
-        ]
-      },
-      {
-        "refdes": "R1",
-        "kind": "Resistor",
-        "provides": [],
-        "declared_kind": "resistor",
-        "value": "100k",
-        "package": "0402",
-        "path": "reg.ic.shdn_pullup",
-        "pins": [
-          {
-            "name": "a",
-            "datasheet": "A",
-            "kind": "passive",
-            "pads": [
-              "1"
-            ],
-            "function": null,
-            "power_flow": null
-          },
-          {
-            "name": "b",
-            "datasheet": "B",
-            "kind": "passive",
-            "pads": [
-              "2"
-            ],
-            "function": null,
-            "power_flow": null
-          }
-        ]
-      },
-      {
         "refdes": "L1",
         "kind": "Inductor",
         "provides": [],
         "declared_kind": "inductor",
-        "value": "LQH32PN100MN0L",
+        "value": "MTQH322512S100MBT",
         "package": "1210",
         "path": "reg.inductor",
         "pins": [
@@ -333,7 +271,7 @@
         "declared_kind": "capacitor",
         "value": "2.2u",
         "package": "1210",
-        "path": "reg.input_cap",
+        "path": "reg.input_cap[0]",
         "pins": [
           {
             "name": "a",
@@ -362,9 +300,226 @@
         "kind": "Capacitor",
         "provides": [],
         "declared_kind": "capacitor",
+        "value": "2.2u",
+        "package": "1210",
+        "path": "reg.input_cap[1]",
+        "pins": [
+          {
+            "name": "a",
+            "datasheet": "A",
+            "kind": "passive",
+            "pads": [
+              "1"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "b",
+            "datasheet": "B",
+            "kind": "passive",
+            "pads": [
+              "2"
+            ],
+            "function": null,
+            "power_flow": null
+          }
+        ]
+      },
+      {
+        "refdes": "C4",
+        "kind": "Capacitor",
+        "provides": [],
+        "declared_kind": "capacitor",
+        "value": "2.2u",
+        "package": "1210",
+        "path": "reg.input_cap[2]",
+        "pins": [
+          {
+            "name": "a",
+            "datasheet": "A",
+            "kind": "passive",
+            "pads": [
+              "1"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "b",
+            "datasheet": "B",
+            "kind": "passive",
+            "pads": [
+              "2"
+            ],
+            "function": null,
+            "power_flow": null
+          }
+        ]
+      },
+      {
+        "refdes": "C5",
+        "kind": "Capacitor",
+        "provides": [],
+        "declared_kind": "capacitor",
+        "value": "2.2u",
+        "package": "1210",
+        "path": "reg.input_cap[3]",
+        "pins": [
+          {
+            "name": "a",
+            "datasheet": "A",
+            "kind": "passive",
+            "pads": [
+              "1"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "b",
+            "datasheet": "B",
+            "kind": "passive",
+            "pads": [
+              "2"
+            ],
+            "function": null,
+            "power_flow": null
+          }
+        ]
+      },
+      {
+        "refdes": "C6",
+        "kind": "Capacitor",
+        "provides": [],
+        "declared_kind": "capacitor",
+        "value": "2.2u",
+        "package": "1210",
+        "path": "reg.input_cap[4]",
+        "pins": [
+          {
+            "name": "a",
+            "datasheet": "A",
+            "kind": "passive",
+            "pads": [
+              "1"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "b",
+            "datasheet": "B",
+            "kind": "passive",
+            "pads": [
+              "2"
+            ],
+            "function": null,
+            "power_flow": null
+          }
+        ]
+      },
+      {
+        "refdes": "C7",
+        "kind": "Capacitor",
+        "provides": [],
+        "declared_kind": "capacitor",
+        "value": "2.2u",
+        "package": "1210",
+        "path": "reg.input_cap[5]",
+        "pins": [
+          {
+            "name": "a",
+            "datasheet": "A",
+            "kind": "passive",
+            "pads": [
+              "1"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "b",
+            "datasheet": "B",
+            "kind": "passive",
+            "pads": [
+              "2"
+            ],
+            "function": null,
+            "power_flow": null
+          }
+        ]
+      },
+      {
+        "refdes": "C8",
+        "kind": "Capacitor",
+        "provides": [],
+        "declared_kind": "capacitor",
         "value": "47u",
         "package": "0805",
-        "path": "reg.output_cap",
+        "path": "reg.output_cap[0]",
+        "pins": [
+          {
+            "name": "a",
+            "datasheet": "A",
+            "kind": "passive",
+            "pads": [
+              "1"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "b",
+            "datasheet": "B",
+            "kind": "passive",
+            "pads": [
+              "2"
+            ],
+            "function": null,
+            "power_flow": null
+          }
+        ]
+      },
+      {
+        "refdes": "C9",
+        "kind": "Capacitor",
+        "provides": [],
+        "declared_kind": "capacitor",
+        "value": "47u",
+        "package": "0805",
+        "path": "reg.output_cap[1]",
+        "pins": [
+          {
+            "name": "a",
+            "datasheet": "A",
+            "kind": "passive",
+            "pads": [
+              "1"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "b",
+            "datasheet": "B",
+            "kind": "passive",
+            "pads": [
+              "2"
+            ],
+            "function": null,
+            "power_flow": null
+          }
+        ]
+      },
+      {
+        "refdes": "C10",
+        "kind": "Capacitor",
+        "provides": [],
+        "declared_kind": "capacitor",
+        "value": "47u",
+        "package": "0805",
+        "path": "reg.output_cap[2]",
         "pins": [
           {
             "name": "a",
@@ -398,16 +553,32 @@
             "pin": "1"
           },
           {
+            "refdes": "C3",
+            "pin": "1"
+          },
+          {
+            "refdes": "C4",
+            "pin": "1"
+          },
+          {
+            "refdes": "C5",
+            "pin": "1"
+          },
+          {
+            "refdes": "C6",
+            "pin": "1"
+          },
+          {
+            "refdes": "C7",
+            "pin": "1"
+          },
+          {
             "refdes": "J1",
             "pin": "1"
           },
           {
-            "refdes": "R1",
-            "pin": "1"
-          },
-          {
             "refdes": "U1",
-            "pin": "5"
+            "pin": "3"
           }
         ]
       },
@@ -415,7 +586,15 @@
         "name": "3V3",
         "pins": [
           {
-            "refdes": "C3",
+            "refdes": "C10",
+            "pin": "1"
+          },
+          {
+            "refdes": "C8",
+            "pin": "1"
+          },
+          {
+            "refdes": "C9",
             "pin": "1"
           },
           {
@@ -427,7 +606,7 @@
             "pin": "2"
           },
           {
-            "refdes": "R2",
+            "refdes": "R1",
             "pin": "1"
           }
         ]
@@ -435,6 +614,10 @@
       {
         "name": "GND",
         "pins": [
+          {
+            "refdes": "C10",
+            "pin": "2"
+          },
           {
             "refdes": "C2",
             "pin": "2"
@@ -444,7 +627,27 @@
             "pin": "2"
           },
           {
-            "refdes": "D1",
+            "refdes": "C4",
+            "pin": "2"
+          },
+          {
+            "refdes": "C5",
+            "pin": "2"
+          },
+          {
+            "refdes": "C6",
+            "pin": "2"
+          },
+          {
+            "refdes": "C7",
+            "pin": "2"
+          },
+          {
+            "refdes": "C8",
+            "pin": "2"
+          },
+          {
+            "refdes": "C9",
             "pin": "2"
           },
           {
@@ -456,12 +659,12 @@
             "pin": "2"
           },
           {
-            "refdes": "R3",
+            "refdes": "R2",
             "pin": "2"
           },
           {
             "refdes": "U1",
-            "pin": "2"
+            "pin": "1"
           }
         ]
       },
@@ -469,16 +672,16 @@
         "name": "net-reg.divider.rbottom.a",
         "pins": [
           {
-            "refdes": "R2",
+            "refdes": "R1",
             "pin": "2"
           },
           {
-            "refdes": "R3",
+            "refdes": "R2",
             "pin": "1"
           },
           {
             "refdes": "U1",
-            "pin": "3"
+            "pin": "4"
           }
         ]
       },
@@ -491,7 +694,7 @@
           },
           {
             "refdes": "U1",
-            "pin": "1"
+            "pin": "6"
           }
         ]
       },
@@ -503,29 +706,12 @@
             "pin": "2"
           },
           {
-            "refdes": "D1",
-            "pin": "1"
-          },
-          {
             "refdes": "L1",
             "pin": "1"
           },
           {
             "refdes": "U1",
-            "pin": "6"
-          }
-        ]
-      },
-      {
-        "name": "net-reg.ic.shdn",
-        "pins": [
-          {
-            "refdes": "R1",
             "pin": "2"
-          },
-          {
-            "refdes": "U1",
-            "pin": "4"
           }
         ]
       }
@@ -578,48 +764,42 @@
         ],
         [
           "GND",
-          0.42
+          0.24
         ],
         [
           "net-reg.ic.boost.b",
-          0.32
+          0.15
         ]
       ],
       "net_currents": [
         {
           "net": "12V",
-          "current": 0.20263157894836845,
-          "least_width": 0.04152641350736484,
+          "current": 0.20263157894736844,
+          "least_width": 0.041526413507082166,
           "vias": 1
         },
         {
           "net": "3V3",
-          "current": 0.5024741291086562,
-          "least_width": 0.14532271290904758,
+          "current": 0.5019282015131419,
+          "least_width": 0.14510497837660852,
           "vias": 1
         },
         {
           "net": "GND",
-          "current": 1.0782268170426066,
-          "least_width": 0.41658907200155015,
+          "current": 0.7045017962721313,
+          "least_width": 0.23161819203164513,
           "vias": 2
         },
         {
           "net": "net-reg.divider.rbottom.a",
-          "current": 0.002474129108656199,
-          "least_width": 0.0000953478597083845,
+          "current": 0.0019282015131418257,
+          "least_width": 0.00006760411022134454,
           "vias": 1
         },
         {
           "net": "net-reg.ic.boost.b",
-          "current": 0.8755952380952381,
-          "least_width": 0.3126143604316366,
-          "vias": 2
-        },
-        {
-          "net": "net-reg.ic.shdn",
-          "current": 1e-12,
-          "least_width": 1.0540623859109564e-17,
+          "current": 0.5,
+          "least_width": 0.14433666509038384,
           "vias": 1
         }
       ],
@@ -641,19 +821,43 @@
           "height": 0.55
         },
         {
-          "path": "reg.ic.catch",
-          "height": 1.0
-        },
-        {
           "path": "reg.inductor",
-          "height": 1.7
+          "height": 1.2
         },
         {
-          "path": "reg.input_cap",
+          "path": "reg.input_cap[0]",
           "height": 2.7
         },
         {
-          "path": "reg.output_cap",
+          "path": "reg.input_cap[1]",
+          "height": 2.7
+        },
+        {
+          "path": "reg.input_cap[2]",
+          "height": 2.7
+        },
+        {
+          "path": "reg.input_cap[3]",
+          "height": 2.7
+        },
+        {
+          "path": "reg.input_cap[4]",
+          "height": 2.7
+        },
+        {
+          "path": "reg.input_cap[5]",
+          "height": 2.7
+        },
+        {
+          "path": "reg.output_cap[0]",
+          "height": 1.45
+        },
+        {
+          "path": "reg.output_cap[1]",
+          "height": 1.45
+        },
+        {
+          "path": "reg.output_cap[2]",
           "height": 1.45
         }
       ],
@@ -782,7 +986,7 @@
     "modules": [
       {
         "path": "reg",
-        "type_name": "Buck<Lmr16006y>",
+        "type_name": "Buck<Tps54202>",
         "ports": [
           {
             "name": "vin.pos",
