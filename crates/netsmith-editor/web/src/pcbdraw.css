@@ -113,6 +113,11 @@
 .pcb-overlay .track-draft.layer-bottom polyline { stroke: var(--pcb-back); }
 .pcb-overlay .track-draft polyline.track-draft-line { stroke: var(--sel); stroke-opacity: 1; stroke-width: calc(1.25 * var(--px, .04)); stroke-dasharray: calc(5 * var(--px, .04)) calc(3 * var(--px, .04)); }
 .pcb-overlay .track-draft-corner { fill: var(--sel); }
+/* the walkaround (issue 726): the corners the server chose round the copper in the way are hollow, and a segment with no way is
+   drawn in the danger colour, copper and hairline both, so it reads as refused */
+.pcb-overlay .track-draft-corner.walk-corner { fill: none; stroke: var(--sel); stroke-width: calc(1.25 * var(--px, .04)); }
+.pcb-overlay .track-draft.walk-refused polyline { stroke: var(--danger); }
+.pcb-overlay .track-draft.walk-refused .track-draft-line { stroke-dasharray: calc(2 * var(--px, .04)) calc(3 * var(--px, .04)); }
 .pcb-overlay .via-ghost { fill: color-mix(in srgb, var(--sel) 25%, transparent); stroke: var(--sel); stroke-width: calc(1.5 * var(--px, .04)); stroke-dasharray: calc(3 * var(--px, .04)) calc(2 * var(--px, .04)); pointer-events: none; }
 .pcb-overlay .track-draft { pointer-events: none; }
 

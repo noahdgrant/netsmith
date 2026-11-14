@@ -328,6 +328,15 @@ pub trait Backend: Send + Sync + 'static {
             edit.board
         )))
     }
+    /// The way for a straight track of a net from its last corner to a point, round the copper
+    /// of the board as the routes file's check reads it (issue #726): corners of at most 45
+    /// degrees, or why there is none. Nothing is written, and a way not found is an answer.
+    fn pcb_walk(&self, edit: &crate::api::PcbWalk) -> Result<crate::api::PcbWalked, ApiError> {
+        Err(ApiError::not_found(format!(
+            "`{}` has no copper to walk a track round",
+            edit.board
+        )))
+    }
     /// Lock or unlock the pin of one pin request: the `lock` line of its entry in the pin file
     /// beside the board's source, and nothing else of the file (ADR 0101). Refused with 422 and
     /// the reason for a request that has no pin, and with 409 if the pin file is not as the

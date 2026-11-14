@@ -249,7 +249,7 @@ export function Pcb() {
                         value: 'track' as const,
                         label: 'Track',
                         icon: 'track' as const,
-                        tip: 'Draw a track: click a pad, then each corner; double-click or Enter ends it, Esc drops it',
+                        tip: 'Draw a track: click a pad, then each corner (it bends round the copper in the way); double-click or Enter ends it, Esc drops it',
                         keys: 'X',
                         testid: 'tool-track',
                       },

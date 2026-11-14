@@ -16,7 +16,7 @@ use std::{
 use netsmith_editor::{
     Backend,
     api::{
-        FindingSource, PcbPoint, PcbRoutesEdit, PcbScene, RoutesChange, RoutesUndo, Severity,
+        FindingSource, PcbPoint, PcbRoutesEdit, PcbScene, PcbWalk, RoutesChange, RoutesUndo, Severity,
     },
 };
 use netsmith_fabricate::project::Target;
@@ -609,4 +609,101 @@ fn an_edit_is_of_one_net_and_a_track_is_on_an_outer_layer() {
         .unwrap_err();
     assert_eq!(inner.status, 400, "{}", inner.message);
     assert!(!routes_file(&root).exists());
+}
+
+fn walk_of(net: &str, layer: &str, from: PcbPoint, to: PcbPoint) -> PcbWalk {
+    PcbWalk {
+        board: BOARD.into(),
+        net: net.into(),
+        layer: layer.into(),
+        width: None,
+        from,
+        to,
+        heading: None,
+    }
+}
+
+#[test]
+fn a_track_is_walked_round_a_part_and_the_corners_it_gives_pass_the_check() {
+    let (root, editor) = project("walk");
+    let scene = editor.pcb_scene(BOARD).unwrap();
+    // A ground track straight through R1's first pad (a VCC pad, on the top layer only) is not
+    // free on the top layer, and is on the bottom, where R1 has no copper.
+    let r1 = &scene.parts.iter().find(|p| p.refdes == "R1").unwrap().pads;
+    let (at_y, x) = (r1[0].y, r1[0].x);
+    let (from, to) = (PcbPoint { x: x - 1.5, y: at_y }, PcbPoint { x: x + 1.5, y: at_y });
+    let top = editor.pcb_walk(&walk_of("GND", "top", from, to)).unwrap();
+    let points = top.points.clone().unwrap_or_else(|| panic!("{top:?}"));
+    assert!(points.len() >= 3, "{points:?}");
+    assert_eq!((points[0], points[points.len() - 1]), (from, to));
+    assert!(top.tried > 0 && top.reason.is_none(), "{top:?}");
+    let bottom = editor.pcb_walk(&walk_of("GND", "bottom", from, to)).unwrap();
+    assert_eq!(bottom.points, Some(vec![from, to]));
+    assert_eq!(bottom.tried, 0);
+
+    // The corners are ordinary track corners: ended, the track passes the same check, and the
+    // walk wrote nothing before.
+    assert!(!routes_file(&root).exists());
+    let changes = points
+        .windows(2)
+        .map(|w| track("GND", "top", w[0], w[1]))
+        .collect();
+    let drawn = editor.pcb_routes(&edit_of(&scene, changes)).unwrap();
+    assert!(drawn.said.contains("added a track"), "{}", drawn.said);
+    // With the track drawn it is copper of the board: another net may not start on it.
+    let middle = along(points[0], points[1], 0.5);
+    let after = editor
+        .pcb_walk(&walk_of("VCC", "top", middle, along(middle, to, 0.5)))
+        .unwrap();
+    assert_eq!(after.points, None);
+    assert!(
+        after.reason.as_deref().is_some_and(|r| r.contains("last corner")),
+        "{after:?}"
+    );
+}
+
+#[test]
+fn a_walk_that_has_no_way_says_why_and_a_wrong_ask_is_a_400() {
+    let (_root, editor) = project("walk-refused");
+    let scene = editor.pcb_scene(BOARD).unwrap();
+    let vcc = pads_of(&scene, "VCC")[0];
+    let gnd = pads_of(&scene, "GND")[0];
+    // The end is on a pad of another net: an answer, with the reason, not an error.
+    let blocked = editor.pcb_walk(&walk_of("VCC", "top", vcc, gnd)).unwrap();
+    assert_eq!(blocked.points, None);
+    assert!(
+        blocked.reason.as_deref().is_some_and(|r| r.contains("no room")),
+        "{blocked:?}"
+    );
+    let net = editor.pcb_walk(&walk_of("NOPE", "top", vcc, gnd)).unwrap_err();
+    assert_eq!(net.status, 400, "{}", net.message);
+    let layer = editor.pcb_walk(&walk_of("VCC", "inner1", vcc, gnd)).unwrap_err();
+    assert_eq!(layer.status, 400, "{}", layer.message);
+}
+
+#[test]
+fn a_walk_is_asked_over_the_wire_and_answers_200_with_no_way_too() {
+    let (_root, editor) = project("walk-wire");
+    let scene = editor.pcb_scene(BOARD).unwrap();
+    let vcc = pads_of(&scene, "VCC")[0];
+    let gnd = pads_of(&scene, "GND")[0];
+    let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
+    let port = listener.local_addr().unwrap().port();
+    thread::spawn(move || netsmith_editor::serve(listener, Arc::new(editor)));
+    let ask = |to: PcbPoint| {
+        http(
+            port,
+            "POST",
+            "/api/pcb/walk",
+            "X-Netsmith: 1\r\nContent-Type: application/json\r\nAccept: application/json\r\n",
+            &serde_json::to_string(&walk_of("VCC", "top", vcc, to)).unwrap(),
+        )
+    };
+    let (status, answer) = ask(PcbPoint { x: vcc.x, y: vcc.y + 1.0 });
+    assert_eq!(status, 200, "{answer}");
+    assert!(answer.contains("\"points\":[{"), "{answer}");
+    let (status, answer) = ask(gnd);
+    assert_eq!(status, 200, "{answer}");
+    assert!(answer.contains("\"points\":null"), "{answer}");
+    assert!(answer.contains("no room"), "{answer}");
 }

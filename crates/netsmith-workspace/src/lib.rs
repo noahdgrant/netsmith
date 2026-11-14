@@ -1017,6 +1017,27 @@ impl Backend for Workspace {
         self.edit_routes(edit)
     }
 
+    fn pcb_walk(
+        &self,
+        edit: &netsmith_editor::api::PcbWalk,
+    ) -> Result<netsmith_editor::api::PcbWalked, ApiError> {
+        let name = &edit.board;
+        // The board a track is checked against, copied out so that the search holds no lock.
+        let (data, board) = {
+            let state = self.fresh();
+            let data = state.snapshot.board_handle(name)?;
+            let board = state.pcb.get(name).map(pcb::Entry::board_for_walk);
+            (data, board)
+        };
+        let board = match board {
+            Some(board) => board,
+            None => pcb::place_checked(&data, name)
+                .map_err(pcb::PlaceError::read)?
+                .board_for_walk(),
+        };
+        pcb::walk(&board, edit)
+    }
+
     fn pin_lock(&self, edit: &PinLock) -> Result<PinWritten, ApiError> {
         self.write_pin(
             &edit.board,

@@ -30,4 +30,5 @@ Each entry says what the word means here, and most end with an `_Avoid_:` line, 
 - [T](docs/glossary/t.md)
 - [U](docs/glossary/u.md)
 - [V](docs/glossary/v.md)
+- [W](docs/glossary/w.md)
 - [Z](docs/glossary/z.md)

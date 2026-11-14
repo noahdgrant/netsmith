@@ -26,6 +26,7 @@
 //! | `POST /api/pcb/route`, `cancel`, `edit`, `drc`; `GET /api/pcb/scene`, `findings` | place and route on demand; `cancel` stops the router and keeps what it routed |
 //! | `POST /api/pcb/routes` | an edit of the routes file (draw or move a track or via, delete, lock, unlock, put a record back for undo), as `netsmith routes` makes it, answered with the net's record before and after; `409` for a stale stamp, `422` with the reason when it is refused |
 //! | `GET /api/pcb/pours?board=` | the fill of the placed board's pours, planes and routes-file zones, by copper layer, as SVG paths (`PcbPours`), for the 2D view to draw under the copper; asked after the scene, since filling takes longer than placing |
+//! | `POST /api/pcb/walk` | the way for a straight track of a net from its last corner to a point, round the copper the routes file's check reads (issue #726): the corners (at most 45 degrees) or why there is none, always `200`; nothing is written |
 //! | `GET /api/pcb/3d?board=` | the board as `scene` has it placed, as glTF 2.0 binary (`model/gltf-binary`, ADR 0105), the bytes `netsmith board3d --glb` writes; the layout stamp of that placement in `X-Netsmith-Layout-Stamp` |
 //! | `POST /api/build`, `/api/fab`, `/api/order` and their `/cancel` | the commands of the same names; a cancelled job answers `499` and keeps nothing it was making (ADR 0062) |
 //! | `GET /api/download`, `/api/order/download` | a file `fab` or an order wrote |
@@ -158,6 +159,7 @@ const NEEDS_ANALYSIS: &[&str] = &[
     "/api/pcb/pours",
     "/api/pcb/edit",
     "/api/pcb/routes",
+    "/api/pcb/walk",
     "/api/pcb/findings",
     "/api/pcb/drc",
     "/api/build",
@@ -354,6 +356,7 @@ fn router(state: Shared) -> Router {
         .route("/api/pcb/3d", get(pcb_3d))
         .route("/api/pcb/edit", post(pcb_edit))
         .route("/api/pcb/routes", post(pcb_routes))
+        .route("/api/pcb/walk", post(pcb_walk))
         .route("/api/pcb/findings", get(pcb_findings))
         .route("/api/pcb/drc", post(pcb_drc))
         .route("/api/build", post(build))
@@ -913,6 +916,14 @@ async fn pcb_routes(
 ) -> Result<Json<crate::api::PcbRoutesEdited>, ApiError> {
     let edit: crate::api::PcbRoutesEdit = body(&bytes)?;
     json(move || s.backend.pcb_routes(&edit)).await
+}
+
+async fn pcb_walk(
+    State(s): State<Shared>,
+    bytes: axum::body::Bytes,
+) -> Result<Json<crate::api::PcbWalked>, ApiError> {
+    let walk: crate::api::PcbWalk = body(&bytes)?;
+    json(move || s.backend.pcb_walk(&walk)).await
 }
 
 async fn build(State(s): State<Shared>) -> Result<Json<crate::api::BuildReport>, ApiError> {
