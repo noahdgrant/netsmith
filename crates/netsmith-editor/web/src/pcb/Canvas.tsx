@@ -4,7 +4,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 
-import type { PcbBox, PcbCrossed, PcbKeepout, PcbPart, PcbScene, PcbWalk } from '../api';
+import type { PcbBox, PcbCrossed, PcbKeepout, PcbPart, PcbScene, PcbShoved, PcbWalk } from '../api';
 import { PanZoom } from '../components/PanZoom';
 import { hoverEnter, hoverLeave } from '../hover';
 import {
@@ -12,6 +12,7 @@ import {
   changeRoutes,
   clearWalk,
   crossedShown,
+  shoveShown,
   commit,
   findings,
   grid,
@@ -25,6 +26,7 @@ import {
   selection,
   tool,
   trackLayer,
+  trackShove,
   undo,
   walkNow,
   walked,
@@ -48,7 +50,7 @@ import {
   shapeOf,
   trackPath,
 } from './routes';
-import { headingOf, walkKey } from './walk';
+import { NOTHING_SHOVED, headingOf, shoveChanges, walkKey } from './walk';
 import { pickPart, say } from '../store';
 import {
   addKeepout,
@@ -120,6 +122,10 @@ interface Draft {
   /** The router's copper the track so far crosses, as the walkaround said when the last corner was clicked: shown while the
    * pointer is on that corner and there is no segment to ask about. */
   crossed?: PcbCrossed;
+  /** The shapes of the routes file the track so far shoves out of its way, and why a shove was not used, as the walk said when the
+   * last corner was clicked (shown, like `crossed`, while the pointer is on that corner). */
+  shoved?: PcbShoved;
+  stuck?: string | null;
 }
 
 const NONE: Pt = { x: 0, y: 0 };
@@ -202,6 +208,7 @@ export function Canvas(props: {
   // The walkaround (issue 726): the next segment of the track goes from its last corner to the pointer round the copper in the
   // way, as the server works it out (netsmith_router::walk), and the preview and the click use that path.
   const layerNow = trackLayer.value;
+  const shoveNow = trackShove.value;
   const walkAsk = (d: Draft, to: Pt, layer: 'top' | 'bottom' = trackLayer.value): PcbWalk => ({
     board: sc.board,
     net: d.net,
@@ -211,13 +218,14 @@ export function Canvas(props: {
     to,
     heading: headingOf(d.points),
     track: d.points,
+    shove: trackShove.value,
   });
   useEffect(() => {
     const last = draft?.points[draft.points.length - 1];
     if (activeTool === 'track' && draft && ghost && last && !samePoint(last, ghost)) askWalk(walkAsk(draft, ghost, layerNow));
     else clearWalk();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [draft, ghost, layerNow, sc, activeTool]);
+  }, [draft, ghost, layerNow, shoveNow, sc, activeTool]);
   useEffect(() => clearWalk, []);
   // What the server said of the segment the pointer is at the end of, once it has said it.
   const answer = walked.value;
@@ -230,6 +238,16 @@ export function Canvas(props: {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [crossedKey]);
   useEffect(() => () => void (crossedShown.value = null), []);
+  // The copper of the routes file the track shoves out of its way, as the last answer says, or as it said when the last corner was
+  // clicked; and why it could not where something was in the way.
+  const shoving = draft ? (walk?.shoved ?? draft.shoved ?? NOTHING_SHOVED) : null;
+  const stuck = draft ? (walk ? walk.stuck : (draft.stuck ?? null)) : null;
+  const shoveKey = shoving ? `${shoving.tracks.length}/${shoving.vias.length}/${stuck ?? ''}` : '';
+  useEffect(() => {
+    shoveShown.value = shoving ? { shoved: shoving, stuck } : null;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shoveKey]);
+  useEffect(() => () => void (shoveShown.value = null), []);
   // The reason a walk has no way is a tip at the pointer.
   const pointer = useRef<{ x: number; y: number } | null>(null);
   const tipped = useRef(false);
@@ -259,7 +277,7 @@ export function Canvas(props: {
         say(found.reason ?? 'No way there', true);
         return;
       }
-      setDraft({ ...d, points: [...d.points, ...found.points.slice(1)], crossed: found.crossed });
+      setDraft({ ...d, points: [...d.points, ...found.points.slice(1)], crossed: found.crossed, shoved: found.shoved, stuck: found.stuck });
     });
   }
 
@@ -293,12 +311,16 @@ export function Canvas(props: {
     setDraft(null);
     setGhost(null);
     if (!d) return;
-    const changes = drawChanges(d.net, trackLayer.value, d.points);
-    if (changes.length === 0) {
+    const drawn = drawChanges(d.net, trackLayer.value, d.points);
+    if (drawn.length === 0) {
       say('A track needs a second point: click where it goes, then double-click or press Enter');
       return;
     }
-    void changeRoutes(changes).then((ok) => {
+    // The copper the track shoves out of its way goes in the same edit (several nets, one check, one step of undo). It is asked for
+    // the track as clicked (the place the pointer is at is no part of it), so the answer is for exactly these corners.
+    const last = d.points[d.points.length - 1];
+    const shoved = trackShove.value ? shoveChanges((await walkNow(walkAsk(d, last))).shoved) : [];
+    void changeRoutes([...drawn, ...shoved]).then((ok) => {
       if (!ok) setDraft(d);
     });
   }
@@ -657,7 +679,7 @@ export function Canvas(props: {
       } else if (draftRef.current && k === 'backspace') {
         used();
         const d = draftRef.current;
-        setDraft(d.points.length > 1 ? { ...d, points: d.points.slice(0, -1), crossed: undefined } : null);
+        setDraft(d.points.length > 1 ? { ...d, points: d.points.slice(0, -1), crossed: undefined, shoved: undefined, stuck: undefined } : null);
       } else if ((k === 'x' || k === 'v') && sc.routesFile) {
         used();
         const next = k === 'x' ? 'track' : 'via';
@@ -817,6 +839,33 @@ export function Canvas(props: {
                 <g key={`v${i}`} data-net={v.net}>
                   <circle class="shoved-halo shoved-via" cx={v.at.x} cy={v.at.y} r={v.diameter / 2 + 0.12} />
                   <circle class="shoved-fade shoved-via" cx={v.at.x} cy={v.at.y} r={v.diameter / 2} />
+                </g>
+              ))}
+            </g>
+          )}
+          {shoving && (shoving.tracks.length > 0 || shoving.vias.length > 0) && (
+            // The copper of the routes file the track shoves aside (issue 726): where it was is faded, where it goes is drawn in
+            // its layer's colour inside a halo of the selection's colour.
+            <g
+              class="shove-preview"
+              data-testid="shove-preview"
+              data-tracks={shoving.tracks.length}
+              data-vias={shoving.vias.length}
+            >
+              {shoving.tracks.map((t, i) => (
+                <g key={`t${i}`} class={`shove-track layer-${t.layer}`} data-net={t.net} data-track={t.track} data-layer={t.layer}>
+                  <path class="shove-was-halo" d={`M ${t.wasFrom.x} ${t.wasFrom.y} L ${t.wasTo.x} ${t.wasTo.y}`} stroke-width={t.width + 0.2} />
+                  <path class="shove-was-fade" d={`M ${t.wasFrom.x} ${t.wasFrom.y} L ${t.wasTo.x} ${t.wasTo.y}`} stroke-width={t.width + 0.02} />
+                  <path class="shove-now-halo" d={`M ${t.from.x} ${t.from.y} L ${t.to.x} ${t.to.y}`} stroke-width={t.width + 0.1} />
+                  <path class="shove-now" d={`M ${t.from.x} ${t.from.y} L ${t.to.x} ${t.to.y}`} stroke-width={t.width} />
+                </g>
+              ))}
+              {shoving.vias.map((v, i) => (
+                <g key={`v${i}`} class="shove-via-group" data-net={v.net} data-via={v.via}>
+                  <circle class="shove-was-halo shove-via" cx={v.wasAt.x} cy={v.wasAt.y} r={v.diameter / 2 + 0.1} />
+                  <circle class="shove-was-fade shove-via" cx={v.wasAt.x} cy={v.wasAt.y} r={v.diameter / 2 + 0.01} />
+                  <circle class="shove-now-halo shove-via" cx={v.at.x} cy={v.at.y} r={v.diameter / 2 + 0.05} />
+                  <circle class="shove-now shove-via" cx={v.at.x} cy={v.at.y} r={v.diameter / 2} />
                 </g>
               ))}
             </g>

@@ -897,8 +897,8 @@ impl Ground {
                 at[k][e as usize] = j;
             }
         }
-        for j in 0..joints.len() {
-            let (net, p) = (joints[j].net.clone(), joints[j].at);
+        for joint in joints.iter_mut() {
+            let (net, p) = (joint.net.clone(), joint.at);
             let mut anchored = false;
             let mut excused = false;
             let mut fixed: Vec<(String, Pt)> = Vec::new();
@@ -964,23 +964,26 @@ impl Ground {
                     anchored = true;
                 }
             }
-            let joint = &mut joints[j];
             joint.anchored = anchored;
             joint.excused = excused;
             joint.fixed = fixed;
         }
         // A joint on the body of another piece of its net (a tee) stays too.
-        for j in 0..joints.len() {
-            let (net, p) = (joints[j].net.clone(), joints[j].at);
-            let on_body = items.iter().enumerate().any(|(k, it)| {
-                !it.is_via
-                    && it.arc.is_none()
-                    && it.net == net
-                    && !joints[j].members.iter().any(|&(m, _)| m == k)
-                    && to_segment(p, it.a, it.b) <= ON
-            });
-            if on_body {
-                joints[j].anchored = true;
+        let on_body: Vec<bool> = joints
+            .iter()
+            .map(|joint| {
+                items.iter().enumerate().any(|(k, it)| {
+                    !it.is_via
+                        && it.arc.is_none()
+                        && it.net == joint.net
+                        && !joint.members.iter().any(|&(m, _)| m == k)
+                        && to_segment(joint.at, it.a, it.b) <= ON
+                })
+            })
+            .collect();
+        for (joint, on) in joints.iter_mut().zip(on_body) {
+            if on {
+                joint.anchored = true;
             }
         }
         (joints, at)

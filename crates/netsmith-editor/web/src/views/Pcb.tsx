@@ -13,7 +13,7 @@ import { marks as cmpMarks } from '../compare/store';
 import { Icon } from '../components/Icons';
 import { EmptyState, Segmented, Spinner } from '../components/ui';
 import { Canvas, type Tip } from '../pcb/Canvas';
-import { crossedText } from '../pcb/walk';
+import { crossedText, shovedText } from '../pcb/walk';
 import { FindingsList } from '../pcb/Findings';
 import { Panel } from '../pcb/Panel';
 import { PanelPreview } from '../pcb/PanelPreview';
@@ -38,8 +38,10 @@ import {
   type Tool,
   tool,
   trackLayer,
+  trackShove,
   undo,
   crossedShown,
+  shoveShown,
   grid,
 } from '../pcbstore';
 import { analysis, board, detail, fabReports, job, panelShown, pcbReports, pcbStamp, pickNet, routeBoard } from '../store';
@@ -162,6 +164,10 @@ export function Pcb() {
   // The router's copper the track being drawn crosses, as words, while there is one.
   const shown = crossedShown.value;
   const crossedNow = shown ? crossedText(shown) : null;
+  // The copper of the routes file it shoves aside, or why it goes round instead (issue 726).
+  const shoving = shoveShown.value;
+  const shovedNow = shoving ? shovedText(shoving.shoved) : null;
+  const stuckNow = shoving?.stuck ?? null;
   const in3d = pcbMode.value === '3d';
   // The 3D view on a system's scene stays while the page's board changes to another member (a part
   // of it picked there): it draws the system, not this board's placement, so the camera stays.
@@ -254,7 +260,7 @@ export function Pcb() {
                         value: 'track' as const,
                         label: 'Track',
                         icon: 'track' as const,
-                        tip: 'Draw a track: click a pad, then each corner (it bends round the copper in the way, not router copper: that is laid again); double-click or Enter ends it, Esc drops it',
+                        tip: 'Draw a track: click a pad, then each corner (unlocked copper of the routes file in the way is shoved aside, and locked copper is gone round, as the mode in the toolbar says; router copper is not an obstacle: it is laid again); double-click or Enter ends it, Esc drops it',
                         keys: 'X',
                         testid: 'tool-track',
                       },
@@ -280,6 +286,28 @@ export function Pcb() {
               >
                 <option value="top">top layer</option>
                 <option value="bottom">bottom layer</option>
+              </select>
+            </label>
+          )}
+          {!in3d && activeTool === 'track' && (
+            <label
+              class="grid-pick"
+              data-testid="track-mode"
+              title="What the track does about unlocked copper of the routes file in its way: shove it aside (locked copper and pads stay, the track goes round them), or only go round it"
+            >
+              <Icon name="track" size={14} />
+              <select
+                value={trackShove.value ? 'shove' : 'walk'}
+                onChange={(e) => {
+                  const el = e.target as HTMLSelectElement;
+                  trackShove.value = el.value === 'shove';
+                  el.blur();
+                }}
+                data-testid="track-shove"
+                aria-label="Track mode"
+              >
+                <option value="shove">shove copper aside</option>
+                <option value="walk">go round only</option>
               </select>
             </label>
           )}
@@ -438,10 +466,26 @@ export function Pcb() {
               ))}
             </div>
           )}
-          {!in3d && activeTool === 'track' && crossedNow && (
-            <div class="pcb-note warn" data-testid="track-crossed">
-              <b>Crosses {crossedNow}</b>
-              <div>An edit throws the router's copper away: route again after it to lay it round the new track.</div>
+          {!in3d && activeTool === 'track' && (crossedNow || shovedNow || stuckNow) && (
+            <div class="pcb-notes" data-testid="track-notes">
+              {shovedNow && (
+                <div class="pcb-note" data-testid="track-shoved">
+                  <b>Shoves {shovedNow}</b>
+                  <div>Unlocked copper of the routes file moves out of the way with the track, in one edit (one undo). A locked shape stays: the track goes round it.</div>
+                </div>
+              )}
+              {stuckNow && (
+                <div class="pcb-note warn" data-testid="track-stuck">
+                  <b>Goes round, nothing shoved</b>
+                  <div>{stuckNow[0].toUpperCase() + stuckNow.slice(1)}.</div>
+                </div>
+              )}
+              {crossedNow && (
+                <div class="pcb-note warn" data-testid="track-crossed">
+                  <b>Crosses {crossedNow}</b>
+                  <div>An edit throws the router's copper away: route again after it to lay it round the new track.</div>
+                </div>
+              )}
             </div>
           )}
           {panelOpen && sc && drawing && (

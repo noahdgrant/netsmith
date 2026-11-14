@@ -4,7 +4,7 @@
 
 import { signal } from '@preact/signals';
 
-import type { PcbChange, PcbCrossed, PcbFindings, PcbPours, PcbRoutesEdited, PcbScene, PcbWalk, RoutesChange } from './api';
+import type { PcbChange, PcbCrossed, PcbFindings, PcbPours, PcbRoutesEdited, PcbScene, PcbShoved, PcbWalk, RoutesChange } from './api';
 import { ApiFailure, api } from './client';
 import { type History, NO_HISTORY, type Run, type Step, record, redoing, undoing } from './pcb/edits';
 import { labelOf } from './pcb/routes';
@@ -34,6 +34,10 @@ export type Tool = 'select' | 'keepout' | 'track' | 'via';
 export const tool = signal<Tool>('select');
 /** The layer a track is drawn on: the outer layers only, as the routes file has them. */
 export const trackLayer = signal<'top' | 'bottom'>('top');
+
+/** How the track tool treats the unlocked copper of the routes file that is in the way (issue 726): shoved aside (the default), or
+ * only walked round, which leaves every shape where it is. */
+export const trackShove = signal<boolean>(true);
 export const history = signal<History>(NO_HISTORY);
 /** What is wrong with the board as it is now, and the finding picked in the list. */
 export const findings = signal<PcbFindings | null>(null);
@@ -171,6 +175,10 @@ export const walked = signal<Answer | null>(null);
 /** The router's copper the track being drawn crosses, as the canvas shows it (null: none, or no track): the toolbar says so too. */
 export const crossedShown = signal<PcbCrossed | null>(null);
 
+/** The shapes the track being drawn shoves out of its way, and why a shove was not used where one was asked for (null: no track):
+ * the toolbar's note says so. */
+export const shoveShown = signal<{ shoved: PcbShoved; stuck: string | null } | null>(null);
+
 /** Ask where a track would go: the answer lands in `walked`. Asks come one at a time, the newest first (`latestOnly`), so a
  * pointer that outruns the server asks for where it is. The page is busy while a request is out (`api` holds it), so a recipe
  * that waits for the page to be idle sees the answer. */
@@ -260,8 +268,10 @@ export function changeRoutes(changes: RoutesChange[]): Promise<boolean> {
     const answer = await sendRoutes(changes);
     if (!answer) return false;
     say(saidOf(answer.said, wasRouted));
-    if (answer.undo.before !== answer.undo.after) {
-      history.value = record(history.value, { label: labelOf(changes), routes: answer.undo });
+    // One step for the whole edit, whatever number of nets it changed (a shove changes several).
+    const changed = answer.undo.filter((u) => u.before !== u.after);
+    if (changed.length > 0) {
+      history.value = record(history.value, { label: labelOf(changes), routes: changed });
     }
     return true;
   });
@@ -282,7 +292,7 @@ export function commit(changes: PcbChange[], label: string): Promise<boolean> {
 
 /** Undo or redo a step: changes to the layout file, or a record of the routes file put back. */
 async function runStep(run: Run): Promise<boolean> {
-  return 'layout' in run ? send(run.layout) : (await sendRoutes([run.routes])) !== null;
+  return 'layout' in run ? send(run.layout) : (await sendRoutes(run.routes)) !== null;
 }
 
 export function undo(): Promise<void> {

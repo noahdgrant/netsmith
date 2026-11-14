@@ -41,10 +41,11 @@
 //! not timed: [`Walked::tried`] is the number of states the search took off its queue, at most
 //! [`MOST_TRIED`], so a board that has no way round says so after a bounded effort.
 //!
-//! **Not done:** a track never changes layer, never moves routes-file copper (shove, the third
-//! slice of #726) and does not
-//! look for the shortest way over the whole board: the area is the ends' box widened by
-//! [`REACH`].
+//! **Shove** ([`crate::shove`], the third slice of #726) is the other half: it moves the unlocked
+//! copper of the routes file out of the way of a track, and the walkaround goes round what stays.
+//!
+//! **Not done:** a track never changes layer and does not look for the shortest way over the whole
+//! board: the area is the ends' box widened by [`REACH`].
 
 use std::cmp::Reverse;
 use std::collections::{BinaryHeap, HashMap};

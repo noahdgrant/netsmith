@@ -45,11 +45,15 @@
 //! when the track is ended). Writes nothing. The router's copper is no obstacle to it, since
 //! the edit discards it ([`Entry::router_copper`]); the answer says which of it the track
 //! crosses, for the page to show it giving way ([`PcbWalked::crossed`], the second slice of
-//! #726).
+//! #726). With `shove` the way is found through the unlocked tracks and vias of the routes file
+//! ([`Entry::board_for_shove`]) and those are moved out of its way (`netsmith_router::shove`, the
+//! third slice): the answer carries their new places ([`PcbWalked::shoved`]) for the page to preview
+//! and to send, with the track, as one edit of several nets (an undo for each net in the answer, one
+//! step in the page); where a shape cannot move far enough the way goes round all of them and the
+//! answer says which ([`PcbWalked::stuck`]).
 //!
 //! **Not built** (ADR 0030, issue #59): waivers (the page has no way to write one),
-//! regeneration of one module, partial routing, shove of the routes file's copper (moving it out
-//! of the way of a track being drawn, #726), a copy of the findings for an agent, and `layout show` overlays.
+//! regeneration of one module, partial routing, a copy of the findings for an agent, and `layout show` overlays.
 
 use std::{
     collections::HashMap,

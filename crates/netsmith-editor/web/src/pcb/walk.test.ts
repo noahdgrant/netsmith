@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { PcbWalk } from '../api';
-import { NOTHING_CROSSED, answerTo, crossedText, headingOf, saidOf, latestOnly, walkKey } from './walk';
+import { NOTHING_CROSSED, NOTHING_SHOVED, answerTo, crossedText, headingOf, latestOnly, saidOf, shoveChanges, shovedText, walkKey } from './walk';
 
 /** Let the promises that are settled run their continuations. */
 const flush = async () => {
@@ -16,6 +16,7 @@ const ask = (x: number): PcbWalk => ({
   to: { x, y: 1 },
   heading: null,
   track: [],
+  shove: false,
 });
 
 describe('the walkaround asks', () => {
@@ -24,6 +25,8 @@ describe('the walkaround asks', () => {
     expect(walkKey(ask(1))).not.toBe(walkKey(ask(2)));
     expect(walkKey({ ...ask(1), layer: 'bottom' })).not.toBe(walkKey(ask(1)));
     expect(walkKey({ ...ask(1), heading: { x: 1, y: 0 } })).not.toBe(walkKey(ask(1)));
+    // The mode is part of it: the same place asked with and without the shove has another answer.
+    expect(walkKey({ ...ask(1), shove: true })).not.toBe(walkKey(ask(1)));
   });
 
   it('heads the way the last segment of the draft arrives, leaving out a segment of no length', () => {
@@ -69,16 +72,55 @@ describe('the walkaround asks', () => {
     const w = ask(1);
     const track = { net: 'GND', layer: 'top', width: 0.2, from: { x: 0, y: 0 }, mid: null, to: { x: 1, y: 0 } };
     const crossed = { tracks: [track], vias: [] };
-    expect(answerTo(w, { points: [w.from, w.to], reason: null, tried: 0, crossed }).crossed).toEqual(crossed);
-    expect(answerTo(w, { points: null, reason: 'no room', tried: 0, crossed }).crossed).toEqual(crossed);
+    expect(answerTo(w, { points: [w.from, w.to], reason: null, tried: 0, crossed, shoved: NOTHING_SHOVED, stuck: null }).crossed).toEqual(crossed);
+    expect(answerTo(w, { points: null, reason: 'no room', tried: 0, crossed, shoved: NOTHING_SHOVED, stuck: null }).crossed).toEqual(crossed);
     expect(answerTo(w, new Error('down')).crossed).toEqual(NOTHING_CROSSED);
+  });
+
+  it('turns what a shove moved into the changes of the same edit, and says it in words', () => {
+    const shoved = {
+      tracks: [
+        {
+          net: 'GND',
+          track: 2,
+          layer: 'top',
+          width: 0.15,
+          wasFrom: { x: 0, y: 0 },
+          wasTo: { x: 0, y: 2 },
+          from: { x: 0, y: 0 },
+          to: { x: 0.5, y: 2 },
+        },
+      ],
+      vias: [{ net: 'VCC', via: 1, diameter: 0.45, wasAt: { x: 3, y: 3 }, at: { x: 3.4, y: 3 } }],
+    };
+    expect(shoveChanges(shoved)).toEqual([
+      { what: 'move_track', net: 'GND', track: 2, from: { x: 0, y: 0 }, to: { x: 0.5, y: 2 } },
+      { what: 'move_via', net: 'VCC', via: 1, at: { x: 3.4, y: 3 } },
+    ]);
+    expect(shovedText(shoved)).toBe('1 track and 1 via');
+    expect(shovedText({ tracks: [shoved.tracks[0], shoved.tracks[0]], vias: [] })).toBe('2 tracks');
+    expect(shovedText(NOTHING_SHOVED)).toBeNull();
+    expect(shoveChanges(NOTHING_SHOVED)).toEqual([]);
+  });
+
+  it('keeps what the server says is shoved and why not, and nothing for a failed ask', () => {
+    const w = { ...ask(1), shove: true };
+    const shoved = { tracks: [], vias: [{ net: 'VCC', via: 1, diameter: 0.45, wasAt: { x: 3, y: 3 }, at: { x: 3.4, y: 3 } }] };
+    const got = answerTo(w, { points: [w.from, w.to], reason: null, tried: 0, crossed: NOTHING_CROSSED, shoved, stuck: null });
+    expect(got.shoved).toEqual(shoved);
+    const stuck = answerTo(w, { points: [w.from, w.to], reason: null, tried: 4, crossed: NOTHING_CROSSED, shoved: NOTHING_SHOVED, stuck: 'track 1 of net GND cannot be moved out of the way' });
+    expect(stuck.shoved).toEqual(NOTHING_SHOVED);
+    expect(stuck.stuck).toContain('track 1 of net GND');
+    const failed = answerTo(w, new Error('down'));
+    expect(failed.shoved).toEqual(NOTHING_SHOVED);
+    expect(failed.stuck).toBeNull();
   });
 
   it('reads an answer: corners, or the reason there are none', () => {
     const w = ask(1);
-    const found = answerTo(w, { points: [w.from, w.to], reason: null, tried: 0, crossed: NOTHING_CROSSED });
-    expect(found).toEqual({ key: walkKey(w), points: [w.from, w.to], reason: null, crossed: NOTHING_CROSSED });
-    const none = answerTo(w, { points: null, reason: 'no way round', tried: 12, crossed: NOTHING_CROSSED });
+    const found = answerTo(w, { points: [w.from, w.to], reason: null, tried: 0, crossed: NOTHING_CROSSED, shoved: NOTHING_SHOVED, stuck: null });
+    expect(found).toEqual({ key: walkKey(w), points: [w.from, w.to], reason: null, crossed: NOTHING_CROSSED, shoved: NOTHING_SHOVED, stuck: null });
+    const none = answerTo(w, { points: null, reason: 'no way round', tried: 12, crossed: NOTHING_CROSSED, shoved: NOTHING_SHOVED, stuck: null });
     expect(none.points).toBeNull();
     expect(none.reason).toBe('no way round');
     // A failed request is a reason too, so the click is refused with it.

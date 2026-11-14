@@ -31,6 +31,10 @@ _Avoid_: Multidrop bus, tap, bus with taps, daisy chain
 `shared UARTS limit 2 { UARTE0 UARTE1 UARTE2 .p10 }` in a part: the hardware that at most `limit` of its members use at a time (one without `limit`; a limit is at least 1 and fewer than the members). A member is a peripheral, a function (in use when chosen on a pin) or a pin (in use when its function is chosen or the board connects it). Using more members than allowed is an error that names the part, the resource, every use and its line; it is judged for each instance of the part, before the solve, from the functions the board chose (ADR 0071).
 _Avoid_: Conflict set, exclusive set, group, resource (alone)
 
+**Shove**:
+What the editor's track tool does while a track is drawn (issue #726, `netsmith_router::shove`): the unlocked tracks and vias of the routes file that keep a space of the design rules check from the new track only if they move are moved aside, each as little as clears, in the same edit as the track. A track moves sideways at right angles to itself (an end that meets another track of its net slides along that track, so the corner keeps its angle and the track its width; an end on a pad stays, and the track turns about it), the shapes that meet a moved end follow, and a piece pushed into another pushes that one in turn, at most 12 pieces and 2 mm each. A locked shape, any shape of a locked net, a pad, a keepout, a zone and the board edge never move: where a piece cannot move far enough, the track goes round it by the _Walkaround_ and the view says which shape stopped the shove. The router's own copper is not shoved: an edit of the routes file throws it away. The edit has the drawn track and the moved shapes, of several nets, one check of the design rules and one step of undo.
+_Avoid_: push (alone), nudge, bump, reroute (that is the router's)
+
 **Side**:
 The face of the board a part is on, front or back. A part on the back is its footprint seen in a mirror, with its surface-mount pads on the back copper.
 
