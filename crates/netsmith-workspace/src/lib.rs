@@ -94,7 +94,7 @@ pub struct Workspace {
 
 /// Files the token of the analysis that is running where [`Backend::cancel_analysis`] finds it,
 /// and takes it away when dropped. A workspace that a job reads for itself is not filed: the job
-/// cancels it.
+/// cancels it. Filed before [`Announcing`] tells anyone, so that whoever has been told can cancel.
 struct Running<'a>(Option<&'a Workspace>);
 
 impl<'a> Running<'a> {
@@ -451,8 +451,10 @@ impl Workspace {
         // analysis, which has no reading to keep, an empty one that says why.
         let token = self.inherited.clone().unwrap_or_default();
         let ran = {
-            let _announcing = Announcing::start(self);
+            // The token is filed before the page is told: the page offers Cancel the moment it hears
+            // `Started`, and a cancel asked then must reach this analysis, not find nothing running.
             let _running = Running::new(self, &token);
+            let _announcing = Announcing::start(self);
             let observe = |event| self.announce(event);
             // The solver's counts go to the observer too, which `observe` borrows.
             let live = self.observer.get().cloned();
