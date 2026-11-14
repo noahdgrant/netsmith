@@ -1241,6 +1241,97 @@ pub struct PcbScene {
     pub parts: Vec<PcbPart>,
     pub keepouts: Vec<PcbKeepout>,
     pub cutouts: Vec<PcbCutout>,
+    /// The routes file beside the source (`<stem>.routes.toml`, issue 599), which may not
+    /// exist yet.
+    pub routes_file: String,
+    /// What it was like when read: a change to it must give it back.
+    pub routes_stamp: String,
+    /// Its records for this board, by net: the fixed copper, drawn on the board before the
+    /// router's.
+    pub routes: Vec<PcbRouteNet>,
+}
+
+/// A point on the sheet, in mm.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, TS)]
+pub struct PcbPoint {
+    pub x: f64,
+    pub y: f64,
+}
+
+/// One net's record of the routes file, as the PCB view shows it. Its shapes are numbered from
+/// 1 in the order they are listed, as `netsmith routes show` numbers them.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct PcbRouteNet {
+    pub net: String,
+    /// The router adds no copper to the net.
+    pub lock: bool,
+    /// The net's pads are where the record was written: every shape is drawn. When not, only
+    /// the locked shapes are, and the findings say so; a net the board does not have draws none.
+    pub current: bool,
+    pub tracks: Vec<PcbRouteTrack>,
+    pub vias: Vec<PcbRouteVia>,
+}
+
+/// A track of a record, on the sheet.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+pub struct PcbRouteTrack {
+    /// `top` or `bottom`.
+    pub layer: String,
+    pub width: f64,
+    pub from: PcbPoint,
+    /// For an arc, a point on it halfway from `from` to `to`.
+    pub mid: Option<PcbPoint>,
+    pub to: PcbPoint,
+    /// Kept when the net's pads move; not deleted until unlocked.
+    pub lock: bool,
+    /// Whether it is on the board (see [`PcbRouteNet::current`]).
+    pub drawn: bool,
+}
+
+/// A via of a record, on the sheet.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+pub struct PcbRouteVia {
+    pub at: PcbPoint,
+    pub diameter: f64,
+    pub drill: f64,
+    pub lock: bool,
+    pub drawn: bool,
+}
+
+/// A change the PCB view makes to the routes file, as `netsmith routes delete`, `lock` and
+/// `unlock` make it (one implementation, `netsmith_fabricate::routes::edit`). `track` and `via`
+/// name one shape of the net's record, numbered from 1; with neither it is the whole record.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(tag = "what", rename_all = "snake_case")]
+pub enum RoutesChange {
+    Delete {
+        net: String,
+        track: Option<u32>,
+        via: Option<u32>,
+    },
+    Lock {
+        net: String,
+        track: Option<u32>,
+        via: Option<u32>,
+        /// Lock, or unlock.
+        lock: bool,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+pub struct PcbRoutesEdit {
+    pub board: String,
+    /// `PcbScene::routes_stamp` as the page read it.
+    pub stamp: String,
+    pub change: RoutesChange,
+}
+
+/// The board after a change to the routes file was written, and what was done.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+pub struct PcbRoutesEdited {
+    pub scene: PcbScene,
+    pub said: String,
 }
 
 /// Where a part is in the layout file: millimetres from the outline's top left corner.
@@ -1323,6 +1414,9 @@ pub enum FindingSource {
     Drc,
     /// KiCad's design rules check, run on demand as a second opinion.
     Kicad,
+    /// A record of the routes file that is not used as written (its net's pads moved, or the
+    /// board has no such net): the warning `fab` prints.
+    Routes,
 }
 
 /// One thing wrong with the board, with where it is.
@@ -1680,6 +1774,13 @@ pub fn typescript() -> String {
         PcbKeepout,
         PcbCutout,
         PcbScene,
+        PcbPoint,
+        PcbRouteNet,
+        PcbRouteTrack,
+        PcbRouteVia,
+        RoutesChange,
+        PcbRoutesEdit,
+        PcbRoutesEdited,
         PartPlacement,
         DrawnKeepout,
         KeepoutPlacement,

@@ -85,6 +85,22 @@
 .pcb-overlay .mark.on { stroke-width: calc(3 * var(--px, .04)); fill: color-mix(in srgb, var(--danger) 16%, transparent); }
 .pcb-overlay .mark.warning.on { fill: color-mix(in srgb, var(--warning) 16%, transparent); }
 
+/* the routes file's copper (fixed: the router keeps it): a line along each track and a ring round each via in the text's colour, which
+ * stands out on the copper of either face in every theme; dashed while the router may add to the net, solid once the net is locked */
+.pcb-overlay .fixed-mark { fill: none; stroke: var(--text); stroke-opacity: .9; stroke-width: calc(1.5 * var(--px, .04)); stroke-dasharray: calc(6 * var(--px, .04)) calc(3 * var(--px, .04)); stroke-linecap: round; }
+.pcb-overlay .net-locked .fixed-mark { stroke-dasharray: none; }
+.pcb-overlay .fixed-hit { fill: none; stroke: transparent; stroke-linecap: round; pointer-events: stroke; cursor: pointer; }
+.pcb-overlay .fixed-via .fixed-hit { fill: transparent; pointer-events: all; }
+.pcb-overlay .fixed-glow { fill: none; stroke: var(--sel); stroke-opacity: .5; stroke-linecap: round; filter: drop-shadow(0 0 .3px var(--sel)); }
+.pcb-overlay .fixed-via .fixed-glow { fill: color-mix(in srgb, var(--sel) 35%, transparent); stroke-opacity: 1; stroke-width: calc(1.5 * var(--px, .04)); }
+.pcb-overlay .fixed-shape.picked .fixed-mark { stroke: var(--sel); stroke-opacity: 1; stroke-width: calc(2 * var(--px, .04)); }
+
+/* the routes list: a net's record, its shapes indented under it; a shape not on the board is faint */
+.route-rows .route-shape { padding-left: 1.5rem; }
+.route-rows .route-shape .ref { font-weight: 400; }
+.route-rows .route-shape.undrawn { opacity: .6; }
+.route-rows .tag.warn { background: var(--warning-bg); border-color: var(--warning-line); color: var(--warning-text); }
+
 /* the net list's mark: a net has no colour on the board, so its mark is neutral (a plane is dashed) */
 .net-row .swatch { width: 0.5rem; height: 0.5rem; border-radius: 50%; border: 1.5px solid var(--text-faint); background: transparent; }
 .net-row .swatch.plane { border-style: dashed; border-radius: 2px; }

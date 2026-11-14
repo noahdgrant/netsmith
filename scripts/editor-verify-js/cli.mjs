@@ -46,6 +46,8 @@ const FIXTURES = {
   shared_module: 'scripts/editor-verify-js/fixtures/shared_module.nsm',
   regulator: 'examples/linear_regulator.nsm',
   four_layer: 'examples/four_layer.nsm',
+  // The LED board with copper in a routes file (epic #599): a locked net with a via, an unlocked net with a locked track, a net left to the router.
+  routed_led: 'scripts/editor-verify-js/fixtures/routed_led.nsm',
   outline_and_pours: 'examples/outline_and_pours.nsm',
   carrier_and_cards: 'examples/carrier_and_cards.nsm',
   led_panel: 'examples/led_panel.nsm',
@@ -213,8 +215,8 @@ async function launch() {
     // footprint libraries), so the PCB view has footprints for the fixture's invented parts.
     const mapping = fixture.replace(/\.nsm$/, '.kicad.toml');
     if (mapping !== fixture && fs.existsSync(mapping)) fs.copyFileSync(mapping, path.join(project, 'kicad.toml'));
-    // The pin file (ADR 0101) and the pick lock (ADR 0100) beside the fixture, if it has them: `x.pins.toml` is `main.pins.toml`.
-    for (const side of ['pins', 'lock']) {
+    // The pin file (ADR 0101), the pick lock (ADR 0100) and the routes file (epic #599) beside the fixture, if it has them: `x.pins.toml` is `main.pins.toml`.
+    for (const side of ['pins', 'lock', 'routes']) {
       const file = fixture.replace(/\.nsm$/, `.${side}.toml`);
       if (file !== fixture && fs.existsSync(file)) fs.copyFileSync(file, path.join(project, `src/main.${side}.toml`));
     }

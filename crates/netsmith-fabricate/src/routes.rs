@@ -6,7 +6,9 @@
 
 use std::path::{Path, PathBuf};
 
-use netsmith_pcb::{Board, LayoutFace as Face, RouteTrack, RouteVia, Routes, apply_routes};
+use netsmith_pcb::{
+    Board, LayoutFace as Face, NetRoutes, RouteTrack, RouteVia, Routes, apply_routes,
+};
 
 /// The routes file of a source file: `led.nsm` has `led.routes.toml`.
 pub fn routes_path(source: &Path) -> PathBuf {
@@ -135,6 +137,273 @@ pub fn new_errors(before: &Board, after: &Board) -> Result<Vec<String>, String> 
         }
     }
     Ok(new)
+}
+
+/// One shape of a net's record, numbered from 1 as `netsmith routes show` lists them.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Shape {
+    Track(usize),
+    Via(usize),
+}
+
+/// One change to the routes file: what `netsmith routes add-track`, `add-via`, `delete`, `lock`
+/// and `unlock` do, and the editor's PCB view with them. [`edit`] is the one implementation.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Edit {
+    /// A track of `net`; `width` `None` is the net's own width.
+    AddTrack {
+        net: String,
+        layer: Face,
+        width: Option<f64>,
+        from: [f64; 2],
+        mid: Option<[f64; 2]>,
+        to: [f64; 2],
+        lock: bool,
+    },
+    /// A via of `net`; `None` is the process's via.
+    AddVia {
+        net: String,
+        at: [f64; 2],
+        diameter: Option<f64>,
+        drill: Option<f64>,
+        lock: bool,
+    },
+    /// The net's whole record (`shape` `None`), or one shape of it. A locked one is refused.
+    Delete { net: String, shape: Option<Shape> },
+    /// Lock (`on`) or unlock the net (`shape` `None`) or one shape. Locking a net writes its
+    /// record again with its pads as they are now.
+    Lock {
+        net: String,
+        shape: Option<Shape>,
+        on: bool,
+    },
+}
+
+impl Edit {
+    /// The net the edit changes.
+    pub fn net(&self) -> &str {
+        match self {
+            Edit::AddTrack { net, .. }
+            | Edit::AddVia { net, .. }
+            | Edit::Delete { net, .. }
+            | Edit::Lock { net, .. } => net,
+        }
+    }
+}
+
+/// Why [`edit`] did not change the file.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Refusal {
+    /// The edit is refused, and why: a shape that breaks the design rules, a locked shape, a net
+    /// or shape the board or the file does not have. The file is as it was.
+    Refused(String),
+    /// It could not be tried: the file or the board could not be read.
+    Failed(String),
+}
+
+impl From<String> for Refusal {
+    fn from(e: String) -> Self {
+        Refusal::Failed(e)
+    }
+}
+
+impl std::fmt::Display for Refusal {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Refusal::Refused(e) | Refusal::Failed(e) => f.write_str(e),
+        }
+    }
+}
+
+/// Make `change` to `routes` for `board` (placed, with no routes on it), or refuse it and leave
+/// `routes` as it was. An added shape, and a net locked again (which can draw shapes a record
+/// whose pads moved had dropped), is refused when the board with it has an error of the design
+/// rules check that it did not have before. Says what it did.
+pub fn edit(board: &Board, routes: &mut Routes, change: &Edit) -> Result<String, Refusal> {
+    let net = change.net();
+    let Some(hash) = netsmith_pcb::pad_hash(board, net) else {
+        return Err(Refusal::Refused(format!(
+            "the board {} has no net `{net}`",
+            board.name
+        )));
+    };
+    let check = matches!(
+        change,
+        Edit::AddTrack { .. } | Edit::AddVia { .. } | Edit::Lock { on: true, .. }
+    );
+    let refresh = matches!(change, Edit::Lock { on: true, .. });
+    let mut next = routes.clone();
+    let table = next.boards.entry(board.name.clone()).or_default();
+    let record = table
+        .nets
+        .entry(net.to_string())
+        .or_insert_with(|| NetRoutes {
+            pads: hash.clone(),
+            ..NetRoutes::default()
+        });
+    let said = change_record(board, record, change)?;
+    if refresh {
+        record.pads = hash;
+    }
+    if record.shapes() == 0 && !record.lock {
+        table.nets.remove(net);
+    }
+    if table.nets.is_empty() {
+        next.boards.remove(&board.name);
+    }
+    if check {
+        let before = with_routes(board, routes)?.0;
+        let after = with_routes(board, &next)?.0;
+        let new = new_errors(&before, &after)?;
+        if !new.is_empty() {
+            return Err(Refusal::Refused(format!(
+                "refused: the design rules check finds {} new error(s) with it, and the routes file is not changed:\n  {}",
+                new.len(),
+                new.join("\n  ")
+            )));
+        }
+    }
+    *routes = next;
+    Ok(said)
+}
+
+/// [`edit`] of the routes file at `file`, written when the edit is made. Says what it did and
+/// the file it wrote.
+pub fn edit_file(board: &Board, file: &Path, change: &Edit) -> Result<String, Refusal> {
+    let mut routes = load(file)?;
+    let said = edit(board, &mut routes, change)?;
+    save(file, &routes)?;
+    Ok(format!("{said}; wrote {}", file.display()))
+}
+
+fn change_record(board: &Board, record: &mut NetRoutes, change: &Edit) -> Result<String, Refusal> {
+    let missing = |net: &str, what: &str, n: usize, have: usize| {
+        Refusal::Refused(format!(
+            "net {net} has no {what} {n} in the routes file (it has {have}; `netsmith routes show` numbers them)"
+        ))
+    };
+    match change {
+        Edit::AddTrack {
+            net,
+            layer,
+            width,
+            from,
+            mid,
+            to,
+            lock,
+        } => {
+            record.tracks.push(RouteTrack {
+                layer: *layer,
+                width: width.unwrap_or_else(|| board.track_width(net)),
+                from: *from,
+                mid: *mid,
+                to: *to,
+                lock: *lock,
+            });
+            Ok(format!("added a track to net {net}"))
+        }
+        Edit::AddVia {
+            net,
+            at,
+            diameter,
+            drill,
+            lock,
+        } => {
+            record.vias.push(RouteVia {
+                at: *at,
+                diameter: diameter.unwrap_or(board.rules.via_diameter),
+                drill: drill.unwrap_or(board.rules.via_drill),
+                lock: *lock,
+            });
+            Ok(format!("added a via to net {net}"))
+        }
+        Edit::Delete { net, shape: None } => {
+            let locked = record.lock
+                || record.tracks.iter().any(|t| t.lock)
+                || record.vias.iter().any(|v| v.lock);
+            if locked {
+                return Err(Refusal::Refused(format!(
+                    "net {net} or a shape of it is locked: unlock it first (`netsmith routes unlock`)"
+                )));
+            }
+            let n = record.shapes();
+            record.tracks.clear();
+            record.vias.clear();
+            Ok(format!("deleted net {net}'s record ({n} shape(s))"))
+        }
+        Edit::Delete {
+            net,
+            shape: Some(Shape::Track(n)),
+        } => {
+            let have = record.tracks.len();
+            let t = record
+                .tracks
+                .get(n.wrapping_sub(1))
+                .ok_or_else(|| missing(net, "track", *n, have))?;
+            if t.lock {
+                return Err(Refusal::Refused(format!(
+                    "track {n} of net {net} is locked: unlock it first"
+                )));
+            }
+            record.tracks.remove(n - 1);
+            Ok(format!("deleted track {n} of net {net}"))
+        }
+        Edit::Delete {
+            net,
+            shape: Some(Shape::Via(n)),
+        } => {
+            let have = record.vias.len();
+            let v = record
+                .vias
+                .get(n.wrapping_sub(1))
+                .ok_or_else(|| missing(net, "via", *n, have))?;
+            if v.lock {
+                return Err(Refusal::Refused(format!(
+                    "via {n} of net {net} is locked: unlock it first"
+                )));
+            }
+            record.vias.remove(n - 1);
+            Ok(format!("deleted via {n} of net {net}"))
+        }
+        Edit::Lock {
+            net,
+            shape: None,
+            on,
+        } => {
+            record.lock = *on;
+            Ok(format!(
+                "{} net {net}",
+                if *on { "locked" } else { "unlocked" }
+            ))
+        }
+        Edit::Lock {
+            net,
+            shape: Some(shape),
+            on,
+        } => {
+            let word = if *on { "locked" } else { "unlocked" };
+            match *shape {
+                Shape::Track(n) => {
+                    let have = record.tracks.len();
+                    record
+                        .tracks
+                        .get_mut(n.wrapping_sub(1))
+                        .ok_or_else(|| missing(net, "track", n, have))?
+                        .lock = *on;
+                    Ok(format!("{word} track {n} of net {net}"))
+                }
+                Shape::Via(n) => {
+                    let have = record.vias.len();
+                    record
+                        .vias
+                        .get_mut(n.wrapping_sub(1))
+                        .ok_or_else(|| missing(net, "via", n, have))?
+                        .lock = *on;
+                    Ok(format!("{word} via {n} of net {net}"))
+                }
+            }
+        }
+    }
 }
 
 /// What `netsmith routes show` says of a board: each record, what of the file is not used, and

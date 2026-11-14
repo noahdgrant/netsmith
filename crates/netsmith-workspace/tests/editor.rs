@@ -769,7 +769,7 @@ fn an_order_is_made_and_its_summary_and_bom_are_offered() {
 
 // ---- the whole server -------------------------------------------------------------------
 
-fn http(port: u16, method: &str, target: &str, extra: &str, body: &str) -> (u16, String) {
+pub(crate) fn http(port: u16, method: &str, target: &str, extra: &str, body: &str) -> (u16, String) {
     let mut s = TcpStream::connect((Ipv4Addr::LOCALHOST, port)).unwrap();
     s.set_read_timeout(Some(Duration::from_secs(20))).unwrap();
     write!(

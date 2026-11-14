@@ -129,7 +129,15 @@ export function Pcb() {
   const found = findings.value && findings.value.board === name ? findings.value : null;
   const drawing = useMemo(() => (sc ? prepare(sc.svg) : null), [sc?.svg]);
   // The planes layer takes the planes' labels with it: a name on nothing is noise.
-  const css = useMemo(() => hidden.map((l) => `.pcb-host .l-${l}${l === 'planes' ? ', .pcb-host .l-plane-labels' : ''}{display:none}`).join(''), [hidden]);
+  // The marks of the routes file's copper go with the layer of their copper.
+  const fixedOf: Record<string, string> = { 'front-copper': '[data-layer=top]', 'back-copper': '[data-layer=bottom]', vias: '.fixed-via' };
+  const css = useMemo(
+    () =>
+      hidden
+        .map((l) => `.pcb-host .l-${l}${l === 'planes' ? ', .pcb-host .l-plane-labels' : ''}${fixedOf[l] ? `, .pcb-host .fixed-shape${fixedOf[l]}` : ''}{display:none}`)
+        .join(''),
+    [hidden],
+  );
 
   if (!name) return <NoBoard what="show" />;
   const fab = fabReports.value[name];

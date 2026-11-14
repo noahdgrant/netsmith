@@ -8,18 +8,22 @@ import type { PcbBox, PcbKeepout, PcbPart, PcbScene } from '../api';
 import { PanZoom } from '../components/PanZoom';
 import { hoverEnter, hoverLeave } from '../hover';
 import {
+  changeRoutes,
   commit,
   findings,
   grid,
   pickKeepout,
+  pickRoute,
   pickedFinding,
   pickedKeepout,
+  pickedRoute,
   redo,
   select,
   selection,
   tool,
   undo,
 } from '../pcbstore';
+import { deleteChange, lockChange, lockedOf, middleOf, nameOf, pickAt, samePick, shapeOf, trackPath } from './routes';
 import { pickPart, say } from '../store';
 import {
   addKeepout,
@@ -201,6 +205,17 @@ export function Canvas(props: {
       const net = pad.getAttribute('data-net');
       return { ...at, title: `${part.refdes}.${number}`, lines: [...info(part), net ? `net ${net}` : 'no net'] };
     }
+    const route = pickAt(target);
+    const record = route && sc.routes.find((n) => n.net === route.net);
+    if (route && record) {
+      const shape = shapeOf(record, route);
+      const what = !shape ? '' : 'layer' in shape ? `${shape.layer}, ${shape.width} mm` : `${shape.diameter} mm, drill ${shape.drill} mm`;
+      return {
+        ...at,
+        title: `fixed ${nameOf(route)}`,
+        lines: [what, `from ${sc.routesFile}`, ...(shape?.lock ? ['locked shape'] : []), ...(record.lock ? ['net locked: the router adds no copper'] : [])],
+      };
+    }
     const copper = target.closest('.l-front-copper [data-net], .l-back-copper [data-net], .l-vias [data-net]');
     if (copper) return { ...at, title: `net ${copper.getAttribute('data-net')}`, lines: [] };
     if (part) {
@@ -239,6 +254,12 @@ export function Canvas(props: {
       }
     }
     const target = e.target as Element;
+    // A shape of the routes file: picked (the side panel shows it, L locks it, Delete deletes it).
+    const route = pickAt(target);
+    if (route && !additive) {
+      pickRoute(route);
+      return;
+    }
     const net = target.closest('.l-front-copper [data-net], .l-back-copper [data-net], .l-vias [data-net]');
     if (net && !additive) {
       props.onPickNet(net.getAttribute('data-net')!);
@@ -413,6 +434,11 @@ export function Canvas(props: {
       } else if (k === 'f') {
         used();
         void flipSelection();
+      } else if (k === 'l' && pickedRoute.value) {
+        used();
+        const pick = pickedRoute.value;
+        const record = sc.routes.find((n) => n.net === pick.net);
+        if (record) void changeRoutes(lockChange(pick, !lockedOf(record, pick)));
       } else if (k === 'l') {
         used();
         void toggleLock();
@@ -431,9 +457,13 @@ export function Canvas(props: {
         else {
           select([]);
           pickKeepout(null);
+          pickRoute(null);
         }
       } else if (k === 'delete' || k === 'backspace') {
-        if (pickedKeepout.value) {
+        if (pickedRoute.value) {
+          used();
+          void changeRoutes(deleteChange(pickedRoute.value));
+        } else if (pickedKeepout.value) {
           used();
           void deleteKeepout(pickedKeepout.value);
         } else if (selection.value.length) {
@@ -529,6 +559,7 @@ export function Canvas(props: {
               <rect x={o.x} y={o.y} width={o.width} height={o.height} fill="url(#pcb-grid)" class="pcb-grid-dots" />
             </>
           )}
+          <FixedCopper scene={sc} picked={pickedRoute.value} reach={REACH / (SCALE * zoom)} />
           {preview.keepout &&
             (() => {
               const k = keepoutAt(preview.keepout.name);
@@ -616,6 +647,50 @@ function Outline(props: { box?: PcbBox; class: string }) {
   const b = props.box;
   if (!b) return null;
   return <rect class={`outline-${props.class}`} x={b.x} y={b.y} width={b.width} height={b.height} rx="0.2" />;
+}
+
+/** The copper of the routes file that is on the board, marked over the drawing: a line along each track and
+ * a ring round each via, dashed while its net is open to the router and solid once the net is locked, a
+ * padlock on a locked shape, and the picked shape lit. Each mark is also what a click picks, `reach` (mm)
+ * wide at the least. A record not drawn (its pads moved) is only listed in the side panel. */
+function FixedCopper(props: { scene: PcbScene; picked: { net: string; track?: number; via?: number } | null; reach: number }) {
+  const { scene: sc, picked, reach } = props;
+  return (
+    <g class="fixed-copper" data-testid="fixed-copper">
+      {sc.routes.map((net) => (
+        <g key={net.net} class={`fixed-net ${net.lock ? 'net-locked' : ''}`} data-fixed-net={net.net}>
+          {net.tracks.map((t, i) => {
+            if (!t.drawn) return null;
+            const pick = { net: net.net, track: i + 1 };
+            const on = samePick(picked, pick);
+            const d = trackPath(t);
+            const m = middleOf(t);
+            return (
+              <g key={`t${i}`} class={`fixed-shape ${on ? 'picked' : ''}`} data-route-net={net.net} data-route-track={i + 1} data-layer={t.layer}>
+                {on && <path class="fixed-glow" d={d} stroke-width={t.width + 0.3} />}
+                <path class="fixed-mark" d={d} />
+                <path class="fixed-hit" d={d} stroke-width={Math.max(t.width, reach)} />
+                {t.lock && <Lock x={m.x} y={m.y} size={Math.max(0.7, t.width * 2)} />}
+              </g>
+            );
+          })}
+          {net.vias.map((v, i) => {
+            if (!v.drawn) return null;
+            const pick = { net: net.net, via: i + 1 };
+            const on = samePick(picked, pick);
+            return (
+              <g key={`v${i}`} class={`fixed-shape fixed-via ${on ? 'picked' : ''}`} data-route-net={net.net} data-route-via={i + 1}>
+                {on && <circle class="fixed-glow" cx={v.at.x} cy={v.at.y} r={v.diameter / 2 + 0.15} />}
+                <circle class="fixed-mark" cx={v.at.x} cy={v.at.y} r={v.diameter / 2 + 0.06} />
+                <circle class="fixed-hit" cx={v.at.x} cy={v.at.y} r={Math.max(v.diameter / 2, reach / 2)} />
+                {v.lock && <Lock x={v.at.x + v.diameter / 2} y={v.at.y - v.diameter / 2} size={0.7} />}
+              </g>
+            );
+          })}
+        </g>
+      ))}
+    </g>
+  );
 }
 
 /** A padlock at the corner of a locked part. */

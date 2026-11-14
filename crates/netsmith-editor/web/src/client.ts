@@ -19,6 +19,8 @@ import type {
   OrderReport,
   PcbEdit,
   PcbEdited,
+  PcbRoutesEdit,
+  PcbRoutesEdited,
   PcbFindings,
   PcbReport,
   PcbScene,
@@ -165,6 +167,7 @@ export const api = {
   route: (board: string) => post<PcbReport>(`/api/pcb/route?${q({ board })}`),
   pcbScene: (board: string) => getJson<PcbScene>(`/api/pcb/scene?${q({ board })}`),
   pcbEdit: (edit: PcbEdit) => post<PcbEdited>('/api/pcb/edit', edit),
+  pcbRoutes: (edit: PcbRoutesEdit) => post<PcbRoutesEdited>('/api/pcb/routes', edit),
   /** Lock or unlock a pin request: the `lock` line of its entry in the pin file (ADR 0101), and no other line. `ApiFailure` 422 says why not. */
   pinLock: (edit: PinLock) => post<PinWritten>('/api/pins/lock', edit),
   /** Move a request to another pin of its part that offers its function: the entry's `pin` and `source` lines. `ApiFailure` 422 says why not. */

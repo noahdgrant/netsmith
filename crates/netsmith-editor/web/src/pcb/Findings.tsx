@@ -8,7 +8,7 @@ import { askFocus3d } from '../pcb3d/inspectMode';
 import { project } from '../store';
 import { KICAD_NOT_FOUND, kicadLine } from './kicad';
 
-const SOURCE = { placement: 'netsmith', unrouted: 'netsmith', drc: 'netsmith', kicad: 'KiCad' } as const;
+const SOURCE = { placement: 'netsmith', unrouted: 'netsmith', routes: 'routes file', drc: 'netsmith', kicad: 'KiCad' } as const;
 
 function fmt(v: number): string {
   return (Math.round(v * 100) / 100).toFixed(2);

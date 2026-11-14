@@ -158,7 +158,7 @@ export function rowOfProblem(p: Problem, index: number): Row {
   };
 }
 
-const PCB_ORIGIN: Record<PcbFinding['source'], Origin> = { placement: 'placement', unrouted: 'routing', drc: 'rules', kicad: 'kicad' };
+const PCB_ORIGIN: Record<PcbFinding['source'], Origin> = { placement: 'placement', unrouted: 'routing', routes: 'routing', drc: 'rules', kicad: 'kicad' };
 
 /** A `file.nsm:12` that a finding's message names: where its requirement is written. */
 export function mentionedPlace(message: string): string | undefined {

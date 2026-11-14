@@ -1,0 +1,34 @@
+//! `examples/led.nsm` with copper in a routes file (`routed_led.routes.toml`, epic #599), for the
+//! PCB view's fixed copper: written by `netsmith routes import` from the board `fab` made, then
+//! VCC deleted (the router routes it), the anode net unlocked with one track locked, and a via
+//! added to GND, all with the `netsmith routes` commands.
+
+import std::parts::connector::Header1x2
+import std::parts::passive::{Resistor, Led}
+import std::sources::Rail
+import std::mfg::jlcpcb::TwoLayer
+
+board LedExample {
+    /// Made by JLCPCB's two-layer process, on a board 1.6 mm thick.
+    .process: TwoLayer {
+        .stackup.thickness &= 1.6mm
+    }
+
+    .supply: Rail {
+        .voltage &= 5V +/- 5%
+        .pos.net &= "VCC"
+    }
+
+    .led: Led {
+        .current &= 5mA..15mA
+    }
+
+    .r1: Resistor {}
+
+    /// The supply comes in through this header.
+    .power_in: Header1x2
+    .supply.pos ~ .power_in.p1
+    .supply.neg ~ .power_in.p2
+
+    .supply.pos ~> .r1 ~> .led ~> .supply.neg
+}
