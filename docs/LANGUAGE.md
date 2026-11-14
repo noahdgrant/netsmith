@@ -144,7 +144,7 @@ Rules.
 - A definition holds members (`.name: Type`) and statements (constraints, connections, `bridge`, `catalog`).
 - A `part` is the only definition that may hold `bridge` and `catalog`.
 - A board is placed only in a system or a panel, never in another board or a module.
-- Today a part can be built into a schematic only if the exporter knows its name: `Resistor`, `Capacitor`, `Led`, `LinearRegulator` and `Header1x2`. Another part checks and solves, and `build` stops with the message below.
+- A part is built into a schematic only if a row of `kicad.toml` names its kind: `std/kicad.toml` has the rows of the standard library's parts, and a project adds one for each part of its own (_A part of your own, with no KiCad installed_). A part with no row checks and solves, and `build` stops with the message below.
 
 Misuse: a board inside a board.
 
@@ -168,7 +168,7 @@ error: a board cannot be placed inside a board; boards are placed only in a syst
   |             ^^^^^
 ```
 
-Misuse: a part the exporter does not know.
+Misuse: a part with no row in `kicad.toml`.
 
 ```nsm fails
 part Chip {
@@ -239,10 +239,10 @@ error: `resitance` is not a member of this Resistor; did you mean `.resistance`?
 ```
 
 ```nsm fails
-import std::parts::passive::Led
+import std::parts::passive::{Color, Led}
 
 board Spelling {
-    .led: Led { .colour &= "RED" }
+    .led: Led { .colour &= Color::Red }
 }
 ```
 
@@ -250,7 +250,7 @@ board Spelling {
 error: `colour` is not a member of this Led; did you mean `.color`?
   --> main.nsm:4:18
   |
-4 |     .led: Led { .colour &= "RED" }
+4 |     .led: Led { .colour &= Color::Red }
   |                  ^^^^^^
 ```
 
@@ -2799,7 +2799,7 @@ part Ldo9 {
 }
 ```
 
-A board for it. `build` would stop at export, because there is no KiCad symbol for an `Ldo9` yet, so this block is checked and not built.
+A board for it. `build` would stop at export, because `kicad.toml` has no row for `Ldo9`, so this block is checked and not built.
 
 ```nsm
 import src::ldo9::Ldo9
@@ -5891,7 +5891,7 @@ A board that says nothing about the weight is made by the first provider, 1 oz, 
 
 ### The standard passives are generics
 
-`Resistor`, `Capacitor`, `Led`, `Inductor`, `FerriteBead`, `Crystal` and `Fuse` (`std::parts::passive`), `Schottky`, `Zener`, `Tvs` and `TvsBidirectional` (`std::parts::diode`), `NMosfet` and `PMosfet` (`std::parts::transistor`), `LinearRegulator` (`std::parts::regulator`) and `LevelTranslator` (`std::parts::logic`) are generics (ADR 0068, stage 2; ADR 0063 for the last two and `PMosfet`). Each is its own first provider: it has a pin table with pads and a `catalog`, so it stands for itself, with the same members, the same relations, the same catalog rows and, for a resistor, a capacitor, an inductor or an LED, the same series of values that have no row yet (ADR 0047). A design that adds no provider is read and solved exactly as when they were parts: the same picks, the same effort, the same kind names (`Resistor`) in the bill of materials and in `kicad.toml`. The parts of the standard library that have no catalog (`Diode`, `Switch`, the connectors) are not generics. The standard catalogs of `PMosfet` and `LevelTranslator` have no rows (see _Transistors_ and _Logic levels_): a project that uses either adds its own rows.
+`Resistor`, `Capacitor`, `CapacitorBank`, `Led`, `Inductor`, `FerriteBead`, `Crystal`, `Fuse` and `NtcThermistor` (`std::parts::passive`), `Schottky`, `Zener`, `Tvs` and `TvsBidirectional` (`std::parts::diode`), `NMosfet` and `PMosfet` (`std::parts::transistor`), `LinearRegulator` (`std::parts::regulator`) and `LevelTranslator` (`std::parts::logic`) are generics (ADR 0068, stage 2; ADR 0063 for the last two and `PMosfet`). A generic is a definition and not a part: `.r1: Resistor` is the part, and the bill of materials has a line for the part. Each generic here is its own first provider: it has a pin table with pads and a `catalog`, so it stands for itself, with the same members, the same relations, the same catalog rows and, for a resistor, a capacitor, an inductor or an LED, the same series of values that have no row yet (ADR 0047). A design that adds no provider is read and solved exactly as when they were parts: the same picks, the same effort, the same kind names (`Resistor`) in the bill of materials and in `kicad.toml`. The parts of the standard library that have no catalog (`Diode`, `Switch`, the connectors) are not generics. The standard catalogs of `PMosfet` and `LevelTranslator` have no rows (see _Transistors_ and _Logic levels_): a project that uses either adds its own rows.
 
 A project adds a provider of one of them as it adds any provider: a part that says `provides Resistor`, in a file that the board's file imports. The generic's catalog and pads are its own and are not read into a provider: the provider has its own pin table and its own one-row catalog, and what the generic declares (`.resistance`, `.max_power`, `.temperature_coefficient`, `.current`, `.drop`, `.package`), what it states (`.designator &= "R"`, Ohm's law, the power rating, `bridge .a ~> .b`) and the kinds of its pins. The provider does not declare `.package` again, which a part written by hand would.
 
@@ -5929,7 +5929,7 @@ board Reference {
 r1 is a Resistor: picked PrecisionThinFilm; passed over Resistor (the `resistor` catalog has nothing for `r1`, which needs resistance within 9.99kΩ..10.01kΩ)
 ```
 
-`r2` is served by a standard row, so it says nothing. The provider needs the same three things as a part written by hand: its catalog file in `catalogs/`, its entry in `kicad.toml` (`kind = "PrecisionThinFilm"`), and the recorded source of its row. The other tools see what the generic says of it, not its name: a provider has the attributes of the generics it provides (see Attributes), so it is drawn in series as an inductor is when it provides `Inductor`, `FerriteBead` or `Fuse` (their `#[kind(...)]`), and the placer takes it for a decoupling capacitor when it provides `Capacitor`, and a provider of `Capacitor` is a bank when its `.count` says so. The rules of a provider apply (above), and two more follow from the generic being a part with its own pads:
+`r2` is served by a standard row, so it says nothing. The provider needs the same three things as a part written by hand: its catalog file in `catalogs/`, its entry in `kicad.toml` (`kind = "PrecisionThinFilm"`), and the recorded source of its row. The other tools see what the generic says of it, not its name: a provider has the attributes of the generics it provides (see Attributes), so it is drawn in series as an inductor is when it provides `Inductor`, `FerriteBead` or `Fuse` (their `#[kind(...)]`), and the placer takes it for a decoupling capacitor when it provides `Capacitor` or `CapacitorBank`, and a provider of `CapacitorBank` is a bank while a provider of `Capacitor` is one part. The rules of a provider apply (above), and two more follow from the generic being a part with its own pads:
 
 - A provider's pin table has a row of the generic's kind for each of the generic's pins: `.a` and `.b` for a resistor, `.anode` and `.cathode` for an LED or a diode, `.gate`, `.source` and `.drain` for a MOSFET, `.vin.pos`, `.vin.neg` and `.vout.pos` for a linear regulator.
 - The generic's statements hold for the provider, so a provider cannot state other designator letters than the generic's (`.designator &= "RN"` is a contradiction of `"R"`).
@@ -14487,7 +14487,7 @@ Parts are numbered by their letters in the order the design declares them (a mod
 
 ### Parts
 
-`Resistor`, `Capacitor`, `Led`, `Inductor`, `FerriteBead`, `Crystal`, `Fuse`, `Schottky`, `Zener`, `Tvs`, `NMosfet`, `LinearRegulator` and `NtcThermistor` are written `generic`, not `part` (ADR 0068, stage 2): each is its own first provider, so a design uses it as it always did, and a project can add a provider of it (see _The standard passives are generics_). Every other definition in this table is a plain `part`.
+`Resistor`, `Capacitor`, `CapacitorBank`, `Led`, `Inductor`, `FerriteBead`, `Crystal`, `Fuse`, `NtcThermistor`, `Schottky`, `Zener`, `Tvs`, `TvsBidirectional`, `NMosfet`, `PMosfet`, `LinearRegulator` and `LevelTranslator` are written `generic`, not `part` (ADR 0068, stage 2): each is its own first provider, so a design uses it as it always did, and a project can add a provider of it (see _The standard passives are generics_). A row that says "A generic" is a generic with no pads, which only a provider stands for (`Connector`, the USB-C receptacles, `BuckIc`, `TwoLayer`). Every other definition in this table is a plain `part` or a `module`.
 
 | Definition | What it is |
 |---|---|
