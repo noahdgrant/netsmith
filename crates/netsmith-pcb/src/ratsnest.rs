@@ -313,6 +313,8 @@ mod tests {
             parts: (1..=4)
                 .map(|i| Part {
                     provides: Vec::new(),
+                    declared_kind: netsmith_testkit::std_kind("Resistor")
+                        .and_then(netsmith_core::PartKind::from_word),
                     refdes: format!("R{i}"),
                     kind: "Resistor".into(),
                     value: "1k".into(),
@@ -356,6 +358,8 @@ mod tests {
             parts: vec![
                 Part {
                     provides: Vec::new(),
+                    declared_kind: netsmith_testkit::std_kind("LinearRegulator")
+                        .and_then(netsmith_core::PartKind::from_word),
                     refdes: "U1".into(),
                     kind: "LinearRegulator".into(),
                     value: "LDO".into(),
@@ -365,6 +369,8 @@ mod tests {
                 },
                 Part {
                     provides: Vec::new(),
+                    declared_kind: netsmith_testkit::std_kind("Resistor")
+                        .and_then(netsmith_core::PartKind::from_word),
                     refdes: "R1".into(),
                     kind: "Resistor".into(),
                     value: "1k".into(),
@@ -557,6 +563,8 @@ mod tests {
             notes: Vec::new(),
             parts: vec![Part {
                 provides: Vec::new(),
+                declared_kind: netsmith_testkit::std_kind("Resistor")
+                    .and_then(netsmith_core::PartKind::from_word),
                 refdes: "R1".into(),
                 kind: "Resistor".into(),
                 value: "1k".into(),

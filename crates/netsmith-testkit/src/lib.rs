@@ -955,3 +955,36 @@ mod split_tests {
         assert_eq!(physical, None);
     }
 }
+
+/// The kind word (`netsmith_core::PartKind`, ADR 0125) that the standard library's
+/// definition of `kind` states with `#[kind(...)]`, for a test that builds a design's part by
+/// hand from the name of a standard kind and wants it treated as the design stage would treat
+/// it (a `Capacitor` decouples, a `Header1x2` is a connector). `None` for a kind that states
+/// none or is not the standard library's. This crate depends on no netsmith crate, so it gives
+/// the word, and the caller reads it with `PartKind::from_word`.
+pub fn std_kind(kind: &str) -> Option<&'static str> {
+    let connector = kind.starts_with("Header")
+        || kind.starts_with("Socket")
+        || kind.starts_with("UsbC")
+        || matches!(kind, "Connector" | "Coax" | "Obd2M" | "ProgrammingPads6");
+    if connector {
+        return Some("connector");
+    }
+    Some(match kind {
+        "Resistor" => "resistor",
+        "Capacitor" => "capacitor",
+        "Inductor" => "inductor",
+        "FerriteBead" => "ferrite_bead",
+        "Fuse" => "fuse",
+        "Led" => "led",
+        "Diode" | "Schottky" | "Zener" | "Tvs" | "TvsBidirectional" => "diode",
+        "NMosfet" | "PMosfet" => "transistor",
+        "Crystal" => "crystal",
+        "LinearRegulator" | "LevelTranslator" => "ic",
+        "MountingHole" => "mounting_hole",
+        "PlatedHole" => "plated_hole",
+        "Fiducial" => "fiducial",
+        "Label" => "label",
+        _ => return None,
+    })
+}

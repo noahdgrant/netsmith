@@ -224,6 +224,7 @@ fn a_net_with_a_part_on_it_is_not_a_member() {
         let refdes = format!("R{}", design.parts.len());
         design.parts.push(netsmith_core::Part {
             provides: Vec::new(),
+            declared_kind: netsmith_testkit::std_kind("Resistor").and_then(netsmith_core::PartKind::from_word),
             refdes: refdes.clone(),
             kind: "Resistor".into(),
             value: "33".into(),
@@ -767,6 +768,7 @@ fn a_net_with_a_part_beside_a_pin_is_still_not_a_member_of_a_shared_bus() {
     let (mut design, groups) = board_shared(3, 3, 0);
     design.parts.push(netsmith_core::Part {
         provides: Vec::new(),
+        declared_kind: netsmith_testkit::std_kind("Resistor").and_then(netsmith_core::PartKind::from_word),
         refdes: "R1".into(),
         kind: "Resistor".into(),
         value: "4.7k".into(),

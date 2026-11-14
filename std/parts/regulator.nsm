@@ -8,6 +8,7 @@ import std::sources::Rail
 /// pad is which depends on the package, so there is a pin table for each package its
 /// catalog has. The output's ground (`.vout.neg`) is joined to the input's inside the part,
 /// so it needs no row.
+#[kind(ic)]
 generic LinearRegulator {
     .designator &= "U"
 

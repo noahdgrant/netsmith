@@ -120,6 +120,8 @@ fn body(path: &str, min: [f64; 2], max: [f64; 2], height: Option<f64>) -> Body {
         path: path.into(),
         refdes: format!("U_{path}"),
         kind: "Thing".into(),
+        declared_kind: netsmith_testkit::std_kind("Thing")
+            .and_then(netsmith_core::PartKind::from_word),
         category: PartCategory::Other,
         side: Side::Front,
         layout_at: (0.0, 0.0),
@@ -436,8 +438,10 @@ fn a_connector_too_deep_inside_its_opening_is_named_and_one_flush_enough_is_not(
 fn a_mounting_hole_with_no_boss_is_named() {
     let mut h1 = body("h1", [3.4, 3.4], [6.6, 6.6], Some(0.0));
     h1.kind = "MountingHole".into();
+    h1.declared_kind = Some(netsmith_core::PartKind::MountingHole);
     let mut h2 = body("h2", [33.4, 3.4], [36.6, 6.6], Some(0.0));
     h2.kind = "MountingHole".into();
+    h2.declared_kind = Some(netsmith_core::PartKind::MountingHole);
     let base = case(
         "base",
         vec![cube("boss", [3.0, 3.0, -6.0], [7.0, 7.0, -T - 0.2])],

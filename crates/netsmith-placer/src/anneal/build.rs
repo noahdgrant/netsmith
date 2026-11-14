@@ -45,7 +45,6 @@ impl<'a> Engine<'a> {
                         Carry { zone, boxes }
                     })
                     .collect();
-                let kind = parts[i].kind.as_str();
                 Model {
                     shapes,
                     angles,
@@ -57,7 +56,7 @@ impl<'a> Engine<'a> {
                     court_faces: parts[i].footprint.courtyard_faces,
                     role: if crate::place::is_connector(&parts[i]) {
                         Role::Connector
-                    } else if netsmith_pcb::is_mechanical(kind) {
+                    } else if netsmith_pcb::is_mechanical(parts[i].declared_kind) {
                         Role::Mechanical
                     } else {
                         Role::Plain

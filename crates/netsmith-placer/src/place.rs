@@ -135,12 +135,9 @@ pub(crate) struct Context<'a> {
     pub pours: bool,
 }
 
-/// A connector is a part that provides the standard generic `Connector` (ADR 0068), whatever
-/// its name.
+/// A connector is a part of the kind `connector` (ADR 0125), whatever its name.
 pub(crate) fn is_connector(part: &Placed) -> bool {
-    part.provides
-        .iter()
-        .any(|g| g == netsmith_core::CONNECTOR_GENERIC)
+    part.declared_kind == Some(netsmith_core::PartKind::Connector)
 }
 
 /// A box of courtyards laid out relative to its own top left corner.
@@ -1742,11 +1739,13 @@ mod tests {
     fn part(refdes: &str, kind: &str, package: Option<&str>) -> Part {
         Part {
             // What the design stage records for a standard connector (ADR 0068).
-            provides: if kind.starts_with("Header") || kind.starts_with("Socket") {
-                vec![netsmith_core::CONNECTOR_GENERIC.to_string()]
+            provides: if netsmith_testkit::std_kind(kind) == Some("connector") {
+                vec!["Connector".to_string()]
             } else {
                 Vec::new()
             },
+            declared_kind: netsmith_testkit::std_kind(kind)
+                .and_then(netsmith_core::PartKind::from_word),
             refdes: refdes.into(),
             kind: kind.into(),
             value: "1".into(),
@@ -1805,7 +1804,7 @@ mod tests {
     /// of a project that does is one whatever its name, and a name that starts like a header's
     /// does not make one.
     #[test]
-    fn a_connector_is_found_by_the_generic_it_provides_not_by_its_name() {
+    fn a_connector_is_found_by_its_kind_not_by_its_name() {
         let mut board = board_of(vec![
             part("J1", "Header1x2", None),
             part("R1", "Resistor", Some("0402")),
@@ -1813,7 +1812,7 @@ mod tests {
         assert!(is_connector(&board.parts[0]));
         board.parts[0].kind = "MolexPicoBlade".into();
         assert!(is_connector(&board.parts[0]));
-        board.parts[0].provides.clear();
+        board.parts[0].declared_kind = None;
         assert!(!is_connector(&board.parts[0]));
         board.parts[0].kind = "HeaderBuffer".into();
         assert!(!is_connector(&board.parts[0]));

@@ -428,9 +428,8 @@ pub(super) fn classes(board: &Board, lines: &[Ratline], depth: &[f64]) -> Vec<Cl
         .map(|(n, net)| (net.name.as_str(), n))
         .collect();
     let pair = |net: &str| index.get(net).is_some_and(|&n| partners[n].is_some());
-    let crystal = |part: &netsmith_pcb::Placed| {
-        part.kind.starts_with("Crystal") || part.provides.iter().any(|g| g == "Crystal")
-    };
+    let crystal =
+        |part: &netsmith_pcb::Placed| part.declared_kind == Some(netsmith_core::PartKind::Crystal);
     let clock_nets: Vec<&str> = board
         .nets
         .iter()

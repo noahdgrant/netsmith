@@ -1449,7 +1449,14 @@ mod tests {
 
     fn part(kind: &str, package: Option<&str>) -> Part {
         Part {
-            provides: Vec::new(),
+            // What the design stage records for a standard connector (ADR 0068).
+            provides: if netsmith_testkit::std_kind(kind) == Some("connector") {
+                vec!["Connector".to_string()]
+            } else {
+                Vec::new()
+            },
+            declared_kind: netsmith_testkit::std_kind(kind)
+                .and_then(netsmith_core::PartKind::from_word),
             refdes: "X1".into(),
             kind: kind.into(),
             value: "v".into(),

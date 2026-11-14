@@ -2442,6 +2442,7 @@ part SimpleResistor {
 
     .resistance: Resistance
     /// Through-current, a to b.
+    #[role(current)]
     .current: Current
     /// Voltage at a relative to b.
     .drop: Voltage
@@ -5801,13 +5802,78 @@ board Reference {
 r1 is a Resistor: picked PrecisionThinFilm; passed over Resistor (the `resistor` catalog has nothing for `r1`, which needs resistance within 9.99kΩ..10.01kΩ)
 ```
 
-`r2` is served by a standard row, so it says nothing. The provider needs the same three things as a part written by hand: its catalog file in `catalogs/`, its entry in `kicad.toml` (`kind = "PrecisionThinFilm"`), and the recorded source of its row. The other tools see what it provides, not only its name: it is drawn in series as an inductor is when it provides `Inductor`, `FerriteBead` or `Fuse`, and the placer takes it for a decoupling capacitor when it provides `Capacitor`, and a provider of `Capacitor` is a bank when its `.count` says so. The rules of a provider apply (above), and two more follow from the generic being a part with its own pads:
+`r2` is served by a standard row, so it says nothing. The provider needs the same three things as a part written by hand: its catalog file in `catalogs/`, its entry in `kicad.toml` (`kind = "PrecisionThinFilm"`), and the recorded source of its row. The other tools see what the generic says of it, not its name: a provider has the attributes of the generics it provides (see Attributes), so it is drawn in series as an inductor is when it provides `Inductor`, `FerriteBead` or `Fuse` (their `#[kind(...)]`), and the placer takes it for a decoupling capacitor when it provides `Capacitor`, and a provider of `Capacitor` is a bank when its `.count` says so. The rules of a provider apply (above), and two more follow from the generic being a part with its own pads:
 
 - A provider's pin table has a row of the generic's kind for each of the generic's pins: `.a` and `.b` for a resistor, `.anode` and `.cathode` for an LED or a diode, `.gate`, `.source` and `.drain` for a MOSFET, `.vin.pos`, `.vin.neg` and `.vout.pos` for a linear regulator.
 - The generic's statements hold for the provider, so a provider cannot state other designator letters than the generic's (`.designator &= "RN"` is a contradiction of `"R"`).
 - Only a part provides a standard generic: a module that says `provides Resistor` is refused, because the generic has a `pins` table.
 
-The series of values that have no row (ADR 0047) and the columns that a file of rows may leave out (`.temperature_coefficient` of a resistor, `.dielectric` of a capacitor, `.rms_current` of an inductor) belong to the **catalogs** `resistor`, `capacitor`, `inductor` and `led` (an LED has no series, only its packages), which are the standard generics' own: one table of the solver names them, and it is the only place that does (ADR 0068, stage 3). A catalog is one name that every part listing it shares, so a part or a provider that lists `catalog resistor` has the series and the omitted columns of that catalog, whatever the generic it provides. A column may be left out of a file when the part's `catalog` statement marks it `optional` (ADR 0078), also in a catalog that no generic synthesizes: `.breakdown_voltage` of a TVS diode, in the `tvs` catalog (ADR 0073), is marked so in `std`. A provider whose catalog has another name has no series, and its file has every column it lists, unless its statement marks the column `optional`.
+How the parts that have no row are made (ADR 0047: their packages, tolerances and ratings) and the columns that a file of rows may leave out (`.temperature_coefficient` of a resistor, `.dielectric` of a capacitor, `.rms_current` of an inductor) belong to the **catalogs** `resistor`, `capacitor`, `inductor` and `led` (an LED has no series, only its packages), which are the standard generics' own: one table of the solver names them, and it is the only place that does (ADR 0068, stage 3). Which E-series their values come from is the definition's `#[series(...)]` (see Attributes): `Resistor` offers E12, E24 and E96, `Capacitor` and `Inductor` E12 and E24. A catalog is one name that every part listing it shares, so a part or a provider that lists `catalog resistor` has the omitted columns of that catalog, and the made parts of the series its definition offers, whatever the generic it provides. A column may be left out of a file when the part's `catalog` statement marks it `optional` (ADR 0078), also in a catalog that no generic synthesizes: `.breakdown_voltage` of a TVS diode, in the `tvs` catalog (ADR 0073), is marked so in `std`. A provider whose catalog has another name has no series, and its file has every column it lists, unless its statement marks the column `optional`.
+
+## Attributes
+
+An attribute says what a definition or a member is to the checker, the solver and the tools, in a way a project's own definition says it too (ADR 0125). It is written `#[name]` or `#[name(argument, ...)]` on its own line, after the `///` lines and before a `generic` or a `part`, or before a member of one. The standard library states its own with the same attributes, so a project's generic can do whatever a standard one does.
+
+| Attribute | On | What it says |
+|---|---|---|
+| `#[bank]`, `#[bank(Capacitor)]` | a generic or a part | A part of it stands for a number of identical parts in parallel, its `#[role(count)]` member (see "A bank of capacitors in parallel"). The argument names the generic or part each of them is in the design (`CapacitorBank`'s parts are `Capacitor`s); without it, each is of the bank's own kind. |
+| `#[series(E12, E24, E96)]` | a generic or a part with a `catalog` | The E-series the solver may make values from when no row serves (ADR 0047). The project's `series` picks one: itself when offered, else the finest offered series below it, so a capacitor that offers E12 and E24 gets E24 values in an E96 project. |
+| `#[kind(resistor)]` | a generic or a part | What the tools treat it as, its declared kind: `resistor`, `capacitor`, `inductor`, `ferrite_bead`, `fuse`, `led`, `diode`, `transistor`, `crystal`, `ic`, `connector`, `mounting_hole`, `plated_hole`, `fiducial` or `label`. The placer decouples with a `capacitor`, the schematic draws an `inductor`, a `ferrite_bead` and a `fuse` in series, the placer keeps a `connector` at the edge and a `mounting_hole` in a corner, and `unused` follows a `resistor`, a `fuse` and a `ferrite_bead` (ADR 0083). |
+| `#[value("LED")]` | a generic or a part | What a schematic shows as its value when the solver chose no row. Without it, the name of the kind. |
+| `#[assembly(hand)]` | a generic or a part | Who assembles it when the design, its catalog row and the project say nothing (ADR 0024): `fab`, `hand`, `none` or `consigned`. The standard headers and sockets are `hand`. |
+| `#[role(bias)]` | a member of a generic or a part | Where the member's value comes from, whatever its name: `bias`, the voltage of the rail the part is across (ADR 0013); `bridge_voltage`, the same with its sign (ADR 0088); `current`, the current through its `bridge` (ADR 0014); `supply_peak` (ADR 0086), `supply_reverse_peak`, `limit_current` and `supply_fault_current` (ADR 0091), from the chain it is in; `count`, the number of a `#[bank]`. |
+
+A part has the attributes of its own definition and of the generics it provides, its own first. A member with a role keeps the checks the definition states on it, and a member named `bias` or `current` with no role is a plain member: the role, not the name, gives it a value.
+
+A project's thermistor that the solver may give any E24 value when no row of its catalog serves, with a chain current read through a member of its own name:
+
+```nsm
+import std::sources::Rail
+
+/// An NTC thermistor, invented for this example.
+#[kind(resistor)]
+#[series(E12, E24)]
+generic Thermistor {
+    .designator &= "RT"
+    pins {
+        .a passive "A" "1"
+        .b passive "B" "2"
+    }
+    .resistance: Resistance
+    /// The current through it, from `a` to `b`.
+    #[role(current)]
+    .through: Current
+    .through <= 1mA
+    bridge .a ~> .b
+    catalog thermistor { .resistance }
+}
+
+board Probe {
+    .supply: Rail { .voltage &= 3.3V }
+    .t: Thermistor { .resistance &= 9kohm..11kohm }
+    .supply.pos ~> .t ~> .supply.neg
+}
+```
+
+The checker knows the attributes and refuses any other, and a role or a series it does not know, with the nearest name:
+
+```nsm fails
+#[bank]
+generic Cell {
+    #[role(cuont)]
+    .count: Number
+}
+```
+
+```text
+error: there is no role `cuont` (did you mean `count`?); the roles are `bias`, `bridge_voltage`, `current`, `supply_peak`, `supply_reverse_peak`, `limit_current`, `supply_fault_current`, `count`
+  --> main.nsm:3:12
+  |
+3 |     #[role(cuont)]
+  |            ^^^^^
+```
+
+A whole-number count of identical parts that the board chooses itself is a group (`3 x Capacitor`, "A group of identical members"); a bank is for a count the solver chooses.
 
 ## Modules
 
@@ -6928,9 +6994,9 @@ board Overload {
 
 ```text
 error: no `ldo` candidate satisfies `stage.regulator`: the closest of the 1 that fit, XC6206P332MR-G 3.3V 100mA LDO SOT-23 C5446, fails because -stage.regulator.vout.current must always be at most stage.regulator.max_current, but 0A..50A is not always below 100mA (the currents on net `3V3` in `stage`: stage.regulator.vout.current (-50A..0A) + -stage.vout.current (-50A..0A) add up to zero; net `3V3`: output.current (0A..50A) + stage.vout.current (-50A..0A) add up to zero)
-   --> std/parts/regulator.nsm:40:5
+   --> std/parts/regulator.nsm:41:5
    |
-40 |     -.vout.current <= .max_current
+41 |     -.vout.current <= .max_current
    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -9835,14 +9901,14 @@ board Conducts {
 
 ```text
 error: no `zener` candidate satisfies `z`: the closest of the 1 that fit, BZT52C3V3 3.3V 500mW Zener SOD-123 C2112, fails because min(z.bias) must be at most max(z.zener_voltage), but 11.4V is above 3.5V: no value of the two ranges meets it, so change one of them
-    --> std/parts/diode.nsm:281:5
+    --> std/parts/diode.nsm:297:5
     |
-281 |     min(.bias) <= max(.zener_voltage)
+297 |     min(.bias) <= max(.zener_voltage)
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 error: min(z.bias) must be at most max(z.zener_voltage), but 11.4V is above 3.5V: no value of the two ranges meets it, so change one of them
-    --> std/parts/diode.nsm:281:5
+    --> std/parts/diode.nsm:297:5
     |
-281 |     min(.bias) <= max(.zener_voltage)
+297 |     min(.bias) <= max(.zener_voltage)
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -9979,9 +10045,9 @@ board Standoff {
 
 ```text
 error: no `tvs` candidate satisfies `tvs`: the closest of the 10 that fit, SMAJ12A 12V TVS SMA C113957, fails because tvs.bias must always be at most tvs.standoff_voltage, but 11.4V..12.6V is not always below 12V
-    --> std/parts/diode.nsm:395:5
+    --> std/parts/diode.nsm:415:5
     |
-395 |     .bias <= .standoff_voltage
+415 |     .bias <= .standoff_voltage
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -10053,9 +10119,9 @@ error: no `zener` candidate satisfies `z`: the closest of the 1 that fit, BZT52C
 10 |     .z.bias <= .z.zener_voltage
    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^
 error: d.bias must always be at most d.max_reverse_voltage, but 11.4V..12.6V is not always below 10V
-   --> std/parts/diode.nsm:91:5
+   --> std/parts/diode.nsm:97:5
    |
-91 |     .bias <= .max_reverse_voltage
+97 |     .bias <= .max_reverse_voltage
    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 error: z.bias must always be at most z.zener_voltage, but 11.4V..12.6V is not always below 11V..13V
    --> main.nsm:10:5
@@ -10087,19 +10153,19 @@ board Reversed {
 
 ```text
 error: no `zener` candidate satisfies `z`: the closest of the 1 that fit, BZT52C5V1 5.1V 500mW Zener SOD-123 C2117, fails because z.bias must always be at least 0V, but -12.6V..-11.4V is not always above 0V
-    --> std/parts/diode.nsm:280:5
+    --> std/parts/diode.nsm:296:5
     |
-280 |     .bias >= 0V
+296 |     .bias >= 0V
     |     ^^^^^^^^^^^
 error: d.bias must always be at least -d.forward_voltage, but -12.6V..-11.4V is not always above -700mV
-   --> std/parts/diode.nsm:92:5
+   --> std/parts/diode.nsm:98:5
    |
-92 |     .bias >= -.forward_voltage
+98 |     .bias >= -.forward_voltage
    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^
 error: z.bias must always be at least 0V, but -12.6V..-11.4V is not always above 0V
-    --> std/parts/diode.nsm:280:5
+    --> std/parts/diode.nsm:296:5
     |
-280 |     .bias >= 0V
+296 |     .bias >= 0V
     |     ^^^^^^^^^^^
 ```
 
@@ -10126,9 +10192,9 @@ board Hot {
 
 ```text
 error: no `resistor` candidate satisfies `r`: the closest of the 3 that fit, 10Ω 1% 0805 C317221, fails because (r.drop * r.current) must always be at most r.max_power, but 99kW..101kW is not always below 250mW
-   --> std/parts/passive.nsm:65:5
+   --> std/parts/passive.nsm:68:5
    |
-65 |     .drop * .current <= .max_power
+68 |     .drop * .current <= .max_power
    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -10204,9 +10270,9 @@ board TooTight {
 
 ```text
 error: no combination of candidates satisfies `divider.rbottom` and `divider.rtop` together: the closest, divider.rbottom = 20kΩ 1% 0402 C25765 and divider.rtop = 56kΩ 1% 0603 C23206, fails because `divider.vout` must stay within 3.762V..3.838V, but (divider.vref * (1 + (divider.rtop.resistance / divider.rbottom.resistance))) works out to 3.707V..3.896V
-    --> std/parts/regulator.nsm:102:5
+    --> std/parts/regulator.nsm:103:5
     |
-102 |     .vout == .vref * (1 + .rtop.resistance / .rbottom.resistance)
+103 |     .vout == .vref * (1 + .rtop.resistance / .rbottom.resistance)
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -10376,14 +10442,14 @@ board Overload {
 
 ```text
 error: -reg.ic.sw.current must always be at most reg.ic.max_output_current, but 6.402uA..3A is not always below 2A (the currents on net `net-reg.ic.sw.pos` in `reg`: reg.ic.sw.current (-3A..-6.402uA) + reg.inductor.current (6.402uA..3A) add up to zero; net `1V8` in `reg`: -reg.inductor.current (6.402uA..3A) + -reg.vout.current (-3A..-6.402uA) add up to zero, but the balance is incomplete: `reg.divider.rtop.a` is not modelled; net `1V8`: output.current (0A..3A) + reg.vout.current (-3A..-6.402uA) add up to zero)
-    --> std/parts/regulator.nsm:193:5
+    --> std/parts/regulator.nsm:194:5
     |
-193 |     -.sw.current <= .max_output_current
+194 |     -.sw.current <= .max_output_current
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 error: -reg.vout.current must always be at most reg.ic.max_output_current, but 6.402uA..3A is not always below 2A (the currents on net `1V8`: output.current (0A..3A) + reg.vout.current (-3A..-6.402uA) add up to zero; net `1V8` in `reg`: -reg.inductor.current (6.402uA..3A) + -reg.vout.current (-3A..-6.402uA) add up to zero, but the balance is incomplete: `reg.divider.rtop.a` is not modelled; net `net-reg.ic.sw.pos` in `reg`: reg.ic.sw.current (-3A..-6.402uA) + reg.inductor.current (6.402uA..3A) add up to zero)
-    --> std/parts/regulator.nsm:460:5
+    --> std/parts/regulator.nsm:461:5
     |
-460 |     -.vout.current <= .ic.max_output_current
+461 |     -.vout.current <= .ic.max_output_current
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -10445,9 +10511,9 @@ board HighInput {
 
 ```text
 error: reg.on_time must always be at least reg.ic.min_on_time, but 122ns..490.8ns is not always above 150ns
-    --> std/parts/regulator.nsm:471:5
+    --> std/parts/regulator.nsm:472:5
     |
-471 |     .on_time >= .ic.min_on_time
+472 |     .on_time >= .ic.min_on_time
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -10510,9 +10576,9 @@ board TooQuiet {
 
 ```text
 error: no `capacitor` candidate satisfies `reg.output_cap`: the closest of the 34 that fit, 1 x 10uF 20% 10V X5R 0402 C315248, fails because reg.output_cap.total_effective_capacitance must always be at least reg.ic.min_output_capacitance, but 4.908uF..7.686uF is not always above 10uF (`reg.output_cap.effective_capacitance` is unknown for some candidates, so they were not used: no derating data for 27)
-    --> std/parts/regulator.nsm:478:5
+    --> std/parts/regulator.nsm:479:5
     |
-478 |     .output_cap.total_effective_capacitance >= .ic.min_output_capacitance
+479 |     .output_cap.total_effective_capacitance >= .ic.min_output_capacitance
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -10845,9 +10911,9 @@ board Budget {
 
 ```text
 error: no `fuse` candidate satisfies `fuse`: the closest of the 8 that fit, 1206HV-3A fuse 3A 125V 1206 C21261120, fails because fuse.current must always be at most fuse.rated_current, but 100mA..1kA is not always below 3A (the currents on net `VFUSED`: -fuse.current (100mA..1kA) + load.current (100mA..1kA) add up to zero; net `VIN`: fuse.current (100mA..1kA) + input.current (-1kA..-100mA) add up to zero)
-    --> std/parts/passive.nsm:372:5
+    --> std/parts/passive.nsm:396:5
     |
-372 |     .current <= .rated_current
+396 |     .current <= .rated_current
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -10871,9 +10937,9 @@ board Saturates {
 
 ```text
 error: no `inductor` candidate satisfies `l`: the closest of the 1 that fit, MHCD322512A-2R2M-A8S 2.2uH 3.6A inductor 1210 C285758, fails because l.current must always be at most l.saturation_current, but 500A is not always below 3.6A
-    --> std/parts/passive.nsm:254:5
+    --> std/parts/passive.nsm:271:5
     |
-254 |     .current <= .saturation_current
+271 |     .current <= .saturation_current
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -10937,9 +11003,9 @@ board Arcs {
 
 ```text
 error: no `fuse` candidate satisfies `fuse`: the closest of the 8 that fit, 1206HV-3A fuse 3A 125V 1206 C21261120, fails because fuse.supply_peak must always be at most fuse.rated_voltage, but 5kV is not always below 125V
-    --> std/parts/passive.nsm:373:5
+    --> std/parts/passive.nsm:397:5
     |
-373 |     .supply_peak <= .rated_voltage
+397 |     .supply_peak <= .rated_voltage
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -10995,14 +11061,14 @@ board Overloaded {
 
 ```text
 error: no combination of candidates satisfies `d` and `fuse` together: the closest, d = 1N5819WS 40V 1A Schottky SOD-323 C191023, fails because d.supply_fault_current must always be at most d.max_forward_current, but 3A is not always below 1A
-    --> std/parts/diode.nsm:142:5
+    --> std/parts/diode.nsm:154:5
     |
-142 |     .supply_fault_current <= .max_forward_current
+154 |     .supply_fault_current <= .max_forward_current
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 error: d.supply_fault_current must always be at most d.max_forward_current, but 3A is not always below 1A
-    --> std/parts/diode.nsm:142:5
+    --> std/parts/diode.nsm:154:5
     |
-142 |     .supply_fault_current <= .max_forward_current
+154 |     .supply_fault_current <= .max_forward_current
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -11039,9 +11105,9 @@ board Switch {
 
 ```text
 error: no `n_mosfet` candidate satisfies `q`: the closest of the 2 that fit, AO3400A 30V 5.7A N-MOSFET SOT-23 C20917, fails because q.gate_source_voltage must always be at least q.gate_threshold, but 285mV..315mV is not always above 650mV..1.45V
-   --> std/parts/transistor.nsm:77:5
+   --> std/parts/transistor.nsm:79:5
    |
-77 |     .gate_source_voltage >= .gate_threshold
+79 |     .gate_source_voltage >= .gate_threshold
    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -11073,14 +11139,14 @@ board Switch {
 
 ```text
 error: no `n_mosfet` candidate satisfies `q`: the closest of the 1 that fit, 2N7002 60V 115mA N-MOSFET SOT-23 C8545, fails because q.gate_source_voltage must always be at least q.on_resistance_vgs, but 3.135V..3.465V is not always above 5V
-   --> std/parts/transistor.nsm:78:5
+   --> std/parts/transistor.nsm:80:5
    |
-78 |     .gate_source_voltage >= .on_resistance_vgs
+80 |     .gate_source_voltage >= .on_resistance_vgs
    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 error: q.gate_source_voltage must always be at least q.on_resistance_vgs, but 3.135V..3.465V is not always above 5V
-   --> std/parts/transistor.nsm:78:5
+   --> std/parts/transistor.nsm:80:5
    |
-78 |     .gate_source_voltage >= .on_resistance_vgs
+80 |     .gate_source_voltage >= .on_resistance_vgs
    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -11140,9 +11206,9 @@ board HighSide {
 
 ```text
 error: no `p_mosfet` candidate satisfies `q`: the closest of the 1 that fit, ZP-30 30V 4A P-MOSFET, fails because q.drain_source_voltage must always be at most q.max_drain_source_voltage, but 95V..105V is not always below 30V
-    --> std/parts/transistor.nsm:131:5
+    --> std/parts/transistor.nsm:135:5
     |
-131 |     .drain_source_voltage <= .max_drain_source_voltage
+135 |     .drain_source_voltage <= .max_drain_source_voltage
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -11587,6 +11653,7 @@ part Link {
         .b passive "B" "2"
     }
     .resistance: Resistance
+    #[role(current)]
     .current: Current
     .drop: Voltage
     .drop == .current * .resistance
@@ -11602,6 +11669,7 @@ part Drop {
         .cathode passive "K" "2"
     }
     .forward_voltage: Voltage
+    #[role(current)]
     .current: Current
     .drop: Voltage
     bridge .anode ~> .cathode
@@ -11636,9 +11704,9 @@ board Powered {
 
 ```text
 error: protection.vout.voltage must always be at least 4.5V, but 4.22V..4.94V is not always above 4.5V (the DC analysis puts `protection.vout.voltage` at 4.22V..4.94V, its high end with plug.supply at 5.25V, protection.diode conducting at 300mV, load at 100mA, its low end with plug.supply at 4.75V, protection.diode conducting at 500mV, load at 300mA)
-   --> main.nsm:65:5
+   --> main.nsm:67:5
    |
-65 |     .protection.vout.voltage >= 4.5V
+67 |     .protection.vout.voltage >= 4.5V
    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -11673,6 +11741,7 @@ part Link {
         .b passive "B" "2"
     }
     .resistance: Resistance
+    #[role(current)]
     .current: Current
     .drop: Voltage
     .drop == .current * .resistance
@@ -11810,6 +11879,7 @@ part LowSideSwitch {
     }
     .gate_threshold: Voltage
     .on_resistance: Resistance
+    #[role(current)]
     .current: Current
     bridge .drain ~> .source
     dc nmos .gate .drain .source .gate_threshold .on_resistance
@@ -11921,6 +11991,7 @@ part Link {
         .b passive "B" "2"
     }
     .resistance: Resistance
+    #[role(current)]
     .current: Current
     bridge .a ~> .b
     dc resistor .a .b .resistance
@@ -11954,9 +12025,9 @@ board Starved {
 
 ```text
 error: the source cannot give what `reg` asks (5W at its output, efficiency 90 %): its input falls to 0V and no operating point exists
-   --> main.nsm:30:5
+   --> main.nsm:31:5
    |
-30 |     .reg: Converter { .efficiency &= 0.9; .vout.voltage &= 5V }
+31 |     .reg: Converter { .efficiency &= 0.9; .vout.voltage &= 5V }
    |     ^^^^^^^^^^^^^^^
 ```
 
@@ -11972,6 +12043,7 @@ part Link {
         .b passive "B" "2"
     }
     .resistance: Resistance
+    #[role(current)]
     .current: Current
     bridge .a ~> .b
     dc resistor .a .b .resistance
@@ -12006,9 +12078,9 @@ board Small {
 
 ```text
 error: `supply.current` is stated -500mA..0A, so the supply `supply` gives at most 500mA, but the DC analysis finds the loads on its net drawing at least 697.5mA and up to 1.252A, the least with supply at 16V
-   --> main.nsm:25:5
+   --> main.nsm:26:5
    |
-25 |     .supply: Rail {
+26 |     .supply: Rail {
    |     ^^^^^^^^^^^^^
 ```
 

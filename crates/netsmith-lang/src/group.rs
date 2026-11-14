@@ -137,6 +137,7 @@ fn expand_items(items: &mut Vec<Item>, errors: &mut Vec<ParseError>) {
                     for i in 0..g.count.n {
                         out.push(Item::Decl(Decl {
                             docs: Vec::new(),
+                            attrs: Vec::new(),
                             name: Path {
                                 leading_dot: true,
                                 segments: vec![indexed(&name, i)],

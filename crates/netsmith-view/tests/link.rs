@@ -357,6 +357,7 @@ fn a_supply_with_a_part_to_ground_on_it_keeps_its_symbol() {
     let mut design = straight();
     design.parts.push(netsmith_core::Part {
         provides: Vec::new(),
+        declared_kind: netsmith_testkit::std_kind("LkTvs").and_then(netsmith_core::PartKind::from_word),
         refdes: "D2".into(),
         kind: "LkTvs".into(),
         value: "TVS".into(),

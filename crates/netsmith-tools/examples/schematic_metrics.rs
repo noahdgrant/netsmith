@@ -115,6 +115,9 @@ fn from_json(v: &Value) -> Inputs {
         .iter()
         .map(|p| Part {
             provides: strs(&p["provides"]),
+            declared_kind: p["declared_kind"]
+                .as_str()
+                .and_then(netsmith_core::PartKind::from_word),
             refdes: s(&p["refdes"]),
             kind: s(&p["kind"]),
             value: s(&p["value"]),

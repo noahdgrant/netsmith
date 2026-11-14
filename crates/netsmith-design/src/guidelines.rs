@@ -512,7 +512,7 @@ pub fn plan_tracks(
                 });
             }
             InstKind::Part => {
-                let (Some(_), Some((a, b))) = (model.through_of(id), inst.bridge) else {
+                let (Some(through), Some((a, b))) = (model.through_of(id), inst.bridge) else {
                     continue;
                 };
                 carriers.push(Carrier {
@@ -522,7 +522,7 @@ pub fn plan_tracks(
                     is_rail: false,
                     from: a,
                     to: Some(b),
-                    range: signed_range(model, model.member(id, "current")),
+                    range: signed_range(model, Some(Member::Field(through))),
                 });
             }
             _ => {}

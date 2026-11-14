@@ -23,6 +23,7 @@ impl File {
                 out.push('\n');
             }
             write_docs(&mut out, &def.docs, "///", 0);
+            write_attrs(&mut out, &def.attrs, 0);
             let _ = write!(out, "{} {}", def.kind.keyword(), def.name.to_source());
             if !def.params.is_empty() {
                 let params: Vec<String> = def
@@ -239,6 +240,32 @@ fn write_docs(out: &mut String, docs: &[String], marker: &str, depth: usize) {
     }
 }
 
+/// One attribute per line, indented to `depth`: `#[series(E24, E96)]`.
+fn write_attrs(out: &mut String, attrs: &[Attribute], depth: usize) {
+    for attr in attrs {
+        out.push_str(&"    ".repeat(depth));
+        out.push_str(&attr.to_source());
+        out.push('\n');
+    }
+}
+
+impl Attribute {
+    pub fn to_source(&self) -> String {
+        if self.args.is_empty() {
+            return format!("#[{}]", self.name.to_source());
+        }
+        let args: Vec<String> = self
+            .args
+            .iter()
+            .map(|a| match a {
+                AttrArg::Name(i) => i.to_source(),
+                AttrArg::Text { text, .. } => quote(text),
+            })
+            .collect();
+        format!("#[{}({})]", self.name.to_source(), args.join(", "))
+    }
+}
+
 /// Writes the `{ ... }` of an `enum`: one variant on each line.
 fn write_variants(out: &mut String, inner_docs: &[String], variants: &[Variant]) {
     if variants.is_empty() && inner_docs.is_empty() {
@@ -267,6 +294,7 @@ fn write_block(out: &mut String, inner_docs: &[String], items: &[Item], depth: u
     for item in items {
         if let Item::Decl(d) = item {
             write_docs(out, &d.docs, "///", depth + 1);
+            write_attrs(out, &d.attrs, depth + 1);
         }
         out.push_str(&"    ".repeat(depth + 1));
         match item {

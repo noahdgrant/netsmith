@@ -31,14 +31,9 @@ pub struct DecouplingPair {
     pub nets: [PairNet; 2],
 }
 
+/// A capacitor by its kind (ADR 0125), whatever its own name.
 fn is_capacitor(part: &Placed) -> bool {
-    is_capacitor_kind(&part.kind, &part.provides)
-}
-
-/// A capacitor by its kind, or because its definition provides the generic `Capacitor`
-/// (ADR 0068), whatever its own name.
-fn is_capacitor_kind(kind: &str, provides: &[String]) -> bool {
-    kind.starts_with("Capacitor") || provides.iter().any(|g| g == "Capacitor")
+    part.declared_kind == Some(netsmith_core::PartKind::Capacitor)
 }
 
 /// The number of leading segments two instance paths share, not counting the part's own
@@ -273,14 +268,6 @@ mod tests {
             p(2.0, 2.0),
             p(4.0, 0.0)
         ));
-    }
-
-    #[test]
-    fn a_provider_of_capacitor_is_a_capacitor_whatever_its_name() {
-        assert!(is_capacitor_kind("Capacitor", &[]));
-        assert!(is_capacitor_kind("AcmeCeramic", &["Capacitor".to_string()]));
-        assert!(!is_capacitor_kind("AcmeCeramic", &[]));
-        assert!(!is_capacitor_kind("AcmeCeramic", &["Inductor".to_string()]));
     }
 
     #[test]

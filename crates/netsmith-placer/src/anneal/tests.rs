@@ -47,6 +47,8 @@ fn resistors(paths: &[&str]) -> Board {
         .enumerate()
         .map(|(i, path)| Part {
             provides: Vec::new(),
+            declared_kind: netsmith_testkit::std_kind("Resistor")
+                .and_then(netsmith_core::PartKind::from_word),
             refdes: format!("R{}", i + 1),
             kind: "Resistor".into(),
             value: "1k".into(),

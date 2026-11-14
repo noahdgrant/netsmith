@@ -271,12 +271,15 @@ fn the_connector_is_found_by_its_kind_not_by_its_designator() {
 /// like a header whatever its name, and a part whose name only starts like a header's is not:
 /// the generic says it, never the name (issue #166).
 #[test]
-fn a_connector_is_a_part_that_provides_the_generic_not_one_with_a_name_like_a_header() {
+fn a_connector_is_a_part_of_the_connector_kind_not_one_with_a_name_like_a_header() {
     let kind_of = |design: &mut Design, refdes: &str, kind: &str, provides: &[&str]| {
         for p in &mut design.parts {
             if p.refdes == refdes {
                 p.kind = kind.into();
-                p.provides = provides.iter().map(|g| g.to_string()).collect();
+                // What the design stage gives a part that provides the standard `Connector`.
+                p.declared_kind = provides
+                    .contains(&"Connector")
+                    .then_some(netsmith_core::PartKind::Connector);
             }
         }
     };

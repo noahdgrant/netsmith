@@ -8,6 +8,7 @@
         "provides": [
           "Connector"
         ],
+        "declared_kind": "connector",
         "value": "Conn_01x02",
         "package": null,
         "path": "power_in",
@@ -40,6 +41,7 @@
         "provides": [
           "Connector"
         ],
+        "declared_kind": "connector",
         "value": "Conn_01x02",
         "package": null,
         "path": "power_out",
@@ -70,6 +72,7 @@
         "refdes": "C1",
         "kind": "Capacitor",
         "provides": [],
+        "declared_kind": "capacitor",
         "value": "10u",
         "package": "0402",
         "path": "stage.input_cap",
@@ -100,6 +103,7 @@
         "refdes": "C2",
         "kind": "Capacitor",
         "provides": [],
+        "declared_kind": "capacitor",
         "value": "22u",
         "package": "0603",
         "path": "stage.output_cap",
@@ -130,6 +134,7 @@
         "refdes": "U1",
         "kind": "LinearRegulator",
         "provides": [],
+        "declared_kind": "ic",
         "value": "XC6206P332MR-G",
         "package": "SOT-23",
         "path": "stage.regulator",
@@ -488,6 +493,7 @@
         "refdes": "D1",
         "kind": "Led",
         "provides": [],
+        "declared_kind": "led",
         "value": "KT-0603R",
         "package": "0603",
         "path": "led",
@@ -520,6 +526,7 @@
         "provides": [
           "Connector"
         ],
+        "declared_kind": "connector",
         "value": "Conn_01x02_Socket",
         "package": null,
         "path": "power_in",
@@ -550,6 +557,7 @@
         "refdes": "R1",
         "kind": "Resistor",
         "provides": [],
+        "declared_kind": "resistor",
         "value": "100",
         "package": "0402",
         "path": "r1",

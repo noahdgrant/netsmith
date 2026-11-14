@@ -75,6 +75,7 @@ part Switch1 {
     }
     .gate_threshold: Voltage
     .on_resistance: Resistance
+    #[role(current)]
     .current: Current
     bridge .drain ~> .source
     dc nmos .gate .drain .source .gate_threshold .on_resistance

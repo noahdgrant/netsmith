@@ -52,6 +52,7 @@ fn board(
     std::fs::write(folder.join("BIG.kicad_mod"), BIG).unwrap();
     let part = |refdes: &str, package: &str| Part {
         provides: Vec::new(),
+        declared_kind: netsmith_testkit::std_kind("Resistor").and_then(netsmith_core::PartKind::from_word),
         refdes: refdes.into(),
         kind: "Resistor".into(),
         value: package.into(),

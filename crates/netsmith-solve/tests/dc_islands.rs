@@ -26,6 +26,7 @@ part Link {
     }
     .resistance: Resistance
     .rated_current: Current
+    #[role(current)]
     .current: Current
     .drop: Voltage
     .drop == .current * .resistance
@@ -41,6 +42,7 @@ part Leak {
         .a passive "A" "1"
         .b passive "B" "2"
     }
+    #[role(current)]
     .current: Current
     bridge .a ~> .b
 }
@@ -109,6 +111,7 @@ part Switch1 {
     }
     .gate_threshold: Voltage
     .on_resistance: Resistance
+    #[role(current)]
     .current: Current
     bridge .drain ~> .source
     dc nmos .gate .drain .source .gate_threshold .on_resistance

@@ -4,6 +4,7 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::rc::Rc;
 
+use netsmith_core::PartKind;
 use netsmith_lang::ast::{Decl, DefKind, Definition, Import, Item, Path, Physical, TypePath};
 use netsmith_lang::{Span, parse};
 use netsmith_quantity::Dimension;
@@ -468,6 +469,7 @@ impl<'a> Checker<'a> {
         }
         let defs: Vec<Rc<Definition>> = file.definitions.into_iter().map(Rc::new).collect();
 
+        self.check_attributes(source, &defs);
         let id = self.modules.len();
         let mut scope = HashMap::new();
         for (i, def) in defs.iter().enumerate() {
@@ -496,6 +498,7 @@ impl<'a> Checker<'a> {
         for import in &imports {
             self.apply_import(id, import);
         }
+        self.check_bank_kinds(id);
         let loader = self.loader;
         if let Some((physical_name, physical_text)) = loader.physical_of(name) {
             self.add_physical(id, physical_name, physical_text);
@@ -1053,6 +1056,7 @@ impl<'a> Checker<'a> {
             standard: Vec::new(),
             placed_as: placed.as_ref().map(|(_, n)| n.clone()),
             placed_def: placed.map(|(d, _)| d),
+            marks: Default::default(),
         });
         // Every part has a field for who assembles it (ADR 0024): the board narrows it, the
         // catalog row may state a default, and the design stage reads it. It has one for the letters
@@ -1141,11 +1145,14 @@ impl<'a> Checker<'a> {
                     .map(|(g, _)| g.name.name.clone()),
             )
             .collect();
+        let provided: Vec<Rc<Definition>> = generics.iter().map(|(g, _)| g.clone()).collect();
+        self.model.instances[id.0].marks = self.marks_of(def, &provided);
         for (g, gref) in &generics {
             let items = self.generic_items(g, def, kind);
             let before = self.model.instance(id).children.len();
             let saved = self.enter_def(*gref);
             self.declare(&items);
+            self.apply_roles(id, &items);
             self.leave_def(saved);
             let names: Vec<String> = self.model.instance(id).children[before..]
                 .iter()
@@ -1161,6 +1168,7 @@ impl<'a> Checker<'a> {
             self.declare_default_environment(&def.items, def.span);
         }
         self.declare(&def.items);
+        self.apply_roles(id, &def.items);
         for (g, gref) in &generics {
             let items = self.generic_items(g, def, kind);
             let saved = self.enter_def(*gref);
@@ -1312,6 +1320,7 @@ impl<'a> Checker<'a> {
             standard: Vec::new(),
             placed_as: None,
             placed_def: None,
+            marks: Default::default(),
         });
         let module = self.model.instance(owner).kind == InstKind::Module;
         let fields = [
@@ -1638,6 +1647,7 @@ impl<'a> Checker<'a> {
             standard: Vec::new(),
             placed_as: None,
             placed_def: None,
+            marks: Default::default(),
         });
         for field in ["function", "net"] {
             let f = self.model.add_field(pin, field, FieldKind::Text);
@@ -1955,17 +1965,14 @@ impl<'a> Checker<'a> {
         })
     }
 
-    /// What to add to "has no member `count`" for a `Capacitor` (ADR 0123): a capacitor is one
-    /// part, and several are a `CapacitorBank` or `N x Capacitor`. Empty for any other name or
-    /// part.
+    /// What to add to "has no member `count`" for a capacitor that is not a bank (ADR 0123, its
+    /// `#[kind(capacitor)]`, ADR 0125): a capacitor is one part, and several are a
+    /// `CapacitorBank` or `N x Capacitor`. Empty for any other name or part.
     fn count_hint(&self, inst: InstId, name: &str) -> &'static str {
+        let marks = &self.model.instance(inst).marks;
         if name == "count"
-            && self
-                .model
-                .instance(inst)
-                .standard
-                .iter()
-                .any(|g| g == "Capacitor")
+            && marks.declared_kind == Some(PartKind::Capacitor)
+            && marks.bank.is_none()
         {
             ": a `Capacitor` is one part; for a count the solver chooses write a `CapacitorBank` \
              (`.bulk: CapacitorBank { .count &= 1..8 }`), and for a number you know write \
@@ -2123,9 +2130,12 @@ impl Checker<'_> {
             (DefKind::Interface, "Cutout") => ("a cutout", true),
             (DefKind::Interface, "CaseModel") => ("a case model", true),
             (DefKind::Interface, "Keepout") => ("a keepout that a board draws", false),
-            (DefKind::Part, "MountingHole") => ("a mounting hole", true),
-            (DefKind::Part, "Fiducial") => ("a fiducial", true),
-            (DefKind::Part, "Label") => ("a label", true),
+            (DefKind::Part, _) => match self.marks_of(def, &[]).declared_kind {
+                Some(PartKind::MountingHole) => ("a mounting hole", true),
+                Some(PartKind::Fiducial) => ("a fiducial", true),
+                Some(PartKind::Label) => ("a label", true),
+                _ => return None,
+            },
             _ => return None,
         };
         Some(PhysicalType { noun, in_case })

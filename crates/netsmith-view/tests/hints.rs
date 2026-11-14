@@ -12,6 +12,7 @@ use netsmith_view::{
 fn part(refdes: &str, path: &str) -> Part {
     Part {
         provides: Vec::new(),
+        declared_kind: netsmith_testkit::std_kind("Resistor").and_then(netsmith_core::PartKind::from_word),
         refdes: refdes.into(),
         kind: "Resistor".into(),
         value: "1k".into(),

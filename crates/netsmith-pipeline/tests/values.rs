@@ -67,6 +67,7 @@ part Lamp {
         .a passive "A" "1"
         .b passive "B" "2"
     }
+    #[role(current)]
     .current: Current
     bridge .a ~> .b
 }

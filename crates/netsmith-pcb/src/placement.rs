@@ -626,7 +626,7 @@ pub(crate) fn oversize_before_placing(
 ) -> Vec<Oversize> {
     let mut parts: Vec<Placed> = parts
         .iter()
-        .filter(|p| !crate::placement::is_mechanical(&p.kind))
+        .filter(|p| !crate::placement::is_mechanical(p.declared_kind))
         .cloned()
         .collect();
     let fixed: Vec<bool> = parts
@@ -794,8 +794,9 @@ pub fn short(v: f64) -> String {
     }
 }
 
-/// Whether a kind of part is a mechanical item that belongs in the corners of a fixed
-/// outline: a hole or a fiducial. A test point is on a net and is placed with the circuit.
-pub fn is_mechanical(kind: &str) -> bool {
-    matches!(kind, "MountingHole" | "PlatedHole" | "Fiducial")
+/// Whether a part is a mechanical item that belongs in the corners of a fixed outline: a hole
+/// or a fiducial, by its kind (ADR 0125). A test point is on a net and is placed with the
+/// circuit.
+pub fn is_mechanical(declared_kind: Option<netsmith_core::PartKind>) -> bool {
+    declared_kind.is_some_and(netsmith_core::PartKind::is_mechanical)
 }

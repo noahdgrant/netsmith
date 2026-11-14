@@ -8,6 +8,7 @@
         "provides": [
           "Connector"
         ],
+        "declared_kind": "connector",
         "value": "Conn_01x02",
         "package": null,
         "path": "power_in",
@@ -40,6 +41,7 @@
         "provides": [
           "Connector"
         ],
+        "declared_kind": "connector",
         "value": "Conn_01x02",
         "package": null,
         "path": "power_out",
@@ -70,6 +72,7 @@
         "refdes": "C1",
         "kind": "Capacitor",
         "provides": [],
+        "declared_kind": "capacitor",
         "value": "10u",
         "package": "0402",
         "path": "stage.input_cap",
@@ -100,6 +103,7 @@
         "refdes": "C2",
         "kind": "Capacitor",
         "provides": [],
+        "declared_kind": "capacitor",
         "value": "22u",
         "package": "0603",
         "path": "stage.output_cap",
@@ -130,6 +134,7 @@
         "refdes": "U1",
         "kind": "LinearRegulator",
         "provides": [],
+        "declared_kind": "ic",
         "value": "XC6206P332MR-G",
         "package": "SOT-23",
         "path": "stage.regulator",

@@ -412,6 +412,7 @@ pub fn mixed_board(seed: u64, area: (f64, f64), mix: Mix) -> Result<Board, Board
             .iter()
             .map(|s| Part {
                 provides: Vec::new(),
+                declared_kind: netsmith_testkit::std_kind(s.kind).and_then(netsmith_core::PartKind::from_word),
                 refdes: s.refdes.clone(),
                 kind: s.kind.into(),
                 value: s.package.into(),

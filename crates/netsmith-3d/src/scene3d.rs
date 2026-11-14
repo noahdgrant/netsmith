@@ -76,6 +76,7 @@ use crate::mesh::Mesh;
 use crate::mesh::trig::sin_cos_turns;
 use crate::step::read::model::Affine;
 use crate::step::read::{CHORD_TOLERANCE, ReadModel};
+use netsmith_core::PartKind;
 use netsmith_pcb::{
     Area, Board, BodySolid, Copper, CopperError, Drill, LayerKind, PadKind, PlacementProblem, Pt,
     Rect, ShapeEdge, Side, StackLayer, copper_of,
@@ -144,29 +145,26 @@ impl PartCategory {
         }
     }
 
-    /// The category of a part of kind `kind` that provides `provides`, designated `refdes`.
-    pub fn of(kind: &str, provides: &[String], refdes: &str) -> PartCategory {
-        let is = |g: &str| kind == g || provides.iter().any(|p| p == g);
-        let by_generic = [
-            ("Connector", PartCategory::Connector),
-            ("Resistor", PartCategory::Resistor),
-            ("Capacitor", PartCategory::Capacitor),
-            ("Inductor", PartCategory::Inductor),
-            ("FerriteBead", PartCategory::Inductor),
-            ("Led", PartCategory::Diode),
-            ("Schottky", PartCategory::Diode),
-            ("Zener", PartCategory::Diode),
-            ("Tvs", PartCategory::Diode),
-            ("TvsBidirectional", PartCategory::Diode),
-            ("NMosfet", PartCategory::Transistor),
-            ("PMosfet", PartCategory::Transistor),
-            ("Crystal", PartCategory::Crystal),
-            ("Fuse", PartCategory::Fuse),
-            ("LinearRegulator", PartCategory::Ic),
-            ("LevelTranslator", PartCategory::Ic),
-        ];
-        if let Some((_, c)) = by_generic.iter().find(|(g, _)| is(g)) {
-            return *c;
+    /// The category of a part of the kind `kind` (ADR 0125), designated `refdes`: by its
+    /// kind when that names one, else by the letters of its designator.
+    pub fn of(declared_kind: Option<PartKind>, refdes: &str) -> PartCategory {
+        let by_kind = declared_kind.and_then(|c| match c {
+            PartKind::Connector => Some(PartCategory::Connector),
+            PartKind::Resistor => Some(PartCategory::Resistor),
+            PartKind::Capacitor => Some(PartCategory::Capacitor),
+            PartKind::Inductor | PartKind::FerriteBead => Some(PartCategory::Inductor),
+            PartKind::Led | PartKind::Diode => Some(PartCategory::Diode),
+            PartKind::Transistor => Some(PartCategory::Transistor),
+            PartKind::Crystal => Some(PartCategory::Crystal),
+            PartKind::Fuse => Some(PartCategory::Fuse),
+            PartKind::Ic => Some(PartCategory::Ic),
+            PartKind::MountingHole
+            | PartKind::PlatedHole
+            | PartKind::Fiducial
+            | PartKind::Label => None,
+        });
+        if let Some(c) = by_kind {
+            return c;
         }
         match refdes.trim_end_matches(|c: char| c.is_ascii_digit()) {
             "R" | "RN" => PartCategory::Resistor,
@@ -310,6 +308,8 @@ pub struct Body {
     pub path: String,
     pub refdes: String,
     pub kind: String,
+    /// What the tools treat it as (ADR 0125).
+    pub declared_kind: Option<PartKind>,
     /// What sort of part it is, for colouring by kind.
     pub category: PartCategory,
     pub side: Side,
@@ -1251,7 +1251,8 @@ fn body(
         path: p.path.clone(),
         refdes: p.refdes.clone(),
         kind: p.kind.clone(),
-        category: PartCategory::of(&p.kind, &p.provides, &p.refdes),
+        declared_kind: p.declared_kind,
+        category: PartCategory::of(p.declared_kind, &p.refdes),
         side: p.side,
         layout_at: (clean(p.at.x - frame.left), clean(p.at.y - frame.top)),
         rotation: p.rotation,

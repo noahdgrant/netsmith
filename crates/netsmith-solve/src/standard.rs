@@ -1,11 +1,20 @@
-//! What the solver knows about the catalogs of the standard generics that have synthesized
-//! parts (ADR 0068 stage 3).
+//! What the solver knows about the standard catalogs that have synthesized parts (ADR 0068
+//! stage 3, ADR 0125).
 //!
-//! `Resistor`, `Capacitor`, `Inductor` and `Led` are generics of the standard library that are
-//! their own first provider (ADR 0068 section 7): each has the catalog its `catalog` statement
-//! names, and, when the project states an E-series, a second provider that has no supplier, the
-//! synthesized one of ADR 0047. The language cannot say how that provider makes its values
-//! (ADR 0068 open question 10), so it is Rust, and this is the one place that names the four.
+//! The catalogs `resistor`, `capacitor`, `inductor` and `led` have, besides their rows, a
+//! provider with no supplier, the synthesized one of ADR 0047. How it makes its parts (the
+//! packages, the tolerance kinds, the package's power rating, a capacitance with no bias
+//! curve) is a property of the catalog, not of a definition, and the language cannot say it,
+//! so it is Rust, and this is the one place that names the four catalogs. Any part that lists
+//! one of them in its `catalog` statement gets these parts, a project's own part too.
+//!
+//! Which E-series the values come from is the definition's, not Rust's: its
+//! `#[series(E12, E24, E96)]` (ADR 0125), with the project's `series` key choosing among them
+//! ([`Series::within`]). A part whose definition offers no series is given no synthesized
+//! parts of a catalog that is made of a series; an LED has no value, and its catalog's parts
+//! need no series. A project's own catalog with a `#[series(...)]` gets the plain values of
+//! the series (`generic::Spec::Series`).
+//!
 //! Everything else that used to be written four times is a field of an entry here:
 //!
 //! - the columns the synthesized provider can fill, and how it fills each of them, which is
@@ -19,46 +28,9 @@
 //!   empty there too, would fit no design at all.
 //!
 //! A catalog is a name that every part listing it shares (ADR 0022: `resistor.csv` is read by
-//! every part with `catalog resistor`), so the entries are found by the catalog's name. The
-//! `generic` of an entry is the standard generic whose own `catalog` statement it describes: a
-//! test elaborates each of the four from the standard library and compares the columns, so an
+//! every part with `catalog resistor`), so the entries are found by the catalog's name. A test
+//! elaborates the standard generic that owns each catalog and compares the columns, so an
 //! entry cannot drift from the definition it belongs to.
-//!
-//! # Where Rust still names a standard generic (ADR 0068, stage 3)
-//!
-//! `grep -nE '"(resistor|capacitor|inductor|led)"|"Capacitor"' crates/netsmith-solve/src
-//! crates/netsmith-check/src` cannot be empty: Rust that serves a generic names it once. What
-//! stage 3 did was make this one table instead of seven lists (`generic.rs` had a `match` on
-//! the four catalog names for the columns, the value column, the part word and the kinds of a
-//! row; `table.rs` had `OPTIONAL` and `VALUE_COLUMNS`). The optional columns are derived, not
-//! kept: they are the ones the synthesized provider leaves empty, and they must be the same, so
-//! the list was one fact written twice. What stays, each with its reason:
-//!
-//! - `generic.rs`: `Spec`, `Need`, `Sense`, the package and tolerance tables of each series
-//!   (`PACKAGES`, `CAPACITOR_TOLERANCES`, ...), `Series::for_reactive`, `with_needs`, `misses`
-//!   and `nearest` are the synthesized provider itself, which stays Rust (the language cannot say
-//!   how a value is generated). The entry is found by the catalog's name, not the generic's: a
-//!   catalog is one name shared by every part that lists it, so the columns a file may leave
-//!   out and the series belong to the catalog (ADR 0052 rejected the catalog's name for a
-//!   bank, because a bank is a property of the part; these three are properties of the
-//!   catalog).
-//! - `netsmith-check/src/model.rs`, `BANKS` and `Model::bank`: the one list of generics that are
-//!   banks (`CapacitorBank`, whose parts are `Capacitor`s, ADR 0123) and the one place that
-//!   reads it, keyed by `Instance.standard`. The solver and the design stage ask `Model::bank`
-//!   and name no generic. `CapacitorBank` has the catalog `capacitor` of `Capacitor`, so the
-//!   `CAPACITOR` entry below serves both and a test compares the two `catalog` statements.
-//! - `netsmith-view/src/layout.rs` `is_series_kind` (`Inductor`, `FerriteBead`, `Fuse`) and
-//!   `netsmith-pcb/src/quality.rs` `is_capacitor_kind` read the kind and `Part.provides`: a
-//!   project's own part called `Inductor` has been drawn in series by its kind since before
-//!   generics, and the unit tests build a `Part` by hand with a kind and no `provides`. They
-//!   are about different things (what a layout hangs in series, what the placer calls a
-//!   decoupling capacitor).
-//! - `netsmith-design/src/lib.rs` `default_value`: `"Led"` shows `LED` as the value of an LED the
-//!   solver did not pick. It is a display default the language cannot declare, and reading
-//!   `provides` would change that line of a bill of materials for a provider.
-//! - `hand_soldered`, `is_connector`, `is_mechanical` and `Label` name parts, not generics (the
-//!   connector and mechanical parts are parts); `Mating`, `Logic`, `Place`, `Outline`,
-//!   `Cutout`, `Keepout` and `I2c` are interfaces of the standard library read by name.
 
 use netsmith_check::FieldKind;
 use netsmith_quantity::Dimension;
@@ -104,10 +76,6 @@ type Make = fn(&Standard, Series, &[(String, FieldKind)]) -> Option<Vec<Candidat
 
 /// A standard generic's catalog and its synthesized provider.
 pub(crate) struct Standard {
-    /// The standard generic that owns the catalog (`Resistor`). Read by the test that compares
-    /// the entry with the standard library.
-    #[cfg_attr(not(test), allow(dead_code))]
-    pub generic: &'static str,
     /// The catalog it reads (`resistor`).
     pub catalog: &'static str,
     /// What a message calls one of its parts.
@@ -138,7 +106,6 @@ const fn text(name: &'static str, fill: Fill) -> Column {
 
 /// `catalog resistor { .resistance, .max_power, .package, .temperature_coefficient }`.
 static RESISTOR: Standard = Standard {
-    generic: "Resistor",
     catalog: "resistor",
     word: "resistor",
     columns: &[
@@ -159,7 +126,6 @@ static RESISTOR: Standard = Standard {
 /// `catalog capacitor { .capacitance, .effective_capacitance, .max_voltage, .package,
 /// .dielectric }`.
 static CAPACITOR: Standard = Standard {
-    generic: "Capacitor",
     catalog: "capacitor",
     word: "capacitor",
     columns: &[
@@ -187,7 +153,6 @@ static CAPACITOR: Standard = Standard {
 /// `catalog inductor { .inductance, .saturation_current, .dc_resistance, .package,
 /// .rms_current }`.
 static INDUCTOR: Standard = Standard {
-    generic: "Inductor",
     catalog: "inductor",
     word: "inductor",
     columns: &[
@@ -212,7 +177,6 @@ static INDUCTOR: Standard = Standard {
 
 /// `catalog led { .color, .forward_voltage, .package }`.
 static LED: Standard = Standard {
-    generic: "Led",
     catalog: "led",
     word: "LED",
     columns: &[
@@ -237,13 +201,15 @@ impl Standard {
         STANDARD.iter().copied().find(|s| s.catalog == name)
     }
 
-    /// The standard generic a synthesized part stands for.
-    pub(crate) fn of_spec(spec: &Spec) -> &'static Standard {
+    /// The standard catalog a synthesized part is of; none for a part of a project's own
+    /// catalog that declares `#[series(...)]`.
+    pub(crate) fn of_spec(spec: &Spec) -> Option<&'static Standard> {
         match spec {
-            Spec::Resistor { .. } => &RESISTOR,
-            Spec::Capacitor { .. } => &CAPACITOR,
-            Spec::Inductor { .. } => &INDUCTOR,
-            Spec::Led { .. } => &LED,
+            Spec::Resistor { .. } => Some(&RESISTOR),
+            Spec::Capacitor { .. } => Some(&CAPACITOR),
+            Spec::Inductor { .. } => Some(&INDUCTOR),
+            Spec::Led { .. } => Some(&LED),
+            Spec::Series { .. } => None,
         }
     }
 
@@ -313,6 +279,17 @@ mod tests {
     use super::*;
     use netsmith_check::{Loader, check};
 
+    /// The standard generic whose `catalog` statement an entry describes.
+    fn generic_of(standard: &Standard) -> &'static str {
+        match standard.catalog {
+            "resistor" => "Resistor",
+            "capacitor" => "Capacitor",
+            "inductor" => "Inductor",
+            "led" => "Led",
+            other => panic!("no standard generic for the catalog `{other}`"),
+        }
+    }
+
     /// The columns of the `catalog` statement of each standard generic, in the order it lists
     /// them, as the checker reads them from the standard library.
     fn declared(generic: &str, module: &str) -> (String, Vec<String>) {
@@ -349,24 +326,24 @@ mod tests {
         // thing for the four standard kinds, so the marker in the library is not a second
         // truth that could drift from the rule the solver also keeps under the catalog's name.
         for standard in STANDARD {
-            let (_, _, marked) = declared_with_optional(standard.generic, "passive");
+            let (_, _, marked) = declared_with_optional(generic_of(standard), "passive");
             let ours: Vec<&str> = standard
                 .columns
                 .iter()
                 .filter(|c| standard.is_optional(c.name))
                 .map(|c| c.name)
                 .collect();
-            assert_eq!(marked, ours, "{}", standard.generic);
+            assert_eq!(marked, ours, "{}", generic_of(standard));
         }
     }
 
     #[test]
     fn each_entry_describes_the_catalog_statement_of_its_standard_generic() {
         for standard in STANDARD {
-            let (catalog, columns) = declared(standard.generic, "passive");
-            assert_eq!(catalog, standard.catalog, "{}", standard.generic);
+            let (catalog, columns) = declared(generic_of(standard), "passive");
+            assert_eq!(catalog, standard.catalog, "{}", generic_of(standard));
             let ours: Vec<&str> = standard.columns.iter().map(|c| c.name).collect();
-            assert_eq!(columns, ours, "{}", standard.generic);
+            assert_eq!(columns, ours, "{}", generic_of(standard));
         }
     }
 
@@ -383,15 +360,15 @@ mod tests {
     #[test]
     fn each_entry_makes_parts_for_the_columns_of_its_generic() {
         for standard in STANDARD {
-            let (_, columns) = declared(standard.generic, "passive");
+            let (_, columns) = declared(generic_of(standard), "passive");
             let kinds: Vec<(String, FieldKind)> = columns
                 .iter()
                 .map(|n| (n.clone(), standard.column(n).unwrap().kind))
                 .collect();
             let made = standard
                 .candidates(Series::E24, &kinds)
-                .unwrap_or_else(|| panic!("{} makes no part", standard.generic));
-            assert!(!made.is_empty(), "{}", standard.generic);
+                .unwrap_or_else(|| panic!("{} makes no part", generic_of(standard)));
+            assert!(!made.is_empty(), "{}", generic_of(standard));
             // A synthesized part is empty exactly where a row may be.
             for part in &made {
                 for column in standard.columns {
@@ -399,7 +376,7 @@ mod tests {
                         part.column(column.name).is_none(),
                         standard.is_optional(column.name),
                         "{} {}",
-                        standard.generic,
+                        generic_of(standard),
                         column.name
                     );
                 }

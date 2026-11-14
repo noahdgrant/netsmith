@@ -41,6 +41,8 @@
 ///
 /// The rule "never offered" for an unrated part is accepted as built by the owner,
 /// 2026-11-11.
+#[kind(resistor)]
+#[series(E12, E24, E96)]
 generic Resistor {
     .designator &= "R"
 
@@ -57,6 +59,7 @@ generic Resistor {
     .temperature_coefficient: Number
     /// Through-current, a to b. In a `~>` chain from a rail, the first part's is drawn from the
     /// net the chain starts on (ADR 0014).
+    #[role(current)]
     .current: Current
     /// Voltage at a relative to b.
     .drop: Voltage
@@ -99,6 +102,8 @@ enum Dielectric {
 /// and stated by a design only when it needs one. A generic capacitor (no catalog row) has
 /// none, so a design that states it is given a row. The package is `.package`, a text such as
 /// `"0603"`: a design that needs a size states it (`.package &= "0603"`).
+#[kind(capacitor)]
+#[series(E12, E24)]
 generic Capacitor {
     .designator &= "C"
 
@@ -113,6 +118,7 @@ generic Capacitor {
     /// `.bias` can take.
     .effective_capacitance: Capacitance
     /// The DC voltage across the capacitor, in either direction.
+    #[role(bias)]
     .bias: Voltage
     .max_voltage: Voltage
     /// The dielectric class, unset until a design states it or a catalog row does.
@@ -145,6 +151,9 @@ generic Capacitor {
 /// (`?=`, as `Buck` did for its banks); a range (`.count &= 1..4`) limits the choice. It takes
 /// the fewest for which every check that mentions the part holds, together with the catalog row,
 /// trying one capacitor of every row before two of any.
+#[bank(Capacitor)]
+#[kind(capacitor)]
+#[series(E12, E24)]
 generic CapacitorBank {
     .designator &= "C"
 
@@ -158,9 +167,11 @@ generic CapacitorBank {
     /// The capacitance one capacitor keeps at `.bias`, as `Capacitor.effective_capacitance`.
     .effective_capacitance: Capacitance
     /// The DC voltage across the bank, in either direction.
+    #[role(bias)]
     .bias: Voltage
     .max_voltage: Voltage
     /// How many capacitors stand in parallel.
+    #[role(count)]
     .count: Number
     .count ?= 1..8
     /// The marked value of the whole bank: `.count` times `.capacitance`.
@@ -193,6 +204,8 @@ enum Color {
 /// A light-emitting diode. Current flows from anode to cathode. At DC it is a diode that drops
 /// `.forward_voltage` (ADR 0113), so a `~>` chain from a rail through a resistor and the LED
 /// back to the rail sets the LED's current, and a window on `.current` picks the resistor.
+#[kind(led)]
+#[value("LED")]
 generic Led {
     .designator &= "D"
 
@@ -206,6 +219,7 @@ generic Led {
     /// Through-current, anode to cathode. An LED does not conduct the other way, so a supply
     /// that could fall short of the forward voltage (a 3.3 V rail and a 3.4 V part) cannot
     /// drive it.
+    #[role(current)]
     .current: Current
     .drop:    Voltage
 
@@ -231,6 +245,8 @@ generic Led {
 /// part warms by the rise it states. The rise is the datasheet's own and differs between
 /// makers, so a row records it in its notes. Nothing in the library checks it: a design that
 /// needs one states `.rms_current >= 2A` itself, and a row with no value there is refused.
+#[kind(inductor)]
+#[series(E12, E24)]
 generic Inductor {
     .designator &= "L"
 
@@ -246,6 +262,7 @@ generic Inductor {
     /// The heating (RMS) current, where the catalog row records it.
     .rms_current: Current
     /// Through-current, a to b.
+    #[role(current)]
     .current: Current
     /// Voltage at a relative to b.
     .drop: Voltage
@@ -264,6 +281,7 @@ generic Inductor {
 /// A ferrite bead: a lossy inductor that blocks high frequencies. `.impedance` is the
 /// magnitude at `.impedance_frequency`, where the datasheet gives it, and `.rated_current` is
 /// the largest DC current. The bead's DC resistance drops `.current * .dc_resistance`.
+#[kind(ferrite_bead)]
 generic FerriteBead {
     .designator &= "FB"
 
@@ -278,6 +296,7 @@ generic FerriteBead {
     .rated_current: Current
     .dc_resistance: Resistance
     /// Through-current, a to b.
+    #[role(current)]
     .current: Current
     /// Voltage at a relative to b.
     .drop: Voltage
@@ -298,6 +317,7 @@ generic FerriteBead {
 /// are the design's, and they are not tied to `.load_capacitance`: the stray capacitance of the
 /// layout is not a datasheet number. Only two-pad footprints are mapped in `std/kicad.toml`, so
 /// the four-pad crystals that are most common (3.2 x 2.5 mm) are not (ADR 0023).
+#[kind(crystal)]
 generic Crystal {
     .designator &= "Y"
 
@@ -345,6 +365,7 @@ generic Crystal {
 /// built. `Diode` has no power rating in std (`.max_power` is a Zener's), so the forward drop
 /// times the fault current is not checked. `Switch` and `Inductor` are not given
 /// `.supply_fault_current`; it is one line each when a board needs it (the convention: ADR 0105).
+#[kind(fuse)]
 generic Fuse {
     .designator &= "F"
 
@@ -357,15 +378,18 @@ generic Fuse {
     .rated_voltage: Voltage
     .resistance: Resistance
     /// Through-current, a to b.
+    #[role(current)]
     .current: Current
     /// Voltage at a relative to b.
     .drop: Voltage
     /// The highest voltage of the rail the chain starts on, transients included.
+    #[role(supply_peak)]
     .supply_peak: Voltage
     /// The most current the fuse lets through to what is behind it in the chain, whatever
     /// that is: its rating. A part behind it that has a `.supply_fault_current` is given it
     /// by the checker (ADR 0091), so a diode behind a fuse is rated for what the fuse lets
     /// through with no line on the board.
+    #[role(limit_current)]
     .limit_current: Current
 
     .drop == .current * .resistance
@@ -428,6 +452,7 @@ generic NtcThermistor {
     .resistance >= .hot_resistance
     .resistance <= .cold_resistance
     /// Through-current, a to b.
+    #[role(current)]
     .current: Current
     /// Voltage at a relative to b.
     .drop: Voltage
@@ -453,6 +478,7 @@ part Switch {
     .rated_current: Current
     .rated_voltage: Voltage
     /// Through-current, a to b, while closed.
+    #[role(current)]
     .current: Current
 
     .current <= .rated_current

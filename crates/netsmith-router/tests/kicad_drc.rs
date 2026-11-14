@@ -292,7 +292,13 @@ fn tiny() -> (TempDir, Mapping, FootprintLibrary) {
 fn part(refdes: &str, kind: &str) -> Part {
     let resistor = kind == "Resistor";
     Part {
-        provides: Vec::new(),
+        // What the design stage records for a standard connector (ADR 0068).
+        provides: if netsmith_testkit::std_kind(kind) == Some("connector") {
+            vec!["Connector".to_string()]
+        } else {
+            Vec::new()
+        },
+        declared_kind: netsmith_testkit::std_kind(kind).and_then(netsmith_core::PartKind::from_word),
         refdes: refdes.into(),
         kind: kind.into(),
         value: "1k".into(),

@@ -8,6 +8,9 @@ use netsmith_quantity::{Dimension, Quantity};
 
 use std::sync::Arc;
 
+use netsmith_core::PartKind;
+
+use crate::attrs::{Marks, MemberRole};
 use crate::diag::{SourceId, Sources};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -60,20 +63,6 @@ pub enum Member {
     /// A name whose declaration failed. Using it reports nothing further.
     Poison,
 }
-
-/// The standard generics that are banks (ADR 0052, ADR 0123): a number of identical parts that
-/// stand in parallel in one place, chosen by the design or by the solver through the part's
-/// `.count`, and the generic each of those parts is (`CapacitorBank` is `Capacitor`s). This is
-/// the one list; [`Model::bank`] is the one place that reads it, and the rest of the tools
-/// ask that. A provider of a bank generic is one too, and nothing a design defines is (a
-/// marker for that is not built).
-const BANKS: [(&str, &str); 1] = [("CapacitorBank", "Capacitor")];
-
-/// The standard generics that are a series passive for the rule of `unused` (ADR 0083): a
-/// two-ended part that carries what the board feeds through it, so an interface joined through
-/// one to the rest of the board is used. The narrowest reading; a capacitor, an inductor, a
-/// diode and a switch are not in it (a decision of the owner's).
-const SERIES: [&str; 3] = ["Resistor", "Fuse", "FerriteBead"];
 
 /// What makes a part a bank: where its count is and what each of its parts is.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -136,6 +125,8 @@ pub struct Instance {
     pub placed_as: Option<String>,
     /// The definition of the generic a use was placed as.
     pub(crate) placed_def: Option<(usize, usize)>,
+    /// What the attributes of its definition and of the generics it provides say (ADR 0125).
+    pub marks: Marks,
 }
 
 /// The kind of DC element a part states with `dc` (ADR 0076, amendment 1).
@@ -638,6 +629,8 @@ pub struct Field {
     /// Where `optional` marks the declaration (ADR 0074): the relations that read the member
     /// are skipped when nothing states it.
     pub optional: Option<OptionalMark>,
+    /// What the member is to the checker and the solver, from its `#[role(...)]` (ADR 0125).
+    pub roles: Vec<MemberRole>,
 }
 
 /// The place of an `optional` marker, and the definition whose text declared the member (for
@@ -1604,39 +1597,49 @@ impl Model {
         }
     }
 
-    /// The two ends of a series passive for `unused` (the pins of its `bridge`): a part that
-    /// stands for a standard generic in [`SERIES`], whatever its provider names its pins. None
-    /// for any other part.
+    /// The two ends of a series passive for `unused` (the pins of its `bridge`, ADR 0083): a part
+    /// of the kind `resistor`, `fuse` or `ferrite_bead` (ADR 0125), whatever its provider names
+    /// its pins. The narrowest reading; a capacitor, an inductor, a diode and a switch are not in
+    /// it (a decision of the owner's). None for any other part.
     pub fn series_ends(&self, part: InstId) -> Option<(InstId, InstId)> {
         let inst = self.instance(part);
-        let series = inst.standard.iter().any(|g| SERIES.contains(&g.as_str()));
+        let series = matches!(
+            inst.marks.declared_kind,
+            Some(PartKind::Resistor | PartKind::Fuse | PartKind::FerriteBead)
+        );
         if inst.kind != InstKind::Part || !series {
             return None;
         }
         inst.bridge
     }
 
-    /// The bank a part is (ADR 0052, ADR 0123), or none for a part that is not one: the field that
+    /// The bank a part is (ADR 0052, ADR 0125), or none for a part that is not one: the field that
     /// holds how many identical parts stand in this place, and the kind each of them is. The
-    /// one place that decides which parts are banks.
+    /// one place that decides which parts are banks: its definition, or a generic it provides,
+    /// carries `#[bank]`, and its count is its `#[role(count)]` member.
     pub fn bank(&self, part: InstId) -> Option<Bank> {
         let inst = self.instance(part);
         if inst.kind != InstKind::Part {
             return None;
         }
-        let (generic, member) = BANKS
+        let (generic, member) = inst.marks.bank.clone()?;
+        let count = self.member_with_role(part, MemberRole::Count)?;
+        Some(Bank {
+            generic,
+            count,
+            member,
+        })
+    }
+
+    /// The member of a part or module that has `role` (ADR 0125), if one does.
+    pub fn member_with_role(&self, inst: InstId, role: MemberRole) -> Option<FieldId> {
+        self.instance(inst)
+            .children
             .iter()
-            .find(|(bank, _)| inst.standard.iter().any(|g| g == bank))?;
-        match self.member(part, "count")? {
-            Member::Field(f) if matches!(self.field(f).kind, FieldKind::Quantity(_)) => {
-                Some(Bank {
-                    generic: generic.to_string(),
-                    count: f,
-                    member: member.to_string(),
-                })
-            }
-            _ => None,
-        }
+            .find_map(|(_, m)| match m {
+                Member::Field(f) if self.field(*f).roles.contains(&role) => Some(*f),
+                _ => None,
+            })
     }
 
     /// The `.count` of a part that is a bank: [`Model::bank`]'s field.
@@ -1752,12 +1755,7 @@ impl Model {
             return None;
         }
         self.instance(part).bridge?;
-        match self.member(part, "current")? {
-            Member::Field(f) if self.field(f).kind == FieldKind::Quantity(Dimension::CURRENT) => {
-                Some(f)
-            }
-            _ => None,
-        }
+        self.member_with_role(part, MemberRole::Current)
     }
 
     /// Whether a part draws no DC current by its model (ADR 0027): it states no `current`,
@@ -1770,8 +1768,8 @@ impl Model {
         if inst.kind != InstKind::Part || inst.tables.is_empty() {
             return false;
         }
-        let states_current = inst.children.iter().any(|(name, m)| match m {
-            Member::Field(_) => name == "current",
+        let states_current = inst.children.iter().any(|(_, m)| match m {
+            Member::Field(f) => self.field(*f).roles.contains(&MemberRole::Current),
             Member::Inst(i) => self.draw_of(*i).is_some(),
             Member::Poison => false,
         });
@@ -1918,12 +1916,7 @@ impl Model {
             return None;
         }
         let (a, b) = self.instance(part).bridge?;
-        match self.member(part, "bias")? {
-            Member::Field(f) if self.field(f).kind == FieldKind::Quantity(Dimension::VOLTAGE) => {
-                Some((f, a, b))
-            }
-            _ => None,
-        }
+        Some((self.member_with_role(part, MemberRole::Bias)?, a, b))
     }
 
     /// The `bridge_voltage` field of a part, the voltage from the first terminal of its
@@ -1936,49 +1929,45 @@ impl Model {
             return None;
         }
         let (a, b) = self.instance(part).bridge?;
-        match self.member(part, "bridge_voltage")? {
-            Member::Field(f) if self.field(f).kind == FieldKind::Quantity(Dimension::VOLTAGE) => {
-                Some((f, a, b))
-            }
-            _ => None,
-        }
+        Some((
+            self.member_with_role(part, MemberRole::BridgeVoltage)?,
+            a,
+            b,
+        ))
     }
 
     /// The `supply_peak` field of a part, the highest voltage of the rail a `~>` chain it is
     /// in starts on (see `Checker::derive_chain_values`). A part without a `bridge`, or
     /// without a voltage field of that name, is not given one.
     pub fn supply_peak_of(&self, part: InstId) -> Option<FieldId> {
-        self.chain_field_of(part, "supply_peak", Dimension::VOLTAGE)
+        self.chain_field_of(part, MemberRole::SupplyPeak)
     }
 
     /// The `supply_reverse_peak` field of a part, the highest voltage the supply of the `~>`
     /// chain it is in reaches the wrong way round, as a positive number (ADR 0091).
     pub fn supply_reverse_peak_of(&self, part: InstId) -> Option<FieldId> {
-        self.chain_field_of(part, "supply_reverse_peak", Dimension::VOLTAGE)
+        self.chain_field_of(part, MemberRole::SupplyReversePeak)
     }
 
     /// The `supply_fault_current` field of a part, the largest current that the part in front
     /// of it in a `~>` chain, one that has a `limit_current`, lets through (ADR 0091).
     pub fn supply_fault_current_of(&self, part: InstId) -> Option<FieldId> {
-        self.chain_field_of(part, "supply_fault_current", Dimension::CURRENT)
+        self.chain_field_of(part, MemberRole::SupplyFaultCurrent)
     }
 
     /// The `limit_current` field of a part, the most current it lets through whatever is
     /// behind it: a fuse's rating (ADR 0091).
     pub fn limit_current_of(&self, part: InstId) -> Option<FieldId> {
-        self.chain_field_of(part, "limit_current", Dimension::CURRENT)
+        self.chain_field_of(part, MemberRole::LimitCurrent)
     }
 
-    /// A field of a part with a `bridge` that the checker reads by its name, of a quantity.
-    fn chain_field_of(&self, part: InstId, name: &str, dim: Dimension) -> Option<FieldId> {
+    /// The member of a part with a `bridge` that has `role` (ADR 0125).
+    fn chain_field_of(&self, part: InstId, role: MemberRole) -> Option<FieldId> {
         if self.instance(part).kind != InstKind::Part {
             return None;
         }
         self.instance(part).bridge?;
-        match self.member(part, name)? {
-            Member::Field(f) if self.field(f).kind == FieldKind::Quantity(dim) => Some(f),
-            _ => None,
-        }
+        self.member_with_role(part, role)
     }
 
     /// The `peak` field of a rail: the highest voltage it reaches, transients included.
@@ -2117,6 +2106,7 @@ impl Model {
             domain: Domain::Unset,
             narrowed_at: Vec::new(),
             optional: None,
+            roles: Vec::new(),
         });
         FieldId(self.fields.len() - 1)
     }

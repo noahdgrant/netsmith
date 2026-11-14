@@ -11,19 +11,11 @@ pub mod rowcol;
 
 use netsmith_core::{Design, Net, Part, PartPin, PinKind, PinRef, PowerFlow};
 
-/// What the design stage records as the generics a standard kind provides: a fixture that
+/// What the design stage records as the kind of a standard kind (ADR 0125): a fixture that
 /// names a kind of the standard library gives it the same, so that the layout finds the
-/// connectors the way it does on a real board (`Connector`, ADR 0068).
-pub fn provides_of(kind: &str) -> Vec<String> {
-    let connector = kind.starts_with("Header")
-        || kind.starts_with("Socket")
-        || kind.starts_with("UsbC")
-        || matches!(kind, "Coax" | "Obd2M" | "ProgrammingPads6");
-    if connector {
-        vec![netsmith_core::CONNECTOR_GENERIC.to_string()]
-    } else {
-        Vec::new()
-    }
+/// connectors and the parts in series the way it does on a real board.
+pub fn declared_kind_of(kind: &str) -> Option<netsmith_core::PartKind> {
+    netsmith_testkit::std_kind(kind).and_then(netsmith_core::PartKind::from_word)
 }
 
 pub fn design(
@@ -41,7 +33,13 @@ pub fn design(
         parts: parts
             .iter()
             .map(|&(refdes, kind, value, package)| Part {
-                provides: provides_of(kind),
+                // What the design stage records for a standard connector (ADR 0068).
+                provides: if netsmith_testkit::std_kind(kind) == Some("connector") {
+                    vec!["Connector".to_string()]
+                } else {
+                    Vec::new()
+                },
+                declared_kind: declared_kind_of(kind),
                 refdes: refdes.into(),
                 kind: kind.into(),
                 value: value.into(),
@@ -176,7 +174,13 @@ pub fn supplies(modules: usize) -> (Design, Vec<netsmith_view::Group>) {
             (name("D"), "Led", "LED", None),
         ] {
             parts.push(Part {
-                provides: provides_of(kind),
+                // What the design stage records for a standard connector (ADR 0068).
+                provides: if netsmith_testkit::std_kind(kind) == Some("connector") {
+                    vec!["Connector".to_string()]
+                } else {
+                    Vec::new()
+                },
+                declared_kind: declared_kind_of(kind),
                 refdes,
                 kind: kind.into(),
                 value: value.into(),

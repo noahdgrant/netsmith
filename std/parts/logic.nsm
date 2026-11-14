@@ -202,6 +202,7 @@ part Sn74lvc1g04 {
 /// The name `LevelTranslator`, its members and relations, the choice of a header-only catalog
 /// file, and the wording of the stage 0 message of ADR 0071 (see `function_of` in
 /// `crates/netsmith-check/src/pinout.rs`) are accepted as built by the owner, 2026-11-11.
+#[kind(ic)]
 generic LevelTranslator {
     .designator &= "U"
 
