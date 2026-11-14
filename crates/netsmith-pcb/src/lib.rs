@@ -74,8 +74,8 @@ pub use constraints::{
     plan as constraint_plan, quarter as constraint_quarter,
 };
 pub use copper::{
-    Area, Copper, CopperError, SilkInk, ZoneFill, artwork as copper_artwork, copper as copper_of,
-    zone_fills,
+    Area, Copper, CopperError, LayerPours, Pour, SilkInk, ZoneFill, artwork as copper_artwork,
+    copper as copper_of, pours as pours_of, zone_fills,
 };
 pub use explain::{
     Fault, Precheck, RequirementReport, before_placing, explain as explain_requirements,

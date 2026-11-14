@@ -37,12 +37,24 @@ export const SCALE = 12;
 
 /** The drawing, and the nets in it: their names, colours and pad counts are read from it, so
  * the page needs nothing but the drawing. */
-export function prepare(text: string): Drawing | null {
+export function prepare(text: string, pours = ''): Drawing | null {
   const doc = new DOMParser().parseFromString(text, 'image/svg+xml');
   const svg = doc.documentElement;
   const box = svg.getAttribute('viewBox')?.split(' ').map(Number);
   if (svg.nodeName !== 'svg' || !box) return null;
   const [left, top, w, h] = box;
+  // The pours and zones (`pours.ts`) go over the board and its keepouts and under everything else: the planes' outlines, the
+  // parts' pads, the tracks, the vias and the labels. A drawing with no outline group has it first.
+  if (pours) {
+    const group = doc.createElementNS('http://www.w3.org/2000/svg', 'g');
+    group.innerHTML = pours;
+    const fill = group.firstElementChild;
+    const outline = svg.querySelector(':scope > g.l-outline');
+    if (fill) {
+      if (outline?.parentNode) outline.parentNode.insertBefore(fill, outline.nextSibling);
+      else svg.insertBefore(fill, svg.firstChild);
+    }
+  }
   // The server draws the parts first and the tracks over them, so a wide track hides the pads it
   // ends on. Copper goes under the parts: pads, outlines and reference text stay readable.
   const firstPart = svg.querySelector('g[data-path]');

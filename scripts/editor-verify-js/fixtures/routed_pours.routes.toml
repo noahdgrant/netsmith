@@ -1,0 +1,48 @@
+version = 1
+
+[LedExample.nets.GND]
+pads = "8a44310675df4e54"
+lock = true
+tracks = [
+  { layer = "top", width = 0.15, from = [10.8, 3.8], to = [8.7757, 1.7757] },
+  { layer = "top", width = 0.15, from = [8.3515, 1.6], to = [3.9, 1.6] },
+  { layer = "top", width = 0.15, from = [3.9, 1.6], to = [2.7, 2.8] },
+  { layer = "top", width = 0.15, from = [10.8125, 3.75], to = [10.8, 3.8] },
+  { layer = "top", width = 0.15, from = [2.71, 2.8], to = [2.7, 2.8] },
+  { layer = "top", width = 0.15, from = [8.7757, 1.7757], mid = [8.5811, 1.6457], to = [8.3515, 1.6] },
+]
+vias = [
+  { at = [6.0, 1.6], diameter = 0.45, drill = 0.2 },
+]
+
+[[LedExample.nets.GND.zones]]
+layers = ["top"]
+priority = 0
+clearance = 0.2
+min_width = 0.15
+pads = "thermal"
+thermal_gap = 0.3
+spoke_width = 0.3
+outline = [[0.8, 0.8], [13.2, 0.8], [13.2, 6.2], [0.8, 6.2]]
+holes = [[[4.0, 4.6], [6.0, 4.6], [6.0, 5.6], [4.0, 5.6]]]
+
+[LedExample.nets."net-led.anode"]
+pads = "61fce8bd4b57d9f4"
+tracks = [
+  { layer = "top", width = 0.15, from = [12.4, 3.8], to = [11.6, 4.6] },
+  { layer = "top", width = 0.15, from = [11.6, 4.6], to = [9.6485, 4.6], lock = true },
+  { layer = "top", width = 0.15, from = [9.2243, 4.4243], to = [8.6, 3.8] },
+  { layer = "top", width = 0.15, from = [12.3875, 3.75], to = [12.4, 3.8] },
+  { layer = "top", width = 0.15, from = [8.6, 3.81], to = [8.6, 3.8] },
+  { layer = "top", width = 0.15, from = [9.6485, 4.6], mid = [9.4189, 4.5543], to = [9.2243, 4.4243] },
+]
+
+[[LedExample.nets."net-led.anode".zones]]
+layers = ["top"]
+priority = 1
+clearance = 0.2
+min_width = 0.15
+pads = "solid"
+thermal_gap = 0.3
+spoke_width = 0.3
+outline = [[8.2, 3.0], [13.0, 3.0], [13.0, 5.4], [8.2, 5.4]]

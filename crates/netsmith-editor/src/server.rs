@@ -25,6 +25,7 @@
 //! | `POST /api/pins/lock`, `POST /api/pins/move` | lock or unlock a pin request, and move it to another pin of its part: the `lock` and the `pin` and `source` lines of its entry in the pin file (ADR 0101), and no other line; `422` with the reason when the choice is refused |
 //! | `POST /api/pcb/route`, `cancel`, `edit`, `drc`; `GET /api/pcb/scene`, `findings` | place and route on demand; `cancel` stops the router and keeps what it routed |
 //! | `POST /api/pcb/routes` | an edit of the routes file (draw or move a track or via, delete, lock, unlock, put a record back for undo), as `netsmith routes` makes it, answered with the net's record before and after; `409` for a stale stamp, `422` with the reason when it is refused |
+//! | `GET /api/pcb/pours?board=` | the fill of the placed board's pours, planes and routes-file zones, by copper layer, as SVG paths (`PcbPours`), for the 2D view to draw under the copper; asked after the scene, since filling takes longer than placing |
 //! | `GET /api/pcb/3d?board=` | the board as `scene` has it placed, as glTF 2.0 binary (`model/gltf-binary`, ADR 0105), the bytes `netsmith board3d --glb` writes; the layout stamp of that placement in `X-Netsmith-Layout-Stamp` |
 //! | `POST /api/build`, `/api/fab`, `/api/order` and their `/cancel` | the commands of the same names; a cancelled job answers `499` and keeps nothing it was making (ADR 0062) |
 //! | `GET /api/download`, `/api/order/download` | a file `fab` or an order wrote |
@@ -154,6 +155,7 @@ const NEEDS_ANALYSIS: &[&str] = &[
     "/api/pins/move",
     "/api/pcb/route",
     "/api/pcb/scene",
+    "/api/pcb/pours",
     "/api/pcb/edit",
     "/api/pcb/routes",
     "/api/pcb/findings",
@@ -348,6 +350,7 @@ fn router(state: Shared) -> Router {
         .route("/api/pcb/route", post(route_pcb))
         .route("/api/pcb/cancel", post(cancel_route))
         .route("/api/pcb/scene", get(pcb_scene))
+        .route("/api/pcb/pours", get(pcb_pours))
         .route("/api/pcb/3d", get(pcb_3d))
         .route("/api/pcb/edit", post(pcb_edit))
         .route("/api/pcb/routes", post(pcb_routes))
@@ -838,6 +841,14 @@ async fn pcb_scene(
 ) -> Result<Json<crate::api::PcbScene>, ApiError> {
     let board = param(&q, "board")?;
     json(move || s.backend.pcb_scene(&board)).await
+}
+
+async fn pcb_pours(
+    State(s): State<Shared>,
+    Query(q): Query1,
+) -> Result<Json<crate::api::PcbPours>, ApiError> {
+    let board = param(&q, "board")?;
+    json(move || s.backend.pcb_pours(&board)).await
 }
 
 /// The header that carries the layout stamp of the placement a `.glb` was drawn from.

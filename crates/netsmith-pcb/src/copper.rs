@@ -326,16 +326,7 @@ pub fn copper(board: &Board) -> Result<Copper, CopperError> {
             }
         }
 
-        let mut pen = Polygons::new();
-        fill_pour(&mut pen, &art, layer, &outline, &rules).map_err(CopperError)?;
-        let mut pours = Vec::new();
-        for (tag, pieces) in pen.areas_by_net() {
-            let net = net_of(&art, tag.as_deref());
-            pours.extend(pieces.into_iter().map(|a| Pour {
-                net: net.clone(),
-                area: area(a),
-            }));
-        }
+        let pours = layer_pours(&art, layer, &outline, &rules)?;
 
         // A fill the board file holds already, drawn as the plotter draws it.
         let fills = art
@@ -428,6 +419,54 @@ pub fn copper(board: &Board) -> Result<Copper, CopperError> {
         mask,
         silk,
     })
+}
+
+/// The pours and planes of one copper layer, filled as the Gerbers have them.
+fn layer_pours(
+    art: &Artwork,
+    layer: &str,
+    outline: &netsmith_geom::EdgeOutline,
+    rules: &netsmith_geom::PlotRules,
+) -> Result<Vec<Pour>, CopperError> {
+    let mut pen = Polygons::new();
+    fill_pour(&mut pen, art, layer, outline, rules).map_err(CopperError)?;
+    let mut pours = Vec::new();
+    for (tag, pieces) in pen.areas_by_net() {
+        let net = net_of(art, tag.as_deref());
+        pours.extend(pieces.into_iter().map(|a| Pour {
+            net: net.clone(),
+            area: area(a),
+        }));
+    }
+    Ok(pours)
+}
+
+/// The pours of one copper layer ([`pours`]).
+#[derive(Debug, Clone, PartialEq)]
+pub struct LayerPours {
+    /// KiCad's name of the layer: `F.Cu`, `In1.Cu`, `B.Cu`.
+    pub layer: String,
+    /// What [`LayerCopper::pours`] has for the layer.
+    pub pours: Vec<Pour>,
+}
+
+/// The filled pours and planes of every copper layer, front to back, and nothing else of the
+/// copper: what [`copper`] has in [`LayerCopper::pours`] (the board's own pours and planes, and
+/// the zones of a routes file, by one filler), for a view that draws no more than the fill.
+/// A layer with no pour is in it with an empty list.
+pub fn pours(board: &Board) -> Result<Vec<LayerPours>, CopperError> {
+    let art = artwork(board)?;
+    let rules = netsmith_geom::plot_rules_of(Some(&crate::export::kicad_pro(board)));
+    let outline = edge_outline(&art).map_err(CopperError)?;
+    art.copper
+        .iter()
+        .map(|layer| {
+            Ok(LayerPours {
+                layer: layer.clone(),
+                pours: layer_pours(&art, layer, &outline, &rules)?,
+            })
+        })
+        .collect()
 }
 
 /// The fill of one net on one layer that has zones of a routes file ([`zone_fills`]).
@@ -755,6 +794,27 @@ mod tests {
         let own = pad("D1", "1");
         assert_eq!(own.net.as_deref(), Some("GND"));
         assert!(poured(top, "GND", own.at));
+    }
+
+    #[test]
+    fn the_pours_alone_are_the_pours_of_the_whole_copper_layer_by_layer() {
+        let mut board = four();
+        board.pours.push(BoardPour {
+            layer: CopperLayer::Front,
+            net: "GND".into(),
+            stitch_pitch: None,
+        });
+        let whole = copper(&board).unwrap();
+        let alone = pours(&board).unwrap();
+        assert_eq!(
+            alone.iter().map(|l| l.layer.as_str()).collect::<Vec<_>>(),
+            ["F.Cu", "In1.Cu", "In2.Cu", "B.Cu"]
+        );
+        for (a, l) in alone.iter().zip(&whole.layers) {
+            assert_eq!(a.layer, l.layer);
+            assert_eq!(a.pours, l.pours, "{}", a.layer);
+        }
+        assert!(!alone[0].pours.is_empty() && !alone[1].pours.is_empty());
     }
 
     #[test]

@@ -22,6 +22,7 @@ import type {
   PcbRoutesEdit,
   PcbRoutesEdited,
   PcbFindings,
+  PcbPours,
   PcbReport,
   PcbScene,
   PinLock,
@@ -166,6 +167,8 @@ export const api = {
   bom: (board: string) => getJson<Bom>(`/api/bom?${q({ board })}`),
   route: (board: string) => post<PcbReport>(`/api/pcb/route?${q({ board })}`),
   pcbScene: (board: string) => getJson<PcbScene>(`/api/pcb/scene?${q({ board })}`),
+  /** The fill of the board's pours, planes and zones (the 2D view draws it under the copper). */
+  pcbPours: (board: string) => getJson<PcbPours>(`/api/pcb/pours?${q({ board })}`),
   pcbEdit: (edit: PcbEdit) => post<PcbEdited>('/api/pcb/edit', edit),
   pcbRoutes: (edit: PcbRoutesEdit) => post<PcbRoutesEdited>('/api/pcb/routes', edit),
   /** Lock or unlock a pin request: the `lock` line of its entry in the pin file (ADR 0101), and no other line. `ApiFailure` 422 says why not. */

@@ -4,7 +4,7 @@
 
 import { signal } from '@preact/signals';
 
-import type { PcbChange, PcbFindings, PcbRoutesEdited, PcbScene, RoutesChange } from './api';
+import type { PcbChange, PcbFindings, PcbPours, PcbRoutesEdited, PcbScene, RoutesChange } from './api';
 import { ApiFailure, api } from './client';
 import { type History, NO_HISTORY, type Run, type Step, record, redoing, undoing } from './pcb/edits';
 import { labelOf } from './pcb/routes';
@@ -12,6 +12,8 @@ import { type Selection, partSel, sameSelection, selection as shared, setSelecti
 import { beginJob, endJob, pcbReports, say } from './store';
 
 export const scene = signal<PcbScene | null>(null);
+/** The fill of the board's pours, planes and zones, as the server filled the placement it names (drawn only while that is the scene's). */
+export const pours = signal<PcbPours | null>(null);
 /** Why the board could not be placed, if it could not. */
 export const sceneError = signal<string | null>(null);
 /** The parts picked, by their path in the design. */
@@ -142,6 +144,24 @@ function show(next: PcbScene) {
   scene.value = next;
   // What is wrong with it may have changed with where things are.
   void loadFindings(next.board);
+  // So may the pours and zones, which come after the board is drawn.
+  void loadPours(next.board);
+}
+
+let poursAsked = 0;
+
+/** Ask the server for the fill of the board as it is placed now; the answer of the last ask is kept, and
+ * the fill of another board goes at once. A board that cannot be filled is drawn with no fill. */
+export async function loadPours(board: string): Promise<void> {
+  const mine = ++poursAsked;
+  if (pours.peek()?.board !== board) pours.value = null;
+  try {
+    const answer = await api.pcbPours(board);
+    if (mine === poursAsked) pours.value = answer.error ? null : answer;
+  } catch {
+    // The scene's own load says why the board cannot be placed; the board is drawn with no fill.
+    if (mine === poursAsked) pours.value = null;
+  }
 }
 
 /** Send changes to the server. True if it wrote them; the scene is then the new one. */

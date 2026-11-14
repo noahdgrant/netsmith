@@ -1,0 +1,22 @@
+version = 1
+
+[LedExample.parts.led]
+at = [11.6, 3.75]
+rotation = 0.0
+side = "top"
+lock = true
+source = "import"
+
+[LedExample.parts.power_in]
+at = [5.25, 2.8]
+rotation = -90.0
+side = "top"
+lock = true
+source = "import"
+
+[LedExample.parts.r1]
+at = [8.6, 3.3]
+rotation = -90.0
+side = "top"
+lock = true
+source = "import"
