@@ -3857,7 +3857,7 @@
         "text": "The module (U1): 4 MB of flash, PCB antenna.",
         "at": {
           "file": "src/main.nsm",
-          "line": 47
+          "line": 54
         },
         "anchors": [
           "mcu"
@@ -3870,7 +3870,7 @@
         "text": "The USB-UART bridge (U3), on the first receptacle.",
         "at": {
           "file": "src/main.nsm",
-          "line": 49
+          "line": 56
         },
         "anchors": [
           "bridge"
@@ -3883,7 +3883,7 @@
         "text": "The 3.3 V regulator (U5), an AMS1117-3.3 in a SOT-223 (a row of the project's catalog).",
         "at": {
           "file": "src/main.nsm",
-          "line": 51
+          "line": 58
         },
         "anchors": [
           "regulator"
@@ -3896,7 +3896,7 @@
         "text": "J1: the receptacle of the bridge.",
         "at": {
           "file": "src/main.nsm",
-          "line": 64
+          "line": 71
         },
         "anchors": [],
         "result": null
@@ -3907,7 +3907,7 @@
         "text": "J2: the receptacle of the module's own USB.",
         "at": {
           "file": "src/main.nsm",
-          "line": 71
+          "line": 76
         },
         "anchors": [],
         "result": null
@@ -3918,7 +3918,7 @@
         "text": "The development board's two 22-pin headers (U2), hand-soldered.",
         "at": {
           "file": "src/main.nsm",
-          "line": 78
+          "line": 81
         },
         "anchors": [
           "headers"
@@ -3931,7 +3931,7 @@
         "text": "SW1, RESET: pulls EN to ground.",
         "at": {
           "file": "src/main.nsm",
-          "line": 80
+          "line": 83
         },
         "anchors": [
           "reset"
@@ -3944,7 +3944,7 @@
         "text": "SW2, BOOT: pulls GPIO0 to ground.",
         "at": {
           "file": "src/main.nsm",
-          "line": 82
+          "line": 85
         },
         "anchors": [
           "boot"
@@ -3957,7 +3957,7 @@
         "text": "VBUS behind the two diodes: the bridge's supply, the regulator's input and the header's 5 V pin.",
         "at": {
           "file": "src/main.nsm",
-          "line": 94
+          "line": 97
         },
         "anchors": [],
         "result": null
@@ -3968,7 +3968,7 @@
         "text": "The 3.3 V of the regulator: the module's supply and the header's 3.3 V pins.",
         "at": {
           "file": "src/main.nsm",
-          "line": 98
+          "line": 101
         },
         "anchors": [],
         "result": null
@@ -3979,7 +3979,7 @@
         "text": "D2 and D3: each receptacle's VBUS reaches VBUS through a Schottky diode (anode on the receptacle), so the two supplies cannot feed each other. ROHM RB161QS-40.",
         "at": {
           "file": "src/main.nsm",
-          "line": 105
+          "line": 108
         },
         "anchors": [
           "usb_uart_diode"
@@ -3992,7 +3992,7 @@
         "text": "C3: the decoupling of the bridge's own 3.3 V (VDD), which the board does not use as a supply (the author's notes: it gives 100 mA only).",
         "at": {
           "file": "src/main.nsm",
-          "line": 133
+          "line": 136
         },
         "anchors": [
           "bridge_vdd_cap"
@@ -4005,7 +4005,7 @@
         "text": "R11: pulls the bridge's reset line up to VBUS.",
         "at": {
           "file": "src/main.nsm",
-          "line": 137
+          "line": 140
         },
         "anchors": [],
         "result": null
@@ -4016,7 +4016,7 @@
         "text": "R10: holds the bridge's SUSPENDb output low.",
         "at": {
           "file": "src/main.nsm",
-          "line": 141
+          "line": 144
         },
         "anchors": [],
         "result": null
@@ -4038,7 +4038,7 @@
         "text": "R1: EN's 10 kohm pull-up (Espressif's circuit; the module needs EN driven).",
         "at": {
           "file": "src/main.nsm",
-          "line": 160
+          "line": 163
         },
         "anchors": [],
         "result": null
@@ -4049,7 +4049,7 @@
         "text": "D1: lit from VBUS through R6.",
         "at": {
           "file": "src/main.nsm",
-          "line": 167
+          "line": 170
         },
         "anchors": [
           "power_led"
@@ -4062,7 +4062,7 @@
         "text": "D4: GPIO38 through R9.",
         "at": {
           "file": "src/main.nsm",
-          "line": 175
+          "line": 177
         },
         "anchors": [
           "user_led"
@@ -4075,7 +4075,7 @@
         "text": "C1 and C2: the bridge's VBUS input, 1 uF and 100 nF (CP2102N datasheet, as the author's notes say).",
         "at": {
           "file": "src/main.nsm",
-          "line": 189
+          "line": 190
         },
         "anchors": [
           "vbus_1u"
@@ -4088,7 +4088,7 @@
         "text": "C6: the regulator's input, 22 uF tantalum.",
         "at": {
           "file": "src/main.nsm",
-          "line": 192
+          "line": 193
         },
         "anchors": [
           "vbus_22u"
@@ -4101,7 +4101,7 @@
         "text": "C5, C7 and C10: the module's 100 nF and 22 uF on 3.3 V, and the regulator's output capacitor (22 uF).",
         "at": {
           "file": "src/main.nsm",
-          "line": 195
+          "line": 196
         },
         "anchors": [
           "v3v3_100n"
@@ -4114,7 +4114,7 @@
         "text": "C4 and C8 on EN (the module's 100 nF for power-up timing, and the second), C9 on GPIO0.",
         "at": {
           "file": "src/main.nsm",
-          "line": 198
+          "line": 199
         },
         "anchors": [
           "en_100n[0]"
@@ -4127,7 +4127,7 @@
         "text": ".power_led_resistor.current == (.vbus.voltage - .power_led.forward_voltage) / .power_led_resistor.resistance",
         "at": {
           "file": "src/main.nsm",
-          "line": 173
+          "line": 175
         },
         "anchors": [
           "power_led_resistor",

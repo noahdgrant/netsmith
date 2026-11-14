@@ -16,11 +16,11 @@ module Oscillator {
 
     .crystal: Abm8272T3
     /// On the input side, 15 pF C0G (Raspberry Pi's value).
-    .load_in: Capacitor { .capacitance &= 15pF +/- 5%; .package &= "0402" }
+    .load_in: Capacitor { .capacitance &= 15pF +/- 5% }
     /// On the output side, behind the damping resistor.
-    .load_out: Capacitor { .capacitance &= 15pF +/- 5%; .package &= "0402" }
+    .load_out: Capacitor { .capacitance &= 15pF +/- 5% }
     /// 1 kohm between the chip's XOUT and the crystal (Raspberry Pi's value).
-    .damping: Resistor { .resistance &= 1kohm +/- 1%; .package &= "0402" }
+    .damping: Resistor { .resistance &= 1kohm +/- 1% }
 
     .xin ~ .crystal.xtal_a
     .xin ~ .load_in.a

@@ -22,15 +22,15 @@ module Charger {
     /// `MCP73031`).
     .ic: Mcp73831
     /// R3, from `PROG` to ground: 2 kohm sets 500 mA.
-    .rprog: Resistor { .resistance &= 2kohm +/- 1%; .package &= "0603" }
+    .rprog: Resistor { .resistance &= 2kohm +/- 1% }
     /// R1, the status LED's series resistor.
-    .status_resistor: Resistor { .resistance &= 1.5kohm +/- 1%; .package &= "0603" }
+    .status_resistor: Resistor { .resistance &= 1.5kohm +/- 1% }
     /// D1, the charge status LED, green.
     .status_led: Everlight19217Ghc
     /// C8, on the USB side.
-    .vbus_cap: Capacitor { .capacitance &= 4.7uF +/- 10%; .package &= "0603" }
+    .vbus_cap: Capacitor { .capacitance &= 4.7uF +/- 10% }
     /// C7, on the battery side.
-    .vbatt_cap: Capacitor { .capacitance &= 4.7uF +/- 10%; .package &= "0603" }
+    .vbatt_cap: Capacitor { .capacitance &= 4.7uF +/- 10% }
 
     .ic.vdd ~ .vbus.pos
     .ic.vss ~ .vbus.neg

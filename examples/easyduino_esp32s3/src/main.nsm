@@ -30,6 +30,13 @@ import std::parts::regulator::LinearRegulator
 import std::sources::Rail
 
 board EasyduinoEsp32s3 {
+    defaults {
+        Capacitor.package ?= "0402"
+        Led.package ?= "0402"
+        Resistor.package ?= "0402"
+        Schottky.package ?= "SMD1006"
+    }
+
     .process: FourLayer {
         .stackup.thickness &= 1.6mm
         // The pours of Easyduino's board: ground on both outer layers and on the first inner
@@ -64,15 +71,11 @@ board EasyduinoEsp32s3 {
     .usb_uart: UsbCSink {
         .receptacle.package &= "SMD"
         .receptacle.mpn &= "TYPE-C 16PIN 2MD(073)"
-        .cc1_rd.package &= "0402"
-        .cc2_rd.package &= "0402"
     }
     /// J2: the receptacle of the module's own USB.
     .usb_native: UsbCSink {
         .receptacle.package &= "SMD"
         .receptacle.mpn &= "TYPE-C 16PIN 2MD(073)"
-        .cc1_rd.package &= "0402"
-        .cc2_rd.package &= "0402"
     }
     /// The development board's two 22-pin headers (U2), hand-soldered.
     .headers: Esp32S3DevKitCHeaders
@@ -102,8 +105,8 @@ board EasyduinoEsp32s3 {
 
     /// D2 and D3: each receptacle's VBUS reaches VBUS through a Schottky diode (anode on the
     /// receptacle), so the two supplies cannot feed each other. ROHM RB161QS-40.
-    .usb_uart_diode: Schottky { .package &= "SMD1006" }
-    .usb_native_diode: Schottky { .package &= "SMD1006" }
+    .usb_uart_diode: Schottky
+    .usb_native_diode: Schottky
     .usb_uart.vbus.pos ~> .usb_uart_diode ~> .vbus.pos
     .usb_native.vbus.pos ~> .usb_native_diode ~> .vbus.pos
 
@@ -130,15 +133,15 @@ board EasyduinoEsp32s3 {
     .bridge.rxd ~ .mcu.txd0
     /// C3: the decoupling of the bridge's own 3.3 V (VDD), which the board does not use as a
     /// supply (the author's notes: it gives 100 mA only).
-    .bridge_vdd_cap: Capacitor { .capacitance &= 100nF +/- 10%; .package &= "0402" }
+    .bridge_vdd_cap: Capacitor { .capacitance &= 100nF +/- 10% }
     .bridge.vdd ~ .bridge_vdd_cap.a
     .bridge_vdd_cap.b ~ .vbus.neg
     /// R11: pulls the bridge's reset line up to VBUS.
-    .bridge_reset_pullup: PullUp { .resistor.resistance &= 5.1kohm +/- 1%; .resistor.package &= "0402" }
+    .bridge_reset_pullup: PullUp { .resistor.resistance &= 5.1kohm +/- 1% }
     .bridge_reset_pullup.supply ~ .vbus
     .bridge_reset_pullup.line ~ .bridge.rstb
     /// R10: holds the bridge's SUSPENDb output low.
-    .suspend_pulldown: PullDown { .resistor.resistance &= 10kohm +/- 1%; .resistor.package &= "0402" }
+    .suspend_pulldown: PullDown { .resistor.resistance &= 10kohm +/- 1% }
     .suspend_pulldown.reference ~ .vbus
     .suspend_pulldown.line ~ .bridge.suspendb
 
@@ -157,7 +160,7 @@ board EasyduinoEsp32s3 {
     .boot.a ~ .vbus.neg
     .boot.b ~ .mcu.gpio0
     /// R1: EN's 10 kohm pull-up (Espressif's circuit; the module needs EN driven).
-    .en_pullup: PullUp { .resistor.resistance &= 10kohm +/- 1%; .resistor.package &= "0402" }
+    .en_pullup: PullUp { .resistor.resistance &= 10kohm +/- 1% }
     .en_pullup.supply ~ .v3v3
     .en_pullup.line ~ .mcu.en
 
@@ -166,18 +169,16 @@ board EasyduinoEsp32s3 {
     /// D1: lit from VBUS through R6.
     .power_led: Led {
         .color &= Color::Blue
-        .package &= "0402"
         .forward_voltage &= 2.6V..3.2V
     }
-    .power_led_resistor: Resistor { .resistance &= 5.1kohm +/- 1%; .package &= "0402" }
+    .power_led_resistor: Resistor { .resistance &= 5.1kohm +/- 1% }
     .vbus.pos ~> .power_led_resistor ~> .power_led ~> .vbus.neg
     /// D4: GPIO38 through R9.
     .user_led: Led {
         .color &= Color::Blue
-        .package &= "0402"
         .forward_voltage &= 2.6V..3.2V
     }
-    .user_led_resistor: Resistor { .resistance &= 2.4kohm +/- 1%; .package &= "0402" }
+    .user_led_resistor: Resistor { .resistance &= 2.4kohm +/- 1% }
     .mcu.gpio38 ~ .user_led_resistor.b
     .user_led_resistor.a ~ .user_led.anode
     .user_led.cathode ~ .vbus.neg
@@ -186,17 +187,17 @@ board EasyduinoEsp32s3 {
 
     /// C1 and C2: the bridge's VBUS input, 1 uF and 100 nF (CP2102N datasheet, as the author's
     /// notes say).
-    .vbus_1u: Capacitor { .capacitance &= 1uF +/- 10%; .package &= "0402" }
-    .vbus_100n: Capacitor { .capacitance &= 100nF +/- 10%; .package &= "0402" }
+    .vbus_1u: Capacitor { .capacitance &= 1uF +/- 10% }
+    .vbus_100n: Capacitor { .capacitance &= 100nF +/- 10% }
     /// C6: the regulator's input, 22 uF tantalum.
     .vbus_22u: Capacitor { .capacitance &= 22uF +/- 10%; .package &= "CASE-A-3216-18" }
     /// C5, C7 and C10: the module's 100 nF and 22 uF on 3.3 V, and the regulator's output
     /// capacitor (22 uF).
-    .v3v3_100n: Capacitor { .capacitance &= 100nF +/- 10%; .package &= "0402" }
+    .v3v3_100n: Capacitor { .capacitance &= 100nF +/- 10% }
     .v3v3_22u: 2 x Capacitor { .capacitance &= 22uF +/- 10%; .package &= "CASE-A-3216-18" }
     /// C4 and C8 on EN (the module's 100 nF for power-up timing, and the second), C9 on GPIO0.
-    .en_100n: 2 x Capacitor { .capacitance &= 100nF +/- 10%; .package &= "0402" }
-    .boot_100n: Capacitor { .capacitance &= 100nF +/- 10%; .package &= "0402" }
+    .en_100n: 2 x Capacitor { .capacitance &= 100nF +/- 10% }
+    .boot_100n: Capacitor { .capacitance &= 100nF +/- 10% }
     .vbus.pos ~> .vbus_1u ~> .vbus.neg
     .vbus.pos ~> .vbus_100n ~> .vbus.neg
     .vbus.pos ~> .vbus_22u ~> .vbus.neg

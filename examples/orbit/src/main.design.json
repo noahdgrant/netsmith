@@ -4102,7 +4102,7 @@
         "text": "The mini USB B receptacle: the supply and the programming port.",
         "at": {
           "file": "src/main.nsm",
-          "line": 46
+          "line": 51
         },
         "anchors": [
           "usb"
@@ -4115,7 +4115,7 @@
         "text": "The battery connector, a JST PH with two contacts: pin 1 is ground, pin 2 the battery's plus.",
         "at": {
           "file": "src/main.nsm",
-          "line": 48
+          "line": 53
         },
         "anchors": [
           "battery"
@@ -4128,7 +4128,7 @@
         "text": "J1, the west header: ground, SWDIO, SWCLK, NRST, PC14, PA2, PA3 and 3.3 V.",
         "at": {
           "file": "src/main.nsm",
-          "line": 50
+          "line": 55
         },
         "anchors": [
           "header_west"
@@ -4141,7 +4141,7 @@
         "text": "J2, the east header: ground, PB11, PB10, PB2, PB1, PB0, PA7 and PA6.",
         "at": {
           "file": "src/main.nsm",
-          "line": 52
+          "line": 57
         },
         "anchors": [
           "header_east"
@@ -4154,7 +4154,7 @@
         "text": "USB's VBUS, the only external supply. 5 V +/- 5% is USB's 4.75 V to 5.25 V.",
         "at": {
           "file": "src/main.nsm",
-          "line": 57
+          "line": 62
         },
         "anchors": [],
         "result": null
@@ -4165,7 +4165,7 @@
         "text": "The battery's rail behind the power switch, `+BATT`. The schematic names no cell, so no voltage is stated.",
         "at": {
           "file": "src/main.nsm",
-          "line": 63
+          "line": 68
         },
         "anchors": [],
         "result": null
@@ -4176,7 +4176,7 @@
         "text": "The 3.3 V rail of the buck-boost regulator. ORBIT's schematic names it `+3.3V`; the window is a stated requirement (as for the RP2350A Minimal), and the regulator's divider derives the output, which the check compares with it.",
         "at": {
           "file": "src/main.nsm",
-          "line": 69
+          "line": 74
         },
         "anchors": [],
         "result": null
@@ -4276,7 +4276,7 @@
         "text": "PWR1: the slide switch between the battery connector and the `+BATT` rail.",
         "at": {
           "file": "src/main.nsm",
-          "line": 84
+          "line": 89
         },
         "anchors": [
           "power_switch"
@@ -4337,7 +4337,7 @@
         "text": "R6, the pull-up of the power-good output.",
         "at": {
           "file": "src/buck_boost.nsm",
-          "line": 35
+          "line": 34
         },
         "anchors": [],
         "result": null
@@ -4348,7 +4348,7 @@
         "text": "C14, the input capacitor.",
         "at": {
           "file": "src/buck_boost.nsm",
-          "line": 37
+          "line": 36
         },
         "anchors": [
           "buck_boost.input_cap"
@@ -4361,7 +4361,7 @@
         "text": "C13, the output capacitor.",
         "at": {
           "file": "src/buck_boost.nsm",
-          "line": 39
+          "line": 38
         },
         "anchors": [
           "buck_boost.output_cap"
@@ -4374,7 +4374,7 @@
         "text": "U16, the STM32F030C8. Every pin that a header or a part uses is named here, so none moves.",
         "at": {
           "file": "src/main.nsm",
-          "line": 96
+          "line": 101
         },
         "anchors": [
           "mcu"
@@ -4387,7 +4387,7 @@
         "text": "C2, 4.7 uF, and C3 to C6, 100 nF, on the 3.3 V rail.",
         "at": {
           "file": "src/main.nsm",
-          "line": 103
+          "line": 108
         },
         "anchors": [
           "v3v3_bulk"
@@ -4450,7 +4450,7 @@
         "text": "SW1, RESET: pulls NRST to ground.",
         "at": {
           "file": "src/main.nsm",
-          "line": 120
+          "line": 125
         },
         "anchors": [
           "reset_button"
@@ -4463,7 +4463,7 @@
         "text": "C9, on NRST.",
         "at": {
           "file": "src/main.nsm",
-          "line": 122
+          "line": 127
         },
         "anchors": [
           "reset_cap"
@@ -4476,7 +4476,7 @@
         "text": "BOOT0: the slide switch that sets the MCU's BOOT0 pin. Its pad 2 is on 3.3 V, its pad 1 on a net with a 10 kohm resistor to ground, and its common pad on the MCU's BOOT0.",
         "at": {
           "file": "src/main.nsm",
-          "line": 132
+          "line": 137
         },
         "anchors": [
           "boot_switch"
@@ -4489,7 +4489,7 @@
         "text": "R2: 10 kohm from the switch's pad 1 to ground. ORBIT's pad 1 of R2 is on ground and its pad 2 on the switch, so this is a plain resistor with its pads joined that way and not a `PullDown` (which puts its resistor's pad 1 on the line): BOOT0's pad 1 is on the net of R2's pad 2 in ORBIT's board, and the parity checker compares the pad.",
         "at": {
           "file": "src/main.nsm",
-          "line": 137
+          "line": 142
         },
         "anchors": [
           "boot_pulldown"
@@ -4502,7 +4502,7 @@
         "text": "SW2, USER: connects 3.3 V to a node that a 100 kohm resistor holds low; a 1 kohm resistor and a 100 nF capacitor take it to the MCU's pin.",
         "at": {
           "file": "src/main.nsm",
-          "line": 147
+          "line": 152
         },
         "anchors": [
           "user_button"
@@ -4515,7 +4515,7 @@
         "text": "R12.",
         "at": {
           "file": "src/main.nsm",
-          "line": 149
+          "line": 154
         },
         "anchors": [],
         "result": null
@@ -4526,7 +4526,7 @@
         "text": "C18.",
         "at": {
           "file": "src/main.nsm",
-          "line": 151
+          "line": 156
         },
         "anchors": [
           "user_node_cap"
@@ -4539,7 +4539,7 @@
         "text": "R11.",
         "at": {
           "file": "src/main.nsm",
-          "line": 153
+          "line": 158
         },
         "anchors": [
           "user_series"
@@ -4552,7 +4552,7 @@
         "text": "C19, on the MCU's pin.",
         "at": {
           "file": "src/main.nsm",
-          "line": 155
+          "line": 160
         },
         "anchors": [
           "user_pin_cap"
@@ -4565,7 +4565,7 @@
         "text": "D2 and R4, on PA5.",
         "at": {
           "file": "src/main.nsm",
-          "line": 171
+          "line": 176
         },
         "anchors": [
           "led1"
@@ -4578,7 +4578,7 @@
         "text": "D3 and R5, on PA4.",
         "at": {
           "file": "src/main.nsm",
-          "line": 175
+          "line": 180
         },
         "anchors": [
           "led2"
@@ -4667,7 +4667,7 @@
         "text": "U17: the AT24C128C; `A0` and `A1` high and `A2` low (address 0x53), write protect low.",
         "at": {
           "file": "src/main.nsm",
-          "line": 193
+          "line": 198
         },
         "anchors": [
           "eeprom"
@@ -4680,7 +4680,7 @@
         "text": "R9 and R10: 2.2 kohm on each line to 3.3 V.",
         "at": {
           "file": "src/main.nsm",
-          "line": 205
+          "line": 210
         },
         "anchors": [],
         "result": null
@@ -4705,7 +4705,7 @@
         "text": ".divider.vref == .ic.vref",
         "at": {
           "file": "src/buck_boost.nsm",
-          "line": 56
+          "line": 55
         },
         "anchors": [
           "buck_boost.ic"
@@ -4718,7 +4718,7 @@
         "text": ".vout.voltage == .divider.vout",
         "at": {
           "file": "src/buck_boost.nsm",
-          "line": 57
+          "line": 56
         },
         "anchors": [],
         "result": "vout.voltage = 3.212V..3.391V"
