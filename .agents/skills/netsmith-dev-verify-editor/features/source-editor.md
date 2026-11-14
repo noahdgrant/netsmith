@@ -63,6 +63,10 @@ What a screenshot should show: the card at 12 px radius over the code, never cut
 - **Size.** The text is `--source-fs`, the editor's own size (`Ctrl+=`, `Ctrl+-`, `Ctrl+0`, 10 to 22 px, 13 by default) times the page's Size setting: `calc(13px * var(--ui-scale))`, so 14 px at 125 % is 17.5 px. The status bar's `font-size` output is the editor's own number and its tooltip says what it comes to.
 - **A file read again from disk keeps the cursor.** The text of an open file that changed on disk replaces the editor's text, and the selection is kept (clamped to the new length) rather than put at the top: a reveal (F8, a click on a problem) that landed just before the replacement used to lose its line, which showed as `Ln 1` and `.cm-activeLine` on the first line (`problems-dock`, `integration` flaked on it).
 
+### Where a package came from: `drive board-defaults` after `launch --fixture board_defaults`
+
+A part's card says which statement gave its package, after the package in the `Package` row (`[data-testid=hc-package-from]`, from `PartInfo.packageFrom`, issue #625): `board default, main.nsm:10` for a line of the board's `defaults` block, `default, ...` for a `?=` on the field, `stated, ...` for a `&=`. A click goes to that line (`.cm-activeLine`). A package the solver chose with the row has no source. The fixture's `Led.package` line reaches no LED: the analysis has a note at that line (severity `note`, `at.line` the line of the block).
+
 ### Keys and settings of the source: `drive source-keys` (fixture `two_boards`)
 
 1. **Comment** (`Ctrl+/`, command `source.comment.toggle`): the lines the selection covers get a `// ` at the shallowest indent, and lose it when every one is commented. A doc comment (`///`, `//!`) counts as code: it gets `// ` in front and loses only that. `?` opens the shortcuts from outside the editor (inside it, it types a `?`); `F1` opens them from anywhere, the editor included. A function key works in a field, since it types nothing.
