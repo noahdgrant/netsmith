@@ -59,7 +59,9 @@
 //!
 //! **Limits.** A net is checked at one width, the net's. The router may draw shorter runs narrower
 //! where there is no room (a neck-down between pads, a stub at a pad's width), and the pad's own
-//! copper carries the last millimetres. Vias are not checked. The router's masks reach as far as
+//! copper carries the last millimetres. Vias are checked against the current by the fab rules
+//! (`via_current`, `netsmith-geom`'s `drc/fab_rules.rs`), and the router adds vias where a net needs
+//! more than one. The router's masks reach as far as
 //! the width of the track needs: a track wider than a via once reached further than the masks
 //! looked, which put 0.6 and 0.9 mm rails too close to other copper (shorts included), and every
 //! line the router returns has also been measured as drawn against the other nets' copper, holes
@@ -110,16 +112,17 @@
 //! current comes from the power balance and never from the output current. A `LinearRegulator`
 //! states `.vin.current == -.vout.current`, and a switching regulator's IC states `.vin.current ==
 //! -.sw.current * .sw.voltage / (.vin.voltage * .efficiency)` (ADR 0025), so a 1 A,
-//! 1.8 V output from 4.75 V at 85 % efficiency draws 0.459 A at its input. The quiescent current is
-//! not added: the library's models have no figure for it (ADR 0025 ignores it) and one is not
-//! invented here. A switching regulator whose part states no efficiency leaves the input current
+//! 1.8 V output from 4.75 V at 85 % efficiency draws 0.459 A at its input. The quiescent current was
+//! not added at first, since the library's models had no figure for it and one was not invented;
+//! it is a part's stated figure now (`LinearRegulator.quiescent_current`, ADR 0096 for a
+//! switching regulator), and a part that states none adds nothing. A switching regulator whose part states no efficiency leaves the input current
 //! unknown. A stated `.min_track` stays an override and is checked against the sum: 1 mm on a ground
 //! that carries 3 A is a finding (at its narrowest, 0.8 mm, it carries 2.03 A at 10 K; amendment
 //! 5).
 //!
 //! Choices of amendment 2: the larger of the two sums rather than the load side alone; a module's
 //! port left out only when something inside it is on the net; the pessimism at a regulator's
-//! ground left as it is; no quiescent current added.
+//! ground left as it is; no quiescent current invented (a stated one is added).
 //!
 //! **Amendment 3: a net with a current that is not known
 //! is sized for the known part.** Found on a real 12 V automotive board: a net carried a modem load
