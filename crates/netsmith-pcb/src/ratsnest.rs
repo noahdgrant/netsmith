@@ -9,6 +9,10 @@
 //! where they stand; any other pad needs a via to it, and has a line to the plane until
 //! one is dropped.
 //!
+//! Pads of one net whose copper lies one on the other, on a layer both have, are one piece with no
+//! copper added (the plated holes a QFN footprint draws inside its exposed pad, as KiCad and the
+//! design rules check count them): the router draws no track between them.
+//!
 //! Copper joins where it touches: a track's end on a pad or a track over a pad, two tracks of one layer whose copper
 //! meets (end to end, or an end on the other's middle, as a hand-routed board has them), and a
 //! via on a pad or on a track. A net a routes file locks ([`crate::routes`]) is joined by its
@@ -164,6 +168,17 @@ fn on_pad(node: &Node, at: Pt, layer: Option<CopperLayer>) -> bool {
         None => node.front || node.back,
     };
     on_layer && node.bounds.expanded(TOUCH).contains(&Rect::new(at, at))
+}
+
+/// Whether the copper of two pads lies one on the other: the centre of one is inside the box of
+/// the other. (The boxes alone would join two pads that only meet at their corners.)
+fn overlap(a: &Node, b: &Node) -> bool {
+    let inside = |p: &Node, q: &Node| {
+        p.bounds
+            .expanded(TOUCH)
+            .contains(&Rect::new(q.centre, q.centre))
+    };
+    inside(a, b) || inside(b, a)
 }
 
 /// Whether the track's centre line runs through the pad (its box) on the track's layer: a
@@ -434,6 +449,16 @@ fn spanning_tree(
     let mut sets = Sets::new(plane_item + 3);
     for &(a, b) in joined {
         sets.join(a, b);
+    }
+    // Pads whose copper lies one on the other, on a layer both have, are one piece (as in KiCad
+    // and in the design rules check): the plated holes drawn inside a QFN's exposed pad are the
+    // pad's own, and need no track to it or to each other.
+    for (i, a) in nodes.iter().enumerate() {
+        for (j, b) in nodes.iter().enumerate().skip(i + 1) {
+            if (a.front && b.front || a.back && b.back) && overlap(a, b) {
+                sets.join(i, j);
+            }
+        }
     }
     for (ti, track) in tracks.iter().enumerate() {
         for (ni, node) in nodes.iter().enumerate() {
@@ -791,6 +816,58 @@ mod tests {
         board.tracks.clear();
         board.vias[0].net = "net-led.anode".into();
         assert_eq!(Ratsnest::of(&board).len(), 3);
+    }
+
+    /// A pad of R1's pad 1 (the VCC net) that stands in the pad: a plated hole drawn over the
+    /// surface mount pad's copper, as a QFN's exposed pad has its vias.
+    fn board_with_a_via_pad_in_r1_1() -> Board {
+        use crate::footprint::{Drill, Pad, PadKind, PadShape};
+        let mut board = crate::board::tests::led_board();
+        let part = board.parts.iter_mut().find(|p| p.refdes == "R1").unwrap();
+        let pad = part.footprint.pads_numbered("1").next().unwrap().clone();
+        part.footprint.pads.push(Pad {
+            kind: PadKind::ThruHole,
+            shape: PadShape::Circle,
+            width: pad.height.min(pad.width) * 0.5,
+            height: pad.height.min(pad.width) * 0.5,
+            drill: Some(Drill {
+                width: 0.1,
+                height: 0.1,
+            }),
+            layers: vec!["*.Cu".into(), "*.Mask".into()],
+            corner_ratio: 0.0,
+            ..pad
+        });
+        board
+    }
+
+    #[test]
+    fn pads_of_one_net_whose_copper_overlaps_are_already_joined() {
+        // The via pad lies on the surface mount pad's copper, on the front, and KiCad and the
+        // design rules check count them as one piece (`drc::connect`): the router draws no
+        // track between them, only the one line that the net needs.
+        let board = board_with_a_via_pad_in_r1_1();
+        let vcc: Vec<String> = Ratsnest::of(&board)
+            .lines
+            .iter()
+            .filter(|l| l.net == "VCC")
+            .map(|l| l.to_string())
+            .collect();
+        assert_eq!(vcc.len(), 1, "{vcc:?}");
+    }
+
+    #[test]
+    fn pads_of_one_net_that_do_not_touch_still_need_a_line() {
+        // The same pad moved clear of the surface mount pad: two pieces, so two lines.
+        let mut board = board_with_a_via_pad_in_r1_1();
+        let part = board.parts.iter_mut().find(|p| p.refdes == "R1").unwrap();
+        part.footprint.pads.last_mut().unwrap().at.y += 3.0;
+        let vcc = Ratsnest::of(&board)
+            .lines
+            .iter()
+            .filter(|l| l.net == "VCC")
+            .count();
+        assert_eq!(vcc, 2);
     }
 
     #[test]

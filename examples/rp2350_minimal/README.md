@@ -5,12 +5,13 @@ A port of Raspberry Pi's open **RP2350A Minimal** reference board to netsmith, a
 theirs, proved net by net by a test. **The physical file is done** (`src/main.physical.nsm`: the
 outline, the four mounting holes, the places of the connectors and buttons), and `netsmith fab`
 writes a PCB that the parity checker finds equal to Raspberry Pi's in every way that must match
-(see Parity and The result). Since its parts are drawn with Raspberry Pi's footprints (#728,
-see Parts), whose courtyards are the parts' bodies, the placer packs them closer and the router
-leaves one connection after its 300 s (seed 3; seed 1 leaves three after 200 s), where it routed
-completely in about 35 s before; and its design rules check finds the nine thin rings of the
-RP2350's vias that their board has (see The reproduction). The figures of The result are from
-before.
+(see Parity and The result). Its parts are drawn with Raspberry Pi's footprints (#728, see
+Parts), so the placer arranges them otherwise than before, and which seed the router finishes
+moved with it: seeds 0 and 4 route completely (about 3 to 4 minutes in a debug build on a busy
+machine), seeds 1, 2 and 3 leave three, two and one connection after the router's 300 s (#731).
+The design rules check finds the nine thin rings of the RP2350's vias that their board has (see
+The reproduction), so `fab` needs `--allow-drc-violations` here. The figures of The result are
+from before.
 
 ## Source
 
@@ -370,7 +371,7 @@ From this folder:
 
 ```sh
 netsmith build    # the schematic, in out/ (no KiCad needed)
-netsmith fab --locked   # the package for the board house, in fab/Rp2350Minimal/; about 35 s
+netsmith fab --locked --allow-drc-violations   # the package for the board house, in fab/Rp2350Minimal/; about 3 minutes (the flag: see The reproduction)
 ```
 
 `--locked` stops the run if the parts it picks differ from `src/main.lock.toml` and never
@@ -429,10 +430,11 @@ Two more files were needed to make the board route, and neither states a require
   `src/main.nsm`. Their board has a ground zone on `B.Cu` too. The pour carries ground: the
   router has no ground to draw on the front, and routes the 179 connections left. With no pour
   the router left 2 of 179 connections unrouted after 223 s (four tries).
-- **A placer seed**, `seed = 3` in `src/main.pcb.toml` (the layout file, which keeps a solution
-  and never a requirement; it locks no part). Seeds 0, 2 and 3 route completely (97 s, 43 s and
-  35 s of routing); seeds 1 and 4 leave two connections unrouted after 120 s. The seed does not
-  move the six parts above, only the others.
+- **A placer seed**, `seed = 4` in `src/main.pcb.toml` (the layout file, which keeps a solution
+  and never a requirement; it locks no part). With Raspberry Pi's footprints, seeds 0 and 4 route
+  completely (220 s and 176 s) and seeds 1, 2 and 3 leave three, two and one connection after
+  300 s (the file says why the seed moved). The seed does not move the six parts above, only the
+  others.
 
 ## The case
 
