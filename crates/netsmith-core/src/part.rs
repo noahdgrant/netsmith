@@ -18,8 +18,8 @@ pub struct Part {
     pub package: Option<String>,
     /// Where the part is in the design: `stage.output_cap`, the path of its instance from
     /// the board. It does not change when reference designators are renumbered, so it is
-    /// what a layout file keys a part by (ADR 0030). The second and later capacitors of a
-    /// bank add `#2`, `#3` (ADR 0052).
+    /// what a layout file keys a part by (ADR 0030). The capacitors of a bank of two or more
+    /// are `stage.output_cap[0]`, `stage.output_cap[1]` (ADR 0052), as the members of `N x Kind`.
     pub path: String,
     /// The part's pins in the package it is in, in the order its pin table lists them. Empty
     /// for a part that has no pin table.

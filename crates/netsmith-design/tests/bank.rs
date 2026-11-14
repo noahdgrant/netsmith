@@ -6,7 +6,7 @@ use netsmith_solve::{Catalogs, solve};
 
 fn designed(bulk: &str, need: &str) -> Result<Designed, Vec<String>> {
     let src = format!(
-        r#"import std::parts::passive::Capacitor
+        r#"import std::parts::passive::CapacitorBank
 import std::sources::Rail
 import std::mfg::jlcpcb::TwoLayer
 
@@ -17,7 +17,7 @@ board B {{
         .pos.net &= "VIN"
         .neg.net &= "GND"
     }}
-    .bulk: Capacitor {{ {bulk} }}
+    .bulk: CapacitorBank {{ {bulk} }}
     .bulk.count * .bulk.effective_capacitance >= {need}
     .supply.pos ~> .bulk ~> .supply.neg
 }}
@@ -35,18 +35,11 @@ fn a_bank_is_one_part_for_each_capacitor_on_the_same_nets() {
     let l = designed(".count &= 1..8", "40uF").unwrap();
     let parts = &l.design.parts;
     assert!(parts.len() > 1, "{} parts", parts.len());
-    // Numbered one after the other; the first has the path of the instance, the others add
-    // `#2`, `#3`, so that a layout file keys each by its own path.
+    // Numbered one after the other; the paths are `bulk[0]`, `bulk[1]`, ... as the members of
+    // `N x Kind` are, so that a layout file keys each by its own path.
     for (i, p) in parts.iter().enumerate() {
         assert_eq!(p.refdes, format!("C{}", i + 1));
-        assert_eq!(
-            p.path,
-            if i == 0 {
-                "bulk".to_string()
-            } else {
-                format!("bulk#{}", i + 1)
-            }
-        );
+        assert_eq!(p.path, format!("bulk[{i}]"));
         assert_eq!(p.kind, "Capacitor");
         assert_eq!(p.value, parts[0].value);
         assert_eq!(p.pins.len(), 2);
@@ -91,7 +84,7 @@ fn a_bank_of_one_is_the_part_it_was() {
 fn a_count_that_is_not_a_whole_number_is_refused_naming_the_field() {
     // The solver reports a count with no whole number in it; the design stage, which reads the
     // model whatever the solver said, refuses to draw 2.5 parts.
-    let src = r#"import std::parts::passive::Capacitor
+    let src = r#"import std::parts::passive::CapacitorBank
 import std::sources::Rail
 
 board B {
@@ -100,7 +93,7 @@ board B {
         .pos.net &= "VIN"
         .neg.net &= "GND"
     }
-    .bulk: Capacitor { .count &= 2.5 }
+    .bulk: CapacitorBank { .count &= 2.5 }
     .supply.pos ~> .bulk ~> .supply.neg
 }
 "#;
@@ -117,7 +110,7 @@ board B {
 
 /// A bank (`.bulk`, several capacitors) beside a resistor, and a physical file.
 fn designed_physical(physical: &str) -> Designed {
-    let src = r#"import std::parts::passive::{Capacitor, Resistor}
+    let src = r#"import std::parts::passive::{CapacitorBank, Resistor}
 import std::sources::Rail
 import std::mfg::jlcpcb::TwoLayer
 
@@ -129,7 +122,7 @@ board B {
         .neg.net &= "GND"
     }
     .r1: Resistor { .resistance &= 1kohm +/- 1% }
-    .bulk: Capacitor { .count &= 1..8 }
+    .bulk: CapacitorBank { .count &= 1..8 }
     .bulk.count * .bulk.effective_capacitance >= 40uF
     .supply.pos ~> .r1 ~> .supply.neg
     .supply.pos ~> .bulk ~> .supply.neg
@@ -150,7 +143,7 @@ fn paths_of_bank(l: &Designed) -> Vec<String> {
     l.design
         .parts
         .iter()
-        .filter(|p| p.path == "bulk" || p.path.starts_with("bulk#"))
+        .filter(|p| p.path.starts_with("bulk["))
         .map(|p| p.path.clone())
         .collect()
 }

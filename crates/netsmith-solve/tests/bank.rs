@@ -4,10 +4,15 @@
 use netsmith_check::{Domain, Loader, check};
 use netsmith_solve::{Catalogs, Solution, solve};
 
-/// A 5 V supply across a capacitor `bulk` that states `{bulk}` and `{extra}`.
+/// A 5 V supply across a `CapacitorBank` `bulk` that states `{bulk}` and `{extra}`.
 fn board(bulk: &str, extra: &str) -> String {
+    board_of("CapacitorBank", bulk, extra)
+}
+
+/// The same across a part of the standard kind `kind`.
+fn board_of(kind: &str, bulk: &str, extra: &str) -> String {
     format!(
-        r#"import std::parts::passive::Capacitor
+        r#"import std::parts::passive::{{Capacitor, CapacitorBank}}
 import std::sources::Rail
 import std::mfg::jlcpcb::TwoLayer
 
@@ -18,7 +23,7 @@ board B {{
         .pos.net &= "VIN"
         .neg.net &= "GND"
     }}
-    .bulk: Capacitor {{ {bulk} }}
+    .bulk: {kind} {{ {bulk} }}
     .supply.pos ~> .bulk ~> .supply.neg
 {extra}}}
 "#
@@ -66,7 +71,11 @@ fn a_requirement_no_single_capacitor_meets_is_met_by_a_bank() {
 
 #[test]
 fn a_bank_of_one_picks_what_a_part_with_no_count_picks() {
-    let alone = solved(&board("", "    .bulk.effective_capacitance >= 4uF\n"));
+    let alone = solved(&board_of(
+        "Capacitor",
+        "",
+        "    .bulk.effective_capacitance >= 4uF\n",
+    ));
     let bank = solved(&board(
         ".count &= 1..8",
         "    .bulk.count * .bulk.effective_capacitance >= 4uF\n",
@@ -79,30 +88,118 @@ fn a_bank_of_one_picks_what_a_part_with_no_count_picks() {
 }
 
 #[test]
-fn a_part_with_no_count_stated_is_one_part() {
+fn a_bank_with_no_count_stated_is_chosen_from_one_to_eight_fewest_first() {
+    // The bank's own default is `1..8` (ADR 0123); nothing asks for more than one capacitor.
     let s = solved(&board("", "    .bulk.effective_capacitance >= 4uF\n"));
     assert_eq!(s.picks[0].count, 1);
-    assert!(matches!(
-        s.model.domain_at("bulk.count"),
-        Some(Domain::Unset)
-    ));
+    assert_eq!(number(&s, "bulk.count"), 1.0);
+}
+
+/// The same board as `board`, asking for the bank's total and not for the count times a value.
+const NEED_TOTAL: &str =
+    "    .bulk.total_effective_capacitance >= 60uF\n    .bulk.max_voltage >= 6V\n";
+
+#[test]
+fn a_board_that_narrows_the_total_gets_a_count_picked() {
+    let by_total = solved(&board("", NEED_TOTAL));
+    assert!(messages(&by_total).is_empty(), "{:?}", messages(&by_total));
+    let n = number(&by_total, "bulk.count");
+    assert!(n > 1.0, "one capacitor cannot give 60 uF at 5 V, not {n}");
+    // The count is the fewest, and the total is what the circuit keeps: the same pick as the
+    // relation written out with the count.
+    let total = match by_total.model.domain_at("bulk.total_effective_capacitance") {
+        Some(Domain::Quantity(q)) => *q,
+        other => panic!("{other:?}"),
+    };
+    assert!(total.lo() >= 60e-6 - 1e-12, "{total}");
+    let by_count = solved(&board("", NEED));
+    assert_eq!(by_total.picks[0].candidate, by_count.picks[0].candidate);
+    assert_eq!(by_total.picks[0].count, by_count.picks[0].count);
 }
 
 #[test]
-fn a_stated_count_is_the_count_and_the_checks_hold_it() {
-    let s = solved(&board(".count &= 8", NEED));
+fn the_marked_total_is_the_count_times_the_marked_value() {
+    // 66 uF of marked capacitance from 22 uF parts is three of them, whatever they keep at 5 V.
+    let s = solved(&board(
+        ".capacitance &= 22uF +/- 20%",
+        "    .bulk.total_capacitance >= 66uF\n    .bulk.max_voltage >= 6V\n",
+    ));
     assert!(messages(&s).is_empty(), "{:?}", messages(&s));
-    assert_eq!(number(&s, "bulk.count"), 8.0);
-    assert_eq!(s.picks[0].count, 8);
-    // Two are not enough with any row at 5 V: the message says what was tried.
-    let s = solved(&board(".count &= 2", NEED));
+    assert!(number(&s, "bulk.count") >= 3.0);
+}
+
+#[test]
+fn an_impossible_total_is_refused_at_its_line() {
+    let src = board(
+        ".count &= 1..2",
+        "    .bulk.total_effective_capacitance >= 10mF\n",
+    );
+    let s = solved(&src);
     let m = messages(&s);
     assert_eq!(m.len(), 1, "{m:#?}");
     assert!(
         m[0].contains("no `capacitor` candidate satisfies `bulk`")
+            && m[0].contains("bulk.total_effective_capacitance must always be at least 10mF")
+            && m[0].contains("is not always above 10mF"),
+        "{}",
+        m[0]
+    );
+    // The line it points at is the board's statement of the total.
+    let at = s.diagnostics[0].span;
+    assert_eq!(
+        &src[at.start..at.end],
+        ".bulk.total_effective_capacitance >= 10mF"
+    );
+}
+
+/// A count a module passes through its interface: a board cannot write a whole number as the
+/// `.count` of its own capacitor (issue #685), but it states `.held` of a module that does.
+fn held(count: u32) -> String {
+    format!(
+        r#"import std::parts::passive::CapacitorBank
+import std::sources::Rail
+import std::mfg::jlcpcb::TwoLayer
+
+module Held {{
+    .rail: Rail
+    .held: Number
+    .bulk: CapacitorBank
+    .bulk.count == .held
+    .bulk.count * .bulk.effective_capacitance >= 60uF
+    .bulk.max_voltage >= 6V
+    .rail.pos ~> .bulk ~> .rail.neg
+}}
+
+board B {{
+    .process: TwoLayer {{ .stackup.thickness &= 1.6mm }}
+    .supply: Rail {{
+        .voltage &= 5V
+        .pos.net &= "VIN"
+        .neg.net &= "GND"
+    }}
+    .h: Held {{ .held &= {count} }}
+    .h.rail ~ .supply
+}}
+"#
+    )
+}
+
+#[test]
+fn a_stated_count_is_the_count_and_the_checks_hold_it() {
+    let s = solved(&held(8));
+    assert!(messages(&s).is_empty(), "{:?}", messages(&s));
+    assert_eq!(number(&s, "h.bulk.count"), 8.0);
+    assert_eq!(s.picks[0].count, 8);
+    // Two are not enough with any row at 5 V: the message says what was tried.
+    let s = solved(&held(2));
+    let m = messages(&s);
+    assert_eq!(m.len(), 1, "{m:#?}");
+    assert!(
+        m[0].contains("no `capacitor` candidate satisfies `h.bulk`")
             && m[0].contains("2 x ")
-            && m[0]
-                .contains("(bulk.count * bulk.effective_capacitance) must always be at least 60uF"),
+            && m[0].contains(
+                "(h.bulk.count * h.bulk.effective_capacitance) must always be at least 60uF"
+            ),
         "{}",
         m[0]
     );
@@ -153,7 +250,7 @@ fn a_relation_that_reads_only_counts_does_not_hide_a_count_from_the_search() {
     // every count, for a relation that reads `.total` and the counts and no column of `a`.
     // It does depend on `a`'s choice of count, so `a` at two must still be tried (a false
     // refusal otherwise).
-    let src = r#"import std::parts::passive::Capacitor
+    let src = r#"import std::parts::passive::CapacitorBank
 import std::sources::Rail
 import std::mfg::jlcpcb::TwoLayer
 
@@ -164,8 +261,8 @@ board B {
         .pos.net &= "VIN"
         .neg.net &= "GND"
     }
-    .a: Capacitor { .count &= 1..8 }
-    .b: Capacitor { .count &= 1..3 }
+    .a: CapacitorBank { .count &= 1..8 }
+    .b: CapacitorBank { .count &= 1..3 }
     .supply.pos ~> .a ~> .supply.neg
     .supply.pos ~> .b ~> .supply.neg
     .total: Number

@@ -240,6 +240,35 @@ pub enum LayoutError {
     },
 }
 
+/// What to say of an entry that names a capacitor of a bank in the old way (`bulk#2`, the second
+/// capacitor; `bulk`, the first). A bank's capacitors are `bulk[0]`, `bulk[1]`, counted from 0 as
+/// the members of `N x Kind` are (issue #685). Empty when no name is of the old form.
+fn bank_renames(names: &[String], known: &[String]) -> String {
+    let now: Vec<String> = names
+        .iter()
+        .filter_map(|name| {
+            let new = match name.rsplit_once('#') {
+                Some((base, n)) if !base.is_empty() && !n.is_empty() => {
+                    let k: usize = n.parse().ok().filter(|k| *k >= 1)?;
+                    format!("{base}[{}]", k - 1)
+                }
+                _ => format!("{name}[0]"),
+            };
+            known
+                .contains(&new)
+                .then(|| format!("`{name}` is now `{new}`"))
+        })
+        .collect();
+    if now.is_empty() {
+        String::new()
+    } else {
+        format!(
+            " (the capacitors of a bank are `name[0]`, `name[1]`, ...: {})",
+            now.join(", ")
+        )
+    }
+}
+
 impl std::fmt::Display for LayoutError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -271,7 +300,7 @@ impl std::fmt::Display for LayoutError {
                 } else {
                     write!(
                         f,
-                        "{file}: the board `{board}` has no {what} {} (its {what}s: {}); the layout is out of date, remove the entr{} or rename {}",
+                        "{file}: the board `{board}` has no {what} {} (its {what}s: {}); the layout is out of date, remove the entr{} or rename {}{}",
                         list(names),
                         if known.is_empty() {
                             "none".to_string()
@@ -280,6 +309,11 @@ impl std::fmt::Display for LayoutError {
                         },
                         if names.len() == 1 { "y" } else { "ies" },
                         if names.len() == 1 { "it" } else { "them" },
+                        if *what == "part" {
+                            bank_renames(names, known)
+                        } else {
+                            String::new()
+                        },
                     )
                 }
             }
@@ -943,6 +977,35 @@ at = [5.0, 4.0]
         let text = layout.to_text();
         assert_eq!(Layout::parse(&text, "x").unwrap(), layout);
         assert!(text.starts_with("version = 1\n"), "{text}");
+    }
+
+    #[test]
+    fn a_banks_capacitors_are_keyed_by_their_index_and_the_old_form_is_refused_with_the_new_one() {
+        // The capacitors of a bank of two or more are `bulk[0]`, `bulk[1]` (issue #685); TOML
+        // quotes the key.
+        let layout = Layout::parse(
+            "version = 1\n[Demo.parts.\"bulk[1]\"]\nat = [1, 2]\n",
+            "demo.pcb.toml",
+        )
+        .unwrap();
+        assert!(layout.boards["Demo"].parts.contains_key("bulk[1]"));
+        assert!(layout.to_text().contains("[Demo.parts.\"bulk[1]\"]"));
+        let stale = |names: &[&str]| {
+            LayoutError::Stale {
+                file: "demo.pcb.toml".into(),
+                board: "Demo".into(),
+                what: "part",
+                names: names.iter().map(ToString::to_string).collect(),
+                known: vec!["bulk[0]".into(), "bulk[1]".into(), "r1".into()],
+            }
+            .to_string()
+        };
+        let text = stale(&["bulk#2", "bulk"]);
+        assert!(
+            text.contains("`bulk#2` is now `bulk[1]`") && text.contains("`bulk` is now `bulk[0]`"),
+            "{text}"
+        );
+        assert!(!stale(&["r2"]).contains("is now"));
     }
 
     #[test]

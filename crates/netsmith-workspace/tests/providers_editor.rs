@@ -174,13 +174,13 @@ fn project_of(
 
 #[test]
 fn every_capacitor_of_a_picked_bank_carries_the_via_and_the_bank_is_one_line() {
-    // A provider of `Capacitor` is a bank when the design says how many. The first capacitor is
-    // at the use's path and the others at `bulk#2` and `bulk#3`; all three are one line.
+    // A provider of `CapacitorBank` is a bank, picked for a use of it. The capacitors are
+    // `bulk[0]`, `bulk[1]` and `bulk[2]`; all three are one line.
     let poly = "\
-import std::parts::passive::Capacitor
+import std::parts::passive::CapacitorBank
 
 /// An invented polymer capacitor.
-part PolyCap provides Capacitor {
+part PolyCap provides CapacitorBank {
     pins {
         .a passive \"1\" \"1\"
         .b passive \"2\" \"2\"
@@ -189,7 +189,7 @@ part PolyCap provides Capacitor {
 }
 ";
     let main = "\
-import std::parts::passive::Capacitor
+import std::parts::passive::CapacitorBank
 import std::sources::Rail
 import src::poly::PolyCap
 
@@ -199,9 +199,9 @@ board Bulk {
         .pos.net &= \"VIN\"
         .neg.net &= \"GND\"
     }
-    .bulk: Capacitor {
+    .bulk: CapacitorBank {
         .package &= \"CASE_B\"
-        .count &= 3
+        .count &= 3..8
     }
     .supply.pos ~> .bulk ~> .supply.neg
 }
@@ -219,7 +219,7 @@ board Bulk {
     assert_eq!(caps.len(), 1, "{:?}", bom.lines);
     assert_eq!(caps[0].quantity, 3);
     assert_eq!(caps[0].designators, ["C1", "C2", "C3"]);
-    assert_eq!(caps[0].via.as_deref(), Some("Capacitor"));
+    assert_eq!(caps[0].via.as_deref(), Some("CapacitorBank"));
 }
 
 #[test]

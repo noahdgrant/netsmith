@@ -15,7 +15,7 @@ use netsmith_editor::Backend;
 use netsmith_fab::KicadCliExe;
 
 /// A 5 V rail with a bank across it: 60 uF effective, which no single capacitor keeps at 5 V.
-const BOARD: &str = r#"import std::parts::passive::Capacitor
+const BOARD: &str = r#"import std::parts::passive::CapacitorBank
 import std::sources::Rail
 import std::mfg::jlcpcb::TwoLayer
 
@@ -28,7 +28,7 @@ board Banked {
         .pos.net &= "VCC"
         .neg.net &= "GND"
     }
-    .bulk: Capacitor { .count &= 1..8 }
+    .bulk: CapacitorBank { .count &= 1..8 }
     .bulk.count * .bulk.effective_capacitance >= 60uF
     .bulk.max_voltage >= 6V
     .supply.pos ~> .bulk ~> .supply.neg
@@ -170,14 +170,21 @@ fn a_requirement_on_the_banks_part_is_checked_for_every_capacitor_and_names_the_
         "{notes}"
     );
     // The second capacitor moved by hand out of its window: the finding is about it, by its
-    // own path and designator, and the first capacitor is not named.
+    // own path and designator, and the first capacitor is not named. A bank's capacitors are
+    // `bulk[0]`, `bulk[1]`, counted from 0 as the members of `N x Kind` are (issue #685).
     let e = run(Some(
-        "version = 1\n[Banked.parts.\"bulk#2\"]\nat = [30.0, 15.0]\n",
+        "version = 1\n[Banked.parts.\"bulk[1]\"]\nat = [30.0, 15.0]\n",
     ))
     .expect_err("the second capacitor is out of its window");
     assert!(
-        e.contains("constraint bulk#2.place.top") && e.contains("body of C2"),
+        e.contains("constraint bulk[1].place.top") && e.contains("body of C2"),
         "{e}"
     );
-    assert!(!e.contains("constraint bulk.place.top"), "{e}");
+    assert!(!e.contains("constraint bulk[0].place.top"), "{e}");
+    // The old form is refused with the new one named.
+    let e = run(Some(
+        "version = 1\n[Banked.parts.\"bulk#2\"]\nat = [30.0, 15.0]\n",
+    ))
+    .expect_err("`bulk#2` is no part any more");
+    assert!(e.contains("`bulk#2` is now `bulk[1]`"), "{e}");
 }

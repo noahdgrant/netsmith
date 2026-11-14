@@ -33,14 +33,19 @@ pub fn notes(designed: &Designed, catalogs: &Catalogs) -> Vec<String> {
     found
         .into_iter()
         .map(|(_, refdes, i, why)| {
+            let banked = refdes.len() > 1;
             let sourced = &designed.sourcing[i];
             let lcsc = sourced.lcsc.as_deref().unwrap_or_default();
             let part = match sourced.mpn.as_deref() {
                 Some(mpn) => format!("{lcsc} ({mpn})"),
                 None => lcsc.to_string(),
             };
+            // A bank of two or more has the paths `bulk[0]`, `bulk[1]`: the note is for the use.
             let path = &designed.design.parts[i].path;
-            let path = path.split('#').next().unwrap_or(path);
+            let path = match path.strip_suffix(']').and_then(|p| p.rsplit_once('[')) {
+                Some((use_path, _)) if banked => use_path,
+                _ => path,
+            };
             let reason = match why {
                 SoldOut::Stated { at } => {
                     format!("its catalog row ({at}) states a stock of 0")

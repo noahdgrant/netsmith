@@ -835,24 +835,19 @@ pub(crate) fn placements(model: &Model, errors: &mut Vec<String>) -> (Vec<Placem
     (found, sites)
 }
 
-/// The paths of the parts a bank stands for (ADR 0052): `path` itself for the first and
-/// `path#2`, `path#3` for the others. A part that is not a bank is just `path`.
+/// The paths of the parts a bank stands for (ADR 0052): `path[0]`, `path[1]`, ... for a bank
+/// of two or more, written as the members of `N x Kind` are (ADR 0119). A part that is not a
+/// bank, or a bank of one, is just `path`.
 fn members(path: &str, banks: &BTreeMap<String, usize>) -> Vec<String> {
     let n = banks.get(path).copied().unwrap_or(1);
-    (1..=n)
-        .map(|k| {
-            if k == 1 {
-                path.to_string()
-            } else {
-                format!("{path}#{k}")
-            }
-        })
+    (0..n)
+        .map(|k| crate::bank_member_path(path, k, n))
         .collect()
 }
 
 /// Make every requirement the design states on the path of a bank hold for each capacitor of
 /// it (ADR 0052). The design stage makes one part of the design for each, with a path of its own
-/// (`stage.output_cap#2`), and a requirement that named only the first would leave the others
+/// (`stage.output_cap[1]`), and a requirement that named only the first would leave the others
 /// to sit anywhere with nothing said. So a placement (`.place`), a height and a protrusion
 /// become one for each capacitor, and a relation between two places becomes one for each pair
 /// of capacitors of its two ends. The sites that say where each is stated are copied with it.
