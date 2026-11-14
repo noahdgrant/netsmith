@@ -34,6 +34,9 @@ struct Probe {
     workspace: Mutex<Weak<Workspace>>,
     /// Cancel the analysis at the first progress line of this stage.
     cancel_at: Mutex<Option<String>>,
+    /// Cancel the analysis the moment it is announced (what the page hears before it offers Cancel), and what
+    /// `cancel_analysis` said then.
+    cancel_at_start: Mutex<Option<Option<bool>>>,
     events: Mutex<Vec<String>>,
     /// The counts of work the solver reported: `unit done/total`.
     work: Mutex<Vec<String>>,
@@ -58,6 +61,13 @@ impl Probe {
                 AnalysisEvent::Finished => "finished".to_string(),
             };
             probe.events.lock().unwrap().push(name);
+            if let AnalysisEvent::Started { .. } = &event {
+                let mut at = probe.cancel_at_start.lock().unwrap();
+                if matches!(*at, Some(None)) {
+                    let workspace = probe.workspace.lock().unwrap().upgrade();
+                    *at = Some(Some(workspace.expect("the workspace is there").cancel_analysis()));
+                }
+            }
             if let AnalysisEvent::Progress { stage, work, .. } = &event {
                 if let Some(w) = work {
                     if w.unit == "parts chosen" {
@@ -100,6 +110,16 @@ impl Probe {
 
     fn cancel_at(&self, stage: &str) {
         *self.cancel_at.lock().unwrap() = Some(stage.to_string());
+    }
+
+    /// Cancel the next analysis when it is announced.
+    fn cancel_at_start(&self) {
+        *self.cancel_at_start.lock().unwrap() = Some(None);
+    }
+
+    /// What `cancel_analysis` said when the analysis was announced, if it was asked.
+    fn said_at_start(&self) -> Option<bool> {
+        self.cancel_at_start.lock().unwrap().flatten()
     }
 
     fn heard(&self) -> Vec<String> {
@@ -208,6 +228,32 @@ fn a_cancelled_analysis_publishes_nothing() {
     assert_eq!(next.version, 2);
     assert_eq!((next.errors, next.cancelled), (0, None));
     assert_eq!(probe.heard().last().map(String::as_str), Some("finished"));
+}
+
+#[test]
+fn a_cancel_asked_when_the_analysis_is_announced_reaches_it() {
+    // The page offers Cancel as soon as it hears that an analysis began (the observer's `Started`), so a cancel asked
+    // at that moment must find the analysis running: it is not told "nothing is running" while the analysis goes on.
+    let (root, editor, probe) = project("announced");
+    editor.analysis();
+    edit(&root, 1);
+    probe.heard();
+    probe.cancel_at_start();
+    let after = editor.analysis();
+    assert_eq!(
+        probe.said_at_start(),
+        Some(true),
+        "the analysis that was announced can be cancelled"
+    );
+    assert_eq!(after.cancelled, Some(true));
+    assert_eq!(after.version, 1, "the version did not move");
+    let heard = probe.heard();
+    assert_eq!(heard.first().map(String::as_str), Some("started"));
+    assert_eq!(heard[heard.len() - 2..], ["cancelled", "finished"]);
+    assert!(
+        !heard.contains(&"progress:solve".to_string()),
+        "no work followed the cancel: {heard:?}"
+    );
 }
 
 #[test]
