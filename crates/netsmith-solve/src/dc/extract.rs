@@ -15,7 +15,10 @@
 //!   has a range: a resistor between its two terminals, a diode between its anode and cathode.
 //!   A part that has a `bridge` and no element the pass models (a boundary: an LED, an inductor
 //!   with no `dc`, a MOSFET whose gate nothing sets) with a stated or worked-out
-//!   `.current`: a current source over that range between the terminals of its `bridge`. A
+//!   `.current`: a current source over that range between the terminals of its `bridge`. So is
+//!   a diode between two held nets whose `.current` has a range (the current an ideal diode
+//!   moves between two ideal sources is not a number), unless one of the nets is a regulator's
+//!   output, whose load is then what the regulator states; one with no range is noted. A
 //!   rail of a part with a `.current` that is never negative (a load): a current source from its
 //!   `pos` to its `neg`. A rail of a part that can give current is an output, which holds its
 //!   net's voltage and is not modelled in this stage.
@@ -749,12 +752,24 @@ fn extract_in(
         };
         // A diode between two held nets has no current the network can say (two ideal
         // sources and an ideal diode): it is left out, and so is nothing it touches that is
-        // free.
+        // free. Only a resistor's or a switch's current between two such nets is Ohm's law;
+        // a diode's alone is not a number.
         if matches!(kind, Kind::Diode { .. }) && nets.iter().all(|n| held.contains_key(n)) {
             // The current it moves is in no island, so a regulator's output that it touches is
             // not a net whose loads are all summed: its pins stay open there, and the
             // regulator's load is what its own `.current` states (issue #289, item 4).
             let on_output = nets.iter().any(|n| reg_out_nets.contains(n));
+            // A diode whose `.current` has a range is judged with it (issue #710): off a
+            // regulator's output it is a boundary, a current source over that range (below),
+            // as the note asks; on one, the regulator's load stays what it states, since the
+            // current a buck's catch diode moves into its switch node is the load's and not
+            // a load of its own. Either way there is nothing left to note.
+            if stated_current(model, part).is_some() {
+                if on_output {
+                    modelled_parts.insert(part);
+                }
+                continue;
+            }
             if !on_output {
                 accounted.extend(own);
             }
@@ -882,23 +897,13 @@ fn extract_in(
     let switch_parts: HashSet<InstId> = switches.iter().map(|(p, _)| *p).collect();
     let boundary = |part: InstId| -> Option<(Item, InstId, InstId)> {
         let (a, b) = model.instance(part).bridge?;
-        let current = model.through_of(part)?;
-        let Domain::Quantity(q) = &model.field(current).domain else {
-            return None;
-        };
-        if q.dim() != Dimension::CURRENT || !q.lo().is_finite() || !q.hi().is_finite() {
-            return None;
-        }
+        let (current, i) = stated_current(model, part)?;
         let (Some(&na), Some(&nb)) = (net_of.get(&a), net_of.get(&b)) else {
             return None;
         };
         Some((
             Item {
-                kind: Kind::Current {
-                    from: 0,
-                    to: 0,
-                    i: Range::new(q.lo(), q.hi()),
-                },
+                kind: Kind::Current { from: 0, to: 0, i },
                 name: model.path_of(part),
                 part: None,
                 flipped: false,
@@ -1789,6 +1794,18 @@ fn driver_of(
         open_drain: false,
         leak,
     })
+}
+
+/// A part's through-current (its `.current`, for a part with a `bridge`) when it has a range
+/// with finite ends: the field and the range. A part the pass does not model is a boundary over
+/// it, a current source between the ends of its `bridge`.
+fn stated_current(model: &Model, part: InstId) -> Option<(FieldId, Range)> {
+    let current = model.through_of(part)?;
+    let Domain::Quantity(q) = &model.field(current).domain else {
+        return None;
+    };
+    (q.dim() == Dimension::CURRENT && q.lo().is_finite() && q.hi().is_finite())
+        .then(|| (current, Range::new(q.lo(), q.hi())))
 }
 
 /// An output resistance that a part states (`.roh &= 20ohm..50ohm`), as a range, when it has a

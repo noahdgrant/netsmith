@@ -252,11 +252,11 @@ generic BuckIc {
 /// worst case, and a catalog row for every part of it. A board that wants one IC names it,
 /// `.reg: Buck<Tps54202>`, and may then join the IC's own pins (ADR 0120).
 ///
-/// A candidate whose trial cannot be judged is passed over for one that can (ADR 0068), and
-/// the `Lmr16006y`'s trial is never judged: its catch diode joins ground and the switch node,
-/// two nets the DC analysis holds, and the analysis leaves that diode's current as a note it
-/// does not judge, whatever the diode states. So the `Lmr16006y` is picked through this generic
-/// only where no other IC serves; a board that wants it names it.
+/// A candidate whose trial cannot be judged is passed over for one that can (ADR 0068). The
+/// `Lmr16006y`'s catch diode joins ground and the switch node, two nets the DC analysis holds,
+/// between which the current of an ideal diode is not a number the analysis can work out; its
+/// `support` section states that current, so the trial is judged with it and the `Lmr16006y`,
+/// first in the order, is picked wherever it serves.
 ///
 /// The output's tolerance must leave room for the reference: each standard IC's is good to 2 %
 /// or 2.5 % in the worst case, and the divider's 1 % resistors add about 1.5 % at 3.3 V, so a
@@ -928,7 +928,8 @@ part Lt8641 provides BuckIc {
 /// voltage", p.13) and for the output current ("the current rating for the diode should be
 /// equal or greater to the maximum output current", p.13), carrying on average the output
 /// current over the part of each period the switch is off, "approximately (1-D) x IOUT"
-/// (p.13), which is its `.current` (the DC analysis cannot work it out between two sources);
+/// (p.13), which is its `.current` (the DC analysis cannot work it out between two sources,
+/// and judges the trial with this one);
 /// and the 100 kohm from VIN to SHDN of Figure 9. `Buck` makes the inductor, the capacitors and the divider (R1 and R2).
 part Lmr16006y provides BuckIc {
     .vref &= 0.747V..0.782V

@@ -10,7 +10,7 @@ provider = "std::mfg::jlcpcb::JlcTwoLayer1oz"
 
 [BuckConverterExample.providers."reg"]
 generic = "BuckConverter"
-provider = "std::parts::regulator::Buck<std::parts::regulator::Tps54202>"
+provider = "std::parts::regulator::Buck<std::parts::regulator::Lmr16006y>"
 
 [BuckConverterExample.parts."power_in"]
 catalog = "header"
@@ -32,15 +32,15 @@ mpn = "0402WGF3300TCE"
 
 [BuckConverterExample.parts."reg.divider.rtop"]
 catalog = "resistor"
-row = "1.5kΩ 1% 0603 C22843"
-lcsc = "C22843"
-mpn = "0603WAF1501T5E"
+row = "1.1kΩ 1% 0402 C25860"
+lcsc = "C25860"
+mpn = "0402WGF1101TCE"
 
 [BuckConverterExample.parts."reg.ic"]
-catalog = "tps54202"
-row = "TPS54202DDCR 4.5-28V 2A 500kHz buck SOT-23-6 C191884"
-lcsc = "C191884"
-mpn = "TPS54202DDCR"
+catalog = "lmr16006y"
+row = "LMR16006YDDCR 4-60V 0.6A 2.1MHz buck SOT-23-6 C290195"
+lcsc = "C290195"
+mpn = "LMR16006YDDCR"
 
 [BuckConverterExample.parts."reg.ic.boost"]
 catalog = "capacitor"
@@ -48,11 +48,23 @@ row = "100nF 10% 16V X7R 0402 C1525"
 lcsc = "C1525"
 mpn = "CL05B104KO5NNNC"
 
+[BuckConverterExample.parts."reg.ic.catch"]
+catalog = "schottky"
+row = "1N5819WS 40V 1A Schottky SOD-323 C191023"
+lcsc = "C191023"
+mpn = "1N5819WS"
+
+[BuckConverterExample.parts."reg.ic.shdn_pullup"]
+catalog = "resistor"
+row = "100kΩ 1% 0402 C25741"
+lcsc = "C25741"
+mpn = "0402WGF1003TCE"
+
 [BuckConverterExample.parts."reg.inductor"]
 catalog = "inductor"
-row = "MTQH322512S100MBT 10uH 1.9A inductor 1210 C17701264"
-lcsc = "C17701264"
-mpn = "MTQH322512S100MBT"
+row = "LQH32PN100MN0L 10uH 750mA inductor 1210 C98020"
+lcsc = "C98020"
+mpn = "LQH32PN100MN0L"
 
 [BuckConverterExample.parts."reg.input_cap"]
 catalog = "capacitor"

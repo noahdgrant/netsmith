@@ -45,10 +45,10 @@ voltage but 3.3 V (the one linear regulator row is the XC6206 at 3.3 V, 100 mA).
 
 ## What the build says
 
-The DC analysis does not model the current of the reverse-polarity diode, which joins two rails
+The DC analysis cannot work out the current of the reverse-polarity diode, which joins two rails
 that a voltage is stated on (`VIN_RAW` and `VIN`): the board states a current for it
-(`.current &= 0A..3A`) so that its rating is checked, and the note that remains says the analysis
-does not solve it. The stage's capacitor ratings against the peak of its rails are not
+(`.current &= 0A..3A`), so its rating is checked and the analysis takes that current, with no
+note. The stage's capacitor ratings against the peak of its rails are not
 evaluated, because no rail states a `.peak`. The four feedback-divider resistors are picked by
 the first row that fits (the `unconstrained pick` guideline), because `Buck` does not let a
 board bound them.
