@@ -445,6 +445,12 @@ pub fn fab_detailed(
         }
         None => None,
     };
+    // The routes file beside it is read now too, so a wrong one stops fab before anything is
+    // placed; each board puts its table on after it is placed.
+    if let Some(file) = &options.layout {
+        crate::routes::read(&crate::routes::beside_layout(file), &board_names)
+            .map_err(|e| format!("error: {name}: {e}\n"))?;
+    }
     // Two requests that are one signal in the C header of the pin map are an error, said now
     // with every other check of the source and before any board is placed or written.
     let mut collisions = String::new();
@@ -931,6 +937,13 @@ fn fab_board(
             board.outline.height(),
             seeds.used
         ));
+        // The copper the routes file fixes, before the router (ADR 0030); what of it does not
+        // match the board any more is said, not used.
+        for note in
+            crate::routes::apply_beside(&mut board, options.layout.as_deref()).map_err(fail)?
+        {
+            say(format!("{}: warning: {note}", built.label()));
+        }
         // The board as placed, for the pin optimizer if the router leaves connections.
         let placed = options.pins.is_some().then(|| board.clone());
         // `--save-placed`: the board as placed, for `netsmith route`; without it, one an earlier

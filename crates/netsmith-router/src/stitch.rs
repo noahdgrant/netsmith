@@ -156,6 +156,10 @@ pub fn stitch(board: &mut Board) {
         let Some(pitch) = pour.stitch_pitch else {
             continue;
         };
+        // A net a routes file locks gets no copper (`netsmith_pcb::Routes`).
+        if board.fixed.is_locked(&pour.net) {
+            continue;
+        }
         if !other_layers(board, &pour.net, pour.layer) {
             continue;
         }

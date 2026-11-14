@@ -235,6 +235,12 @@ pub fn place_with(
         }
     })?
     .board;
+    // The copper the routes file beside the layout file fixes (ADR 0030).
+    let mut board = board;
+    if let Some((file, _)) = &data.layout {
+        netsmith_fabricate::routes::apply_beside(&mut board, Some(file))
+            .map_err(|e| PlaceError::Layout(format!("{name}: {e}")))?;
+    }
     let case_findings = if data.built.design.features.case_models.is_empty() {
         Vec::new()
     } else {

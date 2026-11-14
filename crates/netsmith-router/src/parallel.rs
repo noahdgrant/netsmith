@@ -145,8 +145,9 @@ pub fn parallel_vias(board: &mut Board) {
             .find(|c| c.net == net)
             .map_or(1, |c| c.vias);
         let mut members = cluster(board, index);
-        // A cluster is grown from its first via only.
-        if members.iter().any(|&m| m < index) {
+        // A cluster is grown from its first via only, and a net a routes file locks gets no
+        // copper.
+        if members.iter().any(|&m| m < index) || board.fixed.is_locked(&net) {
             index += 1;
             continue;
         }

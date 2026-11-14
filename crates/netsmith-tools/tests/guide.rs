@@ -215,6 +215,32 @@ fn every_manifest_in_the_guide_is_a_manifest() {
     assert!(found >= 3, "found only {found} manifests");
 }
 
+/// The routes file the guide shows (issue #599) is one that netsmith reads, and writes back as
+/// it is shown, one shape a line.
+#[test]
+fn the_routes_file_in_the_guide_is_a_routes_file() {
+    let guide = guide();
+    let blocks = blocks(&guide);
+    let block = blocks
+        .iter()
+        .find(|b| b.is("toml") && b.text.contains(".nets."))
+        .expect("the guide shows a routes file");
+    let routes = netsmith_pcb::Routes::parse(&block.text, "the guide")
+        .unwrap_or_else(|e| panic!("docs/LANGUAGE.md:{}: {e}", block.line));
+    let shown: Vec<&str> = block
+        .text
+        .lines()
+        .map(|l| l.split(" #").next().unwrap().trim_end())
+        .filter(|l| !l.trim_start().starts_with('#'))
+        .collect();
+    assert_eq!(
+        routes.to_text().trim(),
+        shown.join("\n").trim(),
+        "docs/LANGUAGE.md:{}",
+        block.line
+    );
+}
+
 /// The orders of the guide's manifest are the ones the text describes, and the error it shows
 /// for a board that is not there is what `resolve` says.
 #[test]

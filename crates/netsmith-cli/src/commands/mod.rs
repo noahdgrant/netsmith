@@ -18,6 +18,7 @@ mod part;
 mod port;
 mod render;
 mod route;
+mod routes;
 mod view;
 
 use std::process::ExitCode;
@@ -38,6 +39,8 @@ pub enum Command {
     Fab(fab::Args),
     /// Route a placed board that `fab --save-placed` wrote, alone.
     Route(route::Args),
+    /// Fix copper of a board in its routes file: import it from KiCad, add, delete, lock, show.
+    Routes(routes::Args),
     /// Refresh the pick lock, or check that it is current.
     Lock(lock::Args),
     /// Edit the source and see the boards in a browser.
@@ -73,6 +76,7 @@ pub fn run(command: Command) -> ExitCode {
         Command::Check(args) => check::run(args),
         Command::Fab(args) => fab::run(args),
         Command::Route(args) => route::run(args),
+        Command::Routes(args) => routes::run(args),
         Command::Lock(args) => lock::run(args),
         Command::Editor(args) => editor::run(args),
         Command::Board3d(args) => board3d::run(args),

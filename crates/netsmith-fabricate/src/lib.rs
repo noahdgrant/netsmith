@@ -2,7 +2,7 @@
 //!
 //! It takes what `netsmith-pipeline` builds (`Built`) and places, routes and checks it, and writes
 //! the fab package (`fab`, `order`); the files beside a source it reads (the physical file, the pin
-//! file, the layout, the project manifest) are here too.
+//! file, the layout, the routes file, the project manifest) are here too.
 
 pub mod board3d;
 pub mod case_fit;
@@ -20,4 +20,5 @@ pub mod pins;
 pub mod placed;
 pub mod project;
 pub mod refresh;
+pub mod routes;
 pub mod system3d;

@@ -153,7 +153,15 @@ pub fn round_bends(board: &mut Board, widths: f64) -> usize {
     let mut drawn = 0;
     for [(a, a_to), (b, b_to)] in bends {
         let (ta, tb) = (&board.tracks[a], &board.tracks[b]);
-        if ta.mid.is_some() || tb.mid.is_some() || (ta.width - tb.width).abs() > 1e-9 {
+        // The copper a routes file fixed (the first tracks) is never changed, and a net it
+        // locks gets no copper.
+        let fixed_copper =
+            a < board.fixed.tracks || b < board.fixed.tracks || board.fixed.is_locked(&ta.net);
+        if fixed_copper
+            || ta.mid.is_some()
+            || tb.mid.is_some()
+            || (ta.width - tb.width).abs() > 1e-9
+        {
             continue;
         }
         let end = |t: &Track, to: bool| if to { (t.to, t.from) } else { (t.from, t.to) };

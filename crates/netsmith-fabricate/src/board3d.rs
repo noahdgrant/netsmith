@@ -1164,6 +1164,22 @@ impl Placed<'_> {
         )
     }
 
+    /// `then` of the board picked, built and placed (the layout file read, the routes file not).
+    pub fn with_board<T>(&self, then: impl FnOnce(&Built, &Board) -> T) -> Result<T, String> {
+        placed(
+            self.name,
+            self.text,
+            self.loader,
+            self.catalogs,
+            self.libraries,
+            Some(&self.layout),
+            self.board,
+            self.seeds,
+            None,
+            |built, board, _| then(built, board),
+        )
+    }
+
     /// [`scene_and_label`]: the scene and the board's label.
     pub fn scene_and_label(&self) -> Result<(Scene, String), String> {
         placed(
