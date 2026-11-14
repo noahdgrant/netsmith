@@ -41,12 +41,7 @@ generic LinearRegulator {
     (.vin.voltage - .vout.voltage) * (-.vout.current) + .vin.voltage * .quiescent_current <= .max_power
 
     // Pad 1 is ground, 2 the output and 3 the input, in both packages.
-    pins "SOT-23" {
-        .vin.pos  power "IN"  "3"
-        .vin.neg  power "GND" "1"
-        .vout.pos power "OUT" "2"
-    }
-    pins "SOT-223" {
+    pins "SOT-23" "SOT-223" {
         .vin.pos  power "IN"  "3"
         .vin.neg  power "GND" "1"
         .vout.pos power "OUT" "2"
@@ -627,16 +622,14 @@ module Buck<Ic: BuckIc> {
 ///   output for outputs of 3.3 V to 25 V, and to ground when no supply is available (Pin
 ///   Functions, p.10). The part cannot reach the output, which `Buck` makes, so its `support`
 ///   section ties BIAS to ground and `.bias_voltage` is 0 V.
-/// - The other pins that the Absolute Maximum Ratings (p.2) give a limit for are each a `Logic`
-///   named `<pin>_limit`, whose `.line` is joined to the pin inside the part (it has no pad of
-///   its own) and has the limit as its `.abs_max`. The solver compares that with the
-///   worst-case voltage of the pin's net above the part's ground (ADR 0046), so a board that
-///   ties the pin to the input rail is refused: `EN/UV` 65 V (`.en_uv_limit`), `TR/SS` 4 V
-///   (`.tr_ss_limit`) and `SYNC/MODE` 6 V (`.sync_mode_limit`). The datasheet does not say
-///   what the ratings are measured from; they are taken from `GND`, as such a table's
-///   convention is. The pins keep their names and kinds: only the limit is stated. A pin
-///   joined to nothing (`TR/SS` and `SYNC/MODE` may float) is not judged, and one with only a
-///   capacitor on it (a soft-start capacitor) is a `not evaluated` note, as the voltage of a
+/// - The other pins that the Absolute Maximum Ratings (p.2) give a limit for state it at the
+///   end of their pin row, `abs_max 65V` (ADR 0124). The solver compares it with the
+///   worst-case voltage of the pin's net above the part's ground, `GND` (`.vin.neg`, the one
+///   rail ground of the table), so a board that ties the pin to the input rail is refused:
+///   `EN/UV` 65 V, `TR/SS` 4 V and `SYNC/MODE` 6 V. The datasheet does not say what the
+///   ratings are measured from; they are taken from `GND`, as such a table's convention is. A
+///   pin joined to nothing (`TR/SS` and `SYNC/MODE` may float) is not judged, and one with only
+///   a capacitor on it (a soft-start capacitor) is a `not evaluated` note, as the voltage of a
 ///   net that nothing sets is not known. `INTVCC`, `BST`, `RT` and the SW pads have no limit
 ///   in the table and state none. Two pins have one and state none, on purpose (ADR 0095):
 ///   `PG` (42 V) is an open-drain output, and the solver cannot say how far an output swings
@@ -644,22 +637,18 @@ module Buck<Ic: BuckIc> {
 ///   would be a note on every board that wires the pin; and `FB` (4 V) is the tap of the
 ///   stage's divider, which the solver reads as the hull of the two resistors (from ground to
 ///   the output) when the DC analysis does not solve the output side, so a limit would refuse
-///   every output above 4 V, a 5 V stage included. The divider holds the pin at
-///   `.vref`, under 0.83 V, by its own relation. Not taken: a voltage the board states,
-///   like `.bias_voltage` (a board that forgets it is not judged, the false pass of issue
-///   #290); changing the pins into `Logic` lines (`.u.sync_mode.line ~ ...`), which breaks
-///   every board that wires the part, for a limit the join inside the part states with no
-///   change; a pin-level limit with its own ground (a `Pin` member naming the rail it is
-///   measured against), the general fix that would also give `PG` and `FB` theirs and is a
-///   change to the language and the checker; a note for a pin left to float (a note on each
-///   build of a legal board); `FB` at 4 V anyway (it refuses the 5 V stage, the commonest).
-///   The solver skips a pin that nothing outside its own part is joined to, for every part
-///   and not this one only (`absolute_maximums` in `crates/netsmith-solve/src/levels.rs`): an
-///   optional input left floating has no voltage to judge, and a required one is already an
-///   error. The limits as a `Logic` joined inside the part (and not a voltage the board
-///   states or a general pin-level limit), `PG` and `FB` left unstated until the solver can
-///   judge them, the reading of the table as voltages from `GND`, and the skip for every
-///   part are accepted as built (the owner, 2026-11-11).
+///   every output above 4 V, a 5 V stage included. The divider holds the pin at `.vref`,
+///   under 0.83 V, by its own relation. Not taken: a voltage the board states, like
+///   `.bias_voltage` (a board that forgets it is not judged, the false pass of issue #290);
+///   changing the pins into `Logic` lines (`.u.sync_mode.line ~ ...`), which breaks every
+///   board that wires the part; a note for a pin left to float (a note on each build of a
+///   legal board); `FB` at 4 V anyway (it refuses the 5 V stage, the commonest). The solver
+///   skips a pin that nothing outside its own part is joined to, for every part and not this
+///   one only (`absolute_maximums` in `crates/netsmith-solve/src/levels.rs`): an optional
+///   input left floating has no voltage to judge, and a required one is already an error.
+///   `PG` and `FB` left unstated until the solver can judge them, the reading of the table as
+///   voltages from `GND`, and the skip for every part are accepted as built (the owner,
+///   2026-11-11).
 ///
 /// Pins (Pin Functions, p.10 and p.11, and the Pin Configuration, p.2): 1 BIAS, 2 INTVCC,
 /// 3 BST, 4 VIN1, 5 and 12 not present, 6 and 7 GND1, 8 and 9 SW, 10 and 11 GND2, 13 VIN2,
@@ -702,27 +691,6 @@ part Lt8641 provides BuckIc {
     /// The voltage on BIAS: ground's, as the `support` section ties it.
     .bias_voltage: Voltage
     .bias_voltage <= .bias_abs_max
-
-    /// The absolute maximum of the pins that are not on a rail the part states (Absolute
-    /// Maximum Ratings, p.2), each as the `Logic` whose `.line` is the pin inside the part
-    /// (see above): `EN/UV` 65 V, `TR/SS` 4 V, `SYNC/MODE` 6 V. A `Logic`
-    /// needs a reference rail, which names the ground the voltage is measured from and
-    /// carries nothing.
-    .en_uv_limit: Logic
-    .en_uv_limit.reference ~ .vin
-    .en_uv_limit.reference.current &= 0A
-    .en_uv_limit.line ~ .en_uv
-    .en_uv_limit.line.abs_max &= 65V
-    .tr_ss_limit: Logic
-    .tr_ss_limit.reference ~ .vin
-    .tr_ss_limit.reference.current &= 0A
-    .tr_ss_limit.line ~ .tr_ss
-    .tr_ss_limit.line.abs_max &= 4V
-    .sync_mode_limit: Logic
-    .sync_mode_limit.reference ~ .vin
-    .sync_mode_limit.reference.current &= 0A
-    .sync_mode_limit.line ~ .sync_mode
-    .sync_mode_limit.line.abs_max &= 6V
 
     .vref &= 0.79V..0.822V
     .min_input_voltage &= 3V
@@ -806,7 +774,7 @@ part Lt8641 provides BuckIc {
     .gnd2 ~ .vin.neg
 
     pins {
-        //  pin          kind     name         pads
+        //  pin          kind     name         pads, and the absolute maximums of p.2 (see above)
         .bias          input    "BIAS"       "1"
         .intvcc        passive  "INTVCC"     "2"  required
         .bst           passive  "BST"        "3"  required
@@ -815,10 +783,10 @@ part Lt8641 provides BuckIc {
         .sw.pos   power    "SW"         "8" "9" "21" "22"
         .gnd2          power    "GND2"       "10" "11"
         .vin2          power    "VIN2"       "13"
-        .en_uv         input    "EN/UV"      "14"
+        .en_uv         input    "EN/UV"      "14" abs_max 65V
         .rt            passive  "RT"         "15" required
-        .tr_ss         passive  "TR/SS"      "16"
-        .sync_mode     input    "SYNC/MODE"  "17" optional
+        .tr_ss         passive  "TR/SS"      "16" abs_max 4V
+        .sync_mode     input    "SYNC/MODE"  "17" optional abs_max 6V
         .vin.neg       power    "GND"        "18"
         .pg            output   "PG"         "19"
         .fb       input    "FB"         "20"

@@ -97,19 +97,27 @@ part Pad {
     }
 }
 
-/// Like `Pad`, but its input may float, and the limit is on a `Logic` line joined to the pad
-/// inside the part (no pad of its own), as the `Lt8641` states its pins' limits (ADR 0095).
+/// Like `Pad`, but its input is a plain pin that may float, with its limit in its row, as the
+/// `Lt8641` states its pins' limits (ADR 0124): measured from the table's rail ground.
 part FloatPad {
     .vdd: Rail
-    .in: Logic
-    .in.reference ~ .vdd
-    .in.reference.current &= 0A
-    .in.line ~ .tap
-    .in.line.abs_max &= 3.6V
     pins {
         .vdd.pos   power "VDD" "1"
         .vdd.neg   power "GND" "2"
-        .tap       input "IN"  "3" optional
+        .tap       input "IN"  "3" optional abs_max 3.6V
+    }
+}
+
+/// A part with two grounds, whose input is rated from the second: `from` names it.
+part TwoGround {
+    .vdd: Rail
+    .aux: Rail
+    pins {
+        .vdd.pos   power "VDD"  "1"
+        .vdd.neg   power "GND"  "2"
+        .aux.pos   power "AUX"  "3"
+        .aux.neg   power "AGND" "4"
+        .x         input "X"    "5" abs_max 3.6V from .aux.neg
     }
 }
 
@@ -482,5 +490,55 @@ fn a_plain_pin_of_a_modem_stays_a_note_that_says_how_far_it_swings_is_not_known(
             .any(|n| n.contains("so how far it swings is not known")),
         "{:#?}",
         notes(&s)
+    );
+}
+
+// ---- the absolute maximum in the pin row (ADR 0124) ----
+
+#[test]
+fn a_rows_abs_max_is_held_against_the_net_from_the_tables_ground() {
+    // A plain pin on a 3.3 V rail is within its 3.6 V.
+    let s = solved(&format!(
+        "{S3}    .b: FloatPad\n    .s3 ~ .b.vdd\n    .b.tap ~ .s3.pos\n"
+    ));
+    assert_eq!(faults(&s), Vec::<String>::new());
+    assert_eq!(notes(&s), Vec::<String>::new());
+    // On 5 V it is refused, with the field of the row's pin.
+    let s = solved(&format!(
+        "{S3}{S5}    .b: FloatPad\n    .s3 ~ .b.vdd\n    .b.tap ~ .s5.pos\n"
+    ));
+    assert_eq!(
+        faults(&s),
+        [
+            "net `VCC5` reaches 5.25V above its ground `GND` (rail `s5`) but `b.tap.abs_max` is 3.6V: it must not exceed 3.6V"
+        ]
+    );
+}
+
+#[test]
+fn from_measures_the_limit_from_the_pin_it_names() {
+    // The part's second ground is the net `3V3`. A rail on that ground is measured from it,
+    // and a rail on `GND` is not on the pin's ground, so it is a note naming both.
+    let on_aux = |volts: &str| {
+        format!(
+            "{S3}    .aux: Rail {{\n        .voltage &= {volts} +/- 5%\n        .pos.net &= \"AUXP\"\n        .neg.net &= \"3V3\"\n    }}\n    .t: TwoGround\n    .s3 ~ .t.vdd\n    .aux ~ .t.aux\n    .t.x ~ .aux.pos\n"
+        )
+    };
+    let s = solved(&on_aux("3.3V"));
+    assert_eq!(faults(&s), Vec::<String>::new());
+    let s = solved(&on_aux("5V"));
+    assert_eq!(
+        faults(&s),
+        [
+            "net `AUXP` reaches 5.25V above its ground `3V3` (rail `aux`) but `t.x.abs_max` is 3.6V: it must not exceed 3.6V"
+        ]
+    );
+    let on_gnd = on_aux("3.3V").replace("    .t.x ~ .aux.pos\n", "    .t.x ~ .s5.pos\n");
+    let s = solved(&format!("{on_gnd}{S5}"));
+    assert_eq!(
+        notes(&s),
+        [
+            "not evaluated: the absolute maximum of `t.x` against net `VCC5`: rail `s5` is on it and its ground `s5.neg` is on net `GND`, not `3V3`"
+        ]
     );
 }

@@ -247,14 +247,7 @@ generic LevelTranslator {
     // The part's own draw, which its rail carries.
     .vcc.current &= 0A .. .max_supply_current
 
-    pins "SOT-23-5" {
-        .nc       no_connect "NC"  "1"
-        .a.line   input      "A"   "2"
-        .vcc.neg  power      "GND" "3"
-        .y.line   output     "Y"   "4"
-        .vcc.pos  power      "VCC" "5"
-    }
-    pins "SOT-353_SC-70-5" {
+    pins "SOT-23-5" "SOT-353_SC-70-5" {
         .nc       no_connect "NC"  "1"
         .a.line   input      "A"   "2"
         .vcc.neg  power      "GND" "3"

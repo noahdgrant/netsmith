@@ -2700,7 +2700,7 @@ pins "DFN-8-EP" {
 tie .sense ~ .vout.pos
 ```
 
-A row is `.path kind "NAME" "pad" ["pad" ...] [fn FUNCTION[:kind] [class] ...] [optional | required]`, on one line, or ended by `;`. The names and pads are text, so they are quoted. A function is a plain name, with a kind of its own after a colon when the datasheet gives one, and `class` after it when the board may choose it on many pins (see Functions).
+A row is `.path kind "NAME" "pad" ["pad" ...] [fn FUNCTION[:kind] [class] ...] [optional | required] [abs_max VALUE [from .pin]]`, on one line, or ended by `;`. The names and pads are text, so they are quoted. A function is a plain name, with a kind of its own after a colon when the datasheet gives one, and `class` after it when the board may choose it on many pins (see Functions).
 
 | Kind | Meaning | Must be connected? |
 |---|---|---|
@@ -2785,8 +2785,8 @@ board LdoBoard {
 Rules.
 
 - A row names a plain pin of the part (`.sense`), which the row declares, or a pin of one of its interfaces (`.vout.pos`). Naming a pin that is already declared with `: Pin`, or an interface, or a value, is an error.
-- A part has one unnamed table or one table for each package, not both. A table that names a package needs a `.package: Package` in the part.
-- A pin has one kind, one datasheet name and one `optional` or `required` in every package. Its pads and functions may differ. A pin that only some packages have does not exist in the others.
+- A part has one unnamed table or one table for each package, not both. A table that names a package needs a `.package: Package` in the part. Several packages with the same pads share one table, `pins "SOT-23" "SOT-223" { ... }` (next section); a package is named once, in one header.
+- A pin has one kind, one datasheet name, one `optional` or `required` and one `abs_max` in every package. Its pads and functions may differ. A pin that only some packages have does not exist in the others.
 - Several pads on a row are one pin that the package brings out more than once: `"1" "2"`. Each becomes a pin of the net in the schematic.
 - A pin that has no row but is joined inside the part to one that has (`.vout.neg` and `.vin.neg` above) is an alias and needs no pad. A pin with no row and no alias that is on a net is an error, once for the part.
 - A pad belongs to one pin, unless the part joins the pins that share it.
@@ -2939,6 +2939,105 @@ error: `u` is a `Ldo9` in package `SOT23-5`, which has no pin table; its tables 
   |
 6 |     .u: Ldo9 { .package &= "SOT23-5" }
   |                ^^^^^^^^^^^^^^^^^^^^^
+```
+
+### Several packages, and an absolute maximum in the row
+
+A header may list several packages that have the same pads: they share the table (ADR 0124). The table is the table of each of them, as if it were written once for each.
+
+A row may end with the pin's absolute maximum from the datasheet's Absolute Maximum Ratings: `abs_max 65V`. It is the pin's `.abs_max` (see "Logic levels and absolute maximums"), and the solver holds the worst-case voltage of the pin's net against it. A voltage is measured from a ground, and the row says which:
+
+- `abs_max 4V from .agnd` measures it from the pin named after `from`, a pin of the part.
+- With no `from`, a pin that is the `.line` of a `Logic`, or a pin of a bus interface with `.levels`, is measured from that interface's ground, the `neg` of its reference rail, as its `.abs_max` always is; `from` is refused there.
+- With no `from`, any other pin is measured from the part's ground: the one row of the table that is the `neg` of a rail (`.vin.neg`). A table with none, or with the grounds of several rails, needs `from`.
+
+A value can be any expression a narrowing takes, `abs_max .vdd.voltage + 0.3V`. A pin that a part joins to nothing outside it is not judged, and a pin with only a capacitor on it is a `not evaluated` note, as for any absolute maximum.
+
+```nsm module=src::en_ldo
+import std::sources::Rail
+
+/// A fixed-output LDO with an enable pin that survives 6 V, in two packages with the same
+/// pads. Illustrative; not a real part.
+part EnLdo {
+    .vin:  Rail
+    .vout: Rail
+    .vin.neg ~ .vout.neg
+    .vin.current == -.vout.current
+
+    pins "SOT-23-5" "SOT-353" {
+        .vin.pos   power  "IN"   "1"
+        .vin.neg   power  "GND"  "2"
+        .en        input  "EN"   "3" abs_max 6V
+        .nc        no_connect "NC" "4"
+        .vout.pos  power  "OUT"  "5"
+    }
+
+    .package: Package
+}
+```
+
+A board in either package checks:
+
+```nsm
+import src::en_ldo::EnLdo
+import std::sources::Rail
+
+board EnBoard {
+    .input: Rail {
+        .voltage &= 5V +/- 5%
+        .pos.net &= "VIN"
+    }
+    .u: EnLdo { .package &= "SOT-353" }
+    .output: Rail {
+        .pos.net &= "3V3"
+        .current &= 0mA..50mA
+    }
+    .input ~ .u.vin
+    .u.vout ~ .output
+    .u.en ~ .u.vin.pos
+}
+```
+
+A package named twice in a header:
+
+```nsm fails
+import std::sources::Rail
+
+part Twice {
+    .vin: Rail
+    pins "SOT-23-5" "SOT-23-5" {
+        .vin.pos  power "IN"  "1"
+        .vin.neg  power "GND" "2"
+    }
+    .package: Package
+}
+```
+
+```text
+error: package "SOT-23-5" is listed twice in this `pins` header
+  --> main.nsm:5:21
+  |
+5 |     pins "SOT-23-5" "SOT-23-5" {
+  |                     ^^^^^^^^^^
+```
+
+A limit with no rail ground in its table to measure from:
+
+```nsm fails
+part NoGround {
+    pins {
+        .gnd  power "GND" "1"
+        .en   input "EN"  "2" abs_max 6V
+    }
+}
+```
+
+```text
+error: the `abs_max` of `.en` is measured from the part's ground, the `neg` of its rail, and this table has no rail's `neg` to be it; name the pin it is measured from, such as `abs_max 65V from .gnd`
+  --> main.nsm:4:31
+  |
+4 |         .en   input "EN"  "2" abs_max 6V
+  |                               ^^^^^^^
 ```
 
 ### Functions
@@ -4394,7 +4493,7 @@ board Empty {
 ```
 
 ```text
-error: `.x` is an output named `X` in `pins "B"` but an input named `X` in `pins "A"`; a pin has one kind and one datasheet name in every package
+error: `.x` is an output named `X` in `pins "B"` but an input named `X` in `pins "A"`; a pin has one kind, one datasheet name and one absolute maximum in every package
   --> main.nsm:7:9
   |
 7 |         .x output "X" "1"
@@ -10108,9 +10207,9 @@ board TooTight {
 
 ```text
 error: no combination of candidates satisfies `divider.rbottom` and `divider.rtop` together: the closest, divider.rbottom = 20kΩ 1% 0402 C25765 and divider.rtop = 56kΩ 1% 0603 C23206, fails because `divider.vout` must stay within 3.762V..3.838V, but (divider.vref * (1 + (divider.rtop.resistance / divider.rbottom.resistance))) works out to 3.707V..3.896V
-    --> std/parts/regulator.nsm:107:5
+    --> std/parts/regulator.nsm:102:5
     |
-107 |     .vout == .vref * (1 + .rtop.resistance / .rbottom.resistance)
+102 |     .vout == .vref * (1 + .rtop.resistance / .rbottom.resistance)
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -10280,14 +10379,14 @@ board Overload {
 
 ```text
 error: -reg.ic.sw.current must always be at most reg.ic.max_output_current, but 6.402uA..3A is not always below 2A (the currents on net `net-reg.ic.sw.pos` in `reg`: reg.ic.sw.current (-3A..-6.402uA) + reg.inductor.current (6.402uA..3A) add up to zero; net `1V8` in `reg`: -reg.inductor.current (6.402uA..3A) + -reg.vout.current (-3A..-6.402uA) add up to zero, but the balance is incomplete: `reg.divider.rtop.a` is not modelled; net `1V8`: output.current (0A..3A) + reg.vout.current (-3A..-6.402uA) add up to zero)
-    --> std/parts/regulator.nsm:198:5
+    --> std/parts/regulator.nsm:193:5
     |
-198 |     -.sw.current <= .max_output_current
+193 |     -.sw.current <= .max_output_current
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 error: -reg.vout.current must always be at most reg.ic.max_output_current, but 6.402uA..3A is not always below 2A (the currents on net `1V8`: output.current (0A..3A) + reg.vout.current (-3A..-6.402uA) add up to zero; net `1V8` in `reg`: -reg.inductor.current (6.402uA..3A) + -reg.vout.current (-3A..-6.402uA) add up to zero, but the balance is incomplete: `reg.divider.rtop.a` is not modelled; net `net-reg.ic.sw.pos` in `reg`: reg.ic.sw.current (-3A..-6.402uA) + reg.inductor.current (6.402uA..3A) add up to zero)
-    --> std/parts/regulator.nsm:465:5
+    --> std/parts/regulator.nsm:460:5
     |
-465 |     -.vout.current <= .ic.max_output_current
+460 |     -.vout.current <= .ic.max_output_current
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -10349,9 +10448,9 @@ board HighInput {
 
 ```text
 error: reg.on_time must always be at least reg.ic.min_on_time, but 122ns..490.8ns is not always above 150ns
-    --> std/parts/regulator.nsm:476:5
+    --> std/parts/regulator.nsm:471:5
     |
-476 |     .on_time >= .ic.min_on_time
+471 |     .on_time >= .ic.min_on_time
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -10414,9 +10513,9 @@ board TooQuiet {
 
 ```text
 error: no `capacitor` candidate satisfies `reg.output_cap`: the closest of the 34 that fit, 1 x 10uF 20% 10V X5R 0402 C315248, fails because reg.output_cap.total_effective_capacitance must always be at least reg.ic.min_output_capacitance, but 4.908uF..7.686uF is not always above 10uF (`reg.output_cap.effective_capacitance` is unknown for some candidates, so they were not used: no derating data for 27)
-    --> std/parts/regulator.nsm:483:5
+    --> std/parts/regulator.nsm:478:5
     |
-483 |     .output_cap.total_effective_capacitance >= .ic.min_output_capacitance
+478 |     .output_cap.total_effective_capacitance >= .ic.min_output_capacitance
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -10714,7 +10813,7 @@ error: reg.soft_start_time must always be at most 5ms, but 2.769ms..7.334ms is n
    |         ^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
-The part states the absolute maximum of three pins besides VIN and BIAS, from its Absolute Maximum Ratings (p.2): `EN/UV` 65 V, `TR/SS` 4 V and `SYNC/MODE` 6 V, each as a `Logic` (`.tr_ss_limit` and the like) whose `.line` is the pin inside the part, so the solver compares the voltage of the pin's net with the limit as it does for any `Logic` input (ADR 0046, ADR 0095). A board that ties `SYNC/MODE` or `TR/SS` to a 9 V to 16 V input is refused with the net, the limit and the field that states it (`net `VIN` reaches 16V above its ground `GND` ... but `u.sync_mode_limit.line.abs_max` is 6V`). A pin left to float is not judged, and one with only a soft-start capacitor on it is a `not evaluated` note, since nothing sets its voltage. `PG` (42 V) and `FB` (4 V) have limits too and state none, for the reasons in the part's doc comment and ADR 0095.
+The part states the absolute maximum of three pins besides VIN and BIAS, from its Absolute Maximum Ratings (p.2): `EN/UV` 65 V, `TR/SS` 4 V and `SYNC/MODE` 6 V, each at the end of the pin's row (`.tr_ss passive "TR/SS" "16" abs_max 4V`, ADR 0124), measured from the part's ground `GND`, so the solver compares the voltage of the pin's net with the limit as it does for any `Logic` input (ADR 0046). A board that ties `SYNC/MODE` or `TR/SS` to a 9 V to 16 V input is refused with the net, the limit and the field that states it (`net `VIN` reaches 16V above its ground `GND` ... but `u.sync_mode.abs_max` is 6V`). A pin left to float is not judged, and one with only a soft-start capacitor on it is a `not evaluated` note, since nothing sets its voltage. `PG` (42 V) and `FB` (4 V) have limits too and state none, for the reasons in the part's doc comment and ADR 0095.
 
 The IC draws current from its input for itself with nothing loaded, and the input current of the part is the load's and that (ADR 0096): `.quiescent_current`, a range from zero to the largest figure of the mode the converter runs in, which the DC analysis draws at the input too (`dc switching_regulator ... .quiescent_current`), so a sleep-current budget summed from `.u.vin.current` is judged against it. The datasheet gives 10 uA over temperature in Burst Mode, with `SYNC/MODE` tied to ground (`.iq_max`, Electrical Characteristics, p.2), and "several hundred uA" with it floating, high or clocked (0.5 mA at most at 25 C, `.iq_skipping_max`). The part cannot see how the board ties the pin, so the default is the larger, and a board that grounds `SYNC/MODE` says so: `.u.quiescent_current &= 0A .. .u.iq_max`. The 10 uA is a maximum and not a minimum, so the least the input draws is still zero, and a board cannot ask for `.u.vin.current >= 10uA`. The converter's feedback divider is a load on the output and is not in this current (`.divider_current` has it).
 
@@ -11920,12 +12019,12 @@ error: `supply.current` is stated -500mA..0A, so the supply `supply` gives at mo
 
 ### Logic levels and absolute maximums
 
-A digital line is a `Logic` (`std::logic::Logic`): a pin `.line` and the rail `.reference` whose `neg` is its ground. It also has four voltages, `.vih`, `.vil`, `.voh` and `.vol`, as a datasheet gives them (ADR 0046). A part states those it has, with fixed volts or with an equation on its rail: `.in.vih &= 2V`, `.in.vih &= 0.7 * .vdd.voltage`, `.out.voh &= .vdd.voltage - 0.1V`. Every pin also has `.abs_min` and `.abs_max`, the voltages it survives relative to its ground, stated the same way: `.in.line.abs_max &= 3.6V`.
+A digital line is a `Logic` (`std::logic::Logic`): a pin `.line` and the rail `.reference` whose `neg` is its ground. It also has four voltages, `.vih`, `.vil`, `.voh` and `.vol`, as a datasheet gives them (ADR 0046). A part states those it has, with fixed volts or with an equation on its rail: `.in.vih &= 2V`, `.in.vih &= 0.7 * .vdd.voltage`, `.out.voh &= .vdd.voltage - 0.1V`. Every pin also has `.abs_min` and `.abs_max`, the voltages it survives relative to its ground, stated the same way: `.in.line.abs_max &= 3.6V`. A pin that is no `Logic` line states its absolute maximum at the end of its pin row, `abs_max 65V`, which also says the ground it is measured from ("Several packages, and an absolute maximum in the row").
 
 After the rails are solved, the solver checks two things. A fault is an error; a check that cannot be made is a note `not evaluated: ...`, never a pass.
 
 - **Levels.** For every output or bidirectional `Logic` line on a net and every input or bidirectional `Logic` line on it, the output's `voh` must always be at least the input's `vih`, and its `vol` at most the input's `vil`, in the worst case of both ranges. A level with no value, or two lines whose grounds (`reference.neg`) are not on one net or in one ground group, is not evaluated. A pair in which neither line states a level is not looked at. An output that states a `vol` and no `voh` is open-drain, and the line's high is what its pull-up gives it (see "An open-drain line" below).
-- **Absolute maximum.** A pin with `.abs_min` or `.abs_max` must have a net whose worst-case voltage relative to its ground stays within them. A net that the DC analysis solved (a divider's middle, a net behind a chain of resistors and diodes: see "DC analysis") has the range of voltage the analysis finds for it over every corner of the ranges and every state of the parts around it, and the finding says `(the DC analysis of the network it is in)` (ADR 0076, amendment 12). Any other net's voltage is the hull of: its ground (0 V), each rail whose `pos` is on it, each `Logic` line that drives it (between its reference rail's `neg` and its voltage), and each rail or ground that a resistor joins it to (a pull-up or a pull-down). It is not evaluated for a pin that is not the `.line` of a `Logic` (its ground is not known), for a net that something drives that is not a `Logic` line, for a rail or driver on another ground, and for a net nothing sets. A pin that nothing outside its own part is joined to (an optional pin left to float, such as the `TR/SS` of the LT8641) has no voltage to judge and is skipped, with no note; a pin with only a capacitor on it is the note "nothing sets its voltage".
+- **Absolute maximum.** A pin with `.abs_min` or `.abs_max` must have a net whose worst-case voltage relative to its ground stays within them. A net that the DC analysis solved (a divider's middle, a net behind a chain of resistors and diodes: see "DC analysis") has the range of voltage the analysis finds for it over every corner of the ranges and every state of the parts around it, and the finding says `(the DC analysis of the network it is in)` (ADR 0076, amendment 12). Any other net's voltage is the hull of: its ground (0 V), each rail whose `pos` is on it, each `Logic` line that drives it (between its reference rail's `neg` and its voltage), and each rail or ground that a resistor joins it to (a pull-up or a pull-down). It is not evaluated for a pin that is not the `.line` of a `Logic` and whose pin row states no `abs_max` (its ground is not known), for a net that something drives that is not a `Logic` line, for a rail or driver on another ground, and for a net nothing sets. A pin that nothing outside its own part is joined to (an optional pin left to float, such as the `TR/SS` of the LT8641) has no voltage to judge and is skipped, with no note; a pin with only a capacitor on it is the note "nothing sets its voltage".
 
 A 5 V rail through a divider into a pin that survives 3.6 V is judged by the voltage the divider gives, not by the rail: 10 kohm over 20 kohm from 5.25 V is at most 3.52 V, inside the maximum, and the same divider over 30 kohm is 3.96 V, which is refused. The parts are invented.
 
@@ -12103,7 +12202,7 @@ board Inverters {
 
 The note, in `netsmith build`'s output: `not evaluated: the absolute maximum of `u1.a.line` against net `net-j.p1`: nothing sets its voltage: no rail is on it and no `Logic` line drives it`.
 
-The level checks apply to the lines that are `Logic` and to the pins of a bus interface that states `.levels` (see "Logic levels of a bus" below). A rating of any other pin (its `.abs_max` stated on a plain `Pin`) is listed as not evaluated.
+The level checks apply to the lines that are `Logic` and to the pins of a bus interface that states `.levels` (see "Logic levels of a bus" below). A rating of any other pin is judged when its pin row states it (`abs_max 65V`), which names its ground; one stated as a narrowing on a plain pin (`.x.abs_max &= 65V`) has no ground and is listed as not evaluated.
 
 #### Levels that are fractions of one supply
 
@@ -14211,7 +14310,7 @@ Parts are numbered by their letters in the order the design declares them (a mod
 | `std::parts::passive::Capacitor` | A ceramic capacitor with `.capacitance`, `.effective_capacitance`, `.bias`, `.max_voltage` and `.dielectric` (a `Dielectric`, from the row, optional). Pins `a` and `b`, bridge `a ~> b`. Catalog `capacitor`. |
 | `std::parts::passive::CapacitorBank` | Identical capacitors in parallel, whose number the solver chooses or a module passes in (ADR 0123): the fields of `Capacitor` for one capacitor, and `.count`, a whole number (unset: the solver chooses from 1 to 8; a range limits it), `.total_capacitance` and `.total_effective_capacitance`, the count times the marked and the bias-derated value. Its members are `Capacitor`s, `bulk[0]` to `bulk[n-1]`. A number the board knows is `N x Capacitor`. Pins `a` and `b`, bridge `a ~> b`. Catalog `capacitor`. |
 | `std::parts::passive::Led` | A light-emitting diode with `.color` (a `Color`), `.forward_voltage`, `.current` and `.drop`. Pins `anode` and `cathode`, bridge `anode ~> cathode`. Catalog `led`. |
-| `std::parts::regulator::LinearRegulator` | A fixed-output linear regulator. Rails `vin` and `vout` that share a ground, a pin table for SOT-23 and one for SOT-223, `.dropout`, `.max_current`, `.max_power`. It requires `vin >= vout + dropout`, a supplied current within `.max_current` and a dissipation within `.max_power`; `.quiescent_current` is the current it keeps for itself (default none), added to the input current. Catalog `ldo`. |
+| `std::parts::regulator::LinearRegulator` | A fixed-output linear regulator. Rails `vin` and `vout` that share a ground, one pin table for SOT-23 and SOT-223, `.dropout`, `.max_current`, `.max_power`. It requires `vin >= vout + dropout`, a supplied current within `.max_current` and a dissipation within `.max_power`; `.quiescent_current` is the current it keeps for itself (default none), added to the input current. Catalog `ldo`. |
 | `std::parts::connector::Connector` | What a connector is: a generic with the letters `"J"` and no pins, no pads and no catalog, that every standard connector provides and a project's own connector provides to be one (ADR 0068). |
 | `std::parts::connector::Header1x2` | A single-row header with two pins `p1` and `p2`. Soldered by hand. |
 | `std::parts::connector::Header1x4` | A single-row header with 4 pins `p1` to `p4`, pin N on pad N. |
@@ -14249,7 +14348,7 @@ Parts are numbered by their letters in the order the design declares them (a mod
 | `std::parts::transistor::PMosfet` | A P-channel MOSFET: as `NMosfet` with bridge `source ~> drain`; voltages are magnitudes. A generic with the catalog `p_mosfet`, whose standard file has no rows: a project adds its own. |
 | `std::parts::logic::Sn74lvc1g04` | A single inverter, TI SN74LVC1G04 (SCES214AF), for a supply of 3 V to 3.6 V: rail `vcc`, lines `a` (input) and `y` (output) as `Logic` with the levels and absolute maximums of the datasheet, SOT-23-5. No catalog row. |
 | `std::parts::regulator::Lt8641` | The LT8641 buck converter IC, Analog Devices (datasheet Rev. C): a provider of `BuckIc` with the datasheet's numbers, the frequency from the resistor on RT (`.rt_resistance`), a pin table for the 18-lead 3 x 4 mm QFN, and its application circuit in a `support` section (ADR 0115). A catalog `lt8641` (`.mpn`, `.package`) whose standard file has no row: a project adds its own. Mapped in `std/kicad.toml` to netsmith's own footprint (`netsmith:`, ADR 0087); its symbol is drawn from the pin table (ADR 0097). |
-| `std::parts::logic::LevelTranslator` | A single-supply level translator, a buffer whose input takes a lower level than its supply and whose output swings to the supply: rail `vcc`, the `Logic` lines `a` (input) and `y` (output) and the pin `nc`, a pin table for SOT-23-5 and one for SOT-353_SC-70-5. `.vcc_min` and `.vcc_max` bound the supply; the stresses `.vcc_peak`, `.a_peak` and `.output_current` are at most `.vcc_abs_max`, `.a_abs_max` and `.max_output_current`; `.vt_plus_max` and `.vt_minus_min` are the input's `.vih` and `.vil`, and `.y` states no level; `.vcc.current` is 0 up to `.max_supply_current`, stated by the part. A generic with the catalog `level_translator`, whose standard file has no rows: a project adds its own. |
+| `std::parts::logic::LevelTranslator` | A single-supply level translator, a buffer whose input takes a lower level than its supply and whose output swings to the supply: rail `vcc`, the `Logic` lines `a` (input) and `y` (output) and the pin `nc`, one pin table for SOT-23-5 and SOT-353_SC-70-5. `.vcc_min` and `.vcc_max` bound the supply; the stresses `.vcc_peak`, `.a_peak` and `.output_current` are at most `.vcc_abs_max`, `.a_abs_max` and `.max_output_current`; `.vt_plus_max` and `.vt_minus_min` are the input's `.vih` and `.vil`, and `.y` states no level; `.vcc.current` is 0 up to `.max_supply_current`, stated by the part. A generic with the catalog `level_translator`, whose standard file has no rows: a project adds its own. |
 | `std::parts::mechanical::MountingHole` | A drill with no copper. No pins. |
 | `std::parts::mechanical::PlatedHole` | A plated mounting hole. One pin `p1`, the plating, that the board joins to a net or leaves open. |
 | `std::parts::mechanical::Fiducial` | A fiducial mark. No pins. |

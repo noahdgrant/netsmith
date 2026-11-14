@@ -128,6 +128,12 @@ impl PinRow {
         if let Some((requirement, _)) = self.requirement {
             let _ = write!(out, " {}", requirement.word());
         }
+        if let Some(limit) = &self.abs_max {
+            let _ = write!(out, " abs_max {}", limit.value.to_source());
+            if let Some(from) = &limit.from {
+                let _ = write!(out, " from {}", from.to_source());
+            }
+        }
         out
     }
 }
@@ -391,7 +397,7 @@ fn write_block(out: &mut String, inner_docs: &[String], items: &[Item], depth: u
             }
             Item::Pins(p) => {
                 out.push_str("pins ");
-                if let Some((package, _)) = &p.package {
+                for (package, _) in &p.packages {
                     let _ = write!(out, "{} ", quote(package));
                 }
                 if p.rows.is_empty() {

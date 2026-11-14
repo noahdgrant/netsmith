@@ -10,7 +10,7 @@ use netsmith_lang::Span;
 use netsmith_lang::ast::{self, PinKind, Requirement};
 
 use crate::checker::{Checker, Res};
-use crate::model::{InstId, InstKind, Member, PinFunction, PinRow, PinTable, Tie};
+use crate::model::{InstId, InstKind, Member, PinFunction, PinRow, PinTable, RowLimit, Tie};
 
 impl Checker<'_> {
     /// First pass: make the plain pins that the rows of a table name.
@@ -145,7 +145,7 @@ impl Checker<'_> {
             .cur_def
             .is_some_and(|(m, i)| self.modules[m].defs[i].kind == ast::DefKind::Generic);
         if table.rows.iter().all(|r| r.is_contract()) && (!table.rows.is_empty() || in_generic) {
-            if let Some((_, span)) = &table.package {
+            if let Some((_, span)) = table.packages.first() {
                 self.error(
                     *span,
                     "a generic's `pins` table is the same for every package: leave the package out",
@@ -154,38 +154,60 @@ impl Checker<'_> {
             self.contract_table(table);
             return;
         }
-        let package = table.package.as_ref().map(|(p, _)| p.clone());
+
+        // The packages of the header, each once (ADR 0124): several share the table.
+        let mut packages: Vec<(String, Span)> = Vec::new();
+        for (name, span) in &table.packages {
+            if packages.iter().any(|(p, _)| p == name) {
+                self.error(
+                    *span,
+                    format!("package \"{name}\" is listed twice in this `pins` header"),
+                );
+                continue;
+            }
+            packages.push((name.clone(), *span));
+        }
+        let here = if packages.is_empty() {
+            "pins".to_string()
+        } else {
+            let names: Vec<String> = packages.iter().map(|(p, _)| format!("\"{p}\"")).collect();
+            format!("pins {}", names.join(" "))
+        };
 
         // One unnamed table, or one table for each package.
         let existing = &self.model.instance(part).tables;
-        let clash = match (&package, existing.first()) {
-            (_, None) => None,
-            (None, Some(_)) => Some(if existing.iter().any(|t| t.package.is_none()) {
-                "this part already has a `pins` table for every package; two would give a pin two answers".to_string()
-            } else {
-                "this part has `pins` tables for packages; an unnamed table would apply to all of them, so give this one a package or remove the others".to_string()
-            }),
-            (Some(name), Some(_)) => {
-                if existing.iter().any(|t| t.package.is_none()) {
-                    Some("this part has a `pins` table for every package; a table for one package would give its pins a second answer, so remove one of them".to_string())
-                } else if existing
-                    .iter()
-                    .any(|t| t.package.as_deref() == Some(name.as_str()))
-                {
-                    Some(format!(
-                        "this part already has a `pins` table for package `{name}`"
-                    ))
+        let mut clashes: Vec<(Span, String)> = Vec::new();
+        if !existing.is_empty() {
+            let unnamed = existing.iter().any(|t| t.package.is_none());
+            if packages.is_empty() {
+                clashes.push((table.span, if unnamed {
+                    "this part already has a `pins` table for every package; two would give a pin two answers".to_string()
                 } else {
-                    None
+                    "this part has `pins` tables for packages; an unnamed table would apply to all of them, so give this one a package or remove the others".to_string()
+                }));
+            } else if unnamed {
+                clashes.push((packages[0].1, "this part has a `pins` table for every package; a table for one package would give its pins a second answer, so remove one of them".to_string()));
+            } else {
+                for (name, span) in &packages {
+                    if existing
+                        .iter()
+                        .any(|t| t.package.as_deref() == Some(name.as_str()))
+                    {
+                        clashes.push((
+                            *span,
+                            format!("this part already has a `pins` table for package `{name}`"),
+                        ));
+                    }
                 }
             }
-        };
-        if let Some(message) = clash {
-            let at = table.package.as_ref().map_or(table.span, |(_, s)| *s);
-            self.error(at, message);
+        }
+        if !clashes.is_empty() {
+            for (at, message) in clashes {
+                self.error(at, message);
+            }
             return;
         }
-        if let Some((name, span)) = &table.package {
+        for (name, span) in &packages {
             match self.model.member(part, "package") {
                 Some(Member::Field(f))
                     if self.model.field(f).kind == crate::model::FieldKind::Text => {}
@@ -200,6 +222,9 @@ impl Checker<'_> {
 
         let source = self.cur_source();
         let mut rows: Vec<PinRow> = Vec::new();
+        // The rows whose `abs_max` takes the table's ground, found once every row is read.
+        let mut grounded: Vec<(usize, Span)> = Vec::new();
+        let mut written: Vec<String> = Vec::new();
         for row in &table.rows {
             if row.is_contract() {
                 self.error(
@@ -224,18 +249,147 @@ impl Checker<'_> {
                 );
                 continue;
             }
-            let Some(built) = self.table_row(pin, row) else {
+            let Some(mut built) = self.table_row(pin, row) else {
                 continue;
             };
-            self.agree_with_other_tables(part, &package, &built, row);
+            if let Some(limit) = &row.abs_max {
+                match self.row_limit(pin, row, limit) {
+                    Some((built_limit, needs_ground)) => {
+                        if needs_ground {
+                            grounded.push((rows.len(), limit.span));
+                        }
+                        built.abs_max = Some(built_limit);
+                    }
+                    None => continue,
+                }
+            }
+            self.agree_with_other_tables(part, &here, &built, row);
             rows.push(built);
+            written.push(row.pin.to_source());
         }
-        self.model.instances[part.0].tables.push(PinTable {
-            package,
-            rows,
-            source,
-            span: table.span,
-        });
+        if !grounded.is_empty() {
+            let mut grounds: Vec<InstId> = rows
+                .iter()
+                .map(|r| r.pin)
+                .filter(|&p| self.model.is_rail_ground(p))
+                .collect();
+            grounds.dedup();
+            if let [ground] = grounds[..] {
+                for (i, _) in &grounded {
+                    if let Some(limit) = &mut rows[*i].abs_max {
+                        limit.reference = Some(ground);
+                    }
+                }
+            } else {
+                let found = if grounds.is_empty() {
+                    "this table has no rail's `neg` to be it".to_string()
+                } else {
+                    let names: Vec<String> = grounds
+                        .iter()
+                        .filter_map(|&g| rows.iter().position(|r| r.pin == g))
+                        .map(|i| format!("`{}`", written[i]))
+                        .collect();
+                    format!("this table has several, {}", names.join(" and "))
+                };
+                for (i, span) in grounded {
+                    let pin = &written[i];
+                    self.error(
+                        span,
+                        format!(
+                            "the `abs_max` of `{pin}` is measured from the part's ground, the `neg` of its rail, and {found}; name the pin it is measured from, such as `abs_max 65V from .gnd`"
+                        ),
+                    );
+                }
+            }
+        }
+        if packages.is_empty() {
+            self.model.instances[part.0].tables.push(PinTable {
+                package: None,
+                rows,
+                source,
+                span: table.span,
+            });
+        } else {
+            for (name, _) in packages {
+                self.model.instances[part.0].tables.push(PinTable {
+                    package: Some(name),
+                    rows: rows.clone(),
+                    source,
+                    span: table.span,
+                });
+            }
+        }
+    }
+
+    /// The `abs_max` at the end of a row (ADR 0124): the limit as the model keeps it, and
+    /// whether it is measured from the table's rail ground, which the caller finds once every
+    /// row is read. The value narrows the pin's `.abs_max`, once for the part, however many
+    /// tables state it.
+    fn row_limit(
+        &mut self,
+        pin: InstId,
+        row: &ast::PinRow,
+        limit: &ast::AbsMax,
+    ) -> Option<(RowLimit, bool)> {
+        let text = row.pin.to_source();
+        let by_levels = self.model.grounded_by_levels(pin);
+        let (reference, needs_ground) = match &limit.from {
+            Some(from) if by_levels => {
+                self.error(
+                    from.span,
+                    format!(
+                        "`{text}` is measured from the ground its `Logic` or its bus's `levels` give, the `neg` of their reference rail; leave out `from`"
+                    ),
+                );
+                return None;
+            }
+            Some(from) => {
+                let reference = self.part_pin(from)?;
+                if reference == pin {
+                    self.error(
+                        from.span,
+                        format!("`{text}` cannot be measured from itself; name its ground"),
+                    );
+                    return None;
+                }
+                (Some(reference), false)
+            }
+            None => (None, !by_levels),
+        };
+        let mut written = limit.value.to_source();
+        if let Some(from) = &limit.from {
+            written = format!("{written} from {}", from.to_source());
+        }
+        let part = self.current();
+        let stated = self
+            .model
+            .instance(part)
+            .tables
+            .iter()
+            .any(|t| t.row(pin).is_some_and(|r| r.abs_max.is_some()));
+        if !stated {
+            let mut path = row.pin.clone();
+            path.segments.push(ast::Ident {
+                name: "abs_max".to_string(),
+                quoted: false,
+                span: limit.span,
+            });
+            path.span = Span::new(row.pin.span.start, limit.span.end);
+            self.constraint(&ast::Constraint {
+                lhs: ast::Expr::Path(path),
+                op: ast::CmpOp::Narrow,
+                rhs: limit.value.clone(),
+                at: None,
+                span: Span::new(limit.span.start, limit.value.span().end),
+            });
+        }
+        Some((
+            RowLimit {
+                text: written,
+                reference,
+            },
+            needs_ground,
+        ))
     }
 
     /// The row as the model keeps it, if it makes sense by itself.
@@ -308,6 +462,7 @@ impl Checker<'_> {
                 })
                 .collect(),
             requirement: row.requirement.map(|(r, _)| r),
+            abs_max: None,
             span: row.span,
         })
     }
@@ -317,7 +472,7 @@ impl Checker<'_> {
     fn agree_with_other_tables(
         &mut self,
         part: InstId,
-        package: &Option<String>,
+        here: &str,
         row: &PinRow,
         written: &ast::PinRow,
     ) {
@@ -326,8 +481,14 @@ impl Checker<'_> {
                 .requirement
                 .map(|q| format!(" ({})", q.word()))
                 .unwrap_or_default();
-            format!("{} named `{}`{requirement}", article(r.kind), r.name)
+            let limit = r
+                .abs_max
+                .as_ref()
+                .map(|l| format!(" with `abs_max {}`", l.text))
+                .unwrap_or_default();
+            format!("{} named `{}`{requirement}{limit}", article(r.kind), r.name)
         };
+        let limit = |r: &PinRow| r.abs_max.as_ref().map(|l| l.text.clone());
         let earlier = self
             .model
             .instance(part)
@@ -337,17 +498,15 @@ impl Checker<'_> {
         let Some((table, other)) = earlier else {
             return;
         };
-        if (other.kind, &other.name, other.requirement) == (row.kind, &row.name, row.requirement) {
+        if (other.kind, &other.name, other.requirement, limit(&other))
+            == (row.kind, &row.name, row.requirement, limit(row))
+        {
             return;
         }
-        let here = match package {
-            Some(p) => format!("pins \"{p}\""),
-            None => "pins".to_string(),
-        };
         self.error(
             written.span,
             format!(
-                "`{}` is {} in `{here}` but {} in `{table}`; a pin has one kind and one datasheet name in every package",
+                "`{}` is {} in `{here}` but {} in `{table}`; a pin has one kind, one datasheet name and one absolute maximum in every package",
                 written.pin.to_source(),
                 describe(row),
                 describe(&other),

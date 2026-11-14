@@ -44,8 +44,12 @@ fn a_pin_table_has_one_row_per_pin() {
         panic!("{items:?}")
     };
     assert_eq!(
-        table.package.as_ref().map(|p| p.0.as_str()),
-        Some("DFN-8-EP")
+        table
+            .packages
+            .iter()
+            .map(|p| p.0.as_str())
+            .collect::<Vec<_>>(),
+        ["DFN-8-EP"]
     );
     assert_eq!(table.rows.len(), 6);
 
@@ -80,7 +84,7 @@ fn a_pin_table_has_one_row_per_pin() {
     let Item::Pins(unnamed) = &items[1] else {
         panic!()
     };
-    assert!(unnamed.package.is_none());
+    assert!(unnamed.packages.is_empty());
     let Item::Tie(tie) = &items[2] else { panic!() };
     assert_eq!(
         (tie.a.to_source().as_str(), tie.b.to_source().as_str()),
@@ -213,7 +217,10 @@ fn optional_and_required_close_a_row() {
 #[test]
 fn a_pin_table_needs_braces_and_a_quoted_package() {
     let (msg, ..) = err("part P {\n    pins \"X\"\n}\n");
-    assert!(msg.contains("`{` after the package name"), "{msg}");
+    assert!(
+        msg.contains("`{` or another package name in quotes after the package name"),
+        "{msg}"
+    );
     let (msg, ..) = err("part P {\n    pins \"\" { }\n}\n");
     assert_eq!(msg, "a package name cannot be empty");
     let (msg, ..) = err("part P {\n    pins \"X\" {\n        .a passive \"A\" \"1\"\n");
@@ -529,4 +536,80 @@ fn a_class_after_a_function_name_is_its_marker_so_a_function_called_class_comes_
         functions("GPIO class class class"),
         named(&[("GPIO", true), ("class", true)])
     );
+}
+
+// ---- several packages share a table, and the absolute maximum in the row (ADR 0124) ----
+
+#[test]
+fn a_table_header_lists_several_packages_that_share_it() {
+    let src = "part P {\n    pins \"SOT-23\" \"SOT-223\" {\n        .a passive \"A\" \"1\"\n    }\n}\n";
+    let file = parse(src).unwrap();
+    let Item::Pins(table) = &file.definitions[0].items[0] else {
+        panic!()
+    };
+    assert_eq!(
+        table
+            .packages
+            .iter()
+            .map(|p| p.0.as_str())
+            .collect::<Vec<_>>(),
+        ["SOT-23", "SOT-223"]
+    );
+    // It prints back as it was written.
+    assert!(file.to_source().contains("pins \"SOT-23\" \"SOT-223\" {"), "{}", file.to_source());
+    let (msg, ..) = err("part P {\n    pins \"A\" \"\" { }\n}\n");
+    assert_eq!(msg, "a package name cannot be empty");
+}
+
+#[test]
+fn a_row_ends_with_its_absolute_maximum_and_the_pin_it_is_measured_from() {
+    let src = row(".en input \"EN\" \"3\" optional abs_max 65V");
+    let file = parse(&src).unwrap();
+    let Item::Pins(table) = &file.definitions[0].items[0] else {
+        panic!()
+    };
+    let limit = table.rows[0].abs_max.as_ref().expect("a limit");
+    assert_eq!(limit.value.to_source(), "65V");
+    assert!(limit.from.is_none());
+    assert_eq!(
+        table.rows[0].requirement.map(|r| r.0),
+        Some(Requirement::Optional)
+    );
+
+    let src = row(".fb input \"FB\" \"4\" fn A B abs_max .vcc.voltage + 0.3V from .gnd");
+    let file = parse(&src).unwrap();
+    let Item::Pins(table) = &file.definitions[0].items[0] else {
+        panic!()
+    };
+    let r = &table.rows[0];
+    assert_eq!(r.functions.len(), 2);
+    let limit = r.abs_max.as_ref().expect("a limit");
+    assert_eq!(limit.value.to_source(), ".vcc.voltage + 0.3V");
+    assert_eq!(limit.from.as_ref().map(Path::to_source).as_deref(), Some(".gnd"));
+    assert_eq!(
+        r.to_source(),
+        ".fb input \"FB\" \"4\" fn A B abs_max .vcc.voltage + 0.3V from .gnd"
+    );
+}
+
+#[test]
+fn abs_max_needs_a_value_and_from_needs_a_pin() {
+    let (msg, line, col) = row_error(".en input \"EN\" \"3\" abs_max");
+    assert_eq!(
+        msg,
+        "`abs_max` needs a value: the voltage `.en` must not exceed, such as `abs_max 65V`"
+    );
+    assert_eq!((line, col), (3, 28), "at the word `abs_max`");
+    let (msg, ..) = row_error(".en input \"EN\" \"3\" abs_max from .gnd");
+    assert!(msg.starts_with("`abs_max` needs a value"), "{msg}");
+    let (msg, ..) = row_error(".en input \"EN\" \"3\" abs_max 65V from");
+    assert!(
+        msg.contains("the pin the limit is measured from after `from`, such as `from .gnd`"),
+        "{msg}"
+    );
+    let (msg, ..) = row_error(".en input \"EN\" \"3\" abs_max 65V from gnd");
+    assert!(msg.contains("such as `from .gnd`"), "{msg}");
+    // The limit ends the row.
+    let (msg, ..) = row_error(".en input \"EN\" \"3\" abs_max 65V optional");
+    assert!(msg.contains("end of line or `;`, found `optional`"), "{msg}");
 }
