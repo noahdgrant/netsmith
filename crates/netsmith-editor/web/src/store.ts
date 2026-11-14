@@ -44,7 +44,7 @@ import {
   selection,
   setSelection,
 } from './selection';
-import { after } from './idle';
+import { after, held } from './idle';
 import { covers } from './util';
 import { EMPTY, type History, forget, leaving, stepBack, stepForward, visit } from './source/navhistory';
 import { reorder } from './source/tabs';
@@ -507,8 +507,17 @@ export function dropOpen(path: string, folder: boolean) {
   if (!anyDirty.peek()) live.value = null;
 }
 
+/** The rebuilds being taken in (the open files read again): the page is busy until they end, and a click-through waits for them. */
+const rebuilding = new Set<Promise<void>>();
+
 /** The files were built again: the tree, the board and the open files may have changed. */
-async function onRebuilt(tree = true) {
+function onRebuilt(tree = true): Promise<void> {
+  const work = held(() => takeRebuild(tree));
+  rebuilding.add(work);
+  return work.finally(() => rebuilding.delete(work));
+}
+
+async function takeRebuild(tree: boolean) {
   const a = analysis.value;
   if (!a) return;
   if (tree) project.value = await api.project();
@@ -729,6 +738,9 @@ export async function reload(path: string) {
 export async function goTo(at: Location, name?: string, quiet = false, record = !quiet) {
   try {
     await openFile(at.file);
+    // A place the analysis gives is a place in the file as the build read it: an open file that is being read again has older text
+    // (a line past its end, or another line), so the cursor goes once it has the new text.
+    await Promise.allSettled([...rebuilding]);
   } catch (e) {
     say(e instanceof Error ? e.message : String(e), true);
     return;
