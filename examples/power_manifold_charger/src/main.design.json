@@ -3,7 +3,7 @@
     "name": "PowerManifoldCharger",
     "parts": [
       {
-        "refdes": "C19",
+        "refdes": "C1",
         "kind": "Capacitor",
         "provides": [],
         "declared_kind": "capacitor",
@@ -34,7 +34,7 @@
         ]
       },
       {
-        "refdes": "C20",
+        "refdes": "C2",
         "kind": "Capacitor",
         "provides": [],
         "declared_kind": "capacitor",
@@ -65,7 +65,7 @@
         ]
       },
       {
-        "refdes": "C26",
+        "refdes": "C3",
         "kind": "Capacitor",
         "provides": [],
         "declared_kind": "capacitor",
@@ -96,7 +96,7 @@
         ]
       },
       {
-        "refdes": "C21",
+        "refdes": "C4",
         "kind": "Capacitor",
         "provides": [],
         "declared_kind": "capacitor",
@@ -127,7 +127,7 @@
         ]
       },
       {
-        "refdes": "C23",
+        "refdes": "C5",
         "kind": "Capacitor",
         "provides": [],
         "declared_kind": "capacitor",
@@ -158,7 +158,7 @@
         ]
       },
       {
-        "refdes": "C28",
+        "refdes": "C6",
         "kind": "Capacitor",
         "provides": [],
         "declared_kind": "capacitor",
@@ -189,7 +189,7 @@
         ]
       },
       {
-        "refdes": "C24",
+        "refdes": "C7",
         "kind": "Capacitor",
         "provides": [],
         "declared_kind": "capacitor",
@@ -220,7 +220,7 @@
         ]
       },
       {
-        "refdes": "R25",
+        "refdes": "R1",
         "kind": "Resistor",
         "provides": [],
         "declared_kind": "resistor",
@@ -251,7 +251,7 @@
         ]
       },
       {
-        "refdes": "U4",
+        "refdes": "U1",
         "kind": "Tlv7022",
         "provides": [],
         "value": "TLV7022DDFR",
@@ -584,7 +584,7 @@
         ]
       },
       {
-        "refdes": "C13",
+        "refdes": "C8",
         "kind": "Capacitor",
         "provides": [],
         "declared_kind": "capacitor",
@@ -615,7 +615,7 @@
         ]
       },
       {
-        "refdes": "C10",
+        "refdes": "C9",
         "kind": "Capacitor",
         "provides": [],
         "declared_kind": "capacitor",
@@ -646,7 +646,7 @@
         ]
       },
       {
-        "refdes": "C6",
+        "refdes": "C10",
         "kind": "Capacitor",
         "provides": [],
         "declared_kind": "capacitor",
@@ -677,7 +677,7 @@
         ]
       },
       {
-        "refdes": "C8",
+        "refdes": "C11",
         "kind": "Capacitor",
         "provides": [],
         "declared_kind": "capacitor",
@@ -708,7 +708,7 @@
         ]
       },
       {
-        "refdes": "C9",
+        "refdes": "C12",
         "kind": "Capacitor",
         "provides": [],
         "declared_kind": "capacitor",
@@ -739,7 +739,7 @@
         ]
       },
       {
-        "refdes": "C15",
+        "refdes": "C13",
         "kind": "Capacitor",
         "provides": [],
         "declared_kind": "capacitor",
@@ -770,7 +770,7 @@
         ]
       },
       {
-        "refdes": "R3",
+        "refdes": "R2",
         "kind": "Resistor",
         "provides": [],
         "declared_kind": "resistor",
@@ -801,7 +801,7 @@
         ]
       },
       {
-        "refdes": "R12",
+        "refdes": "R3",
         "kind": "Resistor",
         "provides": [],
         "declared_kind": "resistor",
@@ -832,7 +832,7 @@
         ]
       },
       {
-        "refdes": "R15",
+        "refdes": "R4",
         "kind": "Resistor",
         "provides": [],
         "declared_kind": "resistor",
@@ -863,7 +863,7 @@
         ]
       },
       {
-        "refdes": "R13",
+        "refdes": "R5",
         "kind": "Resistor",
         "provides": [],
         "declared_kind": "resistor",
@@ -925,7 +925,7 @@
         ]
       },
       {
-        "refdes": "C30",
+        "refdes": "C14",
         "kind": "Capacitor",
         "provides": [],
         "declared_kind": "capacitor",
@@ -956,7 +956,7 @@
         ]
       },
       {
-        "refdes": "R16",
+        "refdes": "R6",
         "kind": "Resistor",
         "provides": [],
         "declared_kind": "resistor",
@@ -987,7 +987,7 @@
         ]
       },
       {
-        "refdes": "R22",
+        "refdes": "R7",
         "kind": "Resistor",
         "provides": [],
         "declared_kind": "resistor",
@@ -1018,7 +1018,7 @@
         ]
       },
       {
-        "refdes": "C25",
+        "refdes": "C15",
         "kind": "Capacitor",
         "provides": [],
         "declared_kind": "capacitor",
@@ -1049,7 +1049,7 @@
         ]
       },
       {
-        "refdes": "R24",
+        "refdes": "R8",
         "kind": "Resistor",
         "provides": [],
         "declared_kind": "resistor",
@@ -1080,7 +1080,7 @@
         ]
       },
       {
-        "refdes": "L2",
+        "refdes": "L1",
         "kind": "Inductor",
         "provides": [],
         "declared_kind": "inductor",
@@ -1111,7 +1111,7 @@
         ]
       },
       {
-        "refdes": "U5",
+        "refdes": "U3",
         "kind": "Lp2985",
         "provides": [
           "LinearRegulator"
@@ -1174,7 +1174,7 @@
         ]
       },
       {
-        "refdes": "C11",
+        "refdes": "C16",
         "kind": "Capacitor",
         "provides": [],
         "declared_kind": "capacitor",
@@ -1205,7 +1205,7 @@
         ]
       },
       {
-        "refdes": "D2",
+        "refdes": "D1",
         "kind": "Led",
         "provides": [],
         "declared_kind": "led",
@@ -1267,7 +1267,7 @@
         ]
       },
       {
-        "refdes": "U1",
+        "refdes": "U4",
         "kind": "Stm32G071C8",
         "provides": [],
         "value": "STM32G071C8T6",
@@ -1757,7 +1757,7 @@
         ]
       },
       {
-        "refdes": "R23",
+        "refdes": "R10",
         "kind": "Resistor",
         "provides": [],
         "declared_kind": "resistor",
@@ -1820,7 +1820,7 @@
         ]
       },
       {
-        "refdes": "C14",
+        "refdes": "C17",
         "kind": "Capacitor",
         "provides": [],
         "declared_kind": "capacitor",
@@ -1851,7 +1851,7 @@
         ]
       },
       {
-        "refdes": "R14",
+        "refdes": "R11",
         "kind": "Resistor",
         "provides": [],
         "declared_kind": "resistor",
@@ -1914,7 +1914,7 @@
         ]
       },
       {
-        "refdes": "C16",
+        "refdes": "C18",
         "kind": "Capacitor",
         "provides": [],
         "declared_kind": "capacitor",
@@ -1945,7 +1945,7 @@
         ]
       },
       {
-        "refdes": "R17",
+        "refdes": "R12",
         "kind": "Resistor",
         "provides": [],
         "declared_kind": "resistor",
@@ -1976,7 +1976,7 @@
         ]
       },
       {
-        "refdes": "R1",
+        "refdes": "R13",
         "kind": "Resistor",
         "provides": [],
         "declared_kind": "resistor",
@@ -2007,7 +2007,7 @@
         ]
       },
       {
-        "refdes": "R27",
+        "refdes": "R14",
         "kind": "Resistor",
         "provides": [],
         "declared_kind": "resistor",
@@ -2038,7 +2038,7 @@
         ]
       },
       {
-        "refdes": "R26",
+        "refdes": "R15",
         "kind": "Resistor",
         "provides": [],
         "declared_kind": "resistor",
@@ -2069,7 +2069,7 @@
         ]
       },
       {
-        "refdes": "R4",
+        "refdes": "R16",
         "kind": "Resistor",
         "provides": [],
         "declared_kind": "resistor",
@@ -2100,7 +2100,7 @@
         ]
       },
       {
-        "refdes": "R2",
+        "refdes": "R17",
         "kind": "Resistor",
         "provides": [],
         "declared_kind": "resistor",
@@ -2131,7 +2131,7 @@
         ]
       },
       {
-        "refdes": "D1",
+        "refdes": "D2",
         "kind": "Tvs",
         "provides": [],
         "declared_kind": "diode",
@@ -2162,7 +2162,7 @@
         ]
       },
       {
-        "refdes": "L1",
+        "refdes": "L2",
         "kind": "Inductor",
         "provides": [],
         "declared_kind": "inductor",
@@ -2193,7 +2193,7 @@
         ]
       },
       {
-        "refdes": "U3",
+        "refdes": "U5",
         "kind": "Tcpp02M18",
         "provides": [],
         "value": "TCPP02-M18",
@@ -2555,7 +2555,7 @@
         ]
       },
       {
-        "refdes": "C5",
+        "refdes": "C19",
         "kind": "Capacitor",
         "provides": [],
         "declared_kind": "capacitor",
@@ -2586,7 +2586,7 @@
         ]
       },
       {
-        "refdes": "R6",
+        "refdes": "R18",
         "kind": "Resistor",
         "provides": [],
         "declared_kind": "resistor",
@@ -2617,7 +2617,7 @@
         ]
       },
       {
-        "refdes": "R5",
+        "refdes": "R19",
         "kind": "Resistor",
         "provides": [],
         "declared_kind": "resistor",
@@ -3021,7 +3021,7 @@
         ]
       },
       {
-        "refdes": "J3",
+        "refdes": "J2",
         "kind": "ProgrammingPads6",
         "provides": [
           "Connector"
@@ -3094,7 +3094,7 @@
         ]
       },
       {
-        "refdes": "R11",
+        "refdes": "R20",
         "kind": "Resistor",
         "provides": [],
         "declared_kind": "resistor",
@@ -3125,7 +3125,7 @@
         ]
       },
       {
-        "refdes": "R10",
+        "refdes": "R21",
         "kind": "Resistor",
         "provides": [],
         "declared_kind": "resistor",
@@ -3156,7 +3156,7 @@
         ]
       },
       {
-        "refdes": "TP2",
+        "refdes": "TP1",
         "kind": "TestPoint",
         "provides": [],
         "value": "TestPoint",
@@ -3176,7 +3176,7 @@
         ]
       },
       {
-        "refdes": "TP3",
+        "refdes": "TP2",
         "kind": "TestPoint",
         "provides": [],
         "value": "TestPoint",
@@ -3196,7 +3196,7 @@
         ]
       },
       {
-        "refdes": "TP1",
+        "refdes": "TP3",
         "kind": "TestPoint",
         "provides": [],
         "value": "TestPoint",
@@ -3216,7 +3216,7 @@
         ]
       },
       {
-        "refdes": "J2",
+        "refdes": "J3",
         "kind": "GtUsb7004",
         "provides": [
           "UsbCSourceReceptacle",
@@ -3389,7 +3389,7 @@
         ]
       },
       {
-        "refdes": "R8",
+        "refdes": "R22",
         "kind": "Resistor",
         "provides": [],
         "declared_kind": "resistor",
@@ -3420,7 +3420,7 @@
         ]
       },
       {
-        "refdes": "R7",
+        "refdes": "R23",
         "kind": "Resistor",
         "provides": [],
         "declared_kind": "resistor",
@@ -3451,7 +3451,7 @@
         ]
       },
       {
-        "refdes": "C2",
+        "refdes": "C20",
         "kind": "Capacitor",
         "provides": [],
         "declared_kind": "capacitor",
@@ -3482,7 +3482,7 @@
         ]
       },
       {
-        "refdes": "C3",
+        "refdes": "C21",
         "kind": "Capacitor",
         "provides": [],
         "declared_kind": "capacitor",
@@ -3513,7 +3513,7 @@
         ]
       },
       {
-        "refdes": "C4",
+        "refdes": "C22",
         "kind": "Capacitor",
         "provides": [],
         "declared_kind": "capacitor",
@@ -3544,7 +3544,7 @@
         ]
       },
       {
-        "refdes": "C29",
+        "refdes": "C23",
         "kind": "Capacitor",
         "provides": [],
         "declared_kind": "capacitor",
@@ -3575,7 +3575,7 @@
         ]
       },
       {
-        "refdes": "C12",
+        "refdes": "C24",
         "kind": "Capacitor",
         "provides": [],
         "declared_kind": "capacitor",
@@ -3606,7 +3606,7 @@
         ]
       },
       {
-        "refdes": "C1",
+        "refdes": "C25",
         "kind": "Capacitor",
         "provides": [],
         "declared_kind": "capacitor",
@@ -3637,7 +3637,7 @@
         ]
       },
       {
-        "refdes": "C34",
+        "refdes": "C26",
         "kind": "Capacitor",
         "provides": [],
         "declared_kind": "capacitor",
@@ -3668,7 +3668,7 @@
         ]
       },
       {
-        "refdes": "C33",
+        "refdes": "C27",
         "kind": "Capacitor",
         "provides": [],
         "declared_kind": "capacitor",
@@ -3699,7 +3699,7 @@
         ]
       },
       {
-        "refdes": "C7",
+        "refdes": "C28",
         "kind": "Capacitor",
         "provides": [],
         "declared_kind": "capacitor",
@@ -3730,7 +3730,7 @@
         ]
       },
       {
-        "refdes": "C37",
+        "refdes": "C29",
         "kind": "Capacitor",
         "provides": [],
         "declared_kind": "capacitor",
@@ -3761,7 +3761,7 @@
         ]
       },
       {
-        "refdes": "R21",
+        "refdes": "R24",
         "kind": "Resistor",
         "provides": [],
         "declared_kind": "resistor",
@@ -3792,7 +3792,7 @@
         ]
       },
       {
-        "refdes": "R20",
+        "refdes": "R25",
         "kind": "Resistor",
         "provides": [],
         "declared_kind": "resistor",
@@ -3823,7 +3823,7 @@
         ]
       },
       {
-        "refdes": "C18",
+        "refdes": "C30",
         "kind": "Capacitor",
         "provides": [],
         "declared_kind": "capacitor",
@@ -3854,7 +3854,7 @@
         ]
       },
       {
-        "refdes": "C27",
+        "refdes": "C31",
         "kind": "Capacitor",
         "provides": [],
         "declared_kind": "capacitor",
@@ -3885,7 +3885,7 @@
         ]
       },
       {
-        "refdes": "C22",
+        "refdes": "C32",
         "kind": "Capacitor",
         "provides": [],
         "declared_kind": "capacitor",
@@ -3947,7 +3947,7 @@
         ]
       },
       {
-        "refdes": "C31",
+        "refdes": "C33",
         "kind": "Capacitor",
         "provides": [],
         "declared_kind": "capacitor",
@@ -3978,7 +3978,7 @@
         ]
       },
       {
-        "refdes": "C32",
+        "refdes": "C34",
         "kind": "Capacitor",
         "provides": [],
         "declared_kind": "capacitor",
@@ -4071,7 +4071,7 @@
         ]
       },
       {
-        "refdes": "C38",
+        "refdes": "C37",
         "kind": "Capacitor",
         "provides": [],
         "declared_kind": "capacitor",
@@ -4102,7 +4102,7 @@
         ]
       },
       {
-        "refdes": "R19",
+        "refdes": "R26",
         "kind": "Resistor",
         "provides": [],
         "declared_kind": "resistor",
@@ -4133,7 +4133,7 @@
         ]
       },
       {
-        "refdes": "R18",
+        "refdes": "R27",
         "kind": "Resistor",
         "provides": [],
         "declared_kind": "resistor",
@@ -4164,7 +4164,7 @@
         ]
       },
       {
-        "refdes": "C17",
+        "refdes": "C38",
         "kind": "Capacitor",
         "provides": [],
         "declared_kind": "capacitor",
@@ -4200,31 +4200,35 @@
         "name": "+3.3V",
         "pins": [
           {
-            "refdes": "C1",
+            "refdes": "C20",
             "pin": "1"
           },
           {
-            "refdes": "C12",
+            "refdes": "C21",
             "pin": "1"
           },
           {
-            "refdes": "C2",
+            "refdes": "C22",
             "pin": "1"
           },
           {
-            "refdes": "C29",
+            "refdes": "C23",
             "pin": "1"
           },
           {
-            "refdes": "C3",
+            "refdes": "C24",
             "pin": "1"
           },
           {
-            "refdes": "C4",
+            "refdes": "C25",
             "pin": "1"
           },
           {
-            "refdes": "J3",
+            "refdes": "J2",
+            "pin": "1"
+          },
+          {
+            "refdes": "R11",
             "pin": "1"
           },
           {
@@ -4232,56 +4236,52 @@
             "pin": "1"
           },
           {
-            "refdes": "R14",
-            "pin": "1"
-          },
-          {
             "refdes": "R15",
             "pin": "1"
           },
           {
-            "refdes": "R17",
+            "refdes": "R18",
             "pin": "1"
           },
           {
-            "refdes": "R26",
+            "refdes": "R19",
             "pin": "1"
           },
           {
-            "refdes": "R5",
+            "refdes": "R22",
             "pin": "1"
           },
           {
-            "refdes": "R6",
+            "refdes": "R23",
             "pin": "1"
           },
           {
-            "refdes": "R7",
+            "refdes": "R3",
             "pin": "1"
           },
           {
-            "refdes": "R8",
+            "refdes": "R4",
             "pin": "1"
           },
           {
             "refdes": "U1",
-            "pin": "4"
-          },
-          {
-            "refdes": "U1",
-            "pin": "5"
-          },
-          {
-            "refdes": "U1",
-            "pin": "6"
-          },
-          {
-            "refdes": "U4",
             "pin": "8"
           },
           {
-            "refdes": "U5",
+            "refdes": "U3",
             "pin": "5"
+          },
+          {
+            "refdes": "U4",
+            "pin": "4"
+          },
+          {
+            "refdes": "U4",
+            "pin": "5"
+          },
+          {
+            "refdes": "U4",
+            "pin": "6"
           }
         ]
       },
@@ -4289,19 +4289,19 @@
         "name": "+5V",
         "pins": [
           {
-            "refdes": "C33",
+            "refdes": "C26",
             "pin": "1"
           },
           {
-            "refdes": "C34",
+            "refdes": "C27",
             "pin": "1"
           },
           {
-            "refdes": "C7",
+            "refdes": "C28",
             "pin": "1"
           },
           {
-            "refdes": "D2",
+            "refdes": "D1",
             "pin": "2"
           },
           {
@@ -4318,11 +4318,11 @@
           },
           {
             "refdes": "U3",
-            "pin": "3"
+            "pin": "1"
           },
           {
-            "refdes": "U5",
-            "pin": "1"
+            "refdes": "U3",
+            "pin": "3"
           },
           {
             "refdes": "U5",
@@ -4338,15 +4338,15 @@
             "pin": "1"
           },
           {
-            "refdes": "C15",
+            "refdes": "C11",
             "pin": "1"
           },
           {
-            "refdes": "C6",
+            "refdes": "C12",
             "pin": "1"
           },
           {
-            "refdes": "C8",
+            "refdes": "C13",
             "pin": "1"
           },
           {
@@ -4354,7 +4354,7 @@
             "pin": "1"
           },
           {
-            "refdes": "L2",
+            "refdes": "L1",
             "pin": "2"
           },
           {
@@ -4371,10 +4371,6 @@
         "name": "GND",
         "pins": [
           {
-            "refdes": "C1",
-            "pin": "2"
-          },
-          {
             "refdes": "C10",
             "pin": "2"
           },
@@ -4388,10 +4384,6 @@
           },
           {
             "refdes": "C13",
-            "pin": "2"
-          },
-          {
-            "refdes": "C14",
             "pin": "2"
           },
           {
@@ -4411,7 +4403,11 @@
             "pin": "2"
           },
           {
-            "refdes": "C2",
+            "refdes": "C19",
+            "pin": "2"
+          },
+          {
+            "refdes": "C20",
             "pin": "2"
           },
           {
@@ -4452,6 +4448,10 @@
           },
           {
             "refdes": "C3",
+            "pin": "2"
+          },
+          {
+            "refdes": "C30",
             "pin": "2"
           },
           {
@@ -4511,7 +4511,7 @@
             "pin": "2"
           },
           {
-            "refdes": "D1",
+            "refdes": "D2",
             "pin": "2"
           },
           {
@@ -4604,27 +4604,27 @@
           },
           {
             "refdes": "J2",
-            "pin": "A1"
-          },
-          {
-            "refdes": "J2",
-            "pin": "A12"
-          },
-          {
-            "refdes": "J2",
-            "pin": "B1"
-          },
-          {
-            "refdes": "J2",
-            "pin": "B12"
-          },
-          {
-            "refdes": "J2",
-            "pin": "S1"
+            "pin": "5"
           },
           {
             "refdes": "J3",
-            "pin": "5"
+            "pin": "A1"
+          },
+          {
+            "refdes": "J3",
+            "pin": "A12"
+          },
+          {
+            "refdes": "J3",
+            "pin": "B1"
+          },
+          {
+            "refdes": "J3",
+            "pin": "B12"
+          },
+          {
+            "refdes": "J3",
+            "pin": "S1"
           },
           {
             "refdes": "Q2",
@@ -4639,23 +4639,23 @@
             "pin": "3"
           },
           {
-            "refdes": "R11",
+            "refdes": "R10",
             "pin": "2"
           },
           {
-            "refdes": "R13",
-            "pin": "1"
-          },
-          {
-            "refdes": "R19",
+            "refdes": "R14",
             "pin": "2"
           },
           {
-            "refdes": "R21",
+            "refdes": "R16",
             "pin": "2"
           },
           {
-            "refdes": "R23",
+            "refdes": "R2",
+            "pin": "2"
+          },
+          {
+            "refdes": "R20",
             "pin": "2"
           },
           {
@@ -4663,15 +4663,15 @@
             "pin": "2"
           },
           {
-            "refdes": "R27",
+            "refdes": "R26",
             "pin": "2"
           },
           {
-            "refdes": "R3",
-            "pin": "2"
+            "refdes": "R5",
+            "pin": "1"
           },
           {
-            "refdes": "R4",
+            "refdes": "R8",
             "pin": "2"
           },
           {
@@ -4683,20 +4683,12 @@
             "pin": "2"
           },
           {
-            "refdes": "TP2",
+            "refdes": "TP1",
             "pin": "1"
           },
           {
             "refdes": "U1",
-            "pin": "29"
-          },
-          {
-            "refdes": "U1",
-            "pin": "32"
-          },
-          {
-            "refdes": "U1",
-            "pin": "7"
+            "pin": "4"
           },
           {
             "refdes": "U2",
@@ -4712,27 +4704,35 @@
           },
           {
             "refdes": "U3",
-            "pin": "10"
-          },
-          {
-            "refdes": "U3",
-            "pin": "14"
-          },
-          {
-            "refdes": "U3",
-            "pin": "15"
-          },
-          {
-            "refdes": "U3",
-            "pin": "19"
+            "pin": "2"
           },
           {
             "refdes": "U4",
-            "pin": "4"
+            "pin": "29"
+          },
+          {
+            "refdes": "U4",
+            "pin": "32"
+          },
+          {
+            "refdes": "U4",
+            "pin": "7"
           },
           {
             "refdes": "U5",
-            "pin": "2"
+            "pin": "10"
+          },
+          {
+            "refdes": "U5",
+            "pin": "14"
+          },
+          {
+            "refdes": "U5",
+            "pin": "15"
+          },
+          {
+            "refdes": "U5",
+            "pin": "19"
           },
           {
             "refdes": "U6",
@@ -4744,39 +4744,39 @@
         "name": "VBUS",
         "pins": [
           {
-            "refdes": "C37",
+            "refdes": "C29",
             "pin": "1"
           },
           {
-            "refdes": "D1",
+            "refdes": "D2",
             "pin": "1"
           },
           {
-            "refdes": "J2",
+            "refdes": "J3",
             "pin": "A4"
           },
           {
-            "refdes": "J2",
+            "refdes": "J3",
             "pin": "A9"
           },
           {
-            "refdes": "J2",
+            "refdes": "J3",
             "pin": "B4"
           },
           {
-            "refdes": "J2",
+            "refdes": "J3",
             "pin": "B9"
           },
           {
-            "refdes": "R2",
+            "refdes": "R17",
             "pin": "1"
           },
           {
-            "refdes": "R20",
+            "refdes": "R25",
             "pin": "1"
           },
           {
-            "refdes": "U3",
+            "refdes": "U5",
             "pin": "8"
           }
         ]
@@ -4809,7 +4809,7 @@
             "pin": "3"
           },
           {
-            "refdes": "U3",
+            "refdes": "U5",
             "pin": "7"
           }
         ]
@@ -4822,11 +4822,11 @@
             "pin": "5"
           },
           {
-            "refdes": "R2",
+            "refdes": "R17",
             "pin": "2"
           },
           {
-            "refdes": "U3",
+            "refdes": "U5",
             "pin": "9"
           }
         ]
@@ -4839,7 +4839,7 @@
             "pin": "2"
           },
           {
-            "refdes": "L2",
+            "refdes": "L1",
             "pin": "1"
           }
         ]
@@ -4881,7 +4881,7 @@
         "name": "VOUT",
         "pins": [
           {
-            "refdes": "C30",
+            "refdes": "C14",
             "pin": "1"
           },
           {
@@ -4889,11 +4889,11 @@
             "pin": "5"
           },
           {
-            "refdes": "R1",
+            "refdes": "R13",
             "pin": "2"
           },
           {
-            "refdes": "R18",
+            "refdes": "R27",
             "pin": "1"
           },
           {
@@ -4906,11 +4906,11 @@
         "name": "VOUT_CONV",
         "pins": [
           {
-            "refdes": "C31",
+            "refdes": "C33",
             "pin": "1"
           },
           {
-            "refdes": "C32",
+            "refdes": "C34",
             "pin": "1"
           },
           {
@@ -4922,11 +4922,11 @@
             "pin": "1"
           },
           {
-            "refdes": "C38",
+            "refdes": "C37",
             "pin": "1"
           },
           {
-            "refdes": "R1",
+            "refdes": "R13",
             "pin": "1"
           },
           {
@@ -4947,11 +4947,11 @@
         "name": "net-boot1_cap.a",
         "pins": [
           {
-            "refdes": "C19",
+            "refdes": "C1",
             "pin": "1"
           },
           {
-            "refdes": "L1",
+            "refdes": "L2",
             "pin": "1"
           },
           {
@@ -4980,7 +4980,7 @@
         "name": "net-boot1_cap.b",
         "pins": [
           {
-            "refdes": "C19",
+            "refdes": "C1",
             "pin": "2"
           },
           {
@@ -4993,11 +4993,11 @@
         "name": "net-boot2_cap.a",
         "pins": [
           {
-            "refdes": "C20",
+            "refdes": "C2",
             "pin": "1"
           },
           {
-            "refdes": "L1",
+            "refdes": "L2",
             "pin": "2"
           },
           {
@@ -5014,7 +5014,7 @@
         "name": "net-boot2_cap.b",
         "pins": [
           {
-            "refdes": "C20",
+            "refdes": "C2",
             "pin": "2"
           },
           {
@@ -5027,11 +5027,11 @@
         "name": "net-cbias_100n.a",
         "pins": [
           {
-            "refdes": "C26",
+            "refdes": "C3",
             "pin": "1"
           },
           {
-            "refdes": "U3",
+            "refdes": "U5",
             "pin": "12"
           }
         ]
@@ -5040,15 +5040,15 @@
         "name": "net-cc1_330p.a",
         "pins": [
           {
-            "refdes": "C21",
+            "refdes": "C4",
             "pin": "1"
           },
           {
-            "refdes": "J2",
+            "refdes": "J3",
             "pin": "A5"
           },
           {
-            "refdes": "U3",
+            "refdes": "U5",
             "pin": "13"
           }
         ]
@@ -5057,15 +5057,15 @@
         "name": "net-cc2_330p.a",
         "pins": [
           {
-            "refdes": "C23",
+            "refdes": "C5",
             "pin": "1"
           },
           {
-            "refdes": "J2",
+            "refdes": "J3",
             "pin": "B5"
           },
           {
-            "refdes": "U3",
+            "refdes": "U5",
             "pin": "11"
           }
         ]
@@ -5074,11 +5074,11 @@
         "name": "net-comp_cap.a",
         "pins": [
           {
-            "refdes": "C28",
+            "refdes": "C6",
             "pin": "1"
           },
           {
-            "refdes": "R25",
+            "refdes": "R1",
             "pin": "1"
           },
           {
@@ -5091,11 +5091,11 @@
         "name": "net-comp_cap_series.a",
         "pins": [
           {
-            "refdes": "C24",
+            "refdes": "C7",
             "pin": "1"
           },
           {
-            "refdes": "R25",
+            "refdes": "R1",
             "pin": "2"
           }
         ]
@@ -5104,28 +5104,28 @@
         "name": "net-comparator.in_a_neg",
         "pins": [
           {
-            "refdes": "C17",
+            "refdes": "C38",
             "pin": "1"
           },
           {
-            "refdes": "R18",
+            "refdes": "R26",
+            "pin": "1"
+          },
+          {
+            "refdes": "R27",
             "pin": "2"
-          },
-          {
-            "refdes": "R19",
-            "pin": "1"
           },
           {
             "refdes": "U1",
-            "pin": "20"
-          },
-          {
-            "refdes": "U4",
             "pin": "2"
           },
           {
-            "refdes": "U4",
+            "refdes": "U1",
             "pin": "6"
+          },
+          {
+            "refdes": "U4",
+            "pin": "20"
           }
         ]
       },
@@ -5133,16 +5133,16 @@
         "name": "net-comparator.in_a_pos",
         "pins": [
           {
-            "refdes": "R4",
+            "refdes": "R16",
             "pin": "1"
           },
           {
             "refdes": "U1",
-            "pin": "15"
+            "pin": "3"
           },
           {
             "refdes": "U4",
-            "pin": "3"
+            "pin": "15"
           }
         ]
       },
@@ -5150,15 +5150,15 @@
         "name": "net-comparator.in_b_pos",
         "pins": [
           {
-            "refdes": "R26",
-            "pin": "2"
-          },
-          {
-            "refdes": "R27",
+            "refdes": "R14",
             "pin": "1"
           },
           {
-            "refdes": "U4",
+            "refdes": "R15",
+            "pin": "2"
+          },
+          {
+            "refdes": "U1",
             "pin": "5"
           }
         ]
@@ -5167,28 +5167,28 @@
         "name": "net-comparator.out_a",
         "pins": [
           {
-            "refdes": "R10",
+            "refdes": "R20",
+            "pin": "1"
+          },
+          {
+            "refdes": "R21",
             "pin": "2"
           },
           {
-            "refdes": "R11",
+            "refdes": "U1",
             "pin": "1"
           },
           {
             "refdes": "U1",
+            "pin": "7"
+          },
+          {
+            "refdes": "U4",
             "pin": "43"
           },
           {
-            "refdes": "U3",
+            "refdes": "U5",
             "pin": "1"
-          },
-          {
-            "refdes": "U4",
-            "pin": "1"
-          },
-          {
-            "refdes": "U4",
-            "pin": "7"
           }
         ]
       },
@@ -5196,7 +5196,7 @@
         "name": "net-converter.dith",
         "pins": [
           {
-            "refdes": "C13",
+            "refdes": "C8",
             "pin": "1"
           },
           {
@@ -5209,7 +5209,7 @@
         "name": "net-converter.dr1h",
         "pins": [
           {
-            "refdes": "R16",
+            "refdes": "R6",
             "pin": "2"
           },
           {
@@ -5222,7 +5222,7 @@
         "name": "net-converter.dr1l",
         "pins": [
           {
-            "refdes": "R22",
+            "refdes": "R7",
             "pin": "2"
           },
           {
@@ -5239,16 +5239,16 @@
             "pin": "B16"
           },
           {
-            "refdes": "R3",
+            "refdes": "R2",
             "pin": "1"
-          },
-          {
-            "refdes": "U1",
-            "pin": "47"
           },
           {
             "refdes": "U2",
             "pin": "4"
+          },
+          {
+            "refdes": "U4",
+            "pin": "47"
           }
         ]
       },
@@ -5256,16 +5256,16 @@
         "name": "net-converter.fb",
         "pins": [
           {
-            "refdes": "R12",
+            "refdes": "R3",
             "pin": "2"
-          },
-          {
-            "refdes": "U1",
-            "pin": "24"
           },
           {
             "refdes": "U2",
             "pin": "14"
+          },
+          {
+            "refdes": "U4",
+            "pin": "24"
           }
         ]
       },
@@ -5273,7 +5273,7 @@
         "name": "net-converter.fsw",
         "pins": [
           {
-            "refdes": "R13",
+            "refdes": "R5",
             "pin": "2"
           },
           {
@@ -5286,7 +5286,7 @@
         "name": "net-converter.ilim",
         "pins": [
           {
-            "refdes": "R24",
+            "refdes": "R8",
             "pin": "1"
           },
           {
@@ -5299,7 +5299,7 @@
         "name": "net-converter.mode",
         "pins": [
           {
-            "refdes": "R23",
+            "refdes": "R10",
             "pin": "1"
           },
           {
@@ -5312,19 +5312,19 @@
         "name": "net-converter.scl",
         "pins": [
           {
-            "refdes": "R8",
+            "refdes": "R22",
             "pin": "2"
-          },
-          {
-            "refdes": "U1",
-            "pin": "22"
           },
           {
             "refdes": "U2",
             "pin": "5"
           },
           {
-            "refdes": "U3",
+            "refdes": "U4",
+            "pin": "22"
+          },
+          {
+            "refdes": "U5",
             "pin": "17"
           }
         ]
@@ -5333,19 +5333,19 @@
         "name": "net-converter.sda",
         "pins": [
           {
-            "refdes": "R7",
+            "refdes": "R23",
             "pin": "2"
-          },
-          {
-            "refdes": "U1",
-            "pin": "23"
           },
           {
             "refdes": "U2",
             "pin": "6"
           },
           {
-            "refdes": "U3",
+            "refdes": "U4",
+            "pin": "23"
+          },
+          {
+            "refdes": "U5",
             "pin": "16"
           }
         ]
@@ -5354,11 +5354,11 @@
         "name": "net-converter.vcc",
         "pins": [
           {
-            "refdes": "C22",
+            "refdes": "C31",
             "pin": "1"
           },
           {
-            "refdes": "C27",
+            "refdes": "C32",
             "pin": "1"
           },
           {
@@ -5375,15 +5375,15 @@
         "name": "net-flag_pullup.b",
         "pins": [
           {
-            "refdes": "R15",
+            "refdes": "R4",
             "pin": "2"
           },
           {
-            "refdes": "U1",
+            "refdes": "U4",
             "pin": "25"
           },
           {
-            "refdes": "U3",
+            "refdes": "U5",
             "pin": "18"
           }
         ]
@@ -5392,7 +5392,7 @@
         "name": "net-gate_47p.b",
         "pins": [
           {
-            "refdes": "C30",
+            "refdes": "C14",
             "pin": "2"
           },
           {
@@ -5404,7 +5404,7 @@
             "pin": "4"
           },
           {
-            "refdes": "U3",
+            "refdes": "U5",
             "pin": "6"
           }
         ]
@@ -5417,7 +5417,7 @@
             "pin": "4"
           },
           {
-            "refdes": "R16",
+            "refdes": "R6",
             "pin": "1"
           }
         ]
@@ -5430,7 +5430,7 @@
             "pin": "4"
           },
           {
-            "refdes": "R22",
+            "refdes": "R7",
             "pin": "1"
           }
         ]
@@ -5439,15 +5439,15 @@
         "name": "net-iana_100n.a",
         "pins": [
           {
-            "refdes": "C25",
+            "refdes": "C15",
             "pin": "1"
           },
           {
-            "refdes": "U1",
+            "refdes": "U4",
             "pin": "12"
           },
           {
-            "refdes": "U3",
+            "refdes": "U5",
             "pin": "5"
           }
         ]
@@ -5456,11 +5456,11 @@
         "name": "net-ldo.bypass",
         "pins": [
           {
-            "refdes": "C11",
+            "refdes": "C16",
             "pin": "1"
           },
           {
-            "refdes": "U5",
+            "refdes": "U3",
             "pin": "4"
           }
         ]
@@ -5469,7 +5469,7 @@
         "name": "net-led.cathode",
         "pins": [
           {
-            "refdes": "D2",
+            "refdes": "D1",
             "pin": "1"
           },
           {
@@ -5486,7 +5486,7 @@
             "pin": "2"
           },
           {
-            "refdes": "U1",
+            "refdes": "U4",
             "pin": "42"
           }
         ]
@@ -5495,19 +5495,19 @@
         "name": "net-mcu.pa0",
         "pins": [
           {
-            "refdes": "C18",
+            "refdes": "C30",
             "pin": "1"
           },
           {
-            "refdes": "R20",
+            "refdes": "R24",
+            "pin": "1"
+          },
+          {
+            "refdes": "R25",
             "pin": "2"
           },
           {
-            "refdes": "R21",
-            "pin": "1"
-          },
-          {
-            "refdes": "U1",
+            "refdes": "U4",
             "pin": "11"
           }
         ]
@@ -5516,11 +5516,11 @@
         "name": "net-mcu.pa13",
         "pins": [
           {
-            "refdes": "J3",
+            "refdes": "J2",
             "pin": "2"
           },
           {
-            "refdes": "U1",
+            "refdes": "U4",
             "pin": "35"
           }
         ]
@@ -5529,11 +5529,11 @@
         "name": "net-mcu.pa14",
         "pins": [
           {
-            "refdes": "J3",
+            "refdes": "J2",
             "pin": "4"
           },
           {
-            "refdes": "U1",
+            "refdes": "U4",
             "pin": "36"
           }
         ]
@@ -5542,11 +5542,11 @@
         "name": "net-mcu.pa15",
         "pins": [
           {
-            "refdes": "R10",
+            "refdes": "R21",
             "pin": "1"
           },
           {
-            "refdes": "U1",
+            "refdes": "U4",
             "pin": "37"
           }
         ]
@@ -5555,11 +5555,11 @@
         "name": "net-mcu.pa2",
         "pins": [
           {
-            "refdes": "TP1",
+            "refdes": "TP3",
             "pin": "1"
           },
           {
-            "refdes": "U1",
+            "refdes": "U4",
             "pin": "13"
           }
         ]
@@ -5568,11 +5568,11 @@
         "name": "net-mcu.pa3",
         "pins": [
           {
-            "refdes": "TP3",
+            "refdes": "TP2",
             "pin": "1"
           },
           {
-            "refdes": "U1",
+            "refdes": "U4",
             "pin": "14"
           }
         ]
@@ -5581,11 +5581,11 @@
         "name": "net-mcu.pa8",
         "pins": [
           {
-            "refdes": "U1",
+            "refdes": "U4",
             "pin": "28"
           },
           {
-            "refdes": "U3",
+            "refdes": "U5",
             "pin": "2"
           }
         ]
@@ -5594,11 +5594,11 @@
         "name": "net-mcu.pb0",
         "pins": [
           {
-            "refdes": "C14",
+            "refdes": "C17",
             "pin": "1"
           },
           {
-            "refdes": "R14",
+            "refdes": "R11",
             "pin": "2"
           },
           {
@@ -5606,7 +5606,7 @@
             "pin": "1"
           },
           {
-            "refdes": "U1",
+            "refdes": "U4",
             "pin": "19"
           }
         ]
@@ -5615,11 +5615,11 @@
         "name": "net-mcu.pb15",
         "pins": [
           {
-            "refdes": "U1",
+            "refdes": "U4",
             "pin": "27"
           },
           {
-            "refdes": "U3",
+            "refdes": "U5",
             "pin": "4"
           }
         ]
@@ -5628,11 +5628,11 @@
         "name": "net-mcu.pb2",
         "pins": [
           {
-            "refdes": "C16",
+            "refdes": "C18",
             "pin": "1"
           },
           {
-            "refdes": "R17",
+            "refdes": "R12",
             "pin": "2"
           },
           {
@@ -5640,7 +5640,7 @@
             "pin": "1"
           },
           {
-            "refdes": "U1",
+            "refdes": "U4",
             "pin": "21"
           }
         ]
@@ -5653,7 +5653,7 @@
             "pin": "B15"
           },
           {
-            "refdes": "U1",
+            "refdes": "U4",
             "pin": "44"
           }
         ]
@@ -5666,11 +5666,11 @@
             "pin": "A14"
           },
           {
-            "refdes": "R6",
+            "refdes": "R18",
             "pin": "2"
           },
           {
-            "refdes": "U1",
+            "refdes": "U4",
             "pin": "45"
           }
         ]
@@ -5683,11 +5683,11 @@
             "pin": "B14"
           },
           {
-            "refdes": "R5",
+            "refdes": "R19",
             "pin": "2"
           },
           {
-            "refdes": "U1",
+            "refdes": "U4",
             "pin": "46"
           }
         ]
@@ -5696,15 +5696,15 @@
         "name": "net-mcu.pf2",
         "pins": [
           {
-            "refdes": "C5",
+            "refdes": "C19",
             "pin": "1"
           },
           {
-            "refdes": "J3",
+            "refdes": "J2",
             "pin": "3"
           },
           {
-            "refdes": "U1",
+            "refdes": "U4",
             "pin": "10"
           }
         ]
@@ -5726,19 +5726,19 @@
         "name": "net-usb.dm",
         "pins": [
           {
-            "refdes": "J2",
+            "refdes": "J3",
             "pin": "A6"
           },
           {
-            "refdes": "J2",
+            "refdes": "J3",
             "pin": "A7"
           },
           {
-            "refdes": "J2",
+            "refdes": "J3",
             "pin": "B6"
           },
           {
-            "refdes": "J2",
+            "refdes": "J3",
             "pin": "B7"
           },
           {
@@ -6417,41 +6417,106 @@
     ],
     "notes": [
       {
-        "path": "mcu",
+        "path": "boot1_cap",
         "kind": "doc",
-        "text": "U1: STM32G071C8T6",
+        "text": "C20",
         "at": {
           "file": "src/main.nsm",
-          "line": 57
+          "line": 210
         },
         "anchors": [
-          "mcu"
+          "boot1_cap"
         ],
         "result": null
       },
       {
-        "path": "converter",
+        "path": "boot2_cap",
         "kind": "doc",
-        "text": "U3: TPS55288RPMR",
+        "text": "C21",
         "at": {
           "file": "src/main.nsm",
-          "line": 59
+          "line": 212
         },
         "anchors": [
-          "converter"
+          "boot2_cap"
         ],
         "result": null
       },
       {
-        "path": "protector",
+        "path": "cbias_100n",
         "kind": "doc",
-        "text": "U5: TCPP02-M18",
+        "text": "C27",
         "at": {
           "file": "src/main.nsm",
-          "line": 61
+          "line": 224
         },
         "anchors": [
-          "protector"
+          "cbias_100n"
+        ],
+        "result": null
+      },
+      {
+        "path": "cc1_330p",
+        "kind": "doc",
+        "text": "C22",
+        "at": {
+          "file": "src/main.nsm",
+          "line": 214
+        },
+        "anchors": [
+          "cc1_330p"
+        ],
+        "result": null
+      },
+      {
+        "path": "cc2_330p",
+        "kind": "doc",
+        "text": "C24",
+        "at": {
+          "file": "src/main.nsm",
+          "line": 218
+        },
+        "anchors": [
+          "cc2_330p"
+        ],
+        "result": null
+      },
+      {
+        "path": "comp_cap",
+        "kind": "doc",
+        "text": "C29",
+        "at": {
+          "file": "src/main.nsm",
+          "line": 228
+        },
+        "anchors": [
+          "comp_cap"
+        ],
+        "result": null
+      },
+      {
+        "path": "comp_cap_series",
+        "kind": "doc",
+        "text": "C25",
+        "at": {
+          "file": "src/main.nsm",
+          "line": 220
+        },
+        "anchors": [
+          "comp_cap_series"
+        ],
+        "result": null
+      },
+      {
+        "path": "comp_resistor",
+        "kind": "doc",
+        "text": "R24",
+        "at": {
+          "file": "src/main.nsm",
+          "line": 165
+        },
+        "anchors": [
+          "comp_resistor"
         ],
         "result": null
       },
@@ -6469,6 +6534,251 @@
         "result": null
       },
       {
+        "path": "converter",
+        "kind": "doc",
+        "text": "U3: TPS55288RPMR",
+        "at": {
+          "file": "src/main.nsm",
+          "line": 59
+        },
+        "anchors": [
+          "converter"
+        ],
+        "result": null
+      },
+      {
+        "path": "dither_10n",
+        "kind": "doc",
+        "text": "C13",
+        "at": {
+          "file": "src/main.nsm",
+          "line": 198
+        },
+        "anchors": [
+          "dither_10n"
+        ],
+        "result": null
+      },
+      {
+        "path": "emi_vin",
+        "kind": "doc",
+        "text": "Behind the input inductor: the converter's input.",
+        "at": {
+          "file": "src/main.nsm",
+          "line": 272
+        },
+        "anchors": [],
+        "result": null
+      },
+      {
+        "path": "emi_vin_100n",
+        "kind": "doc",
+        "text": "C10",
+        "at": {
+          "file": "src/main.nsm",
+          "line": 192
+        },
+        "anchors": [
+          "emi_vin_100n"
+        ],
+        "result": null
+      },
+      {
+        "path": "emi_vin_100u",
+        "kind": "doc",
+        "text": "C6",
+        "at": {
+          "file": "src/main.nsm",
+          "line": 184
+        },
+        "anchors": [
+          "emi_vin_100u"
+        ],
+        "result": null
+      },
+      {
+        "path": "emi_vin_10u_a",
+        "kind": "doc",
+        "text": "C8",
+        "at": {
+          "file": "src/main.nsm",
+          "line": 188
+        },
+        "anchors": [
+          "emi_vin_10u_a"
+        ],
+        "result": null
+      },
+      {
+        "path": "emi_vin_10u_b",
+        "kind": "doc",
+        "text": "C9",
+        "at": {
+          "file": "src/main.nsm",
+          "line": 190
+        },
+        "anchors": [
+          "emi_vin_10u_b"
+        ],
+        "result": null
+      },
+      {
+        "path": "emi_vin_1u",
+        "kind": "doc",
+        "text": "C15",
+        "at": {
+          "file": "src/main.nsm",
+          "line": 202
+        },
+        "anchors": [
+          "emi_vin_1u"
+        ],
+        "result": null
+      },
+      {
+        "path": "en_pulldown",
+        "kind": "doc",
+        "text": "R1",
+        "at": {
+          "file": "src/main.nsm",
+          "line": 121
+        },
+        "anchors": [
+          "en_pulldown"
+        ],
+        "result": null
+      },
+      {
+        "path": "fault_pullup",
+        "kind": "doc",
+        "text": "R10",
+        "at": {
+          "file": "src/main.nsm",
+          "line": 139
+        },
+        "anchors": [
+          "fault_pullup"
+        ],
+        "result": null
+      },
+      {
+        "path": "flag_pullup",
+        "kind": "doc",
+        "text": "R13",
+        "at": {
+          "file": "src/main.nsm",
+          "line": 145
+        },
+        "anchors": [
+          "flag_pullup"
+        ],
+        "result": null
+      },
+      {
+        "path": "fsw_resistor",
+        "kind": "doc",
+        "text": "R11",
+        "at": {
+          "file": "src/main.nsm",
+          "line": 141
+        },
+        "anchors": [
+          "fsw_resistor"
+        ],
+        "result": null
+      },
+      {
+        "path": "fuse",
+        "kind": "doc",
+        "text": "F1: 8A",
+        "at": {
+          "file": "src/main.nsm",
+          "line": 80
+        },
+        "anchors": [
+          "fuse"
+        ],
+        "result": null
+      },
+      {
+        "path": "gate_47p",
+        "kind": "doc",
+        "text": "C31",
+        "at": {
+          "file": "src/main.nsm",
+          "line": 232
+        },
+        "anchors": [
+          "gate_47p"
+        ],
+        "result": null
+      },
+      {
+        "path": "gate_high_resistor",
+        "kind": "doc",
+        "text": "R14",
+        "at": {
+          "file": "src/main.nsm",
+          "line": 147
+        },
+        "anchors": [
+          "gate_high_resistor"
+        ],
+        "result": null
+      },
+      {
+        "path": "gate_low_resistor",
+        "kind": "doc",
+        "text": "R21",
+        "at": {
+          "file": "src/main.nsm",
+          "line": 159
+        },
+        "anchors": [
+          "gate_low_resistor"
+        ],
+        "result": null
+      },
+      {
+        "path": "iana_100n",
+        "kind": "doc",
+        "text": "C26",
+        "at": {
+          "file": "src/main.nsm",
+          "line": 222
+        },
+        "anchors": [
+          "iana_100n"
+        ],
+        "result": null
+      },
+      {
+        "path": "ilim_resistor",
+        "kind": "doc",
+        "text": "R23",
+        "at": {
+          "file": "src/main.nsm",
+          "line": 163
+        },
+        "anchors": [
+          "ilim_resistor"
+        ],
+        "result": null
+      },
+      {
+        "path": "input_inductor",
+        "kind": "doc",
+        "text": "L1: 1uH",
+        "at": {
+          "file": "src/main.nsm",
+          "line": 78
+        },
+        "anchors": [
+          "input_inductor"
+        ],
+        "result": null
+      },
+      {
         "path": "ldo",
         "kind": "doc",
         "text": "U2: LP2985-3.3",
@@ -6482,15 +6792,249 @@
         "result": null
       },
       {
-        "path": "usb_esd",
+        "path": "ldo_bypass",
         "kind": "doc",
-        "text": "U6: USBLC6-2SC6",
+        "text": "C11",
         "at": {
           "file": "src/main.nsm",
-          "line": 67
+          "line": 194
         },
         "anchors": [
-          "usb_esd"
+          "ldo_bypass"
+        ],
+        "result": null
+      },
+      {
+        "path": "led",
+        "kind": "doc",
+        "text": "D1: GREEN",
+        "at": {
+          "file": "src/main.nsm",
+          "line": 112
+        },
+        "anchors": [
+          "led"
+        ],
+        "result": null
+      },
+      {
+        "path": "led_resistor",
+        "kind": "doc",
+        "text": "R7",
+        "at": {
+          "file": "src/main.nsm",
+          "line": 133
+        },
+        "anchors": [
+          "led_resistor"
+        ],
+        "result": null
+      },
+      {
+        "path": "mcu",
+        "kind": "doc",
+        "text": "U1: STM32G071C8T6",
+        "at": {
+          "file": "src/main.nsm",
+          "line": 57
+        },
+        "anchors": [
+          "mcu"
+        ],
+        "result": null
+      },
+      {
+        "path": "mode_resistor",
+        "kind": "doc",
+        "text": "R22",
+        "at": {
+          "file": "src/main.nsm",
+          "line": 161
+        },
+        "anchors": [
+          "mode_resistor"
+        ],
+        "result": null
+      },
+      {
+        "path": "ntc_converter",
+        "kind": "doc",
+        "text": "TH1: NTC_CONV",
+        "at": {
+          "file": "src/main.nsm",
+          "line": 114
+        },
+        "anchors": [
+          "ntc_converter"
+        ],
+        "result": null
+      },
+      {
+        "path": "ntc_converter_100n",
+        "kind": "doc",
+        "text": "C14",
+        "at": {
+          "file": "src/main.nsm",
+          "line": 200
+        },
+        "anchors": [
+          "ntc_converter_100n"
+        ],
+        "result": null
+      },
+      {
+        "path": "ntc_converter_pullup",
+        "kind": "doc",
+        "text": "R12",
+        "at": {
+          "file": "src/main.nsm",
+          "line": 143
+        },
+        "anchors": [
+          "ntc_converter_pullup"
+        ],
+        "result": null
+      },
+      {
+        "path": "ntc_plug",
+        "kind": "doc",
+        "text": "TH2: NTC_PLUG",
+        "at": {
+          "file": "src/main.nsm",
+          "line": 116
+        },
+        "anchors": [
+          "ntc_plug"
+        ],
+        "result": null
+      },
+      {
+        "path": "ntc_plug_100n",
+        "kind": "doc",
+        "text": "C16",
+        "at": {
+          "file": "src/main.nsm",
+          "line": 204
+        },
+        "anchors": [
+          "ntc_plug_100n"
+        ],
+        "result": null
+      },
+      {
+        "path": "ntc_plug_pullup",
+        "kind": "doc",
+        "text": "R16",
+        "at": {
+          "file": "src/main.nsm",
+          "line": 149
+        },
+        "anchors": [
+          "ntc_plug_pullup"
+        ],
+        "result": null
+      },
+      {
+        "path": "output_shunt",
+        "kind": "doc",
+        "text": "R28: R010",
+        "at": {
+          "file": "src/main.nsm",
+          "line": 84
+        },
+        "anchors": [
+          "output_shunt"
+        ],
+        "result": null
+      },
+      {
+        "path": "ovp_ceil_bottom",
+        "kind": "doc",
+        "text": "R26",
+        "at": {
+          "file": "src/main.nsm",
+          "line": 169
+        },
+        "anchors": [
+          "ovp_ceil_bottom"
+        ],
+        "result": null
+      },
+      {
+        "path": "ovp_ceil_top",
+        "kind": "doc",
+        "text": "R25",
+        "at": {
+          "file": "src/main.nsm",
+          "line": 167
+        },
+        "anchors": [
+          "ovp_ceil_top"
+        ],
+        "result": null
+      },
+      {
+        "path": "ovp_ref_pulldown",
+        "kind": "doc",
+        "text": "R2",
+        "at": {
+          "file": "src/main.nsm",
+          "line": 123
+        },
+        "anchors": [
+          "ovp_ref_pulldown"
+        ],
+        "result": null
+      },
+      {
+        "path": "port_shunt",
+        "kind": "doc",
+        "text": "R27: R007",
+        "at": {
+          "file": "src/main.nsm",
+          "line": 86
+        },
+        "anchors": [
+          "port_shunt"
+        ],
+        "result": null
+      },
+      {
+        "path": "port_tvs",
+        "kind": "doc",
+        "text": "D2: ESDA25P35-1U1M",
+        "at": {
+          "file": "src/main.nsm",
+          "line": 110
+        },
+        "anchors": [
+          "port_tvs"
+        ],
+        "result": null
+      },
+      {
+        "path": "power_inductor",
+        "kind": "doc",
+        "text": "L2: 5.6uH",
+        "at": {
+          "file": "src/main.nsm",
+          "line": 76
+        },
+        "anchors": [
+          "power_inductor"
+        ],
+        "result": null
+      },
+      {
+        "path": "protector",
+        "kind": "doc",
+        "text": "U5: TCPP02-M18",
+        "at": {
+          "file": "src/main.nsm",
+          "line": 61
+        },
+        "anchors": [
+          "protector"
         ],
         "result": null
       },
@@ -6521,84 +7065,6 @@
         "result": null
       },
       {
-        "path": "power_inductor",
-        "kind": "doc",
-        "text": "L2: 5.6uH",
-        "at": {
-          "file": "src/main.nsm",
-          "line": 76
-        },
-        "anchors": [
-          "power_inductor"
-        ],
-        "result": null
-      },
-      {
-        "path": "input_inductor",
-        "kind": "doc",
-        "text": "L1: 1uH",
-        "at": {
-          "file": "src/main.nsm",
-          "line": 78
-        },
-        "anchors": [
-          "input_inductor"
-        ],
-        "result": null
-      },
-      {
-        "path": "fuse",
-        "kind": "doc",
-        "text": "F1: 8A",
-        "at": {
-          "file": "src/main.nsm",
-          "line": 80
-        },
-        "anchors": [
-          "fuse"
-        ],
-        "result": null
-      },
-      {
-        "path": "vcc_bead",
-        "kind": "doc",
-        "text": "FB1: BLM18KG601SN1D",
-        "at": {
-          "file": "src/main.nsm",
-          "line": 82
-        },
-        "anchors": [
-          "vcc_bead"
-        ],
-        "result": null
-      },
-      {
-        "path": "output_shunt",
-        "kind": "doc",
-        "text": "R28: R010",
-        "at": {
-          "file": "src/main.nsm",
-          "line": 84
-        },
-        "anchors": [
-          "output_shunt"
-        ],
-        "result": null
-      },
-      {
-        "path": "port_shunt",
-        "kind": "doc",
-        "text": "R27: R007",
-        "at": {
-          "file": "src/main.nsm",
-          "line": 86
-        },
-        "anchors": [
-          "port_shunt"
-        ],
-        "result": null
-      },
-      {
         "path": "q_port_a",
         "kind": "doc",
         "text": "Q3: BSC059N04LS6",
@@ -6625,6 +7091,45 @@
         "result": null
       },
       {
+        "path": "reset_100n",
+        "kind": "doc",
+        "text": "C5",
+        "at": {
+          "file": "src/main.nsm",
+          "line": 182
+        },
+        "anchors": [
+          "reset_100n"
+        ],
+        "result": null
+      },
+      {
+        "path": "scl_pullup",
+        "kind": "doc",
+        "text": "R4",
+        "at": {
+          "file": "src/main.nsm",
+          "line": 127
+        },
+        "anchors": [
+          "scl_pullup"
+        ],
+        "result": null
+      },
+      {
+        "path": "sda_pullup",
+        "kind": "doc",
+        "text": "R3",
+        "at": {
+          "file": "src/main.nsm",
+          "line": 125
+        },
+        "anchors": [
+          "sda_pullup"
+        ],
+        "result": null
+      },
+      {
         "path": "slot",
         "kind": "doc",
         "text": "J3: Bus_PCI_Express_x1",
@@ -6638,16 +7143,14 @@
         "result": null
       },
       {
-        "path": "usb",
+        "path": "slot_vin",
         "kind": "doc",
-        "text": "J4: USB_C_Receptacle_USB2.0_14P",
+        "text": "The slot's main DC input (A2 to A7): 24 V nominal, +20 %/-15 % (the design's architecture notes, section 3), ahead of the fuse.",
         "at": {
           "file": "src/main.nsm",
-          "line": 97
+          "line": 254
         },
-        "anchors": [
-          "usb"
-        ],
+        "anchors": [],
         "result": null
       },
       {
@@ -6664,15 +7167,28 @@
         "result": null
       },
       {
-        "path": "tp_tx",
+        "path": "tcpp_en_pulldown",
         "kind": "doc",
-        "text": "J1: TX",
+        "text": "R9",
         "at": {
           "file": "src/main.nsm",
-          "line": 101
+          "line": 137
         },
         "anchors": [
-          "tp_tx"
+          "tcpp_en_pulldown"
+        ],
+        "result": null
+      },
+      {
+        "path": "tcpp_en_series",
+        "kind": "doc",
+        "text": "R8",
+        "at": {
+          "file": "src/main.nsm",
+          "line": 135
+        },
+        "anchors": [
+          "tcpp_en_series"
         ],
         "result": null
       },
@@ -6703,119 +7219,41 @@
         "result": null
       },
       {
-        "path": "port_tvs",
+        "path": "tp_tx",
         "kind": "doc",
-        "text": "D2: ESDA25P35-1U1M",
+        "text": "J1: TX",
         "at": {
           "file": "src/main.nsm",
-          "line": 110
+          "line": 101
         },
         "anchors": [
-          "port_tvs"
+          "tp_tx"
         ],
         "result": null
       },
       {
-        "path": "led",
+        "path": "usb",
         "kind": "doc",
-        "text": "D1: GREEN",
+        "text": "J4: USB_C_Receptacle_USB2.0_14P",
         "at": {
           "file": "src/main.nsm",
-          "line": 112
+          "line": 97
         },
         "anchors": [
-          "led"
+          "usb"
         ],
         "result": null
       },
       {
-        "path": "ntc_converter",
+        "path": "usb_esd",
         "kind": "doc",
-        "text": "TH1: NTC_CONV",
+        "text": "U6: USBLC6-2SC6",
         "at": {
           "file": "src/main.nsm",
-          "line": 114
+          "line": 67
         },
         "anchors": [
-          "ntc_converter"
-        ],
-        "result": null
-      },
-      {
-        "path": "ntc_plug",
-        "kind": "doc",
-        "text": "TH2: NTC_PLUG",
-        "at": {
-          "file": "src/main.nsm",
-          "line": 116
-        },
-        "anchors": [
-          "ntc_plug"
-        ],
-        "result": null
-      },
-      {
-        "path": "en_pulldown",
-        "kind": "doc",
-        "text": "R1",
-        "at": {
-          "file": "src/main.nsm",
-          "line": 121
-        },
-        "anchors": [
-          "en_pulldown"
-        ],
-        "result": null
-      },
-      {
-        "path": "ovp_ref_pulldown",
-        "kind": "doc",
-        "text": "R2",
-        "at": {
-          "file": "src/main.nsm",
-          "line": 123
-        },
-        "anchors": [
-          "ovp_ref_pulldown"
-        ],
-        "result": null
-      },
-      {
-        "path": "sda_pullup",
-        "kind": "doc",
-        "text": "R3",
-        "at": {
-          "file": "src/main.nsm",
-          "line": 125
-        },
-        "anchors": [
-          "sda_pullup"
-        ],
-        "result": null
-      },
-      {
-        "path": "scl_pullup",
-        "kind": "doc",
-        "text": "R4",
-        "at": {
-          "file": "src/main.nsm",
-          "line": 127
-        },
-        "anchors": [
-          "scl_pullup"
-        ],
-        "result": null
-      },
-      {
-        "path": "usb_sda_pullup",
-        "kind": "doc",
-        "text": "R5",
-        "at": {
-          "file": "src/main.nsm",
-          "line": 129
-        },
-        "anchors": [
-          "usb_sda_pullup"
+          "usb_esd"
         ],
         "result": null
       },
@@ -6833,263 +7271,38 @@
         "result": null
       },
       {
-        "path": "led_resistor",
+        "path": "usb_sda_pullup",
         "kind": "doc",
-        "text": "R7",
+        "text": "R5",
         "at": {
           "file": "src/main.nsm",
-          "line": 133
+          "line": 129
         },
         "anchors": [
-          "led_resistor"
+          "usb_sda_pullup"
         ],
         "result": null
       },
       {
-        "path": "tcpp_en_series",
+        "path": "v5",
         "kind": "doc",
-        "text": "R8",
+        "text": "The slot's 5 V logic supply (A12, B12), from the backplane's buck.",
         "at": {
           "file": "src/main.nsm",
-          "line": 135
+          "line": 259
         },
-        "anchors": [
-          "tcpp_en_series"
-        ],
+        "anchors": [],
         "result": null
       },
       {
-        "path": "tcpp_en_pulldown",
+        "path": "v3v3",
         "kind": "doc",
-        "text": "R9",
+        "text": "The 3.3 V of the LP2985: the microcontroller, the comparator, the I2C pull-ups.",
         "at": {
           "file": "src/main.nsm",
-          "line": 137
+          "line": 264
         },
-        "anchors": [
-          "tcpp_en_pulldown"
-        ],
-        "result": null
-      },
-      {
-        "path": "fault_pullup",
-        "kind": "doc",
-        "text": "R10",
-        "at": {
-          "file": "src/main.nsm",
-          "line": 139
-        },
-        "anchors": [
-          "fault_pullup"
-        ],
-        "result": null
-      },
-      {
-        "path": "fsw_resistor",
-        "kind": "doc",
-        "text": "R11",
-        "at": {
-          "file": "src/main.nsm",
-          "line": 141
-        },
-        "anchors": [
-          "fsw_resistor"
-        ],
-        "result": null
-      },
-      {
-        "path": "ntc_converter_pullup",
-        "kind": "doc",
-        "text": "R12",
-        "at": {
-          "file": "src/main.nsm",
-          "line": 143
-        },
-        "anchors": [
-          "ntc_converter_pullup"
-        ],
-        "result": null
-      },
-      {
-        "path": "flag_pullup",
-        "kind": "doc",
-        "text": "R13",
-        "at": {
-          "file": "src/main.nsm",
-          "line": 145
-        },
-        "anchors": [
-          "flag_pullup"
-        ],
-        "result": null
-      },
-      {
-        "path": "gate_high_resistor",
-        "kind": "doc",
-        "text": "R14",
-        "at": {
-          "file": "src/main.nsm",
-          "line": 147
-        },
-        "anchors": [
-          "gate_high_resistor"
-        ],
-        "result": null
-      },
-      {
-        "path": "ntc_plug_pullup",
-        "kind": "doc",
-        "text": "R16",
-        "at": {
-          "file": "src/main.nsm",
-          "line": 149
-        },
-        "anchors": [
-          "ntc_plug_pullup"
-        ],
-        "result": null
-      },
-      {
-        "path": "vout_divider_top",
-        "kind": "doc",
-        "text": "R17",
-        "at": {
-          "file": "src/main.nsm",
-          "line": 151
-        },
-        "anchors": [
-          "vout_divider_top"
-        ],
-        "result": null
-      },
-      {
-        "path": "vout_divider_bottom",
-        "kind": "doc",
-        "text": "R18",
-        "at": {
-          "file": "src/main.nsm",
-          "line": 153
-        },
-        "anchors": [
-          "vout_divider_bottom"
-        ],
-        "result": null
-      },
-      {
-        "path": "vbus_divider_top",
-        "kind": "doc",
-        "text": "R19",
-        "at": {
-          "file": "src/main.nsm",
-          "line": 155
-        },
-        "anchors": [
-          "vbus_divider_top"
-        ],
-        "result": null
-      },
-      {
-        "path": "vbus_divider_bottom",
-        "kind": "doc",
-        "text": "R20",
-        "at": {
-          "file": "src/main.nsm",
-          "line": 157
-        },
-        "anchors": [
-          "vbus_divider_bottom"
-        ],
-        "result": null
-      },
-      {
-        "path": "gate_low_resistor",
-        "kind": "doc",
-        "text": "R21",
-        "at": {
-          "file": "src/main.nsm",
-          "line": 159
-        },
-        "anchors": [
-          "gate_low_resistor"
-        ],
-        "result": null
-      },
-      {
-        "path": "mode_resistor",
-        "kind": "doc",
-        "text": "R22",
-        "at": {
-          "file": "src/main.nsm",
-          "line": 161
-        },
-        "anchors": [
-          "mode_resistor"
-        ],
-        "result": null
-      },
-      {
-        "path": "ilim_resistor",
-        "kind": "doc",
-        "text": "R23",
-        "at": {
-          "file": "src/main.nsm",
-          "line": 163
-        },
-        "anchors": [
-          "ilim_resistor"
-        ],
-        "result": null
-      },
-      {
-        "path": "comp_resistor",
-        "kind": "doc",
-        "text": "R24",
-        "at": {
-          "file": "src/main.nsm",
-          "line": 165
-        },
-        "anchors": [
-          "comp_resistor"
-        ],
-        "result": null
-      },
-      {
-        "path": "ovp_ceil_top",
-        "kind": "doc",
-        "text": "R25",
-        "at": {
-          "file": "src/main.nsm",
-          "line": 167
-        },
-        "anchors": [
-          "ovp_ceil_top"
-        ],
-        "result": null
-      },
-      {
-        "path": "ovp_ceil_bottom",
-        "kind": "doc",
-        "text": "R26",
-        "at": {
-          "file": "src/main.nsm",
-          "line": 169
-        },
-        "anchors": [
-          "ovp_ceil_bottom"
-        ],
-        "result": null
-      },
-      {
-        "path": "v3v3_4u7",
-        "kind": "doc",
-        "text": "C1",
-        "at": {
-          "file": "src/main.nsm",
-          "line": 174
-        },
-        "anchors": [
-          "v3v3_4u7"
-        ],
+        "anchors": [],
         "result": null
       },
       {
@@ -7132,93 +7345,15 @@
         "result": null
       },
       {
-        "path": "reset_100n",
+        "path": "v3v3_100n_d",
         "kind": "doc",
-        "text": "C5",
+        "text": "C30",
         "at": {
           "file": "src/main.nsm",
-          "line": 182
+          "line": 230
         },
         "anchors": [
-          "reset_100n"
-        ],
-        "result": null
-      },
-      {
-        "path": "emi_vin_100u",
-        "kind": "doc",
-        "text": "C6",
-        "at": {
-          "file": "src/main.nsm",
-          "line": 184
-        },
-        "anchors": [
-          "emi_vin_100u"
-        ],
-        "result": null
-      },
-      {
-        "path": "v5_4u7",
-        "kind": "doc",
-        "text": "C7",
-        "at": {
-          "file": "src/main.nsm",
-          "line": 186
-        },
-        "anchors": [
-          "v5_4u7"
-        ],
-        "result": null
-      },
-      {
-        "path": "emi_vin_10u_a",
-        "kind": "doc",
-        "text": "C8",
-        "at": {
-          "file": "src/main.nsm",
-          "line": 188
-        },
-        "anchors": [
-          "emi_vin_10u_a"
-        ],
-        "result": null
-      },
-      {
-        "path": "emi_vin_10u_b",
-        "kind": "doc",
-        "text": "C9",
-        "at": {
-          "file": "src/main.nsm",
-          "line": 190
-        },
-        "anchors": [
-          "emi_vin_10u_b"
-        ],
-        "result": null
-      },
-      {
-        "path": "emi_vin_100n",
-        "kind": "doc",
-        "text": "C10",
-        "at": {
-          "file": "src/main.nsm",
-          "line": 192
-        },
-        "anchors": [
-          "emi_vin_100n"
-        ],
-        "result": null
-      },
-      {
-        "path": "ldo_bypass",
-        "kind": "doc",
-        "text": "C11",
-        "at": {
-          "file": "src/main.nsm",
-          "line": 194
-        },
-        "anchors": [
-          "ldo_bypass"
+          "v3v3_100n_d"
         ],
         "result": null
       },
@@ -7236,68 +7371,116 @@
         "result": null
       },
       {
-        "path": "dither_10n",
+        "path": "v3v3_4u7",
         "kind": "doc",
-        "text": "C13",
+        "text": "C1",
         "at": {
           "file": "src/main.nsm",
-          "line": 198
+          "line": 174
         },
         "anchors": [
-          "dither_10n"
+          "v3v3_4u7"
         ],
         "result": null
       },
       {
-        "path": "ntc_converter_100n",
+        "path": "v5_100n",
         "kind": "doc",
-        "text": "C14",
+        "text": "C35",
         "at": {
           "file": "src/main.nsm",
-          "line": 200
+          "line": 240
         },
         "anchors": [
-          "ntc_converter_100n"
+          "v5_100n"
         ],
         "result": null
       },
       {
-        "path": "emi_vin_1u",
+        "path": "v5_1u",
         "kind": "doc",
-        "text": "C15",
+        "text": "C34",
         "at": {
           "file": "src/main.nsm",
-          "line": 202
+          "line": 238
         },
         "anchors": [
-          "emi_vin_1u"
+          "v5_1u"
         ],
         "result": null
       },
       {
-        "path": "ntc_plug_100n",
+        "path": "v5_4u7",
         "kind": "doc",
-        "text": "C16",
+        "text": "C7",
         "at": {
           "file": "src/main.nsm",
-          "line": 204
+          "line": 186
         },
         "anchors": [
-          "ntc_plug_100n"
+          "v5_4u7"
         ],
         "result": null
       },
       {
-        "path": "vout_sense_1n",
+        "path": "vbus",
         "kind": "doc",
-        "text": "C18",
+        "text": "The port's VBUS, on the receptacle.",
         "at": {
           "file": "src/main.nsm",
-          "line": 206
+          "line": 294
+        },
+        "anchors": [],
+        "result": null
+      },
+      {
+        "path": "vbus_2u2",
+        "kind": "doc",
+        "text": "C38",
+        "at": {
+          "file": "src/main.nsm",
+          "line": 246
         },
         "anchors": [
-          "vout_sense_1n"
+          "vbus_2u2"
         ],
+        "result": null
+      },
+      {
+        "path": "vbus_divider_bottom",
+        "kind": "doc",
+        "text": "R20",
+        "at": {
+          "file": "src/main.nsm",
+          "line": 157
+        },
+        "anchors": [
+          "vbus_divider_bottom"
+        ],
+        "result": null
+      },
+      {
+        "path": "vbus_divider_top",
+        "kind": "doc",
+        "text": "R19",
+        "at": {
+          "file": "src/main.nsm",
+          "line": 155
+        },
+        "anchors": [
+          "vbus_divider_top"
+        ],
+        "result": null
+      },
+      {
+        "path": "vbus_f",
+        "kind": "doc",
+        "text": "Behind the shunt R27, ahead of the MOSFET Q4.",
+        "at": {
+          "file": "src/main.nsm",
+          "line": 290
+        },
+        "anchors": [],
         "result": null
       },
       {
@@ -7314,41 +7497,26 @@
         "result": null
       },
       {
-        "path": "boot1_cap",
+        "path": "vbus_src",
         "kind": "doc",
-        "text": "C20",
+        "text": "The two back-to-back MOSFETs' common source.",
         "at": {
           "file": "src/main.nsm",
-          "line": 210
+          "line": 286
         },
-        "anchors": [
-          "boot1_cap"
-        ],
+        "anchors": [],
         "result": null
       },
       {
-        "path": "boot2_cap",
+        "path": "vcc_100n",
         "kind": "doc",
-        "text": "C21",
+        "text": "C28",
         "at": {
           "file": "src/main.nsm",
-          "line": 212
+          "line": 226
         },
         "anchors": [
-          "boot2_cap"
-        ],
-        "result": null
-      },
-      {
-        "path": "cc1_330p",
-        "kind": "doc",
-        "text": "C22",
-        "at": {
-          "file": "src/main.nsm",
-          "line": 214
-        },
-        "anchors": [
-          "cc1_330p"
+          "vcc_100n"
         ],
         "result": null
       },
@@ -7366,107 +7534,49 @@
         "result": null
       },
       {
-        "path": "cc2_330p",
+        "path": "vcc_bead",
         "kind": "doc",
-        "text": "C24",
+        "text": "FB1: BLM18KG601SN1D",
         "at": {
           "file": "src/main.nsm",
-          "line": 218
+          "line": 82
         },
         "anchors": [
-          "cc2_330p"
+          "vcc_bead"
         ],
         "result": null
       },
       {
-        "path": "comp_cap_series",
+        "path": "vin",
         "kind": "doc",
-        "text": "C25",
+        "text": "Behind the fuse.",
         "at": {
           "file": "src/main.nsm",
-          "line": 220
+          "line": 268
         },
-        "anchors": [
-          "comp_cap_series"
-        ],
+        "anchors": [],
         "result": null
       },
       {
-        "path": "iana_100n",
+        "path": "vout",
         "kind": "doc",
-        "text": "C26",
+        "text": "Behind the output shunt R28.",
         "at": {
           "file": "src/main.nsm",
-          "line": 222
+          "line": 282
         },
-        "anchors": [
-          "iana_100n"
-        ],
+        "anchors": [],
         "result": null
       },
       {
-        "path": "cbias_100n",
+        "path": "vout_conv",
         "kind": "doc",
-        "text": "C27",
+        "text": "The converter's output, the USB-PD contract's voltage (the converter makes 0.8 V to 22 V; the blade is offered 5 V to 21 V by its firmware).",
         "at": {
           "file": "src/main.nsm",
-          "line": 224
+          "line": 277
         },
-        "anchors": [
-          "cbias_100n"
-        ],
-        "result": null
-      },
-      {
-        "path": "vcc_100n",
-        "kind": "doc",
-        "text": "C28",
-        "at": {
-          "file": "src/main.nsm",
-          "line": 226
-        },
-        "anchors": [
-          "vcc_100n"
-        ],
-        "result": null
-      },
-      {
-        "path": "comp_cap",
-        "kind": "doc",
-        "text": "C29",
-        "at": {
-          "file": "src/main.nsm",
-          "line": 228
-        },
-        "anchors": [
-          "comp_cap"
-        ],
-        "result": null
-      },
-      {
-        "path": "v3v3_100n_d",
-        "kind": "doc",
-        "text": "C30",
-        "at": {
-          "file": "src/main.nsm",
-          "line": 230
-        },
-        "anchors": [
-          "v3v3_100n_d"
-        ],
-        "result": null
-      },
-      {
-        "path": "gate_47p",
-        "kind": "doc",
-        "text": "C31",
-        "at": {
-          "file": "src/main.nsm",
-          "line": 232
-        },
-        "anchors": [
-          "gate_47p"
-        ],
+        "anchors": [],
         "result": null
       },
       {
@@ -7492,32 +7602,6 @@
         },
         "anchors": [
           "vout_conv_10u_b"
-        ],
-        "result": null
-      },
-      {
-        "path": "v5_1u",
-        "kind": "doc",
-        "text": "C34",
-        "at": {
-          "file": "src/main.nsm",
-          "line": 238
-        },
-        "anchors": [
-          "v5_1u"
-        ],
-        "result": null
-      },
-      {
-        "path": "v5_100n",
-        "kind": "doc",
-        "text": "C35",
-        "at": {
-          "file": "src/main.nsm",
-          "line": 240
-        },
-        "anchors": [
-          "v5_100n"
         ],
         "result": null
       },
@@ -7548,19 +7632,6 @@
         "result": null
       },
       {
-        "path": "vbus_2u2",
-        "kind": "doc",
-        "text": "C38",
-        "at": {
-          "file": "src/main.nsm",
-          "line": 246
-        },
-        "anchors": [
-          "vbus_2u2"
-        ],
-        "result": null
-      },
-      {
         "path": "vout_conv_220u",
         "kind": "doc",
         "text": "C39",
@@ -7574,114 +7645,57 @@
         "result": null
       },
       {
-        "path": "slot_vin",
+        "path": "vout_divider_bottom",
         "kind": "doc",
-        "text": "The slot's main DC input (A2 to A7): 24 V nominal, +20 %/-15 % (the design's architecture notes, section 3), ahead of the fuse.",
+        "text": "R18",
         "at": {
           "file": "src/main.nsm",
-          "line": 254
+          "line": 153
         },
-        "anchors": [],
+        "anchors": [
+          "vout_divider_bottom"
+        ],
         "result": null
       },
       {
-        "path": "v5",
+        "path": "vout_divider_top",
         "kind": "doc",
-        "text": "The slot's 5 V logic supply (A12, B12), from the backplane's buck.",
+        "text": "R17",
         "at": {
           "file": "src/main.nsm",
-          "line": 259
+          "line": 151
         },
-        "anchors": [],
+        "anchors": [
+          "vout_divider_top"
+        ],
         "result": null
       },
       {
-        "path": "v3v3",
+        "path": "vout_sense_1n",
         "kind": "doc",
-        "text": "The 3.3 V of the LP2985: the microcontroller, the comparator, the I2C pull-ups.",
+        "text": "C18",
         "at": {
           "file": "src/main.nsm",
-          "line": 264
+          "line": 206
         },
-        "anchors": [],
+        "anchors": [
+          "vout_sense_1n"
+        ],
         "result": null
       },
       {
-        "path": "vin",
-        "kind": "doc",
-        "text": "Behind the fuse.",
+        "path": "",
+        "kind": "relation",
+        "text": ".port_trip_current == .protector.ocp_threshold / .port_shunt.resistance",
         "at": {
           "file": "src/main.nsm",
-          "line": 268
+          "line": 321
         },
-        "anchors": [],
-        "result": null
-      },
-      {
-        "path": "emi_vin",
-        "kind": "doc",
-        "text": "Behind the input inductor: the converter's input.",
-        "at": {
-          "file": "src/main.nsm",
-          "line": 272
-        },
-        "anchors": [],
-        "result": null
-      },
-      {
-        "path": "vout_conv",
-        "kind": "doc",
-        "text": "The converter's output, the USB-PD contract's voltage (the converter makes 0.8 V to 22 V; the blade is offered 5 V to 21 V by its firmware).",
-        "at": {
-          "file": "src/main.nsm",
-          "line": 277
-        },
-        "anchors": [],
-        "result": null
-      },
-      {
-        "path": "vout",
-        "kind": "doc",
-        "text": "Behind the output shunt R28.",
-        "at": {
-          "file": "src/main.nsm",
-          "line": 282
-        },
-        "anchors": [],
-        "result": null
-      },
-      {
-        "path": "vbus_src",
-        "kind": "doc",
-        "text": "The two back-to-back MOSFETs' common source.",
-        "at": {
-          "file": "src/main.nsm",
-          "line": 286
-        },
-        "anchors": [],
-        "result": null
-      },
-      {
-        "path": "vbus_f",
-        "kind": "doc",
-        "text": "Behind the shunt R27, ahead of the MOSFET Q4.",
-        "at": {
-          "file": "src/main.nsm",
-          "line": 290
-        },
-        "anchors": [],
-        "result": null
-      },
-      {
-        "path": "vbus",
-        "kind": "doc",
-        "text": "The port's VBUS, on the receptacle.",
-        "at": {
-          "file": "src/main.nsm",
-          "line": 294
-        },
-        "anchors": [],
-        "result": null
+        "anchors": [
+          "protector",
+          "port_shunt"
+        ],
+        "result": "port_trip_current = 4.95A..6.494A"
       },
       {
         "path": "",
@@ -7710,20 +7724,6 @@
           "protector"
         ],
         "result": "q_port_b.gate_source_voltage = 4.5V..5.5V"
-      },
-      {
-        "path": "",
-        "kind": "relation",
-        "text": ".port_trip_current == .protector.ocp_threshold / .port_shunt.resistance",
-        "at": {
-          "file": "src/main.nsm",
-          "line": 321
-        },
-        "anchors": [
-          "protector",
-          "port_shunt"
-        ],
-        "result": "port_trip_current = 4.95A..6.494A"
       }
     ],
     "modules": []

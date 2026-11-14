@@ -428,23 +428,23 @@
         "result": null
       },
       {
-        "path": "stage",
-        "kind": "doc",
-        "text": "A linear regulator with a capacitor on its input and on its output.",
-        "at": {
-          "file": "linear_regulator.nsm",
-          "line": 10
-        },
-        "anchors": [],
-        "result": null
-      },
-      {
         "path": "output",
         "kind": "doc",
         "text": "What the outside world draws from the output.",
         "at": {
           "file": "linear_regulator.nsm",
           "line": 48
+        },
+        "anchors": [],
+        "result": null
+      },
+      {
+        "path": "stage",
+        "kind": "doc",
+        "text": "A linear regulator with a capacitor on its input and on its output.",
+        "at": {
+          "file": "linear_regulator.nsm",
+          "line": 10
         },
         "anchors": [],
         "result": null
@@ -456,20 +456,20 @@
         "type_name": "LdoStage",
         "ports": [
           {
+            "name": "vin.neg",
+            "net": "GND"
+          },
+          {
             "name": "vin.pos",
             "net": "VIN"
           },
           {
-            "name": "vin.neg",
+            "name": "vout.neg",
             "net": "GND"
           },
           {
             "name": "vout.pos",
             "net": "3V3"
-          },
-          {
-            "name": "vout.neg",
-            "net": "GND"
           }
         ]
       }

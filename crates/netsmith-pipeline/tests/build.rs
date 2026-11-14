@@ -307,9 +307,10 @@ fn the_build_carries_the_sourcing_of_every_part() {
     assert_eq!(
         rows(STATUS),
         [
-            // In path order: `enable_in` is the second header declared, `power_in` the first.
-            header("J2"),
+            // In path order, which numbers them too: `enable_in` is `J1` and `power_in` `J2`,
+            // though `power_in` is declared first (issue #634).
             header("J1"),
+            header("J2"),
             part("C1", "C1525", Library::Basic),
             part("R1", "C11702", Library::Basic),
             part("D1", "C125094", Library::Extended)

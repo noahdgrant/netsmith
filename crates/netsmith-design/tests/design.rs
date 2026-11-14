@@ -109,11 +109,10 @@ board LedExample {
     .led.current == (.supply.voltage - .led.forward_voltage) / .r1.resistance
 }
 ";
-    // Every part has letters of its own here, so moving a declaration moves no number. (Two
-    // parts with the same letters swap numbers when their declarations swap: see
-    // `designators_are_numbered_for_each_letter_in_declaration_order`.) The notes say where
-    // in the source they are, and the reordered file has no doc comment: they are compared on
-    // their own, in `doc_comments_and_relations_become_notes_in_source_order`.
+    // Moving a declaration moves no number either (issue #634): see
+    // `designators_are_numbered_for_each_letter_in_path_order`. The notes say where in the
+    // source they are, and the reordered file has no doc comment: they are compared on their
+    // own, in `doc_comments_and_relations_become_notes_in_path_order`.
     let (mut a, mut b) = (designed(LED).unwrap(), designed(reordered).unwrap());
     a.notes.clear();
     b.notes.clear();
@@ -131,10 +130,10 @@ fn the_status_indicator_numbers_each_kind_separately() {
     assert_eq!(
         parts,
         [
-            // `enable_in` comes before `power_in` in path order, but `power_in` is declared
-            // first, so it is `J1`.
-            ("J2", "Header1x2", "Conn_01x02"),
+            // `enable_in` comes before `power_in` in path order, so it is `J1`, though
+            // `power_in` is declared first.
             ("J1", "Header1x2", "Conn_01x02"),
+            ("J2", "Header1x2", "Conn_01x02"),
             ("C1", "Capacitor", "100n"),
             ("R1", "Resistor", "1k"),
             ("D1", "Led", "LTST-C190KGKT")
@@ -152,9 +151,9 @@ fn the_status_indicator_numbers_each_kind_separately() {
                 == pins
         })
     };
-    assert!(has(&["C1.1", "J1.1"]), "the positive rail");
+    assert!(has(&["C1.1", "J2.1"]), "the positive rail");
     assert!(has(&["C1.2", "D1.1", "J1.2", "J2.2"]), "ground");
-    assert!(has(&["J2.1", "R1.1"]), "the enable signal");
+    assert!(has(&["J1.1", "R1.1"]), "the enable signal");
     assert!(has(&["D1.2", "R1.2"]), "between the resistor and the LED");
 }
 
@@ -1398,28 +1397,24 @@ fn letters_that_are_not_capital_letters_are_refused_naming_the_part() {
 }
 
 #[test]
-fn designators_are_numbered_for_each_letter_in_declaration_order() {
-    // `.ic` is declared by the fixture before the two that the body adds, so `.b_chip` is
-    // `U2` and `.a_chip` is `U3`, though `a_chip` sorts first. The parts are listed in path
-    // order, as before.
+fn designators_are_numbered_for_each_letter_in_path_order() {
+    // `.ic` is declared by the fixture before the two that the body adds, and `.b_chip` before
+    // `.a_chip`, but the numbers follow the paths (issue #634): `a_chip`, `b_chip`, `ic`.
     let d = designators_with("    .b_chip: Chip\n    .a_chip: Chip\n").unwrap();
     assert_eq!(
         d,
         [
-            pair("a_chip", "U3"),
+            pair("a_chip", "U1"),
             pair("b_chip", "U2"),
             pair("buzzer", "BZ1"),
-            pair("ic", "U1"),
+            pair("ic", "U3"),
             pair("r", "R1")
         ]
     );
-    // The same board with the two declared the other way round swaps their numbers.
-    let d = designators_with("    .a_chip: Chip\n    .b_chip: Chip\n").unwrap();
+    // The same board with the two declared the other way round has the same numbers.
     assert_eq!(
-        d.iter()
-            .filter(|(p, _)| p.ends_with("_chip"))
-            .collect::<Vec<_>>(),
-        [&pair("a_chip", "U2"), &pair("b_chip", "U3")]
+        designators_with("    .a_chip: Chip\n    .b_chip: Chip\n").unwrap(),
+        d
     );
 }
 
@@ -1436,15 +1431,16 @@ fn a_number_at_the_end_of_a_path_segment_is_not_what_numbers_a_part() {
             .map(|(_, r)| r.clone())
             .unwrap()
     };
-    // Declared `tp10, tp2, tp1, tp11, tp9` after `ic`: numbered in that order.
+    // Declared `tp10, tp2, tp1, tp11, tp9` after `ic`: numbered in natural path order, the
+    // number at the end of `tp10` read as ten.
     assert_eq!(
         [
             of("ic"),
-            of("tp10"),
-            of("tp2"),
             of("tp1"),
-            of("tp11"),
-            of("tp9")
+            of("tp2"),
+            of("tp9"),
+            of("tp10"),
+            of("tp11")
         ],
         ["U1", "U2", "U3", "U4", "U5", "U6"]
     );
@@ -1471,7 +1467,8 @@ board B {
             .map(|p| p.refdes.clone())
             .unwrap()
     };
-    assert_eq!([of("fuse"), of("tvs"), of("diode")], ["F1", "D1", "D2"]);
+    // `diode` sorts before `tvs`, wherever it is declared.
+    assert_eq!([of("fuse"), of("diode"), of("tvs")], ["F1", "D1", "D2"]);
 }
 
 /// A connector is a part that provides the standard generic `Connector` (ADR 0068, issue #166):
@@ -1505,7 +1502,7 @@ board B {
     assert!(part("pico").is_connector());
     assert!(part("std_header").is_connector());
     assert!(!part("buffer").is_connector());
-    // `J` comes from the generic, and the number counts in declaration order.
+    // `J` comes from the generic, and the number counts in path order.
     assert_eq!(part("pico").refdes, "J1");
     assert_eq!(part("std_header").refdes, "J2");
     assert_eq!(part("buffer").refdes, "U1");
@@ -1529,10 +1526,10 @@ board B {
     assert!(!d.parts[0].is_connector());
 }
 
-/// A module's parts are numbered where the module is declared, and a module inside a module
-/// the same way: the order is the source's, depth first, and the same on every run.
+/// A module's parts are numbered by their full paths in the board, with the board's own parts,
+/// whatever order the board and the modules declare them in (issue #634).
 #[test]
-fn parts_of_modules_are_numbered_depth_first_where_the_module_is_declared() {
+fn parts_of_modules_are_numbered_by_their_full_paths() {
     let src = "\
 import std::parts::passive::Resistor
 module Inner {
@@ -1565,14 +1562,14 @@ board B {
     assert_eq!(
         paths,
         [
+            "after",
             "before",
-            "outer.a",
-            "outer.inner.first",
-            "outer.inner.second",
-            "outer.b",
             "other.first",
             "other.second",
-            "after"
+            "outer.a",
+            "outer.b",
+            "outer.inner.first",
+            "outer.inner.second"
         ]
     );
     assert_eq!(got[7].1, "R8");
@@ -1779,7 +1776,7 @@ board Noted {
 "#;
 
 #[test]
-fn doc_comments_and_relations_become_notes_in_source_order() {
+fn doc_comments_and_relations_become_notes_in_path_order() {
     use netsmith_core::NoteKind;
     let d = designed(NOTED).unwrap();
     let docs: Vec<(&str, &str, &[String])> = d
@@ -1841,9 +1838,11 @@ fn doc_comments_and_relations_become_notes_in_source_order() {
     assert_eq!((at.file.as_str(), at.line), ("t.nsm", 17));
     let result = relations[0].result.as_deref().unwrap();
     assert!(result.starts_with("d.current = "), "{result}");
-    // Docs come before relations, and both keep the source's order.
+    // Docs come before relations, and each are in path order, not the source's.
     let kinds: Vec<_> = d.notes.iter().map(|n| n.kind).collect();
     assert!(kinds.windows(2).all(|w| w[0] <= w[1]), "{kinds:?}");
+    let doc_paths: Vec<&str> = docs.iter().map(|d| d.0).collect();
+    assert_eq!(doc_paths, ["", "light", "light.d", "power_in", "supply"]);
 }
 
 #[test]

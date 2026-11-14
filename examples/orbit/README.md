@@ -659,7 +659,7 @@ y 70 in their file), y down, and the comment above each line says which of their
 
 The ground pour on the back (`.bottom.net &= "GND"` in the process in `src/main.nsm`, as in their
 board, whose `GND` zone is on both layers) came with the schematic. The layout file
-`src/main.pcb.toml` has only `seed = 1`, a placer seed (it keeps a solution and never a
+`src/main.pcb.toml` has only `seed = 4`, a placer seed (it keeps a solution and never a
 requirement; it locks no part). The seed does not move the physical file's parts.
 
 ## The result
@@ -691,6 +691,11 @@ same under every seed. The must-match items passed on every one of those boards.
 is, and not at the nearest point of its 0.05 mm grid, which changed every seed's arrangement:
 seed 7 no longer finished, and seed 1 routes everything (`fab --locked` in 57 s, a debug build on
 a machine running other builds; seeds 5 and 8 route too). The table above is seed 7's run.
+
+**Seed 4, since #634.** Designators numbered by path reorder the pins of each net that the
+placer and router read, which changed every seed's arrangement again: seeds 0 to 3 and 7 leave
+one connection of the USB pair (`net-usb.dm`), and seed 4 routes everything (seeds 5, 6 and 8
+too), with `must-match: 129 ok, 0 failed`. The router's misses on that pair are #718.
 
 The parity checker on that board, `must-match: 129 ok, 0 failed` (the lines are in the pull
 request that added this):

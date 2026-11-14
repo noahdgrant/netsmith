@@ -36,7 +36,7 @@ board B {
 ";
 
 #[test]
-fn each_member_is_a_part_numbered_in_index_order_where_the_group_is_declared() {
+fn each_member_is_a_part_numbered_in_index_order_by_its_path() {
     let d = designed(BOARD);
     let mut by_number: Vec<(usize, &str)> = d
         .parts
@@ -46,9 +46,12 @@ fn each_member_is_a_part_numbered_in_index_order_where_the_group_is_declared() {
         .collect();
     by_number.sort();
     let paths: Vec<&str> = by_number.iter().map(|(_, p)| *p).collect();
-    let mut want = vec!["first".to_string()];
+    // By path (issue #634), and an index as a number: `decoupling[2]` before `decoupling[10]`.
+    let mut want: Vec<String> = (0..2)
+        .map(|i| format!("capacitor_v_pos_v_neg[{i}]"))
+        .collect();
     want.extend((0..12).map(|i| format!("decoupling[{i}]")));
-    want.extend((0..2).map(|i| format!("capacitor_v_pos_v_neg[{i}]")));
+    want.push("first".to_string());
     assert_eq!(paths, want);
     // The design's parts are in path order, and an index sorts as a number.
     let listed: Vec<&str> = d.parts.iter().map(|p| p.path.as_str()).collect();

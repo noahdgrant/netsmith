@@ -63,7 +63,7 @@
         ]
       },
       {
-        "refdes": "J5",
+        "refdes": "J1",
         "kind": "Coax",
         "provides": [
           "Connector"
@@ -352,7 +352,7 @@
         ]
       },
       {
-        "refdes": "R6",
+        "refdes": "R1",
         "kind": "Resistor",
         "provides": [],
         "declared_kind": "resistor",
@@ -383,7 +383,7 @@
         ]
       },
       {
-        "refdes": "R7",
+        "refdes": "R2",
         "kind": "Resistor",
         "provides": [],
         "declared_kind": "resistor",
@@ -414,7 +414,7 @@
         ]
       },
       {
-        "refdes": "R8",
+        "refdes": "R3",
         "kind": "Resistor",
         "provides": [],
         "declared_kind": "resistor",
@@ -1007,7 +1007,7 @@
         ]
       },
       {
-        "refdes": "R3",
+        "refdes": "R5",
         "kind": "Resistor",
         "provides": [],
         "declared_kind": "resistor",
@@ -1295,7 +1295,7 @@
         ]
       },
       {
-        "refdes": "R1",
+        "refdes": "R6",
         "kind": "Resistor",
         "provides": [],
         "declared_kind": "resistor",
@@ -1326,7 +1326,7 @@
         ]
       },
       {
-        "refdes": "R2",
+        "refdes": "R7",
         "kind": "Resistor",
         "provides": [],
         "declared_kind": "resistor",
@@ -1357,7 +1357,7 @@
         ]
       },
       {
-        "refdes": "J1",
+        "refdes": "J5",
         "kind": "UsbCPower",
         "provides": [
           "Connector"
@@ -1422,7 +1422,7 @@
         ]
       },
       {
-        "refdes": "R5",
+        "refdes": "R8",
         "kind": "Resistor",
         "provides": [],
         "declared_kind": "resistor",
@@ -1516,6 +1516,14 @@
             "pin": "1"
           },
           {
+            "refdes": "R1",
+            "pin": "1"
+          },
+          {
+            "refdes": "R2",
+            "pin": "1"
+          },
+          {
             "refdes": "R3",
             "pin": "1"
           },
@@ -1525,14 +1533,6 @@
           },
           {
             "refdes": "R5",
-            "pin": "1"
-          },
-          {
-            "refdes": "R6",
-            "pin": "1"
-          },
-          {
-            "refdes": "R7",
             "pin": "1"
           },
           {
@@ -1586,11 +1586,7 @@
           },
           {
             "refdes": "J1",
-            "pin": "A12"
-          },
-          {
-            "refdes": "J1",
-            "pin": "B12"
+            "pin": "2"
           },
           {
             "refdes": "J2",
@@ -1606,14 +1602,18 @@
           },
           {
             "refdes": "J5",
+            "pin": "A12"
+          },
+          {
+            "refdes": "J5",
+            "pin": "B12"
+          },
+          {
+            "refdes": "R6",
             "pin": "2"
           },
           {
-            "refdes": "R1",
-            "pin": "2"
-          },
-          {
-            "refdes": "R2",
+            "refdes": "R7",
             "pin": "2"
           },
           {
@@ -1650,11 +1650,11 @@
             "pin": "1"
           },
           {
-            "refdes": "J1",
+            "refdes": "J5",
             "pin": "A9"
           },
           {
-            "refdes": "J1",
+            "refdes": "J5",
             "pin": "B9"
           },
           {
@@ -1671,7 +1671,7 @@
             "pin": "1"
           },
           {
-            "refdes": "J5",
+            "refdes": "J1",
             "pin": "1"
           }
         ]
@@ -1684,7 +1684,7 @@
             "pin": "2"
           },
           {
-            "refdes": "R6",
+            "refdes": "R1",
             "pin": "2"
           }
         ]
@@ -1697,7 +1697,7 @@
             "pin": "2"
           },
           {
-            "refdes": "R7",
+            "refdes": "R2",
             "pin": "2"
           }
         ]
@@ -1710,7 +1710,7 @@
             "pin": "2"
           },
           {
-            "refdes": "R8",
+            "refdes": "R3",
             "pin": "2"
           }
         ]
@@ -1740,7 +1740,7 @@
             "pin": "3"
           },
           {
-            "refdes": "R3",
+            "refdes": "R5",
             "pin": "2"
           },
           {
@@ -1753,7 +1753,7 @@
         "name": "net-mcu.wp",
         "pins": [
           {
-            "refdes": "R5",
+            "refdes": "R8",
             "pin": "2"
           },
           {
@@ -1926,11 +1926,11 @@
         "name": "net-rd1.a",
         "pins": [
           {
-            "refdes": "J1",
+            "refdes": "J5",
             "pin": "A5"
           },
           {
-            "refdes": "R1",
+            "refdes": "R6",
             "pin": "1"
           }
         ]
@@ -1939,11 +1939,11 @@
         "name": "net-rd2.a",
         "pins": [
           {
-            "refdes": "J1",
+            "refdes": "J5",
             "pin": "B5"
           },
           {
-            "refdes": "R2",
+            "refdes": "R7",
             "pin": "1"
           }
         ]
@@ -3224,6 +3224,17 @@
         "result": null
       },
       {
+        "path": "lights",
+        "kind": "doc",
+        "text": "Three indicator LEDs, each with its own series resistor.",
+        "at": {
+          "file": "enclosure_sensor.nsm",
+          "line": 131
+        },
+        "anchors": [],
+        "result": null
+      },
+      {
         "path": "pads",
         "kind": "doc",
         "text": "Twelve test pads, one for each free pin of the plug. They are in a module only so that the physical file can name them together (`.pads.place.side`).",
@@ -3241,17 +3252,6 @@
         "at": {
           "file": "enclosure_sensor.nsm",
           "line": 117
-        },
-        "anchors": [],
-        "result": null
-      },
-      {
-        "path": "lights",
-        "kind": "doc",
-        "text": "Three indicator LEDs, each with its own series resistor.",
-        "at": {
-          "file": "enclosure_sensor.nsm",
-          "line": 131
         },
         "anchors": [],
         "result": null
@@ -3308,42 +3308,34 @@
         "type_name": "LdoStage",
         "ports": [
           {
+            "name": "vin.neg",
+            "net": "GND"
+          },
+          {
             "name": "vin.pos",
             "net": "VBUS"
           },
           {
-            "name": "vin.neg",
+            "name": "vout.neg",
             "net": "GND"
           },
           {
             "name": "vout.pos",
             "net": "3V3"
-          },
-          {
-            "name": "vout.neg",
-            "net": "GND"
           }
         ]
       },
       {
-        "path": "pullups",
-        "type_name": "I2cPullups",
+        "path": "lights",
+        "type_name": "Indicators",
         "ports": [
           {
-            "name": "bus.sda",
-            "net": "net-mcu.i2c.sda"
-          },
-          {
-            "name": "bus.scl",
-            "net": "net-mcu.i2c.scl"
-          },
-          {
-            "name": "supply.pos",
-            "net": "3V3"
-          },
-          {
-            "name": "supply.neg",
+            "name": "power.neg",
             "net": "GND"
+          },
+          {
+            "name": "power.pos",
+            "net": "3V3"
           }
         ]
       },
@@ -3402,30 +3394,38 @@
         ]
       },
       {
-        "path": "radio",
-        "type_name": "RadioSockets",
+        "path": "pullups",
+        "type_name": "I2cPullups",
         "ports": [
           {
-            "name": "power.pos",
-            "net": "3V3"
+            "name": "bus.scl",
+            "net": "net-mcu.i2c.scl"
           },
           {
-            "name": "power.neg",
+            "name": "bus.sda",
+            "net": "net-mcu.i2c.sda"
+          },
+          {
+            "name": "supply.neg",
             "net": "GND"
+          },
+          {
+            "name": "supply.pos",
+            "net": "3V3"
           }
         ]
       },
       {
-        "path": "lights",
-        "type_name": "Indicators",
+        "path": "radio",
+        "type_name": "RadioSockets",
         "ports": [
-          {
-            "name": "power.pos",
-            "net": "3V3"
-          },
           {
             "name": "power.neg",
             "net": "GND"
+          },
+          {
+            "name": "power.pos",
+            "net": "3V3"
           }
         ]
       }
