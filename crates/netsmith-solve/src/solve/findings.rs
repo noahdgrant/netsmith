@@ -130,6 +130,9 @@ pub struct UnconstrainedPick {
     /// where there is one: the chain runs across a rail, and this part in it is not a
     /// `dc resistor` or a `dc diode` the way the chain runs.
     pub stopped_by: Option<InstId>,
+    /// The output level of the logic pin that drives that chain, where it is stated with no test
+    /// current and so leaves the current free (ADR 0127).
+    pub unloaded_level: Option<FieldId>,
 }
 
 /// The member a part's value is held to.
@@ -543,6 +546,12 @@ impl Solver<'_> {
                     .iter()
                     .filter(|c| c.parts.contains(&s.part))
                     .find_map(|c| c.stopped_by),
+                unloaded_level: self
+                    .model
+                    .chains()
+                    .iter()
+                    .filter(|c| c.parts.contains(&s.part))
+                    .find_map(|c| c.unloaded_level),
             });
         }
         out

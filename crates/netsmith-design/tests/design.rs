@@ -1882,6 +1882,59 @@ fn a_chain_across_a_rail_gives_a_relation_note() {
     assert!(result.contains("mA"), "{result}");
 }
 
+/// A chain that a logic pin drives (ADR 0127) gives its relation note as a chain across a rail
+/// does: about the chain's parts (not the part whose pin drives it), with the pin's level as
+/// the source.
+#[test]
+fn a_chain_a_pin_drives_gives_a_relation_note() {
+    use netsmith_core::NoteKind;
+    let src = r#"
+import std::parts::passive::{Resistor, Led}
+import std::logic::Logic
+import std::sources::Rail
+import std::mfg::jlcpcb::TwoLayer
+
+part Mcu {
+    .designator &= "U"
+    .vdd: Rail
+    .gpio: Logic
+    .gpio.reference ~ .vdd
+    .gpio.voh &= .vdd.voltage - 0.4V at 8mA
+    .gpio.vol &= 0.4V at 8mA
+    pins {
+        .vdd.pos    power  "VDD" "1"
+        .vdd.neg    power  "GND" "2"
+        .gpio.line  output "IO"  "3"
+    }
+}
+
+board G {
+    .process: TwoLayer
+    .supply: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "VCC"; .neg.net &= "GND" }
+    .mcu: Mcu
+    .supply ~ .mcu.vdd
+    .led: Led { .current &= 2mA..8mA }
+    .r1: Resistor {}
+    .mcu.gpio.line ~> .r1 ~> .led ~> .supply.neg
+}
+"#;
+    let d = designed(src).unwrap();
+    let relations: Vec<_> = d
+        .notes
+        .iter()
+        .filter(|n| n.kind == NoteKind::Relation)
+        .collect();
+    assert_eq!(relations.len(), 1, "{relations:?}");
+    let note = relations[0];
+    assert!(note.derived);
+    assert_eq!(
+        note.text,
+        ".led.current == ((.mcu.gpio.voh .. .mcu.gpio.reference.voltage) - .led.forward_voltage) / .r1.resistance"
+    );
+    assert_eq!(note.anchors, ["led", "r1"]);
+    assert_eq!(note.at.as_ref().unwrap().line, 28, "the line of the chain");
+}
+
 /// A part with no DC model in the chain leaves its current free, so there is no relation and
 /// no note.
 #[test]

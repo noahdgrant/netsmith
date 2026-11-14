@@ -1869,7 +1869,7 @@ Rules.
 - `~` joins pin to pin, interface to interface when both are the same definition, and the members of two other ports by name. It does not join a pin and an interface.
 - `~>` starts at a pin. A part in the chain is entered at the first pin of its bridge and left at the second. Chains may continue from a part, `.a ~> .b`, and may end at a pin.
 - `a ~> pin ~> b` puts `a`, the pin and `b` on one net.
-- A chain across a rail sets its own current (below). Any other chain is a statement about nets and about which currents are equal.
+- A chain across a rail, from a logic pin or between two rails sets its own current (below). Any other chain is a statement about nets and about which currents are equal.
 - A system joins ports with `~` only (see Systems).
 - A group of identical members alone between a chain's two ends puts each member in parallel between them, and a group may be written in the chain (`.supply.pos ~> 2 x Capacitor { ... } ~> .supply.neg`, A group of identical members, above).
 
@@ -2119,7 +2119,7 @@ error: `except` leaves out `vd`, but neither `.header` nor `.chip` has a pin or 
 
 ### The current of a chain
 
-A chain that starts on a rail's `pos`, ends on the same rail's `neg` and has nothing else on the nets between its parts passes one current, and the rail's voltage is shared between its parts (Kirchhoff's voltage law). When every part in it states a `dc resistor` or a `dc diode` (a DC element, see "What a part is at DC"), the checker writes that law as a relation on the chain's current, before anything is picked:
+A chain that starts on a rail's `pos`, ends on the same rail's `neg` and has nothing else on the nets between its parts passes one current, and the rail's voltage is shared between its parts (Kirchhoff's voltage law). A chain driven by a logic pin, or one between two rails, is read the same way (see below). When every part in it states a `dc resistor` or a `dc diode` (a DC element, see "What a part is at DC"), the checker writes that law as a relation on the chain's current, before anything is picked:
 
 ```nsm-fragment
 .led.current == (.supply.voltage - .led.forward_voltage) / .r1.resistance
@@ -2174,7 +2174,50 @@ board Reference {
 Reference: unconstrained pick guideline: `r1` (Resistor) was chosen with nothing limiting its resistance, so the solver took the first row that fits, 330Ω 1% 0402 C25104; the `~>` chain it is in sets no current, because `zener` (Zener) in it is not a `dc resistor` or a `dc diode` the way the chain runs: state it, `.r1.resistance &= 4.7kohm +/- 5%`, or bound a value that it decides (a current or a voltage the design checks), or say that any value will do, `.r1.resistance &= 10kohm..100kohm`
 ```
 
-A Zener in breakdown is not a DC element yet (a decision of its own, ADR 0076), so here the board writes the relation itself, `.zener.current == (.supply.voltage - .zener.zener_voltage) / .r1.resistance`. A part of a project's own that has a resistance or a forward drop at DC states it with a `dc` statement, and the chain reads it. A chain that starts on a signal (a logic pin that drives an LED) has no rail voltage to share, and gets no relation: write it yourself, with the pin's levels. After the pick, the DC analysis solves the whole network of the picked parts, this chain with the rest (see "DC analysis").
+A Zener in breakdown is not a DC element yet (a decision of its own, ADR 0076), so here the board writes the relation itself, `.zener.current == (.supply.voltage - .zener.zener_voltage) / .r1.resistance`. A part of a project's own that has a resistance or a forward drop at DC states it with a `dc` statement, and the chain reads it. After the pick, the DC analysis solves the whole network of the picked parts, this chain with the rest (see "DC analysis").
+
+A chain may start on a logic pin that drives it high: the `.line` of a part's `Logic` (an output, a tri-state or a bidirectional pin), with nothing else on its net but the chain. The pin is at least its `voh` and at most its reference rail's voltage, so the relation's source is the range `.voh .. .reference.voltage`. A chain may also end on a pin that sinks it low (an open-drain pin too), which is at most its `vol`: `0V .. .vol`. The level must be stated at the current its datasheet measures it at (`.gpio.voh &= .vdd.voltage - 0.4V at 8mA`, see "Logic levels and absolute maximums"): the level holds only up to that load, so the chain's current is at most it, and a window above it is refused at the level's line. A GPIO that drives an LED picks its resistor from the LED's window:
+
+```nsm evaluate
+import std::parts::passive::{Resistor, Led}
+import std::logic::Logic
+import std::sources::Rail
+import std::mfg::jlcpcb::TwoLayer
+
+part Mcu {
+    .designator &= "U"
+    .vdd: Rail
+    .gpio: Logic
+    .gpio.reference ~ .vdd
+    .gpio.voh &= .vdd.voltage - 0.4V at 8mA
+    .gpio.vol &= 0.4V at 8mA
+    pins {
+        .vdd.pos    power  "VDD" "1"
+        .vdd.neg    power  "GND" "2"
+        .gpio.line  output "IO"  "3"
+    }
+}
+
+board Status {
+    .process: TwoLayer
+    .supply: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "VCC"; .neg.net &= "GND" }
+    .mcu: Mcu
+    .supply ~ .mcu.vdd
+    .led: Led { .current &= 2mA..8mA }
+    .r1: Resistor {}
+    .mcu.gpio.line ~> .r1 ~> .led ~> .supply.neg
+}
+```
+
+The relation the checker writes is
+
+```nsm-fragment
+.led.current == ((.mcu.gpio.voh .. .mcu.gpio.reference.voltage) - .led.forward_voltage) / .r1.resistance
+```
+
+and the pin's limit is `.led.current <= 8mA`. The window is what the LED carries while the pin drives it: when the pin is low the LED is dark by design, and the DC analysis judges the window with the pin high. A level stated with no test current leaves the chain's current free, and the unconstrained-pick finding names the level.
+
+A chain from one rail's `pos` to another rail's `pos` on the same ground has the difference of the two voltages across it: `.v12.pos ~> .r1 ~> .led ~> .ldo.vout.pos` gives `.led.current == (.v12.voltage - .ldo.vout.voltage - .led.forward_voltage) / .r1.resistance`. The rail at the end must hold its voltage: a regulator's output, or the rail of a part's `dc source` (a connector's supply). A rail whose voltage is what the chain leaves it is a load, and the chain says nothing of its current: a module's output behind a fuse, and a board's own rail at the end of a chain, which as often stands for a load with the window of voltage it takes (`.load.voltage &= 5V..16V`). As across one rail, a corner where the current would be negative is refused by an LED's `.current >= 0mA`.
 
 Misuse.
 
@@ -9669,7 +9712,7 @@ Rules.
 - Inside a part, `///` goes only on a declaration (`.resistance: Resistance`) or on a definition. A `pins` block, a row of a pin table, `catalog`, `tie`, `bridge`, a relation and a connection are statements: put a `//` comment on them. The message is the one below (`doc comments can only be attached to declarations`, and for a pin table row `a pin table takes `//` notes, not doc comments`).
 - `////` is a plain comment.
 - There are no block comments: only `//`, `///` and `//!` exist. `/*` is an error.
-- Doc comments are kept in the syntax tree and printed back. The editor's schematic draws the ones on a board, a module, a part or an interface, and every `==` relation, as notes beside what they are about (ADR 0060); a `//` comment is never drawn. The relation a `~>` chain across a rail implies (ADR 0113) is drawn too, at the chain's line and marked as the chain's, unless the source writes it by hand as well.
+- Doc comments are kept in the syntax tree and printed back. The editor's schematic draws the ones on a board, a module, a part or an interface, and every `==` relation, as notes beside what they are about (ADR 0060); a `//` comment is never drawn. The relation a `~>` chain implies (ADR 0113, ADR 0127) is drawn too, at the chain's line and marked as the chain's, unless the source writes it by hand as well.
 
 Misuse.
 
@@ -11667,7 +11710,7 @@ What it models in this stage:
 
 - **Regulators.** A part with `dc linear_regulator` or `dc switching_regulator` holds the net of its output rail over the range of the rail's `.voltage` (an ideal source, so what is behind it is an island of its own) and draws from its input what its output asks. A board rail on the output net is then what the regulator supplies: a load, whatever voltage the board states for it. A linear regulator draws what it supplies and its quiescent current, when its statement names one (the range of the current, both ends added to the load's: the load and the quiescent current are drawn at once). A switching one draws `Pout / (efficiency * Vin)`, and `Vin` is what the parts in front of it leave after the current they carry, so the current is the solution of a fixed point, which the pass finds from zero: the iterates rise to the least solution, and when there is none the input falls to nothing. The power tree is solved in order, the output side first: what the loads behind a regulator take (as a range, summed over everything on its output net) is the regulator's load when the island in front of it is solved. A regulator whose output has a pin that nothing models falls back on its own `.vout.current` when something states it (or the balances worked it out), and is otherwise left alone, with the island in front of it. The pass writes the regulator's `.vin.current` and `.vin.voltage` by the rules below, so the part's own relations (`.vin.voltage >= .vout.voltage + .dropout`, `.vin.voltage >= .buck.min_input_voltage`, a stage's `.vin.voltage <= ...`) are judged with the voltage the circuit gives it, and the parts in front (a fuse, a diode, a shunt, a bead) take their currents from it.
 
-- **Logic pins that drive** (ADR 0076, amendment 4). A pin of kind `output`, `tri_state` or `bidirectional` that states its `voh` and its `vol` with the current each is measured at, as the datasheet does (`.voh &= .vdd.voltage - 0.4V at 2mA`, `.vol &= 0.4V at 2mA`), is high, low or (a tri-state or bidirectional pin) high impedance. High joins the line to the pin's supply through an output resistance, low joins it to the pin's ground, and high impedance joins it to nothing. The resistance is the drop over the test current, `0.4 V / 2 mA` = 200 ohm, taken from 1 mohm up to that (a lighter load drops less). The pass tries every state of every pin with the states of everything else, and writes what the pin's load carries: a pull-down on the line gets its `.current` and `.drop`, and its relations are judged. The pin needs a reference rail whose two nets a supply or a regulator's output holds, no `.swing` (a line that goes to a supply with no pin has a high the reference rail does not give), and no other pin that could drive its net: two such pins are not modelled, since their states include driving it apart (an input that only leaks, below, is no driver, and may share the net). A pin that states a level without its test current, or a `voh` and no `vol`, is a boundary, unless the part states the output resistances itself (below).
+- **Logic pins that drive** (ADR 0076, amendment 4). A pin of kind `output`, `tri_state` or `bidirectional` that states its `voh` and its `vol` with the current each is measured at, as the datasheet does (`.voh &= .vdd.voltage - 0.4V at 2mA`, `.vol &= 0.4V at 2mA`), is high, low or (a tri-state or bidirectional pin) high impedance. High joins the line to the pin's supply through an output resistance, low joins it to the pin's ground, and high impedance joins it to nothing. The resistance is the drop over the test current, `0.4 V / 2 mA` = 200 ohm, taken from zero up to that (a lighter load drops less; under 1 mohm the pin is a branch with its own resistance, as a resistor is), so the pin can be exactly at its supply. The pass tries every state of every pin with the states of everything else, and writes what the pin's load carries: a pull-down on the line gets its `.current` and `.drop`, and its relations are judged. The pin needs a reference rail whose two nets a supply or a regulator's output holds, no `.swing` (a line that goes to a supply with no pin has a high the reference rail does not give), and no other pin that could drive its net: two such pins are not modelled, since their states include driving it apart (an input that only leaks, below, is no driver, and may share the net). A pin that states a level without its test current, or a `voh` and no `vol`, is a boundary, unless the part states the output resistances itself (below).
 
 - **Leakage and output resistance** (ADR 0076, amendment 8). `Logic` and `Levels` have three `optional` members that a part states when its datasheet does: `.ii`, the most current the pin takes or gives when it is high impedance, at any voltage from its ground to its supply (`.io.ii &= 1uA`, the datasheet's `Ii`, a magnitude), and `.roh` and `.rol`, the output resistance when the pin drives high and when it drives low (`.io.rol &= 20ohm..50ohm`). A part that states `.roh` or `.rol` has that resistance, with no test current on its level; one that does not has the drop over the test current, as above. No part has to state any of them. A pin that is high impedance and states `.ii` is, besides open, a resistance to its supply or to its ground, `the supply's greatest voltage / .ii` (3.399 V and 1 uA are 3.399 Mohm): the leak that a pull-down or a pull-up on the line has to carry, and that lowers an open-drain line's high. An input that states `.ii` is such a pin, and draws it, also on a line that a pin drives: the line is the pin's states with the input's leak beside them, to the input's own supply or ground; an input that states none draws nothing, as before. Both directions are states, so the worst of them is in every range.
 

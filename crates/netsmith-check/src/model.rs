@@ -744,10 +744,28 @@ pub struct Chain {
     /// The `~>` statement.
     pub source: SourceId,
     pub span: Span,
-    /// For a chain from a rail's `pos` to the same rail's `neg` with no tap, whose current
-    /// Kirchhoff's voltage law would set (ADR 0113): the first part in it that is not a
-    /// `dc resistor` or a `dc diode` the way the chain runs, which leaves the current free.
+    /// For a chain with no tap whose ends' voltages are known (a rail's `pos`, a logic pin that
+    /// drives it, a ground, another rail's `pos`), whose current Kirchhoff's voltage law would set
+    /// (ADR 0113, ADR 0127): the first part in it that is not a `dc resistor` or a `dc diode` the
+    /// way the chain runs, which leaves the current free.
     pub stopped_by: Option<InstId>,
+    /// The output level of a logic pin at an end of the chain that is stated with no test
+    /// current (`.voh &= .vdd.voltage - 0.4V` with no `at 8mA`), which leaves the current free:
+    /// the level is promised only at its load, and the pin's limit is that load (ADR 0127).
+    pub unloaded_level: Option<FieldId>,
+    /// The logic pins whose output level is a source of the chain's voltage law (ADR 0127): a
+    /// pin at the start that drives high, a pin at the end that sinks low. The current the law
+    /// says is the one in that state; in the other the chain is off.
+    pub pins: Vec<ChainPin>,
+}
+
+/// A logic pin at an end of a `~>` chain whose level drives the chain (ADR 0127).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ChainPin {
+    /// The `.line` of the part's `Logic`.
+    pub pin: InstId,
+    /// Whether it drives high (it starts the chain) or sinks low (it ends it).
+    pub high: bool,
 }
 
 /// One current as it appears in a [`Balance`]: a rail's, or the through-current of the first

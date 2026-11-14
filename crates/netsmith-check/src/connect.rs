@@ -8,9 +8,53 @@ use crate::checker::{Checker, Res};
 use std::collections::{HashMap, HashSet};
 
 use crate::model::{
-    Balance, Catalog, Chain, DcKind, Draw, ExplicitJoin, FieldId, InstId, InstKind, Member, Net,
-    RExpr, Relation,
+    Balance, Catalog, Chain, DcKind, Draw, ExplicitJoin, FieldId, InstId, InstKind, LevelTest,
+    Member, Net, PinKind, RExpr, Relation,
 };
+
+/// What sets the voltage at one end of a `~>` chain whose current Kirchhoff's voltage law says
+/// (ADR 0113, ADR 0127), measured from the chain's ground.
+enum Side {
+    /// A rail's `pos`: its `.voltage`.
+    Rail(FieldId),
+    /// The ground itself.
+    Ground,
+    /// A logic pin that drives the start high or sinks the end low.
+    Pin(InstId, PinLevel),
+}
+
+/// The level of a logic pin at an end of a chain, and what it is measured from.
+struct PinLevel {
+    /// `voh` at the start, `vol` at the end.
+    level: FieldId,
+    /// The `.voltage` of the pin's reference rail.
+    reference: FieldId,
+    /// The net (by union-find root) of the reference rail's `neg`.
+    ground: usize,
+    /// The statement that gives the level with its test current, if it does.
+    test: Option<LevelTest>,
+}
+
+impl Side {
+    /// The voltage at this end: a rail's, `voh .. reference` for a pin that drives high, and
+    /// `0V .. vol` for one that sinks low (`high` false).
+    fn expr(&self, high: bool) -> RExpr {
+        match self {
+            Side::Rail(v) => RExpr::Field(*v),
+            Side::Ground => RExpr::Const(Quantity::point(Dimension::VOLTAGE, 0.0).expect("zero")),
+            Side::Pin(_, level) if high => RExpr::Range(
+                Box::new(RExpr::Field(level.level)),
+                Box::new(RExpr::Field(level.reference)),
+            ),
+            Side::Pin(_, level) => RExpr::Range(
+                Box::new(RExpr::Const(
+                    Quantity::point(Dimension::VOLTAGE, 0.0).expect("zero"),
+                )),
+                Box::new(RExpr::Field(level.level)),
+            ),
+        }
+    }
+}
 
 #[derive(Clone, Copy)]
 enum End {
@@ -312,6 +356,8 @@ impl Checker<'_> {
                 source,
                 span,
                 stopped_by: None,
+                unloaded_level: None,
+                pins: Vec::new(),
             });
         }
     }
@@ -1035,13 +1081,25 @@ impl Checker<'_> {
     }
 
     /// The rail a chain starts on: one of `rails` (each with its `pos`) whose `pos` is on the
-    /// chain's start net, among those the chain's scope can see (as for `derive_bias`). The
-    /// rails the scope declares itself come before the rails of what it holds, and then the
-    /// first by path stands, which keeps the choice independent of statement order.
+    /// chain's start net, among those the chain's scope can see (as for `derive_bias`).
     fn chain_rail(&mut self, chain: &Chain, rails: &[(InstId, InstId)]) -> Option<InstId> {
+        self.chain_rail_at(chain, chain.start, rails, None)
+    }
+
+    /// A rail whose `pos` is on the net of `at`, among those the chain's scope can see, and,
+    /// when `ground` is given, whose `neg` is on that net. The rails the scope declares itself
+    /// come before the rails of what it holds, and then the first by path stands, which keeps
+    /// the choice independent of statement order.
+    fn chain_rail_at(
+        &mut self,
+        chain: &Chain,
+        at: InstId,
+        rails: &[(InstId, InstId)],
+        ground: Option<usize>,
+    ) -> Option<InstId> {
         let scope = self.model.instance(chain.parts[0]).parent?;
-        let start = self.find(chain.start.0);
-        let mut starts: Vec<(bool, String, InstId)> = Vec::new();
+        let net = self.find(at.0);
+        let mut found: Vec<(bool, String, InstId)> = Vec::new();
         for &(rail, pos) in rails {
             let Some(owner) = self.model.owner_of(rail) else {
                 continue;
@@ -1050,28 +1108,130 @@ impl Checker<'_> {
             if !own && self.model.instance(owner).parent != Some(scope) {
                 continue;
             }
-            if self.find(pos.0) == start {
-                starts.push((!own, self.model.path_of(rail), rail));
+            if self.find(pos.0) != net {
+                continue;
             }
+            if let Some(ground) = ground {
+                let Some((_, _, neg)) = self.model.rail_of(rail) else {
+                    continue;
+                };
+                if self.find(neg.0) != ground {
+                    continue;
+                }
+            }
+            found.push((!own, self.model.path_of(rail), rail));
         }
-        starts.sort();
-        starts.first().map(|&(_, _, rail)| rail)
+        found.sort();
+        found.first().map(|&(_, _, rail)| rail)
     }
 
-    /// Kirchhoff's voltage law along each `~>` chain across a rail (ADR 0113): the relation
-    /// `I == (V - Vf1 - Vf2 ...) / (R1 + R2 ...)`, so the series current is known before the
-    /// parts are picked and a window on it (an LED's `.current`) picks them.
+    /// Whether a rail holds its voltage at the end of a chain (ADR 0127): the rail of a part's
+    /// `dc source`, or the output of a part's `dc linear_regulator` or `dc switching_regulator`.
+    /// A board's own rail is not one: at the end of a chain it is as often a load with the window
+    /// of voltage it takes (`.load.voltage &= 5V..16V`), whose voltage is the chain's result.
+    fn holds_voltage(&self, rail: InstId) -> bool {
+        if self.model.rail_of(rail).is_none() {
+            return false;
+        }
+        let Some(owner) = self.model.instance(rail).parent else {
+            return false;
+        };
+        let inst = self.model.instance(owner);
+        match inst.kind {
+            InstKind::Part => inst.dc.as_ref().is_some_and(|dc| match dc.kind {
+                DcKind::Source => dc.pins.first() == Some(&rail),
+                DcKind::LinearRegulator | DcKind::SwitchingRegulator => {
+                    dc.pins.get(1) == Some(&rail)
+                }
+                _ => false,
+            }),
+            _ => false,
+        }
+    }
+
+    /// The logic pin that drives a chain's end (ADR 0127): on the net of `at`, the one terminal
+    /// besides the chain's own part's `terminal`, when it is the `.line` of a part's `Logic`
+    /// whose pin can drive the level the chain needs (high at the start, low at the end; an open
+    /// drain pin only sinks). Nothing else is on the net, so all the pin gives or takes is the
+    /// chain's current. The pin and its `Logic`.
+    fn chain_driver(
+        &mut self,
+        terminals: &HashMap<usize, Vec<InstId>>,
+        at: InstId,
+        terminal: InstId,
+        high: bool,
+    ) -> Option<(InstId, InstId)> {
+        let on = terminals.get(&self.find(at.0))?;
+        let [a, b] = on.as_slice() else {
+            return None;
+        };
+        let pin = match (*a == terminal, *b == terminal) {
+            (true, false) => *b,
+            (false, true) => *a,
+            _ => return None,
+        };
+        let logic = self.model.instance(pin).parent?;
+        let owner = self.model.owner_of(pin)?;
+        if self.model.instance(pin).name != "line"
+            || self.model.instance(logic).kind != InstKind::Interface
+            || self.model.instance(logic).type_name != "Logic"
+            || self.model.instance(owner).kind != InstKind::Part
+            || self.model.unused_by(pin).is_some()
+        {
+            return None;
+        }
+        let drives = match self.model.pin_kind(pin)? {
+            PinKind::Output | PinKind::TriState | PinKind::Bidirectional => true,
+            PinKind::OpenDrain => !high,
+            _ => false,
+        };
+        drives.then_some((pin, logic))
+    }
+
+    /// What sets the voltage of a logic pin at an end of a chain (ADR 0127): its `voh` when it
+    /// drives the start high, its `vol` when it sinks the end low, each with the current the
+    /// datasheet measures it at, and the voltage and ground of its reference rail.
+    fn chain_pin_level(&mut self, logic: InstId, high: bool) -> Option<PinLevel> {
+        let Some(Member::Field(level)) = self.model.member(logic, if high { "voh" } else { "vol" })
+        else {
+            return None;
+        };
+        let Some(Member::Inst(reference)) = self.model.member(logic, "reference") else {
+            return None;
+        };
+        let (voltage, _, neg) = self.model.rail_of(reference)?;
+        let test = self.model.level_test(level).cloned();
+        Some(PinLevel {
+            level,
+            reference: voltage,
+            ground: self.find(neg.0),
+            test,
+        })
+    }
+
+    /// Kirchhoff's voltage law along each `~>` chain whose ends' voltages are known (ADR 0113,
+    /// ADR 0127): the relation `I == (Vstart - Vend - Vf1 - Vf2 ...) / (R1 + R2 ...)`, so the
+    /// series current is known before the parts are picked and a window on it (an LED's
+    /// `.current`) picks them.
     ///
-    /// The chain starts on a rail's `pos` (the rail `chain_rail` finds) and ends on a net with
-    /// the same rail's `neg`, and nothing taps it between its parts (no pin at all but the two
-    /// of the chain, where `chain_currents` counts only parts), so one current passes
-    /// through every part and the parts' drops add up to the rail's voltage. Each part is
-    /// what its `dc` statement says it is, the element the DC analysis after the pick solves
-    /// (ADR 0076): a `dc resistor` drops `I * R`, a `dc diode` that conducts drops its forward
-    /// voltage. The relation is that of every diode conducting; one that blocks makes the
-    /// right side negative, and a current window above zero refuses it, as the analysis would.
-    /// `I` is the through-current of the first part whose current a statement narrowed, or else
-    /// of the first part that has one; the others are equal to it (`chain_currents`).
+    /// The start is a rail's `pos` (the rail `chain_rail` finds), or a logic pin that drives it
+    /// high, alone on its net with the chain (`voh .. reference.voltage`: the pin is at least its
+    /// `voh` at its test current, and at most its supply). The end is a net of the start's ground
+    /// (nothing to subtract), another rail's `pos` whose `neg` is on that ground (its voltage), or
+    /// a logic pin that sinks it low (`0V .. vol`). Nothing taps the chain between its parts (no
+    /// pin at all but the two of the chain, where `chain_currents` counts only parts), so one
+    /// current passes through every part and the parts' drops add up to the voltage across it.
+    /// Each part is what its `dc` statement says it is, the element the DC analysis after the
+    /// pick solves (ADR 0076): a `dc resistor` drops `I * R`, a `dc diode` that conducts drops
+    /// its forward voltage. The relation is that of every diode conducting; one that blocks makes
+    /// the right side negative, and a current window above zero refuses it, as the analysis
+    /// would. `I` is the through-current of the first part whose current a statement narrowed, or
+    /// else of the first part that has one; the others are equal to it (`chain_currents`).
+    ///
+    /// A pin's level holds only at the load the datasheet measures it at, so the pin's current
+    /// is at most that test current (`.voh &= .vdd.voltage - 0.4V at 8mA`): a relation
+    /// `I <= 8mA`, pointed at the level's statement. A level stated with no test current leaves
+    /// the current free (`Chain::unloaded_level`).
     ///
     /// A part that is not a resistor or a diode the way the chain runs through it (no `dc`, a
     /// MOSFET, a diode turned round) leaves the current free: the chain records it in
@@ -1084,21 +1244,119 @@ impl Checker<'_> {
             .instances()
             .filter_map(|(id, _)| Some((id, self.model.rail_of(id)?.1)))
             .collect();
+        // The rails that can end a chain: those whose voltage something holds, as the DC
+        // analysis takes it (ADR 0076). A rail that only carries what a chain leaves it (a
+        // module's output behind a fuse) is a load, and its voltage is the chain's result.
+        let held: Vec<(InstId, InstId)> = rails
+            .iter()
+            .copied()
+            .filter(|&(rail, _)| self.holds_voltage(rail))
+            .collect();
         // Every pin on a net, not only the parts' terminals: a rail or a port on a junction can
         // take current from the chain as a third part can.
         let mut counts: HashMap<usize, usize> = HashMap::new();
+        let mut terminals: HashMap<usize, Vec<InstId>> = HashMap::new();
         for net in self.model.nets.clone() {
             if let Some(pin) = net.pins.first() {
-                counts.insert(self.find(pin.0), net.pins.len());
+                let root = self.find(pin.0);
+                counts.insert(root, net.pins.len());
+                terminals.insert(root, net.terminals.clone());
             }
         }
         for index in 0..self.model.chains.len() {
             let chain = self.model.chains[index].clone();
-            let Some(rail) = self.chain_rail(&chain, &rails) else {
+            let Some(&(first_in, _)) = self.model.instance(chain.parts[0]).bridge.as_ref() else {
                 continue;
             };
-            let (voltage, _, neg) = self.model.rail_of(rail).expect("a rail");
-            if self.find(neg.0) != self.find(chain.end.0) || self.is_tapped(&counts, &chain.parts) {
+            let last = *chain.parts.last().expect("a chain has a part");
+            let Some(&(_, last_out)) = self.model.instance(last).bridge.as_ref() else {
+                continue;
+            };
+            // The start: a rail's `pos`, or a pin that drives it high.
+            let (start, ground) = if let Some(rail) = self.chain_rail(&chain, &rails) {
+                let (voltage, _, neg) = self.model.rail_of(rail).expect("a rail");
+                (Side::Rail(voltage), self.find(neg.0))
+            } else if let Some((pin, logic)) =
+                self.chain_driver(&terminals, chain.start, first_in, true)
+            {
+                let Some(level) = self.chain_pin_level(logic, true) else {
+                    continue;
+                };
+                let ground = level.ground;
+                (Side::Pin(pin, level), ground)
+            } else {
+                continue;
+            };
+            // The end: the ground, another rail's `pos` on that ground, or a pin that sinks it.
+            let end_net = self.find(chain.end.0);
+            let end = if end_net == ground {
+                Side::Ground
+            } else if end_net == self.find(chain.start.0) {
+                continue;
+            } else if let Some(rail) = self.chain_rail_at(&chain, chain.end, &held, Some(ground)) {
+                Side::Rail(self.model.rail_of(rail).expect("a rail").0)
+            } else if let Some((pin, logic)) =
+                self.chain_driver(&terminals, chain.end, last_out, false)
+            {
+                match self.chain_pin_level(logic, false) {
+                    Some(level) if level.ground == ground => Side::Pin(pin, level),
+                    _ => continue,
+                }
+            } else {
+                continue;
+            };
+            // A level with no test current says nothing of the pin's load: the chain is left
+            // free, and named.
+            let unloaded = [&start, &end].into_iter().find_map(|side| match side {
+                Side::Pin(_, level) if level.test.is_none() => Some(level.level),
+                _ => None,
+            });
+            if let Some(level) = unloaded {
+                self.model.chains[index].unloaded_level = Some(level);
+                continue;
+            }
+            self.model.chains[index].pins = [(&start, true), (&end, false)]
+                .into_iter()
+                .filter_map(|(side, high)| match side {
+                    Side::Pin(pin, _) => Some(crate::model::ChainPin { pin: *pin, high }),
+                    _ => None,
+                })
+                .collect();
+            let tapped = self.is_tapped(&counts, &chain.parts);
+            // The current a statement narrowed (an LED's window), so that a failure is said of
+            // the field the design wrote; else the first part's.
+            let currents: Vec<FieldId> = chain
+                .parts
+                .iter()
+                .filter_map(|&p| self.model.through_of(p))
+                .collect();
+            let chosen = currents
+                .iter()
+                .find(|&&f| !self.model.field(f).narrowed_at.is_empty())
+                .or(currents.first())
+                .copied();
+            // The pin's limit: the current at the end the pin is on, which a tap does not touch.
+            for (side, part) in [(&start, chain.parts[0]), (&end, last)] {
+                let Side::Pin(_, level) = side else { continue };
+                let test = level.test.as_ref().expect("a tested level");
+                let Some(current) = (if tapped {
+                    self.model.through_of(part)
+                } else {
+                    chosen
+                }) else {
+                    continue;
+                };
+                std::sync::Arc::make_mut(&mut self.model.relations).push(Relation {
+                    lhs: RExpr::Field(current),
+                    op: CmpOp::Le,
+                    rhs: RExpr::Const(test.current),
+                    source: test.source,
+                    span: test.span,
+                    written: None,
+                    own: false,
+                });
+            }
+            if tapped {
                 continue;
             }
             let mut resistances: Vec<FieldId> = Vec::new();
@@ -1123,18 +1381,7 @@ impl Checker<'_> {
                 self.model.chains[index].stopped_by = stopped_by;
                 continue;
             }
-            // The current a statement narrowed (an LED's window), so that a failure is said of
-            // the field the design wrote; else the first part's.
-            let currents: Vec<FieldId> = chain
-                .parts
-                .iter()
-                .filter_map(|&p| self.model.through_of(p))
-                .collect();
-            let Some(&current) = currents
-                .iter()
-                .find(|&&f| !self.model.field(f).narrowed_at.is_empty())
-                .or(currents.first())
-            else {
+            let Some(current) = chosen else {
                 continue;
             };
             let sum = |fields: &[FieldId]| -> Option<RExpr> {
@@ -1148,10 +1395,15 @@ impl Checker<'_> {
             let Some(resistance) = sum(&resistances) else {
                 continue;
             };
-            let across = drops.iter().fold(RExpr::Field(voltage), |acc, &vf| {
-                RExpr::Bin(BinOp::Sub, Box::new(acc), Box::new(RExpr::Field(vf)))
-            });
-            let written = self.chain_written(&chain, current, voltage, &drops, &resistances);
+            let sub = |a: RExpr, b: RExpr| RExpr::Bin(BinOp::Sub, Box::new(a), Box::new(b));
+            let mut across = start.expr(true);
+            if !matches!(end, Side::Ground) {
+                across = sub(across, end.expr(false));
+            }
+            for &vf in &drops {
+                across = sub(across, RExpr::Field(vf));
+            }
+            let written = self.chain_written(&chain, current, (&start, &end), &drops, &resistances);
             std::sync::Arc::make_mut(&mut self.model.relations).push(Relation {
                 lhs: RExpr::Field(current),
                 op: CmpOp::EqEq,
@@ -1172,7 +1424,7 @@ impl Checker<'_> {
         &self,
         chain: &Chain,
         current: FieldId,
-        voltage: FieldId,
+        (start, end): (&Side, &Side),
         drops: &[FieldId],
         resistances: &[FieldId],
     ) -> Option<crate::model::Written> {
@@ -1194,11 +1446,21 @@ impl Checker<'_> {
                 format!(".{owner}.{}", field.name)
             }
         };
-        let mut across = path(voltage);
-        for &vf in drops {
-            across = format!("{across} - {}", path(vf));
+        let side = |side: &Side, high: bool| match side {
+            Side::Rail(v) => path(*v),
+            Side::Ground => String::new(),
+            Side::Pin(_, level) if high => {
+                format!("({} .. {})", path(level.level), path(level.reference))
+            }
+            Side::Pin(_, level) => format!("(0V .. {})", path(level.level)),
+        };
+        let mut terms = vec![side(start, true)];
+        if !matches!(end, Side::Ground) {
+            terms.push(side(end, false));
         }
-        if !drops.is_empty() {
+        terms.extend(drops.iter().map(|&vf| path(vf)));
+        let mut across = terms.join(" - ");
+        if terms.len() > 1 {
             across = format!("({across})");
         }
         let mut resistance = resistances

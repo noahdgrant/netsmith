@@ -162,7 +162,16 @@ pub fn unconstrained_pick_findings(
                         model.path_of(part),
                     )
                 }
-                None => head,
+                None => match picks.iter().find_map(|u| u.unloaded_level) {
+                    // A pin drives the chain, but its level says no load (ADR 0127).
+                    Some(level) => format!(
+                        "{head}; the `~>` chain {} in sets no current, because `{}` of the pin that drives it is stated with no test current (`.{} &= ... at 8mA`, the load its datasheet gives the level at)",
+                        if many { "they are" } else { "it is" },
+                        model.path_of_field(level),
+                        model.field(level).name,
+                    ),
+                    None => head,
+                },
             };
             let head = if ratio.is_empty() {
                 head
