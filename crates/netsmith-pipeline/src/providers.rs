@@ -28,7 +28,9 @@
 //! only the bound's message). Each use that has several providers is varied alone first, over its
 //! other providers; a use none of whose providers changes the diagnostics (rendered text) is left
 //! at its first provider for the depth-first search, and if that finds nothing and every
-//! combination fits in the bound the left-out uses are searched too. So an unrelated mistake
+//! combination fits in the bound the left-out uses are searched too, but a failure is still
+//! reported at the first use that varying changed (a board's process, whose weights fail
+//! alike, does not take the blame for a regulator no IC can make, #701). So an unrelated mistake
 //! costs the sum of the providers of the uses and not the product. A trial that passes while a
 //! use is varied alone is kept (`Search::passes`) and taken when the search in order reaches the
 //! same assignment, not solved again.
@@ -182,8 +184,11 @@ struct Search<'a> {
     records: Vec<Record>,
     /// A trial is not run twice: its failure is kept under its choices.
     seen: HashMap<Choices, usize>,
-    /// Uses that varying alone did not change anything for.
+    /// Uses that varying alone did not change anything for. Kept when the search is widened
+    /// to them (`widened`): a failure is still reported at a use that mattered (#701).
     irrelevant: HashSet<String>,
+    /// Whether the depth-first search also varies the `irrelevant` uses.
+    widened: bool,
     /// Trials that did not fail but could not judge a bound on a use (`unjudged`), by their
     /// choices: the first of them is the pick when no trial is judged in full.
     weak: BTreeMap<Choices, Pass>,
@@ -419,10 +424,9 @@ impl Search<'_> {
     /// Depth first over the uses that are still open, in path order, last fastest.
     fn visit(&mut self, assign: &mut BTreeMap<String, String>) -> Option<Pass> {
         let checked = self.elaborate(assign);
-        let open = self
-            .multi(&checked)
-            .into_iter()
-            .find(|u| !assign.contains_key(&u.path) && !self.irrelevant.contains(&u.path));
+        let open = self.multi(&checked).into_iter().find(|u| {
+            !assign.contains_key(&u.path) && (self.widened || !self.irrelevant.contains(&u.path))
+        });
         let Some(open) = open else {
             return match self.leaf(assign)? {
                 Leaf::Pass(choices) => self.passes.remove(&choices),
@@ -465,6 +469,7 @@ pub(crate) fn search(
         records: Vec::new(),
         seen: HashMap::new(),
         irrelevant: HashSet::new(),
+        widened: false,
         weak: BTreeMap::new(),
         passes: HashMap::new(),
     };
@@ -531,7 +536,7 @@ pub(crate) fn search(
         if product.saturating_sub(s.trials)
             <= MAX_PROVIDER_TRIALS - s.trials.min(MAX_PROVIDER_TRIALS)
         {
-            s.irrelevant.clear();
+            s.widened = true;
             found = s.visit(&mut BTreeMap::new());
         }
     }
