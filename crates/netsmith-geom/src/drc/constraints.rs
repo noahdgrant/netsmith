@@ -177,9 +177,17 @@ pub(crate) fn range_text(lo: f64, hi: f64, unit: &str) -> String {
 /// measures are its pads and this margin (#457).
 pub const BARE_COURTYARD_MARGIN: f64 = 0.25;
 
+/// How far the courtyard goes past a pad that reaches past the courtyard its footprint draws,
+/// in mm (a library that draws the courtyard as the part's body, as Raspberry Pi's does): the
+/// placer lets two courtyards touch, so two such parts keep their pads twice this apart. It is
+/// KiCad's courtyard clearance for chip parts smaller than 0603 (KLC F5.3), less than the
+/// least space between the pads of two parts on the three ported originals (0.35 mm), so a
+/// reproduction of one stands as the original does.
+pub const PAD_COURTYARD_MARGIN: f64 = 0.15;
+
 /// The box of a footprint's body and what it is made from: the drawing on the fabrication
 /// layer, else on the courtyard layer, else the pads and [`BARE_COURTYARD_MARGIN`]; a box
-/// made from a courtyard takes in every hole that reaches past it. It is found in the
+/// made from a courtyard takes in every hole and every pad that reaches past it. It is found in the
 /// footprint's own frame and then turned onto the board, as the placer finds it
 /// (`netsmith_pcb::Placed::body`), so that the two measure one box (#457).
 pub fn body_of(art: &Artwork, part: &str, back: bool) -> Option<(Bounds, String)> {
@@ -221,12 +229,45 @@ pub fn body_of(art: &Artwork, part: &str, back: bool) -> Option<(Bounds, String)
         )
         .expect("a box has corners")
     };
+    // The pads' boxes in the footprint's own frame.
+    let pad_boxes: Vec<Bounds> = pads
+        .iter()
+        .map(|p| {
+            let mut turned = (*p).clone();
+            turned.at = local(p.at);
+            turned.angle = p.angle - angle;
+            crate::pads::outline(&turned).bounds()
+        })
+        .collect();
     let with_holes = |mut b: Bounds| {
+        let drawn = b;
         for p in &pads {
             if let Some(d) = &p.drill {
                 let (c, reach) = (local(p.at), d.width.max(d.length) / 2.0);
                 b.add(Pt::new(c.x - reach, c.y - reach));
                 b.add(Pt::new(c.x + reach, c.y + reach));
+            }
+        }
+        // A pad of copper that reaches past the drawn courtyard is in it too, with
+        // `PAD_COURTYARD_MARGIN` round it, as the placer takes it.
+        let copper = pads
+            .iter()
+            .zip(&pad_boxes)
+            .filter(|(p, _)| p.kind != crate::artwork::PadKind::Npth);
+        for (_, pad) in copper {
+            let inside = pad.min.x >= drawn.min.x
+                && pad.min.y >= drawn.min.y
+                && pad.max.x <= drawn.max.x
+                && pad.max.y <= drawn.max.y;
+            if !inside {
+                b.add(Pt::new(
+                    pad.min.x - PAD_COURTYARD_MARGIN,
+                    pad.min.y - PAD_COURTYARD_MARGIN,
+                ));
+                b.add(Pt::new(
+                    pad.max.x + PAD_COURTYARD_MARGIN,
+                    pad.max.y + PAD_COURTYARD_MARGIN,
+                ));
             }
         }
         b
@@ -242,14 +283,7 @@ pub fn body_of(art: &Artwork, part: &str, back: bool) -> Option<(Bounds, String)
     if let Some(b) = draws(yard) {
         return Some((on_board(with_holes(b)), yard.to_string()));
     }
-    let boxes = pads.iter().flat_map(|p| {
-        let mut turned = (*p).clone();
-        turned.at = local(p.at);
-        turned.angle = p.angle - angle;
-        let b = crate::pads::outline(&turned).bounds();
-        [b.min, b.max]
-    });
-    let b = Bounds::of(boxes)?;
+    let b = Bounds::of(pad_boxes.iter().flat_map(|b| [b.min, b.max]))?;
     let grown = Bounds {
         min: Pt::new(
             b.min.x - BARE_COURTYARD_MARGIN,

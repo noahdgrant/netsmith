@@ -37,5 +37,9 @@ fn rp2350_minimal_pcb_matches_raspberry_pi() {
                      parity fab/Rp2350Minimal/Rp2350Minimal.kicad_pcb \
                      --svg reference/parity-overlay.svg",
         known_failures: &[],
+        waive_drc: Some(
+            "the RP2350's footprint is Raspberry Pi's, whose nine vias in the exposed pad have a \
+             0.175 mm ring where JLCPCB asks 0.18 mm (README, The reproduction)",
+        ),
     });
 }

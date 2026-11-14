@@ -137,6 +137,16 @@ footprint = "own:Sensor"
 
 The file is `libs/own.pretty/Sensor.kicad_mod`. `build` and `fab` write the library name into the `fp-lib-table` beside the board, so KiCad finds the footprint.
 
+**One part with a footprint of its own.** A `[[part]]` row maps every part of a kind in a package. A `[[member]]` row gives one part, named by its member path on its board (as the layout file names it), another footprint, in either way above. A port uses it to draw a part with the original's land pattern where that is not the standard row's: a project may not map a kind and package that `std/kicad.toml` maps, and an original may draw two parts of one kind and package with two land patterns. The symbol and the pin names stay those of the part's row, and the footprint is checked against the pin table as any other is. Here the sensor `.s` is drawn with the generator's SOT-23 instead of `own:Sensor`:
+
+```toml
+[[member]]
+path = "s"
+footprint = "gen:SOT23(pins=3)"
+```
+
+The board file, the bill of materials and the placement file name the member's footprint. A path given twice is refused. The rows are the project's, and its files may hold several boards, so a row whose path is no part of the board being built is not used there: check the path when you rename a member (a port's test compares every footprint with the original's, which finds a stale row).
+
 **A footprint on the bottom face.** Draw every footprint as seen from the top, as KiCad's libraries do. A part on the bottom (`.place.side &= "bottom"`, or `side = "bottom"` in the layout file) is the footprint seen in a mirror: every x of the footprint's frame (pads, drawings, courtyard) negated, then turned by `.place.rotation`, with every layer on the other face (`F.Cu` becomes `B.Cu`, `F.CrtYd` becomes `B.CrtYd`). The board file `fab` writes stores it as KiCad's flip does, which mirrors in y: every y of the footprint's frame negated and the footprint turned by `.place.rotation` plus 180, which puts the pads, the drawings and KiCad's 3D model in the same place. A board file from KiCad stores a footprint on the back the same way, and so does a port's `placements.toml`, which is read from it: to draw a footprint from those figures, negate each y and each pad's own angle (its angle less the footprint's) in the footprint, and put each layer on the other face; the part's `.place.rotation` is the file's rotation less 180. A footprint drawn from them as they stand comes out flipped twice: its pads mirrored and on the wrong face.
 
 **A footprint netsmith generates.** When one of netsmith's generators makes the package, the row asks for it by the generator's name and parameters, in place of `Library:Name` (ADR 0104). There is no file and no library:

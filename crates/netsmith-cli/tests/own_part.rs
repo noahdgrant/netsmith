@@ -48,7 +48,15 @@ fn block(kind: &str, needle: &str) -> String {
 
 /// The `[[part]]` blocks of the guide's section that map `Sensor`.
 fn sensor_row(footprint_starts: &str) -> String {
-    block("toml", &format!("footprint = \"{footprint_starts}"))
+    section()
+        .into_iter()
+        .find(|(info, text)| {
+            info.first().is_some_and(|k| k == "toml")
+                && text.contains("[[part]]")
+                && text.contains(&format!("footprint = \"{footprint_starts}"))
+        })
+        .unwrap_or_else(|| panic!("the guide has no row with {footprint_starts:?}"))
+        .1
 }
 
 /// The project: its circuit from the guide, and its `netsmith.toml`.

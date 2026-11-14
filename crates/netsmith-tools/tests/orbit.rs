@@ -770,16 +770,12 @@ board SmallPartsFixture {
                 .len(),
             2
         );
-        // L1: Murata's recommended pattern, not the board's. Two pads, centres 1.6 mm apart
-        // where the board's are 1.72 mm apart (a difference of 0.12 mm).
+        // L1: ORBIT's own footprint (#728), pad for pad.
         let inductor = footprint(&libraries, "Inductor", "0806");
-        assert_eq!(inductor.pads.len(), 2);
-        let pitch = (inductor.pads[1].at.x - inductor.pads[0].at.x).abs();
-        assert!((pitch - 1.6).abs() < 1e-9, "{pitch}");
-        assert!((pitch - 1.72).abs() < 0.15);
-        for pad in &inductor.pads {
-            assert_eq!((pad.width, pad.height), (0.8, 1.8));
-        }
+        assert_eq!(
+            pad_differences(&inductor, &table, "L1"),
+            Vec::<String>::new()
+        );
     }
 
     #[test]
@@ -1683,141 +1679,51 @@ board Ics {
         assert!(near((p1.at.y - p2.at.y).abs(), 0.5));
     }
 
-    /// The EEPROM's pads are the generator's 8-lead SOIC (3.9 x 4.9 mm body, 1.27 mm pitch).
-    /// Microchip's land pattern (DS20006110A, drawing C04-2057-SN Rev B, page 27) is pads of
-    /// 1.55 x 0.60 mm at 5.40 mm between the two rows' centres, so 2.70 mm from the middle:
-    /// the width is the same, the outer edges are 0.025 mm apart and the generator's are
-    /// longer to the inside (1.95 x 0.60 mm at 2.475 mm). ORBIT's pads are 1.9812 x 0.5588 mm
-    /// at 2.4638 mm.
+    /// The EEPROM's and the bridge's footprints are ORBIT's own (#728), pad for pad: the EEPROM's
+    /// pads are 1.9812 x 0.5588 mm at 2.4638 mm from the middle (Microchip's land pattern,
+    /// DS20006110A, drawing C04-2057-SN Rev B, page 27, is 1.55 x 0.60 mm at 2.70 mm), and the
+    /// bridge's are 0.9 x 0.254 mm at 2.59 mm with a 3.1 x 3.1 mm centre pad (Silicon Labs' land
+    /// pattern, CP2102/9 Rev. 1.6, Figure 4 and Table 11, page 14, puts them 0.19 mm further in,
+    /// 2.40 mm from the middle, with a 3.25 mm centre pad). The numbering is the datasheets'.
     #[test]
-    fn the_eeproms_footprint_is_the_generators_and_is_close_to_microchips_land_pattern() {
-        let footprint = footprint_of("At24C128C", "SOIC-8");
-        for (n, y) in [("1", -1.905), ("2", -0.635), ("3", 0.635), ("4", 1.905)] {
-            let p = pad(&footprint, n);
-            assert!(near(p.at.y, y) && p.at.x < 0.0, "pad {n}");
-            let q = pad(&footprint, &(9 - n.parse::<i32>().unwrap()).to_string());
-            // Pad 8 is across from pad 1: the numbers go down the left side and up the right.
-            assert!(
-                near(q.at.y, y) && q.at.x > 0.0,
-                "pad {}",
-                9 - n.parse::<i32>().unwrap()
-            );
-        }
-        for p in &footprint.pads {
-            assert!(
-                near(p.height, 0.6),
-                "pad {} is 0.60 mm wide as Microchip's",
-                p.number
-            );
-            let outer = p.at.x.abs() + p.width / 2.0;
-            let microchip_outer = 2.70 + 1.55 / 2.0;
-            assert!(
-                (outer - microchip_outer).abs() <= 0.03,
-                "pad {}: outer edge {outer}, Microchip's {microchip_outer}",
-                p.number
-            );
-            assert!(
-                p.at.x.abs() - p.width / 2.0 <= 2.70 - 1.55 / 2.0,
-                "pad {}",
-                p.number
-            );
-        }
-        // ORBIT's pads: the same pitch and number, other centres and sizes.
-        let theirs = reference("U17");
-        assert_eq!(theirs.len(), 8);
-        for t in &theirs {
-            assert!(near(t.x.abs(), 2.4638) && near(t.width, 1.9812) && near(t.height, 0.5588));
-            assert!(
-                near(t.y, pad(&footprint, &t.number).at.y),
-                "pad {}",
-                t.number
-            );
-        }
-    }
-
-    /// The bridge's pads are Silicon Labs' land pattern (CP2102/9 Rev. 1.6, Figure 4 and
-    /// Table 11, page 14): 0.50 mm pitch, 4.80 mm between the pad columns' centres, pads 0.25 x
-    /// 0.90 mm, a centre pad 3.25 x 3.25 mm (the table gives 3.20 to 3.30) with the nine
-    /// 0.90 mm paste openings of note 8 on a 1.1 mm pitch. ORBIT's pads are 0.9 x 0.254 mm
-    /// but 2.59 mm from the middle, 0.19 mm further out, and its centre pad is 3.1 x 3.1 mm.
-    #[test]
-    fn the_bridges_footprint_is_silicon_labs_land_pattern_and_orbits_pads_are_further_out() {
-        let footprint = footprint_of("Cp2102", "WQFN-28-EP(5x5)");
-        let leads: Vec<_> = footprint
-            .pads
-            .iter()
-            .filter(|p| !p.number.is_empty() && p.number != "29")
-            .collect();
-        assert_eq!(leads.len(), 28);
-        for p in &leads {
-            let (across, along, long, wide) = if p.width > p.height {
-                (p.at.x.abs(), p.at.y, p.width, p.height)
-            } else {
-                (p.at.y.abs(), p.at.x, p.height, p.width)
-            };
-            assert!(near(across, 2.4), "pad {}: C = 4.80 mm", p.number);
-            assert!(near(long, 0.9) && near(wide, 0.25), "pad {}", p.number);
-            assert!(
-                near((along / 0.5).round() * 0.5, along) && along.abs() <= 1.5,
-                "pad {}",
-                p.number
-            );
-        }
-        // Pad 1 at the top of the left side, 8 at the left of the bottom, 15 at the bottom of
-        // the right side and 22 at the right of the top (Figure 2, counter-clockwise).
-        let at = |n: &str| pad(&footprint, n).at;
-        assert!(at("1").x < 0.0 && near(at("1").y, -1.5));
-        assert!(near(at("8").x, -1.5) && at("8").y > 0.0);
-        assert!(at("15").x > 0.0 && near(at("15").y, 1.5));
-        assert!(near(at("22").x, 1.5) && at("22").y < 0.0);
-        let centre = pad(&footprint, "29");
-        assert!(near(centre.at.x, 0.0) && near(centre.at.y, 0.0));
-        assert!(near(centre.width, 3.25) && near(centre.height, 3.25));
-        let openings: Vec<_> = footprint
-            .pads
-            .iter()
-            .filter(|p| p.number.is_empty())
-            .collect();
-        assert_eq!(openings.len(), 9);
-        for o in &openings {
-            assert!(near(o.width, 0.9) && near(o.height, 0.9));
-            assert_eq!(o.layers, ["F.Paste"]);
-            assert!(near((o.at.x / 1.1).round() * 1.1, o.at.x));
-        }
-        // ORBIT's footprint, pad for pad.
-        for t in reference("U22") {
-            let mine = pad(&footprint, &t.number);
-            if t.number == "29" {
-                assert!(near(t.width, 3.1) && near(t.height, 3.1));
-                continue;
+    fn the_eeproms_and_the_bridges_footprints_are_orbits() {
+        for (kind, package, reference_of, count) in [
+            ("At24C128C", "SOIC-8", "U17", 8),
+            ("Cp2102", "WQFN-28-EP(5x5)", "U22", 29),
+        ] {
+            let footprint = footprint_of(kind, package);
+            let theirs = reference(reference_of);
+            assert_eq!(theirs.len(), count, "{reference_of}");
+            for t in &theirs {
+                let mine = pad(&footprint, &t.number);
+                assert!(
+                    near(mine.at.x, t.x)
+                        && near(mine.at.y, t.y)
+                        && near(mine.width.max(mine.height), t.width.max(t.height))
+                        && near(mine.width.min(mine.height), t.width.min(t.height)),
+                    "{reference_of} pad {} differs from ORBIT's",
+                    t.number
+                );
             }
-            assert!(
-                (t.x.abs() - mine.at.x.abs()).abs() < 1e-9
-                    || (t.y.abs() - mine.at.y.abs()).abs() < 1e-9,
-                "pad {}",
-                t.number
-            );
-            let outwards = t.x.abs().max(t.y.abs()) - mine.at.x.abs().max(mine.at.y.abs());
-            assert!(near(outwards, 0.19), "pad {}: {outwards}", t.number);
-            assert!(
-                near(t.width.min(t.height), 0.254) && near(t.width.max(t.height), 0.9),
-                "pad {}",
-                t.number
-            );
         }
+        // Pad 8 of the EEPROM is across from pad 1: down the left side and up the right.
+        let eeprom = footprint_of("At24C128C", "SOIC-8");
+        assert!(pad(&eeprom, "1").at.x < 0.0 && pad(&eeprom, "8").at.x > 0.0);
+        assert!(near(pad(&eeprom, "1").at.y, pad(&eeprom, "8").at.y));
     }
 
     #[test]
     fn the_footprints_in_the_project_library_are_files_of_the_project() {
         let toml = read("kicad.toml");
-        assert!(toml.contains("footprints = \"libs/orbit_ics.pretty\""));
+        // ORBIT's own footprints of U15, U17 and U22, written out of its board (#728).
+        assert!(toml.contains("footprints = \"libs/orbit_original.pretty\""));
         for file in [
-            "libs/orbit_ics.pretty/VSON-10-HR_2x3mm_P0.5mm_TI_DLA0010A.kicad_mod",
-            "libs/orbit_ics.pretty/QFN-28-1EP_5x5mm_P0.5mm_EP3.25x3.25mm_SiliconLabs_CP2102.kicad_mod",
+            "libs/orbit_original.pretty/TPS63802DLAR.kicad_mod",
+            "libs/orbit_original.pretty/SOIC127P600X175-8N.kicad_mod",
+            "libs/orbit_original.pretty/QFN28G_0.5-5X5MM.kicad_mod",
         ] {
             let text = read(file);
             assert!(text.contains("(generator \"netsmith\")"), "{file}");
-            assert!(text.contains("(descr \""), "{file}");
         }
     }
 

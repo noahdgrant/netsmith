@@ -110,7 +110,7 @@ source = "import"
 
 [Rp2350Minimal.parts.regulator]
 at = [34.0, 12.85]
-rotation = -90.0
+rotation = 180.0
 side = "top"
 lock = true
 source = "import"

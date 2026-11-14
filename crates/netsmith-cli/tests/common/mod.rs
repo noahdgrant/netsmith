@@ -28,6 +28,10 @@ pub struct ParityGate<'a> {
     /// to meet and that its README says why. Each must fail, and no other may: a fix is noticed
     /// as much as a loss. The boards that match everything have none.
     pub known_failures: &'a [&'a str],
+    /// Why `fab` packages the board past its design rules check (`--allow-drc-violations`), when
+    /// the port's footprints are the original's and break a rule of the process the original
+    /// broke too; `None` for a board the check must pass (or stop only for connections left).
+    pub waive_drc: Option<&'a str>,
 }
 
 /// Builds the project with `netsmith fab --locked`, with no KiCad, and gates on the parity
@@ -45,13 +49,9 @@ pub fn fab_matches_the_reference(gate: &ParityGate) {
     // `--locked` ends the run when the pick lock is not current and never writes it, so the test
     // leaves the project's folder as it was; it also means `--pins locked`.
     let output = Command::new(env!("CARGO_BIN_EXE_netsmith"))
-        .args([
-            "fab",
-            "--locked",
-            "--route-timeout",
-            gate.route_seconds,
-            "--out",
-        ])
+        .args(["fab", "--locked", "--route-timeout", gate.route_seconds])
+        .args(gate.waive_drc.map(|_| "--allow-drc-violations"))
+        .arg("--out")
         .arg(&*out)
         .current_dir(&gate.project)
         .env("NETSMITH_NO_KICAD", "1")

@@ -10,6 +10,7 @@ pub mod compare;
 pub mod copper;
 pub mod dxf;
 pub mod findings;
+pub mod footprint_diff;
 pub mod init;
 pub mod parity;
 pub mod part_draft;

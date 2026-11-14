@@ -62,12 +62,14 @@ physical for Rp2350Minimal {
     .hole4.place.x &= 12.03mm
     .hole4.place.y &= 47.18mm
 
-    // J1, the micro-USB receptacle: their J1 is at (100, 71.7) turned 180 degrees; the
-    // body is the courtyard, which is not centred on the origin: x -4.15 to 4.15 and y -4.01 to
-    // 1.35 of the footprint, so its centre is (0, -1.33) of the footprint and, turned half a
-    // turn, 1.33 mm below the origin: (26, 1.7 + 1.33).
+    // J1, the micro-USB receptacle: their J1 is at (100, 71.7) turned 180 degrees. The body
+    // (`F.Fab`) is not centred on the origin: x -4.02 to 4.02 and y -3.25 to 2.82 of the
+    // footprint, so its centre is (0, -0.215) of the footprint and, turned half a turn, 0.215 mm
+    // below the origin: (26, 1.7 + 0.215). Its receptacle hangs 1.12 mm over the top edge (the
+    // body reaches y -1.12), as in their board.
     .usb.place.x &= 26mm
-    .usb.place.y &= 3.03mm
+    .usb.place.y &= 1.915mm
+    .usb.place.top <= 0mm
     .usb.place.rotation &= 180
     .usb.place.side &= "top"
 
@@ -88,11 +90,11 @@ physical for Rp2350Minimal {
     .header_low.pin_protrusion &= 0.94mm
     .header_high.pin_protrusion &= 0.94mm
 
-    // J4, the JST-SH debug port: their J4 is at (107.6, 115.375), not turned. The body is the
-    // courtyard, x -2.8 to 2.8 and y -5.85 to 0.45 of the footprint: its centre is 2.7 mm above
+    // J4, the JST-SH debug port: their J4 is at (107.6, 115.375), not turned. The body
+    // (`F.Fab`) is x -2.5 to 2.5 and y -4.95 to 0 of the footprint: its centre is 2.475 mm above
     // the origin.
     .debug.place.x &= 33.6mm
-    .debug.place.y &= 42.675mm
+    .debug.place.y &= 42.9mm
     .debug.place.rotation &= 0
     .debug.place.side &= "top"
 

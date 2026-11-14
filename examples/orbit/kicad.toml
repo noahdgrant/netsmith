@@ -1,51 +1,57 @@
 # What KiCad calls the parts this project defines itself (ADR 0021).
 #
-# The footprints of the connectors, switches and the inductor are written into the project's own
-# library `libs/orbit_small_parts.pretty` (no KiCad install is needed: the files are the
-# project's); README.md (Parts) records the document, revision and page of each and what was
-# read, derived or assumed. The parts are drawn from their pin tables (no `symbol`, ADR 0097).
+# Where ORBIT's footprint is not one netsmith makes with the same pads and courtyard, the part is
+# drawn with ORBIT's own footprint (#728): the files of `libs/orbit_original.pretty` are the
+# footprints of `reference/ORBIT.kicad_pcb`, written out by
+#   cargo run -p netsmith-tools --example footprint_from_board -- reference/ORBIT.kicad_pcb <REF> libs/orbit_original.pretty
+# with the board's additions taken off and nothing else changed. No KiCad install is needed.
+# README.md (Parts) records what each part's maker documents say of the land pattern;
+# `crates/netsmith-cli/tests/reproduce.rs` compares every footprint of the reproduction with
+# ORBIT's. The parts are drawn from their pin tables (no `symbol`, ADR 0097).
 #
-# Not here: the crystal (U10) and the 1 x 8 headers (J1, J2) are standard parts, mapped by
-# `std/kicad.toml` to the generators' footprints.
+# Not here: the crystal (U10), the 1 x 8 headers (J1, J2), the resistors and the capacitors are
+# standard parts, mapped by `std/kicad.toml` to the generators' footprints, which are ORBIT's.
 
 [[library]]
-name = "orbit_small_parts"
-footprints = "libs/orbit_small_parts.pretty"
+name = "orbit_original"
+footprints = "libs/orbit_original.pretty"
 
-# USB1: Shou Han MINI 5PTP, mini USB B receptacle; the pads of ORBIT's board.
+# USB1: Shou Han MINI 5PTP, mini USB B receptacle (ORBIT's `MINI-USB-SMD_MINI-5PTP`, which
+# draws no courtyard).
 [[part]]
 kind = "ShouHanMini5ptp"
 package = "SMD"
 default = true
-footprint = "orbit_small_parts:USB_Mini-B_ShouHan_MINI-5PTP"
+footprint = "orbit_original:MINI-USB-SMD_MINI-5PTP"
 
-# BAT1: JST B2B-PH-SM4-TB(LF)(SN); the pads of ORBIT's board.
+# BAT1: JST B2B-PH-SM4-TB(LF)(SN) (KiCad's `JST_PH_B2B-PH-SM4-TB_1x02-1MP_P2.00mm_Vertical`,
+# as ORBIT's KiCad 7 library drew it).
 [[part]]
 kind = "JstB2bPhSm4Tb"
 package = "SMD,P=2mm"
 default = true
-footprint = "orbit_small_parts:JST_B2B-PH-SM4-TB_1x02-1MP_P2.00mm_Vertical"
+footprint = "orbit_original:JST_PH_B2B-PH-SM4-TB_1x02-1MP_P2.00mm_Vertical"
 
-# SW1 and SW2: XKB TS-1187A-B-A-B, with the pad pattern of ORBIT's board (README.md).
+# SW1 and SW2: XKB TS-1187A-B-A-B, on KiCad's `SW_Push_1P1T_NO_CK_KSC6xxJ` as ORBIT has it.
 [[part]]
 kind = "XkbTs1187a"
 package = "SMD-4P,5.1x5.1mm"
 default = true
-footprint = "orbit_small_parts:SW_Push_XKB_TS-1187A_CK_KSC6-pad-layout"
+footprint = "orbit_original:SW_Push_1P1T_NO_CK_KSC6xxJ"
 
-# BOOT0 and PWR1: HRO K3-1270, the PCB layout of the maker's K3-1270L-F1 drawing.
+# BOOT0 and PWR1: HRO K3-1270 (ORBIT's `K3-1270L-F1`, which draws no courtyard).
 [[part]]
 kind = "HroK3_1270"
 package = "SMD,8.8x2mm"
 default = true
-footprint = "orbit_small_parts:SW_Slide_HRO_K3-1270L-F1"
+footprint = "orbit_original:K3-1270L-F1"
 
-# L1: the 0806 (2016 metric) package of the Murata inductor; the standard rows stop at 0805 and
-# 1210, and no generator answers 2016. The pads are Murata's recommended PCB pattern.
+# L1: the 0806 (2016 metric) package of the Murata inductor (ORBIT's `INDC2016X120N`); the
+# standard rows stop at 0805 and 1210, and no generator answers 2016.
 [[part]]
 kind = "Inductor"
 package = "0806"
-footprint = "orbit_small_parts:L_Murata_DFE201612E"
+footprint = "orbit_original:INDC2016X120N"
 
 # D1 to D3: the Everlight LEDs are 0603, the generator's footprint of the standard LED.
 [[part]]
@@ -61,10 +67,7 @@ default = true
 footprint = "LED_SMD:LED_0603_1608Metric"
 
 # The five ICs: the charger, the buck-boost converter, the microcontroller, the EEPROM and the
-# USB-UART bridge. Two of their footprints are in the project's own library.
-[[library]]
-name = "orbit_ics"
-footprints = "libs/orbit_ics.pretty"
+# USB-UART bridge.
 
 # U1: MCP73831 in the 5-lead SOT-23. The generator's `SOT-23-5` (the same pads as ORBIT's
 # footprint, `Package_TO_SOT_SMD:SOT-23-5`); the datasheet's package drawing C04-091B (page 22)
@@ -75,13 +78,13 @@ package = "SOT-23-5"
 default = true
 footprint = "Package_TO_SOT_SMD:SOT-23-5"
 
-# U15: TPS63802 in the 10-pin VSON-HR (DLA). No generator draws it: the footprint is the
-# "Example Board Layout" of TI's drawing DLA0010A, in the project's library.
+# U15: TPS63802 in the 10-pin VSON-HR (DLA), ORBIT's `TPS63802DLAR` (the pads of TI's "Example
+# Board Layout" of drawing DLA0010A, with rounded corners).
 [[part]]
 kind = "Tps63802"
 package = "VSON-10(2x3)"
 default = true
-footprint = "orbit_ics:VSON-10-HR_2x3mm_P0.5mm_TI_DLA0010A"
+footprint = "orbit_original:TPS63802DLAR"
 
 # U16: STM32F030C8 in the LQFP-48, 7 x 7 mm, 0.5 mm pitch: the generator's footprint, which
 # is ORBIT's (`Package_QFP:LQFP-48_7x7mm_P0.5mm`). ST's recommended footprint (Figure 31, page 86)
@@ -93,23 +96,22 @@ package = "LQFP-48(7x7)"
 default = true
 footprint = "Package_QFP:LQFP-48_7x7mm_P0.5mm"
 
-# U17: AT24C128C in the 8-lead SOIC, 150 mil (3.90 mm body). The generator's footprint; the
-# datasheet's land pattern C04-2057-SN (page 27) is pads of 1.55 x 0.60 mm at 2.70 mm from the
-# middle, the generator's are 1.95 x 0.60 mm at 2.475 mm (the outer edges are 0.025 mm apart).
+# U17: AT24C128C in the 8-lead SOIC, 150 mil (3.90 mm body), ORBIT's `SOIC127P600X175-8N`
+# (pads of 1.981 x 0.559 mm; the datasheet's land pattern C04-2057-SN, page 27, is 1.55 x 0.60
+# mm at 2.70 mm from the middle).
 [[part]]
 kind = "At24C128C"
 package = "SOIC-8"
 default = true
-footprint = "Package_SO:SOIC-8_3.9x4.9mm_P1.27mm"
+footprint = "orbit_original:SOIC127P600X175-8N"
 
-# U22: CP2102 in the 28-pin QFN, 5 x 5 mm, with an exposed pad: the land pattern of
-# Silicon Labs' datasheet, in the project's library (ORBIT's own footprint has its pads
-# 0.19 mm further out).
+# U22: CP2102 in the 28-pin QFN, 5 x 5 mm, with an exposed pad: ORBIT's `QFN28G_0.5-5X5MM`
+# (its pads 0.19 mm further out than Silicon Labs' land pattern, and a 3.1 mm exposed pad).
 [[part]]
 kind = "Cp2102"
 package = "WQFN-28-EP(5x5)"
 default = true
-footprint = "orbit_ics:QFN-28-1EP_5x5mm_P0.5mm_EP3.25x3.25mm_SiliconLabs_CP2102"
+footprint = "orbit_original:QFN28G_0.5-5X5MM"
 
 # H1 to H4: the plated mounting holes of ORBIT's board (its footprints `MountingHole_2.5mm_Pad_Via`
 # and `MountingHole_2.2mm_M2_Pad_Via`: a drilled pad of twice the drill, with a ring of eight
@@ -117,6 +119,10 @@ footprint = "orbit_ics:QFN-28-1EP_5x5mm_P0.5mm_EP3.25x3.25mm_SiliconLabs_CP2102"
 # `MountingHole` rows are non-plated, so these two rows are a `MountingHole` whose project
 # footprint draws the drilled pad PLATED, without the ring of vias (ORBIT's pad is the one that
 # the screw touches). The symbol is netsmith's own.
+[[library]]
+name = "orbit_small_parts"
+footprints = "libs/orbit_small_parts.pretty"
+
 [[part]]
 kind = "MountingHole"
 package = "M2.5-plated"

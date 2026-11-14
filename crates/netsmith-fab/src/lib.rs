@@ -730,6 +730,16 @@ fn notes(
             c.violations, c.unconnected, c.footprint_errors
         ),
     });
+    // A package made past the check lists what it waived, each but a connection left (those are
+    // in `routing-failure.txt`), so the person ordering reads what the board breaks.
+    if matches!(drc, DrcOutcome::Waived(_)) {
+        lines.extend(
+            report
+                .errors()
+                .filter(|e| e.rule != DrcRule::UnconnectedItems)
+                .map(|e| format!("  {e}")),
+        );
+    }
     if !constraints.is_empty() {
         let met = constraints.iter().filter(|c| c.satisfied).count();
         // A package is only made past an unmet one when the project asked for warnings

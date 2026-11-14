@@ -52,7 +52,7 @@ fn settle(
         .iter()
         .map(|part| {
             let mapped = mapping
-                .map(&part.kind, part.package.as_deref())
+                .map_part(&part.path, &part.kind, part.package.as_deref())
                 .map_err(|error| EmitError::Map {
                     refdes: part.refdes.clone(),
                     error,

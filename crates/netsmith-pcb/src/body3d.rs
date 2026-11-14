@@ -1687,11 +1687,12 @@ mod tests {
         }
     }
 
-    /// The example's own footprint of J2 and J3, a Samtec TSW-118-07-L-D (2 x 18, 2.54 mm).
+    /// The example's footprint of J2 and J3 (Raspberry Pi's), a Samtec TSW-118-07-L-D (2 x 18,
+    /// 2.54 mm).
     fn tsw() -> Footprint {
         let path = concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/../../examples/rp2350_minimal/libs/netsmith_rp2350.pretty/",
+            "/../../examples/rp2350_minimal/libs/rp2350_original.pretty/",
             "PinHeader_2x18_P2.54mm_Samtec_TSW-118-07-L-D.kicad_mod"
         );
         let text = std::fs::read_to_string(path).unwrap();

@@ -1,105 +1,212 @@
 # What KiCad calls the parts this project defines itself (ADR 0021).
 #
-# The footprints are written from the makers' recommended land patterns, in the project's own
-# library `libs/rp2350_minimal.pretty` (no KiCad install is needed: the files are the project's);
-# `README.md` (Parts) records the document, revision and page of each and what was read, derived
-# or assumed. U2, the NCP1117ST33T3G, is the standard `LinearRegulator` in the package SOT-223,
-# which `std/kicad.toml` already maps to the generator's `SOT-223-3_TabPin2`: a project may not
-# map a pair that the standard mapping maps, so it has no row here.
+# Every part is drawn with Raspberry Pi's own footprint, the one its board has (#728): the files
+# of `libs/rp2350_original.pretty` are the footprints of `reference/RPI-RP2350A-MINIMAL_R4-S1.kicad_pcb`
+# (its library `RPI_COMPILED`), written out by
+#   cargo run -p netsmith-tools --example footprint_from_board -- reference/RPI-RP2350A-MINIMAL_R4-S1.kicad_pcb <REF> libs/rp2350_original.pretty
+# with the board's additions taken off and nothing else changed, except U2's tab (below). So the
+# pads, the courtyards and the frames are the original's, and the reproduction places each part
+# as the original does. No KiCad install is needed. `README.md` (Parts) records what each part's
+# maker documents say of the land pattern; `crates/netsmith-cli/tests/reproduce.rs` compares
+# every footprint of the reproduction with the original's.
+#
+# The parts are drawn from their pin tables (no `symbol`, ADR 0097), except the mounting hole.
 
 [[library]]
-name = "rp2350_minimal"
-footprints = "libs/rp2350_minimal.pretty"
+name = "rp2350_original"
+footprints = "libs/rp2350_original.pretty"
 
-# L1: the 0806 (2016 metric) package of the Abracon inductor; the standard rows stop at 0805
-# and 1210, and no generator answers 2016. The symbol is drawn from the pin table, so no KiCad
-# symbol library is read.
+# L1: the Abracon AOTA-B201610S3R3-101-T in the 0806 (2016 metric) package; the standard rows
+# stop at 0805 and 1210.
 [[part]]
 kind = "Inductor"
 package = "0806"
-footprint = "rp2350_minimal:L_Abracon_AOTA-B201610S3R3-101-T"
+footprint = "rp2350_original:abracon_aota-b201610s3r3-101-t"
 
-# SW1 and SW2: the Wurth tactile switch. The symbol is drawn from the pin table.
+# SW1 and SW2: the Wurth 434133025816 tactile switch.
 [[part]]
 kind = "TactileSwitch"
 package = "SMD-4P(4.2x3.2)"
 default = true
-footprint = "rp2350_minimal:SW_Wurth_434133025816"
+footprint = "rp2350_original:wurthelek_434133025816"
 
-# The RP2350A is drawn from its pin table (no `symbol`: ADR 0097). Its footprint is the
-# generator's QFN-60, 7 x 7 mm, 0.4 mm pitch, exposed pad 3.4 x 3.4 mm: the datasheet's package
-# drawing (RP2350 datasheet Release 8, printed page 1324, Figure 147) has the same body, pitch
-# and exposed pad (D2 and E2 3.35 to 3.45 mm, nominal 3.40), and lead width 0.13 to 0.23 mm.
-# The lead pads differ a little: the generator's are 0.80 mm long and 0.20 mm wide, 7.7 mm over
-# the pads' outer edges; Raspberry Pi's board has them 0.70 x 0.23 mm at the same centres (3.45 mm
-# from the middle), and the datasheet's recommended footprint (page 1325, Figure 148) draws
-# 7.75 mm over the pads, 6.00 mm between their inner edges and 0.40 mm of pitch. Pitch, pad
-# count and exposed pad agree; the generator was not changed.
+# U1: the RP2350A, QFN-60, 7 x 7 mm, 0.4 mm pitch, with nine vias in its exposed pad (pad 61, the
+# ground, as the original numbers them).
 [[part]]
 kind = "Rp2350A"
 package = "QFN-60-EP(7x7)"
 default = true
-footprint = "Package_DFN_QFN:QFN-60-1EP_7x7mm_P0.4mm_EP3.4x3.4mm"
+footprint = "rp2350_original:rpi_rp2350a_vias"
 
-# The flash and the crystal are drawn from their pin tables as well (no `symbol`).
-#
-# The flash, W25Q128JV in the SOIC 208-mil package, has no id in the footprint generators (the
-# SOIC-8 there is the 3.9 mm one), so the row asks for the generator `SO` with the datasheet's
-# dimensions (Winbond W25Q128JV Revision I, section 10.1, printed page 67): 1.27 mm pitch, body
-# 5.3 x 5.3 mm (E1 5.13 to 5.33 mm, D 5.18 to 5.38 mm), 7.70 to 8.10 mm over the leads (H),
-# lead width 0.35 to 0.48 mm (b) and lead length 0.50 to 0.80 mm (L). The datasheet draws no
-# land pattern; the pads are the generator's.
+# U3: the W25Q128JV in the SOIC 208-mil package.
 [[part]]
 kind = "W25Q128Jv"
 package = "SOIC-8-208mil"
 default = true
-footprint = "gen:SO(pins=8, pitch=1.27mm, body=5.3x5.3mm, span=7.7-8.1mm, lead_width=0.35-0.48mm, lead_length=0.5-0.8mm)"
+footprint = "rp2350_original:generic_soic127p790x195-8"
 
-# The crystal, ABM8-272-T3, is a 3.2 x 2.5 mm ceramic package with four pads (Abracon drawing
-# # 456603 Revision B, page 4): the footprint is the generator's 3225 crystal, whose pads 1 to 4
-# are numbered as the drawing numbers its pads (1 bottom left, 2 bottom right, 3 top right and
-# 4 top left, seen from above). The pads are 1.4 x 1.2 mm at +-1.1 mm and +-0.85 mm, as in
-# Raspberry Pi's board.
+# X1: the ABM8-272-T3, 3.2 x 2.5 mm, four pads.
 [[part]]
 kind = "Abm8272T3"
 package = "SMD3225-4P"
 default = true
-footprint = "Crystal:Crystal_SMD_3225-4Pin_3.2x2.5mm"
+footprint = "rp2350_original:generic_xtalcc320x250x80-4"
 
-# The connectors of the board. Their footprints are written into the project's own library
-# (libs/netsmith_rp2350.pretty), so that a build needs no KiCad install; README.md records what
-# each was read from. The parts are drawn from their pin tables (no `symbol`, ADR 0097).
-[[library]]
-name = "netsmith_rp2350"
-footprints = "libs/netsmith_rp2350.pretty"
-
-# J1: Amphenol FCI 10103594-0001LF, the recommended PCB pattern of the maker's drawing.
+# J1: Amphenol FCI 10103594-0001LF.
 [[part]]
 kind = "Amphenol10103594"
 package = "SMD"
 default = true
-footprint = "netsmith_rp2350:USB_Micro-B_Amphenol_10103594-0001LF"
+footprint = "rp2350_original:amphenol_10103594-0001lf"
 
-# J4: JST SM03B-SRSS-TB(LF)(SN), the PC board layout of the maker's catalog page.
+# J4: JST SM03B-SRSS-TB(LF)(SN).
 [[part]]
 kind = "JstSm03bSrssTb"
 package = "SMD,P=1mm,Surface Mount,Right Angle"
 default = true
-footprint = "netsmith_rp2350:JST_SM03B-SRSS-TB_1x03-2MP_P1.00mm_Horizontal"
+footprint = "rp2350_original:jst_sm03b-srss-tb-lf--sn-"
 
-# J2 and J3: Samtec TSW-118-07-L-D, the maker's footprint drawing for the TSW series (the
-# generator's `gen:PinHeader` has 1.778 mm pads, Raspberry Pi's board 1.6 mm).
+# J2 and J3: Samtec TSW-118-07-L-D. Raspberry Pi's `samtec_tsw-118-07-l-d`, the file named as KiCad
+# names a header (`PinHeader_2x18_P2.54mm_...`) so that the 3D view draws it as one.
 [[part]]
 kind = "SamtecTsw11807LD"
 package = "TSW-118-07-L-D"
 default = true
-footprint = "netsmith_rp2350:PinHeader_2x18_P2.54mm_Samtec_TSW-118-07-L-D"
+footprint = "rp2350_original:PinHeader_2x18_P2.54mm_Samtec_TSW-118-07-L-D"
 
-# The four mounting holes: 2.75 mm, non-plated, for M2.5 screws (Raspberry Pi's board). The
-# standard rows have only M2 (2.2 mm) and M3 (3.2 mm). The footprint is a file of the project's
-# own library (libs/rp2350_minimal.pretty); the symbol is netsmith's own.
+# The four mounting holes: 2.75 mm, non-plated, for M2.5 screws. The standard rows have only M2
+# (2.2 mm) and M3 (3.2 mm). The symbol is netsmith's own.
 [[part]]
 kind = "MountingHole"
 package = "M2.5"
 symbol = "Mechanical:MountingHole"
-footprint = "rp2350_minimal:MountingHole_2.75mm_M2.5"
+footprint = "rp2350_original:none_mh_npth_fd2p75mm_sm3p15mm_ko6mm"
+
+# The parts of standard rows, whose land patterns Raspberry Pi drew otherwise. A project may not
+# map a kind and package that `std/kicad.toml` maps, and the original draws two 0402 capacitors
+# with a wider land than the others, so each is a `[[member]]` row: the part, by its member path,
+# and its footprint (`reference/parts.toml` gives the original's designator of each path).
+
+# U2: the NCP1117ST33T3G, the standard `LinearRegulator` in SOT-223. Raspberry Pi's footprint
+# numbers the tab 4; the standard regulator's pin table, like KiCad's `SOT-223-3_TabPin2`, has
+# the tab as a second pad 2 (the output), so the copy numbers it 2. The copper is the same.
+[[member]]
+path = "regulator"
+footprint = "rp2350_original:onsemi_ncp1117st33t3g"
+
+# C1, C5 and C19: the 10 uF capacitors in 0805 (2012 metric).
+[[member]]
+path = "vbus_bulk"
+footprint = "rp2350_original:generic_capc2012x125"
+
+[[member]]
+path = "v3v3_bulk[0]"
+footprint = "rp2350_original:generic_capc2012x125"
+
+[[member]]
+path = "v3v3_bulk[1]"
+footprint = "rp2350_original:generic_capc2012x125"
+
+# C6 and C7: two of the 4.7 uF capacitors in 0402, on the wider land (0.47 x 0.55 mm pads,
+# 1.03 mm apart).
+[[member]]
+path = "v3v3_bulk_c"
+footprint = "rp2350_original:generic_capc1005x50_wide"
+
+[[member]]
+path = "v1v1_bulk"
+footprint = "rp2350_original:generic_capc1005x50_wide"
+
+# The other capacitors in 0402: C2 to C4 and C8 to C18.
+[[member]]
+path = "oscillator.load_in"
+footprint = "rp2350_original:generic_capc1005x50"
+
+[[member]]
+path = "oscillator.load_out"
+footprint = "rp2350_original:generic_capc1005x50"
+
+[[member]]
+path = "avdd_filter_cap"
+footprint = "rp2350_original:generic_capc1005x50"
+
+[[member]]
+path = "v1v1_100n[0]"
+footprint = "rp2350_original:generic_capc1005x50"
+
+[[member]]
+path = "v1v1_100n[1]"
+footprint = "rp2350_original:generic_capc1005x50"
+
+[[member]]
+path = "v1v1_100n[2]"
+footprint = "rp2350_original:generic_capc1005x50"
+
+[[member]]
+path = "v3v3_100n[0]"
+footprint = "rp2350_original:generic_capc1005x50"
+
+[[member]]
+path = "v3v3_100n[1]"
+footprint = "rp2350_original:generic_capc1005x50"
+
+[[member]]
+path = "v3v3_100n[2]"
+footprint = "rp2350_original:generic_capc1005x50"
+
+[[member]]
+path = "v3v3_100n[3]"
+footprint = "rp2350_original:generic_capc1005x50"
+
+[[member]]
+path = "v3v3_100n[4]"
+footprint = "rp2350_original:generic_capc1005x50"
+
+[[member]]
+path = "v3v3_100n[5]"
+footprint = "rp2350_original:generic_capc1005x50"
+
+[[member]]
+path = "v3v3_100n[6]"
+footprint = "rp2350_original:generic_capc1005x50"
+
+[[member]]
+path = "v3v3_100n[7]"
+footprint = "rp2350_original:generic_capc1005x50"
+
+# The resistors in 0402: R1 to R4 and R6 to R10.
+[[member]]
+path = "ss_pullup.resistor"
+footprint = "rp2350_original:generic_resc1005x35"
+
+[[member]]
+path = "oscillator.damping"
+footprint = "rp2350_original:generic_resc1005x35"
+
+[[member]]
+path = "avdd_filter"
+footprint = "rp2350_original:generic_resc1005x35"
+
+[[member]]
+path = "reset_series"
+footprint = "rp2350_original:generic_resc1005x35"
+
+[[member]]
+path = "bootsel_series"
+footprint = "rp2350_original:generic_resc1005x35"
+
+[[member]]
+path = "usb_dp_series"
+footprint = "rp2350_original:generic_resc1005x35"
+
+[[member]]
+path = "usb_dm_series"
+footprint = "rp2350_original:generic_resc1005x35"
+
+[[member]]
+path = "gpio0_link"
+footprint = "rp2350_original:generic_resc1005x35"
+
+[[member]]
+path = "ss_link"
+footprint = "rp2350_original:generic_resc1005x35"

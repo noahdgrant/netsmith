@@ -3533,23 +3533,23 @@
               "field": "x",
               "lo": 16.795,
               "hi": 16.795,
-              "source": "src/main.physical.nsm:58"
+              "source": "src/main.physical.nsm:59"
             },
             {
               "field": "y",
               "lo": 34.5486,
               "hi": 34.5486,
-              "source": "src/main.physical.nsm:59"
+              "source": "src/main.physical.nsm:60"
             },
             {
               "field": "rotation",
               "lo": 180.0,
               "hi": 180.0,
-              "source": "src/main.physical.nsm:60"
+              "source": "src/main.physical.nsm:61"
             }
           ],
           "side": "top",
-          "side_source": "src/main.physical.nsm:61"
+          "side_source": "src/main.physical.nsm:62"
         },
         {
           "path": "headers",
@@ -3559,23 +3559,23 @@
               "field": "x",
               "lo": 12.93,
               "hi": 12.93,
-              "source": "src/main.physical.nsm:68"
+              "source": "src/main.physical.nsm:69"
             },
             {
               "field": "y",
               "lo": 27.76996,
               "hi": 27.76996,
-              "source": "src/main.physical.nsm:69"
+              "source": "src/main.physical.nsm:70"
             },
             {
               "field": "rotation",
               "lo": 0.0,
               "hi": 0.0,
-              "source": "src/main.physical.nsm:70"
+              "source": "src/main.physical.nsm:71"
             }
           ],
           "side": "top",
-          "side_source": "src/main.physical.nsm:71"
+          "side_source": "src/main.physical.nsm:72"
         },
         {
           "path": "reset",
@@ -3585,23 +3585,23 @@
               "field": "x",
               "lo": 9.195,
               "hi": 9.195,
-              "source": "src/main.physical.nsm:54"
+              "source": "src/main.physical.nsm:55"
             },
             {
               "field": "y",
               "lo": 34.5486,
               "hi": 34.5486,
-              "source": "src/main.physical.nsm:55"
+              "source": "src/main.physical.nsm:56"
             },
             {
               "field": "rotation",
               "lo": 0.0,
               "hi": 0.0,
-              "source": "src/main.physical.nsm:56"
+              "source": "src/main.physical.nsm:57"
             }
           ],
           "side": "top",
-          "side_source": "src/main.physical.nsm:57"
+          "side_source": "src/main.physical.nsm:58"
         },
         {
           "path": "usb_native.receptacle",
@@ -3615,19 +3615,25 @@
             },
             {
               "field": "y",
-              "lo": 60.0236,
-              "hi": 60.0236,
+              "lo": 61.2736,
+              "hi": 61.2736,
               "source": "src/main.physical.nsm:48"
+            },
+            {
+              "field": "bottom",
+              "lo": 63.8972,
+              "hi": "inf",
+              "source": "src/main.physical.nsm:49"
             },
             {
               "field": "rotation",
               "lo": 0.0,
               "hi": 0.0,
-              "source": "src/main.physical.nsm:49"
+              "source": "src/main.physical.nsm:50"
             }
           ],
           "side": "top",
-          "side_source": "src/main.physical.nsm:50"
+          "side_source": "src/main.physical.nsm:51"
         },
         {
           "path": "usb_uart.receptacle",
@@ -3637,12 +3643,18 @@
               "field": "x",
               "lo": 5.975,
               "hi": 5.975,
-              "source": "src/main.physical.nsm:43"
+              "source": "src/main.physical.nsm:42"
             },
             {
               "field": "y",
-              "lo": 60.0236,
-              "hi": 60.0236,
+              "lo": 61.2736,
+              "hi": 61.2736,
+              "source": "src/main.physical.nsm:43"
+            },
+            {
+              "field": "bottom",
+              "lo": 63.8972,
+              "hi": "inf",
               "source": "src/main.physical.nsm:44"
             },
             {
@@ -3658,26 +3670,28 @@
       ],
       "offsets": [],
       "line_texts": {
-        "src/main.physical.nsm:43": ".usb_uart.receptacle.place.x &= 5.975mm",
-        "src/main.physical.nsm:44": ".usb_uart.receptacle.place.y &= 60.0236mm",
+        "src/main.physical.nsm:42": ".usb_uart.receptacle.place.x &= 5.975mm",
+        "src/main.physical.nsm:43": ".usb_uart.receptacle.place.y &= 61.2736mm",
+        "src/main.physical.nsm:44": ".usb_uart.receptacle.place.bottom >= .outline.height",
         "src/main.physical.nsm:45": ".usb_uart.receptacle.place.rotation &= 0",
         "src/main.physical.nsm:46": ".usb_uart.receptacle.place.side &= \"top\"",
         "src/main.physical.nsm:47": ".usb_native.receptacle.place.x &= 19.845mm",
-        "src/main.physical.nsm:48": ".usb_native.receptacle.place.y &= 60.0236mm",
-        "src/main.physical.nsm:49": ".usb_native.receptacle.place.rotation &= 0",
-        "src/main.physical.nsm:50": ".usb_native.receptacle.place.side &= \"top\"",
-        "src/main.physical.nsm:54": ".reset.place.x &= 9.195mm",
-        "src/main.physical.nsm:55": ".reset.place.y &= 34.5486mm",
-        "src/main.physical.nsm:56": ".reset.place.rotation &= 0",
-        "src/main.physical.nsm:57": ".reset.place.side &= \"top\"",
-        "src/main.physical.nsm:58": ".boot.place.x &= 16.795mm",
-        "src/main.physical.nsm:59": ".boot.place.y &= 34.5486mm",
-        "src/main.physical.nsm:60": ".boot.place.rotation &= 180",
-        "src/main.physical.nsm:61": ".boot.place.side &= \"top\"",
-        "src/main.physical.nsm:68": ".headers.place.x &= 12.93mm",
-        "src/main.physical.nsm:69": ".headers.place.y &= 27.76996mm",
-        "src/main.physical.nsm:70": ".headers.place.rotation &= 0",
-        "src/main.physical.nsm:71": ".headers.place.side &= \"top\""
+        "src/main.physical.nsm:48": ".usb_native.receptacle.place.y &= 61.2736mm",
+        "src/main.physical.nsm:49": ".usb_native.receptacle.place.bottom >= .outline.height",
+        "src/main.physical.nsm:50": ".usb_native.receptacle.place.rotation &= 0",
+        "src/main.physical.nsm:51": ".usb_native.receptacle.place.side &= \"top\"",
+        "src/main.physical.nsm:55": ".reset.place.x &= 9.195mm",
+        "src/main.physical.nsm:56": ".reset.place.y &= 34.5486mm",
+        "src/main.physical.nsm:57": ".reset.place.rotation &= 0",
+        "src/main.physical.nsm:58": ".reset.place.side &= \"top\"",
+        "src/main.physical.nsm:59": ".boot.place.x &= 16.795mm",
+        "src/main.physical.nsm:60": ".boot.place.y &= 34.5486mm",
+        "src/main.physical.nsm:61": ".boot.place.rotation &= 180",
+        "src/main.physical.nsm:62": ".boot.place.side &= \"top\"",
+        "src/main.physical.nsm:69": ".headers.place.x &= 12.93mm",
+        "src/main.physical.nsm:70": ".headers.place.y &= 27.76996mm",
+        "src/main.physical.nsm:71": ".headers.place.rotation &= 0",
+        "src/main.physical.nsm:72": ".headers.place.side &= \"top\""
       }
     },
     "interfaces": [

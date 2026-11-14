@@ -12,6 +12,9 @@ pub(crate) const ROOT_VARIABLE: &str = FOOTPRINTS_VARIABLE;
 // Space added around the pads when a footprint draws no courtyard: the fab check's own, so
 // that the placer and the check measure one body (#457).
 use netsmith_geom::BARE_COURTYARD_MARGIN;
+// Space kept round a pad that reaches past the drawn courtyard, the same in the placer and the
+// check.
+use netsmith_geom::PAD_COURTYARD_MARGIN;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FootprintError {
@@ -182,6 +185,11 @@ pub struct Pad {
     /// the pad keeps from copper of other nets when it is larger than the board's. `None` when
     /// the file says nothing. The design rules check applies it as the router must.
     pub clearance: Option<f64>,
+    /// The pad's own `(solder_mask_margin ...)`, or its footprint's if the pad has none: how
+    /// far its opening in the solder mask reaches past its copper. `None` when the file says
+    /// nothing. A track of another net keeps the process's mask to track space from the
+    /// opening, so the router keeps it this much further from the pad.
+    pub mask_margin: Option<f64>,
 }
 
 /// How a footprint is soldered to the board.
@@ -322,14 +330,20 @@ impl Footprint {
 
         let mut pads = Vec::new();
         // A pad without a clearance of its own has its footprint's, as in KiCad.
-        let footprint_clearance = source
-            .find("clearance")
-            .and_then(|c| c.args().first())
-            .and_then(Sexp::text)
-            .and_then(|t| t.parse::<f64>().ok());
+        let footprint_number = |key: &str| {
+            source
+                .find(key)
+                .and_then(|c| c.args().first())
+                .and_then(Sexp::text)
+                .and_then(|t| t.parse::<f64>().ok())
+        };
+        let footprint_clearance = footprint_number("clearance");
+        // And its footprint's mask margin.
+        let footprint_mask_margin = footprint_number("solder_mask_margin");
         for pad in source.find_all("pad") {
             let mut pad = read_pad(pad).map_err(invalid)?;
             pad.clearance = pad.clearance.or(footprint_clearance);
+            pad.mask_margin = pad.mask_margin.or(footprint_mask_margin);
             pads.push(pad);
         }
         let mut graphics = Vec::new();
@@ -372,15 +386,26 @@ impl Footprint {
                 .expanded(BARE_COURTYARD_MARGIN),
         };
 
-        // A hole may reach past the drawn courtyard (a mounting hole, a pogo-pin pad), and the
-        // placer keeps courtyards apart, so the courtyard takes in every hole.
+        // A hole may reach past the drawn courtyard (a mounting hole, a pogo-pin pad), and so
+        // may a pad (a library that draws the courtyard as the part's body, as Raspberry Pi's
+        // does). The placer keeps courtyards apart and lets two touch, so the courtyard takes
+        // in every hole, and every pad that reaches past it with `PAD_COURTYARD_MARGIN` round
+        // it: two such parts that touch keep their pads twice that apart.
+        let drawn = courtyard;
         let courtyard = pads
             .iter()
             .filter_map(|p| {
                 let reach = p.drill?.width.max(p.drill?.height) / 2.0;
                 Some(Rect::new(p.at, p.at).expanded(reach))
             })
-            .fold(courtyard, |c, hole| c.union(&hole));
+            .chain(
+                pads.iter()
+                    .filter(|p| p.kind != PadKind::NpThruHole)
+                    .map(Pad::bounds)
+                    .filter(|b| drawn.union(b) != drawn)
+                    .map(|b| b.expanded(PAD_COURTYARD_MARGIN)),
+            )
+            .fold(courtyard, |c, reach| c.union(&reach));
 
         // The body: what is drawn on the fabrication layer, else the courtyard (a hole that
         // reaches past the drawing is in the courtyard, and is the part's body too).
@@ -645,6 +670,11 @@ fn read_pad(pad: &Sexp) -> Result<Pad, String> {
         extent,
         clearance: pad
             .find("clearance")
+            .and_then(|c| c.args().first())
+            .and_then(Sexp::text)
+            .and_then(|t| t.parse().ok()),
+        mask_margin: pad
+            .find("solder_mask_margin")
             .and_then(|c| c.args().first())
             .and_then(Sexp::text)
             .and_then(|t| t.parse().ok()),
@@ -1855,6 +1885,44 @@ mod tests {
         .unwrap();
         assert_eq!(fp.courtyard.max, Pt::new(3.5, 1.0));
         assert_eq!(fp.courtyard.min, Pt::new(-1.0, -1.0));
+    }
+
+    #[test]
+    fn the_courtyard_takes_in_a_pad_that_reaches_past_it() {
+        // Raspberry Pi's 0402: the courtyard is the body, and the pads stick out of it.
+        let fp = Footprint::parse(
+            "L:C",
+            r#"(footprint "C"
+                (pad "1" smd rect (at -0.475 0) (size 0.55 0.55) (layers "F.Cu" "F.Mask"))
+                (pad "2" smd rect (at 0.475 0) (size 0.55 0.55) (layers "F.Cu" "F.Mask"))
+                (fp_rect (start -0.5 -0.25) (end 0.5 0.25) (layer "F.CrtYd"))
+                (fp_rect (start -0.5 -0.25) (end 0.5 0.25) (layer "F.Fab")))"#,
+        )
+        .unwrap();
+        // The pads (0.75 by 0.275 mm from the middle) and 0.15 mm round them.
+        let (min, max) = (fp.courtyard.min, fp.courtyard.max);
+        assert!(
+            (min.x + 0.9).abs() < 1e-9 && (min.y + 0.425).abs() < 1e-9,
+            "{min:?}"
+        );
+        assert!(
+            (max.x - 0.9).abs() < 1e-9 && (max.y - 0.425).abs() < 1e-9,
+            "{max:?}"
+        );
+        // The body is still the drawing on the fabrication layer.
+        assert_eq!(fp.body.max, Pt::new(0.5, 0.25));
+        // A pad inside the drawn courtyard changes nothing.
+        let fp = Footprint::parse(
+            "L:R",
+            r#"(footprint "R"
+                (pad "1" smd rect (at -0.5 0) (size 0.5 0.5) (layers "F.Cu" "F.Mask"))
+                (fp_rect (start -1 -1) (end 1 1) (layer "F.CrtYd")))"#,
+        )
+        .unwrap();
+        assert_eq!(
+            (fp.courtyard.min, fp.courtyard.max),
+            (Pt::new(-1.0, -1.0), Pt::new(1.0, 1.0))
+        );
     }
 
     #[test]

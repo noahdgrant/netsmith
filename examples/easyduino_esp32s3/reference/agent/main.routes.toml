@@ -212,7 +212,7 @@ islands = "remove"
 outline = [[27.895, -2.6514], [27.895, 68.3486], [-2.105, 68.3486], [-2.105, -2.6514]]
 
 [EasyduinoEsp32s3.nets.VBUS]
-pads = "e14c456cd6985869"
+pads = "3848292eb9a5d801"
 lock = true
 tracks = [
   { layer = "top", width = 0.2, from = [8.595, 51.240542], to = [9.745, 52.390542] },
@@ -251,7 +251,7 @@ vias = [
 ]
 
 [EasyduinoEsp32s3.nets.VBUS1]
-pads = "00dc243442894d81"
+pads = "ebb4d6902e622d13"
 lock = true
 tracks = [
   { layer = "top", width = 0.3, from = [8.375, 58.127638], to = [8.375, 57.5486] },
@@ -266,7 +266,7 @@ tracks = [
 ]
 
 [EasyduinoEsp32s3.nets.VBUS2]
-pads = "03c15a7d7b27a2c5"
+pads = "838629c130d2cb9f"
 lock = true
 tracks = [
   { layer = "top", width = 0.3, from = [17.095, 55.7836], to = [17.045, 55.7336] },
@@ -281,7 +281,7 @@ tracks = [
 ]
 
 [EasyduinoEsp32s3.nets."net-auto_reset.q_boot.base"]
-pads = "f323c8676d37bc33"
+pads = "f6c5908dc045cff1"
 lock = true
 tracks = [
   { layer = "top", width = 0.15, from = [16.545, 29.5486], to = [16.545, 27.3086] },
@@ -290,7 +290,7 @@ tracks = [
 ]
 
 [EasyduinoEsp32s3.nets."net-auto_reset.q_boot.collector"]
-pads = "2f16e179db1b223f"
+pads = "eb7c36f013385c54"
 lock = true
 tracks = [
   { layer = "top", width = 0.15, from = [5.995, 36.2486], to = [12.195, 36.2486] },
@@ -319,7 +319,7 @@ vias = [
 ]
 
 [EasyduinoEsp32s3.nets."net-auto_reset.q_boot.emitter"]
-pads = "458def43da50aaca"
+pads = "4f704ac7d753222c"
 lock = true
 tracks = [
   { layer = "top", width = 0.15, from = [21.36636, 34.11996], to = [24.36, 34.11996] },
@@ -353,7 +353,7 @@ vias = [
 ]
 
 [EasyduinoEsp32s3.nets."net-auto_reset.q_en.base"]
-pads = "7e6f92c93919cbb0"
+pads = "e9db2d626e7ea6b5"
 lock = true
 tracks = [
   { layer = "top", width = 0.15, from = [10.295, 31.0986], to = [11.245, 31.0986] },
@@ -365,7 +365,7 @@ tracks = [
 ]
 
 [EasyduinoEsp32s3.nets."net-auto_reset.q_en.collector"]
-pads = "6e71b3e0bf960aa9"
+pads = "648524dc3d1e8349"
 lock = true
 tracks = [
   { layer = "top", width = 0.15, from = [13.345, 28.3486], to = [13.345, 28.3986] },
@@ -389,7 +389,7 @@ vias = [
 ]
 
 [EasyduinoEsp32s3.nets."net-auto_reset.q_en.emitter"]
-pads = "b9a47dab0e6b87d2"
+pads = "7dc41dcaa57ccbc9"
 lock = true
 tracks = [
   { layer = "top", width = 0.15, from = [10.295, 27.3486], to = [10.295, 29.1986] },

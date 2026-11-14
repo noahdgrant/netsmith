@@ -99,7 +99,7 @@ impl Board {
                 continue;
             }
             let mapped = mapping
-                .map(&part.kind, part.package.as_deref())
+                .map_part(&part.path, &part.kind, part.package.as_deref())
                 .map_err(|error| BoardError::Map {
                     refdes: part.refdes.clone(),
                     error,

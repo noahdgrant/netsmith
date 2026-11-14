@@ -43,7 +43,7 @@ pub use artwork::{
 };
 pub use drc::constraints::{
     BARE_COURTYARD_MARGIN, Constraint, Constraints, Measure as ConstraintMeasure,
-    Outcome as ConstraintOutcome, Relation as ConstraintRelation,
+    Outcome as ConstraintOutcome, PAD_COURTYARD_MARGIN, Relation as ConstraintRelation,
     RelationEnd as ConstraintRelationEnd, SideRule, body_of as constraint_body_of,
     outcome_findings as constraint_outcome_findings,
 };

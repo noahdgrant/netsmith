@@ -5,7 +5,12 @@ A port of Raspberry Pi's open **RP2350A Minimal** reference board to netsmith, a
 theirs, proved net by net by a test. **The physical file is done** (`src/main.physical.nsm`: the
 outline, the four mounting holes, the places of the connectors and buttons), and `netsmith fab`
 writes a PCB that the parity checker finds equal to Raspberry Pi's in every way that must match
-(see Parity and The result). It routes completely, in about 35 s.
+(see Parity and The result). Since its parts are drawn with Raspberry Pi's footprints (#728,
+see Parts), whose courtyards are the parts' bodies, the placer packs them closer and the router
+leaves one connection after its 300 s (seed 3; seed 1 leaves three after 200 s), where it routed
+completely in about 35 s before; and its design rules check finds the nine thin rings of the
+RP2350's vias that their board has (see The reproduction). The figures of The result are from
+before.
 
 ## Source
 
@@ -44,7 +49,7 @@ are netsmith's** (MIT, like the rest of the repository).
 - `catalogs/capacitor.csv`, `catalogs/resistor.csv`: two rows the standard catalogs lack, the
   10 uF 0805 capacitor and the 0 ohm link (see The catalog rows).
 - `src/tactile_switch.nsm`, `catalogs/ldo.csv`, `catalogs/inductor.csv`,
-  `catalogs/tactile_switch.csv`, `kicad.toml`, `libs/rp2350_minimal.pretty/`: the regulator U2,
+  `catalogs/tactile_switch.csv`, `kicad.toml`, `libs/rp2350_original.pretty/`: the regulator U2,
   the inductor L1 and the buttons SW1 and SW2 (see Parts).
 
 - `src/rp2350a.nsm`, `catalogs/rp2350a.csv`, `kicad.toml`: the MCU, U1 (see Parts).
@@ -53,8 +58,8 @@ are netsmith's** (MIT, like the rest of the repository).
 
 - `src/amphenol_10103594.nsm`, `src/jst_sm03b_srss_tb.nsm`, `src/samtec_tsw_118.nsm`,
   `catalogs/micro_usb.csv`, `catalogs/jst_srss.csv`, `catalogs/samtec_tsw_118.csv`,
-  `libs/netsmith_rp2350.pretty/`: the
-  connectors J1 to J4 (see Parts). The footprints are files of the project's own library and
+  `libs/rp2350_original.pretty/`: the
+  connectors J1 to J4 (see Parts). The footprints are Raspberry Pi's, files of the project's own library, and
   need no KiCad.
 - `LICENSE`: Raspberry Pi's licence text.
 - `reference/RPI-RP2350A-MINIMAL_R4-S1.kicad_pcb`: their board file, unchanged (1.6 MB).
@@ -72,12 +77,27 @@ are netsmith's** (MIT, like the rest of the repository).
 - `src/main.pcb.toml`: the layout file, with only a placer seed (see The physical file).
 - `case/base.step`, `case/lid.step`, `case/make_case.py`, `case/LICENSE`: a case of our own
   (MIT), which the physical file names, and the script that writes it (see The case).
-- `libs/rp2350_minimal.pretty/MountingHole_2.75mm_M2.5.kicad_mod` and its row in `kicad.toml`:
+- `libs/rp2350_original.pretty/none_mh_npth_fd2p75mm_sm3p15mm_ko6mm.kicad_mod` and its row in `kicad.toml`:
   the 2.75 mm non-plated hole with the 3.15 mm mask opening of Raspberry Pi's (the standard rows
   have only M2 and M3; the parity checker compares the pad's size).
 - `reference/parity-overlay.svg`: the picture of the parity check (see Parity).
 
 ## Parts
+
+**Every footprint is Raspberry Pi's own** (#728): the files of `libs/rp2350_original.pretty`
+are the footprints of their board, written out by `cargo run -p netsmith-tools --example
+footprint_from_board -- reference/RPI-RP2350A-MINIMAL_R4-S1.kicad_pcb <REF>
+libs/rp2350_original.pretty` with what the board adds taken off (place, identifiers, nets, 3D
+models). The rows of `kicad.toml` name them: a `[[part]]` row for each part of the project's
+own, and a `[[member]]` row for each part of a standard row (the capacitors, the resistors and
+the regulator), since a project may not map a kind and package that `std/kicad.toml` maps and
+their board draws two of the 0402 capacitors (C6, C7) on a wider land than the others. So the
+pads, the courtyards (which are the parts' bodies in their library: the pads stick out of them)
+and each footprint's frame are theirs, and the reproduction places every part as their board
+does. One change: their SOT-223 numbers the tab 4, and the copy numbers it 2, as the standard
+regulator's pin table does (U2 below). Where a bullet below says what a maker's document draws,
+it records what the project's earlier footprints were drawn from and how it compares with
+Raspberry Pi's pads.
 
 - **U1, `Rp2350A`** (`src/rp2350a.nsm`): Raspberry Pi's RP2350A in the QFN-60, 7 x 7 mm,
   0.4 mm pitch package: a pin table of 60 pads and the exposed pad (pad 61, the ground).
@@ -87,11 +107,12 @@ are netsmith's** (MIT, like the rest of the repository).
   tables, so only the facts (numbers, names, kinds) are taken. The datasheet's Table 1679 lists
   the IOVDD pads without pad 1 and with pad 54, which is QSPI_IOVDD; the figure and Raspberry
   Pi's board have IOVDD on pad 1, and the part follows them.
-- **Footprint** (`kicad.toml`): the generator's `QFN-60-1EP_7x7mm_P0.4mm_EP3.4x3.4mm`. Its body,
-  pitch and 3.4 x 3.4 mm exposed pad are those of the package drawing (page 1324); its lead
-  pads are 0.80 x 0.20 mm where Raspberry Pi's board has 0.70 x 0.23 mm, and its pads span
-  7.7 mm where the recommended footprint (page 1325) draws 7.75 mm (the generator is not
-  changed). The symbol is drawn from the pin table.
+- **Footprint** (`kicad.toml`): Raspberry Pi's `rpi_rp2350a_vias`: lead pads 0.70 x 0.23 mm,
+  the 3.4 x 3.4 mm exposed pad and nine plated vias in it, all pad 61. Its body, pitch and
+  exposed pad are those of the package drawing (page 1324); the recommended footprint (page
+  1325) draws 7.75 mm over the pads. The generator's `QFN-60-1EP_7x7mm_P0.4mm_EP3.4x3.4mm`,
+  which the project used before, has 0.80 x 0.20 mm leads. The symbol is drawn from the pin
+  table.
 - **Catalog row** (`catalogs/rp2350a.csv`): JLCPCB C42411118, Extended, with the page it was
   read from and the day. Price and stock are not recorded.
 - **U3, `W25Q128Jv`** (`src/flash.nsm`): Winbond's W25Q128JVSIQ, a 16 MB (128 Mbit) QSPI NOR
@@ -104,12 +125,11 @@ are netsmith's** (MIT, like the rest of the repository).
   for the package. The datasheet writes `/CS`, `/WP` and `/HOLD`; the table writes `CS#`, `WP#(IO2)`
   and `HOLD#/RESET#(IO3)`, the same signals. Levels, ratings and timing are left out, so the
   part is a boundary of the design.
-- **U3 footprint** (`kicad.toml`): no generator id is the 208-mil SOIC (the SOIC-8 of the
-  generators is the 3.9 mm one), so the row asks for the generator `SO` with the datasheet's
-  numbers (pitch 1.27 mm, body 5.3 x 5.3 mm, 7.7 to 8.1 mm over the leads, lead width 0.35 to
-  0.48 mm, lead length 0.50 to 0.80 mm). The datasheet draws no recommended land pattern. The
-  pads are at the centres of Raspberry Pi's (x = +-3.6 mm, 1.27 mm apart) and are 1.6 x 0.6 mm
-  where theirs are 1.7 x 0.65 mm.
+- **U3 footprint** (`kicad.toml`): Raspberry Pi's `generic_soic127p790x195-8`, pads 1.7 x
+  0.65 mm at x = +-3.6 mm, 1.27 mm apart. The datasheet draws no recommended land pattern; the
+  generator `SO` with the datasheet's numbers (pitch 1.27 mm, body 5.3 x 5.3 mm, 7.7 to 8.1 mm
+  over the leads, lead width 0.35 to 0.48 mm, lead length 0.50 to 0.80 mm), which the project
+  used before, puts 1.6 x 0.6 mm pads at the same centres.
 - **X1, `Abm8272T3`** (`src/crystal.nsm`): Abracon's ABM8-272-T3, 12 MHz, a 3.2 x 2.5 x 0.8 mm
   ceramic crystal with four pads: the crystal on pads 1 and 3, ground on 2 and 4. The standard
   `Crystal` has two terminals, so the project has its own part (all four pins `passive`; the pin
@@ -121,8 +141,10 @@ are netsmith's** (MIT, like the rest of the repository).
   stability +/- 30 ppm over -40 to +85 C (the catalog row has them added, +/- 60 ppm, as the
   standard crystal catalog does; aging, +/- 5 ppm in the first year, is not included), load
   capacitance 10 pF, equivalent series resistance 50 ohm at most.
-- **X1 footprint** (`kicad.toml`): the generator's `Crystal:Crystal_SMD_3225-4Pin_3.2x2.5mm`,
-  with pads 1.4 x 1.2 mm at +-1.1 mm and +-0.85 mm: Raspberry Pi's pads exactly. The drawing's
+- **X1 footprint** (`kicad.toml`): Raspberry Pi's `generic_xtalcc320x250x80-4`, with pads
+  1.4 x 1.2 mm at +-1.1 mm and +-0.85 mm, as the generator's
+  `Crystal:Crystal_SMD_3225-4Pin_3.2x2.5mm` that the project used before has them (its
+  courtyard is larger than their body-sized one). The drawing's
   terminals (0.9 x 0.8 mm, page 4) lie inside them; the extract of the datasheet that was
   read has no recommended land pattern. The pad numbers are the drawing's.
 - **Catalog rows** (`catalogs/w25q128jv.csv`, `catalogs/abm8_272_t3.csv`): JLCPCB C97521
@@ -145,8 +167,11 @@ are netsmith's** (MIT, like the rest of the repository).
 
 ### The connectors, J1 to J4
 
-Their pads must equal Raspberry Pi's, so the footprints are written pad for pad against the
-board's table (`reference/placements.toml`); a test compares number, centre (0.01 mm), size
+Since #728 the four are drawn with Raspberry Pi's own footprints (`libs/rp2350_original.pretty`,
+see Parts), whose pads are the ones described below and whose courtyards are theirs. What
+follows is how the project's earlier footprints were written from the makers' drawings, which
+agreed with Raspberry Pi's pads. Their pads must equal Raspberry Pi's, so the footprints were
+written pad for pad against the board's table (`reference/placements.toml`); a test compares number, centre (0.01 mm), size
 (0.05 mm), drill (0.01 mm), shape and kind for each of the four, and a fixture board builds with
 the parts and no KiCad install. The parts only say what a connector is; which signal is on
 which pin, and where each stands, is the board's. Origin and axes are those of Raspberry Pi's
@@ -387,7 +412,7 @@ y down, and the comment above each line says which of theirs it is.
 - **The mounting holes**: four `MountingHole { .package &= "M2.5" }` at their places. The
   standard rows have only M2 (2.2 mm) and M3 (3.2 mm), and theirs are non-plated 2.75 mm, so
   `kicad.toml` has a row for the package `M2.5` and the footprint is a file of the project's own
-  library (`libs/rp2350_minimal.pretty/MountingHole_2.75mm_M2.5.kicad_mod`).
+  library, theirs (`libs/rp2350_original.pretty/none_mh_npth_fd2p75mm_sm3p15mm_ko6mm.kicad_mod`).
 - **J1 to J4, SW1 and SW2**: `.place.x`, `.y`, `.rotation` and `.side` of `.usb`, `.header_low`,
   `.header_high`, `.debug`, `.bootsel` and `.reset`. A requirement is measured from the **body**
   of a part (the `F.Fab` outline, else the courtyard), and the checker compares the footprint's
@@ -506,30 +531,33 @@ net, and nothing more, and all 10 of its zones (VBUS, +3V3, +1V1, GND and VREG_L
 of them, and GND on B.Cu), each on its layer and net with its outline, holes, priority and
 settings: the routes file holds them, and the board file `fab` writes holds them as KiCad's zones,
 in place of the design's ground pour on B.Cu. The zones join their nets as their fill reaches, so
-the router draws nothing: VREG_LX, which their board joins by a zone alone, gets no track. The import places every part where their board has it, locked (the physical file pins the
-connectors and buttons at the same places); `regulator` (their U2) is turned by 90 degrees from
-their footprint, because netsmith's SOT-223 is drawn a quarter turn from theirs, so that its pads
-stand where theirs do.
+the router draws nothing: VREG_LX, which their board joins by a zone alone, gets no track. Every
+part is drawn with their footprint (see Parts), so the nine plated holes of the RP2350's exposed
+pad join it to the ground zone on B.Cu and `fab` leaves no connection; the import places every
+part where their board has it, as their board turns it, locked (the physical file pins the
+connectors and buttons at the same places). The test compares each footprint of the
+reproduction with theirs (`netsmith_tools::footprint_diff`: place, turn, face, every pad's
+number, centre, size, shape, drill, layers and net, and the courtyard, to 5 µm): all 47 parts are
+theirs but U2, whose tab is numbered 2 where theirs is numbered 4 (see Parts). No two courtyards
+overlap, and netsmith's design rules check finds no short, no clearance and no overlap.
 
 **What does not, and why:**
 
-- **The RP2350's exposed pad.** Their footprint puts nine plated holes in the chip's ground pad
-  (pad 61, through-hole), which join it to the ground zone on B.Cu; netsmith's footprint has
-  none, so `fab` leaves 1 connection on `GND` (`mcu`'s pad 61, U2.61) and writes the board marked
-  INCOMPLETE, and the design rules check calls the pad unconnected (a footprint difference, issue
-  #728).
 - **The fill.** `fab`'s Gerbers hold netsmith's fill of the zones, which keeps every clearance
   but removes no island and trims no sliver narrower than a zone's minimum width; KiCad's fill of
   the board file (the zones are written unfilled) removes them, as their board's does.
-- **Courtyards.** `core_inductor` overlaps `avdd_filter` and `usb_dm_series` (their L1, R3 and
-  R8), and `hole1` overlaps `v3v3_bulk[1]` (their MH1 and C19): the inductor's footprint is the
-  datasheet's land pattern, its courtyard 3.5 x 2.1 mm against their 2.2 x 1.8 mm, and the hole's
-  keepout circle is 6.3 mm against their 6 mm. Parts that both stand where an imported board has
-  them may share courtyard area: `fab` warns, and does not stop.
-- **Pads.** The inductor's pads are 2 mm apart where theirs are 1.4 mm, and the MCU's leads 0.80 x
-  0.20 mm where theirs are 0.70 x 0.23 mm; their copper still ends inside netsmith's pads.
+- **U2's tab** is numbered 2, not 4 (see Parts): the same copper on the same net.
+- **What their board breaks of JLCPCB's rules.** `fab`'s design rules check (with the process's
+  rules) finds two things on the reproduction, both on their board too, which the test measures
+  by running the check on their file: the nine vias in the RP2350's exposed pad are 0.6 mm pads
+  round 0.25 mm holes, a ring of 0.175 mm where JLCPCB asks 0.18 mm (`plated_ring`, 9), and three
+  bends of their +3V3 tracks are sharper than the 45 degrees netsmith allows (`track_angle`, 3).
+  The board is packaged with `--allow-drc-violations` and `fab-notes.txt` lists them. Because the
+  automatic board draws the RP2350 with their footprint too, its check finds the nine rings as
+  well.
 
-Netsmith's design rules check finds nothing else: no short and no clearance.
+Netsmith's design rules check finds nothing else: no short, no clearance and no courtyard
+overlap.
 
 ## The board
 
@@ -671,11 +699,13 @@ asks for the row with `.package &= "SOT-223"` (the standard row is a SOT-23 part
   has no catalog column; a board states `.quiescent_current &= 0mA..10mA`. The package height
   is left empty (the drawing is a picture).
 - Pinout (page 1): 1 Adjust/Ground, 2 Output, 3 Input, tab joined to pin 2. It is the std
-  table's (3 input, 1 ground, 2 output), so the std mapping to the generator's
-  `Package_TO_SOT_SMD:SOT-223-3_TabPin2` is used and `kicad.toml` has no row (a project may not
-  map a pair the standard mapping maps).
+  table's (3 input, 1 ground, 2 output). The part is drawn with Raspberry Pi's footprint
+  (`onsemi_ncp1117st33t3g`, a `[[member]]` row of `kicad.toml`, since a project may not map the
+  pair the standard mapping maps to the generator's `Package_TO_SOT_SMD:SOT-223-3_TabPin2`).
 - **Differs from Raspberry Pi's board:** their footprint numbers the tab pad 4 (net `+3V3`, the
-  output); the generator's numbers it 2, as the datasheet's pin 2. Same net, other number.
+  output); the copy numbers it 2, as the datasheet's pin 2 and the standard pin table do. Same
+  net, same copper, other number: the one difference between the reproduction's footprints and
+  theirs.
 
 ### L1: Abracon AOTA-B201610S3R3-101-T (LCSC C42411119)
 
@@ -691,16 +721,17 @@ no generator answers it and `std/kicad.toml` stops at 0805), a row of `catalogs/
 - **Assumed:** the tolerance. The table prints the code `M` and no percentage; the row says
   +/- 20%, which is what the code means. `temp_min` and `temp_max` are empty: the -40 to +125 degC
   of page 1 includes the part's own temperature rise.
-- Footprint `libs/rp2350_minimal.pretty/L_Abracon_AOTA-B201610S3R3-101-T.kicad_mod`, from page 4,
+- The project's earlier footprint (before #728, which draws L1 with Raspberry Pi's
+  `abracon_aota-b201610s3r3-101-t`), from page 4,
   "Recommended Land Pattern" (dimensions read from the picture at 400 dpi): **read** two pads of
   1.00 mm (across) by 1.60 mm, 1.00 mm between them. **Derived:** pad centres at +/-1.00 mm.
   **Assumed:** the numbering (pad 1 on the left, the convention of Raspberry Pi's board; the
   datasheet numbers no pad, and marks only the polarity dot of the winding), square-cornered
   rectangles, paste and mask openings the size of the pads, a courtyard of the pads and 0.25 mm,
   the 2.0 x 1.6 mm body on `F.Fab`, no silkscreen, no 3D model.
-- **Differs from Raspberry Pi's board:** their pads are 0.70 x 1.70 mm at +/-0.70 mm, pad 1 on
+- **Differed from Raspberry Pi's board:** their pads are 0.70 x 1.70 mm at +/-0.70 mm, pad 1 on
   `+1V1` and pad 2 on `/VREG_LX`. The pad numbers and nets agree with the part
-  (`.a` on pad 1, `.b` on pad 2); the land pattern is Abracon's, not theirs.
+  (`.a` on pad 1, `.b` on pad 2); the land pattern was Abracon's, and is now theirs.
 
 ### SW1, SW2: Wurth Elektronik 434133025816 (LCSC C5504987)
 
@@ -715,7 +746,8 @@ on one pad each, and a four-pad footprint is not a footprint of it. A row of
   pairs. Each pair is one pin of the part with two pads (`.a` on pads 1 and 2, `.b` on 3 and 4).
   Page 2: rated 50 mA and 16 V DC; operating temperature -40 to +85 degC (not said to be
   ambient). Page 1: height 2.5 +0.2/-0.1 mm, so `height` is 2.7 mm.
-- Footprint `libs/rp2350_minimal.pretty/SW_Wurth_434133025816.kicad_mod`, from page 1,
+- The project's earlier footprint (before #728, which draws SW1 and SW2 with Raspberry Pi's
+  `wurthelek_434133025816`), from page 1,
   "Recommended Land Pattern": **read** 5.2 mm over the pads and 3.1 mm between them across, 2.8 mm
   and 1.5 mm along, four pads. **Derived:** each pad is (5.2 - 3.1) / 2 = 1.05 mm by
   (2.8 - 1.5) / 2 = 0.65 mm, centred at +/-2.075 mm and +/-1.075 mm. **Assumed:** square corners,

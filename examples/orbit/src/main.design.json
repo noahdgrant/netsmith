@@ -3586,23 +3586,23 @@
               "field": "x",
               "lo": 37.0,
               "hi": 37.0,
-              "source": "src/main.physical.nsm:64"
+              "source": "src/main.physical.nsm:63"
             },
             {
               "field": "y",
-              "lo": 5.55,
-              "hi": 5.55,
-              "source": "src/main.physical.nsm:65"
+              "lo": 3.75,
+              "hi": 3.75,
+              "source": "src/main.physical.nsm:64"
             },
             {
               "field": "rotation",
               "lo": 0.0,
               "hi": 0.0,
-              "source": "src/main.physical.nsm:66"
+              "source": "src/main.physical.nsm:65"
             }
           ],
           "side": "top",
-          "side_source": "src/main.physical.nsm:67"
+          "side_source": "src/main.physical.nsm:66"
         },
         {
           "path": "boot_switch",
@@ -3610,8 +3610,8 @@
           "bounds": [
             {
               "field": "x",
-              "lo": 3.375,
-              "hi": 3.375,
+              "lo": 3.4,
+              "hi": 3.4,
               "source": "src/main.physical.nsm:85"
             },
             {
@@ -3638,23 +3638,23 @@
               "field": "x",
               "lo": 47.5,
               "hi": 47.5,
-              "source": "src/main.physical.nsm:76"
+              "source": "src/main.physical.nsm:75"
             },
             {
               "field": "y",
               "lo": 30.89,
               "hi": 30.89,
-              "source": "src/main.physical.nsm:77"
+              "source": "src/main.physical.nsm:76"
             },
             {
               "field": "rotation",
               "lo": 0.0,
               "hi": 0.0,
-              "source": "src/main.physical.nsm:78"
+              "source": "src/main.physical.nsm:77"
             }
           ],
           "side": "top",
-          "side_source": "src/main.physical.nsm:79"
+          "side_source": "src/main.physical.nsm:78"
         },
         {
           "path": "header_west",
@@ -3664,23 +3664,23 @@
               "field": "x",
               "lo": 2.5,
               "hi": 2.5,
-              "source": "src/main.physical.nsm:72"
+              "source": "src/main.physical.nsm:71"
             },
             {
               "field": "y",
               "lo": 30.89,
               "hi": 30.89,
-              "source": "src/main.physical.nsm:73"
+              "source": "src/main.physical.nsm:72"
             },
             {
               "field": "rotation",
               "lo": 0.0,
               "hi": 0.0,
-              "source": "src/main.physical.nsm:74"
+              "source": "src/main.physical.nsm:73"
             }
           ],
           "side": "top",
-          "side_source": "src/main.physical.nsm:75"
+          "side_source": "src/main.physical.nsm:74"
         },
         {
           "path": "hole1",
@@ -3768,8 +3768,8 @@
           "bounds": [
             {
               "field": "x",
-              "lo": 46.625,
-              "hi": 46.625,
+              "lo": 46.6,
+              "hi": 46.6,
               "source": "src/main.physical.nsm:89"
             },
             {
@@ -3822,23 +3822,23 @@
               "field": "x",
               "lo": 25.0,
               "hi": 25.0,
-              "source": "src/main.physical.nsm:56"
+              "source": "src/main.physical.nsm:55"
             },
             {
               "field": "y",
-              "lo": 5.05,
-              "hi": 5.05,
-              "source": "src/main.physical.nsm:57"
+              "lo": 5.0,
+              "hi": 5.0,
+              "source": "src/main.physical.nsm:56"
             },
             {
               "field": "rotation",
               "lo": 180.0,
               "hi": 180.0,
-              "source": "src/main.physical.nsm:58"
+              "source": "src/main.physical.nsm:57"
             }
           ],
           "side": "top",
-          "side_source": "src/main.physical.nsm:59"
+          "side_source": "src/main.physical.nsm:58"
         },
         {
           "path": "user_button",
@@ -3881,27 +3881,27 @@
         "src/main.physical.nsm:48": ".hole3.place.y &= 46mm",
         "src/main.physical.nsm:49": ".hole4.place.x &= 46mm",
         "src/main.physical.nsm:50": ".hole4.place.y &= 46mm",
-        "src/main.physical.nsm:56": ".usb.place.x &= 25mm",
-        "src/main.physical.nsm:57": ".usb.place.y &= 5.05mm",
-        "src/main.physical.nsm:58": ".usb.place.rotation &= 180",
-        "src/main.physical.nsm:59": ".usb.place.side &= \"top\"",
-        "src/main.physical.nsm:64": ".battery.place.x &= 37mm",
-        "src/main.physical.nsm:65": ".battery.place.y &= 5.55mm",
-        "src/main.physical.nsm:66": ".battery.place.rotation &= 0",
-        "src/main.physical.nsm:67": ".battery.place.side &= \"top\"",
-        "src/main.physical.nsm:72": ".header_west.place.x &= 2.5mm",
-        "src/main.physical.nsm:73": ".header_west.place.y &= 30.89mm",
-        "src/main.physical.nsm:74": ".header_west.place.rotation &= 0",
-        "src/main.physical.nsm:75": ".header_west.place.side &= \"top\"",
-        "src/main.physical.nsm:76": ".header_east.place.x &= 47.5mm",
-        "src/main.physical.nsm:77": ".header_east.place.y &= 30.89mm",
-        "src/main.physical.nsm:78": ".header_east.place.rotation &= 0",
-        "src/main.physical.nsm:79": ".header_east.place.side &= \"top\"",
-        "src/main.physical.nsm:85": ".boot_switch.place.x &= 3.375mm",
+        "src/main.physical.nsm:55": ".usb.place.x &= 25mm",
+        "src/main.physical.nsm:56": ".usb.place.y &= 5mm",
+        "src/main.physical.nsm:57": ".usb.place.rotation &= 180",
+        "src/main.physical.nsm:58": ".usb.place.side &= \"top\"",
+        "src/main.physical.nsm:63": ".battery.place.x &= 37mm",
+        "src/main.physical.nsm:64": ".battery.place.y &= 3.75mm",
+        "src/main.physical.nsm:65": ".battery.place.rotation &= 0",
+        "src/main.physical.nsm:66": ".battery.place.side &= \"top\"",
+        "src/main.physical.nsm:71": ".header_west.place.x &= 2.5mm",
+        "src/main.physical.nsm:72": ".header_west.place.y &= 30.89mm",
+        "src/main.physical.nsm:73": ".header_west.place.rotation &= 0",
+        "src/main.physical.nsm:74": ".header_west.place.side &= \"top\"",
+        "src/main.physical.nsm:75": ".header_east.place.x &= 47.5mm",
+        "src/main.physical.nsm:76": ".header_east.place.y &= 30.89mm",
+        "src/main.physical.nsm:77": ".header_east.place.rotation &= 0",
+        "src/main.physical.nsm:78": ".header_east.place.side &= \"top\"",
+        "src/main.physical.nsm:85": ".boot_switch.place.x &= 3.4mm",
         "src/main.physical.nsm:86": ".boot_switch.place.y &= 12.5mm",
         "src/main.physical.nsm:87": ".boot_switch.place.rotation &= 180",
         "src/main.physical.nsm:88": ".boot_switch.place.side &= \"top\"",
-        "src/main.physical.nsm:89": ".power_switch.place.x &= 46.625mm",
+        "src/main.physical.nsm:89": ".power_switch.place.x &= 46.6mm",
         "src/main.physical.nsm:90": ".power_switch.place.y &= 12.5mm",
         "src/main.physical.nsm:91": ".power_switch.place.rotation &= 0",
         "src/main.physical.nsm:92": ".power_switch.place.side &= \"top\"",

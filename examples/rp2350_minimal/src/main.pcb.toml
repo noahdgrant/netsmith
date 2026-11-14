@@ -5,6 +5,8 @@ version = 1
 # every other part (MCU, flash, crystal, regulator, inductor, resistors, capacitors), and a seed
 # is another arrangement of them. Seed 0 routes this board completely in 97 s and seed 3 in 35 s
 # (a debug build, an otherwise idle machine); seeds 1 and 4 leave two connections unrouted after
-# 120 s. No part is locked: the file records no position.
+# 120 s. These figures are from before the parts were drawn with Raspberry Pi's footprints
+# (#728): seed 3 now leaves one connection after 300 s, seed 1 three after 200 s, and seed 0
+# was not finished. No part is locked: the file records no position.
 [Rp2350Minimal]
 seed = 3

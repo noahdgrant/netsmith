@@ -35,5 +35,6 @@ fn power_manifold_pcb_matches_the_original_where_it_can() {
                      --table reference/placements.toml --svg \
                      reference/parity-overlay.svg",
         known_failures: &["outline corner radius", "outline elements"],
+        waive_drc: None,
     });
 }
