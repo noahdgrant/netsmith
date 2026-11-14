@@ -40,9 +40,10 @@
 //! What the circuit implies is derived by the placer (tier 1), and a datasheet's fact about a
 //! part belongs in the part with its source (tier 2, the `layout` block, not built). A
 //! requirement the case states goes to the physical file (ADR 0048), not here. Waivers,
-//! overrides of a constraint, per-module seeds and a routes cache (`<stem>.routes.toml`, one
-//! record per net with its segments, vias and a hash of its pad positions) were sketched in
-//! ADR 0030 and are not read: an unknown key is an error. `place_subset` (in `place.rs`) is what regenerating one module
+//! overrides of a constraint and per-module seeds were sketched in ADR 0030 and are not read:
+//! an unknown key is an error. The routes ADR 0030 sketched are a file of their own beside this
+//! one, the routes file `<stem>.routes.toml` ([`crate::Routes`], issue #599), which whatever
+//! reads this file reads too. `place_subset` (in `place.rs`) is what regenerating one module
 //! would use.
 //!
 //! [`apply_layout`] is the one place a layout reaches a board. A part with no entry stays

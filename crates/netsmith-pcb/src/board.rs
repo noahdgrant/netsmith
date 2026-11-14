@@ -206,6 +206,32 @@ pub struct Board {
     /// The parts whose place the design's requirements pin, by reference designator (ADR
     /// 0045): the placer did not move them, whatever its seed.
     pub pinned: std::collections::BTreeSet<String>,
+    /// The copper a routes file fixed (ADR 0030, [`crate::routes`]): the router keeps it as it
+    /// is and adds none to a locked net. Empty for a board with no routes file.
+    #[serde(default, skip_serializing_if = "FixedCopper::is_empty")]
+    pub fixed: FixedCopper,
+}
+
+/// The copper of a board that a routes file fixed ([`crate::routes`]): the first `tracks` of
+/// [`Board::tracks`] and the first `vias` of [`Board::vias`], which the router and every pass
+/// after it leave exactly as they are, and the nets whose copper is the file's alone (`lock =
+/// true`), to which the router adds nothing.
+#[derive(Debug, Clone, Default, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct FixedCopper {
+    pub tracks: usize,
+    pub vias: usize,
+    pub locked: std::collections::BTreeSet<String>,
+}
+
+impl FixedCopper {
+    pub fn is_empty(&self) -> bool {
+        self.tracks == 0 && self.vias == 0 && self.locked.is_empty()
+    }
+
+    /// Whether the router may add copper to `net`.
+    pub fn is_locked(&self, net: &str) -> bool {
+        self.locked.contains(net)
+    }
 }
 
 /// The gap between two boxes, zero if they touch or overlap.

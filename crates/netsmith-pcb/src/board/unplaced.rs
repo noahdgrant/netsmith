@@ -103,6 +103,7 @@ impl Unplaced {
             net_currents: design.features.net_currents.clone(),
             overhang,
             pinned,
+            fixed: FixedCopper::default(),
         }
     }
 }

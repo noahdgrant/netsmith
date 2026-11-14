@@ -9640,6 +9640,43 @@ at = [18.0, 2.0]
 
 Parts are keyed by their path in the design, which a renumbered reference designator does not change. A member of a group is keyed by its path with the index, quoted as TOML needs: `[Board.parts."decoupling[2]"]`. A part with no entry is placed by the placer (ADR 0033): it derives a placement from the circuit alone, keeping the parts of a module together, a decoupling capacitor next to the power pins it bridges, connectors at the edges and wire short, and places them round the parts the file places. The same circuit, file and `seed` always give the same board; another `seed` gives another arrangement. When the file's seed (0 if it states none) does not place the board, the placer tries the seeds after it (the file's seed plus 1, plus 2 and so on), up to `place_seeds` in `netsmith.toml` in all (8 by default): a seed places the board when the parts fit the outline, the placement check finds no fault that another seed could move (one that names no part the file places, and names a part no requirement pins) and, with no layout file, every requirement of the physical file is met. `fab` says which seed placed the board (`placed on a 101.2 by 24 mm board with seed 15`); when it is not the file's, it says what blocked each seed tried, calls the file's seed stale if the file states one, and writes the new seed to the file. With `--locked` it writes nothing and stops with an error, as for a pick lock; an order (`fab --order`) and the editor's release are releases, which never change a choice by themselves, so a seed that would change stops them with the seed to write by running `fab`. `board3d` and the editor's PCB view use the seed they find and write nothing. When no seed places the board, `fab` stops with the closest try (the fewest faults, then the least area and distance; the earlier seed on a tie) and what blocks it, each member by its path with the designator beside it, and by how much: `no seed places the board: the placer tried 8 seeds, 3 to 10 (...), and the closest is seed 7, where this blocks it:` then `` the courtyards of `usb` (J2) and `vbus_2u2` (C37) overlap by 0.04 mm2 ``. A build puts every part that has an entry where the file says; the placer places the others round the parts that are locked (`lock = true`) and does not react to the others, so moving a part by hand moves nothing else. `place_subset` places some parts and leaves the rest, but no command asks for it yet. An entry for a part, keepout or cutout that the board does not have, or a table for a board the file does not have, is an error that names it and lists what exists. A keepout or cutout that states `.x` and `.y` in the physical file and has an entry as well is an error: a thing has one place. `side = "bottom"` puts a part on the back. `examples/outline_and_pours.nsm`, its physical file `examples/outline_and_pours.physical.nsm` and `examples/outline_and_pours.pcb.toml` use all of this.
 
+### The routes file
+
+Copper that a person, an agent or an import decided is in `<stem>.routes.toml` beside the source file and its layout file: `board.nsm` has `board.routes.toml` (issue #599; ADR 0030 sketched it). The file is optional: with none, every board is routed as before, byte for byte. Whatever reads the layout file reads it too: `fab`, the editor's PCB view, and `netsmith route` through the placed board `fab --save-placed` saves. It is written by `netsmith routes` (below), never by `fab`, and committed with the source.
+
+```toml
+version = 1
+
+# One record for each net of a board, keyed by the board's name and the net's name.
+[LedExample.nets.VCC]
+pads = "273e3844dab94584"   # a hash of the net's pads when the record was written
+lock = true                 # the router adds no copper to this net
+tracks = [
+  { layer = "top", width = 0.15, from = [5.25, 2.8], to = [8.6, 2.8] },
+  { layer = "top", width = 0.15, from = [8.6, 2.8], mid = [9.1, 3.0], to = [9.3, 3.5] },
+  { layer = "bottom", width = 0.4, from = [2.0, 5.0], to = [6.0, 5.0], lock = true },
+]
+vias = [
+  { at = [6.0, 5.0], diameter = 0.45, drill = 0.2 },
+]
+```
+
+Places are in mm from the outline's top left corner, y down, as in the layout file, and are written to 0.000001 mm, a KiCad file's precision. A track is straight from `from` to `to`, or an arc through `mid`; `layer` is `top` or `bottom` (tracks are drawn on the outer layers only, as the router's are); `width`, `diameter` and `drill` are in mm. Each shape is on a line of its own, so a change to one shape is a change to one line. An unknown key, another `version`, a shape that is wrong in itself (a width of zero, a drill as wide as its via) or a table for a board the source does not have is an error that names the file.
+
+`fab` puts every shape of a record on the placed board before the router runs. The router keeps it as copper of its net, never moves or removes it, and routes only the connections it leaves: a track that ends on another track's middle, two tracks that cross and a via on a track count as joined. The passes after the router (meanders, rounded bends, parallel vias, stitching, teardrops) leave it as it is, and the design rules check checks it with the rest of the copper. In the board files it comes first: a board drawn from a routes file has the copper of the board it was imported from in another order, so compare two boards' copper as sets.
+
+`lock = true` on a net says its copper is the file's alone: the router adds no track, via or teardrop to it, and the ratsnest counts the board's outer pours of the net as joining what of the net they touch, as the design rules check does. A connection a locked net still lacks is left unrouted, and `fab` says so as it says any connection left. `lock = true` on a shape keeps the shape when its record no longer matches the board, and `netsmith routes delete` refuses it.
+
+A record that no longer matches the board is said, never used silently. `pads` is a hash of the net's pads: each pad's part by its path in the design (a renumbered reference designator does not change it), its number, its centre to 1 µm and its copper layers. When a pad of the net moved, or one joined or left it, `fab` warns, drops the record's unlocked shapes and routes the net again for that run (the net's lock does not hold); its locked shapes are kept. A record for a net the board does not have (a net renamed, say) is a warning and is drawn not at all. `netsmith routes lock` writes a record again with the pads as they are, and `netsmith routes delete` removes it.
+
+`netsmith routes` keeps the file (`netsmith routes --help` has every flag):
+
+- `import BOARD.kicad_pcb` writes the file from a KiCad board, and the layout file's places of the parts it has (locked, `source = "import"`; not those the physical file pins, and none with `--no-places`). A KiCad net is the design's net that most of its pads are on, the parts paired by the port's parts file (`reference/parts.toml` of the project, or `--parts`) or else by reference designator, as the parity checker pairs them. It takes every track, arc and through via of the outer layers, locks every net (`--unlocked` does not), and says what it leaves out: copper on an inner layer, a via that is not a through via, copper of a net on no pad of the design. Zones and teardrops are not imported: the board's pours are the design's own, and `fab` draws its teardrops.
+- `add-track` and `add-via` add a shape to a net, and `delete`, `lock` and `unlock` act on a net's record or on one of its shapes (`--track N`, `--via N`, numbered from 1 as `show` lists them). An added shape, or a record that `lock` writes again, is refused when it brings an error of the design rules check that the board did not have (a short, a crossing, a clearance), and the file is left as it was; an end that touches nothing yet is not refused, because a route is drawn one shape at a time (`fab`'s check still finds one left so). A locked net or shape is not deleted until it is unlocked.
+- `show` prints each record with its shapes numbered, what of the file is not used, and the connections the router would still route.
+
+Each command builds and places the board as `fab` does, and routes nothing. It exits 0 when it did what it was asked, 1 when it refused, and 2 when it could not run.
+
 ### The pick lock
 
 Which catalog row a part was picked as is the solver's choice: the first row, in catalog order, that fits and passes every relation. A change to a catalog, to the order of its rows or to the solver can move a pick without a change to the source. `<stem>.lock.toml` beside the source file (`board.nsm` has `board.lock.toml`) keeps the choice: `build` and `fab` write it when it does not exist, and commit it as you commit `Cargo.lock`.

@@ -11,11 +11,18 @@ impl<'a> Router<'a> {
             .enumerate()
             .map(|(i, n)| (n.name.as_str(), i))
             .collect();
+        // A net a routes file locks gets no copper (`netsmith_pcb::Routes`).
+        let open = |l: &Ratline| !board.fixed.is_locked(&l.net);
         let mut lines = crate::decouple::lines(board, Ratsnest::of(board).lines);
+        lines.retain(open);
         // The lines of the ratsnest, then the decoupling capacitors' vias to the pours, which
         // are routed after a complete try only ([`Router::to_the_pours`]).
         let routed_lines = lines.len();
-        lines.extend(crate::decouple::return_lines(board));
+        lines.extend(
+            crate::decouple::return_lines(board)
+                .into_iter()
+                .filter(open),
+        );
         let nets = lines.iter().map(|l| net_index[l.net.as_str()]).collect();
         let ends = lines
             .iter()
@@ -62,7 +69,8 @@ impl<'a> Router<'a> {
             })
             .collect();
         let class = classes(board, &lines, &depth);
-        let fixed = initial_obstacles(board);
+        let mut fixed = initial_obstacles(board);
+        fixed_copper(board, &net_index, &mut fixed);
         let mut fixed_by_net = vec![Vec::new(); board.nets.len()];
         for (k, o) in fixed.list.iter().enumerate() {
             if let Some(n) = o.net {

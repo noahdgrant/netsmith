@@ -125,8 +125,9 @@ pub fn add(board: &mut Board) -> Vec<Matched> {
     for (p, n) in pairs(board) {
         let (lp, ln) = (length(board, &p), length(board, &n));
         let before = (lp - ln).abs();
-        if before > SKEW_TARGET {
-            let (short, other) = if lp < ln { (&p, &n) } else { (&n, &p) };
+        let (short, other) = if lp < ln { (&p, &n) } else { (&n, &p) };
+        // A net a routes file locks gets no copper (`netsmith_pcb::Routes`).
+        if before > SKEW_TARGET && !board.fixed.is_locked(short) {
             lengthen(board, short, other, before);
         }
         let after = (length(board, &p) - length(board, &n)).abs();
@@ -159,7 +160,8 @@ fn lengthen(board: &mut Board, net: &str, partner: &str, want: f64) {
     let rules = DrcRules::from_project(&netsmith_pcb::kicad_pro(board)).unwrap_or_default();
     let extras = crate::teardrop::extras(board);
     let room = Room::new(&art, &rules, &extras);
-    let mut runs: Vec<usize> = (0..board.tracks.len())
+    // The copper a routes file fixed (the first tracks) is never changed.
+    let mut runs: Vec<usize> = (board.fixed.tracks..board.tracks.len())
         .filter(|&i| board.tracks[i].net == net && board.tracks[i].mid.is_none())
         .collect();
     runs.sort_by(|&a, &b| {

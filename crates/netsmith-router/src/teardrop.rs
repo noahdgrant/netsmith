@@ -42,6 +42,8 @@ pub fn add(board: &mut Board) {
     let rules = DrcRules::from_project(&netsmith_pcb::kicad_pro(board)).unwrap_or_default();
     board.teardrops = teardrops(&art, &rules, &extras(board))
         .into_iter()
+        // A net a routes file locks gets no copper (`netsmith_pcb::Routes`).
+        .filter(|t| !board.fixed.is_locked(&t.net))
         .filter_map(|t| {
             let layer = match t.layer.as_str() {
                 "F.Cu" => CopperLayer::Front,

@@ -51,6 +51,7 @@ mod polygon;
 mod protrusion;
 mod quality;
 mod ratsnest;
+mod routes;
 mod rules;
 mod shape;
 mod stackup;
@@ -59,8 +60,8 @@ mod svg;
 mod validate;
 
 pub use board::{
-    Board, BoardCutout, BoardError, BoardKeepout, BoardNet, BoardPour, CopperLayer, Hang,
-    HeightUnchecked, HoleNeighbour, KeepoutArea, Loaded as LoadedBoard, PadRef, Placed,
+    Board, BoardCutout, BoardError, BoardKeepout, BoardNet, BoardPour, CopperLayer, FixedCopper,
+    Hang, HeightUnchecked, HoleNeighbour, KeepoutArea, Loaded as LoadedBoard, PadRef, Placed,
     PlacementProblem, Plane, ReferenceSide, Side, StandardPass, Teardrop, Track, Trim, Unplaced,
     Via, member as board_member, outline_box, rect_distance,
 };
@@ -106,6 +107,10 @@ pub use quality::{
     segments_cross,
 };
 pub use ratsnest::{Node as RatNode, Ratline, Ratsnest, nodes_of as ratsnest_nodes_of};
+pub use routes::{
+    BoardRoutes, NetRoutes, RouteTrack, RouteVia, Routes, RoutesError, RoutesNote,
+    VERSION as ROUTES_VERSION, apply_routes, pad_hash, record_of, routes_path,
+};
 pub use rules::Rules;
 pub use shape::{Edge as ShapeEdge, RoundRect};
 pub use stackup::{

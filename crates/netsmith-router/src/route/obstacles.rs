@@ -144,3 +144,41 @@ pub(crate) fn initial_obstacles(board: &Board) -> Obstacles {
     }
     Obstacles { list, via_keepouts }
 }
+
+/// The copper on the board before the router starts, which a routes file fixed
+/// (`netsmith_pcb::Routes`): obstacles of their nets, as the router's own copper is
+/// ([`Router::copper_of`]), that no rip-up removes. An arc is its chords, kept
+/// [`netsmith_geom::ARC_ERROR`] wider.
+pub(crate) fn fixed_copper(board: &Board, net_index: &HashMap<&str, usize>, fixed: &mut Obstacles) {
+    let clearance = board.rules.clearance + MARGIN;
+    for t in &board.tracks {
+        let net = net_index.get(t.net.as_str()).copied();
+        let half = t.width / 2.0
+            + if t.mid.is_some() {
+                netsmith_geom::ARC_ERROR
+            } else {
+                0.0
+            };
+        for w in t.centre_line().windows(2) {
+            fixed.list.push(Obstacle {
+                net,
+                layers: [t.layer == CopperLayer::Front, t.layer == CopperLayer::Back],
+                form: Form::Segment(w[0], w[1], half),
+                clearance,
+            });
+        }
+    }
+    for v in &board.vias {
+        fixed.list.push(Obstacle {
+            net: net_index.get(v.net.as_str()).copied(),
+            layers: [true, true],
+            form: Form::Circle(v.at, v.diameter / 2.0),
+            clearance,
+        });
+        // Another via's hole keeps its distance, whatever the net.
+        fixed.via_keepouts.push((
+            Form::Circle(v.at, 0.0),
+            board.rules.via_hole_to_hole + v.drill / 2.0 + board.rules.via_drill / 2.0 + MARGIN,
+        ));
+    }
+}

@@ -215,6 +215,10 @@ _Avoid_: Text, annotation, legend
 `<stem>.pcb.toml` beside a source file: where parts (keyed by their path in the design), keepouts and cutouts are, when the source does not say, with rotation, side and a lock. Optional, written by an editor or a placer, never by the language (ADR 0032). It holds the solution; a requirement is in the physical file (_Placement requirement_, _Physical_).
 _Avoid_: Sidecar (the word for what it is, not its name), placement file (that is the pick-and-place file for the board house). The schematic has its own, the _Schematic layout file_.
 
+**Routes file**:
+`<stem>.routes.toml` beside a source file and its _Layout file_: copper a person, an agent or an import fixed, one record for each net of a board with its tracks (straight or arcs, on the outer layers), its vias, a hash of its pads and a lock (issue #599; the format ADR 0030 sketched). `fab`, the editor's PCB view and `netsmith route` draw it on the placed board before the router, which keeps it and routes only what it leaves; a locked net gets no copper from the router. A record whose pads moved, or for a net the board does not have, is a warning and is not drawn (its locked shapes aside). Optional: with none, every board is routed as before. Written by `netsmith routes` (`import`, `add-track`, `add-via`, `delete`, `lock`, `unlock`), never by `fab`.
+_Avoid_: routes cache (ADR 0030's sketch: the file holds decisions, not a cache), fixed routes file, track file
+
 **Hand pick**:
 A narrowing of a part's `.lcsc` or `.mpn` in the source (`.c1.lcsc &= "C307331"`), members every part has: the part is held to the catalog row with that number, before the _Pick lock_, and the row is judged by everything the design says; a row that fails, or a number no row has, stops the run at the narrowing (ADR 0122). The lock then records the row.
 _Avoid_: picks file (`<stem>.picks.toml`, which held them once and is now refused), override, pinned (a _Pin_ is a part's lead)

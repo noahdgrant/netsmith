@@ -8,8 +8,18 @@
 //! need no lines between them. A through-hole pad and a via of the net reach the plane
 //! where they stand; any other pad needs a via to it, and has a line to the plane until
 //! one is dropped.
+//!
+//! Copper joins where it touches: a track's end on a pad, two tracks of one layer whose copper
+//! meets (end to end, or an end on the other's middle, as a hand-routed board has them), and a
+//! via on a pad or on a track. A net a routes file locks ([`crate::routes`]) is joined by its
+//! pours on the outer layers too: the router adds nothing to it, so the pour is how its pads
+//! meet, and a pour joins the pads, tracks and vias of its net on its layer, as the design rules
+//! check takes it (its fill is not computed). Other nets are not: the router routes them to
+//! every pad as before.
 
-use crate::board::{Board, BoardNet, CopperLayer, PadRef, Placed, Plane, Track, Via};
+use crate::board::{
+    Board, BoardNet, BoardPour, CopperLayer, FixedCopper, PadRef, Placed, Plane, Track, Via,
+};
 use crate::geometry::{Pt, Rect};
 
 /// Copper this close to a pad, or to other copper, touches it.
@@ -116,6 +126,27 @@ fn near(a: Pt, b: Pt) -> bool {
     a.distance(b) < TOUCH
 }
 
+/// Whether the copper of two tracks of one layer meets: an end of one lies on the other's
+/// copper (a track that ends on another's middle), or their centre lines cross.
+fn tracks_touch(a: &Track, b: &Track) -> bool {
+    let reach = (a.width + b.width) / 2.0 + TOUCH;
+    let ends_on = |x: &Track, y: &Track| [x.from, x.to].iter().any(|&e| y.distance_to(e) <= reach);
+    if ends_on(a, b) || ends_on(b, a) {
+        return true;
+    }
+    let (pa, pb) = (a.centre_line(), b.centre_line());
+    pa.windows(2)
+        .any(|p| pb.windows(2).any(|q| crosses(p[0], p[1], q[0], q[1])))
+}
+
+/// Whether segment `a`-`b` crosses segment `c`-`d` (their insides meet at one point).
+fn crosses(a: Pt, b: Pt, c: Pt, d: Pt) -> bool {
+    let side = |p: Pt, q: Pt, r: Pt| (q.x - p.x) * (r.y - p.y) - (q.y - p.y) * (r.x - p.x);
+    let (d1, d2) = (side(a, b, c), side(a, b, d));
+    let (d3, d4) = (side(c, d, a), side(c, d, b));
+    d1 * d2 < 0.0 && d3 * d4 < 0.0
+}
+
 fn on_pad(node: &Node, at: Pt, layer: Option<CopperLayer>) -> bool {
     let on_layer = match layer {
         Some(CopperLayer::Front) => node.front,
@@ -131,18 +162,20 @@ impl Ratsnest {
         Self::from_parts(
             &board.parts,
             &board.nets,
-            &board.planes,
+            (&board.planes, &board.pours),
             &board.tracks,
             &board.vias,
+            &board.fixed,
         )
     }
 
     pub(crate) fn from_parts(
         parts: &[Placed],
         nets: &[BoardNet],
-        planes: &[Plane],
+        (planes, pours): (&[Plane], &[BoardPour]),
         tracks: &[Track],
         vias: &[Via],
+        fixed: &FixedCopper,
     ) -> Ratsnest {
         let mut lines = Vec::new();
         for net in nets {
@@ -150,7 +183,19 @@ impl Ratsnest {
             let tracks: Vec<&Track> = tracks.iter().filter(|t| t.net == net.name).collect();
             let vias: Vec<&Via> = vias.iter().filter(|v| v.net == net.name).collect();
             let plane = planes.iter().any(|p| p.net == net.name);
-            lines.extend(spanning_tree(&net.name, &nodes, &tracks, &vias, plane));
+            // A locked net's pours join it (the module's header).
+            let poured: Vec<CopperLayer> = if fixed.is_locked(&net.name) {
+                pours
+                    .iter()
+                    .filter(|p| p.net == net.name)
+                    .map(|p| p.layer)
+                    .collect()
+            } else {
+                Vec::new()
+            };
+            lines.extend(spanning_tree(
+                &net.name, &nodes, &tracks, &vias, plane, &poured,
+            ));
         }
         Ratsnest { lines }
     }
@@ -180,11 +225,14 @@ fn spanning_tree(
     tracks: &[&Track],
     vias: &[&Via],
     plane: bool,
+    poured: &[CopperLayer],
 ) -> Vec<Ratline> {
     let (n, t) = (nodes.len(), tracks.len());
-    // Items 0..n are pads, then tracks, then vias, then the net's plane.
+    // Items 0..n are pads, then tracks, then vias, then the net's plane, then its pours on the
+    // front and the back.
     let plane_item = n + t + vias.len();
-    let mut sets = Sets::new(plane_item + 1);
+    let pour_item = |layer: CopperLayer| plane_item + 1 + usize::from(layer == CopperLayer::Back);
+    let mut sets = Sets::new(plane_item + 3);
     for (ti, track) in tracks.iter().enumerate() {
         for (ni, node) in nodes.iter().enumerate() {
             let touches = [track.from, track.to]
@@ -196,12 +244,16 @@ fn spanning_tree(
         }
         for (tj, other) in tracks.iter().enumerate().skip(ti + 1) {
             let meet = track.layer == other.layer
-                && [track.from, track.to]
+                && ([track.from, track.to]
                     .iter()
-                    .any(|&a| [other.from, other.to].iter().any(|&b| near(a, b)));
+                    .any(|&a| [other.from, other.to].iter().any(|&b| near(a, b)))
+                    || tracks_touch(track, other));
             if meet {
                 sets.join(n + ti, n + tj);
             }
+        }
+        if poured.contains(&track.layer) {
+            sets.join(n + ti, pour_item(track.layer));
         }
     }
     for (vi, via) in vias.iter().enumerate() {
@@ -211,8 +263,25 @@ fn spanning_tree(
             }
         }
         for (ti, track) in tracks.iter().enumerate() {
-            if near(via.at, track.from) || near(via.at, track.to) {
+            if near(via.at, track.from)
+                || near(via.at, track.to)
+                || track.distance_to(via.at) <= (track.width + via.diameter) / 2.0 + TOUCH
+            {
                 sets.join(n + t + vi, n + ti);
+            }
+        }
+        for &layer in poured {
+            sets.join(n + t + vi, pour_item(layer));
+        }
+    }
+    for (ni, node) in nodes.iter().enumerate() {
+        for &layer in poured {
+            let on = match layer {
+                CopperLayer::Front => node.front,
+                CopperLayer::Back => node.back,
+            };
+            if on {
+                sets.join(ni, pour_item(layer));
             }
         }
     }
@@ -588,5 +657,49 @@ mod tests {
     fn the_ratsnest_is_the_same_every_time() {
         let board = crate::board::tests::led_board();
         assert_eq!(Ratsnest::of(&board), Ratsnest::of(&board));
+    }
+
+    /// The two pads' centres of the LED board's net `net`.
+    fn pad_centres(board: &Board, net: &str) -> (Pt, Pt) {
+        let n = board.nets.iter().find(|n| n.name == net).unwrap();
+        let nodes = nodes_of(&board.parts, n);
+        (nodes[0].centre, nodes[1].centre)
+    }
+
+    #[test]
+    fn a_track_that_ends_on_the_middle_of_another_joins_it() {
+        let mut board = crate::board::tests::led_board();
+        let (a, b) = pad_centres(&board, "VCC");
+        // From the first pad to a point beyond the second, off it, and from the second pad to
+        // the middle of that track.
+        let off = Pt::new(b.x, b.y + 3.0);
+        board
+            .tracks
+            .push(Track::straight("VCC", CopperLayer::Front, a, off, 0.2));
+        let middle = Pt::new((a.x + off.x) / 2.0, (a.y + off.y) / 2.0);
+        board
+            .tracks
+            .push(Track::straight("VCC", CopperLayer::Front, b, middle, 0.2));
+        assert!(Ratsnest::of(&board).lines.iter().all(|l| l.net != "VCC"));
+        // On the other layer it does not.
+        board.tracks[1].layer = CopperLayer::Back;
+        assert!(Ratsnest::of(&board).lines.iter().any(|l| l.net == "VCC"));
+    }
+
+    #[test]
+    fn a_locked_nets_pour_joins_its_pads_on_the_pours_layer() {
+        let mut board = crate::board::tests::led_board();
+        board.pours.push(BoardPour {
+            layer: CopperLayer::Front,
+            net: "GND".into(),
+            stitch_pitch: None,
+        });
+        // Not locked: the router routes it, as before.
+        assert!(Ratsnest::of(&board).lines.iter().any(|l| l.net == "GND"));
+        board.fixed.locked.insert("GND".into());
+        assert!(Ratsnest::of(&board).lines.iter().all(|l| l.net != "GND"));
+        // A pour on the back does not reach the pads on the front.
+        board.pours[0].layer = CopperLayer::Back;
+        assert!(Ratsnest::of(&board).lines.iter().any(|l| l.net == "GND"));
     }
 }
