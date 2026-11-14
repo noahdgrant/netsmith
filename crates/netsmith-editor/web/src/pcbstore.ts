@@ -4,9 +4,10 @@
 
 import { signal } from '@preact/signals';
 
-import type { PcbChange, PcbFindings, PcbScene, RoutesChange } from './api';
+import type { PcbChange, PcbFindings, PcbRoutesEdited, PcbScene, RoutesChange } from './api';
 import { ApiFailure, api } from './client';
-import { type History, NO_HISTORY, type Step, record, redoing, undoing } from './pcb/edits';
+import { type History, NO_HISTORY, type Run, type Step, record, redoing, undoing } from './pcb/edits';
+import { labelOf } from './pcb/routes';
 import { type Selection, partSel, sameSelection, selection as shared, setSelection } from './selection';
 import { beginJob, endJob, pcbReports, say } from './store';
 
@@ -25,8 +26,11 @@ export interface RoutePick {
   via?: number;
 }
 export const pickedRoute = signal<RoutePick | null>(null);
-export type Tool = 'select' | 'keepout';
+/** Select (and drag), draw a keepout, draw a track, or place a via. */
+export type Tool = 'select' | 'keepout' | 'track' | 'via';
 export const tool = signal<Tool>('select');
+/** The layer a track is drawn on: the outer layers only, as the routes file has them. */
+export const trackLayer = signal<'top' | 'bottom'>('top');
 export const history = signal<History>(NO_HISTORY);
 /** What is wrong with the board as it is now, and the finding picked in the list. */
 export const findings = signal<PcbFindings | null>(null);
@@ -166,32 +170,46 @@ async function send(changes: PcbChange[]): Promise<boolean> {
   }
 }
 
-/** Make a change to the routes file (delete, lock, unlock), as `netsmith routes` makes it. The server
- * places the board again from the file, unrouted, and says what it did; a refusal says why and
- * changes nothing. Not a step of undo yet. True if it was written. */
-export function changeRoutes(change: RoutesChange): Promise<boolean> {
-  return enqueue(async () => {
-    const current = scene.value;
-    if (!current) return false;
-    try {
-      const answer = await api.pcbRoutes({ board: current.board, stamp: current.routesStamp, change });
-      show(answer.scene);
-      // The routed copper is gone: what the last route said no longer holds.
-      const { [current.board]: _gone, ...rest } = pcbReports.value;
-      pcbReports.value = rest;
-      say(answer.said);
-      return true;
-    } catch (e) {
-      say(e instanceof Error ? e.message : String(e), true);
-      if (e instanceof ApiFailure && e.status === 409) {
-        try {
-          show(await api.pcbScene(current.board));
-        } catch {
-          // The next load says why.
-        }
+/** Send one edit of the routes file. Its answer, or null when it was refused (the toast says why). */
+async function sendRoutes(changes: RoutesChange[]): Promise<PcbRoutesEdited | null> {
+  const current = scene.value;
+  if (!current) return null;
+  try {
+    const answer = await api.pcbRoutes({ board: current.board, stamp: current.routesStamp, changes });
+    show(answer.scene);
+    // The routed copper is gone: what the last route said no longer holds.
+    const { [current.board]: _gone, ...rest } = pcbReports.value;
+    pcbReports.value = rest;
+    return answer;
+  } catch (e) {
+    say(e instanceof Error ? e.message : String(e), true);
+    if (e instanceof ApiFailure && e.status === 409) {
+      // The routes file changed on disk. Its steps of undo stay: each puts a record back only if
+      // the file still has it as the step left it, and is refused with the reason if not.
+      try {
+        show(await api.pcbScene(current.board));
+      } catch {
+        // The next load says why.
       }
-      return false;
     }
+    return null;
+  }
+}
+
+/** Make one edit of the routes file (its changes are of one net: a track drawn, a via placed, a drag,
+ * a delete, a lock), as `netsmith routes` makes it. The server places the board again from the file,
+ * unrouted, and says what it did; a refusal says why and changes nothing. It is one step of undo,
+ * which puts the net's record back as it was. True if it was written. */
+export function changeRoutes(changes: RoutesChange[]): Promise<boolean> {
+  if (changes.length === 0) return Promise.resolve(false);
+  return enqueue(async () => {
+    const answer = await sendRoutes(changes);
+    if (!answer) return false;
+    say(answer.said);
+    if (answer.undo.before !== answer.undo.after) {
+      history.value = record(history.value, { label: labelOf(changes), routes: answer.undo });
+    }
+    return true;
   });
 }
 
@@ -208,11 +226,16 @@ export function commit(changes: PcbChange[], label: string): Promise<boolean> {
   });
 }
 
+/** Undo or redo a step: changes to the layout file, or a record of the routes file put back. */
+async function runStep(run: Run): Promise<boolean> {
+  return 'layout' in run ? send(run.layout) : (await sendRoutes([run.routes])) !== null;
+}
+
 export function undo(): Promise<void> {
   return enqueue(async () => {
     const u = undoing(history.value);
     if (!u) return;
-    if (await send(u.run)) {
+    if (await runStep(u.run)) {
       history.value = u.next;
       say(`Undid: ${u.step.label}`);
     }
@@ -223,7 +246,7 @@ export function redo(): Promise<void> {
   return enqueue(async () => {
     const r = redoing(history.value);
     if (!r) return;
-    if (await send(r.run)) {
+    if (await runStep(r.run)) {
       history.value = r.next;
       say(`Redid: ${r.step.label}`);
     }

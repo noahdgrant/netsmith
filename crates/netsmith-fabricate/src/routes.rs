@@ -177,6 +177,28 @@ pub enum Edit {
         shape: Option<Shape>,
         on: bool,
     },
+    /// Track `track` of the net (numbered from 1) with its ends at `from` and `to`: what the
+    /// editor's drag of a track's end makes. A locked track, and an arc, are refused.
+    MoveTrack {
+        net: String,
+        track: usize,
+        from: [f64; 2],
+        to: [f64; 2],
+    },
+    /// Via `via` of the net (numbered from 1) at `at`. A locked via is refused.
+    MoveVia {
+        net: String,
+        via: usize,
+        at: [f64; 2],
+    },
+    /// The net's record as `after` (`None`: no record), refused unless the file has `before`
+    /// now: the editor's undo and redo of an edit, which put back the record it changed. A
+    /// lock does not refuse it, as it puts back what the person had.
+    Restore {
+        net: String,
+        before: Option<NetRoutes>,
+        after: Option<NetRoutes>,
+    },
 }
 
 impl Edit {
@@ -186,7 +208,10 @@ impl Edit {
             Edit::AddTrack { net, .. }
             | Edit::AddVia { net, .. }
             | Edit::Delete { net, .. }
-            | Edit::Lock { net, .. } => net,
+            | Edit::Lock { net, .. }
+            | Edit::MoveTrack { net, .. }
+            | Edit::MoveVia { net, .. }
+            | Edit::Restore { net, .. } => net,
         }
     }
 }
@@ -216,37 +241,76 @@ impl std::fmt::Display for Refusal {
 }
 
 /// Make `change` to `routes` for `board` (placed, with no routes on it), or refuse it and leave
-/// `routes` as it was. An added shape, and a net locked again (which can draw shapes a record
-/// whose pads moved had dropped), is refused when the board with it has an error of the design
-/// rules check that it did not have before. Says what it did.
+/// `routes` as it was. An added or moved shape, a record put back, and a net locked again (which
+/// can draw shapes a record whose pads moved had dropped), is refused when the board with it has
+/// an error of the design rules check that it did not have before. Says what it did.
 pub fn edit(board: &Board, routes: &mut Routes, change: &Edit) -> Result<String, Refusal> {
-    let net = change.net();
+    edit_all(board, routes, std::slice::from_ref(change))
+}
+
+/// [`edit`] of several changes to one net's record at once (a track drawn in several segments,
+/// the tracks that meet at a corner moved together): all are made, or none. The design rules
+/// check is made once, on the board with all of them.
+pub fn edit_all(board: &Board, routes: &mut Routes, changes: &[Edit]) -> Result<String, Refusal> {
+    let Some(first) = changes.first() else {
+        return Err(Refusal::Refused("no change to make".to_string()));
+    };
+    let net = first.net();
+    if let Some(other) = changes.iter().find(|c| c.net() != net) {
+        return Err(Refusal::Refused(format!(
+            "the changes of one edit are of one net, not of {net} and {}",
+            other.net()
+        )));
+    }
     let Some(hash) = netsmith_pcb::pad_hash(board, net) else {
         return Err(Refusal::Refused(format!(
             "the board {} has no net `{net}`",
             board.name
         )));
     };
-    let check = matches!(
-        change,
-        Edit::AddTrack { .. } | Edit::AddVia { .. } | Edit::Lock { on: true, .. }
-    );
-    let refresh = matches!(change, Edit::Lock { on: true, .. });
+    let check = changes.iter().any(|c| {
+        matches!(
+            c,
+            Edit::AddTrack { .. }
+                | Edit::AddVia { .. }
+                | Edit::MoveTrack { .. }
+                | Edit::MoveVia { .. }
+                | Edit::Restore { .. }
+                | Edit::Lock { on: true, .. }
+        )
+    });
     let mut next = routes.clone();
     let table = next.boards.entry(board.name.clone()).or_default();
-    let record = table
-        .nets
-        .entry(net.to_string())
-        .or_insert_with(|| NetRoutes {
-            pads: hash.clone(),
-            ..NetRoutes::default()
-        });
-    let said = change_record(board, record, change)?;
-    if refresh {
-        record.pads = hash;
-    }
-    if record.shapes() == 0 && !record.lock {
-        table.nets.remove(net);
+    let mut said: Vec<String> = Vec::new();
+    for change in changes {
+        if let Edit::Restore { before, after, .. } = change {
+            let now = record_text(&board.name, net, table.nets.get(net));
+            if now != record_text(&board.name, net, before.as_ref()) {
+                return Err(Refusal::Refused(format!(
+                    "net {net}'s record in the routes file changed since that edit: it is not put back"
+                )));
+            }
+            match after {
+                Some(record) => table.nets.insert(net.to_string(), record.clone()),
+                None => table.nets.remove(net),
+            };
+            said.push(format!("put back net {net}'s record"));
+            continue;
+        }
+        let record = table
+            .nets
+            .entry(net.to_string())
+            .or_insert_with(|| NetRoutes {
+                pads: hash.clone(),
+                ..NetRoutes::default()
+            });
+        said.push(change_record(board, record, change)?);
+        if matches!(change, Edit::Lock { on: true, .. }) {
+            record.pads = hash.clone();
+        }
+        if record.shapes() == 0 && !record.lock {
+            table.nets.remove(net);
+        }
     }
     if table.nets.is_empty() {
         next.boards.remove(&board.name);
@@ -264,16 +328,75 @@ pub fn edit(board: &Board, routes: &mut Routes, change: &Edit) -> Result<String,
         }
     }
     *routes = next;
-    Ok(said)
+    Ok(summary(&said))
+}
+
+/// What several changes did, in a line: each thing said once, with how many times.
+fn summary(said: &[String]) -> String {
+    let mut out: Vec<(&str, usize)> = Vec::new();
+    for s in said {
+        match out.iter_mut().find(|(t, _)| t == s) {
+            Some((_, n)) => *n += 1,
+            None => out.push((s, 1)),
+        }
+    }
+    out.into_iter()
+        .map(|(s, n)| {
+            if n == 1 {
+                s.to_string()
+            } else {
+                format!("{s} ({n} times)")
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("; ")
 }
 
 /// [`edit`] of the routes file at `file`, written when the edit is made. Says what it did and
 /// the file it wrote.
 pub fn edit_file(board: &Board, file: &Path, change: &Edit) -> Result<String, Refusal> {
+    edit_file_all(board, file, std::slice::from_ref(change))
+}
+
+/// [`edit_all`] of the routes file at `file`, written when the edits are made.
+pub fn edit_file_all(board: &Board, file: &Path, changes: &[Edit]) -> Result<String, Refusal> {
     let mut routes = load(file)?;
-    let said = edit(board, &mut routes, change)?;
+    let said = edit_all(board, &mut routes, changes)?;
     save(file, &routes)?;
     Ok(format!("{said}; wrote {}", file.display()))
+}
+
+/// The text of one net's record as the routes file writes it, or `None` for no record: what the
+/// editor keeps to undo an edit and hands back to put the record back ([`Edit::Restore`]). Two
+/// records are the same when their texts are, to the 0.000001 mm the file keeps.
+pub fn record_text(board: &str, net: &str, record: Option<&NetRoutes>) -> Option<String> {
+    let record = record?;
+    let mut routes = Routes::default();
+    routes
+        .boards
+        .entry(board.to_string())
+        .or_default()
+        .nets
+        .insert(net.to_string(), record.clone());
+    Some(routes.to_text())
+}
+
+/// The record a [`record_text`] holds, or `None` for none.
+pub fn record_of_text(
+    board: &str,
+    net: &str,
+    text: Option<&str>,
+) -> Result<Option<NetRoutes>, String> {
+    let Some(text) = text else {
+        return Ok(None);
+    };
+    let mut routes = Routes::parse(text, "the record").map_err(|e| e.to_string())?;
+    routes
+        .boards
+        .remove(board)
+        .and_then(|mut b| b.nets.remove(net))
+        .map(Some)
+        .ok_or_else(|| format!("the text holds no record of net {net} of {board}"))
 }
 
 fn change_record(board: &Board, record: &mut NetRoutes, change: &Edit) -> Result<String, Refusal> {
@@ -403,6 +526,48 @@ fn change_record(board: &Board, record: &mut NetRoutes, change: &Edit) -> Result
                 }
             }
         }
+        Edit::MoveTrack {
+            net,
+            track: n,
+            from,
+            to,
+        } => {
+            let have = record.tracks.len();
+            let t = record
+                .tracks
+                .get_mut(n.wrapping_sub(1))
+                .ok_or_else(|| missing(net, "track", *n, have))?;
+            if t.lock {
+                return Err(Refusal::Refused(format!(
+                    "track {n} of net {net} is locked: unlock it first"
+                )));
+            }
+            if t.mid.is_some() {
+                return Err(Refusal::Refused(format!(
+                    "track {n} of net {net} is an arc, whose ends are not moved: delete it and draw it again"
+                )));
+            }
+            t.from = *from;
+            t.to = *to;
+            Ok(format!("moved track {n} of net {net}"))
+        }
+        Edit::MoveVia { net, via: n, at } => {
+            let have = record.vias.len();
+            let v = record
+                .vias
+                .get_mut(n.wrapping_sub(1))
+                .ok_or_else(|| missing(net, "via", *n, have))?;
+            if v.lock {
+                return Err(Refusal::Refused(format!(
+                    "via {n} of net {net} is locked: unlock it first"
+                )));
+            }
+            v.at = *at;
+            Ok(format!("moved via {n} of net {net}"))
+        }
+        Edit::Restore { .. } => Err(Refusal::Failed(
+            "a record put back is made by edit_all".to_string(),
+        )),
     }
 }
 

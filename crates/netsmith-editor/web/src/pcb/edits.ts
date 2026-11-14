@@ -1,8 +1,9 @@
 // The edits of the PCB canvas as changes to the layout file (`PcbChange`), and the history that
-// undoes them. A change says what an entry was and what it becomes, so the inverse of an edit
-// is the edit turned round, and the server refuses one that is not what the file has now.
+// undoes them and the edits of the routes file. A change says what an entry was and what it
+// becomes, so the inverse of an edit is the edit turned round, and the server refuses one that is
+// not what the file has now.
 
-import type { KeepoutPlacement, PartPlacement, PcbBox, PcbChange, PcbPart } from '../api';
+import type { KeepoutPlacement, PartPlacement, PcbBox, PcbChange, PcbPart, RoutesChange, RoutesUndo } from '../api';
 import { type Pt, centre, normAngle, rotateAbout, tidy, unite } from './geometry';
 
 /** Where the layout file's coordinates start on the sheet: the outline's top left corner. */
@@ -139,11 +140,14 @@ export function keepoutEntry(
   };
 }
 
-/** One step of undo: what the user did, as the changes that did it. */
-export interface Step {
-  label: string;
-  changes: PcbChange[];
-}
+/** One step of undo: what the user did, as the changes to the layout file that did it, or as the
+ * record of the routes file it changed (the net's record before and after, as the server gave
+ * them: a delete renumbers the shapes after it, so the inverse is the record put back, not a
+ * change turned round). */
+export type Step = { label: string; changes: PcbChange[] } | { label: string; routes: RoutesUndo };
+
+/** What undoing or redoing a step sends: changes to the layout file, or a record of the routes file put back. */
+export type Run = { layout: PcbChange[] } | { routes: RoutesChange };
 
 export interface History {
   undo: Step[];
@@ -159,15 +163,25 @@ export function record(h: History, step: Step): History {
   return { undo: [...h.undo, step].slice(-LIMIT), redo: [] };
 }
 
-/** The step to undo, the changes that undo it, and the history after it is. */
-export function undoing(h: History): { step: Step; run: PcbChange[]; next: History } | null {
-  const step = h.undo[h.undo.length - 1];
-  if (!step) return null;
-  return { step, run: invert(step.changes), next: { undo: h.undo.slice(0, -1), redo: [...h.redo, step] } };
+/** The change that puts a net's record back as it was before the edit (`back`), or as the edit left it. */
+export function restore(u: RoutesUndo, back: boolean): RoutesChange {
+  return { what: 'restore', net: u.net, before: back ? u.after : u.before, after: back ? u.before : u.after };
 }
 
-export function redoing(h: History): { step: Step; run: PcbChange[]; next: History } | null {
+function runOf(step: Step, back: boolean): Run {
+  if ('routes' in step) return { routes: restore(step.routes, back) };
+  return { layout: back ? invert(step.changes) : step.changes };
+}
+
+/** The step to undo, what undoes it, and the history after it is. */
+export function undoing(h: History): { step: Step; run: Run; next: History } | null {
+  const step = h.undo[h.undo.length - 1];
+  if (!step) return null;
+  return { step, run: runOf(step, true), next: { undo: h.undo.slice(0, -1), redo: [...h.redo, step] } };
+}
+
+export function redoing(h: History): { step: Step; run: Run; next: History } | null {
   const step = h.redo[h.redo.length - 1];
   if (!step) return null;
-  return { step, run: step.changes, next: { undo: [...h.undo, step], redo: h.redo.slice(0, -1) } };
+  return { step, run: runOf(step, false), next: { undo: [...h.undo, step], redo: h.redo.slice(0, -1) } };
 }

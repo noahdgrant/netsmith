@@ -39,6 +39,7 @@ Run `scripts/editor-verify doctor`, then `launch`, then the recipe named in each
 | PCB findings: list, zoom to, re-check with KiCad | `pcb.md` | `pcb-findings` | `outline_and_pours` |
 | PCB constraint findings: the requirement's numbers, zoom, placer clears it | `pcb.md` | `pcb-constraints` | `constrained` |
 | PCB routes file: fixed copper marked (locked and open nets, locked shapes, vias), the Routes tab, pick, lock, unlock, delete (refused while locked), stale records as findings | `pcb.md` | `pcb-routes` | `routed_led` |
+| PCB routes file: draw a track (pad to pad, corners, layer, net width), place a via, drag a via with the track ends there, a track the rules refuse comes back, undo and redo of every routes edit | `pcb.md` | `pcb-routes-draw` | `routed_led` |
 | Panel preview (V-cut grid of one board) | `pcb.md` | `panel` | `led_panel` |
 | The Schematic's keys as commands: palette, cheat sheet group, the `?` button, keys work, not in a text field, not away from the view | `schematic.md` | `schematic-keys` | `schematic_bench` |
 | Busses: an interface drawn as one line, picked with its members lit, the chip, the inspector's members and pins, a bundle flag followed to the module that carries the nets, `#` in go to anything | `schematic-bus.md` | `schematic-bus` | `bus_bench` |

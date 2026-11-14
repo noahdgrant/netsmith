@@ -1,8 +1,9 @@
 // The routes file's copper as the PCB view draws and edits it (issue 599): where a shape is, the
-// path of an arc, what a shape is called, and the change (`RoutesChange`) a lock or a delete is.
-// The server makes the change as `netsmith routes` makes it and refuses what that refuses.
+// path of an arc, what a shape is called, and the changes (`RoutesChange`) that a lock, a delete,
+// a track drawn, a via placed and a drag are. The server makes them as `netsmith routes` makes
+// them and refuses what that refuses.
 
-import type { PcbBox, PcbPoint, PcbRouteNet, PcbRouteTrack, PcbRouteVia, RoutesChange } from '../api';
+import type { PcbBox, PcbPoint, PcbRouteNet, PcbRouteTrack, PcbRouteVia, PcbScene, RoutesChange } from '../api';
 import type { RoutePick } from '../pcbstore';
 
 /** The SVG path of a track: a line, or the arc through `mid` (the circle through the three points). */
@@ -96,4 +97,108 @@ export function pickAt(target: Element | null): RoutePick | null {
 
 export function samePick(a: RoutePick | null, b: RoutePick | null): boolean {
   return !!a && !!b && a.net === b.net && a.track === b.track && a.via === b.via;
+}
+
+/** What an edit of the routes file is called in the undo history and its toast. */
+export function labelOf(changes: RoutesChange[]): string {
+  const c = changes[0];
+  if (!c) return 'nothing';
+  const pick = (x: { net: string; track?: number | null; via?: number | null }): RoutePick => ({
+    net: x.net,
+    ...(x.track != null ? { track: x.track } : {}),
+    ...(x.via != null ? { via: x.via } : {}),
+  });
+  switch (c.what) {
+    case 'delete':
+      return `delete ${nameOf(pick(c))}`;
+    case 'lock':
+      return `${c.lock ? 'lock' : 'unlock'} ${nameOf(pick(c))}`;
+    case 'add_track':
+      return changes.length > 1 ? `draw a track of ${changes.length} segments on net ${c.net}` : `draw a track on net ${c.net}`;
+    case 'add_via':
+      return `place a via on net ${c.net}`;
+    case 'move_track':
+    case 'move_via':
+      return changes.length > 1 ? `move ${changes.length} shapes of net ${c.net}` : `move ${nameOf(pick(c))}`;
+    case 'restore':
+      return `put back net ${c.net}'s record`;
+  }
+}
+
+/** The same place, to the micrometre: where two shapes of a record meet. */
+export function samePoint(a: PcbPoint, b: PcbPoint): boolean {
+  return Math.abs(a.x - b.x) < 5e-4 && Math.abs(a.y - b.y) < 5e-4;
+}
+
+/** A place a track starts or ends at, or a via goes on: a pad of a net, an end of a track or a via of the routes file. */
+export interface Anchor {
+  at: PcbPoint;
+  net: string;
+  what: 'pad' | 'track' | 'via';
+}
+
+/** The anchors of the board: every pad with a net, and the ends of the drawn tracks and the drawn vias of the routes file. */
+export function anchorsOf(sc: Pick<PcbScene, 'parts' | 'routes'>): Anchor[] {
+  const out: Anchor[] = [];
+  for (const p of sc.parts) for (const pad of p.pads) if (pad.net) out.push({ at: { x: pad.x, y: pad.y }, net: pad.net, what: 'pad' });
+  for (const n of sc.routes) {
+    for (const t of n.tracks) if (t.drawn) out.push({ at: t.from, net: n.net, what: 'track' }, { at: t.to, net: n.net, what: 'track' });
+    for (const v of n.vias) if (v.drawn) out.push({ at: v.at, net: n.net, what: 'via' });
+  }
+  return out;
+}
+
+/** The anchor nearest `p` within `reach` mm, of `net` when one is named. */
+export function nearestAnchor(anchors: Anchor[], p: PcbPoint, reach: number, net?: string): Anchor | null {
+  let best: Anchor | null = null;
+  let d = reach;
+  for (const a of anchors) {
+    if (net != null && a.net !== net) continue;
+    const e = Math.hypot(a.at.x - p.x, a.at.y - p.y);
+    if (e <= d) {
+      best = a;
+      d = e;
+    }
+  }
+  return best;
+}
+
+/** The changes that draw a track of `net` on `layer` through `points`: one straight track for each segment, a segment of no
+ * length left out. The width is the net's by the board's rules (the server's). */
+export function drawChanges(net: string, layer: string, points: PcbPoint[]): RoutesChange[] {
+  const out: RoutesChange[] = [];
+  for (let i = 1; i < points.length; i++) {
+    const [from, to] = [points[i - 1], points[i]];
+    if (!samePoint(from, to)) out.push({ what: 'add_track', net, layer, width: null, from, to });
+  }
+  return out;
+}
+
+/** The end of a straight track within `reach` of `p`, the nearer of the two. */
+export function endNear(t: PcbRouteTrack, p: PcbPoint, reach: number): PcbPoint | null {
+  const df = Math.hypot(t.from.x - p.x, t.from.y - p.y);
+  const dt = Math.hypot(t.to.x - p.x, t.to.y - p.y);
+  if (Math.min(df, dt) > reach) return null;
+  return df <= dt ? t.from : t.to;
+}
+
+/** The changes that move the place `from` of a net's record to `to`: every track of the record with an end there and every via
+ * there move with it, so a corner stays joined. The server refuses a locked shape or an arc among them, with the reason. */
+export function dragChanges(record: PcbRouteNet, from: PcbPoint, to: PcbPoint): RoutesChange[] {
+  if (samePoint(from, to)) return [];
+  const out: RoutesChange[] = [];
+  record.tracks.forEach((t, i) => {
+    const a = samePoint(t.from, from);
+    const b = samePoint(t.to, from);
+    if (a || b) out.push({ what: 'move_track', net: record.net, track: i + 1, from: a ? to : t.from, to: b ? to : t.to });
+  });
+  record.vias.forEach((v, i) => {
+    if (samePoint(v.at, from)) out.push({ what: 'move_via', net: record.net, via: i + 1, at: to });
+  });
+  return out;
+}
+
+/** A place on the sheet moved from `from` to `to` if it is at `from`: a shape's point as a drag shows it. */
+export function dragged(p: PcbPoint, drag: { from: PcbPoint; to: PcbPoint } | null): PcbPoint {
+  return drag && samePoint(p, drag.from) ? drag.to : p;
 }

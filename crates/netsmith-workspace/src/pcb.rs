@@ -30,13 +30,16 @@
 //! **The routes file** (`<stem>.routes.toml`, epic #599) is read with the layout file and its
 //! copper put on the placed board before anything is routed, as `fab` does. The scene lists its
 //! records with what of them is drawn, a record not used as written is a `routes` finding, and
-//! `POST /api/pcb/routes` deletes, locks and unlocks through `netsmith_fabricate::routes::edit`,
-//! the code of the `netsmith routes` commands, on the board as placed with no copper; the board
-//! is then made again from the file, unrouted. The routes file is watched with the layout file.
+//! `POST /api/pcb/routes` draws and moves tracks and vias, deletes, locks and unlocks through
+//! `netsmith_fabricate::routes::edit_all`, the code of the `netsmith routes` commands, on the
+//! board as placed with no copper; the board is then made again from the file, unrouted. The
+//! answer carries the net's record before and after as text, which the page keeps as a step of
+//! undo and sends back turned round (`Restore`). The routes file is watched with the layout
+//! file.
 //!
 //! **Not built** (ADR 0030, issue #59): waivers (the page has no way to write one),
-//! regeneration of one module, partial routing, hand-drawn tracks, a copy of the findings for
-//! an agent, and `layout show` overlays.
+//! regeneration of one module, partial routing, push and shove while a track is drawn, a copy
+//! of the findings for an agent, and `layout show` overlays.
 
 use std::{
     collections::HashMap,
@@ -51,9 +54,9 @@ use netsmith_editor::{
     ApiError, Say,
     api::{
         ComparePcbPlace, CompareSize, DrawnKeepout, KeepoutOrigin, KeepoutPlacement, KicadState,
-        PartPlacement, PcbBox, PcbChange, PcbCutout, PcbFinding, PcbFindings, PcbKeepout, PcbPad,
-        PcbPart, PcbPoint, PcbReport, PcbRouteNet, PcbRouteTrack, PcbRouteVia, PcbScene, PcbSide,
-        RoutesChange, Severity,
+        PartPlacement, PcbBox, PcbChange, PcbCutout, PcbFinding, PcbFindings, PcbKeepout,
+        PcbNetWidth, PcbPad, PcbPart, PcbPoint, PcbReport, PcbRouteNet, PcbRouteTrack, PcbRouteVia,
+        PcbScene, PcbSide, RoutesChange, Severity,
     },
 };
 use netsmith_pcb::{
@@ -643,6 +646,16 @@ pub fn scene(entry: &Entry, data: &BoardData, name: &str) -> PcbScene {
         routes_file,
         routes_stamp: entry.routes_stamp.clone(),
         routes: route_nets(entry),
+        net_widths: board
+            .nets
+            .iter()
+            .map(|n| PcbNetWidth {
+                net: n.name.clone(),
+                width: board.track_width(&n.name),
+            })
+            .collect(),
+        via_diameter: board.rules.via_diameter,
+        via_drill: board.rules.via_drill,
         board: name.to_string(),
         svg: render_svg_view(board),
         origin_x: board.outline.min.x,
@@ -714,9 +727,18 @@ fn route_nets(entry: &Entry) -> Vec<PcbRouteNet> {
         .collect()
 }
 
-/// A change of the PCB view to the routes file, as `netsmith routes` would make it.
-pub fn routes_edit(change: &RoutesChange) -> Result<netsmith_fabricate::routes::Edit, ApiError> {
+/// A change of the PCB view to the routes file of `board` (placed), as `netsmith routes` would
+/// make it: its places from the sheet to the file's frame, the outline's top left corner.
+pub fn routes_edit(
+    board: &Board,
+    change: &RoutesChange,
+) -> Result<netsmith_fabricate::routes::Edit, ApiError> {
     use netsmith_fabricate::routes::{Edit, Shape};
+    let at = |p: &PcbPoint| [p.x - board.outline.min.x, p.y - board.outline.min.y];
+    let record = |text: &Option<String>, net: &str| {
+        netsmith_fabricate::routes::record_of_text(&board.name, net, text.as_deref())
+            .map_err(ApiError::bad_request)
+    };
     let shape = |track: Option<u32>, via: Option<u32>| match (track, via) {
         (Some(_), Some(_)) => Err(ApiError::bad_request(
             "a change names a track or a via, not both",
@@ -739,6 +761,57 @@ pub fn routes_edit(change: &RoutesChange) -> Result<netsmith_fabricate::routes::
             net: net.clone(),
             shape: shape(*track, *via)?,
             on: *lock,
+        },
+        RoutesChange::AddTrack {
+            net,
+            layer,
+            width,
+            from,
+            to,
+        } => Edit::AddTrack {
+            net: net.clone(),
+            layer: match layer.as_str() {
+                "top" => LayoutFace::Top,
+                "bottom" => LayoutFace::Bottom,
+                other => {
+                    return Err(ApiError::bad_request(format!(
+                        "a track is drawn on `top` or `bottom`, not `{other}`"
+                    )));
+                }
+            },
+            width: *width,
+            from: at(from),
+            mid: None,
+            to: at(to),
+            lock: false,
+        },
+        RoutesChange::AddVia { net, at: p } => Edit::AddVia {
+            net: net.clone(),
+            at: at(p),
+            diameter: None,
+            drill: None,
+            lock: false,
+        },
+        RoutesChange::MoveTrack {
+            net,
+            track,
+            from,
+            to,
+        } => Edit::MoveTrack {
+            net: net.clone(),
+            track: *track as usize,
+            from: at(from),
+            to: at(to),
+        },
+        RoutesChange::MoveVia { net, via, at: p } => Edit::MoveVia {
+            net: net.clone(),
+            via: *via as usize,
+            at: at(p),
+        },
+        RoutesChange::Restore { net, before, after } => Edit::Restore {
+            net: net.clone(),
+            before: record(before, net)?,
+            after: record(after, net)?,
         },
     })
 }

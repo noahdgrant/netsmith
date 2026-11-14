@@ -429,7 +429,7 @@ function RouteInspector(props: { scene: PcbScene; pick: RoutePick; record: PcbRo
           class="tool small"
           title={shape ? `${locked ? 'Unlock' : 'Lock'} it: a locked shape is kept when the net's pads move, and not deleted (L)` : `${locked ? 'Unlock' : 'Lock'} the net: the router adds no copper to a locked net (L)`}
           data-testid="route-lock"
-          onClick={() => void changeRoutes(lockChange(pick, !locked))}
+          onClick={() => void changeRoutes([lockChange(pick, !locked)])}
         >
           <Icon name={locked ? 'unlock' : 'lock'} size={13} />
           {locked ? 'Unlock' : 'Lock'}
@@ -439,7 +439,7 @@ function RouteInspector(props: { scene: PcbScene; pick: RoutePick; record: PcbRo
             class="tool small"
             title={`${record.lock ? 'Unlock' : 'Lock'} the whole net ${record.net}`}
             data-testid="route-lock-net"
-            onClick={() => void changeRoutes(lockChange({ net: record.net }, !record.lock))}
+            onClick={() => void changeRoutes([lockChange({ net: record.net }, !record.lock)])}
           >
             <Icon name={record.lock ? 'unlock' : 'lock'} size={13} />
             {record.lock ? 'Unlock net' : 'Lock net'}
@@ -449,7 +449,7 @@ function RouteInspector(props: { scene: PcbScene; pick: RoutePick; record: PcbRo
           class="tool small"
           title={shape ? 'Delete it from the routes file (Delete); refused while it is locked' : "Delete the net's record (Delete); refused while it or a shape of it is locked"}
           data-testid="route-delete"
-          onClick={() => void changeRoutes(deleteChange(pick))}
+          onClick={() => void changeRoutes([deleteChange(pick)])}
         >
           <Icon name="close" size={13} />
           Delete

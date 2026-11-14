@@ -966,7 +966,16 @@ routesStamp: string,
  * Its records for this board, by net: the fixed copper, drawn on the board before the
  * router's.
  */
-routes: Array<PcbRouteNet>, };
+routes: Array<PcbRouteNet>, 
+/**
+ * The width of each net's tracks by the board's rules: what a track drawn in the view
+ * gets.
+ */
+netWidths: Array<PcbNetWidth>, 
+/**
+ * The process's via, which a via placed in the view gets: diameter and drill in mm.
+ */
+viaDiameter: number, viaDrill: number, };
 
 export type PcbPoint = { x: number, y: number, };
 
@@ -1005,15 +1014,19 @@ export type RoutesChange = { "what": "delete", net: string, track: number | null
 /**
  * Lock, or unlock.
  */
-lock: boolean, };
+lock: boolean, } | { "what": "add_track", net: string, layer: string, width: number | null, from: PcbPoint, to: PcbPoint, } | { "what": "add_via", net: string, at: PcbPoint, } | { "what": "move_track", net: string, track: number, from: PcbPoint, to: PcbPoint, } | { "what": "move_via", net: string, via: number, at: PcbPoint, } | { "what": "restore", net: string, before: string | null, after: string | null, };
 
 export type PcbRoutesEdit = { board: string, 
 /**
  * `PcbScene::routes_stamp` as the page read it.
  */
-stamp: string, change: RoutesChange, };
+stamp: string, changes: Array<RoutesChange>, };
 
-export type PcbRoutesEdited = { scene: PcbScene, said: string, };
+export type PcbRoutesEdited = { scene: PcbScene, said: string, undo: RoutesUndo, };
+
+export type RoutesUndo = { net: string, before: string | null, after: string | null, };
+
+export type PcbNetWidth = { net: string, width: number, };
 
 export type PartPlacement = { x: number, y: number, rotation: number, side: PcbSide, locked: boolean, 
 /**

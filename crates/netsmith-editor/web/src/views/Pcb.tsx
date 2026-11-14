@@ -32,7 +32,9 @@ import {
   wrote,
   sceneError,
   setGrid,
+  type Tool,
   tool,
+  trackLayer,
   undo,
   grid,
 } from '../pcbstore';
@@ -224,15 +226,48 @@ export function Pcb() {
             ]}
           />
           {!in3d && (
-            <Segmented<'select' | 'keepout'>
+            <Segmented<Tool>
               label="Tool"
-              value={activeTool === 'keepout' ? 'keepout' : 'select'}
+              value={activeTool}
               onChange={(v) => (tool.value = v)}
               options={[
-                { value: 'select', label: 'Select', icon: 'cursor', tip: 'Select, move and box select', keys: 'Esc' },
+                { value: 'select', label: 'Select', icon: 'cursor', tip: 'Select, move and box select; drag a fixed track\'s end or a via', keys: 'Esc' },
                 { value: 'keepout', label: 'Keepout', icon: 'keepout', tip: 'Draw a keepout: drag a rectangle', keys: 'K', testid: 'tool-keepout' },
+                // Drawn copper goes in the routes file beside the layout file, which a board without a layout file has none of.
+                ...(sc?.routesFile
+                  ? [
+                      {
+                        value: 'track' as const,
+                        label: 'Track',
+                        icon: 'track' as const,
+                        tip: 'Draw a track: click a pad, then each corner; double-click or Enter ends it, Esc drops it',
+                        keys: 'X',
+                        testid: 'tool-track',
+                      },
+                      { value: 'via' as const, label: 'Via', icon: 'via' as const, tip: 'Place a via: click a pad, a track or a via of the net', keys: 'V', testid: 'tool-via' },
+                    ]
+                  : []),
               ]}
             />
+          )}
+          {!in3d && activeTool === 'track' && (
+            <label class="grid-pick" data-testid="track-options" title="The layer the track is drawn on; its width is the net's by the board's rules">
+              <Icon name="layers" size={14} />
+              <select
+                value={trackLayer.value}
+                onChange={(e) => {
+                  const el = e.target as HTMLSelectElement;
+                  trackLayer.value = el.value as 'top' | 'bottom';
+                  // The keys of the track being drawn (Enter, Esc, Backspace) are the canvas's again.
+                  el.blur();
+                }}
+                data-testid="track-layer"
+                aria-label="Track layer"
+              >
+                <option value="top">top layer</option>
+                <option value="bottom">bottom layer</option>
+              </select>
+            </label>
           )}
           {!in3d && activeTool === 'keepout' && (
             <span class="keepout-options" data-testid="keepout-options">
