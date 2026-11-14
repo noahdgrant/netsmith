@@ -743,7 +743,7 @@ dependencies = [
 
 [[package]]
 name = "netsmith-check"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "automod",
  "netsmith-core",
@@ -784,7 +784,7 @@ dependencies = [
 
 [[package]]
 name = "netsmith-core"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "automod",
  "flate2",
@@ -795,7 +795,7 @@ dependencies = [
 
 [[package]]
 name = "netsmith-design"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "automod",
  "netsmith-check",
@@ -808,14 +808,14 @@ dependencies = [
 
 [[package]]
 name = "netsmith-dxf"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "automod",
 ]
 
 [[package]]
 name = "netsmith-editor"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "automod",
  "axum",
@@ -831,7 +831,7 @@ dependencies = [
 
 [[package]]
 name = "netsmith-fab"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "automod",
  "netsmith-core",
@@ -886,7 +886,7 @@ dependencies = [
 
 [[package]]
 name = "netsmith-kicad"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "automod",
  "netsmith-core",
@@ -899,14 +899,14 @@ dependencies = [
 
 [[package]]
 name = "netsmith-lang"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "automod",
 ]
 
 [[package]]
 name = "netsmith-netlist"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "automod",
  "netsmith-sexp",
@@ -915,7 +915,7 @@ dependencies = [
 
 [[package]]
 name = "netsmith-pcb"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "automod",
  "netsmith-check",
@@ -975,7 +975,7 @@ dependencies = [
 
 [[package]]
 name = "netsmith-quantity"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "automod",
 ]
@@ -1008,7 +1008,7 @@ dependencies = [
 
 [[package]]
 name = "netsmith-solve"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "automod",
  "netsmith-check",
@@ -1054,7 +1054,7 @@ dependencies = [
 
 [[package]]
 name = "netsmith-view"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "automod",
  "netsmith-core",
