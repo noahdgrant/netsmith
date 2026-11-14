@@ -4,7 +4,7 @@
 //! in the states the search took (`Walked::tried`).
 
 use netsmith_geom::{DrcExtras, DrcRule, drc_check};
-use netsmith_pcb::{Board, CopperLayer, Pt, Track, kicad_pcb, kicad_pro};
+use netsmith_pcb::{Board, CopperLayer, Pt, Track, Via, kicad_pcb, kicad_pro};
 use netsmith_router::walk::{Blocked, Ground, MOST_TRIED, Walk, Walked};
 
 use crate::common;
@@ -372,4 +372,82 @@ fn the_design_rules_check_finds_nothing_in_a_walked_track() {
         .tracks
         .push(Track::straight("VCC", CopperLayer::Front, w.from, w.to, WIDTH));
     assert_ne!(errors(&through), before);
+}
+
+/// The router's copper is not an obstacle, but it is said to be crossed (the second slice of
+/// #726): the same bar is gone round as copper of the board and walked straight through, and
+/// named as crossed, as copper of the router.
+#[test]
+fn the_routers_copper_is_no_obstacle_and_is_named_when_the_track_crosses_it() {
+    let c = empty_place(&led());
+    let bar = Track::straight(
+        "GND",
+        CopperLayer::Front,
+        at(c, 0.0, -1.5),
+        at(c, 0.0, 1.5),
+        0.4,
+    );
+    let w = walk(
+        "TEST",
+        CopperLayer::Front,
+        at(c, -2.0, 0.0),
+        at(c, 2.0, 0.0),
+        None,
+    );
+    let corners = [w.from, w.to];
+    // As copper of the board (the routes file's): the way bends round it, so it is not crossed.
+    let fixed = with_bar(c, "GND");
+    let round = path(&fixed, &w).unwrap();
+    assert!(round.points.len() > 2, "{:?}", round.points);
+    let ground = Ground::of(&fixed).unwrap();
+    let tracks = [bar];
+    let none = ground.crossed("TEST", w.layer, WIDTH, &round.points, &tracks, &[]);
+    assert!(none.tracks.is_empty(), "{none:?}");
+    // As copper of the router (not on the board): the straight segment is free, with no search,
+    // and crosses it.
+    let board = led();
+    let straight = path(&board, &w).unwrap();
+    assert_eq!(straight.points, corners.to_vec());
+    assert_eq!(straight.tried, 0);
+    let ground = Ground::of(&board).unwrap();
+    let got = ground.crossed("TEST", w.layer, WIDTH, &corners, &tracks, &[]);
+    assert_eq!(got.tracks, vec![0]);
+    assert!(got.vias.is_empty());
+}
+
+#[test]
+fn only_the_routers_copper_the_track_is_in_the_way_of_is_crossed() {
+    let c = empty_place(&led());
+    let board = led();
+    let ground = Ground::of(&board).unwrap();
+    let on = |net: &str, layer: CopperLayer, x: f64| {
+        Track::straight(net, layer, at(c, x, -1.5), at(c, x, 1.5), 0.4)
+    };
+    let tracks = [
+        on("GND", CopperLayer::Front, 0.0),  // 0: across the track
+        on("GND", CopperLayer::Back, 0.0),   // 1: the other layer
+        on("TEST", CopperLayer::Front, 0.0), // 2: the track's own net
+        on("GND", CopperLayer::Front, 1.5),  // 3: a bar the track stops short of
+        on("GND", CopperLayer::Front, 1.0),  // 4: too near the track's end
+    ];
+    let via = |net: &str, x: f64| Via {
+        net: net.into(),
+        at: at(c, x, 0.1),
+        diameter: 0.45,
+        drill: 0.2,
+    };
+    let vias = [via("GND", -0.5), via("TEST", -0.6), via("GND", 2.0)];
+    let corners = [at(c, -2.0, 0.0), at(c, 0.85, 0.0)];
+    let got = ground.crossed("TEST", CopperLayer::Front, WIDTH, &corners, &tracks, &vias);
+    assert_eq!(got.tracks, vec![0, 4], "{got:?}");
+    // Through vias are copper on both layers.
+    assert_eq!(got.vias, vec![0], "{got:?}");
+    let back = ground.crossed("TEST", CopperLayer::Back, WIDTH, &corners, &tracks, &vias);
+    assert_eq!(back.tracks, vec![1], "{back:?}");
+    assert_eq!(back.vias, vec![0], "{back:?}");
+    // A track of one corner is a disc, and no corner is no copper.
+    let dot = ground.crossed("TEST", CopperLayer::Front, WIDTH, &[at(c, 0.0, 0.0)], &tracks, &vias);
+    assert_eq!(dot.tracks, vec![0]);
+    let nothing = ground.crossed("TEST", CopperLayer::Front, WIDTH, &[], &tracks, &vias);
+    assert_eq!(nothing, Default::default());
 }

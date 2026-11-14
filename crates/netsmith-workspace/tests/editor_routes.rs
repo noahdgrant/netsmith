@@ -620,6 +620,7 @@ fn walk_of(net: &str, layer: &str, from: PcbPoint, to: PcbPoint) -> PcbWalk {
         from,
         to,
         heading: None,
+        track: Vec::new(),
     }
 }
 
@@ -706,4 +707,62 @@ fn a_walk_is_asked_over_the_wire_and_answers_200_with_no_way_too() {
     assert_eq!(status, 200, "{answer}");
     assert!(answer.contains("\"points\":null"), "{answer}");
     assert!(answer.contains("no room"), "{answer}");
+}
+
+/// A walk of `net` with a track `width` wide at `at`: a disc that covers the router's copper
+/// round it, whether or not the track fits there (what it crosses is asked all the same).
+fn sweep(net: &str, at: PcbPoint, width: f64) -> PcbWalk {
+    PcbWalk {
+        width: Some(width),
+        ..walk_of(net, "top", at, at)
+    }
+}
+
+#[test]
+fn the_routers_copper_gives_way_to_a_walk_and_is_named_when_it_is_crossed() {
+    let (_root, editor) = project("walk-router");
+    let scene = editor.pcb_scene(BOARD).unwrap();
+    let centre = PcbPoint {
+        x: scene.outline.x + scene.outline.width / 2.0,
+        y: scene.outline.y + scene.outline.height / 2.0,
+    };
+    let big = scene.outline.width.max(scene.outline.height) * 2.0;
+    // Not routed: there is no router copper to cross.
+    let before = editor.pcb_walk(&sweep("GND", centre, big)).unwrap();
+    assert!(before.crossed.tracks.is_empty() && before.crossed.vias.is_empty());
+
+    let say: netsmith_editor::Say = Arc::new(|_: &str| {});
+    let report = editor.route(BOARD, &say).unwrap();
+    assert!(report.routed && report.tracks > 0, "{report:?}");
+    let after = editor.pcb_walk(&sweep("GND", centre, big)).unwrap();
+    let crossed = &after.crossed;
+    assert!(!crossed.tracks.is_empty(), "{crossed:?}");
+    assert!(
+        crossed.tracks.iter().all(|t| t.net != "GND" && t.layer == "top"),
+        "copper of the walked net and of the other layer is not crossed: {crossed:?}"
+    );
+    let bottom = editor
+        .pcb_walk(&PcbWalk {
+            layer: "bottom".into(),
+            ..sweep("VCC", centre, big)
+        })
+        .unwrap();
+    assert!(
+        bottom.crossed.tracks.iter().all(|t| t.net != "VCC" && t.layer == "bottom"),
+        "{:?}",
+        bottom.crossed
+    );
+    // The router's copper is no obstacle to the way: a straight segment over it takes no search.
+    let [a, b] = [pads_of(&scene, "VCC")[0], pads_of(&scene, "VCC")[1]];
+    let (c, d) = (along(a, b, 0.3), along(a, b, 0.7));
+    let through = editor.pcb_walk(&walk_of("GND", "top", c, d)).unwrap();
+    assert_eq!(through.points, Some(vec![c, d]), "{through:?}");
+    assert_eq!(through.tried, 0);
+
+    // An edit of the routes file discards the router's copper: nothing is crossed after it.
+    let drawn = editor
+        .pcb_routes(&edit_of(&editor.pcb_scene(BOARD).unwrap(), vec![track("VCC", "top", a, b)]));
+    drawn.unwrap();
+    let gone = editor.pcb_walk(&sweep("GND", centre, big)).unwrap();
+    assert!(gone.crossed.tracks.is_empty() && gone.crossed.vias.is_empty(), "{gone:?}");
 }

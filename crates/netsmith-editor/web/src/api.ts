@@ -1066,9 +1066,31 @@ width: number | null, from: PcbPoint, to: PcbPoint,
  * The direction of the segment that arrives at `from`, if one does: the way the first
  * segment may turn from by 45 degrees at most.
  */
-heading: PcbPoint | null, };
+heading: PcbPoint | null, 
+/**
+ * The corners of the track drawn so far, the last of them `from`: the router's copper that
+ * the whole track crosses is answered in [`PcbWalked::crossed`], not only what the one
+ * segment crosses. Empty: the segment alone.
+ */
+track: Array<PcbPoint>, };
 
-export type PcbWalked = { points: Array<PcbPoint> | null, reason: string | null, tried: number, };
+export type PcbWalked = { points: Array<PcbPoint> | null, reason: string | null, tried: number, 
+/**
+ * The router's copper that the track (`PcbWalk::track`, then `points`) crosses: copper the
+ * edit discards, which the walk does not go round (issue 726). Empty on a board the
+ * router has not routed.
+ */
+crossed: PcbCrossed, };
+
+export type PcbCrossed = { tracks: Array<PcbCrossedTrack>, vias: Array<PcbCrossedVia>, };
+
+export type PcbCrossedTrack = { net: string, 
+/**
+ * `top` or `bottom`.
+ */
+layer: string, width: number, from: PcbPoint, mid: PcbPoint | null, to: PcbPoint, };
+
+export type PcbCrossedVia = { net: string, at: PcbPoint, diameter: number, };
 
 export type PcbNetWidth = { net: string, width: number, };
 

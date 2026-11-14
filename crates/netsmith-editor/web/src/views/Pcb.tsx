@@ -13,6 +13,7 @@ import { marks as cmpMarks } from '../compare/store';
 import { Icon } from '../components/Icons';
 import { EmptyState, Segmented, Spinner } from '../components/ui';
 import { Canvas, type Tip } from '../pcb/Canvas';
+import { crossedText } from '../pcb/walk';
 import { FindingsList } from '../pcb/Findings';
 import { Panel } from '../pcb/Panel';
 import { PanelPreview } from '../pcb/PanelPreview';
@@ -38,6 +39,7 @@ import {
   tool,
   trackLayer,
   undo,
+  crossedShown,
   grid,
 } from '../pcbstore';
 import { analysis, board, detail, fabReports, job, panelShown, pcbReports, pcbStamp, pickNet, routeBoard } from '../store';
@@ -157,6 +159,9 @@ export function Pcb() {
   const pick = (net: string | null) => pickNet(net === picked ? null : net);
   const h = history.value;
   const activeTool = tool.value;
+  // The router's copper the track being drawn crosses, as words, while there is one.
+  const shown = crossedShown.value;
+  const crossedNow = shown ? crossedText(shown) : null;
   const in3d = pcbMode.value === '3d';
   // The 3D view on a system's scene stays while the page's board changes to another member (a part
   // of it picked there): it draws the system, not this board's placement, so the camera stays.
@@ -249,7 +254,7 @@ export function Pcb() {
                         value: 'track' as const,
                         label: 'Track',
                         icon: 'track' as const,
-                        tip: 'Draw a track: click a pad, then each corner (it bends round the copper in the way); double-click or Enter ends it, Esc drops it',
+                        tip: 'Draw a track: click a pad, then each corner (it bends round the copper in the way, not router copper: that is laid again); double-click or Enter ends it, Esc drops it',
                         keys: 'X',
                         testid: 'tool-track',
                       },
@@ -431,6 +436,12 @@ export function Pcb() {
               {tip.lines.map((l) => (
                 <div key={l}>{l}</div>
               ))}
+            </div>
+          )}
+          {!in3d && activeTool === 'track' && crossedNow && (
+            <div class="pcb-note warn" data-testid="track-crossed">
+              <b>Crosses {crossedNow}</b>
+              <div>An edit throws the router's copper away: route again after it to lay it round the new track.</div>
             </div>
           )}
           {panelOpen && sc && drawing && (

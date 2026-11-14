@@ -4,13 +4,14 @@
 
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 
-import type { PcbBox, PcbKeepout, PcbPart, PcbScene, PcbWalk } from '../api';
+import type { PcbBox, PcbCrossed, PcbKeepout, PcbPart, PcbScene, PcbWalk } from '../api';
 import { PanZoom } from '../components/PanZoom';
 import { hoverEnter, hoverLeave } from '../hover';
 import {
   askWalk,
   changeRoutes,
   clearWalk,
+  crossedShown,
   commit,
   findings,
   grid,
@@ -116,6 +117,9 @@ interface Preview {
 interface Draft {
   net: string;
   points: Pt[];
+  /** The router's copper the track so far crosses, as the walkaround said when the last corner was clicked: shown while the
+   * pointer is on that corner and there is no segment to ask about. */
+  crossed?: PcbCrossed;
 }
 
 const NONE: Pt = { x: 0, y: 0 };
@@ -206,6 +210,7 @@ export function Canvas(props: {
     from: d.points[d.points.length - 1],
     to,
     heading: headingOf(d.points),
+    track: d.points,
   });
   useEffect(() => {
     const last = draft?.points[draft.points.length - 1];
@@ -217,6 +222,14 @@ export function Canvas(props: {
   // What the server said of the segment the pointer is at the end of, once it has said it.
   const answer = walked.value;
   const walk = draft && ghost && answer && answer.key === walkKey(walkAsk(draft, ghost, layerNow)) ? answer : null;
+  // The router's copper the track crosses: as the last answer says, or as it said when the last corner was clicked.
+  const crossed = draft ? (walk?.crossed ?? draft.crossed ?? null) : null;
+  const crossedKey = crossed ? `${crossed.tracks.length}/${crossed.vias.length}` : '';
+  useEffect(() => {
+    crossedShown.value = crossed;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [crossedKey]);
+  useEffect(() => () => void (crossedShown.value = null), []);
   // The reason a walk has no way is a tip at the pointer.
   const pointer = useRef<{ x: number; y: number } | null>(null);
   const tipped = useRef(false);
@@ -246,7 +259,7 @@ export function Canvas(props: {
         say(found.reason ?? 'No way there', true);
         return;
       }
-      setDraft({ ...d, points: [...d.points, ...found.points.slice(1)] });
+      setDraft({ ...d, points: [...d.points, ...found.points.slice(1)], crossed: found.crossed });
     });
   }
 
@@ -644,7 +657,7 @@ export function Canvas(props: {
       } else if (draftRef.current && k === 'backspace') {
         used();
         const d = draftRef.current;
-        setDraft(d.points.length > 1 ? { ...d, points: d.points.slice(0, -1) } : null);
+        setDraft(d.points.length > 1 ? { ...d, points: d.points.slice(0, -1), crossed: undefined } : null);
       } else if ((k === 'x' || k === 'v') && sc.routesFile) {
         used();
         const next = k === 'x' ? 'track' : 'via';
@@ -785,6 +798,29 @@ export function Canvas(props: {
             </>
           )}
           <FixedCopper scene={sc} picked={pickedRoute.value} reach={REACH / (SCALE * zoom)} drag={preview.route ?? null} />
+          {crossed && (crossed.tracks.length > 0 || crossed.vias.length > 0) && (
+            // The router's copper the track crosses (issue 726): not an obstacle, since an edit throws it away and the router
+            // lays it again round the new copper; marked so the person sees what will be laid again.
+            <g
+              class="router-shoved"
+              data-testid="router-shoved"
+              data-tracks={crossed.tracks.length}
+              data-vias={crossed.vias.length}
+            >
+              {crossed.tracks.map((t, i) => (
+                <g key={`t${i}`} data-net={t.net} data-layer={t.layer}>
+                  <path class="shoved-halo" d={trackPath(t)} stroke-width={t.width + 0.24} />
+                  <path class="shoved-fade" d={trackPath(t)} stroke-width={t.width} />
+                </g>
+              ))}
+              {crossed.vias.map((v, i) => (
+                <g key={`v${i}`} data-net={v.net}>
+                  <circle class="shoved-halo shoved-via" cx={v.at.x} cy={v.at.y} r={v.diameter / 2 + 0.12} />
+                  <circle class="shoved-fade shoved-via" cx={v.at.x} cy={v.at.y} r={v.diameter / 2} />
+                </g>
+              ))}
+            </g>
+          )}
           {draft &&
             (() => {
               // The segment under the pointer: the way the server found round the copper in the way, else (while it is

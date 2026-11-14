@@ -119,6 +119,13 @@
 .pcb-overlay .track-draft.walk-refused polyline { stroke: var(--danger); }
 .pcb-overlay .track-draft.walk-refused .track-draft-line { stroke-dasharray: calc(2 * var(--px, .04)) calc(3 * var(--px, .04)); }
 .pcb-overlay .via-ghost { fill: color-mix(in srgb, var(--sel) 25%, transparent); stroke: var(--sel); stroke-width: calc(1.5 * var(--px, .04)); stroke-dasharray: calc(3 * var(--px, .04)) calc(2 * var(--px, .04)); pointer-events: none; }
+/* the router's copper the track being drawn crosses (issue 726): it is not an obstacle (an edit throws the router's copper away and
+   the router lays it again), so it is faded (the board's colour washed over it) inside a halo of the warning colour, a little wider than the copper */
+.pcb-overlay .router-shoved { pointer-events: none; }
+.pcb-overlay .shoved-halo { fill: none; stroke: var(--warning); stroke-opacity: .8; stroke-linecap: round; stroke-linejoin: round; }
+.pcb-overlay .shoved-halo.shoved-via { fill: var(--warning); fill-opacity: .8; stroke: none; }
+.pcb-overlay .shoved-fade { fill: none; stroke: var(--pcb-board); stroke-opacity: .7; stroke-linecap: round; stroke-linejoin: round; }
+.pcb-overlay .shoved-fade.shoved-via { fill: var(--pcb-board); fill-opacity: .7; stroke: none; }
 .pcb-overlay .track-draft { pointer-events: none; }
 
 /* the routes list: a net's record, its shapes indented under it; a shape not on the board is faint */
