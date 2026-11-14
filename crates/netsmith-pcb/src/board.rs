@@ -216,6 +216,10 @@ pub struct Board {
     /// is and adds none to a locked net. Empty for a board with no routes file.
     #[serde(default, skip_serializing_if = "FixedCopper::is_empty")]
     pub fixed: FixedCopper,
+    /// The zones a routes file fixed ([`BoardZone`]). Empty for a board with no routes file, or
+    /// one whose file has none.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub zones: Vec<BoardZone>,
 }
 
 /// The copper of a board that a routes file fixed ([`crate::routes`]): the first `tracks` of

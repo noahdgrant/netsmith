@@ -105,6 +105,7 @@ impl Unplaced {
             pinned,
             imported: Default::default(),
             fixed: FixedCopper::default(),
+            zones: Vec::new(),
         }
     }
 }

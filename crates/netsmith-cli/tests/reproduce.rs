@@ -1,8 +1,10 @@
 //! The reproductions of the ported boards (issue #599): the RP2350A Minimal, ORBIT and Easyduino
 //! ESP32-S3 ports, each drawn by `netsmith fab` from the routes file and the layout file that
-//! `netsmith routes import` writes from the original's KiCad board, must have every track, arc
-//! and via of the original, on the same layer and net, and nothing else but the copper named
-//! below with why.
+//! `netsmith routes import` writes from the original's KiCad board, must have every track, arc,
+//! via and zone of the original, on the same layer and net (a zone with the same outline, holes
+//! and settings), and nothing else; it must leave no connection but those named below with why,
+//! and the router must add no copper (every net is locked, a net the original joins by a zone
+//! alone too).
 //!
 //! Each port keeps two boards to compare as the placer and the router improve: its own build,
 //! the automatic board (the example as it is, with no routes file, placed and routed by
@@ -11,8 +13,8 @@
 //! file the reproduction needs, such as a physical file, written by hand). A test copies the
 //! example to a temporary folder, imports the original's board there and requires the committed
 //! files to be what the import writes now, then puts the files of `reference/agent/` into `src/`,
-//! runs `fab` with no KiCad and compares the copper of the board it writes with the original's
-//! (`netsmith_tools::copper`). `measured_copper_of_the_three_boards` prints the copper of the
+//! runs `fab` with no KiCad and compares the copper and the zones of the board it writes with the
+//! original's (`netsmith_tools::copper`). `measured_copper_of_the_three_boards` prints the copper of the
 //! automatic board, the reproduction and the original side by side; it routes the automatic
 //! boards, so it is `#[ignore]`d.
 
@@ -22,7 +24,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
 use netsmith_testkit::TempDir;
-use netsmith_tools::copper::{self, Diff, Kind, Shape};
+use netsmith_tools::copper::{self, Diff, Kind, Shape, ZoneDiff};
 
 /// How far apart two ends of the same copper may be, in mm: the original's numbers and the
 /// routes file's are the same to 1 nm, and the board file writes them to 0.1 µm.
@@ -51,19 +53,13 @@ const RP2350: Port = Port {
     dir: "rp2350_minimal",
     original: "RPI-RP2350A-MINIMAL_R4-S1.kicad_pcb",
     board: "Rp2350Minimal",
-    left: &[
-        ("+1V1", "joined by a zone on F.Cu in the original"),
-        ("+3V3", "joined by a zone on F.Cu in the original"),
-        (
-            "GND",
-            "joined by a zone on F.Cu in the original (the design pours ground on B.Cu only)",
-        ),
-        ("VBUS", "joined by a zone on F.Cu in the original"),
-    ],
-    extra: &[(
-        "net-core_inductor.b",
-        "VREG_LX: a zone on F.Cu joins it in the original, so the routes file has no record of it, and the router routes it",
+    left: &[(
+        "GND",
+        "the RP2350's exposed pad (U2.61): the original's footprint has nine plated holes in it \
+         (pad 61, through-hole) that join it to the ground zone on B.Cu; netsmith's footprint has \
+         none (a footprint difference, issue #728)",
     )],
+    extra: &[],
     // U2, the regulator: netsmith's SOT-223 is drawn turned by a quarter from Raspberry Pi's.
     refitted: &["regulator"],
 };
@@ -72,10 +68,7 @@ const ORBIT: Port = Port {
     dir: "orbit",
     original: "ORBIT.kicad_pcb",
     board: "Orbit",
-    left: &[(
-        "GND",
-        "joined by the ground zone on F.Cu in the original (the design pours ground on B.Cu only)",
-    )],
+    left: &[],
     extra: &[],
     refitted: &["i2c_pullups.scl_pullup", "i2c_pullups.sda_pullup"],
 };
@@ -84,10 +77,7 @@ const EASYDUINO: Port = Port {
     dir: "easyduino_esp32s3",
     original: "Easyduino_ESP32S3.kicad_pcb",
     board: "EasyduinoEsp32s3",
-    left: &[(
-        "+3.3V",
-        "joined by a zone on F.Cu in the original (the design pours 3.3 V on In2.Cu only: a layer has one pour net)",
-    )],
+    left: &[],
     extra: &[],
     refitted: &["bridge_reset_pullup.resistor", "power_led_resistor"],
 };
@@ -142,10 +132,11 @@ fn shapes(path: &Path) -> Vec<Shape> {
     shapes
 }
 
-/// What a reproduction made: the copper diff, the nets `fab` left connections on, and the
-/// folder with its board.
+/// What a reproduction made: the copper diff, the zone diff, the nets `fab` left connections
+/// on, and the folder with its board.
 struct Made {
     diff: Diff,
+    zones: ZoneDiff,
     left: BTreeSet<String>,
     folder: TempDir,
 }
@@ -267,17 +258,27 @@ fn reproduce(port: &Port, tag: &str) -> Made {
                 .map(|(n, _)| n.to_string())
         })
         .collect();
-    let original = shapes(&example(port).join("reference").join(port.original));
-    let ours = shapes(&out.join(format!("{}.kicad_pcb", port.board)));
+    let original = example(port).join("reference").join(port.original);
+    let ours = out.join(format!("{}.kicad_pcb", port.board));
     Made {
-        diff: copper::compare(&original, &ours, TOLERANCE),
+        diff: copper::compare(&shapes(&original), &shapes(&ours), TOLERANCE),
+        zones: copper::compare_zones(&zones(&original), &zones(&ours), TOLERANCE),
         left,
         folder,
     }
 }
 
-/// Every shape of the original is drawn, on one net each way; the extra copper is on the nets
-/// `port.extra` names and the connections left on those `port.left` names, each of them.
+/// The zones of the KiCad board at `path`.
+fn zones(path: &Path) -> Vec<copper::Zone> {
+    let pcb = fs::read_to_string(path).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+    let (zones, unread) = copper::read_zones(&pcb, &path.display().to_string()).unwrap();
+    assert!(unread.is_empty(), "{}: {unread:?}", path.display());
+    zones
+}
+
+/// Every shape and zone of the original is drawn, on one net each way, a zone with the
+/// original's settings; the extra copper is on the nets `port.extra` names and the connections
+/// left on those `port.left` names, each of them.
 fn assert_reproduces(port: &Port, made: &Made) {
     let diff = &made.diff;
     assert!(
@@ -285,6 +286,21 @@ fn assert_reproduces(port: &Port, made: &Made) {
         "the reproduction of {} lacks copper of the original:\n{diff}",
         port.dir
     );
+    let zones = &made.zones;
+    assert!(
+        zones.is_same(),
+        "the zones of the reproduction of {} are not the original's:\n{zones}",
+        port.dir
+    );
+    // A net that has both tracks and zones is the same net of the design for both.
+    for (theirs, ours) in &zones.nets {
+        if let Some(by_tracks) = diff.nets.get(theirs) {
+            assert_eq!(
+                by_tracks, ours,
+                "the original's net `{theirs}` has its tracks on `{by_tracks}` and its zones on `{ours}`"
+            );
+        }
+    }
     let named: BTreeSet<&str> = port.extra.iter().map(|(n, _)| *n).collect();
     let extra: BTreeSet<&str> = diff.extra.iter().map(|s| s.net.as_str()).collect();
     assert_eq!(
@@ -310,6 +326,7 @@ fn the_rp2350_reproduction_has_the_originals_copper() {
         ),
         (Some(&352), Some(&40))
     );
+    assert_eq!(made.zones.matched, 10);
 }
 
 #[test]
@@ -323,6 +340,7 @@ fn the_orbit_reproduction_has_the_originals_copper() {
         ),
         (Some(&299), Some(&49))
     );
+    assert_eq!(made.zones.matched, 1);
 }
 
 #[test]
@@ -336,6 +354,7 @@ fn the_easyduino_reproduction_has_the_originals_copper() {
         ),
         (Some(&703), Some(&137))
     );
+    assert_eq!(made.zones.matched, 5);
 }
 
 /// Segments, arcs, vias and the length of the tracks of a board's copper.
@@ -441,5 +460,6 @@ fn measured_copper_of_the_three_boards() {
             ))
         );
         print!("  {}", made.diff);
+        print!("  {}", made.zones);
     }
 }

@@ -196,7 +196,8 @@ They are kept out of `src/`, so `fab` here still makes the automatic board; `scr
 `reproduce::the_easyduino_reproduction_has_the_originals_copper` (`crates/netsmith-cli/tests/reproduce.rs`) imports again and requires the
 committed files, puts them into `src/` of a copy, runs `fab` with no KiCad and compares the copper
 of the board it writes with Easyduino's, shape by shape, as sets, to 0.1 µm: every segment, arc and
-via on its layer and net.
+via on its layer and net, and every zone on its layers with its outline, holes and settings
+(issue #724).
 
 | Copper | Segments | Arcs | Vias | Track length |
 |---|---|---|---|---|
@@ -209,17 +210,20 @@ The automatic board's figures are of 2026-11-14 and change with the placer and t
 three again, with what netsmith's design rules check finds on the reproduction.
 
 **What matches:** all 703 segments and 137 vias of Easyduino's board, each on its layer and net,
-and nothing more. The import places the parts the physical file does not pin where their board
+and nothing more, and all 5 of its zones (+3.3V and GND on F.Cu, GND on In1.Cu and B.Cu, +3.3V on
+In2.Cu), each on its layer and net with its outline, priority and settings: the board file `fab`
+writes holds them as KiCad's zones, in place of the design's pours and planes, and their fill
+joins every pad of their nets, so `fab` leaves no connection. The import places the parts the physical file does not pin where their board
 has them, locked, the module included; `bridge_reset_pullup.resistor` and `power_led_resistor`
 are turned by 180 degrees from their footprints, because Easyduino numbers their two pads the
 other way round, so that each pad stands where theirs of its net does.
 
 **What does not, and why:**
 
-- **The 3.3 V zone on F.Cu.** Easyduino's board has a +3.3V zone on the top layer besides the
-  ground there; the design pours ground on F.Cu and +3.3V on In2.Cu (a layer pours one net), so
-  `fab` leaves 1 connection on `+3.3V` (a capacitor's pad to the plane, which their zone joins)
-  and writes the board marked INCOMPLETE. The 6 vias the check calls dangling stand in that zone.
+- **The fill.** `fab`'s Gerbers hold netsmith's fill of the zones, which keeps every clearance
+  but removes no island (their ground zone on F.Cu removes those under 30 mm²) and trims no sliver
+  narrower than a zone's minimum width; KiCad's fill of the board file (the zones are written
+  unfilled) removes them, as Easyduino's does.
 - **The SS8050s, `auto_reset.q_en` and `auto_reset.q_boot` (their Q1 and Q2).** Netsmith's SOT-23
   footprint has pads 1.475 x 0.6 mm reaching 0.2 mm from the part's centre, where Easyduino's are
   1.0 x 0.7 mm: their emitter track of Q1 runs over netsmith's pad 1 (the base), a short the

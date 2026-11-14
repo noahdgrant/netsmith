@@ -731,7 +731,8 @@ They are kept out of `src/`, so `fab` here still makes the automatic board; `scr
 `reproduce::the_orbit_reproduction_has_the_originals_copper` (`crates/netsmith-cli/tests/reproduce.rs`) imports again and requires the
 committed files, puts them into `src/` of a copy, runs `fab` with no KiCad and compares the copper
 of the board it writes with ORBIT's, shape by shape, as sets, to 0.1 µm: every segment, arc and
-via on its layer and net.
+via on its layer and net, and every zone on its layers with its outline, holes and settings
+(issue #724).
 
 | Copper | Segments | Arcs | Vias | Track length |
 |---|---|---|---|---|
@@ -744,17 +745,18 @@ The automatic board's figures are of 2026-11-14 and change with the placer and t
 three again, with what netsmith's design rules check finds on the reproduction.
 
 **What matches:** all 299 segments and 49 vias of ORBIT's board, each on its layer and net, and
-nothing more. The import places the parts the physical file does not pin where their board has
+nothing more, and its ground zone on both layers, with its outline and settings: the board file
+`fab` writes holds it as KiCad's zone, in place of the design's ground pour on B.Cu, and its fill
+joins every ground pad, so `fab` leaves no connection. The import places the parts the physical file does not pin where their board has
 them, locked; the two I2C pull-ups, `i2c_pullups.scl_pullup` and `.sda_pullup`, are turned by 180
 degrees from their footprints, because ORBIT numbers their two pads the other way round, so that
 each pad stands where theirs of its net does.
 
 **What does not, and why:**
 
-- **The ground zone on F.Cu.** ORBIT's `GND` zone is on both layers; the design pours ground on
-  B.Cu only (`.bottom.net`), so `fab` leaves 31 connections on `GND`, the pads on the top that the
-  zone joins, and writes the board marked INCOMPLETE. The 4 track ends and 18 vias that the check
-  calls dangling end in that zone.
+- **The fill.** `fab`'s Gerbers hold netsmith's fill of the zone, which keeps every clearance
+  but removes no island and trims no sliver narrower than the zone's minimum width; KiCad's fill
+  of the board file (the zone is written unfilled) removes them, as ORBIT's does.
 - **Courtyards.** `mcu` overlaps `v3v3_100n[2]` and `v3v3_100n[3]`: netsmith's LQFP-48 courtyard
   is wider than ORBIT's, whose capacitors stand within it. Parts that both stand where an imported board
   has them may share courtyard area: `fab` warns, and does not stop.

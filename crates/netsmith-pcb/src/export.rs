@@ -597,6 +597,75 @@ fn zone(board: &Board, plane: &Plane, net: Sexp) -> Sexp {
     )
 }
 
+/// A zone of the routes file as KiCad writes one, unfilled: its outline and each hole a
+/// `(polygon`, and its settings, so that KiCad's fill makes the copper of the zone it was imported
+/// from (a priority of 0, and islands removed, are KiCad's defaults and not written).
+fn fixed_zone(board: &Board, i: usize, z: &crate::board::BoardZone, net: Sexp) -> Sexp {
+    use crate::board::{ZoneIslands, ZonePads};
+    let polygon = |ring: &[crate::geometry::Pt]| {
+        Sexp::node(
+            "polygon",
+            vec![Sexp::node(
+                "pts",
+                ring.iter()
+                    .map(|p| Sexp::node("xy", vec![Sexp::num(p.x), Sexp::num(p.y)]))
+                    .collect(),
+            )],
+        )
+    };
+    let layers = match z.layers.as_slice() {
+        [one] => Sexp::node("layer", vec![Sexp::string(one.clone())]),
+        many => Sexp::node(
+            "layers",
+            many.iter().map(|l| Sexp::string(l.clone())).collect(),
+        ),
+    };
+    let mut fields = vec![
+        net,
+        Sexp::node("net_name", vec![Sexp::string(z.net.clone())]),
+        layers,
+        uuid_for(&format!("{}/routes-zone/{i}", board.name)),
+        Sexp::node("hatch", vec![Sexp::atom("edge"), Sexp::num(0.5)]),
+    ];
+    if z.priority > 0 {
+        fields.push(Sexp::node(
+            "priority",
+            vec![Sexp::num(f64::from(z.priority))],
+        ));
+    }
+    let mut connect = Vec::new();
+    match z.pads {
+        ZonePads::Solid => connect.push(Sexp::atom("yes")),
+        ZonePads::Thermal => {}
+        ZonePads::None => connect.push(Sexp::atom("no")),
+        ZonePads::ThruHoleOnly => connect.push(Sexp::atom("thru_hole_only")),
+    }
+    connect.push(Sexp::node("clearance", vec![Sexp::num(z.clearance)]));
+    fields.push(Sexp::node("connect_pads", connect));
+    fields.push(Sexp::node("min_thickness", vec![Sexp::num(z.min_width)]));
+    fields.push(Sexp::node("filled_areas_thickness", vec![Sexp::atom("no")]));
+    let mut fill = vec![
+        Sexp::atom("yes"),
+        Sexp::node("thermal_gap", vec![Sexp::num(z.thermal_gap)]),
+        Sexp::node("thermal_bridge_width", vec![Sexp::num(z.spoke_width)]),
+    ];
+    match z.islands {
+        ZoneIslands::Remove => {}
+        ZoneIslands::Keep => fill.push(Sexp::node("island_removal_mode", vec![Sexp::num(1.0)])),
+        ZoneIslands::RemoveBelow => {
+            fill.push(Sexp::node("island_removal_mode", vec![Sexp::num(2.0)]));
+            fill.push(Sexp::node(
+                "island_area_min",
+                vec![Sexp::num(z.island_min_area.unwrap_or(0.0))],
+            ));
+        }
+    }
+    fields.push(Sexp::node("fill", fill));
+    fields.push(polygon(&z.outline));
+    fields.extend(z.holes.iter().map(|h| polygon(h)));
+    Sexp::node("zone", fields)
+}
+
 /// A teardrop as KiCad 9 writes one: a zone of the track's net on its layer, marked as a
 /// teardrop, joined solid to its pad, with the polygon as its outline and as its fill, so that
 /// netsmith's Gerbers and check, and KiCad, take the copper as it is (see `crate::teardrop`).
@@ -891,16 +960,20 @@ pub(crate) fn board_tree(board: &Board) -> Sexp {
     for (i, drop) in board.teardrops.iter().enumerate() {
         items.push(teardrop(board, i, drop, net_number(&drop.net)));
     }
-    for plane in &board.planes {
+    // A layer with a zone of the routes file takes its zones from the file alone.
+    for plane in board.planes.iter().filter(|p| !board.zoned(&p.layer)) {
         items.push(zone(board, plane, net_number(&plane.net)));
     }
     // An outer pour is the same zone on an outer layer; KiCad fills it round the tracks.
-    for pour in &board.pours {
+    for pour in board.pours.iter().filter(|p| !board.zoned(p.layer.name())) {
         let layer = Plane {
             layer: pour.layer.name().to_string(),
             net: pour.net.clone(),
         };
         items.push(zone(board, &layer, net_number(&pour.net)));
+    }
+    for (i, z) in board.zones.iter().enumerate() {
+        items.push(fixed_zone(board, i, z, net_number(&z.net)));
     }
     // A keepout that only limits height is no rule area: KiCad has nothing to say about it.
     for area in board
@@ -1598,6 +1671,62 @@ mod tests {
                 .text(),
             Some("1.6")
         );
+    }
+
+    #[test]
+    fn a_routes_zone_is_kicads_zone_and_takes_its_layer_from_the_designs_plane() {
+        use crate::board::{BoardZone, ZoneIslands, ZonePads};
+        let mut board = four();
+        let p = |x: f64, y: f64| board.outline.min + Pt::new(x, y);
+        board.zones.push(BoardZone {
+            net: "3V3".into(),
+            layers: vec!["F.Cu".into(), "In1.Cu".into()],
+            outline: vec![p(1.0, 1.0), p(6.0, 1.0), p(6.0, 5.0)],
+            holes: vec![vec![p(4.0, 2.0), p(5.0, 2.0), p(5.0, 3.0)]],
+            priority: 3,
+            clearance: 0.15,
+            min_width: 0.25,
+            pads: ZonePads::Solid,
+            thermal_gap: 0.508,
+            spoke_width: 0.4,
+            islands: ZoneIslands::RemoveBelow,
+            island_min_area: Some(30.0),
+        });
+        let pcb = parsed(&board);
+        let zones: Vec<&Sexp> = pcb.find_all("zone").collect();
+        // In1.Cu's GND plane gives way to the routes file's zone; In2.Cu keeps its plane.
+        assert_eq!(zones.len(), 2);
+        assert_eq!(
+            zones[0].find("layer").unwrap().args()[0].text(),
+            Some("In2.Cu")
+        );
+        let z = zones[1];
+        let layers: Vec<&str> = z
+            .find("layers")
+            .unwrap()
+            .args()
+            .iter()
+            .filter_map(Sexp::text)
+            .collect();
+        assert_eq!(layers, ["F.Cu", "In1.Cu"]);
+        assert_eq!(z.find("net_name").unwrap().args()[0].text(), Some("3V3"));
+        assert_eq!(numbers(z, "priority"), [3.0]);
+        let connect = z.find("connect_pads").unwrap();
+        assert_eq!(connect.args()[0].text(), Some("yes"));
+        assert_eq!(numbers(connect, "clearance"), [0.15]);
+        assert_eq!(numbers(z, "min_thickness"), [0.25]);
+        let fill = z.find("fill").unwrap();
+        assert_eq!(numbers(fill, "thermal_gap"), [0.508]);
+        assert_eq!(numbers(fill, "thermal_bridge_width"), [0.4]);
+        assert_eq!(numbers(fill, "island_removal_mode"), [2.0]);
+        assert_eq!(numbers(fill, "island_area_min"), [30.0]);
+        // The outline, then the hole.
+        let polygons: Vec<usize> = z
+            .find_all("polygon")
+            .map(|poly| poly.find("pts").unwrap().find_all("xy").count())
+            .collect();
+        assert_eq!(polygons, [3, 3]);
+        assert!(z.find("filled_polygon").is_none());
     }
 
     #[test]

@@ -375,9 +375,506 @@ pub fn compare(reference: &[Shape], ours: &[Shape], tolerance: f64) -> Diff {
     diff
 }
 
+/// What a zone of a KiCad board is.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ZoneKind {
+    /// Copper of a net: what a routes file holds.
+    Copper,
+    /// A rule area (`(keepout ...)`): no copper.
+    RuleArea,
+    /// A teardrop (`(attr (teardrop ...))`): copper that `fab` draws itself.
+    Teardrop,
+}
+
+/// One zone of a KiCad board, with the settings that change its copper in the routes file's
+/// terms (`netsmith_pcb::RouteZone`), its places in mm from the top left corner of the board's
+/// `Edge.Cuts` box.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Zone {
+    pub kind: ZoneKind,
+    /// The net's name as the board writes it (`""` for none).
+    pub net: String,
+    /// KiCad's names of its copper layers, KiCad's shorthands (`F&B.Cu`, `*.Cu`) spelt out.
+    pub layers: Vec<String>,
+    /// The first `(polygon`, which KiCad writes as the outline.
+    pub outline: Vec<[f64; 2]>,
+    /// Each further `(polygon`: a cutout.
+    pub holes: Vec<Vec<[f64; 2]>>,
+    pub priority: u32,
+    pub clearance: f64,
+    /// KiCad's `min_thickness`.
+    pub min_width: f64,
+    pub pads: netsmith_pcb::ZonePads,
+    pub thermal_gap: f64,
+    /// KiCad's `thermal_bridge_width`.
+    pub spoke_width: f64,
+    pub islands: netsmith_pcb::ZoneIslands,
+    /// KiCad's `island_area_min`, in mm².
+    pub island_min_area: Option<f64>,
+    /// Filled with hatching (`(mode hatch)`), not solid.
+    pub hatched: bool,
+    /// Its corners rounded or cut (`(smoothing fillet)`, `(smoothing chamfer)`).
+    pub smoothed: bool,
+}
+
+impl fmt::Display for Zone {
+    /// `zone of net GND on F.Cu and B.Cu, priority 1, 4 corners from (0, 0), 1 hole`.
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let first = self.outline.first().copied().unwrap_or_default();
+        write!(
+            f,
+            "zone of net {} on {}, priority {}, {} corners from ({}, {}), {} hole(s)",
+            if self.net.is_empty() {
+                "(none)"
+            } else {
+                &self.net
+            },
+            self.layers.join(" and "),
+            self.priority,
+            self.outline.len(),
+            round(first[0]),
+            round(first[1]),
+            self.holes.len()
+        )
+    }
+}
+
+/// The zones of the KiCad board `pcb`, rule areas and teardrops among them ([`Zone::kind`]), with
+/// what could not be read, each a sentence (a zone with no outline, or without a setting that
+/// KiCad writes into every zone: its clearance, minimum thickness, thermal gap and spoke width).
+pub fn read_zones(pcb: &str, source: &str) -> Result<(Vec<Zone>, Vec<String>), String> {
+    use netsmith_pcb::{ZoneIslands, ZonePads};
+    let outline = crate::reference_table::read_board(pcb, source)?.outline;
+    let root = Sexp::parse(pcb).map_err(|e| format!("{source}: {e}"))?;
+    let origin = (outline.min_x, outline.min_y);
+    let numbered: BTreeMap<String, String> = root
+        .find_all("net")
+        .filter_map(|n| {
+            let args = n.args();
+            Some((
+                args.first()?.text()?.to_string(),
+                args.get(1)?.text()?.to_string(),
+            ))
+        })
+        .collect();
+    let copper: Vec<String> = root
+        .find("layers")
+        .map(|l| {
+            l.args()
+                .iter()
+                .filter_map(|e| e.args().first()?.text())
+                .filter(|n| n.ends_with(".Cu"))
+                .map(str::to_string)
+                .collect()
+        })
+        .unwrap_or_default();
+    let number = |item: &Sexp, key: &str| -> Option<f64> {
+        item.find(key)?.args().first()?.text()?.parse().ok()
+    };
+    let ring = |polygon: &Sexp| -> Vec<[f64; 2]> {
+        polygon
+            .find("pts")
+            .map(|pts| {
+                pts.find_all("xy")
+                    .filter_map(|xy| {
+                        let a = xy.args();
+                        let n = |k: usize| a.get(k)?.text()?.parse::<f64>().ok();
+                        Some([round(n(0)? - origin.0), round(n(1)? - origin.1)])
+                    })
+                    .collect()
+            })
+            .unwrap_or_default()
+    };
+    let mut zones = Vec::new();
+    let mut unread = Vec::new();
+    for item in root.args().iter().filter(|i| i.head() == Some("zone")) {
+        let net = match item.find("net_name").and_then(|n| n.args().first()?.text()) {
+            Some(name) => name.to_string(),
+            None => match item.find("net").and_then(|n| n.args().first()) {
+                Some(Sexp::Str(name)) => name.clone(),
+                Some(other) => other
+                    .text()
+                    .and_then(|t| numbered.get(t).cloned())
+                    .unwrap_or_default(),
+                None => String::new(),
+            },
+        };
+        let named: Vec<String> = match item.find("layers") {
+            Some(l) => l
+                .args()
+                .iter()
+                .filter_map(Sexp::text)
+                .map(str::to_string)
+                .collect(),
+            None => item
+                .find("layer")
+                .and_then(|l| l.args().first()?.text())
+                .map(|l| vec![l.to_string()])
+                .unwrap_or_default(),
+        };
+        let mut layers = Vec::new();
+        for l in named {
+            match l.as_str() {
+                "F&B.Cu" => layers.extend(["F.Cu".to_string(), "B.Cu".to_string()]),
+                "*.Cu" => layers.extend(copper.iter().cloned()),
+                _ => layers.push(l),
+            }
+        }
+        let kind = if item.find("keepout").is_some() {
+            ZoneKind::RuleArea
+        } else if item
+            .find("attr")
+            .is_some_and(|a| a.find("teardrop").is_some())
+        {
+            ZoneKind::Teardrop
+        } else {
+            ZoneKind::Copper
+        };
+        let mut polygons = item.find_all("polygon").map(ring);
+        let Some(outline) = polygons.next().filter(|o| o.len() >= 3) else {
+            unread.push(format!("a zone of net `{net}` with no outline: left out"));
+            continue;
+        };
+        let holes: Vec<Vec<[f64; 2]>> = polygons.collect();
+        let connect = item.find("connect_pads");
+        let fill = item.find("fill");
+        let pads = match connect.and_then(|c| c.args().first()?.text()) {
+            Some("yes") => ZonePads::Solid,
+            Some("no") => ZonePads::None,
+            Some("thru_hole_only") => ZonePads::ThruHoleOnly,
+            _ => ZonePads::Thermal,
+        };
+        let settings = (
+            connect.and_then(|c| number(c, "clearance")),
+            number(item, "min_thickness"),
+            fill.and_then(|f| number(f, "thermal_gap")),
+            fill.and_then(|f| number(f, "thermal_bridge_width")),
+        );
+        let (Some(clearance), Some(min_width), Some(thermal_gap), Some(spoke_width)) = settings
+        else {
+            if kind == ZoneKind::Copper {
+                unread.push(format!(
+                    "a zone of net `{net}` without its clearance, minimum thickness, thermal gap or spoke width: left out"
+                ));
+                continue;
+            }
+            zones.push(Zone {
+                kind,
+                net,
+                layers,
+                outline,
+                holes,
+                priority: 0,
+                clearance: 0.0,
+                min_width: 0.0,
+                pads,
+                thermal_gap: 0.0,
+                spoke_width: 0.0,
+                islands: ZoneIslands::Remove,
+                island_min_area: None,
+                hatched: false,
+                smoothed: false,
+            });
+            continue;
+        };
+        let islands = match fill.and_then(|f| number(f, "island_removal_mode")) {
+            Some(1.0) => ZoneIslands::Keep,
+            Some(2.0) => ZoneIslands::RemoveBelow,
+            _ => ZoneIslands::Remove,
+        };
+        let island_min_area = (islands == ZoneIslands::RemoveBelow).then(|| {
+            fill.and_then(|f| number(f, "island_area_min"))
+                .unwrap_or(0.0)
+        });
+        let word = |key: &str| fill.and_then(|f| f.find(key)?.args().first()?.text());
+        zones.push(Zone {
+            kind,
+            net,
+            layers,
+            outline,
+            holes,
+            priority: number(item, "priority").map_or(0, |p| p.max(0.0) as u32),
+            clearance,
+            min_width,
+            pads,
+            thermal_gap,
+            spoke_width,
+            islands,
+            island_min_area,
+            hatched: word("mode").is_some_and(|m| m != "solid"),
+            smoothed: word("smoothing").is_some_and(|m| m != "none"),
+        });
+    }
+    Ok((zones, unread))
+}
+
+/// How two boards' copper zones differ ([`compare_zones`]).
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct ZoneDiff {
+    /// How many zones of the reference the other board has, with every setting the same.
+    pub matched: usize,
+    /// The reference's zones the other board has none of where they are.
+    pub missing: Vec<Zone>,
+    /// The other board's zones the reference does not have.
+    pub extra: Vec<Zone>,
+    /// The zones where both boards have one, on the same layers and with the same outline and
+    /// holes, but whose settings differ, each a sentence naming the settings.
+    pub differing: Vec<String>,
+    /// The other board's net of each net of the reference, by the zones they share.
+    pub nets: BTreeMap<String, String>,
+    /// Where the zones of one net of either board are on two nets of the other, each a sentence.
+    pub crossed: Vec<String>,
+}
+
+impl ZoneDiff {
+    pub fn is_same(&self) -> bool {
+        self.missing.is_empty()
+            && self.extra.is_empty()
+            && self.differing.is_empty()
+            && self.crossed.is_empty()
+    }
+}
+
+impl fmt::Display for ZoneDiff {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(
+            f,
+            "matched {} of {} zones; {} missing, {} extra, {} with other settings, {} on another net",
+            self.matched,
+            self.matched + self.missing.len() + self.differing.len(),
+            self.missing.len(),
+            self.extra.len(),
+            self.differing.len(),
+            self.crossed.len()
+        )?;
+        for z in &self.missing {
+            writeln!(f, "  missing: {z}")?;
+        }
+        for z in &self.extra {
+            writeln!(f, "  extra: {z}")?;
+        }
+        for d in &self.differing {
+            writeln!(f, "  other settings: {d}")?;
+        }
+        for c in &self.crossed {
+            writeln!(f, "  on another net: {c}")?;
+        }
+        Ok(())
+    }
+}
+
+/// Whether two rings are the same to `tolerance` mm, from any corner and either way round.
+fn same_ring(a: &[[f64; 2]], b: &[[f64; 2]], tolerance: f64) -> bool {
+    let close = |p: [f64; 2], q: [f64; 2]| {
+        (p[0] - q[0]).abs() <= tolerance && (p[1] - q[1]).abs() <= tolerance
+    };
+    let n = a.len();
+    if n != b.len() || n == 0 {
+        return n == b.len();
+    }
+    (0..n).any(|shift| {
+        (0..n).all(|i| close(a[i], b[(i + shift) % n]))
+            || (0..n).all(|i| close(a[i], b[(shift + n - i) % n]))
+    })
+}
+
+/// Whether two zones stand in the same place: the same layers, outline and holes.
+fn same_place(a: &Zone, b: &Zone, tolerance: f64) -> bool {
+    let sorted = |z: &Zone| {
+        let mut l = z.layers.clone();
+        l.sort();
+        l
+    };
+    sorted(a) == sorted(b)
+        && same_ring(&a.outline, &b.outline, tolerance)
+        && a.holes.len() == b.holes.len()
+        && a.holes
+            .iter()
+            .all(|h| b.holes.iter().any(|g| same_ring(h, g, tolerance)))
+}
+
+/// The settings in which `ours` differs from the reference's `theirs`, each `name ours (theirs)`.
+fn other_settings(theirs: &Zone, ours: &Zone, tolerance: f64) -> Vec<String> {
+    let mut said = Vec::new();
+    let mut size = |name: &str, t: f64, o: f64| {
+        if (t - o).abs() > tolerance {
+            said.push(format!(
+                "{name} {} (the reference's {})",
+                round(o),
+                round(t)
+            ));
+        }
+    };
+    size("clearance", theirs.clearance, ours.clearance);
+    size("min_width", theirs.min_width, ours.min_width);
+    size("thermal_gap", theirs.thermal_gap, ours.thermal_gap);
+    size("spoke_width", theirs.spoke_width, ours.spoke_width);
+    size(
+        "island_min_area",
+        theirs.island_min_area.unwrap_or(0.0),
+        ours.island_min_area.unwrap_or(0.0),
+    );
+    if theirs.priority != ours.priority {
+        said.push(format!(
+            "priority {} (the reference's {})",
+            ours.priority, theirs.priority
+        ));
+    }
+    if theirs.pads != ours.pads {
+        said.push(format!(
+            "pads {:?} (the reference's {:?})",
+            ours.pads, theirs.pads
+        ));
+    }
+    if theirs.islands != ours.islands {
+        said.push(format!(
+            "islands {:?} (the reference's {:?})",
+            ours.islands, theirs.islands
+        ));
+    }
+    if (theirs.hatched, theirs.smoothed) != (ours.hatched, ours.smoothed) {
+        said.push(format!(
+            "hatched {} and smoothed {} (the reference's {} and {})",
+            ours.hatched, ours.smoothed, theirs.hatched, theirs.smoothed
+        ));
+    }
+    said
+}
+
+/// How the copper zones of `ours` differ from those of `reference` (rule areas and teardrops
+/// aside), as sets: each zone of the reference is paired with one of `ours` on the same layers
+/// with the same outline and holes to `tolerance` mm (from any corner, either way round), whatever
+/// the order or the nets' names; a pair whose settings differ is [`ZoneDiff::differing`]. The
+/// nets are then compared by the pairs, as [`compare`] compares them.
+pub fn compare_zones(reference: &[Zone], ours: &[Zone], tolerance: f64) -> ZoneDiff {
+    let copper = |z: &&Zone| z.kind == ZoneKind::Copper;
+    let ours: Vec<&Zone> = ours.iter().filter(copper).collect();
+    let mut used = vec![false; ours.len()];
+    let mut diff = ZoneDiff::default();
+    let mut pairs: BTreeMap<(String, String), usize> = BTreeMap::new();
+    for r in reference.iter().filter(copper) {
+        let found = (0..ours.len()).find(|&i| !used[i] && same_place(r, ours[i], tolerance));
+        let Some(i) = found else {
+            diff.missing.push(r.clone());
+            continue;
+        };
+        used[i] = true;
+        *pairs
+            .entry((r.net.clone(), ours[i].net.clone()))
+            .or_default() += 1;
+        let other = other_settings(r, ours[i], tolerance);
+        if other.is_empty() {
+            diff.matched += 1;
+        } else {
+            diff.differing.push(format!("{r}: {}", other.join(", ")));
+        }
+    }
+    diff.extra = ours
+        .iter()
+        .zip(&used)
+        .filter(|(_, u)| !**u)
+        .map(|(z, _)| (*z).clone())
+        .collect();
+    let mut of_reference: BTreeMap<&str, Vec<&str>> = BTreeMap::new();
+    let mut of_ours: BTreeMap<&str, Vec<&str>> = BTreeMap::new();
+    for (r, o) in pairs.keys() {
+        of_reference.entry(r).or_default().push(o);
+        of_ours.entry(o).or_default().push(r);
+    }
+    for (r, v) in &of_reference {
+        if let [o] = v.as_slice() {
+            diff.nets.insert(r.to_string(), o.to_string());
+        } else {
+            diff.crossed.push(format!(
+                "the zones of the reference's net `{r}` are on nets {} of this board",
+                v.join(", ")
+            ));
+        }
+    }
+    for (o, v) in &of_ours {
+        if v.len() > 1 {
+            diff.crossed.push(format!(
+                "this board's net `{o}` has the zones of the reference's nets {}",
+                v.join(", ")
+            ));
+        }
+    }
+    diff
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    const ZONED: &str = r#"(kicad_pcb (version 20240108)
+        (layers (0 "F.Cu" signal) (31 "B.Cu" signal) (44 "Edge.Cuts" user))
+        (net 0 "") (net 1 "GND") (net 2 "VCC")
+        (gr_line (start 10 10) (end 30 10) (layer "Edge.Cuts"))
+        (gr_line (start 30 10) (end 30 30) (layer "Edge.Cuts"))
+        (gr_line (start 30 30) (end 10 30) (layer "Edge.Cuts"))
+        (gr_line (start 10 30) (end 10 10) (layer "Edge.Cuts"))
+        (zone (net 1) (net_name "GND") (layers "F&B.Cu") (priority 2)
+          (connect_pads (clearance 0.3)) (min_thickness 0.25)
+          (fill yes (thermal_gap 0.5) (thermal_bridge_width 0.4) (island_removal_mode 2) (island_area_min 30))
+          (polygon (pts (xy 11 11) (xy 29 11) (xy 29 29) (xy 11 29)))
+          (polygon (pts (xy 15 15) (xy 16 15) (xy 16 16))))
+        (zone (net 2) (net_name "VCC") (layer "F.Cu")
+          (connect_pads yes (clearance 0.2)) (min_thickness 0.2)
+          (fill yes (thermal_gap 0.3) (thermal_bridge_width 0.3))
+          (polygon (pts (xy 12 12) (xy 14 12) (xy 14 14))))
+        (zone (net 0) (net_name "") (layer "F.Cu") (keepout (tracks not_allowed))
+          (polygon (pts (xy 20 20) (xy 21 20) (xy 21 21)))))"#;
+
+    #[test]
+    fn a_zones_settings_and_holes_are_read_from_the_boards_corner() {
+        let (zones, unread) = read_zones(ZONED, "z").unwrap();
+        assert!(unread.is_empty(), "{unread:?}");
+        assert_eq!(zones.len(), 3);
+        let gnd = &zones[0];
+        assert_eq!(gnd.kind, ZoneKind::Copper);
+        assert_eq!(gnd.layers, ["F.Cu", "B.Cu"]);
+        assert_eq!(gnd.outline[0], [1.0, 1.0]);
+        assert_eq!(gnd.holes, [vec![[5.0, 5.0], [6.0, 5.0], [6.0, 6.0]]]);
+        assert_eq!(
+            (
+                gnd.priority,
+                gnd.clearance,
+                gnd.min_width,
+                gnd.thermal_gap,
+                gnd.spoke_width
+            ),
+            (2, 0.3, 0.25, 0.5, 0.4)
+        );
+        assert_eq!(gnd.pads, netsmith_pcb::ZonePads::Thermal);
+        assert_eq!(gnd.islands, netsmith_pcb::ZoneIslands::RemoveBelow);
+        assert_eq!(gnd.island_min_area, Some(30.0));
+        assert_eq!(zones[1].pads, netsmith_pcb::ZonePads::Solid);
+        assert_eq!(zones[1].islands, netsmith_pcb::ZoneIslands::Remove);
+        assert_eq!(zones[2].kind, ZoneKind::RuleArea);
+    }
+
+    #[test]
+    fn zones_compare_as_sets_and_a_changed_setting_is_named() {
+        let (reference, _) = read_zones(ZONED, "z").unwrap();
+        let mut ours: Vec<Zone> = reference.iter().rev().cloned().collect();
+        for z in &mut ours {
+            z.net = z.net.to_lowercase();
+            z.outline.rotate_left(1);
+        }
+        let diff = compare_zones(&reference, &ours, 1e-4);
+        assert!(diff.is_same(), "{diff}");
+        assert_eq!(diff.matched, 2);
+        assert_eq!(diff.nets.get("GND").map(String::as_str), Some("gnd"));
+        ours[2].clearance = 0.2;
+        ours[1].outline[0][0] += 0.01;
+        let diff = compare_zones(&reference, &ours, 1e-4);
+        assert_eq!((diff.missing.len(), diff.extra.len()), (1, 1), "{diff}");
+        assert!(
+            diff.differing.len() == 1
+                && diff.differing[0].contains("clearance 0.2 (the reference's 0.3)"),
+            "{diff}"
+        );
+    }
 
     fn segment(net: &str, from: [f64; 2], to: [f64; 2]) -> Shape {
         Shape {

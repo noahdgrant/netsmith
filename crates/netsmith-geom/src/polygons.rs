@@ -141,6 +141,61 @@ impl Polygons {
     }
 }
 
+/// The rings of areas: each outer ring positive and each hole negative, so that the non-zero
+/// rule reads any list of them as the union of the areas.
+fn rings_of(areas: &[Area]) -> Vec<Ring> {
+    areas
+        .iter()
+        .flat_map(|a| std::iter::once(&a.outer).chain(&a.holes))
+        .filter(|r| r.len() >= 3)
+        .map(|r| r.iter().map(|p| [p.x, p.y]).collect())
+        .collect()
+}
+
+/// What of `subject` is not in `clip`.
+pub(crate) fn difference(subject: &[Area], clip: &[Area]) -> Vec<Area> {
+    let (s, c) = (rings_of(subject), rings_of(clip));
+    if s.is_empty() || c.is_empty() {
+        return to_areas(s);
+    }
+    to_areas(flatten(s.overlay(
+        &c,
+        OverlayRule::Difference,
+        FillRule::NonZero,
+    )))
+}
+
+/// Whether `a` and `b` share area (more than touching).
+pub(crate) fn overlap(a: &[Area], b: &[Area]) -> bool {
+    let (ra, rb) = (rings_of(a), rings_of(b));
+    if ra.is_empty() || rb.is_empty() {
+        return false;
+    }
+    to_areas(flatten(ra.overlay(
+        &rb,
+        OverlayRule::Intersect,
+        FillRule::NonZero,
+    )))
+    .iter()
+    .any(|a| a.size() > 1e-9)
+}
+
+/// The areas grown by `by` mm: everything within `by` of them (each ring stroked with a round
+/// pen `2 * by` wide, and joined to the areas).
+pub(crate) fn grown(areas: &[Area], by: f64) -> Vec<Area> {
+    let mut rings = rings_of(areas);
+    for a in areas {
+        for r in std::iter::once(&a.outer).chain(&a.holes) {
+            let mut closed = r.clone();
+            if let Some(&first) = r.first() {
+                closed.push(first);
+            }
+            rings.extend(strokes(&closed, 2.0 * by));
+        }
+    }
+    to_areas(rings)
+}
+
 /// The shapes of an overlay as one list of rings: each shape's outer ring and its holes.
 fn flatten(shapes: Vec<Vec<Ring>>) -> Vec<Ring> {
     shapes.into_iter().flatten().collect()

@@ -28,6 +28,28 @@ vias = [
   { at = [15.295, 39.7486], diameter = 0.5, drill = 0.3 },
 ]
 
+[[EasyduinoEsp32s3.nets."+3.3V".zones]]
+layers = ["top"]
+priority = 9
+clearance = 0.3
+min_width = 0.25
+pads = "solid"
+thermal_gap = 0.5
+spoke_width = 0.5
+islands = "remove"
+outline = [[8.795, 39.4486], [9.095, 39.1486], [13.695, 39.1486], [15.295, 37.7486], [17.995, 37.7486], [18.495, 38.2486], [18.495, 40.3486], [19.295, 41.0486], [20.795, 41.0486], [21.095, 41.3486], [21.095, 42.7486], [20.795, 43.0486], [15.095, 43.0486], [13.495, 41.5486], [9.195, 41.5486], [8.795, 41.4486]]
+
+[[EasyduinoEsp32s3.nets."+3.3V".zones]]
+layers = ["inner2"]
+priority = 1
+clearance = 0.3
+min_width = 0.25
+pads = "thermal"
+thermal_gap = 0.5
+spoke_width = 0.5
+islands = "remove"
+outline = [[27.895, -2.6514], [27.895, 68.3486], [-2.105, 68.3486], [-2.105, -2.6514]]
+
 [EasyduinoEsp32s3.nets.GND]
 pads = "08acdce9e813db9e"
 lock = true
@@ -154,6 +176,40 @@ vias = [
   { at = [20.095, 34.1486], diameter = 0.5, drill = 0.3 },
   { at = [10.795, 10.7486], diameter = 0.5, drill = 0.3 },
 ]
+
+[[EasyduinoEsp32s3.nets.GND.zones]]
+layers = ["top"]
+priority = 4
+clearance = 0.3
+min_width = 0.25
+pads = "thermal"
+thermal_gap = 0.5
+spoke_width = 0.5
+islands = "remove_below"
+island_min_area = 30.0
+outline = [[27.895, -2.6514], [-2.105, -2.6514], [-2.105, 68.3486], [27.895, 68.3486]]
+
+[[EasyduinoEsp32s3.nets.GND.zones]]
+layers = ["bottom"]
+priority = 0
+clearance = 0.3
+min_width = 0.25
+pads = "thermal"
+thermal_gap = 0.5
+spoke_width = 0.5
+islands = "remove"
+outline = [[-2.105, -2.6514], [-2.105, 68.3486], [27.895, 68.3486], [27.895, -2.6514]]
+
+[[EasyduinoEsp32s3.nets.GND.zones]]
+layers = ["inner1"]
+priority = 2
+clearance = 0.3
+min_width = 0.25
+pads = "thermal"
+thermal_gap = 0.5
+spoke_width = 0.5
+islands = "remove"
+outline = [[27.895, -2.6514], [27.895, 68.3486], [-2.105, 68.3486], [-2.105, -2.6514]]
 
 [EasyduinoEsp32s3.nets.VBUS]
 pads = "e14c456cd6985869"
