@@ -221,7 +221,7 @@
         "path": "flash",
         "pins": [
           {
-            "name": "cs",
+            "name": "qspi.cs",
             "datasheet": "CS#",
             "kind": "input",
             "pads": [
@@ -231,7 +231,7 @@
             "power_flow": null
           },
           {
-            "name": "do_io1",
+            "name": "qspi.io1",
             "datasheet": "DO(IO1)",
             "kind": "bidirectional",
             "pads": [
@@ -241,7 +241,7 @@
             "power_flow": null
           },
           {
-            "name": "wp_io2",
+            "name": "qspi.io2",
             "datasheet": "WP#(IO2)",
             "kind": "bidirectional",
             "pads": [
@@ -261,7 +261,7 @@
             "power_flow": null
           },
           {
-            "name": "di_io0",
+            "name": "qspi.io0",
             "datasheet": "DI(IO0)",
             "kind": "bidirectional",
             "pads": [
@@ -271,7 +271,7 @@
             "power_flow": null
           },
           {
-            "name": "clk",
+            "name": "qspi.sclk",
             "datasheet": "CLK",
             "kind": "input",
             "pads": [
@@ -281,7 +281,7 @@
             "power_flow": null
           },
           {
-            "name": "hold_io3",
+            "name": "qspi.io3",
             "datasheet": "HOLD#/RESET#(IO3)",
             "kind": "bidirectional",
             "pads": [
@@ -1611,7 +1611,7 @@
             "pads": [
               "55"
             ],
-            "function": null,
+            "function": "QSPI_SD3",
             "power_flow": null
           },
           {
@@ -1621,7 +1621,7 @@
             "pads": [
               "56"
             ],
-            "function": null,
+            "function": "QSPI_SCLK",
             "power_flow": null
           },
           {
@@ -1631,7 +1631,7 @@
             "pads": [
               "57"
             ],
-            "function": null,
+            "function": "QSPI_SD0",
             "power_flow": null
           },
           {
@@ -1641,7 +1641,7 @@
             "pads": [
               "58"
             ],
-            "function": null,
+            "function": "QSPI_SD2",
             "power_flow": null
           },
           {
@@ -1651,7 +1651,7 @@
             "pads": [
               "59"
             ],
-            "function": null,
+            "function": "QSPI_SD1",
             "power_flow": null
           },
           {
@@ -3198,20 +3198,7 @@
         ]
       },
       {
-        "name": "net-flash.clk",
-        "pins": [
-          {
-            "refdes": "U1",
-            "pin": "56"
-          },
-          {
-            "refdes": "U3",
-            "pin": "6"
-          }
-        ]
-      },
-      {
-        "name": "net-flash.cs",
+        "name": "net-flash.qspi.cs",
         "pins": [
           {
             "refdes": "R5",
@@ -3232,7 +3219,7 @@
         ]
       },
       {
-        "name": "net-flash.di_io0",
+        "name": "net-flash.qspi.io0",
         "pins": [
           {
             "refdes": "U1",
@@ -3245,7 +3232,7 @@
         ]
       },
       {
-        "name": "net-flash.do_io1",
+        "name": "net-flash.qspi.io1",
         "pins": [
           {
             "refdes": "U1",
@@ -3258,7 +3245,20 @@
         ]
       },
       {
-        "name": "net-flash.hold_io3",
+        "name": "net-flash.qspi.io2",
+        "pins": [
+          {
+            "refdes": "U1",
+            "pin": "58"
+          },
+          {
+            "refdes": "U3",
+            "pin": "3"
+          }
+        ]
+      },
+      {
+        "name": "net-flash.qspi.io3",
         "pins": [
           {
             "refdes": "U1",
@@ -3271,15 +3271,15 @@
         ]
       },
       {
-        "name": "net-flash.wp_io2",
+        "name": "net-flash.qspi.sclk",
         "pins": [
           {
             "refdes": "U1",
-            "pin": "58"
+            "pin": "56"
           },
           {
             "refdes": "U3",
-            "pin": "3"
+            "pin": "6"
           }
         ]
       },
@@ -3865,7 +3865,7 @@
           "vias": 1
         },
         {
-          "net": "net-flash.cs",
+          "net": "net-flash.qspi.cs",
           "current": 0.00033989898989898997,
           "least_width": 6.169435844068879e-6,
           "vias": 1
@@ -4410,6 +4410,36 @@
     },
     "interfaces": [
       {
+        "path": "flash.qspi",
+        "type_name": "Qspi",
+        "members": [
+          {
+            "name": "sclk",
+            "net": "net-flash.qspi.sclk"
+          },
+          {
+            "name": "cs",
+            "net": "net-flash.qspi.cs"
+          },
+          {
+            "name": "io0",
+            "net": "net-flash.qspi.io0"
+          },
+          {
+            "name": "io1",
+            "net": "net-flash.qspi.io1"
+          },
+          {
+            "name": "io2",
+            "net": "net-flash.qspi.io2"
+          },
+          {
+            "name": "io3",
+            "net": "net-flash.qspi.io3"
+          }
+        ]
+      },
+      {
         "path": "regulator.vin",
         "type_name": "Rail",
         "members": [
@@ -4701,7 +4731,7 @@
         "text": "BOOTSEL: held at power-up it pulls QSPI_SS to ground through 1 kohm, so the chip boots from USB.",
         "at": {
           "file": "src/main.nsm",
-          "line": 177
+          "line": 181
         },
         "anchors": [
           "bootsel"
@@ -4714,7 +4744,7 @@
         "text": "RESET: pulls RUN to ground through 1 kohm.",
         "at": {
           "file": "src/main.nsm",
-          "line": 183
+          "line": 187
         },
         "anchors": [
           "reset"
@@ -4755,7 +4785,7 @@
           },
           {
             "name": "line",
-            "net": "net-flash.cs"
+            "net": "net-flash.qspi.cs"
           }
         ]
       }

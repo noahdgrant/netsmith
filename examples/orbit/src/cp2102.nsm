@@ -26,14 +26,24 @@
 //! numbers no centre pad (the figure labels it `GND`) and the land pattern calls it the "centre
 //! pad". It is joined to `GND` here: a pad of the same net as pin 3.
 //!
+//! The UART is a `Uart` (`std::bus`): `TXD` is its `tx`, the line the chip sends on, `RXD` its
+//! `rx`, and the flow control `RTS` and `CTS` its `rts` and `cts`, so a board joins the bus with
+//! `~` and the join crosses the lines. The modem control lines (`DTR`, `DSR`, `DCD`, `RI`) are no
+//! line of a `Uart` and stay plain pins.
+//!
 //! What is deliberately left out: levels, ratings, the regulator and every model (the part is a
 //! boundary of the design: the checks that need a number are listed as not evaluated).
+
+import std::bus::Uart
 
 /// The CP2102: a USB 2.0 full-speed to UART bridge with an on-chip 3.3 V regulator and
 /// transceiver, in the 28-pin QFN. Pin names are the datasheet's (`SUSPEND#` is its overlined
 /// `SUSPEND`). `TXD` and `RXD` are the chip's own: its `TXD` is the line that a UART sends on.
 part Cp2102 {
     .designator &= "U"
+
+    /// The UART: `TXD`, `RXD`, `RTS` and `CTS`.
+    .uart: Uart
 
     pins "WQFN-28-EP(5x5)" {
         //  pin       kind           name        pads
@@ -50,10 +60,10 @@ part Cp2102 {
         .suspend_n output         "SUSPEND#"  "11"
         .suspend   output         "SUSPEND"   "12"
         .nc_vpp    no_connect     "NC/VPP"    "18"
-        .cts       input          "CTS"       "23" optional
-        .rts       output         "RTS"       "24"
-        .rxd       input          "RXD"       "25"
-        .txd       output         "TXD"       "26"
+        .uart.cts  input          "CTS"       "23" optional
+        .uart.rts  output         "RTS"       "24"
+        .uart.rx   input          "RXD"       "25"
+        .uart.tx   output         "TXD"       "26"
         .dsr       input          "DSR"       "27" optional
         .dtr       output         "DTR"       "28"
     }

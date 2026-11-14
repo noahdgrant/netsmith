@@ -526,8 +526,10 @@ that need a number are listed as not evaluated. Documents were fetched on 2026-1
   pad 36 `RXD0` is GPIO44 and 37 `TXD0` is GPIO43 (Easyduino's `/GPIO44` and `/GPIO43`), 13
   `IO19` is `USB_D-` and 14 `IO20` is `USB_D+`. Pads 1, 40 and 41 are one pin, `GND`. `3V3` is a
   `power` pin, `EN` an `input` (Table 3-1: "Do not leave the EN pin floating"), the 36 `I/O/T`
-  pads are `bidirectional`. **Left out on purpose:** the alternate functions of the pads (the
-  table's last column), every level and rating, and the other variants' differences (footnotes b
+  pads are `bidirectional`. `RXD0` and `TXD0` list `U0RXD` and `U0TXD`, the lines of `UART0`, a
+  peripheral that is an end of a `Uart` (ADR 0064); the CP2102N has a `Uart`, and the board joins
+  the two with one `~` (`.mcu.UART0 ~ .bridge.uart`, ADR 0129), which crosses the lines.
+  **Left out on purpose:** the other alternate functions of the pads (the table's last column), every level and rating, and the other variants' differences (footnotes b
   and c of Table 3-1).
 - **U1 footprint** (`libs/easyduino_ics.pretty/ESP32-S3-WROOM-1_18x25.5mm_P1.27mm.kicad_mod`,
   written for this project, not copied from Espressif's library): 49 pads, the 40 edge pads and

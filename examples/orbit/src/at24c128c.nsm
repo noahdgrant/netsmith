@@ -17,15 +17,24 @@
 //! `optional`, so a board connects each), `SCL` is `input`, `SDA` is `bidirectional` (the datasheet
 //! calls it an open-drain bidirectional pin, section 2.3, page 5), `GND` and `VCC` are `power`.
 //!
+//! The two-wire interface is an `I2c` (`std::bus`) in which the EEPROM is a target, as its
+//! section 2.3 says of `SDA` and its section 6 of the addressing (a controller starts every
+//! transfer), so a board joins the bus with `~`.
+//!
 //! What is deliberately left out: the levels, ratings, bus timing and the supply range
 //! (1.7 V to 5.5 V), so the part is a boundary of the design and the checks that need a number
-//! are listed as not evaluated; the other packages of the table; and the bus model (`I2c`
-//! of `std::bus`), which the board stage may add.
+//! are listed as not evaluated; and the other packages of the table.
+
+import std::bus::{I2c, I2cRole}
 
 /// The AT24C128C, a 128 Kbit serial EEPROM with a two-wire interface, in the 8-lead SOIC. Pin
 /// names are the datasheet's; the pad numbers are those of its 8-lead SOIC column.
 part At24C128C {
     .designator &= "U"
+
+    /// The two-wire interface: `SDA` and `SCL`.
+    .i2c: I2c
+    .i2c.role &= I2cRole::Target
 
     pins "SOIC-8" {
         //  pin   kind           name   pads
@@ -33,8 +42,8 @@ part At24C128C {
         .a1    input          "A1"   "2"
         .a2    input          "A2"   "3"
         .gnd   power          "GND"  "4"
-        .sda   bidirectional  "SDA"  "5"
-        .scl   input          "SCL"  "6"
+        .i2c.sda bidirectional "SDA" "5"
+        .i2c.scl input         "SCL" "6"
         .wp    input          "WP"   "7"
         .vcc   power          "VCC"  "8"
     }

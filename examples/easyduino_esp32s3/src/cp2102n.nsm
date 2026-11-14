@@ -30,11 +30,18 @@
 //! say in words that an unused input may be left open, and Easyduino's board leaves all three
 //! open (README, "For the owner").
 //!
+//! The UART is a `Uart` (`std::bus`): `TXD` is its `tx`, the line the chip sends on, `RXD` its
+//! `rx`, and the flow control `RTS` and `CTS` its `rts` and `cts`, so a board joins the bus with
+//! `~` and the join crosses the lines. The modem control lines (`DTR`, `DSR`, `DCD`, `RI`) are no
+//! line of a `Uart` and stay plain pins.
+//!
 //! What is deliberately left out: levels, ratings and timing (the part is a boundary of the
 //! design: the checks that need a number are listed as not evaluated, among them the supply
 //! range, the 5 V regulator and the USB transceiver's figures), the other packages (QFN24 and
 //! QFN20 number the pads differently) and the other ordering variants (the part's name ends in
 //! the hardware revision A02, the grade G and, for tape and reel, R).
+
+import std::bus::Uart
 
 /// The CP2102N: a USB 2.0 full-speed function controller with an on-chip 5 V to 3.3 V
 /// regulator, a USB transceiver, an oscillator and a UART with the modem control lines, in the
@@ -42,6 +49,9 @@
 /// `SUSPENDb`).
 part Cp2102n {
     .designator &= "U"
+
+    /// The UART: `TXD`, `RXD`, `RTS` and `CTS`.
+    .uart: Uart
 
     pins "QFN-28-EP(5x5)" {
         //  pin       kind           name            pads
@@ -67,10 +77,10 @@ part Cp2102n {
         .gpio6    bidirectional  "GPIO.6"        "20"
         .gpio5    bidirectional  "GPIO.5"        "21"
         .gpio4    bidirectional  "GPIO.4"        "22"
-        .cts      input          "CTS"           "23" optional
-        .rts      output         "RTS"           "24"
-        .rxd      input          "RXD"           "25"
-        .txd      output         "TXD"           "26"
+        .uart.cts input          "CTS"           "23" optional
+        .uart.rts output         "RTS"           "24"
+        .uart.rx  input          "RXD"           "25"
+        .uart.tx  output         "TXD"           "26"
         .dsr      input          "DSR"           "27" optional
         .dtr      output         "DTR"           "28"
     }

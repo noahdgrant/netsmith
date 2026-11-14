@@ -394,12 +394,14 @@ What is not what it seems:
 - `Stm32F030C8`, `At24C128C`, `Cp2102`: pin tables only. Alternate functions: the MCU's pins
   have `GPIO` and, only for the pins ORBIT's board uses, the oscillator, USART1, I2C1 and SWD
   functions (no direction: the table gives none); a board that connects a pin with more than one
-  function chooses it. `CP2102`'s `NC` pin (ten pads) and its `NC/VPP` pin are `no_connect`
+  function chooses it. USART1 (a `Uart`) and I2C1 (an `I2c` controller) are peripherals that are
+  ends of a bus, the CP2102 has a `Uart` and the AT24C128C an `I2c` target, and the board joins
+  each bus with one `~` (`.mcu.USART1 ~ .usb_uart.uart`, ADR 0129), so the rules of ADR 0064
+  judge them. `CP2102`'s `NC` pin (ten pads) and its `NC/VPP` pin are `no_connect`
   (the datasheet allows leaving them open or tying them to `VDD`; this part keeps them open) and
   its modem inputs are `optional` (note 3, page 11).
-- Not modelled: logic levels, ratings and timing of any part, the I2C bus (`std::bus::I2c`) and
-  the UART as interfaces (the board stage may add them: the pins are plain pins, as the RP2350
-  parts are).
+- Not modelled: logic levels, ratings and timing of any part, so the bus's levels and the I2C
+  rise time are not judged.
 
 #### Footprints (`kicad.toml`, `libs/orbit_ics.pretty/`)
 

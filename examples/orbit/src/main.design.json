@@ -689,7 +689,7 @@
             "power_flow": null
           },
           {
-            "name": "sda",
+            "name": "i2c.sda",
             "datasheet": "SDA",
             "kind": "bidirectional",
             "pads": [
@@ -699,7 +699,7 @@
             "power_flow": null
           },
           {
-            "name": "scl",
+            "name": "i2c.scl",
             "datasheet": "SCL",
             "kind": "input",
             "pads": [
@@ -2039,7 +2039,7 @@
             "power_flow": null
           },
           {
-            "name": "cts",
+            "name": "uart.cts",
             "datasheet": "CTS",
             "kind": "input",
             "pads": [
@@ -2049,7 +2049,7 @@
             "power_flow": null
           },
           {
-            "name": "rts",
+            "name": "uart.rts",
             "datasheet": "RTS",
             "kind": "output",
             "pads": [
@@ -2059,7 +2059,7 @@
             "power_flow": null
           },
           {
-            "name": "rxd",
+            "name": "uart.rx",
             "datasheet": "RXD",
             "kind": "input",
             "pads": [
@@ -2069,7 +2069,7 @@
             "power_flow": null
           },
           {
-            "name": "txd",
+            "name": "uart.tx",
             "datasheet": "TXD",
             "kind": "output",
             "pads": [
@@ -2994,7 +2994,7 @@
         ]
       },
       {
-        "name": "net-eeprom.scl",
+        "name": "net-eeprom.i2c.scl",
         "pins": [
           {
             "refdes": "R12",
@@ -3011,7 +3011,7 @@
         ]
       },
       {
-        "name": "net-eeprom.sda",
+        "name": "net-eeprom.i2c.sda",
         "pins": [
           {
             "refdes": "R11",
@@ -3460,13 +3460,13 @@
           "vias": 1
         },
         {
-          "net": "net-eeprom.scl",
+          "net": "net-eeprom.i2c.scl",
           "current": 0.0015565341198950017,
           "least_width": 0.000050315967307142516,
           "vias": 1
         },
         {
-          "net": "net-eeprom.sda",
+          "net": "net-eeprom.i2c.sda",
           "current": 0.0015565341198950017,
           "least_width": 0.000050315967307142516,
           "vias": 1
@@ -3983,16 +3983,30 @@
         ]
       },
       {
+        "path": "eeprom.i2c",
+        "type_name": "I2c",
+        "members": [
+          {
+            "name": "sda",
+            "net": "net-eeprom.i2c.sda"
+          },
+          {
+            "name": "scl",
+            "net": "net-eeprom.i2c.scl"
+          }
+        ]
+      },
+      {
         "path": "i2c_pullups.bus",
         "type_name": "I2c",
         "members": [
           {
             "name": "sda",
-            "net": "net-eeprom.sda"
+            "net": "net-eeprom.i2c.sda"
           },
           {
             "name": "scl",
-            "net": "net-eeprom.scl"
+            "net": "net-eeprom.i2c.scl"
           }
         ]
       },
@@ -4021,6 +4035,34 @@
           {
             "name": "neg",
             "net": "GND"
+          }
+        ]
+      },
+      {
+        "path": "usb_uart.ic.uart",
+        "type_name": "Uart",
+        "members": [
+          {
+            "name": "tx",
+            "net": "net-mcu.pa10"
+          },
+          {
+            "name": "rx",
+            "net": "net-mcu.pa9"
+          }
+        ]
+      },
+      {
+        "path": "usb_uart.uart",
+        "type_name": "Uart",
+        "members": [
+          {
+            "name": "tx",
+            "net": "net-mcu.pa10"
+          },
+          {
+            "name": "rx",
+            "net": "net-mcu.pa9"
           }
         ]
       },
@@ -4588,12 +4630,26 @@
       {
         "path": "usb_uart",
         "kind": "doc",
-        "text": "The USB to UART bridge. Join `.vbus` to the USB rail, `.dp` and `.dm` to the connector's data pins, `.rxd` to the MCU's transmit pin and `.txd` to its receive pin.",
+        "text": "The USB to UART bridge. Join `.vbus` to the USB rail, `.dp` and `.dm` to the connector's data pins, and `.uart` to the MCU's UART with `~`, which crosses the lines.",
         "at": {
           "file": "src/usb_uart.nsm",
-          "line": 15
+          "line": 20
         },
         "anchors": [],
+        "result": null
+      },
+      {
+        "path": "usb_uart.uart",
+        "kind": "doc",
+        "text": "The chip's UART, `tx` and `rx` (its flow control is left open).",
+        "at": {
+          "file": "src/usb_uart.nsm",
+          "line": 25
+        },
+        "anchors": [
+          "mcu",
+          "usb_uart.ic"
+        ],
         "result": null
       },
       {
@@ -4602,7 +4658,7 @@
         "text": "U22: the CP2102-GMR (LCSC C6568).",
         "at": {
           "file": "src/usb_uart.nsm",
-          "line": 25
+          "line": 28
         },
         "anchors": [
           "usb_uart.ic"
@@ -4615,7 +4671,7 @@
         "text": "C20, on the chip's regulator output.",
         "at": {
           "file": "src/usb_uart.nsm",
-          "line": 27
+          "line": 30
         },
         "anchors": [
           "usb_uart.vdd_bulk"
@@ -4628,7 +4684,7 @@
         "text": "C21, on the chip's regulator output.",
         "at": {
           "file": "src/usb_uart.nsm",
-          "line": 29
+          "line": 32
         },
         "anchors": [
           "usb_uart.vdd_100n"
@@ -4641,7 +4697,7 @@
         "text": "C23, on `VBUS`.",
         "at": {
           "file": "src/usb_uart.nsm",
-          "line": 31
+          "line": 34
         },
         "anchors": [
           "usb_uart.vbus_1u"
@@ -4654,7 +4710,7 @@
         "text": "C24, on `VBUS`.",
         "at": {
           "file": "src/usb_uart.nsm",
-          "line": 33
+          "line": 36
         },
         "anchors": [
           "usb_uart.vbus_100n"
@@ -4667,7 +4723,7 @@
         "text": "U17: the AT24C128C; `A0` and `A1` high and `A2` low (address 0x53), write protect low.",
         "at": {
           "file": "src/main.nsm",
-          "line": 198
+          "line": 197
         },
         "anchors": [
           "eeprom"
@@ -4680,7 +4736,7 @@
         "text": "R9 and R10: 2.2 kohm on each line to 3.3 V.",
         "at": {
           "file": "src/main.nsm",
-          "line": 210
+          "line": 208
         },
         "anchors": [],
         "result": null
@@ -4862,12 +4918,12 @@
             "net": "net-usb.dm"
           },
           {
-            "name": "rxd",
-            "net": "net-mcu.pa9"
+            "name": "uart.tx",
+            "net": "net-mcu.pa10"
           },
           {
-            "name": "txd",
-            "net": "net-mcu.pa10"
+            "name": "uart.rx",
+            "net": "net-mcu.pa9"
           }
         ]
       },
@@ -4877,11 +4933,11 @@
         "ports": [
           {
             "name": "bus.sda",
-            "net": "net-eeprom.sda"
+            "net": "net-eeprom.i2c.sda"
           },
           {
             "name": "bus.scl",
-            "net": "net-eeprom.scl"
+            "net": "net-eeprom.i2c.scl"
           },
           {
             "name": "bus.levels.reference.pos",

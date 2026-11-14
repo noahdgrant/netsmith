@@ -109,6 +109,58 @@ interface Spi {
     }
 }
 
+/// The role of a part on a quad SPI bus.
+enum QspiRole {
+    /// Drives `sclk` and `cs`, and starts every transfer.
+    Master,
+    /// Reads `sclk` and `cs`, and answers while it is selected.
+    Slave,
+}
+
+/// A quad SPI bus, the link of a processor and its program flash: the clock `sclk`, the select
+/// `cs` and the four data lines `io0` to `io3`. It is not an `Spi`: in quad mode every data line
+/// carries data both ways, so `io0` is no master's output (an `Spi`'s `mosi`) and `io1` no
+/// slave's output (its `miso`), and the lines are `bidirectional` for both roles. A flash in its
+/// single-SPI mode reads its `DI` on `io0` and drives its `DO` on `io1`, which these names
+/// carry too. Both ends call the lines the same, so the master and the slave join with `~`, which
+/// joins `cs` as `Spi` does. The master's `cs` is optional: a select that reaches the slave
+/// through a part of its own (a link, a buffer) is joined by the board, and the slave's `cs` is
+/// `single`, so a net carries the select of one slave. `frequency` is the clock, as for `Spi`.
+///
+/// Added by the agent while the owner was away (2026-11-13), so that the RP2350A Minimal
+/// board's flash is judged as a bus (issue #635): ADR 0064 named QSPI among the buses its rules
+/// did not reach. The alternative was the flash as an `Spi` in its single-SPI mode, which gives
+/// `io0` and `io1` one direction each and makes both datasheets' honest `bidirectional` rows a
+/// `bus role` finding.
+interface Qspi {
+    .role: QspiRole
+    .sclk: Pin
+    .cs: Pin
+    .io0: Pin
+    .io1: Pin
+    .io2: Pin
+    .io3: Pin
+    .levels: Levels
+    .frequency: Frequency
+
+    lines QspiRole::Master limit 1 {
+        .sclk output
+        .cs   output optional
+        .io0  bidirectional
+        .io1  bidirectional
+        .io2  bidirectional
+        .io3  bidirectional
+    }
+    lines QspiRole::Slave {
+        .sclk input
+        .cs   input single
+        .io0  bidirectional
+        .io1  bidirectional
+        .io2  bidirectional
+        .io3  bidirectional
+    }
+}
+
 /// The role of a part on an I2C bus.
 enum I2cRole {
     /// Drives `scl` and starts every transfer.

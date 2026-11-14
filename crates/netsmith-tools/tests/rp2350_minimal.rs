@@ -1036,12 +1036,12 @@ board FlashAndCrystal {
     .supply.neg ~ .u.gnd
     .supply.neg ~ .x.gnd_2
     .supply.neg ~ .x.gnd_4
-    .u.cs ~ .spi_a.p1
-    .u.do_io1 ~ .spi_a.p2
-    .u.wp_io2 ~ .spi_a.p3
-    .u.di_io0 ~ .spi_a.p4
-    .u.clk ~ .spi_b.p1
-    .u.hold_io3 ~ .spi_b.p2
+    .u.qspi.cs ~ .spi_a.p1
+    .u.qspi.io1 ~ .spi_a.p2
+    .u.qspi.io2 ~ .spi_a.p3
+    .u.qspi.io0 ~ .spi_a.p4
+    .u.qspi.sclk ~ .spi_b.p1
+    .u.qspi.io3 ~ .spi_b.p2
     .x.xtal_a ~ .xtal.p1
     .x.xtal_b ~ .xtal.p2
 }

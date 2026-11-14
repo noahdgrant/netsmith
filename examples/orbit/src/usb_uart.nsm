@@ -5,21 +5,24 @@
 //! output `VDD` is on a net of its own, with a 4.7 uF (C20) and a 100 nF (C21) capacitor to
 //! ground, and does not feed anything; C23 (1 uF) and C24 (100 nF) are on `VBUS`. `RXD` and
 //! `TXD` go to the MCU's USART1; every other pin is left open.
+//!
+//! The module's `.uart` is drawn as the chip's: its `tx` is the line the chip sends on. It is
+//! joined to the chip's pin by pin, because `~` between two `Uart`s crosses the lines, which is
+//! right between two ends and wrong for a port that passes one end on (ADR 0064).
 
 import src::cp2102::Cp2102
+import std::bus::Uart
 import std::parts::passive::Capacitor
 import std::sources::Rail
 
 /// The USB to UART bridge. Join `.vbus` to the USB rail, `.dp` and `.dm` to the connector's data
-/// pins, `.rxd` to the MCU's transmit pin and `.txd` to its receive pin.
+/// pins, and `.uart` to the MCU's UART with `~`, which crosses the lines.
 module UsbUart {
     .vbus: Rail
     .dp: Pin
     .dm: Pin
-    /// The chip's receive input (the line the host sends the MCU's output on).
-    .rxd: Pin
-    /// The chip's transmit output.
-    .txd: Pin
+    /// The chip's UART, `tx` and `rx` (its flow control is left open).
+    .uart: Uart
 
     /// U22: the CP2102-GMR (LCSC C6568).
     .ic: Cp2102
@@ -37,8 +40,8 @@ module UsbUart {
     .ic.gnd ~ .vbus.neg
     .ic.d_plus ~ .dp
     .ic.d_minus ~ .dm
-    .ic.rxd ~ .rxd
-    .ic.txd ~ .txd
+    .ic.uart.rx ~ .uart.rx
+    .ic.uart.tx ~ .uart.tx
 
     .ic.vdd ~ .vdd_bulk.a
     .ic.vdd ~ .vdd_100n.a

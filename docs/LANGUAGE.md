@@ -4142,7 +4142,7 @@ part Zmcubus {
 }
 ```
 
-The master joined to the flash of the previous section builds, with the select on a plain pin of the processor:
+The board joins the peripheral to the other end as a bus, with `~` between the peripheral and an interface of its bus (ADR 0129). The peripheral is named by its part and its name, `.u.SPIM0`, as a pin request names a function. Each line of the peripheral is the pin on which the board chose its function, so the functions say which pins, and the join says which bus: `.u.SPIM0 ~ .flash.spi` joins `u.p00` to `flash.spi.sclk`, `u.p01` to `mosi` and `u.p02` to `miso`, the nets three `~` lines would make, with their names. A `Uart`'s join crosses `tx` and `rx`, as `~` between two `Uart`s does. The master joined to the flash of the previous section builds, with the select on a plain pin of the processor:
 
 ```nsm evaluate
 import src::zmcubus::Zmcubus
@@ -4162,15 +4162,51 @@ board AnyPin {
     .u.p00.function &= SPIM0_SCK
     .u.p01.function &= SPIM0_MOSI
     .u.p02.function &= SPIM0_MISO
+    .u.SPIM0 ~ .flash.spi
     .u.p03.function &= APP_GPIO
-    .u.p00 ~ .flash.spi.sclk
-    .u.p01 ~ .flash.spi.mosi
-    .u.p02 ~ .flash.spi.miso
     .u.p03 ~ .flash.spi.cs
 }
 ```
 
-With the pins of `mosi` and `miso` joined to the wrong lines of the flash, the rules find it, naming the pins:
+The pins are joined after every statement is read, so the functions may come after the join. The join chooses no function: a function offered on several pins would have no answer, and the board, or the pin file, says which pin. A line of the peripheral whose function no pin has chosen is an error at the join, with the pins that offer it, unless the role's `lines` makes the line `optional`: a master's `cs` then joins nothing, and a select that reaches the slave through a link is the board's to join. A line that only the interface has (the `rts` and `cts` of a `Uart`, against a peripheral of `tx` and `rx`) joins nothing. The other side is an interface of the peripheral's bus or another such peripheral; a pin, a part, an interface of another kind and a peripheral that names no bus are refused. A peripheral has no values, so the join equates none: the clock is stated on the interface at the other end. A peripheral is no member of its part, so a chain or `~>` with one, a rename map and `except` are refused.
+
+```nsm fails
+import src::zmcubus::Zmcubus
+import src::zparts::Zflash
+import std::sources::Rail
+
+board NoMosi {
+    .supply: Rail {
+        .voltage &= 3.3V +/- 5%
+        .pos.net &= "3V3"
+    }
+    .u: Zmcubus
+    .flash: Zflash
+    .supply ~ .u.vdd
+    .supply ~ .flash.vdd
+
+    .u.p00.function &= SPIM0_SCK
+    .u.p02.function &= SPIM0_MISO
+    .u.SPIM0 ~ .flash.spi
+    .u.p03.function &= APP_GPIO
+    .u.p03 ~ .flash.spi.cs
+}
+```
+
+```text
+error: `.u.SPIM0 ~ .flash.spi` joins the line `mosi` of `SPIM0`, but no pin of `u` is `SPIM0_MOSI`: choose it on a pin that offers it and has no function chosen, `u.p01` (`.u.p01.function &= SPIM0_MOSI`)
+   --> main.nsm:17:5
+   |
+17 |     .u.SPIM0 ~ .flash.spi
+   |     ^^^^^^^^^^^^^^^^^^^^^
+error: `flash.spi.mosi` is an input that must be connected (pad 5, `DI`), but nothing else is on its net
+   --> main.nsm:11:5
+   |
+11 |     .flash: Zflash
+   |     ^^^^^^^^^^^^^^
+```
+
+A board that joins the pins by hand is judged the same way. With the pins of `mosi` and `miso` joined to the wrong lines of the flash, the rules find it, naming the pins:
 
 ```nsm fails
 import src::zmcubus::Zmcubus
@@ -13291,10 +13327,11 @@ error: PulledLow: U1: there is no KiCad symbol for a `Zihost` yet
 
 ### Buses
 
-A bus interface names its lines, and its definition in `std::bus` says more: for each role of the bus, which way each line goes (the lines and roles are below). A part states the kind of each pin in its table (`output`, `input`, `bidirectional`, `tri_state`), and the rules of the previous sections judge the nets: two outputs on one net are refused, and so are an `input` with nothing on its net and a net of nothing but inputs. The buses are `std::bus::Uart`, `Spi`, `I2c`, `Swd` and `Usb2`. The names are the device's own.
+A bus interface names its lines, and its definition in `std::bus` says more: for each role of the bus, which way each line goes (the lines and roles are below). A part states the kind of each pin in its table (`output`, `input`, `bidirectional`, `tri_state`), and the rules of the previous sections judge the nets: two outputs on one net are refused, and so are an `input` with nothing on its net and a net of nothing but inputs. The buses are `std::bus::Uart`, `Spi`, `Qspi`, `I2c`, `Swd` and `Usb2`. The names are the device's own.
 
 - A UART's `tx` and `rx` cross, and the language crosses them: `~` between two `Uart` interfaces joins one end's `tx` to the other's `rx` and its `rts` to the other's `cts`. A board that joins pin by pin writes the crossing (`.a.uart.tx ~ .b.uart.rx`), and a `tx` joined to a `tx` is refused. A device without flow control gives no pin to `rts` and `cts`, and the join leaves them out.
 - An SPI bus does not cross. The master's `mosi` is an output and the slave's is an input, and the two join with `~`.
+- A quad SPI bus (`Qspi`, a processor and its program flash) has a clock, a select and four data lines `io0` to `io3`, each `bidirectional` for both roles, because in quad mode every data line carries data both ways. It is not an `Spi`, whose `mosi` and `miso` each have one direction.
 - An I2C bus needs a pull-up on each line, and the checker refuses a line without one. `std::bus::I2cPullups` is the pair, with the resistance as a value (`.pullups.resistance &= 4.7kohm +/- 5%`) and a supply rail. The module states the current it draws from that rail (each pull-up carries nothing while its line is released and at most the supply voltage over its resistance while it is held low, the two together on `supply.current`), so a board states no load for it; a current the board does state on `supply` is a budget the sum must fit in (ADR 0038).
 - A debug port `Swd` meets a programming connector pin by pin: the connector's pins are passive.
 - `Usb2` joins a host and a device with `~`: D+ to D+. `vbus` is a `Rail`. A receptacle between them is a pass-through, not an end (below).
@@ -13861,7 +13898,7 @@ The check is wrong, and optimistic, where the figures are not the weakest's (a p
 
 ### Roles and lines of a bus
 
-A bus interface can say more than the names of its lines. `lines` is a statement of an interface, and it says, for each role of the bus, the kind of each line and a few properties of a line (ADR 0064). `std::bus` declares them for the five buses, so the protocol is written once, in a file that a reader can open:
+A bus interface can say more than the names of its lines. `lines` is a statement of an interface, and it says, for each role of the bus, the kind of each line and a few properties of a line (ADR 0064). `std::bus` declares them for the six buses, so the protocol is written once, in a file that a reader can open:
 
 ```nsm-fragment
 enum SpiRole { Master, Slave }
@@ -14630,6 +14667,7 @@ Parts are numbered by their letters in the order the design declares them (a mod
 | `std::logic::Logic` | A digital line `.line`, the `.reference` rail that defines its levels, and the levels `.vih`, `.vil`, `.voh` and `.vol` a part may state (ADR 0046). |
 | `std::bus::Uart` | Pins `tx`, `rx`, `rts`, `cts`, named by the device, and `.baud`. `~` between two joins `tx` to `rx` and `rts` to `cts`; two ends make a bus (`lines limit 2`). |
 | `std::bus::Spi` | Pins `sclk`, `mosi`, `miso`, `cs`, a `.role` (`SpiRole`), a `.frequency` and a `.mode` (`SpiMode`). One master on a bus, a `single` select for each slave, a slave's `miso` is required. |
+| `std::bus::Qspi` | Pins `sclk`, `cs` and `io0` to `io3`, a `.role` (`QspiRole`) and a `.frequency`. The four data lines are `bidirectional` for both roles; one master on a bus, a `single` select for each slave, and the master's `cs` is optional. |
 | `std::bus::I2c` | Pins `sda` and `scl`, a `.role` (`I2cRole`), a `.frequency` and the optional `.capacitance` of the part's own pin and `.sink_current`, the current its driver sinks at its `levels.vol` (neither is equated between two parts). A pull-up on each line. |
 | `std::bus::Swd` | Pins `swdio`, `swclk`, `swo`, `reset`, a `.role` (`SwdRole`) and a `.frequency`. One probe on a port. |
 | `std::bus::Usb2` | Pins `dp` and `dm`, a rail `vbus` and a `.role` (`UsbRole`). One host and one device on a bus; a receptacle states `UsbRole::Passthrough` and is not an end of it. |
@@ -14667,6 +14705,7 @@ Parts are numbered by their letters in the order the design declares them (a mod
 | Definition | What it is |
 |---|---|
 | `std::bus::SpiRole` | The role of a part on an SPI bus: `Master` or `Slave`. The type of `Spi`'s `.role`. |
+| `std::bus::QspiRole` | The role of a part on a quad SPI bus: `Master` or `Slave`. The type of `Qspi`'s `.role`. |
 | `std::bus::I2cRole` | The role of a part on an I2C bus: `Controller` or `Target`. |
 | `std::bus::SwdRole` | The role of a part on a debug port: `Probe` or `Target`. |
 | `std::bus::SpiMode` | The clock mode of an SPI bus: `Mode0` to `Mode3`. The type of `Spi`'s `.mode`, equated along the bus. |

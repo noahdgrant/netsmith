@@ -1001,6 +1001,7 @@ import src::tps63802::Tps63802
 import src::stm32f030c8::Stm32F030C8
 import src::at24c128c::At24C128C
 import src::cp2102::Cp2102
+import std::bus::I2cPullups
 import std::parts::connector::{Header1x2, Header1x4}
 import std::parts::passive::Resistor
 import std::sources::Rail
@@ -1071,8 +1072,13 @@ board Ics {
     .rail.neg ~ .eeprom.wp
     .mcu.pb6.function &= I2C1_SCL
     .mcu.pb7.function &= I2C1_SDA
-    .mcu.pb6 ~ .eeprom.scl
-    .mcu.pb7 ~ .eeprom.sda
+    .mcu.I2C1 ~ .eeprom.i2c
+    // An I2C bus needs a pull-up on each line (the checker refuses one without), as ORBIT's R9
+    // and R10.
+    .i2c_pullups: I2cPullups { .resistance &= 2.2kohm +/- 1%; .package &= "0603" }
+    .i2c_pullups.supply ~ .rail
+    .i2c_pullups.bus.levels.reference ~ .rail
+    .i2c_pullups.bus ~ .eeprom.i2c
 
     .vbus.pos ~ .bridge.regin
     .vbus.pos ~ .bridge.vbus
@@ -1083,8 +1089,7 @@ board Ics {
     .bridge.d_minus ~ .usb.p2
     .mcu.pa9.function &= USART1_TX
     .mcu.pa10.function &= USART1_RX
-    .mcu.pa9 ~ .bridge.rxd
-    .mcu.pa10 ~ .bridge.txd
+    .mcu.USART1 ~ .bridge.uart
 }
 "#;
 

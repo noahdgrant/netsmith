@@ -189,8 +189,7 @@ board Orbit {
     .usb.dm ~ .usb_uart.dm
     .mcu.pa9.function &= USART1_TX
     .mcu.pa10.function &= USART1_RX
-    .mcu.pa9 ~ .usb_uart.rxd
-    .mcu.pa10 ~ .usb_uart.txd
+    .mcu.USART1 ~ .usb_uart.uart
 
     // ---- The EEPROM on the I2C bus (U17, R9, R10) ----
 
@@ -204,14 +203,12 @@ board Orbit {
     .eeprom.wp ~ .vbus.neg
     .mcu.pb6.function &= I2C1_SCL
     .mcu.pb7.function &= I2C1_SDA
-    .mcu.pb6 ~ .eeprom.scl
-    .mcu.pb7 ~ .eeprom.sda
+    .mcu.I2C1 ~ .eeprom.i2c
     /// R9 and R10: 2.2 kohm on each line to 3.3 V.
     .i2c_pullups: I2cPullups { .resistance &= 2.2kohm +/- 1% }
     .i2c_pullups.supply ~ .v3v3
     .i2c_pullups.bus.levels.reference ~ .v3v3
-    .i2c_pullups.bus.scl ~ .mcu.pb6
-    .i2c_pullups.bus.sda ~ .mcu.pb7
+    .i2c_pullups.bus ~ .eeprom.i2c
 
     // ---- The headers: ORBIT's pin map, joined pin by pin (fixed) ----
 

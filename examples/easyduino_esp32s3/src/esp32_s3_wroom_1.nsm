@@ -32,14 +32,24 @@
 //! are typical values for the radio's states, none was read), and a board states what its
 //! regulator supplies.
 //!
-//! What is deliberately left out: the alternate functions of the pads (Table 3-1's last
-//! column: touch, ADC, SPI, UART, JTAG, clock outputs), the levels, ratings and timing (the
+//! The UART the board uses is a peripheral that is an end of a bus (ADR 0064): `UART0`, a
+//! `Uart`, with `U0TXD` on the pad `TXD0` and `U0RXD` on the pad `RXD0`, the functions Table
+//! 3-1's function column gives those pads. The kinds are the unit's (the table gives the pads
+//! I/O/T): a transmitter drives `TX` and a receiver reads `RX`. The two pads list only that
+//! function, as no other pad lists a function: a board that joins the UART chooses it
+//! (`.u.txd0.function &= U0TXD`) and joins the bus (`.u.UART0 ~ .bridge.uart`, ADR 0129). The
+//! chip can route the UART to other pads through its GPIO matrix; this table has only the pads
+//! of the IO MUX function, which the board uses.
+//!
+//! What is deliberately left out: the other alternate functions of the pads (Table 3-1's last
+//! column: touch, ADC, SPI, the other UART lines, JTAG, clock outputs), the levels, ratings and timing (the
 //! part is a boundary of the design: the checks that need a number are listed as not
 //! evaluated), and the other variants' differences (footnote b of Table 3-1: with Octal SPI
 //! PSRAM the pads `IO35`, `IO36` and `IO37` are not available; footnote c: on the ESP32-S3R16V
 //! `IO47` and `IO48` work at 1.8 V). The catalog row is the N4 variant (4 MB quad flash, no
 //! PSRAM), where all of them are available.
 
+import std::bus::Uart
 import std::sources::Rail
 
 /// The ESP32-S3-WROOM-1 module: a Wi-Fi and Bluetooth LE module with a PCB antenna, 18 x 25.5
@@ -52,6 +62,11 @@ part Esp32S3Wroom1 {
     // Table 6-2, Recommended Operating Conditions (printed page 27): VDD33 3.0 V to 3.6 V.
     .vdd.voltage >= 3.0V
     .vdd.voltage <= 3.6V
+
+    peripheral UART0 as Uart {
+        U0TXD:output as tx
+        U0RXD:input  as rx
+    }
 
     pins "SMD, 25.5x18mm" {
         //  pin     kind           name     pads
@@ -90,8 +105,8 @@ part Esp32S3Wroom1 {
         .gpio40 bidirectional "IO40"   "33"
         .gpio41 bidirectional "IO41"   "34"
         .gpio42 bidirectional "IO42"   "35"
-        .rxd0   bidirectional "RXD0"   "36"
-        .txd0   bidirectional "TXD0"   "37"
+        .rxd0   bidirectional "RXD0"   "36"  fn U0RXD
+        .txd0   bidirectional "TXD0"   "37"  fn U0TXD
         .gpio2  bidirectional "IO2"    "38"
         .gpio1  bidirectional "IO1"    "39"
     }

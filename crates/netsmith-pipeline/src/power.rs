@@ -144,6 +144,21 @@ fn build(model: &Model, sources: &Sources, scopes: &[(InstId, Option<String>)]) 
                 budget: Budget::Unknown,
                 at: None,
             };
+            // The reference rail of a bus's levels that nothing else is on is a reference for the
+            // checker and carries nothing (`Levels` states `.reference.current &= 0A`): it is no
+            // rail of the board's power, and "no source" would only say that a part's levels are
+            // joined to no supply.
+            let only_references = !balance.draws.is_empty()
+                && balance.draws.iter().all(|d| {
+                    let owner = model.field(d.field).owner;
+                    model
+                        .instance(owner)
+                        .parent
+                        .is_some_and(|p| model.is_levels(p))
+                });
+            if only_references {
+                continue;
+            }
             for draw in &balance.draws {
                 let field = model.field(draw.field);
                 let owner = field.owner;
