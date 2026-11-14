@@ -952,7 +952,68 @@ layers: Array<string>,
 /**
  * Whether the board has routed copper (an edit takes it away).
  */
-routed: boolean, parts: Array<PcbPart>, keepouts: Array<PcbKeepout>, cutouts: Array<PcbCutout>, };
+routed: boolean, parts: Array<PcbPart>, keepouts: Array<PcbKeepout>, cutouts: Array<PcbCutout>, 
+/**
+ * The routes file beside the source (`<stem>.routes.toml`, issue 599), which may not
+ * exist yet.
+ */
+routesFile: string, 
+/**
+ * What it was like when read: a change to it must give it back.
+ */
+routesStamp: string, 
+/**
+ * Its records for this board, by net: the fixed copper, drawn on the board before the
+ * router's.
+ */
+routes: Array<PcbRouteNet>, };
+
+export type PcbPoint = { x: number, y: number, };
+
+export type PcbRouteNet = { net: string, 
+/**
+ * The router adds no copper to the net.
+ */
+lock: boolean, 
+/**
+ * The net's pads are where the record was written: every shape is drawn. When not, only
+ * the locked shapes are, and the findings say so; a net the board does not have draws none.
+ */
+current: boolean, tracks: Array<PcbRouteTrack>, vias: Array<PcbRouteVia>, };
+
+export type PcbRouteTrack = { 
+/**
+ * `top` or `bottom`.
+ */
+layer: string, width: number, from: PcbPoint, 
+/**
+ * For an arc, a point on it halfway from `from` to `to`.
+ */
+mid: PcbPoint | null, to: PcbPoint, 
+/**
+ * Kept when the net's pads move; not deleted until unlocked.
+ */
+lock: boolean, 
+/**
+ * Whether it is on the board (see [`PcbRouteNet::current`]).
+ */
+drawn: boolean, };
+
+export type PcbRouteVia = { at: PcbPoint, diameter: number, drill: number, lock: boolean, drawn: boolean, };
+
+export type RoutesChange = { "what": "delete", net: string, track: number | null, via: number | null, } | { "what": "lock", net: string, track: number | null, via: number | null, 
+/**
+ * Lock, or unlock.
+ */
+lock: boolean, };
+
+export type PcbRoutesEdit = { board: string, 
+/**
+ * `PcbScene::routes_stamp` as the page read it.
+ */
+stamp: string, change: RoutesChange, };
+
+export type PcbRoutesEdited = { scene: PcbScene, said: string, };
 
 export type PartPlacement = { x: number, y: number, rotation: number, side: PcbSide, locked: boolean, 
 /**
@@ -978,7 +1039,7 @@ stamp: string, changes: Array<PcbChange>, };
 
 export type PcbEdited = { scene: PcbScene, };
 
-export type FindingSource = "placement" | "unrouted" | "drc" | "kicad";
+export type FindingSource = "placement" | "unrouted" | "drc" | "kicad" | "routes";
 
 export type PcbFinding = { 
 /**

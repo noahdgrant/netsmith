@@ -9679,6 +9679,8 @@ A record that no longer matches the board is said, never used silently. `pads` i
 
 Each command builds and places the board as `fab` does, and routes nothing. It exits 0 when it did what it was asked, 1 when it refused, and 2 when it could not run.
 
+The editor's PCB view marks the file's copper over the board (a solid line on a locked net, dashed on one the router may add to, a padlock on a locked shape), lists its records in the Routes tab of the side panel, and locks, unlocks and deletes a net's record or one shape (`L`, `Delete`, or the inspector) with the same code as `netsmith routes`, refused for the same reasons. A record that is not used as written is a warning in its findings.
+
 #### Reproducing a KiCad board
 
 To draw a board that a KiCad file already routes, import its copper and places, then run `fab`: in the project, `netsmith routes import reference/board.kicad_pcb` and `netsmith fab`. The parts the import places stand where the KiCad board has them, every net is locked, and the router adds copper only to a net the KiCad board has no tracks for (one it joins by a zone alone). What `fab` still lacks is said as any connection left: a net that the KiCad board joins by a zone the design does not pour, mostly. A part that must hang over an edge, as a module's antenna does, needs its requirement in the physical file (`.mcu.place.top <= 0mm`), because a place in the layout file allows no overhang.

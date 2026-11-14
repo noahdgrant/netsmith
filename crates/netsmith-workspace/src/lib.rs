@@ -336,12 +336,17 @@ impl Workspace {
         }
     }
 
-    /// The layout files beside the top-level files (they may not exist).
+    /// The layout files beside the top-level files, and the routes file beside each (they may
+    /// not exist): a change to one by another program places the boards again.
     fn layout_files(&self) -> Vec<PathBuf> {
         self.target()
             .files
             .iter()
-            .map(|f| netsmith_fabricate::layout::layout_path(&f.path))
+            .flat_map(|f| {
+                let layout = netsmith_fabricate::layout::layout_path(&f.path);
+                let routes = netsmith_fabricate::routes::beside_layout(&layout);
+                [layout, routes]
+            })
             .collect()
     }
 
@@ -564,6 +569,67 @@ impl Workspace {
             state.pcb.insert(name.clone(), entry);
         }
         Ok(PcbEdited { scene })
+    }
+
+    /// A change to the routes file from the PCB view, made by `netsmith_fabricate::routes::edit`
+    /// as `netsmith routes` makes it, on the board as placed with no copper.
+    fn edit_routes(
+        &self,
+        edit: &netsmith_editor::api::PcbRoutesEdit,
+    ) -> Result<netsmith_editor::api::PcbRoutesEdited, ApiError> {
+        let _one_at_a_time = self.editing.lock().unwrap_or_else(|e| e.into_inner());
+        let name = &edit.board;
+        let change = pcb::routes_edit(&edit.change)?;
+        // The board as the page last saw it placed, or placed now.
+        let (version, data, entry) = {
+            let state = self.fresh();
+            let data = state.snapshot.board_handle(name)?;
+            let entry = state.pcb.get(name).map(|e| e.routes_changed(&data, name));
+            (state.version, data, entry)
+        };
+        let entry = match entry {
+            Some(entry) => entry,
+            None => pcb::place_checked(&data, name),
+        }
+        .map_err(pcb::PlaceError::read)?;
+        let Some(file) = entry.routes_file().map(Path::to_path_buf) else {
+            return Err(ApiError::bad_request(format!(
+                "`{name}` has no routes file to write"
+            )));
+        };
+        let shown = file
+            .file_name()
+            .map_or(String::new(), |n| n.to_string_lossy().into_owned());
+        if files::stamp_of(&file) != edit.stamp || entry.routes_stamp() != edit.stamp {
+            return Err(ApiError::conflict(format!(
+                "{shown} changed on disk since the board was read: reload the board"
+            )));
+        }
+        let said = netsmith_fabricate::routes::edit_file(entry.placed(), &file, &change).map_err(
+            |refusal| match refusal {
+                netsmith_fabricate::routes::Refusal::Refused(e) => {
+                    ApiError::unprocessable(e, "routes_refused", &[("board", name)])
+                }
+                netsmith_fabricate::routes::Refusal::Failed(e) => ApiError::internal(e),
+            },
+        )?;
+        let entry = entry
+            .routes_changed(&data, name)
+            .map_err(pcb::PlaceError::read)?;
+        let scene = pcb::scene(&entry, &data, name);
+        let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        // Our own write is not a change by another program.
+        state.layouts = files::stamps(&self.layout_files());
+        if state.version == version {
+            state.pcb.insert(name.clone(), entry);
+        }
+        Ok(netsmith_editor::api::PcbRoutesEdited {
+            scene,
+            said: said.replace(
+                &format!("; wrote {}", file.display()),
+                &format!("; wrote {shown}"),
+            ),
+        })
     }
 }
 
@@ -899,6 +965,13 @@ impl Backend for Workspace {
 
     fn pcb_edit(&self, edit: &PcbEdit) -> Result<PcbEdited, ApiError> {
         self.edit_layout(edit)
+    }
+
+    fn pcb_routes(
+        &self,
+        edit: &netsmith_editor::api::PcbRoutesEdit,
+    ) -> Result<netsmith_editor::api::PcbRoutesEdited, ApiError> {
+        self.edit_routes(edit)
     }
 
     fn pin_lock(&self, edit: &PinLock) -> Result<PinWritten, ApiError> {

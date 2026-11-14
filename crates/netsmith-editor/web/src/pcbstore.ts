@@ -4,7 +4,7 @@
 
 import { signal } from '@preact/signals';
 
-import type { PcbChange, PcbFindings, PcbScene } from './api';
+import type { PcbChange, PcbFindings, PcbScene, RoutesChange } from './api';
 import { ApiFailure, api } from './client';
 import { type History, NO_HISTORY, type Step, record, redoing, undoing } from './pcb/edits';
 import { type Selection, partSel, sameSelection, selection as shared, setSelection } from './selection';
@@ -17,6 +17,14 @@ export const sceneError = signal<string | null>(null);
 export const selection = signal<string[]>([]);
 /** The keepout picked, by name. */
 export const pickedKeepout = signal<string | null>(null);
+/** The record of the routes file picked: a net's record, or one shape of it, numbered from 1 as
+ * `netsmith routes show` numbers them. */
+export interface RoutePick {
+  net: string;
+  track?: number;
+  via?: number;
+}
+export const pickedRoute = signal<RoutePick | null>(null);
 export type Tool = 'select' | 'keepout';
 export const tool = signal<Tool>('select');
 export const history = signal<History>(NO_HISTORY);
@@ -113,6 +121,7 @@ function show(next: PcbScene) {
   if (scene.value?.board !== next.board) {
     selection.value = [];
     pickedKeepout.value = null;
+    pickedRoute.value = null;
     pickedFinding.value = null;
     findings.value = null;
     history.value = NO_HISTORY;
@@ -120,6 +129,11 @@ function show(next: PcbScene) {
     const paths = new Set(next.parts.map((p) => p.path));
     selection.value = selection.value.filter((p) => paths.has(p));
     if (pickedKeepout.value && !next.keepouts.some((k) => k.name === pickedKeepout.value)) pickedKeepout.value = null;
+    const r = pickedRoute.value;
+    const record = r && next.routes.find((n) => n.net === r.net);
+    if (r && (!record || (r.track != null && r.track > record.tracks.length) || (r.via != null && r.via > record.vias.length))) {
+      pickedRoute.value = null;
+    }
   }
   scene.value = next;
   // What is wrong with it may have changed with where things are.
@@ -150,6 +164,35 @@ async function send(changes: PcbChange[]): Promise<boolean> {
     }
     return false;
   }
+}
+
+/** Make a change to the routes file (delete, lock, unlock), as `netsmith routes` makes it. The server
+ * places the board again from the file, unrouted, and says what it did; a refusal says why and
+ * changes nothing. Not a step of undo yet. True if it was written. */
+export function changeRoutes(change: RoutesChange): Promise<boolean> {
+  return enqueue(async () => {
+    const current = scene.value;
+    if (!current) return false;
+    try {
+      const answer = await api.pcbRoutes({ board: current.board, stamp: current.routesStamp, change });
+      show(answer.scene);
+      // The routed copper is gone: what the last route said no longer holds.
+      const { [current.board]: _gone, ...rest } = pcbReports.value;
+      pcbReports.value = rest;
+      say(answer.said);
+      return true;
+    } catch (e) {
+      say(e instanceof Error ? e.message : String(e), true);
+      if (e instanceof ApiFailure && e.status === 409) {
+        try {
+          show(await api.pcbScene(current.board));
+        } catch {
+          // The next load says why.
+        }
+      }
+      return false;
+    }
+  });
 }
 
 /** Make an edit: the changes are written, and it is one step of undo. */
@@ -196,7 +239,18 @@ export const wrote: { sel: Selection | null | undefined } = { sel: undefined };
 export function select(paths: string[]) {
   selection.value = paths;
   pickedKeepout.value = null;
+  pickedRoute.value = null;
   tellPage(paths);
+}
+
+/** Pick a record of the routes file, or one shape of it; the parts and the keepout picked are let go. */
+export function pickRoute(pick: RoutePick | null) {
+  pickedRoute.value = pick;
+  if (pick) {
+    pickedKeepout.value = null;
+    selection.value = [];
+    tellPage([]);
+  }
 }
 
 function tellPage(paths: string[]) {
@@ -211,6 +265,7 @@ function tellPage(paths: string[]) {
 export function pickKeepout(name: string | null) {
   pickedKeepout.value = name;
   if (name) {
+    pickedRoute.value = null;
     selection.value = [];
     tellPage([]);
   }

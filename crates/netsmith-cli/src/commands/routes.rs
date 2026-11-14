@@ -11,7 +11,7 @@ use std::process::ExitCode;
 use clap::{Args as ClapArgs, Subcommand};
 use netsmith_fabricate::board3d::Placed;
 use netsmith_fabricate::routes as lib;
-use netsmith_pcb::{Board, Layout, LayoutFace as Face, NetRoutes, RouteTrack, RouteVia};
+use netsmith_pcb::{Board, Layout, LayoutFace as Face};
 use netsmith_tools::routes_import::{self, Import};
 
 use super::common;
@@ -178,44 +178,49 @@ pub fn run(args: Args) -> ExitCode {
         Command::Show(a) => show(&a),
         Command::AddTrack(a) => edit(
             &a.target,
-            |board, record| {
-                let width = a.width.unwrap_or_else(|| board.track_width(&a.net));
-                record.tracks.push(RouteTrack {
-                    layer: face(a.layer),
-                    width,
-                    from: a.from,
-                    mid: a.mid,
-                    to: a.to,
-                    lock: a.lock,
-                });
-                Ok(format!("added a track to net {}", a.net))
-            },
-            &a.net,
-            Write {
-                check: true,
-                refresh: false,
+            &lib::Edit::AddTrack {
+                net: a.net.clone(),
+                layer: face(a.layer),
+                width: a.width,
+                from: a.from,
+                mid: a.mid,
+                to: a.to,
+                lock: a.lock,
             },
         ),
         Command::AddVia(a) => edit(
             &a.target,
-            |board, record| {
-                record.vias.push(RouteVia {
-                    at: a.at,
-                    diameter: a.diameter.unwrap_or(board.rules.via_diameter),
-                    drill: a.drill.unwrap_or(board.rules.via_drill),
-                    lock: a.lock,
-                });
-                Ok(format!("added a via to net {}", a.net))
-            },
-            &a.net,
-            Write {
-                check: true,
-                refresh: false,
+            &lib::Edit::AddVia {
+                net: a.net.clone(),
+                at: a.at,
+                diameter: a.diameter,
+                drill: a.drill,
+                lock: a.lock,
             },
         ),
-        Command::Delete(a) => shape_edit(&a, Change::Delete),
-        Command::Lock(a) => shape_edit(&a, Change::Lock(true)),
-        Command::Unlock(a) => shape_edit(&a, Change::Lock(false)),
+        Command::Delete(a) => edit(
+            &a.target,
+            &lib::Edit::Delete {
+                net: a.net.clone(),
+                shape: shape(&a),
+            },
+        ),
+        Command::Lock(a) => edit(
+            &a.target,
+            &lib::Edit::Lock {
+                net: a.net.clone(),
+                shape: shape(&a),
+                on: true,
+            },
+        ),
+        Command::Unlock(a) => edit(
+            &a.target,
+            &lib::Edit::Lock {
+                net: a.net.clone(),
+                shape: shape(&a),
+                on: false,
+            },
+        ),
     }
 }
 
@@ -223,6 +228,14 @@ fn face(layer: Layer) -> Face {
     match layer {
         Layer::Top => Face::Top,
         Layer::Bottom => Face::Bottom,
+    }
+}
+
+fn shape(args: &ShapeArgs) -> Option<lib::Shape> {
+    match (args.track, args.via) {
+        (Some(n), _) => Some(lib::Shape::Track(n)),
+        (None, Some(n)) => Some(lib::Shape::Via(n)),
+        (None, None) => None,
     }
 }
 
@@ -261,198 +274,30 @@ fn show(args: &ShowArgs) -> ExitCode {
     }
 }
 
-/// A refusal (exit 1) or a failure to run (exit 2).
-enum Refusal {
-    Refused(String),
-    Failed(String),
-}
-
-impl From<String> for Refusal {
-    fn from(e: String) -> Self {
-        Refusal::Failed(e)
-    }
-}
-
-/// How [`edit`] writes a changed record.
-#[derive(Clone, Copy)]
-struct Write {
-    /// Refuse the change when the board with it has an error of the design rules check that it
-    /// did not have before.
-    check: bool,
-    /// Take the net's pads as they are now (`routes lock`): a record whose pads moved is current
-    /// again, and its shapes are drawn as they are.
-    refresh: bool,
-}
-
-/// Change the record of `net` with `change`, refuse it as `write` says, and write the file.
-fn edit(
-    target: &Target,
-    change: impl Fn(&Board, &mut NetRoutes) -> Result<String, Refusal>,
-    net: &str,
-    write: Write,
-) -> ExitCode {
-    let outcome = common::with_placed_board(
-        target.file.as_deref(),
-        target.board.as_deref(),
-        |placed| {
+/// Make `change` to the routes file of the target's board (`netsmith_fabricate::routes::edit`,
+/// which the editor's PCB view calls too): exit 0 when it is written, 1 when it is refused, 2
+/// when it could not be tried.
+fn edit(target: &Target, change: &lib::Edit) -> ExitCode {
+    let outcome =
+        common::with_placed_board(target.file.as_deref(), target.board.as_deref(), |placed| {
             let board = placed.with_board(|_, board| board.clone())?;
-            let file = routes_file(placed);
-            let result = (|| -> Result<String, Refusal> {
-                let mut routes = lib::load(&file)?;
-                let Some(hash) = netsmith_pcb::pad_hash(&board, net) else {
-                    return Err(Refusal::Refused(format!(
-                        "the board {} has no net `{net}`",
-                        board.name
-                    )));
-                };
-                let before = lib::with_routes(&board, &routes)?.0;
-                let table = routes.boards.entry(board.name.clone()).or_default();
-                let record = table
-                    .nets
-                    .entry(net.to_string())
-                    .or_insert_with(|| NetRoutes {
-                        pads: hash.clone(),
-                        ..NetRoutes::default()
-                    });
-                let said = change(&board, record)?;
-                if write.refresh {
-                    record.pads = hash;
-                }
-                if record.shapes() == 0 && !record.lock {
-                    table.nets.remove(net);
-                }
-                if write.check {
-                    let after = lib::with_routes(&board, &routes)?.0;
-                    let new = lib::new_errors(&before, &after)?;
-                    if !new.is_empty() {
-                        return Err(Refusal::Refused(format!(
-                            "refused: the design rules check finds {} new error(s) with it, and the routes file is not changed:\n  {}",
-                            new.len(),
-                            new.join("\n  ")
-                        )));
-                    }
-                }
-                lib::save(&file, &routes)?;
-                Ok(format!("{said}; wrote {}", file.display()))
-            })();
-            Ok(result)
-        },
-    );
+            Ok(lib::edit_file(&board, &routes_file(placed), change))
+        });
     match outcome {
         Ok(Ok(said)) => {
             println!("{said}");
             ExitCode::SUCCESS
         }
-        Ok(Err(Refusal::Refused(e))) => {
+        Ok(Err(lib::Refusal::Refused(e))) => {
             eprintln!("error: {e}");
             ExitCode::FAILURE
         }
-        Ok(Err(Refusal::Failed(e))) => {
+        Ok(Err(lib::Refusal::Failed(e))) => {
             eprintln!("error: {e}");
             ExitCode::from(2)
         }
         Err(code) => code,
     }
-}
-
-enum Change {
-    Delete,
-    Lock(bool),
-}
-
-fn shape_edit(args: &ShapeArgs, change: Change) -> ExitCode {
-    let net = args.net.clone();
-    edit(
-        &args.target,
-        |_, record| {
-            let missing = |what: &str, n: usize, have: usize| {
-                Refusal::Refused(format!(
-                    "net {net} has no {what} {n} in the routes file (it has {have}; `netsmith routes show` numbers them)"
-                ))
-            };
-            match (&change, args.track, args.via) {
-                (Change::Delete, None, None) => {
-                    let locked = record.lock
-                        || record.tracks.iter().any(|t| t.lock)
-                        || record.vias.iter().any(|v| v.lock);
-                    if locked {
-                        return Err(Refusal::Refused(format!(
-                            "net {net} or a shape of it is locked: unlock it first (`netsmith routes unlock`)"
-                        )));
-                    }
-                    let n = record.shapes();
-                    record.tracks.clear();
-                    record.vias.clear();
-                    Ok(format!("deleted net {net}'s record ({n} shape(s))"))
-                }
-                (Change::Delete, track, via) => {
-                    if let Some(n) = track {
-                        let have = record.tracks.len();
-                        let t = record
-                            .tracks
-                            .get(n.wrapping_sub(1))
-                            .ok_or_else(|| missing("track", n, have))?;
-                        if t.lock {
-                            return Err(Refusal::Refused(format!(
-                                "track {n} of net {net} is locked: unlock it first"
-                            )));
-                        }
-                        record.tracks.remove(n - 1);
-                        Ok(format!("deleted track {n} of net {net}"))
-                    } else {
-                        let n = via.expect("a track or a via");
-                        let have = record.vias.len();
-                        let v = record
-                            .vias
-                            .get(n.wrapping_sub(1))
-                            .ok_or_else(|| missing("via", n, have))?;
-                        if v.lock {
-                            return Err(Refusal::Refused(format!(
-                                "via {n} of net {net} is locked: unlock it first"
-                            )));
-                        }
-                        record.vias.remove(n - 1);
-                        Ok(format!("deleted via {n} of net {net}"))
-                    }
-                }
-                (Change::Lock(on), None, None) => {
-                    record.lock = *on;
-                    Ok(format!(
-                        "{} net {net}",
-                        if *on { "locked" } else { "unlocked" }
-                    ))
-                }
-                (Change::Lock(on), track, via) => {
-                    let word = if *on { "locked" } else { "unlocked" };
-                    if let Some(n) = track {
-                        let have = record.tracks.len();
-                        record
-                            .tracks
-                            .get_mut(n.wrapping_sub(1))
-                            .ok_or_else(|| missing("track", n, have))?
-                            .lock = *on;
-                        Ok(format!("{word} track {n} of net {net}"))
-                    } else {
-                        let n = via.expect("a track or a via");
-                        let have = record.vias.len();
-                        record
-                            .vias
-                            .get_mut(n.wrapping_sub(1))
-                            .ok_or_else(|| missing("via", n, have))?
-                            .lock = *on;
-                        Ok(format!("{word} via {n} of net {net}"))
-                    }
-                }
-            }
-        },
-        &args.net,
-        // `lock` writes the record again with the pads as they are, which can draw shapes a
-        // moved record had dropped: they are checked as an added shape is.
-        Write {
-            check: matches!(change, Change::Lock(true)),
-            refresh: matches!(change, Change::Lock(true)),
-        },
-    )
 }
 
 fn import(args: &ImportArgs) -> ExitCode {

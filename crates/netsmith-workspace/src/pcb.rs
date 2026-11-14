@@ -27,6 +27,13 @@
 //! report, run on demand and kept until the layout changes), each with a point and a box. A
 //! click zooms to it and marks it, and the list follows the edits.
 //!
+//! **The routes file** (`<stem>.routes.toml`, epic #599) is read with the layout file and its
+//! copper put on the placed board before anything is routed, as `fab` does. The scene lists its
+//! records with what of them is drawn, a record not used as written is a `routes` finding, and
+//! `POST /api/pcb/routes` deletes, locks and unlocks through `netsmith_fabricate::routes::edit`,
+//! the code of the `netsmith routes` commands, on the board as placed with no copper; the board
+//! is then made again from the file, unrouted. The routes file is watched with the layout file.
+//!
 //! **Not built** (ADR 0030, issue #59): waivers (the page has no way to write one),
 //! regeneration of one module, partial routing, hand-drawn tracks, a copy of the findings for
 //! an agent, and `layout show` overlays.
@@ -45,14 +52,16 @@ use netsmith_editor::{
     api::{
         ComparePcbPlace, CompareSize, DrawnKeepout, KeepoutOrigin, KeepoutPlacement, KicadState,
         PartPlacement, PcbBox, PcbChange, PcbCutout, PcbFinding, PcbFindings, PcbKeepout, PcbPad,
-        PcbPart, PcbReport, PcbScene, PcbSide, Severity,
+        PcbPart, PcbPoint, PcbReport, PcbRouteNet, PcbRouteTrack, PcbRouteVia, PcbScene, PcbSide,
+        RoutesChange, Severity,
     },
 };
 use netsmith_pcb::{
-    Board, BoardLayout, KeepoutPlace, Layout, LayoutFace, PartPlace, Rect, Side, copper_layers,
-    render_svg_view,
+    Board, BoardLayout, KeepoutPlace, Layout, LayoutFace, PartPlace, Rect, Routes, RoutesNote,
+    Side, copper_layers, render_svg_view,
 };
 use netsmith_router::{RouteOptions, route_with};
+use std::path::{Path, PathBuf};
 
 use super::{
     analysis::BoardData,
@@ -95,6 +104,15 @@ pub struct Entry {
     /// The board's fit in its case models (ADR 0109), measured when it is placed: routing does
     /// not move a part, so it stays.
     case_findings: Vec<PcbFinding>,
+    /// The board as placed, before the routes file's copper is put on it: what a change to the
+    /// routes file is made and checked on, as `netsmith routes` does.
+    placed: Board,
+    /// The routes file beside the layout file (epic #599), if the board has a layout file.
+    routes_file: Option<PathBuf>,
+    /// What it was like when read, its records, and what of them was not used as written.
+    routes_stamp: String,
+    routes: Routes,
+    routes_notes: Vec<RoutesNote>,
 }
 
 /// Why a board could not be placed.
@@ -235,37 +253,94 @@ pub fn place_with(
         }
     })?
     .board;
-    // The copper the routes file beside the layout file fixes (ADR 0030).
-    let mut board = board;
-    if let Some((file, _)) = &data.layout {
-        netsmith_fabricate::routes::apply_beside(&mut board, Some(file))
-            .map_err(|e| PlaceError::Layout(format!("{name}: {e}")))?;
+    Entry::with_routes(data, name, board, layout, layout_stamp)
+}
+
+impl Entry {
+    /// The entry of `placed`, a board placed with `layout` and no copper, with the copper of
+    /// the routes file beside the layout file on it (ADR 0030), read now.
+    pub fn with_routes(
+        data: &BoardData,
+        name: &str,
+        placed: Board,
+        layout: Option<(Layout, String)>,
+        layout_stamp: String,
+    ) -> Result<Entry, PlaceError> {
+        let routes_file = data
+            .layout
+            .as_ref()
+            .map(|(file, _)| netsmith_fabricate::routes::beside_layout(file));
+        let mut board = placed.clone();
+        let (routes_stamp, routes, routes_notes) = match &routes_file {
+            Some(file) => {
+                // The stamp first, as for the layout file.
+                let stamp = super::files::stamp_of(file);
+                let routes = netsmith_fabricate::routes::load(file)
+                    .map_err(|e| PlaceError::Layout(format!("{name}: {e}")))?;
+                let shown = file.display().to_string();
+                let notes = netsmith_pcb::apply_routes(&mut board, &routes, &shown)
+                    .map_err(|e| PlaceError::Layout(format!("{name}: {e}")))?;
+                (stamp, routes, notes)
+            }
+            None => ("none".to_string(), Routes::default(), Vec::new()),
+        };
+        let case_findings = if data.built.design.features.case_models.is_empty() {
+            Vec::new()
+        } else {
+            findings::case_findings(
+                &board,
+                &netsmith_fabricate::board3d::scene(&data.built, &board).case,
+            )
+        };
+        Ok(Entry {
+            case_findings,
+            board,
+            routed: false,
+            stopped: false,
+            unrouted: Vec::new(),
+            elapsed: Duration::ZERO,
+            layout,
+            layout_stamp,
+            kicad: None,
+            drc: OnceLock::new(),
+            constraints: netsmith_pipeline::constraints::of_design(
+                &data.built.design,
+                data.constraints_warn,
+            ),
+            constraint_findings: OnceLock::new(),
+            placed,
+            routes_file,
+            routes_stamp,
+            routes,
+            routes_notes,
+        })
     }
-    let case_findings = if data.built.design.features.case_models.is_empty() {
-        Vec::new()
-    } else {
-        findings::case_findings(
-            &board,
-            &netsmith_fabricate::board3d::scene(&data.built, &board).case,
+
+    /// The entry again with the routes file as it is now, the board as placed and unrouted: what
+    /// the view shows once a change to the routes file is written.
+    pub fn routes_changed(&self, data: &BoardData, name: &str) -> Result<Entry, PlaceError> {
+        Entry::with_routes(
+            data,
+            name,
+            self.placed.clone(),
+            self.layout.clone(),
+            self.layout_stamp.clone(),
         )
-    };
-    Ok(Entry {
-        case_findings,
-        board,
-        routed: false,
-        stopped: false,
-        unrouted: Vec::new(),
-        elapsed: Duration::ZERO,
-        layout,
-        layout_stamp,
-        kicad: None,
-        drc: OnceLock::new(),
-        constraints: netsmith_pipeline::constraints::of_design(
-            &data.built.design,
-            data.constraints_warn,
-        ),
-        constraint_findings: OnceLock::new(),
-    })
+    }
+
+    /// The board as placed with no copper on it.
+    pub fn placed(&self) -> &Board {
+        &self.placed
+    }
+
+    /// The routes file beside the layout file, if the board has a layout file.
+    pub fn routes_file(&self) -> Option<&Path> {
+        self.routes_file.as_deref()
+    }
+
+    pub fn routes_stamp(&self) -> &str {
+        &self.routes_stamp
+    }
 }
 
 impl Entry {
@@ -382,6 +457,16 @@ impl Entry {
     pub fn findings(&self, name: &str) -> PcbFindings {
         let mut all = findings::placement_findings(&self.board);
         all.extend(self.case_findings.iter().cloned());
+        let file = self
+            .routes_file
+            .as_deref()
+            .and_then(Path::file_name)
+            .map_or(String::new(), |n| n.to_string_lossy().into_owned());
+        all.extend(findings::routes_findings(
+            &self.board,
+            &file,
+            &self.routes_notes,
+        ));
         if let Some(constraints) = &self.constraints {
             all.extend(
                 self.constraint_findings
@@ -549,7 +634,15 @@ pub fn scene(entry: &Entry, data: &BoardData, name: &str) -> PcbScene {
         .as_ref()
         .and_then(|(path, _)| path.file_name())
         .map_or(String::new(), |n| n.to_string_lossy().into_owned());
+    let routes_file = entry
+        .routes_file
+        .as_deref()
+        .and_then(Path::file_name)
+        .map_or(String::new(), |n| n.to_string_lossy().into_owned());
     PcbScene {
+        routes_file,
+        routes_stamp: entry.routes_stamp.clone(),
+        routes: route_nets(entry),
         board: name.to_string(),
         svg: render_svg_view(board),
         origin_x: board.outline.min.x,
@@ -563,6 +656,91 @@ pub fn scene(entry: &Entry, data: &BoardData, name: &str) -> PcbScene {
         keepouts,
         cutouts,
     }
+}
+
+/// The routes file's records for the board, on the sheet, each shape marked as drawn or not as
+/// `netsmith_pcb::apply_routes` decides: every shape of a record whose pads are where it was
+/// written, only the locked ones of one whose pads moved, none of a net the board does not have.
+fn route_nets(entry: &Entry) -> Vec<PcbRouteNet> {
+    let board = &entry.placed;
+    let Some(table) = entry.routes.boards.get(&board.name) else {
+        return Vec::new();
+    };
+    let at = |p: [f64; 2]| PcbPoint {
+        x: board.outline.min.x + p[0],
+        y: board.outline.min.y + p[1],
+    };
+    let face = |f: LayoutFace| match f {
+        LayoutFace::Top => "top",
+        LayoutFace::Bottom => "bottom",
+    };
+    table
+        .nets
+        .iter()
+        .map(|(net, record)| {
+            let hash = netsmith_pcb::pad_hash(board, net);
+            let current = hash.as_deref() == Some(record.pads.as_str());
+            let known = hash.is_some();
+            PcbRouteNet {
+                net: net.clone(),
+                lock: record.lock,
+                current,
+                tracks: record
+                    .tracks
+                    .iter()
+                    .map(|t| PcbRouteTrack {
+                        layer: face(t.layer).to_string(),
+                        width: t.width,
+                        from: at(t.from),
+                        mid: t.mid.map(at),
+                        to: at(t.to),
+                        lock: t.lock,
+                        drawn: known && (current || t.lock),
+                    })
+                    .collect(),
+                vias: record
+                    .vias
+                    .iter()
+                    .map(|v| PcbRouteVia {
+                        at: at(v.at),
+                        diameter: v.diameter,
+                        drill: v.drill,
+                        lock: v.lock,
+                        drawn: known && (current || v.lock),
+                    })
+                    .collect(),
+            }
+        })
+        .collect()
+}
+
+/// A change of the PCB view to the routes file, as `netsmith routes` would make it.
+pub fn routes_edit(change: &RoutesChange) -> Result<netsmith_fabricate::routes::Edit, ApiError> {
+    use netsmith_fabricate::routes::{Edit, Shape};
+    let shape = |track: Option<u32>, via: Option<u32>| match (track, via) {
+        (Some(_), Some(_)) => Err(ApiError::bad_request(
+            "a change names a track or a via, not both",
+        )),
+        (Some(n), None) => Ok(Some(Shape::Track(n as usize))),
+        (None, Some(n)) => Ok(Some(Shape::Via(n as usize))),
+        (None, None) => Ok(None),
+    };
+    Ok(match change {
+        RoutesChange::Delete { net, track, via } => Edit::Delete {
+            net: net.clone(),
+            shape: shape(*track, *via)?,
+        },
+        RoutesChange::Lock {
+            net,
+            track,
+            via,
+            lock,
+        } => Edit::Lock {
+            net: net.clone(),
+            shape: shape(*track, *via)?,
+            on: *lock,
+        },
+    })
 }
 
 /// `before` is what the page last saw of an entry and `now` what the file has: the same, to

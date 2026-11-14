@@ -304,6 +304,20 @@ pub trait Backend: Send + Sync + 'static {
     /// is not as the change says it was, and with 400 if an entry is wrong; then nothing is
     /// written.
     fn pcb_edit(&self, edit: &PcbEdit) -> Result<PcbEdited, ApiError>;
+    /// Make a change to the routes file beside the board's source, as `netsmith routes` makes
+    /// it, and answer with the board as it is placed now (unrouted) and what was done. Refused
+    /// with 409 if the file is not as the page read it, and with 422 and the reason when the
+    /// change is refused (a locked shape, a shape the record does not have, a new error of the
+    /// design rules check); then nothing is written.
+    fn pcb_routes(
+        &self,
+        edit: &crate::api::PcbRoutesEdit,
+    ) -> Result<crate::api::PcbRoutesEdited, ApiError> {
+        Err(ApiError::not_found(format!(
+            "`{}` has no routes file to write",
+            edit.board
+        )))
+    }
     /// Lock or unlock the pin of one pin request: the `lock` line of its entry in the pin file
     /// beside the board's source, and nothing else of the file (ADR 0101). Refused with 422 and
     /// the reason for a request that has no pin, and with 409 if the pin file is not as the

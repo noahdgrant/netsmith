@@ -24,6 +24,7 @@
 //! | `GET /api/git`, `GET /api/compare`, `GET /api/git/file` | what the project can be compared with, what changed in the circuit, a file at a ref (ADR 0059) |
 //! | `POST /api/pins/lock`, `POST /api/pins/move` | lock or unlock a pin request, and move it to another pin of its part: the `lock` and the `pin` and `source` lines of its entry in the pin file (ADR 0101), and no other line; `422` with the reason when the choice is refused |
 //! | `POST /api/pcb/route`, `cancel`, `edit`, `drc`; `GET /api/pcb/scene`, `findings` | place and route on demand; `cancel` stops the router and keeps what it routed |
+//! | `POST /api/pcb/routes` | a change to the routes file (delete, lock, unlock), as `netsmith routes` makes it; `409` for a stale stamp, `422` with the reason when it is refused |
 //! | `GET /api/pcb/3d?board=` | the board as `scene` has it placed, as glTF 2.0 binary (`model/gltf-binary`, ADR 0105), the bytes `netsmith board3d --glb` writes; the layout stamp of that placement in `X-Netsmith-Layout-Stamp` |
 //! | `POST /api/build`, `/api/fab`, `/api/order` and their `/cancel` | the commands of the same names; a cancelled job answers `499` and keeps nothing it was making (ADR 0062) |
 //! | `GET /api/download`, `/api/order/download` | a file `fab` or an order wrote |
@@ -154,6 +155,7 @@ const NEEDS_ANALYSIS: &[&str] = &[
     "/api/pcb/route",
     "/api/pcb/scene",
     "/api/pcb/edit",
+    "/api/pcb/routes",
     "/api/pcb/findings",
     "/api/pcb/drc",
     "/api/build",
@@ -348,6 +350,7 @@ fn router(state: Shared) -> Router {
         .route("/api/pcb/scene", get(pcb_scene))
         .route("/api/pcb/3d", get(pcb_3d))
         .route("/api/pcb/edit", post(pcb_edit))
+        .route("/api/pcb/routes", post(pcb_routes))
         .route("/api/pcb/findings", get(pcb_findings))
         .route("/api/pcb/drc", post(pcb_drc))
         .route("/api/build", post(build))
@@ -891,6 +894,14 @@ async fn pcb_edit(
 ) -> Result<Json<crate::api::PcbEdited>, ApiError> {
     let edit: crate::api::PcbEdit = body(&bytes)?;
     json(move || s.backend.pcb_edit(&edit)).await
+}
+
+async fn pcb_routes(
+    State(s): State<Shared>,
+    bytes: axum::body::Bytes,
+) -> Result<Json<crate::api::PcbRoutesEdited>, ApiError> {
+    let edit: crate::api::PcbRoutesEdit = body(&bytes)?;
+    json(move || s.backend.pcb_routes(&edit)).await
 }
 
 async fn build(State(s): State<Shared>) -> Result<Json<crate::api::BuildReport>, ApiError> {

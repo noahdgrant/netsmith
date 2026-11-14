@@ -15,7 +15,7 @@ use netsmith_fab::{KicadCli, KicadCliExe};
 use netsmith_geom::{
     Artwork, Constraints, DrcFinding, DrcRule, DrcSeverity, constraint_outcome_findings, drc_check,
 };
-use netsmith_pcb::{Board, PlacementProblem, Pt, Ratsnest, Rect, kicad_pcb, kicad_pro};
+use netsmith_pcb::{Board, PlacementProblem, Pt, Ratsnest, Rect, RoutesNote, kicad_pcb, kicad_pro};
 
 /// What KiCad's check found on a board, or why it could not be run.
 #[derive(Debug, Clone, PartialEq)]
@@ -350,6 +350,48 @@ pub fn unrouted_findings(board: &Board) -> Vec<PcbFinding> {
                 Severity::Error,
                 "unrouted",
                 line.to_string(),
+                area,
+                parts,
+            )
+        })
+        .collect()
+}
+
+/// What of the routes file `file` was not used as written (epic #599), as warnings: the warning
+/// `fab` prints, at the pads of the net (or the whole board, for a net it does not have).
+pub fn routes_findings(board: &Board, file: &str, notes: &[RoutesNote]) -> Vec<PcbFinding> {
+    let mut ids = Ids(Vec::new());
+    notes
+        .iter()
+        .map(|note| {
+            let (net, rule) = match note {
+                RoutesNote::Moved { net, .. } => (net, "routes_pads_moved"),
+                RoutesNote::NotANet { net, .. } => (net, "routes_no_net"),
+            };
+            let pads: Vec<(String, Pt)> = board
+                .nets
+                .iter()
+                .filter(|n| &n.name == net)
+                .flat_map(|n| &n.pads)
+                .filter_map(|pad| {
+                    let part = board.parts.iter().find(|p| p.refdes == pad.refdes)?;
+                    let at = part
+                        .footprint
+                        .pads_numbered(&pad.number)
+                        .next()
+                        .map(|p| part.pad_centre(p))?;
+                    Some((part.refdes.clone(), at))
+                })
+                .collect();
+            let area = Rect::around(pads.iter().map(|(_, at)| *at)).unwrap_or(board.outline);
+            let mut parts: Vec<String> = pads.into_iter().map(|(r, _)| r).collect();
+            parts.dedup();
+            make(
+                ids.id(format!("routes:{rule}:{net}")),
+                FindingSource::Routes,
+                Severity::Warning,
+                rule,
+                format!("{file}: {note}"),
                 area,
                 parts,
             )

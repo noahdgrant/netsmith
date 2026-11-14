@@ -2,8 +2,9 @@
 
 import { useState } from 'preact/hooks';
 
-import type { PcbBox, PcbKeepout, PcbPart, PcbScene } from '../api';
-import { pickKeepout, pickedKeepout, select, selection } from '../pcbstore';
+import type { PcbBox, PcbKeepout, PcbPart, PcbRouteNet, PcbScene } from '../api';
+import { type RoutePick, changeRoutes, pickKeepout, pickRoute, pickedKeepout, pickedRoute, select, selection } from '../pcbstore';
+import { boxOf, deleteChange, lockChange, nameOf, samePick, shapeOf } from './routes';
 import { Defs, InspectorAction, InspectorHead, PinChip } from '../components/Inspector';
 import { Icon } from '../components/Icons';
 import { EmptyState } from '../components/ui';
@@ -34,15 +35,20 @@ export function Panel(props: {
   const { scene: sc } = props;
   const chosen = sc.parts.filter((p) => selection.value.includes(p.path));
   const keepout = sc.keepouts.find((k) => k.name === pickedKeepout.value) ?? null;
+  const route = pickedRoute.value;
+  const record = route ? sc.routes.find((n) => n.net === route.net) ?? null : null;
   const tabs = [
     { id: 'parts', label: `Parts (${sc.parts.length})` },
     { id: 'nets', label: `Nets (${props.drawing.nets.length})` },
+    // The routes file's records, when it has some for this board.
+    ...(sc.routes.length > 0 ? [{ id: 'routes', label: `Routes (${sc.routes.length})` }] : []),
     ...(props.extra ?? []).map((e) => ({ id: e.id, label: e.label })),
   ];
   return (
     <aside class="side no-pan">
       {chosen.length > 0 && <PartInspector scene={sc} parts={chosen} onPickNet={props.onPickNet} />}
       {keepout && <KeepoutInspector scene={sc} keepout={keepout} />}
+      {route && record && <RouteInspector scene={sc} pick={route} record={record} onFocus={props.onFocus} />}
       <div class="side-tabs">
         {tabs.map((t) => (
           <button key={t.id} class={props.tab === t.id ? 'on' : ''} onClick={() => props.onTab(t.id)}>
@@ -51,6 +57,7 @@ export function Panel(props: {
         ))}
       </div>
       {props.tab === 'parts' && <PartList scene={sc} onFocus={props.onFocus} />}
+      {props.tab === 'routes' && <RouteList scene={sc} onFocus={props.onFocus} />}
       {props.tab === 'nets' && (
         <NetList drawing={props.drawing} picked={props.picked} onPick={props.onPickNet} onHover={props.onHoverNet} />
       )}
@@ -296,6 +303,160 @@ function KeepoutInspector(props: { scene: PcbScene; keepout: PcbKeepout }) {
         )}
         {drawn && <button class="tool" onClick={() => void deleteKeepout(k.name)}>Delete</button>}
         <button class="tool" onClick={() => pickKeepout(null)}>Done</button>
+      </div>
+    </section>
+  );
+}
+
+/** The routes file's records: each net with its tracks and vias, numbered as `netsmith routes show` numbers
+ * them, with what is locked and what is not drawn. A click picks one and zooms to it. */
+function RouteList(props: { scene: PcbScene; onFocus: (box: PcbBox) => void }) {
+  const sc = props.scene;
+  const picked = pickedRoute.value;
+  const choose = (net: PcbRouteNet, pick: RoutePick) => {
+    pickRoute(pick);
+    const box = boxOf(net, pick);
+    if (box) props.onFocus(box);
+  };
+  if (sc.routes.length === 0) {
+    return (
+      <EmptyState
+        compact
+        class="none"
+        icon="route"
+        title="No fixed copper"
+        help={`${sc.routesFile} has no record for this board. \`netsmith routes import\`, \`add-track\` and \`add-via\` write one; its copper is drawn before the router's, which keeps it.`}
+      />
+    );
+  }
+  return (
+    <div class="rows route-rows" data-testid="route-list">
+      {sc.routes.map((net) => (
+        <div key={net.net} class="route-net">
+          <div
+            class={`row part-row route-row ${samePick(picked, { net: net.net }) ? 'sel' : ''}`}
+            data-route-row={net.net}
+            {...hoverAttrs({ kind: 'net', key: net.net })}
+            onClick={() => choose(net, { net: net.net })}
+          >
+            <b class="ref">{net.net}</b>
+            <span class="faint kind">
+              {net.tracks.length} track{net.tracks.length === 1 ? '' : 's'}, {net.vias.length} via{net.vias.length === 1 ? '' : 's'}
+            </span>
+            {net.lock && <span class="tag lock" title="locked: the router adds no copper to the net">lock</span>}
+            {!net.current && (
+              <span class="tag warn" title="the net's pads are not where the record was written: only its locked shapes are drawn (see the findings)">
+                stale
+              </span>
+            )}
+          </div>
+          {net.tracks.map((t, i) => (
+            <div
+              key={`t${i}`}
+              class={`row part-row route-shape ${samePick(picked, { net: net.net, track: i + 1 }) ? 'sel' : ''} ${t.drawn ? '' : 'undrawn'}`}
+              data-route-row={`${net.net}/track/${i + 1}`}
+              onClick={() => choose(net, { net: net.net, track: i + 1 })}
+            >
+              <span class="ref">track {i + 1}</span>
+              <span class="faint kind">
+                {t.layer}, {fmt(t.width)} mm{t.mid ? ', arc' : ''}
+              </span>
+              {t.lock && <span class="tag lock" title="locked: kept when the net's pads move">lock</span>}
+              {!t.drawn && <span class="tag" title="not on the board: its record is stale">not drawn</span>}
+            </div>
+          ))}
+          {net.vias.map((v, i) => (
+            <div
+              key={`v${i}`}
+              class={`row part-row route-shape ${samePick(picked, { net: net.net, via: i + 1 }) ? 'sel' : ''} ${v.drawn ? '' : 'undrawn'}`}
+              data-route-row={`${net.net}/via/${i + 1}`}
+              onClick={() => choose(net, { net: net.net, via: i + 1 })}
+            >
+              <span class="ref">via {i + 1}</span>
+              <span class="faint kind">
+                {fmt(v.diameter)} mm, drill {fmt(v.drill)} mm
+              </span>
+              {v.lock && <span class="tag lock" title="locked: kept when the net's pads move">lock</span>}
+              {!v.drawn && <span class="tag" title="not on the board: its record is stale">not drawn</span>}
+            </div>
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** A record of the routes file, or one shape of it: where it is, and lock, unlock and delete, which the
+ * server makes as `netsmith routes lock`, `unlock` and `delete` do and refuses (a locked shape) with the reason. */
+function RouteInspector(props: { scene: PcbScene; pick: RoutePick; record: PcbRouteNet; onFocus: (box: PcbBox) => void }) {
+  const { pick, record, scene: sc } = props;
+  const shape = shapeOf(record, pick);
+  const at = (p: { x: number; y: number }) => `${fmt(p.x - sc.originX)}, ${fmt(p.y - sc.originY)} mm`;
+  const rows = !shape
+    ? [
+        { label: 'Copper', value: `${record.tracks.length} tracks, ${record.vias.length} vias` },
+        { label: 'Router', value: record.lock ? 'adds nothing (locked)' : 'may add copper' },
+        { label: 'Pads', value: record.current ? 'as written' : 'moved: only locked shapes drawn' },
+      ]
+    : 'layer' in shape
+      ? [
+          { label: 'Layer', value: shape.layer },
+          { label: 'Width', value: `${fmt(shape.width)} mm` },
+          { label: 'From', value: at(shape.from) },
+          ...(shape.mid ? [{ label: 'Through', value: at(shape.mid) }] : []),
+          { label: 'To', value: at(shape.to) },
+          { label: 'On the board', value: shape.drawn ? 'yes' : 'no (stale record)' },
+        ]
+      : [
+          { label: 'At', value: at(shape.at) },
+          { label: 'Size', value: `${fmt(shape.diameter)} mm, drill ${fmt(shape.drill)} mm` },
+          { label: 'On the board', value: shape.drawn ? 'yes' : 'no (stale record)' },
+        ];
+  const locked = shape ? shape.lock : record.lock;
+  return (
+    <section class="inspector insp" data-testid="route-inspector">
+      <InspectorHead
+        eyebrow={shape ? 'Fixed copper' : 'Routes file record'}
+        icon="route"
+        tone="net"
+        mono
+        title={shape ? nameOf(pick) : `net ${record.net}`}
+        sub={`${sc.routesFile}${record.lock ? ' · net locked' : ''}${shape?.lock ? ' · shape locked' : ''}`}
+      />
+      <Defs rows={rows} />
+      <div class="actions">
+        <button
+          class="tool small"
+          title={shape ? `${locked ? 'Unlock' : 'Lock'} it: a locked shape is kept when the net's pads move, and not deleted (L)` : `${locked ? 'Unlock' : 'Lock'} the net: the router adds no copper to a locked net (L)`}
+          data-testid="route-lock"
+          onClick={() => void changeRoutes(lockChange(pick, !locked))}
+        >
+          <Icon name={locked ? 'unlock' : 'lock'} size={13} />
+          {locked ? 'Unlock' : 'Lock'}
+        </button>
+        {shape && (
+          <button
+            class="tool small"
+            title={`${record.lock ? 'Unlock' : 'Lock'} the whole net ${record.net}`}
+            data-testid="route-lock-net"
+            onClick={() => void changeRoutes(lockChange({ net: record.net }, !record.lock))}
+          >
+            <Icon name={record.lock ? 'unlock' : 'lock'} size={13} />
+            {record.lock ? 'Unlock net' : 'Lock net'}
+          </button>
+        )}
+        <button
+          class="tool small"
+          title={shape ? 'Delete it from the routes file (Delete); refused while it is locked' : "Delete the net's record (Delete); refused while it or a shape of it is locked"}
+          data-testid="route-delete"
+          onClick={() => void changeRoutes(deleteChange(pick))}
+        >
+          <Icon name="close" size={13} />
+          Delete
+        </button>
+        <button class="tool small" onClick={() => pickRoute(null)}>
+          Done
+        </button>
       </div>
     </section>
   );
