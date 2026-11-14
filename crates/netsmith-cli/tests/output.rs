@@ -12,17 +12,33 @@ fn examples() -> std::path::PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples")
 }
 
-/// A copy of the `two_buck` example, a project whose board has notes and a guideline warning.
+/// A copy of the `two_buck` example, a project whose board has notes, with a guideline warning
+/// added: a `FeedbackDivider` on the 5 V rail with no bound on its current, whose two resistors
+/// are therefore unconstrained in size (the example's own dividers are bounded by `Buck`, #702).
+/// Its lock is refreshed for the added resistors.
 fn two_buck(label: &str) -> TempDir {
     let root = TempDir::new(label);
-    for file in [
-        "netsmith.toml",
-        "kicad.toml",
-        "two_buck.nsm",
-        "two_buck.lock.toml",
-    ] {
+    for file in ["netsmith.toml", "kicad.toml", "two_buck.lock.toml"] {
         fs::copy(examples().join("two_buck").join(file), root.join(file)).unwrap();
     }
+    let source = fs::read_to_string(examples().join("two_buck/two_buck.nsm")).unwrap();
+    let source = source
+        .replacen(
+            "import std::parts::regulator::{Buck, BuckIc, LinearRegulator}",
+            "import std::parts::regulator::{Buck, BuckIc, FeedbackDivider, LinearRegulator}",
+            1,
+        )
+        .replacen(
+            "    .tp_gnd_b: TestPoint\n",
+            "    .tp_gnd_b: TestPoint\n    \
+             .sense: FeedbackDivider { .vref &= 0.8V +/- 1%; .vout &= 5V +/- 5% }\n    \
+             .sense.top ~ .out_5v.pos\n    .sense.bottom ~ .out_5v.neg\n",
+            1,
+        );
+    assert!(source.contains(".sense.top"), "the example changed");
+    fs::write(root.join("two_buck.nsm"), source).unwrap();
+    let run = netsmith(&root, &["lock", "--update"]);
+    assert!(run.status.success(), "{}", stderr(&run));
     root
 }
 
@@ -162,7 +178,7 @@ fn json_lists_the_notes_with_their_cause_or_counts_them() {
         .find(|f| f["severity"] == "warning")
         .unwrap();
     assert_eq!(warning["code"], "guideline");
-    assert_eq!(warning["path"], "buck_5v.stage.divider.rtop");
+    assert_eq!(warning["path"], "sense.rtop");
     // `summary` keeps the counts and leaves the notes out of the findings.
     let doc = json(&netsmith(
         &root,

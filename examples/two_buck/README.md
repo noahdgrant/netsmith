@@ -49,6 +49,8 @@ The DC analysis cannot work out the current of the reverse-polarity diode, which
 that a voltage is stated on (`VIN_RAW` and `VIN`): the board states a current for it
 (`.current &= 0A..3A`), so its rating is checked and the analysis takes that current, with no
 note. The stage's capacitor ratings against the peak of its rails are not
-evaluated, because no rail states a `.peak`. The four feedback-divider resistors are picked by
-the first row that fits (the `unconstrained pick` guideline), because `Buck` does not let a
-board bound them.
+evaluated, because no rail states a `.peak`. The four feedback-divider resistors are sized by
+`Buck`'s default bound on each divider's current, 10 uA to 1 mA (the invented IC states no figure
+of its own): 5.1 kohm over 1 kohm (about 0.8 mA) at 5 V and 6.8 kohm over 2.2 kohm (about
+0.37 mA) at 3.3 V, the first rows that fit. A board that wants less narrows it,
+`.buck_5v.stage.divider.current &= 10uA..100uA`.

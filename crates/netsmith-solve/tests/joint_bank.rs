@@ -84,6 +84,9 @@ board Converter {
     .reg: Zbk2Buck {
         .vin.pos.net &= "VIN"
         .vin.voltage &= 4.5V..5.3V
+        // The resistor rows here are 39 kohm and up, which carry a little under `Buck`'s
+        // default of 10 uA at 1.8 V: the board allows less, since the divider is not the subject.
+        .stage.divider.current &= 1uA..1mA
     }
     .supply.pos ~> .filter ~> .reg.vin.pos
     .supply.neg ~ .reg.vin.neg

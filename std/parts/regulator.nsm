@@ -87,9 +87,13 @@ module FeedbackDivider {
     .vref: Voltage
     /// The output voltage the divider sets.
     .vout: Voltage
-    /// The current that runs through both resistors, from the output to ground. It is a value
-    /// read out of the module, not one passed in: a bound (`<=`) or a read reaches inside no
-    /// module (ADR 0116), so `Buck` and a board take the current from here.
+    /// The current that runs through both resistors, from the output to ground. The output
+    /// fixes only the ratio of the two resistors, so a bound on this current is what fixes
+    /// their size: a board that uses the divider alone bounds it (`.current <= 1mA`, or a range,
+    /// `.current &= 10uA..1mA`), and the solver picks two resistors that keep it inside the
+    /// bound in the worst case. `Buck` gives it a default (see `Buck`), which a board replaces by
+    /// narrowing it from outside (`.reg.divider.current &= 50uA..200uA`, ADR 0116). A relation or
+    /// a read reaches inside no module (ADR 0116), so `Buck` reads the current out of here.
     .current: Current
     .rtop: Resistor
     .rbottom: Resistor
@@ -231,6 +235,13 @@ generic BuckIc {
     /// capacitance in use (ADR 0013).
     .min_input_capacitance: Capacitance
     .min_output_capacitance: Capacitance
+    /// The current the datasheet asks the feedback divider to carry, when it gives a figure for
+    /// it, as a range (`.recommended_divider_current &= 7.65uA..765uA`). A datasheet that gives
+    /// a range for the bottom resistor gives this current, the reference over that resistor;
+    /// the page goes in the part's doc comment. `Buck` bounds its divider's current by it, and
+    /// an IC that states nothing gets `Buck`'s default of 10 uA to 1 mA (see `Buck`). Optional
+    /// (ADR 0074): outside `Buck` nothing reads it.
+    .recommended_divider_current: Current optional
 }
 
 /// Any buck converter: a supply that steps its input rail down to its output rail, whatever IC
@@ -399,6 +410,30 @@ generic BuckConverter {
 /// `.min_on_time` and `.min_off_time` (the `Lt8641` spells its own `.t_on_min`), and the `Lt8641`
 /// not stating its 50 ns and 110 ns on `Buck`, are accepted as built (the owner, 2026-11-11).
 ///
+/// The divider's current is bounded, which fixes the size of its two resistors (the output
+/// fixes only their ratio). By default (`?=`) the bound is the IC's
+/// `.recommended_divider_current`, and that is 10 uA to 1 mA by default (`?=`) for an IC whose
+/// datasheet gives no figure. The floor keeps the feedback pin's input current small beside
+/// the divider's: tens of nanoamps (the RT8059's is 50 nA at most, DS8059-06, Electrical
+/// Characteristics, p.4) is 0.5 % of 10 uA. The TPS54202's datasheet says the same in words:
+/// "If the values are too high the regulator is more susceptible to noise and voltage errors
+/// from the FB input current are noticeable" (SLVSD26C, 6.3.8, p.10). The ceiling keeps the
+/// divider from wasting more than an order of magnitude over the ICs' own quiescent current
+/// (28 uA to 78 uA typical for the standard ones): the LMR16006's bottom resistor of 1 kohm to
+/// 100 kohm (SNVSA24, 8.3.3, p.9) is 7.65 uA to 765 uA, and the suggested values of the RT8059
+/// (DS8059-06, Table 1, p.2) and of the TPS54202 (SLVSD26C, Table 7-2, p.17) are 11 uA to
+/// 114 uA. A board that wants another bound narrows the divider's current from outside,
+/// `.reg.divider.current &= 50uA..200uA` (ADR 0116), which replaces the default and the IC's
+/// figure with it; a `defaults` line (ADR 0128) does not reach it, since `Buck`'s own `?=` beats
+/// the line. Decided by the orchestrating agent while the owner was away (2026-11-13, issue
+/// #702): a current and not a resistance, because noise, the error of the pin's input current
+/// and the waste all follow the current, and a datasheet's range for the bottom resistor is a
+/// current through the reference; a default the board replaces, and not a relation, because
+/// the datasheets give the figures as starting values, not limits. Not taken: a
+/// `.max_feedback_resistance` member (it bounds one end only, and no standard datasheet states
+/// one); bounding the current in `FeedbackDivider` itself (`Buck` could then give no default of
+/// its own, two defaults on one field being an error, ADR 0051).
+///
 /// The divider's current and the quiescent current of the IC are not added to the load, so
 /// the inductor carries the load: `.inductor.current == -.vout.current` (the IC's own current
 /// is in its input's, as its part writes it, ADR 0096). A design that adds
@@ -499,6 +534,9 @@ module Buck<Ic: BuckIc> provides BuckConverter {
     .divider.vref == .ic.vref
     .divider.vout == .vout.voltage
     .divider_current == .divider.current
+    // The bound on the divider's current, the IC's figure or 10 uA to 1 mA (see above, #702).
+    .ic.recommended_divider_current ?= 10uA..1mA
+    .divider.current ?= .ic.recommended_divider_current
 
     .ic.sw.pos ~> .inductor ~> .vout.pos
     .vin.pos ~> .input_cap ~> .vin.neg
@@ -587,6 +625,9 @@ module Buck<Ic: BuckIc> provides BuckConverter {
 ///   Typical Applications (p.1, p.22, p.23: 5 V, 3.3 V and 12 V, 1 MHz and 2 MHz) uses 47 uF
 ///   (1210, X5R or X7R) at the output, so `.min_output_capacitance` is 47 uF by default
 ///   (`?=`): an application value, not a datasheet minimum.
+/// - Feedback divider: `.recommended_divider_current` is not stated (the datasheet was not read
+///   again for a figure when the member was added, issue #702), so `Buck`'s default of 10 uA to
+///   1 mA holds.
 /// - Efficiency: `.efficiency` is 0.70 to 0.95. The upper figure is the front page's "Up
 ///   to 95% Efficiency at 1MHz, 12V to 5V" (p.1). The lower is read off the curves of the
 ///   Typical Performance Characteristics (p.4): the lowest point of G01 to G04 for a load of
@@ -909,6 +950,12 @@ part Lt8641 provides BuckIc {
 ///   about 77 % (3.3 V out at 10 mA), rounded down, and the highest about 89 % (5 V out),
 ///   rounded up. Below 10 mA the curves fall to about 40 % at 0.1 mA. The datasheet has no
 ///   curve of the LMR16006Y at another input, and states no minimum.
+/// - Feedback divider: "Typically R2 will be given as 1k Ω - 100 kΩ for a starting value"
+///   (8.3.3 Output Voltage Setting, p.9; R2 is the bottom resistor), so
+///   `.recommended_divider_current` is 7.65 uA to 765 uA, the 0.765 V that the same paragraph's
+///   equation uses over 100 kohm and 1 kohm. Over the reference's range (0.747 V to 0.782 V) a
+///   resistor at either end gives a current about 2 % off these, which the figure, a starting
+///   value and not a limit, does not follow. Table 2 (p.14) uses 10 kohm, 76.5 uA.
 /// - Quiescent current: 28 uA typical, not switching (p.5), with no maximum, so the part
 ///   states none and the input draws what the output asks.
 /// - Soft-start: internal (p.1), with no time in the tables, so `.soft_start_time` is not
@@ -941,6 +988,7 @@ part Lmr16006y provides BuckIc {
     .min_inductance &= 6.8uH
     .min_input_capacitance &= 1uF
     .min_output_capacitance ?= 10uF
+    .recommended_divider_current &= 7.65uA..765uA
     .vin.current == -.sw.current * .sw.voltage / (.vin.voltage * .efficiency)
     dc switching_regulator .vin .sw .efficiency
 
@@ -1003,6 +1051,9 @@ part Lmr16006y provides BuckIc {
 ///   point is about 76 % (3.3 V to 1.2 V at 1 A), rounded down, and the highest about 97 %
 ///   (3.3 V to 2.5 V near 0.1 A). The datasheet states no minimum and no curve below 10 mA.
 /// - Quiescent current: 78 uA typical (p.4), with no maximum, so the part states none.
+/// - Feedback divider: the datasheet gives suggested values (Table 1, p.2: R2 of 54.9 kohm to
+///   56.2 kohm, about 11 uA) and no range, so `.recommended_divider_current` is not stated and
+///   `Buck`'s default of 10 uA to 1 mA holds. The FB input current is 50 nA at most (p.4).
 /// - The minimum on-time, the soft-start time and the current limit (1.5 A) are typical
 ///   figures or absent (p.4), so none is stated.
 ///
@@ -1079,6 +1130,12 @@ part Rt8059 provides BuckIc {
 ///   12 V and 24 V in, 5 V out): from 10 mA to 2 A the lowest point is about 78 % (24 V at
 ///   10 mA), rounded down, and the highest about 94 % (12 V near 1 A), rounded up. Below 10 mA
 ///   the curves fall to about 35 % at 1 mA. The datasheet states no minimum.
+/// - Feedback divider: "Start with a 100kΩ for the upper resistor divider" and "If the values
+///   are too high the regulator is more susceptible to noise and voltage errors from the FB
+///   input current are noticeable" (6.3.8 Adjusting Output Voltage, p.10, read in revision
+///   SLVSD26C, February 2026), a starting value and no range, so
+///   `.recommended_divider_current` is not stated and `Buck`'s default of 10 uA to 1 mA holds;
+///   Table 7-2 (p.17 of SLVSD26C) gives 12 uA at 1.8 V to 114 uA at 12 V, inside it.
 /// - Quiescent current: 45 uA typical, not switching (p.5), with no maximum, so none is
 ///   stated.
 /// - Soft-start: 5 ms, typical only (Timing Requirements, p.5), so `.soft_start_time` is not

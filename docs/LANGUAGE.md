@@ -10462,7 +10462,7 @@ error: the `resistor` catalog has nothing for `r`, which needs resistance within
 
 ### Adjustable outputs
 
-An adjustable regulator holds its feedback pin at a reference voltage `vref`, and a divider from the output to the pin sets the output: `vout = vref * (1 + rtop / rbottom)`. `std::parts::regulator::FeedbackDivider` is that divider as a module (ADR 0025). Its interface is three pins, `top` (joined to the output's positive pin), `fb` (the regulator's feedback pin) and `bottom` (the output's ground), and three values: `vref`, which the board states with the datasheet's tolerance, `vout`, the output it wants, and `current`, what it draws from the output. The solver picks `rtop` and `rbottom` from the resistor catalog so that, with the tolerance of the reference and of both resistors, the output stays inside the wanted range in the worst case. It evaluates the formula tightly (each resistance appears in the ratio once and the reference once), so the tolerance a design has to allow is the real one.
+An adjustable regulator holds its feedback pin at a reference voltage `vref`, and a divider from the output to the pin sets the output: `vout = vref * (1 + rtop / rbottom)`. `std::parts::regulator::FeedbackDivider` is that divider as a module (ADR 0025). Its interface is three pins, `top` (joined to the output's positive pin), `fb` (the regulator's feedback pin) and `bottom` (the output's ground), and three values: `vref`, which the board states with the datasheet's tolerance, `vout`, the output it wants, and `current`, what it draws from the output, which a board bounds to fix the size of the two resistors. The solver picks `rtop` and `rbottom` from the resistor catalog so that, with the tolerance of the reference and of both resistors, the output stays inside the wanted range in the worst case. It evaluates the formula tightly (each resistance appears in the ratio once and the reference once), so the tolerance a design has to allow is the real one.
 
 The feedback pin is taken to draw nothing, so the divider carries `(vout - vref) / rtop` through both resistors, and each resistor's power rating is checked against it. The divider is pins and voltages and no rail, so it adds nothing to the currents that are summed at a net (ADR 0007): its current, a few microamps to a milliamp, is not added to the load.
 
@@ -10509,9 +10509,9 @@ board TooTight {
 
 ```text
 error: no combination of candidates satisfies `divider.rbottom` and `divider.rtop` together: the closest, divider.rbottom = 20kΩ 1% 0402 C25765 and divider.rtop = 56kΩ 1% 0603 C23206, fails because `divider.vout` must stay within 3.762V..3.838V, but (divider.vref * (1 + (divider.rtop.resistance / divider.rbottom.resistance))) works out to 3.707V..3.896V
-    --> std/parts/regulator.nsm:104:5
+    --> std/parts/regulator.nsm:108:5
     |
-104 |     .vout == .vref * (1 + .rtop.resistance / .rbottom.resistance)
+108 |     .vout == .vref * (1 + .rtop.resistance / .rbottom.resistance)
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -10541,7 +10541,7 @@ board SizedDivider {
 
 ### Switching regulators
 
-A buck converter is an IC, an inductor, two capacitors and a feedback divider. The IC is the one part that differs, so the library splits the work (ADR 0025, ADR 0115). `std::parts::regulator::BuckIc` is the generic of what a datasheet says: the switching node `sw` (a rail the IC supplies, joined to the inductor), the feedback pin `fb`, the reference `vref`, the switching frequency `fsw`, the input range, the largest output current, the efficiency as a range, the smallest inductance, optionally the least saturation current (`min_inductor_saturation`) and the largest DC resistance (`max_inductor_dcr`) an inductor may have, optionally the minimum on-time and off-time of the switch (`min_on_time`, `min_off_time`, ADR 0093), optionally the time the output takes to rise (`soft_start_time`, below), and the capacitance asked for on each side. `std::parts::regulator::Buck`, written `Buck<Ic: BuckIc>`, is a module that takes the IC as a type parameter (_A module that takes a part_) and holds it with everything else: the inductor and the two capacitors, picked from the catalogs (each capacitor rated for the `.peak` of its rail when the board states one and always for the rail's steady voltage, so a peak stated too low cannot weaken it; each side a bank of identical capacitors in parallel when one is not enough), and a `FeedbackDivider` that sets the output from the reference.
+A buck converter is an IC, an inductor, two capacitors and a feedback divider. The IC is the one part that differs, so the library splits the work (ADR 0025, ADR 0115). `std::parts::regulator::BuckIc` is the generic of what a datasheet says: the switching node `sw` (a rail the IC supplies, joined to the inductor), the feedback pin `fb`, the reference `vref`, the switching frequency `fsw`, the input range, the largest output current, the efficiency as a range, the smallest inductance, optionally the least saturation current (`min_inductor_saturation`) and the largest DC resistance (`max_inductor_dcr`) an inductor may have, optionally the minimum on-time and off-time of the switch (`min_on_time`, `min_off_time`, ADR 0093), optionally the time the output takes to rise (`soft_start_time`, below), optionally the current its datasheet asks the feedback divider to carry (`recommended_divider_current`, below), and the capacitance asked for on each side. `std::parts::regulator::Buck`, written `Buck<Ic: BuckIc>`, is a module that takes the IC as a type parameter (_A module that takes a part_) and holds it with everything else: the inductor and the two capacitors, picked from the catalogs (each capacitor rated for the `.peak` of its rail when the board states one and always for the rail's steady voltage, so a peak stated too low cannot weaken it; each side a bank of identical capacitors in parallel when one is not enough), and a `FeedbackDivider` that sets the output from the reference.
 
 A concrete IC is a `part` that provides `BuckIc` and writes its pin table, its datasheet numbers, one relation, the input current from the output current and the efficiency (`vin = vout * iout / efficiency` over the whole efficiency range, so it reaches the supply as any load does, ADR 0007 and ADR 0014), and what it is at DC, `dc switching_regulator .vin .sw .efficiency` (and, for an IC whose datasheet gives its own current with nothing loaded, a fourth operand, `.quiescent_current`, ADR 0096; see "What a part is at DC" and "DC analysis": it lets the solver work out the input current through the parts in front of the IC, and the input voltage they leave it). This one is invented for this guide:
 
@@ -10654,6 +10654,17 @@ footprint `Inductor_SMD:L_1210_3225Metric` not found: looked for /tmp/netsmith-s
 KiCad is installed at /tmp/netsmith-sample-libraries-442f93da51a2cbe0/footprints but has no `Inductor_SMD:L_1210_3225Metric`: check the spelling, or use a project library (a `[[library]]` of kicad.toml) or a netsmith generated footprint: give that row a `gen:` footprint, for a package a generator makes (`footprint = "gen:SOT23(pins=3)"`).
 ```
 
+The output fixes only the ratio of the divider's two resistors, so the converter bounds the divider's current, which fixes their size: by default (`?=`) it is the IC's `.recommended_divider_current`, and that is 10 uA to 1 mA by default for an IC whose datasheet gives no figure. The floor keeps the feedback pin's input current (tens of nanoamps) small beside the divider's, and the ceiling keeps the divider from wasting far more than the IC draws for itself. An IC whose datasheet gives a range states it (the `Lmr16006y`'s bottom resistor of 1 kohm to 100 kohm is `.recommended_divider_current &= 7.65uA..765uA`, its 0.765 V reference over each). A board that wants another bound narrows the divider's current by its path (ADR 0116), which replaces the default and the IC's figure with it:
+
+```nsm-fragment
+.reg: Buck<Zbk2> {
+    .vout.voltage &= 1.8V +/- 3%
+    .divider.current &= 50uA..200uA
+}
+```
+
+A line of a board's `defaults` block for `FeedbackDivider.current` does not reach a converter's divider: the converter's own `?=` beats it (ADR 0128), and the line is a note that it reached nothing. A `FeedbackDivider` used alone has no default, and a board bounds its current itself, as in _Adjustable outputs_. The bound and its defaults were decided by the orchestrating agent while the owner was away (2026-11-13, issue #702); `std::parts::regulator` has the reasons and the datasheets' figures.
+
 The two inductor limits are optional, as are the other numbers an IC may leave open: an IC that states `.min_inductor_saturation` (a datasheet that asks for more than the current limit, say) or `.max_inductor_dcr` has them checked against the picked inductor's `saturation_current` and `dc_resistance`, and an inductor that does not meet them is refused with the numbers. Both are `optional` members of `BuckIc` (ADR 0074): one that the IC leaves unstated has no such check, and the build says nothing about it, where it lists a check on any other value that nothing states as not evaluated. A limit is checked when the IC states it. A heating (RMS) rating of the inductor is not checked by the converter: `Inductor` has the optional column `rms_current`, which the standard rows leave empty (see Dielectric and package size), so a check that needed it would refuse every standard inductor.
 
 Misuse: a load larger than the IC can give is refused twice, once on the converter's output and once on the IC's switch node (`BuckIc` states `-.sw.current <= .max_output_current`, ADR 0076, amendment 6, which is also the limit that encloses a load nothing states before the picks); the lower end of the current is the divider's, which the DC analysis of the converter's output side gives. An input above its range, such as 12 V, is refused the same way, by `reg.vin.voltage must always be at most reg.ic.max_input_voltage`.
@@ -10680,15 +10691,15 @@ board Overload {
 ```
 
 ```text
-error: -reg.ic.sw.current must always be at most reg.ic.max_output_current, but 6.402uA..3A is not always below 2A (the currents on net `net-reg.ic.sw.pos` in `reg`: reg.ic.sw.current (-3A..-6.402uA) + reg.inductor.current (6.402uA..3A) add up to zero; net `1V8` in `reg`: -reg.inductor.current (6.402uA..3A) + -reg.vout.current (-3A..-6.402uA) add up to zero, but the balance is incomplete: `reg.divider.rtop.a` is not modelled; net `1V8`: output.current (0A..3A) + reg.vout.current (-3A..-6.402uA) add up to zero)
-    --> std/parts/regulator.nsm:195:5
+error: -reg.ic.sw.current must always be at most reg.ic.max_output_current, but 15.11uA..3A is not always below 2A (the currents on net `net-reg.ic.sw.pos` in `reg`: reg.ic.sw.current (-3A..-15.11uA) + reg.inductor.current (15.11uA..3A) add up to zero; net `1V8` in `reg`: -reg.inductor.current (15.11uA..3A) + -reg.vout.current (-3A..-15.11uA) add up to zero, but the balance is incomplete: `reg.divider.rtop.a` is not modelled; net `1V8`: output.current (0A..3A) + reg.vout.current (-3A..-15.11uA) add up to zero)
+    --> std/parts/regulator.nsm:199:5
     |
-195 |     -.sw.current <= .max_output_current
+199 |     -.sw.current <= .max_output_current
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-error: -reg.vout.current must always be at most reg.ic.max_output_current, but 6.402uA..3A is not always below 2A (the currents on net `1V8`: output.current (0A..3A) + reg.vout.current (-3A..-6.402uA) add up to zero; net `1V8` in `reg`: -reg.inductor.current (6.402uA..3A) + -reg.vout.current (-3A..-6.402uA) add up to zero, but the balance is incomplete: `reg.divider.rtop.a` is not modelled; net `net-reg.ic.sw.pos` in `reg`: reg.ic.sw.current (-3A..-6.402uA) + reg.inductor.current (6.402uA..3A) add up to zero)
-    --> std/parts/regulator.nsm:509:5
+error: -reg.vout.current must always be at most reg.ic.max_output_current, but 15.11uA..3A is not always below 2A (the currents on net `1V8`: output.current (0A..3A) + reg.vout.current (-3A..-15.11uA) add up to zero; net `1V8` in `reg`: -reg.inductor.current (15.11uA..3A) + -reg.vout.current (-3A..-15.11uA) add up to zero, but the balance is incomplete: `reg.divider.rtop.a` is not modelled; net `net-reg.ic.sw.pos` in `reg`: reg.ic.sw.current (-3A..-15.11uA) + reg.inductor.current (15.11uA..3A) add up to zero)
+    --> std/parts/regulator.nsm:547:5
     |
-509 |     -.vout.current <= .ic.max_output_current
+547 |     -.vout.current <= .ic.max_output_current
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -10750,9 +10761,9 @@ board HighInput {
 
 ```text
 error: reg.on_time must always be at least reg.ic.min_on_time, but 122ns..490.8ns is not always above 150ns
-    --> std/parts/regulator.nsm:520:5
+    --> std/parts/regulator.nsm:558:5
     |
-520 |     .on_time >= .ic.min_on_time
+558 |     .on_time >= .ic.min_on_time
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -10815,9 +10826,9 @@ board TooQuiet {
 
 ```text
 error: no `capacitor` candidate satisfies `reg.output_cap`: the closest of the 34 that fit, 1 x 10uF 20% 10V X5R 0402 C315248, fails because reg.output_cap.total_effective_capacitance must always be at least reg.ic.min_output_capacitance, but 4.908uF..7.686uF is not always above 10uF (`reg.output_cap.effective_capacitance` is unknown for some candidates, so they were not used: no derating data for 27)
-    --> std/parts/regulator.nsm:527:5
+    --> std/parts/regulator.nsm:565:5
     |
-527 |     .output_cap.total_effective_capacitance >= .ic.min_output_capacitance
+565 |     .output_cap.total_effective_capacitance >= .ic.min_output_capacitance
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
