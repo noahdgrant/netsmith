@@ -715,6 +715,47 @@ the LEDs and the 30 resistors and capacitors; the pads of the parts whose footpr
 for U22 nine pads of the two have no partner, which was not looked into: the part is not required); the ring of vias of
 the four holes; and the routing: the copper is netsmith's own, and nothing is claimed about it.
 
+## The reproduction
+
+Beside the board that `netsmith fab` makes of this project (the automatic board, placed and
+routed by netsmith), the port keeps a reproduction of ORBIT's own copper (issue #599; the
+language guide's "Reproducing a KiCad board"): `reference/agent/main.routes.toml` and
+`reference/agent/main.pcb.toml`, which `netsmith routes import reference/ORBIT.kicad_pcb` writes.
+They are kept out of `src/`, so `fab` here still makes the automatic board; `scripts/reproductions
+--update` writes them again when a footprint, the placer or the importer changes. The test
+`reproduce::the_orbit_reproduction_has_the_originals_copper` (`crates/netsmith-cli/tests/reproduce.rs`) imports again and requires the
+committed files, puts them into `src/` of a copy, runs `fab` with no KiCad and compares the copper
+of the board it writes with ORBIT's, shape by shape, as sets, to 0.1 µm: every segment, arc and
+via on its layer and net.
+
+| Copper | Segments | Arcs | Vias | Track length |
+|---|---|---|---|---|
+| Automatic board | 777 | 181 | 85 | 1170.8 mm |
+| Reproduction | 299 | 0 | 49 | 885.4 mm |
+| ORBIT's | 299 | 0 | 49 | 885.4 mm |
+
+The automatic board's figures are of 2026-11-14 and change with the placer and the router;
+`cargo test -p netsmith-cli --test main reproduce::measured -- --ignored --nocapture` prints all
+three again, with what netsmith's design rules check finds on the reproduction.
+
+**What matches:** all 299 segments and 49 vias of ORBIT's board, each on its layer and net, and
+nothing more. The import places the parts the physical file does not pin where their board has
+them, locked; the two I2C pull-ups, `i2c_pullups.scl_pullup` and `.sda_pullup`, are turned by 180
+degrees from their footprints, because ORBIT numbers their two pads the other way round, so that
+each pad stands where theirs of its net does.
+
+**What does not, and why:**
+
+- **The ground zone on F.Cu.** ORBIT's `GND` zone is on both layers; the design pours ground on
+  B.Cu only (`.bottom.net`), so `fab` leaves 31 connections on `GND`, the pads on the top that the
+  zone joins, and writes the board marked INCOMPLETE. The 4 track ends and 18 vias that the check
+  calls dangling end in that zone.
+- **Courtyards.** U3, the MCU, overlaps C8 and C9: netsmith's LQFP-48 courtyard is wider than
+  ORBIT's, whose capacitors stand within it. Parts that both stand where an imported board
+  has them may share courtyard area: `fab` warns, and does not stop.
+
+Netsmith's design rules check finds nothing else: no short and no clearance.
+
 ## For the owner
 
 - **A plated hole in the physical file.** The `case` section takes `MountingHole` (non-plated, by

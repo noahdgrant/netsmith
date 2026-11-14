@@ -41,6 +41,10 @@ pub struct PlaceOptions {
     /// Parts that stay where they are, by reference designator: the entries of a layout file
     /// (ADR 0032). The others are placed round them.
     pub fixed: BTreeMap<String, Fixed>,
+    /// The parts of `fixed` that the layout file locks where an imported KiCad board has them
+    /// (`source = "import"`): two of them that share courtyard area are not a conflict the
+    /// check before placing proves ([`crate::Board::imported`]).
+    pub imported: std::collections::BTreeSet<String>,
     /// Which arrangement the placer finds: the same seed always gives the same one, another
     /// seed gives another (the layout file's `seed`). 0 is the default.
     pub seed: u64,

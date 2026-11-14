@@ -206,6 +206,12 @@ pub struct Board {
     /// The parts whose place the design's requirements pin, by reference designator (ADR
     /// 0045): the placer did not move them, whatever its seed.
     pub pinned: std::collections::BTreeSet<String>,
+    /// The parts the layout file puts where an imported KiCad board has them (an entry with
+    /// `source = "import"`, which `netsmith routes import` writes), by reference designator:
+    /// [`Board::check_placement`] lets two of them share courtyard area
+    /// ([`Board::imported_overlaps`]). Empty for a board with no such entry.
+    #[serde(default, skip_serializing_if = "std::collections::BTreeSet::is_empty")]
+    pub imported: std::collections::BTreeSet<String>,
     /// The copper a routes file fixed (ADR 0030, [`crate::routes`]): the router keeps it as it
     /// is and adds none to a locked net. Empty for a board with no routes file.
     #[serde(default, skip_serializing_if = "FixedCopper::is_empty")]

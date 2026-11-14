@@ -1,0 +1,1263 @@
+version = 1
+
+[EasyduinoEsp32s3.nets."+3.3V"]
+pads = "b44473b55aa969fe"
+lock = true
+tracks = [
+  { layer = "top", width = 0.5, from = [1.5, 2.5626], to = [1.5, 1.13672] },
+  { layer = "top", width = 0.4, from = [19.595, 42.3486], to = [19.845, 42.0986] },
+  { layer = "top", width = 0.4, from = [18.745, 42.3486], to = [19.595, 42.3486] },
+  { layer = "top", width = 0.4, from = [16.745, 40.3486], to = [18.745, 42.3486] },
+  { layer = "top", width = 0.2, from = [11.695, 26.1886], to = [11.695, 25.4486] },
+  { layer = "top", width = 0.4, from = [10.445, 40.3486], to = [16.745, 40.3486] },
+  { layer = "top", width = 0.4, from = [12.545, 23.9486], to = [11.195, 23.9486] },
+  { layer = "top", width = 0.5, from = [1.796, 2.8586], to = [4.215, 2.8586] },
+  { layer = "top", width = 0.2, from = [8.095, 26.1286], to = [8.095, 25.3486] },
+  { layer = "top", width = 0.5, from = [1.5, 2.5626], to = [1.796, 2.8586] },
+  { layer = "top", width = 0.5, from = [1.5, 3.67672], to = [1.5, 2.5626] },
+]
+vias = [
+  { at = [8.095, 25.3486], diameter = 0.5, drill = 0.3 },
+  { at = [12.495, 39.7486], diameter = 0.5, drill = 0.3 },
+  { at = [14.095, 39.7486], diameter = 0.5, drill = 0.3 },
+  { at = [15.295, 38.7486], diameter = 0.5, drill = 0.3 },
+  { at = [15.295, 41.1486], diameter = 0.5, drill = 0.3 },
+  { at = [11.695, 25.4486], diameter = 0.5, drill = 0.3 },
+  { at = [14.095, 41.1486], diameter = 0.5, drill = 0.3 },
+  { at = [11.195, 23.9486], diameter = 0.5, drill = 0.3 },
+  { at = [15.295, 39.7486], diameter = 0.5, drill = 0.3 },
+]
+
+[EasyduinoEsp32s3.nets.GND]
+pads = "08acdce9e813db9e"
+lock = true
+tracks = [
+  { layer = "top", width = 0.2, from = [2.775, 57.1286], to = [2.195, 56.5486] },
+  { layer = "top", width = 0.2, from = [7.095, 34.5486], to = [6.695, 34.1486] },
+  { layer = "top", width = 0.5, from = [21.715, 1.5886], to = [23.90812, 1.5886] },
+  { layer = "top", width = 0.2, from = [14.22, 54.8736], to = [14.245, 54.8486] },
+  { layer = "top", width = 0.4, from = [7.345, 37.8986], to = [7.495, 37.7486] },
+  { layer = "top", width = 0.2, from = [10.495, 26.1886], to = [10.495, 25.3486] },
+  { layer = "top", width = 0.2, from = [6.595, 51.4486], to = [6.195, 51.8486] },
+  { layer = "top", width = 0.5, from = [23.90812, 1.5886], to = [24.36, 1.13672] },
+  { layer = "top", width = 0.4, from = [11.795, 38.0486], to = [11.895, 37.9486] },
+  { layer = "top", width = 0.2, from = [23.045, 57.5486], to = [23.045, 57.0486] },
+  { layer = "top", width = 0.3, from = [9.745, 53.5286], to = [8.595, 53.5286] },
+  { layer = "top", width = 0.4, from = [19.895, 37.7486], to = [19.845, 37.7986] },
+  { layer = "top", width = 0.2, from = [2.775, 57.5486], to = [2.775, 57.1286] },
+  { layer = "top", width = 0.15, from = [19.065, 47.3486], to = [19.065, 48.1186] },
+  { layer = "top", width = 0.2, from = [16.645, 57.3486], to = [15.845, 56.5486] },
+  { layer = "top", width = 0.3, from = [7.815, 53.5286], to = [7.795, 53.5486] },
+  { layer = "top", width = 0.15, from = [18.145, 54.7486], to = [18.145, 54.0986] },
+  { layer = "top", width = 0.2, from = [16.645, 57.5486], to = [16.645, 57.3486] },
+  { layer = "top", width = 0.2, from = [23.045, 57.0486], to = [23.545, 56.5486] },
+  { layer = "top", width = 0.4, from = [15.245, 23.9486], to = [16.495, 23.9486] },
+  { layer = "top", width = 0.4, from = [7.345, 39.1986], to = [7.345, 37.8986] },
+  { layer = "top", width = 0.3, from = [8.595, 53.5286], to = [7.815, 53.5286] },
+  { layer = "top", width = 0.2, from = [4.245, 54.7386], to = [4.245, 54.0986] },
+  { layer = "top", width = 0.2, from = [7.845, 54.3986], to = [8.185, 54.7386] },
+  { layer = "top", width = 0.2, from = [18.895, 34.5486], to = [19.295, 34.1486] },
+  { layer = "top", width = 0.4, from = [10.445, 38.0486], to = [11.795, 38.0486] },
+  { layer = "top", width = 0.2, from = [13.495, 54.8736], to = [14.22, 54.8736] },
+  { layer = "top", width = 0.15, from = [21.795, 54.7286], to = [21.795, 54.0486] },
+  { layer = "top", width = 0.2, from = [6.595, 50.8986], to = [6.595, 51.4486] },
+  { layer = "top", width = 0.2, from = [9.295, 26.1886], to = [9.295, 25.3486] },
+  { layer = "top", width = 0.2, from = [10.945, 53.5286], to = [10.945, 54.1986] },
+  { layer = "top", width = 0.4, from = [19.845, 37.7986], to = [19.845, 39.3986] },
+  { layer = "top", width = 0.2, from = [6.695, 34.1486], to = [5.895, 34.1486] },
+  { layer = "top", width = 0.2, from = [8.185, 54.7386], to = [8.595, 54.7386] },
+  { layer = "top", width = 0.2, from = [9.175, 57.3186], to = [9.795, 56.6986] },
+  { layer = "top", width = 0.2, from = [17.695, 26.2686], to = [17.695, 25.5486] },
+  { layer = "top", width = 0.2, from = [19.295, 34.1486], to = [20.095, 34.1486] },
+  { layer = "top", width = 0.4, from = [8.495, 38.0486], to = [7.345, 39.1986] },
+  { layer = "top", width = 0.15, from = [19.065, 48.1186], to = [19.095, 48.1486] },
+  { layer = "top", width = 0.2, from = [9.175, 57.5486], to = [9.175, 57.3186] },
+  { layer = "top", width = 0.4, from = [10.445, 38.0486], to = [8.495, 38.0486] },
+]
+vias = [
+  { at = [9.495, 4.3486], diameter = 0.5, drill = 0.3 },
+  { at = [14.695, 49.7486], diameter = 0.5, drill = 0.3 },
+  { at = [18.145, 54.0986], diameter = 0.5, drill = 0.3 },
+  { at = [7.295, 9.5486], diameter = 0.5, drill = 0.3 },
+  { at = [9.295, 25.3486], diameter = 0.5, drill = 0.3 },
+  { at = [9.995, 8.6486], diameter = 0.5, drill = 0.3 },
+  { at = [11.395, 10.0486], diameter = 0.5, drill = 0.3 },
+  { at = [6.095, 49.5486], diameter = 0.5, drill = 0.3 },
+  { at = [9.995, 10.0486], diameter = 0.5, drill = 0.3 },
+  { at = [17.695, 25.5486], diameter = 0.5, drill = 0.3 },
+  { at = [12.895, 62.3486], diameter = 0.5, drill = 0.3 },
+  { at = [9.895, 0.8486], diameter = 0.5, drill = 0.3 },
+  { at = [7.795, 53.5486], diameter = 0.5, drill = 0.3 },
+  { at = [14.495, 16.9486], diameter = 0.5, drill = 0.3 },
+  { at = [7.495, 37.7486], diameter = 0.5, drill = 0.3 },
+  { at = [6.395, 0.8486], diameter = 0.5, drill = 0.3 },
+  { at = [18.295, 16.7486], diameter = 0.5, drill = 0.3 },
+  { at = [15.845, 56.5486], diameter = 0.5, drill = 0.3 },
+  { at = [7.295, 13.1486], diameter = 0.5, drill = 0.3 },
+  { at = [10.795, 9.2486], diameter = 0.5, drill = 0.3 },
+  { at = [11.995, 32.1486], diameter = 0.5, drill = 0.3 },
+  { at = [12.195, 9.2486], diameter = 0.5, drill = 0.3 },
+  { at = [22.095, 62.3486], diameter = 0.5, drill = 0.3 },
+  { at = [14.595, 28.5486], diameter = 0.5, drill = 0.3 },
+  { at = [23.545, 56.5486], diameter = 0.5, drill = 0.3 },
+  { at = [8.395, 44.2486], diameter = 0.5, drill = 0.3 },
+  { at = [7.895, 62.5486], diameter = 0.5, drill = 0.3 },
+  { at = [12.895, 10.0486], diameter = 0.5, drill = 0.3 },
+  { at = [16.695, 23.1486], diameter = 0.5, drill = 0.3 },
+  { at = [12.195, 10.7486], diameter = 0.5, drill = 0.3 },
+  { at = [5.895, 34.1486], diameter = 0.5, drill = 0.3 },
+  { at = [7.845, 54.3986], diameter = 0.5, drill = 0.3 },
+  { at = [20.095, 35.5486], diameter = 0.5, drill = 0.3 },
+  { at = [18.295, 12.5486], diameter = 0.5, drill = 0.3 },
+  { at = [12.195, 7.8486], diameter = 0.5, drill = 0.3 },
+  { at = [6.095, 47.5486], diameter = 0.5, drill = 0.3 },
+  { at = [10.795, 7.8486], diameter = 0.5, drill = 0.3 },
+  { at = [8.095, 49.5486], diameter = 0.5, drill = 0.3 },
+  { at = [11.395, 8.6486], diameter = 0.5, drill = 0.3 },
+  { at = [13.695, 4.3486], diameter = 0.5, drill = 0.3 },
+  { at = [10.495, 25.3486], diameter = 0.5, drill = 0.3 },
+  { at = [22.895, 56.3486], diameter = 0.5, drill = 0.3 },
+  { at = [7.095, 48.5486], diameter = 0.5, drill = 0.3 },
+  { at = [17.895, 0.8486], diameter = 0.5, drill = 0.3 },
+  { at = [21.295, 39.3486], diameter = 0.5, drill = 0.3 },
+  { at = [19.095, 27.1486], diameter = 0.5, drill = 0.3 },
+  { at = [10.945, 54.1986], diameter = 0.5, drill = 0.3 },
+  { at = [12.895, 8.6486], diameter = 0.5, drill = 0.3 },
+  { at = [18.095, 62.3486], diameter = 0.5, drill = 0.3 },
+  { at = [19.095, 48.1486], diameter = 0.5, drill = 0.3 },
+  { at = [7.095, 49.5486], diameter = 0.5, drill = 0.3 },
+  { at = [4.295, 62.5486], diameter = 0.5, drill = 0.3 },
+  { at = [4.245, 54.0986], diameter = 0.5, drill = 0.3 },
+  { at = [6.095, 48.5486], diameter = 0.5, drill = 0.3 },
+  { at = [6.095, 39.3486], diameter = 0.5, drill = 0.3 },
+  { at = [2.195, 56.5486], diameter = 0.5, drill = 0.3 },
+  { at = [8.095, 48.5486], diameter = 0.5, drill = 0.3 },
+  { at = [21.595, 46.0486], diameter = 0.5, drill = 0.3 },
+  { at = [12.895, 58.9486], diameter = 0.5, drill = 0.3 },
+  { at = [19.895, 37.7486], diameter = 0.5, drill = 0.3 },
+  { at = [8.095, 47.5486], diameter = 0.5, drill = 0.3 },
+  { at = [9.795, 56.6986], diameter = 0.5, drill = 0.3 },
+  { at = [16.695, 23.9486], diameter = 0.5, drill = 0.3 },
+  { at = [16.695, 24.7486], diameter = 0.5, drill = 0.3 },
+  { at = [19.295, 24.7486], diameter = 0.5, drill = 0.3 },
+  { at = [14.245, 54.8486], diameter = 0.5, drill = 0.3 },
+  { at = [8.695, 37.3486], diameter = 0.5, drill = 0.3 },
+  { at = [10.095, 16.9486], diameter = 0.5, drill = 0.3 },
+  { at = [6.195, 51.8486], diameter = 0.5, drill = 0.3 },
+  { at = [21.795, 54.0486], diameter = 0.5, drill = 0.3 },
+  { at = [17.095, 51.5486], diameter = 0.5, drill = 0.3 },
+  { at = [11.695, 27.9486], diameter = 0.5, drill = 0.3 },
+  { at = [13.895, 0.8486], diameter = 0.5, drill = 0.3 },
+  { at = [11.895, 37.9486], diameter = 0.5, drill = 0.3 },
+  { at = [15.595, 44.7486], diameter = 0.5, drill = 0.3 },
+  { at = [7.095, 47.5486], diameter = 0.5, drill = 0.3 },
+  { at = [20.095, 34.1486], diameter = 0.5, drill = 0.3 },
+  { at = [10.795, 10.7486], diameter = 0.5, drill = 0.3 },
+]
+
+[EasyduinoEsp32s3.nets.VBUS]
+pads = "e14c456cd6985869"
+lock = true
+tracks = [
+  { layer = "top", width = 0.2, from = [8.595, 51.240542], to = [9.745, 52.390542] },
+  { layer = "top", width = 0.3, from = [12.345, 51.6986], to = [13.295, 51.6986] },
+  { layer = "top", width = 0.3, from = [13.295, 51.6986], to = [13.295, 49.5486] },
+  { layer = "top", width = 0.4, from = [9.695, 41.8986], to = [10.445, 42.6486] },
+  { layer = "top", width = 0.3, from = [13.98, 51.6986], to = [12.345, 51.6986] },
+  { layer = "top", width = 0.3, from = [13.295, 49.5486], to = [13.295, 47.1986] },
+  { layer = "top", width = 0.2, from = [10.305, 54.2211], to = [10.305, 52.5786] },
+  { layer = "top", width = 0.3, from = [10.445, 44.3486], to = [10.445, 42.6486] },
+  { layer = "top", width = 0.2, from = [12.105, 49.5486], to = [13.295, 49.5486] },
+  { layer = "top", width = 0.2, from = [10.305, 52.5786], to = [10.295, 52.5686] },
+  { layer = "top", width = 0.3, from = [13.295, 47.1986], to = [10.445, 44.3486] },
+  { layer = "top", width = 0.2, from = [12.2875, 54.7811], to = [12.345, 54.8386] },
+  { layer = "top", width = 0.3, from = [9.745, 54.7811], to = [12.2875, 54.7811] },
+  { layer = "top", width = 0.2, from = [9.545, 49.9486], to = [10.395, 49.9486] },
+  { layer = "top", width = 0.2, from = [9.745, 52.390542], to = [9.745, 52.5686] },
+  { layer = "top", width = 0.2, from = [10.395, 49.9486], to = [10.945, 50.4986] },
+  { layer = "top", width = 0.2, from = [9.745, 54.7811], to = [10.305, 54.2211] },
+  { layer = "top", width = 0.2, from = [10.295, 52.5686], to = [9.745, 52.5686] },
+  { layer = "top", width = 0.2, from = [10.945, 51.6986], to = [10.945, 52.5686] },
+  { layer = "top", width = 0.2, from = [10.945, 50.4986], to = [10.945, 51.6986] },
+  { layer = "top", width = 0.3, from = [12.345, 51.6986], to = [10.945, 51.6986] },
+  { layer = "top", width = 0.4, from = [7.345, 41.8986], to = [9.695, 41.8986] },
+  { layer = "top", width = 0.2, from = [10.945, 52.5686], to = [10.295, 52.5686] },
+  { layer = "top", width = 0.3, from = [17.045, 54.7636], to = [13.98, 51.6986] },
+  { layer = "top", width = 0.2, from = [8.595, 50.8986], to = [8.595, 51.240542] },
+  { layer = "bottom", width = 0.3, from = [4.345, 52.5486], to = [3.7304, 51.934] },
+  { layer = "bottom", width = 0.3, from = [7.195, 51.6986], to = [6.345, 52.5486] },
+  { layer = "bottom", width = 0.3, from = [3.7304, 51.934], to = [1.49632, 51.934] },
+  { layer = "bottom", width = 0.3, from = [6.345, 52.5486], to = [4.345, 52.5486] },
+  { layer = "bottom", width = 0.3, from = [10.945, 51.6986], to = [7.195, 51.6986] },
+]
+vias = [
+  { at = [10.945, 51.6986], diameter = 0.5, drill = 0.3 },
+]
+
+[EasyduinoEsp32s3.nets.VBUS1]
+pads = "00dc243442894d81"
+lock = true
+tracks = [
+  { layer = "top", width = 0.3, from = [8.375, 58.127638], to = [8.375, 57.5486] },
+  { layer = "top", width = 0.3, from = [3.575, 57.5486], to = [3.575, 58.127638] },
+  { layer = "top", width = 0.3, from = [4.695962, 59.2486], to = [7.254038, 59.2486] },
+  { layer = "top", width = 0.3, from = [7.254038, 59.2486], to = [8.375, 58.127638] },
+  { layer = "top", width = 0.3, from = [8.575, 56.6286], to = [8.8675, 56.6286] },
+  { layer = "top", width = 0.3, from = [8.375, 56.8286], to = [8.575, 56.6286] },
+  { layer = "top", width = 0.3, from = [8.8675, 56.6286], to = [9.745, 55.7511] },
+  { layer = "top", width = 0.3, from = [8.375, 57.5486], to = [8.375, 56.8286] },
+  { layer = "top", width = 0.3, from = [3.575, 58.127638], to = [4.695962, 59.2486] },
+]
+
+[EasyduinoEsp32s3.nets.VBUS2]
+pads = "03c15a7d7b27a2c5"
+lock = true
+tracks = [
+  { layer = "top", width = 0.3, from = [17.095, 55.7836], to = [17.045, 55.7336] },
+  { layer = "top", width = 0.3, from = [17.445, 58.127638], to = [18.665962, 59.3486] },
+  { layer = "top", width = 0.3, from = [17.445, 57.5486], to = [17.445, 56.7986] },
+  { layer = "top", width = 0.3, from = [17.095, 56.4486], to = [17.095, 55.7836] },
+  { layer = "top", width = 0.3, from = [21.024038, 59.3486], to = [22.245, 58.127638] },
+  { layer = "top", width = 0.3, from = [22.245, 58.127638], to = [22.245, 57.5486] },
+  { layer = "top", width = 0.3, from = [18.665962, 59.3486], to = [21.024038, 59.3486] },
+  { layer = "top", width = 0.3, from = [17.445, 57.5486], to = [17.445, 58.127638] },
+  { layer = "top", width = 0.3, from = [17.445, 56.7986], to = [17.095, 56.4486] },
+]
+
+[EasyduinoEsp32s3.nets."net-auto_reset.q_boot.base"]
+pads = "f323c8676d37bc33"
+lock = true
+tracks = [
+  { layer = "top", width = 0.15, from = [16.545, 29.5486], to = [16.545, 27.3086] },
+  { layer = "top", width = 0.15, from = [18.095, 31.0986], to = [16.545, 29.5486] },
+  { layer = "top", width = 0.2, from = [16.545, 27.3086], to = [16.495, 27.2586] },
+]
+
+[EasyduinoEsp32s3.nets."net-auto_reset.q_boot.collector"]
+pads = "2f16e179db1b223f"
+lock = true
+tracks = [
+  { layer = "top", width = 0.15, from = [5.995, 36.2486], to = [12.195, 36.2486] },
+  { layer = "top", width = 0.15, from = [3.695, 49.9486], to = [3.295, 49.5486] },
+  { layer = "top", width = 0.15, from = [12.895, 32.9486], to = [15.695, 30.1486] },
+  { layer = "top", width = 0.15, from = [12.195, 36.2486], to = [12.895, 35.5486] },
+  { layer = "top", width = 0.15, from = [15.695, 27.6586], to = [15.295, 27.2586] },
+  { layer = "top", width = 0.15, from = [15.695, 30.1486], to = [15.695, 27.6586] },
+  { layer = "top", width = 0.15, from = [12.895, 35.5486], to = [12.895, 32.9486] },
+  { layer = "top", width = 0.15, from = [4.645, 49.9486], to = [3.695, 49.9486] },
+  { layer = "bottom", width = 0.15, from = [3.795, 43.435932], to = [3.445, 43.785932] },
+  { layer = "bottom", width = 0.15, from = [4.245, 40.940906], to = [3.795, 41.390906] },
+  { layer = "bottom", width = 0.15, from = [3.095, 49.3486], to = [3.295, 49.5486] },
+  { layer = "bottom", width = 0.15, from = [4.845, 38.29588], to = [4.245, 38.89588] },
+  { layer = "bottom", width = 0.15, from = [3.445, 43.785932], to = [3.445, 45.830958] },
+  { layer = "bottom", width = 0.15, from = [5.995, 36.2486], to = [4.845, 37.3986] },
+  { layer = "bottom", width = 0.15, from = [3.795, 41.390906], to = [3.795, 43.435932] },
+  { layer = "bottom", width = 0.15, from = [4.245, 38.89588], to = [4.245, 40.940906] },
+  { layer = "bottom", width = 0.15, from = [3.095, 46.180958], to = [3.095, 49.3486] },
+  { layer = "bottom", width = 0.15, from = [4.845, 37.3986], to = [4.845, 38.29588] },
+  { layer = "bottom", width = 0.15, from = [3.445, 45.830958], to = [3.095, 46.180958] },
+]
+vias = [
+  { at = [3.295, 49.5486], diameter = 0.5, drill = 0.3 },
+  { at = [5.995, 36.2486], diameter = 0.5, drill = 0.3 },
+]
+
+[EasyduinoEsp32s3.nets."net-auto_reset.q_boot.emitter"]
+pads = "458def43da50aaca"
+lock = true
+tracks = [
+  { layer = "top", width = 0.15, from = [21.36636, 34.11996], to = [24.36, 34.11996] },
+  { layer = "top", width = 0.15, from = [17.095, 32.1486], to = [19.395, 32.1486] },
+  { layer = "top", width = 0.15, from = [18.095, 29.1986], to = [18.095, 27.6286] },
+  { layer = "top", width = 0.15, from = [19.395, 32.1486], to = [19.795, 31.7486] },
+  { layer = "top", width = 0.15, from = [19.395, 32.1486], to = [21.36636, 34.11996] },
+  { layer = "top", width = 0.15, from = [18.095, 27.6286], to = [17.695, 27.2286] },
+  { layer = "top", width = 0.15, from = [19.795, 31.7486], to = [19.795, 29.6486] },
+  { layer = "top", width = 0.15, from = [20.445, 18.0986], to = [20.395, 18.0486] },
+  { layer = "top", width = 0.15, from = [19.795, 29.6486], to = [19.345, 29.1986] },
+  { layer = "top", width = 0.15, from = [19.345, 29.1986], to = [18.095, 29.1986] },
+  { layer = "top", width = 0.15, from = [21.715, 18.0986], to = [20.445, 18.0986] },
+  { layer = "top", width = 0.15, from = [14.695, 34.5486], to = [17.095, 32.1486] },
+  { layer = "bottom", width = 0.15, from = [23.085, 32.88172], to = [24.36, 34.15672] },
+  { layer = "bottom", width = 0.15, from = [22.735, 28.441668], to = [22.735, 30.486694] },
+  { layer = "bottom", width = 0.15, from = [22.295, 28.001668], to = [22.735, 28.441668] },
+  { layer = "bottom", width = 0.15, from = [22.035, 23.651616], to = [22.035, 25.696642] },
+  { layer = "bottom", width = 0.15, from = [21.595, 23.211616], to = [22.035, 23.651616] },
+  { layer = "bottom", width = 0.15, from = [21.335, 18.9886], to = [21.335, 20.90659] },
+  { layer = "bottom", width = 0.15, from = [22.295, 25.956642], to = [22.295, 28.001668] },
+  { layer = "bottom", width = 0.15, from = [22.735, 30.486694], to = [23.085, 30.836694] },
+  { layer = "bottom", width = 0.15, from = [21.335, 20.90659], to = [21.595, 21.16659] },
+  { layer = "bottom", width = 0.15, from = [23.085, 30.836694], to = [23.085, 32.88172] },
+  { layer = "bottom", width = 0.15, from = [21.595, 21.16659], to = [21.595, 23.211616] },
+  { layer = "bottom", width = 0.15, from = [22.035, 25.696642], to = [22.295, 25.956642] },
+  { layer = "bottom", width = 0.15, from = [20.395, 18.0486], to = [21.335, 18.9886] },
+]
+vias = [
+  { at = [20.395, 18.0486], diameter = 0.5, drill = 0.3 },
+]
+
+[EasyduinoEsp32s3.nets."net-auto_reset.q_en.base"]
+pads = "7e6f92c93919cbb0"
+lock = true
+tracks = [
+  { layer = "top", width = 0.15, from = [10.295, 31.0986], to = [11.245, 31.0986] },
+  { layer = "top", width = 0.15, from = [13.695, 28.6486], to = [13.695, 26.7486] },
+  { layer = "top", width = 0.15, from = [14.195, 26.2486], to = [15.285, 26.2486] },
+  { layer = "top", width = 0.15, from = [13.695, 26.7486], to = [14.195, 26.2486] },
+  { layer = "top", width = 0.15, from = [11.245, 31.0986], to = [13.695, 28.6486] },
+  { layer = "top", width = 0.2, from = [15.285, 26.2486], to = [15.295, 26.2386] },
+]
+
+[EasyduinoEsp32s3.nets."net-auto_reset.q_en.collector"]
+pads = "6e71b3e0bf960aa9"
+lock = true
+tracks = [
+  { layer = "top", width = 0.15, from = [13.345, 28.3486], to = [13.345, 28.3986] },
+  { layer = "top", width = 0.15, from = [3.695, 47.5486], to = [4.095, 47.9486] },
+  { layer = "top", width = 0.15, from = [7.195, 30.1486], to = [3.695, 33.6486] },
+  { layer = "top", width = 0.15, from = [14.230026, 25.7186], to = [13.345, 26.603626] },
+  { layer = "top", width = 0.15, from = [8.895, 30.1486], to = [7.895, 30.1486] },
+  { layer = "top", width = 0.15, from = [16.495, 26.2386], to = [15.975, 25.7186] },
+  { layer = "top", width = 0.15, from = [7.895, 30.1486], to = [7.195, 30.1486] },
+  { layer = "top", width = 0.15, from = [15.975, 25.7186], to = [14.230026, 25.7186] },
+  { layer = "top", width = 0.15, from = [13.345, 28.3986], to = [11.595, 30.1486] },
+  { layer = "top", width = 0.15, from = [3.695, 33.6486], to = [3.695, 47.5486] },
+  { layer = "top", width = 0.15, from = [4.095, 47.9486], to = [4.645, 47.9486] },
+  { layer = "top", width = 0.15, from = [13.345, 26.603626], to = [13.345, 28.3486] },
+  { layer = "top", width = 0.15, from = [11.595, 30.1486], to = [10.695, 30.1486] },
+  { layer = "bottom", width = 0.15, from = [10.695, 30.1486], to = [8.895, 30.1486] },
+]
+vias = [
+  { at = [10.695, 30.1486], diameter = 0.5, drill = 0.3 },
+  { at = [8.895, 30.1486], diameter = 0.5, drill = 0.3 },
+]
+
+[EasyduinoEsp32s3.nets."net-auto_reset.q_en.emitter"]
+pads = "b9a47dab0e6b87d2"
+lock = true
+tracks = [
+  { layer = "top", width = 0.15, from = [10.295, 27.3486], to = [10.295, 29.1986] },
+  { layer = "top", width = 0.15, from = [3.315, 4.1286], to = [1.5, 5.9436] },
+  { layer = "top", width = 0.15, from = [9.095, 8.5786], to = [9.095, 13.1486] },
+  { layer = "top", width = 0.15, from = [7.595, 27.1486], to = [8.095, 27.1486] },
+  { layer = "top", width = 0.15, from = [7.095, 26.6486], to = [7.595, 27.1486] },
+  { layer = "top", width = 0.15, from = [7.095, 25.641493], to = [7.095, 26.6486] },
+  { layer = "top", width = 0.15, from = [8.095, 27.1486], to = [10.495, 27.1486] },
+  { layer = "top", width = 0.15, from = [7.895, 20.5486], to = [7.895, 24.841493] },
+  { layer = "top", width = 0.15, from = [1.5, 5.9436], to = [1.5, 6.21672] },
+  { layer = "top", width = 0.15, from = [10.295, 29.1986], to = [9.395, 30.0986] },
+  { layer = "top", width = 0.15, from = [9.395, 33.2486], to = [10.695, 34.5486] },
+  { layer = "top", width = 0.15, from = [4.215, 4.1286], to = [3.315, 4.1286] },
+  { layer = "top", width = 0.15, from = [10.695, 34.5486], to = [11.295, 34.5486] },
+  { layer = "top", width = 0.2, from = [4.215, 4.1286], to = [4.645, 4.1286] },
+  { layer = "top", width = 0.2, from = [10.495, 27.1486], to = [10.295, 27.3486] },
+  { layer = "top", width = 0.15, from = [4.645, 4.1286], to = [9.095, 8.5786] },
+  { layer = "top", width = 0.15, from = [7.895, 24.841493], to = [7.095, 25.641493] },
+  { layer = "top", width = 0.15, from = [9.395, 30.0986], to = [9.395, 33.2486] },
+  { layer = "bottom", width = 0.15, from = [7.895, 20.5486], to = [7.895, 18.4486] },
+  { layer = "bottom", width = 0.15, from = [9.095, 17.2486], to = [9.095, 13.1486] },
+  { layer = "bottom", width = 0.15, from = [7.895, 18.4486], to = [9.095, 17.2486] },
+]
+vias = [
+  { at = [7.895, 20.5486], diameter = 0.5, drill = 0.3 },
+  { at = [9.095, 13.1486], diameter = 0.5, drill = 0.3 },
+]
+
+[EasyduinoEsp32s3.nets."net-bridge.dm"]
+pads = "4090481fff46418f"
+lock = true
+tracks = [
+  { layer = "top", width = 0.2, from = [6.2, 53.8618], to = [7.595, 52.4668] },
+  { layer = "top", width = 0.2, from = [6.2, 56.593599], to = [6.2, 56.1486] },
+  { layer = "top", width = 0.2, from = [5.225, 58.3786], to = [5.395, 58.5486] },
+  { layer = "top", width = 0.2, from = [6.225, 56.618599], to = [6.2, 56.593599] },
+  { layer = "top", width = 0.2, from = [6.095, 58.5486], to = [6.225, 58.4186] },
+  { layer = "top", width = 0.2, from = [5.225, 57.5486], to = [5.225, 58.3786] },
+  { layer = "top", width = 0.2, from = [5.395, 58.5486], to = [6.095, 58.5486] },
+  { layer = "top", width = 0.2, from = [6.225, 58.4186], to = [6.225, 57.5486] },
+  { layer = "top", width = 0.2, from = [7.595, 52.4668], to = [7.595, 50.8986] },
+  { layer = "top", width = 0.2, from = [6.225, 57.5486], to = [6.225, 56.618599] },
+  { layer = "top", width = 0.2, from = [6.2, 56.1486], to = [6.2, 53.8618] },
+]
+
+[EasyduinoEsp32s3.nets."net-bridge.dp"]
+pads = "798fc6e8f0ea5c1d"
+lock = true
+tracks = [
+  { layer = "top", width = 0.2, from = [5.75, 53.6754], to = [7.144999, 52.280401] },
+  { layer = "top", width = 0.2, from = [5.75, 55.8486], to = [5.75, 53.6754] },
+  { layer = "top", width = 0.15, from = [6.895, 56.2486], to = [6.725, 56.4186] },
+  { layer = "top", width = 0.2, from = [7.144999, 52.280401], to = [7.144999, 50.948599] },
+  { layer = "top", width = 0.2, from = [7.144999, 50.948599], to = [7.095, 50.8986] },
+  { layer = "top", width = 0.2, from = [5.75, 56.593599], to = [5.75, 56.2486] },
+  { layer = "top", width = 0.2, from = [5.725, 57.5486], to = [5.725, 56.618599] },
+  { layer = "top", width = 0.15, from = [5.395, 56.2486], to = [5.75, 56.2486] },
+  { layer = "top", width = 0.15, from = [6.725, 56.4186], to = [6.725, 57.5486] },
+  { layer = "top", width = 0.2, from = [5.75, 56.2486], to = [5.75, 55.8486] },
+  { layer = "top", width = 0.2, from = [5.725, 56.618599], to = [5.75, 56.593599] },
+  { layer = "bottom", width = 0.15, from = [6.895, 56.2486], to = [5.395, 56.2486] },
+]
+vias = [
+  { at = [6.895, 56.2486], diameter = 0.5, drill = 0.3 },
+  { at = [5.395, 56.2486], diameter = 0.5, drill = 0.3 },
+]
+
+[EasyduinoEsp32s3.nets."net-bridge.rstb"]
+pads = "574a148e7847af47"
+lock = true
+tracks = [
+  { layer = "top", width = 0.2, from = [10.985, 49.4486], to = [11.085, 49.5486] },
+  { layer = "top", width = 0.2, from = [9.545, 49.4486], to = [10.985, 49.4486] },
+]
+
+[EasyduinoEsp32s3.nets."net-bridge.suspendb"]
+pads = "1bc85ed52257453f"
+lock = true
+tracks = [
+  { layer = "top", width = 0.2, from = [9.545, 48.4486], to = [11.075, 48.4486] },
+]
+
+[EasyduinoEsp32s3.nets."net-bridge.uart.rx"]
+pads = "c4943e159f7443dd"
+lock = true
+tracks = [
+  { layer = "top", width = 0.15, from = [3.395, 47.672864], to = [3.395, 22.3486] },
+  { layer = "top", width = 0.15, from = [21.715, 5.3986], to = [22.63812, 5.3986] },
+  { layer = "top", width = 0.15, from = [22.63812, 5.3986], to = [24.36, 3.67672] },
+  { layer = "top", width = 0.15, from = [7.640013, 15.493613], to = [11.085026, 12.0486] },
+  { layer = "top", width = 0.15, from = [4.645, 48.4486], to = [4.170736, 48.4486] },
+  { layer = "top", width = 0.15, from = [20.645, 5.3986], to = [21.715, 5.3986] },
+  { layer = "top", width = 0.15, from = [13.995, 12.0486], to = [20.645, 5.3986] },
+  { layer = "top", width = 0.15, from = [4.170736, 48.4486], to = [3.395, 47.672864] },
+  { layer = "top", width = 0.15, from = [11.085026, 12.0486], to = [13.995, 12.0486] },
+  { layer = "top", width = 0.15, from = [3.395, 22.3486], to = [3.995, 21.7486] },
+  { layer = "bottom", width = 0.15, from = [3.995, 21.7486], to = [7.640013, 18.103587] },
+  { layer = "bottom", width = 0.15, from = [7.640013, 18.103587], to = [7.640013, 15.493613] },
+]
+vias = [
+  { at = [3.995, 21.7486], diameter = 0.5, drill = 0.3 },
+  { at = [7.640013, 15.493613], diameter = 0.5, drill = 0.3 },
+]
+
+[EasyduinoEsp32s3.nets."net-bridge.uart.tx"]
+pads = "ee6fdb6d58712406"
+lock = true
+tracks = [
+  { layer = "top", width = 0.15, from = [4.645, 48.9486], to = [4.245001, 48.9486] },
+  { layer = "top", width = 0.15, from = [4.245001, 48.9486], to = [3.095, 47.798599] },
+  { layer = "top", width = 0.15, from = [21.715, 6.6686], to = [23.90812, 6.6686] },
+  { layer = "top", width = 0.15, from = [11.392133, 12.4486], to = [7.292133, 16.5486] },
+  { layer = "top", width = 0.15, from = [3.095, 21.9486], to = [4.295, 20.7486] },
+  { layer = "top", width = 0.15, from = [3.095, 47.798599], to = [3.095, 21.9486] },
+  { layer = "top", width = 0.15, from = [19.975, 6.6686], to = [14.195, 12.4486] },
+  { layer = "top", width = 0.2, from = [7.292133, 16.5486], to = [7.095, 16.5486] },
+  { layer = "top", width = 0.15, from = [21.715, 6.6686], to = [19.975, 6.6686] },
+  { layer = "top", width = 0.15, from = [14.195, 12.4486], to = [11.392133, 12.4486] },
+  { layer = "top", width = 0.15, from = [23.90812, 6.6686], to = [24.36, 6.21672] },
+  { layer = "bottom", width = 0.15, from = [4.295, 20.6486], to = [7.095, 17.8486] },
+  { layer = "bottom", width = 0.15, from = [4.295, 20.7486], to = [4.295, 20.6486] },
+  { layer = "bottom", width = 0.15, from = [7.095, 17.8486], to = [7.095, 16.5486] },
+]
+vias = [
+  { at = [4.295, 20.7486], diameter = 0.5, drill = 0.3 },
+  { at = [7.095, 16.5486], diameter = 0.5, drill = 0.3 },
+]
+
+[EasyduinoEsp32s3.nets."net-bridge.vdd"]
+pads = "0bb2759f9e583991"
+lock = true
+tracks = [
+  { layer = "top", width = 0.2, from = [8.095, 50.8986], to = [8.095, 51.6486] },
+  { layer = "top", width = 0.2, from = [8.095, 51.6486], to = [8.595, 52.1486] },
+  { layer = "top", width = 0.2, from = [8.595, 52.1486], to = [8.595, 52.5686] },
+]
+
+[EasyduinoEsp32s3.nets."net-headers.gpio1"]
+pads = "2c1e6e412eb78e64"
+lock = true
+tracks = [
+  { layer = "top", width = 0.15, from = [20.295, 2.8486], to = [21.705, 2.8486] },
+  { layer = "top", width = 0.15, from = [21.705, 2.8486], to = [21.715, 2.8586] },
+  { layer = "bottom", width = 0.15, from = [23.085, 4.0386], to = [21.895, 2.8486] },
+  { layer = "bottom", width = 0.15, from = [23.085, 7.48172], to = [23.085, 4.0386] },
+  { layer = "bottom", width = 0.15, from = [24.36, 8.75672], to = [23.085, 7.48172] },
+  { layer = "bottom", width = 0.15, from = [21.895, 2.8486], to = [20.295, 2.8486] },
+]
+vias = [
+  { at = [20.295, 2.8486], diameter = 0.5, drill = 0.3 },
+]
+
+[EasyduinoEsp32s3.nets."net-headers.gpio10"]
+pads = "ac8ddde93f7b1dcc"
+lock = true
+tracks = [
+  { layer = "top", width = 0.15, from = [9.79, 21.0436], to = [9.795, 21.0486] },
+  { layer = "top", width = 0.15, from = [9.79, 19.3486], to = [9.79, 21.0436] },
+  { layer = "bottom", width = 0.15, from = [6.259948, 22.2736], to = [4.645, 23.888548] },
+  { layer = "bottom", width = 0.15, from = [4.645, 23.888548], to = [4.645, 25.86659] },
+  { layer = "bottom", width = 0.15, from = [9.062462, 21.2236], to = [8.012463, 22.2736] },
+  { layer = "bottom", width = 0.15, from = [8.012463, 22.2736], to = [6.259948, 22.2736] },
+  { layer = "bottom", width = 0.15, from = [4.645, 25.86659], to = [4.395, 26.11659] },
+  { layer = "bottom", width = 0.15, from = [3.145, 37.59172], to = [1.5, 39.23672] },
+  { layer = "bottom", width = 0.15, from = [3.825, 32.821668], to = [3.145, 33.501668] },
+  { layer = "bottom", width = 0.15, from = [9.795, 21.0486], to = [9.62, 21.2236] },
+  { layer = "bottom", width = 0.15, from = [9.62, 21.2236], to = [9.062462, 21.2236] },
+  { layer = "bottom", width = 0.15, from = [3.145, 33.501668], to = [3.145, 37.59172] },
+  { layer = "bottom", width = 0.15, from = [4.395, 26.11659], to = [4.395, 28.161618] },
+  { layer = "bottom", width = 0.15, from = [3.825, 28.731618], to = [3.825, 32.821668] },
+  { layer = "bottom", width = 0.15, from = [4.395, 28.161618], to = [3.825, 28.731618] },
+]
+vias = [
+  { at = [9.795, 21.0486], diameter = 0.5, drill = 0.3 },
+]
+
+[EasyduinoEsp32s3.nets."net-headers.gpio11"]
+pads = "c26df4bbd1516d65"
+lock = true
+tracks = [
+  { layer = "top", width = 0.15, from = [11.06, 21.0136], to = [11.095, 21.0486] },
+  { layer = "top", width = 0.15, from = [11.06, 19.3486], to = [11.06, 21.0136] },
+  { layer = "bottom", width = 0.15, from = [4.995, 26.011564], to = [4.745, 26.261564] },
+  { layer = "bottom", width = 0.15, from = [4.995, 24.033522], to = [4.995, 26.011564] },
+  { layer = "bottom", width = 0.15, from = [6.404922, 22.6236], to = [4.995, 24.033522] },
+  { layer = "bottom", width = 0.15, from = [4.175, 32.966642], to = [3.495, 33.646642] },
+  { layer = "bottom", width = 0.15, from = [11.095, 21.0486], to = [11.095, 21.2486] },
+  { layer = "bottom", width = 0.15, from = [3.495, 33.646642], to = [3.495, 37.736694] },
+  { layer = "bottom", width = 0.15, from = [9.207437, 21.5736], to = [8.157437, 22.6236] },
+  { layer = "bottom", width = 0.15, from = [4.745, 28.306592], to = [4.175, 28.876592] },
+  { layer = "bottom", width = 0.15, from = [8.157437, 22.6236], to = [6.404922, 22.6236] },
+  { layer = "bottom", width = 0.15, from = [11.095, 21.2486], to = [10.77, 21.5736] },
+  { layer = "bottom", width = 0.15, from = [10.77, 21.5736], to = [9.207437, 21.5736] },
+  { layer = "bottom", width = 0.15, from = [2.895, 40.38172], to = [1.5, 41.77672] },
+  { layer = "bottom", width = 0.15, from = [2.895, 38.336694], to = [2.895, 40.38172] },
+  { layer = "bottom", width = 0.15, from = [3.495, 37.736694], to = [2.895, 38.336694] },
+  { layer = "bottom", width = 0.15, from = [4.745, 26.261564], to = [4.745, 28.306592] },
+  { layer = "bottom", width = 0.15, from = [4.175, 28.876592], to = [4.175, 32.966642] },
+]
+vias = [
+  { at = [11.095, 21.0486], diameter = 0.5, drill = 0.3 },
+]
+
+[EasyduinoEsp32s3.nets."net-headers.gpio12"]
+pads = "fafb03a84fdd6459"
+lock = true
+tracks = [
+  { layer = "top", width = 0.15, from = [12.33, 19.3486], to = [12.33, 21.0136] },
+  { layer = "top", width = 0.15, from = [12.33, 21.0136], to = [12.295, 21.0486] },
+  { layer = "bottom", width = 0.15, from = [9.352412, 21.9236], to = [8.302411, 22.9736] },
+  { layer = "bottom", width = 0.15, from = [12.295, 21.0486], to = [12.295, 21.3486] },
+  { layer = "bottom", width = 0.15, from = [5.345, 24.178496], to = [5.345, 26.156538] },
+  { layer = "bottom", width = 0.15, from = [3.245, 40.526694], to = [2.795, 40.976694] },
+  { layer = "bottom", width = 0.15, from = [3.845, 37.881668], to = [3.245, 38.481668] },
+  { layer = "bottom", width = 0.15, from = [2.795, 40.976694], to = [2.795, 43.02172] },
+  { layer = "bottom", width = 0.15, from = [3.245, 38.481668], to = [3.245, 40.526694] },
+  { layer = "bottom", width = 0.15, from = [5.345, 26.156538], to = [5.095, 26.406538] },
+  { layer = "bottom", width = 0.15, from = [5.095, 26.406538], to = [5.095, 28.451566] },
+  { layer = "bottom", width = 0.15, from = [8.302411, 22.9736], to = [6.549896, 22.9736] },
+  { layer = "bottom", width = 0.15, from = [11.72, 21.9236], to = [9.352412, 21.9236] },
+  { layer = "bottom", width = 0.15, from = [4.525, 33.111616], to = [3.845, 33.791616] },
+  { layer = "bottom", width = 0.15, from = [2.795, 43.02172], to = [1.5, 44.31672] },
+  { layer = "bottom", width = 0.15, from = [5.095, 28.451566], to = [4.525, 29.021566] },
+  { layer = "bottom", width = 0.15, from = [3.845, 33.791616], to = [3.845, 37.881668] },
+  { layer = "bottom", width = 0.15, from = [12.295, 21.3486], to = [11.72, 21.9236] },
+  { layer = "bottom", width = 0.15, from = [4.525, 29.021566], to = [4.525, 33.111616] },
+  { layer = "bottom", width = 0.15, from = [6.549896, 22.9736], to = [5.345, 24.178496] },
+]
+vias = [
+  { at = [12.295, 21.0486], diameter = 0.5, drill = 0.3 },
+]
+
+[EasyduinoEsp32s3.nets."net-headers.gpio13"]
+pads = "b90bc8030578c24a"
+lock = true
+tracks = [
+  { layer = "top", width = 0.15, from = [13.6, 19.3486], to = [13.6, 21.0436] },
+  { layer = "top", width = 0.15, from = [13.6, 21.0436], to = [13.595, 21.0486] },
+  { layer = "bottom", width = 0.15, from = [6.69487, 23.3236], to = [5.695, 24.32347] },
+  { layer = "bottom", width = 0.15, from = [5.695, 26.301512], to = [5.445, 26.551512] },
+  { layer = "bottom", width = 0.15, from = [12.57, 22.2736], to = [9.497386, 22.2736] },
+  { layer = "bottom", width = 0.15, from = [3.145, 41.121668], to = [3.145, 43.166694] },
+  { layer = "bottom", width = 0.15, from = [3.145, 43.166694], to = [2.795, 43.516694] },
+  { layer = "bottom", width = 0.15, from = [2.795, 43.516694], to = [2.795, 45.56172] },
+  { layer = "bottom", width = 0.15, from = [4.195, 38.026642], to = [3.595, 38.626642] },
+  { layer = "bottom", width = 0.15, from = [8.447385, 23.3236], to = [6.69487, 23.3236] },
+  { layer = "bottom", width = 0.15, from = [3.595, 38.626642], to = [3.595, 40.671668] },
+  { layer = "bottom", width = 0.15, from = [4.875, 33.25659], to = [4.195, 33.93659] },
+  { layer = "bottom", width = 0.15, from = [4.195, 33.93659], to = [4.195, 38.026642] },
+  { layer = "bottom", width = 0.15, from = [9.497386, 22.2736], to = [8.447385, 23.3236] },
+  { layer = "bottom", width = 0.15, from = [4.875, 29.16654], to = [4.875, 33.25659] },
+  { layer = "bottom", width = 0.15, from = [5.695, 24.32347], to = [5.695, 26.301512] },
+  { layer = "bottom", width = 0.15, from = [13.595, 21.0486], to = [13.595, 21.2486] },
+  { layer = "bottom", width = 0.15, from = [5.445, 28.59654], to = [4.875, 29.16654] },
+  { layer = "bottom", width = 0.15, from = [2.795, 45.56172], to = [1.5, 46.85672] },
+  { layer = "bottom", width = 0.15, from = [5.445, 26.551512], to = [5.445, 28.59654] },
+  { layer = "bottom", width = 0.15, from = [3.595, 40.671668], to = [3.145, 41.121668] },
+  { layer = "bottom", width = 0.15, from = [13.595, 21.2486], to = [12.57, 22.2736] },
+]
+vias = [
+  { at = [13.595, 21.0486], diameter = 0.5, drill = 0.3 },
+]
+
+[EasyduinoEsp32s3.nets."net-headers.gpio14"]
+pads = "3ecf7640b49c86ad"
+lock = true
+tracks = [
+  { layer = "top", width = 0.15, from = [14.87, 19.3486], to = [14.87, 21.0236] },
+  { layer = "top", width = 0.15, from = [14.87, 21.0236], to = [14.895, 21.0486] },
+  { layer = "bottom", width = 0.15, from = [3.945, 38.771616], to = [3.945, 40.816642] },
+  { layer = "bottom", width = 0.15, from = [14.337463, 21.0486], to = [12.762463, 22.6236] },
+  { layer = "bottom", width = 0.15, from = [3.145, 45.706694], to = [2.795, 46.056694] },
+  { layer = "bottom", width = 0.15, from = [5.225, 33.401564], to = [4.545, 34.081564] },
+  { layer = "bottom", width = 0.15, from = [6.045, 24.468444], to = [6.045, 26.446486] },
+  { layer = "bottom", width = 0.15, from = [3.945, 40.816642], to = [3.495, 41.266642] },
+  { layer = "bottom", width = 0.15, from = [2.795, 48.09532], to = [1.49632, 49.394] },
+  { layer = "bottom", width = 0.15, from = [3.495, 43.311668], to = [3.145, 43.661668] },
+  { layer = "bottom", width = 0.15, from = [8.592359, 23.6736], to = [6.839844, 23.6736] },
+  { layer = "bottom", width = 0.15, from = [5.225, 29.311514], to = [5.225, 33.401564] },
+  { layer = "bottom", width = 0.15, from = [9.64236, 22.6236], to = [8.592359, 23.6736] },
+  { layer = "bottom", width = 0.15, from = [14.895, 21.0486], to = [14.337463, 21.0486] },
+  { layer = "bottom", width = 0.15, from = [2.795, 46.056694], to = [2.795, 48.09532] },
+  { layer = "bottom", width = 0.15, from = [12.762463, 22.6236], to = [9.64236, 22.6236] },
+  { layer = "bottom", width = 0.15, from = [5.795, 26.696486], to = [5.795, 28.741514] },
+  { layer = "bottom", width = 0.15, from = [3.145, 43.661668], to = [3.145, 45.706694] },
+  { layer = "bottom", width = 0.15, from = [6.839844, 23.6736], to = [6.045, 24.468444] },
+  { layer = "bottom", width = 0.15, from = [4.545, 38.171616], to = [3.945, 38.771616] },
+  { layer = "bottom", width = 0.15, from = [6.045, 26.446486], to = [5.795, 26.696486] },
+  { layer = "bottom", width = 0.15, from = [4.545, 34.081564], to = [4.545, 38.171616] },
+  { layer = "bottom", width = 0.15, from = [3.495, 41.266642], to = [3.495, 43.311668] },
+  { layer = "bottom", width = 0.15, from = [5.795, 28.741514], to = [5.225, 29.311514] },
+]
+vias = [
+  { at = [14.895, 21.0486], diameter = 0.5, drill = 0.3 },
+]
+
+[EasyduinoEsp32s3.nets."net-headers.gpio15"]
+pads = "91e67c00d4eb267f"
+lock = true
+tracks = [
+  { layer = "top", width = 0.15, from = [5.525, 10.4786], to = [5.595, 10.5486] },
+  { layer = "top", width = 0.15, from = [4.215, 10.4786], to = [5.525, 10.4786] },
+  { layer = "bottom", width = 0.15, from = [2.775, 17.64172], to = [1.5, 18.91672] },
+  { layer = "bottom", width = 0.15, from = [3.145, 15.226694], to = [2.775, 15.596694] },
+  { layer = "bottom", width = 0.15, from = [3.795, 12.531668], to = [3.145, 13.181668] },
+  { layer = "bottom", width = 0.15, from = [3.795, 12.3486], to = [3.795, 12.531668] },
+  { layer = "bottom", width = 0.15, from = [2.775, 15.596694], to = [2.775, 17.64172] },
+  { layer = "bottom", width = 0.15, from = [5.595, 10.5486], to = [3.795, 12.3486] },
+  { layer = "bottom", width = 0.15, from = [3.145, 13.181668], to = [3.145, 15.226694] },
+]
+vias = [
+  { at = [5.595, 10.5486], diameter = 0.5, drill = 0.3 },
+]
+
+[EasyduinoEsp32s3.nets."net-headers.gpio16"]
+pads = "2df33241e96e002a"
+lock = true
+tracks = [
+  { layer = "top", width = 0.15, from = [4.215, 11.7486], to = [5.595, 11.7486] },
+  { layer = "bottom", width = 0.15, from = [2.775, 18.136694], to = [2.775, 20.18172] },
+  { layer = "bottom", width = 0.15, from = [5.595, 11.7486], to = [3.495, 13.8486] },
+  { layer = "bottom", width = 0.15, from = [3.495, 15.371668], to = [3.125, 15.741668] },
+  { layer = "bottom", width = 0.15, from = [3.495, 13.8486], to = [3.495, 15.371668] },
+  { layer = "bottom", width = 0.15, from = [3.125, 17.786694], to = [2.775, 18.136694] },
+  { layer = "bottom", width = 0.15, from = [2.775, 20.18172], to = [1.5, 21.45672] },
+  { layer = "bottom", width = 0.15, from = [3.125, 15.741668], to = [3.125, 17.786694] },
+]
+vias = [
+  { at = [5.595, 11.7486], diameter = 0.5, drill = 0.3 },
+]
+
+[EasyduinoEsp32s3.nets."net-headers.gpio17"]
+pads = "501712c11406deb7"
+lock = true
+tracks = [
+  { layer = "top", width = 0.15, from = [5.565, 13.0186], to = [5.595, 13.0486] },
+  { layer = "top", width = 0.15, from = [4.215, 13.0186], to = [5.565, 13.0186] },
+  { layer = "bottom", width = 0.15, from = [5.595, 13.0486], to = [3.845, 14.7986] },
+  { layer = "bottom", width = 0.15, from = [3.475, 15.886642], to = [3.475, 17.931668] },
+  { layer = "bottom", width = 0.15, from = [3.125, 20.326694], to = [2.775, 20.676694] },
+  { layer = "bottom", width = 0.15, from = [2.775, 22.72172], to = [1.5, 23.99672] },
+  { layer = "bottom", width = 0.15, from = [3.845, 15.516642], to = [3.475, 15.886642] },
+  { layer = "bottom", width = 0.15, from = [3.475, 17.931668], to = [3.125, 18.281668] },
+  { layer = "bottom", width = 0.15, from = [3.845, 14.7986], to = [3.845, 15.516642] },
+  { layer = "bottom", width = 0.15, from = [2.775, 20.676694], to = [2.775, 22.72172] },
+  { layer = "bottom", width = 0.15, from = [3.125, 18.281668], to = [3.125, 20.326694] },
+]
+vias = [
+  { at = [5.595, 13.0486], diameter = 0.5, drill = 0.3 },
+]
+
+[EasyduinoEsp32s3.nets."net-headers.gpio18"]
+pads = "122074a8b797c546"
+lock = true
+tracks = [
+  { layer = "top", width = 0.15, from = [4.215, 14.2886], to = [5.555, 14.2886] },
+  { layer = "top", width = 0.15, from = [5.555, 14.2886], to = [5.595, 14.2486] },
+  { layer = "bottom", width = 0.15, from = [2.895, 25.14172], to = [1.5, 26.53672] },
+  { layer = "bottom", width = 0.15, from = [3.475, 18.426642], to = [3.475, 20.471668] },
+  { layer = "bottom", width = 0.15, from = [3.475, 20.471668], to = [3.125, 20.821668] },
+  { layer = "bottom", width = 0.15, from = [3.125, 22.866694], to = [2.895, 23.096694] },
+  { layer = "bottom", width = 0.15, from = [3.125, 20.821668], to = [3.125, 22.866694] },
+  { layer = "bottom", width = 0.15, from = [3.825, 18.076642], to = [3.475, 18.426642] },
+  { layer = "bottom", width = 0.15, from = [3.825, 16.031616], to = [3.825, 18.076642] },
+  { layer = "bottom", width = 0.15, from = [5.595, 14.2486], to = [4.195, 15.6486] },
+  { layer = "bottom", width = 0.15, from = [2.895, 23.096694], to = [2.895, 25.14172] },
+  { layer = "bottom", width = 0.15, from = [4.195, 15.6486], to = [4.195, 15.661616] },
+  { layer = "bottom", width = 0.15, from = [4.195, 15.661616], to = [3.825, 16.031616] },
+]
+vias = [
+  { at = [5.595, 14.2486], diameter = 0.5, drill = 0.3 },
+]
+
+[EasyduinoEsp32s3.nets."net-headers.gpio19"]
+pads = "82bade36ecd42e52"
+lock = true
+tracks = [
+  { layer = "top", width = 0.2, from = [3.195, 17.4186], to = [3.195, 18.9486] },
+  { layer = "top", width = 0.2, from = [22.01008, 48.35172], to = [22.315, 48.35172] },
+  { layer = "top", width = 0.2, from = [23.36, 49.39672], to = [24.36, 49.39672] },
+  { layer = "top", width = 0.2, from = [20.095, 57.5486], to = [20.095, 56.618599] },
+  { layer = "top", width = 0.2, from = [5.969999, 29.798601], to = [5.82, 29.9486] },
+  { layer = "top", width = 0.2, from = [20.095, 56.618599], to = [20.07, 56.593599] },
+  { layer = "top", width = 0.2, from = [19.095, 57.5486], to = [19.095, 56.1986] },
+  { layer = "top", width = 0.2, from = [20.07, 50.2918], to = [22.01008, 48.35172] },
+  { layer = "top", width = 0.2, from = [3.215, 17.3986], to = [3.195, 17.4186] },
+  { layer = "top", width = 0.2, from = [3.765, 17.2786], to = [3.765, 17.3986] },
+  { layer = "top", width = 0.2, from = [22.315, 48.35172], to = [23.36, 49.39672] },
+  { layer = "top", width = 0.2, from = [4.502107, 20.2486], to = [4.830019, 20.576512] },
+  { layer = "top", width = 0.2, from = [4.495, 20.2486], to = [4.502107, 20.2486] },
+  { layer = "top", width = 0.2, from = [3.195, 18.9486], to = [4.495, 20.2486] },
+  { layer = "top", width = 0.2, from = [3.765, 17.3986], to = [3.215, 17.3986] },
+  { layer = "top", width = 0.2, from = [20.07, 56.593599], to = [20.07, 50.2918] },
+  { layer = "top", width = 0.2, from = [4.830019, 21.227095], to = [5.97, 22.367076] },
+  { layer = "top", width = 0.2, from = [4.215, 16.8286], to = [3.765, 17.2786] },
+  { layer = "top", width = 0.2, from = [4.830019, 20.576512], to = [4.830019, 21.227095] },
+  { layer = "top", width = 0.2, from = [19.095, 56.1986], to = [19.045, 56.1486] },
+  { layer = "top", width = 0.2, from = [5.97, 22.367076], to = [5.969999, 29.798601] },
+  { layer = "bottom", width = 0.2, from = [5.969999, 32.741799], to = [10.67, 37.4418] },
+  { layer = "bottom", width = 0.2, from = [10.67, 37.4418], to = [10.67, 42.2418] },
+  { layer = "bottom", width = 0.2, from = [5.82, 29.9486], to = [5.969999, 30.098599] },
+  { layer = "bottom", width = 0.2, from = [18.8768, 50.4486], to = [20.1195, 50.4486] },
+  { layer = "bottom", width = 0.2, from = [19.045, 56.1486], to = [20.245, 56.1486] },
+  { layer = "bottom", width = 0.2, from = [10.67, 42.2418], to = [18.8768, 50.4486] },
+  { layer = "bottom", width = 0.2, from = [5.969999, 30.098599], to = [5.969999, 32.741799] },
+]
+vias = [
+  { at = [20.1195, 50.4486], diameter = 0.5, drill = 0.3 },
+  { at = [19.045, 56.1486], diameter = 0.5, drill = 0.3 },
+  { at = [5.82, 29.9486], diameter = 0.5, drill = 0.3 },
+  { at = [20.245, 56.1486], diameter = 0.5, drill = 0.3 },
+]
+
+[EasyduinoEsp32s3.nets."net-headers.gpio2"]
+pads = "ff4538af503f1b61"
+lock = true
+tracks = [
+  { layer = "top", width = 0.15, from = [20.295, 4.0486], to = [21.635, 4.0486] },
+  { layer = "top", width = 0.15, from = [21.635, 4.0486], to = [21.715, 4.1286] },
+  { layer = "bottom", width = 0.15, from = [22.695, 5.0486], to = [21.695, 4.0486] },
+  { layer = "bottom", width = 0.15, from = [22.695, 9.63172], to = [22.695, 5.0486] },
+  { layer = "bottom", width = 0.15, from = [21.695, 4.0486], to = [20.295, 4.0486] },
+  { layer = "bottom", width = 0.15, from = [24.36, 11.29672], to = [22.695, 9.63172] },
+]
+vias = [
+  { at = [20.295, 4.0486], diameter = 0.5, drill = 0.3 },
+]
+
+[EasyduinoEsp32s3.nets."net-headers.gpio20"]
+pads = "141bdff384252265"
+lock = true
+tracks = [
+  { layer = "top", width = 0.2, from = [19.62, 50.1054], to = [21.82368, 47.90172] },
+  { layer = "top", width = 0.2, from = [19.595, 57.5486], to = [19.595, 58.3186] },
+  { layer = "top", width = 0.2, from = [22.315, 47.90172], to = [23.36, 46.85672] },
+  { layer = "top", width = 0.2, from = [20.595, 58.2486], to = [20.595, 57.5486] },
+  { layer = "top", width = 0.2, from = [5.28, 20.1154], to = [5.28, 21.040707] },
+  { layer = "top", width = 0.2, from = [19.595, 57.5486], to = [19.595, 56.618599] },
+  { layer = "top", width = 0.2, from = [5.787893, 21.5486], to = [6.202107, 21.5486] },
+  { layer = "top", width = 0.2, from = [6.202107, 21.5486], to = [6.57, 21.916493] },
+  { layer = "top", width = 0.2, from = [6.57, 21.916493], to = [6.57, 29.9486] },
+  { layer = "top", width = 0.2, from = [19.825, 58.5486], to = [20.295, 58.5486] },
+  { layer = "top", width = 0.2, from = [20.295, 58.5486], to = [20.595, 58.2486] },
+  { layer = "top", width = 0.2, from = [4.215, 19.0504], to = [5.28, 20.1154] },
+  { layer = "top", width = 0.2, from = [21.82368, 47.90172], to = [22.315, 47.90172] },
+  { layer = "top", width = 0.2, from = [23.36, 46.85672], to = [24.36, 46.85672] },
+  { layer = "top", width = 0.2, from = [5.28, 21.040707], to = [5.787893, 21.5486] },
+  { layer = "top", width = 0.2, from = [4.215, 18.0986], to = [4.215, 19.0504] },
+  { layer = "top", width = 0.2, from = [19.2518, 50.1054], to = [19.62, 50.1054] },
+  { layer = "top", width = 0.2, from = [19.595, 56.618599], to = [19.62, 56.593599] },
+  { layer = "top", width = 0.2, from = [19.62, 56.593599], to = [19.62, 50.1054] },
+  { layer = "top", width = 0.2, from = [19.595, 58.3186], to = [19.825, 58.5486] },
+  { layer = "top", width = 0.2, from = [19.045, 49.8986], to = [19.2518, 50.1054] },
+  { layer = "bottom", width = 0.2, from = [11.12, 37.2554], to = [11.12, 42.0554] },
+  { layer = "bottom", width = 0.2, from = [6.420001, 30.098599], to = [6.420001, 32.555401] },
+  { layer = "bottom", width = 0.2, from = [6.57, 29.9486], to = [6.420001, 30.098599] },
+  { layer = "bottom", width = 0.2, from = [6.420001, 32.555401], to = [11.12, 37.2554] },
+  { layer = "bottom", width = 0.2, from = [11.12, 42.0554], to = [18.9632, 49.8986] },
+  { layer = "bottom", width = 0.2, from = [18.9632, 49.8986], to = [19.045, 49.8986] },
+]
+vias = [
+  { at = [19.045, 49.8986], diameter = 0.5, drill = 0.3 },
+  { at = [6.57, 29.9486], diameter = 0.5, drill = 0.3 },
+]
+
+[EasyduinoEsp32s3.nets."net-headers.gpio21"]
+pads = "68889265820e5f08"
+lock = true
+tracks = [
+  { layer = "top", width = 0.15, from = [16.14, 20.9936], to = [16.195, 21.0486] },
+  { layer = "top", width = 0.15, from = [16.14, 19.3486], to = [16.14, 20.9936] },
+  { layer = "bottom", width = 0.15, from = [21.685, 33.461618], to = [21.845, 33.621618] },
+  { layer = "bottom", width = 0.15, from = [16.195, 21.0486], to = [16.552537, 21.0486] },
+  { layer = "bottom", width = 0.15, from = [22.745, 38.611668], to = [22.745, 38.719308] },
+  { layer = "bottom", width = 0.15, from = [20.895, 26.536538], to = [20.895, 28.581564] },
+  { layer = "bottom", width = 0.15, from = [22.735, 38.729308], to = [22.735, 40.646694] },
+  { layer = "bottom", width = 0.15, from = [21.685, 31.41659], to = [21.685, 33.461618] },
+  { layer = "bottom", width = 0.15, from = [21.335, 29.021564], to = [21.335, 31.06659] },
+  { layer = "bottom", width = 0.15, from = [21.335, 31.06659], to = [21.685, 31.41659] },
+  { layer = "bottom", width = 0.15, from = [22.995, 42.95172], to = [24.36, 44.31672] },
+  { layer = "bottom", width = 0.15, from = [21.845, 33.621618], to = [21.845, 35.666642] },
+  { layer = "bottom", width = 0.15, from = [20.595, 24.4486], to = [20.595, 26.236538] },
+  { layer = "bottom", width = 0.15, from = [20.595, 26.236538], to = [20.895, 26.536538] },
+  { layer = "bottom", width = 0.15, from = [22.745, 38.719308], to = [22.735, 38.729308] },
+  { layer = "bottom", width = 0.15, from = [17.177537, 21.6736], to = [17.82, 21.6736] },
+  { layer = "bottom", width = 0.15, from = [22.995, 40.906694], to = [22.995, 42.95172] },
+  { layer = "bottom", width = 0.15, from = [17.82, 21.6736], to = [20.595, 24.4486] },
+  { layer = "bottom", width = 0.15, from = [22.385, 36.206642], to = [22.385, 38.251668] },
+  { layer = "bottom", width = 0.15, from = [20.895, 28.581564], to = [21.335, 29.021564] },
+  { layer = "bottom", width = 0.15, from = [22.385, 38.251668], to = [22.745, 38.611668] },
+  { layer = "bottom", width = 0.15, from = [16.552537, 21.0486], to = [17.177537, 21.6736] },
+  { layer = "bottom", width = 0.15, from = [22.735, 40.646694], to = [22.995, 40.906694] },
+  { layer = "bottom", width = 0.15, from = [21.845, 35.666642], to = [22.385, 36.206642] },
+]
+vias = [
+  { at = [16.195, 21.0486], diameter = 0.5, drill = 0.3 },
+]
+
+[EasyduinoEsp32s3.nets."net-headers.gpio3"]
+pads = "430b0deab3cd1250"
+lock = true
+tracks = [
+  { layer = "top", width = 0.15, from = [6.195, 20.8486], to = [5.98, 20.6336] },
+  { layer = "top", width = 0.15, from = [5.98, 20.6336], to = [5.98, 19.3486] },
+  { layer = "bottom", width = 0.15, from = [3.595, 25.431668], to = [3.345, 25.681668] },
+  { layer = "bottom", width = 0.15, from = [6.195, 20.8486], to = [3.595, 23.4486] },
+  { layer = "bottom", width = 0.15, from = [3.595, 23.4486], to = [3.595, 25.431668] },
+  { layer = "bottom", width = 0.15, from = [3.345, 27.726694], to = [2.775, 28.296694] },
+  { layer = "bottom", width = 0.15, from = [3.345, 25.681668], to = [3.345, 27.726694] },
+  { layer = "bottom", width = 0.15, from = [2.775, 30.34172], to = [1.5, 31.61672] },
+  { layer = "bottom", width = 0.15, from = [2.775, 28.296694], to = [2.775, 30.34172] },
+]
+vias = [
+  { at = [6.195, 20.8486], diameter = 0.5, drill = 0.3 },
+]
+
+[EasyduinoEsp32s3.nets."net-headers.gpio35"]
+pads = "e20b19d667e2fa6a"
+lock = true
+tracks = [
+  { layer = "top", width = 0.15, from = [20.415, 16.8286], to = [20.395, 16.8486] },
+  { layer = "top", width = 0.15, from = [21.715, 16.8286], to = [20.415, 16.8286] },
+  { layer = "bottom", width = 0.15, from = [22.385, 25.551668], to = [22.645, 25.811668] },
+  { layer = "bottom", width = 0.15, from = [23.085, 28.296694], to = [23.085, 30.34172] },
+  { layer = "bottom", width = 0.15, from = [21.945, 21.021616], to = [21.945, 23.066642] },
+  { layer = "bottom", width = 0.15, from = [20.395, 16.8486], to = [21.245, 17.6986] },
+  { layer = "bottom", width = 0.15, from = [22.385, 23.506642], to = [22.385, 25.551668] },
+  { layer = "bottom", width = 0.15, from = [21.685, 18.716593], to = [21.685, 20.761616] },
+  { layer = "bottom", width = 0.15, from = [22.645, 27.856694], to = [23.085, 28.296694] },
+  { layer = "bottom", width = 0.15, from = [21.685, 20.761616], to = [21.945, 21.021616] },
+  { layer = "bottom", width = 0.15, from = [21.245, 17.6986], to = [21.245, 18.276593] },
+  { layer = "bottom", width = 0.15, from = [23.085, 30.34172], to = [24.36, 31.61672] },
+  { layer = "bottom", width = 0.15, from = [21.945, 23.066642], to = [22.385, 23.506642] },
+  { layer = "bottom", width = 0.15, from = [21.245, 18.276593], to = [21.685, 18.716593] },
+  { layer = "bottom", width = 0.15, from = [22.645, 25.811668], to = [22.645, 27.856694] },
+]
+vias = [
+  { at = [20.395, 16.8486], diameter = 0.5, drill = 0.3 },
+]
+
+[EasyduinoEsp32s3.nets."net-headers.gpio36"]
+pads = "5085b6ad65d7e5c3"
+lock = true
+tracks = [
+  { layer = "top", width = 0.15, from = [20.305, 15.5586], to = [20.295, 15.5486] },
+  { layer = "top", width = 0.15, from = [21.715, 15.5586], to = [20.305, 15.5586] },
+  { layer = "bottom", width = 0.15, from = [22.295, 22.921668], to = [22.735, 23.361668] },
+  { layer = "bottom", width = 0.15, from = [20.295, 15.5486], to = [21.595, 16.8486] },
+  { layer = "bottom", width = 0.15, from = [21.595, 18.131618], to = [22.035, 18.571618] },
+  { layer = "bottom", width = 0.15, from = [22.995, 27.71172], to = [24.36, 29.07672] },
+  { layer = "bottom", width = 0.15, from = [22.295, 20.876642], to = [22.295, 22.921668] },
+  { layer = "bottom", width = 0.15, from = [22.035, 20.616642], to = [22.295, 20.876642] },
+  { layer = "bottom", width = 0.15, from = [21.595, 16.8486], to = [21.595, 18.131618] },
+  { layer = "bottom", width = 0.15, from = [22.035, 18.571618], to = [22.035, 20.616642] },
+  { layer = "bottom", width = 0.15, from = [22.735, 25.406694], to = [22.995, 25.666694] },
+  { layer = "bottom", width = 0.15, from = [22.735, 23.361668], to = [22.735, 25.406694] },
+  { layer = "bottom", width = 0.15, from = [22.995, 25.666694], to = [22.995, 27.71172] },
+]
+vias = [
+  { at = [20.295, 15.5486], diameter = 0.5, drill = 0.3 },
+]
+
+[EasyduinoEsp32s3.nets."net-headers.gpio37"]
+pads = "0b0a57e5df9d934d"
+lock = true
+tracks = [
+  { layer = "top", width = 0.15, from = [21.715, 14.2886], to = [20.335, 14.2886] },
+  { layer = "top", width = 0.15, from = [20.335, 14.2886], to = [20.295, 14.2486] },
+  { layer = "bottom", width = 0.15, from = [22.385, 20.471668], to = [22.645, 20.731668] },
+  { layer = "bottom", width = 0.15, from = [22.645, 22.776694], to = [23.085, 23.216694] },
+  { layer = "bottom", width = 0.15, from = [21.595, 15.5486], to = [21.595, 15.591616] },
+  { layer = "bottom", width = 0.15, from = [21.945, 15.941616], to = [21.945, 17.986644] },
+  { layer = "bottom", width = 0.15, from = [21.945, 17.986644], to = [22.385, 18.426644] },
+  { layer = "bottom", width = 0.15, from = [23.085, 25.26172], to = [24.36, 26.53672] },
+  { layer = "bottom", width = 0.15, from = [20.295, 14.2486], to = [21.595, 15.5486] },
+  { layer = "bottom", width = 0.15, from = [22.645, 20.731668], to = [22.645, 22.776694] },
+  { layer = "bottom", width = 0.15, from = [23.085, 23.216694], to = [23.085, 25.26172] },
+  { layer = "bottom", width = 0.15, from = [22.385, 18.426644], to = [22.385, 20.471668] },
+  { layer = "bottom", width = 0.15, from = [21.595, 15.591616], to = [21.945, 15.941616] },
+]
+vias = [
+  { at = [20.295, 14.2486], diameter = 0.5, drill = 0.3 },
+]
+
+[EasyduinoEsp32s3.nets."net-headers.gpio38"]
+pads = "e533d8e163cbddae"
+lock = true
+tracks = [
+  { layer = "top", width = 0.15, from = [21.715, 13.0186], to = [20.365, 13.0186] },
+  { layer = "top", width = 0.15, from = [20.895, 31.5486], to = [20.895, 24.8486] },
+  { layer = "top", width = 0.15, from = [19.09, 46.0486], to = [19.09, 45.5536] },
+  { layer = "top", width = 0.15, from = [21.78364, 23.95996], to = [24.36, 23.95996] },
+  { layer = "top", width = 0.15, from = [20.365, 13.0186], to = [20.295, 12.9486] },
+  { layer = "top", width = 0.15, from = [20.895, 24.8486], to = [21.78364, 23.95996] },
+  { layer = "top", width = 0.15, from = [21.295, 35.1486], to = [21.195, 35.1486] },
+  { layer = "top", width = 0.15, from = [19.09, 45.5536], to = [21.995, 42.6486] },
+  { layer = "top", width = 0.15, from = [21.995, 42.6486], to = [21.995, 35.8486] },
+  { layer = "top", width = 0.15, from = [21.995, 35.8486], to = [21.295, 35.1486] },
+  { layer = "bottom", width = 0.15, from = [22.295, 15.796642], to = [22.295, 17.841669] },
+  { layer = "bottom", width = 0.15, from = [21.945, 14.5986], to = [21.945, 15.446642] },
+  { layer = "bottom", width = 0.15, from = [22.995, 22.63172], to = [24.36, 23.99672] },
+  { layer = "bottom", width = 0.15, from = [22.295, 17.841669], to = [22.735, 18.281669] },
+  { layer = "bottom", width = 0.15, from = [22.735, 18.281669], to = [22.735, 20.326694] },
+  { layer = "bottom", width = 0.15, from = [20.295, 12.9486], to = [21.945, 14.5986] },
+  { layer = "bottom", width = 0.15, from = [21.195, 31.8486], to = [21.195, 35.1486] },
+  { layer = "bottom", width = 0.15, from = [21.945, 15.446642], to = [22.295, 15.796642] },
+  { layer = "bottom", width = 0.15, from = [20.895, 31.5486], to = [21.195, 31.8486] },
+  { layer = "bottom", width = 0.15, from = [22.995, 20.586694], to = [22.995, 22.63172] },
+  { layer = "bottom", width = 0.15, from = [22.735, 20.326694], to = [22.995, 20.586694] },
+]
+vias = [
+  { at = [20.295, 12.9486], diameter = 0.5, drill = 0.3 },
+  { at = [21.195, 35.1486], diameter = 0.5, drill = 0.3 },
+  { at = [20.895, 31.5486], diameter = 0.5, drill = 0.3 },
+]
+
+[EasyduinoEsp32s3.nets."net-headers.gpio39"]
+pads = "fde12cb02d6c526d"
+lock = true
+tracks = [
+  { layer = "top", width = 0.15, from = [21.715, 11.7486], to = [20.295, 11.7486] },
+  { layer = "bottom", width = 0.15, from = [22.295, 13.7486], to = [22.295, 15.301668] },
+  { layer = "bottom", width = 0.15, from = [22.645, 15.651668], to = [22.645, 17.696694] },
+  { layer = "bottom", width = 0.15, from = [23.085, 20.18172], to = [24.36, 21.45672] },
+  { layer = "bottom", width = 0.15, from = [22.645, 17.696694], to = [23.085, 18.136694] },
+  { layer = "bottom", width = 0.15, from = [23.085, 18.136694], to = [23.085, 20.18172] },
+  { layer = "bottom", width = 0.15, from = [20.295, 11.7486], to = [22.295, 13.7486] },
+  { layer = "bottom", width = 0.15, from = [22.295, 15.301668], to = [22.645, 15.651668] },
+]
+vias = [
+  { at = [20.295, 11.7486], diameter = 0.5, drill = 0.3 },
+]
+
+[EasyduinoEsp32s3.nets."net-headers.gpio4"]
+pads = "654ca2abaa8d994a"
+lock = true
+tracks = [
+  { layer = "top", width = 0.15, from = [4.215, 5.3986], to = [3.735, 5.3986] },
+  { layer = "top", width = 0.15, from = [2.775, 7.48172], to = [1.5, 8.75672] },
+  { layer = "top", width = 0.15, from = [3.735, 5.3986], to = [2.775, 6.3586] },
+  { layer = "top", width = 0.15, from = [2.775, 6.3586], to = [2.775, 7.48172] },
+]
+
+[EasyduinoEsp32s3.nets."net-headers.gpio40"]
+pads = "94042d33bbe36b50"
+lock = true
+tracks = [
+  { layer = "top", width = 0.15, from = [21.715, 10.4786], to = [20.325, 10.4786] },
+  { layer = "top", width = 0.15, from = [20.325, 10.4786], to = [20.295, 10.4486] },
+  { layer = "bottom", width = 0.15, from = [20.295, 10.4486], to = [22.645, 12.7986] },
+  { layer = "bottom", width = 0.15, from = [22.645, 12.7986], to = [22.645, 15.156694] },
+  { layer = "bottom", width = 0.15, from = [22.995, 17.55172], to = [24.36, 18.91672] },
+  { layer = "bottom", width = 0.15, from = [22.645, 15.156694], to = [22.995, 15.506694] },
+  { layer = "bottom", width = 0.15, from = [22.995, 15.506694], to = [22.995, 17.55172] },
+]
+vias = [
+  { at = [20.295, 10.4486], diameter = 0.5, drill = 0.3 },
+]
+
+[EasyduinoEsp32s3.nets."net-headers.gpio41"]
+pads = "239f0b2c8a091c06"
+lock = true
+tracks = [
+  { layer = "top", width = 0.15, from = [20.355, 9.2086], to = [21.715, 9.2086] },
+  { layer = "top", width = 0.15, from = [20.295, 9.1486], to = [20.355, 9.2086] },
+  { layer = "bottom", width = 0.15, from = [20.295, 9.1486], to = [20.395, 9.1486] },
+  { layer = "bottom", width = 0.15, from = [20.395, 9.1486], to = [22.995, 11.7486] },
+  { layer = "bottom", width = 0.15, from = [22.995, 15.01172], to = [24.36, 16.37672] },
+  { layer = "bottom", width = 0.15, from = [22.995, 11.7486], to = [22.995, 15.01172] },
+]
+vias = [
+  { at = [20.295, 9.1486], diameter = 0.5, drill = 0.3 },
+]
+
+[EasyduinoEsp32s3.nets."net-headers.gpio42"]
+pads = "b97470a170aad8b4"
+lock = true
+tracks = [
+  { layer = "top", width = 0.15, from = [21.715, 7.9386], to = [22.085, 7.9386] },
+  { layer = "top", width = 0.15, from = [23.085, 8.9386], to = [23.085, 12.56172] },
+  { layer = "top", width = 0.15, from = [23.085, 12.56172], to = [24.36, 13.83672] },
+  { layer = "top", width = 0.15, from = [22.085, 7.9386], to = [23.085, 8.9386] },
+]
+
+[EasyduinoEsp32s3.nets."net-headers.gpio45"]
+pads = "4449ea8a96d82564"
+lock = true
+tracks = [
+  { layer = "top", width = 0.15, from = [19.95, 21.1036], to = [19.95, 19.3486] },
+  { layer = "top", width = 0.15, from = [19.995, 21.1486], to = [19.95, 21.1036] },
+  { layer = "bottom", width = 0.15, from = [21.945, 28.146642], to = [22.385, 28.586642] },
+  { layer = "bottom", width = 0.15, from = [22.735, 30.981668], to = [22.735, 33.026695] },
+  { layer = "bottom", width = 0.15, from = [22.895, 33.186695], to = [22.895, 35.23172] },
+  { layer = "bottom", width = 0.15, from = [22.735, 33.026695], to = [22.895, 33.186695] },
+  { layer = "bottom", width = 0.15, from = [21.245, 23.35659], to = [21.685, 23.79659] },
+  { layer = "bottom", width = 0.15, from = [22.385, 28.586642], to = [22.385, 30.631668] },
+  { layer = "bottom", width = 0.15, from = [22.895, 35.23172], to = [24.36, 36.69672] },
+  { layer = "bottom", width = 0.15, from = [21.685, 23.79659], to = [21.685, 25.841616] },
+  { layer = "bottom", width = 0.15, from = [21.945, 26.101616], to = [21.945, 28.146642] },
+  { layer = "bottom", width = 0.15, from = [21.245, 22.3986], to = [21.245, 23.35659] },
+  { layer = "bottom", width = 0.15, from = [21.685, 25.841616], to = [21.945, 26.101616] },
+  { layer = "bottom", width = 0.15, from = [19.995, 21.1486], to = [21.245, 22.3986] },
+  { layer = "bottom", width = 0.15, from = [22.385, 30.631668], to = [22.735, 30.981668] },
+]
+vias = [
+  { at = [19.995, 21.1486], diameter = 0.5, drill = 0.3 },
+]
+
+[EasyduinoEsp32s3.nets."net-headers.gpio46"]
+pads = "b4a90ffce9f4759d"
+lock = true
+tracks = [
+  { layer = "top", width = 0.15, from = [7.25, 21.0036], to = [7.295, 21.0486] },
+  { layer = "top", width = 0.15, from = [7.25, 19.3486], to = [7.25, 21.0036] },
+  { layer = "bottom", width = 0.15, from = [3.945, 25.576642], to = [3.695, 25.826642] },
+  { layer = "bottom", width = 0.15, from = [3.945, 23.5986], to = [3.945, 25.576642] },
+  { layer = "bottom", width = 0.15, from = [7.295, 21.0486], to = [6.77, 21.5736] },
+  { layer = "bottom", width = 0.15, from = [3.125, 28.441668], to = [3.125, 32.53172] },
+  { layer = "bottom", width = 0.15, from = [3.125, 32.53172], to = [1.5, 34.15672] },
+  { layer = "bottom", width = 0.15, from = [3.695, 27.871669], to = [3.125, 28.441668] },
+  { layer = "bottom", width = 0.15, from = [6.77, 21.5736], to = [5.97, 21.5736] },
+  { layer = "bottom", width = 0.15, from = [5.97, 21.5736], to = [3.945, 23.5986] },
+  { layer = "bottom", width = 0.15, from = [3.695, 25.826642], to = [3.695, 27.871669] },
+]
+vias = [
+  { at = [7.295, 21.0486], diameter = 0.5, drill = 0.3 },
+]
+
+[EasyduinoEsp32s3.nets."net-headers.gpio47"]
+pads = "c9d2451c00760509"
+lock = true
+tracks = [
+  { layer = "top", width = 0.15, from = [17.41, 21.1336], to = [17.395, 21.1486] },
+  { layer = "top", width = 0.15, from = [17.41, 19.3486], to = [17.41, 21.1336] },
+  { layer = "bottom", width = 0.15, from = [17.795, 21.1486], to = [20.985, 24.3386] },
+  { layer = "bottom", width = 0.15, from = [22.745, 36.071668], to = [22.745, 36.179308] },
+  { layer = "bottom", width = 0.15, from = [22.735, 36.189308], to = [22.735, 38.106694] },
+  { layer = "bottom", width = 0.15, from = [17.395, 21.1486], to = [17.795, 21.1486] },
+  { layer = "bottom", width = 0.15, from = [21.685, 28.87659], to = [21.685, 30.921616] },
+  { layer = "bottom", width = 0.15, from = [23.085, 38.874283], to = [23.085, 40.50172] },
+  { layer = "bottom", width = 0.15, from = [22.035, 33.316644], to = [22.195, 33.476644] },
+  { layer = "bottom", width = 0.15, from = [20.985, 26.131566], to = [21.245, 26.391564] },
+  { layer = "bottom", width = 0.15, from = [23.095, 38.864283], to = [23.085, 38.874283] },
+  { layer = "bottom", width = 0.15, from = [20.985, 24.3386], to = [20.985, 26.131566] },
+  { layer = "bottom", width = 0.15, from = [21.245, 28.43659], to = [21.685, 28.87659] },
+  { layer = "bottom", width = 0.15, from = [22.195, 33.476644], to = [22.195, 35.521668] },
+  { layer = "bottom", width = 0.15, from = [23.085, 40.50172], to = [24.36, 41.77672] },
+  { layer = "bottom", width = 0.15, from = [22.195, 35.521668], to = [22.745, 36.071668] },
+  { layer = "bottom", width = 0.15, from = [22.035, 31.271616], to = [22.035, 33.316644] },
+  { layer = "bottom", width = 0.15, from = [22.735, 38.106694], to = [23.095, 38.466694] },
+  { layer = "bottom", width = 0.15, from = [22.745, 36.179308], to = [22.735, 36.189308] },
+  { layer = "bottom", width = 0.15, from = [23.095, 38.466694], to = [23.095, 38.864283] },
+  { layer = "bottom", width = 0.15, from = [21.245, 26.391564], to = [21.245, 28.43659] },
+  { layer = "bottom", width = 0.15, from = [21.685, 30.921616], to = [22.035, 31.271616] },
+]
+vias = [
+  { at = [17.395, 21.1486], diameter = 0.5, drill = 0.3 },
+]
+
+[EasyduinoEsp32s3.nets."net-headers.gpio48"]
+pads = "8619f875481c2297"
+lock = true
+tracks = [
+  { layer = "top", width = 0.15, from = [18.68, 21.1336], to = [18.68, 19.3486] },
+  { layer = "top", width = 0.15, from = [18.695, 21.1486], to = [18.68, 21.1336] },
+  { layer = "bottom", width = 0.15, from = [20.895, 23.501564], to = [21.335, 23.941564] },
+  { layer = "bottom", width = 0.15, from = [22.385, 33.171669], to = [22.545, 33.331669] },
+  { layer = "bottom", width = 0.15, from = [23.085, 36.334283], to = [23.085, 37.96172] },
+  { layer = "bottom", width = 0.15, from = [23.095, 36.324283], to = [23.085, 36.334283] },
+  { layer = "bottom", width = 0.15, from = [22.035, 30.776642], to = [22.385, 31.126642] },
+  { layer = "bottom", width = 0.15, from = [21.595, 26.24659], to = [21.595, 28.291616] },
+  { layer = "bottom", width = 0.15, from = [18.695, 21.1486], to = [18.895, 21.1486] },
+  { layer = "bottom", width = 0.15, from = [23.095, 35.926694], to = [23.095, 36.324283] },
+  { layer = "bottom", width = 0.15, from = [18.895, 21.1486], to = [20.895, 23.1486] },
+  { layer = "bottom", width = 0.15, from = [20.895, 23.1486], to = [20.895, 23.501564] },
+  { layer = "bottom", width = 0.15, from = [21.595, 28.291616], to = [22.035, 28.731616] },
+  { layer = "bottom", width = 0.15, from = [22.545, 35.376694], to = [23.095, 35.926694] },
+  { layer = "bottom", width = 0.15, from = [22.035, 28.731616], to = [22.035, 30.776642] },
+  { layer = "bottom", width = 0.15, from = [22.545, 33.331669], to = [22.545, 35.376694] },
+  { layer = "bottom", width = 0.15, from = [21.335, 25.986591], to = [21.595, 26.24659] },
+  { layer = "bottom", width = 0.15, from = [22.385, 31.126642], to = [22.385, 33.171669] },
+  { layer = "bottom", width = 0.15, from = [21.335, 23.941564], to = [21.335, 25.986591] },
+  { layer = "bottom", width = 0.15, from = [23.085, 37.96172], to = [24.36, 39.23672] },
+]
+vias = [
+  { at = [18.695, 21.1486], diameter = 0.5, drill = 0.3 },
+]
+
+[EasyduinoEsp32s3.nets."net-headers.gpio5"]
+pads = "95ccfdeaf39968fe"
+lock = true
+tracks = [
+  { layer = "top", width = 0.15, from = [3.315, 6.6686], to = [3.19, 6.7936] },
+  { layer = "top", width = 0.15, from = [3.19, 9.60672], to = [1.5, 11.29672] },
+  { layer = "top", width = 0.15, from = [4.215, 6.6686], to = [3.315, 6.6686] },
+  { layer = "top", width = 0.15, from = [3.19, 6.7936], to = [3.19, 9.60672] },
+]
+
+[EasyduinoEsp32s3.nets."net-headers.gpio6"]
+pads = "349487e3f6a9f741"
+lock = true
+tracks = [
+  { layer = "top", width = 0.15, from = [4.215, 7.9386], to = [5.585, 7.9386] },
+  { layer = "top", width = 0.15, from = [5.585, 7.9386], to = [5.595, 7.9486] },
+  { layer = "bottom", width = 0.15, from = [3.095, 10.5486], to = [3.095, 12.24172] },
+  { layer = "bottom", width = 0.15, from = [5.595, 7.9486], to = [5.595, 8.0486] },
+  { layer = "bottom", width = 0.15, from = [5.595, 8.0486], to = [3.095, 10.5486] },
+  { layer = "bottom", width = 0.15, from = [3.095, 12.24172], to = [1.5, 13.83672] },
+]
+vias = [
+  { at = [5.595, 7.9486], diameter = 0.5, drill = 0.3 },
+]
+
+[EasyduinoEsp32s3.nets."net-headers.gpio7"]
+pads = "f114b000aa63655f"
+lock = true
+tracks = [
+  { layer = "top", width = 0.15, from = [4.215, 9.2086], to = [5.535, 9.2086] },
+  { layer = "top", width = 0.15, from = [5.535, 9.2086], to = [5.595, 9.1486] },
+  { layer = "bottom", width = 0.15, from = [3.445, 11.2986], to = [3.445, 12.386694] },
+  { layer = "bottom", width = 0.15, from = [5.595, 9.1486], to = [3.445, 11.2986] },
+  { layer = "bottom", width = 0.15, from = [2.795, 13.036694], to = [2.795, 15.08172] },
+  { layer = "bottom", width = 0.15, from = [2.795, 15.08172], to = [1.5, 16.37672] },
+  { layer = "bottom", width = 0.15, from = [3.445, 12.386694], to = [2.795, 13.036694] },
+]
+vias = [
+  { at = [5.595, 9.1486], diameter = 0.5, drill = 0.3 },
+]
+
+[EasyduinoEsp32s3.nets."net-headers.gpio8"]
+pads = "ff4cd8eb8513c7b3"
+lock = true
+tracks = [
+  { layer = "top", width = 0.15, from = [4.215, 15.5586], to = [5.585, 15.5586] },
+  { layer = "top", width = 0.15, from = [5.585, 15.5586], to = [5.595, 15.5486] },
+  { layer = "bottom", width = 0.15, from = [3.825, 18.571616], to = [3.825, 20.616642] },
+  { layer = "bottom", width = 0.15, from = [3.825, 20.616642], to = [3.475, 20.966642] },
+  { layer = "bottom", width = 0.15, from = [4.175, 16.9686], to = [4.175, 18.221616] },
+  { layer = "bottom", width = 0.15, from = [3.475, 23.011668], to = [3.245, 23.241668] },
+  { layer = "bottom", width = 0.15, from = [3.245, 23.241668], to = [3.245, 25.286694] },
+  { layer = "bottom", width = 0.15, from = [3.245, 25.286694], to = [2.995, 25.536694] },
+  { layer = "bottom", width = 0.15, from = [4.175, 18.221616], to = [3.825, 18.571616] },
+  { layer = "bottom", width = 0.15, from = [3.475, 20.966642], to = [3.475, 23.011668] },
+  { layer = "bottom", width = 0.15, from = [5.595, 15.5486], to = [4.175, 16.9686] },
+  { layer = "bottom", width = 0.15, from = [2.995, 27.58172], to = [1.5, 29.07672] },
+  { layer = "bottom", width = 0.15, from = [2.995, 25.536694], to = [2.995, 27.58172] },
+]
+vias = [
+  { at = [5.595, 15.5486], diameter = 0.5, drill = 0.3 },
+]
+
+[EasyduinoEsp32s3.nets."net-headers.gpio9"]
+pads = "05cfbe56dce3b427"
+lock = true
+tracks = [
+  { layer = "top", width = 0.15, from = [8.52, 19.3486], to = [8.52, 21.0236] },
+  { layer = "top", width = 0.15, from = [8.52, 21.0236], to = [8.495, 21.0486] },
+  { layer = "bottom", width = 0.15, from = [7.62, 21.9236], to = [6.114974, 21.9236] },
+  { layer = "bottom", width = 0.15, from = [2.795, 33.356694], to = [2.795, 35.40172] },
+  { layer = "bottom", width = 0.15, from = [3.475, 28.586644], to = [3.475, 32.676694] },
+  { layer = "bottom", width = 0.15, from = [8.495, 21.0486], to = [7.62, 21.9236] },
+  { layer = "bottom", width = 0.15, from = [4.045, 28.016644], to = [3.475, 28.586644] },
+  { layer = "bottom", width = 0.15, from = [3.475, 32.676694], to = [2.795, 33.356694] },
+  { layer = "bottom", width = 0.15, from = [2.795, 35.40172], to = [1.5, 36.69672] },
+  { layer = "bottom", width = 0.15, from = [4.295, 23.743574], to = [4.295, 25.721616] },
+  { layer = "bottom", width = 0.15, from = [4.295, 25.721616], to = [4.045, 25.971616] },
+  { layer = "bottom", width = 0.15, from = [4.045, 25.971616], to = [4.045, 28.016644] },
+  { layer = "bottom", width = 0.15, from = [6.114974, 21.9236], to = [4.295, 23.743574] },
+]
+vias = [
+  { at = [8.495, 21.0486], diameter = 0.5, drill = 0.3 },
+]
+
+[EasyduinoEsp32s3.nets."net-power_led.anode"]
+pads = "7569914e43d75462"
+lock = true
+tracks = [
+  { layer = "top", width = 0.15, from = [12.345, 55.8586], to = [13.48, 55.8586] },
+  { layer = "top", width = 0.2, from = [13.48, 55.8586], to = [13.495, 55.8436] },
+]
+
+[EasyduinoEsp32s3.nets."net-usb_native.cc1_rd.a"]
+pads = "83a53ff2cecbb34d"
+lock = true
+tracks = [
+  { layer = "top", width = 0.15, from = [18.595, 57.5486], to = [18.595, 56.6986] },
+  { layer = "top", width = 0.15, from = [18.595, 56.6986], to = [18.095, 56.1986] },
+  { layer = "top", width = 0.15, from = [18.095, 56.1986], to = [18.095, 55.8186] },
+  { layer = "top", width = 0.2, from = [18.095, 55.8186], to = [18.145, 55.7686] },
+]
+
+[EasyduinoEsp32s3.nets."net-usb_native.cc2_rd.a"]
+pads = "f15b57e5c477ae84"
+lock = true
+tracks = [
+  { layer = "top", width = 0.15, from = [21.595, 57.5486], to = [21.595, 56.4986] },
+  { layer = "top", width = 0.15, from = [21.795, 56.2986], to = [21.795, 55.7486] },
+  { layer = "top", width = 0.15, from = [21.595, 56.4986], to = [21.795, 56.2986] },
+]
+
+[EasyduinoEsp32s3.nets."net-usb_uart.cc1_rd.a"]
+pads = "2cc4c624eb31b30e"
+lock = true
+tracks = [
+  { layer = "top", width = 0.15, from = [4.295, 56.3986], to = [4.295, 55.8086] },
+  { layer = "top", width = 0.15, from = [4.725, 57.5486], to = [4.725, 56.8286] },
+  { layer = "top", width = 0.15, from = [4.725, 56.8286], to = [4.295, 56.3986] },
+  { layer = "top", width = 0.2, from = [4.295, 55.8086], to = [4.245, 55.7586] },
+]
+
+[EasyduinoEsp32s3.nets."net-usb_uart.cc2_rd.a"]
+pads = "af4f084cbc7b6375"
+lock = true
+tracks = [
+  { layer = "top", width = 0.2, from = [8.595, 55.8586], to = [8.595, 55.7586] },
+  { layer = "top", width = 0.15, from = [7.725, 56.7286], to = [8.595, 55.8586] },
+  { layer = "top", width = 0.15, from = [7.725, 57.5486], to = [7.725, 56.7286] },
+]
+
+[EasyduinoEsp32s3.nets."net-user_led.anode"]
+pads = "c3fb681aafa7399f"
+lock = true
+tracks = [
+  { layer = "top", width = 0.15, from = [18.095, 46.0736], to = [18.07, 46.0486] },
+  { layer = "top", width = 0.15, from = [18.095, 47.3486], to = [18.095, 46.0736] },
+]

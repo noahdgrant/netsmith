@@ -1,0 +1,230 @@
+version = 1
+
+[EasyduinoEsp32s3]
+seed = 3
+
+[EasyduinoEsp32s3.parts."auto_reset.q_boot"]
+at = [16.895, 30.1486]
+rotation = 180.0
+side = "top"
+lock = true
+source = "import"
+
+[EasyduinoEsp32s3.parts."auto_reset.q_en"]
+at = [9.095, 30.1486]
+rotation = 180.0
+side = "top"
+text = "below"
+lock = true
+source = "import"
+
+[EasyduinoEsp32s3.parts."auto_reset.r_dtr"]
+at = [15.295, 26.7486]
+rotation = 90.0
+side = "top"
+text = "below"
+lock = true
+source = "import"
+
+[EasyduinoEsp32s3.parts."auto_reset.r_rts"]
+at = [16.495, 26.7486]
+rotation = -90.0
+side = "top"
+lock = true
+source = "import"
+
+[EasyduinoEsp32s3.parts.boot_100n]
+at = [17.695, 26.7486]
+rotation = 90.0
+side = "top"
+lock = true
+source = "import"
+
+[EasyduinoEsp32s3.parts.bridge]
+at = [7.095, 48.4486]
+rotation = 90.0
+side = "top"
+text = "right"
+lock = true
+source = "import"
+
+[EasyduinoEsp32s3.parts."bridge_reset_pullup.resistor"]
+at = [11.595, 49.5486]
+rotation = 180.0
+side = "top"
+text = "below"
+lock = true
+source = "import"
+
+[EasyduinoEsp32s3.parts.bridge_vdd_cap]
+at = [8.595, 53.0486]
+rotation = -90.0
+side = "top"
+lock = true
+source = "import"
+
+[EasyduinoEsp32s3.parts."en_100n[0]"]
+at = [10.495, 26.6686]
+rotation = 90.0
+side = "top"
+lock = true
+source = "import"
+
+[EasyduinoEsp32s3.parts."en_100n[1]"]
+at = [9.295, 26.6686]
+rotation = 90.0
+side = "top"
+text = "left"
+lock = true
+source = "import"
+
+[EasyduinoEsp32s3.parts."en_pullup.resistor"]
+at = [8.095, 26.6386]
+rotation = -90.0
+side = "top"
+lock = true
+source = "import"
+
+[EasyduinoEsp32s3.parts.mcu]
+at = [12.965, 9.8486]
+rotation = 0.0
+side = "top"
+lock = true
+source = "import"
+
+[EasyduinoEsp32s3.parts.power_led]
+at = [13.495, 55.3586]
+rotation = -90.0
+side = "top"
+text = "left"
+lock = true
+source = "import"
+
+[EasyduinoEsp32s3.parts.power_led_resistor]
+at = [12.345, 55.3486]
+rotation = -90.0
+side = "top"
+lock = true
+source = "import"
+
+[EasyduinoEsp32s3.parts.regulator]
+at = [13.595, 40.3486]
+rotation = 0.0
+side = "top"
+text = "right"
+lock = true
+source = "import"
+
+[EasyduinoEsp32s3.parts."suspend_pulldown.resistor"]
+at = [11.585, 48.4486]
+rotation = 0.0
+side = "top"
+lock = true
+source = "import"
+
+[EasyduinoEsp32s3.parts."usb_native.cc1_rd"]
+at = [18.145, 55.2586]
+rotation = 90.0
+side = "top"
+lock = true
+source = "import"
+
+[EasyduinoEsp32s3.parts."usb_native.cc2_rd"]
+at = [21.795, 55.2386]
+rotation = 90.0
+side = "top"
+text = "below"
+lock = true
+source = "import"
+
+[EasyduinoEsp32s3.parts.usb_native_diode]
+at = [17.045, 55.2486]
+rotation = -90.0
+side = "top"
+text = "below"
+lock = true
+source = "import"
+
+[EasyduinoEsp32s3.parts."usb_uart.cc1_rd"]
+at = [4.245, 55.2486]
+rotation = 90.0
+side = "top"
+lock = true
+source = "import"
+
+[EasyduinoEsp32s3.parts."usb_uart.cc2_rd"]
+at = [8.595, 55.2486]
+rotation = 90.0
+side = "top"
+text = "below"
+lock = true
+source = "import"
+
+[EasyduinoEsp32s3.parts.usb_uart_diode]
+at = [9.745, 55.2661]
+rotation = -90.0
+side = "top"
+text = "right"
+lock = true
+source = "import"
+
+[EasyduinoEsp32s3.parts.user_led]
+at = [18.58, 47.3486]
+rotation = 180.0
+side = "top"
+text = "left"
+lock = true
+source = "import"
+
+[EasyduinoEsp32s3.parts.user_led_resistor]
+at = [18.58, 46.0486]
+rotation = 0.0
+side = "top"
+lock = true
+source = "import"
+
+[EasyduinoEsp32s3.parts.v3v3_100n]
+at = [11.695, 26.6686]
+rotation = -90.0
+side = "top"
+lock = true
+source = "import"
+
+[EasyduinoEsp32s3.parts."v3v3_22u[0]"]
+at = [19.845, 40.7486]
+rotation = 90.0
+side = "top"
+text = "left"
+lock = true
+source = "import"
+
+[EasyduinoEsp32s3.parts."v3v3_22u[1]"]
+at = [13.895, 23.9486]
+rotation = 0.0
+side = "top"
+text = "below"
+lock = true
+source = "import"
+
+[EasyduinoEsp32s3.parts.vbus_100n]
+at = [9.745, 53.0486]
+rotation = -90.0
+side = "top"
+text = "right"
+lock = true
+source = "import"
+
+[EasyduinoEsp32s3.parts.vbus_1u]
+at = [10.945, 53.0486]
+rotation = -90.0
+side = "top"
+text = "below"
+lock = true
+source = "import"
+
+[EasyduinoEsp32s3.parts.vbus_22u]
+at = [7.345, 40.5486]
+rotation = 90.0
+side = "top"
+lock = true
+source = "import"

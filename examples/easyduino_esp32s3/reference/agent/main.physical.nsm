@@ -1,0 +1,79 @@
+//! The physical file of the Easyduino ESP32-S3 board: what must be where for a board made from
+//! this design to be interchangeable with Easyduino's (CERN-OHL-P-2.0; see `README.md` and
+//! `LICENSE`): the outline, the two USB-C receptacles J1 and J2, the buttons SW1 and SW2 and
+//! the headers U2. The receptacles' two 0.65 mm pegs each are holes of the receptacle's own
+//! footprint, so they are where the receptacles are; the board has no mounting hole.
+//!
+//! Every number is read from their board file (`reference/Easyduino_ESP32S3.kicad_pcb`,
+//! tabulated in `reference/placements.toml`) and is written here from the board's own corner,
+//! the upper-left corner of the outline (x 127.105, y 58.6514 in their file, which is the
+//! upper-left corner of the `Edge.Cuts` lines of their U2), with y growing downward. A
+//! requirement is measured from the BODY of a part (the outline its footprint draws on
+//! `F.Fab`, else its courtyard) and not from the footprint's origin, which is what the parity
+//! checker compares; where the two differ, the comment says so and gives the origin's place in
+//! their file.
+//!
+//! The parts that need not match (the module, the bridge, the regulator, the transistors, the
+//! LEDs, the diodes, the resistors and the capacitors) have no line here: the placer puts them.
+
+import std::pcb::Outline
+
+physical for EasyduinoEsp32s3 {
+    case {
+        // The outline: 25.86 x 63.8972 mm (`[outline]` of the table: x 127.105 to 152.965, y
+        // 58.6514 to 122.5486; four lines, no arcs, so square corners). Their file draws it
+        // with four `Edge.Cuts` lines inside the footprint of U2; ours is drawn here.
+        .outline: Outline {
+            .width &= 25.86mm
+            .height &= 63.8972mm
+        }
+    }
+
+    // The holes: the table lists four, `J1` at (130.19, 117.32) and (135.97, 117.32) and `J2`
+    // at (144.06, 117.32) and (149.84, 117.32), each 0.65 mm. They are the pegs of the two
+    // receptacles, which the receptacle's footprint draws, so no line is needed here: the
+    // receptacles' places below put them at (3.085, 58.6686), (8.865, 58.6686), (16.955,
+    // 58.6686) and (22.735, 58.6686) of the board.
+
+    // J1 (the bridge's receptacle) and J2 (the module's own USB): their J1 is at (133.08,
+    // 119.925) and J2 at (146.95, 119.925), both not turned. The body is the courtyard (the
+    // footprint draws no `F.Fab` outline): x -4.82 to 4.82 and y -4.7 to 2.2 of the footprint,
+    // so its centre is 1.25 mm above the origin: (5.975, 61.2736 - 1.25) and (19.845, 61.2736 -
+    // 1.25).
+    .usb_uart.receptacle.place.x &= 5.975mm
+    .usb_uart.receptacle.place.y &= 60.0236mm
+    .usb_uart.receptacle.place.rotation &= 0
+    .usb_uart.receptacle.place.side &= "top"
+    .usb_native.receptacle.place.x &= 19.845mm
+    .usb_native.receptacle.place.y &= 60.0236mm
+    .usb_native.receptacle.place.rotation &= 0
+    .usb_native.receptacle.place.side &= "top"
+
+    // SW1 (RESET) at (136.3, 93.2) not turned, SW2 (BOOT) at (143.9, 93.2) turned 180. The
+    // body (`F.Fab`) is centred on the origin.
+    .reset.place.x &= 9.195mm
+    .reset.place.y &= 34.5486mm
+    .reset.place.rotation &= 0
+    .reset.place.side &= "top"
+    .boot.place.x &= 16.795mm
+    .boot.place.y &= 34.5486mm
+    .boot.place.rotation &= 180
+    .boot.place.side &= "top"
+
+    // U2, the two 22-pin headers: their U2 is at (128.605, 59.75136), not turned. The body is
+    // the courtyard (the footprint draws it on `B.CrtYd` only, so that the top face of the
+    // board inside the two rows is free for the other parts; see README), x -1.1 to 23.96 and
+    // y -0.7 to 54.04 of the footprint: the pads and 0.1 mm. Its centre is (11.43, 26.67) from
+    // the origin: (1.5 + 11.43, 1.09996 + 26.67).
+    .headers.place.x &= 12.93mm
+    .headers.place.y &= 27.76996mm
+    .headers.place.rotation &= 0
+    .headers.place.side &= "top"
+
+    // The reproduction of Easyduino's copper (`reference/agent/`, issue #599) puts the module
+    // where their board has it, its origin at (12.965, 9.8486) mm, with its antenna 5.9 mm past
+    // the top edge. A place in the layout file allows no overhang, so the reproduction states it
+    // here; the example's own physical file (`src/main.physical.nsm`) keeps the module on the
+    // board.
+    .mcu.place.top <= 0mm
+}

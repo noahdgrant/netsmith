@@ -1,0 +1,298 @@
+version = 1
+
+[Orbit]
+seed = 1
+
+[Orbit.parts.boot_pulldown]
+at = [9.0, 13.5]
+rotation = 180.0
+side = "top"
+text = "below"
+lock = true
+source = "import"
+
+[Orbit.parts."buck_boost.divider.rbottom"]
+at = [38.0, 18.25]
+rotation = 180.0
+side = "top"
+lock = true
+source = "import"
+
+[Orbit.parts."buck_boost.divider.rtop"]
+at = [38.0, 20.0]
+rotation = 0.0
+side = "top"
+lock = true
+source = "import"
+
+[Orbit.parts."buck_boost.ic"]
+at = [38.75, 25.75]
+rotation = 180.0
+side = "top"
+lock = true
+source = "import"
+
+[Orbit.parts."buck_boost.inductor"]
+at = [35.75, 26.36]
+rotation = 90.0
+side = "top"
+lock = true
+source = "import"
+
+[Orbit.parts."buck_boost.input_cap"]
+at = [38.75, 28.5]
+rotation = 0.0
+side = "top"
+text = "left"
+lock = true
+source = "import"
+
+[Orbit.parts."buck_boost.output_cap"]
+at = [34.75, 21.75]
+rotation = 180.0
+side = "top"
+text = "below"
+lock = true
+source = "import"
+
+[Orbit.parts."buck_boost.pg_pullup.resistor"]
+at = [38.0, 21.75]
+rotation = 0.0
+side = "top"
+text = "below"
+lock = true
+source = "import"
+
+[Orbit.parts."charger.ic"]
+at = [37.5, 13.75]
+rotation = 180.0
+side = "top"
+lock = true
+source = "import"
+
+[Orbit.parts."charger.rprog"]
+at = [33.75, 14.5]
+rotation = 0.0
+side = "top"
+lock = true
+source = "import"
+
+[Orbit.parts."charger.status_led"]
+at = [38.0, 16.5]
+rotation = 180.0
+side = "top"
+lock = true
+source = "import"
+
+[Orbit.parts."charger.status_resistor"]
+at = [33.75, 16.25]
+rotation = 0.0
+side = "top"
+lock = true
+source = "import"
+
+[Orbit.parts."charger.vbatt_cap"]
+at = [41.25, 12.75]
+rotation = 0.0
+side = "top"
+lock = true
+source = "import"
+
+[Orbit.parts."charger.vbus_cap"]
+at = [33.75, 12.75]
+rotation = 180.0
+side = "top"
+text = "below"
+lock = true
+source = "import"
+
+[Orbit.parts.eeprom]
+at = [14.5, 27.5]
+rotation = 0.0
+side = "top"
+lock = true
+source = "import"
+
+[Orbit.parts."i2c_pullups.scl_pullup"]
+at = [12.425, 22.0]
+rotation = 0.0
+side = "top"
+text = "right"
+lock = true
+source = "import"
+
+[Orbit.parts."i2c_pullups.sda_pullup"]
+at = [12.425, 23.75]
+rotation = 0.0
+side = "top"
+text = "below"
+lock = true
+source = "import"
+
+[Orbit.parts.led1]
+at = [39.5, 38.46]
+rotation = 90.0
+side = "top"
+lock = true
+source = "import"
+
+[Orbit.parts.led1_resistor]
+at = [41.25, 38.5]
+rotation = -90.0
+side = "top"
+lock = true
+source = "import"
+
+[Orbit.parts.led2]
+at = [37.75, 38.46]
+rotation = 90.0
+side = "top"
+lock = true
+source = "import"
+
+[Orbit.parts.led2_resistor]
+at = [36.0, 38.5]
+rotation = -90.0
+side = "top"
+lock = true
+source = "import"
+
+[Orbit.parts.mcu]
+at = [25.0, 27.5]
+rotation = 90.0
+side = "top"
+text = "right"
+lock = true
+source = "import"
+
+[Orbit.parts."oscillator.crystal"]
+at = [25.0, 44.5]
+rotation = 0.0
+side = "top"
+lock = true
+source = "import"
+
+[Orbit.parts."oscillator.load_in"]
+at = [20.0, 44.5]
+rotation = 180.0
+side = "top"
+lock = true
+source = "import"
+
+[Orbit.parts."oscillator.load_out"]
+at = [30.0, 44.5]
+rotation = 0.0
+side = "top"
+lock = true
+source = "import"
+
+[Orbit.parts.reset_cap]
+at = [27.0, 35.5]
+rotation = 0.0
+side = "top"
+lock = true
+source = "import"
+
+[Orbit.parts."usb_uart.ic"]
+at = [18.5, 16.84]
+rotation = 180.0
+side = "top"
+text = "left"
+lock = true
+source = "import"
+
+[Orbit.parts."usb_uart.vbus_100n"]
+at = [19.25, 12.75]
+rotation = 180.0
+side = "top"
+lock = true
+source = "import"
+
+[Orbit.parts."usb_uart.vbus_1u"]
+at = [19.25, 11.0]
+rotation = 180.0
+side = "top"
+text = "left"
+lock = true
+source = "import"
+
+[Orbit.parts."usb_uart.vdd_100n"]
+at = [23.25, 12.75]
+rotation = 0.0
+side = "top"
+text = "right"
+lock = true
+source = "import"
+
+[Orbit.parts."usb_uart.vdd_bulk"]
+at = [23.25, 14.5]
+rotation = 0.0
+side = "top"
+lock = true
+source = "import"
+
+[Orbit.parts.user_node_cap]
+at = [8.75, 38.5]
+rotation = 90.0
+side = "top"
+lock = true
+source = "import"
+
+[Orbit.parts.user_pin_cap]
+at = [12.25, 38.5]
+rotation = -90.0
+side = "top"
+lock = true
+source = "import"
+
+[Orbit.parts."user_pulldown.resistor"]
+at = [10.5, 38.5]
+rotation = 90.0
+side = "top"
+lock = true
+source = "import"
+
+[Orbit.parts.user_series]
+at = [14.0, 38.5]
+rotation = -90.0
+side = "top"
+lock = true
+source = "import"
+
+[Orbit.parts."v3v3_100n[0]"]
+at = [27.0, 33.75]
+rotation = 0.0
+side = "top"
+lock = true
+source = "import"
+
+[Orbit.parts."v3v3_100n[1]"]
+at = [19.5, 33.5]
+rotation = 180.0
+side = "top"
+lock = true
+source = "import"
+
+[Orbit.parts."v3v3_100n[2]"]
+at = [19.5, 31.75]
+rotation = 180.0
+side = "top"
+text = "left"
+lock = true
+source = "import"
+
+[Orbit.parts."v3v3_100n[3]"]
+at = [30.25, 22.5]
+rotation = 90.0
+side = "top"
+text = "left"
+lock = true
+source = "import"
+
+[Orbit.parts.v3v3_bulk]
+at = [32.0, 22.5]
+rotation = 90.0
+side = "top"
+text = "below"
+lock = true
+source = "import"

@@ -766,6 +766,7 @@ dependencies = [
  "netsmith-editor",
  "netsmith-fab",
  "netsmith-fabricate",
+ "netsmith-geom",
  "netsmith-kicad",
  "netsmith-lang",
  "netsmith-netlist",

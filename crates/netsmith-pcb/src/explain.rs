@@ -967,7 +967,13 @@ impl<'a> Context<'a> {
         for (i, a) in wins.iter().enumerate() {
             for b in &wins[i + 1..] {
                 let key = format!("pair:{}:{}", a.part.refdes, b.part.refdes);
-                if seen.contains(&key)
+                // Two parts that stand where an imported board has them may share courtyard
+                // area (`Board::imported`).
+                let imported = [a, b]
+                    .iter()
+                    .all(|w| self.options.imported.contains(&w.part.refdes));
+                if imported
+                    || seen.contains(&key)
                     || a.lines.is_empty()
                     || b.lines.is_empty()
                     || a.quarters.is_empty()
