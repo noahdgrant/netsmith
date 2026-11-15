@@ -1738,6 +1738,8 @@ fn the_scene_has_every_part_with_its_pads_nets_and_place() {
     // The courtyard holds the origin, and the outline holds the courtyard.
     let c = r1.courtyard;
     assert!(c.x <= r1.x && r1.x <= c.x + c.width && c.y <= r1.y && r1.y <= c.y + c.height);
+    // Its footprint draws one courtyard, which is the only shape.
+    assert_eq!(r1.courtyards, vec![c]);
     let o = scene.outline;
     assert!(o.x <= c.x && c.x + c.width <= o.x + o.width + 1e-9);
     assert_eq!((scene.origin_x, scene.origin_y), (o.x, o.y));

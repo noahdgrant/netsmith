@@ -28,6 +28,10 @@
 //! back layers, with mirrored text. The router starts and ends
 //! a line on the layers a pad has, so lines between faces use vias as lines between layers do.
 //! Two courtyards on opposite faces may overlap unless one part has a hole through the board.
+//! A courtyard is a list of shapes (`Footprint::courtyard_shapes`), each its own room against
+//! other parts, keepouts and cutouts (`Placed::courtyards`, `Engine::rooms`): a part may stand
+//! between two of them. The outline, the rows' first arrangement and the walls use the box
+//! round them, and a footprint with one shape is the box, as ever.
 //! A part with a hole takes its courtyard on both faces only if its footprint draws the
 //! courtyard on both `F.CrtYd` and `B.CrtYd`, or on neither (then the box made from its pads).
 //! If the footprint draws it on one of them only, the face of the other layer is judged by the

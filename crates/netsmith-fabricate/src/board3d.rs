@@ -277,6 +277,9 @@ pub struct PartReport {
     /// The footprint's origin and turn as the layout file writes them.
     pub layout: LayoutPlace,
     pub body: BodyBox,
+    /// The courtyard as its shapes (each its own room in the placement check); `body` is
+    /// the box of the fabrication outline, or of the courtyard where none is drawn.
+    pub courtyards: Vec<CourtyardBox>,
     pub z_bottom: Option<f64>,
     pub z_top: Option<f64>,
     pub height: Option<f64>,
@@ -311,6 +314,13 @@ pub struct BodyBox {
     pub corners: [[f64; 2]; 4],
     /// `fab` (the footprint's fabrication outline) or `courtyard`.
     pub from: &'static str,
+}
+
+/// One shape of a part's courtyard in plan, in the frame of `body.min` and `body.max`.
+#[derive(Debug, Serialize)]
+pub struct CourtyardBox {
+    pub min: [f64; 2],
+    pub max: [f64; 2],
 }
 
 #[derive(Debug, Serialize)]
@@ -584,6 +594,14 @@ pub fn report(
                         "fab"
                     },
                 },
+                courtyards: b
+                    .courtyards
+                    .iter()
+                    .map(|c| CourtyardBox {
+                        min: xy(c.min),
+                        max: xy(c.max),
+                    })
+                    .collect(),
                 z_bottom,
                 z_top,
                 height: b.height,

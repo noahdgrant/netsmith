@@ -132,6 +132,7 @@ fn body(path: &str, min: [f64; 2], max: [f64; 2], height: Option<f64>) -> Body {
             max: corners[2],
         },
         body_is_courtyard: false,
+        courtyards: Vec::new(),
         z_face: 0.0,
         z_far: height,
         height,

@@ -575,6 +575,7 @@ pub fn scene(entry: &Entry, data: &BoardData, name: &str) -> PcbScene {
                     e.source.clone().unwrap_or_else(|| "hand".to_string())
                 }),
                 courtyard: sheet_box(p.courtyard()),
+                courtyards: p.courtyards().into_iter().map(sheet_box).collect(),
                 body: sheet_box(p.body()),
                 height: p.height,
                 pads: p

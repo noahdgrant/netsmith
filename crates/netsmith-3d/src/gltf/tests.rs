@@ -23,6 +23,7 @@ fn body(path: &str, refdes: &str, min: Plan, max: Plan, height: Option<f64>) -> 
         corners: [min, plan(max.x, min.y), max, plan(min.x, max.y)],
         bounds: PlanBox { min, max },
         body_is_courtyard: false,
+        courtyards: Vec::new(),
         z_face: 0.0,
         z_far: height,
         height,

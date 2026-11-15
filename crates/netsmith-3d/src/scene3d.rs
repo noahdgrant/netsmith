@@ -323,6 +323,10 @@ pub struct Body {
     pub bounds: PlanBox,
     /// Whether the box is the courtyard, because the footprint draws no fabrication outline.
     pub body_is_courtyard: bool,
+    /// The courtyard's shapes in plan, each the box round one drawing turned with the part
+    /// (`netsmith_pcb::Placed::courtyards`): what the placement check keeps other parts out
+    /// of. A part may stand between two of them.
+    pub courtyards: Vec<PlanBox>,
     /// The face it stands on: `0` for the top face, `-thickness` for the bottom.
     pub z_face: f64,
     /// The far end of the body: above the top face or below the bottom. `None` when the height
@@ -1259,6 +1263,7 @@ fn body(
         corners,
         bounds: frame.rect(p.body()),
         body_is_courtyard: p.footprint.body_is_courtyard,
+        courtyards: p.courtyards().into_iter().map(|r| frame.rect(r)).collect(),
         z_face,
         z_far: height.map(|h| clean(z_face + out * h)),
         height,

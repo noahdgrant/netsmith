@@ -19,6 +19,7 @@ function part(path: string, body: PcbBox, height: number | null, side: 'top' | '
     locked: false,
     placement: 'hand',
     courtyard: body,
+    courtyards: [body],
     body,
     height,
     pads: [],
