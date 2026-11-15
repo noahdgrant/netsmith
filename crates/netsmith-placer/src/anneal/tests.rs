@@ -297,7 +297,8 @@ fn lid_beside_a_strip() -> (Board, Rect) {
     let tall = &mut board.parts[0];
     tall.footprint.body = body;
     tall.footprint.body_is_courtyard = false;
-    tall.footprint.courtyard = Rect::new(Pt::new(-7.5, -2.5), Pt::new(3.5, 2.5));
+    tall.footprint
+        .set_courtyard(Rect::new(Pt::new(-7.5, -2.5), Pt::new(3.5, 2.5)));
     tall.height = Some(14.0);
     for small in &mut board.parts[1..] {
         small.height = Some(1.0);
@@ -528,4 +529,83 @@ fn a_keepout_a_part_carries_is_no_reason_to_refuse_the_part_itself() {
     let e = Engine::new(&mut board.parts, &problem);
     assert!(e.carried_depths(0, 0, 0.0).is_empty());
     assert_eq!(e.carried_cost(0, 0).hard, 0.0);
+}
+
+/// A footprint of two courtyard rectangles 2.4 x 4 mm and 22 mm apart, as a plug-in module
+/// draws its two socket strips, with a pad in each.
+fn two_strips() -> netsmith_pcb::Footprint {
+    netsmith_pcb::Footprint::parse(
+        "T:Strips",
+        r#"(footprint "Strips"
+            (pad "1" smd rect (at 0 0) (size 1.5 1.5) (layers "F.Cu" "F.Mask"))
+            (pad "2" smd rect (at 22 0) (size 1.5 1.5) (layers "F.Cu" "F.Mask"))
+            (fp_rect (start -1.2 -2) (end 1.2 2) (layer "F.CrtYd"))
+            (fp_rect (start 20.8 -2) (end 23.2 2) (layer "F.CrtYd")))"#,
+    )
+    .unwrap()
+}
+
+/// A module that stays at x = 5 in a board 29.5 mm wide and 8 mm tall, and four 2.5 x 2.5 mm
+/// parts to place: beside the strips there is room for two of them at most (left of the first
+/// strip), so the others must stand between the strips.
+fn module_with_four_small_parts(shapes: bool) -> Board {
+    let mut board = resistors(&["", "", "", "", ""]);
+    board.outline = Rect::new(Pt::new(0.0, 0.0), Pt::new(29.5, 8.0));
+    let module = &mut board.parts[0];
+    module.footprint = two_strips();
+    if !shapes {
+        module.footprint.set_courtyard(module.footprint.courtyard);
+    }
+    module.at = Pt::new(5.0, 4.0);
+    for small in &mut board.parts[1..] {
+        small
+            .footprint
+            .set_courtyard(Rect::new(Pt::new(-1.25, -1.25), Pt::new(1.25, 1.25)));
+    }
+    board
+}
+
+fn run_with_module_fixed(board: &mut Board) -> bool {
+    let fixed = [true, false, false, false, false];
+    let problem = Problem {
+        nets: &board.nets.clone(),
+        rules: &board.rules.clone(),
+        planes: &[],
+        region: board.outline,
+        corner_radius: 0.0,
+        fixed: &fixed,
+        keepouts: &[],
+        zones: &[],
+        carried: &[],
+        cutouts: &[],
+        pours: false,
+        seed: 0,
+        wants: &[],
+        offsets: &[],
+        overhangs: &[],
+        outline: board.outline,
+    };
+    anneal(&mut board.parts, &problem, 1.0).feasible
+}
+
+#[test]
+fn parts_are_placed_between_the_courtyard_shapes_of_a_part() {
+    let mut board = module_with_four_small_parts(true);
+    assert!(run_with_module_fixed(&mut board));
+    assert_eq!(board.check_placement(), vec![]);
+    // The module's strips are x 3.8 to 6.2 and 25.8 to 28.2: at least two of the four parts
+    // are between them.
+    let between = board.parts[1..]
+        .iter()
+        .filter(|p| p.courtyard().min.x >= 6.2 - 1e-6 && p.courtyard().max.x <= 25.8 + 1e-6)
+        .count();
+    assert!(between >= 2, "{between} between the strips");
+}
+
+#[test]
+fn the_box_round_the_two_shapes_leaves_no_room_for_those_parts() {
+    // The same board with the courtyard as one box (what a footprint's courtyard was): the
+    // four parts do not fit beside it, and the placer says so.
+    let mut board = module_with_four_small_parts(false);
+    assert!(!run_with_module_fixed(&mut board));
 }

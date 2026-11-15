@@ -240,13 +240,11 @@ pub fn placement_findings(board: &Board) -> Vec<PcbFinding> {
                     // if the board says they touch.
                     ("overlap", vec![a, b], shared_area(board, a, b))
                 }
-                PlacementProblem::OverPins { holder, cover, .. } => {
-                    (
-                        "over_pins",
-                        vec![holder, cover],
-                        shared_area(board, holder, cover),
-                    )
-                }
+                PlacementProblem::OverPins { holder, cover, .. } => (
+                    "over_pins",
+                    vec![holder, cover],
+                    shared_area(board, holder, cover),
+                ),
                 PlacementProblem::OutsideOutline { refdes, .. } => {
                     ("outside_outline", vec![refdes], courtyard(refdes))
                 }

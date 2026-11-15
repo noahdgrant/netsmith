@@ -2065,7 +2065,8 @@ mod tests {
         let mut parts = board.parts.clone();
         // R1 is 40 mm long, R2 as well but locked, R3 small.
         for p in &mut parts[..2] {
-            p.footprint.courtyard = Rect::new(Pt::new(-20.0, -2.0), Pt::new(20.0, 2.0));
+            p.footprint
+                .set_courtyard(Rect::new(Pt::new(-20.0, -2.0), Pt::new(20.0, 2.0)));
         }
         let mut options = PlaceOptions {
             fit: Some((20.0, 60.0)),
@@ -2082,7 +2083,9 @@ mod tests {
         assert_eq!(parts[0].rotation, 90.0);
         options.fit = Some((60.0, 20.0));
         let mut again = board.parts.clone();
-        again[0].footprint.courtyard = Rect::new(Pt::new(-20.0, -2.0), Pt::new(20.0, 2.0));
+        again[0]
+            .footprint
+            .set_courtyard(Rect::new(Pt::new(-20.0, -2.0), Pt::new(20.0, 2.0)));
         turn_to_fit(&mut again, &[false; 3], &options);
         assert_eq!(again[0].rotation, 0.0);
         // A part that fits no turn is left alone: the error names it (see `oversize`).

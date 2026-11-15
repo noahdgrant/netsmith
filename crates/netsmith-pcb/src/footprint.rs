@@ -482,6 +482,13 @@ impl Footprint {
         })
     }
 
+    /// Give the footprint one courtyard, `court`: the box and its only shape, kept in step
+    /// ([`Footprint::courtyard_shapes`]).
+    pub fn set_courtyard(&mut self, court: Rect) {
+        self.courtyard = court;
+        self.courtyard_shapes = vec![court];
+    }
+
     /// Every pad that carries this number.
     pub fn pads_numbered<'a>(&'a self, number: &'a str) -> impl Iterator<Item = &'a Pad> {
         self.pads.iter().filter(move |p| p.number == number)
@@ -592,10 +599,7 @@ fn courtyard_pieces(boxes: impl IntoIterator<Item = Rect>) -> Vec<Rect> {
     for b in boxes {
         let mut joined = b;
         // Take in every shape this one touches, which may bring in others it now touches.
-        loop {
-            let Some(at) = shapes.iter().position(|s| touch(s, &joined)) else {
-                break;
-            };
+        while let Some(at) = shapes.iter().position(|s| touch(s, &joined)) {
             joined = joined.union(&shapes.remove(at));
         }
         shapes.push(joined);

@@ -409,7 +409,10 @@ fn a_part_on_a_pad_of_a_part_with_two_courtyards_is_still_refused() {
     let board = module_and_test_point(two_row_module(""), Pt::new(30.0, 38.0));
     let areas = overlaps_d1_r1(&board);
     // The rectangle is 2.4 mm wide, and the test point's courtyard 2.5 mm tall inside it.
-    assert!(areas.len() == 1 && (areas[0] - 6.0).abs() < 1e-6, "{areas:?}");
+    assert!(
+        areas.len() == 1 && (areas[0] - 6.0).abs() < 1e-6,
+        "{areas:?}"
+    );
     // Touching the rectangle is not overlapping.
     let board = module_and_test_point(two_row_module(""), Pt::new(32.45, 40.0));
     assert_eq!(overlaps_d1_r1(&board), Vec::<f64>::new());
