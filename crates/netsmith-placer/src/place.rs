@@ -28,6 +28,10 @@
 //! back layers, with mirrored text. The router starts and ends
 //! a line on the layers a pad has, so lines between faces use vias as lines between layers do.
 //! Two courtyards on opposite faces may overlap unless one part has a hole through the board.
+//! A courtyard is a list of shapes (`Footprint::courtyard_shapes`), each its own room against
+//! other parts, keepouts and cutouts (`Placed::courtyards`, `Engine::rooms`): a part may stand
+//! between two of them. The outline, the rows' first arrangement and the walls use the box
+//! round them, and a footprint with one shape is the box, as ever.
 //! A part with a hole takes its courtyard on both faces only if its footprint draws the
 //! courtyard on both `F.CrtYd` and `B.CrtYd`, or on neither (then the box made from its pads).
 //! If the footprint draws it on one of them only, the face of the other layer is judged by the
@@ -870,8 +874,10 @@ fn could_fit(parts: &[Placed], fit: (f64, f64), options: &PlaceOptions) -> bool 
         .iter()
         .filter(|p| !options.overhang.contains_key(&p.refdes))
     {
-        let c = p.courtyard();
-        let area = c.width() * c.height();
+        // The area the courtyard's shapes cover (not the box round them, which a part with
+        // two rows of pads does not take).
+        let shapes = p.courtyards();
+        let area = Rect::union_area(&shapes);
         if is_through(p) {
             // On a face the footprint draws no courtyard for, the part takes only its pads
             // (`Placed::room_on`; the pads' own area is what is certainly taken).
@@ -882,7 +888,7 @@ fn could_fit(parts: &[Placed], fit: (f64, f64), options: &PlaceOptions) -> bool 
                     continue;
                 }
                 load[k] += p
-                    .room_on(face, 0.0, c)
+                    .room_on(face, 0.0, &shapes)
                     .iter()
                     .map(|r| r.width() * r.height())
                     .sum::<f64>();
@@ -2059,7 +2065,8 @@ mod tests {
         let mut parts = board.parts.clone();
         // R1 is 40 mm long, R2 as well but locked, R3 small.
         for p in &mut parts[..2] {
-            p.footprint.courtyard = Rect::new(Pt::new(-20.0, -2.0), Pt::new(20.0, 2.0));
+            p.footprint
+                .set_courtyard(Rect::new(Pt::new(-20.0, -2.0), Pt::new(20.0, 2.0)));
         }
         let mut options = PlaceOptions {
             fit: Some((20.0, 60.0)),
@@ -2076,7 +2083,9 @@ mod tests {
         assert_eq!(parts[0].rotation, 90.0);
         options.fit = Some((60.0, 20.0));
         let mut again = board.parts.clone();
-        again[0].footprint.courtyard = Rect::new(Pt::new(-20.0, -2.0), Pt::new(20.0, 2.0));
+        again[0]
+            .footprint
+            .set_courtyard(Rect::new(Pt::new(-20.0, -2.0), Pt::new(20.0, 2.0)));
         turn_to_fit(&mut again, &[false; 3], &options);
         assert_eq!(again[0].rotation, 0.0);
         // A part that fits no turn is left alone: the error names it (see `oversize`).

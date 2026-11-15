@@ -166,6 +166,27 @@ pub fn case_findings(board: &Board, case: &netsmith_3d::CaseScene) -> Vec<PcbFin
         .collect()
 }
 
+/// The box two parts' courtyards share: where the most of any two of their shapes (each a
+/// room of its own) overlap. A part's shapes are what the placement check counts, so the box
+/// is where the overlap is and not a part of the box round a shape and its far neighbour.
+fn shared_area(board: &Board, a: &str, b: &str) -> Option<Rect> {
+    let (pa, pb) = (board.part(a)?, board.part(b)?);
+    let (ra, rb) = (pa.courtyards(), pb.courtyards());
+    let share = |x: &Rect, y: &Rect| {
+        Rect::new(
+            Pt::new(x.min.x.max(y.min.x), x.min.y.max(y.min.y)),
+            Pt::new(x.max.x.min(y.max.x), x.max.y.min(y.max.y)),
+        )
+    };
+    let area = |r: &Rect| r.width().max(0.0) * r.height().max(0.0);
+    ra.iter()
+        .flat_map(|x| rb.iter().map(move |y| share(x, y)))
+        .fold(None, |best: Option<Rect>, r| match best {
+            Some(b) if area(&b) >= area(&r) => Some(b),
+            _ => Some(r),
+        })
+}
+
 /// The problems with where the parts are, each with the box it is about.
 pub fn placement_findings(board: &Board) -> Vec<PcbFinding> {
     let courtyard = |refdes: &str| board.part(refdes).map(|p| p.courtyard());
@@ -215,26 +236,15 @@ pub fn placement_findings(board: &Board) -> Vec<PcbFinding> {
             let message = problem.to_string();
             let (rule, subjects, area): (&str, Vec<&str>, Option<Rect>) = match &problem {
                 PlacementProblem::Overlap { a, b, .. } => {
-                    let (ra, rb) = (courtyard(a), courtyard(b));
-                    // The area they share, or the two if the board says they touch.
-                    let shared = ra.zip(rb).map(|(x, y)| {
-                        Rect::new(
-                            Pt::new(x.min.x.max(y.min.x), x.min.y.max(y.min.y)),
-                            Pt::new(x.max.x.min(y.max.x), x.max.y.min(y.max.y)),
-                        )
-                    });
-                    ("overlap", vec![a, b], shared)
+                    // The area they share (the most of any two of their shapes), or the two
+                    // if the board says they touch.
+                    ("overlap", vec![a, b], shared_area(board, a, b))
                 }
-                PlacementProblem::OverPins { holder, cover, .. } => {
-                    let (rt, rc) = (courtyard(holder), courtyard(cover));
-                    let shared = rt.zip(rc).map(|(x, y)| {
-                        Rect::new(
-                            Pt::new(x.min.x.max(y.min.x), x.min.y.max(y.min.y)),
-                            Pt::new(x.max.x.min(y.max.x), x.max.y.min(y.max.y)),
-                        )
-                    });
-                    ("over_pins", vec![holder, cover], shared)
-                }
+                PlacementProblem::OverPins { holder, cover, .. } => (
+                    "over_pins",
+                    vec![holder, cover],
+                    shared_area(board, holder, cover),
+                ),
                 PlacementProblem::OutsideOutline { refdes, .. } => {
                     ("outside_outline", vec![refdes], courtyard(refdes))
                 }

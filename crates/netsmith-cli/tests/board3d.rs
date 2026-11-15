@@ -56,6 +56,13 @@ fn the_lidded_board_reports_the_part_too_tall_the_unknown_one_and_the_margin() {
     assert_eq!(tall["z_bottom"], 0.0);
     assert_eq!(tall["z_top"], 9.0);
     assert_eq!(tall["provenance"], "stated");
+    // A footprint that draws one courtyard has it as the only shape, in the body's frame.
+    let shapes = tall["courtyards"].as_array().unwrap();
+    assert_eq!(shapes.len(), 1, "{shapes:?}");
+    for axis in 0..2 {
+        assert!(shapes[0]["min"][axis].as_f64() <= tall["body"]["min"][axis].as_f64());
+        assert!(shapes[0]["max"][axis].as_f64() >= tall["body"]["max"][axis].as_f64());
+    }
     let bare = part(&r, "bare");
     assert_eq!(bare["provenance"], "unknown");
     assert!(bare["z_top"].is_null() && bare["height"].is_null());

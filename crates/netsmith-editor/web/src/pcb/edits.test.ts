@@ -32,6 +32,7 @@ function part(path: string, x: number, y: number, over: Partial<PcbPart> = {}): 
     locked: false,
     placement: 'derived',
     courtyard: { x: 100 + x - 1, y: 50 + y - 1, width: 2, height: 2 },
+    courtyards: [{ x: 100 + x - 1, y: 50 + y - 1, width: 2, height: 2 }],
     body: { x: 100 + x - 1, y: 50 + y - 1, width: 2, height: 2 },
     height: null,
     pads: [],

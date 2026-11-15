@@ -128,12 +128,13 @@ impl Placed {
     /// draws its courtyard on only one face's layer is judged on the other face by its pads,
     /// each grown by `clearance`, so a part on that face may stand over the rest of its
     /// body. A footprint that draws both courtyard layers, or none, counts on both as ever.
-    /// `court` is the courtyard to use where it counts (the board's clip of it, if the part
-    /// may hang over an edge). The boxes are empty where the part takes no room.
-    pub fn room_on(&self, face: Side, clearance: f64, court: Rect) -> Vec<Rect> {
+    /// `courts` are the courtyard's shapes to use where it counts, each its own room (the
+    /// board's clip of them, if the part may hang over an edge): [`Placed::courtyards`]. The
+    /// boxes are empty where the part takes no room.
+    pub fn room_on(&self, face: Side, clearance: f64, courts: &[Rect]) -> Vec<Rect> {
         if !self.has_hole() {
             return if face == self.side {
-                vec![court]
+                courts.to_vec()
             } else {
                 Vec::new()
             };
@@ -146,7 +147,7 @@ impl Placed {
             (opposite, own)
         };
         if here || !there {
-            return vec![court];
+            return courts.to_vec();
         }
         self.footprint
             .pads
@@ -156,14 +157,14 @@ impl Placed {
     }
 
     /// Whether two parts take room in the same place on either face of the board: `court_a`
-    /// and `court_b` are the courtyards to count ([`Placed::room_on`]). A part that stands
+    /// and `court_b` are the courtyard shapes to count ([`Placed::room_on`]). A part that stands
     /// excused over the other's protruding pins ([`crate::protrusion`]) takes only its pads there,
     /// against the pads of the other; `zones` are the height limits that rule judges by.
     pub fn rooms_overlap(
         &self,
-        court_a: Rect,
+        court_a: &[Rect],
         other: &Placed,
-        court_b: Rect,
+        court_b: &[Rect],
         clearance: f64,
         zones: &[crate::placement::HeightZone],
     ) -> bool {
@@ -205,7 +206,7 @@ impl Placed {
         clearance: f64,
         zones: &[crate::placement::HeightZone],
     ) -> f64 {
-        let (court_a, court_b) = (self.courtyard(), other.courtyard());
+        let (court_a, court_b) = (self.courtyards(), other.courtyards());
         let excused = crate::protrusion::excused(self, other, zones);
         let share = |a: &Rect, b: &Rect| {
             (a.max.x.min(b.max.x) - a.min.x.max(b.min.x)).max(0.0)
@@ -216,8 +217,8 @@ impl Placed {
             .map(|face| {
                 let plain = || {
                     (
-                        self.room_on(face, clearance, court_a),
-                        other.room_on(face, clearance, court_b),
+                        self.room_on(face, clearance, &court_a),
+                        other.room_on(face, clearance, &court_b),
                     )
                 };
                 let (mine, theirs) = match excused {
@@ -389,9 +390,19 @@ impl Placed {
             .collect()
     }
 
-    /// The courtyard's box on the board.
+    /// The box round the courtyard on the board.
     pub fn courtyard(&self) -> Rect {
         self.rect_to_board(self.footprint.courtyard)
+    }
+
+    /// The courtyard's shapes on the board, each its own room: what the placement check and
+    /// the placer keep other parts out of ([`Footprint::courtyard_shapes`]).
+    pub fn courtyards(&self) -> Vec<Rect> {
+        self.footprint
+            .courtyard_shapes
+            .iter()
+            .map(|r| self.rect_to_board(*r))
+            .collect()
     }
 
     /// The body's box on the board: what a constraint on a position measures (ADR 0045).

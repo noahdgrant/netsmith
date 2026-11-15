@@ -479,7 +479,11 @@ fn variant(turn: u8, text: u8) -> usize {
 
 /// The boxes of one part in one turn, relative to its origin.
 struct Shape {
+    /// The box round the courtyard.
     court: Rect,
+    /// The courtyard's shapes, each its own room against other parts, keepouts and cutouts
+    /// (`Placed::courtyards`); `court` is the box round them.
+    courts: Vec<Rect>,
     /// The body (what a requirement on the place measures), relative to the origin.
     body: Rect,
     text: Option<Rect>,

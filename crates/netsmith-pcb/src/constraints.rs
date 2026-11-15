@@ -780,11 +780,19 @@ pub fn plan(
                 (q.at, q.rotation, q.side) = (at, rotation, side);
                 q
             };
+            // The box round a courtyard and its shapes, each a room of its own.
             let court = |p: &Placed, at: Pt, rotation: f64, side: Side| {
                 p.footprint
                     .courtyard
                     .rotated_for(side == Side::Back, rotation)
                     .translated(at)
+            };
+            let shapes = |p: &Placed, at: Pt, rotation: f64, side: Side| -> Vec<Rect> {
+                p.footprint
+                    .courtyard_shapes
+                    .iter()
+                    .map(|r| r.rotated_for(side == Side::Back, rotation).translated(at))
+                    .collect()
             };
             // A part that hangs over the edge takes only the room it has on the board.
             let on_board = |c: Rect, may: Edges| match (width, height) {
@@ -797,8 +805,15 @@ pub fn plan(
                 on_board(court(pa, a.1, a.2, a.3), a.5),
                 on_board(court(pb, b.1, b.2, b.3), b.5),
             );
+            let rooms_of = |p: &Placed, w: &(String, Pt, f64, Side, String, Edges)| -> Vec<Rect> {
+                shapes(p, w.1, w.2, w.3)
+                    .into_iter()
+                    .map(|s| on_board(s, w.5))
+                    .collect()
+            };
+            let (ra, rb) = (rooms_of(pa, a), rooms_of(pb, b));
             let (qa, qb) = (lies(pa, a.1, a.2, a.3), lies(pb, b.1, b.2, b.3));
-            if qa.rooms_overlap(ca, &qb, cb, clearance, &options.height_zones) {
+            if qa.rooms_overlap(&ra, &qb, &rb, clearance, &options.height_zones) {
                 let span = |c: &Rect| {
                     format!(
                         "x {} to {}, y {} to {}",

@@ -32,6 +32,7 @@ pub(super) fn shape_of(
     part.rotation = angle;
     part.reference_side = text_side;
     let court = part.courtyard();
+    let courts = part.courtyards();
     let body = part.body();
     let text = text_box(part, rules);
     // The strokes of the silkscreen, each as a box (a rectangle as its four sides).
@@ -98,6 +99,7 @@ pub(super) fn shape_of(
     }
     Shape {
         court,
+        courts,
         body,
         text,
         silk,

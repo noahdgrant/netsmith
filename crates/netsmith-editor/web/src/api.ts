@@ -900,7 +900,16 @@ locked: boolean,
  * `derived` while the layout file has no entry for the part, else who wrote the entry
  * (`hand`, `auto` or `regen`).
  */
-placement: string, courtyard: PcbBox, 
+placement: string, 
+/**
+ * The box round the courtyard.
+ */
+courtyard: PcbBox, 
+/**
+ * The courtyard's shapes, each its own room against other parts, keepouts and
+ * cutouts (the box `courtyard` holds them all): a part may stand between two of them.
+ */
+courtyards: Array<PcbBox>, 
 /**
  * What stands above the board: the footprint's fabrication outline, else its courtyard
  * (the box a height limit is measured on, ADR 0045 section 11).

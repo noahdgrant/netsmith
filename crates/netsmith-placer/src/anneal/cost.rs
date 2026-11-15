@@ -110,11 +110,13 @@ impl<'a> Engine<'a> {
             }
         }
         let tall = self.zone_box(i);
+        // A keepout for parts is kept out of by each shape of the courtyard.
+        let shapes: Vec<Rect> = self.courts(i).collect();
         for (k, part) in self
             .p
             .keepouts
             .iter()
-            .map(|k| (k, &court))
+            .flat_map(|k| shapes.iter().map(move |s| (k, s)))
             .chain(model.no_go.iter().map(|k| (k, &tall)))
         {
             let depth = penetration(part, k, KEEPOUT_GAP);
@@ -168,7 +170,7 @@ impl<'a> Engine<'a> {
         if a.side != b.side && !a.hole && !b.hole {
             return c;
         }
-        let (ca, cb) = (self.room(i), self.room(j));
+        let (ca, cb) = (self.rooms(i), self.rooms(j));
         // Each part's pads leave through the space round it. Where a busy part (16 to 66 pads)
         // faces another the space is the same, so the escape spaces of the two add up and each
         // mm short of them costs more than a plain gap. Other pairs keep the larger of the
@@ -194,7 +196,11 @@ impl<'a> Engine<'a> {
             } else {
                 0.0
             };
-            c += Self::court_cost_escape(&ca, &cb, self.gap, escape, extra);
+            for x in &ca {
+                for y in &cb {
+                    c += Self::court_cost_escape(x, y, self.gap, escape, extra);
+                }
+            }
         } else {
             // A part with a hole takes room on each face by `Placed::room_on`: its courtyard,
             // or on a face its footprint draws no courtyard for, its pads. Pads are only kept
@@ -249,7 +255,7 @@ impl<'a> Engine<'a> {
         at_from: Pt,
         to: &Shape,
         at_to: Pt,
-        court: &Rect,
+        court: &[Rect],
     ) -> Cost {
         let to_pad = self.p.rules.silk_to_pad;
         let mut soft = 0.0;
@@ -278,7 +284,10 @@ impl<'a> Engine<'a> {
             {
                 refuse(penetration(&t, &other.translated(at_to), SILK_CLEAR));
             }
-            let over = penetration(&t, court, 0.0);
+            let over = court
+                .iter()
+                .map(|c| penetration(&t, c, 0.0))
+                .fold(0.0, f64::max);
             if over > 0.0 {
                 over_court = W_TEXT * (over + 0.05);
             }

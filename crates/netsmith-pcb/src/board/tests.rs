@@ -328,6 +328,107 @@ fn courtyards_of_opposite_faces_may_overlap_unless_one_part_has_a_hole() {
     )));
 }
 
+/// A plug-in module's footprint as a library draws it: two courtyard rectangles, each
+/// 2.4 x 20.5 mm and 22 mm apart, and a row of five pads inside each. `extra` is more
+/// footprint text (a pad, a drawing).
+fn two_row_module(extra: &str) -> crate::footprint::Footprint {
+    let mut text = String::from("(footprint \"Module\"\n");
+    for (x, first) in [(0.0, 1), (22.0, 6)] {
+        for k in 0..5 {
+            text += &format!(
+                "(pad \"{}\" smd rect (at {x} {}) (size 1.5 1.5) (layers \"F.Cu\" \"F.Mask\"))\n",
+                first + k,
+                -4.0 + 2.0 * k as f64
+            );
+        }
+    }
+    text += "(fp_rect (start -1.2 -10.25) (end 1.2 10.25) (layer \"F.CrtYd\"))\n";
+    text += "(fp_rect (start 20.8 -10.25) (end 23.2 10.25) (layer \"F.CrtYd\"))\n";
+    text += extra;
+    text += ")";
+    crate::footprint::Footprint::parse("T:Module", &text).unwrap()
+}
+
+/// A test point: a 1.5 mm pad in a 2.5 x 2.5 mm courtyard.
+fn test_point() -> crate::footprint::Footprint {
+    crate::footprint::Footprint::parse(
+        "T:TestPoint",
+        r#"(footprint "TestPoint"
+            (pad "1" smd rect (at 0 0) (size 1.5 1.5) (layers "F.Cu" "F.Mask"))
+            (fp_rect (start -1.25 -1.25) (end 1.25 1.25) (layer "F.CrtYd")))"#,
+    )
+    .unwrap()
+}
+
+/// The LED board with D1 the module and R1 the test point at `at`, in a 60 x 40 mm outline.
+fn module_and_test_point(module: crate::footprint::Footprint, at: Pt) -> Board {
+    let mut board = led_board();
+    board.outline = Rect::new(Pt::new(20.0, 20.0), Pt::new(80.0, 60.0));
+    for p in &mut board.parts {
+        match p.refdes.as_str() {
+            "D1" => {
+                p.footprint = module.clone();
+                p.at = Pt::new(30.0, 40.0);
+            }
+            "R1" => {
+                p.footprint = test_point();
+                p.at = at;
+            }
+            _ => p.at = Pt::new(70.0, 30.0),
+        }
+    }
+    board
+}
+
+fn overlaps_d1_r1(board: &Board) -> Vec<f64> {
+    board
+        .check_placement()
+        .iter()
+        .filter_map(|p| match p {
+            PlacementProblem::Overlap { a, b, area, .. } if a == "D1" && b == "R1" => Some(*area),
+            _ => None,
+        })
+        .collect()
+}
+
+#[test]
+fn a_part_stands_between_two_courtyard_rectangles_of_another() {
+    // The test point is 2.5 mm wide in the 17.6 mm between the module's two rectangles.
+    let mut board = module_and_test_point(two_row_module(""), Pt::new(41.0, 40.0));
+    assert_eq!(board.check_placement(), vec![]);
+    // The box round both rectangles (what the check counted before) is a 6.25 mm2 overlap.
+    for p in &mut board.parts {
+        p.footprint.courtyard_shapes = vec![p.footprint.courtyard];
+    }
+    assert_eq!(overlaps_d1_r1(&board), vec![6.25]);
+}
+
+#[test]
+fn a_part_on_a_pad_of_a_part_with_two_courtyards_is_still_refused() {
+    // On a pad of the first row, which is inside the first rectangle.
+    let board = module_and_test_point(two_row_module(""), Pt::new(30.0, 38.0));
+    let areas = overlaps_d1_r1(&board);
+    // The rectangle is 2.4 mm wide, and the test point's courtyard 2.5 mm tall inside it.
+    assert!(
+        areas.len() == 1 && (areas[0] - 6.0).abs() < 1e-6,
+        "{areas:?}"
+    );
+    // Touching the rectangle is not overlapping.
+    let board = module_and_test_point(two_row_module(""), Pt::new(32.45, 40.0));
+    assert_eq!(overlaps_d1_r1(&board), Vec::<f64>::new());
+}
+
+#[test]
+fn a_pad_outside_every_courtyard_shape_is_kept_clear_as_copper() {
+    // A pad in the middle of the module that no rectangle covers: a part on it overlaps,
+    // and one beside it, between the rectangles, does not.
+    let pad = r#"(pad "11" smd rect (at 11 0) (size 1.5 1.5) (layers "F.Cu" "F.Mask"))"#;
+    let on_it = module_and_test_point(two_row_module(pad), Pt::new(41.0, 40.0));
+    assert_eq!(overlaps_d1_r1(&on_it).len(), 1);
+    let beside = module_and_test_point(two_row_module(pad), Pt::new(41.0, 46.0));
+    assert_eq!(beside.check_placement(), vec![]);
+}
+
 #[test]
 fn two_parts_placed_by_an_import_may_share_courtyard_area_and_are_said_apart() {
     let mut board = led_board();

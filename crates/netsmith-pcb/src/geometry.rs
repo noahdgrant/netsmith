@@ -122,6 +122,34 @@ impl Rect {
         )
     }
 
+    /// The area covered by `rects` together, in mm2: where they overlap it counts once.
+    pub fn union_area(rects: &[Rect]) -> f64 {
+        if let [only] = rects {
+            return only.width() * only.height();
+        }
+        let mut xs: Vec<f64> = rects.iter().flat_map(|r| [r.min.x, r.max.x]).collect();
+        xs.sort_by(f64::total_cmp);
+        xs.dedup();
+        xs.windows(2)
+            .map(|w| {
+                // The strip between two x values: the length of the union of the y spans of
+                // the rectangles that cross it.
+                let mut spans: Vec<(f64, f64)> = rects
+                    .iter()
+                    .filter(|r| r.min.x <= w[0] && r.max.x >= w[1])
+                    .map(|r| (r.min.y, r.max.y))
+                    .collect();
+                spans.sort_by(|a, b| a.0.total_cmp(&b.0));
+                let (mut length, mut reached) = (0.0, f64::MIN);
+                for (lo, hi) in spans {
+                    length += (hi - lo.max(reached)).max(0.0);
+                    reached = reached.max(hi);
+                }
+                length * (w[1] - w[0])
+            })
+            .sum()
+    }
+
     /// The box that holds this one after it is turned about the origin.
     pub fn rotated(&self, degrees: f64) -> Rect {
         Rect::around(self.corners().map(|c| c.rotate(degrees))).expect("a rectangle has corners")
@@ -187,6 +215,19 @@ mod tests {
         let over = a.translated(Pt::new(0.5, 0.5));
         assert!(!a.overlaps(&touching));
         assert!(a.overlaps(&over));
+    }
+
+    #[test]
+    fn the_union_area_counts_an_overlap_once() {
+        let a = Rect::new(Pt::new(0.0, 0.0), Pt::new(2.0, 2.0));
+        assert_eq!(Rect::union_area(&[a]), 4.0);
+        // Apart: the sum. Overlapping by a unit square: the sum less that. One inside the
+        // other: the larger.
+        assert_eq!(Rect::union_area(&[a, a.translated(Pt::new(5.0, 0.0))]), 8.0);
+        assert_eq!(Rect::union_area(&[a, a.translated(Pt::new(1.0, 1.0))]), 7.0);
+        let inside = Rect::new(Pt::new(0.5, 0.5), Pt::new(1.0, 1.5));
+        assert_eq!(Rect::union_area(&[a, inside]), 4.0);
+        assert_eq!(Rect::union_area(&[]), 0.0);
     }
 
     #[test]

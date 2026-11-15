@@ -20,7 +20,9 @@ impl<'a> Engine<'a> {
             let rect = carry.boxes[at.min(carry.boxes.len() - 1)].translated(self.pos(c));
             let mut depth = 0.0f64;
             if zone.parts {
-                depth = depth.max(penetration(&self.room(j), &rect, gap));
+                for room in self.rooms(j) {
+                    depth = depth.max(penetration(&room, &rect, gap));
+                }
             }
             if zone.limits(model.height, model.side) {
                 depth = depth.max(penetration(&self.zone_box(j), &rect, gap));
@@ -53,7 +55,7 @@ impl<'a> Engine<'a> {
         let m = &self.models[i];
         if !m.hole {
             return if face == m.side {
-                vec![(self.room(i), false)]
+                self.rooms(i).into_iter().map(|r| (r, false)).collect()
             } else {
                 Vec::new()
             };
@@ -65,7 +67,7 @@ impl<'a> Engine<'a> {
             (opposite, own)
         };
         if here || !there {
-            return vec![(self.room(i), false)];
+            return self.rooms(i).into_iter().map(|r| (r, false)).collect();
         }
         let pos = self.pos(i);
         self.shape(i)
@@ -167,16 +169,28 @@ impl<'a> Engine<'a> {
             .expanded(HEIGHT_ZONE_MARGIN)
     }
 
-    /// The room part `i` takes against other courtyards: its courtyard, clipped to the
-    /// outline if the design says it may hang over an edge (as `Board::check_placement`
-    /// counts it, so that two parts that hang over the same edge may overlap beyond it).
-    pub(super) fn room(&self, i: usize) -> Rect {
-        let court = self.court(i);
-        if self.models[i].may.any() {
-            netsmith_pcb::clip_to_outline(&court, &self.p.outline)
-        } else {
-            court
-        }
+    /// The shapes of part `i`'s courtyard where it is, each its own obstacle (the
+    /// footprint's `courtyard_shapes`), as the placement check counts them.
+    pub(super) fn courts(&self, i: usize) -> impl Iterator<Item = Rect> + '_ {
+        let at = self.pos(i);
+        self.shape(i).courts.iter().map(move |r| r.translated(at))
+    }
+
+    /// The rooms part `i` takes against other courtyards: its courtyard's shapes, each
+    /// clipped to the outline if the design says it may hang over an edge (as
+    /// `Board::check_placement` counts them, so that two parts that hang over the same edge
+    /// may overlap beyond it).
+    pub(super) fn rooms(&self, i: usize) -> Vec<Rect> {
+        let clip = self.models[i].may.any();
+        self.courts(i)
+            .map(|court| {
+                if clip {
+                    netsmith_pcb::clip_to_outline(&court, &self.p.outline)
+                } else {
+                    court
+                }
+            })
+            .collect()
     }
 
     pub(super) fn pad_at(&self, part: usize, pad: usize) -> Pt {
