@@ -256,6 +256,15 @@ pub struct Footprint {
     /// The box the courtyard drawing spans, in the footprint's frame. A footprint with no
     /// courtyard gets its pads plus a small margin.
     pub courtyard: Rect,
+    /// The courtyard as separate shapes, in the footprint's frame: each is its own obstacle
+    /// in the placer and the placement check (KiCad's check treats each `F.CrtYd` drawing
+    /// apart too), so a part may stand between two of them. Never empty, and `courtyard` is
+    /// the box round all of them. A footprint that draws at most one courtyard shape has
+    /// that one, `courtyard` itself. One that draws several has each of them, and every pad
+    /// or hole that lies outside all of them as a shape of its own (the pad grown by
+    /// [`PAD_COURTYARD_MARGIN`], the hole by its reach): the pad is checked as copper where
+    /// it is and does not widen a courtyard over what lies between the shapes.
+    pub courtyard_shapes: Vec<Rect>,
     /// Which layers the footprint draws its courtyard on, `(F.CrtYd, B.CrtYd)`. A through-hole
     /// part that draws it on one only is judged on the other face by its pads (ADR 0031).
     /// Neither: the courtyard is made from the pads, and counts on both faces.
@@ -375,11 +384,13 @@ impl Footprint {
         } else {
             Layer::BackCourtyard
         };
-        let courtyard_points = graphics
-            .iter()
-            .filter(|g| g.layer == drawn)
-            .flat_map(|g| g.shape.extent_points());
-        let courtyard = match Rect::around(courtyard_points) {
+        let drawn_shapes = courtyard_pieces(
+            graphics
+                .iter()
+                .filter(|g| g.layer == drawn)
+                .filter_map(|g| Rect::around(g.shape.extent_points())),
+        );
+        let courtyard = match Rect::around(drawn_shapes.iter().flat_map(|r| r.corners())) {
             Some(r) => r,
             None => Rect::around(pads.iter().flat_map(|p| p.bounds().corners()))
                 .ok_or_else(|| invalid("it has no courtyard and no pads".to_string()))?
@@ -392,20 +403,34 @@ impl Footprint {
         // in every hole, and every pad that reaches past it with `PAD_COURTYARD_MARGIN` round
         // it: two such parts that touch keep their pads twice that apart.
         let drawn = courtyard;
-        let courtyard = pads
-            .iter()
-            .filter_map(|p| {
-                let reach = p.drill?.width.max(p.drill?.height) / 2.0;
-                Some(Rect::new(p.at, p.at).expanded(reach))
-            })
-            .chain(
-                pads.iter()
-                    .filter(|p| p.kind != PadKind::NpThruHole)
-                    .map(Pad::bounds)
-                    .filter(|b| drawn.union(b) != drawn)
-                    .map(|b| b.expanded(PAD_COURTYARD_MARGIN)),
-            )
+        let reaches = |inside: &dyn Fn(&Rect) -> bool| -> Vec<Rect> {
+            pads.iter()
+                .filter_map(|p| {
+                    let reach = p.drill?.width.max(p.drill?.height) / 2.0;
+                    Some(Rect::new(p.at, p.at).expanded(reach))
+                })
+                .filter(|hole| !inside(hole))
+                .chain(
+                    pads.iter()
+                        .filter(|p| p.kind != PadKind::NpThruHole)
+                        .map(Pad::bounds)
+                        .filter(|b| !inside(b))
+                        .map(|b| b.expanded(PAD_COURTYARD_MARGIN)),
+                )
+                .collect()
+        };
+        let courtyard = reaches(&|b| drawn.union(b) == drawn)
+            .into_iter()
             .fold(courtyard, |c, reach| c.union(&reach));
+        // One drawn shape (or none) is the box, as ever. Several are each their own, and
+        // what lies outside all of them is a shape of its own.
+        let courtyard_shapes = if drawn_shapes.len() > 1 {
+            let mut shapes = drawn_shapes.clone();
+            shapes.extend(reaches(&|b| drawn_shapes.iter().any(|s| s.contains(b))));
+            shapes
+        } else {
+            vec![courtyard]
+        };
 
         // The body: what is drawn on the fabrication layer, else the courtyard (a hole that
         // reaches past the drawing is in the courtyard, and is the part's body too).
@@ -445,6 +470,7 @@ impl Footprint {
             pads,
             graphics,
             courtyard,
+            courtyard_shapes,
             courtyard_faces,
             body,
             body_is_courtyard,
@@ -548,6 +574,38 @@ impl Shape {
             Shape::Poly { points } => points.clone(),
         }
     }
+}
+
+/// The boxes of the courtyard's drawings joined into the shapes they make: drawings whose
+/// boxes overlap or touch (the four sides of a rectangle drawn as lines, a rectangle inside
+/// another) are one shape, and the shape is the box round them. Drawings that do not touch
+/// are separate shapes.
+fn courtyard_pieces(boxes: impl IntoIterator<Item = Rect>) -> Vec<Rect> {
+    const TOUCH: f64 = 1e-6;
+    let touch = |a: &Rect, b: &Rect| {
+        a.min.x <= b.max.x + TOUCH
+            && b.min.x <= a.max.x + TOUCH
+            && a.min.y <= b.max.y + TOUCH
+            && b.min.y <= a.max.y + TOUCH
+    };
+    let mut shapes: Vec<Rect> = Vec::new();
+    for b in boxes {
+        let mut joined = b;
+        // Take in every shape this one touches, which may bring in others it now touches.
+        loop {
+            let Some(at) = shapes.iter().position(|s| touch(s, &joined)) else {
+                break;
+            };
+            joined = joined.union(&shapes.remove(at));
+        }
+        shapes.push(joined);
+    }
+    shapes.sort_by(|a, b| {
+        (a.min.x, a.min.y)
+            .partial_cmp(&(b.min.x, b.min.y))
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+    shapes
 }
 
 fn float(item: &Sexp) -> Result<f64, String> {
@@ -1923,6 +1981,84 @@ mod tests {
             (fp.courtyard.min, fp.courtyard.max),
             (Pt::new(-1.0, -1.0), Pt::new(1.0, 1.0))
         );
+    }
+
+    #[test]
+    fn a_footprint_that_draws_one_courtyard_has_it_as_its_only_shape() {
+        // Four lines are one rectangle; a pad that reaches past it widens it as ever.
+        let fp = Footprint::parse(
+            "L:O",
+            r#"(footprint "O"
+                (pad "1" smd rect (at 2 0) (size 1 1) (layers "F.Cu" "F.Mask"))
+                (fp_line (start -1 -1) (end 1 -1) (layer "F.CrtYd"))
+                (fp_line (start 1 -1) (end 1 1) (layer "F.CrtYd"))
+                (fp_line (start 1 1) (end -1 1) (layer "F.CrtYd"))
+                (fp_line (start -1 1) (end -1 -1) (layer "F.CrtYd")))"#,
+        )
+        .unwrap();
+        assert_eq!(fp.courtyard_shapes, vec![fp.courtyard]);
+        assert_eq!(fp.courtyard.max, Pt::new(2.65, 1.0));
+        // No courtyard at all: the pads and a margin, one shape.
+        let bare = Footprint::parse(
+            "L:B",
+            r#"(footprint "B"
+                (pad "1" smd rect (at 0 0) (size 1 1) (layers "F.Cu" "F.Mask")))"#,
+        )
+        .unwrap();
+        assert_eq!(bare.courtyard_shapes, vec![bare.courtyard]);
+    }
+
+    #[test]
+    fn courtyards_that_are_apart_are_separate_shapes() {
+        // Two rectangles 22 mm apart, a row of pads in each, as a plug-in module draws it.
+        let fp = Footprint::parse(
+            "L:M",
+            r#"(footprint "M"
+                (pad "1" thru_hole circle (at 0 0) (size 1.7 1.7) (drill 1) (layers "*.Cu"))
+                (pad "2" thru_hole circle (at 0 2.54) (size 1.7 1.7) (drill 1) (layers "*.Cu"))
+                (pad "3" thru_hole circle (at 22 0) (size 1.7 1.7) (drill 1) (layers "*.Cu"))
+                (pad "4" thru_hole circle (at 22 2.54) (size 1.7 1.7) (drill 1) (layers "*.Cu"))
+                (fp_rect (start -1.2 -1.2) (end 1.2 3.74) (layer "F.CrtYd"))
+                (fp_rect (start 20.8 -1.2) (end 23.2 3.74) (layer "F.CrtYd")))"#,
+        )
+        .unwrap();
+        assert_eq!(
+            fp.courtyard_shapes,
+            vec![
+                Rect::new(Pt::new(-1.2, -1.2), Pt::new(1.2, 3.74)),
+                Rect::new(Pt::new(20.8, -1.2), Pt::new(23.2, 3.74)),
+            ]
+        );
+        // The box round them is the courtyard, as ever.
+        assert_eq!(fp.courtyard.min, Pt::new(-1.2, -1.2));
+        assert_eq!(fp.courtyard.max, Pt::new(23.2, 3.74));
+    }
+
+    #[test]
+    fn a_pad_outside_every_courtyard_shape_is_a_shape_of_its_own() {
+        let fp = Footprint::parse(
+            "L:P",
+            r#"(footprint "P"
+                (pad "1" smd rect (at 10 0) (size 1 1) (layers "F.Cu" "F.Mask"))
+                (pad "2" smd rect (at 0 0) (size 1 1) (layers "F.Cu" "F.Mask"))
+                (fp_rect (start -1 -1) (end 1 1) (layer "F.CrtYd"))
+                (fp_rect (start -1 5) (end 1 7) (layer "F.CrtYd")))"#,
+        )
+        .unwrap();
+        // The two rectangles, and pad 1 with `PAD_COURTYARD_MARGIN` round it, not a box that
+        // runs from the rectangles to the pad. Pad 2 is inside the first rectangle.
+        assert_eq!(
+            fp.courtyard_shapes,
+            vec![
+                Rect::new(Pt::new(-1.0, -1.0), Pt::new(1.0, 1.0)),
+                Rect::new(Pt::new(-1.0, 5.0), Pt::new(1.0, 7.0)),
+                Rect::new(
+                    Pt::new(9.5 - PAD_COURTYARD_MARGIN, -0.5 - PAD_COURTYARD_MARGIN),
+                    Pt::new(10.5 + PAD_COURTYARD_MARGIN, 0.5 + PAD_COURTYARD_MARGIN)
+                ),
+            ]
+        );
+        assert_eq!(fp.courtyard.max.x, 10.5 + PAD_COURTYARD_MARGIN);
     }
 
     #[test]
