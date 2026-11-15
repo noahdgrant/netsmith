@@ -66,8 +66,8 @@ impl Board {
                 if crate::protrusion::pins_under(t, c).is_none() {
                     continue;
                 }
-                let court = c.courtyard();
-                if !reach.iter().any(|r| r.overlaps(&court)) {
+                let courts = c.courtyards();
+                if !reach.iter().any(|r| courts.iter().any(|c| r.overlaps(c))) {
                     continue;
                 }
                 covers.push((c.refdes.clone(), c.path.clone()));

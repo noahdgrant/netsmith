@@ -870,8 +870,10 @@ fn could_fit(parts: &[Placed], fit: (f64, f64), options: &PlaceOptions) -> bool 
         .iter()
         .filter(|p| !options.overhang.contains_key(&p.refdes))
     {
-        let c = p.courtyard();
-        let area = c.width() * c.height();
+        // The area the courtyard's shapes cover (not the box round them, which a part with
+        // two rows of pads does not take).
+        let shapes = p.courtyards();
+        let area = Rect::union_area(&shapes);
         if is_through(p) {
             // On a face the footprint draws no courtyard for, the part takes only its pads
             // (`Placed::room_on`; the pads' own area is what is certainly taken).
@@ -882,7 +884,7 @@ fn could_fit(parts: &[Placed], fit: (f64, f64), options: &PlaceOptions) -> bool 
                     continue;
                 }
                 load[k] += p
-                    .room_on(face, 0.0, c)
+                    .room_on(face, 0.0, &shapes)
                     .iter()
                     .map(|r| r.width() * r.height())
                     .sum::<f64>();

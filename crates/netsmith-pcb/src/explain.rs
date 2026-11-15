@@ -938,6 +938,11 @@ impl<'a> Context<'a> {
 
     /// Whether the two windows take room in the same place on a face for every turn.
     fn takes_same_room(a: &Win, b: &Win, qa: &Quarter, qb: &Quarter) -> bool {
+        // The box round a courtyard of several shapes is not all room: what is certainly
+        // taken is left to the placement check after placing.
+        if !Self::solid(a.part) || !Self::solid(b.part) {
+            return false;
+        }
         // A part may stand over the other's pins when how far they protrude is stated
         // (`crate::protrusion`): that is judged by `protrusions`, not by the courtyards.
         if crate::protrusion::pins_under(a.part, b.part).is_some()
@@ -949,11 +954,17 @@ impl<'a> Context<'a> {
             let room = |w: &Win, q: &Quarter| {
                 let mut p = w.part.clone();
                 p.side = w.side;
-                let r = p.room_on(face, 0.0, q.court);
+                let r = p.room_on(face, 0.0, &[q.court]);
                 r.len() == 1 && r[0] == q.court
             };
             room(a, qa) && room(b, qb)
         })
+    }
+
+    /// Whether the box round the part's courtyard is all room: its footprint draws one shape
+    /// (or none). A proof that two courtyards overlap wherever the parts are put needs it.
+    fn solid(part: &Placed) -> bool {
+        part.footprint.courtyard_shapes.len() <= 1
     }
 
     /// Two parts whose courtyards overlap wherever their windows put them.
@@ -1040,7 +1051,7 @@ impl<'a> Context<'a> {
         found: &mut Vec<String>,
     ) {
         for w in wins {
-            if w.lines.is_empty() || w.quarters.is_empty() {
+            if w.lines.is_empty() || w.quarters.is_empty() || !Self::solid(w.part) {
                 continue;
             }
             for (kind, name, area) in self.forbidden() {
@@ -1170,6 +1181,7 @@ impl<'a> Context<'a> {
                     || c.part.has_hole()
                     || c.lines.is_empty()
                     || c.quarters.is_empty()
+                    || !Self::solid(c.part)
                 {
                     continue;
                 }

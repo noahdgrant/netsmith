@@ -52,6 +52,22 @@ impl Board {
                 }
             })
             .collect();
+        // Each shape of the courtyard is a room of its own against other courtyards,
+        // keepouts and cutouts, clipped the same way. The outline is judged on the box.
+        let shapes: Vec<Vec<Rect>> = self
+            .parts
+            .iter()
+            .zip(&may)
+            .map(|(p, m)| {
+                let mut shapes = p.courtyards();
+                if m.any() {
+                    for s in &mut shapes {
+                        *s = overhang::clip(s, &self.outline);
+                    }
+                }
+                shapes
+            })
+            .collect();
         let cutouts = self.cutout_shapes();
         let zones = self.height_zones();
         let mut problems = Vec::new();
@@ -121,7 +137,7 @@ impl Board {
                 .iter()
                 .filter(|k| k.carrier.as_deref() != Some(a.path.as_str()))
             {
-                if k.parts && rooms[i].overlaps(&k.rect) {
+                if k.parts && shapes[i].iter().any(|s| s.overlaps(&k.rect)) {
                     problems.push(PlacementProblem::InKeepout {
                         refdes: a.refdes.clone(),
                         path: a.path.clone(),
@@ -169,7 +185,8 @@ impl Board {
                 }
             }
             for (cutout, hole) in &cutouts {
-                if rooms[i].overlaps(&hole.rect) {
+                let in_cutout = shapes[i].iter().any(|s| s.overlaps(&hole.rect));
+                if in_cutout {
                     problems.push(PlacementProblem::InCutout {
                         refdes: a.refdes.clone(),
                         path: a.path.clone(),
@@ -183,7 +200,7 @@ impl Board {
                     .filter(|p| p.copper_layers() != (false, false))
                     .map(|p| rect_distance(&a.pad_bounds(p), &hole.rect))
                     .fold(f64::MAX, f64::min);
-                if nearest < self.rules.copper_to_edge - 1e-9 && !rooms[i].overlaps(&hole.rect) {
+                if nearest < self.rules.copper_to_edge - 1e-9 && !in_cutout {
                     problems.push(PlacementProblem::PadNearCutout {
                         refdes: a.refdes.clone(),
                         path: a.path.clone(),
@@ -209,7 +226,7 @@ impl Board {
             for (j, b) in self.parts.iter().enumerate().skip(i + 1) {
                 // Parts on opposite faces may share the board's area, unless one has a hole
                 // through the board that takes room there (`Placed::room_on`).
-                if a.rooms_overlap(rooms[i], b, rooms[j], self.rules.clearance, &zones) {
+                if a.rooms_overlap(&shapes[i], b, &shapes[j], self.rules.clearance, &zones) {
                     let problem = PlacementProblem::overlap_of(a, b, self.rules.clearance, &zones);
                     let imported =
                         self.imported.contains(&a.refdes) && self.imported.contains(&b.refdes);
