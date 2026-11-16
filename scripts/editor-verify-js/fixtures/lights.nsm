@@ -1,0 +1,33 @@
+import std::parts::connector::Header1x2
+import std::parts::passive::{Resistor, Led}
+import std::sources::Rail
+import std::mfg::jlcpcb::TwoLayer
+
+/// A resistor and an LED across a rail.
+module Indicator {
+    .vin: Rail
+    .led: Led {
+        .current &= 5mA..15mA
+    }
+    .r: Resistor {}
+    .vin.pos ~> .r ~> .led ~> .vin.neg
+}
+
+board Lights {
+    .process: TwoLayer {
+        .stackup.thickness &= 1.6mm
+    }
+    .supply: Rail {
+        .voltage &= 5V +/- 5%
+        .pos.net &= "VCC"
+    }
+    .a: Indicator
+    .b: Indicator
+    .c: Indicator
+    .supply ~ .a.vin
+    .supply ~ .b.vin
+    .supply ~ .c.vin
+    .power_in: Header1x2
+    .supply.pos ~ .power_in.p1
+    .supply.neg ~ .power_in.p2
+}

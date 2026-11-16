@@ -116,6 +116,31 @@ fn init_then_build_from_a_subdirectory_through_the_program() {
     assert!(String::from_utf8_lossy(&lost.stderr).contains("netsmith init"));
 }
 
+#[test]
+fn init_refresh_through_the_program_writes_what_is_missing_and_needs_a_project() {
+    let root = TempFile::new("project-test-refresh-program", "blink");
+    fs::create_dir_all(&root).unwrap();
+    assert!(netsmith(&root, &["init"]).status.success());
+    assert_eq!(fs::read_to_string(root.join("CLAUDE.md")).unwrap(), "@AGENTS.md\n");
+    fs::remove_file(root.join("CLAUDE.md")).unwrap();
+
+    let refreshed = netsmith(&root.join("src"), &["init", "--refresh"]);
+    assert!(
+        refreshed.status.success(),
+        "{}",
+        String::from_utf8_lossy(&refreshed.stderr)
+    );
+    let said = String::from_utf8_lossy(&refreshed.stdout);
+    assert!(said.contains("created CLAUDE.md"), "{said}");
+    assert!(root.join("CLAUDE.md").is_file());
+
+    let lost = netsmith(&dir("refresh-lost"), &["init", "--refresh"]);
+    assert_eq!(lost.status.code(), Some(1));
+    assert!(String::from_utf8_lossy(&lost.stderr).contains("netsmith.toml"));
+    let both = netsmith(&root, &["init", "--refresh", "--name", "x"]);
+    assert_eq!(both.status.code(), Some(2));
+}
+
 /// A project that is only a library: `top_level = []`, and a module under `src/`.
 fn library_project(name: &str) -> TempDir {
     let root = dir(name);

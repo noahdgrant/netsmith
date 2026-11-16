@@ -4,7 +4,8 @@
 //! language guide's "The layout file"; the work is `netsmith_fabricate::layout_edit`.
 //! `layout summary` and `layout compare` (issue #773) place the board as `board3d` does and print
 //! what decides whether the placement is good, `netsmith_pcb::Summary` and
-//! `netsmith_pcb::PlacementComparison`.
+//! `netsmith_pcb::PlacementComparison`. `layout regenerate` (issue #825) places one module again
+//! with the rest held, `netsmith_fabricate::regenerate`.
 
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -52,6 +53,34 @@ pub enum Command {
         after_long_help = "The board is placed once with the layout file BEFORE and once with AFTER (with none, the layout file beside the source), each as `board3d` places it; a part with no entry in a file is placed by the placer, so it may move between the two. Printed: each part that moved, turned or changed face, with its two places and how far its origin moved; the placement check's findings that appeared and those that went; and the totals of each (`hpwl`, `ratsnest`, `crossings`, `decoupling_mean`, `decoupling_max`). `--format json` prints one JSON document on one line: `board`, `moved` (`path`, `refdes`, `from`, `to`, each `x`, `y`, `turn`, `side`, and `distance`), `appeared`, `gone`, `before` and `after`. The exit code is 0 when it is printed, 1 when a board does not build or place, and 2 when a layout file is not there."
     )]
     Compare(CompareArgs),
+    /// Place one module again with every other part held, and say what moved and what it changes; `--write` keeps it.
+    #[command(
+        after_long_help = "The board is placed as `fab` places it (the layout file and the physical file read). The parts of the module at PATH (every part whose path is PATH or starts with `PATH.` or `PATH[`) are placed again, inside the box round them grown by `--margin` mm on each side and cut to the outline; every other part, and every part of the module the layout file locks or a requirement pins, stays where it is. The same board, module, seed and margin always give the same arrangement, and another `--seed` another one.\n\nPrinted: each part placed again with its place before and after (mm from the outline's top left corner, y down, the turn and the face), the nets with a pad on one of them (`fab` and the editor route their copper again and keep the rest), the records of the routes file that no longer match their pads (dropped as any record whose pads moved is, the locked shapes kept), the placement check's findings that appeared and those that went, and the totals before and after. Without `--write` nothing is written. With it, each part placed again gets an entry in the layout file, unlocked, with `source = \"regen\"`, and the rest of the file (its comments too) is kept. `--format json` prints one JSON document on stdout: `board`, `module`, `seed`, `margin`, `region`, `parts` (`path`, `refdes`, `before`, `was`, `after`), `held`, `nets`, `routes_dropped`, `comparison` (as `layout compare` has it) and `written`. The exit code is 0 when the proposal is printed (and written with `--write`), 1 when it is refused (a module the board has no part in, every part of it held, parts that do not fit the region), and 2 when it could not run."
+    )]
+    Regenerate(RegenerateArgs),
+}
+
+#[derive(Debug, PartialEq, ClapArgs)]
+pub struct RegenerateArgs {
+    /// The module, by its path in the design (`stage`, `channels[1]`).
+    #[arg(value_name = "PATH")]
+    pub module: String,
+    #[command(flatten)]
+    pub target: Target,
+    /// The seed of the arrangement: the same seed gives the same one, another seed another.
+    #[arg(long, value_name = "N", default_value_t = 0)]
+    pub seed: u64,
+    /// How far round the module's parts they may go, in mm.
+    #[arg(long, value_name = "MM", default_value_t = netsmith_fabricate::regenerate::DEFAULT_MARGIN)]
+    pub margin: f64,
+    /// Write the new places to the layout file (without it, nothing is written).
+    #[arg(long)]
+    pub write: bool,
+    #[command(flatten)]
+    pub placing: common::Placing,
+    /// Text for a person, or one JSON document on stdout.
+    #[arg(long, value_enum, default_value = "text")]
+    pub format: common::Format,
 }
 
 #[derive(Debug, PartialEq, ClapArgs)]
@@ -162,7 +191,68 @@ pub fn run(args: Args) -> ExitCode {
         Command::Check(a) => check(&a),
         Command::Summary(a) => summary(&a),
         Command::Compare(a) => compare(&a),
+        Command::Regenerate(a) => regenerate(&a),
     }
+}
+
+/// `layout regenerate`: one module placed again, printed and written when asked.
+fn regenerate(args: &RegenerateArgs) -> ExitCode {
+    use netsmith_fabricate::regenerate as lib;
+    if !args.margin.is_finite() || args.margin < 0.0 {
+        eprintln!("error: --margin must be a distance of 0 mm or more");
+        return ExitCode::from(2);
+    }
+    let request = lib::Request {
+        module: args.module.clone(),
+        seed: args.seed,
+        margin: args.margin,
+    };
+    let made = common::with_placed_board(
+        args.target.file.as_deref(),
+        args.target.board.as_deref(),
+        Some(&args.placing),
+        |placed| {
+            placed
+                .with_built(|built| {
+                    lib::propose(
+                        &built.design,
+                        &placed.layout,
+                        placed.libraries,
+                        placed.catalogs.constraints_warn(),
+                        placed.seeds,
+                        &request,
+                    )
+                    .map(|(proposal, layout)| (proposal, layout, placed.layout.clone()))
+                })
+                .and_then(|done| done.map_err(|e| format!("error: {e}\n")))
+        },
+    );
+    let (proposal, layout, file) = match made {
+        Ok(made) => made,
+        Err(code) => return code,
+    };
+    if args.write
+        && let Err(e) = lib::accept(&file, &layout)
+    {
+        eprintln!("error: {e}");
+        return ExitCode::from(2);
+    }
+    match args.format {
+        common::Format::Json => {
+            let mut value = serde_json::to_value(&proposal).expect("plain data");
+            value["written"] = serde_json::Value::Bool(args.write);
+            println!("{value}");
+        }
+        common::Format::Text => {
+            print!("{}", proposal.text());
+            if args.write {
+                println!("wrote {}", file.display());
+            } else {
+                println!("not written: run again with --write to keep it");
+            }
+        }
+    }
+    ExitCode::SUCCESS
 }
 
 /// `layout summary`: the board placed and summed up.
@@ -382,6 +472,22 @@ mod tests {
             Ok(Top::Layout(Args {
                 command: Command::Check(_)
             }))
+        ));
+    }
+
+    #[test]
+    fn regenerate_takes_its_arguments() {
+        assert!(matches!(
+            parse(&["layout", "regenerate", "stage", "--seed", "4", "--margin", "1.5", "--write"]),
+            Ok(Top::Layout(Args {
+                command: Command::Regenerate(RegenerateArgs { ref module, seed: 4, margin, write: true, .. })
+            })) if module == "stage" && margin == 1.5
+        ));
+        assert!(matches!(
+            parse(&["layout", "regenerate", "stage"]),
+            Ok(Top::Layout(Args {
+                command: Command::Regenerate(RegenerateArgs { seed: 0, margin, write: false, .. })
+            })) if margin == 3.0
         ));
     }
 

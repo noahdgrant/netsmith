@@ -3364,7 +3364,14 @@ mod tests {
             ..Default::default()
         };
         let check = format!("{}\n{board_extras:?}", rules.kicad_pro("T", &[]));
-        Ok((format!("{rules:?}"), check))
+        // `fiducial_edge` is in `Rules` for the placer, which keeps the fiducials it puts in the
+        // corners that far from the edge (issue #761); the router reads none of it, so it is
+        // left out of what is compared as the router's rules.
+        let router = netsmith_pcb::Rules {
+            fiducial_edge: 0.0,
+            ..rules
+        };
+        Ok((format!("{router:?}"), check))
     }
 
     /// The fiducial and test point rules (issue #761) are judged on the placed board, so they

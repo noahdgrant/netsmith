@@ -480,6 +480,14 @@ mod tests {
         (gr_rect (start 0 0) (end 20 20) (stroke (width 0.05) (type default)) (fill no) (layer "Edge.Cuts"))
     )"#;
 
+    fn rules() -> Rules {
+        Rules {
+            edge_clearance: 0.2,
+            hole_clearance: None,
+            classes: Vec::new(),
+        }
+    }
+
     fn files() -> Plot {
         plot(
             &Artwork::parse(BOARD).unwrap(),
@@ -656,10 +664,38 @@ mod tests {
     }
 
     #[test]
+    fn a_curve_and_a_text_box_on_the_silkscreen_are_plotted_and_not_noted_as_skipped() {
+        let src = BOARD.replace(
+            "(gr_rect (start 0 0)",
+            "(gr_curve (pts (xy 2 2) (xy 4 0) (xy 6 4) (xy 8 2)) (stroke (width 0.15) (type solid)) (layer \"F.SilkS\"))
+        (gr_text_box \"HELLO \u{b5}F\" (start 2 12) (end 12 16) (layer \"F.SilkS\")
+          (effects (font (size 1 1) (thickness 0.15))) (stroke (width 0.1) (type solid)) (border yes))
+        (gr_rect (start 0 0)",
+        );
+        let art = Artwork::parse(&src).unwrap();
+        assert!(art.skipped.is_empty(), "{:?}", art.skipped);
+        let plain = plot(&Artwork::parse(BOARD).unwrap(), "B", &rules()).unwrap();
+        let with = plot(&art, "B", &rules()).unwrap();
+        assert!(
+            with.notes.iter().all(|n| !n.contains("stroke font")),
+            "{:?}",
+            with.notes
+        );
+        let silk = |p: &Plot| get(p, "F_Silkscreen").matches("D01*").count();
+        // The curve's pieces, the border's four sides and the letters add lines to the plot.
+        assert!(
+            silk(&with) > silk(&plain) + 40,
+            "{} {}",
+            silk(&with),
+            silk(&plain)
+        );
+    }
+
+    #[test]
     fn text_with_a_character_the_font_lacks_is_noted() {
         let src = BOARD.replace(
             "(property \"Reference\" \"R1\"",
-            "(property \"Reference\" \"R\u{e9}\"",
+            "(property \"Reference\" \"R\u{4e2d}\"",
         );
         let p = plot(
             &Artwork::parse(&src).unwrap(),
@@ -674,7 +710,7 @@ mod tests {
         assert!(
             p.notes
                 .iter()
-                .any(|n| n.contains("`\u{e9}`") && !n.contains("R1") && n.contains("F.SilkS")),
+                .any(|n| n.contains("`\u{4e2d}`") && !n.contains("R1") && n.contains("F.SilkS")),
             "{:?}",
             p.notes
         );

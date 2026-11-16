@@ -103,7 +103,7 @@ tried them.
 
 ```sh
 mkdir blink && cd blink
-netsmith init       # netsmith.toml, src/main.nsm (a working LED board), agent files
+netsmith init       # netsmith.toml, src/main.nsm (a working LED board), agent files (`init --refresh` updates them after an upgrade)
 netsmith build      # a KiCad schematic in out/
 netsmith editor     # the source and the board in a browser, at 127.0.0.1:8787 (`--offline` asks no supplier for stock or price, and the bill of materials says they are not checked; `fab --offline` says it in `fab-notes.txt`)
 netsmith fab        # a package for JLCPCB in fab/: Gerbers, drill, bom.csv, cpl.csv, fab-notes.txt, the board's 3D scene as `<board>.glb` (`--no-glb` or `glb = false` in netsmith.toml leaves it out), the board as STEP for mechanical CAD as `<board>.step` (`--no-step` or `step = false` leaves it out), and for a board with pin requests its pin map for firmware from the final layout (`.pins.h`, `.pins.json`)
@@ -111,7 +111,7 @@ netsmith board3d --json   # the board's 3D facts for an agent: heights, limits, 
 netsmith board3d --glb board.glb   # the same scene as glTF 2.0 binary, the file the editor's 3D view shows
 netsmith render --view iso --out board.png   # the board drawn in 3D to a PNG by netsmith's own rasterizer, no GPU or KiCad (docs/BOARD3D.md)
 netsmith view --view top --highlight J1 --picture j1.png   # drive the 3D view of the running editor with render's flags, and save its picture (docs/BOARD3D.md)
-netsmith layout show   # where each part is in the layout file; `layout set PATH --at X,Y --turn 90 --side bottom --lock` writes one entry, `layout check` finds a wrong path or turn, `layout summary` sums up a placement (wire, decoupling, modules, area and free space per face, nets) and `layout compare` says what moved between two layout files (language guide, "The layout file")
+netsmith layout show   # where each part is in the layout file; `layout set PATH --at X,Y --turn 90 --side bottom --lock` writes one entry, `layout check` finds a wrong path or turn, `layout summary` sums up a placement (wire, decoupling, modules, area and free space per face, nets) `layout compare` says what moved between two layout files, and `layout regenerate PATH` places one module again with the rest held (language guide, "The layout file")
 netsmith compare a.kicad_sch b.nsm   # are two designs the same circuit?
 ```
 

@@ -116,6 +116,8 @@
 /* placement requirements (ADR 0045 C4): the window a part's body may stand in, faint, strong for the picked part; the body's ghost at the nearest place it allows */
 .pcb-overlay .req-window { fill: color-mix(in srgb, var(--info) 5%, transparent); stroke: var(--info); stroke-opacity: .5; stroke-width: calc(1 * var(--px, .04)); stroke-dasharray: calc(5 * var(--px, .04)) calc(3 * var(--px, .04)); }
 .pcb-overlay .req.on .req-window { fill: color-mix(in srgb, var(--info) 13%, transparent); stroke-opacity: 1; stroke-width: calc(1.75 * var(--px, .04)); }
+.pcb-overlay .regen-region { fill: color-mix(in srgb, var(--accent) 6%, transparent); stroke: var(--accent); stroke-opacity: .6; stroke-width: calc(1 * var(--px, .04)); stroke-dasharray: calc(5 * var(--px, .04)) calc(3 * var(--px, .04)); pointer-events: none; }
+.pcb-overlay .regen-ghost { fill: color-mix(in srgb, var(--accent) 22%, transparent); stroke: var(--accent); stroke-width: calc(2 * var(--px, .04)); pointer-events: none; }
 .pcb-overlay .req-ghost { fill: none; stroke: var(--info); stroke-width: calc(2.25 * var(--px, .04)); stroke-dasharray: calc(2 * var(--px, .04)) calc(2 * var(--px, .04)); }
 
 /* the routes file's copper (fixed: the router keeps it): a line along each track and a ring round each via in the text's colour, which

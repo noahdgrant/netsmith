@@ -18,9 +18,16 @@
 //! layout first, and the file is written only then, atomically. `GET /api/pcb/scene` has the
 //! drawing (`render_svg_view`, with `data-ref`, `data-path`, `data-pad`, `data-net`,
 //! `data-keepout`, `data-cutout`, and `data-from` and `data-to` on the ratsnest lines) and
-//! the data that finds things in it. An edit throws the routed copper away (there is no
-//! routes cache), and a flip changes what the derived placer is told, so parts nobody placed
-//! by hand may move.
+//! the data that finds things in it. An edit throws the routed copper away, and a flip changes
+//! what the derived placer is told, so parts nobody placed by hand may move.
+//!
+//! **Regenerate and partial routing** (issue #825). `POST /api/pcb/regenerate` places one module
+//! again with the rest held ([`regenerate`], `netsmith_fabricate::regenerate`) and answers with a
+//! proposal, the edit that makes it among it; the page sends that edit as any other, one step of
+//! undo. The workspace keeps the last [`ROUTED_KEPT`] routed boards of each board
+//! ([`RoutedBoards`]): a route starts from the board routed last and keeps the copper of every net
+//! the change left alone (`netsmith_router::carry`), and an edit or a route whose board is one
+//! routed before takes that copper again with no router (an undo).
 //!
 //! **Findings** (`GET /api/pcb/findings`, `POST /api/pcb/drc`): netsmith's own placement
 //! problems, the connections left on a routed board, netsmith's design rules check of the
@@ -53,8 +60,8 @@
 //! step in the page); where a shape cannot move far enough the way goes round all of them and the
 //! answer says which ([`PcbWalked::stuck`]).
 //!
-//! **Not built** (ADR 0030, issue #59): waivers (the page has no way to write one),
-//! regeneration of one module, partial routing, a copy of the findings for an agent, and `layout show` overlays.
+//! **Not built** (ADR 0030, issue #59): waivers (the page has no way to write one), the router's
+//! copper kept on disk, a copy of the findings for an agent, and `layout show` overlays.
 
 use std::{
     collections::HashMap,
@@ -70,10 +77,10 @@ use netsmith_editor::{
     api::{
         ComparePcbPlace, CompareSize, DrawnKeepout, KeepoutOrigin, KeepoutPlacement, KicadState,
         PartPlacement, PcbBox, PcbChange, PcbCrossed, PcbCrossedTrack, PcbCrossedVia, PcbCutout,
-        PcbFinding, PcbFindings, PcbKeepout, PcbNetWidth, PcbPad, PcbPart, PcbPoint, PcbReport,
-        PcbRequirement, PcbRouteNet, PcbRouteTrack, PcbRouteVia, PcbScene, PcbShoved,
-        PcbShovedTrack, PcbShovedVia, PcbSide, PcbWalk, PcbWalked, RequiredPlace, RoutesChange,
-        Severity,
+        PcbFinding, PcbFindings, PcbKeepout, PcbNetWidth, PcbPad, PcbPart, PcbPoint, PcbRegenerate,
+        PcbRegenerated, PcbRegeneratedPart, PcbReport, PcbRequirement, PcbRouteNet, PcbRouteTrack,
+        PcbRouteVia, PcbScene, PcbShoved, PcbShovedTrack, PcbShovedVia, PcbSide, PcbTotals,
+        PcbWalk, PcbWalked, RequiredPlace, RoutesChange, Severity,
     },
 };
 use netsmith_pcb::{
@@ -134,6 +141,60 @@ pub struct Entry {
     routes_stamp: String,
     routes: Routes,
     routes_notes: Vec<RoutesNote>,
+    /// The nets whose router copper the last route kept from the board routed before the
+    /// change ([`netsmith_router::carry`]), and the nets it routed again; empty when it routed
+    /// from nothing.
+    carried: Vec<String>,
+    rerouted: Vec<String>,
+}
+
+/// How many routed boards of each board the editor keeps ([`RoutedBoards`]).
+pub const ROUTED_KEPT: usize = 4;
+
+/// A board as the router left it, with the board it started from (placed, with the routes
+/// file's copper): a route of a board equal to `start` is this one again, with no router.
+#[derive(Clone)]
+pub struct RoutedBoard {
+    start: Board,
+    board: Board,
+    unrouted: Vec<String>,
+    stopped: bool,
+    carried: Vec<String>,
+    rerouted: Vec<String>,
+}
+
+/// The last [`ROUTED_KEPT`] routed boards of one board, the newest last: what partial routing
+/// starts from, and what an undo back to a placement routed before shows again at once (issue
+/// #825). Kept across edits and readings of the files; a board is only taken again when it
+/// starts from exactly the same board.
+#[derive(Default)]
+pub struct RoutedBoards {
+    list: std::collections::VecDeque<RoutedBoard>,
+}
+
+impl RoutedBoards {
+    /// The routed board that started from `start`, if one is kept.
+    pub fn find(&self, start: &Board) -> Option<&RoutedBoard> {
+        self.list.iter().rev().find(|r| &r.start == start)
+    }
+
+    /// The board routed last, to carry the copper of from: only one of the same board name,
+    /// outline and rules, so that copper drawn for other rules is never kept.
+    pub fn last_like(&self, board: &Board) -> Option<&Board> {
+        self.list.back().map(|r| &r.board).filter(|b| {
+            b.name == board.name && b.outline == board.outline && b.rules == board.rules
+        })
+    }
+
+    /// Keep `routed`, dropping the oldest past [`ROUTED_KEPT`] and one that started from the
+    /// same board.
+    pub fn keep(&mut self, routed: RoutedBoard) {
+        self.list.retain(|r| r.start != routed.start);
+        self.list.push_back(routed);
+        while self.list.len() > ROUTED_KEPT {
+            self.list.pop_front();
+        }
+    }
 }
 
 /// Why a board could not be placed.
@@ -348,6 +409,8 @@ impl Entry {
             routes_stamp,
             routes,
             routes_notes,
+            carried: Vec::new(),
+            rerouted: Vec::new(),
         })
     }
 
@@ -380,8 +443,11 @@ impl Entry {
 
 impl Entry {
     /// Route the board, telling `say` the stages and how far the router has got, for as long as
-    /// the router's time limit lasts or until [`cancel`].
-    pub fn route(&mut self, name: &str, say: &Say) {
+    /// the router's time limit lasts or until [`cancel`]. With `before`, the same board routed
+    /// before a change of its placement, the copper of every net the change left alone is kept
+    /// and only the rest is routed ([`netsmith_router::carry::reroute`], issue #825). Gives the
+    /// routed board to keep ([`RoutedBoards`]).
+    pub fn route(&mut self, name: &str, say: &Say, before: Option<&Board>) -> RoutedBoard {
         let started = Instant::now();
         CANCEL.store(false, Ordering::Relaxed);
         let _reporting = Reporting::to(say);
@@ -391,15 +457,40 @@ impl Entry {
             self.board.outline.width(),
             self.board.outline.height()
         ));
-        let routing = route_with(
-            &mut self.board,
-            RouteOptions {
-                time_limit: Some(DEFAULT_ROUTE_TIMEOUT),
-                progress: Some(forward),
-                cancel: Some(&CANCEL),
-                ..RouteOptions::default()
-            },
-        );
+        let start = self.board.clone();
+        let options = RouteOptions {
+            time_limit: Some(DEFAULT_ROUTE_TIMEOUT),
+            progress: Some(forward),
+            cancel: Some(&CANCEL),
+            ..RouteOptions::default()
+        };
+        let routing = match before {
+            Some(before) => {
+                let done = netsmith_router::carry::reroute(
+                    before,
+                    &mut self.board,
+                    &Default::default(),
+                    options,
+                );
+                self.carried = done.carried.kept.clone();
+                let mut again = done.carried.ripped.clone();
+                again.extend(done.also.iter().cloned());
+                again.sort();
+                again.dedup();
+                self.rerouted = again;
+                say(&format!(
+                    "{name}: kept the copper of {} net(s), routed {} again",
+                    self.carried.len(),
+                    self.rerouted.len()
+                ));
+                done.routing
+            }
+            None => {
+                self.carried.clear();
+                self.rerouted.clear();
+                route_with(&mut self.board, options)
+            }
+        };
         self.routed = true;
         self.drc = OnceLock::new();
         self.stopped = routing.stopped;
@@ -410,6 +501,32 @@ impl Entry {
             self.elapsed.as_secs_f64(),
             self.unrouted.len()
         ));
+        RoutedBoard {
+            start,
+            board: self.board.clone(),
+            unrouted: self.unrouted.clone(),
+            stopped: self.stopped,
+            carried: self.carried.clone(),
+            rerouted: self.rerouted.clone(),
+        }
+    }
+
+    /// The board as `routed` has it, when it started from the board this entry has: an undo
+    /// back to a placement that was routed shows its copper again, with no router. Whether it
+    /// did.
+    pub fn restore(&mut self, routed: &RoutedBoards) -> bool {
+        let Some(found) = routed.find(&self.board) else {
+            return false;
+        };
+        self.board = found.board.clone();
+        self.routed = true;
+        self.drc = OnceLock::new();
+        self.stopped = found.stopped;
+        self.unrouted = found.unrouted.clone();
+        self.carried = found.carried.clone();
+        self.rerouted = found.rerouted.clone();
+        self.elapsed = Duration::ZERO;
+        true
     }
 
     pub fn report(&self, name: &str) -> PcbReport {
@@ -426,6 +543,8 @@ impl Entry {
             tracks: self.board.tracks.len() as u32,
             vias: self.board.vias.len() as u32,
             stopped: self.stopped,
+            carried: self.carried.clone(),
+            rerouted: self.rerouted.clone(),
             error: None,
             elapsed_ms: self.elapsed.as_millis().min(u128::from(u32::MAX)) as u32,
         }
@@ -1241,6 +1360,97 @@ fn crossed_of(router: &RouterCopper, crossed: &netsmith_router::walk::Crossed) -
             })
             .collect(),
     }
+}
+
+/// The entry `place` of the layout file as the page describes it.
+fn placement_of(place: &PartPlace) -> PartPlacement {
+    PartPlacement {
+        x: place.at[0],
+        y: place.at[1],
+        rotation: place.rotation,
+        side: if place.side == LayoutFace::Bottom {
+            PcbSide::Bottom
+        } else {
+            PcbSide::Top
+        },
+        locked: place.lock,
+        source: place.source.clone(),
+    }
+}
+
+/// One module of `entry`'s board placed again with the rest held (issue #825,
+/// `netsmith_fabricate::regenerate`): the proposal, with the edit that makes it. Nothing is
+/// written; a module that cannot be regenerated is 422 with the reason.
+pub fn regenerate(entry: &Entry, ask: &PcbRegenerate) -> Result<PcbRegenerated, ApiError> {
+    let request = netsmith_fabricate::regenerate::Request {
+        module: ask.module.clone(),
+        seed: u64::from(ask.seed),
+        margin: ask
+            .margin
+            .unwrap_or(netsmith_fabricate::regenerate::DEFAULT_MARGIN),
+    };
+    if !request.margin.is_finite() || request.margin < 0.0 {
+        return Err(ApiError::bad_request("a margin must be 0 mm or more"));
+    }
+    let (proposal, after, _) = netsmith_fabricate::regenerate::propose_on(
+        &entry.placed,
+        entry.layout.as_ref().map(|(l, _)| l),
+        Some(&entry.routes),
+        &request,
+    )
+    .map_err(|why| {
+        ApiError::unprocessable(
+            format!("{}: {why}", ask.board),
+            "regenerate_refused",
+            &[("board", &ask.board), ("module", &ask.module)],
+        )
+    })?;
+    let o = entry.placed.outline.min;
+    let changes = proposal
+        .parts
+        .iter()
+        .map(|m| PcbChange::Part {
+            path: m.path.clone(),
+            before: m.before.as_ref().map(placement_of),
+            after: Some(placement_of(&m.after)),
+        })
+        .collect();
+    let parts = proposal
+        .parts
+        .iter()
+        .filter_map(|m| {
+            after.part(&m.refdes).map(|p| PcbRegeneratedPart {
+                path: m.path.clone(),
+                refdes: m.refdes.clone(),
+                courtyard: sheet_box(p.courtyard()),
+            })
+        })
+        .collect();
+    let totals = |t: &netsmith_pcb::Totals| PcbTotals {
+        hpwl: t.hpwl,
+        ratsnest: t.ratsnest,
+        crossings: u32::try_from(t.crossings).unwrap_or(u32::MAX),
+    };
+    let c = &proposal.comparison;
+    Ok(PcbRegenerated {
+        module: proposal.module.clone(),
+        seed: ask.seed,
+        region: PcbBox {
+            x: proposal.region.x + o.x,
+            y: proposal.region.y + o.y,
+            width: proposal.region.width,
+            height: proposal.region.height,
+        },
+        changes,
+        parts,
+        held: proposal.held.clone(),
+        nets: proposal.nets.clone(),
+        routes_dropped: proposal.routes_dropped.clone(),
+        appeared: c.appeared.clone(),
+        gone: c.gone.clone(),
+        before: totals(&c.before),
+        after: totals(&c.after),
+    })
 }
 
 /// `before` is what the page last saw of an entry and `now` what the file has: the same, to

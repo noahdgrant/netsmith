@@ -248,6 +248,10 @@ struct State {
     /// Boards placed, and routed if asked, keyed by the board's name; cleared when the
     /// files are read again.
     pcb: HashMap<String, pcb::Entry>,
+    /// The boards routed last, by the board's name ([`pcb::RoutedBoards`]): kept when the files
+    /// are read again, so that a route after a change keeps the copper the change left alone
+    /// and an undo shows the copper it had.
+    routed: HashMap<String, pcb::RoutedBoards>,
     /// What `lock --check` said of the pick lock of each source file, by the file's name,
     /// made when a board of the file is asked for and dropped when the files are read again.
     locks: HashMap<String, Option<Arc<netsmith_editor::api::PickLockInfo>>>,
@@ -616,14 +620,19 @@ impl Workspace {
         files::write_atomic(file, &netsmith_fabricate::layout::text_over(file, &layout))
             .map_err(|e| ApiError::internal(format!("{shown}: {e}")))?;
         entry.set_layout_stamp(pcb::stamp(&data));
-        let scene = pcb::scene(&entry, &data, name);
         let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        // Back to a placement that was routed (an undo): its copper again, with no router.
+        if let Some(routed) = state.routed.get(name) {
+            entry.restore(routed);
+        }
+        let scene = pcb::scene(&entry, &data, name);
+        let report = entry.is_routed().then(|| entry.report(name));
         // Our own write is not a change by another program.
         state.layouts = files::stamps(&self.layout_files());
         if state.version == version {
             state.pcb.insert(name.clone(), entry);
         }
-        Ok(PcbEdited { scene })
+        Ok(PcbEdited { scene, report })
     }
 
     /// The keepout changes of `changes` that go to the board's physical file: those of a keepout
@@ -907,7 +916,10 @@ impl Workspace {
         if state.cancelled.is_none() {
             state.pcb.insert(name.to_string(), entry);
         }
-        Ok(PcbEdited { scene })
+        Ok(PcbEdited {
+            scene,
+            report: None,
+        })
     }
 
     /// A change to the routes file from the PCB view, made by `netsmith_fabricate::routes::edit`
@@ -1229,9 +1241,37 @@ impl Backend for Workspace {
             (state.version, state.snapshot.board_handle(board)?)
         };
         let mut entry = pcb::place(&data, board)?;
-        entry.route(board, say);
+        // A board routed before from this very board is that route again; else the board routed
+        // last, to keep the copper of what a change left alone (issue #825).
+        let (restored, before) = {
+            let state = self.state.lock().unwrap_or_else(|e| e.into_inner());
+            match state.routed.get(board) {
+                Some(r) => (entry.restore(r), r.last_like(&entry.board).cloned()),
+                None => (false, None),
+            }
+        };
+        if restored {
+            say(&format!(
+                "{board}: routed before from this placement: its copper again"
+            ));
+            let report = entry.report(board);
+            let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
+            if state.version == version {
+                state.pcb.insert(board.to_string(), entry);
+            }
+            return Ok(report);
+        }
+        let routed = entry.route(board, say, before.as_ref());
         let report = entry.report(board);
         let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        // Kept only when it ran to its end: a route stopped short is no board to start from.
+        if !report.stopped {
+            state
+                .routed
+                .entry(board.to_string())
+                .or_default()
+                .keep(routed);
+        }
         // Files that changed meanwhile made another reading; this board is of the old one.
         if state.version == version {
             state.pcb.insert(board.to_string(), entry);
@@ -1380,6 +1420,33 @@ impl Backend for Workspace {
 
     fn pcb_edit(&self, edit: &PcbEdit) -> Result<PcbEdited, ApiError> {
         self.edit_layout(edit)
+    }
+
+    fn pcb_regenerate(
+        &self,
+        ask: &netsmith_editor::api::PcbRegenerate,
+    ) -> Result<netsmith_editor::api::PcbRegenerated, ApiError> {
+        let name = &ask.board;
+        let (version, data) = {
+            let state = self.fresh();
+            let data = state.snapshot.board_handle(name)?;
+            if pcb::stamp(&data) != ask.stamp {
+                return Err(ApiError::conflict(format!(
+                    "the layout of `{name}` changed on disk since the board was read: reload the board"
+                )));
+            }
+            if let Some(entry) = state.pcb.get(name) {
+                return pcb::regenerate(entry, ask);
+            }
+            (state.version, data)
+        };
+        let entry = pcb::place(&data, name)?;
+        let proposal = pcb::regenerate(&entry, ask);
+        let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        if state.version == version {
+            state.pcb.entry(name.to_string()).or_insert(entry);
+        }
+        proposal
     }
 
     fn pcb_routes(

@@ -23,5 +23,5 @@ Meets tests 1 (a `layout` block in the part is a language construct, and a route
 - A rasteriser: none. The board is drawn as SVG (`crates/netsmith-pcb/src/svg.rs`) and netsmith takes no PNG renderer or headless browser as a dependency.
 - Module layouts as reusable sub-layouts (A4) are not wanted; a regenerated layout belongs to the board.
 - No agent chat in the editor: the agent works through the CLI and the files, and the editor shows the result.
-- Not built: regenerating one module (every part outside it locked for the run, the nets of its parts ripped up and routed again, a preview with the findings before and after, one undo step), partial routing, `netsmith place`, `route` and `layout check`, and the routes cache `<stem>.routes.toml` (issue #59).
+- Not built: the router's copper kept in `<stem>.routes.toml` as a cache, so that partial routing holds across sessions and in `fab` (issue #59).
 - Decided since: one layout file apart from the schematic's (ADR 0032, ADR 0061); DRC with coordinates (ADR 0037); two-sided placement (ADR 0031).
