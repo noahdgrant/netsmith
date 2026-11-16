@@ -670,6 +670,17 @@ pub struct Marks {
     pub min_test_point_pitch: f64,
     pub min_test_point_body: f64,
     pub min_test_point_edge: f64,
+    /// The nets that are a supply or a ground, and the least width of the pad of a test point on
+    /// one (above `min_test_point_pad` where it is larger).
+    pub power_nets: Vec<String>,
+    pub min_power_test_point_pad: f64,
+    /// The parts of known height above the height the process calls tall, with the height; a
+    /// part of unknown height is not here and is judged as any other. The least space from a
+    /// test point's copper to the body of one of them (above `min_test_point_body` where it is
+    /// larger).
+    pub tall_parts: Vec<(String, f64)>,
+    pub tall_part_height: f64,
+    pub min_test_point_tall_body: f64,
 }
 
 #[derive(Debug, PartialEq)]

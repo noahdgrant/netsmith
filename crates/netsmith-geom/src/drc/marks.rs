@@ -21,7 +21,11 @@
 //!   every number of the blog "Maximizing Circuit Reliability with PCB Test Points and Smart DFT"
 //!   (read 2026-11-16): the table's "absolute minimum" pad of 0.8 mm for a signal net
 //!   (`test_point_pad`), probe pitch 1.27 mm (`test_point_pitch`), clearance to the component
-//!   body 0.5 mm (`test_point_body`) and to the board edge 3.2 mm (`test_point_edge`). The blog
+//!   body 0.5 mm (`test_point_body`) and to the board edge 3.2 mm (`test_point_edge`), with the two rows that depend on the board: the pad of a
+//!   test point on a power or ground net, 1.0 mm (the same `test_point_pad` rule, [`Marks::power_nets`] says which
+//!   nets), and the clearance to the body of a part above 6.4 mm tall, 2.0 mm (the same
+//!   `test_point_body` rule, [`Marks::tall_parts`] says which parts: a part of unknown height is
+//!   not in it and is judged as any other). The blog
 //!   is about the fixture an in-circuit test needs and not a statement of what JLCPCB makes, so
 //!   it is advice, and its "recommended production value" of each row is named in the finding and
 //!   not enforced.
@@ -268,12 +272,29 @@ fn test_points(out: &mut Out<'_>, marks: &Marks) {
         };
         let layer = layer_name(*back);
         let side = pad_size(pad);
-        if marks.min_test_point_pad > 0.0 && side < marks.min_test_point_pad - EPS {
+        // A supply or a ground has a larger pad than a signal, where the process states one.
+        let power = pad
+            .net
+            .as_ref()
+            .is_some_and(|n| marks.power_nets.contains(n))
+            && marks.min_power_test_point_pad > marks.min_test_point_pad;
+        let (least, what) = if power {
+            (
+                marks.min_power_test_point_pad,
+                "on a power or ground net (an \"absolute minimum\"; 1.5 to 2.0 mm is recommended)",
+            )
+        } else {
+            (
+                marks.min_test_point_pad,
+                "(an \"absolute minimum\"; 1.0 to 1.27 mm is recommended)",
+            )
+        };
+        if least > 0.0 && side < least - EPS {
             out.push(
                 Rule::TestPointPad,
                 format!(
-                    "the test point {} is {:.4} mm wide; its pad is advised to be at least {:.2} mm (an \"absolute minimum\"; 1.0 to 1.27 mm is recommended)",
-                    pad.part, side, marks.min_test_point_pad
+                    "the test point {} is {:.4} mm wide; its pad is advised to be at least {:.2} mm {what}",
+                    pad.part, side, least
                 ),
                 pad.at,
                 Some(layer),
@@ -333,12 +354,31 @@ fn test_points(out: &mut Out<'_>, marks: &Marks) {
                 else {
                     continue;
                 };
-                if g.d < marks.min_test_point_body - EPS {
+                // A part of known height above the process's tall one needs more room.
+                let tall = marks
+                    .tall_parts
+                    .iter()
+                    .find(|(p, _)| p == part)
+                    .filter(|_| marks.min_test_point_tall_body > marks.min_test_point_body);
+                let (least, what) = match tall {
+                    Some((_, height)) => (
+                        marks.min_test_point_tall_body,
+                        format!(
+                            "(it stands {height:.2} mm tall, above {:.1} mm; an \"absolute minimum\", and 5.0 mm is recommended)",
+                            marks.tall_part_height
+                        ),
+                    ),
+                    None => (
+                        marks.min_test_point_body,
+                        "(an \"absolute minimum\"; 1.0 mm is recommended)".to_string(),
+                    ),
+                };
+                if g.d < least - EPS {
                     out.push(
                         Rule::TestPointBody,
                         format!(
-                            "the test point {} is {:.4} mm from the body of {part}; the advice is at least {:.2} mm (an \"absolute minimum\"; 1.0 mm is recommended)",
-                            pad.part, g.d, marks.min_test_point_body
+                            "the test point {} is {:.4} mm from the body of {part}; the advice is at least {least:.2} mm {what}",
+                            pad.part, g.d
                         ),
                         g.middle(),
                         Some(layer),

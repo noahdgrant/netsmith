@@ -23,6 +23,11 @@ fn jlcpcb() -> DrcExtras {
             min_test_point_pitch: 1.27,
             min_test_point_body: 0.5,
             min_test_point_edge: 3.2,
+            power_nets: vec!["3V3".into(), "GND".into()],
+            min_power_test_point_pad: 1.0,
+            tall_parts: vec![("TALL1".into(), 8.0)],
+            tall_part_height: 6.4,
+            min_test_point_tall_body: 2.0,
         }),
         ..DrcExtras::default()
     }
@@ -272,4 +277,76 @@ fn a_test_point_is_3_2_mm_from_the_board_edge() {
         assert_eq!(count(&r, DrcRule::TestPointEdge), found, "x {x}\n{r}");
         assert!(r.findings.iter().all(|f| f.severity == DrcSeverity::Warning), "{r}");
     }
+}
+
+#[test]
+fn a_test_point_on_a_power_or_ground_net_is_1_mm_wide() {
+    // The same pad: a signal net needs 0.8 mm, a supply or a ground 1.0 mm.
+    for (net, d, found) in [
+        ("3V3", 1.0, 0),
+        ("3V3", 0.9, 1),
+        ("GND", 0.9, 1),
+        ("SIG", 0.9, 0),
+        ("SIG", 0.7, 1),
+    ] {
+        let mut b = Pcb::new(2);
+        b.part("TP1", (10.0, 15.0), 0.0, &[smd("1", 0.0, 0.0, d, d, net)], Draw::default());
+        let r = check(&mut b, &jlcpcb());
+        assert_eq!(count(&r, DrcRule::TestPointPad), found, "{net} {d}\n{r}");
+        assert!(r.findings.iter().all(|f| f.severity == DrcSeverity::Warning), "{r}");
+    }
+    // A power test point's finding names the larger figure; a process that states none (0)
+    // judges every net by the signal pad.
+    let mut b = Pcb::new(2);
+    b.part("TP1", (10.0, 15.0), 0.0, &[smd("1", 0.0, 0.0, 0.9, 0.9, "3V3")], Draw::default());
+    let r = check(&mut b, &jlcpcb());
+    let finding = r.findings.iter().find(|f| f.rule == DrcRule::TestPointPad).expect("a finding");
+    assert!(
+        finding.message.contains("0.9000 mm wide")
+            && finding.message.contains("at least 1.00 mm on a power or ground net"),
+        "{}",
+        finding.message
+    );
+    let mut none = jlcpcb();
+    none.marks.as_mut().unwrap().min_power_test_point_pad = 0.0;
+    assert_eq!(count(&check(&mut b, &none), DrcRule::TestPointPad), 0);
+}
+
+#[test]
+fn a_test_point_is_2_mm_from_the_body_of_a_part_taller_than_6_4_mm() {
+    // A 2 x 1.4 mm body at (20, 15), reaching x = 19 to 21: a test point 1 mm wide whose copper
+    // is `gap` from it, beside a part that is tall, one that is not and one of unknown height.
+    for (part, gap, found) in [
+        ("TALL1", 2.0, 0),
+        ("TALL1", 1.9, 1),
+        ("TALL1", 0.4, 1),
+        // Not tall (or of unknown height, which is not in the list): the 0.5 mm of any part.
+        ("U1", 1.9, 0),
+        ("U1", 0.5, 0),
+        ("U1", 0.4, 1),
+    ] {
+        let mut b = Pcb::new(2);
+        b.part(part, (20.0, 15.0), 0.0, &[smd("1", 0.0, 0.0, 0.6, 0.6, "A")], Draw::default());
+        test_point(&mut b, "TP1", (21.0 + gap + 0.5, 15.0), 1.0, false);
+        let r = check(&mut b, &jlcpcb());
+        assert_eq!(count(&r, DrcRule::TestPointBody), found, "{part} gap {gap}\n{r}");
+        assert!(r.findings.iter().all(|f| f.severity == DrcSeverity::Warning), "{r}");
+    }
+    // The finding names the part's height and both figures.
+    let mut b = Pcb::new(2);
+    b.part("TALL1", (20.0, 15.0), 0.0, &[smd("1", 0.0, 0.0, 0.6, 0.6, "A")], Draw::default());
+    test_point(&mut b, "TP1", (22.5, 15.0), 1.0, false);
+    let r = check(&mut b, &jlcpcb());
+    let finding = r.findings.iter().find(|f| f.rule == DrcRule::TestPointBody).expect("a finding");
+    assert!(
+        finding.message.contains("body of TALL1")
+            && finding.message.contains("at least 2.00 mm")
+            && finding.message.contains("8.00 mm tall, above 6.4 mm"),
+        "{}",
+        finding.message
+    );
+    // A process that states no larger space for a tall part judges it as any other.
+    let mut same = jlcpcb();
+    same.marks.as_mut().unwrap().min_test_point_tall_body = 0.5;
+    assert_eq!(count(&check(&mut b, &same), DrcRule::TestPointBody), 0);
 }
