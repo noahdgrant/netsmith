@@ -164,6 +164,20 @@ fn two_relations_between_the_same_parts_that_no_value_meets_are_named() {
     ] {
         assert!(conflict.contains(want), "{want:?} is not in {conflict:?}");
     }
+    // Issue #998: each line is data with the window it allows.
+    let lines = &report.proofs[0].lines;
+    let windows: Vec<_> = lines
+        .iter()
+        .map(|l| (l.measure, l.unit, l.min, l.max))
+        .collect();
+    assert_eq!(
+        windows,
+        [
+            (Some("relation_x"), Some("mm"), Some(20.0), None),
+            (Some("relation_x"), Some("mm"), None, Some(18.0)),
+        ],
+        "{lines:?}"
+    );
     // The same two, one of them written the other way round.
     let extra = "    .r2.place.x - .r1.place.x >= 20mm
     .r1.place.x - .r2.place.x >= -18mm
@@ -232,6 +246,16 @@ fn two_parts_whose_windows_leave_their_courtyards_over_each_other_are_named() {
     ] {
         assert!(conflict.contains(want), "{want:?} is not in {conflict:?}");
     }
+    // Issue #998: a bound on a field is data with its window.
+    let x = report.proofs[0]
+        .lines
+        .iter()
+        .find(|l| l.id.as_deref() == Some("r2.place.x"))
+        .expect("the line on r2's x");
+    assert_eq!(
+        (x.measure, x.unit, x.min, x.max),
+        (Some("x"), Some("mm"), Some(10.2), Some(10.4))
+    );
 }
 
 #[test]

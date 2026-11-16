@@ -66,6 +66,21 @@ pub struct ConflictLine {
     /// The text of the line, when the design knows it.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub text: Option<String>,
+    /// What a requirement line measures, as [`RequirementMiss::measure`](crate::RequirementMiss)
+    /// names it (`x`, `left`, `rotation`, `side`, `relation_x`, ...), and its `unit` (`mm` or
+    /// `degrees`; none for a face): with `min` and `max`, the window the line allows (an end the
+    /// line leaves open is left out), or for a face `allowed_side`. Left out for a line that
+    /// states no window (a pin protrusion) and for a lock.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub measure: Option<&'static str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub unit: Option<&'static str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub min: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub allowed_side: Option<String>,
     /// For a lock: the part, and where the file locks its footprint's origin.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub part: Option<PartRef>,

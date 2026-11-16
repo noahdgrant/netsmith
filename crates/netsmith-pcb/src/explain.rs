@@ -185,6 +185,9 @@ pub struct Precheck {
     pub faults: Vec<Fault>,
     /// Suspicious and not proved, each once.
     pub warnings: Vec<String>,
+    /// The sets of lines `lines_as_warnings` made the first warnings of, as data, in the same
+    /// order (issue #998).
+    pub warned: Vec<Conflict>,
 }
 
 impl Precheck {
@@ -197,7 +200,7 @@ impl Precheck {
     /// the faults about a part stay errors.
     pub fn lines_as_warnings(mut self) -> Self {
         let lines = std::mem::take(&mut self.conflicts);
-        self.proofs.clear();
+        self.warned = std::mem::take(&mut self.proofs);
         let mut warned: Vec<String> = lines
             .into_iter()
             .map(|c| {
@@ -217,6 +220,26 @@ impl Precheck {
         let mut all = self.proofs.clone();
         all.extend(self.faults.iter().map(|f| f.proof.clone()));
         all
+    }
+
+    /// What each of [`Precheck::errors`] is about, as data (issue #998): the block of lines that
+    /// cannot both hold has all of their sets, and each fault has its own.
+    pub fn error_proofs(&self) -> Vec<Vec<Conflict>> {
+        let mut out = Vec::new();
+        if !self.conflicts.is_empty() {
+            out.push(self.proofs.clone());
+        }
+        out.extend(self.faults.iter().map(|f| vec![f.proof.clone()]));
+        out
+    }
+
+    /// What each of `warnings` is about, as data (issue #998): the sets of lines that
+    /// `lines_as_warnings` turned into warnings come first, each with its set; the rest are
+    /// plain suspicions, with none.
+    pub fn warning_proofs(&self) -> Vec<Vec<Conflict>> {
+        (0..self.warnings.len())
+            .map(|n| self.warned.get(n).cloned().into_iter().collect())
+            .collect()
     }
 
     /// The errors as separate messages: the block of lines that cannot both hold first (in
@@ -752,6 +775,8 @@ enum Line {
     Requirement {
         source: String,
         id: String,
+        /// What the line measures and the window it allows, where it has one.
+        window: Option<Window>,
     },
     Lock {
         refdes: String,
@@ -760,18 +785,69 @@ enum Line {
     },
 }
 
+/// What a requirement line measures and the window it allows (issue #998).
+#[derive(Debug, Clone, PartialEq)]
+enum Window {
+    /// A number: `measure` (as [`RequirementMiss::measure`] names it), `unit`, and the window's
+    /// ends, infinite where open.
+    Range {
+        measure: &'static str,
+        unit: &'static str,
+        lo: f64,
+        hi: f64,
+    },
+    /// The face the line allows.
+    Side(String),
+}
+
+impl Window {
+    /// The window of a bound on one field of a part's place.
+    fn field(field: PlaceField, lo: f64, hi: f64) -> Window {
+        Window::Range {
+            measure: field.word(),
+            unit: field.unit(),
+            lo,
+            hi,
+        }
+    }
+
+    /// The window of a relation between two parts, along x or y.
+    fn relation(o: &netsmith_core::Offset) -> Window {
+        Window::Range {
+            measure: if o.along_x() {
+                "relation_x"
+            } else {
+                "relation_y"
+            },
+            unit: "mm",
+            lo: o.lo,
+            hi: o.hi,
+        }
+    }
+}
+
 impl Line {
     fn requirement(source: &str, id: &str) -> Line {
         Line::Requirement {
             source: source.to_string(),
             id: id.to_string(),
+            window: None,
+        }
+    }
+
+    /// A requirement line with the window it allows.
+    fn windowed(source: &str, id: &str, window: Window) -> Line {
+        Line::Requirement {
+            source: source.to_string(),
+            id: id.to_string(),
+            window: Some(window),
         }
     }
 
     /// The line as a person reads it.
     fn quoted(&self, design: &Design) -> String {
         match self {
-            Line::Requirement { source, id } => quote(design, source, id),
+            Line::Requirement { source, id, .. } => quote(design, source, id),
             Line::Lock { refdes, at, .. } => format!(
                 "the layout file locks {refdes} at ({}, {}) mm",
                 number(at.x),
@@ -783,12 +859,27 @@ impl Line {
     /// The line as data: a requirement stated by several lines is one entry for each.
     fn data(&self, design: &Design) -> Vec<ConflictLine> {
         match self {
-            Line::Requirement { source, id } => {
+            Line::Requirement { source, id, window } => {
+                let (measure, unit, min, max, allowed_side) = match window {
+                    Some(Window::Range {
+                        measure,
+                        unit,
+                        lo,
+                        hi,
+                    }) => (Some(*measure), Some(*unit), finite(*lo), finite(*hi), None),
+                    Some(Window::Side(side)) => (Some("side"), None, None, None, Some(side)),
+                    None => (None, None, None, None, None),
+                };
                 let one = |source: Option<&str>| ConflictLine {
                     kind: "requirement",
                     id: Some(id.clone()),
                     source: source.map(str::to_string),
                     text: source.and_then(|s| design.features.line_texts.get(s).cloned()),
+                    measure,
+                    unit,
+                    min,
+                    max,
+                    allowed_side: allowed_side.cloned(),
                     part: None,
                     x: None,
                     y: None,
@@ -804,6 +895,11 @@ impl Line {
                 id: None,
                 source: None,
                 text: None,
+                measure: None,
+                unit: None,
+                min: None,
+                max: None,
+                allowed_side: None,
                 part: Some(PartRef {
                     refdes: refdes.clone(),
                     path: path.clone(),
@@ -937,7 +1033,7 @@ impl<'a> Context<'a> {
             }
             let mut lines: Vec<Line> = reqs
                 .iter()
-                .map(|r| Line::requirement(&r.source, &r.id))
+                .map(|r| Line::windowed(&r.source, &r.id, Window::field(r.field, r.lo, r.hi)))
                 .collect();
             if let Some(f) = locked {
                 lines.push(Line::Lock {
@@ -946,9 +1042,9 @@ impl<'a> Context<'a> {
                     at: f.at,
                 });
             }
-            let side_line = side_req.as_ref().map(|_| {
+            let side_line = side_req.as_ref().map(|(allowed, _)| {
                 let (source, id) = side_source(self.design, &part.path).unwrap_or_default();
-                Line::requirement(&source, &id)
+                Line::windowed(&source, &id, Window::Side(allowed.clone()))
             });
             wins.push(Win {
                 part,
@@ -1120,8 +1216,8 @@ impl<'a> Context<'a> {
                     continue;
                 };
                 let lines = [
-                    Line::requirement(&p.source, &id(p)),
-                    Line::requirement(&q.source, &id(q)),
+                    Line::windowed(&p.source, &id(p), Window::relation(p)),
+                    Line::windowed(&q.source, &id(q), Window::relation(q)),
                 ];
                 let text = format!(
                     "{}: they ask for {} of the body of {} minus {} of the body of {} to be {} and {}, and no value is in both ({} mm apart)",
@@ -1196,7 +1292,8 @@ impl<'a> Context<'a> {
                 o.a.field.word()
             );
             let lines = dedupe(
-                std::iter::once(Line::requirement(&o.source, &id)).chain(Self::joined(&[a, b])),
+                std::iter::once(Line::windowed(&o.source, &id, Window::relation(o)))
+                    .chain(Self::joined(&[a, b])),
             );
             let text = format!(
                 "{}: {} of the body of {} minus {} of the body of {} must be {} along {}, and the places the other lines leave them make it {} ({} mm out){note}",

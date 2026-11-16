@@ -16,7 +16,7 @@ use super::common::{self, libraries, no_boards, sync_pins, target_offline};
 #[derive(Debug, PartialEq, ClapArgs)]
 #[command(args_override_self = true)]
 #[command(
-    after_long_help = "With no file, `fab` acts on the project's boards (see netsmith.toml).\n\n`fab` writes the Gerbers, drill files and placement file itself and runs netsmith's own design rules check (ADR 0037), so it does not need KiCad. An error of the check (a clearance, a short, a missing connection, a hole, the edge, a courtyard, a keepout) stops `fab` unless `--allow-drc-violations` is given, and `fab-notes.txt` then says the board is not clean; its warnings (silkscreen on a pad, a narrow mask web, a via in a pad) are listed in the notes. It writes, for each board, a Gerber zip, `bom.csv`, `cpl.csv`, `fab-notes.txt`, the `.kicad_pcb` and `.kicad_pro`, an `.svg`, and the board's 3D scene as `<board>.glb` (outside the Gerber zip; the scene of the routed board, the bytes `board3d --glb` writes for it; docs/BOARD3D.md), and the board as STEP, `<board>.step`, for mechanical CAD (outside the Gerber zip; the bytes `board3d --step` writes). Read `fab-notes.txt` before you order.\n\nA board the router cannot finish is still written, marked INCOMPLETE, and the run ends in an error. Beside it, `routing-failure.txt` lists each connection left with its net, its two pads and their places and the parts most of them end on, and then, for each line the router left, the stage it last failed in (the first pass, the try with less room, ripping up, the negotiation, the chain of rip-ups, or out of time) and the nets whose copper stands in its way; `routing-report.json` has the same for a program, with a crowding map of the board (1 mm squares, how often the router's searches across other nets' copper passed through each), which shows where the board is fought over.\n\nWith `--format json` the progress goes nowhere unless `--progress json` prints it as JSON lines on stderr, and the notes of `fab-notes.txt` (\"before you order\") are findings with the code `fab`. A finding about requirements of the physical file that are not met has them as data in `requirements` (the requirement, what was measured, the window it allows and how far out it is), and the refusal because the parts do not fit has every overlapping pair, every part outside and every part's final place in `does_not_fit`. The lines of the physical file and locks of the layout file that cannot all hold are in `conflicts` (each with its kind, the lines, the parts with the box each courtyard lies within, and the overlap); a courtyard past an edge nobody stated and a part bigger than the outline (`past_edge`, `too_big`), proved before placing, are there too. The faults of the placement check where the placer ended are in `placement` (each with its kind, the parts with their courtyards, and its numbers). A lock of the layout file that breaks a requirement has `requirements` and `placement` of the board as the lock leaves it."
+    after_long_help = "With no file, `fab` acts on the project's boards (see netsmith.toml).\n\n`fab` writes the Gerbers, drill files and placement file itself and runs netsmith's own design rules check (ADR 0037), so it does not need KiCad. An error of the check (a clearance, a short, a missing connection, a hole, the edge, a courtyard, a keepout) stops `fab` unless `--allow-drc-violations` is given, and `fab-notes.txt` then says the board is not clean; its warnings (silkscreen on a pad, a narrow mask web, a via in a pad) are listed in the notes. It writes, for each board, a Gerber zip, `bom.csv`, `cpl.csv`, `fab-notes.txt`, the `.kicad_pcb` and `.kicad_pro`, an `.svg`, and the board's 3D scene as `<board>.glb` (outside the Gerber zip; the scene of the routed board, the bytes `board3d --glb` writes for it; docs/BOARD3D.md), and the board as STEP, `<board>.step`, for mechanical CAD (outside the Gerber zip; the bytes `board3d --step` writes). Read `fab-notes.txt` before you order.\n\nA board the router cannot finish is still written, marked INCOMPLETE, and the run ends in an error. Beside it, `routing-failure.txt` lists each connection left with its net, its two pads and their places and the parts most of them end on, and then, for each line the router left, the stage it last failed in (the first pass, the try with less room, ripping up, the negotiation, the chain of rip-ups, or out of time) and the nets whose copper stands in its way; `routing-report.json` has the same for a program, with a crowding map of the board (1 mm squares, how often the router's searches across other nets' copper passed through each), which shows where the board is fought over.\n\nWith `--format json` the progress goes nowhere unless `--progress json` prints it as JSON lines on stderr, and the notes of `fab-notes.txt` (\"before you order\") are findings with the code `fab`. A finding about requirements of the physical file that are not met has them as data in `requirements` (the requirement, what was measured, the window it allows and how far out it is), and the refusal because the parts do not fit has every overlapping pair, every part outside and every part's final place in `does_not_fit`. The lines of the physical file and locks of the layout file that cannot all hold are in `conflicts` (each with its kind, the lines, the parts with the box each courtyard lies within, and the overlap); a courtyard past an edge nobody stated and a part bigger than the outline (`past_edge`, `too_big`), proved before placing, are there too. Each line of a conflict has the window it allows (`measure`, `unit`, `min` and `max`, or `allowed_side`). With constraints as warnings, the lines that cannot all hold are findings of code `place` (the code `build --format json` gives what is proved before placing) with their `conflicts`. The faults of the placement check where the placer ended are in `placement` (each with its kind, the parts with their courtyards, and its numbers). A lock of the layout file that breaks a requirement has `requirements` and `placement` of the board as the lock leaves it."
 )]
 pub struct Args {
     /// The source file; with none, the project's boards (see netsmith.toml).
@@ -373,6 +373,8 @@ fn run_fab(
     let mut code = ExitCode::SUCCESS;
     // Whether a board failed its check, which may be a spelling that changed (issue #740).
     let mut unchecked = false;
+    // The warnings of the pre-check before placing that are findings with data (#998).
+    let mut told_as_data: Vec<String> = Vec::new();
     for source in &target.files {
         let text = match fs::read_to_string(&source.path) {
             Ok(t) => t,
@@ -464,6 +466,17 @@ fn run_fab(
                                 requirements: vec![r.clone()],
                                 ..Finding::plain(Severity::Warning, "fab", r.text.clone())
                             }));
+                        // What the pre-check before placing found suspicious is a finding of
+                        // its own, with the sets of lines as data, and not also a line told as
+                        // the run went (#998).
+                        for w in &b.place_warnings {
+                            told_as_data.push(format!("{}: warning: {}", b.board, w.message));
+                            report.findings.push(Finding {
+                                board: Some(b.board.clone()),
+                                conflicts: w.conflicts.clone(),
+                                ..Finding::plain(Severity::Warning, "place", w.message.clone())
+                            });
+                        }
                         report.notes.total += lines.len();
                         if !lines.is_empty() {
                             *report.notes.by_cause.entry("fab".to_string()).or_default() +=
@@ -510,6 +523,9 @@ fn run_fab(
         // The warnings and notes that `fab` tells as it goes (a pick lock that differs, a
         // guideline, a part that hangs over an edge) are findings too.
         for line in take_kept_lines() {
+            if told_as_data.contains(&line) {
+                continue;
+            }
             if let Some(f) = finding_of_line(&line) {
                 report.findings.push(f);
             }
