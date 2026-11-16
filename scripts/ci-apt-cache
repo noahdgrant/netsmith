@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Installs what a CI job needs from Ubuntu's archive (KiCad 9, or Chromium's system libraries
-# for Playwright) from a folder of cached .deb files, and from the archive only where the
+# Installs what a CI job needs from Ubuntu's archive (KiCad 9, Chromium's system libraries
+# for Playwright, or the libraries of the desktop shell's window) from a folder of cached .deb files, and from the archive only where the
 # folder has none, or its files do not install. The folder is what the `apt-cache` action
 # (.github/actions/apt-cache) restores and saves with actions/cache.
-#   scripts/ci-apt-cache <kicad|chromium> <folder>
+#   scripts/ci-apt-cache <kicad|chromium|tauri> <folder>
 #
 # Why: the runners' Ubuntu mirrors (archive.ubuntu.com and the others) have been unreachable for
 # hours (2026-11-11), and every job that ran `apt-get update` failed with them. A warm cache
@@ -20,8 +20,8 @@
 # Writes `filled=true` to $GITHUB_OUTPUT when it did, so the action saves the folder.
 set -eu
 
-what="${1:?usage: ci-apt-cache <kicad|chromium> <folder>}"
-dir="${2:?usage: ci-apt-cache <kicad|chromium> <folder>}"
+what="${1:?usage: ci-apt-cache <kicad|chromium|tauri> <folder>}"
+dir="${2:?usage: ci-apt-cache <kicad|chromium|tauri> <folder>}"
 here="$(cd "$(dirname "$0")" && pwd)"
 
 SUDO=sudo
@@ -41,6 +41,12 @@ install() {
             # update and install, nothing else); the browser itself is not a package.
             cd "$here/editor-verify-js"
             npx playwright install-deps chromium
+            ;;
+        tauri)
+            # What Tauri's window links on Linux (desktop/, the `desktop` job): WebKitGTK 4.1 (and
+            # GTK 3 with it), librsvg for the icons, libxdo for the menus' accelerators.
+            $SUDO apt-get update
+            $SUDO apt-get install --yes --no-install-recommends libwebkit2gtk-4.1-dev librsvg2-dev libxdo-dev
             ;;
         *)
             echo "ci-apt-cache: unknown install '$what'" >&2

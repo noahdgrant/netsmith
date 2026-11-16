@@ -133,6 +133,13 @@ example also commits its design, `<stem>.design.json` (`netsmith build --emit-de
 `designs` job checks the same way (`scripts/check-example-designs.sh`, whose `--update` rewrites it).
 `NETSMITH_TIMINGS=1` prints how long each stage took.
 
+The editor also opens in a window of its own: the desktop shell in `desktop/` (a separate Cargo
+workspace, built with Tauri, on Linux for now) starts `netsmith editor` in the project folder it is
+opened with (`netsmith-desktop [FOLDER]`, the current folder by default) on a free port, shows it,
+and stops it when the window closes. It needs WebKitGTK (`libwebkit2gtk-4.1-dev`) to build:
+`cargo build --manifest-path desktop/Cargo.toml --features window`. It starts the `netsmith` that
+`NETSMITH_BIN` names, else the one beside it, else the one on `PATH`. No release ships it yet.
+
 **Read `fab-notes.txt` before you order.** It lists what netsmith could not verify, for
 example the pick-and-place rotation of a package that no board of yours has been assembled
 with, the parts you solder yourself (`hand-solder:`) and the parts you ship to the board house

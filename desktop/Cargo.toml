@@ -33,8 +33,9 @@ name = "main"
 path = "tests/main.rs"
 
 [features]
-# The window: Tauri, and through it WebKitGTK on Linux.
-window = ["dep:tauri", "dep:tauri-build"]
+# The window: Tauri, and through it WebKitGTK on Linux. `custom-protocol` is Tauri's build for
+# shipping: the shell's own page (loading/) is embedded, and no development server is looked for.
+window = ["dep:tauri", "dep:tauri-build", "tauri/custom-protocol"]
 
 # Tauri 2.12.5 and tauri-build 2.7.4, both of 2026-10-21, pinned exactly; both are
 # "Apache-2.0 OR MIT", which this MIT project may use and ship.

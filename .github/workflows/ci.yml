@@ -4,10 +4,10 @@
 # A pull request runs only the jobs its change needs, and `test` and `kicad` run only the tests of
 # the crates it changes and of their dependents (`crates`, below), and `build` and `clippy` compile
 # and lint only those packages (scripts/ci-rdeps, issue #618). The `changes` job lists the paths the pull
-# request changes and scripts/ci-changes turns them into six flags, `rust`, `kicad`, `recipes`,
-# `no_kicad`, `locks` and `designs` (the rules, and why, are in that script). `fmt` always runs. `clippy` and `test`
+# request changes and scripts/ci-changes turns them into seven flags, `rust`, `kicad`, `recipes`,
+# `no_kicad`, `locks`, `designs` and `desktop` (the rules, and why, are in that script). `fmt` always runs. `clippy` and `test`
 # need `rust`, `kicad` needs `kicad`, `recipes` needs `recipes`, `no-kicad` needs `no_kicad`, `locks` needs `locks`,
-# `designs` needs `designs`: a
+# `designs` needs `designs`, `desktop` needs `desktop`: a
 # change to prose only runs `fmt`. A
 # push to main, a change to the workflows or to scripts/ (except the editor's recipes, which run
 # `recipes` and `build` of netsmith-cli only, and its fixtures, which run the tests of netsmith-cli and
@@ -78,7 +78,14 @@
 # #609, what the design stage hands the placer) is stale or missing. The fix is
 # `scripts/check-example-designs.sh --update` and a review of the diff of the design files.
 #
-# The Rust cache (Swatinem/rust-cache, in `build` and `clippy`) is saved by pushes to main only, and a pull request
+# The `desktop` job lints, builds and tests the desktop shell (desktop/, issue #799): a window
+# around the editor, a Cargo workspace of its own so that no other job needs the WebKit and GTK
+# libraries its window links (they come from the package cache too, `install: tauri`). It runs on
+# Linux only, and only when desktop/ or the editor's server changes (`desktop`, scripts/ci-changes);
+# its tests start the `build` job's `netsmith` binary (NETSMITH_BIN) and read the address the
+# editor prints. It compiles the shell itself: the `build` job's archive is of the main workspace.
+#
+# The Rust cache (Swatinem/rust-cache, in `build`, `clippy` and `desktop`) is saved by pushes to main only, and a pull request
 # restores the newest of main's: the pull requests do not fill the repository's cache quota with
 # a copy each. (Measured 2026-11-13: the repository's caches held 10.8 GB against GitHub's 10 GB
 # quota, 75 caches all of main's, a `build` cache about 160 MB and one for `clippy` about as much;
@@ -122,6 +129,7 @@ jobs:
       no_kicad: ${{ steps.flags.outputs.no_kicad }}
       locks: ${{ steps.flags.outputs.locks }}
       designs: ${{ steps.flags.outputs.designs }}
+      desktop: ${{ steps.flags.outputs.desktop }}
       crates: ${{ steps.flags.outputs.crates }}
     steps:
       - uses: actions/checkout@v4
@@ -141,7 +149,7 @@ jobs:
         # being hidden by `tee` (no outputs would skip every job, and ci-ok accepts a skip).
         shell: bash
         run: |
-          everything() { printf 'rust=true\nkicad=true\nrecipes=true\nno_kicad=true\nlocks=true\ndesigns=true\ncrates=\n'; }
+          everything() { printf 'rust=true\nkicad=true\nrecipes=true\nno_kicad=true\nlocks=true\ndesigns=true\ndesktop=true\ncrates=\n'; }
           if [ "$GITHUB_EVENT_NAME" != pull_request ]; then
             echo "not a pull request: everything runs"
             everything >> "$GITHUB_OUTPUT"
@@ -219,7 +227,8 @@ jobs:
     if: >-
       needs.changes.outputs.rust == 'true' || needs.changes.outputs.kicad == 'true' ||
       needs.changes.outputs.no_kicad == 'true' || needs.changes.outputs.locks == 'true' ||
-      needs.changes.outputs.designs == 'true' || needs.changes.outputs.recipes == 'true'
+      needs.changes.outputs.designs == 'true' || needs.changes.outputs.recipes == 'true' ||
+      needs.changes.outputs.desktop == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
@@ -703,9 +712,58 @@ jobs:
   # so). The result of `test`, `kicad` and `recipes` is the worst of their slices: it needs
   # all of them. A required check named for one of the other jobs would block a pull request
   # that does not run it.
+  # The desktop shell (desktop/): a workspace of its own, with WebKitGTK for its window. Its format,
+  # its lints with the window, its build, and its tests (the library's, which need no window, with
+  # the real editor of the `build` job's binary).
+  desktop:
+    needs: [changes, build]
+    if: needs.changes.outputs.desktop == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    defaults:
+      run:
+        working-directory: desktop
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Rust toolchain
+        # The version and components of rust-toolchain.toml (the repository's root).
+        run: rustup toolchain install
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: desktop -> target
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      - name: Install WebKitGTK and the window's libraries from the package cache
+        uses: ./.github/actions/apt-cache
+        with:
+          install: tauri
+
+      # The netsmith binary the `build` job built, at target/debug/netsmith.
+      - uses: actions/download-artifact@v4
+        with:
+          name: bin
+      - run: tar -xf bin.tar
+        working-directory: .
+
+      - run: cargo fmt --all --check
+
+      - run: cargo clippy --all-targets --features window -- -D warnings
+
+      - name: Build the window
+        run: cargo build --features window
+
+      # Without the window: the launcher's tests need no display library. With NETSMITH_BIN set,
+      # the test of the real editor runs instead of skipping.
+      - name: Test the launcher
+        env:
+          NETSMITH_BIN: ${{ github.workspace }}/target/debug/netsmith
+        run: cargo test
+
   ci-ok:
     if: always() && github.head_ref != 'release-please--branches--main'
-    needs: [changes, fmt, clippy, build, test, kicad, no-kicad, locks, designs, recipes]
+    needs: [changes, fmt, clippy, build, test, kicad, no-kicad, locks, designs, recipes, desktop]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     env:

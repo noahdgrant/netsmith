@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Which of CI's jobs a change needs. Reads the changed paths (one per line, from the repository's
-# root) on stdin and prints `rust=`, `kicad=`, `recipes=`, `no_kicad=`, `locks=` and `designs=` as `true` or `false`, and `crates=`; the
+# root) on stdin and prints `rust=`, `kicad=`, `recipes=`, `no_kicad=`, `locks=`, `designs=` and `desktop=` as `true` or `false`, and `crates=`; the
 # `changes` job of .github/workflows/ci.yml writes them to its outputs. `fmt` always runs, so it has
 # no flag.
 #   rust     clippy and the tests: anything a build or a test reads.
@@ -68,6 +68,17 @@
 #            part fitted by hand. Not the placer (netsmith-placer), the router (netsmith-router), the fab driver
 #            (netsmith-fabricate), the editor's backend (netsmith-workspace), netsmith-netlist, -3d, -view or -editor: none of
 #            them runs before the design is made (the backend reads a design and writes sidecars; it feeds none).
+#   desktop  the `desktop` job: the desktop shell (desktop/, issue #799), a Cargo workspace of its own
+#            that no other job builds (its window needs WebKit and GTK). The job lints, builds and tests
+#            it on Linux, and its tests start the real `netsmith editor` of the `build` job's binary
+#            (they read the line it prints when it listens). So it follows desktop/ and the editor's
+#            server: the netsmith-editor crate (not its page, web/, nor its tests), the backend's source
+#            (netsmith-workspace/src: what the server opens before it listens) and the `editor`
+#            command of the command line (crates/netsmith-cli/src/commands/editor.rs, and common.rs,
+#            which holds its default port), plus what runs everything (the workflows, scripts/, the
+#            toolchain, rustfmt.toml and clippy.toml, a path nothing here knows); not std/, data/ or examples/, which the shell
+#            never reads. A change to desktop/ alone turns no other job on: `build` runs to make the
+#            binary, of netsmith-cli only (`crates=netsmith-cli`, as for the recipes).
 #
 # What a test file is, and why it is the one narrowing of `kicad`. A file of tests runs in `test`
 # and again in `kicad`; the second run differs only for a test that asks for KiCad. So a change
@@ -115,11 +126,13 @@ root="${CI_CHANGES_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
 # mapping only, and `build_with` takes the libraries as an argument.)
 KICAD_TOKENS='KicadCli|kicad-cli|KICAD_CLI|\.envs?\(|(set_var|env::var)\("(NETSMITH_)?KICAD|_VARIABLE|Search::machine\(|locate\(Kind::|locate_runnable|kicad_libraries_installed|skip_without_kicad_libraries|Libraries::(standard|for_project)\(|::installed\(|netsmith_pipeline::build\b|netsmith_pipeline::\{([^}]*[ ])?build[,} ]|^[[:space:]]+build,?$|common::erc::|Workspace|CARGO_BIN_EXE|Command::new|skipped: no KiCad'
 
-rust=false kicad=false recipes=false no_kicad=false locks=false designs=false
+rust=false kicad=false recipes=false no_kicad=false locks=false designs=false desktop=false
 # The crates the change touches, for `crates=`; `wide` once a path outside the crates turns `rust` on
 # and names no crate. `mapped` is the crates a path outside crates/ names (worked out for each path).
 crates="" wide=false mapped=""
 all() { rust=true kicad=true recipes=true no_kicad=true locks=true designs=true; }
+# What CI does and what every build reads: the jobs of `all` and the desktop shell's.
+everything() { all; desktop=true; }
 
 # Whether a file of tests asks for KiCad: it is unreadable here, or names one of the tokens.
 asks_for_kicad() {
@@ -202,7 +215,7 @@ while IFS= read -r path; do
     # `rust`, `locks` and `designs` are worked out for this path alone, then added to what the
     # others gave.
     rust_before="$rust" rust=false locks_before="$locks" locks=false mapped=""
-    designs_before="$designs" designs=false
+    designs_before="$designs" designs=false desktop_before="$desktop" desktop=false
     case "$path" in
         # The editor's browser recipes (scripts/editor-verify-js): the `recipes` job drives them
         # against the binary, and nothing else reads the recipes themselves, so they run that job and
@@ -220,9 +233,9 @@ while IFS= read -r path; do
             rust=true kicad=true recipes=true mapped="$editor_verify_readers" ;;
         # The recipes' packages: `npm ci` of the recipes job, and the key of the .deb cache (apt-cache
         # action and workflow, scripts/ci-apt-cache): what CI does, so everything runs.
-        scripts/editor-verify-js/package.json | scripts/editor-verify-js/package-lock.json) all ;;
+        scripts/editor-verify-js/package.json | scripts/editor-verify-js/package-lock.json) everything ;;
         scripts/editor-verify-js/*) recipes=true ;;
-        .github/workflows/* | .github/actions/* | scripts/*) all ;;
+        .github/workflows/* | .github/actions/* | scripts/*) everything ;;
 
         # Prose that nothing reads.
         .github/ISSUE_TEMPLATE/* | .github/*.md | .github/CODEOWNERS | .github/dependabot.yml | .github/PULL_REQUEST_TEMPLATE*) ;;
@@ -258,13 +271,23 @@ while IFS= read -r path; do
         crates/netsmith-testkit/*) rust=true kicad=true ;;
         crates/*/tests/*) rust=true ;;
         crates/*) rust=true no_kicad=true locks=true designs=true ;;
-        Cargo.toml | Cargo.lock | rust-toolchain* | .cargo/*) all ;;
+        Cargo.toml | Cargo.lock | rust-toolchain* | .cargo/*) everything ;;
+        # The desktop shell: a workspace of its own, which only the `desktop` job builds.
+        desktop/*) desktop=true ;;
+        # The boards, the standard library and the catalogs: every job but the desktop shell's
+        # (`all`, not `everything`), which reads none of them.
         std/*) all ;;
         examples/*) all; mapped="$(example_readers "$path")" ;;
         data/*) all ;;
-        rustfmt.toml | .rustfmt.toml | clippy.toml) rust=true ;;
+        # The desktop shell is formatted and linted with them too (rustfmt and clippy look upward).
+        rustfmt.toml | .rustfmt.toml | clippy.toml) rust=true desktop=true ;;
 
-        *) all ;;
+        *) everything ;;
+    esac
+    # The editor's server, which the desktop shell starts and whose address line it reads.
+    case "$path" in
+        crates/netsmith-editor/web/* | crates/netsmith-editor/tests/*) ;;
+        crates/netsmith-editor/* | crates/netsmith-workspace/src/* | crates/netsmith-cli/src/commands/editor.rs | crates/netsmith-cli/src/commands/common.rs) desktop=true ;;
     esac
     if [ "$rust" = true ]; then
         case "$path" in
@@ -282,12 +305,14 @@ while IFS= read -r path; do
     [ "$rust_before" = true ] && rust=true
     [ "$locks_before" = true ] && locks=true
     [ "$designs_before" = true ] && designs=true
+    [ "$desktop_before" = true ] && desktop=true
 done
 [ "$wide" = false ] || crates=""
-# A change that only the recipes need (no Rust at all: a recipe, a helper of the recipes) names no crate
-# and `test`, `kicad` and `clippy` do not run, but `build` does, to make the binary the recipes drive:
-# the command line is all of it, not the whole workspace (scripts/ci-rdeps adds it to every run anyway).
-if [ "$rust" = false ] && [ "$recipes" = true ]; then crates="netsmith-cli"; fi
+# A change that only the recipes or the desktop shell need (no Rust of the workspace at all: a recipe,
+# a helper of the recipes, desktop/) names no crate and `test`, `kicad` and `clippy` do not run, but
+# `build` does, to make the binary the recipes drive and the desktop shell's tests start: the command
+# line is all of it, not the whole workspace (scripts/ci-rdeps adds it to every run anyway).
+if [ "$rust" = false ] && { [ "$recipes" = true ] || [ "$desktop" = true ]; }; then crates="netsmith-cli"; fi
 
 echo "rust=$rust"
 echo "kicad=$kicad"
@@ -295,4 +320,5 @@ echo "recipes=$recipes"
 echo "no_kicad=$no_kicad"
 echo "locks=$locks"
 echo "designs=$designs"
+echo "desktop=$desktop"
 echo "crates=$crates"

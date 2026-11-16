@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Tests scripts/ci-changes: a table of changed paths and the flags the script must print for them
-# (`rust kicad recipes no_kicad locks designs`, each `1` or `0`), so that an edit of the rules cannot widen or narrow
+# (`rust kicad recipes no_kicad locks designs`, each `1` or `0`, and `desktop` and `crates` in rows of
+# their own), so that an edit of the rules cannot widen or narrow
 # them by accident. The `changes` job of .github/workflows/ci.yml runs it before it uses the
 # script. It needs nothing but bash and git.
 #
@@ -385,6 +386,53 @@ crates_row "" crates/netsmith-view/src/layout.rs something/nothing/knows.txt
 # No Rust at all: empty (and `rust` is off, so no test runs).
 crates_row "" README.md
 crates_row ""
+
+# --- desktop=: the desktop shell's job (desktop/, its own workspace) --------------------------
+desktop_of() {
+    printf '%s\n' "$@" | CI_CHANGES_ROOT="$tree" "$script" | sed -n 's/^desktop=//p'
+}
+desktop_row() {
+    want="$1"
+    shift
+    got="$(desktop_of "$@")"
+    if [ "$got" != "$want" ]; then
+        echo "FAIL: $* -> desktop=$got, wanted desktop=$want"
+        failed=1
+    fi
+}
+# The shell itself: its job and no other; `build` makes the binary its tests start, of netsmith-cli only.
+desktop_row true desktop/src/lib.rs
+desktop_row true desktop/Cargo.toml desktop/Cargo.lock desktop/tauri.conf.json desktop/loading/index.html
+row "0 0 0 0 0 0" desktop/src/main.rs desktop/tests/launch.rs
+crates_row "netsmith-cli" desktop/src/lib.rs
+crates_row "netsmith-view" desktop/src/lib.rs crates/netsmith-view/src/layout.rs
+# The editor's server, which the shell starts: the editor crate, the backend's source, the `editor` command.
+desktop_row true crates/netsmith-editor/src/server.rs
+desktop_row true crates/netsmith-editor/Cargo.toml
+desktop_row true crates/netsmith-workspace/src/analysis.rs
+desktop_row true crates/netsmith-cli/src/commands/editor.rs
+desktop_row true crates/netsmith-cli/src/commands/common.rs
+# Not the editor's page, its tests, the other commands, or the crates before the server.
+desktop_row false crates/netsmith-editor/web/src/app.ts
+desktop_row false crates/netsmith-editor/tests/bundle.rs
+desktop_row false crates/netsmith-workspace/tests/editor.rs
+desktop_row false crates/netsmith-cli/src/commands/fab.rs crates/netsmith-cli/tests/pure.rs
+desktop_row false crates/netsmith-solve/src/solve.rs crates/netsmith-view/src/layout.rs
+# The boards, the standard library and the catalogs run everything else, not the shell.
+desktop_row false std/kicad.toml data/jlcpcb/resistor.csv examples/led.nsm examples/orbit/src/main.nsm
+desktop_row false README.md docs/adr/0081-a-pin-states-its-own-swing.md docs/language/05-values.md
+desktop_row false
+# What CI does, the toolchain and the formatting and lint settings run it; so does a path nothing knows.
+desktop_row true .github/workflows/ci.yml
+desktop_row true .github/actions/apt-cache/action.yml scripts/ci-apt-cache
+desktop_row true Cargo.toml
+desktop_row true rust-toolchain.toml
+desktop_row true rustfmt.toml
+desktop_row true something/nothing/knows.txt
+# The flags add up across paths, whatever the order.
+desktop_row true desktop/src/lib.rs std/kicad.toml
+desktop_row true std/kicad.toml desktop/src/lib.rs
+desktop_row true crates/netsmith-editor/src/server.rs examples/led.nsm
 
 # --- the real repository: a test file that can skip without KiCad turns `kicad` on ------------
 # Independent of the token list of the script: these are the spellings of the repository's own
