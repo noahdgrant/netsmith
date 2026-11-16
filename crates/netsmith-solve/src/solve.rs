@@ -762,6 +762,7 @@ fn solve_model(model: &Model, catalogs: &Catalogs, unit: &str) -> Solution {
         dc_ends: Default::default(),
         supply_draws: Vec::new(),
         budget_failed: HashSet::new(),
+        enclosures: HashSet::new(),
         dc_disagreements: Vec::new(),
         original_relations: model.relations().len(),
         extras: Vec::new(),
@@ -1183,6 +1184,10 @@ struct Solver<'a> {
     supply_draws: dcpass::SupplyDraws,
     /// The stated currents that a balance has reported as over their budget.
     budget_failed: HashSet<FieldId>,
+    /// The regulator output currents that `enclose_regulator_loads` wrote, with the fields joined
+    /// to them: each is the sum of the loads on its net, so the balance of that net does not work
+    /// out a load from it (issue #741, `solve_balance_but`).
+    enclosures: HashSet<FieldId>,
     /// The currents a balance worked out that the DC analysis finds in a range that shares no
     /// value with it, said once the supplies' budgets have been judged (amendment 15).
     dc_disagreements: Vec<(SourceId, Span, String)>,

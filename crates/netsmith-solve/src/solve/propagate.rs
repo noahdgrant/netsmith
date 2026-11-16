@@ -413,6 +413,16 @@ impl Solver<'_> {
         if live > 2 && self.is_part_current(u) {
             return None;
         }
+        // A regulator's load enclosed before the picks is the sum of the other terms, so what it
+        // leaves for one of them counts the rest twice (issue #741): a longer balance works out
+        // nothing from it, and works it out again (`again`) once the others are known.
+        if live > 2
+            && terms
+                .iter()
+                .any(|(d, _)| self.enclosures.contains(&d.field))
+        {
+            return None;
+        }
         let value = match rest {
             Some(sum) if u.flipped => sum,
             Some(sum) => sum.neg(),

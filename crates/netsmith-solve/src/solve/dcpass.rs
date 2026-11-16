@@ -801,6 +801,15 @@ impl Solver<'_> {
     /// the loads known. A load that states nothing leaves the balance with two unknown currents
     /// and the regulator with none: its rated limit is the enclosure the start takes, as before.
     /// The model is put back as it was, but for those currents.
+    ///
+    /// Such a current is the sum of the loads, and the loads are put back to what they were: a
+    /// load that has no value yet (a module's port, whose parts are still to be picked) would be
+    /// the one unknown of the balance, and what the balance leaves for it is the enclosure less
+    /// the other loads, whose ranges are then counted twice. On a 3.3 V rail with a load of 5 mA
+    /// to 50 mA and a store of about 40 uA that gave the store's port -45 mA to 45 mA, a resistor
+    /// in it the same through a balance of two terms, and a power check of -88 W (issue #741).
+    /// So the currents written here are kept in `enclosures`, and a balance with more than two
+    /// terms works out nothing from them; it works them out again once the loads are known.
     pub(super) fn enclose_regulator_loads(&mut self, jobs: &[super::Job]) {
         use netsmith_check::DcKind;
         let outs: Vec<FieldId> = self
@@ -864,6 +873,63 @@ impl Solver<'_> {
         for (field, q) in found {
             self.set_field(field, Domain::Quantity(q));
             self.derived.insert(field);
+            let copies = self.copies_of(field);
+            self.enclosures.extend(copies);
+        }
+    }
+
+    /// The currents that carry the value of `field` as it is: those joined to it by `~`, those
+    /// a relation `a == b` or `a == -b` holds to it, and the other term of a balance of two
+    /// terms it is in (ADR 0026), over and over. A buck's enclosed load is written on the IC's
+    /// switch pin, and the board's balance reads it through the inductor and the stage's port.
+    fn copies_of(&self, field: FieldId) -> HashSet<FieldId> {
+        use netsmith_check::{InstKind, RExpr};
+        use netsmith_lang::ast::CmpOp;
+        let mut class = HashSet::from([field]);
+        loop {
+            let before = class.len();
+            for &(a, b) in self.model.equalities() {
+                if class.contains(&a) || class.contains(&b) {
+                    class.extend([a, b]);
+                }
+            }
+            for r in self.model.relations().iter() {
+                if r.op != CmpOp::EqEq {
+                    continue;
+                }
+                let side = |e: &RExpr| match e {
+                    RExpr::Field(f) => Some(*f),
+                    RExpr::Neg(inner) => match inner.as_ref() {
+                        RExpr::Field(f) => Some(*f),
+                        _ => None,
+                    },
+                    _ => None,
+                };
+                if let (Some(a), Some(b)) = (side(&r.lhs), side(&r.rhs))
+                    && (class.contains(&a) || class.contains(&b))
+                {
+                    class.extend([a, b]);
+                }
+            }
+            for b in self.model.balances() {
+                if b.returns || self.model.instance(b.scope).kind == InstKind::System {
+                    continue;
+                }
+                let live: Vec<FieldId> = b
+                    .draws
+                    .iter()
+                    .filter(|d| !self.model.draw_is_zero(d))
+                    .map(|d| d.field)
+                    .collect();
+                if let [x, y] = live[..]
+                    && (class.contains(&x) || class.contains(&y))
+                {
+                    class.extend([x, y]);
+                }
+            }
+            if class.len() == before {
+                return class;
+            }
         }
     }
 
