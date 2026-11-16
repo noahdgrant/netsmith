@@ -3,6 +3,23 @@
 use super::*;
 
 impl<'a> Engine<'a> {
+    /// The parts where they are now, for a view that watches the placer
+    /// (`netsmith_pcb::show_glimpse`, issue #764). Only reads.
+    pub(super) fn glimpse(&self, names: &[String]) -> netsmith_pcb::Glimpse {
+        netsmith_pcb::Glimpse::Placing {
+            region: self.p.region,
+            parts: names
+                .iter()
+                .enumerate()
+                .map(|(i, refdes)| netsmith_pcb::GlimpsePart {
+                    refdes: refdes.clone(),
+                    court: self.court(i),
+                    back: self.models[i].side == Side::Back,
+                })
+                .collect(),
+        }
+    }
+
     /// Which hard rules the parts break as they are now, counted for the message of a run
     /// that found no arrangement that breaks none.
     pub(super) fn ended(&self, names: &[String], shown: &[String]) -> Ended {

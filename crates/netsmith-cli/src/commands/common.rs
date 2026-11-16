@@ -50,9 +50,55 @@ impl Placing {
     }
 }
 
-/// Prints a line of the placer's progress to stderr.
+/// `--progress` and `--to-editor`, of `fab` and `board3d` (issue #764).
+#[derive(Debug, PartialEq, ClapArgs)]
+pub struct Watching {
+    /// How the progress is printed on stderr: lines for a person, or one JSON object per line.
+    ///
+    /// `json` prints each line of the placer and the router as `{"board", "stage", "unit",
+    /// "done", "total", "detail", "elapsedMs", "message"}` (`stage` is `placing` or `routing`,
+    /// `total` and `detail` only when there are some) and any other line of progress as
+    /// `{"message"}`; errors and warnings stay text. With `fab --format json` the progress is
+    /// printed only with `--progress json`; `--quiet` prints none.
+    #[arg(long, value_enum, value_name = "FORMAT", default_value = "text")]
+    pub progress: crate::progress::Print,
+    /// Send the progress to the editor running on this port too (`--to-editor=9000`; 8787 with no port), which
+    /// shows the run in its status bar.
+    ///
+    /// Each line is posted to the editor's `/api/progress` as it is told, also with `--quiet`, and
+    /// the last says how the run ended. An editor that does not take a line is said once on
+    /// stderr and sent nothing more; the run goes on.
+    #[arg(long, value_name = "PORT", num_args = 0..=1, require_equals = true, default_missing_value = "8787", value_parser = clap::value_parser!(u16).range(1..))]
+    pub to_editor: Option<u16>,
+}
+
+impl Watching {
+    /// Says where the progress of this run of `command` goes ([`crate::progress::setup`]):
+    /// printed as `--progress` says unless `quiet` (`--quiet`, or `fab --format json` with text
+    /// progress), and posted to `--to-editor`'s editor.
+    pub fn tell_progress(&self, command: &'static str, quiet: bool) {
+        let print = if quiet {
+            crate::progress::Print::Nothing
+        } else {
+            self.progress
+        };
+        crate::progress::setup(print, self.to_editor, command);
+    }
+}
+
+/// Runs `work` with the placer's and the router's lines made into events, when they are to be
+/// printed as JSON or posted to an editor ([`crate::progress`]).
+pub fn with_stage_events<R>(work: impl FnOnce() -> R) -> R {
+    if crate::progress::wants_events() {
+        netsmith_fabricate::layout::stage_events(std::rc::Rc::new(crate::progress::event), work)
+    } else {
+        work()
+    }
+}
+
+/// Prints a line of the placer's progress to stderr, as `--progress` says.
 fn say_on_stderr(line: &str) {
-    eprintln!("{line}");
+    crate::progress::tell(line);
 }
 
 /// `--format` and `--notes`, of `build`, `check` and `fab`.

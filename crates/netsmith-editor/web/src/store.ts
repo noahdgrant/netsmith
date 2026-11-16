@@ -14,7 +14,7 @@ import type {
   Problem,
   Project,
 } from './api';
-import { AnalysisPending, ApiFailure, Events, api } from './client';
+import { AnalysisPending, ApiFailure, Events, api, wasCancelled } from './client';
 import { answerView } from './pcb3d/agent';
 import { nextDelay } from './feedback/early';
 import {
@@ -27,6 +27,7 @@ import {
   visiblePanes,
 } from './layout';
 import { noteCompareProgress } from './compare/progress';
+import { noteOutside, notePcbLive, notePlacingLine } from './pcb/liveState';
 import { booting, noteElapsed, notify, pending, setSocket, track } from './feedback/state';
 import { sourceEditor } from './source/handle';
 import { sortImports } from './source/imports';
@@ -200,7 +201,9 @@ export async function routeBoard(name: string): Promise<PcbReport | null> {
     pcbStamp.value++;
     return report;
   } catch (e) {
-    say(e instanceof Error ? e.message : String(e), true);
+    // Cancel while the route still placed the board (issue 764): nothing was placed or routed, a person's choice.
+    if (wasCancelled(e)) say(`${name}: cancelled while the board was placed; nothing was kept`);
+    else say(e instanceof Error ? e.message : String(e), true);
     return null;
   } finally {
     endJob();
@@ -298,6 +301,11 @@ export async function start() {
             }
             break;
           }
+          if (message.task === 'place') {
+            // The placer of a board the PCB view places (issue 764): its last line, under the drawing of the parts.
+            notePlacingLine(message.board, message.message);
+            break;
+          }
           const j = job.value;
           if (j && j.task === message.task) {
             job.value = { ...j, lines: [...j.lines.slice(-39), message.message] };
@@ -319,6 +327,14 @@ export async function start() {
           break;
         case 'cancelled':
           noteCancelled(message);
+          break;
+        case 'pcb_live':
+          // What the placer or the router has made so far (issue 764): the PCB view draws it.
+          notePcbLive(message.live);
+          break;
+        case 'outside':
+          // A run the editor did not start (`fab --to-editor`): the status bar shows it.
+          noteOutside(message.progress);
           break;
         case 'view':
         case 'view_picture':

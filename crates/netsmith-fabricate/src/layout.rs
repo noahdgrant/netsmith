@@ -208,11 +208,64 @@ fn stage_progress(
             }
         };
         told.set(Some(std::time::Instant::now()));
-        say(&format!(
-            "{label}: {stage}: {what} [{:.0} s]",
-            began.elapsed().as_secs_f64()
-        ));
+        let elapsed = began.elapsed();
+        let message = format!("{label}: {stage}: {what} [{:.0} s]", elapsed.as_secs_f64());
+        let sink = EVENTS.with(|e| e.borrow().clone());
+        match sink {
+            Some(sink) => sink(&StageEvent {
+                board: label.clone(),
+                stage,
+                unit: w.unit,
+                done: w.done,
+                total: w.total,
+                detail: w.detail.clone(),
+                elapsed_ms: elapsed.as_millis().min(u128::from(u64::MAX)) as u64,
+                message,
+            }),
+            None => say(&message),
+        }
     })
+}
+
+/// A line of the placer's or the router's progress ([`place_progress`], [`route_progress`]) as
+/// data, for a program that reads it (`fab --progress json`, issue #764): the board, the stage
+/// (`placing`, `routing`), the count with its unit, what the step found if it says, the time
+/// since the stage began and the line a person reads.
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StageEvent {
+    pub board: String,
+    pub stage: &'static str,
+    pub unit: &'static str,
+    pub done: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub total: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub detail: Option<String>,
+    pub elapsed_ms: u64,
+    pub message: String,
+}
+
+type EventSink = std::rc::Rc<dyn Fn(&StageEvent)>;
+
+thread_local! {
+    static EVENTS: std::cell::RefCell<Option<EventSink>> = const { std::cell::RefCell::new(None) };
+}
+
+/// Runs `work` with the placer's and the router's progress lines on this thread handed to
+/// `sink` as [`StageEvent`]s instead of told as text: what `--progress json` installs round a
+/// whole `fab` or `board3d`. The sink before it comes back after, also if `work` unwinds.
+pub fn stage_events<R>(sink: std::rc::Rc<dyn Fn(&StageEvent)>, work: impl FnOnce() -> R) -> R {
+    struct Put(Option<EventSink>);
+    impl Drop for Put {
+        fn drop(&mut self) {
+            let previous = self.0.take();
+            EVENTS.with(|e| *e.borrow_mut() = previous);
+        }
+    }
+    let previous = EVENTS.with(|e| e.borrow_mut().replace(sink));
+    let _put = Put(previous);
+    work()
 }
 
 /// Why [`place`] made no board.
@@ -1021,6 +1074,40 @@ mod tests {
              U1.3 to C4.1; 31 tracks and 4 vias so far"
         );
         assert!(time.ends_with(" s]"), "{time}");
+    }
+
+    #[test]
+    fn with_a_sink_of_events_a_progress_line_is_an_event_and_is_not_said() {
+        use netsmith_core::job;
+        let said = std::rc::Rc::new(std::cell::RefCell::new(Vec::<String>::new()));
+        let events = std::rc::Rc::new(std::cell::RefCell::new(Vec::<StageEvent>::new()));
+        let sink = {
+            let said = std::rc::Rc::clone(&said);
+            place_progress("Board".into(), move |line| {
+                said.borrow_mut().push(line.to_string())
+            })
+        };
+        let heard = std::rc::Rc::clone(&events);
+        stage_events(
+            std::rc::Rc::new(move |e: &StageEvent| heard.borrow_mut().push(e.clone())),
+            || {
+                job::reporting(sink, || {
+                    job::report_detail("placer runs", 1, None, || "run 1: placed".into());
+                })
+            },
+        );
+        assert!(said.borrow().is_empty());
+        let events = events.borrow();
+        let e = &events[0];
+        assert_eq!(
+            (e.board.as_str(), e.stage, e.unit, e.done, e.total),
+            ("Board", "placing", "placer runs", 1, None)
+        );
+        assert_eq!(e.detail.as_deref(), Some("run 1: placed"));
+        assert!(e.message.starts_with("Board: placing: run 1: placed ["));
+        let json = serde_json::to_value(e).unwrap();
+        assert_eq!(json["unit"], "placer runs");
+        assert!(json.get("total").is_none() && json.get("elapsedMs").is_some());
     }
 
     #[test]

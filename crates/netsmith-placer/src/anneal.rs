@@ -962,6 +962,8 @@ pub(crate) fn anneal(parts: &mut [Placed], p: &Problem, effort: f64) -> Outcome 
                 ((stage + 1) * per_stage) as u64,
                 Some(total_moves),
             );
+            // The parts where the run has them, for a view that watches it (issue #764).
+            netsmith_pcb::show_glimpse(|| e.glimpse(&names));
             spent = spent || netsmith_core::job::time_up();
             if since_sync > 2000 || stage + 1 == stages || spent {
                 current = e.eval(&all);
@@ -990,6 +992,8 @@ pub(crate) fn anneal(parts: &mut [Placed], p: &Problem, effort: f64) -> Outcome 
         }
     }
 
+    // Where the run ended, legalised: the last a view that watches it sees of this run.
+    netsmith_pcb::show_glimpse(|| e.glimpse(&names));
     let ended = if feasible {
         Ended::default()
     } else {

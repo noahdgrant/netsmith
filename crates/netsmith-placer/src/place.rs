@@ -2320,6 +2320,62 @@ mod tests {
     }
 
     #[test]
+    fn a_watched_placing_shows_every_part_at_each_stage_and_places_the_same_board() {
+        // Issue #764: the editor draws the parts where the placer has them as it works.
+        let options = PlaceOptions {
+            fit: Some((30.0, 20.0)),
+            ..PlaceOptions::default()
+        };
+        let quiet = placed_with(resistors(12, "0603"), &options).unwrap();
+        let seen = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+        let heard = std::rc::Rc::new(std::cell::RefCell::new(0usize));
+        let watched = {
+            let seen = std::rc::Rc::clone(&seen);
+            let heard = std::rc::Rc::clone(&heard);
+            netsmith_core::job::reporting(
+                std::rc::Rc::new(move |w: &netsmith_core::job::Work| {
+                    if w.unit == "moves tried" && w.done > 0 {
+                        *heard.borrow_mut() += 1;
+                    }
+                }),
+                || {
+                    netsmith_pcb::watching_glimpses(
+                        std::rc::Rc::new(move |g: &netsmith_pcb::Glimpse| {
+                            seen.borrow_mut().push(g.clone())
+                        }),
+                        || placed_with(resistors(12, "0603"), &options).unwrap(),
+                    )
+                },
+            )
+        };
+        // The glimpses only read: the board is the same.
+        for (a, b) in quiet.parts.iter().zip(&watched.parts) {
+            assert_eq!(
+                (&a.refdes, a.at, a.rotation, a.side),
+                (&b.refdes, b.at, b.rotation, b.side)
+            );
+        }
+        let seen = seen.borrow();
+        // One at the end of each stage of the annealer (each a `moves tried` report past 0) and
+        // one at the end of each run.
+        let stages = *heard.borrow();
+        assert!(stages > 0);
+        assert!(
+            seen.len() > stages,
+            "{} glimpses, {stages} stages",
+            seen.len()
+        );
+        for g in seen.iter() {
+            let netsmith_pcb::Glimpse::Placing { region, parts } = g else {
+                panic!("the placer shows parts: {g:?}");
+            };
+            assert_eq!(parts.len(), 12);
+            assert!(region.width() > 0.0 && region.height() > 0.0);
+            assert!(parts.iter().all(|p| p.court.width() > 0.0 && !p.back));
+        }
+    }
+
+    #[test]
     fn a_limit_spent_before_the_run_ends_it_at_once_with_what_is_out_and_tries_no_more() {
         // 40 resistors on 15 x 10 mm do not fit, though their courtyards are less than both
         // faces hold: the placer would run the outline again with the parts shared between

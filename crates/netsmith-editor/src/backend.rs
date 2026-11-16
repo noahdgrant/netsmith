@@ -136,6 +136,11 @@ pub struct Pcb3d {
 /// prints them. It may be called from any thread.
 pub type Say = std::sync::Arc<dyn Fn(&str) + Send + Sync>;
 
+/// How the placer or the router tells the page what it has made so far (issue #764): the
+/// parts where the placer has them, the copper the router has laid. It may be called from any
+/// thread.
+pub type Show = std::sync::Arc<dyn Fn(&crate::api::PcbLive) + Send + Sync>;
+
 /// How far a long call has got through a unit of work it counts as it goes (ADR 0062): `done`
 /// of `total` `unit`s, or only `done` when the total is not known. Never an estimate.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -297,11 +302,27 @@ pub trait Backend: Send + Sync + 'static {
     /// Place and route the board and keep the result for [`Backend::pcb`]. `say` is told the
     /// stage and, while routing, how far it has got.
     fn route(&self, board: &str, say: &Say) -> Result<PcbReport, ApiError>;
+    /// [`Backend::route`], showing the parts where the placer has them as it places and the
+    /// copper the router lays as it routes (issue #764).
+    fn route_watched(&self, board: &str, say: &Say, show: &Show) -> Result<PcbReport, ApiError> {
+        let _ = show;
+        self.route(board, say)
+    }
     /// Stop a `route` that is running: it returns what it has routed so far.
     fn cancel_route(&self);
     /// The board as placed (and routed, if it was routed since the files were last read), with
     /// the drawing and what the canvas needs to find things in it.
     fn pcb_scene(&self, board: &str) -> Result<PcbScene, ApiError>;
+    /// [`Backend::pcb_scene`], telling `say` the placer's progress and `show` where it has the
+    /// parts while it places (issue #764); a placing is stopped by [`Backend::cancel_placing`]
+    /// (`ApiError::cancelled`).
+    fn pcb_scene_watched(&self, board: &str, say: &Say, show: &Show) -> Result<PcbScene, ApiError> {
+        let _ = (say, show);
+        self.pcb_scene(board)
+    }
+    /// Stop the placings of the PCB view that run ([`Backend::pcb_scene_watched`] and the
+    /// placing of [`Backend::route_watched`]): their requests are answered `cancelled`.
+    fn cancel_placing(&self) {}
     /// The board placed (and routed) as [`Backend::pcb_scene`] has it, as glTF 2.0 binary:
     /// the file `netsmith board3d --glb` writes for the same placement (ADR 0105).
     fn pcb_3d(&self, board: &str) -> Result<Pcb3d, ApiError> {

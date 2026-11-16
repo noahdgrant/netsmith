@@ -44,7 +44,7 @@ pub use assets::{
     missing_bundle_message,
 };
 pub use backend::{
-    AnalysisEvent, ApiError, Attachment, Backend, ErrorDetail, Observer, Pcb3d, Say, Work,
+    AnalysisEvent, ApiError, Attachment, Backend, ErrorDetail, Observer, Pcb3d, Say, Show, Work,
 };
 pub use netsmith_core::job::Cancel;
 pub use server::{PENDING_HEADER, Server, serve, serve_with_backlog};

@@ -2138,6 +2138,82 @@ pub enum ClientMessage {
     },
 }
 
+/// What the placer or the router of a board has made so far, sent to the page while it runs
+/// (`pcb_live` on the socket, issue #764), in the coordinates of the PCB drawing. `task` is
+/// `place`: `parts` where the placer has them now in `region`, the box it places them in, drawn
+/// on their own (the placer may move the whole placement after); or `route`: the `tracks` and
+/// `vias` the router has laid so far, drawn over the placed board.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+pub struct PcbLive {
+    pub board: String,
+    pub task: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub region: Option<PcbBox>,
+    pub parts: Vec<PcbLivePart>,
+    pub tracks: Vec<PcbLiveTrack>,
+    pub vias: Vec<PcbLiveVia>,
+}
+
+/// A part in a [`PcbLive`]: the box round its courtyard.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+pub struct PcbLivePart {
+    pub refdes: String,
+    #[serde(rename = "box")]
+    pub court: PcbBox,
+    pub back: bool,
+}
+
+/// A straight piece of track in a [`PcbLive`] (an arc is drawn as its chord), on `layer`
+/// (`top`, `bottom`, `inner2`, ...).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+pub struct PcbLiveTrack {
+    pub x1: f64,
+    pub y1: f64,
+    pub x2: f64,
+    pub y2: f64,
+    pub width: f64,
+    pub layer: String,
+}
+
+/// A via in a [`PcbLive`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+pub struct PcbLiveVia {
+    pub x: f64,
+    pub y: f64,
+    pub diameter: f64,
+}
+
+/// A line of progress of a run the editor did not start (issue #764): `netsmith fab` or
+/// `netsmith board3d` with `--to-editor` posts each line it tells to `POST /api/progress`, and the
+/// socket passes it to every page as `outside`. `run` tells one run from another (`fab 4711`, the
+/// command and its process), `command` is the command, `board` the board the line is of, if it
+/// is of one, `message` the line the command prints, and `unit`, `done` and `total` the count
+/// of a line of the placer or the router. The last line of a run has `ended` set, and `ok`
+/// says whether the command succeeded.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+pub struct OutsideProgress {
+    pub run: String,
+    pub command: String,
+    #[serde(default)]
+    pub board: String,
+    pub message: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub unit: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional, type = "number")]
+    pub done: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional, type = "number")]
+    pub total: Option<u64>,
+    #[serde(default)]
+    pub ended: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub ok: Option<bool>,
+}
+
 /// What the server tells the page over the socket.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[serde(tag = "type", rename_all = "snake_case")]
@@ -2214,6 +2290,11 @@ pub enum ServerMessage {
     /// To one page: draw the 3D view and answer with a binary frame, the `id` as 4 bytes
     /// little-endian then the PNG of the canvas, or with `view_error`.
     ViewPicture { id: u32 },
+    /// What the placer or the router of a board the editor places or routes has made so far
+    /// (issue #764), at most a few times a second while it runs.
+    PcbLive { live: PcbLive },
+    /// A line of a run the editor did not start (`fab --to-editor`, issue #764).
+    Outside { progress: OutsideProgress },
 }
 
 /// Every type, for the TypeScript file.
@@ -2308,6 +2389,11 @@ pub fn typescript() -> String {
         CatalogRefresh,
         PcbReport,
         PcbBox,
+        PcbLive,
+        PcbLivePart,
+        PcbLiveTrack,
+        PcbLiveVia,
+        OutsideProgress,
         PcbSide,
         PcbPad,
         PcbPart,

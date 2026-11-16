@@ -72,16 +72,17 @@ use std::{
     time::{Duration, Instant},
 };
 
+use netsmith_core::job::{self, Cancel};
 use netsmith_editor::{
-    ApiError, Say,
+    ApiError, Say, Show,
     api::{
         ComparePcbPlace, CompareSize, DrawnKeepout, KeepoutOrigin, KeepoutPlacement, KicadState,
         PartPlacement, PcbBox, PcbChange, PcbCrossed, PcbCrossedTrack, PcbCrossedVia, PcbCutout,
-        PcbFinding, PcbFindings, PcbKeepout, PcbNetWidth, PcbPad, PcbPart, PcbPoint, PcbRegenerate,
-        PcbRegenerated, PcbRegeneratedPart, PcbReport, PcbRequirement, PcbRerouted, PcbRouteNet,
-        PcbRouteTrack, PcbRouteVia, PcbScene, PcbShapeRef, PcbShove, PcbShoveAnswer, PcbShoved,
-        PcbShovedTrack, PcbShovedVia, PcbSide, PcbSummary, PcbTotals, PcbWalk, PcbWalked,
-        RequiredPlace, RoutesChange, Severity,
+        PcbFinding, PcbFindings, PcbKeepout, PcbLive, PcbLivePart, PcbLiveTrack, PcbLiveVia,
+        PcbNetWidth, PcbPad, PcbPart, PcbPoint, PcbRegenerate, PcbRegenerated, PcbRegeneratedPart,
+        PcbReport, PcbRequirement, PcbRerouted, PcbRouteNet, PcbRouteTrack, PcbRouteVia, PcbScene,
+        PcbShapeRef, PcbShove, PcbShoveAnswer, PcbShoved, PcbShovedTrack, PcbShovedVia, PcbSide,
+        PcbSummary, PcbTotals, PcbWalk, PcbWalked, RequiredPlace, RoutesChange, Severity,
     },
 };
 use netsmith_pcb::{
@@ -327,6 +328,102 @@ pub fn board_error(name: &str, error: &netsmith_pcb::BoardError) -> ApiError {
     }
 }
 
+/// [`place`] for the PCB view, watched (issue #764): the placer's progress lines go to `say`
+/// (`Board: placing: run 1 in ... [6 s]`, as `fab` prints them), where it has the parts goes to
+/// `show` as it works, and a cancel of `token` stops it (`ApiError::cancelled`).
+pub fn place_watched(
+    data: &BoardData,
+    name: &str,
+    say: &Say,
+    show: &Show,
+    token: &Cancel,
+) -> Result<Entry, ApiError> {
+    let progress = netsmith_fabricate::layout::place_progress(name.to_string(), {
+        let say = say.clone();
+        move |line: &str| say(line)
+    });
+    let glimpses = live_sink(name, "place", show);
+    job::catch(|| {
+        job::scope(token, || {
+            job::reporting(progress, || {
+                netsmith_pcb::watching_glimpses(glimpses, || place(data, name))
+            })
+        })
+    })
+    .unwrap_or_else(|_| {
+        Err(ApiError::cancelled(format!(
+            "{name}: the placing was cancelled; nothing it placed is kept"
+        )))
+    })
+}
+
+/// How often a glimpse of the placer is passed to the page, at most: the first is passed at
+/// once. The router keeps its own pace (at most four a second, and always the end of a try), so
+/// its glimpses are all passed.
+const LIVE_EVERY: Duration = Duration::from_millis(200);
+
+/// A sink of the placer's or the router's glimpses that passes them to `show` as [`PcbLive`]s
+/// of `task`, the placer's at most once in [`LIVE_EVERY`].
+fn live_sink(name: &str, task: &str, show: &Show) -> std::rc::Rc<dyn Fn(&netsmith_pcb::Glimpse)> {
+    let (name, task, show) = (name.to_string(), task.to_string(), show.clone());
+    let last = std::cell::Cell::new(None::<Instant>);
+    std::rc::Rc::new(move |g: &netsmith_pcb::Glimpse| {
+        let placing = matches!(g, netsmith_pcb::Glimpse::Placing { .. });
+        if placing && last.get().is_some_and(|at| at.elapsed() < LIVE_EVERY) {
+            return;
+        }
+        last.set(Some(Instant::now()));
+        show(&live_of(&name, &task, g));
+    })
+}
+
+/// A glimpse as the page takes it.
+pub fn live_of(name: &str, task: &str, g: &netsmith_pcb::Glimpse) -> PcbLive {
+    let mut live = PcbLive {
+        board: name.to_string(),
+        task: task.to_string(),
+        region: None,
+        parts: Vec::new(),
+        tracks: Vec::new(),
+        vias: Vec::new(),
+    };
+    match g {
+        netsmith_pcb::Glimpse::Placing { region, parts } => {
+            live.region = Some(sheet_box(*region));
+            live.parts = parts
+                .iter()
+                .map(|p| PcbLivePart {
+                    refdes: p.refdes.clone(),
+                    court: sheet_box(p.court),
+                    back: p.back,
+                })
+                .collect();
+        }
+        netsmith_pcb::Glimpse::Routing { tracks, vias } => {
+            live.tracks = tracks
+                .iter()
+                .map(|t| PcbLiveTrack {
+                    x1: t.from.x,
+                    y1: t.from.y,
+                    x2: t.to.x,
+                    y2: t.to.y,
+                    width: t.width,
+                    layer: t.layer.word().to_string(),
+                })
+                .collect();
+            live.vias = vias
+                .iter()
+                .map(|v| PcbLiveVia {
+                    x: v.at.x,
+                    y: v.at.y,
+                    diameter: v.diameter,
+                })
+                .collect();
+        }
+    }
+    live
+}
+
 /// The board of `name` placed with `layout`, which was in the file at `stamp`.
 pub fn place_with(
     data: &BoardData,
@@ -512,7 +609,18 @@ impl Entry {
     /// before a change of its placement, the copper of every net the change left alone is kept
     /// and only the rest is routed ([`netsmith_router::carry::reroute`], issue #825). Gives the
     /// routed board to keep ([`RoutedBoards`]).
-    pub fn route(&mut self, name: &str, say: &Say, before: Option<&Board>) -> RoutedBoard {
+    pub fn route(
+        &mut self,
+        name: &str,
+        say: &Say,
+        show: &Show,
+        before: Option<&Board>,
+    ) -> RoutedBoard {
+        let glimpses = live_sink(name, "route", show);
+        netsmith_pcb::watching_glimpses(glimpses, || self.route_unwatched(name, say, before))
+    }
+
+    fn route_unwatched(&mut self, name: &str, say: &Say, before: Option<&Board>) -> RoutedBoard {
         let started = Instant::now();
         CANCEL.store(false, Ordering::Relaxed);
         let _reporting = Reporting::to(say);

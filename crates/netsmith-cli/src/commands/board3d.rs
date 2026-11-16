@@ -9,7 +9,7 @@ use super::common::{Placing, with_placed_board};
 #[derive(Debug, PartialEq, ClapArgs)]
 #[command(args_override_self = true)]
 #[command(
-    after_long_help = "`board3d` places a board as `fab` does, with the layout file and the physical file, and prints its 3D scene (ADR 0105) without routing or writing anything but the `--glb` and `--step` files, and without KiCad. With neither `--json`, `--glb` nor `--step` it prints a short summary. A file of several boards needs `--board`. The placer says on stderr how it goes: each seed it begins, each run with what is still out, and the counts of a long run; `--place-budget` bounds it. The report lists the placement check's faults (`placement`) and the lines and locks that cannot all hold (`conflicts`), each as data. A layout file the placer cannot keep (two locks whose courtyards overlap, locks that leave the free parts no room) is reported with the parts where the placer ended and the layout file's places, `placement_refused` says why, and the command ends with 1. A board placed with a fault of where its parts are (`placement` has a kind other than `too_tall`: courtyards that overlap, a part past the edge, in a keepout or a cutout) is reported as placed, each fault is said on stderr, and the command ends with 1, as `fab` refuses it; `netsmith layout fit` says where a part fits. docs/BOARD3D.md has the frame and every field."
+    after_long_help = "`board3d` places a board as `fab` does, with the layout file and the physical file, and prints its 3D scene (ADR 0105) without routing or writing anything but the `--glb` and `--step` files, and without KiCad. With neither `--json`, `--glb` nor `--step` it prints a short summary. A file of several boards needs `--board`. The placer says on stderr how it goes: each seed it begins, each run with what is still out, and the counts of a long run (as JSON lines with `--progress json`, and to a running editor with `--to-editor`); `--place-budget` bounds it. The report lists the placement check's faults (`placement`) and the lines and locks that cannot all hold (`conflicts`), each as data. A layout file the placer cannot keep (two locks whose courtyards overlap, locks that leave the free parts no room) is reported with the parts where the placer ended and the layout file's places, `placement_refused` says why, and the command ends with 1. A board placed with a fault of where its parts are (`placement` has a kind other than `too_tall`: courtyards that overlap, a part past the edge, in a keepout or a cutout) is reported as placed, each fault is said on stderr, and the command ends with 1, as `fab` refuses it; `netsmith layout fit` says where a part fits. docs/BOARD3D.md has the frame and every field."
 )]
 pub struct Args {
     /// The source file; with none, the project's boards.
@@ -50,18 +50,32 @@ pub struct Args {
     pub step: Option<PathBuf>,
     #[command(flatten)]
     pub placing: Placing,
+    #[command(flatten)]
+    pub watching: super::common::Watching,
 }
 
 /// Prints the board's 3D scene, or writes it.
 pub fn run(args: Args) -> ExitCode {
-    run_board3d(
-        args.file.as_deref(),
-        args.board.as_deref(),
-        args.json,
-        args.glb.as_deref(),
-        args.step.as_deref(),
-        &args.placing,
-    )
+    args.watching.tell_progress("board3d", false);
+    let code = super::common::with_stage_events(|| {
+        run_board3d(
+            args.file.as_deref(),
+            args.board.as_deref(),
+            args.json,
+            args.glb.as_deref(),
+            args.step.as_deref(),
+            &args.placing,
+        )
+    });
+    crate::progress::ended(
+        code == ExitCode::SUCCESS,
+        if code == ExitCode::SUCCESS {
+            "board3d: done"
+        } else {
+            "board3d: failed (its output says why)"
+        },
+    );
+    code
 }
 
 /// `netsmith board3d`: one board placed as `fab` places it (the pick lock and the layout file

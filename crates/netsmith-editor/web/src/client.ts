@@ -206,6 +206,11 @@ export const api = {
     held(async () => {
       await check(await fetch('/api/pcb/cancel', { method: 'POST', headers: { ...GUARD } }));
     }),
+  /** Stop the placing of the PCB view that runs (issue 764): its scene answers `cancelled` and nothing it placed is kept. */
+  cancelPlacing: (): Promise<void> =>
+    held(async () => {
+      await check(await fetch('/api/pcb/place/cancel', { method: 'POST', headers: { ...GUARD } }));
+    }),
   /** `netsmith catalog refresh` over the project's own catalog files (ADR 0039). */
   refreshCatalogs: (dry: boolean, offline: boolean) =>
     post<CatalogRefresh>(`/api/catalog/refresh?${q({ dry: dry ? '1' : '0', offline: offline ? '1' : '0' })}`),

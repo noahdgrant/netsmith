@@ -16,7 +16,7 @@ use super::common::{self, libraries, no_boards, sync_pins, target_offline};
 #[derive(Debug, PartialEq, ClapArgs)]
 #[command(args_override_self = true)]
 #[command(
-    after_long_help = "With no file, `fab` acts on the project's boards (see netsmith.toml).\n\n`fab` writes the Gerbers, drill files and placement file itself and runs netsmith's own design rules check (ADR 0037), so it does not need KiCad. An error of the check (a clearance, a short, a missing connection, a hole, the edge, a courtyard, a keepout) stops `fab` unless `--allow-drc-violations` is given, and `fab-notes.txt` then says the board is not clean; its warnings (silkscreen on a pad, a narrow mask web, a via in a pad) are listed in the notes. It writes, for each board, a Gerber zip, `bom.csv`, `cpl.csv`, `fab-notes.txt`, the `.kicad_pcb` and `.kicad_pro`, an `.svg`, and the board's 3D scene as `<board>.glb` (outside the Gerber zip; the scene of the routed board, the bytes `board3d --glb` writes for it; docs/BOARD3D.md), and the board as STEP, `<board>.step`, for mechanical CAD (outside the Gerber zip; the bytes `board3d --step` writes). Read `fab-notes.txt` before you order.\n\nA board the router cannot finish is still written, marked INCOMPLETE, and the run ends in an error. Beside it, `routing-failure.txt` lists each connection left with its net, its two pads and their places and the parts most of them end on, and then, for each line the router left, the stage it last failed in (the first pass, the try with less room, ripping up, the negotiation, the chain of rip-ups, or out of time) and the nets whose copper stands in its way; `routing-report.json` has the same for a program, with a crowding map of the board (1 mm squares, how often the router's searches across other nets' copper passed through each), which shows where the board is fought over.\n\nWith `--format json` the progress goes nowhere, and the notes of `fab-notes.txt` (\"before you order\") are findings with the code `fab`. A finding about requirements of the physical file that are not met has them as data in `requirements` (the requirement, what was measured, the window it allows and how far out it is), and the refusal because the parts do not fit has every overlapping pair, every part outside and every part's final place in `does_not_fit`. The lines of the physical file and locks of the layout file that cannot all hold are in `conflicts` (each with its kind, the lines, the parts with the box each courtyard lies within, and the overlap); a courtyard past an edge nobody stated and a part bigger than the outline (`past_edge`, `too_big`), proved before placing, are there too. The faults of the placement check where the placer ended are in `placement` (each with its kind, the parts with their courtyards, and its numbers). A lock of the layout file that breaks a requirement has `requirements` and `placement` of the board as the lock leaves it."
+    after_long_help = "With no file, `fab` acts on the project's boards (see netsmith.toml).\n\n`fab` writes the Gerbers, drill files and placement file itself and runs netsmith's own design rules check (ADR 0037), so it does not need KiCad. An error of the check (a clearance, a short, a missing connection, a hole, the edge, a courtyard, a keepout) stops `fab` unless `--allow-drc-violations` is given, and `fab-notes.txt` then says the board is not clean; its warnings (silkscreen on a pad, a narrow mask web, a via in a pad) are listed in the notes. It writes, for each board, a Gerber zip, `bom.csv`, `cpl.csv`, `fab-notes.txt`, the `.kicad_pcb` and `.kicad_pro`, an `.svg`, and the board's 3D scene as `<board>.glb` (outside the Gerber zip; the scene of the routed board, the bytes `board3d --glb` writes for it; docs/BOARD3D.md), and the board as STEP, `<board>.step`, for mechanical CAD (outside the Gerber zip; the bytes `board3d --step` writes). Read `fab-notes.txt` before you order.\n\nA board the router cannot finish is still written, marked INCOMPLETE, and the run ends in an error. Beside it, `routing-failure.txt` lists each connection left with its net, its two pads and their places and the parts most of them end on, and then, for each line the router left, the stage it last failed in (the first pass, the try with less room, ripping up, the negotiation, the chain of rip-ups, or out of time) and the nets whose copper stands in its way; `routing-report.json` has the same for a program, with a crowding map of the board (1 mm squares, how often the router's searches across other nets' copper passed through each), which shows where the board is fought over.\n\nWith `--format json` the progress goes nowhere unless `--progress json` prints it as JSON lines on stderr, and the notes of `fab-notes.txt` (\"before you order\") are findings with the code `fab`. A finding about requirements of the physical file that are not met has them as data in `requirements` (the requirement, what was measured, the window it allows and how far out it is), and the refusal because the parts do not fit has every overlapping pair, every part outside and every part's final place in `does_not_fit`. The lines of the physical file and locks of the layout file that cannot all hold are in `conflicts` (each with its kind, the lines, the parts with the box each courtyard lies within, and the overlap); a courtyard past an edge nobody stated and a part bigger than the outline (`past_edge`, `too_big`), proved before placing, are there too. The faults of the placement check where the placer ended are in `placement` (each with its kind, the parts with their courtyards, and its numbers). A lock of the layout file that breaks a requirement has `requirements` and `placement` of the board as the lock leaves it."
 )]
 pub struct Args {
     /// The source file; with none, the project's boards (see netsmith.toml).
@@ -101,6 +101,8 @@ pub struct Args {
     #[command(flatten)]
     pub placing: common::Placing,
     #[command(flatten)]
+    pub watching: common::Watching,
+    #[command(flatten)]
     pub output: common::Output,
 }
 
@@ -128,8 +130,7 @@ impl Args {
 
 /// Makes the fab package of each board, or an order.
 pub fn run(args: Args) -> ExitCode {
-    let (constraints_warn, pins_locked, order) =
-        (args.constraints_warn(), args.pins_locked(), args.order());
+    let order = args.order();
     let format: Format = args.output.format.into();
     if order.is_some() && format == Format::Json {
         eprintln!(
@@ -140,6 +141,28 @@ pub fn run(args: Args) -> ExitCode {
     if let Some(code) = sync_pins(args.file.as_deref(), args.locked) {
         return code;
     }
+    // `--format json` keeps stdout for its document and prints the progress only when it is
+    // asked for as JSON too (issue #764).
+    args.watching.tell_progress(
+        "fab",
+        args.quiet
+            || (format == Format::Json && args.watching.progress == crate::progress::Print::Text),
+    );
+    let code = common::with_stage_events(|| run_chosen(&args, order, format));
+    crate::progress::ended(
+        code == ExitCode::SUCCESS,
+        if code == ExitCode::SUCCESS {
+            "fab: done"
+        } else {
+            "fab: failed (its output says why)"
+        },
+    );
+    code
+}
+
+/// `fab` of the files or the project's boards, or of an order.
+fn run_chosen(args: &Args, order: Option<OrderRequest>, format: Format) -> ExitCode {
+    let (constraints_warn, pins_locked) = (args.constraints_warn(), args.pins_locked());
     match order {
         Some(request) => run_order(
             &request,
@@ -322,9 +345,9 @@ fn run_fab(
             None => FabOptions::default().route_timeout,
         },
         progress: Some(match (json, output.quiet) {
-            (true, _) => keep_line,
-            (false, true) => quiet_line,
-            (false, false) => |message| eprintln!("{message}"),
+            (true, _) => keep_and_tell,
+            (false, true) => quiet_and_post,
+            (false, false) => crate::progress::tell,
         }),
         layout: None,
         allow_drc_violations,
@@ -515,6 +538,19 @@ fn keep_line(message: &str) {
     }
 }
 
+/// `fab --format json`: the line kept, and told as `--progress` says (as JSON, or not at all).
+fn keep_and_tell(message: &str) {
+    keep_line(message);
+    crate::progress::tell(message);
+}
+
+/// `fab --quiet`: the line printed if it is a warning or a note, and posted to `--to-editor`'s
+/// editor whatever it is.
+fn quiet_and_post(message: &str) {
+    quiet_line(message);
+    crate::progress::post_only(message);
+}
+
 fn take_kept_lines() -> Vec<String> {
     KEPT.lock()
         .map(|mut k| std::mem::take(&mut *k))
@@ -609,7 +645,7 @@ fn run_order(
             Some(secs) => Some(Duration::from_secs(secs)),
             None => FabOptions::default().route_timeout,
         },
-        progress: Some(|message| eprintln!("{message}")),
+        progress: Some(crate::progress::tell),
         layout: None,
         only: None,
         allow_drc_violations,
@@ -739,10 +775,23 @@ mod tests {
                     place_seeds: None,
                     place_budget: None,
                 },
+                watching: crate::commands::common::Watching {
+                    progress: crate::progress::Print::Text,
+                    to_editor: None,
+                },
                 output: output(),
             }
         );
         assert!(parse(&["fab", "a.nsm", "--port", "9"]).is_err());
+        // Issue #764: the progress as JSON lines, and to a running editor.
+        let f = fab(&["--progress", "json", "--to-editor", "a.nsm"]);
+        assert_eq!(f.watching.progress, crate::progress::Print::Json);
+        assert_eq!(f.watching.to_editor, Some(8787));
+        assert_eq!(
+            fab(&["--to-editor=9000", "a.nsm"]).watching.to_editor,
+            Some(9000)
+        );
+        assert!(parse(&["fab", "a.nsm", "--progress", "nothing"]).is_err());
         let f = fab(&[
             "--allow-drc-violations",
             "--cross-check",
