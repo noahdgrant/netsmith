@@ -322,7 +322,7 @@ pub enum Rule {
 }
 
 impl Rule {
-    pub const ALL: [Rule; 50] = [
+    pub const ALL: [Rule; 52] = [
         Rule::Clearance,
         Rule::ShortingItems,
         Rule::TracksCrossing,
