@@ -244,6 +244,7 @@ use netsmith_pcb::{Edges, Ended, OutsideAt, OverlapAt, Pt, Rect, Rules, short_mm
 
 mod build;
 mod cost;
+mod escape;
 mod explain;
 mod grid;
 mod moves;
@@ -392,6 +393,8 @@ pub(crate) struct Problem<'a> {
     pub face_keepouts: &'a [netsmith_pcb::FaceKeepout],
     /// The weight of track overflow ([`overflow`]), 0 for none.
     pub overflow: f64,
+    /// The weight of the escape shortfall of busy parts ([`escape`]), 0 for none.
+    pub escape_room: f64,
 }
 
 /// What a run ended with.
@@ -609,6 +612,9 @@ struct Model {
     body_is_courtyard: bool,
     /// The keepouts the part carries, which keep the other parts out where the part is.
     carries: Vec<Carry>,
+    /// For a busy part, the pads that leave it on each side of the box round its pads, for
+    /// each of its turns (one for a part that stays), [`escape`]; empty for any other part.
+    rims: Vec<Option<escape::Rim>>,
 }
 
 /// A keepout that a part carries, as the annealer measures it (ADR 0045 section 11).
@@ -730,6 +736,8 @@ struct NetModel {
     /// Whether the net's ratsnest lines are counted for crossings: a net that is not a plane
     /// and has few pads.
     lines: bool,
+    /// Whether the net is poured as a plane on an inner layer.
+    plane: bool,
 }
 
 struct Engine<'a> {
@@ -791,6 +799,11 @@ struct Engine<'a> {
     /// when `w_overflow` is more than 0.
     bins: overflow::Bins,
     w_overflow: f64,
+    /// The busy parts with pads that leave them ([`escape`]), and for each its escape
+    /// shortfall and the parts in front of it as last kept (by [`Engine::refresh`]).
+    escapers: Vec<usize>,
+    escape_kept: Vec<(f64, Vec<usize>)>,
+    w_escape: f64,
 }
 
 /// Place the parts that are not fixed so that the cost is least the search finds, and write

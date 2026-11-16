@@ -1409,6 +1409,7 @@ fn refine(
         carried: &options.carried,
         face_keepouts: &options.face_keepouts,
         overflow: options.track_overflow,
+        escape_room: std::env::var("NSM_W_ESCAPE").ok().and_then(|w| w.parse().ok()).unwrap_or(options.escape_room),
     };
     if options.fit.is_some() {
         netsmith_core::job::spend_try();
@@ -1530,6 +1531,7 @@ pub(crate) fn anneal_within(
         carried: &options.carried,
         face_keepouts: &options.face_keepouts,
         overflow: options.track_overflow,
+        escape_room: std::env::var("NSM_W_ESCAPE").ok().and_then(|w| w.parse().ok()).unwrap_or(options.escape_room),
     };
     let outcome = anneal::anneal(parts, &problem, 1.0);
     if !outcome.feasible {
@@ -1686,6 +1688,7 @@ pub fn place_subset(
         carried: &carried,
         face_keepouts: &faces,
         overflow: 0.0,
+        escape_room: 0.0,
     };
     // The parts are kept in the region by a keepout round it.
     let mut walls = keepouts.clone();

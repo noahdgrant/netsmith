@@ -9,7 +9,7 @@ impl<'a> Engine<'a> {
         let gap = GAP + if p.pours { POUR_GAP } else { 0.0 };
         let hole_gap = rules.clearance.max(rules.hole_to_hole).max(gap);
         let reach_pad = (hole_gap.max(rules.silk_to_pad)).max(gap + 2.0 * MAX_ESCAPE) / 2.0 + 0.01;
-        let models: Vec<Model> = (0..n)
+        let mut models: Vec<Model> = (0..n)
             .map(|i| {
                 let base = parts[i].rotation;
                 let angles = [base, base + 90.0, base + 180.0, base + 270.0];
@@ -92,6 +92,7 @@ impl<'a> Engine<'a> {
                         .collect(),
                     body_is_courtyard: parts[i].footprint.body_is_courtyard,
                     carries,
+                    rims: Vec::new(),
                 }
             })
             .collect();
@@ -106,10 +107,10 @@ impl<'a> Engine<'a> {
             .collect();
 
         // Nets, with the pads found once.
-        let index: std::collections::HashMap<&str, usize> = parts
+        let index: std::collections::HashMap<String, usize> = parts
             .iter()
             .enumerate()
-            .map(|(i, q)| (q.refdes.as_str(), i))
+            .map(|(i, q)| (q.refdes.clone(), i))
             .collect();
         let mut nets = Vec::new();
         let mut nets_of: Vec<Vec<usize>> = vec![Vec::new(); n];
@@ -155,7 +156,41 @@ impl<'a> Engine<'a> {
                 pads,
                 weight,
                 lines,
+                plane,
             });
+        }
+
+        // The pads of each busy part that leave it: on a net that is not a plane and that
+        // reaches another part ([`escape`]).
+        let mut escapers = Vec::new();
+        for i in 0..n {
+            if models[i].escape < BUSY_ESCAPE {
+                continue;
+            }
+            let mut leaves = vec![false; parts[i].footprint.pads.len()];
+            for model in &nets {
+                if model.plane || !model.pads.iter().any(|&(j, _)| j != i) {
+                    continue;
+                }
+                for &(j, k) in &model.pads {
+                    if j == i {
+                        leaves[k] = true;
+                    }
+                }
+            }
+            let angles = if p.fixed[i] {
+                vec![parts[i].rotation]
+            } else {
+                models[i].angles.to_vec()
+            };
+            let rims: Vec<Option<escape::Rim>> = angles
+                .iter()
+                .map(|&a| escape::Rim::of(&mut parts[i], a, &leaves))
+                .collect();
+            if rims.iter().any(Option::is_some) {
+                models[i].rims = rims;
+                escapers.push(i);
+            }
         }
 
         // Decoupling pairs, with their pads.
@@ -419,6 +454,9 @@ impl<'a> Engine<'a> {
             text_last: false,
             bins: overflow::Bins::new(&p.region, rules, nn, n),
             w_overflow: p.overflow.max(0.0),
+            escape_kept: vec![(0.0, Vec::new()); escapers.len()],
+            escapers,
+            w_escape: p.escape_room.max(0.0),
         };
         for i in 0..n {
             let pose = engine.clamp(i, engine.poses[i]);
