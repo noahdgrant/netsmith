@@ -706,7 +706,10 @@ a machine running other builds; seeds 5 and 8 route too). The table above is see
 **Seed 4, since #634.** Designators numbered by path reorder the pins of each net that the
 placer and router read, which changed every seed's arrangement again: seeds 0 to 3 and 7 leave
 one connection of the USB pair (`net-usb.dm`), and seed 4 routes everything (seeds 5, 6 and 8
-too), with `must-match: 129 ok, 0 failed`. The router's misses on that pair are #718.
+too), with `must-match: 129 ok, 0 failed`. The router's misses on that pair are #718: since the
+parts' footprints and courtyards changed again (#730, #786), seeds 0, 1, 2, 3 and 7 route
+everything too (checked 2026-11-16), and the router gives a placed board the same copper whatever
+order its parts come in (#718). The seed stays 4.
 
 The parity checker on that board, `must-match: 129 ok, 0 failed` (the lines are in the pull
 request that added this):
