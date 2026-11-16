@@ -413,10 +413,59 @@ board Shared {
 Shared: IPC-2221 guideline: net `GND` carries up to 3 A (the sum of the currents on it with every load on at once: rail `load_a` 2 A + rail `load_b` 1 A) but its tracks are 1 mm wide (a rail's `.min_track`), in 1 oz (0.035 mm) outer copper; at a temperature rise of 10 K (the default) that width carries 2.03 A (at its narrowest, 20% under, the fabricator's tolerance) and IPC-2221 needs 1.71 mm: give a rail on the net `.min_track &= 1.71mm..1m`, or allow a higher `.process.max_temperature_rise`
 ```
 
+A net that needs very wide tracks takes a large part of a small board, and nothing else limits a net's width. When the width IPC-2221 needs for a net is more than a fifth (20%) of the board's shorter side, the build warns with a finding of its own, `net width`. The side is the outline's: the smaller of its width and its height at their largest (`.height &= 0mm..30mm` is up to 30 mm), so a board that may still be big enough is not told; a board with no outline, or none that limits a side, is not checked. Here 8 A needs tracks 6.62 mm wide (drawn at 6.62 mm so that the narrowest finished track, 20% under, carries it), which is 33% of the 20 mm side:
+
+```nsm solve warns
+import std::mfg::jlcpcb::TwoLayer
+import std::parts::connector::Header1x2
+import std::sources::Rail
+
+board Charger {
+    .process: TwoLayer {
+        .stackup.thickness &= 1.6mm
+    }
+    .load: Rail {
+        .pos.net &= "5V"
+        .neg.net &= "GND"
+        .current &= 0A..8A
+    }
+    .source: Rail {
+        .pos.net &= "5V"
+        .neg.net &= "GND"
+        .current &= -8A..0A
+    }
+    .supply: Header1x2
+    .out: Header1x2
+    .supply.p1 ~ .source.pos
+    .supply.p2 ~ .source.neg
+    .out.p1 ~ .load.pos
+    .out.p2 ~ .load.neg
+}
+```
+
+```nsm-physical
+import std::pcb::Outline
+
+physical for Charger {
+    case {
+        .outline: Outline {
+            .width &= 60mm
+            .height &= 20mm
+        }
+    }
+}
+```
+
+```text
+Charger: net width guideline: net `5V` needs tracks 6.62 mm wide (IPC-2221, for 8 A), which is 33% of the board's shorter side, at most 20 mm (the outline's largest): over 20% leaves little room for anything else; make the board larger, lower the current, or give the net a plane or an outer pour
+Charger: net width guideline: net `GND` needs tracks 6.62 mm wide (IPC-2221, for 8 A), which is 33% of the board's shorter side, at most 20 mm (the outline's largest): over 20% leaves little room for anything else; make the board larger, lower the current, or give the net a plane or an outer pour
+```
+
 Rules.
 
 - This is a guideline and not a limit of the fabricator (ADR 0030): `build` and `fab` print each finding as `warning: ...`, `fab` also writes it in `fab-notes.txt`, and the editor lists it as a warning at the rail or part that carries the current. The board still builds.
 - To make a finding stop the build, put `guidelines = "error"` in the `[project]` table of `netsmith.toml`, or pass `--strict` to `build` or `fab` for one run. The message is then an error at the same line.
+- The fifth of the shorter side is netsmith's own choice and, like the constants of IPC-2221, provisional: a rule of thumb for where a power track leaves little room for anything else, not a figure from a standard. The finding is about the width the net needs, whether or not a rail states a `.min_track`; where a current on the net is not known it says "at least". Make the board larger, lower the current, or give the net a plane or an outer pour (a plane or an outer pour is not checked: its copper is an area and not a track).
 - IPC-2221 is a conservative design guide, and IPC-2152 is more accurate (it counts the board's thickness and the copper next to the track). netsmith implements IPC-2221 only. A track the check passes is not therefore good for a certain temperature, and one it flags may be fine; read the number as a prompt to decide.
 - The router may draw a track narrower than its net's width where there is no room (the stub at a pad is the net's width, and the pad's own copper carries the rest). The check is of the width asked for.
 

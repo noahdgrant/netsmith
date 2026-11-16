@@ -1071,3 +1071,85 @@ fn a_net_with_a_group_of_loads_carries_the_worst_of_them() {
     assert_eq!(width_of(&one, "GND"), Some(0.98));
     assert!(width_of(&all, "5V").is_some_and(|w| w > 0.98), "{:?}", width_of(&all, "5V"));
 }
+
+// A net's width against the board's shorter side (issue #807): a fifth, at the outline's
+// largest. 8 A at 10 K in 1 oz copper needs 5.3 mm finished, and 6.62 mm drawn (the fabricator's
+// tolerance is 20%): 33% of a 20 mm side, 22% of 30 mm, 16.5% of 40 mm.
+
+/// `findings` of `src` with a physical file that states the outline `outline` (the members
+/// of an `Outline`, one statement a line).
+fn findings_with_outline(src: &str, outline: &str) -> Vec<Guideline> {
+    let physical = format!(
+        "import std::pcb::Outline\nphysical for B {{\n    case {{\n        .outline: Outline {{\n{outline}        }}\n    }}\n}}\n"
+    );
+    let mut loader = Loader::std();
+    loader.attach_physical("t.nsm", "t.physical.nsm", &physical);
+    findings_in(&loader, src)
+}
+
+fn wide(found: &[Guideline]) -> Vec<&Guideline> {
+    found.iter().filter(|g| g.rule == "net width").collect()
+}
+
+#[test]
+fn a_net_that_needs_over_a_fifth_of_the_shorter_side_is_told() {
+    let found = findings_with_outline(
+        &board(8.0, "", ""),
+        "            .width &= 60mm\n            .height &= 20mm\n",
+    );
+    let five = about(&found, "5V");
+    assert_eq!(five.len(), 1, "{found:?}");
+    assert!(
+        five[0].starts_with("net `5V` needs tracks 6.62 mm wide (IPC-2221, for 8 A), which is 33% of the board's shorter side, at most 20 mm (the outline's largest): over 20% leaves"),
+        "{}",
+        five[0]
+    );
+    assert_eq!(about(&found, "GND").len(), 1);
+    assert!(wide(&found).iter().all(|g| g.at.is_some()));
+    // It is no error of the rail: the width is the one asked for.
+    assert_eq!(found.len(), 2);
+}
+
+#[test]
+fn a_net_under_a_fifth_of_the_shorter_side_is_not_told() {
+    let found = findings_with_outline(
+        &board(8.0, "", ""),
+        "            .width &= 60mm\n            .height &= 40mm\n",
+    );
+    assert!(found.is_empty(), "{found:?}");
+}
+
+#[test]
+fn the_shorter_side_is_the_largest_the_outline_allows() {
+    // 0..30 mm may be 30 mm: the net needs 6.62 mm of it, and 22% is told.
+    let tight = findings_with_outline(
+        &board(8.0, "", ""),
+        "            .width &= 60mm\n            .height &= 0mm..30mm\n",
+    );
+    assert_eq!(wide(&tight).len(), 2, "{tight:?}");
+    // 0..40 mm may be 40 mm, where 6.62 mm is 16.5%: nothing to say yet.
+    let loose = findings_with_outline(
+        &board(8.0, "", ""),
+        "            .width &= 60mm\n            .height &= 0mm..40mm\n",
+    );
+    assert!(loose.is_empty(), "{loose:?}");
+    // A limit on one side is enough to know the shorter side is at most that.
+    let one = findings_with_outline(&board(8.0, "", ""), "            .height &= 30mm\n");
+    assert_eq!(wide(&one).len(), 2, "{one:?}");
+}
+
+#[test]
+fn a_board_with_no_outline_is_not_checked() {
+    assert!(findings(&board(8.0, "", "")).is_empty());
+}
+
+#[test]
+fn a_wide_net_whose_rail_states_a_wide_enough_track_is_still_told() {
+    let found = findings_with_outline(
+        &board(8.0, "        .min_track &= 7mm..1m\n", ""),
+        "            .width &= 60mm\n            .height &= 20mm\n",
+    );
+    assert_eq!(wide(&found).len(), 2, "{found:?}");
+    // The rail's 7 mm carries it: no finding that the track is too narrow.
+    assert!(found.iter().all(|g| g.rule == "net width"), "{found:?}");
+}
