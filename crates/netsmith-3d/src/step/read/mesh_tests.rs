@@ -152,6 +152,27 @@ fn a_cone_is_closed_as_a_frustum_and_up_from_its_apex() {
     assert_eq!(pointed.bounds().unwrap().min[2], 0.0, "down to the apex");
 }
 
+/// #754: a cone's side cut into sectors whose loops have the apex as a vertex (a drill point as
+/// SolidWorks writes it) closes, also when a sector is half a turn or more.
+#[test]
+fn a_cone_cut_into_sectors_at_its_apex_is_closed() {
+    let pi = std::f64::consts::PI;
+    let want = pi / 3.0 / 1.0_f64.tan();
+    for cuts in [
+        vec![0.0, 1.0],
+        vec![0.0, pi],
+        vec![0.3, 0.3 + pi],
+        vec![0.0, 1.5 * pi],
+        vec![0.0, 0.5 * pi, pi, 1.5 * pi],
+        vec![0.0, 2.0, 4.0],
+    ] {
+        let m = read_ok(&fixtures::cone_sectors(&cuts));
+        all_closed(&m);
+        let v = total_volume(&m);
+        assert!(near(v, want, 0.02), "{cuts:?}: {v} against {want}");
+    }
+}
+
 #[test]
 fn a_whole_torus_with_no_loop_is_closed() {
     let m = read_ok(&fixtures::torus());

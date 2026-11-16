@@ -194,6 +194,58 @@ pub fn cone(r0: f64, h: f64) -> String {
     f.file(&[solid], MM)
 }
 
+/// A drill point: a cone of radius 1 at z 0 that closes on its apex below, under a flat disc,
+/// its side cut along the lines from the apex at the angles `cuts` (radians, rising, below a
+/// turn from the first) into faces that are sectors: two lines that meet at the apex and an
+/// arc, with the apex a vertex of their loop and no vertex loop (as SolidWorks writes a blind
+/// hole's point).
+pub fn cone_sectors(cuts: &[f64]) -> String {
+    let mut f = F::new();
+    let (r, a) = (1.0_f64, 1.0_f64);
+    let apex_p = [0.0, 0.0, -r / a.tan()];
+    let axis = f.frame([0.0; 3], [0.0, 0.0, 1.0], [1.0, 0.0, 0.0]);
+    let cone = f.w.add(format!("CONICAL_SURFACE('',{axis},{r:?},{a:?})"));
+    let circle = f.circle([0.0; 3], r);
+    let apex = f.vertex(apex_p);
+    let base: Vec<P3> = cuts
+        .iter()
+        .map(|t| [r * t.cos(), r * t.sin(), 0.0])
+        .collect();
+    let vs: Vec<Id> = base.iter().map(|&p| f.vertex(p)).collect();
+    // From each cut's point on the circle down to the apex.
+    let lines: Vec<Id> = base
+        .iter()
+        .zip(&vs)
+        .map(|(&p, &v)| {
+            let l = f.line(p, apex_p);
+            f.edge(v, apex, l)
+        })
+        .collect();
+    let n = cuts.len();
+    let arcs: Vec<Id> = (0..n)
+        .map(|k| f.edge(vs[k], vs[(k + 1) % n], circle))
+        .collect();
+    let mut faces = Vec::new();
+    for k in 0..n {
+        let lp = f.bound(
+            &[
+                (lines[(k + 1) % n], false),
+                (arcs[k], false),
+                (lines[k], true),
+            ],
+            true,
+        );
+        faces.push(f.face(&[lp], cone, true));
+    }
+    let a0 = f.frame([0.0; 3], [0.0, 0.0, 1.0], [1.0, 0.0, 0.0]);
+    let plane = f.w.add(format!("PLANE('',{a0})"));
+    let top: Vec<(Id, bool)> = arcs.iter().map(|&e| (e, true)).collect();
+    let lt = f.bound(&top, true);
+    faces.push(f.face(&[lt], plane, true));
+    let s = f.solid("point", &faces);
+    f.file(&[s], MM)
+}
+
 /// A whole torus (major radius 3, minor 1) round (1, 2, 3): one face with no loop.
 pub fn torus() -> String {
     let mut f = F::new();
