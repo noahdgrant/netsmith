@@ -22,13 +22,14 @@ A member declaration may end with the word `optional` after its type, on the sam
 
 The word is a modifier of a declaration, not a statement and not a type. The parser reads it as a plain word, so a member, a type or a variable may still be called `optional`.
 
-"Stated" is a test on what is written, as ADR 0069 made it, and not on the solved value. A member is stated when its class (the members `~` joins to it) has one that an `&=` names or a `?=` default was applied to; that an equation has alone on its left when the right side reads no unstated optional member; or that a bound (`>=`, `<=`) holds against numbers alone. The three rules:
+"Stated" is a test on what is written, as ADR 0069 made it, and not on the solved value. A member is stated when its class (the members `~` joins to it) has one that an `&=` names or a `?=` default was applied to; that an equation has alone on its left when the right side reads no unstated optional member; or that a bound (`>=`, `<=`) holds against numbers alone. The four rules:
 
 1. A bound against numbers alone states the member. A bound against another member is a check.
 2. The library's own relation does not state it (`.dcr <= .buck.max_dcr` has the member alone on one side; counting it would make every optional member stated by the relation that reads it).
 3. The statement travels across `~`, both ways, also through a wrapper module.
+4. A member that an optional column of its part's `catalog` provides (`.esr optional` of `Capacitor`) is stated by the column, so the relations that read it are kept. Which row is picked is not known when the checker skips, so the solver finishes the rule: a row that records a value gives the member it, and a relation that reads a member left empty is not evaluated and not listed.
 
-A value that a catalog row or a pick gives is never a statement. The skip guards only the optional member: `reg.vin.peak <= reg.vin_abs_max` is still listed as not evaluated when nothing states the peak (ADR 0057).
+A value that a catalog row or a pick gives is not a statement: rule 4 is about the column the part declares, and a stage reads the row's value through a default, `.output_esr ?= .output_cap.esr`, so a design that states `.output_esr &= 5mohm` wins over what the row records, as it does over any `?=`. The skip guards only the optional member: `reg.vin.peak <= reg.vin_abs_max` is still listed as not evaluated when nothing states the peak (ADR 0057).
 
 The checker refuses `optional` on a pin, on a member whose type is an interface, a part or a module, and in a board, a system, a panel or a physical file. It also refuses a statement of an optional member in the definition that declares it, because that would state it for every use. The messages and the rules are in `docs/LANGUAGE.md` ("A value that may stay open") and in the header of `crates/netsmith-check/src/optional.rs`.
 

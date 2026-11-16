@@ -23,9 +23,9 @@
 //! - the column that holds the value a design is expected to choose or bound (ADR 0065);
 //! - the columns a file of rows may leave out (ADR 0055, ADR 0058): they are the ones the
 //!   synthesized provider leaves empty. A synthesized part has no `temperature_coefficient`,
-//!   no `dielectric` and no `rms_current`, so a row of the catalog that is empty there must be
-//!   offered to a design that does not ask for the column, or the synthesized part, which is
-//!   empty there too, would fit no design at all.
+//!   no `dielectric`, no capacitor `esr` and no `rms_current`, so a row of the catalog that is
+//!   empty there must be offered to a design that does not ask for the column, or the
+//!   synthesized part, which is empty there too, would fit no design at all.
 //!
 //! A catalog is a name that every part listing it shares (ADR 0022: `resistor.csv` is read by
 //! every part with `catalog resistor`), so the entries are found by the catalog's name. A test
@@ -139,7 +139,7 @@ static RESISTOR: Standard = Standard {
 };
 
 /// `catalog capacitor { .capacitance, .effective_capacitance, .max_voltage, .package,
-/// .dielectric }`.
+/// .dielectric optional, .esr optional }`.
 static CAPACITOR: Standard = Standard {
     catalog: "capacitor",
     word: "capacitor",
@@ -161,6 +161,8 @@ static CAPACITOR: Standard = Standard {
         // Read with the others; a generic part has none and no row is matched on it. It is an
         // enum in the part and text here.
         text("dielectric", Fill::Empty),
+        // Likewise: a generic part has no ESR, and a design that bounds the ESR is given a row.
+        quantity("esr", Dimension::RESISTANCE, Fill::Empty, false),
     ],
     make: generic::capacitors,
 };
@@ -443,6 +445,7 @@ mod tests {
             [
                 ("resistor", "temperature_coefficient"),
                 ("capacitor", "dielectric"),
+                ("capacitor", "esr"),
                 ("led", "max_forward_current"),
                 ("led", "test_current"),
                 ("inductor", "rms_current"),

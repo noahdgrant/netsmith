@@ -647,6 +647,11 @@ pub struct Field {
     /// Where its value came from, when a default gave it (ADR 0051, issue #625): the last of
     /// `narrowed_at` is then that default's line.
     pub default_from: Option<DefaultFrom>,
+    /// Whether an `optional` member is stated only by the optional column of its part's
+    /// catalog that provides it, or is worked out from such a member (ADR 0074): the relations
+    /// that read it are kept, and the row that is picked either gives it a value or leaves it
+    /// empty. The solver says nothing of a relation that cannot be evaluated for an empty cell.
+    pub waits_on_row: bool,
 }
 
 /// Which kind of default gave a field its value.
@@ -753,9 +758,9 @@ pub struct Relation {
     /// because it says what a hand-written one would. Other relations the checker makes from
     /// statements have none.
     pub written: Option<Written>,
-    /// Whether a part's own definition states it (a relation of a generic or a part, such as
-    /// `.gate_source_voltage >= .on_resistance_vgs`), as the library or a project's part
-    /// writes it, and not the design that uses the part. A row with no value in an optional
+    /// Whether a definition that is used states it (a relation of a generic, a part or a
+    /// module, such as `.gate_source_voltage >= .on_resistance_vgs`), as the library or a
+    /// project writes it, and not the board that uses it. A row with no value in an optional
     /// catalog column (ADR 0078) is still offered when only such a relation names the
     /// column, because the design has said nothing about it.
     pub own: bool,
@@ -2332,6 +2337,7 @@ impl Model {
             optional: None,
             roles: Vec::new(),
             default_from: None,
+            waits_on_row: false,
         });
         FieldId(self.fields.len() - 1)
     }

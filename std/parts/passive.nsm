@@ -123,10 +123,15 @@ generic Capacitor {
     .max_voltage: Voltage
     /// The dielectric class, unset until a design states it or a catalog row does.
     .dielectric: Dielectric
+    /// The equivalent series resistance of one capacitor at the frequency the row's `notes`
+    /// name, as its maker's datasheet states it (ADR 0074). Unset until a design states it or
+    /// a catalog row does; a relation that reads it (the ripple of a buck stage) is not
+    /// evaluated for a row that records none, and says nothing about it.
+    .esr: Resistance optional
     bridge .a ~> .b
 
     .package: Package
-    catalog capacitor { .capacitance, .effective_capacitance, .max_voltage, .package, .dielectric optional }
+    catalog capacitor { .capacitance, .effective_capacitance, .max_voltage, .package, .dielectric optional, .esr optional }
 }
 
 /// Identical capacitors in parallel in one place, whose number the solver chooses or a module
@@ -182,10 +187,12 @@ generic CapacitorBank {
     .total_effective_capacitance == .count * .effective_capacitance
     /// The dielectric class of one capacitor, unset until a design states it or a row does.
     .dielectric: Dielectric
+    /// The ESR of one capacitor, as `Capacitor.esr`.
+    .esr: Resistance optional
     bridge .a ~> .b
 
     .package: Package
-    catalog capacitor { .capacitance, .effective_capacitance, .max_voltage, .package, .dielectric optional }
+    catalog capacitor { .capacitance, .effective_capacitance, .max_voltage, .package, .dielectric optional, .esr optional }
 }
 
 /// The colour an LED gives, as its listing and its datasheet name it. A design that needs one

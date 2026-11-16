@@ -78,15 +78,15 @@ fn the_standard_tvs_diode_marks_its_breakdown_voltage() {
 #[test]
 fn the_standard_catalogs_mark_the_columns_that_were_optional_before_the_marker() {
     for (generic, module, column) in [
-        ("Resistor", "passive", "temperature_coefficient"),
-        ("Capacitor", "passive", "dielectric"),
-        ("Inductor", "passive", "rms_current"),
+        ("Resistor", "passive", vec!["temperature_coefficient"]),
+        ("Capacitor", "passive", vec!["dielectric", "esr"]),
+        ("Inductor", "passive", vec!["rms_current"]),
     ] {
         let c = run(&format!(
             "import std::parts::{module}::{generic}\nboard B {{\n    .x: {generic}\n}}\n"
         ));
         assert!(c.is_ok(), "{}", c.render());
-        assert_eq!(columns(&c, "x").1, [column], "{generic}");
+        assert_eq!(columns(&c, "x").1, column, "{generic}");
     }
 }
 

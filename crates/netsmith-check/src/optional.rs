@@ -14,12 +14,18 @@
 //! - an `&=` names, or a `?=` default was applied to;
 //! - an equation or an `&=` has alone on its left, when the right side reads no optional
 //!   member that is itself unstated;
-//! - a bound (`>=`, `<=`) holds against numbers alone (`.max_dcr <= 0.1ohm`).
+//! - a bound (`>=`, `<=`) holds against numbers alone (`.max_dcr <= 0.1ohm`);
+//! - an optional column of the catalog of the part that has it provides it (`.esr optional`
+//!   in `Capacitor`): the picked row gives it a value, or leaves it empty, which the solver
+//!   finds out and the checker cannot. The relations that read it are kept, and the solver
+//!   evaluates them for a row that records a value and says nothing of them for a row that
+//!   does not (`Field::waits_on_row`).
 //!
 //! A bound against another field is a check, not a statement: the library's own relation
 //! `.inductor.dc_resistance <= .ic.max_dcr` has the member alone on one side, and counting
 //! it would make every optional member stated by the relation that reads it. A value that a
-//! catalog row or a pick gives is never a statement either.
+//! catalog row or a pick gives is not a statement either: the fourth rule is about the column,
+//! which the part declares, and not about what a row holds.
 //!
 //! The word has three meanings that do not meet: after a `pins` row the pin may float (ADR
 //! 0016), after a column of a `catalog` statement the column may be empty (ADR 0055, 0078), and
@@ -242,31 +248,52 @@ impl Checker<'_> {
         }
         // A member worked out from members that are stated, or that need no statement, is
         // stated; one worked out from an optional member nothing states is not.
-        loop {
-            let mut changed = false;
-            for (root, reads) in &defs {
-                if !stated.contains(root)
-                    && reads
-                        .iter()
-                        .all(|g| !needs.contains(g) || stated.contains(g))
-                {
-                    stated.insert(*root);
-                    changed = true;
+        let close = |mut stated: HashSet<usize>| {
+            loop {
+                let mut changed = false;
+                for (root, reads) in &defs {
+                    if !stated.contains(root)
+                        && reads
+                            .iter()
+                            .all(|g| !needs.contains(g) || stated.contains(g))
+                    {
+                        stated.insert(*root);
+                        changed = true;
+                    }
+                }
+                if !changed {
+                    break;
                 }
             }
-            if !changed {
-                break;
+            stated
+        };
+        // What the statements of the text say, and what they say with the members that an
+        // optional column of the catalog of their part provides counted as stated: the row
+        // that is picked gives them a value or leaves them empty, which the solver finds out.
+        let provided: Vec<usize> = self
+            .model
+            .instances
+            .iter()
+            .filter_map(|i| i.catalog.as_ref())
+            .flat_map(|c| c.optional.iter().copied())
+            .filter(|f| self.model.fields[f.0].optional.is_some())
+            .map(|f| find(&mut parent, f.0))
+            .collect();
+        let by_text = close(stated.clone());
+        stated.extend(provided);
+        let stated = close(stated);
+        let mut unstated: HashSet<FieldId> = HashSet::new();
+        for (i, field) in self.model.fields.iter_mut().enumerate() {
+            if field.optional.is_none() {
+                continue;
+            }
+            let root = find(&mut parent, i);
+            if !stated.contains(&root) {
+                unstated.insert(FieldId(i));
+            } else if !by_text.contains(&root) {
+                field.waits_on_row = true;
             }
         }
-        let unstated: HashSet<FieldId> = (0..n)
-            .filter(|&i| {
-                self.model.fields[i].optional.is_some() && {
-                    let root = find(&mut parent, i);
-                    !stated.contains(&root)
-                }
-            })
-            .map(FieldId)
-            .collect();
         if unstated.is_empty() {
             return;
         }

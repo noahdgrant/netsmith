@@ -37,7 +37,7 @@ The board edge, the board's member `.outline` (`std::pcb::Outline`): a width, a 
 _Avoid_: Board size, board shape
 
 **Output ripple**:
-The peak-to-peak ripple of a buck stage's output voltage, `.output_ripple` of `BuckStage`: `dI / (8 * fsw * n * C) + dI * ESR / n` for the inductor's ripple current `dI`, the bank's count `n`, one capacitor's effective capacitance `C` and the board's `.output_esr` (an **Optional member**), a **Closed-form check**. A board bounds it (`.stage.output_ripple <= 20mV`); with no ESR stated it has no value and the bound is listed as not evaluated. Not the ripple current of the inductor (`.ripple`).
+The peak-to-peak ripple of a buck stage's output voltage, `.output_ripple` of `BuckStage`: `dI / (8 * fsw * n * C) + dI * ESR / n` for the inductor's ripple current `dI`, the bank's count `n`, one capacitor's effective capacitance `C` and `.output_esr` (an **Optional member**: the board states it, or the picked capacitor's row records it in its `esr` column), a **Closed-form check**. A board bounds it (`.stage.output_ripple <= 20mV`); with no ESR stated and none in the row it has no value and the bound is listed as not evaluated. Not the ripple current of the inductor (`.ripple`).
 _Avoid_: Voltage ripple, output noise, ripple voltage
 
 **Overhang**:
