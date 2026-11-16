@@ -248,11 +248,25 @@ pub struct Zone {
     pub connect: Connect,
     pub thermal_gap: f64,
     pub thermal_bridge: f64,
+    /// What the fill does with a piece that touches no copper of the zone's net.
+    pub islands: Islands,
     pub name: String,
     /// A teardrop (`(attr (teardrop ...))`, KiCad 9's own mark): copper that widens a track
     /// where it meets a pad or a via. Its fill is the copper; the check sees it as copper of its
     /// net, and pours of other nets keep their clearance from it.
     pub teardrop: bool,
+}
+
+/// What a zone's fill does with a copper island, a piece of its fill that touches no copper of its net
+/// (KiCad's `island_removal_mode` and `island_area_min`, in the zone's `(fill`).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Islands {
+    /// Removed (mode 0, KiCad's default).
+    Remove,
+    /// Kept (mode 1).
+    Keep,
+    /// Removed when smaller than this many mm² (mode 2).
+    RemoveBelow(f64),
 }
 
 /// A line, arc, circle or polygon drawn on a layer.
@@ -823,6 +837,14 @@ impl<'a> Reader<'a> {
             thermal_bridge: fill
                 .and_then(|f| child_num(f, "thermal_bridge_width"))
                 .unwrap_or(0.5),
+            islands: match fill.and_then(|f| child_num(f, "island_removal_mode")) {
+                Some(1.0) => Islands::Keep,
+                Some(2.0) => Islands::RemoveBelow(
+                    fill.and_then(|f| child_num(f, "island_area_min"))
+                        .unwrap_or(0.0),
+                ),
+                _ => Islands::Remove,
+            },
             name,
             teardrop: item
                 .find("attr")

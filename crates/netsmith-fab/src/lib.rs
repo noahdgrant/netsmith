@@ -51,10 +51,11 @@
 //! agrees with them. No other Gerber viewer was available to script: the only independent readers
 //! are KiCad's plot (compared, not loaded) and the rasteriser of [`raster`], which reads
 //! KiCad's own files as well as ours (a test renders every file of three KiCad packages). Fill:
-//! copper islands and slivers narrower than the zone's minimum thickness are not removed, a
-//! spoke into another net's clearance is kept as a stub, `connect_pads` is read (thermal, solid,
-//! none, through-hole only) with the per-pad override, and hatched fills, zone priorities and
-//! per-zone island settings are not. A pad's `remove_unused_layers` is approximated: an inner
+//! copper narrower than the zone's minimum thickness, a spoke whose end is not on the fill and
+//! a copper island are removed as KiCad removes them, with the zone's island setting
+//! (`netsmith_geom::fill` says where it differs), `connect_pads` is read (thermal, solid, none,
+//! through-hole only) with the per-pad override, zone priorities are followed, and hatched fills
+//! are not supported. A pad's `remove_unused_layers` is approximated: an inner
 //! layer keeps the pad if a track of its net ends on the pad or a zone of its net covers it (KiCad
 //! asks the connectivity engine). Text uses our font, so the silkscreen's letters differ from
 //! KiCad's, `bold` is ignored, and images are not plotted and are named in the notes. Text boxes
@@ -654,7 +655,7 @@ fn fill_notes(art: &Artwork, plotted: &[String]) -> Vec<String> {
         .collect();
     if !filled_by_us.is_empty() {
         lines.push(format!(
-            "zone fill: netsmith filled {} itself (clearance round other nets, thermal reliefs on its own pads; copper islands and slivers under the minimum thickness are not removed); look at the planes and pours in JLCPCB's order preview",
+            "zone fill: netsmith filled {} itself (clearance round other nets, thermal reliefs on its own pads; copper under the minimum thickness, spokes that reach nothing and copper islands removed); look at the planes and pours in JLCPCB's order preview",
             filled_by_us.join(", ")
         ));
     }

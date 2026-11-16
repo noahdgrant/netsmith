@@ -378,8 +378,8 @@ fn the_four_layer_board_becomes_a_package_with_its_inner_layers() {
             made[0].gerber_files
         );
     }
-    // The inner Gerber holds the pour, which netsmith fills itself: the plane as dark
-    // copper, then what it keeps clear of in clear polarity.
+    // The inner Gerber holds the pour, which netsmith fills itself: each piece of the plane as
+    // dark copper, then its holes (what it keeps clear of) in clear polarity.
     let gnd = from_zip(&dir, "FourLayerExample", "FourLayerExample-In1_Cu.gbr");
     assert!(
         gnd.contains("G36*") && gnd.contains("%TO.N,GND*%") && gnd.contains("%LPC*%"),

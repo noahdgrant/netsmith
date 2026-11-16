@@ -15,8 +15,9 @@
 //!   netsmith's own stroke font, so its strokes differ from KiCad's by design, while where
 //!   the text sits and how big it is must agree.
 //! - **Copper pours** are compared like copper, with their own limit: both fills keep the
-//!   same clearances, but KiCad also removes islands and thin slivers and cuts its spokes
-//!   its own way.
+//!   same clearances and remove islands, slivers and spokes that reach nothing, but each
+//!   works the curves and the order of the steps out its own way
+//!   (`netsmith_geom::fill`, "Where it differs from KiCad").
 //! - **Known differences of a KiCad release** are allowed for in the copy of netsmith's files
 //!   that is compared, never in the files written, and each is named in [`Report::notes`]:
 //!   KiCad 9.0.0 ignores a pad's own solder mask margin on the back face (ADR 0034). Any
@@ -108,8 +109,7 @@ pub struct Limits {
     /// The most pixels with nothing of the other picture within the tolerance, as a fraction
     /// of the lit ones, for copper, mask, paste and outline.
     pub beyond_tolerance: f64,
-    /// The same for a layer with a pour: spokes that KiCad drops and islands it removes
-    /// are copper the other picture does not have.
+    /// The same for a layer with a pour, whose fill each tool works out its own way.
     pub pour_beyond_tolerance: f64,
     /// The silkscreen's tolerance in millimetres: its text is another font, so only where
     /// and how large the text is must agree.
