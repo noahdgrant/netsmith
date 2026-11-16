@@ -242,11 +242,18 @@ fn map_loop(s: &Surface, inv: Option<&Inverse>, pts: &[P3]) -> Result<UvLoop, St
     }
     // Unwrap each periodic parameter along the loop, over the points where it is defined.
     let mut winding = [0i64; 2];
+    let n = uv.len();
     for d in 0..2 {
         let Some(period) = periods[d] else { continue };
+        // A loop through the pole (a cone's apex as a vertex of a sector) steps there from one
+        // value to another, by as much as the face spans: no nearest step tells it. Unwrapped
+        // from just after the pole, that step is the one back to the first point, and the loop
+        // does not go round the surface but along the pole.
+        let through_pole = (0..n).find(|&k| undefined[k] == Some(d));
+        let start = through_pole.map_or(0, |k| k + 1);
         let mut prev: Option<f64> = None;
         let mut first = None;
-        for k in 0..uv.len() {
+        for k in (0..n).map(|j| (start + j) % n) {
             if undefined[k] == Some(d) {
                 continue;
             }
@@ -256,7 +263,7 @@ fn map_loop(s: &Surface, inv: Option<&Inverse>, pts: &[P3]) -> Result<UvLoop, St
             prev = Some(uv[k][d]);
             first.get_or_insert(uv[k][d]);
         }
-        if let (Some(f), Some(l)) = (first, prev) {
+        if let (Some(f), Some(l), None) = (first, prev, through_pole) {
             // The step from the last point back to the first is the nearest one, so the loop
             // went round as many times as the last point is periods from the first.
             winding[d] = ((l - f) / period).round() as i64;
@@ -264,7 +271,6 @@ fn map_loop(s: &Surface, inv: Option<&Inverse>, pts: &[P3]) -> Result<UvLoop, St
     }
     // A point where a parameter is undefined takes it from its neighbours: once from the one
     // before and once from the one after, so the loop runs along the pole between them.
-    let n = uv.len();
     let mut out_xyz = Vec::with_capacity(n + 2);
     let mut out_uv = Vec::with_capacity(n + 2);
     for k in 0..n {
@@ -862,7 +868,11 @@ fn pole(s: &Surface, d: usize, l: &UvLoop, vertex: Option<P3>) -> Result<(f64, P
                 l.uv.iter()
                     .all(|p| if up { p[1] <= apex } else { p[1] >= apex });
             if !side {
-                return Err("a single loop goes round a cone away from its apex".into());
+                let [x, y, z] = s.point(0.0, apex);
+                return Err(format!(
+                    "a single loop goes round a cone away from its apex: the face would close on \
+                     the apex at ({x:.6}, {y:.6}, {z:.6}), and the loop is not all on its side of it"
+                ));
             }
             apex
         }
