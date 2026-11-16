@@ -204,6 +204,18 @@ enum Color {
 /// A light-emitting diode. Current flows from anode to cathode. At DC it is a diode that drops
 /// `.forward_voltage` (ADR 0113), so a `~>` chain from a rail through a resistor and the LED
 /// back to the rail sets the LED's current, and a window on `.current` picks the resistor.
+///
+/// `.max_forward_current` is the largest continuous forward current the datasheet allows (its absolute
+/// maximum rating of the DC forward current, at 25 C and not derated), and `.test_current`
+/// the current `.forward_voltage` is the datasheet's range at. Both are optional columns of
+/// the catalog (ADR 0078): a row that records none is offered, and `.current <= .max_forward_current`
+/// is not evaluated for it, which is listed as a note like any check on an unstated value
+/// (the part's relation does not count as the design asking, as for `NMosfet`'s
+/// `.on_resistance_vgs`). A design that states `.max_forward_current` (`.led.max_forward_current >= 20mA`)
+/// gets only rows that record one. A generic LED takes a row whose `.max_forward_current` is at least
+/// the largest current the design lets through it, and any row where the design bounds none.
+/// `.test_current` is information: nothing checks it, since a forward voltage at another
+/// current is not modelled.
 #[kind(led)]
 #[value("LED")]
 generic Led {
@@ -216,6 +228,10 @@ generic Led {
 
     .color:           Color
     .forward_voltage: Voltage
+    /// The largest continuous forward current, where the catalog row records it.
+    .max_forward_current:     Current
+    /// The current `.forward_voltage` is stated at, where the catalog row records it.
+    .test_current:    Current
     /// Through-current, anode to cathode. An LED does not conduct the other way, so a supply
     /// that could fall short of the forward voltage (a 3.3 V rail and a 3.4 V part) cannot
     /// drive it.
@@ -225,11 +241,12 @@ generic Led {
 
     .drop == .forward_voltage
     .current >= 0mA
+    .current <= .max_forward_current
     bridge .anode ~> .cathode
     dc diode .anode .cathode .forward_voltage
 
     .package: Package
-    catalog led { .color, .forward_voltage, .package }
+    catalog led { .color, .forward_voltage, .package, .max_forward_current optional, .test_current optional }
 }
 
 /// An inductor. `.inductance` is the marked value with its tolerance. `.saturation_current`

@@ -259,9 +259,9 @@ fn the_nearest_rows_are_those_nearest_the_need_that_fails_and_not_the_nearest_in
 
 // ---- LEDs --------------------------------------------------------------------------
 
-const LEDS: &str = "lcsc,mpn,name,label,color,forward_voltage,package,library,source\n\
-C900301,ZZ-RED,Red 0603,ZZ-RED,Red,1.8V..2.2V,0603,Basic,https://example.invalid/a\n\
-C900302,ZZ-GRN,Green 0603,ZZ-GRN,Green,2.0V..2.4V,0603,Extended,https://example.invalid/b\n";
+const LEDS: &str = "lcsc,mpn,name,label,color,forward_voltage,max_forward_current,test_current,package,library,source\n\
+C900301,ZZ-RED,Red 0603,ZZ-RED,Red,1.8V..2.2V,25mA,20mA,0603,Basic,https://example.invalid/a\n\
+C900302,ZZ-GRN,Green 0603,ZZ-GRN,Green,2.0V..2.4V,20mA,20mA,0603,Extended,https://example.invalid/b\n";
 
 fn led_board(extra: &str) -> String {
     format!("import std::parts::passive::{{Color, Led}}\nboard B {{\n    .led: Led {{\n{extra}    }}\n}}\n")
@@ -279,6 +279,7 @@ fn a_generic_led_takes_the_colour_and_forward_voltage_the_design_states() {
     let Spec::Led {
         color,
         forward_voltage,
+        ..
     } = &g.spec
     else {
         panic!("{g:?}")
@@ -312,6 +313,7 @@ fn a_generic_led_resolves_to_a_row_of_the_colour_inside_the_stated_range() {
         spec: Spec::Led {
             color,
             forward_voltage: vf,
+            max_forward_current: Need::Nothing,
         },
     };
     let got = resolve(
@@ -387,4 +389,37 @@ fn a_part_held_to_a_row_that_breaks_a_relation_is_refused_with_the_relation() {
         "{}",
         pinned.diagnostics[0].message
     );
+}
+
+#[test]
+fn a_generic_led_takes_a_row_that_allows_the_current_the_design_bounds() {
+    // No row has this forward voltage, so the part is generic; the design lets up to 22 mA
+    // through it, which the 25 mA row allows and the 20 mA row does not.
+    let board = led_board(
+        "        .color &= Color::Green\n        .forward_voltage &= 1.5V..1.7V\n        .current &= 10mA..22mA\n",
+    );
+    let s = solved(&board, &catalogs("led", LEDS));
+    let g = s.picks[0].generic.as_ref().expect("a generic part");
+    let Spec::Led { max_forward_current, .. } = &g.spec else {
+        panic!("{g:?}")
+    };
+    assert!(
+        matches!(max_forward_current, Need::AtLeast(x) if (*x - 0.022).abs() < 1e-9),
+        "{max_forward_current:?}"
+    );
+    assert!(g.describe().contains("maximum current"), "{}", g.describe());
+    // Resolved against the rows, the unresolved message says what was asked of the current.
+    let e = resolve(g, &catalogs("led", LEDS), &never).unwrap_err();
+    assert!(e.contains("maximum current at least 22 mA"), "{e}");
+    let red = netsmith_solve::Generic {
+        package: "0603".into(),
+        spec: Spec::Led {
+            color: Need::Text("Red".into()),
+            forward_voltage: Need::Nothing,
+            max_forward_current: Need::AtLeast(0.022),
+        },
+        ..g.clone()
+    };
+    let got = resolve(&red, &catalogs("led", LEDS), &never).unwrap();
+    assert_eq!(got.lcsc.as_deref(), Some("C900301"));
 }

@@ -94,7 +94,7 @@ fn a_constraint_may_use_a_member_declared_later() {
         "board B {\n    .led.current == (.s.voltage - .led.forward_voltage) / .r.resistance\n    .led: Led\n    .s: Rail\n    .r: Resistor\n}\n",
     );
     assert!(c.is_ok(), "{}", c.render());
-    assert_eq!(c.board("B").unwrap().model.relations().len(), 5);
+    assert_eq!(c.board("B").unwrap().model.relations().len(), 6);
 }
 
 #[test]

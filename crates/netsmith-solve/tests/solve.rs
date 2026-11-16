@@ -144,7 +144,14 @@ fn what_cannot_be_evaluated_is_deferred() {
         near(lo, 0.008415841584158413) && near(hi, 0.01161616161616162),
         "{lo} {hi}"
     );
-    assert!(s.deferred.is_empty(), "{:?}", s.deferred);
+    // The sample catalogs have no LED, so the LED's rating is unknown and its own check of the
+    // current against it (`.current <= .max_forward_current`) waits; nothing else does.
+    let waiting: Vec<String> = s
+        .deferred
+        .iter()
+        .map(|&i| s.model.show_expr(&s.model.relations()[i].lhs))
+        .collect();
+    assert_eq!(waiting, ["led.current"]);
     assert!(close(range(&s, "led.drop"), (1.8, 2.2)));
 
     // Without a resistor to choose from, its resistance is unknown and so is its drop.
@@ -716,6 +723,23 @@ fn sourced(s: &Solution) -> Vec<(String, String, Library)> {
             )
         })
         .collect()
+}
+
+/// The standard catalogs and one more LED row, which records no maximum forward current (an
+/// optional column), after the standard rows. A branch that draws more than any standard LED
+/// allows tests the regulator's limit and not the LED's, so it is given an LED with no rating
+/// to check: the standard rows fail the LED's own check, and this one is offered.
+fn with_unrated_led() -> Catalogs {
+    let mut catalogs = Catalogs::jlcpcb();
+    catalogs
+        .add_file(
+            "led",
+            "catalogs/led.csv",
+            "lcsc,mpn,name,label,color,forward_voltage,package,library,source\n\
+C900401,ZZ-UNRATED,Unrated LED 0603,ZZ-UNRATED,Red,1.8V..2.4V,0603,Extended,https://example.invalid/unrated\n",
+        )
+        .unwrap();
+    catalogs
 }
 
 fn real(src: &str) -> (Checked, Solution) {
@@ -1583,10 +1607,7 @@ fn parts_alone_can_overload_the_regulator() {
     // up to 107 mA together, which is more than the regulator gives. (With 100 ohm it took
     // six branches, and every one of the six LEDs that fit has its own copy of each of the
     // other five, which is more combinations than the search will try before giving up.)
-    let (_, s) = run_with(
-        &with_branches(3, "47ohm +/- 1%", "0mA"),
-        &Catalogs::jlcpcb(),
-    );
+    let (_, s) = run_with(&with_branches(3, "47ohm +/- 1%", "0mA"), &with_unrated_led());
     let msgs = messages(&s);
     assert_eq!(msgs.len(), 1, "{msgs:#?}");
     for needle in [
@@ -1602,8 +1623,8 @@ fn parts_alone_can_overload_the_regulator() {
         );
     }
     // Two of them are within it.
-    let (_, ok) = real(&with_branches(2, "47ohm +/- 1%", "0mA"));
-    assert!(ok.diagnostics.is_empty());
+    let (_, ok) = run_with(&with_branches(2, "47ohm +/- 1%", "0mA"), &with_unrated_led());
+    assert!(ok.diagnostics.is_empty(), "{:?}", messages(&ok));
 }
 
 #[test]

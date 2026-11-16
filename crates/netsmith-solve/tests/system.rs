@@ -13,6 +13,26 @@ fn run(src: &str) -> (Checked, Solution) {
     (c, s)
 }
 
+/// [`run`] with one more LED row, one that records no maximum forward current (an optional
+/// column), after the standard rows. The boards of `led_draws` push an LED far past what any
+/// standard LED allows, to test the join and not the LED, so they are given an LED whose
+/// rating is not recorded: the part's own check of it is not evaluated for that row.
+fn run_with_unrated_led(src: &str) -> (Checked, Solution) {
+    let c = check("two_boards.nsm", src, &Loader::std());
+    assert!(c.is_ok(), "the source should check clean:\n{}", c.render());
+    let mut catalogs = Catalogs::jlcpcb();
+    catalogs
+        .add_file(
+            "led",
+            "catalogs/led.csv",
+            "lcsc,mpn,name,label,color,forward_voltage,package,library,source\n\
+C900401,ZZ-UNRATED,Unrated LED 0603,ZZ-UNRATED,Red,1.8V..2.4V,0603,Extended,https://example.invalid/unrated\n",
+        )
+        .unwrap();
+    let s = solve_system(&c.systems[0], &catalogs);
+    (c, s)
+}
+
 fn messages(s: &Solution) -> Vec<String> {
     s.diagnostics.iter().map(|d| d.message.clone()).collect()
 }
@@ -89,7 +109,7 @@ fn what_the_led_board_draws_is_within_what_the_regulator_board_is_built_to_give(
 
 #[test]
 fn a_board_that_draws_more_than_the_other_is_built_to_give_names_both_boards_and_the_numbers() {
-    let (_, s) = run(&led_draws("150mA"));
+    let (_, s) = run_with_unrated_led(&led_draws("150mA"));
     let msgs = messages(&s);
     assert_eq!(msgs.len(), 1, "{msgs:#?}");
     let m = &msgs[0];
@@ -109,7 +129,7 @@ fn a_board_that_draws_more_than_the_other_is_built_to_give_names_both_boards_and
 fn a_draw_just_over_the_envelope_is_the_regulator_boards_to_refuse() {
     // 40 to 60 mA overlaps the envelope of 0 to 50 mA, so the currents can add up, but the
     // board may be asked for more than it was built for.
-    let (_, s) = run(&led_draws("40mA..60mA"));
+    let (_, s) = run_with_unrated_led(&led_draws("40mA..60mA"));
     let msgs = messages(&s);
     assert_eq!(msgs.len(), 1, "{msgs:#?}");
     let m = &msgs[0];
@@ -127,7 +147,7 @@ fn a_draw_the_regulator_board_never_stated_is_checked_by_its_regulator() {
     // The regulator board states no limit on its output, so the LED board's draw is what it
     // has to give, and the regulator in it can give 100 mA at most.
     let src = led_draws("150mA").replacen(".current &= 0mA..50mA\n", "\n", 1);
-    let (_, s) = run(&src);
+    let (_, s) = run_with_unrated_led(&src);
     let msgs = messages(&s);
     assert!(
         msgs.iter()
@@ -247,7 +267,7 @@ fn the_led_boards_input_current_is_the_current_of_its_led_chain() {
 #[test]
 fn an_led_that_draws_more_than_the_regulator_board_gives_is_refused_at_the_join() {
     // Said by the LED's own current, with nothing stated on the input.
-    let (_, s) = run(&led_draws("80mA"));
+    let (_, s) = run_with_unrated_led(&led_draws("80mA"));
     let msgs = messages(&s);
     assert_eq!(msgs.len(), 1, "{msgs:#?}");
     for needle in [

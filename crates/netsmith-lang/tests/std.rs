@@ -120,7 +120,7 @@ fn passive_parts_parse() {
         .iter()
         .map(Path::to_source)
         .collect();
-    assert_eq!(led_fields, [".color", ".forward_voltage", ".package"]);
+    assert_eq!(led_fields, [".color", ".forward_voltage", ".package", ".max_forward_current", ".test_current"]);
 
     let cap = def(&file, "Capacitor");
     assert!(cap.items.iter().any(|i| matches!(i, Item::Bridge(_))));

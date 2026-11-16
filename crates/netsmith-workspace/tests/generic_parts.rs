@@ -107,7 +107,7 @@ fn a_generic_capacitor_inductor_and_led_are_each_listed_unresolved_by_name() {
     let d = line("Led");
     let why = d.unresolved.as_deref().expect("an unresolved LED");
     assert!(
-        why.starts_with("unresolved: no row of the `led` catalog can be ordered for Red LED 0402, forward voltage 1.5 V..1.7 V."),
+        why.starts_with("unresolved: no row of the `led` catalog can be ordered for Red LED 0402, forward voltage 1.5 V..1.7 V, maximum current at least 15 mA."),
         "{why}"
     );
     assert!(bom.total_usd.is_none());

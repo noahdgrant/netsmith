@@ -55,6 +55,8 @@ fn columns(name: &str) -> Vec<(String, FieldKind)> {
             t("color"),
             q("forward_voltage", Dimension::VOLTAGE),
             t("package"),
+            q("max_forward_current", Dimension::CURRENT),
+            q("test_current", Dimension::CURRENT),
         ],
         "ldo" => vec![
             q("vout.voltage", Dimension::VOLTAGE),
@@ -146,6 +148,7 @@ fn catalog(name: &str) -> Catalog {
         .map(String::from)
         .to_vec(),
         "n_mosfet" => vec!["on_resistance_vgs".to_string()],
+        "led" => vec!["max_forward_current".to_string(), "test_current".to_string()],
         "header" => vec!["mating.seat".to_string()],
         _ => Vec::new(),
     };
@@ -746,6 +749,47 @@ fn every_led_has_a_datasheet_in_its_source_and_a_range_in_order() {
         assert!(
             row["notes"].contains("datasheet minimum to maximum at the test current"),
             "{lcsc}"
+        );
+    }
+}
+
+/// The datasheet's maximum continuous forward current and the current its forward-voltage
+/// range is measured at (issue #801), for each LED, as read from the PDF text on 2026-11-15.
+#[test]
+fn every_led_states_the_datasheet_maximum_current_and_test_current_with_their_source() {
+    let wanted = [
+        ("C2286", 0.025, 0.020),
+        ("C2290", 0.030, 0.005),
+        ("C125094", 0.030, 0.020),
+        ("C125103", 0.020, 0.005),
+        ("C965799", 0.020, 0.020),
+        ("C965807", 0.020, 0.020),
+        ("C965808", 0.020, 0.020),
+        ("C965804", 0.020, 0.020),
+        ("C965802", 0.020, 0.020),
+        ("C965793", 0.020, 0.020),
+        ("C25503345", 0.020, 0.020),
+        ("C22355736", 0.020, 0.020),
+        ("C20613596", 0.020, 0.020),
+        ("C25503856", 0.020, 0.020),
+    ];
+    assert_eq!(records("jlcpcb/catalog/led.csv").len(), wanted.len());
+    let amps = |c: &Candidate, column: &str| match c.column(column) {
+        Some(Value::Quantity(q)) => q.mid(),
+        other => panic!("{column}: {other:?}"),
+    };
+    for (lcsc, max, test) in wanted {
+        let c = led_by(lcsc);
+        assert!((amps(&c, "max_forward_current") - max).abs() < 1e-12, "{lcsc}");
+        assert!((amps(&c, "test_current") - test).abs() < 1e-12, "{lcsc}");
+        // A rating is never below the current the voltage is measured at.
+        assert!(amps(&c, "max_forward_current") >= amps(&c, "test_current"), "{lcsc}");
+    }
+    for row in records("jlcpcb/catalog/led.csv") {
+        assert!(
+            row["source"].contains("max_forward_current, test_current:"),
+            "{} names no source for its currents",
+            row["lcsc"]
         );
     }
 }
