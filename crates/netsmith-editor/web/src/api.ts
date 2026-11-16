@@ -945,6 +945,12 @@ export type PcbReport = { board: string, routed: boolean, unrouted: Array<string
  */
 stopped: boolean, 
 /**
+ * The nets whose copper was kept from the board routed before the last change of the
+ * placement (partial routing, issue 825), and those routed again; both empty when the
+ * board was routed from nothing.
+ */
+carried: Array<string>, rerouted: Array<string>, 
+/**
  * Why there is no board to draw, if there is none.
  */
 error: string | null, 
@@ -1277,7 +1283,60 @@ export type PcbEdit = { board: string,
  */
 stamp: string, changes: Array<PcbChange>, };
 
-export type PcbEdited = { scene: PcbScene, };
+export type PcbEdited = { scene: PcbScene, 
+/**
+ * What the route of the board says, when the edit put back a placement that was routed
+ * (an undo, issue 825): its copper is drawn again with no router. None when it is unrouted.
+ */
+report?: PcbReport, };
+
+export type PcbRegenerate = { board: string, 
+/**
+ * `PcbScene::layout_stamp` as the page read it.
+ */
+stamp: string, 
+/**
+ * The module's path in the design (`stage`, `channels[1]`).
+ */
+module: string, 
+/**
+ * The same seed gives the same arrangement, another seed another.
+ */
+seed: number, 
+/**
+ * How far round the module's parts they may go, in mm; the default (3 mm) when not given.
+ */
+margin?: number, };
+
+export type PcbRegeneratedPart = { path: string, refdes: string, courtyard: PcbBox, };
+
+export type PcbTotals = { hpwl: number, ratsnest: number, crossings: number, };
+
+export type PcbRegenerated = { module: string, seed: number, 
+/**
+ * Where the parts were placed, on the sheet.
+ */
+region: PcbBox, 
+/**
+ * An entry for each part placed again, unlocked, `source = "regen"`.
+ */
+changes: Array<PcbChange>, parts: Array<PcbRegeneratedPart>, 
+/**
+ * The parts of the module the layout file locks or the requirements pin, by path.
+ */
+held: Array<string>, 
+/**
+ * The nets with a pad on a part placed again: routed again; the rest keep their copper.
+ */
+nets: Array<string>, 
+/**
+ * The nets whose routes file record no longer matches its pads once the parts moved.
+ */
+routesDropped: Array<string>, 
+/**
+ * The placement check's findings that the proposal adds, and those it takes away.
+ */
+appeared: Array<string>, gone: Array<string>, before: PcbTotals, after: PcbTotals, };
 
 export type FindingSource = "placement" | "unrouted" | "drc" | "kicad" | "routes";
 

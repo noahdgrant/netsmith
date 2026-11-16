@@ -46,6 +46,8 @@ const FIXTURES = {
   // One module used by two boards: a declaration inside it has a card for each board (the server's `moduleUses`).
   shared_module: 'scripts/editor-verify-js/fixtures/shared_module.nsm',
   regulator: 'examples/linear_regulator.nsm',
+  // Three modules of a resistor and an LED on one rail: regenerating one leaves the others' middle nets and their copper alone (issue 825).
+  lights: 'scripts/editor-verify-js/fixtures/lights.nsm',
   four_layer: 'examples/four_layer.nsm',
   // The LED board with copper in a routes file (epic #599): a locked net with a via, an unlocked net with a locked track, a net left to the router.
   routed_led: 'scripts/editor-verify-js/fixtures/routed_led.nsm',
@@ -482,7 +484,7 @@ function cleanup() {
 
 const commands = { doctor, launch, drive, groups, evidence, cleanup };
 if (!commands[command]) {
-  console.error('usage: scripts/editor-verify doctor [--no-browser] | launch [--fixture two_boards|led|regulator|four_layer|outline_and_pours|routed_pours|carrier_and_cards|led_panel|catalog_refresh|constrained|height_limits|enclosure_limits|case_fit|inspect_3d|empty|tri_state|shared_module|schematic_bench|big|tree] [--file f.nsm] | drive <recipe>|all | groups | evidence | cleanup [--keep-evidence]  (launch also takes --git)');
+  console.error('usage: scripts/editor-verify doctor [--no-browser] | launch [--fixture two_boards|led|regulator|lights|four_layer|outline_and_pours|routed_pours|carrier_and_cards|led_panel|catalog_refresh|constrained|height_limits|enclosure_limits|case_fit|inspect_3d|empty|tri_state|shared_module|schematic_bench|big|tree] [--file f.nsm] | drive <recipe>|all | groups | evidence | cleanup [--keep-evidence]  (launch also takes --git)');
   process.exit(2);
 }
 await commands[command]();

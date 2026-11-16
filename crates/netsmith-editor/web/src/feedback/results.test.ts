@@ -57,6 +57,8 @@ describe('routeResult', () => {
     routed: true,
     unrouted: [],
     placementProblems: [],
+    carried: [],
+    rerouted: [],
     tracks: 12,
     vias: 2,
     stopped: false,
@@ -69,6 +71,11 @@ describe('routeResult', () => {
     const left = routeResult(report({ unrouted: ['a', 'b'] }));
     expect(left.kind).toBe('info');
     expect(left.title).toContain('2 connections left');
+  });
+  it('says how many nets kept their copper when the route was partial', () => {
+    const r = routeResult(report({ carried: ['a', 'b'], rerouted: ['c'] }));
+    expect(r.detail).toContain('kept the copper of 2 nets, routed 1 again');
+    expect(routeResult(report({})).detail).not.toContain('kept');
   });
   it('says a board that could not be placed, with the cause', () => {
     const r = routeResult(report({ error: 'the board has no outline' }));

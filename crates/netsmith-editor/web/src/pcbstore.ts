@@ -4,9 +4,10 @@
 
 import { signal } from '@preact/signals';
 
-import type { PcbChange, PcbCrossed, PcbFindings, PcbPours, PcbRoutesEdited, PcbScene, PcbShoved, PcbWalk, RoutesChange } from './api';
+import type { PcbChange, PcbCrossed, PcbFindings, PcbPours, PcbRegenerated, PcbRoutesEdited, PcbScene, PcbShoved, PcbWalk, RoutesChange } from './api';
 import { ApiFailure, api } from './client';
 import { type History, NO_HISTORY, type Run, type Step, record, redoing, undoing } from './pcb/edits';
+import { proposalSaid } from './pcb/regenerate';
 import { labelOf } from './pcb/routes';
 import type { Side } from './pcb/side';
 import { type Answer, answerTo, latestOnly, saidOf, walkKey } from './pcb/walk';
@@ -47,6 +48,10 @@ export const findings = signal<PcbFindings | null>(null);
 export const pickedFinding = signal<string | null>(null);
 /** Whether KiCad's check is running. */
 export const checking = signal(false);
+
+/** A regeneration of one module the server proposed (issue 825), drawn over the board until it is
+ * accepted (its changes sent as one edit) or dropped; with the layout stamp it was made on. */
+export const proposal = signal<{ board: string; stamp: string; answer: PcbRegenerated } | null>(null);
 
 /** The grids the canvas offers, in mm; 0 is none. */
 export const GRIDS = [0, 0.05, 0.1, 0.25, 0.5, 1, 1.27, 2.54];
@@ -150,6 +155,9 @@ function show(next: PcbScene) {
     }
   }
   scene.value = next;
+  // A proposal made on another placement no longer says what Accept would do.
+  const p = proposal.peek();
+  if (p && (p.board !== next.board || p.stamp !== next.layoutStamp)) proposal.value = null;
   // What is wrong with it may have changed with where things are.
   void loadFindings(next.board);
   // So may the pours and zones, which come after the board is drawn.
@@ -215,9 +223,14 @@ async function send(changes: PcbChange[]): Promise<boolean> {
   try {
     const answer = await api.pcbEdit({ board: current.board, stamp: current.layoutStamp, changes });
     show(answer.scene);
-    // The routed copper is gone: what the last route said no longer holds.
-    const { [current.board]: _gone, ...rest } = pcbReports.value;
-    pcbReports.value = rest;
+    if (answer.report) {
+      // Back to a placement that was routed (an undo): its copper and what its route said.
+      pcbReports.value = { ...pcbReports.value, [current.board]: answer.report };
+    } else {
+      // The routed copper is gone: what the last route said no longer holds.
+      const { [current.board]: _gone, ...rest } = pcbReports.value;
+      pcbReports.value = rest;
+    }
     return true;
   } catch (e) {
     say(e instanceof Error ? e.message : String(e), true);
@@ -291,6 +304,47 @@ export function commit(changes: PcbChange[], label: string): Promise<boolean> {
     }
     return ok;
   });
+}
+
+/** Ask the server to place `module` again with every other part held, with `seed`: the proposal is
+ * drawn over the board and nothing is written. True if there is one; a refusal says why. */
+export function propose(module: string, seed: number): Promise<boolean> {
+  return enqueue(async () => {
+    const current = scene.value;
+    if (!current) return false;
+    try {
+      const answer = await api.pcbRegenerate({ board: current.board, stamp: current.layoutStamp, module, seed });
+      proposal.value = { board: current.board, stamp: current.layoutStamp, answer };
+      say(proposalSaid(answer));
+      return true;
+    } catch (e) {
+      say(e instanceof Error ? e.message : String(e), true);
+      return false;
+    }
+  });
+}
+
+/** The same module again with the next seed: another arrangement. */
+export function proposeAnother(): Promise<boolean> {
+  const p = proposal.value;
+  return p ? propose(p.answer.module, p.answer.seed + 1) : Promise.resolve(false);
+}
+
+/** Keep the proposal: its changes are written as one edit, one step of undo. */
+export function acceptProposal(): Promise<boolean> {
+  const p = proposal.value;
+  if (!p) return Promise.resolve(false);
+  proposal.value = null;
+  if (p.answer.changes.length === 0) {
+    say(`Regenerate ${p.answer.module}: the parts are where they were`);
+    return Promise.resolve(false);
+  }
+  return commit(p.answer.changes, `regenerate ${p.answer.module} (seed ${p.answer.seed})`);
+}
+
+/** Drop the proposal: nothing was written. */
+export function dropProposal() {
+  proposal.value = null;
 }
 
 /** Undo or redo a step: changes to the layout file, or a record of the routes file put back. */

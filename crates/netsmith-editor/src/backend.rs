@@ -330,6 +330,20 @@ pub trait Backend: Send + Sync + 'static {
     /// is not as the change says it was, and with 400 if an entry is wrong; then nothing is
     /// written.
     fn pcb_edit(&self, edit: &PcbEdit) -> Result<PcbEdited, ApiError>;
+    /// Place one module of the board again with every other part held (issue #825), and answer
+    /// with the proposal: the edit that makes it (the page sends it as any edit, one step of
+    /// undo), where the parts go and what it changes. Nothing is written. Refused with 409 if
+    /// the files are not as the page read them, and with 422 and the reason when the board has
+    /// no part in the module, every part of it is held, or the parts do not fit.
+    fn pcb_regenerate(
+        &self,
+        ask: &crate::api::PcbRegenerate,
+    ) -> Result<crate::api::PcbRegenerated, ApiError> {
+        Err(ApiError::not_found(format!(
+            "`{}` has no layout to regenerate",
+            ask.board
+        )))
+    }
     /// Make the changes of one edit to the routes file beside the board's source, as `netsmith
     /// routes` makes them, and answer with the board as it is placed now (unrouted), what was
     /// done, and the net's record before and after (the step of undo). Refused with 409 if the
