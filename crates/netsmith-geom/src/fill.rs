@@ -270,7 +270,10 @@ fn without_dead_spokes(fill: Vec<Area>, art: &Artwork, layer: &str, z: &Zone) ->
     };
     let on_fill = |p: Pt| fill.iter().any(|a| a.contains(p));
     let mut dead: Vec<Area> = Vec::new();
-    let mut pads_of: Vec<Area> = Vec::new();
+    // What a dead spoke's cut must leave: the pads it leaves and the live spokes. A spoke runs
+    // from the pad's centre and may be wider than the pad (a QFN pin narrower than the bridge),
+    // so a dead spoke can cover the root of a live one beside the pad.
+    let mut kept: Vec<Area> = Vec::new();
     for pad in art.pads.iter().filter(|p| {
         own_net(z, &p.net) && art.pad_copper_on(p, layer) && connection(p, z) == Connect::Thermal
     }) {
@@ -279,21 +282,27 @@ fn without_dead_spokes(fill: Vec<Area>, art: &Artwork, layer: &str, z: &Zone) ->
             continue;
         }
         let mut any = false;
+        let mut live: Vec<Area> = Vec::new();
         for (spoke, end) in spokes(&shape, pad.at, pad.angle + pad.spoke_angle(), z) {
-            if !on_fill(end) {
+            if on_fill(end) {
+                live.push(Area::of(&spoke));
+            } else {
                 dead.push(Area::of(&spoke));
                 any = true;
             }
         }
-        if any && let Some(p) = shape.polygon() {
-            pads_of.push(Area::of(&p));
+        if any {
+            kept.extend(live);
+            if let Some(p) = shape.polygon() {
+                kept.push(Area::of(&p));
+            }
         }
     }
     if dead.is_empty() {
         return fill;
     }
-    // The spokes less the pads they leave, which stay copper.
-    let cut = difference(&dead, &pads_of);
+    // The dead spokes less the pads they leave and the live spokes, which stay copper.
+    let cut = difference(&dead, &kept);
     difference(&fill, &cut)
 }
 
@@ -1085,6 +1094,33 @@ mod tests {
         assert!(!copper(&f, "GND", 10.65, 10.0), "the stub is gone");
         for (x, y) in [(9.25, 10.0), (10.0, 10.75), (10.0, 9.25)] {
             assert!(copper(&f, "GND", x, y), "the spoke at ({x}, {y}) stays");
+        }
+    }
+
+    #[test]
+    fn a_dead_spoke_wider_than_its_pad_leaves_the_root_of_a_live_one() {
+        // A pad 0.3 mm tall, narrower than the 0.5 mm bridge: the spokes to the left and the
+        // right are 0.05 mm taller than the pad on each side, over the root of the spoke up.
+        // SIG tracks at x = 8.7 and 11.3 and y = 11.0 put the ends of the spokes to the left,
+        // the right and down in their clearance; the spoke up (y 9.85 to 9.35) reaches the fill
+        // and has to stay joined to the pad (a QFN pin of the rp2350_minimal port lost its only spoke so).
+        let items = format!(
+            r#"{GND_VIA}
+            (footprint "L:R" (layer "F.Cu") (at 10 10) (property "Reference" "U1")
+                (pad "1" smd rect (at 0 0) (size 1 0.3) (layers "F.Cu") (net 1 "GND")))
+            (segment (start 8.7 5) (end 8.7 15) (width 0.2) (layer "F.Cu") (net 2))
+            (segment (start 11.3 5) (end 11.3 15) (width 0.2) (layer "F.Cu") (net 2))
+            (segment (start 5 11.0) (end 15 11.0) (width 0.2) (layer "F.Cu") (net 2))"#
+        );
+        let f = fill_by_net(&art(&items));
+        for (x, y) in [(10.1, 9.8), (10.1, 9.6), (10.1, 9.4)] {
+            assert!(copper(&f, "GND", x, y), "the spoke up at ({x}, {y}) stays");
+        }
+        for (x, y) in [(10.75, 10.0), (9.25, 10.0), (10.0, 10.4)] {
+            assert!(
+                !copper(&f, "GND", x, y),
+                "the dead spoke at ({x}, {y}) goes"
+            );
         }
     }
 

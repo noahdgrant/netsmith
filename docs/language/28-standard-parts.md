@@ -1844,7 +1844,7 @@ board Mechanical {
 }
 ```
 
-A board declares its mounting holes and fiducials in its physical file (see _The physical file_), not here: they have no circuit meaning. A mounting hole may state `.head_diameter`, the width of its screw's head, and then keeps room for it (see _A screw head_ in the chapter on the shape of a board).
+A board declares its mounting holes and fiducials in its physical file (see _The physical file_), not here: they have no circuit meaning. A mounting hole is the stock `M3` (3.2 mm) unless it says otherwise: `.package &= "M2"` for the 2.2 mm one, or `.diameter` for a drill of any size from 0.2 mm to 20 mm, such as `.diameter &= 2.375mm`, which is a footprint netsmith draws for that drill: no copper, a ring the drill wide on the comment layer for the screw's head and a courtyard 0.25 mm outside it, which is what the stock footprints are at their sizes. `.package` and `.diameter` are never both stated. A `PlatedHole` takes the same two (a stated drill has a pad twice as wide as the drill). A mounting hole may also state `.head_diameter`, the width of its screw's head, and then keeps room for it (see _A screw head_ in the chapter on the shape of a board).
 
 ```nsm-physical
 import std::parts::mechanical::{Fiducial, MountingHole}
@@ -1852,6 +1852,7 @@ import std::parts::mechanical::{Fiducial, MountingHole}
 physical for Mechanical {
     case {
         .hole: MountingHole { .head_diameter &= 6mm }
+        .odd: MountingHole { .diameter &= 2.375mm }
         .fid: Fiducial
     }
 }

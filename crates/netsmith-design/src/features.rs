@@ -7,8 +7,9 @@
 
 use netsmith_check::{Domain, InstId, InstKind, Member, Model, SourceId};
 use netsmith_core::{
-    CaseModel, Cutout, Features, Keepout, Label, Offset, OffsetEnd, Outline, PartHeight, PartSilk,
-    PartStandoff, PinProtrusion, PlaceBound, PlaceField, Placement, Pour, SilkPrint, StepModel,
+    CaseModel, Cutout, Features, Keepout, Label, Offset, OffsetEnd, Outline, PartHeight, PartKind,
+    PartSilk, PartStandoff, PinProtrusion, PlaceBound, PlaceField, Placement, Pour, SilkPrint,
+    StepModel,
 };
 use netsmith_lang::Span;
 use std::collections::{BTreeMap, BTreeSet};
@@ -247,6 +248,43 @@ fn standoffs(model: &Model, errors: &mut Vec<String>) -> Vec<PartStandoff> {
         found.push(PartStandoff { path, standoff });
     }
     found
+}
+
+/// The package of a hole: the one it states (`.package`), or, for a hole that states a
+/// `.diameter`, the package that names that drill (`netsmith_core::drilled_package`), which the
+/// mapping answers with a generated footprint. A hole that states both is an error: the stock
+/// package already says the drill. A diameter that is a range or not above nothing is an error.
+pub(crate) fn hole_package(
+    model: &Model,
+    inst: InstId,
+    stated: Option<String>,
+    errors: &mut Vec<String>,
+) -> Option<String> {
+    if !matches!(
+        model.instance(inst).marks.declared_kind,
+        Some(PartKind::MountingHole | PartKind::PlatedHole)
+    ) {
+        return stated;
+    }
+    let path = model.path_of(inst);
+    let Some(diameter) = exact(model, inst, "diameter", errors) else {
+        return stated;
+    };
+    if diameter <= 0.0 {
+        errors.push(format!(
+            "`{path}.diameter` is {diameter} mm, and a hole is wider than nothing: state the drill, for example `&= 3.2mm`"
+        ));
+        return stated;
+    }
+    match stated {
+        Some(package) => {
+            errors.push(format!(
+                "`{path}` states `.package` \"{package}\" and `.diameter` {diameter} mm: the package already says the drill, so state one of them"
+            ));
+            Some(package)
+        }
+        None => Some(netsmith_core::drilled_package(diameter)),
+    }
 }
 
 /// The room each mounting hole that states a `.head_diameter` keeps for its screw head
