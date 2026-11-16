@@ -40,7 +40,8 @@
 //!
 //! What does not limit a pick: a bound on a rating or the package, a relation written inside
 //! the definition of any part (a diode's `current >= 0mA` as much as a resistor's own power
-//! check, the library's and not the design's), and the catalog being filtered. A ratio is not a
+//! check, the library's and not the design's; one in a part's `support` section is not that, issue #748), and
+//! the catalog being filtered. A ratio is not a
 //! size: `.out >= 1.5V` and `.out <= 1.8V` of a divider pass for 330 ohm and for 330 kohm. A
 //! check limits the size of a pick only if scaling the unlimited picks together changes it.
 //! `SizeBlind` scales the value fields of the unlimited picks by one factor and expands each
@@ -251,11 +252,13 @@ impl Solver<'_> {
     /// Whether a relation was written inside the definition of a part (a datasheet's own
     /// requirement: `drop * current <= max_power`, a diode's `current >= 0mA`), as against one a
     /// module or board wrote. Library parts state what is always true of themselves; they are
-    /// not what limits a value that the design chose.
+    /// not what limits a value that the design chose. A relation in the part's `support`
+    /// section is not one: it is the circuit the part carries (ADR 0115), written about the
+    /// parts of that circuit as a module writes it about its members, so it limits them.
     fn is_a_parts_own(&self, r: &Relation, parts: &[(SourceId, Span)]) -> bool {
         parts.iter().any(|&(source, span)| {
             r.source == source && r.span.start >= span.start && r.span.end <= span.end
-        })
+        }) && !self.model.in_support_section(r.source, r.span)
     }
 
     /// Survey the parts of `jobs` that have a value column, before any is picked: what they are

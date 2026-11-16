@@ -94,6 +94,10 @@ impl Checker<'_> {
                 "a `support` section holds parts and the statements that wire them to the part; this belongs in the part itself",
             );
         }
+        let section = (self.cur_source(), support.span);
+        if !self.model.support_sections.contains(&section) {
+            self.model.support_sections.push(section);
+        }
         let outer = std::mem::replace(&mut self.in_support, true);
         let items = wiring(support);
         self.declare(&items);

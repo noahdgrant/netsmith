@@ -200,3 +200,82 @@ fn a_divider_in_a_module_is_found_from_a_board_that_forgot_both() {
     let checks: Vec<_> = s.unconstrained.iter().map(|u| u.ratio.clone()).collect();
     assert_eq!(checks[0], checks[1]);
 }
+
+/// A relation on a part of a `support` section limits it as the same relation on a member of a
+/// module does; a part's own datasheet relation does not (issue #748). Invented parts.
+const CHIPS: &str = r#"
+import std::parts::passive::Resistor
+import std::sources::Rail
+
+part ChipS {
+    .designator &= "U"
+    .supply: Rail
+    pins {
+        .supply.pos passive "Pin_1" "1"
+        .supply.neg passive "Pin_2" "2"
+    }
+    .package: Package
+    catalog chip { .mpn, .package }
+    support {
+        .r: Resistor
+        .supply.pos ~> .r ~> .supply.neg
+        .r.resistance >= 1kohm
+    }
+}
+
+part ChipU {
+    .designator &= "U"
+    .supply: Rail
+    pins {
+        .supply.pos passive "Pin_1" "1"
+        .supply.neg passive "Pin_2" "2"
+    }
+    .package: Package
+    catalog chip { .mpn, .package }
+    support {
+        .r: Resistor
+        .supply.pos ~> .r ~> .supply.neg
+    }
+}
+
+part Chip {
+    .designator &= "U"
+    .supply: Rail
+    pins {
+        .supply.pos passive "Pin_1" "1"
+        .supply.neg passive "Pin_2" "2"
+    }
+    .package: Package
+    catalog chip { .mpn, .package }
+}
+
+module ChipM {
+    .supply: Rail
+    .chip: Chip
+    .r: Resistor
+    .supply ~ .chip.supply
+    .supply.pos ~> .r ~> .supply.neg
+    .r.resistance >= 1kohm
+}
+"#;
+
+fn chips(members: &str) -> Vec<String> {
+    let rail = RAIL;
+    let src = format!("{CHIPS}\nboard B {{\n    {rail}\n{members}\n}}\n");
+    unconstrained(&run(&src))
+}
+
+#[test]
+fn a_bound_in_a_support_section_limits_its_part_as_one_in_a_module_does() {
+    let join = "    .supply ~ .a.supply\n";
+    assert_eq!(chips(&format!("    .a: ChipS\n{join}")), Vec::<String>::new());
+    assert_eq!(
+        chips("    .b: ChipM\n    .supply ~ .b.supply\n"),
+        Vec::<String>::new()
+    );
+    // With no bound a support part is as unconstrained as a module's.
+    assert_eq!(
+        chips(&format!("    .a: ChipU\n{}", join)),
+        vec!["a.r".to_string()]
+    );
+}
