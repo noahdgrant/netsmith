@@ -404,7 +404,7 @@ impl Summary {
 }
 
 /// The error for a name the board has no part by, with the nearest names.
-fn no_part(board: &Board, name: &str) -> String {
+pub(crate) fn no_part(board: &Board, name: &str) -> String {
     let mut names: Vec<&str> = board
         .parts
         .iter()

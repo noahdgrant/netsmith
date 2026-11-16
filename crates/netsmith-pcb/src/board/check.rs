@@ -18,17 +18,33 @@ impl Board {
     /// footprints, whose courtyards can be smaller than netsmith's. Such an overlap is not here
     /// but in [`Board::imported_overlaps`], which `fab` says as a warning.
     pub fn check_placement(&self) -> Vec<PlacementProblem> {
-        self.placement_findings().0
+        self.placement_findings(None).0
+    }
+
+    /// The problems of [`Board::check_placement`] that are about the part `refdes`: its own
+    /// (outline, edge, keepouts, cutouts, heights) and those it shares with another part
+    /// (overlaps, holes). The same as filtering the whole check, measured on that part only,
+    /// so that asking where one part fits ([`Board::fit_part`]) costs one pass over the parts.
+    /// Empty when the board has no such part.
+    pub fn placement_problems_of(&self, refdes: &str) -> Vec<PlacementProblem> {
+        match self.parts.iter().position(|p| p.refdes == refdes) {
+            Some(i) => self.placement_findings(Some(i)).0,
+            None => Vec::new(),
+        }
     }
 
     /// The courtyards that overlap of two parts that both stand where an imported KiCad board
     /// has them ([`Board::imported`]), which [`Board::check_placement`] leaves out.
     pub fn imported_overlaps(&self) -> Vec<PlacementProblem> {
-        self.placement_findings().1
+        self.placement_findings(None).1
     }
 
-    /// The placement check's problems, and the overlaps of imported parts that it excuses.
-    fn placement_findings(&self) -> (Vec<PlacementProblem>, Vec<PlacementProblem>) {
+    /// The placement check's problems, and the overlaps of imported parts that it excuses; with
+    /// `only`, those about the part at that index.
+    fn placement_findings(
+        &self,
+        only: Option<usize>,
+    ) -> (Vec<PlacementProblem>, Vec<PlacementProblem>) {
         let courtyards: Vec<Rect> = self.parts.iter().map(Placed::courtyard).collect();
         // Where a part's room is: its courtyard, clipped to the outline if it may hang over.
         let may: Vec<crate::overhang::Edges> = self
@@ -72,13 +88,21 @@ impl Board {
         let zones = self.height_zones();
         let mut problems = Vec::new();
         let mut excused = Vec::new();
-        for c in self.cutouts.iter().filter(|c| c.at.is_none()) {
+        for c in self
+            .cutouts
+            .iter()
+            .filter(|c| only.is_none() && c.at.is_none())
+        {
             problems.push(PlacementProblem::NoPosition {
                 what: "cutout",
                 name: c.name.clone(),
             });
         }
-        for k in self.keepouts.iter().filter(|k| k.at.is_none()) {
+        for k in self
+            .keepouts
+            .iter()
+            .filter(|k| only.is_none() && k.at.is_none())
+        {
             problems.push(PlacementProblem::NoPosition {
                 what: "keepout",
                 name: k.name.clone(),
@@ -86,7 +110,7 @@ impl Board {
         }
         let keepouts = self.height_areas();
         let edge = self.edge();
-        for (cutout, hole) in &cutouts {
+        for (cutout, hole) in cutouts.iter().filter(|_| only.is_none()) {
             if edge.box_depth(&hole.rect) < -1e-6 {
                 problems.push(PlacementProblem::CutoutOutsideOutline {
                     cutout: cutout.name.clone(),
@@ -94,6 +118,59 @@ impl Board {
             }
         }
         for (i, a) in self.parts.iter().enumerate() {
+            // With `only`, a part other than that one is measured only against it.
+            let own = only.is_none_or(|k| k == i);
+            if own {
+                self.part_findings(
+                    i,
+                    &may,
+                    &rooms,
+                    &courtyards,
+                    &shapes,
+                    &cutouts,
+                    &keepouts,
+                    &mut problems,
+                );
+            }
+            for (j, b) in self.parts.iter().enumerate().skip(i + 1) {
+                if !own && only != Some(j) {
+                    continue;
+                }
+                // Parts on opposite faces may share the board's area, unless one has a hole
+                // through the board that takes room there (`Placed::room_on`).
+                if a.rooms_overlap(&shapes[i], b, &shapes[j], self.rules.clearance, &zones) {
+                    let problem = PlacementProblem::overlap_of(a, b, self.rules.clearance, &zones);
+                    let imported =
+                        self.imported.contains(&a.refdes) && self.imported.contains(&b.refdes);
+                    if imported && matches!(problem, PlacementProblem::Overlap { .. }) {
+                        excused.push(problem);
+                    } else {
+                        problems.push(problem);
+                    }
+                }
+                self.check_holes(a, b, true, &mut problems);
+                self.check_holes(b, a, false, &mut problems);
+            }
+        }
+        (problems, excused)
+    }
+
+    /// The problems of the part at `i` that are its own: past the outline, in a keepout, too
+    /// tall, in a cutout, a pad near a cutout or the edge.
+    #[allow(clippy::too_many_arguments)]
+    fn part_findings(
+        &self,
+        i: usize,
+        may: &[crate::overhang::Edges],
+        rooms: &[Rect],
+        courtyards: &[Rect],
+        shapes: &[Vec<Rect>],
+        cutouts: &[(&BoardCutout, RoundRect)],
+        keepouts: &[KeepoutArea],
+        problems: &mut Vec<PlacementProblem>,
+    ) {
+        let a = &self.parts[i];
+        {
             let declared = may[i];
             let past: Vec<(Edge, f64)> = overhang::past(&courtyards[i], &self.outline)
                 .into_iter()
@@ -197,7 +274,7 @@ impl Board {
                     }
                 }
             }
-            for (cutout, hole) in &cutouts {
+            for (cutout, hole) in cutouts {
                 let in_cutout = shapes[i].iter().any(|s| s.overlaps(&hole.rect));
                 if in_cutout {
                     problems.push(PlacementProblem::InCutout {
@@ -236,23 +313,6 @@ impl Board {
                     distance: nearest,
                 });
             }
-            for (j, b) in self.parts.iter().enumerate().skip(i + 1) {
-                // Parts on opposite faces may share the board's area, unless one has a hole
-                // through the board that takes room there (`Placed::room_on`).
-                if a.rooms_overlap(&shapes[i], b, &shapes[j], self.rules.clearance, &zones) {
-                    let problem = PlacementProblem::overlap_of(a, b, self.rules.clearance, &zones);
-                    let imported =
-                        self.imported.contains(&a.refdes) && self.imported.contains(&b.refdes);
-                    if imported && matches!(problem, PlacementProblem::Overlap { .. }) {
-                        excused.push(problem);
-                    } else {
-                        problems.push(problem);
-                    }
-                }
-                self.check_holes(a, b, true, &mut problems);
-                self.check_holes(b, a, false, &mut problems);
-            }
         }
-        (problems, excused)
     }
 }

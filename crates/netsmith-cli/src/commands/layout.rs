@@ -7,6 +7,8 @@
 //! `netsmith_pcb::PlacementComparison`. `layout regenerate` (issue #825) places one module again
 //! with the rest held, `netsmith_fabricate::regenerate`. `layout capture` (issue #828) writes the
 //! placement as the layout file, an entry for every part and the seed, `netsmith_fabricate::layout_capture`.
+//! `layout fit` (issue #780) says where one part fits with the rest where they are,
+//! `netsmith_pcb::Board::fit_part`.
 
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -20,7 +22,7 @@ use super::routes::{Target, parse_point};
 
 #[derive(Debug, PartialEq, ClapArgs)]
 #[command(
-    after_long_help = "The layout file `<stem>.pcb.toml` sits beside the source and holds the solution: where each part is (`at`, `turn`, `side`, `lock`), keyed by the part's path in the design (`stage.output_cap`; the capacitors of a bank are `bank[0]`, `bank[1]`). The requirements on where a part may be are in the board's physical file, never here.\n\nThe frame is the file's: `--at X,Y` is the footprint's origin in mm from the outline's top left corner, x to the right and y down; a turn is in degrees, counterclockwise on screen, any angle from 0 up to 360; a part on the bottom face is the top face's footprint mirrored left to right (about its own y axis), then turned as it is seen from the top. The guide's \"The layout file\" has an example of a part on each face.\n\n`show`, `set` and `check` check and solve the board as `build` does and place nothing; `summary` and `compare` place it as `board3d` does and write nothing; `regenerate` and `capture` place it as `fab` does. The exit code is 0 when it did what it was asked, 1 when it refused (a part the board does not have, a turn that is not allowed, a file with an error `check` reports), and 2 when it could not run (a usage mistake included)."
+    after_long_help = "The layout file `<stem>.pcb.toml` sits beside the source and holds the solution: where each part is (`at`, `turn`, `side`, `lock`), keyed by the part's path in the design (`stage.output_cap`; the capacitors of a bank are `bank[0]`, `bank[1]`). The requirements on where a part may be are in the board's physical file, never here.\n\nThe frame is the file's: `--at X,Y` is the footprint's origin in mm from the outline's top left corner, x to the right and y down; a turn is in degrees, counterclockwise on screen, any angle from 0 up to 360; a part on the bottom face is the top face's footprint mirrored left to right (about its own y axis), then turned as it is seen from the top. The guide's \"The layout file\" has an example of a part on each face.\n\n`show`, `set` and `check` check and solve the board as `build` does and place nothing; `summary`, `compare` and `fit` place it as `board3d` does and write nothing; `regenerate` and `capture` place it as `fab` does. The exit code is 0 when it did what it was asked, 1 when it refused (a part the board does not have, a turn that is not allowed, a file with an error `check` reports), and 2 when it could not run (a usage mistake included)."
 )]
 pub struct Args {
     #[command(subcommand)]
@@ -64,6 +66,34 @@ pub enum Command {
         after_long_help = "The board is placed as `fab` places it (the layout file and the physical file read, the seeds after the file's tried as `fab` tries them) and the layout file is written with where every part is: an entry for each part, the seed that placed the board as the file's `seed`, and every other table kept (a comment in the file too, as `set` keeps it). A part that already has an entry keeps its place, its `lock` and its `source`; a part the placer placed gets an entry with `source = \"auto\"`, unlocked. A build of the file then puts every part where it was captured, so the board stays as it is when the placer, a catalog or the circuit around it changes; run `layout regenerate` or `set` to change it. The places are rounded to 0.01 mm, as every entry is.\n\nWith `--dry-run` nothing is written: the report says what would be, and the file is as it was. A board that no seed places is refused with the placer's report and nothing is written. Printed: the seed (and the one the file stated), the parts with a new entry and how many had one. `--format json` prints one JSON document on stdout: `board`, `seed`, `seed_was`, `parts`, `added` (paths), `kept`, `shapes`, `seed_note` (why the seed is not the file's, when it is not) and `written`. The exit code is 0 when it is printed (and written, unless `--dry-run`), 1 when the board does not build or no seed places it, and 2 when it could not run."
     )]
     Capture(CaptureArgs),
+    /// Say where one part fits with every other part where it is: the nearest place for each turn and face, or what is in the way.
+    #[command(
+        after_long_help = "The board is placed as `board3d` places it (the layout file and the physical file read, nothing written), and the part at PATH (a path or a designator) is tried on a grid of origins every `--step` mm from the outline's top left corner, for each of the four right-angle turns from its own and on each face (one face when a requirement states it, or `--side` names it; a turn a requirement rules out is not tried). Each place is measured as the placer and `fab` measure it: the placement check of that part against every other part where it is (courtyards, holes, keepouts, height limits, the edge, cutouts) and the requirements of the physical file about it (its windows, its modules' and the relations it is an end of). For each turn and face it gives the place nearest `--near` where nothing is found, or, when there is none, the closest try (the fewest findings, then the nearest) with what is in the way there. `--near` is a part (path or designator: the centre of its courtyard) or a point `X,Y` in mm from the outline's top left corner, y down; with none, where the part is now. Distances are from that point to the centre of the part's courtyard. Nothing is written: `netsmith layout set PATH --at X,Y --turn T --side S` writes a place, as the text says for each.\n\n`--format json` prints one JSON document on one line: `board`, `part` (`refdes`, `path`), `near` (`x`, `y`, and `part` when it is one), `step`, `now` (the part where it is) and `poses`, each a place with `turn`, `side`, `at` (the footprint's origin, as the layout file's `at`), `distance`, `fits`, and where it does not fit `placement` (the placement check's findings as `fab --format json` has them), `requirements` (the requirements it does not meet) and `messages` (their sentences). The poses that fit come first, nearest first. The exit code is 0 when some pose fits, 1 when none does or the part or board is refused (a part the board does not have, a board that does not build or place), and 2 when it could not run."
+    )]
+    Fit(FitArgs),
+}
+
+#[derive(Debug, PartialEq, ClapArgs)]
+pub struct FitArgs {
+    /// The part, by its path in the design (`stage.output_cap`) or its designator.
+    #[arg(value_name = "PATH")]
+    pub part: String,
+    #[command(flatten)]
+    pub target: Target,
+    /// What to be near: a part (path or designator) or `X,Y` in mm; with none, where the part is.
+    #[arg(long, value_name = "PART|X,Y", allow_hyphen_values = true)]
+    pub near: Option<String>,
+    /// The grid the origins are tried on, in mm.
+    #[arg(long, value_name = "MM", default_value_t = netsmith_pcb::FIT_STEP)]
+    pub step: f64,
+    /// Try one face only: `top` or `bottom`.
+    #[arg(long, value_enum)]
+    pub side: Option<Side>,
+    #[command(flatten)]
+    pub placing: common::Placing,
+    /// Text for a person, or one JSON document on stdout.
+    #[arg(long, value_enum, default_value = "text")]
+    pub format: common::Format,
 }
 
 #[derive(Debug, PartialEq, ClapArgs)]
@@ -213,6 +243,58 @@ pub fn run(args: Args) -> ExitCode {
         Command::Compare(a) => compare(&a),
         Command::Regenerate(a) => regenerate(&a),
         Command::Capture(a) => capture(&a),
+        Command::Fit(a) => fit(&a),
+    }
+}
+
+/// `layout fit`: where one part fits with the rest where they are; 1 when no pose fits.
+fn fit(args: &FitArgs) -> ExitCode {
+    let near = match args.near.as_deref() {
+        None => netsmith_pcb::FitNear::Itself,
+        Some(text) if text.contains(',') => match parse_point(text) {
+            Ok([x, y]) => netsmith_pcb::FitNear::Point(x, y),
+            Err(e) => {
+                eprintln!("error: --near: {e}");
+                return ExitCode::from(2);
+            }
+        },
+        Some(part) => netsmith_pcb::FitNear::Part(part.to_string()),
+    };
+    if !(args.step.is_finite() && args.step > 0.0) {
+        eprintln!("error: --step must be above 0 mm");
+        return ExitCode::from(2);
+    }
+    let face = args.side.map(|s| match s {
+        Side::Top => netsmith_pcb::Side::Front,
+        Side::Bottom => netsmith_pcb::Side::Back,
+    });
+    let made = common::with_placed_board(
+        args.target.file.as_deref(),
+        args.target.board.as_deref(),
+        Some(&args.placing),
+        |placed| {
+            placed
+                .with_board(|built, board| {
+                    board.fit_part(&built.design, &args.part, &near, args.step, face)
+                })
+                .and_then(|done| done.map_err(|e| format!("error: {e}\n")))
+        },
+    );
+    match made {
+        Ok(fit) => {
+            match args.format {
+                common::Format::Json => {
+                    println!("{}", serde_json::to_string(&fit).expect("plain data"))
+                }
+                common::Format::Text => print!("{}", fit.text()),
+            }
+            if fit.fits() {
+                ExitCode::SUCCESS
+            } else {
+                ExitCode::FAILURE
+            }
+        }
+        Err(code) => code,
     }
 }
 
@@ -559,6 +641,23 @@ mod tests {
                 command: Command::Regenerate(RegenerateArgs { seed: 0, margin, write: false, .. })
             })) if margin == 3.0
         ));
+    }
+
+    #[test]
+    fn fit_takes_its_arguments() {
+        assert!(matches!(
+            parse(&["layout", "fit", "stage.r1", "--near", "U1", "--step", "0.25", "--side", "top", "--format", "json"]),
+            Ok(Top::Layout(Args {
+                command: Command::Fit(FitArgs { ref part, near: Some(ref near), step, side: Some(Side::Top), format: common::Format::Json, .. })
+            })) if part == "stage.r1" && near == "U1" && step == 0.25
+        ));
+        assert!(matches!(
+            parse(&["layout", "fit", "R1", "--near", "-1,2"]),
+            Ok(Top::Layout(Args {
+                command: Command::Fit(FitArgs { near: Some(ref near), side: None, .. })
+            })) if near == "-1,2"
+        ));
+        assert_eq!(kind(&["layout", "fit"]), ErrorKind::MissingRequiredArgument);
     }
 
     #[test]

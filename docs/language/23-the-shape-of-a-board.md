@@ -2457,6 +2457,15 @@ netsmith layout capture            # an entry for every part, and the seed, in m
 netsmith layout capture --dry-run  # what it would write
 ```
 
+**Where one part fits.** `netsmith layout fit PATH` says where one part fits with every other part where it is (issue #780): the board is placed as `board3d` places it, and the part (a path or a designator) is tried on a grid of origins every `--step` mm (0.5 by default) from the outline's top left corner, for each of the four right-angle turns from its own and on each face (one face when a requirement of the physical file states it, or `--side` names it; a turn a requirement rules out is not tried). Each place is measured as the placer and `fab` measure it: the placement check of the part against every other part where it is (courtyards, holes, keepouts, height limits, the edge, cutouts) and the requirements about it (its windows, its modules' and the relations it is an end of). For each turn and face it gives the place nearest `--near` where nothing is found (a part, by the centre of its courtyard, or a point `X,Y`; with none, where the part is), or, when there is none, the closest try with what is in the way there. It writes nothing; the text gives the `layout set` that writes each place. The exit code is 1 when no turn or face has a place. `--format json` is one document: `board`, `part`, `near`, `step`, `now` (the part where it is) and `poses`, each with `turn`, `side`, `at` (the footprint's origin, as `at` in the layout file), `distance`, `fits` and, where it does not fit, `placement` (as `fab --format json` has it), `requirements` and `messages`.
+
+```sh
+netsmith layout fit stage.r1 --near U1           # the nearest place of each pose, beside U1
+netsmith layout fit R7 --near 12,30 --side top   # near a point, on the top face only
+```
+
+To place a few free parts round locked ones, give the free parts no entry (or an unlocked one) and lock the rest: the placer places only the parts with no lock and holds every locked part where it is, and `layout regenerate` places one module (or one part, by its path) again with every other part held. A board that the placer leaves with a fault of where its parts are is not placed: `fab` refuses it and `board3d` ends with 1, with the faults in `placement`.
+
 The editor's PCB view does the same: a part of a module picked offers "Regenerate" in its inspector, the proposal is drawn over the board in a second colour with the same list, Another asks for the next seed, and Accept writes it as one edit, one step of undo. A route after an edit keeps the router's copper of every net whose pads did not move and that no part that moved now covers, and routes only the rest; when connections are left it routes once more with the nets whose copper crosses the parts that moved ripped up too. The editor keeps the last few routed boards, so an undo back to a placement it routed shows that copper again at once. `fab` routes the whole board, as before: the router's copper is not kept on disk.
 
 ### The routes file

@@ -51,6 +51,7 @@ mod layout_notes;
 mod miss;
 mod origin;
 mod overhang;
+mod part_fit;
 mod part_layout;
 mod placement;
 mod polygon;
@@ -117,6 +118,7 @@ pub use overhang::{
     Edge, Edges, Overhang, clip as clip_to_outline, needs as overhang_needs,
     reached as overhang_reached,
 };
+pub use part_fit::{FIT_STEP, FitNear, FitPlace, FitTarget, PartFit};
 pub use part_layout::{NearPair, PartNear, near_findings, near_pairs};
 pub use placement::{
     CarriedZone, DESCRIBED, DoesNotFit, Ended, FaceKeepout, Fixed, HeightZone, ORIGIN, OutsideAt,
