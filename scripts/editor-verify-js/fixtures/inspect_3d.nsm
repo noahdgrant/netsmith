@@ -5,7 +5,7 @@
 //! with plenty and a header of unknown height under the lid, and the regulator and its output
 //! capacitor outside it, so the height map has every band and colour by kind several kinds.
 
-import std::parts::connector::{Header1x2, Header2x3}
+import std::parts::connector::{Header1x2, ProgrammingPads6}
 import std::parts::passive::{Capacitor, Led, Resistor}
 import std::parts::regulator::LinearRegulator
 import std::sources::Rail
@@ -47,6 +47,6 @@ board Inspected {
     .input.pos ~ .power_in.p1
     .input.neg ~ .power_in.p2
 
-    // A 2x3 header's catalog row states no height (it rates the contacts only), so it has none (ADR 0094).
-    .bare: Header2x3
+    // A part with no catalog row has no height (ADR 0094), unlike the 1x2 headers, whose rows state theirs.
+    .bare: ProgrammingPads6
 }

@@ -302,7 +302,7 @@ fn every_esr_cell_is_one_resistance_and_its_source_names_the_page_and_the_point(
 }
 
 /// How many rows of the standard catalogs have a `height` (ADR 0094). Update it with the rows.
-const ROWS_WITH_HEIGHT: usize = 110;
+const ROWS_WITH_HEIGHT: usize = 113;
 
 #[test]
 fn every_height_is_one_length_that_a_document_says_and_its_source_names_where() {
@@ -358,11 +358,11 @@ fn every_height_is_one_length_that_a_document_says_and_its_source_names_where() 
 }
 
 /// How many rows of the standard catalogs state `temp_min` and `temp_max` (ADR 0099): the seven
-/// crystals, whose figure is the JLCPCB listing text, and 342 rows read from a datasheet (303
+/// crystals, whose figure is the JLCPCB listing text, and 345 rows read from a datasheet (306
 /// ambient or operating ranges, 27 junction ranges of the diodes and the MOSFETs, and 12 operating
 /// ranges of LEDs; the 1N5819WS, whose range is the one figure of its operating and storage
 /// range, is counted with the ranges and not with the junction ones). Update it with the rows.
-const ROWS_WITH_TEMPERATURE: usize = 349;
+const ROWS_WITH_TEMPERATURE: usize = 352;
 
 /// The catalogs of semiconductors whose datasheets print a junction range (`TJ`) and no ambient
 /// one. A row of them that states a range says in its `notes` which temperature it is (ADR 0099): a
@@ -1465,7 +1465,7 @@ fn the_fuses_the_beads_and_the_mosfets_have_their_rows() {
 fn every_header_and_socket_row_states_the_contact_rating_from_its_datasheet() {
     // The catalog rates the contacts of a connector (ADR 0040): one row for each series and
     // pin count, for the single-row 2.54 mm headers and sockets of the standard library and the
-    // 2x3 and 2x5 headers (the 2x10 has no row: its JLCPCB record could not be read).
+    // 2x3, 2x5 and 2x10 headers.
     let rows = records("jlcpcb/catalog/header.csv");
     let mut found: Vec<(String, String)> = Vec::new();
     for row in &rows {
@@ -1492,11 +1492,20 @@ fn every_header_and_socket_row_states_the_contact_rating_from_its_datasheet() {
         // The two-row rows say which drawing the rating is from and no derating.
         if row["mating.rows"] == "2" {
             assert_eq!(row["mating.gender"], "header", "{lcsc}");
+            let drawing = if lcsc == "C42372518" {
+                "Hanxia drawing HX PZ2.54-2x10P ZZ"
+            } else {
+                "JXTCONN drawing A254M01-0BxP51-H25A60"
+            };
             assert!(
-                row["source"].contains("mating.pin_current: 3 A, JXTCONN drawing A254M01-0BxP51-H25A60")
-                    && row["source"].contains("read 2026-11-15"),
+                row["source"].contains(&format!("mating.pin_current: 3 A, {drawing}"))
+                    && row["source"].contains("read 2026-11-1"),
                 "{lcsc}: {}",
                 row["source"]
+            );
+            assert!(
+                row["notes"].contains("names no derating"),
+                "{lcsc}: no derating is modelled and the notes say why"
             );
         }
     }
@@ -1512,10 +1521,12 @@ fn every_header_and_socket_row_states_the_contact_rating_from_its_datasheet() {
     let c = row_of("header", "C42431810");
     assert_eq!(value(&c, "mating.pin_current"), quantity(3.0, "A"));
     assert_eq!(c.label, "Conn_01x10");
-    // The two-row headers: 2x3 and 2x5 are rated, the 2x10 has no row.
+    // The two-row headers: 2x3, 2x5 and 2x10 are rated (the 2x10 is Hanxia's: JLCPCB's record of
+    // the JXTCONN 20-contact header does not load).
     for (lcsc, positions, label) in [
         ("C41426970", "6", "Conn_02x03_Odd_Even"),
         ("C41426972", "10", "Conn_02x05_Odd_Even"),
+        ("C42372518", "20", "Conn_02x10_Odd_Even"),
     ] {
         let two = rows
             .iter()
@@ -1527,12 +1538,9 @@ fn every_header_and_socket_row_states_the_contact_rating_from_its_datasheet() {
         let c = row_of("header", lcsc);
         assert_eq!(value(&c, "mating.pin_current"), quantity(3.0, "A"));
     }
-    assert!(
-        !rows
-            .iter()
-            .any(|r| r["mating.rows"] == "2" && r["mating.positions"] == "20"),
-        "a 2x10 row needs its JLCPCB record read first"
-    );
+    // The JXTCONN 20-contact header has no row: JLCPCB's record of C41426976 is not readable, so
+    // its identity is not read on both records.
+    assert!(!rows.iter().any(|r| r["lcsc"] == "C41426976"));
 }
 
 #[test]
@@ -1543,11 +1551,6 @@ fn every_header_and_socket_row_states_its_seat_from_the_makers_drawing() {
     // 10.65 mm to 11.35 mm.
     for row in &records("jlcpcb/catalog/header.csv") {
         let lcsc = &row["lcsc"];
-        // The two-row rows state the rating only; their seat, height and range are not filled.
-        if row["mating.rows"] == "2" {
-            assert!(row["mating.seat"].is_empty(), "{lcsc}");
-            continue;
-        }
         let (cell, figure) = match row["mating.gender"].as_str() {
             "header" => ("2.5mm +/- 0.2mm", "mating.seat: 2.50 +/- 0.20 mm"),
             "socket" => ("8.5mm +/- 0.15mm", "mating.seat: 8.50 +/- 0.15 mm"),

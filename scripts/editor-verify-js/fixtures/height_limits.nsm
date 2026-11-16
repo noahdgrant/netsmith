@@ -4,7 +4,7 @@
 //! puts all three under the lid, so the editor has a part that is too tall (an error), a part that
 //! states no height (a warning) and one that fits.
 
-import std::parts::connector::{Header1x2, Header2x3}
+import std::parts::connector::{Header1x2, ProgrammingPads6}
 import std::mfg::jlcpcb::TwoLayer
 
 board Lidded {
@@ -13,7 +13,6 @@ board Lidded {
     }
     .tall: Header1x2
     .flat: Header1x2
-    // A 2x3 header's catalog row states no height (it rates the contacts only), so it has none (ADR 0094): the 1x2 headers'
-    // rows state theirs, and this part has to be one that states none.
-    .bare: Header2x3
+    // A part with no catalog row has no height (ADR 0094), unlike the 1x2 headers, whose rows state theirs.
+    .bare: ProgrammingPads6
 }
