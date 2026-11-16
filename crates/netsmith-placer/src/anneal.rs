@@ -341,6 +341,9 @@ const W_EDGE: f64 = 0.4;
 const W_AREA: f64 = 0.03;
 /// Each pair of ratsnest lines of two nets that cross.
 const W_CROSSING: f64 = 1.0;
+/// Each net that cannot leave a side of a busy part through the corridor in front of it
+/// ([`escape`]).
+const W_ESCAPE_ROOM: f64 = 10.0;
 /// Nets with more pads than this have no lines counted.
 const MAX_LINE_PADS: usize = 10;
 /// A part that is turned, or has its text off the top.

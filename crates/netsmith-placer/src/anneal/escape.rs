@@ -24,10 +24,10 @@ const RIM: f64 = 0.05;
 #[derive(Clone)]
 pub(super) struct Rim {
     /// The box round the part's pads.
-    pads: Rect,
+    pub(super) pads: Rect,
     /// For each side (`-x`, `-y`, `+x`, `+y`), where along it the pads that leave through it
     /// are: their centre's y on the two sides across x, their x on the other two.
-    leaving: [Vec<f64>; 4],
+    pub(super) leaving: [Vec<f64>; 4],
 }
 
 impl Rim {
@@ -144,7 +144,7 @@ fn side_shortfall(
 
 impl<'a> Engine<'a> {
     /// Busy part `b`'s rim as it lies now.
-    fn rim(&self, b: usize) -> Option<&Rim> {
+    pub(super) fn rim(&self, b: usize) -> Option<&Rim> {
         let rims = &self.models[b].rims;
         let k = (self.shape_index(b) / 4).min(rims.len().checked_sub(1)?);
         rims[k].as_ref()
@@ -161,7 +161,8 @@ impl<'a> Engine<'a> {
         let Some(rim) = self.rim(b) else {
             return (0.0, Vec::new());
         };
-        let pads = rim.pads.translated(self.pos(b));
+        let at = self.pos(b);
+        let pads = rim.pads.translated(at);
         let reach = pads.expanded(RING);
         let rules = self.p.rules;
         let pitch = (rules.track_width + rules.clearance).max(0.05);
@@ -190,10 +191,11 @@ impl<'a> Engine<'a> {
         let mut blockers: Vec<usize> = Vec::new();
         let mut short = 0.0;
         for side in 0..4 {
-            let leaving = &rim.leaving[side];
-            if leaving.is_empty() {
+            if rim.leaving[side].is_empty() {
                 continue;
             }
+            let shift = if side % 2 == 0 { at.y } else { at.x };
+            let leaving: Vec<f64> = rim.leaving[side].iter().map(|v| v + shift).collect();
             let (lo, hi, _) = across(&pads, side, &pads);
             let in_front = band(&pads, side);
             let mut walls: Vec<(f64, f64, f64)> = Vec::new();
@@ -211,7 +213,7 @@ impl<'a> Engine<'a> {
                     blockers.push(*j);
                 }
             }
-            short += side_shortfall(leaving, lo, hi, &walls, fits);
+            short += side_shortfall(&leaving, lo, hi, &walls, fits);
         }
         (short, blockers)
     }

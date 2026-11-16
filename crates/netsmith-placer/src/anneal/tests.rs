@@ -1145,3 +1145,167 @@ fn a_part_that_starts_beyond_the_reach_of_legalising_tries_no_pose() {
     assert!(!all);
     assert_eq!(poses, 0);
 }
+
+/// A QFN of 32 pads at 0.65 mm (busy, and not fine pitch, so it has no escape ring) and eight
+/// resistors on a board of `side` mm: each pad of the QFN's first two sides joins a pin of a
+/// resistor, on a net of its own.
+fn busy_board(side: f64) -> Board {
+    let mut board = resistors(&[""; 9]);
+    board.outline = Rect::new(Pt::new(0.0, 0.0), Pt::new(side, side));
+    board.parts[0].footprint = qfn(0.65);
+    board.nets = (0..16)
+        .map(|k| BoardNet {
+            name: format!("N{k}"),
+            pads: vec![
+                netsmith_pcb::PadRef {
+                    refdes: "R1".into(),
+                    number: (k + 1).to_string(),
+                },
+                netsmith_pcb::PadRef {
+                    refdes: format!("R{}", k % 8 + 2),
+                    number: if k < 8 { "1" } else { "2" }.into(),
+                },
+            ],
+        })
+        .collect();
+    board
+}
+
+fn problem_with_escape<'a>(
+    board: &'a Board,
+    fixed: &'a [bool],
+    rules: &'a Rules,
+    weight: f64,
+) -> Problem<'a> {
+    Problem {
+        escape_room: weight,
+        ..problem_of(board, fixed, rules)
+    }
+}
+
+/// Puts part `i` with its origin at `at`, unturned.
+fn put_at(e: &mut Engine, i: usize, at: Pt) {
+    let unit = |v: f64| (v / UNIT).round() as i64;
+    e.put(
+        i,
+        Pose {
+            x: unit(at.x),
+            y: unit(at.y),
+            turn: 0,
+            text: 0,
+        },
+    );
+}
+
+#[test]
+fn a_busy_part_whose_side_faces_the_edge_or_a_part_close_by_falls_short_of_escape_room() {
+    let board = busy_board(30.0);
+    let mut parts = board.parts.clone();
+    let fixed = vec![false; parts.len()];
+    let rules = board.rules.clone();
+    let problem = problem_with_escape(&board, &fixed, &rules, 1.0);
+    let mut e = Engine::new(&mut parts, &problem);
+    assert_eq!(e.escapers, vec![0]);
+    // The QFN in the middle and the resistors in a row far below it: every pad leaves.
+    put_at(&mut e, 0, Pt::new(15.0, 15.0));
+    for i in 1..9 {
+        put_at(&mut e, i, Pt::new(3.0 * i as f64, 27.0));
+    }
+    e.refresh_all();
+    assert_eq!(e.escape_kept_total(), 0.0);
+    // The pads of the side at +x (the first eight, as the part lies) 0.5 mm from the edge:
+    // less the copper to edge space, two tracks fit along it, and six pads have no way out.
+    let rim = e.rim(0).unwrap().pads;
+    assert_eq!(e.rim(0).unwrap().leaving[2].len(), 8);
+    put_at(&mut e, 0, Pt::new(30.0 - rim.max.x - 0.5, 15.0));
+    e.refresh_all();
+    let at_edge = e.escape_kept_total();
+    assert_eq!(at_edge, 6.0);
+    assert_eq!(e.escape_counted_afresh(), at_edge);
+    // In the middle again, with a resistor 0.3 mm in front of its second side (+y): the
+    // pads behind the resistor cannot leave, and the others can.
+    put_at(&mut e, 0, Pt::new(15.0, 15.0));
+    e.refresh_all();
+    let rim = e.rim(0).unwrap().pads.translated(e.pos(0));
+    let court = e.shape(1).court;
+    put_at(&mut e, 1, Pt::new(15.0, rim.max.y + 0.3 - court.min.y));
+    e.refresh_all();
+    let blocked = e.escape_kept_total();
+    assert!(blocked > 0.0 && blocked < 8.0, "{blocked}");
+}
+
+#[test]
+fn the_escape_shortfall_kept_through_moves_is_the_one_counted_afresh() {
+    let board = busy_board(10.0);
+    let mut parts = board.parts.clone();
+    let fixed = vec![false; parts.len()];
+    let rules = board.rules.clone();
+    let problem = problem_with_escape(&board, &fixed, &rules, 1.0);
+    let mut e = Engine::new(&mut parts, &problem);
+    let mut rng = Rng::new(11);
+    let (mut kept, mut undone, mut short) = (0, 0, 0);
+    for _ in 0..400 {
+        let change = e.propose(&mut rng, 60);
+        if change.is_empty() {
+            continue;
+        }
+        let set: Vec<usize> = change.iter().map(|&(i, _)| i).collect();
+        // Before the move the parts are where the shortfalls were kept.
+        assert_eq!(e.escape_with(&set), e.escape_kept_total());
+        let old: Vec<Pose> = set.iter().map(|&i| e.poses[i]).collect();
+        for &(i, pose) in &change {
+            e.put(i, pose);
+        }
+        let after = e.escape_with(&set);
+        assert_eq!(after, e.escape_counted_afresh());
+        short += usize::from(after > 0.0);
+        if rng.below(2) == 0 {
+            e.refresh(&set);
+            kept += 1;
+            assert_eq!(e.escape_kept_total(), after);
+        } else {
+            for (&i, &pose) in set.iter().zip(&old) {
+                e.put(i, pose);
+            }
+            undone += 1;
+        }
+        assert_eq!(e.escape_kept_total(), e.escape_counted_afresh());
+    }
+    assert!(kept > 50 && undone > 50, "{kept} kept, {undone} undone");
+    // The moves tried are not all clear of it: the bookkeeping is tested where it counts.
+    assert!(short > 20, "{short} moves fell short");
+}
+
+/// The escape shortfall of a placed board's busy parts.
+fn escape_of(board: &mut Board) -> f64 {
+    let fixed = vec![true; board.parts.len()];
+    let rules = board.rules.clone();
+    let probe = board.clone();
+    let problem = problem_with_escape(&probe, &fixed, &rules, 1.0);
+    Engine::new(&mut board.parts, &problem).escape_kept_total()
+}
+
+#[test]
+fn weighing_escape_room_leaves_a_busy_part_less_short_of_it_than_not() {
+    // The QFN and its eight resistors on a board of 13 mm, where the placer that does not
+    // weigh escape room leaves some pads with no way out: over four seeds, the one that weighs
+    // it leaves fewer.
+    let (mut weighed, mut not) = (0.0, 0.0);
+    for seed in 0..4 {
+        for (weight, total) in [(W_ESCAPE_ROOM, &mut weighed), (0.0, &mut not)] {
+            let mut board = busy_board(13.0);
+            let fixed = vec![false; board.parts.len()];
+            let rules = board.rules.clone();
+            let probe = board.clone();
+            let problem = Problem {
+                seed,
+                ..problem_with_escape(&probe, &fixed, &rules, weight)
+            };
+            let outcome = anneal(&mut board.parts, &problem, 1.0);
+            assert!(outcome.feasible, "seed {seed}, weight {weight}");
+            *total += escape_of(&mut board);
+        }
+    }
+    eprintln!("escape shortfall over four seeds: {weighed} weighed, {not} not");
+    assert!(weighed < not, "{weighed} weighed, {not} not");
+}
