@@ -656,7 +656,7 @@ impl Checker<'_> {
         self.error(
             written.span,
             format!(
-                "`{}` is {} in `{here}` but {} in `{table}`; a pin has one kind, one datasheet name and one set of absolute limits in every package",
+                "`{}` is {} in `{here}` but {} in `{table}`; a pin has one kind, one datasheet name, one `optional` or `required` and one set of absolute limits in every package",
                 written.pin.to_source(),
                 describe(row),
                 describe(&other),

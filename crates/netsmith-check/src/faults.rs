@@ -14,6 +14,8 @@
 //! | Required pin unconnected | `power` and `input` pins must have another part's pin on their net unless the row says `optional`; `output`, `bidirectional` and `passive` pins may float unless it says `required` | `` `u.en` is an input that must be connected (pad 6, `EN`), but nothing else is on its net `` |
 //! | Tied pin not tied | `tie .a ~ .b` in a part means the board must put the two on one net | `` `u.sense` must be on the same net as `u.vout.pos` (`Ldo9` ties them), but nothing is connected to `u.sense` ``, or, when it is on another net, `` ... but `u.sense` is on net `VIN` with ... `` |
 //! | No-connect pin connected | a `no_connect` pin must have nothing else on its net | `` `u.nc` is a no_connect pin (pad 5, `NC`) but it is on net `3V3` with ... `` |
+//! | Module port left open | as "Required pin unconnected", when the pin's net reaches only ports of modules that the board joins to nothing else (#848) | `` ... but nothing else is on its net; it reaches only `w.rx`, a port of `Wrapped` that the board leaves open ``, at the board's line that declares the module |
+//! | Two power sources on one net | the `pos` of the rails of two `dc source`, `dc linear_regulator` or `dc switching_regulator` statements (the output rail of a regulator) on one net (#848) | ``net `VIN` has 2 power sources: `jack.vbatt` (`Jack`, `dc source`) and `ldo.vout` (`Ldo`, `dc linear_regulator`); ...`` |
 //! | Two outputs on one net | two `output` pins on one net; pins the part joins inside are one; an `output` and a `bidirectional` pin are allowed | ``net `X` has two outputs: `a.tx`, `b.tx` `` |
 //! | Output on a rail | an `output` pin on the net of a rail's `pos` or `neg` (#461); an output that is itself a rail's pin, or a rail of its own part, does not count | `` `d.out` (`Zdrv`) is an output on net `GND`, the net of rail `gnd` (`gnd.neg`): ... `` |
 //! | Function not chosen | a connected pin with more than one function needs `.function &=` from the board | `` `u.pa9` has several functions (GPIO, UART1_TX, SPI1_MOSI) and is connected: choose one with `.u.pa9.function &= GPIO` `` |
@@ -25,18 +27,22 @@
 //! of pins joined inside the part counts as unconnected. A net counts as company for a `power`
 //! or `input` pin if it has a pin that is not the part's own, including a rail the board
 //! declares: a rail that nothing on the board drives is supplied from outside (ADR 0007). A
-//! module's port the board leaves open is not seen. Messages point at the board's declaration
-//! of the part (`.u: Ldo9`) and name the pinout line. An intentionally unused `optional` pin
+//! module's port is only a way through: a net whose only other pins are ports of modules that
+//! the board leaves open is unconnected, unless the board states one of them `unused` (ADR
+//! 0083). Messages point at the board's declaration of the part (`.u: Ldo9`), or of the module
+//! whose port is open, and name the pinout line. An intentionally unused `optional` pin
 //! needs no statement; leaving a `required` pin open is refused (if the datasheet allows it,
 //! the pin is not `required`). `optional` and `required` are refused where they change nothing
-//! (`optional` on an output, `required` on an input). Two power sources on one net are not
-//! checked: whether a power pin gives or takes is the sign of the rail's current, which is
-//! known only after the solve (a known limit).
+//! (`optional` on an output, `required` on an input), and a pin has one `optional` or
+//! `required` in every package (`pins.rs`). Two power sources on one net are told by the `dc`
+//! statements that say a part gives a rail, which need no solve; a `power` pin with no `dc`
+//! statement is not told from a load's (whether it gives or takes is the sign of the rail's
+//! current, known only after the solve), so it is not counted.
 
 use std::collections::{BTreeMap, HashSet};
 
 use crate::diag::Diagnostic;
-use crate::model::{InstId, InstKind, Model, Net, PinKind, PinRow, PinTable, Pinout};
+use crate::model::{DcKind, InstId, InstKind, Model, Net, PinKind, PinRow, PinTable, Pinout};
 use crate::pins::article;
 
 /// The faults that the board alone settles: every part whose package is known, and every
@@ -167,6 +173,7 @@ impl<'a> Run<'a> {
         self.nets(&parts);
         if self.pass == Pass::Board {
             self.stray_functions();
+            self.power_sources();
         }
     }
 
@@ -362,30 +369,77 @@ impl<'a> Run<'a> {
             }
 
             let (must, by_role) = model.must_be_connected_by(pin, row);
-            if must && !self.has_company(part, pin) && model.unused_by(pin).is_none() {
+            let company = self.company(part, pin);
+            if must && company.is_err() && model.unused_by(pin).is_none() {
+                let ports = company.err().unwrap_or_default();
                 let because = by_role.unwrap_or_default();
-                self.report(
-                    inst.at(),
-                    format!(
-                        "`{name}` is {} that must be connected ({pads}, `{}`){}{because} nothing else is on its net",
-                        article(row.kind),
-                        row.name,
-                        if because.is_empty() { ", but" } else { ": " },
-                    ),
+                let mut message = format!(
+                    "`{name}` is {} that must be connected ({pads}, `{}`){}{because} nothing else is on its net",
+                    article(row.kind),
+                    row.name,
+                    if because.is_empty() { ", but" } else { ": " },
                 );
+                // A module's port that the board leaves open (#848): the message names it and
+                // points at the board's line that declares the module.
+                let at = match ports.as_slice() {
+                    [] => inst.at(),
+                    [one] => {
+                        let module = model.owner_of(*one).expect("a port of a module");
+                        message.push_str(&format!(
+                            "; it reaches only `{}`, a port of `{}` that the board leaves open",
+                            model.path_of(*one),
+                            model.instance(module).type_name
+                        ));
+                        model.instance(module).at()
+                    }
+                    many => {
+                        let names: Vec<String> = many.iter().map(|&p| model.path_of(p)).collect();
+                        message.push_str(&format!(
+                            "; it reaches only the ports {}, which the board leaves open",
+                            list(&names)
+                        ));
+                        model
+                            .instance(model.owner_of(many[0]).expect("a port of a module"))
+                            .at()
+                    }
+                };
+                self.report(at, message);
             }
 
             self.function(part, pin, row, &path);
         }
     }
 
-    /// Whether a pin shares its net with a pin that is not the part's own. A rail or a
-    /// module's port counts: it is where a board brings the connection in.
-    fn has_company(&self, part: InstId, pin: InstId) -> bool {
+    /// Whether a pin shares its net with a pin that is not the part's own: another part's pin,
+    /// or a rail or a port of the board, which is where a board brings a connection in. A port
+    /// of a module is only a way through (#848): when the net has nothing else, the `Err` holds
+    /// the ports of the modules nearest the board, which the board leaves open. A net with a
+    /// port that the board states `unused` (ADR 0083) has company: the board said so.
+    fn company(&self, part: InstId, pin: InstId) -> Result<(), Vec<InstId>> {
         let model = self.model;
-        model
-            .net_of(pin)
-            .is_some_and(|net| net.pins.iter().any(|&p| model.owner_of(p) != Some(part)))
+        let Some(net) = model.net_of(pin) else {
+            return Err(Vec::new());
+        };
+        let mut ports: Vec<(usize, String, InstId)> = Vec::new();
+        for &p in &net.pins {
+            let Some(owner) = model.owner_of(p) else {
+                continue;
+            };
+            if owner == part {
+                continue;
+            }
+            if model.instance(owner).kind != InstKind::Module || model.unused_by(p).is_some() {
+                return Ok(());
+            }
+            let path = model.path_of(p);
+            ports.push((model.path_of(owner).matches('.').count(), path, p));
+        }
+        let Some(depth) = ports.iter().map(|(d, _, _)| *d).min() else {
+            return Err(Vec::new());
+        };
+        ports.retain(|(d, _, _)| *d == depth);
+        ports.sort();
+        Err(ports.into_iter().map(|(_, _, p)| p).collect())
     }
 
     fn function(&mut self, part: InstId, pin: InstId, row: &PinRow, _path: &str) {
@@ -664,6 +718,72 @@ impl<'a> Run<'a> {
                     inst.type_name
                 ),
             );
+        }
+    }
+
+    /// Two power sources on one net (#848): the `pos` of the rail that a `dc source` gives, or
+    /// of the output rail of a `dc linear_regulator` or `dc switching_regulator`, of two parts
+    /// (or two rails of one part) on one net. Each holds the net at its own voltage, so they
+    /// fight, and one feeds the other. The `dc` statement says that the part gives the rail,
+    /// so the rule needs no package and no solve; a `power` pin with no `dc` statement is not
+    /// told from a load's, so it is not a source here. A rail in an interface the board states
+    /// `unused` (ADR 0083) sources nothing.
+    fn power_sources(&mut self) {
+        let model = self.model;
+        let mut by_net: BTreeMap<String, Vec<(String, InstId, DcKind)>> = BTreeMap::new();
+        for (part, dc) in model.dc_elements() {
+            if model.board_of(part).is_none() {
+                continue;
+            }
+            let rail = match dc.kind {
+                DcKind::Source => dc.pins.first(),
+                DcKind::LinearRegulator | DcKind::SwitchingRegulator => dc.pins.get(1),
+                _ => None,
+            };
+            let Some(&rail) = rail else { continue };
+            let Some((_, pos, _)) = model.rail_of(rail) else {
+                continue;
+            };
+            if model.unused_by(pos).is_some() {
+                continue;
+            }
+            let Some(net) = model.net_of(pos) else {
+                continue;
+            };
+            by_net
+                .entry(net.name.clone())
+                .or_default()
+                .push((model.path_of(rail), part, dc.kind));
+        }
+        for (net, mut sources) in by_net {
+            if sources.len() < 2 {
+                continue;
+            }
+            sources.sort_by(|a, b| a.0.cmp(&b.0));
+            let names: Vec<String> = sources
+                .iter()
+                .map(|(rail, part, kind)| {
+                    format!(
+                        "`{rail}` (`{}`, `dc {}`)",
+                        model.instance(*part).type_name,
+                        kind.word()
+                    )
+                })
+                .collect();
+            let message = format!(
+                "net `{net}` has {} power sources: {}; each holds the net at its own voltage, so they fight and one feeds the other; give each its own net, and join them through a part that chooses between them (a diode or a power switch)",
+                sources.len(),
+                names.join(" and ")
+            );
+            let at = model.instance(sources[1].1).at();
+            if sources.iter().any(|(_, p, _)| model.in_varied_use(*p)) {
+                self.conflicts.push(Diagnostic {
+                    source: at.0,
+                    span: at.1,
+                    message: message.clone(),
+                });
+            }
+            self.report(at, message);
         }
     }
 
@@ -978,7 +1098,8 @@ impl<'a> Run<'a> {
     /// pull resistor, a connector) or a rail the board declares is a driver, and so is any
     /// pin the checker knows nothing about: the net is judged only when every pin on it is
     /// known to be an input. A net that only one part's own pins are on is the business of
-    /// the rule that an input must be connected.
+    /// the rule that an input must be connected, also when the net reaches ports of modules
+    /// that the board leaves open.
     fn floating_inputs(&mut self, net: &Net) {
         let model = self.model;
         if net.terminals.is_empty() {
@@ -1014,7 +1135,8 @@ impl<'a> Run<'a> {
             .collect();
         owners.sort();
         owners.dedup();
-        if owners.len() < 2 && net.pins.len() == net.terminals.len() {
+        // One part's pins, alone or with ports of modules the board leaves open (#848).
+        if owners.len() < 2 {
             return;
         }
         let mut names: Vec<String> = net.terminals.iter().map(|&p| self.describe(p)).collect();

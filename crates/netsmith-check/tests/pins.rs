@@ -396,15 +396,15 @@ fn part_error(body: &str, message: &str) {
 fn a_pin_has_one_kind_and_one_name_in_every_package() {
     part_error(
         "    .package: Package\n    pins \"A\" {\n        .x input \"X\" \"1\"\n    }\n    pins \"B\" {\n        .x output \"X\" \"1\"\n    }",
-        "`.x` is an output named `X` in `pins \"B\"` but an input named `X` in `pins \"A\"`; a pin has one kind, one datasheet name and one set of absolute limits in every package",
+        "`.x` is an output named `X` in `pins \"B\"` but an input named `X` in `pins \"A\"`; a pin has one kind, one datasheet name, one `optional` or `required` and one set of absolute limits in every package",
     );
     part_error(
         "    .package: Package\n    pins \"A\" {\n        .x input \"X\" \"1\"\n    }\n    pins \"B\" {\n        .x input \"Y\" \"1\"\n    }",
-        "`.x` is an input named `Y` in `pins \"B\"` but an input named `X` in `pins \"A\"`; a pin has one kind, one datasheet name and one set of absolute limits in every package",
+        "`.x` is an input named `Y` in `pins \"B\"` but an input named `X` in `pins \"A\"`; a pin has one kind, one datasheet name, one `optional` or `required` and one set of absolute limits in every package",
     );
     part_error(
         "    .package: Package\n    pins \"A\" {\n        .x input \"X\" \"1\" optional\n    }\n    pins \"B\" {\n        .x input \"X\" \"1\"\n    }",
-        "`.x` is an input named `X` in `pins \"B\"` but an input named `X` (optional) in `pins \"A\"`; a pin has one kind, one datasheet name and one set of absolute limits in every package",
+        "`.x` is an input named `X` in `pins \"B\"` but an input named `X` (optional) in `pins \"A\"`; a pin has one kind, one datasheet name, one `optional` or `required` and one set of absolute limits in every package",
     );
 }
 
@@ -696,7 +696,7 @@ fn a_logic_line_takes_its_ground_from_its_logic() {
 fn a_pin_has_one_absolute_maximum_in_every_package() {
     part_error(
         "    .vin: Rail\n    .package: Package\n    pins \"A\" {\n        .vin.neg power \"GND\" \"1\"\n        .x input \"X\" \"2\" abs_max 6V\n    }\n    pins \"B\" {\n        .vin.neg power \"GND\" \"1\"\n        .x input \"X\" \"2\" abs_max 5V\n    }",
-        "`.x` is an input named `X` with `abs_max 5V` in `pins \"B\"` but an input named `X` with `abs_max 6V` in `pins \"A\"`; a pin has one kind, one datasheet name and one set of absolute limits in every package",
+        "`.x` is an input named `X` with `abs_max 5V` in `pins \"B\"` but an input named `X` with `abs_max 6V` in `pins \"A\"`; a pin has one kind, one datasheet name, one `optional` or `required` and one set of absolute limits in every package",
     );
     // The same limit in two tables is one narrowing.
     let c = run(

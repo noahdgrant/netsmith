@@ -1,4 +1,5 @@
-//! Rules of a whole net: inputs with nothing to drive them, and an I2C bus with no pull-up.
+//! Rules of a whole net: inputs with nothing to drive them, a module's port left open, two
+//! power sources, and an I2C bus with no pull-up.
 //!
 //! The parts are invented for these tests.
 
@@ -122,6 +123,88 @@ fn a_lone_input_is_the_business_of_the_must_be_connected_rule() {
         m.iter()
             .all(|m| m.contains("is an input that must be connected"))
     );
+}
+
+#[test]
+fn a_module_port_the_board_leaves_open_is_no_connection() {
+    // `w.chip.en` reaches only the port `w.rx`, which the board joins to nothing (#848). The
+    // message points at the board's line that declares the module.
+    let c = run("board B {\n    .w: Wrapped\n}\n");
+    only(
+        &c,
+        "`w.chip.en` is an input that must be connected (pad 1, `EN`), but nothing else is on its net; it reaches only `w.rx`, a port of `Wrapped` that the board leaves open",
+    );
+    let at = &c.diagnostics[0];
+    let source = format!("{PARTS}\nboard B {{\n    .w: Wrapped\n}}\n");
+    assert_eq!(&source[at.span.start..at.span.end], ".w: Wrapped");
+}
+
+#[test]
+fn a_module_port_the_board_connects_is_a_connection() {
+    // To a rail of the board, and to another part's pin.
+    let c = run(&format!(
+        "board B {{\n{SUPPLY}    .w: Wrapped\n    .w.rx ~ .supply.pos\n}}\n"
+    ));
+    assert!(c.is_ok(), "{}", c.render());
+    let c = run("board B {\n    .w: Wrapped\n    .x: Switchable\n    .x.io ~ .w.rx\n}\n");
+    let m = messages(&c);
+    assert_eq!(m.len(), 1, "{m:?}");
+    assert!(m[0].starts_with("`x.en` is an input"), "{m:?}");
+}
+
+#[test]
+fn two_ports_left_open_are_named_together() {
+    let c = run(
+        "module Twice {\n    .a: Pin\n    .b: Pin\n    .chip: Switchable\n    .a ~ .chip.en\n    .b ~ .chip.en\n}\nboard B {\n    .t: Twice\n}\n",
+    );
+    only(
+        &c,
+        "`t.chip.en` is an input that must be connected (pad 1, `EN`), but nothing else is on its net; it reaches only the ports `t.a`, `t.b`, which the board leaves open",
+    );
+}
+
+#[test]
+fn two_modules_whose_open_ports_meet_have_only_inputs() {
+    // Two parts' inputs on one net: the rule of the net says it, once.
+    let c = run("board B {\n    .v: Wrapped\n    .w: Wrapped\n    .v.rx ~ .w.rx\n}\n");
+    only(
+        &c,
+        "net `net-v.chip.en` has only inputs (`v.chip.en`, `w.chip.en`): nothing drives it, so it floats; join an output, a bidirectional pin or a rail to it, or a pull resistor",
+    );
+}
+
+// ---- Power sources -----------------------------------------------------------------
+
+const SOURCES: &str = r#"
+part Jack {
+    .vbatt: Rail
+    dc source .vbatt
+}
+
+part Ldo {
+    .vin: Rail
+    .vout: Rail
+    dc linear_regulator .vin .vout
+}
+"#;
+
+#[test]
+fn two_power_sources_on_one_net_are_refused() {
+    let c = run(&format!(
+        "{SOURCES}\nboard B {{\n    .jack: Jack\n    .ldo: Ldo\n    .jack.vbatt.pos.net &= \"VIN\"\n    .jack.vbatt ~ .ldo.vout\n}}\n"
+    ));
+    only(
+        &c,
+        "net `VIN` has 2 power sources: `jack.vbatt` (`Jack`, `dc source`) and `ldo.vout` (`Ldo`, `dc linear_regulator`); each holds the net at its own voltage, so they fight and one feeds the other; give each its own net, and join them through a part that chooses between them (a diode or a power switch)",
+    );
+}
+
+#[test]
+fn a_source_that_feeds_a_regulator_is_one_source_on_its_net() {
+    let c = run(&format!(
+        "{SOURCES}\nboard B {{\n    .jack: Jack\n    .ldo: Ldo\n    .jack.vbatt ~ .ldo.vin\n}}\n"
+    ));
+    assert!(c.is_ok(), "{}", c.render());
 }
 
 // ---- I2C pull-ups ------------------------------------------------------------------

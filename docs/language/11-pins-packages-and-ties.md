@@ -106,7 +106,8 @@ Rules.
 - `fn` lists what a pin can be. A connected pin with more than one function needs the board to choose: `.u.pa2.function &= UART1_TX`. There is no default function. One function cannot be chosen on two pins of a part, except a class (`fn GPIO class` in a row, "Functions"; or a function that a peripheral is `on`, "A peripheral on any pin"). A function may carry its own kind, `fn GPIO:bidirectional UART1_TX:output` (next sections).
 - `tie .a ~ .b` says that the board must put the two pins on one net. The tie is skipped in a package that lacks either pin.
 - The faults on a board are reported when it is checked. A rule that needs the package waits for the solver when the board does not name the package (a catalog row chooses it). The solver does not choose a catalog row whose package lacks a pin that the board connects.
-- Two `power` pins that are both supplies on one net are not checked yet.
+- A port of a module is only a way through: a pin whose net reaches nothing but ports of modules that the board leaves open is not connected. A rail or a port of the board is a connection, since that is where a board brings one in.
+- Two power sources on one net are refused. A source is the rail of a part's `dc source` and the output rail of a `dc linear_regulator` or `dc switching_regulator` ("Standard parts"). A `power` pin with no `dc` statement is not told from a load's, so it is not counted.
 
 Messages.
 
@@ -140,6 +141,37 @@ error: `u.en` is an input that must be connected (pad 6, `EN`), but nothing else
 ```
 
 The message points at the line that declares the part, and names the pad and the datasheet name so you can find the pin on the datasheet.
+
+A pin that a module brings out to a port is connected only when the board connects the port. A port the board leaves open is no connection, and the message points at the line that declares the module:
+
+```nsm fails
+part Switch {
+    pins {
+        .en input "EN" "1"
+        .io bidirectional "IO" "2"
+    }
+}
+
+module Switched {
+    .enable: Pin
+    .chip: Switch
+    .enable ~ .chip.en
+}
+
+board EnableLeftOpen {
+    .s: Switched
+}
+```
+
+```text
+error: `s.chip.en` is an input that must be connected (pad 1, `EN`), but nothing else is on its net; it reaches only `s.enable`, a port of `Switched` that the board leaves open
+   --> main.nsm:15:5
+   |
+15 |     .s: Switched
+   |     ^^^^^^^^^^^^
+```
+
+A board that does not use the port says so with `unused` when it is an interface ("A function the board does not use", in "Narrowing and relations"), or the module's author marks the pin `optional` when the part allows it to float.
 
 A tie that the board does not make:
 
@@ -1739,6 +1771,40 @@ error: net `net-a.out` has two outputs: `a.out`, `b.out`
   |     ^^^^^^^^^^
 ```
 
+### Power sources
+
+Two power sources on one net would fight: each holds the net at its own voltage, and one feeds the other. A part says that it gives a rail with a `dc` statement, the supply of a connector (`dc source`) or the output of a regulator (`dc linear_regulator`, `dc switching_regulator`), so the checker refuses two of them on one net before the solve. Join two supplies through a part that chooses between them, a diode or a power switch.
+
+```nsm fails
+import std::sources::Rail
+
+part Jack {
+    .vbatt: Rail
+    dc source .vbatt
+}
+
+part Ldo {
+    .vin: Rail
+    .vout: Rail
+    dc linear_regulator .vin .vout
+}
+
+board Backfeed {
+    .jack: Jack
+    .ldo: Ldo
+    .jack.vbatt.pos.net &= "VIN"
+    .jack.vbatt ~ .ldo.vout
+}
+```
+
+```text
+error: net `VIN` has 2 power sources: `jack.vbatt` (`Jack`, `dc source`) and `ldo.vout` (`Ldo`, `dc linear_regulator`); each holds the net at its own voltage, so they fight and one feeds the other; give each its own net, and join them through a part that chooses between them (a diode or a power switch)
+   --> main.nsm:16:5
+   |
+16 |     .ldo: Ldo
+   |     ^^^^^^^^^
+```
+
 ### A line that several parts drive
 
 A line that two parts drive can work if every driver lets go of it while it is not selected: the data out of several SPI slaves on one `miso`, each one selected by its own chip select. The kind for that pin is `tri_state` (ADR 0064). A net whose drivers are all `tri_state` is accepted, and that at most one of them is selected at a time is a fact of the protocol, which the select lines and the firmware carry; the checker says no more. A `bidirectional` pin is never counted as a driver, as before.
@@ -1996,7 +2062,7 @@ board Empty {
 ```
 
 ```text
-error: `.x` is an output named `X` in `pins "B"` but an input named `X` in `pins "A"`; a pin has one kind, one datasheet name and one set of absolute limits in every package
+error: `.x` is an output named `X` in `pins "B"` but an input named `X` in `pins "A"`; a pin has one kind, one datasheet name, one `optional` or `required` and one set of absolute limits in every package
   --> main.nsm:7:9
   |
 7 |         .x output "X" "1"
