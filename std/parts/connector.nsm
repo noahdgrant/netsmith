@@ -68,7 +68,8 @@ interface Mating {
     .seat: Length
     /// `"none"`, or what keys the housing so that it goes in one way (`"shrouded"`,
     /// `"polarised"`). Unset is the same as `"none"`. A mate whose pinout would also work turned
-    /// end for end warns unless a connector is keyed.
+    /// end for end warns unless a connector is keyed, and so does, in `fab`, a connector of an
+    /// unkeyed mate whose pad 1 looks like the pad at its other end (`pin1_unmarked`).
     .keyed: String
 }
 

@@ -44,12 +44,27 @@
 //!   unknown height on a face that faces another member's board over it.
 //! - `mate_misaligned` (an error), above.
 //! - `system_apart` (a warning; an error with strict constraints), above.
+//! - `pin1_unmarked` (a warning; an error with strict guidelines), below.
+//!
+//! # Pin 1 on the pads (issue #795)
+//!
+//! The checker's `mating` guideline reads only `.mating.keyed` to know whether a mate goes
+//! together one way; a plain pin header has no key, so the one thing that shows a person which
+//! end is pin 1 is the board itself. For each mate that neither connector keys, each connector's
+//! pads are turned half round about their centre, the way a person would turn the connector end
+//! for end. When the turn carries some pad where no pad is, the pads themselves key it (a
+//! missing pin), and nothing is said. Otherwise pad 1 lands on another pad; when that pad has
+//! pad 1's shape, size and hole, pin 1 cannot be told from the pads, and `pin1_unmarked` names
+//! the connector, the pad pad 1 lands on and the shape both have. A std header or socket has a
+//! rectangular pad 1 and oval others, so it is never reported. It is a footprint's fact, so it
+//! is checked whether or not the member is placed. A silkscreen mark is not read: the pads are
+//! what every footprint has.
 //!
 //! Everything is in a fixed order: members as the system declares them, mates as it states them,
 //! findings by code in the order above and then as they are found, member by member, body by
 //! body. Lengths are rounded to a nanometre.
 
-use netsmith_pcb::{Board, Side};
+use netsmith_pcb::{Board, Pad, PadKind, PadShape, Side};
 
 use crate::scene3d::{Body, HeightProvenance, Pins, Plan, Scene, pad_centres};
 
@@ -175,6 +190,9 @@ pub struct MateInput {
     /// `(first of a, first of b, how many)`, pad `first_a + i` meeting pad `first_b + i`.
     /// `None` when it joins every contact, pad N to pad N.
     pub window: Option<(usize, usize, usize)>,
+    /// Whether either connector is keyed (`.mating.keyed`), so that the mate goes together one
+    /// way only; a mate that neither keys has its pin 1 looked for on the pads.
+    pub keyed: bool,
 }
 
 impl MateInput {
@@ -235,6 +253,7 @@ pub enum Code {
     SystemUnchecked,
     MateMisaligned,
     SystemApart,
+    Pin1Unmarked,
 }
 
 impl Code {
@@ -244,7 +263,15 @@ impl Code {
             Code::SystemUnchecked => "system_unchecked",
             Code::MateMisaligned => "mate_misaligned",
             Code::SystemApart => "system_apart",
+            Code::Pin1Unmarked => "pin1_unmarked",
         }
+    }
+
+    /// Whether the finding is a guideline, in the style of the checker's `mating`: a warning,
+    /// an error when guidelines are strict (`--strict` or `guidelines = "error"`) rather than
+    /// when constraints are.
+    pub fn guideline(self) -> bool {
+        matches!(self, Code::Pin1Unmarked)
     }
 
     /// Whether the finding is an error whatever the constraints say: a collision of known
@@ -309,6 +336,10 @@ impl SystemScene {
         let ends: Vec<Option<(usize, usize)>> = mates
             .iter()
             .map(|m| Some((index(&m.a_member)?, index(&m.b_member)?)))
+            .collect();
+        let sides: Vec<[Option<usize>; 2]> = mates
+            .iter()
+            .map(|m| [index(&m.a_member), index(&m.b_member)])
             .collect();
         // Place what the mates reach, in source order, until no mate places another member.
         loop {
@@ -417,7 +448,21 @@ impl SystemScene {
         // Every mate whose two ends are placed is measured.
         let mut out_mates = Vec::new();
         let mut misaligned = Vec::new();
+        let mut unmarked = Vec::new();
         for (k, mate) in mates.into_iter().enumerate() {
+            if !mate.keyed {
+                for (path, member, other, at) in [
+                    (&mate.a, &mate.a_member, &mate.b, sides[k][0]),
+                    (&mate.b, &mate.b_member, &mate.a, sides[k][1]),
+                ] {
+                    let Some(i) = at else { continue };
+                    let (m, board) = (&out_members[i].0, out_members[i].1);
+                    let part = MateInput::part(path, member);
+                    if let Some(f) = pin1_unmarked(board, &part, path, other, &m.name) {
+                        unmarked.push(f);
+                    }
+                }
+            }
             let pairs = ends[k]
                 .map(|(ia, ib)| {
                     let (a, b) = (&out_members[ia], &out_members[ib]);
@@ -506,6 +551,7 @@ impl SystemScene {
         let mut checked = checks(&members, &out_mates);
         checked.extend(misaligned);
         checked.append(&mut findings);
+        checked.extend(unmarked);
         checked.sort_by_key(|f| f.code);
         SystemScene {
             name: name.to_string(),
@@ -570,6 +616,104 @@ fn pairs(
             Some((n, p, q))
         })
         .collect()
+}
+
+/// The finding when pin 1 of the connector `part` of `board` cannot be told from its pads (see
+/// the module's "Pin 1 on the pads"): turned half round about their centre, the connector's
+/// pads all land on pads, and pad 1 lands on another pad of its shape, size and hole. `None`
+/// when pin 1 shows, when the pads key the connector, or when it has no pad 1.
+fn pin1_unmarked(
+    board: &Board,
+    part: &str,
+    path: &str,
+    other: &str,
+    member: &str,
+) -> Option<Finding> {
+    let found = board.parts.iter().find(|p| p.path == part)?;
+    let pads: Vec<&Pad> = found
+        .footprint
+        .pads
+        .iter()
+        .filter(|p| !p.number.is_empty() && p.kind != PadKind::NpThruHole)
+        .collect();
+    if pads.len() < 2 {
+        return None;
+    }
+    let n = pads.len() as f64;
+    let (cx, cy) = (
+        pads.iter().map(|p| p.at.x).sum::<f64>() / n,
+        pads.iter().map(|p| p.at.y).sum::<f64>() / n,
+    );
+    let turned = |p: &Pad| Plan {
+        x: 2.0 * cx - p.at.x,
+        y: 2.0 * cy - p.at.y,
+    };
+    let landing = |at: Plan| {
+        pads.iter().copied().find(|q| {
+            dist(
+                Plan {
+                    x: q.at.x,
+                    y: q.at.y,
+                },
+                at,
+            ) <= ALIGNMENT
+        })
+    };
+    if pads.iter().any(|p| landing(turned(p)).is_none()) {
+        return None;
+    }
+    let one = pads.iter().copied().find(|p| p.number == "1")?;
+    let partner = landing(turned(one))?;
+    if partner.number == "1" || looks(one) != looks(partner) {
+        return None;
+    }
+    let (w, h) = size(one);
+    Some(Finding {
+        code: Code::Pin1Unmarked,
+        message: format!(
+            "pin 1 of `{path}` cannot be told from its pads, and neither connector of its mate with `{other}` is keyed: turned end for end, its pad 1 lands where pad {} is, and both are {} pads {w:.2} x {h:.2} mm, so a person fitting the boards together cannot see which end is pin 1; use a footprint whose pad 1 has another shape or size, or a keyed connector (`.mating.keyed`)",
+            partner.number,
+            shape_word(one.shape),
+        ),
+        members: vec![member.to_string()],
+        parts: vec![format!("{member}/{part}")],
+        mate: Some((path.to_string(), other.to_string())),
+        z: None,
+        distance: None,
+    })
+}
+
+/// A pad's width and height in its footprint's frame, after its own turn (a quarter turn
+/// swaps them), in mm.
+fn size(p: &Pad) -> (f64, f64) {
+    let quarter = (p.angle.rem_euclid(180.0) - 90.0).abs() < 1e-6;
+    if quarter {
+        (p.height, p.width)
+    } else {
+        (p.width, p.height)
+    }
+}
+
+/// What a person sees of a pad: its shape, its size and its hole, to a micrometre.
+fn looks(p: &Pad) -> (PadShape, i64, i64, Option<(i64, i64)>) {
+    let um = |v: f64| (v * 1e3).round() as i64;
+    let (w, h) = size(p);
+    (
+        p.shape,
+        um(w),
+        um(h),
+        p.drill
+            .map(|d| (um(d.width.min(d.height)), um(d.width.max(d.height)))),
+    )
+}
+
+fn shape_word(shape: PadShape) -> &'static str {
+    match shape {
+        PadShape::Rect => "rectangular",
+        PadShape::RoundRect => "rounded rectangular",
+        PadShape::Oval => "oval",
+        PadShape::Circle => "round",
+    }
 }
 
 /// The face a connector stands on, in the system: its z and its outward normal (+1 up, -1

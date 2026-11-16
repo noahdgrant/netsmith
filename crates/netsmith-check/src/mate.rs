@@ -95,12 +95,13 @@
 //! `"none"`) and some pair of nets would swap places, the board of the first connector gets a
 //! guideline finding (`mating`), a `warning:` line, an error with `--strict`. A pinout that reads
 //! the same turned round is not reported, because nothing would change. The checker cannot see
-//! where pin 1 sits on the PCB.
+//! the PCB; the system scene looks for pin 1 on the pads of every mate that neither connector
+//! keys (`pin1_unmarked`, `netsmith-3d`'s `system.rs`, issue #795).
 //!
 //! **Not built** (issues #16 and #62): edge connectors and the plug-in's `card_thickness` check;
 //! flat cables and wire to board (they need a cable or harness definition); a rating of an
 //! isolation barrier; stacking, side, `.mount` and `.mated_height` (they need the layout file
-//! and part heights); pin 1 on the PCB; a rating for the 2x10 header; derating of several
+//! and part heights); a rating for the 2x10 header; derating of several
 //! loaded contacts (no datasheet read gives one). Messages are one line each (the multi-line
 //! form would need a notes field on diagnostics).
 //!

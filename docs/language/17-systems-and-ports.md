@@ -115,6 +115,7 @@ The system names no pin and no net. After the nets of the boards are known, the 
 - Each board keeps its own ground net. The system reports the ground groups: which boards share a ground through the mated ground contacts. A group holds no isolated ground of a board with another ground of the same board ("Isolated grounds", below).
 - The contacts carry the current. The rated current of one contact (`pin_current`) times the contacts that carry a rail's `pos`, or the ground the rails return through, is at least the current of the rail, in either direction. A connector that is rated is picked from the `header` catalog (`data/jlcpcb/catalog/header.csv`, one row for each series and pin count from a public datasheet), so the solver chooses a row that works. A connector with no rating is not checked, and the check is listed as not evaluated.
 - A pinout that also works with one connector turned end for end, and that neither connector keys (`.mating.keyed`), is a guideline finding (`mating`): the plug-in can go in the wrong way round and the checker cannot tell.
+- A mate that neither connector keys can go together the wrong way round whatever its pinout, so `fab` looks on each connector's pads for what shows a person which end is pin 1 (`pin1_unmarked`, below).
 
 A carrier with two sockets and two plug-in cards, with power, a UART and an SPI bus over the mates. The parts are invented, so the example is checked and solved and not exported:
 
@@ -623,6 +624,16 @@ system Kit {
 ```text
 Kit/carrier: mating guideline: the pinout of the mate of `.carrier.slot` and `.card.j1` also works with one connector turned end for end, and neither is keyed: contact 2 (RAIL_A on `.carrier.slot`, RAIL_A on `.card.j1`) and contact 3 (RAIL_B on `.carrier.slot`, RAIL_B on `.card.j1`) would swap places and every contact would still be accepted; only a keyed connector (`.mating.keyed`) goes in one way
 ```
+
+#### Pin 1 on the pads
+
+A plain pin header cannot be keyed, so what shows a person which end of an unkeyed mate is pin 1 is the board: pad 1 of a different shape or size from the pad at the other end (issue #795). When `fab` makes a system, it turns the pads of each connector of a mate that neither connector keys half round about their centre, as a person turning the connector end for end would. If some pad then lands where no pad is, the pads key the connector (a missing pin) and nothing is said. Otherwise pad 1 lands on another pad, and when that pad has the same shape, size and hole, pin 1 cannot be told from the pads: a guideline finding, `pin1_unmarked`, that names the connector, the pad and the shape. It is a `warning:` line, an error with `--strict` or `guidelines = "error"`, and `board3d --board System --json` lists it among the system's findings. Every std header and socket has a rectangular pad 1 and oval others, so it is never reported; a project's connector whose footprint has round pads only is:
+
+```text
+Kit: warning: pin1_unmarked: pin 1 of `card.j1` cannot be told from its pads, and neither connector of its mate with `carrier.slot` is keyed: turned end for end, its pad 1 lands where pad 4 is, and both are round pads 1.70 x 1.70 mm, so a person fitting the boards together cannot see which end is pin 1; use a footprint whose pad 1 has another shape or size, or a keyed connector (`.mating.keyed`)
+```
+
+The check reads the copper pads and no silkscreen mark, since every footprint has pads, and it is the same whether or not the system scene could place the member, since it is a fact of the footprint.
 
 #### A partial mate
 

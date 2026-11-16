@@ -29,6 +29,10 @@ pub struct SystemMate {
     /// `(first of a, first of b, how many)`, pad `first_a + i` meeting pad `first_b + i`.
     /// `None` when it joins every contact, pad N to pad N.
     pub window: Option<(usize, usize, usize)>,
+    /// Whether either connector says what keys its housing (`.mating.keyed` set to other than
+    /// `"none"`), so that the mate goes together one way only. The system scene looks for pin 1
+    /// on the pads of a mate that neither keys.
+    pub keyed: bool,
 }
 
 impl SystemMate {
@@ -88,6 +92,7 @@ pub fn system_mates(system: &System, solution: &Solution) -> Result<Vec<SystemMa
             b_seat: seat(model, mate.b, &mut errors),
             window: (mate.a_first != 1 || mate.b_first != 1 || !mates_every_contact(model, mate))
                 .then_some((mate.a_first, mate.b_first, mate.contacts.len())),
+            keyed: keyed(model, mate.a) || keyed(model, mate.b),
         });
     }
     if errors.is_empty() {
@@ -112,6 +117,18 @@ fn mates_every_contact(model: &Model, mate: &netsmith_check::Mate) -> bool {
     };
     let n = mate.contacts.len();
     positions(mate.a) == Some(n) && positions(mate.b) == Some(n)
+}
+
+/// Whether a connector's `.mating.keyed` says something keys it: set, and not `"none"`, as the
+/// checker's `mating` guideline reads it.
+fn keyed(model: &Model, part: InstId) -> bool {
+    let Some(mating) = model.mating_of(part) else {
+        return false;
+    };
+    let Some(Member::Field(field)) = model.member(mating, "keyed") else {
+        return false;
+    };
+    matches!(&model.field(field).domain, Domain::Text(k) if !k.is_empty() && k != "none")
 }
 
 /// A connector's `.mating.seat` in mm, if something states it.
