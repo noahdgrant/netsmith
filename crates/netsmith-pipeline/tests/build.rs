@@ -9,6 +9,7 @@ const LED: &str = include_str!("../../../examples/led.nsm");
 const REGULATOR: &str = include_str!("../../../examples/linear_regulator.nsm");
 const STATUS: &str = include_str!("../../../examples/status_indicator.nsm");
 const FOUR_LAYER: &str = include_str!("../../../examples/four_layer.nsm");
+const SIX_LAYER: &str = include_str!("../../../examples/six_layer.nsm");
 const TWO_BOARDS: &str = include_str!("../../../examples/two_boards.nsm");
 
 /// Build with our own small KiCad libraries, so that no KiCad is needed.
@@ -460,18 +461,107 @@ fn the_four_layer_board_builds_into_a_schematic_like_any_other() {
     assert_eq!((p.name.as_str(), p.stackup.layers), ("FourLayer", 4));
 }
 
-#[test]
-fn a_four_layer_board_that_asks_for_another_thickness_is_told_the_field() {
-    // Only the 1.6 mm build is sourced, so only it is offered.
-    let thinner = FOUR_LAYER.replace(
+/// The four-layer example with `lines` added to its `.process` (before its first inner layer).
+fn four_layer_with(lines: &str) -> String {
+    FOUR_LAYER.replace(
         ".inner1.net &= \"GND\"",
-        ".inner1.net &= \"GND\"\n        .stackup.thickness &= 1.2mm",
+        &format!("{lines}\n        .inner1.net &= \"GND\""),
+    )
+}
+
+#[test]
+fn a_four_layer_board_that_asks_for_another_thickness_is_made_in_the_default_build_up_of_it() {
+    // The page's "no requirement" build-up of each thickness is the first provider with it.
+    for (thickness, build) in [
+        ("0.8", "JLC04081H-7628"),
+        ("1.0", "JLC04101H-7628"),
+        ("1.2", "JLC04121H-7628"),
+        ("1.6", "JLC04161H-7628"),
+        ("2.0", "JLC04201H-7628"),
+    ] {
+        let boards = built(&four_layer_with(&format!(
+            "        .stackup.thickness &= {thickness}mm"
+        )));
+        let p = boards[0].design.process.as_ref().unwrap();
+        assert_eq!(p.name, "FourLayer");
+        assert_eq!(p.stackup.chosen_thickness(), Some(thickness.parse().unwrap()));
+        assert_eq!(p.stackup.inner.as_ref().unwrap().build, build);
+    }
+}
+
+#[test]
+fn a_four_layer_board_asks_for_a_build_up_by_the_name_the_page_gives_it() {
+    let boards = built(&four_layer_with(
+        "        .stackup.build &= \"JLC04121H-7628\"",
+    ));
+    let p = boards[0].design.process.as_ref().unwrap();
+    // The build-up names its thickness, so the board need not.
+    assert_eq!(p.stackup.chosen_thickness(), Some(1.2));
+    let inner = p.stackup.inner.as_ref().unwrap();
+    assert_eq!(inner.build, "JLC04121H-7628");
+    assert_eq!(
+        inner
+            .dielectrics
+            .iter()
+            .map(|d| (d.core, d.glass.as_str(), d.thickness, d.epsilon))
+            .collect::<Vec<_>>(),
+        [
+            (false, "7628", 0.2104, 4.4),
+            (true, "", 0.6, 4.6),
+            (false, "7628", 0.2104, 4.4)
+        ]
     );
-    let e = error(&thinner);
+    // A build-up that is not the board's thickness is no provider's, and nor is one of the
+    // page's that std has no provider for.
+    for lines in [
+        "        .stackup.build &= \"JLC04121H-7628\"\n        .stackup.thickness &= 1.6mm",
+        "        .stackup.build &= \"JLC04121H-3313\"",
+    ] {
+        let e = error(&four_layer_with(lines));
+        assert!(e.contains("no FourLayer provider satisfies `process`"), "{e}");
+    }
+}
+
+#[test]
+fn a_four_layer_board_that_asks_for_a_thickness_no_provider_has_is_told_each() {
+    let e = error(&four_layer_with("        .stackup.thickness &= 1.4mm"));
+    assert!(e.contains("no FourLayer provider satisfies `process`"), "{e}");
+    assert!(
+        e.contains("JlcFourLayerA04161H7628") && e.contains("JlcFourLayerE04201H7628"),
+        "{e}"
+    );
     assert!(
         e.contains("contradiction on `process.stackup.thickness`"),
         "{e}"
     );
+}
+
+#[test]
+fn a_six_layer_board_is_made_in_the_default_build_up_of_the_thickness_it_asks_for() {
+    for (thickness, build) in [
+        ("0.8", "JLC06081H-2116"),
+        ("1.0", "JLC06101H-3313"),
+        ("1.2", "JLC06121H-3313"),
+        ("2.0", "JLC06201H-3313"),
+    ] {
+        let src = SIX_LAYER.replace(
+            ".inner1.net &= \"GND\"",
+            &format!(".stackup.thickness &= {thickness}mm\n        .inner1.net &= \"GND\""),
+        );
+        let boards = built(&src);
+        let p = boards[0].design.process.as_ref().unwrap();
+        assert_eq!(p.name, "SixLayer");
+        assert_eq!(p.stackup.chosen_thickness(), Some(thickness.parse().unwrap()));
+        let inner = p.stackup.inner.as_ref().unwrap();
+        assert_eq!(inner.build, build);
+        assert_eq!(inner.dielectrics.len(), 5);
+    }
+    let src = SIX_LAYER.replace(
+        ".inner1.net &= \"GND\"",
+        ".stackup.thickness &= 2.5mm\n        .inner1.net &= \"GND\"",
+    );
+    let e = error(&src);
+    assert!(e.contains("no SixLayer provider satisfies `process`"), "{e}");
 }
 
 #[test]

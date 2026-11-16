@@ -766,21 +766,6 @@ fn a_six_layer_process_arrives_with_its_planes_signal_layers_and_build_up() {
 }
 
 #[test]
-fn a_six_layer_process_offers_only_the_sourced_thickness() {
-    let source = SIX_LAYER.replace(
-        "        .inner1.net &= \"GND\"\n",
-        "        .inner1.net &= \"GND\"\n        .stackup.thickness &= 2mm\n",
-    );
-    let c = check("t.nsm", &source, &Loader::std());
-    assert!(
-        c.render()
-            .contains("contradiction on `process.stackup.thickness`"),
-        "{}",
-        c.render()
-    );
-}
-
-#[test]
 fn a_signal_layer_that_names_a_net_is_refused_and_told_why() {
     let source = SIX_LAYER.replace(
         ".inner2.use &= \"signal\"",

@@ -284,7 +284,11 @@ fn a_manufacturing_process_is_an_interface_of_quantities_with_no_pins() {
         assert_eq!(provider.kind, DefKind::Interface);
         assert_eq!(provider.provides[0].name, "TwoLayer");
     }
-    assert_eq!(def(&file, "FourLayer").kind, DefKind::Interface);
+    // `FourLayer` and `SixLayer` are generics too, one provider for each build-up of
+    // JLCPCB's impedance page (ADR 0113).
+    for process in ["FourLayer", "SixLayer"] {
+        assert_eq!(def(&file, process).kind, DefKind::Generic);
+    }
     let pins = two_layer.items.iter().any(|i| match i {
         Item::Decl(d) => d.ty.segments[0].name == "Pin",
         _ => false,
@@ -294,4 +298,144 @@ fn a_manufacturing_process_is_an_interface_of_quantities_with_no_pins() {
         def(&parse(STACKUP).unwrap(), "Stackup").kind,
         DefKind::Interface
     );
+}
+
+/// The providers of a multilayer process, from the text of `std/mfg/jlcpcb.nsm`: each one's
+/// name and its `&=` lines (field, value), in order.
+fn providers_of(process: &str) -> Vec<(String, Vec<(String, String)>)> {
+    let header = format!(" provides {process} {{");
+    let mut found = Vec::new();
+    let mut lines = JLCPCB.lines();
+    while let Some(line) = lines.next() {
+        let Some(name) = line
+            .strip_prefix("interface ")
+            .and_then(|l| l.strip_suffix(header.as_str()))
+        else {
+            continue;
+        };
+        let mut fields = Vec::new();
+        for line in lines.by_ref().take_while(|l| *l != "}") {
+            let (field, value) = line
+                .trim()
+                .split_once(" &= ")
+                .unwrap_or_else(|| panic!("{name}: `{line}` is not a `&=` line"));
+            fields.push((field.to_string(), value.to_string()));
+        }
+        found.push((name.to_string(), fields));
+    }
+    found
+}
+
+fn mm(value: &str) -> f64 {
+    value
+        .strip_suffix("mm")
+        .unwrap_or_else(|| panic!("{value} is not a length"))
+        .parse()
+        .unwrap()
+}
+
+/// Every provider of `FourLayer` and `SixLayer` states a whole build-up from JLCPCB's impedance
+/// page: a name that says the layer count and the thickness, an inner copper, one dielectric
+/// layer between each two copper layers (a core, then a prepreg, from the outer prepreg
+/// inwards), the permittivity of the page for its glass, and layers that add up to within the
+/// fabricator's tolerance of the thickness (`netsmith_pcb::thickness_tolerance`: 10% from 1 mm,
+/// else 0.1 mm). The first provider is the 1.6 mm board that a board saying nothing gets, and
+/// each thickness the process offers has one.
+#[test]
+fn every_multilayer_provider_states_a_whole_build_up_that_adds_up() {
+    const EPSILON: [(&str, &str); 4] = [
+        ("7628", "4.4"),
+        ("3313", "4.1"),
+        ("1080", "3.91"),
+        ("2116", "4.16"),
+    ];
+    for (process, layers, first) in [
+        ("FourLayer", 4, "JlcFourLayerA04161H7628"),
+        ("SixLayer", 6, "JlcSixLayerA06161H3313"),
+    ] {
+        let mut providers = providers_of(process);
+        providers.sort_by(|a, b| a.0.cmp(&b.0));
+        assert_eq!(providers[0].0, first, "{process}: the first provider");
+        let mut thicknesses: Vec<String> = Vec::new();
+        for (name, fields) in &providers {
+            let get = |field: &str| -> &str {
+                fields
+                    .iter()
+                    .find(|(f, _)| f == field)
+                    .unwrap_or_else(|| panic!("{name} states no {field}"))
+                    .1
+                    .as_str()
+            };
+            let thickness = get(".stackup.thickness");
+            let build = get(".stackup.build").trim_matches('"');
+            // `JLC04121H-3313`: four layers, 1.2 mm, 1 oz outside and half an ounce inside.
+            let code = build.strip_prefix("JLC").expect("a JLCPCB build-up");
+            let (head, glass) = code.split_once('-').expect("a build-up has a glass");
+            assert_eq!(head[..2], format!("{layers:02}"), "{name}: layers");
+            assert_eq!(&head[4..], "1H", "{name}: 1 oz outside, 0.5 oz inside");
+            let nominal = format!("{:.1}", mm(thickness));
+            assert_eq!(head[2..4], nominal.replace('.', ""), "{name}: thickness");
+            // `JlcFourLayerD04121H7628`: the order of the names is the order the providers are
+            // tried in (ADR 0068), so the letter puts the 1.6 mm default first.
+            let group = match thickness {
+                "1.6mm" => 'A',
+                "0.8mm" => 'B',
+                "1.0mm" => 'C',
+                "1.2mm" => 'D',
+                "2.0mm" => 'E',
+                other => panic!("{name}: {other} is not a thickness the page offers"),
+            };
+            let word = &process[..process.len() - 5];
+            assert_eq!(
+                *name,
+                format!("Jlc{word}Layer{group}{head}{glass}"),
+                "{name}: not named for {build} at {thickness}"
+            );
+            if !thicknesses.contains(&thickness.to_string()) {
+                thicknesses.push(thickness.to_string());
+            }
+            let inner = mm(get(".stackup.inner_copper"));
+            assert_eq!(inner, 0.0152, "{name}: inner copper");
+            let mut sum = 2.0 * 0.035 + (layers - 2) as f64 * inner;
+            for n in 1..layers {
+                let kind = get(&format!(".stackup.dielectric{n}.kind"));
+                // Prepreg outside, a core and a prepreg between each two inner layer pairs.
+                let want = if n % 2 == 1 { "\"prepreg\"" } else { "\"core\"" };
+                assert_eq!(kind, want, "{name}: dielectric{n}");
+                let epsilon = get(&format!(".stackup.dielectric{n}.epsilon"));
+                if n % 2 == 1 {
+                    let glass = get(&format!(".stackup.dielectric{n}.glass")).trim_matches('"');
+                    let (_, e) = EPSILON
+                        .iter()
+                        .find(|(g, _)| *g == glass)
+                        .unwrap_or_else(|| panic!("{name}: no permittivity for {glass}"));
+                    assert_eq!(epsilon, *e, "{name}: dielectric{n}");
+                } else {
+                    assert_eq!(epsilon, "4.6", "{name}: dielectric{n}");
+                }
+                sum += mm(get(&format!(".stackup.dielectric{n}.thickness")));
+            }
+            assert!(
+                fields
+                    .iter()
+                    .all(|(f, _)| !f.starts_with(&format!(".stackup.dielectric{layers}"))),
+                "{name}: a {layers}-layer board has {} dielectric layers",
+                layers - 1
+            );
+            let nominal = mm(thickness);
+            let tolerance = if nominal >= 1.0 { 0.1 * nominal } else { 0.1 };
+            assert!(
+                (sum - nominal).abs() <= tolerance,
+                "{name}: the layers add up to {sum} mm, more than {tolerance} mm from {nominal} mm"
+            );
+        }
+        assert_eq!(
+            thicknesses,
+            ["1.6mm", "0.8mm", "1.0mm", "1.2mm", "2.0mm"],
+            "{process}: every thickness the process offers has a provider, in name order"
+        );
+        // One provider for each thickness: every provider multiplies the search of ADR 0068,
+        // which is bounded at 64 provider combinations for a board.
+        assert_eq!(providers.len(), 5, "{process}: one provider for each thickness");
+    }
 }
