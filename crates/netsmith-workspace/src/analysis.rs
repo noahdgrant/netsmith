@@ -77,6 +77,9 @@ pub struct BoardData {
     /// The layout file beside the source file (ADR 0032), and the names of all the boards the
     /// source file holds, so that a table for a board that is gone is found.
     pub layout: Option<(std::path::PathBuf, Vec<String>)>,
+    /// The physical file beside the source file (ADR 0048), which may not exist: where the
+    /// editor writes the keepouts it draws.
+    pub physical: std::path::PathBuf,
     /// Whether a requirement on where a part goes that is not met is a warning, as the
     /// manifest's `constraints = "warn"` makes it (ADR 0045), and not an error.
     pub constraints_warn: bool,
@@ -707,6 +710,7 @@ impl Workspace {
                                 svg,
                                 libraries: libraries.clone(),
                                 layout: layout.clone(),
+                                physical: netsmith_fabricate::physical::physical_path(&file.path),
                                 constraints_warn: catalogs.constraints_warn(),
                                 place_seeds: netsmith_fabricate::layout::place_seeds(
                                     target.project.as_ref(),

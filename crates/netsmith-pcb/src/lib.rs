@@ -92,7 +92,7 @@ pub use generate::{
 pub use geometry::{Pt, Rect};
 pub use layout::{
     BoardLayout, Face as LayoutFace, IMPORT_SOURCE, KeepoutPlace, Layout, LayoutError, PartPlace,
-    apply_layout, copper_layers, place_options,
+    apply_layout, check_drawn_keepout, copper_layers, place_options,
 };
 pub use origin::{ORIGINS_HEAD, PartOrigin, mm as mm_text, origins_text};
 pub use overhang::{Edge, Edges, Overhang, clip as clip_to_outline, needs as overhang_needs};

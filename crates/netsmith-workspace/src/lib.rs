@@ -13,6 +13,7 @@ mod files;
 mod findings;
 mod git;
 mod hints;
+mod keepouts;
 mod orders;
 mod outline;
 mod panel;
@@ -42,9 +43,9 @@ use netsmith_editor::{
     AnalysisEvent, ApiError, Attachment, Backend, Observer, Say,
     api::{
         Analysis, BoardDetail, Bom, BuildReport, CatalogRefresh, Changed, Compare, Definition,
-        FabReport, FileContent, GitInfo, OrderInfo, OrderReport, PanelView, PcbEdit, PcbEdited,
-        PcbFindings, PcbReport, PcbScene, PinLock, PinMove, PinWritten, PowerTree, Project, Saved,
-        SchematicHints, SystemView,
+        FabReport, FileContent, GitInfo, KeepoutPlacement, OrderInfo, OrderReport, PanelView,
+        PcbChange, PcbEdit, PcbEdited, PcbFindings, PcbReport, PcbScene, PinLock, PinMove,
+        PinWritten, PowerTree, Project, Saved, SchematicHints, SystemView,
     },
 };
 
@@ -510,8 +511,17 @@ impl Workspace {
     }
 }
 
+/// What an edit of the PCB view does to the board's physical file: the keepouts it changes, and
+/// the file's text before and after.
+struct PhysicalChange {
+    names: Vec<String>,
+    old: Option<String>,
+    text: String,
+}
+
 impl Workspace {
-    /// Write an edit to the layout file beside the board's source (ADR 0032), if the file and
+    /// Write an edit to the layout file beside the board's source (ADR 0032), and the keepouts
+    /// the editor draws to the board's physical file (ADR 0048, [`keepouts`]), if the files and
     /// the entries are as the page last saw them and the board takes the result, and answer
     /// with the board placed again.
     fn edit_layout(&self, edit: &PcbEdit) -> Result<PcbEdited, ApiError> {
@@ -545,7 +555,19 @@ impl Workspace {
         let mut layout = netsmith_fabricate::layout::read(file, boards)
             .map_err(|e| ApiError::internal(format!("{name}: {e}")))?
             .map_or_else(netsmith_pcb::Layout::default, |(layout, _)| layout);
-        pcb::change_layout(&mut layout, &data.built.design.name, &layers, &edit.changes)?;
+        let before = layout.clone();
+        let board = &data.built.design.name;
+        let physical = self.physical_change(&data, &mut layout, &layers, &edit.changes)?;
+        let to_layout: Vec<PcbChange> = edit
+            .changes
+            .iter()
+            .filter(|c| !matches!(c, PcbChange::Keepout { name, .. } if physical.as_ref().is_some_and(|p| p.names.contains(name))))
+            .cloned()
+            .collect();
+        pcb::change_layout(&mut layout, board, &layers, &to_layout)?;
+        if let Some(physical) = physical {
+            return self.write_physical(&data, name, layout, &before, physical);
+        }
         // Placed with the new layout before anything is written: an entry the board does not
         // take is refused with the file as it was.
         let mut entry = pcb::place_with(
@@ -568,6 +590,184 @@ impl Workspace {
         state.layouts = files::stamps(&self.layout_files());
         if state.version == version {
             state.pcb.insert(name.clone(), entry);
+        }
+        Ok(PcbEdited { scene })
+    }
+
+    /// The keepout changes of `changes` that go to the board's physical file: those of a keepout
+    /// the editor draws (one with a size, before or after) and of one the physical file states
+    /// in the editor's shape, with the file's text after them. `None` if there are none. A
+    /// keepout drawn in the layout file before (a `size` there) is taken out of `layout` here,
+    /// as its first change moves it.
+    fn physical_change(
+        &self,
+        data: &analysis::BoardData,
+        layout: &mut netsmith_pcb::Layout,
+        layers: &[String],
+        changes: &[PcbChange],
+    ) -> Result<Option<PhysicalChange>, ApiError> {
+        let board = &data.built.design.name;
+        let shown = data
+            .physical
+            .file_name()
+            .map_or(String::new(), |n| n.to_string_lossy().into_owned());
+        let old = match std::fs::read_to_string(&data.physical) {
+            Ok(text) => Some(text),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+            Err(e) => return Err(ApiError::internal(format!("{shown}: {e}"))),
+        };
+        let have = old
+            .as_deref()
+            .map_or_else(Default::default, |t| keepouts::drawn_in(t, board));
+        let mut wanted: Vec<(String, Option<netsmith_pcb::KeepoutPlace>)> = Vec::new();
+        for change in changes {
+            let PcbChange::Keepout {
+                name,
+                before,
+                after,
+            } = change
+            else {
+                continue;
+            };
+            let drawn =
+                |p: &Option<KeepoutPlacement>| p.as_ref().is_some_and(|p| p.drawn.is_some());
+            if !have.contains_key(name) && !drawn(before) && !drawn(after) {
+                continue;
+            }
+            let table = layout.boards.get(board);
+            let in_layout = table
+                .and_then(|t| t.keepouts.get(name))
+                .filter(|k| k.is_drawn());
+            let now = have.get(name).map(|d| &d.place).or(in_layout);
+            let taken = || {
+                data.built
+                    .design
+                    .features
+                    .keepouts
+                    .iter()
+                    .any(|k| k.part.is_none() && &k.name == name)
+                    || data
+                        .built
+                        .design
+                        .features
+                        .cutouts
+                        .iter()
+                        .any(|c| &c.name == name)
+            };
+            if now.is_none() && taken() {
+                return Err(ApiError::bad_request(format!(
+                    "the board has a keepout or cutout `{name}` that the editor does not draw: change it in {shown}, or draw one of another name"
+                )));
+            }
+            if !pcb::same_keepout(before.as_ref(), now, layers) {
+                return Err(ApiError::conflict(format!(
+                    "the keepout `{name}` is not what the page last saw (the file changed, or the page is out of date): reload the board"
+                )));
+            }
+            let after = match after {
+                Some(after) if after.drawn.is_none() => {
+                    return Err(ApiError::bad_request(format!(
+                        "the keepout `{name}` is drawn, and a change to it says what it is: its size, layers and what it forbids"
+                    )));
+                }
+                Some(after) => {
+                    let place = pcb::keepout_place(after, layers)?;
+                    netsmith_pcb::check_drawn_keepout(name, &place, layers)
+                        .map_err(|e| ApiError::bad_request(format!("{shown}: {e}")))?;
+                    Some(place)
+                }
+                None => None,
+            };
+            if in_layout.is_some()
+                && let Some(table) = layout.boards.get_mut(board)
+            {
+                table.keepouts.remove(name);
+            }
+            wanted.push((name.clone(), after));
+        }
+        if wanted.is_empty() {
+            return Ok(None);
+        }
+        let text = keepouts::rewrite(old.as_deref(), board, &wanted)
+            .map_err(|e| ApiError::bad_request(format!("{shown}: {e}")))?;
+        Ok(Some(PhysicalChange {
+            names: wanted.into_iter().map(|(name, _)| name).collect(),
+            old,
+            text,
+        }))
+    }
+
+    /// Write the physical file of an edit and the layout file beside it, if the project as it
+    /// would be read then builds the board and places it: analysed with the new text first, and
+    /// nothing is written if it does not. Then the project is analysed again from the files, as
+    /// for a save, and the answer is the board placed from that.
+    fn write_physical(
+        &self,
+        data: &analysis::BoardData,
+        name: &str,
+        layout: netsmith_pcb::Layout,
+        before: &netsmith_pcb::Layout,
+        physical: PhysicalChange,
+    ) -> Result<PcbEdited, ApiError> {
+        let Some((file, _)) = &data.layout else {
+            return Err(ApiError::bad_request(format!(
+                "`{name}` has no layout file to write"
+            )));
+        };
+        let shown = |p: &std::path::Path| {
+            p.file_name()
+                .map_or(String::new(), |n| n.to_string_lossy().into_owned())
+        };
+        let unsaved = HashMap::from([(data.physical.clone(), physical.text.clone())]);
+        let snapshot = analysis::contained(|| self.analyze(&unsaved, None, &|_| {}, None))
+            .map_err(|message| {
+                ApiError::internal(format!("the check of the edit panicked: {message}"))
+            })?;
+        let Ok(checked) = snapshot.board_handle(name) else {
+            let physical_name = shown(&data.physical);
+            let errors: Vec<String> = snapshot
+                .problems
+                .iter()
+                .filter(|p| p.severity == netsmith_editor::api::Severity::Error)
+                .map(|p| match &p.at {
+                    Some(at) => format!("{}:{}: {}", at.file, at.line, p.message),
+                    None => p.message.clone(),
+                })
+                .collect();
+            return Err(ApiError::bad_request(format!(
+                "the board does not build with this change to {physical_name}, and nothing was written: {}",
+                errors.join("; ")
+            )));
+        };
+        let mut entry = pcb::place_with(
+            &checked,
+            name,
+            Some((layout.clone(), file.display().to_string())),
+            String::new(),
+        )
+        .map_err(|e| match e {
+            pcb::PlaceError::Layout(message) => ApiError::bad_request(message),
+            e @ pcb::PlaceError::Unplaceable(..) => e.read(),
+            pcb::PlaceError::Other(e) => e,
+        })?;
+        if physical.old.as_deref() != Some(physical.text.as_str()) {
+            files::write_atomic(&data.physical, &physical.text)
+                .map_err(|e| ApiError::internal(format!("{}: {e}", shown(&data.physical))))?;
+        }
+        if layout != *before {
+            files::write_atomic(file, &layout.to_text())
+                .map_err(|e| ApiError::internal(format!("{}: {e}", shown(file))))?;
+        }
+        entry.set_layout_stamp(files::stamp_of(file));
+        // The physical file is the source's: the project is read again, as after a save, even
+        // with the analysis on change turned off.
+        self.forced.store(true, Ordering::Release);
+        let mut state = self.fresh();
+        state.layouts = files::stamps(&self.layout_files());
+        let data = state.snapshot.board_handle(name).unwrap_or(checked);
+        let scene = pcb::scene(&entry, &data, name);
+        if state.cancelled.is_none() {
+            state.pcb.insert(name.to_string(), entry);
         }
         Ok(PcbEdited { scene })
     }

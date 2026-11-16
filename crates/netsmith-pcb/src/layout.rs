@@ -23,7 +23,7 @@
 //! [RegulatorExample.cutouts.slot]
 //! at = [5.0, 4.0]
 //!
-//! [RegulatorExample.keepouts.drawn1]    # a keepout the editor drew: it has a `size`
+//! [RegulatorExample.keepouts.drawn1]    # a keepout an earlier editor drew: it has a `size`
 //! at = [2.0, 2.0]
 //! size = [10.0, 6.0]
 //! layers = "top,bottom"    # "all" (the default), or `top`, `bottom`, `inner1`... separated by commas
@@ -33,7 +33,9 @@
 //!
 //! A keepout entry that gives only `at` places a keepout whose source states its size and not
 //! its place; one that gives a `size` is a keepout of its own, drawn in the editor, whose
-//! name the source must not use (ADR 0029).
+//! name the source must not use (ADR 0029). The editor now writes the keepouts it draws to the
+//! physical file (ADR 0048, issue #809); it still reads one here, and its first change to it
+//! moves it there.
 //!
 //! **What the file holds, and what it does not** (ADR 0030). The file is tier 3 of three: the
 //! decisions of this design (where a person put a part, a lock, a keepout the editor drew).
@@ -675,6 +677,23 @@ pub fn copper_layers(board: &Board) -> Vec<String> {
     layers.extend((1..=board.inner_layers().len()).map(|n| format!("inner{n}")));
     layers.push("bottom".to_string());
     layers
+}
+
+/// Why a drawn keepout's entry is wrong, if it is, in the words a layout file's mistake is
+/// reported in after its name (``the keepout `k` has the size 0 by 3 mm; ...``). The editor
+/// checks a keepout it draws with this before it writes it to the physical file. `layers` are
+/// the board's copper layers.
+pub fn check_drawn_keepout(
+    name: &str,
+    place: &KeepoutPlace,
+    layers: &[String],
+) -> Result<(), String> {
+    if place.size.is_none() {
+        return Err(format!("the keepout `{name}` has no size"));
+    }
+    drawn_keepout(name, place, layers)
+        .map(|_| ())
+        .map_err(|why| format!("the keepout `{name}` {why}"))
 }
 
 /// The keepout a drawn entry makes, or why the entry is wrong. `layers` are the board's.
