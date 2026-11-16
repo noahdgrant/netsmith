@@ -14,6 +14,29 @@ impl Board {
             })
     }
 
+    /// The least space between copper of `net` and copper of any other net: the largest its
+    /// rails ask for, and never less than the rules' clearance (issue #758).
+    pub fn clearance(&self, net: &str) -> f64 {
+        self.net_clearances
+            .iter()
+            .find(|(n, _)| n == net)
+            .map_or(self.rules.clearance, |(_, c)| c.max(self.rules.clearance))
+    }
+
+    /// The space copper of `a` keeps from copper of `b`: the larger of their clearances, as
+    /// KiCad holds two net classes (issue #758).
+    pub fn clearance_between(&self, a: &str, b: &str) -> f64 {
+        self.clearance(a).max(self.clearance(b))
+    }
+
+    /// The largest clearance of any net: what keeps the farthest of any copper.
+    pub fn widest_clearance(&self) -> f64 {
+        self.net_clearances
+            .iter()
+            .map(|(_, c)| *c)
+            .fold(self.rules.clearance, f64::max)
+    }
+
     /// The narrowest a track of `net` may be away from its pads: the least width its current
     /// needs, and never less than the process's least track (issue #431).
     pub fn least_width(&self, net: &str) -> f64 {
@@ -58,21 +81,34 @@ impl Board {
             .collect()
     }
 
-    /// The nets that are routed wider than the rules' track width, grouped by width, from
-    /// the narrowest: the net classes of the project file.
-    pub fn net_classes(&self) -> Vec<(f64, Vec<String>)> {
-        let mut classes: Vec<(f64, Vec<String>)> = Vec::new();
+    /// The nets that are routed wider than the rules' track width or keep more than the
+    /// rules' clearance, grouped by width and clearance, from the narrowest and then the
+    /// least clearance: the net classes of the project file (issue #758).
+    pub fn net_classes(&self) -> Vec<NetClass> {
+        let mut classes: Vec<NetClass> = Vec::new();
         for net in &self.nets {
             let width = self.track_width(&net.name);
-            if width <= self.rules.track_width {
+            let clearance = self.clearance(&net.name);
+            if width <= self.rules.track_width && clearance <= self.rules.clearance {
                 continue;
             }
-            match classes.iter_mut().find(|(w, _)| *w == width) {
-                Some((_, nets)) => nets.push(net.name.clone()),
-                None => classes.push((width, vec![net.name.clone()])),
+            match classes
+                .iter_mut()
+                .find(|c| c.width == width && c.clearance == clearance)
+            {
+                Some(c) => c.nets.push(net.name.clone()),
+                None => classes.push(NetClass {
+                    width,
+                    clearance,
+                    nets: vec![net.name.clone()],
+                }),
             }
         }
-        classes.sort_by(|a, b| a.0.total_cmp(&b.0));
+        classes.sort_by(|a, b| {
+            a.width
+                .total_cmp(&b.width)
+                .then(a.clearance.total_cmp(&b.clearance))
+        });
         classes
     }
 

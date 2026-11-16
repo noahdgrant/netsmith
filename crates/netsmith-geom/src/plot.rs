@@ -36,12 +36,40 @@ const DEFAULT_LINE: f64 = 0.1;
 const DEFAULT_EDGE: f64 = 0.05;
 
 /// The board's rules that the plot needs, from its project file.
-#[derive(Debug, Clone, Copy, PartialEq, Default)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct Rules {
     /// The copper-to-edge clearance zones keep from the outline (0 if the board says none).
     pub edge_clearance: f64,
     /// The clearance a pour keeps from a hole with no copper round it, if the board says.
     pub hole_clearance: Option<f64>,
+    /// The net classes of the project file that state a clearance of their own (not the
+    /// default class): a pour keeps from copper of another net the largest of its own
+    /// clearance, its net's class's and the other net's class's, as KiCad's fill does (issue
+    /// #758).
+    pub classes: Vec<crate::drc::Class>,
+}
+
+impl Rules {
+    /// The clearance the class of `net` states (the class with the lowest priority number that
+    /// names it), or 0 when no class with a clearance names it.
+    pub fn class_clearance(&self, net: Option<&str>) -> f64 {
+        net.and_then(|n| {
+            self.classes
+                .iter()
+                .filter(|c| c.patterns.iter().any(|p| crate::drc::matches_pattern(p, n)))
+                .min_by_key(|c| c.priority)
+        })
+        .and_then(|c| c.clearance)
+        .unwrap_or(0.0)
+    }
+
+    /// The largest clearance any class states, 0 when none does.
+    pub fn widest_class_clearance(&self) -> f64 {
+        self.classes
+            .iter()
+            .filter_map(|c| c.clearance)
+            .fold(0.0, f64::max)
+    }
 }
 
 /// What plotting made.
@@ -459,6 +487,7 @@ mod tests {
             &Rules {
                 edge_clearance: 0.2,
                 hole_clearance: None,
+                classes: Vec::new(),
             },
         )
         .unwrap()
@@ -586,6 +615,7 @@ mod tests {
             &Rules {
                 edge_clearance: 0.2,
                 hole_clearance: None,
+                classes: Vec::new(),
             },
         )
         .unwrap();
@@ -604,6 +634,7 @@ mod tests {
             &Rules {
                 edge_clearance: 0.2,
                 hole_clearance: None,
+                classes: Vec::new(),
             },
         )
         .unwrap();
@@ -636,6 +667,7 @@ mod tests {
             &Rules {
                 edge_clearance: 0.2,
                 hole_clearance: None,
+                classes: Vec::new(),
             },
         )
         .unwrap();

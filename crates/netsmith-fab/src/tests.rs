@@ -544,6 +544,7 @@ mod spokes {
             &PlotRules {
                 edge_clearance: 0.2,
                 hole_clearance: None,
+                classes: Vec::new(),
             },
         )
         .unwrap();

@@ -248,6 +248,39 @@ board Widths {
 
 The router draws `VIN` and `GND` at 0.8 mm and `3V3` at 0.5 mm, and the `.kicad_pro` has a net class for each width. A width under the process's least track is the process's least. Signals have no rail: widen them all with `.process.min_track`. The width is checked against the rail's current, below.
 
+### Clearance by rail
+
+A rail's `.min_clearance` is the least space between copper of its nets and copper of any other net, for a high-voltage rail or one the board house wants kept further from other copper (issue #758). It follows the rules of `.min_track`: a lower bound written as a range, both pins of the rail get it, a net takes the largest of the rails on it, and `~` carries it out of a module. Unset, or under the process's least (`.process.min_clearance`), a net keeps the process's least.
+
+```nsm solve
+import std::parts::connector::Header1x2
+import std::mfg::jlcpcb::TwoLayer
+import std::sources::Rail
+
+board Mains {
+    .process: TwoLayer {
+        .stackup.thickness &= 1.6mm
+    }
+    .line: Rail {
+        .pos.net &= "HV"
+        .neg.net &= "HV_RTN"
+        .min_clearance &= 1mm..
+        .min_track &= 0.5mm..
+    }
+    .logic: Rail {
+        .pos.net &= "3V3"
+    }
+    .hv: Header1x2
+    .lv: Header1x2
+    .line.pos ~ .hv.p1
+    .line.neg ~ .hv.p2
+    .logic.pos ~ .lv.p1
+    .logic.neg ~ .lv.p2
+}
+```
+
+Between two nets the larger of their clearances applies, as KiCad applies it: `HV` and `HV_RTN` keep 1 mm from each other and from `3V3` and `GND`, and `3V3` keeps the process's least from `GND`. The router keeps other copper that far from the tracks, vias and pads of `HV` and `HV_RTN`, a pour keeps it from them, and the `.kicad_pro` has a net class for each distinct width and clearance (`Track_0.5mm_Clearance_1mm` here; `Clearance_1mm` for a net that is only kept further) that states the clearance, which netsmith's design rules check and KiCad's both judge the board by. A clearance is the space between copper only: the spaces to holes, to the board edge and to a solder mask opening stay the process's. Signals have no rail: keep every net further with `.process.min_clearance`.
+
 ### Track width against current
 
 A track that carries current heats. The solver knows the worst-case current each rail draws (`.current`, see Load current) and, through the series parts of a chain, the current of the nets between them, so netsmith draws every net at a width that can carry it and checks any width you state yourself (ADR 0036). It uses the IPC-2221 formula, `I = k * dT^0.44 * A^0.725`, where `I` is the current in amperes, `dT` the temperature rise in kelvin, `A` the track's cross-section in square mils (its width times the copper's thickness), and `k` is 0.048 for a track on an outer layer and 0.024 on an inner layer. netsmith draws tracks on the outer layers only, so it uses 0.048 and the outer copper of the process (`.stackup.copper_weight` ounces, 0.035 mm each).

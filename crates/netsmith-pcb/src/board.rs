@@ -10,7 +10,7 @@ use crate::footprint::{Footprint, FootprintError, FootprintLibrary, Layer, Mount
 use crate::geometry::{Pt, Rect};
 use crate::overhang::{self, Edge, Overhang};
 use crate::placement::{DoesNotFit, ORIGIN, PlaceOptions};
-use crate::rules::Rules;
+use crate::rules::{NetClass, Rules};
 use crate::shape::RoundRect;
 
 mod check;
@@ -196,6 +196,10 @@ pub struct Board {
     /// The narrowest track of the nets whose rails ask for one (ADR 0020), by net name.
     /// Every other net is routed at the rules' track width.
     pub net_widths: Vec<(String, f64)>,
+    /// The least space between copper of the nets whose rails ask for one and copper of any
+    /// other net (issue #758), by net name. Every other net keeps the rules' clearance.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub net_clearances: Vec<(String, f64)>,
     /// The current each net carries where it is known, and the least width that carries it
     /// (issue #431): no track of the net is narrower, away from its pads.
     pub net_currents: Vec<netsmith_core::NetCurrent>,

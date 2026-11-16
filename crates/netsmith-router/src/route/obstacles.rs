@@ -29,6 +29,7 @@ pub(crate) fn initial_obstacles(board: &Board) -> Obstacles {
                         layers: [true, true],
                         form: Form::Segment(a, b, radius),
                         clearance: rules.clearance.max(rules.hole_clearance) + MARGIN,
+                        copper: false,
                     });
                     // A via's hole keeps `hole_to_hole` from this hole's edge.
                     via_keepouts.push((
@@ -51,6 +52,7 @@ pub(crate) fn initial_obstacles(board: &Board) -> Obstacles {
                         layers: mask,
                         form,
                         clearance: rules.mask_to_track + MARGIN,
+                        copper: false,
                     });
                 }
                 continue;
@@ -73,6 +75,7 @@ pub(crate) fn initial_obstacles(board: &Board) -> Obstacles {
                     layers: [true, true],
                     form: Form::Segment(a, b, radius),
                     clearance: keep + MARGIN,
+                    copper: false,
                 });
             }
             // A pad whose opening in the solder mask reaches past its copper by a margin of
@@ -88,13 +91,15 @@ pub(crate) fn initial_obstacles(board: &Board) -> Obstacles {
                 net: pad_net,
                 layers: [front, back],
                 form: Form::Rect(bounds),
-                // The larger of the board's clearance and the pad's own, as the design
-                // rules check applies it, and of the space from its mask opening.
-                clearance: rules
-                    .clearance
+                // The larger of the board's clearance (or its net's, issue #758) and the pad's
+                // own, as the design rules check applies it, and of the space from its mask
+                // opening.
+                clearance: pad_net
+                    .map_or(rules.clearance, |n| board.clearance(&board.nets[n].name))
                     .max(pad.clearance.unwrap_or(0.0))
                     .max(mask_keep)
                     + MARGIN,
+                copper: true,
             });
             // A via keeps off every pad, and keeps its hole clear of a pad's hole.
             let reach = match pad.drill {
@@ -146,6 +151,7 @@ pub(crate) fn initial_obstacles(board: &Board) -> Obstacles {
                     layers: [true, true],
                     form: Form::Rect(opening),
                     clearance: rules.mask_to_track + MARGIN,
+                    copper: false,
                 });
             }
             via_keepouts.push((
@@ -165,6 +171,7 @@ pub(crate) fn initial_obstacles(board: &Board) -> Obstacles {
                 layers,
                 form: Form::Rect(k.rect),
                 clearance: MARGIN,
+                copper: false,
             });
         }
         if k.vias {
@@ -185,6 +192,7 @@ pub(crate) fn initial_obstacles(board: &Board) -> Obstacles {
             layers: [true, true],
             form: Form::Segment(from, to, 0.0),
             clearance: rules.copper_to_edge + MARGIN,
+            copper: false,
         });
     }
     Obstacles { list, via_keepouts }
@@ -195,7 +203,8 @@ pub(crate) fn initial_obstacles(board: &Board) -> Obstacles {
 /// ([`Router::copper_of`]), that no rip-up removes. An arc is its chords, kept
 /// [`netsmith_geom::ARC_ERROR`] wider.
 pub(crate) fn fixed_copper(board: &Board, net_index: &HashMap<&str, usize>, fixed: &mut Obstacles) {
-    let clearance = board.rules.clearance + MARGIN;
+    // The space of copper of a net: its clearance (issue #758), with the margin.
+    let clearance = |net: &str| board.clearance(net) + MARGIN;
     for t in &board.tracks {
         let net = net_index.get(t.net.as_str()).copied();
         let half = t.width / 2.0
@@ -209,7 +218,8 @@ pub(crate) fn fixed_copper(board: &Board, net_index: &HashMap<&str, usize>, fixe
                 net,
                 layers: [t.layer == CopperLayer::Front, t.layer == CopperLayer::Back],
                 form: Form::Segment(w[0], w[1], half),
-                clearance,
+                clearance: clearance(&t.net),
+                copper: true,
             });
         }
     }
@@ -218,7 +228,8 @@ pub(crate) fn fixed_copper(board: &Board, net_index: &HashMap<&str, usize>, fixe
             net: net_index.get(v.net.as_str()).copied(),
             layers: [true, true],
             form: Form::Circle(v.at, v.diameter / 2.0),
-            clearance,
+            clearance: clearance(&v.net),
+            copper: true,
         });
         // Another via's hole keeps its distance, whatever the net.
         fixed.via_keepouts.push((

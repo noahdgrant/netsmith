@@ -131,12 +131,24 @@ fn layers_of(
 /// The width the rails put on each net: the widest bottom of any `min_track` of a rail with
 /// a pin on it.
 fn net_widths(model: &Model) -> Vec<(String, f64)> {
+    by_net_of_rails(model, "min_track")
+}
+
+/// The clearance the rails put on each net: the largest bottom of any `min_clearance` of a
+/// rail with a pin on it (issue #758).
+fn net_clearances(model: &Model) -> Vec<(String, f64)> {
+    by_net_of_rails(model, "min_clearance")
+}
+
+/// The largest bottom of the range `field` of the rails with a pin on each net, by net name,
+/// sorted by name: both pins of a rail get it, and a net takes the largest of its rails.
+fn by_net_of_rails(model: &Model, field: &str) -> Vec<(String, f64)> {
     let mut widths: Vec<(String, f64)> = Vec::new();
     for (id, inst) in model.instances() {
         if inst.kind != InstKind::Interface {
             continue;
         }
-        let Some((lo, _)) = range(model, id, "min_track").filter(|(lo, _)| lo.is_finite()) else {
+        let Some((lo, _)) = range(model, id, field).filter(|(lo, _)| lo.is_finite()) else {
             continue;
         };
         let pins: Vec<InstId> = ["pos", "neg"]
@@ -860,6 +872,7 @@ pub(crate) fn features_of(
 ) -> Features {
     let mut features = Features {
         net_widths: net_widths(model),
+        net_clearances: net_clearances(model),
         pours: pours(model, nets, errors),
         labels: labels(model, least_text, errors),
         heights: heights(model, errors),

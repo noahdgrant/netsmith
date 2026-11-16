@@ -82,6 +82,29 @@ fn a_net_takes_the_widest_of_its_rails() {
 }
 
 #[test]
+fn a_rail_gives_its_nets_the_bottom_of_its_min_clearance_and_a_net_takes_the_largest() {
+    let d = designed(&board(
+        "    .input: Rail {\n        .pos.net &= \"VIN\"\n        .neg.net &= \"GND\"\n        .min_clearance &= 0.5mm..\n    }\n    .other: Rail {\n        .pos.net &= \"VIN\"\n        .neg.net &= \"GND\"\n        .min_clearance &= 0.3mm..2mm\n    }\n",
+    ))
+    .unwrap();
+    assert_eq!(
+        d.features.net_clearances,
+        [("GND".to_string(), 0.5), ("VIN".to_string(), 0.5)]
+    );
+    // A clearance is not a width.
+    assert!(d.features.net_widths.is_empty());
+}
+
+#[test]
+fn a_rail_with_no_min_clearance_gives_no_clearance() {
+    let d = designed(&board(
+        "    .input: Rail {\n        .pos.net &= \"VIN\"\n        .neg.net &= \"GND\"\n    }\n",
+    ))
+    .unwrap();
+    assert!(d.features.net_clearances.is_empty());
+}
+
+#[test]
 fn a_rail_with_no_min_track_gives_no_width() {
     let d = designed(&board(
         "    .input: Rail {\n        .pos.net &= \"VIN\"\n        .neg.net &= \"GND\"\n    }\n",

@@ -11,6 +11,15 @@
 use netsmith_core::Process;
 use netsmith_kicad::fmt_num;
 
+/// A net class of the project file: the nets drawn at one width that keep one clearance, in
+/// mm (`Board::net_classes`).
+#[derive(Debug, Clone, PartialEq)]
+pub struct NetClass {
+    pub width: f64,
+    pub clearance: f64,
+    pub nets: Vec<String>,
+}
+
 /// What a fabricator can make, and the sizes the router draws with. All in mm.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Rules {
@@ -160,10 +169,12 @@ impl Rules {
     }
 
     /// The text of a `.kicad_pro` for a board with these rules, which KiCad's DRC reads when
-    /// the file sits beside the `.kicad_pcb`. `wide` are the nets routed wider than the
-    /// rules' track width, grouped by width: each group is a net class of its own, named for
-    /// the width (`Track_0.8mm`), that KiCad draws new tracks of those nets in.
-    pub fn kicad_pro(&self, name: &str, wide: &[(f64, Vec<String>)]) -> String {
+    /// the file sits beside the `.kicad_pcb`. `classes` are the nets routed wider than the
+    /// rules' track width or kept further than the rules' clearance, grouped by width and
+    /// clearance: each group is a net class of its own, named for what it changes
+    /// (`Track_0.8mm`, `Clearance_0.5mm`, `Track_0.8mm_Clearance_0.5mm`), that KiCad draws new
+    /// tracks of those nets in and checks their clearance by.
+    pub fn kicad_pro(&self, name: &str, classes: &[NetClass]) -> String {
         use Json::{Array, Number as N, Object, Text};
         let o = |fields: Vec<(&str, Json)>| {
             Object(
@@ -209,37 +220,40 @@ impl Rules {
             ("via_diameter", N(self.via_diameter)),
             ("via_drill", N(self.via_drill)),
         ]);
-        // A class KiCad reads needs a `priority`, and states no clearance, so the nets in it
-        // keep the space the board is checked to. Lower numbers win.
-        let wide_class = |priority: usize, width: f64| {
-            o(vec![
-                ("name", Text(format!("Track_{}mm", fmt_num(width)))),
+        // A class KiCad reads needs a `priority`. A class that keeps only the board's
+        // clearance states none, so its nets keep the space the board is checked to; one that
+        // keeps more states it (issue #758). Lower numbers win.
+        let class_name = |c: &NetClass| self.class_name(c);
+        let class = |priority: usize, c: &NetClass| {
+            let mut fields = vec![("name", Text(class_name(c)))];
+            if c.clearance > self.clearance {
+                fields.insert(0, ("clearance", N(c.clearance)));
+            }
+            fields.extend([
                 ("priority", N(priority as f64)),
-                ("track_width", N(width)),
+                ("track_width", N(c.width.max(self.track_width))),
                 ("via_diameter", N(self.via_diameter)),
                 ("via_drill", N(self.via_drill)),
-            ])
+            ]);
+            o(fields)
         };
-        let mut classes = vec![default];
-        classes.extend(
-            wide.iter()
-                .enumerate()
-                .map(|(k, (width, _))| wide_class(k, *width)),
-        );
+        let mut all = vec![default];
+        all.extend(classes.iter().enumerate().map(|(k, c)| class(k, c)));
         // KiCad assigns a net to a class by a pattern on its name.
-        let patterns: Vec<Json> = wide
+        let patterns: Vec<Json> = classes
             .iter()
-            .flat_map(|(width, nets)| {
-                nets.iter().map(move |net| {
+            .flat_map(|c| {
+                let name = class_name(c);
+                c.nets.iter().map(move |net| {
                     o(vec![
-                        ("netclass", Text(format!("Track_{}mm", fmt_num(*width)))),
+                        ("netclass", Text(name.clone())),
                         ("pattern", Text(net.clone())),
                     ])
                 })
             })
             .collect();
         let mut net_settings = vec![
-            ("classes", Array(classes)),
+            ("classes", Array(all)),
             ("meta", o(vec![("version", N(4.0))])),
         ];
         if !patterns.is_empty() {
@@ -307,6 +321,21 @@ impl Rules {
         file.write(&mut out, 0);
         out.push('\n');
         out
+    }
+}
+
+impl Rules {
+    /// The name of a net class in the project file: what it changes from the board's rules,
+    /// `Track_0.8mm`, `Clearance_0.5mm` or both, `Track_0.8mm_Clearance_0.5mm`.
+    fn class_name(&self, c: &NetClass) -> String {
+        let mut parts = Vec::new();
+        if c.width > self.track_width {
+            parts.push(format!("Track_{}mm", fmt_num(c.width)));
+        }
+        if c.clearance > self.clearance {
+            parts.push(format!("Clearance_{}mm", fmt_num(c.clearance)));
+        }
+        parts.join("_")
     }
 }
 
@@ -644,10 +673,12 @@ mod tests {
 
     #[test]
     fn wide_nets_are_net_classes_by_width_in_the_project_file() {
-        let wide = [
-            (0.5, vec!["3V3".to_string()]),
-            (0.8, vec!["GND".to_string(), "VIN".to_string()]),
-        ];
+        let class = |width: f64, nets: &[&str]| NetClass {
+            width,
+            clearance: rules().clearance,
+            nets: nets.iter().map(|n| n.to_string()).collect(),
+        };
+        let wide = [class(0.5, &["3V3"]), class(0.8, &["GND", "VIN"])];
         let text = rules().kicad_pro("Led", &wide);
         for line in [
             r#""name": "Default""#,
@@ -662,5 +693,40 @@ mod tests {
         }
         let none = rules().kicad_pro("Led", &[]);
         assert!(!none.contains("netclass_patterns"), "{none}");
+        // A class of width alone states no clearance of its own.
+        assert_eq!(text.matches(r#""clearance": 0"#).count(), 1, "{text}");
+    }
+
+    #[test]
+    fn a_net_kept_further_is_a_net_class_with_its_clearance_in_the_project_file() {
+        let r = rules();
+        let classes = [
+            NetClass {
+                width: r.track_width,
+                clearance: 0.5,
+                nets: vec!["HV".to_string()],
+            },
+            NetClass {
+                width: 0.8,
+                clearance: 0.5,
+                nets: vec!["VIN".to_string()],
+            },
+        ];
+        let text = r.kicad_pro("Led", &classes);
+        for line in [
+            r#""name": "Clearance_0.5mm""#,
+            r#""name": "Track_0.8mm_Clearance_0.5mm""#,
+            r#""clearance": 0.5"#,
+            r#""netclass": "Clearance_0.5mm""#,
+            r#""pattern": "HV""#,
+            r#""netclass": "Track_0.8mm_Clearance_0.5mm""#,
+        ] {
+            assert!(text.contains(line), "missing {line}\n{text}");
+        }
+        // The design rules check reads the class back, and holds a pair of nets to the larger.
+        let drc = netsmith_geom::DrcRules::from_project(&text).unwrap();
+        assert_eq!(drc.net_clearance(Some("HV")), 0.5);
+        assert_eq!(drc.net_clearance(Some("VIN")), 0.5);
+        assert_eq!(drc.net_clearance(Some("SIG")), r.clearance);
     }
 }

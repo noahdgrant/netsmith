@@ -65,14 +65,27 @@ interface Rail {
     /// the process's least is the least. The router draws the net at the width and keeps clear
     /// of other copper by it; a track leaves a pad at the net's width; the `.kicad_pro` has a
     /// net class for each distinct width (`Track_0.8mm`) with a pattern for each net, with a
-    /// `priority`, which KiCad needs to read the class, and no clearance of its own.
+    /// `priority`, which KiCad needs to read the class, and a clearance of its own only where a
+    /// rail's `.min_clearance` asks for more than the process's least.
     /// Rejected: a class that lists nets (`NetClass { .nets &= "VIN,3V3" }`: it names a net a
     /// second time in a string list, a typo is a silent miss, and a net in two classes needs a
     /// tie-break) and a `net "VIN" { ... }` statement (a second statement shape for what a
     /// rail's field already says for power nets, and another place that spells the net's
     /// name). A signal that must be wide has no rail: widen every net with
-    /// `.process.min_track`. Clearance per class and a via size per class are not built.
+    /// `.process.min_track`. A via size per class is not built (issue #60).
     .min_track: Length
+    /// The least space between copper of the nets of this rail and copper of any other net: a
+    /// lower bound, written as a range (`.min_clearance &= 0.5mm..`), with the rules of
+    /// `.min_track` (the owner's decision, 2026-11-15, issue #758). Both pins get it. A net
+    /// takes the largest of the rails on it. Unset, or under the process's least
+    /// (`.process.min_clearance`), the net keeps the process's least. A module's output rail
+    /// carries it out through `~`. Between two nets the larger of their clearances applies, as
+    /// KiCad applies it. The router keeps every other net's copper that far from the net's
+    /// tracks, vias and pads, the pours keep it, the design rules check judges it, and the
+    /// `.kicad_pro` has a net class for each distinct width and clearance (`Clearance_0.5mm`,
+    /// `Track_0.8mm_Clearance_0.5mm`) that states it. A high-voltage net, or a rail the board
+    /// house wants kept further from other copper, says so here.
+    .min_clearance: Length
     // Ground is `GND` unless a rail says otherwise. A board states ground once, by saying
     // nothing: a rail with no statement for `.neg.net` is on `GND`, and a rail with its own
     // ground (isolated, analog) states it, `.agnd_rail: Rail { .neg.net &= "AGND" }`. The

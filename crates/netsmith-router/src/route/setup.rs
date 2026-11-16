@@ -109,7 +109,7 @@ impl<'a> Router<'a> {
             .fold(rules.via_diameter, f64::max);
         let print_reach = 1.0
             + widest
-            + rules.clearance
+            + board.widest_clearance()
             + MARGIN
             + (rules.via_hole_to_hole + rules.via_drill).max(rules.hole_clearance);
         Router {
@@ -169,7 +169,7 @@ impl<'a> Router<'a> {
         (soft, soft_keepouts): (&[&Obstacle], &[(Form, f64)]),
         reach: Reach,
     ) -> Masks {
-        let key = (reach.room.to_bits(), reach.width.to_bits());
+        let key = reach.key();
         let base = self
             .bases
             .borrow_mut()
@@ -207,6 +207,12 @@ impl<'a> Router<'a> {
             });
         }
         m
+    }
+
+    /// The space a line's copper keeps from copper of other nets, with the router's margin:
+    /// its net's clearance (issue #758).
+    pub(super) fn clearance_of(&self, line: usize) -> f64 {
+        self.board.clearance(&self.lines[line].net) + MARGIN
     }
 
     /// The width a line's tracks are drawn at: its net's (ADR 0020).
@@ -412,12 +418,14 @@ impl<'a> Router<'a> {
         let mut keepouts = Vec::new();
         for r in routed {
             let net = Some(self.nets[r.line]);
+            let clearance = self.clearance_of(r.line);
             for t in &r.tracks {
                 list.push(Obstacle {
                     net,
                     layers: [t.layer == CopperLayer::Front, t.layer == CopperLayer::Back],
                     form: Form::Segment(t.from, t.to, t.width / 2.0),
-                    clearance: rules.clearance + MARGIN,
+                    clearance,
+                    copper: true,
                 });
             }
             for v in &r.vias {
@@ -425,7 +433,8 @@ impl<'a> Router<'a> {
                     net,
                     layers: [true, true],
                     form: Form::Circle(v.at, v.diameter / 2.0),
-                    clearance: rules.clearance + MARGIN,
+                    clearance,
+                    copper: true,
                 });
                 // Another via's hole keeps its distance, whatever the net.
                 keepouts.push((

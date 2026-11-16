@@ -21,8 +21,9 @@ impl<'a> Router<'a> {
         let reach = Reach {
             room: ROOM_LOOSE,
             width,
+            clearance: rules.clearance + MARGIN,
         };
-        let key = (reach.room.to_bits(), reach.width.to_bits());
+        let key = reach.key();
         let base = self
             .bases
             .borrow_mut()

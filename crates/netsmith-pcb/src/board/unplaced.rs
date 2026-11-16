@@ -101,6 +101,7 @@ impl Unplaced {
             vias: Vec::new(),
             teardrops: Vec::new(),
             net_widths: design.features.net_widths.clone(),
+            net_clearances: design.features.net_clearances.clone(),
             net_currents: design.features.net_currents.clone(),
             overhang,
             pinned,

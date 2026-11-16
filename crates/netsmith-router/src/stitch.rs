@@ -108,8 +108,11 @@ impl<'a> Free<'a> {
         // Copper of other nets keeps the clearance, and a pad of any net keeps room for the
         // pour to reach the via past it: a via squeezed between two pads sits in a gap that
         // the pour cannot fill, and KiCad finds it connected to nothing on that layer.
-        let clearance = rules.clearance + radius + MARGIN;
-        let reachable = rules.clearance.max(rules.plane_clearance) + radius + MARGIN + POUR_WAY;
+        // A pad's net is not known here, so a pad keeps the largest clearance of any net
+        // (issue #758).
+        let clearance = |net: &str| self.board.clearance_between(net, self.net) + radius + MARGIN;
+        let reachable =
+            self.board.widest_clearance().max(rules.plane_clearance) + radius + MARGIN + POUR_WAY;
         if self.pads.iter().any(|r| to_rect(p, r) < reachable) {
             return false;
         }
@@ -126,7 +129,7 @@ impl<'a> Free<'a> {
             .board
             .tracks
             .iter()
-            .any(|t| t.net != self.net && t.distance_to(p) - t.width / 2.0 < clearance)
+            .any(|t| t.net != self.net && t.distance_to(p) - t.width / 2.0 < clearance(&t.net))
         {
             return false;
         }
@@ -136,7 +139,7 @@ impl<'a> Free<'a> {
             let copper = if v.net == self.net {
                 rules.via_diameter
             } else {
-                rules.via_diameter + rules.clearance + MARGIN
+                rules.via_diameter + self.board.clearance_between(&v.net, self.net) + MARGIN
             };
             centres >= holes.max(copper)
         })

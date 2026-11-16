@@ -15,6 +15,7 @@ fn plotted() -> (Artwork, Plot) {
     let rules = PlotRules {
         edge_clearance: 0.2,
         hole_clearance: Some(0.1),
+        classes: Vec::new(),
     };
     let p = plot_layer(&art, "features", &rules).unwrap();
     (art, p)
