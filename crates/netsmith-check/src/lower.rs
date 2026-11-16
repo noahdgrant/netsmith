@@ -38,8 +38,9 @@ pub(crate) struct PendingDefault {
     pub(crate) value: Typed,
     pub(crate) source: SourceId,
     pub(crate) span: Span,
-    /// Whether a definition that is used wrote it (`Relation::own`), as `in_used_definition`
-    /// said where it was written: a default is applied after the definition is left.
+    /// Whether a module wrote it (`Relation::own`): a default is applied after the definition is
+    /// left, so it is recorded where it is written. Only a module's is `own`; the default of a
+    /// part or a generic has always been the design's, and stays so.
     pub(crate) own: bool,
 }
 
@@ -783,7 +784,7 @@ impl Checker<'_> {
                         value: t,
                         source,
                         span: c.span,
-                        own: self.in_used_definition(),
+                        own: self.in_kind(DefKind::Module),
                     });
                 }
             }
