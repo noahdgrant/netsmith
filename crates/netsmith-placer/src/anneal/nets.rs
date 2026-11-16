@@ -63,6 +63,12 @@ impl<'a> Engine<'a> {
             for k in 0..self.nets_of[i].len() {
                 let n = self.nets_of[i][k];
                 self.refresh_net(n);
+                if self.w_overflow > 0.0 {
+                    self.refresh_bins_net(n);
+                }
+            }
+            if self.w_overflow > 0.0 {
+                self.refresh_bins_part(i);
             }
         }
     }
@@ -70,6 +76,14 @@ impl<'a> Engine<'a> {
     pub(super) fn refresh_all(&mut self) {
         for n in 0..self.nets.len() {
             self.refresh_net(n);
+            if self.w_overflow > 0.0 {
+                self.refresh_bins_net(n);
+            }
+        }
+        if self.w_overflow > 0.0 {
+            for i in 0..self.models.len() {
+                self.refresh_bins_part(i);
+            }
         }
     }
 

@@ -392,6 +392,9 @@ impl<'a> Engine<'a> {
             }
         }
         c.soft += W_CROSSING * self.crossings(&touched, stamp) as f64;
+        if self.w_overflow > 0.0 {
+            c.soft += self.w_overflow * self.overflow_with(&touched, set);
+        }
         c.soft += self.area_cost();
         c
     }

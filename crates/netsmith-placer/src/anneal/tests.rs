@@ -92,6 +92,7 @@ fn a_nested_module_is_in_its_outer_modules_group_and_has_none_of_its_own() {
         zones: &[],
         carried: &[],
         face_keepouts: &[],
+        overflow: 0.0,
         cutouts: &[],
         open_outside: &[],
         pours: false,
@@ -120,6 +121,7 @@ fn a_module_costs_more_the_further_apart_its_parts_are() {
         zones: &[],
         carried: &[],
         face_keepouts: &[],
+        overflow: 0.0,
         cutouts: &[],
         open_outside: &[],
         pours: false,
@@ -173,6 +175,7 @@ fn parts_that_stay_are_never_moved_and_the_others_end_clear_of_them() {
         zones: &[],
         carried: &[],
         face_keepouts: &[],
+        overflow: 0.0,
         cutouts: &[],
         open_outside: &[],
         pours: false,
@@ -212,6 +215,7 @@ fn two_parts_that_hang_over_the_same_edge_may_overlap_beyond_it() {
             zones: &[],
             carried: &[],
             face_keepouts: &[],
+            overflow: 0.0,
             cutouts: &[],
             open_outside: &[],
             pours: false,
@@ -271,6 +275,7 @@ fn a_part_that_stays_off_the_grid_is_measured_where_the_check_measures_it() {
         zones: &[],
         carried: &[],
         face_keepouts: &[],
+        overflow: 0.0,
         cutouts: &[],
         open_outside: &[],
         pours: false,
@@ -342,6 +347,7 @@ fn run_beside_strip(
         outline: board.outline,
         carried: &[],
         face_keepouts: &[],
+        overflow: 0.0,
     };
     anneal(&mut board.parts, &problem, 1.0).feasible
 }
@@ -439,6 +445,7 @@ fn run_with_a_face_keepout(side: netsmith_pcb::Side, front: bool, back: bool) ->
         outline: board.outline,
         carried: &[],
         face_keepouts: &[keepout],
+        overflow: 0.0,
     };
     anneal(&mut board.parts, &problem, 1.0).feasible
 }
@@ -498,6 +505,7 @@ fn run_with_carried(board: &mut Board, carried: &[netsmith_pcb::CarriedZone]) ->
         zones: &[],
         carried,
         face_keepouts: &[],
+        overflow: 0.0,
         cutouts: &[],
         open_outside: &[],
         pours: false,
@@ -583,6 +591,7 @@ fn a_keepout_a_part_carries_is_no_reason_to_refuse_the_part_itself() {
         zones: &[],
         carried: &carried,
         face_keepouts: &[],
+        overflow: 0.0,
         cutouts: &[],
         open_outside: &[],
         pours: false,
@@ -644,6 +653,7 @@ fn run_with_module_fixed(board: &mut Board) -> bool {
         zones: &[],
         carried: &[],
         face_keepouts: &[],
+        overflow: 0.0,
         cutouts: &[],
         open_outside: &[],
         pours: false,
@@ -756,6 +766,7 @@ fn run_with_the_qfn_fixed(board: &mut Board, seed: u64) -> Outcome {
         zones: &[],
         carried: &[],
         face_keepouts: &[],
+        overflow: 0.0,
         cutouts: &[],
         open_outside: &[],
         pours: false,
@@ -784,6 +795,7 @@ fn a_part_in_the_escape_ring_of_a_fine_pitch_part_is_a_hard_cost_but_its_decoupl
         zones: &[],
         carried: &[],
         face_keepouts: &[],
+        overflow: 0.0,
         cutouts: &[],
         open_outside: &[],
         pours: false,
@@ -863,4 +875,195 @@ fn a_board_with_room_for_a_part_only_in_the_escape_ring_does_not_place_and_says_
         .flat_map(|o| &o.why)
         .collect();
     assert!(why.iter().any(|w| w.contains("escape ring of")), "{why:?}");
+}
+
+/// Twelve resistors on a 12 x 12 mm board, each pad on a net with the same pad of the resistor
+/// six further on, so that six nets of each pad run across the board; a problem that places
+/// them all.
+fn crossing_nets() -> Board {
+    let mut board = resistors(&[""; 12]);
+    board.outline = Rect::new(Pt::new(0.0, 0.0), Pt::new(12.0, 12.0));
+    board.nets = (0..6)
+        .flat_map(|k| {
+            ["1", "2"].map(|pin| BoardNet {
+                name: format!("N{k}_{pin}"),
+                pads: [k, k + 6]
+                    .iter()
+                    .map(|i| netsmith_pcb::PadRef {
+                        refdes: format!("R{}", i + 1),
+                        number: pin.into(),
+                    })
+                    .collect(),
+            })
+        })
+        .collect();
+    board
+}
+
+fn problem_of<'a>(board: &'a Board, fixed: &'a [bool], rules: &'a Rules) -> Problem<'a> {
+    problem_weighing(board, fixed, rules, 1.0)
+}
+
+fn problem_weighing<'a>(
+    board: &'a Board,
+    fixed: &'a [bool],
+    rules: &'a Rules,
+    overflow: f64,
+) -> Problem<'a> {
+    Problem {
+        nets: &board.nets,
+        rules,
+        planes: &[],
+        region: board.outline,
+        corner_radius: 0.0,
+        fixed,
+        keepouts: &[],
+        zones: &[],
+        carried: &[],
+        face_keepouts: &[],
+        cutouts: &[],
+        open_outside: &[],
+        pours: false,
+        seed: 0,
+        wants: &[],
+        offsets: &[],
+        overhangs: &[],
+        outline: board.outline,
+        overflow,
+    }
+}
+
+#[test]
+fn nets_and_pads_crowded_into_one_place_overflow_its_bins_and_spread_out_they_do_not() {
+    let board = crossing_nets();
+    let mut parts = board.parts.clone();
+    let fixed = vec![false; parts.len()];
+    let rules = board.rules.clone();
+    let problem = problem_of(&board, &fixed, &rules);
+    let mut e = Engine::new(&mut parts, &problem);
+    let unit = |v: f64| (v / UNIT).round() as i64;
+    let put_all = |e: &mut Engine, at: &dyn Fn(usize) -> Pt| {
+        for i in 0..12 {
+            let p = at(i);
+            e.put(
+                i,
+                Pose {
+                    x: unit(p.x),
+                    y: unit(p.y),
+                    turn: 0,
+                    text: 0,
+                },
+            );
+        }
+        e.refresh_all();
+    };
+    // Six resistors at one corner and their pairs at the other: their pads in the same bins,
+    // and every net across the same box.
+    put_all(&mut e, &|i| {
+        if i < 6 {
+            Pt::new(2.0, 2.0)
+        } else {
+            Pt::new(10.0, 10.0)
+        }
+    });
+    let crowded = e.overflow();
+    assert!(crowded > 0.0, "{crowded}");
+    // Each resistor 3 mm below its pair: the nets are short and take no room past what a bin
+    // has.
+    put_all(&mut e, &|i| {
+        let k = i % 6;
+        let y = 2.0 + (k / 3) as f64 * 6.0 + if i < 6 { 0.0 } else { 3.0 };
+        Pt::new(2.0 + (k % 3) as f64 * 4.0, y)
+    });
+    assert_eq!(e.overflow(), 0.0);
+    assert_eq!(e.overflow_counted_afresh(), 0.0);
+}
+
+#[test]
+fn the_overflow_kept_through_moves_is_the_overflow_counted_afresh_and_a_moves_cost_is_its_change() {
+    let board = crossing_nets();
+    let mut parts = board.parts.clone();
+    let fixed = vec![false; parts.len()];
+    let rules = board.rules.clone();
+    let problem = problem_of(&board, &fixed, &rules);
+    let mut e = Engine::new(&mut parts, &problem);
+    let mut rng = Rng::new(7);
+    let (mut kept, mut undone) = (0, 0);
+    for _ in 0..400 {
+        let change = e.propose(&mut rng, 60);
+        if change.is_empty() {
+            continue;
+        }
+        let set: Vec<usize> = change.iter().map(|&(i, _)| i).collect();
+        let mut nets: Vec<usize> = set.iter().flat_map(|&i| e.nets_of[i].clone()).collect();
+        nets.sort_unstable();
+        nets.dedup();
+        // Before the move the parts are where the bins were kept: the change is nothing.
+        assert_eq!(e.overflow_with(&nets, &set), e.overflow());
+        let old: Vec<Pose> = set.iter().map(|&i| e.poses[i]).collect();
+        for &(i, pose) in &change {
+            e.put(i, pose);
+        }
+        let after = e.overflow_with(&nets, &set);
+        assert!((after - e.overflow_counted_afresh()).abs() < 1e-9);
+        // Keep about half the moves and undo the others, as the annealer does.
+        if rng.below(2) == 0 {
+            e.refresh(&set);
+            kept += 1;
+            assert!((e.overflow() - after).abs() < 1e-9);
+        } else {
+            for (&i, &pose) in set.iter().zip(&old) {
+                e.put(i, pose);
+            }
+            undone += 1;
+        }
+        assert!((e.overflow() - e.overflow_counted_afresh()).abs() < 1e-9);
+    }
+    assert!(kept > 50 && undone > 50, "{kept} kept, {undone} undone");
+}
+
+/// The overflow of the bins of a placed board, in mm of track.
+fn overflow_of(board: &mut Board) -> f64 {
+    let fixed = vec![true; board.parts.len()];
+    let rules = board.rules.clone();
+    let nets = board.nets.clone();
+    let probe = Board {
+        nets,
+        ..board.clone()
+    };
+    let problem = problem_of(&probe, &fixed, &rules);
+    Engine::new(&mut board.parts, &problem).overflow()
+}
+
+#[test]
+fn weighing_track_overflow_leaves_the_bins_less_overflowed_than_not() {
+    // The twelve resistors of `crossing_nets` on their board of 12 x 12 mm, where the placer
+    // that does not weigh track overflow leaves some bins overflowed: over four seeds, the one that
+    // weighs it (at 5, so that the term is felt on a board this small) leaves less.
+    let (mut weighed, mut not) = (0.0, 0.0);
+    for seed in 0..4 {
+        for (weight, total) in [(5.0, &mut weighed), (0.0, &mut not)] {
+            let mut board = crossing_nets();
+            let fixed = vec![false; board.parts.len()];
+            let rules = board.rules.clone();
+            let nets = board.nets.clone();
+            let probe = Board {
+                nets,
+                ..board.clone()
+            };
+            let problem = Problem {
+                seed,
+                ..problem_weighing(&probe, &fixed, &rules, weight)
+            };
+            let outcome = anneal(&mut board.parts, &problem, 1.0);
+            assert!(
+                outcome.feasible,
+                "seed {seed}, weight {weight}: {:?}",
+                outcome.ended.summary(3)
+            );
+            *total += overflow_of(&mut board);
+        }
+    }
+    eprintln!("overflow over four seeds: {weighed:.1} mm weighed, {not:.1} mm not");
+    assert!(weighed < not, "{weighed} weighed, {not} not");
 }

@@ -87,6 +87,11 @@ pub struct PlaceOptions {
     /// as ever, instead of stopping the board. A courtyard past an edge nobody stated, or a
     /// part bigger than the outline, stays an error: it is not a requirement.
     pub lines_warn: bool,
+    /// The weight of track overflow in the annealer's cost (issue #820): what each mm of track
+    /// the bins of the board are asked for beyond what they hold costs, in mm of wire. 0, the
+    /// default, leaves it out: on the boards it was measured on it did not clearly leave the
+    /// router fewer lines (the header of the placer's `anneal/overflow.rs`).
+    pub track_overflow: f64,
 }
 
 /// An area that limits the height of the parts standing in it, on one or both faces.

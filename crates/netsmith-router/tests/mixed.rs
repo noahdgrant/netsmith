@@ -148,6 +148,17 @@ impl Mix {
 
 /// The board made from `seed` placed in `area` (`None`: sized to the parts) by the placer.
 pub fn mixed_board(seed: u64, area: (f64, f64), mix: Mix) -> Result<Board, BoardError> {
+    mixed_board_weighing_overflow(seed, area, mix, 0.0)
+}
+
+/// [`mixed_board`] placed with `overflow` as the weight of track overflow
+/// (`PlaceOptions::track_overflow`).
+pub fn mixed_board_weighing_overflow(
+    seed: u64,
+    area: (f64, f64),
+    mix: Mix,
+    overflow: f64,
+) -> Result<Board, BoardError> {
     let mut specs: Vec<Spec> = Vec::new();
     let mut add = |refdes: String,
                    kind: &'static str,
@@ -431,6 +442,7 @@ pub fn mixed_board(seed: u64, area: (f64, f64), mix: Mix) -> Result<Board, Board
             .collect(),
         fit: Some(area),
         seed,
+        track_overflow: overflow,
         ..PlaceOptions::default()
     };
     netsmith_placer::board_from_design_placed(&design, &mapping, &library, &options)

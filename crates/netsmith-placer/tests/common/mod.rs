@@ -341,6 +341,12 @@ pub fn module_footprint(side: usize, rings: usize) -> String {
 /// others ground and the supply. `area` is the outline's size in mm, width and height.
 /// Seed `seed` decides the circuit and the placement.
 pub fn tight_board(seed: u64, area: (f64, f64)) -> Board {
+    tight_board_weighing_overflow(seed, area, 0.0)
+}
+
+/// [`tight_board`] placed with `overflow` as the weight of track overflow
+/// (`PlaceOptions::track_overflow`).
+pub fn tight_board_weighing_overflow(seed: u64, area: (f64, f64), overflow: f64) -> Board {
     let mut sides = std::collections::BTreeMap::new();
     for k in (2..=80).step_by(2) {
         let refdes = format!("{}{k}", if (k - 1) % 3 == 0 { "C" } else { "R" });
@@ -353,6 +359,7 @@ pub fn tight_board(seed: u64, area: (f64, f64)) -> Board {
         sides,
         fit: Some(area),
         seed,
+        track_overflow: overflow,
         ..PlaceOptions::default()
     };
     synthetic_board_with(
