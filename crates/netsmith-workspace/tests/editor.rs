@@ -2330,7 +2330,7 @@ fn the_stamp_covers_the_physical_file_and_a_stale_one_is_refused() {
         .unwrap_err();
     assert_eq!(stale.status, 409, "{}", stale.message);
     assert!(
-        stale.message.contains("main.physical.nsm"),
+        stale.message.contains("main.physical.nsm changed"),
         "{}",
         stale.message
     );

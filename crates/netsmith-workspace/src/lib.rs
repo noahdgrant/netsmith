@@ -565,12 +565,17 @@ impl Workspace {
             .file_name()
             .map_or(String::new(), |n| n.to_string_lossy().into_owned());
         if pcb::stamp(&data) != edit.stamp {
-            let physical = data
-                .physical
-                .file_name()
-                .map_or(String::new(), |n| n.to_string_lossy().into_owned());
+            // The stamp is the layout file's, then `+` and the physical file's: name the one
+            // that changed.
+            let changed = if edit.stamp.split('+').next() != Some(files::stamp_of(file).as_str()) {
+                shown.clone()
+            } else {
+                data.physical
+                    .file_name()
+                    .map_or(String::new(), |n| n.to_string_lossy().into_owned())
+            };
             return Err(ApiError::conflict(format!(
-                "{shown} or {physical} changed on disk since the board was read: reload the board"
+                "{changed} changed on disk since the board was read: reload the board"
             )));
         }
         let layers = match layers {
