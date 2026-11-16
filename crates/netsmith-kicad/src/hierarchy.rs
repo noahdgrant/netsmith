@@ -32,9 +32,6 @@ pub(crate) fn uuid_for(name: &str) -> String {
     Uuid::new_v5(&NAMESPACE, name.as_bytes()).to_string()
 }
 
-/// The kind of the parts that are silkscreen text, which have no symbol.
-const LABEL_KIND: &str = "Label";
-
 /// The sheets of a design's schematic.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Hierarchy {
@@ -108,7 +105,7 @@ impl Hierarchy {
                 .parts
                 .iter()
                 .enumerate()
-                .filter(|(_, p)| p.kind != LABEL_KIND && p.path.starts_with(&prefix))
+                .filter(|(_, p)| !netsmith_core::is_artwork(&p.kind) && p.path.starts_with(&prefix))
                 .map(|(i, _)| i)
                 .collect();
             if parts.is_empty() {
@@ -134,7 +131,7 @@ impl Hierarchy {
             .parts
             .iter()
             .zip(&part_sheet)
-            .filter(|(p, _)| p.kind != LABEL_KIND)
+            .filter(|(p, _)| !netsmith_core::is_artwork(&p.kind))
             .map(|(p, s)| (p.refdes.as_str(), *s))
             .collect();
         // The board's names of the nets the root sheet labels: those on a part of the board or
@@ -335,7 +332,7 @@ impl Hierarchy {
     pub fn links(&self, design: &Design) -> Vec<Option<SymbolLink>> {
         (0..design.parts.len())
             .map(|part| {
-                if design.parts[part].kind == LABEL_KIND {
+                if netsmith_core::is_artwork(&design.parts[part].kind) {
                     return None;
                 }
                 let symbol = uuid_for(&format!("{}/symbol", self.symbol_key(design, part)));

@@ -65,10 +65,20 @@ pub enum PartKind {
     TestPoint,
     /// Text printed on the board (`std::parts::mechanical::Label`).
     Label,
+    /// A drawing printed on the silkscreen or etched in copper from a vector file
+    /// (`std::parts::mechanical::Logo`).
+    Logo,
+}
+
+/// Whether a part's type name (`Label`, `Logo`) is board artwork: printed or etched, with no
+/// pins, no symbol, no body and no height, so the schematic, the bill of materials and the
+/// height checks leave it out.
+pub fn is_artwork(type_name: &str) -> bool {
+    matches!(type_name, "Label" | "Logo")
 }
 
 impl PartKind {
-    pub const ALL: [PartKind; 16] = [
+    pub const ALL: [PartKind; 17] = [
         Self::Resistor,
         Self::Capacitor,
         Self::Inductor,
@@ -85,6 +95,7 @@ impl PartKind {
         Self::Fiducial,
         Self::TestPoint,
         Self::Label,
+        Self::Logo,
     ];
 
     /// The word in `#[kind(...)]` and in the design file: `ferrite_bead`.
@@ -106,6 +117,7 @@ impl PartKind {
             Self::Fiducial => "fiducial",
             Self::TestPoint => "test_point",
             Self::Label => "label",
+            Self::Logo => "logo",
         }
     }
 

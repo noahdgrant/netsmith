@@ -1855,7 +1855,7 @@ board UsbDevice {
 }
 ```
 
-`MountingHole`, `PlatedHole`, `Fiducial`, `TestPoint`, `Label` and `ProgrammingPads6` are fitted by nobody (`.assembly` is `"none"`), so they are on no BOM. `MountingHole` and `Fiducial` have no pins, so they are on no net. `PlatedHole` has one pin, `p1`, which is the plating: a board joins it to a net or leaves it open. `TestPoint` has one pin, `p1`, which must be on a net.
+`MountingHole`, `PlatedHole`, `Fiducial`, `TestPoint`, `Label`, `Logo` and `ProgrammingPads6` are fitted by nobody (`.assembly` is `"none"`), so they are on no BOM. `MountingHole` and `Fiducial` have no pins, so they are on no net. `PlatedHole` has one pin, `p1`, which is the plating: a board joins it to a net or leaves it open. `TestPoint` has one pin, `p1`, which must be on a net.
 
 ```nsm evaluate
 import std::parts::mechanical::{PlatedHole, TestPoint}

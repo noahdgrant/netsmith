@@ -286,7 +286,7 @@ impl Libraries {
             &self.mapping,
             &self.symbols,
         )) {
-            if part.kind == "Label" {
+            if netsmith_core::is_artwork(&part.kind) {
                 continue;
             }
             if let Ok((_, symbol)) = drawn

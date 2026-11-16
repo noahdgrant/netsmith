@@ -116,4 +116,6 @@
 	(gr_text "NSM" (at 28 24 0) (layer "F.SilkS") (effects (font (size 1.2 1.2) (thickness 0.18)) (justify left)))
 	(gr_text "r中" (at 28 26 0) (layer "F.SilkS") (effects (font (size 1 1) (thickness 0.15)) (justify left)))
 	(gr_line (start 3 25) (end 6 25) (stroke (width 0.2) (type solid)) (layer "F.Cu"))
+	(gr_poly (pts (xy 12 19) (xy 14 21) (xy 14 23) (xy 16 23) (xy 16 21) (xy 14 21) (xy 12 19) (xy 18 19) (xy 18 25) (xy 12 25)) (stroke (width 0) (type solid)) (fill solid) (layer "F.SilkS"))
+	(gr_poly (pts (xy 32 13) (xy 34 14.5) (xy 34 15.5) (xy 35 15.5) (xy 35 14.5) (xy 34 14.5) (xy 32 13) (xy 37 13) (xy 37 17) (xy 32 17)) (stroke (width 0) (type solid)) (fill solid) (layer "F.Cu"))
 )

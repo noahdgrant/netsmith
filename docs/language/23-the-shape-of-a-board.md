@@ -1618,6 +1618,44 @@ physical for Marked {
 }
 ```
 
+### Logos
+
+A `Logo` is a drawing printed on the silkscreen or etched in the copper, from a vector file kept beside the source: a part with no pins that is fitted by nobody, placed like any other part (with a courtyard round the drawing's box), and declared in the `case` section of the board's physical file. Its designator is `LOGO1`, and it is not in the schematic or the bill of materials.
+
+- **`.file`** is an SVG or a DXF file, relative to the file that states it and inside the project. A file that is missing, outside the project, a raster image (`.png`, `.jpg`: never read) or unreadable is an error that names the file, the line that states it and what is wrong. netsmith bundles and downloads no drawing.
+- **`.size`** is how long the longer side of the drawing's box is, a range of which the least wins. It is stated: the file's own units are not read, so the drawing is scaled to it, and its other side follows. It is never less than the process's least text height on the silkscreen, or its least track in copper, which is the smallest mark that is legible; a smaller size is an error that names both numbers.
+- **`.layer`** is `"silkscreen"` (the default) or `"copper"`. The drawing is made on the face the part is on, mirrored on the back as text is. A copper logo is copper of no net: pours keep their clearance from it, the router and the placer keep clear of its courtyard, and the design rules check holds it clear of the copper of every net as it holds a pad. Solder mask covers it, as it covers a track.
+- **An SVG** gives the filled shapes of its `path`, `polygon`, `rect`, `circle` and `ellipse` elements; curves are cut into short straight pieces. A shape inside another is a hole in it. A `transform`, a shape with no fill (`fill="none"`: a stroke is not drawn), and an element that draws text, an image, a clone or a line are errors that name the element and its line: convert the text and the strokes to paths and apply the transforms in the drawing program. Colours, opacity and the fill rule are not read.
+- **A DXF** gives the closed loops of its lines, arcs, circles, splines and polylines on every layer, as the outline reader finds them; a loop with a gap is an error. A loop inside another is a hole.
+
+```nsm evaluate
+import std::mfg::jlcpcb::TwoLayer
+
+board Branded {
+    .process: TwoLayer {
+        .stackup.thickness &= 1.6mm
+    }
+}
+```
+
+```nsm-physical
+import std::parts::mechanical::Logo
+
+physical for Branded {
+    case {
+        .mark: Logo {
+            .file &= "art/mark.svg"
+            .size &= 8mm
+        }
+        .etched: Logo {
+            .file &= "art/etched.dxf"
+            .size &= 6mm
+            .layer &= "copper"
+        }
+    }
+}
+```
+
 ### Silkscreen text
 
 Every part prints its reference designator on the silkscreen, in a place the placer keeps clear of pads and of other text, and at least as large as the process's smallest text. What the silkscreen prints is physical intent (ADR 0048), so it is stated in the board's physical file, with two members that every part has: `.silk`, a word (`"show"` or `"hide"`) for whether it prints a designator, and `.silk_text`, a text it prints in place of the designator. A module and the board have `.silk` too, which says it for every part inside them, at any depth.

@@ -134,6 +134,18 @@ pub fn name_case_model_sources(
     }
 }
 
+/// Say where the design states the file of each logo (`design.features.logos`, in the order of
+/// `sites`): the lines, and the file of each statement.
+pub fn name_logo_sources(design: &mut Design, sites: &[Vec<(SourceId, Span)>], sources: &Sources) {
+    for (logo, spans) in design.features.logos.iter_mut().zip(sites) {
+        logo.source = lines_of(spans, sources);
+        logo.stated_in = spans
+            .iter()
+            .map(|(source, _)| sources.get(*source).name.clone())
+            .collect();
+    }
+}
+
 fn measure(field: PlaceField) -> ConstraintMeasure {
     match field {
         PlaceField::X => ConstraintMeasure::X,

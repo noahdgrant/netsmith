@@ -2503,6 +2503,7 @@ impl Checker<'_> {
                 Some(PartKind::MountingHole) => ("a mounting hole", true),
                 Some(PartKind::Fiducial) => ("a fiducial", true),
                 Some(PartKind::Label) => ("a label", true),
+                Some(PartKind::Logo) => ("a logo", true),
                 _ => return None,
             },
             _ => return None,

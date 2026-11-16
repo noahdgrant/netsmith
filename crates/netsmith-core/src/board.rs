@@ -260,6 +260,57 @@ pub struct Label {
     pub text_height: Option<f64>,
 }
 
+/// Where a logo's drawing is made: on the silkscreen or in the copper of the face its part is on.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LogoLayer {
+    Silkscreen,
+    Copper,
+}
+
+impl LogoLayer {
+    /// The word the source states it with (`.layer &= "silkscreen"`).
+    pub fn word(self) -> &'static str {
+        match self {
+            Self::Silkscreen => "silkscreen",
+            Self::Copper => "copper",
+        }
+    }
+
+    pub fn from_word(word: &str) -> Option<LogoLayer> {
+        match word {
+            "silkscreen" => Some(Self::Silkscreen),
+            "copper" => Some(Self::Copper),
+            _ => None,
+        }
+    }
+}
+
+/// A drawing on the silkscreen or in the copper that comes from a vector file beside the source:
+/// a `Logo` part.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct Logo {
+    /// The part's path in the design.
+    pub path: String,
+    /// The file as the design states it (`.file`), relative to the file that states it.
+    pub file: String,
+    /// The longer side of the drawing's box, in mm (`.size`; the least of its range).
+    pub size: f64,
+    pub layer: LogoLayer,
+    /// The lines that state the file, separated by commas. Filled by the caller that knows the
+    /// source files; empty otherwise.
+    pub source: String,
+    /// The file of each statement of the file, as it was loaded. Filled by the same caller.
+    pub stated_in: Vec<String>,
+    /// The drawing: closed outlines in mm, scaled so that the longer side of the box is `size`,
+    /// the box's centre at the origin, x to the right and y downward, where a hole is joined to
+    /// the outline round it by a cut of no width. Filled by the caller that reads the file
+    /// (`netsmith_fabricate::models::locate`); empty before, and a design file leaves it out: the
+    /// reader reads the file again.
+    #[serde(skip)]
+    pub outlines: Vec<Vec<(f64, f64)>>,
+}
+
 /// A field of a part's or module's `.place` that holds a range (ADR 0045). All are measured
 /// in the board's frame: the origin is the outline's top left corner, x grows to the right
 /// and y downward, in millimetres; `x` and `y` are the centre of the part's body box and

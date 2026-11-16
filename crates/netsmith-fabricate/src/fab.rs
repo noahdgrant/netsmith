@@ -2633,7 +2633,8 @@ pub fn marks_of(board: &Board) -> netsmith_geom::DrcMarks {
                 && !part.hand_fitted
                 && part.footprint.mount == Mount::Smd
                 && !part.declared_kind.is_some_and(|k| {
-                    k.is_mechanical() || matches!(k, PartKind::TestPoint | PartKind::Label)
+                    k.is_mechanical()
+                        || matches!(k, PartKind::TestPoint | PartKind::Label | PartKind::Logo)
                 })
         })
     };

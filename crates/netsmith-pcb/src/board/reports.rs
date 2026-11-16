@@ -176,7 +176,7 @@ impl Board {
         for a in self
             .parts
             .iter()
-            .filter(|a| a.height.is_none() && a.kind != "Label")
+            .filter(|a| a.height.is_none() && !netsmith_core::is_artwork(&a.kind))
         {
             let body = a.body();
             for k in keepouts

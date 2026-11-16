@@ -200,17 +200,23 @@ impl Coverage {
             design
                 .parts
                 .iter()
-                .filter(|p| p.kind != "Label" && from[&p.path] == want)
+                .filter(|p| !netsmith_core::is_artwork(&p.kind) && from[&p.path] == want)
                 .count()
         };
         let standard = design
             .parts
             .iter()
-            .filter(|p| p.kind != "Label" && from[&p.path] == HeightProvenance::Unknown)
+            .filter(|p| {
+                !netsmith_core::is_artwork(&p.kind) && from[&p.path] == HeightProvenance::Unknown
+            })
             .filter(|p| standard_of(board, &p.path).is_some())
             .count();
         Some(Self {
-            parts: design.parts.iter().filter(|p| p.kind != "Label").count(),
+            parts: design
+                .parts
+                .iter()
+                .filter(|p| !netsmith_core::is_artwork(&p.kind))
+                .count(),
             stated: count(HeightProvenance::Stated),
             catalog: count(HeightProvenance::Catalog),
             standard,

@@ -233,8 +233,10 @@ fn judge_temperatures(model: &Model, parts: &[Fitted<'_>], errors: &mut Vec<Stri
     let mut types: BTreeMap<(bool, String), String> = BTreeMap::new();
     for fitted in parts {
         if fitted.assembly == Assembly::None
-            || model.instance(fitted.part).marks.declared_kind
-                == Some(netsmith_core::PartKind::Label)
+            || matches!(
+                model.instance(fitted.part).marks.declared_kind,
+                Some(netsmith_core::PartKind::Label | netsmith_core::PartKind::Logo)
+            )
         {
             continue;
         }
@@ -395,8 +397,10 @@ pub fn judge_qualification(
     let mut waiting: Vec<InstId> = Vec::new();
     for fitted in parts {
         if fitted.assembly == Assembly::None
-            || model.instance(fitted.part).marks.declared_kind
-                == Some(netsmith_core::PartKind::Label)
+            || matches!(
+                model.instance(fitted.part).marks.declared_kind,
+                Some(netsmith_core::PartKind::Label | netsmith_core::PartKind::Logo)
+            )
         {
             continue;
         }

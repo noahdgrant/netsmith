@@ -7,9 +7,9 @@
 
 use netsmith_check::{Domain, InstId, InstKind, Member, Model, SourceId};
 use netsmith_core::{
-    CaseModel, Cutout, Features, Keepout, Label, Offset, OffsetEnd, Outline, PartHeight, PartKind,
-    PartSilk, PartStandoff, PinProtrusion, PlaceBound, PlaceField, Placement, Pour, SilkPrint,
-    StepModel,
+    CaseModel, Cutout, Features, Keepout, Label, Logo, LogoLayer, Offset, OffsetEnd, Outline,
+    PartHeight, PartKind, PartSilk, PartStandoff, PinProtrusion, PlaceBound, PlaceField, Placement,
+    Pour, SilkPrint, StepModel,
 };
 use netsmith_lang::Span;
 use std::collections::{BTreeMap, BTreeSet};
@@ -897,6 +897,91 @@ fn labels(model: &Model, least_text: f64, errors: &mut Vec<String>) -> Vec<Label
         });
     }
     found
+}
+
+/// The `Logo` parts of the model: their file, size and layer, and the lines that state the
+/// file (in the order of the logos, for the sources the caller names). `least_text` is the
+/// process's smallest text, the least size on the silkscreen, and `least_track` its narrowest
+/// track, the least size in copper.
+pub(crate) fn logos(
+    model: &Model,
+    least_text: f64,
+    least_track: f64,
+    errors: &mut Vec<String>,
+) -> (Vec<Logo>, Vec<Vec<(SourceId, Span)>>) {
+    let mut parts: Vec<(String, InstId)> = model
+        .instances()
+        .filter(|(_, i)| i.kind == InstKind::Part && i.type_name == "Logo")
+        .map(|(id, _)| (model.path_of(id), id))
+        .collect();
+    parts.sort();
+    let (mut found, mut sites) = (Vec::new(), Vec::new());
+    for (path, id) in parts {
+        netsmith_core::job::checkpoint();
+        let Some(Member::Field(file_field)) = model.member(id, "file") else {
+            continue;
+        };
+        let file = match &model.field(file_field).domain {
+            Domain::Text(file) if !file.trim().is_empty() => file.clone(),
+            Domain::Text(_) => {
+                errors.push(format!(
+                    "`{path}.file` is empty: name the logo's SVG or DXF file, relative to the file that states it"
+                ));
+                continue;
+            }
+            _ => {
+                errors.push(format!(
+                    "`{path}` is a `Logo` and names no file, so there is nothing to print: name it with `.file &= \"logo.svg\"`, relative to the file that states it"
+                ));
+                continue;
+            }
+        };
+        let layer = match domain(model, id, "layer") {
+            Some(Domain::Text(t)) => match LogoLayer::from_word(&t) {
+                Some(layer) => layer,
+                None => {
+                    errors.push(format!(
+                        "`{path}.layer` is \"{t}\", which is not \"silkscreen\" or \"copper\": say where the logo is drawn"
+                    ));
+                    continue;
+                }
+            },
+            _ => LogoLayer::Silkscreen,
+        };
+        let (least, what) = match layer {
+            LogoLayer::Silkscreen => (least_text, "text height"),
+            LogoLayer::Copper => (least_track, "track"),
+        };
+        let size = match range(model, id, "size").map(|(lo, _)| lo) {
+            Some(lo) if lo.is_finite() => lo,
+            _ => {
+                errors.push(format!(
+                    "`{path}` is a `Logo` and states no size: say how long the longer side of the drawing is, for example `.size &= 10mm`"
+                ));
+                continue;
+            }
+        };
+        if size < least - 1e-9 {
+            errors.push(format!(
+                "`{path}.size` is {size} mm, under the process's least {what} of {least} mm, which is the smallest {} that is legible",
+                match layer {
+                    LogoLayer::Silkscreen => "mark on the silkscreen",
+                    LogoLayer::Copper => "mark in copper",
+                }
+            ));
+        }
+        found.push(Logo {
+            path,
+            file,
+            size,
+            layer,
+            source: String::new(),
+            stated_in: Vec::new(),
+            outlines: Vec::new(),
+        });
+        sites.push(model.field(file_field).narrowed_at.clone());
+    }
+    (found, sites)
 }
 
 /// Read every board feature of the model. `nets` are the board's net names, `layers` the

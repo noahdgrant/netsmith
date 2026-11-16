@@ -352,6 +352,62 @@ impl Footprint {
         Footprint::parse("Label", &source).expect("a label footprint is well formed")
     }
 
+    /// The footprint of a logo: each of `outlines` (closed outlines in mm round the origin, a hole
+    /// joined to the outline round it by a cut of no width, see `netsmith_core::Logo`) as a filled
+    /// polygon on the silkscreen or in the copper of the front, and a courtyard round their box
+    /// `margin` wide. It has no pads. With no outlines (the file was not read) it is a courtyard
+    /// round a square of `size` mm with nothing drawn, so that a board without the file still has a
+    /// place for the logo. The silkscreen polygons are in the file the footprint is written as, and
+    /// not in [`Footprint::graphics`]: a logo's thousands of edges are not strokes the placer
+    /// measures one by one, and the courtyard keeps other parts off it.
+    pub fn logo(
+        outlines: &[Vec<(f64, f64)>],
+        layer: netsmith_core::LogoLayer,
+        size: f64,
+        margin: f64,
+    ) -> Footprint {
+        let points = || outlines.iter().flatten();
+        let (mut lo, mut hi) = ((f64::MAX, f64::MAX), (f64::MIN, f64::MIN));
+        for &(x, y) in points() {
+            lo = (lo.0.min(x), lo.1.min(y));
+            hi = (hi.0.max(x), hi.1.max(y));
+        }
+        if points().next().is_none() {
+            (lo, hi) = ((-size / 2.0, -size / 2.0), (size / 2.0, size / 2.0));
+        }
+        let (nhw, nhh) = (lo.0 - margin, lo.1 - margin);
+        let (hw, hh) = (hi.0 + margin, hi.1 + margin);
+        let drawn = match layer {
+            netsmith_core::LogoLayer::Silkscreen => "F.SilkS",
+            netsmith_core::LogoLayer::Copper => "F.Cu",
+        };
+        let mut polygons = String::new();
+        for outline in outlines.iter().filter(|o| o.len() >= 3) {
+            let pts: String = outline
+                .iter()
+                .map(|(x, y)| format!("(xy {x:.4} {y:.4})"))
+                .collect::<Vec<_>>()
+                .join(" ");
+            polygons.push_str(&format!(
+                " (fp_poly (pts {pts}) (stroke (width 0) (type solid)) (fill solid) (layer \"{drawn}\"))"
+            ));
+        }
+        let font = "(effects (font (size 1 1) (thickness 0.15)))";
+        let source = format!(
+            "(footprint \"Logo\" (version 20241229) (generator \"netsmith\") (layer \"F.Cu\") \
+             (property \"Reference\" \"REF**\" (at 0 {up} 0) (layer \"F.SilkS\") (hide yes) {font}) \
+             (property \"Value\" \"Logo\" (at 0 {down} 0) (layer \"F.Fab\") (hide yes) {font}) \
+             (attr exclude_from_pos_files exclude_from_bom){polygons} \
+             (fp_rect (start {nhw:.4} {nhh:.4}) (end {hw:.4} {hh:.4}) (stroke (width 0.05) (type solid)) (fill no) (layer \"F.CrtYd\")))",
+            up = nhh - 0.5,
+            down = hh + 0.5,
+        );
+        let mut footprint =
+            Footprint::parse("Logo", &source).expect("a logo footprint is well formed");
+        footprint.graphics.retain(|g| g.layer != Layer::Silk);
+        footprint
+    }
+
     /// Read the text of a `.kicad_mod`. `name` is only used to say which footprint a
     /// problem is in.
     pub fn parse(name: &str, text: &str) -> Result<Footprint, FootprintError> {
@@ -2176,6 +2232,44 @@ mod tests {
             ]
         );
         assert_eq!(fp.courtyard.max.x, 10.5 + PAD_COURTYARD_MARGIN);
+    }
+
+    /// A logo's footprint is its polygons on the layer it is drawn on, a courtyard round their box
+    /// and no pad; the silkscreen ones stay out of the strokes the placer measures.
+    #[test]
+    fn a_logo_footprint_has_its_polygons_on_its_layer_and_a_courtyard_round_them() {
+        use netsmith_core::LogoLayer;
+        let square = vec![(-2.0, -1.0), (2.0, -1.0), (2.0, 1.0), (-2.0, 1.0)];
+        let silk = Footprint::logo(
+            std::slice::from_ref(&square),
+            LogoLayer::Silkscreen,
+            4.0,
+            0.3,
+        );
+        assert!(silk.pads.is_empty());
+        assert_eq!(
+            silk.courtyard,
+            Rect::new(Pt::new(-2.3, -1.3), Pt::new(2.3, 1.3))
+        );
+        let drawn = |fp: &Footprint, layer: &str| {
+            fp.source
+                .args()
+                .iter()
+                .filter(|c| c.head() == Some("fp_poly"))
+                .filter(|c| c.find("layer").and_then(|l| l.args().first()?.text()) == Some(layer))
+                .count()
+        };
+        assert_eq!((drawn(&silk, "F.SilkS"), drawn(&silk, "F.Cu")), (1, 0));
+        assert!(silk.graphics.iter().all(|g| g.layer != Layer::Silk));
+        let copper = Footprint::logo(&[square], LogoLayer::Copper, 4.0, 0.3);
+        assert_eq!((drawn(&copper, "F.SilkS"), drawn(&copper, "F.Cu")), (0, 1));
+        // With no outline (the file was not read) it holds a square of its size, drawn with nothing.
+        let none = Footprint::logo(&[], LogoLayer::Silkscreen, 6.0, 0.25);
+        assert_eq!(
+            none.courtyard,
+            Rect::new(Pt::new(-3.25, -3.25), Pt::new(3.25, 3.25))
+        );
+        assert_eq!(drawn(&none, "F.SilkS"), 0);
     }
 
     #[test]
