@@ -1473,7 +1473,7 @@ pub struct PcbRouteNet {
 /// A track of a record, on the sheet.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 pub struct PcbRouteTrack {
-    /// `top`, `bottom` or an inner signal layer, `inner2` (issue #833).
+    /// `top`, `bottom` or an inner signal layer, `inner2` (issue 833).
     pub layer: String,
     pub width: f64,
     pub from: PcbPoint,

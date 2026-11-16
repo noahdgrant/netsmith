@@ -24,7 +24,7 @@
 //! | `GET /api/git`, `GET /api/compare`, `GET /api/git/file` | what the project can be compared with, what changed in the circuit, a file at a ref (ADR 0059) |
 //! | `POST /api/pins/lock`, `POST /api/pins/move` | lock or unlock a pin request, and move it to another pin of its part: the `lock` and the `pin` and `source` lines of its entry in the pin file (ADR 0101), and no other line; `422` with the reason when the choice is refused |
 //! | `POST /api/pcb/route`, `cancel`, `edit`, `drc`; `GET /api/pcb/scene`, `findings` | place and route on demand; `cancel` stops the router and keeps what it routed |
-//! | `POST /api/pcb/regenerate` | one module placed again with every other part held (issue #825): the proposal, the edit that makes it (sent to `edit` as any edit, one step of undo), where its parts go, the nets routed again, and the findings and totals before and after; nothing is written; `409` for a stale stamp, `422` with the reason when it is refused |
+//! | `POST /api/pcb/regenerate` | one module placed again with every other part held (issue #825): the proposal, the edit that makes it (sent to `edit` as any edit, one step of undo), where its parts go, the nets routed again, and the findings and totals before and after; nothing is written; while it runs the socket carries `progress` with the task `regenerate`; `409` for a stale stamp, `422` with the reason when it is refused |
 //! | `POST /api/pcb/routes` | an edit of the routes file (draw or move a track or via, delete, lock, unlock, put a record back for undo), as `netsmith routes` makes it (the changes may be of several nets: a track drawn with shoved copper), answered with the record of each net it changed before and after; `409` for a stale stamp, `422` with the reason when it is refused |
 //! | `GET /api/pcb/pours?board=` | the fill of the placed board's pours, planes and routes-file zones, by copper layer, as SVG paths (`PcbPours`), for the 2D view to draw under the copper; asked after the scene, since filling takes longer than placing |
 //! | `POST /api/pcb/walk` | the way for a straight track of a net from its last corner to a point, round the copper the routes file's check reads (issue #726): the corners (at most 45 degrees) or why there is none, always `200`, the router's copper the track crosses (`crossed`, not an obstacle: an edit throws it away), and with `shove` the unlocked shapes of the routes file the way moves aside (`shoved`, or `stuck`: why none could); nothing is written |
@@ -937,7 +937,8 @@ async fn pcb_regenerate(
     bytes: axum::body::Bytes,
 ) -> Result<Json<crate::api::PcbRegenerated>, ApiError> {
     let ask: crate::api::PcbRegenerate = body(&bytes)?;
-    json(move || s.backend.pcb_regenerate(&ask)).await
+    let say = progress(&s, "regenerate", &ask.board);
+    json(move || s.backend.pcb_regenerate(&ask, &say)).await
 }
 
 async fn pcb_routes(

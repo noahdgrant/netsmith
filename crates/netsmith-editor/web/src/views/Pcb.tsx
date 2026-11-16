@@ -436,6 +436,7 @@ export function Pcb() {
       </div>
       <JobProgress task="route" />
       <JobProgress task="drc" />
+      <JobProgress task="regenerate" />
       {report && (report.unrouted.length > 0 || report.placementProblems.length > 0) && (
         <div class="banner bad">
           {report.placementProblems.map((p) => (

@@ -136,7 +136,7 @@
  * selection's colour and a dot at each corner; a via about to be placed is a ring of the process's via */
 .pcb-overlay .track-draft polyline { fill: none; stroke: var(--pcb-front); stroke-opacity: .8; stroke-linecap: round; stroke-linejoin: round; }
 .pcb-overlay .track-draft.layer-bottom polyline { stroke: var(--pcb-back); }
-.pcb-overlay .track-draft.layer-inner polyline { stroke: var(--pcb-plane-1); }
+.pcb-overlay .track-draft.layer-inner polyline { stroke: var(--pcb-inner); }
 .pcb-overlay .track-draft polyline.track-draft-line { stroke: var(--sel); stroke-opacity: 1; stroke-width: calc(1.25 * var(--px, .04)); stroke-dasharray: calc(5 * var(--px, .04)) calc(3 * var(--px, .04)); }
 .pcb-overlay .track-draft-corner { fill: var(--sel); }
 /* the walkaround (issue 726): the corners the server chose round the copper in the way are hollow, and a segment with no way is
@@ -177,3 +177,13 @@
 .net-row .swatch { width: 0.5rem; height: 0.5rem; border-radius: 50%; border: 1.5px solid var(--text-faint); background: transparent; }
 .net-row .swatch.plane { border-style: dashed; border-radius: 2px; }
 .net-row.sel .swatch { border-color: var(--sel); }
+
+/* The tree of the board's modules (Modules tab): a row picks a module's parts, its button regenerates it. */
+.module-row { display: flex; align-items: center; gap: 0.5rem; min-height: var(--ctl); padding-right: 0.25rem; cursor: pointer; font-size: var(--fs-sm); }
+.module-row:hover { background: var(--hover); }
+.module-row.sel { background: var(--pick); box-shadow: inset 2px 0 0 var(--pcb-select); }
+.module-row .ref { font-family: var(--mono); font-weight: 500; }
+.module-row .kind { margin-left: auto; font-size: var(--fs-xs); }
+.module-row .module-icon { color: var(--text-muted); flex: none; }
+.module-row.proposed .ref { color: var(--accent); }
+.module-row .regen-module { width: 1.5rem; height: 1.5rem; }

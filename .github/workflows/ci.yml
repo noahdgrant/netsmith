@@ -606,6 +606,17 @@ jobs:
       - name: Every recipe runs in exactly one slice
         run: scripts/ci-recipe-slices ${{ strategy.job-total }}
 
+      # The web app's unit tests (vitest). The Rust test that runs them
+      # (netsmith-editor's web::the_web_apps_unit_tests_pass) skips where the page's packages
+      # are not installed, as in `test` and `kicad`, so they run here, once, where Node is set up.
+      # A change to the page turns this job on (scripts/ci-changes).
+      - name: The web app's unit tests
+        if: matrix.slice == 1
+        working-directory: crates/netsmith-editor/web
+        run: |
+          npm ci --no-audit --no-fund
+          npm test --silent
+
       # The browser is cached, and so are the .deb files of its system libraries and fonts
       # (.github/actions/apt-cache, the same cache as the KiCad install below).
       - name: Cache Playwright's Chromium

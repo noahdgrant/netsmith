@@ -27,6 +27,46 @@ export function moduleOfAll(paths: string[]): string | null {
   return null;
 }
 
+/** One row of the tree of a board's modules: a module instance, as deep as it is nested, with the parts in it. */
+export interface ModuleRow {
+  /** Its path, as the server reads it: `a`, `stage.bank`, `stage.bank[2]`. */
+  path: string;
+  /** What the row shows: its path less that of the module it is in (`bank`, `[2]`). */
+  label: string;
+  /** How many modules hold it. */
+  depth: number;
+  /** The parts in it, at any depth. */
+  parts: number;
+}
+
+/** The modules of a board, from the paths of its parts, as the rows of a tree in order: every prefix of a
+ * path that ends before a `.` or a `[` is a module, as the server's `module_paths` reads them. */
+export function moduleRows(paths: string[]): ModuleRow[] {
+  const count = new Map<string, number>();
+  for (const p of paths) {
+    for (let m = moduleOf(p); m; m = moduleOf(m)) count.set(m, (count.get(m) ?? 0) + 1);
+  }
+  const parentOf = (m: string): string | null => {
+    for (let up = moduleOf(m); up; up = moduleOf(up)) if (count.has(up)) return up;
+    return null;
+  };
+  const children = new Map<string | null, string[]>();
+  for (const m of count.keys()) {
+    const up = parentOf(m);
+    children.set(up, [...(children.get(up) ?? []), m]);
+  }
+  const rows: ModuleRow[] = [];
+  const walk = (up: string | null, depth: number) => {
+    for (const m of (children.get(up) ?? []).sort((x, y) => x.localeCompare(y, undefined, { numeric: true }))) {
+      const label = up ? m.slice(up.length).replace(/^\./, '') : m;
+      rows.push({ path: m, label, depth, parts: count.get(m)! });
+      walk(m, depth + 1);
+    }
+  };
+  walk(null, 0);
+  return rows;
+}
+
 const mm = (v: number) => `${Math.round(v * 100) / 100}`;
 
 /** One line of a total before and after, with the change: `hpwl 36.63 → 33.39 mm (−3.24)`. */

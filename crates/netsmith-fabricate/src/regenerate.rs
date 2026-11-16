@@ -175,12 +175,14 @@ fn entry_of(
 
 /// The proposal of regenerating `request.module` of `board` (placed as the layout file `layout`
 /// says, with no copper), the board after it, and the layout with the new entries. `routes` is
-/// the routes file beside the layout file, if any. Nothing is written.
+/// the routes file beside the layout file, if any. `say` is told each step as it begins (the
+/// editor passes it on to the page as progress). Nothing is written.
 pub fn propose_on(
     board: &Board,
     layout: Option<&Layout>,
     routes: Option<&Routes>,
     request: &Request,
+    say: &dyn Fn(&str),
 ) -> Result<(Proposal, Board, Layout), String> {
     let table = layout.and_then(|l| l.boards.get(&board.name));
     let held: BTreeSet<String> = board
@@ -194,6 +196,7 @@ pub fn propose_on(
         .map(|p| p.refdes.clone())
         .collect();
     let mut after = board.clone();
+    say(&format!("placing the parts of {} again", request.module));
     let done = netsmith_placer::regenerate(
         &mut after,
         &request.module,
@@ -247,6 +250,8 @@ pub fn propose_on(
         })
         .cloned()
         .collect();
+    say("measuring the placement before and after");
+    let comparison = PlacementComparison::between(board, &after);
     let o = after.outline.min;
     let proposal = Proposal {
         board: board.name.clone(),
@@ -263,7 +268,7 @@ pub fn propose_on(
         held: done.held.iter().map(|r| path_of(r)).collect(),
         nets: done.nets.clone(),
         routes_dropped,
-        comparison: PlacementComparison::between(board, &after),
+        comparison,
     };
     Ok((proposal, after, next))
 }
@@ -295,6 +300,7 @@ pub fn propose(
         layout.as_ref().map(|(l, _)| l),
         Some(&routes),
         request,
+        &|_| {},
     )?;
     Ok((proposal, next))
 }

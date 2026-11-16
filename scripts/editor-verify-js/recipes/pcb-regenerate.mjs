@@ -2,11 +2,13 @@
 // "Regenerate a"; the proposal is drawn over the board in a second colour with the findings and
 // totals before and after, and nothing is written; Another asks for the next seed; Accept writes
 // it as one edit; a route after it keeps the copper of the nets of `b` and `c` and routes only the
-// rest; Undo puts the old places back with the old copper, with no router.
+// rest; Undo puts the old places back with the old copper, with no router. The Modules tab lists the
+// board's modules as a tree: a row picks a module's parts, and its button proposes that module,
+// with the server's steps shown as a job while it is asked for.
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { whenIdle } from '../settle.mjs';
+import { gate, whenIdle } from '../settle.mjs';
 import { fresh, openPcb, partAt, scene, settled } from '../pcb-helpers.mjs';
 
 export const fixture = 'lights';
@@ -89,4 +91,39 @@ export async function run(tools) {
   await page.waitForSelector('.chip:has-text("routed")');
   expect((await page.getByRole('button', { name: /Route again/ }).count()) === 1, 'the toolbar says it is routed');
   await shot('undone');
+
+  step('the Modules tab lists the modules, a row picks the parts of one, and its button proposes it');
+  await page.getByRole('button', { name: /^Modules \(3\)$/ }).click();
+  const tree = page.locator('[data-testid=module-tree]');
+  await tree.waitFor();
+  const names = await tree.locator('.module-row .ref').allInnerTexts();
+  expect(names.join(',') === 'a,b,c', `the modules: ${names.join(', ')}`);
+  const rowB = tree.locator('.module-row[data-module="b"]');
+  await rowB.click();
+  await whenIdle(page);
+  const picked = await page.locator('[data-testid=part-inspector]').innerText();
+  expect(picked.includes('2 parts') && picked.includes('Regenerate b'), `the parts of b are picked: ${picked.replace(/\n/g, ' | ')}`);
+  await shot('module-tree');
+  const fileNow = fs.readFileSync(layout, 'utf8');
+  // The request held: while it is asked for, the PCB view shows the job of `regenerate` (the server's steps come over the socket).
+  const g = gate();
+  await page.route('**/api/pcb/regenerate', async (route) => {
+    await g.opened;
+    await route.continue();
+  });
+  await rowB.locator('[data-testid=regen-module]').click();
+  await page.waitForSelector('.job .job-line');
+  await shot('module-asked');
+  g.open();
+  await page.waitForSelector('[data-testid=regen-card] :text("Regenerate b")');
+  await page.unroute('**/api/pcb/regenerate');
+  expect((await page.locator('.job').count()) === 0, 'the job is gone with the answer');
+  await whenIdle(page);
+  expect((await page.locator('[data-testid=regen-ghost]').count()) === 2, 'two ghosts, for b.led and b.r');
+  expect((await rowB.getAttribute('class')).includes('proposed'), 'the row of b is marked as the module proposed');
+  await shot('module-proposed');
+  await page.locator('[data-testid=regen-reject]').click();
+  await whenIdle(page);
+  expect((await page.locator('[data-testid=regen-card]').count()) === 0, 'Reject drops the proposal');
+  expect(fs.readFileSync(layout, 'utf8') === fileNow, 'and nothing was written');
 }
