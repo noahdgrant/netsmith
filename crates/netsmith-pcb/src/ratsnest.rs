@@ -9,6 +9,14 @@
 //! where they stand; any other pad needs a via to it, and has a line to the plane until
 //! one is dropped.
 //!
+//! An outer pour of a plane's net joins such a pad too, through a via it reaches (issue #834):
+//! where a pad of the net is still cut off and the net has a via, the pour is filled as the
+//! Gerbers fill it, less the copper narrower than its minimum width that KiCad's fill trims
+//! ([`crate::plane_pour_fills`]), and each piece joins what it reaches as a zone's piece does
+//! (below). The router drops the via beside a pad where this joins the pad without it. A board
+//! whose plane nets have no via (one not routed yet) is not filled, and its pads keep their
+//! lines as before; [`Ratsnest::without_pour_fills`] never fills.
+//!
 //! Pads of one net whose copper lies one on the other, on a layer both have, are one piece with no
 //! copper added (the plated holes a QFN footprint draws inside its exposed pad, as KiCad and the
 //! design rules check count them): the router draws no track between them.
@@ -225,8 +233,49 @@ fn segment_meets_box(a: Pt, b: Pt, r: &Rect) -> bool {
 impl Ratsnest {
     /// The ratsnest of a board as it is placed and routed. Nets are taken in board order.
     pub fn of(board: &Board) -> Ratsnest {
+        let first = Self::without_pour_fills(board);
+        // A pad of a plane net still cut off from its plane, on an outer layer poured with its
+        // net, may reach it through the pour and a via the pour covers (the module's header).
+        let poured = |l: &Ratline| {
+            l.to_plane
+                && board.vias.iter().any(|v| v.net == l.net)
+                && board.pours.iter().any(|p| {
+                    p.net == l.net
+                        && !board.zoned(p.layer.name())
+                        && board.part(&l.from.refdes).is_some_and(|part| {
+                            part.footprint.pads_numbered(&l.from.number).any(|pad| {
+                                match (p.layer, part.pad_layers(pad)) {
+                                    (CopperLayer::Front, (front, _)) => front,
+                                    (CopperLayer::Back, (_, back)) => back,
+                                }
+                            })
+                        })
+                })
+        };
+        if !first.lines.iter().any(poured) {
+            return first;
+        }
+        // A fill that cannot be made joins nothing.
+        let fills = crate::copper::plane_pour_fills(board).unwrap_or_default();
+        if fills.is_empty() {
+            return first;
+        }
+        Self::with_fills(board, fills)
+    }
+
+    /// The ratsnest of a board with the outer pours of a plane net joining nothing but what
+    /// every pour of a locked net joins: what [`Self::of`] was before issue #834, and what the
+    /// router starts from, so that it gives every such pad a way to its plane of its own before
+    /// it knows where the other copper goes.
+    pub fn without_pour_fills(board: &Board) -> Ratsnest {
+        Self::with_fills(board, Vec::new())
+    }
+
+    /// The ratsnest with `more` fills joining what they reach, beside those of the zones.
+    fn with_fills(board: &Board, more: Vec<ZoneFill>) -> Ratsnest {
         // A fill that cannot be made (the Gerbers say why) joins nothing.
-        let fills = crate::copper::zone_fills(board).unwrap_or_default();
+        let mut fills = crate::copper::zone_fills(board).unwrap_or_default();
+        fills.extend(more);
         let zoned: Vec<&str> = board
             .zones
             .iter()

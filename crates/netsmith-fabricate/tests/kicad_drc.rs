@@ -492,7 +492,20 @@ fn a_pour_with_no_pitch_or_no_other_layer_is_not_stitched() {
         "",
     );
     assert!(route(&mut lone).is_empty());
-    assert_eq!(lone.vias.len(), none.vias.len());
+    // A stitching via has no track; the vias the router gives pads do. (A pad in a pour may give
+    // its via up to the pour, issue #834, so the boards' counts of all vias differ.)
+    let stitching = |b: &Board| {
+        b.vias
+            .iter()
+            .filter(|v| {
+                !b.tracks.iter().any(|t| {
+                    t.net == v.net && (t.from.distance(v.at) < 1e-6 || t.to.distance(v.at) < 1e-6)
+                })
+            })
+            .count()
+    };
+    assert_eq!((stitching(&none), stitching(&lone)), (0, 0));
+    assert!(stitching(&with) > 0);
 }
 
 #[test]

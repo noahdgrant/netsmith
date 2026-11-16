@@ -6,8 +6,9 @@
 //!
 //! [`route`] and [`route_with`] draw the tracks and vias on the two outer layers (ADR 0031, the
 //! header of `route.rs`), then vias in parallel where one is too small for its current, the
-//! stitching vias of the pours, and an arc at each bend that has room for one (the header of
-//! `arcs.rs`). The meanders that match the lengths of a diff pair ([`meander`]) and the teardrops
+//! stitching vias of the pours, then the pads that a pour of their net joins to the plane lose
+//! their own vias (`pour_pads.rs`), and an arc at each bend that has room for one (the header
+//! of `arcs.rs`). The meanders that match the lengths of a diff pair ([`meander`]) and the teardrops
 //! ([`teardrop`]) are steps of it too; they were in `netsmith-pcb` until issue #608.
 //!
 //! [`walk`] is not a step of routing: the query the editor's track tool asks while a track is drawn
@@ -24,6 +25,7 @@ mod decouple;
 pub mod meander;
 pub mod parallel;
 mod plan;
+mod pour_pads;
 pub mod route;
 pub mod shove;
 mod stitch;

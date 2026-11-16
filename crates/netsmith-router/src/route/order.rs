@@ -9,7 +9,7 @@ impl<'a> Router<'a> {
     pub(super) fn make_plan(&self, order: &[usize]) -> Planned {
         let tile_cells = crate::plan::TILE_CELLS;
         let rules = &self.board.rules;
-        let width = (0..self.lines.len())
+        let width = (0..self.routed_lines)
             .filter(|&l| !self.lines[l].to_plane)
             .map(|l| self.width_of(l))
             .fold(f64::INFINITY, f64::min);
@@ -80,12 +80,15 @@ impl<'a> Router<'a> {
         let ends: Vec<Option<crate::plan::Ends>> = (0..self.lines.len())
             .map(|l| {
                 let (from, to) = &self.ends[l];
-                (!self.lines[l].to_plane && !from.is_empty() && !to.is_empty()).then(|| {
-                    crate::plan::Ends {
-                        from: at(from),
-                        to: at(to),
-                        net: self.nets[l],
-                    }
+                // The lines past the ratsnest's are routed after a complete try only.
+                (l < self.routed_lines
+                    && !self.lines[l].to_plane
+                    && !from.is_empty()
+                    && !to.is_empty())
+                .then(|| crate::plan::Ends {
+                    from: at(from),
+                    to: at(to),
+                    net: self.nets[l],
                 })
             })
             .collect();

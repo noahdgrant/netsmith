@@ -15,7 +15,7 @@ use netsmith_pcb::{
     Board, BoardKeepout, CopperLayer, FootprintLibrary, PlaceOptions, Pt, Ratsnest, Rect, Track,
     Via, kicad_pcb, kicad_pro,
 };
-use netsmith_router::route;
+use netsmith_router::{RouteOptions, route};
 use netsmith_testkit::TempDir;
 
 use crate::common;
@@ -226,6 +226,35 @@ fn kicad_finds_exactly_the_pads_the_ratsnest_says_have_no_way_to_their_plane() {
     };
     assert_eq!(counts.violations, 0);
     assert_eq!(counts.unconnected as usize, to_plane);
+}
+
+#[test]
+fn pads_that_share_a_via_or_give_theirs_up_to_the_pour_pass_kicads_check() {
+    // Issue #834: the pads of `plane_vias.rs`'s board share their vias, and in the pour give
+    // them up; KiCad fills the pour and finds every pad joined to its plane.
+    let shared = RouteOptions {
+        pour_pads: false,
+        ..RouteOptions::default()
+    };
+    let poured = RouteOptions {
+        share_vias: false,
+        ..RouteOptions::default()
+    };
+    for (name, pour, options) in [
+        ("shared", false, shared),
+        ("poured", true, poured),
+        ("both", true, RouteOptions::default()),
+    ] {
+        let (b, vias) = crate::plane_vias::routed(pour, options);
+        let (_, before) = crate::plane_vias::routed(pour, crate::plane_vias::off());
+        assert!(vias < before, "{name}: {vias} vias against {before}");
+        let Some(report) = check(name, &b) else {
+            eprintln!("skipped: no KiCad");
+            return;
+        };
+        assert_eq!(copper_only(&report), Vec::<&String>::new(), "{name}");
+        assert_eq!(report.unconnected, 0, "{name}");
+    }
 }
 
 // ---- holes and custom pads, on footprints of our own -----------------------------------
