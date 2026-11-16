@@ -2247,6 +2247,129 @@ fn a_keepout_the_physical_file_states_as_the_editor_writes_one_is_the_editors_to
     );
 }
 
+/// The change the page's undo sends for `edit`: the same keepout turned round, on `scene`.
+fn undo_of(scene: &PcbScene, edit: &PcbEdit) -> PcbEdit {
+    let PcbChange::Keepout {
+        name,
+        before,
+        after,
+    } = &edit.changes[0]
+    else {
+        panic!("a keepout edit");
+    };
+    keepout_edit(scene, name, after.clone(), before.clone())
+}
+
+#[test]
+fn an_undo_and_a_redo_of_keepout_edits_put_the_physical_file_back_as_it_was() {
+    if !footprints_here() {
+        return;
+    }
+    let (root, editor) = pours_project("kundo");
+    let physical = physical_file(&root);
+    let original = fs::read_to_string(&physical).unwrap();
+    let scene = editor.pcb_scene(POURS_BOARD).unwrap();
+
+    let draw = keepout_edit(&scene, "keepout1", None, Some(drawn(2.0, 2.0, 10.0, 6.0)));
+    let scene = editor.pcb_edit(&draw).unwrap().scene;
+    let drawn_text = fs::read_to_string(&physical).unwrap();
+    let grow = keepout_edit(
+        &scene,
+        "keepout1",
+        Some(drawn(2.0, 2.0, 10.0, 6.0)),
+        Some(drawn(4.0, 3.0, 12.0, 8.0)),
+    );
+    let scene = editor.pcb_edit(&grow).unwrap().scene;
+    assert!(fs::read_to_string(&physical).unwrap().contains(".width &= 12mm"));
+
+    // Undo both, newest first: each is the edit turned round, with the stamp of the scene the
+    // edit before answered with.
+    let scene = editor.pcb_edit(&undo_of(&scene, &grow)).unwrap().scene;
+    assert_eq!(fs::read_to_string(&physical).unwrap(), drawn_text);
+    let scene = editor.pcb_edit(&undo_of(&scene, &draw)).unwrap().scene;
+    assert_eq!(fs::read_to_string(&physical).unwrap(), original);
+    assert!(scene.keepouts.iter().all(|k| k.name != "keepout1"));
+
+    // Redo the first: the keepout is drawn again, the same text.
+    let mut redo = draw.clone();
+    redo.stamp = scene.layout_stamp.clone();
+    let scene = editor.pcb_edit(&redo).unwrap().scene;
+    assert_eq!(fs::read_to_string(&physical).unwrap(), drawn_text);
+    assert!(scene.keepouts.iter().any(|k| k.name == "keepout1"));
+    assert_eq!(fs::read_to_string(layout_file(&root)).unwrap(), POURS_LAYOUT);
+}
+
+#[test]
+fn the_stamp_covers_the_physical_file_and_a_stale_one_is_refused() {
+    if !footprints_here() {
+        return;
+    }
+    let (root, editor) = pours_project("kstamp");
+    let physical = physical_file(&root);
+    let first = editor.pcb_scene(POURS_BOARD).unwrap();
+
+    // An edit of the physical file alone moves the stamp: the scene before it is stale.
+    let scene = editor
+        .pcb_edit(&keepout_edit(
+            &first,
+            "keepout1",
+            None,
+            Some(drawn(2.0, 2.0, 10.0, 6.0)),
+        ))
+        .unwrap()
+        .scene;
+    assert_ne!(scene.layout_stamp, first.layout_stamp);
+    let written = fs::read_to_string(&physical).unwrap();
+    let stale = editor
+        .pcb_edit(&keepout_edit(
+            &first,
+            "keepout2",
+            None,
+            Some(drawn(20.0, 10.0, 4.0, 4.0)),
+        ))
+        .unwrap_err();
+    assert_eq!(stale.status, 409, "{}", stale.message);
+    assert!(
+        stale.message.contains("main.physical.nsm changed"),
+        "{}",
+        stale.message
+    );
+    assert_eq!(fs::read_to_string(&physical).unwrap(), written);
+
+    // Another program changes the physical file (a comment only, so the board is not read
+    // again): the page's stamp is stale and nothing is written, as for the layout file.
+    let commented = format!("{written}// changed by hand\n");
+    fs::write(&physical, &commented).unwrap();
+    let refused = editor
+        .pcb_edit(&keepout_edit(
+            &scene,
+            "keepout2",
+            None,
+            Some(drawn(20.0, 10.0, 4.0, 4.0)),
+        ))
+        .unwrap_err();
+    assert_eq!(refused.status, 409, "{}", refused.message);
+    assert_eq!(fs::read_to_string(&physical).unwrap(), commented);
+    assert_eq!(fs::read_to_string(layout_file(&root)).unwrap(), POURS_LAYOUT);
+
+    // The board read again has the new stamp, and the same edit on it is written.
+    let again = editor.pcb_scene(POURS_BOARD).unwrap();
+    assert_ne!(again.layout_stamp, scene.layout_stamp);
+    editor
+        .pcb_edit(&keepout_edit(
+            &again,
+            "keepout2",
+            None,
+            Some(drawn(20.0, 10.0, 4.0, 4.0)),
+        ))
+        .unwrap();
+    let text = fs::read_to_string(&physical).unwrap();
+    assert!(
+        text.ends_with("}\n// changed by hand\n") && text.contains(".keepout2: Keepout {"),
+        "{text}"
+    );
+}
+
 #[test]
 fn a_keepout_the_physical_file_states_in_another_shape_is_moved_and_resized_there() {
     if !footprints_here() {

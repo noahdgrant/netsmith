@@ -107,7 +107,8 @@ pub struct Entry {
     elapsed: Duration,
     /// The layout file the board was placed with, and the name to quote it by.
     layout: Option<(Layout, String)>,
-    /// What the layout file was like when it was read.
+    /// What the layout file and the board's physical file were like when they were read
+    /// ([`stamp`]).
     layout_stamp: String,
     /// What KiCad's check found on the board as it is, if it was run: an edit places the
     /// board again, which forgets it.
@@ -167,23 +168,37 @@ pub fn place(data: &BoardData, name: &str) -> Result<Entry, ApiError> {
     place_checked(data, name).map_err(PlaceError::read)
 }
 
+/// What the files an edit of the PCB view writes are like now: the layout file beside the
+/// source and the board's physical file (ADR 0048), which holds the keepouts the view draws.
+/// An edit gives back the stamp of the scene it was made on and is refused if the stamp is
+/// different now, so a change to either file by another program refuses it (and drops the
+/// page's undo). With no physical file it is the layout file's stamp alone (`none` if there is
+/// no layout file either); else the two joined with `+`.
+pub fn stamp(data: &BoardData) -> String {
+    let layout = data.layout.as_ref().map_or_else(
+        || "none".to_string(),
+        |(file, _)| super::files::stamp_of(file),
+    );
+    match super::files::stamp_of(&data.physical) {
+        physical if physical == "none" => layout,
+        physical => format!("{layout}+{physical}"),
+    }
+}
+
 /// [`place`], keeping what the pre-check proved apart from other failures.
 pub fn place_checked(data: &BoardData, name: &str) -> Result<Entry, PlaceError> {
-    let (layout, stamp) = match &data.layout {
-        Some((file, boards)) => {
-            // The stamp first: a file that changes meanwhile then makes an edit that
-            // was based on this reading refused, not applied over the change.
-            let stamp = super::files::stamp_of(file);
-            let layout = netsmith_fabricate::layout::read(file, boards).map_err(|e| {
-                PlaceError::Other(ApiError::unprocessable(
-                    format!("{name}: {e}"),
-                    "layout_unreadable",
-                    &[("board", name)],
-                ))
-            })?;
-            (layout, stamp)
-        }
-        None => (None, "none".to_string()),
+    // The stamp first: a file that changes meanwhile then makes an edit that was based on
+    // this reading refused, not applied over the change.
+    let stamp = stamp(data);
+    let layout = match &data.layout {
+        Some((file, boards)) => netsmith_fabricate::layout::read(file, boards).map_err(|e| {
+            PlaceError::Other(ApiError::unprocessable(
+                format!("{name}: {e}"),
+                "layout_unreadable",
+                &[("board", name)],
+            ))
+        })?,
+        None => None,
     };
     place_with(data, name, layout, stamp)
 }

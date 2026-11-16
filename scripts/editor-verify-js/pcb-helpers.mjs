@@ -29,10 +29,14 @@ export async function fresh({ page, url, project }, original = POURS_LAYOUT) {
   }
   await page.goto(url);
   await page.waitForSelector('.app');
-  // The server's watcher has noticed the file when the scene it serves carries the file's stamp (the file's modified time in
-  // nanoseconds and its size, files.rs `stamp_of`).
-  const on = fs.statSync(layout, { bigint: true });
-  const want = `${on.mtimeNs}-${on.size}`;
+  // The server's watcher has noticed the file when the scene it serves carries the files' stamp (each file's modified time
+  // in nanoseconds and its size, files.rs `stamp_of`: the layout file's, then `+` and the physical file's if there is one,
+  // pcb.rs `stamp`).
+  const stampOf = (file) => {
+    const on = fs.statSync(file, { bigint: true });
+    return `${on.mtimeNs}-${on.size}`;
+  };
+  const want = fs.existsSync(physical) ? `${stampOf(layout)}+${stampOf(physical)}` : stampOf(layout);
   const board = (await (await fetch(`${url}api/analysis`)).json()).boards[0].name;
   await waitFor('the server to have read the layout file back', async () => (await scene(page, board)).layoutStamp === want);
   await page.reload();
@@ -137,7 +141,7 @@ export async function drag(page, from, to, options = {}) {
 
 /** Wait until the board has been placed again after an edit: the scene's stamp moved on. */
 /** The scene once it shows what a step expects (`test` of the scene is true): for an edit that
- * writes the physical file and not the layout file, whose stamp then stays. */
+ * writes the physical file, which `settled` cannot tell from a stamp the page had before. */
 export async function sceneWhere(page, what, test, board = BOARD) {
   await whenIdle(page);
   return waitFor(what, async () => {

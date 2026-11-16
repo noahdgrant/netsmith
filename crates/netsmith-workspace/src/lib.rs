@@ -201,6 +201,24 @@ fn only_comments_changed(
     changed
 }
 
+/// Give each placed board the stamp of its files as they are now ([`pcb::stamp`]), when a
+/// watched file changed and the boards are kept as placed: a physical file whose comments
+/// changed, or one changed while the analysis waits. Without it the page would be handed the
+/// old stamp again on a reload, and every edit of the PCB view refused. A layout file that
+/// changed has already made the boards be placed again (`fresh`).
+fn restamp(state: &mut State) {
+    let State {
+        snapshot,
+        pcb: entries,
+        ..
+    } = state;
+    for (name, entry) in entries.iter_mut() {
+        if let Ok(data) = snapshot.board_handle(name) {
+            entry.set_layout_stamp(pcb::stamp(&data));
+        }
+    }
+}
+
 fn millis(since: Instant) -> u32 {
     since.elapsed().as_millis().min(u128::from(u32::MAX)) as u32
 }
@@ -434,16 +452,19 @@ impl Workspace {
             && only_comments_changed(&state, &paths, &stamp, same_manifest.as_deref())
         {
             state.stamp = Some(stamp);
+            restamp(&mut state);
             return state;
         }
         // An analysis of these very files was cancelled: they are not analysed again until one
         // changes or the page asks (`run_analysis`).
         if all_read && state.cancelled.as_ref() == Some(&stamp) {
+            restamp(&mut state);
             return state;
         }
         // The page asked for no analysis on change: the files are read when it asks.
         let forced = self.forced.swap(false, Ordering::AcqRel);
         if !forced && state.version > 0 && all_read && !self.auto_analysis.load(Ordering::Acquire) {
+            restamp(&mut state);
             return state;
         }
         let started = Instant::now();
@@ -543,9 +564,18 @@ impl Workspace {
         let shown = file
             .file_name()
             .map_or(String::new(), |n| n.to_string_lossy().into_owned());
-        if files::stamp_of(file) != edit.stamp {
+        if pcb::stamp(&data) != edit.stamp {
+            // The stamp is the layout file's, then `+` and the physical file's: name the one
+            // that changed.
+            let changed = if edit.stamp.split('+').next() != Some(files::stamp_of(file).as_str()) {
+                shown.clone()
+            } else {
+                data.physical
+                    .file_name()
+                    .map_or(String::new(), |n| n.to_string_lossy().into_owned())
+            };
             return Err(ApiError::conflict(format!(
-                "{shown} changed on disk since the board was read: reload the board"
+                "{changed} changed on disk since the board was read: reload the board"
             )));
         }
         let layers = match layers {
@@ -583,7 +613,7 @@ impl Workspace {
         })?;
         files::write_atomic(file, &layout.to_text())
             .map_err(|e| ApiError::internal(format!("{shown}: {e}")))?;
-        entry.set_layout_stamp(files::stamp_of(file));
+        entry.set_layout_stamp(pcb::stamp(&data));
         let scene = pcb::scene(&entry, &data, name);
         let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
         // Our own write is not a change by another program.
@@ -848,7 +878,7 @@ impl Workspace {
             files::write_atomic(file, &layout.to_text())
                 .map_err(|e| ApiError::internal(format!("{}: {e}", shown(file))))?;
         }
-        entry.set_layout_stamp(files::stamp_of(file));
+        entry.set_layout_stamp(pcb::stamp(data));
         // The physical file is the source's: the project is read again, as after a save, even
         // with the analysis on change turned off.
         self.forced.store(true, Ordering::Release);
