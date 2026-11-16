@@ -2,7 +2,7 @@
 //!
 //! Each side is a `.kicad_sch` (exported to a netlist by `kicad-cli`), a `.kicad_pcb`, the
 //! XML of a KiCad netlist, or a `.nsm` file, whose board is built as `netsmith build`
-//! does. The comparison itself is in `netsmith-netlist`, whose module docs say where it
+//! does, held to the pick lock beside the source (#743). The comparison itself is in `netsmith-netlist`, whose module docs say where it
 //! departs from ADR 0017 (#67): a two-pad part without polarity may have its pads swapped,
 //! which a match lists (`swapped` in the JSON), and the search bound grows with the board.
 
@@ -212,7 +212,11 @@ fn design_of(path: &str, board: Option<&str>) -> Result<(Design, Mapping), Strin
     let loader = target.loader()?;
     let catalogs = target.catalogs()?;
     let text = fs::read_to_string(path).map_err(|e| format!("{path}: {e}"))?;
-    let built = outcome_with(path, &text, &loader, &catalogs, None)
+    // The pick lock beside the source holds its parts to their rows, as for `build`; it is
+    // read and never written.
+    let (held, _) = netsmith_pipeline::pick_lock::open(Path::new(path), &catalogs, false)?;
+    let catalogs = held.as_ref().unwrap_or(&catalogs);
+    let built = outcome_with(path, &text, &loader, catalogs, None)
         .map_err(|problems| render_problems(&problems))?
         .boards;
     let mapping = Mapping::for_project(target.project.as_ref().map(|p| p.root.as_path()))
