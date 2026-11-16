@@ -112,7 +112,11 @@ pub struct Conflict {
     /// - `keepout` or `cutout`: a courtyard that overlaps one (`area`) wherever it is put;
     /// - `over_pins`: a courtyard over a pad of a through-hole part wherever it is put, which
     ///   the pins' protrusion does not excuse;
-    /// - `outside`: no place the lines leave keeps the courtyard inside the outline.
+    /// - `outside`: no place the lines leave keeps the courtyard inside the outline;
+    /// - `past_edge`: the lines put the courtyard past an edge (`past`) that nobody stated it
+    ///   may hang over, wherever they put it;
+    /// - `too_big`: the courtyard is bigger than the outline leaves in every turn the part may
+    ///   take (`turns`, `outline`).
     pub kind: &'static str,
     /// The lines and locks that cannot all hold, each once, in the order the sentence names
     /// them.
@@ -133,9 +137,24 @@ pub struct Conflict {
     /// The outline, where the proof needs it (the lines alone would leave a place).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub outline: Option<ConflictOutline>,
+    /// How far the courtyard is past each edge nobody stated it may hang over, at best
+    /// (`past_edge`).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub past: Vec<EdgePast>,
+    /// The size of the part's courtyard in each turn tried (`too_big`).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub turns: Vec<Turn>,
     /// The sentence a person reads for it. Not in the JSON: the finding carries the message.
     #[serde(skip)]
     pub text: String,
+}
+
+/// The size of a courtyard turned by `angle` degrees.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct Turn {
+    pub angle: f64,
+    pub width: f64,
+    pub height: f64,
 }
 
 /// One fault the placement check finds on a placed board.

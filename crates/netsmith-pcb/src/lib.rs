@@ -80,6 +80,7 @@ pub use body3d::{
 };
 pub use conflict::{
     Conflict, ConflictArea, ConflictLine, ConflictOutline, EdgePast, PartBox, PlacementFault, Span,
+    Turn,
 };
 pub use constraints::{
     PartWindow, PlanOffset, Want, axis_of as constraint_axis_of,

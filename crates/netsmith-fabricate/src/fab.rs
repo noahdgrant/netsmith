@@ -667,16 +667,24 @@ pub struct PrecheckReport {
     pub errors: Vec<String>,
     /// What is only suspicious.
     pub warnings: Vec<String>,
-    /// The lines that cannot all hold among `errors`, as data (#779).
+    /// The lines that cannot all hold among `errors`, and each fault about one part (a courtyard
+    /// past an edge nobody stated, a part bigger than the outline), as data (#779).
     pub conflicts: Vec<netsmith_pcb::Conflict>,
+    /// For a lock of the layout file that breaks a requirement, the requirements not met on the
+    /// board as the lock leaves it, as data (#779); empty for any other refusal.
+    pub requirements: Vec<netsmith_pcb::RequirementMiss>,
+    /// The faults of the placement check on that board (#779).
+    pub placement: Vec<netsmith_pcb::PlacementFault>,
 }
 
 /// The pre-check of one built board with the layout file's locks, if any. A board the
 /// libraries cannot give footprints for (no KiCad install, a part with no mapping) has nothing
-/// proved here: `build` has never needed them, and `fab` reports that when it places.
+/// proved here: `build` has never needed them, and `fab` reports that when it places. A lock
+/// that breaks a requirement is refused here, with the board as the lock leaves it as data
+/// (`requirements`, `placement`, issue #779).
 pub fn precheck_board(
     built: &Built,
-    layout: Option<&netsmith_pcb::Layout>,
+    layout: Option<&(netsmith_pcb::Layout, String)>,
     libraries: &Libraries,
     constraints_warn: bool,
 ) -> PrecheckReport {
@@ -684,7 +692,7 @@ pub fn precheck_board(
         board: built.label(),
         ..PrecheckReport::default()
     };
-    let mut placement = place_options(&built.design, layout);
+    let mut placement = place_options(&built.design, layout.map(|l| &l.0));
     placement.lines_warn = constraints_warn;
     match netsmith_placer::precheck(
         &built.design,
@@ -694,10 +702,25 @@ pub fn precheck_board(
     ) {
         Ok(found) => {
             report.errors = found.errors();
-            report.conflicts = found.proofs;
+            report.conflicts = found.all_proofs();
             report.warnings = found.warnings;
         }
-        Err(e @ netsmith_pcb::BoardError::Constraints(_)) => report.errors = vec![e.to_string()],
+        Err(e @ netsmith_pcb::BoardError::Constraints(_)) => {
+            report.errors = vec![e.to_string()];
+            let failure = crate::layout::PlaceFailure::Board(e);
+            if let Some(ended) = crate::layout::where_ended(
+                &built.design,
+                layout,
+                libraries,
+                constraints_warn,
+                &failure,
+            ) {
+                let explained = ended.explain(&built.design);
+                report.requirements = explained.misses;
+                report.conflicts = explained.proofs;
+                report.placement = ended.board.placement_faults();
+            }
+        }
         Err(_) => {}
     }
     report
@@ -925,7 +948,7 @@ fn fab_board(
         let precheck = timings::stage("fab.precheck", &label, || {
             precheck_board(
                 built,
-                layout.as_ref().map(|l| &l.0),
+                layout.as_ref(),
                 libraries,
                 catalogs.constraints_warn(),
             )
@@ -936,7 +959,9 @@ fn fab_board(
         if !precheck.errors.is_empty() {
             return Err(FabFailure {
                 text: precheck.errors.into_iter().map(fail).collect(),
+                requirements: precheck.requirements,
                 conflicts: precheck.conflicts.into(),
+                placement: precheck.placement.into(),
                 ..FabFailure::default()
             });
         }

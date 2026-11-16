@@ -74,7 +74,8 @@ use netsmith_core::{Design, PlaceField};
 
 use crate::board::{Placed, Side, outside_text};
 use crate::conflict::{
-    Conflict, ConflictArea, ConflictLine, ConflictOutline, PartBox, face_word, span_from_origin,
+    Conflict, ConflictArea, ConflictLine, ConflictOutline, EdgePast, PartBox, Turn, face_word,
+    span_from_origin,
 };
 use crate::constraints::{
     self, Plan, Reach, TOLERANCE, axis_of, base_turn, body_at, measured, miss, number, offset,
@@ -164,6 +165,8 @@ pub struct Fault {
     pub path: String,
     /// What is wrong, as a sentence with the numbers.
     pub text: String,
+    /// The same as data (issue #779): a `past_edge` or a `too_big` [`Conflict`].
+    pub proof: Conflict,
 }
 
 /// What the requirements of the physical file, the circuit and the layout file prove about
@@ -206,6 +209,14 @@ impl Precheck {
         warned.append(&mut self.warnings);
         self.warnings = warned;
         self
+    }
+
+    /// Every proof as data: the sets of lines that cannot all hold, then each fault about one
+    /// part (`past_edge`, `too_big`), in the order of [`Precheck::errors`].
+    pub fn all_proofs(&self) -> Vec<Conflict> {
+        let mut all = self.proofs.clone();
+        all.extend(self.faults.iter().map(|f| f.proof.clone()));
+        all
     }
 
     /// The errors as separate messages: the block of lines that cannot both hold first (in
@@ -346,26 +357,41 @@ impl Context<'_> {
                 }
             }
             if !past.is_empty() {
+                let text = format!(
+                    "{}; the lines that place it: {}",
+                    outside_text(
+                        &w.part.refdes,
+                        &w.part.path,
+                        &past,
+                        &may.list(),
+                        &by,
+                        &inexact,
+                        !body_reaches
+                    ),
+                    if w.lines.is_empty() {
+                        "none".to_string()
+                    } else {
+                        said(self.design, &w.lines)
+                    }
+                );
+                let mut proof = self.conflict(
+                    "past_edge",
+                    &w.lines,
+                    vec![Self::part_box(&w)],
+                    text.clone(),
+                );
+                proof.past = past
+                    .iter()
+                    .map(|(edge, by)| EdgePast {
+                        edge: edge.word(),
+                        by: finite(*by).unwrap_or_default(),
+                    })
+                    .collect();
                 found.faults.push(Fault {
                     refdes: w.part.refdes.clone(),
                     path: w.part.path.clone(),
-                    text: format!(
-                        "{}; the lines that place it: {}",
-                        outside_text(
-                            &w.part.refdes,
-                            &w.part.path,
-                            &past,
-                            &may.list(),
-                            &by,
-                            &inexact,
-                            !body_reaches
-                        ),
-                        if w.lines.is_empty() {
-                            "none".to_string()
-                        } else {
-                            said(self.design, &w.lines)
-                        }
-                    ),
+                    text,
+                    proof,
                 });
             }
         }
@@ -388,20 +414,41 @@ impl Context<'_> {
             }
             let wall = (self.wall * 100.0).round() / 100.0;
             let inside = |v: f64| (v - 2.0 * self.wall).max(0.0);
+            // The words of the placer's own refusal (`DoesNotFit`), with the range's top
+            // said as such.
+            let text = format!(
+                "the outline is {}{:.1} x {:.1} mm, which leaves {:.1} x {:.1} mm for a courtyard inside its {} mm margin, and a part is bigger in every turn it may take: {o}",
+                if self.limit { "at most " } else { "" },
+                fit.0,
+                fit.1,
+                inside(fit.0),
+                inside(fit.1),
+                wall,
+            );
+            let mut proof = self.conflict(
+                "too_big",
+                &[],
+                vec![PartBox {
+                    part: Self::part_ref(part),
+                    courtyard: None,
+                }],
+                text.clone(),
+            );
+            proof.turns = o
+                .tried
+                .iter()
+                .map(|(angle, (width, height))| Turn {
+                    angle: finite(*angle).unwrap_or_default(),
+                    width: finite(*width).unwrap_or_default(),
+                    height: finite(*height).unwrap_or_default(),
+                })
+                .collect();
+            proof.outline = self.outline_data(true);
             found.faults.push(Fault {
                 refdes: part.refdes.clone(),
                 path: part.path.clone(),
-                // The words of the placer's own refusal (`DoesNotFit`), with the range's top
-                // said as such.
-                text: format!(
-                    "the outline is {}{:.1} x {:.1} mm, which leaves {:.1} x {:.1} mm for a courtyard inside its {} mm margin, and a part is bigger in every turn it may take: {o}",
-                    if self.limit { "at most " } else { "" },
-                    fit.0,
-                    fit.1,
-                    inside(fit.0),
-                    inside(fit.1),
-                    wall,
-                ),
+                text,
+                proof,
             });
         }
     }
@@ -970,6 +1017,8 @@ impl<'a> Context<'a> {
             area: None,
             by: None,
             outline: None,
+            past: Vec::new(),
+            turns: Vec::new(),
             text,
         }
     }

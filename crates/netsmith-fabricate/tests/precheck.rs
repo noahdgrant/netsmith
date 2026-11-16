@@ -272,6 +272,27 @@ fn a_courtyard_past_two_edges_nobody_stated_is_refused_naming_the_edges() {
         "{text}"
     );
     assert_eq!(found.faults[0].refdes, "J1");
+    // Issue #779: the same as data, for a program: the edges and how far past, the part and the
+    // box its courtyard lies within, the lines that place it.
+    let proofs = found.all_proofs();
+    assert_eq!(proofs.len(), 1, "{proofs:?}");
+    let data = serde_json::to_value(&proofs[0]).unwrap();
+    assert_eq!(data["kind"], "past_edge", "{data}");
+    let edges: Vec<&str> = data["past"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|p| p["edge"].as_str().unwrap())
+        .collect();
+    assert_eq!(edges, ["left", "right"], "{data}");
+    assert!(data["past"][0]["by"].as_f64().unwrap() > 0.0, "{data}");
+    assert_eq!(data["parts"][0]["refdes"], "J1", "{data}");
+    assert!(data["parts"][0]["courtyard"]["x_min"].is_number(), "{data}");
+    assert!(
+        data["lines"].as_array().unwrap().iter().all(|l| l["kind"] == "requirement"),
+        "{data}"
+    );
+    assert!(!data["lines"].as_array().unwrap().is_empty(), "{data}");
 }
 
 #[test]
@@ -400,6 +421,19 @@ fn a_part_bigger_than_the_outline_in_every_turn_is_refused_before_placing() {
     ] {
         assert!(text.contains(want), "{want:?} is not in {text}");
     }
+    // Issue #779: the part, its courtyard in each turn and the outline, as data.
+    let proofs = found.all_proofs();
+    let data = serde_json::to_value(&proofs[0]).unwrap();
+    assert_eq!(data["kind"], "too_big", "{data}");
+    assert_eq!(data["parts"][0]["refdes"], "J1", "{data}");
+    let turns = data["turns"].as_array().unwrap();
+    assert!(turns.iter().any(|t| t["angle"] == 90.0), "{data}");
+    assert!(
+        turns.iter().all(|t| t["width"].as_f64().unwrap() > 0.0 && t["height"].is_number()),
+        "{data}"
+    );
+    assert_eq!(data["outline"]["width"], 12.0, "{data}");
+    assert_eq!(data["outline"]["at_most"], false, "{data}");
     let (_dir, made, placing) = fab("oversize", 0, HEADER, (12, 12), "", false);
     assert!(made.is_err());
     assert!(!placing);
