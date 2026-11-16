@@ -45,8 +45,8 @@ impl Board {
                 design.name
             ));
         }
-        let mut u = Board::unplaced(design, mapping, library, options)
-            .map_err(|e| e.to_string())?;
+        let mut u =
+            Board::unplaced(design, mapping, library, options).map_err(|e| e.to_string())?;
         let entries = layout.and_then(|(l, _)| l.boards.get(&design.name));
         let mut lacking = Vec::new();
         for part in &mut u.parts {
@@ -131,7 +131,10 @@ mod tests {
     fn every_part_is_where_the_layout_file_puts_it_and_nothing_is_placed() {
         let design = design();
         let board = made(&design, Some(&layout(ALL))).unwrap_or_else(|e| panic!("{e}"));
-        assert_eq!((board.outline.width(), board.outline.height()), (40.0, 30.0));
+        assert_eq!(
+            (board.outline.width(), board.outline.height()),
+            (40.0, 30.0)
+        );
         let at = |refdes: &str| {
             let p = board.part(refdes).unwrap();
             let a = p.at - board.outline.min;
@@ -179,11 +182,17 @@ mod tests {
         let mut design = design();
         design.features.outline = None;
         let e = made(&design, Some(&layout(ALL))).unwrap_err();
-        assert!(e.contains("does not state its outline's size exactly"), "{e}");
+        assert!(
+            e.contains("does not state its outline's size exactly"),
+            "{e}"
+        );
         let mut design = self::design();
         design.features.outline.as_mut().unwrap().width = (30.0, 40.0);
         let e = made(&design, Some(&layout(ALL))).unwrap_err();
-        assert!(e.contains("does not state its outline's size exactly"), "{e}");
+        assert!(
+            e.contains("does not state its outline's size exactly"),
+            "{e}"
+        );
     }
 
     #[test]

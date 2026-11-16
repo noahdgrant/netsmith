@@ -470,3 +470,45 @@ fn layout_fit_gives_the_nearest_place_clear_of_the_others_and_writes_nothing() {
         String::from_utf8_lossy(&none.stderr)
     );
 }
+
+#[test]
+fn layout_fit_as_laid_out_queries_the_layout_files_board_with_no_placement() {
+    // Issue #1002: every part has an entry, so the board is the file's places and nothing is
+    // placed; the answer is the one the placed board gives.
+    let all = format!("{UNLOCKED_OVER}[Widget.parts.power_in]\nat = [30.0, 12.0]\n");
+    let fit = |name: &str, layout: &str, args: &[&str]| {
+        let mut full = vec!["layout", "fit", "r1", "--near", "led", "--format", "json"];
+        full.extend_from_slice(args);
+        run_in(name, LOCKED_PHYSICAL, layout, &full)
+    };
+    let placed = fit("fit-as-placed", &all, &[]);
+    let laid = fit("fit-as-laid-out", &all, &["--as-laid-out"]);
+    let stderr = String::from_utf8_lossy(&laid.stderr);
+    assert_eq!(laid.status.code(), Some(0), "{stderr}");
+    let laid_doc: serde_json::Value = serde_json::from_slice(&laid.stdout).unwrap();
+    let placed_doc: serde_json::Value = serde_json::from_slice(&placed.stdout).unwrap();
+    assert_eq!(laid_doc, placed_doc);
+    assert_eq!(laid_doc["now"]["fits"], false, "r1 overlaps the LED: {laid_doc}");
+
+    // Locked parts are where the file has them, an overlap of two locks included.
+    let locked = format!("{LOCKED_OVER}[Widget.parts.power_in]\nat = [30.0, 12.0]\nlock = true\n");
+    let laid = fit("fit-locked-as-laid-out", &locked, &["--as-laid-out"]);
+    let stderr = String::from_utf8_lossy(&laid.stderr);
+    let doc: serde_json::Value = serde_json::from_slice(&laid.stdout)
+        .unwrap_or_else(|e| panic!("{e}: {stderr}"));
+    assert_eq!(doc["now"]["fits"], false, "{doc}");
+    assert!(
+        doc["now"]["placement"].as_array().unwrap().iter().any(|f| f["kind"] == "overlap"),
+        "{doc}"
+    );
+
+    // A part with no entry is named, and the answer is a refusal (1), not a guess.
+    let short = fit("fit-short", UNLOCKED_OVER, &["--as-laid-out"]);
+    assert_eq!(short.status.code(), Some(1));
+    let stderr = String::from_utf8_lossy(&short.stderr);
+    assert!(stderr.contains("no place for `power_in`"), "{stderr}");
+
+    // The placer's seeds have nothing to do with it: a usage mistake (2).
+    let both = fit("fit-both", &all, &["--as-laid-out", "--place-seeds", "2"]);
+    assert_eq!(both.status.code(), Some(2));
+}

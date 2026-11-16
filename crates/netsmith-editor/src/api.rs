@@ -43,11 +43,13 @@ use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
 mod compare;
+mod fit;
 mod hints;
 mod summary;
 mod view;
 
 pub use compare::*;
+pub use fit::*;
 pub use hints::*;
 pub use summary::*;
 pub use view::*;
@@ -2456,6 +2458,12 @@ pub fn typescript() -> String {
         SummaryNeighbours,
         SummaryPads,
         PcbSummary,
+        PcbFitPart,
+        PcbFitNear,
+        PcbFitFault,
+        PcbFitMiss,
+        PcbFitPlace,
+        PcbFit,
         BuildReport,
         Drc,
         Download,

@@ -70,7 +70,7 @@ pub enum Command {
     Capture(CaptureArgs),
     /// Say where one part fits with every other part where it is: the nearest place for each turn and face, or what is in the way.
     #[command(
-        after_long_help = "The board is placed as `board3d` places it (the layout file and the physical file read, nothing written), and the part at PATH (a path or a designator) is tried on a grid of origins every `--step` mm from the outline's top left corner, for each of the four right-angle turns from its own and on each face (one face when a requirement states it, or `--side` names it; a turn a requirement rules out is not tried). Each place is measured as the placer and `fab` measure it: the placement check of that part against every other part where it is (courtyards, holes, keepouts, height limits, the edge, cutouts) and the requirements of the physical file about it (its windows, its modules' and the relations it is an end of). For each turn and face it gives the place nearest `--near` where nothing is found, or, when there is none, the closest try (the fewest findings, then the nearest) with what is in the way there. `--near` is a part (path or designator: the centre of its courtyard) or a point `X,Y` in mm from the outline's top left corner, y down; with none, where the part is now. Distances are from that point to the centre of the part's courtyard. Nothing is written: `netsmith layout set PATH --at X,Y --turn T --side S` writes a place, as the text says for each.\n\n`--format json` prints one JSON document on one line: `board`, `part` (`refdes`, `path`), `near` (`x`, `y`, and `part` when it is one), `step`, `now` (the part where it is) and `poses`, each a place with `turn`, `side`, `at` (the footprint's origin, as the layout file's `at`), `distance`, `fits`, and where it does not fit `placement` (the placement check's findings as `fab --format json` has them), `requirements` (the requirements it does not meet) and `messages` (their sentences). The poses that fit come first, nearest first. The exit code is 0 when some pose fits, 1 when none does or the part or board is refused (a part the board does not have, a board that does not build or place), and 2 when it could not run."
+        after_long_help = "The board is placed as `board3d` places it (the layout file and the physical file read, nothing written), and the part at PATH (a path or a designator) is tried on a grid of origins every `--step` mm from the outline's top left corner, for each of the four right-angle turns from its own and on each face (one face when a requirement states it, or `--side` names it; a turn a requirement rules out is not tried). Each place is measured as the placer and `fab` measure it: the placement check of that part against every other part where it is (courtyards, holes, keepouts, height limits, the edge, cutouts) and the requirements of the physical file about it (its windows, its modules' and the relations it is an end of). For each turn and face it gives the place nearest `--near` where nothing is found, or, when there is none, the closest try (the fewest findings, then the nearest) with what is in the way there. `--near` is a part (path or designator: the centre of its courtyard) or a point `X,Y` in mm from the outline's top left corner, y down; with none, where the part is now. Distances are from that point to the centre of the part's courtyard. Nothing is written: `netsmith layout set PATH --at X,Y --turn T --side S` writes a place, as the text says for each.\n\nWith `--as-laid-out` the board is not placed: it is made exactly as the layout file has it, each part where its entry puts it (or where a requirement pins it) and the outline the physical file states, in milliseconds where placing a nearly full board takes seconds or more. It is refused, naming what is missing, when a part has no entry in the layout file and no requirement pins it, or when the outline's size is not stated exactly (a width or height left open or given as a range is known only by placing); `--place-seeds` and `--place-budget` cannot go with it. Run `netsmith layout capture` to give every part an entry.\n\n`--format json` prints one JSON document on one line: `board`, `part` (`refdes`, `path`), `near` (`x`, `y`, and `part` when it is one), `step`, `now` (the part where it is) and `poses`, each a place with `turn`, `side`, `at` (the footprint's origin, as the layout file's `at`), `distance`, `fits`, and where it does not fit `placement` (the placement check's findings as `fab --format json` has them), `requirements` (the requirements it does not meet) and `messages` (their sentences). The poses that fit come first, nearest first. The exit code is 0 when some pose fits, 1 when none does or the part or board is refused (a part the board does not have, a board that does not build or place), and 2 when it could not run."
     )]
     Fit(FitArgs),
     /// Write the placed board, not routed, as a KiCad board, also when the placement has findings.
@@ -135,6 +135,9 @@ pub struct FitArgs {
     /// Try one face only: `top` or `bottom`.
     #[arg(long, value_enum)]
     pub side: Option<Side>,
+    /// Place nothing: query the board exactly as the layout file has it.
+    #[arg(long, conflicts_with_all = ["place_seeds", "place_budget"])]
+    pub as_laid_out: bool,
     #[command(flatten)]
     pub placing: common::Placing,
     /// Text for a person, or one JSON document on stdout.
@@ -392,16 +395,12 @@ fn import(args: &ImportArgs) -> ExitCode {
 
 /// `layout fit`: where one part fits with the rest where they are; 1 when no pose fits.
 fn fit(args: &FitArgs) -> ExitCode {
-    let near = match args.near.as_deref() {
-        None => netsmith_pcb::FitNear::Itself,
-        Some(text) if text.contains(',') => match parse_point(text) {
-            Ok([x, y]) => netsmith_pcb::FitNear::Point(x, y),
-            Err(e) => {
-                eprintln!("error: --near: {e}");
-                return ExitCode::from(2);
-            }
-        },
-        Some(part) => netsmith_pcb::FitNear::Part(part.to_string()),
+    let near = match netsmith_pcb::FitNear::parse(args.near.as_deref()) {
+        Ok(near) => near,
+        Err(e) => {
+            eprintln!("error: --near: {e}");
+            return ExitCode::from(2);
+        }
     };
     if !(args.step.is_finite() && args.step > 0.0) {
         eprintln!("error: --step must be above 0 mm");
@@ -416,11 +415,15 @@ fn fit(args: &FitArgs) -> ExitCode {
         args.target.board.as_deref(),
         Some(&args.placing),
         |placed| {
-            placed
-                .with_board(|built, board| {
-                    board.fit_part(&built.design, &args.part, &near, args.step, face)
-                })
-                .and_then(|done| done.map_err(|e| format!("error: {e}\n")))
+            let query = |built: &netsmith_pipeline::Built, board: &netsmith_pcb::Board| {
+                board.fit_part(&built.design, &args.part, &near, args.step, face)
+            };
+            if args.as_laid_out {
+                placed.with_board_as_laid_out(query)
+            } else {
+                placed.with_board(query)
+            }
+            .and_then(|done| done.map_err(|e| format!("error: {e}\n")))
         },
     );
     match made {
@@ -810,6 +813,31 @@ mod tests {
             })) if near == "-1,2"
         ));
         assert_eq!(kind(&["layout", "fit"]), ErrorKind::MissingRequiredArgument);
+        assert!(matches!(
+            parse(&["layout", "fit", "R1", "--as-laid-out"]),
+            Ok(Top::Layout(Args {
+                command: Command::Fit(FitArgs {
+                    as_laid_out: true,
+                    ..
+                })
+            }))
+        ));
+        // Nothing is placed, so the placer's seeds and budget have nothing to do.
+        assert_eq!(
+            kind(&["layout", "fit", "R1", "--as-laid-out", "--place-seeds", "2"]),
+            ErrorKind::ArgumentConflict
+        );
+        assert_eq!(
+            kind(&[
+                "layout",
+                "fit",
+                "R1",
+                "--as-laid-out",
+                "--place-budget",
+                "5tries"
+            ]),
+            ErrorKind::ArgumentConflict
+        );
     }
 
     #[test]

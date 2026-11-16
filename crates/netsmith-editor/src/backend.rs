@@ -6,7 +6,7 @@ use netsmith_core::job::Cancel;
 use crate::api::{
     Analysis, BoardDetail, Bom, BuildReport, CatalogRefresh, Changed, Compare, Definition,
     FabReport, FileContent, GitInfo, OrderInfo, OrderReport, PanelView, PcbEdit, PcbEdited,
-    PcbFindings, PcbPours, PcbReport, PcbScene, PcbSummary, PinLock, PinMove, PinWritten,
+    PcbFindings, PcbFit, PcbPours, PcbReport, PcbScene, PcbSummary, PinLock, PinMove, PinWritten,
     PowerTree, Project, Saved, SchematicHints, Swap, SwapApply, Swapped, SystemView,
 };
 
@@ -364,6 +364,22 @@ pub trait Backend: Send + Sync + 'static {
         Err(ApiError::not_found(format!(
             "there is no summary of `{board}`"
         )))
+    }
+    /// Where the part `part` (a path or a designator) fits on the board as placed now, every
+    /// other part where it is (issue #1002): what `netsmith layout fit` says. `near` is a part
+    /// or `X,Y` in mm, `None` for where the part is; `step` is the grid in mm (above 0) and
+    /// `side` is `top`, `bottom` or `None` for both. Nothing is changed. A part the board has
+    /// none of, a `near` that is neither, a step not above 0 and a side that is neither face
+    /// are a 400 with the reason.
+    fn pcb_fit(
+        &self,
+        board: &str,
+        _part: &str,
+        _near: Option<&str>,
+        _step: f64,
+        _side: Option<&str>,
+    ) -> Result<PcbFit, ApiError> {
+        Err(ApiError::not_found(format!("there is no fit of `{board}`")))
     }
     /// Run KiCad's design rules check on the board as it is, keep what it found for
     /// [`Backend::pcb_findings`] until the board changes, and answer with all the findings.

@@ -30,6 +30,7 @@ import type {
   PcbWalked,
   PcbFindings,
   PcbSummary,
+  PcbFit,
   PcbPours,
   PcbReport,
   PcbScene,
@@ -201,6 +202,17 @@ export const api = {
   pcbFindings: (board: string) => getJson<PcbFindings>(`/api/pcb/findings?${q({ board })}`),
   /** The placed board summed up (`netsmith layout summary`): `near`, `within` and `between` as `summaryQuery` writes them. `ApiFailure` 400 says which part or pad the board has none of. */
   pcbSummary: (query: string) => getJson<PcbSummary>(`/api/pcb/summary?${query}`),
+  /** Where one part fits with every other part where it is (`netsmith layout fit`): `part` (a path or a designator), `near` (a part, or `X,Y` in mm), `step` (mm) and `side` (`top` or `bottom`), the last three optional. Nothing is written. `ApiFailure` 400 says what the board has none of or what is wrong with the query. */
+  pcbFit: (board: string, part: string, ask: { near?: string; step?: number; side?: 'top' | 'bottom' } = {}) =>
+    getJson<PcbFit>(
+      `/api/pcb/fit?${q({
+        board,
+        part,
+        ...(ask.near === undefined ? {} : { near: ask.near }),
+        ...(ask.step === undefined ? {} : { step: String(ask.step) }),
+        ...(ask.side === undefined ? {} : { side: ask.side }),
+      })}`,
+    ),
   pcbDrc: (board: string) => post<PcbFindings>(`/api/pcb/drc?${q({ board })}`),
   cancelRoute: (): Promise<void> =>
     held(async () => {
