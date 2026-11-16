@@ -506,6 +506,23 @@ fn every_placement_check_message_names_the_member_by_path_with_the_designator() 
         }),
         "a pad of `stage.r3` (R3) is inside the keepout `lid`, which forbids tracks, so none can reach it"
     );
+    // The room a mounting hole keeps for its screw head is called the head, not a keepout.
+    assert_eq!(
+        text(PlacementProblem::InKeepout {
+            refdes: r(),
+            path: path(),
+            keepout: "screw head of mount.h1".into()
+        }),
+        "`stage.r3` (R3) overlaps the screw head of `mount.h1`, which forbids parts"
+    );
+    assert_eq!(
+        text(PlacementProblem::PadInKeepout {
+            refdes: r(),
+            path: path(),
+            keepout: "screw head of mount.h1".into()
+        }),
+        "a pad of `stage.r3` (R3) is inside the screw head of `mount.h1`, which forbids tracks, so none can reach it"
+    );
     assert_eq!(
         text(PlacementProblem::InCutout {
             refdes: r(),

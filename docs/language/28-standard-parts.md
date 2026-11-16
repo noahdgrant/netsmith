@@ -1756,14 +1756,14 @@ board Mechanical {
 }
 ```
 
-A board declares its mounting holes and fiducials in its physical file (see _The physical file_), not here: they have no circuit meaning.
+A board declares its mounting holes and fiducials in its physical file (see _The physical file_), not here: they have no circuit meaning. A mounting hole may state `.head_diameter`, the width of its screw's head, and then keeps room for it (see _A screw head_ in the chapter on the shape of a board).
 
 ```nsm-physical
 import std::parts::mechanical::{Fiducial, MountingHole}
 
 physical for Mechanical {
     case {
-        .hole: MountingHole
+        .hole: MountingHole { .head_diameter &= 6mm }
         .fid: Fiducial
     }
 }

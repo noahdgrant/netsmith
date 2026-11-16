@@ -53,6 +53,11 @@ pub struct Pour {
     pub stitch_pitch: Option<f64>,
 }
 
+/// What the name of the keepout a mounting hole carries for its screw head starts with
+/// (`screw head of mount.h1`, from `.head_diameter`, ADR 0045, C3). A message says the head and
+/// not a keepout, as it says a standoff and not a keepout.
+pub const HEAD_ZONE: &str = "screw head of ";
+
 /// An area where tracks, vias, copper or parts are not allowed.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Keepout {
