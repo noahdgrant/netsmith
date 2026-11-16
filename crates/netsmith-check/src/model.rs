@@ -1777,10 +1777,18 @@ impl Model {
     /// they belong to the part's own pin, so connecting two lines does not equate them. So is the
     /// `capacitance` of an `I2c` interface, the capacitance of one part's pin, which the board adds
     /// up with the others' (`std::bus::I2cPullups`), and its `sink_current`, the current one part's
-    /// driver sinks at its `vol`, of which the board states the least.
+    /// driver sinks at its `vol`, of which the board states the least. So is the `peak_current` of
+    /// a `Rail`, the most that one load draws at an instant (an inrush): two loads on one rail
+    /// each have their own, and each is checked against the rail's `max_peak_current`, which `~`
+    /// does share.
     pub fn is_pin_figure(&self, field: FieldId) -> bool {
         let f = self.field(field);
         let kind = match f.name.as_str() {
+            "peak_current" => {
+                return f.kind == FieldKind::Quantity(Dimension::CURRENT)
+                    && self.instance(f.owner).kind == InstKind::Interface
+                    && self.instance(f.owner).type_name == "Rail";
+            }
             "ii" => FieldKind::Quantity(Dimension::CURRENT),
             "roh" | "rol" => FieldKind::Quantity(Dimension::RESISTANCE),
             // The capacitance of one pin of an I2C bus interface and the current its driver sinks

@@ -404,9 +404,9 @@ board TooTight {
 
 ```text
 error: no combination of candidates satisfies `divider.rbottom` and `divider.rtop` together: the closest, divider.rbottom = 20kΩ 1% 0402 C25765 and divider.rtop = 56kΩ 1% 0603 C23206, fails because `divider.vout` must stay within 3.762V..3.838V, but (divider.vref * (1 + (divider.rtop.resistance / divider.rbottom.resistance))) works out to 3.707V..3.896V
-    --> std/parts/regulator.nsm:108:5
+    --> std/parts/regulator.nsm:110:5
     |
-108 |     .vout == .vref * (1 + .rtop.resistance / .rbottom.resistance)
+110 |     .vout == .vref * (1 + .rtop.resistance / .rbottom.resistance)
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -587,14 +587,14 @@ board Overload {
 
 ```text
 error: -reg.ic.sw.current must always be at most reg.ic.max_output_current, but 15.11uA..3A is not always below 2A (the currents on net `net-reg.ic.sw.pos` in `reg`: reg.ic.sw.current (-3A..-15.11uA) + reg.inductor.current (15.11uA..3A) add up to zero; net `1V8` in `reg`: -reg.inductor.current (15.11uA..3A) + -reg.vout.current (-3A..-15.11uA) add up to zero, but the balance is incomplete: `reg.divider.rtop.a` is not modelled; net `1V8`: output.current (0A..3A) + reg.vout.current (-3A..-15.11uA) add up to zero)
-    --> std/parts/regulator.nsm:199:5
+    --> std/parts/regulator.nsm:201:5
     |
-199 |     -.sw.current <= .max_output_current
+201 |     -.sw.current <= .max_output_current
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 error: -reg.vout.current must always be at most reg.ic.max_output_current, but 15.11uA..3A is not always below 2A (the currents on net `1V8`: output.current (0A..3A) + reg.vout.current (-3A..-15.11uA) add up to zero; net `1V8` in `reg`: -reg.inductor.current (15.11uA..3A) + -reg.vout.current (-3A..-15.11uA) add up to zero, but the balance is incomplete: `reg.divider.rtop.a` is not modelled; net `net-reg.ic.sw.pos` in `reg`: reg.ic.sw.current (-3A..-15.11uA) + reg.inductor.current (15.11uA..3A) add up to zero)
-    --> std/parts/regulator.nsm:547:5
+    --> std/parts/regulator.nsm:549:5
     |
-547 |     -.vout.current <= .ic.max_output_current
+549 |     -.vout.current <= .ic.max_output_current
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -656,9 +656,9 @@ board HighInput {
 
 ```text
 error: reg.on_time must always be at least reg.ic.min_on_time, but 122ns..490.8ns is not always above 150ns
-    --> std/parts/regulator.nsm:558:5
+    --> std/parts/regulator.nsm:562:5
     |
-558 |     .on_time >= .ic.min_on_time
+562 |     .on_time >= .ic.min_on_time
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -721,9 +721,9 @@ board TooQuiet {
 
 ```text
 error: no `capacitor` candidate satisfies `reg.output_cap`: the closest of the 34 that fit, 1 x 10uF 20% 10V X5R 0402 C315248, fails because reg.output_cap.total_effective_capacitance must always be at least reg.ic.min_output_capacitance, but 4.908uF..7.686uF is not always above 10uF (`reg.output_cap.effective_capacitance` is unknown for some candidates, so they were not used: no derating data for 27)
-    --> std/parts/regulator.nsm:565:5
+    --> std/parts/regulator.nsm:569:5
     |
-565 |     .output_cap.total_effective_capacitance >= .ic.min_output_capacitance
+569 |     .output_cap.total_effective_capacitance >= .ic.min_output_capacitance
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -952,9 +952,9 @@ board Converter {
 
 ```text
 error: the `lt8641` catalog is empty (no file of it has a row), so nothing can be picked for `reg.ic`: add rows to `catalogs/lt8641.csv` in the project (docs/language/12, "Catalog files")
-    --> std/parts/regulator.nsm:467:5
+    --> std/parts/regulator.nsm:469:5
     |
-467 |     .ic: Ic
+469 |     .ic: Ic
     |     ^^^^^^^
 ```
 

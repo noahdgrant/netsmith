@@ -40,6 +40,8 @@ generic LinearRegulator {
     // It must be able to supply what is drawn from it, and survive the heat of doing so: the
     // drop across it times the load, and the input voltage times the quiescent current.
     -.vout.current <= .max_current
+    // What a load draws at an instant is checked against the rated current (issue #750).
+    .vout.max_peak_current == .max_current
     (.vin.voltage - .vout.voltage) * (-.vout.current) + .vin.voltage * .quiescent_current <= .max_power
 
     // Pad 1 is ground, 2 the output and 3 the input, in both packages.
@@ -545,6 +547,8 @@ module Buck<Ic: BuckIc> provides BuckConverter {
     .vin.voltage >= .ic.min_input_voltage
     .vin.voltage <= .ic.max_input_voltage
     -.vout.current <= .ic.max_output_current
+    // What a load draws at an instant is checked against the continuous rating (issue #750).
+    .vout.max_peak_current == .ic.max_output_current
     .input_cap.max_voltage >= .vin.voltage * .voltage_margin
     .output_cap.max_voltage >= .vout.voltage * .voltage_margin
     .input_cap.max_voltage >= .vin.peak * .voltage_margin

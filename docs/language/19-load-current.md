@@ -274,3 +274,55 @@ The alert line's reference rail is on the monitor's net and no one says what it 
 The rule is narrow, and applies to a `~` written inside a module that joins one of the module's own rails to a rail that is a member of a part inside that module (a part, not another module). Of the rails on the module's net inside it, only the two may draw: a rail that is also joined to another part, a chain that starts on the net (a pull-up from `.vdd.pos`), another rail of the module that others draw from, or a second part's rail on the net, is a share of the module's current that the part's does not have, and the module's rail stays what the balance of the net says. A board's rails, two sibling parts, a module's port joined to the port of an inner module and every `~` outside a module keep their meaning: `~` does not equate currents.
 
 A budget stated at the module's rail (`.monitor.vdd.current &= 0A..500uA` in the sheet) is judged as before against what the part says it may draw, and is refused when the part may draw more (ADR 0038): the two rails are one current and the part's range is not narrowed to fit the budget (ADR 0066).
+
+### A peak current
+
+The DC analysis has no time in it, and a capacitor is open at DC, so a store charged through a resistor draws nothing in the balance. When it is empty, though, it takes the whole rail across the resistor for an instant, and that is the largest current the source in front of it sees. A rail states that current with `.peak_current`, the most its load draws at an instant, as a positive number (issue #750). It is checked and never drawn: the balance of the net, the power of a part, a shunt's window and every other check of the steady state read `.current` and never this one.
+
+What the source can give is the rail's `.max_peak_current`, which a regulator states for its output: `Buck` its IC's `.max_output_current`, `LinearRegulator` its `.max_current`. `~` shares it, as it shares `.peak`, so every rail joined to the regulator's output has it, and `Rail` checks its own `.peak_current` against it. `.peak_current` is not shared: two loads on one regulator each state their own, and each is checked alone. The steady current of the other loads is not added to it, so a board whose loads start together states the sum on one of them. Both members are `optional` (ADR 0074): a rail that states no peak has no check, and the build says nothing about it.
+
+Here a 1 ohm resistor charges 10 uF from a 3.3 V regulator rated 0.6 A:
+
+```nsm fails
+import std::parts::passive::{Capacitor, Resistor}
+import std::parts::regulator::{Buck, Lmr16006y}
+import std::sources::Rail
+
+/// A store: a capacitor charged through a resistor. At DC the capacitor is open, so the steady
+/// current is nil, but an empty store takes the whole rail across the resistor for an instant.
+module Store {
+    .supply: Rail
+    .cell: Capacitor { .capacitance &= 10uF +/- 20% }
+    .limit: Resistor { .resistance &= 1ohm +/- 1% }
+    .supply.pos ~> .limit ~> .cell ~> .supply.neg
+    .supply.current &= 0A..10uA
+    .supply.peak_current == .supply.voltage / .limit.resistance
+}
+
+board Inrush {
+    .input: Rail {
+        .voltage &= 9V..16V
+        .peak &= 24V
+        .pos.net &= "VIN"
+    }
+    .reg: Buck<Lmr16006y> {
+        .vout.pos.net &= "V3V3"
+        .vout.voltage &= 3.3V +/- 5%
+    }
+    .input ~ .reg.vin
+    .load: Rail { .current &= 5mA..50mA }
+    .reg.vout ~ .load
+    .store: Store
+    .reg.vout ~ .store.supply
+}
+```
+
+```text
+error: store.supply.peak_current must always be at most store.supply.max_peak_current, but 3.103A..3.5A is not always below 600mA
+   --> std/sources.nsm:54:5
+   |
+54 |     .peak_current <= .max_peak_current
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+```
+
+The rail's voltage is the regulator's output, whose range the solver widens by the tolerance of the divider, so the peak is 3.1 A to 3.5 A. A 10 ohm resistor limits it to 0.35 A, and the board builds; a load that states its peak directly states `.load.peak_current &= 0.4A`.
