@@ -180,3 +180,47 @@ fn a_pick_says_why_the_rows_before_it_were_passed_over() {
     );
     assert_eq!(inductor["passed"], serde_json::json!([]));
 }
+
+/// A resistor that no row of the catalog is at least a thousand gigaohms.
+const NO_ROW: &str = "import std::parts::passive::Resistor
+
+board Failing {
+    .r: Resistor
+    .r.resistance >= 1000Gohm
+}
+";
+
+#[test]
+fn a_board_whose_group_fails_is_written_with_the_rows_of_its_first_turn() {
+    let dir = TempDir::new("emit-solved-failed");
+    fs::write(dir.join("failing.nsm"), NO_ROW).unwrap();
+    let emit = dir.join("failing.solved.json");
+    let run = build(&dir, "failing.nsm", &emit);
+    assert!(!run.status.success());
+    let said = String::from_utf8_lossy(&run.stderr);
+    assert!(said.contains("no `resistor` candidate satisfies `r`"), "{said}");
+    let boards: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(&emit).unwrap()).unwrap();
+    assert_eq!(boards.as_array().unwrap().len(), 1);
+    let board = &boards[0];
+    assert_eq!(board["board"], "Failing");
+    assert_eq!(board["failed"], true);
+    assert_eq!(board["picks"], serde_json::json!([]));
+    // The members the solve got to are there.
+    assert!(member(board, "r.designator")["value"].is_string());
+    let part = &board["unpicked"][0];
+    assert_eq!(part["path"], "r");
+    assert_eq!(part["catalog"], "resistor");
+    assert!(part.get("with").is_none(), "{part:#}");
+    // Every row of the catalog was refused by the relation, with where it is.
+    let passed = part["passed"].as_array().unwrap();
+    assert!(passed.len() > 100, "{}", passed.len());
+    assert!(passed.iter().all(|r| r["why"] == "refused"
+        && r["at"] == "failing.nsm:5"
+        && r["message"].as_str().unwrap().contains("r.resistance")));
+    // The file is written for a board that builds as it was, with no `failed` key.
+    fs::write(dir.join("ok.nsm"), BUCK).unwrap();
+    assert!(build(&dir, "ok.nsm", &emit).status.success());
+    let ok: serde_json::Value = serde_json::from_str(&fs::read_to_string(&emit).unwrap()).unwrap();
+    assert!(ok[0].get("failed").is_none() && ok[0].get("unpicked").is_none());
+}

@@ -191,8 +191,10 @@ const LISTED: usize = 12;
 /// and `failed_value`): for each board, the record of each part at the path or inside it (the
 /// row taken, what held it, the rows passed over and why; for a part of a group that failed, the
 /// rows its first turn passed over), then the members at the path or inside it with the ranges
-/// the solve left them. `Err` says that nothing is there, naming some parts that have a record.
-pub fn explain(boards: &[Value], path: &str) -> Result<String, String> {
+/// the solve left them. A part lists its first `rows` rows passed over when that is `Some`, and
+/// says how many more there are. `Err` says that nothing is there, naming some parts that have a
+/// record.
+pub fn explain(boards: &[Value], path: &str, rows: Option<usize>) -> Result<String, String> {
     let path = path.trim().trim_matches('.');
     let mut out = String::new();
     for board in boards {
@@ -217,10 +219,10 @@ pub fn explain(boards: &[Value], path: &str) -> Result<String, String> {
             if failed { " (failed)" } else { "" }
         ));
         for pick in picks {
-            out.push_str(&explain_pick(pick, true));
+            out.push_str(&explain_pick(pick, true, rows));
         }
         for part in unpicked {
-            out.push_str(&explain_pick(part, false));
+            out.push_str(&explain_pick(part, false, rows));
         }
         if !members.is_empty() {
             let width = members
@@ -271,7 +273,7 @@ pub fn explain(boards: &[Value], path: &str) -> Result<String, String> {
 }
 
 /// One part's record as text: a pick (`picked`) or a part of a group that failed.
-fn explain_pick(part: &Value, picked: bool) -> String {
+fn explain_pick(part: &Value, picked: bool, limit: Option<usize>) -> String {
     let path = part["path"].as_str().unwrap_or("");
     let catalog = part["catalog"].as_str().unwrap_or("");
     let mut out = if picked {
@@ -300,8 +302,9 @@ fn explain_pick(part: &Value, picked: bool) -> String {
         }
         return out;
     }
-    out.push_str("    rows passed over:\n");
-    for row in rows {
+    let shown = limit.map_or(rows.len(), |n| n.min(rows.len()));
+    out.push_str(&format!("    rows passed over ({}):\n", rows.len()));
+    for row in &rows[..shown] {
         let count = row["count"]
             .as_u64()
             .map_or(String::new(), |n| format!(" x{n}"));
@@ -313,6 +316,12 @@ fn explain_pick(part: &Value, picked: bool) -> String {
             row["row"].as_str().unwrap_or(""),
             row["why"].as_str().unwrap_or(""),
             row["message"].as_str().unwrap_or("")
+        ));
+    }
+    if shown < rows.len() {
+        out.push_str(&format!(
+            "      ... and {} more (`--all-rows` lists every row)\n",
+            rows.len() - shown
         ));
     }
     out

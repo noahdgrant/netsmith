@@ -112,6 +112,8 @@ pub(super) struct BuildRun<'a> {
 pub(super) struct Explain<'a> {
     pub(super) path: &'a str,
     pub(super) board: Option<&'a str>,
+    /// How many rows passed over each part lists; every row when `None`.
+    pub(super) rows: Option<usize>,
 }
 
 /// What a board said that did not stop it: printed as text, or kept for the JSON report.
@@ -416,7 +418,7 @@ pub(super) fn run_build(run: &BuildRun) -> ExitCode {
             })
             .cloned()
             .collect();
-        match netsmith_pipeline::solved::explain(&shown, explain.path) {
+        match netsmith_pipeline::solved::explain(&shown, explain.path, explain.rows) {
             Ok(text) => print!("{text}"),
             Err(message) => {
                 eprintln!("error: {message}");

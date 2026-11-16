@@ -20,7 +20,13 @@ pub struct Args {
     /// Only the board of this name (`Board`, or `System/Board` or just `Board` for a board of a system).
     #[arg(long, value_name = "BOARD")]
     pub board: Option<String>,
+    /// List every row a part passed over, not the first 20.
+    #[arg(long)]
+    pub all_rows: bool,
 }
+
+/// How many rows passed over a part's record lists unless `--all-rows` is given.
+const ROWS: usize = 20;
 
 pub fn run(args: Args) -> ExitCode {
     run_build(&BuildRun {
@@ -36,6 +42,7 @@ pub fn run(args: Args) -> ExitCode {
         explain: Some(Explain {
             path: &args.path,
             board: args.board.as_deref(),
+            rows: (!args.all_rows).then_some(ROWS),
         }),
     })
 }
