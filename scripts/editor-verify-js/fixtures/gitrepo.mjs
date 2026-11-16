@@ -59,7 +59,7 @@ export function makeCompareRepo(project) {
   git(project, 'config', 'user.email', 'ada@example.com');
   git(project, 'config', 'commit.gpgsign', 'false');
   git(project, 'config', 'tag.gpgsign', 'false');
-  fs.writeFileSync(path.join(project, '.gitignore'), 'out/\nfab/\n.netsmith/\n*.log\n');
+  fs.writeFileSync(path.join(project, '.gitignore'), 'out/\nfab/\n.netsmith/\n*.log\n*.lock.toml\n');
   fs.writeFileSync(main, earlierDesign(launched));
   git(project, 'add', '-A');
   git(project, 'commit', '-q', '-m', 'First design: a debug header, no input capacitor');
