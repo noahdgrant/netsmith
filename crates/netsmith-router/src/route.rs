@@ -894,6 +894,15 @@ fn keeps_pair(before: (f64, usize, f64), after: (f64, usize, f64)) -> bool {
     after.2 > before.2 + 0.01 && after.0 <= before.0 + PAIR_SLACK + 1e-6 && after.1 <= before.1
 }
 
+/// Whether [`Router::side_by_side`] keeps the new copper of both nets of a pair routed again
+/// together, from their length in mm, their vias and the share of their length that runs
+/// coupled, before and after: as [`keeps_pair`] for one net, with [`PAIR_SLACK`] for each.
+fn keeps_both(before: (f64, usize, f64), after: (f64, usize, f64)) -> bool {
+    after.2 > before.2 + 0.01
+        && after.0 <= before.0 + 2.0 * PAIR_SLACK + 1e-6
+        && after.1 <= before.1
+}
+
 /// Whether [`Router::fewer_vias`] keeps new copper, from its length in mm, its vias and its
 /// track on another net's pour in mm, before and after: fewer vias, no longer than
 /// [`VIA_SLACK`] allows and with no more on the pour than [`VIA_POUR`] allows for each via

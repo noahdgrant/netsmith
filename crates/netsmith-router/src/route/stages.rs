@@ -87,7 +87,11 @@ impl<'a> Router<'a> {
     /// #431, S9): the lines of one net are routed again against all the other copper, a step
     /// beside the partner's track costing [`FOLLOW`] of its length, and the new copper is kept
     /// only if the share that runs coupled grows and the net is no longer and has no more vias.
-    /// A line is never left unrouted, and a board with no pair is unchanged.
+    /// Then both nets are routed again together, one and then the other beside it, each net
+    /// first in turn, and the copper is kept on the same terms for the two nets together
+    /// ([`keeps_both`], issue #1010): one net's way can be what keeps the other from running
+    /// beside it at no more vias. A line is never left unrouted, and a board with no pair is
+    /// unchanged.
     pub(super) fn side_by_side(&self, state: &mut State) {
         let failed_in = self.failed_in.borrow().clone();
         self.pairing.set(true);
@@ -105,37 +109,77 @@ impl<'a> Router<'a> {
                 if len0 == 0.0 || self.pair_measure(state, y, x).0 == 0.0 {
                     continue;
                 }
-                let mut trial = state.clone();
-                let (gone, kept): (Vec<Routed>, Vec<Routed>) =
-                    trial.routed.drain(..).partition(|r| self.nets[r.line] == x);
-                trial.routed = kept;
-                let mut again: Vec<usize> = gone.iter().map(|r| r.line).collect();
-                again.sort_by(|&a, &b| self.lines[a].length().total_cmp(&self.lines[b].length()));
-                let mut ok = true;
-                for l in again {
-                    match self
-                        .try_line(l, &trial, &[], ROOM_LOOSE, false)
-                        .or_else(|| self.try_line(l, &trial, &[], ROOM_TIGHT, false))
-                    {
-                        Some((r, _)) => trial.routed.push(r),
-                        None => {
-                            ok = false;
-                            break;
-                        }
-                    }
-                }
-                if !ok {
+                let Some(trial) = self.route_again(state, &[x]) else {
                     continue;
-                }
+                };
                 let (len1, vias1, c1) = self.pair_measure(&trial, x, y);
                 if keeps_pair((len0, vias0, c0), (len1, vias1, c1)) {
                     *state = trial;
                 }
             }
+            let before = self.both_measure(state, n, p);
+            if before.0 == 0.0 {
+                continue;
+            }
+            let mut best: Option<(State, (f64, usize, f64))> = None;
+            for first in [(n, p), (p, n)] {
+                if self.out_of_time() {
+                    break;
+                }
+                let Some(trial) = self.route_again(state, &[first.0, first.1]) else {
+                    continue;
+                };
+                let after = self.both_measure(&trial, n, p);
+                let better = best.as_ref().is_none_or(|(_, b)| after.2 > b.2);
+                if keeps_both(before, after) && better {
+                    best = Some((trial, after));
+                }
+            }
+            if let Some((trial, _)) = best {
+                *state = trial;
+            }
         }
         *self.failed_in.borrow_mut() = failed_in;
         self.fine.set(false);
         self.pairing.set(false);
+    }
+
+    /// `state` with the lines of `nets` routed again against all the other copper, the lines of
+    /// each net in turn, shortest first, at the usual room and failing that at the least:
+    /// `None` if a line finds no way.
+    fn route_again(&self, state: &State, nets: &[usize]) -> Option<State> {
+        let mut trial = state.clone();
+        let (gone, kept): (Vec<Routed>, Vec<Routed>) = trial
+            .routed
+            .drain(..)
+            .partition(|r| nets.contains(&self.nets[r.line]));
+        trial.routed = kept;
+        for &net in nets {
+            let mut again: Vec<usize> = gone
+                .iter()
+                .filter(|r| self.nets[r.line] == net)
+                .map(|r| r.line)
+                .collect();
+            again.sort_by(|&a, &b| self.lines[a].length().total_cmp(&self.lines[b].length()));
+            for l in again {
+                let (r, _) = self
+                    .try_line(l, &trial, &[], ROOM_LOOSE, false)
+                    .or_else(|| self.try_line(l, &trial, &[], ROOM_TIGHT, false))?;
+                trial.routed.push(r);
+            }
+        }
+        Some(trial)
+    }
+
+    /// [`Self::pair_measure`] of the two nets of a pair together: their length, their vias and
+    /// the share of their length that runs coupled. A length of 0 if either has no track.
+    fn both_measure(&self, state: &State, a: usize, b: usize) -> (f64, usize, f64) {
+        let (la, va, ca) = self.pair_measure(state, a, b);
+        let (lb, vb, cb) = self.pair_measure(state, b, a);
+        if la == 0.0 || lb == 0.0 {
+            return (0.0, 0, 0.0);
+        }
+        (la + lb, va + vb, (ca * la + cb * lb) / (la + lb))
     }
 }
 
