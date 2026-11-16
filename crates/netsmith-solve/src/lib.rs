@@ -14,6 +14,7 @@ mod levels;
 mod lock;
 mod ohm;
 mod place;
+mod preferred;
 mod solve;
 mod standard;
 mod table;
@@ -30,6 +31,7 @@ pub use generic::{
 pub use levels::NotEvaluated;
 pub use lock::{LockedProvider, LockedRow, PickLock};
 pub use place::{PlaceOffset, Window, offsets, window};
+pub use preferred::Preferred;
 pub use solve::{
     CurrentBound, DcSummary, HeldBy, NetCurrent, OpenCircle, Pick, Seeded, Solution,
     UnconstrainedPick, Unresolved, UnsolvedNet, UnstatedValue, solve, solve_system,

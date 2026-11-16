@@ -2,7 +2,7 @@
 //! has, and a separate step resolves it to a row. All parts here are invented.
 
 use netsmith_check::{Loader, check};
-use netsmith_solve::{Catalogs, Library, Series, Solution, resolve, solve};
+use netsmith_solve::{Catalogs, Library, Preferred, Series, Solution, resolve, solve};
 
 /// A divider-less design: one resistor in series with an LED-like load is not needed; a
 /// plain resistor with a stated value is enough to choose a value.
@@ -169,6 +169,75 @@ fn a_row_the_provider_says_has_no_stock_is_passed_over_and_an_unknown_stock_is_n
     let none_left = |_: &str| Some(0);
     let e = resolve(&g, &c, &none_left).unwrap_err();
     assert!(e.contains("Rows that fit were passed over"), "{e}");
+}
+
+#[test]
+fn a_part_the_projects_preferred_list_names_is_taken_before_a_basic_one() {
+    let mut g = generic_of(&board("390ohm +/- 1%"), Series::E24);
+    set_resistor(&mut g, 330.0, 0.0625);
+    // The Extended row is named, by its mpn; the Basic one is not.
+    let list = Preferred::parse(
+        "preferred.csv",
+        "mpn,note\nZZR-360-B,a value we stock\nZZR-330-E,the reel on our shelf\n",
+    )
+    .unwrap();
+    let c = catalogs(None).with_preferred(list);
+    let got = resolve(&g, &c, &never).unwrap();
+    assert_eq!(got.lcsc.as_deref(), Some("C900002"));
+    assert_eq!(got.library, Some(Library::Extended));
+    // A listed row with no stock is passed over, and the rule of the code decides the rest.
+    let sold_out = |lcsc: &str| (lcsc == "C900002").then_some(0);
+    let got = resolve(&g, &c, &sold_out).unwrap();
+    assert_eq!(got.lcsc.as_deref(), Some("C900001"));
+    assert_eq!(got.passed_over, ["330Ω Extended has no stock"]);
+}
+
+#[test]
+fn the_order_of_the_preferred_list_decides_between_two_listed_rows() {
+    let mut g = generic_of(&board("390ohm +/- 1%"), Series::E24);
+    set_resistor(&mut g, 330.0, 0.0625);
+    let first = |text: &str| {
+        let c = catalogs(None).with_preferred(Preferred::parse("preferred.csv", text).unwrap());
+        resolve(&g, &c, &never).unwrap().lcsc
+    };
+    assert_eq!(first("lcsc\nC900001\nC900002\n").as_deref(), Some("C900001"));
+    assert_eq!(first("lcsc\nC900002\nC900001\n").as_deref(), Some("C900002"));
+    // A line with both columns names only the row that has both.
+    assert_eq!(first("lcsc,mpn\nC900002,ZZR-330-B\n").as_deref(), Some("C900001"));
+}
+
+#[test]
+fn the_preferred_list_does_not_change_what_the_solver_picks_from_rows() {
+    let list = Preferred::parse("preferred.csv", "lcsc\nC900001\n").unwrap();
+    let s = solved(&board("330ohm +/- 1%"), &catalogs(None).with_preferred(list));
+    // The first row of the file, as without the list (ADR 0022).
+    assert_eq!(s.picks[0].lcsc.as_deref(), Some("C900002"));
+}
+
+#[test]
+fn a_preferred_list_that_is_not_well_formed_is_refused_with_its_line() {
+    let refused = |text: &str| Preferred::parse("preferred.csv", text).unwrap_err();
+    assert_eq!(
+        refused("lcsc,price\nC900001,1\n"),
+        "preferred.csv:1: unknown column `price`; a preferred-parts file has the columns `lcsc`, `mpn` and `note`"
+    );
+    assert_eq!(
+        refused("note\nwhy\n"),
+        "preferred.csv:1: the header needs a column `lcsc` or `mpn` to name the parts"
+    );
+    assert_eq!(
+        refused("lcsc,note\n,no part\n"),
+        "preferred.csv:2: the line names no part; give its `lcsc` or its `mpn`"
+    );
+    assert_eq!(
+        refused("lcsc\nC900001\nC900001\n"),
+        "preferred.csv:3: `C900001` is listed twice; a part is listed once"
+    );
+    assert_eq!(
+        refused("lcsc\nC900001,extra\n"),
+        "preferred.csv:2: 2 fields, but the header has 1"
+    );
+    assert!(Preferred::parse("preferred.csv", "").unwrap().is_empty());
 }
 
 #[test]

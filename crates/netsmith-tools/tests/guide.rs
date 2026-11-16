@@ -46,6 +46,8 @@
 //!   rows to the catalog named by the file, for the `nsm` blocks that use the same `set=`
 //!   (default: none). ` ```csv fails ` must not load, and the next ` ```text ` block is the
 //!   exact message. An `nsm` block names its set with ` catalogs=<set> `.
+//! - ` ```csv file=preferred.csv ` is a project's preferred-parts file (issue #802), not a
+//!   catalog: it must load, and every `lcsc` it names must be a row of the standard catalogs.
 //! - ` module=src::power ` makes the block a project module that other blocks may import.
 //! - ` ```nsm-fragment ` is a piece of a file and is not run.
 //!
@@ -171,7 +173,10 @@ fn loader(blocks: &[Block]) -> Loader {
 /// the `resistor` catalog). A set whose files do not load holds the problem.
 fn catalog_sets(blocks: &[Block]) -> HashMap<String, Result<Catalogs, String>> {
     let mut sets: HashMap<String, Result<Catalogs, String>> = HashMap::new();
-    for b in blocks.iter().filter(|b| b.is("csv") && !b.has("fails")) {
+    for b in blocks
+        .iter()
+        .filter(|b| b.is("csv") && !b.has("fails") && !is_preferred(b))
+    {
         let set = b.value("set").unwrap_or("").to_string();
         let file = b
             .value("file")
@@ -245,6 +250,35 @@ fn every_manifest_in_the_guide_is_a_manifest() {
             .unwrap_or_else(|e| panic!("{}: {e}", b.at()));
     }
     assert!(found >= 3, "found only {found} manifests");
+}
+
+/// Whether a `csv` block is a project's preferred-parts file and not a catalog.
+fn is_preferred(b: &Block) -> bool {
+    b.value("file") == Some(netsmith_fabricate::project::PREFERRED)
+}
+
+/// The preferred-parts file the guide shows (issue #802) is one that netsmith reads, and the
+/// parts it names are real rows: a standard catalog has each `lcsc`.
+#[test]
+fn the_preferred_parts_file_in_the_guide_is_one() {
+    let blocks = guide_blocks();
+    let shown: Vec<&Block> = blocks.iter().filter(|b| is_preferred(b)).collect();
+    assert!(!shown.is_empty(), "the guide shows a preferred-parts file");
+    let standard = Catalogs::jlcpcb();
+    for b in shown {
+        netsmith_solve::Preferred::parse("preferred.csv", &b.text)
+            .unwrap_or_else(|e| panic!("{}: {e}", b.at()));
+        let records = netsmith_solve::parse_csv(&b.text).unwrap();
+        let column = records[0].1.iter().position(|h| h == "lcsc").unwrap();
+        for (_, fields) in &records[1..] {
+            let lcsc = fields[column].trim();
+            assert!(
+                lcsc.is_empty() || standard.supplier(lcsc).is_some(),
+                "{}: no standard catalog has `{lcsc}`",
+                b.at()
+            );
+        }
+    }
 }
 
 /// The routes file the guide shows (issue #599) is one that netsmith reads, and writes back as

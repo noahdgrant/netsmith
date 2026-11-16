@@ -126,6 +126,10 @@ _Avoid_: Power port (a net label is the name of a signal net at the end of a stu
 The view of a board's rails as cards: the voltage of each net a rail draws from, the total of the currents on it, and what the part that supplies it can give, joined left to right, from the sources to the loads, by the regulators and stages that make one rail from another and by the joins of a system. The numbers are the solver's, in the worst case.
 _Avoid_: Power diagram, rail map
 
+**Preferred parts file**:
+`preferred.csv` beside `netsmith.toml`: the parts, by `lcsc` or `mpn`, that a project takes first when a _Generic part_ is resolved to a catalog row, in the order of the file, before the rule of the code (JLCPCB Basic, then Preferred, then Extended, then file order). A listed row a provider says has no stock is passed over. It does not change what the solver picks from rows (issue #802, ADR 0047).
+_Avoid_: Approved vendor list, AVL, house parts (for this file), favourites
+
 **Process**:
 The design rules and stackup of the factory that makes a board, such as `std::mfg::jlcpcb::TwoLayer`. A board has one as its `.process` member. Each rule is the least the factory can make, written as a range the board may narrow upward; the rule used is the bottom of what is left. It is an interface with no pins, or a generic whose providers are interfaces: `TwoLayer` is a generic, and each copper weight is a provider (`JlcTwoLayer1oz`, `JlcTwoLayer2oz`) that the board picks by narrowing `.stackup.copper_weight` (ADR 0113).
 _Avoid_: Fab house, rule set, technology

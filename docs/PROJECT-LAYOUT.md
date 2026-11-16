@@ -60,6 +60,7 @@ product-repo/
 ├── catalogs/                         project catalogs (CSV rows with sources), ADR 0022
 │   ├── regulator_ic.csv
 │   └── sensor_ic.csv
+├── preferred.csv                     optional: the rows a generic part takes first (guide chapter 26)
 ├── kicad.toml                        KiCad mapping and project libraries, ADR 0021
 ├── libraries/                        the project's own symbols and footprints
 │   └── acme/{acme.kicad_sym, acme.pretty/}

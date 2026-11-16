@@ -2,8 +2,8 @@
 //! (ADR 0047).
 //!
 //! The solver picks a generic resistor by value alone (`netsmith_solve::Generic`). Here each
-//! one becomes the row of a catalog that stands for it: Basic first, a row a provider says
-//! has no stock passed over. A part no row stands for is **unresolved**, with the nearest
+//! one becomes the row of a catalog that stands for it: the rows the project's `preferred.csv`
+//! names first (issue #802), then Basic first, a row a provider says has no stock passed over. A part no row stands for is **unresolved**, with the nearest
 //! rows, and `fab` refuses it by name.
 //!
 //! **Checking the alternatives** (ADR 0047, issue #31). When the build finds an
@@ -421,6 +421,16 @@ mod tests {
         let other = Stock(vec![("C900077", 0)]);
         let (resolved, _) = resolve_generics(&[generic_part("R1")], &catalogs(Some(other)));
         assert_eq!(resolved[0].lcsc.as_deref(), Some("C900001"));
+    }
+
+    #[test]
+    fn the_projects_preferred_list_puts_the_row_it_names_first() {
+        // The project prefers the Extended row (issue #802): the part takes it, and its height.
+        let list = netsmith_solve::Preferred::parse("preferred.csv", "lcsc\nC900002\n").unwrap();
+        let (resolved, _) =
+            resolve_generics(&[generic_part("R1")], &catalogs(None).with_preferred(list));
+        assert_eq!(resolved[0].lcsc.as_deref(), Some("C900002"));
+        assert_eq!(resolved[0].catalog_height, Some(0.55));
     }
 
     #[test]

@@ -14,7 +14,7 @@ use std::{
 };
 
 use netsmith_check::Loader;
-use netsmith_solve::{Catalogs, Series};
+use netsmith_solve::{Catalogs, Preferred, Series};
 use serde::{Deserialize, Serialize};
 
 use crate::order::{self, Order, RawOrders, RenderedOrder};
@@ -22,6 +22,10 @@ use netsmith_pipeline::supply::{Cache, Channel, FileProvider, Supply};
 
 /// The manifest's file name.
 pub const MANIFEST: &str = "netsmith.toml";
+
+/// The project's preferred-parts file, beside the manifest (issue #802, ADR 0047): the parts
+/// that resolution takes first for a generic part. See [`Project::preferred`].
+pub const PREFERRED: &str = "preferred.csv";
 
 /// The directory below the project root whose `.nsm` files other files can import:
 /// `src/power.nsm` is the module `src::power`.
@@ -707,6 +711,12 @@ impl Project {
             .map(|(_, _, path, _)| path)
             .collect();
         paths.extend(self.manifest.catalogs.iter().map(|c| self.root.join(c)));
+        // Watched only when it is there (a missing file would read as changed on every look);
+        // its first write lengthens the list, which is a change too.
+        let preferred = self.root.join(PREFERRED);
+        if preferred.is_file() {
+            paths.push(preferred);
+        }
         paths
     }
 
@@ -726,10 +736,24 @@ impl Project {
             let text = fs::read_to_string(&path).map_err(|e| format!("{MANIFEST}: {file}: {e}"))?;
             catalogs.add_file(&name, &file, &text)?;
         }
+        if let Some(preferred) = self.preferred()? {
+            catalogs = catalogs.with_preferred(preferred);
+        }
         if self.manifest.supply.is_some() {
             catalogs = catalogs.with_availability(self.supply()?.into_availability());
         }
         Ok(catalogs)
+    }
+
+    /// The project's preferred parts, `preferred.csv` beside the manifest (issue #802), or
+    /// `None` when the project has no such file. A problem names the file and line.
+    pub fn preferred(&self) -> Result<Option<Preferred>, String> {
+        let path = self.root.join(PREFERRED);
+        if !path.is_file() {
+            return Ok(None);
+        }
+        let text = fs::read_to_string(&path).map_err(|e| format!("{PREFERRED}: {e}"))?;
+        Preferred::parse(PREFERRED, &text).map(Some)
     }
 
     /// The providers of the `[supply]` table, with the cache in front of them, read again on
