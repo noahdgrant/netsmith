@@ -98,6 +98,9 @@ pub struct CaseModelReport {
     /// `read`, `missing` (the file is not there) or `unreadable` (netsmith's reader cannot read
     /// it).
     pub status: &'static str,
+    /// Whether the board is measured against it (`.check`); `false` for a model that is only
+    /// a drawing.
+    pub checked: bool,
     /// Of the file's bytes, in hex; `null` when it was not read.
     pub sha256: Option<String>,
     /// The placement, in the scene's frame: degrees about x, then y, then z, then mm.
@@ -783,6 +786,7 @@ fn case_models_report(built: &Built, fit: &netsmith_3d::CaseScene) -> Vec<CaseMo
                 name: c.name.clone(),
                 file: c.file.clone(),
                 status,
+                checked: c.checked,
                 sha256: read.map(|p| p.sha256.clone()),
                 rotation: c.rotation,
                 offset: c.offset,

@@ -151,6 +151,11 @@ pub struct CaseModel {
     /// inside a wall's outer face a connector at the edge may stand, and how far from a
     /// mounting hole's ring a case solid may be and still hold it.
     pub figures: CaseFigures,
+    /// Whether the board is measured against it (`.check`: `"fit"`, the default, or `"none"`
+    /// for a model that is only a drawing, such as a mating connector or a neighbouring
+    /// module). A design file leaves it out when it is true.
+    #[serde(default = "checked_by_default", skip_serializing_if = "is_true")]
+    pub checked: bool,
     /// The lines that state the file, separated by commas. Filled by the caller that knows the
     /// source files; empty otherwise.
     pub source: String,
@@ -162,6 +167,14 @@ pub struct CaseModel {
     /// design file leaves it out, as it does [`StepModel::resolved`].
     #[serde(skip)]
     pub resolved: Option<std::path::PathBuf>,
+}
+
+fn checked_by_default() -> bool {
+    true
+}
+
+fn is_true(b: &bool) -> bool {
+    *b
 }
 
 /// The figures of a case model's fit check (ADR 0109), in mm.

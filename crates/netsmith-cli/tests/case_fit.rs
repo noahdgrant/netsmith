@@ -235,6 +235,30 @@ fn a_missing_case_file_is_reported_and_the_rest_is_checked() {
 }
 
 #[test]
+fn a_model_that_is_only_a_drawing_is_listed_and_drawn_and_nothing_is_measured_against_it() {
+    let dir = project("case-fit-drawing-only", |p| {
+        p.replace(
+            "            .z &= 8mm\n",
+            "            .z &= 8mm\n            .check &= \"none\"\n",
+        )
+    });
+    let r = report(&dir);
+    let models = r["case_models"].as_array().unwrap();
+    assert_eq!(models[0]["checked"], true);
+    let lid = &models[1];
+    assert_eq!(lid["name"], "lid");
+    assert_eq!(lid["checked"], false);
+    assert_eq!(lid["status"], "read");
+    assert_eq!(lid["solids"][0]["name"], "lid");
+    // `tall` reaches into the lid, which is no longer a case: no collision with it.
+    assert!(
+        !findings(&r).iter().any(|f| f.0 == "case_collision"),
+        "{:?}",
+        findings(&r)
+    );
+}
+
+#[test]
 fn an_open_shell_is_measured_by_its_surface_and_says_it_gets_no_inside_test() {
     let dir = project("case-fit-open", |p| {
         p.replace("case_fit/lid.step", "case_fit/open.step")
