@@ -828,6 +828,8 @@ The placer put `.tall` in the part of the board the ribs leave free. Placed by h
 error: Ribbed: `tall` (R2) stands 9.00 mm tall on the top face, and the keepout `ribs` allows 3.00 mm there (6.00 mm too tall), where its body is, around (20.0, 6.0) mm from the board's top left corner
 ```
 
+The same message is the answer where no position helps: a part that states its face (`.place.side`) under a limit that covers that whole face is placed all the same, and the run reports it too tall with the margin, as it does for a part under a lid by hand. It is a finding of the placement and not one of the lines that cannot all hold, so the placement is there to look at; to clear it, take the part from that face, raise the limit, or use a lower part.
+
 Misuse: a height is one value, above or at zero, and a limit is above zero.
 
 ```nsm fails
