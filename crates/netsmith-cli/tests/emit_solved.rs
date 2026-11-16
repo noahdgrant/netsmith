@@ -1,5 +1,6 @@
 //! `netsmith build --emit-solved <file>` writes the values the solve left each member of each
-//! board with (issue #744), and nothing when a board fails.
+//! board with (issue #744), and nothing when a board fails before the solve; a board whose solve
+//! fails is written with the rows its group passed over (issue 1008).
 
 use std::{fs, path::Path, process::Command};
 
