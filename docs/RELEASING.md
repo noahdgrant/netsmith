@@ -1,0 +1,9 @@
+# Releasing netsmith
+
+The order of a release. Release-please (`.github/workflows/release-please.yml`) opens the release pull request from the Conventional Commits on main, with the next version and the changelog; it sets the version in `Cargo.toml` and `Cargo.lock` itself, so nobody edits the version by hand.
+
+1. On a clean checkout of the commit to release, run the gates: `cargo fmt --all --check`, `cargo clippy --workspace --all-targets`, `cargo test --workspace`, and the `fab` gate on `examples/linear_regulator.nsm` (`netsmith-dev-verify`).
+2. On a machine that runs KiCad as a Windows program under WSL, run the `kicad-cli` flake stress run: `scripts/stress-kicad.sh` (50 runs, 3 processes at once, about 25 minutes). It must end with `0 failed`; a failure leaves the log of its run in the folder the script names. Run it after a change to `crates/netsmith-fab` or `netsmith_fab::run_exclusive` too (`netsmith-dev-verify`, _Several KiCads at once_). The flake is WSL's interop channel failing a start of `kicad-cli.exe`, so on any other machine there is nothing to run: write that in the release pull request.
+3. Check that the release pull request lists the right version and changelog, and that its checks pass.
+4. Merge the release pull request. Release-please makes the tag `v<version>` and the GitHub release; the `release` workflow (`.github/workflows/release.yml`) builds the archives on Linux, macOS and Windows with `scripts/release-build.sh` and attaches them. Without the `RELEASE_PLEASE_TOKEN` secret the tag starts no workflow (the header of `release-please.yml` says what to do).
+5. Human steps: check the archives against their `.sha256` files and publish the release. For crates.io (not done yet), every crate needs `description`, `repository` and a `version` next to each `path` dependency, and crates are published in dependency order.
