@@ -49,6 +49,10 @@ impl ReferenceSide {
     pub const ALL: [ReferenceSide; 4] = [Self::Above, Self::Below, Self::Left, Self::Right];
 }
 
+fn is_zero(v: &f64) -> bool {
+    *v == 0.0
+}
+
 /// A footprint on the board.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Placed {
@@ -83,7 +87,7 @@ pub struct Placed {
     /// How high the underside of the body is above its face of the board, in mm, as the design
     /// states it (`.standoff`, issue #775): a body that stands on pins. Zero, as for every
     /// ordinary part, when the design states none. The body stands from here up to `height`.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "is_zero")]
     pub standoff: f64,
     /// How far its pins protrude out of the opposite face
     /// (`.pin_protrusion`, ADR 0045 section 15). `None` is unknown: the pads are an obstacle.
