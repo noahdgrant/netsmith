@@ -29,6 +29,23 @@ export async function run(tools) {
   expect((await page.locator('.pcb-overlay .mark').count()) >= 1, 'the finding is marked on the board');
   await shot('findings');
 
+  step('the board with its findings downloads as KiCad files, as it is placed and not routed (issue 1001)');
+  const kicad = page.locator('[data-testid=pcb-kicad]');
+  expect((await kicad.innerText()) === 'Download KiCad board', 'the toolbar has the download button');
+  const href = await kicad.getAttribute('href');
+  expect(href === `/api/pcb/kicad?board=${encodeURIComponent(BOARD)}`, `the button asks for this board's files (${href})`);
+  // The zip's names are stored as they are: read from the bytes the server sends.
+  const zip = await page.evaluate(async (url) => {
+    const r = await fetch(url);
+    const bytes = new Uint8Array(await r.arrayBuffer());
+    return { status: r.status, type: r.headers.get('content-type'), disposition: r.headers.get('content-disposition'), magic: String.fromCharCode(bytes[0], bytes[1]), text: new TextDecoder('latin1').decode(bytes) };
+  }, href);
+  expect(zip.status === 200 && zip.type === 'application/zip' && zip.magic === 'PK', `a zip answers (${zip.status} ${zip.type})`);
+  expect(/attachment; filename="[^"]+\.placed-kicad\.zip"/.test(zip.disposition), `it is a download (${zip.disposition})`);
+  for (const file of ['.placed.kicad_pcb', '.placed.kicad_pro', '.placed.findings.txt']) {
+    expect(zip.text.includes(file), `the zip holds the ${file} file`);
+  }
+
   step('click a finding: the canvas zooms to it, marks it and selects its parts');
   const zoomBefore = await page.locator('.pcb-host .zoombar span').innerText();
   await page.locator('[data-testid=finding]', { hasText: 'overlap' }).first().click();
