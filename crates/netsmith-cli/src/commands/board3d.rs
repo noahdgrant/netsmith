@@ -9,7 +9,7 @@ use super::common::{Placing, with_placed_board};
 #[derive(Debug, PartialEq, ClapArgs)]
 #[command(args_override_self = true)]
 #[command(
-    after_long_help = "`board3d` places a board as `fab` does, with the layout file and the physical file, and prints its 3D scene (ADR 0105) without routing or writing anything but the `--glb` and `--step` files, and without KiCad. With neither `--json`, `--glb` nor `--step` it prints a short summary. A file of several boards needs `--board`. The placer says on stderr how it goes: each seed it begins, each run with what is still out, and the counts of a long run; `--place-budget` bounds it. The report lists the placement check's faults (`placement`) and the lines and locks that cannot all hold (`conflicts`), each as data. A layout file the placer cannot keep (two locks whose courtyards overlap, locks that leave the free parts no room) is reported with the parts where the placer ended and the layout file's places, `placement_refused` says why, and the command ends with 1. docs/BOARD3D.md has the frame and every field."
+    after_long_help = "`board3d` places a board as `fab` does, with the layout file and the physical file, and prints its 3D scene (ADR 0105) without routing or writing anything but the `--glb` and `--step` files, and without KiCad. With neither `--json`, `--glb` nor `--step` it prints a short summary. A file of several boards needs `--board`. The placer says on stderr how it goes: each seed it begins, each run with what is still out, and the counts of a long run; `--place-budget` bounds it. The report lists the placement check's faults (`placement`) and the lines and locks that cannot all hold (`conflicts`), each as data. A layout file the placer cannot keep (two locks whose courtyards overlap, locks that leave the free parts no room) is reported with the parts where the placer ended and the layout file's places, `placement_refused` says why, and the command ends with 1. A board placed with a fault of where its parts are (`placement` has a kind other than `too_tall`: courtyards that overlap, a part past the edge, in a keepout or a cutout) is reported as placed, each fault is said on stderr, and the command ends with 1, as `fab` refuses it; `netsmith layout fit` says where a part fits. docs/BOARD3D.md has the frame and every field."
 )]
 pub struct Args {
     /// The source file; with none, the project's boards.
@@ -68,8 +68,9 @@ pub fn run(args: Args) -> ExitCode {
 /// beside its source are read, nothing is written) and its 3D scene printed: the JSON report on
 /// stdout with `--json`, the scene as a `.glb` file with `--glb` and as a STEP file with
 /// `--step` (and no summary), a summary with none of them. Exit 0 when the report is printed (and the file written), 1 when the board does not
-/// build or place (a layout file the placer refuses is reported where the placer ended, and is
-/// 1 too), 2 when the command cannot start or the file cannot be written.
+/// build or place (a layout file the placer refuses is reported where the placer ended, and a
+/// board placed with a fault other than `too_tall` is reported as placed: both are 1 too), 2
+/// when the command cannot start or the file cannot be written.
 fn run_board3d(
     file: Option<&str>,
     board: Option<&str>,
@@ -132,6 +133,25 @@ fn run_board3d(
     // command fails, as `fab` would (issue #779).
     if let Some(refused) = &report.placement_refused {
         eprintln!("error: {label}: {}", refused.trim_end());
+        return ExitCode::FAILURE;
+    }
+    // A board placed with a fault of where its parts are (two courtyards that overlap, a part
+    // past the edge or in a keepout) is not placed, as `fab` refuses it (issue #780). A part
+    // too tall for a height limit is the report's own subject, said with its margin, and is
+    // not a failure here.
+    let faults: Vec<_> = report
+        .placement
+        .iter()
+        .filter(|f| f.kind != "too_tall")
+        .collect();
+    if !faults.is_empty() {
+        for f in &faults {
+            eprintln!("error: {label}: {}", f.text);
+        }
+        eprintln!(
+            "error: {label}: the placement has {} fault(s) of where its parts are; `fab` refuses it (`netsmith layout fit <part>` says where a part fits)",
+            faults.len()
+        );
         return ExitCode::FAILURE;
     }
     ExitCode::SUCCESS

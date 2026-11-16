@@ -448,7 +448,7 @@ pub fn explain(
     if design.features.constraints.is_empty() && design.features.offsets.is_empty() {
         return None;
     }
-    let unmet = unmet(design, parts);
+    let unmet = unmet(design, parts, None);
     let mut options = options.clone();
     options.wall = Some(rules.edge_wall());
     let proofs = match constraints::plan(design, parts, &options, rules.clearance) {
@@ -476,10 +476,15 @@ pub fn explain(
     (!report.is_empty()).then_some(report)
 }
 
-/// Every requirement the arrangement does not meet.
-fn unmet(design: &Design, parts: &[Placed]) -> Vec<(String, RequirementMiss)> {
+/// Every requirement the arrangement does not meet; with `only` (a part's path), those about
+/// that part: its own, its modules', and the relations it is an end of.
+pub(crate) fn unmet(
+    design: &Design,
+    parts: &[Placed],
+    only: Option<&str>,
+) -> Vec<(String, RequirementMiss)> {
     let mut found = Vec::new();
-    for part in parts {
+    for part in parts.iter().filter(|p| only.is_none_or(|o| p.path == o)) {
         let (reqs, side_req) = requirements(design, &part.path);
         let body = part.body();
         let drawing = format!(
@@ -552,7 +557,12 @@ fn unmet(design: &Design, parts: &[Placed]) -> Vec<(String, RequirementMiss)> {
             ));
         }
     }
-    for o in &design.features.offsets {
+    for o in design
+        .features
+        .offsets
+        .iter()
+        .filter(|o| only.is_none_or(|p| o.a.path == p || o.b.path == p))
+    {
         let (Some(a), Some(b)) = (
             parts.iter().find(|p| p.path == o.a.path),
             parts.iter().find(|p| p.path == o.b.path),

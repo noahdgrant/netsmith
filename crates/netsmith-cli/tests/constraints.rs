@@ -328,3 +328,92 @@ fn board3d_reports_a_lock_that_breaks_a_requirement_with_the_layout_and_ends_wit
         String::from_utf8_lossy(&run.stderr)
     );
 }
+
+/// The layout file of `LOCKED_OVER` with no lock: the placer places the board, then both parts
+/// are put where the file says, over each other.
+const UNLOCKED_OVER: &str = "version = 1\n[Widget.parts.r1]\nat = [10.0, 10.0]\n[Widget.parts.led]\nat = [10.5, 10.2]\n";
+
+#[test]
+fn board3d_ends_with_1_for_a_placed_board_whose_courtyards_overlap() {
+    // Issue #780: a placement with an overlap is not a success, as `fab` refuses it.
+    let run = run_in(
+        "unlocked-over-board3d",
+        LOCKED_PHYSICAL,
+        UNLOCKED_OVER,
+        &["board3d", "--json"],
+    );
+    let stderr = String::from_utf8_lossy(&run.stderr);
+    assert_eq!(run.status.code(), Some(1), "{stderr}");
+    let doc: serde_json::Value = serde_json::from_slice(&run.stdout)
+        .unwrap_or_else(|e| panic!("{e}: {stderr}"));
+    assert!(doc["placement_refused"].is_null(), "{doc}");
+    assert!(
+        doc["placement"].as_array().unwrap().iter().any(|f| f["kind"] == "overlap"),
+        "{}",
+        doc["placement"]
+    );
+    assert!(stderr.contains("error: Widget: the placement has"), "{stderr}");
+}
+
+#[test]
+fn layout_fit_gives_the_nearest_place_clear_of_the_others_and_writes_nothing() {
+    let root = out("fit-r1");
+    fs::create_dir_all(root.join("src")).unwrap();
+    fs::write(
+        root.join("netsmith.toml"),
+        "[project]\nname = \"widget\"\ntop_level = [\"src/main.nsm\"]\n",
+    )
+    .unwrap();
+    fs::write(root.join("src/main.nsm"), BOARD).unwrap();
+    fs::write(root.join("src/main.physical.nsm"), LOCKED_PHYSICAL).unwrap();
+    fs::write(root.join("src/main.pcb.toml"), UNLOCKED_OVER).unwrap();
+    let netsmith = |args: &[&str]| {
+        std::process::Command::new(env!("CARGO_BIN_EXE_netsmith"))
+            .args(args)
+            .current_dir(&root)
+            .output()
+            .unwrap()
+    };
+    let run = netsmith(&["layout", "fit", "r1", "--near", "led", "--format", "json"]);
+    let stderr = String::from_utf8_lossy(&run.stderr);
+    assert_eq!(run.status.code(), Some(0), "{stderr}");
+    let doc: serde_json::Value = serde_json::from_slice(&run.stdout)
+        .unwrap_or_else(|e| panic!("{e}: {stderr}"));
+    assert_eq!(doc["part"]["path"], "r1", "{doc}");
+    assert_eq!(doc["near"]["part"]["path"], "led", "{doc}");
+    // Where it is, it overlaps the LED.
+    assert_eq!(doc["now"]["fits"], false, "{doc}");
+    assert!(
+        doc["now"]["placement"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|f| f["kind"] == "overlap"),
+        "{}",
+        doc["now"]
+    );
+    // The first pose fits, and the requirement `.r1.place.x <= 30mm` holds there.
+    let first = &doc["poses"][0];
+    assert_eq!(first["fits"], true, "{doc}");
+    let x = first["at"][0].as_f64().unwrap();
+    assert!(x <= 30.0, "{first}");
+    // Put there, `layout check` and `board3d` find nothing about it.
+    let at = format!("{},{}", x, first["at"][1].as_f64().unwrap());
+    let turn = first["turn"].as_f64().unwrap().to_string();
+    let side = first["side"].as_str().unwrap();
+    let before = fs::read_to_string(root.join("src/main.pcb.toml")).unwrap();
+    assert_eq!(before, UNLOCKED_OVER, "fit writes nothing");
+    let set = netsmith(&["layout", "set", "r1", "--at", &at, "--turn", &turn, "--side", side]);
+    assert!(set.status.success(), "{}", String::from_utf8_lossy(&set.stderr));
+    let again = netsmith(&["layout", "fit", "r1", "--format", "json"]);
+    let doc: serde_json::Value = serde_json::from_slice(&again.stdout).unwrap();
+    assert_eq!(doc["now"]["fits"], true, "{doc}");
+    // A part the board lacks is refused with the nearest names.
+    let none = netsmith(&["layout", "fit", "r9"]);
+    assert_eq!(none.status.code(), Some(1));
+    assert!(
+        String::from_utf8_lossy(&none.stderr).contains("no part `r9`"),
+        "{}",
+        String::from_utf8_lossy(&none.stderr)
+    );
+}
