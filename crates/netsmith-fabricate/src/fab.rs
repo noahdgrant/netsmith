@@ -54,6 +54,9 @@ pub struct Fabricated {
     /// The requirements on where parts go that the board does not meet and the run lists as
     /// warnings (`constraints = "warn"`), as data (#816); each is also a line of `notes`.
     pub requirements: Vec<netsmith_pcb::RequirementMiss>,
+    /// What the pre-check before placing said was only suspicious (lines that cannot all hold,
+    /// when constraints are warnings), as data (#998); each is also told as it goes.
+    pub place_warnings: Vec<PlaceWarning>,
     /// How many stages (`netsmith_core::timings::stage`: resolve, place, route, package...) this
     /// board's run did: the count that shows a reused package, which runs none (issue #841).
     pub stages_run: u64,
@@ -61,6 +64,27 @@ pub struct Fabricated {
     /// made again. Its `origins` and `requirements` are empty: `fab` reports them, an order does
     /// not read them.
     pub reused: bool,
+}
+
+/// A warning of the pre-check before placing, with the sets of lines behind it as data (#998).
+#[derive(Debug, Clone, PartialEq)]
+pub struct PlaceWarning {
+    pub message: String,
+    pub conflicts: Vec<netsmith_pcb::Conflict>,
+}
+
+impl PrecheckReport {
+    /// The warnings with the data behind each.
+    pub fn place_warnings(&self) -> Vec<PlaceWarning> {
+        self.warnings
+            .iter()
+            .enumerate()
+            .map(|(n, message)| PlaceWarning {
+                message: message.clone(),
+                conflicts: self.warning_proofs.get(n).cloned().unwrap_or_default(),
+            })
+            .collect()
+    }
 }
 
 /// What `netsmith fab` says when it finds no KiCad, and why there is none: KiCad is switched off
@@ -675,6 +699,11 @@ pub struct PrecheckReport {
     pub requirements: Vec<netsmith_pcb::RequirementMiss>,
     /// The faults of the placement check on that board (#779).
     pub placement: Vec<netsmith_pcb::PlacementFault>,
+    /// What each of `errors` is about, as data, in the same order (#998): the sets of lines
+    /// and the faults about one part (`past_edge`, `too_big`) behind it.
+    pub error_proofs: Vec<Vec<netsmith_pcb::Conflict>>,
+    /// The same for `warnings`.
+    pub warning_proofs: Vec<Vec<netsmith_pcb::Conflict>>,
 }
 
 /// The pre-check of one built board with the layout file's locks, if any. A board the
@@ -702,11 +731,14 @@ pub fn precheck_board(
     ) {
         Ok(found) => {
             report.errors = found.errors();
+            report.error_proofs = found.error_proofs();
             report.conflicts = found.all_proofs();
+            report.warning_proofs = found.warning_proofs();
             report.warnings = found.warnings;
         }
         Err(e @ netsmith_pcb::BoardError::Constraints(_)) => {
             report.errors = vec![e.to_string()];
+            report.error_proofs = vec![Vec::new()];
             let failure = crate::layout::PlaceFailure::Board(e);
             if let Some(ended) = crate::layout::where_ended(
                 &built.design,
@@ -717,6 +749,7 @@ pub fn precheck_board(
             ) {
                 let explained = ended.explain(&built.design);
                 report.requirements = explained.misses;
+                report.error_proofs = vec![explained.proofs.clone()];
                 report.conflicts = explained.proofs;
                 report.placement = ended.board.placement_faults();
             }
@@ -1509,6 +1542,7 @@ fn fab_board(
                 .filter(|o| !o.satisfied)
                 .map(netsmith_pcb::RequirementMiss::of_outcome)
                 .collect(),
+            place_warnings: precheck.place_warnings(),
             stages_run: 0,
             reused: false,
         };
@@ -2467,6 +2501,7 @@ fn fab_panel(
         facts,
         origins: Vec::new(),
         requirements: Vec::new(),
+        place_warnings: Vec::new(),
         stages_run: 0,
         reused: false,
     })

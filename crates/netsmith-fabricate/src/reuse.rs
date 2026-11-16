@@ -332,6 +332,7 @@ pub fn take(from: &Path, to: &Path, key: &str, label: &str) -> Result<Fabricated
         facts: record.facts,
         origins: Vec::new(),
         requirements: Vec::new(),
+        place_warnings: Vec::new(),
         stages_run: 0,
         reused: true,
     })

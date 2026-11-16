@@ -342,22 +342,27 @@ pub(super) fn run_build(run: &BuildRun) -> ExitCode {
                 &libraries,
                 catalogs.constraints_warn(),
             );
-            for warning in &found.warnings {
+            for warning in &found.place_warnings() {
+                let warning_text = &warning.message;
                 if json {
                     report.findings.push(Finding {
                         board: Some(found.board.clone()),
-                        ..Finding::plain(Severity::Warning, "place", warning.clone())
+                        conflicts: warning.conflicts.clone(),
+                        ..Finding::plain(Severity::Warning, "place", warning_text.clone())
                     });
                 } else {
-                    eprintln!("warning: {}: {warning}", found.board);
+                    eprintln!("warning: {}: {warning_text}", found.board);
                 }
             }
-            for error in &found.errors {
+            for (n, error) in found.errors.iter().enumerate() {
                 unplaceable = true;
                 fail(
                     &mut report,
                     Finding {
                         board: Some(found.board.clone()),
+                        requirements: found.requirements.clone(),
+                        conflicts: found.error_proofs.get(n).cloned().unwrap_or_default(),
+                        placement: found.placement.clone(),
                         ..Finding::plain(Severity::Error, "place", error.clone())
                     },
                     &format!("error: {}: {error}\n", found.board),

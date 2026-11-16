@@ -224,11 +224,22 @@ const LOCKED_OVER: &str = "version = 1\n[Widget.parts.r1]\nat = [10.0, 10.0]\nlo
 
 /// A project of `BOARD` with `physical` and the layout file `layout`, run with `args`.
 fn run_in(name: &str, physical: &str, layout: &str, args: &[&str]) -> std::process::Output {
+    run_in_with(name, "", physical, layout, args)
+}
+
+/// [`run_in`] with `manifest` lines under `[project]`.
+fn run_in_with(
+    name: &str,
+    manifest: &str,
+    physical: &str,
+    layout: &str,
+    args: &[&str],
+) -> std::process::Output {
     let root = out(name);
     fs::create_dir_all(root.join("src")).unwrap();
     fs::write(
         root.join("netsmith.toml"),
-        "[project]\nname = \"widget\"\ntop_level = [\"src/main.nsm\"]\n",
+        format!("[project]\nname = \"widget\"\ntop_level = [\"src/main.nsm\"]\n{manifest}\n"),
     )
     .unwrap();
     fs::write(root.join("src/main.nsm"), BOARD).unwrap();
@@ -511,4 +522,128 @@ fn layout_fit_as_laid_out_queries_the_layout_files_board_with_no_placement() {
     // The placer's seeds have nothing to do with it: a usage mistake (2).
     let both = fit("fit-both", &all, &["--as-laid-out", "--place-seeds", "2"]);
     assert_eq!(both.status.code(), Some(2));
+}
+
+#[test]
+fn build_json_has_the_place_findings_with_the_lines_their_windows_and_the_faults_as_data() {
+    // Issue #998: what is proved before placing is a finding of code `place` in `build` too,
+    // with the lines of the physical file and the window each allows as data.
+    let physical = LOCKED_PHYSICAL.replace(
+        "    .r1.place.x <= 30mm\n",
+        "    .r1.place.x &= 10mm +/- 0.1mm\n    .r1.place.y &= 10mm +/- 0.1mm\n    .led.place.x &= 10mm +/- 0.1mm\n    .led.place.y &= 10mm +/- 0.1mm\n    .led.place.rotation &= 90\n",
+    );
+    let run = run_in(
+        "build-place-overlap",
+        &physical,
+        "version = 1\n",
+        &["build", "--format", "json", "--out", "out"],
+    );
+    assert!(!run.status.success());
+    let doc: serde_json::Value = serde_json::from_slice(&run.stdout)
+        .unwrap_or_else(|e| panic!("{e}: {}", String::from_utf8_lossy(&run.stdout)));
+    let finding = doc["findings"]
+        .as_array()
+        .and_then(|f| f.iter().find(|f| f["code"] == "place"))
+        .unwrap_or_else(|| panic!("{doc}"));
+    assert_eq!(finding["severity"], "error", "{finding}");
+    let conflict = finding["conflicts"]
+        .as_array()
+        .and_then(|c| c.iter().find(|c| c["kind"] == "overlap"))
+        .unwrap_or_else(|| panic!("{finding}"));
+    let lines = conflict["lines"].as_array().unwrap();
+    let x = lines
+        .iter()
+        .find(|l| l["id"] == "r1.place.x")
+        .unwrap_or_else(|| panic!("{conflict}"));
+    assert_eq!(x["kind"], "requirement", "{x}");
+    assert_eq!(x["measure"], "x", "{x}");
+    assert_eq!(x["unit"], "mm", "{x}");
+    assert_eq!(x["min"], 9.9, "{x}");
+    assert_eq!(x["max"], 10.1, "{x}");
+    assert!(x["source"].as_str().unwrap().contains("main.physical.nsm:"), "{x}");
+    let turn = lines
+        .iter()
+        .find(|l| l["id"] == "led.place.rotation")
+        .unwrap_or_else(|| panic!("{conflict}"));
+    assert_eq!(turn["measure"], "rotation", "{turn}");
+    assert_eq!(turn["unit"], "degrees", "{turn}");
+}
+
+#[test]
+fn build_json_has_the_part_too_big_and_a_refused_lock_as_place_findings_with_data() {
+    let physical = LOCKED_PHYSICAL.replace("40mm", "6mm").replace("24mm", "6mm");
+    let run = run_in(
+        "build-place-too-big",
+        &physical,
+        "version = 1\n",
+        &["build", "--format", "json", "--out", "out"],
+    );
+    assert!(!run.status.success());
+    let doc: serde_json::Value = serde_json::from_slice(&run.stdout)
+        .unwrap_or_else(|e| panic!("{e}: {}", String::from_utf8_lossy(&run.stdout)));
+    let findings: Vec<&serde_json::Value> = doc["findings"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|f| f["code"] == "place")
+        .collect();
+    assert!(!findings.is_empty(), "{doc}");
+    // A fault about one part is a finding of its own with its one conflict.
+    let big = findings
+        .iter()
+        .find(|f| f["conflicts"][0]["kind"] == "too_big")
+        .unwrap_or_else(|| panic!("{doc}"));
+    assert_eq!(big["conflicts"].as_array().unwrap().len(), 1, "{big}");
+    assert_eq!(big["conflicts"][0]["outline"]["width"], 6.0, "{big}");
+
+    // A lock that breaks a requirement: the board as the lock leaves it.
+    let layout = "version = 1\n[Widget.parts.r1]\nat = [35.0, 10.0]\nlock = true\n";
+    let run = run_in(
+        "build-place-lock",
+        LOCKED_PHYSICAL,
+        layout,
+        &["build", "--format", "json", "--out", "out"],
+    );
+    assert!(!run.status.success());
+    let doc: serde_json::Value = serde_json::from_slice(&run.stdout)
+        .unwrap_or_else(|e| panic!("{e}: {}", String::from_utf8_lossy(&run.stdout)));
+    let finding = doc["findings"]
+        .as_array()
+        .and_then(|f| f.iter().find(|f| f["code"] == "place"))
+        .unwrap_or_else(|| panic!("{doc}"));
+    let miss = finding["requirements"]
+        .as_array()
+        .and_then(|r| r.iter().find(|r| r["id"] == "r1.place.x"))
+        .unwrap_or_else(|| panic!("{finding}"));
+    assert!(miss["over"].as_f64().unwrap() > 0.0, "{miss}");
+}
+
+#[test]
+fn constraints_warn_makes_the_lines_that_cannot_hold_a_place_warning_with_data() {
+    // Issue #998: with `constraints = "warn"` the conflicts are warnings; they keep their data,
+    // in `build`.
+    let physical = LOCKED_PHYSICAL.replace(
+        "    .r1.place.x <= 30mm\n",
+        "    .r1.place.x &= 10mm +/- 0.1mm\n    .r1.place.y &= 10mm +/- 0.1mm\n    .led.place.x &= 10mm +/- 0.1mm\n    .led.place.y &= 10mm +/- 0.1mm\n",
+    );
+    let run = run_in_with(
+        "build-place-warn",
+        "constraints = \"warn\"",
+        &physical,
+        "version = 1\n",
+        &["build", "--format", "json", "--out", "out"],
+    );
+    let stderr = String::from_utf8_lossy(&run.stderr).to_string();
+    let doc: serde_json::Value = serde_json::from_slice(&run.stdout)
+        .unwrap_or_else(|e| panic!("{e}: {stderr}"));
+    let finding = doc["findings"]
+        .as_array()
+        .and_then(|f| f.iter().find(|f| f["code"] == "place" && f["severity"] == "warning"))
+        .unwrap_or_else(|| panic!("{doc}"));
+    assert!(
+        finding["conflicts"]
+            .as_array()
+            .is_some_and(|c| c.iter().any(|c| c["kind"] == "overlap")),
+        "{finding}"
+    );
 }
