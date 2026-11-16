@@ -1145,7 +1145,9 @@ impl Checker<'_> {
 
     /// A face stated for a module is a requirement on every part of it, at any depth
     /// (ADR 0048, "Syntax decisions" 5): a part that needs the other face is stated part by
-    /// part and cannot be under a module that states one. Narrow the parts' own faces.
+    /// part and cannot be under a module that states one. Narrow the parts' own faces. A face
+    /// stated for the board itself is the same requirement on every part of the board: the
+    /// board is assembled on that face only.
     fn face_of_module(&mut self, field: FieldId, face: &str, span: Span) {
         let place = self.model.field(field).owner;
         let Some(module) = self.model.instance(place).parent else {
@@ -1153,11 +1155,30 @@ impl Checker<'_> {
         };
         if self.model.field(field).name != "side"
             || !self.model.is_place_field(field)
-            || self.model.instance(module).kind != InstKind::Module
+            || !matches!(
+                self.model.instance(module).kind,
+                InstKind::Module | InstKind::Board
+            )
         {
             return;
         }
-        let module_path = self.model.path_of(module);
+        let module_name = self.face_owner(module);
+        // A module under a board or a module that states the other face for every part.
+        if let Some((outer_name, outer_side, outer_face)) =
+            self.outer_face(module, &Domain::Text(face.to_string()))
+        {
+            let at = self.stated_at(outer_side);
+            let source = self.cur_source();
+            self.report(
+                source,
+                span,
+                format!(
+                    "{module_name} is on the {face} face, but {outer_name} is on the {outer_face} face, which is a requirement on every part of it{at}; {}",
+                    self.face_advice(&outer_name, outer_side)
+                ),
+            );
+            return;
+        }
         let mut parts = Vec::new();
         let mut stack = vec![module];
         while let Some(inst) = stack.pop() {
@@ -1190,13 +1211,62 @@ impl Checker<'_> {
                     source,
                     span,
                     format!(
-                        "`{module_path}` is on the {face} face, which is a requirement on every part of it, but `{part_path}.place.side` is already \"{old}\"{at}; a module with a part on the other face cannot state a face, state the faces of its parts one by one"
+                        "{module_name} is on the {face} face, which is a requirement on every part of it, but `{part_path}.place.side` is already \"{old}\"{at}; {}",
+                        self.face_advice(&module_name, field)
                     ),
                 );
                 continue;
             }
             self.narrow(side, Domain::Text(face.to_string()), span);
         }
+    }
+
+    /// How a message names the module or the board that states a face for every part of it:
+    /// `` `sensor` `` for a module, `` the board `Cased` `` for the board.
+    fn face_owner(&self, inst: InstId) -> String {
+        let i = self.model.instance(inst);
+        if i.kind == InstKind::Board {
+            format!("the board `{}`", i.type_name)
+        } else {
+            format!("`{}`", self.model.path_of(inst))
+        }
+    }
+
+    /// What to do when a part is on the other face from the module or board (`side`, its
+    /// `.place.side`) that states one for every part of it.
+    fn face_advice(&self, owner: &str, side: FieldId) -> String {
+        let board = self
+            .model
+            .instance(self.model.field(side).owner)
+            .parent
+            .is_some_and(|b| self.model.instance(b).kind == InstKind::Board);
+        if board {
+            format!(
+                "{owner} is assembled on one face only; to put some parts on the other face, take `.place.side` off the board and state the faces of its parts or modules one by one"
+            )
+        } else {
+            "a module with a part on the other face cannot state a face, state the faces of its parts one by one".to_string()
+        }
+    }
+
+    /// The module or board above `inst` that states a face for every part of it other than
+    /// `face`: how a message names it, its `.place.side`, and the face it states.
+    fn outer_face(&self, inst: InstId, face: &Domain) -> Option<(String, FieldId, String)> {
+        let mut cur = self.model.instance(inst).parent;
+        while let Some(at) = cur {
+            if matches!(
+                self.model.instance(at).kind,
+                InstKind::Module | InstKind::Board
+            ) && let Some(Member::Inst(place)) = self.model.member(at, "place")
+                && let Some(Member::Field(side)) = self.model.member(place, "side")
+                && let Domain::Text(other) = &self.model.field(side).domain
+                && &self.model.field(side).domain != face
+            {
+                return Some((self.face_owner(at), side, other.clone()));
+            }
+            cur = self.model.instance(at).parent;
+        }
+        None
     }
 
     /// Whether `inst` is, or lies inside, a use of a generic that has more than one provider
@@ -1236,12 +1306,14 @@ impl Checker<'_> {
         let part = self.model.instance(self.model.field(field).owner).parent?;
         let mut cur = self.model.instance(part).parent;
         while let Some(inst) = cur {
-            if self.model.instance(inst).kind == InstKind::Module
-                && let Some(Member::Inst(place)) = self.model.member(inst, "place")
+            if matches!(
+                self.model.instance(inst).kind,
+                InstKind::Module | InstKind::Board
+            ) && let Some(Member::Inst(place)) = self.model.member(inst, "place")
                 && let Some(Member::Field(side)) = self.model.member(place, "side")
                 && &self.model.field(side).domain == old
             {
-                return Some((self.model.path_of(inst), side));
+                return Some((self.face_owner(inst), side));
             }
             cur = self.model.instance(inst).parent;
         }
@@ -1281,7 +1353,8 @@ impl Checker<'_> {
                         source,
                         span,
                         format!(
-                            "`{module_path}` is on the {face} face, which is a requirement on every part of it{at}, but `{path}` is \"{other}\"; a module with a part on the other face cannot state a face, state the faces of its parts one by one"
+                            "{module_path} is on the {face} face, which is a requirement on every part of it{at}, but `{path}` is \"{other}\"; {}",
+                            self.face_advice(&module_path, module_side)
                         ),
                     );
                     return;
