@@ -46,8 +46,8 @@ use netsmith_editor::{
     api::{
         Analysis, BoardDetail, Bom, BuildReport, CatalogRefresh, Changed, Compare, Definition,
         FabReport, FileContent, GitInfo, KeepoutPlacement, OrderInfo, OrderReport, PanelView,
-        PcbChange, PcbEdit, PcbEdited, PcbFindings, PcbReport, PcbScene, PinLock, PinMove,
-        PinWritten, PowerTree, Project, Saved, SchematicHints, SystemView,
+        PcbChange, PcbEdit, PcbEdited, PcbFindings, PcbReport, PcbScene, PcbSummary, PinLock,
+        PinMove, PinWritten, PowerTree, Project, Saved, SchematicHints, SystemView,
     },
 };
 
@@ -1383,6 +1383,32 @@ impl Backend for Workspace {
             state.pcb.entry(board.to_string()).or_insert(entry);
         }
         Ok(found)
+    }
+
+    fn pcb_summary(
+        &self,
+        board: &str,
+        near: &[String],
+        within: f64,
+        between: &[(String, String)],
+    ) -> Result<PcbSummary, ApiError> {
+        // The placement `pcb_scene` draws, kept in `state.pcb`; placed here only when the board
+        // has not been placed since the files were read, and then kept for the 2D view too.
+        let (version, data) = {
+            let state = self.fresh();
+            let data = state.snapshot.board_handle(board)?;
+            if let Some(entry) = state.pcb.get(board) {
+                return pcb::summary(entry, board, near, within, between);
+            }
+            (state.version, data)
+        };
+        let entry = pcb::place(&data, board)?;
+        let answer = pcb::summary(&entry, board, near, within, between);
+        let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        if state.version == version {
+            state.pcb.entry(board.to_string()).or_insert(entry);
+        }
+        answer
     }
 
     fn pcb_drc(&self, board: &str, say: &Say) -> Result<PcbFindings, ApiError> {

@@ -6,8 +6,8 @@ use netsmith_core::job::Cancel;
 use crate::api::{
     Analysis, BoardDetail, Bom, BuildReport, CatalogRefresh, Changed, Compare, Definition,
     FabReport, FileContent, GitInfo, OrderInfo, OrderReport, PanelView, PcbEdit, PcbEdited,
-    PcbFindings, PcbPours, PcbReport, PcbScene, PinLock, PinMove, PinWritten, PowerTree, Project,
-    Saved, SchematicHints, Swap, SwapApply, Swapped, SystemView,
+    PcbFindings, PcbPours, PcbReport, PcbScene, PcbSummary, PinLock, PinMove, PinWritten,
+    PowerTree, Project, Saved, SchematicHints, Swap, SwapApply, Swapped, SystemView,
 };
 
 /// A refusal, with the HTTP status that says why.
@@ -321,6 +321,21 @@ pub trait Backend: Send + Sync + 'static {
     /// What is wrong with the board as it is placed (and routed) now, with where: netsmith's
     /// own checks, and KiCad's if it was run on this layout.
     fn pcb_findings(&self, board: &str) -> Result<PcbFindings, ApiError>;
+    /// The board as placed now (and routed, if it was) summed up as data (issue #1003): what
+    /// `netsmith layout summary` prints. `near` names parts whose neighbours within `within` mm
+    /// are listed, `between` pairs of pads (`PART.PAD`) whose distance is given. A part or pad the
+    /// board has none of is a 400 with the reason.
+    fn pcb_summary(
+        &self,
+        board: &str,
+        _near: &[String],
+        _within: f64,
+        _between: &[(String, String)],
+    ) -> Result<PcbSummary, ApiError> {
+        Err(ApiError::not_found(format!(
+            "there is no summary of `{board}`"
+        )))
+    }
     /// Run KiCad's design rules check on the board as it is, keep what it found for
     /// [`Backend::pcb_findings`] until the board changes, and answer with all the findings.
     /// `say` is told what it is doing.

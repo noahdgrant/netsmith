@@ -79,8 +79,8 @@ use netsmith_editor::{
         PartPlacement, PcbBox, PcbChange, PcbCrossed, PcbCrossedTrack, PcbCrossedVia, PcbCutout,
         PcbFinding, PcbFindings, PcbKeepout, PcbNetWidth, PcbPad, PcbPart, PcbPoint, PcbRegenerate,
         PcbRegenerated, PcbRegeneratedPart, PcbReport, PcbRequirement, PcbRouteNet, PcbRouteTrack,
-        PcbRouteVia, PcbScene, PcbShoved, PcbShovedTrack, PcbShovedVia, PcbSide, PcbTotals,
-        PcbWalk, PcbWalked, RequiredPlace, RoutesChange, Severity,
+        PcbRouteVia, PcbScene, PcbShoved, PcbShovedTrack, PcbShovedVia, PcbSide, PcbSummary,
+        PcbTotals, PcbWalk, PcbWalked, RequiredPlace, RoutesChange, Severity,
     },
 };
 use netsmith_pcb::{
@@ -687,6 +687,59 @@ impl Entry {
             kicad_note,
         }
     }
+}
+
+/// The keys of a JSON document in camelCase, as the page's types have them: `largest_free` is
+/// `largestFree`. Only keys change; every field of `netsmith_pcb::Summary` is a plain word or
+/// words joined by `_`.
+fn camel_keys(v: serde_json::Value) -> serde_json::Value {
+    use serde_json::Value;
+    match v {
+        Value::Object(map) => Value::Object(
+            map.into_iter()
+                .map(|(k, v)| {
+                    let mut out = String::new();
+                    let mut up = false;
+                    for c in k.chars() {
+                        if c == '_' {
+                            up = true;
+                        } else if up {
+                            out.extend(c.to_uppercase());
+                            up = false;
+                        } else {
+                            out.push(c);
+                        }
+                    }
+                    (out, camel_keys(v))
+                })
+                .collect(),
+        ),
+        Value::Array(items) => Value::Array(items.into_iter().map(camel_keys).collect()),
+        other => other,
+    }
+}
+
+/// The board of `entry` as placed now, summed up (`netsmith layout summary`, issue #1003): its
+/// neighbours of the parts `near` within `within` mm, and the distance of each pair of pads of
+/// `between`. A part or pad the board has none of is a 400.
+pub fn summary(
+    entry: &Entry,
+    name: &str,
+    near: &[String],
+    within: f64,
+    between: &[(String, String)],
+) -> Result<PcbSummary, ApiError> {
+    let board = &entry.board;
+    let summary = netsmith_pcb::Summary::of(board)
+        .neighbours(board, near, within)
+        .and_then(|s| s.pad_distances(board, between))
+        .map_err(ApiError::bad_request)?;
+    let mut value = serde_json::to_value(&summary).expect("plain data");
+    value["layout_stamp"] = entry.layout_stamp.clone().into();
+    let mut answer: PcbSummary = serde_json::from_value(camel_keys(value))
+        .map_err(|e| ApiError::internal(format!("the summary of {name}: {e}")))?;
+    name.clone_into(&mut answer.board);
+    Ok(answer)
 }
 
 /// The board as placed (and routed) in `entry`, as the `.glb` file `board3d --glb` writes

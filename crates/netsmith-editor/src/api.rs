@@ -44,10 +44,12 @@ use ts_rs::TS;
 
 mod compare;
 mod hints;
+mod summary;
 mod view;
 
 pub use compare::*;
 pub use hints::*;
+pub use summary::*;
 pub use view::*;
 
 /// A place in a file, from its first character to its last.
@@ -2258,6 +2260,17 @@ pub fn typescript() -> String {
         PcbFinding,
         KicadState,
         PcbFindings,
+        SummaryBox,
+        SummaryTotals,
+        SummaryFace,
+        SummaryModule,
+        SummaryDecoupling,
+        SummaryLine,
+        SummaryNet,
+        SummaryNeighbour,
+        SummaryNeighbours,
+        SummaryPads,
+        PcbSummary,
         BuildReport,
         Drc,
         Download,

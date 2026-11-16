@@ -306,6 +306,34 @@ impl Backend for Fake {
     fn pcb_findings(&self, board: &str) -> Result<netsmith_editor::api::PcbFindings, ApiError> {
         Err(ApiError::not_found(board))
     }
+    fn pcb_summary(
+        &self,
+        board: &str,
+        near: &[String],
+        within: f64,
+        between: &[(String, String)],
+    ) -> Result<netsmith_editor::api::PcbSummary, ApiError> {
+        if board != "Led" {
+            return Err(ApiError::not_found(format!("there is no board `{board}`")));
+        }
+        if near.iter().any(|n| n == "nothing") {
+            return Err(ApiError::bad_request("the board `Led` has no part `nothing`"));
+        }
+        // The request as the backend got it, in the answer.
+        Ok(serde_json::from_value(serde_json::json!({
+            "board": board, "layoutStamp": "1731340000-42", "width": 40.0, "height": 24.0,
+            "edgeWall": 0.3, "parts": 3,
+            "totals": {"hpwl": 1.0, "ratsnest": 1.0, "crossings": 0, "decouplingMean": 0.0, "decouplingMax": 0.0},
+            "faces": [], "modules": [], "decoupling": [], "nets": [], "findings": [],
+            "neighbours": near.iter().map(|n| serde_json::json!({
+                "part": n, "path": n, "face": "top", "within": within, "near": []
+            })).collect::<Vec<_>>(),
+            "pads": between.iter().map(|(a, b)| serde_json::json!({
+                "from": a, "to": b, "distance": 1.5, "dx": 1.5, "dy": 0.0, "gap": 0.5
+            })).collect::<Vec<_>>(),
+        }))
+        .unwrap())
+    }
     fn pcb_drc(
         &self,
         board: &str,
@@ -671,6 +699,39 @@ fn the_3d_scene_is_served_as_gltf_binary_with_the_layout_stamp_of_its_placement(
     assert_eq!(r.body, "glTF-of-Led");
     assert_eq!(s.get("/api/pcb/3d?board=Nope").status, 404);
     assert_eq!(s.get("/api/pcb/3d").status, 400, "the board is needed");
+}
+
+#[test]
+fn the_summary_of_a_board_takes_near_within_and_between_from_the_query() {
+    let s = start();
+    let r = s.get("/api/pcb/summary?board=Led");
+    assert_eq!(r.status, 200, "{}", r.body);
+    let json: serde_json::Value = serde_json::from_str(&r.body).unwrap();
+    assert_eq!(json["board"], "Led");
+    assert_eq!(json["layoutStamp"], "1731340000-42");
+    assert_eq!(json["neighbours"].as_array().unwrap().len(), 0);
+    assert_eq!(json["pads"].as_array().unwrap().len(), 0);
+    // `near` and `between` repeat; `within` is 2 mm unless it is given.
+    let r = s.get("/api/pcb/summary?board=Led&near=R1&near=stage.c1&between=R1.1,U1.3&between=R1.2,R1.1&within=3.5");
+    assert_eq!(r.status, 200, "{}", r.body);
+    let json: serde_json::Value = serde_json::from_str(&r.body).unwrap();
+    assert_eq!(json["neighbours"][1]["part"], "stage.c1");
+    assert_eq!(json["neighbours"][0]["within"], 3.5);
+    assert_eq!(json["pads"][0]["from"], "R1.1");
+    assert_eq!(json["pads"][1]["to"], "R1.1");
+    let r = s.get("/api/pcb/summary?board=Led&near=R1");
+    let json: serde_json::Value = serde_json::from_str(&r.body).unwrap();
+    assert_eq!(json["neighbours"][0]["within"], 2.0);
+    // A board that is not there, a part it has none of, and a query that is wrong.
+    assert_eq!(s.get("/api/pcb/summary?board=Nope").status, 404);
+    let r = s.get("/api/pcb/summary?board=Led&near=nothing");
+    assert_eq!(r.status, 400);
+    assert!(r.body.contains("no part `nothing`"), "{}", r.body);
+    assert_eq!(s.get("/api/pcb/summary").status, 400, "the board is needed");
+    for bad in ["between=R1.1", "between=R1.1,R1.2,R1.3", "between=,R1.2", "within=far", "within=-1"] {
+        let r = s.get(&format!("/api/pcb/summary?board=Led&{bad}"));
+        assert_eq!(r.status, 400, "{bad}: {}", r.body);
+    }
 }
 
 #[test]
@@ -1210,6 +1271,7 @@ fn while_the_first_analysis_runs_the_page_and_the_files_are_served_and_a_request
         ("GET", "/api/board?name=A"),
         ("GET", "/api/power?board=A"),
         ("GET", "/api/pcb/findings?board=A"),
+        ("GET", "/api/pcb/summary?board=A"),
         ("POST", "/api/build"),
         ("POST", "/api/fab?board=A"),
         ("POST", "/api/fs/create-file"),
