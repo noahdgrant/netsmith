@@ -205,11 +205,35 @@ pub(super) fn release_note(target: &Target, report: Option<&mut Report>) {
 /// The KiCad libraries of the target's project (ADR 0021). A mistake in `kicad.toml` is
 /// printed and is the exit code.
 pub(super) fn libraries(target: &Target) -> Result<Libraries, ExitCode> {
-    let root = target.project.as_ref().map(|p| p.root.as_path());
-    Libraries::for_project(root).map_err(|e| {
+    target.libraries().map_err(|e| {
         eprintln!("{e}");
         ExitCode::from(2)
     })
+}
+
+/// `build` and `fab`: write the project's dependency lock when it reads a dependency by `git`
+/// and has none (issue #1012), as the pick lock is written (ADR 0100); an existing one is never
+/// rewritten. Said on stderr, so `--format json` keeps stdout to itself. A failure is printed
+/// and is the exit code.
+pub(super) fn write_dependency_lock(target: &Target) -> Result<(), ExitCode> {
+    let Some(project) = &target.project else {
+        return Ok(());
+    };
+    match netsmith_fabricate::dependency_lock::write_if_missing(project) {
+        Ok(Some(lock)) => {
+            eprintln!(
+                "wrote {} ({} dependencies by git); commit it",
+                netsmith_fabricate::dependency_lock::LOCK_FILE,
+                lock.entries.len()
+            );
+            Ok(())
+        }
+        Ok(None) => Ok(()),
+        Err(e) => {
+            eprintln!("{e}");
+            Err(ExitCode::from(2))
+        }
+    }
 }
 
 /// Whether a project with no file to act on was found, which it says. A library-only

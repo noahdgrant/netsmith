@@ -40,9 +40,7 @@ impl Workspace {
         let built = (|| -> Result<_, String> {
             let loader = self.target().loader()?;
             let catalogs = self.target().catalogs()?;
-            let libraries = netsmith_pipeline::Libraries::for_project(
-                self.target().project.as_ref().map(|p| p.root.as_path()),
-            )?;
+            let libraries = self.target().libraries()?;
             Ok((loader, catalogs, libraries))
         })();
         match built {
@@ -143,10 +141,7 @@ impl Workspace {
         let text = fs::read_to_string(&source.path)
             .map_err(|e| ApiError::internal(format!("{}: {e}", source.name)))?;
         let loader = target.loader().map_err(ApiError::internal)?;
-        let libraries = netsmith_pipeline::Libraries::for_project(
-            target.project.as_ref().map(|p| p.root.as_path()),
-        )
-        .map_err(ApiError::internal)?;
+        let libraries = target.libraries().map_err(ApiError::internal)?;
         // The stages `netsmith fab` prints to stderr go to the page instead.
         let _reporting = Reporting::to(say);
         netsmith_catalog::picks::refuse(&source.path).map_err(ApiError::internal)?;

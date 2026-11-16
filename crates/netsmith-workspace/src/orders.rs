@@ -67,10 +67,7 @@ impl Workspace {
         };
         let loader = target.loader().map_err(ApiError::internal)?;
         let catalogs = target.catalogs().map_err(ApiError::internal)?;
-        let libraries = netsmith_pipeline::Libraries::for_project(
-            target.project.as_ref().map(|p| p.root.as_path()),
-        )
-        .map_err(ApiError::internal)?;
+        let libraries = target.libraries().map_err(ApiError::internal)?;
         // The stages `netsmith fab` prints to stderr go to the page instead.
         let _reporting = Reporting::to(say);
         let made = fab_order(

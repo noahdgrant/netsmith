@@ -84,7 +84,8 @@ pub struct Manifest {
     pub assembly: Option<String>,
     /// The environment every board of the project has when it declares none (ADR 0099): the
     /// definition of an interface such as `std::env::Environment`, as `module::Name`, where the
-    /// module is a standard one (`std::env`) or a file of the project (`src/vehicle.nsm`). A
+    /// module is a standard one (`std::env`), a file of the project (`src/vehicle.nsm`) or a module
+    /// of a dependency by its import path (`shared::env`, issue #1012). A
     /// board that declares its own `.environment` has that one alone. Without the key a board
     /// that declares none has no environment, and nothing is judged against one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -169,9 +170,9 @@ pub struct Manifest {
     pub dependencies: BTreeMap<String, Dependency>,
 }
 
-/// One entry of `[dependencies]`: where another project is. Only `path` is built; `git` (with
-/// `rev`) and `version` are read so that they are refused with a message that says so, rather
-/// than as unknown keys (issue #68).
+/// One entry of `[dependencies]`: where another project is. A folder (`path`), or a git
+/// repository (`git`) at a `rev` (a branch, a tag or a commit) or at the newest tag a
+/// `version` requirement admits (issue #1012, ADR 0137).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Dependency {
@@ -179,10 +180,15 @@ pub struct Dependency {
     /// root (`../shared`); `..` is allowed, an absolute path is not.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub path: Option<String>,
+    /// The URL of a git repository whose top folder is the project: `https://...`,
+    /// `ssh://...`, `git@host:path`, `file:///...` or an absolute path.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub git: Option<String>,
+    /// With `git`: the branch, tag or commit to read.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rev: Option<String>,
+    /// With `git`: a version requirement in cargo's syntax (`"1.2"` admits 1.2.0 up to, not
+    /// including, 2.0.0); the newest tag `vX.Y.Z` or `X.Y.Z` it admits is read.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub version: Option<String>,
 }
@@ -194,17 +200,86 @@ impl Dependency {
                 "{MANIFEST}: [dependencies] {name:?} is not a name an import can start with: letters, digits and `_`, not starting with a digit, and not `src` or `std`"
             ));
         }
-        if self.git.is_some() || self.rev.is_some() || self.version.is_some() {
-            return Err(format!(
-                "{MANIFEST}: [dependencies] {name}: netsmith reads a dependency from a folder only, `{name} = {{ path = \"../{name}\" }}`; a dependency by `git` or `version` is not built yet (issue #68)"
-            ));
-        }
-        match &self.path {
-            None => Err(format!(
-                "{MANIFEST}: [dependencies] {name} needs `path`, the folder of its netsmith.toml: `{name} = {{ path = \"../{name}\" }}`"
+        let forms = format!(
+            "`{name} = {{ path = \"../{name}\" }}`, `{name} = {{ git = \"https://example.com/{name}.git\", rev = \"main\" }}` or `{name} = {{ git = \"...\", version = \"1.2\" }}`"
+        );
+        match (&self.path, &self.git) {
+            (Some(_), Some(_)) => Err(format!(
+                "{MANIFEST}: [dependencies] {name} has both `path` and `git`; a dependency is in one place: {forms}"
             )),
-            Some(path) => check_folder(&format!("[dependencies] {name} path"), path),
+            (Some(path), None) => {
+                if self.rev.is_some() || self.version.is_some() {
+                    return Err(format!(
+                        "{MANIFEST}: [dependencies] {name}: `rev` and `version` choose a commit of a `git` repository; a `path` dependency is read as the folder is"
+                    ));
+                }
+                check_folder(&format!("[dependencies] {name} path"), path)
+            }
+            (None, Some(git)) => {
+                check_git_url(name, git)?;
+                match (&self.rev, &self.version) {
+                    (Some(_), Some(_)) => Err(format!(
+                        "{MANIFEST}: [dependencies] {name} has both `rev` and `version`; give one"
+                    )),
+                    (None, None) => Err(format!(
+                        "{MANIFEST}: [dependencies] {name} needs `rev` (a branch, tag or commit) or `version` with its `git`: {forms}"
+                    )),
+                    (Some(rev), None) => {
+                        if rev.is_empty()
+                            || rev.starts_with('-')
+                            || rev.chars().any(char::is_control)
+                        {
+                            return Err(format!(
+                                "{MANIFEST}: [dependencies] {name}: rev = {rev:?} is not a branch, tag or commit"
+                            ));
+                        }
+                        Ok(())
+                    }
+                    (None, Some(version)) => self.version_req(name, version).map(|_| ()),
+                }
+            }
+            (None, None) => Err(format!(
+                "{MANIFEST}: [dependencies] {name} needs `path` or `git`: {forms}; there is no registry, so a `version` names tags of a `git` repository"
+            )),
         }
+    }
+
+    fn version_req(&self, name: &str, version: &str) -> Result<semver::VersionReq, String> {
+        semver::VersionReq::parse(version).map_err(|e| {
+            format!(
+                "{MANIFEST}: [dependencies] {name}: version = {version:?} is not a version requirement such as \"1.2\" or \"=1.2.3\": {e}"
+            )
+        })
+    }
+
+    /// What a `git` entry asks for, with no commit yet: `None` for a `path` entry.
+    fn request(&self, name: &str) -> Option<crate::dependency_lock::Locked> {
+        Some(crate::dependency_lock::Locked {
+            name: name.to_string(),
+            git: self.git.clone()?,
+            rev: self.rev.clone(),
+            version: self.version.clone(),
+            commit: String::new(),
+        })
+    }
+}
+
+/// A `git` value that git reads as a place: a URL with a scheme, `user@host:path`, or an
+/// absolute path. A relative path would be read from wherever netsmith runs, and a value that
+/// starts with `-` as an option.
+fn check_git_url(name: &str, git: &str) -> Result<(), String> {
+    let scp = git
+        .split_once(':')
+        .is_some_and(|(host, _)| host.contains('@'));
+    let ok = !git.starts_with('-')
+        && !git.chars().any(char::is_control)
+        && (git.contains("://") || scp || Path::new(git).is_absolute());
+    if ok {
+        Ok(())
+    } else {
+        Err(format!(
+            "{MANIFEST}: [dependencies] {name}: git = {git:?} is not a repository URL (`https://...`, `ssh://...`, `git@host:path`, `file:///...`) or an absolute path; a folder on this machine is a `path` dependency"
+        ))
     }
 }
 
@@ -400,7 +475,7 @@ impl Manifest {
             ));
         }
         if let Some(spelled) = &self.environment {
-            environment_key(spelled)?;
+            environment_key(spelled, &self.dependencies)?;
         }
         if let Some(word) = &self.guidelines
             && !["warn", "error"].contains(&word.as_str())
@@ -594,8 +669,11 @@ pub struct Project {
     pub manifest: Manifest,
     /// `--offline` was given (`fab`, `editor`): [`Project::supply`] asks no provider that would
     /// use the network, and uses an answer kept earlier of any age (issue #803). Not a key of the
-    /// manifest: it is a choice of the run, and [`Target::reloaded`] keeps it.
+    /// manifest: it is a choice of the run, and [`Target::reloaded`] keeps it. A dependency by
+    /// `git` that the cache does not hold is then an error, not a fetch.
     pub offline: bool,
+    /// The cache of dependencies by `git` ([`crate::git_dependency`]); `None` is this machine's.
+    pub git_cache: Option<PathBuf>,
 }
 
 /// A project that this one reads through `[dependencies]`, directly or through another
@@ -606,9 +684,12 @@ pub struct DependencyProject {
     /// `shared` makes its `src/power.nsm` the module `shared::power`.
     pub name: String,
     /// Its folder as messages name it: relative to the depending project's root, with `/`
-    /// (`../shared`).
+    /// (`../shared`). A dependency by `git` is named by its key and its commit,
+    /// `shared@0123456789ab`, since its files are in the cache.
     pub folder: String,
     pub project: Project,
+    /// The commit of a dependency by `git`; `None` for one by `path`.
+    pub commit: Option<String>,
 }
 
 /// One catalog file of a project: found in a `catalog_dirs` folder, or listed under
@@ -645,6 +726,7 @@ impl Project {
             root: root.to_path_buf(),
             manifest,
             offline: false,
+            git_cache: None,
         })
     }
 
@@ -652,6 +734,24 @@ impl Project {
     pub fn with_offline(mut self, offline: bool) -> Project {
         self.offline = offline;
         self
+    }
+
+    /// This project with its dependencies by `git` cached under `dir` instead of this machine's
+    /// cache (tests).
+    pub fn with_git_cache(mut self, dir: &Path) -> Project {
+        self.git_cache = Some(dir.to_path_buf());
+        self
+    }
+
+    /// The cache of dependencies by `git` this run uses.
+    pub fn git_cache(&self) -> Result<crate::git_dependency::GitCache, String> {
+        let dir = match &self.git_cache {
+            Some(dir) => dir.clone(),
+            None => crate::git_dependency::GitCache::default_dir().ok_or(
+                "a dependency by `git` needs a cache folder: set NETSMITH_CACHE_DIR or HOME",
+            )?,
+        };
+        Ok(crate::git_dependency::GitCache::at(&dir).offline(self.offline))
     }
 
     /// The directory `netsmith build` writes to.
@@ -680,12 +780,79 @@ impl Project {
     /// the entries of each manifest in the order of their names (issue #68). They share one set of names: two projects under
     /// one name, a dependency that is not a project, and a project that depends on itself
     /// through others are errors that name the manifest and the entry.
+    ///
+    /// A dependency by `git` is read at the commit the dependency lock holds for it, or, with no
+    /// entry, at the one its `rev` or `version` names in the cache, fetched only when the cache
+    /// cannot answer (issue #1012).
     pub fn dependencies(&self) -> Result<Vec<DependencyProject>, String> {
-        let mut found = Vec::new();
-        let root = fs::canonicalize(&self.root).unwrap_or_else(|_| self.root.clone());
-        let mut chain = vec![(root, self.manifest.name.clone())];
-        walk_dependencies(self, "", &mut chain, &mut found)?;
-        Ok(found)
+        let lock = crate::dependency_lock::DependencyLock::read(&self.root)?;
+        Ok(self
+            .resolve_dependencies(lock.as_ref(), crate::git_dependency::Fetch::WhenMissing)?
+            .0)
+    }
+
+    /// The dependencies ([`Project::dependencies`]), each by `git` at the commit `lock` holds for
+    /// it, or else resolved as `fetch` says, and the commit each by `git` was read at: the lock
+    /// that holds what this run read.
+    pub fn resolve_dependencies(
+        &self,
+        lock: Option<&crate::dependency_lock::DependencyLock>,
+        fetch: crate::git_dependency::Fetch,
+    ) -> Result<
+        (
+            Vec<DependencyProject>,
+            crate::dependency_lock::DependencyLock,
+        ),
+        String,
+    > {
+        let mut walk = Walk {
+            project: self,
+            cache: None,
+            lock,
+            fetch,
+            chain: vec![(
+                fs::canonicalize(&self.root).unwrap_or_else(|_| self.root.clone()),
+                self.manifest.name.clone(),
+            )],
+            found: Vec::new(),
+            locked: Vec::new(),
+        };
+        walk.walk(self, "", None)?;
+        Ok((
+            walk.found,
+            crate::dependency_lock::DependencyLock::new(walk.locked),
+        ))
+    }
+
+    /// What every dependency by `git` (this project's and its dependencies') asks for, with no
+    /// commit, as far as the manifests can be read without fetching: a dependency by `git` that
+    /// the cache does not hold contributes no dependencies of its own, and the flag is then
+    /// false: the list is this project's own. For `lock --check`.
+    pub fn git_requests(&self) -> Result<(Vec<crate::dependency_lock::Locked>, bool), String> {
+        let lock = crate::dependency_lock::DependencyLock::read(&self.root)?;
+        let offline = self.clone().with_offline(true);
+        let resolved =
+            offline.resolve_dependencies(lock.as_ref(), crate::git_dependency::Fetch::WhenMissing);
+        let complete = resolved.is_ok();
+        let found = resolved.map(|(found, _)| found).unwrap_or_default();
+        let mut wanted: Vec<_> = self
+            .manifest
+            .dependencies
+            .iter()
+            .filter_map(|(name, d)| d.request(name))
+            .collect();
+        for dependency in &found {
+            for (name, d) in &dependency.project.manifest.dependencies {
+                if let Some(request) = d.request(name)
+                    && !wanted
+                        .iter()
+                        .any(|w: &crate::dependency_lock::Locked| w.same_request(&request))
+                {
+                    wanted.push(request);
+                }
+            }
+        }
+        Ok((wanted, complete))
     }
 
     /// The `.nsm` files of the dependencies' `src/` folders (issue #68), each with the module it
@@ -714,6 +881,27 @@ impl Project {
             }
         }
         Ok(out)
+    }
+
+    /// The folder of each dependency, with the name messages give its `kicad.toml`
+    /// (`../shared/kicad.toml`), for the KiCad mapping (issue #1012).
+    pub fn kicad_folders(&self) -> Result<Vec<(PathBuf, String)>, String> {
+        Ok(self
+            .dependencies()?
+            .into_iter()
+            .map(|d| {
+                (
+                    d.project.root,
+                    format!("{}/{}", d.folder, netsmith_kicad::PROJECT_FILE),
+                )
+            })
+            .collect())
+    }
+
+    /// The KiCad libraries of this project: the installed ones, the standard mapping, and the
+    /// `kicad.toml` of the project and of each dependency.
+    pub fn libraries(&self) -> Result<netsmith_pipeline::Libraries, String> {
+        netsmith_pipeline::Libraries::for_project_with(Some(&self.root), &self.kicad_folders()?)
     }
 
     /// The module path of a file of this project, however its name was typed: `src/power.nsm`,
@@ -981,10 +1169,10 @@ impl Project {
             crate::physical::attach(&mut loader, &name, &m.path, unsaved)?;
         }
         if let Some(spelled) = &self.manifest.environment {
-            let (module, name) = environment_key(spelled)?;
+            let (module, name) = environment_key(spelled, &self.manifest.dependencies)?;
             if !loader.modules().iter().any(|(key, _, _)| *key == module) {
                 return Err(format!(
-                    "{MANIFEST}: environment = {spelled:?} names the module `{module}`, which is not a module of the standard library or a file of `src/`"
+                    "{MANIFEST}: environment = {spelled:?} names the module `{module}`, which is not a module of the standard library, a file of `src/` or a module of a dependency"
                 ));
             }
             loader = loader.with_default_environment(&module, &name);
@@ -993,69 +1181,154 @@ impl Project {
     }
 }
 
-/// Add the dependencies of `project` to `found`, depth first. `folder` is `project`'s folder from
-/// the first project's root (empty for the first project itself), and `chain` the projects from
-/// the first to this one, to find one that depends on itself.
-fn walk_dependencies(
-    project: &Project,
-    folder: &str,
-    chain: &mut Vec<(PathBuf, String)>,
-    found: &mut Vec<DependencyProject>,
-) -> Result<(), String> {
-    let manifest = if folder.is_empty() {
-        MANIFEST.to_string()
-    } else {
-        format!("{folder}/{MANIFEST}")
-    };
-    for (name, dependency) in &project.manifest.dependencies {
-        let path = dependency
-            .path
-            .as_deref()
-            .expect("the manifest was validated");
-        let shown = normal_folder(&if folder.is_empty() {
-            path.to_string()
-        } else {
-            format!("{folder}/{path}")
-        });
-        let dir = project.root.join(path);
-        if !dir.join(MANIFEST).is_file() {
-            return Err(format!(
-                "{manifest}: [dependencies] {name}: {shown} is not a project: it has no {MANIFEST} ({})",
-                dir.display()
-            ));
+/// The walk of [`Project::resolve_dependencies`].
+struct Walk<'a> {
+    /// The project whose dependencies these are, whose cache and lock are used for all of them.
+    project: &'a Project,
+    cache: Option<crate::git_dependency::GitCache>,
+    lock: Option<&'a crate::dependency_lock::DependencyLock>,
+    fetch: crate::git_dependency::Fetch,
+    /// The projects from the first to the one being walked, to find one that depends on itself.
+    chain: Vec<(PathBuf, String)>,
+    found: Vec<DependencyProject>,
+    /// The commit each dependency by `git` was read at.
+    locked: Vec<crate::dependency_lock::Locked>,
+}
+
+impl Walk<'_> {
+    fn cache(&mut self) -> Result<&crate::git_dependency::GitCache, String> {
+        if self.cache.is_none() {
+            self.cache = Some(self.project.git_cache()?);
         }
-        let canonical = fs::canonicalize(&dir)
-            .map_err(|e| format!("{manifest}: [dependencies] {name}: {shown}: {e}"))?;
-        if let Some(at) = chain.iter().position(|(root, _)| *root == canonical) {
-            let mut names: Vec<&str> = chain[at..].iter().map(|(_, n)| n.as_str()).collect();
-            names.push(name);
-            return Err(format!(
-                "{manifest}: [dependencies] {name}: {shown} depends on itself ({}); a project cannot depend on itself through others",
-                names.join(" -> ")
-            ));
-        }
-        if let Some(earlier) = found.iter().find(|d| d.name == *name) {
-            let same = fs::canonicalize(&earlier.project.root).is_ok_and(|r| r == canonical);
-            if same {
-                continue;
-            }
-            return Err(format!(
-                "{manifest}: [dependencies] {name}: two projects are named `{name}`, {} and {shown}; the modules of a dependency are imported by its name, so the name is one project's",
-                earlier.folder
-            ));
-        }
-        let loaded =
-            Project::load(&dir).map_err(|e| format!("{manifest}: [dependencies] {name}: {e}"))?;
-        found.push(DependencyProject {
-            name: name.clone(),
-            folder: shown.clone(),
-            project: loaded.clone(),
-        });
-        chain.push((canonical, name.clone()));
-        walk_dependencies(&loaded, &shown, chain, found)?;
-        chain.pop();
+        Ok(self.cache.as_ref().expect("set above"))
     }
-    Ok(())
+
+    /// The folder of the dependency `name` of a git entry, and its commit: the locked one, or
+    /// the one its `rev` or `version` names.
+    fn git_folder(
+        &mut self,
+        name: &str,
+        dependency: &Dependency,
+    ) -> Result<(PathBuf, String), String> {
+        use crate::git_dependency::Want;
+        let mut request = dependency.request(name).expect("a git entry");
+        let url = request.git.clone();
+        let locked = self
+            .lock
+            .and_then(|lock| lock.commit_for(&request))
+            .map(str::to_string);
+        let commit = match locked {
+            Some(commit) => commit,
+            None => {
+                let fetch = self.fetch;
+                let want_version;
+                let want = match (&dependency.rev, &dependency.version) {
+                    (Some(rev), _) => Want::Rev(rev),
+                    (_, Some(version)) => {
+                        want_version = dependency.version_req(name, version)?;
+                        Want::Version(&want_version)
+                    }
+                    _ => unreachable!("the manifest was validated"),
+                };
+                self.cache()?.resolve(&url, want, fetch)?
+            }
+        };
+        let dir = self.cache()?.checkout(&url, &commit)?;
+        request.commit = commit.clone();
+        if !self.locked.iter().any(|l| *l == request) {
+            self.locked.push(request);
+        }
+        Ok((dir, commit))
+    }
+
+    /// Add the dependencies of `project` to `found`, depth first. `folder` is `project`'s folder
+    /// from the first project's root (empty for the first project itself), and `repository` the
+    /// checkout `project` is in when it came by `git`, which its `path` entries stay inside.
+    fn walk(
+        &mut self,
+        project: &Project,
+        folder: &str,
+        repository: Option<&Path>,
+    ) -> Result<(), String> {
+        let manifest = if folder.is_empty() {
+            MANIFEST.to_string()
+        } else {
+            format!("{folder}/{MANIFEST}")
+        };
+        for (name, dependency) in &project.manifest.dependencies {
+            let (dir, shown, commit, inside) = match (&dependency.path, &dependency.git) {
+                (Some(path), _) => {
+                    let shown = normal_folder(&if folder.is_empty() {
+                        path.to_string()
+                    } else {
+                        format!("{folder}/{path}")
+                    });
+                    (
+                        project.root.join(path),
+                        shown,
+                        None,
+                        repository.map(Path::to_path_buf),
+                    )
+                }
+                (None, Some(_)) => {
+                    let (dir, commit) = self
+                        .git_folder(name, dependency)
+                        .map_err(|e| format!("{manifest}: [dependencies] {name}: {e}"))?;
+                    let shown = format!("{name}@{}", &commit[..12]);
+                    let inside = Some(dir.clone());
+                    (dir, shown, Some(commit), inside)
+                }
+                (None, None) => unreachable!("the manifest was validated"),
+            };
+            if !dir.join(MANIFEST).is_file() {
+                return Err(format!(
+                    "{manifest}: [dependencies] {name}: {shown} is not a project: it has no {MANIFEST} ({})",
+                    dir.display()
+                ));
+            }
+            let canonical = fs::canonicalize(&dir)
+                .map_err(|e| format!("{manifest}: [dependencies] {name}: {shown}: {e}"))?;
+            if commit.is_none()
+                && let Some(repository) = repository
+                && !fs::canonicalize(repository).is_ok_and(|r| canonical.starts_with(r))
+            {
+                return Err(format!(
+                    "{manifest}: [dependencies] {name}: {shown} is outside the git repository {folder} came from; a dependency by `git` names its own dependencies by `git`, or by a `path` inside it"
+                ));
+            }
+            if let Some(at) = self.chain.iter().position(|(root, _)| *root == canonical) {
+                let mut names: Vec<&str> =
+                    self.chain[at..].iter().map(|(_, n)| n.as_str()).collect();
+                names.push(name);
+                return Err(format!(
+                    "{manifest}: [dependencies] {name}: {shown} depends on itself ({}); a project cannot depend on itself through others",
+                    names.join(" -> ")
+                ));
+            }
+            if let Some(earlier) = self.found.iter().find(|d| d.name == *name) {
+                let same = fs::canonicalize(&earlier.project.root).is_ok_and(|r| r == canonical);
+                if same {
+                    continue;
+                }
+                return Err(format!(
+                    "{manifest}: [dependencies] {name}: two projects are named `{name}`, {} and {shown}; the modules of a dependency are imported by its name, so the name is one project's",
+                    earlier.folder
+                ));
+            }
+            let loaded = Project::load(&dir)
+                .map_err(|e| format!("{manifest}: [dependencies] {name}: {e}"))?;
+            self.found.push(DependencyProject {
+                name: name.clone(),
+                folder: shown.clone(),
+                project: loaded.clone(),
+                commit,
+            });
+            self.chain.push((canonical, name.clone()));
+            self.walk(&loaded, &shown, inside.as_deref())?;
+            self.chain.pop();
+        }
+        Ok(())
+    }
 }
 
 /// A folder as messages show it: with `/`, without `.` steps, and with each `..` that undoes a
@@ -1082,10 +1355,18 @@ fn normal_folder(path: &str) -> String {
 /// (ADR 0099): `std::env::Environment` is the definition `Environment` of the standard module
 /// `std::env`, and `src/vehicle.nsm::Automotive` the definition `Automotive` of the project's
 /// file `src/vehicle.nsm`, the module `src::vehicle`.
-fn environment_key(spelled: &str) -> Result<(String, String), String> {
+///
+/// A spelling whose first step is the key of a `[dependencies]` entry is a module of that
+/// dependency by its import path: `shared::env::Lab` is the definition `Lab` of the module
+/// `shared::env`, the dependency's `src/env.nsm` (issue #1012). A dependency's files are named by
+/// module path and not by file, since a dependency by `git` has no folder in the project.
+fn environment_key(
+    spelled: &str,
+    dependencies: &BTreeMap<String, Dependency>,
+) -> Result<(String, String), String> {
     let bad = |why: &str| {
         format!(
-            "{MANIFEST}: environment = {spelled:?} {why}: write the definition as `std::env::Environment` or `src/vehicle.nsm::Automotive`"
+            "{MANIFEST}: environment = {spelled:?} {why}: write the definition as `std::env::Environment`, `src/vehicle.nsm::Automotive` or, for a dependency's, `shared::env::Lab`"
         )
     };
     let Some((module, name)) = spelled.rsplit_once("::") else {
@@ -1093,6 +1374,14 @@ fn environment_key(spelled: &str) -> Result<(String, String), String> {
     };
     if !is_identifier(name) {
         return Err(bad("does not end in the name of a definition"));
+    }
+    if let Some((first, _)) = module.split_once("::").or(Some((module, "")))
+        && dependencies.contains_key(first)
+    {
+        if !module.split("::").all(is_identifier) || !module.contains("::") {
+            return Err(bad("is not a module of the dependency"));
+        }
+        return Ok((module.to_string(), name.to_string()));
     }
     if let Some(std) = module.strip_prefix("std::") {
         if !std.split("::").all(is_identifier) {
@@ -1397,6 +1686,15 @@ impl Target {
     pub fn with_offline(mut self, offline: bool) -> Target {
         self.project = self.project.map(|p| p.with_offline(offline));
         self
+    }
+
+    /// The KiCad libraries the target's boards are written with ([`Project::libraries`]); with
+    /// no project, the standard mapping and the installed libraries.
+    pub fn libraries(&self) -> Result<netsmith_pipeline::Libraries, String> {
+        match &self.project {
+            Some(project) => project.libraries(),
+            None => netsmith_pipeline::Libraries::for_project(None),
+        }
     }
 
     /// Whether the run asks no supplier ([`Target::with_offline`]).

@@ -287,6 +287,9 @@ fn run_fab(
     if no_boards(&target) {
         return ExitCode::from(2);
     }
+    if let Err(code) = common::write_dependency_lock(&target) {
+        return code;
+    }
     let out = out.unwrap_or(&target.fab_out);
     let libraries = match timings::stage("libraries", "", || libraries(&target)) {
         Ok(l) => l,
