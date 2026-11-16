@@ -53,7 +53,7 @@ use crate::gbr::{Contour, Pen};
 use crate::geom::{self, Arc, Bounds, Pt};
 use crate::pads::{self, Outline};
 use crate::plot::Rules;
-use crate::polygons::{Area, Polygons, difference, grown, overlap, trimmed};
+use crate::polygons::{Area, Polygons, difference, grown, overlap, trimmed, union};
 
 /// KiCad's clearance when a zone gives none.
 const DEFAULT_CLEARANCE: f64 = 0.2;
@@ -371,8 +371,6 @@ pub(crate) struct Judged {
     /// Whether the fill is the one the board file holds (`filled_polygon`), rather than one
     /// worked out here.
     pub held: bool,
-    /// The fill.
-    pub fill: Vec<Area>,
     /// Each pad of the zone's net that the zone joins with thermal spokes and whose centre is
     /// in the zone's outline.
     pub reliefs: Vec<Relief>,
@@ -381,6 +379,9 @@ pub(crate) struct Judged {
     /// `island_removal_mode` keeps (the others are gone); of a fill the file holds, every one,
     /// since that copper is made as it is.
     pub islands: Vec<(Pt, f64)>,
+    /// Each copper sliver of the fill ([`slivers`]), when the check asked for them: a corner of
+    /// it and its area in mm².
+    pub slivers: Vec<(Pt, f64)>,
 }
 
 /// A thermal relief of a pad in a zone, as the fill leaves it.
@@ -425,12 +426,15 @@ fn held_fill(z: &Zone, layer: &str) -> Vec<Area> {
 
 /// The fill of every zone of `layer` with a net, and what the check reads of it ([`Judged`]):
 /// the fill the file holds where a zone holds one, else the fill worked out as [`pour`] draws
-/// it.
+/// it. With `sliver_width`, the copper slivers narrower than it too: of every fill the file
+/// holds, and of a fill worked out here only when the zone's minimum thickness is under the
+/// width (the fill is trimmed to that thickness, which leaves nothing narrower).
 pub(crate) fn judge(
     art: &Artwork,
     layer: &str,
     edge: &BoardEdge,
     rules: &Rules,
+    sliver_width: Option<f64>,
 ) -> Result<Vec<Judged>, String> {
     let on_layer = |z: &Zone| z.keepout.is_none() && z.layers.iter().any(|l| l == layer);
     let holds = |z: &Zone| z.filled.iter().any(|(l, _)| l == layer);
@@ -504,25 +508,38 @@ pub(crate) fn judge(
                 tracks,
             });
         }
-        let mut islands = Vec::new();
-        if *held || z.islands != Islands::Remove {
-            let others: Vec<Area> = fills
+        let others = || -> Vec<Area> {
+            fills
                 .iter()
                 .filter(|(j, _, _)| j != i && art.zones[*j].net == z.net)
                 .flat_map(|(_, f, _)| f.iter().cloned())
-                .collect();
+                .collect()
+        };
+        let mut islands = Vec::new();
+        if *held || z.islands != Islands::Remove {
+            let others = others();
             for (piece, isolated) in fill.iter().zip(isolated(fill, art, layer, z, &others)) {
                 if isolated && let Some(&corner) = piece.outer.first() {
                     islands.push((corner, piece.size()));
                 }
             }
         }
+        let slivers = match sliver_width {
+            Some(width) if width > 0.0 && (*held || z.min_thickness < width) => {
+                // The copper of the net round the fill: a spike of the fill against a pad, a track
+                // or another zone of the net is part of wider copper and no sliver.
+                let mut round = others();
+                round.extend(net_copper(art, layer, z.net.as_deref().unwrap_or_default()));
+                slivers(fill, &round, width)
+            }
+            _ => Vec::new(),
+        };
         out.push(Judged {
             zone: *i,
             held: *held,
-            fill: fill.clone(),
             reliefs,
             islands,
+            slivers,
         });
     }
     out.sort_by_key(|j| j.zone);
@@ -530,14 +547,25 @@ pub(crate) fn judge(
 }
 
 /// The copper of a fill narrower than `width` that reaches further than `width` from the copper
-/// a fill trimmed to `width` keeps (issue #993): a corner, which trimming only rounds, stays
-/// within it; a strip or a spike narrower than the width runs further. Each piece, by a corner
-/// of it and its area in mm², pieces under a square micrometre (the curves' rounding) left out.
-pub(crate) fn slivers(fill: &[Area], width: f64) -> Vec<(Pt, f64)> {
+/// that trimming to `width` keeps (issue #993): a corner, which trimming only rounds, stays
+/// within it; a strip or a spike narrower than the width runs further. The fill is trimmed
+/// together with `round`, the other copper of its net on the layer, so a part of the fill that
+/// lies against that copper is as wide as the two together. Each piece, by a corner of it and
+/// its area in mm², pieces under a square micrometre (the curves' rounding) left out.
+fn slivers(fill: &[Area], round: &[Area], width: f64) -> Vec<(Pt, f64)> {
     if width <= 0.0 || fill.is_empty() {
         return Vec::new();
     }
-    let kept = trimmed(fill, width);
+    let copper = if round.is_empty() {
+        fill.to_vec()
+    } else {
+        // Copper that touches the fill shares an edge with it and no area: grown a little, it
+        // joins.
+        let mut all = fill.to_vec();
+        all.extend(grown(round, TOUCH));
+        union(&all)
+    };
+    let kept = trimmed(&copper, width);
     let narrow = difference(fill, &kept);
     if narrow.iter().all(|a| a.size() < SLIVER_NOISE) {
         return Vec::new();

@@ -74,7 +74,7 @@ pub(crate) fn run(out: &mut Out<'_>) {
     };
     for layer in &m.layers {
         // Two zones that overlap with the same priority cannot be filled: `fab` says so.
-        let Ok(judged) = fill::judge(m.art, layer, &edge, &rules) else {
+        let Ok(judged) = fill::judge(m.art, layer, &edge, &rules, slivers.then_some(width)) else {
             continue;
         };
         for j in judged {
@@ -142,10 +142,8 @@ pub(crate) fn run(out: &mut Out<'_>) {
                     );
                 }
             }
-            // A fill worked out here is already trimmed to the zone's minimum thickness, which
-            // leaves nothing narrower: only a thinner minimum can leave a sliver.
-            if slivers && (j.held || zone.min_thickness < width) {
-                for (at, area) in fill::slivers(&j.fill, width) {
+            if slivers {
+                for (at, area) in j.slivers {
                     out.push(
                         Rule::CopperSliver,
                         format!(
@@ -469,6 +467,15 @@ mod tests {
                 && found[0].ends_with(": Zone [GND] on F.Cu"),
             "{}",
             found[0]
+        );
+        // A strip that lies along other copper of the net is as wide as the two together.
+        let along = r#"(segment (start 9 5.05) (end 12 5.05) (width 0.3) (layer "F.Cu") (net 1))"#;
+        assert_eq!(
+            of(
+                &held(&[&strip], along, Some(LEAST_TRACK)),
+                Rule::CopperSliver
+            ),
+            Vec::<String>::new()
         );
         // The square's corners are no sliver, and without a least track nothing is judged.
         let square = rect(1.0, 1.0, 9.0, 9.0);

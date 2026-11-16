@@ -178,6 +178,11 @@ pub(crate) fn difference(subject: &[Area], clip: &[Area]) -> Vec<Area> {
     )))
 }
 
+/// The union of `areas`, as areas that do not overlap.
+pub(crate) fn union(areas: &[Area]) -> Vec<Area> {
+    to_areas(rings_of(areas))
+}
+
 /// Whether `a` and `b` share area (more than touching).
 pub(crate) fn overlap(a: &[Area], b: &[Area]) -> bool {
     let (ra, rb) = (rings_of(a), rings_of(b));
