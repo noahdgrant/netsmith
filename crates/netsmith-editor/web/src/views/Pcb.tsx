@@ -15,6 +15,7 @@ import { EmptyState, Segmented, Spinner } from '../components/ui';
 import { Canvas, type Tip } from '../pcb/Canvas';
 import { crossedText, shovedText } from '../pcb/walk';
 import { FindingsList } from '../pcb/Findings';
+import { SummaryTab } from '../pcb/Summary';
 import { Panel } from '../pcb/Panel';
 import { PanelPreview } from '../pcb/PanelPreview';
 import { prepare } from '../pcb/drawing';
@@ -540,6 +541,11 @@ export function Pcb() {
               tab={tab}
               onTab={setTab}
               extra={[
+                {
+                  id: 'summary',
+                  label: 'Summary',
+                  body: <SummaryTab key="summary" scene={sc} onFocus={(box) => setFocus({ box: roomAround(box), seq: (focus?.seq ?? 0) + 1 })} />,
+                },
                 {
                   id: 'findings',
                   label: `Findings${found ? ` (${found.findings.length})` : ''}`,
