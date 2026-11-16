@@ -30,10 +30,11 @@ impl<'a> Router<'a> {
         keepouts: &[(Form, f64)],
     ) -> bool {
         let radius = self.board.rules.via_diameter / 2.0;
+        let own = self.board.clearance(&self.board.nets[net].name) + MARGIN;
         obstacles
             .iter()
             .filter(|o| o.net != Some(net))
-            .all(|o| o.form.distance(pad.at) >= o.clearance - MARGIN + radius + 1e-3)
+            .all(|o| o.form.distance(pad.at) >= o.space(own) - MARGIN + radius + 1e-3)
             && keepouts.iter().all(|(form, reach)| match form {
                 // The pad's own keep-out is what the via is allowed to stand in.
                 Form::Rect(b) if *b == pad.bounds => true,

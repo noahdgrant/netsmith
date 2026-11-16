@@ -299,6 +299,7 @@ impl<'a> Router<'a> {
             Reach {
                 room,
                 width: track_width,
+                clearance: self.clearance_of(line),
             },
         );
         // With the least room, a track that cannot pass between two pads at its full
@@ -306,7 +307,12 @@ impl<'a> Router<'a> {
         // narrowest the process makes within `NECK_REACH` of the line's own pads.
         let floor = self.neck_width(line);
         if room == ROOM_TIGHT && track_width > rules.min_track_width + 1e-9 {
-            let reach = |width| Reach { room, width };
+            let clearance = self.clearance_of(line);
+            let reach = |width| Reach {
+                room,
+                width,
+                clearance,
+            };
             let mut narrow = self
                 .masks(
                     window,

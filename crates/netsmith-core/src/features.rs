@@ -28,6 +28,12 @@ pub struct Features {
     /// of the rail is in `std/sources.nsm`). The nets no rail gives a width are sized from
     /// their current (ADR 0036, see `netsmith_design::guidelines`) and put here too.
     pub net_widths: Vec<(String, f64)>,
+    /// The least space between copper of the nets that have a rail with a `min_clearance` and
+    /// copper of any other net, in mm, by net name: the largest bottom of the ranges of the
+    /// rails with a pin on it, as for [`Features::net_widths`] (issue #758). Sorted by net
+    /// name. Left out of a design file when empty.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub net_clearances: Vec<(String, f64)>,
     /// The current each net carries, where it is known, and the least width that carries it
     /// (IPC-2221 at the width tolerance, ADR 0036): what the router may not narrow a track of
     /// the net below, away from its pads, and what the design rules check holds the routed

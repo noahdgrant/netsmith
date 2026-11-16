@@ -55,7 +55,13 @@ pub fn round_bends(board: &mut Board, widths: f64) -> usize {
     if widths <= 0.0 || board.tracks.is_empty() {
         return 0;
     }
-    let rules = &board.rules;
+    // The space of copper of each net: its clearance (issue #758), with the margin.
+    let base = board.rules.clearance + MARGIN;
+    let clearances: HashMap<String, f64> = board
+        .nets
+        .iter()
+        .map(|n| (n.name.clone(), board.clearance(&n.name) + MARGIN))
+        .collect();
     let net_of: HashMap<&str, usize> = board
         .nets
         .iter()
@@ -64,7 +70,7 @@ pub fn round_bends(board: &mut Board, widths: f64) -> usize {
         .collect();
     let net_index = |name: &str| net_of.get(name).copied();
     let fixed = initial_obstacles(board).list;
-    let clearance = rules.clearance + MARGIN;
+    let clearance = |net: &str| clearances.get(net).copied().unwrap_or(base);
     let layers_of = |layer: CopperLayer| [layer == CopperLayer::Front, layer == CopperLayer::Back];
     // The copper of each track as obstacles, kept as the tracks change; the vias.
     let copper = |t: &Track| -> Vec<Obstacle> {
@@ -77,7 +83,8 @@ pub fn round_bends(board: &mut Board, widths: f64) -> usize {
                 net,
                 layers: layers_of(t.layer),
                 form: Form::Segment(w[0], w[1], half),
-                clearance,
+                clearance: clearance(&t.net),
+                copper: true,
             })
             .collect()
     };
@@ -91,17 +98,20 @@ pub fn round_bends(board: &mut Board, widths: f64) -> usize {
             net: net_index(&v.net),
             layers: [true, true],
             form: Form::Circle(v.at, v.diameter / 2.0),
-            clearance,
+            clearance: clearance(&v.net),
+            copper: true,
         })
         .chain(board.teardrops.iter().flat_map(|d| {
             let net = net_index(&d.net);
             let layers = layers_of(d.layer);
             let n = d.points.len();
+            let clearance = clearance(&d.net);
             (0..n).map(move |k| Obstacle {
                 net,
                 layers,
                 form: Form::Segment(d.points[k], d.points[(k + 1) % n], 0.0),
                 clearance,
+                copper: true,
             })
         }))
         .collect();
@@ -178,6 +188,7 @@ pub fn round_bends(board: &mut Board, widths: f64) -> usize {
             continue;
         }
         let net = net_index(&ta.net);
+        let own = clearance(&ta.net);
         let layer = usize::from(ta.layer == CopperLayer::Back);
         let width = ta.width;
         let half_turn = (turn / 2.0).tan();
@@ -219,6 +230,7 @@ pub fn round_bends(board: &mut Board, widths: f64) -> usize {
             let arc = Bend::new(corner, u, v, turn, radius);
             if arc.clear(
                 width,
+                own,
                 fixed.iter().chain(&vias).filter(others),
                 tracks.iter().flatten().filter(others),
             ) {
@@ -308,10 +320,12 @@ impl Bend {
         out
     }
 
-    /// Whether the arc's copper, `width` wide, keeps the rules' space from every obstacle.
+    /// Whether the arc's copper, `width` wide, of a net whose clearance with the margin is
+    /// `own`, keeps the rules' space from every obstacle.
     fn clear<'a>(
         &self,
         width: f64,
+        own: f64,
         fixed: impl Iterator<Item = &'a Obstacle>,
         copper: impl Iterator<Item = &'a Obstacle>,
     ) -> bool {
@@ -323,10 +337,9 @@ impl Bend {
         // inside it, and no nearer than the design rules check's own chords to what is outside.
         let extra = width / 2.0 + ARC_ERROR;
         fixed.chain(copper).all(|o| {
-            let apart = o.clearance - MARGIN - EXACT_SLACK;
-            !reach
-                .expanded(extra + o.clearance)
-                .overlaps(&o.form.bounds())
+            let space = o.space(own);
+            let apart = space - MARGIN - EXACT_SLACK;
+            !reach.expanded(extra + space).overlaps(&o.form.bounds())
                 || chords
                     .windows(2)
                     .all(|w| o.form.distance_to_line(w[0], w[1]) - extra >= apart)

@@ -90,8 +90,15 @@ pub fn plot_rules_of(pro: Option<&str>) -> plot::Rules {
         let end = rest.find([',', '}', '\n'])?;
         rest[..end].trim().parse().ok()
     };
+    let classes = drc::Rules::from_project(pro)
+        .map(|r| r.classes)
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|c| c.clearance.is_some())
+        .collect();
     plot::Rules {
         edge_clearance: number("min_copper_edge_clearance").unwrap_or(0.0),
         hole_clearance: number("min_hole_clearance"),
+        classes,
     }
 }

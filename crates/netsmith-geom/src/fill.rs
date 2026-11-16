@@ -125,6 +125,12 @@ fn clearance_of(z: &Zone) -> f64 {
     }
 }
 
+/// The clearance a zone keeps from copper of other nets: its own, or its net's class's if
+/// that is larger (issue #758). Copper of a net whose class keeps more keeps that.
+fn zone_clearance(z: &Zone, rules: &Rules) -> f64 {
+    clearance_of(z).max(rules.class_clearance(z.net.as_deref()))
+}
+
 /// A zone's outline less its holes.
 fn outline_area(z: &Zone) -> Vec<Area> {
     let mut p = Polygons::new();
@@ -195,7 +201,10 @@ fn pour_by_priority(
             if h.net == z.net {
                 taken.extend(outlines[*j].iter().cloned());
             } else {
-                taken.extend(grown(higher, clearance_of(z).max(clearance_of(h))));
+                taken.extend(grown(
+                    higher,
+                    zone_clearance(z, rules).max(zone_clearance(h, rules)),
+                ));
             }
         }
         if !taken.is_empty() {
@@ -328,12 +337,10 @@ fn around_copper(
     z: &Zone,
     rules: &Rules,
 ) -> Result<(), String> {
-    let clearance = if z.clearance > 0.0 {
-        z.clearance
-    } else {
-        DEFAULT_CLEARANCE
-    };
-    let reach = clearance + z.thermal_gap.max(0.0);
+    let clearance = zone_clearance(z, rules);
+    // The clearance from copper of `net`: the zone's, or the class's of `net` if larger.
+    let from = |net: &Option<String>| clearance.max(rules.class_clearance(net.as_deref()));
+    let reach = clearance.max(rules.widest_class_clearance()) + z.thermal_gap.max(0.0);
     let Some(area) = zone_bounds(z).map(|b| b.expanded(reach)) else {
         return Ok(());
     };
@@ -365,7 +372,9 @@ fn around_copper(
                 thermal(g, &shape, pad.at, pad.angle + pad.spoke_angle(), z)?;
             }
         } else {
-            let by = pad.clearance.map_or(clearance, |c| c.max(clearance));
+            let by = pad
+                .clearance
+                .map_or(from(&pad.net), |c| c.max(from(&pad.net)));
             draw_grown(g, &shape, by, &pad.part, &pad.number)?;
         }
     }
@@ -382,7 +391,7 @@ fn around_copper(
                 thermal(g, &shape, via.at, 0.0, z)?;
             }
         } else {
-            draw_grown(g, &shape, clearance, "via", "")?;
+            draw_grown(g, &shape, from(&via.net), "via", "")?;
         }
     }
     for t in art
@@ -390,7 +399,7 @@ fn around_copper(
         .iter()
         .filter(|t| t.layer == layer && !own(&t.net))
     {
-        let width = t.width + 2.0 * clearance;
+        let width = t.width + 2.0 * from(&t.net);
         match &t.shape {
             TrackShape::Line(a, b) => {
                 if Bounds::of([*a, *b]).is_some_and(|bb| bb.expanded(width).overlaps(&area)) {
@@ -410,6 +419,7 @@ fn around_copper(
         .iter()
         .filter(|t| t.teardrop && t.keepout.is_none() && !own(&t.net))
     {
+        let clearance = from(&t.net);
         for (l, poly) in &t.filled {
             if l != layer
                 || poly.len() < 3
@@ -564,6 +574,7 @@ mod tests {
             &Rules {
                 edge_clearance: 0.2,
                 hole_clearance: None,
+                classes: Vec::new(),
             },
         )
         .unwrap();
@@ -582,6 +593,30 @@ mod tests {
         assert!(t.contains("C,0.800000"), "{t}");
         assert!(t.trim_end().ends_with("M02*"));
         assert!(t.contains("%TO.N,GND*%"), "the pour is on its net");
+    }
+
+    #[test]
+    fn a_pour_keeps_the_clearance_of_the_class_of_another_net_when_it_is_larger() {
+        let a = art(r#"(segment (start 5 10) (end 15 10) (width 0.2) (layer "F.Cu") (net 2))"#);
+        let edge = crate::edge::outline(&a).unwrap();
+        let mut g = Gerber::new(Pt::default());
+        let class = |clearance: f64, pattern: &str| crate::drc::Class {
+            name: format!("Clearance_{clearance}mm"),
+            clearance: Some(clearance),
+            priority: 0,
+            patterns: vec![pattern.to_string()],
+        };
+        let rules = Rules {
+            edge_clearance: 0.2,
+            hole_clearance: None,
+            classes: vec![class(0.5, "SIG")],
+        };
+        pour(&mut g, &a, "F.Cu", &edge, &rules).unwrap();
+        let t = g.text("Copper,L1,Top", false, "B");
+        // The track is cleared with its width and twice its class's clearance: 0.2 + 1.0.
+        assert!(t.contains("C,1.200000"), "{t}");
+        assert_eq!(rules.class_clearance(Some("SIG")), 0.5);
+        assert_eq!(rules.class_clearance(Some("GND")), 0.0);
     }
 
     #[test]

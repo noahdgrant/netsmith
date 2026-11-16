@@ -35,8 +35,10 @@ impl<'a> Router<'a> {
         let floor = self.neck_width(routed.line);
         let line = routed.line;
         let others: Vec<&&Obstacle> = obstacles.iter().filter(|o| o.net != Some(net)).collect();
-        // The space the rules ask for: an obstacle's clearance has the router's margin on it.
-        let apart = |o: &Obstacle| o.clearance - MARGIN - EXACT_SLACK;
+        // The space the rules ask for: an obstacle's clearance has the router's margin on it,
+        // and copper keeps the larger of its net's clearance and the line's (issue #758).
+        let own = self.clearance_of(line);
+        let apart = |o: &Obstacle| o.space(own) - MARGIN - EXACT_SLACK;
         for track in &mut routed.tracks {
             let layer = usize::from(track.layer == CopperLayer::Back);
             let clear = |width: f64| {
@@ -45,7 +47,7 @@ impl<'a> Router<'a> {
                     Pt::new(track.from.x.max(track.to.x), track.from.y.max(track.to.y)),
                 );
                 others.iter().filter(|o| o.layers[layer]).all(|o| {
-                    let near = reach.expanded(width / 2.0 + o.clearance);
+                    let near = reach.expanded(width / 2.0 + apart(o) + MARGIN);
                     !near.overlaps(&o.form.bounds())
                         || o.form.distance_to_line(track.from, track.to) - width / 2.0 >= apart(o)
                 })
@@ -188,7 +190,7 @@ impl<'a> Router<'a> {
                 Pt::new(a.x.max(b.x), a.y.max(b.y)),
             );
             others.iter().filter(|o| o.layers[layer]).all(|o| {
-                let near = reach.expanded(width / 2.0 + o.clearance);
+                let near = reach.expanded(width / 2.0 + apart(o) + MARGIN);
                 !near.overlaps(&o.form.bounds())
                     || o.form.distance_to_line(a, b) - width / 2.0 >= apart(o)
             })

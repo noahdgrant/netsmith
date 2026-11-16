@@ -73,10 +73,10 @@ fn allows(board: &Board, net: &str, p: Pt) -> bool {
         for pad in &part.footprint.pads {
             // No via stands in a pad, of any net: its hole would take the solder.
             if pad.copper_layers() != (false, false) {
-                let keep = if net_of(&part.refdes, &pad.number) == Some(net) {
-                    radius + MARGIN
-                } else {
-                    r.clearance + radius + MARGIN
+                let keep = match net_of(&part.refdes, &pad.number) {
+                    Some(n) if n == net => radius + MARGIN,
+                    Some(n) => board.clearance_between(n, net) + radius + MARGIN,
+                    None => board.clearance(net) + radius + MARGIN,
                 };
                 if to_rect(p, &part.pad_bounds(pad)) < keep {
                     return false;
@@ -89,11 +89,11 @@ fn allows(board: &Board, net: &str, p: Pt) -> bool {
             }
         }
     }
-    if board
-        .tracks
-        .iter()
-        .any(|t| t.net != net && t.distance_to(p) - t.width / 2.0 < r.clearance + radius + MARGIN)
-    {
+    if board.tracks.iter().any(|t| {
+        t.net != net
+            && t.distance_to(p) - t.width / 2.0
+                < board.clearance_between(&t.net, net) + radius + MARGIN
+    }) {
         return false;
     }
     board.vias.iter().all(|v| {
@@ -102,7 +102,9 @@ fn allows(board: &Board, net: &str, p: Pt) -> bool {
         if v.net == net {
             apart >= holes
         } else {
-            apart >= holes.max(v.diameter / 2.0 + radius + r.clearance + MARGIN)
+            apart
+                >= holes
+                    .max(v.diameter / 2.0 + radius + board.clearance_between(&v.net, net) + MARGIN)
         }
     })
 }

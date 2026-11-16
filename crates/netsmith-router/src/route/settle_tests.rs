@@ -462,6 +462,7 @@ fn masks_made_from_the_cached_fixed_copper_leave_a_nets_own_pads_open() {
     let reach = Reach {
         room: ROOM_LOOSE,
         width: board.rules.track_width,
+        clearance: board.rules.clearance + MARGIN,
     };
     // For every net, a cell on its own pad is open to it, and shut to every other net.
     for (n, net) in board.nets.iter().enumerate() {

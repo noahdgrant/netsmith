@@ -108,7 +108,25 @@ pub(crate) struct Obstacle {
     pub(crate) net: Option<usize>,
     pub(crate) layers: [bool; 2],
     pub(crate) form: Form,
+    /// The space other copper keeps from it, with the router's margin: for copper, the larger
+    /// of the rules' clearance and its net's (issue #758).
     pub(crate) clearance: f64,
+    /// Whether it is copper (a pad, a track, a via), which copper of a net with a larger
+    /// clearance keeps that clearance from (issue #758); a hole, a mask opening, a keepout and
+    /// the edge keep their own space whatever the net.
+    pub(crate) copper: bool,
+}
+
+impl Obstacle {
+    /// The space copper of a net whose clearance, with the router's margin, is `own` keeps
+    /// from this: the larger of the two clearances when this is copper (issue #758).
+    pub(crate) fn space(&self, own: f64) -> f64 {
+        if self.copper {
+            self.clearance.max(own)
+        } else {
+            self.clearance
+        }
+    }
 }
 
 pub(super) struct Grid {
@@ -383,6 +401,19 @@ impl Masks {
 pub(super) struct Reach {
     pub(super) room: f64,
     pub(super) width: f64,
+    /// The clearance of the net the track is of, with the router's margin (issue #758).
+    pub(super) clearance: f64,
+}
+
+impl Reach {
+    /// The key of the masks of the fixed copper made for this reach.
+    pub(super) fn key(&self) -> (u64, u64, u64) {
+        (
+            self.room.to_bits(),
+            self.width.to_bits(),
+            self.clearance.to_bits(),
+        )
+    }
 }
 
 /// Everything copper must keep clear of, apart from what has been routed.
@@ -421,10 +452,15 @@ impl Counts {
         reach: Reach,
         up: bool,
     ) {
-        let Reach { room, width } = reach;
+        let Reach {
+            room,
+            width,
+            clearance,
+        } = reach;
         let window = self.window;
-        let track_reach = o.clearance + width / 2.0 + room;
-        let via_reach = o.clearance + rules.via_diameter / 2.0 + room;
+        let space = o.space(clearance);
+        let track_reach = space + width / 2.0 + room;
+        let via_reach = space + rules.via_diameter / 2.0 + room;
         let bounds = o.form.bounds();
         let far = track_reach.max(via_reach);
         // Most obstacles are nowhere near a small window.

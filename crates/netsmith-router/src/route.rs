@@ -944,8 +944,8 @@ struct Router<'a> {
     fixed: Obstacles,
     /// The obstacles of `fixed` that each net's pads make, as indices into its list.
     fixed_by_net: Vec<Vec<usize>>,
-    /// What the fixed obstacles keep cells from, for each room and track width asked for.
-    bases: RefCell<HashMap<(u64, u64), std::rc::Rc<Base>>>,
+    /// What the fixed obstacles keep cells from, for each room, track width and clearance asked for.
+    bases: RefCell<HashMap<(u64, u64, u64), std::rc::Rc<Base>>>,
     lines: Vec<Ratline>,
     /// How many of `lines` are the ratsnest's, which the tries route; then come the
     /// decoupling capacitors' vias to the pours ([`Router::to_the_pours`]), up to
