@@ -60,7 +60,7 @@ _Avoid_: Trial analysis, inner analysis, solver loop
 A connection point of a part, interface, or module.
 
 **Pin file**:
-`<stem>.pins.toml` beside the top-level source: for each request of each board the pin it got (`pin`, `function`, `lock`, `source`). `build` and `fab` write it when a run picks a pin, `--locked` stops a run that would change it, and a run never changes an entry that still holds. It holds a solution and the requirements are in the source, as in the _Layout file_ (ADR 0032, ADR 0101).
+`<stem>.pins.toml` beside the top-level source: for each request of each board the pin it got (`pin`, `function`, `lock`, `source`), or for a request for the end of a bus the peripheral and the pin of each line (`peripheral`, `pins`, `lock`, `source`). `build` and `fab` write it when a run picks a pin, `--locked` stops a run that would change it, and a run never changes an entry that still holds. It holds a solution and the requirements are in the source, as in the _Layout file_ (ADR 0032, ADR 0101).
 _Avoid_: Pin map file, pinout file (a _Pinout_ is a part's table), pin lock file
 
 **Pin kind**:
@@ -80,7 +80,7 @@ How far the pins of a through-hole part protrude out of the far side of the boar
 _Avoid_: Tail, tail height, lead length, stub
 
 **Pin request**:
-`.status: .u.GPIO` in a board or a module: a pin of its own whose type is a capability of a part, a function that a row of the part lists or a peripheral offers (`.tx: .u.UARTE1_TX`). It asks for any pin of `u` that offers the capability, and the tool picks it before the nets are made and keeps the answer in the _Pin file_. The request's path is its key. It is joined and checked as the pin it got, and a pin that the source names is never given to one (ADR 0101).
+`.status: .u.GPIO` in a board or a module: a pin of its own whose type is a capability of a part, a function that a row of the part lists or a peripheral offers (`.tx: .u.UARTE1_TX`). It asks for any pin of `u` that offers the capability, and the tool picks it before the nets are made and keeps the answer in the _Pin file_. The request's path is its key. It is joined and checked as the pin it got, and a pin that the source names is never given to one (ADR 0101). A request whose type names a bus of the part (`.dbg: .u.Uart`) asks for the end of that bus instead: one peripheral of the part that is an end of it and a pin for each of its lines, and it joins as that peripheral does (#788).
 _Avoid_: Pin assignment (the word for choosing providers is _Assignment_), pin constraint, pin hint, wildcard pin
 
 **Pinout**:

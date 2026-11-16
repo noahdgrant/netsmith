@@ -46,6 +46,14 @@ fn decide(
     change: &Change,
 ) -> Result<PinEntry, ApiError> {
     let key = &request.key;
+    // A line of a request for the end of a bus (#788) is one pin of an entry that holds the
+    // whole peripheral; the editor writes entries of one pin only.
+    if let Some(bus) = &request.bus {
+        return Err(refused(format!(
+            "`{key}` is the line `{}` of `{}`, a request for the end of a bus, which has `{}` and the pin of each of its lines in one entry: edit that entry of the pin file",
+            bus.line, bus.request, bus.peripheral
+        )));
+    }
     match change {
         Change::Lock(locked) => {
             if request.lock == *locked {

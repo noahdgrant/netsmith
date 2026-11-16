@@ -19,8 +19,10 @@ use netsmith_lang::ast::{Decl, DefKind};
 
 use crate::checker::Checker;
 use crate::lower::closest;
-use crate::model::{InstId, InstKind, Member, Model, PinAssignment, PinRequest, PinRow, Pinout};
-use crate::pinfile::{EntrySource, PinEntry, PinFile};
+use crate::model::{
+    BusAssignment, InstId, InstKind, Member, Model, PinAssignment, PinRequest, PinRow, Pinout,
+};
+use crate::pinfile::{BusEntry, EntrySource, PinEntry, PinFile};
 
 /// How many steps of the search one part may take before it says so and gives up.
 const SEARCH_STEPS: usize = 200_000;
@@ -33,6 +35,9 @@ pub struct RootPins {
     pub board: String,
     /// The entry of each request that has a pin, by the request's path.
     pub entries: BTreeMap<String, PinEntry>,
+    /// The entry of each request for the end of a bus that has its peripheral, by the request's
+    /// path (#788).
+    pub buses: BTreeMap<String, BusEntry>,
     /// The path of every request of the definition, whether it got a pin or not.
     pub requests: BTreeSet<String>,
     /// What the pin optimizer may move, for each part that has requests.
@@ -117,6 +122,21 @@ pub struct SpaceRequest {
     /// The channel of the capability on each pin of `offers` whose row names one (`p03` has
     /// `AIN1` for `ANALOG`, `fn ANALOG class AIN1 of ANALOG`, #787), by pin path.
     pub channels: BTreeMap<String, String>,
+    /// For a line of a request for the end of a bus (`dbg.tx` of `.dbg: .u.Uart`, #788): the
+    /// request and the peripheral it got. Such a line moves only with the whole request, so the
+    /// optimizer and the editor's moves leave it where it is.
+    pub bus: Option<BusLine>,
+}
+
+/// The request for the end of a bus that a [`SpaceRequest`] is a line of.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BusLine {
+    /// The request's path, the key of its entry in the pin file (`dbg`).
+    pub request: String,
+    /// The peripheral it got (`UARTE1`).
+    pub peripheral: String,
+    /// The line (`tx`).
+    pub line: String,
 }
 
 impl SpaceRequest {
@@ -271,7 +291,15 @@ impl Checker<'_> {
         } else {
             BTreeMap::new()
         };
-        if requests.is_empty() {
+        let old_buses: BTreeMap<String, BusEntry> = if keep {
+            self.pin_input
+                .as_ref()
+                .and_then(|p| p.file.buses_of(name).cloned())
+                .unwrap_or_default()
+        } else {
+            BTreeMap::new()
+        };
+        if requests.is_empty() && self.model.bus_requests.is_empty() {
             if keep {
                 self.pin_roots.push(root);
             }
@@ -288,7 +316,7 @@ impl Checker<'_> {
         for i in order {
             let key = self.model.path_of(requests[i].pin);
             root.requests.insert(key.clone());
-            if let Some((part, capability)) = self.resolve_request(&requests[i]) {
+            if let Some((part, capability)) = self.resolve_request(&requests[i], &key) {
                 asked.push(Asked {
                     index: i,
                     key,
@@ -297,12 +325,31 @@ impl Checker<'_> {
                 });
             }
         }
-        let mut parts: Vec<InstId> = asked.iter().map(|a| a.part).collect();
+        // The requests for the end of a bus (#788), the same way.
+        let mut buses: Vec<Asked> = Vec::new();
+        for i in 0..self.model.bus_requests.len() {
+            let key = self.bus_key(i);
+            root.requests.insert(key.clone());
+            if let Some(part) = self.resolve_bus_request(i, &key) {
+                buses.push(Asked {
+                    index: i,
+                    key,
+                    part,
+                    capability: self.model.bus_requests[i].interface.clone(),
+                });
+            }
+        }
+        buses.sort_by(|a, b| a.key.cmp(&b.key));
+        let mut parts: Vec<InstId> = asked.iter().chain(&buses).map(|a| a.part).collect();
         parts.sort_by_key(|&p| self.model.path_of(p));
         parts.dedup();
+        let olds = (&old, &old_buses);
         for part in parts {
             let mine: Vec<&Asked> = asked.iter().filter(|a| a.part == part).collect();
-            self.serve_part(part, &mine, &requests, &old, &connected, &mut root);
+            let bus_mine: Vec<&Asked> = buses.iter().filter(|a| a.part == part).collect();
+            self.serve_part(
+                part, &mine, &bus_mine, &requests, olds, &connected, &mut root,
+            );
         }
         root.unserved = self.unserved_of(&requests, &root);
         if keep {
@@ -340,15 +387,99 @@ impl Checker<'_> {
                 }
             })
             .collect();
+        for (i, r) in model.bus_requests.iter().enumerate() {
+            let key = self.bus_key(i);
+            if root.buses.contains_key(&key) {
+                continue;
+            }
+            let at = [r.span, r.target_span, r.capability_span];
+            let message = self
+                .diags
+                .iter()
+                .find(|d| d.source == r.source && at.contains(&d.span))
+                .map(|d| d.message.clone())
+                .unwrap_or_default();
+            let block = model.path_of(r.block);
+            let target = r.target.join(".");
+            out.push(Unserved {
+                key,
+                part: if block.is_empty() {
+                    target
+                } else {
+                    format!("{block}.{target}")
+                },
+                capability: r.interface.clone(),
+                message,
+            });
+        }
         out.sort_by(|a, b| a.key.cmp(&b.key));
         out
     }
 
+    /// The path of a request for the end of a bus, the key of its entry: its block's path and
+    /// its name (`dbg`, `hub.dbg`).
+    fn bus_key(&self, index: usize) -> String {
+        let r = &self.model.bus_requests[index];
+        let block = self.model.path_of(r.block);
+        if block.is_empty() {
+            r.name.clone()
+        } else {
+            format!("{block}.{}", r.name)
+        }
+    }
+
+    /// The part a request for the end of a bus asks, if the request is sound: the part exists,
+    /// has a pin table, and some peripheral of it is an end of the bus.
+    fn resolve_bus_request(&mut self, index: usize, key: &str) -> Option<InstId> {
+        let r = self.model.bus_requests[index].clone();
+        let as_pin = PinRequest {
+            pin: r.block,
+            block: r.block,
+            target: r.target.clone(),
+            capability: r.interface.clone(),
+            source: r.source,
+            span: r.span,
+            target_span: r.target_span,
+            capability_span: r.capability_span,
+        };
+        let part = self.resolve_part(&as_pin, key)?;
+        if self.bus_ends(part, &r.interface).is_empty() {
+            let ty = self.model.instance(part).type_name.clone();
+            let message = format!(
+                "`{key}` asks `{}` for the end of a `{}`, but no peripheral of `{ty}` is one",
+                r.target.join("."),
+                r.interface
+            );
+            self.report(r.source, r.capability_span, message);
+            return None;
+        }
+        Some(part)
+    }
+
     /// The part a request asks and the capability it asks for, if the request is sound:
     /// the part exists, has a pin table, and some pin of it offers the capability.
-    fn resolve_request(&mut self, req: &PinRequest) -> Option<(InstId, String)> {
+    fn resolve_request(&mut self, req: &PinRequest, key: &str) -> Option<(InstId, String)> {
+        let part = self.resolve_part(req, key)?;
         let model = &self.model;
-        let key = model.path_of(req.pin);
+        let ty = model.instance(part).type_name.clone();
+        let Pinout::Table(table) = model.pinout(part) else {
+            return None;
+        };
+        if table
+            .rows
+            .iter()
+            .any(|r| model.offers(part, r, &req.capability))
+        {
+            return Some((part, req.capability.clone()));
+        }
+        let message = self.nothing_offers(req, part, table.rows.as_slice(), key, &ty);
+        self.report(req.source, req.capability_span, message);
+        None
+    }
+
+    /// The part a request asks, if it exists and has a pin table for the board's package.
+    fn resolve_part(&mut self, req: &PinRequest, key: &str) -> Option<InstId> {
+        let model = &self.model;
         let target = req.target.join(".");
         let mut inst = req.block;
         for name in &req.target {
@@ -397,15 +528,15 @@ impl Checker<'_> {
             self.report(req.source, req.target_span, message);
             return None;
         }
-        let table = match model.pinout(part) {
-            Pinout::Table(t) => t,
+        match model.pinout(part) {
+            Pinout::Table(_) => Some(part),
             Pinout::NoTables => {
                 let message = format!(
                     "`{key}` asks `{target}` for {}, but `{ty}` has no pin table, so there is no pin of it to give",
                     req.capability
                 );
                 self.report(req.source, req.target_span, message);
-                return None;
+                None
             }
             Pinout::Unknown { packages } => {
                 let packages: Vec<String> = packages.iter().map(|p| format!("`{p}`")).collect();
@@ -415,21 +546,11 @@ impl Checker<'_> {
                     list_plain(&packages)
                 );
                 self.report(req.source, req.target_span, message);
-                return None;
+                None
             }
             // The part's own check says that the package has no table.
-            Pinout::NoSuchPackage { .. } => return None,
-        };
-        if table
-            .rows
-            .iter()
-            .any(|r| model.offers(part, r, &req.capability))
-        {
-            return Some((part, req.capability.clone()));
+            Pinout::NoSuchPackage { .. } => None,
         }
-        let message = self.nothing_offers(req, part, table.rows.as_slice(), &key, &ty);
-        self.report(req.source, req.capability_span, message);
-        None
     }
 
     /// The message for a capability that no pin of the part offers.
@@ -473,17 +594,14 @@ impl Checker<'_> {
                 plain_list(&own)
             );
         }
-        if let Some(p) = inst
-            .rules
-            .peripherals
-            .iter()
-            .find(|p| p.bus.as_ref().is_some_and(|b| b.interface == *cap))
-        {
+        // A request for the end of a bus of a part that has no such end (#788).
+        if self.modules.iter().any(|m| {
+            m.defs
+                .iter()
+                .any(|d| d.kind == DefKind::Interface && d.name.name == *cap)
+        }) {
             return format!(
-                "{head}; `{cap}` is the end of a bus, which a request cannot ask for yet: ask for a function of the peripheral, such as {} (the peripherals that are ends of `{cap}` list theirs)",
-                p.functions
-                    .first()
-                    .map_or(String::new(), |f| f.name.clone())
+                "`{key}` asks `{target}` (`{ty}`) for the end of a `{cap}`, but no peripheral of `{ty}` is one; a part says that a peripheral is an end of a bus with `peripheral NAME as {cap} {{ ... }}` (ADR 0064)"
             );
         }
         let mut message = head;
@@ -536,13 +654,18 @@ impl Checker<'_> {
         found
     }
 
-    /// Serve the requests of one part: keep the entries that hold, search for the rest.
+    /// Serve the requests of one part: keep the entries that hold, search for the rest. The
+    /// entries of requests for a pin that hold are kept first; then the requests for the end of a
+    /// bus are served (#788), as they need several pins of one peripheral; then the other
+    /// requests for a pin, round them.
+    #[allow(clippy::too_many_arguments)]
     fn serve_part(
         &mut self,
         part: InstId,
         mine: &[&Asked],
+        bus_mine: &[&Asked],
         requests: &[PinRequest],
-        old: &BTreeMap<String, PinEntry>,
+        (old, old_buses): (&BTreeMap<String, PinEntry>, &BTreeMap<String, BusEntry>),
         connected: &BTreeMap<InstId, String>,
         root: &mut RootPins,
     ) {
@@ -661,6 +784,18 @@ impl Checker<'_> {
         }
         todo.sort_by(|a, b| a.key.cmp(&b.key));
 
+        // The requests for the end of a bus, round the entries that hold.
+        let pending: Vec<String> = todo.iter().map(|a| a.capability.clone()).collect();
+        let served_buses = self.serve_buses(
+            &ctx,
+            bus_mine,
+            old_buses,
+            &rows_all,
+            (&mut occupied, &mut fixed),
+            &kept,
+            &pending,
+        );
+
         // The search, for what is left.
         let mut picked: Vec<(&Asked, InstId)> = Vec::new();
         let mut errors: Vec<(usize, String)> = Vec::new();
@@ -702,7 +837,7 @@ impl Checker<'_> {
         applied.sort_by(|a, b| a.key.cmp(&b.key));
         {
             let model = &self.model;
-            let requests_of_part: Vec<SpaceRequest> = applied
+            let mut requests_of_part: Vec<SpaceRequest> = applied
                 .iter()
                 .map(|p| {
                     let mut channels = BTreeMap::new();
@@ -726,9 +861,42 @@ impl Checker<'_> {
                         lock: p.lock,
                         offers,
                         channels,
+                        bus: None,
                     }
                 })
                 .collect();
+            // Each line of a request for the end of a bus, which moves only with its request.
+            for b in &served_buses {
+                let peripheral = model.instance(part).rules.peripherals[b.peripheral]
+                    .name
+                    .clone();
+                for (line, pin, function) in &b.lines {
+                    let offers = ctx
+                        .rows
+                        .iter()
+                        .filter(|(p, _)| !source_taken.contains(p))
+                        .filter(|(p, _)| {
+                            let row = rows_all.iter().find(|r| r.pin == *p).expect("a row");
+                            model.offers(part, row, function)
+                        })
+                        .map(|(_, path)| path.clone())
+                        .collect();
+                    requests_of_part.push(SpaceRequest {
+                        key: format!("{}.{line}", b.key),
+                        capability: function.clone(),
+                        pin: model.path_below(*pin, part),
+                        lock: b.lock,
+                        offers,
+                        channels: BTreeMap::new(),
+                        bus: Some(BusLine {
+                            request: b.key.clone(),
+                            peripheral: peripheral.clone(),
+                            line: line.clone(),
+                        }),
+                    });
+                }
+            }
+            requests_of_part.sort_by(|a, b| a.key.cmp(&b.key));
             if !requests_of_part.is_empty() {
                 root.spaces.push(PartSpace {
                     path: ctx.path.clone(),
@@ -781,6 +949,304 @@ impl Checker<'_> {
             );
             self.model.pin_assignments.push(p);
         }
+        // Apply the requests for the end of a bus: the function of each line is chosen on its
+        // pin. The request joins as the peripheral when the joins of peripherals are made.
+        for b in served_buses {
+            let r = self.model.bus_requests[b.request].clone();
+            let mut pins = BTreeMap::new();
+            for (line, pin, function) in &b.lines {
+                if let Some(Member::Field(f)) = self.model.member(*pin, "function") {
+                    let field = &mut self.model.fields[f.0];
+                    field.domain = crate::model::Domain::Text(function.clone());
+                    field.narrowed_at.push((r.source, r.span));
+                }
+                pins.insert(line.clone(), self.model.path_below(*pin, part));
+                self.model.pin_assignments.push(PinAssignment {
+                    request: *pin,
+                    part,
+                    pin: *pin,
+                    function: function.clone(),
+                    key: format!("{}.{line}", b.key),
+                    lock: b.lock,
+                    source: b.source,
+                });
+            }
+            root.buses.insert(
+                b.key.clone(),
+                BusEntry {
+                    peripheral: self.model.instance(part).rules.peripherals[b.peripheral]
+                        .name
+                        .clone(),
+                    pins,
+                    lock: b.lock,
+                    source: b.source,
+                    at: None,
+                },
+            );
+            self.model.bus_assignments.push(b);
+        }
+        self.model.pin_assignments.sort_by(|a, b| a.key.cmp(&b.key));
+        self.model.bus_assignments.sort_by(|a, b| a.key.cmp(&b.key));
+    }
+
+    /// Serve the requests for the end of a bus of one part (#788): an entry that holds is
+    /// kept, the others get the first peripheral, in the byte order of the names, that is an end
+    /// of the bus and for whose lines the search finds pins. A peripheral that something else
+    /// uses (a function of it is chosen on a pin, held by an entry, or asked for by a request for
+    /// a pin that is still to be served) is never given. `pending` holds what those requests ask.
+    #[allow(clippy::too_many_arguments)]
+    fn serve_buses(
+        &mut self,
+        ctx: &PartCtx,
+        bus_mine: &[&Asked],
+        old: &BTreeMap<String, BusEntry>,
+        rows: &[PinRow],
+        (occupied, fixed): (&mut BTreeMap<InstId, Holder>, &mut Vec<(InstId, String)>),
+        kept: &[(&Asked, PinAssignment)],
+        pending: &[String],
+    ) -> Vec<BusAssignment> {
+        let mut out: Vec<BusAssignment> = Vec::new();
+        let mut todo: Vec<&Asked> = Vec::new();
+        let mut in_order: Vec<&Asked> = bus_mine.to_vec();
+        in_order.sort_by_key(|a| !old.get(&a.key).is_some_and(|e| e.lock));
+        let pin_source = self.pin_input.as_ref().map(|p| p.source);
+        let take = |occupied: &mut BTreeMap<InstId, Holder>,
+                    fixed: &mut Vec<(InstId, String)>,
+                    lines: &[(String, InstId, String)],
+                    holder: &Holder| {
+            for (_, pin, function) in lines {
+                occupied.insert(*pin, holder.clone());
+                fixed.push((*pin, function.clone()));
+            }
+        };
+        for a in in_order {
+            let Some(entry) = old.get(&a.key) else {
+                todo.push(a);
+                continue;
+            };
+            match self.bus_entry_holds(ctx, a, entry, rows, occupied, fixed, pending) {
+                Ok((peripheral, lines)) => {
+                    let holder = Holder::Entry {
+                        key: a.key.clone(),
+                        locked: entry.lock,
+                        place: self.bus_entry_place(entry),
+                    };
+                    take(occupied, fixed, &lines, &holder);
+                    out.push(BusAssignment {
+                        request: a.index,
+                        key: a.key.clone(),
+                        part: ctx.part,
+                        peripheral,
+                        lines,
+                        lock: entry.lock,
+                        source: entry.source,
+                    });
+                }
+                Err(reason) => {
+                    let r = &self.model.bus_requests[a.index];
+                    let (r_source, r_span) = (r.source, r.span);
+                    if entry.lock {
+                        let message = format!(
+                            "`{}` is locked to `{}` of `{}` in the pin file, but {reason}; change the source, or unlock the entry so that a peripheral is picked again",
+                            a.key, entry.peripheral, ctx.path
+                        );
+                        match (pin_source, entry.at) {
+                            (Some(src), Some(span)) => self.report(src, span, message),
+                            _ => self.report(r_source, r_span, message),
+                        }
+                    } else {
+                        let at = self
+                            .bus_entry_place(entry)
+                            .map(|p| format!("{p}: "))
+                            .unwrap_or_default();
+                        self.pin_findings.push(format!(
+                            "{at}`{}` was `{}` of `{}`, but {reason}; a peripheral is picked again",
+                            a.key, entry.peripheral, ctx.path
+                        ));
+                        todo.push(a);
+                    }
+                }
+            }
+        }
+        todo.sort_by(|a, b| a.key.cmp(&b.key));
+        for a in todo {
+            let interface = a.capability.clone();
+            let ends = self.bus_ends(ctx.part, &interface);
+            let mut why: Vec<String> = Vec::new();
+            let mut served = None;
+            for index in ends {
+                let name = self.model.instance(ctx.part).rules.peripherals[index]
+                    .name
+                    .clone();
+                if let Some(used) = self.peripheral_in_use(ctx.part, index, fixed, pending) {
+                    why.push(format!("`{name}` is in use ({used})"));
+                    continue;
+                }
+                let lines = self.bus_lines(ctx.part, index);
+                if lines.is_empty() {
+                    why.push(format!("`{name}` names no line of the bus"));
+                    continue;
+                }
+                let asked: Vec<Asked> = lines
+                    .iter()
+                    .map(|(line, function)| Asked {
+                        index: a.index,
+                        key: format!("{}.{line}", a.key),
+                        part: ctx.part,
+                        capability: function.clone(),
+                    })
+                    .collect();
+                let refs: Vec<&Asked> = asked.iter().collect();
+                match self.search(ctx, &refs, occupied, fixed, rows, kept) {
+                    Search::Found(pins) => {
+                        let picked: Vec<(String, InstId, String)> = lines
+                            .iter()
+                            .zip(pins)
+                            .map(|((line, function), pin)| (line.clone(), pin, function.clone()))
+                            .collect();
+                        served = Some((index, picked));
+                        break;
+                    }
+                    Search::Failed { message, .. } => why.push(format!("`{name}`: {message}")),
+                }
+            }
+            match served {
+                Some((peripheral, lines)) => {
+                    take(occupied, fixed, &lines, &Holder::New(a.key.clone()));
+                    out.push(BusAssignment {
+                        request: a.index,
+                        key: a.key.clone(),
+                        part: ctx.part,
+                        peripheral,
+                        lines,
+                        lock: false,
+                        source: EntrySource::Auto,
+                    });
+                }
+                None => {
+                    let r = &self.model.bus_requests[a.index];
+                    let (source, span) = (r.source, r.span);
+                    let message = format!(
+                        "`{}` asks `{}` for the end of a `{interface}`, and no peripheral of `{}` that is one can have a pin for each of its lines: {}",
+                        a.key,
+                        ctx.path,
+                        ctx.ty,
+                        why.join("; ")
+                    );
+                    self.report(source, span, message);
+                }
+            }
+        }
+        out.sort_by(|a, b| a.key.cmp(&b.key));
+        out
+    }
+
+    /// Why a peripheral of the part cannot be given to a request for the end of its bus, if it
+    /// cannot: a function of it is chosen on a pin (by the source or an entry that holds), or a
+    /// request for a pin still to be served asks for one.
+    fn peripheral_in_use(
+        &self,
+        part: InstId,
+        index: usize,
+        fixed: &[(InstId, String)],
+        pending: &[String],
+    ) -> Option<String> {
+        let periph = &self.model.instance(part).rules.peripherals[index];
+        for f in &periph.functions {
+            if let Some((pin, _)) = fixed.iter().find(|(_, g)| *g == f.name) {
+                return Some(format!("{} is on `{}`", f.name, self.model.path_of(*pin)));
+            }
+            if pending.contains(&f.name) {
+                return Some(format!("a request asks for {}", f.name));
+            }
+        }
+        None
+    }
+
+    /// The place of an entry of a request for the end of a bus in the pin file.
+    fn bus_entry_place(&self, entry: &BusEntry) -> Option<String> {
+        let src = self.pin_input.as_ref()?.source;
+        self.sources.place(src, entry.at?)
+    }
+
+    /// Whether the entry of a request for the end of a bus still holds: its peripheral is an
+    /// end of the bus that nothing else uses, the entry names the pin of each of its lines and
+    /// no other, and each pin is in the part, offers the line's function, is held by nothing
+    /// else, and keeps the part's `shared` limits. The peripheral and the lines when it does.
+    #[allow(clippy::too_many_arguments, clippy::type_complexity)]
+    fn bus_entry_holds(
+        &self,
+        ctx: &PartCtx,
+        a: &Asked,
+        entry: &BusEntry,
+        rows: &[PinRow],
+        occupied: &BTreeMap<InstId, Holder>,
+        fixed: &[(InstId, String)],
+        pending: &[String],
+    ) -> Result<(usize, Vec<(String, InstId, String)>), String> {
+        let model = &self.model;
+        let ends = self.bus_ends(ctx.part, &a.capability);
+        let peripherals = &model.instance(ctx.part).rules.peripherals;
+        let Some(index) = ends
+            .iter()
+            .copied()
+            .find(|&i| peripherals[i].name == entry.peripheral)
+        else {
+            let names: Vec<String> = ends
+                .iter()
+                .map(|&i| format!("`{}`", peripherals[i].name))
+                .collect();
+            return Err(format!(
+                "`{}` (`{}`) has no peripheral `{}` that is an end of a `{}`; its ends are {}",
+                ctx.path,
+                ctx.ty,
+                entry.peripheral,
+                a.capability,
+                list_plain(&names)
+            ));
+        };
+        if let Some(used) = self.peripheral_in_use(ctx.part, index, fixed, pending) {
+            return Err(format!("`{}` is in use ({used})", entry.peripheral));
+        }
+        let lines = self.bus_lines(ctx.part, index);
+        let want: Vec<&String> = lines.iter().map(|(l, _)| l).collect();
+        let have: Vec<&String> = entry.pins.keys().collect();
+        if want != have {
+            let show = |v: &[&String]| {
+                let v: Vec<String> = v.iter().map(|l| format!("`{l}`")).collect();
+                list_plain(&v)
+            };
+            return Err(format!(
+                "the entry has the lines {} and `{}` has {}",
+                show(&have),
+                entry.peripheral,
+                show(&want)
+            ));
+        }
+        let mut out = Vec::new();
+        let mut chosen = fixed.to_vec();
+        for (line, function) in &lines {
+            let at = &entry.pins[line];
+            let Some((pin, _)) = ctx.rows.iter().find(|(_, p)| p == at) else {
+                return Err(format!("`{}` (`{}`) has no pin `{at}`", ctx.path, ctx.ty));
+            };
+            let row = rows.iter().find(|r| r.pin == *pin).expect("a pin of a row");
+            if !model.offers(ctx.part, row, function) {
+                return Err(format!("`{}.{at}` does not offer {function}", ctx.path));
+            }
+            if let Some(holder) = occupied.get(pin) {
+                return Err(format!("`{}.{at}` is held by {}", ctx.path, holder.text()));
+            }
+            if out.iter().any(|(_, p, _)| p == pin) {
+                return Err(format!("`{}.{at}` is the pin of two lines", ctx.path));
+            }
+            chosen.push((*pin, function.clone()));
+            out.push((line.clone(), *pin, function.clone()));
+        }
+        if let Some(c) = shares_conflict(model, ctx, &chosen) {
+            return Err(c.sentence_with(&holders_of(model, occupied, None)));
+        }
+        Ok((index, out))
     }
 
     /// Put together what the elaborations decided: the new pin file, what differs from the old
@@ -800,15 +1266,31 @@ impl Checker<'_> {
             if !r.entries.is_empty() {
                 file.boards.insert(r.board.clone(), r.entries.clone());
             }
+            if !r.buses.is_empty() {
+                file.buses.insert(r.board.clone(), r.buses.clone());
+            }
             if !r.spaces.is_empty() {
                 spaces.insert(r.board.clone(), r.spaces.clone());
             }
         }
         let mut findings = std::mem::take(&mut self.pin_findings);
         if let (true, Some(old)) = (complete, &existing) {
+            // Each stale entry: its key, its lock, where it is, and what it held.
+            let mut stale: Vec<(&String, &String, bool, Option<Span>, String)> = Vec::new();
             for (board, entries) in &old.boards {
-                let root = roots.iter().find(|r| r.board == *board);
                 for (key, e) in entries {
+                    stale.push((board, key, e.lock, e.at, format!("pin `{}`", e.pin)));
+                }
+            }
+            for (board, entries) in &old.buses {
+                for (key, e) in entries {
+                    stale.push((board, key, e.lock, e.at, format!("`{}`", e.peripheral)));
+                }
+            }
+            stale.sort_by(|a, b| (a.0, a.1).cmp(&(b.0, b.1)));
+            for (board, key, lock, at, held) in stale {
+                let root = roots.iter().find(|r| r.board == *board);
+                {
                     if root.is_some_and(|r| r.requests.contains(key)) {
                         continue;
                     }
@@ -817,20 +1299,18 @@ impl Checker<'_> {
                     } else {
                         format!("`{board}` has no request `{key}`")
                     };
-                    let place = src.zip(e.at).and_then(|(s, at)| self.sources.place(s, at));
-                    if e.lock {
+                    let place = src.zip(at).and_then(|(s, at)| self.sources.place(s, at));
+                    if lock {
                         let message = format!(
-                            "`{key}` is locked to pin `{}` in the table of `{board}`, but {why}; delete the entry to let the file drop it",
-                            e.pin
+                            "`{key}` is locked to {held} in the table of `{board}`, but {why}; delete the entry to let the file drop it"
                         );
-                        if let Some((s, at)) = src.zip(e.at) {
+                        if let Some((s, at)) = src.zip(at) {
                             self.report(s, at, message);
                         }
                     } else {
                         let at = place.map(|p| format!("{p}: ")).unwrap_or_default();
                         findings.push(format!(
-                            "{at}the entry `{key}` (pin `{}`) is stale: {why}; the file drops it",
-                            e.pin
+                            "{at}the entry `{key}` ({held}) is stale: {why}; the file drops it"
                         ));
                     }
                 }
@@ -1097,32 +1577,85 @@ fn pin_changes(old: Option<&PinFile>, new: &PinFile) -> Vec<String> {
     let get = |f: Option<&'_ PinFile>, board: &str, key: &str| -> Option<PinEntry> {
         f?.board(board)?.get(key).cloned()
     };
-    let mut out = Vec::new();
+    let mut out: Vec<((&str, &str), String)> = Vec::new();
     for (board, key) in keys {
         let (a, b) = (get(old, board, key), get(Some(new), board, key));
         match (a, b) {
-            (None, Some(b)) => out.push(format!(
-                "{board}.{key}: new, pin `{}` ({})",
-                b.pin, b.function
+            (None, Some(b)) => out.push((
+                (board, key),
+                format!("{board}.{key}: new, pin `{}` ({})", b.pin, b.function),
             )),
-            (Some(a), None) => out.push(format!("{board}.{key}: removed, it was pin `{}`", a.pin)),
+            (Some(a), None) => out.push((
+                (board, key),
+                format!("{board}.{key}: removed, it was pin `{}`", a.pin),
+            )),
             (Some(a), Some(b)) if a != b => {
                 if a.pin != b.pin {
-                    out.push(format!(
-                        "{board}.{key}: pin `{}` becomes `{}`",
-                        a.pin, b.pin
+                    out.push((
+                        (board, key),
+                        format!("{board}.{key}: pin `{}` becomes `{}`", a.pin, b.pin),
                     ));
                 } else {
-                    out.push(format!("{board}.{key}: its entry changes"));
+                    out.push(((board, key), format!("{board}.{key}: its entry changes")));
                 }
             }
             _ => {}
         }
     }
+    // The entries of requests for the end of a bus (#788).
+    let mut keys: BTreeSet<(&str, &str)> = BTreeSet::new();
+    for f in old.into_iter().chain(Some(new)) {
+        for (board, entries) in &f.buses {
+            for key in entries.keys() {
+                keys.insert((board, key));
+            }
+        }
+    }
+    let get = |f: Option<&'_ PinFile>, board: &str, key: &str| -> Option<BusEntry> {
+        f?.buses_of(board)?.get(key).cloned()
+    };
+    let lines = |e: &BusEntry| {
+        let each: Vec<String> = e
+            .pins
+            .iter()
+            .map(|(line, pin)| format!("{line} `{pin}`"))
+            .collect();
+        each.join(", ")
+    };
+    for (board, key) in keys {
+        match (get(old, board, key), get(Some(new), board, key)) {
+            (None, Some(b)) => out.push((
+                (board, key),
+                format!("{board}.{key}: new, `{}` with {}", b.peripheral, lines(&b)),
+            )),
+            (Some(a), None) => out.push((
+                (board, key),
+                format!("{board}.{key}: removed, it was `{}`", a.peripheral),
+            )),
+            (Some(a), Some(b)) if a != b => {
+                if a.peripheral != b.peripheral || a.pins != b.pins {
+                    out.push((
+                        (board, key),
+                        format!(
+                            "{board}.{key}: `{}` with {} becomes `{}` with {}",
+                            a.peripheral,
+                            lines(&a),
+                            b.peripheral,
+                            lines(&b)
+                        ),
+                    ));
+                } else {
+                    out.push(((board, key), format!("{board}.{key}: its entry changes")));
+                }
+            }
+            _ => {}
+        }
+    }
+    out.sort_by(|a, b| a.0.cmp(&b.0));
     if old.is_none() && new.is_empty() {
         out.clear();
     }
-    out
+    out.into_iter().map(|(_, line)| line).collect()
 }
 
 /// How a search ended.

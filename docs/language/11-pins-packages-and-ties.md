@@ -1275,7 +1275,7 @@ board TwoSensors {
 
 Here `battery` gets `p02` and `temperature` gets `p03`, and the pin file has an entry for each with `function = "ANALOG"`. When the rows name the channel of a class (`AIN0 of ANALOG`, "Functions"), the entry records the channel of the pin the request got instead (`function = "AIN0"`), and an entry that names a channel of the class asks for the class: it holds on any pin of the class, and the run writes the channel of the pin it is on. The optimizer and `--pins locked` treat them as any two requests: each stays on a pin that offers `ANALOG`, and two never share a pin. When more requests ask for the function than pins offer it, the last one in the order of the names gets the "every pin that offers it is taken" error above. Two things stay refused: two requests for a function that only one pin offers (the second has no pin left, with the same error), and two pins that the source itself gives the same function by hand (`function ANALOG is chosen on both ...`). A line of a peripheral (`UARTE1_TX`) is also on one pin at a time, though every pin of its class could carry it, so two requests for it are refused with that same message.
 
-A request asks a part declared in its own board or module, and a part with several packages needs its package stated (`.u.package &= "QFN-32"`), as the pins differ between packages. Not built yet: a request for the end of a bus (`.dbg: .u.Uart`).
+A request asks a part declared in its own board or module, and a part with several packages needs its package stated (`.u.package &= "QFN-32"`), as the pins differ between packages. A request may also ask for the end of a bus, a whole peripheral and a pin for each of its lines (`.dbg: .u.Uart`, "A request for the end of a bus" below).
 
 The editor shows the pin map of the selected part in the schematic's inspector (_Pin map_ section): each request with the pin it got, the pad of that pin, the function, a mark when the entry is locked, and where the pin came from (`file, hand`, `file, auto`, or `picked now` when the pin file has no entry for it yet). A request that got no pin is listed with the message the check gives, which is also in the problems list. The editor assigns in memory as it does on every analysis and reads `<stem>.pins.toml`. It writes that file in two ways and no other: the padlock of a request locks or unlocks its pin (the entry's `lock` line, written only when true, as a run writes it), and a move, by dragging the request's pin onto another pin that offers its function or by choosing the pin from the list that the row's _Move_ button opens, puts the request there (the entry's `pin` line, and `source = "hand"`, because a person chose it; and its `function` line when the request is for a class whose rows name the channel, which differs between the pins). Either writes the lines of that entry in place and leaves every other line, comment and blank line of the file as it was; a request the file has no entry for gets one, after the last entry of its board. The editor refuses, with the reason in a message and without writing, a move to a pin the part does not have, one that does not offer the function, one that another request or the source holds, one that would break a `shared` limit, and a move of a locked request. It never writes the pick lock (`netsmith lock --update` does), and it writes nothing when the source does not build.
 
@@ -1520,6 +1520,76 @@ error: `SPIM0_MISO` is an output in `peripheral SPIM0`, but `SpiRole::Master` ma
   |
 6 |         SPIM0_MISO:output as miso
   |                    ^^^^^^
+```
+
+### A request for the end of a bus
+
+A board that does not care which peripheral of a processor carries a bus asks for the end of the bus, and the tool picks the peripheral and its pins (#788). The type of the request is the part and the name of the bus: `.flash_bus: .u.Spi` asks `u` for one of its peripherals that is an end of an `Spi` (`peripheral SPIM0 on APP_GPIO as Spi SpiRole::Master`, above) and a pin for each line of it. The request is no pin. It stands for the peripheral it got, and joins as a peripheral does, with `~` to an interface of its bus, line by line with the bus's crossings:
+
+```nsm evaluate
+import src::zmcubus::Zmcubus
+import src::zparts::Zflash
+import std::sources::Rail
+
+board AnySpi {
+    .supply: Rail {
+        .voltage &= 3.3V +/- 5%
+        .pos.net &= "3V3"
+    }
+    .u: Zmcubus
+    .flash: Zflash
+    .supply ~ .u.vdd
+    .supply ~ .flash.vdd
+
+    .flash_bus: .u.Spi
+    .flash_bus ~ .flash.spi
+    .u.p03.function &= APP_GPIO
+    .u.p03 ~ .flash.spi.cs
+}
+```
+
+The tool serves a request for the end of a bus as it serves a request for a pin, with these differences:
+
+- **Which peripheral.** The peripherals of the part that are ends of the bus are tried in the byte order of their names, and the request gets the first for whose lines the search finds pins. Every line the peripheral names gets a pin, `optional` ones too, and every line of one request is on that one peripheral. Its functions are chosen on the pins as the board would choose them (`.u.p00.function &= SPIM0_MISO`). Here `SPIM0` gets `miso` on `p00`, `mosi` on `p01` and `sclk` on `p02`, the lines in the byte order of their names, and `p03` is the source's.
+- **What it never gets.** A peripheral that something else uses: one of its functions is chosen on a pin (by the source or an entry of the pin file), or a request for a pin asks for one (`.tx: .u.UARTE0_TX` keeps `UARTE0` from `.dbg: .u.Uart`). The pins follow the rules of any request: none that the source holds, and every `shared` limit of the part kept.
+- **In which order.** The entries of the pin file that hold are kept first, then the requests for the end of a bus are served, then the other requests for a pin, round them: a request for a bus needs several pins of one peripheral, so it goes before the requests that need one.
+- **Which part can serve it.** Only a part with a peripheral that states `as` the bus. A request for the end of a bus that the part has no peripheral for is an error that names the part (below). A request is for the end of a bus exactly when the part has such a peripheral, so the part may be declared before or after the request.
+- **Where it may be named.** In a join only, alone, as a peripheral: `.flash_bus.sclk` is refused. A request for a line by name (`.tx: .u.UARTE1_TX`) is a request for a pin, as before.
+
+The pin file has one entry for the request, with the peripheral and the pin of each line (keys in byte order), and the `lock` and `source` of any entry:
+
+```toml
+[AnySpi.pins.flash_bus]
+peripheral = "SPIM0"
+pins = { miso = "p00", mosi = "p01", sclk = "p02" }
+source = "auto"
+```
+
+The entry holds while its peripheral is an end of the bus that nothing else uses, it names a pin for each line of the peripheral and no other, and each pin offers its line's function, is held by nothing else and keeps the `shared` limits; then a run keeps it. One that does not hold is an error when locked and a note when not, and the request is served again, as for any entry. The firmware's pin map has a signal for each line, named by the request and the line (`flash_bus.sclk` is `ANYSPI_PIN_FLASH_BUS_SCLK_NAME`), with the peripheral in `_PERIPHERAL` and in the JSON's `peripheral`. The editor's pin map lists each line with its pin, and refuses to move or lock one line alone: a line moves only with its whole request, so the entry is edited in the pin file. `fab --pins auto` does not move a request for the end of a bus yet; its pins stay where they are while the other requests move round them.
+
+A part with no peripheral that is an end of the bus cannot serve the request:
+
+```nsm fails
+import src::zmcubus::Zmcubus
+import std::sources::Rail
+
+board NoUart {
+    .supply: Rail {
+        .voltage &= 3.3V +/- 5%
+        .pos.net &= "3V3"
+    }
+    .u: Zmcubus
+    .supply ~ .u.vdd
+    .dbg: .u.Uart
+}
+```
+
+```text
+error: `dbg` asks `u` (`Zmcubus`) for the end of a `Uart`, but no peripheral of `Zmcubus` is one; a part says that a peripheral is an end of a bus with `peripheral NAME as Uart { ... }` (ADR 0064)
+   --> main.nsm:11:14
+   |
+11 |     .dbg: .u.Uart
+   |              ^^^^
 ```
 
 ### Counts, functions and pins that share

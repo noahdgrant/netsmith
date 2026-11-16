@@ -239,7 +239,9 @@ pub fn improve_counting(
                 refdes: &part.refdes,
                 pads,
                 net: net.unwrap_or(0),
-                movable: net.is_some() && !r.lock,
+                // A line of a request for the end of a bus moves only with its whole request
+                // (#788), which the optimizer does not do yet: it stays where it is.
+                movable: net.is_some() && !r.lock && r.bus.is_none(),
             });
         }
     }
