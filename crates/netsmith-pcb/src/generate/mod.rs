@@ -112,9 +112,11 @@
 //! that none of the names above is. [`generate_spec`] makes it with the same code as the table row
 //! with the same numbers (`params.rs` reads the parameters and checks them, and its tests compare the
 //! pads with [`generate`] for several ids of each generator): `QFN`, `DFN`, `QFP`, `SO`, `SOT23`,
-//! `PinHeader`, `PinSocket` and `BGA` ([`GENERATORS`]). The footprint is in the library `gen` under a
+//! `PinHeader`, `PinSocket`, `BGA`, `MountingHole` and `PlatedHole` ([`GENERATORS`]). The footprint is in the library `gen` under a
 //! name made of the generator and its parameters, which [`generate`] reads back. Not exposed: the
-//! chips, diodes, crystals, the recorded pads (SOT-223, SC-70, DPAK, SOT-89) and the mechanical parts.
+//! chips, diodes, crystals, the recorded pads (SOT-223, SC-70, DPAK, SOT-89), the test points and
+//! the fiducial. A hole of any drill is `gen:MountingHole(drill=2.375mm)` (`gen:PlatedHole(...)`
+//! for the plated one): a `.diameter` on `MountingHole` and `PlatedHole` asks for it (issue #89).
 //!
 //! **Validation.** `tests/generated_vs_kicad.rs` compares every generated footprint with the
 //! footprint of the same name in the installed KiCad 9.0 libraries (skipped without them): the pad
@@ -194,6 +196,7 @@ mod gullwing;
 pub(crate) mod header;
 pub(crate) mod ipc;
 mod mechanical;
+pub use mechanical::DRILL as HOLE_DRILL;
 mod outline;
 mod params;
 mod qfn;
@@ -225,7 +228,7 @@ fn leads_of(pads: &[draw::PadSpec], body: (f64, f64)) -> Vec<Lead> {
 }
 
 /// The generators a project can ask for by name and parameters (`gen:QFN(...)`, ADR 0104).
-pub(crate) const GENERATORS: [&str; 8] = [
+pub(crate) const GENERATORS: [&str; 10] = [
     "QFN",
     "DFN",
     "QFP",
@@ -234,6 +237,8 @@ pub(crate) const GENERATORS: [&str; 8] = [
     "PinHeader",
     "PinSocket",
     "BGA",
+    "MountingHole",
+    "PlatedHole",
 ];
 
 /// The footprint a `gen:` spec asks for: the generator's pads for the parameters it names,
@@ -279,6 +284,10 @@ pub fn generate_spec(spec: &FootprintSpec) -> Result<Footprint, String> {
         "BGA" => {
             let p = param_names(&["layout", "pitch", "body", "pad"])?;
             bga::from_params(&p, library, name)
+        }
+        "MountingHole" | "PlatedHole" => {
+            let p = param_names(&["drill"])?;
+            mechanical::from_params(&p, &spec.generator, library, name)
         }
         other => Err(format!(
             "there is no generator `{other}`; the generators are {}",

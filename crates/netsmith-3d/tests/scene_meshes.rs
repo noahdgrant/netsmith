@@ -6,7 +6,7 @@ use netsmith_3d::{Material, Mesh, NO_NET, MeshPieces, SILK_LIFT, meshes_of_scene
 use netsmith_pcb::Side;
 
 use crate::common;
-use crate::scene3d::{board_with, in_area, routed, scene};
+use crate::scene3d::{board_with_plane_vias, in_area, routed, scene};
 
 fn copper(s: &Scene) -> &SceneCopper {
     s.copper.as_ref().unwrap_or_else(|e| panic!("{e}"))
@@ -269,7 +269,8 @@ fn nothing_shares_a_plane_from_the_silk_down_to_the_substrate() {
 
 #[test]
 fn a_four_layer_board_has_its_planes_inside_and_the_same_meshes_every_time() {
-    let board = board_with(common::four_layer_process());
+    let made = || board_with_plane_vias(common::four_layer_process());
+    let board = made();
     let s = scene(&board);
     let p = mesh_pieces(&s);
     let names: Vec<&str> = p.copper.iter().map(|l| l.layer.as_str()).collect();
@@ -286,7 +287,7 @@ fn a_four_layer_board_has_its_planes_inside_and_the_same_meshes_every_time() {
         let b = plane.copper.as_ref().unwrap().bounds().unwrap();
         assert!(b.min[2] > substrate.min[2] && b.max[2] < substrate.max[2]);
     }
-    assert_eq!(p, mesh_pieces(&scene(&board_with(common::four_layer_process()))));
+    assert_eq!(p, mesh_pieces(&scene(&made())));
     let meshes = meshes_of_scene(&s);
     let triangles: usize = meshes.iter().map(Mesh::triangle_count).sum();
     assert!(triangles < 200_000, "{triangles} triangles");

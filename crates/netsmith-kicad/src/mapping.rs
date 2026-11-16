@@ -486,6 +486,22 @@ impl Mapping {
         if of_kind.peek().is_none() {
             return Err(MapError::UnknownPart(kind.to_string()));
         }
+        // A hole that states its drill (`.diameter`) has no row: its footprint is generated for
+        // the drill, and it is drawn as the kind's default row is (issue #89).
+        if let Some(drill) = package
+            .and_then(netsmith_core::drill_of_package)
+            .filter(|_| matches!(kind, "MountingHole" | "PlatedHole"))
+            && let Some(row) = self.rows.iter().find(|r| r.kind == kind && r.default)
+        {
+            let generator = format!("gen:{kind}(drill={drill}mm)");
+            let spec = FootprintSpec::parse(&generator).expect("a generator and a length parse");
+            return Ok(Mapped {
+                lib_id: row.symbol.clone(),
+                footprint: spec.id(),
+                origin: format!("the `.diameter` of the {kind}"),
+                pin_names: row.pin_names.clone(),
+            });
+        }
         let row =
             match package {
                 Some(package) => of_kind.find(|r| r.package == package).ok_or_else(|| {
