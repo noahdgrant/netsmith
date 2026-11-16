@@ -162,6 +162,53 @@ impl Checker<'_> {
         bridge
     }
 
+    /// `.a ?~ .b` (ADR 0130): a join of two pins of a part that holds only while nothing else
+    /// joins the first pin. It is read with the part, and applied by `apply_default_joins`
+    /// once every join of the board has been read, so the order of statements never matters.
+    fn default_join(&mut self, first: &ast::Path, right: &ast::Path) {
+        if !self.in_own_definition() {
+            self.error(
+                first.span,
+                "`?~` offers a default join in a part's own definition, and this is not one: a board joins with `~`",
+            );
+            return;
+        }
+        let (a, b) = (self.endpoint(first), self.endpoint(right));
+        match (a, b) {
+            (Some(End::Pin(a)), Some(End::Pin(b))) => self.default_joins.push((a, b)),
+            (Some(_), Some(_)) => self.error(
+                right.span,
+                "`?~` joins two pins of the part: a default join between interfaces or parts is not offered",
+            ),
+            _ => {}
+        }
+    }
+
+    /// Join the pins of each `?~` whose first pin nothing else joined (ADR 0130). Every default
+    /// is judged before any is applied, so two defaults on one pin are both applied and the
+    /// pin joins both.
+    pub(crate) fn apply_default_joins(&mut self) {
+        let defaults = std::mem::take(&mut self.default_joins);
+        let pins: Vec<InstId> = self
+            .model
+            .instances()
+            .filter(|(_, i)| i.kind == InstKind::Pin)
+            .map(|(id, _)| id)
+            .collect();
+        let alone: Vec<bool> = defaults
+            .iter()
+            .map(|&(a, _)| {
+                let root = self.find(a.0);
+                pins.iter().filter(|p| self.find(p.0) == root).count() == 1
+            })
+            .collect();
+        for (&(a, b), alone) in defaults.iter().zip(alone) {
+            if alone {
+                self.union(a, b);
+            }
+        }
+    }
+
     /// `~` in a system: `.main.output ~ .io.input` says that two boards' ports meet.
     /// Only the board names nets, so nothing is put on a net; the ports' values are
     /// equated and their currents balanced.
@@ -176,6 +223,9 @@ impl Checker<'_> {
                     "a system joins ports with `~`; `~>` runs through parts, which only a board has",
                 );
                 return;
+            }
+            if *op == ConnectOp::Default {
+                return self.default_join(&c.first, path);
             }
             let (Some(a), Some(b)) = (prev_end, next) else {
                 return;
@@ -239,6 +289,9 @@ impl Checker<'_> {
     }
 
     pub fn connect(&mut self, c: &ast::Connect) {
+        if let [(ConnectOp::Default, right)] = c.rest.as_slice() {
+            return self.default_join(&c.first, right);
+        }
         if self.in_system() {
             return self.join(c);
         }
@@ -307,6 +360,7 @@ impl Checker<'_> {
                     }
                     prev = next;
                 }
+                ConnectOp::Default => unreachable!("the parser keeps `?~` out of a chain"),
                 ConnectOp::Series => {
                     let End::Pin(a) = prev else {
                         self.error(

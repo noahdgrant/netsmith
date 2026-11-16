@@ -153,6 +153,9 @@ pub(crate) struct Checker<'a> {
     /// The operands of the `~` and `~>` statements read so far, where a message about a
     /// connection points.
     pub(crate) touches: Vec<crate::unused::Touch>,
+    /// The `?~` joins of the elaboration in progress, as the two pins, applied once every other
+    /// join has been read (ADR 0130).
+    pub(crate) default_joins: Vec<(InstId, InstId)>,
     /// The `?=` statements of the elaboration in progress, resolved when every statement has
     /// been read, so that their order never matters.
     pub(crate) defaults: Vec<crate::lower::PendingDefault>,
@@ -304,6 +307,7 @@ impl<'a> Checker<'a> {
             stated: HashSet::new(),
             unused_stmts: Vec::new(),
             touches: Vec::new(),
+            default_joins: Vec::new(),
             defaults: Vec::new(),
             source_override: None,
             enum_ids: HashMap::new(),
@@ -1005,6 +1009,7 @@ impl<'a> Checker<'a> {
         self.stated.clear();
         self.unused_stmts.clear();
         self.touches.clear();
+        self.default_joins.clear();
         self.periph_joins.clear();
         self.defaults.clear();
         self.board_defaults.clear();
@@ -1018,6 +1023,7 @@ impl<'a> Checker<'a> {
             .instantiate(&def, (module, index), &name, None)
             .expect("the root is made inside nothing, so nothing repeats");
         self.model.root = root;
+        self.apply_default_joins();
         self.apply_board_defaults();
         self.resolve_defaults();
         match def.kind {

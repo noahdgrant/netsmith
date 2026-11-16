@@ -62,7 +62,7 @@ const PIN_KINDS = new Set(['power', 'input', 'output', 'bidirectional', 'passive
 export const KEYWORDS = new Set(['board', 'system', 'panel', 'part', 'interface', 'module', 'enum', 'generic', 'provides', 'import', 'catalog', 'bridge', 'required', 'optional']);
 
 // Longest spellings first, as the lexer reads them.
-const OPERATORS = ['~>', '&=', '?=', '==', '>=', '<=', '+/-', '..', '::', '~', '+', '-', '*', '/', '=', '>', '<'];
+const OPERATORS = ['~>', '&=', '?=', '?~', '==', '>=', '<=', '+/-', '..', '::', '~', '+', '-', '*', '/', '=', '>', '<'];
 
 const isDigit = (c: string) => c >= '0' && c <= '9';
 const isWordStart = (c: string) => /[\p{L}_]/u.test(c);

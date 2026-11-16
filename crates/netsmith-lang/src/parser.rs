@@ -699,7 +699,7 @@ impl Parser {
                     span: self.span_from(start),
                 }))
             }
-            Tok::Tilde | Tok::TildeArrow => {
+            Tok::Tilde | Tok::TildeArrow | Tok::QuestionTilde => {
                 let first = as_path(lhs, "a name before `~`")?;
                 let mut rest = Vec::new();
                 let mut groups = Vec::new();
@@ -707,6 +707,7 @@ impl Parser {
                     let op = match self.peek().tok {
                         Tok::Tilde => ConnectOp::Same,
                         Tok::TildeArrow => ConnectOp::Series,
+                        Tok::QuestionTilde => ConnectOp::Default,
                         _ => break,
                     };
                     self.bump();
@@ -753,6 +754,14 @@ impl Parser {
                         return only_decls(self.member_map(first, right, start)?);
                     }
                 }
+                if let Some((_, at)) = rest.iter().find(|(op, _)| *op == ConnectOp::Default)
+                    && (rest.len() != 1 || !groups.is_empty())
+                {
+                    return Err(ParseError::new(
+                        at.span,
+                        "`?~` joins exactly two pins and is not part of a chain: `.a ?~ .b`",
+                    ));
+                }
                 for group in &groups {
                     name_inline_group(&first, &mut rest, group)?;
                 }
@@ -765,7 +774,7 @@ impl Parser {
             }
             _ => Err(unexpected(
                 &t,
-                "`:`, `&=`, `?=`, `==`, `>=`, `<=`, `~` or `~>`",
+                "`:`, `&=`, `?=`, `==`, `>=`, `<=`, `~`, `?~` or `~>`",
             )),
         }
     }
@@ -2255,6 +2264,7 @@ fn describe(tok: &Tok) -> String {
         Tok::TildeArrow => symbol("~>"),
         Tok::AmpEq => symbol("&="),
         Tok::QuestionEq => symbol("?="),
+        Tok::QuestionTilde => symbol("?~"),
         Tok::Eq => symbol("="),
         Tok::EqEq => symbol("=="),
         Tok::GtEq => symbol(">="),
