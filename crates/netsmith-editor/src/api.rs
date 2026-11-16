@@ -1201,6 +1201,11 @@ pub struct PcbReport {
     pub vias: u32,
     /// The router stopped before it was done: it ran out of time, or it was cancelled.
     pub stopped: bool,
+    /// The nets whose copper was kept from the board routed before the last change of the
+    /// placement (partial routing, issue 825), and those routed again; both empty when the
+    /// board was routed from nothing.
+    pub carried: Vec<String>,
+    pub rerouted: Vec<String>,
     /// Why there is no board to draw, if there is none.
     pub error: Option<String>,
     /// How long placing and routing took, in milliseconds.
@@ -1761,6 +1766,72 @@ pub struct PcbEdit {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 pub struct PcbEdited {
     pub scene: PcbScene,
+    /// What the route of the board says, when the edit put back a placement that was routed
+    /// (an undo, issue 825): its copper is drawn again with no router. None when it is unrouted.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub report: Option<PcbReport>,
+}
+
+/// Ask for one module of the board placed again with the rest held (issue 825,
+/// `netsmith layout regenerate`): a proposal, nothing written.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct PcbRegenerate {
+    pub board: String,
+    /// `PcbScene::layout_stamp` as the page read it.
+    pub stamp: String,
+    /// The module's path in the design (`stage`, `channels[1]`).
+    pub module: String,
+    /// The same seed gives the same arrangement, another seed another.
+    pub seed: u32,
+    /// How far round the module's parts they may go, in mm; the default (3 mm) when not given.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub margin: Option<f64>,
+}
+
+/// One part of a regeneration's proposal: where it goes, and its courtyard there on the sheet.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct PcbRegeneratedPart {
+    pub path: String,
+    pub refdes: String,
+    pub courtyard: PcbBox,
+}
+
+/// The totals of a placement a proposal compares (`layout compare`'s): the half perimeter of
+/// the nets, the ratsnest's length (mm) and its crossings.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, TS)]
+pub struct PcbTotals {
+    pub hpwl: f64,
+    pub ratsnest: f64,
+    pub crossings: u32,
+}
+
+/// A regeneration's proposal: the edit that makes it (one step of undo, sent as any
+/// `PcbEdit`), the parts it moves, the copper it changes, and the findings before and after.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct PcbRegenerated {
+    pub module: String,
+    pub seed: u32,
+    /// Where the parts were placed, on the sheet.
+    pub region: PcbBox,
+    /// An entry for each part placed again, unlocked, `source = "regen"`.
+    pub changes: Vec<PcbChange>,
+    pub parts: Vec<PcbRegeneratedPart>,
+    /// The parts of the module the layout file locks or the requirements pin, by path.
+    pub held: Vec<String>,
+    /// The nets with a pad on a part placed again: routed again; the rest keep their copper.
+    pub nets: Vec<String>,
+    /// The nets whose routes file record no longer matches its pads once the parts moved.
+    pub routes_dropped: Vec<String>,
+    /// The placement check's findings that the proposal adds, and those it takes away.
+    pub appeared: Vec<String>,
+    pub gone: Vec<String>,
+    pub before: PcbTotals,
+    pub after: PcbTotals,
 }
 
 /// Where a finding comes from.
@@ -2169,6 +2240,10 @@ pub fn typescript() -> String {
         PcbChange,
         PcbEdit,
         PcbEdited,
+        PcbRegenerate,
+        PcbRegeneratedPart,
+        PcbTotals,
+        PcbRegenerated,
         FindingSource,
         PcbFinding,
         KicadState,

@@ -1,0 +1,2 @@
+# The layout file of the lights fixture: empty, so the placer places every part (pcb-regenerate puts it back).
+version = 1

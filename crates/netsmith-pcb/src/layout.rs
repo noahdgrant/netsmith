@@ -39,8 +39,8 @@
 //! overrides of a constraint and per-module seeds were sketched in ADR 0030 and are not read:
 //! an unknown key is an error. The routes ADR 0030 sketched are a file of their own beside this
 //! one, the routes file `<stem>.routes.toml` ([`crate::Routes`], issue #599), which whatever
-//! reads this file reads too. `place_subset` (in `place.rs`) is what regenerating one module
-//! would use.
+//! reads this file reads too. Regenerating one module (`netsmith layout regenerate`, issue #825)
+//! writes the entries of the parts it placed again with `source = "regen"`.
 //!
 //! [`apply_layout`] is the one place a layout reaches a board. A part with no entry stays
 //! where the placer put it. An entry for a part, keepout or cutout that the board does not

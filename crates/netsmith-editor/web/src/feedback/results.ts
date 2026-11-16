@@ -87,7 +87,9 @@ export function routeResult(r: PcbReport): Result {
     return { kind: 'bad', title: `Could not place ${r.board}`, detail: causeOf(r.error) || undefined, next: [] };
   }
   const left = r.unrouted.length;
-  const how = `${plural(r.tracks, 'track')}, ${plural(r.vias, 'via')}; ${took(r.elapsedMs)}`;
+  // Partial routing (issue 825): the copper of the nets an edit left alone was kept.
+  const kept = r.carried.length > 0 ? `kept the copper of ${plural(r.carried.length, 'net')}, routed ${r.rerouted.length} again; ` : '';
+  const how = `${kept}${plural(r.tracks, 'track')}, ${plural(r.vias, 'via')}; ${took(r.elapsedMs)}`;
   if (r.stopped) {
     return {
       kind: 'info',

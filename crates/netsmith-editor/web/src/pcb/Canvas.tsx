@@ -22,6 +22,7 @@ import {
   pcbSide,
   pickedKeepout,
   pickedRoute,
+  proposal,
   redo,
   select,
   selection,
@@ -965,6 +966,30 @@ export function Canvas(props: {
                 )}
               </g>
             ) : null,
+          )}
+          {proposal.value && proposal.value.board === sc.board && (
+            // A regeneration proposed (issue 825): its region and where each part would go, in a second colour.
+            <g class="regen" data-testid="regen-proposal" data-regen-module={proposal.value.answer.module}>
+              <rect
+                class="regen-region"
+                x={proposal.value.answer.region.x}
+                y={proposal.value.answer.region.y}
+                width={proposal.value.answer.region.width}
+                height={proposal.value.answer.region.height}
+              />
+              {proposal.value.answer.parts.map((q) => (
+                <rect
+                  key={`regen:${q.path}`}
+                  class="regen-ghost"
+                  data-testid="regen-ghost"
+                  data-regen-part={q.path}
+                  x={q.courtyard.x}
+                  y={q.courtyard.y}
+                  width={q.courtyard.width}
+                  height={q.courtyard.height}
+                />
+              ))}
+            </g>
           )}
           <g class="req-overlay" data-testid="requirements">
             {sc.parts.map((p) => {

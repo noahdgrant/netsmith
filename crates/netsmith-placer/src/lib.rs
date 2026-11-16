@@ -7,7 +7,8 @@
 //! [`board_from_design`], [`board_from_design_placed`] and [`place_subset`] move and turn the
 //! footprints by simulated annealing (ADR 0033, the header of `anneal.rs`), keeping to the
 //! requirements of the physical file (ADR 0045). [`precheck`] says, before any placing, what
-//! those requirements prove. [`Quality`] measures a placement.
+//! those requirements prove. [`regenerate`] places one module again with the rest held (the
+//! header of `regenerate.rs`). [`Quality`] measures a placement.
 //!
 //! The board model, the options the placer is told and its refusals
 //! ([`netsmith_pcb::PlaceOptions`]), and the measure of a placement ([`netsmith_pcb::Quality`])
@@ -19,6 +20,7 @@ mod anneal;
 mod board;
 mod fit;
 mod place;
+mod regenerate;
 
 #[cfg(test)]
 mod pcb_fixtures;
@@ -28,3 +30,6 @@ mod testlib;
 pub use board::{board_from_design, board_from_design_placed, precheck};
 pub use netsmith_pcb::{DecouplingDistance, Quality, crossings};
 pub use place::{PlaceError, place_subset};
+pub use regenerate::{
+    DEFAULT_MARGIN, RegenerateError, Regenerated, in_module, module_paths, regenerate,
+};

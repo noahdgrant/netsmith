@@ -21,6 +21,7 @@ pub mod pins;
 pub mod placed;
 pub mod project;
 pub mod refresh;
+pub mod regenerate;
 pub mod reuse;
 pub mod routes;
 pub mod system3d;

@@ -3,7 +3,21 @@
 import { useState } from 'preact/hooks';
 
 import type { PcbBox, PcbKeepout, PcbPart, PcbRouteNet, PcbScene } from '../api';
-import { type RoutePick, changeRoutes, pickKeepout, pickRoute, pickedKeepout, pickedRoute, select, selection } from '../pcbstore';
+import {
+  type RoutePick,
+  acceptProposal,
+  changeRoutes,
+  dropProposal,
+  pickKeepout,
+  pickRoute,
+  pickedKeepout,
+  pickedRoute,
+  proposal,
+  propose,
+  proposeAnother,
+  select,
+  selection,
+} from '../pcbstore';
 import { boxOf, deleteChange, lockChange, nameOf, samePick, shapeOf } from './routes';
 import { Defs, InspectorAction, InspectorHead, PinChip } from '../components/Inspector';
 import { Icon } from '../components/Icons';
@@ -21,6 +35,7 @@ import {
   toggleRequired,
 } from './actions';
 import type { Drawing } from './drawing';
+import { moduleOfAll, totalsLines } from './regenerate';
 import { faceWord } from './side';
 import { isRequired, rangeText } from './windows';
 
@@ -49,6 +64,7 @@ export function Panel(props: {
   ];
   return (
     <aside class="side no-pan">
+      {proposal.value && proposal.value.board === sc.board && <ProposalCard />}
       {chosen.length > 0 && <PartInspector scene={sc} parts={chosen} onPickNet={props.onPickNet} />}
       {keepout && <KeepoutInspector scene={sc} keepout={keepout} />}
       {route && record && <RouteInspector scene={sc} pick={route} record={record} onFocus={props.onFocus} />}
@@ -176,6 +192,7 @@ function PartInspector(props: { scene: PcbScene; parts: PcbPart[]; onPickNet: (n
   const allLocked = parts.every((p) => p.locked);
   const allRequired = parts.every(isRequired);
   const elsewhere = parts.find((p) => p.requiredElsewhere);
+  const module = moduleOfAll(parts.map((p) => p.path));
   return (
     <section class="inspector insp" data-testid="part-inspector">
       <InspectorHead
@@ -216,6 +233,17 @@ function PartInspector(props: { scene: PcbScene; parts: PcbPart[]; onPickNet: (n
           <Icon name="close" size={13} />
           Release
         </button>
+        {module && (
+          <button
+            class="tool small"
+            data-testid="regenerate"
+            title={`Place the parts of ${module} again with every other part held, and show the result before anything is written`}
+            onClick={() => void propose(module, 0)}
+          >
+            <Icon name="refresh" size={13} />
+            Regenerate {module}
+          </button>
+        )}
         <button
           class="tool small"
           data-testid="require-here"
@@ -272,6 +300,63 @@ function PartInspector(props: { scene: PcbScene; parts: PcbPart[]; onPickNet: (n
           </table>
         </>
       )}
+    </section>
+  );
+}
+
+/** A regeneration the server proposed (issue 825): what it moves, what copper it routes again, and the findings and totals
+ * before and after; Accept writes it as one edit, Another asks for the next seed, Reject drops it. */
+function ProposalCard() {
+  const p = proposal.value?.answer;
+  if (!p) return null;
+  const moved = p.parts.length;
+  return (
+    <section class="inspector insp regen-card" data-testid="regen-card">
+      <InspectorHead
+        eyebrow="Proposal"
+        icon="module"
+        tone="module"
+        mono
+        title={`Regenerate ${p.module}`}
+        sub={`Seed ${p.seed}. Nothing is written until you accept; every other part stays where it is.`}
+      />
+      <Defs
+        rows={[
+          { label: 'Placed again', value: p.parts.map((q) => q.refdes).join(', ') || 'none' },
+          ...(p.held.length > 0 ? [{ label: 'Held', value: p.held.join(', ') }] : []),
+          { label: 'Routed again', value: p.nets.length > 0 ? p.nets.join(', ') : 'nothing' },
+          ...(p.routesDropped.length > 0 ? [{ label: 'Routes file', value: `no longer matches: ${p.routesDropped.join(', ')}` }] : []),
+        ]}
+      />
+      <ul class="regen-totals" data-testid="regen-totals">
+        {totalsLines(p.before, p.after).map((line) => (
+          <li key={line}>{line}</li>
+        ))}
+      </ul>
+      {(p.appeared.length > 0 || p.gone.length > 0) && (
+        <ul class="regen-findings" data-testid="regen-findings">
+          {p.appeared.map((f) => (
+            <li key={`+${f}`} class="appeared">new: {f}</li>
+          ))}
+          {p.gone.map((f) => (
+            <li key={`-${f}`} class="gone">gone: {f}</li>
+          ))}
+        </ul>
+      )}
+      <div class="actions">
+        <button class="tool small primary" data-testid="regen-accept" disabled={moved === 0} title="Write the new places to the layout file: one step of undo" onClick={() => void acceptProposal()}>
+          <Icon name="check" size={13} />
+          Accept
+        </button>
+        <button class="tool small" data-testid="regen-another" title="Another arrangement, with the next seed" onClick={() => void proposeAnother()}>
+          <Icon name="refresh" size={13} />
+          Another
+        </button>
+        <button class="tool small" data-testid="regen-reject" title="Drop the proposal; nothing was written" onClick={() => dropProposal()}>
+          <Icon name="close" size={13} />
+          Reject
+        </button>
+      </div>
     </section>
   );
 }

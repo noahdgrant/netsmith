@@ -18,6 +18,8 @@ import type {
   OrderInfo,
   OrderReport,
   PcbEdit,
+  PcbRegenerate,
+  PcbRegenerated,
   PcbEdited,
   PcbRoutesEdit,
   PcbRoutesEdited,
@@ -179,6 +181,8 @@ export const api = {
   /** The fill of the board's pours, planes and zones (the 2D view draws it under the copper). */
   pcbPours: (board: string) => getJson<PcbPours>(`/api/pcb/pours?${q({ board })}`),
   pcbEdit: (edit: PcbEdit) => post<PcbEdited>('/api/pcb/edit', edit),
+  /** One module placed again with the rest held (issue 825): a proposal, nothing written. `ApiFailure` 422 says why not. */
+  pcbRegenerate: (ask: PcbRegenerate) => post<PcbRegenerated>('/api/pcb/regenerate', ask),
   pcbRoutes: (edit: PcbRoutesEdit) => post<PcbRoutesEdited>('/api/pcb/routes', edit),
   /** The way for a track from its last corner to a point, round the copper (`netsmith_router::walk`); no way is an answer, with its reason. */
   pcbWalk: (walk: PcbWalk) => post<PcbWalked>('/api/pcb/walk', walk),

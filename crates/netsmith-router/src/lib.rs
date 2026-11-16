@@ -11,6 +11,9 @@
 //! of `arcs.rs`). The meanders that match the lengths of a diff pair ([`meander`]) and the teardrops
 //! ([`teardrop`]) are steps of it too; they were in `netsmith-pcb` until issue #608.
 //!
+//! [`carry`] keeps the router's copper of the nets a change of placement left alone and routes
+//! only the rest (partial routing, issue #825).
+//!
 //! [`walk`] is not a step of routing: the query the editor's track tool asks while a track is drawn
 //! (issue #726), whether a segment is free and the way round the copper in the way, with the
 //! design rules check's own spaces.
@@ -21,6 +24,7 @@
 //! it.
 
 pub mod arcs;
+pub mod carry;
 mod decouple;
 pub mod meander;
 pub mod parallel;
