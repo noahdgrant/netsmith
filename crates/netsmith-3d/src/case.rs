@@ -214,6 +214,122 @@ pub(crate) fn placement(rotation: [f64; 3], offset: [f64; 3]) -> ([[f64; 3]; 3],
     (mul(rz, mul(ry, rx)), offset)
 }
 
+/// How far a matrix's rows may be from unit length and from square to one another (and its
+/// determinant from 1) and still be read as a rotation by [`pose_of_matrix`]: room for a matrix
+/// typed with four decimals (0.7071), far below any scale or shear a CAD file would mean.
+pub const ROTATION_TOLERANCE: f64 = 1e-4;
+
+/// A case model's pose as `CaseModel` states it: `.rx`, `.ry`, `.rz` (degrees, about x, then y,
+/// then z) and `.x`, `.y`, `.z` (mm), read from a pose given as a matrix by
+/// [`pose_of_matrix`].
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Pose {
+    pub rotation: [f64; 3],
+    pub offset: [f64; 3],
+    /// The largest difference between an entry of the matrix that [`placement`] makes of
+    /// `rotation` and the matrix given: how exactly the angles say the matrix.
+    pub residual: f64,
+}
+
+/// Why a matrix is not a pose of a case model: its linear part is not a rotation.
+#[derive(Debug, Clone, PartialEq)]
+pub enum NotAPose {
+    /// A number that is not finite.
+    NotFinite,
+    /// A row whose length is not 1: a scale (a model in other units) or a shear.
+    Scaled { row: usize, length: f64 },
+    /// Two rows that are not square to one another: a shear.
+    Skewed { rows: (usize, usize), dot: f64 },
+    /// A determinant of -1: a mirror image, which no rotation draws.
+    Mirrored,
+}
+
+impl fmt::Display for NotAPose {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            NotAPose::NotFinite => write!(f, "the matrix has a number that is not finite"),
+            NotAPose::Scaled { row, length } => write!(
+                f,
+                "row {} of the rotation has length {length:.6}, not 1: the matrix scales (a model in other units?) or shears, and a case model is only turned and moved",
+                row + 1
+            ),
+            NotAPose::Skewed { rows, dot } => write!(
+                f,
+                "rows {} and {} of the rotation are not square to one another (their dot product is {dot:.6}): the matrix shears, and a case model is only turned and moved",
+                rows.0 + 1,
+                rows.1 + 1
+            ),
+            NotAPose::Mirrored => write!(
+                f,
+                "the rotation's determinant is -1: the matrix mirrors the model, and no `.rx`, `.ry`, `.rz` draws a mirror image; the matrix is of another frame (a y-down drawing?) or has a sign slip"
+            ),
+        }
+    }
+}
+
+/// The pose of a case model given as a 3 x 4 matrix, row major (`[R | t]`: the rotation in the
+/// first three columns, the offset in mm in the fourth, acting on `(x, y, z, 1)` of the
+/// model's file), as `CaseModel`'s angles and offset: the inverse of [`placement`].
+///
+/// A rotation has two sets of angles in general (and endless ones when `.ry` is a quarter
+/// turn); this gives the one with `.ry` in [-90, 90], and `.rz` 0 at a quarter turn of `.ry`.
+/// A matrix whose linear part is not a rotation within [`ROTATION_TOLERANCE`] is refused.
+pub fn pose_of_matrix(m: [[f64; 4]; 3]) -> Result<Pose, NotAPose> {
+    if m.iter().flatten().any(|v| !v.is_finite()) {
+        return Err(NotAPose::NotFinite);
+    }
+    let r: [[f64; 3]; 3] = m.map(|row| [row[0], row[1], row[2]]);
+    let dot = |a: [f64; 3], b: [f64; 3]| a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+    for (i, row) in r.iter().enumerate() {
+        let length = dot(*row, *row).sqrt();
+        if (length - 1.0).abs() > ROTATION_TOLERANCE {
+            return Err(NotAPose::Scaled { row: i, length });
+        }
+    }
+    for rows in [(0, 1), (0, 2), (1, 2)] {
+        let d = dot(r[rows.0], r[rows.1]);
+        if d.abs() > ROTATION_TOLERANCE {
+            return Err(NotAPose::Skewed { rows, dot: d });
+        }
+    }
+    let cross = [
+        r[0][1] * r[1][2] - r[0][2] * r[1][1],
+        r[0][2] * r[1][0] - r[0][0] * r[1][2],
+        r[0][0] * r[1][1] - r[0][1] * r[1][0],
+    ];
+    if dot(cross, r[2]) < 0.0 {
+        return Err(NotAPose::Mirrored);
+    }
+    // R = Rz Ry Rx: the bottom row is (-sy, cy sx, cy cx), the first column (cy cz, cy sz, -sy).
+    let degrees = |radians: f64| radians * (180.0 / std::f64::consts::PI);
+    let cy = (r[0][0] * r[0][0] + r[1][0] * r[1][0]).sqrt();
+    let ry = trig::atan2(-r[2][0], cy);
+    let (rx, rz) = if cy > 1e-9 {
+        (trig::atan2(r[2][1], r[2][2]), trig::atan2(r[1][0], r[0][0]))
+    } else {
+        // A quarter turn about y: only rx - rz (or rx + rz) is fixed; rz is 0, and the middle row
+        // of Ry Rx is (0, cx, -sx).
+        (trig::atan2(-r[1][2], r[1][1]), 0.0)
+    };
+    let rotation = [rx, ry, rz].map(|a| {
+        let d = degrees(a);
+        // A whole degree's rounding error is not an angle: 89.99999999999999 is 90.
+        let near = d.round();
+        let d = if (d - near).abs() < 1e-9 { near } else { d };
+        if d == 0.0 || d == -180.0 { d.abs() } else { d }
+    });
+    let (back, _) = placement(rotation, [0.0; 3]);
+    let residual = (0..3)
+        .flat_map(|i| (0..3).map(move |j| (i, j)))
+        .map(|(i, j)| (back[i][j] - r[i][j]).abs())
+        .fold(0.0, f64::max);
+    Ok(Pose {
+        rotation,
+        offset: [m[0][3], m[1][3], m[2][3]],
+        residual,
+    })
+}
+
 fn mul(a: [[f64; 3]; 3], b: [[f64; 3]; 3]) -> [[f64; 3]; 3] {
     [0, 1, 2].map(|r| [0, 1, 2].map(|c| (0..3).map(|k| a[r][k] * b[k][c]).sum()))
 }
