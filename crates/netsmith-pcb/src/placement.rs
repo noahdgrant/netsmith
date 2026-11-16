@@ -344,8 +344,17 @@ impl DoesNotFit {
         }
         let certain = self.area.0 > self.area.1 + 1e-9;
         let Some(e) = &self.ended else {
-            // Nothing was tried: all there is to say is what the rows need.
-            return self.write_needs(f);
+            // Nothing was tried: what the rows need, and, where the courtyards alone are more
+            // than the faces hold, why trying was no use (issue #819).
+            self.write_needs(f)?;
+            if certain {
+                write!(
+                    f,
+                    "; the courtyards add up to {:.0} mm2 and both faces of the outline hold {:.0} mm2 inside its margin, so no arrangement of the parts fits and the placer did not try",
+                    self.area.0, self.area.1
+                )?;
+            }
+            return Ok(());
         };
         let names = e.names();
         if certain {

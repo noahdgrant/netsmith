@@ -135,9 +135,11 @@ fn a_pad_outside_its_courtyard_still_keeps_the_copper_to_edge_space() {
 
 #[test]
 fn a_board_too_small_even_for_the_thin_wall_says_what_the_wall_is() {
+    // The courtyards are more than both faces hold, so the refusal comes before the annealer
+    // runs (issue #819) and says the margin in the sentence of what the parts need.
     let e = board(12, (6.0, 7.0)).unwrap_err().to_string();
     assert!(
-        e.contains("inside its 0.75 mm margin") && !e.contains("2.0 mm margin"),
+        e.contains("and 0.75 mm margin") && !e.contains("2.0 mm margin"),
         "{e}"
     );
 }

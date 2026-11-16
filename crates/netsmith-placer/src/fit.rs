@@ -82,6 +82,18 @@ pub(crate) fn fit(
     let originals: Vec<Placed> = movable.iter().map(|&i| parts[i].clone()).collect();
     let group = || originals.clone();
 
+    // Courtyards that are more than both faces of the outline's top hold are refused here,
+    // before the placing with no size and the annealer in the outline (issue #819).
+    if outline.width.1.is_finite() && outline.height.1.is_finite() {
+        let top = PlaceOptions {
+            fit: Some((outline.width.1, outline.height.1)),
+            ..placement.clone()
+        };
+        if let Some(refusal) = place::refuse_dense(&originals, &top) {
+            return Err(refusal);
+        }
+    }
+
     // What the parts need, if the board is as big as they like.
     let mut natural = group();
     let sized = PlaceOptions {
