@@ -1789,10 +1789,7 @@ fn the_comparison_of_pads_says_what_differs() {
         "TSW-118-07-L-D",
     );
     wrong.pads[0].width = 1.778;
-    wrong.pads[1].drill = Some(netsmith_pcb::Drill {
-        width: 1.02,
-        height: 1.02,
-    });
+    wrong.pads[1].drill = Some(netsmith_pcb::Drill::round(1.02));
     let differences = pad_differences(&wrong, &table, "J2");
     assert_eq!(differences.len(), 2, "{differences:?}");
     assert!(differences[0].contains("J2 pad 1 at") && differences[0].contains("size 1.778"));

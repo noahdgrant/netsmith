@@ -303,6 +303,7 @@ pub fn copper(board: &Board) -> Result<Copper, CopperError> {
                 drill: pad.drill.map(|d| Drill {
                     width: d.width,
                     height: d.length,
+                    offset: pt(d.offset),
                 }),
                 areas: areas(&pen),
             });

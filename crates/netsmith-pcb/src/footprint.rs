@@ -154,11 +154,43 @@ pub enum PadShape {
     Circle,
 }
 
-/// A drilled hole: its diameter, or its two sides if it is a slot.
+/// A drilled hole: its diameter, or its two sides if it is a slot. The sides are in the
+/// pad's own frame, so a slot lies along the pad's x or y axis and turns with the pad and its
+/// part: a slot at any angle is a pad at that angle.
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Drill {
     pub width: f64,
     pub height: f64,
+    /// How far the pad's copper lies from its hole, in the pad's own frame before its turn:
+    /// the file's `(drill ... (offset x y))`. A KiCad pad's `(at ...)` is its hole and its
+    /// copper is there plus this, turned with the pad. [`Pad::at`] is the copper's centre, so
+    /// the hole is at [`Pad::hole_at`]. Zero for a hole in the middle of its pad.
+    #[serde(default, skip_serializing_if = "is_origin")]
+    pub offset: Pt,
+}
+
+fn is_origin(p: &Pt) -> bool {
+    *p == Pt::default()
+}
+
+impl Drill {
+    /// A round hole of diameter `d` in the middle of its pad.
+    pub fn round(d: f64) -> Drill {
+        Drill {
+            width: d,
+            height: d,
+            offset: Pt::default(),
+        }
+    }
+
+    /// A slot `width` by `height` in the pad's frame, in the middle of its pad.
+    pub fn slot(width: f64, height: f64) -> Drill {
+        Drill {
+            width,
+            height,
+            offset: Pt::default(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -167,7 +199,8 @@ pub struct Pad {
     pub number: String,
     pub kind: PadKind,
     pub shape: PadShape,
-    /// The centre, in the footprint's own frame.
+    /// The centre of the copper, in the footprint's own frame. A pad whose hole is offset
+    /// from its copper ([`Drill::offset`]) has its hole elsewhere ([`Pad::hole_at`]).
     pub at: Pt,
     /// The pad's own turn in degrees, in the footprint's frame.
     pub angle: f64,
@@ -407,7 +440,8 @@ impl Footprint {
             pads.iter()
                 .filter_map(|p| {
                     let reach = p.drill?.width.max(p.drill?.height) / 2.0;
-                    Some(Rect::new(p.at, p.at).expanded(reach))
+                    let at = p.hole_at()?;
+                    Some(Rect::new(at, at).expanded(reach))
                 })
                 .filter(|hole| !inside(hole))
                 .chain(
@@ -507,6 +541,13 @@ impl Footprint {
 }
 
 impl Pad {
+    /// The centre of the pad's hole in the footprint's frame: the copper's centre less the
+    /// drill's offset turned with the pad. `None` for a pad with no hole.
+    pub fn hole_at(&self) -> Option<Pt> {
+        let d = self.drill?;
+        Some(self.at - d.offset.rotate(self.angle))
+    }
+
     /// Whether the pad has copper on the front and on the back.
     pub fn copper_layers(&self) -> (bool, bool) {
         if self.kind == PadKind::NpThruHole {
@@ -686,20 +727,13 @@ fn read_pad(pad: &Sexp) -> Result<Pad, String> {
         None => 0.0,
     };
     let size = required_point(pad, "size").map_err(|e| format!("pad {number}: {e}"))?;
-    let drill = pad.find("drill").and_then(|d| match d.args() {
-        [first, ..] if first.text() == Some("oval") => Some(Drill {
-            width: d.args().get(1)?.text()?.parse().ok()?,
-            height: d.args().get(2)?.text()?.parse().ok()?,
-        }),
-        [first, ..] => {
-            let d: f64 = first.text()?.parse().ok()?;
-            Some(Drill {
-                width: d,
-                height: d,
-            })
-        }
-        [] => None,
-    });
+    let drill = match pad.find("drill") {
+        Some(d) => read_drill(d).map_err(|e| format!("pad {number}: {e}"))?,
+        None => None,
+    };
+    // The file's `at` is the hole; the copper is there plus the drill's offset, turned with
+    // the pad, and `Pad::at` is the copper.
+    let at = at + drill.map_or(Pt::default(), |d| d.offset.rotate(angle));
     let layers = pad
         .find("layers")
         .map(|l| {
@@ -743,8 +777,38 @@ fn read_pad(pad: &Sexp) -> Result<Pad, String> {
     })
 }
 
+/// A pad's `(drill ...)`: `(drill d)`, `(drill oval w h)` (or `(drill w h)`), with an optional
+/// `(offset x y)`. `None` for a drill of no size, which KiCad writes for a pad with no hole.
+fn read_drill(d: &Sexp) -> Result<Option<Drill>, String> {
+    let sizes: Vec<f64> = d
+        .args()
+        .iter()
+        .filter(|a| a.head().is_none() && a.text() != Some("oval"))
+        .map(float)
+        .collect::<Result<_, _>>()?;
+    let (width, height) = match sizes[..] {
+        [] => return Ok(None),
+        [w] => (w, w),
+        [w, h, ..] => (w, h),
+    };
+    if width <= 0.0 {
+        return Ok(None);
+    }
+    let offset = match d.find("offset") {
+        Some(o) => point(o, 0).ok_or("the drill's (offset x y) is not two numbers")?,
+        None => Pt::default(),
+    };
+    Ok(Some(Drill {
+        width,
+        height,
+        offset,
+    }))
+}
+
 /// The box that a custom pad's `(primitives ...)` span, with each stroke's half width added.
-/// An arc counts as its whole circle, which can only overstate the box.
+/// An arc counts as its whole circle and a curve as its four control points, which can only
+/// overstate the box. KiCad's annotations (`gr_bbox`, `gr_vector`) are not copper and add
+/// nothing.
 fn primitives_extent(pad: &Sexp) -> Result<Option<Rect>, String> {
     let Some(block) = pad.find("primitives") else {
         return Ok(None);
@@ -755,6 +819,9 @@ fn primitives_extent(pad: &Sexp) -> Result<Option<Rect>, String> {
             continue;
         };
         let points: Vec<Pt> = match head {
+            // KiCad's pad editor keeps the box and the direction of the pad's number among
+            // the primitives; they are not copper.
+            "gr_bbox" | "gr_vector" => continue,
             "gr_line" | "gr_rect" => {
                 vec![required_point(item, "start")?, required_point(item, "end")?]
             }
@@ -1576,13 +1643,7 @@ mod tests {
         assert_eq!(fp.pads[0].kind, PadKind::ThruHole);
         assert_eq!(fp.pads[0].shape, PadShape::Rect);
         assert_eq!(fp.pads[1].shape, PadShape::Oval);
-        assert_eq!(
-            fp.pads[1].drill,
-            Some(Drill {
-                width: 1.0,
-                height: 1.0
-            })
-        );
+        assert_eq!(fp.pads[1].drill, Some(Drill::round(1.0)));
         assert_eq!(fp.pads[1].at, Pt::new(0.0, 2.54));
         assert_eq!(fp.courtyard.min, Pt::new(-1.8, -1.8));
         assert_eq!(fp.courtyard.max, Pt::new(1.8, 4.35));
@@ -1914,6 +1975,58 @@ mod tests {
         let first = fp.source.find_all("pad").next().unwrap();
         assert_eq!(first.find("primitives").unwrap().args().len(), 2);
         assert_eq!(fp.pads[1].bounds().max, Pt::new(3.5, 0.5));
+    }
+
+    #[test]
+    fn a_drill_offset_moves_the_copper_off_the_hole() {
+        // A KiCad pad's `at` is its hole; the copper is there plus the offset, turned with
+        // the pad (90 degrees turns (0.5, 0) to (0, -0.5)).
+        let fp = Footprint::parse(
+            "L:X",
+            r#"(footprint "X"
+                (pad "1" thru_hole rect (at 1 0 90) (size 2 1) (drill 0.8 (offset 0.5 0)) (layers "*.Cu"))
+                (pad "2" thru_hole circle (at 4 0) (size 1.6 1.6) (drill 0.8) (layers "*.Cu"))
+                (pad "3" smd rect (at 6 0) (size 1 1) (drill 0) (layers "F.Cu")))"#,
+        )
+        .unwrap();
+        let p = &fp.pads[0];
+        assert_eq!(p.drill.unwrap().offset, Pt::new(0.5, 0.0));
+        assert!(p.at.distance(Pt::new(1.0, -0.5)) < 1e-9, "{:?}", p.at);
+        assert!(p.hole_at().unwrap().distance(Pt::new(1.0, 0.0)) < 1e-9);
+        // The copper's box is round the copper, not the hole.
+        let b = p.bounds();
+        assert!(b.centre().distance(Pt::new(1.0, -0.5)) < 1e-9, "{b:?}");
+        // A hole in the middle of its pad has no offset; a drill of no size is no hole.
+        assert_eq!(fp.pads[1].drill, Some(Drill::round(0.8)));
+        assert_eq!(fp.pads[1].hole_at(), Some(Pt::new(4.0, 0.0)));
+        assert_eq!(fp.pads[2].drill, None);
+        // A bad offset is refused with the pad named.
+        let err = Footprint::parse(
+            "L:X",
+            r#"(footprint "X" (pad "1" thru_hole circle (at 0 0) (size 2 2) (drill 1 (offset a 0)) (layers "*.Cu")))"#,
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("pad 1"), "{err}");
+    }
+
+    #[test]
+    fn a_custom_pads_number_box_and_direction_are_not_copper() {
+        let fp = Footprint::parse(
+            "L:X",
+            r#"(footprint "X" (pad "1" smd custom (at 0 0) (size 1 1) (layers "F.Cu")
+                (primitives
+                    (gr_bbox (start -5 -5) (end 5 5))
+                    (gr_vector (start 0 0) (end 9 0))
+                    (gr_curve (pts (xy 0 0) (xy 1 -1) (xy 2 1) (xy 3 0)) (width 0.2)))))"#,
+        )
+        .unwrap();
+        // The curve widens the box by its control points; the box and the vector do not.
+        let e = fp.pads[0].extent.unwrap();
+        assert!(
+            (e.max.x - 3.1).abs() < 1e-9 && (e.min.x + 0.1).abs() < 1e-9,
+            "{e:?}"
+        );
+        assert!((e.max.y - 1.1).abs() < 1e-9, "{e:?}");
     }
 
     #[test]

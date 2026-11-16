@@ -452,7 +452,7 @@ fn around_copper(
 
 /// The shape of a pad's hole.
 fn hole_outline(pad: &crate::artwork::Pad, d: &crate::artwork::Drill) -> Outline {
-    let c = pad.at + d.offset.rotate(pad.angle);
+    let c = pad.at - d.offset.rotate(pad.angle);
     if d.is_slot() {
         Outline::Oval {
             c,

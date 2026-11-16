@@ -879,10 +879,7 @@ mod tests {
             shape: PadShape::Circle,
             width: pad.height.min(pad.width) * 0.5,
             height: pad.height.min(pad.width) * 0.5,
-            drill: Some(Drill {
-                width: 0.1,
-                height: 0.1,
-            }),
+            drill: Some(Drill::round(0.1)),
             layers: vec!["*.Cu".into(), "*.Mask".into()],
             corner_ratio: 0.0,
             ..pad

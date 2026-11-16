@@ -100,8 +100,10 @@ pub(crate) fn initial_obstacles(board: &Board) -> Obstacles {
             let reach = match pad.drill {
                 Some(drill) => {
                     // The via's hole keeps `hole_to_hole` from the pad's hole, measured from
-                    // the pad's centre, which is at least half the shorter side from its edge.
+                    // the pad's centre, which is at least half the shorter side from its edge
+                    // (and the hole is off that centre by the drill's offset).
                     let apart = drill.width.max(drill.height) / 2.0
+                        + drill.offset.distance(Default::default())
                         + rules.hole_to_hole
                         + rules.via_drill / 2.0;
                     let inset = bounds.width().min(bounds.height()) / 2.0;
