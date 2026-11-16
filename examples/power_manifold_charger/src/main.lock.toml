@@ -4,6 +4,10 @@
 # with `netsmith lock --update`. Nothing in it is edited by hand.
 version = 1
 
+[PowerManifoldCharger.providers."process"]
+generic = "FourLayer"
+provider = "std::mfg::jlcpcb::JlcFourLayerAA04161H7628"
+
 [PowerManifoldCharger.parts."boot1_cap"]
 catalog = "capacitor"
 row = "100nF 10% 50V X7R 0402 C307331"

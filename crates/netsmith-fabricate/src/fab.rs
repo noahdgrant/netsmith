@@ -3157,8 +3157,8 @@ mod tests {
         for (name, provider) in [
             ("TwoLayer", Some("JlcTwoLayer1oz")),
             ("TwoLayer@2", Some("JlcTwoLayer2oz")),
-            ("FourLayer", None),
-            ("SixLayer", None),
+            ("FourLayer", Some("JlcFourLayerAA04161H7628")),
+            ("SixLayer", Some("JlcSixLayerAA06161H3313")),
             ("EightLayer", None),
             ("TenLayer", None),
         ] {
