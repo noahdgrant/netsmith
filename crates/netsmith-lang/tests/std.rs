@@ -130,7 +130,10 @@ fn passive_parts_parse() {
 #[test]
 fn sources_parse() {
     let file = parse(SOURCES).unwrap();
-    assert_eq!(file.definitions.len(), 1);
+    // `Rail`, and the impedance a design states for tracks (issue #1007).
+    assert_eq!(file.definitions.len(), 3);
+    assert_eq!(def(&file, "TrackImpedance").items.len(), 2);
+    assert_eq!(def(&file, "PairImpedance").items.len(), 4);
     let rail = def(&file, "Rail");
     assert_eq!(rail.kind, DefKind::Interface);
     assert_eq!(
