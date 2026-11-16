@@ -66,13 +66,19 @@ fn the_current_range_of_a_part_is_written_with_its_unit() {
     let boards = boards.as_array().unwrap();
     assert_eq!(boards.len(), 1);
     assert_eq!(boards[0]["board"], "Repro");
-    // The inductor carries the load's current, at most 50 mA.
+    // The inductor carries the load's current, at most 50 mA, and the feedback divider's few microamps.
     let current = member(&boards[0], "reg.inductor.current");
     assert_eq!(current["unit"], "A");
     let range = current["range"].as_array().unwrap();
     let (lo, hi) = (range[0].as_f64().unwrap(), range[1].as_f64().unwrap());
-    assert!((0.005..0.006).contains(&lo) && hi == 0.05, "{current}");
-    assert_eq!(current["shown"].as_str().unwrap().split("..").nth(1), Some("50mA"));
+    assert!(
+        (0.005..0.006).contains(&lo) && (0.05..0.0501).contains(&hi),
+        "{current}"
+    );
+    assert!(
+        current["shown"].as_str().unwrap().split("..").nth(1).unwrap().starts_with("50."),
+        "{current}"
+    );
     // The row it was picked as gives its inductance.
     assert_eq!(member(&boards[0], "reg.inductor.inductance")["unit"], "H");
     // Text is a value.
