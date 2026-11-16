@@ -12,7 +12,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
-import { waitFor, whenIdle } from '../settle.mjs';
+import { guarded, waitFor, whenIdle } from '../settle.mjs';
 import { scene, screenAt, writeAtomic } from '../pcb-helpers.mjs';
 
 export const fixture = 'routed_led';
@@ -33,9 +33,10 @@ export async function run(tools) {
   /** `netsmith routes ...` in the project, as a person runs it: the exit code and both streams. */
   const cli = async (...args) => {
     try {
-      const r = await exec(binary, ['routes', ...args], { cwd: project });
+      const r = await guarded(`\`netsmith routes ${args.join(' ')}\` to exit`, exec(binary, ['routes', ...args], { cwd: project }));
       return { code: 0, out: r.stdout, err: r.stderr };
     } catch (e) {
+      if (e.name === 'TimeoutError') throw e;
       return { code: e.code, out: e.stdout ?? '', err: e.stderr ?? '' };
     }
   };
@@ -194,44 +195,49 @@ export async function run(tools) {
 
   step('the editor and the CLI edit at once: the editor\'s write is refused (409), the board is read from disk, the steps of undo stay');
   // First an edit of the editor's own, so there is a step to undo: lock a track of the anode net.
-  const track = (i) => anode.tracks[i];
   const anodeNow = () => s.routes.find((n) => n.net === 'net-led.anode');
-  const pick = async (t) => {
-    const at = await screenAt(page, (t.from.x + t.to.x) / 2, (t.from.y + t.to.y) / 2);
-    await page.mouse.click(at.x, at.y);
-    await page.waitForSelector('[data-testid=route-inspector]');
+  /** Pick track `n` of the anode net from the Routes tab (a click on the board can land on a padlock or a pad, and pick that), and
+   * say so: the inspector names it. */
+  const pick = async (n) => {
+    await page.locator(`[data-route-row="net-led.anode/track/${n}"]`).click();
+    await page.locator('[data-testid=route-inspector]', { hasText: `track ${n} of net net-led.anode` }).waitFor();
     await whenIdle(page);
   };
-  await pick(track(0));
+  await pick(1);
   let stamp = (await scene(page, BOARD)).routesStamp;
-  await page.keyboard.press('l');
+  await page.locator('[data-testid=route-lock]').click();
   s = await waitFor('the routes file to be written by the editor', async () => {
     const now = await scene(page, BOARD);
     return now.routesStamp !== stamp ? now : null;
   });
   await whenIdle(page);
-  expect(s.routes.find((n) => n.net === 'net-led.anode').tracks[0].lock, 'the editor locked track 1 of the anode net');
+  expect(anodeNow().tracks[0].lock, 'the editor locked track 1 of the anode net');
   expect(!(await page.locator('[data-testid=undo]').isDisabled()), 'there is a step to undo');
   // The editor's next edit is held on its way to the server; the CLI writes the file meanwhile; then the edit goes on, with the
-  // stamp of the file as the page read it before the CLI wrote.
-  await pick(track(2));
+  // stamp of the file as the page read it before the CLI wrote. Whatever happens in the handler, the request is let go, and the
+  // wait for it is guarded: a click that sent no such request fails as hung and says so, never silently.
+  await pick(3);
   let cliAnswer = null;
-  const answered = new Promise((resolve) => {
+  const answered = new Promise((resolve, reject) => {
     page.route('**/api/pcb/routes', async (route) => {
-      cliAnswer = await cli('add-track', '--net', 'VCC', '--layer', 'bottom', '--from', xy(pads[0]), '--to', xy(pads[1]));
+      try {
+        cliAnswer = await cli('add-track', '--net', 'VCC', '--layer', 'bottom', '--from', xy(pads[0]), '--to', xy(pads[1]));
+      } catch (e) {
+        reject(e);
+      }
       await route.continue();
       resolve();
     });
   });
-  await page.keyboard.press('l');
-  await answered;
+  await page.locator('[data-testid=route-lock]').click();
+  await guarded('the editor\'s edit of the routes file to reach the server (the held request)', answered);
   await page.unroute('**/api/pcb/routes');
   expect(cliAnswer?.code === 0, `the CLI wrote while the editor's edit was on its way: exit 0 (${cliAnswer?.err})`);
   await page.locator('.toast', { hasText: 'changed on disk since the board was read' }).first().waitFor();
   await whenIdle(page);
   s = await scene(page, BOARD);
   expect(vcc()?.tracks.length === 1, 'the board was read from disk again: it has the CLI\'s track');
-  expect(!s.routes.find((n) => n.net === 'net-led.anode').tracks[2].lock, 'the editor\'s refused edit was not written (track 3 is not locked)');
+  expect(!anodeNow().tracks[2].lock, 'the editor\'s refused edit was not written (track 3 is not locked)');
   expect((await page.locator('[data-route-net="VCC"][data-route-track="1"]').count()) === 1, 'and the page draws the CLI\'s track');
   expect(!(await page.locator('[data-testid=undo]').isDisabled()), 'the step of undo stays');
   await shot('conflict-409');
