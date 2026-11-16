@@ -31,7 +31,8 @@ mod step;
 mod system;
 
 pub use case::{
-    CaseScene, FitFinding, FitKind, NotAPose as CaseNotAPose, PlacedCase, Pose as CasePose,
+    CaseScene, Ceiling as CaseCeiling, Ceilings as CaseCeilings, FitFinding, FitKind,
+    NotAPose as CaseNotAPose, PlacedCase, Pose as CasePose,
     ROTATION_TOLERANCE as CASE_ROTATION_TOLERANCE, Ring as CaseRing,
     SectionError as CaseSectionError, Subject as CaseSubject, Weight as CaseWeight, Why as CaseWhy,
     check as check_case, place as place_case, pose_of_matrix as case_pose_of_matrix,

@@ -176,3 +176,115 @@ fn the_imported_outline_and_cutouts_go_through_fab() {
     assert!(pcb.contains("(gr_line"), "{pcb}");
     assert!(pcb.contains("(gr_arc"), "{pcb}");
 }
+
+const CASE_LID: &[u8] = include_bytes!("../../netsmith-3d/tests/models/case_lid.step");
+
+fn with_limits() -> Request {
+    Request {
+        limits: true,
+        ..Request::default()
+    }
+}
+
+#[test]
+fn the_undersides_over_the_board_are_keepouts_that_limit_the_height() {
+    let imported = import(CASE_LID, "case_lid.step", &with_limits()).unwrap();
+    let text = render(&imported, Some("Lidded"), "case_lid.step", false);
+    // The pocket is 60 x 40 mm with its bottom left corner at the origin, so the board's y is
+    // 40 minus the model's: the rib (x 20 to 26, the pocket's whole depth) stands at y 0, the
+    // boss (a circle of 8 mm at (45, 30)) at y 6 to 14.
+    assert!(
+        text.contains("import std::pcb::{Cutout, Keepout, Outline}\n"),
+        "{text}"
+    );
+    assert!(
+        text.contains(
+            ".limit1: Keepout {
+            .x &= 20mm
+            .y &= 0mm
+            .width &= 6mm
+            .height &= 40mm
+            .layers &= \"top\"
+            .max_height &= 4mm
+        }
+        .limit2: Keepout {
+            .x &= 41mm
+            .y &= 6mm
+            .width &= 8mm
+            .height &= 8mm
+            .layers &= \"top\"
+            .max_height &= 7mm
+        }
+        .limit3: Keepout {
+            .x &= 0mm
+            .y &= 0mm
+            .width &= 60mm
+            .height &= 40mm
+            .layers &= \"top\"
+            .max_height &= 10mm
+        }"
+        ),
+        "{text}"
+    );
+    // The block that stands from the board to the lid is a cutout, not a limit.
+    assert!(text.contains(".cutout1: Cutout {"), "{text}");
+    assert_eq!(text.matches("Keepout {").count(), 3, "{text}");
+    let report = imported.report.join("\n");
+    assert!(
+        report.contains("limits: 3 height limits")
+            && report.contains("limit1: at most 4 mm over 6 x 40 mm")
+            && report.contains("the underside of `lid`"),
+        "{report}"
+    );
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+}
+
+#[test]
+fn limits_are_printed_only_when_asked_and_a_case_without_a_lid_has_none() {
+    let plain = import(CASE_LID, "case_lid.step", &Request::default()).unwrap();
+    assert!(!plain.members.contains("Keepout"), "{}", plain.members);
+    assert_eq!(plain.imports, "import std::pcb::{Cutout, Outline}\n");
+    let open = import(CASE_BOX, "case_box.step", &with_limits()).unwrap();
+    assert!(!open.members.contains("Keepout"), "{}", open.members);
+    assert!(
+        open.report
+            .iter()
+            .any(|l| l.starts_with("limits: no underside of the case above")),
+        "{:?}",
+        open.report
+    );
+}
+
+#[test]
+fn the_imported_limits_go_through_fab() {
+    let dir = TempDir::new("case-import-limits-fab");
+    let imported = import(CASE_LID, "case_lid.step", &with_limits()).unwrap();
+    let source = "import std::parts::connector::Header1x2\nimport std::mfg::jlcpcb::TwoLayer\n\n\
+        board Lidded {\n    .process: TwoLayer {\n        .stackup.thickness &= 1.6mm\n    }\n    .a: Header1x2\n    .a.p1.net &= \"N1\"\n    .a.p2.net &= \"N2\"\n}\n";
+    let nsm = dir.join("lidded.nsm");
+    fs::write(&nsm, source).unwrap();
+    write_physical(&nsm, None, &imported).unwrap();
+    let physical = fs::read_to_string(dir.join("lidded.physical.nsm")).unwrap();
+    assert!(
+        physical.contains("import std::pcb::Keepout")
+            && physical.contains(".max_height &= 4mm"),
+        "{physical}"
+    );
+    // Importing again replaces the members of the first import and leaves one of each.
+    write_physical(&nsm, None, &imported).unwrap();
+    let again = fs::read_to_string(dir.join("lidded.physical.nsm")).unwrap();
+    assert_eq!(again.matches("Keepout {").count(), 3, "{again}");
+    assert_eq!(again.matches("Outline {").count(), 1, "{again}");
+    let made = fab_with_options(
+        "lidded.nsm",
+        source,
+        &netsmith_check::Loader::std().with_physical("lidded.nsm", "lidded.physical.nsm", &physical),
+        &dir.join("fab"),
+        &Catalogs::jlcpcb(),
+        &Libraries::sample(),
+        None,
+        &FabOptions::default(),
+    )
+    .unwrap_or_else(|e| panic!("{e}"));
+    assert_eq!(made.len(), 1);
+}

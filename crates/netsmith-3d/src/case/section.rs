@@ -8,6 +8,9 @@
 //! same bits and the segments join exactly. A vertex on the plane counts as below it. A solid
 //! whose section is not closed (an open shell, or a shell that touches itself at the plane) is
 //! an error that says where, as nothing can be said of the board from it.
+//!
+//! [`PlacedCase::ceilings`] reads the height limits of a board's pocket from the same
+//! sections: the undersides of the case above the board's top face.
 
 use std::collections::BTreeMap;
 use std::fmt;
@@ -200,6 +203,179 @@ impl PlacedCase {
             r.depth = d;
         }
         Ok(rings)
+    }
+}
+
+/// How far above the board's top face the plane is that tells what stands on the board: a post
+/// that stands through the board is material there, a lid is not (mm).
+const BOARD_TOP: f64 = 0.005;
+
+/// The lowest a flat face may be above the board's top face to be an underside that limits a
+/// part, and how near two heights are the same one (mm). A face at the board's top face is a
+/// boss the board rests on.
+const FLAT: f64 = 0.01;
+
+/// How far above an underside the plane is that shows the material over it (mm).
+const ABOVE: f64 = 0.005;
+
+/// The box of a limit is taken outward to a multiple of this (mm): the section of a curved face
+/// is of triangles up to 0.01 mm inside it, and a limit that is a little too small would let a
+/// part touch the case.
+const GRID: f64 = 0.05;
+
+/// How many cells, along each side of a bounding box, are tried to tell what an area is made of.
+const CELLS: usize = 24;
+
+/// A height limit the case puts over part of a board's pocket: nothing taller than `height`
+/// (mm above the board's top face) stands inside the box `lo`..`hi`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Ceiling {
+    /// The height of the underside, from the board's top face.
+    pub height: f64,
+    /// The box's corner nearest the origin, in the scene's frame.
+    pub lo: [f64; 2],
+    /// The opposite corner.
+    pub hi: [f64; 2],
+    /// The solid whose underside it is.
+    pub solid: String,
+}
+
+/// The limits [`PlacedCase::ceilings`] found, and the planes it could not cut.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Ceilings {
+    /// Lowest first.
+    pub zones: Vec<Ceiling>,
+    /// A plane at which a solid was not closed: the limits that plane would show are not read.
+    pub skipped: Vec<SectionError>,
+}
+
+/// Whether the curves enclose `p` an odd number of times: it is in material.
+fn material(rings: &[Ring], p: [f64; 2]) -> bool {
+    rings.iter().filter(|r| inside(p, &r.points)).count() % 2 == 1
+}
+
+fn bounds(points: &[[f64; 2]]) -> ([f64; 2], [f64; 2]) {
+    let mut lo = [f64::INFINITY; 2];
+    let mut hi = [f64::NEG_INFINITY; 2];
+    for p in points {
+        for i in 0..2 {
+            lo[i] = lo[i].min(p[i]);
+            hi[i] = hi[i].max(p[i]);
+        }
+    }
+    (lo, hi)
+}
+
+impl PlacedCase {
+    /// The heights of the flat faces of the model above the board's top face (z = 0), lowest
+    /// first, those within [`FLAT`] of one another counted once.
+    fn flat_heights(&self) -> Vec<f64> {
+        let mut heights: Vec<f64> = Vec::new();
+        for solid in &self.solids {
+            for t in &solid.triangles {
+                let z = t[0][2];
+                if t.iter().all(|v| (v[2] - z).abs() < 1e-6) && z > FLAT {
+                    heights.push(z);
+                }
+            }
+        }
+        heights.sort_by(f64::total_cmp);
+        let mut out: Vec<f64> = Vec::new();
+        for z in heights {
+            if out.last().is_none_or(|&last| z - last >= FLAT) {
+                out.push(z);
+            }
+        }
+        out
+    }
+
+    /// The height limits the case puts over the pocket `pocket` (the board's outline, from
+    /// [`PlacedCase::section`] at the board's plane): where a part would meet the case if it
+    /// stood tall enough, from the lowest underside up.
+    ///
+    /// Every flat face above the board's top face is a height at which an underside may be. The
+    /// plane just above it cuts the material there: each curve of material with a part of the
+    /// pocket under it that nothing stands in from the board's top face (a post through the
+    /// board is a cutout, not a limit) is a limit of that height over the curve's box, cut
+    /// to the pocket's. A limit whose box lies in a lower one is left out. A box is the
+    /// curve's bounding box taken outward to 0.05 mm, so a shape that is not a rectangle
+    /// limits more than it covers, and an underside that is not flat (a dome, a slope) is not
+    /// read.
+    pub fn ceilings(&self, pocket: &[[f64; 2]]) -> Ceilings {
+        let mut skipped = Vec::new();
+        let mut zones: Vec<Ceiling> = Vec::new();
+        let base = match self.section(BOARD_TOP) {
+            Ok(r) => r,
+            Err(e) => {
+                skipped.push(e);
+                return Ceilings { zones, skipped };
+            }
+        };
+        let (plo, phi) = bounds(pocket);
+        for height in self.flat_heights() {
+            let rings = match self.section(height + ABOVE) {
+                Ok(r) => r,
+                Err(e) => {
+                    skipped.push(e);
+                    continue;
+                }
+            };
+            for ring in rings.iter().filter(|r| r.depth % 2 == 0) {
+                // The curves just inside it: the holes of this curve's material.
+                let holes: Vec<&Ring> = rings
+                    .iter()
+                    .filter(|o| o.depth == ring.depth + 1 && inside(o.points[0], &ring.points))
+                    .collect();
+                let (rlo, rhi) = bounds(&ring.points);
+                let lo = [rlo[0].max(plo[0]), rlo[1].max(plo[1])];
+                let hi = [rhi[0].min(phi[0]), rhi[1].min(phi[1])];
+                if lo[0] >= hi[0] || lo[1] >= hi[1] {
+                    continue;
+                }
+                // The cells of the box that are in the pocket and in this curve's material.
+                let mut under = 0;
+                let mut standing = 0;
+                for i in 0..CELLS {
+                    for j in 0..CELLS {
+                        let p = [
+                            lo[0] + (hi[0] - lo[0]) * (i as f64 + 0.5) / CELLS as f64,
+                            lo[1] + (hi[1] - lo[1]) * (j as f64 + 0.5) / CELLS as f64,
+                        ];
+                        if inside(p, pocket)
+                            && inside(p, &ring.points)
+                            && !holes.iter().any(|h| inside(p, &h.points))
+                        {
+                            under += 1;
+                            if material(&base, p) {
+                                standing += 1;
+                            }
+                        }
+                    }
+                }
+                if under == 0 || standing == under {
+                    continue;
+                }
+                let lower = zones.iter().any(|z| {
+                    z.height < height
+                        && z.lo[0] <= lo[0] + 1e-3
+                        && z.lo[1] <= lo[1] + 1e-3
+                        && z.hi[0] >= hi[0] - 1e-3
+                        && z.hi[1] >= hi[1] - 1e-3
+                });
+                if !lower {
+                    let down =
+                        |v: f64, least: f64| nm(((v / GRID + 1e-6).floor() * GRID).max(least));
+                    let up = |v: f64, most: f64| nm(((v / GRID - 1e-6).ceil() * GRID).min(most));
+                    zones.push(Ceiling {
+                        height,
+                        lo: [down(lo[0], plo[0]), down(lo[1], plo[1])],
+                        hi: [up(hi[0], phi[0]), up(hi[1], phi[1])],
+                        solid: ring.solid.clone(),
+                    });
+                }
+            }
+        }
+        Ceilings { zones, skipped }
     }
 }
 

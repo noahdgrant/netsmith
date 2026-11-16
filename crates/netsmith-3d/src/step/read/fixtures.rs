@@ -501,6 +501,22 @@ fn prism(name: &str, f: &mut F, loops: Vec<Loop>, from: f64, to: f64) -> Id {
     f.w.extrusion(name, &e)
 }
 
+/// The outside of the invented cases: a rounded rectangle from (-5, -5) to (65, 45), corners of
+/// 6 mm.
+fn outside() -> Loop {
+    let (x0, y0, x1, y1, r) = (-5.0, -5.0, 65.0, 45.0, 6.0);
+    vec![
+        line([x0 + r, y0]),
+        arc([x1 - r, y0], [x1 - r, y0 + r]),
+        line([x1, y0 + r]),
+        arc([x1, y1 - r], [x1 - r, y1 - r]),
+        line([x1 - r, y1]),
+        arc([x0 + r, y1], [x0 + r, y1 - r]),
+        line([x0, y1 - r]),
+        arc([x0, y0 + r], [x0 + r, y0 + r]),
+    ]
+}
+
 /// An invented case, a test model written for `netsmith case import` (no maker's file): in a
 /// frame where z = 0 is the top face of a 1.6 mm board and x, y are the board's, a `wall` from
 /// z = -6 to 6, 70 x 50 mm outside with rounded corners, round a pocket of 60 x 40 mm (corners
@@ -510,18 +526,7 @@ fn prism(name: &str, f: &mut F, loops: Vec<Loop>, from: f64, to: f64) -> Id {
 /// with a hole of 2.5 mm, each ending at the board's bottom face.
 pub fn case_box() -> String {
     let mut f = F::new();
-    // The outside: a rounded rectangle from (-5, -5) to (65, 45), corners of 6 mm.
-    let (x0, y0, x1, y1, r) = (-5.0, -5.0, 65.0, 45.0, 6.0);
-    let wall_outside: Loop = vec![
-        line([x0 + r, y0]),
-        arc([x1 - r, y0], [x1 - r, y0 + r]),
-        line([x1, y0 + r]),
-        arc([x1, y1 - r], [x1 - r, y1 - r]),
-        line([x1 - r, y1]),
-        arc([x0 + r, y1], [x0 + r, y1 - r]),
-        line([x0, y1 - r]),
-        arc([x0, y0 + r], [x0 + r, y0 + r]),
-    ];
+    let wall_outside = outside();
     // The pocket, with the rib standing out of its bottom edge.
     let pocket: Loop = vec![
         line([2.0, 0.0]),
@@ -575,4 +580,58 @@ pub fn case_box() -> String {
         -1.6,
     );
     f.file(&[wall, pin, block, post_a, post_b], MM)
+}
+
+/// An invented case with a lid, a test model written for `netsmith case import --limits`, in
+/// the frame of [`case_box`]: a `wall` from z = -6 to 10 round a pocket of 60 x 40 mm (corners
+/// of 2 mm), a `block` of 8 x 4 mm standing through the board's plane up to the lid, a `lid`
+/// plate from z = 10 to 12 over the whole case with a `rib` 6 mm wide and 40 mm long hanging
+/// from it down to z = 4 (x from 20 to 26) and a round `boss` of 8 mm at (45, 30) hanging
+/// down to z = 7.
+pub fn case_lid() -> String {
+    let mut f = F::new();
+    let pocket: Loop = vec![
+        line([2.0, 0.0]),
+        arc([58.0, 0.0], [58.0, 2.0]),
+        line([60.0, 2.0]),
+        arc([60.0, 38.0], [58.0, 38.0]),
+        line([58.0, 40.0]),
+        arc([2.0, 40.0], [2.0, 38.0]),
+        line([0.0, 38.0]),
+        arc([0.0, 2.0], [2.0, 2.0]),
+    ];
+    let wall = prism("wall", &mut f, vec![outside(), pocket], -6.0, 10.0);
+    let block = prism(
+        "block",
+        &mut f,
+        vec![polygon(&[
+            [41.0, 18.0],
+            [49.0, 18.0],
+            [49.0, 22.0],
+            [41.0, 22.0],
+        ])],
+        -6.0,
+        10.0,
+    );
+    let lid = prism("lid", &mut f, vec![outside()], 10.0, 12.0);
+    let rib = prism(
+        "rib",
+        &mut f,
+        vec![polygon(&[
+            [20.0, 0.0],
+            [26.0, 0.0],
+            [26.0, 40.0],
+            [20.0, 40.0],
+        ])],
+        4.0,
+        10.0,
+    );
+    let boss = prism(
+        "boss",
+        &mut f,
+        vec![circle_loop([45.0, 30.0], 4.0)],
+        7.0,
+        10.0,
+    );
+    f.file(&[wall, block, lid, rib, boss], MM)
 }
