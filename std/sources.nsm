@@ -37,6 +37,21 @@ interface Rail {
     /// input's voltage), which is not added: a board states `.d.max_reverse_voltage >=
     /// .supply.reverse_peak + .load.peak`.
     .reverse_peak: Voltage optional
+    /// The most current the load behind the rail draws at an instant, as a positive number: the
+    /// inrush of a capacitor charged through a resistor, a motor's start. `current` is the
+    /// steady range, and the DC analysis never reads this one, so it enters no balance, no
+    /// power and no shunt window (issue #750). It is the rail's own: two loads joined to one
+    /// source each state theirs, and `~` does not share it. Each is checked against
+    /// `max_peak_current` alone, without the steady current of the other loads, so a board whose
+    /// loads start together states the sum on one of them. Left unstated, nothing is checked and
+    /// nothing is listed as not evaluated (ADR 0074).
+    .peak_current: Current optional
+    /// The most current the source behind the rail gives at an instant, as a positive number.
+    /// A regulator states it for its output (its continuous output current, the most the
+    /// datasheet promises), and rails joined with `~` share it, as they share `peak`. A load's
+    /// `peak_current` must not be above it.
+    .max_peak_current: Current optional
+    .peak_current <= .max_peak_current
     /// The narrowest track the nets of this rail are routed with: a lower bound, written as
     /// a range (`.min_track &= 0.5mm..1m`). Both pins get it, since the return current is the
     /// same current. A net takes the widest of the rails on it, so `GND` is as wide as the

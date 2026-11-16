@@ -780,6 +780,35 @@ fn a_tvs_diode_in_front_of_nothing_conducts_under_the_reverse_peak_and_one_behin
     ));
 }
 
+/// A rail's `.peak_current` is what its own load draws at an instant (issue #750): two loads on
+/// one source each have their own, each is checked against the source's `.max_peak_current`,
+/// which `~` shares, and neither enters the steady balance of the net (a 2 A peak on a source
+/// that supplies at most 30 mA is no error of the balance).
+#[test]
+fn each_load_s_peak_current_is_checked_against_the_source_and_not_against_the_balance() {
+    let board = |peak: &str| {
+        on_12v(
+            "",
+            &format!(
+                "    .supply.current &= -30mA..0A\n    \
+                 .supply.max_peak_current &= 1A\n    \
+                 .a: Rail {{ .current &= 0mA..10mA\n .peak_current &= 500mA }}\n    \
+                 .b: Rail {{ .current &= 0mA..10mA\n .peak_current &= {peak} }}\n    \
+                 .supply ~ .a\n    .supply ~ .b"
+            ),
+        )
+    };
+    clean(&board("800mA"));
+    one(
+        &board("2A"),
+        &[
+            "b.peak_current must always be at most b.max_peak_current",
+            "2A",
+            "1A",
+        ],
+    );
+}
+
 /// A rail with no reverse peak checks and lists nothing, and the one number the board already
 /// had on the diode, its bias, is read as before.
 #[test]

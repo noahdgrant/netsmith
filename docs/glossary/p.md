@@ -32,6 +32,10 @@ _Avoid_: designator map, `designators.toml` (the map of the fab board's designat
 A role that an interface has no `lines` for, such as `UsbRole::Passthrough`, which a receptacle (`std::parts::connector::UsbC2`) states: the bus goes through the part, so it is not an end of the bus and the role is the one of the end behind it. It has no table to judge, counts toward no limit, satisfies the `bus role` guideline, and the guideline and the note name the end behind it that states no role, never the pass-through (ADR 0064, section 10). A **Role** that is an end of the bus has `lines`.
 _Avoid_: Transparent end, bypass, receptacle role, none (there is no role `none`)
 
+**Peak current**:
+The most current one load draws at an instant, transients included: the `.peak_current` of a `Rail`, such as the inrush of a capacitor charged through a resistor. `.current` is the steady range, and the DC analysis never reads the peak, so it enters no balance or power. Each rail has its own (`~` does not share it), and it is checked against the rail's `.max_peak_current`, what the source gives at an instant, which a regulator states and joined rails share (issue #750).
+_Avoid_: Inrush current (the inrush is one cause; the peak is the number), surge current
+
 **Peak voltage**:
 The highest voltage a rail reaches, transients included: the `.peak` of a `Rail`, where `.voltage` is the steady range. A part that clamps a transient (a TVS diode) states it for the rail behind it, joined rails share it, and the parts on the rail are rated for it. A peak below the rail's steady voltage is refused as a mistake (where a stage checks the ratings, as `BuckStage` does).
 _Avoid_: Surge voltage, transient voltage (the transient is the event; the peak is the number)
