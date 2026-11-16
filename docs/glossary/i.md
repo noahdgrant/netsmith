@@ -11,3 +11,7 @@ _Avoid_: Bus (for an interface in general: a **Bus** is the interfaces of one de
 **Island**:
 The part of the network between the nets that a supply holds: the nets no source holds, joined by the elements between them, and the held nets at its edge, whose range is one of its values. An island is solved on its own, and one that has a pin nothing models, or too many combinations, is left to the bound from Ohm's law (ADR 0076).
 _Avoid_: Subnet, partition, section, cluster
+
+**Isolated ground**:
+The ground net of a rail whose `.isolated` says what keeps it apart from the board's other grounds (`"isolated DC-DC"`): the other side of a barrier. It is a net of its own, named by the rail (`.neg.net &= "ISO_GND"`), never on the ground of a rail of the board that is not isolated, and the mates of a system must not join it to another ground of its board (issue #793).
+_Avoid_: Floating ground, separate ground

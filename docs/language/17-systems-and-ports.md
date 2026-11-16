@@ -112,7 +112,7 @@ The system names no pin and no net. After the nets of the boards are known, the 
 - Contact N of one board meets contact N of the other, with the rules a board already has on a net: two outputs are refused, an `input` with nothing that drives it on either board is refused, ground against power or a signal is a short. A power contact against a power contact equates their voltages, as `~` of rails does, and an open contact is fine against anything but an input.
 - A mate that carries power or a signal must carry a ground: a contact that is ground on both boards.
 - The ports the mate carries are joined by it: a port of one board whose pins are all on contacts that a port of the same kind on the other board has its pins on is joined to it, as an explicit `~` of the two would join them (values equated, currents balanced). A `~` between ports that the mate carries is refused with a message naming the mate, so a join has one spelling. A port no connector carries (a soldered lead) is still joined with `~`. If a board has two ports on the same contacts, the mate cannot say which is joined, and says so.
-- Each board keeps its own ground net. The system reports the ground groups: which boards share a ground through the mated ground contacts.
+- Each board keeps its own ground net. The system reports the ground groups: which boards share a ground through the mated ground contacts. A group holds no isolated ground of a board with another ground of the same board ("Isolated grounds", below).
 - The contacts carry the current. The rated current of one contact (`pin_current`) times the contacts that carry a rail's `pos`, or the ground the rails return through, is at least the current of the rail, in either direction. A connector that is rated is picked from the `header` catalog (`data/jlcpcb/catalog/header.csv`, one row for each series and pin count from a public datasheet), so the solver chooses a row that works. A connector with no rating is not checked, and the check is listed as not evaluated.
 - A pinout that also works with one connector turned end for end, and that neither connector keys (`.mating.keyed`), is a guideline finding (`mating`): the plug-in can go in the wrong way round and the checker cannot tell.
 
@@ -704,6 +704,99 @@ error: the mate joins `.carrier.slot_b` 3 of its contacts (1..3) and `.right.j1`
 ```
 
 The checker does not know where in the socket the header goes on the bench: a 1x2 header fits any two neighbouring contacts of a 1x4 socket, and nothing checks that it cannot go in at another place.
+
+#### Isolated grounds
+
+A board with a barrier, an isolated DC-DC converter or a digital isolator, has two grounds on purpose, and no copper may join them. The rail on the far side of the barrier says so with its `.isolated` (`std::sources::Rail`): `"none"`, the same as stating nothing, or what keeps its ground apart, in words, which the messages say back. It names its ground too, since a rail with no ground statement is on `GND` (ADR 0121):
+
+```nsm
+import std::parts::connector::{Header1x2, Socket1x2}
+import std::sources::Rail
+
+board Carrier {
+    .main: Rail { .neg.net &= "GND" }
+    .iso: Rail {
+        .isolated &= "isolated DC-DC"
+        .neg.net &= "ISO_GND"
+    }
+    .slot_a: Socket1x2
+    .slot_b: Socket1x2
+    .main.neg ~ .slot_a.p1
+    .main.pos ~ .slot_a.p2
+    .iso.neg ~ .slot_b.p1
+    .iso.pos ~ .slot_b.p2
+}
+
+board Card {
+    .supply: Rail { .neg.net &= "GND" }
+    .field: Rail { .neg.net &= "FIELD_GND" }
+    .j1: Header1x2
+    .j2: Header1x2
+    .supply.neg ~ .j1.p1
+    .supply.pos ~ .j1.p2
+    .field.neg ~ .j2.p1
+    .field.pos ~ .j2.p2
+}
+
+system Kit {
+    .carrier: Carrier
+    .card: Card
+    // Two ground groups: carrier.GND + card.GND, and card.FIELD_GND + carrier.ISO_GND.
+    .carrier.slot_a.mating ~ .card.j1.mating
+    .carrier.slot_b.mating ~ .card.j2.mating
+}
+```
+
+Each ground is a net of its own, so nothing else is read differently: a voltage is measured from its rail's own ground, the currents balance on each net apart, and the current through the ground contacts of a mate is that of the rails returning through them. Rails joined with `~` share `.isolated`, so a module's rail joined to the isolated one is on the same side, and a mate carries it to the rail of the other board it joins.
+
+Two things are refused. An isolated rail of a board whose ground is the ground of another rail of the board that is not isolated, and not joined to it: the isolated rail that forgets its `.neg.net` is on `GND` with the rest. And mates that join an isolated ground to another ground of its board through the grounds of other boards: a card whose one `GND` meets both sockets above bridges the barrier.
+
+```nsm fails
+import std::parts::connector::{Header1x2, Socket1x2}
+import std::sources::Rail
+
+board Carrier {
+    .main: Rail { .neg.net &= "GND" }
+    .iso: Rail {
+        .isolated &= "isolated DC-DC"
+        .neg.net &= "ISO_GND"
+    }
+    .slot_a: Socket1x2
+    .slot_b: Socket1x2
+    .main.neg ~ .slot_a.p1
+    .main.pos ~ .slot_a.p2
+    .iso.neg ~ .slot_b.p1
+    .iso.pos ~ .slot_b.p2
+}
+
+board Card {
+    .supply: Rail { .neg.net &= "GND" }
+    .field: Rail { .neg.net &= "GND" }
+    .j1: Header1x2
+    .j2: Header1x2
+    .supply.neg ~ .j1.p1
+    .supply.pos ~ .j1.p2
+    .field.neg ~ .j2.p1
+    .field.pos ~ .j2.p2
+}
+
+system Kit {
+    .carrier: Carrier
+    .card: Card
+    .carrier.slot_a.mating ~ .card.j1.mating
+    .carrier.slot_b.mating ~ .card.j2.mating
+}
+```
+
+```text
+error: the mates of `.carrier.slot_a` and `.card.j1`, `.carrier.slot_b` and `.card.j2` join `carrier.ISO_GND`, the ground of the isolated rail `.carrier.iso` (isolated DC-DC), to `carrier.GND`, another ground of `carrier`, through the grounds of other boards (the ground group card.GND + carrier.GND + carrier.ISO_GND); an isolated ground meets no other ground of its board, so the contacts on one side of the barrier need a ground of their own on the other board
+   --> main.nsm:33:5
+   |
+33 |     .carrier.slot_b.mating ~ .card.j2.mating
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+```
+
+The checker does not read the barrier part: it checks no isolation voltage, and it does not know which parts sit on which side.
 
 #### The seat and the mated height
 

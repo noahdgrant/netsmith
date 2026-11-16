@@ -17,7 +17,7 @@ _Avoid_: Abstract part, trait, protocol, role (a **Role** is a part's end of a b
 _Avoid_: Virtual part, ideal part
 
 **Ground group**:
-The ground nets of boards that mated ground contacts join, as the system view shows them (`carrier.GND + sensor.GND`). Each board keeps its own ground net; the system never merges them, it reports which ones are one ground. A mate that carries power or a signal must carry a ground contact.
+The ground nets of boards that mated ground contacts join, as the system view shows them (`carrier.GND + sensor.GND`). Each board keeps its own ground net; the system never merges them, it reports which ones are one ground. A mate that carries power or a signal must carry a ground contact, and a group holds no _Isolated ground_ with another ground of the same board.
 _Avoid_: Common ground, ground plane
 
 **Group**:

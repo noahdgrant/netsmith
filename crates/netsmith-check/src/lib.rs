@@ -13,6 +13,7 @@ mod defaults;
 mod diag;
 pub mod environment;
 mod faults;
+mod isolation;
 mod lines;
 mod loader;
 mod lower;
