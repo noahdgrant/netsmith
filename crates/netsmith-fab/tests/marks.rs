@@ -519,3 +519,25 @@ fn a_flat_finish_or_a_side_nothing_is_assembled_on_is_not_advised_against() {
     );
     assert_eq!(count(&check(&mut b, &hasl()), DrcRule::FinishFinePitch), 0);
 }
+
+#[test]
+fn a_v_cut_line_is_not_the_board_edge_a_fiducial_keeps_away_from() {
+    // A panel's rail keeps its fiducial 0.65 mm from the line that cuts it off, and the space the
+    // page asks is to the panel's own edge.
+    for (x, found) in [(3.85, 0), (3.8, 1)] {
+        let mut b = Pcb::new(2);
+        // The outline as a panel draws it, one rectangle, and the line across it.
+        b.raw("(gr_rect (start 0 0) (end 40 30) (stroke (width 0.05) (type default)) (fill no) (layer \"Edge.Cuts\"))");
+        b.edge_line((5.0, 0.0), (5.0, 30.0));
+        fiducial(&mut b, "FID1", (x, 15.0), 1.0, 0.5, false);
+        let r = check(&mut b, &jlcpcb());
+        assert_eq!(count(&r, DrcRule::FiducialEdge), found, "x {x}\n{r}");
+    }
+    // A line that is not a cut (an end off the outline) is an edge.
+    let mut b = Pcb::new(2);
+    b.raw("(gr_rect (start 0 0) (end 40 30) (stroke (width 0.05) (type default)) (fill no) (layer \"Edge.Cuts\"))");
+    b.edge_line((5.0, 10.0), (5.0, 20.0));
+    fiducial(&mut b, "FID1", (3.85, 15.0), 1.0, 0.5, false);
+    let r = check(&mut b, &jlcpcb());
+    assert_eq!(count(&r, DrcRule::FiducialEdge), 1, "{r}");
+}

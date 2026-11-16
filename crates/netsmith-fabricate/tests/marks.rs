@@ -65,10 +65,41 @@ fn board() -> Board {
     .unwrap_or_else(|e| panic!("{e}"))
 }
 
+/// The net of the first pad of `refdes`.
+fn net_of(board: &Board, refdes: &str) -> String {
+    board
+        .nets
+        .iter()
+        .find(|n| n.pads.iter().any(|p| p.refdes == refdes))
+        .map(|n| n.name.clone())
+        .unwrap_or_else(|| panic!("{refdes} is on no net"))
+}
+
 #[test]
-fn a_net_with_a_power_pin_is_a_supply_or_ground_net_and_the_divider_and_a_passive_only_net_are_not() {
+fn the_nets_of_a_rail_are_supply_and_ground_nets_though_only_passive_parts_are_on_them() {
+    let board = board();
+    // The resistors' pins are passive, and the rail's two nets have nothing but resistors and
+    // test points on them: the design's rails (issue #1006) are what makes them supply nets.
+    assert!(board.parts.iter().all(|p| p.power_pads.is_empty()));
+    let marks = netsmith_fabricate::fab::marks_of(&board);
+    // The test points are numbered by their paths: `tp_gnd`, `tp_mid`, `tp_vcc`.
+    let (gnd, mid, vcc) = (net_of(&board, "TP1"), net_of(&board, "TP2"), net_of(&board, "TP3"));
+    assert_eq!(board.rail_nets, ["GND", "VCC"]);
+    assert_eq!(marks.power_nets.len(), 2, "{:?}", marks.power_nets);
+    assert!(marks.power_nets.contains(&vcc), "{vcc} in {:?}", marks.power_nets);
+    assert!(marks.power_nets.contains(&gnd), "{gnd} in {:?}", marks.power_nets);
+    // The divider's middle is on no rail.
+    assert!(!marks.power_nets.contains(&mid), "{mid} in {:?}", marks.power_nets);
+    assert_eq!(marks.test_points.len(), 3);
+    assert_eq!(marks.min_power_test_point_pad, 1.0);
+}
+
+#[test]
+fn a_net_with_a_power_pin_is_a_supply_or_ground_net_without_a_rail_too() {
     let mut board = board();
-    // The resistors' pins are passive: no net is known as a supply yet.
+    // A board that is not given the design's rails (one read from a file): the resistors' pins
+    // are passive and no net is known as a supply.
+    board.rail_nets.clear();
     assert_eq!(netsmith_fabricate::fab::marks_of(&board).power_nets, Vec::<String>::new());
     // As if `r3.a` (on the rail's pos) and `r2.b` (on its neg) were a chip's supply and ground
     // pins, which its pin table calls `power` (ADR 0016).
@@ -77,22 +108,29 @@ fn a_net_with_a_power_pin_is_a_supply_or_ground_net_and_the_divider_and_a_passiv
         part.power_pads.push(pad.to_string());
     }
     let marks = netsmith_fabricate::fab::marks_of(&board);
-    let net_of = |refdes: &str| -> String {
-        board
-            .nets
-            .iter()
-            .find(|n| n.pads.iter().any(|p| p.refdes == refdes))
-            .map(|n| n.name.clone())
-            .unwrap_or_else(|| panic!("{refdes} is on no net"))
-    };
-    // The test points are numbered by their paths: `tp_gnd`, `tp_mid`, `tp_vcc`.
-    let (gnd, mid, vcc) = (net_of("TP1"), net_of("TP2"), net_of("TP3"));
+    let (gnd, mid, vcc) = (net_of(&board, "TP1"), net_of(&board, "TP2"), net_of(&board, "TP3"));
     assert_eq!(marks.power_nets.len(), 2, "{:?}", marks.power_nets);
     assert!(marks.power_nets.contains(&vcc), "{vcc} in {:?}", marks.power_nets);
     assert!(marks.power_nets.contains(&gnd), "{gnd} in {:?}", marks.power_nets);
     assert!(!marks.power_nets.contains(&mid), "{mid} in {:?}", marks.power_nets);
-    assert_eq!(marks.test_points.len(), 3);
-    assert_eq!(marks.min_power_test_point_pad, 1.0);
+}
+
+#[test]
+fn the_finish_and_the_round_board_figures_come_from_the_process() {
+    let board = board();
+    let marks = netsmith_fabricate::fab::marks_of(&board);
+    assert_eq!(marks.round_angle, 90.0);
+    assert_eq!(marks.fine_pitch, 0.4);
+    // TwoLayer's default finish is lead-free HASL; ENIG and OSP are flat.
+    assert_eq!(marks.uneven_finish.as_deref(), Some("HASL lead-free"));
+    let mut enig = board.clone();
+    enig.process.finish = "ENIG".into();
+    assert_eq!(netsmith_fabricate::fab::marks_of(&enig).uneven_finish, None);
+    enig.process.finish = "HASL leaded".into();
+    assert_eq!(
+        netsmith_fabricate::fab::marks_of(&enig).uneven_finish.as_deref(),
+        Some("HASL leaded")
+    );
 }
 
 #[test]

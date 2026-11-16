@@ -108,7 +108,9 @@ use std::collections::BTreeMap;
 use crate::board::{Board, BoardPart, Fit};
 use crate::bom::{self, BomEntry};
 use crate::{DrcOutcome, Error, Options, Plan, cpl, gerber};
-use netsmith_geom::{Artwork, DrcReport, drc_check, drill_files, edge_outline, plot_layer};
+use netsmith_geom::{
+    Artwork, DrcExtras, DrcReport, drc_check, drill_files, edge_outline, plot_layer,
+};
 
 use netsmith_sexp::Sexp;
 
@@ -731,6 +733,29 @@ pub(crate) fn marks(spec: &Spec, g: &Geometry) -> Marks {
     }
 }
 
+/// What the design rules check is given for the panel: the board's, but its fiducial rules judge
+/// the fiducials of the rails (issue #1006: the page puts a panel's fiducials "on the tooling
+/// rails", and gives them no figure of their own, so they keep the board's), by their names (`FIDn`, and `FIDnB` on the back), the back ones only where a part is assembled there. The board's own fiducials, test
+/// points and parts are in the cells under other names and were judged on the board: its test
+/// points and its finish advice are not asked again of each cell, and the panel is no round board.
+fn panel_extras(board: &DrcExtras, spec: &Spec, g: &Geometry, back: bool) -> DrcExtras {
+    let mut extras = board.clone();
+    let rails = marks(spec, g).fiducials.len();
+    if let Some(marks) = extras.marks.as_mut() {
+        marks.fiducials = (1..=rails)
+            .flat_map(|n| [Some(format!("FID{n}")), back.then(|| format!("FID{n}B"))])
+            .flatten()
+            .collect();
+        marks.test_points.clear();
+        marks.tall_parts.clear();
+        marks.power_nets.clear();
+        marks.round_angle = 0.0;
+        marks.fine_pitch = 0.0;
+        marks.uneven_finish = None;
+    }
+    extras
+}
+
 /// The panel as the text of a `.kicad_pcb`.
 pub(crate) fn board_file(
     spec: &Spec,
@@ -1143,7 +1168,11 @@ pub fn build(spec: &Spec, cell: &CellInput, options: &Options) -> Result<PanelPa
     let pcb = board_file(spec, &g, cell.pcb, cell.facts.bottom_assembled)?;
     let name = spec.name.clone();
 
-    let drc_report = drc_check(&pcb, cell.pro, &options.drc)?;
+    let drc_report = drc_check(
+        &pcb,
+        cell.pro,
+        &panel_extras(&options.drc, spec, &g, cell.facts.bottom_assembled),
+    )?;
     let drc = if drc_report.is_clean() {
         DrcOutcome::Passed
     } else if options.allow_drc_violations {

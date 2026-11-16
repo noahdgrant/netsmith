@@ -3282,7 +3282,7 @@ mod tests {
 
     /// The fields of a process that are not a rule the router and the design rules check keep,
     /// each with the reason (issue #431).
-    const NOT_A_COPPER_RULE: [(&str, &str); 31] = [
+    const NOT_A_COPPER_RULE: [(&str, &str); 33] = [
         (
             "finish",
             "the surface finish, a word for the notes and the order",

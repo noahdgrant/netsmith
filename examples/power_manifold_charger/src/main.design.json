@@ -5788,6 +5788,8 @@
       "min_power_test_point_pad": 1.0,
       "tall_part_height": 6.4,
       "min_test_point_tall_body": 2.0,
+      "fiducial_round_angle": 90.0,
+      "fine_pitch": 0.4,
       "via_in_pad": 0.55,
       "max_temperature_rise": null,
       "track_width_tolerance": 0.2,
@@ -5842,6 +5844,19 @@
     },
     "features": {
       "net_widths": [],
+      "rail_nets": [
+        "+3.3V",
+        "+5V",
+        "EMI_VIN",
+        "GND",
+        "VBUS",
+        "VBUS_SRC",
+        "VBUSf",
+        "VIN",
+        "VIN_PREFUSE",
+        "VOUT",
+        "VOUT_CONV"
+      ],
       "net_currents": [
         {
           "net": "+3.3V",

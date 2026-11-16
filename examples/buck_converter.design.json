@@ -567,6 +567,8 @@
       "min_power_test_point_pad": 1.0,
       "tall_part_height": 6.4,
       "min_test_point_tall_body": 2.0,
+      "fiducial_round_angle": 90.0,
+      "fine_pitch": 0.4,
       "via_in_pad": 0.55,
       "max_temperature_rise": null,
       "track_width_tolerance": 0.2,
@@ -596,6 +598,12 @@
           "net-reg.ic.boost.b",
           0.32
         ]
+      ],
+      "rail_nets": [
+        "12V",
+        "3V3",
+        "GND",
+        "net-reg.ic.boost.b"
       ],
       "net_currents": [
         {

@@ -105,6 +105,19 @@ fn a_rail_with_no_min_clearance_gives_no_clearance() {
 }
 
 #[test]
+fn the_nets_a_rail_has_a_pin_on_are_the_boards_rail_nets() {
+    let d = designed(&board(
+        "    .input: Rail {\n        .pos.net &= \"VIN\"\n        .neg.net &= \"GND\"\n    }\n    .other: Rail {\n        .pos.net &= \"V3\"\n        .neg.net &= \"GND\"\n    }\n",
+    ))
+    .unwrap();
+    // Sorted by name, a net once, whatever its rails.
+    assert_eq!(d.features.rail_nets, ["GND", "V3", "VIN"]);
+    // A board with no rail has none.
+    let d = designed(&board("")).unwrap();
+    assert!(d.features.rail_nets.is_empty());
+}
+
+#[test]
 fn a_rail_with_no_min_track_gives_no_width() {
     let d = designed(&board(
         "    .input: Rail {\n        .pos.net &= \"VIN\"\n        .neg.net &= \"GND\"\n    }\n",

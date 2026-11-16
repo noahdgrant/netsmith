@@ -3852,11 +3852,13 @@
       "min_power_test_point_pad": 1.0,
       "tall_part_height": 6.4,
       "min_test_point_tall_body": 2.0,
+      "fiducial_round_angle": 90.0,
+      "fine_pitch": 0.4,
       "via_in_pad": 0.55,
       "max_temperature_rise": null,
       "track_width_tolerance": 0.2,
       "hole_plating": 0.018,
-      "finish": "HASL lead-free",
+      "finish": "ENIG",
       "stackup": {
         "layers": 2,
         "thickness": [
@@ -3869,6 +3871,12 @@
     },
     "features": {
       "net_widths": [],
+      "rail_nets": [
+        "+1V1",
+        "+3V3",
+        "GND",
+        "VBUS"
+      ],
       "net_currents": [
         {
           "net": "+3V3",
@@ -4550,7 +4558,7 @@
         "text": "The filter of the core regulator's analog supply: 33 ohm and 4.7 uF.",
         "at": {
           "file": "src/main.nsm",
-          "line": 112
+          "line": 115
         },
         "anchors": [
           "avdd_filter"
@@ -4563,7 +4571,7 @@
         "text": "BOOTSEL: held at power-up it pulls QSPI_SS to ground through 1 kohm, so the chip boots from USB.",
         "at": {
           "file": "src/main.nsm",
-          "line": 181
+          "line": 184
         },
         "anchors": [
           "bootsel"
@@ -4576,7 +4584,7 @@
         "text": "The inductor of the core regulator, from the chip's switch node to the core rail.",
         "at": {
           "file": "src/main.nsm",
-          "line": 104
+          "line": 107
         },
         "anchors": [
           "core_inductor"
@@ -4589,7 +4597,7 @@
         "text": "J4: the debug port, a JST-SH with SWCLK, ground and SWD.",
         "at": {
           "file": "src/main.nsm",
-          "line": 52
+          "line": 55
         },
         "anchors": [
           "debug"
@@ -4602,7 +4610,7 @@
         "text": "The QSPI flash that holds the program: 16 MB.",
         "at": {
           "file": "src/main.nsm",
-          "line": 65
+          "line": 68
         },
         "anchors": [
           "flash"
@@ -4615,7 +4623,7 @@
         "text": "J3: GPIO29 down to GPIO16, RUN, SWD and SWCLK.",
         "at": {
           "file": "src/main.nsm",
-          "line": 50
+          "line": 53
         },
         "anchors": [
           "header_high"
@@ -4628,7 +4636,7 @@
         "text": "J2: ground, +3V3 and GPIO0 to GPIO15, as Raspberry Pi's header has them.",
         "at": {
           "file": "src/main.nsm",
-          "line": 48
+          "line": 51
         },
         "anchors": [
           "header_low"
@@ -4641,7 +4649,7 @@
         "text": "The microcontroller. Every pin that a header or a part uses is named here, so none moves.",
         "at": {
           "file": "src/main.nsm",
-          "line": 57
+          "line": 60
         },
         "anchors": [
           "mcu"
@@ -4704,7 +4712,7 @@
         "text": "The 3.3 V regulator, an NCP1117 in a SOT-223 (a row of the project's catalog).",
         "at": {
           "file": "src/main.nsm",
-          "line": 59
+          "line": 62
         },
         "anchors": [
           "regulator"
@@ -4717,7 +4725,7 @@
         "text": "RESET: pulls RUN to ground through 1 kohm.",
         "at": {
           "file": "src/main.nsm",
-          "line": 187
+          "line": 190
         },
         "anchors": [
           "reset"
@@ -4730,7 +4738,7 @@
         "text": "The micro-USB B receptacle: the only supply of the board, and its USB port.",
         "at": {
           "file": "src/main.nsm",
-          "line": 46
+          "line": 49
         },
         "anchors": [
           "usb"
@@ -4743,7 +4751,7 @@
         "text": "The core supply, made by the MCU's own switching regulator with the inductor and a capacitor. Its voltage is the chip's choice (the datasheet's), and nothing here states it.",
         "at": {
           "file": "src/main.nsm",
-          "line": 81
+          "line": 84
         },
         "anchors": [],
         "result": null
@@ -4754,7 +4762,7 @@
         "text": "The IO supply, from the regulator.",
         "at": {
           "file": "src/main.nsm",
-          "line": 75
+          "line": 78
         },
         "anchors": [],
         "result": null
@@ -4765,7 +4773,7 @@
         "text": "USB's VBUS, the only input. 5 V +/- 5% is USB's 4.75 V to 5.25 V.",
         "at": {
           "file": "src/main.nsm",
-          "line": 70
+          "line": 73
         },
         "anchors": [],
         "result": null

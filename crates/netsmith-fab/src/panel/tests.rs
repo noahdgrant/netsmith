@@ -1,5 +1,5 @@
 use super::*;
-use netsmith_geom::Artwork;
+use netsmith_geom::{Artwork, DrcRule};
 
 /// A board of 40 x 30 mm: a resistor, a pin header with a hole, a ground track on the front,
 /// a supply track through a via on the back, and a plain outline.
@@ -560,4 +560,122 @@ fn a_length_reads_as_short_as_it_can() {
     assert_eq!(mm(50.0), "50");
     assert_eq!(mm(12.5), "12.5");
     assert_eq!(mm(-0.0), "0");
+}
+
+/// What `fab` gives the check of a board with the figures of JLCPCB's fiducial pages (issue
+/// #761), the board's assembled sides as the facts say, and a fiducial of its own that the cells
+/// keep under another name.
+fn with_marks(min_fiducial_edge: f64, min_fiducials: usize, back: bool) -> Options {
+    let mut options = Options::default();
+    options.drc.marks = Some(netsmith_geom::DrcMarks {
+        fiducials: vec!["FID1".into(), "FID2".into()],
+        assembled_front: true,
+        assembled_back: back,
+        min_fiducials,
+        fiducial_diameter: 1.0,
+        fiducial_mask_ratio: 2.0,
+        min_fiducial_edge,
+        // The board's other rules are not asked of the cells again.
+        test_points: vec!["TP1".into()],
+        round_angle: 90.0,
+        fine_pitch: 0.4,
+        uneven_finish: Some("HASL lead-free".into()),
+        ..Default::default()
+    });
+    options
+}
+
+fn build_with(options: &Options, bottom_assembled: bool) -> Result<PanelPackage, Error> {
+    let entries = entries();
+    let input = CellInput {
+        pcb: CELL,
+        pro: None,
+        entries: &entries,
+        facts: CellFacts {
+            bottom_assembled,
+            ..facts()
+        },
+    };
+    build(&spec(2, 3, 5.0), &input, options)
+}
+
+#[test]
+fn the_fiducials_of_the_rails_are_held_to_the_fiducial_rules() {
+    // The rails put their three 1 mm fiducials 3.85 mm from the panel's edge, 3.35 mm of
+    // copper: at the board house's limit, so the panel passes, with three on the front.
+    let pkg = build_with(&with_marks(3.35, 3, false), false).unwrap_or_else(|e| panic!("{e}"));
+    assert!(pkg.drc_report.is_clean(), "{}", pkg.drc_report);
+    assert!(
+        pkg.drc_report
+            .findings
+            .iter()
+            .all(|f| f.rule == DrcRule::SilkOverCopper || !f.rule.is_netsmiths()),
+        "{}",
+        pkg.drc_report
+    );
+    // A process that asks for more room is a limit the rails break, named by the fiducial.
+    let Err(Error::Drc { report, .. }) = build_with(&with_marks(4.0, 3, false), false) else {
+        panic!("the rails' fiducials are 3.35 mm from the edge");
+    };
+    assert!(
+        report.contains("fiducial_edge") || report.contains("FID1"),
+        "{report}"
+    );
+    for n in 1..=3 {
+        assert!(report.contains(&format!("FID{n} ")), "FID{n}\n{report}");
+    }
+    // The board's own two fiducials in the cells are not the rails': a count of four on the
+    // front is a guideline the three of the rails miss, a warning, not a refusal.
+    let pkg = build_with(&with_marks(3.35, 4, false), false).unwrap_or_else(|e| panic!("{e}"));
+    let counted: Vec<_> = pkg
+        .drc_report
+        .findings
+        .iter()
+        .filter(|f| f.rule == DrcRule::FiducialCount)
+        .collect();
+    assert_eq!(counted.len(), 1, "{}", pkg.drc_report);
+    assert!(
+        counted[0].message.contains("3 fiducial"),
+        "{}",
+        counted[0].message
+    );
+}
+
+#[test]
+fn the_rails_have_fiducials_on_the_back_where_a_part_is_assembled_there() {
+    // Three on each side keep a count of three on both; one side short is a finding.
+    let both = build_with(&with_marks(3.35, 3, true), true).unwrap_or_else(|e| panic!("{e}"));
+    assert_eq!(
+        both.drc_report.count(DrcRule::FiducialCount),
+        0,
+        "{}",
+        both.drc_report
+    );
+    // The board house assembles the back, the facts say it does not: no rail fiducials there.
+    let short = build_with(&with_marks(3.35, 3, true), false).unwrap_or_else(|e| panic!("{e}"));
+    assert_eq!(
+        short.drc_report.count(DrcRule::FiducialCount),
+        1,
+        "{}",
+        short.drc_report
+    );
+}
+
+#[test]
+fn the_cells_test_points_and_finish_are_not_asked_again_of_the_panel() {
+    // The cell has a pad pair 0.4 mm apart in none of its parts; the panel's check must not
+    // add the board's finish advice or round-board angle: nothing of them is in the report.
+    let pkg = build_with(&with_marks(3.35, 3, false), false).unwrap_or_else(|e| panic!("{e}"));
+    for rule in [
+        DrcRule::FinishFinePitch,
+        DrcRule::FiducialAngle,
+        DrcRule::TestPointPad,
+    ] {
+        assert_eq!(
+            pkg.drc_report.count(rule),
+            0,
+            "{rule:?}\n{}",
+            pkg.drc_report
+        );
+    }
 }

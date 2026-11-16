@@ -238,7 +238,18 @@ fn pad_item(p: &Pad) -> Item {
 /// the edge is drawn along, as the pages measure "from the board edge".
 fn edge_gap(m: &Model<'_>, shapes: &[Shape]) -> Option<(Gap, Item)> {
     let mut best: Option<(Gap, Item)> = None;
+    // A V-cut line drawn on `Edge.Cuts` is not the board's edge: a panel's rails keep their
+    // fiducials beside the line that cuts them off, and the page's space is to the panel's edge
+    // (issue #1006).
+    let cuts = crate::edge::cut_lines(m.art);
     for (edge, item) in &m.edge {
+        if let [a, b] = edge.pts[..]
+            && cuts.iter().any(|(p, q)| {
+                (a.dist(*p) < 1e-6 && b.dist(*q) < 1e-6) || (a.dist(*q) < 1e-6 && b.dist(*p) < 1e-6)
+            })
+        {
+            continue;
+        }
         for s in shapes {
             // To the edge's path, not to the ink of the line that draws it.
             let mut g = gap(s, edge);
