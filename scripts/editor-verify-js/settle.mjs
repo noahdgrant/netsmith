@@ -41,6 +41,20 @@ export async function waitFor(what, check) {
   }
 }
 
+/** Wait for `promise` (a request a recipe holds, a command it runs: something outside the page that no Playwright wait guards), and fail
+ * as hung if it is still pending after the hang guard. `what` names what the step waits for, so the failure says what hung. */
+export async function guarded(what, promise) {
+  let timer;
+  const hung = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Hung(`waiting for ${what}`)), HANG_MS);
+  });
+  try {
+    return await Promise.race([promise, hung]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 /** A gate for a request a recipe holds: `await g.opened` inside a `page.route` handler, `g.open()` when the recipe has seen what it came for. */
 export function gate() {
   let open;
