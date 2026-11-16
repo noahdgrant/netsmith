@@ -488,15 +488,15 @@ pub fn zone_fills(board: &Board) -> Result<Vec<ZoneFill>, CopperError> {
     if board.zones.is_empty() {
         return Ok(Vec::new());
     }
-    fills_of(board, |l| board.zoned(l), None)
+    fills_of(board, |l| board.zoned(l))
 }
 
 /// The fill of each outer pour of a net that is also a plane, on a layer with no zone of a
-/// routes file, by net: what the Gerbers hold, less the copper narrower than the pour's
-/// minimum width (KiCad's `min_thickness`, which KiCad's fill trims and the Gerbers' filler
-/// does not, `netsmith_geom::fill`), so that a pad it joins is one KiCad's fill joins too. The
-/// ratsnest takes it as the way from such a pad to its plane through a via the pour reaches
-/// (issue #834). Empty for a board with no such pour, at no cost.
+/// routes file, by net: what the Gerbers hold, which is trimmed to the pour's minimum width
+/// (KiCad's `min_thickness`) and has its islands removed, as KiCad's fill does
+/// (`netsmith_geom::fill`), so that a pad it joins is one KiCad's fill joins too. The ratsnest
+/// takes it as the way from such a pad to its plane through a via the pour reaches (issue
+/// #834). Empty for a board with no such pour, at no cost.
 pub fn plane_pour_fills(board: &Board) -> Result<Vec<ZoneFill>, CopperError> {
     let layers: Vec<&str> = board
         .pours
@@ -508,21 +508,13 @@ pub fn plane_pour_fills(board: &Board) -> Result<Vec<ZoneFill>, CopperError> {
         return Ok(Vec::new());
     }
     let nets: Vec<&str> = board.pours.iter().map(|p| p.net.as_str()).collect();
-    let mut fills = fills_of(
-        board,
-        |l| layers.contains(&l),
-        Some(crate::export::ZONE_MIN_THICKNESS),
-    )?;
+    let mut fills = fills_of(board, |l| layers.contains(&l))?;
     fills.retain(|f| nets.contains(&f.net.as_str()));
     Ok(fills)
 }
 
-/// The fill of the layers `wanted` picks, by net, each piece trimmed to `min_width` if given.
-fn fills_of(
-    board: &Board,
-    wanted: impl Fn(&str) -> bool,
-    min_width: Option<f64>,
-) -> Result<Vec<ZoneFill>, CopperError> {
+/// The fill of the layers `wanted` picks, by net.
+fn fills_of(board: &Board, wanted: impl Fn(&str) -> bool) -> Result<Vec<ZoneFill>, CopperError> {
     let art = artwork(board)?;
     let rules = netsmith_geom::plot_rules_of(Some(&crate::export::kicad_pro(board)));
     let outline = edge_outline(&art).map_err(CopperError)?;
@@ -533,10 +525,6 @@ fn fills_of(
         for (tag, pieces) in pen.areas_by_net() {
             let Some(net) = net_of(&art, tag.as_deref()) else {
                 continue;
-            };
-            let pieces = match min_width {
-                Some(w) => netsmith_geom::trimmed_areas(&pieces, w),
-                None => pieces,
             };
             fills.push(ZoneFill {
                 layer: layer.clone(),

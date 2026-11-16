@@ -52,8 +52,8 @@
 //! alone: the design's pour or plane on it is not drawn ([`Board::zoned`]); the other layers
 //! keep theirs. The board file holds each zone as KiCad's, unfilled, so that KiCad's fill
 //! makes the copper KiCad's own board has; netsmith's own fill, for the Gerbers, the check and
-//! the ratsnest, is `netsmith_geom::fill`'s, with its differences (it removes no island and
-//! trims no sliver). A zone is not an obstacle to the router: its fill keeps its clearance from
+//! the ratsnest, is `netsmith_geom::fill`'s, which trims it to `min_width` and removes its
+//! islands as `islands` says, as KiCad's does (that module says where they differ). A zone is not an obstacle to the router: its fill keeps its clearance from
 //! whatever the router draws, as KiCad's does.
 //!
 //! **What the copper does.** `fab`, the editor's PCB view and `netsmith route` (through the

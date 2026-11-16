@@ -31,6 +31,19 @@ pub struct Area {
 }
 
 impl Area {
+    /// A simple polygon with no holes, turned as an area's outer ring runs.
+    pub(crate) fn of(points: &[Pt]) -> Area {
+        Area {
+            outer: positive(points.to_vec(), true),
+            holes: Vec::new(),
+        }
+    }
+
+    /// Whether `p` is in the area (in its outer ring and in none of its holes).
+    pub(crate) fn contains(&self, p: Pt) -> bool {
+        geom::contains(&self.outer, p) && !self.holes.iter().any(|h| geom::contains(h, p))
+    }
+
     /// The area in mm², the holes taken away.
     pub fn size(&self) -> f64 {
         let a = |p: &[Pt]| geom::area2(p).abs() / 2.0;
@@ -199,7 +212,7 @@ pub(crate) fn grown(areas: &[Area], by: f64) -> Vec<Area> {
 /// The areas with the copper narrower than `min_width` taken out, as KiCad's fill trims a zone
 /// to its `min_thickness`: each area is shrunk by half the width and the rest grown back by as
 /// much, so a neck narrower than the width parts the area in two and a sliver goes.
-pub fn trimmed(areas: &[Area], min_width: f64) -> Vec<Area> {
+pub(crate) fn trimmed(areas: &[Area], min_width: f64) -> Vec<Area> {
     let by = min_width / 2.0;
     if by <= 0.0 || areas.is_empty() {
         return areas.to_vec();

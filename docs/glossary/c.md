@@ -71,6 +71,10 @@ _Avoid_: Customer-supplied part, owner-supplied part, free-issue part, kitted pa
 A value that no choice of parts can change: the field, and the fields joined to it, have a value now and nothing works any of them out. The stated voltage of a rail is one. Parts that read only such values and nothing else in common are searched apart (ADR 0057, proposed).
 _Avoid_: Fixed value, frozen value
 
+**Copper island**:
+A piece of the fill of a _Pour_, a _Plane_ or a _Zone_ that touches no copper of its net on its layer: no pad, via, track or teardrop of the net, and no piece of another zone of the net. netsmith's fill removes it as KiCad's does, unless the zone keeps its islands or the piece is not smaller than the zone's least island (`islands`, `island_min_area`, issue #837); a fill of no net keeps every piece.
+_Avoid_: Island (alone, that is the DC analysis's), dead copper, orphan copper
+
 **Corner**:
 One combination of the ends of the ranges an island has (a resistance at its least or its greatest, a supply or a load at either end, a diode's forward voltage at either end, a pin's output resistance at either end) with a state for each diode (blocking or conducting), each MOSFET (off or on) and each logic pin (high, low or high impedance). The range a current or a voltage takes is the hull of its values over the corners, which counts each value once (ADR 0076, section 3).
 _Avoid_: Case, scenario, worst case (the worst case is a result, an end of the range a corner makes)
