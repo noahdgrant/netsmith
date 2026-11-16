@@ -42,6 +42,10 @@ The fixture is `scripts/editor-verify-js/fixtures/height_limits.nsm` with its ph
 - **Drag**: a part with a stated height stops before a step that would put its body over a limit it is too tall for, and a note beside the pointer (`[data-testid=tip]`) says `limited by lid`, the part's height and the limit; the note goes when the drag ends. A part that starts under a limit it is too tall for can be dragged out; a part that fits, or states no height, goes under the lid freely. The board's own zones hold a drag, not one a part carries. Arrow keys, rotate and flip are not held (the finding names what they leave).
 - A recipe that drags starts with `Fit`: a drag that starts or ends off screen lands on the side panel.
 
+## The 2D | 3D switch stays put (issue #784)
+
+`drive pcb-toggle-fixed` (fixture `two_boards`): the `2D | 3D` switch is the first thing of the toolbar, at the same place (the recipe compares its box) before and after a route, with the keepout tool's options shown, on the back side, in 3D (which hides the Side, Tool and grid controls) and back; the status group stays on one line (`white-space: nowrap`), as a wrapped chip makes the bar taller and moves everything.
+
 ## Keepouts, height limits and the side looked at (issue #770)
 
 `drive pcb-sides` (fixture `enclosure_limits`: an enclosure's seven height-only limits over the whole board, on both faces, one keepout that forbids parts, a header on the back and two on the front). The Layers menu has **Keepouts** and **Height limits**, apart (the keepouts are the zones that forbid something, hatched; the limits are `data-limit-only` rectangles and the `data-height-limit` labels, also those of a keepout that forbids and limits). A height limit is an outline with no fill, dotted, with `3.9 mm, bottom` at its corner; limits that start at one corner have their labels a line apart (`stackedLabels`, `web/src/pcb/drawing.ts`), so seven overlapping limits leave the parts under them readable. The server gives each zone `data-layers` (its copper layers, space separated) for the side switch.
