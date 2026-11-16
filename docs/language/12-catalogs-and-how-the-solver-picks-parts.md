@@ -375,7 +375,7 @@ board NarrowedMcu {
 
 #### An optional column
 
-A column that a row may leave empty says so with the word `optional` after it in the `catalog` statement (ADR 0078), the word that a member (ADR 0074) and a `pins` row already use for "may be absent". The standard library does it for `temperature_coefficient`, `dielectric`, `rms_current` and a TVS diode's `breakdown_voltage`, and a project's own part does it for a column of its own catalog. A fuse that records a surge rating only for some parts (invented, like the file below):
+A column that a row may leave empty says so with the word `optional` after it in the `catalog` statement (ADR 0078), the word that a member (ADR 0074) and a `pins` row already use for "may be absent". The standard library does it for `temperature_coefficient`, `dielectric`, `rms_current`, a TVS diode's `breakdown_voltage` and the `efficiency` of a buck IC (below), and a project's own part does it for a column of its own catalog. A fuse that records a surge rating only for some parts (invented, like the file below):
 
 ```nsm module=src::zfuse
 /// A fuse with an optional surge rating. Illustrative; not a real part.
@@ -451,6 +451,8 @@ error: the `zfuse` catalog has nothing for `f1`, which needs rated_current withi
 ```
 
 The columns the statement does not mark are as they were: a row with an empty cell is never offered, and the file must have the column. The marker is refused on a column the part does not have (the same message as for any column), and on the key of a keyed catalog (`catalog mcu by .mpn { .mpn optional }`), because a row with no key could not be chosen.
+
+A switching regulator's efficiency is the standard example of a number that is a property of the row and not of the part (issue #808). The part declares `.efficiency: Number`, its catalog lists `.efficiency optional`, and each row states the range of fractions its datasheet gives (`0.75..0.95`, the three standard buck ICs do, with the page in the row's `source`). The row that is picked gives the field its value when the design states none, so the DC analysis models the converter and its input net is sized for the current it draws. A row that leaves the cell empty is offered to a design that says nothing about the efficiency, and the converter's efficiency stays unsettled: the power model says so by name and sizes the net only for what is known (chapter 23). A design that does state one, as a range, is offered only the rows whose range lies inside it.
 
 A file is read when it is used, and a mistake names the file and line. A row with a part number and no source, and a part twice:
 

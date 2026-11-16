@@ -129,8 +129,11 @@ fn columns(name: &str) -> Vec<(String, FieldKind)> {
             q("mating.pin_current", Dimension::CURRENT),
             q("mating.seat", Dimension::LENGTH),
         ],
-        // The buck converter ICs (issue #620): one row each, the package the only column.
-        "lmr16006y" | "rt8059" | "tps54202" => vec![t("package")],
+        // The buck converter ICs (issue #620): one row each, the package and the efficiency
+        // (issue #808, marked `optional`, see `catalog`).
+        "lmr16006y" | "rt8059" | "tps54202" => {
+            vec![t("package"), q("efficiency", Dimension::NONE)]
+        }
         other => panic!("no columns for {other}"),
     }
 }
@@ -150,6 +153,7 @@ fn catalog(name: &str) -> Catalog {
         "n_mosfet" => vec!["on_resistance_vgs".to_string()],
         "led" => vec!["max_forward_current".to_string(), "test_current".to_string()],
         "header" => vec!["mating.seat".to_string()],
+        "lmr16006y" | "rt8059" | "tps54202" => vec!["efficiency".to_string()],
         _ => Vec::new(),
     };
     Catalogs::jlcpcb()
@@ -218,6 +222,32 @@ fn every_standard_file_reads_and_every_part_in_it_has_its_source() {
                 matches!(row["library"].as_str(), "Basic" | "Extended" | "Preferred"),
                 "{name} {lcsc}: library `{}`",
                 row["library"]
+            );
+        }
+    }
+}
+
+/// The buck IC catalogs state the efficiency of their row as a range of fractions read off the
+/// datasheet's curves (issue #808), and the row's `source` says which figure and where, as the
+/// `height` does.
+#[test]
+fn every_efficiency_is_a_fraction_range_and_its_source_names_the_curve() {
+    for name in ["lmr16006y", "rt8059", "tps54202"] {
+        for row in records(&format!("jlcpcb/catalog/{name}.csv")) {
+            let lcsc = &row["lcsc"];
+            let cell = &row["efficiency"];
+            let (lo, hi) = cell
+                .split_once("..")
+                .and_then(|(a, b)| Some((a.parse::<f64>().ok()?, b.parse::<f64>().ok()?)))
+                .unwrap_or_else(|| panic!("{name} {lcsc}: `{cell}` is not like 0.75..0.95"));
+            assert!(0.0 < lo && lo < hi && hi <= 1.0, "{name} {lcsc}: {cell}");
+            let entry = row["source"]
+                .split(" ; ")
+                .find_map(|e| e.strip_prefix("efficiency: "))
+                .unwrap_or_else(|| panic!("{name} {lcsc}: no `efficiency:` in the source"));
+            assert!(
+                entry.starts_with(cell.as_str()) && entry.contains("curves") && entry.contains("p."),
+                "{name} {lcsc}: the cell says {cell} and the source says {entry}"
             );
         }
     }
