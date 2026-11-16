@@ -24,6 +24,7 @@ impl Solver<'_> {
         let ordered = self.order_group(jobs, group);
         let group = &ordered[..];
         self.network = dcpass::NetworkTrial::of(group.iter().map(|&j| jobs[j].part).collect());
+        self.hulls.clear();
         let mut search = Search {
             elsewhere,
             work_from: self.work,
@@ -84,7 +85,13 @@ impl Solver<'_> {
         let (part_source, part_span) = part.at();
 
         if search.gave_up {
-            let message = give_up_message(search.trials, &names, search.out_of_work);
+            let (state, choices) = self.most_choices(jobs, group);
+            let message = give_up_message(
+                search.trials,
+                &names,
+                search.out_of_work,
+                (&jobs[state].path, choices),
+            );
             self.report(part_source, part_span, message);
         } else if let Some(c) = learned
             .as_ref()
@@ -110,7 +117,15 @@ impl Solver<'_> {
                 .iter()
                 .map(|&j| format!("`{}`", jobs[j].path))
                 .collect();
-            let message = if learned.is_some() && involved.len() == 1 {
+            let message = if c.assignment.is_empty() {
+                // Refused before any part was chosen: the hulls of the candidates of the parts
+                // the bound reads already miss it (`ahead.rs`).
+                format!(
+                    "no combination of candidates satisfies {} together: whichever candidates they take, {}",
+                    involved_names.join(" and "),
+                    c.message
+                )
+            } else if learned.is_some() && involved.len() == 1 {
                 format!(
                     "no `{}` candidate satisfies `{}` whatever the other parts of the group are: the closest, {}, fails because {}",
                     jobs[involved[0]].catalog.name,
@@ -260,6 +275,30 @@ impl Solver<'_> {
                 },
             });
         }
+    }
+
+    /// The part of a group with the most candidates that fit, counting candidates the design
+    /// cannot tell apart once (`interchangeable`), and that number: the part whose value, once
+    /// stated, takes the most combinations out of the search. The first in the search's order
+    /// when two have as many.
+    fn most_choices(&self, jobs: &[Job], group: &[usize]) -> (usize, usize) {
+        let mut best = (group[0], 0);
+        for &j in group {
+            let job = &jobs[j];
+            let mut distinct: Vec<&Candidate> = Vec::new();
+            for c in &job.catalog.candidates {
+                if self.fits(job.part, &job.columns, c)
+                    && !distinct.iter().any(|d| self.interchangeable(job, d, c))
+                {
+                    distinct.push(c);
+                }
+            }
+            let n = distinct.len() * self.counts_of(job).len().max(1);
+            if n > best.1 {
+                best = (j, n);
+            }
+        }
+        best
     }
 
     /// The part of a group that no candidate can serve, whatever the other parts are: each
@@ -501,6 +540,50 @@ impl Solver<'_> {
         if counts.is_empty() {
             search.no_fit.get_or_insert(group[depth]);
             return Outcome::Failed(failure(conflict, BTreeSet::new(), None));
+        }
+
+        // No choice of this part and the ones after it can be accepted with the choices before
+        // it: the hulls of their candidates already refuse a bound they feed (`ahead.rs`). Asked
+        // before the first part, and before the others once a candidate of the group has been
+        // refused: a search that has refused nothing has nothing to cut, and a look costs about
+        // what a trial does.
+        if group.len() > 1
+            && (depth == 0 || search.closest.is_some())
+            && let Some(ahead) = self.look_ahead(jobs, group, depth, coupling)
+        {
+            let mut reads = self.failure_reads(&ahead.rejection);
+            for &d in &ahead.later {
+                reads.extend(jobs[group[d]].columns.iter().map(|(f, _)| *f));
+            }
+            let depends = coupling.earlier_jobs(group, depth, &coupling.fed_by(&reads));
+            let names: Vec<String> = ahead
+                .later
+                .iter()
+                .map(|&d| format!("`{}`", jobs[group[d]].path))
+                .collect();
+            let message = if depth == 0 || names.is_empty() {
+                ahead.rejection.message
+            } else {
+                format!(
+                    "{}, whichever candidates {} take",
+                    ahead.rejection.message,
+                    names.join(" and ")
+                )
+            };
+            let closest = Closest {
+                depth: depth.saturating_sub(1),
+                margin: ahead.rejection.margin,
+                assignment: search.chosen.clone(),
+                depths: (0..depth).collect(),
+                message,
+                at: ahead.rejection.at,
+            };
+            nearer(&mut search.closest, Some(&closest));
+            return Outcome::Failed(Failure {
+                core: depends.union(&ahead.later).copied().collect(),
+                depends,
+                closest: Some(closest),
+            });
         }
 
         // The parts still to be chosen after this one, here or in another group: a value

@@ -3,7 +3,9 @@
 //! `bench` builds a board of `a`, `u01`..`uNN` and `z`, all resistors. The `u` parts are
 //! chained to `a` by relations that every candidate satisfies, so they share a group with
 //! `a` and `z` but have nothing to do with the one relation nothing can satisfy:
-//! `a + z >= 1Mohm`, when no resistor in the catalog is above 1 kohm. Searched in order
+//! `a + z >= 600ohm`, which two 300 ohm resistors reach but not over the whole of their 1 %
+//! spread (a bound that no value of the candidates' ranges meets, such as 1 Mohm, is refused
+//! before the search by the hulls of the candidates, `ahead.rs`, and never searched). Searched in order
 //! (`a`, `u01`..`uNN`, `z`), every combination of the `u` parts reaches `z` and fails there
 //! for the same reason.
 
@@ -68,7 +70,7 @@ fn bench(n: usize, conflict: bool) -> String {
             i + 1
         ));
     }
-    let bound = if conflict { "1Mohm" } else { "100ohm" };
+    let bound = if conflict { "600ohm" } else { "100ohm" };
     src.push_str(&format!(
         "    .a.resistance + .z.resistance >= {bound}\n}}\n"
     ));
@@ -126,7 +128,7 @@ fn a_conflict_with_the_first_part_names_the_two_parts() {
     assert_eq!(
         messages(&s),
         [
-            "no combination of candidates satisfies `a` and `z` together, whatever the other parts of the group are: the closest, a = 300 1% and z = 300 1%, fails because (a.resistance + z.resistance) must always be at least 1MΩ, but 594Ω..606Ω is not always above 1MΩ"
+            "no combination of candidates satisfies `a` and `z` together, whatever the other parts of the group are: the closest, a = 300 1% and z = 300 1%, fails because (a.resistance + z.resistance) must always be at least 600Ω, but 594Ω..606Ω is not always above 600Ω"
         ]
     );
     assert_eq!(unresolved(&s), ["a", "u01", "u02", "u03", "z"]);
@@ -136,13 +138,13 @@ fn a_conflict_with_the_first_part_names_the_two_parts() {
 #[test]
 fn a_conflict_with_a_middle_part_names_the_two_parts() {
     let s = run(
-        &bench_mid(4, ".u02.resistance + .z.resistance >= 1Mohm"),
+        &bench_mid(4, ".u02.resistance + .z.resistance >= 600ohm"),
         &catalogs(3),
     );
     assert_eq!(
         messages(&s),
         [
-            "no combination of candidates satisfies `u02` and `z` together, whatever the other parts of the group are: the closest, u02 = 300 1% and z = 300 1%, fails because (u02.resistance + z.resistance) must always be at least 1MΩ, but 594Ω..606Ω is not always above 1MΩ"
+            "no combination of candidates satisfies `u02` and `z` together, whatever the other parts of the group are: the closest, u02 = 300 1% and z = 300 1%, fails because (u02.resistance + z.resistance) must always be at least 600Ω, but 594Ω..606Ω is not always above 600Ω"
         ]
     );
     assert!(s.picks.is_empty());
@@ -229,7 +231,7 @@ fn a_solution_that_needs_a_middle_part_changed_is_still_found() {
 
 #[test]
 fn the_same_design_gives_the_same_answer_every_time() {
-    let src = bench_mid(4, ".u02.resistance + .z.resistance >= 1Mohm");
+    let src = bench_mid(4, ".u02.resistance + .z.resistance >= 600ohm");
     let first = run(&src, &catalogs(3));
     for _ in 0..3 {
         let again = run(&src, &catalogs(3));
@@ -263,7 +265,7 @@ fn a_conflict_deep_in_a_long_chain_stays_cheap() {
     assert_eq!(msgs.len(), 1, "{msgs:#?}");
     assert!(!msgs[0].contains("gave up"), "{}", msgs[0]);
     assert!(
-        msgs[0].contains("(a.resistance + z.resistance) must always be at least 1MΩ"),
+        msgs[0].contains("(a.resistance + z.resistance) must always be at least 600Ω"),
         "{}",
         msgs[0]
     );
@@ -274,7 +276,7 @@ fn a_conflict_deep_in_a_long_chain_stays_cheap() {
 fn a_conflict_with_a_middle_part_costs_no_more_than_the_parts_before_it() {
     // Before: 1092 trials for four parts in between.
     let s = run(
-        &bench_mid(4, ".u02.resistance + .z.resistance >= 1Mohm"),
+        &bench_mid(4, ".u02.resistance + .z.resistance >= 600ohm"),
         &catalogs(3),
     );
     assert!(s.trials < 60, "{} trials", s.trials);

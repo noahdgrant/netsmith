@@ -186,7 +186,9 @@ board Pair {
 #[test]
 fn a_first_pick_that_leaves_the_second_nothing_is_undone_as_before() {
     // Only the pair 4000 + 4000 reaches the window: each of the 39 smaller first picks leaves
-    // the second pick an empty interval, and the search backs up to the first.
+    // the second pick an empty interval, and the search backs up to the first. Both searches
+    // refuse such a first pick before the second is tried (the hull of the second's candidates
+    // cannot reach the window, `ahead.rs`); the narrowing also skips the first picks in blocks.
     let (narrowed, reference) = both(PAIR, tenths());
     assert_eq!(
         picks(&narrowed)
@@ -196,7 +198,7 @@ fn a_first_pick_that_leaves_the_second_nothing_is_undone_as_before() {
         vec!["4000 0.1%", "4000 0.1%"]
     );
     assert!(
-        narrowed.trials * 10 < reference.trials,
+        narrowed.trials < reference.trials,
         "{} trials against {}",
         narrowed.trials,
         reference.trials

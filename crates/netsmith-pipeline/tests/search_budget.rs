@@ -47,7 +47,8 @@ fn catalogs(budget: SearchBudget) -> Catalogs {
     c
 }
 
-/// Four resistors in one sum that none of their combinations reaches.
+/// Four resistors in one sum that must stay within a window of 1 ohm, narrower than the spread
+/// of any sum of 1 % resistors: every combination is refused, at its last part.
 const BOARD: &str = "import std::parts::passive::Resistor
 
 board Stack {
@@ -57,7 +58,8 @@ board Stack {
     .d: Resistor
     .total: Resistance
     .total == .a.resistance + .b.resistance + .c.resistance + .d.resistance
-    .total >= 100Mohm
+    .total >= 1800ohm
+    .total <= 1801ohm
 }
 ";
 
@@ -78,13 +80,13 @@ fn a_runaway_search_is_an_error_that_names_the_parts_and_what_to_change() {
         work: u64::MAX,
     })
     .map(|_| ())
-    .expect_err("no combination reaches 100 Mohm");
+    .expect_err("no combination stays within the window");
     assert!(
         error.contains("gave up after trying 300 combinations of candidates for `a` and `b` and `c` and `d`; a bound reads values of all of them"),
         "{error}"
     );
     assert!(
-        error.contains("State a value for one of them, narrow a window that a bound on them reads, or split the group"),
+        error.contains("State a value for `a`: it has the most candidates that fit (8), so a value for it leaves the fewest combinations to try. Or narrow a window that a bound on them reads, or split the group"),
         "{error}"
     );
     assert!(error.starts_with("error: "), "{error}");
@@ -98,7 +100,7 @@ fn a_search_that_ran_out_of_work_says_so_in_the_build_too() {
         work: 5_000,
     })
     .map(|_| ())
-    .expect_err("no combination reaches 100 Mohm");
+    .expect_err("no combination stays within the window");
     assert!(
         error.contains("combinations of candidates for `a` and `b` and `c` and `d` (the search stopped for the work it had done, which grows with the size of the board"),
         "{error}"

@@ -164,9 +164,23 @@
 //! was chosen from the invented board's speed, not from a real board's trial cost, and the
 //! owner accepted it on 2026-11-11; if a real search stops sooner than a person waits, it comes
 //! down. The hopeless scan and `search_again_together` have a budget each, so a group that
-//! gives up and is searched again with another gets a second budget. A failing group does not
-//! say which part to state a value for, because the search does not know it (not built; issue
-//! #65).
+//! gives up and is searched again with another gets a second budget. A group that gives up
+//! names the part to state a value for: the one with the most candidates that fit, counting
+//! once those the design cannot tell apart (`Solver::most_choices`), since a value stated for
+//! it takes the most combinations out of the search (issue #851). Rejected: the part the
+//! closest choice failed at (the search does not know that the failure is that part's), and
+//! naming no part (the message gave the person a list of twelve to choose from).
+//!
+//! **A chain that no choice can reach is refused before it is searched** (issue #851). A bound
+//! that reads every part of a chain was judged only at the last part, so a chain of nine
+//! resistors whose total no choice reaches tried 250000 combinations and gave up. Before each
+//! part is chosen, `ahead.rs` gives every part still to be chosen the hull of its candidates
+//! and asks each bound they feed whether any value of the ranges meets it; when none does, the
+//! search goes back as if every choice had been tried. The picks of a group that is solved are
+//! the same (what is refused had no completion), and the look is made before the first part
+//! and, after that, only once the group has refused a candidate. Not done: a bound that must
+//! hold over the whole range of a value and that some value meets (seven LED branches whose
+//! current is over the regulator's only at the worst case) is still searched to the limit.
 //!
 //! **The order of the groups must not decide the board** (9.3). Groups are picked in path
 //! order, and a bound that reads values of two groups waits for the parts that feed it, so the
@@ -187,7 +201,8 @@
 //!
 //! `cycles.rs` has the open circles (ADR 0057) and `findings.rs` the unconstrained pick (ADR
 //! 0065); `transfer.rs` has the bound that reaches a part (ADR 0065, stage 0); `narrow.rs` has
-//! the skipping of candidates by blocks (issue #184), checked by `Catalogs::with_narrowing_audit`.
+//! the skipping of candidates by blocks (issue #184), checked by `Catalogs::with_narrowing_audit`;
+//! `ahead.rs` has the look at the parts still to be chosen (issue #851).
 //!
 //! # Where the code is
 //!
@@ -213,6 +228,7 @@
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
+mod ahead;
 mod candidates;
 mod coupling;
 mod dcpass;
@@ -423,10 +439,18 @@ enum Underated {
 const GIVE_UP_NAMES: usize = 12;
 
 /// What a search that ran out of its budget says (`SearchBudget`): how many combinations it
-/// tried, which parts it was choosing together, and what to change. The parts are searched
-/// together because a bound reads values of several of them, and the search tried the
-/// combinations in turn because no failure pointed at fewer parts than all.
-fn give_up_message(tried: usize, names: &[String], out_of_work: bool) -> String {
+/// tried, which parts it was choosing together, which part to state a value for, and what else
+/// to change. The parts are searched together because a bound reads values of several of them,
+/// and the search tried the combinations in turn because no failure pointed at fewer parts than
+/// all. The part named is the one with the most candidates that fit (`state`: its path and how
+/// many it has): a value stated for it takes the most combinations out of the search (issue
+/// #851).
+fn give_up_message(
+    tried: usize,
+    names: &[String],
+    out_of_work: bool,
+    state: (&str, usize),
+) -> String {
     let shown = names.len().min(GIVE_UP_NAMES);
     let mut parts = names[..shown].join(" and ");
     if names.len() > shown {
@@ -437,8 +461,9 @@ fn give_up_message(tried: usize, names: &[String], out_of_work: bool) -> String 
     } else {
         ""
     };
+    let (path, choices) = state;
     format!(
-        "gave up after trying {tried} combinations of candidates for {parts}{limit}; a bound reads values of all of them, so no part could be blamed alone. State a value for one of them, narrow a window that a bound on them reads, or split the group so that fewer parts share a bound"
+        "gave up after trying {tried} combinations of candidates for {parts}{limit}; a bound reads values of all of them, so no part could be blamed alone. State a value for `{path}`: it has the most candidates that fit ({choices}), so a value for it leaves the fewest combinations to try. Or narrow a window that a bound on them reads, or split the group so that fewer parts share a bound"
     )
 }
 
@@ -774,6 +799,7 @@ fn solve_model(model: &Model, catalogs: &Catalogs, unit: &str) -> Solution {
         to_choose: 0,
         network: Default::default(),
         dc_index: None,
+        hulls: HashMap::new(),
     };
     job::checkpoint();
     s.relax_pinned();
@@ -1212,4 +1238,7 @@ struct Solver<'a> {
     /// What the pick-time analysis reads of the model's nets and instances, which the picks do
     /// not change: made at the first analysis and kept for the solve (issue #568).
     dc_index: Option<crate::dc::Index>,
+    /// The hulls of the candidates of the parts of the group being searched, by job, with the
+    /// domains of the part's columns they were found for (`ahead.rs`).
+    hulls: HashMap<usize, ahead::Hull>,
 }

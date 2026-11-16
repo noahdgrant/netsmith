@@ -703,8 +703,13 @@ fn a_capacitor_rated_too_low_for_its_rail_is_refused_with_the_numbers() {
     let msgs = messages(&s);
     assert_eq!(msgs.len(), 1, "{msgs:#?}");
     assert!(msgs[0].contains("`stage.output_cap`"), "{}", msgs[0]);
-    assert!(msgs[0].contains("must always be at least"), "{}", msgs[0]);
-    assert!(msgs[0].contains("17.3"), "{}", msgs[0]);
+    // The rating is refused before a trial: five times the lowest output of any regulator that
+    // fits is already above 16 V (`ahead.rs`).
+    assert!(
+        msgs[0].contains("whichever candidates they take, stage.output_cap.max_voltage must be at least (stage.vout.voltage * 5), but 16V is always below 16.17V..16.83V"),
+        "{}",
+        msgs[0]
+    );
 }
 
 // ---- the examples with real parts ---------------------------------------------------
@@ -1604,9 +1609,8 @@ fn an_led_branch_counts_against_the_regulators_current() {
 #[test]
 fn parts_alone_can_overload_the_regulator() {
     // No load is stated on the output. Three branches of 47 ohm draw about 17 to 36 mA each,
-    // up to 107 mA together, which is more than the regulator gives. (With 100 ohm it took
-    // six branches, and every one of the six LEDs that fit has its own copy of each of the
-    // other five, which is more combinations than the search will try before giving up.)
+    // up to 107 mA together, which is more than the regulator gives. (With 100 ohm it takes
+    // seven branches, which the next test gives.)
     let (_, s) = run_with(&with_branches(3, "47ohm +/- 1%", "0mA"), &with_unrated_led());
     let msgs = messages(&s);
     assert_eq!(msgs.len(), 1, "{msgs:#?}");
@@ -1625,6 +1629,35 @@ fn parts_alone_can_overload_the_regulator() {
     // Two of them are within it.
     let (_, ok) = run_with(&with_branches(2, "47ohm +/- 1%", "0mA"), &with_unrated_led());
     assert!(ok.diagnostics.is_empty(), "{:?}", messages(&ok));
+}
+
+#[test]
+fn led_branches_that_overload_the_regulator_together_give_up_and_name_an_led_to_state() {
+    // Seven branches of 100 ohm: every one of the six LEDs that fit has its own copy of each of
+    // the others, and each combination draws more than the regulator gives at its worst case
+    // only, so no choice of the first branches is refused before the last (`ahead.rs` asks
+    // whether some value of a range meets a bound, and some does). The search runs to its limit,
+    // lowered here so that the test ends in a moment, and names a part to state a value for
+    // (issue #851).
+    let catalogs = with_unrated_led().with_search_budget(netsmith_solve::SearchBudget {
+        trials: 2_000,
+        work: u64::MAX,
+    });
+    let (_, s) = run_with(&with_branches(7, "100ohm +/- 1%", "0mA"), &catalogs);
+    let msgs = messages(&s);
+    assert_eq!(msgs.len(), 1, "{msgs:#?}");
+    assert!(
+        msgs[0].starts_with("gave up after trying 2000 combinations of candidates for `b1_led` and `b1_r` and "),
+        "{}",
+        msgs[0]
+    );
+    assert!(
+        msgs[0].contains("State a value for `b1_led`: it has the most candidates that fit (6), so a value for it leaves the fewest combinations to try."),
+        "{}",
+        msgs[0]
+    );
+    // The 2000 of the group, and the few of the other groups of the board.
+    assert!((2_000..2_100).contains(&s.trials), "{} trials", s.trials);
 }
 
 #[test]

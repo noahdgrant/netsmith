@@ -49,9 +49,12 @@ fn catalogs(budget: SearchBudget) -> Catalogs {
     c
 }
 
-/// `n` resistors `u01`.. in one sum that no choice of them reaches (800 ohms at most each),
-/// and `others` resistors that read nothing of it, each with a bound of its own: parts that
-/// make the board larger without being part of the search.
+/// `n` resistors `u01`.. in one sum that must stay within a window of 1 ohm in the middle of
+/// what they can add up to, and `others` resistors that read nothing of it, each with a bound of
+/// its own: parts that make the board larger without being part of the search. Some value of
+/// every sum's range is in the window, so no choice of the first parts is refused before the
+/// last (`ahead.rs`), but a sum of 1 % resistors spreads over more than 1 ohm, so no choice
+/// keeps all of it in the window: the search tries every combination.
 fn board(n: usize, others: usize) -> String {
     let names: Vec<String> = (1..=n).map(|i| format!("u{i:02}")).collect();
     let mut src = String::from("import std::parts::passive::Resistor\n\nboard Big {\n");
@@ -61,7 +64,11 @@ fn board(n: usize, others: usize) -> String {
     src.push_str("    .total: Resistance\n");
     let sum: Vec<String> = names.iter().map(|n| format!(".{n}.resistance")).collect();
     src.push_str(&format!("    .total == {}\n", sum.join(" + ")));
-    src.push_str("    .total >= 100Mohm\n");
+    src.push_str(&format!(
+        "    .total >= {low}ohm\n    .total <= {high}ohm\n",
+        low = 450 * n,
+        high = 450 * n + 1
+    ));
     for i in 0..others {
         src.push_str(&format!(
             "    .x{i}: Resistor\n    .y{i}: Voltage\n    .y{i} &= 3V\n    .x{i}.resistance >= .y{i} / 10mA\n    .x{i}.resistance <= .y{i} / 1mA\n"
@@ -81,7 +88,7 @@ fn messages(s: &Solution) -> Vec<String> {
     s.diagnostics.iter().map(|d| d.message.clone()).collect()
 }
 
-const ADVICE: &str = "a bound reads values of all of them, so no part could be blamed alone. State a value for one of them, narrow a window that a bound on them reads, or split the group so that fewer parts share a bound";
+const ADVICE: &str = "a bound reads values of all of them, so no part could be blamed alone. State a value for `u01`: it has the most candidates that fit (8), so a value for it leaves the fewest combinations to try. Or narrow a window that a bound on them reads, or split the group so that fewer parts share a bound";
 
 #[test]
 fn the_default_budget_is_the_limit_a_build_has() {
