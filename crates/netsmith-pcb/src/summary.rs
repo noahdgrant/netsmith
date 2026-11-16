@@ -494,9 +494,12 @@ impl Summary {
     }
 }
 
+/// The designator and pad number a `PART.PAD` names, with the centre and box of each pad.
+type FoundPads = (String, String, Vec<(Pt, Rect)>);
+
 /// The part and the pads a `PART.PAD` names: the part's designator, the pad's number, and the
 /// centre and box of every pad of the footprint with the number.
-fn find_pads(board: &Board, name: &str) -> Result<(String, String, Vec<(Pt, Rect)>), String> {
+fn find_pads(board: &Board, name: &str) -> Result<FoundPads, String> {
     let Some((part, number)) = name.rsplit_once('.') else {
         return Err(format!(
             "`{name}` is not a pad: name it `PART.PAD`, the part's path or designator, a dot and the pad's number (`R1.2`)"
