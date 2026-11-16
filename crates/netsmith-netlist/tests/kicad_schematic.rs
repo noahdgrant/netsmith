@@ -280,8 +280,9 @@ fn a_missing_sheet_a_bus_and_a_file_that_is_no_schematic_are_named() {
     assert!(e.contains("places itself"), "{e}");
 }
 
+/// A file of the repository, by its path from the root.
 fn example(path: &str) -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples").join(path)
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("../..").join(path)
 }
 
 /// The schematic and the board KiCad made from it are the same circuit, part for part by
@@ -311,8 +312,8 @@ fn the_schematic_of_orbit_is_its_board() {
     // KiCad 7's format, with power symbols named by their pins. U17's value is `~` in the
     // schematic (and in KiCad's netlist of it) and the part's name on the board.
     same_as_its_board(
-        "orbit/reference/ORBIT.kicad_sch",
-        "orbit/reference/ORBIT.kicad_pcb",
+        "examples/orbit/reference/ORBIT.kicad_sch",
+        "examples/orbit/reference/ORBIT.kicad_pcb",
         &[("U17", "AT24C128C")],
     );
 }
@@ -320,8 +321,8 @@ fn the_schematic_of_orbit_is_its_board() {
 #[test]
 fn the_schematic_of_easyduino_and_its_sheet_is_its_board() {
     same_as_its_board(
-        "easyduino_esp32s3/reference/Easyduino_ESP32S3.kicad_sch",
-        "easyduino_esp32s3/reference/Easyduino_ESP32S3.kicad_pcb",
+        "examples/easyduino_esp32s3/reference/Easyduino_ESP32S3.kicad_sch",
+        "examples/easyduino_esp32s3/reference/Easyduino_ESP32S3.kicad_pcb",
         &[],
     );
 }
@@ -329,8 +330,8 @@ fn the_schematic_of_easyduino_and_its_sheet_is_its_board() {
 #[test]
 fn the_schematic_of_the_charger_is_its_board() {
     same_as_its_board(
-        "power_manifold_charger/reference/charger-module.kicad_sch",
-        "power_manifold_charger/reference/charger-module.kicad_pcb",
+        "examples/power_manifold_charger/reference/charger-module.kicad_sch",
+        "examples/power_manifold_charger/reference/charger-module.kicad_pcb",
         &[],
     );
 }

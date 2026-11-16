@@ -166,7 +166,10 @@ example_readers() {
         two_boards) echo "$any_example netsmith-core netsmith-check netsmith-solve netsmith-design netsmith-pipeline netsmith-fabricate" ;;
         carrier_and_cards) echo "$any_example netsmith-check netsmith-solve" ;;
         four_layer | six_layer | ten_layer) echo "$any_example netsmith-design netsmith-pipeline netsmith-placer netsmith-router netsmith-fabricate" ;;
-        enclosure_sensor | power_manifold_charger) echo "$any_example netsmith-fabricate" ;;
+        enclosure_sensor) echo "$any_example netsmith-fabricate" ;;
+        # netsmith-netlist reads the ports' original schematics and boards (`reference/`).
+        power_manifold_charger) echo "$any_example netsmith-fabricate netsmith-netlist" ;;
+        orbit | easyduino_esp32s3) echo "$any_example netsmith-netlist" ;;
         led_panel | outline_and_pours) echo "$any_example netsmith-fabricate" ;;
         two_buck) echo "$any_example netsmith-fabricate" ;;
         rp2350_minimal) echo "$any_example netsmith-pcb" ;;
