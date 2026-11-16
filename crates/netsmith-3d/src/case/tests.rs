@@ -44,6 +44,7 @@ fn case(name: &str, solids: Vec<CaseSolid>) -> PlacedCase {
         file: format!("case/{name}.step"),
         sha256: String::new(),
         figures: CaseFigures::default(),
+        checked: true,
         solids,
     }
 }
@@ -190,6 +191,27 @@ fn a_part_taller_than_the_lid_collides_by_how_far_it_goes_in() {
         text.starts_with("U_tall (`tall`), 9.00 mm tall (stated), is inside the solid `lid` of the case model `lid` by 1.00 mm"),
         "{text}"
     );
+}
+
+#[test]
+fn a_model_that_is_only_a_drawing_has_no_finding_and_is_still_drawn() {
+    let tall = body("tall", [10.0, 10.0], [12.0, 14.0], Some(9.0));
+    let mut drawn = lid();
+    drawn.checked = false;
+    assert!(
+        check(
+            &board(vec![hole("h", 5.0, 5.0)]),
+            std::slice::from_ref(&tall),
+            std::slice::from_ref(&drawn)
+        )
+        .is_empty()
+    );
+    assert!(!drawn.meshes().is_empty(), "a drawing is still drawn");
+    // Beside a checked model, only the checked one is measured against.
+    let mut walls = case("walls", walls());
+    walls.checked = true;
+    let found = check(&board(vec![]), &[tall], &[drawn, walls]);
+    assert!(found.iter().all(|f| f.case != "lid"), "{found:?}");
 }
 
 #[test]

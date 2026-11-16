@@ -378,12 +378,24 @@ pub(crate) fn case_models(
                 None => {}
             }
         }
+        let checked = match domain(model, id, "check") {
+            Some(Domain::Text(t)) if t == "fit" => true,
+            Some(Domain::Text(t)) if t == "none" => false,
+            Some(Domain::Text(t)) => {
+                errors.push(format!(
+                    "`{path}.check` is \"{t}\", which is not \"fit\" or \"none\": \"fit\" measures the board against the model, \"none\" only draws it"
+                ));
+                true
+            }
+            _ => true,
+        };
         found.push(CaseModel {
             name: path,
             file,
             offset,
             rotation,
             figures,
+            checked,
             source: String::new(),
             stated_in: Vec::new(),
             resolved: None,

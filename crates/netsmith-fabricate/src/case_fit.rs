@@ -43,7 +43,7 @@ pub fn notes(case: &CaseScene) -> Vec<String> {
 pub fn note(c: &PlacedCase) -> String {
     let open = c.solids.iter().filter(|s| !s.closed).count();
     format!(
-        "note: case model `{}` (`{}`, SHA-256 {}): {} solid{}{}, {} triangles; the board and its parts' bodies are checked against it (ADR 0109); the file is the maker's, shared under its license",
+        "note: case model `{}` (`{}`, SHA-256 {}): {} solid{}{}, {} triangles; {} (ADR 0109); the file is the maker's, shared under its license",
         c.name,
         c.file,
         c.sha256,
@@ -54,7 +54,12 @@ pub fn note(c: &PlacedCase) -> String {
         } else {
             String::new()
         },
-        c.triangle_count()
+        c.triangle_count(),
+        if c.checked {
+            "the board and its parts' bodies are checked against it"
+        } else {
+            "it is drawn only (`.check &= \"none\"`), and nothing is checked against it"
+        }
     )
 }
 
@@ -80,10 +85,17 @@ pub fn read(design: &Design) -> (Vec<PlacedCase>, Vec<FitFinding>) {
             findings.push(about_model(
                 c,
                 CaseWhy::Missing {
-                    message: format!(
-                        "`{}.file` names `{}` ({}), and there is no such file, so the board's fit in its case model `{}` is not checked; add the file, or leave it out on a machine that may not have it",
-                        c.name, c.file, c.source, c.name
-                    ),
+                    message: if c.checked {
+                        format!(
+                            "`{}.file` names `{}` ({}), and there is no such file, so the board's fit in its case model `{}` is not checked; add the file, or leave it out on a machine that may not have it",
+                            c.name, c.file, c.source, c.name
+                        )
+                    } else {
+                        format!(
+                            "`{}.file` names `{}` ({}), and there is no such file, so the model `{}` is not drawn; add the file, or leave it out on a machine that may not have it",
+                            c.name, c.file, c.source, c.name
+                        )
+                    },
                 },
             ));
             continue;
@@ -93,17 +105,30 @@ pub fn read(design: &Design) -> (Vec<PlacedCase>, Vec<FitFinding>) {
                 c,
                 CaseWhy::Unreadable {
                     message: format!(
-                        "`{}.file` names `{}` ({}), and netsmith's STEP reader cannot read it ({why}), so the board's fit in its case model `{}` is not checked: export the case again as AP214 or AP242, or leave the case model out",
-                        c.name, c.file, c.source, c.name
+                        "`{}.file` names `{}` ({}), and netsmith's STEP reader cannot read it ({why}), so {} `{}` is not {}: export the case again as AP214 or AP242, or leave the case model out",
+                        c.name,
+                        c.file,
+                        c.source,
+                        if c.checked {
+                            "the board's fit in its case model"
+                        } else {
+                            "the model"
+                        },
+                        c.name,
+                        if c.checked { "checked" } else { "drawn" }
                     ),
                 },
             )
         };
         // Read as a part's model is, from the same cache (by path and SHA-256 of the bytes).
         match crate::models::read(path) {
-            Ok((sha, read)) => cases.push(place_case(
-                &c.name, &c.file, &sha, c.figures, &read.mesh, c.rotation, c.offset,
-            )),
+            Ok((sha, read)) => {
+                let mut placed = place_case(
+                    &c.name, &c.file, &sha, c.figures, &read.mesh, c.rotation, c.offset,
+                );
+                placed.checked = c.checked;
+                cases.push(placed);
+            }
             Err(e) => findings.push(unreadable(e)),
         }
     }

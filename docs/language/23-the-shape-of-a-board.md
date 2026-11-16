@@ -1101,6 +1101,11 @@ physical for Boxed {
         .lid: CaseModel {
             .file &= "case/lid.step"
         }
+        // The plug that mates with the header, drawn where it sits and measured against nothing.
+        .plug: CaseModel {
+            .file &= "models/plug.step"
+            .check &= "none"
+        }
     }
 }
 ```
@@ -1126,6 +1131,8 @@ The file is found as a part's model is: a path outside the project, an absolute 
 ```text
 warning: Boxed: `shell.file` names `src/case/base.step` (src/boxed.physical.nsm:12), and there is no such file, so the board's fit in its case model `shell` is not checked; add the file, or leave it out on a machine that may not have it
 ```
+
+**A model that is only a drawing.** (`.plug` above.) A board often shows a model that is not its case: the connector it mates with, a neighbouring module, a bracket, a cable. Such a model touches the board where it is meant to (a plug's contact tails end on the board's face, a through-hole part's pins go through it), so `case_collision` would stop `fab` for a collision that is meant. Declare it as a `CaseModel` and state `.check &= "none"`: it is placed and drawn as a case model is, in the 3D view and in `render`, and nothing is measured against it (no `case_collision`, `case_clearance`, `case_reach` or `case_boss`, and its solids do not count as a boss for a hole). `.check` is `"fit"` (the default) or `"none"`, and any other word is refused; `board3d --json` lists the model with `"checked": false`. A file that is not there or not readable still gives a `case_unchecked` finding, which says the model is not drawn.
 
 A case model with no `.file`, or an empty one, is refused, as there is nothing to place, and so is a rotation or an offset that is a range. A case is the board's: a `CaseModel` belongs in the `case { }` section, and one in the circuit source, in a module or elsewhere in the unit is refused:
 

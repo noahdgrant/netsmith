@@ -132,6 +132,9 @@ pub struct PlacedCase {
     /// The SHA-256 of the file's bytes, in hex.
     pub sha256: String,
     pub figures: CaseFigures,
+    /// Whether the board is measured against it (`.check`, `"fit"`); a model that is only a
+    /// drawing (`"none"`) is drawn and placed as any other and has no finding.
+    pub checked: bool,
     /// In the order of the file.
     pub solids: Vec<CaseSolid>,
 }
@@ -260,6 +263,7 @@ pub fn place(
         file: file.to_string(),
         sha256: sha256.to_string(),
         figures,
+        checked: true,
         solids: solids
             .into_iter()
             .map(|(n, t, c)| CaseSolid::new(n, t, c))
@@ -822,7 +826,11 @@ fn body_volume(b: &Body, z0: f64, z1: f64) -> Convex {
 /// Findings are in the order: per case model, its open shells; the board; per body by path,
 /// per case model, a collision (or an unknown height, a standard height in a solid), else a
 /// clearance, and then its stated pins the same way; the connectors' reach; the mounting holes.
+///
+/// A model that is `checked == false` (`.check &= "none"`) is drawn and measured by nothing.
 pub fn check(board: &BoardSolid, bodies: &[Body], cases: &[PlacedCase]) -> Vec<FitFinding> {
+    let cases: Vec<&PlacedCase> = cases.iter().filter(|c| c.checked).collect();
+    let cases = cases.as_slice();
     let mut out = Vec::new();
     if cases.is_empty() {
         return out;
@@ -840,10 +848,7 @@ pub fn check(board: &BoardSolid, bodies: &[Body], cases: &[PlacedCase]) -> Vec<F
         }
     }
     out.extend(board_collisions(board, cases));
-    let extent = cases
-        .iter()
-        .filter_map(PlacedCase::bounds)
-        .reduce(Aabb::union);
+    let extent = cases.iter().filter_map(|c| c.bounds()).reduce(Aabb::union);
     for b in bodies {
         out.extend(body_fit(b, cases, extent));
         out.extend(pins_fit(b, cases));
@@ -882,7 +887,7 @@ fn in_opening(board: &BoardSolid, p: [f64; 3]) -> bool {
 }
 
 /// The board's solid in each case solid.
-fn board_collisions(board: &BoardSolid, cases: &[PlacedCase]) -> Vec<FitFinding> {
+fn board_collisions(board: &BoardSolid, cases: &[&PlacedCase]) -> Vec<FitFinding> {
     let pieces = board_pieces(board);
     let bounds = pieces.iter().map(|p| p.bounds).reduce(Aabb::union);
     let Some(bounds) = bounds else {
@@ -961,7 +966,7 @@ fn board_pieces(board: &BoardSolid) -> Vec<Convex> {
 }
 
 /// One body against every case model.
-fn body_fit(b: &Body, cases: &[PlacedCase], extent: Option<Aabb>) -> Vec<FitFinding> {
+fn body_fit(b: &Body, cases: &[&PlacedCase], extent: Option<Aabb>) -> Vec<FitFinding> {
     let mut out = Vec::new();
     let subject = Subject::Part {
         path: b.path.clone(),
@@ -1033,7 +1038,7 @@ fn body_fit(b: &Body, cases: &[PlacedCase], extent: Option<Aabb>) -> Vec<FitFind
 
 /// A part's pins below the far face against every case model, where the design states how far
 /// they stand out: a collision of stated pins is an error, as a stated height's is.
-fn pins_fit(b: &Body, cases: &[PlacedCase]) -> Vec<FitFinding> {
+fn pins_fit(b: &Body, cases: &[&PlacedCase]) -> Vec<FitFinding> {
     let Pins::Known {
         at,
         length,
@@ -1071,7 +1076,7 @@ fn pins_fit(b: &Body, cases: &[PlacedCase]) -> Vec<FitFinding> {
 fn volume_fit(
     volume: &Convex,
     subject: &Subject,
-    cases: &[PlacedCase],
+    cases: &[&PlacedCase],
     collision: &dyn Fn(Option<f64>) -> (FitKind, Why),
 ) -> Vec<FitFinding> {
     let mut out = Vec::new();
@@ -1176,7 +1181,7 @@ fn nearest<'a>(volume: &Convex, case: &'a PlacedCase) -> Option<(&'a str, [f64; 
 
 /// A connector at the board's edge, against each case model: material out from its face, or
 /// a face too deep inside the wall.
-fn reach(board: &BoardSolid, b: &Body, cases: &[PlacedCase]) -> Vec<FitFinding> {
+fn reach(board: &BoardSolid, b: &Body, cases: &[&PlacedCase]) -> Vec<FitFinding> {
     let mut out = Vec::new();
     let (Some(z0), Some(z1)) = b.z_range() else {
         return out;
@@ -1286,7 +1291,7 @@ fn reach(board: &BoardSolid, b: &Body, cases: &[PlacedCase]) -> Vec<FitFinding> 
 
 /// The mounting holes no case solid holds: nothing within the case's `.boss_gap` of the ring
 /// above the top face or below the bottom face, in any case model.
-fn bosses(board: &BoardSolid, bodies: &[Body], cases: &[PlacedCase]) -> Vec<FitFinding> {
+fn bosses(board: &BoardSolid, bodies: &[Body], cases: &[&PlacedCase]) -> Vec<FitFinding> {
     let mut out = Vec::new();
     let mut seen: Vec<&str> = Vec::new();
     for h in &board.holes {

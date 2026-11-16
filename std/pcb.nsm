@@ -145,6 +145,13 @@ interface CaseModel {
     /// than this may not let it seat.
     .reach: Length
     .reach ?= 1.5mm
+    /// `"fit"` (the default) measures the board against the model; `"none"` only draws it. A
+    /// model that is not the board's case (the connector it mates with, a neighbouring
+    /// module, a bracket, a cable) is declared here too, so that it is placed and drawn as a
+    /// case model is, and `"none"` stops every finding about it (no `case_collision`, and no
+    /// `case_boss` for a hole near it), as it touches the board where it is meant to.
+    .check: String
+    .check ?= "fit"
     /// How far from a mounting hole's ring a case solid may be, above or below the board, and
     /// still hold it (`case_boss`, a warning when none is that near).
     .boss_gap: Length

@@ -415,6 +415,7 @@ fn a_case_model_is_carried_with_its_offset_and_rotation() {
                     reach: 1.5,
                     boss_gap: 0.5,
                 },
+                checked: true,
                 source: String::new(),
                 stated_in: Vec::new(),
                 resolved: None,
@@ -428,6 +429,7 @@ fn a_case_model_is_carried_with_its_offset_and_rotation() {
                     clearance: 0.3,
                     ..netsmith_core::CaseFigures::default()
                 },
+                checked: true,
                 source: String::new(),
                 stated_in: Vec::new(),
                 resolved: None,
@@ -453,6 +455,36 @@ fn a_case_models_figure_is_one_length_and_not_negative() {
     );
     assert!(errors.contains("`shell.reach` is"), "{errors}");
     assert!(errors.contains("a range"), "{errors}");
+}
+
+#[test]
+fn a_case_model_that_is_only_a_drawing_is_not_checked() {
+    let d = cased(
+        "",
+        "        .shell: CaseModel {\n            .file &= \"case/box.step\"\n        }\n        .plug: CaseModel {\n            .file &= \"case/plug.step\"\n            .check &= \"none\"\n        }\n",
+    )
+    .unwrap();
+    let checked: Vec<(&str, bool)> = d
+        .features
+        .case_models
+        .iter()
+        .map(|c| (c.name.as_str(), c.checked))
+        .collect();
+    assert_eq!(checked, [("plug", false), ("shell", true)]);
+}
+
+#[test]
+fn a_case_models_check_is_fit_or_none() {
+    let e = cased(
+        "",
+        "        .shell: CaseModel {\n            .file &= \"case/box.step\"\n            .check &= \"off\"\n        }\n",
+    )
+    .unwrap_err()
+    .join("\n");
+    assert_eq!(
+        e,
+        "`shell.check` is \"off\", which is not \"fit\" or \"none\": \"fit\" measures the board against the model, \"none\" only draws it"
+    );
 }
 
 #[test]
