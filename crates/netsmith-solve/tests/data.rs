@@ -260,6 +260,9 @@ fn every_efficiency_is_a_fraction_range_and_its_source_names_the_curve() {
     }
 }
 
+/// How many rows of `capacitor.csv` state an `esr`. Update it with the rows.
+const ROWS_WITH_ESR: usize = 28;
+
 /// A capacitor row that states an `esr` (issue #420) states one maximum, in ohms, read off its
 /// maker's document at a point: the row's `source` has an `esr:` entry that begins with the cell
 /// and says which document, page and table or graph, and its `notes` say the frequency and the
@@ -275,11 +278,13 @@ fn every_esr_cell_is_one_resistance_and_its_source_names_the_page_and_the_point(
             continue;
         }
         with.push(lcsc.clone());
-        let mohm: f64 = cell
-            .strip_suffix("mohm")
-            .and_then(|n| n.parse().ok())
-            .unwrap_or_else(|| panic!("{lcsc}: esr `{cell}` is not like 4mohm"));
-        assert!(mohm > 0.0 && mohm <= 1000.0, "{lcsc}: esr {mohm} mohm");
+        let mohm: f64 = match (cell.strip_suffix("mohm"), cell.strip_suffix("ohm")) {
+            (Some(n), _) => n.parse().ok(),
+            (None, Some(n)) => n.parse().ok().map(|o: f64| o * 1000.0),
+            _ => None,
+        }
+        .unwrap_or_else(|| panic!("{lcsc}: esr `{cell}` is not like 4mohm or 1.9ohm"));
+        assert!(mohm > 0.0 && mohm <= 100_000.0, "{lcsc}: esr {mohm} mohm");
         let entry = row["source"]
             .split(" ; ")
             .find_map(|e| e.strip_prefix("esr: "))
@@ -297,8 +302,13 @@ fn every_esr_cell_is_one_resistance_and_its_source_names_the_page_and_the_point(
             "{lcsc}: the notes do not say whether the figure is typical or a maximum"
         );
     }
-    // Update it with the rows: the one capacitor row whose maker's document draws the ESR.
-    assert_eq!(with, ["C23733"], "{with:?}");
+    // Update it with the rows: the capacitor rows whose maker's document or library draws the
+    // ESR at 500 kHz. The other rows have none: the Samsung C0G rows (its library curve starts at
+    // 10 or 100 MHz), the Fenghua rows, the Yageo row and the Murata row (README, "Capacitor ESR").
+    assert_eq!(with.len(), ROWS_WITH_ESR, "{with:?}");
+    for lcsc in ["C1549", "C1546", "C1634", "C32949", "C14663", "C3845593"] {
+        assert!(!with.iter().any(|w| w == lcsc), "{lcsc} states no ESR");
+    }
 }
 
 /// How many rows of the standard catalogs have a `height` (ADR 0094). Update it with the rows.
