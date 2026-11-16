@@ -56,6 +56,7 @@ pub(crate) fn run(m: &Model<'_>, findings: &mut Vec<Finding>) {
     super::marks::run(&mut out);
     super::pour::run(&mut out);
     super::acid::run(&mut out);
+    super::stackup::run(&mut out);
 }
 
 pub(crate) fn same_net(a: &Option<String>, b: &Option<String>) -> bool {

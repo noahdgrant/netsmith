@@ -2659,8 +2659,9 @@ pub fn route_with_margin(
 
 /// What the design rules check needs that the board file does not say: the process's mask
 /// web and widest filled via, the rules a project file cannot say and the least width of the
-/// nets that carry current (issue #431), and the
-/// courtyards a protruding pin excuses (ADR 0045 section 15).
+/// nets that carry current (issue #431), the
+/// courtyards a protruding pin excuses (ADR 0045 section 15), and the stackup the process makes
+/// (issue #993).
 pub fn drc_extras(board: &Board) -> netsmith_geom::DrcExtras {
     netsmith_geom::DrcExtras {
         mask_web: Some(board.rules.mask_bridge),
@@ -2681,6 +2682,17 @@ pub fn drc_extras(board: &Board) -> netsmith_geom::DrcExtras {
         via_counts: board.via_counts(),
         track_angle: true,
         marks: Some(marks_of(board)),
+        stackup: Some(netsmith_geom::DrcStackup {
+            layers: board.process.stackup.layers as usize,
+            thickness: board.process.stackup.thickness,
+            tolerance: netsmith_pcb::thickness_tolerance(
+                board
+                    .process
+                    .stackup
+                    .chosen_thickness()
+                    .unwrap_or(board.process.stackup.thickness.1),
+            ),
+        }),
     }
 }
 

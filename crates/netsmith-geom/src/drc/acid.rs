@@ -12,8 +12,10 @@
 //!   pad, a via, an oval's end and a rounded corner are not judged, because a round edge turns
 //!   away from the track and the wedge opens within the pad's radius (the routed examples leave
 //!   round pads and rounded corners a little off square, at 79 to 86 degrees, where no etchant
-//!   is trapped).
-//!   A custom pad is not judged.
+//!   is trapped). Such an edge would need an angle of its own, and no fabricator publishes one.
+//!   A custom pad is judged at the edge of its anchor and primitives the track leaves: a
+//!   straight side of its anchor, of one of its polygons or of one of its lines (a curve is the
+//!   straight pieces the board reader cuts it into); its circles and arcs are round.
 //! - a track that ends on the middle of another track (a tee): the angle between the two. A
 //!   track that lies along the other overlaps it and is no tee.
 //! - tracks that end at one place outside a pad: the least angle between any two of them.
@@ -38,7 +40,7 @@ use super::model::{Copper, Kind, Model};
 use super::shape::{Shape, gap};
 use crate::artwork::TrackShape;
 use crate::geom::{self, Pt};
-use crate::pads::{self, Outline};
+use crate::pads::{self, Outline, Prim};
 
 /// The tolerance on a right angle, in degrees: an angle under `90 - TOLERANCE` is acute. The
 /// tolerance `track_angle` gives a tee (its 89 degrees).
@@ -172,7 +174,7 @@ fn filled(m: &Model<'_>, track: usize, net: &Option<String>, layer: usize, p: Pt
 fn leaves_pad(m: &Model<'_>, k: usize, layer: usize, end: Pt, way: Pt, width: f64) -> Option<Trap> {
     let c = &m.items[k];
     let length = c.length;
-    let (pad, shape) = m.items.iter().enumerate().find_map(|(j, p)| {
+    let (pad, shapes) = m.items.iter().enumerate().find_map(|(j, p)| {
         if !matches!(p.kind, Kind::Pad(_) | Kind::Via(_))
             || !same_net(p, &c.net)
             || !on_layer(p, layer)
@@ -180,15 +182,15 @@ fn leaves_pad(m: &Model<'_>, k: usize, layer: usize, end: Pt, way: Pt, width: f6
         {
             return None;
         }
-        let s = p
-            .shapes
-            .iter()
-            .find(|s| gap(&Shape::disc(end, 0.0), s).d == 0.0)?;
-        Some((j, s))
+        Some((j, &p.shapes))
     })?;
-    // Where the centre line leaves the pad: a step out of the pad, then halving. An arc is
-    // followed along its tangent, near enough over the size of a pad.
-    let inside = |t: f64| gap(&Shape::disc(end + way * t, 0.0), shape).d == 0.0;
+    // Where the centre line leaves the pad (all its shapes: a custom pad is its anchor and its
+    // primitives): a step out of the pad, then halving. An arc is followed along its tangent,
+    // near enough over the size of a pad.
+    let inside = |t: f64| {
+        let dot = Shape::disc(end + way * t, 0.0);
+        shapes.iter().any(|s| gap(&dot, s).d == 0.0)
+    };
     let step = 0.01_f64.min(length / 4.0).max(1e-4);
     let mut t = 0.0;
     while inside(t + step) {
@@ -209,7 +211,7 @@ fn leaves_pad(m: &Model<'_>, k: usize, layer: usize, end: Pt, way: Pt, width: f6
     let exit = end + way * hi;
     // Only a straight edge makes a notch: a round one (a round pad or via, an oval's end, a
     // rounded corner) turns away from the track, and the wedge opens within the pad's radius.
-    let normal = straight_normal(m, pad, shape, exit + way * 1e-3)?;
+    let normal = straight_normal(m, pad, exit + way * 1e-3)?;
     let off = angle(way, normal);
     let acute = 90.0 - off;
     if acute >= 90.0 - TOLERANCE {
@@ -239,17 +241,38 @@ fn leaves_pad(m: &Model<'_>, k: usize, layer: usize, end: Pt, way: Pt, width: f6
 
 /// The outward normal of a pad's edge near `p`, a point just outside it, where that edge is
 /// straight: a side of a rectangle, a polygon or an oval, or the straight part of a rounded
-/// rectangle's side. `None` for a round edge (a round pad, a via, an oval's end, a rounded
-/// corner, a corner of a polygon) and for a custom pad.
-fn straight_normal(m: &Model<'_>, item: usize, shape: &Shape, p: Pt) -> Option<Pt> {
+/// rectangle's side; of a custom pad, such a side of its anchor, a side of one of its polygons
+/// or the side of one of its lines. `None` for a round edge (a round pad, a via, an oval's end,
+/// a rounded corner, a corner of a polygon, a custom pad's circles and arcs).
+fn straight_normal(m: &Model<'_>, item: usize, p: Pt) -> Option<Pt> {
     let Kind::Pad(i) = m.items[item].kind else {
         return None;
     };
+    let shapes = &m.items[item].shapes;
+    // The shape whose edge the track leaves: the one nearest `p`.
+    let nearest = (0..shapes.len()).min_by(|&a, &b| {
+        let d = |k: usize| gap(&Shape::disc(p, 0.0), &shapes[k]).d;
+        d(a).total_cmp(&d(b))
+    })?;
     match pads::outline(&m.art.pads[i]) {
-        Outline::Rect { .. } | Outline::Poly(_) | Outline::Oval { .. } => {
-            let (near, straight) = nearest_on_path(shape, p);
-            (straight && p.dist(near) > shape.r).then(|| unit(p - near))
+        Outline::Custom { anchor, prims } => {
+            let anchors = super::model::outline_shapes(&anchor).len();
+            if nearest < anchors {
+                return edge_normal(&anchor, &shapes[nearest], p);
+            }
+            match prims.get(nearest - anchors)? {
+                Prim::Line { .. } | Prim::Poly { .. } => side_normal(&shapes[nearest], p),
+                Prim::Arc { .. } | Prim::Circle { .. } => None,
+            }
         }
+        outline => edge_normal(&outline, &shapes[nearest], p),
+    }
+}
+
+/// The outward normal of the straight edge of a pad's `outline` (drawn as `shape`) near `p`.
+fn edge_normal(outline: &Outline, shape: &Shape, p: Pt) -> Option<Pt> {
+    match *outline {
+        Outline::Rect { .. } | Outline::Poly(_) | Outline::Oval { .. } => side_normal(shape, p),
         Outline::RoundRect { c, w, h, r, angle } => {
             let local = (p - c).rotate(-angle);
             let normal = if local.y.abs() <= h / 2.0 - r {
@@ -263,6 +286,13 @@ fn straight_normal(m: &Model<'_>, item: usize, shape: &Shape, p: Pt) -> Option<P
         }
         Outline::Circle { .. } | Outline::Custom { .. } => None,
     }
+}
+
+/// The outward normal of a straight piece of a shape's path near `p` (grown by the shape's
+/// radius, its side is straight too); `None` near one of the path's points.
+fn side_normal(shape: &Shape, p: Pt) -> Option<Pt> {
+    let (near, straight) = nearest_on_path(shape, p);
+    (straight && p.dist(near) > shape.r).then(|| unit(p - near))
 }
 
 /// The point of a shape's path (before it is grown by its radius) nearest `p`, and whether it
@@ -547,6 +577,43 @@ mod tests {
             traps(&format!("{PAD} {track} {pour}")),
             Vec::<String>::new()
         );
+    }
+
+    /// A custom SIG pad at (10, 10): a 0.6 mm round anchor, a 2 x 1 mm polygon to the right of
+    /// it and a 1.2 mm circle to the left.
+    const CUSTOM: &str = r#"(footprint "L:U" (layer "F.Cu") (at 10 10)
+        (property "Reference" "U1")
+        (pad "1" smd custom (at 0 0) (size 0.6 0.6) (layers "F.Cu") (net 1 "SIG")
+          (options (anchor circle))
+          (primitives
+            (gr_poly (pts (xy 0 -0.5) (xy 2 -0.5) (xy 2 0.5) (xy 0 0.5)) (width 0) (fill yes))
+            (gr_circle (center -1 0) (end -0.4 0) (width 0) (fill yes)))))"#;
+
+    #[test]
+    fn a_track_that_leaves_a_custom_pads_straight_side_on_the_slant_is_an_acid_trap() {
+        // Out of the polygon's right side, square: no trap.
+        let square = format!("{CUSTOM} {}", segment((11.0, 10.0), (14.0, 10.0), 1));
+        assert_eq!(traps(&square), Vec::<String>::new());
+        // Out of the polygon's right side at 60 degrees to it.
+        let (dx, dy) = (
+            3.0 * 30f64.to_radians().cos(),
+            3.0 * 30f64.to_radians().sin(),
+        );
+        let slant = format!(
+            "{CUSTOM} {}",
+            segment((11.5, 10.0), (11.5 + dx, 10.0 + dy), 1)
+        );
+        let found = traps(&slant);
+        assert_eq!(found.len(), 1, "{found:?}");
+        assert!(
+            found[0].starts_with("a track leaves a pad at 60 degrees on F.Cu")
+                && found[0].contains("SMD pad 1 [SIG] of U1"),
+            "{}",
+            found[0]
+        );
+        // Out of the circle, 0.3 mm off its centre: a round edge, no trap.
+        let round = format!("{CUSTOM} {}", segment((9.0, 10.3), (5.0, 10.3), 1));
+        assert_eq!(traps(&round), Vec::<String>::new());
     }
 
     #[test]

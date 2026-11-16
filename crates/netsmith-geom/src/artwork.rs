@@ -360,8 +360,23 @@ pub struct Artwork {
     pub graphics: Vec<Graphic>,
     pub texts: Vec<Text>,
     pub footprints: Vec<Footprint>,
+    /// The board's thickness in mm (`(general (thickness ...))`), if the file gives it.
+    pub thickness: Option<f64>,
+    /// The layers of the board setup's stackup (`(setup (stackup ...))`), top to bottom, each
+    /// with its type (`copper`, `core`, `prepreg`, `Top Solder Mask`...) and its thickness in
+    /// mm (the sum of its sublayers; 0 for a layer with none, as the silkscreen and the
+    /// paste). Empty when the file has no stackup.
+    pub stackup: Vec<StackupLayer>,
     /// Things in the file the writers leave out, said in the notes.
     pub skipped: Vec<String>,
+}
+
+/// A layer of the stackup a board file states.
+#[derive(Debug, Clone, PartialEq)]
+pub struct StackupLayer {
+    pub name: String,
+    pub kind: String,
+    pub thickness: f64,
 }
 
 impl Artwork {
@@ -635,6 +650,31 @@ impl<'a> Reader<'a> {
             graphics: Vec::new(),
             texts: Vec::new(),
             footprints: Vec::new(),
+            thickness: root.find("general").and_then(|g| child_num(g, "thickness")),
+            stackup: setup
+                .and_then(|s| s.find("stackup"))
+                .map(|st| {
+                    st.find_all("layer")
+                        .map(|l| StackupLayer {
+                            name: l
+                                .items()
+                                .get(1)
+                                .and_then(Sexp::text)
+                                .unwrap_or_default()
+                                .to_string(),
+                            kind: l
+                                .find("type")
+                                .and_then(|t| t.items().get(1)?.text())
+                                .unwrap_or_default()
+                                .to_string(),
+                            thickness: l
+                                .find_all("thickness")
+                                .filter_map(|t| t.items().get(1)?.text()?.parse::<f64>().ok())
+                                .sum(),
+                        })
+                        .collect()
+                })
+                .unwrap_or_default(),
             skipped: Vec::new(),
         };
         Ok(Self {

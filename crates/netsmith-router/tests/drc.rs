@@ -38,6 +38,7 @@ fn ours(board: &Board) -> DrcReport {
         via_counts: board.via_counts(),
         track_angle: true,
         marks: None,
+        stackup: None,
     };
     drc_check(&kicad_pcb(board), Some(&kicad_pro(board)), &extras)
         .unwrap_or_else(|e| panic!("{}: {e}", board.name))

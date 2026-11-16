@@ -22,7 +22,7 @@ pub struct Reported {
     pub items: Vec<(String, Pt)>,
 }
 
-/// What KiCad reports that netsmith does not check, by KiCad's name: a footprint compared
+/// What KiCad reports that netsmith does not check, or measures otherwise, by KiCad's name: a footprint compared
 /// with its library, copper slivers, a zone fill that is not as the zone would make it, and the
 /// like. A board that has them is not compared on them. Also the kinds of finding that need
 /// KiCad's library tables or the schematic, and starved thermals and isolated copper, which both

@@ -53,7 +53,7 @@ use crate::gbr::{Contour, Pen};
 use crate::geom::{self, Arc, Bounds, Pt};
 use crate::pads::{self, Outline};
 use crate::plot::Rules;
-use crate::polygons::{Area, Polygons, difference, grown, overlap, trimmed};
+use crate::polygons::{Area, Polygons, difference, grown, overlap, trimmed, union};
 
 /// KiCad's clearance when a zone gives none.
 const DEFAULT_CLEARANCE: f64 = 0.2;
@@ -283,7 +283,7 @@ fn without_dead_spokes(fill: Vec<Area>, art: &Artwork, layer: &str, z: &Zone) ->
         }
         let mut any = false;
         let mut live: Vec<Area> = Vec::new();
-        for (spoke, end) in spokes(&shape, pad.at, pad.angle + pad.spoke_angle(), z) {
+        for (spoke, end, _) in spokes(&shape, pad.at, pad.angle + pad.spoke_angle(), z) {
             if on_fill(end) {
                 live.push(Area::of(&spoke));
             } else {
@@ -362,18 +362,26 @@ fn isolated(fill: &[Area], art: &Artwork, layer: &str, z: &Zone, others: &[Area]
         .collect()
 }
 
-/// What the design rules check reads of the fill of one zone on one layer (issue #838): the
-/// thermal reliefs of the pads in it and the copper islands its setting keeps.
+/// What the design rules check reads of the fill of one zone on one layer (issues #838, #993):
+/// the fill, the thermal reliefs of the pads in it and its copper islands.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct Judged {
     /// The zone, by its index in the board's zones.
     pub zone: usize,
+    /// Whether the fill is the one the board file holds (`filled_polygon`), rather than one
+    /// worked out here.
+    pub held: bool,
     /// Each pad of the zone's net that the zone joins with thermal spokes and whose centre is
     /// in the zone's outline.
     pub reliefs: Vec<Relief>,
-    /// Each piece of the fill that touches no copper of the zone's net and that the zone's
-    /// `island_removal_mode` keeps: a corner of it, and its area in mm².
+    /// Each piece of the fill that touches no copper of the zone's net: a corner of it, and
+    /// its area in mm². Of a fill worked out here, only the pieces the zone's
+    /// `island_removal_mode` keeps (the others are gone); of a fill the file holds, every one,
+    /// since that copper is made as it is.
     pub islands: Vec<(Pt, f64)>,
+    /// Each copper sliver of the fill ([`slivers`]), when the check asked for them: a corner of
+    /// it and its area in mm².
+    pub slivers: Vec<(Pt, f64)>,
 }
 
 /// A thermal relief of a pad in a zone, as the fill leaves it.
@@ -381,7 +389,8 @@ pub(crate) struct Judged {
 pub(crate) struct Relief {
     /// The pad, by its index in the board's pads.
     pub pad: usize,
-    /// How many spokes the relief has, and how many of them reach the fill.
+    /// How many spokes the relief has, and how many of them reach the fill: the fill has the
+    /// spoke's copper across the thermal gap and its outer end.
     pub spokes: usize,
     pub reach: usize,
     /// How many tracks of the zone's net on the layer run from the pad onto the fill, which
@@ -402,37 +411,68 @@ fn track_points(shape: &TrackShape) -> Vec<Pt> {
     }
 }
 
-/// The fill of every zone of `layer` with a net that holds no fill of its own in the file,
-/// worked out as [`pour`] draws it, and what the check reads of it ([`Judged`]).
+/// The fill a zone holds in the board file on `layer`, as areas (each `filled_polygon` read by
+/// the even-odd rule, as a Gerber region is, so a polygon KiCad fractures into one ring with
+/// slits to its holes is the piece with its holes).
+fn held_fill(z: &Zone, layer: &str) -> Vec<Area> {
+    let mut p = Polygons::new();
+    for (l, poly) in &z.filled {
+        if l == layer && poly.len() >= 3 {
+            p.region(Contour::polygon(poly), None, &[]);
+        }
+    }
+    p.areas()
+}
+
+/// The fill of every zone of `layer` with a net, and what the check reads of it ([`Judged`]):
+/// the fill the file holds where a zone holds one, else the fill worked out as [`pour`] draws
+/// it. With `sliver_width`, the copper slivers narrower than it too: of every fill the file
+/// holds, and of a fill worked out here only when the zone's minimum thickness is under the
+/// width (the fill is trimmed to that thickness, which leaves nothing narrower).
 pub(crate) fn judge(
     art: &Artwork,
     layer: &str,
     edge: &BoardEdge,
     rules: &Rules,
+    sliver_width: Option<f64>,
 ) -> Result<Vec<Judged>, String> {
+    let on_layer = |z: &Zone| z.keepout.is_none() && z.layers.iter().any(|l| l == layer);
+    let holds = |z: &Zone| z.filled.iter().any(|(l, _)| l == layer);
+    if !art
+        .zones
+        .iter()
+        .any(|z| on_layer(z) && z.net.is_some() && !z.teardrop)
+    {
+        return Ok(Vec::new());
+    }
     let index: Vec<usize> = art
         .zones
         .iter()
         .enumerate()
-        .filter(|(_, z)| {
-            z.keepout.is_none()
-                && z.layers.iter().any(|l| l == layer)
-                && !z.filled.iter().any(|(l, _)| l == layer)
-        })
+        .filter(|(_, z)| on_layer(z) && !holds(z))
         .map(|(i, _)| i)
         .collect();
-    if !index.iter().any(|&i| art.zones[i].net.is_some()) {
-        return Ok(Vec::new());
+    // Each zone's fill, by its index in the board's zones, and whether the file holds it.
+    let mut fills: Vec<(usize, Vec<Area>, bool)> = Vec::new();
+    if !index.is_empty() {
+        let zones: Vec<&Zone> = index.iter().map(|&i| &art.zones[i]).collect();
+        for (i, fill) in fill_zones(art, layer, edge, rules, &zones)? {
+            fills.push((index[i], fill, false));
+        }
     }
-    let zones: Vec<&Zone> = index.iter().map(|&i| &art.zones[i]).collect();
-    let filled = fill_zones(art, layer, edge, rules, &zones)?;
+    for (i, z) in art.zones.iter().enumerate() {
+        if on_layer(z) && holds(z) && !z.teardrop {
+            fills.push((i, held_fill(z, layer), true));
+        }
+    }
     let mut out = Vec::new();
-    for (i, fill) in &filled {
-        let z = zones[*i];
-        if z.net.is_none() {
+    for (i, fill, held) in &fills {
+        let z = &art.zones[*i];
+        if z.net.is_none() || z.teardrop {
             continue;
         }
         let outline = outline_area(z);
+        let on_fill = |p: &Pt| fill.iter().any(|a| a.contains(*p));
         let mut reliefs = Vec::new();
         for (k, pad) in art.pads.iter().enumerate().filter(|(_, p)| {
             own_net(z, &p.net)
@@ -445,8 +485,10 @@ pub(crate) fn judge(
             if spokes.is_empty() {
                 continue;
             }
-            let on_fill = |p: &Pt| fill.iter().any(|a| a.contains(*p));
-            let reach = spokes.iter().filter(|(_, end)| on_fill(end)).count();
+            let reach = spokes
+                .iter()
+                .filter(|(_, end, root)| on_fill(end) && on_fill(root))
+                .count();
             let tracks = shape.polygon().map_or(0, |poly| {
                 art.tracks
                     .iter()
@@ -466,27 +508,82 @@ pub(crate) fn judge(
                 tracks,
             });
         }
-        let mut islands = Vec::new();
-        if z.islands != Islands::Remove {
-            let others: Vec<Area> = filled
+        let others = || -> Vec<Area> {
+            fills
                 .iter()
-                .filter(|(j, _)| j != i && zones[*j].net == z.net)
-                .flat_map(|(_, f)| f.iter().cloned())
-                .collect();
+                .filter(|(j, _, _)| j != i && art.zones[*j].net == z.net)
+                .flat_map(|(_, f, _)| f.iter().cloned())
+                .collect()
+        };
+        let mut islands = Vec::new();
+        if *held || z.islands != Islands::Remove {
+            let others = others();
             for (piece, isolated) in fill.iter().zip(isolated(fill, art, layer, z, &others)) {
                 if isolated && let Some(&corner) = piece.outer.first() {
                     islands.push((corner, piece.size()));
                 }
             }
         }
+        let slivers = match sliver_width {
+            Some(width) if width > 0.0 && (*held || z.min_thickness < width) => {
+                // The copper of the net round the fill: a spike of the fill against a pad, a track
+                // or another zone of the net is part of wider copper and no sliver.
+                let mut round = others();
+                round.extend(net_copper(art, layer, z.net.as_deref().unwrap_or_default()));
+                slivers(fill, &round, width)
+            }
+            _ => Vec::new(),
+        };
         out.push(Judged {
-            zone: index[*i],
+            zone: *i,
+            held: *held,
             reliefs,
             islands,
+            slivers,
         });
     }
+    out.sort_by_key(|j| j.zone);
     Ok(out)
 }
+
+/// The copper of a fill narrower than `width` that reaches further than `width` from the copper
+/// that trimming to `width` keeps (issue #993): a corner, which trimming only rounds, stays
+/// within it; a strip or a spike narrower than the width runs further. The fill is trimmed
+/// together with `round`, the other copper of its net on the layer, so a part of the fill that
+/// lies against that copper is as wide as the two together. Each piece, by a corner of it and
+/// its area in mm², pieces under a square micrometre (the curves' rounding) left out.
+fn slivers(fill: &[Area], round: &[Area], width: f64) -> Vec<(Pt, f64)> {
+    if width <= 0.0 || fill.is_empty() {
+        return Vec::new();
+    }
+    let copper = if round.is_empty() {
+        fill.to_vec()
+    } else {
+        // Copper that touches the fill shares an edge with it and no area: grown a little, it
+        // joins.
+        let mut all = fill.to_vec();
+        all.extend(grown(round, TOUCH));
+        union(&all)
+    };
+    let kept = trimmed(&copper, width);
+    let narrow = difference(fill, &kept);
+    if narrow.iter().all(|a| a.size() < SLIVER_NOISE) {
+        return Vec::new();
+    }
+    let far = if kept.is_empty() {
+        narrow
+    } else {
+        difference(&narrow, &grown(&kept, width))
+    };
+    far.iter()
+        .filter(|a| a.size() >= SLIVER_NOISE)
+        .filter_map(|a| Some((*a.outer.first()?, a.size())))
+        .collect()
+}
+
+/// The least area of a piece of [`slivers`], in mm²: a square micrometre, far above the
+/// rounding of a curve cut into straight pieces and far below any copper a fabricator etches.
+const SLIVER_NOISE: f64 = 1e-6;
 
 /// The copper of `net` on `layer` that joins a piece of its zone: its pads with copper on the
 /// layer, its vias, its tracks on the layer and its teardrops there.
@@ -833,7 +930,7 @@ fn thermal(
 /// (the pad's own copper with it) and the point just beyond the gap at its outer end, which the
 /// fill has to reach (KiCad adds a spoke only where its end is on the fill). They run as
 /// [`thermal`] leaves them, along the axes turned by `angle`.
-fn spokes(shape: &Outline, centre: Pt, angle: f64, z: &Zone) -> Vec<(Vec<Pt>, Pt)> {
+fn spokes(shape: &Outline, centre: Pt, angle: f64, z: &Zone) -> Vec<(Vec<Pt>, Pt, Pt)> {
     let Ok(Some(grown)) = shape.grow(z.thermal_gap) else {
         return Vec::new();
     };
@@ -854,8 +951,10 @@ fn spokes(shape: &Outline, centre: Pt, angle: f64, z: &Zone) -> Vec<(Vec<Pt>, Pt
         }
         let reach = spoke.iter().map(|p| p.x).fold(0.0, f64::max);
         let end = centre + Pt::new(reach + SPOKE_PROBE, 0.0).rotate(turn);
+        // The middle of the spoke where it crosses the thermal gap.
+        let root = centre + Pt::new(reach - z.thermal_gap / 2.0, 0.0).rotate(turn);
         let world = spoke.iter().map(|p| centre + p.rotate(turn)).collect();
-        out.push((world, end));
+        out.push((world, end, root));
     }
     out
 }

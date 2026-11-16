@@ -96,6 +96,7 @@ fn errors(board: &Board) -> Vec<String> {
         via_counts: board.via_counts(),
         track_angle: true,
         marks: None,
+        stackup: None,
     };
     drc_check(&kicad_pcb(board), Some(&kicad_pro(board)), &extras)
         .unwrap()
