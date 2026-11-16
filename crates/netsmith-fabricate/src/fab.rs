@@ -1255,10 +1255,18 @@ fn fab_board(
         } else {
             say(format!("{}: routed, writing files", built.label()));
         }
-        // The datasheets' layout guidelines the placement does not meet (ADR 0030, issue
-        // #829), and the voltage the routed tracks of each power net drop (issue #652):
+        // The datasheets' layout guidelines the board does not meet (ADR 0030, issues #829
+        // and #994), and the voltage the routed tracks of each power net drop (issue #652):
         // guidelines, so warnings, and an error that stops here when guidelines are strict.
-        let mut drops: Vec<String> = crate::part_layout::findings(&board)
+        let layout_findings = crate::part_layout::findings(
+            &board,
+            layout.as_ref().and_then(|(l, _)| l.boards.get(&board.name)),
+        );
+        for w in &layout_findings.waived {
+            say(format!("{}: note: {w}", built.label()));
+        }
+        let mut drops: Vec<String> = layout_findings
+            .reported
             .into_iter()
             .map(|m| {
                 format!(

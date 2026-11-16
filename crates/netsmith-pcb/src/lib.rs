@@ -111,7 +111,7 @@ pub use impedance::{
     impedance_at, impedance_notes, microstrip, stripline, target_notes, width_for,
 };
 pub use layout::{
-    BoardLayout, Face as LayoutFace, IMPORT_SOURCE, KeepoutPlace, Layout, LayoutError, PartPlace,
+    BoardLayout, Face as LayoutFace, IMPORT_SOURCE, KeepoutPlace, Layout, LayoutError, PartPlace, Waiver,
     apply_layout, check_drawn_keepout, copper_layers, keepout_declaration, place_options,
 };
 pub use miss::RequirementMiss;
@@ -121,7 +121,10 @@ pub use overhang::{
     reached as overhang_reached,
 };
 pub use part_fit::{FIT_STEP, FitNear, FitPlace, FitTarget, PartFit};
-pub use part_layout::{NearPair, PartNear, near_findings, near_pairs};
+pub use part_layout::{
+    LayoutFinding, Limit, LoopPair, Measure, NearPair, PartGuideline, away_pairs, edge_parts,
+    layout_findings, loop_pairs, measures, near_findings, near_pairs, pins_of,
+};
 pub use placement::{
     CarriedZone, DESCRIBED, DoesNotFit, Ended, FaceKeepout, Fixed, HeightZone, ORIGIN, OutsideAt,
     OverlapAt, Oversize, PartState, PlaceOptions, inside as fit_inside, is_mechanical,

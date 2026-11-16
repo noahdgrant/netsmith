@@ -1510,7 +1510,9 @@ fn design_model(name: &str, model: &Model, solution: &Solution) -> Result<Design
     let least_track = process.as_ref().map_or(0.0, |p| p.min_track);
     let (logos, logo_sites) = features::logos(model, least_text, least_track, &mut errors);
     features.logos = logos;
-    features.layout = features::layout(model);
+    let part_layout = features::layout(model, layers);
+    features.layout = part_layout.guidelines;
+    features.keepouts.extend(part_layout.keepouts);
     let (mut constraint_sites, mut offset_sites) = (constraint_sites, offset_sites);
     let mut bank_notes: Vec<String> = Vec::new();
     features::expand_banks(
@@ -1534,6 +1536,13 @@ fn design_model(name: &str, model: &Model, solution: &Solution) -> Result<Design
         None => guidelines::TrackPlan::default(),
     };
     features.net_widths.extend(plan.widths);
+    // A `route` statement of a part's `layout` block widens its net (issue #994).
+    for (net, width) in part_layout.widths {
+        match features.net_widths.iter_mut().find(|(n, _)| *n == net) {
+            Some((_, least)) => *least = least.max(width),
+            None => features.net_widths.push((net, width)),
+        }
+    }
     features.net_widths.sort_by(|a, b| a.0.cmp(&b.0));
     features.net_currents = plan.currents;
     features.net_currents.sort_by(|a, b| a.net.cmp(&b.net));

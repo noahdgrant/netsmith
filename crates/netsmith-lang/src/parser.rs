@@ -56,6 +56,9 @@ struct Docs {
     first: Option<Span>,
 }
 
+/// The words that start a guideline statement of a `layout` block.
+const GUIDELINE_WORDS: [&str; 7] = ["near", "away", "loop", "keepout", "edge", "vias", "route"];
+
 impl Docs {
     fn is_empty(&self) -> bool {
         self.lines.is_empty()
@@ -602,7 +605,7 @@ impl Parser {
                         span: self.span_from(start),
                     }));
                 }
-                "layout" if matches!(self.peek_second(), Tok::LBrace) => {
+                "layout" if matches!(self.peek_second(), Tok::LBrace | Tok::Str(_)) => {
                     return only_decls(self.layout(start)?);
                 }
                 "defaults" if matches!(self.peek_second(), Tok::LBrace) => {
@@ -1493,10 +1496,27 @@ impl Parser {
         }))
     }
 
-    /// `layout { source "..." near NAME SELECTOR to .pin [within LENGTH] ... }` (ADR 0030,
-    /// issue #829). A `near` statement may have `///` lines above it: the datasheet's sentence.
+    /// `layout ["PACKAGE"] { source "..." STATEMENT ... }` (ADR 0030, issues #829 and #994). A
+    /// guideline statement may have `///` lines above it: the datasheet's sentence.
     fn layout(&mut self, start: usize) -> Res<Item> {
         self.bump();
+        let package = match self.peek().clone() {
+            Token {
+                tok: Tok::Str(text),
+                span,
+            } => {
+                self.bump();
+                Some((text, span))
+            }
+            _ => None,
+        };
+        if !self.at(&Tok::LBrace) {
+            let t = self.peek().clone();
+            return Err(unexpected(
+                &t,
+                "`{` after the package of `layout \"...\"`: the block of that package's guidelines",
+            ));
+        }
         let open = self.bump();
         let mut statements = Vec::new();
         loop {
@@ -1506,7 +1526,7 @@ impl Parser {
                 Tok::RBrace | Tok::Eof if !docs.is_empty() => {
                     return Err(ParseError::new(
                         docs.first.expect("docs is not empty"),
-                        "this doc comment is not followed by a `near` statement",
+                        "this doc comment is not followed by a guideline statement",
                     ));
                 }
                 Tok::RBrace => {
@@ -1524,7 +1544,7 @@ impl Parser {
                     if let Some(at) = docs.first {
                         return Err(ParseError::new(
                             at,
-                            "a doc comment belongs above a `near` statement, not above `source`",
+                            "a doc comment belongs above a guideline statement, not above `source`",
                         ));
                     }
                     self.bump();
@@ -1541,19 +1561,22 @@ impl Parser {
                         span: self.span_from(t.span.start),
                     });
                 }
-                Tok::Ident(w) if w == "near" => {
-                    statements.push(LayoutStatement::Near(Box::new(self.near(docs.lines)?)));
+                Tok::Ident(w) if GUIDELINE_WORDS.contains(&w.as_str()) => {
+                    statements.push(LayoutStatement::Guideline(Box::new(
+                        self.guideline(docs.lines)?,
+                    )));
                 }
                 _ => {
                     return Err(unexpected(
                         &t,
-                        "`source \"...\"`, a `near` statement or `}` in a `layout` block",
+                        "`source \"...\"`, a guideline statement (`near`, `away`, `loop`, `keepout`, `edge`, `vias`, `route`) or `}` in a `layout` block",
                     ));
                 }
             }
             self.end_statement(true)?;
         }
         Ok(Item::Layout(Layout {
+            package,
             statements,
             span: self.span_from(start),
         }))
@@ -1562,6 +1585,26 @@ impl Parser {
     /// Whether the next token is the word `word`.
     fn at_word(&mut self, word: &str) -> bool {
         matches!(&self.peek().tok, Tok::Ident(w) if w == word)
+    }
+
+    /// The word `word`, or an error that says what was expected.
+    fn expect_word(&mut self, word: &str, what: &str) -> Res<()> {
+        if !self.at_word(word) {
+            let t = self.peek().clone();
+            return Err(unexpected(&t, what));
+        }
+        self.bump();
+        Ok(())
+    }
+
+    /// An expression after the word `word` when the word is next.
+    fn optional_after(&mut self, word: &str) -> Res<Option<Expr>> {
+        if self.at_word(word) {
+            self.bump();
+            Ok(Some(self.expr()?))
+        } else {
+            Ok(None)
+        }
     }
 
     /// A pin of the part with its leading dot, as a `layout` statement names it.
@@ -1573,16 +1616,13 @@ impl Parser {
         self.path()
     }
 
-    /// `near NAME bridging .a .b to .pin [within LENGTH]` or `near NAME on .pin [kind KIND] to
-    /// .pin [within LENGTH]`.
-    fn near(&mut self, docs: Vec<String>) -> Res<Near> {
-        let start = self.bump().span.start;
-        let name = self.ident("the name of the guideline after `near`, such as `input_cap`")?;
-        let select = if self.at_word("bridging") {
+    /// `bridging .a .b` or `on .pin [kind KIND]` after `near NAME` or `away NAME`.
+    fn select(&mut self, word: &str, name: &Ident) -> Res<Select> {
+        if self.at_word("bridging") {
             self.bump();
             let a = self.layout_pin("a pin of the part, such as `.vin.pos`, after `bridging`")?;
             let b = self.layout_pin("a second pin of the part after the first of `bridging`")?;
-            Select::Bridging(a, b)
+            Ok(Select::Bridging(a, b))
         } else if self.at_word("on") {
             self.bump();
             let pin = self.layout_pin("a pin of the part, such as `.sw.pos`, after `on`")?;
@@ -1592,38 +1632,143 @@ impl Parser {
             } else {
                 None
             };
-            Select::On { pin, kind }
+            Ok(Select::On { pin, kind })
         } else {
             let t = self.peek().clone();
-            return Err(unexpected(
+            Err(unexpected(
                 &t,
                 &format!(
-                    "`bridging .a .b` or `on .pin` after `near {}`: which parts the guideline is about",
+                    "`bridging .a .b` or `on .pin` after `{word} {}`: which parts the guideline is about",
                     name.to_source()
                 ),
-            ));
-        };
-        if !self.at_word("to") {
-            let t = self.peek().clone();
-            return Err(unexpected(
-                &t,
-                "`to` and the pin the parts go next to, such as `to .vin.pos`",
-            ));
+            ))
         }
-        self.bump();
-        let to = self.layout_pin("a pin of the part after `to`, such as `.vin.pos`")?;
-        let within = if self.at_word("within") {
-            self.bump();
-            Some(self.expr()?)
-        } else {
-            None
+    }
+
+    /// One guideline statement of a `layout` block: its word, its name and what follows them
+    /// (see [`Rule`]).
+    fn guideline(&mut self, docs: Vec<String>) -> Res<Guideline> {
+        let first = self.bump();
+        let start = first.span.start;
+        let Tok::Ident(word) = first.tok else {
+            unreachable!("a guideline starts with its word")
         };
-        Ok(Near {
+        let name = self.ident(&format!(
+            "the name of the guideline after `{word}`, such as `input_cap`"
+        ))?;
+        let rule = match word.as_str() {
+            "near" => {
+                let select = self.select("near", &name)?;
+                self.expect_word(
+                    "to",
+                    "`to` and the pin the parts go next to, such as `to .vin.pos`",
+                )?;
+                let to = self.layout_pin("a pin of the part after `to`, such as `.vin.pos`")?;
+                let within = self.optional_after("within")?;
+                Rule::Near { select, to, within }
+            }
+            "away" => {
+                let select = self.select("away", &name)?;
+                self.expect_word(
+                    "from",
+                    "`from` and the pin the parts stay away from, such as `from .fb`",
+                )?;
+                let from = self.layout_pin("a pin of the part after `from`, such as `.fb`")?;
+                self.expect_word(
+                    "beyond",
+                    "`beyond` and the least distance from the pin, such as `beyond 5mm`",
+                )?;
+                let beyond = self.expr()?;
+                Rule::Away {
+                    select,
+                    from,
+                    beyond,
+                }
+            }
+            "loop" => {
+                self.expect_word(
+                    "bridging",
+                    &format!(
+                        "`bridging .a .b` after `loop {}`: the two pins whose nets the parts of the loop join",
+                        name.to_source()
+                    ),
+                )?;
+                let a = self.layout_pin("a pin of the part, such as `.vin.pos`, after `bridging`")?;
+                let b = self.layout_pin("a second pin of the part after the first of `bridging`")?;
+                let within = self.optional_after("within")?;
+                Rule::Loop { a, b, within }
+            }
+            "keepout" => {
+                self.expect_word(
+                    "at",
+                    "`at X, Y`: the corner of the keepout nearest the part's origin, in the part's frame",
+                )?;
+                let x = self.expr()?;
+                self.expect(&Tok::Comma, "`,` between the two numbers of `at`")?;
+                let y = self.expr()?;
+                self.expect_word(
+                    "size",
+                    "`size WIDTH, HEIGHT` after the corner of the keepout",
+                )?;
+                let width = self.expr()?;
+                self.expect(&Tok::Comma, "`,` between the two numbers of `size`")?;
+                let height = self.expr()?;
+                let mut forbid = Vec::new();
+                if self.at_word("forbid") {
+                    self.bump();
+                    while matches!(self.peek().tok, Tok::Ident(_)) {
+                        forbid.push(self.ident("what the keepout forbids")?);
+                    }
+                    if forbid.is_empty() {
+                        let t = self.peek().clone();
+                        return Err(unexpected(
+                            &t,
+                            "what the keepout forbids after `forbid`: `tracks`, `vias`, `copper` or `parts`",
+                        ));
+                    }
+                }
+                Rule::Keepout {
+                    x,
+                    y,
+                    width,
+                    height,
+                    forbid,
+                }
+            }
+            "edge" => {
+                let pin = self.layout_pin(
+                    "the pin of the part that goes at the board's edge, such as `.feed`",
+                )?;
+                let within = self.optional_after("within")?;
+                Rule::Edge { pin, within }
+            }
+            "vias" => {
+                let pin = self.layout_pin(
+                    "the pin of the part whose pads take the vias, such as `.gnd`",
+                )?;
+                let count = self.expr()?;
+                Rule::Vias { pin, count }
+            }
+            "route" => {
+                let pin =
+                    self.layout_pin("the pin of the part whose net it is about, such as `.sw`")?;
+                let width = self.optional_after("width")?;
+                let length = self.optional_after("length")?;
+                if width.is_none() && length.is_none() {
+                    let t = self.peek().clone();
+                    return Err(unexpected(
+                        &t,
+                        "`width LENGTH`, `length LENGTH` or both after the pin of `route`",
+                    ));
+                }
+                Rule::Route { pin, width, length }
+            }
+            _ => unreachable!("only the words of GUIDELINE_WORDS start a guideline"),
+        };
+        Ok(Guideline {
             docs,
             name,
-            select,
-            to,
-            within,
+            rule,
             span: self.span_from(start),
         })
     }

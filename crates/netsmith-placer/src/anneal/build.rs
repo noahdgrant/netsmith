@@ -9,6 +9,7 @@ impl<'a> Engine<'a> {
         let gap = GAP + if p.pours { POUR_GAP } else { 0.0 };
         let hole_gap = rules.clearance.max(rules.hole_to_hole).max(gap);
         let reach_pad = (hole_gap.max(rules.silk_to_pad)).max(gap + 2.0 * MAX_ESCAPE) / 2.0 + 0.01;
+        let edges = edge_parts(parts);
         let mut models: Vec<Model> = (0..n)
             .map(|i| {
                 let base = parts[i].rotation;
@@ -54,7 +55,9 @@ impl<'a> Engine<'a> {
                     height: parts[i].height,
                     hand_fitted: parts[i].hand_fitted,
                     court_faces: parts[i].footprint.courtyard_faces,
-                    role: if crate::place::is_connector(&parts[i]) {
+                    // A part whose datasheet puts a pin at the edge (`edge`, issue #994) is pulled
+                    // there as a connector is.
+                    role: if crate::place::is_connector(&parts[i]) || edges.contains(&i) {
                         Role::Connector
                     } else if netsmith_pcb::is_mechanical(parts[i].declared_kind) {
                         Role::Mechanical
@@ -221,32 +224,65 @@ impl<'a> Engine<'a> {
                 Dec {
                     cap: pair.cap,
                     nets: [side(&pair.nets[0]), side(&pair.nets[1])],
+                    beyond: None,
                 }
             })
             .collect();
         // The parts a datasheet's `near` guideline finds (ADR 0030, issue #829), each pulled to
-        // the pads of its pin as a decoupling capacitor is to its part's.
-        for pair in near_pairs(parts, p.nets) {
-            let other: Vec<usize> = pair
-                .other_pads
+        // the pads of its pin as a decoupling capacitor is to its part's; those an `away` finds,
+        // pushed out to its distance (issue #994).
+        let pins_of = |part: usize, numbers: &[String]| -> Vec<(usize, usize)> {
+            numbers
                 .iter()
-                .flat_map(|number| pad_ids(pair.other, number))
-                .collect();
-            let to: Vec<(usize, usize)> = pair
-                .to_pads
+                .flat_map(|number| pad_ids(part, number).into_iter().map(move |k| (part, k)))
+                .collect()
+        };
+        let pads_of = |part: usize, numbers: &[String]| -> Vec<usize> {
+            numbers
                 .iter()
-                .flat_map(|number| {
-                    pad_ids(pair.part, number)
-                        .into_iter()
-                        .map(|k| (pair.part, k))
-                })
-                .collect();
+                .flat_map(|number| pad_ids(part, number))
+                .collect()
+        };
+        for (pair, beyond) in near_pairs(parts, p.nets)
+            .into_iter()
+            .map(|pair| (pair, None))
+            .chain(away_pairs(parts, p.nets).into_iter().map(|pair| {
+                let beyond = match pair.rule(parts).rule {
+                    netsmith_core::LayoutRule::Away { beyond, .. } => Some(beyond),
+                    _ => None,
+                };
+                (pair, beyond)
+            }))
+        {
+            let other = pads_of(pair.other, &pair.other_pads);
+            let to = pins_of(pair.part, &pair.to_pads);
             if other.is_empty() || to.is_empty() {
                 continue;
             }
             decs.push(Dec {
                 cap: pair.other,
                 nets: [(other, to), (Vec::new(), Vec::new())],
+                beyond,
+            });
+        }
+        // The parts a `loop` finds: each pulled to both pins, as a decoupling capacitor is to
+        // the two pins of its rail (issue #994).
+        for pair in loop_pairs(parts, p.nets) {
+            let a = (
+                pads_of(pair.other, std::slice::from_ref(&pair.a.0)),
+                pins_of(pair.part, &pair.a.1),
+            );
+            let b = (
+                pads_of(pair.other, std::slice::from_ref(&pair.b.0)),
+                pins_of(pair.part, &pair.b.1),
+            );
+            if a.0.is_empty() || a.1.is_empty() || b.0.is_empty() || b.1.is_empty() {
+                continue;
+            }
+            decs.push(Dec {
+                cap: pair.other,
+                nets: [a, b],
+                beyond: None,
             });
         }
         let mut decs_of: Vec<Vec<usize>> = vec![Vec::new(); n];

@@ -476,16 +476,21 @@ fn write_block(out: &mut String, inner_docs: &[String], items: &[Item], depth: u
                 write_block(out, &[], &c.items, depth + 1);
             }
             Item::Layout(l) => {
-                out.push_str("layout {\n");
+                match &l.package {
+                    Some((package, _)) => {
+                        let _ = writeln!(out, "layout {} {{", quote(package));
+                    }
+                    None => out.push_str("layout {\n"),
+                }
                 let indent = "    ".repeat(depth + 2);
                 for statement in &l.statements {
                     match statement {
                         LayoutStatement::Source { text, .. } => {
                             let _ = writeln!(out, "{indent}source {}", quote(text));
                         }
-                        LayoutStatement::Near(n) => {
-                            write_docs(out, &n.docs, "///", depth + 2);
-                            let _ = writeln!(out, "{indent}{}", n.to_source());
+                        LayoutStatement::Guideline(g) => {
+                            write_docs(out, &g.docs, "///", depth + 2);
+                            let _ = writeln!(out, "{indent}{}", g.to_source());
                         }
                     }
                 }
@@ -576,23 +581,84 @@ fn write_block(out: &mut String, inner_docs: &[String], items: &[Item], depth: u
     out.push('}');
 }
 
-impl Near {
-    /// The statement as written, without its doc comment.
+impl Select {
+    /// The selector as written: `bridging .a .b`, `on .pin kind inductor`.
     pub fn to_source(&self) -> String {
-        let select = match &self.select {
+        match self {
             Select::Bridging(a, b) => format!("bridging {} {}", a.to_source(), b.to_source()),
             Select::On { pin, kind } => match kind {
                 Some(k) => format!("on {} kind {}", pin.to_source(), k.to_source()),
                 None => format!("on {}", pin.to_source()),
             },
+        }
+    }
+}
+
+impl Guideline {
+    /// The statement as written, without its doc comment.
+    pub fn to_source(&self) -> String {
+        let after = |out: &mut String, word: &str, e: &Option<Expr>| {
+            if let Some(e) = e {
+                let _ = write!(out, " {word} {}", e.to_source());
+            }
         };
-        let mut out = format!(
-            "near {} {select} to {}",
-            self.name.to_source(),
-            self.to.to_source()
-        );
-        if let Some(w) = &self.within {
-            let _ = write!(out, " within {}", w.to_source());
+        let mut out = format!("{} {}", self.rule.word(), self.name.to_source());
+        match &self.rule {
+            Rule::Near { select, to, within } => {
+                let _ = write!(out, " {} to {}", select.to_source(), to.to_source());
+                after(&mut out, "within", within);
+            }
+            Rule::Away {
+                select,
+                from,
+                beyond,
+            } => {
+                let _ = write!(
+                    out,
+                    " {} from {} beyond {}",
+                    select.to_source(),
+                    from.to_source(),
+                    beyond.to_source()
+                );
+            }
+            Rule::Loop { a, b, within } => {
+                let _ = write!(out, " bridging {} {}", a.to_source(), b.to_source());
+                after(&mut out, "within", within);
+            }
+            Rule::Keepout {
+                x,
+                y,
+                width,
+                height,
+                forbid,
+            } => {
+                let _ = write!(
+                    out,
+                    " at {}, {} size {}, {}",
+                    x.to_source(),
+                    y.to_source(),
+                    width.to_source(),
+                    height.to_source()
+                );
+                if !forbid.is_empty() {
+                    out.push_str(" forbid");
+                    for f in forbid {
+                        let _ = write!(out, " {}", f.to_source());
+                    }
+                }
+            }
+            Rule::Edge { pin, within } => {
+                let _ = write!(out, " {}", pin.to_source());
+                after(&mut out, "within", within);
+            }
+            Rule::Vias { pin, count } => {
+                let _ = write!(out, " {} {}", pin.to_source(), count.to_source());
+            }
+            Rule::Route { pin, width, length } => {
+                let _ = write!(out, " {}", pin.to_source());
+                after(&mut out, "width", width);
+                after(&mut out, "length", length);
+            }
         }
         out
     }

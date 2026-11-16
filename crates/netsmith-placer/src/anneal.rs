@@ -255,7 +255,9 @@ use netsmith_pcb::{
     rect_distance,
 };
 
-use netsmith_pcb::{DecouplingPair, decoupling_pairs, near_pairs};
+use netsmith_pcb::{
+    DecouplingPair, away_pairs, decoupling_pairs, edge_parts, loop_pairs, near_pairs,
+};
 use netsmith_pcb::{Edges, Ended, OutsideAt, OverlapAt, Pt, Rect, Rules, short_mm};
 
 mod build;
@@ -716,10 +718,14 @@ impl Limits {
 /// The pads of a decoupling pair on one net: the capacitor's, and the power pins' (part, pad).
 type PairPads = (Vec<usize>, Vec<(usize, usize)>);
 
-/// A decoupling pair with its pads found.
+/// A decoupling pair with its pads found, or a part a datasheet's guideline pulls or pushes
+/// (`netsmith_pcb::part_layout`).
 struct Dec {
     cap: usize,
     nets: [PairPads; 2],
+    /// For an `away` guideline (issue #994): the least distance from the pins. The cost is
+    /// then how much nearer than it the part is, and nothing beyond it.
+    beyond: Option<f64>,
 }
 
 /// The straight lines of a net's ratsnest.

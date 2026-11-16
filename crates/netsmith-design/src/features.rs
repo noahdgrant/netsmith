@@ -5,7 +5,7 @@
 //! bring a rail with a width along, and a part can bring a keepout along. Each message names
 //! the member and the number involved.
 
-use netsmith_check::{Domain, InstId, InstKind, Member, Model, SourceId};
+use netsmith_check::{Domain, GuidelineRule, InstId, InstKind, Member, Model, SourceId};
 use netsmith_core::{
     CaseModel, Cutout, Features, ImpedanceTarget, Keepout, Label, Logo, LogoLayer, Offset,
     OffsetEnd, Outline, PartHeight, PartKind, PartSilk, PartStandoff, PinProtrusion, PlaceBound,
@@ -1557,36 +1557,121 @@ fn show(v: f64) -> String {
     }
 }
 
-/// The `near` guidelines of the parts' `layout` blocks (ADR 0030, issue #829), by the path of
-/// the part, with its pins named as its pin table names them (`vin.pos`), sorted by part and
-/// name.
-pub(crate) fn layout(model: &Model) -> Vec<netsmith_core::LayoutNear> {
-    let mut out: Vec<netsmith_core::LayoutNear> = model
-        .layout
-        .iter()
-        .map(|l| {
-            let pin = |p| model.path_below(p, l.part);
-            netsmith_core::LayoutNear {
-                part: model.path_of(l.part),
-                name: l.name.clone(),
-                source: l.source.clone(),
-                site: l.site.clone(),
-                select: match l.select {
-                    netsmith_check::NearSelect::Bridging(a, b) => {
-                        netsmith_core::NearSelect::Bridging {
-                            a: pin(a),
-                            b: pin(b),
-                        }
-                    }
-                    netsmith_check::NearSelect::On { pin: p, kind } => {
-                        netsmith_core::NearSelect::On { pin: pin(p), kind }
-                    }
-                },
-                to: pin(l.to),
-                within: l.within,
+/// What the parts' `layout` blocks state (ADR 0030, issues #829 and #994).
+#[derive(Debug, Default)]
+pub(crate) struct PartLayout {
+    /// The guidelines, by the path of the part, with its pins named as its pin table names them
+    /// (`vin.pos`), sorted by part and name.
+    pub(crate) guidelines: Vec<netsmith_core::LayoutGuideline>,
+    /// The `keepout` statements, as keepouts the parts carry (named `part.name`).
+    pub(crate) keepouts: Vec<Keepout>,
+    /// The least width of the tracks of a net that a `route` statement asks for, by net name.
+    pub(crate) widths: Vec<(String, f64)>,
+}
+
+/// The guidelines of the parts' `layout` blocks. A guideline of a `layout "PACKAGE"` block is
+/// kept only for a part whose `.package` is that package.
+pub(crate) fn layout(model: &Model, copper_layers: u32) -> PartLayout {
+    let mut found = PartLayout::default();
+    for l in &model.layout {
+        if let Some(package) = &l.package
+            && text(model, l.part, "package").as_deref() != Some(package.as_str())
+        {
+            continue;
+        }
+        let pin = |p| model.path_below(p, l.part);
+        let part = model.path_of(l.part);
+        let near = |s: netsmith_check::NearSelect| match s {
+            netsmith_check::NearSelect::Bridging(a, b) => netsmith_core::NearSelect::Bridging {
+                a: pin(a),
+                b: pin(b),
+            },
+            netsmith_check::NearSelect::On { pin: p, kind } => {
+                netsmith_core::NearSelect::On { pin: pin(p), kind }
             }
-        })
-        .collect();
-    out.sort_by(|a, b| (&a.part, &a.name).cmp(&(&b.part, &b.name)));
-    out
+        };
+        let rule = match l.rule {
+            GuidelineRule::Near { select, to, within } => netsmith_core::LayoutRule::Near {
+                select: near(select),
+                to: pin(to),
+                within,
+            },
+            GuidelineRule::Away {
+                select,
+                from,
+                beyond,
+            } => netsmith_core::LayoutRule::Away {
+                select: near(select),
+                from: pin(from),
+                beyond,
+            },
+            GuidelineRule::Loop { a, b, within } => netsmith_core::LayoutRule::Loop {
+                a: pin(a),
+                b: pin(b),
+                within,
+            },
+            GuidelineRule::Keepout {
+                at,
+                size,
+                tracks,
+                vias,
+                copper,
+                parts,
+            } => {
+                found.keepouts.push(Keepout {
+                    name: format!("{part}.{}", l.name),
+                    part: Some(part),
+                    at: Some(at),
+                    size,
+                    layers: copper_layer_names(copper_layers),
+                    tracks,
+                    vias,
+                    copper,
+                    parts,
+                    max_height: None,
+                });
+                continue;
+            }
+            GuidelineRule::Edge { pin: p, within } => netsmith_core::LayoutRule::Edge {
+                pin: pin(p),
+                within,
+            },
+            GuidelineRule::Vias { pin: p, count } => netsmith_core::LayoutRule::Vias {
+                pin: pin(p),
+                count,
+            },
+            GuidelineRule::Route {
+                pin: p,
+                width,
+                length,
+            } => {
+                if let Some(w) = width
+                    && let Some(net) = model.nets().iter().find(|n| n.pins.contains(&p))
+                {
+                    match found.widths.iter_mut().find(|(n, _)| *n == net.name) {
+                        Some((_, least)) => *least = least.max(w),
+                        None => found.widths.push((net.name.clone(), w)),
+                    }
+                }
+                netsmith_core::LayoutRule::Route {
+                    pin: pin(p),
+                    width,
+                    length,
+                }
+            }
+        };
+        found.guidelines.push(netsmith_core::LayoutGuideline {
+            part,
+            name: l.name.clone(),
+            source: l.source.clone(),
+            site: l.site.clone(),
+            rule,
+        });
+    }
+    found
+        .guidelines
+        .sort_by(|a, b| (&a.part, &a.name).cmp(&(&b.part, &b.name)));
+    found.keepouts.sort_by(|a, b| a.name.cmp(&b.name));
+    found.widths.sort_by(|a, b| a.0.cmp(&b.0));
+    found
 }

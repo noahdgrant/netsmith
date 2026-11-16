@@ -60,10 +60,14 @@ pub struct Support {
 
 /// `layout { source "..."  near input_cap bridging .vin.pos .vin.neg to .vin.pos }`: what a
 /// part's datasheet says about where the parts around it go, with the document it says it in
-/// (ADR 0030, issue #829). Its statements name the part's own pins, and the board's parts they
-/// are about are found by the nets. Only a part's own definition may hold one.
+/// (ADR 0030, issues #829 and #994). Its statements name the part's own pins, and the board's
+/// parts they are about are found by the nets. Only a part's own definition may hold one.
+/// `layout "SOT-223" { ... }` holds the guidelines of one package of the part: they apply to an
+/// instance only when that package is the one it has.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Layout {
+    /// The package the block is for, with the span of its text; None for every package.
+    pub package: Option<(String, Span)>,
     /// The statements in the order written; the checker asks for exactly one `source`.
     pub statements: Vec<LayoutStatement>,
     pub span: Span,
@@ -78,27 +82,124 @@ pub enum LayoutStatement {
         text: String,
         span: Span,
     },
-    Near(Box<Near>),
+    Guideline(Box<Guideline>),
 }
 
-/// `near input_cap bridging .vin.pos .vin.neg to .vin.pos within 2mm`: the parts the selector
-/// finds go next to the pads of the pin after `to`, within the length when one is given.
+impl LayoutStatement {
+    /// The pins of the part the statement names, in the order written.
+    pub fn pins(&self) -> Vec<&Path> {
+        match self {
+            LayoutStatement::Source { .. } => Vec::new(),
+            LayoutStatement::Guideline(g) => g.rule.pins(),
+        }
+    }
+}
+
+/// A named statement of a [`Layout`] block, with the datasheet's sentence above it.
 #[derive(Debug, Clone, PartialEq)]
-pub struct Near {
+pub struct Guideline {
     /// `///` lines above the statement: the datasheet's sentence.
     pub docs: Vec<String>,
     /// The guideline's name, what a finding calls it (`input_cap`).
     pub name: Ident,
-    pub select: Select,
-    /// The pin whose pads the parts go next to.
-    pub to: Path,
-    /// The largest distance, pad centre to pad centre, as the datasheet gives it. None for a
-    /// datasheet that says "close to" with no number.
-    pub within: Option<Expr>,
+    pub rule: Rule,
     pub span: Span,
 }
 
-/// Which parts of the board a [`Near`] is about, found from the nets of the part's pins.
+/// What a [`Guideline`] says. Lengths are pad centre to pad centre unless said otherwise.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Rule {
+    /// `near NAME SELECT to .pin [within LENGTH]`: the parts the selector finds go next to the
+    /// pads of the pin after `to`, within the length when one is given (None for a datasheet
+    /// that says "close to" with no number).
+    Near {
+        select: Select,
+        to: Path,
+        within: Option<Expr>,
+    },
+    /// `away NAME SELECT from .pin beyond LENGTH`: the parts the selector finds stay at least
+    /// the length from the pads of the pin after `from`.
+    Away {
+        select: Select,
+        from: Path,
+        beyond: Expr,
+    },
+    /// `loop NAME bridging .a .b [within LENGTH]`: each part with a pad on the net of each pin
+    /// closes a current loop with the part, from the pin `.a` through the part found to the
+    /// pin `.b` and back; the loop's length stays within the length when one is given.
+    Loop {
+        a: Path,
+        b: Path,
+        within: Option<Expr>,
+    },
+    /// `keepout NAME at X, Y size W, H [forbid tracks vias copper parts]`: an area in the
+    /// part's own frame (its footprint's, turned with it) that forbids what `forbid` names on
+    /// every copper layer, all four when it names none.
+    Keepout {
+        x: Expr,
+        y: Expr,
+        width: Expr,
+        height: Expr,
+        forbid: Vec<Ident>,
+    },
+    /// `edge NAME .pin [within LENGTH]`: the pads of the pin go at the board's edge, within
+    /// the length of it when one is given.
+    Edge { pin: Path, within: Option<Expr> },
+    /// `vias NAME .pin N`: the pads of the pin take at least N vias of their net.
+    Vias { pin: Path, count: Expr },
+    /// `route NAME .pin [width LENGTH] [length LENGTH]`: the tracks of the pin's net are at
+    /// least the width wide and at most the length long in all. One of the two at least.
+    Route {
+        pin: Path,
+        width: Option<Expr>,
+        length: Option<Expr>,
+    },
+}
+
+impl Rule {
+    /// The statement's word: `near`, `away`, `loop`, `keepout`, `edge`, `vias`, `route`.
+    pub fn word(&self) -> &'static str {
+        match self {
+            Rule::Near { .. } => "near",
+            Rule::Away { .. } => "away",
+            Rule::Loop { .. } => "loop",
+            Rule::Keepout { .. } => "keepout",
+            Rule::Edge { .. } => "edge",
+            Rule::Vias { .. } => "vias",
+            Rule::Route { .. } => "route",
+        }
+    }
+
+    /// The pins of the part the rule names, in the order written.
+    pub fn pins(&self) -> Vec<&Path> {
+        fn select(s: &Select) -> Vec<&Path> {
+            match s {
+                Select::Bridging(a, b) => vec![a, b],
+                Select::On { pin, .. } => vec![pin],
+            }
+        }
+        match self {
+            Rule::Near { select: s, to, .. } => {
+                let mut out = select(s);
+                out.push(to);
+                out
+            }
+            Rule::Away { select: s, from, .. } => {
+                let mut out = select(s);
+                out.push(from);
+                out
+            }
+            Rule::Loop { a, b, .. } => vec![a, b],
+            Rule::Keepout { .. } => Vec::new(),
+            Rule::Edge { pin, .. } | Rule::Vias { pin, .. } | Rule::Route { pin, .. } => {
+                vec![pin]
+            }
+        }
+    }
+}
+
+/// Which parts of the board a `near` or an `away` is about, found from the nets of the part's
+/// pins.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Select {
     /// `bridging .a .b`: every two-pad part with one pad on the net of each pin.
