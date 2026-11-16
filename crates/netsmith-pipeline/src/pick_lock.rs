@@ -34,6 +34,9 @@ pub struct Use {
     pub file: PathBuf,
     /// `--locked`: the lock must exist and must not change.
     pub locked: bool,
+    /// The project says this source has no lock (`lock` in `netsmith.toml`): the file is not
+    /// read, written or compared, and `--locked` has nothing to refuse.
+    pub off: bool,
 }
 
 /// The rows a solution picked, one for each pick, named by the part's path.
@@ -97,15 +100,35 @@ pub fn read(file: &Path) -> Result<Option<PickLock>, String> {
 /// The catalogs to solve one source file with, and what to do with its lock afterwards: the
 /// catalogs hold the parts to the rows of the lock, when it exists. `None` when it does not. A
 /// picks file beside the source is an error that says how to move it into the source (ADR 0122).
+/// With `applies` false (the project's `lock` key leaves this source out) the file is not read:
+/// no catalogs, and a [`Use`] that [`settle`] does nothing with.
 pub fn open(
     source: &Path,
     catalogs: &Catalogs,
     locked: bool,
+    applies: bool,
 ) -> Result<(Option<Catalogs>, Use), String> {
     crate::picks::refuse(source)?;
     let file = lock_path(source);
+    if !applies {
+        return Ok((
+            None,
+            Use {
+                file,
+                locked,
+                off: true,
+            },
+        ));
+    }
     let held = read(&file)?.map(|lock| catalogs.clone().with_pick_lock(lock));
-    Ok((held, Use { file, locked }))
+    Ok((
+        held,
+        Use {
+            file,
+            locked,
+            off: false,
+        },
+    ))
 }
 
 fn parse(text: &str, name: &str) -> Result<PickLock, String> {
@@ -402,6 +425,9 @@ pub struct Refresh {
     /// The difference between the file and `now`, one line for each part ([`diff`]); all the
     /// parts of the board as added when there is no file. Empty when the lock is current.
     pub diff: Vec<String>,
+    /// The path of every part of the source's boards, and of every entry of the file, in order
+    /// of the board and then the path: what a part named to `lock --update` is looked up in.
+    pub paths: Vec<String>,
     /// What the solver said when it held the parts to the rows of the file as it is: the rows
     /// that no longer pass or are no longer in a catalog, in its own words (the messages of a
     /// `build`, with the relation and its numbers). Empty when every locked row still holds.
@@ -426,6 +452,39 @@ impl Refresh {
     }
 }
 
+/// Which parts of a source `lock --update` takes new picks for (the rest keep the row the lock
+/// holds them to), named by their path in the board (`r1`, `stage.output_cap`), in every board
+/// of the file that has one.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub enum Parts {
+    /// Every part: the solver's picks of today.
+    #[default]
+    All,
+    /// Only the named parts take a new pick.
+    Only(Vec<String>),
+    /// Every part but the named ones takes a new pick.
+    Except(Vec<String>),
+}
+
+impl Parts {
+    /// The paths the person named, none for [`Parts::All`].
+    pub fn named(&self) -> &[String] {
+        match self {
+            Parts::All => &[],
+            Parts::Only(p) | Parts::Except(p) => p,
+        }
+    }
+
+    /// Whether the part at `path` takes a new pick.
+    fn refreshes(&self, path: &str) -> bool {
+        match self {
+            Parts::All => true,
+            Parts::Only(p) => p.iter().any(|n| n == path),
+            Parts::Except(p) => !p.iter().any(|n| n == path),
+        }
+    }
+}
+
 /// Solves each board and system of the source called `name` (with text `text`, at `source`)
 /// twice: held to the rows of its lock file as it is, to say what no longer holds, and then
 /// with no lock, to find the rows the solver picks now. Writes nothing, and reads no KiCad
@@ -438,19 +497,65 @@ pub fn refresh(
     loader: &Loader,
     catalogs: &Catalogs,
 ) -> Result<Refresh, String> {
+    refresh_parts(source, name, text, loader, catalogs, &Parts::All)
+}
+
+/// [`refresh`] with only some parts taking a new pick. The parts that do not are held to the row
+/// the lock has for them, as `build` holds them, and judged by everything the design says: a
+/// held row that no longer passes is an error with the solver's words, and `parts` is the way
+/// to let it take a new pick. A part the lock has no row for takes the solver's pick, whether it
+/// is named or not. With no lock file every part does.
+pub fn refresh_parts(
+    source: &Path,
+    name: &str,
+    text: &str,
+    loader: &Loader,
+    catalogs: &Catalogs,
+    parts: &Parts,
+) -> Result<Refresh, String> {
     crate::picks::refuse(source)?;
     let file = lock_path(source);
     let old = read(&file)?;
-    let outcome = outcome_with(name, text, loader, catalogs, None)
-        .map_err(|problems| render_problems(&problems))?;
-    let now = outcome.lock;
     let mut reported = String::new();
-    if let Some(old) = &old {
-        let held = catalogs.clone().with_pick_lock(old.clone());
-        if let Err(problems) = outcome_with(name, text, loader, &held, None) {
-            reported = render_problems(&problems);
+    let outcome = match (&old, parts) {
+        (Some(old), Parts::Only(_) | Parts::Except(_)) => {
+            let mut held = PickLock::new(&old.file);
+            for (unit, rows) in old.units() {
+                let kept = rows.iter().filter(|r| !parts.refreshes(&r.path)).cloned();
+                held.set(unit, kept.collect());
+            }
+            for (unit, providers) in old.provider_units() {
+                held.set_providers(unit, providers.to_vec());
+            }
+            let held = catalogs.clone().with_pick_lock(held);
+            outcome_with(name, text, loader, &held, None).map_err(|problems| {
+                format!(
+                    "{}the parts not named for a new pick are held to the rows of {}, which no longer pass: name them to take a new pick\n",
+                    render_problems(&problems),
+                    file.display()
+                )
+            })?
         }
-    }
+        _ => {
+            let outcome = outcome_with(name, text, loader, catalogs, None)
+                .map_err(|problems| render_problems(&problems))?;
+            if let Some(old) = &old {
+                let held = catalogs.clone().with_pick_lock(old.clone());
+                if let Err(problems) = outcome_with(name, text, loader, &held, None) {
+                    reported = render_problems(&problems);
+                }
+            }
+            outcome
+        }
+    };
+    let now = outcome.lock;
+    let mut paths: Vec<String> = now
+        .units()
+        .chain(old.iter().flat_map(PickLock::units))
+        .flat_map(|(_, rows)| rows.iter().map(|r| r.path.clone()))
+        .collect();
+    paths.sort();
+    paths.dedup();
     let empty = PickLock::new("");
     let diff = diff(old.as_ref().unwrap_or(&empty), &now);
     let mut now = now;
@@ -460,6 +565,7 @@ pub fn refresh(
         existed: old.is_some(),
         now,
         diff,
+        paths,
         reported,
     })
 }
@@ -578,6 +684,9 @@ pub struct Settled {
 pub fn settle(using: &Use, old: Option<&PickLock>, new: &PickLock) -> Result<Settled, String> {
     let name = using.file.display().to_string();
     let mut settled = Settled::default();
+    if using.off {
+        return Ok(settled);
+    }
     match old {
         None if new.is_empty() => {}
         None if using.locked => {

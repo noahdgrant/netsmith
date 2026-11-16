@@ -351,14 +351,18 @@ fn run_fab(
                 return ExitCode::from(2);
             }
         };
-        let (held, using) =
-            match netsmith_pipeline::pick_lock::open(&source.path, &catalogs, locked) {
-                Ok(opened) => opened,
-                Err(e) => {
-                    eprintln!("{e}");
-                    return ExitCode::from(2);
-                }
-            };
+        let (held, using) = match netsmith_pipeline::pick_lock::open(
+            &source.path,
+            &catalogs,
+            locked,
+            target.locks(source),
+        ) {
+            Ok(opened) => opened,
+            Err(e) => {
+                eprintln!("{e}");
+                return ExitCode::from(2);
+            }
+        };
         let options = FabOptions {
             layout: Some(netsmith_fabricate::layout::layout_path(&source.path)),
             lock: Some(using),

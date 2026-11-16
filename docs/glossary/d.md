@@ -20,6 +20,10 @@ _Avoid_: Bypass capacitor (a bypass capacitor is the datasheet's word for the sa
 A value a module or part offers for a field and a board may replace, written `.field ?= value` (ADR 0051, proposed). It applies only when no `&=` statement states that field; a value that reaches the field through a relation or a join does not count as stated. A board's statement drops the default and need not overlap it, and two defaults for one field are an error.
 _Avoid_: Initial value, preset, fallback, soft constraint, weak narrowing
 
+**Default join**:
+A join of two pins of a part that a join of the first pin from outside gives way to, written `.bias ?~ .vin.neg` in a part's own definition or its `support` section (ADR 0130). It holds when nothing else joins the first pin once every join has been read; a `~` or `~>` of the pin from a board or a module replaces it. The join counterpart of a _Default_.
+_Avoid_: Weak join, soft join, optional tie, fallback tie
+
 **Derived figure**:
 A value the checker gives a member of a module from the parts it cannot reach, by the nets and by a field's name, as it gives a part its `.bias` from the rail it is across: the bus capacitance and the least pull-up of an I2C bus from the `I2c` interfaces on the bus (ADR 0102). The board states only what is its own (the estimate of its traces) and may state the figure itself, which then stands in place of the derivation. A part that states no figure is named when a check waits for it, never skipped without a word.
 _Avoid_: Computed value, inferred value, rollup

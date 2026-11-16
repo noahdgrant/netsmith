@@ -617,9 +617,9 @@ error: -reg.ic.sw.current must always be at most reg.ic.max_output_current, but 
 201 |     -.sw.current <= .max_output_current
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 error: -reg.vout.current must always be at most reg.ic.max_output_current, but 15.11uA..3A is not always below 2A (the currents on net `1V8`: output.current (0A..3A) + reg.vout.current (-3A..-15.11uA) add up to zero; net `1V8` in `reg`: -reg.inductor.current (15.11uA..3A) + -reg.vout.current (-3A..-15.11uA) add up to zero, but the balance is incomplete: `reg.divider.rtop.a` is not modelled; net `net-reg.ic.sw.pos` in `reg`: reg.ic.sw.current (-3A..-15.11uA) + reg.inductor.current (15.11uA..3A) add up to zero)
-    --> std/parts/regulator.nsm:549:5
+    --> std/parts/regulator.nsm:565:5
     |
-549 |     -.vout.current <= .ic.max_output_current
+565 |     -.vout.current <= .ic.max_output_current
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -681,9 +681,9 @@ board HighInput {
 
 ```text
 error: reg.on_time must always be at least reg.ic.min_on_time, but 122ns..490.8ns is not always above 150ns
-    --> std/parts/regulator.nsm:562:5
+    --> std/parts/regulator.nsm:578:5
     |
-562 |     .on_time >= .ic.min_on_time
+578 |     .on_time >= .ic.min_on_time
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -746,9 +746,9 @@ board TooQuiet {
 
 ```text
 error: no `capacitor` candidate satisfies `reg.output_cap`: the closest of the 34 that fit, 1 x 10uF 20% 10V X5R 0402 C315248, fails because reg.output_cap.total_effective_capacitance must always be at least reg.ic.min_output_capacitance, but 4.908uF..7.686uF is not always above 10uF (`reg.output_cap.effective_capacitance` is unknown for some candidates, so they were not used: no derating data for 27)
-    --> std/parts/regulator.nsm:569:5
+    --> std/parts/regulator.nsm:585:5
     |
-569 |     .output_cap.total_effective_capacitance >= .ic.min_output_capacitance
+585 |     .output_cap.total_effective_capacitance >= .ic.min_output_capacitance
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -899,6 +899,64 @@ board NoTime {
     .input ~ .reg.vin
     .reg.vout ~ .output
 }
+```
+
+A requirement of the board that is about a number of the IC, and not of the IC itself, is a bound on a member of `Buck`, since a relation reaches inside no module (ADR 0116). `Buck` reads the IC's maximum input out as `.max_input_voltage` (issue #747), so a board that keeps its input's peak 20 % under it writes the factor and not the IC's 60 V; the module's own check of the input against the IC still holds, and the board's bound can only refuse more:
+
+```nsm evaluate
+import std::parts::regulator::{Buck, Lmr16006y}
+import std::sources::Rail
+
+board Derated {
+    .input: Rail {
+        .voltage &= 9V..16V
+        .peak &= 24V
+        .pos.net &= "VIN"
+    }
+    .reg: Buck<Lmr16006y> {
+        .vout.pos.net &= "V3V3"
+        .vout.voltage &= 3.3V +/- 5%
+    }
+    .input ~ .reg.vin
+    .load: Rail { .current &= 5mA..50mA }
+    .reg.vout ~ .load
+
+    // The input's peak stays 20 % under the IC's maximum input.
+    .input.peak <= .reg.max_input_voltage * 0.8
+}
+```
+
+A peak of 5.5 V is more than 80 % of `Zbk2`'s 6 V, and the bound refuses the board:
+
+```nsm fails
+import src::zbk2::Zbk2
+import std::parts::regulator::Buck
+import std::sources::Rail
+
+board TooClose {
+    .input: Rail {
+        .voltage &= 5V +/- 5%
+        .peak &= 5.5V
+        .pos.net &= "VIN"
+    }
+    .output: Rail {
+        .pos.net &= "1V8"
+        .current &= 0mA..1A
+    }
+    .reg: Buck<Zbk2> { .vout.voltage &= 1.8V +/- 3% }
+
+    .input ~ .reg.vin
+    .reg.vout ~ .output
+    .input.peak <= .reg.max_input_voltage * 0.8
+}
+```
+
+```text
+error: input.peak must always be at most (reg.max_input_voltage * 0.8), but 5.5V is not always below 4.8V
+   --> main.nsm:19:5
+   |
+19 |     .input.peak <= .reg.max_input_voltage * 0.8
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 A frequency set by a resistor is a relation the IC writes, and the resistor is a part of the IC's own `support` section: here `rt_value` is a field of the IC, and the converter then uses the frequency that follows:
@@ -1080,7 +1138,9 @@ error: reg.soft_start_time must always be at most 5ms, but 2.769ms..7.334ms is n
    |         ^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
-The part states the absolute maximum of three pins besides VIN and BIAS, from its Absolute Maximum Ratings (p.2): `EN/UV` 65 V, `TR/SS` 4 V and `SYNC/MODE` 6 V, each at the end of the pin's row (`.tr_ss passive "TR/SS" "16" abs_max 4V`, ADR 0124), measured from the part's ground `GND`, so the solver compares the voltage of the pin's net with the limit as it does for any `Logic` input (ADR 0046). A board that ties `SYNC/MODE` or `TR/SS` to a 9 V to 16 V input is refused with the net, the limit and the field that states it (`net `VIN` reaches 16V above its ground `GND` ... but `u.sync_mode.abs_max` is 6V`). A pin left to float is not judged, and one with only a soft-start capacitor on it is a `not evaluated` note, since nothing sets its voltage. `PG` (42 V) and `FB` (4 V) have limits too and state none, for the reasons in the part's doc comment and ADR 0095.
+The part states the absolute maximum of four pins besides VIN, from its Absolute Maximum Ratings (p.2): `BIAS` 25 V, `EN/UV` 65 V, `TR/SS` 4 V and `SYNC/MODE` 6 V, each at the end of the pin's row (`.tr_ss passive "TR/SS" "16" abs_max 4V`, ADR 0124), measured from the part's ground `GND`, so the solver compares the voltage of the pin's net with the limit as it does for any `Logic` input (ADR 0046). A board that ties `SYNC/MODE` or `TR/SS` to a 9 V to 16 V input is refused with the net, the limit and the field that states it (`net `VIN` reaches 16V above its ground `GND` ... but `u.sync_mode.abs_max` is 6V`). A pin left to float is not judged, and one with only a soft-start capacitor on it is a `not evaluated` note, since nothing sets its voltage. `PG` (42 V) and `FB` (4 V) have limits too and state none, for the reasons in the part's doc comment and ADR 0095.
+
+`BIAS` is on ground by default, the datasheet's option for an output of any voltage and the one the part can state, since it cannot reach the output that `Buck` makes: its `support` section says `.bias ?~ .vin.neg`, a default join (ADR 0130, _Connections_). The datasheet says "for output voltages of 3.3V to 25V this pin should be tied to VOUT" (Pin Functions, p.10), and a board that wants that joins the pin, `.reg.ic.bias ~ .reg.vout.pos` (ADR 0120), which replaces the default; the net it joins is judged against the 25 V of the row, so a pin on an input of 30 V is refused. `SYNC/MODE` is left open by the part, and a board that wants Burst Mode grounds it and states the figure, `.reg.ic.sync_mode ~ .reg.ic.vin.neg` and `.reg.ic.quiescent_current &= 0A .. 10uA`: neither needs a copy of the part.
 
 The IC draws current from its input for itself with nothing loaded, and the input current of the part is the load's and that (ADR 0096): `.quiescent_current`, a range from zero to the largest figure of the mode the converter runs in, which the DC analysis draws at the input too (`dc switching_regulator ... .quiescent_current`), so a sleep-current budget summed from `.u.vin.current` is judged against it. The datasheet gives 10 uA over temperature in Burst Mode, with `SYNC/MODE` tied to ground (`.iq_max`, Electrical Characteristics, p.2), and "several hundred uA" with it floating, high or clocked (0.5 mA at most at 25 C, `.iq_skipping_max`). The part cannot see how the board ties the pin, so the default is the larger, and a board that grounds `SYNC/MODE` says so: `.u.quiescent_current &= 0A .. .u.iq_max`. The 10 uA is a maximum and not a minimum, so the least the input draws is still zero, and a board cannot ask for `.u.vin.current >= 10uA`. The converter's feedback divider is a load on the output and is not in this current (`.divider_current` has it).
 

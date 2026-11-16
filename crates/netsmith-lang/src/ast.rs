@@ -732,6 +732,9 @@ pub struct JoinMap {
 pub enum ConnectOp {
     Same,
     Series,
+    /// `?~`: a join of two pins that a join of the first pin from outside the part replaces
+    /// (ADR 0130).
+    Default,
 }
 
 #[derive(Debug, Clone, PartialEq)]

@@ -490,6 +490,21 @@ module Buck<Ic: BuckIc> provides BuckConverter {
     /// The current the feedback divider draws from the output, the divider's `.current` read
     /// out of the module (a bound or a read reaches inside no module, ADR 0116).
     .divider_current: Current
+    /// The largest input the IC takes, the IC's `.max_input_voltage` read out of the module, so
+    /// that a board states a requirement of its own against it without writing the IC's number
+    /// again: `.input.peak <= .reg.max_input_voltage * 0.8` keeps the input's peak 20 % under
+    /// it (issue #747). A bound or a read reaches inside no module (ADR 0116), so the value a
+    /// board needs is a member here, as `.divider_current` and `.soft_start_time` are. The
+    /// module's own check, `.vin.voltage <= .ic.max_input_voltage`, holds whatever the board
+    /// adds; the board's bound can only refuse more.
+    ///
+    /// Decided by the agent while the owner was away (2026-11-16, issue #747): the module
+    /// exports the value, and a board does not reach inside it. Not taken: a read-only bound
+    /// (`<=`, `>=`) that may name a value inside any module (it relaxes ADR 0116, which kept
+    /// relations outside, and the owner decided there that a value a board needs belongs on
+    /// the module's interface); the member on `BuckConverter` (a project's provider of the
+    /// generic would have to state it too; a board that wants the bound names the IC).
+    .max_input_voltage: Voltage
     /// The factor each capacitor's rating has over the highest voltage of its rail (ADR 0085):
     /// `.input_cap.max_voltage >= .vin.peak * .voltage_margin`, and the same for
     /// the steady `.voltage` and for the output. A default of 1, which asks for no more than
@@ -536,6 +551,7 @@ module Buck<Ic: BuckIc> provides BuckConverter {
     .divider.vref == .ic.vref
     .divider.vout == .vout.voltage
     .divider_current == .divider.current
+    .max_input_voltage == .ic.max_input_voltage
     // The bound on the divider's current, the IC's figure or 10 uA to 1 mA (see above, #702).
     .ic.recommended_divider_current ?= 10uA..1mA
     .divider.current ?= .ic.recommended_divider_current
@@ -712,10 +728,18 @@ module Buck<Ic: BuckIc> provides BuckConverter {
 ///   stage's divider belongs in the IC's input current, as it does at the physical
 ///   converter). The default, the floor of zero and the 0.5 mA as the upper end for modes
 ///   with no figure over temperature are accepted as built (the owner, 2026-11-11).
-/// - `BIAS` takes at most 25 V (Absolute Maximum Ratings, p.2); the datasheet ties it to the
-///   output for outputs of 3.3 V to 25 V, and to ground when no supply is available (Pin
-///   Functions, p.10). The part cannot reach the output, which `Buck` makes, so its `support`
-///   section ties BIAS to ground and `.bias_voltage` is 0 V.
+/// - `BIAS` takes at most 25 V (Absolute Maximum Ratings, p.2), the end of its pin row. The
+///   datasheet says "for output voltages of 3.3V to 25V this pin should be tied to VOUT" and
+///   to ground when no supply is available (Pin Functions, p.10). The part cannot reach the
+///   output, which `Buck` makes, so its `support` section ties BIAS to ground by default
+///   (`.bias ?~ .vin.neg`, ADR 0130), the datasheet's option that holds for every output, and
+///   a board that wants the output on BIAS joins the pin itself:
+///   `.reg.ic.bias ~ .reg.vout.pos` (ADR 0120), which replaces the default. The solver judges
+///   the net the pin is on against the 25 V of the row, and a pin tied only inside the part
+///   is not judged. Not taken: a `.bias_voltage` member stated beside the join (it was 0 V
+///   with the tie to ground, and a second statement of what the join says; a board that
+///   forgot it would not be judged, the false pass of issue #290); the BIAS current drawn
+///   from the output, which the datasheet gives no figure for beyond its efficiency curves.
 /// - The other pins that the Absolute Maximum Ratings (p.2) give a limit for state it at the
 ///   end of their pin row, `abs_max 65V` (ADR 0124). The solver compares it with the
 ///   worst-case voltage of the pin's net above the part's ground, `GND` (`.vin.neg`, the one
@@ -758,8 +782,8 @@ module Buck<Ic: BuckIc> provides BuckConverter {
 /// ground; 1 uF at VIN1 and at VIN2; 10 nF of 10 % on TR/SS by default (the capacitor of every
 /// Typical Application, so `.css` is stated, see the soft-start item above); the resistor on RT,
 /// 47 kohm of 1 % by default (`?=`; 0.89 MHz by Equation 3, a value the standard resistor
-/// rows have); BIAS to ground; and EN/UV to the input,
-/// so the IC runs whenever the input is above its own undervoltage lockout. Each capacitor on
+/// rows have); BIAS to ground unless a board joins the pin elsewhere (`?~`, above); and EN/UV
+/// to the input, so the IC runs whenever the input is above its own undervoltage lockout. Each capacitor on
 /// the input is rated for the input's steady voltage. SYNC/MODE and PG are left open.
 ///
 /// The package has no footprint in KiCad's libraries (the 4-pad `UDC-QFN-20` of KiCad is
@@ -778,13 +802,6 @@ part Lt8641 provides BuckIc {
     .vin_abs_max: Voltage
     .vin_abs_max &= 65V
     .vin.peak <= .vin_abs_max
-
-    /// The absolute maximum BIAS (p.2): 25 V.
-    .bias_abs_max: Voltage
-    .bias_abs_max &= 25V
-    /// The voltage on BIAS: ground's, as the `support` section ties it.
-    .bias_voltage: Voltage
-    .bias_voltage <= .bias_abs_max
 
     .vref &= 0.79V..0.822V
     .min_input_voltage &= 3V
@@ -869,7 +886,7 @@ part Lt8641 provides BuckIc {
 
     pins {
         //  pin          kind     name         pads, and the absolute maximums of p.2 (see above)
-        .bias          input    "BIAS"       "1"
+        .bias          input    "BIAS"       "1"  abs_max 25V
         .intvcc        passive  "INTVCC"     "2"  required
         .bst           passive  "BST"        "3"  required
         .vin.pos       power    "VIN1"       "4"
@@ -908,8 +925,7 @@ part Lt8641 provides BuckIc {
         .rt_resistor.resistance ?= 47kohm +/- 1%
         .rt ~> .rt_resistor ~> .vin.neg
         .rt_resistance == .rt_resistor.resistance
-        .bias ~ .vin.neg
-        .bias_voltage &= 0V
+        .bias ?~ .vin.neg
         .en_uv ~ .vin.pos
     }
 }

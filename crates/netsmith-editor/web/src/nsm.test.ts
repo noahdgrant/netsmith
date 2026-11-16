@@ -60,6 +60,7 @@ describe('tokenize', () => {
       ['..', 'operator'],
       ['20mA', 'number'],
     ]);
+    expect(kinds('.bias ?~ .vin.neg')[2]).toEqual(['?~', 'operator']);
     expect(kinds('enum Drive {')[0]).toEqual(['enum', 'keyword']);
     expect(kinds('.assembly &= AssemblyMode::Hand').slice(-3)).toEqual([
       ['AssemblyMode', 'type'],

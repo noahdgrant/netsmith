@@ -10,7 +10,8 @@
 .pcb-view { container: pcbbar / inline-size; }
 .pcb-bar { flex-wrap: nowrap; }
 .pcb-bar .tb-group { flex: none; }
-.pcb-bar .tb-group.status { flex: 0 1 auto; overflow: hidden; }
+/* One line, whatever it holds: a chip that wraps makes the bar taller and moves everything under and beside it (issue 784). */
+.pcb-bar .tb-group.status { flex: 0 1 auto; overflow: hidden; white-space: nowrap; }
 .pcb-bar .cursor-at:empty { display: none; }
 .pcb-bar .cursor-at { min-width: 0; }
 .pcb-bar .spacer { flex: 1 1 0; min-width: 0; }

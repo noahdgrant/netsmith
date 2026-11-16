@@ -214,7 +214,7 @@ fn design_of(path: &str, board: Option<&str>) -> Result<(Design, Mapping), Strin
     let text = fs::read_to_string(path).map_err(|e| format!("{path}: {e}"))?;
     // The pick lock beside the source holds its parts to their rows, as for `build`; it is
     // read and never written.
-    let (held, _) = netsmith_pipeline::pick_lock::open(Path::new(path), &catalogs, false)?;
+    let (held, _) = netsmith_pipeline::pick_lock::open(Path::new(path), &catalogs, false, true)?;
     let catalogs = held.as_ref().unwrap_or(&catalogs);
     let built = outcome_with(path, &text, &loader, catalogs, None)
         .map_err(|problems| render_problems(&problems))?

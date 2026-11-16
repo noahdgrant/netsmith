@@ -202,6 +202,18 @@ export function Pcb() {
   return (
     <div class="pcb-view">
       <div class="toolbar pcb-bar" role="toolbar" aria-label="Board">
+        {/* First in the bar, so it is where it was whichever view is shown and whatever the groups after it hold (issue 784). */}
+        <div class="tb-group">
+          <Segmented<'2d' | '3d'>
+            label="Drawing"
+            value={in3d ? '3d' : '2d'}
+            onChange={(v) => (pcbMode.value = v)}
+            options={[
+              { value: '2d', label: '2D', tip: 'The board in 2D, where parts are placed and moved', keys: 'D', testid: 'pcb-2d' },
+              { value: '3d', label: '3D', icon: 'cube', tip: 'The board in 3D, with the heights netsmith knows: drag a picked part to move it', keys: 'D', testid: 'pcb-3d-toggle' },
+            ]}
+          />
+        </div>
         <div class="tb-group">
           {panels.map((p) => (
             <button key={p.name} class="tool" title={`Draw the panel ${p.name} of this board`} onClick={() => (panelShown.value = p.name)}>
@@ -251,15 +263,6 @@ export function Pcb() {
         </div>
         <span class="spacer" />
         <div class="tb-group">
-          <Segmented<'2d' | '3d'>
-            label="Drawing"
-            value={in3d ? '3d' : '2d'}
-            onChange={(v) => (pcbMode.value = v)}
-            options={[
-              { value: '2d', label: '2D', tip: 'The board in 2D, where parts are placed and moved', keys: 'D', testid: 'pcb-2d' },
-              { value: '3d', label: '3D', icon: 'cube', tip: 'The board in 3D, with the heights netsmith knows: drag a picked part to move it', keys: 'D', testid: 'pcb-3d-toggle' },
-            ]}
-          />
           {!in3d && (
             <Segmented<Side>
               label="Side"

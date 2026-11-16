@@ -237,11 +237,16 @@ pub(super) fn with_placed_board<T>(
             ExitCode::from(2)
         })?;
         // The pick lock holds the parts it names to their rows, as for `fab`; it is not written.
-        let (held, _) = netsmith_pipeline::pick_lock::open(&source.path, &catalogs, false)
-            .map_err(|e| {
-                eprintln!("{e}");
-                ExitCode::from(2)
-            })?;
+        let (held, _) = netsmith_pipeline::pick_lock::open(
+            &source.path,
+            &catalogs,
+            false,
+            target.locks(source),
+        )
+        .map_err(|e| {
+            eprintln!("{e}");
+            ExitCode::from(2)
+        })?;
         let placed = netsmith_fabricate::board3d::Placed {
             name: &source.name,
             text: &text,
