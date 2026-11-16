@@ -10,7 +10,11 @@ _Avoid_: Derated capacitance, usable capacitance
 
 **Enclosure**:
 A range that holds whatever a pick later chooses, written before the picks so that a pick that reads a voltage can be judged: each part still to be picked at the hull of what its candidates give its `dc` value (or, when the design limits its current, a load of at most that limit), and a regulator's load: the sum of what the loads on its output draw, each over every pick it could have, when every load has a current the design's relations give, and otherwise (a load that states nothing) from nothing up to the limit the regulator states on what its output supplies. The pass after the picks narrows it to the circuit that was picked (ADR 0076, amendments 5, 6, 7 and 11).
-_Avoid_: Seed, start window (those are a range the board writes by hand and states as a claim; an enclosure is worked out and is not stated), bound (the bound from Ohm's law is another, cheaper thing); for the box a board goes in, say _Case model_ or case
+_Avoid_: Seed, start window (those are a range the board writes by hand and states as a claim; an enclosure is worked out and is not stated), bound (the bound from Ohm's law is another, cheaper thing); for the box a board goes in, say _Case model_ or case, and for the definition that describes it, _Enclosure definition_
+
+**Enclosure definition**:
+A definition `enclosure Name { ... }` whose body is what a `case { }` section of a physical file holds (the outline, cutouts, mounting holes, fiducials, labels, keepouts and height limits of a case, and its `CaseModel` files), shared by the boards whose physical units say `case Name`: its statements are read as if they were written in that unit's `case { }` section, in the enclosure's own file (ADR 0132). It is written in a file of `src/` of its own or in a physical file, never in a board's circuit source. A board is in one; it is not a member and has no instance. The keyword is `enclosure`, and next to a case, a board's physical file or a `case` line, "an enclosure" means this; where the solver's range above could be meant, say enclosure definition.
+_Avoid_: Case definition, housing, frame (the board's coordinate frame)
 
 **Enum**:
 A type whose values are a fixed list of named variants, declared with `enum Name { A, B }` and imported like a definition (ADR 0054). A variant is written with its enum, `Name::A`; a field of the enum type takes only its variants, with `&=`, `?=` and `==`. `AssemblyMode` is the one enum in scope in every file without an import (`std/prelude.nsm`).

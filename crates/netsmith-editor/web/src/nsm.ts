@@ -59,7 +59,7 @@ const ROW_WORDS = new Set(['single', 'crosses']);
 const PIN_KINDS = new Set(['power', 'input', 'output', 'bidirectional', 'passive', 'no_connect', 'tri_state']);
 
 /** The words that start a definition or a statement, and the markers after a pin row (`required`, `optional`, ADR 0016). */
-export const KEYWORDS = new Set(['board', 'system', 'panel', 'part', 'interface', 'module', 'enum', 'generic', 'provides', 'import', 'catalog', 'bridge', 'required', 'optional']);
+export const KEYWORDS = new Set(['board', 'system', 'panel', 'part', 'interface', 'module', 'enum', 'generic', 'enclosure', 'provides', 'import', 'catalog', 'bridge', 'required', 'optional']);
 
 // Longest spellings first, as the lexer reads them.
 const OPERATORS = ['~>', '&=', '?=', '?~', '==', '>=', '<=', '+/-', '..', '::', '~', '+', '-', '*', '/', '=', '>', '<'];

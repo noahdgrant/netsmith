@@ -289,7 +289,7 @@ impl Parser {
                 _ => {
                     return Err(unexpected(
                         &t,
-                        "`import`, `board`, `system`, `panel`, `part`, `interface`, `module`, `enum`, `generic` or `physical for`",
+                        "`import`, `board`, `system`, `panel`, `part`, `interface`, `module`, `enum`, `generic`, `enclosure` or `physical for`",
                     ));
                 }
             }
@@ -526,6 +526,7 @@ impl Parser {
                     | Item::Shared(_)
                     | Item::Lines(_)
                     | Item::Case(_)
+                    | Item::CaseOf(_)
                     | Item::Support(_)
                     | Item::Defaults(_)
                     | Item::Row(_)
@@ -606,6 +607,14 @@ impl Parser {
                     let items = self.block(open.span)?;
                     return only_decls(Item::Defaults(Defaults {
                         items,
+                        span: self.span_from(start),
+                    }));
+                }
+                "case" if matches!(self.peek_second(), Tok::Ident(_)) => {
+                    self.bump();
+                    let name = self.ident("the name of an enclosure after `case`")?;
+                    return only_decls(Item::CaseOf(CaseOf {
+                        name,
                         span: self.span_from(start),
                     }));
                 }

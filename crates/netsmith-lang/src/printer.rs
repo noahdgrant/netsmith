@@ -463,6 +463,10 @@ fn write_block(out: &mut String, inner_docs: &[String], items: &[Item], depth: u
                 out.push_str("case ");
                 write_block(out, &[], &c.items, depth + 1);
             }
+            Item::CaseOf(c) => {
+                out.push_str("case ");
+                out.push_str(&c.name.to_source());
+            }
             Item::Support(c) => {
                 out.push_str("support ");
                 write_block(out, &[], &c.items, depth + 1);

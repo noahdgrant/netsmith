@@ -2263,12 +2263,12 @@
         {
           "path": "radio.row_a",
           "length": 0.2,
-          "source": "enclosure_sensor.physical.nsm:133"
+          "source": "enclosure_sensor.physical.nsm:111"
         },
         {
           "path": "radio.row_b",
           "length": 0.2,
-          "source": "enclosure_sensor.physical.nsm:134"
+          "source": "enclosure_sensor.physical.nsm:112"
         }
       ],
       "models": [],
@@ -2312,7 +2312,7 @@
               "field": "y",
               "lo": 30.5,
               "hi": 31.5,
-              "source": "enclosure_sensor.physical.nsm:67"
+              "source": "enclosure_sensor.physical.nsm:45"
             }
           ],
           "side": null,
@@ -2323,7 +2323,7 @@
           "module": false,
           "bounds": [],
           "side": "bottom",
-          "side_source": "enclosure_sensor.physical.nsm:129"
+          "side_source": "enclosure_sensor.physical.nsm:107"
         },
         {
           "path": "coax",
@@ -2339,7 +2339,7 @@
               "field": "right",
               "lo": 86.0,
               "hi": 89.0,
-              "source": "enclosure_sensor.physical.nsm:69, enclosure_sensor.physical.nsm:70"
+              "source": "enclosure_sensor.physical.nsm:47, enclosure_sensor.physical.nsm:48"
             }
           ],
           "side": null,
@@ -2353,13 +2353,13 @@
               "field": "x",
               "lo": 12.0,
               "hi": 12.0,
-              "source": "enclosure_sensor.physical.nsm:47"
+              "source": "enclosure_sensor.physical.nsm:25"
             },
             {
               "field": "y",
               "lo": 4.0,
               "hi": 4.0,
-              "source": "enclosure_sensor.physical.nsm:48"
+              "source": "enclosure_sensor.physical.nsm:26"
             }
           ],
           "side": null,
@@ -2373,13 +2373,13 @@
               "field": "x",
               "lo": 78.0,
               "hi": 78.0,
-              "source": "enclosure_sensor.physical.nsm:49"
+              "source": "enclosure_sensor.physical.nsm:27"
             },
             {
               "field": "y",
               "lo": 58.0,
               "hi": 58.0,
-              "source": "enclosure_sensor.physical.nsm:50"
+              "source": "enclosure_sensor.physical.nsm:28"
             }
           ],
           "side": null,
@@ -2393,13 +2393,13 @@
               "field": "x",
               "lo": 4.5,
               "hi": 4.5,
-              "source": "enclosure_sensor.physical.nsm:39"
+              "source": "src/case.nsm:31"
             },
             {
               "field": "y",
               "lo": 4.5,
               "hi": 4.5,
-              "source": "enclosure_sensor.physical.nsm:40"
+              "source": "src/case.nsm:32"
             }
           ],
           "side": null,
@@ -2413,13 +2413,13 @@
               "field": "x",
               "lo": 85.5,
               "hi": 85.5,
-              "source": "enclosure_sensor.physical.nsm:41"
+              "source": "src/case.nsm:33"
             },
             {
               "field": "y",
               "lo": 4.5,
               "hi": 4.5,
-              "source": "enclosure_sensor.physical.nsm:42"
+              "source": "src/case.nsm:34"
             }
           ],
           "side": null,
@@ -2433,13 +2433,13 @@
               "field": "x",
               "lo": 4.5,
               "hi": 4.5,
-              "source": "enclosure_sensor.physical.nsm:43"
+              "source": "src/case.nsm:35"
             },
             {
               "field": "y",
               "lo": 57.5,
               "hi": 57.5,
-              "source": "enclosure_sensor.physical.nsm:44"
+              "source": "src/case.nsm:36"
             }
           ],
           "side": null,
@@ -2453,13 +2453,13 @@
               "field": "x",
               "lo": 85.5,
               "hi": 85.5,
-              "source": "enclosure_sensor.physical.nsm:45"
+              "source": "src/case.nsm:37"
             },
             {
               "field": "y",
               "lo": 57.5,
               "hi": 57.5,
-              "source": "enclosure_sensor.physical.nsm:46"
+              "source": "src/case.nsm:38"
             }
           ],
           "side": null,
@@ -2470,42 +2470,42 @@
           "module": false,
           "bounds": [],
           "side": "bottom",
-          "side_source": "enclosure_sensor.physical.nsm:82"
+          "side_source": "enclosure_sensor.physical.nsm:60"
         },
         {
           "path": "lights.led_b",
           "module": false,
           "bounds": [],
           "side": "bottom",
-          "side_source": "enclosure_sensor.physical.nsm:83"
+          "side_source": "enclosure_sensor.physical.nsm:61"
         },
         {
           "path": "lights.led_c",
           "module": false,
           "bounds": [],
           "side": "top",
-          "side_source": "enclosure_sensor.physical.nsm:84"
+          "side_source": "enclosure_sensor.physical.nsm:62"
         },
         {
           "path": "lights.r_a",
           "module": false,
           "bounds": [],
           "side": "bottom",
-          "side_source": "enclosure_sensor.physical.nsm:85"
+          "side_source": "enclosure_sensor.physical.nsm:63"
         },
         {
           "path": "lights.r_b",
           "module": false,
           "bounds": [],
           "side": "bottom",
-          "side_source": "enclosure_sensor.physical.nsm:86"
+          "side_source": "enclosure_sensor.physical.nsm:64"
         },
         {
           "path": "lights.r_c",
           "module": false,
           "bounds": [],
           "side": "bottom",
-          "side_source": "enclosure_sensor.physical.nsm:87"
+          "side_source": "enclosure_sensor.physical.nsm:65"
         },
         {
           "path": "pads.tp1",
@@ -2515,88 +2515,88 @@
               "field": "y",
               "lo": 54.0,
               "hi": "inf",
-              "source": "enclosure_sensor.physical.nsm:95"
+              "source": "enclosure_sensor.physical.nsm:73"
             }
           ],
           "side": "top",
-          "side_source": "enclosure_sensor.physical.nsm:94"
+          "side_source": "enclosure_sensor.physical.nsm:72"
         },
         {
           "path": "pads.tp10",
           "module": false,
           "bounds": [],
           "side": "top",
-          "side_source": "enclosure_sensor.physical.nsm:94"
+          "side_source": "enclosure_sensor.physical.nsm:72"
         },
         {
           "path": "pads.tp11",
           "module": false,
           "bounds": [],
           "side": "top",
-          "side_source": "enclosure_sensor.physical.nsm:94"
+          "side_source": "enclosure_sensor.physical.nsm:72"
         },
         {
           "path": "pads.tp12",
           "module": false,
           "bounds": [],
           "side": "top",
-          "side_source": "enclosure_sensor.physical.nsm:94"
+          "side_source": "enclosure_sensor.physical.nsm:72"
         },
         {
           "path": "pads.tp2",
           "module": false,
           "bounds": [],
           "side": "top",
-          "side_source": "enclosure_sensor.physical.nsm:94"
+          "side_source": "enclosure_sensor.physical.nsm:72"
         },
         {
           "path": "pads.tp3",
           "module": false,
           "bounds": [],
           "side": "top",
-          "side_source": "enclosure_sensor.physical.nsm:94"
+          "side_source": "enclosure_sensor.physical.nsm:72"
         },
         {
           "path": "pads.tp4",
           "module": false,
           "bounds": [],
           "side": "top",
-          "side_source": "enclosure_sensor.physical.nsm:94"
+          "side_source": "enclosure_sensor.physical.nsm:72"
         },
         {
           "path": "pads.tp5",
           "module": false,
           "bounds": [],
           "side": "top",
-          "side_source": "enclosure_sensor.physical.nsm:94"
+          "side_source": "enclosure_sensor.physical.nsm:72"
         },
         {
           "path": "pads.tp6",
           "module": false,
           "bounds": [],
           "side": "top",
-          "side_source": "enclosure_sensor.physical.nsm:94"
+          "side_source": "enclosure_sensor.physical.nsm:72"
         },
         {
           "path": "pads.tp7",
           "module": false,
           "bounds": [],
           "side": "top",
-          "side_source": "enclosure_sensor.physical.nsm:94"
+          "side_source": "enclosure_sensor.physical.nsm:72"
         },
         {
           "path": "pads.tp8",
           "module": false,
           "bounds": [],
           "side": "top",
-          "side_source": "enclosure_sensor.physical.nsm:94"
+          "side_source": "enclosure_sensor.physical.nsm:72"
         },
         {
           "path": "pads.tp9",
           "module": false,
           "bounds": [],
           "side": "top",
-          "side_source": "enclosure_sensor.physical.nsm:94"
+          "side_source": "enclosure_sensor.physical.nsm:72"
         },
         {
           "path": "plug",
@@ -2606,23 +2606,23 @@
               "field": "y",
               "lo": 30.5,
               "hi": 31.5,
-              "source": "enclosure_sensor.physical.nsm:60, enclosure_sensor.physical.nsm:61"
+              "source": "enclosure_sensor.physical.nsm:38, enclosure_sensor.physical.nsm:39"
             },
             {
               "field": "left",
               "lo": -8.1,
               "hi": -7.9,
-              "source": "enclosure_sensor.physical.nsm:59"
+              "source": "enclosure_sensor.physical.nsm:37"
             },
             {
               "field": "rotation",
               "lo": 180.0,
               "hi": 180.0,
-              "source": "enclosure_sensor.physical.nsm:58"
+              "source": "enclosure_sensor.physical.nsm:36"
             }
           ],
           "side": "top",
-          "side_source": "enclosure_sensor.physical.nsm:62"
+          "side_source": "enclosure_sensor.physical.nsm:40"
         },
         {
           "path": "radio.row_a",
@@ -2632,7 +2632,7 @@
               "field": "rotation",
               "lo": 0.0,
               "hi": 0.0,
-              "source": "enclosure_sensor.physical.nsm:76"
+              "source": "enclosure_sensor.physical.nsm:54"
             }
           ],
           "side": null,
@@ -2646,7 +2646,7 @@
               "field": "rotation",
               "lo": 0.0,
               "hi": 0.0,
-              "source": "enclosure_sensor.physical.nsm:77"
+              "source": "enclosure_sensor.physical.nsm:55"
             }
           ],
           "side": null,
@@ -2665,7 +2665,7 @@
           },
           "lo": 0.0,
           "hi": 0.0,
-          "source": "enclosure_sensor.physical.nsm:68"
+          "source": "enclosure_sensor.physical.nsm:46"
         },
         {
           "a": {
@@ -2678,7 +2678,7 @@
           },
           "lo": 22.81,
           "hi": 22.91,
-          "source": "enclosure_sensor.physical.nsm:74"
+          "source": "enclosure_sensor.physical.nsm:52"
         },
         {
           "a": {
@@ -2691,7 +2691,7 @@
           },
           "lo": 0.0,
           "hi": 0.0,
-          "source": "enclosure_sensor.physical.nsm:75"
+          "source": "enclosure_sensor.physical.nsm:53"
         },
         {
           "a": {
@@ -2704,7 +2704,7 @@
           },
           "lo": 2.49,
           "hi": 2.59,
-          "source": "enclosure_sensor.physical.nsm:96"
+          "source": "enclosure_sensor.physical.nsm:74"
         },
         {
           "a": {
@@ -2717,7 +2717,7 @@
           },
           "lo": 0.0,
           "hi": 0.0,
-          "source": "enclosure_sensor.physical.nsm:96"
+          "source": "enclosure_sensor.physical.nsm:74"
         },
         {
           "a": {
@@ -2730,7 +2730,7 @@
           },
           "lo": 2.49,
           "hi": 2.59,
-          "source": "enclosure_sensor.physical.nsm:96"
+          "source": "enclosure_sensor.physical.nsm:74"
         },
         {
           "a": {
@@ -2743,7 +2743,7 @@
           },
           "lo": 0.0,
           "hi": 0.0,
-          "source": "enclosure_sensor.physical.nsm:96"
+          "source": "enclosure_sensor.physical.nsm:74"
         },
         {
           "a": {
@@ -2756,7 +2756,7 @@
           },
           "lo": 2.49,
           "hi": 2.59,
-          "source": "enclosure_sensor.physical.nsm:96"
+          "source": "enclosure_sensor.physical.nsm:74"
         },
         {
           "a": {
@@ -2769,7 +2769,7 @@
           },
           "lo": 0.0,
           "hi": 0.0,
-          "source": "enclosure_sensor.physical.nsm:96"
+          "source": "enclosure_sensor.physical.nsm:74"
         },
         {
           "a": {
@@ -2782,7 +2782,7 @@
           },
           "lo": 2.49,
           "hi": 2.59,
-          "source": "enclosure_sensor.physical.nsm:96"
+          "source": "enclosure_sensor.physical.nsm:74"
         },
         {
           "a": {
@@ -2795,7 +2795,7 @@
           },
           "lo": 0.0,
           "hi": 0.0,
-          "source": "enclosure_sensor.physical.nsm:96"
+          "source": "enclosure_sensor.physical.nsm:74"
         },
         {
           "a": {
@@ -2808,7 +2808,7 @@
           },
           "lo": 2.49,
           "hi": 2.59,
-          "source": "enclosure_sensor.physical.nsm:96"
+          "source": "enclosure_sensor.physical.nsm:74"
         },
         {
           "a": {
@@ -2821,7 +2821,7 @@
           },
           "lo": 0.0,
           "hi": 0.0,
-          "source": "enclosure_sensor.physical.nsm:96"
+          "source": "enclosure_sensor.physical.nsm:74"
         },
         {
           "a": {
@@ -2834,7 +2834,7 @@
           },
           "lo": 2.49,
           "hi": 2.59,
-          "source": "enclosure_sensor.physical.nsm:96"
+          "source": "enclosure_sensor.physical.nsm:74"
         },
         {
           "a": {
@@ -2847,7 +2847,7 @@
           },
           "lo": 0.0,
           "hi": 0.0,
-          "source": "enclosure_sensor.physical.nsm:96"
+          "source": "enclosure_sensor.physical.nsm:74"
         },
         {
           "a": {
@@ -2860,7 +2860,7 @@
           },
           "lo": 2.49,
           "hi": 2.59,
-          "source": "enclosure_sensor.physical.nsm:96"
+          "source": "enclosure_sensor.physical.nsm:74"
         },
         {
           "a": {
@@ -2873,7 +2873,7 @@
           },
           "lo": 0.0,
           "hi": 0.0,
-          "source": "enclosure_sensor.physical.nsm:96"
+          "source": "enclosure_sensor.physical.nsm:74"
         },
         {
           "a": {
@@ -2886,7 +2886,7 @@
           },
           "lo": 2.49,
           "hi": 2.59,
-          "source": "enclosure_sensor.physical.nsm:96"
+          "source": "enclosure_sensor.physical.nsm:74"
         },
         {
           "a": {
@@ -2899,7 +2899,7 @@
           },
           "lo": 0.0,
           "hi": 0.0,
-          "source": "enclosure_sensor.physical.nsm:96"
+          "source": "enclosure_sensor.physical.nsm:74"
         },
         {
           "a": {
@@ -2912,7 +2912,7 @@
           },
           "lo": 2.49,
           "hi": 2.59,
-          "source": "enclosure_sensor.physical.nsm:96"
+          "source": "enclosure_sensor.physical.nsm:74"
         },
         {
           "a": {
@@ -2925,7 +2925,7 @@
           },
           "lo": 0.0,
           "hi": 0.0,
-          "source": "enclosure_sensor.physical.nsm:96"
+          "source": "enclosure_sensor.physical.nsm:74"
         },
         {
           "a": {
@@ -2938,7 +2938,7 @@
           },
           "lo": 2.49,
           "hi": 2.59,
-          "source": "enclosure_sensor.physical.nsm:96"
+          "source": "enclosure_sensor.physical.nsm:74"
         },
         {
           "a": {
@@ -2951,7 +2951,7 @@
           },
           "lo": 0.0,
           "hi": 0.0,
-          "source": "enclosure_sensor.physical.nsm:96"
+          "source": "enclosure_sensor.physical.nsm:74"
         },
         {
           "a": {
@@ -2964,7 +2964,7 @@
           },
           "lo": 2.49,
           "hi": 2.59,
-          "source": "enclosure_sensor.physical.nsm:96"
+          "source": "enclosure_sensor.physical.nsm:74"
         },
         {
           "a": {
@@ -2977,7 +2977,7 @@
           },
           "lo": 0.0,
           "hi": 0.0,
-          "source": "enclosure_sensor.physical.nsm:96"
+          "source": "enclosure_sensor.physical.nsm:74"
         },
         {
           "a": {
@@ -2990,7 +2990,7 @@
           },
           "lo": 10.93,
           "hi": 11.93,
-          "source": "enclosure_sensor.physical.nsm:130"
+          "source": "enclosure_sensor.physical.nsm:108"
         },
         {
           "a": {
@@ -3003,49 +3003,49 @@
           },
           "lo": -1.0,
           "hi": 1.0,
-          "source": "enclosure_sensor.physical.nsm:131"
+          "source": "enclosure_sensor.physical.nsm:109"
         }
       ],
       "line_texts": {
-        "enclosure_sensor.physical.nsm:129": ".cell.place.side &= \"bottom\"",
-        "enclosure_sensor.physical.nsm:130": ".cell.place.x - .radio.row_a.place.x == 11.43mm +/- 0.5mm",
-        "enclosure_sensor.physical.nsm:131": ".cell.place.y - .radio.row_a.place.y == 0mm +/- 1mm",
-        "enclosure_sensor.physical.nsm:133": ".radio.row_a.pin_protrusion &= 0.2mm",
-        "enclosure_sensor.physical.nsm:134": ".radio.row_b.pin_protrusion &= 0.2mm",
-        "enclosure_sensor.physical.nsm:39": ".hole1.place.x &= 4.5mm",
-        "enclosure_sensor.physical.nsm:40": ".hole1.place.y &= 4.5mm",
-        "enclosure_sensor.physical.nsm:41": ".hole2.place.x &= 85.5mm",
-        "enclosure_sensor.physical.nsm:42": ".hole2.place.y &= 4.5mm",
-        "enclosure_sensor.physical.nsm:43": ".hole3.place.x &= 4.5mm",
-        "enclosure_sensor.physical.nsm:44": ".hole3.place.y &= 57.5mm",
-        "enclosure_sensor.physical.nsm:45": ".hole4.place.x &= 85.5mm",
-        "enclosure_sensor.physical.nsm:46": ".hole4.place.y &= 57.5mm",
-        "enclosure_sensor.physical.nsm:47": ".fiducial1.place.x &= 12mm",
-        "enclosure_sensor.physical.nsm:48": ".fiducial1.place.y &= 4mm",
-        "enclosure_sensor.physical.nsm:49": ".fiducial2.place.x &= 78mm",
-        "enclosure_sensor.physical.nsm:50": ".fiducial2.place.y &= 58mm",
-        "enclosure_sensor.physical.nsm:58": ".plug.place.rotation &= 180",
-        "enclosure_sensor.physical.nsm:59": ".plug.place.left &= -8mm +/- 0.1mm",
-        "enclosure_sensor.physical.nsm:60": ".plug.place.y >= .outline.height / 2 - 0.5mm",
-        "enclosure_sensor.physical.nsm:61": ".plug.place.y <= .outline.height / 2 + 0.5mm",
-        "enclosure_sensor.physical.nsm:62": ".plug.place.side &= \"top\"",
-        "enclosure_sensor.physical.nsm:67": ".antenna.place.y &= 31mm +/- 0.5mm",
-        "enclosure_sensor.physical.nsm:68": ".coax.place.y == .antenna.place.y",
-        "enclosure_sensor.physical.nsm:69": ".coax.place.right >= .outline.width - 4mm",
-        "enclosure_sensor.physical.nsm:70": ".coax.place.right <= .outline.width - 1mm",
-        "enclosure_sensor.physical.nsm:74": ".radio.row_b.place.x - .radio.row_a.place.x == 22.86mm +/- 0.05mm",
-        "enclosure_sensor.physical.nsm:75": ".radio.row_a.place.y == .radio.row_b.place.y",
-        "enclosure_sensor.physical.nsm:76": ".radio.row_a.place.rotation &= 0",
-        "enclosure_sensor.physical.nsm:77": ".radio.row_b.place.rotation &= 0",
-        "enclosure_sensor.physical.nsm:82": ".lights.led_a.place.side &= \"bottom\"",
-        "enclosure_sensor.physical.nsm:83": ".lights.led_b.place.side &= \"bottom\"",
-        "enclosure_sensor.physical.nsm:84": ".lights.led_c.place.side &= \"top\"",
-        "enclosure_sensor.physical.nsm:85": ".lights.r_a.place.side &= \"bottom\"",
-        "enclosure_sensor.physical.nsm:86": ".lights.r_b.place.side &= \"bottom\"",
-        "enclosure_sensor.physical.nsm:87": ".lights.r_c.place.side &= \"bottom\"",
-        "enclosure_sensor.physical.nsm:94": ".pads.place.side &= \"top\"",
-        "enclosure_sensor.physical.nsm:95": ".pads.tp1.place.y >= .outline.height - 8mm",
-        "enclosure_sensor.physical.nsm:96": "row .pads.tp1 .. .pads.tp12 along x pitch 2.54mm +/- 0.05mm"
+        "enclosure_sensor.physical.nsm:107": ".cell.place.side &= \"bottom\"",
+        "enclosure_sensor.physical.nsm:108": ".cell.place.x - .radio.row_a.place.x == 11.43mm +/- 0.5mm",
+        "enclosure_sensor.physical.nsm:109": ".cell.place.y - .radio.row_a.place.y == 0mm +/- 1mm",
+        "enclosure_sensor.physical.nsm:111": ".radio.row_a.pin_protrusion &= 0.2mm",
+        "enclosure_sensor.physical.nsm:112": ".radio.row_b.pin_protrusion &= 0.2mm",
+        "enclosure_sensor.physical.nsm:25": ".fiducial1.place.x &= 12mm",
+        "enclosure_sensor.physical.nsm:26": ".fiducial1.place.y &= 4mm",
+        "enclosure_sensor.physical.nsm:27": ".fiducial2.place.x &= 78mm",
+        "enclosure_sensor.physical.nsm:28": ".fiducial2.place.y &= 58mm",
+        "enclosure_sensor.physical.nsm:36": ".plug.place.rotation &= 180",
+        "enclosure_sensor.physical.nsm:37": ".plug.place.left &= -8mm +/- 0.1mm",
+        "enclosure_sensor.physical.nsm:38": ".plug.place.y >= .outline.height / 2 - 0.5mm",
+        "enclosure_sensor.physical.nsm:39": ".plug.place.y <= .outline.height / 2 + 0.5mm",
+        "enclosure_sensor.physical.nsm:40": ".plug.place.side &= \"top\"",
+        "enclosure_sensor.physical.nsm:45": ".antenna.place.y &= 31mm +/- 0.5mm",
+        "enclosure_sensor.physical.nsm:46": ".coax.place.y == .antenna.place.y",
+        "enclosure_sensor.physical.nsm:47": ".coax.place.right >= .outline.width - 4mm",
+        "enclosure_sensor.physical.nsm:48": ".coax.place.right <= .outline.width - 1mm",
+        "enclosure_sensor.physical.nsm:52": ".radio.row_b.place.x - .radio.row_a.place.x == 22.86mm +/- 0.05mm",
+        "enclosure_sensor.physical.nsm:53": ".radio.row_a.place.y == .radio.row_b.place.y",
+        "enclosure_sensor.physical.nsm:54": ".radio.row_a.place.rotation &= 0",
+        "enclosure_sensor.physical.nsm:55": ".radio.row_b.place.rotation &= 0",
+        "enclosure_sensor.physical.nsm:60": ".lights.led_a.place.side &= \"bottom\"",
+        "enclosure_sensor.physical.nsm:61": ".lights.led_b.place.side &= \"bottom\"",
+        "enclosure_sensor.physical.nsm:62": ".lights.led_c.place.side &= \"top\"",
+        "enclosure_sensor.physical.nsm:63": ".lights.r_a.place.side &= \"bottom\"",
+        "enclosure_sensor.physical.nsm:64": ".lights.r_b.place.side &= \"bottom\"",
+        "enclosure_sensor.physical.nsm:65": ".lights.r_c.place.side &= \"bottom\"",
+        "enclosure_sensor.physical.nsm:72": ".pads.place.side &= \"top\"",
+        "enclosure_sensor.physical.nsm:73": ".pads.tp1.place.y >= .outline.height - 8mm",
+        "enclosure_sensor.physical.nsm:74": "row .pads.tp1 .. .pads.tp12 along x pitch 2.54mm +/- 0.05mm",
+        "src/case.nsm:31": ".hole1.place.x &= 4.5mm",
+        "src/case.nsm:32": ".hole1.place.y &= 4.5mm",
+        "src/case.nsm:33": ".hole2.place.x &= 85.5mm",
+        "src/case.nsm:34": ".hole2.place.y &= 4.5mm",
+        "src/case.nsm:35": ".hole3.place.x &= 4.5mm",
+        "src/case.nsm:36": ".hole3.place.y &= 57.5mm",
+        "src/case.nsm:37": ".hole4.place.x &= 85.5mm",
+        "src/case.nsm:38": ".hole4.place.y &= 57.5mm"
       }
     },
     "interfaces": [

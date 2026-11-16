@@ -32,10 +32,21 @@ pub struct Physical {
 
 /// `case { ... }`: the section of a physical file that holds the outline, openings,
 /// mounting holes, fiducials and labels of the board and what the case fixes (ADR 0048,
-/// "Syntax decisions" 7). It can be lifted out unchanged into a shared definition later.
+/// "Syntax decisions" 7). Its contents lift out unchanged into an `enclosure` definition,
+/// which a unit then names with a [`CaseOf`] (ADR 0132).
 #[derive(Debug, Clone, PartialEq)]
 pub struct Case {
     pub items: Vec<Item>,
+    pub span: Span,
+}
+
+/// `case SnapCase`: the board is in the case that the `enclosure SnapCase { ... }` definition
+/// states, whose statements are read as if they were written in the unit's `case { }` section
+/// (ADR 0132). Only a board's physical unit may hold one.
+#[derive(Debug, Clone, PartialEq)]
+pub struct CaseOf {
+    /// The enclosure it names (`SnapCase`).
+    pub name: Ident,
     pub span: Span,
 }
 
@@ -75,7 +86,7 @@ pub struct Import {
     pub span: Span,
 }
 
-/// A top-level `board`, `system`, `panel`, `part`, `interface`, `module`, `enum` or `generic`. They share one body grammar;
+/// A top-level `board`, `system`, `panel`, `part`, `interface`, `module`, `enum`, `generic` or `enclosure`. They share one body grammar;
 /// what each kind may contain is a later stage's concern.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Definition {
@@ -163,6 +174,9 @@ pub enum DefKind {
     /// What the users of a part or module may rely on, and what a part or module that
     /// provides it must have (ADR 0068).
     Generic,
+    /// What a case fixes of the boards in it (outline, openings, holes, keepouts, case
+    /// models), shared by the boards whose physical files name it with `case Name` (ADR 0132).
+    Enclosure,
 }
 
 impl DefKind {
@@ -176,6 +190,7 @@ impl DefKind {
             Self::Module => "module",
             Self::Enum => "enum",
             Self::Generic => "generic",
+            Self::Enclosure => "enclosure",
         }
     }
 
@@ -189,6 +204,7 @@ impl DefKind {
             Self::Module,
             Self::Enum,
             Self::Generic,
+            Self::Enclosure,
         ]
         .into_iter()
         .find(|k| k.keyword() == word)
@@ -221,6 +237,9 @@ pub enum Item {
     Lines(Lines),
     /// A `case { ... }` section; only a physical file may hold one.
     Case(Case),
+    /// `case SnapCase`: the unit's board is in the case an `enclosure` states (ADR 0132); only
+    /// a board's physical unit may hold one.
+    CaseOf(CaseOf),
     /// A `support { ... }` section: the parts a part's datasheet application circuit puts
     /// around it and their connections to its pins; only a part may hold one (ADR 0115).
     Support(Support),

@@ -1,49 +1,27 @@
-//! The enclosure of the sensor board and every requirement on where its parts go (ADR 0048).
+//! The case of the sensor board and every requirement on where its parts go (ADR 0048).
 //!
 //! Every number here is invented. In a real project each one would carry the drawing it comes
 //! from in a comment above the line; here the comment says what the line asks for. Where the
 //! parts end up is not here: it is the placer's, and the same inputs give the same board.
 
-import std::parts::mechanical::{Fiducial, MountingHole}
-import std::pcb::{Cutout, Keepout, Outline}
+import src::case::SensorCase
+import std::parts::mechanical::Fiducial
+import std::pcb::Keepout
 
 physical for EnclosureSensor {
-    case {
-        // 1. The outline: 90 x 62 mm with 3 mm rounded corners, and one cutout, a slot for a
-        //    strap, 8 x 4 mm, with its corner 30 mm in and 44 mm down.
-        .outline: Outline {
-            .width &= 90mm
-            .height &= 62mm
-            .corner_radius &= 3mm
-        }
-        .strap: Cutout {
-            .x &= 30mm
-            .y &= 44mm
-            .width &= 8mm
-            .height &= 4mm
-            .corner_radius &= 1mm
-        }
+    // 1. The case: the outline, the strap slot and the four mounting holes are the case's, in
+    //    `src/case.nsm`, which every board that goes in this case names (ADR 0132).
+    case SensorCase
 
-        // 2. Four mounting holes and two fiducials. A hole or a fiducial whose place is stated
-        //    below is put there and not in a corner.
-        .hole1: MountingHole
-        .hole2: MountingHole
-        .hole3: MountingHole
-        .hole4: MountingHole
+    // 2. What this board adds to the case: two fiducials. A fiducial whose place is stated
+    //    below is put there and not in a corner.
+    case {
         .fiducial1: Fiducial
         .fiducial2: Fiducial
     }
 
-    // 2. Their places, from the case drawing: 4.5 mm in from each corner; the fiducials are
-    //    near two opposite corners, 4 mm in: JLCPCB asks 3.35 mm of copper from the edge.
-    .hole1.place.x &= 4.5mm
-    .hole1.place.y &= 4.5mm
-    .hole2.place.x &= 85.5mm
-    .hole2.place.y &= 4.5mm
-    .hole3.place.x &= 4.5mm
-    .hole3.place.y &= 57.5mm
-    .hole4.place.x &= 85.5mm
-    .hole4.place.y &= 57.5mm
+    // 2. Their places: near two opposite corners, 4 mm in: JLCPCB asks 3.35 mm of copper from
+    //    the edge.
     .fiducial1.place.x &= 12mm
     .fiducial1.place.y &= 4mm
     .fiducial2.place.x &= 78mm

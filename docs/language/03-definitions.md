@@ -1,6 +1,6 @@
 ## Definitions: board, part, interface, module, system, panel
 
-A definition is a named, reusable description. There are eight kinds.
+A definition is a named, reusable description. There are nine kinds.
 
 | Keyword | Meaning |
 |---|---|
@@ -12,6 +12,7 @@ A definition is a named, reusable description. There are eight kinds.
 | `generic` | What a board may rely on of any part or module that provides it: a part or module says `provides` it, and a board that uses the generic gets the first provider that works (see Generics and providers). |
 | `system` | Several boards and the joins between their ports (see Systems). |
 | `panel` | One board repeated in a grid on one fabrication panel (see Panels). |
+| `enclosure` | What a case fixes of the boards in it (the outline, openings, holes, keepouts and the case's STEP files), shared by the boards whose physical files say `case Name` (see The shape of a board, _A shared enclosure_). |
 
 Syntax:
 
