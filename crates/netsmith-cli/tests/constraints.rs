@@ -329,6 +329,59 @@ fn board3d_reports_a_lock_that_breaks_a_requirement_with_the_layout_and_ends_wit
     );
 }
 
+#[test]
+fn fab_json_has_the_requirements_and_faults_of_a_lock_that_breaks_a_requirement() {
+    // Issue #779: the refusal is the sentence, and the board as the lock leaves it is data: the
+    // requirement the lock misses, with its numbers, as for any other miss.
+    let layout = "version = 1\n[Widget.parts.r1]\nat = [35.0, 10.0]\nlock = true\n";
+    let run = run_in(
+        "refused-fab",
+        LOCKED_PHYSICAL,
+        layout,
+        &["fab", "--format", "json", "--out", "fab"],
+    );
+    assert!(!run.status.success());
+    let doc: serde_json::Value = serde_json::from_slice(&run.stdout)
+        .unwrap_or_else(|e| panic!("{e}: {}", String::from_utf8_lossy(&run.stdout)));
+    let finding = &doc["findings"][0];
+    assert!(
+        finding["message"]
+            .as_str()
+            .unwrap()
+            .contains("is locked in the layout file at (35, 10) mm"),
+        "{finding}"
+    );
+    let miss = finding["requirements"]
+        .as_array()
+        .and_then(|r| r.iter().find(|r| r["id"] == "r1.place.x"))
+        .unwrap_or_else(|| panic!("{finding}"));
+    assert!(miss["measured"].as_f64().unwrap() > 30.0, "{miss}");
+    assert!(miss["over"].as_f64().unwrap() > 0.0, "{miss}");
+}
+
+#[test]
+fn fab_json_has_the_part_too_big_for_the_outline_as_data() {
+    // Issue #779: what the requirements prove before placing, about one part, is data too.
+    let physical = LOCKED_PHYSICAL.replace("40mm", "6mm").replace("24mm", "6mm");
+    let run = run_in(
+        "too-big-fab",
+        &physical,
+        "version = 1\n",
+        &["fab", "--format", "json", "--out", "fab"],
+    );
+    assert!(!run.status.success());
+    let doc: serde_json::Value = serde_json::from_slice(&run.stdout)
+        .unwrap_or_else(|e| panic!("{e}: {}", String::from_utf8_lossy(&run.stdout)));
+    let finding = &doc["findings"][0];
+    let big = finding["conflicts"]
+        .as_array()
+        .and_then(|c| c.iter().find(|c| c["kind"] == "too_big"))
+        .unwrap_or_else(|| panic!("{finding}"));
+    assert!(big["parts"][0]["refdes"].is_string(), "{big}");
+    assert!(big["turns"][0]["width"].as_f64().unwrap() > 0.0, "{big}");
+    assert_eq!(big["outline"]["width"], 6.0, "{big}");
+}
+
 /// The layout file of `LOCKED_OVER` with no lock: the placer places the board, then both parts
 /// are put where the file says, over each other.
 const UNLOCKED_OVER: &str = "version = 1\n[Widget.parts.r1]\nat = [10.0, 10.0]\n[Widget.parts.led]\nat = [10.5, 10.2]\n";

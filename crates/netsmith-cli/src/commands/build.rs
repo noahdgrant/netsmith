@@ -315,7 +315,7 @@ pub(super) fn run_build(run: &BuildRun) -> ExitCode {
         for b in &boards {
             let found = netsmith_fabricate::fab::precheck_board(
                 b,
-                layout.as_ref().map(|l| &l.0),
+                layout.as_ref(),
                 &libraries,
                 catalogs.constraints_warn(),
             );
