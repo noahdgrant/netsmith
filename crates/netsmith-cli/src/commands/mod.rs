@@ -12,6 +12,7 @@ mod editor;
 mod fab;
 mod init;
 mod kicad_libs;
+mod layout;
 mod lock;
 mod parity;
 mod part;
@@ -41,6 +42,8 @@ pub enum Command {
     Route(route::Args),
     /// Fix copper of a board in its routes file: import it from KiCad, add, delete, lock, show.
     Routes(routes::Args),
+    /// Show, set or check the entries of a board's layout file (where each part is).
+    Layout(layout::Args),
     /// Refresh the pick lock, or check that it is current.
     Lock(lock::Args),
     /// Edit the source and see the boards in a browser.
@@ -77,6 +80,7 @@ pub fn run(command: Command) -> ExitCode {
         Command::Fab(args) => fab::run(args),
         Command::Route(args) => route::run(args),
         Command::Routes(args) => routes::run(args),
+        Command::Layout(args) => layout::run(args),
         Command::Lock(args) => lock::run(args),
         Command::Editor(args) => editor::run(args),
         Command::Board3d(args) => board3d::run(args),
