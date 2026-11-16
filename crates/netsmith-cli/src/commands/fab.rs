@@ -340,6 +340,8 @@ fn run_fab(
         place_budget: placing.budget(&target),
         seed_writes: netsmith_fabricate::fab::SeedWrites::Write,
         offline,
+        // What an order reuses a package by (issue #841).
+        reuse: netsmith_fabricate::fab::Reuse::Record,
     };
     let (pins_mode, locked_by) = pins_mode(&target, pins_locked, locked);
     let mut code = ExitCode::SUCCESS;
@@ -616,8 +618,14 @@ fn run_order(
         // An order is a release: a seed that would change stops it (issue #458).
         seed_writes: netsmith_fabricate::fab::SeedWrites::Order,
         offline,
+        reuse: netsmith_fabricate::fab::Reuse::Off,
     };
     let out = out.unwrap_or(&target.fab_out);
+    // A board a plain `fab` made into this folder from the same inputs is copied, not made again.
+    let options = FabOptions {
+        reuse: netsmith_fabricate::fab::Reuse::From(out.to_path_buf()),
+        ..options
+    };
     match netsmith_fabricate::order::fab_order(
         order,
         &target,
@@ -645,6 +653,7 @@ fn run_order(
             }
             println!();
             print!("{}", made.summary);
+            println!("{}", made.reuse_line());
             println!("wrote {}", made.dir.display());
             ExitCode::SUCCESS
         }

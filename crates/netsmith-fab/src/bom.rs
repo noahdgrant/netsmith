@@ -13,7 +13,7 @@ pub(crate) const HEADER: [&str; 4] = ["Comment", "Designator", "Footprint", "LCS
 
 /// One kind of part and where it goes. Identical parts may arrive as one entry per
 /// designator or already grouped; [`group`] puts them on one row either way.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct BomEntry {
     pub designators: Vec<String>,
     /// The value shown to the buyer: `10k`, `100n`, `red`.

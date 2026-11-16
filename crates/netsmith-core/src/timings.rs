@@ -12,7 +12,21 @@
 //! A stage inside another (`solve.dc` is part of `solve`) prints when it ends, so before the
 //! line of the stage around it, and its time is counted in that one too.
 
+use std::cell::Cell;
 use std::{ffi::OsStr, time::Duration, time::Instant};
+
+thread_local! {
+    /// How many stages this thread has run, timings wanted or not.
+    static RUN: Cell<u64> = const { Cell::new(0) };
+}
+
+/// How many stages ([`stage`]) the calling thread has run so far, whether timings are wanted or
+/// not. A caller that wants to say how much work a call did takes the count before and after
+/// and subtracts: a count of work done, not a time (an order that reuses a package a plain
+/// `fab` made shows it by the stages it did not run, issue #841).
+pub fn stages_run() -> u64 {
+    RUN.with(Cell::get)
+}
 
 /// The variable that turns the lines on.
 pub const VARIABLE: &str = "NETSMITH_TIMINGS";
@@ -45,6 +59,7 @@ pub fn line(stage: &str, subject: &str, elapsed: Duration) -> String {
 
 /// Runs `work` and, when timings are wanted, says on stderr how long it took.
 pub fn stage<R>(stage: &str, subject: &str, work: impl FnOnce() -> R) -> R {
+    RUN.with(|n| n.set(n.get() + 1));
     timed(enabled(), stage, subject, &mut std::io::stderr(), work)
 }
 
@@ -96,6 +111,16 @@ mod tests {
         assert_eq!(text.lines().count(), 1);
         assert!(text.starts_with("timing: solve Board "), "{text}");
         assert!(text.trim_end().ends_with(" ms"), "{text}");
+    }
+
+    #[test]
+    fn the_stages_a_thread_ran_are_counted_whether_timings_are_wanted_or_not() {
+        let before = stages_run();
+        assert_eq!(
+            stage("solve", "Board", || 1) + stage("route", "Board", || 2),
+            3
+        );
+        assert_eq!(stages_run() - before, 2);
     }
 
     #[test]

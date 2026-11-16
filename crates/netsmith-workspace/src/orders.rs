@@ -90,6 +90,8 @@ impl Workspace {
                 ),
                 seed_writes: netsmith_fabricate::fab::SeedWrites::Order,
                 offline: target.offline(),
+                // A board a plain `fab` made into the fab folder from the same inputs is copied.
+                reuse: netsmith_fabricate::fab::Reuse::From(target.fab_out.clone()),
                 ..FabOptions::default()
             },
             // An order made in the editor does not read or write the pick lock yet.

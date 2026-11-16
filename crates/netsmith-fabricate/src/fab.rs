@@ -54,6 +54,13 @@ pub struct Fabricated {
     /// The requirements on where parts go that the board does not meet and the run lists as
     /// warnings (`constraints = "warn"`), as data (#816); each is also a line of `notes`.
     pub requirements: Vec<netsmith_pcb::RequirementMiss>,
+    /// How many stages (`netsmith_core::timings::stage`: resolve, place, route, package...) this
+    /// board's run did: the count that shows a reused package, which runs none (issue #841).
+    pub stages_run: u64,
+    /// The package is one a plain `fab` made, copied (`FabOptions::reuse`), and nothing was
+    /// made again. Its `origins` and `requirements` are empty: `fab` reports them, an order does
+    /// not read them.
+    pub reused: bool,
 }
 
 /// What `netsmith fab` says when it finds no KiCad, and why there is none: KiCad is switched off
@@ -200,6 +207,24 @@ pub struct FabOptions {
     /// The run was given `--offline`: no supplier was asked, so the stock and price of the parts
     /// were not checked, and `fab-notes.txt` says so (issue #803). The default is `false`.
     pub offline: bool,
+    /// What the run does about reusing packages (issue #841): [`Reuse::Off`] by default.
+    pub reuse: Reuse,
+}
+
+/// What a run does about reusing the package of a board (`crate::reuse`).
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub enum Reuse {
+    /// Makes every board, and leaves no record of how it was made.
+    #[default]
+    Off,
+    /// A plain `fab`: makes every board, and writes beside each package a record of the inputs
+    /// it was made from, which an order can reuse it by.
+    Record,
+    /// An order: takes a board's package from the folder of a plain `fab` (`<fab>`, where
+    /// `<fab>/<board>/` is the package) when the record there says the same inputs made it and
+    /// no file of it has changed, and makes the board again when not. A board of a system and a
+    /// panel are always made again.
+    From(PathBuf),
 }
 
 /// What a run may do with a seed that places the board and is not the layout file's.
@@ -317,6 +342,7 @@ impl Default for FabOptions {
             place_budget: netsmith_core::job::Limit::default(),
             seed_writes: SeedWrites::Write,
             offline: false,
+            reuse: Reuse::Off,
         }
     }
 }
@@ -498,7 +524,49 @@ pub fn fab_detailed(
         {
             continue;
         }
-        let run = fab_board_pinned(
+        // The key of the package this board's inputs make (`crate::reuse`): a board of a system
+        // is made again whatever the options say, its scene is made of its members as routed.
+        let label = built.label();
+        let key_of = |pin_state: &PinState| {
+            if built.system.is_some() || options.reuse == Reuse::Off {
+                return None;
+            }
+            let source = options.pin_map_source.as_deref().unwrap_or(name);
+            crate::reuse::key(&crate::reuse::Inputs {
+                built,
+                libraries,
+                catalogs,
+                options,
+                layout: layout.as_ref().map(|l| &l.0),
+                pin_map: format!(
+                    "{:?}",
+                    crate::pin_export::render(&built.design, pin_state.spaces_of(built), source)
+                ),
+            })
+        };
+        if let Reuse::From(root) = &options.reuse
+            && built.system.is_none()
+        {
+            let from = built.dir(root);
+            match key_of(&pin_state) {
+                None => say(format!(
+                    "{label}: made again: the inputs of a package could not be fingerprinted"
+                )),
+                Some(key) => match crate::reuse::take(&from, &built.dir(out), &key, &label) {
+                    Ok(reused) => {
+                        say(format!(
+                            "{label}: reused the package a plain fab made in {} (no stage run)",
+                            from.display()
+                        ));
+                        made.push(reused);
+                        continue;
+                    }
+                    Err(why) => say(format!("{label}: made again, not reused: {why}")),
+                },
+            }
+        }
+        let stages_before = timings::stages_run();
+        let mut run = fab_board_pinned(
             &Pass { name, text, loader },
             built,
             &mut pin_state,
@@ -510,7 +578,19 @@ pub fn fab_detailed(
             catalogs,
             &say,
         )?;
-        routed.insert(built.label(), run.board);
+        run.fabricated.stages_run = timings::stages_run() - stages_before;
+        // A plain `fab` leaves what an order needs to reuse the package, unless pins were moved:
+        // the package is then of a pin file that is no longer the one on disk.
+        if options.reuse == Reuse::Record
+            && pin_changes(&pin_state.original, &pin_state.file).is_empty()
+            && let Some(key) = key_of(&pin_state)
+            && let Err(e) = crate::reuse::write_record(&run.fabricated, &key)
+        {
+            say(format!(
+                "{label}: warning: no record of the package was written: {e}"
+            ));
+        }
+        routed.insert(label, run.board);
         made.push(run.fabricated);
     }
     // The system scene of each system whose boards were all made (ADR 0110): checked across
@@ -1316,6 +1396,8 @@ fn fab_board(
                 .filter(|o| !o.satisfied)
                 .map(netsmith_pcb::RequirementMiss::of_outcome)
                 .collect(),
+            stages_run: 0,
+            reused: false,
         };
         Ok(BoardRun {
             fabricated,
@@ -2263,6 +2345,8 @@ fn fab_panel(
         facts,
         origins: Vec::new(),
         requirements: Vec::new(),
+        stages_run: 0,
+        reused: false,
     })
 }
 

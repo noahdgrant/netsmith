@@ -52,8 +52,11 @@
 //!   when an order runs. A folder of the same order from an earlier run is removed first, only if
 //!   it holds an `order.txt`, so nothing else is deleted and a board dropped from the order does
 //!   not linger. If any board fails, nothing of the summary is written and all the problems are
-//!   reported. Every board of an order is routed and checked again when the order runs, even if a
-//!   plain `fab` made it; a cache of finished packages is a later optimisation (not built, issue #62).
+//!   reported. A board an order names is routed and checked again when the order runs, unless a
+//!   plain `fab` made its package from the same inputs and no file of it has changed since: the
+//!   order then copies that package ([`Reuse::From`](crate::fab::Reuse), issue #841; `reuse` says
+//!   how a package is known to be fresh) and the board's [`Fabricated::stages_run`] is 0. A board
+//!   of a system and a panel are always made again.
 //! - **`order.txt`**, for a person: the number of board designs and of boards; for each board its
 //!   copies, copper layers, size in mm, thickness (or "thickness open"), the surface
 //!   finish (the process's `.finish`, `finish HASL lead-free`, which the order form has to match:
@@ -319,7 +322,7 @@ pub fn resolve(order: &Order, boards: &[String]) -> Result<Vec<Selected>, String
 }
 
 /// What the summary needs to know of a finished board.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct BoardFacts {
     pub layers: u32,
     pub width_mm: f64,
@@ -349,7 +352,7 @@ pub struct BoardFacts {
 }
 
 /// What a panel is made of, for an order's summary.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PanelFacts {
     /// The board it repeats.
     pub board: String,
@@ -778,6 +781,30 @@ pub struct Made {
     pub summary: String,
     /// `order.txt` and `order-bom.csv`.
     pub files: Vec<PathBuf>,
+}
+
+impl Made {
+    /// How many stages (resolve, place, route, package...) the order ran in all: the count that
+    /// shows what it reused (issue #841).
+    pub fn stages_run(&self) -> u64 {
+        self.boards.iter().map(|(_, f)| f.stages_run).sum()
+    }
+
+    /// How many boards took the package a plain `fab` made and made nothing.
+    pub fn reused(&self) -> usize {
+        self.boards.iter().filter(|(_, f)| f.reused).count()
+    }
+
+    /// The line that says what was reused, for the command line: `reused 2 of 3 boards from a
+    /// plain fab; 11 stages run`.
+    pub fn reuse_line(&self) -> String {
+        format!(
+            "reused {} of {} boards from a plain fab; {} stages run",
+            self.reused(),
+            self.boards.len(),
+            self.stages_run()
+        )
+    }
 }
 
 /// Every board and panel of the project, as its folder names it, with the index of the source file
