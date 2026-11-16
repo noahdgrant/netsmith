@@ -2241,3 +2241,47 @@ fn a_seat_below_the_board_is_refused_with_its_number() {
         ],
     );
 }
+
+/// A carrier with a 1x4 socket and a card with a 1x2 header, mated in contacts 2 and 3 of the
+/// socket (`.mating.contacts`) when `subset` says so.
+fn partial_mate(subset: &str) -> String {
+    format!(
+        r#"
+import std::parts::connector::{{Header1x2, Socket1x4}}
+import std::sources::Rail
+
+board Top {{
+    .gnd: Rail {{ .neg.net &= "GND" }}
+    .j: Socket1x4
+    .gnd.neg ~ .j.p2
+}}
+
+board Bottom {{
+    .gnd: Rail {{ .neg.net &= "GND" }}
+    .j: Header1x2
+    .gnd.neg ~ .j.p1
+}}
+
+system Stack {{
+    .top: Top
+    .bottom: Bottom
+    .top.j.mating ~ .bottom.j.mating
+    {subset}
+}}
+"#
+    )
+}
+
+#[test]
+fn a_partial_mate_hands_the_system_scene_the_pads_it_pairs() {
+    let mates = mates_of(&partial_mate(".top.j.mating.contacts &= 2..3")).unwrap();
+    assert_eq!(mates[0].window, Some((2, 1, 2)));
+    let mates = mates_of(&partial_mate(".top.j.mating.contacts &= 1..2")).unwrap();
+    assert_eq!(
+        mates[0].window,
+        Some((1, 1, 2)),
+        "two of the socket's four contacts is a window, even from contact 1"
+    );
+    let mates = mates_of(&own_connectors("")).unwrap();
+    assert_eq!(mates[0].window, None, "a mate of every contact pairs pad N with pad N");
+}

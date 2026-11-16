@@ -171,6 +171,10 @@ pub struct MateInput {
     pub mated_height: Option<(f64, f64)>,
     /// Why it has none.
     pub unknown: Option<String>,
+    /// The contacts the mate joins when a `.mating.contacts` subset says only some are:
+    /// `(first of a, first of b, how many)`, pad `first_a + i` meeting pad `first_b + i`.
+    /// `None` when it joins every contact, pad N to pad N.
+    pub window: Option<(usize, usize, usize)>,
 }
 
 impl MateInput {
@@ -422,6 +426,7 @@ impl SystemScene {
                         &MateInput::part(&mate.a, &mate.a_member),
                         b.1,
                         &MateInput::part(&mate.b, &mate.b_member),
+                        mate.window,
                     )
                 })
                 .unwrap_or_default();
@@ -532,8 +537,15 @@ pub(crate) fn meshes(system: &SystemScene) -> Vec<crate::mesh::Mesh> {
 
 /// The pads of the two connectors that meet, by number: `(number, centre of a's, centre of b's)`
 /// in each board's own plan, in the order of a's footprint. Pads with no number are not
-/// contacts.
-fn pairs(a: &Board, a_part: &str, b: &Board, b_part: &str) -> Vec<(String, Plan, Plan)> {
+/// contacts. With a window (a `.mating.contacts` subset), pad `first_a + i` of a meets pad
+/// `first_b + i` of b, and a's pads outside it meet nothing.
+fn pairs(
+    a: &Board,
+    a_part: &str,
+    b: &Board,
+    b_part: &str,
+    window: Option<(usize, usize, usize)>,
+) -> Vec<(String, Plan, Plan)> {
     let first = |pads: Vec<(String, Plan)>| {
         let mut seen: Vec<(String, Plan)> = Vec::new();
         for (n, p) in pads {
@@ -544,9 +556,17 @@ fn pairs(a: &Board, a_part: &str, b: &Board, b_part: &str) -> Vec<(String, Plan,
         seen
     };
     let (pa, pb) = (first(pad_centres(a, a_part)), first(pad_centres(b, b_part)));
+    let partner = |n: &str| match window {
+        None => Some(n.to_string()),
+        Some((fa, fb, count)) => {
+            let i = n.parse::<usize>().ok()?.checked_sub(fa)?;
+            (i < count).then(|| (fb + i).to_string())
+        }
+    };
     pa.into_iter()
         .filter_map(|(n, p)| {
-            let q = pb.iter().find(|(m, _)| *m == n)?.1;
+            let m = partner(&n)?;
+            let q = pb.iter().find(|(x, _)| *x == m)?.1;
             Some((n, p, q))
         })
         .collect()
@@ -593,7 +613,13 @@ fn fit(
         };
         return Err(format!("`{missing}` has no body on its board"));
     };
-    let pairs = pairs(from.board, from_part, to.board, to_part);
+    // The window is written from `a` to `b`; the fit may go the other way.
+    let window = if from_path == mate.a {
+        mate.window
+    } else {
+        mate.window.map(|(a, b, n)| (b, a, n))
+    };
+    let pairs = pairs(from.board, from_part, to.board, to_part, window);
     if pairs.len() < 2 {
         return Err(format!(
             "`{from_path}` and `{to_path}` have {} pad{} of one number, and two are needed to line them up",

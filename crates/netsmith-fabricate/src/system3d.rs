@@ -42,6 +42,7 @@ pub fn scene(system: &SolvedSystem, members: &[(&Built, &Board)]) -> SystemScene
             b_seat: m.b_seat,
             mated_height: m.mated_height(),
             unknown: m.unknown(),
+            window: m.window,
         })
         .collect();
     SystemScene::of(&system.name, inputs, mates)

@@ -156,6 +156,7 @@ fn the_two_connectors_need_as_many_positions_as_each_other() {
         &[
             "`.carrier.slot_a` (Socket1x10) has 10 positions and `.sensor.j1` (Header1x8) has 8",
             "contact N to contact N",
+            "or the larger one says which of its contacts are mated (`.carrier.slot_a.mating.contacts &= 1..8`)",
         ],
     );
 }
@@ -598,4 +599,178 @@ fn a_port_that_no_connector_carries_is_still_joined_with_a_port_join() {
         "the explicit join of `aux`, and none from the mate"
     );
     assert!(m.mates()[0].ports.is_empty());
+}
+
+// ---- a partial mate: `.mating.contacts` ----------------------------------------------------
+
+/// A carrier with a four-way socket and a card with a two-way header. The socket has a rail of
+/// its own on contact 1 and the cards' supply on contacts 2 (ground) and 3 (power); contact 4
+/// is free. The card's header has its ground on 1 and its supply on 2, so it fits contacts 2
+/// and 3 of the socket. `system` is added to the system's body.
+fn partial(system: &str) -> String {
+    format!(
+        "\
+import std::parts::connector::{{Header1x2, Socket1x4}}
+import std::sources::Rail
+
+board Carrier {{
+    .own: Rail {{ .neg.net &= \"GND\" }}
+    .cards: Rail {{ .neg.net &= \"GND\" }}
+    .slot: Socket1x4
+    .own.pos ~ .slot.p1
+    .cards.neg ~ .slot.p2
+    .cards.pos ~ .slot.p3
+    .own.neg ~ .cards.neg
+}}
+
+board Card {{
+    .supply: Rail {{ .neg.net &= \"GND\" }}
+    .j: Header1x2
+    .supply.neg ~ .j.p1
+    .supply.pos ~ .j.p2
+}}
+
+system Pair {{
+    .carrier: Carrier
+    .card: Card
+{system}}}
+"
+    )
+}
+
+const MATE: &str = "    .carrier.slot.mating ~ .card.j.mating\n";
+
+#[test]
+fn a_partial_mate_joins_the_contacts_its_subset_names_and_leaves_the_rest_free() {
+    let c = run(&partial(&format!(
+        "{MATE}    .carrier.slot.mating.contacts &= 2..3\n"
+    )));
+    assert!(c.is_ok(), "{}", c.render());
+    let m = &c.system("Pair").unwrap().model;
+    let mate = &m.mates()[0];
+    assert_eq!((mate.a_first, mate.b_first), (2, 1));
+    // Two contacts, and contact k of the mate is the k-th of the socket's subset.
+    let contacts: Vec<(String, String, Role, Role)> = mate
+        .contacts
+        .iter()
+        .map(|c| (m.path_of(c.a.pin), m.path_of(c.b.pin), c.a.role, c.b.role))
+        .collect();
+    assert_eq!(
+        contacts,
+        [
+            (
+                "carrier.slot.p2".to_string(),
+                "card.j.p1".to_string(),
+                Role::Ground,
+                Role::Ground
+            ),
+            (
+                "carrier.slot.p3".to_string(),
+                "card.j.p2".to_string(),
+                Role::Power,
+                Role::Power
+            ),
+        ]
+    );
+    // The ports on the mated contacts are joined, as for a mate of every contact.
+    let joins: Vec<String> = m
+        .joins()
+        .iter()
+        .map(|&(a, b)| format!("{} ~ {}", m.path_of(a), m.path_of(b)))
+        .collect();
+    assert_eq!(joins, ["carrier.cards ~ card.supply"]);
+    assert_eq!(m.ground_groups().len(), 1);
+}
+
+#[test]
+fn a_partial_mate_is_read_from_either_end_of_the_statement() {
+    let c = run(&partial(
+        "    .card.j.mating ~ .carrier.slot.mating\n    .carrier.slot.mating.contacts &= 2..3\n",
+    ));
+    assert!(c.is_ok(), "{}", c.render());
+    let mate = &c.system("Pair").unwrap().model.mates()[0];
+    assert_eq!((mate.a_first, mate.b_first), (1, 2));
+    assert_eq!(mate.ports.len(), 1);
+}
+
+#[test]
+fn the_checks_of_a_mate_read_the_contacts_of_its_subset() {
+    // At contacts 1 and 2 the card's ground meets the carrier's own power, and its power the
+    // carrier's ground: two shorts, each named by the pins of both sides.
+    let c = run(&partial(&format!(
+        "{MATE}    .carrier.slot.mating.contacts &= 1..2\n"
+    )));
+    let msgs = messages(&c);
+    assert_eq!(msgs.len(), 2, "{msgs:#?}");
+    for needle in [
+        "contact 1 of the mated connectors is ground on one board and power on the other",
+        "`.carrier.slot` pin 1 is on net `net-slot.p1`, power",
+        "`.card.j` pin 1 is on net `GND`, ground",
+        "if one is meant to be turned end for end, `.carrier.slot` pin 1 would meet `.card.j` pin 2",
+    ] {
+        assert!(msgs[0].contains(needle), "`{needle}` is not in: {}", msgs[0]);
+    }
+    // At 3 and 4 the card's supply meets the socket's power and a free contact: the subset
+    // moves the pins the card's contacts meet.
+    let msgs = messages(&run(&partial(&format!(
+        "{MATE}    .carrier.slot.mating.contacts &= 3..4\n"
+    ))));
+    assert!(
+        msgs.iter().any(|m| m.contains("`.carrier.slot` pin 3 is on net")
+            && m.contains("`.card.j` pin 1 is on net `GND`")),
+        "{msgs:#?}"
+    );
+}
+
+#[test]
+fn a_port_join_that_a_partial_mate_makes_is_refused() {
+    refused(
+        &partial(&format!(
+            "{MATE}    .carrier.slot.mating.contacts &= 2..3\n    .carrier.cards ~ .card.supply\n"
+        )),
+        &[
+            "`.carrier.cards` and `.card.supply` are already joined by the mate of `.carrier.slot` and `.card.j` at contacts 1, 2",
+        ],
+    );
+}
+
+#[test]
+fn connectors_of_different_sizes_need_a_subset() {
+    refused(
+        &partial(MATE),
+        &[
+            "`.carrier.slot` (Socket1x4) has 4 positions and `.card.j` (Header1x2) has 2",
+            "(`.carrier.slot.mating.contacts &= 1..2`)",
+        ],
+    );
+}
+
+#[test]
+fn the_two_sides_of_a_partial_mate_need_as_many_contacts_as_each_other() {
+    refused(
+        &partial(&format!(
+            "{MATE}    .carrier.slot.mating.contacts &= 2..4\n"
+        )),
+        &[
+            "the mate joins `.carrier.slot` 3 of its contacts (2..4) and `.card.j` all its 2 contacts",
+            "one for one",
+        ],
+    );
+}
+
+#[test]
+fn a_subset_is_a_range_of_the_connectors_own_contacts() {
+    for subset in ["3..5", "0..1", "1.5..2.5"] {
+        let c = run(&partial(&format!(
+            "{MATE}    .carrier.slot.mating.contacts &= {subset}\n"
+        )));
+        let msgs = messages(&c);
+        assert_eq!(msgs.len(), 1, "{subset}: {msgs:#?}");
+        for needle in [
+            "`.carrier.slot.mating.contacts` is ",
+            "a range of whole contact numbers from 1 to its 4 positions",
+        ] {
+            assert!(msgs[0].contains(needle), "`{needle}` is not in: {}", msgs[0]);
+        }
+    }
 }

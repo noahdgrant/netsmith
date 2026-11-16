@@ -49,6 +49,13 @@ interface Mating {
     .rows: Number
     /// How many contacts: the part's pin count.
     .positions: Number
+    /// Which of its contacts a mate joins, first to last (`1..8`): a 1x8 header in a 1x10
+    /// socket mates eight of the socket's ten, and the socket says which with
+    /// `.mating.contacts &= 3..10` in the system that mates them. Contact k of one side's
+    /// subset meets contact k of the other's, and the contacts outside it stay free: the checks
+    /// of the mate (roles, the ports it joins, the current, turning end for end) read only the
+    /// subset. Unset means every contact. A fact of one mate, not of the part.
+    .contacts: Number
     /// The rated current of one contact. A catalog column; unset means unrated.
     .pin_current: Current
     /// How far above the face of its board this connector's partner rests when the two are
