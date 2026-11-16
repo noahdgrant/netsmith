@@ -334,7 +334,8 @@ fn a_part_over_a_cutout_and_a_cutout_off_the_board_are_found_and_named() {
     b.cutouts[0].at = Some(Pt::new(58.0, 4.0));
     let found = problems(&b);
     assert!(
-        found.contains(&"the cutout `slot` is not wholly inside the board outline".to_string()),
+        found.iter().any(|p| p
+            .starts_with("the cutout `slot` is not wholly inside the board outline; a notch in the board's edge is a polygon outline")),
         "{found:?}"
     );
     b.cutouts[0].at = None;

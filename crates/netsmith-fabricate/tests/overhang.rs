@@ -277,6 +277,41 @@ fn a_plug_that_hangs_over_the_bottom_edge_by_a_stated_requirement_places_routes_
     );
 }
 
+/// The 40 mm wide board with its four corners rounded by 3 mm, as a polygon (issue #783): a
+/// plug 28 mm wide, 15 mm from the left, has the left corner of its courtyard on the bottom
+/// edge, outside the rounded corner. The size is stated in numbers: `outline.height` is not a value of a polygon.
+fn rounded_polygon(extra: &str) -> Design {
+    let design = source(40, 60, 4, extra);
+    Design {
+        physical: design.physical.replace(
+            ".width &= 40mm\n            .height &= 60mm",
+            "polygon (0mm, 0mm) round 3mm (40mm, 0mm) round 3mm\n                (40mm, 60mm) round 3mm (0mm, 60mm) round 3mm",
+        ),
+        ..design
+    }
+}
+
+const POLYGON_DECLARED: &str =
+    "    .plug.place.rotation &= 90
+    .plug.place.bottom >= 74.5mm
+    .plug.place.bottom <= 75.5mm
+    .plug.place.x >= 15mm
+    .plug.place.x <= 15.5mm
+";
+
+#[test]
+fn a_plug_hanging_over_the_bottom_edge_of_a_polygon_with_rounded_corners_is_accepted() {
+    let design = rounded_polygon(POLYGON_DECLARED);
+    assert!(design.physical.contains("polygon ("), "{}", design.physical);
+    let run = fab("polygon-rounded", &design, "");
+    let made = run.made.as_ref().unwrap_or_else(|e| panic!("{e}"));
+    let notes = &made[0].notes;
+    assert!(
+        notes.contains("warning: `plug` (J1) hangs over the bottom edge: its courtyard is "),
+        "{notes}"
+    );
+}
+
 #[test]
 fn kicad_agrees_that_the_board_with_the_overhanging_plug_is_clean() {
     if KicadCliExe::locate_runnable().is_none() {

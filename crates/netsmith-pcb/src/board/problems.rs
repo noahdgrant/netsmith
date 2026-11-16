@@ -48,6 +48,10 @@ pub enum PlacementProblem {
         /// On a polygon outline, how far the courtyard reaches past its edge where it is not
         /// past a side of the bounding box, in mm (issue #57).
         cut: Option<f64>,
+        /// Where that is, in mm from the board's top left corner, and the side or corner of
+        /// the outline's box it is near, if it is near one (issue #783).
+        at: Option<(f64, f64)>,
+        near: Option<&'static str>,
     },
     /// A pad is nearer the board edge than the rules allow, or outside it (a negative
     /// distance).
@@ -521,14 +525,22 @@ impl std::fmt::Display for PlacementProblem {
                 stated,
                 by,
                 cut,
+                at,
+                near,
             } => {
                 let text = outside_text(refdes, path, past, stated, by, &[], false);
-                match (past.is_empty(), cut) {
-                    (true, Some(cut)) => write!(
-                        f,
-                        "{} is not wholly inside the board outline: its courtyard is {cut:.2} mm past the outline's edge",
-                        member(path, refdes)
-                    ),
+                match (past.is_empty(), cut, at) {
+                    (true, Some(cut), Some((x, y))) => {
+                        let place = match near {
+                            Some(near) => format!("by the {near} of the outline's box, at"),
+                            None => "at".to_string(),
+                        };
+                        write!(
+                            f,
+                            "{} is not wholly inside the board outline: its courtyard is {cut:.2} mm past the outline's edge {place} ({x:.1}, {y:.1}) mm from the board's top left corner",
+                            member(path, refdes)
+                        )
+                    }
                     _ => write!(f, "{text}"),
                 }
             }
@@ -587,7 +599,7 @@ impl std::fmt::Display for PlacementProblem {
             Self::CutoutOutsideOutline { cutout } => {
                 write!(
                     f,
-                    "the cutout `{cutout}` is not wholly inside the board outline"
+                    "the cutout `{cutout}` is not wholly inside the board outline; a notch in the board's edge is a polygon outline, not a cutout (language guide, chapter 23, \"A polygon outline\")"
                 )
             }
             Self::NoPosition { what, name } => write!(

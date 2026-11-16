@@ -312,6 +312,10 @@ pub(crate) struct Problem<'a> {
     /// The cutouts, which are also in `keepouts`: no copper of a part is nearer to one than
     /// `rules.copper_to_edge`, the distance the placement check asks for (`PadNearCutout`).
     pub cutouts: &'a [Rect],
+    /// The boxes of `keepouts` that are the outside of a polygon outline, with the sides of
+    /// the outline's box each touches: a part that may hang over such a side, and whose
+    /// courtyard reaches it, is not kept out of the box (`Board::check_placement`).
+    pub open_outside: &'a [(Rect, Edges)],
     /// Whether the board has a pour on an outer layer.
     pub pours: bool,
     pub seed: u64,

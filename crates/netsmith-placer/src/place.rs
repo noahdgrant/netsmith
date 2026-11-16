@@ -1186,6 +1186,7 @@ fn refine(
         fixed,
         keepouts: &options.keepouts,
         cutouts: &options.cutouts,
+        open_outside: &options.outside,
         pours: context.pours,
         seed: options.seed,
         wants: &wants,
@@ -1301,6 +1302,7 @@ pub(crate) fn anneal_within(
         fixed: &fixed,
         keepouts,
         cutouts: &options.cutouts,
+        open_outside: &options.outside,
         pours: context.pours,
         seed: options.seed,
         wants: &wants,
@@ -1410,6 +1412,16 @@ pub fn place_subset(
         .chain(board.outside_boxes())
         .collect();
     keepouts.extend(cutouts.iter().copied());
+    let outside: Vec<(Rect, Edges)> = board
+        .polygon
+        .as_ref()
+        .map(|p| {
+            p.outside_pieces()
+                .into_iter()
+                .flat_map(|(boxes, sides)| boxes.into_iter().map(move |b| (b, sides)))
+                .collect()
+        })
+        .unwrap_or_default();
     let planes: Vec<String> = board.planes.iter().map(|p| p.net.clone()).collect();
     let zones = board.height_zones();
     let carried = board.carried_zones();
@@ -1445,6 +1457,7 @@ pub fn place_subset(
         fixed: &fixed,
         keepouts: &keepouts,
         cutouts: &cutouts,
+        open_outside: &outside,
         pours: !board.pours.is_empty(),
         seed: seed ^ scope_of(parts),
         wants: &[],

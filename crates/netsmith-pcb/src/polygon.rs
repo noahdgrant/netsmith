@@ -483,6 +483,141 @@ impl Polygon {
             .fold(f64::INFINITY, f64::min)
     }
 
+    /// How far a box is outside the edge, where it is, and the box it was measured in, or
+    /// `None` when all of it is inside. `open` are the sides of the bounding box the part may
+    /// hang over (issue #783): a piece of the outside that touches such a side, as a rounded
+    /// corner or a notch does, and that a box reaching that side overlaps, is the board's edge
+    /// there, as the rounded corner of a rectangle is for a box on a side it may hang over,
+    /// and is not counted. What is left of the box is measured as before. The point is the
+    /// corner of the box furthest out, or the corner of the edge that pokes into it, in the
+    /// board's coordinates; the depth is positive.
+    pub fn overreach(&self, r: &Rect, open: crate::overhang::Edges) -> Option<(f64, Pt)> {
+        let depth = self.box_depth(r);
+        if depth >= -1e-6 {
+            return None;
+        }
+        let pieces = if open.any() {
+            self.without_open_outside(r, open)
+        } else {
+            vec![*r]
+        };
+        let mut worst: Option<(f64, Pt)> = None;
+        for piece in &pieces {
+            let d = self.box_depth(piece);
+            if d >= -1e-6 || worst.is_some_and(|(w, _)| w >= -d) {
+                continue;
+            }
+            let corner = piece
+                .corners()
+                .into_iter()
+                .map(|c| (self.depth(c), c))
+                .min_by(|a, b| a.0.total_cmp(&b.0))
+                .filter(|(d, _)| *d < -1e-6);
+            let at = corner.map(|(_, c)| c).unwrap_or_else(|| {
+                // No corner of the box is outside: an edge corner pokes into it.
+                self.segments
+                    .iter()
+                    .map(|s| s.0)
+                    .find(|&a| {
+                        a.x > piece.min.x
+                            && a.x < piece.max.x
+                            && a.y > piece.min.y
+                            && a.y < piece.max.y
+                    })
+                    .unwrap_or_else(|| piece.centre())
+            });
+            worst = Some((-d, at));
+        }
+        worst
+    }
+
+    /// The part of the bounding box outside the shape as pieces: each the boxes of
+    /// [`Polygon::outside_boxes`] that touch one another, with the sides of the bounding box
+    /// the piece touches. A rounded corner is a piece touching two sides, a notch the sides it
+    /// opens on.
+    pub fn outside_pieces(&self) -> Vec<(Vec<Rect>, crate::overhang::Edges)> {
+        let b = self.bounds;
+        let outside = self.outside_boxes();
+        let touches = |a: &Rect, c: &Rect| {
+            a.min.x <= c.max.x + SAME
+                && c.min.x <= a.max.x + SAME
+                && a.min.y <= c.max.y + SAME
+                && c.min.y <= a.max.y + SAME
+        };
+        let mut group: Vec<usize> = (0..outside.len()).collect();
+        for i in 0..outside.len() {
+            for j in 0..i {
+                if touches(&outside[i], &outside[j]) {
+                    let (from, to) = (group[i], group[j]);
+                    for g in &mut group {
+                        if *g == from {
+                            *g = to;
+                        }
+                    }
+                }
+            }
+        }
+        let mut pieces = Vec::new();
+        for g in group
+            .iter()
+            .copied()
+            .collect::<std::collections::BTreeSet<_>>()
+        {
+            let boxes: Vec<Rect> = outside
+                .iter()
+                .zip(&group)
+                .filter(|&(_, &h)| h == g)
+                .map(|(o, _)| *o)
+                .collect();
+            let sides = crate::overhang::Edges {
+                left: boxes.iter().any(|o| o.min.x <= b.min.x + SAME),
+                right: boxes.iter().any(|o| o.max.x >= b.max.x - SAME),
+                top: boxes.iter().any(|o| o.min.y <= b.min.y + SAME),
+                bottom: boxes.iter().any(|o| o.max.y >= b.max.y - SAME),
+            };
+            pieces.push((boxes, sides));
+        }
+        pieces
+    }
+
+    /// The box with the outside that touches a side in `open`, where the box reaches that
+    /// side, taken away: what is left, as boxes.
+    fn without_open_outside(&self, r: &Rect, open: crate::overhang::Edges) -> Vec<Rect> {
+        let mut open_boxes: Vec<Rect> = Vec::new();
+        for (boxes, sides) in self.outside_pieces() {
+            if crate::overhang::reached(r, &self.bounds, open, sides).any() {
+                open_boxes.extend(boxes);
+            }
+        }
+        let mut left = vec![*r];
+        for o in &open_boxes {
+            let mut next = Vec::new();
+            for p in left {
+                if !p.overlaps(o) {
+                    next.push(p);
+                    continue;
+                }
+                let mid = Rect::new(
+                    Pt::new(p.min.x.max(o.min.x), p.min.y.max(o.min.y)),
+                    Pt::new(p.max.x.min(o.max.x), p.max.y.min(o.max.y)),
+                );
+                let parts = [
+                    Rect::new(p.min, Pt::new(mid.min.x, p.max.y)),
+                    Rect::new(Pt::new(mid.max.x, p.min.y), p.max),
+                    Rect::new(Pt::new(mid.min.x, p.min.y), Pt::new(mid.max.x, mid.min.y)),
+                    Rect::new(Pt::new(mid.min.x, mid.max.y), Pt::new(mid.max.x, p.max.y)),
+                ];
+                next.extend(
+                    parts
+                        .into_iter()
+                        .filter(|q| q.max.x - q.min.x > SAME && q.max.y - q.min.y > SAME),
+                );
+            }
+            left = next;
+        }
+        left
+    }
+
     /// The part of the bounding box that is outside the shape, as boxes: what the placer keeps
     /// courtyards out of. They hold all of the outside. Where an edge is straight along x or y
     /// they meet it exactly; along a slanted edge or an arc they step in bands of about
@@ -878,5 +1013,52 @@ mod tests {
         let l = BoardEdge::Polygon(ell());
         assert!(l.box_depth(&Rect::new(p(21.0, 1.0), p(22.0, 2.0))) < 0.0);
         assert_eq!(l.edges().len(), 6);
+    }
+
+    /// 35 x 60 with 1 mm rounded corners, as a polygon.
+    fn rounded() -> Polygon {
+        let shape = RoundRect::new(Rect::new(p(0.0, 0.0), p(35.0, 60.0)), 1.0);
+        Polygon::new(shape.edges()).unwrap()
+    }
+
+    #[test]
+    fn a_side_a_box_may_hang_over_takes_the_rounded_corners_on_it() {
+        use crate::overhang::Edges;
+        let poly = rounded();
+        // The whole width of the bottom, reaching the bottom side and past it.
+        let room = Rect::new(p(0.0, 50.0), p(35.0, 60.0));
+        assert!(poly.box_depth(&room) < 0.0, "the corners are outside");
+        let bottom = Edges {
+            bottom: true,
+            ..Edges::default()
+        };
+        assert_eq!(poly.overreach(&room, bottom), None);
+        // Stating the sides it crosses is as good, and it is outside with no side stated.
+        let (depth, at) = poly.overreach(&room, Edges::default()).unwrap();
+        assert!(depth > 0.1 && depth < 0.5, "{depth}");
+        assert!((at.y - 60.0).abs() < 1e-9, "{at:?}");
+        // A box that stays up the board is outside the top corners all the same.
+        let top = Rect::new(p(0.0, 0.0), p(35.0, 10.0));
+        assert!(poly.overreach(&top, bottom).is_some());
+        // The bottom is stated, the box is in the top left corner and does not reach it.
+        let corner = Rect::new(p(0.0, 0.0), p(5.0, 5.0));
+        assert!(poly.overreach(&corner, bottom).is_some());
+    }
+
+    #[test]
+    fn a_notch_touching_a_side_a_box_reaches_and_may_hang_over_is_not_outside() {
+        use crate::overhang::Edges;
+        // The L's notch is at the top right; a box in it, reaching the right side.
+        let room = Rect::new(p(22.0, 2.0), p(30.0, 8.0));
+        let l = ell();
+        assert!(l.overreach(&room, Edges::default()).is_some());
+        let right = Edges {
+            right: true,
+            ..Edges::default()
+        };
+        assert_eq!(l.overreach(&room, right), None);
+        // Not past the side it is stated for: the box stops short of the right side.
+        let short = Rect::new(p(22.0, 2.0), p(28.0, 8.0));
+        assert!(l.overreach(&short, right).is_some());
     }
 }

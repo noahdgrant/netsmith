@@ -629,6 +629,21 @@ pub(crate) fn carried_zones(design: &Design) -> Vec<CarriedZone> {
         .collect()
 }
 
+/// The part of a polygon outline's box that is outside the polygon, as boxes with the sides of
+/// the box each piece of it touches (`PlaceOptions::outside`).
+fn outside_of(design: &Design) -> Vec<(Rect, crate::Edges)> {
+    design
+        .features
+        .outline
+        .as_ref()
+        .and_then(|o| crate::polygon::of_outline(o).ok().flatten())
+        .map(|p| p.translated(ORIGIN).outside_pieces())
+        .unwrap_or_default()
+        .into_iter()
+        .flat_map(|(boxes, sides)| boxes.into_iter().map(move |b| (b, sides)))
+        .collect()
+}
+
 /// The boxes of the cutouts that have a place, wherever the source or the layout file puts
 /// them: the part of [`clear_of`] to which a pad keeps the process's distance from copper to
 /// an edge as well as the courtyards keeping out. The part of a polygon outline's box that
@@ -677,6 +692,7 @@ pub fn place_options(design: &Design, layout: Option<&Layout>) -> PlaceOptions {
         keepouts: clear_of(design, layout),
         face_keepouts: face_keepouts(design, layout),
         cutouts: cutouts_of(design, layout),
+        outside: outside_of(design),
         height_zones: height_zones(design, layout),
         carried: carried_zones(design),
         ..PlaceOptions::default()

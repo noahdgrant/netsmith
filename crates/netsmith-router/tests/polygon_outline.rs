@@ -150,9 +150,11 @@ fn a_part_moved_into_the_notch_is_outside_the_outline_by_how_far() {
         .map(ToString::to_string)
         .find(|t| t.contains("R1"))
         .unwrap();
-    assert_eq!(
-        text,
-        "R1 is not wholly inside the board outline: its courtyard is 1.50 mm past the outline's edge"
+    assert!(
+        text.starts_with(
+            "R1 is not wholly inside the board outline: its courtyard is 1.50 mm past the outline's edge"
+        ) && text.ends_with(" mm from the board's top left corner"),
+        "{text}"
     );
 }
 
