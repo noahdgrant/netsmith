@@ -88,12 +88,13 @@ fn led_board_has_three_nets_and_one_chain() {
 }
 
 #[test]
-fn led_board_leaves_five_relations_for_the_solver() {
+fn led_board_leaves_six_relations_for_the_solver() {
     let c = check("examples/led.nsm", LED, &Loader::std());
     let m = &c.board("LedExample").unwrap().model;
     // The chain's current (ADR 0113), Ohm's law and the power rating in the resistor, the
-    // LED's drop and the LED's current, which cannot be negative.
-    assert_eq!(m.relations().len(), 5);
+    // LED's drop, the LED's current, which cannot be negative, and the LED's current against
+    // its maximum forward current.
+    assert_eq!(m.relations().len(), 6);
     let chain = m
         .relations()
         .iter()

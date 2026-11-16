@@ -246,7 +246,7 @@ designator (the members are named for what the part does: `.mcu` is U1, `.conver
   thermistors TH1 and TH2 provide the standard `NtcThermistor`: at DC a resistor over the maker's
   table, 0.532 kohm to 197.39 kohm. The generic's letters are IEEE 315's `RT`, so the port numbers
   them RT1 and RT2; `reference/parts.toml` pairs them with the original's TH1 and TH2. Neither clears a note on this board, for the reasons below.
-- **Not evaluated (69 notes, 74 before #473):**
+- **Not evaluated (70 notes, 74 before #473):**
   - _Converter input (12):_ `converter.vin.voltage >= 2.7V` and `<= 36V`, the converter's input
     current, the bias of the five capacitors on `EMI_VIN`, and the drop and current of L1 and F1.
     The model is there, but the analysis has no input to give it: the slot's 24 V is a rail of the
@@ -267,8 +267,10 @@ designator (the members are named for what the part does: `.mcu` is U1, `.conver
     stated), the TVS D2 (five), the bias of C38, and the two dividers R17/R18 and R19/R20 (four
     each). `VOUT` holds Q3's drain, which the analysis does not conduct through, so the
     converter's load is not known.
-  - _Not these models (8):_ the LP2985's three (nothing states what the 3.3 V rail draws: the
-    microcontroller states no current), the LED and its resistor (three), and the fuse's
+  - _Not these models (9):_ the LP2985's three (nothing states what the 3.3 V rail draws: the
+    microcontroller states no current), the LED and its resistor (four: the project's LED row
+    records no maximum forward current, so `led.current <= led.max_forward_current` is listed
+    too), and the fuse's
     `supply_peak` (two: the slot's rail states no `.peak`).
 
   The test `the_power_path_is_checked_as_far_as_the_parts_state_and_the_rest_is_listed` pins

@@ -574,7 +574,7 @@ mod board {
                 .iter()
                 .filter(|n| n.contains("not evaluated: "))
                 .count(),
-            69,
+            70,
             "{:#?}",
             built.notes
         );
