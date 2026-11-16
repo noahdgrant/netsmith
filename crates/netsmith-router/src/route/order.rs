@@ -106,7 +106,7 @@ impl<'a> Router<'a> {
             .flatten()
             .map(|p| p.windows(2).filter(|w| w[0].2 != w[1].2).count())
             .sum();
-        self.report(true, || {
+        self.report(true, None, || {
             format!(
                 "coarse plan: {} by {} tiles of {} mm, {} rounds, {} tracks over capacity, {} \
                  crossings, {planned_vias} vias",

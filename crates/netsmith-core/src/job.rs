@@ -103,6 +103,12 @@
 //! step whose count alone does not say whether it is going well: the placer says, after each
 //! run, how many parts were still out and which. A sink that shows counts at a slower rate
 //! shows a line with a detail always.
+//!
+//! **The router** reports `connections routed` of the lines it routes, each with a detail: the
+//! try and the stage it is in, the line in hand, what is not routed and the tracks and vias so
+//! far, at most once in two seconds, and what each try ended with. `fab` prints them as it prints
+//! the placer's (`Board: routing: ...`). Its limit is its own time limit (`--route-timeout`), which
+//! keeps what it routed, and its checkpoints are where it tests that time.
 
 use std::{
     cell::{Cell, RefCell},
@@ -316,6 +322,12 @@ pub fn report_detail(
         total,
         detail: Some(detail()),
     });
+}
+
+/// Whether a sink listens to this thread's [`report`]s: for a call that would read a clock or
+/// count its work only to report it.
+pub fn listening() -> bool {
+    SINK.with(|s| s.borrow().is_some())
 }
 
 fn tell(work: impl FnOnce() -> Work) {

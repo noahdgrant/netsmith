@@ -163,11 +163,12 @@ impl<'a> Router<'a> {
                 }
                 return state;
             }
-            self.report(false, || {
+            self.report(false, Some(&state), || {
                 format!(
-                    "routing, try {attempt} of {attempts}: {k} of {} connections done, {} not routed",
+                    "routing, try {attempt} of {attempts}: {k} of {} connections done, {} not routed, now {}",
                     order.len(),
-                    state.failed.len()
+                    state.failed.len(),
+                    self.lines[line]
                 )
             });
             match self.try_line(line, &state, &[], ROOM_LOOSE, false) {
@@ -189,7 +190,7 @@ impl<'a> Router<'a> {
                     if self.out_of_time() {
                         return state;
                     }
-                    self.report(false, || {
+                    self.report(false, Some(&state), || {
                         format!(
                             "routing, try {attempt} of {attempts}: {} again with less room, {} not routed",
                             self.lines[line],
@@ -209,7 +210,7 @@ impl<'a> Router<'a> {
                     if self.out_of_time() {
                         return state;
                     }
-                    self.report(false, || {
+                    self.report(false, Some(&state), || {
                         format!(
                             "routing, try {attempt} of {attempts}: ripping up for {} (pass {pass} of {RIP_UP_PASSES}), {} not routed",
                             self.lines[line], state.failed.len()

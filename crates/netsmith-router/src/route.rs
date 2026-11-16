@@ -81,7 +81,10 @@
 //! out whether the ends are joined at all, so a pad that its neighbours wall in is given up on
 //! at once instead of after a search of the whole board. The router makes a fixed number of
 //! tries and rip-up passes, and stops at the time limit in [`RouteOptions`], returning what is
-//! left.
+//! left. A job's token (`netsmith_core::job`) stops it where it tests that time, and drops what
+//! it routed. A job's sink hears `connections routed`, with the try, the stage, the line in hand
+//! and the tracks and vias so far, at most once in [`REPORT_EVERY`], and what each try ended
+//! with (issue #764); listening changes nothing it routes.
 //!
 //! # Why the router is shaped so
 //!
@@ -691,6 +694,8 @@ const ROOM_TIGHT: f64 = 0.02 - MARGIN;
 const WINDOW_MARGINS: [f64; 2] = [4.0, 16.0];
 /// How often progress is reported while routing, at most.
 const REPORT_EVERY: Duration = Duration::from_secs(2);
+/// How many of the lines a try left its progress line names ([`Router::try_ended`]).
+const TRY_ENDED_NAMES: usize = 3;
 
 /// How many rounds of negotiation the lines left over get, and what a cell the lines fought
 /// over costs for each time they did, and the most it counts.
@@ -1353,7 +1358,7 @@ pub fn route_with(board: &mut Board, options: RouteOptions) -> Routing {
         if let Some(most) = options.most_tries {
             orders.truncate(most.max(1));
         }
-        router.report(true, || {
+        router.report(true, None, || {
             format!(
                 "routing {} connections on a {} by {} mm board",
                 router.routed_lines,
@@ -1367,6 +1372,9 @@ pub fn route_with(board: &mut Board, options: RouteOptions) -> Routing {
         for order in &orders {
             tries += 1;
             let state = router.run(order, options.rip_up, tries, orders.len());
+            router.report(true, Some(&state), || {
+                router.try_ended(&state, tries, orders.len())
+            });
             let done = state.failed.is_empty();
             if best
                 .as_ref()

@@ -423,16 +423,90 @@ impl<'a> Router<'a> {
         self.stopped.get()
     }
 
-    /// Tell the progress function something, if there is one. Messages with `now` set are
-    /// always sent, the others at most once a second.
-    pub(super) fn report(&self, now: bool, message: impl FnOnce() -> String) {
-        let Some(progress) = self.progress else {
+    /// Tell the progress function something, if there is one, and the job's sink, if one
+    /// listens (`netsmith_core::job::report_detail`, issue #764): `connections routed` of the
+    /// lines the tries route, with the message and, given the try's `state`, the tracks and vias
+    /// it has so far. Messages with `now` set are always sent, the others at most once in
+    /// [`REPORT_EVERY`]. It only reads: the routing is the same with or without a listener.
+    pub(super) fn report(
+        &self,
+        now: bool,
+        state: Option<&State>,
+        message: impl FnOnce() -> String,
+    ) {
+        let job = netsmith_core::job::listening();
+        if self.progress.is_none() && !job {
             return;
-        };
-        if now || self.last_report.get().elapsed() >= REPORT_EVERY {
-            self.last_report.set(Instant::now());
-            progress(&message());
         }
+        if !(now || self.last_report.get().elapsed() >= REPORT_EVERY) {
+            return;
+        }
+        self.last_report.set(Instant::now());
+        let message = message();
+        if let Some(progress) = self.progress {
+            progress(&message);
+        }
+        if job {
+            let routed = state.map_or(0, |s| {
+                s.routed
+                    .iter()
+                    .filter(|r| r.line < self.routed_lines)
+                    .count()
+            });
+            netsmith_core::job::report_detail(
+                "connections routed",
+                routed as u64,
+                Some(self.routed_lines as u64),
+                || {
+                    let what = message
+                        .strip_prefix("routing, ")
+                        .or_else(|| message.strip_prefix("routing "))
+                        .unwrap_or(&message);
+                    match state {
+                        Some(s) => {
+                            let tracks: usize = s.routed.iter().map(|r| r.tracks.len()).sum();
+                            let vias: usize = s.routed.iter().map(|r| r.vias.len()).sum();
+                            format!("{what}; {tracks} tracks and {vias} vias so far")
+                        }
+                        None => what.to_string(),
+                    }
+                },
+            );
+        }
+    }
+
+    /// What a try ended with, for [`Self::report`]: `routing, try 1 of 3: ended with 38 of 40
+    /// connections routed, 2 left: net GND: U1.3 to C4.1, net SDA: U1.7 to J2.1`, the first
+    /// [`TRY_ENDED_NAMES`] lines left by name.
+    pub(super) fn try_ended(&self, state: &State, attempt: usize, attempts: usize) -> String {
+        let routed = state
+            .routed
+            .iter()
+            .filter(|r| r.line < self.routed_lines)
+            .count();
+        let mut text = format!(
+            "routing, try {attempt} of {attempts}: ended with {routed} of {} connections routed",
+            self.routed_lines
+        );
+        if !state.failed.is_empty() {
+            let names: Vec<String> = state
+                .failed
+                .iter()
+                .take(TRY_ENDED_NAMES)
+                .map(|&l| self.lines[l].to_string())
+                .collect();
+            text.push_str(&format!(
+                ", {} left: {}{}",
+                state.failed.len(),
+                names.join(", "),
+                if state.failed.len() > TRY_ENDED_NAMES {
+                    ", ..."
+                } else {
+                    ""
+                }
+            ));
+        }
+        text
     }
 
     /// The obstacles that routed copper makes, and the places it keeps vias from.

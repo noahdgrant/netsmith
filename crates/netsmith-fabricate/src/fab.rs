@@ -1143,17 +1143,25 @@ fn fab_board(
                 file.display()
             ));
         }
+        // The router tells how it goes as the placer does (issue #764): labelled and timed.
+        let sink = crate::layout::route_progress(built.label(), {
+            let progress = options.progress;
+            move |line: &str| {
+                if let Some(progress) = progress {
+                    progress(line);
+                }
+            }
+        });
         let routing = timings::stage("fab.route", &label, || {
-            route_with_margin(
-                &mut board,
-                options.route_timeout,
-                RouteOptions {
-                    progress: options.progress,
-                    ..RouteOptions::default()
-                },
-                options.track_margin,
-                say,
-            )
+            netsmith_core::job::reporting(sink, || {
+                route_with_margin(
+                    &mut board,
+                    options.route_timeout,
+                    RouteOptions::default(),
+                    options.track_margin,
+                    say,
+                )
+            })
         });
         // A diff pair whose meanders could not match it says the skew it keeps (issue #431, S11).
         for p in &routing.pairs {
