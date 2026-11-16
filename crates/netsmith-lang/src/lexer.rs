@@ -30,6 +30,8 @@ pub enum Tok {
     DotDot,
     Tilde,
     TildeArrow,
+    /// `?~`, a join a board may replace (ADR 0130).
+    QuestionTilde,
     AmpEq,
     /// `?=`, a default a board may replace.
     QuestionEq,
@@ -339,12 +341,13 @@ impl Lexer<'_> {
             });
         }
         // Longer spellings first.
-        let table: [(&str, Tok); 27] = [
+        let table: [(&str, Tok); 28] = [
             ("#[", Tok::HashBracket),
             ("::", Tok::ColonColon),
             ("~>", Tok::TildeArrow),
             ("&=", Tok::AmpEq),
             ("?=", Tok::QuestionEq),
+            ("?~", Tok::QuestionTilde),
             ("==", Tok::EqEq),
             (">=", Tok::GtEq),
             ("<=", Tok::LtEq),
@@ -516,6 +519,16 @@ mod tests {
             let at = src.find("/*").unwrap();
             assert_eq!((e.span.start, e.span.end), (at, at + 2), "{src}");
         }
+    }
+
+    #[test]
+    fn question_tilde_is_one_token() {
+        let toks: Vec<_> = lex(".a ?~ .b")
+            .unwrap()
+            .into_iter()
+            .map(|t| t.tok)
+            .collect();
+        assert!(toks.contains(&Tok::QuestionTilde), "{toks:?}");
     }
 
     #[test]

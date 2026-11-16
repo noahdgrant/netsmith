@@ -532,6 +532,7 @@ fn write_block(out: &mut String, inner_docs: &[String], items: &[Item], depth: u
                     let sym = match op {
                         ConnectOp::Same => "~",
                         ConnectOp::Series => "~>",
+                        ConnectOp::Default => "?~",
                     };
                     match c.groups.iter().find(|g| g.at == i) {
                         Some(g) => {
