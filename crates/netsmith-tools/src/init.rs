@@ -44,7 +44,7 @@ include!(concat!(env!("OUT_DIR"), "/guide_chapters.rs"));
 /// The skills for working in a project: the repository's own `netsmith-*` skills, not the
 /// `netsmith-dev-*` ones that are for working on netsmith. A test checks that this lists
 /// every one of them.
-const SKILLS: [(&str, &str); 7] = [
+const SKILLS: [(&str, &str); 8] = [
     (
         "netsmith-design-a-board",
         include_str!("../../../.agents/skills/netsmith-design-a-board/SKILL.md"),
@@ -64,6 +64,10 @@ const SKILLS: [(&str, &str); 7] = [
     (
         "netsmith-use-constraints",
         include_str!("../../../.agents/skills/netsmith-use-constraints/SKILL.md"),
+    ),
+    (
+        "netsmith-use-layout",
+        include_str!("../../../.agents/skills/netsmith-use-layout/SKILL.md"),
     ),
     (
         "netsmith-write-a-module",
