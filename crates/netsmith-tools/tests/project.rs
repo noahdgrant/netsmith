@@ -7,7 +7,7 @@ use std::path::Path;
 use netsmith_pipeline::build_with;
 use netsmith_workspace::Workspace;
 use netsmith_fabricate::fab::fab_with;
-use netsmith_tools::init::init;
+use netsmith_tools::init::{init, refresh};
 use netsmith_fabricate::project::{Manifest, Project, Target};
 use netsmith_check::Loader;
 use netsmith_editor::Backend;
@@ -76,6 +76,7 @@ fn init_makes_the_project_files_and_says_what_to_run() {
         ".agents/skills/netsmith-write-nsm/SKILL.md",
         ".gitignore",
         "AGENTS.md",
+        "CLAUDE.md",
         "README.md",
         "docs/netsmith/LANGUAGE.md",
         "netsmith.toml",
@@ -96,6 +97,8 @@ fn init_makes_the_project_files_and_says_what_to_run() {
             .map(|f| f.replacen(".agents/", ".claude/", 1))
             .collect::<Vec<_>>(),
     );
+    // The record of what init wrote is beside the skills, not in them.
+    expected.push(".agents/netsmith-files.sha256".to_string());
     expected.sort();
     assert_eq!(files_in(&root), expected);
     let manifest = Manifest::parse(&read(&root, "netsmith.toml")).unwrap();
@@ -360,6 +363,220 @@ fn init_keeps_a_guide_a_skill_and_a_claude_directory_that_exist() {
         root.join(".agents/skills/netsmith-read-errors/SKILL.md")
             .is_file()
     );
+}
+
+// ---- CLAUDE.md and `init --refresh` (issue #797) --------------------------------------
+
+/// The first AGENTS.md netsmith shipped: a file of a project made by the first version.
+const FIRST_AGENTS: &str = include_str!("fixtures/agents-first-version.md");
+
+#[test]
+fn init_writes_a_claude_md_that_imports_agents_md() {
+    let root = scaffold("claude");
+    assert_eq!(read(&root, "CLAUDE.md"), "@AGENTS.md\n");
+}
+
+#[test]
+fn init_keeps_a_claude_md_and_says_what_to_add_unless_it_imports_agents_md() {
+    let root = TempFile::new("project-test-own-claude", "p");
+    write(&root, "CLAUDE.md", "my notes\n");
+    let said = init(&root, None).unwrap();
+    assert_eq!(read(&root, "CLAUDE.md"), "my notes\n");
+    assert!(
+        said.contains("CLAUDE.md exists and was not touched") && said.contains("@AGENTS.md"),
+        "{said}"
+    );
+    let root = TempFile::new("project-test-own-claude-ok", "p");
+    write(&root, "CLAUDE.md", "my notes\n@AGENTS.md\n");
+    let said = init(&root, None).unwrap();
+    assert_eq!(read(&root, "CLAUDE.md"), "my notes\n@AGENTS.md\n");
+    assert!(!said.contains("CLAUDE.md"), "{said}");
+}
+
+#[test]
+fn init_records_what_it_wrote_and_not_what_it_kept() {
+    let root = TempFile::new("project-test-record", "p");
+    write(&root, "docs/netsmith/LANGUAGE.md", "old guide\n");
+    init(&root, None).unwrap();
+    let record = read(&root, ".agents/netsmith-files.sha256");
+    assert!(record.contains("  AGENTS.md\n"), "{record}");
+    assert!(
+        record.contains("  .agents/skills/netsmith-write-nsm/SKILL.md\n"),
+        "{record}"
+    );
+    assert!(!record.contains("docs/netsmith/LANGUAGE.md"), "{record}");
+}
+
+#[test]
+fn refresh_of_a_fresh_scaffold_changes_nothing() {
+    let root = scaffold("refresh-fresh");
+    let before = files_in(&root);
+    let record = read(&root, ".agents/netsmith-files.sha256");
+    let said = refresh(&root).unwrap();
+    assert!(said.contains("0 created, 0 updated, 0 left alone"), "{said}");
+    assert!(!said.contains("wrote .agents"), "{said}");
+    assert_eq!(files_in(&root), before);
+    assert_eq!(read(&root, ".agents/netsmith-files.sha256"), record);
+}
+
+#[test]
+fn refresh_writes_what_is_missing() {
+    let root = scaffold("refresh-missing");
+    fs::remove_file(root.join("CLAUDE.md")).unwrap();
+    fs::remove_file(root.join(".agents/skills/netsmith-use-layout/SKILL.md")).unwrap();
+    fs::remove_file(root.join("docs/netsmith/language/02-quick-start.md")).unwrap();
+    let said = refresh(&root).unwrap();
+    assert_eq!(read(&root, "CLAUDE.md"), "@AGENTS.md\n");
+    assert!(root.join(".agents/skills/netsmith-use-layout/SKILL.md").is_file());
+    assert!(root.join("docs/netsmith/language/02-quick-start.md").is_file());
+    assert!(
+        said.contains("created CLAUDE.md")
+            && said.contains("created .agents/skills/netsmith-use-layout/SKILL.md")
+            && said.contains("3 created, 0 updated, 0 left alone"),
+        "{said}"
+    );
+}
+
+#[test]
+fn refresh_updates_a_file_that_still_has_the_text_of_an_older_netsmith() {
+    // A project made before the record: no record, and the first AGENTS.md.
+    let root = scaffold("refresh-old");
+    fs::remove_file(root.join(".agents/netsmith-files.sha256")).unwrap();
+    write(&root, "AGENTS.md", FIRST_AGENTS);
+    let said = refresh(&root).unwrap();
+    assert_eq!(
+        read(&root, "AGENTS.md"),
+        include_str!("../templates/AGENTS.md")
+    );
+    assert!(
+        said.contains("updated AGENTS.md") && said.contains("0 left alone"),
+        "{said}"
+    );
+    assert!(read(&root, ".agents/netsmith-files.sha256").contains("  AGENTS.md\n"));
+}
+
+#[test]
+fn refresh_updates_a_file_the_record_says_netsmith_wrote() {
+    // A text no list of netsmith's knows, but the record of the project says init wrote it.
+    let root = scaffold("refresh-recorded");
+    let old = "An AGENTS.md of a netsmith that is not in any list.\n";
+    write(&root, "AGENTS.md", old);
+    let record = read(&root, ".agents/netsmith-files.sha256");
+    let current =
+        netsmith_fabricate::models::sha256(include_str!("../templates/AGENTS.md").as_bytes());
+    let recorded = netsmith_fabricate::models::sha256(old.as_bytes());
+    write(
+        &root,
+        ".agents/netsmith-files.sha256",
+        &record.replace(&current, &recorded),
+    );
+    let said = refresh(&root).unwrap();
+    assert_eq!(
+        read(&root, "AGENTS.md"),
+        include_str!("../templates/AGENTS.md")
+    );
+    assert!(said.contains("updated AGENTS.md"), "{said}");
+}
+
+#[test]
+fn refresh_leaves_an_edited_file_alone_and_shows_the_difference() {
+    let root = scaffold("refresh-edited");
+    let mine = format!(
+        "{}\n- Always use 0603 parts.\n",
+        include_str!("../templates/AGENTS.md")
+    );
+    write(&root, "AGENTS.md", &mine);
+    write(
+        &root,
+        ".agents/skills/netsmith-write-nsm/SKILL.md",
+        "my own skill\n",
+    );
+    fs::remove_file(root.join("CLAUDE.md")).unwrap();
+    let said = refresh(&root).unwrap();
+    assert_eq!(read(&root, "AGENTS.md"), mine);
+    assert_eq!(
+        read(&root, ".agents/skills/netsmith-write-nsm/SKILL.md"),
+        "my own skill\n"
+    );
+    assert!(
+        said.contains("AGENTS.md has your changes")
+            && said.contains("-- Always use 0603 parts.")
+            && said.contains("\n...\n")
+            && !said.contains(" # Working in this project")
+            && said.contains("netsmith-write-nsm/SKILL.md has your changes")
+            && said.contains("-my own skill")
+            && said.contains("1 created, 0 updated, 2 left alone"),
+        "{said}"
+    );
+    // Asked again, the edit is still there, and still listed.
+    let again = refresh(&root).unwrap();
+    assert_eq!(read(&root, "AGENTS.md"), mine);
+    assert!(again.contains("0 created, 0 updated, 2 left alone"), "{again}");
+    // Deleting a file is how a person takes netsmith's text.
+    fs::remove_file(root.join("AGENTS.md")).unwrap();
+    refresh(&root).unwrap();
+    assert_eq!(
+        read(&root, "AGENTS.md"),
+        include_str!("../templates/AGENTS.md")
+    );
+}
+
+#[test]
+fn refresh_names_a_chapter_or_skill_this_netsmith_no_longer_has() {
+    let root = scaffold("refresh-dropped");
+    write(&root, "docs/netsmith/language/99-gone.md", "old\n");
+    write(&root, ".agents/skills/netsmith-gone/SKILL.md", "old\n");
+    write(&root, ".agents/skills/my-own/SKILL.md", "mine\n");
+    let said = refresh(&root).unwrap();
+    assert!(
+        said.contains("docs/netsmith/language/99-gone.md is not a chapter")
+            && said.contains(".agents/skills/netsmith-gone is not a netsmith skill")
+            && !said.contains("my-own"),
+        "{said}"
+    );
+    assert_eq!(read(&root, "docs/netsmith/language/99-gone.md"), "old\n");
+}
+
+#[test]
+fn refresh_works_from_a_folder_of_the_project_and_needs_a_project() {
+    let root = scaffold("refresh-below");
+    fs::remove_file(root.join("CLAUDE.md")).unwrap();
+    refresh(&root.join("src")).unwrap();
+    assert!(root.join("CLAUDE.md").is_file());
+    assert!(!root.join("src/CLAUDE.md").exists());
+
+    let lost = dir("refresh-lost");
+    let e = refresh(&lost).unwrap_err();
+    assert!(e.contains("netsmith.toml") && e.contains("netsmith init"), "{e}");
+    assert!(files_in(&lost).is_empty());
+}
+
+#[cfg(unix)]
+#[test]
+fn refresh_recreates_the_link_to_the_skills_and_updates_a_folder_of_copies() {
+    let root = scaffold("refresh-link");
+    fs::remove_file(root.join(".claude/skills")).unwrap();
+    let said = refresh(&root).unwrap();
+    assert!(said.contains("created .claude/skills"), "{said}");
+    assert!(root.join(".claude/skills").symlink_metadata().unwrap().is_symlink());
+
+    // Where `.claude/skills` is a folder, its netsmith skills are refreshed when they are there.
+    let root = scaffold("refresh-copies");
+    fs::remove_file(root.join(".claude/skills")).unwrap();
+    let skill = ".claude/skills/netsmith-read-errors/SKILL.md";
+    write(
+        &root,
+        skill,
+        &read(&root, ".agents/skills/netsmith-read-errors/SKILL.md"),
+    );
+    write(&root, ".claude/skills/other/SKILL.md", "other\n");
+    refresh(&root).unwrap();
+    assert!(root.join(skill).is_file());
+    assert!(
+        !root.join(".claude/skills/netsmith-write-nsm").exists(),
+        "a folder that may be the project's own gains no skill"
+    );
+    assert_eq!(read(&root, ".claude/skills/other/SKILL.md"), "other\n");
 }
 
 #[test]

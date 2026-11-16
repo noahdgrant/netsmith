@@ -114,6 +114,6 @@
 	(gr_line (start 0 27) (end 0 0) (stroke (width 0.05) (type default)) (layer "Edge.Cuts"))
 	(gr_circle (center 34 20) (end 35.5 20) (stroke (width 0.05) (type default)) (fill no) (layer "Edge.Cuts"))
 	(gr_text "NSM" (at 28 24 0) (layer "F.SilkS") (effects (font (size 1.2 1.2) (thickness 0.18)) (justify left)))
-	(gr_text "ré" (at 28 26 0) (layer "F.SilkS") (effects (font (size 1 1) (thickness 0.15)) (justify left)))
+	(gr_text "r中" (at 28 26 0) (layer "F.SilkS") (effects (font (size 1 1) (thickness 0.15)) (justify left)))
 	(gr_line (start 3 25) (end 6 25) (stroke (width 0.2) (type solid)) (layer "F.Cu"))
 )
