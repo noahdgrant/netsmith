@@ -400,7 +400,9 @@
 //! and the two passes above, [`Router::to_the_pours`] gives each such capacitor's pad on a return
 //! net poured on the other outer layer (ground on the back of RP2350 and Orbit) a via of its own,
 //! on at most [`RETURN_TRACK`] 1.5 mm of track, unless a via of the net is that near already. It
-//! never moves other copper or leaves a line. EasyDuino's ground is a plane, so its capacitors
+//! never moves other copper or leaves a line. The capacitors are taken by pad
+//! (`decouple::return_pads`), not in the order the parts come in, which decided which of two
+//! near capacitors got the via (issue #718). EasyDuino's ground is a plane, so its capacitors
 //! had their vias already; its 3.3 V plane pins now reach the plane through the capacitor's via.
 //!
 //! **Measured** (2026-11-13, main at 19861713 against this, `netsmith fab` back to back, the same

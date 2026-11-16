@@ -100,10 +100,11 @@ pub(crate) fn decouples(board: &Board, pairs: &[DecouplingPair], l: &Ratline) ->
     })
 }
 
-/// The capacitor's pad on the return net of each decoupling pair, with that net's name.
+/// The capacitor's pad on the return net of each decoupling pair, with that net's name, by pad:
+/// the order the parts come in does not change which capacitor gets its via first (issue #718).
 pub(crate) fn return_pads(board: &Board) -> Vec<(PadRef, String)> {
     let net_of = net_of_pads(board);
-    decoupling_pairs(&board.parts, &board.nets)
+    let mut pads: Vec<(PadRef, String)> = decoupling_pairs(&board.parts, &board.nets)
         .into_iter()
         .filter_map(|pair| {
             let refdes = board.parts[pair.cap].refdes.as_str();
@@ -123,7 +124,9 @@ pub(crate) fn return_pads(board: &Board) -> Vec<(PadRef, String)> {
                 board.nets[[a, b][r]].name.clone(),
             ))
         })
-        .collect()
+        .collect();
+    pads.sort();
+    pads
 }
 
 /// A line to the pour from each decoupling capacitor's pad on its return net, where that net

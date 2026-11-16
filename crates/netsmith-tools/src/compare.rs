@@ -213,8 +213,9 @@ fn design_of(path: &str, board: Option<&str>) -> Result<(Design, Mapping), Strin
     let catalogs = target.catalogs()?;
     let text = fs::read_to_string(path).map_err(|e| format!("{path}: {e}"))?;
     // The pick lock beside the source holds its parts to their rows, as for `build`; it is
-    // read and never written.
-    let (held, _) = netsmith_pipeline::pick_lock::open(Path::new(path), &catalogs, false, true)?;
+    // read and never written, and not read for a source the project's `lock` key leaves out.
+    let applies = target.files.iter().all(|source| target.locks(source));
+    let (held, _) = netsmith_pipeline::pick_lock::open(Path::new(path), &catalogs, false, applies)?;
     let catalogs = held.as_ref().unwrap_or(&catalogs);
     let built = outcome_with(path, &text, &loader, catalogs, None)
         .map_err(|problems| render_problems(&problems))?
