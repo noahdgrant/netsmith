@@ -484,6 +484,59 @@ fn points_of(node: &Sexp, what: &str) -> Result<Vec<Pt>, ArtworkError> {
     pts.find_all("xy").map(|xy| point(xy, what)).collect()
 }
 
+/// How a text is written: what the `(effects ...)` of a text or text box say.
+struct FontStyle {
+    size: (f64, f64),
+    thickness: f64,
+    mirror: bool,
+    italic: bool,
+    h: HAlign,
+    v: VAlign,
+}
+
+fn font_style(effects: Option<&Sexp>) -> Result<FontStyle, ArtworkError> {
+    let font = effects.and_then(|e| e.find("font"));
+    let size = font
+        .and_then(|f| f.find("size"))
+        .map(|s| -> Result<(f64, f64), ArtworkError> {
+            Ok((
+                num(s.items().get(1), "a text's size")?,
+                num(s.items().get(2), "a text's size")?,
+            ))
+        })
+        .transpose()?
+        .unwrap_or((1.0, 1.0));
+    let thickness = font
+        .and_then(|f| child_num(f, "thickness"))
+        .unwrap_or(size.1 * 0.15);
+    let justify: Vec<&str> = effects
+        .and_then(|e| e.find("justify"))
+        .map(|j| j.items().iter().skip(1).filter_map(Sexp::text).collect())
+        .unwrap_or_default();
+    Ok(FontStyle {
+        size,
+        thickness,
+        mirror: justify.contains(&"mirror"),
+        italic: font.is_some_and(|f| {
+            f.items().iter().any(|i| i.text() == Some("italic")) || flag(f, "italic") == Some(true)
+        }),
+        h: if justify.contains(&"left") {
+            HAlign::Left
+        } else if justify.contains(&"right") {
+            HAlign::Right
+        } else {
+            HAlign::Centre
+        },
+        v: if justify.contains(&"top") {
+            VAlign::Top
+        } else if justify.contains(&"bottom") {
+            VAlign::Bottom
+        } else {
+            VAlign::Centre
+        },
+    })
+}
+
 struct Reader<'a> {
     root: &'a Sexp,
     copper: Vec<String>,
@@ -831,6 +884,30 @@ impl<'a> Reader<'a> {
                 Shape::Poly(points.into_iter().map(world).collect())
             }
             "text" => return self.text(item, frame),
+            "text_box" => return self.text_box(item, frame),
+            // A cubic Bézier stroked with its width, as straight pieces: each is a line of its
+            // own, so the checks and the outline treat a curve as they treat lines.
+            "curve" => {
+                let pts = points_of(item, &format!("a {head} on {layer}"))?;
+                let [a, b, c, d] = pts[..] else {
+                    return Err(ArtworkError::Malformed(format!(
+                        "a {head} on {layer} has {} points, not 4",
+                        pts.len()
+                    )));
+                };
+                let line = bezier_points(world(a), world(b), world(c), world(d));
+                let owner = frame.map(|f| f.part.clone()).unwrap_or_default();
+                for w in line.windows(2).filter(|w| w[0] != w[1]) {
+                    self.out.graphics.push(Graphic {
+                        layer: layer.clone(),
+                        owner: owner.clone(),
+                        shape: Shape::Line(w[0], w[1]),
+                        width,
+                        fill: false,
+                    });
+                }
+                return Ok(());
+            }
             other => {
                 self.out
                     .skipped
@@ -872,24 +949,7 @@ impl<'a> Reader<'a> {
         let angle = at_node
             .and_then(|a| a.items().get(3)?.text()?.parse::<f64>().ok())
             .unwrap_or(0.0);
-        let font = effects.and_then(|e| e.find("font"));
-        let size = font
-            .and_then(|f| f.find("size"))
-            .map(|s| -> Result<(f64, f64), ArtworkError> {
-                Ok((
-                    num(s.items().get(1), "a text's size")?,
-                    num(s.items().get(2), "a text's size")?,
-                ))
-            })
-            .transpose()?
-            .unwrap_or((1.0, 1.0));
-        let thickness = font
-            .and_then(|f| child_num(f, "thickness"))
-            .unwrap_or(size.1 * 0.15);
-        let justify: Vec<&str> = effects
-            .and_then(|e| e.find("justify"))
-            .map(|j| j.items().iter().skip(1).filter_map(Sexp::text).collect())
-            .unwrap_or_default();
+        let style = font_style(effects)?;
         let owner = frame.map_or("the board".to_string(), |f| f.part.clone());
         let text = match frame {
             Some(f) => expand(raw, f),
@@ -900,27 +960,116 @@ impl<'a> Reader<'a> {
             text,
             at: frame.map_or(local, |f| f.world(local)),
             angle,
-            size,
-            thickness,
-            mirror: justify.contains(&"mirror"),
-            italic: font.is_some_and(|f| {
-                f.items().iter().any(|i| i.text() == Some("italic"))
-                    || flag(f, "italic") == Some(true)
+            size: style.size,
+            thickness: style.thickness,
+            mirror: style.mirror,
+            italic: style.italic,
+            h: style.h,
+            v: style.v,
+            owner,
+        });
+        Ok(())
+    }
+
+    /// A `gr_text_box` or `fp_text_box`: its text, broken into lines that fit the box (at the
+    /// words, as KiCad does) and justified in it, and its border when it has one.
+    fn text_box(&mut self, item: &Sexp, frame: Option<&Frame>) -> Result<(), ArtworkError> {
+        let head = item.head().unwrap_or("");
+        let world = |p: Pt| frame.map_or(p, |f| f.world(p));
+        let layer = layer_of(item);
+        let raw = item.items().get(1).and_then(Sexp::text).unwrap_or("");
+        // The corners, in the footprint's frame: four of `(pts ...)` for a box that is turned,
+        // else the two of `(start ...) (end ...)`.
+        let corners: [Pt; 4] = if item.find("pts").is_some() {
+            let pts = points_of(item, &format!("a {head} on {layer}"))?;
+            let [a, b, c, d] = pts[..] else {
+                return Err(ArtworkError::Malformed(format!(
+                    "a {head} on {layer} has {} corners, not 4",
+                    pts.len()
+                )));
+            };
+            [a, b, c, d]
+        } else {
+            let need = |name: &str| {
+                child_point(item, name, &format!("a {head}'s {name}"))?.ok_or_else(|| {
+                    ArtworkError::Malformed(format!("a {head} on {layer} has no ({name}"))
+                })
+            };
+            let (s, e) = (need("start")?, need("end")?);
+            [s, Pt::new(e.x, s.y), e, Pt::new(s.x, e.y)]
+        };
+        let border = match item.find("border") {
+            Some(_) => flag(item, "border") == Some(true),
+            // A file that says nothing of it (KiCad 8) has a border when it has a stroke.
+            None => item.find("stroke").is_some_and(|s| {
+                child_num(s, "width").unwrap_or(0.0) > 0.0
+                    && s.find("type").and_then(|t| t.items().get(1)?.text()) != Some("none")
             }),
-            h: if justify.contains(&"left") {
-                HAlign::Left
-            } else if justify.contains(&"right") {
-                HAlign::Right
-            } else {
-                HAlign::Centre
-            },
-            v: if justify.contains(&"top") {
-                VAlign::Top
-            } else if justify.contains(&"bottom") {
-                VAlign::Bottom
-            } else {
-                VAlign::Centre
-            },
+        };
+        let width = stroke_width(item);
+        let owner = frame.map_or("the board".to_string(), |f| f.part.clone());
+        if border {
+            self.out.graphics.push(Graphic {
+                layer: layer.clone(),
+                owner: frame.map(|f| f.part.clone()).unwrap_or_default(),
+                shape: Shape::Poly(corners.map(world).to_vec()),
+                width,
+                fill: false,
+            });
+        }
+        let effects = item.find("effects");
+        let hidden = effects.is_some_and(|e| flag(e, "hide").unwrap_or(false));
+        let text = match frame {
+            Some(f) => expand(raw, f),
+            None => raw.to_string(),
+        };
+        if hidden || text.is_empty() {
+            return Ok(());
+        }
+        let style = font_style(effects)?;
+        // A text box's angle is its own turn on a board; in a footprint it is written less the
+        // footprint's orientation (unlike a text's).
+        let own = child_num(item, "angle").unwrap_or(0.0);
+        let angle = own + frame.map_or(0.0, |f| f.angle);
+        // The box in the text's own axes: its first side is the text's direction.
+        let (w, h) = (corners[0].dist(corners[1]), corners[1].dist(corners[2]));
+        let centre = world(Pt::new(
+            corners.iter().map(|c| c.x).sum::<f64>() / 4.0,
+            corners.iter().map(|c| c.y).sum::<f64>() / 4.0,
+        ));
+        // The margins left, top, right, bottom; KiCad's own when the file has none is not known
+        // here, so a quarter of the text's height stands for it (and the border's half width).
+        let default_margin = width / 2.0 + style.size.1 / 4.0;
+        let [ml, mt, mr, mb] = match item.find("margins") {
+            Some(m) => {
+                let n = |i: usize| num(m.items().get(i), "a text box's margins");
+                [n(1)?, n(2)?, n(3)?, n(4)?]
+            }
+            None => [default_margin; 4],
+        };
+        let inner = (w - ml - mr).max(0.0);
+        let wrapped = crate::font::wrap(&text, style.size.0, inner);
+        let dx = match style.h {
+            HAlign::Left => -w / 2.0 + ml,
+            HAlign::Centre => (ml - mr) / 2.0,
+            HAlign::Right => w / 2.0 - mr,
+        };
+        let dy = match style.v {
+            VAlign::Top => -h / 2.0 + mt,
+            VAlign::Centre => (mt - mb) / 2.0,
+            VAlign::Bottom => h / 2.0 - mb,
+        };
+        self.out.texts.push(Text {
+            layer,
+            text: wrapped,
+            at: centre + Pt::new(dx, dy).rotate(angle),
+            angle,
+            size: style.size,
+            thickness: style.thickness,
+            mirror: style.mirror,
+            italic: style.italic,
+            h: style.h,
+            v: style.v,
             owner,
         });
         Ok(())
@@ -1479,6 +1628,149 @@ mod tests {
         assert_eq!(a.tracks.len(), 1);
         assert_eq!(a.vias[0].net.as_deref(), Some("GND"));
         assert_eq!(a.vias[0].tented, (true, true));
+    }
+
+    fn silk_board(extra: &str) -> Artwork {
+        Artwork::parse(&format!(
+            "(kicad_pcb (layers (0 \"F.Cu\" signal) (31 \"B.Cu\" signal)) (net 0 \"\") {extra})"
+        ))
+        .unwrap()
+    }
+
+    #[test]
+    fn a_curve_is_straight_pieces_from_end_to_end_and_a_footprints_is_put_on_the_board() {
+        let a = silk_board(
+            "(gr_curve (pts (xy 0 0) (xy 1 -1) (xy 2 1) (xy 3 0)) (stroke (width 0.2) (type solid)) (layer \"F.SilkS\"))
+             (footprint \"L:F\" (layer \"F.Cu\") (at 10 20 90)
+               (property \"Reference\" \"U1\" (at 0 0 0) (layer \"F.SilkS\") (effects (font (size 1 1)) (hide yes)))
+               (fp_curve (pts (xy 0 0) (xy 1 -1) (xy 2 1) (xy 3 0)) (stroke (width 0.1) (type solid)) (layer \"F.SilkS\")))",
+        );
+        assert!(a.skipped.is_empty(), "{:?}", a.skipped);
+        let lines = |owner: &str| -> Vec<(Pt, Pt)> {
+            a.graphics
+                .iter()
+                .filter(|g| g.owner == owner)
+                .map(|g| match g.shape {
+                    Shape::Line(p, q) => (p, q),
+                    ref other => panic!("{other:?}"),
+                })
+                .collect()
+        };
+        let (board, part) = (lines(""), lines("U1"));
+        assert!(board.len() >= 8 && board.len() == part.len());
+        assert_eq!(board[0].0, Pt::new(0.0, 0.0));
+        assert_eq!(board.last().unwrap().1, Pt::new(3.0, 0.0));
+        // The pieces are joined end to end.
+        assert!(board.windows(2).all(|w| w[0].1 == w[1].0));
+        // The footprint's curve starts at its origin and ends where (3, 0) turned a quarter (counter-clockwise on screen) is.
+        assert_eq!(part[0].0, Pt::new(10.0, 20.0));
+        let end = part.last().unwrap().1;
+        assert!(
+            (end.x - 10.0).abs() < 1e-9 && (end.y - 17.0).abs() < 1e-9,
+            "{end:?}"
+        );
+        assert!(
+            a.graphics
+                .iter()
+                .filter(|g| g.owner == "U1")
+                .all(|g| g.width == 0.1)
+        );
+    }
+
+    #[test]
+    fn a_curve_with_the_wrong_number_of_points_is_refused() {
+        let err = Artwork::parse(
+            "(kicad_pcb (layers (0 \"F.Cu\" signal)) (gr_curve (pts (xy 0 0) (xy 1 1)) (layer \"F.SilkS\")))",
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(err.contains("2 points, not 4"), "{err}");
+    }
+
+    #[test]
+    fn a_text_box_is_a_border_and_text_broken_at_its_words_and_justified_in_it() {
+        let a = silk_board(
+            "(gr_text_box \"AB CD EF\" (start 10 20) (end 16 26) (layer \"F.SilkS\")
+               (effects (font (size 1 1) (thickness 0.15)) (justify left top))
+               (margins 0.5 0.5 0.5 0.5) (stroke (width 0.1) (type solid)) (border yes))",
+        );
+        assert!(a.skipped.is_empty(), "{:?}", a.skipped);
+        let [border] = &a.graphics[..] else {
+            panic!("{:?}", a.graphics)
+        };
+        assert_eq!(
+            border.shape,
+            Shape::Poly(vec![
+                Pt::new(10.0, 20.0),
+                Pt::new(16.0, 20.0),
+                Pt::new(16.0, 26.0),
+                Pt::new(10.0, 26.0)
+            ])
+        );
+        assert_eq!(border.width, 0.1);
+        let [t] = &a.texts[..] else { panic!() };
+        // 5 mm wide inside the margins: `AB CD` is 3.95 mm wide at this size, `AB CD EF` 7.25.
+        assert_eq!(t.text, "AB CD\nEF");
+        // Left and top justified: the anchor is the inner top left corner.
+        assert_eq!((t.h, t.v), (HAlign::Left, VAlign::Top));
+        assert!(
+            (t.at.x - 10.5).abs() < 1e-9 && (t.at.y - 20.5).abs() < 1e-9,
+            "{:?}",
+            t.at
+        );
+    }
+
+    #[test]
+    fn a_text_box_has_a_border_by_its_border_flag_or_else_by_its_stroke() {
+        let boxed = |tail: &str| {
+            silk_board(&format!(
+                "(gr_text_box \"X\" (start 0 0) (end 4 2) (layer \"F.SilkS\") (effects (font (size 1 1))) {tail})"
+            ))
+        };
+        assert_eq!(
+            boxed("(border no) (stroke (width 0.1) (type solid))")
+                .graphics
+                .len(),
+            0
+        );
+        assert_eq!(
+            boxed("(border yes) (stroke (width 0.1) (type solid))")
+                .graphics
+                .len(),
+            1
+        );
+        assert_eq!(boxed("(stroke (width 0.1) (type solid))").graphics.len(), 1);
+        assert_eq!(boxed("").graphics.len(), 0);
+        assert_eq!(boxed("(stroke (width 0.1) (type none))").graphics.len(), 0);
+    }
+
+    #[test]
+    fn a_footprints_text_box_is_turned_with_its_footprint_and_a_turned_box_uses_its_corners() {
+        let a = silk_board(
+            "(footprint \"L:F\" (layer \"F.Cu\") (at 10 20 90)
+               (property \"Reference\" \"U1\" (at 0 0 0) (layer \"F.SilkS\") (effects (font (size 1 1)) (hide yes)))
+               (fp_text_box \"${REFERENCE}\" (start 0 0) (end 4 2) (angle 0) (layer \"F.SilkS\")
+                 (effects (font (size 1 1)) (justify left top)) (margins 0 0 0 0) (border no)))
+             (gr_text_box \"T\" (pts (xy 0 0) (xy 0 4) (xy -2 4) (xy -2 0)) (angle 90) (layer \"F.SilkS\")
+               (effects (font (size 1 1)) (justify left top)) (margins 0 0 0 0) (border yes) (stroke (width 0.1) (type solid)))",
+        );
+        let fp = a.texts.iter().find(|t| t.owner == "U1").unwrap();
+        assert_eq!(fp.text, "U1");
+        // The footprint turned a quarter: the text is turned with it, and the box's top left
+        // corner (its origin) is the footprint's origin.
+        assert_eq!(fp.angle, 90.0);
+        assert!(
+            (fp.at.x - 10.0).abs() < 1e-9 && (fp.at.y - 20.0).abs() < 1e-9,
+            "{:?}",
+            fp.at
+        );
+        let turned = a.texts.iter().find(|t| t.owner == "the board").unwrap();
+        assert_eq!(turned.angle, 90.0);
+        // Four corners were given, and the border follows them.
+        let [g] = &a.graphics[..] else {
+            panic!("{:?}", a.graphics)
+        };
+        assert!(matches!(&g.shape, Shape::Poly(p) if p.len() == 4 && p[2] == Pt::new(-2.0, 4.0)));
     }
 
     #[test]
