@@ -51,7 +51,10 @@ pub struct Features {
     /// prints its designator.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub silks: Vec<PartSilk>,
-    /// The STEP models parts are drawn from, by path (ADR 0108).
+    /// The STEP models parts are drawn from, by path (ADR 0108). A design file holds only the
+    /// ones the design states: a model the project's model table gave
+    /// ([`StepModel::footprint`]) is left out of it.
+    #[serde(serialize_with = "stated_models")]
     pub models: Vec<StepModel>,
     /// The STEP files of the board's case, by member name (ADR 0109).
     pub case_models: Vec<CaseModel>,
@@ -69,4 +72,9 @@ pub struct Features {
     /// `file:line` the `source` fields name (`widget.physical.nsm:14`), so that a message can
     /// quote the line. Filled by the caller that knows the source files; empty otherwise.
     pub line_texts: std::collections::BTreeMap<String, String>,
+}
+
+/// The models of [`Features::models`] that the design states, as a design file holds them.
+fn stated_models<S: serde::Serializer>(models: &[StepModel], s: S) -> Result<S::Ok, S::Error> {
+    s.collect_seq(models.iter().filter(|m| m.footprint.is_none()))
 }

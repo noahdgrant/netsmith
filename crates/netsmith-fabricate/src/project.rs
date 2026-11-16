@@ -3,7 +3,8 @@
 //!
 //! The manifest is read with the `toml` crate and holds one `[project]` table whose values
 //! are strings, whole numbers and lists of strings, and the `[order.*]` tables of ADR 0035
-//! (`crate::order`). Any other table or key is refused with its line and column, so the
+//! (`crate::order`), `[supply]`, and the model table (`[models]`, `[[model]]`, `crate::models`).
+//! Any other table or key is refused with its line and column, so the
 //! file stays plain TOML.
 
 use std::{
@@ -140,6 +141,15 @@ pub struct Manifest {
     /// and written beside `[project]`. It has no field for a key or a password.
     #[serde(skip)]
     pub supply: Option<SupplyConfig>,
+    /// The `[models]` table (issue #763): the folder of STEP models a part's footprint id
+    /// finds its model in, as KiCad lays its library out. Read and written beside `[project]`.
+    #[serde(skip)]
+    pub models: Option<crate::models::ModelsConfig>,
+    /// The `[[model]]` rows (issue #763): the STEP model of each footprint id, the default of a
+    /// part's `.model` that the part's own statement overrides. Read and written beside
+    /// `[project]`.
+    #[serde(skip)]
+    pub model: Vec<crate::models::ModelRow>,
 }
 
 /// The `[supply]` table of `netsmith.toml`.
@@ -211,7 +221,8 @@ fn default_kicad() -> i64 {
     KICAD_VERSION
 }
 
-/// The whole file: the `[project]` table and the `[order.*]` tables, and no other.
+/// The whole file: the `[project]` table, the `[order.*]` tables, `[supply]`, `[models]` and the
+/// `[[model]]` rows, and no other.
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct File {
@@ -220,6 +231,10 @@ struct File {
     order: RawOrders,
     #[serde(default)]
     supply: Option<SupplyConfig>,
+    #[serde(default)]
+    models: Option<crate::models::ModelsConfig>,
+    #[serde(default)]
+    model: Vec<crate::models::ModelRow>,
 }
 
 /// [`File`] as it is written back.
@@ -230,6 +245,10 @@ struct Rendered<'a> {
     order: BTreeMap<String, RenderedOrder>,
     #[serde(skip_serializing_if = "Option::is_none")]
     supply: &'a Option<SupplyConfig>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    models: &'a Option<crate::models::ModelsConfig>,
+    #[serde(skip_serializing_if = "<[_]>::is_empty")]
+    model: &'a [crate::models::ModelRow],
 }
 
 impl Manifest {
@@ -256,6 +275,8 @@ impl Manifest {
             series: None,
             orders: Vec::new(),
             supply: None,
+            models: None,
+            model: Vec::new(),
         }
     }
 
@@ -265,6 +286,8 @@ impl Manifest {
             project: self,
             order: order::rendered(&self.orders),
             supply: &self.supply,
+            models: &self.models,
+            model: &self.model,
         })
         .expect("a manifest of strings and a number is always TOML")
     }
@@ -275,7 +298,11 @@ impl Manifest {
         let file: File = toml::from_str(text).map_err(|e| format!("{MANIFEST}: {e}"))?;
         let mut manifest = file.project;
         manifest.supply = file.supply;
+        manifest.models = file.models;
+        manifest.model = file.model;
         manifest.validate()?;
+        crate::models::check_table(manifest.models.as_ref(), &manifest.model)
+            .map_err(|e| format!("{MANIFEST}: {e}"))?;
         manifest.orders = order::check(text, file.order)?;
         Ok(manifest)
     }

@@ -44,7 +44,7 @@ fn located(root: &Path) -> (netsmith_core::Design, netsmith_fabricate::models::L
     let outcome = netsmith_pipeline::outcome_with("src/main.nsm", LED, &loader, &Catalogs::jlcpcb(), None)
         .unwrap_or_else(|p| panic!("{}", netsmith_pipeline::render_problems(&p)));
     let mut design = outcome.boards[0].design.clone();
-    let found = locate(&mut design, &Places::under(root));
+    let found = locate(&mut design, &Places::under(root), Some(&netsmith_kicad::Mapping::standard()));
     (design, found)
 }
 
@@ -131,7 +131,7 @@ fn one_path_stated_in_two_folders_that_names_two_files_is_refused() {
     let outcome = netsmith_pipeline::outcome_with("src/main.nsm", board, &loader, &Catalogs::jlcpcb(), None)
         .unwrap_or_else(|p| panic!("{}", netsmith_pipeline::render_problems(&p)));
     let mut design = outcome.boards[0].design.clone();
-    let found = locate(&mut design, &Places::under(&root));
+    let found = locate(&mut design, &Places::under(&root), Some(&netsmith_kicad::Mapping::standard()));
     assert_eq!(
         found.errors,
         [

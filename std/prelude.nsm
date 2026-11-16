@@ -50,8 +50,13 @@ enum Qualification {
 ///
 /// A model is drawn, never measured: the part's `.height` does not come from it. A file that
 /// is not there is a warning, and the part is drawn with its generated shape.
+///
+/// A part that states no `.file` is drawn from the model of its footprint in the project's
+/// model table (`[models]` and `[[model]]` in `netsmith.toml`), if it has one; a part's own
+/// `.file` wins over the table.
 interface StepModel {
     /// The STEP file, relative to the file that states it. It must be inside the project.
+    /// An empty file (`""`) says the part has no model, and the model table gives it none.
     .file: String
     /// The offset, in the footprint's frame.
     .x: Length

@@ -446,21 +446,41 @@ pub(crate) fn models(
                 continue;
             }
         };
+        // An empty file says the part has no model: it is drawn with its generated shape,
+        // and the project's model table gives it none (issue #763).
         if file.trim().is_empty() {
-            errors.push(format!(
-                "`{path}.model.file` is empty: name the STEP file, relative to the file that states it"
-            ));
-            continue;
+            let stated: Vec<String> = PLACEMENT
+                .iter()
+                .filter(|n| !matches!(domain(model, m, n), None | Some(Domain::Unset)))
+                .map(|n| format!("`{path}.model.{n}`"))
+                .collect();
+            if !stated.is_empty() {
+                errors.push(format!(
+                    "`{path}.model.file` is empty, which says `{path}` has no model, and {} {} stated, so there is nothing to place: name the STEP file, or remove the placement",
+                    stated.join(", "),
+                    if stated.len() == 1 { "is" } else { "are" }
+                ));
+                continue;
+            }
         }
-        let (offset, rotation) = placement_of(model, m, &format!("{path}.model"), errors);
+        let (offset, rotation) = if file.trim().is_empty() {
+            ([0.0; 3], [0.0; 3])
+        } else {
+            placement_of(model, m, &format!("{path}.model"), errors)
+        };
         found.push(StepModel {
             path,
-            file,
+            file: if file.trim().is_empty() {
+                String::new()
+            } else {
+                file
+            },
             offset,
             rotation,
             source: String::new(),
             stated_in: Vec::new(),
             resolved: None,
+            footprint: None,
         });
         sites.push(model.field(file_field).narrowed_at.clone());
     }

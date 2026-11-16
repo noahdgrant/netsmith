@@ -369,6 +369,7 @@ fn a_part_carries_its_step_model_with_its_offset_and_rotation() {
             source: String::new(),
             stated_in: Vec::new(),
             resolved: None,
+            footprint: None,
         }]
     );
     // The model is drawn, never measured: it gives the part no height.
@@ -395,10 +396,19 @@ fn a_rotation_of_a_model_that_is_a_range_is_refused() {
 }
 
 #[test]
-fn an_empty_model_file_is_refused() {
+fn an_empty_model_file_says_the_part_has_none() {
+    // The part is listed with no file, so the project's model table gives it none (#763).
+    let d = designed(&board("    .r.model.file &= \"\"\n")).unwrap();
+    assert_eq!(d.features.models.len(), 1, "{:?}", d.features.models);
+    assert_eq!(d.features.models[0].path, "r");
+    assert_eq!(d.features.models[0].file, "");
+}
+
+#[test]
+fn a_placement_of_an_empty_model_file_is_refused() {
     assert_eq!(
-        errors_of(&board("    .r.model.file &= \"\"\n")),
-        "`r.model.file` is empty: name the STEP file, relative to the file that states it"
+        errors_of(&board("    .r.model.file &= \"\"\n    .r.model.rz &= 90\n")),
+        "`r.model.file` is empty, which says `r` has no model, and `r.model.rz` is stated, so there is nothing to place: name the STEP file, or remove the placement"
     );
 }
 

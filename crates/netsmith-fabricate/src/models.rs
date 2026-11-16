@@ -9,6 +9,12 @@
 //! found the same way. One that is not there leaves the board's fit in its case unchecked: a
 //! warning, and an error when constraints are strict.
 //!
+//! The project's model table (`[models]` and `[[model]]` in `netsmith.toml`, issue #763) gives a
+//! model to each part that states none, by the id of the footprint the part is mapped to: a
+//! `[[model]]` row of that id, else `<folder>/<Lib>.3dshapes/<Name>.step` in the models folder,
+//! KiCad's own layout. It is a default: a part's own `.model.file` wins, and an empty one says
+//! the part has none. A row's file that is not there is a warning; the folder is only looked in.
+//!
 //! [`locate`] settles a part model's place; [`uses`] reads it ([`read`], once per change of its
 //! bytes) for the scene to draw, and [`crate::case_fit`] reads a case model the same way. The
 //! model never gives the part a height, and a case model never gives the board an outline, a
@@ -20,6 +26,8 @@ use std::sync::{Arc, Mutex};
 
 use netsmith_3d::{ModelUse, StepModel};
 use netsmith_core::Design;
+use netsmith_kicad::Mapping;
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 use crate::physical::physical_path;
@@ -36,6 +44,101 @@ pub struct Located {
     /// checked. A warning, and an error when constraints are strict (`fab --constraints
     /// error` or `constraints = "error"`), as a part of unknown height under a limit is.
     pub unchecked: Vec<String>,
+    /// What the project's model table did, for a project that has one (issue #763): how many
+    /// parts it gave a model, and which parts are drawn with no model at all. Printed as a
+    /// `note:`.
+    pub notes: Vec<String>,
+}
+
+/// The `[models]` table of `netsmith.toml` (issue #763).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ModelsConfig {
+    /// The folder a footprint `Lib:Name` finds its model in, as
+    /// `<folder>/<Lib>.3dshapes/<Name>.step` (or `.stp`, `.STEP`): KiCad's layout of its
+    /// `kicad-packages3D`. Relative to the project root, or absolute, and it may start with an
+    /// environment variable, `${KICAD9_3DMODEL_DIR}`. It may be outside the project.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub folder: Option<String>,
+}
+
+/// A `[[model]]` row of `netsmith.toml` (issue #763): the STEP model of every part whose
+/// footprint is `footprint`, unless the part states its own `.model`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ModelRow {
+    /// The footprint id, as `kicad.toml` maps a part to it: `Resistor_SMD:R_0402_1005Metric`.
+    pub footprint: String,
+    /// The STEP file, relative to the project root, or absolute, and it may start with an
+    /// environment variable (`${KICAD9_3DMODEL_DIR}/...`). It must be inside the project or
+    /// inside the models folder.
+    pub file: String,
+    /// The offset in mm along x, y and z of the footprint's frame, as `.model.x`, `.y`, `.z`.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub offset: [f64; 3],
+    /// The rotation in degrees about x, then y, then z, before the offset, as `.model.rx`,
+    /// `.ry`, `.rz`: a KiCad footprint's `(model ... (rotate (xyz ...)))` copied in.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub rotation: [f64; 3],
+}
+
+fn is_zero(v: &[f64; 3]) -> bool {
+    *v == [0.0; 3]
+}
+
+/// Whether the model table of a manifest can work: each row a footprint id and a file, each
+/// footprint once, numbers that are finite, and a folder that is not empty.
+pub fn check_table(models: Option<&ModelsConfig>, rows: &[ModelRow]) -> Result<(), String> {
+    if let Some(folder) = models.and_then(|m| m.folder.as_deref())
+        && folder.trim().is_empty()
+    {
+        return Err(
+            "[models] folder is empty: name the folder of STEP models, or leave the key out"
+                .to_string(),
+        );
+    }
+    let mut seen: Vec<&str> = Vec::new();
+    for row in rows {
+        let fp = row.footprint.as_str();
+        if !fp
+            .split_once(':')
+            .is_some_and(|(lib, name)| !lib.is_empty() && !name.is_empty())
+        {
+            return Err(format!(
+                "[[model]] footprint = {fp:?} is not a footprint id: write it as `kicad.toml` maps a part, `Library:Name`"
+            ));
+        }
+        if seen.contains(&fp) {
+            return Err(format!(
+                "[[model]] footprint = {fp:?} has two rows: give each footprint one model"
+            ));
+        }
+        seen.push(fp);
+        if row.file.trim().is_empty() {
+            return Err(format!(
+                "[[model]] footprint = {fp:?} has an empty file: name its STEP file, or remove the row"
+            ));
+        }
+        if row
+            .offset
+            .iter()
+            .chain(&row.rotation)
+            .any(|v| !v.is_finite())
+        {
+            return Err(format!(
+                "[[model]] footprint = {fp:?}: offset and rotation are three finite numbers"
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// The project's model table as [`locate`] uses it.
+#[derive(Debug, Clone, Default)]
+struct Table {
+    /// The `[models] folder`, as `netsmith.toml` spells it.
+    folder: Option<String>,
+    rows: Vec<ModelRow>,
 }
 
 /// Where the files of a target are on disk, to find a model relative to the file that names it.
@@ -48,6 +151,9 @@ pub struct Places {
     files: Vec<(String, PathBuf)>,
     /// The folder the names of the project's own modules are relative to.
     project: Option<PathBuf>,
+    /// The project's model table (issue #763); `None` for a project with neither a
+    /// `[models] folder` nor a `[[model]]` row, or a file with no project.
+    table: Option<Table>,
 }
 
 impl Places {
@@ -65,10 +171,19 @@ impl Places {
                 .and_then(|(_, p)| p.parent().map(Path::to_path_buf))
                 .unwrap_or_else(|| absolute(Path::new(".")))
         });
+        let table = target.project.as_ref().and_then(|p| {
+            let m = &p.manifest;
+            let folder = m.models.as_ref().and_then(|c| c.folder.clone());
+            (folder.is_some() || !m.model.is_empty()).then(|| Table {
+                folder,
+                rows: m.model.clone(),
+            })
+        });
         Places {
             root,
             files,
             project,
+            table,
         }
     }
 
@@ -80,7 +195,18 @@ impl Places {
             project: Some(root.clone()),
             root,
             files: Vec::new(),
+            table: None,
         }
+    }
+
+    /// These places with the model table `folder` and `rows`, as a manifest states them. For
+    /// tests.
+    pub fn with_table(mut self, folder: Option<&str>, rows: Vec<ModelRow>) -> Places {
+        self.table = Some(Table {
+            folder: folder.map(str::to_string),
+            rows,
+        });
+        self
     }
 
     /// The file on disk that a source was loaded as: a top-level file, its physical file, or a
@@ -105,9 +231,18 @@ impl Places {
 /// in `resolved`, unless it is not there. `design.features.models` and `case_models` must have
 /// their `stated_in` filled ([`netsmith_pipeline::constraints::name_model_sources`],
 /// [`netsmith_pipeline::constraints::name_case_model_sources`]).
-pub fn locate(design: &mut Design, places: &Places) -> Located {
+///
+/// With a model table ([`Places::of`] a project that has one), each part that states no
+/// `.model.file` is given the table's model of the footprint `mapping` maps it to
+/// ([`from_table`]). With no `mapping` (the project's `kicad.toml` cannot be read) the table
+/// gives none.
+pub fn locate(design: &mut Design, places: &Places, mapping: Option<&Mapping>) -> Located {
     let mut found = Located::default();
     for model in &mut design.features.models {
+        // An empty file says the part has no model (issue #763).
+        if model.file.is_empty() {
+            continue;
+        }
         let path = &model.path;
         let field = format!("{path}.model.file");
         match find(&field, &model.file, &model.source, &model.stated_in, places) {
@@ -135,7 +270,260 @@ pub fn locate(design: &mut Design, places: &Places) -> Located {
             Find::Unstated => {}
         }
     }
+    if let (Some(table), Some(mapping)) = (&places.table, mapping) {
+        from_table(design, places, table, mapping, &mut found);
+    }
     found
+}
+
+/// The environment variable a path starts with, `${NAME}`, put in: the path, or the name of
+/// a variable that is not set.
+fn expand(stated: &str) -> Result<PathBuf, String> {
+    match stated.strip_prefix("${").and_then(|r| r.split_once('}')) {
+        Some((name, rest)) => {
+            let value = std::env::var_os(name).ok_or_else(|| name.to_string())?;
+            let rest = rest.trim_start_matches(['/', '\\']);
+            Ok(if rest.is_empty() {
+                PathBuf::from(value)
+            } else {
+                PathBuf::from(value).join(rest)
+            })
+        }
+        None => Ok(PathBuf::from(stated)),
+    }
+}
+
+/// Where a path of the model table is: put its variable in and make it absolute from the
+/// project root.
+fn table_path(stated: &str, root: &Path) -> Result<PathBuf, String> {
+    let path = expand(stated)?;
+    Ok(normal(&if path.is_absolute() {
+        path
+    } else {
+        root.join(path)
+    }))
+}
+
+/// The file of footprint `id` in the models folder `folder`, KiCad's layout:
+/// `<folder>/<Lib>.3dshapes/<Name>.step` (or `.stp`, `.STEP`), with the spelling a message and
+/// the notes show (`<folder as stated>/<Lib>.3dshapes/<Name>.step`). `None` for an id that is
+/// not `Lib:Name` of a library (a generated `gen:` footprint) or a file that is not there.
+fn in_folder(id: &str, folder: &Path, stated: &str) -> Option<(PathBuf, String)> {
+    if netsmith_kicad::FootprintSpec::from_id(id).is_some() {
+        return None;
+    }
+    let (lib, name) = id.split_once(':')?;
+    if lib.is_empty() || name.is_empty() || name.contains(['/', '\\']) || lib.contains(['/', '\\'])
+    {
+        return None;
+    }
+    ["step", "stp", "STEP"].iter().find_map(|ext| {
+        let file = folder
+            .join(format!("{lib}.3dshapes"))
+            .join(format!("{name}.{ext}"));
+        file.is_file().then(|| {
+            let shown = format!(
+                "{}/{lib}.3dshapes/{name}.{ext}",
+                stated.trim_end_matches(['/', '\\'])
+            );
+            (file, shown)
+        })
+    })
+}
+
+/// Give each part of `design` that states no `.model.file` the model of its footprint in the
+/// project's model table (issue #763): a `[[model]]` row of the footprint's id, else its file
+/// in the `[models] folder`. A row whose file is outside the project and the folder is an
+/// error; one whose file is not there, or names a variable that is not set, a warning. A
+/// folder that is not there is one warning. The notes say how many parts the table drew and
+/// which parts have no model.
+fn from_table(
+    design: &mut Design,
+    places: &Places,
+    table: &Table,
+    mapping: &Mapping,
+    found: &mut Located,
+) {
+    let root = &places.root;
+    let folder: Option<(PathBuf, &str)> = match &table.folder {
+        None => None,
+        Some(stated) => match table_path(stated, root) {
+            Ok(dir) if dir.is_dir() => Some((dir, stated.as_str())),
+            Ok(dir) => {
+                found.warnings.push(format!(
+                    "the models folder `{stated}` (netsmith.toml `[models] folder`) is `{}`, which is not a folder, so no part is drawn from it; parts it would give a model keep their generated shape",
+                    dir.display()
+                ));
+                None
+            }
+            Err(var) => {
+                found.warnings.push(format!(
+                    "the models folder `{stated}` (netsmith.toml `[models] folder`) names the environment variable `{var}`, which is not set, so no part is drawn from it; parts it would give a model keep their generated shape"
+                ));
+                None
+            }
+        },
+    };
+    let stated: std::collections::BTreeSet<String> = design
+        .features
+        .models
+        .iter()
+        .map(|m| m.path.clone())
+        .collect();
+    // The parts of each row whose file is not there, by row, for one warning a row.
+    let mut row_missing: BTreeMap<usize, (String, Vec<String>)> = BTreeMap::new();
+    let (mut drawn, mut none): (usize, Vec<String>) = (0, Vec::new());
+    let mut added = Vec::new();
+    for part in &design.parts {
+        if part
+            .declared_kind
+            .is_some_and(|k| k.is_mechanical() || k == netsmith_core::PartKind::Label)
+        {
+            continue;
+        }
+        if stated.contains(&part.path) {
+            if design
+                .features
+                .models
+                .iter()
+                .any(|m| m.path == part.path && m.file.is_empty())
+            {
+                none.push(format!("`{}` (`.model.file` is empty)", part.path));
+            }
+            continue;
+        }
+        let Ok(mapped) = mapping.map_part(&part.path, &part.kind, part.package.as_deref()) else {
+            continue;
+        };
+        let id = mapped.footprint;
+        let model = if let Some((index, row)) = table
+            .rows
+            .iter()
+            .enumerate()
+            .find(|(_, r)| r.footprint == id)
+        {
+            let file = match table_path(&row.file, root) {
+                Ok(file) => file,
+                Err(var) => {
+                    row_missing
+                        .entry(index)
+                        .or_insert_with(|| {
+                            (
+                                format!("names the environment variable `{var}`, which is not set"),
+                                Vec::new(),
+                            )
+                        })
+                        .1
+                        .push(part.path.clone());
+                    none.push(format!("`{}` ({id})", part.path));
+                    continue;
+                }
+            };
+            let inside = file.starts_with(root)
+                || folder
+                    .as_ref()
+                    .is_some_and(|(dir, _)| file.starts_with(dir));
+            if !inside {
+                let error = format!(
+                    "the `[[model]]` row of `{id}` (netsmith.toml) names `{}`, which is `{}`, outside the project (`{}`) and the models folder: put the STEP file inside one of them",
+                    row.file,
+                    file.display(),
+                    root.display()
+                );
+                if !found.errors.contains(&error) {
+                    found.errors.push(error);
+                }
+                continue;
+            }
+            if !file.is_file() {
+                row_missing
+                    .entry(index)
+                    .or_insert_with(|| {
+                        (
+                            format!("names `{}`, and there is no such file", row.file),
+                            Vec::new(),
+                        )
+                    })
+                    .1
+                    .push(part.path.clone());
+                none.push(format!("`{}` ({id})", part.path));
+                continue;
+            }
+            (
+                file,
+                row.file.clone(),
+                row.offset,
+                row.rotation,
+                "the `[[model]]` row".to_string(),
+            )
+        } else if let Some((file, shown)) = folder
+            .as_ref()
+            .and_then(|(dir, stated)| in_folder(&id, dir, stated))
+        {
+            (
+                file,
+                shown,
+                [0.0; 3],
+                [0.0; 3],
+                "the models folder".to_string(),
+            )
+        } else {
+            none.push(format!("`{}` ({id})", part.path));
+            continue;
+        };
+        let (file, shown, offset, rotation, from) = model;
+        drawn += 1;
+        added.push(netsmith_core::StepModel {
+            path: part.path.clone(),
+            file: shown,
+            offset,
+            rotation,
+            source: format!("netsmith.toml, {from} of `{id}`"),
+            stated_in: Vec::new(),
+            resolved: Some(file),
+            footprint: Some(id),
+        });
+    }
+    for (index, (why, parts)) in row_missing {
+        let id = &table.rows[index].footprint;
+        found.warnings.push(format!(
+            "the `[[model]]` row of `{id}` (netsmith.toml) {why}, so {} drawn with {} generated shape; add the file, or leave it out on a machine that may not have it",
+            listed(&parts),
+            if parts.len() == 1 { "its" } else { "their" }
+        ));
+    }
+    design.features.models.extend(added);
+    let mut note = format!(
+        "the model table (netsmith.toml) draws {drawn} {} from a STEP model",
+        if drawn == 1 { "part" } else { "parts" }
+    );
+    if none.is_empty() {
+        note.push_str("; every part has a model");
+    } else {
+        note.push_str(&format!(
+            "; {} {} no model, and {} drawn with {} generated shape: {}",
+            none.len(),
+            if none.len() == 1 {
+                "part has"
+            } else {
+                "parts have"
+            },
+            if none.len() == 1 { "it is" } else { "they are" },
+            if none.len() == 1 { "its" } else { "their" },
+            none.join(", ")
+        ));
+    }
+    found.notes.push(note);
+}
+
+/// `parts`, each as `` `path` ``, for a message: `` `c1` is `` or `` `c1`, `c2` are ``.
+fn listed(parts: &[String]) -> String {
+    let names: Vec<String> = parts.iter().map(|p| format!("`{p}`")).collect();
+    format!(
+        "{} {}",
+        names.join(", "),
+        if parts.len() == 1 { "is" } else { "are" }
+    )
 }
 
 /// What [`find`] found of one file.

@@ -32,6 +32,10 @@ _Avoid_: Magic name, special member, well-known field
 The shortest time a buck IC's high-side switch stays on, and its twin the minimum off-time: `.min_on_time` and `.min_off_time` of `Buck`, `optional` members that a part states at the largest its datasheet gives (ADR 0093). `BuckStage` checks that its `.on_time`, `vout / (vin * fsw)`, and its `.off_time`, `(vin - vout) / (vin * fsw)`, are not below them in the worst case the ranges give: the minimum on-time bounds the highest input for an output and a frequency, the minimum off-time the least headroom of the input over the output (the IC's dropout). A linear regulator's dropout is its own member, `.dropout`.
 _Avoid_: Minimum pulse width, minimum duty cycle, tON limit
 
+**Model table**:
+The STEP model of each footprint, in the project's `netsmith.toml` (issue #763): `[[model]]` rows keyed by footprint id (`Resistor_SMD:R_0402_1005Metric`, with `file`, `offset` and `rotation`), and a `[models] folder` where a footprint `Lib:Name` finds `<Lib>.3dshapes/<Name>.step`, KiCad's own layout. It is the default of a part's _STEP model_: a part that states its own `.model.file` is drawn from that, and one that states `""` has none. Like a part's own model it is a drawing, never a height.
+_Avoid_: Model library, 3D library, model map
+
 **Module**:
 A reusable sub-circuit that is placed on a board or inside another module. Its interfaces, pins, and declared values are joined and set from outside; a value of a part or module inside it can only be narrowed (`&=`, ADR 0116), and the pins of the IC its user named for a type parameter joined (`.reg.ic.pg` of `Buck<Lt8641>`, ADR 0120).
 _Avoid_: Circuit, block, sheet, subcircuit

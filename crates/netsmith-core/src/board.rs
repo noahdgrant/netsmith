@@ -144,7 +144,9 @@ pub enum SilkPrint {
 
 /// The STEP model a part is drawn from in place of its generated shape (`.model`, ADR 0108).
 /// It is drawn, never measured: the part's height does not come from it. A part the design
-/// names no model for is not here.
+/// names no model for is not here, unless the project's model table gives it one (issue #763,
+/// [`StepModel::footprint`]). A part whose `.model.file` is empty says it has none: it is here
+/// with an empty `file`, and the table gives it none.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct StepModel {
     /// The part's path in the design.
@@ -168,6 +170,13 @@ pub struct StepModel {
     /// machine, and a reader finds the file again (`netsmith_fabricate::models::locate`).
     #[serde(skip)]
     pub resolved: Option<std::path::PathBuf>,
+    /// The footprint id (`Resistor_SMD:R_0402_1005Metric`) whose row of the project's model
+    /// table, or whose file in its models folder, gave the model (issue #763); `None` for a
+    /// model the design states. Filled by the caller that reads the table
+    /// (`netsmith_fabricate::models::locate`). A design file leaves such a model out, as it
+    /// is the project's and this machine's, not the design's ([`crate::Features::models`]).
+    #[serde(skip)]
+    pub footprint: Option<String>,
 }
 
 /// A STEP file of the board's case that the board is drawn in and checked against (a
