@@ -35,7 +35,7 @@ fn located(root: &Path) -> (netsmith_core::Design, Located) {
     let outcome = netsmith_pipeline::outcome_with("src/main.nsm", LED, &loader, &Catalogs::jlcpcb(), None)
         .unwrap_or_else(|p| panic!("{}", netsmith_pipeline::render_problems(&p)));
     let mut design = outcome.boards[0].design.clone();
-    let found = locate(&mut design, &Places::under(root));
+    let found = locate(&mut design, &Places::under(root), Some(&netsmith_kicad::Mapping::standard()));
     (design, found)
 }
 

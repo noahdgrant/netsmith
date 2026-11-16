@@ -1433,7 +1433,10 @@ fn picked<T>(
     let mut found: BTreeMap<String, crate::models::Located> = BTreeMap::new();
     if let Some(places) = models {
         for b in &mut outcome.boards {
-            found.insert(b.label(), crate::models::locate(&mut b.design, places));
+            found.insert(
+                b.label(),
+                crate::models::locate(&mut b.design, places, Some(&libraries.mapping)),
+            );
         }
     }
     let located = |label: &str| -> Result<Vec<String>, String> {

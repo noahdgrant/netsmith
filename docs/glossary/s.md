@@ -107,7 +107,7 @@ The board and its parts as exact solids for mechanical CAD (ISO 10303-21, AP214)
 _Avoid_: STEP model (a maker's or KiCad's file of one part, the next term), 3D export, MCAD export
 
 **STEP model**:
-A STEP file of one part, kept in the project, that a part names with its built-in `.model` (`.usb.model.file &= "models/usb4105.step"`, with an offset in mm and a rotation in degrees, of the prelude's `StepModel`), drawn in the _Scene_ in place of its _Package shape_ (ADR 0108): placed in KiCad's frame for a model, so a footprint's `(model ...)` numbers can be copied in, read by netsmith's own reader and copied exactly into the _STEP file_. It is a drawing and never a height. netsmith bundles and downloads none; a file that is not there is a warning, and the part keeps its generated shape.
+A STEP file of one part, kept in the project, that a part names with its built-in `.model` (`.usb.model.file &= "models/usb4105.step"`, with an offset in mm and a rotation in degrees, of the prelude's `StepModel`), drawn in the _Scene_ in place of its _Package shape_ (ADR 0108): placed in KiCad's frame for a model, so a footprint's `(model ...)` numbers can be copied in, read by netsmith's own reader and copied exactly into the _STEP file_. It is a drawing and never a height. netsmith bundles and downloads none; a file that is not there is a warning, and the part keeps its generated shape. A part that names none may take the model of its footprint from the project's _Model table_.
 _Avoid_: 3D model (KiCad's word, which also names VRML files), user model, CAD model
 
 **Stray wire**:

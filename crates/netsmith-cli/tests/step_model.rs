@@ -256,3 +256,39 @@ fn fab_draws_the_model_in_the_glb_and_the_step_and_names_it_in_the_notes() {
         .collect();
     assert!(names.contains(&"model:#d91a1a"), "{names:?}");
 }
+
+/// A part that states no model is drawn from its footprint's file in the project's models
+/// folder (issue #763), and `check` says how many parts the table drew and which have none.
+#[test]
+fn a_part_with_no_model_is_drawn_from_the_models_folder() {
+    let root = project("model-table-folder", "");
+    fs::write(
+        root.join("netsmith.toml"),
+        "[project]\nname = \"led\"\n\n[models]\nfolder = \"lib3d\"\n",
+    )
+    .unwrap();
+    // The resistor is one of the standard chip sizes; each is given the one test model.
+    let dir = root.join("lib3d/Resistor_SMD.3dshapes");
+    fs::create_dir_all(&dir).unwrap();
+    for size in ["0402_1005", "0603_1608", "0805_2012"] {
+        fs::write(dir.join(format!("R_{size}Metric.step")), BLOCKS).unwrap();
+    }
+    let run = netsmith(&root, &["check", "src/main.nsm"]);
+    let err = String::from_utf8_lossy(&run.stderr);
+    assert!(run.status.success(), "{err}");
+    assert!(
+        err.contains("note: LedExample: the model table (netsmith.toml) draws 1 part from a STEP model; 2 parts have no model"),
+        "{err}"
+    );
+    assert!(err.contains("`power_in` (Connector_PinHeader_2.54mm:"), "{err}");
+
+    let (_, report) = board3d(&root, &[]);
+    let model = &part(&report, "r1")["model"];
+    assert!(
+        model["file"]
+            .as_str()
+            .is_some_and(|f| f.starts_with("lib3d/Resistor_SMD.3dshapes/R_")),
+        "{model}"
+    );
+    assert!(part(&report, "led")["model"].is_null());
+}

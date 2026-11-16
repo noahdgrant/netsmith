@@ -401,7 +401,9 @@ writes it for each board of the order.
 ## A part's STEP model
 
 A part whose `.model.file` names a STEP file of the project (ADR 0108; the guide's _A part's
-STEP model_) is drawn from that model in place of its generated shape. netsmith reads the file
+STEP model_) is drawn from that model in place of its generated shape, and so is a part that states none and
+whose footprint has a model in the project's model table (`[models] folder` and `[[model]]` rows
+of `netsmith.toml`, the guide's _A model table_). netsmith reads the file
 with its own reader (`crates/netsmith-3d/src/step/read/`), once per build and again only when
 its bytes change, and draws its triangles at 0.01 mm.
 

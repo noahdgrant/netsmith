@@ -1237,6 +1237,41 @@ error: contradiction on `plug.model.file`: it is already "models/plug.step", whi
 
 An offset or a rotation with no file is refused, as there is nothing to place, and so is a rotation or an offset that is a range.
 
+**A part that has no model.** `.model.file &= ""` says the part has none: it is drawn with its generated shape, and the project's model table (below) gives it none. Use it for a part the table would cover but that is not that package, such as a connector whose footprint is named like a stock one. An offset or a rotation stated with an empty file is refused.
+
+### A model table
+
+**Most parts take their model from their footprint (issue #763).** A standard part (`Resistor`, `Capacitor`, `Schottky`...) is defined in `std`, so a project cannot state its model in the definition, and a model fits the package the solver picks, not the part. So `netsmith.toml` may hold a table of models keyed by the footprint id each part is mapped to (`kicad.toml`, the standard rows or the project's own: `Resistor_SMD:R_0402_1005Metric`). Every part that states no `.model.file` is drawn from the model of its footprint; a part that states one is drawn from its own, so the table is a default and a part's statement the override, with no contradiction between them:
+
+```toml
+[project]
+name = "sensor"
+
+[models]
+folder = "${KICAD9_3DMODEL_DIR}"
+
+[[model]]
+footprint = "Package_SO:VSSOP-10_3x3mm_P0.5mm"
+file = "${KICAD9_3DMODEL_DIR}/Package_SO.3dshapes/MSOP-10_3x3mm_P0.5mm.step"
+
+[[model]]
+footprint = "netsmith:USB_C_Receptacle_GCT_USB4105_16P_TopMnt_Horizontal"
+file = "models/usb4105.step"
+rotation = [0, 0, 90]
+```
+
+A part's footprint `Lib:Name` finds its model this way: a `[[model]]` row of that id first; else, with a `[models] folder`, the file `<folder>/<Lib>.3dshapes/<Name>.step` (or `.stp`, `.STEP`), which is how KiCad lays out its `kicad-packages3D`, so a project that uses KiCad's names needs no row for them; else no model, and the part keeps its generated shape. A generated `gen:` footprint is found by a row only. Nothing is guessed from a similar name: a package KiCad has under another name (a VSSOP-10 is KiCad's MSOP-10) gets a row. A row's `offset` (mm along x, y, z) and `rotation` (degrees about x, then y, then z, before the offset) are those of `.model.x` ... `.model.rz`, zero when left out, so a footprint's `(model ... (offset) (rotate))` numbers can be copied in.
+
+The folder is a second place models are read from, besides the project: it may be outside the project, so a checkout of KiCad's models is used without a copy in every project. It is relative to `netsmith.toml`, or absolute, and may start with an environment variable (`${KICAD9_3DMODEL_DIR}`, KiCad 9's own). A row's `file` is spelled the same way and must be inside the project or inside the folder; one outside both is an error. netsmith still bundles and downloads no model. A row whose file is not there is a warning that names the parts it would draw, and they keep their generated shape, as a part's own missing model does; so is a folder that is not there, or a variable that is not set (a clone or a CI job may have neither). A footprint the folder has no file for is no warning: the folder is only looked in.
+
+A model from the table is what a part's own model is: a drawing, never a height, so its top above the part's height is the same warning. `build` and `fab` say what the table did, and which parts are drawn with no model, so "every part has a model" is one line:
+
+```text
+note: LedExample: the model table (netsmith.toml) draws 2 parts from a STEP model; 1 part has no model, and it is drawn with its generated shape: `power_in` (Connector_PinHeader_2.54mm:PinHeader_1x02_P2.54mm_Vertical)
+```
+
+`fab-notes.txt` and `board3d --json` name a model from the folder as `<folder>/<Lib>.3dshapes/<Name>.step`, with the folder as `netsmith.toml` spells it, and its SHA-256. A design file (`build --emit-design`) holds only the models the design states, as the table is the project's and the folder this machine's.
+
 ### A case model
 
 **A board may name the STEP file of its case (ADR 0109).** A `CaseModel` (`std::pcb::CaseModel`) is declared in the `case { }` section of the board's physical file, one member for each file: a base and a lid are two members, or one file with two solids. `.file` names a STEP file of the project, relative to the physical file. It has the fields and the rotation order of a part's `StepModel` (_A part's STEP model_), and places the model in the 3D scene's frame (`docs/BOARD3D.md`: millimetres, z up, the origin at the outline's bottom-left corner on the top face): `.rx`, `.ry` and `.rz` turn it, in degrees about x, then y, then z, and `.x`, `.y` and `.z` then move it. Each is one value, and an unstated one is zero. The side up is a rotation and the gap an offset: a box drawn upside down in its CAD file that the board's bottom face rests in is turned half a turn about x and moved down by the board's thickness.
