@@ -36,10 +36,8 @@
 //! it. `INSERT` with mirroring, `MINSERT` arrays and a downward extrusion (a mirror) are read; a
 //! duplicate edge is counted once, with a warning. The user decided on 2026-11-02 that the reader
 //! keeps reading splines and ellipses as chords (within 0.005 mm) and does not refuse them. A hole
-//! whose diameter is not within 0.05 mm of `M2` or `M3` is refused, naming the nearest package
-//! and the difference, since `MountingHole` has only `.package`, `std/kicad.toml` names KiCad's
-//! own footprints, and no catalog data is added without a source (the options, a `.diameter`
-//! member, more stock sizes with a source or a generated hole footprint, are issue #89).
+//! is read as a circle with its diameter, and `netsmith dxf import` states it as `.diameter` of a
+//! `MountingHole`, whatever the size (issue #89).
 //! Tests: `crates/netsmith-dxf/tests/read.rs` (hand-written files for each of the cases) and
 //! `crates/netsmith-tools/tests/dxf.rs` (a rounded case with a slot and four holes through `fab`).
 //! An outline that is not a rounded rectangle is returned as it is; `netsmith dxf import` prints

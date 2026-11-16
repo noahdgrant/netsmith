@@ -183,7 +183,7 @@ default = true
 footprint = "gen:SOT23(pins=3)"
 ```
 
-The generators are `QFN`, `DFN`, `QFP`, `SO` (SOIC, SSOP, TSSOP and MSOP), `SOT23`, `PinHeader`, `PinSocket` and `BGA`. A parameter is a column of the generator's table of packages, so the pads of `gen:` are those of the table row with the same numbers: `gen:SOT23(pins=5)` has the pads of `Package_TO_SOT_SMD:SOT-23-5`. A length carries its unit (`pitch=0.5mm`), a size is one length or the least and the greatest (`lead_width=0.2-0.3mm`), a pair is `7x7mm` (across, then along) and a count pair `3x3`. The datasheet's dimensions have no default, so a QFN is:
+The generators are `QFN`, `DFN`, `QFP`, `SO` (SOIC, SSOP, TSSOP and MSOP), `SOT23`, `PinHeader`, `PinSocket`, `BGA`, and `MountingHole` and `PlatedHole` (one parameter, `drill=2.375mm`, which a `.diameter` on the part asks for without a row). A parameter is a column of the generator's table of packages, so the pads of `gen:` are those of the table row with the same numbers: `gen:SOT23(pins=5)` has the pads of `Package_TO_SOT_SMD:SOT-23-5`. A length carries its unit (`pitch=0.5mm`), a size is one length or the least and the greatest (`lead_width=0.2-0.3mm`), a pair is `7x7mm` (across, then along) and a count pair `3x3`. The datasheet's dimensions have no default, so a QFN is:
 
 ```toml
 [[part]]

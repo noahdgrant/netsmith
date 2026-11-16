@@ -94,7 +94,7 @@ pub use footprint::{
     PadShape, Shape,
 };
 pub use generate::{
-    generate as generated_footprint, generate_spec as generate_footprint_spec,
+    HOLE_DRILL, generate as generated_footprint, generate_spec as generate_footprint_spec,
     names as generated_footprint_names,
 };
 pub use geometry::{Pt, Rect};
