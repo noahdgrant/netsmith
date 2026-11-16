@@ -1,7 +1,7 @@
 # Glossary: M
 
 **Manifest**:
-A project's `netsmith.toml`: its name, the top-level files that hold boards, the output and fab directories, and the KiCad version. It lists what to build and the orders to make from it; it does not describe a circuit.
+A project's `netsmith.toml`: its name, the netsmith release it is written for, the top-level files that hold boards, the output and fab directories, and the KiCad version. It lists what to build and the orders to make from it; it does not describe a circuit.
 _Avoid_: Config, settings
 
 **Mapping**:
@@ -27,6 +27,10 @@ _Avoid_: Serpentine, trombone, tuning (for the copper itself)
 **Member role**:
 What a member is to the checker and the solver, written `#[role(bias)]` above it (ADR 0125): `bias`, `bridge_voltage`, `current`, `supply_peak`, `supply_reverse_peak`, `limit_current`, `supply_fault_current` or `count`. The role, not the member's name, gives the member its value. Not a **Role** of a bus end (`SpiRole::Slave`).
 _Avoid_: Magic name, special member, well-known field
+
+**Migration guide**:
+`docs/MIGRATING.md`: every change of a release that makes source written for the release before an error, with the error, the old and the new spelling and the ADR (ADR 0134). A pull request whose title has `!` adds its entry. A failed check of a project whose _Manifest_ names an older release, or none (the `netsmith` key), points to it.
+_Avoid_: Upgrade guide, migration notes, breaking-changes list
 
 **Minimum on-time**:
 The shortest time a buck IC's high-side switch stays on, and its twin the minimum off-time: `.min_on_time` and `.min_off_time` of `Buck`, `optional` members that a part states at the largest its datasheet gives (ADR 0093). `BuckStage` checks that its `.on_time`, `vout / (vin * fsw)`, and its `.off_time`, `(vin - vout) / (vin * fsw)`, are not below them in the worst case the ranges give: the minimum on-time bounds the highest input for an output and a frequency, the minimum off-time the least headroom of the input over the output (the IC's dropout). A linear regulator's dropout is its own member, `.dropout`.

@@ -44,6 +44,12 @@ pub const MAX_PLACE_SEEDS: u32 = 32;
 #[serde(deny_unknown_fields)]
 pub struct Manifest {
     pub name: String,
+    /// The netsmith release the project's source is written for, `netsmith = "0.2.0"`, which
+    /// `netsmith init` writes. A command whose check fails on a project written for another
+    /// release says so and points to `docs/MIGRATING.md` (`crate::release`, ADR 0134). Without
+    /// it the project was made before the key, with netsmith 0.1.0 or earlier.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub netsmith: Option<String>,
     /// The files that hold boards, relative to the project root. `netsmith build`, `fab`
     /// and `editor` with no file act on these. A `system` is listed here the same way. A
     /// project that is only a library of modules lists none (`top_level = []`).
@@ -259,6 +265,7 @@ impl Manifest {
     pub fn new(name: &str) -> Manifest {
         Manifest {
             name: name.to_string(),
+            netsmith: Some(crate::release::RELEASE.to_string()),
             top_level: default_top_level(),
             out: default_out(),
             fab: default_fab(),
@@ -316,6 +323,14 @@ impl Manifest {
             return Err(format!(
                 "{MANIFEST}: name {:?} must be letters, digits, `-` and `_`, and not empty",
                 self.name
+            ));
+        }
+        if let Some(release) = &self.netsmith
+            && crate::release::parse(release).is_none()
+        {
+            return Err(format!(
+                "{MANIFEST}: netsmith = {release:?} is not a release such as \"{}\"",
+                crate::release::RELEASE
             ));
         }
         if self.kicad != KICAD_VERSION {
@@ -1298,7 +1313,33 @@ mod tests {
     #[test]
     fn only_the_name_is_required() {
         let m = parse("[project]\nname = \"a\"\n").unwrap();
-        assert_eq!(m, Manifest::new("a"));
+        assert_eq!(
+            m,
+            Manifest {
+                netsmith: None,
+                ..Manifest::new("a")
+            }
+        );
+    }
+
+    #[test]
+    fn a_new_manifest_is_written_for_this_release() {
+        let text = Manifest::new("a").render();
+        assert!(
+            text.contains(&format!(
+                "name = \"a\"\nnetsmith = \"{}\"\n",
+                crate::release::RELEASE
+            )),
+            "{text}"
+        );
+        assert_eq!(parse(&text).unwrap(), Manifest::new("a"));
+        assert_eq!(
+            parse("[project]\nname = \"a\"\nnetsmith = \"0.1\"\n").unwrap_err(),
+            format!(
+                "netsmith.toml: netsmith = \"0.1\" is not a release such as \"{}\"",
+                crate::release::RELEASE
+            )
+        );
     }
 
     #[test]

@@ -142,6 +142,8 @@ pub(super) fn run_build(run: &BuildRun) -> ExitCode {
     let mut designs = Vec::new();
     // The values each board's members were solved to, for `--emit-solved`.
     let mut solved = Vec::new();
+    // Whether a board failed its check, which may be a spelling that changed (issue #740).
+    let mut unchecked = false;
     // An error that stops a file, printed or kept.
     let fail = |report: &mut Report, finding: Finding, text: &str| {
         if json {
@@ -177,6 +179,7 @@ pub(super) fn run_build(run: &BuildRun) -> ExitCode {
             Ok(outcome) => outcome,
             Err(problems) => {
                 code = ExitCode::FAILURE;
+                unchecked = true;
                 if json {
                     report
                         .findings
@@ -392,6 +395,9 @@ pub(super) fn run_build(run: &BuildRun) -> ExitCode {
         } else if !json {
             println!("wrote {}", file.display());
         }
+    }
+    if unchecked {
+        common::release_note(&target, json.then_some(&mut report));
     }
     if json {
         report.ok = code == ExitCode::SUCCESS;

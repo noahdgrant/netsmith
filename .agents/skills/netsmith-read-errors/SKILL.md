@@ -7,6 +7,8 @@ description: Read netsmith's checker, solver, design-stage and design-rule messa
 
 Fix errors one at a time, from the first one. Later errors are often caused by earlier ones. The language guide (`docs/netsmith/LANGUAGE.md` lists its chapters, in `docs/netsmith/language/`) has each message with its cause, under the construct it belongs to.
 
+Many errors at once after a netsmith upgrade, in a project that built before, are usually spellings the new release changed: the run ends with a note that names the project's release (`netsmith` in `netsmith.toml`) and points to `docs/MIGRATING.md` (https://github.com/noahdgrant/netsmith/blob/main/docs/MIGRATING.md), which lists each change with the old and the new spelling. Make those changes first, then set `netsmith` to the new release.
+
 ## The shape
 
 `error: <what is wrong>` then `--> file:line:col` and the source line. The message names the field or path. The caret marks the statement.

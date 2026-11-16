@@ -27,3 +27,28 @@ jobs:
         with:
           task_types: '["build","chore","ci","docs","feat","fix","perf","refactor","style","test","revert"]'
           add_label: 'false'
+
+  # A breaking change says how to migrate (ADR 0134): a title with `!` after its type changes
+  # docs/MIGRATING.md, the list of what a project of the last release must change.
+  migrating-entry:
+    name: A breaking change has its entry in docs/MIGRATING.md
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: A `!` title changes docs/MIGRATING.md
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TITLE: ${{ github.event.pull_request.title }}
+          NUMBER: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          if ! printf '%s\n' "$TITLE" | grep -qE '^[a-z]+(\([^)]*\))?!:'; then
+            echo "The title has no \`!\`: not a breaking change."
+            exit 0
+          fi
+          if gh api --paginate "repos/$REPO/pulls/$NUMBER/files" --jq '.[].filename' | grep -qx 'docs/MIGRATING.md'; then
+            echo "docs/MIGRATING.md is changed."
+            exit 0
+          fi
+          echo "::error::The title has \`!\` (a breaking change), but docs/MIGRATING.md is not changed: add an entry under _Unreleased_ with the error, the old and the new spelling and the ADR (ADR 0134). A change that breaks no source written for the last release has no \`!\`."
+          exit 1
