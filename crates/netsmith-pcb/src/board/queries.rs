@@ -104,6 +104,27 @@ impl Board {
             .collect()
     }
 
+    /// The keepouts of the board that forbid parts on one face only (issue #767), for the
+    /// placer; those that forbid them on both are among its `keepouts`.
+    pub fn face_keepouts(&self) -> Vec<crate::placement::FaceKeepout> {
+        self.keepout_areas()
+            .into_iter()
+            .filter(|k| k.carrier.is_none())
+            .filter_map(|k| {
+                let (front, back) = (
+                    k.forbids_parts_on(Side::Front),
+                    k.forbids_parts_on(Side::Back),
+                );
+                (front != back).then_some(crate::placement::FaceKeepout {
+                    name: k.name,
+                    rect: k.rect,
+                    front,
+                    back,
+                })
+            })
+            .collect()
+    }
+
     /// The keepouts that parts carry, each in its part's own frame, for the placer.
     pub fn carried_zones(&self) -> Vec<crate::placement::CarriedZone> {
         self.keepouts

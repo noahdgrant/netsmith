@@ -153,6 +153,13 @@ impl KeepoutArea {
         self.max_height.is_some() && self.on(side.copper())
     }
 
+    /// Whether it keeps the parts on a face out: it forbids parts and its layers name that
+    /// face's outer layer (issue #767). A part stands on a face, so a keepout whose layers
+    /// are all inner ones keeps no part out.
+    pub fn forbids_parts_on(&self, side: Side) -> bool {
+        self.parts && self.on(side.copper())
+    }
+
     /// Whether it applies to a copper layer, `top` or `bottom`.
     pub fn on(&self, layer: CopperLayer) -> bool {
         let name = match layer {

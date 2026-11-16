@@ -19,7 +19,7 @@ impl<'a> Engine<'a> {
             let zone = &self.p.carried[carry.zone];
             let rect = carry.boxes[at.min(carry.boxes.len() - 1)].translated(self.pos(c));
             let mut depth = 0.0f64;
-            if zone.parts {
+            if zone.keeps_out(model.side) {
                 for room in self.rooms(j) {
                     depth = depth.max(penetration(&room, &rect, gap));
                 }

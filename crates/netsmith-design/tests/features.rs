@@ -239,6 +239,27 @@ fn a_keepout_with_a_word_that_is_not_forbid_or_allow_is_refused() {
 }
 
 #[test]
+fn a_keepout_that_forbids_parts_on_faces_that_are_all_inner_layers_is_refused() {
+    let text = errors_of(&board(
+        "    .k: Keepout {\n        .width &= 5mm\n        .height &= 5mm\n        .layers &= \"inner1\"\n        .parts &= \"forbid\"\n    }\n",
+    ));
+    assert!(
+        text.contains("`k.parts` is \"forbid\" and its `.layers` name neither \"top\" nor \"bottom\", the faces a part stands on, so it keeps no part out"),
+        "{text}"
+    );
+    // A face is enough, and an unstated `.parts` is no statement to refuse.
+    for fine in [
+        "        .layers &= \"bottom\"\n        .parts &= \"forbid\"\n",
+        "        .layers &= \"inner1\"\n",
+    ] {
+        let src = format!(
+            "    .k: Keepout {{\n        .width &= 5mm\n        .height &= 5mm\n{fine}    }}\n"
+        );
+        designed(&board(&src)).unwrap_or_else(|e| panic!("{e:?}"));
+    }
+}
+
+#[test]
 fn a_keepout_that_allows_everything_is_refused() {
     let text = errors_of(&board(
         "    .k: Keepout {\n        .width &= 5mm\n        .height &= 5mm\n        .tracks &= \"allow\"\n        .vias &= \"allow\"\n        .copper &= \"allow\"\n        .parts &= \"allow\"\n    }\n",

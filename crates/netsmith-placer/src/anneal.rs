@@ -334,6 +334,9 @@ pub(crate) struct Problem<'a> {
     /// The keepouts that parts carry: each moves and turns with its part, and keeps the other
     /// parts out as a keepout for parts (`parts`) and as a height zone (`limit`) do.
     pub carried: &'a [netsmith_pcb::CarriedZone],
+    /// The keepouts that forbid parts on one face only (issue #767): the courtyards of the
+    /// parts on that face are kept out of them, as of `keepouts`.
+    pub face_keepouts: &'a [netsmith_pcb::FaceKeepout],
 }
 
 /// What a run ended with.
@@ -540,6 +543,8 @@ struct Model {
     may: Edges,
     /// The boxes the part is too tall to stand in, on the face it is on.
     no_go: Vec<Rect>,
+    /// The boxes a keepout for the parts on this face keeps its courtyard out of.
+    barred: Vec<Rect>,
     /// Whether the footprint draws no fabrication outline, so that its courtyard is its body.
     body_is_courtyard: bool,
     /// The keepouts the part carries, which keep the other parts out where the part is.

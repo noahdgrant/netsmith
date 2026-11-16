@@ -211,6 +211,36 @@ fn a_part_pinned_just_outside_the_keepout_is_not_refused() {
     place(2, "", (40, 30), &extra).unwrap_or_else(|e| panic!("{e}"));
 }
 
+/// The same keepout, limited to one face (`.layers &= "bottom"`, issue #767), and a part
+/// pinned in it on `face`.
+fn pinned_in_a_keepout_of_a_face(face: &str) -> String {
+    format!(
+        "{}    .r1.place.side &= \"{face}\"\n",
+        PINNED_IN_KEEPOUT.replace(
+            "        .height &= 10mm\n",
+            "        .height &= 10mm\n        .layers &= \"bottom\"\n"
+        )
+    )
+}
+
+#[test]
+fn a_keepout_of_one_face_proves_a_conflict_only_for_a_part_on_that_face() {
+    let on_bottom = pinned_in_a_keepout_of_a_face("bottom");
+    let found = precheck(2, "", (40, 30), &on_bottom);
+    assert_eq!(found.conflicts.len(), 1, "{found:?}");
+    for want in [
+        "the keepout `blocked` (x 15 to 25, y 5 to 15 mm, which forbids parts on the bottom face)",
+        "`.r1.place.side &= \"bottom\"`",
+    ] {
+        assert!(found.conflicts[0].contains(want), "{want:?}: {found:?}");
+    }
+    // On the other face the part may stand under the keepout, and the placer places it.
+    let on_top = pinned_in_a_keepout_of_a_face("top");
+    let found = precheck(2, "", (40, 30), &on_top);
+    assert_eq!(found.conflicts, Vec::<String>::new(), "{found:?}");
+    place(2, "", (40, 30), &on_top).unwrap_or_else(|e| panic!("{e}"));
+}
+
 // ---- (2) a courtyard past an edge nobody allowed ----
 
 /// A header 11.2 mm long on a board 10 mm wide, turned the long way across it and put at the
