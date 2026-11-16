@@ -475,9 +475,8 @@ fn parts(args: &PartsArgs) -> ExitCode {
         args.target.board.as_deref(),
         Some(&args.placing),
         |placed| {
-            let geometry = |board: &netsmith_pcb::Board| {
-                netsmith_pcb::PartGeometries::of(board, &args.parts)
-            };
+            let geometry =
+                |board: &netsmith_pcb::Board| netsmith_pcb::PartGeometries::of(board, &args.parts);
             if args.as_laid_out {
                 placed.with_board_as_laid_out(|_, board| geometry(board))
             } else {

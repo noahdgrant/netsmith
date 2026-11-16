@@ -443,6 +443,133 @@ fn summary_gives_the_distance_between_two_pads() {
     assert!(stderr(&run).contains("is not a pad"), "{}", stderr(&run));
 }
 
+const ALL_PLACED: &str = "\
+version = 1
+
+[Widget.parts.led]
+at = [30.0, 12.0]
+rotation = 0
+side = \"top\"
+
+[Widget.parts.r1]
+at = [20.0, 12.0]
+rotation = 90
+side = \"bottom\"
+
+[Widget.parts.power_in]
+at = [3.0, 12.0]
+rotation = 90
+side = \"top\"
+";
+
+fn parts_json(dir: &Path, args: &[&str]) -> serde_json::Value {
+    let mut all = vec!["parts", "--format", "json"];
+    all.extend_from_slice(args);
+    let run = netsmith(dir, &all);
+    assert_eq!(code(&run), 0, "{}", stderr(&run));
+    let text = stdout(&run);
+    assert_eq!(text.lines().count(), 1, "{text}");
+    serde_json::from_str(&text).unwrap()
+}
+
+#[test]
+fn parts_gives_each_part_its_frame_courtyard_and_pads_as_one_line_of_json() {
+    let dir = project("layout-parts", Some(ALL_PLACED));
+    let json = parts_json(&dir, &["--as-laid-out"]);
+    assert_eq!(json["board"], "Widget");
+    assert_eq!(json["width"], 40.0);
+    assert_eq!(json["height"], 24.0);
+    assert_eq!(json["placement_refused"], serde_json::Value::Null);
+    let parts = json["parts"].as_array().unwrap();
+    assert_eq!(parts.len(), 3, "{json}");
+    let r1 = parts.iter().find(|p| p["path"] == "r1").expect("r1");
+    // The frame is the layout file's: the entry's place, turn and face, mirrored on the bottom.
+    assert_eq!(r1["frame"]["at"], serde_json::json!([20.0, 12.0]));
+    assert_eq!(r1["frame"]["turn"], 90.0);
+    assert_eq!(r1["frame"]["side"], "bottom");
+    assert_eq!(r1["frame"]["mirrored"], true);
+    // Its courtyard is a list of shapes, on the board and in the footprint's frame, and the
+    // frame's size is the box round them.
+    let shapes = r1["courtyards"].as_array().unwrap();
+    assert!(!shapes.is_empty() && shapes.len() == r1["local_courtyards"].as_array().unwrap().len());
+    let (min, max) = (&r1["courtyard"]["min"], &r1["courtyard"]["max"]);
+    let width = max[0].as_f64().unwrap() - min[0].as_f64().unwrap();
+    assert!((r1["frame"]["width"].as_f64().unwrap() - width).abs() < 0.011, "{r1}");
+    // Two pads, each with a net, a size and a place that follows the frame's rule: the turn is a
+    // quarter, so a footprint's x offset becomes a y offset (and the mirror flips its sign).
+    let pads = r1["pads"].as_array().unwrap();
+    assert_eq!(pads.len(), 2, "{r1}");
+    for pad in pads {
+        assert!(pad["net"].is_string(), "{pad}");
+        assert!(pad["width"].as_f64().unwrap() > 0.0 && pad["height"].as_f64().unwrap() > 0.0);
+        assert_eq!(pad["kind"], "smd");
+        assert_eq!(pad["copper"], serde_json::json!(["bottom"]));
+        let (lx, ly) = (pad["local"][0].as_f64().unwrap(), pad["local"][1].as_f64().unwrap());
+        // Mirror x, then turn 90 degrees counterclockwise on screen (y down).
+        let want = [20.0 + ly, 12.0 + lx];
+        let at = [pad["at"][0].as_f64().unwrap(), pad["at"][1].as_f64().unwrap()];
+        assert!((at[0] - want[0]).abs() < 0.002 && (at[1] - want[1]).abs() < 0.002, "{pad} {want:?}");
+    }
+    // The led's pad is on the board's nets: the same net as the header's.
+    let nets: Vec<&str> = parts
+        .iter()
+        .flat_map(|p| p["pads"].as_array().unwrap())
+        .filter_map(|pad| pad["net"].as_str())
+        .collect();
+    assert!(nets.contains(&"VCC") && nets.contains(&"GND"), "{nets:?}");
+}
+
+#[test]
+fn parts_picks_parts_by_path_designator_or_module_and_refuses_a_name_the_board_lacks() {
+    let dir = project("layout-parts-pick", Some(ALL_PLACED));
+    let json = parts_json(&dir, &["led", "--as-laid-out"]);
+    assert_eq!(json["parts"].as_array().unwrap().len(), 1, "{json}");
+    let refdes = json["parts"][0]["refdes"].as_str().unwrap().to_string();
+    let json = parts_json(&dir, &[&refdes, "r1"]);
+    assert_eq!(json["parts"].as_array().unwrap().len(), 2, "{json}");
+    let run = netsmith(&dir, &["parts", "power_n"]);
+    assert_eq!(code(&run), 1);
+    assert!(stderr(&run).contains("no part `power_n`"), "{}", stderr(&run));
+    // For a person: a line for each part and each pad.
+    let run = netsmith(&dir, &["parts", "r1", "--as-laid-out"]);
+    assert_eq!(code(&run), 0, "{}", stderr(&run));
+    let text = stdout(&run);
+    assert!(text.starts_with("Widget: 40 x 24 mm, 1 parts"), "{text}");
+    assert!(text.contains("at 20,12 turn 90 bottom (mirrored)"), "{text}");
+    assert!(text.contains("  pad 1 smd "), "{text}");
+}
+
+#[test]
+fn parts_is_refused_as_laid_out_for_a_part_with_no_entry() {
+    let dir = project("layout-parts-open", Some(PLACED));
+    let run = netsmith(&dir, &["parts", "--as-laid-out"]);
+    assert_eq!(code(&run), 1);
+    assert!(!stderr(&run).is_empty());
+    let run = netsmith(&dir, &["parts", "--as-laid-out", "--place-seeds", "2"]);
+    assert_eq!(code(&run), 2);
+}
+
+#[test]
+fn parts_gives_the_data_with_the_findings_beside_it_when_the_layout_overlaps() {
+    // The led and the resistor locked on one place: `fab` refuses the board, and `layout parts`
+    // gives the geometry, which is what is needed to fix it, with the findings.
+    let overlapping = ALL_PLACED.replace("at = [20.0, 12.0]", "at = [30.0, 12.0]");
+    let overlapping = overlapping.replace("side = \"bottom\"", "side = \"top\"\nlock = true");
+    let overlapping = overlapping.replacen(
+        "side = \"top\"\n\n[Widget.parts.r1]",
+        "side = \"top\"\nlock = true\n\n[Widget.parts.r1]",
+        1,
+    );
+    let dir = project("layout-parts-findings", Some(&overlapping));
+    let json = parts_json(&dir, &["--as-laid-out"]);
+    assert_eq!(json["parts"].as_array().unwrap().len(), 3, "{json}");
+    let placement = json["placement"].as_array().unwrap();
+    assert!(placement.iter().any(|f| f["kind"] == "overlap"), "{json}");
+    let run = netsmith(&dir, &["parts", "--as-laid-out"]);
+    assert_eq!(code(&run), 0, "{}", stderr(&run));
+    assert!(stdout(&run).contains("finding: "), "{}", stdout(&run));
+}
+
 #[test]
 fn compare_says_which_parts_moved_between_two_layout_files() {
     let dir = project("layout-compare", Some(PLACED));

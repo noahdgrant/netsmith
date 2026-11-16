@@ -15,7 +15,7 @@ use std::collections::HashMap;
 
 use serde::Serialize;
 
-use crate::board::{Board, Placed, Side};
+use crate::board::{Board, Placed};
 use crate::conflict::{Conflict, PlacementFault};
 use crate::footprint::{Pad, PadKind, PadShape};
 use crate::geometry::{Pt, Rect};
@@ -168,7 +168,11 @@ impl PartGeometries {
                         height: round(court.max.y - court.min.y),
                     },
                     courtyard: frame(court, origin),
-                    courtyards: p.courtyards().into_iter().map(|r| frame(r, origin)).collect(),
+                    courtyards: p
+                        .courtyards()
+                        .into_iter()
+                        .map(|r| frame(r, origin))
+                        .collect(),
                     local_courtyards: p
                         .footprint
                         .courtyard_shapes
@@ -305,8 +309,14 @@ fn pad_geometry(
         height: round(pad.height),
         turn: round(p.pad_angle(pad).rem_euclid(360.0)),
         bounds: SummaryBox {
-            min: [round(bounds.min.x - origin.x), round(bounds.min.y - origin.y)],
-            max: [round(bounds.max.x - origin.x), round(bounds.max.y - origin.y)],
+            min: [
+                round(bounds.min.x - origin.x),
+                round(bounds.min.y - origin.y),
+            ],
+            max: [
+                round(bounds.max.x - origin.x),
+                round(bounds.max.y - origin.y),
+            ],
         },
         copper,
         drill: pad.drill.map(|d| [round(d.width), round(d.height)]),
@@ -316,6 +326,7 @@ fn pad_geometry(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::board::Side;
 
     fn board() -> Board {
         crate::board::tests::led_board()
@@ -330,13 +341,19 @@ mod tests {
         let placed = &board.parts[0];
         assert_eq!(part.refdes, placed.refdes);
         assert_eq!(part.pads.len(), placed.footprint.pads.len());
-        assert_eq!(part.courtyards.len(), placed.footprint.courtyard_shapes.len());
+        assert_eq!(
+            part.courtyards.len(),
+            placed.footprint.courtyard_shapes.len()
+        );
         assert_eq!(part.frame.side, placed.side.word());
         // A pad's place is the footprint's point taken to the board by the part's frame.
         let pad = &placed.footprint.pads[0];
         let at = placed.to_board(pad.at);
         let origin = board.outline.min;
-        assert_eq!(part.pads[0].at, [round(at.x - origin.x), round(at.y - origin.y)]);
+        assert_eq!(
+            part.pads[0].at,
+            [round(at.x - origin.x), round(at.y - origin.y)]
+        );
     }
 
     #[test]
