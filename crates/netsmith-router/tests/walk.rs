@@ -5,7 +5,7 @@
 
 use netsmith_geom::{DrcExtras, DrcRule, drc_check};
 use netsmith_pcb::{Board, CopperLayer, Pt, Track, Via, kicad_pcb, kicad_pro};
-use netsmith_router::walk::{Blocked, Ground, MOST_TRIED, Walk, Walked};
+use netsmith_router::walk::{Blocked, Ground, MOST_TRIED, Walk, Walked, grounds_built};
 
 use crate::common;
 
@@ -490,4 +490,26 @@ fn only_the_routers_copper_the_track_is_in_the_way_of_is_crossed() {
     assert_eq!(dot.tracks, vec![0]);
     let nothing = ground.crossed("TEST", CopperLayer::Front, WIDTH, &[], &tracks, &vias);
     assert_eq!(nothing, Default::default());
+}
+
+#[test]
+fn each_ground_built_is_counted_on_its_thread() {
+    let board = led();
+    let c = empty_place(&board);
+    let before = grounds_built();
+    let ground = Ground::of(&board).unwrap();
+    let _again = Ground::of(&board).unwrap();
+    assert_eq!(grounds_built(), before + 2);
+    // Asking a ground builds none.
+    let _ = ground
+        .walker()
+        .free("TEST", CopperLayer::Front, WIDTH, c, at(c, 1.0, 0.0));
+    let _ = ground.walker().path(&walk(
+        "TEST",
+        CopperLayer::Front,
+        c,
+        at(c, 1.0, 1.0),
+        None,
+    ));
+    assert_eq!(grounds_built(), before + 2);
 }

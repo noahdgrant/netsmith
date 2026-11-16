@@ -114,20 +114,31 @@ export function labelOf(changes: RoutesChange[]): string {
     case 'lock':
       return `${c.lock ? 'lock' : 'unlock'} ${nameOf(pick(c))}`;
     case 'add_track': {
-      // The moves after the track are the copper of other nets that it shoved out of its way.
+      // The moves after the track are the copper of other nets that it shoved out of its way; its vias are where it changes layer.
       const drawn = changes.filter((x) => x.what === 'add_track').length;
-      const shoved = changes.filter((x) => x.what === 'move_track' || x.what === 'move_via').length;
+      const vias = changes.filter((x) => x.what === 'add_via').length;
       const base = drawn > 1 ? `draw a track of ${drawn} segments on net ${c.net}` : `draw a track on net ${c.net}`;
-      return shoved > 0 ? `${base}, shoving ${shoved} shape${shoved === 1 ? '' : 's'}` : base;
+      const through = vias > 0 ? `${base} through ${vias} via${vias === 1 ? '' : 's'}` : base;
+      return withShoved(through, changes);
     }
     case 'add_via':
-      return `place a via on net ${c.net}`;
+      return withShoved(`place a via on net ${c.net}`, changes);
     case 'move_track':
-    case 'move_via':
-      return changes.length > 1 ? `move ${changes.length} shapes of net ${c.net}` : `move ${nameOf(pick(c))}`;
+    case 'move_via': {
+      // A drag moves shapes of one net; the moves of other nets are what it shoved (issue 1009).
+      const own = changes.filter((x) => x.net === c.net).length;
+      return withShoved(own > 1 ? `move ${own} shapes of net ${c.net}` : `move ${nameOf(pick(c))}`, changes);
+    }
     case 'restore':
       return `put back net ${c.net}'s record`;
   }
+}
+
+/** A label with the shapes of other nets than the first change's that the edit shoves out of the way, if it shoves any. */
+function withShoved(base: string, changes: RoutesChange[]): string {
+  const net = changes[0]?.net;
+  const shoved = changes.filter((x) => (x.what === 'move_track' || x.what === 'move_via') && x.net !== net).length;
+  return shoved > 0 ? `${base}, shoving ${shoved} shape${shoved === 1 ? '' : 's'}` : base;
 }
 
 /** The same place, to the micrometre: where two shapes of a record meet. */

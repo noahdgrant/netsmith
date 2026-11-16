@@ -50,8 +50,19 @@
 //! **Shove** ([`crate::shove`], the third slice of #726) is the other half: it moves the unlocked
 //! copper of the routes file out of the way of a track, and the walkaround goes round what stays.
 //!
-//! **Not done:** a track never changes layer and does not look for the shortest way over the whole
-//! board: the area is the ends' box widened by [`REACH`].
+//! **Layers.** A walk is on one layer. A track that changes layer is walked one layer at a time:
+//! the editor puts a via at the corner where the layer changes and walks on from it on the new
+//! layer (issue 1009); the copper of the net, the via among it, is never in its own way.
+//!
+//! **The ground is built once for a board** ([`Ground::of`]) and kept by the caller as long as
+//! the board's copper is the same: the editor keeps it with the board it placed (issue 1009).
+//! [`grounds_built`] counts the grounds a thread built, for a test of that cache.
+//!
+//! **The router's crossed nets routed again** round the track, as a preview, are
+//! [`crate::round`]'s.
+//!
+//! **Not done:** the search does not look for the shortest way over the whole board: the area is
+//! the ends' box widened by [`REACH`].
 
 use std::cmp::Reverse;
 use std::collections::{BinaryHeap, HashMap};
@@ -86,9 +97,20 @@ pub struct Ground {
     edge: netsmith_pcb::BoardEdge,
 }
 
+thread_local! {
+    static BUILT: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+/// How many grounds this thread has built ([`Ground::of`]): the work a cache of them saves is
+/// counted with it (issue 1009), never timed.
+pub fn grounds_built() -> usize {
+    BUILT.with(|b| b.get())
+}
+
 impl Ground {
     /// The ground of `board`, or why its copper cannot be read.
     pub fn of(board: &Board) -> Result<Ground, String> {
+        BUILT.with(|b| b.set(b.get() + 1));
         let art = netsmith_pcb::copper_artwork(board).map_err(|e| e.to_string())?;
         let rules = DrcRules::from_project(&netsmith_pcb::kicad_pro(board))
             .map_err(|e| format!("the design rules: {e}"))?;
@@ -163,6 +185,28 @@ impl Ground {
                 .filter(|&i| !room.fits(&via_shape(&vias[i]), &vias[i].net, layer_ix, false))
                 .collect(),
         }
+    }
+
+    /// What new copper of `net` (`copper`: tracks on their layers, vias on every layer) is too
+    /// near on this ground, by name ([`Room::in_the_way`]), or `None` where all of it keeps
+    /// every space: the room a via or the shapes of a drag have where they are put (issue 1009).
+    /// A track on a layer the board does not have is too near nothing.
+    pub fn in_the_way(&self, net: &str, copper: &[crate::shove::What]) -> Option<String> {
+        let room = Room::new(&self.art, &self.rules, &self.extras);
+        copper.iter().find_map(|c| match c {
+            crate::shove::What::Track(t) => {
+                let layer = room.layer(t.layer.name())?;
+                let shape = DrcShape::stroke(
+                    t.centre_line().into_iter().map(fpt).collect(),
+                    t.width / 2.0,
+                );
+                room.in_the_way(&shape, net, layer, false, &[])
+            }
+            crate::shove::What::Via(v) => {
+                let shape = DrcShape::disc(fpt(v.at), v.diameter / 2.0);
+                (0..room.layers()).find_map(|l| room.in_the_way(&shape, net, l, false, &[]))
+            }
+        })
     }
 
     /// The questions about this ground.

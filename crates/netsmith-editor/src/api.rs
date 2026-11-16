@@ -1531,13 +1531,17 @@ pub enum RoutesChange {
     },
     /// A via of the net, of the process's size.
     AddVia { net: String, at: PcbPoint },
-    /// A straight track of the net with its ends at `from` and `to`; refused while it is
-    /// locked.
+    /// A track of the net with its ends at `from` and `to`; refused while it is locked. An arc
+    /// is moved whole, with its middle at `mid` (what a shove does, issue 1009); a straight
+    /// track has none.
     MoveTrack {
         net: String,
         track: u32,
         from: PcbPoint,
         to: PcbPoint,
+        #[serde(default)]
+        #[ts(optional)]
+        mid: Option<PcbPoint>,
     },
     /// A via of the net at `at`; refused while it is locked.
     MoveVia { net: String, via: u32, at: PcbPoint },
@@ -1607,6 +1611,89 @@ pub struct PcbWalk {
     /// walkaround alone.
     #[serde(default)]
     pub shove: bool,
+    /// The track's corners on the layers it was drawn on before its last layer change, one run
+    /// for each layer in turn (issue 1009): the walk is on `layer` from `from`, and this copper,
+    /// with `vias`, is more of the new track, which a shove moves copper out of the way of and
+    /// whose crossed router copper is answered too. Empty: the track is on one layer.
+    #[serde(default)]
+    pub earlier: Vec<PcbRun>,
+    /// The vias (the process's) at the track's layer changes, the last of them at the first
+    /// corner of `track`.
+    #[serde(default)]
+    pub vias: Vec<PcbPoint>,
+}
+
+/// The corners of a track drawn on one layer, in the order drawn.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+pub struct PcbRun {
+    /// `top`, `bottom` or an inner signal layer.
+    pub layer: String,
+    pub points: Vec<PcbPoint>,
+}
+
+/// A question of the via tool and of a drag of a track end or a via (issue 1009): may the copper
+/// `tracks` and `vias` of `net` be put where they are, and with `shove`, which unlocked shapes of
+/// the routes file move out of their way. `moving` names the shapes of the routes file this
+/// copper takes the place of (a drag's), which are not moved. Nothing is written.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+pub struct PcbShove {
+    pub board: String,
+    pub net: String,
+    pub tracks: Vec<PcbShoveTrack>,
+    pub vias: Vec<PcbShoveVia>,
+    #[serde(default)]
+    pub moving: Vec<PcbShapeRef>,
+    #[serde(default)]
+    pub shove: bool,
+}
+
+/// A straight track of a [`PcbShove`]. `width` `None` is the net's width on the layer.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+pub struct PcbShoveTrack {
+    pub layer: String,
+    pub width: Option<f64>,
+    pub from: PcbPoint,
+    pub to: PcbPoint,
+}
+
+/// A via of a [`PcbShove`]. `diameter` `None` is the process's via.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+pub struct PcbShoveVia {
+    pub at: PcbPoint,
+    pub diameter: Option<f64>,
+}
+
+/// One shape of a net's record of the routes file: track or via `n`, numbered from 1.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+pub struct PcbShapeRef {
+    pub net: String,
+    pub track: Option<u32>,
+    pub via: Option<u32>,
+}
+
+/// The answer to a [`PcbShove`]: `reason` says why the copper may not go there (what it is too
+/// near, by name), else `None`; `shoved` the shapes moved out of its way, or `stuck` why none
+/// could be (the copper is then checked against them where they are). Always `200`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+pub struct PcbShoveAnswer {
+    pub reason: Option<String>,
+    pub shoved: PcbShoved,
+    pub stuck: Option<String>,
+}
+
+/// The router's nets a track crosses, routed again round it (issue 1009): a preview of what
+/// routing again lays, with the track, the router's copper of the other nets and the routes
+/// file's copper fixed. Asked with a [`PcbWalk`] whose `track` is the run on `layer` with the
+/// way found, and `earlier` and `vias` the rest of the track; `from`, `to`, `heading` and
+/// `shove` are not used. Nothing is written: an edit still discards the router's copper.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+pub struct PcbRerouted {
+    /// The nets crossed, routed again.
+    pub nets: Vec<String>,
+    pub tracks: Vec<PcbCrossedTrack>,
+    pub vias: Vec<PcbCrossedVia>,
+    /// The connections of those nets the router could not make round the track.
+    pub left: u32,
 }
 
 /// The answer to a [`PcbWalk`]: the corners from `from` to `to`, both included, or why there is
@@ -1652,6 +1739,10 @@ pub struct PcbShovedTrack {
     pub was_to: PcbPoint,
     pub from: PcbPoint,
     pub to: PcbPoint,
+    /// An arc's middle, where it was and where it goes (issue 1009: an arc is shoved whole);
+    /// `None` for a straight track.
+    pub was_mid: Option<PcbPoint>,
+    pub mid: Option<PcbPoint>,
 }
 
 /// A via of a record, shoved: `via` numbers it in its net's record from 1.
@@ -2245,6 +2336,13 @@ pub fn typescript() -> String {
         PcbShoved,
         PcbShovedTrack,
         PcbShovedVia,
+        PcbRun,
+        PcbShove,
+        PcbShoveTrack,
+        PcbShoveVia,
+        PcbShapeRef,
+        PcbShoveAnswer,
+        PcbRerouted,
         PcbNetWidth,
         PartPlacement,
         DrawnKeepout,

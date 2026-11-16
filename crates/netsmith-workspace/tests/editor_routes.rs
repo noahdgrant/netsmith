@@ -16,7 +16,8 @@ use std::{
 use netsmith_editor::{
     Backend,
     api::{
-        FindingSource, PcbPoint, PcbRoutesEdit, PcbScene, PcbWalk, RoutesChange, RoutesUndo, Severity,
+        FindingSource, PcbPoint, PcbRoutesEdit, PcbRun, PcbScene, PcbShapeRef, PcbShove,
+        PcbShoveTrack, PcbShoveVia, PcbWalk, RoutesChange, RoutesUndo, Severity,
     },
 };
 use netsmith_fabricate::project::Target;
@@ -502,12 +503,14 @@ fn a_track_end_and_a_via_are_moved_and_a_lock_or_the_rules_refuse_it() {
                     track: 1,
                     from: pads[0],
                     to: moved_to,
+                    mid: None,
                 },
                 RoutesChange::MoveTrack {
                     net: "VCC".into(),
                     track: 2,
                     from: moved_to,
                     to: pads[1],
+                    mid: None,
                 },
                 RoutesChange::MoveVia {
                     net: "VCC".into(),
@@ -546,6 +549,7 @@ fn a_track_end_and_a_via_are_moved_and_a_lock_or_the_rules_refuse_it() {
                 track: 1,
                 from: pads[0],
                 to: moved_to,
+                mid: None,
             }],
         ))
         .unwrap_err();
@@ -641,6 +645,7 @@ fn a_track_is_on_an_outer_layer_and_an_edit_of_two_nets_is_one_step_of_undo() {
                     track: 9,
                     from: gnd,
                     to: near(gnd),
+                    mid: None,
                 },
             ],
         ))
@@ -739,6 +744,7 @@ fn a_walk_that_shoves_moves_an_unlocked_track_and_the_edit_is_one_step_of_undo_o
         track: shoved.track,
         from: shoved.from,
         to: shoved.to,
+        mid: None,
     };
     let before = fs::read_to_string(routes_file(&h.root)).unwrap();
     let edited = h
@@ -835,6 +841,8 @@ fn walk_of(net: &str, layer: &str, from: PcbPoint, to: PcbPoint) -> PcbWalk {
         heading: None,
         track: Vec::new(),
         shove: false,
+        earlier: Vec::new(),
+        vias: Vec::new(),
     }
 }
 
@@ -1046,4 +1054,260 @@ fn the_track_tool_draws_on_an_inner_signal_layer_and_not_on_a_plane() {
         .collect();
     assert_eq!(tracks.len(), 1);
     assert_eq!(tracks[0].layer, CopperLayer::Inner(2));
+}
+
+#[test]
+fn the_ground_is_built_once_for_the_walks_of_a_board_and_again_after_an_edit() {
+    // Issue 1009: the ground a walk is asked on is kept with the board. Counted, never timed.
+    use netsmith_router::walk::grounds_built;
+    let h = hang("ground-cache");
+    let y = h.pad.y + 1.45;
+    let from = PcbPoint { x: h.pad.x - 2.8, y };
+    let ask = |x: f64| walk_of("VCC", "top", from, PcbPoint { x, y });
+    let first = grounds_built();
+    h.editor.pcb_walk(&ask(h.pad.x - 2.0)).unwrap();
+    let one = grounds_built();
+    assert_eq!(one, first + 1);
+    for k in 0..5 {
+        h.editor.pcb_walk(&ask(h.pad.x - 1.9 + k as f64 * 0.1)).unwrap();
+    }
+    assert_eq!(grounds_built(), one, "no walk after the first builds a ground");
+    // The shove's ground is built once too.
+    h.editor.pcb_walk(&shove_walk(from, PcbPoint { x: h.pad.x, y })).unwrap();
+    h.editor.pcb_walk(&shove_walk(from, PcbPoint { x: h.pad.x + 0.1, y })).unwrap();
+    assert_eq!(grounds_built(), one + 1);
+    // An edit of the routes file makes the board again: the next walk builds its ground again.
+    h.editor
+        .pcb_routes(&edit_of(&h.scene, vec![lock("GND", Some(1), true)]))
+        .unwrap();
+    h.editor.pcb_walk(&ask(h.pad.x - 2.0)).unwrap();
+    h.editor.pcb_walk(&ask(h.pad.x - 1.9)).unwrap();
+    assert_eq!(grounds_built(), one + 2);
+}
+
+fn shove_of(net: &str, tracks: Vec<PcbShoveTrack>, vias: Vec<PcbShoveVia>) -> PcbShove {
+    PcbShove {
+        board: BOARD.into(),
+        net: net.into(),
+        tracks,
+        vias,
+        moving: Vec::new(),
+        shove: true,
+    }
+}
+
+#[test]
+fn a_via_placed_shoves_an_unlocked_track_and_with_no_room_names_what_is_in_the_way() {
+    let h = hang("shove-via");
+    let at = PcbPoint { x: h.pad.x + 0.3, y: h.pad.y + 1.45 };
+    let via = vec![PcbShoveVia { at, diameter: None }];
+    // With the shove the ground track turns about its pad out of the via's way.
+    let shoved = h.editor.pcb_shove(&shove_of("VCC", Vec::new(), via.clone())).unwrap();
+    assert!(shoved.reason.is_none() && shoved.stuck.is_none(), "{shoved:?}");
+    let [t] = shoved.shoved.tracks.as_slice() else {
+        panic!("{shoved:?}");
+    };
+    assert_eq!((t.net.as_str(), t.track, t.from), ("GND", 1, h.pad));
+    assert!(t.to.x < h.foot.x - 0.05, "away from the via: {t:?}");
+    // Without it the via has no room, and the answer names the track.
+    let alone = h
+        .editor
+        .pcb_shove(&PcbShove {
+            shove: false,
+            ..shove_of("VCC", Vec::new(), via.clone())
+        })
+        .unwrap();
+    let why = alone.reason.as_deref().unwrap_or_else(|| panic!("{alone:?}"));
+    assert!(why.contains("a track of net GND"), "{why}");
+    // On a pad of another net no shove helps: the pad is named.
+    let on_pad = h
+        .editor
+        .pcb_shove(&shove_of(
+            "VCC",
+            Vec::new(),
+            vec![PcbShoveVia { at: h.pad, diameter: None }],
+        ))
+        .unwrap();
+    assert!(
+        on_pad.reason.as_deref().is_some_and(|r| r.contains("net GND")),
+        "{on_pad:?}"
+    );
+    // The via and the move are one edit of two nets, which the check accepts.
+    let edited = h
+        .editor
+        .pcb_routes(&edit_of(
+            &h.scene,
+            vec![
+                RoutesChange::AddVia { net: "VCC".into(), at },
+                RoutesChange::MoveTrack {
+                    net: "GND".into(),
+                    track: 1,
+                    from: t.from,
+                    to: t.to,
+                    mid: None,
+                },
+            ],
+        ))
+        .unwrap_or_else(|e| panic!("{}", e.message));
+    assert_eq!(edited.undo.len(), 2);
+}
+
+#[test]
+fn a_drag_shoves_out_of_the_way_of_the_shapes_it_moves_and_not_the_shapes_themselves() {
+    let h = hang("shove-drag");
+    // A VCC track to the left of the ground track, then its end dragged across to near it.
+    let y = h.pad.y + 1.45;
+    let a = PcbPoint { x: h.pad.x - 2.8, y };
+    let b = PcbPoint { x: h.pad.x - 1.5, y };
+    let drawn = h
+        .editor
+        .pcb_routes(&edit_of(&h.scene, vec![track("VCC", "top", a, b)]))
+        .unwrap_or_else(|e| panic!("{}", e.message));
+    let to = PcbPoint { x: h.pad.x + 0.2, y };
+    let ask = PcbShove {
+        moving: vec![PcbShapeRef {
+            net: "VCC".into(),
+            track: Some(1),
+            via: None,
+        }],
+        ..shove_of(
+            "VCC",
+            vec![PcbShoveTrack {
+                layer: "top".into(),
+                width: None,
+                from: a,
+                to,
+            }],
+            Vec::new(),
+        )
+    };
+    let shoved = h.editor.pcb_shove(&ask).unwrap();
+    assert!(shoved.reason.is_none(), "{shoved:?}");
+    let [t] = shoved.shoved.tracks.as_slice() else {
+        panic!("only the ground track moves, not the dragged one: {shoved:?}");
+    };
+    assert_eq!((t.net.as_str(), t.track), ("GND", 1));
+    let edited = h
+        .editor
+        .pcb_routes(&edit_of(
+            &drawn.scene,
+            vec![
+                RoutesChange::MoveTrack {
+                    net: "VCC".into(),
+                    track: 1,
+                    from: a,
+                    to,
+                    mid: None,
+                },
+                RoutesChange::MoveTrack {
+                    net: "GND".into(),
+                    track: 1,
+                    from: t.from,
+                    to: t.to,
+                    mid: None,
+                },
+            ],
+        ))
+        .unwrap_or_else(|e| panic!("{}", e.message));
+    assert_eq!(edited.undo.len(), 2);
+}
+
+#[test]
+fn a_track_that_changed_layer_shoves_out_of_the_way_of_its_earlier_layer_and_its_via() {
+    let h = hang("shove-layers");
+    let y = h.pad.y + 1.45;
+    let from = PcbPoint { x: h.pad.x - 2.8, y };
+    let turn = PcbPoint { x: h.pad.x + 0.2, y };
+    // On the top across the ground track, a via, then on the bottom, where nothing is in the way.
+    let walk = PcbWalk {
+        shove: true,
+        earlier: vec![PcbRun {
+            layer: "top".into(),
+            points: vec![from, turn],
+        }],
+        vias: vec![turn],
+        track: vec![turn],
+        ..walk_of("VCC", "bottom", turn, PcbPoint { x: turn.x + 1.0, y })
+    };
+    let walked = h.editor.pcb_walk(&walk).unwrap();
+    assert!(walked.points.is_some(), "{walked:?}");
+    assert!(walked.stuck.is_none(), "{walked:?}");
+    assert!(
+        walked
+            .shoved
+            .tracks
+            .iter()
+            .any(|t| t.net == "GND" && t.track == 1),
+        "the top run shoves the ground track: {walked:?}"
+    );
+    // The same walk with no earlier copper shoves nothing: the bottom is free.
+    let alone = h
+        .editor
+        .pcb_walk(&PcbWalk {
+            earlier: Vec::new(),
+            vias: Vec::new(),
+            ..walk
+        })
+        .unwrap();
+    assert!(alone.shoved.tracks.is_empty(), "{alone:?}");
+}
+
+#[test]
+fn the_routers_crossed_nets_are_routed_again_round_the_track_as_a_preview() {
+    let (_root, editor) = project("reroute");
+    let say: netsmith_editor::Say = Arc::new(|_: &str| {});
+    let report = editor.route(BOARD, &say).unwrap();
+    assert!(report.routed && report.tracks > 0, "{report:?}");
+    let scene = editor.pcb_scene(BOARD).unwrap();
+    // A GND track over the router's VCC copper, from a third to two thirds of the way between
+    // the VCC pads.
+    let [a, b] = [pads_of(&scene, "VCC")[0], pads_of(&scene, "VCC")[1]];
+    let (c, d) = (along(a, b, 0.3), along(a, b, 0.7));
+    let walk = PcbWalk {
+        track: vec![c, d],
+        ..walk_of("GND", "top", d, d)
+    };
+    let walked = editor.pcb_walk(&walk).unwrap();
+    let crossed: std::collections::BTreeSet<&str> = walked
+        .crossed
+        .tracks
+        .iter()
+        .map(|t| t.net.as_str())
+        .chain(walked.crossed.vias.iter().map(|v| v.net.as_str()))
+        .collect();
+    assert!(!crossed.is_empty(), "{walked:?}");
+    let round = editor.pcb_reroute(&walk).unwrap();
+    let nets: std::collections::BTreeSet<&str> = round.nets.iter().map(String::as_str).collect();
+    assert_eq!(nets, crossed);
+    assert!(!round.tracks.is_empty(), "{round:?}");
+    assert!(
+        round.tracks.iter().all(|t| nets.contains(t.net.as_str()))
+            && round.vias.iter().all(|v| nets.contains(v.net.as_str())),
+        "{round:?}"
+    );
+    // Nothing is written, and the board is still routed as it was.
+    assert!(editor.pcb_walk(&walk).unwrap().crossed == walked.crossed);
+}
+
+#[test]
+fn a_shove_and_a_reroute_are_asked_over_the_wire() {
+    let h = hang("shove-wire");
+    let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let at = PcbPoint { x: h.pad.x + 0.3, y: h.pad.y + 1.45 };
+    let body = serde_json::to_string(&shove_of(
+        "VCC",
+        Vec::new(),
+        vec![PcbShoveVia { at, diameter: None }],
+    ))
+    .unwrap();
+    let walk = serde_json::to_string(&walk_of("VCC", "top", at, at)).unwrap();
+    thread::spawn(move || netsmith_editor::serve(listener, Arc::new(h.editor)));
+    let headers = "X-Netsmith: 1\r\nContent-Type: application/json\r\nAccept: application/json\r\n";
+    let (status, answer) = http(port, "POST", "/api/pcb/shove", headers, &body);
+    assert_eq!(status, 200, "{answer}");
+    assert!(answer.contains("\"track\":1"), "{answer}");
+    let (status, answer) = http(port, "POST", "/api/pcb/reroute", headers, &walk);
+    assert_eq!(status, 200, "{answer}");
+    assert!(answer.contains("\"nets\":[]"), "not routed: nothing is crossed: {answer}");
 }

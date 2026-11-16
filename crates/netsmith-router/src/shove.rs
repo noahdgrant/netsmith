@@ -23,7 +23,19 @@
 //! third track) follows. An end that is on a pad, on copper that does not move, on the body of
 //! another track (a tee), or on a piece pushed before, stays: the track then turns about it. A
 //! track with no end that can move is stuck. A *via* moves, with the track ends that meet it,
-//! straight away from what it is too near.
+//! straight away from what it is too near. An *arc* moves whole, as a via does: its ends and its
+//! middle by one step, straight away from what it is too near, with the pieces that meet its
+//! ends; it is stuck when an end of it is held (issue 1009).
+//!
+//! **Tees** (issue 1009). The end of a track on the body of another straight piece of its net (a
+//! tee) stays where it is when a piece that meets it is pushed, and rides the body when the body
+//! moves: it keeps its place along the body (the same fraction from its end), and the pieces that
+//! meet it follow. A body whose tee cannot follow (held, or on a piece that stays) is not pushed
+//! that way. An arc with a tee on its body stays where it is.
+//!
+//! **The new copper** ([`Drawn`]) is the track being drawn and any more copper of its net: the
+//! tracks of the layers it was on before a layer change and the vias at the changes, a via being
+//! placed, or the shapes of a drag (issue 1009).
 //!
 //! **A cascade.** A piece pushed into the space of another makes that one a piece that does not
 //! keep its spaces, and it is pushed in its turn (a piece is pushed once: it then stays where it
@@ -38,8 +50,8 @@
 //! the edit is made has the last word, as it has for a drawn track.
 //!
 //! **Not done:** a piece is never pushed across the board edge or a pad (it is stuck instead);
-//! arcs and the bodies of tees never move; a piece that already broke a space before the track
-//! was there is left alone; there is no layer change.
+//! an arc with a tee on its body never moves; a piece that already broke a space before the
+//! track was there is left alone; a pushed piece never changes layer.
 
 use std::collections::HashMap;
 
@@ -65,6 +77,9 @@ const MIN_SLIDE: f64 = 0.34;
 const SAME: f64 = 5e-4;
 /// How near a track's body a joint must be to be on it, in mm.
 const ON: f64 = 1e-3;
+/// How many tees deep a push carries the tees on a body with it (a tee on a track that is a tee
+/// itself, and so on): deeper, the push is not made.
+const MOST_RIDES: usize = 8;
 
 /// A piece of copper of the routes file that may be moved: the caller's `id` comes back in the
 /// answer.
@@ -74,27 +89,41 @@ pub struct Piece {
     pub what: What,
 }
 
-/// A track (an arc is never moved) or a via.
+/// A track (straight or an arc) or a via.
 #[derive(Debug, Clone)]
 pub enum What {
     Track(Track),
     Via(Via),
 }
 
-/// The track being drawn: its net, layer and width, and its corners from the first to the last.
+/// The new copper the pieces are moved out of the way of: a track being drawn (its net, layer and
+/// width, and its corners from the first to the last), and `others`, more new copper of the net
+/// on any layer: the tracks of the layers the drawn track was on before a layer change and the
+/// vias at its changes, a via being placed, or the shapes being dragged (issue 1009). `corners`
+/// may be empty where there is only `others`.
 #[derive(Debug, Clone, Copy)]
 pub struct Drawn<'a> {
     pub net: &'a str,
     pub layer: CopperLayer,
     pub width: f64,
     pub corners: &'a [Pt],
+    pub others: &'a [What],
 }
 
-/// A piece in its new place.
+/// A piece in its new place. `mid` is an arc's point halfway along it (`None` for a straight
+/// track): an arc is moved whole, its three points by the same step.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Moved {
-    Track { id: usize, from: Pt, to: Pt },
-    Via { id: usize, at: Pt },
+    Track {
+        id: usize,
+        from: Pt,
+        to: Pt,
+        mid: Option<Pt>,
+    },
+    Via {
+        id: usize,
+        at: Pt,
+    },
 }
 
 impl Moved {
@@ -153,8 +182,10 @@ struct Item {
     a: Pt,
     b: Pt,
     orig: (Pt, Pt),
-    /// An arc, never moved.
+    /// An arc as it was: it moves whole (its ends and `mid` by one step), never one end alone.
     arc: Option<Track>,
+    /// An arc's point halfway along it, where it is now.
+    mid: Option<Pt>,
     pinned: bool,
     shape: DrcShape,
 }
@@ -171,7 +202,7 @@ impl Item {
     fn reshape(&mut self) {
         self.shape = if self.is_via {
             DrcShape::disc(fpt(self.a), self.width / 2.0)
-        } else if let Some(t) = &self.arc {
+        } else if let Some(t) = self.arc_now() {
             DrcShape::stroke(
                 t.centre_line().into_iter().map(fpt).collect(),
                 self.width / 2.0,
@@ -179,6 +210,16 @@ impl Item {
         } else {
             segment(self.a, self.b, self.width)
         };
+    }
+
+    /// An arc where it is now.
+    fn arc_now(&self) -> Option<Track> {
+        self.arc.as_ref().map(|t| Track {
+            from: self.a,
+            to: self.b,
+            mid: self.mid,
+            ..t.clone()
+        })
     }
 
     fn end(&self, e: End) -> Pt {
@@ -209,8 +250,14 @@ struct Joint {
     at: Pt,
     net: String,
     members: Vec<(usize, End)>,
-    /// On a pad, on copper that does not move, or on the body of another track: it stays.
+    /// On a pad, on copper that does not move, or on the body of another track: it stays when a
+    /// piece that meets it is pushed.
     anchored: bool,
+    /// On a pad, on copper that does not move or on a piece that stays: it never moves.
+    held: bool,
+    /// On the body of a straight piece (a tee): that piece and how far along it, from its end
+    /// `a` (0) to `b` (1). It moves with that piece, along with the pieces that meet it.
+    rides: Option<(usize, f64)>,
     /// On a pad or a via: no corner for the check's `track_angle`.
     excused: bool,
     /// The way the copper that does not move leaves it, with the layer's name.
@@ -277,9 +324,9 @@ struct Search<'a> {
     /// The joint of each end of each item.
     at: Vec<[usize; 2]>,
     settled: Vec<bool>,
-    /// What the drawn track is made of: its net, layer and the shape of each segment.
-    drawn: (String, usize, Vec<DrcShape>),
-    drawn_start: Pt,
+    /// The new copper ([`Drawn`]): its net, and each shape with its layer and where it begins
+    /// (the drawn track's first corner for each of its segments).
+    drawn: (String, Vec<(usize, DrcShape, Pt)>),
     /// Items that broke a space before the track was there: left alone while they stay.
     broken: Vec<bool>,
     checked: usize,
@@ -318,9 +365,9 @@ impl<'a> Search<'a> {
                 extra.push((it.net.as_str(), l, &it.shape));
             }
         }
-        for s in &self.drawn.2 {
+        for (l, s, _) in &self.drawn.1 {
             if scope != Scope::Hard && s.bounds.overlaps(&near) {
-                extra.push((self.drawn.0.as_str(), self.drawn.1, s));
+                extra.push((self.drawn.0.as_str(), *l, s));
             }
         }
         layers
@@ -336,19 +383,39 @@ impl<'a> Search<'a> {
         self.fits(&shape, &net, layers, i, scope)
     }
 
-    /// The joint is free to move: nothing on it stays or has been pushed.
-    fn joint_free(&self, j: usize) -> bool {
+    /// The joint of item `i` is free to move with it: nothing on it stays or has been pushed, and
+    /// no arc but `i` meets there (an arc moves whole, never one end alone).
+    fn joint_free(&self, j: usize, i: usize) -> bool {
         let joint = &self.joints[j];
         !joint.anchored
-            && joint
-                .members
-                .iter()
-                .all(|&(k, _)| !self.items[k].pinned && !self.settled[k])
+            && joint.members.iter().all(|&(k, _)| {
+                !self.items[k].pinned && !self.settled[k] && (k == i || self.items[k].arc.is_none())
+            })
     }
 
-    /// The direction a track leaves a joint by, from its current place.
+    /// The joint on the body of a piece that moves can move with it: nothing on it is held, stays
+    /// or has been pushed, and no arc meets there.
+    fn rider_free(&self, j: usize) -> bool {
+        let joint = &self.joints[j];
+        !joint.held
+            && joint.members.iter().all(|&(k, _)| {
+                !self.items[k].pinned && !self.settled[k] && self.items[k].arc.is_none()
+            })
+    }
+
+    /// The direction a track leaves a joint by, from its current place (an arc's tangent there).
     fn leaves(&self, k: usize, e: End) -> Pt {
         let it = &self.items[k];
+        if let Some(t) = it.arc_now() {
+            let line = t.centre_line();
+            if line.len() >= 2 {
+                let n = line.len();
+                return match e {
+                    End::A => sub(line[1], line[0]),
+                    End::B => sub(line[n - 2], line[n - 1]),
+                };
+            }
+        }
         match e {
             End::A => sub(it.b, it.a),
             End::B => sub(it.a, it.b),
@@ -415,7 +482,7 @@ impl<'a> Search<'a> {
             .collect();
         if let [(k, e)] = others[..] {
             let other = &self.items[k];
-            if !other.is_via && other.layer == self.items[i].layer {
+            if !other.is_via && other.arc.is_none() && other.layer == self.items[i].layer {
                 let u = unit(self.leaves(k, e));
                 let along = dot(u, n);
                 if along.abs() >= MIN_SLIDE {
@@ -426,17 +493,84 @@ impl<'a> Search<'a> {
         add(p, scale(n, d))
     }
 
-    /// Move joint `j` to `to`, every piece that meets there following. Returns what each was.
-    fn drag(&mut self, j: usize, to: Pt, saved: &mut Vec<(usize, Item)>) {
+    /// Move joint `j` to `to`, every piece that meets there following, and the joints on the
+    /// bodies of the tracks that changed (tees) with them. What each was goes in `saved` and
+    /// where each joint was in `was_at`. False where a tee's joint cannot follow (it is held, or
+    /// a piece on it stays) or tees ride tees deeper than [`MOST_RIDES`]: the caller puts
+    /// everything back.
+    fn drag(
+        &mut self,
+        j: usize,
+        to: Pt,
+        saved: &mut Vec<(usize, Item)>,
+        was_at: &mut Vec<(usize, Pt)>,
+    ) -> bool {
+        self.drag_at(j, to, saved, was_at, 0)
+    }
+
+    fn drag_at(
+        &mut self,
+        j: usize,
+        to: Pt,
+        saved: &mut Vec<(usize, Item)>,
+        was_at: &mut Vec<(usize, Pt)>,
+        depth: usize,
+    ) -> bool {
+        if !was_at.iter().any(|(w, _)| *w == j) {
+            was_at.push((j, self.joints[j].at));
+        }
         self.joints[j].at = to;
         let members = self.joints[j].members.clone();
+        let mut changed = Vec::new();
         for (k, e) in members {
             if !saved.iter().any(|(s, _)| *s == k) {
                 saved.push((k, self.items[k].clone()));
             }
             self.items[k].set_end(e, to);
+            if let Some(m) = self.items[k].mid {
+                // Only an arc's own push moves its ends (both, by one step): its middle follows.
+                let was = &saved.iter().find(|(s, _)| *s == k).expect("saved").1;
+                let d = sub(self.items[k].end(e), was.end(e));
+                if norm(sub(was.mid.unwrap_or(m), m)) < 1e-12 {
+                    self.items[k].mid = Some(add(m, d));
+                }
+            }
             self.items[k].reshape();
+            changed.push(k);
         }
+        self.carry_riders(&changed, saved, was_at, depth)
+    }
+
+    /// The joints on the bodies of the tracks `changed` go where those tracks now put them.
+    fn carry_riders(
+        &mut self,
+        changed: &[usize],
+        saved: &mut Vec<(usize, Item)>,
+        was_at: &mut Vec<(usize, Pt)>,
+        depth: usize,
+    ) -> bool {
+        for &k in changed {
+            let riders: Vec<(usize, f64)> = (0..self.joints.len())
+                .filter_map(|r| match self.joints[r].rides {
+                    Some((body, t)) if body == k => Some((r, t)),
+                    _ => None,
+                })
+                .collect();
+            for (r, t) in riders {
+                let it = &self.items[k];
+                let now = add(it.a, scale(sub(it.b, it.a), t));
+                if norm(sub(now, self.joints[r].at)) < 1e-12 {
+                    continue;
+                }
+                if !self.rider_free(r) || depth >= MOST_RIDES {
+                    return false;
+                }
+                if !self.drag_at(r, now, saved, was_at, depth + 1) {
+                    return false;
+                }
+            }
+        }
+        true
     }
 
     /// Whether the pieces that changed (`saved`) are as they must be: no further than
@@ -496,8 +630,8 @@ impl<'a> Search<'a> {
                 consider(&o.shape, &o.net, &layers, to_pt(o.shape.pts[0]));
             }
         }
-        for s in &self.drawn.2 {
-            consider(s, &self.drawn.0, &[self.drawn.1], self.drawn_start);
+        for (l, s, start) in &self.drawn.1 {
+            consider(s, &self.drawn.0, &[*l], *start);
         }
         worst.map(|(_, w)| w)
     }
@@ -507,12 +641,18 @@ impl<'a> Search<'a> {
     fn ways(&self, i: usize) -> Vec<Pt> {
         let it = &self.items[i];
         let found = self.offender(i);
-        if it.is_via {
-            let Some((_, theirs, touching, start)) = found else {
+        if it.is_via || it.mid.is_some() {
+            let Some((mine, theirs, touching, start)) = found else {
                 return Vec::new();
             };
-            let from = if touching { start } else { theirs };
-            let away = sub(it.a, from);
+            // A via straight away from the other; an arc away from it at its nearest point.
+            let (here, from) = match (it.is_via, touching) {
+                (true, true) => (it.a, start),
+                (true, false) => (it.a, theirs),
+                (false, true) => (it.mid.unwrap_or(it.a), start),
+                (false, false) => (mine, theirs),
+            };
+            let away = sub(here, from);
             return if norm(away) < 1e-9 {
                 Vec::new()
             } else {
@@ -545,25 +685,43 @@ impl<'a> Search<'a> {
         let mut saved: Vec<(usize, Item)> = Vec::new();
         let mut was_at: Vec<(usize, Pt)> = Vec::new();
         let is_via = self.items[i].is_via;
+        // An arc moves whole, as a via does: both its ends, or not at all.
+        let whole = is_via || self.items[i].arc.is_some();
         let ends: &[End] = if is_via { &[End::A] } else { &[End::A, End::B] };
+        if whole
+            && !is_via
+            && ends
+                .iter()
+                .any(|&e| !self.joint_free(self.at[i][e as usize], i))
+        {
+            return Pushed::Blocked;
+        }
+        let mut followed = true;
         for &e in ends {
             let j = self.at[i][e as usize];
-            if !self.joint_free(j) {
+            if !self.joint_free(j, i) {
                 continue;
             }
             let p = self.items[i].end(e);
-            let to = if is_via {
+            let to = if whole {
                 add(p, scale(n, d))
             } else {
                 self.target(j, i, p, n, d)
             };
-            was_at.push((j, self.joints[j].at));
-            self.drag(j, to, &mut saved);
+            followed &= self.drag(j, to, &mut saved, &mut was_at);
         }
-        if saved.is_empty() {
-            return Pushed::Blocked;
+        // The tees on the piece's body follow it.
+        if followed && !saved.is_empty() {
+            followed = self.carry_riders(&[i], &mut saved, &mut was_at, 0);
         }
         let undo = Undo { saved, was_at };
+        if undo.saved.is_empty() {
+            return Pushed::Blocked;
+        }
+        if !followed {
+            self.undo(undo);
+            return Pushed::Blocked;
+        }
         if !self.sound(&undo.saved) {
             self.undo(undo);
             return Pushed::Missed;
@@ -584,7 +742,7 @@ impl<'a> Search<'a> {
         for (k, it) in undo.saved {
             self.items[k] = it;
         }
-        for (j, at) in undo.was_at {
+        for (j, at) in undo.was_at.into_iter().rev() {
             self.joints[j].at = at;
         }
     }
@@ -667,7 +825,8 @@ fn item_of(p: &Piece, layers: &dyn Fn(CopperLayer) -> Option<usize>) -> Option<I
                 b: t.to,
                 orig: (t.from, t.to),
                 arc: t.mid.is_some().then(|| t.clone()),
-                pinned: t.mid.is_some(),
+                mid: t.mid,
+                pinned: false,
                 shape: DrcShape::disc(fpt(t.from), 0.0),
             };
             it.reshape();
@@ -685,6 +844,7 @@ fn item_of(p: &Piece, layers: &dyn Fn(CopperLayer) -> Option<usize>) -> Option<I
                 b: v.at,
                 orig: (v.at, v.at),
                 arc: None,
+                mid: None,
                 pinned: false,
                 shape: DrcShape::disc(fpt(v.at), 0.0),
             };
@@ -710,16 +870,37 @@ impl Ground {
         let layers = room.layers();
         let index = |l: CopperLayer| room.layer(l.name());
         let mut items: Vec<Item> = pieces.iter().filter_map(|p| item_of(p, &index)).collect();
-        let shapes: Vec<DrcShape> = match drawn.corners {
+        let start = drawn.corners.first().copied().unwrap_or_default();
+        let mut shapes: Vec<(usize, DrcShape, Pt)> = match drawn.corners {
             [] => Vec::new(),
             [one] => vec![segment(*one, *one, drawn.width)],
             many => many
                 .windows(2)
                 .map(|w| segment(w[0], w[1], drawn.width))
                 .collect(),
-        };
-        let start = drawn.corners.first().copied().unwrap_or_default();
-        // Tees: a track whose body has the end of another track of the net on it stays where it is.
+        }
+        .into_iter()
+        .map(|shape| (drawn_ix, shape, start))
+        .collect();
+        for other in drawn.others {
+            match other {
+                What::Track(t) => {
+                    if let Some(l) = index(t.layer) {
+                        let shape = DrcShape::stroke(
+                            t.centre_line().into_iter().map(fpt).collect(),
+                            t.width / 2.0,
+                        );
+                        shapes.push((l, shape, t.from));
+                    }
+                }
+                What::Via(v) => {
+                    for l in 0..layers {
+                        shapes.push((l, DrcShape::disc(fpt(v.at), v.diameter / 2.0), v.at));
+                    }
+                }
+            }
+        }
+        // Tees on an arc: the arc stays where it is (a straight track carries its tees with it).
         self.pin_tees(&mut items);
         let (joints, at) = self.joints_of(&items);
         let count = items.len();
@@ -730,8 +911,7 @@ impl Ground {
             joints,
             at,
             settled: vec![false; count],
-            drawn: (drawn.net.to_string(), drawn_ix, shapes),
-            drawn_start: start,
+            drawn: (drawn.net.to_string(), shapes),
             broken: vec![false; count],
             checked: 0,
         };
@@ -739,22 +919,22 @@ impl Ground {
             s.joints[j].first = s.corner(j).map_or(180.0, |(least, _)| least);
         }
         // What broke a space before the track was drawn is left alone.
-        let drawn_shapes = std::mem::take(&mut s.drawn.2);
+        let drawn_shapes = std::mem::take(&mut s.drawn.1);
         for i in 0..count {
             let b = s.items[i].shape.bounds;
             if drawn_shapes
                 .iter()
-                .any(|d| d.bounds.overlaps(&bounds_near(&b, NEAR)))
+                .any(|(_, d, _)| d.bounds.overlaps(&bounds_near(&b, NEAR)))
             {
                 s.broken[i] = !s.item_fits(i, Scope::All);
             }
         }
-        s.drawn.2 = drawn_shapes;
+        s.drawn.1 = drawn_shapes;
         let mut dirty: Vec<usize> = Vec::new();
         let mut pushed = 0usize;
         loop {
             // The items near the track, or near what moved last, that do not keep their spaces.
-            let mut sources: Vec<Bounds> = s.drawn.2.iter().map(|d| d.bounds).collect();
+            let mut sources: Vec<Bounds> = s.drawn.1.iter().map(|(_, d, _)| d.bounds).collect();
             sources.extend(dirty.iter().map(|&k| s.items[k].shape.bounds));
             let mut candidates: Vec<usize> = (0..count)
                 .filter(|&k| {
@@ -828,6 +1008,7 @@ impl Ground {
                         id: it.id,
                         from: round6(it.a),
                         to: round6(it.b),
+                        mid: it.mid.map(round6),
                     }
                 }
             })
@@ -839,7 +1020,8 @@ impl Ground {
         })
     }
 
-    /// Pin the tracks that have the end of another track of their net on their body.
+    /// Pin the arcs that have the end of another track of their net on their body: an arc carries
+    /// no tee with it. (A straight track does: the joints on its body ride it, [`Joint::rides`].)
     fn pin_tees(&self, items: &mut [Item]) {
         let mut ends: Vec<(String, Pt, usize)> = Vec::new();
         for (k, it) in items.iter().enumerate() {
@@ -850,15 +1032,16 @@ impl Ground {
         }
         let mut pin: Vec<usize> = Vec::new();
         for (k, it) in items.iter().enumerate() {
-            if it.is_via || it.arc.is_some() {
+            let Some(arc) = it.arc_now() else {
                 continue;
-            }
+            };
+            let line = arc.centre_line();
             let on = ends.iter().any(|(net, p, owner)| {
                 *owner != k
                     && *net == it.net
                     && norm(sub(*p, it.a)) > ON
                     && norm(sub(*p, it.b)) > ON
-                    && to_segment(*p, it.a, it.b) <= ON
+                    && line.windows(2).any(|w| to_segment(*p, w[0], w[1]) <= ON)
             });
             if on {
                 pin.push(k);
@@ -887,6 +1070,8 @@ impl Ground {
                         net: it.net.clone(),
                         members: Vec::new(),
                         anchored: false,
+                        held: false,
+                        rides: None,
                         excused: false,
                         fixed: Vec::new(),
                         first: 180.0,
@@ -965,25 +1150,34 @@ impl Ground {
                 }
             }
             joint.anchored = anchored;
+            joint.held = anchored;
             joint.excused = excused;
             joint.fixed = fixed;
         }
-        // A joint on the body of another piece of its net (a tee) stays too.
-        let on_body: Vec<bool> = joints
+        // A joint on the body of another straight piece of its net (a tee) stays where a piece
+        // that meets it is pushed, and rides the body when the body moves.
+        let on_body: Vec<Option<(usize, f64)>> = joints
             .iter()
             .map(|joint| {
-                items.iter().enumerate().any(|(k, it)| {
-                    !it.is_via
+                items.iter().enumerate().find_map(|(k, it)| {
+                    let on = !it.is_via
                         && it.arc.is_none()
+                        && !it.pinned
                         && it.net == joint.net
                         && !joint.members.iter().any(|&(m, _)| m == k)
-                        && to_segment(joint.at, it.a, it.b) <= ON
+                        && to_segment(joint.at, it.a, it.b) <= ON;
+                    on.then(|| {
+                        let ab = sub(it.b, it.a);
+                        let t = dot(sub(joint.at, it.a), ab) / dot(ab, ab).max(1e-18);
+                        (k, t.clamp(0.0, 1.0))
+                    })
                 })
             })
             .collect();
         for (joint, on) in joints.iter_mut().zip(on_body) {
-            if on {
+            if let Some(body) = on {
                 joint.anchored = true;
+                joint.rides = Some(body);
             }
         }
         (joints, at)

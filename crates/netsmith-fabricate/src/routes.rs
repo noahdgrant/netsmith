@@ -247,11 +247,14 @@ pub enum Edit {
         on: bool,
     },
     /// Track `track` of the net (numbered from 1) with its ends at `from` and `to`: what the
-    /// editor's drag of a track's end makes. A locked track, and an arc, are refused.
+    /// editor's drag of a track's end makes. An arc is moved with its middle, `mid` (a shove
+    /// moves one whole, issue 1009); an arc given no `mid`, a straight track given one, and a
+    /// locked track are refused.
     MoveTrack {
         net: String,
         track: usize,
         from: [f64; 2],
+        mid: Option<[f64; 2]>,
         to: [f64; 2],
     },
     /// Via `via` of the net (numbered from 1) at `at`. A locked via is refused.
@@ -749,6 +752,7 @@ fn change_record(
             net,
             track: n,
             from,
+            mid,
             to,
         } => {
             let have = record.tracks.len();
@@ -761,12 +765,21 @@ fn change_record(
                     "track {n} of net {net} is locked: unlock it first"
                 )));
             }
-            if t.mid.is_some() {
-                return Err(Refusal::Refused(format!(
-                    "track {n} of net {net} is an arc, whose ends are not moved: delete it and draw it again"
-                )));
+            match (t.mid.is_some(), mid.is_some()) {
+                (true, false) => {
+                    return Err(Refusal::Refused(format!(
+                        "track {n} of net {net} is an arc, whose ends are not moved alone: delete it and draw it again"
+                    )));
+                }
+                (false, true) => {
+                    return Err(Refusal::Refused(format!(
+                        "track {n} of net {net} is straight: it has no middle to move"
+                    )));
+                }
+                _ => {}
             }
             t.from = *from;
+            t.mid = *mid;
             t.to = *to;
             Ok(format!("moved track {n} of net {net}"))
         }
@@ -1012,6 +1025,62 @@ mod tests {
             z.outline[2],
             [board.outline.width() - e, board.outline.height() - e]
         );
+    }
+
+    #[test]
+    fn an_arc_is_moved_whole_with_its_middle_and_never_by_its_ends_alone() {
+        // Issue 1009: a shove moves an arc whole.
+        let board = led();
+        let mut routes = Routes::default();
+        let track = |from: [f64; 2], mid: Option<[f64; 2]>, to: [f64; 2]| Edit::AddTrack {
+            net: "GND".into(),
+            layer: netsmith_pcb::CopperLayer::Back,
+            width: Some(0.2),
+            from,
+            mid,
+            to,
+            lock: false,
+        };
+        edit(
+            &board,
+            &mut routes,
+            &track([7.0, 1.6], Some([8.0, 1.1]), [9.0, 1.6]),
+        )
+        .unwrap();
+        edit(&board, &mut routes, &track([11.0, 1.4], None, [12.0, 1.4])).unwrap();
+        let mv = |n: usize, from: [f64; 2], mid: Option<[f64; 2]>, to: [f64; 2]| Edit::MoveTrack {
+            net: "GND".into(),
+            track: n,
+            from,
+            mid,
+            to,
+        };
+        let said = edit(
+            &board,
+            &mut routes,
+            &mv(1, [7.0, 1.8], Some([8.0, 1.3]), [9.0, 1.8]),
+        )
+        .unwrap();
+        assert_eq!(said, "moved track 1 of net GND");
+        let arc = &routes.boards[&board.name].nets["GND"].tracks[0];
+        assert_eq!(
+            (arc.from, arc.mid, arc.to),
+            ([7.0, 1.8], Some([8.0, 1.3]), [9.0, 1.8])
+        );
+        let before = routes.clone();
+        let alone = refusal(edit(
+            &board,
+            &mut routes,
+            &mv(1, [7.0, 2.0], None, [9.0, 2.0]),
+        ));
+        assert!(alone.contains("is an arc"), "{alone}");
+        let straight = refusal(edit(
+            &board,
+            &mut routes,
+            &mv(2, [11.0, 1.6], Some([11.5, 1.7]), [12.0, 1.6]),
+        ));
+        assert!(straight.contains("is straight"), "{straight}");
+        assert_eq!(routes, before);
     }
 
     #[test]

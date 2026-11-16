@@ -4,13 +4,20 @@
 
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 
-import type { PcbBox, PcbCrossed, PcbKeepout, PcbPart, PcbScene, PcbShoved, PcbWalk } from '../api';
+import type { PcbBox, PcbCrossed, PcbKeepout, PcbPart, PcbRun, PcbScene, PcbShove, PcbShoved, PcbWalk } from '../api';
 import { PanZoom, type PanZoomApi } from '../components/PanZoom';
 import { hoverEnter, hoverLeave } from '../hover';
 import {
+  askReroute,
+  askShove,
   askWalk,
   changeRoutes,
+  clearReroute,
+  clearShove,
   clearWalk,
+  rerouted,
+  shoveAsked,
+  shoveNow as roomNow,
   crossedShown,
   shoveShown,
   commit,
@@ -39,7 +46,6 @@ import {
   deleteChange,
   dragChanges,
   dragged,
-  drawChanges,
   endNear,
   lockChange,
   lockedOf,
@@ -52,7 +58,18 @@ import {
   shapeOf,
   trackPath,
 } from './routes';
-import { NOTHING_SHOVED, headingOf, shoveChanges, walkKey } from './walk';
+import {
+  NOTHING_SHOVED,
+  changeLayer,
+  dragShove,
+  drawLayered,
+  headingOf,
+  rerouteAsk,
+  shoveChanges,
+  shoveKey as placeKey,
+  viaShove,
+  walkKey,
+} from './walk';
 import { pickPart, say } from '../store';
 import {
   addKeepout,
@@ -119,10 +136,14 @@ interface Preview {
   route?: { net: string; from: Pt; to: Pt };
 }
 
-/** A track being drawn: its net and the points clicked so far, the first on an anchor. */
+/** A track being drawn: its net and the points clicked so far on the layer it is drawn on now, the first on an anchor or at the via
+ * of its last layer change; and the runs before that change, each on its layer, with the vias at the changes (issue 1009). */
 interface Draft {
   net: string;
+  layer: string;
   points: Pt[];
+  earlier: PcbRun[];
+  vias: Pt[];
   /** The router's copper the track so far crosses, as the walkaround said when the last corner was clicked: shown while the
    * pointer is on that corner and there is no segment to ask about. */
   crossed?: PcbCrossed;
@@ -204,15 +225,18 @@ export function Canvas(props: {
   };
   const [ghost, setGhost] = useState<Pt | null>(null);
   const anchors = useMemo(() => anchorsOf(sc), [sc]);
-  // On the layer the track tool draws on: an inner signal layer has its own width (issue 833).
-  const widthOf = (net: string) => {
+  // On the layer the track tool draws on (or `layer`): an inner signal layer has its own width (issue 833).
+  const widthOf = (net: string, layer: string = draft?.layer ?? layerNow) => {
     const w = sc.netWidths.find((n) => n.net === net);
-    return (layerNow.startsWith('inner') ? w?.inner_width : w?.width) ?? w?.width ?? 0.2;
+    return (layer.startsWith('inner') ? w?.inner_width : w?.width) ?? w?.width ?? 0.2;
   };
+  // The net of the copper under the pointer, for a via there.
+  const [ghostNet, setGhostNet] = useState<string | null>(null);
   // A track being drawn is dropped when the tool changes.
   useEffect(() => {
     if (activeTool !== 'track') setDraft(null);
     if (activeTool !== 'track' && activeTool !== 'via') setGhost(null);
+    if (activeTool !== 'via') setGhostNet(null);
   }, [activeTool]);
 
   // The walkaround (issue 726): the next segment of the track goes from its last corner to the pointer round the copper in the
@@ -220,27 +244,63 @@ export function Canvas(props: {
   // A layer the board has no track on (the tool's layer of another board) is its top.
   const layerNow = sc.trackLayers.includes(trackLayer.value) ? trackLayer.value : 'top';
   const shoveNow = trackShove.value;
-  const walkAsk = (d: Draft, to: Pt, layer: string = layerNow): PcbWalk => ({
+  const walkAsk = (d: Draft, to: Pt): PcbWalk => ({
     board: sc.board,
     net: d.net,
-    layer,
+    layer: d.layer,
     width: null,
     from: d.points[d.points.length - 1],
     to,
     heading: headingOf(d.points),
     track: d.points,
     shove: trackShove.value,
+    earlier: d.earlier,
+    vias: d.vias,
   });
   useEffect(() => {
     const last = draft?.points[draft.points.length - 1];
-    if (activeTool === 'track' && draft && ghost && last && !samePoint(last, ghost)) askWalk(walkAsk(draft, ghost, layerNow));
+    if (activeTool === 'track' && draft && ghost && last && !samePoint(last, ghost)) askWalk(walkAsk(draft, ghost));
     else clearWalk();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [draft, ghost, layerNow, shoveNow, sc, activeTool]);
+  }, [draft, ghost, shoveNow, sc, activeTool]);
   useEffect(() => clearWalk, []);
+  // The layer picked in the toolbar while a track is drawn is a layer change at its last corner (issue 1009): a via goes there once
+  // the server says it has room, else the layer goes back and the toast says what is in the way.
+  useEffect(() => {
+    const d = draftRef.current;
+    if (d && d.layer !== layerNow) changeDraftLayer(layerNow);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [layerNow]);
   // What the server said of the segment the pointer is at the end of, once it has said it.
   const answer = walked.value;
-  const walk = draft && ghost && answer && answer.key === walkKey(walkAsk(draft, ghost, layerNow)) ? answer : null;
+  const walk = draft && ghost && answer && answer.key === walkKey(walkAsk(draft, ghost)) ? answer : null;
+  // The router's crossed nets routed again round the track (issue 1009), asked once a walk that crosses router copper is answered.
+  const crossesRouter = !!walk?.points && (walk.crossed.tracks.length > 0 || walk.crossed.vias.length > 0);
+  const againAsk = draft && ghost && walk?.points && crossesRouter ? rerouteAsk(walkAsk(draft, ghost), walk.points) : null;
+  const againKey = againAsk ? walkKey(againAsk) : '';
+  useEffect(() => {
+    if (againAsk) askReroute(againAsk);
+    else clearReroute();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [againKey]);
+  useEffect(() => clearReroute, []);
+  const again = rerouted.value && rerouted.value.key === againKey ? rerouted.value.answer : null;
+  // A via under the pointer, or the shapes of a drag: whether they have room there, and what they shove aside (issue 1009).
+  const record = preview.route ? sc.routes.find((n) => n.net === preview.route!.net) : undefined;
+  const placing: PcbShove | null =
+    activeTool === 'via' && ghost && ghostNet
+      ? viaShove(sc.board, ghostNet, ghost, shoveNow)
+      : preview.route && record
+        ? dragShove(sc.board, record, dragChanges(record, preview.route.from, preview.route.to), shoveNow)
+        : null;
+  const placingKey = placing && (placing.tracks.length > 0 || placing.vias.length > 0) ? placeKey(placing) : '';
+  useEffect(() => {
+    if (placing && placingKey) askShove(placing);
+    else clearShove();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [placingKey]);
+  useEffect(() => clearShove, []);
+  const placed = placingKey && shoveAsked.value?.key === placingKey ? shoveAsked.value : null;
   // The router's copper the track crosses: as the last answer says, or as it said when the last corner was clicked.
   const crossed = draft ? (walk?.crossed ?? draft.crossed ?? null) : null;
   const crossedKey = crossed ? `${crossed.tracks.length}/${crossed.vias.length}` : '';
@@ -251,8 +311,8 @@ export function Canvas(props: {
   useEffect(() => () => void (crossedShown.value = null), []);
   // The copper of the routes file the track shoves out of its way, as the last answer says, or as it said when the last corner was
   // clicked; and why it could not where something was in the way.
-  const shoving = draft ? (walk?.shoved ?? draft.shoved ?? NOTHING_SHOVED) : null;
-  const stuck = draft ? (walk ? walk.stuck : (draft.stuck ?? null)) : null;
+  const shoving = draft ? (walk?.shoved ?? draft.shoved ?? NOTHING_SHOVED) : placingKey ? (placed?.shoved ?? NOTHING_SHOVED) : null;
+  const stuck = draft ? (walk ? walk.stuck : (draft.stuck ?? null)) : placingKey ? (placed?.stuck ?? null) : null;
   const shoveKey = shoving ? `${shoving.tracks.length}/${shoving.vias.length}/${stuck ?? ''}` : '';
   useEffect(() => {
     shoveShown.value = shoving ? { shoved: shoving, stuck } : null;
@@ -263,16 +323,21 @@ export function Canvas(props: {
   const pointer = useRef<{ x: number; y: number } | null>(null);
   const tipped = useRef(false);
   const noWay = !!walk && !walk.points;
+  // A via or a drag with no room says what is in the way there too.
+  const noRoomHere = !!placed?.reason;
   useEffect(() => {
     if (noWay && pointer.current) {
       tipped.current = true;
       props.onTip({ ...pointer.current, title: 'No way there', lines: [walk?.reason ?? 'no way found'] });
+    } else if (noRoomHere && pointer.current) {
+      tipped.current = true;
+      props.onTip({ ...pointer.current, title: 'No room there', lines: [placed?.reason ?? 'no room'] });
     } else if (tipped.current) {
       tipped.current = false;
       props.onTip(null);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [noWay, walk?.key]);
+  }, [noWay, walk?.key, noRoomHere, placed?.key]);
 
   /** The corners the track takes to `to`, one click at a time (the walkaround is asked, so a click waits for its answer, and the
    * end of the track waits for the clicks before it). A click with no way is refused with the reason, and the track is as it was. */
@@ -289,6 +354,27 @@ export function Canvas(props: {
         return;
       }
       setDraft({ ...d, points: [...d.points, ...found.points.slice(1)], crossed: found.crossed, shoved: found.shoved, stuck: found.stuck });
+    });
+  }
+
+  /** Change the layer of the track being drawn at its last corner (after the clicks before it): a via goes there if the server says
+   * it has room ([`changeLayer`]); if not, the toolbar's layer goes back and the toast says what is in the way. */
+  function changeDraftLayer(layer: string) {
+    corners.current = corners.current.then(async () => {
+      const d = draftRef.current;
+      if (!d || d.layer === layer) return;
+      const next = changeLayer(d, layer);
+      const via = next.vias.length > d.vias.length ? next.vias[next.vias.length - 1] : null;
+      if (via) {
+        const room = await roomNow(viaShove(sc.board, d.net, via, trackShove.value));
+        if (draftRef.current !== d) return;
+        if (room.reason) {
+          say(`No via for a layer change there: ${room.reason}`, true);
+          trackLayer.value = d.layer;
+          return;
+        }
+      }
+      setDraft({ ...next, crossed: undefined, shoved: undefined, stuck: undefined });
     });
   }
 
@@ -322,8 +408,8 @@ export function Canvas(props: {
     setDraft(null);
     setGhost(null);
     if (!d) return;
-    const drawn = drawChanges(d.net, layerNow, d.points);
-    if (drawn.length === 0) {
+    const drawn = drawLayered(d);
+    if (!drawn.some((c) => c.what === 'add_track')) {
       say('A track needs a second point: click where it goes, then double-click or press Enter');
       return;
     }
@@ -448,7 +534,7 @@ export function Canvas(props: {
           say('A track starts on a pad, the end of a fixed track or a via');
           return;
         }
-        setDraft({ net: a.net, points: [a.at] });
+        setDraft({ net: a.net, layer: layerNow, points: [a.at], earlier: [], vias: [] });
         setGhost(a.at);
         return;
       }
@@ -467,7 +553,15 @@ export function Canvas(props: {
         return;
       }
       const at = a && a.net === net ? a.at : onGrid(p);
-      void changeRoutes([{ what: 'add_via', net, at }]);
+      // Refused with what is in the way where it has no room; with the shove, the copper it moves aside goes in the same edit
+      // (issue 1009).
+      void roomNow(viaShove(sc.board, net, at, trackShove.value)).then((room) => {
+        if (room.reason) {
+          say(`No via there: ${room.reason}`, true);
+          return;
+        }
+        void changeRoutes([{ what: 'add_via', net, at }, ...shoveChanges(room.shoved)]);
+      });
       return;
     }
     const additive = e.shiftKey || e.ctrlKey || e.metaKey;
@@ -532,11 +626,23 @@ export function Canvas(props: {
     // Where the next corner of the track, or the via, would go.
     const now = draftRef.current;
     if ((tool.value === 'track' && now) || tool.value === 'via') {
-      const next = anchorAt(e.target as Element, p, at.scale, now?.net)?.at ?? onGrid(p);
-      if (!ghost || !samePoint(ghost, next)) setGhost(next);
+      const a = anchorAt(e.target as Element, p, at.scale, now?.net);
+      if (tool.value === 'via') {
+        // The net a click here would put the via on, as `down` picks it.
+        const target = e.target as Element;
+        const copper = target.closest?.('.l-front-copper [data-net], .l-back-copper [data-net], .l-vias [data-net]');
+        const net = pickAt(target)?.net ?? a?.net ?? copper?.getAttribute('data-net') ?? null;
+        if (net !== ghostNet) setGhostNet(net);
+        const next = a && a.net === net ? a.at : onGrid(p);
+        if (!ghost || !samePoint(ghost, next)) setGhost(next);
+      } else {
+        const next = a?.at ?? onGrid(p);
+        if (!ghost || !samePoint(ghost, next)) setGhost(next);
+      }
     }
     if (!g) {
-      props.onTip(describe(e, p));
+      // A refusal at the pointer (no way, no room) stays while the pointer is on the same place.
+      if (!tipped.current) props.onTip(describe(e, p));
       const part = hitBox(sc.parts, p);
       setHovered(part?.path ?? null);
       // What is lit in the other views: the net of a track, a via or a pad under the pointer, else the part whose box it is in.
@@ -648,9 +754,17 @@ export function Canvas(props: {
       const record = sc.routes.find((n) => n.net === g.net);
       const drag = pv.route;
       if (!g.active || !record || !drag) return;
-      // The shapes stay where they were dragged until the server answers; a refusal puts them back.
+      // The shapes stay where they were dragged until the server answers; a refusal puts them back. Where they have no room the
+      // drag is refused with what is in the way; with the shove, the copper they move aside goes in the same edit (issue 1009).
       setPreview({ route: drag });
-      await changeRoutes(dragChanges(record, drag.from, drag.to));
+      const changes = dragChanges(record, drag.from, drag.to);
+      const room = changes.length ? await roomNow(dragShove(sc.board, record, changes, trackShove.value)) : null;
+      if (room?.reason) {
+        say(`The drag is refused: ${room.reason}`, true);
+        setPreview({});
+        return;
+      }
+      await changeRoutes([...changes, ...(room ? shoveChanges(room.shoved) : [])]);
       setPreview({});
     }
   }
@@ -694,7 +808,13 @@ export function Canvas(props: {
       } else if (draftRef.current && k === 'backspace') {
         used();
         const d = draftRef.current;
-        setDraft(d.points.length > 1 ? { ...d, points: d.points.slice(0, -1), crossed: undefined, shoved: undefined, stuck: undefined } : null);
+        const before = d.earlier[d.earlier.length - 1];
+        if (d.points.length > 1) setDraft({ ...d, points: d.points.slice(0, -1), crossed: undefined, shoved: undefined, stuck: undefined });
+        else if (before) {
+          // At the via of a layer change: it goes, and the track is on the layer before it again.
+          setDraft({ ...changeLayer(d, before.layer), crossed: undefined, shoved: undefined, stuck: undefined });
+          trackLayer.value = before.layer;
+        } else setDraft(null);
       } else if ((k === 'x' || k === 'v') && sc.routesFile) {
         used();
         const next = k === 'x' ? 'track' : 'via';
@@ -889,10 +1009,10 @@ export function Canvas(props: {
             >
               {shoving.tracks.map((t, i) => (
                 <g key={`t${i}`} class={`shove-track layer-${t.layer}`} data-net={t.net} data-track={t.track} data-layer={t.layer}>
-                  <path class="shove-was-halo" d={`M ${t.wasFrom.x} ${t.wasFrom.y} L ${t.wasTo.x} ${t.wasTo.y}`} stroke-width={t.width + 0.2} />
-                  <path class="shove-was-fade" d={`M ${t.wasFrom.x} ${t.wasFrom.y} L ${t.wasTo.x} ${t.wasTo.y}`} stroke-width={t.width + 0.02} />
-                  <path class="shove-now-halo" d={`M ${t.from.x} ${t.from.y} L ${t.to.x} ${t.to.y}`} stroke-width={t.width + 0.1} />
-                  <path class="shove-now" d={`M ${t.from.x} ${t.from.y} L ${t.to.x} ${t.to.y}`} stroke-width={t.width} />
+                  <path class="shove-was-halo" d={trackPath({ from: t.wasFrom, mid: t.wasMid, to: t.wasTo })} stroke-width={t.width + 0.2} />
+                  <path class="shove-was-fade" d={trackPath({ from: t.wasFrom, mid: t.wasMid, to: t.wasTo })} stroke-width={t.width + 0.02} />
+                  <path class="shove-now-halo" d={trackPath(t)} stroke-width={t.width + 0.1} />
+                  <path class="shove-now" d={trackPath(t)} stroke-width={t.width} />
                 </g>
               ))}
               {shoving.vias.map((v, i) => (
@@ -905,6 +1025,18 @@ export function Canvas(props: {
               ))}
             </g>
           )}
+          {again && (again.tracks.length > 0 || again.vias.length > 0) && (
+            // The router's crossed nets routed again round the track (issue 1009): a preview, dashed in the router's colour; the
+            // edit still discards the router's copper, and Place and route lays it.
+            <g class="router-again" data-testid="router-again" data-tracks={again.tracks.length} data-vias={again.vias.length} data-left={again.left}>
+              {again.tracks.map((t, i) => (
+                <path key={`t${i}`} class={`again-track layer-${t.layer}`} data-net={t.net} d={trackPath(t)} stroke-width={t.width} />
+              ))}
+              {again.vias.map((v, i) => (
+                <circle key={`v${i}`} class="again-via" data-net={v.net} cx={v.at.x} cy={v.at.y} r={v.diameter / 2} />
+              ))}
+            </g>
+          )}
           {draft &&
             (() => {
               // The segment under the pointer: the way the server found round the copper in the way, else (while it is
@@ -913,15 +1045,28 @@ export function Canvas(props: {
               const ahead = found ? found.slice(1) : ghost ? [ghost] : [];
               const line = [...draft.points, ...ahead].map((q) => `${q.x},${q.y}`).join(' ');
               const state = !walk ? 'asked' : found ? 'path' : 'refused';
+              const layerClass = (l: string) => `layer-${l.startsWith('inner') ? 'inner' : l}`;
               return (
                 <g
-                  class={`track-draft layer-${layerNow.startsWith('inner') ? 'inner' : layerNow} walk-${state}`}
+                  class={`track-draft ${layerClass(draft.layer)} walk-${state}`}
                   data-testid="track-draft"
                   data-net={draft.net}
+                  data-layer={draft.layer}
                   data-points={draft.points.length}
+                  data-runs={draft.earlier.length + 1}
+                  data-vias={draft.vias.length}
                   data-walk={state}
                   data-walk-corners={found ? Math.max(found.length - 2, 0) : 0}
                 >
+                  {draft.earlier.map((r, i) => (
+                    // The runs before a layer change, each in its layer's colour.
+                    <g key={`r${i}`} class={`track-draft-run ${layerClass(r.layer)}`} data-layer={r.layer}>
+                      <polyline points={r.points.map((q) => `${q.x},${q.y}`).join(' ')} stroke-width={widthOf(draft.net, r.layer)} />
+                    </g>
+                  ))}
+                  {draft.vias.map((v, i) => (
+                    <circle key={`v${i}`} class="track-draft-via" data-testid="track-draft-via" cx={v.x} cy={v.y} r={sc.viaDiameter / 2} />
+                  ))}
                   <polyline points={line} stroke-width={widthOf(draft.net)} />
                   <polyline class="track-draft-line" points={line} />
                   {draft.points.map((q, i) => (

@@ -386,6 +386,26 @@ pub trait Backend: Send + Sync + 'static {
             edit.board
         )))
     }
+    /// Whether a via, or the shapes of a drag, may go where they are, and with `shove` the
+    /// unlocked shapes of the routes file moved out of their way (issue 1009). Nothing is
+    /// written; no room is an answer.
+    fn pcb_shove(
+        &self,
+        edit: &crate::api::PcbShove,
+    ) -> Result<crate::api::PcbShoveAnswer, ApiError> {
+        Err(ApiError::not_found(format!(
+            "`{}` has no copper to shove",
+            edit.board
+        )))
+    }
+    /// The router's nets a track being drawn crosses, routed again round it, as a preview
+    /// (issue 1009). Nothing is written.
+    fn pcb_reroute(&self, edit: &crate::api::PcbWalk) -> Result<crate::api::PcbRerouted, ApiError> {
+        Err(ApiError::not_found(format!(
+            "`{}` has no router copper to route again",
+            edit.board
+        )))
+    }
     /// Lock or unlock the pin of one pin request: the `lock` line of its entry in the pin file
     /// beside the board's source, and nothing else of the file (ADR 0101). Refused with 422 and
     /// the reason for a request that has no pin, and with 409 if the pin file is not as the

@@ -85,6 +85,17 @@ export async function run(tools) {
   await page.emulateMedia({ colorScheme: 'light' });
   await whenIdle(page);
 
+  step('the crossed VCC net is shown routed again round the track, dashed, as a preview (issue 1009); nothing is written');
+  await page.waitForSelector('[data-testid=router-again]');
+  await whenIdle(page);
+  const again = page.locator('[data-testid=router-again]');
+  const againNets = await again.locator('[data-net]').evaluateAll((es) => [...new Set(es.map((e) => e.getAttribute('data-net')))]);
+  expect(Number(await again.getAttribute('data-tracks')) >= 1 && againNets.join() === 'VCC', `VCC is laid again round it (${againNets})`);
+  const note = await page.locator('[data-testid=track-again]').innerText();
+  expect(/routed again round it/.test(note), `the note says so ("${note}")`);
+  expect((await scene(page, BOARD)).routed, 'the board is still routed: the preview wrote nothing');
+  await shot('shove-again');
+
   step('a pointer that crosses no router copper marks nothing');
   await hover({ x: via.x + 1.0, y: via.y });
   expect((await draft().getAttribute('data-walk')) === 'path' && (await shoved().count()) === 0, 'no mark');

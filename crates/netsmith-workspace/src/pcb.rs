@@ -78,9 +78,10 @@ use netsmith_editor::{
         ComparePcbPlace, CompareSize, DrawnKeepout, KeepoutOrigin, KeepoutPlacement, KicadState,
         PartPlacement, PcbBox, PcbChange, PcbCrossed, PcbCrossedTrack, PcbCrossedVia, PcbCutout,
         PcbFinding, PcbFindings, PcbKeepout, PcbNetWidth, PcbPad, PcbPart, PcbPoint, PcbRegenerate,
-        PcbRegenerated, PcbRegeneratedPart, PcbReport, PcbRequirement, PcbRouteNet, PcbRouteTrack,
-        PcbRouteVia, PcbScene, PcbShoved, PcbShovedTrack, PcbShovedVia, PcbSide, PcbSummary,
-        PcbTotals, PcbWalk, PcbWalked, RequiredPlace, RoutesChange, Severity,
+        PcbRegenerated, PcbRegeneratedPart, PcbReport, PcbRequirement, PcbRerouted, PcbRouteNet,
+        PcbRouteTrack, PcbRouteVia, PcbScene, PcbShapeRef, PcbShove, PcbShoveAnswer, PcbShoved,
+        PcbShovedTrack, PcbShovedVia, PcbSide, PcbSummary, PcbTotals, PcbWalk, PcbWalked,
+        RequiredPlace, RoutesChange, Severity,
     },
 };
 use netsmith_pcb::{
@@ -124,6 +125,10 @@ pub struct Entry {
     /// What netsmith's design rules check finds on the routed board: made when first asked
     /// for, and forgotten when the board is routed again.
     drc: OnceLock<Vec<PcbFinding>>,
+    /// The grounds the track tool's walks and shoves are asked on, built when first asked for
+    /// (issue 1009). Placed board and routes file only: routing does not change them.
+    grounds: OnceLock<std::sync::Arc<Grounds>>,
+    shove_grounds: OnceLock<std::sync::Arc<ShoveGrounds>>,
     /// What the design requires of where the parts go (ADR 0045), if it says anything.
     constraints: Option<netsmith_geom::Constraints>,
     /// Those requirements measured on the placed board: made when first asked for. Routing
@@ -424,6 +429,8 @@ impl Entry {
             layout_stamp,
             kicad: None,
             drc: OnceLock::new(),
+            grounds: OnceLock::new(),
+            shove_grounds: OnceLock::new(),
             constraints: netsmith_pipeline::constraints::of_design(
                 &data.built.design,
                 data.constraints_warn,
@@ -1087,10 +1094,12 @@ pub fn routes_edit(
             track,
             from,
             to,
+            mid,
         } => Edit::MoveTrack {
             net: net.clone(),
             track: *track as usize,
             from: at(from),
+            mid: mid.as_ref().map(at),
             to: at(to),
         },
         RoutesChange::MoveVia { net, via, at: p } => Edit::MoveVia {
@@ -1118,10 +1127,10 @@ impl Entry {
     }
 
     /// The board a shove is asked about (issue 726, the third slice): [`Entry::board_for_walk`]
-    /// without the shapes that may move, and those shapes. A shape may move when it is a straight
-    /// track or a via of the routes file that is not locked, in a record that is not locked and
-    /// is current (its pads are where it was written). Everything else of the routes file stays
-    /// on the board.
+    /// without the shapes that may move, and those shapes. A shape may move when it is a track
+    /// (straight or an arc, issue 1009) or a via of the routes file that is not locked, in a
+    /// record that is not locked and is current (its pads are where it was written). Everything
+    /// else of the routes file stays on the board.
     pub fn board_for_shove(&self) -> (Board, Vec<Movable>) {
         let mut routes = self.routes.clone();
         let mut movable = Vec::new();
@@ -1135,7 +1144,7 @@ impl Entry {
                 let mut n = 0u32;
                 record.tracks.retain(|t| {
                     n += 1;
-                    if t.lock || t.mid.is_some() {
+                    if t.lock {
                         return true;
                     }
                     movable.push(Movable {
@@ -1164,6 +1173,26 @@ impl Entry {
         // A file that does not apply is the scene's finding; the walk is then of the board as placed.
         let _ = netsmith_pcb::apply_routes(&mut board, &routes, "the routes file");
         (board, movable)
+    }
+
+    /// What a walk is asked on ([`Grounds`]): built the first time it is asked for and kept for
+    /// as long as the entry is (an edit of the routes file or of the layout makes a new entry),
+    /// so that a walk asked as the pointer moves builds no ground (issue 1009).
+    pub fn walk_grounds(&self) -> Result<std::sync::Arc<Grounds>, ApiError> {
+        if let Some(g) = self.grounds.get() {
+            return Ok(g.clone());
+        }
+        let g = std::sync::Arc::new(Grounds::of(self.board_for_walk())?);
+        Ok(self.grounds.get_or_init(|| g).clone())
+    }
+
+    /// What a shove is asked on ([`ShoveGrounds`]), kept as [`Entry::walk_grounds`] is.
+    pub fn shove_grounds(&self) -> Result<std::sync::Arc<ShoveGrounds>, ApiError> {
+        if let Some(g) = self.shove_grounds.get() {
+            return Ok(g.clone());
+        }
+        let g = std::sync::Arc::new(ShoveGrounds::of(self.board_for_shove())?);
+        Ok(self.shove_grounds.get_or_init(|| g).clone())
     }
 
     /// The router's copper on the board, if it was routed: what the board has beyond the copper
@@ -1201,15 +1230,147 @@ pub struct RouterCopper {
     pub vias: Vec<netsmith_pcb::Via>,
 }
 
-/// The way for a straight track from its last corner to a point on `board` (the copper a track
-/// is checked against, [`Entry::board_for_walk`]): the corners of `netsmith_router::walk`, or
-/// the reason there are none. A way not found is an answer, not an error.
-pub fn walk(
+/// What a walk is asked on, built once for a placed board and its routes file and kept with its
+/// [`Entry`] (issue 1009): the board as [`Entry::board_for_walk`] makes it and its ground.
+pub struct Grounds {
+    pub board: Board,
+    pub ground: netsmith_router::walk::Ground,
+}
+
+impl Grounds {
+    pub fn of(board: Board) -> Result<Grounds, ApiError> {
+        let ground = netsmith_router::walk::Ground::of(&board).map_err(ApiError::internal)?;
+        Ok(Grounds { board, ground })
+    }
+}
+
+/// What a shove is asked on ([`Entry::board_for_shove`]): the shapes that may move, and the
+/// ground of the board without them. Built once and kept as [`Grounds`] is.
+pub struct ShoveGrounds {
+    pub movable: Vec<Movable>,
+    pub ground: netsmith_router::walk::Ground,
+}
+
+impl ShoveGrounds {
+    pub fn of((board, movable): (Board, Vec<Movable>)) -> Result<ShoveGrounds, ApiError> {
+        let ground = netsmith_router::walk::Ground::of(&board).map_err(ApiError::internal)?;
+        Ok(ShoveGrounds { movable, ground })
+    }
+
+    /// The shapes that may move, as the shove takes them, less those `moving` names (a drag's,
+    /// which its new copper replaces).
+    fn pieces(&self, moving: &[PcbShapeRef]) -> Vec<netsmith_router::shove::Piece> {
+        self.movable
+            .iter()
+            .enumerate()
+            .filter(|(_, m)| {
+                !moving.iter().any(|r| {
+                    r.net == m.net
+                        && match m.shape {
+                            MovableShape::Track(_) => r.track == Some(m.number),
+                            MovableShape::Via(_) => r.via == Some(m.number),
+                        }
+                })
+            })
+            .map(|(id, m)| netsmith_router::shove::Piece {
+                id,
+                what: match &m.shape {
+                    MovableShape::Track(t) => netsmith_router::shove::What::Track(t.clone()),
+                    MovableShape::Via(v) => netsmith_router::shove::What::Via(v.clone()),
+                },
+            })
+            .collect()
+    }
+}
+
+/// The copper of a track drawn before its last layer change (`PcbWalk::earlier`) and the vias
+/// at its changes (`PcbWalk::vias`), as new copper of the net.
+fn earlier_copper(
+    board: &Board,
+    walk: &PcbWalk,
+) -> Result<Vec<netsmith_router::shove::What>, ApiError> {
+    use netsmith_router::shove::What;
+    let point = |p: &PcbPoint| netsmith_pcb::Pt::new(p.x, p.y);
+    let mut out = Vec::new();
+    for run in &walk.earlier {
+        let layer = track_layer(board, &run.layer)?;
+        let width = board.track_width_on(&walk.net, layer);
+        for w in run.points.windows(2) {
+            out.push(What::Track(netsmith_pcb::Track::straight(
+                &walk.net,
+                layer,
+                point(&w[0]),
+                point(&w[1]),
+                width,
+            )));
+        }
+    }
+    for v in &walk.vias {
+        out.push(What::Via(process_via(board, &walk.net, point(v), None)));
+    }
+    Ok(out)
+}
+
+/// A via of `net` at `at`, of the process's size unless `diameter` is given.
+fn process_via(
+    board: &Board,
+    net: &str,
+    at: netsmith_pcb::Pt,
+    diameter: Option<f64>,
+) -> netsmith_pcb::Via {
+    netsmith_pcb::Via {
+        net: net.to_string(),
+        at,
+        diameter: diameter.unwrap_or(board.rules.via_diameter),
+        drill: board.rules.via_drill,
+    }
+}
+
+/// The router's copper crossed by the new copper of a walk: each run of the track on its layer.
+fn crossed_by(
+    ground: &netsmith_router::walk::Ground,
     board: &Board,
     router: &RouterCopper,
-    shove: Option<&(Board, Vec<Movable>)>,
+    walk: &PcbWalk,
+    corners: &[netsmith_pcb::Pt],
+    layer: CopperLayer,
+    width: f64,
+) -> Result<netsmith_router::walk::Crossed, ApiError> {
+    let point = |p: &PcbPoint| netsmith_pcb::Pt::new(p.x, p.y);
+    let mut all = ground.crossed(
+        &walk.net,
+        layer,
+        width,
+        corners,
+        &router.tracks,
+        &router.vias,
+    );
+    for run in &walk.earlier {
+        let l = track_layer(board, &run.layer)?;
+        let pts: Vec<netsmith_pcb::Pt> = run.points.iter().map(point).collect();
+        let w = board.track_width_on(&walk.net, l);
+        let more = ground.crossed(&walk.net, l, w, &pts, &router.tracks, &router.vias);
+        all.tracks.extend(more.tracks);
+        all.vias.extend(more.vias);
+    }
+    all.tracks.sort_unstable();
+    all.tracks.dedup();
+    all.vias.sort_unstable();
+    all.vias.dedup();
+    Ok(all)
+}
+
+/// The way for a straight track from its last corner to a point, asked on `grounds` (the copper
+/// a track is checked against, [`Entry::board_for_walk`]): the corners of
+/// `netsmith_router::walk`, or the reason there are none. A way not found is an answer, not an
+/// error.
+pub fn walk(
+    grounds: &Grounds,
+    router: &RouterCopper,
+    shove: Option<&ShoveGrounds>,
     walk: &PcbWalk,
 ) -> Result<PcbWalked, ApiError> {
+    let board = &grounds.board;
     let layer = track_layer(board, &walk.layer)?;
     if !board.nets.iter().any(|n| n.name == walk.net) {
         return Err(ApiError::bad_request(format!(
@@ -1217,7 +1378,7 @@ pub fn walk(
             board.name, walk.net
         )));
     }
-    let ground = netsmith_router::walk::Ground::of(board).map_err(ApiError::internal)?;
+    let ground = &grounds.ground;
     let point = |p: &PcbPoint| netsmith_pcb::Pt::new(p.x, p.y);
     let asked = netsmith_router::walk::Walk {
         net: &walk.net,
@@ -1229,6 +1390,7 @@ pub fn walk(
         to: point(&walk.to),
         heading: walk.heading.as_ref().map(point),
     };
+    let earlier = earlier_copper(board, walk)?;
     // The corners of the track so far.
     let mut so_far: Vec<netsmith_pcb::Pt> = walk.track.iter().map(point).collect();
     if so_far.last().is_none_or(|l| l.distance(asked.from) > 1e-9) {
@@ -1237,39 +1399,27 @@ pub fn walk(
     let mut shoved = PcbShoved::default();
     let mut stuck: Option<String> = None;
     let mut walked = None;
-    if let Some((shove_board, movable)) = shove {
+    if let Some(sg) = shove {
         // The way through the copper that may move, and then that copper out of the way of it;
         // where that cannot be done, the way round all of it below.
-        let g = netsmith_router::walk::Ground::of(shove_board).map_err(ApiError::internal)?;
-        match g.walker().path(&asked) {
+        match sg.ground.walker().path(&asked) {
             Ok(found) => {
                 let mut corners = so_far.clone();
                 corners.extend(found.points.iter().skip(1).copied());
-                let pieces: Vec<netsmith_router::shove::Piece> = movable
-                    .iter()
-                    .enumerate()
-                    .map(|(id, m)| netsmith_router::shove::Piece {
-                        id,
-                        what: match &m.shape {
-                            MovableShape::Track(t) => {
-                                netsmith_router::shove::What::Track(t.clone())
-                            }
-                            MovableShape::Via(v) => netsmith_router::shove::What::Via(v.clone()),
-                        },
-                    })
-                    .collect();
+                let pieces = sg.pieces(&[]);
                 let drawn = netsmith_router::shove::Drawn {
                     net: &walk.net,
                     layer,
                     width: asked.width,
                     corners: &corners,
+                    others: &earlier,
                 };
-                match g.shove(&drawn, &pieces) {
+                match sg.ground.shove(&drawn, &pieces) {
                     Ok(done) => {
-                        shoved = shoved_of(movable, &done);
+                        shoved = shoved_of(&sg.movable, &done);
                         walked = Some(Ok(found));
                     }
-                    Err(why) => stuck = Some(stuck_text(movable, &why)),
+                    Err(why) => stuck = Some(stuck_text(&sg.movable, &why)),
                 }
             }
             // No way even through the copper that may move: the way round it has none either.
@@ -1286,14 +1436,7 @@ pub fn walk(
     if let Ok(found) = &walked {
         corners.extend(found.points.iter().skip(1).copied());
     }
-    let crossed = ground.crossed(
-        &walk.net,
-        layer,
-        asked.width,
-        &corners,
-        &router.tracks,
-        &router.vias,
-    );
+    let crossed = crossed_by(ground, board, router, walk, &corners, layer, asked.width)?;
     let crossed = crossed_of(router, &crossed);
     Ok(match walked {
         Ok(found) => PcbWalked {
@@ -1321,6 +1464,154 @@ pub fn walk(
     })
 }
 
+/// Whether the copper of a via or of a drag may go where it is, and with `shove` the shapes
+/// moved out of its way (issue 1009): first on the ground of the shove (what does not move: the
+/// copper is refused where it is too near that), then the shove; where the shove is stuck, or
+/// not asked, the copper is checked against all of the routes file's copper where it is.
+pub fn shove_answer(
+    grounds: &Grounds,
+    shove: Option<&ShoveGrounds>,
+    ask: &PcbShove,
+) -> Result<PcbShoveAnswer, ApiError> {
+    use netsmith_router::shove::What;
+    let board = &grounds.board;
+    if !board.nets.iter().any(|n| n.name == ask.net) {
+        return Err(ApiError::bad_request(format!(
+            "the board {} has no net `{}`",
+            board.name, ask.net
+        )));
+    }
+    let point = |p: &PcbPoint| netsmith_pcb::Pt::new(p.x, p.y);
+    let mut copper = Vec::new();
+    for t in &ask.tracks {
+        let layer = track_layer(board, &t.layer)?;
+        let width = t
+            .width
+            .unwrap_or_else(|| board.track_width_on(&ask.net, layer));
+        copper.push(What::Track(netsmith_pcb::Track::straight(
+            &ask.net,
+            layer,
+            point(&t.from),
+            point(&t.to),
+            width,
+        )));
+    }
+    for v in &ask.vias {
+        copper.push(What::Via(process_via(
+            board,
+            &ask.net,
+            point(&v.at),
+            v.diameter,
+        )));
+    }
+    let mut answer = PcbShoveAnswer {
+        reason: None,
+        shoved: PcbShoved::default(),
+        stuck: None,
+    };
+    if let Some(sg) = shove {
+        if let Some(by) = sg.ground.in_the_way(&ask.net, &copper) {
+            answer.reason = Some(no_room(&by));
+            return Ok(answer);
+        }
+        let drawn = netsmith_router::shove::Drawn {
+            net: &ask.net,
+            layer: CopperLayer::Front,
+            width: 0.0,
+            corners: &[],
+            others: &copper,
+        };
+        match sg.ground.shove(&drawn, &sg.pieces(&ask.moving)) {
+            Ok(done) => {
+                answer.shoved = shoved_of(&sg.movable, &done);
+                return Ok(answer);
+            }
+            Err(why) => answer.stuck = Some(stuck_text(&sg.movable, &why)),
+        }
+    }
+    answer.reason = grounds
+        .ground
+        .in_the_way(&ask.net, &copper)
+        .map(|by| no_room(&by));
+    Ok(answer)
+}
+
+/// What a via or a drag with no room says: what it is too near.
+fn no_room(by: &str) -> String {
+    format!("it is on or too near {by}")
+}
+
+/// The router's nets the track of `walk` crosses, routed again round it: the preview of
+/// `netsmith_router::round` (issue 1009). `walk.track` is the run on `walk.layer`, with the way
+/// found.
+pub fn reroute(
+    grounds: &Grounds,
+    router: &RouterCopper,
+    walk: &PcbWalk,
+) -> Result<PcbRerouted, ApiError> {
+    use netsmith_router::shove::What;
+    let board = &grounds.board;
+    let layer = track_layer(board, &walk.layer)?;
+    let width = walk
+        .width
+        .unwrap_or_else(|| board.track_width_on(&walk.net, layer));
+    let point = |p: &PcbPoint| netsmith_pcb::Pt::new(p.x, p.y);
+    let corners: Vec<netsmith_pcb::Pt> = walk.track.iter().map(point).collect();
+    let crossed = crossed_by(&grounds.ground, board, router, walk, &corners, layer, width)?;
+    let nets: std::collections::BTreeSet<String> = crossed
+        .tracks
+        .iter()
+        .map(|&i| router.tracks[i].net.clone())
+        .chain(crossed.vias.iter().map(|&i| router.vias[i].net.clone()))
+        .collect();
+    let mut tracks: Vec<netsmith_pcb::Track> = corners
+        .windows(2)
+        .map(|w| netsmith_pcb::Track::straight(&walk.net, layer, w[0], w[1], width))
+        .collect();
+    let mut vias = Vec::new();
+    for c in earlier_copper(board, walk)? {
+        match c {
+            What::Track(t) => tracks.push(t),
+            What::Via(v) => vias.push(v),
+        }
+    }
+    let round = netsmith_router::round::reroute_round(
+        board,
+        &router.tracks,
+        &router.vias,
+        &tracks,
+        &vias,
+        &nets,
+        None,
+    );
+    let at = |p: netsmith_pcb::Pt| PcbPoint { x: p.x, y: p.y };
+    Ok(PcbRerouted {
+        nets: nets.into_iter().collect(),
+        tracks: round
+            .tracks
+            .iter()
+            .map(|t| PcbCrossedTrack {
+                net: t.net.clone(),
+                layer: t.layer.word().to_string(),
+                width: t.width,
+                from: at(t.from),
+                mid: t.mid.map(at),
+                to: at(t.to),
+            })
+            .collect(),
+        vias: round
+            .vias
+            .iter()
+            .map(|v| PcbCrossedVia {
+                net: v.net.clone(),
+                at: at(v.at),
+                diameter: v.diameter,
+            })
+            .collect(),
+        left: round.left as u32,
+    })
+}
+
 /// A shape of the routes file that a shove may move (`Entry::board_for_shove`): its net, its
 /// number in the net's record from 1, and the shape on the sheet.
 pub struct Movable {
@@ -1342,7 +1633,7 @@ fn shoved_of(movable: &[Movable], done: &netsmith_router::shove::Shoved) -> PcbS
     for m in &done.moved {
         let found = &movable[m.id()];
         match (m, &found.shape) {
-            (Moved::Track { from, to, .. }, MovableShape::Track(t)) => {
+            (Moved::Track { from, to, mid, .. }, MovableShape::Track(t)) => {
                 out.tracks.push(PcbShovedTrack {
                     net: found.net.clone(),
                     track: found.number,
@@ -1352,6 +1643,8 @@ fn shoved_of(movable: &[Movable], done: &netsmith_router::shove::Shoved) -> PcbS
                     was_to: at(t.to),
                     from: at(*from),
                     to: at(*to),
+                    was_mid: t.mid.map(at),
+                    mid: mid.map(at),
                 });
             }
             (Moved::Via { at: now, .. }, MovableShape::Via(v)) => out.vias.push(PcbShovedVia {
