@@ -1026,6 +1026,7 @@ name = "netsmith-tools"
 version = "0.1.0"
 dependencies = [
  "automod",
+ "netsmith-3d",
  "netsmith-check",
  "netsmith-core",
  "netsmith-design",

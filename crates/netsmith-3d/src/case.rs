@@ -53,6 +53,10 @@
 //! Everything is in a fixed order and every reported length is rounded to a nanometre, so the
 //! same scene and model give the same findings on every machine.
 
+mod section;
+
+pub use section::{Ring, SectionError};
+
 use std::fmt;
 
 use netsmith_core::{CaseFigures, PartKind};

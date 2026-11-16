@@ -62,6 +62,8 @@ pub struct Imported {
     /// The names of the members, which a later import replaces.
     pub names: Vec<String>,
     pub warnings: Vec<String>,
+    /// The command that printed it, as `render` names it in the first comment.
+    command: &'static str,
 }
 
 /// A length in millimetres as source: `36mm`, `12.5mm`, at most four decimals.
@@ -136,6 +138,33 @@ pub fn import(text: &str, name: &str, request: &Request) -> Result<Imported, Str
     )
     .map_err(|e| format!("{name}: {e}"))?;
 
+    let mut imported = translate(&outline, name, "dxf import")?;
+    let mut head = vec![
+        format!(
+            "units: {} ({})",
+            outline.units.name(),
+            if outline.units_from_file {
+                "from the file's $INSUNITS"
+            } else {
+                "stated with --units"
+            }
+        ),
+        format!("outline layer: {}", outline.outline_layers.join(", ")),
+    ];
+    if !outline.holes_layers.is_empty() {
+        head.push(format!("holes layer: {}", outline.holes_layers.join(", ")));
+    }
+    imported.report.splice(0..0, head);
+    Ok(imported)
+}
+
+/// The source for `outline`, a board in the frame of [`netsmith_dxf::Outline`]: `name` is where it
+/// came from, for messages, and `command` the command that prints it.
+pub(crate) fn translate(
+    outline: &Outline,
+    name: &str,
+    command: &'static str,
+) -> Result<Imported, String> {
     // Everything that cannot be said in the language is collected, so that one run lists it.
     let mut refused: Vec<String> = Vec::new();
     let outer = outline.outer.as_rounded_rect();
@@ -241,29 +270,14 @@ pub fn import(text: &str, name: &str, request: &Request) -> Result<Imported, Str
         needed.push(("std::parts::mechanical", "MountingHole"));
     }
 
-    let mut report = vec![
-        format!(
-            "units: {} ({})",
-            outline.units.name(),
-            if outline.units_from_file {
-                "from the file's $INSUNITS"
-            } else {
-                "stated with --units"
-            }
-        ),
-        format!("outline layer: {}", outline.outline_layers.join(", ")),
-    ];
-    if !outline.holes_layers.is_empty() {
-        report.push(format!("holes layer: {}", outline.holes_layers.join(", ")));
-    }
-    report.push(format!(
+    let mut report = vec![format!(
         "frame: the board's origin is the outline's top left corner, the drawing's point ({}, {}) \
          (mm), with y flipped: a drawing point (x, y) is at (x - {}, {} - y) on the board",
         number(outline.origin.0),
         number(outline.origin.1),
         number(outline.origin.0),
         number(outline.origin.1),
-    ));
+    )];
     let shape = match &outer {
         Some(rr) if rr.radius > 5e-5 => format!(
             "outline {} x {} mm with corner radius {} mm",
@@ -297,13 +311,18 @@ pub fn import(text: &str, name: &str, request: &Request) -> Result<Imported, Str
         members,
         names,
         warnings,
+        command,
     })
 }
 
 /// What `dxf import` prints for a person to paste.
 pub fn render(imported: &Imported, board: Option<&str>, file: &str, written: bool) -> String {
     let mut out = String::new();
-    let _ = writeln!(out, "// Imported from {file} by `netsmith dxf import`.");
+    let _ = writeln!(
+        out,
+        "// Imported from {file} by `netsmith {}`.",
+        imported.command
+    );
     for line in &imported.report {
         let _ = writeln!(out, "// {line}");
     }

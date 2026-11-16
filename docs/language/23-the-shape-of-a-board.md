@@ -1474,6 +1474,31 @@ note: LedExample: the model table (netsmith.toml) draws 2 parts from a STEP mode
 
 **A pose known as a matrix.** A case model's pose often comes as a matrix: a STEP assembly's transform, or what a CAD program shows for a placed body. Turning it into three angles by hand is where a mistake hides: a pose that is a quarter turn about two axes has two sets of angles, and a sign slip draws a symmetric case mirrored with no finding. `netsmith case place` takes the matrix, 3 x 4 and row major (each row three numbers of the rotation and then the offset in mm; 16 numbers for a 4 x 4 matrix whose last row is 0 0 0 1), and prints the six lines to paste into the case model: `netsmith case place "1 0 0 0  0 -1 0 0  0 0 -1 -1.6"` prints `.rx &= 180`, `.ry &= 0`, `.rz &= 0`, `.x &= 0mm`, `.y &= 0mm` and `.z &= -1.6mm`, the upside-down box below. Of the two sets of angles it prints the one with `.ry` from -90 to 90 (and `.rz` 0 when `.ry` is a quarter turn), turns them back into a matrix, and says on stderr how near that is to the one given. A matrix that is not a rotation is refused, within 0.0001: one that mirrors (a determinant of -1: the matrix is of another frame, a y-down drawing, or has a sign slip), scales (a model in inches) or shears. The case model keeps the angles; there is no second way to state a pose.
 
+**The board a case model holds, printed as source.** `netsmith case import box.step` cuts the model by a plane parallel to the board and prints what the cut says of the board, as `netsmith dxf import` prints a drawing's: to review and paste into the `case { }` section (`--write board.nsm` edits `board.physical.nsm` as `dxf import --write` does). It is never read at build time, so a clone without the maker's file builds the same board (ADR 0109). The model is posed as a `CaseModel` poses it (`--rx`, `--ry`, `--rz`, `--x`, `--y`, `--z`), and the plane is at `--at` mm in that frame (the board's top face is 0, so the default, -0.8, is the middle of a 1.6 mm board). The cut draws closed curves on the model's solids, and how many of the others enclose each is its depth: a curve with none is the outside of a wall and is not used; a **pocket** in the wall (depth 1, the largest if there are several) is the board's outline, with the wall's ribs, notches and rounded corners; a **post, pin or block** standing in the pocket (depth 2) is a `Cutout`, which must be a rounded rectangle, a slot or a circle, as with `dxf import`. With `--holes-at` (a standoff's height, below the board) a second cut gives the **mounting holes**: each circle that is a hole in a post inside the pocket (depth 3) is a `MountingHole` at its centre, stated by its diameter (`.diameter`, as `dxf import` states a hole; a drill the footprint generator cannot draw refuses the import). The cut is of the model's triangles, within the reader's 0.01 mm of chord: the lines and arcs are found again and printed to a micrometre, and a shape that is not lines and circular arcs stays chords. The output says which point of the posed model is the board's origin, and the `.x` and `.y` the model needs to stand where the board's frame has it. A solid that is not closed at the plane is an error that says where. What the command does not read yet is the height limits (`Keepout`'s `.max_height`).
+
+```sh
+netsmith case import case/box.step --holes-at -4
+```
+
+```text
+.outline: Outline {
+    polygon (60mm, 38mm) arc through (59.4114mm, 39.4114mm) (58mm, 40mm) (32mm, 40mm)
+            (32mm, 34mm) (28mm, 34mm) (28mm, 40mm)
+            (2mm, 40mm) arc through (0.5886mm, 39.4114mm) (0mm, 38mm) (0mm, 2mm) arc through (0.5886mm, 0.5886mm)
+            (2mm, 0mm) (58mm, 0mm) arc through (59.4114mm, 0.5886mm) (60mm, 2mm)
+}
+
+.cutout1: Cutout { .x &= 41mm  .y &= 18mm  .width &= 8mm  .height &= 4mm }
+.hole1: MountingHole { .diameter &= 2.5mm }
+.hole1.place.x &= 54mm
+.hole1.place.y &= 6mm
+.hole2: MountingHole { .diameter &= 3.2mm }
+.hole2.place.x &= 6.001mm
+.hole2.place.y &= 34mm
+```
+
+The listing is shortened: the command prints the `import` lines, the `physical for` block and a comment for each of the model's pose, the section, the frame and what it found.
+
 ```nsm solve
 import std::parts::connector::Header1x2
 import std::mfg::jlcpcb::TwoLayer
@@ -1514,7 +1539,7 @@ physical for Boxed {
 }
 ```
 
-A case model is a drawing and a check, never a height, an outline or a hole: the outline, the cutouts, the mounting holes and the height limits stay statements of the `case { }` section (by hand or with `netsmith dxf import`), and the check says where they disagree with the model. The STEP export leaves the case out. netsmith never bundles a case model and never downloads one.
+A case model is a drawing and a check, never a height, an outline or a hole: the outline, the cutouts, the mounting holes and the height limits stay statements of the `case { }` section (by hand, with `netsmith dxf import`, or with `netsmith case import`, which prints them from the model's section for you to review), and the check says where they disagree with the model. The STEP export leaves the case out. netsmith never bundles a case model and never downloads one.
 
 **The fit check.** `fab`, `board3d` and the editor read each file with netsmith's own STEP reader, place it and measure the board against its solids: each part's body box to its height (stated, catalog or the package standard's), the pins of a part that states how far they protrude (`.pin_protrusion`, a box under its plated pads out to that length), and the board's own solid. The findings, each with its numbers, the part and the solid (`docs/BOARD3D.md`, _The case model's fit_, has the table):
 
