@@ -12,7 +12,7 @@ import { labelOf } from './pcb/routes';
 import type { Side } from './pcb/side';
 import { type Answer, answerTo, latestOnly, saidOf, walkKey } from './pcb/walk';
 import { type Selection, partSel, sameSelection, selection as shared, setSelection } from './selection';
-import { beginJob, endJob, pcbReports, say } from './store';
+import { beginJob, endJob, job, pcbReports, say } from './store';
 
 export const scene = signal<PcbScene | null>(null);
 /** The fill of the board's pours, planes and zones, as the server filled the placement it names (drawn only while that is the scene's). */
@@ -313,6 +313,10 @@ export function propose(module: string, seed: number): Promise<boolean> {
   return enqueue(async () => {
     const current = scene.value;
     if (!current) return false;
+    // While it is asked for, the server's steps show as a job (the progress of `regenerate`), unless another job
+    // (a route) is running: that one keeps the place.
+    const mine = !job.value;
+    if (mine) beginJob('regenerate', current.board);
     try {
       const answer = await api.pcbRegenerate({ board: current.board, stamp: current.layoutStamp, module, seed });
       proposal.value = { board: current.board, stamp: current.layoutStamp, answer };
@@ -321,6 +325,8 @@ export function propose(module: string, seed: number): Promise<boolean> {
     } catch (e) {
       say(e instanceof Error ? e.message : String(e), true);
       return false;
+    } finally {
+      if (mine && job.value?.task === 'regenerate') endJob();
     }
   });
 }

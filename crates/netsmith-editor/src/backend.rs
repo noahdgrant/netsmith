@@ -334,10 +334,13 @@ pub trait Backend: Send + Sync + 'static {
     /// with the proposal: the edit that makes it (the page sends it as any edit, one step of
     /// undo), where the parts go and what it changes. Nothing is written. Refused with 409 if
     /// the files are not as the page read them, and with 422 and the reason when the board has
-    /// no part in the module, every part of it is held, or the parts do not fit.
+    /// no part in the module, every part of it is held, or the parts do not fit. `say` is told
+    /// each step as it begins (placing the board if it is not placed yet, placing the module,
+    /// measuring the placement before and after).
     fn pcb_regenerate(
         &self,
         ask: &crate::api::PcbRegenerate,
+        _say: &Say,
     ) -> Result<crate::api::PcbRegenerated, ApiError> {
         Err(ApiError::not_found(format!(
             "`{}` has no layout to regenerate",

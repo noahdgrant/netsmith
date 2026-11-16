@@ -1391,7 +1391,11 @@ fn placement_of(place: &PartPlace) -> PartPlacement {
 /// One module of `entry`'s board placed again with the rest held (issue #825,
 /// `netsmith_fabricate::regenerate`): the proposal, with the edit that makes it. Nothing is
 /// written; a module that cannot be regenerated is 422 with the reason.
-pub fn regenerate(entry: &Entry, ask: &PcbRegenerate) -> Result<PcbRegenerated, ApiError> {
+pub fn regenerate(
+    entry: &Entry,
+    ask: &PcbRegenerate,
+    say: &dyn Fn(&str),
+) -> Result<PcbRegenerated, ApiError> {
     let request = netsmith_fabricate::regenerate::Request {
         module: ask.module.clone(),
         seed: u64::from(ask.seed),
@@ -1407,6 +1411,7 @@ pub fn regenerate(entry: &Entry, ask: &PcbRegenerate) -> Result<PcbRegenerated, 
         entry.layout.as_ref().map(|(l, _)| l),
         Some(&entry.routes),
         &request,
+        say,
     )
     .map_err(|why| {
         ApiError::unprocessable(

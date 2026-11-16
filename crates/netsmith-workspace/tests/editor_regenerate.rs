@@ -3,7 +3,10 @@
 //! not touch and routes only the rest, and an undo back to the placement routed before shows its
 //! copper again with no router. Work is counted in nets kept and routed again, never in time.
 
-use std::{fs, sync::Arc};
+use std::{
+    fs,
+    sync::{Arc, Mutex},
+};
 
 use netsmith_editor::{
     Backend,
@@ -105,7 +108,7 @@ fn a_regenerated_module_is_one_edit_and_a_route_after_it_keeps_the_rest_of_the_c
     // A proposal that moves a part; it writes nothing.
     let layout = root.join("src/main.pcb.toml");
     let proposal = (0..12)
-        .map(|seed| editor.pcb_regenerate(&ask(&routed.layout_stamp, "a", seed)).unwrap())
+        .map(|seed| editor.pcb_regenerate(&ask(&routed.layout_stamp, "a", seed), &say).unwrap())
         .find(|p| !p.changes.is_empty() && p.parts.iter().any(|q| {
             routed.parts.iter().find(|r| r.path == q.path).is_some_and(|r| r.courtyard != q.courtyard)
         }))
@@ -161,10 +164,37 @@ fn a_regenerated_module_is_one_edit_and_a_route_after_it_keeps_the_rest_of_the_c
 #[test]
 fn a_regeneration_is_refused_with_the_reason_or_a_stale_stamp() {
     let (_root, editor) = project("refused");
+    let say: netsmith_editor::Say = Arc::new(|_: &str| {});
     let scene = editor.pcb_scene(BOARD).unwrap();
-    let missing = editor.pcb_regenerate(&ask(&scene.layout_stamp, "d", 0)).unwrap_err();
+    let missing = editor.pcb_regenerate(&ask(&scene.layout_stamp, "d", 0), &say).unwrap_err();
     assert_eq!(missing.status, 422, "{missing:?}");
     assert!(missing.message.contains("no part in `d`"), "{}", missing.message);
-    let stale = editor.pcb_regenerate(&ask("not the stamp", "a", 0)).unwrap_err();
+    let stale = editor.pcb_regenerate(&ask("not the stamp", "a", 0), &say).unwrap_err();
     assert_eq!(stale.status, 409, "{stale:?}");
+}
+
+#[test]
+fn a_proposal_says_each_step_as_it_begins() {
+    let (_root, editor) = project("progress");
+    let heard = Arc::new(Mutex::new(Vec::<String>::new()));
+    let say: netsmith_editor::Say = {
+        let heard = Arc::clone(&heard);
+        Arc::new(move |line: &str| heard.lock().unwrap().push(line.to_string()))
+    };
+    // A board the editor has not placed yet is placed first ("placing Lights"); after that a
+    // proposal starts from the board placed. The steps are counted, never timed.
+    let stamp = editor.pcb_scene(BOARD).unwrap().layout_stamp;
+    editor.pcb_regenerate(&ask(&stamp, "b", 0), &say).unwrap();
+    let lines = heard.lock().unwrap().clone();
+    assert_eq!(
+        lines.iter().rev().take(2).rev().collect::<Vec<_>>(),
+        ["placing the parts of b again", "measuring the placement before and after"],
+        "{lines:?}"
+    );
+    heard.lock().unwrap().clear();
+    editor.pcb_regenerate(&ask(&stamp, "c", 1), &say).unwrap();
+    assert_eq!(
+        *heard.lock().unwrap(),
+        ["placing the parts of c again", "measuring the placement before and after"]
+    );
 }

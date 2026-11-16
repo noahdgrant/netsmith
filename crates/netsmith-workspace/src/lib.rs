@@ -1428,6 +1428,7 @@ impl Backend for Workspace {
     fn pcb_regenerate(
         &self,
         ask: &netsmith_editor::api::PcbRegenerate,
+        say: &netsmith_editor::Say,
     ) -> Result<netsmith_editor::api::PcbRegenerated, ApiError> {
         let name = &ask.board;
         let (version, data) = {
@@ -1439,12 +1440,13 @@ impl Backend for Workspace {
                 )));
             }
             if let Some(entry) = state.pcb.get(name) {
-                return pcb::regenerate(entry, ask);
+                return pcb::regenerate(entry, ask, &**say);
             }
             (state.version, data)
         };
+        say(&format!("placing {name}"));
         let entry = pcb::place(&data, name)?;
-        let proposal = pcb::regenerate(&entry, ask);
+        let proposal = pcb::regenerate(&entry, ask, &**say);
         let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
         if state.version == version {
             state.pcb.entry(name.to_string()).or_insert(entry);
