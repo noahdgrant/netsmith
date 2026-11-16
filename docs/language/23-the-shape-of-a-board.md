@@ -1702,6 +1702,43 @@ physical for Clean {
 - **A value other than `"show"` or `"hide"`** is an error that names the member. A module has no `.silk_text`: a text belongs to one part.
 - **Circuit source.** The board's circuit source does not state these members, as it does not state a `.place` (ADR 0048); the message says where they go.
 
+For every part of a kind, the board's physical file has a `defaults` block of its own, which offers `.silk` only (ADR 0135): `Resistor.silk ?= "hide"` hides the designator of every resistor on the board, at any depth, and the other parts keep theirs. Its lines are those of the circuit source's `defaults` (_Narrowing and relations_): `Kind.silk ?= "show"` or `"hide"`, the kind a part, a generic or a module the physical file imports, and a kind reaches every part made from it or providing it. A module's line gives the module's own `.silk`, which then reaches every part inside it.
+
+```nsm solve place
+import std::parts::connector::Header1x2
+import std::parts::passive::Resistor
+import std::mfg::jlcpcb::TwoLayer
+
+board Quiet {
+    .process: TwoLayer {
+        .stackup.thickness &= 1.6mm
+    }
+    .r1: Resistor {
+        .resistance &= 10kohm +/- 5%
+    }
+    .r2: Resistor {
+        .resistance &= 4.7kohm +/- 5%
+    }
+    .j: Header1x2
+}
+```
+
+```nsm-physical
+import std::parts::passive::Resistor
+
+physical for Quiet {
+    defaults {
+        // No resistor prints its designator; the header keeps `J1`.
+        Resistor.silk ?= "hide"
+    }
+    // Except the one that is fitted by hand.
+    .r2.silk &= "show"
+}
+```
+
+- **Where a kind's line stands.** A part's own `.silk` or `.silk_text` beats the line of its kind, and the line beats the `.silk` of the module the part is in and the board's: the order is the part, its kind, the nearest module outward, the board. A line that reaches no part (the board has none of the kind, or each states `.silk` or `.silk_text` itself) is a note, as in the circuit source.
+- **Only `.silk`.** A line for any other member is refused in the physical file (it is in the circuit source's `defaults`), and `.silk` is refused in the circuit source's. A `.silk_text` line is refused: a text belongs to one part. Only a board's physical file holds the block, not a module's, and not inside `case { }`.
+
 Misuse: the circuit source states what the silkscreen prints.
 
 ```nsm fails

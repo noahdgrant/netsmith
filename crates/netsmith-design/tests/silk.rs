@@ -8,7 +8,7 @@ use netsmith_design::{Designed, design_board};
 use netsmith_solve::{Catalogs, solve};
 
 const SOURCE: &str = "\
-import std::parts::connector::Header1x2
+import std::parts::connector::{Header1x2, Header1x4}
 
 module Block {
     .j: Header1x2
@@ -17,12 +17,12 @@ module Block {
 
 module Outer {
     .inner: Block
-    .m: Header1x2
+    .m: Header1x4
 }
 
 board B {
     .a: Header1x2
-    .b: Header1x2
+    .b: Header1x4
     .block: Block
     .outer: Outer
 }
@@ -39,7 +39,9 @@ fn designed(physical: &str) -> Result<Designed, Vec<String>> {
 }
 
 fn silks(physical: &str) -> Vec<PartSilk> {
-    designed(&format!("physical for B {{\n{physical}\n}}\n"))
+    designed(&format!(
+        "import std::parts::connector::{{Connector, Header1x2}}\n\nphysical for B {{\n{physical}\n}}\n"
+    ))
         .unwrap_or_else(|e| panic!("{e:?}"))
         .design
         .features
@@ -153,3 +155,49 @@ fn an_empty_text_is_refused_and_so_is_a_text_on_a_hidden_designator() {
         "{e:?}"
     );
 }
+
+// ---- a line for every part of a kind, in the physical file's `defaults` (issue #881) ----
+
+fn paths(found: &[PartSilk]) -> Vec<&str> {
+    found.iter().map(|s| s.path.as_str()).collect()
+}
+
+#[test]
+fn a_kind_hides_the_designators_of_every_part_of_it_and_the_rest_keep_theirs() {
+    let found = silks("    defaults {\n        Header1x2.silk ?= \"hide\"\n    }");
+    assert_eq!(
+        paths(&found),
+        ["a", "block.j", "block.k", "outer.inner.j", "outer.inner.k"],
+        "every Header1x2 at any depth, and neither Header1x4"
+    );
+    assert!(found.iter().all(|s| s.print == SilkPrint::Nothing));
+}
+
+#[test]
+fn a_generic_reaches_every_part_that_provides_it() {
+    let found = silks("    defaults {\n        Connector.silk ?= \"hide\"\n    }");
+    assert_eq!(found.len(), 7, "{found:?}");
+}
+
+#[test]
+fn a_parts_own_statement_beats_its_kind_and_its_kind_beats_its_module_and_the_board() {
+    // The board and a module hide, the kind shows, and one part of the kind hides itself.
+    let found = silks(
+        "    defaults {\n        Header1x2.silk ?= \"show\"\n    }\n    .silk &= \"hide\"\n    .outer.silk &= \"hide\"\n    .block.k.silk &= \"hide\"",
+    );
+    assert_eq!(
+        paths(&found),
+        ["b", "block.k", "outer.m"],
+        "the Header1x4s follow the board and the module; block.k hides itself; the other Header1x2s show"
+    );
+}
+
+#[test]
+fn a_part_with_a_text_of_its_own_prints_it_whatever_its_kind_says() {
+    let found = silks(
+        "    defaults {\n        Header1x2.silk ?= \"hide\"\n    }\n    .a.silk_text &= \"5V\"",
+    );
+    assert!(found.contains(&text("a", "5V")), "{found:?}");
+    assert!(found.contains(&nothing("block.j")), "{found:?}");
+}
+

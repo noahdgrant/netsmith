@@ -47,7 +47,7 @@ An inner layer for tracks, which names no net: `.process.inner2.use &= "signal"`
 _Avoid_: Routing layer, mixed layer
 
 **Silkscreen text**:
-What the silkscreen prints for a part: its reference designator, nothing, or a text of the board's physical file in its place (`.silk`, a word `"show"` or `"hide"` of a part, a module or the board, and `.silk_text` of a part; the most specific statement wins). Only the text on `F.SilkS` or `B.SilkS` changes: the designator stays on the schematic, in the bill of materials, in the placement file and on `F.Fab`. A part that prints nothing takes no room for text. Not a _Label_, which is a part of its own.
+What the silkscreen prints for a part: its reference designator, nothing, or a text of the board's physical file in its place (`.silk`, a word `"show"` or `"hide"` of a part, a module or the board, and `.silk_text` of a part; or `Resistor.silk ?= "hide"` in the `defaults` block of the physical file, for every part of a kind; the most specific statement wins: the part, its kind, its modules outward, the board). Only the text on `F.SilkS` or `B.SilkS` changes: the designator stays on the schematic, in the bill of materials, in the placement file and on `F.Fab`. A part that prints nothing takes no room for text. Not a _Label_, which is a part of its own.
 _Avoid_: Silk label, reference text (when the text is not the designator), marking
 
 **Sink current**:
