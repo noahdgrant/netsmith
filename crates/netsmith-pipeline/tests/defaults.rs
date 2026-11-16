@@ -121,3 +121,47 @@ fn a_lone_question_mark_is_not_an_operator() {
     let message = error_of("board B {\n    .a ? 5V\n}\n");
     assert!(message.contains("unexpected character `?`"), "{message}");
 }
+
+/// Who assembles each part of the built board, by reference designator (issue #847).
+fn assembly_of(built: &[netsmith_pipeline::Built]) -> Vec<(String, String)> {
+    built[0]
+        .sourcing
+        .iter()
+        .map(|s| (s.refdes.clone(), format!("{:?}", s.assembly)))
+        .collect()
+}
+
+#[test]
+fn a_line_for_assembly_reaches_the_design_stage_and_gives_way_to_a_statement() {
+    let board = |defaults: &str, lamp: &str| {
+        format!(
+            "import std::parts::passive::{{Resistor, Led}}\nimport std::sources::Rail\n\nboard B {{\n{defaults}    .input: Rail {{\n        .voltage &= 5V +/- 5%\n        .pos.net &= \"VCC\"\n        .neg.net &= \"GND\"\n    }}\n    .led: Led {{ .current &= 5mA..15mA {lamp} }}\n    .r1: Resistor\n    .led.current == (.input.voltage - .led.forward_voltage) / .r1.resistance\n    .input.pos ~> .r1 ~> .led ~> .input.neg\n}}\n"
+        )
+    };
+    let built = |src: String| build(&src).unwrap_or_else(|e| panic!("{e}"));
+    let pair = |a: &str, b: &str| {
+        vec![
+            ("D1".to_string(), a.to_string()),
+            ("R1".to_string(), b.to_string()),
+        ]
+    };
+    // Nothing said: the board house assembles both.
+    assert_eq!(assembly_of(&built(board("", ""))), pair("Fab", "Fab"));
+    // A line for the kind: the board's resistors are soldered by hand, its LED is not.
+    let lined = board(
+        "    defaults {\n        Resistor.assembly ?= AssemblyMode::Hand\n    }\n",
+        "",
+    );
+    assert_eq!(assembly_of(&built(lined)), pair("Fab", "Hand"));
+    // The line is an offer: a statement on the part replaces it.
+    let stated = board(
+        "    defaults {\n        Resistor.assembly ?= AssemblyMode::Hand\n        Led.assembly ?= AssemblyMode::Hand\n    }\n    .r1.assembly &= AssemblyMode::Fab\n",
+        "",
+    );
+    assert_eq!(assembly_of(&built(stated)), pair("Hand", "Fab"));
+    let own = board(
+        "    defaults {\n        Led.assembly ?= AssemblyMode::Hand\n    }\n",
+        "; .assembly &= AssemblyMode::Consigned",
+    );
+    assert_eq!(assembly_of(&built(own)), pair("Consigned", "Fab"));
+}
