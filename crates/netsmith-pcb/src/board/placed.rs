@@ -427,9 +427,12 @@ impl Placed {
     }
 
     /// The pad's hole on the board as a capsule: the two ends of its axis and its radius.
-    /// A round hole has both ends at its centre. `None` for a pad with no hole.
+    /// A round hole has both ends at its centre, which is off the pad's centre by the
+    /// drill's offset. A slot lies along the pad's own x or y axis and turns with the pad
+    /// and the part, so it may lie at any angle on the board. `None` for a pad with no hole.
     pub fn hole(&self, pad: &Pad) -> Option<(Pt, Pt, f64)> {
         let drill = pad.drill?;
+        let centre = self.to_board(pad.hole_at()?);
         let (long, short) = (drill.width.max(drill.height), drill.width.min(drill.height));
         let reach = (long - short) / 2.0;
         // A slot lies along the pad's x axis when it is wider than it is high.
@@ -438,9 +441,7 @@ impl Placed {
         } else {
             Pt::new(0.0, reach)
         };
-        let turn = self.pad_angle(pad);
-        let centre = self.pad_centre(pad);
-        let end = axis.rotate(turn);
+        let end = axis.rotate(self.pad_angle(pad));
         Some((centre - end, centre + end, short / 2.0))
     }
 

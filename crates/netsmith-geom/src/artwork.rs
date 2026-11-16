@@ -12,7 +12,8 @@
 //! drill, margins, zone connection and clearance, vias, tracks and arcs, zones with their rule
 //! areas and teardrops, drawings and text, the origin and the mask settings. What it cannot make it refuses
 //! with the pad, via or zone named: a pad with a `padstack`, a blind or buried via, a zone filled
-//! in hatch mode, a custom pad primitive other than line, arc, circle, rectangle or polygon.
+//! in hatch mode. A custom pad's curve is drawn as straight pieces, and the box and direction KiCad
+//! keeps for the pad's number are not copper.
 
 use crate::geom::{Arc, Pt};
 use netsmith_sexp::Sexp;
@@ -153,6 +154,13 @@ pub struct Pad {
 }
 
 impl Pad {
+    /// The centre of the pad's hole on the board: the copper's centre less the drill's
+    /// offset, turned with the pad. `None` for a pad with no hole.
+    pub fn hole_at(&self) -> Option<Pt> {
+        let d = self.drill.as_ref()?;
+        Some(self.at - d.offset.rotate(self.angle))
+    }
+
     /// The turn of the pad's thermal spokes from its own axes, in degrees, as KiCad has it:
     /// the pad's `thermal_bridge_angle`, else 45 for a circle (and for a custom pad with a
     /// circular anchor) and 90 for every other shape, so that the spokes of a round pad run
@@ -171,7 +179,10 @@ pub struct Drill {
     /// Diameter of a round hole, or width and length of a slot.
     pub width: f64,
     pub length: f64,
-    /// Offset of the hole from the pad centre in the pad's frame.
+    /// How far the pad's copper lies from its hole, in the pad's frame before its turn: the
+    /// file's `(offset x y)`. The file's pad `(at ...)` is the hole and the copper is there
+    /// plus this, turned with the pad (KiCad's `PAD::ShapePos`); [`Pad::at`] is the copper's
+    /// centre and [`Pad::hole_at`] the hole's.
     pub offset: Pt,
 }
 
@@ -1104,7 +1115,8 @@ impl<'a> Reader<'a> {
             net: self.net_name(item),
             kind,
             shape,
-            at: frame.world(local),
+            // The file's `at` is the hole; the copper is off it by the drill's offset.
+            at: frame.world(local) + drill.map_or(Pt::default(), |d| d.offset.rotate(angle)),
             angle,
             size,
             // KiCad reads a rounded rectangle with no ratio as 0.25.
@@ -1149,6 +1161,29 @@ impl<'a> Reader<'a> {
                     ArtworkError::Malformed(format!("a {head} in {where_} has no ({name}"))
                 })
             };
+            match head {
+                // KiCad's pad editor keeps the box and the direction of the pad's number
+                // among the primitives; they are not copper (KiCad skips them too).
+                "gr_bbox" | "gr_vector" => continue,
+                // A cubic Bézier stroked with its width, as straight pieces.
+                "gr_curve" => {
+                    let pts = points_of(p, &format!("a gr_curve in {where_}"))?;
+                    let [a, b, c, d] = pts[..] else {
+                        return Err(ArtworkError::Malformed(format!(
+                            "a gr_curve in {where_} has {} points, not 4",
+                            pts.len()
+                        )));
+                    };
+                    let line = bezier_points(a, b, c, d);
+                    out.extend(line.windows(2).map(|w| Primitive::Line {
+                        a: w[0],
+                        b: w[1],
+                        width,
+                    }));
+                    continue;
+                }
+                _ => {}
+            }
             out.push(match head {
                 "gr_line" => Primitive::Line {
                     a: pt("start")?,
@@ -1235,6 +1270,25 @@ fn expand(text: &str, f: &Frame) -> String {
         )
 }
 
+/// Points along the cubic Bézier curve with control points `a`, `b`, `c` and `d`, from `a`
+/// to `d`: at least eight pieces, and one for each twentieth of a millimetre of the control
+/// polygon, which bounds the curve's length.
+fn bezier_points(a: Pt, b: Pt, c: Pt, d: Pt) -> Vec<Pt> {
+    let polygon = a.dist(b) + b.dist(c) + c.dist(d);
+    let n = ((polygon / 0.05).ceil() as usize).clamp(8, 1024);
+    (0..=n)
+        .map(|i| {
+            let t = i as f64 / n as f64;
+            let u = 1.0 - t;
+            let (k0, k1, k2, k3) = (u * u * u, 3.0 * u * u * t, 3.0 * u * t * t, t * t * t);
+            Pt::new(
+                k0 * a.x + k1 * b.x + k2 * c.x + k3 * d.x,
+                k0 * a.y + k1 * b.y + k2 * c.y + k3 * d.y,
+            )
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1254,6 +1308,71 @@ mod tests {
 	(via (at 5 6) (size 0.6) (drill 0.3) (layers "F.Cu" "B.Cu") (net 1))
 	(gr_rect (start 0 0) (end 10 5) (stroke (width 0.05) (type default)) (fill no) (layer "Edge.Cuts"))
 )"#;
+
+    /// A slot turned with its pad, off its pad's centre: the file's `at` is the hole, and
+    /// the copper is off it by the drill's offset turned with the pad.
+    const OFFSET_SLOT: &str = r#"(kicad_pcb (layers (0 "F.Cu" signal) (2 "B.Cu" signal))
+        (footprint "L:S" (layer "F.Cu") (at 10 0)
+          (property "Reference" "J1" (at 0 0 0) (layer "F.Fab"))
+          (pad "1" thru_hole oval (at 1 0 30) (size 2.4 1.2)
+            (drill oval 1.6 0.6 (offset 0.3 0)) (layers "*.Cu" "*.Mask"))))"#;
+
+    #[test]
+    fn a_drill_offset_puts_the_hole_where_the_file_puts_the_pad_and_the_copper_off_it() {
+        let a = Artwork::parse(OFFSET_SLOT).unwrap();
+        let p = &a.pads[0];
+        let hole = Pt::new(11.0, 0.0);
+        assert!(
+            p.at.dist(hole + Pt::new(0.3, 0.0).rotate(30.0)) < 1e-9,
+            "{:?}",
+            p.at
+        );
+        assert!(p.hole_at().unwrap().dist(hole) < 1e-9);
+        // The drill file routes the slot along the pad's x axis, turned 30 degrees, through
+        // the hole's centre.
+        let h = &crate::drill::holes(&a)[0];
+        let axis = Pt::new(0.5, 0.0).rotate(30.0);
+        assert!((h.diameter - 0.6).abs() < 1e-9);
+        assert!(h.at.dist(hole - axis) < 1e-9, "{:?}", h.at);
+        assert!(
+            h.slot_to.unwrap().dist(hole + axis) < 1e-9,
+            "{:?}",
+            h.slot_to
+        );
+    }
+
+    #[test]
+    fn a_custom_pads_curve_is_straight_pieces_and_its_number_box_is_not_copper() {
+        let a = Artwork::parse(
+            r#"(kicad_pcb (layers (0 "F.Cu" signal) (2 "B.Cu" signal))
+            (footprint "L:C" (layer "F.Cu") (at 0 0)
+              (property "Reference" "U1" (at 0 0 0) (layer "F.Fab"))
+              (pad "1" smd custom (at 0 0) (size 1 1) (layers "F.Cu")
+                (primitives
+                  (gr_bbox (start -5 -5) (end 5 5))
+                  (gr_vector (start 0 0) (end 9 0))
+                  (gr_curve (pts (xy 0 0) (xy 1 -1) (xy 2 1) (xy 3 0)) (width 0.2))))))"#,
+        )
+        .unwrap();
+        let prims = &a.pads[0].primitives;
+        assert!(prims.len() >= 8, "{prims:?}");
+        let lines: Vec<(Pt, Pt)> = prims
+            .iter()
+            .map(|p| match p {
+                Primitive::Line { a, b, width } => {
+                    assert_eq!(*width, 0.2);
+                    (*a, *b)
+                }
+                other => panic!("{other:?}"),
+            })
+            .collect();
+        // The pieces run from the first control point to the last, end to end, through the
+        // curve's middle (at t = 1/2: (1.5, 0)).
+        assert_eq!(lines[0].0, Pt::new(0.0, 0.0));
+        assert!(lines.last().unwrap().1.dist(Pt::new(3.0, 0.0)) < 1e-12);
+        assert!(lines.windows(2).all(|w| w[0].1 == w[1].0));
+        assert!(lines.iter().any(|(a, _)| a.dist(Pt::new(1.5, 0.0)) < 1e-9));
+    }
 
     #[test]
     fn a_kicad_10_board_names_its_nets_with_no_numbers() {

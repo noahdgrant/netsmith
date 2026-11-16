@@ -205,18 +205,25 @@ fn pad_shape(out: &mut String, pad: &Pad, fill: &str) {
         }
     }
     if let Some(drill) = pad.drill {
+        // The hole is off the copper's centre by the drill's offset, in the pad's frame.
+        let c = Pt::new(-drill.offset.x, -drill.offset.y);
         if drill.width == drill.height {
+            let centre = if c == Pt::default() {
+                String::new()
+            } else {
+                format!(r#" cx="{}" cy="{}""#, n(c.x), n(c.y))
+            };
             let _ = writeln!(
                 out,
-                r#"<circle r="{}" fill="{BACKGROUND}"/>"#,
+                r#"<circle{centre} r="{}" fill="{BACKGROUND}"/>"#,
                 n(drill.width / 2.0)
             );
         } else {
             let _ = writeln!(
                 out,
                 r#"<rect x="{}" y="{}" width="{}" height="{}" rx="{}" fill="{BACKGROUND}"/>"#,
-                n(-drill.width / 2.0),
-                n(-drill.height / 2.0),
+                n(c.x - drill.width / 2.0),
+                n(c.y - drill.height / 2.0),
                 n(drill.width),
                 n(drill.height),
                 n(drill.width.min(drill.height) / 2.0)
@@ -708,6 +715,26 @@ mod tests {
 
     fn led() -> Board {
         crate::board::tests::led_board()
+    }
+
+    #[test]
+    fn a_hole_off_its_pads_centre_is_drawn_where_it_is() {
+        let fp = crate::footprint::Footprint::parse(
+            "L:X",
+            r#"(footprint "X"
+                (pad "1" thru_hole circle (at 0 0) (size 2 2) (drill 0.8 (offset 0.5 0)) (layers "*.Cu"))
+                (pad "2" thru_hole oval (at 4 0) (size 2 3) (drill oval 0.6 1.2 (offset 0 0.25)) (layers "*.Cu")))"#,
+        )
+        .unwrap();
+        let mut out = String::new();
+        pad_shape(&mut out, &fp.pads[0], "red");
+        assert!(out.contains(r#"<circle cx="-0.5" cy="0" r="0.4""#), "{out}");
+        let mut out = String::new();
+        pad_shape(&mut out, &fp.pads[1], "red");
+        assert!(
+            out.contains(r#"x="-0.3" y="-0.85" width="0.6" height="1.2""#),
+            "{out}"
+        );
     }
 
     #[test]

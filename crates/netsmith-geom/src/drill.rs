@@ -26,8 +26,9 @@ pub struct Hole {
 pub fn holes(art: &Artwork) -> Vec<Hole> {
     let mut out = Vec::new();
     for (index, pad) in art.pads.iter().enumerate() {
-        let Some(d) = &pad.drill else { continue };
-        let centre = pad.at + d.offset.rotate(pad.angle);
+        let (Some(d), Some(centre)) = (&pad.drill, pad.hole_at()) else {
+            continue;
+        };
         let (diameter, slot_to, at) = if d.is_slot() {
             // The slot lies along the longer side of its drill, in the pad's frame.
             let (long, short) = (d.width.max(d.length), d.width.min(d.length));

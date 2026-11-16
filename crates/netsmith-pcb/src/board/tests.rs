@@ -1011,3 +1011,51 @@ fn what_the_design_prints_on_the_silkscreen_is_what_a_part_shows() {
     let expected = 2.0 * d1.text_height(rules) * 0.95 + rules.min_text_thickness;
     assert!((d1.text_width(rules) - expected).abs() < 1e-9);
 }
+
+/// A slot turned with its pad and its part, in a hole off its pad's centre: the file's
+/// `(at ...)` is the hole, the copper is off it by the drill's offset turned with the pad.
+const OFFSET_SLOT: &str = r#"(footprint "Slot"
+    (pad "1" thru_hole oval (at 2 1 30) (size 2.4 1.2) (drill oval 1.6 0.6 (offset 0.3 0))
+        (layers "*.Cu" "*.Mask")))"#;
+
+#[test]
+fn a_slot_lies_at_its_pads_and_parts_turn_and_its_hole_is_off_the_copper_by_the_offset() {
+    let footprint = crate::footprint::Footprint::parse("L:Slot", OFFSET_SLOT).unwrap();
+    let mut part = led_board().parts[0].clone();
+    part.footprint = footprint;
+    part.at = Pt::new(10.0, 10.0);
+    part.rotation = 45.0;
+    let pad = part.footprint.pads[0].clone();
+    // The copper is the hole plus the offset turned by the pad's 30 degrees.
+    let file_at = Pt::new(2.0, 1.0);
+    assert!(close(pad.at, file_at + Pt::new(0.3, 0.0).rotate(30.0)));
+    assert!(close(pad.hole_at().unwrap(), file_at));
+    let same_capsule = |(a, b, r): (Pt, Pt, f64), centre: Pt, axis: Pt| {
+        assert!((r - 0.3).abs() < 1e-9, "{r}");
+        let (p, q) = (centre - axis, centre + axis);
+        assert!(
+            (close(a, p) && close(b, q)) || (close(a, q) && close(b, p)),
+            "{a:?} {b:?}, wanted {p:?} {q:?}"
+        );
+    };
+    // On the front the slot's long side (1.6, along the pad's x) lies at 30 + 45 degrees,
+    // and its centre is where the file puts the pad.
+    let reach = (1.6 - 0.6) / 2.0;
+    same_capsule(
+        part.hole(&pad).unwrap(),
+        part.to_board(file_at),
+        Pt::new(reach, 0.0).rotate(75.0),
+    );
+    assert!(close(
+        part.pad_centre(&pad),
+        part.to_board(file_at + Pt::new(0.3, 0.0).rotate(30.0))
+    ));
+    // On the back the footprint is mirrored, then turned.
+    part.side = Side::Back;
+    let axis = Pt::new(reach, 0.0).rotate(30.0);
+    same_capsule(
+        part.hole(&pad).unwrap(),
+        part.to_board(file_at),
+        Pt::new(-axis.x, axis.y).rotate(45.0),
+    );
+}

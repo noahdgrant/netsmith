@@ -648,10 +648,7 @@ fn the_comparison_of_pads_says_what_differs() {
     usb.pads[0].at.x += 0.1;
     usb.pads[1].width = 0.8;
     let slot = usb.pads.iter_mut().find(|p| p.number == "S1").unwrap();
-    slot.drill = Some(netsmith_pcb::Drill {
-        width: 0.6,
-        height: 1.0,
-    });
+    slot.drill = Some(netsmith_pcb::Drill::slot(0.6, 1.0));
     let differences = pad_differences(&usb, &table, "J4", 0.05);
     assert_eq!(differences.len(), 3, "{differences:?}");
     assert!(differences[0].contains("none at"), "{differences:?}");

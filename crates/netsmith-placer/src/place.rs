@@ -2176,10 +2176,7 @@ mod tests {
         let court = Rect::new(Pt::new(-10.0, -10.0), Pt::new(10.0, 10.0));
         let hole = &mut parts[0];
         hole.side = face;
-        hole.footprint.pads[0].drill = Some(netsmith_pcb::Drill {
-            width: 0.8,
-            height: 0.8,
-        });
+        hole.footprint.pads[0].drill = Some(netsmith_pcb::Drill::round(0.8));
         hole.footprint.courtyard = court;
         hole.footprint.courtyard_shapes = vec![court];
         hole.footprint.courtyard_faces = faces;

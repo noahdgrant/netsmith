@@ -248,8 +248,8 @@ pub fn body_of(art: &Artwork, part: &str, back: bool) -> Option<(Bounds, String)
     let with_holes = |mut b: Bounds| {
         let drawn = b;
         for p in &pads {
-            if let Some(d) = &p.drill {
-                let (c, reach) = (local(p.at), d.width.max(d.length) / 2.0);
+            if let (Some(d), Some(at)) = (&p.drill, p.hole_at()) {
+                let (c, reach) = (local(at), d.width.max(d.length) / 2.0);
                 b.add(Pt::new(c.x - reach, c.y - reach));
                 b.add(Pt::new(c.x + reach, c.y + reach));
             }
