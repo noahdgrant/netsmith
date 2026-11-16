@@ -196,6 +196,28 @@ pub(crate) fn grown(areas: &[Area], by: f64) -> Vec<Area> {
     to_areas(rings)
 }
 
+/// The areas with the copper narrower than `min_width` taken out, as KiCad's fill trims a zone
+/// to its `min_thickness`: each area is shrunk by half the width and the rest grown back by as
+/// much, so a neck narrower than the width parts the area in two and a sliver goes.
+pub fn trimmed(areas: &[Area], min_width: f64) -> Vec<Area> {
+    let by = min_width / 2.0;
+    if by <= 0.0 || areas.is_empty() {
+        return areas.to_vec();
+    }
+    let mut band: Vec<Ring> = Vec::new();
+    for a in areas {
+        for r in std::iter::once(&a.outer).chain(&a.holes) {
+            let mut closed = r.clone();
+            if let Some(&first) = r.first() {
+                closed.push(first);
+            }
+            band.extend(strokes(&closed, 2.0 * by));
+        }
+    }
+    let core = difference(areas, &to_areas(band));
+    grown(&core, by)
+}
+
 /// The shapes of an overlay as one list of rings: each shape's outer ring and its holes.
 fn flatten(shapes: Vec<Vec<Ring>>) -> Vec<Ring> {
     shapes.into_iter().flatten().collect()
@@ -423,6 +445,36 @@ mod tests {
         );
         let total: f64 = areas.iter().map(Area::size).sum();
         assert!((total - 88.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn trimming_parts_an_area_at_a_neck_narrower_than_the_width_and_keeps_a_wide_one() {
+        // Two 4 mm squares joined by a neck 0.2 mm wide, and two joined by one 0.6 mm wide.
+        let dumbbell = |neck: f64| {
+            let mut p = Polygons::new();
+            p.region(square(0.0, 0.0, 4.0), None, &[]);
+            p.region(square(6.0, 0.0, 4.0), None, &[]);
+            p.region(
+                Contour::polygon(&[
+                    Pt::new(3.5, 2.0 - neck / 2.0),
+                    Pt::new(6.5, 2.0 - neck / 2.0),
+                    Pt::new(6.5, 2.0 + neck / 2.0),
+                    Pt::new(3.5, 2.0 + neck / 2.0),
+                ]),
+                None,
+                &[],
+            );
+            p.areas()
+        };
+        let thin = dumbbell(0.2);
+        assert_eq!(thin.len(), 1);
+        assert_eq!(trimmed(&thin, 0.25).len(), 2, "the thin neck is gone");
+        let wide = dumbbell(0.6);
+        let kept = trimmed(&wide, 0.25);
+        assert_eq!(kept.len(), 1, "the wide neck stays");
+        // The corners are rounded by the width's half, and no more is lost.
+        let lost = wide[0].size() - kept[0].size();
+        assert!(lost > 0.0 && lost < 0.1, "{lost}");
     }
 
     #[test]

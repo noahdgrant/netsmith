@@ -80,7 +80,7 @@ pub use constraints::{
 };
 pub use copper::{
     Area, Copper, CopperError, LayerPours, Pour, SilkInk, ZoneFill, artwork as copper_artwork,
-    copper as copper_of, pours as pours_of, zone_fills,
+    copper as copper_of, plane_pour_fills, pours as pours_of, zone_fills,
 };
 pub use explain::{
     Fault, Precheck, RequirementReport, before_placing, explain as explain_requirements,

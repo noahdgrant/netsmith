@@ -13,16 +13,25 @@ impl<'a> Router<'a> {
             .collect();
         // A net a routes file locks gets no copper (`netsmith_pcb::Routes`).
         let open = |l: &Ratline| !board.fixed.is_locked(&l.net);
-        let mut lines = crate::decouple::lines(board, Ratsnest::of(board).lines);
+        // Every pad of a plane net gets its own way to the plane first, whatever a pour of its
+        // net might join (`Ratsnest::without_pour_fills`): the other copper is not routed yet.
+        let mut lines = crate::decouple::lines(board, Ratsnest::without_pour_fills(board).lines);
         lines.retain(open);
         // The lines of the ratsnest, then the decoupling capacitors' vias to the pours, which
-        // are routed after a complete try only ([`Router::to_the_pours`]).
+        // are routed after a complete try only ([`Router::to_the_pours`]), then the lines
+        // between two pads of a plane net that may share a via ([`Router::share_vias`]).
         let routed_lines = lines.len();
         lines.extend(
             crate::decouple::return_lines(board)
                 .into_iter()
                 .filter(open),
         );
+        let shared_from = lines.len();
+        let (shares, share_lines): (Vec<(usize, usize)>, Vec<Ratline>) =
+            share::share_lines(board, &lines, routed_lines)
+                .into_iter()
+                .unzip();
+        lines.extend(share_lines);
         let nets = lines.iter().map(|l| net_index[l.net.as_str()]).collect();
         let ends = lines
             .iter()
@@ -100,6 +109,9 @@ impl<'a> Router<'a> {
             grid,
             lines,
             routed_lines,
+            shared_from,
+            shares,
+            share: options.share_vias,
             nets,
             ends,
             in_pads,

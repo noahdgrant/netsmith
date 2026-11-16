@@ -2,7 +2,9 @@
 //!
 //! On a four-layer board the router draws on the two outer layers only. The inner layers are
 //! planes, so a pad on a plane's net is joined to it by a via dropped beside the pad and a
-//! short track from the pad to the via; that is all such a pad needs.
+//! short track from the pad to the via; that is all such a pad needs. Two such pads near each
+//! other may share one via ([`Router::share_vias`]), and a pad in an outer pour of its net gives
+//! its via up once the pour is stitched (`crate::pour_pads`), both issue #834.
 //!
 //! The grid is 0.1 mm. A cell is open to a track of a net only if the track's copper, and
 //! the clearance round it, stays off every pad, track and via of other nets and off the
@@ -629,6 +631,7 @@ mod realise;
 mod rip_up;
 mod settle;
 mod setup;
+mod share;
 mod stages;
 mod vias;
 
@@ -920,6 +923,11 @@ enum Memo {
 /// ([`Router::to_the_pours`]).
 const RETURN_TRACK: f64 = 1.5;
 
+/// How far apart the centres of two pads of a plane net may be, in mm, for them to share one
+/// via to the plane, and the most track that joins them then ([`Router::share_vias`]).
+const SHARE_NEAR: f64 = 1.5;
+const SHARE_TRACK: f64 = 2.0;
+
 /// How many steps of searches the memo holds before it is emptied.
 const MEMO_MOST: usize = 200_000;
 
@@ -939,9 +947,15 @@ struct Router<'a> {
     /// What the fixed obstacles keep cells from, for each room and track width asked for.
     bases: RefCell<HashMap<(u64, u64), std::rc::Rc<Base>>>,
     lines: Vec<Ratline>,
-    /// How many of `lines` are the ratsnest's, which the tries route; the rest are the
-    /// decoupling capacitors' vias to the pours ([`Router::to_the_pours`]).
+    /// How many of `lines` are the ratsnest's, which the tries route; then come the
+    /// decoupling capacitors' vias to the pours ([`Router::to_the_pours`]), up to
+    /// `shared_from`, and the lines between two pads that may share a via
+    /// ([`Router::share_vias`]), the pair of lines to the plane of each in `shares`.
     routed_lines: usize,
+    shared_from: usize,
+    shares: Vec<(usize, usize)>,
+    /// Whether [`Router::share_vias`] runs ([`RouteOptions::share_vias`]).
+    share: bool,
     /// The net of each line, as an index into the board's nets.
     nets: Vec<usize>,
     /// The cells each line starts and ends on.
@@ -1057,6 +1071,12 @@ pub struct RouteOptions {
     /// Whether the shorter net of each diff pair gets a meander that matches the pair's lengths
     /// (`crate::meander`), on a board routed completely; on by default.
     pub meanders: bool,
+    /// Whether two pads of a plane net near each other share one via to the plane, on a board
+    /// routed completely ([`Router::share_vias`]); on by default.
+    pub share_vias: bool,
+    /// Whether a pad of a plane net that an outer pour of its net joins to the plane gives up its
+    /// own via, once the pours are stitched (`crate::pour_pads`); on by default.
+    pub pour_pads: bool,
 }
 
 /// Which tries of the router route the lines by class, the most important first, and keep the
@@ -1104,6 +1124,8 @@ impl Default for RouteOptions {
             teardrops: true,
             arcs: crate::arcs::ARC_WIDTHS,
             meanders: true,
+            share_vias: true,
+            pour_pads: true,
         }
     }
 }
@@ -1272,7 +1294,7 @@ pub fn route(board: &mut Board) -> Ratsnest {
 
 /// [`route`], with a choice of how hard to try.
 pub fn route_with(board: &mut Board, options: RouteOptions) -> Routing {
-    let (best, stopped, tries, why, crowding, stages) = {
+    let (best, stopped, tries, why, crowding, stages, drops) = {
         let mut router = Router::new(board, &options);
         let mut orders = router.tries(&options);
         if options.plan != CoarsePlan::Off {
@@ -1315,8 +1337,13 @@ pub fn route_with(board: &mut Board, options: RouteOptions) -> Routing {
         let stopped = router.out_of_time();
         let (best, failed_in, stages) = best.unwrap_or_default();
         let why = router.why(&best, &failed_in);
+        let drops = if options.pour_pads {
+            router.pour_pad_vias(&best)
+        } else {
+            Vec::new()
+        };
         let crowding = router.crowding.into_inner();
-        (best, stopped, tries, why, crowding, stages)
+        (best, stopped, tries, why, crowding, stages, drops)
     };
     let complete = best.failed.is_empty();
     let mut routed = best.routed;
@@ -1336,6 +1363,8 @@ pub fn route_with(board: &mut Board, options: RouteOptions) -> Routing {
     crate::parallel::parallel_vias(board);
     // Pours are stitched to the other layers of their nets in what the routing left free.
     crate::stitch::stitch(board);
+    // A pad that a pour of its net joins to those vias gives up its own (issue #834).
+    crate::pour_pads::drop_vias(board, &drops);
     // Teardrops round the copper the search settled (issue #431, S11).
     if options.teardrops {
         crate::teardrop::add(board);

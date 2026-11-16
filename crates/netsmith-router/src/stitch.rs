@@ -9,11 +9,12 @@
 //! The grid is at the pour's `.stitch_pitch`, read at the top of the range, every other row
 //! shifted by half a pitch. A via keeps from other nets' copper the space KiCad checks, and
 //! from the holes, the pads, the board edge, the cutouts and the keepouts that forbid vias.
-//! Where a pad sits on a pour of its own net the pad vias that the router drops beside a pad
-//! on a plane net are kept: a pad inside a ring of tracks may stand on an island that KiCad's
-//! fill removes, so the pad via is sound and not tidy. Dropping it where a pour reaches the
-//! pad is an optimisation to take only with KiCad's unconnected-item check as the gate (ADR
-//! 0020, decided by the owner on 2026-11-02).
+//! The vias the router drops beside the pads of a plane net are there while the stitching is
+//! placed. Where a pad sits on a pour of its own net, its via goes after the stitching
+//! (`crate::pour_pads`, issue #834) if the pour, as filled and trimmed to its minimum width,
+//! joins the pad to a via it covers: a pad inside a ring of tracks may stand on an island with
+//! none, and keeps its via. ADR 0020 (decided by the owner on 2026-11-02) made KiCad's
+//! unconnected-item check the gate of dropping it; the router's KiCad tests run that check.
 
 use netsmith_pcb::{Board, CopperLayer, Pt, Rect, Via};
 

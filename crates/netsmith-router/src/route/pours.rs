@@ -106,18 +106,19 @@ impl<'a> Router<'a> {
     }
 
     /// Give each decoupling capacitor's pad on a poured return net its own via to the pour, on
-    /// a try that routed every line (issue #431, S7): each line past [`Self::routed_lines`] is
+    /// a try that routed every line (issue #431, S7): each line past [`Self::routed_lines`] (up to
+    /// the lines that share vias) is
     /// searched for against all the other copper, as a pad's line to a plane is, and kept only
     /// if its track is at most [`RETURN_TRACK`] long and the net has no via within
     /// [`RETURN_TRACK`] of the pad already. Nothing else moves and no line is left.
     pub(super) fn to_the_pours(&self, state: &mut State) {
-        if self.routed_lines == self.lines.len() {
+        if self.routed_lines == self.shared_from {
             return;
         }
         let stage = self.stage.get();
         let failed_in = self.failed_in.borrow().clone();
         self.fine.set(true);
-        for line in self.routed_lines..self.lines.len() {
+        for line in self.routed_lines..self.shared_from {
             if self.out_of_time() {
                 break;
             }

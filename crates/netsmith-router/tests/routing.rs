@@ -23,6 +23,8 @@ const FIRST_ONLY: RouteOptions = RouteOptions {
     teardrops: true,
     arcs: netsmith_router::arcs::ARC_WIDTHS,
     meanders: true,
+    share_vias: true,
+    pour_pads: true,
 };
 const RETRY_ONLY: RouteOptions = RouteOptions {
     retry_orders: true,
@@ -40,6 +42,8 @@ const RETRY_ONLY: RouteOptions = RouteOptions {
     teardrops: true,
     arcs: netsmith_router::arcs::ARC_WIDTHS,
     meanders: true,
+    share_vias: true,
+    pour_pads: true,
 };
 const RIP_UP_ONLY: RouteOptions = RouteOptions {
     retry_orders: false,
@@ -57,6 +61,8 @@ const RIP_UP_ONLY: RouteOptions = RouteOptions {
     teardrops: true,
     arcs: netsmith_router::arcs::ARC_WIDTHS,
     meanders: true,
+    share_vias: true,
+    pour_pads: true,
 };
 
 const NEGOTIATE_ONLY: RouteOptions = RouteOptions {
@@ -75,6 +81,8 @@ const NEGOTIATE_ONLY: RouteOptions = RouteOptions {
     teardrops: true,
     arcs: netsmith_router::arcs::ARC_WIDTHS,
     meanders: true,
+    share_vias: true,
+    pour_pads: true,
 };
 
 fn left(board: &Board, options: RouteOptions) -> usize {

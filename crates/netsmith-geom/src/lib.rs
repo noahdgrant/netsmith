@@ -71,7 +71,7 @@ pub use pairs::{COUPLED, PAIR_SUFFIXES};
 pub use plot::{
     Plot, Rules as PlotRules, drawings as plot_drawings, mask as plot_mask, plot as plot_layer,
 };
-pub use polygons::{Area as PolygonArea, Polygons};
+pub use polygons::{Area as PolygonArea, Polygons, trimmed as trimmed_areas};
 
 /// A file: a Gerber or drill file netsmith plotted, or one KiCad wrote.
 #[derive(Debug, Clone, PartialEq, Eq)]
