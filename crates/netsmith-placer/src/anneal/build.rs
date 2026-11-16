@@ -378,6 +378,10 @@ impl<'a> Engine<'a> {
         }
         let link_mark = vec![0; links.len()];
         let (nn, nd, ng) = (nets.len(), decs.len(), groups.len());
+        let carrier = models
+            .iter()
+            .map(|m| !m.carries.is_empty() || m.shapes.iter().any(|s| s.ring.is_some()))
+            .collect();
         let mut engine = Engine {
             p,
             models,
@@ -408,6 +412,9 @@ impl<'a> Engine<'a> {
             hole_gap,
             near_ok,
             reach_abs: vec![Rect::new(Pt::default(), Pt::default()); n],
+            grid: grid::Grid::new(carrier),
+            pairs_costed: std::cell::Cell::new(0),
+            poses_tried: 0,
             text_weight: TEXT_WEIGHT_FROM,
             text_last: false,
             bins: overflow::Bins::new(&p.region, rules, nn, n),

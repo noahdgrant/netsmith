@@ -151,6 +151,7 @@ impl<'a> Engine<'a> {
     /// What two parts cost together: courtyards, reference text and silkscreen, and the
     /// keepouts and the escape ring either carries against the other.
     pub(super) fn pair(&self, i: usize, j: usize) -> Cost {
+        self.pairs_costed.set(self.pairs_costed.get() + 1);
         // A keepout a part carries reaches past the part: it is not in the part's reach.
         let mut c = self.carried_cost(i, j);
         c += self.carried_cost(j, i);
@@ -362,7 +363,8 @@ impl<'a> Engine<'a> {
             if !self.models[i].fixed {
                 c += self.single(i);
             }
-            for j in 0..self.models.len() {
+            // Only the parts that can cost something with it: the others add nothing.
+            for j in self.near(i) {
                 if j == i || (self.part_mark[j] == stamp && j < i) {
                     continue;
                 }

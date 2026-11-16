@@ -12,7 +12,7 @@ impl<'a> Engine<'a> {
         if turned && !self.links_of[i].is_empty() {
             self.realign();
         }
-        self.reach_abs[i] = self.shape(i).reach.translated(self.pos(i));
+        self.set_reach(i);
     }
 
     pub(super) fn put_all(&mut self, poses: Vec<Pose>) {
@@ -95,7 +95,7 @@ impl<'a> Engine<'a> {
             } else {
                 self.sub[f].y = shift;
             }
-            self.reach_abs[f] = self.shape(f).reach.translated(self.pos(f));
+            self.set_reach(f);
         }
     }
 

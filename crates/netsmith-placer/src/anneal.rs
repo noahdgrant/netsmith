@@ -245,6 +245,7 @@ use netsmith_pcb::{Edges, Ended, OutsideAt, OverlapAt, Pt, Rect, Rules, short_mm
 mod build;
 mod cost;
 mod explain;
+mod grid;
 mod moves;
 mod nets;
 mod overflow;
@@ -775,6 +776,13 @@ struct Engine<'a> {
     near_ok: Vec<bool>,
     /// Each part's reach on the board, kept up to date by [`Engine::put`].
     reach_abs: Vec<Rect>,
+    /// Which parts each part's reach meets, kept up to date with `reach_abs`.
+    grid: grid::Grid,
+    /// The work done, counted: the pairs of parts costed ([`Engine::pair`]) and the poses
+    /// [`Engine::legalise_by`] tried a part at. A test compares them between boards of two
+    /// sizes; nothing else reads them.
+    pairs_costed: std::cell::Cell<u64>,
+    poses_tried: u64,
     /// What a conflict of reference text or silkscreen with another part costs while it is
     /// as heavy as a hard rule: it grows through a run, from a hint to a rule (`text_last`).
     text_weight: f64,
