@@ -21,6 +21,15 @@
 //! mounting-hole pad `input`; a pin the part calls passive (neither takes nor gives) does not
 //! contradict a symbol that says more. A `power_in`, `power_out` or `no_connect` symbol pin still
 //! does. The other kinds follow ADR 0016.
+//!
+//! **A `power` pin that gives power suits an `output` symbol pin.** A provider's row has the kind
+//! of its generic (`LinearRegulator` declares `.vout.pos power`), and many library symbols of a
+//! regulator type the output `output` rather than `power_out`. When the solved design says the pin
+//! gives power ([`PartPin::gives_power`]: the current of its rail is negative), the symbol's
+//! `output` says the same thing, so the symbol is used as it is, with no copy to edit. A net with
+//! no `power_out` on it gets a power flag in the schematic, so KiCad's electrical rules check sees
+//! the rail driven. A power pin whose direction is not known, or one that takes power, is not an
+//! output, and the message says what would make it one.
 
 use netsmith_kicad::{Mapped, PartPin, PinKind, PinType, Pinout, Symbol};
 
@@ -44,16 +53,20 @@ impl std::fmt::Display for Subject<'_> {
     }
 }
 
-/// Whether a symbol pin of electrical type `symbol` can stand for a part pin of `kind`.
+/// Whether a symbol pin of electrical type `symbol` can stand for the part pin `pin`.
 /// A symbol pin typed `passive` is always accepted, because that is how stock symbols
 /// hide stacked duplicates.
-fn suits(kind: PinKind, symbol: PinType) -> bool {
+fn suits(pin: &PartPin, symbol: PinType) -> bool {
     use PinType::*;
     if symbol == Passive {
         return true;
     }
-    match kind {
-        PinKind::Power => matches!(symbol, PowerIn | PowerOut),
+    match pin.kind {
+        // A library regulator's output is often typed `output`: it suits a power pin that the
+        // solved design says gives power.
+        PinKind::Power => {
+            matches!(symbol, PowerIn | PowerOut) || (symbol == Output && pin.gives_power())
+        }
         PinKind::Input => symbol == Input,
         PinKind::Output | PinKind::TriState => matches!(symbol, Output | TriState | OpenCollector),
         // KiCad's stock symbols often type an open-drain output `output`.
@@ -167,9 +180,16 @@ pub fn validate_pinout(
                 sym.name
             ));
         }
-        if !suits(pin.kind, sym.kind) {
+        if !suits(pin, sym.kind) {
+            // An `output` on a power pin is refused only because the design does not say the pin
+            // gives power: say so, and what would.
+            let why = if pin.kind == PinKind::Power && sym.kind == PinType::Output {
+                "; a power pin suits `output` when the solved design says it gives power: the current of its rail is below 0 A"
+            } else {
+                ""
+            };
             say(format!(
-                "pad {pad} is {} in the part, but pin {pad} of the symbol `{lib_id}` has the electrical type `{}`, which does not suit a {} pin",
+                "pad {pad} is {} in the part, but pin {pad} of the symbol `{lib_id}` has the electrical type `{}`, which does not suit a {} pin{why}",
                 describe(pin),
                 sym.kind.name(),
                 pin.kind.word()
@@ -486,13 +506,68 @@ mod tests {
                 vec![T::PowerIn, T::PowerOut, T::NoConnect],
             ),
         ] {
+            let p = pin("p", "P", kind, &["1"]);
             for t in ok {
-                assert!(suits(kind, t), "{kind:?} with {t:?}");
+                assert!(suits(&p, t), "{kind:?} with {t:?}");
             }
             for t in bad {
-                assert!(!suits(kind, t), "{kind:?} with {t:?}");
+                assert!(!suits(&p, t), "{kind:?} with {t:?}");
             }
         }
+    }
+
+    #[test]
+    fn a_power_pin_that_gives_power_suits_an_output() {
+        use netsmith_core::PowerFlow;
+        let mut p = pin("vout.pos", "OUT", PinKind::Power, &["2"]);
+        // Its direction not known, or taking power, it is no output.
+        for flow in [None, Some(PowerFlow::Takes)] {
+            p.power_flow = flow;
+            assert!(!suits(&p, PinType::Output), "{flow:?}");
+        }
+        p.power_flow = Some(PowerFlow::Gives);
+        assert!(suits(&p, PinType::Output));
+        // Still no input, open collector or tri-state.
+        for t in [PinType::Input, PinType::OpenCollector, PinType::TriState] {
+            assert!(!suits(&p, t), "{t:?}");
+        }
+    }
+
+    #[test]
+    fn an_output_on_a_power_pin_whose_direction_is_not_known_says_what_would_suit() {
+        // The symbol types pad 1 `power_in`; make it an `output`.
+        let f = fixture();
+        let text = std::fs::read_to_string(f._dir.path().join("sym/proj.kicad_sym"))
+            .unwrap()
+            .replacen(
+                "(pin power_in line (at -5 0 0)",
+                "(pin output line (at -5 0 0)",
+                1,
+            );
+        let lib = f._dir.path().join("sym/out.kicad_sym");
+        std::fs::write(&lib, text).unwrap();
+        let symbols = SymbolLib::at("/nonexistent").with_library("proj", lib);
+        let symbol = symbols.symbol("proj:Ldo").unwrap();
+        let footprint = f.footprints.load("proj:Dfn").unwrap();
+        let subject = Subject {
+            refdes: "U1",
+            kind: "Ldo9",
+            package: Some("DFN-8-EP"),
+        };
+        let problems = validate_pinout(&subject, &pinout(), &mapped(), &symbol, &footprint);
+        assert_eq!(
+            problems,
+            [
+                "U1 (Ldo9, package \"DFN-8-EP\"): pad 1 is the power pin `vin.pos` (`IN`) in the part, \
+              but pin 1 of the symbol `proj:Ldo` has the electrical type `output`, which does not suit \
+              a power pin; a power pin suits `output` when the solved design says it gives power: \
+              the current of its rail is below 0 A"
+            ]
+        );
+        // The same pin, when the design says it gives power, is accepted.
+        let mut given = pinout();
+        given.pins[0].power_flow = Some(netsmith_core::PowerFlow::Gives);
+        assert!(validate_pinout(&subject, &given, &mapped(), &symbol, &footprint).is_empty());
     }
 
     #[test]
