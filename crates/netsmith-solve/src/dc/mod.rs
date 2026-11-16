@@ -180,10 +180,25 @@ fn load_of(
         return None;
     }
     let mut sum = Range::point(0.0);
+    // The islands that are one load of a group of loads and nothing else (issue #806), by the
+    // group and the member: the worst few members of each group add up, not all of them.
+    let mut grouped: Vec<(usize, usize, Range)> = Vec::new();
     for (i, held) in touching {
         match &states[i] {
             State::Solved(Ok(report)) if report.consistent > 0 => {
                 let r = report.range(Which::HeldDraw(held));
+                if let Some((g, m)) = one_load_of_a_group(&islands[i].island) {
+                    match grouped.iter_mut().find(|(gg, mm, _)| (*gg, *mm) == (g, m)) {
+                        Some((_, _, sum)) => {
+                            *sum = Range {
+                                lo: sum.lo + r.lo,
+                                hi: sum.hi + r.hi,
+                            }
+                        }
+                        None => grouped.push((g, m, r)),
+                    }
+                    continue;
+                }
                 sum = Range {
                     lo: sum.lo + r.lo,
                     hi: sum.hi + r.hi,
@@ -192,11 +207,40 @@ fn load_of(
             _ => return stated(),
         }
     }
+    let mut groups: Vec<usize> = grouped.iter().map(|(g, _, _)| *g).collect();
+    groups.sort_unstable();
+    groups.dedup();
+    for g in groups {
+        let loads: Vec<(f64, f64)> = grouped
+            .iter()
+            .filter(|(gg, _, _)| *gg == g)
+            .map(|(_, _, r)| (r.lo, r.hi))
+            .collect();
+        let (lo, hi) = netsmith_check::worst_of(model.load_groups()[g].limit, &loads);
+        sum = Range {
+            lo: sum.lo + lo,
+            hi: sum.hi + hi,
+        };
+    }
     // An output that takes current in (a load that pushes it back) is not a regulator's.
     if sum.lo < -1e-12 || !sum.lo.is_finite() || !sum.hi.is_finite() {
         return Some((None, Some(Why::Pushed(-sum.lo))));
     }
     Some((Some(Range::new(sum.lo.max(0.0), sum.hi.max(0.0))), None))
+}
+
+/// The group and the member of a group of loads that an island is, when every element of it is
+/// a load of that one member (a load between two held nets is an island of its own).
+fn one_load_of_a_group(island: &net::Island) -> Option<(usize, usize)> {
+    let mut found = None;
+    for e in &island.elements {
+        let g = e.group?;
+        if found.is_some_and(|f| f != (g.id, g.member)) {
+            return None;
+        }
+        found = Some((g.id, g.member));
+    }
+    found
 }
 
 /// Extract and solve every island of a model, in the order of the power tree. With `enclosure`

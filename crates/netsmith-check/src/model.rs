@@ -1170,6 +1170,9 @@ pub struct Model {
     /// application circuit says, which is the design's circuit and not a requirement of the part
     /// on itself. Without repeats.
     pub(crate) support_sections: Vec<(SourceId, Span)>,
+    /// The groups of loads of which at most a few draw at once (`shared` in a board or a
+    /// module, issue #806), in the order they were read.
+    pub(crate) load_groups: Vec<crate::loads::LoadGroup>,
     /// The domains that [`Model::set_domain`] replaced while a checkpoint was open or a
     /// bookmark was held, oldest first, with the field. Empty when neither is.
     journal: Vec<(FieldId, Domain)>,
@@ -1323,6 +1326,7 @@ impl Model {
             polygons: Vec::new(),
             default_notes: Vec::new(),
             support_sections: Vec::new(),
+            load_groups: Vec::new(),
             journal: Vec::new(),
             bookmarks: Holders::default(),
             open_checkpoints: 0,
