@@ -88,9 +88,9 @@ impl<'a> Router<'a> {
     /// beside the partner's track costing [`FOLLOW`] of its length, and the new copper is kept
     /// only if the share that runs coupled grows and the net is no longer and has no more vias.
     /// Then both nets are routed again together, one and then the other beside it, each net
-    /// first in turn, and the copper is kept on the same terms for the two nets together
+    /// first in turn, and the copper is kept on the same terms for the pair as a whole
     /// ([`keeps_both`], issue #1010): one net's way can be what keeps the other from running
-    /// beside it at no more vias. A line is never left unrouted, and a board with no pair is
+    /// beside it, and a net may take the vias its partner already has. A line is never left unrouted, and a board with no pair is
     /// unchanged.
     pub(super) fn side_by_side(&self, state: &mut State) {
         let failed_in = self.failed_in.borrow().clone();
@@ -171,15 +171,16 @@ impl<'a> Router<'a> {
         Some(trial)
     }
 
-    /// [`Self::pair_measure`] of the two nets of a pair together: their length, their vias and
-    /// the share of their length that runs coupled. A length of 0 if either has no track.
+    /// [`Self::pair_measure`] of the two nets of a pair together: the length of the longer
+    /// net, the vias of the net with more, and the share of their length that runs coupled.
+    /// A length of 0 if either has no track.
     fn both_measure(&self, state: &State, a: usize, b: usize) -> (f64, usize, f64) {
         let (la, va, ca) = self.pair_measure(state, a, b);
         let (lb, vb, cb) = self.pair_measure(state, b, a);
         if la == 0.0 || lb == 0.0 {
             return (0.0, 0, 0.0);
         }
-        (la + lb, va + vb, (ca * la + cb * lb) / (la + lb))
+        (la.max(lb), va.max(vb), (ca * la + cb * lb) / (la + lb))
     }
 }
 

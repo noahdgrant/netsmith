@@ -3,7 +3,7 @@
 use netsmith_core::{Design, Net, Part, PinRef};
 
 use crate::testlib::fixtures;
-use netsmith_pcb::Board;
+use netsmith_pcb::{Board, BoardNet};
 
 use super::*;
 
@@ -1532,5 +1532,113 @@ fn a_connector_pulled_to_an_edge_stops_where_its_silkscreen_is_clear_of_it() {
             to_edge < kept + 1.0,
             "seed {seed}: {to_edge} mm from the edge"
         );
+    }
+}
+
+/// A QFN at 0.5 mm in the middle of a 20 mm square, fixed, with pad 1 on VDD and its middle
+/// pad on GND (both power pins), a capacitor C2 between them that decouples it, and pad
+/// `signal` on a signal to resistor R3 (issue #1010).
+fn qfn_with_a_capacitor(signal: &str) -> Board {
+    let mut board = qfn_board(20.0, 2);
+    board.parts[0].power_pads = vec!["1".into(), "33".into()];
+    board.parts[1].refdes = "C2".into();
+    board.parts[1].kind = "Capacitor".into();
+    board.parts[1].declared_kind = Some(netsmith_core::PartKind::Capacitor);
+    let net = |name: &str, pads: &[(&str, &str)]| BoardNet {
+        name: name.into(),
+        pads: pads
+            .iter()
+            .map(|&(refdes, number)| netsmith_pcb::PadRef {
+                refdes: refdes.into(),
+                number: number.into(),
+            })
+            .collect(),
+    };
+    board.nets = vec![
+        net("VDD", &[("R1", "1"), ("C2", "1")]),
+        net("GND", &[("R1", "33"), ("C2", "2")]),
+        net("SIG", &[("R1", signal), ("R3", "1")]),
+    ];
+    board
+}
+
+#[test]
+fn a_decoupling_capacitor_may_stand_by_the_pins_it_decouples_but_not_against_the_others() {
+    // Pad 8 is at the far end of pad 1's side.
+    let board = qfn_with_a_capacitor("8");
+    let fixed = [true, false, false];
+    let rules = board.rules.clone();
+    let problem = problem_of(&board, &fixed, &rules);
+    let pad = |k: &str| {
+        let part = &board.parts[0];
+        part.pad_bounds(part.footprint.pads.iter().find(|p| p.number == k).unwrap())
+    };
+    let (one, eight) = (pad("1"), pad("8"));
+    let mut parts = board.parts.clone();
+    let mut e = Engine::new(&mut parts, &problem);
+    assert!(e.near_ok[1], "C2 decouples the QFN");
+    // The signal pad is the only one C2 keeps clear of: pad 1 and the middle pad are on its
+    // nets, and the QFN's other pads are on none.
+    let eight_index = board.parts[0]
+        .footprint
+        .pads
+        .iter()
+        .position(|p| p.number == "8")
+        .unwrap();
+    assert_eq!(e.pin_rooms.get(&(0, 1)), Some(&vec![eight_index]));
+    assert_eq!(
+        e.pin_rooms.get(&(0, 2)),
+        None,
+        "R3 is not exempt from the ring"
+    );
+    // C2 turned upright, its courtyard 0.1 mm off the ends of the pads of the QFN's left side.
+    let stand = |e: &mut Engine, y: f64| {
+        let upright = |x: f64, y: f64| Pose {
+            x: (x / UNIT).round() as i64,
+            y: (y / UNIT).round() as i64,
+            turn: 1,
+            text: 0,
+        };
+        e.put(1, upright(0.0, 0.0));
+        let (court, at) = (e.court(1), e.pos(1));
+        let x = at.x + one.min.x - 0.1 - court.max.x;
+        let y = at.y + y - (court.min.y + court.max.y) / 2.0;
+        e.put(1, upright(x, y));
+    };
+    // Level with pad 1, the pin it decouples, it is clear of the signal pad's room.
+    stand(&mut e, one.centre().y);
+    assert!(penetration(&e.court(1), &one, 0.2) > 0.0, "against pad 1");
+    assert_eq!(e.ring_cost(0, 1).hard, 0.0);
+    // Level with pad 8, the signal's, it is in its room: a hard cost, named in the reason.
+    stand(&mut e, eight.centre().y);
+    assert!(e.ring_cost(0, 1).hard > 0.0);
+    let (rect, _, ring) = e.ring_depth(0, 1, 0.0).unwrap();
+    assert!(!ring);
+    assert_eq!(rect, eight.expanded(PIN_ROOM));
+}
+
+#[test]
+fn the_placer_keeps_a_decoupling_capacitor_off_the_fine_pitch_parts_other_pins() {
+    // The signal is on pad 2, next to pad 1, where C2 stands without the room (checked).
+    // Over four seeds C2 ends by the QFN (closer than its escape ring reaches) but no nearer
+    // than PIN_ROOM to the signal's pad.
+    for seed in 0..4 {
+        let mut board = qfn_with_a_capacitor("2");
+        let outcome = run_with_the_qfn_fixed(&mut board, seed);
+        assert!(outcome.feasible, "seed {seed}: {:?}", outcome.ended);
+        let qfn = &board.parts[0];
+        let two = qfn.pad_bounds(qfn.footprint.pads.iter().find(|p| p.number == "2").unwrap());
+        let court = board.parts[1].courtyard();
+        assert_eq!(
+            penetration(&court, &two.expanded(PIN_ROOM), 0.0),
+            0.0,
+            "seed {seed}: C2 at {:?}",
+            board.parts[1].at
+        );
+        assert!(
+            penetration(&court, &ring_of(qfn), 0.0) > 0.0,
+            "seed {seed}: C2 is by the QFN"
+        );
+        assert_eq!(board.check_placement(), vec![]);
     }
 }

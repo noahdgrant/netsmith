@@ -199,7 +199,14 @@
 //! on the part's face (its courtyard, or a part with a hole's room there) may reach into it, a
 //! hard rule as for a keepout a part carries, so a board with no other place for a part does not
 //! place and names the ring. A capacitor that decouples the part (a decoupling pair) is exempt,
-//! as it is from the escape space: its place is by the pins it decouples. The ring is the
+//! as it is from the escape space: its place is by the pins it decouples. It still keeps
+//! [`PIN_ROOM`], 1 mm, from each of the part's pads on a net it is not on (issue #1010), as hard
+//! a rule as the ring: pressed 0.4 mm from a QFN's signal pins, a capacitor left room for one
+//! track and no via, and the Easyduino and Orbit did not route at some seeds. Measured over
+//! seeds 0 to 7 of each (`fab --place-seeds 1`, 2026-11-16): 3 of the 16 placements left a USB
+//! wire before, none after; the scorecard's mean decoupling distance moved from 15.8 to
+//! 17.7 mm on Orbit and 27.4 to 28.8 mm on the Easyduino (seed to seed it varies by twice that),
+//! and the USB pair runs more coupled on 6 of Orbit's 8 seeds. The ring is the
 //! placer's and not the placement check's (`Board::check_placement` measures none): two parts
 //! that both stay where they are, as a layout file puts them, are not measured against it. Beside a busy part the escape space already asks for
 //! about as much at a soft weight; the ring makes it a wall where a pull of nets or a small
