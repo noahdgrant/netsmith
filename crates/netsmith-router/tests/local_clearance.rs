@@ -218,3 +218,44 @@ fn a_pad_with_a_mask_margin_of_its_own_keeps_the_mask_space_from_its_opening() {
         assert_eq!(errors, Vec::<String>::new());
     }
 }
+
+/// The least gap between a track of net `A` and `rect`.
+fn least_gap_to(board: &Board, rect: Rect) -> f64 {
+    let a = board.nets.iter().position(|n| n.name == "A").unwrap();
+    board
+        .tracks
+        .iter()
+        .filter(|t| t.net == board.nets[a].name)
+        .flat_map(|t| {
+            (0..=200).map(move |i| {
+                let f = f64::from(i) / 200.0;
+                let q = Pt::new(
+                    t.from.x + (t.to.x - t.from.x) * f,
+                    t.from.y + (t.to.y - t.from.y) * f,
+                );
+                let dx = (rect.min.x - q.x).max(q.x - rect.max.x).max(0.0);
+                let dy = (rect.min.y - q.y).max(q.y - rect.max.y).max(0.0);
+                dx.hypot(dy) - t.width / 2.0
+            })
+        })
+        .fold(f64::MAX, f64::min)
+}
+
+#[test]
+fn an_opening_the_footprint_draws_in_the_mask_keeps_a_track_the_mask_to_track_space_away() {
+    // An opening drawn in the mask above the middle part, across the way net `A` takes round it
+    // (nothing of the opening is a pad): the route keeps the process's space from it.
+    let (mut board, _) = board("", "");
+    let keep = board.rules.mask_to_track;
+    let middle = board.parts.iter_mut().find(|p| p.refdes == "R2").unwrap();
+    let local = Rect::new(Pt::new(-3.0, -1.6), Pt::new(3.0, -0.6));
+    middle.footprint.mask_openings.push(local);
+    let opening = middle.mask_openings()[0];
+    let left = route(&mut board);
+    assert!(left.is_empty(), "{left:?}");
+    let gap = least_gap_to(&board, opening);
+    assert!(
+        gap >= keep - 1e-6,
+        "the route is {gap} mm from the opening, under {keep}"
+    );
+}

@@ -319,6 +319,85 @@ fn a_via_keeps_the_masks_least_web_from_an_opening_the_footprint_draws_in_the_ma
     assert!(!board.vias.is_empty());
 }
 
+/// The obstacles a router makes of `board` that are exactly `opening` with a track's space
+/// from the mask: the ones an opening drawn in the mask makes.
+fn opening_obstacles(board: &Board, opening: Rect) -> Vec<Obstacle> {
+    let router = Router::new(board, &RouteOptions::default());
+    router
+        .fixed
+        .list
+        .into_iter()
+        .filter(|o| {
+            matches!(o.form, Form::Rect(r) if r == opening)
+                && (o.clearance - board.rules.mask_to_track - MARGIN).abs() < 1e-9
+        })
+        .collect()
+}
+
+#[test]
+fn an_opening_drawn_in_the_mask_is_an_obstacle_to_a_track_of_any_net_on_both_faces() {
+    let mut board = crate::board_from_design(
+        &four_layer_design(),
+        &netsmith_kicad::Mapping::standard(),
+        &fixtures(),
+    )
+    .unwrap();
+    let r1 = board.parts.iter_mut().find(|p| p.refdes == "R1").unwrap();
+    r1.rotation = 0.0;
+    // Well off the part's pads.
+    r1.footprint
+        .mask_openings
+        .push(Rect::new(Pt::new(-1.0, 5.0), Pt::new(1.0, 7.0)));
+    let opening = r1.mask_openings()[0];
+    let found = opening_obstacles(&board, opening);
+    assert_eq!(found.len(), 1);
+    assert_eq!((found[0].net, found[0].layers), (None, [true, true]));
+}
+
+#[test]
+fn an_opening_drawn_over_pads_of_one_net_is_an_obstacle_to_other_nets_only_and_over_several_is_none()
+ {
+    let mut board = crate::board_from_design(
+        &four_layer_design(),
+        &netsmith_kicad::Mapping::standard(),
+        &fixtures(),
+    )
+    .unwrap();
+    let r1 = board.parts.iter_mut().find(|p| p.refdes == "R1").unwrap();
+    r1.rotation = 0.0;
+    let pads: Vec<Rect> = r1.footprint.pads.iter().map(|p| r1.pad_bounds(p)).collect();
+    assert!(pads.len() >= 2);
+    let nets: Vec<Option<usize>> = r1
+        .footprint
+        .pads
+        .iter()
+        .map(|pad| {
+            board.nets.iter().position(|n| {
+                n.pads
+                    .iter()
+                    .any(|p| p.refdes == "R1" && p.number == pad.number)
+            })
+        })
+        .collect();
+    assert_ne!(nets[0], nets[1], "the two pads are of different nets");
+    let at = r1.at;
+    // Over the first pad alone, in the footprint's frame.
+    let local = |r: Rect| r.translated(Pt::new(-at.x, -at.y)).expanded(-0.01);
+    let first = local(pads[0]);
+    let both = local(pads[0].union(&pads[1]));
+    let r1 = board.parts.iter_mut().find(|p| p.refdes == "R1").unwrap();
+    r1.footprint.mask_openings.push(first);
+    let opening = r1.mask_openings()[0];
+    let found = opening_obstacles(&board, opening);
+    assert_eq!(found.len(), 1);
+    assert_eq!(found[0].net, nets[0]);
+    // Over both: the pads' own clearances rule, so no obstacle of the opening.
+    let r1 = board.parts.iter_mut().find(|p| p.refdes == "R1").unwrap();
+    r1.footprint.mask_openings = vec![both];
+    let opening = r1.mask_openings()[0];
+    assert!(opening_obstacles(&board, opening).is_empty());
+}
+
 /// Copper of another net across the whole grid on both layers: a wall two cells thick at
 /// columns `i` and `i + 1`, except for the rows in `gap`.
 fn soft_wall(grid: &Grid, masks: &mut Masks, i: usize, gap: std::ops::Range<usize>) {

@@ -113,9 +113,39 @@ pub(crate) fn initial_obstacles(board: &Board) -> Obstacles {
         }
     }
     // An opening the footprint draws in the solder mask exposes any copper in it, so a via
-    // (whose own hole the mask may not cover) keeps the mask's least web from it.
+    // (whose own hole the mask may not cover) keeps the mask's least web from it, and a
+    // track keeps the process's mask to track space from it, as from a pad's opening. The
+    // footprint does not say which face the opening is on, so it keeps both faces clear.
     for part in &board.parts {
         for opening in part.mask_openings() {
+            // A drawn opening over the part's own pads (to widen theirs) is no space for
+            // another net's copper but is the pads' own: a track of their net reaches them.
+            // Pads of several nets in one opening leave it to the pads' own clearances, as
+            // a track could not reach any of them otherwise.
+            let mut nets: Vec<Option<usize>> = Vec::new();
+            for pad in &part.footprint.pads {
+                let at = part.pad_bounds(pad);
+                if at.min.x < opening.max.x
+                    && opening.min.x < at.max.x
+                    && at.min.y < opening.max.y
+                    && opening.min.y < at.max.y
+                {
+                    let net = net_of
+                        .get(&(part.refdes.as_str(), pad.number.as_str()))
+                        .copied();
+                    if !nets.contains(&net) {
+                        nets.push(net);
+                    }
+                }
+            }
+            if nets.len() <= 1 {
+                list.push(Obstacle {
+                    net: nets.first().copied().flatten(),
+                    layers: [true, true],
+                    form: Form::Rect(opening),
+                    clearance: rules.mask_to_track + MARGIN,
+                });
+            }
             via_keepouts.push((
                 Form::Rect(opening),
                 rules.via_diameter / 2.0 + rules.mask_bridge + MARGIN,
