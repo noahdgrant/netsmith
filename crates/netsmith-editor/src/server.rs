@@ -150,6 +150,7 @@ const NEEDS_ANALYSIS: &[&str] = &[
     "/api/system",
     "/api/panel",
     "/api/bom",
+    "/api/swap",
     "/api/compare",
     "/api/catalog/refresh",
     "/api/pins/lock",
@@ -342,6 +343,7 @@ fn router(state: Shared) -> Router {
         .route("/api/system", get(system))
         .route("/api/panel", get(panel))
         .route("/api/bom", get(bom))
+        .route("/api/swap", get(swap).post(swap_apply))
         .route("/api/git", get(git))
         .route("/api/git/file", get(git_file))
         .route("/api/compare", get(compare))
@@ -713,6 +715,23 @@ async fn panel(
 async fn bom(State(s): State<Shared>, Query(q): Query1) -> Result<Json<crate::api::Bom>, ApiError> {
     let board = param(&q, "board")?;
     json(move || s.backend.bom(&board)).await
+}
+
+async fn swap(
+    State(s): State<Shared>,
+    Query(q): Query1,
+) -> Result<Json<crate::api::Swap>, ApiError> {
+    let board = param(&q, "board")?;
+    let refdes = param(&q, "refdes")?;
+    json(move || s.backend.swap(&board, &refdes)).await
+}
+
+async fn swap_apply(
+    State(s): State<Shared>,
+    bytes: axum::body::Bytes,
+) -> Result<Json<crate::api::Swapped>, ApiError> {
+    let edit: crate::api::SwapApply = body(&bytes)?;
+    json(move || s.backend.swap_apply(&edit)).await
 }
 
 async fn route_pcb(

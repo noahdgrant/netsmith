@@ -30,6 +30,7 @@ Run `scripts/editor-verify doctor`, then `launch`, then the recipe named in each
 | System view: mates and ground groups | `system-view.md` | `system-mates` | `carrier_and_cards` |
 | Bill of materials | `bom.md` | `bom` | `two_boards` |
 | BOM dates, stale mark, Check parts against LCSC (fake endpoint) | `bom.md` | `refresh` | `catalog_refresh` |
+| BOM swap of an unresolved part: alternatives with their checks, Use this writes the source | `bom.md` | `bom-swap` | `swap` |
 | PCB view | `pcb.md` | `pcb`, `four-layer`, `big-pcb` | `two_boards`, `four_layer`, `big` |
 | PCB canvas: select, hover, move, rotate, flip, lock, undo | `pcb.md` | `pcb-select`, `pcb-edit` | `outline_and_pours` |
 | PCB keepouts and height limits hidden apart in the Layers menu, limits as outlines with their face, the Side switch (front, back mirrored, both) and the key B, `back` in the part list and the inspector | `pcb.md` | `pcb-sides` | `enclosure_limits` |

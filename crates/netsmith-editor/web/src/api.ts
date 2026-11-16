@@ -813,6 +813,86 @@ staleAfterDays: number,
  */
 catalogs: Array<string>, };
 
+export type Swap = { board: string, refdes: string, 
+/**
+ * The part's path in the board (`r1`), as the pick lock names it.
+ */
+path: string, 
+/**
+ * What is wanted and why no row stands for it: the unresolved message of the bill of
+ * materials, without the checks, which are in `alternatives`.
+ */
+message: string, 
+/**
+ * The member the swap writes (`resistance`), if the part's kind has a value.
+ */
+member: string | null, 
+/**
+ * Where the value is stated now, if it is stated once.
+ */
+stated: Location | null, 
+/**
+ * Why no alternative can be written by the swap (the value is stated in several places,
+ * in a definition other parts share, or in the standard library): the person changes the
+ * value by hand. `None` when each alternative has its edit.
+ */
+refused: string | null, alternatives: Array<SwapAlternative>, };
+
+export type SwapAlternative = { 
+/**
+ * The row's name, `240Ω 1% 0402 C25094`.
+ */
+name: string, 
+/**
+ * The name with how far it is from the value and its library, `240Ω 1% 0402 C25094 (-3.6%,
+ * Extended)`.
+ */
+line: string, lcsc: string | null, mpn: string | null, check: SwapCheck, 
+/**
+ * What fails, in one line, when `check` is `fails`.
+ */
+why: string | null, 
+/**
+ * The text the swap writes for the value (`240ohm +/- 1%`), when it can write one.
+ */
+value: string | null, 
+/**
+ * The source as the swap would change it, when it can.
+ */
+edit: SwapEdit | null, };
+
+export type SwapCheck = "passes" | "fails" | "notChecked";
+
+export type SwapEdit = { 
+/**
+ * The place of the text that is replaced (where it is inserted, for an empty one).
+ */
+at: Location, 
+/**
+ * The text there now.
+ */
+old: string, 
+/**
+ * The text that replaces it.
+ */
+new: string, };
+
+export type SwapApply = { board: string, refdes: string, 
+/**
+ * The alternative's row name.
+ */
+alternative: string, };
+
+export type Swapped = { 
+/**
+ * The source file, as the project names it.
+ */
+file: string, 
+/**
+ * The pick lock, if it was written too.
+ */
+lock: string | null, };
+
 export type CatalogChange = { column: string, from: string, to: string, };
 
 export type CatalogRow = { line: number, lcsc: string, 

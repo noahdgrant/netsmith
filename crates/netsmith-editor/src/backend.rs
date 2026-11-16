@@ -7,7 +7,7 @@ use crate::api::{
     Analysis, BoardDetail, Bom, BuildReport, CatalogRefresh, Changed, Compare, Definition,
     FabReport, FileContent, GitInfo, OrderInfo, OrderReport, PanelView, PcbEdit, PcbEdited,
     PcbFindings, PcbPours, PcbReport, PcbScene, PinLock, PinMove, PinWritten, PowerTree, Project,
-    Saved, SchematicHints, SystemView,
+    Saved, SchematicHints, Swap, SwapApply, Swapped, SystemView,
 };
 
 /// A refusal, with the HTTP status that says why.
@@ -266,6 +266,23 @@ pub trait Backend: Send + Sync + 'static {
     /// A panel by name, drawn from its board as it is placed now (ADR 0040).
     fn panel(&self, name: &str) -> Result<PanelView, ApiError>;
     fn bom(&self, board: &str) -> Result<Bom, ApiError>;
+    /// The swap of a generic part that no catalog row stands for (issue #800): its nearest rows,
+    /// the board's checks run again with each (the solves of `Built::rechecks`, made now if no
+    /// one has asked for them), and the edit of the source that chooses each. Refused with 422
+    /// (`not_unresolved`) for a part that a row stands for, and 404 for a part the board lacks.
+    fn swap(&self, board: &str, refdes: &str) -> Result<Swap, ApiError> {
+        let _ = (board, refdes);
+        Err(ApiError::not_found("this backend has no swap"))
+    }
+    /// Write the alternative's edit into the source, and pick the part again in the pick lock
+    /// beside it if there is one (the other parts stay on their rows). Refused with 409 if the
+    /// file is not as the analysis read it, and with 422 when the swap cannot write that
+    /// alternative or the lock cannot be picked again; then nothing is written. The project is
+    /// analysed again as the file changed.
+    fn swap_apply(&self, edit: &SwapApply) -> Result<Swapped, ApiError> {
+        let _ = edit;
+        Err(ApiError::not_found("this backend has no swap"))
+    }
     /// Check the rows of the project's own catalog files against LCSC's record and record the
     /// day in their `checked` column, as `netsmith catalog refresh` does (ADR 0039); no price
     /// or stock is written.

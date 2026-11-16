@@ -130,6 +130,10 @@ _Avoid_: Supplier feed, price list (a file provider reads one)
 The `support { ... }` section of a part: the parts and connections its datasheet's application circuit puts around it (a bootstrap capacitor, the resistor on `RT`), which come with the part wherever it is placed, at the path below it (`reg.ic.boost`, ADR 0115). It is how a part that provides a generic carries what not every provider needs.
 _Avoid_: Application module, companion parts, external components, satellite parts
 
+**Swap**:
+The editor's action on a generic part that no catalog row stands for (an unresolved part): the bill of materials lists the part's nearest rows, each with what the board's checks say when the board is solved again with that row in the part's place (its stated value left out, every relation kept, ADR 0047), and **Use this** writes the row's value (`240ohm +/- 1%`) into the source over the one statement that states it, or as a new statement in the part's declaration when nothing does, and picks the part again in the _Pick lock_ if the source has one. A value stated in more than one place, in a definition other parts share, in a board's `defaults` or in the standard library is not written: the swap says where it is and the person changes it.
+_Avoid_: Replace, substitute, alternative part (an alternative is one of the rows the swap lists)
+
 **Swing**:
 The range of voltage a `Logic` line can have, `.swing` of the `Logic` or of the `Levels` of a bus interface (ADR 0081), relative to the line's ground (the `neg` of its `.reference` rail) and read as written, so `-0.3V..1.8V` goes 0.3 V below the ground. A part states it when its outputs swing to a supply that has no pad. The absolute-maximum check holds a receiver's limits against it; a line that states none swings from its ground to the top of its reference rail.
 _Avoid_: Output range, internal rail (a rail has pads)

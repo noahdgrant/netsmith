@@ -27,6 +27,7 @@ mod required;
 mod sidecars;
 mod solved;
 mod sourcing;
+mod swap;
 mod system;
 
 use std::{
@@ -1197,6 +1198,17 @@ impl Backend for Workspace {
             &today,
             own,
         )
+    }
+
+    fn swap(&self, board: &str, refdes: &str) -> Result<netsmith_editor::api::Swap, ApiError> {
+        self.swap_of(board, refdes)
+    }
+
+    fn swap_apply(
+        &self,
+        edit: &netsmith_editor::api::SwapApply,
+    ) -> Result<netsmith_editor::api::Swapped, ApiError> {
+        Workspace::swap_apply(self, edit)
     }
 
     fn refresh_catalogs(

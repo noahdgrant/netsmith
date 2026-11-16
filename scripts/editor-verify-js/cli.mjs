@@ -78,6 +78,8 @@ const FIXTURES = {
   model_3d: 'scripts/editor-verify-js/fixtures/model_3d.nsm',
   // The LED example with a project catalog and a fake LCSC endpoint (ADR 0039).
   catalog_refresh: 'examples/led.nsm',
+  // The LED example with a 249 ohm resistor no catalog row has (E96): the BOM's swap of an unresolved part.
+  swap: 'scripts/editor-verify-js/fixtures/swap.nsm',
 };
 
 const [command, ...rest] = process.argv.slice(2);
@@ -233,6 +235,12 @@ async function launch() {
     // The STEP models beside the fixture, if it has them (ADR 0108): `x.models/` is the project's `models/`.
     const models = fixture.replace(/\.nsm$/, '.models');
     if (models !== fixture && fs.existsSync(models)) fs.cpSync(models, path.join(project, 'models'), { recursive: true });
+    // Lines for the manifest's [project] table beside the fixture, if it has them: `x.project.toml` (a series, say).
+    const manifest = fixture.replace(/\.nsm$/, '.project.toml');
+    if (manifest !== fixture && fs.existsSync(manifest)) {
+      const file = path.join(project, 'netsmith.toml');
+      fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace('[project]\n', `[project]\n${fs.readFileSync(manifest, 'utf8')}`));
+    }
     // A module, so the tree and the imports have something to show.
     fs.writeFileSync(
       path.join(project, 'src/power.nsm'),
