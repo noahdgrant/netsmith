@@ -513,6 +513,9 @@ What it is:
   - **Case** (on a board with a case model, in the tools beside _Layers apart_): `Case` hides and
     shows it and `Solid` draws it opaque instead of see-through (`Shift+C` steps through
     see-through, solid and hidden), as `render --case` does. It is see-through at every start.
+    A board with two or more case models also shows one checkbox for each, by name, above the
+    legend: unchecking one hides that model alone, whatever the mode (as `render --case
+    hidden:<name>` does), and a model lit by name or by a finding shows again.
   - **Height preview** (`H`), labelled "preview at N mm" (N from 0.1 to 50 mm, 1 mm unless
     changed): stands the parts of unknown height up at N mm, striped and see-through in a colour of
     its own, under a "Preview" label that says how many parts it stands up and that it is not a
@@ -637,6 +640,7 @@ The others are not told.
 | `selection` | the page's selection: parts by designator, or one `net:<name>` |
 | `hover` | what the pointer (or a row of another view) lights: a designator or `net:<name>`; absent with nothing |
 | `case` | how the case model is drawn, `hidden`, `see-through` or `solid`, as `--case` names it; absent when the board has no case model |
+| `caseHidden` | the case models hidden one by one, by name, as `--case hidden:<name>[,<name>]` names them; absent when none is |
 | `xray`, `colourBy`, `heightPreview` | x-ray; `provenance`, `kind` or `margin`; the preview's height in mm while it is on, absent when off |
 | `theme` | `light` or `dark`, as `--theme` names the page's palette (read-only) |
 
@@ -655,6 +659,7 @@ page is on (`{}` only opens it):
 | `select` | the page's selection alone, as a click makes it: parts, or one `net:<name>`; the limits and case models lit stay (a `limit:` or `case:` here is refused); not with `highlight` |
 | `xray`, `exploded` | true or false |
 | `case` | `hidden`, `see-through` or `solid`: how the case model is drawn; refused (`409`) on a board with no case model, and in the System view, which draws none |
+| `caseHidden` | the names of the case models to hide one by one (an item may be comma-separated), whatever `case` says; it replaces the list, `[]` shows every model, a model lit by `highlight` in the same change is shown; refused (`409`) as `case` is, and `400` with the list of the board's case models for a name it has none of |
 | `ortho` or `perspective` | the lens: `"ortho": true` is `"perspective": false` |
 | `colourBy` | `provenance`, `kind` or `margin` |
 | `heightPreview` | a height in mm (0.1 to 50) turns the preview on at it; true or false turns it on or off |
@@ -728,7 +733,7 @@ page has drawn it, and prints the state that results. The page driven is the one
 | `--colour-by provenance\|kind\|margin` | `colourBy` | `--color-by` too |
 | `--height-preview <mm>\|on\|off` | `heightPreview` | 0.1 to 50 mm |
 | `--layers-apart` \| `--no-layers-apart` | `exploded` | the stackup pulled apart or together |
-| `--case hidden\|see-through\|solid` | `case` | as `render --case`; a board with no case model refuses it |
+| `--case hidden\|see-through\|solid\|hidden:<name>[,<name>]` | `case`, `caseHidden` | as `render --case`; the flag repeats (`--case solid --case hidden:lid`), and any `--case` replaces the list of the models hidden (a mode alone shows every model again); a board with no case model refuses it |
 | `--json` | | print the JSON of the state, not the summary |
 | `--picture <file.png>` | `GET /api/view/picture` | after the change, save what the canvas shows; with no other change flag it opens the 3D view first, as `POST {}` does |
 
@@ -764,6 +769,7 @@ netsmith render examples/led.nsm --highlight J1               # the part lit up,
 netsmith render lidded.nsm --highlight limit:lid --xray       # a height limit's volume, in x-ray
 netsmith render cased.nsm --highlight case:lid                # a case model, see-through, lit
 netsmith render cased.nsm --case solid                        # the case opaque, hiding the board inside it
+netsmith render cased.nsm --case hidden:lid                   # every case model but the lid, see-through
 netsmith render examples/led.nsm --view front --section x=7   # cut at x = 7 mm
 netsmith render examples/four_layer.nsm --view right --section x=13   # the stackup in the cut
 netsmith render examples/four_layer.nsm --view right --section x=13 --no-caps   # the cut left open
@@ -782,7 +788,7 @@ open it): a picture to look at, with the numbers from `board3d --json` to quote.
 | `--no-caps` | With `--section`: leave the cut faces open, as the cut of a hollow shell, and draw the board as one block, as without a section. |
 | `--highlight <id>[,<id>...]` | May be repeated. A part by **designator** (`J1`) or **path** (`power_in`), `net:<name>`, `limit:<name>` (a height limit, as `board3d` names it) and `case:<name>` (a case model, ADR 0109). What is named is drawn in the highlight colour and the rest is dimmed. An id the board does not have is an error (exit 2) that names it and lists the parts, nets, limits and case models the board has; nothing is written. |
 | `--xray` | Every mesh see-through, to look through the board and the bodies. |
-| `--case hidden\|see-through\|solid` | How a case model is drawn: `see-through` (the default), `solid` (opaque: it hides the board inside it; x-ray still sees through it) or `hidden` (left out, the picture framed on the board alone). A case model that `--highlight case:<name>` names is drawn see-through, in the highlight colour, in every mode. A board with no case model draws the same in each. |
+| `--case hidden\|see-through\|solid\|hidden:<name>[,<name>]` | How a case model is drawn: `see-through` (the default), `solid` (opaque: it hides the board inside it; x-ray still sees through it) or `hidden` (left out, the picture framed on the board alone). A case model that `--highlight case:<name>` names is drawn see-through, in the highlight colour, in every mode. A board with no case model draws the same in each. `--case hidden:<name>[,<name>]` leaves those case models out and draws the rest as the mode says (the flag repeats: `--case solid --case hidden:lid`); a name the board has no case model of is an error (exit 2) that lists the ones it has. |
 | `--theme light\|dark` | The palette; default `light`. |
 | `--ortho` \| `--perspective` | Parallel projection (the default, so lengths are comparable) or a pinhole with a 30° field of view. |
 

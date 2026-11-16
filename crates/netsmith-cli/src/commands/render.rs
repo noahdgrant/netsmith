@@ -4,7 +4,9 @@ use std::process::ExitCode;
 
 use clap::{Args as ClapArgs, ValueEnum};
 
-use super::common::{CaseName, Ids, ViewName, parse_ids, with_placed_board};
+use super::common::{
+    CaseArg, CaseName, Ids, ViewName, fold_case, parse_case, parse_ids, with_placed_board,
+};
 
 #[derive(Debug, PartialEq, ClapArgs)]
 #[command(args_override_self = true)]
@@ -50,13 +52,16 @@ pub struct Args {
     /// Draw everything see-through.
     #[arg(long)]
     pub xray: bool,
-    /// How a case model is drawn: `hidden`, `see-through` (the default) or `solid`.
+    /// How case models are drawn: `hidden`, `see-through` (the default), `solid`, or `hidden:<name>[,<name>]`.
     ///
     /// A solid case hides the board inside it; a case model that `--highlight case:<name>` lights
     /// stays see-through, in the highlight colour, so what is inside shows. `hidden` frames the
-    /// board alone. A board with no case model draws the same in each.
-    #[arg(long, value_enum, default_value = "see-through")]
-    pub case: CaseName,
+    /// board alone. `hidden:<name>[,<name>]` leaves those case models out and draws the rest as
+    /// the mode says (repeat the flag to give both: `--case solid --case hidden:lid`); a name the
+    /// board has no case model of exits 2 with the list of the ones it has. A board with no case
+    /// model draws the same in each mode.
+    #[arg(long, value_name = "MODE|hidden:NAME[,NAME...]", value_parser = parse_case)]
+    pub case: Vec<CaseArg>,
     /// Leave the cut faces of a section open.
     #[arg(long)]
     pub no_caps: bool,
@@ -73,6 +78,7 @@ pub struct Args {
 
 impl Args {
     pub fn request(&self) -> netsmith_3d::RenderRequest {
+        let (mode, case_hidden) = fold_case(&self.case);
         netsmith_3d::RenderRequest {
             view: self.view.raster(),
             size: self.size,
@@ -83,7 +89,8 @@ impl Args {
                 .flat_map(|ids| ids.0.clone())
                 .collect(),
             xray: self.xray,
-            case: self.case.render(),
+            case: mode.map_or(netsmith_3d::RenderCaseMode::SeeThrough, CaseName::render),
+            case_hidden,
             caps: !self.no_caps,
             dark: self.theme == Theme::Dark,
             perspective: self.perspective,
@@ -214,6 +221,23 @@ mod tests {
         }
         let e = parse(&["render", "--case", "opaque"]).unwrap_err();
         assert!(e.contains("see-through") && e.contains("solid"), "{e}");
+        // Some case models only: the rest drawn as the mode says; the flag repeats.
+        assert!(render(&[]).case_hidden.is_empty());
+        let r = render(&["--case", "hidden:lid,screw"]);
+        assert_eq!(r.case_hidden, vec!["lid", "screw"]);
+        assert_eq!(r.case, netsmith_3d::RenderCaseMode::SeeThrough);
+        let r = render(&[
+            "--case",
+            "solid",
+            "--case",
+            "hidden:lid",
+            "--case",
+            "hidden:bar",
+        ]);
+        assert_eq!(r.case_hidden, vec!["lid", "bar"]);
+        assert_eq!(r.case, netsmith_3d::RenderCaseMode::Solid);
+        let e = parse(&["render", "--case", "hidden:lid,"]).unwrap_err();
+        assert!(e.contains("hidden:<name>"), "{e}");
         assert!(!render(&["--ortho"]).perspective);
         assert_eq!(
             kind(&["render", "--ortho", "--perspective"]),

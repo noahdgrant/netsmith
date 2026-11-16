@@ -45,6 +45,19 @@ export function caseAfterStep(mode: CaseMode): CaseMode {
   return mode === 'see-through' ? 'solid' : mode === 'solid' ? 'hidden' : 'see-through';
 }
 
+/** The case models hidden one by one, by name, for the session (whatever the mode is); none at every start. */
+export const caseHidden = signal<string[]>([]);
+
+/** Hide these case models, and show the others as the mode says. */
+export function setCaseHidden(names: string[]) {
+  caseHidden.value = names;
+}
+
+/** The list after a model's toggle: hidden when it showed, shown when it was hidden. */
+export function caseHiddenAfter(hidden: string[], name: string): string[] {
+  return hidden.includes(name) ? hidden.filter((n) => n !== name) : [...hidden, name];
+}
+
 /** The preview's height: 1 mm unless changed, from 0.1 to 50 mm. */
 export const PREVIEW_DEFAULT_MM = 1;
 export const PREVIEW_MIN_MM = 0.1;

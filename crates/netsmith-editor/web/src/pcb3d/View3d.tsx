@@ -28,7 +28,7 @@ import { analysis, chooseBoard, detail, pcbStamp, pickNet, pickPart, say } from 
 import { InspectBar, InspectLegend, PreviewLabel } from './InspectBar';
 import { KINDS, MARGIN_TOKENS, findingTargets, litNets } from './inspect';
 import { type Ids, litIds, memberSelection, planChange, sectionText } from './control';
-import { caseMode, colourBy, focus3d, heightPreview, setCase, toggleCaseShown, toggleCaseSolid, xray } from './inspectMode';
+import { caseHidden, caseHiddenAfter, caseMode, colourBy, focus3d, heightPreview, setCase, setCaseHidden, toggleCaseShown, toggleCaseSolid, xray } from './inspectMode';
 import { MeasurePanel, Overlay3d, type Readout, SectionPanel } from './Tools3d';
 import { type Axis, type Measurement, type Snap, axisRange, defaultCut, faceZ, nearestView, partReadout, renderCommand } from './tools';
 import { type LimitInfo, type MemberInfo, type PartInfo3d, type SystemInfo, coverageLine, limitTip, partTip, provenanceCounts, systemLine, unknownParts } from './model';
@@ -96,7 +96,10 @@ export function View3d({ board }: { board: string }) {
   const [limits, setLimits] = useState<LimitInfo[]>([]);
   // The case models' solids (ADR 0109): whether the scene has any. How they are drawn is `caseMode` (inspectMode.ts), as the keys and the palette set it.
   const [caseSolids, setCaseSolids] = useState(0);
+  // The case models by name (a model is one or more solids), in the file's order.
+  const [caseNames, setCaseNames] = useState<string[]>([]);
   const cm = caseMode.value;
+  const ch = caseHidden.value;
   const [coverage, setCoverage] = useState<{ known: number; total: number } | null>(null);
   const [tip, setTip] = useState<Tip | null>(null);
   const [preset, setPreset] = useState<Preset | null>('iso');
@@ -204,6 +207,8 @@ export function View3d({ board }: { board: string }) {
       cases: () => v.caseList(),
       caseShown: () => v.caseShownState(),
       caseMode: () => v.caseModeState(),
+      caseHidden: () => v.hiddenCaseList(),
+      caseVisible: () => v.caseVisibleState(),
       focusedSolids: () => v.focusedSolidList(),
       litCases: () => v.litCaseList(),
       litReport: () => v.litReport(),
@@ -255,6 +260,7 @@ export function View3d({ board }: { board: string }) {
             limits: litLimits(v),
             cases: v.litCaseList(),
             case: v.caseList().length ? v.caseModeState() : undefined,
+            caseHidden: v.caseList().length && v.hiddenCaseList().length ? v.hiddenCaseList() : undefined,
           };
         },
         picture: () => v.picture(),
@@ -289,6 +295,7 @@ export function View3d({ board }: { board: string }) {
         setParts(v.partList());
         setLimits(v.limitList());
         setCaseSolids(v.caseList().length);
+        setCaseNames([...new Set(v.caseList().map((c) => c.case))]);
         setCoverage(v.board?.coverage ?? null);
         setCanExplode(v.canExplode());
         setSysInfo(v.system ? { system: v.system, members: v.members } : null);
@@ -389,8 +396,15 @@ export function View3d({ board }: { board: string }) {
   useEffect(() => {
     viewer.current?.setCaseMode(cm);
   }, [cm]);
+  // The models hidden by name, the same way: a model lit by name or by a finding is shown, and leaves the list.
+  useEffect(() => {
+    viewer.current?.setHiddenCases(ch);
+  }, [ch, caseSolids]);
   const syncCase = (v: Viewer) => {
     if (v.caseModeState() !== caseMode.peek()) setCase(v.caseModeState());
+    const hid = v.hiddenCaseList();
+    const have = caseHidden.peek();
+    if (hid.length !== have.length || hid.some((n) => !have.includes(n))) setCaseHidden(hid);
   };
 
   // A finding picked in the problems dock (or the findings list): fly to it and light it. One
@@ -485,6 +499,7 @@ export function View3d({ board }: { board: string }) {
       section: tools.current.cut,
       highlight: lit.highlight,
       case: v.caseList().length ? v.caseModeState() : undefined,
+      caseHidden: v.caseList().length ? v.hiddenCaseList() : undefined,
       dark: t === 'dark' || t === 'hc-dark',
       perspective: !v.isOrtho(),
     });
@@ -536,6 +551,8 @@ export function View3d({ board }: { board: string }) {
         syncCase(v);
       }
       if (plan.case) setCase(plan.case);
+      // A model lit in this change is shown, as it is when it is lit alone; the viewer follows the signal.
+      if (plan.caseHidden) setCaseHidden(plan.caseHidden.filter((n) => !v.litCaseList().includes(n)));
       if (plan.xray !== undefined) xray.value = plan.xray;
       if (plan.colourBy !== undefined) colourBy.value = plan.colourBy;
       if (plan.preview) heightPreview.value = { on: plan.preview.on, mm: plan.preview.mm ?? heightPreview.peek().mm };
@@ -1144,6 +1161,19 @@ export function View3d({ board }: { board: string }) {
                     ))}
                   </div>
                 )}
+              </div>
+            )}
+            {!showSys && caseNames.length > 1 && cm !== 'hidden' && (
+              <div class="v3-members" role="group" aria-label="The case models shown" data-testid="case-models">
+                {caseNames.map((n) => {
+                  const on = !ch.includes(n);
+                  return (
+                    <label key={n} class={`v3-member ${on ? 'on' : ''}`} data-tip={on ? `Hide the case model ${n}` : `Show the case model ${n}`}>
+                      <input type="checkbox" checked={on} data-testid="case-model-toggle" data-case={n} onChange={() => setCaseHidden(caseHiddenAfter(ch, n))} />
+                      {n}
+                    </label>
+                  );
+                })}
               </div>
             )}
             {cb !== 'provenance' ? (

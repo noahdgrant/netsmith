@@ -176,6 +176,11 @@ describe('copy the view as a netsmith render command', () => {
     expect(renderCommand({ ...cased, case: 'see-through' })).toBe('netsmith render src/main.nsm --board Cased --view iso');
     expect(renderCommand({ ...cased, case: 'solid', highlight: ['case:lid'] })).toBe('netsmith render src/main.nsm --board Cased --view iso --highlight case:lid --case solid');
     expect(renderCommand({ ...cased, case: 'hidden', dark: true })).toBe('netsmith render src/main.nsm --board Cased --view iso --case hidden --theme dark');
+    // Some case models only: `--case hidden:<name>[,<name>]`, after the mode; with the whole case hidden it says nothing more.
+    expect(renderCommand({ ...cased, caseHidden: ['lid', 'screw'] })).toBe('netsmith render src/main.nsm --board Cased --view iso --case hidden:lid,screw');
+    expect(renderCommand({ ...cased, case: 'solid', caseHidden: ['lid'] })).toBe('netsmith render src/main.nsm --board Cased --view iso --case solid --case hidden:lid');
+    expect(renderCommand({ ...cased, case: 'hidden', caseHidden: ['lid'] })).toBe('netsmith render src/main.nsm --board Cased --view iso --case hidden');
+    expect(renderCommand({ ...cased, caseHidden: [] })).toBe('netsmith render src/main.nsm --board Cased --view iso');
     expect(renderCommand({ file: 'boards/a b.nsm', board: 'Sys/led', view: 'top', section: { axis: 'z', at: -0.8 } })).toBe(
       "netsmith render 'boards/a b.nsm' --board Sys/led --view top --section z=-0.8",
     );

@@ -194,4 +194,59 @@ export async function run(tools) {
   expect(cli.code === 0 && cli.out.includes('case: see-through'), `view --case see-through:\n${cli.out}${cli.err}`);
   cli = await view('--case', 'opaque');
   expect(cli.code === 2 && cli.err.includes('see-through') && cli.err.includes('solid'), `an unknown mode is refused with the names: ${cli.err.trim()}`);
+
+  step('the case models are hidden one by one: a toggle for each beside the legend, the Case tool stays on, the legend and the copied command say which');
+  cli = await view('--case', 'see-through');
+  expect(cli.code === 0, `see-through again: ${cli.err}`);
+  await whenIdle(page);
+  expect((await page.getByTestId('case-model-toggle').count()) === 2, 'a toggle for each of the two case models');
+  const lidToggle = page.locator('[data-testid=case-model-toggle][data-case=lid]');
+  const baseToggle = page.locator('[data-testid=case-model-toggle][data-case=base]');
+  expect((await lidToggle.isChecked()) && (await baseToggle.isChecked()), 'both are shown');
+  await shot('case-models-both');
+  await lidToggle.click();
+  await whenIdle(page);
+  expect(JSON.stringify(await ask(page, 'caseHidden')) === JSON.stringify(['lid']), 'the lid is hidden');
+  expect((await ask(page, 'caseMode')) === 'see-through' && (await toggle.getAttribute('aria-pressed')) === 'true', 'the mode is as it was, and the Case tool is on');
+  const solids = await page.evaluate((sel) => document.querySelector(sel).view3d.caseVisible(), HOST);
+  expect(solids.base.length === 6 && solids.base.every(Boolean) && solids.lid.every((v) => !v), `the base is drawn and the lid is not: ${JSON.stringify(solids)}`);
+  expect((await page.getByTestId('case-legend').count()) === 1, 'the legend still names the case');
+  const command = await ask(page, 'command');
+  expect(command.includes('--case hidden:lid'), `the copied command names it: ${command}`);
+  await shot('case-lid-hidden');
+
+  step('a hidden model is no obstacle to a pick when the rest is solid, and the lit model is shown again');
+  await solidTool.click();
+  await whenIdle(page);
+  expect((await ask(page, 'caseMode')) === 'solid', 'the case is solid');
+  expect((await ask(page, 'command')).includes('--case solid --case hidden:lid'), 'the command says both');
+  await shot('case-solid-lid-hidden');
+  r = await post({ highlight: ['case:lid'] });
+  expect(r.status === 200 && r.body.caseHidden === undefined, `lighting the lid shows it again: ${JSON.stringify(r.body).slice(0, 300)}`);
+  expect((await ask(page, 'caseHidden')).length === 0 && (await lidToggle.isChecked()), 'the lid is back in the list of the shown');
+  await post({ highlight: [], case: 'see-through' });
+
+  step('/api/view hides case models by name (caseHidden), refuses an unknown name with the list; [] shows all');
+  r = await post({ caseHidden: ['base'] });
+  expect(r.status === 200 && JSON.stringify(r.body.caseHidden) === JSON.stringify(['base']), `base hidden: ${r.status} ${JSON.stringify(r.body).slice(0, 300)}`);
+  expect(!(await baseToggle.isChecked()) && (await lidToggle.isChecked()), 'the toggles say so');
+  expect(r.body.command.includes('--case hidden:base'), `the command: ${r.body.command}`);
+  await whenIdle(page);
+  await shot('api-case-base-hidden');
+  r = await post({ caseHidden: ['box'] });
+  expect(r.status === 400 && String(r.body).includes('`box`') && String(r.body).includes('its case models are: base, lid'), `refused with the list: ${r.status} ${r.body}`);
+  expect(JSON.stringify(await ask(page, 'caseHidden')) === JSON.stringify(['base']), 'and changes nothing');
+  r = await post({ caseHidden: [] });
+  expect(r.status === 200 && r.body.caseHidden === undefined && (await ask(page, 'caseHidden')).length === 0, `[] shows every model: ${JSON.stringify(r.body).slice(0, 200)}`);
+
+  step('netsmith view --case hidden:<name> hides the model and the summary says so; a mode alone shows every model again; an unknown name exits 2');
+  cli = await view('--case', 'hidden:lid');
+  expect(cli.code === 0 && cli.out.includes('case hidden: lid'), `view --case hidden:lid:\n${cli.out}${cli.err}`);
+  expect(JSON.stringify(await ask(page, 'caseHidden')) === JSON.stringify(['lid']) && (await ask(page, 'caseMode')) === 'see-through', 'the page hides the lid only');
+  cli = await view('--case', 'solid', '--case', 'hidden:base');
+  expect(cli.code === 0 && cli.out.includes('case: solid') && cli.out.includes('case hidden: base'), `view --case solid --case hidden:base:\n${cli.out}${cli.err}`);
+  cli = await view('--case', 'see-through');
+  expect(cli.code === 0 && !cli.out.includes('case hidden'), `a mode alone shows every model:\n${cli.out}`);
+  cli = await view('--case', 'hidden:box');
+  expect(cli.code === 2 && cli.err.includes('`box`') && cli.err.includes('base, lid'), `an unknown name is refused with the list: ${cli.err.trim()}`);
 }

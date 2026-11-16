@@ -57,6 +57,10 @@ pub struct Request {
     pub xray: bool,
     /// How the case models are drawn ([`CaseMode`]).
     pub case: CaseMode,
+    /// Case models left out one by one (`--case hidden:<name>[,<name>]`), by name, whatever
+    /// `case` says; one that `highlight` names is still drawn, lit. A name the board has no case
+    /// model of is an error.
+    pub case_hidden: Vec<String>,
     /// Fill the cut faces of a section ([`RenderOptions::caps`]); `--no-caps` leaves them open.
     pub caps: bool,
     pub dark: bool,
@@ -72,6 +76,7 @@ impl Default for Request {
             highlight: Vec::new(),
             xray: false,
             case: CaseMode::SeeThrough,
+            case_hidden: Vec::new(),
             caps: true,
             dark: false,
             perspective: false,
@@ -267,12 +272,43 @@ fn options(request: &Request, highlight: Vec<String>) -> RenderOptions {
     }
 }
 
-/// The meshes with the case models dropped when the case is hidden (the picture is then framed
-/// on the board alone); one that `highlight` names is kept, to be lit.
-fn without_hidden_case(mut meshes: Vec<Mesh>, case: CaseMode, highlight: &[String]) -> Vec<Mesh> {
-    if case == CaseMode::Hidden {
-        meshes.retain(|m| m.material != crate::mesh::Material::Case || highlight.contains(&m.id));
+/// The ids (`case:<name>`) of the case models `--case hidden:` names, or the error that lists
+/// the ones the board has.
+fn hidden_case_ids(scene: &Scene, names: &[String]) -> Result<Vec<String>, String> {
+    let have: Vec<&str> = scene.case.models.iter().map(|c| c.name.as_str()).collect();
+    let unknown: Vec<String> = names
+        .iter()
+        .filter(|n| !have.contains(&n.as_str()))
+        .map(|n| format!("`{n}`"))
+        .collect();
+    if !unknown.is_empty() {
+        return Err(format!(
+            "error: --case hidden: names {} that the board has no case model of; its case models are: {}",
+            unknown.join(", "),
+            if have.is_empty() {
+                "(none)".to_string()
+            } else {
+                have.join(", ")
+            }
+        ));
     }
+    Ok(names.iter().map(|n| format!("case:{n}")).collect())
+}
+
+/// The meshes with the case models dropped when the case is hidden, or one by one when `hidden`
+/// names them (the picture is then framed without them); one that `highlight` names is kept, to
+/// be lit.
+fn without_hidden_case(
+    mut meshes: Vec<Mesh>,
+    case: CaseMode,
+    hidden: &[String],
+    highlight: &[String],
+) -> Vec<Mesh> {
+    meshes.retain(|m| {
+        m.material != crate::mesh::Material::Case
+            || highlight.contains(&m.id)
+            || !(case == CaseMode::Hidden || hidden.contains(&m.id))
+    });
     meshes
 }
 
@@ -284,7 +320,8 @@ pub fn draw(scene: &Scene, request: &Request) -> Result<Vec<u8>, String> {
         Some((axis, at)) if request.caps => mesh::of_scene_section(scene, axis, at),
         _ => mesh::of_scene(scene),
     };
-    let meshes = without_hidden_case(meshes, request.case, &highlight);
+    let hidden = hidden_case_ids(scene, &request.case_hidden)?;
+    let meshes = without_hidden_case(meshes, request.case, &hidden, &highlight);
     let options = options(request, highlight);
     let lens = if request.perspective {
         Lens::Perspective { fov_y_deg: FOV_DEG }

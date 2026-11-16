@@ -276,6 +276,8 @@ export interface RenderRequest {
   highlight?: string[];
   /** How the case model is drawn: named in the command (`--case`) when it is not see-through, the command's default. */
   case?: CaseMode;
+  /** The case models hidden one by one, by name: `--case hidden:<name>[,<name>]` (left out when the whole case is hidden). */
+  caseHidden?: string[];
   dark?: boolean;
   perspective?: boolean;
 }
@@ -288,6 +290,7 @@ export function renderCommand(r: RenderRequest): string {
   const lit = [...new Set(r.highlight ?? [])].filter(Boolean);
   if (lit.length) words.push('--highlight', shellWord(lit.join(',')));
   if (r.case && r.case !== 'see-through') words.push('--case', r.case);
+  if (r.caseHidden?.length && r.case !== 'hidden') words.push('--case', shellWord(`hidden:${r.caseHidden.join(',')}`));
   if (r.dark) words.push('--theme', 'dark');
   if (r.perspective) words.push('--perspective');
   return words.join(' ');

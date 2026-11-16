@@ -1,6 +1,20 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 
-import { type CaseMode, caseAfterShowHide, caseAfterSolid, caseAfterStep, caseMode, inspectCommands, setCase, stepCase, toggleCaseShown, toggleCaseSolid } from './inspectMode';
+import { type CaseMode, caseAfterShowHide, caseAfterSolid, caseAfterStep, caseHidden, caseHiddenAfter, caseMode, inspectCommands, setCase, setCaseHidden, stepCase, toggleCaseShown, toggleCaseSolid } from './inspectMode';
+
+describe('the case models hidden by name', () => {
+  it('toggles one model at a time, and leaves the mode alone', () => {
+    setCaseHidden([]);
+    expect(caseHiddenAfter([], 'lid')).toEqual(['lid']);
+    expect(caseHiddenAfter(['lid'], 'bar')).toEqual(['lid', 'bar']);
+    expect(caseHiddenAfter(['lid', 'bar'], 'lid')).toEqual(['bar']);
+    const before = caseMode.peek();
+    setCaseHidden(caseHiddenAfter(caseHidden.peek(), 'lid'));
+    expect(caseHidden.peek()).toEqual(['lid']);
+    expect(caseMode.peek()).toBe(before);
+    setCaseHidden([]);
+  });
+});
 
 describe('how the case model is drawn', () => {
   beforeEach(() => {
