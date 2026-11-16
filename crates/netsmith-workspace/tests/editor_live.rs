@@ -34,8 +34,11 @@ fn led_project(name: &str) -> (TempDir, Arc<Workspace>) {
     (root, Arc::new(editor))
 }
 
+/// What a watcher was told, kept.
+type Kept<T> = Arc<Mutex<Vec<T>>>;
+
 /// A `say` and a `show` that keep what they are told.
-fn watchers() -> (Say, Arc<Mutex<Vec<String>>>, Show, Arc<Mutex<Vec<PcbLive>>>) {
+fn watchers() -> (Say, Kept<String>, Show, Kept<PcbLive>) {
     let said = Arc::new(Mutex::new(Vec::new()));
     let shown = Arc::new(Mutex::new(Vec::new()));
     let say: Say = {
