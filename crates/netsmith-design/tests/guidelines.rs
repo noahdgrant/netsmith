@@ -1034,3 +1034,40 @@ board B {
     );
     assert!(l.notes.is_empty(), "{:?}", l.notes);
 }
+
+/// Two loads of 2 A on `5V` / `GND` that a supply header feeds, with `group` (issue #806).
+fn two_loads(group: &str) -> String {
+    format!(
+        "import std::mfg::jlcpcb::TwoLayer
+import std::parts::connector::Header1x2
+import std::sources::Rail
+board B {{
+    .process: TwoLayer {{ .stackup.thickness &= 1.6mm }}
+    .source: Rail {{
+        .pos.net &= \"5V\"
+        .neg.net &= \"GND\"
+    }}
+    .a: Rail {{ .current &= 0A..2A }}
+    .b: Rail {{ .current &= 0A..2A }}
+    .source ~ .a
+    .source ~ .b
+{group}    .supply: Header1x2
+    .out: Header1x2
+    .supply.p1 ~ .source.pos
+    .supply.p2 ~ .source.neg
+    .out.p1 ~ .a.pos
+    .out.p2 ~ .a.neg
+}}
+"
+    )
+}
+
+#[test]
+fn a_net_with_a_group_of_loads_carries_the_worst_of_them() {
+    let all = designed_of(&two_loads(""));
+    let one = designed_of(&two_loads("    shared LOADS { .a .b }\n"));
+    // 2 A needs 0.98 mm, as for one load of 2 A above; 4 A needs more.
+    assert_eq!(width_of(&one, "5V"), Some(0.98));
+    assert_eq!(width_of(&one, "GND"), Some(0.98));
+    assert!(width_of(&all, "5V").is_some_and(|w| w > 0.98), "{:?}", width_of(&all, "5V"));
+}

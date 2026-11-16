@@ -481,7 +481,6 @@ fn carrier_with_a_zone(parts: bool, limit: Option<f64>) -> (Board, netsmith_pcb:
         copper: false,
         parts,
         max_height: limit,
-        drawn: false,
     });
     (board, zone)
 }

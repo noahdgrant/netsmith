@@ -17,6 +17,7 @@ mod faults;
 mod isolation;
 mod lines;
 mod loader;
+mod loads;
 mod lower;
 mod mate;
 mod model;
@@ -44,6 +45,7 @@ pub use checker::physical_file_name;
 pub use diag::{Diagnostic, Source, SourceId, Sources};
 pub use faults::{pin_faults, pin_faults_solved};
 pub use loader::Loader;
+pub use loads::{LoadGroup, worst_of};
 pub use lower::closest;
 pub use model::{
     Balance, Bank, Bookmark, BusAssignment, BusRequest, Catalog, Chain, ChainPin, Checkpoint,

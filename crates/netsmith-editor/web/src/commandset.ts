@@ -1047,10 +1047,13 @@ export const LOCAL_KEYS: { group: string; keys: [string, string][] }[] = [
   {
     group: 'PCB in 3D',
     keys: [
-      ['Drag · right-drag · scroll', 'orbit · pan · zoom'],
+      ['Drag a picked part', "move it in the board's plane, on the grid; a height limit stops it, as in 2D"],
+      ['Drag elsewhere · right-drag · scroll', 'orbit · pan · zoom'],
       ['Click · double-click', 'select the part · show it in the source'],
-      ['Arrow keys', 'orbit (Shift to pan)'],
-      ['F or 0; + −', 'fit the board; zoom'],
+      ['R · Shift+R · F · L', 'with parts picked: rotate 90°, flip to the other side, lock or unlock them'],
+      ['Arrow keys', 'with parts picked: nudge them (Shift for a larger step); else orbit (Shift to pan)'],
+      ['F or 0; + −', 'fit the board (F with no part picked); zoom'],
+      ['Ctrl+Z · Ctrl+Shift+Z', 'undo / redo an edit of the layout file'],
       ['Click a pad (or copper in x-ray)', 'light its net on every layer'],
       ['M', 'measure: click two points (Shift+click picks a part)'],
       ['S · X Y Z', 'section plane on or off · across an axis'],

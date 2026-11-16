@@ -587,7 +587,7 @@ impl Workspace {
             .map_or_else(netsmith_pcb::Layout::default, |(layout, _)| layout);
         let before = layout.clone();
         let board = &data.built.design.name;
-        let physical = self.physical_change(&data, &mut layout, &layers, &edit.changes)?;
+        let physical = self.physical_change(&data, &layers, &edit.changes)?;
         let to_layout: Vec<PcbChange> = edit
             .changes
             .iter()
@@ -626,13 +626,10 @@ impl Workspace {
 
     /// The keepout changes of `changes` that go to the board's physical file: those of a keepout
     /// the editor draws (one with a size, before or after) and of one the physical file states
-    /// in the editor's shape, with the file's text after them. `None` if there are none. A
-    /// keepout drawn in the layout file before (a `size` there) is taken out of `layout` here,
-    /// as its first change moves it.
+    /// in the editor's shape, with the file's text after them. `None` if there are none.
     fn physical_change(
         &self,
         data: &analysis::BoardData,
-        layout: &mut netsmith_pcb::Layout,
         layers: &[String],
         changes: &[PcbChange],
     ) -> Result<Option<PhysicalChange>, ApiError> {
@@ -673,11 +670,7 @@ impl Workspace {
             if !have.contains_key(name) && !drawn(before) && !drawn(after) {
                 continue;
             }
-            let table = layout.boards.get(board);
-            let in_layout = table
-                .and_then(|t| t.keepouts.get(name))
-                .filter(|k| k.is_drawn());
-            let now = have.get(name).map(|d| &d.place).or(in_layout);
+            let now = have.get(name).map(|d| &d.place);
             let taken = || {
                 data.built
                     .design
@@ -717,11 +710,6 @@ impl Workspace {
                 }
                 None => None,
             };
-            if in_layout.is_some()
-                && let Some(table) = layout.boards.get_mut(board)
-            {
-                table.keepouts.remove(name);
-            }
             wanted.push((name.clone(), after));
         }
         if wanted.is_empty() && restated.is_empty() {

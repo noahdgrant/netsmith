@@ -360,7 +360,7 @@ impl Solver<'_> {
         again: Option<FieldId>,
     ) -> Option<(FieldId, Quantity)> {
         let mut unknown = None;
-        let mut rest: Option<Quantity> = None;
+        let mut terms: Vec<(Draw, Quantity)> = Vec::new();
         for d in &b.draws {
             let known = if Some(d.field) == again {
                 None
@@ -370,15 +370,24 @@ impl Solver<'_> {
             match known {
                 None if unknown.is_none() => unknown = Some(d),
                 None => return None,
-                Some(q) => {
-                    rest = match rest {
-                        None => Some(q),
-                        Some(sum) => Some(sum.add(&q).ok()?),
-                    }
-                }
+                Some(q) => terms.push((*d, q)),
             }
         }
         let u = unknown?;
+        // The members of a group of loads add up to the worst few of them (issue #806). A member
+        // is on or off, so what the rest leaves is not its current: it is not worked out.
+        if let Some(g) = self.model.load_group_of(u.field)
+            && terms
+                .iter()
+                .any(|(d, _)| self.model.load_group_of(d.field) == Some(g))
+        {
+            return None;
+        }
+        let rest = if terms.is_empty() {
+            None
+        } else {
+            Some(self.model.sum_draws(&terms)?)
+        };
         // A current that a range with values at its ends will state, and whose ends are not
         // known yet, is not worked out from the others (ADR 0066).
         if self.claimed.contains(&u.field) && self.domain(u.field) == Domain::Unset {
@@ -452,13 +461,18 @@ impl Solver<'_> {
         if stated.next().is_some() {
             return None;
         }
-        let mut others = known
+        let others: Vec<(Draw, Quantity)> = b
+            .draws
             .iter()
+            .zip(&known)
             .enumerate()
             .filter(|&(j, _)| j != index)
-            .map(|(_, q)| *q);
-        let first = others.next()?;
-        let sum = others.try_fold(first, |sum, q| sum.add(&q).ok())?;
+            .map(|(_, (d, q))| (*d, *q))
+            .collect();
+        if others.is_empty() {
+            return None;
+        }
+        let sum = self.model.sum_draws(&others)?;
         let range = self.stated_range(d.field)?;
         Some(Budget {
             field: d.field,

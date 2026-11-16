@@ -973,7 +973,7 @@ error: `.p00` lists `UARTE0_TX:output`, a function of `peripheral UARTE0`, which
   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
-A function belongs to one peripheral, and a peripheral and a function do not share a name. Statement order does not matter: a `shared` may come before the peripherals it names and the rows that list their functions. A `peripheral` or a `shared` can only be in a part: a generic states what every provider has, and a peripheral is a fact of one part's datasheet, so a part that provides the generic states its own.
+A function belongs to one peripheral, and a peripheral and a function do not share a name. Statement order does not matter: a `shared` may come before the peripherals it names and the rows that list their functions. A `peripheral` can only be in a part, and so can a `shared` of peripherals, functions and pins: a generic states what every provider has, and a peripheral is a fact of one part's datasheet, so a part that provides the generic states its own. In a board or a module, `shared` lists loads that take turns (_Loads that take turns_, in the chapter on load current).
 
 ### A peripheral on any pin
 

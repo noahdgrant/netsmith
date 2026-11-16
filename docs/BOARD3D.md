@@ -485,9 +485,19 @@ What it is:
   board, the schematic, the tree, the bill of materials), and a selection made in any of them is
   lit here; the hover is shared the same way. A double click opens the part's declaration in the
   source.
-- **A camera to look with.** Drag to orbit, right or middle drag to pan, the wheel to zoom at the
-  pointer; top, bottom, front, back, left, right and isometric views (`T`, `B`, `I` and the bar),
-  a flip to the other face (`Shift+F`), fit (`F` or `0`), and perspective or orthographic (`P`).
+- **A picked part moves here as in the 2D view.** A drag that starts on a picked part moves the
+  selection in the board's plane: the part taken ends on the grid of the 2D view's toolbar, a part
+  too tall for a height limit stops at its edge (its tip says which limit held it), and the drop
+  writes `<stem>.pcb.toml` through the same edit as a drag in 2D, so the scene, its findings and
+  the 2D view are placed again from it. A locked part does not move. With parts picked, `R`
+  (`Shift+R` the other way), `F` and `L` rotate, flip to the other face and lock or unlock them,
+  and the arrow keys nudge them along the board's axes (`Shift` for ten steps), whichever way the
+  camera looks; `Ctrl+Z` undoes. The parts move only in the plane: their height is the face they
+  are on. In a system's scene parts are not dragged (each member has a frame of its own).
+- **A camera to look with.** A drag anywhere but on a picked part orbits, right or middle drag
+  pans, the wheel zooms at the pointer; top, bottom, front, back, left, right and isometric views (`T`, `B`, `I` and the bar),
+  a flip to the other face (`Shift+F`), fit (`0`, or `F` with no part picked), and perspective or
+  orthographic (`P`); with no part picked the arrow keys orbit (`Shift` to pan).
   The colours follow the editor's theme. With reduced motion the camera jumps instead of moving.
 - **Ways of looking**, in the bar at the bottom left (and the palette), none of them data:
   - **X-ray** (`V`): the board, the mask and the bodies see-through, so the inner copper, the
@@ -560,8 +570,9 @@ Its tools, in the bar under the camera's (each also a command of the palette):
 
 What it is not:
 
-- **Not an editor.** Nothing moves in 3D: a part is moved in the 2D view, which writes the layout
-  file (ADR 0032).
+- **Not an editor of anything but placement.** In 3D a part is moved, turned, flipped and locked
+  as in the 2D view, which writes the layout file (ADR 0032); tracks, vias, keepouts and outlines
+  are edited in 2D.
 - **Not a model library.** No third-party 3D model is bundled or downloaded: not KiCad's, not a
   maker's (ADR 0105). The one STEP file drawn is one the project names for a part and keeps in its
   own tree (ADR 0108, [above](#a-parts-step-model)). Otherwise a body is a box, or a shape made

@@ -435,10 +435,11 @@ fn a_peripheral_and_a_function_have_different_names() {
 }
 
 #[test]
-fn only_a_part_holds_a_peripheral_or_a_shared_resource() {
+fn only_a_part_holds_a_peripheral_or_a_shared_resource_of_peripherals() {
     for (holder, what, statement) in [
         ("module", "peripheral", "peripheral A { A_TX }"),
-        ("module", "shared", "shared S { A }"),
+        // In a module or a board, `shared` lists loads (issue #806, `load_groups.rs`).
+        ("system", "shared", "shared S { A }"),
         ("board", "peripheral", "peripheral A { A_TX }"),
         ("interface", "shared", "shared S { A }"),
     ] {

@@ -413,6 +413,58 @@ impl<'a> Flow<'a> {
     }
 }
 
+/// A member of a group of loads on a net: its index in the group, the carriers that are it, and
+/// the sum of their spans.
+type GroupMember = (usize, Vec<usize>, f64);
+
+/// The ranges of the carriers of a net, with the loads of a group of loads (issue #806) that
+/// cannot be on at once at their low end: of each group with more members on the net than its
+/// limit, the members with the largest spans keep their ranges and the rest draw their low end,
+/// so the net carries the worst `limit` of them ([`netsmith_check::worst_of`]). A module's port
+/// in a group stands for the loads inside the module. A carrier that can give current is no
+/// load and keeps its range.
+fn grouped_ranges(model: &netsmith_check::Model, counted: &[&Carrier]) -> Vec<Option<(f64, f64)>> {
+    let mut ranges: Vec<Option<(f64, f64)>> = counted.iter().map(|c| c.range).collect();
+    // For each group: each member's carriers and the sum of their ranges.
+    let mut groups: Vec<(usize, Vec<GroupMember>)> = Vec::new();
+    for (k, c) in counted.iter().enumerate() {
+        let Some((lo, hi)) = c.range else { continue };
+        if lo < 0.0 {
+            continue;
+        }
+        let Some((g, m)) = model.load_member_of(c.inst) else {
+            continue;
+        };
+        let members = match groups.iter_mut().find(|(id, _)| *id == g) {
+            Some((_, members)) => members,
+            None => {
+                groups.push((g, Vec::new()));
+                &mut groups.last_mut().expect("just pushed").1
+            }
+        };
+        match members.iter_mut().find(|(id, _, _)| *id == m) {
+            Some((_, carriers, span)) => {
+                carriers.push(k);
+                *span += hi - lo;
+            }
+            None => members.push((m, vec![k], hi - lo)),
+        }
+    }
+    for (g, mut members) in groups {
+        let limit = model.load_groups()[g].limit;
+        if members.len() <= limit {
+            continue;
+        }
+        members.sort_by(|a, b| b.2.total_cmp(&a.2));
+        for (_, carriers, _) in members.iter().skip(limit) {
+            for &k in carriers {
+                ranges[k] = ranges[k].map(|(lo, _)| (lo, lo));
+            }
+        }
+    }
+    ranges
+}
+
 /// What the track check works out for a board (ADR 0036).
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct TrackPlan {
@@ -436,8 +488,8 @@ pub struct TrackPlan {
 /// (a load takes its draw out of the net its `pos` is on and puts it back into the net its
 /// `neg` is on; a supply is the reverse) and the parts that pass a current (it leaves the net
 /// of the first end of their `bridge` and enters the net of the second). The net carries the
-/// sum of what is taken out, with every load on at the same time, or the sum of what is put
-/// in, whichever is larger: a ground net shared by a 2 A and a 1 A load carries 3 A. The
+/// sum of what is taken out, with every load on at the same time (of a group of loads that take
+/// turns, issue #806, the worst few), or the sum of what is put in, whichever is larger: a ground net shared by a 2 A and a 1 A load carries 3 A. The
 /// currents are the solver's, so a regulator's input is what its model says it draws (the
 /// output current for a linear one, the power balance with the efficiency for a switching
 /// one), never its output current.
@@ -590,14 +642,15 @@ pub fn plan_tracks(
         // The sum of the upper bounds of the unknown currents, or `None` when one of them has
         // none (a rail, a part that Ohm's law does not bound).
         let mut bounded: Option<f64> = Some(0.0);
-        for c in &counted {
+        let ranges = grouped_ranges(model, &counted);
+        for (c, range) in counted.iter().zip(ranges) {
             let at_from = net.pins.contains(&c.from);
             let at_to = c.to.is_some_and(|t| net.pins.contains(&t));
             // Both ends on the net: what leaves comes back, nothing flows through it.
             if at_from && at_to {
                 continue;
             }
-            let Some(range) = c.range else {
+            let Some(range) = range else {
                 unknown.push(c.who.as_str());
                 let bound = bounds.iter().find(|b| !c.is_rail && b.part == c.inst);
                 bounded = bounded.zip(bound).map(|(sum, b)| sum + b.current);

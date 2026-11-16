@@ -275,6 +275,74 @@ The rule is narrow, and applies to a `~` written inside a module that joins one 
 
 A budget stated at the module's rail (`.monitor.vdd.current &= 0A..500uA` in the sheet) is judged as before against what the part says it may draw, and is refused when the part may draw more (ADR 0038): the two rails are one current and the part's range is not narrowed to fit the budget (ADR 0066).
 
+### Loads that take turns
+
+Every load on a net draws at once unless the design says otherwise: three heaters of up to 60 mA each are 180 mA at the regulator, even when the firmware runs one at a time. `shared NAME [limit N] { .load ... }` in a board or a module says that at most N of the named loads are on at once, one when it states no `limit` (issue #806). It is the statement a part uses for peripherals that share hardware (_Peripherals that share hardware_), and in a board or a module its members are loads: rails that draw, by their path (a rail of the board or the module, a rail of a part, or a module's port, which stands for what the module draws).
+
+```nsm solve
+import std::parts::connector::Header1x2
+import std::parts::regulator::LinearRegulator
+import std::sources::Rail
+
+board Heaters {
+    .input: Rail {
+        .voltage &= 5V +/- 5%
+        .pos.net &= "VIN"
+    }
+    .regulator: LinearRegulator { .vout.voltage &= 3.3V +/- 5% }
+    .input ~ .regulator.vin
+    .heater_a: Rail { .current &= 0mA..60mA }
+    .heater_b: Rail { .current &= 0mA..60mA }
+    .heater_c: Rail { .current &= 0mA..60mA }
+    .regulator.vout ~ .heater_a
+    .regulator.vout ~ .heater_b
+    .regulator.vout ~ .heater_c
+    .heater_a.pos.net &= "3V3"
+    shared HEATERS { .heater_a .heater_b .heater_c }
+    .in_header: Header1x2
+    .input.pos ~ .in_header.p1
+    .input.neg ~ .in_header.p2
+}
+```
+
+The regulator supplies 0 to 60 mA, which its 100 mA allows. A load that is off draws the low end of its range and one that is on anything in it, so the members of a group on one net add up to the sum of their low ends and the N largest spans: a heater of `10mA..30mA` and two of `0mA..60mA` with `limit 1` are 10 mA to 70 mA. Every check that sums the currents of a net reads the group: the balance of the net (and so the current the supply gives and a regulator's `.max_current`), a stated budget, the DC analysis, which leaves out the corners with more than N members at the top of their range, the width of the net's tracks, and the demand of the power view. A load that is in no group is always on with the others. With `limit 2` the regulator is refused, and the message names the group:
+
+```nsm fails
+import std::parts::connector::Header1x2
+import std::parts::regulator::LinearRegulator
+import std::sources::Rail
+
+board Heaters {
+    .input: Rail {
+        .voltage &= 5V +/- 5%
+        .pos.net &= "VIN"
+    }
+    .regulator: LinearRegulator { .vout.voltage &= 3.3V +/- 5% }
+    .input ~ .regulator.vin
+    .heater_a: Rail { .current &= 0mA..60mA }
+    .heater_b: Rail { .current &= 0mA..60mA }
+    .heater_c: Rail { .current &= 0mA..60mA }
+    .regulator.vout ~ .heater_a
+    .regulator.vout ~ .heater_b
+    .regulator.vout ~ .heater_c
+    .heater_a.pos.net &= "3V3"
+    shared HEATERS limit 2 { .heater_a .heater_b .heater_c }
+    .in_header: Header1x2
+    .input.pos ~ .in_header.p1
+    .input.neg ~ .in_header.p2
+}
+```
+
+```text
+error: no `ldo` candidate satisfies `regulator`: the closest of the 1 that fit, XC6206P332MR-G 3.3V 100mA LDO SOT-23 C5446, fails because -regulator.vout.current must always be at most regulator.max_current, but 0A..120mA is not always below 100mA (the currents on net `3V3`: heater_a.current (0A..60mA) + heater_b.current (0A..60mA) + heater_c.current (0A..60mA) + regulator.vout.current (-120mA..0A) add up to zero, with at most 2 of `HEATERS` on at once)
+   --> std/parts/regulator.nsm:42:5
+   |
+42 |     -.vout.current <= .max_current
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+```
+
+A group in a module holds for each instance of the module. A load is in one group, and a group lists each load once, at least two of them, and a limit fewer than its loads (one that allows every load at once says nothing). The members are not worked out from the rest of the net: a load that is on or off is not what the others leave. The group says which loads run together and nothing about when: a load's peak (below) is checked alone, as before.
+
 ### A peak current
 
 The DC analysis has no time in it, and a capacitor is open at DC, so a store charged through a resistor draws nothing in the balance. When it is empty, though, it takes the whole rail across the resistor for an instant, and that is the largest current the source in front of it sees. A rail states that current with `.peak_current`, the most its load draws at an instant, as a positive number (issue #750). It is checked and never drawn: the balance of the net, the power of a part, a shunt's window and every other check of the steady state read `.current` and never this one.

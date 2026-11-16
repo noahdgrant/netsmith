@@ -88,7 +88,6 @@ impl Unplaced {
                     copper: k.copper,
                     parts: k.parts,
                     max_height: k.max_height,
-                    drawn: false,
                 })
                 .collect(),
             parts,

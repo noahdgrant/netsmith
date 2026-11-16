@@ -632,7 +632,7 @@ pub fn scene(entry: &Entry, data: &BoardData, name: &str) -> PcbScene {
                 .any(|d| d.name == k.name && d.at.is_some());
             let origin = if k.part.is_some() {
                 KeepoutOrigin::Part
-            } else if k.drawn || in_physical.contains_key(&k.name) {
+            } else if in_physical.contains_key(&k.name) {
                 KeepoutOrigin::Drawn
             } else if stated && stated_in_physical.contains_key(&k.name) {
                 KeepoutOrigin::Stated
