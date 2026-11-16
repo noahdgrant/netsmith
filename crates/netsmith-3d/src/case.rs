@@ -55,7 +55,7 @@
 
 mod section;
 
-pub use section::{Ring, SectionError};
+pub use section::{Ceiling, Ceilings, Ring, SectionError};
 
 use std::fmt;
 

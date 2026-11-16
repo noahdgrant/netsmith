@@ -34,6 +34,23 @@ fn case_import_prints_the_source_to_stdout() {
 }
 
 #[test]
+fn case_import_prints_the_height_limits_with_limits() {
+    let lid = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../netsmith-3d/tests/models/case_lid.step"
+    );
+    let out = netsmith(&["case", "import", lid, "--limits"]);
+    assert!(out.status.success(), "{out:?}");
+    let text = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        text.contains(".limit1: Keepout {") && text.contains(".max_height &= 10mm"),
+        "{text}"
+    );
+    let out = netsmith(&["case", "import", lid]);
+    assert!(!String::from_utf8_lossy(&out.stdout).contains("Keepout"));
+}
+
+#[test]
 fn case_import_takes_the_pose_and_the_plane() {
     // Turned half a turn about z and moved, the pocket's corner is where the pose puts it.
     let out = netsmith(&[

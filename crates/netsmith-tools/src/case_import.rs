@@ -23,6 +23,14 @@
 //! its centre, stated by its diameter (`.diameter`, as `dxf import` states a hole); a drill the
 //! generator cannot draw refuses the import, as it does there.
 //!
+//! With `limits`, the **height limits**: each underside of the case above the board's top
+//! face (a lid, a rib or a boss hanging from it) is a `Keepout` that states `.max_height`
+//! over the box of the underside, on the top face (`.layers &= "top"`), found by
+//! [`netsmith_3d::CaseCeilings`]. A part of the board that is taller meets the case there.
+//! What stands from the board up to the case is a cutout, not a limit. A box is the
+//! underside's bounding box, so a shape that is not a rectangle limits more than it covers;
+//! an underside that is not flat is not read; the bottom face has no limit read.
+//!
 //! The section of a model is of its triangles (0.01 mm of chord), so a curve of arcs has a
 //! corner for each chord, and some of them inside the circle by up to that chord;
 //! [`polygon_of_ring`] finds the arcs again, within the reader's chord, and joins the collinear
@@ -31,11 +39,13 @@
 //! The result is the same kind of text as `dxf import`'s and is reviewed the same way; nothing
 //! is derived at build time (ADR 0109).
 
-use netsmith_3d::{CaseRing, place_case, read_step};
+use netsmith_3d::{CaseRing, PlacedCase, place_case, read_step};
 use netsmith_core::CaseFigures;
 use netsmith_dxf::{Hole, Polygon, Vertex, outline_of_loops};
 
-use crate::dxf::{Imported, translate};
+use std::fmt::Write as _;
+
+use crate::dxf::{Imported, imports_text, translate};
 
 /// What `case import` is asked for.
 #[derive(Debug, Clone, PartialEq)]
@@ -48,6 +58,8 @@ pub struct Request {
     pub at: f64,
     /// The height of the plane of the mounting holes, if the model has any to read.
     pub holes_at: Option<f64>,
+    /// Whether to print the height limits the case puts over the board (`Keepout`s).
+    pub limits: bool,
 }
 
 impl Default for Request {
@@ -57,6 +69,7 @@ impl Default for Request {
             offset: [0.0; 3],
             at: -0.8,
             holes_at: None,
+            limits: false,
         }
     }
 }
@@ -243,8 +256,63 @@ pub fn import(bytes: &[u8], name: &str, request: &Request) -> Result<Imported, S
         ),
     ];
     head.extend(holes_report);
+    if request.limits {
+        head.extend(limits(&case, pocket, &mut imported));
+    }
     imported.report.splice(0..0, head);
     Ok(imported)
+}
+
+/// The `Keepout`s of the case's height limits over `pocket`, added to `imported`, and the lines
+/// that say what was found. A plane that could not be cut is a warning.
+fn limits(case: &PlacedCase, pocket: &CaseRing, imported: &mut Imported) -> Vec<String> {
+    let found = case.ceilings(&pocket.points);
+    for e in &found.skipped {
+        imported.warnings.push(format!(
+            "{e}: the height limits that plane shows are not read"
+        ));
+    }
+    if found.zones.is_empty() {
+        return vec![
+            "limits: no underside of the case above the board's top face limits a part (no lid, rib or boss over the pocket, or none flat)"
+                .to_string(),
+        ];
+    }
+    let (lo, hi) = bounds(&pocket.points);
+    // The board's frame: the outline's top left corner, y down.
+    let mm = |v: f64| format!("{}mm", number(um(v)));
+    let mut report = vec![format!(
+        "limits: {} height limit{} over the board, each over the box of an underside of the case (a shape that is not a rectangle is limited over its box), for the parts on the top face",
+        found.zones.len(),
+        if found.zones.len() == 1 { "" } else { "s" }
+    )];
+    imported.members.push('\n');
+    for (i, z) in found.zones.iter().enumerate() {
+        let id = format!("limit{}", i + 1);
+        let (x, y) = (z.lo[0] - lo[0], hi[1] - z.hi[1]);
+        let (width, height) = (z.hi[0] - z.lo[0], z.hi[1] - z.lo[1]);
+        let _ = writeln!(imported.members, ".{id}: Keepout {{");
+        let _ = writeln!(imported.members, "    .x &= {}", mm(x));
+        let _ = writeln!(imported.members, "    .y &= {}", mm(y));
+        let _ = writeln!(imported.members, "    .width &= {}", mm(width));
+        let _ = writeln!(imported.members, "    .height &= {}", mm(height));
+        let _ = writeln!(imported.members, "    .layers &= \"top\"");
+        let _ = writeln!(imported.members, "    .max_height &= {}", mm(z.height));
+        let _ = writeln!(imported.members, "}}");
+        imported.names.push(id.clone());
+        report.push(format!(
+            "{id}: at most {} mm over {} x {} mm with its top left corner at ({}, {}) on the board: the underside of `{}`",
+            number(z.height),
+            number(width),
+            number(height),
+            number(x),
+            number(y),
+            z.solid
+        ));
+    }
+    imported.needed.push(("std::pcb", "Keepout"));
+    imported.imports = imports_text(&imported.needed);
+    report
 }
 
 // ---------------------------------------------------------------------------------------

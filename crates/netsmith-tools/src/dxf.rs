@@ -57,7 +57,7 @@ pub struct Imported {
     /// The `import` lines to put at the top of the physical file.
     pub imports: String,
     /// The same, as `(module, name)` pairs.
-    needed: Vec<(&'static str, &'static str)>,
+    pub(crate) needed: Vec<(&'static str, &'static str)>,
     /// The statements to put in the `case { }` section: the outline, the cutouts and the
     /// holes, each with its place.
     pub members: String,
@@ -160,6 +160,32 @@ pub fn import(text: &str, name: &str, request: &Request) -> Result<Imported, Str
     Ok(imported)
 }
 
+/// The `import` lines for `needed`: one for each module, its names in alphabetical order, the
+/// modules in the order they first appear.
+pub(crate) fn imports_text(needed: &[(&'static str, &'static str)]) -> String {
+    let mut modules: Vec<(&str, Vec<&str>)> = Vec::new();
+    for (module, name) in needed {
+        match modules.iter_mut().find(|(m, _)| m == module) {
+            Some((_, names)) => names.push(name),
+            None => modules.push((module, vec![name])),
+        }
+    }
+    let mut out = String::new();
+    for (module, mut names) in modules {
+        names.sort_unstable();
+        names.dedup();
+        match names[..] {
+            [one] => {
+                let _ = writeln!(out, "import {module}::{one}");
+            }
+            _ => {
+                let _ = writeln!(out, "import {module}::{{{}}}", names.join(", "));
+            }
+        }
+    }
+    out
+}
+
 /// The source for `outline`, a board in the frame of [`netsmith_dxf::Outline`]: `name` is where it
 /// came from, for messages, and `command` the command that prints it.
 pub(crate) fn translate(
@@ -237,20 +263,14 @@ pub(crate) fn translate(
         names.push(id);
     }
 
-    let mut imports = String::new();
-    imports.push_str(if cutouts.is_empty() {
-        "import std::pcb::Outline\n"
-    } else {
-        "import std::pcb::{Cutout, Outline}\n"
-    });
     let mut needed = vec![("std::pcb", "Outline")];
     if !cutouts.is_empty() {
         needed.push(("std::pcb", "Cutout"));
     }
     if !holes.is_empty() {
-        imports.push_str("import std::parts::mechanical::MountingHole\n");
         needed.push(("std::parts::mechanical", "MountingHole"));
     }
+    let imports = imports_text(&needed);
 
     let mut report = vec![format!(
         "frame: the board's origin is the outline's top left corner, the drawing's point ({}, {}) \

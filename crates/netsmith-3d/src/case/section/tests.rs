@@ -2,7 +2,7 @@
 
 use super::*;
 use crate::case::{CaseSolid, place};
-use crate::step::read::{case_box_step, read};
+use crate::step::read::{case_box_step, case_lid_step, read};
 use netsmith_core::CaseFigures;
 
 fn case_box() -> PlacedCase {
@@ -134,6 +134,88 @@ fn the_committed_model_is_what_the_fixture_writes() {
 fn write_case_box() {
     let path = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/models/case_box.step");
     std::fs::write(path, case_box_step()).unwrap();
+}
+
+/// The file the tests of `netsmith case import --limits` read.
+const COMMITTED_LID: &str = include_str!("../../../tests/models/case_lid.step");
+
+#[test]
+fn the_committed_lid_model_is_what_the_fixture_writes() {
+    assert_eq!(
+        COMMITTED_LID,
+        case_lid_step(),
+        "run `cargo test -p netsmith-3d --lib write_case_lid -- --ignored` to write it again"
+    );
+}
+
+#[test]
+#[ignore = "writes tests/models/case_lid.step"]
+fn write_case_lid() {
+    let path = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/models/case_lid.step");
+    std::fs::write(path, case_lid_step()).unwrap();
+}
+
+fn case_lid() -> PlacedCase {
+    let mesh = read(case_lid_step().as_bytes()).expect("the fixture is STEP");
+    place(
+        "shell",
+        "case_lid.step",
+        "",
+        CaseFigures::default(),
+        &mesh,
+        [0.0; 3],
+        [0.0; 3],
+    )
+}
+
+#[test]
+fn a_lid_a_rib_and_a_boss_are_limits_and_what_stands_through_the_board_is_not() {
+    let case = case_lid();
+    let rings = case.section(-0.8).unwrap();
+    let pocket = rings.iter().find(|r| r.depth == 1).unwrap();
+    let c = case.ceilings(&pocket.points);
+    assert!(c.skipped.is_empty(), "{:?}", c.skipped);
+    let zones: Vec<(f64, [f64; 2], [f64; 2], &str)> = c
+        .zones
+        .iter()
+        .map(|z| (z.height, z.lo, z.hi, z.solid.as_str()))
+        .collect();
+    // The block stands from the board up to the lid: it is no limit. The rib (4 mm), the boss
+    // (7 mm; the box of its circle) and the lid (10 mm, over the whole pocket) are.
+    assert_eq!(
+        zones,
+        vec![
+            (4.0, [20.0, 0.0], [26.0, 40.0], "rib"),
+            (7.0, [41.0, 26.0], [49.0, 34.0], "boss"),
+            (10.0, [0.0, 0.0], [60.0, 40.0], "lid"),
+        ]
+    );
+}
+
+#[test]
+fn a_case_with_no_underside_above_the_board_has_no_limit() {
+    let case = case_box();
+    let rings = case.section(-0.8).unwrap();
+    let pocket = rings.iter().find(|r| r.depth == 1).unwrap();
+    let c = case.ceilings(&pocket.points);
+    assert_eq!(c.zones, []);
+    assert!(c.skipped.is_empty());
+}
+
+#[test]
+fn a_solid_that_is_not_closed_at_a_plane_skips_that_plane_only() {
+    // The lid's rib is cut open at its own plane: the others stay.
+    let mut case = case_lid();
+    let rings = case.section(-0.8).unwrap();
+    let pocket = rings.iter().find(|r| r.depth == 1).unwrap().points.clone();
+    let rib = case.solids.iter_mut().find(|s| s.name == "rib").unwrap();
+    // Take away the rib's first side wall (the triangles that stand on x = 20).
+    rib.triangles
+        .retain(|t| !t.iter().all(|v| (v[0] - 20.0).abs() < 1e-9));
+    let c = case.ceilings(&pocket);
+    assert!(!c.skipped.is_empty());
+    assert!(c.zones.iter().all(|z| z.solid != "rib"), "{:?}", c.zones);
+    assert!(c.zones.iter().any(|z| z.solid == "lid"));
 }
 
 #[test]
