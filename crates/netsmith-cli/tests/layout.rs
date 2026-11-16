@@ -405,6 +405,45 @@ fn summary_sums_up_the_placed_board_as_one_line_of_json() {
 }
 
 #[test]
+fn summary_gives_the_distance_between_two_pads() {
+    let dir = project("layout-summary-pads", Some(PLACED));
+    let run = netsmith(
+        &dir,
+        &["summary", "--format", "json", "--between", "r1.1", "r1.2", "--between", "power_in.1", "led.1"],
+    );
+    assert_eq!(code(&run), 0, "{}", stderr(&run));
+    let json: serde_json::Value = serde_json::from_str(&stdout(&run)).unwrap();
+    let pads = json["pads"].as_array().unwrap();
+    assert_eq!(pads.len(), 2, "{json}");
+    // The two pads of one resistor: a small distance, and copper that does not touch.
+    let r1 = &pads[0];
+    assert_eq!(r1["from"].as_str().unwrap().split('.').nth(1), Some("1"), "{json}");
+    let distance = r1["distance"].as_f64().unwrap();
+    assert!(distance > 0.5 && distance < 5.0, "{json}");
+    assert!(r1["gap"].as_f64().unwrap() < distance, "{json}");
+    // The header and the led are far apart on this board, and each pad says its net.
+    let far = pads[1]["distance"].as_f64().unwrap();
+    assert!(far > 15.0, "{json}");
+    assert_eq!(pads[1]["dx"].as_f64().unwrap().signum(), 1.0, "{json}");
+    // Without the flag the document has no `pads`.
+    let run = netsmith(&dir, &["summary", "--format", "json"]);
+    let json: serde_json::Value = serde_json::from_str(&stdout(&run)).unwrap();
+    assert!(json.get("pads").is_none(), "{json}");
+    // For a person, a line for each pair.
+    let run = netsmith(&dir, &["summary", "--between", "r1.1", "r1.2"]);
+    assert_eq!(code(&run), 0, "{}", stderr(&run));
+    assert!(stdout(&run).contains("pads R"), "{}", stdout(&run));
+    assert!(stdout(&run).contains("mm between centres"), "{}", stdout(&run));
+    // A pad the part has none of is refused with the pads it has; so is a name that is no pad.
+    let run = netsmith(&dir, &["summary", "--between", "r1.9", "r1.1"]);
+    assert_eq!(code(&run), 1);
+    assert!(stderr(&run).contains("has no pad `9`"), "{}", stderr(&run));
+    let run = netsmith(&dir, &["summary", "--between", "r1", "r1.1"]);
+    assert_eq!(code(&run), 1);
+    assert!(stderr(&run).contains("is not a pad"), "{}", stderr(&run));
+}
+
+#[test]
 fn compare_says_which_parts_moved_between_two_layout_files() {
     let dir = project("layout-compare", Some(PLACED));
     fs::write(
