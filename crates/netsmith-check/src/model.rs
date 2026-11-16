@@ -866,6 +866,21 @@ pub struct Net {
     pub name: String,
     /// Whether a pin asked for `name`. If not, it was generated.
     pub explicit: bool,
+    /// The groups of pins that `~` joins, when the net is more than one of them and only the
+    /// name they ask for makes them one net (a rail's default ground, ADR 0121); empty when
+    /// the net is one group.
+    pub named_groups: Vec<Vec<InstId>>,
+}
+
+/// Two pins on one net that no `~` joins: the name their groups ask for makes them one net
+/// (`Model::joined_by_name`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct JoinedByName {
+    /// The net's name.
+    pub net: String,
+    /// For each of the two pins, the pin of its group that asks for the name (a part's pin when
+    /// one does), and whether a default (`?=`) gave the name rather than a statement.
+    pub sides: [(InstId, bool); 2],
 }
 
 /// What a contact of a mated connector is, read from the board behind it (ADR 0040).
@@ -1707,6 +1722,42 @@ impl Model {
 
     pub fn nets(&self) -> &[Net] {
         &self.nets
+    }
+
+    /// Whether `a` and `b` are on one net only by name: no `~` joins them, and the groups they
+    /// are in ask for one net name (issue #745: a part's rail takes the default ground `GND`, so
+    /// its `neg` is on the board's ground whatever it is wired to). `None` when they are on
+    /// different nets, or `~` joins them.
+    pub fn joined_by_name(&self, a: InstId, b: InstId) -> Option<JoinedByName> {
+        let net = self.nets.iter().find(|n| n.pins.contains(&a))?;
+        let group_of = |p: InstId| net.named_groups.iter().find(|g| g.contains(&p));
+        let (ga, gb) = (group_of(a)?, group_of(b)?);
+        if ga == gb {
+            return None;
+        }
+        let namer = |group: &[InstId]| -> Option<(InstId, bool)> {
+            let named = |p: &InstId| -> Option<(InstId, bool)> {
+                let Some(Member::Field(f)) = self.member(*p, "net") else {
+                    return None;
+                };
+                let field = self.field(f);
+                matches!(&field.domain, Domain::Text(n) if *n == net.name)
+                    .then_some((*p, field.default_from.is_some()))
+            };
+            group
+                .iter()
+                .filter(|p| self.is_terminal(**p))
+                .find_map(named)
+                .or_else(|| {
+                    let mut asking: Vec<(InstId, bool)> = group.iter().filter_map(named).collect();
+                    asking.sort_by_key(|(p, _)| (self.path_of(*p).len(), *p));
+                    asking.first().copied()
+                })
+        };
+        Some(JoinedByName {
+            net: net.name.clone(),
+            sides: [namer(ga)?, namer(gb)?],
+        })
     }
 
     /// Whether a current of a balance is exactly zero now (a stated `0A`, or worked out to

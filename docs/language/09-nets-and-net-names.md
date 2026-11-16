@@ -120,6 +120,7 @@ Rules.
 - Only an interface may offer a net name (`.line.net ?= "CLK"` in an `interface`): every instance of an interface such as a rail is meant to share the name. A module, a part, a generic and a system may not.
 - A board may not offer a different ground with `?=`, since the rail already has one default and a field has one (ADR 0051). State it with `&=`.
 - Two rails joined with `~` that state different grounds are still an error: only a statement can name a net.
+- A part's rail takes the default too, so its `neg` is on `GND` whatever it is wired to. A part whose `neg` is not ground (a cell stacked on another, a load on the high side of a sense resistor) has its net named by the board, `.store.cell.main.neg.net &= "CELL_N"`; otherwise a resistor from that `neg` to ground has both ends on `GND`, and the DC analysis finds no current in it. When an equation gives such a part a current, the refusal says that its two ends are one net only by its name, which pins take the name, and which pin to name.
 
 Misuse: a module offers a net name.
 

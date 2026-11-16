@@ -1415,15 +1415,69 @@ impl Solver<'_> {
         let states = ends.states(!above);
         let nearest = if above { "least" } else { "most" };
         let message = format!(
-            "`{name}` is inconsistent: the solver worked it out as {worked}, but the DC analysis of the circuit around it finds {solved}, and the two share no value (the {nearest} the circuit gives{})",
+            "`{name}` is inconsistent: the solver worked it out as {worked}, but the DC analysis of the circuit around it finds {solved}, and the two share no value (the {nearest} the circuit gives{}){}",
             if states.is_empty() {
                 String::new()
             } else {
                 format!(", with {states}")
-            }
+            },
+            self.one_net_by_name(part).unwrap_or_default()
         );
         let (source, span) = self.model.instance(part).at();
         self.dc_disagreements.push((source, span, message));
+    }
+
+    /// Why a part's two terminals carry nothing in the analysis when only a net name puts them on
+    /// one net (issue #745): the pins of each side that ask for the name, and which of them a
+    /// default named, with the statement that separates them. `None` when the terminals are on
+    /// different nets or a `~` joins them.
+    fn one_net_by_name(&self, part: InstId) -> Option<String> {
+        let (a, b) = self.model.instance(part).bridge?;
+        let joined = self.model.joined_by_name(a, b)?;
+        let net = &joined.net;
+        let paths = |by_default: bool| -> Vec<String> {
+            joined
+                .sides
+                .iter()
+                .filter(|(_, d)| *d == by_default)
+                .map(|(pin, _)| format!("`{}`", self.model.path_of(*pin)))
+                .collect()
+        };
+        let (defaulted, stated) = (paths(true), paths(false));
+        let verb = |list: &[String]| if list.len() > 1 { "take" } else { "takes" };
+        let how = match (defaulted.is_empty(), stated.is_empty()) {
+            (false, true) => format!(
+                "{} {} it from a default (`?=`)",
+                defaulted.join(" and "),
+                verb(&defaulted)
+            ),
+            (true, false) => format!(
+                "{} {} it from a statement",
+                stated.join(" and "),
+                verb(&stated)
+            ),
+            _ => format!(
+                "{} {} it from a default (`?=`) and {} from a statement",
+                defaulted.join(" and "),
+                verb(&defaulted),
+                stated.join(" and ")
+            ),
+        };
+        // The side to name: one a default named, a part's pin before a port.
+        let fix = joined
+            .sides
+            .iter()
+            .filter(|(_, by_default)| *by_default)
+            .max_by_key(|(pin, _)| self.model.is_terminal(*pin))
+            .map(|(pin, _)| {
+                let pin = self.model.path_of(*pin);
+                format!("; if `{pin}` is not on `{net}`, name its net on the board (`.{pin}.net &= \"...\"`)")
+            })
+            .unwrap_or_default();
+        Some(format!(
+            "; both ends of `{}` are on `{net}` only by that name, which no `~` gives them ({how}), so no current runs through the part{fix}",
+            self.model.path_of(part),
+        ))
     }
 
     /// The first of `members` (the fields joined by `~`) that a statement narrowed and the
