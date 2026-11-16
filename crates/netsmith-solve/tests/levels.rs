@@ -180,6 +180,26 @@ part Plain {
     }
 }
 
+/// A plain `open_drain` output, with no `Logic`: it only pulls its line low.
+part PlainDrain {
+    .vdd: Rail
+    pins {
+        .vdd.pos   power      "VDD" "1"
+        .vdd.neg   power      "GND" "2"
+        .alert     open_drain "ALERT" "3"
+    }
+}
+
+/// A plain input, with no `Logic`: it states no levels and can have none.
+part PlainIn {
+    .vdd: Rail
+    pins {
+        .vdd.pos   power "VDD" "1"
+        .vdd.neg   power "GND" "2"
+        .en        input "EN"  "3"
+    }
+}
+
 /// A receiver that states no levels.
 part Bare {
     .vdd: Rail
@@ -535,5 +555,131 @@ fn from_measures_the_limit_from_the_pin_it_names() {
         [
             "not evaluated: the absolute maximum of `t.x` against net `VCC5`: rail `s5` is on it and its ground `s5.neg` is on net `GND`, not `3V3`"
         ]
+    );
+}
+
+// ---- a pin with no levels, and a level that comes through a series part (#850) ----
+
+const S18: &str = "    .s18: Rail {\n        .voltage &= 1.8V +/- 5%\n        .pos.net &= \"1V8\"\n        .neg.net &= \"GND\"\n    }\n";
+
+#[test]
+fn a_plain_output_into_a_receiver_that_states_levels_is_named() {
+    let s = solved(&format!(
+        "{S3}    .m: Plain\n    .b: Receiver\n    .s3 ~ .m.vbat\n    .s3 ~ .b.vdd\n    .m.stat ~ .b.in.line\n"
+    ));
+    assert_eq!(faults(&s), Vec::<String>::new());
+    assert!(
+        notes(&s).contains(
+            &"not evaluated: the logic levels from `m.stat` to `b.in` on net `net-b.in.line`: `m.stat` can drive it and is not the `line` of a `Logic` or a pin of an interface with `levels`, so its levels are not known".to_string()
+        ),
+        "{:#?}",
+        notes(&s)
+    );
+}
+
+#[test]
+fn a_driver_into_a_plain_input_is_named() {
+    let s = solved(&format!(
+        "{S3}    .a: Driver\n    .q: PlainIn\n    .s3 ~ .a.vdd\n    .s3 ~ .q.vdd\n    .a.out.line ~ .q.en\n"
+    ));
+    assert_eq!(faults(&s), Vec::<String>::new());
+    assert_eq!(
+        notes(&s),
+        [
+            "not evaluated: the logic levels from `a.out` to `q.en` on net `net-a.out.line`: `q.en` reads it and is not the `line` of a `Logic` or a pin of an interface with `levels`, so the levels it needs are not known"
+        ]
+    );
+}
+
+#[test]
+fn two_pins_of_which_neither_states_a_level_stay_unlooked_at() {
+    // A driver that states nothing into a plain input, and a plain output into a receiver
+    // that states nothing: as before levels existed.
+    let s = solved(&format!(
+        "{S3}    .a: Silent\n    .q: PlainIn\n    .s3 ~ .a.vdd\n    .s3 ~ .q.vdd\n    .a.out.line ~ .q.en\n"
+    ));
+    assert_eq!(notes(&s), Vec::<String>::new());
+}
+
+#[test]
+fn a_plain_open_drain_pin_takes_its_high_from_its_pull_up_and_its_low_is_named() {
+    // Pulled up to 3.3 V, into a pad that reads a high from 2 V: the high is judged and holds.
+    let pulled = |rail: &str, receiver: &str| {
+        solved(&format!(
+            "{S3}{S18}    .u: PlainDrain\n    .b: {receiver}\n    .r: Resistor {{ .resistance &= 10kohm +/- 1% }}\n    .s3 ~ .u.vdd\n    .s3 ~ .b.vdd\n    .u.alert ~ .b.in.line\n    .{rail}.pos ~> .r ~> .b.in.line\n"
+        ))
+    };
+    let s = pulled("s3", "Pad");
+    assert_eq!(faults(&s), Vec::<String>::new());
+    let low = "not evaluated: the low level from `u.alert` to `b.in` on net `net-b.in.line`: `u.alert` is not the `line` of a `Logic` or a pin of an interface with `levels`, so its `vol` is not known";
+    assert!(notes(&s).contains(&low.to_string()), "{:#?}", notes(&s));
+    assert!(
+        notes(&s).iter().all(|n| !n.contains("high level")),
+        "{:#?}",
+        notes(&s)
+    );
+    // Pulled up to 1.8 V, into a receiver that reads a high from 70 % of 3.3 V: refused.
+    let s = pulled("s18", "Receiver");
+    let f = faults(&s);
+    assert_eq!(f.len(), 1, "{f:?}");
+    assert!(
+        f[0].starts_with("net `net-b.in.line`: ") && f[0].contains("(an `open_drain` pin leaves the high to ") && f[0].contains("but `b.in.vih` needs 2.194V..2.426V"),
+        "{f:?}"
+    );
+    assert!(notes(&s).contains(&low.to_string()), "{:#?}", notes(&s));
+}
+
+#[test]
+fn a_plain_open_drain_pin_whose_pull_up_cannot_be_read_names_its_high() {
+    // The pull-up's rail is on another ground than the receiver's.
+    let s = solved(&format!(
+        "{S3}    .s5: Rail {{\n        .voltage &= 5V +/- 5%\n        .pos.net &= \"VCC5\"\n        .neg.net &= \"GND5\"\n    }}\n    .u: PlainDrain\n    .b: Pad\n    .r: Resistor {{ .resistance &= 10kohm +/- 1% }}\n    .s3 ~ .u.vdd\n    .s3 ~ .b.vdd\n    .u.alert ~ .b.in.line\n    .s5.pos ~> .r ~> .b.in.line\n"
+    ));
+    assert!(
+        notes(&s).iter().any(|n| n.starts_with(
+            "not evaluated: the high level from `u.alert` to `b.in` on net `net-b.in.line`: `u.alert` is an `open_drain` pin and the pull-up that would set its high cannot be read: a resistor joins it to rail `s5`, whose ground"
+        )),
+        "{:#?}",
+        notes(&s)
+    );
+}
+
+#[test]
+fn a_level_through_a_series_resistor_is_named_with_the_resistor_and_the_net_it_comes_from() {
+    let s = solved(&format!(
+        "{S3}    .a: Driver\n    .b: Receiver\n    .r: Resistor {{ .resistance &= 100ohm +/- 1% }}\n    .s3 ~ .a.vdd\n    .s3 ~ .b.vdd\n    .a.out.line ~> .r ~> .b.in.line\n"
+    ));
+    assert_eq!(faults(&s), Vec::<String>::new());
+    let through: Vec<String> = notes(&s)
+        .into_iter()
+        .filter(|n| n.contains("comes through"))
+        .collect();
+    assert_eq!(
+        through,
+        [
+            "not evaluated: the logic levels into `b.in` on net `net-b.in.line`: nothing on the net drives it, and its level comes through `r` from net `net-a.out.line`, which the levels check does not follow"
+        ]
+    );
+}
+
+#[test]
+fn a_pull_down_is_no_series_part_and_a_net_with_its_own_driver_is_judged_on_it() {
+    // A resistor to ground has no driver on its far side.
+    let s = solved(&format!(
+        "{S3}    .b: Receiver\n    .r: Resistor {{ .resistance &= 10kohm +/- 1% }}\n    .s3 ~ .b.vdd\n    .b.in.line ~> .r ~> .s3.neg\n"
+    ));
+    assert!(
+        notes(&s).iter().all(|n| !n.contains("comes through")),
+        "{:#?}",
+        notes(&s)
+    );
+    // A driver on the receiver's own net, and a resistor on to another driven net.
+    let s = solved(&format!(
+        "{S3}    .a: Driver\n    .c: Driver\n    .b: Receiver\n    .r: Resistor {{ .resistance &= 10kohm +/- 1% }}\n    .s3 ~ .a.vdd\n    .s3 ~ .b.vdd\n    .s3 ~ .c.vdd\n    .a.out.line ~ .b.in.line\n    .b.in.line ~> .r ~> .c.out.line\n"
+    ));
+    assert!(
+        notes(&s).iter().all(|n| !n.contains("comes through")),
+        "{:#?}",
+        notes(&s)
     );
 }

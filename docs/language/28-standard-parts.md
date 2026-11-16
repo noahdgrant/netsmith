@@ -2384,7 +2384,7 @@ A digital line is a `Logic` (`std::logic::Logic`): a pin `.line` and the rail `.
 
 After the rails are solved, the solver checks two things. A fault is an error; a check that cannot be made is a note `not evaluated: ...`, never a pass.
 
-- **Levels.** For every output or bidirectional `Logic` line on a net and every input or bidirectional `Logic` line on it, the output's `voh` must always be at least the input's `vih`, and its `vol` at most the input's `vil`, in the worst case of both ranges. A level with no value, or two lines whose grounds (`reference.neg`) are not on one net or in one ground group, is not evaluated. A pair in which neither line states a level is not looked at. An output that states a `vol` and no `voh` is open-drain, and the line's high is what its pull-up gives it (see "An open-drain line" below).
+- **Levels.** For every output or bidirectional `Logic` line on a net and every input or bidirectional `Logic` line on it, the output's `voh` must always be at least the input's `vih`, and its `vol` at most the input's `vil`, in the worst case of both ranges. A level with no value, or two lines whose grounds (`reference.neg`) are not on one net or in one ground group, is not evaluated. A pair in which neither line states a level is not looked at, and one whose other end has no levels at all (a plain pin, or a level that comes through a series part) is named (see "A pin with no levels, and a level through a series part" below). An output that states a `vol` and no `voh` is open-drain, and the line's high is what its pull-up gives it (see "An open-drain line" below).
 - **Absolute maximum.** A pin with `.abs_min` or `.abs_max` must have a net whose worst-case voltage relative to its ground stays within them. A net that the DC analysis solved (a divider's middle, a net behind a chain of resistors and diodes: see "DC analysis") has the range of voltage the analysis finds for it over every corner of the ranges and every state of the parts around it, and the finding says `(the DC analysis of the network it is in)` (ADR 0076, amendment 12). Any other net's voltage is the hull of: its ground (0 V), each rail whose `pos` is on it, each `Logic` line that drives it (between its reference rail's `neg` and its voltage), and each rail or ground that a resistor joins it to (a pull-up or a pull-down). It is not evaluated for a net that something drives that is not a `Logic` line, for a rail or driver on another ground, and for a net nothing sets. A pin that nothing outside its own part is joined to (an optional pin left to float, such as the `TR/SS` of the LT8641) has no voltage to judge and is skipped, with no note; a pin with only a capacitor on it is the note "nothing sets its voltage".
 
 A 5 V rail through a divider into a pin that survives 3.6 V is judged by the voltage the divider gives, not by the rail: 10 kohm over 20 kohm from 5.25 V is at most 3.52 V, inside the maximum, and the same divider over 30 kohm is 3.96 V, which is refused. The parts are invented.
@@ -2562,6 +2562,78 @@ board Inverters {
 The note, in `netsmith build`'s output: `not evaluated: the absolute maximum of `u1.a.line` against net `net-j.p1`: nothing sets its voltage: no rail is on it and no `Logic` line drives it`.
 
 The level checks apply to the lines that are `Logic` and to the pins of a bus interface that states `.levels` (see "Logic levels of a bus" below). A rating of any other pin is judged the same way, from its pin row (`abs_max 65V`), which names its ground. A rating is stated nowhere but in the row, so no pin has one whose ground is not known.
+
+#### A pin with no levels, and a level through a series part
+
+A pair is judged only when both ends have levels. When one end states them and the other cannot have any, the pair is named as not evaluated, never passed in silence (#850):
+
+- A pin that can drive the net and is not the `.line` of a `Logic` or a pin of an interface with `levels` (an `output`, `tri_state`, `bidirectional` or `open_drain` pin of a part that writes it plainly), on a net with a receiver that states `vih` or `vil`: `not evaluated: the logic levels from `m.stat` to `b.in` on net `...`: `m.stat` can drive it and is not the `line` of a `Logic` or a pin of an interface with `levels`, so its levels are not known`. A plain `open_drain` pin does not set its high: as for an `open_drain` line, the high is what the DC analysis or the pull-up gives the line, measured from the receiver's ground and judged against its `vih` (see "An open-drain line" below), and only its low is a note.
+- A pin that reads the net and has no levels (a plain `input` or `bidirectional` pin), on a net with a driver that states `voh`, `vol` or a swing: `... `q.en` reads it and is not the `line` of a `Logic` or a pin of an interface with `levels`, so the levels it needs are not known`. The gate of a `NMosfet` is such a pin: its own relations judge the voltage across it where the board states them.
+- A receiver that states levels on a net that nothing on it drives, joined by a part with a `bridge` to a net that something drives: a series resistor, the top of a divider, a diode, or the channel of a MOSFET that translates a level. The level check does not follow a level through the part, and the note names it and the net the level comes from. A resistor to a rail or to ground only pulls the net there and is not named, and a net that has a driver of its own is judged on its own lines.
+
+A pair of which neither end states a level is not looked at, as before. A level translator that is a part with a `Logic` line or a bus on each side (`LevelTranslator`, or a part of a project's own, as in "Logic levels of a bus") is judged on each side's net.
+
+The driver below feeds the receiver through a 100 ohm resistor and also drives the enable pin of a part that states no levels. Both build, and among the notes of the build are these two: `not evaluated: the logic levels into `b.in` on net `net-b.in.line`: nothing on the net drives it, and its level comes through `r` from net `net-a.out.line`, which the levels check does not follow` and `not evaluated: the logic levels from `a.out` to `q.en` on net `net-a.out.line`: `q.en` reads it and is not the `line` of a `Logic` or a pin of an interface with `levels`, so the levels it needs are not known`. The parts are invented.
+
+```nsm evaluate
+import std::logic::Logic
+import std::parts::passive::Resistor
+import std::sources::Rail
+
+/// Invented: drives a high to its supply less 0.1 V and a low to 0.1 V.
+part Driver {
+    .vdd: Rail
+    .out: Logic
+    .out.reference ~ .vdd
+    .out.voh &= .vdd.voltage - 0.1V
+    .out.vol &= 0.1V
+    pins {
+        .vdd.pos  power  "VDD" "1"
+        .vdd.neg  power  "GND" "2"
+        .out.line output "OUT" "3"
+    }
+}
+
+/// Invented: reads a high from 70 % of its supply and a low up to 30 %.
+part Receiver {
+    .vdd: Rail
+    .in: Logic
+    .in.reference ~ .vdd
+    .in.vih &= 0.7 * .vdd.voltage
+    .in.vil &= 0.3 * .vdd.voltage
+    pins {
+        .vdd.pos  power "VDD" "1"
+        .vdd.neg  power "GND" "2"
+        .in.line  input "IN"  "3"
+    }
+}
+
+/// Invented: an enable input written as a plain pin, with no levels.
+part Enabled {
+    .vdd: Rail
+    pins {
+        .vdd.pos  power "VDD" "1"
+        .vdd.neg  power "GND" "2"
+        .en       input "EN"  "3"
+    }
+}
+
+board Behind {
+    .supply: Rail {
+        .voltage &= 3.3V +/- 5%
+        .pos.net &= "3V3"
+    }
+    .a: Driver
+    .b: Receiver
+    .q: Enabled
+    .r: Resistor { .resistance &= 100ohm +/- 1% }
+    .supply ~ .a.vdd
+    .supply ~ .b.vdd
+    .supply ~ .q.vdd
+    .a.out.line ~> .r ~> .b.in.line
+    .a.out.line ~ .q.en
+}
+```
 
 #### Levels that are fractions of one supply
 

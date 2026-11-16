@@ -59,8 +59,37 @@
 //! their checks. In `net_range` an `open_drain` pin only pulls its net to its ground.
 //!
 //! Not built from ADR 0046: more parts with datasheet levels (issue #64), and levels across a
-//! level shifter or a series resistor (issue #63; the voltage of a net is followed only through
-//! resistors). Open-drain lines have levels since ADR 0075, above.
+//! series part (a resistor, a diode, a transistor's channel); the voltage of a net is followed
+//! only through resistors, for its absolute maximum. Open-drain lines have levels since ADR 0075,
+//! above. A level translator that is a part with a `Logic` line or a bus on each side
+//! (`LevelTranslator`) is judged on each side's net, as any two parts are.
+//!
+//! What the levels check cannot judge is named (#850), never left out in silence, when a line on
+//! the net states the levels the other end would be compared with:
+//!
+//! - A pin that can drive the net and has no levels (an `output`, `tri_state`, `bidirectional`
+//!   or `open_drain` pin that is not the `.line` of a `Logic` or a pin of an interface with
+//!   `levels`), with a receiver that states `vih` or `vil`: its levels are not known. A plain
+//!   `open_drain` pin leaves the high to the circuit around the line as an `open_drain` line
+//!   does, so its high is judged from the DC analysis or the pull-up, against the receiver's
+//!   ground, and only its low is a note.
+//! - A pin that reads the net and has no levels (an `input` or `bidirectional` one), with a
+//!   driver that states `voh`, `vol` or a swing: the levels it needs are not known. A gate of a
+//!   transistor and an enable pin of a regulator are such pins, and their own relations judge
+//!   them where the part states any.
+//! - A receiver that states levels on a net that nothing on it drives, joined by a part with a
+//!   `bridge` to a net that something drives (a series resistor, a divider's top, a diode, the
+//!   channel of a MOSFET that translates a level): the note names the part and the net the level
+//!   comes from. A part that only pulls the net to a rail or to ground has no driver on its far
+//!   side and is not named, and a net with a driver of its own is judged on its own lines, so an
+//!   I2C bus that a MOSFET joins to another bus is judged on each side and the low that crosses
+//!   the MOSFET is not named.
+//!
+//! A pair of which neither end states a level is still not looked at. Not taken (#850): judging a
+//! receiver against a driver behind a series resistor, which holds only when nothing else draws
+//! from the net (a level check does not know the load, above); a note for a plain pin on a net
+//! whose lines state no level, which would name every gate that a line drives on a board that
+//! states no levels at all.
 //!
 //! Levels stated as fractions of one rail are compared at one supply voltage (ADR 0082). The
 //! levels are compared as two intervals, and an interval counts a value once for each time it is
@@ -379,6 +408,200 @@ impl Run<'_> {
                 self.pair(net, d, r);
             }
         }
+        self.plain_pins(index, &lines);
+        self.through_series(index, &lines);
+    }
+
+    /// Whether a line states a level a receiver is judged by (`vih` or `vil`).
+    fn states_input_levels(&self, logic: InstId) -> bool {
+        ["vih", "vil"]
+            .iter()
+            .any(|n| self.value(logic, n).is_some())
+    }
+
+    /// Whether a line states a level a driver is judged by (`voh`, `vol` or a swing).
+    fn states_output_levels(&self, logic: InstId) -> bool {
+        ["voh", "vol", "swing"]
+            .iter()
+            .any(|n| self.value(logic, n).is_some())
+    }
+
+    /// The pins on a net that have a kind and no levels: not the `.line` of a `Logic` or a pin
+    /// of an interface with `levels`, and not on an interface the board states is unused.
+    fn plain_on(&self, net: &Net) -> Vec<(InstId, InstId, PinKind)> {
+        let model = self.model;
+        net.terminals
+            .iter()
+            .filter(|&&pin| model.unused_by(pin).is_none() && self.logic_of(pin).is_none())
+            .filter_map(|&pin| Some((pin, model.owner_of(pin)?, model.pin_kind(pin)?)))
+            .collect()
+    }
+
+    /// A pin with no levels on a net with a line that states them (#850): a plain output that
+    /// drives a receiver, or a plain input that a driver drives. The pair is not judged, and
+    /// the note names the pin. A plain `open_drain` pin leaves the high to the circuit around
+    /// the line, as an `open_drain` line does, so its high is judged from that and only its
+    /// low is not.
+    fn plain_pins(&mut self, index: usize, lines: &[Line]) {
+        let model = self.model;
+        let net = &model.nets()[index];
+        let plain = self.plain_on(net);
+        let unknown = "is not the `line` of a `Logic` or a pin of an interface with `levels`";
+        for &(pin, part, kind) in &plain {
+            let p = model.path_of(pin);
+            let inside = model.joined_inside(pin);
+            let apart = |l: &Line| l.pin != pin && !inside.contains(&l.pin);
+            if is_driver(kind) {
+                for r in lines.iter().filter(|l| is_receiver(l.kind) && apart(l)) {
+                    if !self.states_input_levels(r.logic) {
+                        continue;
+                    }
+                    let rl = model.path_of(r.logic);
+                    if kind == PinKind::OpenDrain {
+                        self.plain_open_drain_high(index, &p, part, r);
+                        self.note(
+                            part,
+                            vec![part],
+                            Cause::PartModel,
+                            format!(
+                                "not evaluated: the low level from `{p}` to `{rl}` on net `{}`: `{p}` {unknown}, so its `vol` is not known",
+                                net.name
+                            ),
+                        );
+                        continue;
+                    }
+                    self.note(
+                        part,
+                        vec![part],
+                        Cause::PartModel,
+                        format!(
+                            "not evaluated: the logic levels from `{p}` to `{rl}` on net `{}`: `{p}` can drive it and {unknown}, so its levels are not known",
+                            net.name
+                        ),
+                    );
+                }
+            }
+            if is_receiver(kind) {
+                for d in lines.iter().filter(|l| is_driver(l.kind) && apart(l)) {
+                    if !self.states_output_levels(d.logic) {
+                        continue;
+                    }
+                    self.note(
+                        part,
+                        vec![part],
+                        Cause::PartModel,
+                        format!(
+                            "not evaluated: the logic levels from `{}` to `{p}` on net `{}`: `{p}` reads it and {unknown}, so the levels it needs are not known",
+                            model.path_of(d.logic),
+                            net.name
+                        ),
+                    );
+                }
+            }
+        }
+    }
+
+    /// The high of a line that a plain `open_drain` pin pulls low: what the DC analysis holds
+    /// it at, else its pull-ups, measured from the receiver's ground, against the receiver's
+    /// `vih`. A high that cannot be read is a note.
+    fn plain_open_drain_high(&mut self, index: usize, p: &str, part: InstId, r: &Line) {
+        let model = self.model;
+        let net = &model.nets()[index];
+        let (Some(vih), Some(rg)) = (self.value(r.logic, "vih"), self.ground_pin(r.logic)) else {
+            return;
+        };
+        let why = "an `open_drain` pin";
+        if let Some(&(ground, lo, hi)) = self.reads.and_then(|reads| reads.high.get(&index))
+            && self.net_index(rg) == Some(ground)
+        {
+            self.held_high(net, r, vih, (lo, hi), |high| {
+                format!(
+                    "the DC analysis holds the line at {high} with every driver of it high impedance ({why} leaves the high to its circuit)"
+                )
+            });
+            return;
+        }
+        let why_not = match self.pullups(net, rg) {
+            Ok(pulls) if !pulls.is_empty() => {
+                self.pulled_high(net, r, vih, &pulls, why);
+                return;
+            }
+            Ok(_) => "no resistor on it pulls it up to a rail".to_string(),
+            Err(why) => why,
+        };
+        self.note(
+            part,
+            vec![part],
+            Cause::Unjudged,
+            format!(
+                "not evaluated: the high level from `{p}` to `{}` on net `{}`: `{p}` is an `open_drain` pin and the pull-up that would set its high cannot be read: {why_not}",
+                model.path_of(r.logic),
+                net.name
+            ),
+        );
+    }
+
+    /// A receiver that states levels on a net that nothing on it drives, joined through a
+    /// series part (a part with a `bridge`: a resistor, a diode, a transistor's channel) to a
+    /// net that something drives (#850). Its level comes through that part, which the check
+    /// does not follow, and the note names the part and the net it comes from. A net that has
+    /// a driver of its own is judged on its own lines, as above, and a part that only pulls
+    /// the net to a rail or to ground has no driver on its far side.
+    fn through_series(&mut self, index: usize, lines: &[Line]) {
+        let model = self.model;
+        let net = &model.nets()[index];
+        let drives = |net: &Net| {
+            net.terminals
+                .iter()
+                .any(|&t| model.unused_by(t).is_none() && model.pin_kind(t).is_some_and(is_driver))
+        };
+        if drives(net) {
+            return;
+        }
+        let receivers: Vec<&Line> = lines
+            .iter()
+            .filter(|l| is_receiver(l.kind) && self.states_input_levels(l.logic))
+            .collect();
+        if receivers.is_empty() {
+            return;
+        }
+        for &t in &net.terminals {
+            let Some(part) = model.owner_of(t) else {
+                continue;
+            };
+            let Some((a, b)) = model.instance(part).bridge else {
+                continue;
+            };
+            let far = match t {
+                t if t == a => b,
+                t if t == b => a,
+                _ => continue,
+            };
+            let Some(far_net) = self.net_index(far).filter(|&f| f != index) else {
+                continue;
+            };
+            let from = &model.nets()[far_net];
+            if !drives(from) {
+                continue;
+            }
+            for r in &receivers {
+                if r.part == part {
+                    continue;
+                }
+                self.note(
+                    r.part,
+                    Vec::new(),
+                    Cause::Unjudged,
+                    format!(
+                        "not evaluated: the logic levels into `{}` on net `{}`: nothing on the net drives it, and its level comes through `{}` from net `{}`, which the levels check does not follow",
+                        model.path_of(r.logic),
+                        net.name,
+                        model.path_of(part),
+                        from.name
+                    ),
+                );
+            }
+        }
     }
 
     fn pair(&mut self, net: &Net, d: &Line, r: &Line) {
@@ -494,7 +717,7 @@ impl Run<'_> {
     /// parts between them and the line. It must be read as a high by the receiver.
     fn high_from_analysis(&mut self, net: &Net, d: &Line, r: &Line, (lo, hi): (f64, f64)) {
         let model = self.model;
-        let Some((fi, vih)) = self.value(r.logic, "vih") else {
+        let Some(vih) = self.value(r.logic, "vih") else {
             let rl = model.path_of(r.logic);
             self.missing(
                 net,
@@ -505,33 +728,19 @@ impl Run<'_> {
             );
             return;
         };
-        if lo < vih.hi() {
-            let point = |v| Quantity::point(Dimension::VOLTAGE, v);
-            let high = match (point(lo), point(hi)) {
-                (Ok(a), Ok(b)) => {
-                    Quantity::range(&a, &b).map_or_else(|_| volts(lo), |q| q.to_string())
-                }
-                _ => volts(lo),
-            };
-            self.fault(
-                r.part,
-                format!(
-                    "net `{}`: the DC analysis holds the line at {high} with every driver of it high impedance ({} leaves the high to its circuit) but `{}` needs {vih}: a high of {} is not always read as a high, which takes {}",
-                    net.name,
-                    open_drain_why(d),
-                    model.path_of_field(fi),
-                    volts(lo),
-                    volts(vih.hi()),
-                ),
-            );
-        }
+        let why = open_drain_why(d);
+        self.held_high(net, r, vih, (lo, hi), |high| {
+            format!(
+                "the DC analysis holds the line at {high} with every driver of it high impedance ({why} leaves the high to its circuit)"
+            )
+        });
     }
 
     /// The high of an open-drain line is what its pull-up resistors hold it at: it must be
     /// read as a high by the receiver, in the worst case of the rail's range.
     fn high_from_pullups(&mut self, net: &Net, d: &Line, r: &Line, pulls: &[PullUp]) {
         let model = self.model;
-        let Some((fi, vih)) = self.value(r.logic, "vih") else {
+        let Some(vih) = self.value(r.logic, "vih") else {
             let rl = model.path_of(r.logic);
             self.missing(
                 net,
@@ -542,7 +751,19 @@ impl Run<'_> {
             );
             return;
         };
-        // The lowest of the rails that pull the line up is its lowest high.
+        self.pulled_high(net, r, vih, pulls, open_drain_why(d));
+    }
+
+    /// The pull-ups' high against a receiver's `vih`: the lowest of the rails that pull the
+    /// line up is its lowest high.
+    fn pulled_high(
+        &mut self,
+        net: &Net,
+        r: &Line,
+        vih: (FieldId, Quantity),
+        pulls: &[PullUp],
+        why: &str,
+    ) {
         let Some(low) = pulls.iter().min_by(|a, b| a.lo.total_cmp(&b.lo)) else {
             return;
         };
@@ -551,28 +772,42 @@ impl Run<'_> {
             .fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), p| {
                 (lo.min(p.lo), hi.max(p.hi))
             });
-        if lo < vih.hi() {
-            let point = |v| Quantity::point(Dimension::VOLTAGE, v);
-            let high = match (point(lo), point(hi)) {
-                (Ok(a), Ok(b)) => {
-                    Quantity::range(&a, &b).map_or_else(|_| volts(lo), |q| q.to_string())
-                }
-                _ => volts(lo),
-            };
-            self.fault(
-                r.part,
-                format!(
-                    "net `{}`: the pull-up `{}` to rail `{}` holds the line at {high} ({} leaves the high to the pull-up) but `{}` needs {vih}: a high of {} is not always read as a high, which takes {}",
-                    net.name,
-                    low.resistor,
-                    low.rail,
-                    open_drain_why(d),
-                    model.path_of_field(fi),
-                    volts(lo),
-                    volts(vih.hi()),
-                ),
-            );
+        let (resistor, rail) = (low.resistor.clone(), low.rail.clone());
+        self.held_high(net, r, vih, (lo, hi), |high| {
+            format!(
+                "the pull-up `{resistor}` to rail `{rail}` holds the line at {high} ({why} leaves the high to the pull-up)"
+            )
+        });
+    }
+
+    /// The fault of a high that the circuit around an open-drain line holds it at, `lo` to
+    /// `hi`, when it is not always read as a high by the receiver. `holder` says what holds
+    /// it there, given the range as text.
+    fn held_high(
+        &mut self,
+        net: &Net,
+        r: &Line,
+        (fi, vih): (FieldId, Quantity),
+        (lo, hi): (f64, f64),
+        holder: impl FnOnce(&str) -> String,
+    ) {
+        if lo >= vih.hi() {
+            return;
         }
+        let point = |v| Quantity::point(Dimension::VOLTAGE, v);
+        let high = match (point(lo), point(hi)) {
+            (Ok(a), Ok(b)) => Quantity::range(&a, &b).map_or_else(|_| volts(lo), |q| q.to_string()),
+            _ => volts(lo),
+        };
+        let message = format!(
+            "net `{}`: {} but `{}` needs {vih}: a high of {} is not always read as a high, which takes {}",
+            net.name,
+            holder(&high),
+            self.model.path_of_field(fi),
+            volts(lo),
+            volts(vih.hi()),
+        );
+        self.fault(r.part, message);
     }
 
     /// A low must be read as a low: the output's highest low against the input's lowest
