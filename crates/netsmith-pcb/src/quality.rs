@@ -5,6 +5,11 @@
 //! carry a `power` pin of one same part: the part's supply and its return. Nothing in the
 //! source says so; the netlist and the pin kinds do. The capacitor belongs next to those
 //! pins.
+//!
+//! A part whose pin table does not call its supply pin `power` (a module, an imported part,
+//! a connector with passive pins) is found from the nets too: a capacitor between two supply
+//! nets (nets that a `power` pin of some part is on, whichever part) decouples an IC or a
+//! connector that has a pin of any kind on the rail ([`decoupling_pairs`]).
 
 use std::collections::HashMap;
 
@@ -18,8 +23,10 @@ use crate::ratsnest::{Ratline, Ratsnest};
 pub struct PairNet {
     /// The number of the capacitor's pad on this net.
     pub cap_pad: String,
-    /// The pads of power pins on this net, as (part index, pad number): the candidates the
-    /// capacitor is pulled to, the nearest one counting.
+    /// The pads of the part's pins on this net, as (part index, pad number): the candidates
+    /// the capacitor is pulled to, the nearest one counting. The `power` pins of a part that
+    /// has them on both nets; the pins of any kind of a part that is found from the nets. A
+    /// part found from the nets may have none on the return net.
     pub pins: Vec<(usize, String)>,
 }
 
@@ -51,27 +58,46 @@ fn shared_segments(a: &str, b: &str) -> usize {
         .count()
 }
 
+/// Whether a part that is none of the part kinds the placer knows to hang on a rail
+/// (`None` is a part whose definitions state no kind) may be decoupled by a pin of any kind:
+/// an IC or a connector. A resistor, a diode or an LED on a rail is not decoupled by its pin.
+fn decoupled_by_any_pin(part: &Placed) -> bool {
+    matches!(
+        part.declared_kind,
+        None | Some(netsmith_core::PartKind::Ic | netsmith_core::PartKind::Connector)
+    )
+}
+
 /// The decoupling pairs of a board: every two-pad capacitor between two nets that one same
-/// other part has power pins on. Of several such parts, the ones that share the most of the
-/// capacitor's instance path are kept (the capacitor of a module belongs to the module's
-/// own part), then all of them. Parts are in board order, so the result does not depend on
-/// anything else.
+/// other part has power pins on, and, for a capacitor between two supply nets (nets with a
+/// `power` pin of some part on them), every IC or connector (or part with no kind) that has a
+/// pin of any kind on the capacitor's rail, the net of the two with fewer pads (the return is
+/// the one with more, as the router takes it, the first on a tie). Of several such parts, the
+/// ones that share the most of the capacitor's instance path are kept (the capacitor of a
+/// module belongs to the module's own part), then all of them. Parts are in board order, so
+/// the result does not depend on anything else.
 pub fn decoupling_pairs(parts: &[Placed], nets: &[BoardNet]) -> Vec<DecouplingPair> {
     let index: HashMap<&str, usize> = parts
         .iter()
         .enumerate()
         .map(|(i, p)| (p.refdes.as_str(), i))
         .collect();
-    // The net of each pad, and the power pads of each net.
+    // The net of each pad, the power pads of each net and the pads of every part but a
+    // capacitor, whatever their kind.
     let mut net_of: HashMap<(usize, &str), usize> = HashMap::new();
     let mut power: Vec<Vec<(usize, String)>> = vec![Vec::new(); nets.len()];
+    let mut any: Vec<Vec<(usize, String)>> = vec![Vec::new(); nets.len()];
     for (n, net) in nets.iter().enumerate() {
         for pad in &net.pads {
             let Some(&i) = index.get(pad.refdes.as_str()) else {
                 continue;
             };
             net_of.insert((i, pad.number.as_str()), n);
-            if !is_capacitor(&parts[i]) && parts[i].power_pads.contains(&pad.number) {
+            if is_capacitor(&parts[i]) {
+                continue;
+            }
+            any[n].push((i, pad.number.clone()));
+            if parts[i].power_pads.contains(&pad.number) {
                 power[n].push((i, pad.number.clone()));
             }
         }
@@ -100,20 +126,44 @@ pub fn decoupling_pairs(parts: &[Placed], nets: &[BoardNet]) -> Vec<DecouplingPa
             .collect();
         targets.sort_unstable();
         targets.dedup();
-        if targets.is_empty() {
+        // The parts found from the nets: a pin of any kind on the rail of a capacitor between
+        // two supply nets.
+        let mut by_net: Vec<usize> = Vec::new();
+        if !power[n1].is_empty() && !power[n2].is_empty() {
+            let rail = if nets[n2].pads.len() > nets[n1].pads.len() {
+                n1
+            } else {
+                n2
+            };
+            by_net = any[rail]
+                .iter()
+                .map(|&(i, _)| i)
+                .filter(|&i| decoupled_by_any_pin(&parts[i]) && !targets.contains(&i))
+                .collect();
+            by_net.sort_unstable();
+            by_net.dedup();
+        }
+        let mut all = targets.clone();
+        all.extend(&by_net);
+        if all.is_empty() {
             continue;
         }
-        let best = targets
+        let best = all
             .iter()
             .map(|&i| shared_segments(&cap.path, &parts[i].path))
             .max()
             .unwrap_or(0);
-        targets.retain(|&i| shared_segments(&cap.path, &parts[i].path) == best);
+        all.retain(|&i| shared_segments(&cap.path, &parts[i].path) == best);
         let side = |pad: &str, net: usize| PairNet {
             cap_pad: pad.to_string(),
             pins: power[net]
                 .iter()
-                .filter(|(i, _)| targets.contains(i))
+                .filter(|(i, _)| targets.contains(i) && all.contains(i))
+                .chain(
+                    any[net]
+                        .iter()
+                        .filter(|(i, _)| by_net.contains(i) && all.contains(i)),
+                )
                 .cloned()
                 .collect(),
         };
@@ -133,7 +183,8 @@ pub struct DecouplingDistance {
     /// The reference designator of the part with the nearest power pins.
     pub part: String,
     /// The mean, over the capacitor's two pads, of the distance from the pad's centre to the
-    /// centre of the nearest power pin pad of the part on the same net, in mm.
+    /// centre of the nearest pin pad of the part on the same net, in mm (of the one pad that
+    /// has a pin of the part on its net, when the other has none).
     pub distance: f64,
 }
 
@@ -168,6 +219,7 @@ impl Quality {
             .map(|pair| {
                 let cap = &board.parts[pair.cap];
                 let mut total = 0.0;
+                let mut sides = 0.0;
                 let mut part = String::new();
                 let mut nearest_overall = f64::MAX;
                 for side in &pair.nets {
@@ -186,12 +238,16 @@ impl Quality {
                             }
                         }
                     }
-                    total += nearest;
+                    // A part found from the nets may have no pin on the return net.
+                    if nearest < f64::MAX {
+                        total += nearest;
+                        sides += 1.0;
+                    }
                 }
                 DecouplingDistance {
                     cap: cap.refdes.clone(),
                     part,
-                    distance: total / 2.0,
+                    distance: total / f64::max(sides, 1.0),
                 }
             })
             .collect();

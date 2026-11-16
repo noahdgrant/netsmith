@@ -2743,6 +2743,130 @@ mod tests {
         assert!(netsmith_pcb::decoupling_pairs(&board.parts, &board.nets).is_empty());
     }
 
+    /// A regulator whose pin table does not call its supply and return pins `power`.
+    fn module_part(refdes: &str, path: &str) -> Part {
+        let mut p = regulator(refdes, path);
+        for pin in &mut p.pins {
+            pin.kind = netsmith_core::PinKind::Input;
+        }
+        p
+    }
+
+    /// A header whose pins on the rail and on ground are `power`, as a source of the rail.
+    fn source(refdes: &str, path: &str) -> Part {
+        let mut p = at_path(part(refdes, "Header1x2", None), path);
+        p.pins = vec![power_pin("pos", "1"), power_pin("neg", "2")];
+        p
+    }
+
+    #[test]
+    fn a_capacitor_is_paired_with_a_part_whose_supply_pins_are_not_called_power() {
+        // The module's part has `input` pins on the rail and on ground; the header that feeds
+        // the rail has `power` pins on both. The capacitor of the module is paired with the
+        // module's part, found from the nets, and not with the header.
+        let mut parts = vec![source("J1", "feed"), module_part("U1", "sensor.u")];
+        parts.push(at_path(part("C1", "Capacitor", Some("0603")), "sensor.c"));
+        let nets = vec![
+            wire("IN", &[("J1", "1"), ("U1", "3"), ("C1", "1")]),
+            wire("GND", &[("J1", "2"), ("U1", "1"), ("C1", "2")]),
+        ];
+        let board = board_from(parts, nets, &PlaceOptions::default());
+        let pairs = netsmith_pcb::decoupling_pairs(&board.parts, &board.nets);
+        assert_eq!(pairs.len(), 1);
+        let named = |side: usize| -> Vec<(&str, &str)> {
+            pairs[0].nets[side]
+                .pins
+                .iter()
+                .map(|(i, pad)| (board.parts[*i].refdes.as_str(), pad.as_str()))
+                .collect()
+        };
+        assert_eq!(named(0), [("U1", "3")]);
+        assert_eq!(named(1), [("U1", "1")]);
+    }
+
+    #[test]
+    fn a_part_with_pins_called_power_is_still_paired_when_no_other_part_shares_more_of_the_path() {
+        // The header has `power` pins on both nets and the module's part has `input` pins on
+        // both: the capacitor of the module is the module part's, and one outside both is
+        // paired with both.
+        let mut parts = vec![source("J1", "feed"), module_part("U1", "sensor.u")];
+        parts.push(at_path(part("C1", "Capacitor", Some("0603")), "other.c"));
+        let nets = vec![
+            wire("IN", &[("J1", "1"), ("U1", "3"), ("C1", "1")]),
+            wire("GND", &[("J1", "2"), ("U1", "1"), ("C1", "2")]),
+        ];
+        let board = board_from(parts, nets, &PlaceOptions::default());
+        let pairs = netsmith_pcb::decoupling_pairs(&board.parts, &board.nets);
+        assert_eq!(pairs.len(), 1);
+        let mut parts_of: Vec<&str> = pairs[0]
+            .nets
+            .iter()
+            .flat_map(|n| n.pins.iter().map(|(i, _)| board.parts[*i].refdes.as_str()))
+            .collect();
+        parts_of.sort_unstable();
+        parts_of.dedup();
+        assert_eq!(parts_of, ["J1", "U1"]);
+    }
+
+    #[test]
+    fn a_resistor_on_a_rail_does_not_have_a_decoupling_capacitor_found_from_the_nets() {
+        let mut r = at_path(part("R1", "Resistor", Some("0603")), "m.r");
+        r.pins = vec![];
+        let parts = vec![
+            source("J1", "feed"),
+            r,
+            at_path(part("C1", "Capacitor", Some("0603")), "m.c"),
+        ];
+        let nets = vec![
+            wire("IN", &[("J1", "1"), ("R1", "1"), ("C1", "1")]),
+            wire("GND", &[("J1", "2"), ("C1", "2")]),
+        ];
+        let board = board_from(parts, nets, &PlaceOptions::default());
+        let pairs = netsmith_pcb::decoupling_pairs(&board.parts, &board.nets);
+        assert_eq!(pairs.len(), 1);
+        let refs: Vec<&str> = pairs[0]
+            .nets
+            .iter()
+            .flat_map(|n| n.pins.iter().map(|(i, _)| board.parts[*i].refdes.as_str()))
+            .collect();
+        assert_eq!(refs, ["J1", "J1"]);
+    }
+
+    #[test]
+    fn a_capacitor_between_signals_is_not_found_from_the_nets() {
+        // An AC coupling capacitor between two nets no `power` pin is on, though both carry
+        // pins of an IC.
+        let mut parts = vec![module_part("U1", "m.u"), module_part("U2", "m.v")];
+        parts.push(at_path(part("C1", "Capacitor", Some("0603")), "m.c"));
+        let nets = vec![
+            wire("A", &[("U1", "3"), ("C1", "1")]),
+            wire("B", &[("U2", "3"), ("C1", "2")]),
+        ];
+        let board = board_from(parts, nets, &PlaceOptions::default());
+        assert!(netsmith_pcb::decoupling_pairs(&board.parts, &board.nets).is_empty());
+    }
+
+    #[test]
+    fn a_decoupling_capacitor_is_next_to_a_part_found_from_the_nets() {
+        let mut parts = vec![source("J1", "feed"), module_part("U1", "sensor.u")];
+        parts.push(at_path(part("C1", "Capacitor", Some("0603")), "sensor.c"));
+        let (rest, mut nets) = chain("R", "other", 30);
+        parts.extend(rest);
+        nets.push(wire(
+            "IN",
+            &[("J1", "1"), ("U1", "3"), ("C1", "1"), ("R1", "1")],
+        ));
+        nets.push(wire(
+            "GND",
+            &[("J1", "2"), ("U1", "1"), ("C1", "2"), ("R30", "2")],
+        ));
+        let board = board_from(parts, nets, &PlaceOptions::default());
+        let q = netsmith_pcb::Quality::of(&board);
+        assert_eq!(q.decoupling.len(), 1);
+        assert_eq!(q.decoupling[0].part, "U1");
+        assert!(q.decoupling[0].distance < 3.0, "{:?}", q.decoupling);
+    }
+
     #[test]
     fn parts_the_layout_fixes_stay_and_the_others_are_placed_round_them() {
         let (parts, nets) = chain("R", "m", 12);

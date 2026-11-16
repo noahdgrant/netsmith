@@ -13,7 +13,7 @@ What the tools treat a part as, written `#[kind(capacitor)]` on its definition o
 _Avoid_: Class (that is a class of pin functions, ADR 0071), category (that is the 3D view's colouring, which it gives), type
 
 **Decoupling pair**:
-A two-pad capacitor whose pads are on two different nets that one same other part has `power` pins on, together with that part. Nothing in the source says so: the netlist and the pin kinds do. Of several such parts the ones that share most of the capacitor's instance path are kept (ADR 0033). The router routes the pin to the capacitor's pad first and gives the capacitor's pad on a poured return net (ground) a short via of its own (`decouple.rs` in `netsmith-router`, issue #431).
+A two-pad capacitor whose pads are on two different nets that one same other part has `power` pins on, together with that part; and, for a capacitor between two supply nets (nets that a `power` pin of some part is on), an IC, a connector or a part of no kind that has a pin of any kind on the capacitor's rail (the net of the two with fewer pads), so a part whose pin table does not call its supply pin `power` is decoupled too (issue #821). A resistor, diode or LED on the rail is not. Nothing in the source says so: the netlist and the pin kinds do. Of several such parts the ones that share most of the capacitor's instance path are kept (ADR 0033). The router routes the pin to the capacitor's pad first and gives the capacitor's pad on a poured return net (ground) a short via of its own (`decouple.rs` in `netsmith-router`, issue #431).
 _Avoid_: Bypass capacitor (a bypass capacitor is the datasheet's word for the same part, but only a pair the placer finds is meant here)
 
 **Default**:
