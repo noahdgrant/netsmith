@@ -506,14 +506,14 @@ impl Solver<'_> {
                         && self.model.field(*f).narrowed_at.is_empty()
                         && !self.derived.contains(f)
                     {
-                        let changes = |e: &RExpr| {
-                            let mut read = Vec::new();
-                            fields_in(e, &mut read);
-                            read.iter().any(|g| self.fed.contains(g))
-                        };
-                        // What the equations that no pick changes allow, together.
+                        let changes = |e: &RExpr| self.changed_by_picks(e);
+                        // What the equations that no pick changes allow, together: those on the
+                        // field and on the fields joined to it, since a window stated through a
+                        // join holds the value as one on the field does (issue #991).
                         let mut allowance: Option<Quantity> = None;
-                        for &i in self.equations_of.get(f).into_iter().flatten() {
+                        let class = self.several_classes.get(f).map(|c| &c.equations);
+                        let mine = self.equations_of.get(f);
+                        for &i in class.or(mine).into_iter().flatten() {
                             let other = &self.model.relations()[i];
                             if changes(&other.rhs) {
                                 continue;

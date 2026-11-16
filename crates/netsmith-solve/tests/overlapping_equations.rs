@@ -150,3 +150,115 @@ fn equations_that_share_no_value_still_fail() {
         messages(&s)
     );
 }
+
+/// Every order of `lines`, so that a result that depends on the order the equations are written
+/// in shows.
+fn orders(lines: &[&'static str]) -> Vec<Vec<&'static str>> {
+    if lines.len() <= 1 {
+        return vec![lines.to_vec()];
+    }
+    let mut out = Vec::new();
+    for i in 0..lines.len() {
+        let mut rest = lines.to_vec();
+        let first = rest.remove(i);
+        for mut tail in orders(&rest) {
+            tail.insert(0, first);
+            out.push(tail);
+        }
+    }
+    out
+}
+
+/// A window the board states for `.x`, around the two equations' overlap (issue #991): 14.7 to
+/// 15.3 kohm holds both 14.85 to 15.15 kohm and 14.78 to 15.07 kohm.
+const WINDOW: &str = "    .x == 14.7kohm..15.3kohm";
+
+#[test]
+fn with_a_window_the_value_is_what_both_equations_allow_in_every_order() {
+    for order in orders(&[WINDOW, BY_R1, BY_R2]) {
+        let s = run(&source(&order.join("\n"), "", ""));
+        assert!(messages(&s).is_empty(), "{order:?}: {:?}", messages(&s));
+        let (lo, hi) = range(&s, "x");
+        assert!((lo - 14_850.0).abs() < 1e-6, "{order:?}: {lo}");
+        assert!((hi - 0.995 * 15_150.0).abs() < 1e-6, "{order:?}: {hi}");
+    }
+}
+
+#[test]
+fn with_a_window_a_check_that_holds_only_for_the_overlap_passes() {
+    let checks = "    .y >= 29.6kohm\n    .y <= 30.2kohm";
+    for order in orders(&[WINDOW, BY_R1, BY_R2]) {
+        let s = run(&source(&order.join("\n"), "", checks));
+        assert!(messages(&s).is_empty(), "{order:?}: {:?}", messages(&s));
+        assert_eq!(s.picks.len(), 2, "{order:?}");
+    }
+}
+
+#[test]
+fn a_window_that_one_equation_only_partly_meets_still_fails() {
+    // 14.9 to 15.3 kohm holds the overlap, 14.85 to 15.07 kohm, only from 14.9 kohm on, and
+    // `.r1.resistance` reaches down to 14.85 kohm: the window is not met, whichever order the
+    // lines are in, and the overlap does not hide it.
+    let window = "    .x == 14.9kohm..15.3kohm";
+    for order in orders(&[window, BY_R1, BY_R2]) {
+        let s = run(&source(&order.join("\n"), "", ""));
+        assert!(
+            messages(&s)
+                .iter()
+                .any(|m| m.contains("`x` must stay within")),
+            "{order:?}: {:?}",
+            messages(&s)
+        );
+    }
+}
+
+/// The same two equations on the voltage of a rail `.q`, and the window on the voltage of a
+/// rail `.p` joined to it: a window stated through a join holds the value as one on the field
+/// does. 1 mA through each resistor: `.q.voltage` is 14.85 to 15.07 V.
+fn joined(window: &str) -> String {
+    r#"import std::parts::passive::Resistor
+import std::sources::Rail
+
+board Probe {
+    .supply: Rail {
+        .voltage &= 5V +/- 5%
+        .pos.net &= "VCC"
+        .neg.net &= "GND"
+    }
+    .r1: Resistor
+    .r2: Resistor
+    .supply.pos ~> .r1 ~> .supply.neg
+    .supply.pos ~> .r2 ~> .supply.neg
+    .r1.resistance &= 14kohm..16kohm
+    .r2.resistance &= 14kohm..16kohm
+    .p: Rail
+    .q: Rail
+    .p ~ .q
+WINDOW
+    .q.voltage == .r1.resistance * 1mA
+    .q.voltage == .r2.resistance * 0.995mA
+}
+"#
+    .replace("WINDOW", window)
+}
+
+#[test]
+fn a_window_through_a_join_narrows_to_the_overlap() {
+    let s = run(&joined("    .p.voltage == 14.7V..15.3V"));
+    assert!(messages(&s).is_empty(), "{:?}", messages(&s));
+    let (lo, hi) = range(&s, "q.voltage");
+    assert!((lo - 14.85).abs() < 1e-9, "{lo}");
+    assert!((hi - 0.995 * 15.15).abs() < 1e-9, "{hi}");
+}
+
+#[test]
+fn a_window_through_a_join_that_is_only_partly_met_fails() {
+    let s = run(&joined("    .p.voltage == 14.9V..15.3V"));
+    assert!(
+        messages(&s)
+            .iter()
+            .any(|m| m.contains("must stay within") && m.contains("r1.resistance")),
+        "{:?}",
+        messages(&s)
+    );
+}
