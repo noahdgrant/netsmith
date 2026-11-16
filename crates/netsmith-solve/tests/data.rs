@@ -297,7 +297,7 @@ fn every_esr_cell_is_one_resistance_and_its_source_names_the_page_and_the_point(
 }
 
 /// How many rows of the standard catalogs have a `height` (ADR 0094). Update it with the rows.
-const ROWS_WITH_HEIGHT: usize = 106;
+const ROWS_WITH_HEIGHT: usize = 110;
 
 #[test]
 fn every_height_is_one_length_that_a_document_says_and_its_source_names_where() {
@@ -352,12 +352,12 @@ fn every_height_is_one_length_that_a_document_says_and_its_source_names_where() 
     assert_eq!(with, ROWS_WITH_HEIGHT);
 }
 
-/// How many rows of the standard catalogs state `temp_min` and `temp_max` (ADR 0099): the four
+/// How many rows of the standard catalogs state `temp_min` and `temp_max` (ADR 0099): the seven
 /// crystals, whose figure is the JLCPCB listing text, and 342 rows read from a datasheet (303
 /// ambient or operating ranges, 27 junction ranges of the diodes and the MOSFETs, and 12 operating
 /// ranges of LEDs; the 1N5819WS, whose range is the one figure of its operating and storage
 /// range, is counted with the ranges and not with the junction ones). Update it with the rows.
-const ROWS_WITH_TEMPERATURE: usize = 346;
+const ROWS_WITH_TEMPERATURE: usize = 349;
 
 /// The catalogs of semiconductors whose datasheets print a junction range (`TJ`) and no ambient
 /// one. A row of them that states a range says in its `notes` which temperature it is (ADR 0099): a
@@ -1372,6 +1372,45 @@ fn the_crystals_cover_32khz_8_16_and_25_mhz() {
             "{lcsc}"
         );
     }
+}
+
+/// The four-pad 3225 crystals (issue #845): YXC's YSX321SL, a 3.2 x 2.5 mm body whose pads 1 and 3
+/// are the crystal and whose pads 2 and 4 are the case. The Basic one comes before the Extended
+/// ones, and every row says its package is the mapped `3225`.
+#[test]
+fn the_3225_four_pad_crystals_have_their_rows() {
+    // (lcsc, mpn, hz, pF, library)
+    let rows = [
+        ("C9006", "X322525MOB4SI", 25e6, 12.0, Library::Basic),
+        ("C12668", "X322516MOB4SI", 16e6, 12.0, Library::Extended),
+        ("C13740", "X322525MSB4SI", 25e6, 20.0, Library::Extended),
+    ];
+    for (lcsc, mpn, hz, pf, library) in rows {
+        let r = row_of("crystal", lcsc);
+        assert_eq!(r.mpn.as_deref(), Some(mpn));
+        assert_eq!(r.library, Some(library), "{mpn}");
+        let q = value(&r, "frequency");
+        // +/- 10 ppm at 25 C and +/- 20 ppm over -40 to +85 C.
+        assert!(
+            (q.lo() - hz * (1.0 - 30e-6)).abs() < 1.0 && (q.hi() - hz * (1.0 + 30e-6)).abs() < 1.0,
+            "{mpn}"
+        );
+        assert_eq!(value(&r, "load_capacitance"), quantity(pf, "pF"), "{mpn}");
+        assert_eq!(r.column("package"), Some(&Value::Text("3225".into())));
+    }
+}
+
+/// The TDK SLF7045T-4R7M2R0-PF (issue #845): a 7 x 7 mm magnetically shielded power inductor in
+/// the footprint of its own series. Isat is the datasheet's rated current (10% inductance drop)
+/// and Rdc the table's 0.03 ohm +/- 20% at its upper end.
+#[test]
+fn the_tdk_slf7045_row_states_the_datasheets_numbers() {
+    let r = row_of("inductor", "C136201");
+    assert_eq!(r.mpn.as_deref(), Some("SLF7045T-4R7M2R0-PF"));
+    assert_eq!(value(&r, "inductance"), tolerance(4.7, "uH", 20.0));
+    assert_eq!(value(&r, "saturation_current"), quantity(2.0, "A"));
+    assert_eq!(value(&r, "dc_resistance"), quantity(0.036, "ohm"));
+    assert_eq!(r.column("package"), Some(&Value::Text("SLF7045".into())));
 }
 
 #[test]

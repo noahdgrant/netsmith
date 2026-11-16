@@ -180,9 +180,19 @@ fn two_terminal_parts_have_the_pads_the_mapping_relies_on() {
         row("a", Passive, "A", &["1"]),
         row("b", Passive, "B", &["2"]),
     ];
-    for kind in ["Inductor", "FerriteBead", "Crystal", "Fuse", "Switch"] {
+    for kind in ["Inductor", "FerriteBead", "Fuse", "Switch"] {
         assert_eq!(pins_of("std::parts::passive", kind), two, "{kind}");
     }
+    // A crystal has one table for each of its packages (a table that names three packages is
+    // listed once for each of them, sorted by pin): the two-pad ones, and the four-pad 3225
+    // (issue #845), whose terminals are the diagonal pads 1 and 3 and whose case is pads 2 and 4.
+    let mut crystal = vec![row("a", Passive, "A", &["1"]); 4];
+    crystal.extend(vec![row("b", Passive, "B", &["2"]); 3]);
+    crystal.extend([
+        row("b", Passive, "B", &["3"]),
+        row("case", Passive, "GND", &["2", "4"]),
+    ]);
+    assert_eq!(pins_of("std::parts::passive", "Crystal"), crystal);
 }
 
 #[test]
