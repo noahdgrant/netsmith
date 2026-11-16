@@ -1538,7 +1538,7 @@ pub fn shove_answer(
 
 /// What a via or a drag with no room says: what it is too near.
 fn no_room(by: &str) -> String {
-    format!("no room there: it is on or too near {by}")
+    format!("it is on or too near {by}")
 }
 
 /// The router's nets the track of `walk` crosses, routed again round it: the preview of

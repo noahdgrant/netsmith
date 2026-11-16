@@ -141,7 +141,7 @@ export async function run(tools) {
   await written('the drag to be undone');
   expect(near(vcc().vias[0].at, corner) && near(vcc().tracks[0].to, corner), 'undo puts the via and the ends back on the corner');
 
-  step('a track from a VCC pad onto a GND pad: the walkaround refuses the click on the top, and the check refuses the track at its end');
+  step('a track from a VCC pad onto a GND pad: the walkaround refuses the click on the top, and a layer change there has no room for its via');
   const gnd = s.parts.flatMap((x) => x.pads).find((x) => x.net === 'GND');
   const before = text();
   await page.keyboard.press('x');
@@ -158,8 +158,9 @@ export async function run(tools) {
   expect((await page.locator('[data-testid=track-draft]').getAttribute('data-points')) === '1', 'the click on the pad of another net added no corner (the walkaround, issue #726)');
   await page.keyboard.press('Escape');
   await page.waitForSelector('[data-testid=track-draft]', { state: 'detached' });
-  // The bottom has no copper under the ground pad (a surface-mount pad): the walkaround lets the track end there. The layer is
-  // changed to the top before the track is ended, so the check, which has the last word, refuses it.
+  // The bottom has no copper under the ground pad (a surface-mount pad): the walkaround lets the track end there. Picking the top
+  // there is a layer change at that corner (issue 1009): its via would be on the ground pad, so it is refused and the layer goes
+  // back to the bottom. (The check's own refusal of a track the walkaround allowed is in pcb-routes-push-more.)
   await page.selectOption('[data-testid=track-layer]', 'bottom');
   p = await at(pads[1]);
   await page.mouse.click(p.x, p.y);
@@ -170,11 +171,12 @@ export async function run(tools) {
   await whenIdle(page);
   await page.waitForSelector('[data-testid=track-draft][data-points="2"]');
   await page.selectOption('[data-testid=track-layer]', 'top');
+  await page.locator('.toast', { hasText: 'No via for a layer change there' }).first().waitFor();
   await whenIdle(page);
-  await page.keyboard.press('Enter');
-  await page.locator('.toast', { hasText: 'the design rules check finds' }).first().waitFor();
-  await page.waitForSelector('[data-testid=track-draft][data-points="2"]');
-  await whenIdle(page);
+  const refusal = await page.locator('.toast', { hasText: 'No via for a layer change there' }).first().innerText();
+  expect(/\(net GND\)/.test(refusal), `the toast names the ground pad ("${refusal}")`);
+  expect((await page.locator('[data-testid=track-layer]').inputValue()) === 'bottom', 'the layer is the bottom again');
+  await page.waitForSelector('[data-testid=track-draft][data-points="2"][data-layer="bottom"][data-vias="0"]');
   expect(text() === before, 'the routes file is as it was');
   await shot('track-refused');
   await page.keyboard.press('Escape');

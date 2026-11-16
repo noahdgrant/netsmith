@@ -641,7 +641,8 @@ export function Canvas(props: {
       }
     }
     if (!g) {
-      props.onTip(describe(e, p));
+      // A refusal at the pointer (no way, no room) stays while the pointer is on the same place.
+      if (!tipped.current) props.onTip(describe(e, p));
       const part = hitBox(sc.parts, p);
       setHovered(part?.path ?? null);
       // What is lit in the other views: the net of a track, a via or a pad under the pointer, else the part whose box it is in.
