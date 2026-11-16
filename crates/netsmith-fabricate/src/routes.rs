@@ -1028,6 +1028,62 @@ mod tests {
     }
 
     #[test]
+    fn an_arc_is_moved_whole_with_its_middle_and_never_by_its_ends_alone() {
+        // Issue 1009: a shove moves an arc whole.
+        let board = led();
+        let mut routes = Routes::default();
+        let track = |from: [f64; 2], mid: Option<[f64; 2]>, to: [f64; 2]| Edit::AddTrack {
+            net: "GND".into(),
+            layer: netsmith_pcb::CopperLayer::Back,
+            width: Some(0.2),
+            from,
+            mid,
+            to,
+            lock: false,
+        };
+        edit(
+            &board,
+            &mut routes,
+            &track([7.0, 1.6], Some([8.0, 1.1]), [9.0, 1.6]),
+        )
+        .unwrap();
+        edit(&board, &mut routes, &track([11.0, 1.4], None, [12.0, 1.4])).unwrap();
+        let mv = |n: usize, from: [f64; 2], mid: Option<[f64; 2]>, to: [f64; 2]| Edit::MoveTrack {
+            net: "GND".into(),
+            track: n,
+            from,
+            mid,
+            to,
+        };
+        let said = edit(
+            &board,
+            &mut routes,
+            &mv(1, [7.0, 1.8], Some([8.0, 1.3]), [9.0, 1.8]),
+        )
+        .unwrap();
+        assert_eq!(said, "moved track 1 of net GND");
+        let arc = &routes.boards[&board.name].nets["GND"].tracks[0];
+        assert_eq!(
+            (arc.from, arc.mid, arc.to),
+            ([7.0, 1.8], Some([8.0, 1.3]), [9.0, 1.8])
+        );
+        let before = routes.clone();
+        let alone = refusal(edit(
+            &board,
+            &mut routes,
+            &mv(1, [7.0, 2.0], None, [9.0, 2.0]),
+        ));
+        assert!(alone.contains("is an arc"), "{alone}");
+        let straight = refusal(edit(
+            &board,
+            &mut routes,
+            &mv(2, [11.0, 1.6], Some([11.5, 1.7]), [12.0, 1.6]),
+        ));
+        assert!(straight.contains("is straight"), "{straight}");
+        assert_eq!(routes, before);
+    }
+
+    #[test]
     fn a_zone_is_numbered_locked_and_deleted_like_a_track() {
         let board = led();
         let mut routes = Routes::default();
