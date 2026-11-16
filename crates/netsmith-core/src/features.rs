@@ -56,6 +56,12 @@ pub struct Features {
     /// name. Left out of a design file when empty.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub net_clearances: Vec<(String, f64)>,
+    /// The nets a `Rail` of the design has a pin on, `pos` or `neg`, sorted by name (issue
+    /// #1006): the supplies and the grounds of the design, which a chip's power pins find on a
+    /// board too, and a rail joined to passive parts alone does not. Left out of a design file
+    /// when empty.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub rail_nets: Vec<String>,
     /// The impedance the design states for the tracks of some nets (issue #1007), in the order
     /// of their paths. Left out of a design file when empty.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]

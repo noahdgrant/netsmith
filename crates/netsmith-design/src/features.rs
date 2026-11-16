@@ -141,6 +141,30 @@ fn net_clearances(model: &Model) -> Vec<(String, f64)> {
     by_net_of_rails(model, "min_clearance")
 }
 
+/// The nets a `Rail` has a pin on, `pos` or `neg`, sorted by name (issue #1006).
+fn rail_nets(model: &Model) -> Vec<String> {
+    let mut found: Vec<String> = Vec::new();
+    for (id, inst) in model.instances() {
+        if inst.kind != InstKind::Interface || inst.type_name != "Rail" {
+            continue;
+        }
+        let pins: Vec<InstId> = ["pos", "neg"]
+            .iter()
+            .filter_map(|n| match model.member(id, n) {
+                Some(Member::Inst(p)) => Some(p),
+                _ => None,
+            })
+            .collect();
+        for net in model.nets() {
+            if net.pins.iter().any(|p| pins.contains(p)) && !found.contains(&net.name) {
+                found.push(net.name.clone());
+            }
+        }
+    }
+    found.sort();
+    found
+}
+
 /// The largest bottom of the range `field` of the rails with a pin on each net, by net name,
 /// sorted by name: both pins of a rail get it, and a net takes the largest of its rails.
 fn by_net_of_rails(model: &Model, field: &str) -> Vec<(String, f64)> {
@@ -1125,6 +1149,7 @@ pub(crate) fn features_of(
     let mut features = Features {
         net_widths: net_widths(model),
         net_clearances: net_clearances(model),
+        rail_nets: rail_nets(model),
         impedance_targets: impedance_targets(model, errors),
         pours: pours(model, nets, errors),
         labels: labels(model, least_text, errors),

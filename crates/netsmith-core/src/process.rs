@@ -79,6 +79,12 @@ pub struct Process {
     pub min_power_test_point_pad: f64,
     pub tall_part_height: f64,
     pub min_test_point_tall_body: f64,
+    /// The angle in degrees between neighbouring fiducials about the centre of a round board
+    /// (the blog's "approximately 90 degrees apart", a guideline), and the pitch in mm at or
+    /// under which a part is "ultra-fine-pitch" to the surface finish advice (the blog's "0.4mm
+    /// pitch BGAs", a guideline).
+    pub fiducial_round_angle: f64,
+    pub fine_pitch: f64,
     /// The largest via the fabricator fills and caps, so that it may sit in a pad. This is
     /// an upper bound: 0 where the board does not want vias in pads or the process cannot
     /// make them.

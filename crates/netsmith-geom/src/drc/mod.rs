@@ -69,8 +69,9 @@
 //! requirement on where a part is, in [`constraints`]; it needs the design, so `fab` and the
 //! editor add it to the findings, as an error or, with `constraints = "warn"`, a warning), the
 //! rules of the fabricator's page for fiducials and test points (`fiducial_edge`, `fiducial_mask`
-//! and `fiducial_keepout`, limits, errors; `fiducial_count`, `fiducial_size` and the
-//! `test_point_*` rules, guidelines, warnings: `marks.rs`, issue #761), `acid_trap` (a track
+//! and `fiducial_keepout`, limits, errors; `fiducial_count`, `fiducial_size`, `fiducial_angle`,
+//! `finish_fine_pitch` and the `test_point_*` rules, guidelines, warnings: `marks.rs`, issues
+//! #761 and #1006), `acid_trap` (a track
 //! that meets a pad's straight edge or another track of its net at an acute angle, a warning:
 //! `acid.rs`, issue #838), `stackup` (a board file whose copper layers, thickness or stackup
 //! the process does not make, an error: `stackup.rs`, issue #993), and,
@@ -288,6 +289,12 @@ pub enum Rule {
     /// A fiducial that is not the size the board house recommends, or whose mask opening is
     /// narrower than it recommends (netsmith's): a guideline.
     FiducialSize,
+    /// The fiducials of one side of a round board that are not three in an L about its centre,
+    /// about 90 degrees apart (netsmith's, issue #1006): a guideline.
+    FiducialAngle,
+    /// A part of ultra-fine pitch on a board finished with HASL, whose surface is uneven
+    /// (netsmith's, issue #1006): a guideline.
+    FinishFinePitch,
     /// A test point smaller than the probe pad the board house advises (netsmith's): a
     /// guideline.
     TestPointPad,
@@ -357,6 +364,8 @@ impl Rule {
         Rule::FiducialKeepout,
         Rule::FiducialCount,
         Rule::FiducialSize,
+        Rule::FiducialAngle,
+        Rule::FinishFinePitch,
         Rule::TestPointPad,
         Rule::TestPointPitch,
         Rule::TestPointBody,
@@ -412,6 +421,8 @@ impl Rule {
             Rule::FiducialKeepout => "fiducial_keepout",
             Rule::FiducialCount => "fiducial_count",
             Rule::FiducialSize => "fiducial_size",
+            Rule::FiducialAngle => "fiducial_angle",
+            Rule::FinishFinePitch => "finish_fine_pitch",
             Rule::TestPointPad => "test_point_pad",
             Rule::TestPointPitch => "test_point_pitch",
             Rule::TestPointBody => "test_point_body",
@@ -447,6 +458,8 @@ impl Rule {
                 | Rule::FiducialKeepout
                 | Rule::FiducialCount
                 | Rule::FiducialSize
+                | Rule::FiducialAngle
+                | Rule::FinishFinePitch
                 | Rule::TestPointPad
                 | Rule::TestPointPitch
                 | Rule::TestPointBody
@@ -474,6 +487,8 @@ impl Rule {
             | Rule::ViaInPad
             | Rule::FiducialCount
             | Rule::FiducialSize
+            | Rule::FiducialAngle
+            | Rule::FinishFinePitch
             | Rule::TestPointPad
             | Rule::TestPointPitch
             | Rule::TestPointBody
@@ -730,6 +745,14 @@ pub struct Marks {
     pub tall_parts: Vec<(String, f64)>,
     pub tall_part_height: f64,
     pub min_test_point_tall_body: f64,
+    /// The angle between neighbouring fiducials about the centre of a round board, in degrees;
+    /// 0 is not checked.
+    pub round_angle: f64,
+    /// The pitch at or under which a part is ultra-fine-pitch, in mm; 0 is not checked.
+    pub fine_pitch: f64,
+    /// The finish when it leaves an uneven surface that is harder for the board house's vision
+    /// system to read (the HASL finishes): `None` for a flat finish.
+    pub uneven_finish: Option<String>,
 }
 
 #[derive(Debug, PartialEq)]

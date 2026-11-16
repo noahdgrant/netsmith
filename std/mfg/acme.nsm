@@ -105,6 +105,10 @@ interface EightLayer {
     .tall_part_height ?= 6.4mm
     .min_test_point_tall_body: Length
     .min_test_point_tall_body &= 2mm..
+    .fiducial_round_angle: Number
+    .fiducial_round_angle ?= 90
+    .fine_pitch: Length
+    .fine_pitch ?= 0.4mm
     /// The least copper round a via's hole, on each side.
     .min_via_ring: Length
     .min_via_ring &= 0.05mm..
@@ -292,6 +296,10 @@ interface TenLayer {
     .tall_part_height ?= 6.4mm
     .min_test_point_tall_body: Length
     .min_test_point_tall_body &= 2mm..
+    .fiducial_round_angle: Number
+    .fiducial_round_angle ?= 90
+    .fine_pitch: Length
+    .fine_pitch ?= 0.4mm
     /// The least copper round a via's hole, on each side.
     .min_via_ring: Length
     .min_via_ring &= 0.05mm..
