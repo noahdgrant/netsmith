@@ -123,9 +123,11 @@
 //!
 //! **Decoupling pairs** are derived ([`netsmith_pcb::decoupling_pairs`]), not written: a
 //! two-pad capacitor (kind `Capacitor...`) whose pads are on two different nets, such that one
-//! same other part has a `power` pin on each. The parts that share most of the capacitor's
+//! same other part has a `power` pin on each, or, for a capacitor between two supply nets (a
+//! `power` pin of some part is on each), an IC or a connector with a pin of any kind on the
+//! rail, whatever its pin table calls the pin. The parts that share most of the capacitor's
 //! instance path are kept, so a module's capacitor goes with the module's part. The cost is the
-//! nearest power pin pad on each net. No number and no annotation is read.
+//! nearest pin pad of the part on each net. No number and no annotation is read.
 //!
 //! **Busy parts** (ADR 0031). A part with 16 to 66 pads ([`BUSY_ESCAPE`] to [`BUSY_MOST`] of
 //! escape) asks, from its neighbour, the sum of the two escape spaces and not the larger (the

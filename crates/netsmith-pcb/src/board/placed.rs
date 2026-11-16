@@ -93,7 +93,9 @@ pub struct Placed {
     pub library_id: String,
     pub footprint: Footprint,
     /// The numbers of the pads that belong to pins the part's pin table calls `power`
-    /// (ADR 0016). The placer reads them to find which capacitor decouples which part.
+    /// (ADR 0016). The placer reads them to find which capacitor decouples which part, and which
+    /// nets are supply nets; a part whose pins are not called `power` is found from the nets
+    /// (`decoupling_pairs`).
     pub power_pads: Vec<String>,
     /// Where the footprint's origin is on the board, in mm.
     pub at: Pt,
