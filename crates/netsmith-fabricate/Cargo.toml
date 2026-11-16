@@ -26,6 +26,7 @@ netsmith-pcb = { path = "../netsmith-pcb" }
 netsmith-pipeline = { path = "../netsmith-pipeline" }
 netsmith-placer = { path = "../netsmith-placer" }
 netsmith-router = { path = "../netsmith-router" }
+netsmith-sexp = { path = "../netsmith-sexp" }
 netsmith-solve = { path = "../netsmith-solve" }
 netsmith-view = { path = "../netsmith-view" }
 serde = { version = "1.0.229", features = ["derive"] }

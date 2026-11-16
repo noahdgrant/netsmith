@@ -1242,6 +1242,31 @@ impl Placed<'_> {
         self.with_board_laid_out(&self.layout, then)
     }
 
+    /// `then` of the board picked, built and placed as `board3d` and the editor place it: a
+    /// layout file the placer refuses gives the board where it ended, with the layout file's
+    /// places, and why in the [`Placing`] (issue #779). `layout export` writes this board, and
+    /// `layout import` measures a KiCad board's moves against it (issue #781).
+    pub fn with_board_shown<T>(
+        &self,
+        then: impl FnOnce(&Built, &Board, Placing) -> T,
+    ) -> Result<T, String> {
+        picked(
+            self.name,
+            self.text,
+            self.loader,
+            self.catalogs,
+            self.libraries,
+            Some(&self.layout),
+            self.board,
+            false,
+            true,
+            self.seeds,
+            None,
+            |built, board, _, placing| then(built, board, placing),
+            |_, _, _| unreachable!("systems are not asked for"),
+        )
+    }
+
     /// [`Self::with_board`] placed with the layout file `layout` in place of the one beside the
     /// source: `layout diff` places a board with two layout files.
     pub fn with_board_laid_out<T>(

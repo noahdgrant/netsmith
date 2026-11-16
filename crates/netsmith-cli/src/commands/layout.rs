@@ -8,7 +8,9 @@
 //! with the rest held, `netsmith_fabricate::regenerate`. `layout capture` (issue #828) writes the
 //! placement as the layout file, an entry for every part and the seed, `netsmith_fabricate::layout_capture`.
 //! `layout fit` (issue #780) says where one part fits with the rest where they are,
-//! `netsmith_pcb::Board::fit_part`.
+//! `netsmith_pcb::Board::fit_part`. `layout export` and `layout import` (issue #781) write the
+//! placed board as a KiCad board, also with findings, and bring the parts moved in KiCad back,
+//! `netsmith_fabricate::layout_kicad`.
 
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -22,7 +24,7 @@ use super::routes::{Target, parse_point};
 
 #[derive(Debug, PartialEq, ClapArgs)]
 #[command(
-    after_long_help = "The layout file `<stem>.pcb.toml` sits beside the source and holds the solution: where each part is (`at`, `turn`, `side`, `lock`), keyed by the part's path in the design (`stage.output_cap`; the capacitors of a bank are `bank[0]`, `bank[1]`). The requirements on where a part may be are in the board's physical file, never here.\n\nThe frame is the file's: `--at X,Y` is the footprint's origin in mm from the outline's top left corner, x to the right and y down; a turn is in degrees, counterclockwise on screen, any angle from 0 up to 360; a part on the bottom face is the top face's footprint mirrored left to right (about its own y axis), then turned as it is seen from the top. The guide's \"The layout file\" has an example of a part on each face.\n\n`show`, `set` and `check` check and solve the board as `build` does and place nothing; `summary`, `compare` and `fit` place it as `board3d` does and write nothing; `regenerate` and `capture` place it as `fab` does. The exit code is 0 when it did what it was asked, 1 when it refused (a part the board does not have, a turn that is not allowed, a file with an error `check` reports), and 2 when it could not run (a usage mistake included)."
+    after_long_help = "The layout file `<stem>.pcb.toml` sits beside the source and holds the solution: where each part is (`at`, `turn`, `side`, `lock`), keyed by the part's path in the design (`stage.output_cap`; the capacitors of a bank are `bank[0]`, `bank[1]`). The requirements on where a part may be are in the board's physical file, never here.\n\nThe frame is the file's: `--at X,Y` is the footprint's origin in mm from the outline's top left corner, x to the right and y down; a turn is in degrees, counterclockwise on screen, any angle from 0 up to 360; a part on the bottom face is the top face's footprint mirrored left to right (about its own y axis), then turned as it is seen from the top. The guide's \"The layout file\" has an example of a part on each face.\n\n`show`, `set` and `check` check and solve the board as `build` does and place nothing; `summary`, `compare` and `fit` place it as `board3d` does and write nothing; `regenerate` and `capture` place it as `fab` does; `export` and `import` place it as `board3d` does. The exit code is 0 when it did what it was asked, 1 when it refused (a part the board does not have, a turn that is not allowed, a file with an error `check` reports), and 2 when it could not run (a usage mistake included)."
 )]
 pub struct Args {
     #[command(subcommand)]
@@ -71,6 +73,50 @@ pub enum Command {
         after_long_help = "The board is placed as `board3d` places it (the layout file and the physical file read, nothing written), and the part at PATH (a path or a designator) is tried on a grid of origins every `--step` mm from the outline's top left corner, for each of the four right-angle turns from its own and on each face (one face when a requirement states it, or `--side` names it; a turn a requirement rules out is not tried). Each place is measured as the placer and `fab` measure it: the placement check of that part against every other part where it is (courtyards, holes, keepouts, height limits, the edge, cutouts) and the requirements of the physical file about it (its windows, its modules' and the relations it is an end of). For each turn and face it gives the place nearest `--near` where nothing is found, or, when there is none, the closest try (the fewest findings, then the nearest) with what is in the way there. `--near` is a part (path or designator: the centre of its courtyard) or a point `X,Y` in mm from the outline's top left corner, y down; with none, where the part is now. Distances are from that point to the centre of the part's courtyard. Nothing is written: `netsmith layout set PATH --at X,Y --turn T --side S` writes a place, as the text says for each.\n\n`--format json` prints one JSON document on one line: `board`, `part` (`refdes`, `path`), `near` (`x`, `y`, and `part` when it is one), `step`, `now` (the part where it is) and `poses`, each a place with `turn`, `side`, `at` (the footprint's origin, as the layout file's `at`), `distance`, `fits`, and where it does not fit `placement` (the placement check's findings as `fab --format json` has them), `requirements` (the requirements it does not meet) and `messages` (their sentences). The poses that fit come first, nearest first. The exit code is 0 when some pose fits, 1 when none does or the part or board is refused (a part the board does not have, a board that does not build or place), and 2 when it could not run."
     )]
     Fit(FitArgs),
+    /// Write the placed board, not routed, as a KiCad board, also when the placement has findings.
+    #[command(
+        after_long_help = "The board is placed as `board3d` and the editor place it (the layout file and the physical file read, nothing routed) and written to FILE.KICAD_PCB with its `.kicad_pro` beside it of the same name, so that a person can look at it in KiCad or move parts with KiCad's tools. It is written whatever the placement check finds, and a layout file the placer refuses gives the board where the placer ended, with the layout file's places. The board has no copper: no track, no via, and the planes and pours as zones that are not filled. It is marked as not for fabrication, in its title block and in a text on `Cmts.User` above the outline; `netsmith fab` writes the board to order. The findings (the placement check's faults, the lines and locks that cannot all hold, why the placer refused the layout file) are printed and listed in `<stem>.findings.txt` beside the board.\n\nEach footprint carries the part's path in the design in a hidden `netsmith_path` property, which `layout import` reads to bring the parts' moves back to the layout file; renumbering the designators in KiCad changes nothing. `--format json` prints one JSON document on stdout: `board`, `file`, `project`, `findings_file`, `parts`, `placement` and `conflicts` (each as `board3d --json` has them) and `placement_refused`. The exit code is 0 when the board is written, also with findings, 1 when the board does not build or place at all, and 2 when it could not run or write."
+    )]
+    Export(ExportArgs),
+    /// Bring the parts a person moved on a KiCad board back to the layout file.
+    #[command(
+        after_long_help = "Reads BOARD.KICAD_PCB, a board `layout export` or `fab` wrote and a person then changed in KiCad, and writes an entry to the layout file for each part that KiCad has elsewhere than the board is placed now (its place by more than 0.005 mm, its turn or its face). A footprint is the part whose path its hidden `netsmith_path` property names, never its designator; a footprint without it, or with a path the board has no part at, is said and left out, and so is a second footprint of one path. A part with no footprint on the KiCad board keeps its entry. Each entry is written as `layout set` writes one: an entry that exists keeps its `lock` and `source` and takes the new place, turn and face; a new one is `source = \"hand\"`, unlocked; `--lock` locks every entry written. When a part moved, every part the placer placed (one with no entry) gets an entry where the KiCad board has it, unlocked with `source = \"auto\"` as `layout capture` writes one, so that the placer does not arrange those again round the moved parts and the board is the one left in KiCad. Places are from the outline's top left corner, so move parts, not the board outline. Every other table of the file is kept, and so are its comments. A footprint whose library name differs from the design's is said: only its place is brought back. Copper is not read; `netsmith routes import` brings back tracks and vias.\n\nThe board is placed as `layout export` places it, to know where each part is now. With `--dry-run` nothing is written. `--format json` prints one JSON document on stdout: `board`, `file`, `moved` (`path`, `refdes`, `from` and `to` each with `at`, `turn` and `side`, `existed`, `lock`), `unchanged`, `held` (the parts given an `auto` entry), `missing`, `notes` and `written`. The exit code is 0 when it is printed (and written, unless `--dry-run`), 1 when it is refused (a file that is not a KiCad board, a board that does not build or place), and 2 when it could not run or write. Run `layout check` and `fab` after it."
+    )]
+    Import(ImportArgs),
+}
+
+#[derive(Debug, PartialEq, ClapArgs)]
+pub struct ExportArgs {
+    #[command(flatten)]
+    pub target: Target,
+    /// The KiCad board to write; the `.kicad_pro` and `.findings.txt` go beside it.
+    #[arg(long, value_name = "FILE.KICAD_PCB")]
+    pub out: PathBuf,
+    #[command(flatten)]
+    pub placing: common::Placing,
+    /// Text for a person, or one JSON document on stdout.
+    #[arg(long, value_enum, default_value = "text")]
+    pub format: common::Format,
+}
+
+#[derive(Debug, PartialEq, ClapArgs)]
+pub struct ImportArgs {
+    /// The KiCad board whose part places to take.
+    #[arg(value_name = "BOARD.KICAD_PCB")]
+    pub pcb: PathBuf,
+    #[command(flatten)]
+    pub target: Target,
+    /// Lock every entry written: the placer leaves those parts where they are.
+    #[arg(long)]
+    pub lock: bool,
+    /// Write nothing: say what would be written.
+    #[arg(long)]
+    pub dry_run: bool,
+    #[command(flatten)]
+    pub placing: common::Placing,
+    /// Text for a person, or one JSON document on stdout.
+    #[arg(long, value_enum, default_value = "text")]
+    pub format: common::Format,
 }
 
 #[derive(Debug, PartialEq, ClapArgs)]
@@ -244,7 +290,101 @@ pub fn run(args: Args) -> ExitCode {
         Command::Regenerate(a) => regenerate(&a),
         Command::Capture(a) => capture(&a),
         Command::Fit(a) => fit(&a),
+        Command::Export(a) => export(&a),
+        Command::Import(a) => import(&a),
     }
+}
+
+/// `layout export`: the placed board, not routed, as a KiCad board, whatever its findings.
+fn export(args: &ExportArgs) -> ExitCode {
+    use netsmith_fabricate::layout_kicad as lib;
+    let made = common::with_placed_board(
+        args.target.file.as_deref(),
+        args.target.board.as_deref(),
+        Some(&args.placing),
+        |placed| {
+            placed.with_board_shown(|built, board, placing| {
+                lib::export(&built.label(), board, placing, &args.out)
+            })
+        },
+    );
+    let exported = match made {
+        Ok(Ok(exported)) => exported,
+        Ok(Err(e)) => {
+            eprintln!("error: {e}");
+            return ExitCode::from(2);
+        }
+        Err(code) => return code,
+    };
+    match args.format {
+        common::Format::Json => {
+            println!("{}", serde_json::to_string(&exported).expect("plain data"))
+        }
+        common::Format::Text => print!("{}", exported.text()),
+    }
+    ExitCode::SUCCESS
+}
+
+/// `layout import`: the parts moved on a KiCad board, written to the layout file.
+fn import(args: &ImportArgs) -> ExitCode {
+    use netsmith_fabricate::layout_kicad as lib;
+    let pcb = match std::fs::read_to_string(&args.pcb) {
+        Ok(text) => text,
+        Err(e) => {
+            eprintln!("error: {}: {e}", args.pcb.display());
+            return ExitCode::from(2);
+        }
+    };
+    let name = args.pcb.display().to_string();
+    let made = common::with_placed_board(
+        args.target.file.as_deref(),
+        args.target.board.as_deref(),
+        Some(&args.placing),
+        |placed| {
+            let file = placed.layout.clone();
+            let layout = lib::read_layout(&file).map_err(|e| format!("error: {e}\n"))?;
+            placed
+                .with_board_shown(|_, board, _| {
+                    lib::import(
+                        board,
+                        &pcb,
+                        &name,
+                        layout,
+                        &file.display().to_string(),
+                        args.lock,
+                    )
+                })?
+                .map(|(imported, layout)| (imported, layout, file))
+                .map_err(|e| format!("error: {e}\n"))
+        },
+    );
+    let (imported, layout, file) = match made {
+        Ok(made) => made,
+        Err(code) => return code,
+    };
+    let write = !args.dry_run && !imported.moved.is_empty();
+    if write && let Err(e) = netsmith_fabricate::regenerate::accept(&file, &layout) {
+        eprintln!("error: {e}");
+        return ExitCode::from(2);
+    }
+    match args.format {
+        common::Format::Json => {
+            let mut value = serde_json::to_value(&imported).expect("plain data");
+            value["written"] = serde_json::Value::Bool(write);
+            println!("{value}");
+        }
+        common::Format::Text => {
+            print!("{}", imported.text());
+            if write {
+                println!("wrote {}", file.display());
+            } else if args.dry_run {
+                println!("not written (--dry-run)");
+            } else {
+                println!("nothing to write");
+            }
+        }
+    }
+    ExitCode::SUCCESS
 }
 
 /// `layout fit`: where one part fits with the rest where they are; 1 when no pose fits.

@@ -11,6 +11,7 @@ mod fab_environment;
 pub mod layout;
 pub mod layout_capture;
 pub mod layout_edit;
+pub mod layout_kicad;
 pub mod models;
 pub mod no_supplier;
 pub mod order;
