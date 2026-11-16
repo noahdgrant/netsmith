@@ -7,7 +7,7 @@
 //!
 //! 1. the environment variable, [`SYMBOLS_VARIABLE`] or [`FOOTPRINTS_VARIABLE`], used as it
 //!    is even if the folder is missing (the error then names it);
-//! 2. the folder beside a `kicad-cli` (`$KICAD_CLI`, else `kicad-cli` on `PATH`, else under
+//! 2. the folder beside a `kicad-cli` (`$KICAD_CLI`, else `kicad-cli` or `kicad-cli.exe` on `PATH`, else under
 //!    WSL the newest Windows KiCad, see [`Search::kicad_cli`]): the
 //!    install's `share/kicad` next to its `bin`, or `SharedSupport` next to `MacOS` in a
 //!    macOS app bundle;
@@ -775,6 +775,40 @@ mod tests {
             search.find(Kind::Symbols).unwrap().source,
             Source::BesideCli(_)
         ));
+    }
+
+    #[test]
+    fn a_kicad_cli_exe_on_the_path_is_the_kicad_cli() {
+        let t = tree();
+        let exe = t.path().join("win/bin/kicad-cli.exe");
+        program(&exe);
+        // Not under WSL, and no variable: the PATH is the only place that can answer.
+        let search = Search::under(t.path()).with_path(vec![t.path().join("win/bin")]);
+        assert_eq!(search.kicad_cli(), Some(exe));
+    }
+
+    #[test]
+    fn on_the_path_the_first_directory_wins_and_kicad_cli_wins_over_the_exe_beside_it() {
+        let t = tree();
+        let (first, second) = (t.path().join("first"), t.path().join("second"));
+        let exe = first.join("kicad-cli.exe");
+        program(&exe);
+        program(&second.join("kicad-cli"));
+        let search = Search::under(t.path()).with_path(vec![first.clone(), second.clone()]);
+        // The `.exe` in the earlier directory beats the `kicad-cli` of a later one.
+        assert_eq!(search.kicad_cli(), Some(exe));
+        // In one directory the plain name is tried first.
+        let plain = first.join("kicad-cli");
+        program(&plain);
+        assert_eq!(search.kicad_cli(), Some(plain));
+    }
+
+    #[test]
+    fn a_directory_named_kicad_cli_exe_on_the_path_is_not_the_program() {
+        let t = tree();
+        fs::create_dir_all(t.path().join("bin/kicad-cli.exe")).unwrap();
+        let search = Search::under(t.path()).with_path(vec![t.path().join("bin")]);
+        assert_eq!(search.kicad_cli(), None);
     }
 
     #[test]

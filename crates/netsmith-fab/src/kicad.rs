@@ -79,7 +79,7 @@ impl KicadCliExe {
     }
 
     /// Finds `kicad-cli` as [`netsmith_kicad::Search::kicad_cli`] does: `$KICAD_CLI`
-    /// (and nothing else if it is set), then `kicad-cli` on `PATH`, then, under WSL, the
+    /// (and nothing else if it is set), then `kicad-cli` or `kicad-cli.exe` on `PATH`, then, under WSL, the
     /// newest Windows KiCad (`/mnt/c/Program Files/KiCad/<version>/bin/kicad-cli.exe`).
     /// `None` if there is none.
     pub fn locate() -> Option<Self> {

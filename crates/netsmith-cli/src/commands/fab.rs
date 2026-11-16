@@ -39,8 +39,8 @@ pub struct Args {
     pub allow_drc_violations: bool,
     /// Compare the files and the findings with KiCad's own plot and check (needs kicad-cli).
     ///
-    /// It needs KiCad's command-line tool: `$KICAD_CLI`, then `kicad-cli` on `PATH`, then Windows
-    /// KiCad 9 under WSL.
+    /// It needs KiCad's command-line tool: `$KICAD_CLI`, then `kicad-cli` or `kicad-cli.exe` on
+    /// `PATH`, then Windows KiCad 9 under WSL.
     #[arg(long)]
     pub cross_check: bool,
     /// Make a guideline finding an error for this run.
