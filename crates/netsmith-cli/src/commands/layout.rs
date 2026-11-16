@@ -126,10 +126,12 @@ fn with_design<T>(
         &netsmith_pipeline::Libraries,
     ) -> Result<T, String>,
 ) -> Result<T, ExitCode> {
-    let done =
-        common::with_placed_board(target.file.as_deref(), target.board.as_deref(), |placed| {
-            placed.with_built(|built| then(&built.design, &placed.layout, placed.libraries))
-        })?;
+    let done = common::with_placed_board(
+        target.file.as_deref(),
+        target.board.as_deref(),
+        None,
+        |placed| placed.with_built(|built| then(&built.design, &placed.layout, placed.libraries)),
+    )?;
     done.map_err(|e| {
         eprintln!("error: {e}");
         ExitCode::FAILURE
