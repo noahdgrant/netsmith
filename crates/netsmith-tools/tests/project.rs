@@ -288,7 +288,7 @@ fn init_writes_the_agent_guidance_and_the_project_agrees_with_the_repository() {
         .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
         .collect();
     names.sort();
-    assert_eq!(names.len(), 7, "{names:?}");
+    assert_eq!(names.len(), 8, "{names:?}");
     for name in &names {
         assert!(!name.starts_with("netsmith-dev-"), "{name}");
         assert_eq!(
@@ -352,7 +352,7 @@ fn init_keeps_a_guide_a_skill_and_a_claude_directory_that_exist() {
     assert_eq!(read(&root, ".claude/skills/other/SKILL.md"), "other\n");
     assert!(
         said.contains("kept docs/netsmith/LANGUAGE.md")
-            && said.contains("created 6 skills")
+            && said.contains("created 7 skills")
             && said.contains("kept .claude/skills"),
         "{said}"
     );
