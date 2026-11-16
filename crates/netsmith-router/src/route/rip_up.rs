@@ -237,7 +237,7 @@ impl<'a> Router<'a> {
             if self.out_of_time() || total < 2 {
                 return;
             }
-            self.report(false, || {
+            self.report(false, Some(&*state), || {
                 format!(
                     "routing, try {attempt} of {attempts}: moving lines for {}, {} not routed",
                     self.lines[line],
@@ -308,7 +308,7 @@ impl<'a> Router<'a> {
                 if self.out_of_time() {
                     break;
                 }
-                self.report(false, || {
+                self.report(false, Some(&*state), || {
                     format!(
                         "routing, try {attempt} of {attempts}: negotiating for {} (round {round} of {NEGOTIATION_ROUNDS}), {} not routed",
                         self.lines[line],

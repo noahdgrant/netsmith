@@ -96,7 +96,7 @@ fn a_board_imported_from_its_own_fab_is_drawn_again_with_nothing_routed() {
     assert!(layout.contains("at = [9.85, 4.6]"), "{layout}");
 
     let said = ok(&netsmith(&dir, &["fab", "led.nsm", "--locked", "--out", "second"]));
-    assert!(said.contains("routing 0 connections"), "{said}");
+    assert!(said.contains("LedExample: routing: 0 connections"), "{said}");
     assert!(said.contains("design rules check: passed"), "{said}");
     assert!(!said.contains("warning: led.routes.toml"), "{said}");
     let board = |out: &str| dir.join(out).join("LedExample/LedExample.kicad_pcb");
@@ -187,7 +187,7 @@ fn fab_says_a_record_whose_pads_moved_and_routes_the_net_again() {
         ),
         "{said}"
     );
-    assert!(said.contains("routing 2 connections"), "{said}");
+    assert!(said.contains("LedExample: routing: 2 connections"), "{said}");
     assert!(said.contains("design rules check: passed"), "{said}");
 }
 
@@ -214,7 +214,7 @@ fn routes_lock_writes_a_record_whose_pads_moved_again() {
     assert_eq!(fs::read_to_string(&file).unwrap(), routes);
     let said = ok(&netsmith(&dir, &["fab", "led.nsm", "--locked", "--out", "again"]));
     assert!(!said.contains("are not where"), "{said}");
-    assert!(said.contains("routing 0 connections"), "{said}");
+    assert!(said.contains("LedExample: routing: 0 connections"), "{said}");
 }
 
 /// A folder with `examples/led.nsm` and its pick lock, and no routes file.
@@ -306,7 +306,7 @@ fn add_zone_writes_a_zone_that_show_lists_and_fab_draws() {
         &dir,
         &["fab", "led.nsm", "--locked", "--out", "out"],
     ));
-    assert!(said.contains("routing 2 connections"), "{said}");
+    assert!(said.contains("LedExample: routing: 2 connections"), "{said}");
     assert!(said.contains("netsmith filled GND on F.Cu"), "{said}");
     assert!(said.contains("design rules check: passed"), "{said}");
     let pcb = fs::read_to_string(dir.join("out/LedExample/LedExample.kicad_pcb")).unwrap();

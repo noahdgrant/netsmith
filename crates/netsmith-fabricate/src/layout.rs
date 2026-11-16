@@ -170,6 +170,25 @@ pub fn place_progress(
     label: String,
     say: impl Fn(&str) + 'static,
 ) -> std::rc::Rc<dyn Fn(&netsmith_core::job::Work)> {
+    stage_progress(label, "placing", say)
+}
+
+/// [`place_progress`] for the router (issue #764): `<label>: routing: try 1 of 3: 12 of 40
+/// connections done, 2 not routed, now net GND: U1.3 to C4.1; 31 tracks and 4 vias so far [6 s]`,
+/// and what each try ended with. The router sends a line at most once in two seconds, and each
+/// carries a detail, so each is told.
+pub fn route_progress(
+    label: String,
+    say: impl Fn(&str) + 'static,
+) -> std::rc::Rc<dyn Fn(&netsmith_core::job::Work)> {
+    stage_progress(label, "routing", say)
+}
+
+fn stage_progress(
+    label: String,
+    stage: &'static str,
+    say: impl Fn(&str) + 'static,
+) -> std::rc::Rc<dyn Fn(&netsmith_core::job::Work)> {
     let began = std::time::Instant::now();
     let told = std::cell::Cell::new(None::<std::time::Instant>);
     std::rc::Rc::new(move |w: &netsmith_core::job::Work| {
@@ -190,7 +209,7 @@ pub fn place_progress(
         };
         told.set(Some(std::time::Instant::now()));
         say(&format!(
-            "{label}: placing: {what} [{:.0} s]",
+            "{label}: {stage}: {what} [{:.0} s]",
             began.elapsed().as_secs_f64()
         ));
     })
@@ -975,6 +994,33 @@ mod tests {
             ]
         );
         assert!(said.borrow().iter().all(|l| l.ends_with(" s]")));
+    }
+
+    #[test]
+    fn the_progress_of_the_router_is_one_line_with_the_board_and_the_time() {
+        use netsmith_core::job;
+        let said = std::rc::Rc::new(std::cell::RefCell::new(Vec::<String>::new()));
+        let sink = {
+            let said = std::rc::Rc::clone(&said);
+            route_progress("Board".into(), move |line| {
+                said.borrow_mut().push(line.to_string())
+            })
+        };
+        job::reporting(sink, || {
+            job::report_detail("connections routed", 12, Some(40), || {
+                "try 1 of 3: 12 of 40 connections done, 0 not routed, now net GND: U1.3 to C4.1; \
+                 31 tracks and 4 vias so far"
+                    .into()
+            });
+        });
+        let said = said.borrow();
+        let (line, time) = said[0].rsplit_once(" [").expect("the time is last");
+        assert_eq!(
+            line,
+            "Board: routing: try 1 of 3: 12 of 40 connections done, 0 not routed, now net GND: \
+             U1.3 to C4.1; 31 tracks and 4 vias so far"
+        );
+        assert!(time.ends_with(" s]"), "{time}");
     }
 
     #[test]

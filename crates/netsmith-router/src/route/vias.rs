@@ -45,7 +45,7 @@ impl<'a> Router<'a> {
                 if self.out_of_time() {
                     break;
                 }
-                self.report(false, || {
+                self.report(false, Some(&*state), || {
                     format!(
                         "routing, try {attempt} of {attempts}: fewer vias, {k} of {total} lines"
                     )
