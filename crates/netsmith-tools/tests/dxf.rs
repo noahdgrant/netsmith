@@ -121,10 +121,10 @@ fn the_import_prints_source_for_the_outline_cutout_and_holes() {
         imported.members,
         ".outline: Outline {\n    .width &= 50mm\n    .height &= 36mm\n    .corner_radius &= 3mm\n}\n\n\
          .cutout1: Cutout {\n    .x &= 6mm\n    .y &= 12mm\n    .width &= 3mm\n    .height &= 12mm\n    .corner_radius &= 1mm\n}\n\n\
-         .hole1: MountingHole { .package &= \"M3\" }\n.hole1.place.x &= 5mm\n.hole1.place.y &= 5.5mm\n\
-         .hole2: MountingHole { .package &= \"M3\" }\n.hole2.place.x &= 45mm\n.hole2.place.y &= 5.5mm\n\
-         .hole3: MountingHole { .package &= \"M3\" }\n.hole3.place.x &= 5mm\n.hole3.place.y &= 30.5mm\n\
-         .hole4: MountingHole { .package &= \"M3\" }\n.hole4.place.x &= 45mm\n.hole4.place.y &= 30.5mm\n"
+         .hole1: MountingHole { .diameter &= 3.2mm }\n.hole1.place.x &= 5mm\n.hole1.place.y &= 5.5mm\n\
+         .hole2: MountingHole { .diameter &= 3.2mm }\n.hole2.place.x &= 45mm\n.hole2.place.y &= 5.5mm\n\
+         .hole3: MountingHole { .diameter &= 3.2mm }\n.hole3.place.x &= 5mm\n.hole3.place.y &= 30.5mm\n\
+         .hole4: MountingHole { .diameter &= 3.2mm }\n.hole4.place.x &= 45mm\n.hole4.place.y &= 30.5mm\n"
     );
     let text = render(&imported, Some("Case"), "case.dxf", false);
     assert!(
@@ -269,27 +269,33 @@ fn an_imported_l_goes_through_fab_with_its_edge_on_edge_cuts() {
 }
 
 #[test]
-fn a_hole_that_is_no_mounting_hole_package_is_refused_with_the_packages() {
+fn a_hole_of_any_diameter_is_a_mounting_hole_with_its_diameter() {
     let mut e = rounded("EDGE", 0.0, 0.0, 50.0, 30.0, 2.0);
     e += &circle("HOLES", (5.0, 5.0), 2.25);
-    let err = import(&file(Some(4), &e), "x.dxf", &request()).unwrap_err();
-    assert!(
-        err.contains("diameter of 4.5 mm") && err.contains("M2 (2.2 mm) and M3 (3.2 mm)"),
-        "{err}"
-    );
+    e += &circle("HOLES", (45.0, 5.0), 1.1875);
+    e += &circle("HOLES", (25.0, 25.0), 1.1);
+    let imported = import(&file(Some(4), &e), "x.dxf", &request()).unwrap();
+    for hole in [
+        ".hole1: MountingHole { .diameter &= 2.2mm }\n.hole1.place.x &= 25mm",
+        ".hole2: MountingHole { .diameter &= 4.5mm }\n.hole2.place.x &= 5mm",
+        ".hole3: MountingHole { .diameter &= 2.375mm }\n.hole3.place.x &= 45mm",
+    ] {
+        assert!(imported.members.contains(hole), "{hole}\n{}", imported.members);
+    }
+    assert!(!imported.members.contains("package"), "{}", imported.members);
 }
 
 #[test]
-fn a_hole_of_another_size_names_the_nearest_package_and_the_issue() {
+fn a_hole_the_generator_cannot_draw_is_refused_with_the_range() {
     let mut e = rounded("EDGE", 0.0, 0.0, 50.0, 30.0, 2.0);
-    e += &circle("HOLES", (5.0, 5.0), 1.1875);
+    e += &circle("HOLES", (5.0, 5.0), 0.05);
+    e += &circle("HOLES", (25.0, 15.0), 12.0);
     let err = import(&file(Some(4), &e), "x.dxf", &request()).unwrap_err();
     assert!(
-        err.contains("diameter of 2.375 mm")
-            && err.contains("the nearest is M2 (2.2 mm, 0.175 mm smaller than the drawn hole)")
-            && err.contains("issue #89"),
+        err.contains("diameter of 0.1 mm") && err.contains("diameter of 24 mm"),
         "{err}"
     );
+    assert!(err.contains("from 0.2 mm to 20 mm"), "{err}");
 }
 
 #[test]

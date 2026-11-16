@@ -132,6 +132,22 @@ impl PartKind {
     }
 }
 
+/// The package of a hole that states its drill (`.diameter &= 2.375mm` on a `MountingHole` or a
+/// `PlatedHole`) and no stock package: `2.375mm drill`, the drill in mm with at most four
+/// decimals. The design stage gives it to the part, and the footprint mapping answers it with a
+/// generated footprint of that drill ([`drill_of_package`] reads it back).
+pub fn drilled_package(drill_mm: f64) -> String {
+    let text = format!("{drill_mm:.4}");
+    let text = text.trim_end_matches('0').trim_end_matches('.');
+    format!("{text}mm drill")
+}
+
+/// The drill, in mm, that a package of [`drilled_package`]'s spelling names.
+pub fn drill_of_package(package: &str) -> Option<f64> {
+    let drill: f64 = package.strip_suffix("mm drill")?.parse().ok()?;
+    (drill.is_finite() && drill > 0.0).then_some(drill)
+}
+
 /// What a pin is electrically. It is the datasheet's word for the pin, not a CAD tool's.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]

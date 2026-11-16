@@ -137,6 +137,22 @@ fn board_outlined(process: netsmith_core::Process, polygon: Option<Vec<OutlineVe
     board
 }
 
+/// [`board_with`] a via on each of the nets `GND` and `3V3`: a plane keeps only the copper that
+/// touches its net (the fill takes out islands), and the board's SMD pads reach no plane.
+pub(crate) fn board_with_plane_vias(process: netsmith_core::Process) -> Board {
+    let mut board = board_with(process);
+    let origin = board.outline.min;
+    for (net, x) in [("GND", 6.0), ("3V3", 8.0)] {
+        board.vias.push(Via {
+            net: net.into(),
+            at: origin + Pt::new(x, 18.0),
+            diameter: 0.6,
+            drill: 0.3,
+        });
+    }
+    board
+}
+
 /// A height limit at `(x, y)` from the outline's corner, `w` by `h`, on `layers`.
 fn limit(name: &str, at: (f64, f64), size: (f64, f64), layers: &[&str], max: f64) -> BoardKeepout {
     BoardKeepout {
@@ -732,7 +748,7 @@ fn the_mask_is_open_over_the_pads_of_each_face_in_the_scene_frame() {
 
 #[test]
 fn a_four_layer_board_has_copper_on_four_layers_with_the_planes_inside() {
-    let board = board_with(common::four_layer_process());
+    let board = board_with_plane_vias(common::four_layer_process());
     let s = scene(&board);
     let c = copper(&s);
     let names: Vec<&str> = c.layers.iter().map(|l| l.name.as_str()).collect();
@@ -758,7 +774,7 @@ fn a_four_layer_board_has_copper_on_four_layers_with_the_planes_inside() {
 
 #[test]
 fn a_ten_layer_board_has_copper_on_ten_layers_stacked_through_its_thickness() {
-    let board = board_with(common::ten_layer_process());
+    let board = board_with_plane_vias(common::ten_layer_process());
     let s = scene(&board);
     let c = copper(&s);
     let names: Vec<&str> = c.layers.iter().map(|l| l.name.as_str()).collect();

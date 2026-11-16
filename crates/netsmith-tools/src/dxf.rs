@@ -22,7 +22,7 @@
 //! frame and in the board's differ by a number the person can see. An outline is recognised as
 //! a rounded rectangle by measuring and not by counting edges: every edge lies on the boundary
 //! of the fitted rectangle to 2 micrometres and the edges add up to its perimeter. A circle on
-//! the outline layer becomes a round `Cutout`; on the holes layer it is a mounting hole.
+//! the outline layer becomes a round `Cutout`; on the holes layer it is a mounting hole, stated by its drill (`.diameter`, any size).
 //! Entries are named `cutout1...` and `hole1...` in order of position (top to bottom, then left
 //! to right). Two things seen while testing and not caused by the import: holes close to the top
 //! and bottom edges put their reference designators near the edge, which KiCad's
@@ -46,12 +46,6 @@ pub struct Request {
     /// The units, if the file does not say or is wrong.
     pub units: Option<Units>,
 }
-
-/// The mounting hole packages of `std/kicad.toml` and the diameter of their drill (mm).
-const HOLES: [(&str, f64); 2] = [("M2", 2.2), ("M3", 3.2)];
-
-/// How far a drawn hole may be from a package's drill and still be it (mm).
-const HOLE_TOLERANCE: f64 = 0.05;
 
 /// The result of an import: the text to paste into the physical file.
 #[derive(Debug, Clone, PartialEq)]
@@ -157,44 +151,22 @@ pub fn import(text: &str, name: &str, request: &Request) -> Result<Imported, Str
             )),
         }
     }
-    let mut holes: Vec<(f64, f64, &'static str)> = Vec::new();
+    // A hole is stated by its drill, whatever it is: `.diameter` (issue #89). Only a drill the
+    // generator cannot draw is refused.
+    let (least, most) = netsmith_pcb::HOLE_DRILL;
+    let mut holes: Vec<(f64, f64, f64)> = Vec::new();
     for (i, h) in outline.holes.iter().enumerate() {
-        match HOLES
-            .iter()
-            .find(|(_, d)| (d - h.diameter).abs() <= HOLE_TOLERANCE)
-        {
-            Some((package, _)) => holes.push((h.centre.0, h.centre.1, package)),
-            None => {
-                let (nearest, drill) = HOLES
-                    .iter()
-                    .min_by(|a, b| {
-                        (a.1 - h.diameter)
-                            .abs()
-                            .partial_cmp(&(b.1 - h.diameter).abs())
-                            .expect("finite")
-                    })
-                    .expect("there are packages");
-                refused.push(format!(
-                    "hole {} at ({}, {}) has a diameter of {} mm, and the mounting hole packages are {}; \
-                     the nearest is {nearest} ({drill} mm, {} mm {} than the drawn hole). The language cannot state a hole of \
-                     another diameter yet (issue #89)",
-                    i + 1,
-                    number(h.centre.0),
-                    number(h.centre.1),
-                    number(h.diameter),
-                    HOLES
-                        .iter()
-                        .map(|(p, d)| format!("{p} ({d} mm)"))
-                        .collect::<Vec<_>>()
-                        .join(" and "),
-                    number((drill - h.diameter).abs()),
-                    if *drill > h.diameter {
-                        "larger"
-                    } else {
-                        "smaller"
-                    },
-                ));
-            }
+        let diameter = round4(h.diameter);
+        if diameter < least || diameter > most {
+            refused.push(format!(
+                "hole {} at ({}, {}) has a diameter of {} mm, and a mounting hole's drill is from {least} mm to {most} mm",
+                i + 1,
+                number(h.centre.0),
+                number(h.centre.1),
+                number(h.diameter),
+            ));
+        } else {
+            holes.push((h.centre.0, h.centre.1, diameter));
         }
     }
     if !refused.is_empty() {
@@ -241,11 +213,12 @@ pub fn import(text: &str, name: &str, request: &Request) -> Result<Imported, Str
     if !holes.is_empty() {
         members.push('\n');
     }
-    for (i, (x, y, package)) in holes.iter().enumerate() {
+    for (i, (x, y, diameter)) in holes.iter().enumerate() {
         let id = format!("hole{}", i + 1);
         let _ = writeln!(
             members,
-            ".{id}: MountingHole {{ .package &= \"{package}\" }}"
+            ".{id}: MountingHole {{ .diameter &= {} }}",
+            mm(*diameter)
         );
         // The hole is where the case drills it: a requirement, stated by the centre of its body.
         let _ = writeln!(members, ".{id}.place.x &= {}", mm(round4(*x)));

@@ -1285,7 +1285,8 @@ fn design_model(name: &str, model: &Model, solution: &Solution) -> Result<Design
                 .map(|p| p.label.clone())
                 .unwrap_or_else(|| default_value(inst, kind)),
         };
-        let package = text_of(model, *id, "package");
+        let package =
+            features::hole_package(model, *id, text_of(model, *id, "package"), &mut errors);
         let (assembly, assembly_stated) = match assembly_of(model, *id, pick, &mut errors) {
             Some(a) => (a, true),
             None => match project_default {
