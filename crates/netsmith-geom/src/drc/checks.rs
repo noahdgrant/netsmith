@@ -53,6 +53,7 @@ pub(crate) fn run(m: &Model<'_>, findings: &mut Vec<Finding>) {
     rule_areas(&mut out);
     via_in_pad(&mut out);
     super::fab_rules::run(&mut out);
+    super::marks::run(&mut out);
 }
 
 pub(crate) fn same_net(a: &Option<String>, b: &Option<String>) -> bool {

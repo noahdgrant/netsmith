@@ -851,6 +851,14 @@ fn process_of(model: &Model, nets: &[String], errors: &mut Vec<String>) -> Optio
         min_text_height: mm("min_text_height"),
         min_silk_to_pad: mm("min_silk_to_pad"),
         min_mask_bridge: mm("min_mask_bridge"),
+        min_fiducials: number("min_fiducials"),
+        fiducial_diameter: mm("fiducial_diameter"),
+        fiducial_mask_ratio: number("fiducial_mask_ratio"),
+        min_fiducial_edge: mm("min_fiducial_edge"),
+        min_test_point_pad: mm("min_test_point_pad"),
+        min_test_point_pitch: mm("min_test_point_pitch"),
+        min_test_point_body: mm("min_test_point_body"),
+        min_test_point_edge: mm("min_test_point_edge"),
         // An upper bound, so the top of what the board left.
         via_in_pad: match find("via_in_pad") {
             Some(Domain::Quantity(q)) => (end("via_in_pad", &q, true) * 1e12).round() / 1e9,

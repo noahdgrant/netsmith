@@ -57,6 +57,22 @@ pub struct Process {
     pub min_silk_to_pad: f64,
     /// The least solder mask left between two pads.
     pub min_mask_bridge: f64,
+    /// How many fiducials each side that has assembled parts has, at least (a guideline,
+    /// issue #761): a count, not a length.
+    pub min_fiducials: f64,
+    /// The diameter of a fiducial's copper that the process recommends, and how many times
+    /// that the solder mask opening round it is at least (guidelines).
+    pub fiducial_diameter: f64,
+    pub fiducial_mask_ratio: f64,
+    /// The least space from a fiducial's copper to the board edge (a limit).
+    pub min_fiducial_edge: f64,
+    /// What the process advises of a test point (guidelines): the least width of its pad, the
+    /// least distance between the centres of two on a side, the least space from its copper
+    /// to the body of a part and to the board edge.
+    pub min_test_point_pad: f64,
+    pub min_test_point_pitch: f64,
+    pub min_test_point_body: f64,
+    pub min_test_point_edge: f64,
     /// The largest via the fabricator fills and caps, so that it may sit in a pad. This is
     /// an upper bound: 0 where the board does not want vias in pads or the process cannot
     /// make them.

@@ -1019,6 +1019,7 @@ pub fn std_kind(kind: &str) -> Option<&'static str> {
         "MountingHole" => "mounting_hole",
         "PlatedHole" => "plated_hole",
         "Fiducial" => "fiducial",
+        "TestPoint" => "test_point",
         "Label" => "label",
         _ => return None,
     })

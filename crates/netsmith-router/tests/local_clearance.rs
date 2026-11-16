@@ -178,6 +178,7 @@ fn check(board: &Board) -> DrcReport {
         neck_reach: netsmith_router::route::NECK_REACH,
         via_counts: board.via_counts(),
         track_angle: true,
+        marks: None,
     };
     drc_check(&kicad_pcb(board), Some(&kicad_pro(board)), &extras).unwrap()
 }

@@ -45,6 +45,50 @@
 //!   limit of the via's size, and the router uses a via in a pad only if the via's copper
 //!   disc is no wider than it.
 //!
+//! The fiducial and test point rules (issue #761), read from three more pages on 2026-11-16, each
+//! classified by its wording as the owner decided on 2026-11-15: what the page says JLCPCB cannot
+//! make or place is a limit (an error that stops `fab`), its advice is a guideline (a warning),
+//! and wording that is not clear is a guideline. The pages' text was read with WebFetch (a
+//! summary of the page by a tool, each figure asked for by name and quoted below):
+//!
+//! - https://jlcpcb.com/help/article/how-to-add-edge-rails-fiducials-for-pcb-assembly-order
+//!   (last updated 2026-09-09): "Edge rails and fiducials are required for standard PCB
+//!   assembly at JLCPCB"; rails at least 5 mm wide, added to an assembled board by default;
+//!   fiducials are un-drilled circular copper pads, "the recommended diameter of a fiducial
+//!   marker is 1 mm", "the solder mask opening should be twice the diameter of the exposed
+//!   copper pad", "three to four fiducial markers should be placed along the board edges", and
+//!   "fiducial markers must maintain a minimum clearance of 3.35 mm from the board edge,
+//!   including the fiducial keep-out area".
+//! - https://jlcpcb.com/blog/fiducial-marks (published 2025-11-21, updated 2026-09-09): "a
+//!   minimum of two, but three fiducial marks are strongly recommended"; "a copper pad with a
+//!   diameter of approximately 1.0 mm"; "the solder mask opening should be at least twice the
+//!   diameter of the fiducial pad"; "the fiducial must be exposed copper and free of any solder
+//!   mask"; "a clear zone free of other copper features (traces, planes, vias, text) is
+//!   necessary"; "a clearance of at least 3.35 mm is necessary between the board edge and the
+//!   fiducial mark"; double-sided assembly needs a set on each side.
+//! - https://jlcpcb.com/blog/pcb-test-points-and-smart-dft (published and updated 2026-10-08):
+//!   pad of a signal net, "absolute minimum" 0.8 mm and "recommended production value" 1.0 to
+//!   1.27 mm (a power or ground net 1.0 and 1.5 to 2.0 mm); probe pitch 1.27 mm and 2.54 mm;
+//!   clearance to the component body 0.5 mm and 1.0 mm (to a part above 6.4 mm tall, 2.0 mm and
+//!   5.0 mm); clearance to the board edge 3.2 mm and 3.8 mm.
+//!
+//! Classified: the fiducial edge space is a limit ("must maintain a minimum clearance"), as are
+//! exposed copper ("must be exposed copper") and the clear zone ("is necessary", taken to be the
+//! mask opening, which the page makes equal to the mask clearance); the count ("a minimum of two"
+//! on each assembled side, but the help article has JLCPCB add rails with fiducials to an
+//! assembled board, so a board with fewer is one it can assemble), the diameter and the mask
+//! opening ("recommended", "should") and every test point row (a blog about the fixture of an
+//! in-circuit test, which JLCPCB's service does not run: its "absolute minimum" is advice, so it
+//! is a guideline, and the "recommended production value" is named in the finding and not
+//! enforced) are guidelines. The page's edge space reads "including the keep-out area" and its
+//! own panel puts a 1 mm fiducial 3.85 mm from the edge (3.35 mm of copper), so the space is
+//! measured to the copper. Not stated, and why: the larger pad of a power or ground net and the
+//! larger clearance to a tall part (both need a fact of the board, which net is a supply and how
+//! tall the part is, that `fab` does not hand the check yet), the round board's fiducial angles,
+//! the global fiducial of a panel (the panel's rails, `VCutPanel`), the surface finish advice and
+//! the "no silkscreen over a fiducial" advice (the check of silkscreen over a pad's mask opening
+//! already covers it).
+//!
 //! Where the page lists more than one number, the one stated here is the one that holds
 //! everywhere on the board: the pad to pad hole spacing, the mask bridge for any colour.
 //! A limit is a lower bound, so it is written `lo..`, a range with an open end: no upper
@@ -108,6 +152,33 @@ generic TwoLayer {
     .min_silk_to_pad &= 0.15mm..
     /// The least solder mask left between two pads, by weight.
     .min_mask_bridge: Length
+    /// What the process asks of fiducials and test points (issue #761), each from the page
+    /// named in the header of this file. A limit stops `fab` and a guideline warns, by the
+    /// wording of the page: the fewest fiducials on each side that has assembled parts
+    /// ("a minimum of two, but three fiducial marks are strongly recommended") is a count and a
+    /// guideline; the diameter of the copper ("approximately 1.0 mm") and how many times it the
+    /// mask opening is at least ("at least twice the diameter of the fiducial pad") are
+    /// guidelines; the space from a fiducial's copper to the board edge ("must maintain a
+    /// minimum clearance of 3.35 mm") is a limit. The test point rules are the "absolute
+    /// minimum" column of the DFT blog's tables, advice for a probe fixture and so guidelines:
+    /// the pad 0.8 mm (a signal net), the pitch 1.27 mm, the space to a component body 0.5 mm
+    /// and to the board edge 3.2 mm.
+    .min_fiducials: Number
+    .min_fiducials &= 2..
+    .fiducial_diameter: Length
+    .fiducial_diameter ?= 1mm
+    .fiducial_mask_ratio: Number
+    .fiducial_mask_ratio &= 2..
+    .min_fiducial_edge: Length
+    .min_fiducial_edge &= 3.35mm..
+    .min_test_point_pad: Length
+    .min_test_point_pad &= 0.8mm..
+    .min_test_point_pitch: Length
+    .min_test_point_pitch &= 1.27mm..
+    .min_test_point_body: Length
+    .min_test_point_body &= 0.5mm..
+    .min_test_point_edge: Length
+    .min_test_point_edge &= 3.2mm..
     /// The least copper round a via's hole: the page's "via diameter should be 0.1 mm (0.15
     /// mm preferred) larger than via hole size", half of it on each side (issue #431).
     .min_via_ring: Length
@@ -344,6 +415,33 @@ generic FourLayer {
     /// The least solder mask left between two pads.
     .min_mask_bridge: Length
     .min_mask_bridge &= 0.13mm..
+    /// What the process asks of fiducials and test points (issue #761), each from the page
+    /// named in the header of this file. A limit stops `fab` and a guideline warns, by the
+    /// wording of the page: the fewest fiducials on each side that has assembled parts
+    /// ("a minimum of two, but three fiducial marks are strongly recommended") is a count and a
+    /// guideline; the diameter of the copper ("approximately 1.0 mm") and how many times it the
+    /// mask opening is at least ("at least twice the diameter of the fiducial pad") are
+    /// guidelines; the space from a fiducial's copper to the board edge ("must maintain a
+    /// minimum clearance of 3.35 mm") is a limit. The test point rules are the "absolute
+    /// minimum" column of the DFT blog's tables, advice for a probe fixture and so guidelines:
+    /// the pad 0.8 mm (a signal net), the pitch 1.27 mm, the space to a component body 0.5 mm
+    /// and to the board edge 3.2 mm.
+    .min_fiducials: Number
+    .min_fiducials &= 2..
+    .fiducial_diameter: Length
+    .fiducial_diameter ?= 1mm
+    .fiducial_mask_ratio: Number
+    .fiducial_mask_ratio &= 2..
+    .min_fiducial_edge: Length
+    .min_fiducial_edge &= 3.35mm..
+    .min_test_point_pad: Length
+    .min_test_point_pad &= 0.8mm..
+    .min_test_point_pitch: Length
+    .min_test_point_pitch &= 1.27mm..
+    .min_test_point_body: Length
+    .min_test_point_body &= 0.5mm..
+    .min_test_point_edge: Length
+    .min_test_point_edge &= 3.2mm..
     /// The least copper round a via's hole: the page's "via diameter should be 0.1 mm (0.15
     /// mm preferred) larger than via hole size", half of it on each side (issue #431).
     .min_via_ring: Length
@@ -645,6 +743,33 @@ generic SixLayer {
     /// The least solder mask left between two pads.
     .min_mask_bridge: Length
     .min_mask_bridge &= 0.13mm..
+    /// What the process asks of fiducials and test points (issue #761), each from the page
+    /// named in the header of this file. A limit stops `fab` and a guideline warns, by the
+    /// wording of the page: the fewest fiducials on each side that has assembled parts
+    /// ("a minimum of two, but three fiducial marks are strongly recommended") is a count and a
+    /// guideline; the diameter of the copper ("approximately 1.0 mm") and how many times it the
+    /// mask opening is at least ("at least twice the diameter of the fiducial pad") are
+    /// guidelines; the space from a fiducial's copper to the board edge ("must maintain a
+    /// minimum clearance of 3.35 mm") is a limit. The test point rules are the "absolute
+    /// minimum" column of the DFT blog's tables, advice for a probe fixture and so guidelines:
+    /// the pad 0.8 mm (a signal net), the pitch 1.27 mm, the space to a component body 0.5 mm
+    /// and to the board edge 3.2 mm.
+    .min_fiducials: Number
+    .min_fiducials &= 2..
+    .fiducial_diameter: Length
+    .fiducial_diameter ?= 1mm
+    .fiducial_mask_ratio: Number
+    .fiducial_mask_ratio &= 2..
+    .min_fiducial_edge: Length
+    .min_fiducial_edge &= 3.35mm..
+    .min_test_point_pad: Length
+    .min_test_point_pad &= 0.8mm..
+    .min_test_point_pitch: Length
+    .min_test_point_pitch &= 1.27mm..
+    .min_test_point_body: Length
+    .min_test_point_body &= 0.5mm..
+    .min_test_point_edge: Length
+    .min_test_point_edge &= 3.2mm..
     /// The least copper round a via's hole: the page's "via diameter should be 0.1 mm (0.15
     /// mm preferred) larger than via hole size", half of it on each side (issue #431).
     .min_via_ring: Length

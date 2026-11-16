@@ -418,7 +418,13 @@ pub fn routes_findings(board: &Board, file: &str, notes: &[RoutesNote]) -> Vec<P
 /// 0037). Not listed here: the connections left, which are the ratsnest's (`unrouted`), and
 /// courtyards that overlap, which are the placement check's. KiCad is not involved.
 pub fn drc_findings(board: &Board) -> Vec<PcbFinding> {
-    let extras = netsmith_fabricate::fab::drc_extras(board);
+    let mut extras = netsmith_fabricate::fab::drc_extras(board);
+    // How many fiducials a side has is a question for the package, which `fab` asks (issue
+    // #761): a board being designed has none until a person adds them, and a warning on every
+    // such board would bury the findings that are about what was just done.
+    if let Some(marks) = extras.marks.as_mut() {
+        marks.min_fiducials = 0;
+    }
     let report = match drc_check(&kicad_pcb(board), Some(&kicad_pro(board)), &extras) {
         Ok(report) => report,
         // The board file is netsmith's own, so this is a mistake in netsmith; say so.

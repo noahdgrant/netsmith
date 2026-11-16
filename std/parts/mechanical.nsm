@@ -88,6 +88,7 @@ part Fiducial {
 
 /// A test point: one pad on a net, to touch with a probe. Its pin `p1` is `required`, because
 /// a test point on no net tests nothing.
+#[kind(test_point)]
 part TestPoint {
     .designator &= "TP"
     .height &= 0mm

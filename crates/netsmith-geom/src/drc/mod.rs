@@ -65,7 +65,10 @@
 //! `hole_to_edge` (a hole with no copper against the edge, by the same least as copper; KiCad has
 //! no rule), `via_in_pad` (a via in a pad wider than the process fills), `constraint` (a
 //! requirement on where a part is, in [`constraints`]; it needs the design, so `fab` and the
-//! editor add it to the findings, as an error or, with `constraints = "warn"`, a warning), and,
+//! editor add it to the findings, as an error or, with `constraints = "warn"`, a warning), the
+//! rules of the fabricator's page for fiducials and test points (`fiducial_edge`, `fiducial_mask`
+//! and `fiducial_keepout`, limits, errors; `fiducial_count`, `fiducial_size` and the
+//! `test_point_*` rules, guidelines, warnings: `marks.rs`, issue #761), and,
 //! from the placement check and shown in the editor, `too_tall` (a part with a stated `.height`
 //! under a lower height limit of a keepout, ADR 0045 section 11) and `height_unchecked` (a part
 //! with no `.height` under a height limit, a warning unless constraints are strict). The other
@@ -139,6 +142,7 @@ mod checks;
 mod connect;
 pub(crate) mod constraints;
 mod fab_rules;
+mod marks;
 mod model;
 mod room;
 mod rules;
@@ -256,10 +260,32 @@ pub enum Rule {
     /// A corner of 90 degrees or sharper where two tracks of a net meet outside a pad
     /// (netsmith's, issue #415).
     TrackAngle,
+    /// A fiducial nearer the board edge than the board house can see it (netsmith's, issue
+    /// #761): a limit.
+    FiducialEdge,
+    /// A fiducial whose copper the solder mask covers (netsmith's): a limit.
+    FiducialMask,
+    /// Other copper inside a fiducial's mask opening, its keep-out (netsmith's): a limit.
+    FiducialKeepout,
+    /// Fewer fiducials on a side with assembled parts than the board house asks (netsmith's):
+    /// a guideline.
+    FiducialCount,
+    /// A fiducial that is not the size the board house recommends, or whose mask opening is
+    /// narrower than it recommends (netsmith's): a guideline.
+    FiducialSize,
+    /// A test point smaller than the probe pad the board house advises (netsmith's): a
+    /// guideline.
+    TestPointPad,
+    /// Two test points on one side nearer than a probe pitch (netsmith's): a guideline.
+    TestPointPitch,
+    /// A test point nearer a part's body than advised (netsmith's): a guideline.
+    TestPointBody,
+    /// A test point nearer the board edge than advised (netsmith's): a guideline.
+    TestPointEdge,
 }
 
 impl Rule {
-    pub const ALL: [Rule; 36] = [
+    pub const ALL: [Rule; 45] = [
         Rule::Clearance,
         Rule::ShortingItems,
         Rule::TracksCrossing,
@@ -296,6 +322,15 @@ impl Rule {
         Rule::TrackCurrent,
         Rule::ViaCurrent,
         Rule::TrackAngle,
+        Rule::FiducialEdge,
+        Rule::FiducialMask,
+        Rule::FiducialKeepout,
+        Rule::FiducialCount,
+        Rule::FiducialSize,
+        Rule::TestPointPad,
+        Rule::TestPointPitch,
+        Rule::TestPointBody,
+        Rule::TestPointEdge,
     ];
 
     /// KiCad's name for the rule (its `type` in a JSON report).
@@ -337,6 +372,15 @@ impl Rule {
             Rule::TrackCurrent => "track_current",
             Rule::ViaCurrent => "via_current",
             Rule::TrackAngle => "track_angle",
+            Rule::FiducialEdge => "fiducial_edge",
+            Rule::FiducialMask => "fiducial_mask",
+            Rule::FiducialKeepout => "fiducial_keepout",
+            Rule::FiducialCount => "fiducial_count",
+            Rule::FiducialSize => "fiducial_size",
+            Rule::TestPointPad => "test_point_pad",
+            Rule::TestPointPitch => "test_point_pitch",
+            Rule::TestPointBody => "test_point_body",
+            Rule::TestPointEdge => "test_point_edge",
         }
     }
 
@@ -358,6 +402,15 @@ impl Rule {
                 | Rule::TrackCurrent
                 | Rule::ViaCurrent
                 | Rule::TrackAngle
+                | Rule::FiducialEdge
+                | Rule::FiducialMask
+                | Rule::FiducialKeepout
+                | Rule::FiducialCount
+                | Rule::FiducialSize
+                | Rule::TestPointPad
+                | Rule::TestPointPitch
+                | Rule::TestPointBody
+                | Rule::TestPointEdge
         )
     }
 
@@ -376,7 +429,13 @@ impl Rule {
             | Rule::TextThickness
             | Rule::TrackDangling
             | Rule::ViaDangling
-            | Rule::ViaInPad => Severity::Warning,
+            | Rule::ViaInPad
+            | Rule::FiducialCount
+            | Rule::FiducialSize
+            | Rule::TestPointPad
+            | Rule::TestPointPitch
+            | Rule::TestPointBody
+            | Rule::TestPointEdge => Severity::Warning,
             _ => Severity::Error,
         })
     }
@@ -564,6 +623,36 @@ pub struct Extras {
     /// Whether a corner of 90 degrees or sharper between two tracks is refused (issue #415):
     /// set by `fab` for the boards netsmith routes, which bend by 45 degrees only.
     pub track_angle: bool,
+    /// The fabricator's rules for fiducials and test points (issue #761); `None` is not
+    /// checked.
+    pub marks: Option<Marks>,
+}
+
+/// What the check needs to judge the fiducials and the test points of a board: which footprints
+/// they are (the design knows their kinds; the board file does not), whether the board house
+/// assembles parts on each side, and the process's numbers. Lengths are in mm.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct Marks {
+    /// The designators of the fiducials and of the test points.
+    pub fiducials: Vec<String>,
+    pub test_points: Vec<String>,
+    /// Whether the board house places parts on the front, and on the back.
+    pub assembled_front: bool,
+    pub assembled_back: bool,
+    /// The fewest fiducials a side with assembled parts has.
+    pub min_fiducials: usize,
+    /// The diameter of a fiducial's copper, and the least ratio of its mask opening to it.
+    pub fiducial_diameter: f64,
+    pub fiducial_mask_ratio: f64,
+    /// The least space from a fiducial's copper to the board edge.
+    pub min_fiducial_edge: f64,
+    /// The smallest test point (the smaller side of its pad), the least distance between the
+    /// centres of two on a side, the least space from its copper to the body of a part on its
+    /// side, and to the board edge.
+    pub min_test_point_pad: f64,
+    pub min_test_point_pitch: f64,
+    pub min_test_point_body: f64,
+    pub min_test_point_edge: f64,
 }
 
 #[derive(Debug, PartialEq)]
