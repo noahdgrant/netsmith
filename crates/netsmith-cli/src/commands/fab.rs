@@ -345,6 +345,8 @@ fn run_fab(
     };
     let (pins_mode, locked_by) = pins_mode(&target, pins_locked, locked);
     let mut code = ExitCode::SUCCESS;
+    // Whether a board failed its check, which may be a spelling that changed (issue #740).
+    let mut unchecked = false;
     for source in &target.files {
         let text = match fs::read_to_string(&source.path) {
             Ok(t) => t,
@@ -390,6 +392,7 @@ fn run_fab(
         ) {
             Err(failure) => {
                 code = ExitCode::FAILURE;
+                unchecked |= !failure.problems.is_empty();
                 if json {
                     if failure.problems.is_empty() {
                         report.findings.push(Finding {
@@ -471,6 +474,9 @@ fn run_fab(
                 }
             }
         }
+    }
+    if unchecked {
+        common::release_note(&target, json.then_some(&mut report));
     }
     if json {
         // The warnings and notes that `fab` tells as it goes (a pick lock that differs, a

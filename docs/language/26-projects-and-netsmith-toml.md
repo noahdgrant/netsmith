@@ -2,6 +2,8 @@
 
 A project is a directory with a `netsmith.toml` at its root (ADR 0011). `netsmith init` makes one in the current directory. It writes `netsmith.toml`, `src/main.nsm` (a working LED board), `.gitignore` and `README.md`, and for the agents that work in the project an `AGENTS.md`, a `CLAUDE.md` of the one line `@AGENTS.md` (Claude Code reads `CLAUDE.md`), the skills in `.agents/skills/` (with `.claude/skills` linking to them) and this guide as `docs/netsmith/LANGUAGE.md` (ADR 0015). It never overwrites a file; an `AGENTS.md` or `CLAUDE.md` that exists is left alone and `init` says what to add. It also writes `.agents/netsmith-files.sha256`, the SHA-256 of each agent file it wrote. After a netsmith upgrade, `netsmith init --refresh` (in the project or a folder of it) brings those files up to date: it writes the ones that are missing, rewrites the ones that still have a text netsmith wrote (by the record, or by a list of every earlier version for a project made before the record), and leaves the others alone, listing each with a diff in which `-` is your file and `+` is what netsmith writes now; delete such a file and refresh again to take netsmith's text. It deletes nothing: a chapter or skill that a newer netsmith dropped is named and left. A project's `.gitignore`, `README.md` and sources are never touched.
 
+A release may change how a board spells something (one spelling for each thing, with no release in which both work, ADR 0001), so a project that built on an earlier netsmith can stop with many errors. The manifest's `netsmith` key names the release the project is written for, and `init` writes the running one. When `build`, `check` or `fab` stops because a board failed its check and the key names an older release, or the manifest has none, the run ends with a note that says so and points to `docs/MIGRATING.md` in netsmith's repository, which lists every such change, release by release, with the old and the new spelling (ADR 0134). Set the key to the new release when the project builds again. A key newer than the running netsmith gets a note that asks for that release. The key never stops a build.
+
 ```toml
 [project]
 name = "blink"
@@ -17,6 +19,7 @@ Only `name` is required.
 | Key | Meaning |
 |---|---|
 | `name` | The project name. |
+| `netsmith` | Optional. The netsmith release the project is written for, such as `"0.2.0"`; `init` writes the running one. A failed check of a project of another release, or of none, ends with a note that points to `docs/MIGRATING.md` (above). A value that is not three whole numbers is refused. |
 | `top_level` | The files that hold boards or systems. `top_level = []` is a project of modules only: `build` and `fab` with no file then say `error: this project has no boards`. |
 | `out` | Where `netsmith build` writes. |
 | `fab` | Where `netsmith fab` writes. |

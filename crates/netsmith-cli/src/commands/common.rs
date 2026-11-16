@@ -10,6 +10,7 @@ use netsmith_core::timings;
 use netsmith_fabricate::project::Target;
 use netsmith_pipeline::Libraries;
 use netsmith_solve::Catalogs;
+use netsmith_tools::findings::{Finding, Report, Severity};
 
 /// The port `netsmith editor` listens on unless told otherwise.
 pub const DEFAULT_PORT: u16 = 8787;
@@ -180,6 +181,25 @@ pub(super) fn target_offline(
         catalogs = catalogs.with_strict_guidelines(true);
     }
     Ok((target, loader, catalogs))
+}
+
+/// After a run in which a board failed its check: when the target's project is written for
+/// another netsmith release, or says none, the note that an error may be a spelling that changed
+/// and where the changes are listed (`netsmith_fabricate::release`, issue #740). Printed as text,
+/// or kept as a finding for `--format json`. A file outside a project gets no note.
+pub(super) fn release_note(target: &Target, report: Option<&mut Report>) {
+    let Some(project) = &target.project else {
+        return;
+    };
+    let Some(note) = netsmith_fabricate::release::note(project.manifest.netsmith.as_deref()) else {
+        return;
+    };
+    match report {
+        Some(report) => report
+            .findings
+            .push(Finding::plain(Severity::Note, "release", note)),
+        None => eprintln!("note: {note}"),
+    }
 }
 
 /// The KiCad libraries of the target's project (ADR 0021). A mistake in `kicad.toml` is
