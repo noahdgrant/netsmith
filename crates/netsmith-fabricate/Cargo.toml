@@ -38,6 +38,7 @@ sha2 = "0.11.1"
 # A `version` dependency is the newest tag its requirement admits (issue #1012).
 semver = "1.0.28"
 toml = "1.1.8"
+zip = { version = "6", default-features = false, features = ["deflate-flate2-zlib-rs"] }
 
 [features]
 # What the tests of this crate and of the crates above it need from the pipeline's
@@ -51,6 +52,5 @@ netsmith-quantity = { path = "../netsmith-quantity" }
 netsmith-fabricate = { path = ".", features = ["test-support"] }
 netsmith-kicad = { path = "../netsmith-kicad", features = ["test-support"] }
 netsmith-testkit = { path = "../netsmith-testkit" }
-zip = { version = "6", default-features = false, features = ["deflate-flate2-zlib-rs"] }
 # The CPU time of a thread, for the `measured` test of the placer's pre-check (`precheck.rs`).
 rustix = { version = "1.1.6", default-features = false, features = ["time"] }

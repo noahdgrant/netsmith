@@ -371,6 +371,16 @@ impl Backend for Fake {
         }
         Err(ApiError::not_found(board))
     }
+    fn pcb_kicad(&self, board: &str) -> Result<Attachment, ApiError> {
+        if board != "Led" {
+            return Err(ApiError::not_found(format!("there is no board `{board}`")));
+        }
+        Ok(Attachment {
+            name: "Led.placed-kicad.zip".into(),
+            content_type: "application/zip".into(),
+            bytes: b"zip-of-Led".to_vec(),
+        })
+    }
     fn download(&self, _board: &str, file: &str) -> Result<Attachment, ApiError> {
         Ok(Attachment {
             name: format!("{file}.csv"),
@@ -732,6 +742,23 @@ fn the_summary_of_a_board_takes_near_within_and_between_from_the_query() {
         let r = s.get(&format!("/api/pcb/summary?board=Led&{bad}"));
         assert_eq!(r.status, 400, "{bad}: {}", r.body);
     }
+}
+
+#[test]
+fn the_placed_board_is_served_as_a_kicad_zip_download() {
+    let s = start();
+    let r = s.get("/api/pcb/kicad?board=Led");
+    assert_eq!(r.status, 200);
+    assert!(r.headers.contains("content-type: application/zip"), "{}", r.headers);
+    assert!(
+        r.headers
+            .contains("content-disposition: attachment; filename=\"Led.placed-kicad.zip\""),
+        "{}",
+        r.headers
+    );
+    assert_eq!(r.body, "zip-of-Led");
+    assert_eq!(s.get("/api/pcb/kicad?board=Nope").status, 404);
+    assert_eq!(s.get("/api/pcb/kicad").status, 400, "the board is needed");
 }
 
 #[test]

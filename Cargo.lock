@@ -1094,6 +1094,7 @@ dependencies = [
  "netsmith-view",
  "serde_json",
  "tungstenite 0.30.0",
+ "zip",
 ]
 
 [[package]]

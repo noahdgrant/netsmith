@@ -3085,6 +3085,105 @@ physical for LedExample {
     );
 }
 
+/// The files of a `pcb_kicad` zip: `(name, text)`, in the order the zip has them.
+fn unzipped(bytes: &[u8]) -> Vec<(String, String)> {
+    use std::io::Read as _;
+    let mut zip = zip::ZipArchive::new(std::io::Cursor::new(bytes)).unwrap();
+    (0..zip.len())
+        .map(|i| {
+            let mut file = zip.by_index(i).unwrap();
+            let mut text = String::new();
+            if !file.is_dir() {
+                file.read_to_string(&mut text).unwrap();
+            }
+            (file.name().to_string(), text)
+        })
+        .collect()
+}
+
+#[test]
+fn the_placed_board_is_a_kicad_download_also_while_the_placement_has_findings() {
+    // Issue #1001: the board the view shows, unrouted, as the files `layout export` writes,
+    // with the findings of its placement, where `fab` would stop.
+    let (root, _) = project("kicad-download-refused");
+    fs::write(
+        root.join("src/main.nsm"),
+        include_str!("../../../examples/led.nsm"),
+    )
+    .unwrap();
+    fs::write(
+        root.join("src/main.physical.nsm"),
+        "import std::pcb::Outline
+
+physical for LedExample {
+    case {
+        .outline: Outline {
+            .width &= 40mm
+            .height &= 30mm
+        }
+    }
+    .r1.place.x &= 20mm
+    .r1.place.y &= 10mm
+}
+",
+    )
+    .unwrap();
+    fs::write(
+        layout_file(&root),
+        "version = 1\n\n[LedExample.parts.r1]\nat = [5.0, 5.0]\nlock = true\n",
+    )
+    .unwrap();
+    let editor = Workspace::open(Target::resolve_from(&root, None).unwrap())
+        .unwrap_or_else(|e| panic!("{e}"));
+    let download = editor
+        .pcb_kicad("LedExample")
+        .unwrap_or_else(|e| panic!("{e:?}"));
+    assert_eq!(download.name, "LedExample.placed-kicad.zip");
+    assert_eq!(download.content_type, "application/zip");
+    let files = unzipped(&download.bytes);
+    let names: Vec<&str> = files.iter().map(|(n, _)| n.as_str()).collect();
+    assert_eq!(
+        names,
+        [
+            "LedExample.placed/",
+            "LedExample.placed/LedExample.placed.kicad_pcb",
+            "LedExample.placed/LedExample.placed.kicad_pro",
+            "LedExample.placed/LedExample.placed.findings.txt",
+        ]
+    );
+    let pcb = &files[1].1;
+    assert!(pcb.contains("(comment 1 \"NOT FOR FABRICATION"), "{pcb}");
+    assert!(!pcb.contains("(segment") && !pcb.contains("(via"), "copper on a placed board");
+    let findings = &files[3].1;
+    assert!(
+        findings.contains("refused: ") && findings.contains("is locked in the layout file at (5, 5) mm"),
+        "{findings}"
+    );
+    // The part is where the layout file locks it, as the view draws it.
+    let at = netsmith_fabricate::layout_kicad::footprints(pcb).unwrap();
+    assert!(at.iter().any(|f| f.path.as_deref() == Some("r1")), "{at:?}");
+}
+
+#[test]
+fn the_kicad_download_of_a_board_with_no_findings_says_so_and_of_no_board_is_not_found() {
+    if netsmith_kicad::skip_without_kicad_libraries() {
+        return;
+    }
+    let (_root, editor) = project("kicad-download");
+    let board = editor.analysis().boards[0].name.clone();
+    let download = editor
+        .pcb_kicad(&board)
+        .unwrap_or_else(|e| panic!("{e:?}"));
+    let files = unzipped(&download.bytes);
+    assert!(
+        files[3].1.contains(".placed.kicad_pcb (0):"),
+        "{}",
+        files[3].1
+    );
+    assert!(files[2].0.ends_with(".kicad_pro"), "{:?}", files[2].0);
+    assert_eq!(editor.pcb_kicad("Nothing").unwrap_err().status, 404);
+}
+
 // ---- the physical file (ADR 0048) --------------------------------------------------------
 
 #[test]

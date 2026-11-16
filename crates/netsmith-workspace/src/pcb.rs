@@ -141,6 +141,10 @@ pub struct Entry {
     /// #779): that it was refused and the lines and locks that cannot all hold. Empty for a
     /// board that was placed.
     refusal: Vec<PcbFinding>,
+    /// What the placer was told of where the parts go, and why it refused the layout file when
+    /// it did: what the KiCad download measures the placement's findings with (issue #1001).
+    place_options: netsmith_pcb::PlaceOptions,
+    refused: Option<String>,
     /// The board as placed, before the routes file's copper is put on it: what a change to the
     /// routes file is made and checked on, as `netsmith routes` does.
     placed: Board,
@@ -356,29 +360,31 @@ pub fn place_with(
             findings::refusal_findings(&ended.board, &failure.message(), &explained.proofs);
         let mut entry = Entry::with_routes(data, name, ended.board, layout, layout_stamp)?;
         entry.refusal = refusal;
+        entry.refused = Some(failure.message());
+        entry.place_options = ended.options;
         return Ok(entry);
     }
-    let board = placed
-        .map_err(|e| match e {
-            netsmith_fabricate::layout::PlaceFailure::Board(
-                netsmith_pcb::BoardError::Unplaceable(found),
-            ) => PlaceError::Unplaceable(name.to_string(), found),
-            netsmith_fabricate::layout::PlaceFailure::Board(e) => {
-                PlaceError::Other(board_error(name, &e))
-            }
-            netsmith_fabricate::layout::PlaceFailure::Layout(e) => {
-                PlaceError::Layout(format!("{name}: {e}"))
-            }
-            failure @ netsmith_fabricate::layout::PlaceFailure::Unplaced { .. } => {
-                PlaceError::Other(ApiError::unprocessable(
-                    format!("{name}: {}", failure.message()),
-                    "does_not_fit",
-                    &[("board", name)],
-                ))
-            }
-        })?
-        .board;
-    Entry::with_routes(data, name, board, layout, layout_stamp)
+    let placed = placed.map_err(|e| match e {
+        netsmith_fabricate::layout::PlaceFailure::Board(netsmith_pcb::BoardError::Unplaceable(
+            found,
+        )) => PlaceError::Unplaceable(name.to_string(), found),
+        netsmith_fabricate::layout::PlaceFailure::Board(e) => {
+            PlaceError::Other(board_error(name, &e))
+        }
+        netsmith_fabricate::layout::PlaceFailure::Layout(e) => {
+            PlaceError::Layout(format!("{name}: {e}"))
+        }
+        failure @ netsmith_fabricate::layout::PlaceFailure::Unplaced { .. } => {
+            PlaceError::Other(ApiError::unprocessable(
+                format!("{name}: {}", failure.message()),
+                "does_not_fit",
+                &[("board", name)],
+            ))
+        }
+    })?;
+    let mut entry = Entry::with_routes(data, name, placed.board, layout, layout_stamp)?;
+    entry.place_options = placed.options;
+    Ok(entry)
 }
 
 impl Entry {
@@ -420,6 +426,8 @@ impl Entry {
         Ok(Entry {
             case_findings,
             refusal: Vec::new(),
+            place_options: netsmith_pcb::PlaceOptions::default(),
+            refused: None,
             board,
             routed: false,
             stopped: false,
@@ -457,7 +465,30 @@ impl Entry {
             self.layout_stamp.clone(),
         )?;
         entry.refusal = self.refusal.clone();
+        entry.place_options = self.place_options.clone();
+        entry.refused = self.refused.clone();
         Ok(entry)
+    }
+
+    /// The placed board, not routed, as the files `netsmith layout export` writes (issue
+    /// #1001): the board the view shows placed, with the findings of its placement, also when
+    /// the placer refused the layout file.
+    pub fn kicad_package(
+        &self,
+        data: &BoardData,
+        label: &str,
+    ) -> netsmith_fabricate::layout_kicad::Package {
+        let conflicts = self
+            .placed
+            .explain_requirements(&data.built.design, &self.place_options)
+            .map(|r| r.proofs)
+            .unwrap_or_default();
+        let placing = netsmith_fabricate::board3d::Placing {
+            conflicts,
+            refused: self.refused.clone(),
+        };
+        let out = format!("{label}.placed.kicad_pcb");
+        netsmith_fabricate::layout_kicad::package(label, &self.placed, placing, Path::new(&out))
     }
 
     /// The board as placed with no copper on it.

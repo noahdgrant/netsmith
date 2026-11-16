@@ -169,3 +169,51 @@ fn a_footprint_with_no_path_is_said_and_left_out_and_a_file_that_is_no_board_is_
     assert!(text(&refused.stderr).contains("not a KiCad board"), "{}", text(&refused.stderr));
     assert!(!dir.join("main.pcb.toml").exists());
 }
+
+#[test]
+fn kicad_cli_opens_the_exported_board_with_findings_and_sees_its_parts_where_it_was_placed() {
+    // The cross-check of issue #1001: the board `fab` refuses is written, and KiCad's own
+    // command line reads it, with the footprints where netsmith put them. Skips without KiCad.
+    use netsmith_fab::KicadCli as _;
+    let Some(cli) = netsmith_fab::KicadCliExe::locate_runnable() else {
+        return;
+    };
+    let dir = project("layout-export-kicad-cli");
+    overlapping(&dir);
+    let exported = json(&dir, &["export", "--out", "kicad/main.kicad_pcb"]);
+    assert!(
+        exported["placement"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|f| f["kind"] == "overlap"),
+        "{exported}"
+    );
+    let file = dir.join("kicad/main.kicad_pcb");
+    let rows = cli
+        .pos(&file)
+        .unwrap_or_else(|e| panic!("kicad-cli did not read the exported board: {e}"));
+    let pcb = fs::read_to_string(&file).unwrap();
+    let placed = netsmith_fabricate::layout_kicad::footprints(&pcb).unwrap();
+    assert_eq!(placed.len(), 5);
+    // `Ref,Val,Package,PosX,PosY,Rot,Side`: one row for each footprint, at its place (KiCad's
+    // position file counts y upwards).
+    let mut seen = 0;
+    for row in rows.lines().skip(1).filter(|l| !l.trim().is_empty()) {
+        let cells: Vec<&str> = row.split(',').map(|c| c.trim_matches('"')).collect();
+        let part = placed
+            .iter()
+            .find(|f| f.reference == cells[0])
+            .unwrap_or_else(|| panic!("KiCad lists {} that the board does not have", cells[0]));
+        let (x, y): (f64, f64) = (cells[3].parse().unwrap(), cells[4].parse().unwrap());
+        assert!(
+            (x - part.at[0]).abs() < 0.01 && (y.abs() - part.at[1].abs()).abs() < 0.01,
+            "{}: KiCad has ({x}, {y}), the file ({}, {})",
+            cells[0],
+            part.at[0],
+            part.at[1]
+        );
+        seen += 1;
+    }
+    assert_eq!(seen, 5, "{rows}");
+}

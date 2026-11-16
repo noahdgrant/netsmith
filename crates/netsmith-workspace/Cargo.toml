@@ -39,3 +39,4 @@ netsmith-pipeline = { path = "../netsmith-pipeline", features = ["test-support"]
 netsmith-placer = { path = "../netsmith-placer" }
 netsmith-testkit = { path = "../netsmith-testkit" }
 tungstenite = "0.30.0"
+zip = { version = "6", default-features = false, features = ["deflate-flate2-zlib-rs"] }
