@@ -163,10 +163,42 @@ The `effective_capacitance` cell of `catalog/capacitor.csv` gives, for each capa
 
 ### Capacitor ESR (`esr` column, issue #420)
 
-The `esr` column of `catalog/capacitor.csv` (optional, ADR 0078) is the equivalent series resistance of one capacitor: one maximum in ohms, never an estimate. A row states it only where its maker's document prints it in a table or draws it in a figure for that exact part; the `source` cell then has an `esr:` entry that begins with the cell's figure and names the document, its page, the table or graph and the point (frequency, and DC bias or its absence), and the `notes` cell says what was done to the reading (`ESR: ...`) and whether the figure is typical or a maximum. A figure read off a curve is read by pixel position against the gridlines of the rendered page and rounded up. `Buck` reads the picked row's figure as its `.output_esr` when a board states none (`docs/language/28-standard-parts.md`).
+The `esr` column of `catalog/capacitor.csv` (optional, ADR 0078) is the equivalent series resistance of one capacitor: one figure in ohms at 500 kHz, never an estimate. A row states it only where its maker's document or the maker's own tool prints or draws it for that exact part; the `source` cell then has an `esr:` entry that begins with the cell's figure and names the document, its page, the table or graph and the point (frequency, and DC bias or its absence), and the `notes` cell says what was done to the reading (`ESR: ...`) and whether the figure is typical or a maximum. A figure read off a drawn curve is read by pixel position against the gridlines of the rendered page and rounded up to a whole mohm; a figure from numbers the maker gives is rounded up to two figures. `Buck` reads the picked row's figure as its `.output_esr` when a board states none (`docs/language/28-standard-parts.md`).
 
-- **C23733 (CL05A475MP5NRNC): 4 mohm**, from the same Samsung characteristics sheet as its bias curve, `https://media.digikey.com/pdf/Data%20Sheets/Samsung%20PDFs/CL05A475MP5NRNC_Char.pdf` (one page), graph 1 "Frequency characteristics" (Agilent E4294A, 0.5 Vrms, 1 kHz to 110 MHz, no DC bias): the ESR curve at 500 kHz is about 3.8 mohm (read 2026-11-16, reading error about 12%), rounded up to 4 mohm. The curve falls to about 1.5 mohm near 4 MHz, so the figure also covers 500 kHz to 5 MHz. It is Samsung's typical curve ("typical data for design reference only"), not a maximum, and the ESR at a DC bias is not the one drawn (the effective capacitance already falls by about 70% at 3.3 V).
-- **The other 60 rows state no ESR.** The Samsung documents the other rows cite are the catalog PDF (`datasheet.lcsc.com/.../02336ea48ea44ca18c72517dd3cb7b47.pdf`), which has no per-part ESR (it states that the 02 and 03 series have low ESR, with no figure); the three Samsung documents that LCSC links for C15525, C96446 and C315248 discuss ESR in words (self-heating, the impedance minimum at the resonance) with no figure for the part; the Fenghua (FH) product specification has no ESR; Murata's `GRM158R61A226ME15D` document is generic reliability text; the Yageo `CC0603KRX7R9BB104` specification draws ESR curves for other parts (0201 10 nF, 0402 100 nF, 0603 1 uF and larger), not this one. Samsung's per-part characteristics sheets, which draw it, could be fetched for C23733 only (the others answer with a web page, as for the bias curves). A row gets an `esr` only when someone reads its own maker's document, as above.
+- **28 rows state an ESR (2026-11-16), all Samsung's, all typical, none a maximum.** The source is Samsung Electro-Mechanics' component library (ComponentCenter, `https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=<mpn without its packaging letter>`), the page the bias curves already cite. Its page carries, as a script variable, the data of its graph "Impedance |Z|, ESR" for the part (graph type `|Z|_R`, model type Precise, 0 Vdc, 0 A, 25 C, 300 samples from 0.1 kHz to 6 GHz; the page's own script names the series `R` "ESR(ohm)"). The cell is the series at 500 kHz, interpolated between its two nearest samples on log axes and rounded up to two figures; 500 kHz is the frequency of the first row that stated one (C23733). The curve is the library's typical model, and the ESR at a DC bias is not the one drawn. Four rows (C12530, C15525, C47339 and C23733) also have a per-part characteristics sheet that draws the ESR (`https://media.digikey.com/pdf/Data%20Sheets/Samsung%20PDFs/<mpn>_Char.pdf`, one page, graph 1 "Frequency characteristics", 0.5 Vrms or 1 Vrms, no DC bias; C15525's with a network analyzer 8753E, the others an Agilent E4294A); the cell is the larger of the two readings and the `source` and `notes` name both (the sheet read by pixel position at 500 kHz: C12530 11.3 mohm, C15525 7.6, C47339 40.3, C23733 3.7; the library 11.5, 3.5, 40.7 and 6.2). C23733's earlier 4 mohm was the sheet's reading alone; the library's 6.2 mohm is the larger. C15525 and C315248 have the same library series (the same capacitance and size). The rows:
+
+| LCSC | MPN | package | `esr` |
+|---|---|---|---|
+| C1525 | CL05B104KO5NNNC | 0402 | 86mohm |
+| C15195 | CL05B103KB5NNNC | 0402 | 660mohm |
+| C16772 | CL05B224KO5NNNC | 0402 | 38mohm |
+| C12530 | CL05A225MQ5NSNC | 0402 | 12mohm |
+| C21122 | CL10B223KB8NNNC | 0603 | 260mohm |
+| C1622 | CL10B473KB8NNNC | 0603 | 160mohm |
+| C52923 | CL05A105KA5NQNC | 0402 | 15mohm |
+| C1603 | CL10B221KB8NNNC | 0603 | 28ohm |
+| C307331 | CL05B104KB54PNC | 0402 | 84mohm |
+| C21120 | CL10B224KA8NNNC | 0603 | 34mohm |
+| C1588 | CL10B102KB8NNNC | 0603 | 5.4ohm |
+| C23630 | CL10A225KO8NNNC | 0603 | 11mohm |
+| C1613 | CL10B332KB8NNNC | 0603 | 1.9ohm |
+| C1623 | CL10B474KA8NNNC | 0603 | 19mohm |
+| C21117 | CL10B333KB8NNNC | 0603 | 180mohm |
+| C15849 | CL10A105KB8NNNC | 0603 | 16mohm |
+| C23733 | CL05A475MP5NRNC | 0402 | 6.2mohm |
+| C19666 | CL10A475KO8NNNC | 0603 | 7.4mohm |
+| C19702 | CL10A106KP8NNNC | 0603 | 3.6mohm |
+| C15525 | CL05A106MQ5NUNC | 0402 | 8mohm |
+| C59461 | CL10A226MQ8NRNC | 0603 | 2.5mohm |
+| C96446 | CL10A106MA8NRNC | 0603 | 2.8mohm |
+| C16780 | CL21A476MQYNNNE | 0805 | 2.2mohm |
+| C47339 | CL05A474KP5NNNC | 0402 | 41mohm |
+| C315248 | CL05A106MP5NUNC | 0402 | 3.5mohm |
+| C55151 | CL32B225KCJSNNE | 1210 | 7.1mohm |
+| C170101 | CL31B225KCHSNNE | 1206 | 6.3mohm |
+| C13832 | CL31B105KCHNNNE | 1206 | 12mohm |
+
+- **The other 33 rows state no ESR.** The 11 Samsung C0G rows (`CL10C...`, `CL05C100JB5NNNC`): the library's curve starts at 10 or 100 MHz, so it has no 500 kHz point (the catalog PDF `datasheet.lcsc.com/.../02336ea48ea44ca18c72517dd3cb7b47.pdf` has no per-part ESR; it states that the 02 and 03 series have low ESR, with no figure). The 20 Fenghua (FH) rows (`0402...`, `0603...`): the product specification (general series, version A0001) has no ESR and FH has no per-part tool. The Yageo `CC0603KRX7R9BB104`: its specification draws ESR curves for other parts (0201 10 nF, 0402 100 nF, 0603 1 uF and larger), not this one, and Yageo's product search is a script page whose output a program cannot read (read 2026-11-16). The Murata `GRM158R61A226ME15D`: the document is generic reliability text, and Murata's SimSurfing and its product page are script pages that a program cannot read (read 2026-11-16). A row gets an `esr` only when someone reads its own maker's document or tool, as above.
 
 ### Pin headers
 
