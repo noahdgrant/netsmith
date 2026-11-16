@@ -61,6 +61,7 @@ fn a_commands_help_lists_its_usage_and_every_flag_it_takes() {
         "catalog refresh",
         "dxf import",
         "kicad-libs import",
+        "kicad-libs models",
     ] {
         assert!(all.iter().any(|(path, _)| path.join(" ") == name), "{name}");
     }

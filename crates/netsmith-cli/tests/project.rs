@@ -528,6 +528,47 @@ fn kicad_libs_import_prints_the_stanzas_to_paste_into_kicad_toml() {
 }
 
 #[test]
+fn kicad_libs_models_prints_the_model_rows_of_a_footprint_library_table() {
+    let root = dir("libs-models");
+    write(
+        &root,
+        "fp-lib-table",
+        "(fp_lib_table (version 7)\n  (lib (name \"acme\")(type \"KiCad\")(uri \"${KIPRJMOD}/libs/acme.pretty\")(options \"\")(descr \"\")))\n",
+    );
+    write(
+        &root,
+        "libs/acme.pretty/Chip.kicad_mod",
+        "(footprint \"Chip\" (version 20240108) (layer \"F.Cu\") (model \"${KIPRJMOD}/models/chip.step\" (offset (xyz 0 0 0.1)) (rotate (xyz 0 0 90))))\n",
+    );
+    write(
+        &root,
+        "libs/acme.pretty/Bare.kicad_mod",
+        "(footprint \"Bare\" (version 20240108) (layer \"F.Cu\"))\n",
+    );
+    let out = netsmith(&root, &["kicad-libs", "models", "fp-lib-table"]);
+    assert_eq!(out.status.code(), Some(0));
+    let rows = String::from_utf8_lossy(&out.stdout);
+    assert_eq!(
+        rows,
+        "[[model]]\nfootprint = \"acme:Chip\"\nfile = \"models/chip.step\"\noffset = [0, 0, 0.1]\nrotation = [0, 0, 90]\n\n"
+    );
+    assert!(
+        String::from_utf8_lossy(&out.stderr)
+            .contains("note: the library `acme`: 1 footprint has no model line: left out"),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    // The rows are the manifest's own.
+    let manifest = format!("[project]\nname = \"p\"\n\n{rows}");
+    let m = Manifest::parse(&manifest).unwrap();
+    assert_eq!(m.model.len(), 1);
+    assert_eq!(m.model[0].rotation, [0.0, 0.0, 90.0]);
+    // A table that is not there is a message.
+    let lost = netsmith(&root, &["kicad-libs", "models", "nope"]);
+    assert_eq!(lost.status.code(), Some(2));
+}
+
+#[test]
 fn a_projects_kicad_toml_gives_its_own_libraries_to_build_and_the_tables_to_kicad() {
     let root = dir("own-libs");
     fs::write(root.join("netsmith.toml"), Manifest::new("own").render()).unwrap();
