@@ -3424,7 +3424,12 @@
             }
           ],
           "build": "JLC04161H-7628",
-          "hole_clearance": 0.3
+          "hole_clearance": 0.3,
+          "mask": {
+            "thickness": 0.03048,
+            "epsilon": 3.8
+          },
+          "outer_copper": 0.04064
         }
       }
     },
