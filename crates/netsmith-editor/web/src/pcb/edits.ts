@@ -68,6 +68,16 @@ export function rotateParts(parts: PcbPart[], f: Frame, degrees: number): PcbCha
   });
 }
 
+/** Turn parts to `degrees` counter-clockwise, any angle and not only a right angle (issue #996),
+ * each about its own origin. A locked part stays, and so does one already at that turn. */
+export function turnPartsTo(parts: PcbPart[], f: Frame, degrees: number): PcbChange[] {
+  if (!Number.isFinite(degrees)) return [];
+  const to = normAngle(tidy(degrees));
+  return parts
+    .filter((p) => !p.locked && normAngle(tidy(p.rotation)) !== to)
+    .map((p) => change(p, f, { rotation: to }));
+}
+
 /** Put parts on the other face. A footprint is mirrored left to right, as KiCad does it, so
  * its turn is the negative of what it was; a selection is mirrored about its middle. */
 export function flipParts(parts: PcbPart[], f: Frame): PcbChange[] {

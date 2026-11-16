@@ -48,6 +48,17 @@ export async function run(tools) {
   expect(text().includes(`rotation = ${quarter}.0`), `the file says rotation ${quarter}`);
   await shot('rotated');
 
+  step('the inspector turns it to any angle: 45 degrees typed is 45 in the file (issue #996)');
+  const field = page.locator('[data-testid=part-turn]');
+  const stampTurn = (await scene(page)).layoutStamp;
+  await field.fill('45');
+  await field.press('Enter');
+  s = await settled(page, stampTurn);
+  expect(entry(s, CAP).rotation === 45, `rotation ${entry(s, CAP).rotation}`);
+  expect(text().includes('rotation = 45.0'), 'the file says rotation 45');
+  await field.blur();
+  await shot('turned-45');
+
   step('F puts it on the other face');
   s = await key('f');
   expect(entry(s, CAP).side === 'bottom', 'on the bottom');
@@ -68,10 +79,11 @@ export async function run(tools) {
   await page.waitForSelector('.toast');
   await shot('locked');
 
-  step('undo walks back through lock, flip, rotate and move');
+  step('undo walks back through lock, flip, turn, rotate and move');
   for (const [what, check] of [
     ['lock', (p) => p.locked === false],
     ['flip', (p) => p.side === 'top'],
+    ['turn', (p) => p.rotation === quarter],
     ['rotate', (p) => p.rotation === turn],
   ]) {
     const before = (await scene(page)).layoutStamp;

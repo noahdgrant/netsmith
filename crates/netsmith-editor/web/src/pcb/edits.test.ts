@@ -13,6 +13,7 @@ import {
   redoing,
   releaseParts,
   rotateParts,
+  turnPartsTo,
   undoing,
 } from './edits';
 
@@ -90,6 +91,18 @@ describe('rotating', () => {
 
   it('skips what is locked', () => {
     expect(rotateParts([part('a', 1, 1, { locked: true })], frame, 90)).toEqual([]);
+  });
+
+  it('turns parts to any angle, each about its own origin (issue #996)', () => {
+    const [a, b] = turnPartsTo([part('a', 8, 10), part('b', 12, 10, { rotation: 90 })], frame, 45);
+    const at = (c: typeof a) => (c.what === 'part' ? c.after! : (null as never));
+    expect(at(a)).toMatchObject({ x: 8, y: 10, rotation: 45, source: 'hand' });
+    expect(at(b)).toMatchObject({ x: 12, y: 10, rotation: 45 });
+    // An angle past a turn is the same turn; one the part has, or a locked part, is no change.
+    expect(turnPartsTo([part('a', 1, 1)], frame, -30).map((c) => c.what === 'part' && c.after?.rotation)).toEqual([330]);
+    expect(turnPartsTo([part('a', 1, 1, { rotation: 45 })], frame, 405)).toEqual([]);
+    expect(turnPartsTo([part('a', 1, 1, { locked: true })], frame, 45)).toEqual([]);
+    expect(turnPartsTo([part('a', 1, 1)], frame, Number.NaN)).toEqual([]);
   });
 });
 

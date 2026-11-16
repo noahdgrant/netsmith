@@ -33,6 +33,7 @@ import {
   rotateSelection,
   toggleLock,
   toggleRequired,
+  turnSelectionTo,
 } from './actions';
 import type { Drawing } from './drawing';
 import { type ModuleRow, inModule, moduleOfAll, moduleRows, totalsLines } from './regenerate';
@@ -250,6 +251,35 @@ function NetList(props: {
   );
 }
 
+/** The part's turn, which a person may type: any angle from 0 up to 360, not only the right
+ * angles the Rotate button steps by (issue #996). Enter or leaving the field writes it to the
+ * layout file; a locked part shows its turn only. */
+function TurnField(props: { part: PcbPart }) {
+  const { part } = props;
+  const shown = fmt(part.rotation);
+  if (part.locked) return <>{shown}°</>;
+  return (
+    <label class="turn-field">
+      <input
+        type="number"
+        min="0"
+        max="360"
+        step="any"
+        key={`${part.path}:${shown}`}
+        value={shown}
+        aria-label={`Turn of ${part.refdes} in degrees, counter-clockwise`}
+        title="Any angle, counter-clockwise; Enter writes it to the layout file"
+        data-testid="part-turn"
+        onChange={(e) => {
+          const v = parseFloat((e.target as HTMLInputElement).value);
+          if (Number.isFinite(v)) void turnSelectionTo(v);
+        }}
+      />
+      °
+    </label>
+  );
+}
+
 function PartInspector(props: { scene: PcbScene; parts: PcbPart[]; onPickNet: (net: string | null) => void }) {
   const { parts, scene: sc } = props;
   const one = parts.length === 1 ? parts[0] : null;
@@ -273,7 +303,7 @@ function PartInspector(props: { scene: PcbScene; parts: PcbPart[]; onPickNet: (n
         <Defs
           rows={[
             { label: 'Position', value: `${fmt(one.x - sc.originX)}, ${fmt(one.y - sc.originY)} mm` },
-            { label: 'Turn', value: `${fmt(one.rotation)}°` },
+            { label: 'Turn', value: <TurnField part={one} /> },
             { label: 'Face', value: faceWord(one.side) },
             { label: 'Placed by', value: `${one.locked ? 'locked, ' : ''}${one.placement}` },
             { label: 'Height', value: one.height == null ? 'not stated' : `${fmt(one.height)} mm` },
