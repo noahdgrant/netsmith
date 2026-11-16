@@ -81,7 +81,7 @@ Parts are numbered by their letters in the order of their paths in the board (a 
 | `std::mfg::stackup::Stackup` | Layers, thickness, copper weight and, for inner layers, the build-up: its name, the inner copper and each dielectric layer from the top. |
 | `std::mfg::stackup::DielectricLayer` | A prepreg or a core of a build-up: its glass style, thickness and relative permittivity. |
 | `std::mfg::stackup::InnerLayer` | An inner copper layer: a plane on a net the board names, or a signal layer (`.use &= "signal"`). |
-| `std::mfg::stackup::Pour` | Copper poured on an outer layer, `.top` or `.bottom` of a process: a `.net` and the most space between stitching vias, `.stitch_pitch`. |
+| `std::mfg::stackup::Pour` | Copper poured on an outer layer, `.top` or `.bottom` of a process: a `.net` and the most space between stitching vias, `.stitch_pitch`, and the least gap and spoke width of its thermal reliefs, `.thermal_gap` and `.spoke_width`. |
 | `std::pcb::Outline` | The board edge, the board's member `.outline`: `.width`, `.height` (ranges allowed) and `.corner_radius`. |
 | `std::pcb::Cutout` | A rectangular hole inside the outline: `.x`, `.y`, `.width`, `.height`, `.corner_radius`. |
 | `std::pcb::CaseModel` | A STEP file of the board's case, in the `case { }` section of its physical file (ADR 0109): `.file`, relative to the physical file and inside the project, the offset `.x`, `.y`, `.z` and the rotation `.rx`, `.ry`, `.rz` in degrees, applied before the offset, in the 3D scene's frame, and the fit check's figures `.clearance` (0.5 mm), `.reach` (1.5 mm) and `.boss_gap` (0.5 mm), offered with `?=`, and `.check` (`"fit"`, or `"none"` for a model that is only a drawing). A drawing and a check, never a height, an outline or a hole. See A case model. |

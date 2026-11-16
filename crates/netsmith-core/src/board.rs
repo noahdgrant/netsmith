@@ -51,6 +51,12 @@ pub struct Pour {
     pub net: String,
     /// The most space between stitching vias, if the design states one.
     pub stitch_pitch: Option<f64>,
+    /// The gap of a thermal relief, in mm: the bottom of the range, if the design states one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub thermal_gap: Option<f64>,
+    /// The width of the spokes of a thermal relief, in mm, likewise.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub spoke_width: Option<f64>,
 }
 
 /// What the name of the keepout a mounting hole carries for its screw head starts with

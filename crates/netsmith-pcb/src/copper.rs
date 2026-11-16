@@ -728,6 +728,8 @@ mod tests {
             layer: CopperLayer::Front,
             net: "GND".into(),
             stitch_pitch: None,
+            thermal_gap: None,
+            spoke_width: None,
         });
         let at = free_point(&board, 1.5);
         let (from, to) = (Pt::new(at.x - 1.0, at.y), Pt::new(at.x + 1.0, at.y));
@@ -761,6 +763,8 @@ mod tests {
             layer: CopperLayer::Front,
             net: "GND".into(),
             stitch_pitch: None,
+            thermal_gap: None,
+            spoke_width: None,
         });
         let c = copper(&board).unwrap();
         let top = layer(&c, "F.Cu");
@@ -797,12 +801,44 @@ mod tests {
     }
 
     #[test]
+    fn a_pours_thermal_gap_and_spoke_width_change_the_copper_round_its_own_pads() {
+        // The copper of the top pour, in mm², with a relief of the given gap and spoke width
+        // (`None`: KiCad's 0.5 mm).
+        let area = |gap: Option<f64>, spoke: Option<f64>| {
+            let mut board = four();
+            board.pours.push(BoardPour {
+                layer: CopperLayer::Front,
+                net: "GND".into(),
+                stitch_pitch: None,
+                thermal_gap: gap,
+                spoke_width: spoke,
+            });
+            let c = copper(&board).unwrap();
+            layer(&c, "F.Cu")
+                .pours
+                .iter()
+                .map(|p| p.area.size())
+                .sum::<f64>()
+        };
+        let default = area(None, None);
+        // The same as saying KiCad's default.
+        assert!((area(Some(0.5), Some(0.5)) - default).abs() < 1e-9);
+        // A narrower gap leaves more copper next to the pads of the net, and wider spokes more.
+        let narrow = area(Some(0.2), None);
+        let wide = area(Some(0.2), Some(1.0));
+        assert!(default + 0.01 < narrow, "{default} and {narrow}");
+        assert!(narrow + 0.01 < wide, "{narrow} and {wide}");
+    }
+
+    #[test]
     fn the_pours_alone_are_the_pours_of_the_whole_copper_layer_by_layer() {
         let mut board = four();
         board.pours.push(BoardPour {
             layer: CopperLayer::Front,
             net: "GND".into(),
             stitch_pitch: None,
+            thermal_gap: None,
+            spoke_width: None,
         });
         let whole = copper(&board).unwrap();
         let alone = pours(&board).unwrap();
@@ -824,6 +860,8 @@ mod tests {
             layer: CopperLayer::Back,
             net: "GND".into(),
             stitch_pitch: None,
+            thermal_gap: None,
+            spoke_width: None,
         });
         part(&mut board, "D1").side = Side::Back;
         let from_file = Artwork::parse(&crate::kicad_pcb(&board)).unwrap();

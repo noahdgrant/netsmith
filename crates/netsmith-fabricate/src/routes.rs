@@ -1116,6 +1116,8 @@ mod tests {
             layer: netsmith_pcb::CopperLayer::Front,
             net: "GND".into(),
             stitch_pitch: None,
+            thermal_gap: None,
+            spoke_width: None,
         });
         let mut routes = Routes::default();
         let said = edit(

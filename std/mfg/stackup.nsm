@@ -77,9 +77,9 @@ interface InnerLayer {
 /// plane that may be poured (one type with two meanings, a whole layer with nothing routed
 /// and a fill round the routing, so the router would have to ask which). An inner plane with
 /// no net is an error, because a board has to do something with it (or say it is a signal
-/// layer, ADR 0111); an outer pour with no net is no pour. Thermal relief is KiCad's default,
-/// as for the planes; `.thermal_gap` and `.spoke_width` would follow the range convention if a
-/// design needs them.
+/// layer, ADR 0111); an outer pour with no net is no pour. Thermal relief is KiCad's default
+/// unless the process states its gap and spoke width (`.thermal_gap`, `.spoke_width`, the
+/// owner's decision, 2026-11-15), which follow the range convention; the planes keep the default.
 interface Pour {
     /// The net the layer is poured on.
     .net: String
@@ -87,4 +87,12 @@ interface Pour {
     /// its net, in mm. The tool uses the top of the range: `.stitch_pitch &= 0mm..8mm`
     /// puts a via at least every 8 mm. Unset means the pads' own vias only.
     .stitch_pitch: Length
+    /// The gap of a thermal relief, the space between a pad and the pour round it, in mm. The
+    /// tool uses the bottom of the range, the least the process allows: `.thermal_gap &= 0.3mm..`
+    /// leaves 0.3 mm. Unset means KiCad's default, 0.5 mm. The Gerbers, the design rules check
+    /// and KiCad's zone all take it.
+    .thermal_gap: Length
+    /// The width of the spokes of a thermal relief, in mm. The tool uses the bottom of the
+    /// range: `.spoke_width &= 0.3mm..` leaves 0.3 mm. Unset means KiCad's default, 0.5 mm.
+    .spoke_width: Length
 }

@@ -677,6 +677,8 @@ error: Tight: `outline`: the edge from (10mm, 0mm) to (10mm, 10mm) is 10 mm long
 
 The process has a pour on each outer layer, `.top` and `.bottom`. A pour with a net is copper filled round the tracks, joined to its net with KiCad's thermal reliefs; a pour with no net is no pour. `.stitch_pitch` is the most space between the vias that join the pour to the other layers of its net (an inner plane, or the pour on the other side): the tool uses the top of the range and puts the vias on a grid after routing, in what the routing leaves free.
 
+`.thermal_gap` (the space between a pad of the pour's net and the pour round it) and `.spoke_width` (the width of the spokes that join the pad to the pour) set the thermal relief. Both are lengths on the range convention, and the tool takes the least the process allows, the bottom of the range: `.top.thermal_gap &= 0.3mm..` makes the gap 0.3 mm. Unset means KiCad's default, 0.5 mm for both. The Gerbers, the design rules check and the pour's zone in the board file all use the same two numbers; a bottom of zero or less is an error that names the field, and a range with no bottom (`..0.6mm`) states none. The inner planes keep KiCad's defaults.
+
 ```nsm solve
 import std::parts::connector::Header1x2
 import std::mfg::jlcpcb::FourLayer
@@ -689,6 +691,8 @@ board Poured {
         .bottom.net &= "GND"
         .top.stitch_pitch &= 0mm..8mm
         .bottom.stitch_pitch &= 0mm..8mm
+        .top.thermal_gap &= 0.3mm..
+        .top.spoke_width &= 0.3mm..
     }
     .in: Header1x2
     .out: Header1x2

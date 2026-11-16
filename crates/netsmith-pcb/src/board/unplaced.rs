@@ -64,6 +64,8 @@ impl Unplaced {
                 },
                 net: p.net.clone(),
                 stitch_pitch: p.stitch_pitch,
+                thermal_gap: p.thermal_gap,
+                spoke_width: p.spoke_width,
             })
             .collect();
         Board {

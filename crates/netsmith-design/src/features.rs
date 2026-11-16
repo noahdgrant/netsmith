@@ -633,10 +633,29 @@ fn pours(model: &Model, nets: &[String], errors: &mut Vec<String>) -> Vec<Pour> 
                 "`process.{layer}.stitch_pitch` has a top of {pitch} mm, and the most space between stitching vias must be positive"
             ));
         }
+        // The gap and the spokes of a thermal relief: the least the process allows, the bottom
+        // of the range; with no lower limit (`..1mm`) it is not stated.
+        let mut least = |name: &str, what: &str| {
+            let low = range(model, pour, name)
+                .map(|(lo, _)| lo)
+                .filter(|lo| lo.is_finite());
+            if let Some(v) = low
+                && v <= 0.0
+            {
+                errors.push(format!(
+                    "`process.{layer}.{name}` has a bottom of {v} mm, and the {what} of a thermal relief must be positive"
+                ));
+            }
+            low
+        };
+        let thermal_gap = least("thermal_gap", "gap");
+        let spoke_width = least("spoke_width", "spoke width");
         found.push(Pour {
             layer: layer.to_string(),
             net,
             stitch_pitch,
+            thermal_gap,
+            spoke_width,
         });
     }
     found
