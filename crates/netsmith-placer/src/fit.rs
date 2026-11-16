@@ -85,6 +85,7 @@ pub(crate) fn fit(
     placement: &PlaceOptions,
     planes: &[String],
     pours: bool,
+    signal_layers: usize,
 ) -> Result<Rect, DoesNotFit> {
     // A polygon is its box's size, whatever the ranges say.
     let outline = &match polygon {
@@ -104,6 +105,7 @@ pub(crate) fn fit(
         planes,
         corner_radius: outline.corner_radius,
         pours,
+        signal_layers,
     };
     let (mechanical, movable): (Vec<usize>, Vec<usize>) =
         (0..parts.len()).partition(|&i| is_mechanical(parts[i].declared_kind));

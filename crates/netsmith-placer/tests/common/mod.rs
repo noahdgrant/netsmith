@@ -347,6 +347,12 @@ pub fn tight_board(seed: u64, area: (f64, f64)) -> Board {
 /// [`tight_board`] placed with `overflow` as the weight of track overflow
 /// (`PlaceOptions::track_overflow`).
 pub fn tight_board_weighing_overflow(seed: u64, area: (f64, f64), overflow: f64) -> Board {
+    tight_board_weighing(seed, area, overflow, 0.0)
+}
+
+/// [`tight_board`] placed with `overflow` as the weight of track overflow and `escape` as the
+/// weight of escape room (`PlaceOptions::escape_room`).
+pub fn tight_board_weighing(seed: u64, area: (f64, f64), overflow: f64, escape: f64) -> Board {
     let mut sides = std::collections::BTreeMap::new();
     for k in (2..=80).step_by(2) {
         let refdes = format!("{}{k}", if (k - 1) % 3 == 0 { "C" } else { "R" });
@@ -360,6 +366,7 @@ pub fn tight_board_weighing_overflow(seed: u64, area: (f64, f64), overflow: f64)
         fit: Some(area),
         seed,
         track_overflow: overflow,
+        escape_room: escape,
         ..PlaceOptions::default()
     };
     synthetic_board_with(

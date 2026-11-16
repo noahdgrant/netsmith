@@ -94,7 +94,8 @@ pub struct PlaceOptions {
     pub track_overflow: f64,
     /// The weight of the escape shortfall of busy parts in the annealer's cost (issue #997):
     /// what each net that cannot leave a side of a busy part through the corridor in front of
-    /// it costs, in mm of wire (the header of the placer's `anneal/escape.rs`).
+    /// it costs, in mm of wire. 0, the default, leaves it out: on the tight board it was
+    /// measured on it left the router more lines (the header of the placer's `anneal/escape.rs`).
     pub escape_room: f64,
 }
 

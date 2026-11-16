@@ -452,7 +452,7 @@ impl<'a> Engine<'a> {
             poses_tried: 0,
             text_weight: TEXT_WEIGHT_FROM,
             text_last: false,
-            bins: overflow::Bins::new(&p.region, rules, nn, n),
+            bins: overflow::Bins::new(&p.region, rules, p.signal_layers, nn, n),
             w_overflow: p.overflow.max(0.0),
             escape_kept: vec![(0.0, Vec::new()); escapers.len()],
             escapers,

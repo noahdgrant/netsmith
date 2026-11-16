@@ -10,10 +10,37 @@
 //! the side blocked at a gap `g` holds as many tracks as fit in `g` (with a clearance to each
 //! side), times two (they leave by both ends). The escape shortfall of a run is the pads behind
 //! it beyond what it holds, and of a part the sum over its runs, a count of nets. The cost is
-//! the shortfall of every busy part times `Problem::escape_room`.
+//! the shortfall of every busy part times `Problem::escape_room` (`PlaceOptions::escape_room`),
+//! which is 0, and the term left out, unless a caller asks for it.
 //!
 //! A capacitor that decouples the part is not counted against it, as for the escape space: its
-//! place is by the pins it decouples.
+//! place is by the pins it decouples. It is incremental: each busy part's shortfall and the parts
+//! in front of it are kept for the accepted state, and a move recounts only the busy parts it
+//! moves, those whose bands it was in, and those whose bands it reaches into now.
+//!
+//! **Why this measure.** On the tight board (`tight_board` of the router's tests: 99 parts on
+//! both faces, 27 x 25 mm, round a module of 80 pads in two rings) the lines one pass of the
+//! router leaves are mostly on the module (12 to 21 of 14 to 30 a seed). The rings' pads are 0.5
+//! mm apart, so no track passes between them: a pad of the outer ring leaves outward on the
+//! front or not at all. On every seed, 0 to 7, the module's courtyard ends 0.4 to 0.8 mm from
+//! the board's left edge, where two tracks fit beside a side of eleven pads.
+//!
+//! **Measured** (`cargo test -p netsmith-router --test main escape_room::measured -- --ignored
+//! --nocapture`), the lines one pass of the router leaves (no other orders, no rip-up, no
+//! negotiation: a fixed amount of work), seeds 0 to 7 of the tight board:
+//!
+//! | weight | lines left | the module from the left edge |
+//! |---|---|---|
+//! | 0 (without) | 194 | 0.4 to 0.8 mm |
+//! | 10 | 219 | 0.6 to 1.0 mm |
+//! | 40, the edge alone (no parts counted) | 216 | 0.5 to 1.0 mm |
+//!
+//! The term does not take the module off the edge: the annealer moves it by half a millimetre
+//! at most, since every move of a part that big lands on the parts of its face; it moves the
+//! small parts in front of the module's other sides instead, the wire grows by about 5 % and
+//! the crossings by a tenth, and the router leaves more lines. (Spacing every small part away
+//! from the module was measured to leave more lines before, ADR 0031's busy parts.) So the
+//! weight stays 0 until the placer can move a part that big (issue #997's follow-up).
 
 use super::*;
 

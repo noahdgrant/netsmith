@@ -31,3 +31,7 @@ _Avoid_: Fan-out (a fixed track and via for each pad, which the router does not 
 **Escape ring**:
 The keepout the placer keeps round a fine-pitch part (the router's test for an _Escape lane_): the box round its surface-mount pads grown by 1.5 mm, the length of a lane, which no other part's courtyard on its face may reach into, except a capacitor that decouples the part. A hard rule of the placer, like a keepout a part carries, and not of the placement check (`fine_pitch` and `RING` in `netsmith_placer::anneal`, issue #830).
 _Avoid_: Escape space (the soft space the placer asks round a part for each of its pads), courtyard (the footprint's own)
+
+**Escape shortfall**:
+The placer's count of the nets that cannot leave a busy part (issue #997): each pad on the rim of the box round the part's pads, on a net that is not a plane and reaches another part, leaves through its side; where the board's edge (less the copper to edge space) or another part's room on the same face is nearer that side than 1.5 mm, the pads behind it leave along the gap to its two ends, and the shortfall is the pads beyond the tracks that fit there, summed over the part's sides. The annealer weighs it only when its caller asks (`PlaceOptions::escape_room`, 0 by default), because on the board it was measured on the router left more lines with it (`anneal/escape.rs`).
+_Avoid_: congestion (the router's negotiation over cells), escape space (the soft space the placer asks round a part for each of its pads), demand

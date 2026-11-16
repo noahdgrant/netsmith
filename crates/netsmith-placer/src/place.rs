@@ -154,6 +154,9 @@ pub(crate) struct Context<'a> {
     pub corner_radius: f64,
     /// Whether the board has a pour on an outer layer.
     pub pours: bool,
+    /// The layers tracks run on: the two outer layers and each inner layer that is not a
+    /// plane (ADR 0111).
+    pub signal_layers: usize,
 }
 
 /// A connector is a part of the kind `connector` (ADR 0125), whatever its name.
@@ -1393,6 +1396,7 @@ fn refine(
         nets,
         rules: context.rules,
         planes: context.planes,
+        signal_layers: context.signal_layers,
         region,
         corner_radius: context.corner_radius,
         fixed,
@@ -1409,7 +1413,7 @@ fn refine(
         carried: &options.carried,
         face_keepouts: &options.face_keepouts,
         overflow: options.track_overflow,
-        escape_room: std::env::var("NSM_W_ESCAPE").ok().and_then(|w| w.parse().ok()).unwrap_or(options.escape_room),
+        escape_room: options.escape_room,
     };
     if options.fit.is_some() {
         netsmith_core::job::spend_try();
@@ -1515,6 +1519,7 @@ pub(crate) fn anneal_within(
         nets,
         rules: context.rules,
         planes: context.planes,
+        signal_layers: context.signal_layers,
         region,
         corner_radius: context.corner_radius,
         fixed: &fixed,
@@ -1531,7 +1536,7 @@ pub(crate) fn anneal_within(
         carried: &options.carried,
         face_keepouts: &options.face_keepouts,
         overflow: options.track_overflow,
-        escape_room: std::env::var("NSM_W_ESCAPE").ok().and_then(|w| w.parse().ok()).unwrap_or(options.escape_room),
+        escape_room: options.escape_room,
     };
     let outcome = anneal::anneal(parts, &problem, 1.0);
     if !outcome.feasible {
@@ -1672,6 +1677,7 @@ pub fn place_subset(
         nets: &board.nets,
         rules: &board.rules,
         planes: &planes,
+        signal_layers: 2 + board.signal_layers().len(),
         region: board.outline,
         corner_radius: board.corner_radius,
         fixed: &fixed,

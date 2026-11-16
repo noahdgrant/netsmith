@@ -5,8 +5,8 @@
 //! a plane, at most [`MAX_LINE_PADS`] pads) wants its half perimeter of track, spread evenly
 //! over the box round its pad centres grown by half a track pitch (the rectangular uniform
 //! wire density estimate). Each pad takes the room its copper and half the clearance round
-//! it cover. A bin holds [`LAYERS`] layers of track at one track pitch (the process's track
-//! width and clearance) over [`USABLE`] of its area. What a bin is asked for beyond what it
+//! it cover. A bin holds track on each signal layer (the two outer layers and every inner layer
+//! that is not a plane) at one track pitch (the process's track width and clearance) over [`USABLE`] of its area. What a bin is asked for beyond what it
 //! holds is its overflow; the cost is the sum of the overflows, in mm of track, times
 //! `Problem::overflow` (`PlaceOptions::track_overflow`), which is 0, and the term left out, unless
 //! a caller asks for it.
@@ -38,9 +38,6 @@ use super::*;
 const BIN: f64 = 1.0;
 /// At most this many bins along a side of the region: a large board has larger bins.
 const MAX_BINS: f64 = 64.0;
-/// The layers a bin holds track on: the two outer layers. Inner signal layers are not counted,
-/// so a board that has them is measured as fuller than it is.
-const LAYERS: f64 = 2.0;
 /// The share of a bin's area that track may take: the rest is the space round vias, bends and
 /// the ends of tracks.
 const USABLE: f64 = 0.5;
@@ -75,13 +72,21 @@ pub(super) struct Bins {
 }
 
 impl Bins {
-    pub(super) fn new(region: &Rect, rules: &Rules, nets: usize, parts: usize) -> Bins {
+    /// Bins over `region` that hold track on `layers` layers (the outer two and the inner
+    /// signal layers; never fewer than one).
+    pub(super) fn new(
+        region: &Rect,
+        rules: &Rules,
+        layers: usize,
+        nets: usize,
+        parts: usize,
+    ) -> Bins {
         let side = region.width().max(region.height()).max(0.0);
         let bin = BIN.max(side / MAX_BINS);
         let cols = ((region.width() / bin).ceil() as usize).max(1);
         let rows = ((region.height() / bin).ceil() as usize).max(1);
         let pitch = (rules.track_width + rules.clearance).max(0.05);
-        let room = (LAYERS * USABLE * bin * bin / pitch * MICRONS).round() as i64;
+        let room = (layers.max(1) as f64 * USABLE * bin * bin / pitch * MICRONS).round() as i64;
         Bins {
             origin: region.min,
             bin,
