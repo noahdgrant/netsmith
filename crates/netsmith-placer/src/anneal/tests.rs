@@ -1347,6 +1347,7 @@ fn a_board_with_inner_signal_layers_overflows_less_than_one_with_the_outer_two_a
         four < two && two > 0.0,
         "{two} mm on two layers, {four} mm on four"
     );
+}
 
 /// A problem for a board whose parts are borrowed mutably beside it.
 fn problem_beside<'a>(
