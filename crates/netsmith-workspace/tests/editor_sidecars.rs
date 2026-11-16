@@ -328,6 +328,28 @@ fn a_lock_that_is_stale_lists_what_lock_check_would_print() {
     );
 }
 
+/// The catalog row the board's part `u` is drawn with.
+fn row_of_u(editor: &Workspace) -> Option<String> {
+    let detail = editor.board("Zz9Board").unwrap();
+    detail.parts.iter().find(|p| p.path == "u")?.lcsc.clone()
+}
+
+#[test]
+fn a_lock_that_is_stale_still_holds_the_part_to_its_locked_row_in_the_view() {
+    let (root, editor) = lock_project("sidecars-lock-held-view");
+    // Without a lock the first row that works is the pick.
+    assert_eq!(row_of_u(&editor).as_deref(), Some("C9001"));
+    write_lock(&root);
+    // A row the catalog gains before the locked one is what the solver would pick fresh, but
+    // the view is built as `build` builds it: with the lock, so the part keeps its row.
+    set_rows(&root, &format!("{ROW_A}{ROW_S}"));
+    assert!(!lock_of(&editor).current);
+    assert_eq!(row_of_u(&editor).as_deref(), Some("C9001"));
+    // With no lock the same catalog picks the new row.
+    fs::remove_file(root.join("src/main.lock.toml")).unwrap();
+    assert_eq!(row_of_u(&editor).as_deref(), Some("C9002"));
+}
+
 #[test]
 fn a_lock_that_is_not_a_lock_is_an_error_not_a_diff() {
     let (root, editor) = lock_project("sidecars-lock-broken");

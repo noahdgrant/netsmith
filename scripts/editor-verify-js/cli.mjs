@@ -221,6 +221,9 @@ async function launch() {
     // The pin file (ADR 0101), the pick lock (ADR 0100) and the routes file (epic #599) beside the fixture, if it has them: `x.pins.toml` is `main.pins.toml`.
     for (const side of ['pins', 'lock', 'routes']) {
       const file = fixture.replace(/\.nsm$/, `.${side}.toml`);
+      // An example's own pick lock is left out: the editor holds parts to a lock, and a recipe that edits the source (a header
+      // that becomes a socket) would then meet a lock that no longer fits. A fixture of this folder keeps the lock it is made with.
+      if (side === 'lock' && path.basename(path.dirname(fixture)) === 'examples') continue;
       if (file !== fixture && fs.existsSync(file)) fs.copyFileSync(file, path.join(project, `src/main.${side}.toml`));
     }
     const libs = fixture.replace(/\.nsm$/, '.libs');

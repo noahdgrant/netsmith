@@ -87,7 +87,7 @@ impl Workspace {
                 seed_writes: netsmith_fabricate::fab::SeedWrites::Order,
                 ..FabOptions::default()
             },
-            // The editor does not read or write the pick lock yet.
+            // An order made in the editor does not read or write the pick lock yet.
             OrderLocks::Ignored,
             &target.fab_out,
         );
