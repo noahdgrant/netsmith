@@ -974,6 +974,40 @@ fn notes(solution: &Solution, board: Option<InstId>) -> Vec<Noted> {
                 Cause::PartModel,
             ))
         }))
+        // A net whose currents are two or more unknown ones stays unsolved: the solver works a
+        // current out from a net only when one is unknown (issue #796).
+        .chain(whole.balances().iter().filter_map(|b| {
+            let unknown: Vec<String> = b
+                .draws
+                .iter()
+                .filter(|d| !matches!(whole.field(d.field).domain, Domain::Quantity(_)))
+                .map(|d| format!("`{}`", model.path_of_field(d.field)))
+                .collect();
+            // A module's own rail and the rail of the part inside it that it is joined to are
+            // one current (ADR 0077): a balance of just the two says nothing more than the
+            // balance of the net outside.
+            let alias_pair = whole.instance(b.scope).kind == InstKind::Module
+                && b.draws.len() == 2
+                && b.draws.iter().all(|d| {
+                    whole.instance(whole.field(d.field).owner).kind != InstKind::Part
+                });
+            if b.returns || unknown.len() < 2 || alias_pair || !inside(b.scope) {
+                return None;
+            }
+            let scope = match model.path_of(b.scope) {
+                path if path.is_empty() => String::new(),
+                path => format!(" in `{path}`"),
+            };
+            Some((
+                format!(
+                    "net `{}`{scope} has {} unknown currents, {}, so none is worked out from the net: state all but one of them",
+                    b.net,
+                    unknown.len(),
+                    unknown.join(", "),
+                ),
+                Cause::NotStated,
+            ))
+        }))
         .chain(
             solution
                 .not_evaluated
