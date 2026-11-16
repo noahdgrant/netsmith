@@ -1189,8 +1189,7 @@ pub enum KeepoutOrigin {
     /// The source states its size and leaves its place to the layout file: it can be moved.
     Placed,
     /// Drawn in the editor, or stated in the physical file as the editor writes one (ADR 0048,
-    /// issue #809): it can be moved, resized and removed, and is kept in the physical file. One
-    /// drawn before that is in the layout file, and the first change moves it.
+    /// issue #809): it can be moved, resized and removed, and is kept in the physical file.
     Drawn,
     /// Stated in the physical file in a shape the editor does not write whole (a `.max_height`,
     /// a length in micrometres, a sum, a field stated outside its body; issue #810): it can be moved
@@ -1569,7 +1568,7 @@ pub struct PartPlacement {
     pub source: Option<String>,
 }
 
-/// A keepout drawn in the editor: all of it is the layout file's.
+/// A keepout drawn in the editor: all of it is the physical file's.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 pub struct DrawnKeepout {
     pub width: f64,
@@ -1582,8 +1581,8 @@ pub struct DrawnKeepout {
     pub parts: bool,
 }
 
-/// A keepout's entry in the layout file: its corner (from the outline's top left corner), and
-/// the rest of it if the editor drew it.
+/// A keepout's place: its corner (from the outline's top left corner), and the rest of it if
+/// the editor drew it (then all of it is in the physical file).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 pub struct KeepoutPlacement {
     pub x: f64,

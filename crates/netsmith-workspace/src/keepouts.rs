@@ -31,8 +31,8 @@
 //! so is one whose place or size is computed from another member, a range, or stated twice.
 //!
 //! A keepout drawn before this was written to the layout file (`[Board.keepouts.<name>]` with a
-//! `size`); `apply_layout` still reads it, and the editor's first change to it moves it to the
-//! physical file.
+//! `size`); such an entry is now an error whose message gives the member to write here
+//! (`netsmith_pcb::keepout_declaration`, issue #812).
 
 use std::collections::HashMap;
 
@@ -290,34 +290,6 @@ fn length(v: f64) -> String {
     format!("{v}mm")
 }
 
-/// The declaration of a drawn keepout, at column 0: what `place` states, and no field that
-/// says what a keepout says by default.
-pub(crate) fn declaration(name: &str, place: &KeepoutPlace) -> String {
-    let [width, height] = place.size.expect("a drawn keepout has a size");
-    let mut text = format!(
-        ".{name}: Keepout {{\n    .x &= {}\n    .y &= {}\n    .width &= {}\n    .height &= {}\n",
-        length(place.at[0]),
-        length(place.at[1]),
-        length(width),
-        length(height)
-    );
-    if let Some(layers) = &place.layers {
-        text.push_str(&format!("    .layers &= \"{layers}\"\n"));
-    }
-    for (field, word) in [
-        ("tracks", &place.tracks),
-        ("vias", &place.vias),
-        ("copper", &place.copper),
-        ("parts", &place.parts),
-    ] {
-        if let Some(word) = word {
-            text.push_str(&format!("    .{field} &= \"{word}\"\n"));
-        }
-    }
-    text.push_str("}\n");
-    text
-}
-
 /// The physical file after `changes`, each a keepout's name and what it becomes (`None`:
 /// removed), from the file as it is (`old`, `None` if there is none). A keepout the file has in
 /// the editor's shape is rewritten where it stands; a new one goes at the end of the unit.
@@ -331,7 +303,12 @@ pub(crate) fn rewrite(
     // In place, from the end of the file, so that each span still points at its declaration.
     let mut in_place: Vec<(&Drawn, String)> = changes
         .iter()
-        .filter_map(|(name, after)| Some((have.get(name)?, declaration(name, after.as_ref()?))))
+        .filter_map(|(name, after)| {
+            Some((
+                have.get(name)?,
+                netsmith_pcb::keepout_declaration(name, after.as_ref()?),
+            ))
+        })
         .collect();
     in_place.sort_by_key(|(d, _)| std::cmp::Reverse(d.span.start));
     if let Some(text) = text.as_mut() {
@@ -361,7 +338,7 @@ pub(crate) fn rewrite(
     let added: String = changes
         .iter()
         .filter(|(name, _)| !have.contains_key(name))
-        .filter_map(|(name, after)| Some(declaration(name, after.as_ref()?)))
+        .filter_map(|(name, after)| Some(netsmith_pcb::keepout_declaration(name, after.as_ref()?)))
         .collect();
     if remove.is_empty() && added.is_empty() {
         return Ok(text.unwrap_or_default());

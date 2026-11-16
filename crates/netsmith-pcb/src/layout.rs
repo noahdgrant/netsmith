@@ -22,20 +22,14 @@
 //!
 //! [RegulatorExample.cutouts.slot]
 //! at = [5.0, 4.0]
-//!
-//! [RegulatorExample.keepouts.drawn1]    # a keepout an earlier editor drew: it has a `size`
-//! at = [2.0, 2.0]
-//! size = [10.0, 6.0]
-//! layers = "top,bottom"    # "all" (the default), or `top`, `bottom`, `inner1`... separated by commas
-//! tracks = "forbid"        # "forbid" (the default) or "allow", likewise `vias`, `copper`, `parts`
-//! vias = "allow"
 //! ```
 //!
-//! A keepout entry that gives only `at` places a keepout whose source states its size and not
-//! its place; one that gives a `size` is a keepout of its own, drawn in the editor, whose
-//! name the source must not use (ADR 0029). The editor now writes the keepouts it draws to the
-//! physical file (ADR 0048, issue #809); it still reads one here, and its first change to it
-//! moves it there.
+//! A keepout entry gives only `at`: it places a keepout whose physical file states its size and
+//! not its place. A keepout of its own, which an earlier editor drew here whole (a `size`, and
+//! `layers`, `tracks`, `vias`, `copper`, `parts`), is a requirement and goes in the physical
+//! file (ADR 0048 decision 6; the editor writes the keepouts it draws there, issue #809). Such
+//! an entry is an error, with no grace period (ADR 0001, issue #812), whose message gives the
+//! `Keepout` to write there ([`keepout_declaration`]).
 //!
 //! **What the file holds, and what it does not** (ADR 0030). The file is tier 3 of three: the
 //! decisions of this design (where a person put a part, a lock, a keepout the editor drew).
@@ -155,21 +149,23 @@ pub struct ShapePlace {
     pub at: [f64; 2],
 }
 
-/// A keepout's entry: the place of one the source leaves to the file, or all of one drawn in
-/// the editor (the entry has a `size`).
+/// A keepout's entry: the place of one the physical file leaves to the layout file. The other
+/// fields are of a keepout stated whole, which the layout file no longer holds: they are read
+/// so that [`apply_layout`] can say where the keepout goes, and the editor describes a keepout
+/// it draws in the physical file with them ([`keepout_declaration`]).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct KeepoutPlace {
     /// The corner nearest the outline's top left corner, in mm from it.
     pub at: [f64; 2],
-    /// Width and height; only a drawn keepout has them.
+    /// Width and height; only a keepout stated whole has them.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub size: Option<[f64; 2]>,
-    /// `all` or layer names separated by commas; only a drawn keepout has it.
+    /// `all` or layer names separated by commas; only a keepout stated whole has it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub layers: Option<String>,
-    /// What it forbids, `forbid` or `allow`; a field left out forbids. Only a drawn keepout
-    /// has them.
+    /// What it forbids, `forbid` or `allow`; a field left out forbids. Only a keepout stated
+    /// whole has them.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tracks: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -194,10 +190,57 @@ impl KeepoutPlace {
         }
     }
 
-    /// Whether this is a keepout drawn in the editor, which the source does not have.
-    pub fn is_drawn(&self) -> bool {
-        self.size.is_some()
+    /// The fields beyond `at` that the entry gives, which only a keepout stated whole has.
+    fn whole_fields(&self) -> Vec<&'static str> {
+        [
+            ("size", self.size.is_some()),
+            ("layers", self.layers.is_some()),
+            ("tracks", self.tracks.is_some()),
+            ("vias", self.vias.is_some()),
+            ("copper", self.copper.is_some()),
+            ("parts", self.parts.is_some()),
+        ]
+        .into_iter()
+        .filter_map(|(field, given)| given.then_some(field))
+        .collect()
     }
+}
+
+/// A length as a declaration of the physical file states it: `2mm`, `2.5mm`, `-1mm`.
+fn length(v: f64) -> String {
+    let v = (v * 100.0).round() / 100.0;
+    // No `-0mm`.
+    let v = if v == 0.0 { 0.0 } else { v };
+    format!("{v}mm")
+}
+
+/// The `Keepout` member of a board's physical file that states the keepout `place` describes
+/// whole, at column 0, one field to a line: no field says what a keepout says by default.
+/// `place` has a `size`.
+pub fn keepout_declaration(name: &str, place: &KeepoutPlace) -> String {
+    let [width, height] = place.size.expect("a keepout stated whole has a size");
+    let mut text = format!(
+        ".{name}: Keepout {{\n    .x &= {}\n    .y &= {}\n    .width &= {}\n    .height &= {}\n",
+        length(place.at[0]),
+        length(place.at[1]),
+        length(width),
+        length(height)
+    );
+    if let Some(layers) = &place.layers {
+        text.push_str(&format!("    .layers &= \"{layers}\"\n"));
+    }
+    for (field, word) in [
+        ("tracks", &place.tracks),
+        ("vias", &place.vias),
+        ("copper", &place.copper),
+        ("parts", &place.parts),
+    ] {
+        if let Some(word) = word {
+            text.push_str(&format!("    .{field} &= \"{word}\"\n"));
+        }
+    }
+    text.push_str("}\n");
+    text
 }
 
 /// What the file holds for one board.
@@ -486,23 +529,8 @@ impl Layout {
         }
         for k in board.keepouts.iter().filter(|k| k.part.is_none()) {
             if let Some(at) = k.at {
-                let at = [round(at.x), round(at.y)];
-                let entry = if k.drawn {
-                    let all = copper_layers(board);
-                    let word = |forbidden: bool| (!forbidden).then(|| "allow".to_string());
-                    KeepoutPlace {
-                        at,
-                        size: Some([k.size.0, k.size.1]),
-                        layers: (k.layers != all).then(|| k.layers.join(",")),
-                        tracks: word(k.tracks),
-                        vias: word(k.vias),
-                        copper: word(k.copper),
-                        parts: word(k.parts),
-                    }
-                } else {
-                    KeepoutPlace::at(at[0], at[1])
-                };
-                out.keepouts.insert(k.name.clone(), entry);
+                out.keepouts
+                    .insert(k.name.clone(), KeepoutPlace::at(round(at.x), round(at.y)));
             }
         }
         for c in &board.cutouts {
@@ -549,25 +577,6 @@ fn forbidding(design: &Design, layout: Option<&Layout>) -> Vec<(String, Rect, (b
             Some((k.name.clone(), rect(at, k.size), faces_of(&k.layers)))
         })
         .collect();
-    // A keepout drawn in the editor keeps parts out too, if it forbids them.
-    for (name, k) in entries.into_iter().flat_map(|e| &e.keepouts) {
-        if !(k.is_drawn() && forbids(k.parts.as_deref()) == Ok(true)) {
-            continue;
-        }
-        let Some(size) = k.size else { continue };
-        let faces = match k.layers.as_deref().map(str::trim) {
-            None | Some("all") => (true, true),
-            Some(list) => {
-                let words: Vec<String> = list.split(',').map(|w| w.trim().to_string()).collect();
-                faces_of(&words)
-            }
-        };
-        found.push((
-            name.clone(),
-            rect((k.at[0], k.at[1]), (size[0], size[1])),
-            faces,
-        ));
-    }
     found.retain(|(_, _, (front, back))| *front || *back);
     found
 }
@@ -771,10 +780,9 @@ pub fn copper_layers(board: &Board) -> Vec<String> {
     layers
 }
 
-/// Why a drawn keepout's entry is wrong, if it is, in the words a layout file's mistake is
-/// reported in after its name (``the keepout `k` has the size 0 by 3 mm; ...``). The editor
-/// checks a keepout it draws with this before it writes it to the physical file. `layers` are
-/// the board's copper layers.
+/// Why a keepout the editor draws is wrong, if it is, in the words of a mistake after its name
+/// (``the keepout `k` has the size 0 by 3 mm; ...``). The editor checks a keepout it draws with
+/// this before it writes it to the physical file. `layers` are the board's copper layers.
 pub fn check_drawn_keepout(
     name: &str,
     place: &KeepoutPlace,
@@ -788,7 +796,7 @@ pub fn check_drawn_keepout(
         .map_err(|why| format!("the keepout `{name}` {why}"))
 }
 
-/// The keepout a drawn entry makes, or why the entry is wrong. `layers` are the board's.
+/// The keepout a drawn one makes, or why it is wrong. `layers` are the board's.
 fn drawn_keepout(
     name: &str,
     place: &KeepoutPlace,
@@ -853,7 +861,6 @@ fn drawn_keepout(
         copper,
         parts,
         max_height: None,
-        drawn: true,
     })
 }
 
@@ -896,14 +903,37 @@ pub fn apply_layout(board: &mut Board, layout: &Layout, file: &str) -> Result<()
         .map(|k| k.name.clone())
         .collect();
     let cutouts: Vec<String> = board.cutouts.iter().map(|c| c.name.clone()).collect();
-    // An entry with a `size` is a keepout of its own, drawn in the editor; the others place
-    // a keepout of the source.
-    let placed_keepouts: Vec<&String> = entries
-        .keepouts
-        .iter()
-        .filter(|(_, k)| !k.is_drawn())
-        .map(|(name, _)| name)
-        .collect();
+    // A keepout stated whole is a requirement, and the layout file holds none (ADR 0048
+    // decision 6, issue #812): the entry is refused with the member to write in the physical
+    // file, before what it names is looked for.
+    for (name, place) in &entries.keepouts {
+        let fields = place.whole_fields();
+        if fields.is_empty() {
+            continue;
+        }
+        let physical = file.strip_suffix(".pcb.toml").map_or_else(
+            || "the board's physical file".to_string(),
+            |stem| format!("`{stem}.physical.nsm`"),
+        );
+        let why = if place.size.is_some() {
+            // On one line, its fields separated by `;`.
+            let declaration = keepout_declaration(name, place);
+            let lines: Vec<&str> = declaration.trim_end().lines().collect();
+            let fields: Vec<&str> = lines[1..lines.len() - 1].iter().map(|l| l.trim()).collect();
+            let declaration = format!("{} {} }}", lines[0], fields.join("; "));
+            format!(
+                "is stated whole here (it gives `size`): a keepout of its own is a requirement, and it goes in the physical file (ADR 0048). Remove the entry and write `{declaration}` in `physical for {} {{ }}` of {physical}",
+                board.name
+            )
+        } else {
+            format!(
+                "gives `{}`: what a keepout forbids and its layers are stated in {physical}, and its entry here gives only `at`",
+                fields.join("`, `")
+            )
+        };
+        return Err(bad_keepout(name, &why));
+    }
+    let placed_keepouts: Vec<&String> = entries.keepouts.keys().collect();
     let errors = [
         stale(
             "part",
@@ -965,36 +995,6 @@ pub fn apply_layout(board: &mut Board, layout: &Layout, file: &str) -> Result<()
         }
     }
 
-    let layers = copper_layers(board);
-    let mut drawn = Vec::new();
-    for (name, place) in &entries.keepouts {
-        if place.is_drawn() {
-            if board.keepouts.iter().any(|k| &k.name == name) {
-                return Err(bad_keepout(
-                    name,
-                    "is drawn in the layout file, and the source has a keepout of that name: rename one of them",
-                ));
-            }
-            drawn.push(drawn_keepout(name, place, &layers).map_err(|why| bad_keepout(name, &why))?);
-        } else if let Some(field) = [
-            ("layers", &place.layers),
-            ("tracks", &place.tracks),
-            ("vias", &place.vias),
-            ("copper", &place.copper),
-            ("parts", &place.parts),
-        ]
-        .into_iter()
-        .find_map(|(field, value)| value.as_ref().map(|_| field))
-        {
-            return Err(bad_keepout(
-                name,
-                &format!(
-                    "gives `{field}` and no `size`: only a keepout drawn in the file, which has a `size`, says what it forbids"
-                ),
-            ));
-        }
-    }
-
     let origin = board.outline.min;
     board.imported.clear();
     for part in &mut board.parts {
@@ -1016,7 +1016,6 @@ pub fn apply_layout(board: &mut Board, layout: &Layout, file: &str) -> Result<()
             k.at = Some(Pt::new(place.at[0], place.at[1]));
         }
     }
-    board.keepouts.extend(drawn);
     for c in &mut board.cutouts {
         if let Some(place) = entries.cutouts.get(&c.name) {
             c.at = Some(Pt::new(place.at[0], place.at[1]));

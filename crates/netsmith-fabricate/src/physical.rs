@@ -85,7 +85,9 @@
 //! `Keepout`); the spelling inside the physical file stays `.place` (accepted as built by the
 //! owner, 2026-11-11). The editor writes the keepouts it draws here (decision 6, issue #809,
 //! `netsmith-workspace/src/keepouts.rs`), and the place of a keepout the physical file sizes and
-//! does not place to the layout file, as a solution.
+//! does not place to the layout file, as a solution. A layout file's entry that states a
+//! keepout whole (a `size`, as an earlier editor drew it there) is an error, with no grace
+//! period, whose message gives the member to write here (issue #812, `netsmith_pcb::apply_layout`).
 
 use std::collections::HashMap;
 use std::fs;
