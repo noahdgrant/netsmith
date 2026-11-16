@@ -56,10 +56,18 @@
 //!   characteristic of parallel coupled microstrip lines", IEEE MTT-32, no. 1, 1984, pp. 83-90
 //!   (with its 1985 correction) for the static modes, as the Qucs technical documentation
 //!   gives them (<https://qucs.sourceforge.net/tech/node77.html>: static impedance better than
-//!   0.6 %, for 0.1 <= w/h <= 10, 0.1 <= s/h <= 10, 1 <= εr <= 18), and R. H. Jansen, "High-speed
-//!   computation of single and coupled microstrip parameters including dispersion, high-order
-//!   modes, loss and finite strip thickness", IEEE MTT-26, no. 2, 1978, pp. 75-82, for the
-//!   strip thickness. On an inner layer: S. B. Cohn, "Shielded Coupled-Strip Transmission
+//!   0.6 %, for 0.1 <= w/h <= 10, 0.1 <= s/h <= 10, 1 <= εr <= 18). The strip thickness is
+//!   taken as R. H. Jansen, "High-speed computation of single and coupled microstrip
+//!   parameters including dispersion, high-order modes, loss and finite strip thickness",
+//!   IEEE MTT-26, no. 2, 1978, pp. 75-82, couples it: a width for the even mode and a wider
+//!   one for the odd mode, from the single track's width correction (the one `microstrip`
+//!   uses, for a strip in this dielectric) and the space between the strips. That departs
+//!   from Kirschning and Jansen, who also take the thickness off the filling factor and start
+//!   from a single track of no thickness: a thick pair far apart came out 5 to 10 % off a
+//!   thick single track, which it must become, so the thickness is counted once here and the
+//!   single track each mode starts from has the width that mode sees. No source states the
+//!   error of this for a thick pair; JLCPCB's calculator is the check (the tests). On an
+//!   inner layer: S. B. Cohn, "Shielded Coupled-Strip Transmission
 //!   Line", IRE Trans. MTT-3, no. 5, 1955, pp. 29-38: the exact even and odd impedances of two
 //!   strips of no thickness between planes, from elliptic integrals, and his correction for
 //!   the strips' thickness from the fringing capacitance (his equations 18, 20 and 22, in a
@@ -783,6 +791,31 @@ pub fn impedance_notes(stackup: &Stackup, track_width: f64, target: f64) -> Vec<
 }
 
 use netsmith_core::ImpedanceTarget;
+
+/// The impedance of a track of `width` mm on the layer named `layer` (`F.Cu`, `In1.Cu`...) of a
+/// board with a build-up: a single track's, or, given the `spacing` between the two tracks (mm,
+/// edge to edge), the differential impedance of an edge-coupled pair. Refused where the layer
+/// is not one a track may be on (a plane, or a board with no build-up) or the geometry is
+/// outside a formula's domain.
+pub fn impedance_at(
+    stackup: &Stackup,
+    layer: &str,
+    width: f64,
+    spacing: Option<f64>,
+) -> Result<f64, OutOfRange> {
+    let layers = track_layers(stackup).ok_or_else(|| {
+        OutOfRange("the board records no build-up, so its tracks have no impedance".to_string())
+    })?;
+    let layer = layers.iter().find(|l| l.name == layer).ok_or_else(|| {
+        OutOfRange(format!(
+            "`{layer}` is not a layer a track may be on in this build-up"
+        ))
+    })?;
+    match spacing {
+        None => layer.single(width).map(|l| l.impedance),
+        Some(s) => layer.pair(width, s).map(|p| p.differential()),
+    }
+}
 
 /// `ok` or the figure's distance from a target, for a line: within JLCPCB's test tolerance or
 /// not.

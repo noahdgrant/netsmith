@@ -35,7 +35,7 @@ The voltage a power net's routed tracks drop at its worst-case current: the curr
 _Avoid_: IR drop, voltage loss, track loss
 
 **Track impedance**:
-The characteristic impedance of a track on one layer of a board with a _Build-up_, worked out from the thickness and relative permittivity of each _Dielectric layer_ and the copper's thickness by closed forms, microstrip on an outer layer and stripline on an inner one (`netsmith_pcb::impedance`, issue #759). `fab-notes.txt` lists it for each layer a track may be on: the width of a 50 ohm track and the impedance of the router's width.
+The characteristic impedance of a track on one layer of a board with a _Build-up_, worked out from the thickness and relative permittivity of each _Dielectric layer_ and the copper's thickness by closed forms (`netsmith_pcb::impedance`, issues #759 and #1007): microstrip on an outer layer, under the solder mask where the process states JLCPCB's calculator parameters, and stripline on an inner one; for two tracks side by side (an edge-coupled pair), the even and odd modes, and the differential impedance as twice the odd mode's. `fab-notes.txt` lists it for each layer a track may be on: the width of a 50 ohm track and the impedance of the router's width, and for each _Impedance target_ the design states, the width that gives it and the impedance of the width the router draws.
 _Avoid_: Trace impedance; controlled impedance and impedance control for the figure (those are the fabricator's service of making a board to an impedance and testing it)
 
 **Track overflow**:

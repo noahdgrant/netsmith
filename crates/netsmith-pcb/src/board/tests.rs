@@ -1087,3 +1087,153 @@ fn a_six_layer_board_lists_its_track_impedance_from_the_build_up() {
     let two = crate::rules::process_from(&[]);
     assert!(crate::impedance_notes(&two.stackup, 0.2, 50.0).is_empty());
 }
+
+/// The width a `target_notes` line gives, in mm, to the micrometre it is written in: the number
+/// before ` mm wide tracks give`.
+fn width_of_line(line: &str) -> f64 {
+    let head = line.split(" mm wide tracks give").next().unwrap();
+    head.rsplit(' ').next().unwrap().parse().unwrap()
+}
+
+#[test]
+fn a_stated_single_target_gets_a_line_for_each_layer_with_a_width_that_gives_it() {
+    let process = crate::rules::six_layer_process();
+    let inner = process.stackup.inner.clone().unwrap();
+    let target = netsmith_core::ImpedanceTarget {
+        path: "rf_line".to_string(),
+        nets: vec!["RF".to_string()],
+        ohms: 50.0,
+        spacing: None,
+    };
+    let lines = crate::target_notes(&process.stackup, &[target], &|_, _| 0.2);
+    assert_eq!(
+        lines[0],
+        "track impedance target: net `RF` (rf_line), 50 ohm single-ended"
+    );
+    // The outer layers and the two signal layers, not the planes.
+    let layers: Vec<&str> = lines[1..]
+        .iter()
+        .map(|l| l.trim_start().split(':').next().unwrap())
+        .collect();
+    assert_eq!(layers, ["F.Cu", "In2.Cu", "In3.Cu", "B.Cu"]);
+    // The outer width is the one the solder mask lowers the impedance for: the figure of the
+    // line is the formula's, with the mask and the calculator's copper.
+    let w = width_of_line(&lines[1]);
+    let d = crate::TrackDielectric {
+        thickness: inner.dielectrics[0].thickness,
+        epsilon: inner.dielectrics[0].epsilon,
+    };
+    let z = crate::coated_microstrip(w, inner.outer_copper.unwrap(), d, inner.mask.unwrap())
+        .unwrap()
+        .impedance;
+    assert!((z - 50.0).abs() < 0.5, "{w} mm is {z} ohm");
+    // The inner width is a stripline's.
+    let w = width_of_line(&lines[2]);
+    let (above, below) = (
+        crate::TrackDielectric {
+            thickness: inner.dielectrics[1].thickness,
+            epsilon: inner.dielectrics[1].epsilon,
+        },
+        crate::TrackDielectric {
+            thickness: inner.dielectrics[2].thickness,
+            epsilon: inner.dielectrics[2].epsilon,
+        },
+    );
+    let z = crate::stripline(w, inner.copper, above, below)
+        .unwrap()
+        .impedance;
+    assert!((z - 50.0).abs() < 0.5, "{w} mm is {z} ohm");
+    assert!(
+        lines[1].contains("the 0.2 mm tracks the router draws give "),
+        "{}",
+        lines[1]
+    );
+    assert!(lines[2].contains("In3.Cu is not a plane"), "{}", lines[2]);
+}
+
+#[test]
+fn a_stated_pair_gets_the_width_that_gives_its_differential_impedance_at_its_spacing() {
+    let process = crate::rules::six_layer_process();
+    let inner = process.stackup.inner.clone().unwrap();
+    let target = netsmith_core::ImpedanceTarget {
+        path: "usb_z".to_string(),
+        nets: vec!["DP".to_string(), "DM".to_string()],
+        ohms: 90.0,
+        spacing: Some(0.15),
+    };
+    let lines = crate::target_notes(&process.stackup, &[target], &|_, _| 0.2);
+    assert_eq!(
+        lines[0],
+        "track impedance target: nets `DP` and `DM` (usb_z), 90 ohm differential, the tracks 0.15 mm apart (edge to edge)"
+    );
+    let w = width_of_line(&lines[1]);
+    let d = crate::TrackDielectric {
+        thickness: inner.dielectrics[0].thickness,
+        epsilon: inner.dielectrics[0].epsilon,
+    };
+    let z = crate::coated_coupled_microstrip(
+        w,
+        0.15,
+        inner.outer_copper.unwrap(),
+        d,
+        inner.mask.unwrap(),
+    )
+    .unwrap()
+    .differential();
+    assert!((z - 90.0).abs() < 0.5, "{w} mm is {z} ohm");
+}
+
+#[test]
+fn a_track_drawn_off_its_target_is_said_to_be_outside_jlcpcbs_test_tolerance() {
+    let process = crate::rules::six_layer_process();
+    let target = netsmith_core::ImpedanceTarget {
+        path: "rf_line".to_string(),
+        nets: vec!["RF".to_string()],
+        ohms: 50.0,
+        spacing: None,
+    };
+    // The width that is 50 ohm on the front.
+    let lines = crate::target_notes(&process.stackup, std::slice::from_ref(&target), &|_, _| 0.2);
+    let exact = width_of_line(&lines[1]);
+    let lines = crate::target_notes(
+        &process.stackup,
+        std::slice::from_ref(&target),
+        &move |_, layer| {
+            if layer == "F.Cu" { exact } else { 0.5 }
+        },
+    );
+    assert!(
+        lines[1].contains("ohm (+0 %, within JLCPCB's test tolerance of 10 %)"),
+        "{}",
+        lines[1]
+    );
+    // 0.5 mm is far under 50 ohm on the back.
+    assert!(
+        lines[4].contains("outside JLCPCB's test tolerance of 10 %"),
+        "{}",
+        lines[4]
+    );
+    // A board with no build-up, or a design with no target, has no lines.
+    let two = crate::rules::process_from(&[]);
+    assert!(crate::target_notes(&two.stackup, &[target], &|_, _| 0.2).is_empty());
+    assert!(crate::target_notes(&process.stackup, &[], &|_, _| 0.2).is_empty());
+}
+
+#[test]
+fn the_impedance_header_says_that_the_mask_and_the_calculators_copper_are_counted() {
+    let process = crate::rules::six_layer_process();
+    let lines = crate::impedance_notes(&process.stackup, 0.2, 50.0);
+    assert!(
+        lines[0].contains("The solder mask over an outer track is counted (0.03048 mm of er 3.8"),
+        "{}",
+        lines[0]
+    );
+    // ACME's process states neither, and the header says the mask is not counted.
+    let acme = crate::rules::acme_process(8);
+    let lines = crate::impedance_notes(&acme.stackup, 0.2, 50.0);
+    assert!(
+        lines[0].contains("The solder mask is not counted"),
+        "{}",
+        lines[0]
+    );
+}

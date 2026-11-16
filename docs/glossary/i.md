@@ -1,5 +1,9 @@
 # Glossary: I
 
+**Impedance target**:
+The impedance a design states for the tracks of one net (a `TrackImpedance`, `.rf_line: TrackImpedance { .impedance &= 50ohm }` with `.rf_line.line ~ .rf.signal`) or of the two nets of an edge-coupled pair (a `PairImpedance`, a differential impedance and the space between the tracks), both of `std::sources` (issue #1007). It is a target and not an instruction: the router does not size a track from it, and `fab-notes.txt` gives the width that reaches it on each layer and the impedance of the width the router draws.
+_Avoid_: Controlled-impedance net, impedance class, net class for impedance
+
 **Inner layer**:
 A copper layer between the outer two, `.process.inner1` counted from the top: a _Plane_ or a _Signal layer_, as the board says (ADR 0111).
 _Avoid_: Internal layer, mid layer

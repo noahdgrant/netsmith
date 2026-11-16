@@ -204,7 +204,7 @@ fn impedance_targets(model: &Model, errors: &mut Vec<String>) -> Vec<ImpedanceTa
     members.sort();
     for (path, id) in members {
         let pair = model.instance(id).type_name == "PairImpedance";
-        let pins: &[&str] = if pair { &["p", "n"] } else { &["net"] };
+        let pins: &[&str] = if pair { &["p", "n"] } else { &["line"] };
         let mut nets = Vec::new();
         for pin in pins {
             let on = match model.member(id, pin) {
@@ -231,7 +231,7 @@ fn impedance_targets(model: &Model, errors: &mut Vec<String>) -> Vec<ImpedanceTa
             ));
         }
         let spacing = if pair {
-            let s = point(model, id, "spacing", errors).map(|m| mm(m));
+            let s = point(model, id, "spacing", errors).map(mm);
             if s.is_none()
                 && domain(model, id, "spacing").is_none_or(|d| matches!(d, Domain::Unset))
             {
