@@ -107,7 +107,7 @@ pub use generate::{
     HOLE_DRILL, generate as generated_footprint, generate_spec as generate_footprint_spec,
     names as generated_footprint_names,
 };
-pub use geometry::{Pt, Rect};
+pub use geometry::{Pt, Rect, TURNED_STRIP, TURNED_STRIPS, is_right_angle};
 pub use impedance::{
     Line as ImpedanceLine, OutOfRange, Pair as ImpedancePair, TEST_TOLERANCE, TrackDielectric,
     coated_coupled_microstrip, coated_microstrip, coupled_microstrip, coupled_stripline,

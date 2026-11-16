@@ -566,3 +566,55 @@ fn the_full_list_has_every_part_with_its_place_and_state() {
         "no part is fine"
     );
 }
+
+#[test]
+fn parts_pack_round_a_part_turned_off_the_right_angles_by_its_turned_courtyard() {
+    // Issue #996: a 26 x 2 mm part pinned at 45 degrees across the middle of a 26 x 26 mm
+    // outline, and small parts on the same face. The box that holds the turned part is
+    // 19.8 mm square and leaves less room than the small parts' courtyards add up to; the
+    // turned courtyard leaves the two corners off its diagonal, and they fit there.
+    let count = 26;
+    let mut options = PlaceOptions::default();
+    options
+        .sides
+        .extend((1..=count).map(|i| (format!("R{i}"), Side::Front)));
+    options.sides.insert("J1".into(), Side::Front);
+    let b = board_of_kind(
+        "Module",
+        (26.0, 2.0),
+        (26.0, 26.0),
+        count,
+        states(
+            None,
+            &[
+                (PlaceField::X, 13.0, 13.0),
+                (PlaceField::Y, 13.0, 13.0),
+                (PlaceField::Rotation, 45.0, 45.0),
+            ],
+        ),
+        &options,
+    )
+    .unwrap_or_else(|e| panic!("{e}"));
+    assert_eq!(b.check_placement(), vec![]);
+    let j = b.part("J1").unwrap();
+    assert_eq!(j.rotation, 45.0);
+    let around = j.courtyard();
+    let small: f64 = b
+        .parts
+        .iter()
+        .filter(|p| p.refdes != "J1")
+        .map(|p| p.courtyard().width() * p.courtyard().height())
+        .sum();
+    // Inside what the edge keeps clear, less the box round the turned part.
+    let wall = 2.0 * b.rules.edge_wall();
+    let left = (b.outline.width() - wall) * (b.outline.height() - wall)
+        - around.width() * around.height();
+    assert!(small > left, "{small} against {left}");
+    // Some small part stands inside the box round the turned part.
+    assert!(
+        b.parts
+            .iter()
+            .filter(|p| p.refdes != "J1")
+            .any(|p| p.courtyard().overlaps(&around))
+    );
+}
