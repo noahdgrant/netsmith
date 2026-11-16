@@ -28,13 +28,41 @@ fn tidy(v: f64) -> f64 {
 
 /// The size along one axis: the least the design allows that holds `need`, or the
 /// arrangement's own size if the design puts no limit on it.
-fn axis(range: (f64, f64), need: f64, arranged: f64) -> Result<f64, f64> {
+///
+/// A size with no top is at least `floor`, which a board with a fiducial needs (see
+/// [`fiducial_floor`]).
+fn axis(range: (f64, f64), need: f64, arranged: f64, floor: f64) -> Result<f64, f64> {
     let (lo, hi) = range;
     if need > hi + 1e-9 {
         return Err(need - hi);
     }
-    let natural = if hi.is_finite() { up(need) } else { arranged };
+    let natural = if hi.is_finite() {
+        up(need)
+    } else {
+        arranged.max(floor)
+    };
     Ok(lo.max(natural.min(hi)))
+}
+
+/// How wide and tall a board with no stated size is at least, for its fiducials: the copper of
+/// a fiducial keeps `fiducial_edge` from every edge (issue #761), so the board is twice that and
+/// the copper across. 0 without a fiducial, or where the process states no such space.
+fn fiducial_floor(parts: &[Placed], mechanical: &[usize], rules: &Rules) -> f64 {
+    if rules.fiducial_edge <= 0.0 {
+        return 0.0;
+    }
+    mechanical
+        .iter()
+        .filter(|&&i| parts[i].declared_kind == Some(PartKind::Fiducial))
+        .flat_map(|&i| {
+            parts[i]
+                .footprint
+                .pads
+                .iter()
+                .map(|p| p.width.max(p.height))
+        })
+        .fold(None::<f64>, |m, d| Some(m.map_or(d, |m| m.max(d))))
+        .map_or(0.0, |d| up(2.0 * rules.fiducial_edge + d + 0.05))
 }
 
 /// Lay `parts` out inside the outline the design states, and return its rectangle.
@@ -105,9 +133,10 @@ pub(crate) fn fit(
         place::needs_of(court, all, placement.wall()).0
     });
 
+    let floor = fiducial_floor(parts, &mechanical, rules);
     let (w, h) = (
-        axis(outline.width, need.0, arranged.width()),
-        axis(outline.height, need.1, arranged.height()),
+        axis(outline.width, need.0, arranged.width(), floor),
+        axis(outline.height, need.1, arranged.height(), floor),
     );
     // The size to lay out in: the one the range gives, or its top where the parts need more
     // (so that the placer, which may share the faces, says by how much if it cannot).
@@ -265,8 +294,34 @@ fn corners(parts: &mut [Placed], mechanical: &[usize], r: Rect, shape: &BoardEdg
         let above = (c.min.y - text_top).max(0.0);
         // Inset the part from the edge until all four corners of its courtyard and text are
         // the least distance inside the shape, which a rounded corner makes more than a
-        // straight one.
-        let mut inset = rules.copper_to_edge + SILK_EDGE;
+        // straight one. A fiducial's copper has to be further in still: the fabricator asks for
+        // `fiducial_edge` between its copper and the edge (issue #761), 0.01 mm over because the
+        // place is rounded to 0.01 mm. `copper` is the box of its pads from the courtyard's
+        // top left corner.
+        let least = rules.copper_to_edge + SILK_EDGE;
+        let copper = if parts[i].declared_kind == Some(PartKind::Fiducial)
+            && rules.fiducial_edge > 0.0
+            && !parts[i].footprint.pads.is_empty()
+        {
+            let (mut lo, mut hi) = (Pt::new(f64::MAX, f64::MAX), Pt::new(f64::MIN, f64::MIN));
+            for pad in &parts[i].footprint.pads {
+                lo = Pt::new(
+                    lo.x.min(pad.at.x - pad.width / 2.0),
+                    lo.y.min(pad.at.y - pad.height / 2.0),
+                );
+                hi = Pt::new(
+                    hi.x.max(pad.at.x + pad.width / 2.0),
+                    hi.y.max(pad.at.y + pad.height / 2.0),
+                );
+            }
+            Some(Rect::new(
+                Pt::new(lo.x - c.min.x, lo.y - c.min.y),
+                Pt::new(hi.x - c.min.x, hi.y - c.min.y),
+            ))
+        } else {
+            None
+        };
+        let mut inset = least;
         let origin = loop {
             let along = inset.max(used[k]);
             let x = if left {
@@ -281,8 +336,14 @@ fn corners(parts: &mut [Placed], mechanical: &[usize], r: Rect, shape: &BoardEdg
             };
             let keep_in = Rect::new(Pt::new(x, y - above), Pt::new(x + w, y + h));
             let depth = shape.box_depth(&keep_in);
-            if depth >= rules.copper_to_edge + SILK_EDGE - 1e-9 || inset > r.width().max(r.height())
-            {
+            let copper_clear = copper.is_none_or(|cu| {
+                let at = Rect::new(
+                    Pt::new(x + cu.min.x, y + cu.min.y),
+                    Pt::new(x + cu.max.x, y + cu.max.y),
+                );
+                shape.box_depth(&at) >= rules.fiducial_edge + 0.01 - 1e-9
+            });
+            if (depth >= least - 1e-9 && copper_clear) || inset > r.width().max(r.height()) {
                 break Pt::new(x, y);
             }
             inset += 0.1;

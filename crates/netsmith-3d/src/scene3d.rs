@@ -164,6 +164,7 @@ impl PartCategory {
             PartKind::MountingHole
             | PartKind::PlatedHole
             | PartKind::Fiducial
+            | PartKind::TestPoint
             | PartKind::Label => None,
         });
         if let Some(c) = by_kind {

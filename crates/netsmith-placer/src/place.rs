@@ -594,6 +594,42 @@ pub(crate) fn needs_of(court: Rect, all: Rect, wall: f64) -> ((f64, f64), (f64, 
     )
 }
 
+/// [`needs_of`], with more room on a side where a fiducial's copper would be nearer the edge
+/// than the fabricator allows (`fiducial_edge`, issue #761): a board with no stated size is as
+/// big as its parts need, and a fiducial near the edge of the arrangement needs a wider wall
+/// there. The copper is 0.01 mm further in than the least, because the places are rounded to
+/// 0.01 mm.
+pub(crate) fn needs_with_fiducials(
+    court: Rect,
+    all: Rect,
+    wall: f64,
+    parts: &[Placed],
+    rules: &Rules,
+) -> ((f64, f64), (f64, f64), (f64, f64)) {
+    let (needs, mut lo, mut hi) = needs_of(court, all, wall);
+    if rules.fiducial_edge <= 0.0 {
+        return (needs, lo, hi);
+    }
+    let least = rules.fiducial_edge + 0.01;
+    for part in parts
+        .iter()
+        .filter(|p| p.declared_kind == Some(netsmith_core::PartKind::Fiducial))
+    {
+        for pad in &part.footprint.pads {
+            let b = part.pad_bounds(pad);
+            lo.0 = lo.0.max(least - (b.min.x - court.min.x));
+            lo.1 = lo.1.max(least - (b.min.y - court.min.y));
+            hi.0 = hi.0.max(least - (court.max.x - b.max.x));
+            hi.1 = hi.1.max(least - (court.max.y - b.max.y));
+        }
+    }
+    (
+        (court.width() + lo.0 + hi.0, court.height() + lo.1 + hi.1),
+        lo,
+        hi,
+    )
+}
+
 /// Where the parts are, to put them back if a try fails.
 fn snapshot(parts: &[Placed]) -> Vec<(Pt, f64, ReferenceSide)> {
     parts
@@ -1423,7 +1459,7 @@ fn refine(
     let Some((court, all)) = boxes(parts, context.rules) else {
         return Ok(region);
     };
-    let (needs, lo, hi) = needs_of(court, all, options.wall());
+    let (needs, lo, hi) = needs_with_fiducials(court, all, options.wall(), parts, context.rules);
     let size = (needs.0.ceil(), needs.1.ceil());
     let pinned = fixed.iter().any(|&f| f)
         || !options.keepouts.is_empty()

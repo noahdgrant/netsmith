@@ -2591,6 +2591,49 @@ pub fn drc_extras(board: &Board) -> netsmith_geom::DrcExtras {
         neck_reach: netsmith_router::route::NECK_REACH,
         via_counts: board.via_counts(),
         track_angle: true,
+        marks: Some(marks_of(board)),
+    }
+}
+
+/// The fiducials and test points of a board, which of its sides the board house assembles
+/// parts on, and the process's rules for them (issue #761). A part is assembled when it is
+/// surface mount, is not left to be fitted by hand or not at all, and is no hole, fiducial,
+/// test point or label.
+pub fn marks_of(board: &Board) -> netsmith_geom::DrcMarks {
+    use netsmith_core::PartKind;
+    use netsmith_pcb::{Mount, Side};
+    let p = &board.process;
+    let named = |kind: PartKind| -> Vec<String> {
+        board
+            .parts
+            .iter()
+            .filter(|part| part.declared_kind == Some(kind))
+            .map(|part| part.refdes.clone())
+            .collect()
+    };
+    let assembled = |side: Side| {
+        board.parts.iter().any(|part| {
+            part.side == side
+                && !part.hand_fitted
+                && part.footprint.mount == Mount::Smd
+                && !part.declared_kind.is_some_and(|k| {
+                    k.is_mechanical() || matches!(k, PartKind::TestPoint | PartKind::Label)
+                })
+        })
+    };
+    netsmith_geom::DrcMarks {
+        fiducials: named(PartKind::Fiducial),
+        test_points: named(PartKind::TestPoint),
+        assembled_front: assembled(Side::Front),
+        assembled_back: assembled(Side::Back),
+        min_fiducials: p.min_fiducials.round().max(0.0) as usize,
+        fiducial_diameter: p.fiducial_diameter,
+        fiducial_mask_ratio: p.fiducial_mask_ratio,
+        min_fiducial_edge: p.min_fiducial_edge,
+        min_test_point_pad: p.min_test_point_pad,
+        min_test_point_pitch: p.min_test_point_pitch,
+        min_test_point_body: p.min_test_point_body,
+        min_test_point_edge: p.min_test_point_edge,
     }
 }
 
@@ -3100,7 +3143,7 @@ mod tests {
 
     /// The fields of a process that are not a rule the router and the design rules check keep,
     /// each with the reason (issue #431).
-    const NOT_A_COPPER_RULE: [(&str, &str); 20] = [
+    const NOT_A_COPPER_RULE: [(&str, &str); 28] = [
         (
             "finish",
             "the surface finish, a word for the notes and the order",
@@ -3144,6 +3187,38 @@ mod tests {
         (
             "min_silk_width",
             "checked as the text's stroke (`min_text_thickness`) only; a drawn line is the footprint's",
+        ),
+        (
+            "min_fiducials",
+            "a count of fiducials a side has, judged on the placed board: the router draws none of it; `the_marks_rules_a_process_states_reach_the_check` proves the check keeps it",
+        ),
+        (
+            "fiducial_diameter",
+            "a fiducial's size, judged on the placed board: the router draws none of it; `the_marks_rules_a_process_states_reach_the_check` proves the check keeps it",
+        ),
+        (
+            "fiducial_mask_ratio",
+            "a fiducial's mask opening, judged on the placed board: the router draws none of it; `the_marks_rules_a_process_states_reach_the_check` proves the check keeps it",
+        ),
+        (
+            "min_fiducial_edge",
+            "a fiducial's space to the board edge, judged on the placed board: the router draws none of it; `the_marks_rules_a_process_states_reach_the_check` proves the check keeps it",
+        ),
+        (
+            "min_test_point_pad",
+            "a test point's pad, judged on the placed board: the router draws none of it; `the_marks_rules_a_process_states_reach_the_check` proves the check keeps it",
+        ),
+        (
+            "min_test_point_pitch",
+            "the space between test points, judged on the placed board: the router draws none of it; `the_marks_rules_a_process_states_reach_the_check` proves the check keeps it",
+        ),
+        (
+            "min_test_point_body",
+            "a test point's space to a part, judged on the placed board: the router draws none of it; `the_marks_rules_a_process_states_reach_the_check` proves the check keeps it",
+        ),
+        (
+            "min_test_point_edge",
+            "a test point's space to the board edge, judged on the placed board: the router draws none of it; `the_marks_rules_a_process_states_reach_the_check` proves the check keeps it",
         ),
     ];
 
@@ -3259,10 +3334,45 @@ mod tests {
             npth_slot: Some(rules.npth_slot),
             npth_drill: Some(rules.npth_drill),
             pad_ring: Some(rules.min_annular_ring),
+            marks: Some(netsmith_geom::DrcMarks {
+                min_fiducials: p.min_fiducials as usize,
+                fiducial_diameter: p.fiducial_diameter,
+                fiducial_mask_ratio: p.fiducial_mask_ratio,
+                min_fiducial_edge: p.min_fiducial_edge,
+                min_test_point_pad: p.min_test_point_pad,
+                min_test_point_pitch: p.min_test_point_pitch,
+                min_test_point_body: p.min_test_point_body,
+                min_test_point_edge: p.min_test_point_edge,
+                ..Default::default()
+            }),
             ..Default::default()
         };
         let check = format!("{}\n{board_extras:?}", rules.kicad_pro("T", &[]));
         Ok((format!("{rules:?}"), check))
+    }
+
+    /// The fiducial and test point rules (issue #761) are judged on the placed board, so they
+    /// reach the design rules check and not the router: raising each changes what the check is
+    /// given and leaves the router's rules as they were.
+    #[test]
+    fn the_marks_rules_a_process_states_reach_the_check() {
+        let base = what_is_kept(&process("TwoLayer", &[])).unwrap();
+        for (field, raised) in [
+            ("min_fiducials", "3.."),
+            ("fiducial_diameter", "1.2mm"),
+            ("fiducial_mask_ratio", "3.."),
+            ("min_fiducial_edge", "4mm.."),
+            ("min_test_point_pad", "1mm.."),
+            ("min_test_point_pitch", "2.54mm.."),
+            ("min_test_point_body", "1mm.."),
+            ("min_test_point_edge", "3.8mm.."),
+        ] {
+            let narrowed = format!(".{field} &= {raised}");
+            let after =
+                what_is_kept(&process("TwoLayer", std::slice::from_ref(&narrowed))).unwrap();
+            assert_eq!(after.0, base.0, "`{narrowed}` changes the router's rules");
+            assert_ne!(after.1, base.1, "`{narrowed}` does not reach the check");
+        }
     }
 
     /// Every rule a process states reaches both the router and the design rules check: a

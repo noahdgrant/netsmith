@@ -33,6 +33,10 @@ pub struct Rules {
     pub via_hole_to_hole: f64,
     /// The least space between copper and the board edge.
     pub copper_to_edge: f64,
+    /// The least space between a fiducial's copper and the board edge, which the placer keeps
+    /// the fiducials it puts in the corners to (issue #761). 0 where it is not stated.
+    #[serde(default)]
+    pub fiducial_edge: f64,
     /// The least copper ring left round a plated pad's hole, and round a via's hole.
     pub min_annular_ring: f64,
     pub via_ring: f64,
@@ -136,6 +140,7 @@ impl Rules {
             hole_to_hole: process.min_hole_to_hole,
             via_hole_to_hole: process.min_via_hole_to_hole,
             copper_to_edge: process.min_edge_clearance,
+            fiducial_edge: process.min_fiducial_edge,
             min_annular_ring: process.min_annular_ring,
             via_ring: process.min_via_ring,
             hole_clearance: process.min_hole_clearance,

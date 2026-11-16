@@ -35,7 +35,7 @@ physical for EnclosureSensor {
     }
 
     // 2. Their places, from the case drawing: 4.5 mm in from each corner; the fiducials are
-    //    near two opposite corners.
+    //    near two opposite corners, 4 mm in: JLCPCB asks 3.35 mm of copper from the edge.
     .hole1.place.x &= 4.5mm
     .hole1.place.y &= 4.5mm
     .hole2.place.x &= 85.5mm
@@ -45,9 +45,9 @@ physical for EnclosureSensor {
     .hole4.place.x &= 85.5mm
     .hole4.place.y &= 57.5mm
     .fiducial1.place.x &= 12mm
-    .fiducial1.place.y &= 3mm
+    .fiducial1.place.y &= 4mm
     .fiducial2.place.x &= 78mm
-    .fiducial2.place.y &= 59mm
+    .fiducial2.place.y &= 58mm
 
     // 3. The sensor plug (16 pins, 40.6 mm long) is fixed at the left edge and sticks out of
     //    it. Its pins point out of the case (turned 180 degrees), its body box is 8 mm past the

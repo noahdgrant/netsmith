@@ -61,12 +61,14 @@ pub enum PartKind {
     MountingHole,
     PlatedHole,
     Fiducial,
+    /// A pad on a net to touch with a probe (`std::parts::mechanical::TestPoint`).
+    TestPoint,
     /// Text printed on the board (`std::parts::mechanical::Label`).
     Label,
 }
 
 impl PartKind {
-    pub const ALL: [PartKind; 15] = [
+    pub const ALL: [PartKind; 16] = [
         Self::Resistor,
         Self::Capacitor,
         Self::Inductor,
@@ -81,6 +83,7 @@ impl PartKind {
         Self::MountingHole,
         Self::PlatedHole,
         Self::Fiducial,
+        Self::TestPoint,
         Self::Label,
     ];
 
@@ -101,6 +104,7 @@ impl PartKind {
             Self::MountingHole => "mounting_hole",
             Self::PlatedHole => "plated_hole",
             Self::Fiducial => "fiducial",
+            Self::TestPoint => "test_point",
             Self::Label => "label",
         }
     }

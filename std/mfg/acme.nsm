@@ -79,6 +79,26 @@ interface EightLayer {
     /// The least solder mask left between two pads.
     .min_mask_bridge: Length
     .min_mask_bridge &= 0.13mm..
+    /// What the process asks of fiducials and test points (issue #761), the figures of
+    /// `std::mfg::jlcpcb` so that a board moved between the two keeps its rules: chosen, not
+    /// sourced, like every number of ACME. The fiducial edge space is a limit, the rest are
+    /// guidelines, as there.
+    .min_fiducials: Number
+    .min_fiducials &= 2..
+    .fiducial_diameter: Length
+    .fiducial_diameter ?= 1mm
+    .fiducial_mask_ratio: Number
+    .fiducial_mask_ratio &= 2..
+    .min_fiducial_edge: Length
+    .min_fiducial_edge &= 3.35mm..
+    .min_test_point_pad: Length
+    .min_test_point_pad &= 0.8mm..
+    .min_test_point_pitch: Length
+    .min_test_point_pitch &= 1.27mm..
+    .min_test_point_body: Length
+    .min_test_point_body &= 0.5mm..
+    .min_test_point_edge: Length
+    .min_test_point_edge &= 3.2mm..
     /// The least copper round a via's hole, on each side.
     .min_via_ring: Length
     .min_via_ring &= 0.05mm..
@@ -240,6 +260,26 @@ interface TenLayer {
     /// The least solder mask left between two pads.
     .min_mask_bridge: Length
     .min_mask_bridge &= 0.13mm..
+    /// What the process asks of fiducials and test points (issue #761), the figures of
+    /// `std::mfg::jlcpcb` so that a board moved between the two keeps its rules: chosen, not
+    /// sourced, like every number of ACME. The fiducial edge space is a limit, the rest are
+    /// guidelines, as there.
+    .min_fiducials: Number
+    .min_fiducials &= 2..
+    .fiducial_diameter: Length
+    .fiducial_diameter ?= 1mm
+    .fiducial_mask_ratio: Number
+    .fiducial_mask_ratio &= 2..
+    .min_fiducial_edge: Length
+    .min_fiducial_edge &= 3.35mm..
+    .min_test_point_pad: Length
+    .min_test_point_pad &= 0.8mm..
+    .min_test_point_pitch: Length
+    .min_test_point_pitch &= 1.27mm..
+    .min_test_point_body: Length
+    .min_test_point_body &= 0.5mm..
+    .min_test_point_edge: Length
+    .min_test_point_edge &= 3.2mm..
     /// The least copper round a via's hole, on each side.
     .min_via_ring: Length
     .min_via_ring &= 0.05mm..
