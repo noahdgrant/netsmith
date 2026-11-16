@@ -105,7 +105,8 @@ export function View3d({ board }: { board: string }) {
   const [preset, setPreset] = useState<Preset | null>('iso');
   const [ortho, setOrtho] = useState(false);
   const [listOpen, setListOpen] = useState(false);
-  const [previewed, setPreviewed] = useState(0);
+  // How many parts the preview stands up, once the viewer has been told to (null: not yet, so the label is not said with a count it has not got).
+  const [previewed, setPreviewed] = useState<number | null>(null);
   const pointed = useRef<Hover | null>(null);
   const focusSeen = useRef(focus3d.peek()?.nonce ?? 0);
   // The tools (tools.ts): the measure tool and its measurements, the section plane, the stackup apart.
@@ -389,7 +390,7 @@ export function View3d({ board }: { board: string }) {
     const v = viewer.current;
     if (!v) return;
     v.setLook({ xray: xr, colourBy: cb, previewMm: pv.on ? pv.mm : null });
-    setPreviewed(v.previewCount());
+    setPreviewed(pv.on ? v.previewCount() : null);
   }, [xr, cb, pv.on, pv.mm, parts]);
 
   // How the case is drawn: the signal's, which the viewer follows; the viewer's own changes (a finding shows the case) are taken back.
@@ -1217,7 +1218,7 @@ export function View3d({ board }: { board: string }) {
               </div>
             )}
           </div>
-          {pv.on && <PreviewLabel mm={pv.mm} count={previewed} />}
+          {pv.on && previewed !== null && <PreviewLabel mm={pv.mm} count={previewed} />}
           <InspectBar />
           {!measuring && (
             <div class="v3-note" aria-hidden="true">
