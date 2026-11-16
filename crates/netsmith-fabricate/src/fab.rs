@@ -602,7 +602,14 @@ pub fn fab_detailed(
             .map(|b| routed.get(&b.label()).map(|board| (*b, board)))
             .collect();
         let Some(boards) = boards else { continue };
-        fab_system(system, &boards, out, options, &say)?;
+        fab_system(
+            system,
+            &boards,
+            out,
+            options,
+            catalogs.strict_guidelines(),
+            &say,
+        )?;
     }
     // The panels of the file (ADR 0040): each repeats a board of it, which is made again, in
     // the panel's own folder.
@@ -1450,23 +1457,32 @@ fn fab_board(
 /// collision of known heights and a misaligned mate stop the run, and `--allow-drc-violations`
 /// does not waive them; a collision through a package standard's height, a part of unknown height
 /// facing another board and a member drawn apart are warnings, errors with strict constraints.
+/// A pin 1 that cannot be told from its pads is a guideline: a warning, an error when
+/// `strict_guidelines`.
 fn fab_system(
     system: &netsmith_pipeline::SolvedSystem,
     members: &[(&Built, &Board)],
     out: &Path,
     options: &FabOptions,
+    strict_guidelines: bool,
     say: &dyn Fn(String),
 ) -> Result<(), String> {
     let name = &system.name;
     let scene = timings::stage("fab.system", name, || {
         crate::system3d::scene(system, members)
     });
-    let strict = options.strict_heights;
     let mut errors = String::new();
     for f in &scene.findings {
+        let strict = if f.code.guideline() {
+            strict_guidelines
+        } else {
+            options.strict_heights
+        };
         if f.code.is_error(strict) {
             let why = if f.code.error() {
                 "it stops `fab`, and `--allow-drc-violations` does not waive it"
+            } else if f.code.guideline() {
+                "it is an error because guidelines are strict (`guidelines = \"error\"` or `--strict`)"
             } else {
                 "it is an error because constraints are strict (`--constraints error` or `constraints = \"error\"`); run with `--constraints warn` to list it instead"
             };

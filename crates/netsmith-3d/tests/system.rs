@@ -1,6 +1,7 @@
 //! The system scene (ADR 0110, `netsmith_3d::SystemScene`): two copies of the invented board of
 //! `scene3d.rs`, mated by their two-pin rows, with mated heights given by hand. A copy is the
-//! carrier, the base; the other, the card, stands on it face down.
+//! carrier, the base; the other, the card, stands on it face down. The mates are keyed, so that
+//! pin 1 is looked for on the pads only by the tests of pin 1 at the end.
 
 use netsmith_3d::{SystemCode, MateInput, MemberInput, SystemPlace, SystemScene};
 use netsmith_pcb::Board;
@@ -21,6 +22,7 @@ fn mate(a: &str, b: &str, height: Option<(f64, f64)>) -> MateInput {
             .is_none()
             .then(|| format!("the mate of `{a}` and `{b}` has no mated height")),
         window: None,
+        keyed: true,
     }
 }
 
@@ -184,4 +186,102 @@ fn a_partial_mate_pairs_the_pads_of_its_window() {
         }
         other => panic!("{other:?}"),
     }
+}
+
+/// A mate of the two rows that neither connector keys.
+fn unkeyed() -> MateInput {
+    MateInput {
+        keyed: false,
+        ..mate("carrier.row", "card.row", Some((5.0, 5.4)))
+    }
+}
+
+fn unmarked(s: &SystemScene) -> Vec<&netsmith_3d::SystemFinding> {
+    s.findings
+        .iter()
+        .filter(|f| f.code == SystemCode::Pin1Unmarked)
+        .collect()
+}
+
+#[test]
+fn pin_1_of_an_unkeyed_mate_that_looks_like_its_other_end_is_a_guideline() {
+    // Both pads of each row are round, 1.7 mm across, with a 1 mm hole: turned end for end,
+    // pad 1 lands where pad 2 is and looks the same.
+    let (carrier, card) = (board(), board());
+    let s = system(&[("carrier", &carrier), ("card", &card)], vec![unkeyed()]);
+    let found = unmarked(&s);
+    let parts: Vec<&str> = found.iter().map(|f| f.parts[0].as_str()).collect();
+    assert_eq!(parts, ["carrier/row", "card/row"]);
+    let f = found[0];
+    assert!(
+        f.message.contains("pin 1 of `carrier.row` cannot be told from its pads")
+            && f.message.contains("lands where pad 2 is")
+            && f.message.contains("round pads 1.70 x 1.70 mm")
+            && f.message.contains("`.mating.keyed`"),
+        "{}",
+        f.message
+    );
+    assert_eq!(
+        f.mate,
+        Some(("carrier.row".to_string(), "card.row".to_string()))
+    );
+    assert_eq!(f.code.word(), "pin1_unmarked");
+    assert!(!f.code.error() && f.code.guideline() && f.code.severity() == "warning");
+    // A keyed mate goes together one way, so its pads are not looked at.
+    let s = system(
+        &[("carrier", &carrier), ("card", &card)],
+        vec![mate("carrier.row", "card.row", Some((5.0, 5.4)))],
+    );
+    assert!(unmarked(&s).is_empty(), "{:?}", codes(&s));
+}
+
+/// Pad 1 of the row of `b`.
+fn pad_1(b: &mut Board) -> &mut netsmith_pcb::Pad {
+    b.parts
+        .iter_mut()
+        .find(|p| p.path == "row")
+        .unwrap()
+        .footprint
+        .pads
+        .iter_mut()
+        .find(|p| p.number == "1")
+        .unwrap()
+}
+
+#[test]
+fn a_pad_1_of_another_shape_or_size_marks_pin_1() {
+    let (carrier, mut card) = (board(), board());
+    // The card's pad 1 square, as a std header's is: only the carrier's row is reported.
+    pad_1(&mut card).shape = netsmith_pcb::PadShape::Rect;
+    let s = system(&[("carrier", &carrier), ("card", &card)], vec![unkeyed()]);
+    let parts: Vec<&str> = unmarked(&s).iter().map(|f| f.parts[0].as_str()).collect();
+    assert_eq!(parts, ["carrier/row"]);
+    // A round pad 1 that is larger marks it too.
+    let mut card = board();
+    let one = pad_1(&mut card);
+    (one.width, one.height) = (2.0, 2.0);
+    let s = system(&[("carrier", &carrier), ("card", &card)], vec![unkeyed()]);
+    let parts: Vec<&str> = unmarked(&s).iter().map(|f| f.parts[0].as_str()).collect();
+    assert_eq!(parts, ["carrier/row"]);
+}
+
+#[test]
+fn pads_that_do_not_turn_onto_pads_key_the_connector() {
+    // A third pad beside pad 1: turned half round, the pads land where none is, so the
+    // connector goes in one way and its pin 1 needs no mark.
+    let (carrier, mut card) = (board(), board());
+    let pads = &mut card
+        .parts
+        .iter_mut()
+        .find(|p| p.path == "row")
+        .unwrap()
+        .footprint
+        .pads;
+    let mut third = pads[0].clone();
+    third.number = "3".into();
+    third.at.x += 2.54;
+    pads.push(third);
+    let s = system(&[("carrier", &carrier), ("card", &card)], vec![unkeyed()]);
+    let parts: Vec<&str> = unmarked(&s).iter().map(|f| f.parts[0].as_str()).collect();
+    assert_eq!(parts, ["carrier/row"]);
 }

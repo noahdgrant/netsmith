@@ -2294,3 +2294,12 @@ fn a_partial_mate_hands_the_system_scene_the_pads_it_pairs() {
     let mates = mates_of(&own_connectors("")).unwrap();
     assert_eq!(mates[0].window, None, "a mate of every contact pairs pad N with pad N");
 }
+
+#[test]
+fn a_mate_is_keyed_when_either_connector_says_what_keys_it() {
+    let subset = ".top.j.mating.contacts &= 2..3";
+    let keyed = |by: &str| mates_of(&partial_mate(&format!("{subset}\n    {by}"))).unwrap()[0].keyed;
+    assert!(!keyed(""));
+    assert!(!keyed(".bottom.j.mating.keyed &= \"none\""));
+    assert!(keyed(".bottom.j.mating.keyed &= \"polarised\""));
+}

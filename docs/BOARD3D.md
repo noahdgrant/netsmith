@@ -204,7 +204,7 @@ The report (`--json`; with no `--json` a short summary):
 | `schema` | The version of this shape, apart from the board report's. |
 | `members[]` | As the system declares them. `motion.matrix` is the motion by rows, acting on `(x, y, z, 1)` of the member's frame; `turn` (degrees), `flip` and `offset` are its parts. `placed` is `{"base": true}` or `{"mate": i}` (the index into `mates` of the mate that placed it); a member drawn apart has `apart: {"reason"}` in its place. `report` is the member's own report, in its own frame. |
 | `mates[]` | As the system states them: the two connectors by path in the system and their members, `contacts` (the pads of one number on both), `mated_height` (the two `seats` added; `null` when a seat is unknown), and once both members are placed `residual` (the largest distance in plan from a pad to its partner) and `gap` (the distance between the two connectors' faces). |
-| `findings[]` | `code`, `severity` (`error` or `warning`), `error_when_strict` (an error with strict constraints, `--constraints error`), `message`, `members`, `parts` (`member/path`; a board is `member/`), and for some `mate`, `z_bottom` and `z_top` (the z both fill) and `distance` (how far into each other in plan, or how far a pad lands from its partner). |
+| `findings[]` | `code`, `severity` (`error` or `warning`), `error_when_strict` (an error with strict constraints, `--constraints error`, or for `pin1_unmarked` with strict guidelines), `message`, `members`, `parts` (`member/path`; a board is `member/`), and for some `mate`, `z_bottom` and `z_top` (the z both fill) and `distance` (how far into each other in plan, or how far a pad lands from its partner). |
 
 The findings, checked only between placed members, with exact geometry: every body (its box to
 its height), pin protrusion of a stated length and board (its outline with its rounded corners)
@@ -218,6 +218,7 @@ exempt against each other, and a body wholly inside another board's cutout does 
 | `mate_misaligned` | A mate's pad lands more than 0.1 mm from its partner, the connectors face the same way, or the faces are not the mated height apart (to within 0.1 mm). | error |
 | `system_unchecked` | A collision in which a height is a package standard's maximum (a part in that package may be lower), or a part of unknown height whose face looks at another member's board over it. | warning, an error with strict constraints |
 | `system_apart` | A member drawn apart, with the reason. | warning, an error with strict constraints |
+| `pin1_unmarked` | A connector of a mate that neither connector keys (`.mating.keyed`) whose pad 1, with its pads turned half round about their centre, lands on another pad of the same shape, size and hole, while every pad lands on a pad: pin 1 cannot be told from the pads. Checked for every member, placed or apart. | warning, an error with strict guidelines (`--strict`, `guidelines = "error"`) |
 
 ### The system's files
 
@@ -248,7 +249,8 @@ exempt against each other, and a body wholly inside another board's cutout does 
   file that cannot be written is a warning. A `system_collision` or a `mate_misaligned` stops
   the run (exit 1) and no system file is written, and `--allow-drc-violations` does not waive
   it; `system_unchecked` and `system_apart` are warnings, errors with `--constraints error`
-  or `constraints = "error"`. The boards' own packages are written first, as for a panel.
+  or `constraints = "error"`, and `pin1_unmarked` is a warning, an error with `--strict` or
+  `guidelines = "error"`. The boards' own packages are written first, as for a panel.
 
 Not checked yet: a clearance between members (ADR 0110's `system_clearance`, which waits for its
 std figure), right-angle and edge connectors, cables, and a case round a system. Each such member
