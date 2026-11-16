@@ -1048,13 +1048,6 @@ pub(crate) fn placements(model: &Model, errors: &mut Vec<String>) -> (Vec<Placem
                 }
             };
             let (lo, hi) = (mm(w.lo), mm(w.hi));
-            if field == PlaceField::Rotation && !has_quarter_turn(lo, hi) {
-                errors.push(format!(
-                    "`{path}.place.rotation` allows {} to {} degrees, and a part is turned by multiples of 90",
-                    show(lo),
-                    show(hi)
-                ));
-            }
             bounds.push(PlaceBound {
                 field,
                 lo,
@@ -1309,13 +1302,4 @@ fn show(v: f64) -> String {
     } else {
         "no most".to_string()
     }
-}
-
-/// Whether the range holds a multiple of 90 degrees (turned by any number of whole turns).
-fn has_quarter_turn(lo: f64, hi: f64) -> bool {
-    if !lo.is_finite() || !hi.is_finite() || hi - lo >= 360.0 {
-        return true;
-    }
-    let first = (lo / 90.0 - 1e-9).ceil() * 90.0;
-    first <= hi + 1e-9
 }

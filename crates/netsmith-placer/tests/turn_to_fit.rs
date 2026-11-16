@@ -376,6 +376,59 @@ fn a_part_with_a_stated_rotation_keeps_it() {
     );
 }
 
+/// A part of 10 x 4 mm with a dozen small parts on a 40 x 40 mm outline, its requirements
+/// `bounds`.
+fn turned_part(bounds: &[(PlaceField, f64, f64)]) -> Board {
+    board_of_kind(
+        "Module",
+        (10.0, 4.0),
+        (40.0, 40.0),
+        4,
+        states(None, bounds),
+        &PlaceOptions::default(),
+    )
+    .unwrap_or_else(|e| panic!("{bounds:?}: {e}"))
+}
+
+#[test]
+fn a_part_with_a_stated_turn_off_the_right_angles_is_placed_and_checked_at_it() {
+    // Issue #822: 45 degrees stated is 45 degrees placed, clear of the others by the check,
+    // which measures the courtyard turned so; a window with no right angle in it is its
+    // middle; and a window that holds a right angle keeps the part on the right angles.
+    for (bounds, turn) in [
+        (vec![(PlaceField::Rotation, 45.0, 45.0)], 45.0),
+        (vec![(PlaceField::Rotation, 30.0, 60.0)], 45.0),
+        (vec![(PlaceField::Rotation, 300.0, 330.0)], 315.0),
+        (vec![(PlaceField::Rotation, 80.0, 100.0)], 90.0),
+    ] {
+        let b = turned_part(&bounds);
+        assert_eq!(b.check_placement(), vec![], "{bounds:?}");
+        let j = b.part("J1").unwrap();
+        assert!(
+            (j.rotation - turn).abs() < 1e-9,
+            "{bounds:?}: turned {}",
+            j.rotation
+        );
+    }
+}
+
+#[test]
+fn a_part_pinned_at_a_turn_off_the_right_angles_is_where_its_requirements_say() {
+    let b = turned_part(&[
+        (PlaceField::X, 20.0, 20.0),
+        (PlaceField::Y, 12.0, 12.0),
+        (PlaceField::Rotation, 45.0, 45.0),
+    ]);
+    assert_eq!(b.check_placement(), vec![]);
+    let j = b.part("J1").unwrap();
+    assert_eq!(j.rotation, 45.0);
+    let centre = j.body().centre() - b.outline.min;
+    assert!(
+        (centre.x - 20.0).abs() < 1e-6 && (centre.y - 12.0).abs() < 1e-6,
+        "{centre:?}"
+    );
+}
+
 /// A board of `count` small parts forced on the front of a `size` outline: more than one face
 /// holds, but not more than two faces would.
 fn crowded(count: usize, size: (f64, f64)) -> netsmith_pcb::DoesNotFit {

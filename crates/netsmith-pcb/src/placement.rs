@@ -629,7 +629,7 @@ pub(crate) fn turn_is_free(part: &Placed, fixed: bool, options: &PlaceOptions) -
         && options
             .wants
             .get(&part.refdes)
-            .is_none_or(|want| want.reach.iter().all(Option::is_some))
+            .is_none_or(|want| want.base == 0.0 && want.reach.iter().all(Option::is_some))
 }
 
 /// The parts that do not fit `fit` in any turn they may take, with every turn tried and the
@@ -646,30 +646,25 @@ pub fn oversize(
         if options.overhang.contains_key(&part.refdes) {
             continue;
         }
-        let court = part.courtyard();
         let turns: Vec<f64> = if fixed[i] {
             vec![part.rotation]
         } else if let Some(want) = options.wants.get(&part.refdes) {
             (0..4)
                 .filter(|&q| want.reach[q].is_some())
-                .map(|q| q as f64 * 90.0)
+                .map(|q| want.angle(q))
                 .collect()
         } else {
             (0..4)
                 .map(|k| (part.rotation + 90.0 * f64::from(k)).rem_euclid(360.0))
                 .collect()
         };
-        // A requirement's turns are absolute; the size in a turn follows from the part's own.
+        // A requirement's turns are absolute; the size in a turn is the box of the courtyard
+        // turned so (any angle, issue #822).
         let tried: Vec<(f64, (f64, f64))> = turns
             .iter()
             .map(|&angle| {
-                let quarters = ((angle - part.rotation) / 90.0).round().rem_euclid(2.0);
-                let size = if quarters == 0.0 {
-                    (court.width(), court.height())
-                } else {
-                    (court.height(), court.width())
-                };
-                (angle, size)
+                let c = part.footprint.courtyard.rotated_for(part.mirrored(), angle);
+                (angle, (c.width(), c.height()))
             })
             .collect();
         if !tried.is_empty()

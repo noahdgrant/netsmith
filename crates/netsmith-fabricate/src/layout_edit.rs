@@ -1,7 +1,7 @@
 //! `netsmith layout`: read, change and check the layout file `<stem>.pcb.toml` (issue #782).
 //!
 //! A script or an agent that moves a few parts would write the TOML itself, and a part path
-//! misspelt, a part left out or a turn that is not a multiple of 90 would be found much later,
+//! misspelt, a part left out or a turn of 360 degrees or more would be found much later,
 //! by a refusal with no hint of the line. These are the three steps the command line takes:
 //! [`show`] says the entry of each part as the placer reads it, [`set`] writes one entry (the
 //! file read and written as the editor does, [`Layout::parse`] and [`Layout::to_text_over`], so
@@ -10,7 +10,7 @@
 //!
 //! The frame is the layout file's (the header of `netsmith_pcb::layout`): `at` is the part's
 //! footprint origin in mm from the outline's top left corner, x to the right and y down; a turn
-//! is in degrees, counterclockwise on screen, and a part is turned by 0, 90, 180 or 270; a
+//! is in degrees, counterclockwise on screen, from 0 up to 360 (any angle, issue #822); a
 //! part on the bottom face is the top face's footprint mirrored left to right, turned as it
 //! is seen from the top.
 //!
@@ -23,14 +23,13 @@ use netsmith_core::Design;
 use netsmith_pcb::{Board, Layout, LayoutFace, PartPlace};
 use serde::Serialize;
 
-/// The turns a part may be given, in degrees.
-pub const TURNS: [f64; 4] = [0.0, 90.0, 180.0, 270.0];
-
-/// Why `turn` is not a turn a part may take, if it is not.
+/// Why `turn` is not a turn a part may take, if it is not: a turn is any angle from 0 up to
+/// 360 degrees, not 360 itself (issue #822; it used to be 0, 90, 180 or 270 only), so that one
+/// turn has one spelling in the file.
 pub fn turn_error(turn: f64) -> Option<String> {
-    (!TURNS.contains(&turn)).then(|| {
+    (!(0.0..360.0).contains(&turn)).then(|| {
         format!(
-            "a turn is 0, 90, 180 or 270 degrees, counterclockwise on screen, and `{}` is not",
+            "a turn is from 0 up to 360 degrees (not 360 itself), counterclockwise on screen, and `{}` is not",
             number(turn)
         )
     })
@@ -316,7 +315,7 @@ impl Written {
 
 /// Write the entry of the part at `path` in the layout file at `file` (made, with that alone,
 /// if it does not exist), keeping every other table as the editor does. It refuses a path the
-/// board has no part at, a turn that is not 0, 90, 180 or 270, a position that is not a number,
+/// board has no part at, a turn that is not from 0 up to 360, a position that is not a number,
 /// and, for a part with no entry yet, a change that gives no `at` (there is no place to start
 /// from); the file is then as it was. A new entry is written `source = "hand"`; an entry that
 /// exists keeps its `source`.
@@ -461,7 +460,7 @@ fn locked_breaks(
 
 /// What the layout file at `file` has wrong against `design`: a part with no entry (a note: the
 /// placer places it), an entry that names no part (with the nearest names), an entry with a
-/// turn that is not 0, 90, 180 or 270 or a position that is not a number, and a locked entry
+/// turn that is not from 0 up to 360 or a position that is not a number, and a locked entry
 /// that breaks a requirement of the physical file. Each finding has the line of its entry.
 pub fn check(
     design: &Design,
@@ -580,11 +579,11 @@ mod tests {
     }
 
     #[test]
-    fn a_turn_is_a_multiple_of_90_up_to_270() {
-        for turn in TURNS {
+    fn a_turn_is_any_angle_from_0_up_to_360() {
+        for turn in [0.0, 45.0, 90.0, 91.0, 180.0, 270.0, 359.5] {
             assert_eq!(turn_error(turn), None);
         }
-        for turn in [45.0, 360.0, -90.0, 91.0, f64::NAN] {
+        for turn in [360.0, -90.0, -0.5, 720.0, f64::NAN] {
             assert!(turn_error(turn).is_some(), "{turn}");
         }
     }
