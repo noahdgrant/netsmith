@@ -199,7 +199,7 @@ generic BuckIc {
     // The switch node supplies what the datasheet allows and no more. This is also the enclosure
     // of the load behind the regulator before any part is picked (ADR 0076, amendment 6).
     -.sw.current <= .max_output_current
-    /// The efficiency over the load range, as a range of fractions (`0.85..0.95`).
+    /// The efficiency over the load range, as a range of fractions (`0.85..0.95`): stated by the part, or by the `efficiency` column of its catalog row.
     .efficiency: Number
     /// The smallest inductance the datasheet allows (a table of recommended values is not
     /// one number; the IC states the smallest).
@@ -949,7 +949,7 @@ part Lt8641 provides BuckIc {
 ///   minimum output capacitance: its design example uses 10 uF and Table 2 recommends 10 uF for
 ///   both outputs of the LMR16006Y (p.13 and p.14), so `.min_output_capacitance` is 10 uF by
 ///   default (`?=`): an application value, not a datasheet minimum, as the `Lt8641`'s is.
-/// - Efficiency: `.efficiency` is 0.75 to 0.90, **read off the curves** of Figure 3 (p.6,
+/// - Efficiency: the `efficiency` column of the catalog row (issue #808) is 0.75 to 0.90, **read off the curves** of Figure 3 (p.6,
 ///   VIN = 12 V, fSW = 2.1 MHz, 3.3 V and 5 V out): from 10 mA to 600 mA the lowest point is
 ///   about 77 % (3.3 V out at 10 mA), rounded down, and the highest about 89 % (5 V out),
 ///   rounded up. Below 10 mA the curves fall to about 40 % at 0.1 mA. The datasheet has no
@@ -988,7 +988,6 @@ part Lmr16006y provides BuckIc {
     .min_input_voltage &= 4V
     .max_input_voltage &= 60V
     .max_output_current &= 0.6A
-    .efficiency &= 0.75..0.90
     .min_inductance &= 6.8uH
     .min_input_capacitance &= 1uF
     .min_output_capacitance ?= 10uF
@@ -1007,7 +1006,7 @@ part Lmr16006y provides BuckIc {
     }
 
     .package: Package
-    catalog lmr16006y { .mpn, .package }
+    catalog lmr16006y { .mpn, .package, .efficiency optional }
 
     // Figure 9 (p.11) and the selection rules of p.13 and p.14 (see the doc comment above).
     support {
@@ -1050,7 +1049,7 @@ part Lmr16006y provides BuckIc {
 /// - Capacitors: 4.7 uF at the input and 10 uF at the output, "the suggested values, referring
 ///   to the effective capacitances, subject to any de-rating effect, like a DC Bias" (Table 1
 ///   and its note, p.2): `.min_input_capacitance` and `.min_output_capacitance`.
-/// - Efficiency: `.efficiency` is 0.75 to 0.97, **read off the curves** of Efficiency vs.
+/// - Efficiency: the `efficiency` column of the catalog row (issue #808) is 0.75 to 0.97, **read off the curves** of Efficiency vs.
 ///   Load Current (p.6, 3.3 V and 5.5 V in, 1.2 V and 2.5 V out, 10 mA to 1 A): the lowest
 ///   point is about 76 % (3.3 V to 1.2 V at 1 A), rounded down, and the highest about 97 %
 ///   (3.3 V to 2.5 V near 0.1 A). The datasheet states no minimum and no curve below 10 mA.
@@ -1076,7 +1075,6 @@ part Rt8059 provides BuckIc {
     .min_input_voltage &= 2.8V
     .max_input_voltage &= 5.5V
     .max_output_current &= 1A
-    .efficiency &= 0.75..0.97
     .min_inductance &= 1.5uH
     .min_input_capacitance &= 4.7uF
     .min_output_capacitance &= 10uF
@@ -1093,7 +1091,7 @@ part Rt8059 provides BuckIc {
     }
 
     .package: Package
-    catalog rt8059 { .mpn, .package }
+    catalog rt8059 { .mpn, .package, .efficiency optional }
 
     // The Typical Application Circuit (p.2): EN to VIN.
     support {
@@ -1130,7 +1128,7 @@ part Rt8059 provides BuckIc {
 ///   datasheet states no minimum output capacitance: Table 2 gives 44 uF for 2.5 V to 12 V
 ///   and 66 uF for 1.8 V (p.17), so `.min_output_capacitance` is 44 uF by default (`?=`), an
 ///   application value as the `Lt8641`'s is; a 1.8 V board states 66 uF.
-/// - Efficiency: `.efficiency` is 0.75 to 0.95, **read off the curves** of Figure 17 (p.18,
+/// - Efficiency: the `efficiency` column of the catalog row (issue #808) is 0.75 to 0.95, **read off the curves** of Figure 17 (p.18,
 ///   12 V and 24 V in, 5 V out): from 10 mA to 2 A the lowest point is about 78 % (24 V at
 ///   10 mA), rounded down, and the highest about 94 % (12 V near 1 A), rounded up. Below 10 mA
 ///   the curves fall to about 35 % at 1 mA. The datasheet states no minimum.
@@ -1163,7 +1161,6 @@ part Tps54202 provides BuckIc {
     .min_input_voltage &= 4.5V
     .max_input_voltage &= 28V
     .max_output_current &= 2A
-    .efficiency &= 0.75..0.95
     .min_inductance &= 5.6uH
     .min_input_capacitance &= 10uF
     .min_output_capacitance ?= 44uF
@@ -1181,7 +1178,7 @@ part Tps54202 provides BuckIc {
     }
 
     .package: Package
-    catalog tps54202 { .mpn, .package }
+    catalog tps54202 { .mpn, .package, .efficiency optional }
 
     // The bootstrap capacitor of Figure 16 (p.13; see the doc comment above).
     support {
