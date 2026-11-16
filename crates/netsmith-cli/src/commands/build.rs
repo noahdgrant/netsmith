@@ -45,6 +45,16 @@ pub struct Args {
     /// stale.
     #[arg(long, value_name = "FILE")]
     pub emit_design: Option<PathBuf>,
+    /// Also write the values the solve left each member of each board with to this file, as JSON.
+    ///
+    /// The values are what the DC analysis, the picks and the source left each member with: the
+    /// range of current an inductor carries, the voltage a chain leaves at a node, the power in a
+    /// resistor, the row a part was picked as. The file is a JSON array with one object per
+    /// board, in the order they are built, each with the board's name and its members: a
+    /// quantity's `unit` and its `range` in that unit (`"inf"` for an open end), text's `value`,
+    /// and `shown`, the value as a message prints it. Nothing is written when a board fails.
+    #[arg(long, value_name = "FILE")]
+    pub emit_solved: Option<PathBuf>,
     #[command(flatten)]
     pub output: common::Output,
 }
@@ -66,6 +76,7 @@ pub fn run(args: Args) -> ExitCode {
             notes: args.output.notes.into(),
             write: true,
             emit_design: args.emit_design.as_deref(),
+            emit_solved: args.emit_solved.as_deref(),
         })
     })
 }
@@ -82,6 +93,8 @@ pub(super) struct BuildRun<'a> {
     pub(super) write: bool,
     /// The file to write the boards' designs to (`build --emit-design`).
     pub(super) emit_design: Option<&'a Path>,
+    /// The file to write the members' solved values to (`build --emit-solved`).
+    pub(super) emit_solved: Option<&'a Path>,
 }
 
 /// What a board said that did not stop it: printed as text, or kept for the JSON report.
@@ -127,6 +140,8 @@ pub(super) fn run_build(run: &BuildRun) -> ExitCode {
     let mut code = ExitCode::SUCCESS;
     // The designs of the boards built, for `--emit-design`.
     let mut designs = Vec::new();
+    // The values each board's members were solved to, for `--emit-solved`.
+    let mut solved = Vec::new();
     // An error that stops a file, printed or kept.
     let fail = |report: &mut Report, finding: Finding, text: &str| {
         if json {
@@ -337,15 +352,26 @@ pub(super) fn run_build(run: &BuildRun) -> ExitCode {
                 dir: written.map(|d| d.display().to_string()),
                 parts: Vec::new(),
             });
+            if run.emit_solved.is_some() {
+                solved.push(netsmith_pipeline::solved::to_value(&b));
+            }
             if run.emit_design.is_some() {
                 designs.push(b.design);
             }
         }
     }
-    if let Some(file) = run.emit_design {
+    let emits = [
+        (
+            run.emit_design,
+            netsmith_core::design_file::to_json(&designs),
+        ),
+        (run.emit_solved, netsmith_pipeline::solved::to_json(solved)),
+    ];
+    for (file, text) in emits {
+        let Some(file) = file else { continue };
         if code != ExitCode::SUCCESS {
             eprintln!("note: {} is not written, as a board failed", file.display());
-        } else if let Err(e) = fs::write(file, netsmith_core::design_file::to_json(&designs)) {
+        } else if let Err(e) = fs::write(file, text) {
             eprintln!("{}: {e}", file.display());
             return ExitCode::from(2);
         } else if !json {
@@ -371,6 +397,7 @@ mod tests {
             strict: false,
             locked: false,
             emit_design: None,
+            emit_solved: None,
             output: output(),
         }
     }

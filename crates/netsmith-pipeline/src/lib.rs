@@ -8,6 +8,7 @@ pub mod libraries;
 pub mod pick_lock;
 pub mod power;
 pub mod providers;
+pub mod solved;
 
 use std::path::{Path, PathBuf};
 
