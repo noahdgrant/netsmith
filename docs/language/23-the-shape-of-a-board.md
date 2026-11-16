@@ -1788,6 +1788,34 @@ at = [18.0, 2.0]
 
 Parts are keyed by their path in the design, which a renumbered reference designator does not change. A member of a group is keyed by its path with the index, quoted as TOML needs: `[Board.parts."decoupling[2]"]`. A part with no entry is placed by the placer (ADR 0033): it derives a placement from the circuit alone, keeping the parts of a module together, a decoupling capacitor next to the power pins it bridges, connectors at the edges and wire short, and places them round the parts the file places. The same circuit, file and `seed` always give the same board; another `seed` gives another arrangement. When the file's seed (0 if it states none) does not place the board, the placer tries the seeds after it (the file's seed plus 1, plus 2 and so on), up to `place_seeds` in `netsmith.toml` in all (8 by default): a seed places the board when the parts fit the outline, the placement check finds no fault that another seed could move (one that names no part the file places, and names a part no requirement pins) and, with no layout file, every requirement of the physical file is met. `fab` says which seed placed the board (`placed on a 101.2 by 24 mm board with seed 15`); when it is not the file's, it says what blocked each seed tried, calls the file's seed stale if the file states one, and writes the new seed to the file. With `--locked` it writes nothing and stops with an error, as for a pick lock; an order (`fab --order`) and the editor's release are releases, which never change a choice by themselves, so a seed that would change stops them with the seed to write by running `fab`. `board3d` and the editor's PCB view use the seed they find and write nothing. When no seed places the board, `fab` stops with the closest try (the fewest faults, then the least area and distance; the earlier seed on a tie) and what blocks it, each member by its path with the designator beside it, and by how much: `no seed places the board: the placer tried 8 seeds, 3 to 10 (...), and the closest is seed 7, where this blocks it:` then `` the courtyards of `usb` (J2) and `vbus_2u2` (C37) overlap by 0.04 mm2 ``. A build puts every part that has an entry where the file says; the placer places the others round the parts that are locked (`lock = true`) and does not react to the others, so moving a part by hand moves nothing else. `place_subset` places some parts and leaves the rest, but no command asks for it yet. An entry for a part, keepout or cutout that the board does not have, or a table for a board the file does not have, is an error that names it and lists what exists. A keepout or cutout that states `.x` and `.y` in the physical file and has an entry as well is an error: a thing has one place. An entry with a `size` (and `layers`, `tracks`, `vias`, `copper`, `parts`) is a keepout an earlier editor drew; it is still read, and the editor's first change to it moves it to the physical file. `side = "bottom"` puts a part on the back. `examples/outline_and_pours.nsm`, its physical file `examples/outline_and_pours.physical.nsm` and `examples/outline_and_pours.pcb.toml` use all of this.
 
+**The frame, the turn and the faces.** Every number in the file is in millimetres, in the frame of the board: the origin is the outline's top left corner, x grows to the right and y downward. `at` is where the part's footprint origin is, not its body or its centre (the body is what a requirement measures). `rotation` is in degrees, counterclockwise as the board is seen on screen from above, and a part is turned by 0, 90, 180 or 270 only. A part on the `top` face is the footprint as it is drawn. A part on the `bottom` face is the footprint seen in a mirror (left to right, about its own y axis) and then turned by `rotation`, as it is seen from above: `rotation` turns the mirrored part the same way for both faces, and `at` is still measured from the top left corner of the outline seen from above. One part on each face:
+
+```toml
+version = 1
+
+[Widget.parts.r1]            # on the top face, turned a quarter counterclockwise
+at = [10.0, 5.0]
+rotation = 90
+side = "top"
+
+[Widget.parts.power_in]      # on the bottom face, mirrored, not turned
+at = [30.0, 12.0]
+rotation = 0
+side = "bottom"
+lock = true
+```
+
+**The command line.** A script or an agent changes the file with `netsmith layout`, which reads and writes it as the editor does (the other tables are kept; a comment in the file is not) and places nothing:
+
+```sh
+netsmith layout show                  # every part and its entry, with the line of the entry
+netsmith layout show stage --format json   # the parts of a module, as data
+netsmith layout set stage.output_cap --at 31.5,22 --turn 90 --side top --lock
+netsmith layout check                 # which parts have no entry, which entries name no part, ...
+```
+
+`show` says, for each part, `at`, `turn` (the file's `rotation`), `side`, `lock` and `source` as the placer reads them, and the line of its entry; a part with no entry is said to be placed by the placer. `set PATH` writes one entry: a part with no entry needs `--at X,Y`, for one that has an entry a flag left out keeps what it has (`--unlock` clears a lock), a new entry has `source = "hand"` and an entry that exists keeps its source. It refuses a path the board has no part at, listing the nearest names, and a turn that is not 0, 90, 180 or 270, and leaves the file as it was. `check` says one line for each finding with the line of the entry (`main.pcb.toml:13: error: ...`): an entry that names no part, an entry with a turn that is not allowed or a position that is not a number, and a locked entry that breaks a requirement of the physical file (the words `fab` uses; the footprints are loaded and nothing is placed). A part with no entry is a note, since the placer places it; the exit code is 1 when there is an error. The three take `--board NAME` and `--into FILE.NSM` as `netsmith routes` does, and `--format json` for data.
+
 `source` says who wrote an entry and changes nothing, with one exception: two parts whose entries `netsmith routes import` wrote (`source = "import"`, see The routes file) may share courtyard area. They stand where a KiCad board has them, and that board may have courtyards that overlap (ORBIT's LQFP-48 covers two of its capacitors), or footprints that draw no courtyard, for which netsmith takes the pads and 0.25 mm; the check before placing does not count the pair as a conflict, and `fab` says each such overlap as a warning (``the courtyards of `mcu` (U4) and `v3v3_100n[2]` (C16) overlap by 1.65 mm2: both stand where the imported KiCad board has them ...``) instead of stopping. Their pads are still checked by the design rules check, as any copper is.
 
 ### The routes file

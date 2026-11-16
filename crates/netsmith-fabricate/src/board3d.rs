@@ -1213,6 +1213,21 @@ impl Placed<'_> {
         )
     }
 
+    /// `then` of the board picked, checked, solved and designed but not placed: what a command
+    /// that reads or writes the layout file needs, in milliseconds. The layout file is not read.
+    pub fn with_built<T>(&self, then: impl FnOnce(&Built) -> T) -> Result<T, String> {
+        let outcome = netsmith_pipeline::outcome_with(
+            self.name,
+            self.text,
+            self.loader,
+            self.catalogs,
+            Some(self.libraries),
+        )
+        .map_err(|problems| netsmith_pipeline::render_problems(&problems))?;
+        let labels: Vec<String> = outcome.boards.iter().map(Built::label).collect();
+        pick_board(&outcome.boards, self.name, self.board, &labels).map(then)
+    }
+
     /// [`scene_and_label`]: the scene and the board's label.
     pub fn scene_and_label(&self) -> Result<(Scene, String), String> {
         placed(
@@ -1227,6 +1242,37 @@ impl Placed<'_> {
             self.models.as_ref(),
             |built, board, found| (scene_with(built, board, found), built.label()),
         )
+    }
+}
+
+/// The board `want` names (by label, or by name when it is not a member of a system), or the
+/// only board when `want` is `None`; the error says what to say instead. `labels` are the names
+/// to list.
+fn pick_board<'a>(
+    boards: &'a [Built],
+    name: &str,
+    want: Option<&str>,
+    labels: &[String],
+) -> Result<&'a Built, String> {
+    match want {
+        Some(want) => boards
+            .iter()
+            .find(|b| b.label() == want || (b.system.is_none() && b.design.name == want))
+            .ok_or_else(|| {
+                format!(
+                    "error: {name} has no board `{want}`; its boards are: {}\n",
+                    labels.join(", ")
+                )
+            }),
+        None => match boards {
+            [one] => Ok(one),
+            [] => Err(format!("error: {name} has no board\n")),
+            _ => Err(format!(
+                "error: {name} has {} boards; say which with `--board <name>`: {}\n",
+                labels.len(),
+                labels.join(", ")
+            )),
+        },
     }
 }
 
@@ -1441,29 +1487,7 @@ fn picked<T>(
         let pairs: Vec<(&Built, &Board)> = members.iter().copied().zip(&placed).collect();
         return Ok(system(solved, &pairs, &warnings));
     }
-    let built = match want {
-        Some(want) => outcome
-            .boards
-            .iter()
-            .find(|b| b.label() == want || (b.system.is_none() && b.design.name == want))
-            .ok_or_else(|| {
-                format!(
-                    "error: {name} has no board `{want}`; its boards are: {}\n",
-                    labels.join(", ")
-                )
-            })?,
-        None => match outcome.boards.as_slice() {
-            [one] => one,
-            [] => return Err(format!("error: {name} has no board\n")),
-            _ => {
-                return Err(format!(
-                    "error: {name} has {} boards; say which with `--board <name>`: {}\n",
-                    labels.len(),
-                    labels.join(", ")
-                ));
-            }
-        },
-    };
+    let built = pick_board(&outcome.boards, name, want, &labels)?;
     let warnings = located(&built.label())?;
     let layout = read_layout(&built.label())?;
     let placed = place(built, layout.as_ref())?;

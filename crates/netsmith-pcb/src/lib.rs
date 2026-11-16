@@ -70,8 +70,8 @@ pub use body3d::{
     header_of_file, package_of, package_shape, pin_tails,
 };
 pub use constraints::{
-    PlanOffset, Want, axis_of as constraint_axis_of, offset as constraint_offset,
-    plan as constraint_plan, quarter as constraint_quarter,
+    PlanOffset, Want, axis_of as constraint_axis_of, locked_breaks as constraint_locked_breaks,
+    offset as constraint_offset, plan as constraint_plan, quarter as constraint_quarter,
 };
 pub use copper::{
     Area, Copper, CopperError, LayerPours, Pour, SilkInk, ZoneFill, artwork as copper_artwork,

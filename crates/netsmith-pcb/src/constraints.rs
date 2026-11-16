@@ -75,7 +75,8 @@
 //! Relations are not solved, so a mistaken one shows at placement and not at `build`.
 //!
 //! **Not built** (issue #56): the editor's window overlays, ghosts and drag limit and its "pin
-//! here" (C4, C5), `netsmith layout check --json` (C6), mating across boards (C7, ADR 0040),
+//! here" (C4, C5), a `netsmith layout check` that measures more than the locked entries (C6;
+//! the command measures those, `netsmith_fabricate::layout_edit`), mating across boards (C7, ADR 0040),
 //! `MountingHole.head_diameter`, a box check for a module's `.place.x` and `.y`, and a polygon
 //! outline (C8, issue #57).
 //!
@@ -471,6 +472,75 @@ fn outline_extent(design: &Design) -> (Option<f64>, Option<f64>) {
     }
 }
 
+/// What a part that the layout file locks at `f` breaks of its requirements, as the error
+/// [`plan`] gives, or `None` if the locked place meets them all.
+fn locked_break(
+    part: &Placed,
+    f: &Fixed,
+    reqs: &[Req],
+    side_req: Option<&(String, String)>,
+) -> Option<String> {
+    let name = crate::board::member(&part.path, &part.refdes);
+    let body = body_at(part, f.rotation, f.side).translated(ORIGIN + f.at);
+    let mut bad: Vec<String> = Vec::new();
+    for r in reqs {
+        let m = miss(r, body, f.rotation);
+        if m > TOLERANCE {
+            bad.push(if r.field == PlaceField::Rotation {
+                format!("{}, and it is turned {}", r.says(), number(f.rotation))
+            } else {
+                format!(
+                    "{}, and its {} is {} mm",
+                    r.says(),
+                    r.field.word(),
+                    number(measured(r.field, body))
+                )
+            });
+        }
+    }
+    if let Some((s, l)) = side_req
+        && (s == "bottom") != (f.side == Side::Back)
+    {
+        bad.push(format!(
+            "`{l}` allows \"{s}\", and it is on the {}",
+            if f.side == Side::Back {
+                "bottom"
+            } else {
+                "top"
+            }
+        ));
+    }
+    (!bad.is_empty()).then(|| {
+        format!(
+            "{name} is locked in the layout file at ({}, {}) mm, and that breaks a requirement of the design: {}; unlock it and let the placer move it, or change the requirement",
+            number(f.at.x),
+            number(f.at.y),
+            bad.join("; ")
+        )
+    })
+}
+
+/// The parts the layout file locks (`options.fixed`) at a place that breaks a requirement of
+/// the physical file: the part's path and the message [`plan`] gives for it. `netsmith layout
+/// check` says them without placing anything.
+pub fn locked_breaks(
+    design: &Design,
+    parts: &[Placed],
+    options: &PlaceOptions,
+) -> Vec<(String, String)> {
+    parts
+        .iter()
+        .filter_map(|part| {
+            let (reqs, side_req) = requirements(design, &part.path);
+            if reqs.is_empty() && side_req.is_none() {
+                return None;
+            }
+            let f = options.fixed.get(&part.refdes)?;
+            locked_break(part, f, &reqs, side_req.as_ref()).map(|m| (part.path.clone(), m))
+        })
+        .collect()
+}
+
 /// Work out what the requirements of `design` leave to the placer, or why they cannot all
 /// be met. `parts` are the footprints as loaded, with the faces `options` gave them.
 pub fn plan(
@@ -504,42 +574,8 @@ pub fn plan(
 
         // A part the layout file locks stays where it is, if that meets the requirements.
         if let Some(f) = options.fixed.get(&part.refdes) {
-            let body = body_at(part, f.rotation, f.side).translated(ORIGIN + f.at);
-            let mut bad: Vec<String> = Vec::new();
-            for r in &reqs {
-                let m = miss(r, body, f.rotation);
-                if m > TOLERANCE {
-                    bad.push(if r.field == PlaceField::Rotation {
-                        format!("{}, and it is turned {}", r.says(), number(f.rotation))
-                    } else {
-                        format!(
-                            "{}, and its {} is {} mm",
-                            r.says(),
-                            r.field.word(),
-                            number(measured(r.field, body))
-                        )
-                    });
-                }
-            }
-            if let Some((s, l)) = &side_req
-                && (s == "bottom") != (f.side == Side::Back)
-            {
-                bad.push(format!(
-                    "`{l}` allows \"{s}\", and it is on the {}",
-                    if f.side == Side::Back {
-                        "bottom"
-                    } else {
-                        "top"
-                    }
-                ));
-            }
-            if !bad.is_empty() {
-                errors.push(format!(
-                    "{name} is locked in the layout file at ({}, {}) mm, and that breaks a requirement of the design: {}; unlock it and let the placer move it, or change the requirement",
-                    number(f.at.x),
-                    number(f.at.y),
-                    bad.join("; ")
-                ));
+            if let Some(broken) = locked_break(part, f, &reqs, side_req.as_ref()) {
+                errors.push(broken);
             }
             // A lock fixes where the part is; it does not say it may hang over an edge. Only
             // the part's own requirements do (owner decision, 2026-11-03, ADR 0045 section 10).

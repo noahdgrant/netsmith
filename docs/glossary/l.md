@@ -5,7 +5,7 @@ A part that prints text on the silkscreen (`std::parts::mechanical::Label`). It 
 _Avoid_: Text, annotation, legend
 
 **Layout file**:
-`<stem>.pcb.toml` beside a source file: where parts (keyed by their path in the design), keepouts and cutouts are, when the source does not say, with rotation, side and a lock. Optional, written by an editor or a placer, never by the language (ADR 0032). It holds the solution; a requirement is in the physical file (_Placement requirement_, _Physical_).
+`<stem>.pcb.toml` beside a source file: where parts (keyed by their path in the design), keepouts and cutouts are, when the source does not say, with rotation, side and a lock. Optional, written by an editor or a placer, never by the language (ADR 0032); `netsmith layout` shows, sets and checks its entries. It holds the solution; a requirement is in the physical file (_Placement requirement_, _Physical_).
 _Avoid_: Sidecar (the word for what it is, not its name), placement file (that is the pick-and-place file for the board house). The schematic has its own, the _Schematic layout file_.
 
 **Leakage (`Ii`)**:

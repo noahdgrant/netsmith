@@ -224,7 +224,7 @@ pub enum Layer {
     Bottom,
 }
 
-fn parse_point(text: &str) -> Result<[f64; 2], String> {
+pub(super) fn parse_point(text: &str) -> Result<[f64; 2], String> {
     let (x, y) = text
         .split_once(',')
         .ok_or_else(|| format!("`{text}` is not X,Y"))?;

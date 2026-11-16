@@ -216,6 +216,17 @@ pub struct BoardLayout {
     pub cutouts: BTreeMap<String, ShapePlace>,
 }
 
+/// The table of `table` that is named `name`.
+fn child<'a, 'i>(
+    table: &'a toml::de::DeTable<'i>,
+    name: &str,
+) -> Option<&'a toml::de::DeTable<'i>> {
+    table
+        .iter()
+        .find(|(k, _)| k.get_ref().as_ref() == name)
+        .and_then(|(_, v)| v.get_ref().as_table())
+}
+
 /// A layout file: a table for each board.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Layout {
@@ -403,6 +414,24 @@ impl Layout {
             out.push_str(&toml::to_string(&wrapper).expect("a layout is plain tables"));
         }
         out
+    }
+
+    /// The line, counted from 1, where each part entry of the board `board` is written in the
+    /// layout file's `text`, by the part's path: the line of its table's header, or of its key
+    /// where the table is written in another way. A text that is not TOML gives none.
+    pub fn part_lines(text: &str, board: &str) -> BTreeMap<String, usize> {
+        let Ok(document) = toml::de::DeTable::parse(text) else {
+            return BTreeMap::new();
+        };
+        let line_of = |offset: usize| text[..offset.min(text.len())].matches('\n').count() + 1;
+        let Some(parts) = child(document.get_ref(), board).and_then(|board| child(board, "parts"))
+        else {
+            return BTreeMap::new();
+        };
+        parts
+            .iter()
+            .map(|(k, _)| (k.get_ref().to_string(), line_of(k.span().start)))
+            .collect()
     }
 
     /// An error for every table of the file that is not a board of the source, so that a
@@ -1063,6 +1092,18 @@ at = [5.0, 4.0]
         );
         assert!(clear.parts && clear.limit.is_none() && clear.front && !clear.back);
         assert!(!lid.parts && lid.limit == Some(3.0));
+    }
+
+    #[test]
+    fn the_line_of_each_part_entry_is_found() {
+        let text = "version = 1\n\n[Demo]\nseed = 1\n\n[Demo.parts.\"bulk[1]\"]\nat = [1.0, 2.0]\n\n[Demo.parts.led]\nat = [3.0, 4.0]\n\n[Other.parts.led]\nat = [5.0, 6.0]\n";
+        let lines = Layout::part_lines(text, "Demo");
+        assert_eq!(lines.len(), 2);
+        assert_eq!(lines["bulk[1]"], 6);
+        assert_eq!(lines["led"], 9);
+        assert_eq!(Layout::part_lines(text, "Other")["led"], 12);
+        assert!(Layout::part_lines(text, "Missing").is_empty());
+        assert!(Layout::part_lines("not toml [", "Demo").is_empty());
     }
 
     #[test]
