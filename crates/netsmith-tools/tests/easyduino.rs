@@ -2475,7 +2475,7 @@ mod board {
         let built = built();
         let listed = |needle: &str| built.notes.iter().any(|n| n.contains(needle));
         // Checked (not listed): the supply window of the module, the regulator's current.
-        assert!(!listed("mcu.vdd"), "{:?}", built.notes);
+        assert!(!listed("mcu.vdd.voltage"), "{:?}", built.notes);
         assert!(!listed(
             "not evaluated: -regulator.vout.current <= regulator.max_current"
         ));

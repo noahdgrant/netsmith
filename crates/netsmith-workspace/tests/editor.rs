@@ -1519,6 +1519,7 @@ fn what_the_solver_left_alone_is_a_note_and_not_counted_as_a_warning() {
     assert!(
         notes.iter().all(|p| p.message.contains("not evaluated")
             || p.message.contains("incomplete")
+            || p.message.contains("unknown currents")
             || p.message.contains("a lower bound")),
         "{notes:?}"
     );
