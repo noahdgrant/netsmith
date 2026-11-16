@@ -662,3 +662,74 @@ fn a_head_that_is_a_range_or_not_above_nothing_is_refused() {
         "{text}"
     );
 }
+
+// ---------------------------------------------------------------------------------------
+// The impedance a design states for tracks (issue #1007).
+
+#[test]
+fn a_track_impedance_gives_the_net_its_pin_is_on_a_target() {
+    let d = designed(&board(
+        "    .z: TrackImpedance {\n        .line.net &= \"VIN\"\n        .impedance &= 50ohm\n    }\n",
+    )
+    .replace("import std::sources::Rail", "import std::sources::Rail\nimport std::sources::TrackImpedance"))
+    .unwrap();
+    assert_eq!(
+        d.features.impedance_targets,
+        [netsmith_core::ImpedanceTarget {
+            path: "z".to_string(),
+            nets: vec!["VIN".to_string()],
+            ohms: 50.0,
+            spacing: None,
+        }]
+    );
+}
+
+#[test]
+fn a_pair_impedance_gives_two_nets_a_differential_target_and_a_spacing() {
+    let d = designed(&board(
+        "    .pz: PairImpedance {\n        .p.net &= \"VIN\"\n        .n.net &= \"GND\"\n        .impedance &= 90ohm\n        .spacing &= 0.15mm\n    }\n",
+    )
+    .replace("import std::sources::Rail", "import std::sources::Rail\nimport std::sources::PairImpedance"))
+    .unwrap();
+    assert_eq!(
+        d.features.impedance_targets,
+        [netsmith_core::ImpedanceTarget {
+            path: "pz".to_string(),
+            nets: vec!["VIN".to_string(), "GND".to_string()],
+            ohms: 90.0,
+            spacing: Some(0.15),
+        }]
+    );
+}
+
+#[test]
+fn a_target_that_is_not_one_value_above_zero_is_an_error_that_says_what_to_write() {
+    let with = |extra: &str| {
+        board(extra).replace(
+            "import std::sources::Rail",
+            "import std::sources::Rail\nimport std::sources::{PairImpedance, TrackImpedance}",
+        )
+    };
+    let missing = errors_of(&with(
+        "    .z: TrackImpedance {\n        .line.net &= \"VIN\"\n    }\n",
+    ));
+    assert!(
+        missing.contains("`z.impedance` is not stated: say it with `&= 50ohm`"),
+        "{missing}"
+    );
+    let range = errors_of(&with(
+        "    .z: TrackImpedance {\n        .line.net &= \"VIN\"\n        .impedance &= 45ohm..55ohm\n    }\n",
+    ));
+    assert!(range.contains("a target impedance is one value"), "{range}");
+    let no_spacing = errors_of(&with(
+        "    .pz: PairImpedance {\n        .p.net &= \"VIN\"\n        .n.net &= \"GND\"\n        .impedance &= 90ohm\n    }\n",
+    ));
+    assert!(
+        no_spacing.contains("`pz.spacing` is not stated: say the space between the two tracks"),
+        "{no_spacing}"
+    );
+    let one_net = errors_of(&with(
+        "    .pz: PairImpedance {\n        .p.net &= \"VIN\"\n        .n.net &= \"VIN\"\n        .impedance &= 90ohm\n        .spacing &= 0.15mm\n    }\n",
+    ));
+    assert!(one_net.contains("a pair is two nets"), "{one_net}");
+}

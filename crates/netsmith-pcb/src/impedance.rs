@@ -32,13 +32,57 @@
 //! is exact for a centred strip in one dielectric and an approximation otherwise; no source
 //! states its error, and the report says so.
 //!
+//! - A microstrip under a solder mask (issue #1007): the mask is a slab of the mask's relative
+//!   permittivity over the dielectric layer, and it raises the effective permittivity by the
+//!   fraction of the field it takes the place of air in, times its permittivity less one (the
+//!   air-replacement decomposition of P. Bahl and S. Stuchly, "Analysis of a Microstrip
+//!   Covered with a Lossy Dielectric", IEEE MTT-28, 1980); the fraction is the filling factor
+//!   of J. Svačina, "Analysis of multilayer microstrip lines by a conformal mapping method",
+//!   IEEE MTT-40, 1992, pp. 769-772, as improved by C. Wan and A. Hoorfar, "Improved design
+//!   equations for multilayer microstrip lines", IEEE Microwave and Guided Wave Letters 10,
+//!   no. 6, 2000, pp. 223-224, which is taken between the dielectric layer alone and the
+//!   dielectric layer under the mask. The impedance falls with the root of the ratio of the
+//!   effective permittivity without the mask to the one with it. (The letter's narrow-strip
+//!   equation prints `ln(0.125 w)`; the form here, `ln(8 / w)`, is the one that reproduces
+//!   its table, as KiCad's `pcb_calculator` has it.) Neither paper gives an error for this
+//!   use; JLCPCB's blog says a mask alone lowers a track by about 1 to 3 ohm
+//!   (<https://jlcpcb.com/blog/pcb-impedance-testing>), which the test of this crate holds the
+//!   figure to. The mask's thickness is the calculator's "coating above substrate" (the mask
+//!   over the dielectric, beside the track); the thinner mask over the track's own copper and
+//!   the mask between two tracks are not told apart.
+//! - Two tracks side by side, an edge-coupled pair, worked out as the even and the odd mode,
+//!   and the differential impedance as twice the odd mode's. On an outer layer: M. Kirschning
+//!   and R. H. Jansen, "Accurate wide-range design equations for the frequency-dependent
+//!   characteristic of parallel coupled microstrip lines", IEEE MTT-32, no. 1, 1984, pp. 83-90
+//!   (with its 1985 correction) for the static modes, as the Qucs technical documentation
+//!   gives them (<https://qucs.sourceforge.net/tech/node77.html>: static impedance better than
+//!   0.6 %, for 0.1 <= w/h <= 10, 0.1 <= s/h <= 10, 1 <= εr <= 18). The strip thickness is
+//!   taken as R. H. Jansen, "High-speed computation of single and coupled microstrip
+//!   parameters including dispersion, high-order modes, loss and finite strip thickness",
+//!   IEEE MTT-26, no. 2, 1978, pp. 75-82, couples it: a width for the even mode and a wider
+//!   one for the odd mode, from the single track's width correction (the one `microstrip`
+//!   uses, for a strip in this dielectric) and the space between the strips. That departs
+//!   from Kirschning and Jansen, who also take the thickness off the filling factor and start
+//!   from a single track of no thickness: a thick pair far apart came out 5 to 10 % off a
+//!   thick single track, which it must become, so the thickness is counted once here and the
+//!   single track each mode starts from has the width that mode sees. No source states the
+//!   error of this for a thick pair; JLCPCB's calculator is the check (the tests). On an
+//!   inner layer: S. B. Cohn, "Shielded Coupled-Strip Transmission
+//!   Line", IRE Trans. MTT-3, no. 5, 1955, pp. 29-38: the exact even and odd impedances of two
+//!   strips of no thickness between planes, from elliptic integrals, and his correction for
+//!   the strips' thickness from the fringing capacitance (his equations 18, 20 and 22, in a
+//!   medium of εr 1, where they are dimensionally consistent). Cohn gives the pair between
+//!   planes with one dielectric; an off-centre pair between two different dielectric layers
+//!   is split at the plane of the strips as a single track is, which has the same
+//!   approximation and the same unstated error.
+//!
 //! Outside a formula's stated domain the figure is refused ([`OutOfRange`]), never
 //! extrapolated.
 
 use std::f64::consts::{E, PI};
 
 use netsmith_core::OUNCE_OF_COPPER;
-use netsmith_core::{DielectricLayer, InnerUse, Stackup};
+use netsmith_core::{DielectricLayer, InnerUse, SolderMask, Stackup};
 
 /// The impedance of free space, μ0·c, in ohms (CODATA 2018).
 const ETA0: f64 = 376.730_313_412;
@@ -182,12 +226,333 @@ pub fn stripline(
     })
 }
 
-/// The width (mm) at which `line` has the impedance `target`, searched between `lo` and `hi`.
+/// Wan and Hoorfar's filling factor of the second layer of a three-layer microstrip, `u` the
+/// strip's width over the first layer's thickness and `hbar` the top of the second layer over
+/// the first layer's thickness (1 is no second layer).
+fn wan_hoorfar_q2(u: f64, hbar: f64) -> Result<f64, OutOfRange> {
+    let bad = || {
+        OutOfRange(format!(
+            "the solder mask's filling factor has no figure for a track {u:.3} times the dielectric's thickness wide"
+        ))
+    };
+    let q2 = if u >= 1.0 {
+        let wbar = u + 2.0 / PI * (17.08 * (0.5 * u + 0.92)).ln();
+        let denom = wbar * PI - 4.0;
+        if denom <= 0.0 {
+            return Err(bad());
+        }
+        let vbar = 2.0 / PI * (2.0 * PI / denom * (hbar - 1.0)).atan();
+        let half = 0.5 * PI * vbar;
+        let q1 = 1.0 - (wbar * PI - 1.0).ln() / (2.0 * wbar);
+        let inner = 2.0 * wbar * half.cos() / (2.0 * hbar - 1.0 + vbar) + half.sin();
+        if inner <= 0.0 {
+            return Err(bad());
+        }
+        1.0 - q1 - (1.0 - vbar) / (2.0 * wbar) * inner.ln()
+    } else {
+        let log = (8.0 / u).ln();
+        let q1 = 0.5 + 0.9 / (PI * log);
+        let bj = (hbar + 1.0) / (hbar + 0.25 * u - 1.0);
+        if bj <= 0.0 {
+            return Err(bad());
+        }
+        let arg = bj.sqrt() * (hbar - 1.0 + 0.125 * u) / hbar;
+        1.0 - q1 - bj.ln() * arg.clamp(-1.0, 1.0).acos() / (4.0 * log)
+    };
+    if q2.is_finite() {
+        Ok(q2.max(0.0))
+    } else {
+        Err(bad())
+    }
+}
+
+/// What a solder mask changes of a microstrip's effective permittivity, `eps_eff` without it, `u`
+/// the width over the dielectric's thickness `h`: the new effective permittivity.
+fn coated_epsilon_eff(eps_eff: f64, u: f64, h: f64, mask: SolderMask) -> Result<f64, OutOfRange> {
+    if mask.thickness <= 0.0 {
+        return Ok(eps_eff);
+    }
+    if mask.epsilon <= 1.0 {
+        return Err(OutOfRange(format!(
+            "a solder mask needs a relative permittivity above 1, not {}",
+            mask.epsilon
+        )));
+    }
+    let dq = (wan_hoorfar_q2(u, 1.0 + mask.thickness / h)? - wan_hoorfar_q2(u, 1.0)?).max(0.0);
+    Ok(eps_eff + dq * (mask.epsilon - 1.0))
+}
+
+/// A microstrip under a solder mask: [`microstrip`], with the mask's effect on the effective
+/// permittivity and so on the impedance (see the module's header).
+pub fn coated_microstrip(
+    width: f64,
+    thickness: f64,
+    below: TrackDielectric,
+    mask: SolderMask,
+) -> Result<Line, OutOfRange> {
+    let bare = microstrip(width, thickness, below)?;
+    let eps = coated_epsilon_eff(
+        bare.epsilon_eff,
+        width / below.thickness,
+        below.thickness,
+        mask,
+    )?;
+    Ok(Line {
+        impedance: bare.impedance * (bare.epsilon_eff / eps).sqrt(),
+        epsilon_eff: eps,
+    })
+}
+
+/// The two modes of a pair of tracks side by side, an edge-coupled pair.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Pair {
+    /// With both tracks at the same voltage.
+    pub even: Line,
+    /// With the tracks at opposite voltages.
+    pub odd: Line,
+}
+
+impl Pair {
+    /// The impedance between the two tracks when they carry opposite voltages: twice the odd
+    /// mode's, in ohms.
+    pub fn differential(&self) -> f64 {
+        2.0 * self.odd.impedance
+    }
+}
+
+/// The complete elliptic integral of the first kind of modulus `k`, by the arithmetic-geometric
+/// mean: K(k) = π / (2 AGM(1, sqrt(1 - k²))).
+fn elliptic_k(k: f64) -> f64 {
+    let (mut a, mut b) = (1.0_f64, (1.0 - k * k).sqrt());
+    for _ in 0..40 {
+        (a, b) = ((a + b) / 2.0, (a * b).sqrt());
+    }
+    PI / (2.0 * a)
+}
+
+/// Kirschning and Jansen's static even and odd modes of two microstrips `width` wide and
+/// `thickness` thick, `spacing` apart, on a dielectric layer under open air (see the module's
+/// header), with no solder mask.
+pub fn coupled_microstrip(
+    width: f64,
+    spacing: f64,
+    thickness: f64,
+    below: TrackDielectric,
+) -> Result<Pair, OutOfRange> {
+    let (h, er) = (below.thickness, below.epsilon);
+    let (u, g) = (width / h, spacing / h);
+    if !(1.0..=18.0).contains(&er) {
+        return Err(OutOfRange(format!(
+            "coupled microstrip needs a relative permittivity from 1 to 18, not {er}"
+        )));
+    }
+    if !(0.1..=10.0).contains(&u) || !(0.1..=10.0).contains(&g) {
+        return Err(OutOfRange(format!(
+            "coupled microstrip needs a width and a spacing from 0.1 to 10 times the dielectric's thickness, not {u:.3} and {g:.3}"
+        )));
+    }
+    if thickness < 0.0 || thickness >= width / 2.0 {
+        return Err(OutOfRange(format!(
+            "coupled microstrip's thickness correction needs copper thinner than half the track, not {thickness} mm on a {width} mm track"
+        )));
+    }
+    let t_h = thickness / h;
+    // The width each mode sees once the strip has a thickness: the single microstrip's
+    // correction for a strip in this dielectric (Hammerstad and Jensen's, which `microstrip`
+    // uses) as Jansen 1978 couples it to the other strip, `du * (1 - 0.5 exp(-0.69 du / dt))`
+    // for the even mode and that plus `dt` for the odd mode.
+    let (du_e, du_o) = if t_h > 0.0 {
+        let coth = 1.0 / (6.517 * u).sqrt().tanh();
+        let du1 = t_h / PI * (1.0 + 4.0 * E / (t_h * coth * coth)).ln();
+        let du = du1 * (1.0 + 1.0 / (er - 1.0).sqrt().cosh()) / 2.0;
+        let dt = t_h / (g * er);
+        let due = du * (1.0 - 0.5 * (-0.69 * du / dt).exp());
+        (due, due + dt)
+    } else {
+        (0.0, 0.0)
+    };
+    let (ue, uo) = (u + du_e, u + du_o);
+    // The zero-thickness single line each mode's equations start from. Kirschning and Jansen
+    // give it for the strip's own width, and take the thickness into account in the filling
+    // factor besides (a term of `t / sqrt(u)`); that made a thick pair far apart 5 to 10 %
+    // different from a thick single track, which the pair must become. Here the thickness is
+    // counted once, in the width each mode sees (Jansen's `ue` and `uo`), and the single line
+    // is the one of that width, which makes a pair far apart a single track to within 1 % (see
+    // the tests). This departs from the papers, and no source states the error of what it
+    // gives for a thick pair.
+    let single = |u: f64| {
+        let e = hj_epsilon_eff(u, er);
+        (e, hj_z01(u) / e.sqrt())
+    };
+    let ((ers_e, z0s_e), (ers_o, z0s_o)) = (single(ue), single(uo));
+    let mean = 0.5 * (er + 1.0);
+
+    // Even mode.
+    let v = ue * (20.0 + g * g) / (10.0 + g * g) + g * (-g).exp();
+    let (v3, v4) = (v.powi(3), v.powi(4));
+    let a_e = 1.0
+        + ((v4 + v * v / 2704.0) / (v4 + 0.432)).ln() / 49.0
+        + (1.0 + v3 / 5929.741).ln() / 18.7;
+    let b_e = 0.564 * ((er - 0.9) / (er + 3.0)).powf(0.053);
+    let q_e = (1.0 + 10.0 / v).powf(-a_e * b_e);
+    let er_e = mean + 0.5 * (er - 1.0) * q_e;
+    let q1 = 0.8695 * ue.powf(0.194);
+    let q2 = 1.0 + 0.7519 * g + 0.189 * g.powf(2.31);
+    let q3 = 0.1975
+        + (16.6 + (8.4 / g).powi(6)).powf(-0.387)
+        + (g.powi(10) / (1.0 + (g / 3.4).powi(10))).ln() / 241.0;
+    let q4 = 2.0 * q1 / (q2 * ((-g).exp() * ue.powf(q3) + (2.0 - (-g).exp()) * ue.powf(-q3)));
+    let z_e = z0s_e * (ers_e / er_e).sqrt() / (1.0 - ers_e.sqrt() * q4 * z0s_e / ETA0);
+
+    // Odd mode.
+    let b_o = 0.747 * er / (0.15 + er);
+    let c_o = b_o - (b_o - 0.207) * (-0.414 * uo).exp();
+    let d_o = 0.593 + 0.694 * (-0.562 * uo).exp();
+    let q_o = (-c_o * g.powf(d_o)).exp();
+    let a_o = 0.7287 * (ers_o - mean) * (1.0 - (-0.179 * uo).exp());
+    let er_o = (mean + a_o - ers_o) * q_o + ers_o;
+    let q5 = 1.794 + 1.14 * (1.0 + 0.638 / (g + 0.517 * g.powf(2.43))).ln();
+    let q6 = 0.2305
+        + (g.powi(10) / (1.0 + (g / 5.8).powi(10))).ln() / 281.3
+        + (1.0 + 0.598 * g.powf(1.154)).ln() / 5.1;
+    let q7 = (10.0 + 190.0 * g * g) / (1.0 + 82.3 * g.powi(3));
+    let q8 = (-6.5 - 0.95 * g.ln() - (g / 0.15).powi(5)).exp();
+    let q9 = q7.ln() * (q8 + 1.0 / 16.5);
+    let q10 = (q2 * q4 - q5 * (uo.ln() * q6 * uo.powf(-q9)).exp()) / q2;
+    let z_o = z0s_o * (ers_o / er_o).sqrt() / (1.0 - ers_o.sqrt() * q10 * z0s_o / ETA0);
+    if ![er_e, er_o, z_e, z_o]
+        .iter()
+        .all(|x| x.is_finite() && *x > 0.0)
+    {
+        return Err(OutOfRange(
+            "coupled microstrip has no figure for this geometry".to_string(),
+        ));
+    }
+    Ok(Pair {
+        even: Line {
+            impedance: z_e,
+            epsilon_eff: er_e,
+        },
+        odd: Line {
+            impedance: z_o,
+            epsilon_eff: er_o,
+        },
+    })
+}
+
+/// [`coupled_microstrip`] under a solder mask: the mask's effect on each mode's effective
+/// permittivity and so on its impedance, as for [`coated_microstrip`] (the filling factor is a
+/// single strip's, taken for each mode: no source gives its error for a pair).
+pub fn coated_coupled_microstrip(
+    width: f64,
+    spacing: f64,
+    thickness: f64,
+    below: TrackDielectric,
+    mask: SolderMask,
+) -> Result<Pair, OutOfRange> {
+    let bare = coupled_microstrip(width, spacing, thickness, below)?;
+    let u = width / below.thickness;
+    let coat = |m: Line| -> Result<Line, OutOfRange> {
+        let eps = coated_epsilon_eff(m.epsilon_eff, u, below.thickness, mask)?;
+        Ok(Line {
+            impedance: m.impedance * (m.epsilon_eff / eps).sqrt(),
+            epsilon_eff: eps,
+        })
+    };
+    Ok(Pair {
+        even: coat(bare.even)?,
+        odd: coat(bare.odd)?,
+    })
+}
+
+/// Cohn's even and odd impedances of two strips of no thickness, `w` wide and `s` apart, centred
+/// between planes `b` apart, in a medium of εr 1.
+fn cohn_coupled_thin(w: f64, s: f64, b: f64) -> (f64, f64) {
+    let x = PI * w / (2.0 * b);
+    let y = PI * (w + s) / (2.0 * b);
+    let (ke, ko) = (x.tanh() * y.tanh(), x.tanh() / y.tanh());
+    let z = |k: f64| ETA0 / 4.0 * elliptic_k((1.0 - k * k).sqrt()) / elliptic_k(k);
+    (z(ke), z(ko))
+}
+
+/// Cohn's even and odd impedances of two strips `w` wide, `t` thick and `s` apart, centred
+/// between planes `b` apart, in a medium of εr 1 (his equations 18, 20 and 22).
+fn cohn_coupled(w: f64, s: f64, t: f64, b: f64) -> Result<(f64, f64), OutOfRange> {
+    let (ze0, zo0) = cohn_coupled_thin(w, s, b);
+    if t == 0.0 {
+        return Ok((ze0, zo0));
+    }
+    let z_thick = wheeler_centred(w, t, b)?;
+    let x = PI * w / (2.0 * b);
+    let z_thin = ETA0 / 4.0 * elliptic_k(1.0 / x.cosh()) / elliptic_k(x.tanh());
+    // The fringing capacitance of one edge, over ε, with thickness and without (Cohn 1954,
+    // equations 2 and 13 of the 1955 paper).
+    let r = 1.0 / (1.0 - t / b);
+    let cf_t = ((2.0 * r) * (r + 1.0).ln() - (r - 1.0) * (r * r - 1.0).ln()) / PI;
+    let cf_0 = 2.0 * 2.0_f64.ln() / PI;
+    let ratio = cf_t / cf_0;
+    let even = 1.0 / (1.0 / z_thick - ratio * (1.0 / z_thin - 1.0 / ze0));
+    let odd = if s / t >= 5.0 {
+        1.0 / (1.0 / z_thick + ratio * (1.0 / zo0 - 1.0 / z_thin))
+    } else {
+        1.0 / (1.0 / zo0 + (1.0 / z_thick - 1.0 / z_thin) - 2.0 / ETA0 * (cf_t - cf_0)
+            + 2.0 * t / (ETA0 * s))
+    };
+    if even.is_finite() && odd.is_finite() && even > 0.0 && odd > 0.0 {
+        Ok((even, odd))
+    } else {
+        Err(OutOfRange(
+            "coupled stripline has no figure for this geometry".to_string(),
+        ))
+    }
+}
+
+/// Two strips `width` wide and `thickness` thick, `spacing` apart, between a dielectric layer to
+/// the copper above and one to the copper below: Cohn's coupled stripline, split at the plane of
+/// the strips as [`stripline`] is (see the module's header).
+pub fn coupled_stripline(
+    width: f64,
+    spacing: f64,
+    thickness: f64,
+    above: TrackDielectric,
+    below: TrackDielectric,
+) -> Result<Pair, OutOfRange> {
+    for d in [above, below] {
+        if d.epsilon < 1.0 {
+            return Err(OutOfRange(format!(
+                "stripline needs a relative permittivity of 1 or more, not {}",
+                d.epsilon
+            )));
+        }
+    }
+    if spacing <= 0.0 {
+        return Err(OutOfRange(format!(
+            "a pair needs a spacing above 0, not {spacing} mm"
+        )));
+    }
+    let (ea, oa) = cohn_coupled(width, spacing, thickness, 2.0 * above.thickness + thickness)?;
+    let (eb, ob) = cohn_coupled(width, spacing, thickness, 2.0 * below.thickness + thickness)?;
+    let mode = |za: f64, zb: f64| {
+        let air = (1.0 / za + 1.0 / zb) / 2.0;
+        let filled = (above.epsilon / za + below.epsilon / zb) / 2.0;
+        Line {
+            impedance: 1.0 / (air * filled).sqrt(),
+            epsilon_eff: filled / air,
+        }
+    };
+    Ok(Pair {
+        even: mode(ea, eb),
+        odd: mode(oa, ob),
+    })
+}
+
+/// The width (mm) at which a track has the impedance `target` (ohm), searched between `lo` and
+/// `hi`, `impedance` being its impedance at a width.
 /// An impedance falls as a track widens, so it halves the interval; a figure outside the
 /// formula's domain at an end narrows the search to the domain.
 pub fn width_for(
     target: f64,
-    line: impl Fn(f64) -> Result<Line, OutOfRange>,
+    impedance: impl Fn(f64) -> Result<f64, OutOfRange>,
     lo: f64,
     hi: f64,
 ) -> Result<f64, OutOfRange> {
@@ -195,8 +560,8 @@ pub fn width_for(
     let inside = |mut w: f64, step: f64| -> Result<(f64, f64), OutOfRange> {
         let mut last = None;
         for _ in 0..400 {
-            match line(w) {
-                Ok(l) => return Ok((w, l.impedance)),
+            match impedance(w) {
+                Ok(z) => return Ok((w, z)),
                 Err(e) => last = Some(e),
             }
             w *= step;
@@ -213,8 +578,8 @@ pub fn width_for(
     // 60 halvings of the logarithm leave the width exact to far below a nanometre.
     for _ in 0..60 {
         let mid = (lo * hi).sqrt();
-        match line(mid) {
-            Ok(l) if l.impedance > target => lo = mid,
+        match impedance(mid) {
+            Ok(z) if z > target => lo = mid,
             Ok(_) => hi = mid,
             Err(e) => return Err(e),
         }
@@ -222,27 +587,64 @@ pub fn width_for(
     Ok((lo * hi).sqrt())
 }
 
-/// A line's figures for a track of a width (mm).
-type LineOfWidth = dyn Fn(f64) -> Result<Line, OutOfRange>;
+/// One copper layer a track may be on, from a build-up.
+struct TrackLayer {
+    name: String,
+    /// What the track is on this layer, with its reference layers and their dielectric layers.
+    what: String,
+    /// The reference layers that are not planes on this board.
+    unplaned: Vec<String>,
+    /// A track's thickness, in mm.
+    copper: f64,
+    /// The dielectric layer on an outer layer, below the track; above and below an inner one.
+    outer: Option<TrackDielectric>,
+    inner: Option<(TrackDielectric, TrackDielectric)>,
+    /// The solder mask over an outer track, if the process states it.
+    mask: Option<SolderMask>,
+}
 
-/// The `fab-notes.txt` lines of a board's track impedance: for each layer a track may be on,
-/// the width of a `target`-ohm track and the impedance of the router's `track_width` (mm). A
-/// two-layer board records no build-up (ADR 0111), so it has none.
-pub fn impedance_notes(stackup: &Stackup, track_width: f64, target: f64) -> Vec<String> {
-    let Some(inner) = &stackup.inner else {
-        return Vec::new();
-    };
+impl TrackLayer {
+    /// A single track `width` wide.
+    fn single(&self, width: f64) -> Result<Line, OutOfRange> {
+        match (self.outer, self.inner, self.mask) {
+            (Some(below), _, Some(mask)) => coated_microstrip(width, self.copper, below, mask),
+            (Some(below), _, None) => microstrip(width, self.copper, below),
+            (_, Some((above, below)), _) => stripline(width, self.copper, above, below),
+            _ => unreachable!("a layer is an outer or an inner one"),
+        }
+    }
+
+    /// An edge-coupled pair of tracks `width` wide, `spacing` apart.
+    fn pair(&self, width: f64, spacing: f64) -> Result<Pair, OutOfRange> {
+        match (self.outer, self.inner, self.mask) {
+            (Some(below), _, Some(mask)) => {
+                coated_coupled_microstrip(width, spacing, self.copper, below, mask)
+            }
+            (Some(below), _, None) => coupled_microstrip(width, spacing, self.copper, below),
+            (_, Some((above, below)), _) => {
+                coupled_stripline(width, spacing, self.copper, above, below)
+            }
+            _ => unreachable!("a layer is an outer or an inner one"),
+        }
+    }
+}
+
+/// The layers a track may be on (the outer layers and the signal layers, not the planes), from a
+/// stackup with a build-up.
+fn track_layers(stackup: &Stackup) -> Option<Vec<TrackLayer>> {
+    let inner = stackup.inner.as_ref()?;
     let n = inner.dielectrics.len() + 1;
     if n < 3 || inner.layers.len() + 2 != n {
-        return Vec::new();
+        return None;
     }
     let name = |i: usize| match i {
         0 => "F.Cu".to_string(),
         i if i == n - 1 => "B.Cu".to_string(),
         i => format!("In{i}.Cu"),
     };
-    let is_plane =
-        |i: usize| i > 0 && i < n - 1 && matches!(inner.layers[i - 1], InnerUse::Plane(_));
+    let planes: Vec<bool> = (0..n)
+        .map(|i| i > 0 && i < n - 1 && matches!(inner.layers[i - 1], InnerUse::Plane(_)))
+        .collect();
     let describe = |d: &DielectricLayer| {
         if !d.plies.is_empty() {
             let plies: Vec<String> = d
@@ -275,67 +677,233 @@ pub fn impedance_notes(stackup: &Stackup, track_width: f64, target: f64) -> Vec<
         thickness: inner.dielectrics[i].thickness,
         epsilon: inner.dielectrics[i].epsilon,
     };
-    let outer = stackup.copper_weight * OUNCE_OF_COPPER;
-    let mut lines = vec![format!(
-        "track impedance: from build-up {}, the width of a {target} ohm track and the impedance of the router's {track_width} mm track, by quasi-static closed forms (Hammerstad and Jensen 1980 for microstrip, Wheeler 1978 for stripline; netsmith_pcb::impedance). The solder mask is not counted and lowers an outer track's impedance; an inner track between two different dielectric layers is an approximation of unstated error. The board is not ordered with impedance control: for a controlled board, check JLCPCB's impedance calculator and order it",
-        inner.build
-    )];
+    let not_planes = |refs: &[usize]| -> Vec<String> {
+        refs.iter()
+            .filter(|&&r| !planes[r])
+            .map(|&r| name(r))
+            .collect()
+    };
+    let outer = inner
+        .outer_copper
+        .unwrap_or(stackup.copper_weight * OUNCE_OF_COPPER);
+    let mut layers = Vec::new();
     for i in 0..n {
-        if is_plane(i) {
+        if planes[i] {
             continue;
         }
-        let (what, refs, line): (String, Vec<usize>, Box<LineOfWidth>) = if i == 0 || i == n - 1 {
+        layers.push(if i == 0 || i == n - 1 {
             let (r, d) = if i == 0 { (1, 0) } else { (n - 2, n - 2) };
-            let below = dielectric(d);
-            (
-                format!(
+            TrackLayer {
+                name: name(i),
+                what: format!(
                     "microstrip over {} ({})",
                     name(r),
                     describe(&inner.dielectrics[d])
                 ),
-                vec![r],
-                Box::new(move |w| microstrip(w, outer, below)),
-            )
+                unplaned: not_planes(&[r]),
+                copper: outer,
+                outer: Some(dielectric(d)),
+                inner: None,
+                mask: inner.mask,
+            }
         } else {
-            let (above, below) = (dielectric(i - 1), dielectric(i));
-            let t = inner.copper;
-            (
-                format!(
+            TrackLayer {
+                name: name(i),
+                what: format!(
                     "stripline between {} ({}) and {} ({})",
                     name(i - 1),
                     describe(&inner.dielectrics[i - 1]),
                     name(i + 1),
                     describe(&inner.dielectrics[i])
                 ),
-                vec![i - 1, i + 1],
-                Box::new(move |w| stripline(w, t, above, below)),
-            )
-        };
-        let width = match width_for(target, &line, 0.001, 20.0) {
+                unplaned: not_planes(&[i - 1, i + 1]),
+                copper: inner.copper,
+                outer: None,
+                inner: Some((dielectric(i - 1), dielectric(i))),
+                mask: None,
+            }
+        });
+    }
+    Some(layers)
+}
+
+/// The caveat of a track layer whose reference layers are not all planes.
+fn unplaned(layer: &TrackLayer) -> String {
+    if layer.unplaned.is_empty() {
+        String::new()
+    } else {
+        format!(
+            "; {} is not a plane on this board, so the figures hold only where a plane or a pour is there",
+            layer.unplaned.join(" and ")
+        )
+    }
+}
+
+/// How far from a target JLCPCB's impedance test passes a board, as a fraction: a 50 ohm target
+/// passes between 45 and 55 ohm and a 100 ohm differential pair between 90 and 110 ohm
+/// (<https://jlcpcb.com/blog/pcb-impedance-testing>, read 2026-11-16).
+pub const TEST_TOLERANCE: f64 = 0.10;
+
+/// The `fab-notes.txt` lines of a board's track impedance: for each layer a track may be on,
+/// the width of a `target`-ohm track and the impedance of the router's `track_width` (mm). A
+/// two-layer board records no build-up (ADR 0111), so it has none.
+pub fn impedance_notes(stackup: &Stackup, track_width: f64, target: f64) -> Vec<String> {
+    let Some(layers) = track_layers(stackup) else {
+        return Vec::new();
+    };
+    let inner = stackup.inner.as_ref().expect("a build-up");
+    let mask = match inner.mask {
+        Some(m) => format!(
+            "The solder mask over an outer track is counted ({} mm of er {}, JLCPCB's calculator parameters), as is the copper thickness of that calculator; an inner track between two different dielectric layers is an approximation of unstated error",
+            m.thickness, m.epsilon
+        ),
+        None => "The solder mask is not counted and lowers an outer track's impedance; an inner track between two different dielectric layers is an approximation of unstated error".to_string(),
+    };
+    let mut lines = vec![format!(
+        "track impedance: from build-up {}, the width of a {target} ohm track and the impedance of the router's {track_width} mm track, by quasi-static closed forms (Hammerstad and Jensen 1980 for microstrip, Wheeler 1978 for stripline; netsmith_pcb::impedance). {mask}. The board is not ordered with impedance control: for a controlled board, check JLCPCB's impedance calculator and order it",
+        inner.build
+    )];
+    for layer in &layers {
+        let width = match width_for(
+            target,
+            |w| layer.single(w).map(|l| l.impedance),
+            0.001,
+            20.0,
+        ) {
             Ok(w) => format!("a {target} ohm track is {:.3} mm wide", w),
             Err(e) => format!("no width for {target} ohm: {e}"),
         };
-        let router = match line(track_width) {
+        let router = match layer.single(track_width) {
             Ok(l) => format!(
                 "the router's {track_width} mm track is {:.1} ohm",
                 l.impedance
             ),
             Err(e) => format!("the router's {track_width} mm track has no figure: {e}"),
         };
-        let unplaned: Vec<String> = refs
-            .iter()
-            .filter(|&&r| !is_plane(r))
-            .map(|&r| name(r))
-            .collect();
-        let caveat = if unplaned.is_empty() {
-            String::new()
-        } else {
-            format!(
-                "; {} is not a plane on this board, so the figures hold only where a plane or a pour is there",
-                unplaned.join(" and ")
-            )
+        lines.push(format!(
+            "  {}: {}: {width}; {router}{}",
+            layer.name,
+            layer.what,
+            unplaned(layer)
+        ));
+    }
+    lines
+}
+
+use netsmith_core::ImpedanceTarget;
+
+/// The impedance of a track of `width` mm on the layer named `layer` (`F.Cu`, `In1.Cu`...) of a
+/// board with a build-up: a single track's, or, given the `spacing` between the two tracks (mm,
+/// edge to edge), the differential impedance of an edge-coupled pair. Refused where the layer
+/// is not one a track may be on (a plane, or a board with no build-up) or the geometry is
+/// outside a formula's domain.
+pub fn impedance_at(
+    stackup: &Stackup,
+    layer: &str,
+    width: f64,
+    spacing: Option<f64>,
+) -> Result<f64, OutOfRange> {
+    let layers = track_layers(stackup).ok_or_else(|| {
+        OutOfRange("the board records no build-up, so its tracks have no impedance".to_string())
+    })?;
+    let layer = layers.iter().find(|l| l.name == layer).ok_or_else(|| {
+        OutOfRange(format!(
+            "`{layer}` is not a layer a track may be on in this build-up"
+        ))
+    })?;
+    match spacing {
+        None => layer.single(width).map(|l| l.impedance),
+        Some(s) => layer.pair(width, s).map(|p| p.differential()),
+    }
+}
+
+/// `ok` or the figure's distance from a target, for a line: within JLCPCB's test tolerance or
+/// not.
+fn against(target: f64, got: f64) -> String {
+    let off = (got - target) / target;
+    if off.abs() <= TEST_TOLERANCE {
+        format!(
+            "{:+.0} %, within JLCPCB's test tolerance of 10 %",
+            off * 100.0
+        )
+    } else {
+        format!(
+            "{:+.0} %, outside JLCPCB's test tolerance of 10 %",
+            off * 100.0
+        )
+    }
+}
+
+/// The `fab-notes.txt` lines for the impedance a design states for some nets: for each target
+/// and each layer a track may be on, the width that gives it and the impedance of the tracks
+/// the router draws (`width_on(net, layer name)`, mm). A two-layer board records no build-up,
+/// so it has none.
+pub fn target_notes(
+    stackup: &Stackup,
+    targets: &[ImpedanceTarget],
+    width_on: &dyn Fn(&str, &str) -> f64,
+) -> Vec<String> {
+    let Some(layers) = track_layers(stackup) else {
+        return Vec::new();
+    };
+    let mut lines = Vec::new();
+    for t in targets {
+        let nets: Vec<String> = t.nets.iter().map(|n| format!("`{n}`")).collect();
+        let header = match t.spacing {
+            None => format!(
+                "track impedance target: net {} ({}), {} ohm single-ended",
+                nets.join(""),
+                t.path,
+                t.ohms
+            ),
+            Some(s) => format!(
+                "track impedance target: nets {} ({}), {} ohm differential, the tracks {s} mm apart (edge to edge)",
+                nets.join(" and "),
+                t.path,
+                t.ohms
+            ),
         };
-        lines.push(format!("  {}: {what}: {width}; {router}{caveat}", name(i)));
+        lines.push(header);
+        for layer in &layers {
+            let drawn = width_on(&t.nets[0], &layer.name);
+            let (width, router) = match t.spacing {
+                None => (
+                    width_for(
+                        t.ohms,
+                        |w| layer.single(w).map(|l| l.impedance),
+                        0.001,
+                        20.0,
+                    ),
+                    layer.single(drawn).map(|l| l.impedance),
+                ),
+                Some(s) => (
+                    width_for(
+                        t.ohms,
+                        |w| layer.pair(w, s).map(|p| p.differential()),
+                        0.001,
+                        20.0,
+                    ),
+                    layer.pair(drawn, s).map(|p| p.differential()),
+                ),
+            };
+            let width = match width {
+                Ok(w) => format!("{:.3} mm wide tracks give {} ohm", w, t.ohms),
+                Err(e) => format!("no width for {} ohm: {e}", t.ohms),
+            };
+            let router = match router {
+                Ok(z) => format!(
+                    "the {drawn} mm tracks the router draws give {z:.1} ohm ({})",
+                    against(t.ohms, z)
+                ),
+                Err(e) => format!("the {drawn} mm tracks the router draws have no figure: {e}"),
+            };
+            lines.push(format!(
+                "  {}: {}: {width}; {router}{}",
+                layer.name,
+                layer.what,
+                unplaned(layer)
+            ));
+        }
     }
     lines
 }

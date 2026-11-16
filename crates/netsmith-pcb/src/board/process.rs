@@ -328,11 +328,21 @@ impl Board {
             self.rules.track_width,
             IMPEDANCE_TARGET,
         ));
+        // What the design states for some nets (issue #1007), at the widths the router draws.
+        extras.extend(crate::impedance::target_notes(
+            &self.process.stackup,
+            &self.impedance_targets,
+            &|net, layer| match CopperLayer::of_name(layer) {
+                Some(l) => self.track_width_on(net, l),
+                None => self.track_width(net),
+            },
+        ));
         extras
     }
 }
 
 /// The impedance `fab-notes.txt` gives a track's width for, in ohms: the usual impedance of a
 /// single-ended line (an RF receptacle's `.impedance`, a coaxial cable). A board states no
-/// target yet; how it will is left until these figures exist (issue #759).
+/// target here: a design that states one (a `TrackImpedance` or a `PairImpedance`, issue
+/// #1007) gets its own lines.
 const IMPEDANCE_TARGET: f64 = 50.0;

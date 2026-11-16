@@ -710,6 +710,32 @@ fn a_four_layer_process_arrives_with_its_planes_and_build_up() {
     assert_eq!(inner.hole_clearance, 0.3);
 }
 
+#[test]
+fn jlcpcbs_impedance_calculator_parameters_arrive_with_a_multilayer_process() {
+    // "Calculation Parameters Used" of JLCPCB's impedance calculator guide: outer copper 1.6
+    // mil, the mask above the substrate 1.2 mil, its permittivity 3.8 (issue #1007).
+    for source in [FOUR_LAYER, SIX_LAYER] {
+        let inner = designed(source)
+            .unwrap()
+            .process
+            .unwrap()
+            .stackup
+            .inner
+            .unwrap();
+        assert_eq!(inner.outer_copper, Some(0.04064));
+        assert_eq!(
+            inner.mask,
+            Some(netsmith_core::SolderMask {
+                thickness: 0.03048,
+                epsilon: 3.8
+            })
+        );
+    }
+    // A process that states none of it (ACME's, which is not a real fabricator) has none.
+    let acme = designed(TEN_LAYER).unwrap().process.unwrap().stackup.inner.unwrap();
+    assert_eq!((acme.outer_copper, acme.mask), (None, None));
+}
+
 fn prepreg(glass: &str, thickness: f64, epsilon: f64) -> DielectricLayer {
     DielectricLayer::single(false, glass.into(), thickness, epsilon)
 }

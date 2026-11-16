@@ -28,7 +28,7 @@ Rules.
 - A board with no `process` builds and views as a schematic. `fab` stops and says to add `import std::mfg::jlcpcb::TwoLayer` and `.process: TwoLayer`. There is no default.
 - `.max_temperature_rise` is the rise in kelvin that the track width check designs to (see Track width against current). The process leaves it unstated and it is 10 K when the board does too: `.process.max_temperature_rise &= 20K`.
 - `std::mfg::jlcpcb::FourLayer` has two inner layers and `std::mfg::jlcpcb::SixLayer` four (`.inner1` to `.inner4`, counted from the top). The board says what each is (ADR 0111). A plane is one sheet of copper on a net, and the board names the net: `.process.inner1.net &= "GND"`. A signal layer names no net: `.process.inner2.use &= "signal"`. The router draws tracks on it as on the outer layers, and a line changes layer through a via, which goes through every layer (blind and buried vias are not drawn); a net with a known current (see Load current) is drawn on a signal layer at the width its current needs in the thinner inner copper, which is wider than outside (see "Track width from current" in The shape of a board). `netsmith routes add-track --layer inner2` and the editor's track tool draw on a signal layer too; a plane holds no track. A track on a signal layer keeps the process's space between inner copper and a hole (0.3 mm on JLCPCB) from every hole. A signal layer is written to the board file as a signal layer, plotted as an inner copper Gerber and checked like the outer layers. An inner layer that is neither is an error, and so is a plane on a net the board does not have. See `examples/four_layer.nsm` and `examples/six_layer.nsm`. A board that says nothing is made 1.6 mm thick, in the build-up `JLC04161H-7628` (four layers) or `JLC06161H-3313` (six); `fab-notes.txt` names the build-up and says what each inner layer is. Both are generics, as `TwoLayer` is, with a provider for the page's default build-up of each of 0.8, 1.0, 1.2, 1.6 and 2.0 mm (`JlcFourLayerD04121H7628` is `JLC04121H-7628`: a letter that orders the providers, then the build-up's name, see the doc comment of `FourLayer`): `.process.stackup.thickness &= 1.2mm` makes the board 1.2 mm thick, in that build-up, and `.process.stackup.build &= "JLC04121H-7628"` asks for a build-up by its name. The page lists many more build-ups (other prepregs, several sheets between two copper layers, a core with no copper between sheets). Each is a provider in `std/mfg/jlcpcb_buildups.nsm`, named for the build-up (`JLC04161H-7628C` is `JlcFourLayer04161H7628C`), and a board names it as the type of its process after importing it, as in the example below; nothing is searched then. They are in a file of their own because each provider a board reaches is one more choice of the provider search (Generics and providers), so a board that does not import the file never tries them, and asking for one of them by `.stackup.build` without importing the file is told that no provider has it. A dielectric layer of several sheets is stated ply by ply, from the top (`.stackup.dielectric1.ply1` to `.ply4`, each a `DielectricPly` with the fields of a one-sheet layer); the board file lists each ply as a sublayer of the layer, and the track impedance reads the layer as one dielectric, the plies' thicknesses added and their permittivities taken in series. The doc comment of `std/mfg/jlcpcb_buildups.nsm` says which of the page's build-ups are left out and why. JLCPCB's pages give no build-up of 8 or 10 layers, so std has no JLCPCB process for them; see the fictional fabricator below.
-- A board with a build-up gets its track impedance in `fab-notes.txt` (issue #759): for each layer a track may be on (the outer layers and the signal layers, not the planes), the width of a 50 ohm track and the impedance of the router's track width, worked out from the build-up's dielectric layers, their thickness and relative permittivity, and the copper's thickness. An outer track is a microstrip over the next copper layer (Hammerstad and Jensen, 1980) and an inner one a stripline between the copper above and below (Wheeler, 1978); the doc comment of `netsmith_pcb::impedance` names the sources and the accuracy each states. A figure outside a formula's domain is refused with the reason, never extrapolated. The figures leave out the solder mask, which lowers an outer track's impedance, and an inner track between a prepreg and a core is an approximation of unstated error; a line says when a layer beside a track is not a plane. A two-layer process records no build-up, so its board has no lines. Nothing in a board states a target impedance yet, and the router does not size tracks from one: the lines are for a person who will order impedance control, to compare with the fabricator's own calculator.
+- A board with a build-up gets its track impedance in `fab-notes.txt` (issues #759 and #1007): for each layer a track may be on (the outer layers and the signal layers, not the planes), the width of a 50 ohm track and the impedance of the router's track width, worked out from the build-up's dielectric layers, their thickness and relative permittivity, and the copper's thickness. An outer track is a microstrip over the next copper layer (Hammerstad and Jensen, 1980) and an inner one a stripline between the copper above and below (Wheeler, 1978); the doc comment of `netsmith_pcb::impedance` names the sources and the accuracy each states. A figure outside a formula's domain is refused with the reason, never extrapolated. An outer track is counted under the solder mask where the process states JLCPCB's calculator parameters (`.stackup.impedance_mask_thickness`, 1.2 mil, and `.stackup.impedance_mask_epsilon`, 3.8, from "Calculation Parameters Used" in its calculator's user guide, read 2026-11-16), with the copper thickness that calculator uses (`.stackup.impedance_outer_copper`, 1.6 mil); a process that states none, as ACME's does not, is counted without a mask, and the header line says which. An inner track between a prepreg and a core is an approximation of unstated error, and so is the mask's effect (JLCPCB's blog says a mask alone lowers a track by about 1 to 3 ohm, which the tests hold the figure to); a line says when a layer beside a track is not a plane. A two-layer process records no build-up, so its board has no lines. The lines are for a person who will order impedance control, to compare with the fabricator's own calculator. `data/jlcpcb/impedance_calculator.csv` has eight widths that JLCPCB's calculator gave on 2026-11-16 (single tracks and pairs, outer and inner layers, the four-layer 7628 and six-layer 3313 build-ups) and a test holds this calculator's impedance at each width within 5 % of the target for a single track and 8 % for a pair (it shows 4 % and 6 %; JLCPCB's own test passes a board within 10 %). The calculator's own method is not published, so the figures can differ by that much.
 
 Fiducials and test points are parts of `std::parts::mechanical` (`#[kind(fiducial)]`, `#[kind(test_point)]`), and the rules above judge them where the placer puts them. A fiducial is physical intent, so a board declares it in the `case { }` section of its physical file (`.fid1: Fiducial`, chapter 23), and the placer puts it in a corner of the outline with its copper `.min_fiducial_edge` from the edge, growing a board with no stated size to hold it. A test point is in the circuit. A board narrows a rule for margin, here the space of its test point to the board edge:
 
@@ -255,3 +255,57 @@ board Hasl {
 ```text
 error: Hasl: `process.finish` is `HASL lead-free`, but a `SixLayer` board is made with one of: `ENIG`, `OSP`
 ```
+
+### Impedance targets
+
+A design states the impedance of the tracks of a net with a `TrackImpedance` of `std::sources` (issue #1007): one pin, `.line`, that `~` joins to the pin or net the track is on, and `.impedance`, the target from the track to its reference layer, one value. An edge-coupled differential pair is a `PairImpedance`: the pins `.p` and `.n` joined to the pair's two nets, `.impedance`, the target between the two tracks, and `.spacing`, the space between the tracks edge to edge, which the figure needs because the width that gives a differential impedance depends on it (the width of a pair is the width of each track). It is a field of a std interface, as a rail's `.min_track` is, so it adds no syntax and a module carries it out through its interface.
+
+```nsm solve
+import std::parts::connector::Header1x2
+import std::mfg::jlcpcb::SixLayer
+import std::sources::{PairImpedance, TrackImpedance}
+
+board Antenna {
+    .process: SixLayer {
+        .inner1.net &= "GND"
+        .inner2.use &= "signal"
+        .inner3.use &= "signal"
+        .inner4.net &= "3V3"
+    }
+    .rf: Header1x2
+    .rf.p1.net &= "RF"
+    .rf.p2.net &= "GND"
+    .usb: Header1x2
+    .usb.p1.net &= "USB_P"
+    .usb.p2.net &= "USB_N"
+    .power: Header1x2
+    .power.p1.net &= "3V3"
+    .power.p2.net &= "GND"
+    /// The antenna line is a 50 ohm track.
+    .rf_line: TrackImpedance {
+        .impedance &= 50ohm
+    }
+    .rf_line.line ~ .rf.p1
+    /// USB 2.0's data pair is 90 ohm between its tracks, which are 0.15 mm apart.
+    .usb_pair: PairImpedance {
+        .impedance &= 90ohm
+        .spacing &= 0.15mm
+    }
+    .usb_pair.p ~ .usb.p1
+    .usb_pair.n ~ .usb.p2
+}
+```
+
+`fab-notes.txt` then has, for each target and each layer a track may be on, the width that gives it (from the build-up, as above) and the impedance of the width the router draws for the net there (this block is not run by the guide test, and `...` stands for the lines of the other layers):
+
+```text
+track impedance target: net `RF` (rf_line), 50 ohm single-ended
+  F.Cu: microstrip over In1.Cu (0.0994 mm of 3313 prepreg, er 4.1): 0.156 mm wide tracks give 50 ohm; the 0.09 mm tracks the router draws give 62.0 ohm (+24 %, outside JLCPCB's test tolerance of 10 %)
+  In2.Cu: stripline between In1.Cu (0.55 mm of core, er 4.6) and In3.Cu (0.1088 mm of 2116 prepreg, er 4.16): 0.153 mm wide tracks give 50 ohm; the 0.09 mm tracks the router draws give 63.0 ohm (+26 %, outside JLCPCB's test tolerance of 10 %); In3.Cu is not a plane on this board, so the figures hold only where a plane or a pour is there
+  ...
+track impedance target: nets `USB_P` and `USB_N` (usb_pair), 90 ohm differential, the tracks 0.15 mm apart (edge to edge)
+  F.Cu: microstrip over In1.Cu (0.0994 mm of 3313 prepreg, er 4.1): 0.156 mm wide tracks give 90 ohm; the 0.09 mm tracks the router draws give 110.0 ohm (+22 %, outside JLCPCB's test tolerance of 10 %)
+  ...
+```
+
+Each line says whether the router's width is within 10 % of the target, which is how JLCPCB's impedance test passes a board (its blog: a 50 ohm target passes between 45 and 55 ohm, a 100 ohm differential pair between 90 and 110 ohm, read 2026-11-16). A target states what is wanted and sizes nothing: the router draws the net at its own width (a rail's `.min_track` on it, or the process's least), and the pair is found by the names of its nets, as before, so a pair that the names do not say is a pair is routed as two nets. A differential pair's figure uses the same approximations as a single track's and one more: the even and odd modes of Kirschning and Jansen (outer layers) and of Cohn (inner layers, checked against a numerical solution in the tests), with the solder mask's effect taken for each mode as for a single track and the strip thickness counted once in the width each mode sees; the doc comment of `netsmith_pcb::impedance` says what each source states and where this departs from it. A `.impedance` that is a range, a pair with no `.spacing`, a pin on no net, and a pair whose two pins are on one net are errors that say what to write. A two-layer board records no build-up, so its targets have no lines.

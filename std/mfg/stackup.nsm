@@ -31,6 +31,20 @@ interface Stackup {
     .dielectric7: DielectricLayer
     .dielectric8: DielectricLayer
     .dielectric9: DielectricLayer
+
+    // What the fabricator's impedance calculator puts over and into an outer track (issue
+    // #1007). A process states them where its calculator's page does and leaves them out
+    // otherwise; a process that states none gets the track impedance of its outer layers
+    // without a solder mask and with the copper weight's nominal thickness.
+
+    /// The solder mask over the dielectric layer, beside an outer track: JLCPCB's "coating
+    /// above substrate".
+    .impedance_mask_thickness: Length optional
+    /// The relative permittivity of the solder mask.
+    .impedance_mask_epsilon: Number optional
+    /// The thickness the calculator gives an outer track's copper, which is the finished
+    /// copper with its plating, and not the nominal thickness of the copper weight.
+    .impedance_outer_copper: Length optional
 }
 
 /// One dielectric layer of a build-up, the dielectric between two copper layers, as the
