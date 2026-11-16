@@ -70,7 +70,7 @@ fn every_gerber_of_the_board_loads_in_the_rasteriser_and_has_something_on_it() {
     assert!(
         p.notes
             .iter()
-            .any(|n| n.contains("`\u{e9}`") && n.contains("F.SilkS")),
+            .any(|n| n.contains("`\u{4e2d}`") && n.contains("F.SilkS")),
         "{:?}",
         p.notes
     );
