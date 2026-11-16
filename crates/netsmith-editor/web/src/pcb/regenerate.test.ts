@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { inModule, moduleOf, moduleOfAll, totalLine } from './regenerate';
+import { inModule, moduleOf, moduleOfAll, moduleRows, totalLine } from './regenerate';
 
 describe('the module of a selection', () => {
   it('is the path less its last word', () => {
@@ -31,5 +31,31 @@ describe('a total before and after', () => {
     expect(totalLine('ratsnest', 34.41, 31.73, ' mm')).toBe('ratsnest 34.41 → 31.73 mm (−2.68)');
     expect(totalLine('crossings', 1, 2, '')).toBe('crossings 1 → 2 (+1)');
     expect(totalLine('crossings', 1, 1, '')).toBe('crossings 1 → 1 (no change)');
+  });
+});
+
+describe('the tree of a board\'s modules', () => {
+  it('nests every module the parts are in, with the parts in each', () => {
+    const rows = moduleRows(['r1', 'a.led', 'a.r', 'stage.bank[0]', 'stage.bank[1]', 'stage.in.c', 'b.led']);
+    expect(rows.map((r) => [r.path, r.label, r.depth, r.parts])).toEqual([
+      ['a', 'a', 0, 2],
+      ['b', 'b', 0, 1],
+      ['stage', 'stage', 0, 3],
+      ['stage.bank', 'bank', 1, 2],
+      ['stage.in', 'in', 1, 1],
+    ]);
+  });
+
+  it('puts the elements of an array of modules under the array, in their order', () => {
+    const paths = ['ch[10].r', 'ch[2].r', 'ch[2].led'];
+    expect(moduleRows(paths).map((r) => [r.label, r.depth, r.parts])).toEqual([
+      ['ch', 0, 3],
+      ['[2]', 1, 2],
+      ['[10]', 1, 1],
+    ]);
+  });
+
+  it('is empty for a board with parts of its own only', () => {
+    expect(moduleRows(['r1', 'c1'])).toEqual([]);
   });
 });

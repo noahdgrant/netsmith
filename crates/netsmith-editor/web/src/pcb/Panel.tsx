@@ -35,7 +35,7 @@ import {
   toggleRequired,
 } from './actions';
 import type { Drawing } from './drawing';
-import { moduleOfAll, totalsLines } from './regenerate';
+import { type ModuleRow, inModule, moduleOfAll, moduleRows, totalsLines } from './regenerate';
 import { faceWord } from './side';
 import { isRequired, rangeText } from './windows';
 
@@ -55,8 +55,11 @@ export function Panel(props: {
   const keepout = sc.keepouts.find((k) => k.name === pickedKeepout.value) ?? null;
   const route = pickedRoute.value;
   const record = route ? sc.routes.find((n) => n.net === route.net) ?? null : null;
+  const modules = moduleRows(sc.parts.map((p) => p.path));
   const tabs = [
     { id: 'parts', label: `Parts (${sc.parts.length})` },
+    // The modules the board's parts are in, as a tree: one is picked and regenerated from here.
+    ...(modules.length > 0 ? [{ id: 'modules', label: `Modules (${modules.length})` }] : []),
     { id: 'nets', label: `Nets (${props.drawing.nets.length})` },
     // The routes file's records, when it has some for this board.
     ...(sc.routes.length > 0 ? [{ id: 'routes', label: `Routes (${sc.routes.length})` }] : []),
@@ -76,6 +79,7 @@ export function Panel(props: {
         ))}
       </div>
       {props.tab === 'parts' && <PartList scene={sc} onFocus={props.onFocus} />}
+      {props.tab === 'modules' && <ModuleList scene={sc} rows={modules} onFocus={props.onFocus} />}
       {props.tab === 'routes' && <RouteList scene={sc} onFocus={props.onFocus} />}
       {props.tab === 'nets' && (
         <NetList drawing={props.drawing} picked={props.picked} onPick={props.onPickNet} onHover={props.onHoverNet} />
@@ -132,6 +136,66 @@ function PartList(props: { scene: PcbScene; onFocus: (box: PcbBox) => void }) {
       </div>
     </>
   );
+}
+
+/** The tree of the board's modules: a click picks the parts of one (and shows them), and its button proposes to
+ * place them again, as "Regenerate" does for the parts picked on the board. */
+function ModuleList(props: { scene: PcbScene; rows: ModuleRow[]; onFocus: (box: PcbBox) => void }) {
+  const sc = props.scene;
+  const shown = proposal.value?.board === sc.board ? proposal.value.answer.module : null;
+  const partsOf = (m: string) => sc.parts.filter((p) => inModule(p.path, m));
+  const picked = (m: string) => {
+    const mine = partsOf(m).map((p) => p.path);
+    return mine.length > 0 && mine.length === selection.value.length && mine.every((p) => selection.value.includes(p));
+  };
+  return (
+    <div class="rows" data-testid="module-tree" role="tree" aria-label="Modules">
+      {props.rows.map((r) => (
+        <div
+          key={r.path}
+          role="treeitem"
+          aria-level={r.depth + 1}
+          aria-selected={picked(r.path)}
+          class={`row module-row ${picked(r.path) ? 'sel' : ''} ${shown === r.path ? 'proposed' : ''}`}
+          data-module={r.path}
+          style={{ paddingLeft: `${0.75 + r.depth * 0.875}rem` }}
+          title={r.path}
+          onClick={() => {
+            const mine = partsOf(r.path);
+            select(mine.map((p) => p.path));
+            const box = around(mine.map((p) => p.courtyard));
+            if (box) props.onFocus(box);
+          }}
+        >
+          <Icon name="module" size={13} class="module-icon" />
+          <b class="ref">{r.label}</b>
+          <span class="faint kind">{`${r.parts} part${r.parts === 1 ? '' : 's'}`}</span>
+          <button
+            class="icon-btn regen-module"
+            data-testid="regen-module"
+            aria-label={`Regenerate ${r.path}`}
+            title={`Regenerate ${r.path}: place its parts again with every other part held, and show the result before anything is written`}
+            onClick={(e) => {
+              e.stopPropagation();
+              void propose(r.path, 0);
+            }}
+          >
+            <Icon name="refresh" size={13} />
+          </button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** The box round several boxes; null for none. */
+function around(boxes: PcbBox[]): PcbBox | null {
+  if (boxes.length === 0) return null;
+  const x0 = Math.min(...boxes.map((b) => b.x));
+  const y0 = Math.min(...boxes.map((b) => b.y));
+  const x1 = Math.max(...boxes.map((b) => b.x + b.width));
+  const y1 = Math.max(...boxes.map((b) => b.y + b.height));
+  return { x: x0, y: y0, width: x1 - x0, height: y1 - y0 };
 }
 
 /** What a keepout in the list says: what it forbids, and the height it allows where it states one. */

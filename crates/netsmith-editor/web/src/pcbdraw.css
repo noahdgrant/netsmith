@@ -177,3 +177,13 @@
 .net-row .swatch { width: 0.5rem; height: 0.5rem; border-radius: 50%; border: 1.5px solid var(--text-faint); background: transparent; }
 .net-row .swatch.plane { border-style: dashed; border-radius: 2px; }
 .net-row.sel .swatch { border-color: var(--sel); }
+
+/* The tree of the board's modules (Modules tab): a row picks a module's parts, its button regenerates it. */
+.module-row { display: flex; align-items: center; gap: 0.5rem; min-height: var(--ctl); padding-right: 0.25rem; cursor: pointer; font-size: var(--fs-sm); }
+.module-row:hover { background: var(--hover); }
+.module-row.sel { background: var(--pick); box-shadow: inset 2px 0 0 var(--pcb-select); }
+.module-row .ref { font-family: var(--mono); font-weight: 500; }
+.module-row .kind { margin-left: auto; font-size: var(--fs-xs); }
+.module-row .module-icon { color: var(--text-muted); flex: none; }
+.module-row.proposed .ref { color: var(--accent); }
+.module-row .regen-module { width: 1.5rem; height: 1.5rem; }
