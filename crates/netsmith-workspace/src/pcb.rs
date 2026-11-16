@@ -132,6 +132,10 @@ pub struct Entry {
     /// The board's fit in its case models (ADR 0109), measured when it is placed: routing does
     /// not move a part, so it stays.
     case_findings: Vec<PcbFinding>,
+    /// Where the placer refused the layout file and the board is shown where it ended (issue
+    /// #779): that it was refused and the lines and locks that cannot all hold. Empty for a
+    /// board that was placed.
+    refusal: Vec<PcbFinding>,
     /// The board as placed, before the routes file's copper is put on it: what a change to the
     /// routes file is made and checked on, as `netsmith routes` does.
     placed: Board,
@@ -323,32 +327,52 @@ pub fn place_with(
 ) -> Result<Entry, PlaceError> {
     let other = |e: ApiError| PlaceError::Other(e);
     let libraries = data.libraries().map_err(other)?;
-    let board = netsmith_fabricate::layout::place(
+    let placed = netsmith_fabricate::layout::place(
         &data.built.design,
         layout.as_ref(),
         libraries,
         data.constraints_warn,
         data.place_seeds,
-    )
-    .map_err(|e| match e {
-        netsmith_fabricate::layout::PlaceFailure::Board(netsmith_pcb::BoardError::Unplaceable(
-            found,
-        )) => PlaceError::Unplaceable(name.to_string(), found),
-        netsmith_fabricate::layout::PlaceFailure::Board(e) => {
-            PlaceError::Other(board_error(name, &e))
-        }
-        netsmith_fabricate::layout::PlaceFailure::Layout(e) => {
-            PlaceError::Layout(format!("{name}: {e}"))
-        }
-        failure @ netsmith_fabricate::layout::PlaceFailure::Unplaced { .. } => {
-            PlaceError::Other(ApiError::unprocessable(
-                format!("{name}: {}", failure.message()),
-                "does_not_fit",
-                &[("board", name)],
-            ))
-        }
-    })?
-    .board;
+    );
+    // A layout file the placer cannot keep (two locks that overlap, locks that leave the free
+    // parts no room) is shown where the placer ended, with its findings, and not refused: the
+    // person who dragged a part there sees what is wrong (issue #779).
+    if let Err(failure) = &placed
+        && let Some(ended) = netsmith_fabricate::layout::where_ended(
+            &data.built.design,
+            layout.as_ref(),
+            libraries,
+            data.constraints_warn,
+            failure,
+        )
+    {
+        let explained = ended.explain(&data.built.design);
+        let refusal =
+            findings::refusal_findings(&ended.board, &failure.message(), &explained.proofs);
+        let mut entry = Entry::with_routes(data, name, ended.board, layout, layout_stamp)?;
+        entry.refusal = refusal;
+        return Ok(entry);
+    }
+    let board = placed
+        .map_err(|e| match e {
+            netsmith_fabricate::layout::PlaceFailure::Board(
+                netsmith_pcb::BoardError::Unplaceable(found),
+            ) => PlaceError::Unplaceable(name.to_string(), found),
+            netsmith_fabricate::layout::PlaceFailure::Board(e) => {
+                PlaceError::Other(board_error(name, &e))
+            }
+            netsmith_fabricate::layout::PlaceFailure::Layout(e) => {
+                PlaceError::Layout(format!("{name}: {e}"))
+            }
+            failure @ netsmith_fabricate::layout::PlaceFailure::Unplaced { .. } => {
+                PlaceError::Other(ApiError::unprocessable(
+                    format!("{name}: {}", failure.message()),
+                    "does_not_fit",
+                    &[("board", name)],
+                ))
+            }
+        })?
+        .board;
     Entry::with_routes(data, name, board, layout, layout_stamp)
 }
 
@@ -390,6 +414,7 @@ impl Entry {
         };
         Ok(Entry {
             case_findings,
+            refusal: Vec::new(),
             board,
             routed: false,
             stopped: false,
@@ -417,13 +442,15 @@ impl Entry {
     /// The entry again with the routes file as it is now, the board as placed and unrouted: what
     /// the view shows once a change to the routes file is written.
     pub fn routes_changed(&self, data: &BoardData, name: &str) -> Result<Entry, PlaceError> {
-        Entry::with_routes(
+        let mut entry = Entry::with_routes(
             data,
             name,
             self.placed.clone(),
             self.layout.clone(),
             self.layout_stamp.clone(),
-        )
+        )?;
+        entry.refusal = self.refusal.clone();
+        Ok(entry)
     }
 
     /// The board as placed with no copper on it.
@@ -610,6 +637,7 @@ impl Entry {
     /// if it was asked for.
     pub fn findings(&self, name: &str) -> PcbFindings {
         let mut all = findings::placement_findings(&self.board);
+        all.extend(self.refusal.iter().cloned());
         all.extend(self.case_findings.iter().cloned());
         let file = self
             .routes_file

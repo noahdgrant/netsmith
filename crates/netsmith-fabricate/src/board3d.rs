@@ -87,6 +87,25 @@ pub struct Report {
     pub case_models: Vec<CaseModelReport>,
     /// What the fit check found, in the check's order (`netsmith_3d::check_case`).
     pub case_findings: Vec<CaseFindingReport>,
+    /// The faults of the placement check on the board as placed (issue #779): each with its
+    /// kind, the parts with their courtyards, and its numbers, in the layout file's frame (from
+    /// the outline's top left corner, y down). Empty for a board `fab` would place.
+    pub placement: Vec<netsmith_pcb::PlacementFault>,
+    /// The sets of lines of the physical file and locks of the layout file that cannot all
+    /// hold where the parts are (issue #779), in the same frame.
+    pub conflicts: Vec<netsmith_pcb::Conflict>,
+    /// Why the placer refused the layout file, when it did: the board is then where the placer
+    /// ended, with the layout file's places, and the command ends with 1. `null` for a board
+    /// that was placed.
+    pub placement_refused: Option<String>,
+}
+
+/// What placing a board said beside the board: the conflicts where its parts are, and, when the
+/// placer refused the layout file and the board is where it ended, why.
+#[derive(Debug, Clone, Default)]
+pub struct Placing {
+    pub conflicts: Vec<netsmith_pcb::Conflict>,
+    pub refused: Option<String>,
 }
 
 /// A case model of the board (ADR 0109).
@@ -769,7 +788,20 @@ pub fn report(
         warnings: scene.warnings.clone(),
         case_models: case_models_report(built, fit),
         case_findings: fit.findings.iter().map(case_finding_report).collect(),
+        placement: Vec::new(),
+        conflicts: Vec::new(),
+        placement_refused: None,
     })
+}
+
+impl Report {
+    /// The report with what the placement check finds on `board` and what placing it said.
+    pub fn with_placement(mut self, board: &Board, placing: Placing) -> Report {
+        self.placement = board.placement_faults();
+        self.conflicts = placing.conflicts;
+        self.placement_refused = placing.refused;
+        self
+    }
 }
 
 /// Each case model of the design, read or not.
@@ -1022,6 +1054,13 @@ impl Report {
                 "unknown height: {} (`{}`): {}\n",
                 u.refdes, u.path, u.reason
             );
+        }
+        // A part too tall for a limit is said above, with its margin.
+        for f in self.placement.iter().filter(|f| f.kind != "too_tall") {
+            text += &format!("placement: {}\n", f.text);
+        }
+        for c in &self.conflicts {
+            text += &format!("these lines cannot both hold: {}\n", c.text);
         }
         for p in &self.parts {
             if let Some(m) = &p.model {
@@ -1307,14 +1346,15 @@ impl Placed<'_> {
             Some(&self.layout),
             self.board,
             true,
+            true,
             self.seeds,
             self.models.as_ref(),
-            |built, board, found| {
+            |built, board, found, placing| {
                 let (sourcing, _) =
                     netsmith_pipeline::resolve::resolve_generics(&built.sourcing, catalogs);
                 let scene = scene_with(built, board, found);
                 report(built, &scene, &sourcing)
-                    .map(|r| Made::Board(Box::new((r, scene))))
+                    .map(|r| Made::Board(Box::new((r.with_placement(board, placing), scene))))
                     .map_err(|e| format!("error: {}: {e}\n", built.label()))
             },
             |solved, members, found| {
@@ -1346,9 +1386,10 @@ impl Placed<'_> {
             Some(&self.layout),
             self.board,
             true,
+            false,
             self.seeds,
             self.models.as_ref(),
-            |built, board, found| {
+            |built, board, found, _| {
                 AnyScene::Board(Box::new(scene_with(built, board, found)), built.label())
             },
             |solved, members, found| {
@@ -1405,9 +1446,10 @@ fn placed<T>(
         layout,
         board,
         false,
+        false,
         seeds,
         models,
-        |built, board, found| (then.take().expect("called once"))(built, board, found),
+        |built, board, found, _| (then.take().expect("called once"))(built, board, found),
         |_, _, _| unreachable!("systems are not asked for"),
     )
 }
@@ -1416,7 +1458,9 @@ fn placed<T>(
 /// name of a system, each of its members built and placed in the order it declares them (ADR
 /// 0110). With `models`, the STEP models of the boards' parts are found on disk first (ADR
 /// 0108): a path outside the project of a board it builds is the error, and the warnings of a
-/// file that is not there are given to `board`, or to `system` by each member's label.
+/// file that is not there are given to `board`, or to `system` by each member's label. With
+/// `show_refused`, a layout file the placer refuses gives the board where it ended
+/// ([`crate::layout::where_ended`]) and why in the [`Placing`], not the error (issue #779).
 #[allow(clippy::too_many_arguments)]
 fn picked<T>(
     name: &str,
@@ -1427,9 +1471,10 @@ fn picked<T>(
     layout: Option<&std::path::Path>,
     want: Option<&str>,
     systems: bool,
+    show_refused: bool,
     seeds: crate::layout::Seeding,
     models: Option<&crate::models::Places>,
-    board: impl FnOnce(&Built, &Board, Vec<String>) -> T,
+    board: impl FnOnce(&Built, &Board, Vec<String>, Placing) -> T,
     system: impl FnOnce(
         &netsmith_pipeline::SolvedSystem,
         &[(&Built, &Board)],
@@ -1492,8 +1537,46 @@ fn picked<T>(
             ),
             None => placing(),
         }
-        .map(|placed| placed.board)
-        .map_err(|e| fail(e.message()))
+        .map(|placed| {
+            let conflicts = placed
+                .board
+                .explain_requirements(&built.design, &placed.options)
+                .map(|r| r.proofs)
+                .unwrap_or_default();
+            (
+                placed.board,
+                Placing {
+                    conflicts,
+                    refused: None,
+                },
+            )
+        })
+        .or_else(|e| {
+            let ended = show_refused
+                .then(|| {
+                    crate::layout::where_ended(
+                        &built.design,
+                        layout,
+                        libraries,
+                        catalogs.constraints_warn(),
+                        &e,
+                    )
+                })
+                .flatten();
+            match ended {
+                Some(ended) => {
+                    let conflicts = ended.explain(&built.design).proofs;
+                    Ok((
+                        ended.board,
+                        Placing {
+                            conflicts,
+                            refused: Some(e.message()),
+                        },
+                    ))
+                }
+                None => Err(fail(e.message())),
+            }
+        })
     };
     if systems
         && let Some(want) = want
@@ -1505,7 +1588,7 @@ fn picked<T>(
         let mut warnings = BTreeMap::new();
         for built in &members {
             warnings.insert(built.label(), located(&built.label())?);
-            placed.push(place(built, layout.as_ref())?);
+            placed.push(place(built, layout.as_ref())?.0);
         }
         let pairs: Vec<(&Built, &Board)> = members.iter().copied().zip(&placed).collect();
         return Ok(system(solved, &pairs, &warnings));
@@ -1513,6 +1596,6 @@ fn picked<T>(
     let built = pick_board(&outcome.boards, name, want, &labels)?;
     let warnings = located(&built.label())?;
     let layout = read_layout(&built.label())?;
-    let placed = place(built, layout.as_ref())?;
-    Ok(board(built, &placed, warnings))
+    let (placed, placing) = place(built, layout.as_ref())?;
+    Ok(board(built, &placed, warnings, placing))
 }

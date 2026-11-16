@@ -3014,6 +3014,77 @@ fn lines_that_cannot_hold_are_a_constraint_finding_before_any_placing() {
     assert!(!found.routed);
 }
 
+#[test]
+fn a_lock_that_breaks_a_requirement_shows_the_layout_with_its_findings_and_not_a_422() {
+    // A part dragged out of the window its requirements give it is locked there by the layout
+    // file: the placer refuses that lock, and the view shows the board with the part where the
+    // file locks it and the refusal and the requirement it breaks as errors (issue #779).
+    let (root, _) = project("refused-lock");
+    fs::write(
+        root.join("src/main.nsm"),
+        include_str!("../../../examples/led.nsm"),
+    )
+    .unwrap();
+    fs::write(
+        root.join("src/main.physical.nsm"),
+        "import std::pcb::Outline
+
+physical for LedExample {
+    case {
+        .outline: Outline {
+            .width &= 40mm
+            .height &= 30mm
+        }
+    }
+    .r1.place.x &= 20mm
+    .r1.place.y &= 10mm
+}
+",
+    )
+    .unwrap();
+    fs::write(
+        layout_file(&root),
+        "version = 1\n\n[LedExample.parts.r1]\nat = [5.0, 5.0]\nlock = true\n",
+    )
+    .unwrap();
+    let editor = Workspace::open(Target::resolve_from(&root, None).unwrap())
+        .unwrap_or_else(|e| panic!("{e}"));
+    let found = editor
+        .pcb_findings("LedExample")
+        .unwrap_or_else(|e| panic!("{e:?}"));
+    let refused = found
+        .findings
+        .iter()
+        .find(|f| f.rule == "placement_refused")
+        .unwrap_or_else(|| panic!("{found:?}"));
+    assert_eq!(refused.severity, Severity::Error);
+    assert!(
+        refused
+            .message
+            .contains("is locked in the layout file at (5, 5) mm, and that breaks a requirement"),
+        "{}",
+        refused.message
+    );
+    // The requirement the lock breaks, measured where the part stands.
+    assert!(
+        found
+            .findings
+            .iter()
+            .any(|f| f.rule == "constraint" && f.parts == ["R1"]),
+        "{found:?}"
+    );
+    let scene = editor
+        .pcb_scene("LedExample")
+        .unwrap_or_else(|e| panic!("{e:?}"));
+    let r1 = scene.parts.iter().find(|p| p.refdes == "R1").unwrap();
+    assert!(
+        (r1.x - scene.origin_x - 5.0).abs() < 1e-6 && (r1.y - scene.origin_y - 5.0).abs() < 1e-6,
+        "{} {}",
+        r1.x - scene.origin_x,
+        r1.y - scene.origin_y
+    );
+}
+
 // ---- the physical file (ADR 0048) --------------------------------------------------------
 
 #[test]
