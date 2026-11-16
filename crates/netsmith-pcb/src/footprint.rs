@@ -279,6 +279,20 @@ pub struct Graphic {
     pub filled: bool,
 }
 
+/// A text a footprint prints on the front silkscreen, in the footprint's frame.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct SilkText {
+    pub text: String,
+    /// The middle of the text.
+    pub at: Pt,
+    /// The text's own angle, in degrees; the board's, not the footprint's.
+    pub angle: f64,
+    /// The height of its letters, in mm.
+    pub height: f64,
+    /// The thickness of its strokes, in mm.
+    pub thickness: f64,
+}
+
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Footprint {
     /// `R_0402_1005Metric`, without its library.
@@ -312,6 +326,11 @@ pub struct Footprint {
     pub reference_at: Pt,
     /// The height of the reference text the library draws, in mm (1 if it says nothing).
     pub reference_size: f64,
+    /// The text the library prints on the front silkscreen besides the reference: its value
+    /// (`fp_text value`, or the `Value` property) and any other text it shows. Hidden text,
+    /// the reference and `${REFERENCE}` are not here (the placer places the designator itself).
+    #[serde(default)]
+    pub silk_texts: Vec<SilkText>,
     /// The boxes of the shapes the library draws on the solder mask layers, in the
     /// footprint's frame: openings in the mask that no pad makes.
     pub mask_openings: Vec<Rect>,
@@ -548,6 +567,8 @@ impl Footprint {
             .and_then(|size| size.args().first()?.text()?.parse().ok())
             .unwrap_or(1.0);
 
+        let silk_texts = source.args().iter().filter_map(silk_text).collect();
+
         let mask_openings = source
             .args()
             .iter()
@@ -566,6 +587,7 @@ impl Footprint {
             body_is_courtyard,
             reference_at,
             reference_size,
+            silk_texts,
             mask_openings,
             source,
             package: None,
@@ -665,6 +687,45 @@ impl Shape {
         points
     }
 
+    /// Whether the shape is a closed curve: a rectangle, a circle or a polygon of at least
+    /// three points (a line and an arc are open).
+    pub fn is_closed(&self) -> bool {
+        match self {
+            Shape::Line { .. } | Shape::Arc { .. } => false,
+            Shape::Rect { .. } | Shape::Circle { .. } => true,
+            Shape::Poly { points } => points.len() >= 3,
+        }
+    }
+
+    /// The shape's line as a polyline, with no chord farther than `sagitta` mm from the
+    /// curve it stands for. A closed shape's last point is its first. A circle or an arc
+    /// through three points in a line is the straight line through them.
+    pub fn outline(&self, sagitta: f64) -> Vec<Pt> {
+        match self {
+            Shape::Line { a, b } => vec![*a, *b],
+            Shape::Rect { a, b } => {
+                vec![*a, Pt::new(b.x, a.y), *b, Pt::new(a.x, b.y), *a]
+            }
+            Shape::Poly { points } => {
+                let mut line = points.clone();
+                if let (true, Some(first)) = (self.is_closed(), points.first()) {
+                    line.push(*first);
+                }
+                line
+            }
+            Shape::Circle { centre, radius } => {
+                let n = chords(*radius, std::f64::consts::TAU, sagitta).max(8);
+                (0..=n)
+                    .map(|k| {
+                        let phi = std::f64::consts::TAU * f64::from(k % n) / f64::from(n);
+                        Pt::new(centre.x + radius * phi.cos(), centre.y + radius * phi.sin())
+                    })
+                    .collect()
+            }
+            Shape::Arc { start, mid, end } => arc_outline(*start, *mid, *end, sagitta),
+        }
+    }
+
     /// Points that bound the shape. An arc is bounded by its three points, which can fall
     /// short of the bulge; courtyards do not use arcs.
     pub fn extent_points(&self) -> Vec<Pt> {
@@ -678,6 +739,55 @@ impl Shape {
             Shape::Poly { points } => points.clone(),
         }
     }
+}
+
+/// How many equal chords follow a circle of `radius` through `sweep` radians with none
+/// farther than `sagitta` from it.
+fn chords(radius: f64, sweep: f64, sagitta: f64) -> u32 {
+    if radius <= sagitta || radius <= 0.0 {
+        return 1;
+    }
+    let step = 2.0 * (1.0 - sagitta / radius).acos();
+    (sweep.abs() / step).ceil().max(1.0) as u32
+}
+
+/// The arc from `start` through `mid` to `end` as a polyline that starts and ends exactly at
+/// its ends.
+fn arc_outline(start: Pt, mid: Pt, end: Pt, sagitta: f64) -> Vec<Pt> {
+    let d =
+        2.0 * (start.x * (mid.y - end.y) + mid.x * (end.y - start.y) + end.x * (start.y - mid.y));
+    if d.abs() < 1e-12 {
+        return vec![start, mid, end];
+    }
+    let sq = |p: Pt| p.x * p.x + p.y * p.y;
+    let x =
+        (sq(start) * (mid.y - end.y) + sq(mid) * (end.y - start.y) + sq(end) * (start.y - mid.y))
+            / d;
+    let y =
+        (sq(start) * (end.x - mid.x) + sq(mid) * (start.x - end.x) + sq(end) * (mid.x - start.x))
+            / d;
+    let (centre, radius) = (Pt::new(x, y), start.distance(Pt::new(x, y)));
+    let angle = |p: Pt| (p.y - centre.y).atan2(p.x - centre.x);
+    let tau = std::f64::consts::TAU;
+    let (a0, to_mid, to_end) = (
+        angle(start),
+        (angle(mid) - angle(start)).rem_euclid(tau),
+        (angle(end) - angle(start)).rem_euclid(tau),
+    );
+    // Through the middle: the sweep that reaches it before the end, the other way if it does not.
+    let sweep = if to_mid <= to_end {
+        to_end
+    } else {
+        to_end - tau
+    };
+    let n = chords(radius, sweep, sagitta);
+    let mut line = vec![start];
+    line.extend((1..n).map(|k| {
+        let phi = a0 + sweep * f64::from(k) / f64::from(n);
+        Pt::new(centre.x + radius * phi.cos(), centre.y + radius * phi.sin())
+    }));
+    line.push(end);
+    line
 }
 
 /// The boxes of the courtyard's drawings joined into the shapes they make: drawings whose
@@ -939,6 +1049,56 @@ fn layer_of(item: &Sexp) -> Option<Layer> {
         "B.CrtYd" => Some(Layer::BackCourtyard),
         _ => None,
     }
+}
+
+/// The text of a `fp_text` (KiCad 7 and before: `(fp_text value "x" (at x y [angle]) (layer
+/// "F.SilkS") (effects (font (size h w) (thickness t))))`) or a `property` (KiCad 8 and later) that
+/// the front silkscreen prints, other than the reference: `None` for any other item, for
+/// text on another layer, for hidden text, and for `${REFERENCE}`.
+fn silk_text(item: &Sexp) -> Option<SilkText> {
+    let args = item.args();
+    let (kind, text) = match item.head()? {
+        "fp_text" | "property" => (args.first()?.text()?, args.get(1)?.text()?),
+        _ => return None,
+    };
+    if kind.eq_ignore_ascii_case("reference") || text.is_empty() || text.contains("${REFERENCE}") {
+        return None;
+    }
+    if layer_name(item)? != "F.SilkS" {
+        return None;
+    }
+    let effects = item.find("effects");
+    let hidden = |n: &Sexp| {
+        n.args()
+            .iter()
+            .any(|a| matches!(a, Sexp::Atom(h) if h == "hide"))
+            || n.find("hide")
+                .and_then(|h| h.args().first())
+                .and_then(Sexp::text)
+                .is_some_and(|v| matches!(v, "yes" | "true"))
+    };
+    if hidden(item) || effects.is_some_and(hidden) {
+        return None;
+    }
+    let at = item.find("at")?;
+    let number = |n: Option<&Sexp>| n?.text()?.parse::<f64>().ok();
+    let font = effects.and_then(|e| e.find("font"));
+    let height = number(font.and_then(|f| f.find("size")?.args().first()))
+        .filter(|h| *h > 0.0)
+        .unwrap_or(1.0);
+    let thickness =
+        number(font.and_then(|f| f.find("thickness")?.args().first())).unwrap_or(height * 0.15);
+    Some(SilkText {
+        text: text.to_string(),
+        at: point(at, 0)?,
+        angle: number(at.args().get(2)).unwrap_or(0.0),
+        height,
+        thickness,
+    })
+}
+
+fn layer_name(item: &Sexp) -> Option<&str> {
+    item.find("layer")?.args().first()?.text()
 }
 
 /// The box of a shape the footprint draws on a solder mask layer.
@@ -2276,5 +2436,74 @@ mod tests {
     fn rejects_text_that_is_not_a_footprint() {
         assert!(Footprint::parse("L:X", "(kicad_sch)").is_err());
         assert!(Footprint::parse("L:X", "(footprint").is_err());
+    }
+
+    #[test]
+    fn a_circle_and_an_arc_are_lines_within_the_sagitta_of_their_curve() {
+        let circle = Shape::Circle {
+            centre: Pt::new(1.0, 1.0),
+            radius: 2.0,
+        };
+        let line = circle.outline(0.01);
+        assert!(circle.is_closed() && line.first() == line.last());
+        assert!(line.len() > 8);
+        for p in &line {
+            assert!((p.distance(Pt::new(1.0, 1.0)) - 2.0).abs() < 1e-9, "{p:?}");
+        }
+        // Each chord's middle is within the sagitta of the circle.
+        for w in line.windows(2) {
+            let mid = Pt::new((w[0].x + w[1].x) / 2.0, (w[0].y + w[1].y) / 2.0);
+            assert!(2.0 - mid.distance(Pt::new(1.0, 1.0)) <= 0.0101);
+        }
+        // An arc through the top: from the left, through the top, to the right, a half circle.
+        let arc = Shape::Arc {
+            start: Pt::new(-2.0, 0.0),
+            mid: Pt::new(0.0, -2.0),
+            end: Pt::new(2.0, 0.0),
+        };
+        let line = arc.outline(0.01);
+        assert!(!arc.is_closed());
+        assert_eq!(
+            (line[0], *line.last().unwrap()),
+            (Pt::new(-2.0, 0.0), Pt::new(2.0, 0.0))
+        );
+        assert!(line.iter().all(|p| p.y <= 1e-9), "never below the ends");
+        assert!(
+            line.iter().any(|p| (p.y + 2.0).abs() < 0.01),
+            "reaches the top"
+        );
+        // Three points in a line are a line.
+        let flat = Shape::Arc {
+            start: Pt::new(0.0, 0.0),
+            mid: Pt::new(1.0, 0.0),
+            end: Pt::new(2.0, 0.0),
+        };
+        assert_eq!(flat.outline(0.01).len(), 3);
+    }
+
+    #[test]
+    fn the_text_a_footprint_prints_besides_its_reference_is_read() {
+        let fp = Footprint::parse(
+            "L:T",
+            r#"(footprint "T"
+                (property "Reference" "REF**" (at 0 -2) (layer "F.SilkS") (effects (font (size 1 1))))
+                (property "Value" "ValueText" (at 0 2 90) (layer "F.SilkS")
+                    (effects (font (size 0.8 0.8) (thickness 0.1))))
+                (property "Datasheet" "http://x" (at 0 0) (layer "F.Fab") (hide yes))
+                (property "Description" "hidden" (at 0 0) (layer "F.SilkS") (hide yes))
+                (fp_text user "${REFERENCE}" (at 0 0) (layer "F.SilkS") (effects (font (size 1 1))))
+                (fp_text user "other" (at 3 0) (layer "F.Fab") (effects (font (size 1 1))))
+                (fp_text value "OldValue" (at 1 1) (layer "F.SilkS") (effects (font (size 1 1)) hide))
+                (fp_text user "mark" (at 1 -1) (layer "F.SilkS") (effects (font (size 1 1))))
+                (fp_rect (start -1 -1) (end 1 1) (layer "F.CrtYd")))"#,
+        );
+        let fp = fp.unwrap();
+        let texts: Vec<(&str, f64, f64)> = fp
+            .silk_texts
+            .iter()
+            .map(|t| (t.text.as_str(), t.angle, t.height))
+            .collect();
+        assert_eq!(texts, vec![("ValueText", 90.0, 0.8), ("mark", 0.0, 1.0)]);
+        assert!(near(fp.silk_texts[0].thickness, 0.1));
     }
 }

@@ -272,8 +272,8 @@ impl<'a> Engine<'a> {
         let mut over_court = 0.0;
         if let Some(t) = from.text {
             let t = t.translated(at_from);
-            for r in &to.silk {
-                refuse(penetration(&t, &r.translated(at_to), SILK_CLEAR));
+            for piece in &to.silk {
+                refuse(piece.depth(at_to, &t, SILK_CLEAR));
             }
             for r in &to.copper {
                 refuse(penetration(
@@ -297,10 +297,9 @@ impl<'a> Engine<'a> {
                 over_court = W_TEXT * (over + 0.05);
             }
         }
-        for stroke in &from.silk {
-            let stroke = stroke.translated(at_from);
+        for piece in &from.silk {
             for r in &to.copper {
-                refuse(penetration(&stroke, &r.translated(at_to), to_pad));
+                refuse(piece.depth(at_from, &r.translated(at_to), to_pad));
             }
         }
         Cost {
