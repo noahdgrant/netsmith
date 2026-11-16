@@ -219,7 +219,11 @@ impl KicadCliExe {
     }
 }
 
-/// Fills every zone of a board with KiCad's own filler and saves it. It writes to a
+/// Fills every zone of a board with KiCad's own filler and saves it. KiCad's Python is the
+/// only way: KiCad 9's `kicad-cli` has no `--refill-zones` (`pcb drc` and every `pcb export`
+/// command were checked on 9.0.0; the option is in KiCad 10's `pcb drc`, with `--save-board`,
+/// which would write the filled board and make this script unnecessary once KiCad 10 is the
+/// version in use). It writes to a
 /// folder of its own, so the project file beside the board is left as it was. It prints
 /// [`FILLED`] when it has saved the board, so that a run that ended without doing so (WSL
 /// started the program and it exited with status 0 without running the script) is seen.
