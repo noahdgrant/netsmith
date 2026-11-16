@@ -52,7 +52,7 @@
 //! board, and its entries are in that board's table, so a module used by two boards is arranged
 //! twice, as it is drawn twice. `version = 1` is required in a file that has anything else; any
 //! other version is an error. A comment in a file the editor rewrites is not kept (the PCB
-//! file's known limit).
+//! layout file keeps its comments since issue #827; this file does not yet).
 //!
 //! **Keyed by instance path, grouped by sheet.** A part is keyed by its path in the design
 //! (`Part::path`, as ADR 0032), never by reference designator, which a renumber changes. The

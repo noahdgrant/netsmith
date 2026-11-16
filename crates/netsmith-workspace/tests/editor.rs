@@ -1799,6 +1799,28 @@ fn a_move_is_written_to_the_layout_file_and_parts_not_touched_stay_derived() {
 }
 
 #[test]
+fn a_move_keeps_the_comments_of_the_layout_file() {
+    if !footprints_here() {
+        return;
+    }
+    let (root, editor) = project("move-comments");
+    fs::write(
+        layout_file(&root),
+        "# my layout\nversion = 1\n\n# the resistor\n[LedBoard.parts.r1]\nat = [1.0, 2.0]   # by the edge\nrotation = 0.0\nside = \"top\"\nlock = false\nsource = \"hand\"\n",
+    )
+    .unwrap();
+    let scene = editor.pcb_scene(LED).unwrap();
+    let before = Some(placement(1.0, 2.0));
+    editor
+        .pcb_edit(&moves(&scene, "r1", before, Some(placement(7.25, 5.5))))
+        .unwrap();
+    assert_eq!(
+        fs::read_to_string(layout_file(&root)).unwrap(),
+        "# my layout\nversion = 1\n\n# the resistor\n[LedBoard.parts.r1]\nat = [7.25, 5.5]   # by the edge\nrotation = 0.0\nside = \"top\"\nlock = false\nsource = \"hand\"\n"
+    );
+}
+
+#[test]
 fn rotate_flip_and_lock_are_kept_in_the_file() {
     if !footprints_here() {
         return;

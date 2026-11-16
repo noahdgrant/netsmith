@@ -49,6 +49,16 @@ pub fn read(file: &Path, boards: &[String]) -> Result<Option<(Layout, String)>, 
     Ok(Some((layout, name)))
 }
 
+/// The text to write to the layout file at `file` for `layout`: the file's own text with the
+/// comments of the file as it is now kept ([`Layout::to_text_over`], issue #827); the text
+/// [`Layout::to_text`] has when the file does not exist or cannot be read.
+pub fn text_over(file: &Path, layout: &Layout) -> String {
+    match std::fs::read_to_string(file) {
+        Ok(old) => layout.to_text_over(&old),
+        Err(_) => layout.to_text(),
+    }
+}
+
 /// How many seeds the placer tries for a board before it gives up, when `netsmith.toml` does
 /// not say (`place_seeds`, issue #458): the layout file's seed (0 when it states none) and
 /// the ones after it.
@@ -577,7 +587,7 @@ pub fn write_seed(file: &Path, board: &str, seed: u64) -> Result<(), String> {
     };
     let seed = u32::try_from(seed).map_err(|_| format!("{name}: seed {seed} is too big"))?;
     layout.boards.entry(board.to_string()).or_default().seed = Some(seed);
-    std::fs::write(file, layout.to_text()).map_err(|e| format!("{name}: {e}"))
+    std::fs::write(file, text_over(file, &layout)).map_err(|e| format!("{name}: {e}"))
 }
 
 #[cfg(test)]
@@ -915,5 +925,25 @@ mod tests {
         assert_eq!(layout.boards["Board"].seed, Some(6));
         assert!(layout.boards["Board"].parts["r1"].lock);
         assert_eq!(layout.boards["Other"].seed, Some(9));
+    }
+
+    #[test]
+    fn the_comments_of_the_layout_file_stay_when_the_seed_is_written() {
+        let dir = netsmith_testkit::TempDir::new("write-seed-comments");
+        let file = dir.path().join("main.pcb.toml");
+        std::fs::write(
+            &file,
+            "# my board\nversion = 1\n\n# the seed\n[Board]\nseed = 1  # tried\n\n# the resistor\n[Board.parts.r1]\nat = [1.0, 2.0]\n",
+        )
+        .unwrap();
+        write_seed(&file, "Board", 6).unwrap();
+        let text = std::fs::read_to_string(&file).unwrap();
+        for kept in [
+            "# my board\nversion = 1",
+            "# the seed\n[Board]\nseed = 6  # tried",
+            "# the resistor\n[Board.parts.r1]",
+        ] {
+            assert!(text.contains(kept), "{kept:?} is gone from\n{text}");
+        }
     }
 }

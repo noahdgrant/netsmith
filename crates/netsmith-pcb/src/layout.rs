@@ -459,6 +459,17 @@ impl Layout {
         out
     }
 
+    /// The file's text as [`Self::to_text`] has it, with the comments of `old`, the file as it
+    /// is now, carried into it (issue #827; [`crate::layout_notes`] says where each goes). A
+    /// file that already says this layout is returned as it is, byte for byte, and one that
+    /// is not TOML is written as `to_text` has it.
+    pub fn to_text_over(&self, old: &str) -> String {
+        if matches!(Layout::parse(old, ""), Ok(read) if read == *self) {
+            return old.to_string();
+        }
+        crate::layout_notes::carry(old, &self.to_text())
+    }
+
     /// The line, counted from 1, where each part entry of the board `board` is written in the
     /// layout file's `text`, by the part's path: the line of its table's header, or of its key
     /// where the table is written in another way. A text that is not TOML gives none.
@@ -1119,6 +1130,96 @@ at = [5.0, 4.0]
         let text = layout.to_text();
         assert_eq!(Layout::parse(&text, "x").unwrap(), layout);
         assert!(text.starts_with("version = 1\n"), "{text}");
+    }
+
+    /// A layout file a person has commented.
+    const COMMENTED: &str = "# The demo board's layout: kept by hand.\nversion = 1\n\n# the board\n[Demo]\nseed = 3   # tried a few\n\n# the bulk capacitor, near the connector\n[Demo.parts.bulk]\nat = [1.0, 2.0]   # mm from the corner\nlock = true   # do not move\n\n# the LED stays\n[Demo.parts.led]\nat = [3.0, 4.0]\nsource = \"hand#1\"   # a # in a string is no comment\n\n# last words\n";
+
+    fn moved(text: &str, part: &str, at: [f64; 2]) -> String {
+        let mut layout = Layout::parse(text, "demo.pcb.toml").unwrap();
+        layout
+            .boards
+            .get_mut("Demo")
+            .unwrap()
+            .parts
+            .get_mut(part)
+            .unwrap()
+            .at = at;
+        layout.to_text_over(text)
+    }
+
+    #[test]
+    fn the_comments_of_a_file_stay_when_a_part_is_moved() {
+        let out = moved(COMMENTED, "led", [9.0, 8.0]);
+        for kept in [
+            "# The demo board's layout: kept by hand.\nversion = 1",
+            "# the board\n[Demo]\nseed = 3   # tried a few",
+            "# the bulk capacitor, near the connector\n[Demo.parts.bulk]\nat = [1.0, 2.0]   # mm from the corner",
+            "lock = true   # do not move",
+            "# the LED stays\n[Demo.parts.led]\nat = [9.0, 8.0]",
+            "source = \"hand#1\"   # a # in a string is no comment",
+        ] {
+            assert!(out.contains(kept), "{kept:?} is gone from\n{out}");
+        }
+        assert!(out.trim_end().ends_with("# last words"), "{out}");
+        let again = Layout::parse(&out, "demo.pcb.toml").unwrap();
+        assert_eq!(again.boards["Demo"].parts["led"].at, [9.0, 8.0]);
+        assert_eq!(again.boards["Demo"].parts["bulk"].at, [1.0, 2.0]);
+        // A second write of the same layout changes nothing.
+        assert_eq!(again.to_text_over(&out), out);
+    }
+
+    #[test]
+    fn a_file_that_says_the_layout_is_returned_as_it_is() {
+        let spaced = "version=1\n\n\n[Demo.parts.led]   # hand spacing\nat = [3,   4]\n";
+        let layout = Layout::parse(spaced, "demo.pcb.toml").unwrap();
+        assert_eq!(layout.to_text_over(spaced), spaced);
+    }
+
+    #[test]
+    fn the_comments_of_an_entry_that_is_removed_go_with_it() {
+        let mut layout = Layout::parse(COMMENTED, "demo.pcb.toml").unwrap();
+        layout.boards.get_mut("Demo").unwrap().parts.remove("bulk");
+        let out = layout.to_text_over(COMMENTED);
+        assert!(!out.contains("bulk"), "{out}");
+        assert!(!out.contains("do not move"), "{out}");
+        assert!(out.contains("# the LED stays\n[Demo.parts.led]"), "{out}");
+        assert!(out.contains("# the board\n[Demo]"), "{out}");
+    }
+
+    #[test]
+    fn the_comment_of_a_key_that_is_not_written_any_more_goes_above_its_table() {
+        let mut layout = Layout::parse(COMMENTED, "demo.pcb.toml").unwrap();
+        layout
+            .boards
+            .get_mut("Demo")
+            .unwrap()
+            .parts
+            .get_mut("led")
+            .unwrap()
+            .source = None;
+        let out = layout.to_text_over(COMMENTED);
+        assert!(
+            out.contains("# the LED stays\n# a # in a string is no comment\n[Demo.parts.led]"),
+            "{out}"
+        );
+    }
+
+    #[test]
+    fn the_comment_of_a_board_header_the_text_does_not_write_goes_above_what_is_left() {
+        let text =
+            "version = 1\n\n# the demo\n[Demo]\nseed = 5\n\n[Demo.parts.led]\nat = [3.0, 4.0]\n";
+        let mut layout = Layout::parse(text, "demo.pcb.toml").unwrap();
+        layout.boards.get_mut("Demo").unwrap().seed = None;
+        let out = layout.to_text_over(text);
+        assert!(out.contains("# the demo\n[Demo.parts.led]"), "{out}");
+        assert!(!out.contains("seed"), "{out}");
+    }
+
+    #[test]
+    fn a_file_that_is_not_toml_is_written_as_to_text_has_it() {
+        let layout = Layout::parse(COMMENTED, "demo.pcb.toml").unwrap();
+        assert_eq!(layout.to_text_over("not toml ["), layout.to_text());
     }
 
     #[test]

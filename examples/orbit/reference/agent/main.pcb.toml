@@ -1,5 +1,14 @@
 version = 1
 
+# The layout file keeps a solution, never a requirement (docs/LANGUAGE.md, "The layout file").
+# Everything the board must match of ORBIT's is in `main.physical.nsm`; the placer puts every
+# other part (the ICs, the crystal, the inductor, the LEDs, the resistors and capacitors), and a
+# seed is another arrangement of them. Seed 4 routes this board completely, and seeds 5, 6 and 8
+# route too. The seed was 1 until designators were numbered by path (#634), which reorders the
+# pins of each net that the placer and router read and so changes every arrangement; seeds 0, 1,
+# 2, 3 and 7 then left one connection of a USB pair (`net-usb.dm`), and since the footprints and
+# courtyards changed again (#730, #786) they route it too (checked 2026-11-16, #718). No part is
+# locked: the file records no position.
 [Orbit]
 seed = 4
 

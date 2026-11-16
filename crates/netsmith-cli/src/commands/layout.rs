@@ -34,7 +34,7 @@ pub enum Command {
     Show(ShowArgs),
     /// Write one part's entry, keeping the file's other tables.
     #[command(
-        after_long_help = "Writes the entry of the part at PATH to the layout file (made if it does not exist), reading and writing the file as the editor does: every other table is kept, and a comment in the file is not. A part with no entry needs `--at`; for a part that has one, a flag left out keeps what the entry has. A new entry is written with `source = \"hand\"`, and an entry that exists keeps its `source`. Refused, with the file as it was: a PATH the board has no part at (the nearest names are listed), a turn that is not 0, 90, 180 or 270, and a part with no entry and no `--at`. A locked entry that breaks a requirement of the physical file is written and said as a warning; `layout check` says it again."
+        after_long_help = "Writes the entry of the part at PATH to the layout file (made if it does not exist), reading and writing the file as the editor does: every other table is kept, and so is a comment in the file (a comment goes with its entry and stays above it or after it). A part with no entry needs `--at`; for a part that has one, a flag left out keeps what the entry has. A new entry is written with `source = \"hand\"`, and an entry that exists keeps its `source`. Refused, with the file as it was: a PATH the board has no part at (the nearest names are listed), a turn that is not 0, 90, 180 or 270, and a part with no entry and no `--at`. A locked entry that breaks a requirement of the physical file is written and said as a warning; `layout check` says it again."
     )]
     Set(SetArgs),
     /// Say which parts have no entry, which entries name no part, and which locked entries break a requirement.

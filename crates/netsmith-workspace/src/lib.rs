@@ -613,7 +613,7 @@ impl Workspace {
             e @ pcb::PlaceError::Unplaceable(..) => e.read(),
             pcb::PlaceError::Other(e) => e,
         })?;
-        files::write_atomic(file, &layout.to_text())
+        files::write_atomic(file, &netsmith_fabricate::layout::text_over(file, &layout))
             .map_err(|e| ApiError::internal(format!("{shown}: {e}")))?;
         entry.set_layout_stamp(pcb::stamp(&data));
         let scene = pcb::scene(&entry, &data, name);
@@ -893,7 +893,7 @@ impl Workspace {
                 .map_err(|e| ApiError::internal(format!("{}: {e}", shown(&data.physical))))?;
         }
         if layout != *before {
-            files::write_atomic(file, &layout.to_text())
+            files::write_atomic(file, &netsmith_fabricate::layout::text_over(file, &layout))
                 .map_err(|e| ApiError::internal(format!("{}: {e}", shown(file))))?;
         }
         entry.set_layout_stamp(pcb::stamp(data));
