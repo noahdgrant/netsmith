@@ -2842,8 +2842,9 @@ fn the_pcb_view_draws_the_outline_and_the_keepout_the_physical_file_states() {
         .iter()
         .find(|k| k.name == "antenna")
         .expect("the antenna keepout");
-    // Sized and placed by the source (the physical file), so the editor does not move it.
-    assert_eq!(antenna.origin, KeepoutOrigin::Source);
+    // Sized and placed by the physical file in the shape the editor writes (issue #809), so the
+    // editor moves, resizes and deletes it there.
+    assert_eq!(antenna.origin, KeepoutOrigin::Drawn);
     let area = antenna.area.unwrap();
     assert_eq!(
         (area.x - scene.origin_x, area.y - scene.origin_y),
