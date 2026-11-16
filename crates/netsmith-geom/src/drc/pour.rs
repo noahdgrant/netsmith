@@ -26,15 +26,17 @@
 //! holds, every island is reported, whatever the zone's setting: the board house makes that
 //! copper as the file draws it.
 //!
-//! **Copper slivers.** A copper sliver is copper of the fill narrower than the least track the process makes
-//! (the project file's `min_track_width`; with none, not judged) that runs further than that
-//! width from what trimming the fill to it keeps ([`fill::slivers`]): a strip between two
-//! clearances or a spike. A corner, which trimming only rounds, stays within the width and is not
-//! one. The width is the fabricator's (JLCPCB's least track, a recorded number); KiCad's
-//! `copper_sliver` measures with an angle and a width of its own (its advanced settings), which
-//! no fabricator publishes, so the two are not compared. A fill worked out here is already
-//! trimmed to the zone's `min_thickness`, so only a zone with a thinner one is measured; a fill
-//! the file holds always is. A warning, as the other two are.
+//! **Copper slivers.** A copper sliver is copper of the fill narrower than the least track the
+//! process makes (the project file's `min_track_width`; with none, not judged) that runs further
+//! than that width from what trimming the fill to it keeps (`fill::slivers`): a strip between
+//! two clearances or a spike. A corner, which trimming only rounds, stays within the width and
+//! is not one; neither is a part of the fill that lies against a pad, a track or another zone of
+//! the net, since the fill is trimmed together with that copper. The width is the fabricator's
+//! (JLCPCB's least track, a recorded number); KiCad's `copper_sliver` measures with an angle and
+//! a width of its own (its advanced settings), which no fabricator publishes, so the two are not
+//! compared. A fill worked out here is already trimmed to the zone's `min_thickness`, so only a
+//! zone with a thinner one is measured; a fill the file holds always is. A warning, as the other
+//! two are.
 
 use super::checks::Out;
 use super::model::Kind;
