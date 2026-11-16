@@ -69,12 +69,16 @@
 //! window) is the allowance, and what the others work out must lie inside it. With no pick able
 //! to change any of them the old rule stands (a correction of 2026-11-06 made both halves test
 //! that). Rejected: narrowing to the intersection of the equations everywhere, which would
-//! report a range nobody wrote and pass partly overlapping ranges. Where every equation on the
-//! field and the fields joined to it is one a pick changes and nothing narrows any of them (no
-//! window, `Solver::only_picks_state`), the field takes what it and each equation share, also
-//! when neither range lies inside the other (issue #852): `verify` asks such equations only to
-//! share a value, so no window is passed by the overlap, and the field's value lies in every
-//! equation's range, so the overlap loses none of it.
+//! report a range nobody wrote and pass partly overlapping ranges. Where nothing states a range
+//! for the field or the fields joined to it, every left side is a value a pick changes, and
+//! every window among their equations has a range now (`Solver::overlap_rule`), the field takes
+//! what it and each equation a pick changes share, also when neither range lies inside the
+//! other (issues #852 and #991). The field's value lies in every such equation's range, so the
+//! overlap loses none of it. No window is passed by the overlap: `verify` holds each equation a
+//! pick changes to what the windows on the field and on the fields joined to it allow together
+//! (a window reached through a join counts, which it did not before), and with no window asks
+//! only that it shares a value with the field. A window is not taken into the overlap itself: it
+//! is what the value may be, not what it is.
 //!
 //! **A generic inductor is held to what the stage asks of it.** Its saturation current is "the
 //! least that any relation demands", but the relations were read before the part's marked
@@ -1329,7 +1333,7 @@ struct Solver<'a> {
     /// a sole one): each equation says what the value is, none says what it may be.
     several_equations: HashSet<FieldId>,
     /// For each field of `several_equations`, the fields joined to it and every equation on any
-    /// of them (`Solver::only_picks_state`).
+    /// of them (`Solver::overlap_rule`).
     several_classes: HashMap<FieldId, std::rc::Rc<equations::SeveralClass>>,
     /// The equations (by their place in the model's list) that have each field alone on the left.
     equations_of: HashMap<FieldId, Vec<usize>>,

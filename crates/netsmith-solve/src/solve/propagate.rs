@@ -4,7 +4,7 @@ use std::collections::HashSet;
 
 use super::equations::{domain_of, merge};
 use super::{Budget, Conflict, CurrentBound, Solver, Verdict};
-use crate::eval::fields_in;
+use crate::eval::{Val, eval, fields_in};
 use netsmith_check::{
     Balance, Diagnostic, Domain, Draw, FieldId, FieldKind, InstKind, Member, RExpr, Relation,
     SourceId,
@@ -26,32 +26,61 @@ impl Solver<'_> {
         }
     }
 
-    /// Whether every equation on `f` and the fields joined to it is one that a pick changes,
-    /// and nothing narrows any of them: no equation is a window (an allowance, as `verify`
-    /// reads it), so each says what the value is and the value lies in what they all allow
-    /// together. Only then may `propagate` narrow the value to the overlap of two of them, and
-    /// `verify` judges each such equation by whether it shares a value with the field
-    /// (`several_equations`, ADR 0065, 9.1). It reads `fed`, as `verify` does: before the parts
-    /// are looked at it is empty, and no value is narrowed this way.
-    pub(super) fn only_picks_state(&self, f: FieldId) -> bool {
-        let Some(class) = self.several_classes.get(&f) else {
-            return false;
-        };
-        let changes = |e: &RExpr| {
-            let mut read = Vec::new();
-            fields_in(e, &mut read);
-            read.iter().any(|g| self.fed.contains(g))
-        };
-        class.fields.iter().all(|&g| {
-            let field = self.model.field(g);
-            field.narrowed_at.is_empty() && !self.derived.contains(&g)
-        }) && class.equations.iter().all(|&i| {
+    /// Whether `e` reads a value that a pick changes (`fed`). An equation whose right side does
+    /// not is a window: an allowance, as `verify` reads it.
+    pub(super) fn changed_by_picks(&self, e: &RExpr) -> bool {
+        let mut read = Vec::new();
+        fields_in(e, &mut read);
+        read.iter().any(|g| self.fed.contains(g))
+    }
+
+    /// Whether `propagate` may narrow `f` to what it and an equation that a pick changes share
+    /// (ADR 0065, 9.1, issues #852 and #991), and what the windows on it allow together.
+    ///
+    /// `None` keeps the old rule (the field follows an equation whose range lies inside it).
+    /// `Some(window)` when nothing narrows `f` or the fields joined to it (no stated range, no
+    /// derived current), the left side of every equation on any of them is a value a pick
+    /// changes, at least one equation's right side is one a pick changes, and every other
+    /// equation (a window) has a range now, the windows sharing a value: `window` is that
+    /// value, or `None` when there is no window. Each equation a pick changes then says what the
+    /// value is, so the value lies in what they all allow, and `verify` judges each of them
+    /// against `window` (it must lie inside it) or, with no window, by whether it shares a value
+    /// with the field. Narrowing to the overlap passes no window that is only partly met: the
+    /// window is judged against what each equation works out, not against the narrowed field.
+    /// It reads `fed`, as `verify` does: before the parts are looked at it is empty, and no
+    /// value is narrowed this way.
+    pub(super) fn overlap_rule(&self, f: FieldId) -> Option<Option<Quantity>> {
+        let class = self.several_classes.get(&f)?;
+        let plain = class
+            .fields
+            .iter()
+            .all(|&g| self.model.field(g).narrowed_at.is_empty() && !self.derived.contains(&g));
+        if !plain {
+            return None;
+        }
+        let mut window: Option<Quantity> = None;
+        let mut states = 0;
+        for &i in &class.equations {
             let r = &self.model.relations()[i];
             let RExpr::Field(g) = &r.lhs else {
-                return false;
+                return None;
             };
-            self.fed.contains(g) && changes(&r.rhs)
-        })
+            if !self.fed.contains(g) {
+                return None;
+            }
+            if self.changed_by_picks(&r.rhs) {
+                states += 1;
+                continue;
+            }
+            let Ok(Val::Q(q)) = eval(&self.model, &r.rhs) else {
+                return None;
+            };
+            window = Some(match window {
+                None => q,
+                Some(w) => w.intersect(&q).ok().flatten()?,
+            });
+        }
+        (states > 0).then_some(window)
     }
 
     pub(super) fn domain(&self, f: FieldId) -> Domain {
@@ -243,11 +272,12 @@ impl Solver<'_> {
                     // pick was (ADR 0065, "A value that two equations state"). Only for a value
                     // that a pick can change (`fed`), as in `verify`: two equations that no pick
                     // changes keep the old rule (ADR 0065, section 9.1, "Not done").
-                    // Where every equation on the value is one a pick changes (no window among
-                    // them, `only_picks_state`), the value is in what every equation allows, so
-                    // it takes what it and this equation share even when neither range lies
-                    // inside the other (issue #852): `verify` then asks only that the equations
-                    // share a value, which the field's range is part of.
+                    // Where the equations on the value may be taken together (`overlap_rule`:
+                    // nothing states a range for it, and every window among them has one), the
+                    // value is in what every equation a pick changes allows, so it takes what it
+                    // and such an equation share even when neither range lies inside the other
+                    // (issues #852 and #991): `verify` holds each of them to the windows, or
+                    // with no window asks only that they share a value with the field.
                     (CmpOp::EqEq, Domain::Quantity(d))
                         if self.several_equations.contains(f)
                             && (self.fed.contains(f) || self.fed_at_start.contains(f))
@@ -258,7 +288,7 @@ impl Solver<'_> {
                         };
                         let next = if d.encloses(v).unwrap_or(false) {
                             Some(*v)
-                        } else if self.only_picks_state(*f) {
+                        } else if self.changed_by_picks(&r.rhs) && self.overlap_rule(*f).is_some() {
                             d.intersect(v).ok().flatten()
                         } else {
                             None
