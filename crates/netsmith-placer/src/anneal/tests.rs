@@ -1360,6 +1360,7 @@ fn problem_beside<'a>(
         nets,
         rules,
         planes: &[],
+        signal_layers: 2,
         region,
         corner_radius: 0.0,
         fixed,
@@ -1376,6 +1377,7 @@ fn problem_beside<'a>(
         overhangs: &[],
         outline: region,
         overflow: 1.0,
+        escape_room: 0.0,
     }
 }
 
