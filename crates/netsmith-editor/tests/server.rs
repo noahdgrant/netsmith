@@ -752,7 +752,7 @@ fn the_placed_board_is_served_as_a_kicad_zip_download() {
     assert!(r.headers.contains("content-type: application/zip"), "{}", r.headers);
     assert!(
         r.headers
-            .contains("content-disposition: attachment; filename=\"Led.placed-kicad.zip\""),
+            .contains("content-disposition: attachment; filename=\"led.placed-kicad.zip\""),
         "{}",
         r.headers
     );
