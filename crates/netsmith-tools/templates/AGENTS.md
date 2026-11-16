@@ -18,6 +18,7 @@ This is a netsmith project. Boards are written in `.nsm` files under `src/`; `ne
   - `netsmith-write-a-module`: splitting a circuit into modules and interfaces.
   - `netsmith-read-errors`: what each message means.
   - `netsmith-use-constraints`: where parts must be (a case, a carrier) and the findings when they are not.
+  - `netsmith-use-layout`: where parts are (the layout file): place, turn, flip and lock them, and check.
   - `netsmith-prepare-fab-order`: `fab-notes.txt` and the order preview checklist.
   - `netsmith-port-a-kicad-board`: porting a KiCad design a sheet at a time.
 
