@@ -108,7 +108,7 @@ Boards that plug into each other do it through connectors, and a system says whi
 
 The system names no pin and no net. After the nets of the boards are known, the checker reads what each board has behind each contact, a role: ground (the net is the `neg` of a rail), power (the `pos` of a rail), a signal (a part's `input`, `output` or `bidirectional` pin is on it) or open. Then:
 
-- The two connectors must mate: the same kind, rows, positions and pitch, and a header with a socket. A header does not mate with a header.
+- The two connectors must mate: the same kind, rows, positions and pitch, and a header with a socket. A header does not mate with a header. A connector that takes a smaller one (a 1x8 header in a 1x10 socket) says which of its contacts are mated with `.mating.contacts` (below).
 - Contact N of one board meets contact N of the other, with the rules a board already has on a net: two outputs are refused, an `input` with nothing that drives it on either board is refused, ground against power or a signal is a short. A power contact against a power contact equates their voltages, as `~` of rails does, and an open contact is fine against anything but an input.
 - A mate that carries power or a signal must carry a ground: a contact that is ground on both boards.
 - The ports the mate carries are joined by it: a port of one board whose pins are all on contacts that a port of the same kind on the other board has its pins on is joined to it, as an explicit `~` of the two would join them (values equated, currents balanced). A `~` between ports that the mate carries is refused with a message naming the mate, so a join has one spelling. A port no connector carries (a soldered lead) is still joined with `~`. If a board has two ports on the same contacts, the mate cannot say which is joined, and says so.
@@ -408,7 +408,7 @@ system Kit {
 ```
 
 ```text
-error: `.carrier.slot_a` (Socket1x4) has 4 positions and `.short.j1` (Header1x2) has 2; a mate joins contact N to contact N, so both need the same number
+error: `.carrier.slot_a` (Socket1x4) has 4 positions and `.short.j1` (Header1x2) has 2; a mate joins contact N to contact N, so both need the same number, or the larger one says which of its contacts are mated (`.carrier.slot_a.mating.contacts &= 1..2`)
    --> main.nsm:29:5
    |
 29 |     .carrier.slot_a.mating ~ .short.j1.mating
@@ -623,6 +623,87 @@ system Kit {
 ```text
 Kit/carrier: mating guideline: the pinout of the mate of `.carrier.slot` and `.card.j1` also works with one connector turned end for end, and neither is keyed: contact 2 (RAIL_A on `.carrier.slot`, RAIL_A on `.card.j1`) and contact 3 (RAIL_B on `.carrier.slot`, RAIL_B on `.card.j1`) would swap places and every contact would still be accepted; only a keyed connector (`.mating.keyed`) goes in one way
 ```
+
+#### A partial mate
+
+A 1x2 header goes into two of the four contacts of a 1x4 socket. Which two is a fact of the mate, and the system says it with the `.contacts` of the socket's `.mating`: `.carrier.slot.mating.contacts &= 2..3`, its first and last mated contact. Contact 1 of the mate is then contact 2 of the socket and contact 1 of the header, and so on, one for one; the socket's contacts 1 and 4 stay free and meet nothing. Every check of the mate reads the subset and nothing else: the roles of the contacts, the ports it joins, the ground it must carry, the current through its contacts and the guideline for a pinout that works turned end for end. A connector whose `.contacts` nothing states mates every contact, and either connector may state one, so a 1x10 header with only eight of its pins in a 1x8 socket is said too. The two subsets have as many contacts as each other, and each is a range of whole contact numbers of its own connector.
+
+```nsm
+import std::parts::connector::{Header1x2, Socket1x4}
+import std::sources::Rail
+
+board Carrier {
+    .own: Rail { .neg.net &= "GND" }
+    .cards: Rail { .neg.net &= "GND" }
+    .slot: Socket1x4
+    .own.pos ~ .slot.p1
+    .cards.neg ~ .slot.p2
+    .cards.pos ~ .slot.p3
+    .own.neg ~ .cards.neg
+}
+
+board Card {
+    .supply: Rail { .neg.net &= "GND" }
+    .j1: Header1x2
+    .supply.neg ~ .j1.p1
+    .supply.pos ~ .j1.p2
+}
+
+system Kit {
+    .carrier: Carrier
+    .card: Card
+    // The card's header sits in contacts 2 and 3 of the socket: its ground on the socket's
+    // ground, its supply on the socket's `cards` rail. The mate joins `.carrier.cards` and
+    // `.card.supply`.
+    .carrier.slot.mating ~ .card.j1.mating
+    .carrier.slot.mating.contacts &= 2..3
+}
+```
+
+Without the subset the two connectors have different numbers of contacts, and the message says how to state it. A subset of a different size from the other side's is refused too:
+
+```nsm fails
+import std::parts::connector::{Header1x2, Socket1x4}
+import std::sources::Rail
+
+board Carrier {
+    .gnd: Rail
+    .slot_a: Socket1x4
+    .slot_b: Socket1x4
+    .gnd.neg ~ .slot_a.p1
+    .gnd.neg ~ .slot_b.p1
+}
+
+board Card {
+    .gnd: Rail
+    .j1: Header1x2
+    .gnd.neg ~ .j1.p1
+}
+
+system Kit {
+    .carrier: Carrier
+    .left: Card
+    .right: Card
+    .carrier.slot_a.mating ~ .left.j1.mating
+    .carrier.slot_b.mating ~ .right.j1.mating
+    .carrier.slot_b.mating.contacts &= 1..3
+}
+```
+
+```text
+error: `.carrier.slot_a` (Socket1x4) has 4 positions and `.left.j1` (Header1x2) has 2; a mate joins contact N to contact N, so both need the same number, or the larger one says which of its contacts are mated (`.carrier.slot_a.mating.contacts &= 1..2`)
+   --> main.nsm:22:5
+   |
+22 |     .carrier.slot_a.mating ~ .left.j1.mating
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+error: the mate joins `.carrier.slot_b` 3 of its contacts (1..3) and `.right.j1` all its 2 contacts; a mate joins its contacts one for one, so both sides need the same number (`.mating.contacts` says which contacts of a connector are mated)
+   --> main.nsm:23:5
+   |
+23 |     .carrier.slot_b.mating ~ .right.j1.mating
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+```
+
+The checker does not know where in the socket the header goes on the bench: a 1x2 header fits any two neighbouring contacts of a 1x4 socket, and nothing checks that it cannot go in at another place.
 
 #### The seat and the mated height
 

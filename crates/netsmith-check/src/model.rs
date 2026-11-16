@@ -906,7 +906,8 @@ pub struct Contact {
 }
 
 /// Two connectors that a system mates with `~` between their `.mating` (ADR 0040): contact N
-/// of one meets contact N of the other.
+/// of one meets contact N of the other, or, with a `.mating.contacts` subset, the k-th contact
+/// of one subset meets the k-th of the other.
 #[derive(Debug, Clone)]
 pub struct Mate {
     /// The two connector parts, in the order the statement names them.
@@ -924,6 +925,12 @@ pub struct Mate {
     /// Set when the mate would also work with one connector turned end for end and neither
     /// is keyed: what would swap, for the guideline that says so.
     pub reversible: Option<String>,
+    /// The contact of `a` and of `b` that contact 1 of the mate is: 1 and 1 unless a
+    /// connector's `.mating.contacts` says only some of its contacts are mated (a 1x8 header
+    /// in contacts 3 to 10 of a 1x10 socket has `b_first` 3). Contact `k` of the mate is pin
+    /// `p(a_first + k - 1)` of `a` and `p(b_first + k - 1)` of `b`.
+    pub a_first: usize,
+    pub b_first: usize,
 }
 
 /// One net of one board that is joined to others by mated ground contacts.

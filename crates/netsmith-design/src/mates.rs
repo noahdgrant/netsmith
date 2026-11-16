@@ -25,6 +25,10 @@ pub struct SystemMate {
     /// Each connector's seat, in mm: `(least, most)`. `None` when nothing states it.
     pub a_seat: Option<(f64, f64)>,
     pub b_seat: Option<(f64, f64)>,
+    /// The contacts the mate joins when a `.mating.contacts` subset says only some are:
+    /// `(first of a, first of b, how many)`, pad `first_a + i` meeting pad `first_b + i`.
+    /// `None` when it joins every contact, pad N to pad N.
+    pub window: Option<(usize, usize, usize)>,
 }
 
 impl SystemMate {
@@ -82,6 +86,8 @@ pub fn system_mates(system: &System, solution: &Solution) -> Result<Vec<SystemMa
             b_board: board(mate.b),
             a_seat: seat(model, mate.a, &mut errors),
             b_seat: seat(model, mate.b, &mut errors),
+            window: (mate.a_first != 1 || mate.b_first != 1 || !mates_every_contact(model, mate))
+                .then_some((mate.a_first, mate.b_first, mate.contacts.len())),
         });
     }
     if errors.is_empty() {
@@ -89,6 +95,23 @@ pub fn system_mates(system: &System, solution: &Solution) -> Result<Vec<SystemMa
     } else {
         Err(errors)
     }
+}
+
+/// Whether a mate joins every contact of both its connectors, as a mate with no
+/// `.mating.contacts` subset does.
+fn mates_every_contact(model: &Model, mate: &netsmith_check::Mate) -> bool {
+    let positions = |part: InstId| {
+        let mating = model.mating_of(part)?;
+        let Member::Field(field) = model.member(mating, "positions")? else {
+            return None;
+        };
+        match &model.field(field).domain {
+            Domain::Quantity(q) if q.is_point() => Some(q.mid() as usize),
+            _ => None,
+        }
+    };
+    let n = mate.contacts.len();
+    positions(mate.a) == Some(n) && positions(mate.b) == Some(n)
 }
 
 /// A connector's `.mating.seat` in mm, if something states it.

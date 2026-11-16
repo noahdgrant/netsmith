@@ -51,8 +51,8 @@
 //!
 //! **What is checked**, each reported at the `~` with the nets and pins of both sides: kind (only
 //! `pin_header` is modelled), gender (header with socket; two headers or two sockets do not mate),
-//! positions, rows, pitch. A 1x8 header in a 1x10 socket is refused (it mates physically, but which
-//! eight contacts is a statement the board must make). Per contact, ground against power or a
+//! positions, rows, pitch. A 1x8 header in a 1x10 socket mates physically, but which eight
+//! contacts is a statement someone must make: a partial mate (below). Per contact, ground against power or a
 //! signal is a short, two outputs are refused, an input no board drives is refused (an open or
 //! passive contact facing an input too), two power contacts have their voltages equated as `~` of
 //! rails does, and the currents are balanced as in ADR 0010 (the existing machinery,
@@ -60,6 +60,17 @@
 //! carries power or a signal with no contact that is ground on both boards is an error. A
 //! connector is in one mate, and the two connectors of a mate are on different boards.
 //! Voltage disagreement reads like the existing propagation message, with both connectors named.
+//!
+//! **A partial mate** (issue #792, the direction ADR 0040 recommends). `.contacts` of a
+//! connector's `.mating` (a `Number`, narrowed to a range `first..last` of its contact numbers)
+//! says which of its contacts a mate joins; unset is every contact. The system states it beside
+//! the mate (`.carrier.slot.mating.contacts &= 3..10`). Contact k of the mate is the k-th of each
+//! side's subset ([`Window`]), so the two subsets have as many contacts, and every check above
+//! reads only them; the contacts outside stay free and meet nothing. The model keeps where each
+//! side's subset starts ([`Mate::a_first`], `b_first`), so the buses and the system scene pair
+//! the right pins and pads. A subset is a range and not a list, because the contacts of one row
+//! that a smaller connector covers are neighbours. Where in the socket the header goes on the
+//! bench is not checked: a 1x8 header fits three places in a 1x10 socket.
 //!
 //! **Grounds.** Each board keeps its ground net. [`Model::ground_groups`] lists the nets joined by
 //! contacts that are ground on both sides (union-find over board and net name), with how many
@@ -86,15 +97,14 @@
 //! where pin 1 sits on the PCB.
 //!
 //! **Not built** (issues #16 and #62): edge connectors and the plug-in's `card_thickness` check;
-//! flat cables and wire to board (they need a cable or harness definition); a partial mate and
-//! isolated grounds; stacking, side, `.mount` and `.mated_height` (they need the layout file and
-//! part heights); pin 1 on the PCB; a rating for the 2x10 header; derating of several loaded
-//! contacts (no datasheet read gives one). Messages are one line each (the multi-line form would need a notes field on
+//! flat cables and wire to board (they need a cable or harness definition); isolated grounds;
+//! stacking, side, `.mount` and `.mated_height` (they need the layout file and part heights); pin
+//! 1 on the PCB; a rating for the 2x10 header; derating of several loaded contacts (no datasheet
+//! read gives one). Messages are one line each (the multi-line form would need a notes field on
 //! diagnostics).
 //!
-//! **Refused, not built** (ADR 0040, issue #16): partial mates and isolated grounds are
-//! "refused in v1. Recommend a later `.contacts` subset on the mate and a `.isolated` mark on a
-//! rail, each with its own check, if a design needs them". Pin ratings are sourced by
+//! **Refused, not built** (ADR 0040, issue #16): isolated grounds are "refused in v1. Recommend
+//! ... a `.isolated` mark on a rail, with its own check, if a design needs them". Pin ratings are sourced by
 //! series from public datasheets, starting with the one series the kit uses, and the rating check
 //! is "not evaluated" for a connector with no row.
 
@@ -143,6 +153,36 @@ type Carried = (String, Vec<usize>);
 
 /// A net of a board, to find the nets that mated ground contacts join.
 type BoardNet = (InstId, String);
+
+/// Which contacts of the two connectors a mate joins: contact `k` of the mate (from 1) is pin
+/// `p(a + k)` of the first connector and pin `p(b + k)` of the second. A mate of every contact
+/// has `a` and `b` 0; a `.mating.contacts` subset moves them.
+#[derive(Debug, Clone, Copy)]
+struct Window {
+    a: usize,
+    b: usize,
+    count: usize,
+    /// Whether it is every contact of both connectors, as a mate with no subset is.
+    every: bool,
+}
+
+impl Window {
+    /// The window of a mate already read, from where its first contact is on each connector,
+    /// to find the contacts a port is on (`every` is read only by the messages of a contact).
+    fn of(mate: &Mate) -> Window {
+        Window {
+            a: mate.a_first.saturating_sub(1),
+            b: mate.b_first.saturating_sub(1),
+            count: mate.contacts.len(),
+            every: false,
+        }
+    }
+
+    /// Where contact 1 of the mate is on `part`, as an offset, when `part` is one of its two.
+    fn offset(&self, decl: &MateDecl, part: InstId) -> usize {
+        if part == decl.a { self.a } else { self.b }
+    }
+}
 
 /// How two sides of a contact meet.
 enum Meeting {
@@ -309,17 +349,25 @@ impl Checker<'_> {
             contacts: Vec::new(),
             ports: Vec::new(),
             reversible: None,
+            a_first: 1,
+            b_first: 1,
         };
-        let Some(positions) = self.connectors_mate(decl) else {
+        let Some(window) = self.connectors_mate(decl) else {
             return (mate, None);
         };
+        mate.a_first = window.a + 1;
+        mate.b_first = window.b + 1;
 
-        // Contact N of one is contact N of the other.
+        // Contact k of the mate is the k-th contact of each connector's subset: with no subset,
+        // contact N of one is contact N of the other.
         let mut sides: Vec<(Side, Side)> = Vec::new();
-        for n in 1..=positions {
-            let (Some(pa), Some(pb)) = (self.contact_pin(decl.a, n), self.contact_pin(decl.b, n))
-            else {
+        for k in 1..=window.count {
+            let (Some(pa), Some(pb)) = (
+                self.contact_pin(decl.a, window.a + k),
+                self.contact_pin(decl.b, window.b + k),
+            ) else {
                 for part in [decl.a, decl.b] {
+                    let n = window.offset(decl, part) + k;
                     if self.contact_pin(part, n).is_none() {
                         let message = format!(
                             "{} has no pin `p{n}`, so it has no contact {n}; a connector's contact N is its pin `pN`",
@@ -337,7 +385,7 @@ impl Checker<'_> {
         for (i, (a, b)) in sides.iter().enumerate() {
             if let Meeting::Refused(why) = self.meet(a, b) {
                 clean = false;
-                let message = self.contact_message(decl, i + 1, positions, a, b, &why);
+                let message = self.contact_message(decl, window, i + 1, a, b, &why);
                 self.fail(decl, message);
             }
         }
@@ -363,7 +411,7 @@ impl Checker<'_> {
         if clean {
             self.carries_ground(decl, &sides);
             mate.reversible = self.reversible(decl, &sides);
-            mate.ports = self.derive_ports(decl, &sides);
+            mate.ports = self.derive_ports(decl, window, &sides);
             self.equate_unported_rails(decl, &sides, &mate.ports);
         }
         (mate, clean.then_some(sides))
@@ -377,9 +425,32 @@ impl Checker<'_> {
         }
     }
 
-    /// Whether the two connectors can mate at all: kind, gender, pitch, rows and positions.
-    /// Reports what does not, and gives the number of contacts when they do.
-    fn connectors_mate(&mut self, decl: &MateDecl) -> Option<usize> {
+    /// Which contacts of a connector its `.mating.contacts` says are mated, as the first and
+    /// the last: every contact when nothing states it. A subset that is not a range of whole
+    /// contact numbers of the connector is refused, with the field and its value.
+    fn subset(&self, part: InstId, positions: usize) -> Result<(usize, usize), String> {
+        let Some(field) = self.field(part, "contacts") else {
+            return Ok((1, positions));
+        };
+        let q = match &self.model.field(field).domain {
+            Domain::Quantity(q) => *q,
+            _ => return Ok((1, positions)),
+        };
+        let whole = |x: f64| x.is_finite() && x.fract() == 0.0;
+        if whole(q.lo()) && whole(q.hi()) && q.lo() >= 1.0 && q.hi() <= positions as f64 {
+            return Ok((q.lo() as usize, q.hi() as usize));
+        }
+        Err(format!(
+            "`.{}.mating.contacts` is {q}; it says which contacts of the connector are mated, a range of whole contact numbers from 1 to its {positions} positions, such as `1..{}`",
+            self.model.path_of(part),
+            positions.saturating_sub(1).max(1)
+        ))
+    }
+
+    /// Whether the two connectors can mate at all: kind, gender, pitch, rows and positions,
+    /// and the contacts of each that `.mating.contacts` says are mated. Reports what does not,
+    /// and gives the contacts the mate joins when they do.
+    fn connectors_mate(&mut self, decl: &MateDecl) -> Option<Window> {
         let (a, b) = (decl.a, decl.b);
         let mut ok = true;
         for part in [a, b] {
@@ -454,15 +525,45 @@ impl Checker<'_> {
             return None;
         }
         let (pa, pb) = (self.count(a, "positions")?, self.count(b, "positions")?);
-        if pa != pb {
-            self.fail(
-                decl,
+        let stated = |c: &Self, part: InstId| {
+            c.field(part, "contacts")
+                .is_some_and(|f| matches!(c.model.field(f).domain, Domain::Quantity(_)))
+        };
+        let (said_a, said_b) = (stated(self, a), stated(self, b));
+        let ((fa, la), (fb, lb)) = match (self.subset(a, pa), self.subset(b, pb)) {
+            (Ok(x), Ok(y)) => (x, y),
+            (x, y) => {
+                for message in [x.err(), y.err()].into_iter().flatten() {
+                    self.fail(decl, message);
+                }
+                return None;
+            }
+        };
+        let (na, nb) = (la + 1 - fa, lb + 1 - fb);
+        if na != nb {
+            let message = if !said_a && !said_b {
+                let (larger, fewer) = if pa > pb { (a, pb) } else { (b, pa) };
                 format!(
-                    "{sa} ({}) has {pa} positions and {sb} ({}) has {pb}; a mate joins contact N to contact N, so both need the same number",
+                    "{sa} ({}) has {pa} positions and {sb} ({}) has {pb}; a mate joins contact N to contact N, so both need the same number, or the larger one says which of its contacts are mated (`.{}.mating.contacts &= 1..{fewer}`)",
                     ty(a),
-                    ty(b)
-                ),
-            );
+                    ty(b),
+                    self.model.path_of(larger)
+                )
+            } else {
+                let mated = |part: InstId, f: usize, l: usize, n: usize, positions: usize| {
+                    if n == positions {
+                        format!("{} all its {n} contacts", self.shown(part))
+                    } else {
+                        format!("{} {n} of its contacts ({f}..{l})", self.shown(part))
+                    }
+                };
+                format!(
+                    "the mate joins {} and {}; a mate joins its contacts one for one, so both sides need the same number (`.mating.contacts` says which contacts of a connector are mated)",
+                    mated(a, fa, la, na, pa),
+                    mated(b, fb, lb, nb, pb)
+                )
+            };
+            self.fail(decl, message);
             return None;
         }
         let (ra, rb) = (self.count(a, "rows")?, self.count(b, "rows")?);
@@ -492,7 +593,12 @@ impl Checker<'_> {
             );
             return None;
         }
-        Some(pa)
+        Some(Window {
+            a: fa - 1,
+            b: fb - 1,
+            count: na,
+            every: na == pa && nb == pb,
+        })
     }
 
     /// What is behind a contact: the net of the connector's pin in its board and what it is.
@@ -596,13 +702,15 @@ impl Checker<'_> {
     fn contact_message(
         &self,
         decl: &MateDecl,
+        window: Window,
         n: usize,
-        positions: usize,
         a: &Side,
         b: &Side,
         why: &str,
     ) -> String {
+        let positions = window.count;
         let describe = |part: InstId, s: &Side| {
+            let pin = window.offset(decl, part) + n;
             let net = s
                 .net
                 .as_ref()
@@ -632,7 +740,7 @@ impl Checker<'_> {
                 _ => String::new(),
             };
             format!(
-                "{} pin {n} is {net}, {}{detail}",
+                "{} pin {pin} is {net}, {}{detail}",
                 self.shown(part),
                 s.role.word()
             )
@@ -643,10 +751,20 @@ impl Checker<'_> {
             describe(decl.b, b)
         );
         if n != positions + 1 - n {
-            message.push_str(&format!(
-                "; a mate joins contact N to contact N, so if one is meant to be turned end for end, its pin {n} would meet pin {}",
-                positions + 1 - n
-            ));
+            if window.every {
+                message.push_str(&format!(
+                    "; a mate joins contact N to contact N, so if one is meant to be turned end for end, its pin {n} would meet pin {}",
+                    positions + 1 - n
+                ));
+            } else {
+                message.push_str(&format!(
+                    "; if one is meant to be turned end for end, {} pin {} would meet {} pin {}",
+                    self.shown(decl.a),
+                    window.a + n,
+                    self.shown(decl.b),
+                    window.b + positions + 1 - n
+                ));
+            }
         }
         message
     }
@@ -790,8 +908,15 @@ impl Checker<'_> {
             .collect()
     }
 
-    /// The contacts of `connector` that are on the same net as `pin`.
-    fn contacts_on(&mut self, connector: InstId, pin: InstId, positions: usize) -> Vec<usize> {
+    /// The contacts of the mate (numbered from 1 within its window) whose pin on `connector`
+    /// is on the same net as `pin`.
+    fn contacts_on(
+        &mut self,
+        connector: InstId,
+        offset: usize,
+        pin: InstId,
+        positions: usize,
+    ) -> Vec<usize> {
         let root = self.find(pin.0);
         let Some(net) = self.model.net_of(pin) else {
             return Vec::new();
@@ -801,7 +926,7 @@ impl Checker<'_> {
         }
         (1..=positions)
             .filter(|&n| {
-                self.contact_pin(connector, n)
+                self.contact_pin(connector, offset + n)
                     .is_some_and(|c| self.find(c.0) == root)
             })
             .collect()
@@ -813,10 +938,11 @@ impl Checker<'_> {
     fn carried(
         &mut self,
         decl: &MateDecl,
-        positions: usize,
+        window: Window,
         p: InstId,
         q: InstId,
     ) -> Option<(Vec<Carried>, bool)> {
+        let positions = window.count;
         // `p` is on the board of `a` and `q` on the board of `b`, or the reverse.
         let on = |m: &Model, port: InstId, part: InstId| m.board_of(port) == m.board_of(part);
         let (cp, cq) = if on(&self.model, p, decl.a) && on(&self.model, q, decl.b) {
@@ -834,9 +960,10 @@ impl Checker<'_> {
                 whole = false;
                 continue;
             };
+            let (oa, ob) = (window.offset(decl, cp), window.offset(decl, cq));
             let (ca, cb) = (
-                self.contacts_on(cp, *a, positions),
-                self.contacts_on(cq, *b, positions),
+                self.contacts_on(cp, oa, *a, positions),
+                self.contacts_on(cq, ob, *b, positions),
             );
             let shared: Vec<usize> = ca.iter().copied().filter(|n| cb.contains(n)).collect();
             if shared.is_empty() {
@@ -851,8 +978,13 @@ impl Checker<'_> {
     /// A port of one board whose pins are all on contacts that the other board's port, of the
     /// same kind, has its pins on, is joined to it by the mate, as `~` between the two
     /// would: the values are equated and the currents are balanced.
-    fn derive_ports(&mut self, decl: &MateDecl, sides: &[(Side, Side)]) -> Vec<(InstId, InstId)> {
-        let positions = sides.len();
+    fn derive_ports(
+        &mut self,
+        decl: &MateDecl,
+        window: Window,
+        sides: &[(Side, Side)],
+    ) -> Vec<(InstId, InstId)> {
+        debug_assert_eq!(window.count, sides.len());
         let (Some(ba), Some(bb)) = (self.model.board_of(decl.a), self.model.board_of(decl.b))
         else {
             return Vec::new();
@@ -863,7 +995,7 @@ impl Checker<'_> {
                 if self.model.instance(p).def != self.model.instance(q).def {
                     continue;
                 }
-                if let Some((_, true)) = self.carried(decl, positions, p, q) {
+                if let Some((_, true)) = self.carried(decl, window, p, q) {
                     pairs.push((p, q));
                 }
             }
@@ -1064,11 +1196,10 @@ impl Checker<'_> {
                     source: mate.source,
                     span: mate.span,
                 };
-                let positions = mate.contacts.len();
-                if positions == 0 {
+                if mate.contacts.is_empty() {
                     continue;
                 }
-                let Some((found, _)) = self.carried(&decl, positions, join.a, join.b) else {
+                let Some((found, _)) = self.carried(&decl, Window::of(mate), join.a, join.b) else {
                     continue;
                 };
                 if found.is_empty() {

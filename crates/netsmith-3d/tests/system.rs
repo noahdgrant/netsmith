@@ -20,6 +20,7 @@ fn mate(a: &str, b: &str, height: Option<(f64, f64)>) -> MateInput {
         unknown: height
             .is_none()
             .then(|| format!("the mate of `{a}` and `{b}` has no mated height")),
+        window: None,
     }
 }
 
@@ -161,4 +162,26 @@ fn a_member_no_mate_places_is_drawn_apart_with_its_reason() {
     // Nothing across boards is checked for a member apart: no other finding.
     assert!(s.findings.iter().all(|f| f.code == SystemCode::SystemApart));
     assert!(!SystemCode::SystemApart.error() && SystemCode::SystemApart.is_error(true));
+}
+
+#[test]
+fn a_partial_mate_pairs_the_pads_of_its_window() {
+    let (carrier, card) = (board(), board());
+    // A window of both pads from pad 1 pairs them as a mate of every contact does.
+    let mut whole = mate("carrier.row", "card.row", Some((5.0, 5.4)));
+    whole.window = Some((1, 1, 2));
+    let s = system(&[("carrier", &carrier), ("card", &card)], vec![whole]);
+    assert_eq!(s.mates[0].contacts, 2);
+    assert_eq!(s.member("card").unwrap().place, SystemPlace::Mated { mate: 0 });
+    // Pad 2 of the carrier's row on pad 1 of the card's: one pair, too few to line them up.
+    let mut shifted = mate("carrier.row", "card.row", Some((5.0, 5.4)));
+    shifted.window = Some((2, 1, 1));
+    let s = system(&[("carrier", &carrier), ("card", &card)], vec![shifted]);
+    assert_eq!(s.mates[0].contacts, 1);
+    match &s.member("card").unwrap().place {
+        SystemPlace::Apart { reason } => {
+            assert!(reason.contains("have 1 pad of one number"), "{reason}")
+        }
+        other => panic!("{other:?}"),
+    }
 }
