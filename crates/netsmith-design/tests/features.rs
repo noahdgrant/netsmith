@@ -557,3 +557,43 @@ fn a_case_model_of_a_module_is_refused() {
         "`m.shell` is a `CaseModel`, and a case is the board's: declare it in the `case { }` section of the board's physical file"
     );
 }
+
+fn hole_board(fields: &str) -> String {
+    format!(
+        "import std::mfg::jlcpcb::TwoLayer\nimport std::parts::mechanical::MountingHole\nboard B {{\n    .process: TwoLayer {{\n        .stackup.thickness &= 1.6mm\n    }}\n    .hole: MountingHole {{\n{fields}    }}\n}}\n"
+    )
+}
+
+#[test]
+fn a_mounting_hole_with_a_head_carries_a_keepout_round_its_centre_on_every_layer() {
+    let d = designed(&hole_board("        .head_diameter &= 6mm\n")).unwrap();
+    let k = &d.features.keepouts;
+    assert_eq!(k.len(), 1, "{k:?}");
+    assert_eq!(k[0].name, "screw head of hole");
+    assert_eq!(k[0].part.as_deref(), Some("hole"));
+    assert_eq!(k[0].at, Some((-3.0, -3.0)));
+    assert_eq!(k[0].size, (6.0, 6.0));
+    assert_eq!(k[0].layers, ["top", "bottom"]);
+    assert!(k[0].tracks && k[0].vias && k[0].copper && k[0].parts);
+    assert_eq!(k[0].max_height, None);
+}
+
+#[test]
+fn a_mounting_hole_with_no_head_carries_nothing() {
+    let d = designed(&hole_board("")).unwrap();
+    assert!(d.features.keepouts.is_empty(), "{:?}", d.features.keepouts);
+}
+
+#[test]
+fn a_head_that_is_a_range_or_not_above_nothing_is_refused() {
+    let text = errors_of(&hole_board("        .head_diameter &= 5mm..6mm\n"));
+    assert!(
+        text.contains("`hole.head_diameter` is") && text.contains("a range"),
+        "{text}"
+    );
+    let text = errors_of(&hole_board("        .head_diameter &= 0mm\n"));
+    assert!(
+        text.contains("`hole.head_diameter` is 0 mm, and a screw head is wider than nothing"),
+        "{text}"
+    );
+}

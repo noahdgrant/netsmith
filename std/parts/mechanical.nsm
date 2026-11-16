@@ -44,12 +44,20 @@
 
 /// A mounting hole with no copper: a drill for a screw that touches no net. It has no pins,
 /// so it is on no net.
+///
+/// `.head_diameter` is how wide the screw's head (or its washer) is, which is wider than the
+/// hole. Stated, it makes room round the hole's centre: the placer keeps every other part
+/// out of the head's circle, the router keeps tracks and vias out of it, no pour is filled in
+/// it, and the design rules check reports a part, a pad, a track, a via or a pour that is in
+/// it (ADR 0045, C3). Unstated, the hole has no head, as before. The room is the square
+/// that holds the circle, so it is never smaller than the head.
 #[kind(mounting_hole)]
 part MountingHole {
     .designator &= "H"
     .height &= 0mm
     .assembly &= AssemblyMode::None
     .package: Package
+    .head_diameter: Length
 }
 
 /// A mounting hole plated through, with a pad that a screw bonds to a net (the chassis, or

@@ -74,6 +74,14 @@ fn forbids(
     }
 }
 
+/// Every copper layer of a board, as a keepout names them: `top`, `inner1`... and `bottom`.
+fn copper_layer_names(copper_layers: u32) -> Vec<String> {
+    let mut names = vec!["top".to_string()];
+    names.extend((1..=copper_layers.saturating_sub(2)).map(|n| format!("inner{n}")));
+    names.push("bottom".to_string());
+    names
+}
+
 /// The copper layers a keepout's `.layers` names, as `top`, `bottom`, `inner1`...
 fn layers_of(
     model: &Model,
@@ -81,9 +89,7 @@ fn layers_of(
     copper_layers: u32,
     errors: &mut Vec<String>,
 ) -> Vec<String> {
-    let mut available = vec!["top".to_string()];
-    available.extend((1..=copper_layers.saturating_sub(2)).map(|n| format!("inner{n}")));
-    available.push("bottom".to_string());
+    let available = copper_layer_names(copper_layers);
     let Some(Domain::Text(text)) = domain(model, inst, "layers") else {
         return available;
     };
@@ -224,6 +230,46 @@ fn standoffs(model: &Model, errors: &mut Vec<String>) -> Vec<PartStandoff> {
             continue;
         }
         found.push(PartStandoff { path, standoff });
+    }
+    found
+}
+
+/// The room each mounting hole that states a `.head_diameter` keeps for its screw head
+/// (ADR 0045, C3): a keepout the hole carries, centred on the hole, that forbids tracks, vias,
+/// copper and parts on every copper layer (`netsmith_core::HEAD_ZONE` names it). It is the
+/// square that holds the head's circle: the geometry of every check is rectangular, and a
+/// square is never smaller than the circle. A head that is not one positive value is an error.
+fn heads(model: &Model, copper_layers: u32, errors: &mut Vec<String>) -> Vec<Keepout> {
+    let mut holes: Vec<(String, InstId)> = model
+        .instances()
+        .filter(|(_, i)| i.kind == InstKind::Part && i.type_name == "MountingHole")
+        .map(|(id, _)| (model.path_of(id), id))
+        .collect();
+    holes.sort();
+    let mut found = Vec::new();
+    for (path, id) in holes {
+        netsmith_core::job::checkpoint();
+        let Some(head) = exact(model, id, "head_diameter", errors) else {
+            continue;
+        };
+        if head <= 0.0 {
+            errors.push(format!(
+                "`{path}.head_diameter` is {head} mm, and a screw head is wider than nothing: leave it out for a hole with no head"
+            ));
+            continue;
+        }
+        found.push(Keepout {
+            name: format!("{}{path}", netsmith_core::HEAD_ZONE),
+            part: Some(path),
+            at: Some((-head / 2.0, -head / 2.0)),
+            size: (head, head),
+            layers: copper_layer_names(copper_layers),
+            tracks: true,
+            vias: true,
+            copper: true,
+            parts: true,
+            max_height: None,
+        });
     }
     found
 }
@@ -867,6 +913,7 @@ pub(crate) fn features_of(
             _ => {}
         }
     }
+    features.keepouts.extend(heads(model, layers, errors));
     features
 }
 

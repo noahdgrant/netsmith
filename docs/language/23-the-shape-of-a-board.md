@@ -469,6 +469,8 @@ When the enclosure is a DXF, `netsmith dxf import` writes the outline, the cutou
 
 Mounting holes, plated holes and fiducials go in the corners of a fixed outline, holes first, clockwise from the top left, and clear of a rounded corner. A board with no outline lays them out with the other parts. A part in a rounded corner, over a cutout or outside the outline is found by the placement check and named.
 
+**A screw head (ADR 0045, C3).** A screw's head is wider than its hole, so a `MountingHole` may state `.head_diameter`, how wide the head (or its washer) is: `.hole1: MountingHole { .head_diameter &= 6mm }`. The hole then carries room for the head, a keepout centred on the hole that forbids parts, tracks, vias and pours on every copper layer: the placer keeps every other part's courtyard out of it, the router and the stitching vias keep clear of it, no pour is filled in it, the board file has it as a rule area (so KiCad's check and the design rules check keep to it) and the placement check names a part that stands in it: ``R3 overlaps the screw head of `hole1`, which forbids parts``. The room is the square that holds the head's circle, so it is never smaller than the head and a corner of it is a little more than the head needs; the hole itself, and its own courtyard, are not in it. A hole that states no `.head_diameter` has no head, as before. `.head_diameter` is one length above zero: a range or zero is an error that names it. A `PlatedHole` has no `.head_diameter` yet, and the diameter of the hole itself is issue #89.
+
 Misuse.
 
 ```nsm fails

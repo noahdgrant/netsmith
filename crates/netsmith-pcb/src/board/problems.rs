@@ -230,6 +230,15 @@ pub(super) fn limit_word(name: &str) -> String {
     }
 }
 
+/// What a message calls the keepout a part is in: by its name, or, for the room a mounting
+/// hole keeps for its screw head (`.head_diameter`), the head of that hole.
+fn keepout_word(name: &str) -> String {
+    match name.strip_prefix(netsmith_core::HEAD_ZONE) {
+        Some(hole) => format!("the screw head of `{hole}`"),
+        None => format!("the keepout `{name}`"),
+    }
+}
+
 /// A part under a height limit that states no height (ADR 0045, "Height limits"): whether it
 /// fits is unknown, which is not a pass.
 #[derive(Debug, Clone, PartialEq)]
@@ -559,8 +568,9 @@ impl std::fmt::Display for PlacementProblem {
                 keepout,
             } => write!(
                 f,
-                "{} overlaps the keepout `{keepout}`, which forbids parts",
-                member(path, refdes)
+                "{} overlaps {}, which forbids parts",
+                member(path, refdes),
+                keepout_word(keepout)
             ),
             Self::TooTall {
                 refdes,
@@ -586,8 +596,9 @@ impl std::fmt::Display for PlacementProblem {
                 keepout,
             } => write!(
                 f,
-                "a pad of {} is inside the keepout `{keepout}`, which forbids tracks, so none can reach it",
-                member(path, refdes)
+                "a pad of {} is inside {}, which forbids tracks, so none can reach it",
+                member(path, refdes),
+                keepout_word(keepout)
             ),
             Self::InCutout {
                 refdes,
