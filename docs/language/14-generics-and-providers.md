@@ -122,6 +122,7 @@ A board or module declares a member with the generic's type and puts requirement
 import src::rf::CoaxReceptacle
 import src::parts::acme_basic_coax::AcmeBasicCoax   // not used by name: brings its file's providers in scope
 import src::parts::acme_micro_coax::AcmeMicroCoax   // the same
+import std::parts::mechanical::TestPoint
 
 module AntennaFeed {
     .signal: Pin
@@ -135,6 +136,10 @@ module AntennaFeed {
 
 board Radio {
     .feed: AntennaFeed
+    .tp_signal: TestPoint   // the module's ports must be connected: a port left open is no connection
+    .tp_gnd: TestPoint
+    .feed.signal ~ .tp_signal.p1
+    .feed.gnd ~ .tp_gnd.p1
 }
 ```
 
