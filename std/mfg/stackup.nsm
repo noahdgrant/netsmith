@@ -54,8 +54,8 @@ interface DielectricLayer {
 /// (`.process.inner1.net &= "GND"`). A signal layer has no net; the board says it is one
 /// (`.process.inner2.use &= "signal"`), and it is written as a signal layer and plotted and
 /// checked like the outer layers. The router draws tracks on it as on the outer layers, joined
-/// by through vias (issue #833); a net with a known current keeps to the outer layers, whose
-/// copper its width is sized for.
+/// by through vias (issue #833); a net with a known current is drawn there at the width its
+/// current needs in the inner copper (`.stackup.inner_copper`), which is wider than outside.
 interface InnerLayer {
     /// `"plane"`, the default, or `"signal"`.
     .use: String

@@ -204,7 +204,11 @@ export function Canvas(props: {
   };
   const [ghost, setGhost] = useState<Pt | null>(null);
   const anchors = useMemo(() => anchorsOf(sc), [sc]);
-  const widthOf = (net: string) => sc.netWidths.find((w) => w.net === net)?.width ?? 0.2;
+  // On the layer the track tool draws on: an inner signal layer has its own width (issue 833).
+  const widthOf = (net: string) => {
+    const w = sc.netWidths.find((n) => n.net === net);
+    return (layerNow.startsWith('inner') ? w?.inner_width : w?.width) ?? w?.width ?? 0.2;
+  };
   // A track being drawn is dropped when the tool changes.
   useEffect(() => {
     if (activeTool !== 'track') setDraft(null);
@@ -213,9 +217,10 @@ export function Canvas(props: {
 
   // The walkaround (issue 726): the next segment of the track goes from its last corner to the pointer round the copper in the
   // way, as the server works it out (netsmith_router::walk), and the preview and the click use that path.
-  const layerNow = trackLayer.value;
+  // A layer the board has no track on (the tool's layer of another board) is its top.
+  const layerNow = sc.trackLayers.includes(trackLayer.value) ? trackLayer.value : 'top';
   const shoveNow = trackShove.value;
-  const walkAsk = (d: Draft, to: Pt, layer: 'top' | 'bottom' = trackLayer.value): PcbWalk => ({
+  const walkAsk = (d: Draft, to: Pt, layer: string = layerNow): PcbWalk => ({
     board: sc.board,
     net: d.net,
     layer,
@@ -317,7 +322,7 @@ export function Canvas(props: {
     setDraft(null);
     setGhost(null);
     if (!d) return;
-    const drawn = drawChanges(d.net, trackLayer.value, d.points);
+    const drawn = drawChanges(d.net, layerNow, d.points);
     if (drawn.length === 0) {
       say('A track needs a second point: click where it goes, then double-click or press Enter');
       return;
@@ -910,7 +915,7 @@ export function Canvas(props: {
               const state = !walk ? 'asked' : found ? 'path' : 'refused';
               return (
                 <g
-                  class={`track-draft layer-${trackLayer.value} walk-${state}`}
+                  class={`track-draft layer-${layerNow.startsWith('inner') ? 'inner' : layerNow} walk-${state}`}
                   data-testid="track-draft"
                   data-net={draft.net}
                   data-points={draft.points.length}

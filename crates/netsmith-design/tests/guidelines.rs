@@ -1153,3 +1153,45 @@ fn a_wide_net_whose_rail_states_a_wide_enough_track_is_still_told() {
     // The rail's 7 mm carries it: no finding that the track is too narrow.
     assert!(found.iter().all(|g| g.rule == "net width"), "{found:?}");
 }
+
+// ---- a width for the inner signal layers (issue #833) ---------------------------------------
+
+/// The 2 A node of [`fuse_diode`] on JLCPCB's four-layer board, its second inner layer a plane
+/// on GND and its first `inner1` (a signal layer when `signal`, a plane on VOUT otherwise).
+fn four_layer_node(signal: bool) -> netsmith_core::NetCurrent {
+    let inner1 = if signal {
+        ".inner1.use &= \"signal\""
+    } else {
+        ".inner1.net &= \"VOUT\""
+    };
+    let src = fuse_diode("        .current &= 1A..2A\n", "", "")
+        .replace("TwoLayer", "FourLayer")
+        .replace(
+            "        .stackup.thickness &= 1.6mm\n",
+            &format!("        .stackup.thickness &= 1.6mm\n        {inner1}\n        .inner2.net &= \"GND\"\n"),
+        );
+    let l = designed_of(&src);
+    l.design
+        .features
+        .net_currents
+        .iter()
+        .find(|c| c.net.contains("diode") || c.net.contains("fuse"))
+        .expect("the node carries a current")
+        .clone()
+}
+
+#[test]
+fn on_a_board_with_an_inner_signal_layer_a_net_gets_the_width_its_current_needs_there() {
+    // IPC-2221's inner constant in JLCPCB's 0.5 oz inner copper (0.0152 mm), for the narrowest
+    // finished track (the 0.2 tolerance): much wider than in the outer copper.
+    let node = four_layer_node(true);
+    let inner = node.inner_least_width.expect("an inner width");
+    let needs = ipc2221_width(2.0, 0.0152, 10.0, Layer::Internal) / 0.8;
+    assert!((inner - needs).abs() < 1e-9, "{node:?}");
+    assert!(inner > 2.0 * node.least_width, "{node:?}");
+}
+
+#[test]
+fn on_a_board_whose_inner_layers_are_planes_a_net_gets_no_inner_width() {
+    assert_eq!(four_layer_node(false).inner_least_width, None);
+}

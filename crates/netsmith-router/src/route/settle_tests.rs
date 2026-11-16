@@ -556,3 +556,54 @@ fn distances_are_to_the_edge_of_the_form() {
     let via = Form::Circle(Pt::new(0.0, 0.0), 0.3);
     assert!((via.distance(Pt::new(1.0, 0.0)) - 0.7).abs() < 1e-12);
 }
+
+/// A via in a pad is a through via: on a board with an inner signal layer, a path through it
+/// goes on from the far outer layer or from the signal layer, unless the line's net keeps to the
+/// outer layers (issue #833).
+#[test]
+fn a_via_in_a_pad_leads_to_the_inner_signal_layers_the_line_may_use() {
+    let mut board = crate::board_from_design(
+        &four_layer_design(),
+        &netsmith_kicad::Mapping::standard(),
+        &fixtures(),
+    )
+    .unwrap();
+    // The 3V3 plane's layer, In2.Cu, becomes a signal layer.
+    board.planes.retain(|p| p.net != "3V3");
+    assert_eq!(board.signal_layers(), vec![CopperLayer::Inner(2)]);
+    board.rules.via_in_pad = true;
+    let spots_of = |board: &Board| {
+        let router = Router::new(board, &RouteOptions::default());
+        let line = router
+            .lines
+            .iter()
+            .position(|l| l.net == "net-led.anode" && l.from.refdes == "R1")
+            .or_else(|| {
+                router
+                    .lines
+                    .iter()
+                    .position(|l| l.net == "net-led.anode" && l.to.refdes == "R1")
+            })
+            .expect("a line to R1");
+        let (from, to) = router.in_pads[line];
+        let pad = if router.lines[line].from.refdes == "R1" {
+            from
+        } else {
+            to
+        };
+        let pad = pad.expect("R1's 0402 pad may have a via in it");
+        pad.spots().map(|s| s.2).collect::<Vec<usize>>()
+    };
+    let far = |layers: &[usize]| layers[0];
+    let free = spots_of(&board);
+    assert_eq!(free.len(), 2, "{free:?}");
+    assert!(far(&free) < 2 && free[1] == 2, "{free:?}");
+    board.net_currents.push(netsmith_core::NetCurrent {
+        net: "net-led.anode".into(),
+        current: 0.02,
+        least_width: 0.01,
+        inner_least_width: None,
+        vias: 1,
+    });
+    assert_eq!(spots_of(&board).len(), 1);
+}

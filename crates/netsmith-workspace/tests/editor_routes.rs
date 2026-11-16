@@ -993,3 +993,57 @@ fn the_routers_copper_gives_way_to_a_walk_and_is_named_when_it_is_crossed() {
     let gone = editor.pcb_walk(&sweep("GND", centre, big)).unwrap();
     assert!(gone.crossed.tracks.is_empty() && gone.crossed.vias.is_empty(), "{gone:?}");
 }
+
+#[test]
+fn the_track_tool_draws_on_an_inner_signal_layer_and_not_on_a_plane() {
+    // Issue #833: the six-layer example's second and third inner layers are signal layers.
+    let root = TempDir::new("editor-routes-inner");
+    fs::create_dir_all(root.join("src")).unwrap();
+    fs::write(root.join("netsmith.toml"), "[project]\nname = \"inner\"\n").unwrap();
+    fs::write(
+        root.join("src/main.nsm"),
+        include_str!("../../../examples/six_layer.nsm"),
+    )
+    .unwrap();
+    fs::write(
+        root.join("src/main.lock.toml"),
+        include_str!("../../../examples/six_layer.lock.toml"),
+    )
+    .unwrap();
+    let editor = Workspace::open(Target::resolve_from(&root, None).unwrap())
+        .unwrap_or_else(|e| panic!("{e}"));
+    let board = "SixLayerExample";
+    let scene = editor.pcb_scene(board).unwrap();
+    assert_eq!(scene.track_layers, ["top", "inner2", "inner3", "bottom"]);
+    let at = |dx: f64| PcbPoint {
+        x: scene.origin_x + 1.0 + dx,
+        y: scene.origin_y + 1.0,
+    };
+    let walk = |layer: &str| PcbWalk {
+        board: board.into(),
+        ..walk_of("VIN", layer, at(0.0), at(1.0))
+    };
+    let walked = editor.pcb_walk(&walk("inner2")).unwrap();
+    assert!(walked.points.is_some(), "{walked:?}");
+    let plane = editor.pcb_walk(&walk("inner1")).unwrap_err();
+    assert_eq!(plane.status, 400, "{}", plane.message);
+    let edit = |layer: &str| PcbRoutesEdit {
+        board: board.into(),
+        stamp: scene.routes_stamp.clone(),
+        changes: vec![track("VIN", layer, at(0.0), at(1.0))],
+    };
+    assert_eq!(
+        editor.pcb_routes(&edit("inner1")).unwrap_err().status,
+        400
+    );
+    editor.pcb_routes(&edit("inner2")).unwrap();
+    let text = fs::read_to_string(root.join("src/main.routes.toml")).unwrap();
+    let routes = Routes::parse(&text, "routes").unwrap();
+    let tracks: Vec<&RouteTrack> = routes.boards[board]
+        .nets
+        .values()
+        .flat_map(|r| &r.tracks)
+        .collect();
+    assert_eq!(tracks.len(), 1);
+    assert_eq!(tracks[0].layer, CopperLayer::Inner(2));
+}

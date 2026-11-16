@@ -14,6 +14,12 @@ pub struct NetCurrent {
     pub current: f64,
     /// The narrowest track that carries it, in mm, before the process's least track.
     pub least_width: f64,
+    /// The narrowest track on an inner signal layer that carries it, in mm, before the
+    /// process's least track: sized with IPC-2221's inner constant for the inner copper (issue
+    /// #833). `None` when the board has no inner signal layer; such a net keeps to the outer
+    /// layers.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub inner_least_width: Option<f64>,
     /// How many of the process's vias, side by side, carry it where a track changes layer.
     pub vias: usize,
 }

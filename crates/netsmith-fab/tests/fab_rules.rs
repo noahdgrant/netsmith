@@ -232,6 +232,31 @@ fn a_track_narrower_than_its_current_needs_is_named_unless_it_is_near_its_pads()
 }
 
 #[test]
+fn a_track_on_an_inner_signal_layer_is_held_to_the_width_its_current_needs_there() {
+    // P needs 0.4 mm on an outer layer and 0.9 mm on an inner one (issue #833): a 0.5 mm track
+    // passes on the front and is named on In2.Cu; a net with no inner width is held to its
+    // outer one on an inner layer too.
+    let extras = DrcExtras {
+        least_widths: vec![("P".to_string(), 0.4), ("Q".to_string(), 0.4)],
+        inner_least_widths: vec![("P".to_string(), 0.9)],
+        neck_reach: 1.0,
+        ..jlcpcb()
+    };
+    let found = |layer: &str, net: &'static str, width: f64| {
+        let mut b = Pcb::new(4);
+        b.stub(net, 10.0, 10.0);
+        b.stub(net, 20.0, 10.0);
+        b.track(net, layer, (10.0, 10.0), (20.0, 10.0), width);
+        check(&mut b, &extras).count(DrcRule::TrackCurrent)
+    };
+    assert_eq!(found("F.Cu", "P", 0.5), 0);
+    assert_eq!(found("In2.Cu", "P", 0.5), 1);
+    assert_eq!(found("In2.Cu", "P", 0.9), 0);
+    assert_eq!(found("In2.Cu", "Q", 0.3), 1);
+    assert_eq!(found("In2.Cu", "Q", 0.5), 0);
+}
+
+#[test]
 fn a_bend_of_45_degrees_passes_and_a_right_or_acute_corner_does_not_outside_a_pad() {
     let angles = DrcExtras {
         track_angle: true,

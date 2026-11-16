@@ -488,3 +488,46 @@ fn a_refusal_of_a_track_quotes_the_routes_files_places() {
     // The crossing is at (5.0, 5.4) from the outline's corner, not (25.0, 25.4) on KiCad's page.
     assert!(said.contains("at (5.000, 5.400) on F.Cu"), "{said}");
 }
+
+/// The six-layer example (its second and third inner layers signal layers) in a folder of its own.
+fn six_layer(tag: &str) -> TempDir {
+    let dir = TempDir::new(tag);
+    for name in ["six_layer.nsm", "six_layer.lock.toml"] {
+        fs::copy(repo().join("examples").join(name), dir.join(name)).unwrap();
+    }
+    dir
+}
+
+#[test]
+fn add_track_draws_on_an_inner_signal_layer_and_refuses_a_plane() {
+    // Issue #833: a track of the routes file may be on a signal layer; a plane holds none.
+    let dir = six_layer("routes-inner-track");
+    let add = |layer: &str| {
+        netsmith(
+            &dir,
+            &[
+                "routes",
+                "add-track",
+                "--net",
+                "VIN",
+                "--layer",
+                layer,
+                "--from",
+                "1.0,1.0",
+                "--to",
+                "2.0,1.0",
+                "--into",
+                "six_layer.nsm",
+            ],
+        )
+    };
+    let plane = add("inner1");
+    let said = text(&plane);
+    assert_eq!(plane.status.code(), Some(1), "{said}");
+    assert!(said.contains("not a signal layer"), "{said}");
+    ok(&add("inner2"));
+    let file = fs::read_to_string(dir.join("six_layer.routes.toml")).unwrap();
+    assert!(file.contains("layer = \"inner2\""), "{file}");
+    let shown = ok(&netsmith(&dir, &["routes", "show", "--into", "six_layer.nsm"]));
+    assert!(shown.contains("inner2"), "{shown}");
+}

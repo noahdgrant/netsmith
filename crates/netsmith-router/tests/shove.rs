@@ -90,6 +90,7 @@ fn errors(board: &Board) -> Vec<String> {
         npth_drill: Some(board.rules.npth_drill),
         pad_ring: Some(board.rules.min_annular_ring),
         least_widths: board.least_widths(),
+        inner_least_widths: board.inner_least_widths(),
         neck_reach: netsmith_router::route::NECK_REACH,
         via_counts: board.via_counts(),
         track_angle: true,

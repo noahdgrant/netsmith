@@ -311,18 +311,21 @@ export function Pcb() {
             <label class="grid-pick" data-testid="track-options" title="The layer the track is drawn on; its width is the net's by the board's rules">
               <Icon name="layers" size={14} />
               <select
-                value={trackLayer.value}
+                value={sc && sc.trackLayers.includes(trackLayer.value) ? trackLayer.value : 'top'}
                 onChange={(e) => {
                   const el = e.target as HTMLSelectElement;
-                  trackLayer.value = el.value as 'top' | 'bottom';
+                  trackLayer.value = el.value;
                   // The keys of the track being drawn (Enter, Esc, Backspace) are the canvas's again.
                   el.blur();
                 }}
                 data-testid="track-layer"
                 aria-label="Track layer"
               >
-                <option value="top">top layer</option>
-                <option value="bottom">bottom layer</option>
+                {(sc?.trackLayers ?? ['top', 'bottom']).map((l) => (
+                  <option key={l} value={l}>
+                    {l} layer
+                  </option>
+                ))}
               </select>
             </label>
           )}

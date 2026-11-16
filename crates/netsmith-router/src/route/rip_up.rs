@@ -58,7 +58,7 @@ impl<'a> Router<'a> {
         let protected = self.protected(line, state);
         let (_, path) = self.try_line_locked(line, state, &[], room, true, &protected)?;
         self.count_crowding(&path);
-        let reach = self.clearance_of(line) + self.width_of(line) + PITCH;
+        let reach = self.clearance_of(line) + self.widest_of(line) + PITCH;
         let mut found = Vec::new();
         let protected_nets: Vec<usize> = protected.iter().map(|&l| self.nets[l]).collect();
         for r in state
@@ -103,7 +103,7 @@ impl<'a> Router<'a> {
         self.count_crowding(&path);
         let rules = &self.board.rules;
         // The cells the masks keep a track, or a via, from, for copper of this width.
-        let track_reach = self.clearance_of(line) + self.width_of(line) / 2.0 + room;
+        let track_reach = self.clearance_of(line) + self.widest_of(line) / 2.0 + room;
         let via_reach = self.clearance_of(line) + rules.via_diameter / 2.0 + room;
         // Where the path puts a via: the cell where it changes layer.
         let via_at: Vec<(usize, usize)> = path

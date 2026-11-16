@@ -8,11 +8,12 @@
 //! an end on every layer and an obstacle on every layer; a surface-mount pad, a mask opening and
 //! a keepout of the outer faces only on its own; every hole keeps the process's space between
 //! inner copper and a hole ([`netsmith_pcb::Rules::plane_clearance`]) from a track on a signal
-//! layer. A net with a known current (`Board::net_currents`) keeps to the outer layers: its width
-//! is sized for the outer copper (ADR 0036), which an inner layer's thinner copper and IPC-2221's
-//! halved constant would not carry. The coarse plan and the escape lanes are of the outer layers
-//! and cost nothing on an inner one; a via in a pad leads to the pad's far outer layer only.
-//! Blind and buried vias are not drawn.
+//! layer. A net with a known current (`Board::net_currents`) is drawn on an inner signal layer at
+//! the width its current needs there (`Board::track_width_on`: IPC-2221's inner constant in the
+//! inner copper, ADR 0036), wider than on the outer layers, and is never necked there; one whose
+//! design gives no inner width (written before one was sized) keeps to the outer layers. The
+//! coarse plan and the escape lanes are of the outer layers and cost nothing on an inner one; a
+//! via in a pad leads to the pad's far outer layer only. Blind and buried vias are not drawn.
 //!
 //! The inner layers that are planes are not drawn on: a pad on a plane's net is joined to it
 //! by a via dropped beside the pad and a short track from the pad to the via; that is all such

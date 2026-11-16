@@ -9,7 +9,7 @@ impl<'a> Router<'a> {
         let outer_only: Vec<bool> = board
             .nets
             .iter()
-            .map(|n| board.net_currents.iter().any(|c| c.net == n.name))
+            .map(|n| board.keeps_outside(&n.name))
             .collect();
         let net_index: HashMap<&str, usize> = board
             .nets
@@ -69,12 +69,19 @@ impl<'a> Router<'a> {
                 if needs > 1 {
                     return (None, None);
                 }
+                // A via in a pad leads to the far outer layer and to every signal layer the
+                // line may use (issue #833).
+                let layers = if outer_only[net_index[l.net.as_str()]] {
+                    2
+                } else {
+                    stack.len()
+                };
                 let to = if l.to_plane {
                     None
                 } else {
-                    in_pad(board, &l.to, l.to_at, &grid)
+                    in_pad(board, &l.to, l.to_at, &grid, layers)
                 };
-                (in_pad(board, &l.from, l.from_at, &grid), to)
+                (in_pad(board, &l.from, l.from_at, &grid, layers), to)
             })
             .collect();
         let necks = lines
@@ -116,7 +123,12 @@ impl<'a> Router<'a> {
         let widest = board
             .nets
             .iter()
-            .map(|n| board.track_width(&n.name))
+            .flat_map(|n| {
+                stack
+                    .copper
+                    .iter()
+                    .map(|&l| board.track_width_on(&n.name, l))
+            })
             .fold(rules.via_diameter, f64::max);
         let print_reach = 1.0
             + widest
@@ -236,17 +248,38 @@ impl<'a> Router<'a> {
         self.board.clearance(&self.lines[line].net) + MARGIN
     }
 
-    /// The width a line's tracks are drawn at: its net's (ADR 0020).
+    /// The width a line's tracks are drawn at on the outer layers: its net's (ADR 0020).
     pub(super) fn width_of(&self, line: usize) -> f64 {
         self.board.track_width(&self.lines[line].net)
     }
 
-    /// The narrowest a line's track may be necked down to away from its pads: the width its
-    /// net's current needs (issue #431), and no wider than the track itself.
-    pub(super) fn neck_width(&self, line: usize) -> f64 {
+    /// The width a line's tracks are drawn at on a layer of the stack: on an inner signal
+    /// layer, a net with a known current is drawn for the inner copper (issue #833).
+    pub(super) fn width_on(&self, line: usize, layer: usize) -> f64 {
         self.board
-            .least_width(&self.lines[line].net)
-            .min(self.width_of(line))
+            .track_width_on(&self.lines[line].net, self.stack.layer(layer))
+    }
+
+    /// The widest a line's tracks are drawn on any layer of the stack.
+    pub(super) fn widest_of(&self, line: usize) -> f64 {
+        (0..self.stack.len())
+            .map(|l| self.width_on(line, l))
+            .fold(self.width_of(line), f64::max)
+    }
+
+    /// The narrowest a line's track may be necked down to away from its pads on the outer
+    /// layers: the width its net's current needs (issue #431), and no wider than the track
+    /// itself.
+    pub(super) fn neck_width(&self, line: usize) -> f64 {
+        self.neck_width_on(line, FRONT)
+    }
+
+    /// The same on a layer of the stack: on an inner signal layer, the width the current needs
+    /// in the inner copper (issue #833).
+    pub(super) fn neck_width_on(&self, line: usize, layer: usize) -> f64 {
+        self.board
+            .least_width_on(&self.lines[line].net, self.stack.layer(layer))
+            .min(self.width_on(line, layer))
     }
 
     /// For a net whose current one via does not carry, leave a cell open for a via only where

@@ -1,7 +1,9 @@
 //! The voltage a net's routed tracks drop (issue #652): the resistance between two pads along
 //! the tracks, measured by hand.
 
-use netsmith_pcb::{COPPER_RESISTIVITY, CopperLayer, NetPad, PadRef, Pt, Track, track_drop_of};
+use netsmith_pcb::{
+    COPPER_RESISTIVITY, CopperLayer, NetPad, PadRef, Pt, Track, in_outer_copper, track_drop_of,
+};
 
 const OZ: f64 = 0.035;
 
@@ -144,4 +146,28 @@ fn of_two_ways_between_two_pads_the_one_of_least_resistance_counts() {
     let d = track_drop_of("P", 1.0, &tracks, &[], &pads, OZ).unwrap();
     assert!((d.resistance - ohms(20.0, 2.0)).abs() < 1e-12);
     assert_eq!(d.narrowest, 2.0);
+}
+
+#[test]
+fn a_track_on_an_inner_layer_drops_by_its_own_thinner_copper() {
+    // 20 mm at 1 mm on the front, then 20 mm at 1 mm on In2.Cu in 0.0152 mm copper (issue
+    // #833): the inner run is the outer track of the same resistance, 0.0152 / 0.035 as wide.
+    const INNER: f64 = 0.0152;
+    let a = track(CopperLayer::Front, Pt::new(0.0, 0.0), Pt::new(20.0, 0.0), 1.0);
+    let b = track(
+        CopperLayer::Inner(2),
+        Pt::new(20.0, 0.0),
+        Pt::new(40.0, 0.0),
+        1.0,
+    );
+    let pads = [
+        pad("J1", "1", Pt::new(0.0, 0.0)),
+        pad("J2", "1", Pt::new(40.0, 0.0)),
+    ];
+    let owned = in_outer_copper(&[&a, &b], OZ, INNER);
+    assert_eq!(owned[0].width, 1.0);
+    let tracks: Vec<&Track> = owned.iter().collect();
+    let d = track_drop_of("P", 1.0, &tracks, &[Pt::new(20.0, 0.0)], &pads, OZ).unwrap();
+    let inner = COPPER_RESISTIVITY * 20.0 / (1.0 * INNER);
+    assert!((d.resistance - (ohms(20.0, 1.0) + inner)).abs() < 1e-12, "{d:?}");
 }

@@ -129,6 +129,7 @@ fn with_currents(mut board: Board) -> Board {
             net: net.clone(),
             current: 1.0,
             least_width: *width,
+            inner_least_width: None,
             vias: 1,
         })
         .collect();
@@ -174,6 +175,7 @@ fn a_rail_sized_by_its_current_is_necked_down_only_near_its_own_pads() {
         // The design rules check, told the least widths, agrees.
         let extras = DrcExtras {
             least_widths: board.least_widths(),
+            inner_least_widths: board.inner_least_widths(),
             neck_reach: reach,
             ..DrcExtras::default()
         };

@@ -187,7 +187,7 @@
 //! milliamps, at the process's least track.
 
 use netsmith_check::{Domain, InstId, InstKind, Member, Model};
-use netsmith_core::{Features, NetCurrent, OUNCE_OF_COPPER, Process};
+use netsmith_core::{Features, InnerUse, NetCurrent, OUNCE_OF_COPPER, Process};
 
 /// The temperature rise the check designs to when the board states none, in kelvin. A
 /// default of this tool's and not a published figure (ADR 0036).
@@ -224,7 +224,10 @@ const MIL: f64 = 0.0254;
 // Assumed, not from the standard (the tool's choices, accepted as built, ADR 0036): the copper
 // weight is the process's `stackup.copper_weight` (1 oz, 0.035 mm, for JLCPCB's two-layer outer
 // copper), and the rise is the board's `.process.max_temperature_rise` or, when it states none,
-// [`DEFAULT_TEMPERATURE_RISE`]. Tracks are on outer layers, so `K_EXTERNAL`.
+// [`DEFAULT_TEMPERATURE_RISE`]. A net's width is for the outer layers, so `K_EXTERNAL`; on a
+// board with an inner signal layer the net also gets the width for that layer, `K_INTERNAL` in
+// the inner copper (`stackup.inner_copper`), which the router draws its tracks there at (issue
+// #833).
 
 /// The IPC-2221 constant `k` for a track on an outer layer, in air.
 const K_EXTERNAL: f64 = 0.048;
@@ -757,10 +760,18 @@ pub fn plan_tracks(
             } else {
                 1
             };
+            // On an inner signal layer: the inner constant and the inner copper (issue #833).
+            let inner_least_width = process
+                .stackup
+                .inner
+                .as_ref()
+                .filter(|i| i.copper > 0.0 && i.layers.contains(&InnerUse::Signal))
+                .map(|i| ipc2221_width(total, i.copper, rise, Layer::Internal) / (1.0 - tolerance));
             plan.currents.push(NetCurrent {
                 net: net.name.clone(),
                 current: total,
                 least_width: needs,
+                inner_least_width,
                 vias,
             });
         }

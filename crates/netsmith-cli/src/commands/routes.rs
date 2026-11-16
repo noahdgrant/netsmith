@@ -11,7 +11,7 @@ use std::process::ExitCode;
 use clap::{Args as ClapArgs, Subcommand};
 use netsmith_fabricate::board3d::Placed;
 use netsmith_fabricate::routes as lib;
-use netsmith_pcb::{Board, Layout, LayoutFace as Face, ZonePads};
+use netsmith_pcb::{Board, CopperLayer, Layout, ZonePads};
 use netsmith_tools::routes_import::{self, Import};
 
 use super::common;
@@ -102,9 +102,9 @@ pub struct AddTrackArgs {
     /// The net, by its name in the design.
     #[arg(long, value_name = "NET")]
     pub net: String,
-    /// `top` or `bottom`.
-    #[arg(long, value_enum, default_value = "top")]
-    pub layer: Layer,
+    /// `top`, `bottom` or an inner signal layer (`inner2`, ...).
+    #[arg(long, value_name = "LAYER", value_parser = parse_layer, default_value = "top")]
+    pub layer: CopperLayer,
     /// The width in mm (default: the net's own width).
     #[arg(long, value_name = "MM")]
     pub width: Option<f64>,
@@ -218,10 +218,11 @@ pub struct ShapeArgs {
     pub zone: Option<usize>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
-pub enum Layer {
-    Top,
-    Bottom,
+/// A copper layer by its word: `top`, `bottom`, `inner2`.
+pub(super) fn parse_layer(text: &str) -> Result<CopperLayer, String> {
+    CopperLayer::of_word(text).ok_or_else(|| {
+        format!("`{text}` is not a copper layer: `top`, `bottom` or `inner1`, `inner2`, ...")
+    })
 }
 
 pub(super) fn parse_point(text: &str) -> Result<[f64; 2], String> {
@@ -263,7 +264,7 @@ pub fn run(args: Args) -> ExitCode {
         Command::Show(a) => show(&a),
         Command::AddTrack(a) => edit(&a.target, |_| lib::Edit::AddTrack {
             net: a.net.clone(),
-            layer: face(a.layer),
+            layer: a.layer,
             width: a.width,
             from: a.from,
             mid: a.mid,
@@ -303,13 +304,6 @@ pub fn run(args: Args) -> ExitCode {
             shape: shape(&a),
             on: false,
         }),
-    }
-}
-
-fn face(layer: Layer) -> Face {
-    match layer {
-        Layer::Top => Face::Top,
-        Layer::Bottom => Face::Bottom,
     }
 }
 
@@ -549,7 +543,7 @@ mod tests {
                 command: routes::Command::AddTrack(routes::AddTrackArgs {
                     from: [1.0, 2.0],
                     to: [-3.0, 4.5],
-                    layer: routes::Layer::Bottom,
+                    layer: netsmith_pcb::CopperLayer::Back,
                     ..
                 })
             }))
