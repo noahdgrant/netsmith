@@ -1,6 +1,6 @@
 //! Picking the parts: the order of the groups and the second search of a group that failed.
 
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
 
 use super::{Coupling, Job, Mark, Pick, Solver, Step, Unresolved};
 use netsmith_check::{Domain, FieldId, FieldKind, InstId, InstKind};
@@ -8,7 +8,74 @@ use netsmith_core::job;
 
 use crate::generic::Series;
 
+/// The first kind of part to use each catalog name, with its columns.
+type FirstUse = BTreeMap<String, (String, Vec<(String, FieldKind)>)>;
+
 impl Solver<'_> {
+    /// Whether `part` is refused because another kind of part already uses the catalog name
+    /// with other columns (issue #853): a file has one header, so the two kinds cannot both
+    /// read it. The message names both kinds and the columns that differ; the part is left
+    /// unresolved. The kinds that list the same columns share the name, whatever they mark
+    /// `optional` (ADR 0078).
+    fn refuse_shared_name(
+        &mut self,
+        part: InstId,
+        path: &str,
+        catalog: &str,
+        kinds: &[(String, FieldKind)],
+        first_use: &mut FirstUse,
+        told: &mut HashSet<(String, String, String)>,
+    ) -> bool {
+        let kind = self.model.instance(part).type_name.clone();
+        let mut columns = kinds.to_vec();
+        columns.sort_by(|a, b| a.0.cmp(&b.0));
+        let Some((first, first_columns)) = first_use.get(catalog) else {
+            first_use.insert(catalog.to_string(), (kind, columns));
+            return false;
+        };
+        if *first_columns == columns {
+            return false;
+        }
+        // What each kind lists that the other does not; a kind with nothing of its own is
+        // left out of the sentence.
+        let only = |who: &str, from: &[(String, FieldKind)], other: &[(String, FieldKind)]| {
+            let names: Vec<String> = from
+                .iter()
+                .filter(|c| !other.contains(c))
+                .map(|(name, _)| format!(".{name}"))
+                .collect();
+            (!names.is_empty()).then(|| format!("only `{who}` lists {}", names.join(", ")))
+        };
+        let first = first.clone();
+        let differ: Vec<String> = [
+            only(&kind, &columns, first_columns),
+            only(&first, first_columns, &columns),
+        ]
+        .into_iter()
+        .flatten()
+        .collect();
+        let differ = differ.join("; ");
+        if told.insert((catalog.to_string(), first.clone(), kind.clone())) {
+            let inst = self.model.instance(part);
+            let (source, span) = inst.at();
+            self.report(
+                source,
+                span,
+                format!(
+                    "`{path}` is a `{kind}`, and `{first}` also uses the `{catalog}` catalog with other \
+                     columns ({differ}). A catalog is one \
+                     file with one set of columns, so two kinds of part cannot share a name; give one \
+                     of them a catalog name of its own, or list the same columns in both"
+                ),
+            );
+        }
+        self.unresolved.push(Unresolved {
+            part,
+            reason: format!("the `{catalog}` catalog is used by `{first}` with other columns"),
+        });
+        true
+    }
+
     pub(super) fn pick_parts(&mut self) {
         let mut parts: Vec<(String, InstId)> = self
             .model
@@ -27,6 +94,12 @@ impl Solver<'_> {
         /// The catalog's name, its columns, the optional ones and the series offered.
         type Key = (String, Kinds, Vec<String>, Vec<Series>);
         let mut resolved_before: Vec<(Key, Resolved)> = Vec::new();
+        // The first part kind to use each catalog name, with its columns (name and kind, in
+        // name order), so that a second kind with other columns is refused (issue #853).
+        let mut first_use = FirstUse::new();
+        // The pairs of kinds already named in a message, so a board with ten parts of the
+        // second kind is told once.
+        let mut told: HashSet<(String, String, String)> = HashSet::new();
         let to_prepare = parts.len() as u64;
         for (n, (path, part)) in parts.into_iter().enumerate() {
             job::checkpoint();
@@ -53,6 +126,16 @@ impl Solver<'_> {
                 .iter()
                 .map(|(f, key)| (key.clone(), self.model.field(*f).kind))
                 .collect();
+            if self.refuse_shared_name(
+                part,
+                &path,
+                &catalog.name,
+                &kinds,
+                &mut first_use,
+                &mut told,
+            ) {
+                continue;
+            }
             // The columns the statement marks `optional` (ADR 0078), by their key.
             let optional: Vec<String> = columns
                 .iter()

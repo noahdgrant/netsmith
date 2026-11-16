@@ -738,3 +738,90 @@ fn a_part_that_considered_csv_records_as_out_of_stock_is_sold_out_unless_the_row
     let other = project_resistors("C6186", "");
     assert_eq!(other.sold_out("C6186"), None);
 }
+
+/// Two kinds of part that name the `zz9` catalog: the regulator of `BOARD` and a diode with
+/// fewer columns.
+const TWO_KINDS: &str = r#"
+part Zy1 {
+    .vf: Voltage
+    .package: Package
+    pins "SOD-123" {
+        .a  passive  "A"  "1"
+        .k  passive  "K"  "2"
+    }
+    catalog zz9 { .vf, .package }
+}
+
+board Two {
+    .u: Zz9 {}
+    .d1: Zy1 {}
+    .d2: Zy1 {}
+}
+"#;
+
+fn two_kinds() -> String {
+    let regulator = BOARD.split("board B {").next().unwrap();
+    format!("{regulator}{TWO_KINDS}")
+}
+
+#[test]
+fn a_catalog_name_used_by_two_kinds_with_other_columns_is_refused_naming_both() {
+    let c = catalogs(&[("zz9", &file())]).unwrap();
+    let src = two_kinds();
+    let checked = check("test.nsm", &src, &Loader::std());
+    assert!(checked.is_ok(), "{}", checked.render());
+    let s = solve(&checked.boards[0], &c);
+    let msgs = messages(&s);
+    // Told once for the pair of kinds, not once for each diode.
+    let shared: Vec<&String> = msgs.iter().filter(|m| m.contains("also uses")).collect();
+    assert_eq!(shared.len(), 1, "{msgs:#?}");
+    let m = shared[0];
+    // The parts are taken in path order, so the diodes (`d1`) are the first use and the
+    // regulator (`u`) is the part that is told.
+    assert!(m.contains("`u` is a `Zz9`"), "{m}");
+    assert!(m.contains("`Zy1` also uses the `zz9` catalog"), "{m}");
+    assert!(m.contains("; only `Zy1` lists .vf)"), "{m}");
+    assert!(
+        m.contains("only `Zz9` lists .dropout, .max_current, .mpn, .vout.voltage"),
+        "{m}"
+    );
+    // The part that is refused is not picked.
+    let picked: Vec<String> = s.picks.iter().map(|p| s.model.path_of(p.part)).collect();
+    assert!(!picked.contains(&"u".to_string()), "{picked:?}");
+}
+
+#[test]
+fn two_kinds_that_list_the_same_columns_share_a_catalog_name() {
+    let regulator = BOARD.split("board B {").next().unwrap();
+    let src = format!(
+        "{regulator}{}",
+        r#"
+part Zz9b {
+    .vin:  Rail
+    .vout: Rail
+    .dropout:     Voltage
+    .max_current: Current
+    pins "SOT-23-5" {
+        .vin.pos       power       "IN"     "1"
+        .vin.neg       power       "GND"    "2"
+        .vout.pos      power       "OUT"    "5"
+    }
+    .package: Package
+    catalog zz9 by .mpn { .mpn, .vout.voltage, .dropout, .max_current, .package }
+}
+
+board Same {
+    .u: Zz9 {}
+    .v: Zz9b {}
+}
+"#
+    );
+    let checked = check("test.nsm", &src, &Loader::std());
+    assert!(checked.is_ok(), "{}", checked.render());
+    let s = solve(&checked.boards[0], &catalogs(&[("zz9", &file())]).unwrap());
+    assert!(
+        !messages(&s).iter().any(|m| m.contains("also uses")),
+        "{:?}",
+        messages(&s)
+    );
+}

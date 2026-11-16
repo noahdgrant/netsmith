@@ -98,8 +98,8 @@
 //! a directory of files that several manifests list). Filtering by stock or price at build time:
 //! a snapshot goes stale, so the number to trust is the one on the order page. The units of
 //! `price` (US dollars for the standard files) are not checked. A catalog name shared by two part
-//! kinds with different columns: the first file would need the union of the columns, the checker
-//! does not forbid it, and it has not come up.
+//! kinds with different columns is refused where the second kind is picked (issue #853): a
+//! file has one header, and the union of the columns is not offered.
 
 use std::collections::BTreeMap;
 use std::rc::Rc;
