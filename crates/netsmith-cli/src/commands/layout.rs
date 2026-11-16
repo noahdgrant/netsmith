@@ -5,7 +5,8 @@
 //! `layout summary` and `layout compare` (issue #773) place the board as `board3d` does and print
 //! what decides whether the placement is good, `netsmith_pcb::Summary` and
 //! `netsmith_pcb::PlacementComparison`. `layout regenerate` (issue #825) places one module again
-//! with the rest held, `netsmith_fabricate::regenerate`.
+//! with the rest held, `netsmith_fabricate::regenerate`. `layout capture` (issue #828) writes the
+//! placement as the layout file, an entry for every part and the seed, `netsmith_fabricate::layout_capture`.
 
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -19,7 +20,7 @@ use super::routes::{Target, parse_point};
 
 #[derive(Debug, PartialEq, ClapArgs)]
 #[command(
-    after_long_help = "The layout file `<stem>.pcb.toml` sits beside the source and holds the solution: where each part is (`at`, `turn`, `side`, `lock`), keyed by the part's path in the design (`stage.output_cap`; the capacitors of a bank are `bank[0]`, `bank[1]`). The requirements on where a part may be are in the board's physical file, never here.\n\nThe frame is the file's: `--at X,Y` is the footprint's origin in mm from the outline's top left corner, x to the right and y down; a turn is in degrees, counterclockwise on screen, any angle from 0 up to 360; a part on the bottom face is the top face's footprint mirrored left to right (about its own y axis), then turned as it is seen from the top. The guide's \"The layout file\" has an example of a part on each face.\n\n`show`, `set` and `check` check and solve the board as `build` does and place nothing; `summary` and `compare` place it as `board3d` does and write nothing. The exit code is 0 when it did what it was asked, 1 when it refused (a part the board does not have, a turn that is not allowed, a file with an error `check` reports), and 2 when it could not run (a usage mistake included)."
+    after_long_help = "The layout file `<stem>.pcb.toml` sits beside the source and holds the solution: where each part is (`at`, `turn`, `side`, `lock`), keyed by the part's path in the design (`stage.output_cap`; the capacitors of a bank are `bank[0]`, `bank[1]`). The requirements on where a part may be are in the board's physical file, never here.\n\nThe frame is the file's: `--at X,Y` is the footprint's origin in mm from the outline's top left corner, x to the right and y down; a turn is in degrees, counterclockwise on screen, any angle from 0 up to 360; a part on the bottom face is the top face's footprint mirrored left to right (about its own y axis), then turned as it is seen from the top. The guide's \"The layout file\" has an example of a part on each face.\n\n`show`, `set` and `check` check and solve the board as `build` does and place nothing; `summary` and `compare` place it as `board3d` does and write nothing; `regenerate` and `capture` place it as `fab` does. The exit code is 0 when it did what it was asked, 1 when it refused (a part the board does not have, a turn that is not allowed, a file with an error `check` reports), and 2 when it could not run (a usage mistake included)."
 )]
 pub struct Args {
     #[command(subcommand)]
@@ -58,6 +59,25 @@ pub enum Command {
         after_long_help = "The board is placed as `fab` places it (the layout file and the physical file read). The parts of the module at PATH (every part whose path is PATH or starts with `PATH.` or `PATH[`) are placed again, inside the box round them grown by `--margin` mm on each side and cut to the outline; every other part, and every part of the module the layout file locks or a requirement pins, stays where it is. The same board, module, seed and margin always give the same arrangement, and another `--seed` another one.\n\nPrinted: each part placed again with its place before and after (mm from the outline's top left corner, y down, the turn and the face), the nets with a pad on one of them (`fab` and the editor route their copper again and keep the rest), the records of the routes file that no longer match their pads (dropped as any record whose pads moved is, the locked shapes kept), the placement check's findings that appeared and those that went, and the totals before and after. Without `--write` nothing is written. With it, each part placed again gets an entry in the layout file, unlocked, with `source = \"regen\"`, and the rest of the file (its comments too) is kept. `--format json` prints one JSON document on stdout: `board`, `module`, `seed`, `margin`, `region`, `parts` (`path`, `refdes`, `before`, `was`, `after`), `held`, `nets`, `routes_dropped`, `comparison` (as `layout compare` has it) and `written`. The exit code is 0 when the proposal is printed (and written with `--write`), 1 when it is refused (a module the board has no part in, every part of it held, parts that do not fit the region), and 2 when it could not run."
     )]
     Regenerate(RegenerateArgs),
+    /// Write the placement as the layout file: an entry for every part, and the seed that placed the board.
+    #[command(
+        after_long_help = "The board is placed as `fab` places it (the layout file and the physical file read, the seeds after the file's tried as `fab` tries them) and the layout file is written with where every part is: an entry for each part, the seed that placed the board as the file's `seed`, and every other table kept (a comment in the file too, as `set` keeps it). A part that already has an entry keeps its place, its `lock` and its `source`; a part the placer placed gets an entry with `source = \"auto\"`, unlocked. A build of the file then puts every part where it was captured, so the board stays as it is when the placer, a catalog or the circuit around it changes; run `layout regenerate` or `set` to change it. The places are rounded to 0.01 mm, as every entry is.\n\nWith `--dry-run` nothing is written: the report says what would be, and the file is as it was. A board that no seed places is refused with the placer's report and nothing is written. Printed: the seed (and the one the file stated), the parts with a new entry and how many had one. `--format json` prints one JSON document on stdout: `board`, `seed`, `seed_was`, `parts`, `added` (paths), `kept`, `shapes`, `seed_note` (why the seed is not the file's, when it is not) and `written`. The exit code is 0 when it is printed (and written, unless `--dry-run`), 1 when the board does not build or no seed places it, and 2 when it could not run."
+    )]
+    Capture(CaptureArgs),
+}
+
+#[derive(Debug, PartialEq, ClapArgs)]
+pub struct CaptureArgs {
+    #[command(flatten)]
+    pub target: Target,
+    /// Write nothing: say what would be written.
+    #[arg(long)]
+    pub dry_run: bool,
+    #[command(flatten)]
+    pub placing: common::Placing,
+    /// Text for a person, or one JSON document on stdout.
+    #[arg(long, value_enum, default_value = "text")]
+    pub format: common::Format,
 }
 
 #[derive(Debug, PartialEq, ClapArgs)]
@@ -192,7 +212,57 @@ pub fn run(args: Args) -> ExitCode {
         Command::Summary(a) => summary(&a),
         Command::Compare(a) => compare(&a),
         Command::Regenerate(a) => regenerate(&a),
+        Command::Capture(a) => capture(&a),
     }
+}
+
+/// `layout capture`: the placement as the layout file, written unless `--dry-run`.
+fn capture(args: &CaptureArgs) -> ExitCode {
+    use netsmith_fabricate::layout_capture as lib;
+    let made = common::with_placed_board(
+        args.target.file.as_deref(),
+        args.target.board.as_deref(),
+        Some(&args.placing),
+        |placed| {
+            placed
+                .with_built(|built| {
+                    lib::capture(
+                        &built.design,
+                        &placed.layout,
+                        placed.libraries,
+                        placed.catalogs.constraints_warn(),
+                        placed.seeds,
+                    )
+                    .map(|(captured, layout)| (captured, layout, placed.layout.clone()))
+                })
+                .and_then(|done| done.map_err(|e| format!("error: {e}\n")))
+        },
+    );
+    let (captured, layout, file) = match made {
+        Ok(made) => made,
+        Err(code) => return code,
+    };
+    let write = !args.dry_run;
+    if write && let Err(e) = lib::accept(&file, &layout) {
+        eprintln!("error: {e}");
+        return ExitCode::from(2);
+    }
+    match args.format {
+        common::Format::Json => {
+            let mut value = serde_json::to_value(&captured).expect("plain data");
+            value["written"] = serde_json::Value::Bool(write);
+            println!("{value}");
+        }
+        common::Format::Text => {
+            print!("{}", captured.text());
+            if write {
+                println!("wrote {}", file.display());
+            } else {
+                println!("not written (--dry-run)");
+            }
+        }
+    }
+    ExitCode::SUCCESS
 }
 
 /// `layout regenerate`: one module placed again, printed and written when asked.
@@ -488,6 +558,22 @@ mod tests {
             Ok(Top::Layout(Args {
                 command: Command::Regenerate(RegenerateArgs { seed: 0, margin, write: false, .. })
             })) if margin == 3.0
+        ));
+    }
+
+    #[test]
+    fn capture_takes_its_arguments() {
+        assert!(matches!(
+            parse(&["layout", "capture", "--dry-run", "--place-seeds", "3"]),
+            Ok(Top::Layout(Args {
+                command: Command::Capture(CaptureArgs { dry_run: true, .. })
+            }))
+        ));
+        assert!(matches!(
+            parse(&["layout", "capture"]),
+            Ok(Top::Layout(Args {
+                command: Command::Capture(CaptureArgs { dry_run: false, .. })
+            }))
         ));
     }
 

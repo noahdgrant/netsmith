@@ -2369,6 +2369,13 @@ netsmith layout regenerate stage                  # a proposal: what moves and w
 netsmith layout regenerate stage --seed 3 --write # keep the arrangement of seed 3
 ```
 
+**Capturing the placement.** `netsmith layout capture` writes where the board's parts are now as the layout file (issue #828), so that a result can be frozen. It places the board as `fab` places it (the layout file and the physical file read; the seeds after the file's tried as for `fab`) and writes an entry for every part, the seed that placed the board as the file's `seed`, and every other table as it was, comments too. A part that already has an entry keeps it (its place, `lock` and `source`: a build puts a part with an entry where the entry says); a part the placer placed gets an entry with `source = "auto"`, unlocked. A build of the file then has every part where it was captured, whatever the placer, a catalog or the circuit around it does later, until `layout set` or `layout regenerate` changes one. The places are rounded to 0.01 mm, as every entry is, so a part the placer placed is up to 0.005 mm from where it was. A keepout or cutout the physical file places is not written (it has no entry); one the file places keeps its entry. A board that no seed places is refused with the placer's report (as `fab` gives it) and the file is not written; a capture holds a board that places. `--dry-run` writes nothing and says what would be written, with `--format json` as one document (`board`, `seed`, `seed_was`, `parts`, `added`, `kept`, `shapes`, `seed_note`, `written`); `--place-seeds` and `--place-budget` are as for `fab`. A record of the routes file whose pads moved by the rounding is dropped, as when any pad moves.
+
+```sh
+netsmith layout capture            # an entry for every part, and the seed, in main.pcb.toml
+netsmith layout capture --dry-run  # what it would write
+```
+
 The editor's PCB view does the same: a part of a module picked offers "Regenerate" in its inspector, the proposal is drawn over the board in a second colour with the same list, Another asks for the next seed, and Accept writes it as one edit, one step of undo. A route after an edit keeps the router's copper of every net whose pads did not move and that no part that moved now covers, and routes only the rest; when connections are left it routes once more with the nets whose copper crosses the parts that moved ripped up too. The editor keeps the last few routed boards, so an undo back to a placement it routed shows that copper again at once. `fab` routes the whole board, as before: the router's copper is not kept on disk.
 
 ### The routes file

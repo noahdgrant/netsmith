@@ -111,7 +111,7 @@ netsmith board3d --json   # the board's 3D facts for an agent: heights, limits, 
 netsmith board3d --glb board.glb   # the same scene as glTF 2.0 binary, the file the editor's 3D view shows
 netsmith render --view iso --out board.png   # the board drawn in 3D to a PNG by netsmith's own rasterizer, no GPU or KiCad (docs/BOARD3D.md)
 netsmith view --view top --highlight J1 --picture j1.png   # drive the 3D view of the running editor with render's flags, and save its picture (docs/BOARD3D.md)
-netsmith layout show   # where each part is in the layout file; `layout set PATH --at X,Y --turn 90 --side bottom --lock` writes one entry, `layout check` finds a wrong path or turn, `layout summary` sums up a placement (wire, decoupling, modules, area and free space per face, nets) `layout compare` says what moved between two layout files, and `layout regenerate PATH` places one module again with the rest held (language guide, "The layout file")
+netsmith layout show   # where each part is in the layout file; `layout set PATH --at X,Y --turn 90 --side bottom --lock` writes one entry, `layout check` finds a wrong path or turn, `layout summary` sums up a placement (wire, decoupling, modules, area and free space per face, nets) `layout compare` says what moved between two layout files, `layout regenerate PATH` places one module again with the rest held, and `layout capture` writes the placement and its seed as the layout file, an entry for every part, to freeze a result (language guide, "The layout file")
 netsmith compare a.kicad_sch b.nsm   # are two designs the same circuit?
 ```
 

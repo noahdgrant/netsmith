@@ -523,7 +523,8 @@ impl Layout {
             out.parts.insert(
                 part.path.clone(),
                 PartPlace {
-                    at: [round(at.x), round(at.y)],
+                    // `+ 0.0` turns a -0.0 into 0.0, which the file would write as `-0.0`.
+                    at: [round(at.x) + 0.0, round(at.y) + 0.0],
                     rotation: part.rotation,
                     side: if part.side == Side::Back {
                         Face::Bottom

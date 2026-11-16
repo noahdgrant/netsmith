@@ -9,6 +9,7 @@ pub mod case_fit;
 pub mod fab;
 mod fab_environment;
 pub mod layout;
+pub mod layout_capture;
 pub mod layout_edit;
 pub mod models;
 pub mod no_supplier;
