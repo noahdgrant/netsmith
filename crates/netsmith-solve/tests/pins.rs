@@ -157,6 +157,63 @@ fn a_board_that_never_uses_the_pin_takes_the_first_row() {
 }
 
 #[test]
+fn a_row_whose_package_would_break_a_tie_is_not_a_candidate() {
+    // The DFN is listed first, but it has the sense pin, which the board leaves off the
+    // output: the tie would be broken there, so the solver looks ahead and takes the
+    // SOT-23-5, which has no sense pin and so no tie (#848).
+    let dfn_first = ldo_catalogs(vec![
+        ldo_row("ILLUSTRATIVE-LDO9-BIG", "DFN-8-EP"),
+        ldo_row("ILLUSTRATIVE-LDO9-SMALL", "SOT-23-5"),
+    ]);
+    let (_, s) = solved(&ldo(""), &dfn_first.with_explain(true));
+    assert!(s.diagnostics.is_empty(), "{:?}", messages(&s));
+    assert_eq!(package(&s, "u").as_deref(), Some("SOT-23-5"));
+    assert_eq!(s.picks[0].candidate, "ILLUSTRATIVE-LDO9-SMALL");
+    // `explain` says why the first row was passed over.
+    let passed: Vec<_> = s.picks[0].passed.iter().map(|p| (p.row.as_str(), p.message.as_str())).collect();
+    assert_eq!(
+        passed,
+        [(
+            "ILLUSTRATIVE-LDO9-BIG",
+            "its package DFN-8-EP has both pins of `tie .sense ~ .vout.pos`, which the board does not join"
+        )]
+    );
+}
+
+#[test]
+fn a_tie_the_board_makes_keeps_its_package_a_candidate() {
+    let dfn_first = ldo_catalogs(vec![
+        ldo_row("ILLUSTRATIVE-LDO9-BIG", "DFN-8-EP"),
+        ldo_row("ILLUSTRATIVE-LDO9-SMALL", "SOT-23-5"),
+    ]);
+    let (_, s) = solved(&ldo(SENSE), &dfn_first);
+    assert!(s.diagnostics.is_empty(), "{:?}", messages(&s));
+    assert_eq!(package(&s, "u").as_deref(), Some("DFN-8-EP"));
+}
+
+#[test]
+fn when_every_package_would_break_a_tie_the_message_says_so() {
+    // Sense is on the input, not the output: the only package has both pins of the tie.
+    let only_big = ldo_catalogs(vec![ldo_row("ILLUSTRATIVE-LDO9-BIG", "DFN-8-EP")]);
+    let (_, s) = solved(&ldo("    .u.sense ~ .u.vin.pos\n"), &only_big);
+    let msgs = messages(&s);
+    assert_eq!(msgs.len(), 1, "{msgs:#?}");
+    assert!(
+        msgs[0].starts_with("the `ldo9` catalog has nothing for `u`, which needs"),
+        "{}",
+        msgs[0]
+    );
+    assert!(
+        msgs[0].contains(
+            "rows were left out because package `DFN-8-EP` has both pins of `tie .sense ~ .vout.pos`, which the board does not join"
+        ),
+        "{}",
+        msgs[0]
+    );
+    assert_eq!(s.unresolved.len(), 1);
+}
+
+#[test]
 fn when_every_package_lacks_a_pin_the_message_says_so() {
     let only_small = ldo_catalogs(vec![ldo_row("ILLUSTRATIVE-LDO9-SMALL", "SOT-23-5")]);
     let (_, s) = solved(&ldo(SENSE), &only_small);

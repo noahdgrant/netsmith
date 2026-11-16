@@ -23,7 +23,7 @@ The current a logic level was measured at, written after the value: `.voh &= .vd
 _Avoid_: Load current (a part's `.current` is its draw), drive current
 
 **Tie**:
-`tie .sense ~ .vout.pos` in a part: the two pins must be on one net, which the board makes. It is skipped in a package that lacks either pin.
+`tie .sense ~ .vout.pos` in a part: the two pins must be on one net, which the board makes. It is skipped in a package that lacks either pin, and the solver does not choose a package that has both pins of a tie the board does not make.
 _Avoid_: Short, jumper
 
 **Tile**:

@@ -12,7 +12,7 @@
 //! | Fault | Rule | Message |
 //! |---|---|---|
 //! | Required pin unconnected | `power` and `input` pins must have another part's pin on their net unless the row says `optional`; `output`, `bidirectional` and `passive` pins may float unless it says `required` | `` `u.en` is an input that must be connected (pad 6, `EN`), but nothing else is on its net `` |
-//! | Tied pin not tied | `tie .a ~ .b` in a part means the board must put the two on one net | `` `u.sense` must be on the same net as `u.vout.pos` (`Ldo9` ties them), but nothing is connected to `u.sense` ``, or, when it is on another net, `` ... but `u.sense` is on net `VIN` with ... `` |
+//! | Tied pin not tied | `tie .a ~ .b` in a part means the board must put the two on one net | `` `u.sense` must be on the same net as `u.vout.pos` (`Ldo9` ties them), but nothing is connected to `u.sense` ``, or, when it is on another net, `` ... but `u.sense` is on net `VIN` with ... ``; when the package is not named, the solver does not choose one that would break a tie (#848, `Model::broken_ties`) |
 //! | No-connect pin connected | a `no_connect` pin must have nothing else on its net | `` `u.nc` is a no_connect pin (pad 5, `NC`) but it is on net `3V3` with ... `` |
 //! | Module port left open | as "Required pin unconnected", when the pin's net reaches only ports of modules that the board joins to nothing else (#848) | `` ... but nothing else is on its net; it reaches only `w.rx`, a port of `Wrapped` that the board leaves open ``, at the board's line that declares the module |
 //! | Two power sources on one net | the `pos` of the rails of two `dc source`, `dc linear_regulator` or `dc switching_regulator` statements (the output rail of a regulator) on one net (#848) | ``net `VIN` has 2 power sources: `jack.vbatt` (`Jack`, `dc source`) and `ldo.vout` (`Ldo`, `dc linear_regulator`); ...`` |
@@ -686,17 +686,8 @@ impl<'a> Run<'a> {
     fn ties(&mut self, part: InstId, table: &PinTable) {
         let model = self.model;
         let inst = model.instance(part);
-        for tie in &inst.ties {
-            // A pin that the package does not have is not tied there.
-            let missing = |p: InstId| table.row(p).is_none() && model.pin_facts(p).is_some();
-            if missing(tie.a) || missing(tie.b) {
-                continue;
-            }
-            let (na, nb) = (model.net_of(tie.a), model.net_of(tie.b));
-            let joined = matches!((na, nb), (Some(x), Some(y)) if std::ptr::eq(x, y));
-            if joined {
-                continue;
-            }
+        for tie in model.broken_ties(part, table) {
+            let na = model.net_of(tie.a);
             let (a, b) = (model.path_of(tie.a), model.path_of(tie.b));
             let where_a = match na {
                 None => format!("nothing is connected to `{a}`"),
