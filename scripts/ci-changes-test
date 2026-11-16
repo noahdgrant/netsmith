@@ -105,7 +105,8 @@ row "1 0 0 0 0 0" docs/symbol-gallery.html
 row "1 0 0 0 0 0" .agents/skills/netsmith-dev-verify/SKILL.md .agents/skills/netsmith-write-nsm/SKILL.md
 row "1 0 0 0 0 0" .claude/settings.json
 row "1 0 0 0 0 0" .agents/skills/netsmith-write-nsm/references/units.md
-row "1 0 1 0 0 0" .agents/skills/netsmith-dev-verify-editor/SKILL.md
+# The editor's skill is read as every other skill is (a test of netsmith-tools): no recipe reads a skill.
+row "1 0 0 0 0 0" .agents/skills/netsmith-dev-verify-editor/SKILL.md .agents/skills/netsmith-dev-verify-editor/features/pcb.md
 row "1 0 0 0 0 0" rustfmt.toml clippy.toml
 
 # --- workflows and scripts: everything ------------------------------------------------------
@@ -114,11 +115,39 @@ row "1 1 1 1 1 1" .github/workflows/pr-title.yml
 row "1 1 1 1 1 1" .github/workflows/apt-cache.yml
 row "1 1 1 1 1 1" .github/actions/apt-cache/action.yml
 row "1 1 1 1 1 1" scripts/ci-changes
-row "1 1 1 1 1 1" scripts/editor-verify-js/recipes/pcb.mjs
 row "1 1 1 1 1 1" scripts/ci-changes-test
 row "1 1 1 1 1 1" scripts/check-no-kicad.sh
 row "1 1 1 1 1 1" scripts/check-example-locks.sh
 row "1 1 1 1 1 1" scripts/check-example-designs.sh scripts/check-example-designs-test
+row "1 1 1 1 1 1" scripts/editor-verify scripts/editor-verify-all scripts/editor-verify-weights scripts/ci-recipe-slices scripts/ci-rdeps scripts/web-bundle
+row "1 1 1 1 1 1" scripts/stress-kicad.sh scripts/adr-check scripts/ci-changes-test scripts/ci-apt-cache
+# The recipes' packages are CI's own (npm ci, the key of the .deb cache): everything.
+row "1 1 1 1 1 1" scripts/editor-verify-js/package.json scripts/editor-verify-js/package-lock.json
+
+# --- the editor's browser recipes: the `recipes` job and nothing else, no Rust ------------------
+# A recipe and the helpers only the recipes read: the binary does not contain them and no test reads
+# them, so no `rust` (clippy, test), no `kicad`, no `no-kicad`, `locks` or `designs`.
+row "0 0 1 0 0 0" scripts/editor-verify-js/recipes/pcb.mjs
+row "0 0 1 0 0 0" scripts/editor-verify-js/recipes/a11y.mjs scripts/editor-verify-js/recipes/big-pcb.mjs
+row "0 0 1 0 0 0" scripts/editor-verify-js/flow-helpers.mjs scripts/editor-verify-js/layout-helpers.mjs scripts/editor-verify-js/schematic-helpers.mjs
+row "0 0 1 0 0 0" scripts/editor-verify-js/css-rem.mjs scripts/editor-verify-js/slices.mjs scripts/editor-verify-js/waits.mjs
+row "0 0 1 0 0 0" scripts/editor-verify-js/recipes/pcb.mjs README.md docs/adr/0081-a-pin-states-its-own-swing.md
+# A recipe next to a change that needs more: the flags add up.
+row "1 0 1 1 0 0" scripts/editor-verify-js/recipes/pcb.mjs crates/netsmith-editor/web/src/app.ts
+row "1 0 1 0 0 0" scripts/editor-verify-js/recipes/pcb.mjs docs/language/05-values.md
+row "1 0 1 1 1 1" scripts/editor-verify-js/recipes/pcb.mjs crates/netsmith-solve/src/solve.rs
+row "1 1 1 1 1 1" scripts/editor-verify-js/recipes/pcb.mjs scripts/ci-changes
+row "1 1 1 1 1 1" scripts/editor-verify-js/recipes/pcb.mjs std/kicad.toml
+# The fixtures and the driver are read by tests of netsmith-cli and netsmith-workspace (they
+# include the fixtures, and run `doctor`, which loads the driver and the modules it imports): `rust`, and `kicad`
+# because those tests ask for KiCad, with the recipes; not `no-kicad`, `locks` or `designs`.
+row "1 1 1 0 0 0" scripts/editor-verify-js/fixtures/bus_bench.nsm scripts/editor-verify-js/fixtures/height_limits.pcb.toml
+row "1 1 1 0 0 0" scripts/editor-verify-js/fixtures/big.mjs scripts/editor-verify-js/fixtures/case_fit/case.json
+row "1 1 1 0 0 0" scripts/editor-verify-js/fixtures/routed_led.lock.toml scripts/editor-verify-js/fixtures/model_3d.models
+row "1 1 1 0 0 0" scripts/editor-verify-js/cli.mjs scripts/editor-verify-js/pcb-helpers.mjs scripts/editor-verify-js/settle.mjs
+row "1 1 1 0 0 0" scripts/editor-verify-js/fixtures/lights.nsm scripts/editor-verify-js/recipes/pcb.mjs
+row "1 1 1 1 1 1" scripts/editor-verify-js/fixtures/lights.nsm std/kicad.toml
+row "1 1 1 1 0 0" scripts/editor-verify-js/fixtures/lights.nsm crates/netsmith-router/src/route.rs
 
 # --- the toolchain, the unknown, the boards and the standard library: everything -------------
 row "1 1 1 1 1 1" Cargo.toml
@@ -276,6 +305,19 @@ crates_row() {
     fi
 }
 crates_row "netsmith-view" crates/netsmith-view/src/layout.rs
+# A change only the recipes need compiles the binary, not the workspace: `build` gets netsmith-cli
+# (`rust` is off, so no test or lint runs).
+crates_row "netsmith-cli" scripts/editor-verify-js/recipes/pcb.mjs
+crates_row "netsmith-cli" scripts/editor-verify-js/waits.mjs scripts/editor-verify-js/recipes/a11y.mjs README.md
+crates_row "netsmith-cli" scripts/editor-verify-js/recipes/pcb.mjs docs/adr/0081-a-pin-states-its-own-swing.md
+# The fixtures are read by the tests of these two crates (and their dependents).
+crates_row "netsmith-cli netsmith-workspace" scripts/editor-verify-js/fixtures/bus_bench.nsm
+crates_row "netsmith-cli netsmith-workspace" scripts/editor-verify-js/cli.mjs scripts/editor-verify-js/recipes/pcb.mjs
+crates_row "netsmith-view netsmith-cli netsmith-workspace" crates/netsmith-view/src/layout.rs scripts/editor-verify-js/fixtures/lights.nsm
+crates_row "netsmith-view" crates/netsmith-view/src/layout.rs scripts/editor-verify-js/recipes/pcb.mjs
+crates_row "" scripts/editor-verify-js/recipes/pcb.mjs std/kicad.toml
+crates_row "" scripts/editor-verify-js/fixtures/lights.nsm scripts/ci-changes
+crates_row "" scripts/editor-verify-js/package-lock.json
 crates_row "netsmith-editor" crates/netsmith-editor/web/src/app.ts
 crates_row "netsmith-view" crates/netsmith-view/src/layout.rs crates/netsmith-view/tests/layout.rs
 crates_row "netsmith-view netsmith-solve" crates/netsmith-view/src/layout.rs crates/netsmith-solve/src/solve.rs
@@ -307,7 +349,7 @@ crates_row "netsmith-tools" docs/language/05-values.md
 crates_row "netsmith-tools" docs/language/05-values.md docs/language/23-the-shape-of-a-board.md docs/glossary/a.md
 crates_row "netsmith-tools" docs/symbol-gallery.html
 crates_row "netsmith-tools" .agents/skills/netsmith-write-nsm/SKILL.md
-crates_row "netsmith-tools" .agents/skills/netsmith-dev-verify-editor/SKILL.md
+crates_row "netsmith-tools" .agents/skills/netsmith-dev-verify-editor/SKILL.md .agents/skills/netsmith-dev-verify-editor/features/pcb.md
 crates_row "netsmith-tools" docs/LANGUAGE.md docs/symbol-gallery.html .agents/skills/netsmith-read-errors/SKILL.md crates/netsmith-tools/tests/pure.rs
 crates_row "netsmith-view netsmith-tools" crates/netsmith-view/src/layout.rs docs/LANGUAGE.md
 crates_row "netsmith-view netsmith-tools" crates/netsmith-view/src/layout.rs .agents/skills/netsmith-write-nsm/SKILL.md
@@ -405,6 +447,31 @@ for dir in crates/*; do
 done
 if [ "$readers" -lt 3 ]; then
     echo "FAIL: found only $readers crates besides netsmith that read the examples (looking in the wrong place?)"
+    failed=1
+fi
+
+# --- the real repository: every crate that reads the editor's recipes is named for them --------
+# A change to scripts/editor-verify-js/fixtures (or the driver) runs the tests of the crates that
+# `editor_verify_readers` names, and their dependents', so a crate whose tests or source name a
+# file of that folder (not in a comment) and is not named would miss the change.
+ev_readers=0
+for dir in crates/*; do
+    crate="$(basename "$dir")"
+    refs="$(grep -rnE 'editor-verify-js|scripts/editor-verify' "$dir/tests" "$dir/src" "$dir/build.rs" \
+        --include='*.rs' 2> /dev/null | grep -vE '^[^:]*:[0-9]+:[[:space:]]*//' || true)"
+    [ -n "$refs" ] || continue
+    ev_readers=$((ev_readers + 1))
+    got="$(printf 'scripts/editor-verify-js/fixtures/lights.nsm\n' | "$script" | sed -n 's/^crates=//p')"
+    case " $got " in
+        *" $crate "*) ;;
+        *)
+            echo "FAIL: $crate reads scripts/editor-verify-js ($(printf '%s' "$refs" | head -n 1)), but crates=$got for a fixture: add $crate to editor_verify_readers in scripts/ci-changes"
+            failed=1
+            ;;
+    esac
+done
+if [ "$ev_readers" -lt 2 ]; then
+    echo "FAIL: found only $ev_readers crates that read scripts/editor-verify-js (looking in the wrong place?)"
     failed=1
 fi
 
