@@ -19,7 +19,7 @@ use super::routes::{Target, parse_point};
 
 #[derive(Debug, PartialEq, ClapArgs)]
 #[command(
-    after_long_help = "The layout file `<stem>.pcb.toml` sits beside the source and holds the solution: where each part is (`at`, `turn`, `side`, `lock`), keyed by the part's path in the design (`stage.output_cap`; the capacitors of a bank are `bank[0]`, `bank[1]`). The requirements on where a part may be are in the board's physical file, never here.\n\nThe frame is the file's: `--at X,Y` is the footprint's origin in mm from the outline's top left corner, x to the right and y down; a turn is in degrees, counterclockwise on screen, and a part is turned by 0, 90, 180 or 270; a part on the bottom face is the top face's footprint mirrored left to right (about its own y axis), then turned as it is seen from the top. The guide's \"The layout file\" has an example of a part on each face.\n\n`show`, `set` and `check` check and solve the board as `build` does and place nothing; `summary` and `compare` place it as `board3d` does and write nothing. The exit code is 0 when it did what it was asked, 1 when it refused (a part the board does not have, a turn that is not allowed, a file with an error `check` reports), and 2 when it could not run (a usage mistake included)."
+    after_long_help = "The layout file `<stem>.pcb.toml` sits beside the source and holds the solution: where each part is (`at`, `turn`, `side`, `lock`), keyed by the part's path in the design (`stage.output_cap`; the capacitors of a bank are `bank[0]`, `bank[1]`). The requirements on where a part may be are in the board's physical file, never here.\n\nThe frame is the file's: `--at X,Y` is the footprint's origin in mm from the outline's top left corner, x to the right and y down; a turn is in degrees, counterclockwise on screen, any angle from 0 up to 360; a part on the bottom face is the top face's footprint mirrored left to right (about its own y axis), then turned as it is seen from the top. The guide's \"The layout file\" has an example of a part on each face.\n\n`show`, `set` and `check` check and solve the board as `build` does and place nothing; `summary` and `compare` place it as `board3d` does and write nothing. The exit code is 0 when it did what it was asked, 1 when it refused (a part the board does not have, a turn that is not allowed, a file with an error `check` reports), and 2 when it could not run (a usage mistake included)."
 )]
 pub struct Args {
     #[command(subcommand)]
@@ -35,12 +35,12 @@ pub enum Command {
     Show(ShowArgs),
     /// Write one part's entry, keeping the file's other tables.
     #[command(
-        after_long_help = "Writes the entry of the part at PATH to the layout file (made if it does not exist), reading and writing the file as the editor does: every other table is kept, and so is a comment in the file (a comment goes with its entry and stays above it or after it). A part with no entry needs `--at`; for a part that has one, a flag left out keeps what the entry has. A new entry is written with `source = \"hand\"`, and an entry that exists keeps its `source`. Refused, with the file as it was: a PATH the board has no part at (the nearest names are listed), a turn that is not 0, 90, 180 or 270, and a part with no entry and no `--at`. A locked entry that breaks a requirement of the physical file is written and said as a warning; `layout check` says it again."
+        after_long_help = "Writes the entry of the part at PATH to the layout file (made if it does not exist), reading and writing the file as the editor does: every other table is kept, and so is a comment in the file (a comment goes with its entry and stays above it or after it). A part with no entry needs `--at`; for a part that has one, a flag left out keeps what the entry has. A new entry is written with `source = \"hand\"`, and an entry that exists keeps its `source`. Refused, with the file as it was: a PATH the board has no part at (the nearest names are listed), a turn that is not from 0 up to 360, and a part with no entry and no `--at`. A locked entry that breaks a requirement of the physical file is written and said as a warning; `layout check` says it again."
     )]
     Set(SetArgs),
     /// Say which parts have no entry, which entries name no part, and which locked entries break a requirement.
     #[command(
-        after_long_help = "One line for each finding, with the line of the entry in the file: an entry that names no part of the board (with the nearest names), an entry with a turn that is not 0, 90, 180 or 270 or a position that is not a number, and a locked entry that breaks a requirement of the physical file (the same words `fab` uses; the footprints are loaded and nothing is placed). A part with no entry is a note: the placer places it. The exit code is 1 when there is an error, and a note does not make it so. `--format json` prints one JSON document on stdout: the `board`, the `file`, `ok` and the `findings`, each with a `severity` (`error` or `note`), a `kind` (`no_entry`, `no_part`, `bad_turn`, `bad_place`, `requirement`, `unmeasured`), the part's `path`, the `line` and the `message`."
+        after_long_help = "One line for each finding, with the line of the entry in the file: an entry that names no part of the board (with the nearest names), an entry with a turn that is not from 0 up to 360 or a position that is not a number, and a locked entry that breaks a requirement of the physical file (the same words `fab` uses; the footprints are loaded and nothing is placed). A part with no entry is a note: the placer places it. The exit code is 1 when there is an error, and a note does not make it so. `--format json` prints one JSON document on stdout: the `board`, the `file`, `ok` and the `findings`, each with a `severity` (`error` or `note`), a `kind` (`no_entry`, `no_part`, `bad_turn`, `bad_place`, `requirement`, `unmeasured`), the part's `path`, the `line` and the `message`."
     )]
     Check(CheckArgs),
     /// Place the board and sum up the placement: wire, decoupling, modules, area per face, nets, free space.
@@ -147,7 +147,7 @@ pub struct SetArgs {
     /// Where the footprint's origin goes, `X,Y` in mm from the outline's top left corner, y down.
     #[arg(long, value_name = "X,Y", value_parser = parse_point, allow_hyphen_values = true)]
     pub at: Option<[f64; 2]>,
-    /// The turn in degrees, counterclockwise on screen: 0, 90, 180 or 270.
+    /// The turn in degrees, counterclockwise on screen: any angle from 0 up to 360 (45, 90).
     #[arg(long, value_name = "DEGREES", value_parser = parse_turn, allow_hyphen_values = true)]
     pub turn: Option<f64>,
     /// The face: `top` or `bottom`.
@@ -537,7 +537,7 @@ mod tests {
             ErrorKind::MissingRequiredArgument
         );
         assert_eq!(kind(&["layout", "set"]), ErrorKind::MissingRequiredArgument);
-        for turn in ["45", "360", "-90", "ninety"] {
+        for turn in ["360", "-90", "720", "ninety"] {
             assert_eq!(
                 kind(&["layout", "set", "u1", "--turn", turn]),
                 ErrorKind::ValueValidation,

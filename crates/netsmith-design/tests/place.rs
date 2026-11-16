@@ -190,12 +190,12 @@ fn a_window_that_does_not_meet_a_stated_value_is_a_contradiction() {
 }
 
 #[test]
-fn a_rotation_that_is_no_multiple_of_90_is_refused() {
-    let e = designed("    .j.place.rotation &= 45\n").unwrap_err();
-    assert_eq!(
-        e,
-        ["`j.place.rotation` allows 45 to 45 degrees, and a part is turned by multiples of 90"]
-    );
+fn a_rotation_that_is_no_multiple_of_90_is_carried() {
+    // A part turns by any angle a requirement states (issue #822).
+    let l = designed("    .j.place.rotation &= 45\n").unwrap();
+    assert_eq!(bound(&placement(&l, "j"), PlaceField::Rotation), (45.0, 45.0));
+    let l = designed("    .j.place.rotation &= 30..60\n").unwrap();
+    assert_eq!(bound(&placement(&l, "j"), PlaceField::Rotation), (30.0, 60.0));
 }
 
 #[test]

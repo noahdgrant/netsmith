@@ -74,7 +74,7 @@ use netsmith_core::{Design, PlaceField};
 
 use crate::board::{Placed, Side, outside_text};
 use crate::constraints::{
-    self, Plan, Reach, TOLERANCE, axis_of, body_at, measured, miss, number, offset, quarter,
+    self, Plan, Reach, TOLERANCE, axis_of, base_turn, body_at, measured, miss, number, offset,
     range_text, requirements, turns_allowed, what,
 };
 use crate::geometry::{Pt, Rect};
@@ -713,49 +713,51 @@ impl<'a> Context<'a> {
             };
             let may_hang = self.plan.overhang.contains_key(&part.refdes)
                 || self.options.overhang.contains_key(&part.refdes);
-            let make = |q: usize, x: (f64, f64), y: (f64, f64)| {
-                let angle = q as f64 * 90.0;
-                Quarter {
-                    angle,
-                    court: part
+            let make = |angle: f64, x: (f64, f64), y: (f64, f64)| Quarter {
+                angle,
+                court: part
+                    .footprint
+                    .courtyard
+                    .rotated_for(side == Side::Back, angle),
+                body: body_at(part, angle, side),
+                pads: {
+                    let mut at_zero = part.clone();
+                    (at_zero.at, at_zero.rotation, at_zero.side) = (Pt::default(), angle, side);
+                    at_zero
                         .footprint
-                        .courtyard
-                        .rotated_for(side == Side::Back, angle),
-                    body: body_at(part, angle, side),
-                    pads: {
-                        let mut at_zero = part.clone();
-                        (at_zero.at, at_zero.rotation, at_zero.side) = (Pt::default(), angle, side);
-                        at_zero
-                            .footprint
-                            .pads
-                            .iter()
-                            .map(|p| at_zero.pad_bounds(p))
-                            .collect()
-                    },
-                    x,
-                    y,
-                }
+                        .pads
+                        .iter()
+                        .map(|p| at_zero.pad_bounds(p))
+                        .collect()
+                },
+                x,
+                y,
             };
             let mut quarters: Vec<Quarter> = Vec::new();
             if let Some(f) = pinned {
-                if let Some(q) = quarter(f.rotation) {
-                    let at = ORIGIN + f.at;
-                    quarters.push(make(q, (at.x, at.x), (at.y, at.y)));
-                }
+                let at = ORIGIN + f.at;
+                quarters.push(make(f.rotation, (at.x, at.x), (at.y, at.y)));
             } else {
-                let allowed = turns_allowed(&reqs);
-                let reach: [Option<Reach>; 4] = match self.plan.wants.get(&part.refdes) {
-                    Some(w) => w.reach,
-                    None => std::array::from_fn(|q| {
-                        allowed[q].then_some(Reach {
-                            x: (f64::NEG_INFINITY, f64::INFINITY),
-                            y: (f64::NEG_INFINITY, f64::INFINITY),
-                        })
-                    }),
-                };
+                let (base, reach): (f64, [Option<Reach>; 4]) =
+                    match self.plan.wants.get(&part.refdes) {
+                        Some(w) => (w.base, w.reach),
+                        None => {
+                            let base = base_turn(&reqs).unwrap_or(0.0);
+                            let allowed = turns_allowed(&reqs, base);
+                            (
+                                base,
+                                std::array::from_fn(|q| {
+                                    allowed[q].then_some(Reach {
+                                        x: (f64::NEG_INFINITY, f64::INFINITY),
+                                        y: (f64::NEG_INFINITY, f64::INFINITY),
+                                    })
+                                }),
+                            )
+                        }
+                    };
                 for (q, r) in reach.iter().enumerate() {
                     if let Some(r) = r {
-                        quarters.push(make(q, r.x, r.y));
+                        quarters.push(make(base + 90.0 * q as f64, r.x, r.y));
                     }
                 }
             }

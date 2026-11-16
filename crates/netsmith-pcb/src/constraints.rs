@@ -116,9 +116,13 @@ pub struct Reach {
 /// What a part's requirements leave to the placer.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Want {
-    /// For the turns 0, 90, 180 and 270 degrees: where the origin may be, or `None` if the
-    /// requirements rule that turn out.
+    /// For the turns `base`, `base + 90`, `base + 180` and `base + 270` degrees: where the
+    /// origin may be, or `None` if the requirements rule that turn out.
     pub reach: [Option<Reach>; 4],
+    /// The turn of `reach[0]`, in degrees from 0 up to 90: 0 unless the requirements allow no
+    /// right angle and state another turn (issue #822), which the part then keeps, give or
+    /// take right angles ([`base_turn`]).
+    pub base: f64,
     /// Whether any requirement is about where the part is along x, or along y.
     pub holds_x: bool,
     pub holds_y: bool,
@@ -127,18 +131,41 @@ pub struct Want {
     pub overhangs: bool,
 }
 
-/// The index of a right angle in [`Want::reach`], or `None` for any other angle.
+/// The index of a right angle in [`Want::reach`] of a want whose `base` is 0, or `None` for
+/// any other angle.
 pub fn quarter(angle: f64) -> Option<usize> {
-    let a = angle.rem_euclid(360.0);
+    quarter_from(0.0, angle)
+}
+
+/// How many right angles `angle` is past `base`, from 0 to 3, or `None` if the two differ by
+/// other than right angles.
+fn quarter_from(base: f64, angle: f64) -> Option<usize> {
+    let a = (angle - base).rem_euclid(360.0);
     let q = (a / 90.0).round();
     ((a - q * 90.0).abs() < 1e-6).then_some((q as usize) % 4)
 }
 
 impl Want {
+    /// The index in [`Want::reach`] of a part turned `angle`, or `None` if the angle is not
+    /// one of the four turns of the want.
+    pub fn turn(&self, angle: f64) -> Option<usize> {
+        quarter_from(self.base, angle)
+    }
+
+    /// The turn of `reach[q]`, in degrees.
+    pub fn angle(&self, q: usize) -> f64 {
+        (self.base + 90.0 * q as f64).rem_euclid(360.0)
+    }
+
+    /// Whether `angle` is a turn the requirements allow.
+    pub fn allows(&self, angle: f64) -> bool {
+        self.turn(angle).is_some_and(|q| self.reach[q].is_some())
+    }
+
     /// The nearest origin the requirements allow to `at`, for a part turned `angle`; `at`
     /// itself if the turn is not allowed.
     pub fn clamp(&self, angle: f64, at: Pt) -> Pt {
-        match quarter(angle).and_then(|q| self.reach[q]) {
+        match self.turn(angle).and_then(|q| self.reach[q]) {
             Some(r) => Pt::new(
                 at.x.clamp(r.x.0, r.x.1.max(r.x.0)),
                 at.y.clamp(r.y.0, r.y.1.max(r.y.0)),
@@ -478,15 +505,33 @@ fn stated_overhang(reqs: &[Req], may: Edges) -> Option<Overhang> {
     })
 }
 
-pub(crate) fn turns_allowed(reqs: &[Req]) -> [bool; 4] {
-    let mut ok = [true; 4];
-    for r in reqs.iter().filter(|r| r.field == PlaceField::Rotation) {
-        for (q, allowed) in ok.iter_mut().enumerate() {
-            let angle = q as f64 * 90.0;
-            *allowed &= miss(r, Rect::new(Pt::default(), Pt::default()), angle) < 1e-6;
-        }
+/// Whether every requirement on the rotation allows a part turned `angle`.
+fn turn_meets(reqs: &[Req], angle: f64) -> bool {
+    reqs.iter()
+        .filter(|r| r.field == PlaceField::Rotation)
+        .all(|r| miss(r, Rect::new(Pt::default(), Pt::default()), angle) < 1e-6)
+}
+
+/// The turn the four turns a part may take start from, in degrees from 0 up to 90 (issue
+/// #822): 0 when the requirements on the rotation allow a right angle, else the middle of
+/// the window of the first of them whose middle they all allow (`rotation &= 45` is 45,
+/// `rotation &= 30..60` is 45), or `None` when no such turn is found. The placer turns a part
+/// by right angles from it.
+pub(crate) fn base_turn(reqs: &[Req]) -> Option<f64> {
+    if (0..4).any(|q| turn_meets(reqs, q as f64 * 90.0)) {
+        return Some(0.0);
     }
-    ok
+    reqs.iter()
+        .filter(|r| r.field == PlaceField::Rotation && r.lo.is_finite() && r.hi.is_finite())
+        .map(|r| ((r.lo + r.hi) / 2.0).rem_euclid(360.0))
+        .find(|&angle| turn_meets(reqs, angle))
+        .map(|angle| angle.rem_euclid(90.0))
+}
+
+/// Which of the four turns `base`, `base + 90`, `base + 180` and `base + 270` every
+/// requirement on the rotation allows.
+pub(crate) fn turns_allowed(reqs: &[Req], base: f64) -> [bool; 4] {
+    std::array::from_fn(|q| turn_meets(reqs, base + q as f64 * 90.0))
 }
 
 pub(crate) fn number(v: f64) -> String {
@@ -636,25 +681,26 @@ pub fn plan(
             continue;
         }
 
-        let allowed = turns_allowed(&reqs);
-        if !allowed.iter().any(|&a| a) {
+        let Some(base) = base_turn(&reqs) else {
             let r = reqs
                 .iter()
-                .find(|r| r.field == PlaceField::Rotation)
+                .filter(|r| r.field == PlaceField::Rotation)
                 .map(Req::says)
-                .unwrap_or_default();
+                .collect::<Vec<_>>()
+                .join(", ");
             errors.push(format!(
-                "{name} cannot be turned as required: {r}, and a part is turned by multiples of 90"
+                "{name} cannot be turned as required: {r}, and no one turn meets them all"
             ));
             continue;
-        }
+        };
+        let allowed = turns_allowed(&reqs, base);
         let mut reach = [None; 4];
         let mut why: Vec<String> = Vec::new();
         for (q, ok) in allowed.iter().enumerate() {
             if !ok {
                 continue;
             }
-            let angle = q as f64 * 90.0;
+            let angle = base + q as f64 * 90.0;
             let body = body_at(part, angle, side);
             let (x, y) = (interval(&reqs, 0, body), interval(&reqs, 1, body));
             match (x, y) {
@@ -695,7 +741,7 @@ pub fn plan(
         // the overhang rule's. A window on `x` or `y` keeps the old rule.
         for (q, slot) in reach.iter_mut().enumerate() {
             let Some(r) = *slot else { continue };
-            let body = body_at(part, q as f64 * 90.0, side);
+            let body = body_at(part, base + q as f64 * 90.0, side);
             let c = body.centre();
             for (axis, range, size) in [(0, r.x, width), (1, r.y, height)] {
                 let Some(size) = size else { continue };
@@ -737,7 +783,7 @@ pub fn plan(
         if pinned {
             let q = live[0];
             let r = reach[q].expect("live");
-            let rotation = q as f64 * 90.0;
+            let rotation = base + q as f64 * 90.0;
             plan.fixed.insert(
                 part.refdes.clone(),
                 Fixed {
@@ -763,12 +809,14 @@ pub fn plan(
                     || r.x.1 != f64::INFINITY
                     || r.y.0 != f64::NEG_INFINITY
                     || r.y.1 != f64::INFINITY
-            }) || live.len() < 4;
+            }) || live.len() < 4
+                || base != 0.0;
             if needs_search {
                 plan.wants.insert(
                     part.refdes.clone(),
                     Want {
                         reach,
+                        base,
                         holds_x,
                         holds_y,
                         overhangs: may.any(),
@@ -1013,7 +1061,7 @@ fn offset_cannot_be_met(
             let mut allowed: Vec<String> = Vec::new();
             for (q, reach) in want.reach.iter().enumerate() {
                 let Some(r) = reach else { continue };
-                let off = offset(f_free, body_at(free_part, q as f64 * 90.0, side));
+                let off = offset(f_free, body_at(free_part, want.angle(q), side));
                 let range = if axis == 0 { r.x } else { r.y };
                 // Where the measure must be for the relation to hold, against where the
                 // requirements let it be, in the frame of the outline.
@@ -1025,7 +1073,7 @@ fn offset_cannot_be_met(
                 let origin = if axis == 0 { ORIGIN.x } else { ORIGIN.y };
                 allowed.push(format!(
                     "turned {} degrees {} of its body must be {} mm along {}, and its requirements allow {}",
-                    number(q as f64 * 90.0),
+                    number(want.angle(q)),
                     what(f_free),
                     range_text(from - origin, to - origin, "").trim_end(),
                     if axis == 0 { "x" } else { "y" },

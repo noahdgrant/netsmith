@@ -44,7 +44,8 @@
 //! `layout` block of the language, is language and is not built.
 //!
 //! - **State.** For each part: its origin on a grid of 0.05 mm, its turn (0, 90, 180 or 270
-//!   degrees from the angle it began at) and which side of it the reference text is on. The
+//!   degrees from the angle it began at, which is a right angle unless a requirement states
+//!   another, issue #822) and which side of it the reference text is on. The
 //!   face is not part of the state (it comes from `PlaceOptions::sides`).
 //! - **Start.** The rows arrangement, parts in the order of their instance paths, inside the
 //!   outline the rows made (or the size asked for).
@@ -213,7 +214,7 @@
 use netsmith_core::PlaceField;
 use netsmith_pcb::{
     BoardNet, Placed, PlanOffset, ReferenceSide, Side, Want, constraint_axis_of, constraint_offset,
-    constraint_quarter, rect_distance,
+    rect_distance,
 };
 
 use netsmith_pcb::{DecouplingPair, decoupling_pairs};
@@ -634,7 +635,8 @@ impl Limits {
         };
         let mut turns = [None; 4];
         for (t, slot) in turns.iter_mut().enumerate() {
-            *slot = constraint_quarter(base + 90.0 * t as f64)
+            *slot = want
+                .turn(base + 90.0 * t as f64)
                 .and_then(|q| want.reach[q])
                 .map(|r| Turn {
                     x: at(r.x),

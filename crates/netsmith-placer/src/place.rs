@@ -668,7 +668,10 @@ fn wants_of(parts: &[Placed], options: &PlaceOptions) -> Vec<Option<Want>> {
         .collect()
 }
 
-/// Put the fixed parts where they stay.
+/// Put the fixed parts where they stay, and turn a part whose turn is right angles away from
+/// every turn its requirements allow to the first they do: the annealer turns a part by right
+/// angles from the turn it starts at, so one whose requirements state a turn off the right
+/// angles (45 degrees, issue #822) starts at it.
 fn apply_fixed(parts: &mut [Placed], options: &PlaceOptions) -> Vec<bool> {
     parts
         .iter_mut()
@@ -680,7 +683,15 @@ fn apply_fixed(parts: &mut [Placed], options: &PlaceOptions) -> Vec<bool> {
                 p.reference_side = f.text;
                 true
             }
-            None => false,
+            None => {
+                if let Some(want) = options.wants.get(&p.refdes)
+                    && want.turn(p.rotation).is_none()
+                    && let Some(q) = (0..4).find(|&q| want.reach[q].is_some())
+                {
+                    p.rotation = want.angle(q);
+                }
+                false
+            }
         })
         .collect()
 }
@@ -929,11 +940,7 @@ fn turn_to_fit(parts: &mut [Placed], fixed: &[bool], options: &PlaceOptions) {
             continue;
         }
         let want = options.wants.get(&part.refdes);
-        let allowed = |angle: f64| {
-            want.is_none_or(|w| {
-                netsmith_pcb::constraint_quarter(angle).is_some_and(|q| w.reach[q].is_some())
-            })
-        };
+        let allowed = |angle: f64| want.is_none_or(|w| w.allows(angle));
         let turned = [90.0, 270.0]
             .into_iter()
             .map(|extra| (part.rotation + extra).rem_euclid(360.0))

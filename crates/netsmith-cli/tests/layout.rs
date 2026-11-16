@@ -1,6 +1,6 @@
 //! `netsmith layout` (issue #782): `show` says the entry of each part as the placer reads it, `set`
 //! writes one entry and keeps the file's other tables, refusing a part the board does not have and
-//! a turn that is not 0, 90, 180 or 270, and `check` says what the file has wrong against the
+//! a turn that is not from 0 up to 360, and `check` says what the file has wrong against the
 //! board, one line each with the line of the entry. The board is the invented case of
 //! `constraints.rs`: a 40 by 24 mm board whose header must sit on the left edge, turned 90.
 
@@ -232,10 +232,10 @@ fn set_refuses_what_is_wrong_and_leaves_the_file_as_it_was() {
         "{said}"
     );
 
-    // A turn that is not 0, 90, 180 or 270 is a usage mistake.
-    let run = netsmith(&dir, &["set", "led", "--turn", "45"]);
+    // A turn that is not from 0 up to 360 is a usage mistake.
+    let run = netsmith(&dir, &["set", "led", "--turn", "360"]);
     assert_eq!(code(&run), 2);
-    assert!(stderr(&run).contains("0, 90, 180 or 270"), "{}", stderr(&run));
+    assert!(stderr(&run).contains("from 0 up to 360"), "{}", stderr(&run));
 
     // A part with no entry has no place to start from.
     let run = netsmith(&dir, &["set", "r1", "--turn", "90"]);
@@ -270,7 +270,7 @@ at = [1.0, 1.0]
 
 [Widget.parts.r1]
 at = [10.0, 5.0]
-rotation = 45
+rotation = 450
 
 [Widget.parts.power_in]
 at = [30.0, 12.0]
@@ -291,7 +291,7 @@ lock = true
     assert!(
         lines.iter().any(|l| l.contains("main.pcb.toml:6: error:")
             && l.contains("`r1`")
-            && l.contains("0, 90, 180 or 270")),
+            && l.contains("from 0 up to 360")),
         "{text}"
     );
     assert!(

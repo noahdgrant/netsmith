@@ -13,8 +13,8 @@
 //! requirements are satisfied and, with `warn`, how many are not and that they are warnings. An
 //! unchecked height is always a warning unless constraints are strict (`heights.rs`).
 //!
-//! `build` checks only what needs no placement (an empty intersection of bounds, a rotation
-//! that is no multiple of 90, a side that is not `"top"` or `"bottom"`, a bound that uses
+//! `build` checks only what needs no placement (an empty intersection of bounds, a side that
+//! is not `"top"` or `"bottom"`, a bound that uses
 //! `outline.width` or `outline.height` when the outline does not state that size as one value,
 //! a window outside a fixed outline); satisfaction is measured where a placement exists. The
 //! measurement is one rule on the board file (`netsmith_geom::Constraints`), so `fab`, the

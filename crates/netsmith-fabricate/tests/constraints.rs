@@ -154,6 +154,40 @@ fn the_placer_meets_the_requirements_and_the_package_says_so() {
 }
 
 #[test]
+fn a_part_turned_off_the_right_angles_is_placed_checked_and_exported_at_its_turn() {
+    // Issue #822: the resistor's requirement states 45 degrees. The placer places it so, the
+    // check measures it so and passes, and the board file and the placement file say it.
+    let physical = PHYSICAL.replace(
+        "    .led.place.top >= 3mm\n",
+        "    .led.place.top >= 3mm\n    .r1.place.rotation &= 45\n",
+    );
+    let (dir, made) = fab("turned-45", &physical, "", &Catalogs::jlcpcb());
+    let made = made.unwrap_or_else(|e| panic!("{e}"));
+    assert!(
+        made[0].notes.contains("design rules check: passed")
+            && made[0].notes.contains("constraints: 6 of 6 satisfied"),
+        "{}",
+        made[0].notes
+    );
+    let pcb = fs::read_to_string(dir.join("fab/Widget/Widget.kicad_pcb")).unwrap();
+    let resistor = pcb
+        .split("(footprint ")
+        .find(|f| f.contains("\"R1\""))
+        .expect("the resistor");
+    let at = resistor
+        .lines()
+        .find_map(|l| l.trim().strip_prefix("(at "))
+        .expect("its place");
+    assert!(at.trim_end_matches(')').ends_with(" 45"), "{at}");
+    let cpl = fs::read_to_string(dir.join("fab/Widget/cpl.csv")).unwrap();
+    let row = cpl
+        .lines()
+        .find(|l| l.trim_start_matches('"').starts_with("R1"))
+        .unwrap_or_else(|| panic!("{cpl}"));
+    assert!(row.contains(",45") || row.contains(",225"), "{row}");
+}
+
+#[test]
 fn the_same_source_gives_the_same_board() {
     if !have_libraries() {
         return;
