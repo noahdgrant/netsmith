@@ -69,6 +69,11 @@ pub(crate) struct Column {
     /// bound (ADR 0065): a pick of such a part that nothing limits is a guideline finding. A
     /// rating is not a value.
     pub value: bool,
+    /// Whether the catalog statement marks the column `optional` although a synthesized part
+    /// does not leave it empty (`Fill::Open`): the generic part is held to a recorded value
+    /// where the design bounds the field, and a row that has none is offered to a design that
+    /// does not.
+    pub optional: bool,
 }
 
 /// Makes the synthesized parts of a series for the columns a part's catalog lists.
@@ -92,6 +97,7 @@ const fn quantity(name: &'static str, dim: Dimension, fill: Fill, value: bool) -
         kind: FieldKind::Quantity(dim),
         fill,
         value,
+        optional: false,
     }
 }
 
@@ -101,6 +107,15 @@ const fn text(name: &'static str, fill: Fill) -> Column {
         kind: FieldKind::Text,
         fill,
         value: false,
+        optional: false,
+    }
+}
+
+impl Column {
+    /// The column, marked `optional` in the catalog statement.
+    const fn optional(mut self) -> Column {
+        self.optional = true;
+        self
     }
 }
 
@@ -175,7 +190,8 @@ static INDUCTOR: Standard = Standard {
     make: generic::inductors,
 };
 
-/// `catalog led { .color, .forward_voltage, .package }`.
+/// `catalog led { .color, .forward_voltage, .package, .max_forward_current optional,
+/// .test_current optional }`.
 static LED: Standard = Standard {
     catalog: "led",
     word: "LED",
@@ -188,6 +204,17 @@ static LED: Standard = Standard {
             false,
         ),
         text("package", Fill::Package),
+        // The largest forward current the datasheet allows: a generic LED takes a row that
+        // allows the current the design bounds, and any row where it bounds none.
+        quantity(
+            "max_forward_current",
+            Dimension::CURRENT,
+            Fill::Open(Sense::AtLeast),
+            false,
+        )
+        .optional(),
+        // The current `forward_voltage` is stated at: a generic LED has none.
+        quantity("test_current", Dimension::CURRENT, Fill::Empty, false),
     ],
     make: generic::leds,
 };
@@ -243,7 +270,8 @@ impl Standard {
     /// Whether a file of rows may leave the column out, and a row may be empty in it, without
     /// the row leaving every design that does not mention it (ADR 0055).
     pub(crate) fn is_optional(&self, column: &str) -> bool {
-        self.fill(column) == Some(Fill::Empty)
+        self.column(column)
+            .is_some_and(|c| c.fill == Fill::Empty || c.optional)
     }
 
     /// The columns a row is read with when it is resolved for a generic part.
@@ -369,12 +397,13 @@ mod tests {
                 .candidates(Series::E24, &kinds)
                 .unwrap_or_else(|| panic!("{} makes no part", generic_of(standard)));
             assert!(!made.is_empty(), "{}", generic_of(standard));
-            // A synthesized part is empty exactly where a row may be.
+            // A synthesized part is empty exactly where it has nothing to say (a generic LED
+            // is held to a maximum current, so that column is open, not empty).
             for part in &made {
                 for column in standard.columns {
                     assert_eq!(
                         part.column(column.name).is_none(),
-                        standard.is_optional(column.name),
+                        column.fill == Fill::Empty,
                         "{} {}",
                         generic_of(standard),
                         column.name
@@ -414,6 +443,8 @@ mod tests {
             [
                 ("resistor", "temperature_coefficient"),
                 ("capacitor", "dielectric"),
+                ("led", "max_forward_current"),
+                ("led", "test_current"),
                 ("inductor", "rms_current"),
             ]
         );

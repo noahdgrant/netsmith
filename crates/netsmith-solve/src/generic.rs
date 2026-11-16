@@ -40,7 +40,7 @@
 //! given). A capacitor is a value of the series (1 pF to 100 uF), a
 //! tolerance (20%, 10% or 5%, widest tried first, so the weakest claim is the easiest to resolve)
 //! and a 0402, 0603 or 0805 package; an inductor is 1 nH to 1 mH, 30%, 20% or 10%, in 0402,
-//! 0603, 0805 or 1210; an LED is a package with colour and forward voltage open. The saturation
+//! 0603, 0805 or 1210; an LED is a package with colour, forward voltage and maximum current open. The saturation
 //! current and the DC resistance are open. A capacitor's `effective_capacitance` is a derated
 //! value with an empty curve, so the solver does not use it where the design states or relates
 //! `.effective_capacitance`, and says "generic parts have no recorded bias curve"; resolution
@@ -67,9 +67,7 @@
 //!    numbers left out but its text statements (package, colour) kept."
 //!
 //! **Gaps in the catalogs** (reported, nothing added; a column is added only with a recorded
-//! source, `data/jlcpcb/README.md`, and not planned until a board needs it): an LED has no maximum forward
-//! current column, so `Led` states no limit on `.current`, and a forward voltage is the
-//! datasheet's range at a test current (5 or 20 mA) that is not a column; an inductor has no
+//! source, `data/jlcpcb/README.md`, and not planned until a board needs it): an inductor has no
 //! temperature-rise (rms) current column, only the saturation current; a capacitor has no
 //! dielectric or temperature-coefficient column, so a generic capacitor cannot state C0G or
 //! X7R, and a bias curve is a typical value at 25 C (ADR 0013). A generic part that needs any of
@@ -338,6 +336,8 @@ pub enum Spec {
     Led {
         color: Need,
         forward_voltage: Need,
+        /// The largest forward current the row must allow, where the design bounds `.current`.
+        max_forward_current: Need,
     },
     /// A value of an E-series in a catalog of a project's own generic that declares
     /// `#[series(...)]` (ADR 0125): the first column of its `catalog` statement is the value,
@@ -487,6 +487,7 @@ impl Generic {
             Spec::Led {
                 color,
                 forward_voltage,
+                max_forward_current,
             } => with(vec![
                 format!(
                     "{}LED {}",
@@ -498,6 +499,9 @@ impl Generic {
                     self.package
                 ),
                 rated(forward_voltage, "forward voltage", "V")
+                    .trim_start_matches(", ")
+                    .to_string(),
+                rated(max_forward_current, "maximum current", "A")
                     .trim_start_matches(", ")
                     .to_string(),
             ]),
@@ -541,9 +545,11 @@ impl Generic {
             Spec::Led {
                 color,
                 forward_voltage,
+                max_forward_current,
             } => {
                 *color = find("color");
                 *forward_voltage = find("forward_voltage");
+                *max_forward_current = find("max_forward_current");
             }
         }
         out
@@ -848,6 +854,7 @@ pub(crate) fn leds(
             spec: Spec::Led {
                 color: Need::Nothing,
                 forward_voltage: Need::Nothing,
+                max_forward_current: Need::Nothing,
             },
         };
         let cells = columns
@@ -856,13 +863,16 @@ pub(crate) fn leds(
                 let value = match standard.fill(name)? {
                     Fill::Open(sense) => Value::Open(sense),
                     Fill::Package => Value::Text(package.to_string()),
-                    Fill::Marked | Fill::PackagePower | Fill::NoCurve | Fill::Empty => {
-                        return None;
-                    }
+                    // A generic LED has no test current: that cell is empty.
+                    Fill::Empty => return Some(None),
+                    Fill::Marked | Fill::PackagePower | Fill::NoCurve => return None,
                 };
-                Some((name.clone(), value))
+                Some(Some((name.clone(), value)))
             })
-            .collect::<Option<Vec<_>>>()?;
+            .collect::<Option<Vec<_>>>()?
+            .into_iter()
+            .flatten()
+            .collect::<Vec<_>>();
         out.push(Candidate {
             name: format!("generic {}", generic.describe()),
             label: "LED".to_string(),
@@ -998,12 +1008,16 @@ fn misses(generic: &Generic, row: &Candidate) -> Vec<Miss> {
         Spec::Led {
             color,
             forward_voltage,
+            max_forward_current,
         } => {
             if !color.met_by(row.column("color")) {
                 out.push(Miss::Rating("color".to_string()));
             }
             if !forward_voltage.met_by(row.column("forward_voltage")) {
                 out.push(Miss::Rating("forward_voltage".to_string()));
+            }
+            if !max_forward_current.met_by(row.column("max_forward_current")) {
+                out.push(Miss::Rating("max_forward_current".to_string()));
             }
         }
     }
@@ -1037,9 +1051,11 @@ fn shortfall(generic: &Generic, row: &Candidate) -> f64 {
         Spec::Led {
             color,
             forward_voltage,
+            max_forward_current,
         } => {
             color.shortfall(row.column("color"))
                 + forward_voltage.shortfall(row.column("forward_voltage"))
+                + max_forward_current.shortfall(row.column("max_forward_current"))
         }
     }
 }
@@ -1049,7 +1065,7 @@ fn shortfall(generic: &Generic, row: &Candidate) -> f64 {
 /// A row fits when it has the package, the nominal value (to a millionth), a tolerance no
 /// wider, and every rating the part asked for: a resistor's power rating no lower, a
 /// capacitor's voltage and (always) a recorded DC-bias curve, an inductor's saturation
-/// current and DC resistance, an LED's colour and forward voltage. Among the rows that fit
+/// current and DC resistance, an LED's colour, forward voltage and maximum current. Among the rows that fit
 /// the order is the preferred-parts list: Basic, then Preferred, then Extended, and inside a
 /// class the order of the file. `stock` is asked about each fitting row's LCSC number: a row
 /// it answers `0` for is passed over, and a row it knows nothing about (`None`) is kept.
