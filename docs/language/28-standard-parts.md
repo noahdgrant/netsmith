@@ -1928,6 +1928,8 @@ board Mix {
 
 After the parts are picked, the solver builds the network of the parts that state what they are at DC and solves it (ADR 0076). Where the equations of the design cannot say what a part carries (a net with two currents that nothing states, ADR 0026), the network can: the pass writes `.current` and `.drop` of a part, and the checks that waited for them (`.drop == .current * .resistance`, `.drop * .current <= .max_power`, a fuse's `.current <= .rated_current`) are judged with the numbers. A pass that finds a rating exceeded is an error, like any relation, and says which states of the circuit give it.
 
+To see what the pass wrote, `netsmith explain <path>` prints the members at a path with the ranges the solve left them (`reg.inductor.current  5.047mA..50.06mA`), also when the build fails after the pass, and `build --emit-solved` writes every member as JSON (see _The solved values_ in the commands chapter).
+
 What it models in this stage:
 
 - **Resistors.** A `dc resistor` part (a resistor, a fuse, a ferrite bead) is its resistance over the range of the field, `10kohm +/- 1%` taken at both ends. A resistance that can be zero (a bead's `0ohm..70mohm`) is solved at zero too, as a short (ADR 0076, amendment 16), and one under 1 mohm is its own value: a 0 to 0.2 mohm link at 90 A to 100 A leaves 11.98 V to 12 V of a 12 V supply, not the 11.9 V to 11.91 V that a floor of 1 mohm gave. The exceptions are a resistor between two nodes that a source holds, or from a node to itself, and a combination whose zero-ohm parts make a loop (two beads side by side at 0 ohm): those are solved at 1 mohm, as every resistance under it once was.
