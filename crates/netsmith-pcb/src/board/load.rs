@@ -189,7 +189,7 @@ impl Board {
                     }),
                 hand_fitted: design.features.hand_fitted.contains(&part.path),
                 symbol,
-                layout: crate::part_layout::PartNear::of_part(part, &design.features.layout),
+                layout: crate::part_layout::PartGuideline::of_part(part, &design.features.layout),
             });
         }
         // The body of a part that stands off the board limits the height of the parts under it.

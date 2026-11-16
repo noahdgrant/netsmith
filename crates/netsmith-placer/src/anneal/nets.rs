@@ -148,7 +148,10 @@ impl<'a> Engine<'a> {
                 }
             }
             if nearest < f64::MAX {
-                total += nearest;
+                total += match dec.beyond {
+                    Some(beyond) => (beyond - nearest).max(0.0),
+                    None => nearest,
+                };
             }
         }
         W_DECOUPLING * total

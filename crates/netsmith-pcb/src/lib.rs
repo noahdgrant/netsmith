@@ -113,7 +113,7 @@ pub use impedance::{
 };
 pub use layout::{
     BoardLayout, Face as LayoutFace, IMPORT_SOURCE, KeepoutPlace, Layout, LayoutError, PartPlace,
-    apply_layout, check_drawn_keepout, copper_layers, keepout_declaration, place_options,
+    Waiver, apply_layout, check_drawn_keepout, copper_layers, keepout_declaration, place_options,
 };
 pub use live::{Glimpse, GlimpsePart, glimpses_watched, show_glimpse, watching_glimpses};
 pub use miss::RequirementMiss;
@@ -123,7 +123,10 @@ pub use overhang::{
     reached as overhang_reached,
 };
 pub use part_fit::{FIT_STEP, FitNear, FitPlace, FitTarget, PartFit};
-pub use part_layout::{NearPair, PartNear, near_findings, near_pairs};
+pub use part_layout::{
+    LayoutFinding, Limit, LoopPair, Measure, NearPair, PartGuideline, away_pairs, edge_parts,
+    layout_findings, loop_pairs, measures, near_findings, near_pairs, pins_of,
+};
 pub use placement::{
     CarriedZone, DESCRIBED, DoesNotFit, Ended, FaceKeepout, Fixed, HeightZone, ORIGIN, OutsideAt,
     OverlapAt, Oversize, PartState, PlaceOptions, inside as fit_inside, is_mechanical,
@@ -148,8 +151,8 @@ pub use stackup::{
 };
 pub use standard_height::StandardHeight;
 pub use summary::{
-    DecouplingSummary, FaceSummary, ModuleSummary, Moved, Neighbour, Neighbours, NetSummary, Place,
-    PlacementComparison, RatsnestLine, Summary, SummaryBox, Totals,
+    DecouplingSummary, FaceSummary, GuidelineSummary, ModuleSummary, Moved, Neighbour, Neighbours,
+    NetSummary, Place, PlacementComparison, RatsnestLine, Summary, SummaryBox, Totals,
 };
 pub use svg::{render as render_svg, render_view as render_svg_view};
 pub use track_drop::{

@@ -104,23 +104,24 @@ pub struct Features {
     pub constraints: Vec<Placement>,
     /// Relations between the places of two parts (ADR 0045, section 3).
     pub offsets: Vec<Offset>,
-    /// The layout guidelines that the parts' datasheets state (`layout` blocks, ADR 0030, issue
-    /// #829), one for each part of the board whose definition states one. Left out of a design
-    /// file when empty.
+    /// The layout guidelines that the parts' datasheets state (`layout` blocks, ADR 0030, issues
+    /// #829 and #994), one for each part of the board whose definition states one, and whose
+    /// package is the one a `layout "PACKAGE"` block names. A `keepout` statement is not here:
+    /// it is a keepout the part carries, in [`Features::keepouts`]. Left out of a design file
+    /// when empty.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub layout: Vec<LayoutNear>,
+    pub layout: Vec<LayoutGuideline>,
     /// The text of each line of the physical file that states a requirement, by the
     /// `file:line` the `source` fields name (`widget.physical.nsm:14`), so that a message can
     /// quote the line. Filled by the caller that knows the source files; empty otherwise.
     pub line_texts: std::collections::BTreeMap<String, String>,
 }
 
-/// A `near` guideline of a part's `layout` block (ADR 0030, issue #829), for one part of the
-/// board: the parts that [`NearSelect`] finds from the nets go next to the pads of the pin `to`,
-/// within `within` when the datasheet gives a number. A guideline and not a rule: the placer
-/// pulls the parts there and `fab` warns when a number is not met (ADR 0036).
+/// A guideline of a part's `layout` block (ADR 0030, issues #829 and #994), for one part of the
+/// board. A guideline and not a rule: the placer and the router work towards it, and `fab` warns
+/// when a number is not met (ADR 0036), unless the layout file waives it.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct LayoutNear {
+pub struct LayoutGuideline {
     /// The path of the part that states it: `reg.ic`.
     pub part: String,
     /// The guideline's name in the part's `layout` block: `input_cap`.
@@ -129,17 +130,78 @@ pub struct LayoutNear {
     pub source: String,
     /// Where the part states it: `std/parts/regulator.nsm:1100`.
     pub site: String,
-    pub select: NearSelect,
-    /// The pin the parts go next to, as the part's pin table names it (`vin.pos`).
-    pub to: String,
-    /// The largest distance from a pad of a selected part on the net of `to` (any of its pads,
-    /// when none is on it) to a pad of `to`, centre to centre, in mm. `None` for a datasheet
-    /// that says "close to" with no number: the placer pulls, and nothing is checked.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub within: Option<f64>,
+    #[serde(flatten)]
+    pub rule: LayoutRule,
 }
 
-/// Which parts of the board a [`LayoutNear`] is about, found from the nets of the part's pins
+/// What a [`LayoutGuideline`] says, with the part's pins named as its pin table names them
+/// (`vin.pos`) and the lengths in mm. Distances are pad centre to pad centre.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "statement", rename_all = "snake_case")]
+pub enum LayoutRule {
+    /// The parts that [`NearSelect`] finds go next to the pads of the pin `to`: from a pad of a
+    /// selected part on the net of `to` (any of its pads, when none is on it) to a pad of `to`,
+    /// within `within` when the datasheet gives a number. `None` for a datasheet that says
+    /// "close to": the placer pulls, and nothing is checked.
+    Near {
+        select: NearSelect,
+        to: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        within: Option<f64>,
+    },
+    /// The parts that [`NearSelect`] finds stay at least `beyond` from every pad of the pin
+    /// `from`, measured from their nearest pad.
+    Away {
+        select: NearSelect,
+        from: String,
+        beyond: f64,
+    },
+    /// Each other part with two pads, one on the net of `a` and one on the net of `b`, closes
+    /// a current loop with the part: from a pad of `a` to the part's pad on that net, across
+    /// the part, from its other pad to a pad of `b`, and back from `b` to `a`. The loop's
+    /// length is at most `within` when the datasheet gives a number.
+    Loop {
+        a: String,
+        b: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        within: Option<f64>,
+    },
+    /// The pads of `pin` go at the board's edge: the nearest pad within `within` of the
+    /// outline when the datasheet gives a number.
+    Edge {
+        pin: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        within: Option<f64>,
+    },
+    /// The pads of `pin` take at least `count` vias of their net, each with its centre on one
+    /// of the pads.
+    Vias { pin: String, count: usize },
+    /// The tracks of the net of `pin` are at least `width` wide (the design adds it to the
+    /// net's least width) and at most `length` long in all.
+    Route {
+        pin: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        width: Option<f64>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        length: Option<f64>,
+    },
+}
+
+impl LayoutRule {
+    /// The statement's word in the language: `near`, `away`, `loop`, `edge`, `vias`, `route`.
+    pub fn word(&self) -> &'static str {
+        match self {
+            LayoutRule::Near { .. } => "near",
+            LayoutRule::Away { .. } => "away",
+            LayoutRule::Loop { .. } => "loop",
+            LayoutRule::Edge { .. } => "edge",
+            LayoutRule::Vias { .. } => "vias",
+            LayoutRule::Route { .. } => "route",
+        }
+    }
+}
+
+/// Which parts of the board a `near` or an `away` [`LayoutRule`] is about, found from the nets of the part's pins
 /// (named as its pin table names them).
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]

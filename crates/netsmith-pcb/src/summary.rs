@@ -59,6 +59,10 @@ pub struct Summary {
     pub decoupling: Vec<DecouplingSummary>,
     /// Each net with two pads or more, by name.
     pub nets: Vec<NetSummary>,
+    /// What each guideline of the parts' `layout` blocks measures (issue #994,
+    /// [`crate::measures`]), by part, guideline and part found. Left out of a board with none.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub guidelines: Vec<GuidelineSummary>,
     /// The parts near each part asked about, with [`Summary::neighbours`]; left out otherwise.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub neighbours: Vec<Neighbours>,
@@ -141,6 +145,33 @@ pub struct DecouplingSummary {
     /// The mean over the capacitor's two pads of the distance from the pad's centre to the
     /// nearest pin pad of the part on its net, in mm ([`Quality`]).
     pub distance: f64,
+}
+
+/// What one guideline of a part's `layout` block measures on the board.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct GuidelineSummary {
+    /// The path of the part that states it, and the guideline's name.
+    pub part: String,
+    pub name: String,
+    /// The statement: `near`, `away`, `loop`, `edge`, `vias` or `route`.
+    pub statement: &'static str,
+    /// The designator of the part found, for `near`, `away` and `loop`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub other: Option<String>,
+    /// In mm (a count of vias for `vias`); left out when a pad to measure is not on the
+    /// footprint.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub measured: Option<f64>,
+    /// The most the datasheet allows, or the least it asks for; neither for "close to".
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub at_most: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub at_least: Option<f64>,
+    /// Whether the measure meets the number; left out when there is no number.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub met: Option<bool>,
+    /// The document and section the part's block cites.
+    pub source: String,
 }
 
 /// One net.
@@ -288,6 +319,26 @@ impl Summary {
             })
             .collect();
         nets.sort_by(|a, b| a.name.cmp(&b.name));
+        let guidelines = crate::measures(board)
+            .into_iter()
+            .map(|m| GuidelineSummary {
+                part: m.guideline.part.clone(),
+                name: m.guideline.name.clone(),
+                statement: m.guideline.rule.word(),
+                other: m.other.clone(),
+                measured: m.measured.map(round),
+                at_most: match m.limit {
+                    Some(crate::Limit::AtMost(x)) => Some(x),
+                    _ => None,
+                },
+                at_least: match m.limit {
+                    Some(crate::Limit::AtLeast(x)) => Some(x),
+                    _ => None,
+                },
+                met: m.met(),
+                source: m.guideline.source.clone(),
+            })
+            .collect();
         Summary {
             board: board.name.clone(),
             width: round(board.outline.width()),
@@ -305,6 +356,7 @@ impl Summary {
             modules: modules(board, &frame),
             decoupling,
             nets,
+            guidelines,
             neighbours: Vec::new(),
             pads: Vec::new(),
             findings: board
@@ -461,6 +513,30 @@ impl Summary {
                 "decoupling {} ({}) to {}: {} mm\n",
                 d.cap, d.cap_path, d.part, d.distance
             );
+        }
+        for g in &self.guidelines {
+            text += &format!("guideline {}.{} ({}", g.part, g.name, g.statement);
+            if let Some(other) = &g.other {
+                text += &format!(", {other}");
+            }
+            text += "): ";
+            let unit = if g.statement == "vias" { "" } else { " mm" };
+            match g.measured {
+                Some(m) => text += &format!("{m}{unit}"),
+                None => text += "not measured",
+            }
+            if let Some(x) = g.at_most {
+                text += &format!(", at most {x}{unit}");
+            }
+            if let Some(x) = g.at_least {
+                text += &format!(", at least {x}{unit}");
+            }
+            match g.met {
+                Some(true) => text += ", met",
+                Some(false) => text += ", NOT met",
+                None => {}
+            }
+            text += &format!(" ({})\n", g.source);
         }
         for n in &self.neighbours {
             text += &format!("near {} ({}, {}):", n.part, n.path, n.face);

@@ -34,10 +34,18 @@
 //! **What the file holds, and what it does not** (ADR 0030). The file is tier 3 of three: the
 //! decisions of this design (where a person put a part, a lock, a keepout the editor drew).
 //! What the circuit implies is derived by the placer (tier 1), and a datasheet's fact about a
-//! part belongs in the part with its source (tier 2, the `layout` block, not built). A
-//! requirement the case states goes to the physical file (ADR 0048), not here. Waivers,
-//! overrides of a constraint and per-module seeds were sketched in ADR 0030 and are not read:
-//! an unknown key is an error. The routes ADR 0030 sketched are a file of their own beside this
+//! part belongs in the part with its source (tier 2, the `layout` block). A requirement the
+//! case states goes to the physical file (ADR 0048), not here. Waivers, overrides of a
+//! constraint and per-module seeds were sketched in ADR 0030; of them only the waiver of a
+//! `layout` block's guideline is read (issue #994), and any other unknown key is an error:
+//!
+//! ```toml
+//! [RegulatorExample.waive."reg.ic.input_cap"]
+//! reason = "the input capacitor sits on the bottom, under the pin, with two vias"
+//! ```
+//!
+//! A waiver names the part's path and the guideline's name; one for a guideline the board does
+//! not have, or with no reason, is an error. The routes ADR 0030 sketched are a file of their own beside this
 //! one, the routes file `<stem>.routes.toml` ([`crate::Routes`], issue #599), which whatever
 //! reads this file reads too. Regenerating one module (`netsmith layout regenerate`, issue #825)
 //! writes the entries of the parts it placed again with `source = "regen"`.
@@ -257,6 +265,29 @@ pub struct BoardLayout {
     pub keepouts: BTreeMap<String, KeepoutPlace>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub cutouts: BTreeMap<String, ShapePlace>,
+    /// The guidelines of the parts' `layout` blocks that this design does not meet, on purpose
+    /// (ADR 0030: a waived constraint with its reason is a decision of the design), keyed by
+    /// the part's path and the guideline's name: `"reg.ic.input_cap"`. `fab` reports a
+    /// waived guideline as waived, with its reason, and never as a warning or an error.
+    #[serde(default, rename = "waive", skip_serializing_if = "BTreeMap::is_empty")]
+    pub waivers: BTreeMap<String, Waiver>,
+}
+
+/// Why a guideline of a part's `layout` block is not met on this board ([`BoardLayout::waivers`]).
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Waiver {
+    /// The reason, in a sentence: what this design does instead, and why it is enough.
+    pub reason: String,
+}
+
+impl BoardLayout {
+    /// The reason the guideline `name` of the part at `part` is waived, if it is.
+    pub fn waiver(&self, part: &str, name: &str) -> Option<&str> {
+        self.waivers
+            .get(&format!("{part}.{name}"))
+            .map(|w| w.reason.as_str())
+    }
 }
 
 /// The table of `table` that is named `name`.
@@ -286,7 +317,7 @@ pub enum LayoutError {
     Stale {
         file: String,
         board: String,
-        /// `part`, `keepout`, `cutout` or `board`.
+        /// `part`, `keepout`, `cutout`, `guideline` (a waiver's) or `board`.
         what: &'static str,
         names: Vec<String>,
         /// What the board has, for the message.
@@ -300,6 +331,8 @@ pub enum LayoutError {
         name: String,
         why: String,
     },
+    /// A waiver of a guideline that gives no reason.
+    EmptyReason { file: String, name: String },
     /// A keepout or cutout whose source states `.x` and `.y` and whose place the file gives
     /// as well: a thing has one place.
     Twice {
@@ -389,6 +422,10 @@ impl std::fmt::Display for LayoutError {
             Self::Twice { file, what, name } => write!(
                 f,
                 "{file}: the {what} `{name}` states `.x` and `.y` in the source, and the file places it as well: say it in one place, so remove the entry or the two statements"
+            ),
+            Self::EmptyReason { file, name } => write!(
+                f,
+                "{file}: the waiver of the guideline `{name}` gives no reason: say in `reason = \"...\"` what the design does instead and why that is enough"
             ),
             Self::BadKeepout { file, name, why } => {
                 write!(f, "{file}: the keepout `{name}` {why}")
@@ -515,6 +552,7 @@ impl Layout {
     pub fn capture(board: &Board, keep: Option<&BoardLayout>) -> BoardLayout {
         let mut out = BoardLayout {
             seed: keep.and_then(|k| k.seed),
+            waivers: keep.map(|k| k.waivers.clone()).unwrap_or_default(),
             ..BoardLayout::default()
         };
         for part in &board.parts {
@@ -915,6 +953,15 @@ pub fn apply_layout(board: &mut Board, layout: &Layout, file: &str) -> Result<()
         .map(|k| k.name.clone())
         .collect();
     let cutouts: Vec<String> = board.cutouts.iter().map(|c| c.name.clone()).collect();
+    let guidelines: Vec<String> = board
+        .parts
+        .iter()
+        .flat_map(|p| {
+            p.layout
+                .iter()
+                .map(move |g| format!("{}.{}", p.path, g.rule.name))
+        })
+        .collect();
     // A keepout stated whole is a requirement, and the layout file holds none (ADR 0048
     // decision 6, issue #812): the entry is refused with the member to write in the physical
     // file, before what it names is looked for.
@@ -962,7 +1009,22 @@ pub fn apply_layout(board: &mut Board, layout: &Layout, file: &str) -> Result<()
             missing(entries.cutouts.keys().collect(), cutouts.clone()),
             cutouts,
         ),
+        stale(
+            "guideline",
+            missing(entries.waivers.keys().collect(), guidelines.clone()),
+            guidelines,
+        ),
     ];
+    if let Some((name, _)) = entries
+        .waivers
+        .iter()
+        .find(|(_, w)| w.reason.trim().is_empty())
+    {
+        return Err(LayoutError::EmptyReason {
+            file: file.to_string(),
+            name: name.clone(),
+        });
+    }
     if let Some(error) = errors.into_iter().flatten().next() {
         return Err(error);
     }

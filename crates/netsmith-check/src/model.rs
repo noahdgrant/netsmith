@@ -1196,9 +1196,9 @@ pub struct Model {
     /// application circuit says, which is the design's circuit and not a requirement of the part
     /// on itself. Without repeats.
     pub(crate) support_sections: Vec<(SourceId, Span)>,
-    /// The `near` guidelines of the parts' `layout` blocks (ADR 0030, issue #829), one for each
+    /// The guidelines of the parts' `layout` blocks (ADR 0030, issues #829 and #994), one for each
     /// instance of a part that states one, in the order they were read.
-    pub layout: Vec<LayoutNear>,
+    pub layout: Vec<LayoutGuideline>,
     /// The groups of loads of which at most a few draw at once (`shared` in a board or a
     /// module, issue #806), in the order they were read.
     pub(crate) load_groups: Vec<crate::loads::LoadGroup>,
@@ -1298,10 +1298,10 @@ impl Model {
     }
 }
 
-/// A `near` statement of a part's `layout` block (ADR 0030, issue #829), for one instance of
-/// the part: the parts that [`NearSelect`] finds on the board go next to the pads of `to`.
+/// A guideline of a part's `layout` block (ADR 0030, issues #829 and #994), for one instance
+/// of the part.
 #[derive(Debug, Clone, PartialEq)]
-pub struct LayoutNear {
+pub struct LayoutGuideline {
     /// The part instance whose definition states it.
     pub part: InstId,
     /// The guideline's name (`input_cap`).
@@ -1310,15 +1310,59 @@ pub struct LayoutNear {
     pub source: String,
     /// Where the statement is: `file:line`.
     pub site: String,
-    pub select: NearSelect,
-    /// The pin of the part the selected parts go next to.
-    pub to: InstId,
-    /// The largest distance, pad centre to pad centre, in mm; None for a datasheet that says
-    /// "close to" with no number.
-    pub within: Option<f64>,
+    /// The package of a `layout "SOT-223" { }` block: the guideline applies only to an
+    /// instance in that package. None for every package.
+    pub package: Option<String>,
+    pub rule: GuidelineRule,
 }
 
-/// Which parts a [`LayoutNear`] is about, by the pins of the part whose nets find them.
+/// What a [`LayoutGuideline`] says, with the part's pins and the lengths in mm.
+#[derive(Debug, Clone, PartialEq)]
+pub enum GuidelineRule {
+    /// The parts that [`NearSelect`] finds go next to the pads of `to`, within `within` when
+    /// the datasheet gives a number ("close to" gives none).
+    Near {
+        select: NearSelect,
+        to: InstId,
+        within: Option<f64>,
+    },
+    /// The parts that [`NearSelect`] finds stay at least `beyond` from the pads of `from`.
+    Away {
+        select: NearSelect,
+        from: InstId,
+        beyond: f64,
+    },
+    /// Each part with a pad on the net of `a` and one on the net of `b` closes a loop with
+    /// the part, at most `within` long when a number is given.
+    Loop {
+        a: InstId,
+        b: InstId,
+        within: Option<f64>,
+    },
+    /// An area in the part's own frame: its corner nearest the part's origin and its size, and
+    /// what it forbids on every copper layer.
+    Keepout {
+        at: (f64, f64),
+        size: (f64, f64),
+        tracks: bool,
+        vias: bool,
+        copper: bool,
+        parts: bool,
+    },
+    /// The pads of `pin` go at the board's edge, within `within` of it when a number is given.
+    Edge { pin: InstId, within: Option<f64> },
+    /// The pads of `pin` take at least `count` vias of their net.
+    Vias { pin: InstId, count: usize },
+    /// The tracks of the net of `pin` are at least `width` wide and at most `length` long in
+    /// all.
+    Route {
+        pin: InstId,
+        width: Option<f64>,
+        length: Option<f64>,
+    },
+}
+
+/// Which parts a `near` or an `away` is about, by the pins of the part whose nets find them.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum NearSelect {
     /// Every two-pad part with a pad on the net of each pin.

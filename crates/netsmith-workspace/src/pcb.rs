@@ -783,6 +783,12 @@ impl Entry {
     /// if it was asked for.
     pub fn findings(&self, name: &str) -> PcbFindings {
         let mut all = findings::placement_findings(&self.board);
+        all.extend(findings::layout_findings(
+            &self.board,
+            self.layout
+                .as_ref()
+                .and_then(|(l, _)| l.boards.get(&self.board.name)),
+        ));
         all.extend(self.refusal.iter().cloned());
         all.extend(self.case_findings.iter().cloned());
         let file = self

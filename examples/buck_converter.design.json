@@ -685,6 +685,7 @@
           "name": "feedback",
           "source": "SNVSA24, 11.1 Layout Guidelines, p.17",
           "site": "std/parts/regulator.nsm:1058",
+          "statement": "near",
           "select": {
             "on": {
               "pin": "fb",
@@ -698,6 +699,7 @@
           "name": "inductor",
           "source": "SNVSA24, 11.1 Layout Guidelines, p.17",
           "site": "std/parts/regulator.nsm:1062",
+          "statement": "near",
           "select": {
             "on": {
               "pin": "sw.pos",
@@ -711,6 +713,7 @@
           "name": "input_cap",
           "source": "SNVSA24, 11.1 Layout Guidelines, p.17",
           "site": "std/parts/regulator.nsm:1060",
+          "statement": "near",
           "select": {
             "bridging": {
               "a": "vin.pos",

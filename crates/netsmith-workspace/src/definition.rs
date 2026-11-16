@@ -292,15 +292,8 @@ fn visit<'a>(
         // A part's `layout` block names the part's own pins.
         Item::Layout(layout) => {
             for statement in &layout.statements {
-                if let netsmith_lang::ast::LayoutStatement::Near(near) = statement {
-                    match &near.select {
-                        netsmith_lang::ast::Select::Bridging(a, b) => {
-                            path(a, inside);
-                            path(b, inside);
-                        }
-                        netsmith_lang::ast::Select::On { pin, .. } => path(pin, inside),
-                    }
-                    path(&near.to, inside);
+                for pin in statement.pins() {
+                    path(pin, inside);
                 }
             }
         }

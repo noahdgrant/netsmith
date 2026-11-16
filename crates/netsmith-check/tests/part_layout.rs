@@ -1,5 +1,5 @@
-//! The `layout` block of a part (ADR 0030, issue #829): a mandatory `source`, `near` statements
-//! that name the part's own pins, and what the model keeps of them. The part `Ld9` and its
+//! The `layout` block of a part (ADR 0030, issues #829 and #994): a mandatory `source`,
+//! statements that name the part's own pins, and what the model keeps of them. The part `Ld9` and its
 //! datasheet are invented; `Lmr16006y` is the library's.
 
 use netsmith_check::*;
@@ -69,15 +69,19 @@ board B {
         .map(|l| {
             assert_eq!(l.part, ic);
             assert_eq!(l.source, "SNVSA24, 11.1 Layout Guidelines, p.17");
-            assert_eq!(l.within, None, "the datasheet gives no distance");
             assert!(l.site.contains("regulator.nsm:"), "{}", l.site);
-            let select = match l.select {
+            assert_eq!(l.package, None);
+            let GuidelineRule::Near { select, to, within } = l.rule else {
+                panic!("{:?}", l.rule)
+            };
+            assert_eq!(within, None, "the datasheet gives no distance");
+            let select = match select {
                 NearSelect::Bridging(a, b) => format!("bridging {} {}", pin(a), pin(b)),
                 NearSelect::On { pin: p, kind } => {
                     format!("on {} {}", pin(p), kind.map_or("any", |k| k.word()))
                 }
             };
-            (l.name.clone(), select, pin(l.to))
+            (l.name.clone(), select, pin(to))
         })
         .collect();
     seen.sort();
@@ -103,7 +107,10 @@ fn a_within_is_kept_in_millimetres() {
     let [near] = model.layout.as_slice() else {
         panic!("{:?}\n{}", model.layout, c.render())
     };
-    assert!((near.within.unwrap() - 2.5).abs() < 1e-9, "{near:?}");
+    let GuidelineRule::Near { within, .. } = near.rule else {
+        panic!("{near:?}")
+    };
+    assert!((within.unwrap() - 2.5).abs() < 1e-9, "{near:?}");
     assert_eq!(near.source, "LD9, 9.1 Layout, p.12");
 }
 
@@ -185,4 +192,151 @@ board B {
 ";
     let m = message(src, "`layout` can only appear");
     assert!(m.contains("directly inside a part"), "{m}");
+}
+
+/// The guidelines of the check of `src`, by name, as the model keeps them.
+fn rules(src: &str) -> Vec<(String, GuidelineRule)> {
+    let c = check("test.nsm", src, &Loader::std());
+    let model = &c.board("B").unwrap().model;
+    model
+        .layout
+        .iter()
+        .map(|l| (l.name.clone(), l.rule.clone()))
+        .collect()
+}
+
+#[test]
+fn the_other_statements_keep_their_numbers_in_millimetres() {
+    let src = part(
+        "        source \"LD9, 9.1 Layout, p.12\"
+        away coil on .vout.pos kind inductor from .vin.pos beyond 4mm
+        loop hot bridging .vin.pos .vin.neg within 15mm
+        keepout under at -1mm, -2.5mm size 2mm, 5mm forbid tracks vias
+        keepout all at 0mm, 0mm size 1mm, 1mm
+        edge out .vout.pos within 1.5mm
+        vias gnd .vin.neg 4
+        route out_track .vout.pos width 0.5mm length 10mm",
+    );
+    let rules = rules(&src);
+    let names: Vec<&str> = rules.iter().map(|(n, _)| n.as_str()).collect();
+    assert_eq!(names, ["coil", "hot", "under", "all", "out", "gnd", "out_track"]);
+    let close = |a: f64, b: f64| (a - b).abs() < 1e-9;
+    let GuidelineRule::Away { beyond, select: NearSelect::On { kind, .. }, .. } = rules[0].1 else {
+        panic!("{:?}", rules[0])
+    };
+    assert!(close(beyond, 4.0) && kind == Some(netsmith_core::PartKind::Inductor));
+    let GuidelineRule::Loop { within, .. } = rules[1].1 else {
+        panic!("{:?}", rules[1])
+    };
+    assert!(close(within.unwrap(), 15.0));
+    let GuidelineRule::Keepout { at, size, tracks, vias, copper, parts } = rules[2].1 else {
+        panic!("{:?}", rules[2])
+    };
+    assert!(close(at.0, -1.0) && close(at.1, -2.5) && close(size.0, 2.0) && close(size.1, 5.0));
+    assert_eq!((tracks, vias, copper, parts), (true, true, false, false));
+    let GuidelineRule::Keepout { tracks, vias, copper, parts, .. } = rules[3].1 else {
+        panic!("{:?}", rules[3])
+    };
+    assert_eq!((tracks, vias, copper, parts), (true, true, true, true), "none named is all four");
+    let GuidelineRule::Edge { within, .. } = rules[4].1 else {
+        panic!("{:?}", rules[4])
+    };
+    assert!(close(within.unwrap(), 1.5));
+    assert!(matches!(rules[5].1, GuidelineRule::Vias { count: 4, .. }));
+    let GuidelineRule::Route { width, length, .. } = rules[6].1 else {
+        panic!("{:?}", rules[6])
+    };
+    assert!(close(width.unwrap(), 0.5) && close(length.unwrap(), 10.0));
+}
+
+#[test]
+fn beyond_is_a_length_above_zero() {
+    let m = message(
+        &part("        source \"LD9, p.12\"\n        away c on .vout.pos from .vin.pos beyond 0mm"),
+        "`beyond`",
+    );
+    assert!(m.contains("`away c`") && m.contains("one length above zero"), "{m}");
+}
+
+#[test]
+fn a_loop_names_two_pins() {
+    let m = message(
+        &part("        source \"LD9, p.12\"\n        loop hot bridging .vin.pos .vin.pos"),
+        "two different pins",
+    );
+    assert!(m.contains("the parts of the loop"), "{m}");
+}
+
+#[test]
+fn a_keepout_forbids_what_the_interface_names() {
+    let m = message(
+        &part("        source \"LD9, p.12\"\n        keepout k at 0mm, 0mm size 1mm, 1mm forbid traces"),
+        "a keepout forbids",
+    );
+    assert!(m.contains("`traces`"), "{m}");
+}
+
+#[test]
+fn the_size_of_a_keepout_is_above_zero() {
+    let m = message(
+        &part("        source \"LD9, p.12\"\n        keepout k at 0mm, 0mm size 0mm, 1mm"),
+        "`size`",
+    );
+    assert!(m.contains("one length above zero"), "{m}");
+}
+
+#[test]
+fn a_count_of_vias_is_a_whole_number() {
+    let m = message(
+        &part("        source \"LD9, p.12\"\n        vias gnd .vin.neg 2.5"),
+        "the count of `vias gnd`",
+    );
+    assert!(m.contains("a whole number of one or more") && m.contains("`2.5`"), "{m}");
+}
+
+/// A part with a pin table for each of two packages and a block for one of them.
+fn packaged(package: &str) -> String {
+    format!(
+        "\
+import std::sources::Rail
+
+part Ld7 {{
+    .designator &= \"U\"
+    .vin: Rail
+    .vout: Rail
+    .vin.neg ~ .vout.neg
+    pins \"SOT-23\" \"SOT-223\" {{
+        .vin.pos  power \"IN\"  \"3\"
+        .vin.neg  power \"GND\" \"1\"
+        .vout.pos power \"OUT\" \"2\"
+    }}
+    .package: Package
+    .package &= \"SOT-223\"
+    layout \"{package}\" {{
+        source \"LD7, 10 Layout, p.14\"
+        vias tab .vin.neg 3
+    }}
+}}
+
+board B {{
+    .u: Ld7
+}}
+"
+    )
+}
+
+#[test]
+fn a_block_for_a_package_keeps_the_package() {
+    let c = check("test.nsm", &packaged("SOT-223"), &Loader::std());
+    let model = &c.board("B").unwrap().model;
+    let [g] = model.layout.as_slice() else {
+        panic!("{:?}", model.layout)
+    };
+    assert_eq!(g.package.as_deref(), Some("SOT-223"));
+}
+
+#[test]
+fn a_block_for_a_package_the_part_has_no_table_for_is_refused() {
+    let m = message(&packaged("SOT-89"), "no pin table for the package");
+    assert!(m.contains("\"SOT-89\"") && m.contains("\"SOT-23\", \"SOT-223\""), "{m}");
 }

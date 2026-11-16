@@ -1,6 +1,7 @@
 // The Summary tab of the PCB view (issue 1003): the placed board as numbers, what `netsmith layout
 // summary` prints. Wire length and crossings, how full each face is and where it is free, each
-// module's box, the decoupling distances, the longest nets, the parts near the selected parts, and
+// module's box, the decoupling distances, what the datasheets' layout guidelines measure (issue
+// 994), the longest nets, the parts near the selected parts, and
 // the distance between two pads typed in. A click on a box or a part zooms the canvas to it.
 
 import { useEffect, useState } from 'preact/hooks';
@@ -9,7 +10,7 @@ import type { PcbBox, PcbScene, PcbSummary } from '../api';
 import { api, ApiFailure } from '../client';
 import { EmptyState } from '../components/ui';
 import { select, selection } from '../pcbstore';
-import { fillWord, mm, padName, padProblem, padsLine, sheetBox, summaryQuery } from './summary';
+import { fillWord, guidelineLine, mm, padName, padProblem, padsLine, sheetBox, summaryQuery } from './summary';
 
 /** How many of the longest nets the tab lists. */
 const LONGEST_NETS = 8;
@@ -176,6 +177,27 @@ export function SummaryTab(props: { scene: PcbScene; onFocus: (box: PcbBox) => v
               }}
             >
               <b>{d.cap}</b> to {d.part}: {mm(d.distance)} mm
+            </div>
+          ))}
+          {s.guidelines.length > 0 && <div class="sub">Datasheet guidelines</div>}
+          {s.guidelines.map((g) => (
+            <div
+              key={`${g.part}.${g.name}.${g.other ?? ''}`}
+              class={`summary-line clickable${g.met === false ? ' bad' : ''}`}
+              data-testid="summary-guideline"
+              title={g.source}
+              onClick={() => {
+                const hit = sc.parts.find((p) => p.path === g.part);
+                if (hit) {
+                  select([hit.path]);
+                  props.onFocus(hit.courtyard);
+                }
+              }}
+            >
+              <b>
+                {g.part}.{g.name}
+              </b>{' '}
+              {guidelineLine(g)}
             </div>
           ))}
           <div class="sub">Longest nets</div>

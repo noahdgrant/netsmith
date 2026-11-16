@@ -2449,6 +2449,7 @@ pub fn typescript() -> String {
         SummaryFace,
         SummaryModule,
         SummaryDecoupling,
+        SummaryGuideline,
         SummaryLine,
         SummaryNet,
         SummaryNeighbour,
