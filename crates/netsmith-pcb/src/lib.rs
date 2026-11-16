@@ -44,6 +44,7 @@ mod fit_report;
 mod footprint;
 mod generate;
 mod geometry;
+mod impedance;
 mod layout;
 mod layout_notes;
 mod miss;
@@ -97,6 +98,10 @@ pub use generate::{
     names as generated_footprint_names,
 };
 pub use geometry::{Pt, Rect};
+pub use impedance::{
+    Line as ImpedanceLine, OutOfRange, TrackDielectric, impedance_notes, microstrip, stripline,
+    width_for,
+};
 pub use layout::{
     BoardLayout, Face as LayoutFace, IMPORT_SOURCE, KeepoutPlace, Layout, LayoutError, PartPlace,
     apply_layout, check_drawn_keepout, copper_layers, keepout_declaration, place_options,

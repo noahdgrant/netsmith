@@ -235,7 +235,9 @@ impl Board {
 
     /// What the board needs of the fabricator beyond its standard process, one line each for
     /// the fabrication notes; empty when the standard process makes it. A board of a fictional
-    /// fabricator (ADR 0112) says first that it cannot be ordered.
+    /// fabricator (ADR 0112) says first that it cannot be ordered. A board with a build-up
+    /// adds its track impedance last ([`crate::impedance_notes`]): what a track is on each layer,
+    /// which a board that is to be ordered with impedance control is checked against.
     pub fn process_extras(&self) -> Vec<String> {
         let mut extras = Vec::new();
         if self.process.is_fictional() {
@@ -256,6 +258,17 @@ impl Board {
                 self.process.via_in_pad
             ));
         }
+        // What a track's impedance is on each layer, from the recorded build-up (issue #759).
+        extras.extend(crate::impedance::impedance_notes(
+            &self.process.stackup,
+            self.rules.track_width,
+            IMPEDANCE_TARGET,
+        ));
         extras
     }
 }
+
+/// The impedance `fab-notes.txt` gives a track's width for, in ohms: the usual impedance of a
+/// single-ended line (an RF receptacle's `.impedance`, a coaxial cable). A board states no
+/// target yet; how it will is left until these figures exist (issue #759).
+const IMPEDANCE_TARGET: f64 = 50.0;

@@ -164,7 +164,12 @@ fn pads_walled_in_by_their_neighbours_are_reached_by_a_via_in_the_pad_when_the_p
     // The fabrication notes say so, with the count and the pads.
     let in_pads = board.vias_in_pads();
     assert!(in_pads.len() >= walled.len(), "{in_pads:?}");
-    let extras = board.process_extras();
+    // The board's other extras are its track impedance (issue #759), which says nothing of vias.
+    let extras: Vec<String> = board
+        .process_extras()
+        .into_iter()
+        .filter(|e| e.starts_with("vias in pads"))
+        .collect();
     assert_eq!(extras.len(), 1, "{extras:?}");
     assert!(
         extras[0].starts_with(&format!("vias in pads: {} via(s)", in_pads.len()))
@@ -182,7 +187,13 @@ fn a_board_with_no_via_in_a_pad_asks_nothing_extra_of_the_fabricator() {
     let mut board = synthetic_board(3, 10, 3, 8, 10, 4);
     route_with(&mut board, RouteOptions::default());
     assert!(board.vias_in_pads().is_empty());
-    assert_eq!(board.process_extras(), Vec::<String>::new());
+    // Its only extras are its track impedance (issue #759): nothing about vias.
+    let extras = board.process_extras();
+    assert!(
+        extras.iter().all(|e| !e.contains("via")),
+        "{extras:?}"
+    );
+    assert!(extras[0].starts_with("track impedance:"), "{extras:?}");
 }
 
 #[test]
