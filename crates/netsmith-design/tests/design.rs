@@ -1,7 +1,7 @@
 //! The design stage: solved boards into the tool-independent design.
 
 use netsmith_check::{Loader, check};
-use netsmith_core::{Design, DielectricLayer, InnerUse, PartPin, PinKind, PowerFlow};
+use netsmith_core::{Design, DielectricLayer, DielectricPly, InnerUse, PartPin, PinKind, PowerFlow};
 use netsmith_design::{Assembly, Designed, design_board, design_system_board, system_mates};
 use netsmith_quantity::Quantity;
 use netsmith_solve::{Candidate, Catalog, Catalogs, Library, Value, solve, solve_system};
@@ -711,7 +711,15 @@ fn a_four_layer_process_arrives_with_its_planes_and_build_up() {
 }
 
 fn prepreg(glass: &str, thickness: f64, epsilon: f64) -> DielectricLayer {
-    DielectricLayer {
+    DielectricLayer::single(false, glass.into(), thickness, epsilon)
+}
+
+fn core(thickness: f64, epsilon: f64) -> DielectricLayer {
+    DielectricLayer::single(true, String::new(), thickness, epsilon)
+}
+
+fn ply(glass: &str, thickness: f64, epsilon: f64) -> DielectricPly {
+    DielectricPly {
         core: false,
         glass: glass.into(),
         thickness,
@@ -719,13 +727,83 @@ fn prepreg(glass: &str, thickness: f64, epsilon: f64) -> DielectricLayer {
     }
 }
 
-fn core(thickness: f64, epsilon: f64) -> DielectricLayer {
-    DielectricLayer {
-        core: true,
-        glass: String::new(),
-        thickness,
-        epsilon,
-    }
+/// The four-layer example made in another build-up of `std::mfg::jlcpcb_buildups`, named as the
+/// type of its process.
+fn four_layer_in(build: &str) -> String {
+    FOUR_LAYER
+        .replace(
+            "import std::mfg::jlcpcb::FourLayer",
+            &format!("import std::mfg::jlcpcb_buildups::{build}"),
+        )
+        .replace(".process: FourLayer {", &format!(".process: {build} {{"))
+}
+
+/// `JLC04161H-7628A` presses a sheet of 7628 and a sheet of 1080 between each outer layer and
+/// its plane: each such dielectric layer arrives with its plies from the top, their sum, and
+/// their permittivity in series; the core between the planes is one ply, as before.
+#[test]
+fn a_dielectric_layer_of_several_plies_arrives_with_its_plies_their_sum_and_permittivity() {
+    let p = designed(&four_layer_in("JlcFourLayer04161H7628A"))
+        .unwrap()
+        .process
+        .unwrap();
+    // The type the board wrote, and the rules of `FourLayer`, which it provides.
+    assert_eq!(p.name, "JlcFourLayer04161H7628A");
+    assert_eq!((p.min_track, p.min_clearance), (0.09, 0.1));
+    assert_eq!(p.stackup.chosen_thickness(), Some(1.6));
+    let inner = p.stackup.inner.unwrap();
+    assert_eq!(inner.build, "JLC04161H-7628A");
+    let top = &inner.dielectrics[0];
+    assert_eq!(top.plies, [ply("7628", 0.218, 4.4), ply("1080", 0.0764, 3.91)]);
+    assert_eq!(top.thickness, 0.2944);
+    assert!(!top.core);
+    assert_eq!(top.glass, "7628+1080");
+    let series = 0.2944 / (0.218 / 4.4 + 0.0764 / 3.91);
+    assert!((top.epsilon - series).abs() < 1e-12, "{}", top.epsilon);
+    assert_eq!(inner.dielectrics[1], core(0.865, 4.6));
+    let bottom = &inner.dielectrics[2];
+    assert_eq!(
+        bottom.plies,
+        [ply("1080", 0.0764, 3.91), ply("7628", 0.218, 4.4)],
+        "from the top: the 1080 sheet lies on In2.Cu"
+    );
+    // The page's total, 1.5542 mm.
+    let sum: f64 = 2.0 * 0.035
+        + 2.0 * inner.copper
+        + inner.dielectrics.iter().map(|d| d.thickness).sum::<f64>();
+    assert!((sum - 1.5542).abs() < 1e-9, "{sum}");
+}
+
+/// A core with no copper between two sheets of prepreg (six layers, `JLC06121H-1080A`) is a ply
+/// of the layer, which stays a prepreg layer.
+#[test]
+fn a_core_with_no_copper_between_sheets_is_a_ply_of_a_prepreg_layer() {
+    let source = SIX_LAYER
+        .replace(
+            "import std::mfg::jlcpcb::SixLayer",
+            "import std::mfg::jlcpcb_buildups::JlcSixLayer06121H1080A",
+        )
+        .replace(".process: SixLayer {", ".process: JlcSixLayer06121H1080A {");
+    let p = designed(&source).unwrap().process.unwrap();
+    let middle = &p.stackup.inner.unwrap().dielectrics[2];
+    assert!(!middle.core);
+    assert_eq!(middle.glass, "2116+2116");
+    assert_eq!(middle.plies.len(), 3);
+    assert!(middle.plies[1].core && middle.plies[1].glass.is_empty());
+    assert_eq!(middle.thickness, 0.7328);
+}
+
+#[test]
+fn a_dielectric_layer_that_states_its_own_kind_and_plies_is_refused() {
+    let source = FOUR_LAYER.replace(
+        ".inner2.net &= \"3V3\"",
+        ".inner2.net &= \"3V3\"\n        .stackup.dielectric1.ply1.kind &= \"prepreg\"",
+    );
+    let text = designed(&source).unwrap_err().join("\n");
+    assert!(
+        text.contains("`process.stackup.dielectric1` states its own `.kind` and its plies"),
+        "{text}"
+    );
 }
 
 #[test]

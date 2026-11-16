@@ -118,7 +118,7 @@ fn setup(board: &Board) -> Sexp {
                 )
             }
             LayerKind::Copper => layer(&l.name, "copper", vec![thickness(l.thickness)]),
-            LayerKind::Core | LayerKind::Prepreg => layer(
+            LayerKind::Core | LayerKind::Prepreg if l.plies.is_empty() => layer(
                 &l.name,
                 l.kind.word(),
                 vec![
@@ -128,6 +128,24 @@ fn setup(board: &Board) -> Sexp {
                     Sexp::node("loss_tangent", vec![Sexp::num(0.02)]),
                 ],
             ),
+            // A layer pressed from several plies is one KiCad dielectric layer with a sublayer
+            // for each ply after the first: KiCad writes the first ply's fields on the layer
+            // and each further ply after the word `addsublayer`, and sums their thicknesses.
+            LayerKind::Core | LayerKind::Prepreg => {
+                let mut fields = Vec::new();
+                for (i, (mm, material, e)) in l.plies.iter().enumerate() {
+                    if i > 0 {
+                        fields.push(Sexp::atom("addsublayer"));
+                    }
+                    fields.extend([
+                        thickness(*mm),
+                        text("material", material),
+                        Sexp::node("epsilon_r", vec![Sexp::num(*e)]),
+                        Sexp::node("loss_tangent", vec![Sexp::num(0.02)]),
+                    ]);
+                }
+                layer(&l.name, l.kind.word(), fields)
+            }
         });
     }
     body.extend([
@@ -1756,6 +1774,75 @@ mod tests {
         let total: f64 = rows.iter().map(|r| r.1).sum();
         assert!((total - 1.6168).abs() < 1e-9, "{total}");
         assert_eq!(kicad_pcb(&board).matches("(zone").count(), 2);
+    }
+
+    /// A dielectric layer pressed from several plies (JLCPCB's `JLC04161H-7628C`: three sheets
+    /// of 7628 between each outer layer and its plane) is one KiCad dielectric layer, the first
+    /// ply's fields on it and each further ply after `addsublayer`, as KiCad writes one.
+    #[test]
+    fn a_dielectric_layer_of_several_plies_is_one_layer_with_a_sublayer_for_each_further_ply() {
+        use netsmith_core::{DielectricLayer, DielectricPly};
+        let mut board = four();
+        let ply = |thickness: f64| DielectricPly {
+            core: false,
+            glass: "7628".into(),
+            thickness,
+            epsilon: 4.4,
+        };
+        let inner = board.process.stackup.inner.as_mut().unwrap();
+        inner.build = "JLC04161H-7628C".into();
+        inner.dielectrics = vec![
+            DielectricLayer::of_plies(vec![ply(0.218), ply(0.218), ply(0.2104)]),
+            DielectricLayer::single(true, String::new(), 0.15, 4.6),
+            DielectricLayer::of_plies(vec![ply(0.2104), ply(0.218), ply(0.218)]),
+        ];
+        let pcb = parsed(&board);
+        let stackup = pcb.find("setup").unwrap().find("stackup").unwrap();
+        let layer = |name: &str| {
+            stackup
+                .args()
+                .iter()
+                .find(|l| l.args().first().and_then(Sexp::text) == Some(name))
+                .unwrap_or_else(|| panic!("no layer {name}"))
+        };
+        let top = layer("dielectric 1");
+        assert_eq!(top.find("type").unwrap().args()[0].text(), Some("prepreg"));
+        let thicknesses: Vec<f64> = top
+            .find_all("thickness")
+            .map(|t| t.args()[0].text().unwrap().parse().unwrap())
+            .collect();
+        assert_eq!(thicknesses, [0.218, 0.218, 0.2104]);
+        let sublayers = top
+            .args()
+            .iter()
+            .filter(|a| a.text() == Some("addsublayer"))
+            .count();
+        assert_eq!(sublayers, 2, "a sublayer for each ply after the first");
+        assert_eq!(top.find_all("epsilon_r").count(), 3);
+        assert_eq!(top.find_all("material").count(), 3);
+        let bottom = layer("dielectric 3");
+        let first: Vec<f64> = numbers(bottom, "thickness");
+        assert_eq!(
+            first,
+            [0.2104],
+            "the bottom layer's first ply lies on In2.Cu"
+        );
+        // The core between the planes is one ply and has no sublayer.
+        let core = layer("dielectric 2");
+        assert_eq!(core.find_all("thickness").count(), 1);
+        // KiCad adds up the plies; the stackup is the page's 1.5432 mm.
+        let total: f64 = stackup
+            .args()
+            .iter()
+            .filter(|l| l.head() == Some("layer"))
+            .filter(|l| {
+                let name = l.args()[0].text().unwrap();
+                name.ends_with(".Cu") || name.starts_with("dielectric")
+            })
+            .flat_map(|l| l.find_all("thickness"))
+            .map(|t| t.args()[0].text().unwrap().parse::<f64>().unwrap())
+            .sum();
+        assert!((total - 1.5432).abs() < 1e-9, "{total}");
     }
 
     #[test]

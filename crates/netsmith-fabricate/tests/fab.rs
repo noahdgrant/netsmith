@@ -1278,6 +1278,20 @@ fn the_four_layer_example_agrees_with_kicads_own_plot() {
     cross_checked("four_layer", FOUR_LAYER);
 }
 
+/// A build-up whose dielectric layers are pressed from several plies (three sheets of 7628
+/// between each outer layer and its plane) is written as KiCad writes one, a sublayer for each
+/// ply after the first, and KiCad reads the board file and plots what netsmith plots.
+#[test]
+fn a_four_layer_board_of_several_plies_agrees_with_kicads_own_plot() {
+    let source = FOUR_LAYER
+        .replace(
+            "import std::mfg::jlcpcb::FourLayer",
+            "import std::mfg::jlcpcb_buildups::JlcFourLayer04161H7628C",
+        )
+        .replace(".process: FourLayer {", ".process: JlcFourLayer04161H7628C {");
+    cross_checked("four_layer_plies", &source);
+}
+
 #[test]
 fn the_two_board_example_agrees_with_kicads_own_plot() {
     cross_checked("two_boards", TWO_BOARDS);

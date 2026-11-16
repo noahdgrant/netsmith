@@ -111,6 +111,10 @@ _Avoid_: Copper fill, power layer (a pour is a different thing)
 Two lines of different nets that the coarse plan takes through one tile on one layer with their places on the tile's edges alternating round it, so that one must change layer to pass the other. Each line takes a numbered place on every tile edge it crosses, in one order along the edge from both tiles. The plan pays for a crossing more than the two vias that avoid it, so a plan with none plans those vias instead.
 _Avoid_: intersection (of two tracks' copper, a short)
 
+**Ply**:
+One sheet of a _Dielectric layer_ pressed from several: a sheet of prepreg, or a core with no copper on it, a `DielectricPly` (`.stackup.dielectric1.ply1`), with the fields of a one-sheet layer. The layer's thickness is the plies' sum and its permittivity theirs in series. JLCPCB's impedance page writes each as `7628*1`.
+_Avoid_: Sublayer (KiCad's word for a ply after the first in its board file)
+
 **Port**:
 A pin of an interface on a module or board. A port only passes a connection along to the terminals behind it. An interface that a board declares directly (`.output: Rail`) is also the port of that board in a system, which can join it to another board's port and reach nothing else of the board.
 

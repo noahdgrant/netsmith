@@ -81,7 +81,8 @@ Parts are numbered by their letters in the order of their paths in the board (a 
 | `std::bus::Usb2` | Pins `dp` and `dm`, a rail `vbus` and a `.role` (`UsbRole`). One host and one device on a bus; a receptacle states `UsbRole::Passthrough` and is not an end of it. |
 | `std::parts::connector::Mating` | What a connector says about how it meets another (ADR 0040), the member `.mating` of a header or socket: `.kind` (`"pin_header"`), `.gender` (`"header"` or `"socket"`), `.pitch`, `.rows`, `.positions`, `.pin_current` (the rated current of one contact, from the `header` catalog; unset is unrated), `.seat` (how far above its board its partner rests, from the `header` catalog, an `optional` column; unset is unknown, ADR 0110) and `.keyed` (`"none"`, or `"shrouded"` or `"polarised"`; unset is the same as `"none"`). A system mates two with `~`. |
 | `std::mfg::stackup::Stackup` | Layers, thickness, copper weight and, for inner layers, the build-up: its name, the inner copper and each dielectric layer from the top. |
-| `std::mfg::stackup::DielectricLayer` | A prepreg or a core of a build-up: its glass style, thickness and relative permittivity. |
+| `std::mfg::stackup::DielectricLayer` | The dielectric between two copper layers of a build-up: one prepreg or core, with its glass style, thickness and relative permittivity, or several plies pressed together, `.ply1` to `.ply4` from the top. |
+| `std::mfg::stackup::DielectricPly` | One ply of a dielectric layer of several: a sheet of prepreg, or a core with no copper, with the fields of a one-ply layer. |
 | `std::mfg::stackup::InnerLayer` | An inner copper layer: a plane on a net the board names, or a signal layer (`.use &= "signal"`). |
 | `std::mfg::stackup::Pour` | Copper poured on an outer layer, `.top` or `.bottom` of a process: a `.net` and the most space between stitching vias, `.stitch_pitch`, and the least gap and spoke width of its thermal reliefs, `.thermal_gap` and `.spoke_width`. |
 | `std::pcb::Outline` | The board edge, the board's member `.outline`: `.width`, `.height` (ranges allowed) and `.corner_radius`. |
@@ -141,6 +142,102 @@ Parts are numbered by their letters in the order of their paths in the board (a 
 | `std::mfg::jlcpcb::JlcSixLayerC06101H3313` | The provider of `SixLayer` for JLCPCB's `JLC06101H-3313`, 1.0 mm (1.04 mm in all), the page's default build-up of that thickness. |
 | `std::mfg::jlcpcb::JlcSixLayerD06121H3313` | The provider of `SixLayer` for JLCPCB's `JLC06121H-3313`, 1.2 mm (1.1384 mm in all), the page's default build-up of that thickness. |
 | `std::mfg::jlcpcb::JlcSixLayerE06201H3313` | The provider of `SixLayer` for JLCPCB's `JLC06201H-3313`, 2.0 mm (1.9324 mm in all), the page's default build-up of that thickness. |
+| `std::mfg::jlcpcb_buildups::JlcFourLayer04081H1080` | A provider of `FourLayer` for JLCPCB's `JLC04081H-1080`, 0.8 mm (0.8032 mm in all). |
+| `std::mfg::jlcpcb_buildups::JlcFourLayer04081H1080A` | A provider of `FourLayer` for JLCPCB's `JLC04081H-1080A`, 0.8 mm (0.7892 mm in all), with plies in dielectric layers 1 and 3. |
+| `std::mfg::jlcpcb_buildups::JlcFourLayer04081H2116` | A provider of `FourLayer` for JLCPCB's `JLC04081H-2116`, 0.8 mm (0.7812 mm in all), with plies in dielectric layers 1 and 3. |
+| `std::mfg::jlcpcb_buildups::JlcFourLayer04081H2116A` | A provider of `FourLayer` for JLCPCB's `JLC04081H-2116A`, 0.8 mm (0.8012 mm in all), with plies in dielectric layers 1 and 3. |
+| `std::mfg::jlcpcb_buildups::JlcFourLayer04081H2116B` | A provider of `FourLayer` for JLCPCB's `JLC04081H-2116B`, 0.8 mm (0.7832 mm in all). |
+| `std::mfg::jlcpcb_buildups::JlcFourLayer04081H3313` | A provider of `FourLayer` for JLCPCB's `JLC04081H-3313`, 0.8 mm (0.7992 mm in all). |
+| `std::mfg::jlcpcb_buildups::JlcFourLayer04081H7628A` | A provider of `FourLayer` for JLCPCB's `JLC04081H-7628A`, 0.8 mm (0.7212 mm in all). |
+| `std::mfg::jlcpcb_buildups::JlcFourLayer04081H7628B` | A provider of `FourLayer` for JLCPCB's `JLC04081H-7628B`, 0.8 mm (0.8102 mm in all), with plies in dielectric layers 1 and 3. |
+| `std::mfg::jlcpcb_buildups::JlcFourLayer04101H1080` | A provider of `FourLayer` for JLCPCB's `JLC04101H-1080`, 1.0 mm (0.9532 mm in all). |
+| `std::mfg::jlcpcb_buildups::JlcFourLayer04101H1080A` | A provider of `FourLayer` for JLCPCB's `JLC04101H-1080A`, 1.0 mm (0.9892 mm in all), with plies in dielectric layers 1 and 3. |
+| `std::mfg::jlcpcb_buildups::JlcFourLayer04101H1080B` | A provider of `FourLayer` for JLCPCB's `JLC04101H-1080B`, 1.0 mm (1.0212 mm in all), with plies in dielectric layers 1 and 3. |
+| `std::mfg::jlcpcb_buildups::JlcFourLayer04101H2116` | A provider of `FourLayer` for JLCPCB's `JLC04101H-2116`, 1.0 mm (0.9812 mm in all), with plies in dielectric layers 1 and 3. |
+| `std::mfg::jlcpcb_buildups::JlcFourLayer04101H2116A` | A provider of `FourLayer` for JLCPCB's `JLC04101H-2116A`, 1.0 mm (0.9812 mm in all), with plies in dielectric layers 1 and 3. |
+| `std::mfg::jlcpcb_buildups::JlcFourLayer04101H2116C` | A provider of `FourLayer` for JLCPCB's `JLC04101H-2116C`, 1.0 mm (0.9982 mm in all). |
+| `std::mfg::jlcpcb_buildups::JlcFourLayer04101H3313` | A provider of `FourLayer` for JLCPCB's `JLC04101H-3313`, 1.0 mm (0.9992 mm in all). |
+| `std::mfg::jlcpcb_buildups::JlcFourLayer04101H3313A` | A provider of `FourLayer` for JLCPCB's `JLC04101H-3313A`, 1.0 mm (0.9672 mm in all), with plies in dielectric layers 1 and 3. |
+| `std::mfg::jlcpcb_buildups::JlcFourLayer04101H7628A` | A provider of `FourLayer` for JLCPCB's `JLC04101H-7628A`, 1.0 mm (1.0322 mm in all), with plies in dielectric layers 1 and 3. |
+| `std::mfg::jlcpcb_buildups::JlcFourLayer04101H7628B` | A provider of `FourLayer` for JLCPCB's `JLC04101H-7628B`, 1.0 mm (0.9212 mm in all). |
+| `std::mfg::jlcpcb_buildups::JlcFourLayer04101H7628C` | A provider of `FourLayer` for JLCPCB's `JLC04101H-7628C`, 1.0 mm (1.0192 mm in all), with plies in dielectric layers 1 and 3. |
+| `std::mfg::jlcpcb_buildups::JlcFourLayer04121H1080` | A provider of `FourLayer` for JLCPCB's `JLC04121H-1080`, 1.2 mm (1.1182 mm in all). |
+| `std::mfg::jlcpcb_buildups::JlcFourLayer04121H1080A` | A provider of `FourLayer` for JLCPCB's `JLC04121H-1080A`, 1.2 mm (1.1892 mm in all), with plies in dielectric layers 1 and 3. |
+| `std::mfg::jlcpcb_buildups::JlcFourLayer04121H1080B` | A provider of `FourLayer` for JLCPCB's `JLC04121H-1080B`, 1.2 mm (1.1212 mm in all), with plies in dielectric layers 1 and 3. |
+| `std::mfg::jlcpcb_buildups::JlcFourLayer04121H2116A` | A provider of `FourLayer` for JLCPCB's `JLC04121H-2116A`, 1.2 mm (1.1812 mm in all), with plies in dielectric layers 1 and 3. |
+| `std::mfg::jlcpcb_buildups::JlcFourLayer04121H2116B` | A provider of `FourLayer` for JLCPCB's `JLC04121H-2116B`, 1.2 mm (1.2012 mm in all), with plies in dielectric layers 1 and 3. |
+| `std::mfg::jlcpcb_buildups::JlcFourLayer04121H3313` | A provider of `FourLayer` for JLCPCB's `JLC04121H-3313`, 1.2 mm (1.1642 mm in all). |
+| `std::mfg::jlcpcb_buildups::JlcFourLayer04121H7628A` | A provider of `FourLayer` for JLCPCB's `JLC04121H-7628A`, 1.2 mm (1.1572 mm in all), with plies in dielectric layers 1 and 3. |
+| `std::mfg::jlcpcb_buildups::JlcFourLayer04161H1080` | A provider of `FourLayer` for JLCPCB's `JLC04161H-1080`, 1.6 mm (1.5182 mm in all). |
+| `std::mfg::jlcpcb_buildups::JlcFourLayer04161H1080A` | A provider of `FourLayer` for JLCPCB's `JLC04161H-1080A`, 1.6 mm (1.4862 mm in all), with plies in dielectric layers 1 and 3. |
+| `std::mfg::jlcpcb_buildups::JlcFourLayer04161H1080B` | A provider of `FourLayer` for JLCPCB's `JLC04161H-1080B`, 1.6 mm (1.6542 mm in all), with plies in dielectric layers 1 and 3. |
+| `std::mfg::jlcpcb_buildups::JlcFourLayer04161H2116` | A provider of `FourLayer` for JLCPCB's `JLC04161H-2116`, 1.6 mm (1.5982 mm in all). |
+| `std::mfg::jlcpcb_buildups::JlcFourLayer04161H2116A` | A provider of `FourLayer` for JLCPCB's `JLC04161H-2116A`, 1.6 mm (1.6172 mm in all), with plies in dielectric layers 1 and 3. |
+| `std::mfg::jlcpcb_buildups::JlcFourLayer04161H2116B` | A provider of `FourLayer` for JLCPCB's `JLC04161H-2116B`, 1.6 mm (1.6342 mm in all), with plies in dielectric layers 1 and 3. |
+| `std::mfg::jlcpcb_buildups::JlcFourLayer04161H2116C` | A provider of `FourLayer` for JLCPCB's `JLC04161H-2116C`, 1.6 mm (1.5662 mm in all), with plies in dielectric layers 1 and 3. |
+| `std::mfg::jlcpcb_buildups::JlcFourLayer04161H2116D` | A provider of `FourLayer` for JLCPCB's `JLC04161H-2116D`, 1.6 mm (1.4692 mm in all), with plies in dielectric layers 1 and 3. |
+| `std::mfg::jlcpcb_buildups::JlcFourLayer04161H2116E` | A provider of `FourLayer` for JLCPCB's `JLC04161H-2116E`, 1.6 mm (1.4462 mm in all), with plies in dielectric layers 1 and 3. |
+| `std::mfg::jlcpcb_buildups::JlcFourLayer04161H3313` | A provider of `FourLayer` for JLCPCB's `JLC04161H-3313`, 1.6 mm (1.5642 mm in all). |
+| `std::mfg::jlcpcb_buildups::JlcFourLayer04161H3313A` | A provider of `FourLayer` for JLCPCB's `JLC04161H-3313A`, 1.6 mm (1.5782 mm in all), with plies in dielectric layers 1 and 3. |
+| `std::mfg::jlcpcb_buildups::JlcFourLayer04161H7628A` | A provider of `FourLayer` for JLCPCB's `JLC04161H-7628A`, 1.6 mm (1.5542 mm in all), with plies in dielectric layers 1 and 3. |
+| `std::mfg::jlcpcb_buildups::JlcFourLayer04161H7628B` | A provider of `FourLayer` for JLCPCB's `JLC04161H-7628B`, 1.6 mm (1.6052 mm in all), with plies in dielectric layers 1 and 3. |
+| `std::mfg::jlcpcb_buildups::JlcFourLayer04161H7628C` | A provider of `FourLayer` for JLCPCB's `JLC04161H-7628C`, 1.6 mm (1.5432 mm in all), with plies in dielectric layers 1 and 3. |
+| `std::mfg::jlcpcb_buildups::JlcFourLayer04161H7628E` | A provider of `FourLayer` for JLCPCB's `JLC04161H-7628E`, 1.6 mm (1.5572 mm in all), with plies in dielectric layers 1 and 3. |
+| `std::mfg::jlcpcb_buildups::JlcFourLayer04161H7628F` | A provider of `FourLayer` for JLCPCB's `JLC04161H-7628F`, 1.6 mm (1.6432 mm in all), with plies in dielectric layers 1 and 3. |
+| `std::mfg::jlcpcb_buildups::JlcFourLayer04161H7628G` | A provider of `FourLayer` for JLCPCB's `JLC04161H-7628G`, 1.6 mm (1.6252 mm in all), with plies in dielectric layers 1 and 3. |
+| `std::mfg::jlcpcb_buildups::JlcFourLayer04201H1080` | A provider of `FourLayer` for JLCPCB's `JLC04201H-1080`, 2.0 mm (1.9182 mm in all). |
+| `std::mfg::jlcpcb_buildups::JlcFourLayer04201H3313` | A provider of `FourLayer` for JLCPCB's `JLC04201H-3313`, 2.0 mm (1.9642 mm in all). |
+| `std::mfg::jlcpcb_buildups::JlcFourLayer04201H3313B` | A provider of `FourLayer` for JLCPCB's `JLC04201H-3313B`, 2.0 mm (1.9782 mm in all), with plies in dielectric layers 1 and 3. |
+| `std::mfg::jlcpcb_buildups::JlcFourLayer04201H7628A` | A provider of `FourLayer` for JLCPCB's `JLC04201H-7628A`, 2.0 mm (1.9932 mm in all), with plies in dielectric layers 1 and 3. |
+| `std::mfg::jlcpcb_buildups::JlcFourLayer04201H7628B` | A provider of `FourLayer` for JLCPCB's `JLC04201H-7628B`, 2.0 mm (2.1862 mm in all). |
+| `std::mfg::jlcpcb_buildups::JlcFourLayer04201H7628D` | A provider of `FourLayer` for JLCPCB's `JLC04201H-7628D`, 2.0 mm (2.0292 mm in all), with plies in dielectric layers 1 and 3. |
+| `std::mfg::jlcpcb_buildups::JlcSixLayer06081H1080` | A provider of `SixLayer` for JLCPCB's `JLC06081H-1080`, 0.8 mm (0.7764 mm in all), with plies in dielectric layer 3. |
+| `std::mfg::jlcpcb_buildups::JlcSixLayer06081H1080A` | A provider of `SixLayer` for JLCPCB's `JLC06081H-1080A`, 0.8 mm (0.8044 mm in all), with plies in dielectric layer 3. |
+| `std::mfg::jlcpcb_buildups::JlcSixLayer06081H1080B` | A provider of `SixLayer` for JLCPCB's `JLC06081H-1080B`, 0.8 mm (0.796 mm in all). |
+| `std::mfg::jlcpcb_buildups::JlcSixLayer06081H2116A` | A provider of `SixLayer` for JLCPCB's `JLC06081H-2116A`, 0.8 mm (0.7864 mm in all), with plies in dielectric layer 3. |
+| `std::mfg::jlcpcb_buildups::JlcSixLayer06081H7628` | A provider of `SixLayer` for JLCPCB's `JLC06081H-7628`, 0.8 mm (0.818 mm in all). |
+| `std::mfg::jlcpcb_buildups::JlcSixLayer06081H7628A` | A provider of `SixLayer` for JLCPCB's `JLC06081H-7628A`, 0.8 mm (0.817 mm in all). |
+| `std::mfg::jlcpcb_buildups::JlcSixLayer06101H1080` | A provider of `SixLayer` for JLCPCB's `JLC06101H-1080`, 1.0 mm (0.9544 mm in all), with plies in dielectric layer 3. |
+| `std::mfg::jlcpcb_buildups::JlcSixLayer06101H1080A` | A provider of `SixLayer` for JLCPCB's `JLC06101H-1080A`, 1.0 mm (0.9784 mm in all), with plies in dielectric layer 3. |
+| `std::mfg::jlcpcb_buildups::JlcSixLayer06101H1080B` | A provider of `SixLayer` for JLCPCB's `JLC06101H-1080B`, 1.0 mm (0.983 mm in all). |
+| `std::mfg::jlcpcb_buildups::JlcSixLayer06101H1080C` | A provider of `SixLayer` for JLCPCB's `JLC06101H-1080C`, 1.0 mm (1.0484 mm in all), with plies in dielectric layer 3. |
+| `std::mfg::jlcpcb_buildups::JlcSixLayer06101H1080D` | A provider of `SixLayer` for JLCPCB's `JLC06101H-1080D`, 1.0 mm (0.9444 mm in all), with plies in dielectric layers 1, 3 and 5. |
+| `std::mfg::jlcpcb_buildups::JlcSixLayer06101H3313A` | A provider of `SixLayer` for JLCPCB's `JLC06101H-3313A`, 1.0 mm (0.9464 mm in all), with plies in dielectric layer 3. |
+| `std::mfg::jlcpcb_buildups::JlcSixLayer06101H7628` | A provider of `SixLayer` for JLCPCB's `JLC06101H-7628`, 1.0 mm (0.962 mm in all). |
+| `std::mfg::jlcpcb_buildups::JlcSixLayer06101H7628A` | A provider of `SixLayer` for JLCPCB's `JLC06101H-7628A`, 1.0 mm (1.016 mm in all). |
+| `std::mfg::jlcpcb_buildups::JlcSixLayer06101H7628B` | A provider of `SixLayer` for JLCPCB's `JLC06101H-7628B`, 1.0 mm (1.015 mm in all), with plies in dielectric layers 1 and 5. |
+| `std::mfg::jlcpcb_buildups::JlcSixLayer06121H1080` | A provider of `SixLayer` for JLCPCB's `JLC06121H-1080`, 1.2 mm (1.194 mm in all). |
+| `std::mfg::jlcpcb_buildups::JlcSixLayer06121H1080A` | A provider of `SixLayer` for JLCPCB's `JLC06121H-1080A`, 1.2 mm (1.2164 mm in all), with plies in dielectric layer 3. |
+| `std::mfg::jlcpcb_buildups::JlcSixLayer06121H1080B` | A provider of `SixLayer` for JLCPCB's `JLC06121H-1080B`, 1.2 mm (1.1754 mm in all). |
+| `std::mfg::jlcpcb_buildups::JlcSixLayer06121H2116A` | A provider of `SixLayer` for JLCPCB's `JLC06121H-2116A`, 1.2 mm (1.2084 mm in all), with plies in dielectric layer 3. |
+| `std::mfg::jlcpcb_buildups::JlcSixLayer06121H2116B` | A provider of `SixLayer` for JLCPCB's `JLC06121H-2116B`, 1.2 mm (1.128 mm in all), with plies in dielectric layers 1 and 5. |
+| `std::mfg::jlcpcb_buildups::JlcSixLayer06121H3313A` | A provider of `SixLayer` for JLCPCB's `JLC06121H-3313A`, 1.2 mm (1.1684 mm in all), with plies in dielectric layer 3. |
+| `std::mfg::jlcpcb_buildups::JlcSixLayer06121H7628` | A provider of `SixLayer` for JLCPCB's `JLC06121H-7628`, 1.2 mm (1.162 mm in all). |
+| `std::mfg::jlcpcb_buildups::JlcSixLayer06121H7628A` | A provider of `SixLayer` for JLCPCB's `JLC06121H-7628A`, 1.2 mm (1.237 mm in all), with plies in dielectric layers 1 and 5. |
+| `std::mfg::jlcpcb_buildups::JlcSixLayer06121H7628B` | A provider of `SixLayer` for JLCPCB's `JLC06121H-7628B`, 1.2 mm (1.1864 mm in all), with plies in dielectric layer 3. |
+| `std::mfg::jlcpcb_buildups::JlcSixLayer06161H1080` | A provider of `SixLayer` for JLCPCB's `JLC06161H-1080`, 1.6 mm (1.594 mm in all). |
+| `std::mfg::jlcpcb_buildups::JlcSixLayer06161H1080A` | A provider of `SixLayer` for JLCPCB's `JLC06161H-1080A`, 1.6 mm (1.583 mm in all). |
+| `std::mfg::jlcpcb_buildups::JlcSixLayer06161H1080B` | A provider of `SixLayer` for JLCPCB's `JLC06161H-1080B`, 1.6 mm (1.6044 mm in all), with plies in dielectric layer 3. |
+| `std::mfg::jlcpcb_buildups::JlcSixLayer06161H1080C` | A provider of `SixLayer` for JLCPCB's `JLC06161H-1080C`, 1.6 mm (1.5544 mm in all), with plies in dielectric layer 3. |
+| `std::mfg::jlcpcb_buildups::JlcSixLayer06161H2116A` | A provider of `SixLayer` for JLCPCB's `JLC06161H-2116A`, 1.6 mm (1.5564 mm in all), with plies in dielectric layer 3. |
+| `std::mfg::jlcpcb_buildups::JlcSixLayer06161H2116B` | A provider of `SixLayer` for JLCPCB's `JLC06161H-2116B`, 1.6 mm (1.5164 mm in all), with plies in dielectric layer 3. |
+| `std::mfg::jlcpcb_buildups::JlcSixLayer06161H2116C` | A provider of `SixLayer` for JLCPCB's `JLC06161H-2116C`, 1.6 mm (1.5894 mm in all), with plies in dielectric layers 1, 3 and 5. |
+| `std::mfg::jlcpcb_buildups::JlcSixLayer06161H3313A` | A provider of `SixLayer` for JLCPCB's `JLC06161H-3313A`, 1.6 mm (1.5384 mm in all). |
+| `std::mfg::jlcpcb_buildups::JlcSixLayer06161H3313B` | A provider of `SixLayer` for JLCPCB's `JLC06161H-3313B`, 1.6 mm (1.5504 mm in all), with plies in dielectric layer 3. |
+| `std::mfg::jlcpcb_buildups::JlcSixLayer06161H3313C` | A provider of `SixLayer` for JLCPCB's `JLC06161H-3313C`, 1.6 mm (1.4524 mm in all), with plies in dielectric layers 1, 3 and 5. |
+| `std::mfg::jlcpcb_buildups::JlcSixLayer06161H3313D` | A provider of `SixLayer` for JLCPCB's `JLC06161H-3313D`, 1.6 mm (1.5424 mm in all), with plies in dielectric layers 1, 3 and 5. |
+| `std::mfg::jlcpcb_buildups::JlcSixLayer06161H3313E` | A provider of `SixLayer` for JLCPCB's `JLC06161H-3313E`, 1.6 mm (1.6504 mm in all), with plies in dielectric layer 3. |
+| `std::mfg::jlcpcb_buildups::JlcSixLayer06161H7628` | A provider of `SixLayer` for JLCPCB's `JLC06161H-7628`, 1.6 mm (1.5544 mm in all). |
+| `std::mfg::jlcpcb_buildups::JlcSixLayer06161H7628A` | A provider of `SixLayer` for JLCPCB's `JLC06161H-7628A`, 1.6 mm (1.5884 mm in all), with plies in dielectric layers 1, 3 and 5. |
+| `std::mfg::jlcpcb_buildups::JlcSixLayer06161H7628B` | A provider of `SixLayer` for JLCPCB's `JLC06161H-7628B`, 1.6 mm (1.5724 mm in all), with plies in dielectric layers 1, 3 and 5. |
+| `std::mfg::jlcpcb_buildups::JlcSixLayer06161H7628D` | A provider of `SixLayer` for JLCPCB's `JLC06161H-7628D`, 1.6 mm (1.5904 mm in all), with plies in dielectric layers 1 and 5. |
+| `std::mfg::jlcpcb_buildups::JlcSixLayer06201H1080` | A provider of `SixLayer` for JLCPCB's `JLC06201H-1080`, 2.0 mm (2.0544 mm in all), with plies in dielectric layer 3. |
+| `std::mfg::jlcpcb_buildups::JlcSixLayer06201H1080A` | A provider of `SixLayer` for JLCPCB's `JLC06201H-1080A`, 2.0 mm (1.9614 mm in all), with plies in dielectric layer 3. |
+| `std::mfg::jlcpcb_buildups::JlcSixLayer06201H1080B` | A provider of `SixLayer` for JLCPCB's `JLC06201H-1080B`, 2.0 mm (1.9694 mm in all), with plies in dielectric layer 3. |
+| `std::mfg::jlcpcb_buildups::JlcSixLayer06201H3313A` | A provider of `SixLayer` for JLCPCB's `JLC06201H-3313A`, 2.0 mm (1.9624 mm in all), with plies in dielectric layer 3. |
+| `std::mfg::jlcpcb_buildups::JlcSixLayer06201H3313B` | A provider of `SixLayer` for JLCPCB's `JLC06201H-3313B`, 2.0 mm (2.0154 mm in all), with plies in dielectric layer 3. |
+| `std::mfg::jlcpcb_buildups::JlcSixLayer06201H7628` | A provider of `SixLayer` for JLCPCB's `JLC06201H-7628`, 2.0 mm (1.962 mm in all). |
+| `std::mfg::jlcpcb_buildups::JlcSixLayer06201H7628B` | A provider of `SixLayer` for JLCPCB's `JLC06201H-7628B`, 2.0 mm (1.9964 mm in all), with plies in dielectric layers 1, 3 and 5. |
 | `std::mfg::acme::EightLayer` | ACME's eight-layer board. ACME is a fictional fabricator: the numbers were chosen, not sourced, and the board cannot be ordered (ADR 0112). JLCPCB's multilayer rules, 1 oz outer and 0.5 oz inner copper, 1.6 mm, build-up `ACME-8L-1.6`. Inner layers `.inner1` to `.inner6`, each a plane or a signal layer. |
 | `std::mfg::acme::TenLayer` | ACME's ten-layer board, as `EightLayer`, build-up `ACME-10L-1.6`. Inner layers `.inner1` to `.inner8`. |
 | `std::mfg::jlcpcb::VCutPanel` | JLCPCB's V-cut panel, the member `.fab` of a `panel`: `.columns`, `.rows` and `.rail`, and the limits of the board house (panel size, lines, line spacing, copper clearance, thickness, tooling holes and fiducials), each with its source. |

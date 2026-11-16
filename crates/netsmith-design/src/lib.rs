@@ -26,9 +26,9 @@ use netsmith_check::{
     SystemBoard,
 };
 use netsmith_core::{
-    Design, DielectricLayer, InnerLayers, InnerUse, InterfaceInstance, InterfaceMember,
-    ModuleInstance, Net, Note, NoteAt, NoteKind, PanelRules, PanelSpec, Part, PartKind, PartPin,
-    PinRef, PowerFlow, Process, Stackup,
+    Design, DielectricLayer, DielectricPly, InnerLayers, InnerUse, InterfaceInstance,
+    InterfaceMember, ModuleInstance, Net, Note, NoteAt, NoteKind, PanelRules, PanelSpec, Part,
+    PartKind, PartPin, PinRef, PowerFlow, Process, Stackup,
 };
 use netsmith_solve::{Library, Solution};
 
@@ -949,9 +949,16 @@ fn process_of(model: &Model, nets: &[String], errors: &mut Vec<String>) -> Optio
                 )),
             }
         }
-        let mut dielectrics = Vec::new();
-        for n in 1..layers {
-            let at = format!("stackup.dielectric{n}");
+        // Whether the process states a field, without the problem `find` reports for one it
+        // does not: a dielectric layer states its own kind or its plies, not both.
+        let stated = |path: &str| {
+            model
+                .field_at(&format!("process.{path}"))
+                .is_some_and(|f| model.field(f).domain != Domain::Unset)
+        };
+        // One prepreg or core, the layer's own fields or one of its plies: `None` when its kind
+        // is not a word a dielectric is (reported, unless it is unstated, which `find` reports).
+        let ply = |at: &str| -> Option<DielectricPly> {
             let kind = text(find(&format!("{at}.kind")));
             if kind != "prepreg" && kind != "core" {
                 if !kind.is_empty() {
@@ -959,10 +966,10 @@ fn process_of(model: &Model, nets: &[String], errors: &mut Vec<String>) -> Optio
                         "`process.{at}.kind` is `{kind}`, but a dielectric layer is `\"prepreg\"` or `\"core\"`"
                     ));
                 }
-                continue;
+                return None;
             }
             let core = kind == "core";
-            dielectrics.push(DielectricLayer {
+            Some(DielectricPly {
                 core,
                 glass: if core {
                     String::new()
@@ -971,7 +978,32 @@ fn process_of(model: &Model, nets: &[String], errors: &mut Vec<String>) -> Optio
                 },
                 thickness: mm(&format!("{at}.thickness")),
                 epsilon: number(&format!("{at}.epsilon")),
-            });
+            })
+        };
+        let mut dielectrics = Vec::new();
+        for n in 1..layers {
+            let at = format!("stackup.dielectric{n}");
+            // A layer pressed from several plies states them from `.ply1`, with no gap.
+            let plies: Vec<String> = (1..)
+                .map(|i| format!("{at}.ply{i}"))
+                .take_while(|p| stated(&format!("{p}.kind")))
+                .collect();
+            if plies.is_empty() {
+                if let Some(one) = ply(&at) {
+                    dielectrics.push(DielectricLayer::of_plies(vec![one]));
+                }
+                continue;
+            }
+            if stated(&format!("{at}.kind")) {
+                problems.borrow_mut().push(format!(
+                    "`process.{at}` states its own `.kind` and its plies (`.ply1`...): a dielectric layer is one prepreg or core, stated in its own fields, or several plies, stated each in a `.plyN`"
+                ));
+                continue;
+            }
+            let plies: Vec<DielectricPly> = plies.iter().filter_map(|p| ply(p)).collect();
+            if !plies.is_empty() {
+                dielectrics.push(DielectricLayer::of_plies(plies));
+            }
         }
         built.stackup.inner = Some(InnerLayers {
             layers: uses,

@@ -367,18 +367,17 @@ interface JlcTwoLayer2oz provides TwoLayer {
 /// 3.91, 2116 prepreg 4.16, core 4.6. The data is what the page's thickness buttons ask its
 /// service for (1 oz outer, 0.5 oz inner), read for each of 0.8, 1.0, 1.2, 1.6 and 2.0 mm.
 ///
-/// Not stated: the page lists 54 four-layer build-ups in all, and `FourLayer` has the five that
-/// are its default for a thickness. The other 49 are `JLC04161H-3313` and the like, which
-/// differ in the prepreg (3313, 1080, 2116) or stack two or more prepreg sheets between two
-/// copper layers, which `Stackup` cannot state (one dielectric layer there, ADR 0111). Of the
-/// 49, 16 have one sheet there and could be providers (their numbers were read, 2026-11-16);
-/// they are left out because every provider of a process multiplies the search of ADR 0068,
-/// whose bound is 64 provider combinations for a whole board: with 21 providers a board with
-/// two other provider choices that fails to build exhausts the bound and the build reports
-/// that it gave up instead of the failure. A board that needs one of them is told that no
-/// provider has it. Price is not stated either: the page marks some build-ups as carrying a
-/// fixed fee and some as not offered in its expedited service, and neither is a rule of the
-/// board.
+/// The page lists 54 four-layer build-ups in all, and this file has the five that are the
+/// default of a thickness. The other 49 are `JLC04161H-3313` and the like, which differ in the
+/// prepreg (3313, 1080, 2116) or stack two or more prepreg sheets between two copper layers
+/// (each sheet a ply of the dielectric layer, `DielectricLayer`). Each is a provider in
+/// `std::mfg::jlcpcb_buildups`, which a board imports to name one as the type of its process
+/// (`.process: JlcFourLayer04161H3313`). They are not here because every provider of a process
+/// in the files a board reaches multiplies the search of ADR 0068, whose bound is 64 provider
+/// combinations for a whole board: with 21 providers a board with two other provider choices
+/// that fails to build exhausts the bound and the build reports that it gave up instead of the
+/// failure. Price is not stated: the page marks some build-ups as carrying a fixed fee and some
+/// as not offered in its expedited service, and neither is a rule of the board.
 generic FourLayer {
     /// Who makes it, and where the numbers are published.
     .fabricator: String
@@ -709,12 +708,13 @@ interface JlcFourLayerE04201H7628 provides FourLayer {
 /// build-up of the same name. Relative permittivity, from the same page: 7628 prepreg 4.4,
 /// 3313 prepreg 4.1, 1080 prepreg 3.91, 2116 prepreg 4.16, core 4.6.
 ///
-/// Not stated: the page lists 56 six-layer build-ups in all, and `SixLayer` has the five that
-/// are its default for a thickness. The other 51 differ in the prepreg or the cores, stack two or
-/// more prepreg sheets between two copper layers, or put a bare core between prepreg sheets,
-/// which `Stackup` cannot state (ADR 0111); one of them, `JLC06081H-2313`, also uses 2313
-/// prepreg, which has no permittivity on the page. Of the 51, 14 have a form `Stackup` can
-/// state and are left out for the reason `FourLayer` gives (the search bound). The page states
+/// The page lists 56 six-layer build-ups in all, and this file has the five that are the
+/// default of a thickness. The other 51 differ in the prepreg or the cores, stack two or more
+/// prepreg sheets between two copper layers, or put a core with no copper between prepreg
+/// sheets (each a ply of the dielectric layer). 47 of them are providers in
+/// `std::mfg::jlcpcb_buildups`, for the reason `FourLayer` gives; its doc comment names the four
+/// left out (two use 2313 prepreg, which has no permittivity on the page, and two add up to
+/// further from their thickness than the board house's tolerance). The page states
 /// no build-up of 8 or 10 layers, so JLCPCB has no process for them here; `std::mfg::acme` has
 /// fictional ones, not for ordering (ADR 0112).
 generic SixLayer {
