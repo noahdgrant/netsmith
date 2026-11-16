@@ -571,3 +571,42 @@ error: no combination of candidates satisfies `bottom` and `top` together: the c
 ```
 
 Read it this way. The closest choice was 10 kohm over 5.1 kohm. Its output spans 3.124 V to 3.500 V, wider than 3.135 V to 3.465 V. To fix it, loosen the requirement, use tighter parts, or change the circuit. The solver will not pick a part that only works at the typical value.
+
+#### One catalog name, one set of columns
+
+A catalog is one file with one header, so every kind of part that names it lists the same columns, in any order, and may differ only in which it marks `optional`. Two kinds that name one catalog with other columns are refused where the second is picked, with a message that names both kinds and the columns only each of them lists (issue #853). The standard `Resistor` and a project's own `Resistor` part that adds rows to the `resistor` catalog (above) list the same columns; a part with a column of its own gets a catalog name of its own. A second fuse, invented like the first, that lists fewer columns than `Zfuse` and still calls its catalog `zfuse`:
+
+```nsm module=src::zshunt
+/// A fuse with no surge rating. Illustrative; not a real part.
+part Zshunt {
+    .designator &= "F"
+    .rated_current: Current
+    pins "0805" {
+        .a passive "A" "1"
+        .b passive "B" "2"
+    }
+    bridge .a ~> .b
+    .package: Package
+    catalog zfuse { .rated_current, .package }
+}
+```
+
+```nsm fails catalogs=surge
+import src::zfuse::Zfuse
+import src::zshunt::Zshunt
+
+board Shared {
+    .f1: Zfuse { .rated_current &= 1A }
+    .f2: Zshunt { .rated_current &= 1A }
+}
+```
+
+```text
+error: `f2` is a `Zshunt`, and `Zfuse` also uses the `zfuse` catalog with other columns (only `Zfuse` lists .surge_current). A catalog is one file with one set of columns, so two kinds of part cannot share a name; give one of them a catalog name of its own, or list the same columns in both
+  --> main.nsm:6:5
+  |
+6 |     .f2: Zshunt { .rated_current &= 1A }
+  |     ^^^^^^^^^^^
+```
+
+Parts are taken in path order, so the first kind to use the name is the one that is not told. Give one kind a catalog name of its own (`catalog zshunt { ... }` with a file of that name) or list the same columns in both.
