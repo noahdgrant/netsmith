@@ -1071,7 +1071,7 @@ pub fn run(
         libraries,
         layout,
         board,
-        crate::layout::DEFAULT_PLACE_SEEDS,
+        crate::layout::DEFAULT_PLACE_SEEDS.into(),
         None,
     )
 }
@@ -1087,7 +1087,7 @@ fn run_with(
     libraries: &netsmith_pipeline::Libraries,
     layout: Option<&std::path::Path>,
     board: Option<&str>,
-    seeds: u32,
+    seeds: crate::layout::Seeding,
     models: Option<&crate::models::Places>,
 ) -> Result<(Report, Scene), String> {
     placed(
@@ -1147,7 +1147,7 @@ pub fn scene_and_label(
         libraries,
         layout,
         board,
-        crate::layout::DEFAULT_PLACE_SEEDS,
+        crate::layout::DEFAULT_PLACE_SEEDS.into(),
         None,
         |built, board, found| (scene_with(built, board, found), built.label()),
     )
@@ -1173,8 +1173,9 @@ pub struct Placed<'a> {
     pub layout: std::path::PathBuf,
     /// The board to pick, by name or label.
     pub board: Option<&'a str>,
-    /// How many seeds the placer tries (`place_seeds` in `netsmith.toml`).
-    pub seeds: u32,
+    /// How many seeds the placer tries (`place_seeds` in `netsmith.toml`), the place budget
+    /// (`--place-budget`, `place_budget`) and where the placer's progress goes.
+    pub seeds: crate::layout::Seeding,
     /// Where the target's files are, to find the STEP models its parts are drawn from (ADR
     /// 0108): a path outside the project is an error, a file that is not there a warning in
     /// the scene. `None` finds none, and every part is drawn with its generated shape.
@@ -1380,7 +1381,7 @@ fn placed<T>(
     libraries: &netsmith_pipeline::Libraries,
     layout: Option<&std::path::Path>,
     board: Option<&str>,
-    seeds: u32,
+    seeds: crate::layout::Seeding,
     models: Option<&crate::models::Places>,
     then: impl FnOnce(&Built, &Board, Vec<String>) -> T,
 ) -> Result<T, String> {
@@ -1416,7 +1417,7 @@ fn picked<T>(
     layout: Option<&std::path::Path>,
     want: Option<&str>,
     systems: bool,
-    seeds: u32,
+    seeds: crate::layout::Seeding,
     models: Option<&crate::models::Places>,
     board: impl FnOnce(&Built, &Board, Vec<String>) -> T,
     system: impl FnOnce(
@@ -1462,13 +1463,22 @@ fn picked<T>(
     };
     let place = |built: &Built, layout: Option<&(netsmith_pcb::Layout, String)>| {
         let fail = |what: String| format!("error: {}: {what}\n", built.label());
-        crate::layout::place(
-            &built.design,
-            layout,
-            libraries,
-            catalogs.constraints_warn(),
-            seeds,
-        )
+        let placing = || {
+            crate::layout::place(
+                &built.design,
+                layout,
+                libraries,
+                catalogs.constraints_warn(),
+                seeds,
+            )
+        };
+        match seeds.progress {
+            Some(say) => netsmith_core::job::reporting(
+                crate::layout::place_progress(built.label(), say),
+                placing,
+            ),
+            None => placing(),
+        }
         .map(|placed| placed.board)
         .map_err(|e| fail(e.message()))
     };

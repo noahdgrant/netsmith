@@ -99,6 +99,8 @@ pub struct Args {
     #[arg(long)]
     pub quiet: bool,
     #[command(flatten)]
+    pub placing: common::Placing,
+    #[command(flatten)]
     pub output: common::Output,
 }
 
@@ -151,6 +153,7 @@ pub fn run(args: Args) -> ExitCode {
             args.no_glb,
             args.no_step,
             args.offline,
+            &args.placing,
         ),
         None => timings::stage("fab.total", "", || {
             run_fab(
@@ -167,6 +170,7 @@ pub fn run(args: Args) -> ExitCode {
                 args.no_step,
                 args.save_placed,
                 args.offline,
+                &args.placing,
                 FabOutput {
                     quiet: args.quiet,
                     format,
@@ -266,6 +270,7 @@ fn run_fab(
     no_step: bool,
     save_placed: bool,
     offline: bool,
+    placing: &common::Placing,
     output: FabOutput,
 ) -> ExitCode {
     let json = output.format == Format::Json;
@@ -331,7 +336,8 @@ fn run_fab(
         step: step_wanted(&target, no_step),
         save_placed,
         models: Some(netsmith_fabricate::models::Places::of(&target)),
-        place_seeds: netsmith_fabricate::layout::place_seeds(target.project.as_ref()),
+        place_seeds: placing.seeds(&target),
+        place_budget: placing.budget(&target),
         seed_writes: netsmith_fabricate::fab::SeedWrites::Write,
         offline,
     };
@@ -521,6 +527,7 @@ fn run_order(
     no_glb: bool,
     no_step: bool,
     offline: bool,
+    placing: &common::Placing,
 ) -> ExitCode {
     let (target, loader, mut catalogs) = match target_offline(None, strict, offline) {
         Ok(t) => t,
@@ -582,7 +589,8 @@ fn run_order(
         step: step_wanted(&target, no_step),
         save_placed: false,
         models: Some(netsmith_fabricate::models::Places::of(&target)),
-        place_seeds: netsmith_fabricate::layout::place_seeds(target.project.as_ref()),
+        place_seeds: placing.seeds(&target),
+        place_budget: placing.budget(&target),
         // An order is a release: a seed that would change stops it (issue #458).
         seed_writes: netsmith_fabricate::fab::SeedWrites::Order,
         offline,
@@ -685,6 +693,10 @@ mod tests {
                 order: None,
                 offline: false,
                 quiet: false,
+                placing: crate::commands::common::Placing {
+                    place_seeds: None,
+                    place_budget: None,
+                },
                 output: output(),
             }
         );
@@ -721,6 +733,39 @@ mod tests {
         assert!(e.contains("--route-timeout") && e.contains("soon"), "{e}");
         assert!(parse(&["fab", "--route-timeout"]).is_err());
         assert!(parse(&["build", "--route-timeout", "3"]).is_err());
+    }
+
+    #[test]
+    fn fab_takes_place_seeds_and_a_place_budget_of_seconds_or_tries() {
+        use netsmith_core::job::Limit;
+        use std::time::Duration;
+        let f = fab(&["--place-seeds", "3", "--place-budget", "90"]);
+        assert_eq!(f.placing.place_seeds, Some(3));
+        assert_eq!(
+            f.placing.place_budget,
+            Some(Limit {
+                time: Some(Duration::from_secs(90)),
+                tries: None
+            })
+        );
+        assert_eq!(
+            fab(&["--place-budget", "2m+5tries"]).placing.place_budget,
+            Some(Limit {
+                time: Some(Duration::from_secs(120)),
+                tries: Some(5)
+            })
+        );
+        for bad in ["0", "soon", "5tries+3tries", "1.5tries"] {
+            let e = parse(&["fab", "--place-budget", bad]).unwrap_err();
+            assert!(e.contains("--place-budget"), "{bad}: {e}");
+        }
+        assert!(parse(&["fab", "--place-seeds", "0"]).is_err());
+        assert!(parse(&["fab", "--place-seeds", "33"]).is_err());
+        assert!(parse(&["build", "--place-budget", "9"]).is_err());
+        let Ok(Command::Board3d(b)) = parse(&["board3d", "--place-budget", "1try"]) else {
+            panic!()
+        };
+        assert_eq!(b.placing.place_budget.and_then(|l| l.tries), Some(1));
     }
 
     #[test]

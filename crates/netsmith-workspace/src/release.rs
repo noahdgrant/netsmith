@@ -175,6 +175,10 @@ impl Workspace {
                 layout: Some(netsmith_fabricate::layout::layout_path(&source.path)),
                 pin_map_source: Some(source.stable_name(target.project.as_ref())),
                 place_seeds: netsmith_fabricate::layout::place_seeds(target.project.as_ref()),
+                place_budget: netsmith_fabricate::layout::place_budget(
+                    target.project.as_ref(),
+                    None,
+                ),
                 seed_writes: netsmith_fabricate::fab::SeedWrites::EditorRelease,
                 offline: target.offline(),
                 ..FabOptions::default()

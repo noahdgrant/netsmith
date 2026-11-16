@@ -112,7 +112,7 @@ fn run_render(
     out: Option<&Path>,
     request: &netsmith_3d::RenderRequest,
 ) -> ExitCode {
-    let scene = match with_placed_board(file, board, |placed| placed.any_scene()) {
+    let scene = match with_placed_board(file, board, None, |placed| placed.any_scene()) {
         Ok(made) => made,
         Err(code) => return code,
     };

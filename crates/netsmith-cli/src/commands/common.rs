@@ -14,6 +14,46 @@ use netsmith_solve::Catalogs;
 /// The port `netsmith editor` listens on unless told otherwise.
 pub const DEFAULT_PORT: u16 = 8787;
 
+/// `--place-seeds` and `--place-budget`, of `fab` and `board3d` (issues #764 and #766).
+#[derive(Debug, PartialEq, ClapArgs)]
+pub struct Placing {
+    /// How many seeds the placer tries for a board, over `place_seeds` in netsmith.toml.
+    ///
+    /// From 1 (the layout file's seed only) to 32; the default is 8. Each seed is a whole
+    /// placement, and a seed that ends a few parts short is run again up to four more times, so
+    /// a board no seed places costs about this many times five runs.
+    #[arg(long, value_name = "N", value_parser = clap::value_parser!(u32).range(1..=32))]
+    pub place_seeds: Option<u32>,
+    /// How long the placer may look for a board's placement, over `place_budget` in netsmith.toml.
+    ///
+    /// Seconds (`120`, `120s`, `2m`), tries (`5tries`; a try is one run of the placer in a fixed
+    /// outline), or both (`120s+5tries`), whichever is spent first; no limit by default. When it
+    /// is spent the placer ends the run it is in, begins no other seed and gives the closest try,
+    /// with what is still out: `placed nothing in 120 s (...): the placer tried 2 of 8 seeds ...,
+    /// and the closest is seed 1, where this blocks it:` and the parts by name. A budget of tries
+    /// gives the same answer on every machine; a budget of time does not.
+    #[arg(long, value_name = "BUDGET", value_parser = netsmith_fabricate::layout::parse_place_budget)]
+    pub place_budget: Option<netsmith_core::job::Limit>,
+}
+
+impl Placing {
+    /// The seeds to try for a board of `target`: `--place-seeds`, else the manifest's.
+    pub fn seeds(&self, target: &Target) -> u32 {
+        self.place_seeds
+            .unwrap_or_else(|| netsmith_fabricate::layout::place_seeds(target.project.as_ref()))
+    }
+
+    /// The place budget for a board of `target`: `--place-budget`, else the manifest's.
+    pub fn budget(&self, target: &Target) -> netsmith_core::job::Limit {
+        netsmith_fabricate::layout::place_budget(target.project.as_ref(), self.place_budget)
+    }
+}
+
+/// Prints a line of the placer's progress to stderr.
+fn say_on_stderr(line: &str) {
+    eprintln!("{line}");
+}
+
 /// `--format` and `--notes`, of `build`, `check` and `fab`.
 #[derive(Debug, PartialEq, ClapArgs)]
 pub struct Output {
@@ -168,10 +208,13 @@ pub(super) fn no_boards(target: &Target) -> bool {
 /// placed as `fab` places it (the pick lock and the layout file beside its source are read,
 /// nothing is written), and `then` of it. A project of several top-level files takes the first
 /// that has the board `--board` names. The error is printed and is the exit code: 1 when no file
-/// builds the board or places it, 2 when the command cannot start.
+/// builds the board or places it, 2 when the command cannot start. With `placing` (`board3d`)
+/// its seeds and budget are used and the placer's progress is printed to stderr; with none, the
+/// manifest's, and nothing is printed.
 pub(super) fn with_placed_board<T>(
     file: Option<&str>,
     board: Option<&str>,
+    placing: Option<&Placing>,
     then: impl Fn(&netsmith_fabricate::board3d::Placed) -> Result<T, String>,
 ) -> Result<T, ExitCode> {
     let (target, loader, catalogs) = target(file, false)?;
@@ -207,7 +250,18 @@ pub(super) fn with_placed_board<T>(
             libraries: &libraries,
             layout: netsmith_fabricate::layout::layout_path(&source.path),
             board,
-            seeds: netsmith_fabricate::layout::place_seeds(target.project.as_ref()),
+            seeds: match placing {
+                Some(placing) => netsmith_fabricate::layout::Seeding {
+                    seeds: placing.seeds(&target),
+                    budget: placing.budget(&target),
+                    progress: Some(say_on_stderr),
+                },
+                None => netsmith_fabricate::layout::Seeding {
+                    seeds: netsmith_fabricate::layout::place_seeds(target.project.as_ref()),
+                    budget: netsmith_fabricate::layout::place_budget(target.project.as_ref(), None),
+                    progress: None,
+                },
+            },
             models: Some(places.clone()),
         };
         match then(&placed) {

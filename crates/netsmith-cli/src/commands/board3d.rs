@@ -4,12 +4,12 @@ use std::process::ExitCode;
 
 use clap::Args as ClapArgs;
 
-use super::common::with_placed_board;
+use super::common::{Placing, with_placed_board};
 
 #[derive(Debug, PartialEq, ClapArgs)]
 #[command(args_override_self = true)]
 #[command(
-    after_long_help = "`board3d` places a board as `fab` does, with the layout file and the physical file, and prints its 3D scene (ADR 0105) without routing or writing anything but the `--glb` and `--step` files, and without KiCad. With neither `--json`, `--glb` nor `--step` it prints a short summary. A file of several boards needs `--board`. docs/BOARD3D.md has the frame and every field."
+    after_long_help = "`board3d` places a board as `fab` does, with the layout file and the physical file, and prints its 3D scene (ADR 0105) without routing or writing anything but the `--glb` and `--step` files, and without KiCad. With neither `--json`, `--glb` nor `--step` it prints a short summary. A file of several boards needs `--board`. The placer says on stderr how it goes: each seed it begins, each run with what is still out, and the counts of a long run; `--place-budget` bounds it. docs/BOARD3D.md has the frame and every field."
 )]
 pub struct Args {
     /// The source file; with none, the project's boards.
@@ -48,6 +48,8 @@ pub struct Args {
     /// member, each placed by its motion.
     #[arg(long, value_name = "FILE.STEP")]
     pub step: Option<PathBuf>,
+    #[command(flatten)]
+    pub placing: Placing,
 }
 
 /// Prints the board's 3D scene, or writes it.
@@ -58,6 +60,7 @@ pub fn run(args: Args) -> ExitCode {
         args.json,
         args.glb.as_deref(),
         args.step.as_deref(),
+        &args.placing,
     )
 }
 
@@ -72,8 +75,9 @@ fn run_board3d(
     json: bool,
     glb: Option<&Path>,
     step: Option<&Path>,
+    placing: &Placing,
 ) -> ExitCode {
-    let made = match with_placed_board(file, board, |placed| placed.run_any()) {
+    let made = match with_placed_board(file, board, Some(placing), |placed| placed.run_any()) {
         Ok(made) => made,
         Err(code) => return code,
     };
