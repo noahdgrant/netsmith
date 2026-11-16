@@ -289,6 +289,21 @@ fn visit<'a>(
         Item::Anchor(a) => path(&a.target, inside),
         // A line of a board's `defaults` names a kind and its field, not a member (issue #625).
         Item::Defaults(_) => {}
+        // A part's `layout` block names the part's own pins.
+        Item::Layout(layout) => {
+            for statement in &layout.statements {
+                if let netsmith_lang::ast::LayoutStatement::Near(near) = statement {
+                    match &near.select {
+                        netsmith_lang::ast::Select::Bridging(a, b) => {
+                            path(a, inside);
+                            path(b, inside);
+                        }
+                        netsmith_lang::ast::Select::On { pin, .. } => path(pin, inside),
+                    }
+                    path(&near.to, inside);
+                }
+            }
+        }
         // A part's support section holds declarations and statements like its body.
         Item::Support(support) => {
             for inner in &support.items {

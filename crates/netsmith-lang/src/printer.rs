@@ -475,6 +475,23 @@ fn write_block(out: &mut String, inner_docs: &[String], items: &[Item], depth: u
                 out.push_str("defaults ");
                 write_block(out, &[], &c.items, depth + 1);
             }
+            Item::Layout(l) => {
+                out.push_str("layout {\n");
+                let indent = "    ".repeat(depth + 2);
+                for statement in &l.statements {
+                    match statement {
+                        LayoutStatement::Source { text, .. } => {
+                            let _ = writeln!(out, "{indent}source {}", quote(text));
+                        }
+                        LayoutStatement::Near(n) => {
+                            write_docs(out, &n.docs, "///", depth + 2);
+                            let _ = writeln!(out, "{indent}{}", n.to_source());
+                        }
+                    }
+                }
+                out.push_str(&"    ".repeat(depth + 1));
+                out.push('}');
+            }
             Item::Polygon(p) => {
                 out.push_str("polygon");
                 let point = |p: &Point| format!("({}, {})", p.x.to_source(), p.y.to_source());
@@ -557,4 +574,26 @@ fn write_block(out: &mut String, inner_docs: &[String], items: &[Item], depth: u
     }
     out.push_str(&"    ".repeat(depth));
     out.push('}');
+}
+
+impl Near {
+    /// The statement as written, without its doc comment.
+    pub fn to_source(&self) -> String {
+        let select = match &self.select {
+            Select::Bridging(a, b) => format!("bridging {} {}", a.to_source(), b.to_source()),
+            Select::On { pin, kind } => match kind {
+                Some(k) => format!("on {} kind {}", pin.to_source(), k.to_source()),
+                None => format!("on {}", pin.to_source()),
+            },
+        };
+        let mut out = format!(
+            "near {} {select} to {}",
+            self.name.to_source(),
+            self.to.to_source()
+        );
+        if let Some(w) = &self.within {
+            let _ = write!(out, " within {}", w.to_source());
+        }
+        out
+    }
 }

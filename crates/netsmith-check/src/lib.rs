@@ -15,6 +15,7 @@ mod diag;
 pub mod environment;
 mod faults;
 mod isolation;
+mod layout;
 mod lines;
 mod loader;
 mod loads;
@@ -52,10 +53,11 @@ pub use model::{
     Balance, Bank, Bookmark, BusAssignment, BusRequest, Catalog, Chain, ChainPin, Checkpoint,
     Contact, ContactSide, DcElement, DcKind, DefaultFrom, DefaultNote, Domain, Draw, EnumId,
     EnumInfo, Field, FieldId, FieldKind, GenericUse, GroundGroup, GroundNet, InstId, InstKind,
-    Instance, JoinedByName, LevelTest, Mate, Member, Model, Net, OptionalMark, OutlinePolygon,
-    PartRules, Peripheral, PeripheralBus, PeripheralFunction, PinAssignment, PinKind, PinRequest,
-    PinRow, PinTable, Pinout, PolygonCorner, Provider, RExpr, RangeEnd, Relation, Requirement,
-    Role, RowLimit, SharedMember, SharedRes, Snapshot, Tie, Unused, Written,
+    Instance, JoinedByName, LayoutNear, LevelTest, Mate, Member, Model, NearSelect, Net,
+    OptionalMark, OutlinePolygon, PartRules, Peripheral, PeripheralBus, PeripheralFunction,
+    PinAssignment, PinKind, PinRequest, PinRow, PinTable, Pinout, PolygonCorner, Provider, RExpr,
+    RangeEnd, Relation, Requirement, Role, RowLimit, SharedMember, SharedRes, Snapshot, Tie,
+    Unused, Written,
 };
 pub use pinedit::edit_entry;
 pub use pinfile::{BusEntry, EntrySource, PinEntry, PinFile, PinFileError};

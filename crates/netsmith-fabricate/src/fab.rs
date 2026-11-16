@@ -1208,23 +1208,33 @@ fn fab_board(
         } else {
             say(format!("{}: routed, writing files", built.label()));
         }
-        // The voltage the routed tracks of each power net drop (issue #652): a guideline, so a
-        // warning, and an error that stops here when guidelines are strict.
-        let drops: Vec<String> = if incomplete.is_some() {
-            Vec::new()
-        } else {
+        // The datasheets' layout guidelines the placement does not meet (ADR 0030, issue
+        // #829), and the voltage the routed tracks of each power net drop (issue #652):
+        // guidelines, so warnings, and an error that stops here when guidelines are strict.
+        let mut drops: Vec<String> = crate::part_layout::findings(&board)
+            .into_iter()
+            .map(|m| {
+                format!(
+                    "{}: {} guideline: {m}",
+                    built.label(),
+                    crate::part_layout::RULE
+                )
+            })
+            .collect();
+        if incomplete.is_none() {
             let voltages = netsmith_design::guidelines::net_voltages(&built.trace.model);
-            crate::track_drop::findings(&board, &voltages)
-                .into_iter()
-                .map(|m| {
-                    format!(
-                        "{}: {} guideline: {m}",
-                        built.label(),
-                        crate::track_drop::RULE
-                    )
-                })
-                .collect()
-        };
+            drops.extend(
+                crate::track_drop::findings(&board, &voltages)
+                    .into_iter()
+                    .map(|m| {
+                        format!(
+                            "{}: {} guideline: {m}",
+                            built.label(),
+                            crate::track_drop::RULE
+                        )
+                    }),
+            );
+        }
         if catalogs.strict_guidelines() && !drops.is_empty() {
             return Err(FabFailure {
                 text: drops

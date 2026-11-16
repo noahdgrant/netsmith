@@ -130,6 +130,12 @@
 //! instance path are kept, so a module's capacitor goes with the module's part. The cost is the
 //! nearest pin pad of the part on each net. No number and no annotation is read.
 //!
+//! **Datasheet guidelines** (ADR 0030, issue #829). Each part that a `near` statement of a
+//! part's `layout` block finds ([`netsmith_pcb::near_pairs`]) is one more pair of the same kind:
+//! its pads on the net of the pin after `to` are pulled to that pin's pads at the weight of a
+//! decoupling capacitor. The statement's number is not a hard limit here: `fab` reports a part
+//! that ends further away as a guideline.
+//!
 //! **Busy parts** (ADR 0031). A part with 16 to 66 pads ([`BUSY_ESCAPE`] to [`BUSY_MOST`] of
 //! escape) asks, from its neighbour, the sum of the two escape spaces and not the larger (the
 //! same channel serves both rows), and each mm short of it costs [`W_GAP`] plus up to
@@ -218,7 +224,7 @@ use netsmith_pcb::{
     rect_distance,
 };
 
-use netsmith_pcb::{DecouplingPair, decoupling_pairs};
+use netsmith_pcb::{DecouplingPair, decoupling_pairs, near_pairs};
 use netsmith_pcb::{Edges, Ended, OutsideAt, OverlapAt, Pt, Rect, Rules, short_mm};
 
 mod build;

@@ -676,6 +676,47 @@
       "labels": [],
       "constraints": [],
       "offsets": [],
+      "layout": [
+        {
+          "part": "reg.ic",
+          "name": "feedback",
+          "source": "SNVSA24, 11.1 Layout Guidelines, p.17",
+          "site": "std/parts/regulator.nsm:1058",
+          "select": {
+            "on": {
+              "pin": "fb",
+              "kind": "resistor"
+            }
+          },
+          "to": "fb"
+        },
+        {
+          "part": "reg.ic",
+          "name": "inductor",
+          "source": "SNVSA24, 11.1 Layout Guidelines, p.17",
+          "site": "std/parts/regulator.nsm:1062",
+          "select": {
+            "on": {
+              "pin": "sw.pos",
+              "kind": "inductor"
+            }
+          },
+          "to": "sw.pos"
+        },
+        {
+          "part": "reg.ic",
+          "name": "input_cap",
+          "source": "SNVSA24, 11.1 Layout Guidelines, p.17",
+          "site": "std/parts/regulator.nsm:1060",
+          "select": {
+            "bridging": {
+              "a": "vin.pos",
+              "b": "vin.neg"
+            }
+          },
+          "to": "vin.pos"
+        }
+      ],
       "line_texts": {}
     },
     "interfaces": [

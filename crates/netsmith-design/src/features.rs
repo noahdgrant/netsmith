@@ -1426,3 +1426,37 @@ fn show(v: f64) -> String {
         "no most".to_string()
     }
 }
+
+/// The `near` guidelines of the parts' `layout` blocks (ADR 0030, issue #829), by the path of
+/// the part, with its pins named as its pin table names them (`vin.pos`), sorted by part and
+/// name.
+pub(crate) fn layout(model: &Model) -> Vec<netsmith_core::LayoutNear> {
+    let mut out: Vec<netsmith_core::LayoutNear> = model
+        .layout
+        .iter()
+        .map(|l| {
+            let pin = |p| model.path_below(p, l.part);
+            netsmith_core::LayoutNear {
+                part: model.path_of(l.part),
+                name: l.name.clone(),
+                source: l.source.clone(),
+                site: l.site.clone(),
+                select: match l.select {
+                    netsmith_check::NearSelect::Bridging(a, b) => {
+                        netsmith_core::NearSelect::Bridging {
+                            a: pin(a),
+                            b: pin(b),
+                        }
+                    }
+                    netsmith_check::NearSelect::On { pin: p, kind } => {
+                        netsmith_core::NearSelect::On { pin: pin(p), kind }
+                    }
+                },
+                to: pin(l.to),
+                within: l.within,
+            }
+        })
+        .collect();
+    out.sort_by(|a, b| (&a.part, &a.name).cmp(&(&b.part, &b.name)));
+    out
+}

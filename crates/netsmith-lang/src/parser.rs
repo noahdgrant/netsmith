@@ -529,6 +529,7 @@ impl Parser {
                     | Item::CaseOf(_)
                     | Item::Support(_)
                     | Item::Defaults(_)
+                    | Item::Layout(_)
                     | Item::Row(_)
                     | Item::Polygon(_)
                     | Item::PhysicalFile(_)
@@ -600,6 +601,9 @@ impl Parser {
                         items,
                         span: self.span_from(start),
                     }));
+                }
+                "layout" if matches!(self.peek_second(), Tok::LBrace) => {
+                    return only_decls(self.layout(start)?);
                 }
                 "defaults" if matches!(self.peek_second(), Tok::LBrace) => {
                     self.bump();
@@ -1487,6 +1491,141 @@ impl Parser {
             rows,
             span: self.span_from(start),
         }))
+    }
+
+    /// `layout { source "..." near NAME SELECTOR to .pin [within LENGTH] ... }` (ADR 0030,
+    /// issue #829). A `near` statement may have `///` lines above it: the datasheet's sentence.
+    fn layout(&mut self, start: usize) -> Res<Item> {
+        self.bump();
+        let open = self.bump();
+        let mut statements = Vec::new();
+        loop {
+            let docs = self.outer_docs();
+            let t = self.peek().clone();
+            match &t.tok {
+                Tok::RBrace | Tok::Eof if !docs.is_empty() => {
+                    return Err(ParseError::new(
+                        docs.first.expect("docs is not empty"),
+                        "this doc comment is not followed by a `near` statement",
+                    ));
+                }
+                Tok::RBrace => {
+                    self.bump();
+                    break;
+                }
+                Tok::Eof => return Err(ParseError::new(open.span, "this `{` is never closed")),
+                Tok::DocInner(_) => {
+                    return Err(ParseError::new(
+                        t.span,
+                        "a `layout` block takes `///` above a statement or `//` notes, not `//!`",
+                    ));
+                }
+                Tok::Ident(w) if w == "source" => {
+                    if let Some(at) = docs.first {
+                        return Err(ParseError::new(
+                            at,
+                            "a doc comment belongs above a `near` statement, not above `source`",
+                        ));
+                    }
+                    self.bump();
+                    let s = self.peek().clone();
+                    let Tok::Str(text) = s.tok else {
+                        return Err(unexpected(
+                            &s,
+                            "the document and section in quotes after `source`, such as `source \"SNVSA24, 11.1 Layout Guidelines, p.17\"`",
+                        ));
+                    };
+                    self.bump();
+                    statements.push(LayoutStatement::Source {
+                        text,
+                        span: self.span_from(t.span.start),
+                    });
+                }
+                Tok::Ident(w) if w == "near" => {
+                    statements.push(LayoutStatement::Near(Box::new(self.near(docs.lines)?)));
+                }
+                _ => {
+                    return Err(unexpected(
+                        &t,
+                        "`source \"...\"`, a `near` statement or `}` in a `layout` block",
+                    ));
+                }
+            }
+            self.end_statement(true)?;
+        }
+        Ok(Item::Layout(Layout {
+            statements,
+            span: self.span_from(start),
+        }))
+    }
+
+    /// Whether the next token is the word `word`.
+    fn at_word(&mut self, word: &str) -> bool {
+        matches!(&self.peek().tok, Tok::Ident(w) if w == word)
+    }
+
+    /// A pin of the part with its leading dot, as a `layout` statement names it.
+    fn layout_pin(&mut self, what: &str) -> Res<Path> {
+        if !self.at(&Tok::LeadingDot) {
+            let t = self.peek().clone();
+            return Err(unexpected(&t, what));
+        }
+        self.path()
+    }
+
+    /// `near NAME bridging .a .b to .pin [within LENGTH]` or `near NAME on .pin [kind KIND] to
+    /// .pin [within LENGTH]`.
+    fn near(&mut self, docs: Vec<String>) -> Res<Near> {
+        let start = self.bump().span.start;
+        let name = self.ident("the name of the guideline after `near`, such as `input_cap`")?;
+        let select = if self.at_word("bridging") {
+            self.bump();
+            let a = self.layout_pin("a pin of the part, such as `.vin.pos`, after `bridging`")?;
+            let b = self.layout_pin("a second pin of the part after the first of `bridging`")?;
+            Select::Bridging(a, b)
+        } else if self.at_word("on") {
+            self.bump();
+            let pin = self.layout_pin("a pin of the part, such as `.sw.pos`, after `on`")?;
+            let kind = if self.at_word("kind") {
+                self.bump();
+                Some(self.ident("a kind of part after `kind`, such as `inductor`")?)
+            } else {
+                None
+            };
+            Select::On { pin, kind }
+        } else {
+            let t = self.peek().clone();
+            return Err(unexpected(
+                &t,
+                &format!(
+                    "`bridging .a .b` or `on .pin` after `near {}`: which parts the guideline is about",
+                    name.to_source()
+                ),
+            ));
+        };
+        if !self.at_word("to") {
+            let t = self.peek().clone();
+            return Err(unexpected(
+                &t,
+                "`to` and the pin the parts go next to, such as `to .vin.pos`",
+            ));
+        }
+        self.bump();
+        let to = self.layout_pin("a pin of the part after `to`, such as `.vin.pos`")?;
+        let within = if self.at_word("within") {
+            self.bump();
+            Some(self.expr()?)
+        } else {
+            None
+        };
+        Ok(Near {
+            docs,
+            name,
+            select,
+            to,
+            within,
+            span: self.span_from(start),
+        })
     }
 
     /// `.pin kind "NAME" "pad" ["pad" ...] [fn FUNCTION ...] [optional | required]

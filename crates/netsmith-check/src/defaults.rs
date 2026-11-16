@@ -502,6 +502,7 @@ fn item_span(item: &Item) -> Span {
         Item::CaseOf(c) => c.span,
         Item::Support(s) => s.span,
         Item::Defaults(d) => d.span,
+        Item::Layout(l) => l.span,
         Item::Row(r) => r.span,
         Item::Polygon(p) => p.span,
         Item::PhysicalFile(f) => f.span,

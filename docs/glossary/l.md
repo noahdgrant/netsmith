@@ -4,6 +4,10 @@
 A part that prints text on the silkscreen (`std::parts::mechanical::Label`). It has no pins and is fitted by nobody. A part's own silkscreen text is not a label (_Silkscreen text_).
 _Avoid_: Text, annotation, legend
 
+**Layout block**:
+`layout { source "..." near ... }` in a part: what its datasheet says about where the parts around it go, with the document and section in a mandatory `source` (ADR 0030, issue #829). A `near` statement names the part's own pins and finds the board's parts from their nets (`bridging .a .b`, `on .pin kind K`); the placer pulls them next to the pin after `to`, and `fab` gives a _Guideline_ when one ends further than the `within` the datasheet gives. It is knowledge of the part, not a decision of the design: a design's positions are in the _Layout file_, and a requirement of the board is in its physical file (_Placement requirement_).
+_Avoid_: Layout hint, layout constraint, layout rule (a rule of the fabricator is a design rule)
+
 **Layout file**:
 `<stem>.pcb.toml` beside a source file: where parts (keyed by their path in the design), keepouts and cutouts are, when the source does not say, with rotation, side and a lock. Optional, written by an editor or a placer, never by the language (ADR 0032); `netsmith layout` shows, sets and checks its entries. It holds the solution; a requirement is in the physical file (_Placement requirement_, _Physical_).
 _Avoid_: Sidecar (the word for what it is, not its name), placement file (that is the pick-and-place file for the board house). The schematic has its own, the _Schematic layout file_.
