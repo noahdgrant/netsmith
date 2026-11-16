@@ -370,6 +370,10 @@ pub struct PinFunction {
     /// The row marks the function `class` (`fn GPIO class`): the board may choose it on any
     /// number of pins.
     pub class: bool,
+    /// The row writes `of CLASS` after the function (`AIN1 of ANALOG`): it is the channel of
+    /// that class on this pin, which the pin file and the firmware exports record for a request
+    /// of the class (#787).
+    pub of: Option<String>,
 }
 
 impl PinRow {
@@ -382,6 +386,15 @@ impl PinRow {
     /// it: the function's own kind if it has one, else the pin's.
     pub fn kind_with(&self, chosen: Option<&str>) -> PinKind {
         self.function_kind(chosen).unwrap_or(self.kind)
+    }
+
+    /// The function the row writes `of class`: the channel of the class on this pin (`AIN1`
+    /// for `ANALOG`), if the row names one.
+    pub fn channel_of(&self, class: &str) -> Option<&str> {
+        self.functions
+            .iter()
+            .find(|f| f.of.as_deref() == Some(class))
+            .map(|f| f.name.as_str())
     }
 
     /// The function's own kind, when the board chose a function that has one.

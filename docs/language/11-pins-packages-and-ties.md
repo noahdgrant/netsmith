@@ -12,7 +12,7 @@ pins "DFN-8-EP" {
 tie .sense ~ .vout.pos
 ```
 
-A row is `.path kind "NAME" "pad" ["pad" ...] [fn FUNCTION[:kind] [class] ...] [optional | required] [abs_min VALUE] [abs_max VALUE] [from .pin]`, on one line, or ended by `;`. The names and pads are text, so they are quoted. A function is a plain name, with a kind of its own after a colon when the datasheet gives one, and `class` after it when the board may choose it on many pins (see Functions).
+A row is `.path kind "NAME" "pad" ["pad" ...] [fn FUNCTION[:kind] [class] [of CLASS] ...] [optional | required] [abs_min VALUE] [abs_max VALUE] [from .pin]`, on one line, or ended by `;`. The names and pads are text, so they are quoted. A function is a plain name, with a kind of its own after a colon when the datasheet gives one, `class` after it when the board may choose it on many pins, and `of CLASS` when it is the channel of a class on this pin (see Functions).
 
 | Kind | Meaning | Must be connected? |
 |---|---|---|
@@ -616,6 +616,65 @@ error: `.gpio1` lists `GPIO` without `class`, which `.gpio0` marks as a class; a
   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
+A class says that the board may choose it on many pins, but firmware needs more than the class: an ADC input is read by its channel (`AIN1`), and the channel is another function of the row. The row names it with `of CLASS` after the function (and its `:kind`): `AIN1 of ANALOG` says that `AIN1` is the channel of the class `ANALOG` on this pin (#787). The board still chooses the class, `.u.p03.function &= ANALOG` or a request `.sense: .u.ANALOG`; what the marker changes is what the pin file and the firmware's pin map record for a request of the class, the channel of the pin it got (`function = "AIN1"`, "A pin by capability"). As with `class`, an `of` right after a function's name (and its kind and marker) is always the marker.
+
+```nsm module=src::zmcu6
+/// Zmcu6, an invented microcontroller whose analog pins name their ADC channel. Illustrative;
+/// not a real part.
+part Zmcu6 {
+    pins {
+        .p02 bidirectional "P0.02" "5" fn GPIO class ANALOG class AIN0:input of ANALOG
+        .p03 bidirectional "P0.03" "6" fn GPIO class ANALOG class AIN1:input of ANALOG
+    }
+}
+```
+
+```nsm
+import src::zmcu6::Zmcu6
+import std::parts::passive::Resistor
+
+board Thermometer {
+    .u: Zmcu6
+    .divider: Resistor
+    .sense: .u.ANALOG
+    .sense ~ .divider.a
+}
+```
+
+Here `sense` gets `p02`, and its entry in the pin file is `function = "AIN0"`. `of` names a class that the same row lists and marks, a channel is not itself a class, and a pin is one channel of one class; each mistake is refused in the part:
+
+```nsm fails
+part Zmcu6b {
+    pins {
+        .p02 bidirectional "P0.02" "5" fn GPIO class ANALOG AIN0:input of ANALOG
+    }
+}
+```
+
+```text
+error: `.p02` writes `AIN0 of ANALOG`, but `ANALOG` is not a class; mark it `ANALOG class` on every row that lists it, or remove `of ANALOG`
+  --> main.nsm:3:9
+  |
+3 |         .p02 bidirectional "P0.02" "5" fn GPIO class ANALOG AIN0:input of ANALOG
+  |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+```
+
+```nsm fails
+part Zmcu6c {
+    pins {
+        .p02 bidirectional "P0.02" "5" fn ANALOG class AIN0 of ANALOG AIN8 of ANALOG
+    }
+}
+```
+
+```text
+error: `.p02` has two channels of `ANALOG`, `AIN0` and `AIN8`; a pin is one channel of a class
+  --> main.nsm:3:9
+  |
+3 |         .p02 bidirectional "P0.02" "5" fn ANALOG class AIN0 of ANALOG AIN8 of ANALOG
+  |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+```
+
 A module hides the parts inside it, so a board cannot write `.hub.mcu.pa2.function`. A module that wants its board to choose a function on a pin it exports passes the choice on with the equation `.mcu.pa2.function == .scl.function`, inside the module: the part's pin takes the function that the board states on the module's pin, and every check of the part applies to it as if the board had written it.
 
 ```nsm module=src::hub
@@ -1214,11 +1273,11 @@ board TwoSensors {
 }
 ```
 
-Here `battery` gets `p02` and `temperature` gets `p03`, and the pin file has an entry for each with `function = "ANALOG"`. The optimizer and `--pins locked` treat them as any two requests: each stays on a pin that offers `ANALOG`, and two never share a pin. When more requests ask for the function than pins offer it, the last one in the order of the names gets the "every pin that offers it is taken" error above. Two things stay refused: two requests for a function that only one pin offers (the second has no pin left, with the same error), and two pins that the source itself gives the same function by hand (`function ANALOG is chosen on both ...`). A line of a peripheral (`UARTE1_TX`) is also on one pin at a time, though every pin of its class could carry it, so two requests for it are refused with that same message.
+Here `battery` gets `p02` and `temperature` gets `p03`, and the pin file has an entry for each with `function = "ANALOG"`. When the rows name the channel of a class (`AIN0 of ANALOG`, "Functions"), the entry records the channel of the pin the request got instead (`function = "AIN0"`), and an entry that names a channel of the class asks for the class: it holds on any pin of the class, and the run writes the channel of the pin it is on. The optimizer and `--pins locked` treat them as any two requests: each stays on a pin that offers `ANALOG`, and two never share a pin. When more requests ask for the function than pins offer it, the last one in the order of the names gets the "every pin that offers it is taken" error above. Two things stay refused: two requests for a function that only one pin offers (the second has no pin left, with the same error), and two pins that the source itself gives the same function by hand (`function ANALOG is chosen on both ...`). A line of a peripheral (`UARTE1_TX`) is also on one pin at a time, though every pin of its class could carry it, so two requests for it are refused with that same message.
 
 A request asks a part declared in its own board or module, and a part with several packages needs its package stated (`.u.package &= "QFN-32"`), as the pins differ between packages. Not built yet: a request for the end of a bus (`.dbg: .u.Uart`).
 
-The editor shows the pin map of the selected part in the schematic's inspector (_Pin map_ section): each request with the pin it got, the pad of that pin, the function, a mark when the entry is locked, and where the pin came from (`file, hand`, `file, auto`, or `picked now` when the pin file has no entry for it yet). A request that got no pin is listed with the message the check gives, which is also in the problems list. The editor assigns in memory as it does on every analysis and reads `<stem>.pins.toml`. It writes that file in two ways and no other: the padlock of a request locks or unlocks its pin (the entry's `lock` line, written only when true, as a run writes it), and a move, by dragging the request's pin onto another pin that offers its function or by choosing the pin from the list that the row's _Move_ button opens, puts the request there (the entry's `pin` line, and `source = "hand"`, because a person chose it). Either writes the lines of that entry in place and leaves every other line, comment and blank line of the file as it was; a request the file has no entry for gets one, after the last entry of its board. The editor refuses, with the reason in a message and without writing, a move to a pin the part does not have, one that does not offer the function, one that another request or the source holds, one that would break a `shared` limit, and a move of a locked request. It never writes the pick lock (`netsmith lock --update` does), and it writes nothing when the source does not build.
+The editor shows the pin map of the selected part in the schematic's inspector (_Pin map_ section): each request with the pin it got, the pad of that pin, the function, a mark when the entry is locked, and where the pin came from (`file, hand`, `file, auto`, or `picked now` when the pin file has no entry for it yet). A request that got no pin is listed with the message the check gives, which is also in the problems list. The editor assigns in memory as it does on every analysis and reads `<stem>.pins.toml`. It writes that file in two ways and no other: the padlock of a request locks or unlocks its pin (the entry's `lock` line, written only when true, as a run writes it), and a move, by dragging the request's pin onto another pin that offers its function or by choosing the pin from the list that the row's _Move_ button opens, puts the request there (the entry's `pin` line, and `source = "hand"`, because a person chose it; and its `function` line when the request is for a class whose rows name the channel, which differs between the pins). Either writes the lines of that entry in place and leaves every other line, comment and blank line of the file as it was; a request the file has no entry for gets one, after the last entry of its board. The editor refuses, with the reason in a message and without writing, a move to a pin the part does not have, one that does not offer the function, one that another request or the source holds, one that would break a `shared` limit, and a move of a locked request. It never writes the pick lock (`netsmith lock --update` does), and it writes nothing when the source does not build.
 
 #### The pin map for firmware
 
@@ -1279,10 +1338,10 @@ and `Sensors.pins.json`:
 }
 ```
 
-- **Names.** The macros are `<BOARD>_PIN_<SIGNAL>_NAME` (the pin as the part's pin table names it, a string: a name such as `P0.13` is no C token), `_FUNCTION` (the function the request asked for, a string) and `_NUMBER`. The board and the signal are upper-cased, and anything that is not a letter or a digit is `_` (`hub.scl` is `HUB_SCL`). Two requests that are the same signal after that are an error that names both, which `fab` gives with the other checks of the source before it places or writes anything.
+- **Names.** The macros are `<BOARD>_PIN_<SIGNAL>_NAME` (the pin as the part's pin table names it, a string: a name such as `P0.13` is no C token), `_FUNCTION` (the function the request asked for, or for a class whose rows name the channel the channel of its pin, `AIN0`; a string) and `_NUMBER`. The board and the signal are upper-cased, and anything that is not a letter or a digit is `_` (`hub.scl` is `HUB_SCL`). Two requests that are the same signal after that are an error that names both, which `fab` gives with the other checks of the source before it places or writes anything.
 - **`_NUMBER`** is written only when the pin's name is letters and then one number, `GPIO7` (7) or `PA2` (2). A name with no trailing number (`VDD`), with the number in two places (`P0.13`) or with something after it (`GPIO7_B`) has no `_NUMBER`: which number firmware counts by is for the firmware author, so netsmith never guesses.
 - **Several parts.** The signal is the request's own name, which is its path in the board and so is unique (`hub.scl` for a request in a module `hub`), whatever part it asks. The header says the part in each comment, and the JSON in each signal's `part` (the part's path in the board).
-- **The JSON.** Keys are in byte order and the file is indented by two spaces and ends with a newline. `pin` is the pin's name in the pin table and `pad` its pad number (several are joined by a comma; `null` when the part has no row for it), `function` is the function requested, and `locked` is whether the pin file's entry has `lock = true`, the promise to firmware.
+- **The JSON.** Keys are in byte order and the file is indented by two spaces and ends with a newline. `pin` is the pin's name in the pin table and `pad` its pad number (several are joined by a comma; `null` when the part has no row for it), `function` is the function requested (the channel of its pin, for a class whose rows name one), and `locked` is whether the pin file's entry has `lock = true`, the promise to firmware.
 
 #### When a board does not route
 

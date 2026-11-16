@@ -105,6 +105,9 @@ impl PinFunction {
         if self.class.is_some() {
             out.push_str(" class");
         }
+        if let Some(of) = &self.of {
+            let _ = write!(out, " of {}", of.to_source());
+        }
         if let Some(line) = &self.line {
             let _ = write!(out, " as {}", line.to_source());
         }

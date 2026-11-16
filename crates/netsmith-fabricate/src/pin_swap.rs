@@ -146,6 +146,9 @@ impl std::fmt::Display for Score {
 pub struct Proposal {
     /// The pin of each request that moves, by request path: `p09`.
     pub picks: BTreeMap<String, String>,
+    /// The function the pin file records for each request that moves, by request path: the
+    /// capability, or its channel on the new pin (`AIN2` for `ANALOG`, #787).
+    pub functions: BTreeMap<String, String>,
     /// What the changes were, in the order they were made, one line each.
     pub moves: Vec<String>,
     pub before: Score,
@@ -154,7 +157,7 @@ pub struct Proposal {
 
 impl Proposal {
     /// The pin file `file` with the moved requests on their new pins, in the table of `board`.
-    /// A moved entry is the tool's choice (`source = "auto"`); its lock, if any, is untouched,
+    /// A moved entry is the tool's choice, and records the function of its new pin (#787) (`source = "auto"`); its lock, if any, is untouched,
     /// because a locked entry never moves.
     pub fn applied_to(&self, file: &PinFile, board: &str) -> PinFile {
         let mut out = file.clone();
@@ -162,6 +165,9 @@ impl Proposal {
             for (key, pin) in &self.picks {
                 if let Some(e) = entries.get_mut(key) {
                     e.pin = pin.clone();
+                    if let Some(function) = self.functions.get(key) {
+                        e.function = function.clone();
+                    }
                     e.source = EntrySource::Auto;
                 }
             }
@@ -326,8 +332,18 @@ pub fn improve_counting(
         .filter(|(i, _)| current[*i] != original[*i])
         .map(|(i, s)| (s.key.to_string(), current[i].clone()))
         .collect();
+    let functions = slots
+        .iter()
+        .enumerate()
+        .filter(|(i, _)| current[*i] != original[*i])
+        .filter_map(|(i, s)| {
+            let r = s.space.requests.iter().find(|r| r.key == s.key)?;
+            Some((s.key.to_string(), r.function_on(&current[i]).to_string()))
+        })
+        .collect();
     Some(Proposal {
         picks,
+        functions,
         moves,
         before,
         after: now,

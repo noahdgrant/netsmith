@@ -836,3 +836,29 @@ fn the_search_time_is_taken_from_the_budget_before_a_round_routes() {
     assert!(!e.contains("pins: tried"), "{e}");
     assert!(!pin_file.exists());
 }
+
+#[test]
+fn a_moved_request_for_a_class_records_the_channel_of_its_new_pin() {
+    // #787: the proposal carries the function of the new pin, so the file it makes says it.
+    use netsmith_fabricate::pin_swap::{Proposal, Score};
+    let file = netsmith_check::PinFile::parse(
+        "version = 1\n\n[B.pins.a]\npin = \"p02\"\nfunction = \"AIN0\"\nsource = \"auto\"\n",
+    )
+    .unwrap();
+    let score = Score {
+        crossings: 0,
+        ratsnest_um: 0,
+    };
+    let proposal = Proposal {
+        picks: [("a".to_string(), "p03".to_string())].into(),
+        functions: [("a".to_string(), "AIN1".to_string())].into(),
+        moves: Vec::new(),
+        before: score,
+        after: score,
+    };
+    let moved = proposal.applied_to(&file, "B");
+    assert_eq!(
+        moved.to_text(),
+        "version = 1\n\n[B.pins.a]\npin = \"p03\"\nfunction = \"AIN1\"\nsource = \"auto\"\n"
+    );
+}

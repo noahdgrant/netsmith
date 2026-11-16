@@ -114,6 +114,17 @@ pub struct SpaceRequest {
     /// Every pin of the part that offers the capability and that the source does not hold, in
     /// the byte order of the paths.
     pub offers: Vec<String>,
+    /// The channel of the capability on each pin of `offers` whose row names one (`p03` has
+    /// `AIN1` for `ANALOG`, `fn ANALOG class AIN1 of ANALOG`, #787), by pin path.
+    pub channels: BTreeMap<String, String>,
+}
+
+impl SpaceRequest {
+    /// The function the pin file and the firmware exports record for the request on `pin`:
+    /// the channel of the capability there, when the row names one, else the capability.
+    pub fn function_on(&self, pin: &str) -> &str {
+        self.channels.get(pin).unwrap_or(&self.capability)
+    }
 }
 
 impl PartSpace {
@@ -694,12 +705,16 @@ impl Checker<'_> {
             let requests_of_part: Vec<SpaceRequest> = applied
                 .iter()
                 .map(|p| {
+                    let mut channels = BTreeMap::new();
                     let offers = ctx
                         .rows
                         .iter()
                         .filter(|(pin, _)| !source_taken.contains(pin))
-                        .filter(|(pin, _)| {
+                        .filter(|(pin, path)| {
                             let row = rows_all.iter().find(|r| r.pin == *pin).expect("a row");
+                            if let Some(channel) = row.channel_of(&p.function) {
+                                channels.insert(path.clone(), channel.to_string());
+                            }
                             model.offers(part, row, &p.function)
                         })
                         .map(|(_, path)| path.clone())
@@ -710,6 +725,7 @@ impl Checker<'_> {
                         pin: model.path_below(p.pin, part),
                         lock: p.lock,
                         offers,
+                        channels,
                     }
                 })
                 .collect();
@@ -746,11 +762,18 @@ impl Checker<'_> {
             if ra != rb {
                 self.uf.insert(ra, rb);
             }
+            // The entry records the channel of a class where the row names one (#787).
+            let function = rows_all
+                .iter()
+                .find(|row| row.pin == p.pin)
+                .and_then(|row| row.channel_of(&p.function))
+                .unwrap_or(&p.function)
+                .to_string();
             root.entries.insert(
                 p.key.clone(),
                 PinEntry {
                     pin: self.model.path_below(p.pin, part),
-                    function: p.function.clone(),
+                    function,
                     lock: p.lock,
                     source: p.source,
                     at: None,
@@ -854,7 +877,15 @@ impl Checker<'_> {
             ));
         };
         let row = rows.iter().find(|r| r.pin == *pin).expect("a pin of a row");
-        if entry.function != a.capability {
+        // An entry of a request for a class records the channel of its pin (`AIN1` for
+        // `ANALOG`, #787); one moved to another pin of the class still asks for the class.
+        let asks_capability = entry.function == a.capability
+            || rows.iter().any(|r| {
+                r.functions
+                    .iter()
+                    .any(|f| f.name == entry.function && f.of.as_deref() == Some(&a.capability))
+            });
+        if !asks_capability {
             return Err(format!(
                 "the entry is for {} and the request asks for {}",
                 entry.function, a.capability
