@@ -569,7 +569,7 @@ board TooMuchMargin {
 ```
 
 ```text
-error: TooMuchMargin: L1: part `Inductor` in package `1210` needs KiCad's footprint `Inductor_SMD:L_1210_3225Metric` (std/kicad.toml line 297).
+error: TooMuchMargin: L1: part `Inductor` in package `1210` needs KiCad's footprint `Inductor_SMD:L_1210_3225Metric` (std/kicad.toml line 298).
 footprint `Inductor_SMD:L_1210_3225Metric` not found: looked for /tmp/netsmith-sample-libraries-442f93da51a2cbe0/footprints/Inductor_SMD.pretty/L_1210_3225Metric.kicad_mod; set NETSMITH_KICAD_FOOTPRINTS to the folder that holds the .pretty libraries, or list the library in kicad.toml
 KiCad is installed at /tmp/netsmith-sample-libraries-442f93da51a2cbe0/footprints but has no `Inductor_SMD:L_1210_3225Metric`: check the spelling, or use a project library (a `[[library]]` of kicad.toml) or a netsmith generated footprint: give that row a `gen:` footprint, for a package a generator makes (`footprint = "gen:SOT23(pins=3)"`).
 ```
@@ -1235,9 +1235,9 @@ board Budget {
 
 ```text
 error: no `fuse` candidate satisfies `fuse`: the closest of the 8 that fit, 1206HV-3A fuse 3A 125V 1206 C21261120, fails because fuse.current must always be at most fuse.rated_current, but 100mA..1kA is not always below 3A (the currents on net `VFUSED`: -fuse.current (100mA..1kA) + load.current (100mA..1kA) add up to zero; net `VIN`: fuse.current (100mA..1kA) + input.current (-1kA..-100mA) add up to zero)
-    --> std/parts/passive.nsm:420:5
+    --> std/parts/passive.nsm:432:5
     |
-420 |     .current <= .rated_current
+432 |     .current <= .rated_current
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -1327,9 +1327,9 @@ board Arcs {
 
 ```text
 error: no `fuse` candidate satisfies `fuse`: the closest of the 8 that fit, 1206HV-3A fuse 3A 125V 1206 C21261120, fails because fuse.supply_peak must always be at most fuse.rated_voltage, but 5kV is not always below 125V
-    --> std/parts/passive.nsm:421:5
+    --> std/parts/passive.nsm:433:5
     |
-421 |     .supply_peak <= .rated_voltage
+433 |     .supply_peak <= .rated_voltage
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -1396,7 +1396,7 @@ error: d.supply_fault_current must always be at most d.max_forward_current, but 
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
-`Crystal` has `.frequency` (state it with its tolerance, `16MHz +/- 20ppm`) and `.load_capacitance`, and no relation: the two load capacitors are the design's. `FerriteBead` has `.impedance` at `.impedance_frequency`.
+`Crystal` has `.frequency` (state it with its tolerance, `16MHz +/- 20ppm`) and `.load_capacitance`, and no relation: the two load capacitors are the design's. Pins `.a` and `.b` are the two terminals in every package; the four-pad 3225 package (3.2 x 2.5 mm) also has `.case`, its two case pads (2 and 4, which the makers' drawings call GND), which a board may join to ground or leave open like any passive pin, and a board that joins `.case` of a crystal in a two-pad package is refused because the pin is not there. A provider of `Crystal` gives `.case` a row. `FerriteBead` has `.impedance` at `.impedance_frequency`.
 
 ### Transistors
 

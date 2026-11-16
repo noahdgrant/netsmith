@@ -17,7 +17,7 @@ const GENERICS: [(&str, &str, Pins); 15] = [
     ("Led", "passive", DIODE),
     ("Inductor", "passive", AB),
     ("FerriteBead", "passive", AB),
-    ("Crystal", "passive", AB),
+    ("Crystal", "passive", CRYSTAL),
     ("Fuse", "passive", AB),
     ("Schottky", "diode", DIODE),
     ("Zener", "diode", DIODE),
@@ -64,6 +64,9 @@ const GENERICS: [(&str, &str, Pins); 15] = [
 ];
 
 const AB: &[(&str, &str)] = &[("a", "passive"), ("b", "passive")];
+/// The terminals and the case of a four-pad package (issue #845): a provider gives `.case` a
+/// row too, as a provider of a package with no case pads does with the pads it has.
+const CRYSTAL: &[(&str, &str)] = &[("a", "passive"), ("b", "passive"), ("case", "passive")];
 const DIODE: &[(&str, &str)] = &[("anode", "passive"), ("cathode", "passive")];
 const A1A2: &[(&str, &str)] = &[("a1", "passive"), ("a2", "passive")];
 

@@ -27,7 +27,7 @@
 //! SMB, SMC, SOT-23 (-3, -5, -6), SOT-223, SC-70 (SOT-323, -343, -353, -363, SC-70-8, each for
 //! reflow and for hand soldering), SOIC, TSSOP, MSOP, SSOP, QFN, DFN, WSON, HVSON and the other
 //! no-lead rows (`Package_DFN_QFN`, `Package_SON`, `Package_CSP`), LQFP, TQFP, VQFP, DPAK
-//! (TO-252), D2PAK (TO-263), SOT-89, SMD crystals, BGA on a full regular grid, and pin headers
+//! (TO-252), D2PAK (TO-263), SOT-89, SMD crystals, shielded power inductors of one maker's series (`inductor.rs`: the TDK SLF7045), BGA on a full regular grid, and pin headers
 //! and sockets (1 or 2 rows, 1 to 40 per row, pad 0.7 of the pitch, drill 1.0 mm or 0.8 mm at
 //! 2.0 mm, pin 1 square). The QFN family is a list of named packages, because the lead and
 //! exposed pad dimensions of a QFN of a given outline differ from one maker to the next (KiCad has
@@ -194,6 +194,7 @@ mod diode;
 mod draw;
 mod gullwing;
 pub(crate) mod header;
+mod inductor;
 pub(crate) mod ipc;
 mod mechanical;
 pub use mechanical::DRILL as HOLE_DRILL;
@@ -314,6 +315,7 @@ pub fn generate(id: &str) -> Option<Footprint> {
         .or_else(|| qfp::generate(library, name))
         .or_else(|| header::generate(library, name))
         .or_else(|| crystal::generate(library, name))
+        .or_else(|| inductor::generate(library, name))
         .or_else(|| bga::generate(library, name))
         .or_else(|| mechanical::generate(library, name))
 }
@@ -331,6 +333,7 @@ pub fn names() -> &'static [String] {
         all.extend(qfp::names());
         all.extend(header::names());
         all.extend(crystal::names());
+        all.extend(inductor::names());
         all.extend(bga::names());
         all.extend(mechanical::names());
         all.sort();
@@ -820,5 +823,19 @@ mod tests {
         );
         let four = generate("Crystal:Crystal_SMD_3225-4Pin_3.2x2.5mm").unwrap();
         assert_eq!(four.pads.len(), 4);
+    }
+
+    #[test]
+    fn the_tdk_slf7045_has_the_pads_of_the_land_pattern_of_its_datasheet() {
+        // TDK's SLF7045 sheet, page 4/5: two pads 1.5 long, 4.8 apart, 2.2 wide.
+        let fp = generate("Inductor_SMD:L_TDK_SLF7045").unwrap();
+        assert_eq!(fp.pad_numbers(), ["1", "2"]);
+        let at = |n: &str| fp.pads_numbered(n).next().unwrap().at;
+        assert!(near(at("1").x, -3.15) && near(at("2").x, 3.15));
+        assert!(near(at("1").y, 0.0) && near(at("2").y, 0.0));
+        for pad in &fp.pads {
+            assert!(near(pad.width, 1.5) && near(pad.height, 2.2));
+        }
+        assert!(near(at("2").x - at("1").x - 1.5, 4.8), "pads 4.8 mm apart");
     }
 }

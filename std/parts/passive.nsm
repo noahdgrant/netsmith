@@ -339,15 +339,27 @@ generic FerriteBead {
 /// `.frequency &= 16MHz +/- 20ppm`. `.load_capacitance` is the capacitance the datasheet
 /// calibrates the frequency for, as seen across the two terminals. The two load capacitors
 /// are the design's, and they are not tied to `.load_capacitance`: the stray capacitance of the
-/// layout is not a datasheet number. Only two-pad footprints are mapped in `std/kicad.toml`, so
-/// the four-pad crystals that are most common (3.2 x 2.5 mm) are not (ADR 0023).
+/// layout is not a datasheet number.
+///
+/// A crystal in a four-pad package (3225, 3.2 x 2.5 mm) has its terminals on the diagonal pads
+/// 1 and 3, and pads 2 and 4 are the case, which the makers' drawings call GND. `.a` and `.b` are
+/// the terminals in every package. `.case` is the two case pads, a pin of the four-pad package
+/// only. Like any passive pin it may float: a board that leaves it open builds, and one that
+/// joins it to a net (ground, usually) is not refused. A board that connects `.case` of a
+/// crystal that the solver puts in a two-pad package is refused, because the pin is not there.
 #[kind(crystal)]
 generic Crystal {
     .designator &= "Y"
 
-    pins {
+    pins "2012" "3215" "5032" {
         .a passive "A" "1"
         .b passive "B" "2"
+    }
+
+    pins "3225" {
+        .a    passive "A"   "1"
+        .b    passive "B"   "3"
+        .case passive "GND" "2" "4"
     }
 
     .frequency: Frequency

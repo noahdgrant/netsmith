@@ -113,8 +113,9 @@ footprint = "LED_SMD:LED_0805_2012Metric"
 # Packages are named after the footprint (`SOD-123`, `0603`, `2.54mm`, `GCT_USB4105_16P`, `M3`).
 # Mapped with a caveat (ADR 0023): `Tvs` is drawn with `Device:D_Zener`, because KiCad has no
 # one-way TVS symbol (`Device:D_TVS` is the two-way one with pins A1 and A2); `Crystal` has two
-# pins, so only two-pad footprints are mapped, and the four-pad crystals that are most common
-# (3.2 x 2.5 mm) are not; `Coax` maps an SMA connector whose footprint has four ground pads, all
+# terminals, and the two-pad packages use `Device:Crystal`; the four-pad 3225 has the two terminals
+# and a `GND` pin of the two case pads, so its row names no symbol and the part is drawn from its
+# pin table (`std/parts/passive.nsm`); `Coax` maps an SMA connector whose footprint has four ground pads, all
 # on pad 2; `Switch` is mapped to two SMD tactile footprints only.
 
 [[part]]
@@ -301,6 +302,16 @@ A = "1"
 B = "2"
 
 [[part]]
+kind = "Inductor"
+package = "SLF7045"
+symbol = "Device:L"
+footprint = "Inductor_SMD:L_TDK_SLF7045"
+
+[part.pin_names]
+A = "1"
+B = "2"
+
+[[part]]
 kind = "FerriteBead"
 package = "0402"
 symbol = "Device:FerriteBead"
@@ -353,6 +364,11 @@ footprint = "Crystal:Crystal_SMD_5032-2Pin_5.0x3.2mm"
 [part.pin_names]
 A = "1"
 B = "2"
+
+[[part]]
+kind = "Crystal"
+package = "3225"
+footprint = "Crystal:Crystal_SMD_3225-4Pin_3.2x2.5mm"
 
 [[part]]
 kind = "Fuse"
