@@ -2973,6 +2973,188 @@ mod tests {
         assert_eq!(board.check_placement(), vec![]);
     }
 
+    /// A regulator with a feedback pin, `fb` on pad 2, at `ldo.u`.
+    fn regulator_with_fb(refdes: &str) -> Part {
+        let mut p = regulator(refdes, "ldo.u");
+        let mut fb = power_pin("fb", "2");
+        fb.kind = netsmith_core::PinKind::Input;
+        p.pins.push(fb);
+        p
+    }
+
+    /// A `near` guideline of the regulator at `ldo.u`, as the design stage hands it on.
+    fn near(name: &str, select: netsmith_core::NearSelect, to: &str) -> netsmith_core::LayoutNear {
+        netsmith_core::LayoutNear {
+            part: "ldo.u".into(),
+            name: name.into(),
+            source: "LD9, 9.1 Layout, p.12".into(),
+            site: "ld9.nsm:20".into(),
+            select,
+            to: to.into(),
+            within: Some(2.0),
+        }
+    }
+
+    fn board_with_layout(
+        parts: Vec<Part>,
+        nets: Vec<Net>,
+        layout: Vec<netsmith_core::LayoutNear>,
+    ) -> Board {
+        let design = Design {
+            modules: Vec::new(),
+            name: "T".into(),
+            process: Some(crate::testlib::test_process()),
+            features: netsmith_core::Features {
+                layout,
+                ..Default::default()
+            },
+            interfaces: Vec::new(),
+            notes: Vec::new(),
+            parts,
+            nets,
+        };
+        crate::board_from_design_placed(
+            &design,
+            &netsmith_kicad::Mapping::standard(),
+            &fixtures(),
+            &PlaceOptions::default(),
+        )
+        .unwrap_or_else(|e| panic!("{e}"))
+    }
+
+    #[test]
+    fn a_datasheet_near_finds_its_parts_from_the_nets() {
+        // `on .fb kind resistor` finds the resistor on the feedback net and not the capacitor
+        // there; `bridging .vin .gnd` finds the capacitor across the input and not the
+        // resistor from the input to the feedback net.
+        let parts = vec![
+            regulator_with_fb("U1"),
+            at_path(part("R1", "Resistor", Some("0603")), "ldo.rtop"),
+            at_path(part("C1", "Capacitor", Some("0603")), "ldo.cin"),
+            at_path(part("C2", "Capacitor", Some("0603")), "ldo.cff"),
+        ];
+        let nets = vec![
+            wire("IN", &[("U1", "3"), ("C1", "1"), ("R1", "1")]),
+            wire("GND", &[("U1", "1"), ("C1", "2"), ("C2", "2")]),
+            wire("FB", &[("U1", "2"), ("R1", "2"), ("C2", "1")]),
+        ];
+        let layout = vec![
+            near(
+                "feedback",
+                netsmith_core::NearSelect::On {
+                    pin: "fb".into(),
+                    kind: Some(netsmith_core::PartKind::Resistor),
+                },
+                "fb",
+            ),
+            near(
+                "input_cap",
+                netsmith_core::NearSelect::Bridging {
+                    a: "vin".into(),
+                    b: "gnd".into(),
+                },
+                "vin",
+            ),
+        ];
+        let board = board_with_layout(parts, nets, layout);
+        let u1 = &board.parts[0];
+        assert_eq!(u1.layout.len(), 2);
+        assert_eq!(u1.layout[0].to_pads, ["2"]);
+        assert_eq!(
+            u1.layout[1].select_pads,
+            [vec!["3".to_string()], vec!["1".to_string()]]
+        );
+        let found: Vec<(&str, &str, Vec<String>)> =
+            netsmith_pcb::near_pairs(&board.parts, &board.nets)
+                .iter()
+                .map(|p| {
+                    (
+                        p.rule(&board.parts).name.as_str(),
+                        board.parts[p.other].refdes.as_str(),
+                        p.other_pads.clone(),
+                    )
+                })
+                .collect();
+        assert_eq!(
+            found,
+            [
+                ("feedback", "R1", vec!["2".to_string()]),
+                ("input_cap", "C1", vec!["1".to_string()]),
+            ]
+        );
+    }
+
+    #[test]
+    fn a_part_a_datasheet_near_finds_is_placed_next_to_its_pin() {
+        // The resistor on the feedback pin has one other pad, on a net with the far end of a
+        // chain of thirty resistors, which pulls it away; the guideline pulls it to the pin.
+        let mut parts = vec![
+            regulator_with_fb("U1"),
+            at_path(part("RF", "Resistor", Some("0603")), "ldo.rf"),
+        ];
+        let (rest, mut nets) = chain("R", "other", 30);
+        parts.extend(rest);
+        nets.push(wire("FB", &[("U1", "2"), ("RF", "1")]));
+        nets.push(wire("FAR", &[("RF", "2"), ("R30", "2")]));
+        nets.push(wire("IN", &[("U1", "3"), ("R1", "1")]));
+        let layout = vec![near(
+            "feedback",
+            netsmith_core::NearSelect::On {
+                pin: "fb".into(),
+                kind: Some(netsmith_core::PartKind::Resistor),
+            },
+            "fb",
+        )];
+        let board = board_with_layout(parts, nets, layout);
+        let pairs = netsmith_pcb::near_pairs(&board.parts, &board.nets);
+        assert_eq!(pairs.len(), 1);
+        let d = pairs[0].distance(&board.parts).unwrap();
+        // Without the guideline the placer puts it 3.3 mm away.
+        assert!(d < 2.5, "the resistor is {d:.2} mm from the pin");
+        assert_eq!(board.check_placement(), vec![]);
+    }
+
+    #[test]
+    fn a_part_further_than_a_datasheet_near_allows_is_a_finding() {
+        let parts = vec![
+            regulator_with_fb("U1"),
+            at_path(part("RF", "Resistor", Some("0603")), "ldo.rf"),
+        ];
+        let nets = vec![wire("FB", &[("U1", "2"), ("RF", "1")])];
+        let mut rule = near(
+            "feedback",
+            netsmith_core::NearSelect::On {
+                pin: "fb".into(),
+                kind: Some(netsmith_core::PartKind::Resistor),
+            },
+            "fb",
+        );
+        rule.within = Some(8.0);
+        let layout = vec![rule];
+        let mut board = board_with_layout(parts, nets, layout);
+        assert_eq!(
+            netsmith_pcb::near_findings(&board.parts, &board.nets),
+            Vec::<String>::new()
+        );
+        // Moved 20 mm along x, away from the pin.
+        let rf = board.parts.iter().position(|p| p.refdes == "RF").unwrap();
+        let away = board.parts[rf].at.x + 20.0;
+        board.parts[rf].at.x = away;
+        let d = netsmith_pcb::near_pairs(&board.parts, &board.nets)[0]
+            .distance(&board.parts)
+            .unwrap();
+        let found = netsmith_pcb::near_findings(&board.parts, &board.nets);
+        let [line] = found.as_slice() else {
+            panic!("{found:?}")
+        };
+        let text = format!("{}", (d * 100.0).round() / 100.0);
+        assert!(
+            line.starts_with("`ldo.u` (U1) asks for `feedback` within 8 mm of its pin `.fb` (pads 2), and RF (`ldo.rf`) is ")
+                && line.contains(&format!(" is {text} mm from it (LD9, 9.1 Layout, p.12; ld9.nsm:20): move RF nearer U1")),
+            "{line}"
+        );
+    }
+
     #[test]
     fn a_capacitor_is_paired_with_the_part_of_its_own_module_first() {
         let mut parts = vec![regulator("U1", "a.u"), regulator("U2", "b.u")];

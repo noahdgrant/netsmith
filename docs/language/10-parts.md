@@ -281,3 +281,88 @@ error: Letters: `mcu` has `.designator` "U1", which is not one or more capital l
 ```
 
 A kind's letters are one value, so a board that contradicts them gets the usual empty-intersection error at the part: ``contradiction on `r.designator`: it is already "R", which does not overlap "Z"``. A saved placement is keyed by the part's path, not by its designator (ADR 0032), so changing letters or numbers moves no part in the layout file. A fab package that was ordered before the letters changed keeps the designators it was made with.
+
+### What the datasheet says about layout
+
+A datasheet's layout section says where the parts around a part go: "the input capacitor close to the VIN pin", "the inductor next to SW", "the feedback resistors within 2 mm of FB". A part states it once, in a `layout` block, with the document and the section it comes from (ADR 0030, issue #829). Every board that uses the part gets it.
+
+```nsm
+import std::parts::connector::Header1x2
+import std::parts::passive::Capacitor
+import std::sources::Rail
+
+/// An invented regulator whose datasheet asks for its capacitors near its pins.
+part Ld9 {
+    .designator &= "U"
+    .vin: Rail
+    .vout: Rail
+    .vin.neg ~ .vout.neg
+    pins {
+        .vin.pos  power "IN"  "3"
+        .vin.neg  power "GND" "1"
+        .vout.pos power "OUT" "2"
+    }
+
+    layout {
+        source "LD9 datasheet, 9.1 Layout Guidelines, p.12"
+        /// "Place the input capacitor within 2 mm of the IN pin."
+        near input_cap bridging .vin.pos .vin.neg to .vin.pos within 2mm
+        /// "Place the output capacitor close to the OUT pin."
+        near output_cap on .vout.pos kind capacitor to .vout.pos
+    }
+}
+
+board Supply {
+    .feed: Header1x2
+    .load: Header1x2
+    .reg: Ld9
+    /// Found by `input_cap`: one pad on IN's net, one on GND's.
+    .cin: Capacitor
+    /// Found by `output_cap`: a capacitor with a pad on OUT's net.
+    .cout: Capacitor
+    .feed.p1 ~ .reg.vin.pos
+    .feed.p2 ~ .reg.vin.neg
+    .load.p1 ~ .reg.vout.pos
+    .load.p2 ~ .reg.vin.neg
+    .reg.vin.pos ~> .cin ~> .reg.vin.neg
+    .reg.vout.pos ~> .cout ~> .reg.vin.neg
+}
+```
+
+Rules.
+
+- `source "..."` is mandatory, once in each block: the document (its title or number) and the section or page. A part whose guidelines come from two documents has a block for each. A `layout` block is only in a part's own definition, not in a generic (whose catalog parts each have their own datasheet), a module or a board.
+- `near NAME SELECTOR to .pin [within LENGTH]` is the one statement so far. The name (`input_cap`) is what a finding calls it, and is used once in a part. The selector says which parts of the board it is about, found from the nets of the part's own pins, so the part names no other part and no net:
+  - `bridging .a .b`: every other part with two pads, one on the net of each pin (a capacitor across the input);
+  - `on .pin`, or `on .pin kind inductor`: every other part with a pad on the pin's net, of that kind when one is given (the words of `#[kind(...)]`, chapter _Attributes_).
+- `to .pin` is the pin the parts go next to. A part found is measured from its pads on the net of that pin (all its pads, when none is on it) to the pin's pads, the nearest two, centre to centre.
+- `within 2mm` is the number the datasheet gives. With none ("close to"), the placer pulls the parts and nothing is checked: the tool adds no number of its own.
+- The placer pulls each part found toward the pin as it pulls a decoupling capacitor (chapter _The shape of a board_). A part that ends further than `within` is a guideline of `fab` (`warning: Supply: layout guideline: ...`, an error with `guidelines = "error"` or `--strict`), never an error of `build`.
+- `///` above a `near` holds the datasheet's sentence. The standard library's first block is `Lmr16006y`'s, from section 11.1 of its datasheet.
+
+Not built yet: the other statements ADR 0030 sketches (`away`, `loop`, `keepout`, `edge`, `vias`, `route`), a block for one package, and a waiver in the layout file.
+
+A block without its source is refused:
+
+```nsm fails
+part Ld9 {
+    pins {
+        .a passive "A" "1"
+    }
+    layout {
+        near pull on .a to .a
+    }
+}
+
+board B {
+    .u: Ld9
+}
+```
+
+```text
+error: this `layout` block states no source: add `source "..."` with the document and the section that give its guidelines, such as `source "SNVSA24, 11.1 Layout Guidelines, p.17"`
+  --> main.nsm:5:5
+  |
+5 |     layout {
+  |     ^^^^^^^^
+```

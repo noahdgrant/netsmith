@@ -1196,6 +1196,9 @@ pub struct Model {
     /// application circuit says, which is the design's circuit and not a requirement of the part
     /// on itself. Without repeats.
     pub(crate) support_sections: Vec<(SourceId, Span)>,
+    /// The `near` guidelines of the parts' `layout` blocks (ADR 0030, issue #829), one for each
+    /// instance of a part that states one, in the order they were read.
+    pub layout: Vec<LayoutNear>,
     /// The groups of loads of which at most a few draw at once (`shared` in a board or a
     /// module, issue #806), in the order they were read.
     pub(crate) load_groups: Vec<crate::loads::LoadGroup>,
@@ -1295,6 +1298,35 @@ impl Model {
     }
 }
 
+/// A `near` statement of a part's `layout` block (ADR 0030, issue #829), for one instance of
+/// the part: the parts that [`NearSelect`] finds on the board go next to the pads of `to`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct LayoutNear {
+    /// The part instance whose definition states it.
+    pub part: InstId,
+    /// The guideline's name (`input_cap`).
+    pub name: String,
+    /// The block's `source`: the document and section that state it.
+    pub source: String,
+    /// Where the statement is: `file:line`.
+    pub site: String,
+    pub select: NearSelect,
+    /// The pin of the part the selected parts go next to.
+    pub to: InstId,
+    /// The largest distance, pad centre to pad centre, in mm; None for a datasheet that says
+    /// "close to" with no number.
+    pub within: Option<f64>,
+}
+
+/// Which parts a [`LayoutNear`] is about, by the pins of the part whose nets find them.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum NearSelect {
+    /// Every two-pad part with a pad on the net of each pin.
+    Bridging(InstId, InstId),
+    /// Every other part with a pad on the pin's net, of the kind when one is given.
+    On { pin: InstId, kind: Option<PartKind> },
+}
+
 /// A `polygon` statement of an `Outline` (issue #57): its corners in mm, in the order written.
 #[derive(Debug, Clone, PartialEq)]
 pub struct OutlinePolygon {
@@ -1352,6 +1384,7 @@ impl Model {
             polygons: Vec::new(),
             default_notes: Vec::new(),
             support_sections: Vec::new(),
+            layout: Vec::new(),
             load_groups: Vec::new(),
             journal: Vec::new(),
             bookmarks: Holders::default(),

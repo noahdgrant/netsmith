@@ -1,8 +1,8 @@
 //! The current of each net and the optional features of a design.
 
 use crate::{
-    CaseModel, Cutout, Keepout, Label, Logo, Offset, Outline, PartHeight, PartSilk, PartStandoff,
-    PinProtrusion, Placement, Pour, StepModel,
+    CaseModel, Cutout, Keepout, Label, Logo, Offset, Outline, PartHeight, PartKind, PartSilk,
+    PartStandoff, PinProtrusion, Placement, Pour, StepModel,
 };
 
 /// The current a net carries, and the least track that carries it (issue #431).
@@ -78,10 +78,55 @@ pub struct Features {
     pub constraints: Vec<Placement>,
     /// Relations between the places of two parts (ADR 0045, section 3).
     pub offsets: Vec<Offset>,
+    /// The layout guidelines that the parts' datasheets state (`layout` blocks, ADR 0030, issue
+    /// #829), one for each part of the board whose definition states one. Left out of a design
+    /// file when empty.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub layout: Vec<LayoutNear>,
     /// The text of each line of the physical file that states a requirement, by the
     /// `file:line` the `source` fields name (`widget.physical.nsm:14`), so that a message can
     /// quote the line. Filled by the caller that knows the source files; empty otherwise.
     pub line_texts: std::collections::BTreeMap<String, String>,
+}
+
+/// A `near` guideline of a part's `layout` block (ADR 0030, issue #829), for one part of the
+/// board: the parts that [`NearSelect`] finds from the nets go next to the pads of the pin `to`,
+/// within `within` when the datasheet gives a number. A guideline and not a rule: the placer
+/// pulls the parts there and `fab` warns when a number is not met (ADR 0036).
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct LayoutNear {
+    /// The path of the part that states it: `reg.ic`.
+    pub part: String,
+    /// The guideline's name in the part's `layout` block: `input_cap`.
+    pub name: String,
+    /// The document and section the block cites: `SNVSA24, 11.1 Layout Guidelines, p.17`.
+    pub source: String,
+    /// Where the part states it: `std/parts/regulator.nsm:1100`.
+    pub site: String,
+    pub select: NearSelect,
+    /// The pin the parts go next to, as the part's pin table names it (`vin.pos`).
+    pub to: String,
+    /// The largest distance from a pad of a selected part on the net of `to` (any of its pads,
+    /// when none is on it) to a pad of `to`, centre to centre, in mm. `None` for a datasheet
+    /// that says "close to" with no number: the placer pulls, and nothing is checked.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub within: Option<f64>,
+}
+
+/// Which parts of the board a [`LayoutNear`] is about, found from the nets of the part's pins
+/// (named as its pin table names them).
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum NearSelect {
+    /// Every other part with two pads, one on the net of each pin.
+    Bridging { a: String, b: String },
+    /// Every other part with a pad on the net of the pin, of the kind (ADR 0125) when one is
+    /// given.
+    On {
+        pin: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        kind: Option<PartKind>,
+    },
 }
 
 /// The models of [`Features::models`] that the design states, as a design file holds them.

@@ -14,6 +14,7 @@ pub mod layout_edit;
 pub mod models;
 pub mod no_supplier;
 pub mod order;
+pub mod part_layout;
 pub mod physical;
 pub mod picture;
 pub mod pin_export;

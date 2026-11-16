@@ -58,6 +58,56 @@ pub struct Support {
     pub span: Span,
 }
 
+/// `layout { source "..."  near input_cap bridging .vin.pos .vin.neg to .vin.pos }`: what a
+/// part's datasheet says about where the parts around it go, with the document it says it in
+/// (ADR 0030, issue #829). Its statements name the part's own pins, and the board's parts they
+/// are about are found by the nets. Only a part's own definition may hold one.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Layout {
+    /// The statements in the order written; the checker asks for exactly one `source`.
+    pub statements: Vec<LayoutStatement>,
+    pub span: Span,
+}
+
+/// One statement of a [`Layout`] block.
+#[derive(Debug, Clone, PartialEq)]
+pub enum LayoutStatement {
+    /// `source "SNVSA24, 11.1 Layout Guidelines, p.17"`: the document and the section that
+    /// state the block's guidelines.
+    Source {
+        text: String,
+        span: Span,
+    },
+    Near(Box<Near>),
+}
+
+/// `near input_cap bridging .vin.pos .vin.neg to .vin.pos within 2mm`: the parts the selector
+/// finds go next to the pads of the pin after `to`, within the length when one is given.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Near {
+    /// `///` lines above the statement: the datasheet's sentence.
+    pub docs: Vec<String>,
+    /// The guideline's name, what a finding calls it (`input_cap`).
+    pub name: Ident,
+    pub select: Select,
+    /// The pin whose pads the parts go next to.
+    pub to: Path,
+    /// The largest distance, pad centre to pad centre, as the datasheet gives it. None for a
+    /// datasheet that says "close to" with no number.
+    pub within: Option<Expr>,
+    pub span: Span,
+}
+
+/// Which parts of the board a [`Near`] is about, found from the nets of the part's pins.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Select {
+    /// `bridging .a .b`: every two-pad part with one pad on the net of each pin.
+    Bridging(Path, Path),
+    /// `on .pin` or `on .pin kind inductor`: every other part with a pad on the pin's net, of
+    /// that kind (ADR 0125) when one is given.
+    On { pin: Path, kind: Option<Ident> },
+}
+
 /// `defaults { Resistor.package ?= "0402" }`: values a board offers to every part or module of
 /// a kind on it that states nothing on the field (issue #625). Each item is a `?=` statement
 /// whose left side names a kind and one of its fields; the checker refuses anything else. Only
@@ -246,6 +296,9 @@ pub enum Item {
     /// A `defaults { ... }` section: the values a board offers to the parts and modules of a
     /// kind (issue #625); only a board may hold one.
     Defaults(Defaults),
+    /// A `layout { ... }` block: the layout guidelines of a part's datasheet, with their
+    /// source (ADR 0030, issue #829); only a part may hold one.
+    Layout(Layout),
     /// A `row .a1 .. .a12 along x pitch 2.54mm` statement; only a physical file may hold one.
     Row(Row),
     /// A `polygon (0mm, 0mm) (40mm, 0mm) ...` statement; only an `Outline` in a physical

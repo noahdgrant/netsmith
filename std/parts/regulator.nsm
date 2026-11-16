@@ -1019,6 +1019,12 @@ part Lt8641 provides BuckIc {
 /// (p.13), which is its `.current` (the DC analysis cannot work it out between two sources,
 /// and judges the trial with this one);
 /// and the 100 kohm from VIN to SHDN of Figure 9. `Buck` makes the inductor, the capacitors and the divider (R1 and R2).
+///
+/// The `layout` block is the datasheet's 11.1 Layout Guidelines (p.17), items 1 to 3, which name
+/// pins of the IC; it gives no distances, so no statement has `within` and the placer pulls the
+/// parts without a number to check. Item 1 also asks the divider to stay "away from the
+/// inductor", item 4 puts the output capacitor at the junction of L1 and D1 (no pin of the IC),
+/// and item 5 is about the ground copper: none of them is a `near`, and they are not stated.
 part Lmr16006y provides BuckIc {
     .vref &= 0.747V..0.782V
     .fsw &= 1785kHz..2415kHz
@@ -1044,6 +1050,17 @@ part Lmr16006y provides BuckIc {
 
     .package: Package
     catalog lmr16006y { .mpn, .package, .efficiency optional }
+
+    // 11.1 Layout Guidelines (p.17; see the doc comment above).
+    layout {
+        source "SNVSA24, 11.1 Layout Guidelines, p.17"
+        /// "The feedback network, resistors R1 and R2, should be kept close to the FB pin."
+        near feedback on .fb kind resistor to .fb
+        /// "The input bypass capacitor Cin must be placed close to the VIN pin."
+        near input_cap bridging .vin.pos .vin.neg to .vin.pos
+        /// "The inductor L1 should be placed close to the SW pin."
+        near inductor on .sw.pos kind inductor to .sw.pos
+    }
 
     // Figure 9 (p.11) and the selection rules of p.13 and p.14 (see the doc comment above).
     support {

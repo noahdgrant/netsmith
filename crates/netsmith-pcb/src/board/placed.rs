@@ -126,6 +126,10 @@ pub struct Placed {
     /// symbol. `None` for a label, which has no symbol.
     #[serde(default)]
     pub symbol: Option<netsmith_kicad::SymbolLink>,
+    /// The `near` guidelines of the part's `layout` block, with the pads of the pins they name
+    /// (ADR 0030, issue #829). Empty for a part whose definition states none.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub layout: Vec<crate::part_layout::PartNear>,
 }
 
 impl Placed {

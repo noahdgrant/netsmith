@@ -1453,6 +1453,7 @@ fn design_model(name: &str, model: &Model, solution: &Solution) -> Result<Design
     let least_track = process.as_ref().map_or(0.0, |p| p.min_track);
     let (logos, logo_sites) = features::logos(model, least_text, least_track, &mut errors);
     features.logos = logos;
+    features.layout = features::layout(model);
     let (mut constraint_sites, mut offset_sites) = (constraint_sites, offset_sites);
     let mut bank_notes: Vec<String> = Vec::new();
     features::expand_banks(

@@ -169,7 +169,7 @@ impl<'a> Engine<'a> {
                 .map(|(k, _)| k)
                 .collect()
         };
-        let decs: Vec<Dec> = decoupling_pairs(parts, p.nets)
+        let mut decs: Vec<Dec> = decoupling_pairs(parts, p.nets)
             .iter()
             .map(|pair: &DecouplingPair| {
                 let side = |s: &netsmith_pcb::PairNet| {
@@ -189,6 +189,31 @@ impl<'a> Engine<'a> {
                 }
             })
             .collect();
+        // The parts a datasheet's `near` guideline finds (ADR 0030, issue #829), each pulled to
+        // the pads of its pin as a decoupling capacitor is to its part's.
+        for pair in near_pairs(parts, p.nets) {
+            let other: Vec<usize> = pair
+                .other_pads
+                .iter()
+                .flat_map(|number| pad_ids(pair.other, number))
+                .collect();
+            let to: Vec<(usize, usize)> = pair
+                .to_pads
+                .iter()
+                .flat_map(|number| {
+                    pad_ids(pair.part, number)
+                        .into_iter()
+                        .map(|k| (pair.part, k))
+                })
+                .collect();
+            if other.is_empty() || to.is_empty() {
+                continue;
+            }
+            decs.push(Dec {
+                cap: pair.other,
+                nets: [(other, to), (Vec::new(), Vec::new())],
+            });
+        }
         let mut decs_of: Vec<Vec<usize>> = vec![Vec::new(); n];
         for (d, dec) in decs.iter().enumerate() {
             let mut involved = vec![dec.cap];
