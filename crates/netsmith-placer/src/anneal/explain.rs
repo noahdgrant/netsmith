@@ -105,11 +105,11 @@ impl<'a> Engine<'a> {
                 }
                 let ring = self
                     .ring_depth(c, j, 0.0)
-                    .map(|(rect, depth)| (None, rect, depth));
+                    .map(|(rect, depth, ring)| (Err(ring), rect, depth));
                 let carried = self
                     .carried_depths(c, j, 0.0)
                     .into_iter()
-                    .map(|(zone, rect, depth)| (Some(zone), rect, depth));
+                    .map(|(zone, rect, depth)| (Ok(zone), rect, depth));
                 for (zone, rect, depth) in carried.chain(ring) {
                     if depth <= 1e-6 {
                         continue;
@@ -117,11 +117,16 @@ impl<'a> Engine<'a> {
                     let region = &self.p.region;
                     let at = rect.centre();
                     let what = match zone {
-                        Some(zone) => format!("the keepout `{zone}` that {} carries", shown[c]),
-                        None => format!(
+                        Ok(zone) => format!("the keepout `{zone}` that {} carries", shown[c]),
+                        Err(true) => format!(
                             "the escape ring of {} (its pads' box grown by {} mm)",
                             shown[c],
                             short_mm(RING)
+                        ),
+                        Err(false) => format!(
+                            "the room kept round the pins of {} on other nets (each pad grown by {} mm)",
+                            shown[c],
+                            short_mm(PIN_ROOM)
                         ),
                     };
                     let why = format!(
