@@ -53,6 +53,22 @@ const names = (nodes: SectionNode['children']) => nodes.map((n) => (n.type === '
 const folder = (nodes: SectionNode['children'], first: string) => nodes.find((n) => n.type === 'folder' && n.segments[0] === first) as FolderNode;
 
 describe('buildTree', () => {
+  it('shows the modules of a dependency in their own section, under the folder of the dependency', () => {
+    const files = [
+      file('src/main.nsm', ['board'], 'top_level'),
+      file('../shared/src/rf.nsm', ['interface'], 'dependency'),
+      file('../shared/src/parts/acme.nsm', ['part'], 'dependency'),
+      file('radio@0123456789ab/src/link.nsm', ['module'], 'dependency'),
+    ];
+    const sections = buildTree(files);
+    expect(sections.map((s) => s.role)).toEqual(['top_level', 'dependency']);
+    const deps = sections[1];
+    expect(deps.label).toBe('Dependencies');
+    expect(names(deps.children)).toEqual(['../shared/src/', 'radio@0123456789ab/src/']);
+    const shared = deps.children[0] as FolderNode;
+    expect(names(shared.children)).toEqual(['parts/', 'rf.nsm']);
+  });
+
   it('makes a section for each role that has files, in a fixed order', () => {
     expect(tree.map((s) => s.role)).toEqual(['top_level', 'module', 'physical', 'schematic_layout', 'manifest', 'std']);
     expect(buildTree([FILES[1]]).map((s) => s.role)).toEqual(['module']);

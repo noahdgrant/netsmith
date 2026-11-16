@@ -439,3 +439,53 @@ fn a_single_file_has_no_project_to_change() {
     );
     assert!(editor.project().folders.is_empty());
 }
+
+#[test]
+fn a_dependencys_modules_are_in_the_tree_read_only_with_their_outline() {
+    // `app` depends on `shared`, whose `src/power.nsm` the tree lists by the name messages give
+    // it (issue #1012).
+    let root = TempDir::new("editor-files-dependency");
+    fs::create_dir_all(root.join("app/src")).unwrap();
+    fs::create_dir_all(root.join("shared/src")).unwrap();
+    fs::write(
+        root.join("app/netsmith.toml"),
+        "[project]\nname = \"app\"\ntop_level = [\"src/main.nsm\"]\n\n[dependencies]\nshared = { path = \"../shared\" }\n",
+    )
+    .unwrap();
+    fs::write(root.join("app/src/main.nsm"), MAIN).unwrap();
+    fs::write(
+        root.join("shared/netsmith.toml"),
+        "[project]\nname = \"shared\"\ntop_level = []\n",
+    )
+    .unwrap();
+    fs::write(root.join("shared/src/power.nsm"), MODULE).unwrap();
+    let editor = Workspace::open(Target::resolve_from(&root.join("app"), None).unwrap())
+        .unwrap_or_else(|e| panic!("{e}"));
+    let file = editor
+        .project()
+        .files
+        .into_iter()
+        .find(|f| f.path == "../shared/src/power.nsm")
+        .expect("in the tree");
+    assert_eq!(file.role, FileRole::Dependency);
+    assert!(file.readonly);
+    assert_eq!(
+        file.defs
+            .iter()
+            .map(|d| d.name.as_str())
+            .collect::<Vec<_>>(),
+        ["Power"]
+    );
+    // It can be read, and not written, moved or removed.
+    let content = editor.read_file("../shared/src/power.nsm").unwrap();
+    assert_eq!(content.text, MODULE);
+    assert!(content.readonly);
+    let refused = editor
+        .write_file("../shared/src/power.nsm", "", &content.stamp)
+        .unwrap_err();
+    assert_eq!(refused.status, 403);
+    assert_eq!(
+        fs::read_to_string(root.join("shared/src/power.nsm")).unwrap(),
+        MODULE
+    );
+}

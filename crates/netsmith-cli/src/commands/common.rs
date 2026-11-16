@@ -220,11 +220,10 @@ pub(super) fn write_dependency_lock(target: &Target) -> Result<(), ExitCode> {
         return Ok(());
     };
     match netsmith_fabricate::dependency_lock::write_if_missing(project) {
-        Ok(Some(lock)) => {
+        Ok(Some(_)) => {
             eprintln!(
-                "wrote {} ({} dependencies by git); commit it",
+                "wrote {}, the commit of each dependency by git; commit it",
                 netsmith_fabricate::dependency_lock::LOCK_FILE,
-                lock.entries.len()
             );
             Ok(())
         }

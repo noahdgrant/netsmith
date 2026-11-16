@@ -134,6 +134,10 @@ export function allowed(node: Node | null): Allowed {
     const why = 'The standard library is built into netsmith: it cannot be changed.';
     return { newHere: true, rename: why, remove: why };
   }
+  if (file.role === 'dependency') {
+    const why = 'A file of a dependency is changed in its own project.';
+    return { newHere: true, rename: why, remove: why };
+  }
   if (file.role === 'manifest') {
     const why = 'netsmith.toml is edited outside the editor.';
     return { newHere: true, rename: why, remove: why };

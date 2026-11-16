@@ -48,11 +48,12 @@ export interface DefNode {
 
 export type Node = SectionNode | FolderNode | FileNode | DefNode;
 
-export const SECTION_ORDER: FileRole[] = ['top_level', 'module', 'physical', 'schematic_layout', 'manifest', 'std'];
+export const SECTION_ORDER: FileRole[] = ['top_level', 'module', 'dependency', 'physical', 'schematic_layout', 'manifest', 'std'];
 
 export const SECTION_LABEL: Record<FileRole, string> = {
   top_level: 'Top level',
   module: 'Imported files',
+  dependency: 'Dependencies',
   physical: 'Physical files',
   schematic_layout: 'Schematic layout',
   manifest: 'Project',
@@ -63,6 +64,7 @@ export const SECTION_LABEL: Record<FileRole, string> = {
 export const SECTION_HELP: Record<FileRole, string> = {
   top_level: 'The files the project builds: the boards, systems and panels in them are what the views show',
   module: 'The files under src/ that the top-level files import: modules, parts, interfaces and the rest of what a design is built from',
+  dependency: 'The modules of the other projects that netsmith.toml names under [dependencies], imported by the name of each (read-only: change them in their own project)',
   physical: 'The physical file beside a source: the case, the outline, where parts go',
   schematic_layout: 'The file beside a source that keeps where parts were moved in the schematic (written by dragging, editable by hand)',
   manifest: 'The project manifest',
@@ -86,9 +88,10 @@ export function kindInfo(kind: string) {
 // ------------------------------------------------------------------ building
 
 /** The part of a path that the section names: files are shown below `src/` (the standard
- * library below `std/`), so the folder is what is left. */
+ * library below `std/`), so the folder is what is left. A dependency's file is shown with its
+ * whole path, which starts with the dependency's folder (`../shared/src`). */
 export function baseOf(role: FileRole): string {
-  return role === 'std' ? 'std' : 'src';
+  return role === 'std' ? 'std' : role === 'dependency' ? '' : 'src';
 }
 
 /** The folder of a path below `base` (`src/sheets/adc.nsm` below `src` is `sheets`). */
@@ -418,6 +421,7 @@ export function fileIcon(name: string): FileIcon {
 export function readonlyReason(file: TreeFile): string {
   if (file.role === 'manifest') return 'Read-only: edit it outside the editor';
   if (file.role === 'std') return 'Read-only: part of the standard library that ships with netsmith';
+  if (file.role === 'dependency') return 'Read-only: a file of a dependency, another project: change it in that project';
   return 'Read-only: edit it outside the editor';
 }
 

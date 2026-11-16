@@ -1235,7 +1235,7 @@ impl Walk<'_> {
         };
         let dir = self.cache()?.checkout(&url, &commit)?;
         request.commit = commit.clone();
-        if !self.locked.iter().any(|l| *l == request) {
+        if !self.locked.contains(&request) {
             self.locked.push(request);
         }
         Ok((dir, commit))
@@ -1258,6 +1258,9 @@ impl Walk<'_> {
         for (name, dependency) in &project.manifest.dependencies {
             let (dir, shown, commit, inside) = match (&dependency.path, &dependency.git) {
                 (Some(path), _) => {
+                    if repository.is_some() && normal_folder(path).starts_with("..") {
+                        return Err(outside_repository(&manifest, name, path, folder));
+                    }
                     let shown = normal_folder(&if folder.is_empty() {
                         path.to_string()
                     } else {
@@ -1292,9 +1295,7 @@ impl Walk<'_> {
                 && let Some(repository) = repository
                 && !fs::canonicalize(repository).is_ok_and(|r| canonical.starts_with(r))
             {
-                return Err(format!(
-                    "{manifest}: [dependencies] {name}: {shown} is outside the git repository {folder} came from; a dependency by `git` names its own dependencies by `git`, or by a `path` inside it"
-                ));
+                return Err(outside_repository(&manifest, name, &shown, folder));
             }
             if let Some(at) = self.chain.iter().position(|(root, _)| *root == canonical) {
                 let mut names: Vec<&str> =
@@ -1329,6 +1330,13 @@ impl Walk<'_> {
         }
         Ok(())
     }
+}
+
+/// The error of a `path` entry of a dependency by `git` that leaves its repository.
+fn outside_repository(manifest: &str, name: &str, path: &str, folder: &str) -> String {
+    format!(
+        "{manifest}: [dependencies] {name}: {path} is outside the git repository {folder} came from; a dependency by `git` names its own dependencies by `git`, or by a `path` inside it"
+    )
 }
 
 /// A folder as messages show it: with `/`, without `.` steps, and with each `..` that undoes a
@@ -2031,6 +2039,38 @@ mod tests {
     }
 
     #[test]
+    fn git_and_version_dependencies_are_read_and_survive_a_round_trip() {
+        let text = "[project]\nname = \"a\"\n\n[dependencies]\nradio = { git = \"git@example.invalid:radio.git\", version = \"1.2\" }\nshared = { git = \"https://example.invalid/shared.git\", rev = \"main\" }\ntools = { git = \"/srv/git/tools\", rev = \"v3\" }\n";
+        let m = parse(text).unwrap();
+        assert_eq!(m.dependencies["shared"].rev.as_deref(), Some("main"));
+        assert_eq!(m.dependencies["radio"].version.as_deref(), Some("1.2"));
+        assert_eq!(parse(&m.render()).unwrap(), m);
+    }
+
+    #[test]
+    fn an_environment_may_name_a_definition_of_a_dependency_by_its_module() {
+        let with = |environment: &str| {
+            parse(&format!(
+                "[project]\nname = \"a\"\nenvironment = \"{environment}\"\n\n[dependencies]\nshared = {{ path = \"../shared\" }}\n"
+            ))
+        };
+        assert_eq!(
+            with("shared::env::Lab").unwrap().environment.as_deref(),
+            Some("shared::env::Lab")
+        );
+        assert!(
+            with("shared::Lab")
+                .unwrap_err()
+                .contains("not a module of the dependency")
+        );
+        assert!(
+            with("other::env::Lab")
+                .unwrap_err()
+                .contains("names neither")
+        );
+    }
+
+    #[test]
     fn dependencies_are_read_by_path_and_survive_a_round_trip() {
         let m =
             parse("[project]\nname = \"a\"\n\n[dependencies]\nshared = { path = \"../shared\" }\n")
@@ -2052,11 +2092,35 @@ mod tests {
             let e = with(&format!("{name} = {{ path = \"../x\" }}"));
             assert!(e.contains("not a name an import can start with"), "{e}");
         }
-        assert_eq!(
-            with("shared = { git = \"https://example.invalid/shared.git\", rev = \"abc\" }"),
-            "netsmith.toml: [dependencies] shared: netsmith reads a dependency from a folder only, `shared = { path = \"../shared\" }`; a dependency by `git` or `version` is not built yet (issue #68)"
+        assert!(with("shared = { version = \"1.0.0\" }").contains("there is no registry"));
+        assert!(
+            with("shared = { git = \"https://example.invalid/s.git\" }").contains("needs `rev`")
         );
-        assert!(with("shared = { version = \"1.0.0\" }").contains("not built yet"));
+        assert!(
+            with(
+                "shared = { git = \"https://example.invalid/s.git\", rev = \"a\", version = \"1\" }"
+            )
+            .contains("both `rev` and `version`")
+        );
+        assert!(
+            with("shared = { path = \"../s\", git = \"https://example.invalid/s.git\" }")
+                .contains("both `path` and `git`")
+        );
+        assert!(
+            with("shared = { path = \"../s\", rev = \"main\" }").contains("a `path` dependency")
+        );
+        for url in ["../shared", "shared.git", "-uupload-pack=x"] {
+            let e = with(&format!("shared = {{ git = \"{url}\", rev = \"main\" }}"));
+            assert!(e.contains("is not a repository URL"), "{url}: {e}");
+        }
+        assert!(
+            with("shared = { git = \"https://example.invalid/s.git\", rev = \"--all\" }")
+                .contains("not a branch, tag or commit")
+        );
+        assert!(
+            with("shared = { git = \"https://example.invalid/s.git\", version = \"one\" }")
+                .contains("not a version requirement")
+        );
         assert!(with("shared = {}").contains("needs `path`"));
         assert!(with("shared = { path = \"/abs\" }").contains("[dependencies] shared path"));
         assert!(with("shared = { paht = \"../x\" }").contains("unknown field `paht`"));
