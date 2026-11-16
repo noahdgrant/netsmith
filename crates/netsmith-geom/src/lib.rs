@@ -38,8 +38,9 @@ pub use artwork::{
     Artwork, ArtworkError, Connect as ArtworkConnect, Drill as ArtworkDrill,
     Footprint as ArtworkFootprint, Graphic as ArtworkGraphic, HAlign, Keepout as ArtworkKeepout,
     Pad as ArtworkPad, PadKind as ArtworkPadKind, PadShape as ArtworkPadShape,
-    Primitive as ArtworkPrimitive, Shape as ArtworkShape, Text as ArtworkText,
-    Track as ArtworkTrack, TrackShape, VAlign, Via as ArtworkVia, Zone as ArtworkZone,
+    Primitive as ArtworkPrimitive, Shape as ArtworkShape, StackupLayer as ArtworkStackupLayer,
+    Text as ArtworkText, Track as ArtworkTrack, TrackShape, VAlign, Via as ArtworkVia,
+    Zone as ArtworkZone,
 };
 pub use drc::constraints::{
     BARE_COURTYARD_MARGIN, Constraint, Constraints, Measure as ConstraintMeasure,
@@ -51,9 +52,10 @@ pub use drc::shape::{Gap as ShapeGap, Shape as DrcShape, gap as shape_gap};
 pub use drc::{
     Class as DrcClass, Counts as DrcCounts, Error as DrcError, Extras as DrcExtras,
     Finding as DrcFinding, Item as DrcItem, Marks as DrcMarks, Report as DrcReport, Room,
-    Rule as DrcRule, Rules as DrcRules, Severity as DrcSeverity, Teardrop as DrcTeardrop,
-    check as drc_check, check_artwork as drc_check_artwork, matches_pattern as drc_matches_pattern,
-    outline_shapes as drc_outline_shapes, project_of as drc_project_of, teardrops,
+    Rule as DrcRule, Rules as DrcRules, Severity as DrcSeverity, Stackup as DrcStackup,
+    Teardrop as DrcTeardrop, check as drc_check, check_artwork as drc_check_artwork,
+    matches_pattern as drc_matches_pattern, outline_shapes as drc_outline_shapes,
+    project_of as drc_project_of, teardrops,
 };
 pub use drill::{Hole as DrillHole, files as drill_files, holes as drill_holes};
 pub use edge::{Outline as EdgeOutline, cut_lines as edge_cut_lines, outline as edge_outline};

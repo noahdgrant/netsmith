@@ -31,7 +31,9 @@ pub(crate) fn run(out: &mut Out<'_>) {
     let m = out.m;
     let starved = m.rules.severity(Rule::StarvedThermal).is_some();
     let islands = m.rules.severity(Rule::IsolatedCopper).is_some();
-    if !(starved || islands)
+    let width = m.rules.track_width;
+    let slivers = width > 0.0 && m.rules.severity(Rule::CopperSliver).is_some();
+    if !(starved || islands || slivers)
         || !m
             .art
             .zones
@@ -109,12 +111,30 @@ pub(crate) fn run(out: &mut Out<'_>) {
                     );
                 }
             }
+            let whose = if j.held {
+                "the fill the board file holds"
+            } else {
+                "the pour"
+            };
             if islands {
                 for (at, area) in j.islands {
                     out.push(
                         Rule::IsolatedCopper,
+                        format!("a piece of {whose} of {area:.3} mm² touches no copper of its net"),
+                        at,
+                        Some(layer),
+                        vec![zone_item(at)],
+                    );
+                }
+            }
+            // A fill worked out here is already trimmed to the zone's minimum thickness, which
+            // leaves nothing narrower: only a thinner minimum can leave a sliver.
+            if slivers && (j.held || zone.min_thickness < width) {
+                for (at, area) in fill::slivers(&j.fill, width) {
+                    out.push(
+                        Rule::CopperSliver,
                         format!(
-                            "a piece of the pour of {area:.3} mm² touches no copper of its net"
+                            "a sliver of {whose} of {area:.4} mm² is narrower than the least track, {width} mm, and runs further than that from the rest of the fill; a fabricator may not etch it or it may lift: widen the gap it is in, or raise the zone's minimum thickness"
                         ),
                         at,
                         Some(layer),
@@ -321,5 +341,160 @@ mod tests {
             r#"{"board": {"design_settings": {"rule_severities": {"starved_thermal": "ignore"}}}}"#;
         let r = check(&pcb, Some(pro), &Extras::default()).unwrap();
         assert_eq!(r.count(Rule::StarvedThermal), 0, "{r}");
+    }
+
+    /// A 20 mm board with a GND zone on F.Cu that holds the fill `fill` (`filled_polygon`s), a
+    /// GND via at (2, 2) on it, `items`, and the project file `project`.
+    fn held(fill: &[&[(f64, f64)]], items: &str, project: Option<&str>) -> Report {
+        let fill: String = fill
+            .iter()
+            .map(|poly| {
+                let pts: String = poly.iter().map(|(x, y)| format!("(xy {x} {y}) ")).collect();
+                format!(r#"(filled_polygon (layer "F.Cu") (pts {pts}))"#)
+            })
+            .collect();
+        let pcb = format!(
+            r#"(kicad_pcb (layers (0 "F.Cu" signal) (2 "B.Cu" signal))
+            (net 0 "") (net 1 "GND") (net 2 "SIG")
+            (gr_rect (start 0 0) (end 20 20) (stroke (width 0.05) (type default)) (fill no) (layer "Edge.Cuts"))
+            (zone (net 1) (net_name "GND") (layer "F.Cu") (connect_pads (clearance 0.3)) (min_thickness 0.25)
+              (fill yes (thermal_gap 0.5) (thermal_bridge_width 0.5))
+              (polygon (pts (xy 0.2 0.2) (xy 19.8 0.2) (xy 19.8 19.8) (xy 0.2 19.8)))
+              {fill})
+            (via (at 2 2) (size 0.6) (drill 0.3) (layers "F.Cu" "B.Cu") (net 1))
+            {items})"#
+        );
+        check(&pcb, project, &Extras::default()).unwrap()
+    }
+
+    fn rect(x0: f64, y0: f64, x1: f64, y1: f64) -> [(f64, f64); 4] {
+        [(x0, y0), (x1, y0), (x1, y1), (x0, y1)]
+    }
+
+    fn of(r: &Report, rule: Rule) -> Vec<String> {
+        r.findings
+            .iter()
+            .filter(|f| f.rule == rule)
+            .map(|f| {
+                assert_eq!(f.severity, Severity::Warning);
+                f.with_items()
+            })
+            .collect()
+    }
+
+    #[test]
+    fn a_fill_the_file_holds_is_judged_for_starved_thermals() {
+        // The fill round the pad at (10, 10) leaves a 2 mm square hole (a 0.5 mm gap round the
+        // 1 mm pad), crossed by the spokes given.
+        let frame = [
+            rect(0.5, 0.5, 19.5, 9.0),
+            rect(0.5, 11.0, 19.5, 19.5),
+            rect(0.5, 9.0, 9.0, 11.0),
+            rect(11.0, 9.0, 19.5, 11.0),
+        ];
+        let right = rect(10.5, 9.75, 11.0, 10.25);
+        let left = rect(9.0, 9.75, 9.5, 10.25);
+        let with = |spokes: &[[(f64, f64); 4]]| {
+            let polys: Vec<&[(f64, f64)]> =
+                frame.iter().chain(spokes).map(|r| r.as_slice()).collect();
+            of(&held(&polys, PAD, None), Rule::StarvedThermal)
+        };
+        let one = with(&[right]);
+        assert_eq!(one.len(), 1, "{one:?}");
+        assert!(
+            one[0].starts_with(
+                "thermal relief joins the pour with 1 of its 4 spokes; the least is 2: SMD pad 1 [GND] of R1"
+            ),
+            "{}",
+            one[0]
+        );
+        assert_eq!(with(&[right, left]), Vec::<String>::new());
+    }
+
+    #[test]
+    fn every_island_of_a_fill_the_file_holds_is_isolated_copper() {
+        // The zone removes islands, but the file holds one: it is made as the file says.
+        let main = rect(0.5, 0.5, 8.0, 8.0);
+        let island = rect(12.0, 12.0, 14.0, 14.0);
+        let found = of(&held(&[&main, &island], "", None), Rule::IsolatedCopper);
+        assert_eq!(
+            found,
+            [
+                "a piece of the fill the board file holds of 4.000 mm² touches no copper of its net: Zone [GND] on F.Cu"
+            ]
+        );
+        assert_eq!(
+            of(&held(&[&main], "", None), Rule::IsolatedCopper),
+            Vec::<String>::new()
+        );
+    }
+
+    /// A project file whose least track is 0.2 mm.
+    const LEAST_TRACK: &str =
+        r#"{"board": {"design_settings": {"rules": {"min_track_width": 0.2}}}}"#;
+
+    #[test]
+    fn a_strip_of_fill_narrower_than_the_least_track_is_a_copper_sliver() {
+        // An 8 mm square with a 0.1 mm wide strip 3 mm long off its right side.
+        let strip = [
+            (1.0, 1.0),
+            (9.0, 1.0),
+            (9.0, 5.0),
+            (12.0, 5.0),
+            (12.0, 5.1),
+            (9.0, 5.1),
+            (9.0, 9.0),
+            (1.0, 9.0),
+        ];
+        let found = of(&held(&[&strip], "", Some(LEAST_TRACK)), Rule::CopperSliver);
+        assert_eq!(found.len(), 1, "{found:?}");
+        assert!(
+            found[0].starts_with("a sliver of the fill the board file holds of 0.2")
+                && found[0].contains("is narrower than the least track, 0.2 mm")
+                && found[0].ends_with(": Zone [GND] on F.Cu"),
+            "{}",
+            found[0]
+        );
+        // The square's corners are no sliver, and without a least track nothing is judged.
+        let square = rect(1.0, 1.0, 9.0, 9.0);
+        assert_eq!(
+            of(&held(&[&square], "", Some(LEAST_TRACK)), Rule::CopperSliver),
+            Vec::<String>::new()
+        );
+        assert_eq!(
+            of(&held(&[&strip], "", None), Rule::CopperSliver),
+            Vec::<String>::new()
+        );
+    }
+
+    #[test]
+    fn a_fill_trimmed_to_less_than_the_least_track_can_leave_a_copper_sliver() {
+        // Two SIG tracks 0.9 mm apart across the pour: with the 0.3 mm clearance and 0.075 mm
+        // of track each side, 0.15 mm of fill runs between them, which a minimum thickness of
+        // 0.1 mm keeps.
+        let tracks = r#"(segment (start 4 8) (end 16 8) (width 0.15) (layer "F.Cu") (net 2))
+            (segment (start 4 8.9) (end 16 8.9) (width 0.15) (layer "F.Cu") (net 2))"#;
+        let pcb = |min: f64| {
+            format!(
+                r#"(kicad_pcb (layers (0 "F.Cu" signal) (2 "B.Cu" signal))
+                (net 0 "") (net 1 "GND") (net 2 "SIG")
+                (gr_rect (start 0 0) (end 20 20) (stroke (width 0.05) (type default)) (fill no) (layer "Edge.Cuts"))
+                (zone (net 1) (net_name "GND") (layer "F.Cu") (connect_pads (clearance 0.3)) (min_thickness {min})
+                  (fill yes (thermal_gap 0.5) (thermal_bridge_width 0.5) (island_removal_mode 1))
+                  (polygon (pts (xy 0.2 0.2) (xy 19.8 0.2) (xy 19.8 19.8) (xy 0.2 19.8))))
+                (via (at 2 2) (size 0.6) (drill 0.3) (layers "F.Cu" "B.Cu") (net 1))
+                {tracks})"#
+            )
+        };
+        let thin = check(&pcb(0.1), Some(LEAST_TRACK), &Extras::default()).unwrap();
+        let found = of(&thin, Rule::CopperSliver);
+        assert_eq!(found.len(), 1, "{found:?}");
+        assert!(
+            found[0].starts_with("a sliver of the pour of "),
+            "{}",
+            found[0]
+        );
+        let thick = check(&pcb(0.25), Some(LEAST_TRACK), &Extras::default()).unwrap();
+        assert_eq!(of(&thick, Rule::CopperSliver), Vec::<String>::new());
     }
 }

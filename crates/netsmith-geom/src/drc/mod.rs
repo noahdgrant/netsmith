@@ -156,6 +156,7 @@ mod pour;
 mod room;
 mod rules;
 pub(crate) mod shape;
+mod stackup;
 mod teardrop;
 
 use crate::artwork::Artwork;
@@ -299,10 +300,17 @@ pub enum Rule {
     /// A track that meets a pad's straight edge or another track of its net at an acute angle,
     /// a wedge that traps etchant (netsmith's, issue #838).
     AcidTrap,
+    /// Copper of a pour's fill narrower than the least track the process makes, reaching
+    /// further than that width from the rest of the fill (issue #993; KiCad's name, netsmith's
+    /// measure).
+    CopperSliver,
+    /// A board file whose copper layers, thickness or stackup the process does not make
+    /// (netsmith's, issue #993).
+    Stackup,
 }
 
 impl Rule {
-    pub const ALL: [Rule; 48] = [
+    pub const ALL: [Rule; 50] = [
         Rule::Clearance,
         Rule::ShortingItems,
         Rule::TracksCrossing,
@@ -351,6 +359,8 @@ impl Rule {
         Rule::StarvedThermal,
         Rule::IsolatedCopper,
         Rule::AcidTrap,
+        Rule::CopperSliver,
+        Rule::Stackup,
     ];
 
     /// KiCad's name for the rule (its `type` in a JSON report).
@@ -404,6 +414,8 @@ impl Rule {
             Rule::StarvedThermal => "starved_thermal",
             Rule::IsolatedCopper => "isolated_copper",
             Rule::AcidTrap => "acid_trap",
+            Rule::CopperSliver => "copper_sliver",
+            Rule::Stackup => "stackup",
         }
     }
 
@@ -435,6 +447,7 @@ impl Rule {
                 | Rule::TestPointBody
                 | Rule::TestPointEdge
                 | Rule::AcidTrap
+                | Rule::Stackup
         )
     }
 
@@ -462,7 +475,8 @@ impl Rule {
             | Rule::TestPointEdge
             | Rule::StarvedThermal
             | Rule::IsolatedCopper
-            | Rule::AcidTrap => Severity::Warning,
+            | Rule::AcidTrap
+            | Rule::CopperSliver => Severity::Warning,
             _ => Severity::Error,
         })
     }
@@ -657,6 +671,22 @@ pub struct Extras {
     /// The fabricator's rules for fiducials and test points (issue #761); `None` is not
     /// checked.
     pub marks: Option<Marks>,
+    /// The stackup the process makes (issue #993); `None` is not checked.
+    pub stackup: Option<Stackup>,
+}
+
+/// What the check needs to judge a board file's stackup (the `stackup` rule, issue #993): the
+/// process's copper layers and the thicknesses it makes, in mm.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct Stackup {
+    /// The copper layers of a board of the process.
+    pub layers: usize,
+    /// The least and the most thickness of the board the process makes (one value once the
+    /// board has chosen).
+    pub thickness: (f64, f64),
+    /// How far the layers of the file's stackup may add up from the board's thickness: the
+    /// fabricator's tolerance of the thickness.
+    pub tolerance: f64,
 }
 
 /// What the check needs to judge the fiducials and the test points of a board: which footprints
