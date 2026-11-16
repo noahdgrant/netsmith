@@ -1831,7 +1831,7 @@ error [constraint] constraint power.place.left (cased.physical.nsm:13) is violat
 
 `fab --format json` gives each requirement that is not met as data, in `requirements` of the finding it belongs to (the one error finding of a run that stopped, or one warning finding for each requirement with `constraints = "warn"`), whether the placer ended with it unmet or the check of the board file found it: `id` (`power.place.left`), `source` (the line, `cased.physical.nsm:13`), `parts` (the designators), `measure` (`x`, `y`, `left`, `right`, `top`, `bottom`, `rotation`, `side`, or `relation_x` and `relation_y` for two parts, the second term first), `unit` (`mm` or `degrees`), `measured`, the window as `min` and `max` (an end the requirement leaves open is left out) and `over`, how far out the value is. A requirement on the face has `side`, the face the part is on, and `allowed_side`, in place of the figures. For the header above:
 
-```json
+```text
 {
   "id": "power.place.left",
   "source": "cased.physical.nsm:13",
