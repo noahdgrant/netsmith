@@ -44,9 +44,20 @@ impl<'a> Router<'a> {
                 (pad_spots(board, &l.from, l.from_at, &grid), to)
             })
             .collect();
+        // A net whose current one via does not carry changes layer only where its cluster fits
+        // (`room_for_vias`), and the others of a cluster never stand in a pad
+        // (`crate::parallel`): it gets no via in a pad, which would stand alone.
         let in_pads = lines
             .iter()
             .map(|l| {
+                let needs = board
+                    .net_currents
+                    .iter()
+                    .find(|c| c.net == l.net)
+                    .map_or(1, |c| c.vias);
+                if needs > 1 {
+                    return (None, None);
+                }
                 let to = if l.to_plane {
                     None
                 } else {
