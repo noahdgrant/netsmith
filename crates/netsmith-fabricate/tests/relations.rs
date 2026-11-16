@@ -178,7 +178,13 @@ fn with_constraints_warn_an_unmet_relation_is_a_warning_in_the_notes() {
     }
     let catalogs = Catalogs::jlcpcb().with_constraints_warn(true);
     // Unlocked: the layout file's position wins over the placer, and the check measures it.
-    let moved = "version = 1\n[Widget.parts.\"radio.row_b\"]\nat = [40.0, 20.0]\n";
+    // Every part is given a place, so that where the placer would have put the others does not
+    // matter: row B is 26 mm from row A, not 17.5, and nothing else is in anyone's way.
+    let moved = "version = 1\n\
+        [Widget.parts.\"radio.row_a\"]\nat = [14.0, 8.0]\nrotation = 0.0\n\
+        [Widget.parts.\"radio.row_b\"]\nat = [40.0, 20.0]\nrotation = 0.0\n\
+        [Widget.parts.\"gnss.antenna\"]\nat = [10.0, 40.0]\nrotation = 0.0\n\
+        [Widget.parts.\"gnss.coax\"]\nat = [30.0, 40.0]\nrotation = 0.0\n";
     let (_dir, made) = fab("warned", PHYSICAL, moved, &catalogs);
     let made = made.unwrap_or_else(|e| panic!("{e}"));
     assert!(

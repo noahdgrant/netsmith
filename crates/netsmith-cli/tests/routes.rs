@@ -93,7 +93,7 @@ fn a_board_imported_from_its_own_fab_is_drawn_again_with_nothing_routed() {
     // The import placed the parts where the KiCad board has them, locked.
     let layout = fs::read_to_string(dir.join("led.pcb.toml")).unwrap();
     assert!(layout.contains("source = \"import\""), "{layout}");
-    assert!(layout.contains("at = [11.6, 3.75]"), "{layout}");
+    assert!(layout.contains("at = [9.85, 4.6]"), "{layout}");
 
     let said = ok(&netsmith(&dir, &["fab", "led.nsm", "--locked", "--out", "second"]));
     assert!(said.contains("routing 0 connections"), "{said}");
@@ -101,12 +101,12 @@ fn a_board_imported_from_its_own_fab_is_drawn_again_with_nothing_routed() {
     assert!(!said.contains("warning: led.routes.toml"), "{said}");
     let board = |out: &str| dir.join(out).join("LedExample/LedExample.kicad_pcb");
     let (first, second) = (copper(&board("first")), copper(&board("second")));
-    assert_eq!(first.len(), 15, "{first:#?}");
+    assert_eq!(first.len(), 12, "{first:#?}");
     assert_eq!(first, second);
 
     // `show` lists the records and says the router has nothing left.
     let shown = ok(&netsmith(&dir, &["routes", "show", "--into", "led.nsm"]));
-    assert!(shown.contains("net GND (locked): 6 track(s)"), "{shown}");
+    assert!(shown.contains("net GND (locked): 4 track(s)"), "{shown}");
     assert!(shown.contains("the router would route 0 connection(s)"), "{shown}");
 }
 
@@ -114,7 +114,7 @@ fn a_board_imported_from_its_own_fab_is_drawn_again_with_nothing_routed() {
 fn a_track_that_shorts_another_net_is_refused_and_the_file_kept() {
     let dir = imported("routes-short");
     let before = fs::read_to_string(dir.join("led.routes.toml")).unwrap();
-    // Up from J1's VCC pad, across the GND track that runs at y = 1.6.
+    // Down from the VCC track, across the GND track that runs at y = 5.4.
     let run = netsmith(
         &dir,
         &[
@@ -125,9 +125,9 @@ fn a_track_that_shorts_another_net_is_refused_and_the_file_kept() {
             "--net",
             "VCC",
             "--from",
-            "5.3,2.8",
+            "5.0,2.7",
             "--to",
-            "5.3,1.0",
+            "5.0,6.0",
         ],
     );
     let said = text(&run);
@@ -168,7 +168,7 @@ fn a_locked_shape_or_net_is_not_deleted_until_unlocked() {
     ok(&routes(&["unlock", "--track", "1"]));
     ok(&routes(&["delete", "--track", "1"]));
     let shown = ok(&netsmith(&dir, &["routes", "show", "--into", "led.nsm"]));
-    assert!(shown.contains("net VCC: 2 track(s)"), "{shown}");
+    assert!(shown.contains("net VCC: 3 track(s)"), "{shown}");
 }
 
 #[test]
@@ -176,7 +176,7 @@ fn fab_says_a_record_whose_pads_moved_and_routes_the_net_again() {
     let dir = imported("routes-stale");
     let layout = dir.join("led.pcb.toml");
     let text_of = fs::read_to_string(&layout).unwrap();
-    let moved = text_of.replace("at = [11.6, 3.75]", "at = [11.6, 4.5]");
+    let moved = text_of.replace("at = [9.85, 4.6]", "at = [9.85, 5.35]");
     assert_ne!(moved, text_of);
     fs::write(&layout, moved).unwrap();
 
@@ -243,7 +243,7 @@ fn add_zone_writes_a_zone_that_show_lists_and_fab_draws() {
         "{shown}"
     );
 
-    // The board is 14 by 7 mm: the whole outline on top, joined to GND.
+    // The board is 14 by 8 mm: the whole outline on top, joined to GND.
     let said = ok(&routes(
         &dir,
         &["add-zone", "--net", "GND", "--board-outline"],
@@ -255,7 +255,7 @@ fn add_zone_writes_a_zone_that_show_lists_and_fab_draws() {
     assert!(file.contains("[[LedExample.nets.GND.zones]]"), "{file}");
     assert!(file.contains("layers = [\"top\"]"), "{file}");
     assert!(
-        file.contains("outline = [[0.2, 0.2], [13.8, 0.2], [13.8, 6.8], [0.2, 6.8]]"),
+        file.contains("outline = [[0.2, 0.2], [13.8, 0.2], [13.8, 7.8], [0.2, 7.8]]"),
         "{file}"
     );
 
@@ -312,7 +312,7 @@ fn add_zone_writes_a_zone_that_show_lists_and_fab_draws() {
     let pcb = fs::read_to_string(dir.join("out/LedExample/LedExample.kicad_pcb")).unwrap();
     // Each zone is in the board file, on KiCad's page: the outline's corner is at (20, 20).
     assert!(
-        pcb.contains("(xy 20.2 20.2) (xy 33.8 20.2) (xy 33.8 26.8) (xy 20.2 26.8)"),
+        pcb.contains("(xy 20.2 20.2) (xy 33.8 20.2) (xy 33.8 27.8) (xy 20.2 27.8)"),
         "{pcb}"
     );
     assert!(
@@ -478,13 +478,13 @@ fn a_refusal_of_a_track_quotes_the_routes_files_places() {
             "--net",
             "VCC",
             "--from",
-            "5.3,2.8",
+            "5.0,2.7",
             "--to",
-            "5.3,1.0",
+            "5.0,6.0",
         ],
     );
     let said = text(&run);
     assert_eq!(run.status.code(), Some(1), "{said}");
-    // The crossing is at (5.3, 1.6) from the outline's corner, not (25.3, 21.6) on KiCad's page.
-    assert!(said.contains("at (5.300, 1.600) on F.Cu"), "{said}");
+    // The crossing is at (5.0, 5.4) from the outline's corner, not (25.0, 25.4) on KiCad's page.
+    assert!(said.contains("at (5.000, 5.400) on F.Cu"), "{said}");
 }

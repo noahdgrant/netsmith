@@ -92,7 +92,7 @@ pub use export::{PATH_PROPERTY, kicad_pcb, kicad_pro};
 pub use fit_report::FitReport;
 pub use footprint::{
     Drill, Footprint, FootprintError, FootprintLibrary, Graphic, Layer, Mount, Pad, PadKind,
-    PadShape, Shape,
+    PadShape, Shape, SilkText,
 };
 pub use generate::{
     HOLE_DRILL, generate as generated_footprint, generate_spec as generate_footprint_spec,

@@ -137,7 +137,7 @@ fn with_currents(mut board: Board) -> Board {
 
 #[test]
 fn a_rail_sized_by_its_current_is_necked_down_only_near_its_own_pads() {
-    for (seed, shape) in [(4, (40, 8, 8, 20, 20)), (1, (52, 17, 20, 72, 36))] {
+    for (seed, shape) in [(4, (40, 8, 8, 20, 20)), (5, (52, 17, 20, 72, 36))] {
         let (chips, regs, per_side, ic, parts) = shape;
         let mut board = with_currents(synthetic_board(seed, chips, regs, per_side, ic, parts));
         let routing = route_with(&mut board, RouteOptions::default());

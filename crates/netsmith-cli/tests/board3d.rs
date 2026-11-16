@@ -1067,9 +1067,9 @@ fn a_section_of_the_four_layer_board_shows_its_stackup_in_bands_in_order_top_to_
     use netsmith_3d::{Material, Rgba, Theme};
     use netsmith_pcb::{LayerKind};
     let scene = scene_of("examples/four_layer.nsm");
-    // Across J1 (a header 8.9 mm tall; the layout file has it 3.25 mm from the top edge of the
-    // 7 mm board, so at y = 3.75 mm from the bottom edge): a section through a part.
-    let y = 3.75;
+    // Across J1 (a header 8.9 mm tall; the placer has it 3.8 mm from the top edge of the
+    // 7 mm board, so at y = 3.2 mm from the bottom edge): a section through a part.
+    let y = 3.2;
     assert!(scene.bodies.iter().any(|b| b.refdes == "J1"
         && (b.corners.iter().any(|c| c.y < y) && b.corners.iter().any(|c| c.y > y))));
     // Near the board's left edge (x = 0), 0.9 mm either side of the middle of the stackup: the
@@ -1157,7 +1157,7 @@ fn a_section_of_the_four_layer_board_shows_its_stackup_in_bands_in_order_top_to_
     // Above the board's top face at this x there is nothing but background; the part's body is
     // cut solid where the plane crosses it (the picture's middle column of the header).
     assert_eq!(image.pixel(200, 10), palette.background);
-    let body = section_picture(&scene, "four_layer-section-body", y, (13.0, 1.0, 1.5));
+    let body = section_picture(&scene, "four_layer-section-body", y, (18.95, 1.0, 1.5));
     let top = body.pixel(400, 40);
     assert_ne!(top, palette.background, "a part's body is cut solid");
 }
@@ -1748,10 +1748,10 @@ fn the_system_is_written_as_glb_and_step_with_a_node_and_a_product_per_member() 
     let apply = |p: [f64; 3]| {
         [0, 1, 2].map(|r| (0..3).map(|c| m[c * 4 + r] * p[c]).sum::<f64>() + m[12 + r])
     };
-    // The motion is a half turn with a flip, offset (25, 2.1, 10.65) mm: (x, y, z) goes to
-    // (25 - x, 2.1 + y, 10.65 - z).
+    // The motion is a half turn about the diagonal of the board's plane, offset (13.45, 1.05,
+    // 10.65) mm: (x, y, z) goes to (13.45 + y, 1.05 + x, 10.65 - z).
     for p in [[0.0, 0.0, 0.0], [13.0, 8.0, -1.6], [7.5, 2.75, 0.0]] {
-        let want = gltf_point([25.0 - p[0], 2.1 + p[1], 10.65 - p[2]]);
+        let want = gltf_point([13.45 + p[1], 1.05 + p[0], 10.65 - p[2]]);
         let got = apply(gltf_point(p));
         for k in 0..3 {
             assert!(

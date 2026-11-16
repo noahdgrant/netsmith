@@ -951,7 +951,7 @@ mod tests {
         );
     }
 
-    /// The LED example placed, a fixture of `netsmith-pcb` (12 by 8 mm; nets GND, VCC and
+    /// The LED example placed, a fixture of `netsmith-pcb` (15 by 7 mm; nets GND, VCC and
     /// `net-led.anode`).
     fn led() -> Board {
         serde_json::from_str(include_str!(
@@ -1072,8 +1072,8 @@ mod tests {
         };
 
         // A corner past the board's edge, quoted in the routes file's places.
-        let said = refused(zone("VCC", rect(8.0, 1.0, 6.0, 2.0), 0));
-        assert!(said.contains("corner (14, 1) is off the board"), "{said}");
+        let said = refused(zone("VCC", rect(10.0, 1.0, 6.0, 2.0), 0));
+        assert!(said.contains("corner (16, 1) is off the board"), "{said}");
         // Two zones of different nets with the same priority that overlap: KiCad would choose.
         let said = refused(zone("VCC", rect(5.0, 2.0, 5.0, 3.0), 0));
         assert!(said.contains("have the same priority (0)"), "{said}");

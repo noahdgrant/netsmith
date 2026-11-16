@@ -36,31 +36,8 @@ pub(super) fn shape_of(
     let courts = part.courtyards();
     let body = part.body();
     let text = text_box(part, rules);
-    // The strokes of the silkscreen, each as a box (a rectangle as its four sides).
-    let silk: Vec<Rect> = part
-        .footprint
-        .graphics
-        .iter()
-        .filter(|g| g.layer == netsmith_pcb::Layer::Silk)
-        .flat_map(|g| {
-            let pieces: Vec<Vec<Pt>> = match &g.shape {
-                netsmith_pcb::Shape::Line { a, b } => vec![vec![*a, *b]],
-                netsmith_pcb::Shape::Rect { a, b } => {
-                    let (c, d) = (Pt::new(b.x, a.y), Pt::new(a.x, b.y));
-                    vec![vec![*a, c], vec![c, *b], vec![*b, d], vec![d, *a]]
-                }
-                netsmith_pcb::Shape::Poly { points } => {
-                    points.windows(2).map(|w| vec![w[0], w[1]]).collect()
-                }
-                other => vec![other.extent_points()],
-            };
-            let stroke = g.stroke;
-            pieces
-                .into_iter()
-                .filter_map(move |pts| Rect::around(pts).map(|r| r.expanded(stroke / 2.0)))
-        })
-        .map(|r| part.rect_to_board(r))
-        .collect();
+    // The silkscreen's lines and areas, and the text the footprint prints besides the designator.
+    let silk = silk::pieces(part, rules);
     let pads: Vec<Pt> = part
         .footprint
         .pads
@@ -104,8 +81,13 @@ pub(super) fn shape_of(
     part.rotation = rotation;
     part.reference_side = side;
     let mut reach = court;
-    for r in text.iter().chain(silk.iter()).chain(copper.iter()) {
-        reach = reach.union(r);
+    for r in text
+        .iter()
+        .copied()
+        .chain(silk.iter().map(silk::Piece::bounds))
+        .chain(copper.iter().copied())
+    {
+        reach = reach.union(&r);
     }
     Shape {
         court,

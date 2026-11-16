@@ -10,7 +10,13 @@ impl<'a> Router<'a> {
             .iter()
             .filter_map(|&k| {
                 let o = &self.fixed.list[k];
+                // An opening the footprint draws in the solder mask over a pad is the pad's
+                // net's too, on both faces, but it is no copper: a corner in it is no corner
+                // in a pad.
                 let Form::Rect(r) = o.form else { return None };
+                if !o.copper {
+                    return None;
+                }
                 let inset =
                     r.width().min(r.height()) / 2.0 * (1.0 - std::f64::consts::FRAC_1_SQRT_2);
                 let r = r.expanded(-inset);

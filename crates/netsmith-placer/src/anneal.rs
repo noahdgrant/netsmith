@@ -12,7 +12,7 @@
 //! - **Walls**: a courtyard nearer the outline than [`Rules::edge_wall`], a pad nearer than the
 //!   copper to edge space, reference text nearer than
 //!   [`TEXT_EDGE`], and a courtyard inside a keepout (all hard).
-//! - **Silkscreen**: reference text, and the strokes of a footprint's silkscreen, within the
+//! - **Silkscreen**: reference text, and the lines and areas of a footprint's silkscreen (and its text), within the
 //!   process's silk to pad space of another part's pads and mask openings, or near its
 //!   silkscreen or text; and, a little, text over another part's courtyard. The weight of
 //!   these grows through a run.
@@ -117,6 +117,17 @@
 //! grown by [`TEXT_PAD`], and sits where the part's `ReferenceSide` says. The text is upright
 //! whatever the part's turn, so `Placed::reference_at` finds the place above (or beside) the
 //! part as it lies on the board and turns it back to the footprint's frame.
+//!
+//! **The silkscreen's shapes** (`silk.rs`). A footprint's silkscreen is measured as the lines it
+//! draws, not as a box round each drawing: a line and each side of a rectangle or polygon is
+//! a segment, an arc and a circle are chords no more than 0.01 mm from the curve, and each is
+//! as thick as its stroke. The distance to a pad is the straight distance, so a pin 1 circle
+//! drawn round a pad, or an arc beside a body, leaves what is inside it free and a diagonal
+//! stroke does not take the corner of its box. A filled rectangle, circle or polygon is silkscreen
+//! all over. Text the footprint prints besides the designator (a `Value` property or `fp_text
+//! value` on `F.SilkS`, not hidden, and any other text there) is a box, as the designator's is,
+//! at its place with the part's turn and the letters upright. Not yet: a wall that keeps the
+//! silkscreen off the board edge (#823).
 //!
 //! **Crossings.** With no term for the lines that cross the wire was as short but the boards
 //! were hard to route (the big board's seed 0 took 54 s and left two lines in a release
@@ -240,6 +251,7 @@ mod overflow;
 mod pose;
 mod rooms;
 mod shapes;
+mod silk;
 #[cfg(test)]
 mod tests;
 
@@ -532,7 +544,8 @@ struct Shape {
     /// The body (what a requirement on the place measures), relative to the origin.
     body: Rect,
     text: Option<Rect>,
-    silk: Vec<Rect>,
+    /// The lines and areas of the silkscreen, and the text it prints besides the designator.
+    silk: Vec<silk::Piece>,
     /// Where each pad of the footprint is.
     pads: Vec<Pt>,
     /// The copper of the pads and the mask openings the footprint draws.

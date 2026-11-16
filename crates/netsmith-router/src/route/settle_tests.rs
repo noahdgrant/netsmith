@@ -495,6 +495,55 @@ fn masks_made_from_the_cached_fixed_copper_leave_a_nets_own_pads_open() {
     }
 }
 
+/// A mask opening the library draws over a pad of a net, which the net's own obstacles hold on
+/// both faces, is not one of the net's pads: a track's corner on the far face of a surface-mount
+/// pad is a corner outside any pad (the design rules check's `track_angle` refuses it).
+#[test]
+fn a_mask_opening_over_a_pad_is_not_a_pad_of_its_net_on_the_far_face() {
+    let mut board = crate::board_from_design(
+        &four_layer_design(),
+        &netsmith_kicad::Mapping::standard(),
+        &fixtures(),
+    )
+    .unwrap();
+    let net = board
+        .nets
+        .iter()
+        .position(|n| n.pads.iter().any(|p| p.refdes == "R1"))
+        .unwrap();
+    let pad = board.nets[net]
+        .pads
+        .iter()
+        .find(|p| p.refdes == "R1")
+        .unwrap()
+        .clone();
+    let part = board.parts.iter_mut().find(|p| p.refdes == "R1").unwrap();
+    let pad_bounds = {
+        let pad = part.footprint.pads_numbered(&pad.number).next().unwrap();
+        part.pad_bounds(pad)
+    };
+    let local = pad_bounds
+        .expanded(0.1)
+        .translated(Pt::new(-part.at.x, -part.at.y));
+    part.footprint.mask_openings.push(local);
+    let router = Router::new(&board, &RouteOptions::default());
+    let squares = router.own_pad_squares(net);
+    assert!(!squares.is_empty());
+    let part = board.part("R1").unwrap();
+    let (front, back) = part
+        .footprint
+        .pads_numbered(&pad.number)
+        .next()
+        .map(|p| part.pad_layers(p))
+        .unwrap();
+    for (r, layers) in squares
+        .iter()
+        .filter(|(r, _)| r.contains(&Rect::new(pad_bounds.centre(), pad_bounds.centre())))
+    {
+        assert_eq!((layers[FRONT], layers[BACK]), (front, back), "{r:?}");
+    }
+}
+
 #[test]
 fn distances_are_to_the_edge_of_the_form() {
     let rect = Form::Rect(Rect::new(Pt::new(0.0, 0.0), Pt::new(2.0, 1.0)));
