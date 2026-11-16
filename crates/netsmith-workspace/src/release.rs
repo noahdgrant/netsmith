@@ -150,12 +150,23 @@ impl Workspace {
         // The stages `netsmith fab` prints to stderr go to the page instead.
         let _reporting = Reporting::to(say);
         netsmith_catalog::picks::refuse(&source.path).map_err(ApiError::internal)?;
+        // The board is made of the rows the pick lock holds, as the view of it is; the lock is
+        // not written here.
+        let catalogs = target.catalogs().map_err(ApiError::internal)?;
+        let catalogs = match netsmith_pipeline::pick_lock::read(
+            &netsmith_pipeline::pick_lock::lock_path(&source.path),
+        )
+        .map_err(ApiError::internal)?
+        {
+            Some(lock) => catalogs.with_pick_lock(lock),
+            None => catalogs,
+        };
         let made = fab_with_options(
             &source.name,
             &text,
             &loader,
             &target.fab_out,
-            &target.catalogs().map_err(ApiError::internal)?,
+            &catalogs,
             &libraries,
             None,
             &FabOptions {

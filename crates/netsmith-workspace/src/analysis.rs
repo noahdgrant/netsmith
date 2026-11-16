@@ -508,6 +508,16 @@ impl Workspace {
                     .problems
                     .push(general(e.trim_start_matches("error: ").to_string()));
             }
+            // The pick lock beside the source holds its parts to their rows, as for `build`
+            // and `fab`, so that the view shows the parts they use. A lock that cannot be
+            // read is told by `lock_info`; the file is then built as if it had none.
+            let held = netsmith_pipeline::pick_lock::read(
+                &netsmith_pipeline::pick_lock::lock_path(&file.path),
+            )
+            .ok()
+            .flatten()
+            .map(|lock| catalogs.clone().with_pick_lock(lock));
+            let catalogs = held.as_ref().unwrap_or(&catalogs);
             let outcome = match &text {
                 Err(e) => Err(vec![netsmith_pipeline::Problem {
                     message: format!("{}: {e}", file.name),
@@ -522,7 +532,7 @@ impl Workspace {
                         &file.name,
                         text,
                         &loader,
-                        &catalogs,
+                        catalogs,
                         None,
                         &|step: netsmith_pipeline::Step<'_>| {
                             let stage = if step.stage == Stage::Solve {
