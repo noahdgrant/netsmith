@@ -31,6 +31,7 @@ fn held(name: &str, v: Range) -> Held {
 
 fn resistor(name: &str, a: usize, b: usize, r: Range) -> Element {
     Element {
+        group: None,
         name: name.to_string(),
         kind: Kind::Resistor { a, b, r },
     }
@@ -38,6 +39,7 @@ fn resistor(name: &str, a: usize, b: usize, r: Range) -> Element {
 
 fn diode(name: &str, anode: usize, cathode: usize, vf: Range) -> Element {
     Element {
+        group: None,
         name: name.to_string(),
         kind: Kind::Diode { anode, cathode, vf },
     }
@@ -45,6 +47,7 @@ fn diode(name: &str, anode: usize, cathode: usize, vf: Range) -> Element {
 
 fn load(name: &str, from: usize, to: usize, i: Range) -> Element {
     Element {
+        group: None,
         name: name.to_string(),
         kind: Kind::Current { from, to, i },
     }
@@ -272,6 +275,7 @@ fn a_diode_in_front_of_a_load_that_always_draws_cannot_block() {
 
 fn switching(name: &str, from: usize, to: usize, p: Range, eff: Range) -> Element {
     Element {
+        group: None,
         name: name.to_string(),
         kind: Kind::Regulator {
             from,
@@ -287,6 +291,7 @@ fn switching(name: &str, from: usize, to: usize, p: Range, eff: Range) -> Elemen
 
 fn linear(name: &str, from: usize, to: usize, i: Range) -> Element {
     Element {
+        group: None,
         name: name.to_string(),
         kind: Kind::Regulator {
             from,
@@ -530,6 +535,7 @@ fn pin(
     z: bool,
 ) -> Element {
     Element {
+        group: None,
         name: name.to_string(),
         kind: Kind::Pin {
             node,
@@ -549,6 +555,7 @@ fn mosfet(
     ron: Range,
 ) -> Element {
     Element {
+        group: None,
         name: name.to_string(),
         kind: Kind::Mosfet {
             gate,

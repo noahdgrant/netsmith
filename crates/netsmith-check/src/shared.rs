@@ -1,5 +1,8 @@
 //! `peripheral` and `shared` in a part (ADR 0071).
 //!
+//! In a board or a module, `shared` lists loads that take turns instead (issue #806); that is
+//! `loads.rs`.
+//!
 //! A peripheral names the functions of a part that belong together; it is in use when the
 //! board chooses one of them on a pin. A shared resource names the members of which at most
 //! one is in use at a time. The part states both once, in its definition; the board is
@@ -157,6 +160,11 @@ impl Checker<'_> {
     }
 
     pub(crate) fn shared(&mut self, s: &ast::Shared) {
+        // In a board or a module, the members are loads (issue #806, `loads.rs`).
+        if self.in_kind(ast::DefKind::Board) || self.in_kind(ast::DefKind::Module) {
+            self.load_group(s);
+            return;
+        }
         let Some(part) = self.rules_part(s.span, "shared", "a shared resource") else {
             return;
         };

@@ -53,7 +53,7 @@ use netsmith_check::{DcKind, Domain, FieldId, InstId, InstKind, Member, Model, P
 use netsmith_lang::ast::BinOp;
 use netsmith_quantity::Dimension;
 
-use super::net::{Draw, Element, Held, Island, Kind, MIN_RESISTANCE, Range};
+use super::net::{Draw, Element, Group, Held, Island, Kind, MIN_RESISTANCE, Range};
 
 /// A part of an island that the pass writes the results of.
 #[derive(Debug, Clone)]
@@ -1480,7 +1480,22 @@ fn extract_in(
                     diode: matches!(item.kind, Kind::Diode { .. }),
                 });
             }
+            // A load of a group of loads (issue #806): a rail's current, or a part's that a
+            // module's port in the group stands for.
+            let group = match item.kind {
+                Kind::Current { .. } => item
+                    .part
+                    .or_else(|| item.reads.first().map(|&f| model.field(f).owner))
+                    .and_then(|inst| model.load_member_of(inst))
+                    .map(|(id, member)| Group {
+                        id,
+                        member,
+                        limit: model.load_groups()[id].limit,
+                    }),
+                _ => None,
+            };
             island.elements.push(Element {
+                group,
                 name: item.name.clone(),
                 kind,
             });
@@ -1527,6 +1542,7 @@ fn extract_in(
                 (false, false) => continue,
             };
             island.elements.push(Element {
+                group: None,
                 name: name.clone(),
                 kind: Kind::Current { from, to, i },
             });

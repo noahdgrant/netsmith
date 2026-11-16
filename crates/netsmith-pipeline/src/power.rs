@@ -2,7 +2,8 @@
 //! that a rail draws from, the currents on it, and what the part that supplies it can give.
 //!
 //! A node is a net that a rail draws from through `pos`, with the voltage the rails there agree
-//! on; the draws on it, each with its range and the part it belongs to; their sum, the demand;
+//! on; the draws on it, each with its range and the part it belongs to; their sum, the demand
+//! (with the worst few of a group of loads that take turns, issue #806, and not all of them);
 //! and the capacity, the `max_current` of the part whose rail supplies the net, where it has one.
 //! An edge joins the input rail's net of a part (or a module) to its output rail's net, labelled
 //! with the part, and a join in a system joins two ports' nets. A node has an issue when the
@@ -57,7 +58,6 @@ pub fn system_tree(
             });
         }
     }
-    classify(&mut tree);
     tree.issues = issues_of(&tree);
     tree
 }
@@ -123,6 +123,9 @@ fn build(model: &Model, sources: &Sources, scopes: &[(InstId, Option<String>)]) 
     let mut stages: Vec<Stage> = Vec::new();
     // For each node, the capacity edges give it.
     let mut capacity: Vec<(String, f64, String, InstId)> = Vec::new();
+    // The demand of each node with a group of loads on it (issue #806): the worst few of the
+    // group, not every load at its top.
+    let mut grouped: Vec<(String, Quantity)> = Vec::new();
 
     for (scope, prefix) in scopes {
         let prefix = prefix.as_deref();
@@ -183,6 +186,27 @@ fn build(model: &Model, sources: &Sources, scopes: &[(InstId, Option<String>)]) 
                 match &range {
                     Some(q) if supplies(q) => node.supplies.push(item),
                     _ => node.loads.push(item),
+                }
+            }
+            if !model.group_clause(&balance.draws).is_empty() {
+                let mut terms: Vec<(netsmith_check::Draw, Quantity)> = Vec::new();
+                let mut known = true;
+                for d in &balance.draws {
+                    match &model.field(d.field).domain {
+                        Domain::Quantity(q) => {
+                            let q = if d.flipped { q.neg() } else { *q };
+                            if !supplies(&q) {
+                                terms.push((*d, q));
+                            }
+                        }
+                        _ => known = false,
+                    }
+                }
+                if known
+                    && !terms.is_empty()
+                    && let Some(demand) = model.sum_draws(&terms)
+                {
+                    grouped.push((node.id.clone(), demand));
                 }
             }
             nodes.push(node);
@@ -296,7 +320,7 @@ fn build(model: &Model, sources: &Sources, scopes: &[(InstId, Option<String>)]) 
                 .find_map(|d| d.at.clone());
         }
     }
-    classify(&mut tree);
+    classify(&mut tree, &grouped);
     tree.issues = issues_of(&tree);
     tree
 }
@@ -358,10 +382,12 @@ fn maybe_capacity(
     }
 }
 
-/// Fill each node's demand and say whether the supply can give it.
-fn classify(tree: &mut PowerTree) {
+/// Fill each node's demand and say whether the supply can give it. `grouped` is the demand of
+/// each node with a group of loads on it, by the node's id, which the sum of its loads is not.
+fn classify(tree: &mut PowerTree, grouped: &[(String, Quantity)]) {
     for node in &mut tree.nodes {
         let known = node.loads.iter().all(|d| d.range.is_some());
+        let group = grouped.iter().find(|(id, _)| *id == node.id).map(|g| g.1);
         node.demand = known
             .then(|| {
                 sum(
@@ -373,6 +399,7 @@ fn classify(tree: &mut PowerTree) {
                 )
             })
             .flatten()
+            .map(|q| group.unwrap_or(q))
             .map(|q| range_of(&q));
         node.budget = match (&node.demand, &node.capacity) {
             (None, _) => Budget::Unknown,
@@ -581,7 +608,7 @@ mod tests {
             stages: Vec::new(),
             issues: Vec::new(),
         };
-        classify(&mut tree);
+        classify(&mut tree, &[]);
         (
             tree.nodes[0].budget,
             tree.nodes[0].demand.as_ref().map(|d| d.hi),
@@ -601,6 +628,29 @@ mod tests {
             Budget::Within
         );
         assert_eq!(budget(node(loads(), None)).0, Budget::Unlimited);
+    }
+
+    /// Three loads of up to 60 mA on a regulator rated 100 mA, of which `group` says how many
+    /// are on at once (issue #806): the demand is the worst of them, and the supply can give it.
+    #[test]
+    fn the_demand_of_a_group_of_loads_is_the_worst_of_them() {
+        let demand = |group: &str| {
+            let src = format!(
+                "import std::sources::Rail\npart Ldo {{\n    .vin: Rail\n    .vout: Rail\n    .max_current: Current\n    .max_current &= 100mA\n    .vin.neg ~ .vout.neg\n    .vin.current == -.vout.current\n}}\nboard B {{\n    .input: Rail {{\n        .voltage &= 5V\n        .pos.net &= \"VIN\"\n    }}\n    .reg: Ldo\n    .input ~ .reg.vin\n    .a: Rail {{ .current &= 0mA..60mA }}\n    .b: Rail {{ .current &= 0mA..60mA }}\n    .c: Rail {{ .current &= 0mA..60mA }}\n    .reg.vout ~ .a\n    .reg.vout ~ .b\n    .reg.vout ~ .c\n    .a.pos.net &= \"V3\"\n{group}}}\n"
+            );
+            let c = netsmith_check::check("main.nsm", &src, &netsmith_check::Loader::std());
+            assert!(c.is_ok(), "{}", c.render());
+            let s = netsmith_solve::solve(&c.boards[0], &netsmith_solve::Catalogs::jlcpcb());
+            let tree = board_tree(&s.model, &c.sources);
+            let node = tree.nodes.iter().find(|n| n.net == "V3").expect("the node");
+            (node.budget, node.demand.as_ref().map(|d| d.hi))
+        };
+        let (budget, all) = demand("");
+        assert_eq!(budget, Budget::Over);
+        assert!(all.is_some_and(|d| (d - 0.18).abs() < 1e-9), "{all:?}");
+        let (budget, one) = demand("    shared LOADS { .a .b .c }\n");
+        assert_eq!(budget, Budget::Within);
+        assert!(one.is_some_and(|d| (d - 0.06).abs() < 1e-9), "{one:?}");
     }
 
     #[test]

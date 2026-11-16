@@ -7,7 +7,7 @@ use super::{Solver, Unresolved, Verdict};
 use crate::catalog::{Catalog, Value};
 use crate::eval::{EvalError, Val, eval, fields_in, reads_end, reads_nominal, relation_reads_end};
 use netsmith_check::{
-    Balance, Domain, FieldId, FieldKind, InstId, InstKind, RExpr, Relation, SourceId,
+    Balance, Domain, Draw, FieldId, FieldKind, InstId, InstKind, RExpr, Relation, SourceId,
 };
 use netsmith_core::job;
 use netsmith_lang::Span;
@@ -68,9 +68,10 @@ impl Solver<'_> {
                 let name = self.model.path_of_field(d.field);
                 let sign = if d.flipped { "-" } else { "" };
                 let message = format!(
-                    "the currents on net `{}` do not add up: `{sign}{name}` must stay within {stated}, but the others on it work out to {works_out} (all of them: {})",
+                    "the currents on net `{}` do not add up: `{sign}{name}` must stay within {stated}, but the others on it work out to {works_out} (all of them: {}{})",
                     b.net,
-                    all.join(", ")
+                    all.join(", "),
+                    self.model.group_clause(&b.draws)
                 );
                 self.budget_failed.insert(d.field);
                 let (source, span) = self.balance_site(&b);
@@ -79,33 +80,31 @@ impl Solver<'_> {
             }
             // Otherwise the terms are ranges that all hold or all are worked out from one
             // another, and the balance only has to be able to reach zero.
-            let total = known
-                .iter()
-                .skip(1)
-                .try_fold(known[0], |sum, q| sum.add(q).ok());
-            let Some(total) = total else { continue };
+            let terms: Vec<(Draw, Quantity)> = b.draws.iter().copied().zip(known.clone()).collect();
+            // The members of a group of loads add up to the worst few of them (issue #806).
+            let Some(total) = self.model.sum_draws(&terms) else {
+                continue;
+            };
             if total.lo() - slack(&[&total]) <= 0.0 && 0.0 <= total.hi() + slack(&[&total]) {
                 continue;
             }
             // The first term, against the others.
-            let others = known
-                .iter()
-                .skip(1)
-                .try_fold(None, |sum: Option<Quantity>, q| match sum {
-                    None => Some(Some(*q)),
-                    Some(s) => s.add(q).ok().map(Some),
-                })
-                .map(|sum| sum.or(Quantity::point(Dimension::CURRENT, 0.0).ok()));
-            let Some(Some(others)) = others else { continue };
+            let others = if terms.len() > 1 {
+                self.model.sum_draws(&terms[1..])
+            } else {
+                Quantity::point(Dimension::CURRENT, 0.0).ok()
+            };
+            let Some(others) = others else { continue };
             let d = &b.draws[0];
             let name = self.model.path_of_field(d.field);
             let sign = if d.flipped { "-" } else { "" };
             let message = format!(
-                "the currents on net `{}` do not add up: `{sign}{name}` is {}, so the others on it must add up to {}, but they can only give {others} (all of them: {})",
+                "the currents on net `{}` do not add up: `{sign}{name}` is {}, so the others on it must add up to {}, but they can only give {others} (all of them: {}{})",
                 b.net,
                 known[0],
                 known[0].neg(),
-                all.join(", ")
+                all.join(", "),
+                self.model.group_clause(&b.draws)
             );
             let (source, span) = self.balance_site(&b);
             self.report(source, span, message);
@@ -236,9 +235,10 @@ impl Solver<'_> {
                     )
                 };
                 notes.push(format!(
-                    "net `{}`{scope}: {} add up to zero{unmodelled}",
+                    "net `{}`{scope}: {} add up to zero{}{unmodelled}",
                     b.net,
-                    terms.join(" + ")
+                    terms.join(" + "),
+                    self.model.group_clause(&b.draws)
                 ));
                 fields.extend(b.draws.iter().map(|d| d.field));
             }

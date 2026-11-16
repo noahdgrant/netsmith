@@ -200,6 +200,19 @@ pub(crate) enum Kind {
 pub(crate) struct Element {
     pub name: String,
     pub kind: Kind,
+    /// The group of loads a load is a member of (issue #806): a combination with more than
+    /// the group's limit of its members at the top of their range is not the circuit's.
+    pub group: Option<Group>,
+}
+
+/// A load's place in a group of loads of which at most `limit` are on at once. A member is on
+/// when one of its elements (a module's port stands for every load inside the module) is at the
+/// top of its range.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct Group {
+    pub id: usize,
+    pub member: usize,
+    pub limit: usize,
 }
 
 /// A node that a source holds: its voltage is a range that the combinations take the ends of.
@@ -776,9 +789,30 @@ impl Island {
         let mut out = vec![0.0; quantities];
         let mut consistent = 0u64;
         let mut singular = false;
-        for combination in 0..total {
+        let grouped: Vec<(usize, Group)> = self
+            .elements
+            .iter()
+            .enumerate()
+            .filter_map(|(e, el)| el.group.map(|g| (held_count + e, g)))
+            .collect();
+        let mut on: Vec<(usize, usize)> = Vec::new();
+        'combinations: for combination in 0..total {
             if combination % 256 == 0 {
                 netsmith_core::job::checkpoint();
+            }
+            // More loads of a group on than it allows: not a state of the circuit.
+            if !grouped.is_empty() {
+                on.clear();
+                for &(k, g) in &grouped {
+                    let below: u64 = variants[..k].iter().map(|v| v.len() as u64).product();
+                    let m = variants[k].len() as u64;
+                    if m > 1 && (combination / below) % m == 1 && !on.contains(&(g.id, g.member)) {
+                        on.push((g.id, g.member));
+                        if on.iter().filter(|(id, _)| *id == g.id).count() > g.limit {
+                            continue 'combinations;
+                        }
+                    }
+                }
             }
             let mut c = combination;
             points.clear();
