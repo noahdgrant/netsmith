@@ -180,7 +180,7 @@ fn an_order_makes_only_its_boards_and_a_summary_with_the_numbers_scaled() {
         "LedExample x10: 2 layers,",
         "TwoBoards/led x3: 2 layers,",
         "hand-solder: J1",
-        "mm thick, finish not stated",
+        "mm thick, finish HASL lead-free",
         "before you order",
         "unverified items:",
     ] {

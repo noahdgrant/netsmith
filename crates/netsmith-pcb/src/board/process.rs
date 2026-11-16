@@ -133,7 +133,7 @@ impl Board {
             format!(" ({})", list.join(", "))
         };
         format!(
-            "{} {} (numbers from {}); track {} mm, space {} mm, drill {} mm, via {} mm, annular ring {} mm, hole to hole {} mm, copper to edge {} mm, silkscreen {} mm line and {} mm text, mask bridge {} mm; {} layers{}, {} mm thick, {} oz copper{}; {}",
+            "{} {} (numbers from {}); track {} mm, space {} mm, drill {} mm, via {} mm, annular ring {} mm, hole to hole {} mm, copper to edge {} mm, silkscreen {} mm line and {} mm text, mask bridge {} mm; {} layers{}, {} mm thick, {} oz copper{}, finish {}; {}",
             p.fabricator,
             p.name,
             p.source,
@@ -155,6 +155,7 @@ impl Board {
                 .inner
                 .as_ref()
                 .map_or_else(String::new, |i| format!(", build-up {}", i.build)),
+            p.finish,
             if p.is_fictional() {
                 "a fictional process: this package is not for ordering"
             } else {

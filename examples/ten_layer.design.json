@@ -263,6 +263,7 @@
       "max_temperature_rise": null,
       "track_width_tolerance": 0.2,
       "hole_plating": 0.018,
+      "finish": "ENIG",
       "stackup": {
         "layers": 10,
         "thickness": [

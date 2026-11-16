@@ -70,6 +70,9 @@ pub struct Process {
     pub track_width_tolerance: f64,
     /// The copper plated on a hole's wall, in mm, which carries a via's current.
     pub hole_plating: f64,
+    /// The surface finish, one of the finishes the process offers (`HASL lead-free`, `ENIG`...):
+    /// the process's own word, as the board chose it or the process's default (issue #842).
+    pub finish: String,
     pub stackup: Stackup,
 }
 

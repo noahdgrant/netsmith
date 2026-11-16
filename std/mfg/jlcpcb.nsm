@@ -183,6 +183,21 @@ generic TwoLayer {
     .hole_plating: Length
     .hole_plating &= 0.018mm
 
+    /// The surface finish the board is made with: the page's "Surface Finish" lists "HASL
+    /// (leaded / lead-free), ENIG, OSP" (fetched 2026-11-16), without saying which the order
+    /// form selects by default. The default is lead-free HASL, the finish `fab` has always
+    /// written to the board file, and not a figure of the page.
+    /// The page says boards of 0.4 mm or less do not support HASL: a board that thin states
+    /// another finish (the check does not refuse it yet). A board chooses another of
+    /// `.finishes` with `.process.finish &= "ENIG"`; `fab` writes it to the board file and
+    /// the order summary, and the board house's order form has to match it (issue #842).
+    .finish: String
+    .finish ?= "HASL lead-free"
+    /// The finishes the process offers, separated by commas. The board's `.finish` is one of
+    /// them.
+    .finishes: String
+    .finishes &= "HASL leaded, HASL lead-free, ENIG, OSP"
+
     .stackup: Stackup
     .stackup.layers       &= 2
     .stackup.thickness    &= 0.4mm..2mm
@@ -380,6 +395,18 @@ interface FourLayer {
     .hole_plating: Length
     .hole_plating &= 0.018mm
 
+    /// The surface finish the board is made with: the page's "Surface Finish" lists "HASL
+    /// (leaded / lead-free), ENIG, OSP" (fetched 2026-11-16) and names no exclusion for four
+    /// layers. The default is lead-free HASL, as for `TwoLayer`, and not a figure of the page. A board chooses another of
+    /// `.finishes` with `.process.finish &= "ENIG"`; `fab` writes it to the board file and
+    /// the order summary, and the board house's order form has to match it (issue #842).
+    .finish: String
+    .finish ?= "HASL lead-free"
+    /// The finishes the process offers, separated by commas. The board's `.finish` is one of
+    /// them.
+    .finishes: String
+    .finishes &= "HASL leaded, HASL lead-free, ENIG, OSP"
+
     .stackup: Stackup
     .stackup.layers        &= 4
     .stackup.thickness     &= 1.6mm
@@ -558,6 +585,19 @@ interface SixLayer {
     /// 18 μm". The track width check rates a via for current by it (issue #431).
     .hole_plating: Length
     .hole_plating &= 0.018mm
+
+    /// The surface finish the board is made with: the page's "Surface Finish" lists "HASL
+    /// (leaded / lead-free), ENIG, OSP" and says that FR-4 boards of six or more layers do not
+    /// support HASL (fetched 2026-11-16), so the offer is ENIG and OSP, the default ENIG (not
+    /// a figure of the page). A board chooses another of
+    /// `.finishes` with `.process.finish &= "ENIG"`; `fab` writes it to the board file and
+    /// the order summary, and the board house's order form has to match it (issue #842).
+    .finish: String
+    .finish ?= "ENIG"
+    /// The finishes the process offers, separated by commas. The board's `.finish` is one of
+    /// them.
+    .finishes: String
+    .finishes &= "ENIG, OSP"
 
     .stackup: Stackup
     .stackup.layers        &= 6

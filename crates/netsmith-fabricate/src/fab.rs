@@ -2236,6 +2236,7 @@ fn fab_panel(
         width_mm: pkg.geometry.width,
         height_mm: pkg.geometry.height,
         thickness_mm: process.stackup.chosen_thickness(),
+        finish: process.finish.clone(),
         assembled_parts: crate::order::stock_parts(&pkg.plan),
         bom: pkg.plan.bom.clone(),
         consigned: pkg.plan.consigned.clone(),
@@ -2981,7 +2982,15 @@ mod tests {
 
     /// The fields of a process that are not a rule the router and the design rules check keep,
     /// each with the reason (issue #431).
-    const NOT_A_COPPER_RULE: [(&str, &str); 18] = [
+    const NOT_A_COPPER_RULE: [(&str, &str); 20] = [
+        (
+            "finish",
+            "the surface finish, a word for the notes and the order",
+        ),
+        (
+            "finishes",
+            "the finishes the process offers, which the design stage checks `.finish` against",
+        ),
         (
             "hole_plating",
             "the track width check rates a via for current by it (issue #431); the counts it gives are the router's",

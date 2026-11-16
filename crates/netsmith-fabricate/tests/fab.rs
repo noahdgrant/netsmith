@@ -103,7 +103,9 @@ fn the_led_board_becomes_a_complete_package() {
         "{notes}"
     );
     assert!(
-        notes.contains("track 0.1 mm") && notes.contains("1.6 mm thick"),
+        notes.contains("track 0.1 mm")
+            && notes.contains("1.6 mm thick")
+            && notes.contains("finish HASL lead-free;"),
         "{notes}"
     );
     assert!(

@@ -18,4 +18,4 @@ Rejected: a `Signal` interface beside `Plane`, chosen by the type of `.innerN`. 
 
 The cost: `FourLayer` was rewritten in the new build-up fields. A board needs no change: `.innerN.net` reads as before.
 
-Left open: tracks on inner layers (the router, #431), blind and buried vias, a split plane, other thicknesses and copper weights, 8- and 10-layer processes until JLCPCB publishes their build-ups, and a `.finish` field.
+Left open: tracks on inner layers (the router, #431), blind and buried vias, a split plane, other thicknesses and copper weights and 8- and 10-layer processes until JLCPCB publishes their build-ups.
