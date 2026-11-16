@@ -1182,7 +1182,7 @@ export type RoutesChange = { "what": "delete", net: string, track: number | null
 /**
  * Lock, or unlock.
  */
-lock: boolean, } | { "what": "add_track", net: string, layer: string, width: number | null, from: PcbPoint, to: PcbPoint, } | { "what": "add_via", net: string, at: PcbPoint, } | { "what": "move_track", net: string, track: number, from: PcbPoint, to: PcbPoint, } | { "what": "move_via", net: string, via: number, at: PcbPoint, } | { "what": "restore", net: string, before: string | null, after: string | null, };
+lock: boolean, } | { "what": "add_track", net: string, layer: string, width: number | null, from: PcbPoint, to: PcbPoint, } | { "what": "add_via", net: string, at: PcbPoint, } | { "what": "move_track", net: string, track: number, from: PcbPoint, to: PcbPoint, mid?: PcbPoint, } | { "what": "move_via", net: string, via: number, at: PcbPoint, } | { "what": "restore", net: string, before: string | null, after: string | null, };
 
 export type PcbRoutesEdit = { board: string, 
 /**
@@ -1224,7 +1224,19 @@ track: Array<PcbPoint>,
  * third slice) before going round them: `false` (also when the field is missing) is the
  * walkaround alone.
  */
-shove: boolean, };
+shove: boolean, 
+/**
+ * The track's corners on the layers it was drawn on before its last layer change, one run
+ * for each layer in turn (issue 1009): the walk is on `layer` from `from`, and this copper,
+ * with `vias`, is more of the new track, which a shove moves copper out of the way of and
+ * whose crossed router copper is answered too. Empty: the track is on one layer.
+ */
+earlier: Array<PcbRun>, 
+/**
+ * The vias (the process's) at the track's layer changes, the last of them at the first
+ * corner of `track`.
+ */
+vias: Array<PcbPoint>, };
 
 export type PcbWalked = { points: Array<PcbPoint> | null, reason: string | null, tried: number, 
 /**
@@ -1260,9 +1272,40 @@ export type PcbShovedTrack = { net: string, track: number,
 /**
  * `top` or `bottom`.
  */
-layer: string, width: number, wasFrom: PcbPoint, wasTo: PcbPoint, from: PcbPoint, to: PcbPoint, };
+layer: string, width: number, wasFrom: PcbPoint, wasTo: PcbPoint, from: PcbPoint, to: PcbPoint, 
+/**
+ * An arc's middle, where it was and where it goes (issue 1009: an arc is shoved whole);
+ * `None` for a straight track.
+ */
+wasMid: PcbPoint | null, mid: PcbPoint | null, };
 
 export type PcbShovedVia = { net: string, via: number, diameter: number, wasAt: PcbPoint, at: PcbPoint, };
+
+export type PcbRun = { 
+/**
+ * `top`, `bottom` or an inner signal layer.
+ */
+layer: string, points: Array<PcbPoint>, };
+
+export type PcbShove = { board: string, net: string, tracks: Array<PcbShoveTrack>, vias: Array<PcbShoveVia>, moving: Array<PcbShapeRef>, shove: boolean, };
+
+export type PcbShoveTrack = { layer: string, width: number | null, from: PcbPoint, to: PcbPoint, };
+
+export type PcbShoveVia = { at: PcbPoint, diameter: number | null, };
+
+export type PcbShapeRef = { net: string, track: number | null, via: number | null, };
+
+export type PcbShoveAnswer = { reason: string | null, shoved: PcbShoved, stuck: string | null, };
+
+export type PcbRerouted = { 
+/**
+ * The nets crossed, routed again.
+ */
+nets: Array<string>, tracks: Array<PcbCrossedTrack>, vias: Array<PcbCrossedVia>, 
+/**
+ * The connections of those nets the router could not make round the track.
+ */
+left: number, };
 
 export type PcbNetWidth = { net: string, 
 /**

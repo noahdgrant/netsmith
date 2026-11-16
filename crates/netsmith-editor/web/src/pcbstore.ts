@@ -4,13 +4,35 @@
 
 import { signal } from '@preact/signals';
 
-import type { PcbChange, PcbCrossed, PcbFindings, PcbPours, PcbRegenerated, PcbRoutesEdited, PcbScene, PcbShoved, PcbWalk, RoutesChange } from './api';
+import type {
+  PcbChange,
+  PcbCrossed,
+  PcbFindings,
+  PcbPours,
+  PcbRegenerated,
+  PcbRoutesEdited,
+  PcbScene,
+  PcbShove,
+  PcbShoved,
+  PcbWalk,
+  RoutesChange,
+} from './api';
 import { ApiFailure, api } from './client';
 import { type History, NO_HISTORY, type Run, type Step, record, redoing, undoing } from './pcb/edits';
 import { proposalSaid } from './pcb/regenerate';
 import { labelOf } from './pcb/routes';
 import type { Side } from './pcb/side';
-import { type Answer, answerTo, latestOnly, saidOf, walkKey } from './pcb/walk';
+import {
+  type Answer,
+  type Rerouted,
+  type ShoveAnswer,
+  answerTo,
+  latestOnly,
+  saidOf,
+  shoveAnswerTo,
+  shoveKey,
+  walkKey,
+} from './pcb/walk';
 import { type Selection, partSel, sameSelection, selection as shared, setSelection } from './selection';
 import { beginJob, endJob, job, pcbReports, say } from './store';
 
@@ -215,6 +237,49 @@ export async function walkNow(w: PcbWalk): Promise<Answer> {
   } catch (e) {
     return answerTo(w, e instanceof Error ? e : new Error(String(e)));
   }
+}
+
+/** The server's last answer to a via placed or a drag (issue 1009): whether it has room, and what it shoves aside. */
+export const shoveAsked = signal<ShoveAnswer | null>(null);
+
+/** Ask whether a via or the shapes of a drag have room where the pointer is, and what they shove aside: the answer lands in
+ * `shoveAsked`, one ask at a time, the newest first, as `askWalk`. */
+export const askShove = latestOnly(
+  (s: PcbShove) => api.pcbShove(s),
+  (s, got) => {
+    shoveAsked.value = shoveAnswerTo(s, got);
+  },
+);
+
+/** Forget the answer: no via or drag is under way. */
+export function clearShove() {
+  if (shoveAsked.value) shoveAsked.value = null;
+}
+
+/** The answer for `s`: the one the page has, or a request made now. */
+export async function shoveNow(s: PcbShove): Promise<ShoveAnswer> {
+  const have = shoveAsked.value;
+  if (have && have.key === shoveKey(s)) return have;
+  try {
+    return shoveAnswerTo(s, await api.pcbShove(s));
+  } catch (e) {
+    return shoveAnswerTo(s, e instanceof Error ? e : new Error(String(e)));
+  }
+}
+
+/** The router's crossed nets routed again round the track being drawn (issue 1009), with the ask it answers; asked after a walk that
+ * crosses router copper, one at a time, the newest first. */
+export const rerouted = signal<Rerouted | null>(null);
+export const askReroute = latestOnly(
+  (w: PcbWalk) => api.pcbReroute(w),
+  (w, got) => {
+    rerouted.value = { key: walkKey(w), answer: got instanceof Error ? null : got };
+  },
+);
+
+/** Forget the re-route: nothing is crossed, or no track is drawn. */
+export function clearReroute() {
+  if (rerouted.value) rerouted.value = null;
 }
 
 /** Send changes to the server. True if it wrote them; the scene is then the new one. */

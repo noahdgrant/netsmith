@@ -121,5 +121,12 @@ describe('drawing and moving copper', () => {
     const move: RoutesChange = { what: 'move_track', net: 'GND', track: 1, from: { x: 0, y: 0 }, to: { x: 1, y: 1 } };
     expect(labelOf([...track, move])).toBe('draw a track on net VCC, shoving 1 shape');
     expect(labelOf([...track, move, move])).toBe('draw a track on net VCC, shoving 2 shapes');
+    // A via, a drag and a track through a layer change shove too (issue 1009).
+    const via: RoutesChange = { what: 'add_via', net: 'VCC', at: { x: 1, y: 0 } };
+    expect(labelOf([via, move])).toBe('place a via on net VCC, shoving 1 shape');
+    const vcc: RoutesChange = { what: 'move_track', net: 'VCC', track: 1, from: { x: 0, y: 0 }, to: { x: 1, y: 1 } };
+    expect(labelOf([...dragChanges(corner, { x: 1, y: 1 }, { x: 2, y: 2 }), vcc])).toBe('move 3 shapes of net GND, shoving 1 shape');
+    expect(labelOf([vcc, move])).toBe('move track 1 of net VCC, shoving 1 shape');
+    expect(labelOf([...track, via, move])).toBe('draw a track on net VCC through 1 via, shoving 1 shape');
   });
 });

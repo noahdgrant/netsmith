@@ -13,7 +13,7 @@ import { marks as cmpMarks } from '../compare/store';
 import { Icon } from '../components/Icons';
 import { EmptyState, Segmented, Spinner } from '../components/ui';
 import { Canvas, type Tip } from '../pcb/Canvas';
-import { crossedText, shovedText } from '../pcb/walk';
+import { crossedText, reroutedText, shovedText } from '../pcb/walk';
 import { FindingsList } from '../pcb/Findings';
 import { SummaryTab } from '../pcb/Summary';
 import { Panel } from '../pcb/Panel';
@@ -45,6 +45,7 @@ import {
   undo,
   crossedShown,
   shoveShown,
+  rerouted,
   grid,
 } from '../pcbstore';
 import { analysis, board, detail, fabReports, job, panelShown, pcbReports, pcbStamp, pickNet, routeBoard } from '../store';
@@ -180,6 +181,8 @@ export function Pcb() {
   // The router's copper the track being drawn crosses, as words, while there is one.
   const shown = crossedShown.value;
   const crossedNow = shown ? crossedText(shown) : null;
+  // The router's crossed nets routed again round it, as a preview (issue 1009), once the server has said.
+  const again = crossedNow ? (rerouted.value?.answer ?? null) : null;
   // The copper of the routes file it shoves aside, or why it goes round instead (issue 726).
   const shoving = shoveShown.value;
   const shovedNow = shoving ? shovedText(shoving.shoved) : null;
@@ -289,7 +292,7 @@ export function Pcb() {
               value={activeTool}
               onChange={(v) => (tool.value = v)}
               options={[
-                { value: 'select', label: 'Select', icon: 'cursor', tip: 'Select, move and box select; drag a fixed track\'s end or a via', keys: 'Esc' },
+                { value: 'select', label: 'Select', icon: 'cursor', tip: 'Select, move and box select; drag a fixed track\'s end or a via (unlocked copper of the routes file in its way is shoved aside, as the track mode says)', keys: 'Esc' },
                 { value: 'keepout', label: 'Keepout', icon: 'keepout', tip: 'Draw a keepout: drag a rectangle', keys: 'K', testid: 'tool-keepout' },
                 // Drawn copper goes in the routes file beside the layout file, which a board without a layout file has none of.
                 ...(sc?.routesFile
@@ -298,11 +301,11 @@ export function Pcb() {
                         value: 'track' as const,
                         label: 'Track',
                         icon: 'track' as const,
-                        tip: 'Draw a track: click a pad, then each corner (unlocked copper of the routes file in the way is shoved aside, and locked copper is gone round, as the mode in the toolbar says; router copper is not an obstacle: it is laid again); double-click or Enter ends it, Esc drops it',
+                        tip: 'Draw a track: click a pad, then each corner (unlocked copper of the routes file in the way is shoved aside, and locked copper is gone round, as the mode in the toolbar says; router copper is not an obstacle: it is laid again, and a preview shows it laid round the track); another layer picked while drawing puts a via at the last corner; double-click or Enter ends it, Backspace takes the last corner or layer change off, Esc drops it',
                         keys: 'X',
                         testid: 'tool-track',
                       },
-                      { value: 'via' as const, label: 'Via', icon: 'via' as const, tip: 'Place a via: click a pad, a track or a via of the net', keys: 'V', testid: 'tool-via' },
+                      { value: 'via' as const, label: 'Via', icon: 'via' as const, tip: 'Place a via: click a pad, a track or a via of the net (unlocked copper of the routes file in its way is shoved aside, as the track mode says; where there is no room the tip says what is in the way)', keys: 'V', testid: 'tool-via' },
                     ]
                   : []),
               ]}
@@ -330,11 +333,11 @@ export function Pcb() {
               </select>
             </label>
           )}
-          {!in3d && activeTool === 'track' && (
+          {!in3d && (activeTool === 'track' || activeTool === 'via') && (
             <label
               class="grid-pick"
               data-testid="track-mode"
-              title="What the track does about unlocked copper of the routes file in its way: shove it aside (locked copper and pads stay, the track goes round them), or only go round it"
+              title="What a track, a via or a drag of a track's end or a via does about unlocked copper of the routes file in its way: shove it aside (locked copper and pads stay, a track goes round them), or only go round it (a via or a drag is then refused where it has no room)"
             >
               <Icon name="track" size={14} />
               <select
@@ -508,17 +511,17 @@ export function Pcb() {
               ))}
             </div>
           )}
-          {!in3d && activeTool === 'track' && (crossedNow || shovedNow || stuckNow) && (
+          {!in3d && (crossedNow || shovedNow || stuckNow) && (
             <div class="pcb-notes" data-testid="track-notes">
               {shovedNow && (
                 <div class="pcb-note" data-testid="track-shoved">
                   <b>Shoves {shovedNow}</b>
-                  <div>Unlocked copper of the routes file moves out of the way with the track, in one edit (one undo). A locked shape stays: the track goes round it.</div>
+                  <div>Unlocked copper of the routes file moves out of the way, in the same edit (one undo). A locked shape stays: a track goes round it.</div>
                 </div>
               )}
               {stuckNow && (
                 <div class="pcb-note warn" data-testid="track-stuck">
-                  <b>Goes round, nothing shoved</b>
+                  <b>{activeTool === 'track' ? 'Goes round, nothing shoved' : 'Nothing shoved'}</b>
                   <div>{stuckNow[0].toUpperCase() + stuckNow.slice(1)}.</div>
                 </div>
               )}
@@ -526,6 +529,11 @@ export function Pcb() {
                 <div class="pcb-note warn" data-testid="track-crossed">
                   <b>Crosses {crossedNow}</b>
                   <div>An edit throws the router's copper away: route again after it to lay it round the new track.</div>
+                  {again && (
+                    <div data-testid="track-again" data-left={again.left}>
+                      Dashed: {reroutedText(again)} (a preview).
+                    </div>
+                  )}
                 </div>
               )}
             </div>

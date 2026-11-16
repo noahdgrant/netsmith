@@ -1,6 +1,25 @@
 import { describe, expect, it } from 'vitest';
-import type { PcbWalk } from '../api';
-import { NOTHING_CROSSED, NOTHING_SHOVED, answerTo, crossedText, headingOf, latestOnly, saidOf, shoveChanges, shovedText, walkKey } from './walk';
+import type { PcbRouteNet, PcbWalk } from '../api';
+import {
+  NOTHING_CROSSED,
+  NOTHING_SHOVED,
+  answerTo,
+  changeLayer,
+  crossedText,
+  dragShove,
+  drawLayered,
+  headingOf,
+  latestOnly,
+  rerouteAsk,
+  reroutedText,
+  saidOf,
+  shoveAnswerTo,
+  shoveChanges,
+  shoveKey,
+  shovedText,
+  viaShove,
+  walkKey,
+} from './walk';
 
 /** Let the promises that are settled run their continuations. */
 const flush = async () => {
@@ -17,6 +36,8 @@ const ask = (x: number): PcbWalk => ({
   heading: null,
   track: [],
   shove: false,
+  earlier: [],
+  vias: [],
 });
 
 describe('the walkaround asks', () => {
@@ -89,6 +110,8 @@ describe('the walkaround asks', () => {
           wasTo: { x: 0, y: 2 },
           from: { x: 0, y: 0 },
           to: { x: 0.5, y: 2 },
+          wasMid: null,
+          mid: null,
         },
       ],
       vias: [{ net: 'VCC', via: 1, diameter: 0.45, wasAt: { x: 3, y: 3 }, at: { x: 3.4, y: 3 } }],
@@ -169,5 +192,72 @@ describe('the walkaround asks', () => {
     walk(2);
     await flush();
     expect(got).toEqual(['down', 2]);
+  });
+});
+
+describe('a track on several layers, a via and a drag (issue 1009)', () => {
+  const p = (x: number, y: number) => ({ x, y });
+  const draft = { net: 'VCC', layer: 'top', points: [p(0, 0), p(1, 0)], earlier: [], vias: [] };
+
+  it('puts a via at the last corner when the layer changes, and takes it off when it changes back before a corner', () => {
+    const on = changeLayer(draft, 'bottom');
+    expect(on).toEqual({ net: 'VCC', layer: 'bottom', points: [p(1, 0)], earlier: [{ layer: 'top', points: [p(0, 0), p(1, 0)] }], vias: [p(1, 0)] });
+    expect(changeLayer(on, 'top')).toEqual(draft);
+    // Before the first corner there is nothing to change at: only the layer changes.
+    expect(changeLayer({ ...draft, points: [p(0, 0)] }, 'bottom')).toEqual({ ...draft, points: [p(0, 0)], layer: 'bottom' });
+    expect(changeLayer(draft, 'top')).toBe(draft);
+  });
+
+  it('draws each run on its layer with a via at each change, and no via after the last corner', () => {
+    const on = { ...changeLayer(draft, 'bottom'), points: [p(1, 0), p(1, 1)] };
+    expect(drawLayered(on)).toEqual([
+      { what: 'add_track', net: 'VCC', layer: 'top', width: null, from: p(0, 0), to: p(1, 0) },
+      { what: 'add_track', net: 'VCC', layer: 'bottom', width: null, from: p(1, 0), to: p(1, 1) },
+      { what: 'add_via', net: 'VCC', at: p(1, 0) },
+    ]);
+    // Ended right after a layer change: the via would go nowhere.
+    expect(drawLayered(changeLayer(draft, 'bottom'))).toEqual([{ what: 'add_track', net: 'VCC', layer: 'top', width: null, from: p(0, 0), to: p(1, 0) }]);
+  });
+
+  it('names a walk by the track before its layer change too', () => {
+    const w = { ...ask(1), earlier: [{ layer: 'top', points: [p(0, 0), p(1, 0)] }], vias: [p(1, 0)] };
+    expect(walkKey(w)).not.toBe(walkKey(ask(1)));
+    expect(walkKey({ ...w, vias: [] })).not.toBe(walkKey(w));
+  });
+
+  it('asks a via and a drag, and keeps the answer', () => {
+    const via = viaShove('B', 'VCC', p(1, 2), true);
+    expect(via).toEqual({ board: 'B', net: 'VCC', tracks: [], vias: [{ at: p(1, 2), diameter: null }], moving: [], shove: true });
+    expect(shoveKey(via)).not.toBe(shoveKey({ ...via, shove: false }));
+    const record: PcbRouteNet = {
+      net: 'GND',
+      lock: false,
+      tracks: [{ layer: 'bottom', width: 0.3, from: p(0, 0), mid: null, to: p(1, 1), lock: false, drawn: true }],
+      vias: [{ at: p(1, 1), diameter: 0.6, drill: 0.3, lock: false, drawn: true }],
+    } as unknown as PcbRouteNet;
+    const drag = dragShove('B', record, [
+      { what: 'move_track', net: 'GND', track: 1, from: p(0, 0), to: p(2, 1) },
+      { what: 'move_via', net: 'GND', via: 1, at: p(2, 1) },
+    ], false);
+    expect(drag.tracks).toEqual([{ layer: 'bottom', width: 0.3, from: p(0, 0), to: p(2, 1) }]);
+    expect(drag.vias).toEqual([{ at: p(2, 1), diameter: 0.6 }]);
+    expect(drag.moving).toEqual([
+      { net: 'GND', track: 1, via: null },
+      { net: 'GND', track: null, via: 1 },
+    ]);
+    const room = shoveAnswerTo(via, { reason: 'no room there: it is on or too near a track of net GND', shoved: NOTHING_SHOVED, stuck: null });
+    expect(room.key).toBe(shoveKey(via));
+    expect(room.reason).toContain('track of net GND');
+    expect(shoveAnswerTo(via, new Error('down')).reason).toBe('down');
+  });
+
+  it('moves an arc whole and asks the re-route with the way found', () => {
+    const arc = { net: 'GND', track: 3, layer: 'top', width: 0.2, wasFrom: p(0, 0), wasTo: p(2, 0), from: p(0, 1), to: p(2, 1), wasMid: p(1, 1), mid: p(1, 2) };
+    expect(shoveChanges({ tracks: [arc], vias: [] })).toEqual([{ what: 'move_track', net: 'GND', track: 3, from: p(0, 1), to: p(2, 1), mid: p(1, 2) }]);
+    const w = { ...ask(3), track: [p(-1, 0), p(0, 0)] };
+    const again = rerouteAsk(w, [p(0, 0), p(1, 1), p(3, 1)]);
+    expect(again.track).toEqual([p(-1, 0), p(0, 0), p(1, 1), p(3, 1)]);
+    expect(reroutedText({ nets: ['VCC'], tracks: [], vias: [], left: 0 })).toBe('routed again round it (VCC)');
+    expect(reroutedText({ nets: ['VCC'], tracks: [], vias: [], left: 2 })).toBe('routed again round it, 2 connections left');
   });
 });
