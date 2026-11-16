@@ -61,7 +61,10 @@
 //! (`turn_to_fit`), unless the layout file locks it or an overhang governs it. A part whose
 //! requirements state only a face, or only a window on a position, has all four turns; one
 //! whose requirements state a rotation keeps the turns they leave and, if none fits, the
-//! refusal names it. The refusal opens with `N part(s) do not fit the outline of W x H mm:` and
+//! refusal names it. Before any run, courtyards that are more than both faces hold inside the
+//! margin are refused at once (`refuse_dense`, issue #819): the sizes the rows need and the
+//! areas, with no run and so no list of parts, whichever the faces they share. After a run the
+//! refusal opens with `N part(s) do not fit the outline of W x H mm:` and
 //! lists every part outside the outline or inside its margin, by how far, and every pair of
 //! courtyards that overlap, by area; the rows' size is given only when the courtyards' area
 //! alone is more than both faces hold inside the margin. `fab` writes every part's final place
@@ -762,6 +765,9 @@ pub(crate) fn arrange_best(
         );
     };
     report_area(parts, fit, options);
+    if let Some(refusal) = refuse_dense(parts, options) {
+        return Err(refusal);
+    }
     let fits = |a: &Arrangement| a.needs.0 <= fit.0 + 1e-9 && a.needs.1 <= fit.1 + 1e-9;
     if fits(&arrangement) {
         return refine(
@@ -1241,6 +1247,40 @@ fn report_area(parts: &[Placed], fit: (f64, f64), options: &PlaceOptions) {
             load[0], load[1], fit.0, fit.1, inside
         )
     });
+}
+
+/// The refusal of a board whose courtyards alone are more than both faces of the size to fit
+/// hold inside the margin (issue #819), before the annealer runs: whatever the placer does with
+/// the faces, the courtyards do not fit, so trying takes as long as a placement and only says
+/// so afterwards. `None` where the courtyards could fit (or `options` state no size), and the
+/// placer goes on. It is the area [`face_loads`] counts (the courtyards that certainly take
+/// room, the pads of a part on the face it draws no courtyard for) against both faces, so a
+/// board it refuses is one that [`report_area`] says `cannot fit`; the sizes the rows need
+/// and the parts bigger than the outline are given as after a run, and there is no run to
+/// list the overlaps of (`ended` is `None`, `parts` is empty), which makes
+/// [`DoesNotFit::seed_may_help`] false, so no other seed is tried.
+pub(crate) fn refuse_dense(parts: &[Placed], options: &PlaceOptions) -> Option<DoesNotFit> {
+    let fit = options.fit?;
+    let (load, inside) = face_loads(parts, fit, options);
+    let (taken, held) = (load[0] + load[1], 2.0 * inside);
+    if taken <= held + 1e-9 {
+        return None;
+    }
+    // The rows' size is the measure of by how much, as when a run ends: they are made of a
+    // copy, for the caller's parts are not moved.
+    let mut rows = parts.to_vec();
+    let fixed = apply_fixed(&mut rows, options);
+    let needs = arrange_free(&mut rows, &fixed, options).needs;
+    Some(DoesNotFit {
+        wall: options.wall(),
+        needs,
+        outline: fit,
+        oversize: check_oversize(&rows, &fixed, options, fit),
+        area: (taken, held),
+        parts: Box::new([]),
+        requirements: None,
+        ended: None,
+    })
 }
 
 /// What `refine` is told of the try it is.
@@ -2271,6 +2311,51 @@ mod tests {
     }
 
     #[test]
+    fn courtyards_that_are_more_than_both_faces_hold_are_refused_before_the_annealer_runs() {
+        // 60 0805 resistors take about 400 mm2; both faces of 14 x 12 mm hold about 296 mm2
+        // inside the margin, whatever the faces are shared as (issue #819).
+        let options = PlaceOptions {
+            fit: Some((14.0, 12.0)),
+            ..PlaceOptions::default()
+        };
+        let (result, heard) = placed_limited(
+            resistors(60, "0805"),
+            &options,
+            netsmith_core::job::Limit::default(),
+        );
+        let Err(netsmith_pcb::BoardError::DoesNotFit(error)) = result else {
+            panic!("60 parts fit 14 x 12 mm");
+        };
+        // No run: no move was tried, no run was reported, and no other seed could help.
+        assert!(
+            !heard
+                .iter()
+                .any(|w| w.unit == "moves tried" || w.unit == "parts legalised"),
+            "{heard:?}"
+        );
+        assert!(
+            !details(&heard).iter().any(|d| d.starts_with("run ")),
+            "{:?}",
+            details(&heard)
+        );
+        assert!(error.ended.is_none() && !error.seed_may_help(), "{error}");
+        assert!(error.report().certain);
+        let message = error.to_string();
+        assert!(
+            message.starts_with("the parts need ")
+                && message.contains("; the courtyards add up to ")
+                && message.contains(" mm2 inside its margin, so no arrangement of the parts fits")
+                && message.ends_with("the placer did not try"),
+            "{message}"
+        );
+        assert!(
+            details(&heard)[0].contains("more than both faces hold, so the parts cannot fit"),
+            "{:?}",
+            details(&heard)
+        );
+    }
+
+    #[test]
     fn a_limit_of_one_try_lets_the_first_run_finish_and_begins_no_other() {
         let options = PlaceOptions {
             fit: Some((15.0, 10.0)),
@@ -2371,7 +2456,7 @@ mod tests {
                 && message.contains("the outline is 15.0 x 10.0 mm")
                 && message.contains("mm over in y")
                 && message.contains("the courtyards add up to ")
-                && message.contains(" part(s) do not fit the outline of 15.0 x 10.0 mm: "),
+                && message.ends_with("the placer did not try"),
             "{message}"
         );
         // A board 3 mm wide is narrower than an 0603 as it lies but not as it is turned: the
@@ -2574,7 +2659,7 @@ mod tests {
     #[test]
     fn parts_that_do_not_fit_are_listed_by_name_with_the_area_and_the_side_of_the_outline() {
         let options = PlaceOptions {
-            fit: Some((14.0, 12.0)),
+            fit: Some((17.0, 14.0)),
             ..PlaceOptions::default()
         };
         let text = placed_with(resistors(60, "0805"), &options)
@@ -2626,7 +2711,8 @@ mod tests {
                 .iter()
                 .filter(|l| !l.starts_with("    and "))
                 .all(|l| l.contains(" mm outside the ")
-                    || (l.contains(" mm inside the ") && l.contains(" mm margin at the "))),
+                    || (l.contains(" mm inside the ") && l.contains(" mm margin at the "))
+                    || l.contains("reference text too near the edge")),
             "{parts:?}"
         );
     }

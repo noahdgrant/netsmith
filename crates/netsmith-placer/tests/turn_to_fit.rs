@@ -432,13 +432,30 @@ fn a_refusal_leads_with_every_part_that_does_not_fit_and_how_far_out() {
 #[test]
 fn a_refusal_that_is_certain_from_the_courtyards_alone_gives_the_area() {
     // 40 small parts on both faces of 10 x 10 mm: more courtyard than the faces hold.
-    let message = crowded_both(40, (10.0, 10.0)).to_string();
+    // The refusal comes before any placing, with no size or in the outline (issue #819): the
+    // placer reports no move and no run.
+    let heard = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+    let sink = {
+        let heard = std::rc::Rc::clone(&heard);
+        std::rc::Rc::new(move |w: &netsmith_core::job::Work| heard.borrow_mut().push(w.clone()))
+    };
+    let error = netsmith_core::job::reporting(sink, || crowded_both(40, (10.0, 10.0)));
+    assert!(
+        heard
+            .borrow()
+            .iter()
+            .all(|w| w.unit != "moves tried" && w.unit != "placer runs"),
+        "{:?}",
+        heard.borrow()
+    );
+    assert!(error.ended.is_none() && !error.seed_may_help());
+    let message = error.to_string();
     assert!(message.contains("the parts need "), "{message}");
     assert!(message.contains("the courtyards add up to "), "{message}");
-    assert!(
-        message.contains(" part(s) do not fit the outline of 10.0 x 10.0 mm: "),
-        "{message}"
-    );
+    // The annealer did not run (issue #819): there are no parts to list, and the message says
+    // why not.
+    assert!(message.ends_with("the placer did not try"), "{message}");
+    assert!(!message.contains("part(s) do not fit"), "{message}");
 }
 
 /// [`crowded`], with the parts free to be on either face.
