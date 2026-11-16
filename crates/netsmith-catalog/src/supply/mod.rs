@@ -70,7 +70,8 @@
 //!   and resolution picks the row, would change which part existing designs get, and is not
 //!   planned.
 //! - "JLCPCB Basic, then Preferred, then Extended, then file order" is the preferred-parts rule
-//!   of resolution.
+//!   of resolution. A project's `preferred.csv` beside the manifest (issue #802,
+//!   `netsmith_solve::Preferred`) puts the rows it names first, in its order.
 //! - `fab` refuses an unresolved part, by name, with the three nearest rows and the result of the
 //!   checks with each.
 //! - The `price`, `stock` and `date` columns stay in the format, as the `catalog` answer that is
@@ -87,8 +88,7 @@
 //!   Nexar API, or a community snapshot such as the one the KiCad JLCPCB plugin downloads
 //!   daily): not now; issue #30. Each needs a person to read its terms of use and to decide
 //!   whose key a user brings: a person must do this, checklist in issue #10.
-//! - A named preferred-parts file (`preferred.csv`, a project's list that wins) and the quantity
-//!   of an order across boards: issue #32.
+//! - The quantity of an order across boards: issue #32.
 //! - Currency conversion, taxes, shipping and JLCPCB's feeder fee for each Extended part: not
 //!   planned until a board needs it.
 

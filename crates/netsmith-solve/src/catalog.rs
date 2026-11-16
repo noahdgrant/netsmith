@@ -15,6 +15,7 @@ use netsmith_quantity::Quantity;
 
 use crate::generic::{Generic, Sense, Series};
 use crate::lock::PickLock;
+use crate::preferred::Preferred;
 use crate::table::Table;
 
 /// What a source of stock knows about a part (ADR 0047). The solver never asks: only the
@@ -249,6 +250,7 @@ pub struct Catalogs {
     constraints_warn: bool,
     series: Option<Series>,
     availability: Option<Arc<dyn Availability>>,
+    preferred: Option<Arc<Preferred>>,
     pins: Vec<(String, String)>,
     pick_lock: Option<Arc<PickLock>>,
     search_budget: SearchBudget,
@@ -356,6 +358,18 @@ impl Catalogs {
 
     pub fn availability(&self) -> Option<&Arc<dyn Availability>> {
         self.availability.as_ref()
+    }
+
+    /// The project's preferred parts (`preferred.csv`, issue #802): when a generic part is
+    /// resolved, the rows that fit and that the list names come first, in its order. The
+    /// solver does not read it. It travels with the catalogs, like the project's other policies.
+    pub fn with_preferred(mut self, preferred: Preferred) -> Self {
+        self.preferred = Some(Arc::new(preferred));
+        self
+    }
+
+    pub fn preferred(&self) -> Option<&Preferred> {
+        self.preferred.as_deref()
     }
 
     /// These catalogs, but the part at `path` (`r1`, as the solver and its messages name it) may only be the

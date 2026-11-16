@@ -84,6 +84,23 @@ $ netsmith fab --order devkit        # "Unitt" is not a board of the project
 netsmith.toml:8: order `devkit` names `Unitt`, but the project has no such board, panel or system; the boards and panels are: DevKit/carrier, DevKit/power_card, Unit
 ```
 
+### Preferred parts
+
+A project says which rows it takes first for a generic part in `preferred.csv`, beside `netsmith.toml` (ADR 0047, issue #802). Each line names a part by its `lcsc` number, its `mpn`, or both; `note` is free text, for why. The file is optional, and a project without one resolves as before.
+
+```csv file=preferred.csv
+lcsc,mpn,note
+C25744,,the 10k 0402 reel on our shelf
+C25804,,
+```
+
+When the bill of materials or `fab` resolves a generic part to a row of its catalog (_Generic parts_ in the chapter on catalogs), the rows that fit and that the file names come first, in the order of the file; the other rows that fit follow as without it, JLCPCB Basic before Preferred before Extended, then the order of the catalog file. A listed row that a supply provider says has no stock is passed over, as any row is. A line with both `lcsc` and `mpn` names only the row that has both.
+
+- The file changes only resolution. The solver picks from a catalog's rows in the order of the file as before, so a design's picks and its pick lock are the same with or without it.
+- A part the file names that no catalog has is not an error: it never fits, so it changes nothing.
+- A column other than `lcsc`, `mpn` and `note`, a header with neither `lcsc` nor `mpn`, a line that names no part and a part named twice are refused, with the file and line: `` preferred.csv:3: `C25744` is listed twice; a part is listed once ``.
+- The editor builds again when the file is written or changed.
+
 ### A part of your own, with no KiCad installed
 
 A part you define needs a footprint, and `kicad.toml` says which (`Library:Name` of a KiCad library, or one of your own). netsmith needs no KiCad install to build and fab a board (ADR 0097), so a part of your own can have a footprint with none either, in two ways. The part and the board are the same in both:

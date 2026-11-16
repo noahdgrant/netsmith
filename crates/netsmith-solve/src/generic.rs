@@ -27,8 +27,9 @@
 //! **Resolution order.** For a generic part, a row of the same catalog with the same package, a
 //! nominal equal to the generic value, a tolerance no wider and a power rating no lower (the
 //! row must be at least as good as what the solver checked). Among those, the preferred-parts
-//! order: JLCPCB Basic, then Preferred, then Extended, and inside a class the file's order, so
-//! a project's own rows are tried last. A row a provider says has stock 0 is passed over and
+//! order: the rows a project's `preferred.csv` names, in its order (issue #802), then JLCPCB
+//! Basic, then Preferred, then Extended, and inside a class the file's order, so a project's own
+//! rows that its list does not name are tried last. A row a provider says has stock 0 is passed over and
 //! noted; unknown stock does not exclude. The row's `lcsc`, `mpn` and `library` go to the part;
 //! its value label is unchanged. A part no row fits is unresolved, `fab` refuses by name, and
 //! the message gives up to three nearest rows (in the same package first, then others) and ends
@@ -1066,7 +1067,8 @@ fn shortfall(generic: &Generic, row: &Candidate) -> f64 {
 /// wider, and every rating the part asked for: a resistor's power rating no lower, a
 /// capacitor's voltage and (always) a recorded DC-bias curve, an inductor's saturation
 /// current and DC resistance, an LED's colour, forward voltage and maximum current. Among the rows that fit
-/// the order is the preferred-parts list: Basic, then Preferred, then Extended, and inside a
+/// the order is the preferred-parts list: the rows the project's `preferred.csv` names, in its
+/// order ([`Catalogs::preferred`]), then Basic, then Preferred, then Extended, and inside a
 /// class the order of the file. `stock` is asked about each fitting row's LCSC number: a row
 /// it answers `0` for is passed over, and a row it knows nothing about (`None`) is kept.
 ///
@@ -1093,7 +1095,15 @@ pub fn resolve(
         .copied()
         .filter(|c| misses(generic, c).is_empty())
         .collect();
-    fits.sort_by_key(|c| rank(c.library));
+    // The project's preferred parts first, in the order of its file; then Basic, Preferred,
+    // Extended; the sort is stable, so the file order of the catalog decides the rest.
+    let preferred = catalogs.preferred();
+    fits.sort_by_key(|c| {
+        (
+            preferred.and_then(|p| p.position(c)).unwrap_or(usize::MAX),
+            rank(c.library),
+        )
+    });
     let mut passed_over = Vec::new();
     for c in fits.iter().copied() {
         let in_stock = c.lcsc.as_deref().and_then(stock);
