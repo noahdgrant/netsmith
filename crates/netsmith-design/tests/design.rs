@@ -597,6 +597,30 @@ fn the_process_arrives_in_the_design_as_the_library_states_it() {
 }
 
 #[test]
+fn the_finish_is_the_process_default_unless_the_board_chooses_another_it_offers() {
+    // Offered by the process (`?=`): lead-free HASL on two layers.
+    let d = designed(&board_with(".process: TwoLayer")).unwrap();
+    assert_eq!(d.process.unwrap().finish, "HASL lead-free");
+    let d = designed(&board_with(
+        ".process: TwoLayer {\n        .finish &= \"ENIG\"\n    }",
+    ))
+    .unwrap();
+    assert_eq!(d.process.unwrap().finish, "ENIG");
+    // A word the process does not offer is refused, with the offer listed.
+    let errors = designed(&board_with(
+        ".process: TwoLayer {\n        .finish &= \"Gold\"\n    }",
+    ))
+    .unwrap_err()
+    .join("\n");
+    assert!(
+        errors.contains(
+            "`process.finish` is `Gold`, but a `TwoLayer` board is made with one of: `HASL leaded`, `HASL lead-free`, `ENIG`, `OSP`"
+        ),
+        "{errors}"
+    );
+}
+
+#[test]
 fn a_board_that_does_not_choose_a_thickness_leaves_the_whole_range() {
     let d = designed(&board_with(".process: TwoLayer")).unwrap();
     let s = d.process.unwrap().stackup;

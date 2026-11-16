@@ -55,10 +55,11 @@
 //!   reported. Every board of an order is routed and checked again when the order runs, even if a
 //!   plain `fab` made it; a cache of finished packages is a later optimisation (not built, issue #62).
 //! - **`order.txt`**, for a person: the number of board designs and of boards; for each board its
-//!   copies, copper layers, size in mm, thickness (or "thickness open"), the finish (`finish not
-//!   stated`: the process definitions do not carry a surface finish, and netsmith will not say one it
-//!   does not know; a sourced surface-finish field is not built, issue #62), the parts the board house assembles and on how many BOM lines, the
-//!   hand-solder parts; the combined bill of materials; "before you order", each board's
+//!   copies, copper layers, size in mm, thickness (or "thickness open"), the surface
+//!   finish (the process's `.finish`, `finish HASL lead-free`, which the order form has to match:
+//!   `std::mfg::jlcpcb` gives each process the finishes JLCPCB offers and the one it defaults to,
+//!   issue #842), the parts the board house assembles and on how many BOM lines, the hand-solder
+//!   parts; the combined bill of materials; "before you order", each board's
 //!   `fab-notes.txt` lines; and the total of unverified items, counted once for each board and not
 //!   once for each copy because the check is of the design (`Package::unverified`).
 //! - **`order-bom.csv`**: `Comment,Footprint,LCSC Part #,Quantity,Used on`, one row for each LCSC
@@ -314,6 +315,9 @@ pub struct BoardFacts {
     pub height_mm: f64,
     /// `None` when the board leaves the thickness open.
     pub thickness_mm: Option<f64>,
+    /// The surface finish the process states (`HASL lead-free`, `ENIG`...), which the order form
+    /// has to match.
+    pub finish: String,
     /// Parts the board house places from its own stock (the consigned ones are in `consigned`).
     pub assembled_parts: usize,
     /// The BOM lines of those parts, each with a part number.
@@ -371,6 +375,7 @@ impl BoardFacts {
             width_mm: board.outline.width(),
             height_mm: board.outline.height(),
             thickness_mm: stackup.chosen_thickness(),
+            finish: board.process.finish.clone(),
             assembled_parts: stock_parts(&package.plan),
             bom: package.plan.bom.clone(),
             consigned: package.plan.consigned.clone(),
@@ -513,12 +518,13 @@ pub fn summary_text(
                 format!("{} mm thick", mm(t))
             });
         s.push_str(&format!(
-            "  {} x{}: {} layers, {} x {} mm, {thickness}, finish not stated\n",
+            "  {} x{}: {} layers, {} x {} mm, {thickness}, finish {}\n",
             selected.label,
             selected.quantity,
             facts.layers,
             mm(facts.width_mm),
             mm(facts.height_mm),
+            facts.finish,
         ));
         if let Some(p) = &facts.panel {
             s.push_str(&format!(
@@ -1104,6 +1110,7 @@ mod tests {
             width_mm: 50.0,
             height_mm: 40.5,
             thickness_mm: Some(1.6),
+            finish: "HASL lead-free".into(),
             assembled_parts: bom.iter().map(|e| e.designators.len()).sum(),
             bom,
             consigned: vec![],
@@ -1174,7 +1181,7 @@ mod tests {
         let text = summary_text("devkit", &boards_made, &bom);
         for expected in [
             "order devkit: 2 board designs, 12 boards in all",
-            "DevKit/carrier x2: 2 layers, 50 x 40.5 mm, 1.6 mm thick, finish not stated",
+            "DevKit/carrier x2: 2 layers, 50 x 40.5 mm, 1.6 mm thick, finish HASL lead-free",
             "assembled by the board house: 2 parts on 1 BOM line",
             "hand-solder: J1, J2 (2 parts on each board, 4 in all)",
             "C1525          14  100n C_0402_1005Metric (2 x 2 DevKit/carrier; 10 x 1 Unit)",

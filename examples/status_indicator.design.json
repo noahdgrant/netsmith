@@ -254,6 +254,7 @@
       "max_temperature_rise": null,
       "track_width_tolerance": 0.2,
       "hole_plating": 0.018,
+      "finish": "HASL lead-free",
       "stackup": {
         "layers": 2,
         "thickness": [

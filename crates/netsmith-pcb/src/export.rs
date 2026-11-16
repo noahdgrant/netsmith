@@ -62,6 +62,17 @@ fn paper_for(outline: &Rect) -> &'static str {
 
 /// The stackup the board's process builds ([`crate::stackup::layers`], the list the 3D scene
 /// reads too), with KiCad's silkscreen and paste layers round it.
+/// KiCad's name of a surface finish, for the board file's `copper_finish`: the process's word
+/// (JLCPCB's names, `std::mfg::jlcpcb`) mapped to the name KiCad's board setup lists. A word
+/// KiCad has no name for is written as it is.
+fn kicad_finish(finish: &str) -> &str {
+    match finish {
+        "HASL lead-free" => "HAL lead-free",
+        "HASL leaded" => "HAL SnPb",
+        other => other,
+    }
+}
+
 fn setup(board: &Board) -> Sexp {
     let layer = |name: &str, kind: &str, rest: Vec<Sexp>| {
         let mut items = vec![
@@ -122,16 +133,7 @@ fn setup(board: &Board) -> Sexp {
     body.extend([
         layer("B.Paste", "Bottom Solder Paste", vec![]),
         silk("B.SilkS", "Bottom Silk Screen"),
-        // JLCPCB makes no HASL board of six layers or more (its capabilities page, "Surface
-        // Finish", fetched 2026-11-12).
-        text(
-            "copper_finish",
-            if board.process.stackup.layers >= 6 {
-                "ENIG"
-            } else {
-                "HAL lead-free"
-            },
-        ),
+        text("copper_finish", kicad_finish(&board.process.finish)),
         Sexp::node("dielectric_constraints", vec![Sexp::atom("no")]),
     ]);
     Sexp::node(
@@ -1614,7 +1616,22 @@ mod tests {
         assert_eq!(
             setup.find("copper_finish").unwrap().args()[0].text(),
             Some("ENIG"),
-            "JLCPCB makes no HASL board of six layers"
+            "the six-layer process offers ENIG and OSP, and defaults to ENIG"
+        );
+    }
+
+    #[test]
+    fn the_board_files_copper_finish_is_kicads_name_of_the_process_finish() {
+        assert_eq!(kicad_finish("HASL lead-free"), "HAL lead-free");
+        assert_eq!(kicad_finish("HASL leaded"), "HAL SnPb");
+        assert_eq!(kicad_finish("ENIG"), "ENIG");
+        assert_eq!(kicad_finish("OSP"), "OSP");
+        // The two-layer LED board is made with the process's default.
+        let pcb = parsed(&led());
+        let setup = pcb.find("setup").unwrap().find("stackup").unwrap();
+        assert_eq!(
+            setup.find("copper_finish").unwrap().args()[0].text(),
+            Some("HAL lead-free")
         );
     }
 

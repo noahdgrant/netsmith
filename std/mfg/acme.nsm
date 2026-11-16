@@ -127,6 +127,17 @@ interface EightLayer {
     .hole_plating: Length
     .hole_plating &= 0.018mm
 
+    /// The surface finish the board is made with: chosen, not sourced, like the rest of ACME: the offer and the default of
+    /// JLCPCB's `SixLayer`. A board chooses another of
+    /// `.finishes` with `.process.finish &= "ENIG"`; `fab` writes it to the board file and
+    /// the order summary, and the board house's order form has to match it (issue #842).
+    .finish: String
+    .finish ?= "ENIG"
+    /// The finishes the process offers, separated by commas. The board's `.finish` is one of
+    /// them.
+    .finishes: String
+    .finishes &= "ENIG, OSP"
+
     .stackup: Stackup
     .stackup.layers        &= 8
     .stackup.thickness     &= 1.6mm
@@ -276,6 +287,17 @@ interface TenLayer {
     /// The copper plated on the wall of a hole.
     .hole_plating: Length
     .hole_plating &= 0.018mm
+
+    /// The surface finish the board is made with: chosen, not sourced, like the rest of ACME: the offer and the default of
+    /// JLCPCB's `SixLayer`. A board chooses another of
+    /// `.finishes` with `.process.finish &= "ENIG"`; `fab` writes it to the board file and
+    /// the order summary, and the board house's order form has to match it (issue #842).
+    .finish: String
+    .finish ?= "ENIG"
+    /// The finishes the process offers, separated by commas. The board's `.finish` is one of
+    /// them.
+    .finishes: String
+    .finishes &= "ENIG, OSP"
 
     .stackup: Stackup
     .stackup.layers        &= 10

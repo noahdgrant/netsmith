@@ -866,6 +866,7 @@ fn process_of(model: &Model, nets: &[String], errors: &mut Vec<String>) -> Optio
         },
         track_width_tolerance: number("track_width_tolerance"),
         hole_plating: mm("hole_plating"),
+        finish: text(find("finish")),
         stackup: Stackup {
             layers,
             thickness: match find("stackup.thickness") {
@@ -879,6 +880,21 @@ fn process_of(model: &Model, nets: &[String], errors: &mut Vec<String>) -> Optio
             inner: None,
         },
     };
+    // The finish is one of the process's offer (issue #842): a word in the list `.finishes`,
+    // which the process states, not a rule of this code.
+    let offered = text(find("finishes"));
+    let offered: Vec<&str> = offered.split(',').map(str::trim).collect();
+    if !built.finish.is_empty() && !offered.contains(&built.finish.as_str()) {
+        problems.borrow_mut().push(format!(
+            "`process.finish` is `{}`, but a `{kind}` board is made with one of: {}",
+            built.finish,
+            offered
+                .iter()
+                .map(|f| format!("`{f}`"))
+                .collect::<Vec<_>>()
+                .join(", ")
+        ));
+    }
     // A board of more than two layers has inner layers, each a plane on a net the board
     // names or a signal layer the board says it is (ADR 0111), and the build-up round them.
     if layers > 2 {
