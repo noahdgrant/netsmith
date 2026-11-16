@@ -334,6 +334,36 @@ impl Backend for Fake {
         }))
         .unwrap())
     }
+    fn pcb_fit(
+        &self,
+        board: &str,
+        part: &str,
+        near: Option<&str>,
+        step: f64,
+        side: Option<&str>,
+    ) -> Result<netsmith_editor::api::PcbFit, ApiError> {
+        if board != "Led" {
+            return Err(ApiError::not_found(format!("there is no board `{board}`")));
+        }
+        if part == "nothing" {
+            return Err(ApiError::bad_request("the board `Led` has no part `nothing`"));
+        }
+        // The request as the backend got it, in the answer: `near` in the part, the side in the
+        // face of the pose.
+        let place = |fits: bool| {
+            serde_json::json!({
+                "turn": 0.0, "side": side.unwrap_or("top"), "at": [1.5, 2.0], "distance": step,
+                "fits": fits, "placement": [], "requirements": [], "messages": [],
+            })
+        };
+        Ok(serde_json::from_value(serde_json::json!({
+            "board": board, "layoutStamp": "1731340000-42",
+            "part": {"refdes": "R1", "path": part},
+            "near": {"x": 3.0, "y": 4.0, "part": near.map(|n| serde_json::json!({"refdes": n, "path": n}))},
+            "step": step, "now": place(false), "poses": [place(true)],
+        }))
+        .unwrap())
+    }
     fn pcb_drc(
         &self,
         board: &str,
@@ -740,6 +770,37 @@ fn the_summary_of_a_board_takes_near_within_and_between_from_the_query() {
     assert_eq!(s.get("/api/pcb/summary").status, 400, "the board is needed");
     for bad in ["between=R1.1", "between=R1.1,R1.2,R1.3", "between=,R1.2", "within=far", "within=-1"] {
         let r = s.get(&format!("/api/pcb/summary?board=Led&{bad}"));
+        assert_eq!(r.status, 400, "{bad}: {}", r.body);
+    }
+}
+
+#[test]
+fn where_a_part_fits_takes_near_step_and_side_from_the_query() {
+    let s = start();
+    let r = s.get("/api/pcb/fit?board=Led&part=stage.r1");
+    assert_eq!(r.status, 200, "{}", r.body);
+    let json: serde_json::Value = serde_json::from_str(&r.body).unwrap();
+    assert_eq!(json["board"], "Led");
+    assert_eq!(json["layoutStamp"], "1731340000-42");
+    assert_eq!(json["part"]["path"], "stage.r1");
+    assert_eq!(json["step"], 0.5, "the grid is 0.5 mm unless it is given");
+    assert_eq!(json["poses"][0]["side"], "top");
+    assert!(json["near"]["part"].is_null() || json["near"].get("part").is_none());
+    let r = s.get("/api/pcb/fit?board=Led&part=R1&near=U1&step=0.25&side=bottom");
+    assert_eq!(r.status, 200, "{}", r.body);
+    let json: serde_json::Value = serde_json::from_str(&r.body).unwrap();
+    assert_eq!(json["near"]["part"]["path"], "U1");
+    assert_eq!(json["step"], 0.25);
+    assert_eq!(json["poses"][0]["side"], "bottom");
+    // A board that is not there, a part it has none of, and a query that is wrong.
+    assert_eq!(s.get("/api/pcb/fit?board=Nope&part=R1").status, 404);
+    let r = s.get("/api/pcb/fit?board=Led&part=nothing");
+    assert_eq!(r.status, 400);
+    assert!(r.body.contains("no part `nothing`"), "{}", r.body);
+    assert_eq!(s.get("/api/pcb/fit?part=R1").status, 400, "the board is needed");
+    assert_eq!(s.get("/api/pcb/fit?board=Led").status, 400, "the part is needed");
+    for bad in ["step=0", "step=-1", "step=far", "step=NaN", "side=left"] {
+        let r = s.get(&format!("/api/pcb/fit?board=Led&part=R1&{bad}"));
         assert_eq!(r.status, 400, "{bad}: {}", r.body);
     }
 }
@@ -1299,6 +1360,7 @@ fn while_the_first_analysis_runs_the_page_and_the_files_are_served_and_a_request
         ("GET", "/api/power?board=A"),
         ("GET", "/api/pcb/findings?board=A"),
         ("GET", "/api/pcb/summary?board=A"),
+        ("GET", "/api/pcb/fit?board=A&part=R1"),
         ("POST", "/api/build"),
         ("POST", "/api/fab?board=A"),
         ("POST", "/api/fs/create-file"),

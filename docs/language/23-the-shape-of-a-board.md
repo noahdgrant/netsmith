@@ -2478,7 +2478,10 @@ netsmith layout capture --dry-run  # what it would write
 ```sh
 netsmith layout fit stage.r1 --near U1           # the nearest place of each pose, beside U1
 netsmith layout fit R7 --near 12,30 --side top   # near a point, on the top face only
+netsmith layout fit R7 --as-laid-out             # no placement: the board as the layout file has it
 ```
+
+Placing the board first is what takes the time on a nearly full board, and the question is about one part. With `--as-laid-out` (issue #1002) nothing is placed: the board is made exactly as the layout file has it, each part where its entry puts it (or where a requirement of the physical file pins it) and the outline the physical file states, in milliseconds, and the part is tried against those places. It is refused, naming what is missing, when a part has no entry in the layout file and no requirement pins it (`layout capture` gives every part an entry), or when the outline's size is not stated exactly (a width or height left open or given as a range is known only by placing); `--place-seeds` and `--place-budget` cannot go with it. The answer is the one the placed board gives when every part has an entry, since the placer puts the entries last. The editor asks the same question of the board its PCB view shows, with no placement of its own once the view has drawn the board: `GET /api/pcb/fit?board=&part=` (`near`, `step` and `side` as above) answers `layout fit --format json`'s poses, each with `turn`, `side`, `at`, `distance`, `fits`, the kinds and parts of the placement faults, the requirements it does not meet and their sentences (`PcbFit`); nothing is written, and a place is written as a drag writes one.
 
 To place a few free parts round locked ones, give the free parts no entry (or an unlocked one) and lock the rest: the placer places only the parts with no lock and holds every locked part where it is, and `layout regenerate` places one module (or one part, by its path) again with every other part held. A board that the placer leaves with a fault of where its parts are is not placed: `fab` refuses it and `board3d` ends with 1, with the faults in `placement`.
 

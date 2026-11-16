@@ -24,6 +24,7 @@
 //! | `GET /api/git`, `GET /api/compare`, `GET /api/git/file` | what the project can be compared with, what changed in the circuit, a file at a ref (ADR 0059) |
 //! | `POST /api/pins/lock`, `POST /api/pins/move` | lock or unlock a pin request, and move it to another pin of its part: the `lock` and the `pin` and `source` lines of its entry in the pin file (ADR 0101), and no other line; `422` with the reason when the choice is refused |
 //! | `POST /api/pcb/route`, `cancel`, `edit`, `drc`; `GET /api/pcb/scene`, `findings` | place and route on demand; `cancel` stops the router and keeps what it routed |
+//! | `GET /api/pcb/fit?board=&part=` (`near=`, `step=`, `side=`) | where one part fits with every other part where it is on the placed board, what `netsmith layout fit` says: a pose for each turn and face, the nearest place to `near` where nothing is found or the closest try with what is in the way (`PcbFit`, issue #1002); nothing is written; `400` for a part the board has none of, a `near` that is neither a part nor `X,Y`, a `step` not above 0 or a `side` that is not `top` or `bottom` |
 //! | `GET /api/pcb/summary?board=` (`near=`, `within=`, `between=`) | the placed board summed up as data, what `netsmith layout summary` prints: totals, area and free space of each face, module boxes, decoupling distances, nets, the parts near a part and the distance between two pads (`PcbSummary`, issue #1003); `400` for a part or pad the board has none of |
 //! | `POST /api/pcb/place/cancel` | stops the placings of the PCB view that run (issue #764): a `scene` (or the placing of a `route`) that is placing answers `499` and keeps nothing; while a `scene` places, the socket carries `progress` with the task `place` (the placer's lines, as `fab` prints them) and `pcb_live` with the parts where the placer has them, and while a `route` routes, `pcb_live` with the copper laid so far |
 //! | `POST /api/progress` | a line of a run the editor did not start (`netsmith fab --to-editor`, an `OutsideProgress`), passed to every page as `outside`; `204` |
@@ -174,6 +175,7 @@ const NEEDS_ANALYSIS: &[&str] = &[
     "/api/pcb/reroute",
     "/api/pcb/findings",
     "/api/pcb/summary",
+    "/api/pcb/fit",
     "/api/pcb/drc",
     "/api/build",
     "/api/fab",
@@ -379,6 +381,7 @@ fn router(state: Shared) -> Router {
         .route("/api/pcb/reroute", post(pcb_reroute))
         .route("/api/pcb/findings", get(pcb_findings))
         .route("/api/pcb/summary", get(pcb_summary))
+        .route("/api/pcb/fit", get(pcb_fit))
         .route("/api/pcb/drc", post(pcb_drc))
         .route("/api/build", post(build))
         .route("/api/build/cancel", post(cancel_build))
@@ -993,6 +996,42 @@ async fn pcb_summary(
     let board =
         board.ok_or_else(|| ApiError::bad_request("the request needs `board`".to_string()))?;
     json(move || s.backend.pcb_summary(&board, &near, within, &between)).await
+}
+
+/// The grid of `GET /api/pcb/fit` unless it has a `step`, in mm (`layout fit --step`'s default).
+const FIT_STEP: f64 = 0.5;
+
+async fn pcb_fit(
+    State(s): State<Shared>,
+    Query(q): Query1,
+) -> Result<Json<crate::api::PcbFit>, ApiError> {
+    let board = param(&q, "board")?;
+    let part = param(&q, "part")?;
+    let near = q.get("near").cloned();
+    let step = match q.get("step") {
+        None => FIT_STEP,
+        Some(value) => value
+            .parse::<f64>()
+            .ok()
+            .filter(|w| w.is_finite() && *w > 0.0)
+            .ok_or_else(|| {
+                ApiError::bad_request(format!("`step` is a distance in mm above 0, not `{value}`"))
+            })?,
+    };
+    let side = match q.get("side").map(String::as_str) {
+        None => None,
+        Some(side @ ("top" | "bottom")) => Some(side.to_string()),
+        Some(other) => {
+            return Err(ApiError::bad_request(format!(
+                "`side` is `top` or `bottom`, not `{other}`"
+            )));
+        }
+    };
+    json(move || {
+        s.backend
+            .pcb_fit(&board, &part, near.as_deref(), step, side.as_deref())
+    })
+    .await
 }
 
 async fn pcb_drc(

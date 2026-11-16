@@ -1626,6 +1626,86 @@ pads: Array<SummaryPads>,
  */
 findings: Array<string>, };
 
+export type PcbFitPart = { refdes: string, path: string, };
+
+export type PcbFitNear = { x: number, y: number, 
+/**
+ * The part, when `near` named one.
+ */
+part?: PcbFitPart, };
+
+export type PcbFitFault = { kind: string, parts: Array<string>, };
+
+export type PcbFitMiss = { 
+/**
+ * What the design calls it: `power_in.place.left`.
+ */
+id: string, 
+/**
+ * The line of the physical file that states it, when the design knows it.
+ */
+source?: string, 
+/**
+ * The designators of the parts it is about.
+ */
+parts: Array<string>, };
+
+export type PcbFitPlace = { 
+/**
+ * Degrees, counterclockwise on screen.
+ */
+turn: number, 
+/**
+ * `top` or `bottom`.
+ */
+side: string, 
+/**
+ * The footprint's origin, as the layout file's `at`.
+ */
+at: [number, number], 
+/**
+ * From `near` to the centre of the part's courtyard, in mm.
+ */
+distance: number, 
+/**
+ * Whether nothing is found there.
+ */
+fits: boolean, 
+/**
+ * The placement check's faults about the part there.
+ */
+placement: Array<PcbFitFault>, 
+/**
+ * The requirements the part does not meet there.
+ */
+requirements: Array<PcbFitMiss>, 
+/**
+ * The sentence for each of them, as the command line prints them.
+ */
+messages: Array<string>, };
+
+export type PcbFit = { 
+/**
+ * The board asked for, as `BoardSummary.name` has it.
+ */
+board: string, 
+/**
+ * The stamp of the layout file the placement was made with, as `PcbScene` has it.
+ */
+layoutStamp: string, part: PcbFitPart, near: PcbFitNear, 
+/**
+ * The grid the origins were tried on, in mm.
+ */
+step: number, 
+/**
+ * The part where it is now.
+ */
+now: PcbFitPlace, 
+/**
+ * A pose for each turn and face; those that fit first, nearest first.
+ */
+poses: Array<PcbFitPlace>, };
+
 export type BuildReport = { ok: boolean, written: Array<string>, output: string, 
 /**
  * How long it took, in milliseconds.

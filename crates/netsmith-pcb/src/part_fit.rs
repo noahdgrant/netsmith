@@ -43,6 +43,29 @@ pub enum FitNear {
     Point(f64, f64),
 }
 
+impl FitNear {
+    /// What `text` says to be near: `X,Y` (mm, from the outline's top left corner, y down) is a
+    /// point and anything else a part, by path or designator (a part's path has no comma).
+    /// `None` is [`FitNear::Itself`]. The one reading of `--near` for `netsmith layout fit` and
+    /// of `near` for the editor's `GET /api/pcb/fit`.
+    pub fn parse(text: Option<&str>) -> Result<FitNear, String> {
+        let Some(text) = text else {
+            return Ok(FitNear::Itself);
+        };
+        let Some((x, y)) = text.split_once(',') else {
+            return Ok(FitNear::Part(text.to_string()));
+        };
+        let number = |v: &str| {
+            v.trim()
+                .parse::<f64>()
+                .ok()
+                .filter(|v| v.is_finite())
+                .ok_or_else(|| format!("`{v}` is not a number"))
+        };
+        Ok(FitNear::Point(number(x)?, number(y)?))
+    }
+}
+
 /// The point the distances are from, in the layout file's frame, and the part it is the centre
 /// of, if any.
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -498,6 +521,25 @@ mod tests {
             .filter(|p| p.parts().contains(&a.refdes.as_str()))
             .collect();
         assert_eq!(problems, whole);
+    }
+
+    #[test]
+    fn near_is_a_point_with_a_comma_a_part_without_and_where_it_is_with_none() {
+        assert_eq!(FitNear::parse(None), Ok(FitNear::Itself));
+        assert_eq!(
+            FitNear::parse(Some("stage.u1")),
+            Ok(FitNear::Part("stage.u1".into()))
+        );
+        assert_eq!(
+            FitNear::parse(Some("-1.5, 2")),
+            Ok(FitNear::Point(-1.5, 2.0))
+        );
+        assert!(
+            FitNear::parse(Some("1,x"))
+                .unwrap_err()
+                .contains("`x` is not a number")
+        );
+        assert!(FitNear::parse(Some("1,NaN")).is_err());
     }
 
     #[test]

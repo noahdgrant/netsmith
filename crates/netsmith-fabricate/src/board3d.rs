@@ -1288,6 +1288,44 @@ impl Placed<'_> {
         )
     }
 
+    /// `then` of the board picked and built, made exactly as the layout file has it with
+    /// nothing placed ([`Board::as_laid_out`], issue #1002): milliseconds where placing takes
+    /// seconds. Refused, with the reason, where the board is not known without placing it: a
+    /// part with no place in the layout file, an outline whose size is not stated exactly.
+    pub fn with_board_as_laid_out<T>(
+        &self,
+        then: impl FnOnce(&Built, &Board) -> T,
+    ) -> Result<T, String> {
+        let outcome = netsmith_pipeline::outcome_with(
+            self.name,
+            self.text,
+            self.loader,
+            self.catalogs,
+            Some(self.libraries),
+        )
+        .map_err(|problems| netsmith_pipeline::render_problems(&problems))?;
+        let labels: Vec<String> = outcome.boards.iter().map(Built::label).collect();
+        let built = pick_board(&outcome.boards, self.name, self.board, &labels)?;
+        let fail = |what: String| format!("error: {}: {what}\n", built.label());
+        let names: Vec<String> = outcome
+            .boards
+            .iter()
+            .map(|b| b.design.name.clone())
+            .collect();
+        let layout = crate::layout::read(&self.layout, &names).map_err(&fail)?;
+        let mut options = netsmith_pcb::place_options(&built.design, layout.as_ref().map(|l| &l.0));
+        options.lines_warn = self.catalogs.constraints_warn();
+        let board = Board::as_laid_out(
+            &built.design,
+            &self.libraries.mapping,
+            &self.libraries.footprints,
+            &options,
+            layout.as_ref(),
+        )
+        .map_err(fail)?;
+        Ok(then(built, &board))
+    }
+
     /// `then` of the board picked, checked, solved and designed but not placed: what a command
     /// that reads or writes the layout file needs, in milliseconds. The layout file is not read.
     pub fn with_built<T>(&self, then: impl FnOnce(&Built) -> T) -> Result<T, String> {

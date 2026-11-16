@@ -78,9 +78,10 @@ use netsmith_editor::{
     api::{
         ComparePcbPlace, CompareSize, DrawnKeepout, KeepoutOrigin, KeepoutPlacement, KicadState,
         PartPlacement, PcbBox, PcbChange, PcbCrossed, PcbCrossedTrack, PcbCrossedVia, PcbCutout,
-        PcbFinding, PcbFindings, PcbKeepout, PcbLive, PcbLivePart, PcbLiveTrack, PcbLiveVia,
-        PcbNetWidth, PcbPad, PcbPart, PcbPoint, PcbRegenerate, PcbRegenerated, PcbRegeneratedPart,
-        PcbReport, PcbRequirement, PcbRerouted, PcbRouteNet, PcbRouteTrack, PcbRouteVia, PcbScene,
+        PcbFinding, PcbFindings, PcbFit, PcbFitFault, PcbFitMiss, PcbFitNear, PcbFitPart,
+        PcbFitPlace, PcbKeepout, PcbLive, PcbLivePart, PcbLiveTrack, PcbLiveVia, PcbNetWidth,
+        PcbPad, PcbPart, PcbPoint, PcbRegenerate, PcbRegenerated, PcbRegeneratedPart, PcbReport,
+        PcbRequirement, PcbRerouted, PcbRouteNet, PcbRouteTrack, PcbRouteVia, PcbScene,
         PcbShapeRef, PcbShove, PcbShoveAnswer, PcbShoved, PcbShovedTrack, PcbShovedVia, PcbSide,
         PcbSummary, PcbTotals, PcbWalk, PcbWalked, RequiredPlace, RoutesChange, Severity,
     },
@@ -892,6 +893,76 @@ pub fn summary(
         .map_err(|e| ApiError::internal(format!("the summary of {name}: {e}")))?;
     name.clone_into(&mut answer.board);
     Ok(answer)
+}
+
+/// Where the part `part` fits on the board of `entry` as placed now, with every other part where
+/// it is (`netsmith layout fit`, issue #1002). Nothing is placed or changed: the board in the
+/// entry is only read. A part the board has none of, a `near` that is neither a part nor `X,Y`, a
+/// step not above 0 and a side that is neither face are a 400.
+pub fn fit(
+    entry: &Entry,
+    data: &BoardData,
+    name: &str,
+    part: &str,
+    near: Option<&str>,
+    step: f64,
+    side: Option<&str>,
+) -> Result<PcbFit, ApiError> {
+    let near = netsmith_pcb::FitNear::parse(near)
+        .map_err(|e| ApiError::bad_request(format!("`near`: {e}")))?;
+    let face = side.map(|s| {
+        if s == "bottom" {
+            Side::Back
+        } else {
+            Side::Front
+        }
+    });
+    let fit = entry
+        .board
+        .fit_part(&data.built.design, part, &near, step, face)
+        .map_err(ApiError::bad_request)?;
+    let part_of = |p: &netsmith_pcb::PartRef| PcbFitPart {
+        refdes: p.refdes.clone(),
+        path: p.path.clone(),
+    };
+    let place = |p: &netsmith_pcb::FitPlace| PcbFitPlace {
+        turn: p.turn,
+        side: p.side.to_string(),
+        at: p.at,
+        distance: p.distance,
+        fits: p.fits,
+        placement: p
+            .placement
+            .iter()
+            .map(|f| PcbFitFault {
+                kind: f.kind.to_string(),
+                parts: f.parts.iter().map(|b| b.part.refdes.clone()).collect(),
+            })
+            .collect(),
+        requirements: p
+            .requirements
+            .iter()
+            .map(|m| PcbFitMiss {
+                id: m.id.clone(),
+                source: m.source.clone(),
+                parts: m.parts.clone(),
+            })
+            .collect(),
+        messages: p.messages.clone(),
+    };
+    Ok(PcbFit {
+        board: name.to_string(),
+        layout_stamp: entry.layout_stamp.clone(),
+        part: part_of(&fit.part),
+        near: PcbFitNear {
+            x: fit.near.x,
+            y: fit.near.y,
+            part: fit.near.part.as_ref().map(part_of),
+        },
+        step: fit.step,
+        now: place(&fit.now),
+        poses: fit.poses.iter().map(place).collect(),
+    })
 }
 
 /// The board as placed (and routed) in `entry`, as the `.glb` file `board3d --glb` writes
