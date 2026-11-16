@@ -136,7 +136,7 @@
  * selection's colour and a dot at each corner; a via about to be placed is a ring of the process's via */
 .pcb-overlay .track-draft polyline { fill: none; stroke: var(--pcb-front); stroke-opacity: .8; stroke-linecap: round; stroke-linejoin: round; }
 .pcb-overlay .track-draft.layer-bottom polyline { stroke: var(--pcb-back); }
-.pcb-overlay .track-draft.layer-inner polyline { stroke: var(--pcb-plane-1); }
+.pcb-overlay .track-draft.layer-inner polyline { stroke: var(--pcb-inner); }
 .pcb-overlay .track-draft polyline.track-draft-line { stroke: var(--sel); stroke-opacity: 1; stroke-width: calc(1.25 * var(--px, .04)); stroke-dasharray: calc(5 * var(--px, .04)) calc(3 * var(--px, .04)); }
 .pcb-overlay .track-draft-corner { fill: var(--sel); }
 /* the walkaround (issue 726): the corners the server chose round the copper in the way are hollow, and a segment with no way is

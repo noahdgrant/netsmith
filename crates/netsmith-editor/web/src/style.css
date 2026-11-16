@@ -1051,6 +1051,7 @@ span.sk { display: block; }
 .pcb-host svg [fill="#c9d1d9"] { fill: var(--pcb-key); } .pcb-host svg [stroke="#c9d1d9"] { stroke: var(--pcb-key); }
 .pcb-host svg [fill="#d63c3c"] { fill: var(--pcb-front); } .pcb-host svg [stroke="#d63c3c"] { stroke: var(--pcb-front); }
 .pcb-host svg [fill="#3c78d6"] { fill: var(--pcb-back); } .pcb-host svg [stroke="#3c78d6"] { stroke: var(--pcb-back); }
+.pcb-host svg [fill="#d6a23c"] { fill: var(--pcb-inner); } .pcb-host svg [stroke="#d6a23c"] { stroke: var(--pcb-inner); }
 .pcb-host svg [fill="#c8c8c8"] { fill: var(--pcb-via); } .pcb-host svg [stroke="#c8c8c8"] { stroke: var(--pcb-via); }
 .pcb-host svg text[fill="#0d1117"] { fill: var(--pcb-pad-text); }
 

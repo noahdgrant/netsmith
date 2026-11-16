@@ -178,7 +178,7 @@ function pairs(): Pair[] {
   list.push({ fg: '--pcb-refdes', bg: BOARD, what: 'board reference text' });
   list.push({ fg: '--pcb-silk', bg: BOARD, min: 3, what: 'board silkscreen (a graphic)' });
   for (const n of NETS) list.push({ fg: n, bg: ['--pcb-bg'], min: 3, what: 'net colour on the board (a plane border, a graphic)' });
-  for (const k of ['--pcb-front', '--pcb-back', '--pcb-thru', '--pcb-via', '--pcb-outline', '--pcb-ratsnest', '--pcb-courtyard', '--pcb-fab', '--pcb-keepout', '--pcb-height-limit', '--pcb-select']) {
+  for (const k of ['--pcb-front', '--pcb-back', '--pcb-inner', '--pcb-thru', '--pcb-via', '--pcb-outline', '--pcb-ratsnest', '--pcb-courtyard', '--pcb-fab', '--pcb-keepout', '--pcb-height-limit', '--pcb-select']) {
     list.push({ fg: k, bg: BOARD, min: 3, what: `${k.slice(6)} on the board (a graphic)` });
   }
   // The number of a pad with a hole is not drawn over the hole, so only the surface pads carry one.
@@ -240,8 +240,8 @@ describe.each(Object.keys(THEME_TOKENS) as Theme[])('contrast of %s', (name) => 
   });
   it('the board is a step from the canvas, and each kind of copper is told from the others', () => {
     expect(contrast(ink('--pcb-board'), ink('--pcb-bg'))!).toBeGreaterThanOrEqual(1.04);
-    const tones = ['--pcb-front', '--pcb-back', '--pcb-thru', '--pcb-via'].map((k) => ink(k));
-    expect(new Set(tones).size).toBe(4);
+    const tones = ['--pcb-front', '--pcb-back', '--pcb-inner', '--pcb-thru', '--pcb-via'].map((k) => ink(k));
+    expect(new Set(tones).size).toBe(5);
     // the front and back copper are a hue apart, not only a step: one is warm, one is cool
     const [fr, , fb] = parseHex(ink('--pcb-front'))!;
     const [br, , bb] = parseHex(ink('--pcb-back'))!;
@@ -261,7 +261,7 @@ describe.each(Object.keys(THEME_TOKENS) as Theme[])('contrast of %s', (name) => 
   it('the four planes are four tones, none the colour of the front or back copper', () => {
     const planes = [1, 2, 3, 4].map((i) => ink(`--pcb-plane-${i}`).toLowerCase());
     expect(new Set(planes).size).toBe(4);
-    for (const k of ['--pcb-front', '--pcb-back']) expect(planes).not.toContain(ink(k).toLowerCase());
+    for (const k of ['--pcb-front', '--pcb-back', '--pcb-inner']) expect(planes).not.toContain(ink(k).toLowerCase());
   });
   it('the hover light is not the colour of a pick or of the brand', () => {
     for (const k of ['--sel', '--accent', '--sch-hit', '--sch-mark']) expect(ink('--hover-lit').toLowerCase()).not.toBe(ink(k).toLowerCase());

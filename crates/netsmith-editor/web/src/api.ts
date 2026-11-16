@@ -1160,7 +1160,7 @@ current: boolean, tracks: Array<PcbRouteTrack>, vias: Array<PcbRouteVia>, };
 
 export type PcbRouteTrack = { 
 /**
- * `top`, `bottom` or an inner signal layer, `inner2` (issue #833).
+ * `top`, `bottom` or an inner signal layer, `inner2` (issue 833).
  */
 layer: string, width: number, from: PcbPoint, 
 /**

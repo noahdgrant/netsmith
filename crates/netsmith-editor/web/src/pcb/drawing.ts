@@ -59,7 +59,7 @@ export function prepare(text: string, pours = ''): Drawing | null {
   // ends on. Copper goes under the parts: pads, outlines and reference text stay readable.
   const firstPart = svg.querySelector('g[data-path]');
   if (firstPart?.parentNode) {
-    // The back, the inner signal layers (issue #833) from the bottom up, as the server orders them, and the front.
+    // The back, the inner signal layers (issue 833) from the bottom up, as the server orders them, and the front.
     const groups = [
       svg.querySelector('.l-back-copper'),
       ...Array.from(svg.querySelectorAll('.l-inner-copper')),

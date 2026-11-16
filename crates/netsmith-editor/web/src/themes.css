@@ -218,6 +218,7 @@
   --pcb-unconnected: #8b949e;
   --pcb-front: #d08d50;
   --pcb-back: #46a3bc;
+  --pcb-inner: #8fc46a;
   --pcb-thru: #cdb890;
   /* a hole that goes through: --pcb-thru is its ring (3:1), --pcb-thru-fill the body inside it, a step lighter than the ring on the light board */
   --pcb-thru-fill: #8a7a58;
@@ -438,6 +439,7 @@
   --pcb-unconnected: #6e757e;
   --pcb-front: #a95e26;
   --pcb-back: #1f7f9a;
+  --pcb-inner: #4a7a1c;
   --pcb-thru: #84702f;
   /* a hole that goes through: --pcb-thru is its ring (3:1), --pcb-thru-fill the body inside it, a step lighter than the ring on the light board */
   --pcb-thru-fill: #d6c48a;
@@ -655,6 +657,7 @@
   --pcb-unconnected: #b8c0cc;
   --pcb-front: #ffa45c;
   --pcb-back: #5cd0ee;
+  --pcb-inner: #a8e07a;
   --pcb-thru: #f0dcae;
   /* a hole that goes through: --pcb-thru is its ring (3:1), --pcb-thru-fill the body inside it, a step lighter than the ring on the light board */
   --pcb-thru-fill: var(--pcb-thru);
@@ -872,6 +875,7 @@
   --pcb-unconnected: #4a4f57;
   --pcb-front: #8f3f06;
   --pcb-back: #005f78;
+  --pcb-inner: #2c5508;
   --pcb-thru: #5e4a12;
   /* a hole that goes through: --pcb-thru is its ring (3:1), --pcb-thru-fill the body inside it, a step lighter than the ring on the light board */
   --pcb-thru-fill: var(--pcb-thru);

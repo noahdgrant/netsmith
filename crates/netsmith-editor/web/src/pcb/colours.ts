@@ -20,6 +20,8 @@ export const FIXED: Record<string, string> = {
   '#c9d1d9': '--pcb-key',
   '#d63c3c': '--pcb-front',
   '#3c78d6': '--pcb-back',
+  // Tracks on an inner signal layer.
+  '#d6a23c': '--pcb-inner',
   '#c8c8c8': '--pcb-via',
 };
 
