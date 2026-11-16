@@ -23,6 +23,7 @@ mod pours;
 pub(crate) mod power;
 mod progress;
 mod release;
+mod required;
 mod sidecars;
 mod solved;
 mod sourcing;
@@ -712,16 +713,44 @@ impl Workspace {
             };
             wanted.push((name.clone(), after));
         }
-        if wanted.is_empty() && restated.is_empty() {
+        // The places "Require here" writes (issue #815).
+        let required: Vec<_> = changes
+            .iter()
+            .filter_map(|c| match c {
+                PcbChange::Required {
+                    path,
+                    before,
+                    after,
+                } => Some((path, before, after)),
+                _ => None,
+            })
+            .collect();
+        if wanted.is_empty() && restated.is_empty() && required.is_empty() {
             return Ok(None);
         }
-        // The span edits first, on the file as it is, whose places their spans are.
-        let text = old.as_deref().map(|t| {
-            let spans: Vec<_> = restated.iter().map(|(_, s, n, a)| (*s, *n, *a)).collect();
-            keepouts::restate(t, &spans)
-        });
-        let text = keepouts::rewrite(text.as_deref(), board, &wanted)
-            .map_err(|e| ApiError::bad_request(format!("{shown}: {e}")))?;
+        let mut text = if wanted.is_empty() && restated.is_empty() {
+            old.clone()
+        } else {
+            // The span edits first, on the file as it is, whose places their spans are.
+            let text = old.as_deref().map(|t| {
+                let spans: Vec<_> = restated.iter().map(|(_, s, n, a)| (*s, *n, *a)).collect();
+                keepouts::restate(t, &spans)
+            });
+            Some(
+                keepouts::rewrite(text.as_deref(), board, &wanted)
+                    .map_err(|e| ApiError::bad_request(format!("{shown}: {e}")))?,
+            )
+        };
+        for (path, before, after) in required {
+            text = Some(required::rewrite(
+                text.as_deref(),
+                board,
+                &shown,
+                path,
+                before,
+                after,
+            )?);
+        }
         Ok(Some(PhysicalChange {
             names: wanted
                 .into_iter()
@@ -729,7 +758,7 @@ impl Workspace {
                 .chain(restated.into_iter().map(|(name, ..)| name))
                 .collect(),
             old,
-            text,
+            text: text.unwrap_or_default(),
         }))
     }
 

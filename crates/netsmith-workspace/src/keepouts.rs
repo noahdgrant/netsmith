@@ -270,7 +270,7 @@ fn literal_place(body: &[Item]) -> Option<KeepoutPlace> {
 }
 
 /// A length written in millimetres (`2mm`, `-1.5mm`), or a bare zero.
-fn millimetres(expr: &Expr) -> Option<f64> {
+pub(crate) fn millimetres(expr: &Expr) -> Option<f64> {
     match expr {
         Expr::Number(n, _) => match n.unit.as_deref() {
             Some("mm") => Some(n.value),

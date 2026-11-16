@@ -2022,7 +2022,18 @@ error [constraint] constraint power.place.left (cased.physical.nsm:13) is violat
 }
 ```
 
-The editor lists the same findings with the placement's, a relation between two parts among them (_A relation between two parts_); it does not yet draw the windows or a line between the two parts (ADR 0045, C4). Height limits are in _Height limits_ above.
+The editor lists the same findings with the placement's, a relation between two parts among them (_A relation between two parts_). Its PCB view draws each part's window over the board (ADR 0045, C4; the _Requirements_ switch of its Layers menu hides them): the box the requirements let the body stand in, as the part is turned now, across the whole outline along an axis no requirement bounds, and the requirements of a module the part is in, the half that keeps it inside. A part whose body is outside its window has a ghost, its body drawn dashed at the nearest place the window allows. The hover and the part's inspector list each requirement with its window, and a drag stops at the window's edge, rounded inward to the layout file's hundredth of a millimetre, with a note that names the requirement and its line (`limited by power.place.left (main.physical.nsm:13)`); a part already outside its window may be dragged toward it and into it, never further out. The arrow keys, a turn and a flip are not held, and the finding names what they leave. The line between the two parts of a relation is not drawn. Height limits are in _Height limits_ above.
+
+**Require here** (ADR 0045, C5). The part inspector's _Require here_ writes where the selected parts are as requirements in the physical file, one plain `&=` of a literal for each field, at the end of the unit, so the placer keeps them there and `fab` checks it:
+
+```nsm-fragment
+.aux.place.x &= 2.2mm
+.aux.place.y &= 19.77mm
+.aux.place.rotation &= 0
+.aux.place.side &= "top"
+```
+
+`x` and `y` are the centre of the body to a tenth of a micrometre, so the requirement holds where the layout file has the part. The layout file is not changed. A part required so cannot be dragged; _Drop requirement_ takes the four lines out, and undo and redo cover both. A part whose place the file states in any other shape (a window, an edge, a field stated twice, a relation or a `row`), or a module's own source states, offers neither: the button says the line to change, as the requirement came from a drawing and is changed in the file. A change rewrites only the numbers of those lines where they stand, so comments and the other lines of the file stay.
 
 ### The layout file
 

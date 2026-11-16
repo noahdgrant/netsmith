@@ -71,8 +71,9 @@ use netsmith_editor::{
         ComparePcbPlace, CompareSize, DrawnKeepout, KeepoutOrigin, KeepoutPlacement, KicadState,
         PartPlacement, PcbBox, PcbChange, PcbCrossed, PcbCrossedTrack, PcbCrossedVia, PcbCutout,
         PcbFinding, PcbFindings, PcbKeepout, PcbNetWidth, PcbPad, PcbPart, PcbPoint, PcbReport,
-        PcbRouteNet, PcbRouteTrack, PcbRouteVia, PcbScene, PcbShoved, PcbShovedTrack, PcbShovedVia,
-        PcbSide, PcbWalk, PcbWalked, RoutesChange, Severity,
+        PcbRequirement, PcbRouteNet, PcbRouteTrack, PcbRouteVia, PcbScene, PcbShoved,
+        PcbShovedTrack, PcbShovedVia, PcbSide, PcbWalk, PcbWalked, RequiredPlace, RoutesChange,
+        Severity,
     },
 };
 use netsmith_pcb::{
@@ -565,11 +566,52 @@ pub fn scene(entry: &Entry, data: &BoardData, name: &str) -> PcbScene {
                 .map(move |p| ((p.refdes.as_str(), p.number.as_str()), n.name.as_str()))
         })
         .collect();
+    // The physical file: the keepouts the editor drew there and the places "Require here" wrote.
+    let physical_text = std::fs::read_to_string(&data.physical).unwrap_or_default();
+    let physical_name = data
+        .physical
+        .file_name()
+        .map_or(String::new(), |n| n.to_string_lossy().into_owned());
+    let design = &data.built.design;
+    let mut required = crate::required::scan(&physical_text, &design.name, &physical_name);
     let parts = board
         .parts
         .iter()
         .map(|p| {
             let place = entries.and_then(|e| e.parts.get(&p.path));
+            let stated = required.remove(&p.path).unwrap_or_default();
+            // A relation with another part (a `row` among them) is changed in the file too.
+            let related = design
+                .features
+                .offsets
+                .iter()
+                .find(|o| o.a.path == p.path || o.b.path == p.path)
+                .map(|o| {
+                    let other = if o.a.path == p.path {
+                        &o.b.path
+                    } else {
+                        &o.a.path
+                    };
+                    if o.source.is_empty() {
+                        format!("a relation with `{other}`")
+                    } else {
+                        format!("a relation with `{other}` ({})", o.source)
+                    }
+                });
+            let end = |v: f64| v.is_finite().then_some(v);
+            let windows = netsmith_pcb::part_windows(design, &p.path);
+            // A requirement of the part's own that the physical file does not state in the
+            // editor's shape (a module's source may state one for its part).
+            let own = (stated.place == RequiredPlace::default())
+                .then(|| windows.iter().find(|w| !w.module))
+                .flatten()
+                .map(|w| {
+                    if w.source.is_empty() {
+                        format!("`{}`", w.id)
+                    } else {
+                        format!("`{}` ({})", w.id, w.source)
+                    }
+                });
             PcbPart {
                 refdes: p.refdes.clone(),
                 path: p.path.clone(),
@@ -594,6 +636,19 @@ pub fn scene(entry: &Entry, data: &BoardData, name: &str) -> PcbScene {
                 courtyards: p.courtyards().into_iter().map(sheet_box).collect(),
                 body: sheet_box(p.body()),
                 height: p.height,
+                requirements: windows
+                    .into_iter()
+                    .map(|w| PcbRequirement {
+                        field: w.field.word().to_string(),
+                        lo: end(w.lo),
+                        hi: end(w.hi),
+                        id: w.id,
+                        source: w.source,
+                        module: w.module,
+                    })
+                    .collect(),
+                required: stated.place,
+                required_elsewhere: stated.elsewhere.or(related).or(own),
                 pads: p
                     .footprint
                     .pads
@@ -615,7 +670,6 @@ pub fn scene(entry: &Entry, data: &BoardData, name: &str) -> PcbScene {
         .collect();
     let areas = board.keepout_areas();
     // The keepouts of the physical file that the editor drew, or could have: it changes them there.
-    let physical_text = std::fs::read_to_string(&data.physical).unwrap_or_default();
     let in_physical = crate::keepouts::drawn_in(&physical_text, &data.built.design.name);
     // Those it moves and resizes there by rewriting the numbers of their place and size.
     let stated_in_physical = crate::keepouts::stated_in(&physical_text, &data.built.design.name);
@@ -1366,6 +1420,8 @@ pub fn change_layout(
                     }
                 }
             }
+            // The physical file's, written by `Workspace::physical_change`.
+            PcbChange::Required { .. } => {}
             PcbChange::Keepout {
                 name,
                 before,

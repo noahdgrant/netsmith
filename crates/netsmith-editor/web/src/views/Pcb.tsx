@@ -64,6 +64,7 @@ const LAYERS: { id: string; label: string }[] = [
   { id: 'courtyard', label: 'Courtyard' },
   { id: 'keepouts', label: 'Keepouts' },
   { id: 'limits', label: 'Height limits' },
+  { id: 'requirements', label: 'Requirements' },
   { id: 'refs', label: 'References' },
   { id: 'key', label: 'Key' },
 ];
@@ -73,6 +74,8 @@ const LAYERS: { id: string; label: string }[] = [
 const ZONE_HIDDEN: Record<string, string> = {
   keepouts: '.pcb-host svg [data-keepout]:not([data-limit-only])',
   limits: '.pcb-host svg [data-keepout][data-limit-only], .pcb-host svg [data-height-limit]',
+  // The windows of the placement requirements and the ghosts, drawn over the board (ADR 0045 C4).
+  requirements: '.pcb-host .req-overlay',
 };
 
 /** The box with room round it, so a zoom to a small part still shows what is near it. */
