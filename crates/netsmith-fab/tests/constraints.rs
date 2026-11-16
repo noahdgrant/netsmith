@@ -506,3 +506,41 @@ fn a_hole_that_reaches_past_the_courtyard_is_in_the_body() {
     let all = measure(&c, &b.pcb());
     assert!(all[0].satisfied, "{all:#?}");
 }
+
+#[test]
+fn an_outcome_says_what_it_measured_for_a_program_to_read() {
+    // A field of one part, a turn, a face and a relation each say their measure (issue #816).
+    let c = set(vec![
+        want("j.place.left", &["J1"], ConstraintMeasure::Left, 2.0, 3.0),
+        want("j.place.rotation", &["J1"], ConstraintMeasure::Rotation, 90.0, 90.0),
+        want("x.place.y", &["U9"], ConstraintMeasure::Y, 1.0, 2.0),
+    ]);
+    let all = measure(&c, &board());
+    let words: Vec<&str> = all.iter().map(|o| o.measure).collect();
+    assert_eq!(words, ["left", "rotation", "y"]);
+    assert!(all.iter().all(|o| o.face.is_none()));
+    // A part that is not on the board has nothing measured, and no miss to give.
+    assert_eq!(all[2].measured, None);
+    assert!(all[2].over.is_infinite());
+
+    let sides = Constraints {
+        list: vec![],
+        sides: vec![SideRule {
+            id: "j.place.side".into(),
+            source: "widget.nsm:15".into(),
+            part: "J1".into(),
+            side: "bottom".into(),
+        }],
+        relations: Vec::new(),
+        severity: DrcSeverity::Error,
+    };
+    let o = &measure(&sides, &board())[0];
+    assert_eq!(o.measure, "side");
+    assert_eq!(o.face, Some(("top".to_string(), "bottom".to_string())));
+
+    let x = between(ConstraintMeasure::X, 17.45, 17.55);
+    assert_eq!(measure(&x, &two_bodies((10.0, 10.0), (27.0, 10.0)))[0].measure, "relation_x");
+    let mut y = between(ConstraintMeasure::Top, 0.0, 0.0);
+    y.relations[0].a.measure = ConstraintMeasure::Bottom;
+    assert_eq!(measure(&y, &two_bodies((10.0, 10.0), (30.0, 16.0)))[0].measure, "relation_y");
+}

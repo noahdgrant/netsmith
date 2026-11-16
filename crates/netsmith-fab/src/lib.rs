@@ -175,6 +175,9 @@ pub enum Error {
         counts: DrcCounts,
         /// The errors, one to a line.
         report: String,
+        /// The requirements of the design on where parts go among them, as measured, for a
+        /// caller that reports them as data (issue #816).
+        unmet: Vec<ConstraintOutcome>,
     },
     /// Requirements of the design on where parts go (ADR 0045) that the board does not meet.
     /// Unlike a design rule, `allow_drc_violations` does not waive them; only making them
@@ -183,6 +186,8 @@ pub enum Error {
         count: usize,
         /// The errors, one to a line.
         report: String,
+        /// The same requirements as measured: each with the value, the window and how far out.
+        unmet: Vec<ConstraintOutcome>,
     },
     Gerber(GerberError),
     Cpl(cpl::CplError),
@@ -223,7 +228,7 @@ impl std::fmt::Display for Error {
             Self::Cli(e) => write!(f, "{e}"),
             Self::Artwork(e) => write!(f, "{e}"),
             Self::DrcInput(e) => write!(f, "design rules check: {e}"),
-            Self::Drc { counts, report } => write!(
+            Self::Drc { counts, report, .. } => write!(
                 f,
                 "the design rules check found {} violation(s), {} unconnected pad(s) and {} footprint error(s); fix them, or allow packaging anyway (Options::allow_drc_violations, --allow-drc-violations). The errors:\n\n{}",
                 counts.violations,
@@ -231,7 +236,7 @@ impl std::fmt::Display for Error {
                 counts.footprint_errors,
                 report.trim_end()
             ),
-            Self::Constraints { count, report } => write!(
+            Self::Constraints { count, report, .. } => write!(
                 f,
                 "{count} requirement(s) of the design on where parts go are not met; --allow-drc-violations does not waive them, only `constraints = \"warn\"` in netsmith.toml or --constraints warn lists them as warnings instead. The errors:\n\n{}",
                 report.trim_end()
@@ -539,6 +544,15 @@ pub fn package(pcb: &Path, entries: &[BomEntry], options: &Options) -> Result<Pa
         .filter(|f| f.rule == DrcRule::Constraint)
         .map(ToString::to_string)
         .collect();
+    // The same as measured, for the callers that say them as data: the ones the check found
+    // errors (`constraint_outcome_findings` makes a finding of each not met, of the severity
+    // the caller chose).
+    let unmet_outcomes: Vec<ConstraintOutcome> = match &options.constraints {
+        Some(c) if c.severity == netsmith_geom::DrcSeverity::Error => {
+            outcomes.iter().filter(|o| !o.satisfied).cloned().collect()
+        }
+        _ => Vec::new(),
+    };
     let drc = if drc_report.is_clean() {
         DrcOutcome::Passed
     } else if options.allow_drc_violations && unmet.is_empty() {
@@ -547,6 +561,7 @@ pub fn package(pcb: &Path, entries: &[BomEntry], options: &Options) -> Result<Pa
         return Err(Error::Constraints {
             count: unmet.len(),
             report: unmet.join("\n"),
+            unmet: unmet_outcomes,
         });
     } else {
         return Err(Error::Drc {
@@ -556,6 +571,7 @@ pub fn package(pcb: &Path, entries: &[BomEntry], options: &Options) -> Result<Pa
                 .map(ToString::to_string)
                 .collect::<Vec<_>>()
                 .join("\n"),
+            unmet: unmet_outcomes,
         });
     };
 

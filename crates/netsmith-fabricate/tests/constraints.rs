@@ -7,7 +7,7 @@ use netsmith_testkit::TempDir;
 use std::fs;
 
 use netsmith_pipeline::Libraries;
-use netsmith_fabricate::fab::{FabOptions, Fabricated, fab_with_options};
+use netsmith_fabricate::fab::{FabFailure, FabOptions, Fabricated, fab_detailed};
 use netsmith_fabricate::project::Manifest;
 use netsmith_check::Loader;
 use netsmith_fab::KicadCliExe;
@@ -87,13 +87,25 @@ fn fab_waiving(
     catalogs: &Catalogs,
     allow: bool,
 ) -> (TempDir, Result<Vec<Fabricated>, String>) {
+    let (dir, made) = fab_detail(name, physical, layout, catalogs, allow);
+    (dir, made.map_err(|f| f.text))
+}
+
+/// [`fab_waiving`], with why a run stopped as data beside its text (issue #816).
+fn fab_detail(
+    name: &str,
+    physical: &str,
+    layout: &str,
+    catalogs: &Catalogs,
+    allow: bool,
+) -> (TempDir, Result<Vec<Fabricated>, FabFailure>) {
     let dir = out(name);
     let file = dir.join("source").join("widget.pcb.toml");
     fs::create_dir_all(file.parent().unwrap()).unwrap();
     if !layout.is_empty() {
         fs::write(&file, layout).unwrap();
     }
-    let made = fab_with_options(
+    let made = fab_detailed(
         "widget.nsm",
         BOARD,
         &Loader::std().with_physical("widget.nsm", "widget.physical.nsm", physical),
@@ -319,4 +331,37 @@ fn allow_drc_violations_does_not_waive_a_requirement_only_warn_does() {
         notes.contains("constraints: 2 of 5 satisfied; 3 not met, listed as warnings because the project or this run asked for `constraints = \"warn\"`"),
         "{notes}"
     );
+}
+
+#[test]
+fn a_requirement_the_board_does_not_meet_is_data_in_the_failure_and_in_the_warnings() {
+    if !have_libraries() {
+        return;
+    }
+    // An error: the failure carries each requirement with the line, the value, the window and
+    // the miss (issue #816).
+    let (_dir, made) = fab_detail("data", PHYSICAL, MOVED, &Catalogs::jlcpcb(), false);
+    let failure = made.expect_err("the header is out of its window");
+    let left = failure
+        .requirements
+        .iter()
+        .find(|r| r.id == "power_in.place.left")
+        .unwrap_or_else(|| panic!("{:?}", failure.requirements));
+    assert_eq!(left.measure, "left");
+    assert_eq!(left.unit, Some("mm"));
+    assert_eq!(left.parts, ["J1"]);
+    assert!(left.source.as_deref().is_some_and(|s| s.contains("widget.physical.nsm:")));
+    assert_eq!((left.min, left.max), (Some(1.4), Some(1.6)));
+    assert!(left.measured.is_some_and(|m| m > 20.0), "{left:?}");
+    assert!(left.over.is_some_and(|o| o > 20.0), "{left:?}");
+    assert!(failure.text.contains(&left.text), "{}", failure.text);
+    // A warning: each requirement not met is data beside its line of the notes.
+    let catalogs = Catalogs::jlcpcb().with_constraints_warn(true);
+    let (_dir, made) = fab_detail("data-warn", PHYSICAL, MOVED, &catalogs, false);
+    let made = made.unwrap_or_else(|f| panic!("{}", f.text));
+    let missed: Vec<&str> = made[0].requirements.iter().map(|r| r.id.as_str()).collect();
+    assert!(missed.contains(&"power_in.place.left"), "{missed:?}");
+    for r in &made[0].requirements {
+        assert!(made[0].notes.contains(&r.text), "{} is not in {}", r.text, made[0].notes);
+    }
 }

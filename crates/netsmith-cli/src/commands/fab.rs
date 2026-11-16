@@ -16,7 +16,7 @@ use super::common::{self, libraries, no_boards, sync_pins, target_offline};
 #[derive(Debug, PartialEq, ClapArgs)]
 #[command(args_override_self = true)]
 #[command(
-    after_long_help = "With no file, `fab` acts on the project's boards (see netsmith.toml).\n\n`fab` writes the Gerbers, drill files and placement file itself and runs netsmith's own design rules check (ADR 0037), so it does not need KiCad. An error of the check (a clearance, a short, a missing connection, a hole, the edge, a courtyard, a keepout) stops `fab` unless `--allow-drc-violations` is given, and `fab-notes.txt` then says the board is not clean; its warnings (silkscreen on a pad, a narrow mask web, a via in a pad) are listed in the notes. It writes, for each board, a Gerber zip, `bom.csv`, `cpl.csv`, `fab-notes.txt`, the `.kicad_pcb` and `.kicad_pro`, an `.svg`, and the board's 3D scene as `<board>.glb` (outside the Gerber zip; the scene of the routed board, the bytes `board3d --glb` writes for it; docs/BOARD3D.md), and the board as STEP, `<board>.step`, for mechanical CAD (outside the Gerber zip; the bytes `board3d --step` writes). Read `fab-notes.txt` before you order.\n\nA board the router cannot finish is still written, marked INCOMPLETE, and the run ends in an error. Beside it, `routing-failure.txt` lists each connection left with its net, its two pads and their places and the parts most of them end on, and then, for each line the router left, the stage it last failed in (the first pass, the try with less room, ripping up, the negotiation, the chain of rip-ups, or out of time) and the nets whose copper stands in its way; `routing-report.json` has the same for a program, with a crowding map of the board (1 mm squares, how often the router's searches across other nets' copper passed through each), which shows where the board is fought over.\n\nWith `--format json` the progress goes nowhere, and the notes of `fab-notes.txt` (\"before you order\") are findings with the code `fab`."
+    after_long_help = "With no file, `fab` acts on the project's boards (see netsmith.toml).\n\n`fab` writes the Gerbers, drill files and placement file itself and runs netsmith's own design rules check (ADR 0037), so it does not need KiCad. An error of the check (a clearance, a short, a missing connection, a hole, the edge, a courtyard, a keepout) stops `fab` unless `--allow-drc-violations` is given, and `fab-notes.txt` then says the board is not clean; its warnings (silkscreen on a pad, a narrow mask web, a via in a pad) are listed in the notes. It writes, for each board, a Gerber zip, `bom.csv`, `cpl.csv`, `fab-notes.txt`, the `.kicad_pcb` and `.kicad_pro`, an `.svg`, and the board's 3D scene as `<board>.glb` (outside the Gerber zip; the scene of the routed board, the bytes `board3d --glb` writes for it; docs/BOARD3D.md), and the board as STEP, `<board>.step`, for mechanical CAD (outside the Gerber zip; the bytes `board3d --step` writes). Read `fab-notes.txt` before you order.\n\nA board the router cannot finish is still written, marked INCOMPLETE, and the run ends in an error. Beside it, `routing-failure.txt` lists each connection left with its net, its two pads and their places and the parts most of them end on, and then, for each line the router left, the stage it last failed in (the first pass, the try with less room, ripping up, the negotiation, the chain of rip-ups, or out of time) and the nets whose copper stands in its way; `routing-report.json` has the same for a program, with a crowding map of the board (1 mm squares, how often the router's searches across other nets' copper passed through each), which shows where the board is fought over.\n\nWith `--format json` the progress goes nowhere, and the notes of `fab-notes.txt` (\"before you order\") are findings with the code `fab`. A finding about requirements of the physical file that are not met has them as data in `requirements` (the requirement, what was measured, the window it allows and how far out it is), and the refusal because the parts do not fit has every overlapping pair, every part outside and every part's final place in `does_not_fit`."
 )]
 pub struct Args {
     /// The source file; with none, the project's boards (see netsmith.toml).
@@ -386,11 +386,15 @@ fn run_fab(
                 code = ExitCode::FAILURE;
                 if json {
                     if failure.problems.is_empty() {
-                        report.findings.push(Finding::plain(
-                            Severity::Error,
-                            "fab",
-                            failure.text.trim().trim_start_matches("error: "),
-                        ));
+                        report.findings.push(Finding {
+                            requirements: failure.requirements,
+                            does_not_fit: failure.does_not_fit,
+                            ..Finding::plain(
+                                Severity::Error,
+                                "fab",
+                                failure.text.trim().trim_start_matches("error: "),
+                            )
+                        });
                     } else {
                         report
                             .findings
@@ -409,6 +413,20 @@ fn run_fab(
                         .filter(|l| !l.is_empty())
                         .collect();
                     if json {
+                        // A requirement not met that the run lists as a warning
+                        // (`constraints = "warn"`) is a finding of its own, with its numbers,
+                        // and not also a line of the notes.
+                        let lines: Vec<&str> = lines
+                            .into_iter()
+                            .filter(|l| !b.requirements.iter().any(|r| l.contains(&r.text)))
+                            .collect();
+                        report
+                            .findings
+                            .extend(b.requirements.iter().map(|r| Finding {
+                                board: Some(b.board.clone()),
+                                requirements: vec![r.clone()],
+                                ..Finding::plain(Severity::Warning, "fab", r.text.clone())
+                            }));
                         report.notes.total += lines.len();
                         if !lines.is_empty() {
                             *report.notes.by_cause.entry("fab".to_string()).or_default() +=

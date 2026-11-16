@@ -463,7 +463,7 @@ When the parts do not fit, `fab` stops and says which ones (the margin round the
 error: Shaped: 3 part(s) do not fit the outline of 60.0 x 40.0 mm: outside the outline or inside its margin, by mm past what is kept clear: `header` (J1) 1.30, `r4` (R4) 0.20; courtyards overlapping, by mm2: `r2` (R2) and `r3` (R3) 1.20; placing them in the outline anyway ended with 1 pair(s) of courtyards overlapping, 2 part(s) outside the outline or inside its 0.4 mm margin
 ```
 
-(The numbers are invented for the example.) The placer packs and turns the parts in the outline (a part wider than the board is turned, unless its requirements state a rotation) and refuses only if that ends with courtyards over each other or parts outside, so the message leads with the parts that are wrong: how many, every part that is outside the outline or inside its margin with how far, and every pair of courtyards that overlap with its area. It does not give the size the parts need, except when the courtyards alone add up to more than both faces of the outline hold, which no arrangement can fix (then it says so, with the areas). The message then lists the ten pairs of courtyards that overlap the most (the names, the shared area in mm2 and its size, where it is from the outline's top left corner and the side of the outline it is nearest) and the ten parts furthest out (each with how far outside which edge, or inside the margin, or into which cutout), and names all the others. `fab` also writes every part's final position, turn, face and state to `placement-failure.txt` in the board's output folder and names the file in the message. There is no `--json` output for it yet.
+(The numbers are invented for the example.) The placer packs and turns the parts in the outline (a part wider than the board is turned, unless its requirements state a rotation) and refuses only if that ends with courtyards over each other or parts outside, so the message leads with the parts that are wrong: how many, every part that is outside the outline or inside its margin with how far, and every pair of courtyards that overlap with its area. It does not give the size the parts need, except when the courtyards alone add up to more than both faces of the outline hold, which no arrangement can fix (then it says so, with the areas). The message then lists the ten pairs of courtyards that overlap the most (the names, the shared area in mm2 and its size, where it is from the outline's top left corner and the side of the outline it is nearest) and the ten parts furthest out (each with how far outside which edge, or inside the margin, or into which cutout), and names all the others. `fab` also writes every part's final position, turn, face and state to `placement-failure.txt` in the board's output folder and names the file in the message. `fab --format json` gives the refusal as data in `does_not_fit` of its error finding, with no cut at ten: `outline`, `needs`, `margin`, `courtyard_area`, `available_area`, `certain` (whether the courtyards alone are more than both faces hold) and `tries`; `oversize`, each part bigger than the outline with every turn tried and its courtyard in it; `overlapping`, every pair of courtyards that overlap (`a` and `b` as `refdes` and `path`, the shared `area` in mm2, its `width` and `height`, its place `x` and `y`, the `nearest_edge` and `nearest_distance`), the most overlapped first; `outside`, every part outside what is kept clear (`why`, the sentences, and `worst` in mm), the furthest first; `relations` and `conflicts`, the sentences; and `parts`, every part where the placer ended with it, as `placement-failure.txt` lists them (`refdes`, `path`, `kind`, `side`, `x`, `y`, `rotation`, `courtyard`, `fixed` and `state`). The figures are in mm from the outline's top left corner, y down.
 
 When the enclosure is a DXF, `netsmith dxf import` writes the outline, the cutouts and the mounting holes for you (see `netsmith dxf import --help`): the members for the `case` section, the holes as `MountingHole` parts, and their places, which come from the case and not from the placer, as requirements in the same file (`.hole1.place.x &= 5mm`). A hole whose place is stated is not put in a corner.
 
@@ -1827,6 +1827,22 @@ error: Plugged: `j` (J1) is not wholly inside the board outline: its courtyard i
 
 ```text
 error [constraint] constraint power.place.left (cased.physical.nsm:13) is violated: the left edge of the body of J1 (F.Fab) is 28.73 mm from the left edge of the outline, and it allows 1.4 to 1.6 mm (27.13 mm over)
+```
+
+`fab --format json` gives each requirement that is not met as data, in `requirements` of the finding it belongs to (the one error finding of a run that stopped, or one warning finding for each requirement with `constraints = "warn"`), whether the placer ended with it unmet or the check of the board file found it: `id` (`power.place.left`), `source` (the line, `cased.physical.nsm:13`), `parts` (the designators), `measure` (`x`, `y`, `left`, `right`, `top`, `bottom`, `rotation`, `side`, or `relation_x` and `relation_y` for two parts, the second term first), `unit` (`mm` or `degrees`), `measured`, the window as `min` and `max` (an end the requirement leaves open is left out) and `over`, how far out the value is. A requirement on the face has `side`, the face the part is on, and `allowed_side`, in place of the figures. For the header above:
+
+```json
+{
+  "id": "power.place.left",
+  "source": "cased.physical.nsm:13",
+  "parts": ["J1"],
+  "measure": "left",
+  "unit": "mm",
+  "measured": 28.73,
+  "min": 1.4,
+  "max": 1.6,
+  "over": 27.13
+}
 ```
 
 The editor lists the same findings with the placement's, a relation between two parts among them (_A relation between two parts_); it does not yet draw the windows or a line between the two parts (ADR 0045, C4). Height limits are in _Height limits_ above.

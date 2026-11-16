@@ -154,6 +154,12 @@ pub struct Outcome {
     pub body: String,
     /// The sentence: what was measured and what is allowed, with the numbers.
     pub message: String,
+    /// What is measured: `x`, `y`, `left`, `right`, `top`, `bottom`, `rotation`, `side`, or
+    /// `relation_x` or `relation_y` for two parts together.
+    pub measure: &'static str,
+    /// For a requirement on the face: the face the part is on (`top`, `bottom` or `not on the
+    /// board`) and the face it must be on.
+    pub face: Option<(String, String)>,
 }
 
 fn n(v: f64) -> String {
@@ -352,6 +358,8 @@ impl Constraints {
             margin: 0.0,
             body: String::new(),
             message: why,
+            measure: c.measure.word(),
+            face: None,
         };
         let name = |s: &str| {
             if c.source.is_empty() {
@@ -411,6 +419,8 @@ impl Constraints {
                         format!(" ({} degrees over)", n(over))
                     }
                 ),
+                measure: "rotation",
+                face: None,
             };
         }
         let Some(outline) = outline else {
@@ -505,6 +515,8 @@ impl Constraints {
             margin,
             body: layer,
             message,
+            measure: c.measure.word(),
+            face: None,
         }
     }
 
@@ -547,6 +559,8 @@ fn relation_of(art: &Artwork, r: &Relation) -> Outcome {
         margin: 0.0,
         body: String::new(),
         message: why,
+        measure: relation_measure(r),
+        face: None,
     };
     let find = |end: &RelationEnd| {
         let back = art
@@ -614,6 +628,17 @@ fn relation_of(art: &Artwork, r: &Relation) -> Outcome {
                 format!(" ({} mm over)", n(over))
             }
         ),
+        measure: relation_measure(r),
+        face: None,
+    }
+}
+
+/// `relation_x` or `relation_y`: the axis a requirement on two parts measures along.
+fn relation_measure(r: &Relation) -> &'static str {
+    if matches!(r.b.measure, Measure::X | Measure::Left | Measure::Right) {
+        "relation_x"
+    } else {
+        "relation_y"
     }
 }
 
@@ -649,6 +674,8 @@ fn side_of(art: &Artwork, s: &SideRule) -> Outcome {
             s.part,
             s.side
         ),
+        measure: "side",
+        face: Some((now.to_string(), s.side.clone())),
     }
 }
 

@@ -581,4 +581,196 @@ fn constraints_as_warnings_do_not_stop_fab_at_the_lines_before_routing() {
         "{}",
         made[0].notes
     );
+    // The same as data: the relation, with both parts and the axis (issue #816).
+    let relation = made[0]
+        .requirements
+        .iter()
+        .find(|r| r.id == "r2.place.x - r1.place.x")
+        .unwrap_or_else(|| panic!("{:?}", made[0].requirements));
+    assert_eq!(relation.measure, "relation_x");
+    assert_eq!(relation.parts.len(), 2);
+}
+
+// The same requirements as data, for `--format json` (issue #816): each not met is a
+// `RequirementMiss` beside its sentence, with the requirement, the value measured, the window it
+// allows and how far out it is, one test for each kind.
+
+fn json(miss: &netsmith_pcb::RequirementMiss) -> serde_json::Value {
+    serde_json::to_value(miss).unwrap()
+}
+
+/// The board of two resistors with `extra` in its physical file, placed, and then `moved`.
+fn moved(extra: &str, moved: impl FnOnce(&mut Board)) -> RequirementReport {
+    let (design, board) = place(2, "", (40, 30), extra);
+    let mut board = board.unwrap_or_else(|e| panic!("{e}"));
+    let options = place_options(&design, None);
+    assert_eq!(board.explain_requirements(&design, &options), None);
+    moved(&mut board);
+    board
+        .explain_requirements(&design, &options)
+        .expect("a report")
+}
+
+#[test]
+fn a_field_of_a_part_not_met_carries_the_measure_the_window_and_the_miss() {
+    let report = moved("    .r1.place.x >= 20mm\n    .r1.place.x <= 30mm\n", |board| {
+        let origin = board.outline.min;
+        board
+            .parts
+            .iter_mut()
+            .find(|p| p.refdes == "R1")
+            .unwrap()
+            .at = Pt::new(origin.x + 5.0, origin.y + 5.0);
+    });
+    assert_eq!(report.misses.len(), report.unmet.len());
+    let miss = &report.misses[0];
+    assert_eq!(miss.text, report.unmet[0]);
+    let json = json(miss);
+    // Two lines state one requirement, so the source names both.
+    assert_eq!(
+        json,
+        serde_json::json!({
+            "id": "r1.place.x",
+            "source": "widget.physical.nsm:10, widget.physical.nsm:11",
+            "parts": ["R1"],
+            "measure": "x",
+            "unit": "mm",
+            "measured": 5.0,
+            "min": 20.0,
+            "max": 30.0,
+            "over": 15.0,
+        })
+    );
+}
+
+#[test]
+fn an_open_end_of_a_window_is_left_out() {
+    let report = moved("    .r1.place.right <= 30mm\n", |board| {
+        let origin = board.outline.min;
+        board
+            .parts
+            .iter_mut()
+            .find(|p| p.refdes == "R1")
+            .unwrap()
+            .at = Pt::new(origin.x + 38.0, origin.y + 5.0);
+    });
+    let json = json(&report.misses[0]);
+    assert_eq!(json["measure"], "right");
+    assert_eq!(json["max"], 30.0);
+    assert!(json.get("min").is_none(), "{json}");
+    assert!(json["over"].as_f64().unwrap() > 7.0, "{json}");
+}
+
+#[test]
+fn a_turn_not_met_is_in_degrees() {
+    let report = moved("    .r1.place.rotation &= 90\n", |board| {
+        board
+            .parts
+            .iter_mut()
+            .find(|p| p.refdes == "R1")
+            .unwrap()
+            .rotation = 0.0;
+    });
+    assert_eq!(
+        json(&report.misses[0]),
+        serde_json::json!({
+            "id": "r1.place.rotation",
+            "source": "widget.physical.nsm:10",
+            "parts": ["R1"],
+            "measure": "rotation",
+            "unit": "degrees",
+            "measured": 0.0,
+            "min": 90.0,
+            "max": 90.0,
+            "over": 90.0,
+        })
+    );
+}
+
+#[test]
+fn a_face_not_met_says_both_faces() {
+    let report = moved("    .r1.place.side &= \"bottom\"\n", |board| {
+        board
+            .parts
+            .iter_mut()
+            .find(|p| p.refdes == "R1")
+            .unwrap()
+            .side = netsmith_pcb::Side::Front;
+    });
+    assert_eq!(
+        json(&report.misses[0]),
+        serde_json::json!({
+            "id": "r1.place.side",
+            "source": "widget.physical.nsm:10",
+            "parts": ["R1"],
+            "measure": "side",
+            "side": "top",
+            "allowed_side": "bottom",
+        })
+    );
+}
+
+#[test]
+fn a_relation_not_met_names_both_parts_and_the_axis() {
+    let report = report(2, (40, 30), PITCH_AND_WINDOWS);
+    let miss = &report.misses[0];
+    assert_eq!(miss.text, report.unmet[0]);
+    let json = json(miss);
+    assert_eq!(json["id"], "r2.place.x - r1.place.x");
+    assert_eq!(json["source"], "widget.physical.nsm:12");
+    assert_eq!(json["parts"], serde_json::json!(["R2", "R1"]));
+    assert_eq!(json["measure"], "relation_x");
+    assert_eq!(json["min"], 29.9);
+    assert_eq!(json["max"], 30.1);
+    // Measured and out are what the sentence says.
+    let measured = json["measured"].as_f64().unwrap();
+    let over = json["over"].as_f64().unwrap();
+    assert!((29.9 - measured).max(measured - 30.1) - over < 1e-3, "{json}");
+}
+
+#[test]
+fn parts_that_do_not_fit_are_data_with_every_pair_and_every_part() {
+    let (_, board) = place(1, HEADERS, (14, 9), HEADER_LINES);
+    let Err(BoardError::DoesNotFit(error)) = board else {
+        panic!("the headers cannot both be there");
+    };
+    let report = error.report();
+    assert_eq!(report.outline.width, 14.0);
+    assert_eq!(report.outline.height, 9.0);
+    // Every part, as `placement-failure.txt` lists them, with its member path.
+    assert_eq!(report.parts.len(), error.parts.len());
+    assert!(report.parts.iter().any(|p| p.part.refdes == "J1" && p.part.path == "h1"));
+    // The pair that overlaps is named with its area, and both parts with their paths.
+    let ended = error.ended.as_ref().expect("the placer tried");
+    assert_eq!(report.overlapping.len(), ended.overlapping.len());
+    let pair = report
+        .overlapping
+        .iter()
+        .find(|o| [o.a.refdes.as_str(), o.b.refdes.as_str()] == ["J1", "J2"] || [o.a.refdes.as_str(), o.b.refdes.as_str()] == ["J2", "J1"])
+        .unwrap_or_else(|| panic!("{:?}", report.overlapping));
+    assert!(pair.area > 0.0);
+    assert!(["h1", "h2"].contains(&pair.a.path.as_str()));
+    assert_eq!(report.outside.len(), ended.outside_parts.len());
+    assert_eq!(report.tries, Some(ended.tries));
+    // The lines that cannot both hold, as in the message.
+    assert_eq!(report.conflicts.len(), 1);
+    // As JSON: the keys a program reads.
+    let json = serde_json::to_value(&report).unwrap();
+    for key in [
+        "outline",
+        "needs",
+        "margin",
+        "courtyard_area",
+        "available_area",
+        "certain",
+        "oversize",
+        "overlapping",
+        "outside",
+        "relations",
+        "conflicts",
+        "parts",
+    ] {
+        assert!(json.get(key).is_some(), "{key} is not in {json}");
+    }
+    assert!(json["parts"][0].get("refdes").is_some());
 }

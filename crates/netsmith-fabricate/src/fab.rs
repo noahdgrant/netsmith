@@ -51,6 +51,9 @@ pub struct Fabricated {
     /// Where each part's footprint origin is and how far it is from its body's centre (#457);
     /// none for a panel.
     pub origins: Vec<netsmith_pcb::PartOrigin>,
+    /// The requirements on where parts go that the board does not meet and the run lists as
+    /// warnings (`constraints = "warn"`), as data (#816); each is also a line of `notes`.
+    pub requirements: Vec<netsmith_pcb::RequirementMiss>,
 }
 
 /// What `netsmith fab` says when it finds no KiCad, and why there is none: KiCad is switched off
@@ -367,17 +370,23 @@ pub fn fab_with_options(
 /// Why a fab run stopped: the text the command line prints, and the problems of the build when
 /// it was the build that stopped it (for `--format json`, #455). A failure of a later step (the
 /// placer, the router, the design rules check, a file) has the text alone.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct FabFailure {
     pub text: String,
     pub problems: Vec<netsmith_pipeline::Problem>,
+    /// The requirements on where parts go that the board does not meet, as data (#816), when
+    /// that is why the run stopped: where the placer ended, or on the board file after routing.
+    pub requirements: Vec<netsmith_pcb::RequirementMiss>,
+    /// The parts that do not fit the outline, as data (#817), when that is why the run
+    /// stopped.
+    pub does_not_fit: Option<Box<netsmith_pcb::FitReport>>,
 }
 
 impl From<String> for FabFailure {
     fn from(text: String) -> Self {
         FabFailure {
             text,
-            problems: Vec::new(),
+            ..FabFailure::default()
         }
     }
 }
@@ -405,6 +414,7 @@ pub fn fab_detailed(
             FabFailure {
                 text: render_problems(&problems),
                 problems,
+                ..FabFailure::default()
             }
         })?;
     if let Some(using) = &options.lock {
@@ -598,6 +608,21 @@ pub fn precheck_board(
 /// the parts do not fit (PROVISIONAL, ADR 0033).
 const PLACEMENT_FAILURE: &str = "placement-failure.txt";
 
+/// The failure of a refusal because the parts do not fit: the message, and the refusal as data
+/// (issue #817), with the requirements it found not met (issue #816).
+fn does_not_fit(text: String, e: &netsmith_pcb::DoesNotFit) -> FabFailure {
+    FabFailure {
+        text,
+        requirements: e
+            .requirements
+            .iter()
+            .flat_map(|r| r.misses.iter().cloned())
+            .collect(),
+        does_not_fit: Some(Box::new(e.report())),
+        ..FabFailure::default()
+    }
+}
+
 /// The refusal's message, with the full list written to `placement-failure.txt` in `out` and
 /// named; if it cannot be written, the message says so and carries the list.
 fn placement_failure(e: &netsmith_pcb::DoesNotFit, out: &Path) -> String {
@@ -745,7 +770,7 @@ fn fab_board(
     stuck: &mut Option<Stuck>,
     pin_notes: &[String],
     pin_map_of: &PinMapOf,
-) -> Result<BoardRun, String> {
+) -> Result<BoardRun, FabFailure> {
     {
         let fail = |what: String| format!("error: {}: {what}\n", built.label());
         let name = &built.design.name;
@@ -783,7 +808,7 @@ fn fab_board(
                     &unnumbered,
                 )));
             }
-            return Err(errors);
+            return Err(errors.into());
         }
 
         // The generic parts are judged against the board's environment with the rows they were
@@ -805,7 +830,12 @@ fn fab_board(
             say(format!("{}: warning: {warning}", built.label()));
         }
         if !precheck.errors.is_empty() {
-            return Err(precheck.errors.into_iter().map(fail).collect());
+            return Err(precheck
+                .errors
+                .into_iter()
+                .map(fail)
+                .collect::<String>()
+                .into());
         }
         say(format!(
             "{}: placing {} parts",
@@ -838,15 +868,18 @@ fn fab_board(
         })
         .map_err(|e| match e {
             crate::layout::PlaceFailure::Board(netsmith_pcb::BoardError::DoesNotFit(e)) => {
-                fail(placement_failure(&e, out))
+                does_not_fit(fail(placement_failure(&e, out)), &e)
             }
-            crate::layout::PlaceFailure::Unplaced { error, seeds } => fail(format!(
-                "{}\n{}",
-                seeds.report(),
-                placement_failure(&error, out)
-            )),
-            crate::layout::PlaceFailure::Board(e) => fail(e.to_string()),
-            crate::layout::PlaceFailure::Layout(e) => fail(e),
+            crate::layout::PlaceFailure::Unplaced { error, seeds } => does_not_fit(
+                fail(format!(
+                    "{}\n{}",
+                    seeds.report(),
+                    placement_failure(&error, out)
+                )),
+                &error,
+            ),
+            crate::layout::PlaceFailure::Board(e) => fail(e.to_string()).into(),
+            crate::layout::PlaceFailure::Layout(e) => fail(e).into(),
         })?;
         let crate::layout::Placing {
             mut board,
@@ -878,7 +911,11 @@ fn fab_board(
                 errors.push_str(&fail(requirement_failure(report, &problems, &board, out)));
             }
             errors.extend(problems.iter().map(|p| fail(p.clone())));
-            return Err(errors);
+            return Err(FabFailure {
+                text: errors,
+                requirements: unmet.map(|r| r.misses).unwrap_or_default(),
+                ..FabFailure::default()
+            });
         }
         // The placer's own arrangement, with no layout file to move parts after it, that does
         // not meet a requirement would be found by the check after routing; say so now, with
@@ -888,9 +925,12 @@ fn fab_board(
             && let Some(report) = unmet.filter(|r| !r.unmet.is_empty())
             && !catalogs.constraints_warn()
         {
-            return Err(
-                no_seed.unwrap_or_default() + &fail(requirement_failure(&report, &[], &board, out))
-            );
+            return Err(FabFailure {
+                text: no_seed.unwrap_or_default()
+                    + &fail(requirement_failure(&report, &[], &board, out)),
+                requirements: report.misses,
+                ..FabFailure::default()
+            });
         }
         for hang in board.hangs() {
             say(format!("{}: warning: {hang}", built.label()));
@@ -914,7 +954,8 @@ fn fab_board(
                         "{u}; this is an error because constraints are strict (`--constraints error` or `constraints = \"error\"`), and `--allow-drc-violations` does not waive it: state the height, or run with `--constraints warn`"
                     ))
                 })
-                .collect());
+                .collect::<String>()
+                .into());
         }
         for u in &unchecked {
             say(format!("{}: warning: {u}", built.label()));
@@ -941,7 +982,7 @@ fn fab_board(
             .map(|f| fail(case_refusal(f)))
             .collect();
         if !refused.is_empty() {
-            return Err(refused.concat());
+            return Err(refused.concat().into());
         }
         for f in fit
             .findings
@@ -1195,18 +1236,28 @@ fn fab_board(
             ..Options::default()
         };
         if let Some(incomplete) = incomplete {
-            return Err(fail(write_incomplete(
-                &incomplete,
-                &dir,
-                package(&pcb_path, &entries, &package_options),
-            )));
+            let packaged = package(&pcb_path, &entries, &package_options);
+            let requirements = packaged
+                .as_ref()
+                .err()
+                .map(unmet_requirements)
+                .unwrap_or_default();
+            return Err(FabFailure {
+                text: fail(write_incomplete(&incomplete, &dir, packaged)),
+                requirements,
+                ..FabFailure::default()
+            });
         }
         // Reads the written board back, runs the design rules check, plots the Gerbers and
         // drill files and makes the BOM and the placement file.
         let pkg = timings::stage("fab.package", &label, || {
             package(&pcb_path, &entries, &package_options)
         })
-        .map_err(|e| fail(e.to_string()))?;
+        .map_err(|e| FabFailure {
+            text: fail(e.to_string()),
+            requirements: unmet_requirements(&e),
+            ..FabFailure::default()
+        })?;
         let mut files = vec![pcb_path.clone()];
         files.extend(pin_files);
         files.extend(glb_file);
@@ -1242,7 +1293,7 @@ fn fab_board(
                 }
             }
             if !report.ok() {
-                return Err(fail(format!("{report}")));
+                return Err(fail(format!("{report}")).into());
             }
             notes.push_str(&format!("{report}"));
         }
@@ -1256,6 +1307,12 @@ fn fab_board(
             files,
             facts: BoardFacts::of(&board, &pkg),
             origins: board.origins(),
+            requirements: pkg
+                .constraints
+                .iter()
+                .filter(|o| !o.satisfied)
+                .map(netsmith_pcb::RequirementMiss::of_outcome)
+                .collect(),
         };
         Ok(BoardRun {
             fabricated,
@@ -1573,7 +1630,7 @@ fn fab_board_pinned(
     options: &FabOptions,
     catalogs: &Catalogs,
     say: &dyn Fn(String),
-) -> Result<BoardRun, String> {
+) -> Result<BoardRun, FabFailure> {
     let mut first_stuck = None;
     let source = options.pin_map_source.as_deref().unwrap_or(pass.name);
     let first = fab_board(
@@ -1607,7 +1664,7 @@ fn fab_board_pinned(
 
     if pins.mode == PinsMode::Locked {
         let proposal = pin_swap::improve(&spaces, design, &first_stuck.placed, &budget);
-        let mut message = message.clone();
+        let mut message = message.text.clone();
         match proposal {
             None => message.push_str(&format!(
                 "  pins: {given}, so no pin moves; no change of the unlocked pins of {board} lowers its crossings or its ratsnest\n",
@@ -1647,7 +1704,7 @@ fn fab_board_pinned(
                 state.proposed = Some(file);
             }
         }
-        return Err(message);
+        return Err(message.into());
     }
 
     // `--pins auto`: rounds of search, place and route.
@@ -1659,7 +1716,7 @@ fn fab_board_pinned(
     // How many connections the files on disk leave: the first pass's, then each later pass's.
     let mut on_disk_left = Some(first_stuck.left);
     let mut best_stuck = first_stuck;
-    let mut best_message = message.clone();
+    let mut best_message = message.text.clone();
     let mut best_map = state.file.clone();
     let mut best_spaces = spaces;
     let mut best_built: Option<Built> = None;
@@ -1763,7 +1820,7 @@ fn fab_board_pinned(
                             s.left, best_stuck.left, s.crossings, best_stuck.crossings
                         ));
                         best_stuck = s;
-                        best_message = m;
+                        best_message = m.text;
                         best_map = map;
                         best_spaces = spaces_again;
                         best_built = Some(next);
@@ -1841,7 +1898,7 @@ fn fab_board_pinned(
                 let _ = fs::remove_dir_all(aside);
             }
             if let Err(m) = remade {
-                result = m;
+                result = m.text;
             }
         }
     }
@@ -1852,7 +1909,7 @@ fn fab_board_pinned(
             best_stuck.left
         ));
     }
-    Err(result)
+    Err(result.into())
 }
 
 /// The shortest route the board is made again with when the budget is spent ([`remake_timeout`]).
@@ -2050,6 +2107,20 @@ pub fn routing_failure(
 /// Write what an incomplete board has: `routing-failure.txt`, and the Gerbers, the bill of
 /// materials, the placement file and the notes if the package could be made (the notes lead
 /// with the error). Returns the message `fab` fails with.
+/// The requirements of the design on where parts go that the check of the board file found not
+/// met and so stopped the package, as data (issue #816); none for any other error.
+fn unmet_requirements(e: &netsmith_fab::Error) -> Vec<netsmith_pcb::RequirementMiss> {
+    match e {
+        netsmith_fab::Error::Drc { unmet, .. } | netsmith_fab::Error::Constraints { unmet, .. } => {
+            unmet
+                .iter()
+                .map(netsmith_pcb::RequirementMiss::of_outcome)
+                .collect()
+        }
+        _ => Vec::new(),
+    }
+}
+
 fn write_incomplete(
     incomplete: &Incomplete,
     dir: &Path,
@@ -2187,6 +2258,7 @@ fn fab_panel(
         files,
         facts,
         origins: Vec::new(),
+        requirements: Vec::new(),
     })
 }
 
