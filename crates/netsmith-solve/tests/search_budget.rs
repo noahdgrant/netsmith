@@ -52,9 +52,10 @@ fn catalogs(budget: SearchBudget) -> Catalogs {
 /// `n` resistors `u01`.. in one sum that must stay within a window of 1 ohm in the middle of
 /// what they can add up to, and `others` resistors that read nothing of it, each with a bound of
 /// its own: parts that make the board larger without being part of the search. Some value of
-/// every sum's range is in the window, so no choice of the first parts is refused before the
-/// last (`ahead.rs`), but a sum of 1 % resistors spreads over more than 1 ohm, so no choice
-/// keeps all of it in the window: the search tries every combination.
+/// every sum's range is in the window, and the rows of a part share no resistance (they have no
+/// core), so no choice of the first parts is refused before the last (`ahead.rs`), but a sum of
+/// 1 % resistors spreads over more than 1 ohm, so no choice keeps all of it in the window: the
+/// search tries every combination.
 fn board(n: usize, others: usize) -> String {
     let names: Vec<String> = (1..=n).map(|i| format!("u{i:02}")).collect();
     let mut src = String::from("import std::parts::passive::Resistor\n\nboard Big {\n");

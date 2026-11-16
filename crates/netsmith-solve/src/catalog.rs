@@ -256,6 +256,7 @@ pub struct Catalogs {
     search_budget: SearchBudget,
     no_narrowing: bool,
     narrowing_audit: bool,
+    look_ahead_audit: bool,
     explain: bool,
 }
 
@@ -348,6 +349,19 @@ impl Catalogs {
 
     pub fn narrowing_audit(&self) -> bool {
         self.narrowing_audit
+    }
+
+    /// Whether each choice that the look-ahead of a group refuses (the parts still to be chosen
+    /// cannot complete it) is also searched to the end without it, and the search stops with a
+    /// panic if that finds a completion: a check of the look-ahead, for tests.
+    #[doc(hidden)]
+    pub fn with_look_ahead_audit(mut self, on: bool) -> Self {
+        self.look_ahead_audit = on;
+        self
+    }
+
+    pub fn look_ahead_audit(&self) -> bool {
+        self.look_ahead_audit
     }
 
     /// Whether each pick records the rows its part's turn passed over before it, and why

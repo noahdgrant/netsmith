@@ -651,6 +651,25 @@ impl Solver<'_> {
         wrote.then_some((reads, opaque))
     }
 
+    /// Whether the pick-time analysis (`network_trial`) can write nothing from here on: it is
+    /// off for the group, or every rail already has a voltage (it writes only the voltage of a
+    /// rail that no one gave, and a pick never takes a value away). Then a trial judges what
+    /// propagation alone works out.
+    pub(super) fn network_quiet(&mut self) -> bool {
+        if self.network.active == Some(false) {
+            return true;
+        }
+        let index = self
+            .dc_index
+            .get_or_insert_with(|| dc::Index::new(&self.model));
+        let voltages: Vec<FieldId> = index.rails().iter().map(|&(_, v)| v).collect();
+        voltages.into_iter().all(|v| {
+            self.equated(v)
+                .iter()
+                .any(|&f| !matches!(self.domain(f), Domain::Unset))
+        })
+    }
+
     /// The jobs whose pick waits on a voltage no one has given: a derated column whose bias has
     /// no value, or a column that a relation reads together with the voltage of a rail that has
     /// none (a divider's draw, a Zener's test voltage). Those are the parts that read the DC

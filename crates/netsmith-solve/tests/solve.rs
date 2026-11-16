@@ -1675,8 +1675,9 @@ fn an_led_branch_counts_against_the_regulators_current() {
     for needle in [
         "-stage.regulator.vout.current must always be at most stage.regulator.max_current",
         "100mA",
-        "net `3V3`: b1_r.current (9.257mA..15.81mA) + output.current (0A..90mA)",
-        "stage.vout.current (-105.9mA..-9.257mA)",
+        "whichever candidates they take",
+        "net `3V3`: b1_r.current (10.24mA..15.81mA) + output.current (0A..90mA)",
+        "stage.vout.current (-105.9mA..-10.24mA)",
     ] {
         assert!(m.contains(needle), "`{needle}` is not in: {m}");
     }
@@ -1687,7 +1688,10 @@ fn parts_alone_can_overload_the_regulator() {
     // No load is stated on the output. Three branches of 47 ohm draw about 17 to 36 mA each,
     // up to 107 mA together, which is more than the regulator gives. (With 100 ohm it takes
     // seven branches, which the next test gives.)
-    let (_, s) = run_with(&with_branches(3, "47ohm +/- 1%", "0mA"), &with_unrated_led());
+    let (_, s) = run_with(
+        &with_branches(3, "47ohm +/- 1%", "0mA"),
+        &with_unrated_led().with_look_ahead_audit(true),
+    );
     let msgs = messages(&s);
     assert_eq!(msgs.len(), 1, "{msgs:#?}");
     for needle in [
@@ -1708,32 +1712,61 @@ fn parts_alone_can_overload_the_regulator() {
 }
 
 #[test]
-fn led_branches_that_overload_the_regulator_together_give_up_and_name_an_led_to_state() {
-    // Seven branches of 100 ohm: every one of the six LEDs that fit has its own copy of each of
-    // the others, and each combination draws more than the regulator gives at its worst case
-    // only, so no choice of the first branches is refused before the last (`ahead.rs` asks
-    // whether some value of a range meets a bound, and some does). The search runs to its limit,
-    // lowered here so that the test ends in a moment, and names a part to state a value for
-    // (issue #851).
-    let catalogs = with_unrated_led().with_search_budget(netsmith_solve::SearchBudget {
-        trials: 2_000,
-        work: u64::MAX,
-    });
-    let (_, s) = run_with(&with_branches(7, "100ohm +/- 1%", "0mA"), &catalogs);
+fn led_branches_that_overload_the_regulator_together_are_refused_before_any_is_tried() {
+    // Seven branches of 100 ohm: every combination of the six LEDs that fit draws more than the
+    // regulator gives, but only at its worst case, so no value of the ranges is refused as
+    // impossible. Each part still to be chosen is given the core of its candidates (the range
+    // every row holds), and the regulator's current worked out from the cores already crosses
+    // its limit: every choice crosses it too, and the group is refused without a trial
+    // (issue #851). It used to run to the limit of the search.
+    let (_, s) = run_with(&with_branches(7, "100ohm +/- 1%", "0mA"), &with_unrated_led());
     let msgs = messages(&s);
     assert_eq!(msgs.len(), 1, "{msgs:#?}");
     assert!(
-        msgs[0].starts_with("gave up after trying 2000 combinations of candidates for `b1_led` and `b1_r` and "),
+        msgs[0].starts_with("no combination of candidates satisfies `b1_led` and `b1_r` and "),
         "{}",
         msgs[0]
     );
+    for needle in [
+        "together: whichever candidates they take, -stage.regulator.vout.current must always be at most stage.regulator.max_current, but its range takes in ",
+        "which is not always below 100mA",
+        "b7_r.current (10.24mA..15.81mA)",
+    ] {
+        assert!(msgs[0].contains(needle), "`{needle}` is not in: {}", msgs[0]);
+    }
+    assert!(!msgs[0].contains("gave up"), "{}", msgs[0]);
+    // The few trials of the other groups of the board, and none of the branches'.
+    assert!(s.trials < 50, "{} trials", s.trials);
+}
+
+#[test]
+fn branches_that_overload_the_regulator_only_with_some_leds_are_searched() {
+    // Three branches of 47 ohm draw up to 3 x 35.8 mA with LEDs that drop 1.8 V, more than the
+    // regulator's 100 mA (`parts_alone_can_overload_the_regulator`). A second LED drops at least
+    // 2.2 V and draws at most 27.2 mA, and a choice with one of it is within the limit. The core
+    // of the LEDs that fit is narrower than that LED's range, so the current worked out from the
+    // cores is within the limit too and nothing is refused before it is tried: the search finds
+    // the choice. The audit searches each choice the look-ahead refuses again without it.
+    let mut catalogs = with_unrated_led();
+    catalogs
+        .add_file(
+            "led",
+            "catalogs/led_high.csv",
+            "lcsc,mpn,name,label,color,forward_voltage,package,library,source\n\
+C900402,ZZ-HIGH,High LED 0603,ZZ-HIGH,Red,2.2V..2.4V,0603,Extended,https://example.invalid/high\n",
+        )
+        .unwrap();
+    let (_, s) = run_with(
+        &with_branches(3, "47ohm +/- 1%", "0mA"),
+        &catalogs.with_look_ahead_audit(true),
+    );
+    assert!(s.diagnostics.is_empty(), "{:?}", messages(&s));
     assert!(
-        msgs[0].contains("State a value for `b1_led`: it has the most candidates that fit (6), so a value for it leaves the fewest combinations to try."),
-        "{}",
-        msgs[0]
+        s.picks
+            .iter()
+            .any(|p| p.mpn.as_deref() == Some("ZZ-HIGH")),
+        "no branch has the LED that drops more"
     );
-    // The 2000 of the group, and the few of the other groups of the board.
-    assert!((2_000..2_100).contains(&s.trials), "{} trials", s.trials);
 }
 
 #[test]

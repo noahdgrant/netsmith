@@ -472,6 +472,49 @@ impl Solver<'_> {
         );
     }
 
+    /// With the audit on (`Catalogs::with_look_ahead_audit`), the parts from `depth` on, which
+    /// the look-ahead found no completion for, are searched without it, and that search must not
+    /// complete them either: the proof that the look-ahead refuses only what the search would.
+    /// The solver is put back as it was.
+    fn audit_ahead(
+        &mut self,
+        jobs: &[Job],
+        group: &[usize],
+        depth: usize,
+        search: &Search,
+        coupling: &Coupling,
+    ) {
+        let (work, derived, ends, active) = (
+            self.work,
+            self.derived.clone(),
+            self.dc_ends.clone(),
+            self.network.active,
+        );
+        let checkpoint = self.model.checkpoint();
+        let mut plain = Search {
+            no_ahead: true,
+            narrow: search.narrow,
+            elsewhere: search.elsewhere.clone(),
+            work_from: self.work,
+            chosen: search.chosen.clone(),
+            closest: search.closest.clone(),
+            ..Search::default()
+        };
+        let outcome = self.search(jobs, group, depth, &mut plain, coupling);
+        self.model.rollback(checkpoint);
+        self.work = work;
+        self.derived = derived;
+        self.dc_ends = ends;
+        self.network.active = active;
+        assert!(
+            !matches!(outcome, Outcome::Solved),
+            "the look-ahead refused {:?} for the parts from `{}` on, which the search completes with {:?}",
+            search.chosen,
+            jobs[group[depth]].path,
+            plain.chosen
+        );
+    }
+
     /// Depth-first: choose a candidate for the part at `depth`, then the rest. Every
     /// relation that can be evaluated is checked as soon as it can, so a bad choice is
     /// dropped before the parts after it are tried.
@@ -569,9 +612,13 @@ impl Solver<'_> {
         // refused: a search that has refused nothing has nothing to cut, and a look costs about
         // what a trial does.
         if group.len() > 1
+            && !search.no_ahead
             && (depth == 0 || search.closest.is_some())
-            && let Some(ahead) = self.look_ahead(jobs, group, depth, coupling)
+            && let Some(ahead) = self.look_ahead(jobs, group, depth, coupling, &search.elsewhere)
         {
+            if self.catalogs.look_ahead_audit() {
+                self.audit_ahead(jobs, group, depth, search, coupling);
+            }
             let mut reads = self.failure_reads(&ahead.rejection);
             for &d in &ahead.later {
                 reads.extend(jobs[group[d]].columns.iter().map(|(f, _)| *f));
