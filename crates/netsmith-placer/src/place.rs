@@ -15,7 +15,10 @@
 //!
 //! Parts can be on either face of the board ([`PlaceOptions::sides`]). The back is laid out
 //! in the same area as the front, but a part with a hole in it (a through-hole part, a
-//! mounting hole) is on both faces, so the other face keeps clear of it. Parts a layout file
+//! mounting hole) takes room on both faces, so the other face keeps clear of it. The rows the
+//! annealer starts from count such a part once, in the rows of the face it is on, and the other
+//! face's rows keep clear of what it takes there (its pads where its footprint draws its
+//! courtyard on its own face only, ADR 0031), not of the whole box (issue #818). Parts a layout file
 //! puts somewhere ([`PlaceOptions::fixed`]) stay there and the rest are placed round them.
 //! [`place_subset`] places some parts of a board that is placed already and leaves the rest.
 //!
@@ -52,8 +55,8 @@
 //! parts are on, then, if that fails, with the parts nobody placed shared between the faces by
 //! area, largest first; only if the last run ends with courtyards over each other or parts
 //! outside does the error give the numbers. The back is laid out in the same rows as the
-//! front, in the same area. A part with a hole takes room on both and the other face keeps
-//! clear of it. Boxes in `keepouts` (holes that are not parts) are kept clear of by the rows.
+//! front, in the same area. A part with a hole is in the rows of its own face and the other
+//! face keeps clear of what it takes there. Boxes in `keepouts` (holes that are not parts) are kept clear of by the rows.
 //! A part that is too big for the outline as it lies but fits turned 90 degrees starts turned
 //! (`turn_to_fit`), unless the layout file locks it or an overhang governs it. A part whose
 //! requirements state only a face, or only a window on a position, has all four turns; one
@@ -315,6 +318,31 @@ fn is_through(part: &Placed) -> bool {
     part.has_hole()
 }
 
+/// The box of a part's courtyard with its top left corner at `corner`.
+fn own_box(parts: &[Placed], index: usize, corner: Pt) -> Rect {
+    let (w, h) = size_of(parts, index);
+    Rect::new(corner, Pt::new(corner.x + w, corner.y + h))
+}
+
+/// What a part with a hole takes on the face it is not on, with its courtyard's top left
+/// corner at `corner`: its courtyard, or only its pads where the footprint draws the courtyard
+/// on its own face alone ([`Placed::room_on`], ADR 0031). A part with no hole takes nothing.
+fn other_face_rooms(part: &Placed, corner: Pt) -> Vec<Rect> {
+    if !is_through(part) {
+        return Vec::new();
+    }
+    let other = match part.side {
+        Side::Front => Side::Back,
+        Side::Back => Side::Front,
+    };
+    let court = part.courtyard();
+    let shift = Pt::new(corner.x - court.min.x, corner.y - court.min.y);
+    part.room_on(other, 0.0, &part.courtyards())
+        .into_iter()
+        .map(|r| r.translated(shift))
+        .collect()
+}
+
 /// Where the parts were put: the outline, and what the parts need of it.
 struct Arrangement {
     outline: Rect,
@@ -329,6 +357,7 @@ fn arrange(parts: &mut [Placed], order: &[usize], options: &PlaceOptions) -> Arr
     let mut right = Vec::new();
     let mut front = Vec::new();
     let mut back = Vec::new();
+    let mut back_through = Vec::new();
     let mut connectors = 0;
     for &i in order {
         if is_connector(&parts[i]) {
@@ -338,11 +367,15 @@ fn arrange(parts: &mut [Placed], order: &[usize], options: &PlaceOptions) -> Arr
                 right.push(i);
             }
             connectors += 1;
-        } else if parts[i].side == Side::Back && !is_through(&parts[i]) {
-            back.push(i);
+        } else if parts[i].side == Side::Back {
+            // A part with a hole is counted once, in the rows of the face it is on (issue
+            // #818); the other face's rows keep clear of what it takes there only.
+            if is_through(&parts[i]) {
+                back_through.push(i);
+            } else {
+                back.push(i);
+            }
         } else {
-            // A part with a hole in it takes room on the front rows whatever its side, and
-            // the back rows keep clear of it.
             front.push(i);
         }
     }
@@ -354,7 +387,7 @@ fn arrange(parts: &mut [Placed], order: &[usize], options: &PlaceOptions) -> Arr
         .iter()
         .filter(|b| !b.slots.is_empty())
         .count();
-    let has_rows = !front.is_empty() || !back.is_empty();
+    let has_rows = !front.is_empty() || !back.is_empty() || !back_through.is_empty();
     let blocks_count = columns + usize::from(has_rows);
     let (row_width, begin) = match options.fit {
         Some((w, _)) => {
@@ -364,6 +397,7 @@ fn arrange(parts: &mut [Placed], order: &[usize], options: &PlaceOptions) -> Arr
             let widest = front
                 .iter()
                 .chain(&back)
+                .chain(&back_through)
                 .map(|&i| size_of(parts, i).0)
                 .fold(0.0, f64::max);
             let x = ORIGIN.x
@@ -379,7 +413,14 @@ fn arrange(parts: &mut [Placed], order: &[usize], options: &PlaceOptions) -> Arr
             )
         }
         None => (
-            row_width_for(parts, &front).max(row_width_for(parts, &back)),
+            row_width_for(parts, &front).max(row_width_for(
+                parts,
+                &back
+                    .iter()
+                    .chain(&back_through)
+                    .copied()
+                    .collect::<Vec<_>>(),
+            )),
             None,
         ),
     };
@@ -393,30 +434,54 @@ fn arrange(parts: &mut [Placed], order: &[usize], options: &PlaceOptions) -> Arr
             .collect(),
         None => Vec::new(),
     };
-    let front_block = if keepouts.is_empty() {
+    // The parts with a hole that are on the back come first, in the back rows, so that the
+    // front rows can keep clear of what they take on the front; the front rows come next,
+    // and the rest of the back rows keep clear of the front's parts with a hole and of those.
+    let empty = || Block {
+        width: 0.0,
+        height: 0.0,
+        slots: Vec::new(),
+    };
+    let through_back = if back_through.is_empty() {
+        empty()
+    } else {
+        rows_around(parts, &back_through, row_width, &keepouts)
+    };
+    let mut front_avoid = keepouts.clone();
+    front_avoid.extend(
+        through_back
+            .slots
+            .iter()
+            .flat_map(|&(i, corner)| other_face_rooms(&parts[i], corner)),
+    );
+    let front_block = if front_avoid.is_empty() {
         rows(parts, &front, row_width)
     } else {
-        rows_around(parts, &front, row_width, &keepouts)
+        rows_around(parts, &front, row_width, &front_avoid)
     };
     let mut avoid = keepouts;
+    avoid.extend(
+        through_back
+            .slots
+            .iter()
+            .map(|&(i, corner)| own_box(parts, i, corner)),
+    );
     avoid.extend(
         front_block
             .slots
             .iter()
             .filter(|(i, _)| is_through(&parts[*i]))
-            .map(|&(i, corner)| {
-                let (w, h) = size_of(parts, i);
-                Rect::new(corner, Pt::new(corner.x + w, corner.y + h))
-            }),
+            .flat_map(|&(i, corner)| other_face_rooms(&parts[i], corner)),
     );
     let back_block = if back.is_empty() {
-        Block {
-            width: 0.0,
-            height: 0.0,
-            slots: Vec::new(),
-        }
+        through_back
     } else {
-        rows_around(parts, &back, row_width, &avoid)
+        let rest = rows_around(parts, &back, row_width, &avoid);
+        Block {
+            width: rest.width.max(through_back.width),
+            height: rest.height.max(through_back.height),
+            slots: through_back.slots.into_iter().chain(rest.slots).collect(),
+        }
     };
     let middle = Block {
         width: front_block.width.max(back_block.width),
@@ -2060,6 +2125,81 @@ mod tests {
             }
         }
         assert_eq!(board.check_placement(), vec![]);
+    }
+
+    /// The parts of `resistors(1 + others)` with R1 made a big part with a hole on `face`
+    /// whose footprint draws its courtyard (20 x 20 mm) on the layers `faces` says, and the
+    /// others on the other face.
+    fn big_hole_part_with_others(face: Side, faces: (bool, bool), others: usize) -> Vec<Placed> {
+        let board = board_of(resistors(1 + others, "0603"));
+        let mut parts = board.parts.clone();
+        let court = Rect::new(Pt::new(-10.0, -10.0), Pt::new(10.0, 10.0));
+        let hole = &mut parts[0];
+        hole.side = face;
+        hole.footprint.pads[0].drill = Some(netsmith_pcb::Drill {
+            width: 0.8,
+            height: 0.8,
+        });
+        hole.footprint.courtyard = court;
+        hole.footprint.courtyard_shapes = vec![court];
+        hole.footprint.courtyard_faces = faces;
+        for p in &mut parts[1..] {
+            p.side = if face == Side::Front {
+                Side::Back
+            } else {
+                Side::Front
+            };
+        }
+        parts
+    }
+
+    /// The rows' start counts a part with a hole once, on its own face (issue #818): the
+    /// other face's rows keep clear of its pads only where its footprint draws the courtyard
+    /// on its own face alone, so ten small parts on the other face start under the body of
+    /// a 20 x 20 mm part and the rows need no more than that part's own face does.
+    #[test]
+    fn the_rows_count_a_hole_part_once_and_the_other_face_starts_under_its_body() {
+        let options = PlaceOptions::default();
+        for face in [Side::Front, Side::Back] {
+            let mut parts = big_hole_part_with_others(face, (true, false), 10);
+            let fixed = vec![false; parts.len()];
+            let rows = arrange_free(&mut parts, &fixed, &options);
+            // Nothing the other face has is taller than the part's own face: the rows need
+            // its 20 mm and the margin, no more.
+            assert!(
+                rows.needs.1 < 20.0 + 2.0 * options.wall() + 1e-9,
+                "{face:?}: the rows need {:?} mm",
+                rows.needs
+            );
+            let body = parts[0].courtyard();
+            let under = parts[1..]
+                .iter()
+                .filter(|p| p.courtyard().overlaps(&body))
+                .count();
+            assert!(under > 0, "{face:?}: no part starts under the body");
+            // The pads of the part are still kept clear of.
+            for p in &parts[1..] {
+                for pad in &parts[0].footprint.pads {
+                    let near = parts[0].pad_bounds(pad);
+                    assert!(!p.courtyard().overlaps(&near), "{face:?}: over a pad");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn the_rows_keep_the_other_face_off_the_whole_body_when_both_courtyards_are_drawn() {
+        let options = PlaceOptions::default();
+        for face in [Side::Front, Side::Back] {
+            let mut parts = big_hole_part_with_others(face, (true, true), 10);
+            let fixed = vec![false; parts.len()];
+            let rows = arrange_free(&mut parts, &fixed, &options);
+            let body = parts[0].courtyard();
+            for p in &parts[1..] {
+                assert!(!p.courtyard().overlaps(&body), "{face:?}: {p:?}");
+            }
+            assert!(rows.needs.1 > 0.0);
+        }
     }
 
     /// [`placed_with`] under `limit`, with what the job's progress was told.
