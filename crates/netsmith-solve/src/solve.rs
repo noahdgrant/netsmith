@@ -183,9 +183,14 @@
 //! and asks each bound they feed whether any value of the ranges meets it; when none does, the
 //! search goes back as if every choice had been tried. The picks of a group that is solved are
 //! the same (what is refused had no completion), and the look is made before the first part
-//! and, after that, only once the group has refused a candidate. Not done: a bound that must
-//! hold over the whole range of a value and that some value meets (seven LED branches whose
-//! current is over the regulator's only at the worst case) is still searched to the limit.
+//! and, after that, only once the group has refused a candidate. A bound that must hold over the
+//! whole range of a value and that some value meets (seven LED branches whose current is over
+//! the regulator's only at the worst case) is asked of the *cores* of the candidates instead,
+//! the range every row of a part holds: what they put across the bound every choice puts across
+//! it. `Catalogs::with_look_ahead_audit` searches every refused choice again without the look,
+//! for tests. Rejected: splitting the hulls into blocks and asking each combination of blocks
+//! (sound, but as many questions as a search of the blocks), and a lower budget for a chain
+//! (a board that has a solution may need the trials).
 //!
 //! **The order of the groups must not decide the board** (9.3). Groups are picked in path
 //! order, and a bound that reads values of two groups waits for the parts that feed it, so the
@@ -624,6 +629,8 @@ struct Search {
     pruned: usize,
     skipped: usize,
     probe_work: u64,
+    /// Whether the look-ahead is left out (`ahead.rs`): the search its audit makes.
+    no_ahead: bool,
 }
 
 /// The choice that came nearest to working, kept for the error message: the one that got
@@ -771,6 +778,27 @@ impl Coupling {
         out
     }
 
+    /// Every field that one of `fields` is worked out from, however indirectly, and `fields`
+    /// themselves: what `fed_by` follows, as fields. A value the same whatever is chosen is not
+    /// followed.
+    fn sources(&self, fields: &[FieldId]) -> HashSet<FieldId> {
+        let mut seen: HashSet<FieldId> = HashSet::new();
+        let mut todo: Vec<FieldId> = Vec::new();
+        for &f in fields {
+            if !self.constant[f.0] && seen.insert(f) {
+                todo.push(f);
+            }
+        }
+        while let Some(g) = todo.pop() {
+            for &h in self.from.get(&g).into_iter().flatten() {
+                if !self.constant[h.0] && seen.insert(h) {
+                    todo.push(h);
+                }
+            }
+        }
+        seen
+    }
+
     /// The depths below `depth` of the parts in `jobs`.
     fn earlier_jobs(
         &self,
@@ -863,6 +891,7 @@ fn solve_model(model: &Model, catalogs: &Catalogs, unit: &str) -> Solution {
         network: Default::default(),
         dc_index: None,
         hulls: HashMap::new(),
+        kept_apart: 0,
     };
     job::checkpoint();
     s.relax_pinned();
@@ -1322,4 +1351,9 @@ struct Solver<'a> {
     /// The hulls of the candidates of the parts of the group being searched, by job, with the
     /// domains of the part's columns they were found for (`ahead.rs`).
     hulls: HashMap<usize, ahead::Hull>,
+    /// How many times `propagate` left a value as it was because what an equation or a balance
+    /// works out for it does not lie inside it (or shares nothing with it), or stopped before
+    /// nothing changed: the steps whose result is not narrower for narrower inputs. The cores of
+    /// `ahead.rs` conclude nothing from a propagation that took one.
+    kept_apart: u64,
 }

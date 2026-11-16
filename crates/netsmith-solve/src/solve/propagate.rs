@@ -93,7 +93,11 @@ impl Solver<'_> {
         let mut equalities_at = vec![0u64; equalities.len()];
         let mut relations_at = vec![0u64; relations.len()];
         let mut balances_at = vec![0u64; balances.len()];
-        for _ in 0..64 {
+        for pass in 0..64 {
+            if pass == 63 {
+                // The last pass: what changes in it is left unfinished.
+                self.kept_apart += 1;
+            }
             job::checkpoint();
             let mut changed = false;
             // A pass reads every equation, relation and balance, to skip those that did not
@@ -206,21 +210,27 @@ impl Solver<'_> {
                     // balance both hold: it takes what the two say. Only a pair that share
                     // nothing is a fault, which `verify` reports.
                     (CmpOp::EqEq, Domain::Quantity(d)) if self.derived.contains(f) => {
-                        if let Domain::Quantity(v) = &value
-                            && let Ok(Some(both)) = d.intersect(v)
-                            && both != *d
-                        {
-                            self.set_field(*f, Domain::Quantity(both));
-                            changed = true;
+                        if let Domain::Quantity(v) = &value {
+                            match d.intersect(v) {
+                                Ok(Some(both)) if both != *d => {
+                                    self.set_field(*f, Domain::Quantity(both));
+                                    changed = true;
+                                }
+                                Ok(Some(_)) => {}
+                                _ => self.kept_apart += 1,
+                            }
                         }
                     }
                     (CmpOp::EqEq, Domain::Quantity(d)) if self.sole_equation[index] => {
                         if let Domain::Quantity(v) = &value
                             && v != d
-                            && d.encloses(v).unwrap_or(false)
                         {
-                            self.set_field(*f, value);
-                            changed = true;
+                            if d.encloses(v).unwrap_or(false) {
+                                self.set_field(*f, value);
+                                changed = true;
+                            } else {
+                                self.kept_apart += 1;
+                            }
                         }
                     }
                     // A value that several equations state and no statement bounds (the
@@ -253,11 +263,13 @@ impl Solver<'_> {
                         } else {
                             None
                         };
-                        if let Some(next) = next
-                            && next != *d
-                        {
-                            self.set_field(*f, Domain::Quantity(next));
-                            changed = true;
+                        match next {
+                            Some(next) if next != *d => {
+                                self.set_field(*f, Domain::Quantity(next));
+                                changed = true;
+                            }
+                            Some(_) => {}
+                            None => self.kept_apart += 1,
                         }
                     }
                     _ => {}
@@ -294,7 +306,16 @@ impl Solver<'_> {
                                     changed = true;
                                     continue;
                                 }
-                                None => continue,
+                                None => {
+                                    // A balance on a board whose old and new values share
+                                    // nothing keeps the old one.
+                                    if self.model.instance(b.scope).kind != InstKind::System
+                                        && old.intersect(&value).ok().flatten().is_none()
+                                    {
+                                        self.kept_apart += 1;
+                                    }
+                                    continue;
+                                }
                             },
                             _ => continue,
                         }
