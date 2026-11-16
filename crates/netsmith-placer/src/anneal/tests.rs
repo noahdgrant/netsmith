@@ -1192,7 +1192,7 @@ fn problem_with_escape<'a>(
 ) -> Problem<'a> {
     Problem {
         escape_room: weight,
-        ..problem_of(board, fixed, rules)
+        ..problem_weighing(board, fixed, rules, 0.0)
     }
 }
 
@@ -1300,13 +1300,13 @@ fn escape_of(board: &mut Board) -> f64 {
 
 #[test]
 fn weighing_escape_room_leaves_a_busy_part_less_short_of_it_than_not() {
-    // The QFN and its eight resistors on a board of 13 mm, where the placer that does not
-    // weigh escape room leaves some pads with no way out: over four seeds, the one that weighs
-    // it leaves fewer.
+    // The QFN and its eight resistors on a board of 11 mm, too small for every part to clear
+    // every rule, so that the placer that does not weigh escape room leaves pads with no way
+    // out: over four seeds, the one that weighs it leaves fewer (9 against 19 when written).
     let (mut weighed, mut not) = (0.0, 0.0);
     for seed in 0..4 {
         for (weight, total) in [(W_ESCAPE_ROOM, &mut weighed), (0.0, &mut not)] {
-            let mut board = busy_board(13.0);
+            let mut board = busy_board(11.0);
             let fixed = vec![false; board.parts.len()];
             let rules = board.rules.clone();
             let probe = board.clone();
@@ -1314,11 +1314,37 @@ fn weighing_escape_room_leaves_a_busy_part_less_short_of_it_than_not() {
                 seed,
                 ..problem_with_escape(&probe, &fixed, &rules, weight)
             };
-            let outcome = anneal(&mut board.parts, &problem, 1.0);
-            assert!(outcome.feasible, "seed {seed}, weight {weight}");
+            anneal(&mut board.parts, &problem, 1.0);
             *total += escape_of(&mut board);
         }
     }
     eprintln!("escape shortfall over four seeds: {weighed} weighed, {not} not");
     assert!(weighed < not, "{weighed} weighed, {not} not");
+}
+
+#[test]
+fn a_board_with_inner_signal_layers_overflows_less_than_one_with_the_outer_two_alone() {
+    // The resistors of `crossing_nets` crowded into one corner: on four signal layers each bin
+    // holds twice the track, so less of it overflows.
+    let board = crossing_nets();
+    let fixed = vec![false; board.parts.len()];
+    let rules = board.rules.clone();
+    let overflow_on = |layers: usize| {
+        let mut parts = board.parts.clone();
+        let problem = Problem {
+            signal_layers: layers,
+            ..problem_of(&board, &fixed, &rules)
+        };
+        let mut e = Engine::new(&mut parts, &problem);
+        for i in 0..12 {
+            put_at(&mut e, i, Pt::new(if i < 6 { 2.0 } else { 10.0 }, 2.0));
+        }
+        e.refresh_all();
+        e.overflow_counted_afresh()
+    };
+    let (two, four) = (overflow_on(2), overflow_on(4));
+    assert!(
+        four < two && two > 0.0,
+        "{two} mm on two layers, {four} mm on four"
+    );
 }

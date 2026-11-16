@@ -72,7 +72,7 @@ pub fn board_from_design_placed(
     // A board that states no outline is as big as its parts need, as ever.
     let plane_nets: Vec<String> = u.planes.iter().map(|p| p.net.clone()).collect();
     // The outer layers and each inner layer that no plane takes.
-    let inner = u.process.stackup.layers.saturating_sub(2);
+    let inner = u.process.stackup.layers.saturating_sub(2) as usize;
     let planes_inner = (1..=inner)
         .filter(|n| u.planes.iter().any(|p| p.layer == format!("In{n}.Cu")))
         .count();

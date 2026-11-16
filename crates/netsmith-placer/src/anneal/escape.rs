@@ -201,11 +201,7 @@ impl<'a> Engine<'a> {
             .near(b, &reach)
             .into_iter()
             .filter(|&j| j != b && !self.near_ok[b * n + j])
-            .flat_map(|j| {
-                self.rooms_on(j, face)
-                    .into_iter()
-                    .map(move |(r, _)| (j, r))
-            })
+            .flat_map(|j| self.rooms_on(j, face).into_iter().map(move |(r, _)| (j, r)))
             .filter(|(_, r)| r.overlaps(&reach))
             .collect();
         let region = self.p.region;
