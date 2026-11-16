@@ -2690,6 +2690,70 @@ mod tests {
     }
 
     #[test]
+    fn a_hidden_designator_takes_no_room_and_a_given_text_is_kept_clear_like_a_reference() {
+        let (parts, nets) = chain("R", "m", 30);
+        let silks = parts
+            .iter()
+            .enumerate()
+            .filter_map(|(i, part)| {
+                let print = match i % 3 {
+                    0 => netsmith_core::SilkPrint::Nothing,
+                    1 => netsmith_core::SilkPrint::Text("TX 5V".into()),
+                    _ => return None,
+                };
+                Some(netsmith_core::PartSilk {
+                    path: part.path.clone(),
+                    print,
+                })
+            })
+            .collect();
+        let design = Design {
+            modules: Vec::new(),
+            name: "T".into(),
+            process: Some(crate::testlib::test_process()),
+            features: netsmith_core::Features {
+                silks,
+                ..Default::default()
+            },
+            interfaces: Vec::new(),
+            notes: Vec::new(),
+            parts,
+            nets,
+        };
+        let board = crate::board_from_design_placed(
+            &design,
+            &netsmith_kicad::Mapping::standard(),
+            &fixtures(),
+            &PlaceOptions::default(),
+        )
+        .unwrap_or_else(|e| panic!("{e}"));
+        let least = board.rules.silk_to_pad;
+        for a in &board.parts {
+            let text = anneal::text_box(a, &board.rules);
+            assert_eq!(text.is_none(), a.silk == netsmith_pcb::Silk::Nothing);
+            let Some(text) = text else { continue };
+            for b in board.parts.iter().filter(|b| b.refdes != a.refdes) {
+                for pad in &b.footprint.pads {
+                    assert!(
+                        !text.overlaps(&b.pad_bounds(pad).expanded(least)),
+                        "the text of {} is on a pad of {}",
+                        a.refdes,
+                        b.refdes
+                    );
+                }
+                if let Some(other) = anneal::text_box(b, &board.rules) {
+                    assert!(
+                        !text.overlaps(&other),
+                        "the text of {} is over the text of {}",
+                        a.refdes,
+                        b.refdes
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
     fn the_arrangement_of_a_small_board_is_a_fixed_one() {
         // Positions are whole units and nothing in the run depends on the machine, so these
         // are the same everywhere. A change to the cost or the moves changes them: say so in

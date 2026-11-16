@@ -1,7 +1,7 @@
 # Glossary: L
 
 **Label**:
-A part that prints text on the silkscreen (`std::parts::mechanical::Label`). It has no pins and is fitted by nobody.
+A part that prints text on the silkscreen (`std::parts::mechanical::Label`). It has no pins and is fitted by nobody. A part's own silkscreen text is not a label (_Silkscreen text_).
 _Avoid_: Text, annotation, legend
 
 **Layout file**:

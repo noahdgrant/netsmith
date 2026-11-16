@@ -1159,6 +1159,18 @@ impl<'a> Checker<'a> {
         // face.
         if matches!(kind, InstKind::Part | InstKind::Module | InstKind::Board) {
             self.add_place(id, def.span);
+            // And a `.silk` for whether the silkscreen prints designators ("show" or "hide"):
+            // a part's own, or every part's of a module or the board, which a part's own
+            // beats. A part has a `.silk_text` too, what it prints in place of its designator.
+            let names: &[&str] = if kind == InstKind::Part {
+                &["silk", "silk_text"]
+            } else {
+                &["silk"]
+            };
+            for &name in names {
+                let field = self.model.add_field(id, name, FieldKind::Text);
+                self.model.add_member(id, name, Member::Field(field));
+            }
         }
         // A definition's names are resolved inside that definition's own file, and bare
         // names look outward only through its own blocks, never through its user.
@@ -2339,7 +2351,7 @@ impl Checker<'_> {
                     self.error(
                         span,
                         format!(
-                            "`{path}` is not physical intent: a physical file states where a part is (its `.place`), how tall it is (`.height`), how high its body stands off the board (`.standoff`), how far its pins protrude (`.pin_protrusion`), the STEP model it is drawn from (`.model`) and the outline, cutouts, keepouts, holes, fiducials, labels and case models it declares, never what a part is; put this in the circuit source"
+                            "`{path}` is not physical intent: a physical file states where a part is (its `.place`), how tall it is (`.height`), how high its body stands off the board (`.standoff`), how far its pins protrude (`.pin_protrusion`), the STEP model it is drawn from (`.model`), what its silkscreen prints (`.silk`, `.silk_text`) and the outline, cutouts, keepouts, holes, fiducials, labels and case models it declares, never what a part is; put this in the circuit source"
                         ),
                     );
                     return false;
@@ -2361,11 +2373,25 @@ impl Checker<'_> {
             );
             return false;
         }
+        if let Some(&f) = fields.iter().find(|&&f| self.model.is_silk_field(f)) {
+            let path = self.model.path_of_field(f);
+            let (board, file) = self.physical_home();
+            self.error(
+                span,
+                format!(
+                    "`{path}` is what the silkscreen prints, which is physical intent, and a board's circuit source does not state it (ADR 0048); put it in `physical for {board}` in `{file}`"
+                ),
+            );
+            return false;
+        }
         true
     }
 
     fn physical_field(&self, field: crate::model::FieldId, phys: &PhysState) -> bool {
         if self.model.is_place_field(field) {
+            return true;
+        }
+        if self.model.is_silk_field(field) {
             return true;
         }
         let f = self.model.field(field);

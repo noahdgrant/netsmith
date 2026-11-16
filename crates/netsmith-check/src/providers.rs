@@ -116,7 +116,7 @@ pub(crate) struct ProviderRef {
 
 /// The members every part has whatever its definition says, which a use of a generic may
 /// name too.
-const BUILT_IN: [&str; 12] = [
+const BUILT_IN: [&str; 14] = [
     "assembly",
     "designator",
     "lcsc",
@@ -129,6 +129,8 @@ const BUILT_IN: [&str; 12] = [
     "pin_protrusion",
     "model",
     "place",
+    "silk",
+    "silk_text",
 ];
 
 /// Whether a generic is made as a part: it has a `pins` table or a catalog. A generic with

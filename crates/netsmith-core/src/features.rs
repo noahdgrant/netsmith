@@ -1,8 +1,8 @@
 //! The current of each net and the optional features of a design.
 
 use crate::{
-    CaseModel, Cutout, Keepout, Label, Offset, Outline, PartHeight, PartStandoff, PinProtrusion,
-    Placement, Pour, StepModel,
+    CaseModel, Cutout, Keepout, Label, Offset, Outline, PartHeight, PartSilk, PartStandoff,
+    PinProtrusion, Placement, Pour, StepModel,
 };
 
 /// The current a net carries, and the least track that carries it (issue #431).
@@ -46,6 +46,11 @@ pub struct Features {
     /// How far the pins of through-hole parts protrude, as the design states it, by path
     /// (ADR 0045 section 15).
     pub protrusions: Vec<PinProtrusion>,
+    /// What the silkscreen prints for the parts that do not print their designator, by path:
+    /// nothing, or a text of the physical file's (`.silk`, `.silk_text`). A part not listed
+    /// prints its designator.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub silks: Vec<PartSilk>,
     /// The STEP models parts are drawn from, by path (ADR 0108).
     pub models: Vec<StepModel>,
     /// The STEP files of the board's case, by member name (ADR 0109).

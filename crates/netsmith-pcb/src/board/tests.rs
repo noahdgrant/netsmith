@@ -962,3 +962,35 @@ fn a_missing_library_file_names_the_footprint_and_path() {
     assert!(text.starts_with("D1: footprint `LED_SMD:LED_0603_1608Metric` not found"));
     assert!(text.contains("/nonexistent/footprints/LED_SMD.pretty/LED_0603_1608Metric.kicad_mod"));
 }
+
+#[test]
+fn what_the_design_prints_on_the_silkscreen_is_what_a_part_shows() {
+    use netsmith_core::{PartSilk, SilkPrint};
+    let mut design = led_design();
+    design.features.silks = vec![
+        PartSilk {
+            path: "r1".into(),
+            print: SilkPrint::Nothing,
+        },
+        PartSilk {
+            path: "j1".into(),
+            print: SilkPrint::Text("PWR 5V".into()),
+        },
+    ];
+    for part in &mut design.parts {
+        part.path = part.refdes.to_lowercase();
+    }
+    let board = unplaced_board(&design);
+    let rules = &board.rules;
+    let r1 = board.part("R1").unwrap();
+    assert_eq!((r1.silk_text(), &r1.silk), (None, &Silk::Nothing));
+    let j1 = board.part("J1").unwrap();
+    assert_eq!(j1.silk_text(), Some("PWR 5V"));
+    let d1 = board.part("D1").unwrap();
+    assert_eq!((d1.silk_text(), &d1.silk), (Some("D1"), &Silk::Designator));
+    // The text is as wide as its letters, not as the designator's.
+    let expected = 6.0 * j1.text_height(rules) * 0.95 + rules.min_text_thickness;
+    assert!((j1.text_width(rules) - expected).abs() < 1e-9);
+    let expected = 2.0 * d1.text_height(rules) * 0.95 + rules.min_text_thickness;
+    assert!((d1.text_width(rules) - expected).abs() < 1e-9);
+}

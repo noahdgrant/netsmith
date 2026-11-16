@@ -70,6 +70,7 @@ physical for Cased {
 - **A path crosses a module boundary here for any statement of physical intent.** `.sensor.j.place.left` names the header inside the `Sensor` module. The circuit source reaches into a module only to narrow a value (ADR 0116); the physical file can also state physical intent about the part. A statement may set or compare only a part's `.place`, a part's `.height`, a part's `.standoff`, and what the unit declares itself (the fields of its `.outline`, `.window`, `.rib`). Anything that changes what a part is, or a connection, is refused.
 - **A relation between two parts** is the equation of _Where a part goes_: `.b.place.x - .a.place.x == 17.5mm +/- 0.05mm`. The placer holds it and `fab` measures it (_A relation between two parts_).
 - **`.place.side` on a module** is a requirement on every part of it, at any depth. A module with an exception states the faces of its parts one by one and none for itself; two lines that disagree are an error that names both. `.place.side` with no path, on the board itself, is the same requirement on every part of the board (_A board on one face_).
+- **`.silk` and `.silk_text`** say what the silkscreen prints for a part: nothing, or a text in place of its designator (_Silkscreen text_). `.silk` on a module or on the board reaches every part inside it.
 - The case numbers are the maintainer's file to review: put the source of each (a drawing, a sheet) in a comment above the line, and never invent one.
 
 `examples/enclosure_sensor/` is a complete invented board that states all of this in its physical file, and each statement has a comment that says what it asks for: a rounded outline with a cutout, mounting holes and fiducials, a 40 mm plug that hangs over an edge, an antenna and a coax connector on one line, two socket rows a fixed distance apart, a module on the back with one part on the front, a row of twelve test pads on a pitch, a height limit, and a flat cell on the back across the sockets whose pins protrude 0.2 mm (_Pin protrusion_). It is a project, because it defines four invented parts and maps them to KiCad's stock footprints and a footprint of its own in its `kicad.toml`; `crates/netsmith-fabricate/tests/enclosure_sensor.rs` runs `fab` on it and checks that every requirement is met.
@@ -135,7 +136,7 @@ physical for Wrong {
 ```
 
 ```text
-error: `b.j.assembly` is not physical intent: a physical file states where a part is (its `.place`), how tall it is (`.height`), how high its body stands off the board (`.standoff`), how far its pins protrude (`.pin_protrusion`), the STEP model it is drawn from (`.model`) and the outline, cutouts, keepouts, holes, fiducials, labels and case models it declares, never what a part is; put this in the circuit source
+error: `b.j.assembly` is not physical intent: a physical file states where a part is (its `.place`), how tall it is (`.height`), how high its body stands off the board (`.standoff`), how far its pins protrude (`.pin_protrusion`), the STEP model it is drawn from (`.model`), what its silkscreen prints (`.silk`, `.silk_text`) and the outline, cutouts, keepouts, holes, fiducials, labels and case models it declares, never what a part is; put this in the circuit source
   --> main.physical.nsm:2:5
   |
 2 |     .b.j.assembly &= AssemblyMode::Hand
@@ -1304,6 +1305,72 @@ physical for Marked {
         }
     }
 }
+```
+
+### Silkscreen text
+
+Every part prints its reference designator on the silkscreen, in a place the placer keeps clear of pads and of other text, and at least as large as the process's smallest text. What the silkscreen prints is physical intent (ADR 0048), so it is stated in the board's physical file, with two members that every part has: `.silk`, a word (`"show"` or `"hide"`) for whether it prints a designator, and `.silk_text`, a text it prints in place of the designator. A module and the board have `.silk` too, which says it for every part inside them, at any depth.
+
+```nsm solve place
+import std::parts::connector::Header1x2
+import std::parts::passive::Resistor
+import std::mfg::jlcpcb::TwoLayer
+
+module Sensor {
+    .j: Header1x2
+    .r: Resistor {
+        .resistance &= 4.7kohm +/- 5%
+    }
+}
+
+board Clean {
+    .process: TwoLayer {
+        .stackup.thickness &= 1.6mm
+    }
+    .uart: Header1x2
+    .power: Header1x2
+    .sensor: Sensor
+}
+```
+
+```nsm-physical
+physical for Clean {
+    // A clean face: no designators on the silkscreen, except where one is wanted.
+    .silk &= "hide"
+    // The sensor block is probed by hand: its parts print their designators.
+    .sensor.silk &= "show"
+    // The connector prints what its pins are, not its designator.
+    .uart.silk_text &= "UART"
+}
+```
+
+- **The most specific statement wins.** A part's own `.silk` beats the `.silk` of the module it is in, which beats the one of the module around that, and the board's comes last. A part that none of them speaks of prints its designator.
+- **`.silk_text` replaces the designator on the silkscreen only.** The designator stays on the schematic, in the bill of materials, in the placement file and on the fabrication layer (`F.Fab`); only the text on `F.SilkS` (`B.SilkS` for a part on the back) changes. The text is placed, sized and counted like a designator is: at least the process's smallest text, clear of pads and other text, on the side of the part the placer chooses. A part that states `.silk_text` prints it whatever the board or a module says of designators; it is an error to say `.silk &= "hide"` and `.silk_text` of one part, and an empty text is an error.
+- **A hidden designator takes no room.** The placer does not make room for it and the checks give no finding about it.
+- **A value other than `"show"` or `"hide"`** is an error that names the member. A module has no `.silk_text`: a text belongs to one part.
+- **Circuit source.** The board's circuit source does not state these members, as it does not state a `.place` (ADR 0048); the message says where they go.
+
+Misuse: the circuit source states what the silkscreen prints.
+
+```nsm fails
+import std::parts::connector::Header1x2
+import std::mfg::jlcpcb::TwoLayer
+
+board Marked {
+    .process: TwoLayer {
+        .stackup.thickness &= 1.6mm
+    }
+    .uart: Header1x2
+    .uart.silk_text &= "UART"
+}
+```
+
+```text
+error: `uart.silk_text` is what the silkscreen prints, which is physical intent, and a board's circuit source does not state it (ADR 0048); put it in `physical for Marked` in `main.physical.nsm`
+  --> main.nsm:9:5
+  |
+9 |     .uart.silk_text &= "UART"
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### Where a part goes

@@ -116,6 +116,27 @@ pub struct PinProtrusion {
     pub source: String,
 }
 
+/// What a part's silkscreen prints in place of its reference designator, as the physical file
+/// states it (`.silk`, `.silk_text`). A part whose silkscreen prints its designator, which is
+/// every part the file says nothing of, is not listed. The designator stays in the BOM, the
+/// placement file and on the fabrication layer whatever is printed here.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct PartSilk {
+    /// The part's path in the design.
+    pub path: String,
+    /// What the silkscreen prints.
+    pub print: SilkPrint,
+}
+
+/// What the silkscreen prints for a part that does not print its designator.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum SilkPrint {
+    /// Nothing: the part has no text on the silkscreen and takes no room for one.
+    Nothing,
+    /// This text, placed and sized as the designator is.
+    Text(String),
+}
+
 /// The STEP model a part is drawn from in place of its generated shape (`.model`, ADR 0108).
 /// It is drawn, never measured: the part's height does not come from it. A part the design
 /// names no model for is not here.
