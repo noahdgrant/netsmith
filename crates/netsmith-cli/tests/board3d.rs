@@ -260,7 +260,7 @@ fn scene_of(source: &str) -> netsmith_3d::Scene {
     let file = &target.files[0];
     let text = std::fs::read_to_string(&file.path).unwrap();
     let catalogs = target.catalogs().unwrap();
-    let (held, _) = netsmith_pipeline::pick_lock::open(&file.path, &catalogs, false).unwrap();
+    let (held, _) = netsmith_pipeline::pick_lock::open(&file.path, &catalogs, false, true).unwrap();
     let nowhere = netsmith_testkit::TempDir::new("render-no-kicad");
     let search = netsmith_kicad::Search::under(nowhere.path()).with_no_kicad();
     let root = target.project.as_ref().map(|p| p.root.as_path());

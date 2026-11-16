@@ -123,7 +123,9 @@ The first `build` or `fab` also writes `src/main.lock.toml` beside each source f
 row each part was picked as. Commit it, as you commit `Cargo.lock`. Later runs hold each part
 to its row, and `--locked` makes a run that would change the picks an error (`docs/LANGUAGE.md`,
 "The pick lock"). `netsmith lock --update` refreshes the lock after a catalog edit and prints
-what changed, and `netsmith lock --check` fails when it is not current, for CI.
+what changed (`--part r1,u2` or `--except r1` takes new picks for some parts only), and
+`netsmith lock --check` fails when it is not current, for CI. `lock = "top_level"` or `"none"` under
+`[project]` in `netsmith.toml` keeps unit-test and scratch sources free of lock files.
 
 The boards in `examples/` carry their locks, committed beside the sources, and CI runs
 `netsmith lock --check` over every one of them (`scripts/check-example-locks.sh`, the `locks` job). A

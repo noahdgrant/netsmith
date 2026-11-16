@@ -479,9 +479,222 @@ fn lock_needs_exactly_one_of_update_and_check() {
     );
     let help = stdout(&netsmith(&root, &["lock", "--help"]));
     assert!(
-        help.contains("netsmith lock <--update|--check> [FILE.NSM]")
+        help.contains("netsmith lock [OPTIONS] <--update|--check> [FILE.NSM]")
             && help.contains("lock --update"),
         "{help}"
     );
     assert!(!lock_file(&root).exists());
+}
+
+/// Two regulators, `u` and `v`, each on a rail of its own, picked from the same catalog.
+const ZZ9_TWO: &str = r#"import std::sources::Rail
+import src::ics::Zz9
+
+board Zz9Two {
+    .in_u: Rail {
+        .voltage &= 5V +/- 5%
+        .pos.net &= "VIN_U"
+        .neg.net &= "GND"
+    }
+    .in_v: Rail {
+        .voltage &= 5V +/- 5%
+        .pos.net &= "VIN_V"
+        .neg.net &= "GND"
+    }
+    .u: Zz9 { .vout.voltage &= 3.0V..3.6V }
+    .v: Zz9 { .vout.voltage &= 3.0V..3.6V }
+    .out_u: Rail {
+        .pos.net &= "3V3_U"
+        .neg.net &= "GND"
+        .current &= 0mA..50mA
+    }
+    .out_v: Rail {
+        .pos.net &= "3V3_V"
+        .neg.net &= "GND"
+        .current &= 0mA..50mA
+    }
+    .in_u ~ .u.vin
+    .u.vout ~ .out_u
+    .u.en ~ .u.vin.pos
+    .in_v ~ .v.vin
+    .v.vout ~ .out_v
+    .v.en ~ .v.vin.pos
+}
+"#;
+
+/// The row named in the lock for the part `path` of `Zz9Two`, or `None`.
+fn locked_row(root: &Path, path: &str) -> Option<String> {
+    let text = read_lock(root);
+    let at = text.find(&format!("[Zz9Two.parts.\"{path}\"]"))?;
+    let row = text[at..].lines().find(|l| l.starts_with("row = "))?;
+    Some(row.trim_start_matches("row = ").trim_matches('"').to_string())
+}
+
+/// A project with `Zz9Two`, locked on `ROW_S`, whose catalog then gains `ROW_A` before it: both
+/// parts are due to move.
+fn two_regulators_due_to_move(label: &str) -> TempDir {
+    let root = zz9_project(label, ROW_S);
+    fs::write(root.join("src/main.nsm"), ZZ9_TWO).unwrap();
+    let run = netsmith(&root, &["lock", "--update"]);
+    assert!(run.status.success(), "{}", stderr(&run));
+    assert_eq!(locked_row(&root, "u").as_deref(), Some("ZZ9-33-S"));
+    assert_eq!(locked_row(&root, "v").as_deref(), Some("ZZ9-33-S"));
+    set_rows(&root, &format!("{ROW_A}{ROW_S}"));
+    root
+}
+
+#[test]
+fn update_part_takes_a_new_pick_for_the_named_parts_only() {
+    let root = two_regulators_due_to_move("lock-update-part");
+    let run = netsmith(&root, &["lock", "--update", "--part", "v"]);
+    assert!(run.status.success(), "{}", stderr(&run));
+    assert_eq!(
+        diff_lines(&run),
+        ["Zz9Two: `v`: `ZZ9-33-S` (lcsc C9001, mpn ZZ9-33-S) -> `ZZ9-33-A` (lcsc C9002, mpn ZZ9-33-A)"],
+        "{}",
+        stdout(&run)
+    );
+    assert_eq!(locked_row(&root, "u").as_deref(), Some("ZZ9-33-S"));
+    assert_eq!(locked_row(&root, "v").as_deref(), Some("ZZ9-33-A"));
+    // `u` is still due: the lock is not current, and `--check` says it.
+    assert_eq!(
+        netsmith(&root, &["lock", "--check"]).status.code(),
+        Some(1)
+    );
+}
+
+#[test]
+fn update_except_takes_a_new_pick_for_every_part_but_the_named_ones() {
+    let root = two_regulators_due_to_move("lock-update-except");
+    let run = netsmith(&root, &["lock", "--update", "--except", "v"]);
+    assert!(run.status.success(), "{}", stderr(&run));
+    assert_eq!(diff_lines(&run).len(), 1, "{}", stdout(&run));
+    assert_eq!(locked_row(&root, "u").as_deref(), Some("ZZ9-33-A"));
+    assert_eq!(locked_row(&root, "v").as_deref(), Some("ZZ9-33-S"));
+    // The names may be a list, and an update of all the rest is then the same as `--update`.
+    let run = netsmith(&root, &["lock", "--update", "--except", "u,v"]);
+    assert!(run.status.success(), "{}", stderr(&run));
+    assert_eq!(stdout(&run), "");
+    assert_eq!(locked_row(&root, "v").as_deref(), Some("ZZ9-33-S"));
+    assert!(netsmith(&root, &["lock", "--update"]).status.success());
+    assert_eq!(locked_row(&root, "v").as_deref(), Some("ZZ9-33-A"));
+    assert!(netsmith(&root, &["lock", "--check"]).status.success());
+}
+
+#[test]
+fn a_part_named_that_no_board_has_is_exit_two_and_writes_nothing() {
+    let root = two_regulators_due_to_move("lock-update-unknown");
+    let before = read_lock(&root);
+    for flag in ["--part", "--except"] {
+        let run = netsmith(&root, &["lock", "--update", flag, "u,w"]);
+        assert_eq!(run.status.code(), Some(2), "{flag}");
+        assert!(
+            stderr(&run).contains("no board has the part `w`; the parts there are: `u`, `v`"),
+            "{}",
+            stderr(&run)
+        );
+        assert_eq!(read_lock(&root), before);
+    }
+}
+
+#[test]
+fn a_held_row_that_no_longer_passes_stops_a_partial_update_and_says_how_to_move_it() {
+    let root = two_regulators_due_to_move("lock-update-part-failing");
+    // `u` is held to `ZZ9-33-S`, which can no longer supply its 50 mA.
+    set_rows(&root, &format!("{ROW_A}{ROW_S_WEAK}"));
+    let before = read_lock(&root);
+    let run = netsmith(&root, &["lock", "--update", "--part", "v"]);
+    assert_eq!(run.status.code(), Some(2));
+    assert!(
+        stderr(&run).contains("name them to take a new pick"),
+        "{}",
+        stderr(&run)
+    );
+    assert_eq!(read_lock(&root), before);
+    // Naming it moves it.
+    let run = netsmith(&root, &["lock", "--update", "--part", "u,v"]);
+    assert!(run.status.success(), "{}", stderr(&run));
+    assert_eq!(locked_row(&root, "u").as_deref(), Some("ZZ9-33-A"));
+}
+
+#[test]
+fn part_and_except_need_update_and_are_not_said_together() {
+    let root = led_project("lock-part-flags", LED);
+    for (args, said) in [
+        (vec!["lock", "--check", "--part", "r"], "--update"),
+        (vec!["lock", "--check", "--except", "r"], "--update"),
+        (
+            vec!["lock", "--update", "--part", "r", "--except", "led"],
+            "cannot be used with",
+        ),
+    ] {
+        let run = netsmith(&root, &args);
+        assert_eq!(run.status.code(), Some(2), "{args:?}");
+        assert!(stderr(&run).contains(said), "{args:?}: {}", stderr(&run));
+    }
+}
+
+fn set_lock_key(root: &Path, value: &str) {
+    fs::write(
+        root.join("netsmith.toml"),
+        format!("[project]\nname = \"led\"\ntop_level = [\"src/main.nsm\"]\nlock = \"{value}\"\n"),
+    )
+    .unwrap();
+}
+
+#[test]
+fn lock_top_level_gives_a_lock_to_the_top_level_files_and_not_to_a_file_named_beside_them() {
+    let root = led_project("lock-key-top-level", LED);
+    set_lock_key(&root, "top_level");
+    fs::write(root.join("src/part_test.nsm"), LED).unwrap();
+    // A file named on the command line that the manifest does not list: no lock, read or written.
+    let run = netsmith(&root, &["build", "src/part_test.nsm"]);
+    assert!(run.status.success(), "{}", stderr(&run));
+    assert!(!root.join("src/part_test.lock.toml").exists());
+    // A stale one beside it is not read either: a bad file does not stop the build.
+    fs::write(root.join("src/part_test.lock.toml"), "version = 7\n").unwrap();
+    let run = netsmith(&root, &["build", "--locked", "src/part_test.nsm"]);
+    assert!(run.status.success(), "{}", stderr(&run));
+    // `lock` skips it; the top-level file has its lock.
+    let run = netsmith(&root, &["lock", "--update", "src/part_test.nsm"]);
+    assert!(run.status.success(), "{}", stderr(&run));
+    assert_eq!(stdout(&run), "");
+    let run = netsmith(&root, &["build"]);
+    assert!(run.status.success(), "{}", stderr(&run));
+    assert!(lock_file(&root).is_file());
+    assert!(netsmith(&root, &["lock", "--check"]).status.success());
+}
+
+#[test]
+fn lock_none_writes_no_lock_and_lock_check_has_nothing_to_find() {
+    let root = led_project("lock-key-none", LED);
+    set_lock_key(&root, "none");
+    let run = netsmith(&root, &["build"]);
+    assert!(run.status.success(), "{}", stderr(&run));
+    assert!(!lock_file(&root).exists());
+    let run = netsmith(&root, &["build", "--locked"]);
+    assert!(run.status.success(), "{}", stderr(&run));
+    for mode in ["--update", "--check"] {
+        let run = netsmith(&root, &["lock", mode]);
+        assert!(run.status.success(), "{mode}: {}", stderr(&run));
+        assert_eq!(stdout(&run), "");
+    }
+    assert!(!lock_file(&root).exists());
+}
+
+#[test]
+fn lock_all_is_what_a_project_has_with_no_key_and_another_word_is_refused() {
+    let root = led_project("lock-key-all", LED);
+    set_lock_key(&root, "all");
+    assert!(netsmith(&root, &["build"]).status.success());
+    assert!(lock_file(&root).is_file());
+    set_lock_key(&root, "boards");
+    let run = netsmith(&root, &["build"]);
+    assert_eq!(run.status.code(), Some(2));
+    assert!(
+        stderr(&run)
+            .contains("lock = \"boards\" is not one of \"all\", \"top_level\" or \"none\""),
+        "{}",
+        stderr(&run)
+    );
 }

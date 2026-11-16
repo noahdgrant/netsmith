@@ -149,6 +149,7 @@ pub(super) fn run_build(run: &BuildRun) -> ExitCode {
             &source.path,
             &catalogs,
             run.locked && run.write,
+            target.locks(source),
         ) {
             Ok(opened) => opened,
             Err(e) => {

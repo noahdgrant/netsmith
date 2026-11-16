@@ -94,6 +94,12 @@ pub struct Manifest {
     /// either with `--pins`. A team sets `"locked"` once firmware is built on the pin map.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pins: Option<String>,
+    /// Which source files get a pick lock (ADR 0100): `"all"`, the default, every file a command
+    /// reads; `"top_level"` only the files of `top_level`, so a unit test of one part, or a
+    /// scratch file, has none; `"none"` no file. A source with no lock is not read for one,
+    /// written one, or held to one, and `lock --update` and `lock --check` skip it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lock: Option<String>,
     /// Whether `fab` writes the board's 3D scene as `<board>.glb` into the fab package
     /// (`glb = false` leaves it out; the default, `true`, writes it). A run can leave it out
     /// with `--no-glb`, which wins over this key.
@@ -246,6 +252,7 @@ impl Manifest {
             guidelines: None,
             constraints: None,
             pins: None,
+            lock: None,
             series: None,
             orders: Vec::new(),
             supply: None,
@@ -315,6 +322,13 @@ impl Manifest {
         {
             return Err(format!(
                 "{MANIFEST}: pins = {word:?} is not one of \"auto\" or \"locked\""
+            ));
+        }
+        if let Some(word) = &self.lock
+            && !["all", "top_level", "none"].contains(&word.as_str())
+        {
+            return Err(format!(
+                "{MANIFEST}: lock = {word:?} is not one of \"all\", \"top_level\" or \"none\""
             ));
         }
         if let Some(m) = self.track_margin
@@ -893,6 +907,24 @@ impl SourceFile {
     }
 }
 
+impl Target {
+    /// Whether `source` gets a pick lock (ADR 0100): the project's `lock` key says which files
+    /// do. A file with no project always does.
+    pub fn locks(&self, source: &SourceFile) -> bool {
+        let Some(project) = &self.project else {
+            return true;
+        };
+        match project.manifest.lock.as_deref() {
+            None | Some("all") => true,
+            Some("none") => false,
+            Some(_) => {
+                let name = source.stable_name(Some(project));
+                project.manifest.top_level.contains(&name)
+            }
+        }
+    }
+}
+
 /// What a command acts on: the files, the project they belong to if any, and where output
 /// goes by default.
 #[derive(Debug, Clone)]
@@ -1174,6 +1206,20 @@ mod tests {
         assert_eq!(
             parse("[project]\nname = \"a\"\nplace_budget = \"soon\"\n").unwrap_err(),
             "netsmith.toml: place_budget = \"soon\": place budget `soon`: write seconds (`120`, `120s`, `2m`), tries (`5tries`), or both (`120s+5tries`)"
+        );
+    }
+
+    #[test]
+    fn lock_is_all_top_level_or_none() {
+        for word in ["all", "top_level", "none"] {
+            let m = parse(&format!("[project]\nname = \"a\"\nlock = \"{word}\"\n")).unwrap();
+            assert_eq!(m.lock.as_deref(), Some(word));
+            assert_eq!(parse(&m.render()).unwrap(), m);
+        }
+        assert_eq!(parse("[project]\nname = \"a\"\n").unwrap().lock, None);
+        assert_eq!(
+            parse("[project]\nname = \"a\"\nlock = \"boards\"\n").unwrap_err(),
+            "netsmith.toml: lock = \"boards\" is not one of \"all\", \"top_level\" or \"none\""
         );
     }
 

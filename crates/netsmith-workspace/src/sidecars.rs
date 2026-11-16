@@ -103,6 +103,10 @@ pub(super) fn lock_info(target: &Target, name: &str) -> Option<PickLockInfo> {
         .display()
         .to_string();
     let source = target.files.iter().find(|f| f.name == name)?;
+    // A source the project leaves out of the locks has nothing to compare.
+    if !target.locks(source) {
+        return None;
+    }
     if let Err(error) =
         netsmith_pipeline::pick_lock::read(&netsmith_pipeline::pick_lock::lock_path(&source.path))
     {
