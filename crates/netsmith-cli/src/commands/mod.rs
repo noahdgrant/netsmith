@@ -3,6 +3,7 @@
 
 mod board3d;
 mod build;
+mod case;
 mod catalog;
 mod check;
 pub(crate) mod common;
@@ -68,6 +69,8 @@ pub enum Command {
     Catalog(catalog::Args),
     /// Import an enclosure's DXF drawing.
     Dxf(dxf::Args),
+    /// Pose a case model: its angles and offset from a matrix.
+    Case(case::Args),
     /// Start a port of a KiCad board (its first source and its parts file), or derive its tables.
     Port(port::Args),
 }
@@ -92,6 +95,7 @@ pub fn run(command: Command) -> ExitCode {
         Command::KicadLibs(args) => kicad_libs::run(args),
         Command::Catalog(args) => catalog::run(args),
         Command::Dxf(args) => dxf::run(args),
+        Command::Case(args) => case::run(args),
         Command::Port(args) => port::run(args),
     }
 }
@@ -124,6 +128,7 @@ mod tests {
             &["fab", "--order", "-h"],
             &["catalog", "refresh", "--help"],
             &["dxf", "-h"],
+            &["case", "place", "--help"],
             &["kicad-libs", "--help"],
         ] {
             assert_eq!(kind(args), ErrorKind::DisplayHelp, "{args:?}");

@@ -615,3 +615,92 @@ fn pins_of_no_stated_protrusion_are_not_measured() {
     j1.pins = Pins::Unknown { at };
     assert!(check(&board(vec![]), &[j1], &[base]).is_empty());
 }
+
+/// The 3 x 4 matrix of `rotation` and `offset`, as [`pose_of_matrix`] reads one.
+fn matrix_of(rotation: [f64; 3], offset: [f64; 3]) -> [[f64; 4]; 3] {
+    let (m, d) = placement(rotation, offset);
+    [0, 1, 2].map(|r| [m[r][0], m[r][1], m[r][2], d[r]])
+}
+
+#[test]
+fn a_matrix_gives_back_the_angles_and_the_offset_that_make_it() {
+    for rotation in [
+        [0.0, 0.0, 0.0],
+        [180.0, 0.0, 0.0],
+        [90.0, 0.0, 90.0],
+        [30.0, -45.0, 120.0],
+        [-150.0, 80.0, -10.0],
+        [0.0, 0.0, 180.0],
+    ] {
+        let pose = pose_of_matrix(matrix_of(rotation, [1.0, -2.0, -1.6])).unwrap();
+        for k in 0..3 {
+            assert!(
+                (pose.rotation[k] - rotation[k]).abs() < 1e-9,
+                "{rotation:?}: {pose:?}"
+            );
+        }
+        assert_eq!(pose.offset, [1.0, -2.0, -1.6]);
+        assert!(pose.residual < 1e-12, "{pose:?}");
+    }
+}
+
+#[test]
+fn a_quarter_turn_about_y_gives_angles_that_make_the_same_matrix() {
+    // At `.ry` 90 only rx - rz is fixed: (30, 90, 10) and (20, 90, 0) are the same pose.
+    for rotation in [[30.0, 90.0, 10.0], [90.0, -90.0, 0.0], [0.0, 90.0, 90.0]] {
+        let m = matrix_of(rotation, [0.0; 3]);
+        let pose = pose_of_matrix(m).unwrap();
+        assert_eq!(pose.rotation[2], 0.0, "{pose:?}");
+        assert_eq!(pose.rotation[1].abs(), 90.0, "{pose:?}");
+        assert!(pose.residual < 1e-9, "{rotation:?}: {pose:?}");
+    }
+    let pose = pose_of_matrix(matrix_of([30.0, 90.0, 10.0], [0.0; 3])).unwrap();
+    assert!((pose.rotation[0] - 20.0).abs() < 1e-9, "{pose:?}");
+}
+
+#[test]
+fn a_matrix_typed_with_four_decimals_is_a_rotation() {
+    // An eighth of a turn about y, as a person types it from a CAD dialog.
+    // 0.7071 written so, as clippy would have the exact constant.
+    let c: f64 = "0.7071".parse().unwrap();
+    let m = [[c, 0.0, c, 0.0], [0.0, 1.0, 0.0, 0.0], [-c, 0.0, c, 0.0]];
+    let pose = pose_of_matrix(m).unwrap();
+    assert!((pose.rotation[1] - 45.0).abs() < 1e-3, "{pose:?}");
+    assert!(pose.residual < 1e-4, "{pose:?}");
+}
+
+#[test]
+fn a_mirror_a_scale_or_a_shear_is_not_a_pose() {
+    let mirror = [
+        [1.0, 0.0, 0.0, 0.0],
+        [0.0, -1.0, 0.0, 0.0],
+        [0.0, 0.0, 1.0, 0.0],
+    ];
+    assert_eq!(pose_of_matrix(mirror), Err(NotAPose::Mirrored));
+    assert!(
+        NotAPose::Mirrored.to_string().contains("mirror"),
+        "{}",
+        NotAPose::Mirrored
+    );
+    let inches = [
+        [25.4, 0.0, 0.0, 0.0],
+        [0.0, 25.4, 0.0, 0.0],
+        [0.0, 0.0, 25.4, 0.0],
+    ];
+    assert!(matches!(
+        pose_of_matrix(inches),
+        Err(NotAPose::Scaled { row: 0, .. })
+    ));
+    let shear = [
+        [1.0, 0.0, 0.0, 0.0],
+        [0.6, 0.8, 0.0, 0.0],
+        [0.0, 0.0, 1.0, 0.0],
+    ];
+    assert!(matches!(
+        pose_of_matrix(shear),
+        Err(NotAPose::Skewed { rows: (0, 1), .. })
+    ));
+    let mut nan = mirror;
+    nan[0][3] = f64::NAN;
+    assert_eq!(pose_of_matrix(nan), Err(NotAPose::NotFinite));
+}

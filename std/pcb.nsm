@@ -112,7 +112,9 @@ interface Keepout {
 /// outline's bottom-left corner on the top face): `.rx`, `.ry` and `.rz` turn it about x, then
 /// y, then z, and `.x`, `.y` and `.z` then move it. Each is one value, and an unstated one is
 /// zero. The side up is a rotation and the gap an offset: a box modelled upside down that
-/// stands on the board's bottom face is `.rx &= 180` and `.z &= -1.6mm`.
+/// stands on the board's bottom face is `.rx &= 180` and `.z &= -1.6mm`. A pose known as a
+/// matrix (a STEP assembly's transform, a CAD program's matrix) is turned into these six lines
+/// by `netsmith case place`, which refuses a matrix that mirrors, scales or shears.
 ///
 /// A case model is a drawing and a check, never a height, an outline or a hole: those stay
 /// statements of the `case { }` section (by hand or `netsmith dxf import`), and the check says
