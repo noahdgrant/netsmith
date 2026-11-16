@@ -40,10 +40,12 @@ mod constraints;
 mod copper;
 mod explain;
 mod export;
+mod fit_report;
 mod footprint;
 mod generate;
 mod geometry;
 mod layout;
+mod miss;
 mod origin;
 mod overhang;
 mod placement;
@@ -81,6 +83,7 @@ pub use explain::{
     Fault, Precheck, RequirementReport, before_placing, explain as explain_requirements,
 };
 pub use export::{PATH_PROPERTY, kicad_pcb, kicad_pro};
+pub use fit_report::FitReport;
 pub use footprint::{
     Drill, Footprint, FootprintError, FootprintLibrary, Graphic, Layer, Mount, Pad, PadKind,
     PadShape, Shape,
@@ -94,6 +97,7 @@ pub use layout::{
     BoardLayout, Face as LayoutFace, IMPORT_SOURCE, KeepoutPlace, Layout, LayoutError, PartPlace,
     apply_layout, check_drawn_keepout, copper_layers, keepout_declaration, place_options,
 };
+pub use miss::RequirementMiss;
 pub use origin::{ORIGINS_HEAD, PartOrigin, mm as mm_text, origins_text};
 pub use overhang::{
     Edge, Edges, Overhang, clip as clip_to_outline, needs as overhang_needs,

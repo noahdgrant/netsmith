@@ -8,7 +8,7 @@ use std::fs;
 use std::time::Instant;
 
 use netsmith_pipeline::Libraries;
-use netsmith_fabricate::fab::{FabOptions, Fabricated, fab_with_options};
+use netsmith_fabricate::fab::{FabFailure, FabOptions, Fabricated, fab_detailed};
 use netsmith_check::Loader;
 use netsmith_fab::KicadCliExe;
 use netsmith_kicad::{Mapping, SymbolLib};
@@ -172,6 +172,8 @@ const DECLARED: &str =
 struct Run {
     dir: TempDir,
     made: Result<Vec<Fabricated>, String>,
+    /// Why it stopped, with the data beside the text (issues #816 and #817).
+    failure: Option<FabFailure>,
 }
 
 fn fab(name: &str, source: &Design, layout: &str) -> Run {
@@ -203,7 +205,7 @@ fn fab_with_footprint(
     } else {
         None
     };
-    let made = fab_with_options(
+    let detailed = fab_detailed(
         "widget.nsm",
         &source.circuit,
         &source.loader(),
@@ -217,7 +219,11 @@ fn fab_with_footprint(
             ..FabOptions::default()
         },
     );
-    Run { dir, made }
+    let (made, failure) = match detailed {
+        Ok(made) => (Ok(made), None),
+        Err(f) => (Err(f.text.clone()), Some(f)),
+    };
+    Run { dir, made, failure }
 }
 
 /// The error text of a run that must fail.
@@ -450,6 +456,25 @@ fn a_plug_whose_pads_cannot_stay_inside_is_not_placed_and_the_placer_says_what_i
         e.contains("parts outside the outline or inside its margin (the furthest first):\n    `plug` (J1): a pad is "),
         "{e}"
     );
+    // The refusal is data too (issue #817): every part as the file lists them, the part that is
+    // outside with how far, by its designator and path.
+    let data = run
+        .failure
+        .as_ref()
+        .and_then(|f| f.does_not_fit.as_ref())
+        .expect("the failure carries the refusal as data");
+    // The plug and the 30 small parts (the file's head line has the words too).
+    assert_eq!(data.parts.len(), 31);
+    assert_eq!(data.outline.width, 35.0);
+    assert_eq!(data.outline.height, 60.0);
+    let plug = data
+        .outside
+        .iter()
+        .find(|o| o.part.refdes == "J1")
+        .expect("the plug is outside");
+    assert_eq!(plug.part.path, "plug");
+    assert!(plug.worst > 0.0 && !plug.why.is_empty(), "{plug:?}");
+    assert!(data.parts.iter().any(|p| p.part.refdes == "J1" && !p.state.is_empty()));
 }
 
 #[test]

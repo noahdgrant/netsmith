@@ -125,3 +125,82 @@ fn the_command_line_over_rules_the_manifest_both_ways() {
     assert!(!run.status.success(), "{}", said(&run));
     assert!(said(&run).contains("does not waive them"));
 }
+
+/// The requirement ids of the findings of a `--format json` run that carry requirements.
+fn requirements_of(run: &std::process::Output) -> Vec<serde_json::Value> {
+    let doc: serde_json::Value = serde_json::from_slice(&run.stdout).unwrap_or_else(|e| {
+        panic!(
+            "{e}: {}",
+            String::from_utf8_lossy(&run.stdout)
+        )
+    });
+    doc["findings"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .flat_map(|f| f["requirements"].as_array().cloned().unwrap_or_default())
+        .collect()
+}
+
+#[test]
+fn the_json_report_has_each_requirement_not_met_with_its_numbers() {
+    if !have_libraries() {
+        return;
+    }
+    // An error: the finding of the failed run lists the requirements (issue #816).
+    let run = run_fab("json-error", "", &["--format", "json"]);
+    assert!(!run.status.success());
+    let all = requirements_of(&run);
+    let left = all
+        .iter()
+        .find(|r| r["id"] == "power_in.place.left")
+        .unwrap_or_else(|| panic!("{all:?}"));
+    assert_eq!(left["measure"], "left");
+    assert_eq!(left["unit"], "mm");
+    assert_eq!(left["parts"], serde_json::json!(["J1"]));
+    assert_eq!(left["min"], 1.4);
+    assert_eq!(left["max"], 1.6);
+    assert!(left["measured"].as_f64().unwrap() > 20.0, "{left}");
+    assert!(left["over"].as_f64().unwrap() > 20.0, "{left}");
+    assert!(
+        left["source"].as_str().unwrap().contains("main.physical.nsm:"),
+        "{left}"
+    );
+    // A warning: each is a finding of its own, with its numbers.
+    let run = run_fab("json-warn", "", &["--format", "json", "--constraints", "warn"]);
+    assert!(run.status.success());
+    let doc: serde_json::Value = serde_json::from_slice(&run.stdout).unwrap();
+    let warning = doc["findings"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|f| {
+            f["severity"] == "warning"
+                && f["requirements"]
+                    .as_array()
+                    .is_some_and(|r| r.iter().any(|r| r["id"] == "power_in.place.left"))
+        })
+        .unwrap_or_else(|| panic!("{doc}"));
+    assert_eq!(warning["code"], "fab");
+    assert!(
+        warning["message"]
+            .as_str()
+            .unwrap()
+            .contains("constraint power_in.place.left"),
+        "{warning}"
+    );
+    // And it is not also a line of the notes.
+    let notes = doc["findings"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|f| {
+            f["severity"] == "note"
+                && f["message"]
+                    .as_str()
+                    .unwrap()
+                    .contains("constraint power_in.place.left")
+        })
+        .count();
+    assert_eq!(notes, 0, "{doc}");
+}

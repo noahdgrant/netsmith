@@ -1156,6 +1156,7 @@ pub fn build(spec: &Spec, cell: &CellInput, options: &Options) -> Result<PanelPa
                 .map(ToString::to_string)
                 .collect::<Vec<_>>()
                 .join("\n"),
+            unmet: Vec::new(),
         });
     };
 

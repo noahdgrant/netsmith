@@ -71,7 +71,7 @@ pub enum Severity {
 }
 
 /// One thing a command found.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Finding {
     pub severity: Severity,
     pub code: String,
@@ -87,6 +87,15 @@ pub struct Finding {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub column: Option<usize>,
     pub message: String,
+    /// The requirements of the physical file on where parts go that the finding is about, each
+    /// with what was measured, the window it allows and how far out it is (#816).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub requirements: Vec<netsmith_pcb::RequirementMiss>,
+    /// For a refusal because the parts do not fit: every pair of courtyards that overlap, every
+    /// part outside what is kept clear and bigger than the outline, and every part's final
+    /// place (#817).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub does_not_fit: Option<Box<netsmith_pcb::FitReport>>,
 }
 
 impl Finding {
@@ -101,6 +110,8 @@ impl Finding {
             line: None,
             column: None,
             message: message.into(),
+            requirements: Vec::new(),
+            does_not_fit: None,
         }
     }
 
@@ -135,6 +146,8 @@ pub fn of_problems(problems: &[Problem]) -> Vec<Finding> {
             line: p.at.as_ref().map(|a| a.line),
             column: p.at.as_ref().map(|a| a.column),
             message: p.message.clone(),
+            requirements: Vec::new(),
+            does_not_fit: None,
         })
         .collect()
 }

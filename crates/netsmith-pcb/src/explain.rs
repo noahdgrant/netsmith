@@ -78,6 +78,7 @@ use crate::constraints::{
     range_text, requirements, turns_allowed, what,
 };
 use crate::geometry::{Pt, Rect};
+use crate::miss::RequirementMiss;
 use crate::overhang::{Edge, Edges};
 use crate::placement::{ORIGIN, PlaceOptions};
 use crate::rules::Rules;
@@ -96,6 +97,9 @@ pub struct RequirementReport {
     /// Every requirement not met where the placer ended, each as a sentence with the line
     /// (`file:line` and its text), the part, the measured value, the window and how far out.
     pub unmet: Vec<String>,
+    /// The same requirements as data, in the same order: `misses[i]` is the data of
+    /// `unmet[i]` (`--format json`, issue #816).
+    pub misses: Vec<RequirementMiss>,
 }
 
 impl RequirementReport {
@@ -203,6 +207,7 @@ impl Precheck {
                 RequirementReport {
                     conflicts: self.conflicts.clone(),
                     unmet: Vec::new(),
+                    misses: Vec::new(),
                 }
                 .render(""),
             );
@@ -455,12 +460,17 @@ pub fn explain(
         // Requirements the plan itself refuses are reported by it, before placing.
         Err(_) => Vec::new(),
     };
-    let report = RequirementReport { conflicts, unmet };
+    let (unmet, misses) = unmet.into_iter().unzip();
+    let report = RequirementReport {
+        conflicts,
+        unmet,
+        misses,
+    };
     (!report.is_empty()).then_some(report)
 }
 
 /// Every requirement the arrangement does not meet.
-fn unmet(design: &Design, parts: &[Placed]) -> Vec<String> {
+fn unmet(design: &Design, parts: &[Placed]) -> Vec<(String, RequirementMiss)> {
     let mut found = Vec::new();
     for part in parts {
         let (reqs, side_req) = requirements(design, &part.path);
@@ -483,29 +493,55 @@ fn unmet(design: &Design, parts: &[Placed]) -> Vec<String> {
             }
             let line = quote(design, &r.source, &r.id);
             let window = range_text(r.lo, r.hi, r.field.unit());
-            if r.field == PlaceField::Rotation {
-                found.push(format!(
-                    "{line}: {name} is turned {} degrees, and it allows {window} ({} degrees out)",
-                    number(part.rotation.rem_euclid(360.0)),
-                    number(m)
-                ));
+            let (value, text) = if r.field == PlaceField::Rotation {
+                let turn = part.rotation.rem_euclid(360.0);
+                (
+                    turn,
+                    format!(
+                        "{line}: {name} is turned {} degrees, and it allows {window} ({} degrees out)",
+                        number(turn),
+                        number(m)
+                    ),
+                )
             } else {
-                found.push(format!(
-                    "{line}: {} of the body of {drawn} is {} mm, and it allows {window} ({} mm out)",
-                    what(r.field),
-                    number(measured(r.field, body)),
-                    number(m)
-                ));
-            }
+                let value = measured(r.field, body);
+                (
+                    value,
+                    format!(
+                        "{line}: {} of the body of {drawn} is {} mm, and it allows {window} ({} mm out)",
+                        what(r.field),
+                        number(value),
+                        number(m)
+                    ),
+                )
+            };
+            found.push((
+                text.clone(),
+                RequirementMiss::numeric(
+                    &r.id,
+                    &r.source,
+                    vec![part.refdes.clone()],
+                    r.field.word(),
+                    r.field.unit(),
+                    Some(value),
+                    (r.lo, r.hi),
+                    m,
+                    text,
+                ),
+            ));
         }
         if let Some((side, _)) = &side_req
             && (side == "bottom") != (part.side == Side::Back)
         {
             let (source, id) = side_source(design, &part.path).unwrap_or_default();
-            found.push(format!(
+            let text = format!(
                 "{}: {name} is on the {} face, and it allows \"{side}\"",
                 quote(design, &source, &id),
                 part.side.word()
+            );
+            found.push((
+                text.clone(),
+                RequirementMiss::face(&id, &source, &part.refdes, part.side.word(), side, text),
             ));
         }
     }
@@ -529,7 +565,7 @@ fn unmet(design: &Design, parts: &[Placed]) -> Vec<String> {
             o.a.path,
             o.a.field.word()
         );
-        found.push(format!(
+        let text = format!(
             "{}: {} of the body of {} minus {} of the body of {} is {} mm along {}, and it allows {} ({} mm out)",
             quote(design, &o.source, &id),
             what(o.b.field),
@@ -540,6 +576,24 @@ fn unmet(design: &Design, parts: &[Placed]) -> Vec<String> {
             if axis == 0 { "x" } else { "y" },
             range_text(o.lo, o.hi, "mm"),
             number(m)
+        );
+        found.push((
+            text.clone(),
+            RequirementMiss::numeric(
+                &id,
+                &o.source,
+                vec![b.refdes.clone(), a.refdes.clone()],
+                if axis == 0 {
+                    "relation_x"
+                } else {
+                    "relation_y"
+                },
+                "mm",
+                Some(v),
+                (o.lo, o.hi),
+                m,
+                text,
+            ),
         ));
     }
     found
