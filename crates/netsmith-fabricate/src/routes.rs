@@ -8,8 +8,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use netsmith_pcb::{
-    Board, LayoutFace as Face, NetRoutes, Pt, RouteTrack, RouteVia, RouteZone, Routes, ZonePads,
-    apply_routes,
+    Board, NetRoutes, Pt, RouteTrack, RouteVia, RouteZone, Routes, ZonePads, apply_routes,
 };
 
 /// The routes file of a source file: `led.nsm` has `led.routes.toml`.
@@ -203,10 +202,11 @@ pub enum Shape {
 /// `delete`, `lock` and `unlock` do, and the editor's PCB view with them. [`edit`] is the one implementation.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Edit {
-    /// A track of `net`; `width` `None` is the net's own width.
+    /// A track of `net` on an outer layer or an inner signal layer (issue #833); `width` `None`
+    /// is the net's own width on that layer.
     AddTrack {
         net: String,
-        layer: Face,
+        layer: netsmith_pcb::CopperLayer,
         width: Option<f64>,
         from: [f64; 2],
         mid: Option<[f64; 2]>,
@@ -532,12 +532,16 @@ fn change_record(
             to,
             lock,
         } => {
+            if !layer.is_outer() && !board.signal_layers().contains(layer) {
+                return Err(Refusal::Refused(format!(
+                    "`{}` is not a signal layer of the board: a track is drawn on `top`, `bottom` or an inner layer the process declares a signal layer (`.process.{}.use &= \"signal\"`)",
+                    layer.word(),
+                    layer.word()
+                )));
+            }
             record.tracks.push(RouteTrack {
-                layer: match layer {
-                    Face::Top => netsmith_pcb::CopperLayer::Front,
-                    Face::Bottom => netsmith_pcb::CopperLayer::Back,
-                },
-                width: width.unwrap_or_else(|| board.track_width(net)),
+                layer: *layer,
+                width: width.unwrap_or_else(|| board.track_width_on(net, *layer)),
                 from: *from,
                 mid: *mid,
                 to: *to,

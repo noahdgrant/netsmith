@@ -90,8 +90,8 @@ impl<'a> Router<'a> {
         let usable =
             |pad: Option<InPad>| pad.filter(|p| self.via_fits(p, net, &obstacles, &keepouts));
         let (in_from, in_to) = (usable(self.in_pads[line].0), usable(self.in_pads[line].1));
-        let from_extra: Vec<Spot> = in_from.iter().map(|p| p.spot).collect();
-        let to_extra: Vec<Spot> = in_to.iter().map(|p| p.spot).collect();
+        let from_extra: Vec<Spot> = in_from.iter().flat_map(InPad::spots).collect();
+        let to_extra: Vec<Spot> = in_to.iter().flat_map(InPad::spots).collect();
         let extras = Extras {
             from: &from_extra,
             to: &to_extra,
@@ -208,8 +208,10 @@ impl<'a> Router<'a> {
                         };
                         let found = match searched {
                             Ok(path) => {
-                                let start = in_from.filter(|p| path.first() == Some(&p.spot));
-                                let end = in_to.filter(|p| path.last() == Some(&p.spot));
+                                let start =
+                                    in_from.filter(|p| path.first().is_some_and(|&s| p.is_spot(s)));
+                                let end =
+                                    in_to.filter(|p| path.last().is_some_and(|&s| p.is_spot(s)));
                                 let routed = self.realize(line, &path, start, end, masks);
                                 // What the grid let through is measured again on the copper
                                 // itself: a line whose copper is nearer to another net's than
@@ -356,6 +358,39 @@ impl<'a> Router<'a> {
         if self.outer_only[net] {
             for track in masks.track.iter_mut().skip(2) {
                 track.fill(true);
+            }
+        } else if self.stack.len() > 2
+            && self
+                .board
+                .net_currents
+                .iter()
+                .any(|c| c.net == self.lines[line].net)
+        {
+            // On an inner signal layer a net with a known current is drawn for the inner copper
+            // (issue #833), wider than on the outer layers: its cells there are those of that
+            // width, and it is never necked there.
+            let inner = self.masks(
+                window,
+                net,
+                (hard, hard_keepouts),
+                (soft_list, soft_keepouts),
+                Reach {
+                    room,
+                    width: self.width_on(line, 2),
+                    clearance: self.clearance_of(line),
+                },
+            );
+            for l in 2..self.stack.len() {
+                masks.track[l].clone_from(&inner.track[l]);
+                if let Some(wide) = &mut masks.wide {
+                    wide[l].clone_from(&inner.track[l]);
+                }
+                if let Some(pinch) = &mut masks.pinch {
+                    pinch[l].fill(false);
+                }
+                if let (Some(soft), Some(inner_soft)) = (&mut masks.soft, &inner.soft) {
+                    soft.track[l].clone_from(&inner_soft.track[l]);
+                }
             }
         }
         self.room_for_vias(line, &mut masks);

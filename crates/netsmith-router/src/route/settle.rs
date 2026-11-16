@@ -32,7 +32,6 @@ impl<'a> Router<'a> {
         cut: bool,
     ) -> Result<Routed, Unsettled> {
         let rules = &self.board.rules;
-        let floor = self.neck_width(routed.line);
         let line = routed.line;
         let others: Vec<&&Obstacle> = obstacles.iter().filter(|o| o.net != Some(net)).collect();
         // The space the rules ask for: an obstacle's clearance has the router's margin on it,
@@ -41,6 +40,7 @@ impl<'a> Router<'a> {
         let apart = |o: &Obstacle| o.space(own) - MARGIN - EXACT_SLACK;
         for track in &mut routed.tracks {
             let layer = self.stack.index(track.layer).unwrap_or(FRONT);
+            let floor = self.neck_width_on(line, layer);
             let clear = |width: f64| {
                 let reach = Rect::new(
                     Pt::new(track.from.x.min(track.to.x), track.from.y.min(track.to.y)),

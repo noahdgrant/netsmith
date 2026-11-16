@@ -1384,6 +1384,9 @@ pub struct PcbScene {
     pub layout_stamp: String,
     /// The copper layers of the board, top first: `top`, `inner1`, `bottom`.
     pub layers: Vec<String>,
+    /// The layers the track tool draws on, top first: `top`, the inner signal layers
+    /// (`inner2`), `bottom` (issue 833).
+    pub track_layers: Vec<String>,
     /// Whether the board has routed copper (an edit takes it away).
     pub routed: bool,
     pub parts: Vec<PcbPart>,
@@ -1512,8 +1515,8 @@ pub enum RoutesChange {
         /// Lock, or unlock.
         lock: bool,
     },
-    /// A straight track of the net on `layer` (`top` or `bottom`); `width` `None` is the net's
-    /// width from the board's rules.
+    /// A straight track of the net on `layer` (`top`, `bottom` or an inner signal layer,
+    /// `inner2`); `width` `None` is the net's width on that layer from the board's rules.
     AddTrack {
         net: String,
         layer: String,
@@ -1580,7 +1583,7 @@ pub struct RoutesUndo {
 pub struct PcbWalk {
     pub board: String,
     pub net: String,
-    /// `top` or `bottom`.
+    /// `top`, `bottom` or an inner signal layer (`inner2`).
     pub layer: String,
     /// `None` is the net's width from the board's rules, as in [`RoutesChange::AddTrack`].
     pub width: Option<f64>,
@@ -1689,7 +1692,11 @@ pub struct PcbCrossedVia {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 pub struct PcbNetWidth {
     pub net: String,
+    /// On the outer layers.
     pub width: f64,
+    /// On the inner signal layers, which a net with a known current is drawn wider on (issue
+    /// 833); `None` when the board has none.
+    pub inner_width: Option<f64>,
 }
 
 /// Where a part is in the layout file: millimetres from the outline's top left corner.

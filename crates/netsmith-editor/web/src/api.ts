@@ -1086,6 +1086,11 @@ layoutStamp: string,
  */
 layers: Array<string>, 
 /**
+ * The layers the track tool draws on, top first: `top`, the inner signal layers
+ * (`inner2`), `bottom` (issue 833).
+ */
+trackLayers: Array<string>, 
+/**
  * Whether the board has routed copper (an edit takes it away).
  */
 routed: boolean, parts: Array<PcbPart>, keepouts: Array<PcbKeepout>, cutouts: Array<PcbCutout>, 
@@ -1196,7 +1201,7 @@ export type RoutesUndo = { net: string, before: string | null, after: string | n
 
 export type PcbWalk = { board: string, net: string, 
 /**
- * `top` or `bottom`.
+ * `top`, `bottom` or an inner signal layer (`inner2`).
  */
 layer: string, 
 /**
@@ -1259,7 +1264,16 @@ layer: string, width: number, wasFrom: PcbPoint, wasTo: PcbPoint, from: PcbPoint
 
 export type PcbShovedVia = { net: string, via: number, diameter: number, wasAt: PcbPoint, at: PcbPoint, };
 
-export type PcbNetWidth = { net: string, width: number, };
+export type PcbNetWidth = { net: string, 
+/**
+ * On the outer layers.
+ */
+width: number, 
+/**
+ * On the inner signal layers, which a net with a known current is drawn wider on (issue
+ * 833); `None` when the board has none.
+ */
+inner_width: number | null, };
 
 export type PartPlacement = { x: number, y: number, rotation: number, side: PcbSide, locked: boolean, 
 /**

@@ -61,9 +61,9 @@ impl<'a> Router<'a> {
         let rules = &self.board.rules;
         // A track through a cell that is too tight for the full width is necked down: to the
         // width its current needs, or near its pads to the narrowest.
-        let width_of = |neck: u8| match neck {
-            0 => self.width_of(line),
-            1 => self.neck_width(line),
+        let width_of = |neck: u8, layer: usize| match neck {
+            0 => self.width_on(line, layer),
+            1 => self.neck_width_on(line, layer),
             _ => rules.min_track_width,
         };
         let necked = |&(i, j, layer): &Spot| masks.neck(layer, i, j);
@@ -84,7 +84,7 @@ impl<'a> Router<'a> {
                     layer: self.stack.layer(layer),
                     from: a,
                     to: b,
-                    width: width_of(narrow),
+                    width: width_of(narrow, layer),
                     mid: None,
                 });
             }
@@ -140,7 +140,7 @@ impl<'a> Router<'a> {
                     layer: self.stack.layer(spot.2),
                     from: pad_at,
                     to: cell,
-                    width: width_of(necked(&spot)),
+                    width: width_of(necked(&spot), spot.2),
                     mid: None,
                 });
             }

@@ -23,7 +23,10 @@
 //!   (`stackup.copper_weight`), at the resistivity of annealed copper at 20 °C,
 //!   [`COPPER_RESISTIVITY`]. A track warm from its current, or finished narrower than drawn
 //!   (the fabricator's width tolerance), drops a few per cent more; the budget is a guide, not
-//!   a limit, so neither is added.
+//!   a limit, so neither is added. A track on an inner signal layer is in the inner copper
+//!   (`stackup.inner_copper`, issue #833): it counts as the outer track of the same resistance,
+//!   its width times the inner copper over the outer, so the narrowest and the widths of a
+//!   path are of outer copper.
 //! - **Not measured.** A via's barrel (a few milliohms), a pad's copper and a teardrop are
 //!   taken as no resistance. A net that is a plane, an outer pour or has a zone of the routes
 //!   file is not measured: its copper is an area. Two pads that only a zone joins are not a
@@ -89,6 +92,22 @@ impl TrackDrop {
             .map(|k| k as f64 / 100.0)
             .find(|&w| ohms(w) * self.current <= volts * (1.0 + 1e-9))
     }
+}
+
+/// The tracks as [`net_drop`] measures them in outer copper `outer` mm thick: a track on an
+/// inner layer, in copper `inner` mm thick, is the outer track of the same resistance, its width
+/// times `inner / outer` (issue #833).
+pub fn in_outer_copper(tracks: &[&Track], outer: f64, inner: f64) -> Vec<Track> {
+    tracks
+        .iter()
+        .map(|&t| {
+            let mut t = t.clone();
+            if !t.layer.is_outer() && outer > 0.0 {
+                t.width *= inner / outer;
+            }
+            t
+        })
+        .collect()
 }
 
 /// One pad of a net, for [`net_drop`]: what names it and the box its copper spans.
@@ -269,7 +288,15 @@ impl Board {
             let Some(net) = self.nets.iter().find(|n| n.name == c.net) else {
                 continue;
             };
-            let tracks: Vec<&Track> = self.tracks.iter().filter(|t| t.net == c.net).collect();
+            let inner = self
+                .process
+                .stackup
+                .inner
+                .as_ref()
+                .map_or(thickness, |i| i.copper);
+            let mine: Vec<&Track> = self.tracks.iter().filter(|t| t.net == c.net).collect();
+            let owned = in_outer_copper(&mine, thickness, inner);
+            let tracks: Vec<&Track> = owned.iter().collect();
             if tracks.is_empty() {
                 continue;
             }

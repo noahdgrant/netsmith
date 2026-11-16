@@ -643,6 +643,10 @@ pub struct Extras {
     /// by net (issue #431), and how near one of the net's pads a track may be narrower (the
     /// neck-down out of a fine-pitch pad). Empty when the currents are not known.
     pub least_widths: Vec<(String, f64)>,
+    /// The same on an inner signal layer, whose thinner copper and IPC-2221's inner constant
+    /// need a wider track (issue #833). A net not here is held to its `least_widths` entry on
+    /// an inner layer too.
+    pub inner_least_widths: Vec<(String, f64)>,
     pub neck_reach: f64,
     /// How many vias side by side, their copper touching, each net needs where it changes layer,
     /// for the nets that need more than one.

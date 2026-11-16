@@ -194,12 +194,12 @@ fn via_current(out: &mut Out<'_>) {
     }
 }
 
-/// A track narrower than its net's current needs, unless it lies within the neck-down reach
-/// of one of the net's pads.
+/// A track narrower than its net's current needs on its layer, unless it lies within the
+/// neck-down reach of one of the net's pads.
 fn track_current(out: &mut Out<'_>) {
     let m = out.m;
     let x = m.extras;
-    if x.least_widths.is_empty() {
+    if x.least_widths.is_empty() && x.inner_least_widths.is_empty() {
         return;
     }
     for c in &m.items {
@@ -208,7 +208,14 @@ fn track_current(out: &mut Out<'_>) {
         let Some(net) = t.net.as_deref() else {
             continue;
         };
-        let Some(&(_, least)) = x.least_widths.iter().find(|(n, _)| n == net) else {
+        let inner = t.layer.starts_with("In");
+        let Some(&(_, least)) = x
+            .inner_least_widths
+            .iter()
+            .filter(|_| inner)
+            .chain(&x.least_widths)
+            .find(|(n, _)| n == net)
+        else {
             continue;
         };
         if t.width >= least - EPS / 100.0 {

@@ -48,8 +48,26 @@ pub(super) struct InPad {
     pub(super) at: Pt,
     /// The pad's box, which the via stays off all the keep-outs of other pads.
     pub(super) bounds: Rect,
-    /// The cell of the pad's other layer, where a path through the via goes on.
+    /// The cell of the pad's other outer layer, where a path through the via goes on.
     pub(super) spot: Spot,
+    /// How many layers of the stack the line may use: the via, a through via, leads to each
+    /// inner signal layer below the first two too (issue #833). 2 when it leads to the far outer
+    /// layer only.
+    pub(super) layers: usize,
+}
+
+impl InPad {
+    /// The cells a path through the via in the pad goes on from: the far outer layer's, then
+    /// those of the inner signal layers the line may use.
+    pub(super) fn spots(&self) -> impl Iterator<Item = Spot> + '_ {
+        let (i, j, _) = self.spot;
+        std::iter::once(self.spot).chain((2..self.layers).map(move |l| (i, j, l)))
+    }
+
+    /// Whether a path that begins or ends at `spot` goes through the via in the pad.
+    pub(super) fn is_spot(&self, spot: Spot) -> bool {
+        self.spots().any(|s| s == spot)
+    }
 }
 
 pub(super) fn in_pad(
@@ -57,6 +75,7 @@ pub(super) fn in_pad(
     pad: &netsmith_pcb::PadRef,
     at: Pt,
     grid: &Grid,
+    layers: usize,
 ) -> Option<InPad> {
     let rules = &board.rules;
     if !rules.via_in_pad {
@@ -75,6 +94,7 @@ pub(super) fn in_pad(
         at,
         bounds: part.pad_bounds(found),
         spot: (i, j, if front { BACK } else { FRONT }),
+        layers,
     })
 }
 

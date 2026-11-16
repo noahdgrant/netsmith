@@ -143,17 +143,75 @@ fn with_the_same_layer_a_plane_the_wall_cannot_be_crossed() {
     assert!(board.tracks.iter().all(|t| t.layer.is_outer()));
 }
 
-#[test]
-fn a_net_with_a_known_current_keeps_to_the_outer_layers() {
-    // Its width is sized for the outer copper (ADR 0036): an inner layer's thinner copper would
-    // not carry the current at that width, so the wall stays closed to it.
-    let mut board = walled(common::four_layer_signal_process());
+/// A current on `S` whose least widths are 0.3 mm outside and `inner` inside.
+fn with_current(board: &mut Board, inner: Option<f64>) {
+    board.net_widths.push(("S".into(), 0.3));
     board.net_currents.push(netsmith_core::NetCurrent {
         net: "S".into(),
-        current: 0.1,
-        least_width: 0.05,
+        current: 1.0,
+        least_width: 0.3,
+        inner_least_width: inner,
         vias: 1,
     });
+}
+
+#[test]
+fn a_net_with_a_known_current_crosses_inside_at_the_width_its_current_needs_there() {
+    // Its outer width is sized for the outer copper (ADR 0036) and its inner width for the inner
+    // copper (issue #833): the track under the wall is drawn at the inner width, rounded up to
+    // the 0.01 mm a width is written in, and the check holds it to that width.
+    let mut board = walled(common::four_layer_signal_process());
+    with_current(&mut board, Some(0.444));
+    assert!((board.track_width_on("S", CopperLayer::Inner(2)) - 0.45).abs() < 1e-9);
+    assert!((board.track_width_on("S", CopperLayer::Front) - 0.3).abs() < 1e-9);
+    let routing = route_with(&mut board, RouteOptions::default());
+    assert!(routing.left.is_empty(), "{:?}", routing.left.lines);
+    let inner: Vec<_> = board
+        .tracks
+        .iter()
+        .filter(|t| t.layer == CopperLayer::Inner(2))
+        .collect();
+    assert!(
+        inner
+            .iter()
+            .any(|t| t.from.x.min(t.to.x) < 10.6 && t.from.x.max(t.to.x) > 11.2),
+        "{inner:?}"
+    );
+    assert!(
+        inner.iter().all(|t| (t.width - 0.45).abs() < 1e-9),
+        "{inner:?}"
+    );
+    assert!(
+        board
+            .tracks
+            .iter()
+            .filter(|t| t.net == "S" && t.layer.is_outer())
+            .all(|t| t.width <= 0.3 + 1e-9),
+        "{:?}",
+        board.tracks
+    );
+    let extras = netsmith_geom::DrcExtras {
+        least_widths: board.least_widths(),
+        inner_least_widths: board.inner_least_widths(),
+        neck_reach: netsmith_router::route::NECK_REACH,
+        ..Default::default()
+    };
+    let report = netsmith_geom::drc_check(
+        &kicad_pcb(&board),
+        Some(&netsmith_pcb::kicad_pro(&board)),
+        &extras,
+    )
+    .unwrap_or_else(|e| panic!("{e}"));
+    let errors: Vec<String> = report.errors().map(|f| f.to_string()).collect();
+    assert_eq!(errors, Vec::<String>::new());
+}
+
+#[test]
+fn a_net_whose_design_gives_no_inner_width_keeps_to_the_outer_layers() {
+    // A design written before an inner width was sized: its width is for the outer copper only,
+    // which an inner layer's thinner copper would not carry, so the wall stays closed to it.
+    let mut board = walled(common::four_layer_signal_process());
+    with_current(&mut board, None);
     let routing = route_with(&mut board, RouteOptions::default());
     assert!(
         routing.left.lines.iter().any(|l| l.net == "S"),

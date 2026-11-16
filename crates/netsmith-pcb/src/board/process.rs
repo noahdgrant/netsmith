@@ -14,6 +14,49 @@ impl Board {
             })
     }
 
+    /// The width the router draws a net's tracks at on `layer`. On an outer layer it is
+    /// [`Board::track_width`]; on an inner signal layer, a net whose current is known is drawn at
+    /// least as wide as that current needs in the inner copper (IPC-2221's inner constant,
+    /// `NetCurrent::inner_least_width`), rounded up to the 0.01 mm a width is written in (issue
+    /// #833).
+    pub fn track_width_on(&self, net: &str, layer: CopperLayer) -> f64 {
+        let width = self.track_width(net);
+        if layer.is_outer() {
+            return width;
+        }
+        match self.inner_least_width(net) {
+            Some(least) => width.max((least * 100.0 - 1e-9).ceil() / 100.0),
+            None => width,
+        }
+    }
+
+    /// The narrowest a track of `net` on `layer` may be away from its pads: on an inner layer,
+    /// the least width its current needs in the inner copper (issue #833), and never less than
+    /// the process's least track.
+    pub fn least_width_on(&self, net: &str, layer: CopperLayer) -> f64 {
+        match (layer.is_outer(), self.inner_least_width(net)) {
+            (false, Some(least)) => least.max(self.rules.min_track_width),
+            _ => self.least_width(net),
+        }
+    }
+
+    /// Whether a net keeps its tracks to the outer layers: its current is known and its width
+    /// was sized for the outer copper only, because the board has no inner signal layer or its
+    /// design was written before a width for one was sized (ADR 0133, issue #833).
+    pub fn keeps_outside(&self, net: &str) -> bool {
+        self.net_currents
+            .iter()
+            .any(|c| c.net == net && c.inner_least_width.is_none())
+    }
+
+    /// The least width a net's current needs on an inner signal layer, if it is known.
+    fn inner_least_width(&self, net: &str) -> Option<f64> {
+        self.net_currents
+            .iter()
+            .find(|c| c.net == net)
+            .and_then(|c| c.inner_least_width)
+    }
+
     /// The least space between copper of `net` and copper of any other net: the largest its
     /// rails ask for, and never less than the rules' clearance (issue #758).
     pub fn clearance(&self, net: &str) -> f64 {
@@ -78,6 +121,17 @@ impl Board {
             .iter()
             .filter(|c| c.least_width > self.rules.min_track_width + 1e-9)
             .map(|c| (c.net.clone(), c.least_width))
+            .collect()
+    }
+
+    /// The nets whose current needs more than the process's least track on an inner signal
+    /// layer, with the least width it needs there: what the design rules check holds their
+    /// inner copper to (issue #833).
+    pub fn inner_least_widths(&self) -> Vec<(String, f64)> {
+        self.net_currents
+            .iter()
+            .filter_map(|c| Some((c.net.clone(), c.inner_least_width?)))
+            .filter(|(_, w)| *w > self.rules.min_track_width + 1e-9)
             .collect()
     }
 

@@ -84,8 +84,8 @@ use netsmith_editor::{
     },
 };
 use netsmith_pcb::{
-    Board, BoardLayout, KeepoutPlace, Layout, LayoutFace, PartPlace, Rect, Routes, RoutesNote,
-    Side, copper_layers, render_svg_view,
+    Board, BoardLayout, CopperLayer, KeepoutPlace, Layout, LayoutFace, PartPlace, Rect, Routes,
+    RoutesNote, Side, copper_layers, render_svg_view,
 };
 use netsmith_router::{RouteOptions, route_with};
 use std::path::{Path, PathBuf};
@@ -892,6 +892,10 @@ pub fn scene(entry: &Entry, data: &BoardData, name: &str) -> PcbScene {
             .map(|n| PcbNetWidth {
                 net: n.name.clone(),
                 width: board.track_width(&n.name),
+                inner_width: board
+                    .signal_layers()
+                    .first()
+                    .map(|&l| board.track_width_on(&n.name, l)),
             })
             .collect(),
         via_diameter: board.rules.via_diameter,
@@ -904,6 +908,11 @@ pub fn scene(entry: &Entry, data: &BoardData, name: &str) -> PcbScene {
         layout_file,
         layout_stamp: entry.layout_stamp.clone(),
         layers: entry.layers(),
+        track_layers: std::iter::once(CopperLayer::Front)
+            .chain(board.signal_layers())
+            .chain([CopperLayer::Back])
+            .map(|l| l.word().to_string())
+            .collect(),
         routed: entry.routed,
         parts,
         keepouts,
@@ -1006,15 +1015,7 @@ pub fn routes_edit(
             to,
         } => Edit::AddTrack {
             net: net.clone(),
-            layer: match layer.as_str() {
-                "top" => LayoutFace::Top,
-                "bottom" => LayoutFace::Bottom,
-                other => {
-                    return Err(ApiError::bad_request(format!(
-                        "a track is drawn on `top` or `bottom`, not `{other}`"
-                    )));
-                }
-            },
+            layer: track_layer(board, layer)?,
             width: *width,
             from: at(from),
             mid: None,
@@ -1156,16 +1157,7 @@ pub fn walk(
     shove: Option<&(Board, Vec<Movable>)>,
     walk: &PcbWalk,
 ) -> Result<PcbWalked, ApiError> {
-    use netsmith_pcb::CopperLayer;
-    let layer = match walk.layer.as_str() {
-        "top" => CopperLayer::Front,
-        "bottom" => CopperLayer::Back,
-        other => {
-            return Err(ApiError::bad_request(format!(
-                "a track is drawn on `top` or `bottom`, not `{other}`"
-            )));
-        }
-    };
+    let layer = track_layer(board, &walk.layer)?;
     if !board.nets.iter().any(|n| n.name == walk.net) {
         return Err(ApiError::bad_request(format!(
             "the board {} has no net `{}`",
@@ -1177,7 +1169,9 @@ pub fn walk(
     let asked = netsmith_router::walk::Walk {
         net: &walk.net,
         layer,
-        width: walk.width.unwrap_or_else(|| board.track_width(&walk.net)),
+        width: walk
+            .width
+            .unwrap_or_else(|| board.track_width_on(&walk.net, layer)),
         from: point(&walk.from),
         to: point(&walk.to),
         heading: walk.heading.as_ref().map(point),
@@ -1758,4 +1752,17 @@ pub fn digest(entry: &Entry, data: &BoardData) -> PcbDigest {
         keepouts,
         cutouts,
     }
+}
+
+/// The copper layer a track tool names by its word: `top`, `bottom` or one of the board's inner
+/// signal layers (`inner2`, issue 833).
+fn track_layer(board: &Board, word: &str) -> Result<CopperLayer, ApiError> {
+    CopperLayer::of_word(word)
+        .filter(|l| l.is_outer() || board.signal_layers().contains(l))
+        .ok_or_else(|| {
+            ApiError::bad_request(format!(
+                "a track of {} is drawn on `top`, `bottom` or an inner signal layer of its process, not `{word}`",
+                board.name
+            ))
+        })
 }

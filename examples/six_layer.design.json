@@ -338,6 +338,7 @@
           "net": "VIN",
           "current": 0.05,
           "least_width": 0.006026516109918563,
+          "inner_least_width": 0.03609978084317251,
           "vias": 1
         }
       ],
