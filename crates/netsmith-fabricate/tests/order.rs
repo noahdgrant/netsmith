@@ -235,7 +235,7 @@ fn the_summary_prices_a_part_at_the_quantity_of_the_whole_order() {
     let made = make(&root, "small", Some(&cli)).unwrap_or_else(|e| panic!("{e}"));
     assert!(
         made.summary
-            .contains("C2286           13 x 0.0200 = 0.26 USD  (file, JLCPCB assembly stock, read 2026-10-31)"),
+            .contains("C2286          13 x 0.0200 = 0.26 USD  (file, JLCPCB assembly stock, read 2026-10-31)"),
         "{}",
         made.summary
     );
