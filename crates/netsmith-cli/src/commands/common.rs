@@ -360,6 +360,52 @@ impl CaseName {
     }
 }
 
+/// One `--case` of `render` and `view`: a mode, or `hidden:<name>[,<name>]`, which leaves those
+/// case models out and draws the rest as the mode says.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CaseArg {
+    Mode(CaseName),
+    Hidden(Vec<String>),
+}
+
+/// The value parser of `--case`.
+pub fn parse_case(given: &str) -> Result<CaseArg, String> {
+    if let Some(names) = given.strip_prefix("hidden:") {
+        let names: Vec<String> = names.split(',').map(|n| n.trim().to_string()).collect();
+        if names.iter().any(String::is_empty) {
+            return Err(
+                "`hidden:` takes case model names, comma-separated: `hidden:<name>[,<name>]`"
+                    .to_string(),
+            );
+        }
+        return Ok(CaseArg::Hidden(names));
+    }
+    CaseName::from_str(given, true).map(CaseArg::Mode).map_err(|_| {
+        format!(
+            "`{given}` is not a case mode: use hidden, see-through or solid, or `hidden:<name>[,<name>]` for some case models only"
+        )
+    })
+}
+
+/// What a `--case` list says: the last mode given (if any), and every name of a `hidden:`.
+pub fn fold_case(args: &[CaseArg]) -> (Option<CaseName>, Vec<String>) {
+    let mut mode = None;
+    let mut hidden: Vec<String> = Vec::new();
+    for a in args {
+        match a {
+            CaseArg::Mode(m) => mode = Some(*m),
+            CaseArg::Hidden(names) => {
+                for n in names {
+                    if !hidden.contains(n) {
+                        hidden.push(n.clone());
+                    }
+                }
+            }
+        }
+    }
+    (mode, hidden)
+}
+
 /// The ids of one `--highlight` or `--select`, split at commas.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Ids(pub Vec<String>);

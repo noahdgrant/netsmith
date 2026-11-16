@@ -3,7 +3,9 @@ use std::process::ExitCode;
 
 use clap::{Args as ClapArgs, ValueEnum};
 
-use super::common::{CaseName, DEFAULT_PORT, Ids, ViewName, parse_ids};
+use super::common::{
+    CaseArg, CaseName, DEFAULT_PORT, Ids, ViewName, fold_case, parse_case, parse_ids,
+};
 
 #[derive(Debug, PartialEq, ClapArgs)]
 #[command(args_override_self = true)]
@@ -53,12 +55,15 @@ pub struct Args {
     /// The perspective projection.
     #[arg(long)]
     pub perspective: bool,
-    /// How the case model is drawn: `hidden`, `see-through` or `solid`.
+    /// How the case models are drawn: `hidden`, `see-through`, `solid`, or `hidden:<name>[,<name>]`.
     ///
     /// A solid case hides the board inside it, and a click on it picks nothing; a case model lit
-    /// with `--highlight case:<name>` stays see-through. A board with no case model refuses it.
-    #[arg(long, value_enum)]
-    pub case: Option<CaseName>,
+    /// with `--highlight case:<name>` stays see-through. `hidden:<name>[,<name>]` hides those
+    /// case models only; the flag repeats (`--case solid --case hidden:lid`), and any `--case`
+    /// replaces the list of the models hidden (a mode alone shows every model again). A board
+    /// with no case model refuses it, and a name it has no case model of is refused with the list.
+    #[arg(long, value_name = "MODE|hidden:NAME[,NAME...]", value_parser = parse_case)]
+    pub case: Vec<CaseArg>,
     /// What the bodies are coloured by.
     #[arg(long = "colour-by", alias = "color-by", value_enum)]
     pub colour_by: Option<ColourByName>,
@@ -108,6 +113,7 @@ impl Args {
             ));
         }
         let switch = |on: bool, off: bool| (on || off).then_some(on);
+        let (mode, hidden) = fold_case(&self.case);
         let change = netsmith_editor::api::ViewChange {
             board: self.board.clone(),
             view: self.view.map(ViewName::editor),
@@ -116,7 +122,8 @@ impl Args {
             select: joined_ids("--select", &self.select)?,
             xray: switch(self.xray, self.no_xray),
             ortho: switch(self.ortho, self.perspective),
-            case: self.case.map(CaseName::editor),
+            case: mode.map(CaseName::editor),
+            case_hidden: (!self.case.is_empty()).then_some(hidden),
             colour_by: self.colour_by.map(ColourByName::editor),
             height_preview: self.height_preview,
             exploded: switch(self.layers_apart, self.no_layers_apart),
@@ -345,6 +352,24 @@ mod tests {
         }
         let e = parse(&["view", "--case", "opaque"]).unwrap_err();
         assert!(e.contains("see-through") && e.contains("solid"), "{e}");
+        // Some case models only: the list is replaced by any `--case`, and the mode is left alone.
+        assert_eq!(change.case_hidden, None);
+        let c = view_request(&["--case", "hidden:lid,bar"]).change;
+        assert_eq!(
+            (c.case, c.case_hidden),
+            (None, Some(vec!["lid".into(), "bar".into()]))
+        );
+        let c = view_request(&["--case", "solid", "--case", "hidden:lid"]).change;
+        assert_eq!(
+            (c.case, c.case_hidden),
+            (Some(CaseMode::Solid), Some(vec!["lid".into()]))
+        );
+        let c = view_request(&["--case", "see-through"]).change;
+        assert_eq!(
+            c.case_hidden,
+            Some(vec![]),
+            "a mode alone shows every model again"
+        );
     }
 
     #[test]

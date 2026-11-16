@@ -546,4 +546,30 @@ fn render_draws_the_case_hidden_see_through_or_solid() {
     );
     assert_eq!(run.status.code(), Some(2));
     assert!(String::from_utf8_lossy(&run.stderr).contains("the case models: case:base, case:lid"));
+
+    // One model at a time: `--case hidden:<name>` leaves that model out and draws the rest as
+    // the mode says; the whole case hidden is the picture of both left out.
+    let no_lid = draw("no-lid", &["--case", "hidden:lid"]);
+    let no_base = draw("no-base", &["--case", "hidden:base"]);
+    let no_both = draw("no-both", &["--case", "hidden:base,lid"]);
+    assert_ne!(no_lid, see_through);
+    assert_ne!(no_base, see_through);
+    assert_ne!(no_lid, no_base);
+    assert_eq!(no_both, hidden, "every model hidden is the case hidden");
+    assert_eq!(no_both, draw("repeated", &["--case", "hidden:base", "--case", "hidden:lid"]));
+    // The mode still applies to the models that stay: a solid base alone differs from a see-through one.
+    assert_ne!(no_lid, draw("solid-no-lid", &["--case", "solid", "--case", "hidden:lid"]));
+    // A model that is named is drawn, lit, though it is hidden.
+    assert_ne!(
+        no_lid,
+        draw("lit-hidden-lid", &["--case", "hidden:lid", "--highlight", "case:lid"])
+    );
+    // A name the board has no case model of is refused with the list.
+    let run = netsmith(&dir, &["render", "case_fit.nsm", "--case", "hidden:box"]);
+    assert_eq!(run.status.code(), Some(2));
+    let err = String::from_utf8_lossy(&run.stderr);
+    assert!(
+        err.contains("`box`") && err.contains("its case models are: base, lid"),
+        "{err}"
+    );
 }

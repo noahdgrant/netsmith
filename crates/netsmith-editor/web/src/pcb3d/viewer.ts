@@ -272,6 +272,8 @@ export class Viewer {
   /** The case models' solids (ADR 0109), drawn together as `caseMode` says: not at all, see-through (a faint tint) or solid. */
   private cases: { info: CaseSolidInfo; mesh: Mesh; lines: LineSegments[] }[] = [];
   private caseMode: CaseMode = 'see-through';
+  /** The case models hidden one by one, by name, whatever the mode says (a model that is lit or that a finding names is shown, and leaves this set). */
+  private hiddenCases = new Set<string>();
   /** The case solids a finding lit, as `case:<model>:<solid>`. */
   private focusedSolids = new Set<string>();
   /** The case models `/api/view` lit (`highlight: ["case:<name>"]`), by name: in the selection's colour, as `render --highlight` lights them. */
@@ -640,21 +642,50 @@ export class Viewer {
     return this.caseMode;
   }
 
-  /** Draw every case model's solids, and their edges, as `mode` says: hidden, see-through, or solid (opaque, so it hides the board inside it). */
+  /** Draw every case model's solids, and their edges, as `mode` says: hidden, see-through, or solid (opaque, so it hides the board inside it). A model hidden by name stays hidden. */
   setCaseMode(mode: CaseMode) {
     this.caseMode = mode;
-    const on = mode !== 'hidden';
-    for (const c of this.cases) {
-      c.mesh.visible = on;
-      for (const l of c.lines) l.visible = on;
-    }
+    this.showCases();
     this.restyle();
     this.request();
   }
 
+  /** The case models hidden one by one, by name. */
+  hiddenCaseList(): string[] {
+    return [...this.hiddenCases].filter((n) => this.cases.some((c) => c.info.case === n));
+  }
+
+  /** Whether each solid of each case model is drawn now, by model name, in the file's order (for the browser recipes). */
+  caseVisibleState(): Record<string, boolean[]> {
+    const out: Record<string, boolean[]> = {};
+    for (const c of this.cases) (out[c.info.case] ??= []).push(c.mesh.visible);
+    return out;
+  }
+
+  /** Hide these case models (by name) and show the rest as the mode says; none shows every model. */
+  setHiddenCases(names: string[]) {
+    this.hiddenCases = new Set(names);
+    this.showCases();
+    this.restyle();
+    this.request();
+  }
+
+  /** Whether the models of the case are drawn at all: the mode is not hidden, and the model is not hidden by name. */
+  private caseDrawn(name: string): boolean {
+    return this.caseMode !== 'hidden' && !this.hiddenCases.has(name);
+  }
+
+  private showCases() {
+    for (const c of this.cases) {
+      const on = this.caseDrawn(c.info.case);
+      c.mesh.visible = on;
+      for (const l of c.lines) l.visible = on;
+    }
+  }
+
   /** Whether a case solid is drawn solid now: the case is solid, and the solid is not lit (a case model lit by name or by a finding stays see-through, in its colour, so the part inside shows). */
   private solidNow(c: CaseSolidInfo): boolean {
-    return this.caseMode === 'solid' && !this.focusedSolids.has(`case:${c.case}:${c.solid}`) && !this.litCases.has(c.case);
+    return this.caseMode === 'solid' && !this.hiddenCases.has(c.case) && !this.focusedSolids.has(`case:${c.case}:${c.solid}`) && !this.litCases.has(c.case);
   }
 
   /** The net of a piece of copper or a barrel: its own, or its pad's. */
@@ -1450,8 +1481,10 @@ export class Viewer {
     this.focusedSolids = new Set(this.cases.map((c) => `case:${c.info.case}:${c.info.solid}`).filter((k) => solids.some((s) => k === s || k.startsWith(`${s}:`))));
     // A finding shows what it is about: the case it names, if it was hidden; the parts and limits inside it, if it was solid.
     if (this.cases.length) {
+      for (const c of this.cases) if (this.focusedSolids.has(`case:${c.info.case}:${c.info.solid}`)) this.hiddenCases.delete(c.info.case);
       if (this.caseMode === 'hidden' && this.focusedSolids.size) this.setCaseMode('see-through');
       else if (this.caseMode === 'solid' && (paths.length || limitKeys.length)) this.setCaseMode('see-through');
+      this.showCases();
     }
     this.restyle();
     const box = new Box3();
@@ -1832,7 +1865,9 @@ export class Viewer {
     const want = new Set(names);
     this.litCases = new Set(this.cases.map((c) => c.info.case).filter((n) => want.has(n)));
     this.focusedSolids.clear();
+    for (const n of this.litCases) this.hiddenCases.delete(n);
     if (this.litCases.size && this.caseMode === 'hidden') this.setCaseMode('see-through');
+    this.showCases();
     this.restyle();
     this.request();
   }

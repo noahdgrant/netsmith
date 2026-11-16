@@ -124,6 +124,13 @@ pub struct ViewChange {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub case: Option<CaseMode>,
+    /// The case models hidden one by one, by name (`render --case hidden:<name>[,<name>]`),
+    /// whatever `case` says; it replaces the list, and `[]` shows every model. A model lit by
+    /// `highlight` is shown. A board with no case model refuses it (409), and a name it has no
+    /// case model of is refused (400) with the list.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub case_hidden: Option<Vec<String>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub colour_by: Option<ColourBy>,
@@ -188,6 +195,11 @@ pub struct ViewState {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub case: Option<CaseMode>,
+    /// The case models hidden one by one, by name; absent when none is (or the board has no case
+    /// model, or the view is not shown).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub case_hidden: Option<Vec<String>>,
     pub colour_by: ColourBy,
     /// The height preview's height in mm while it is on, else none.
     #[serde(default, skip_serializing_if = "Option::is_none")]

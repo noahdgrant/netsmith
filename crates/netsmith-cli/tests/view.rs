@@ -91,6 +91,7 @@ fn state() -> ViewState {
         hover: None,
         xray: false,
         case: Some(CaseMode::SeeThrough),
+        case_hidden: None,
         colour_by: ColourBy::Provenance,
         height_preview: None,
         theme: "dark".into(),
@@ -250,7 +251,7 @@ fn a_change_reaches_the_page_with_renders_names_and_the_picture_is_saved() {
         json,
         serde_json::json!({
             "board": "Led", "view": "top", "section": "none",
-            "highlight": ["J1", "net:GND"], "xray": true, "case": "solid", "ortho": false,
+            "highlight": ["J1", "net:GND"], "xray": true, "case": "solid", "caseHidden": [], "ortho": false,
             "colourBy": "kind", "heightPreview": 2.0, "exploded": true,
         })
     );

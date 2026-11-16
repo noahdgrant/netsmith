@@ -1836,7 +1836,14 @@ ortho?: boolean, perspective?: boolean,
 /**
  * How the case model is drawn. A board with no case model refuses it (409).
  */
-case?: CaseMode, colourBy?: ColourBy, heightPreview?: PreviewSetting, 
+case?: CaseMode, 
+/**
+ * The case models hidden one by one, by name (`render --case hidden:<name>[,<name>]`),
+ * whatever `case` says; it replaces the list, and `[]` shows every model. A model lit by
+ * `highlight` is shown. A board with no case model refuses it (409), and a name it has no
+ * case model of is refused (400) with the list.
+ */
+caseHidden?: Array<string>, colourBy?: ColourBy, heightPreview?: PreviewSetting, 
 /**
  * The stackup pulled apart (`true`) or together.
  */
@@ -1883,7 +1890,12 @@ hover?: string, xray: boolean,
 /**
  * How the case model is drawn; absent when the board has none (or the view is not shown).
  */
-case?: CaseMode, colourBy: ColourBy, 
+case?: CaseMode, 
+/**
+ * The case models hidden one by one, by name; absent when none is (or the board has no case
+ * model, or the view is not shown).
+ */
+caseHidden?: Array<string>, colourBy: ColourBy, 
 /**
  * The height preview's height in mm while it is on, else none.
  */

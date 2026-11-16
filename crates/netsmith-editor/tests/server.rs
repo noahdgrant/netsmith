@@ -2065,6 +2065,7 @@ fn view_state(board: &str) -> ViewState {
         hover: None,
         xray: false,
         case: None,
+        case_hidden: None,
         colour_by: ColourBy::Provenance,
         height_preview: None,
         theme: "dark".into(),

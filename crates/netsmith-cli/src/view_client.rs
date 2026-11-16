@@ -264,6 +264,9 @@ pub fn summary(state: &ViewState) -> String {
                 .unwrap_or_default(),
         );
     }
+    if let Some(hidden) = state.case_hidden.as_ref().filter(|h| !h.is_empty()) {
+        line("case hidden", list(hidden));
+    }
     line(
         "colour by",
         serde_json::to_value(state.colour_by)

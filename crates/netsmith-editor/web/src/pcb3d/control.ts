@@ -129,6 +129,8 @@ export interface Plan {
   xray?: boolean;
   /** How the case model is drawn. */
   case?: CaseMode;
+  /** The case models hidden one by one, by name. */
+  caseHidden?: string[];
   ortho?: boolean;
   colourBy?: ColourBy;
   preview?: { on: boolean; mm?: number };
@@ -178,6 +180,22 @@ export function planChange(change: ViewChange, have: Ids, canExplode: boolean): 
       );
     }
     plan.case = change.case;
+  }
+  if (change.caseHidden !== undefined) {
+    if (!have.cases.length) {
+      throw new ViewRefusal(
+        have.system
+          ? `caseHidden: the system \`${have.system}\` draws no case model: a case model is one board's, so show that board (\`--board <System>/<member>\`)`
+          : 'caseHidden: the board has no case model to hide',
+        409,
+      );
+    }
+    const names = [...new Set(change.caseHidden.flatMap((n) => n.split(',')).map((n) => n.trim()).filter(Boolean))];
+    const unknown = names.filter((n) => !have.cases.includes(n));
+    if (unknown.length) {
+      throw new ViewRefusal(`caseHidden names ${unknown.map((n) => `\`${n}\``).join(', ')}, which the board has no case model of; its case models are: ${[...new Set(have.cases)].join(', ')}`);
+    }
+    plan.caseHidden = names;
   }
   if (change.ortho !== undefined) plan.ortho = change.ortho;
   if (change.perspective !== undefined) plan.ortho = !change.perspective;

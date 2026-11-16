@@ -119,6 +119,18 @@ describe('a change, checked before anything is done', () => {
     expect(planChange({ section: 'none', highlight: [] }, have, true)).toEqual({ section: null, selection: { parts: [], net: null }, limits: [], cases: [] });
     expect(planChange({ heightPreview: false }, have, true).preview).toEqual({ on: false });
   });
+  it('takes the case models hidden by name, as render --case hidden:<name> does', () => {
+    expect(planChange({ caseHidden: ['base', 'top,base'] }, have, true).caseHidden).toEqual(['base', 'top']);
+    expect(planChange({ caseHidden: [] }, have, true).caseHidden).toEqual([]);
+    expect(planChange({}, have, true).caseHidden).toBeUndefined();
+    const e = refusal(() => planChange({ caseHidden: ['lid', 'base'] }, have, true));
+    expect(e.message).toBe('caseHidden names `lid`, which the board has no case model of; its case models are: base, top');
+    expect(e.status).toBe(400);
+    const none = refusal(() => planChange({ caseHidden: [] }, { ...have, cases: [] }, true));
+    expect(none.message).toBe('caseHidden: the board has no case model to hide');
+    expect(none.status).toBe(409);
+  });
+
   it('takes how the case is drawn, on a board that has one', () => {
     for (const mode of ['hidden', 'see-through', 'solid'] as const) expect(planChange({ case: mode }, have, true).case).toBe(mode);
     expect(planChange({}, have, true).case).toBeUndefined();
