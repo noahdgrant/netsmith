@@ -8,7 +8,7 @@
 import { tokenize } from '../nsm';
 
 /** The words that start a definition. */
-export const DEFINITION_KINDS = ['board', 'system', 'panel', 'module', 'part', 'interface', 'enum', 'generic'] as const;
+export const DEFINITION_KINDS = ['board', 'system', 'panel', 'module', 'part', 'interface', 'enum', 'generic', 'enclosure'] as const;
 export type DefinitionKind = (typeof DEFINITION_KINDS)[number];
 
 /** What a declaration stands for, when the kind of its type is known. */

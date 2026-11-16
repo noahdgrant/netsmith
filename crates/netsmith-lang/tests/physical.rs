@@ -290,3 +290,14 @@ fn an_anchor_is_one_name() {
     // `physical` and `anchor` stay usable as names.
     assert!(parse("module M {\n    .physical: Pin\n    .anchor: Pin\n    .anchor ~ .physical\n}\n").is_ok());
 }
+
+#[test]
+fn case_of_an_enclosure_prints_back() {
+    let text = "import src::case::Box\n\nphysical for A {\n    case Box\n}\n";
+    let file = parse(text).unwrap();
+    assert_eq!(file.to_source(), text);
+    let text = "enclosure Box {\n    .w: Length\n}\n";
+    let file = parse(text).unwrap();
+    assert_eq!(file.definitions[0].kind, DefKind::Enclosure);
+    assert_eq!(file.to_source(), text);
+}

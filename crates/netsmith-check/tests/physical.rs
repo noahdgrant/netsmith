@@ -254,7 +254,7 @@ fn a_physical_file_holds_no_definitions() {
     assert_eq!(
         messages(&c),
         [
-            "a physical file holds `physical for` units and nothing else; `board X` belongs in the circuit source"
+            "a physical file holds `physical for` units and `enclosure` definitions and nothing else; `board X` belongs in the circuit source"
         ]
     );
 }

@@ -1,8 +1,9 @@
 //! `examples/enclosure_sensor/`: an invented sensor board that states all its physical intent
-//! in its physical file (outline with a cutout, holes and fiducials, a 40 mm plug that hangs
-//! over an edge, an antenna and a coax connector on one line, two socket rows a fixed distance
-//! apart, a module on the back with one part on the front, a row of test pads on a pitch, a
-//! height limit), and goes through `fab` to `design rules check: passed`.
+//! in its physical file and the enclosure it names (outline with a cutout, holes and
+//! fiducials, a 40 mm plug that hangs over an edge, an antenna and a coax connector on one
+//! line, two socket rows a fixed distance apart, a module on the back with one part on the
+//! front, a row of test pads on a pitch, a height limit), and goes through `fab` to
+//! `design rules check: passed`.
 //!
 //! The example is a project (it defines three invented parts and maps them to KiCad's stock
 //! footprints in its `kicad.toml`), so it is fabricated with the project's own libraries. KiCad's
@@ -20,6 +21,8 @@ use std::path::PathBuf;
 const CIRCUIT: &str = include_str!("../../../examples/enclosure_sensor/enclosure_sensor.nsm");
 const PHYSICAL: &str =
     include_str!("../../../examples/enclosure_sensor/enclosure_sensor.physical.nsm");
+/// The enclosure the physical file names (ADR 0132), a module of the project.
+const CASE: &str = include_str!("../../../examples/enclosure_sensor/src/case.nsm");
 
 fn project() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../examples/enclosure_sensor")
@@ -32,14 +35,16 @@ fn fab_example(
 ) -> (TempDir, Result<Vec<netsmith_fabricate::fab::Fabricated>, String>) {
     let dir = TempDir::unused(&format!("fab-test-{name}"));
     let libraries = Libraries::for_project(Some(&project())).unwrap_or_else(|e| panic!("{e}"));
+    let mut loader = Loader::std().with_physical(
+        "enclosure_sensor.nsm",
+        "enclosure_sensor.physical.nsm",
+        physical,
+    );
+    loader.insert("src::case", "src/case.nsm", CASE);
     let made = fab_with_options(
         "enclosure_sensor.nsm",
         CIRCUIT,
-        &Loader::std().with_physical(
-            "enclosure_sensor.nsm",
-            "enclosure_sensor.physical.nsm",
-            physical,
-        ),
+        &loader,
         &dir.join("fab"),
         &Catalogs::jlcpcb(),
         &libraries,

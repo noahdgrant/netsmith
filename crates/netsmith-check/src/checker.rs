@@ -5,7 +5,9 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::rc::Rc;
 
 use netsmith_core::PartKind;
-use netsmith_lang::ast::{Decl, DefKind, Definition, Import, Item, Path, Physical, TypePath};
+use netsmith_lang::ast::{
+    CaseOf, Decl, DefKind, Definition, Import, Item, Path, Physical, TypePath,
+};
 use netsmith_lang::{Span, parse};
 use netsmith_quantity::Dimension;
 
@@ -80,6 +82,9 @@ pub(crate) struct PhysState {
     /// The module instance whose own physical file is being read (the module layer of
     /// ADR 0048, `module_physical.rs`), or `None` for a board's.
     pub module: Option<InstId>,
+    /// The `case Name` line of the unit whose enclosure is read as its case (ADR 0132): the
+    /// name and where it is. A second one is refused.
+    pub enclosure: Option<(String, Span)>,
 }
 
 #[derive(Clone, Copy)]
@@ -512,6 +517,7 @@ impl<'a> Checker<'a> {
         let defs: Vec<Rc<Definition>> = file.definitions.into_iter().map(Rc::new).collect();
 
         self.check_attributes(source, &defs);
+        self.enclosures_apart(source, name, &defs);
         let id = self.modules.len();
         let mut scope = HashMap::new();
         for (i, def) in defs.iter().enumerate() {
@@ -549,6 +555,131 @@ impl<'a> Checker<'a> {
         id
     }
 
+    /// Refuse an `enclosure` in a file that defines a board, a system or a panel: an enclosure
+    /// is physical intent, which a circuit source does not hold (ADR 0048, ADR 0132).
+    fn enclosures_apart(&mut self, source: SourceId, name: &str, defs: &[Rc<Definition>]) {
+        let circuit = defs
+            .iter()
+            .find(|d| matches!(d.kind, DefKind::Board | DefKind::System | DefKind::Panel));
+        let Some(circuit) = circuit else {
+            return;
+        };
+        for def in defs.iter().filter(|d| d.kind == DefKind::Enclosure) {
+            self.report(
+                source,
+                def.name.span,
+                format!(
+                    "`enclosure {}` is physical intent, and a file that defines a {} (`{}`) is circuit source, which does not hold it (ADR 0048); put it in `{}`, or in a file of its own under `src/` that the physical files of several boards import",
+                    def.name.name,
+                    circuit.kind.keyword(),
+                    circuit.name.name,
+                    physical_file_name(name)
+                ),
+            );
+        }
+    }
+
+    /// `case SnapCase` in a board's physical unit (ADR 0132): read the statements of the
+    /// enclosure it names as if they were written in the unit's `case { }` section, in the
+    /// enclosure's own file, so that its names, imports and lines are its file's. Called in
+    /// both passes; `declaring` is the first, which reports what is wrong.
+    fn case_of(&mut self, of: &CaseOf, declaring: bool) {
+        let Some(phys) = &self.phys else {
+            if declaring {
+                self.error(
+                    of.span,
+                    format!(
+                        "`case {}` belongs in a board's physical file (`physical for Board {{ case {} }}`, ADR 0132)",
+                        of.name.name, of.name.name
+                    ),
+                );
+            }
+            return;
+        };
+        if phys.module.is_some() {
+            if declaring {
+                self.error(of.span, crate::module_physical::CASE_IN_MODULE);
+            }
+            return;
+        }
+        if phys.in_case {
+            if declaring {
+                self.error(
+                    of.span,
+                    format!(
+                        "`case {}` is in a case already: an enclosure, or a `case {{ }}` section, holds what the case fixes and names no other enclosure; name each enclosure in the board's physical unit",
+                        of.name.name
+                    ),
+                );
+            }
+            return;
+        }
+        if declaring {
+            if let Some((first, at)) = &phys.enclosure {
+                let (_, line) = self.line_in(self.cur_source(), *at);
+                let first = first.clone();
+                self.error(
+                    of.span,
+                    format!(
+                        "a board is in one case, and this unit already names `case {first}` (line {line}); put what `{}` adds to it in `{first}`, or in the unit's own `case {{ }}` section",
+                        of.name.name
+                    ),
+                );
+                return;
+            }
+        } else if phys.enclosure.as_ref().is_none_or(|(_, at)| *at != of.span) {
+            return;
+        }
+        let def_ref = match self.modules[self.cur_module].scope.get(&of.name.name) {
+            Some(Binding::Def(m, i)) if self.modules[*m].defs[*i].kind == DefKind::Enclosure => {
+                (*m, *i)
+            }
+            Some(Binding::Def(m, i)) => {
+                if declaring {
+                    let word = crate::providers::kind_word(&self.modules[*m].defs[*i]);
+                    self.error(
+                        of.name.span,
+                        format!(
+                            "`case {}` names a {word}, and `case` names an enclosure (`enclosure {} {{ ... }}`, ADR 0132)",
+                            of.name.name, of.name.name
+                        ),
+                    );
+                }
+                return;
+            }
+            Some(_) => return,
+            None => {
+                if declaring {
+                    self.error(
+                        of.name.span,
+                        format!(
+                            "`case {}` names no enclosure: this file neither defines nor imports `{}`; import it (`import src::case::{}`), or define `enclosure {} {{ ... }}` in this physical file",
+                            of.name.name, of.name.name, of.name.name, of.name.name
+                        ),
+                    );
+                }
+                return;
+            }
+        };
+        if declaring && let Some(phys) = &mut self.phys {
+            phys.enclosure = Some((of.name.name.clone(), of.span));
+        }
+        let def = self.modules[def_ref.0].defs[def_ref.1].clone();
+        let saved_module = std::mem::replace(&mut self.cur_module, def_ref.0);
+        if let Some(phys) = &mut self.phys {
+            phys.in_case = true;
+        }
+        if declaring {
+            self.declare(&def.items);
+        } else {
+            self.process(&def.items);
+        }
+        if let Some(phys) = &mut self.phys {
+            phys.in_case = false;
+        }
+        self.cur_module = saved_module;
+    }
+
     /// The loader the checker reads from.
     pub(crate) fn loader_ref(&self) -> &'a Loader {
         self.loader
@@ -577,22 +708,39 @@ impl<'a> Checker<'a> {
                 return;
             }
         };
-        for def in &file.definitions {
-            self.report(
-                source,
-                def.name.span,
-                format!(
-                    "a physical file holds `physical for` units and nothing else; `{} {}` belongs in the circuit source",
-                    def.kind.keyword(),
-                    def.name.name
-                ),
-            );
-        }
+        // An enclosure is physical intent, and the units of the file may share one (ADR 0132).
         let id = self.modules.len();
+        let mut defs = Vec::new();
+        let mut scope = HashMap::new();
+        for def in file.definitions {
+            if def.kind != DefKind::Enclosure {
+                self.report(
+                    source,
+                    def.name.span,
+                    format!(
+                        "a physical file holds `physical for` units and `enclosure` definitions and nothing else; `{} {}` belongs in the circuit source",
+                        def.kind.keyword(),
+                        def.name.name
+                    ),
+                );
+                continue;
+            }
+            if scope
+                .insert(def.name.name.clone(), Binding::Def(id, defs.len()))
+                .is_some()
+            {
+                self.report(
+                    source,
+                    def.name.span,
+                    format!("`{}` is defined twice in this file", def.name.name),
+                );
+            }
+            defs.push(Rc::new(def));
+        }
         self.modules.push(ModuleData {
             source,
-            defs: Vec::new(),
-            scope: HashMap::new(),
+            defs,
+            scope,
             std: false,
             key: module_key(name),
         });
@@ -1092,6 +1240,9 @@ impl<'a> Checker<'a> {
             DefKind::Generic if generic_is_part_shaped(def) => InstKind::Part,
             DefKind::Generic => InstKind::Module,
             DefKind::Enum => unreachable!("an enum is a type, so nothing instantiates it"),
+            // An enclosure is made on its own only to check it, as the case of a board
+            // (ADR 0132); a board's unit reads its statements instead.
+            DefKind::Enclosure => InstKind::Board,
         };
         self.making.push(def_ref);
         let id = self.model.add_instance(Instance {
@@ -1216,7 +1367,13 @@ impl<'a> Checker<'a> {
         let saved_scope = std::mem::replace(&mut self.scope, vec![id]);
         // A definition's own text is circuit source, even when a physical file is what
         // asked for it to be made.
-        let saved_phys = self.phys.take();
+        let saved_phys = std::mem::replace(
+            &mut self.phys,
+            (def.kind == DefKind::Enclosure).then(|| PhysState {
+                in_case: true,
+                ..PhysState::default()
+            }),
+        );
         // A part or module that provides generics has their members and statements first
         // (ADR 0068), each read in its own file.
         let generics = self.provided(def);
@@ -1255,7 +1412,7 @@ impl<'a> Checker<'a> {
                     .or_insert_with(|| g.name.name.clone());
             }
         }
-        if kind == InstKind::Board {
+        if def.kind == DefKind::Board {
             self.declare_default_environment(&def.items, def.span);
         }
         self.declare(&provider_items);
@@ -1488,6 +1645,10 @@ impl<'a> Checker<'a> {
                 }
                 continue;
             }
+            if let Item::CaseOf(of) = item {
+                self.case_of(of, true);
+                continue;
+            }
             if let Item::Support(support) = item {
                 self.declare_support(support);
                 continue;
@@ -1687,7 +1848,12 @@ impl<'a> Checker<'a> {
     /// boards and nothing else, and a board is placed only in a system. Reports it.
     fn misplaced(&mut self, def: &Definition, d: &Decl) -> bool {
         let board_member = def.kind == DefKind::Board;
-        let message = if self.in_system() && !board_member {
+        let message = if def.kind == DefKind::Enclosure {
+            format!(
+                "`{}` is an enclosure, and an enclosure is no member: a board's physical file puts the board in it with `case {}` in `physical for Board {{ ... }}` (ADR 0132)",
+                def.name.name, def.name.name
+            )
+        } else if self.in_system() && !board_member {
             format!(
                 "a system holds boards, but `{}` is a {}; put it on a board",
                 def.name.name,
@@ -1815,6 +1981,7 @@ impl<'a> Checker<'a> {
                         }
                     }
                 }
+                Item::CaseOf(of) => self.case_of(of, false),
                 Item::Defaults(block) => self.defaults_block(block),
                 Item::Support(support) => {
                     if self.support_allowed() {

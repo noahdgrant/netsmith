@@ -284,6 +284,8 @@ fn visit<'a>(
         Item::Polygon(_) => {}
         // A module's `physical "..."` names a file, not a member.
         Item::PhysicalFile(_) => {}
+        // `case SnapCase` names an enclosure, not a member (ADR 0132).
+        Item::CaseOf(_) => {}
         Item::Anchor(a) => path(&a.target, inside),
         // A line of a board's `defaults` names a kind and its field, not a member (issue #625).
         Item::Defaults(_) => {}

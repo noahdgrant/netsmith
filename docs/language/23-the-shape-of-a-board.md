@@ -66,14 +66,14 @@ physical for Cased {
 }
 ```
 
-- **`case { ... }`** is the section for what the case fixes: the outline, the cutouts, the mounting holes (`MountingHole`), the fiducials (`Fiducial`) and the labels (`Label`) of the board, and the case's own STEP file (`CaseModel`, see _A case model_). It holds the same statements as the rest of the unit, and lifts out unchanged if a case is ever shared. These six belong in it; a keepout may be anywhere in the unit.
+- **`case { ... }`** is the section for what the case fixes: the outline, the cutouts, the mounting holes (`MountingHole`), the fiducials (`Fiducial`) and the labels (`Label`) of the board, and the case's own STEP file (`CaseModel`, see _A case model_). It holds the same statements as the rest of the unit, and lifts out unchanged into an `enclosure` that several boards share (_A shared enclosure_, below). These six belong in it; a keepout may be anywhere in the unit.
 - **A path crosses a module boundary here for any statement of physical intent.** `.sensor.j.place.left` names the header inside the `Sensor` module. The circuit source reaches into a module only to narrow a value (ADR 0116); the physical file can also state physical intent about the part. A statement may set or compare only a part's `.place`, a part's `.height`, a part's `.standoff`, and what the unit declares itself (the fields of its `.outline`, `.window`, `.rib`). Anything that changes what a part is, or a connection, is refused.
 - **A relation between two parts** is the equation of _Where a part goes_: `.b.place.x - .a.place.x == 17.5mm +/- 0.05mm`. The placer holds it and `fab` measures it (_A relation between two parts_).
 - **`.place.side` on a module** is a requirement on every part of it, at any depth. A module with an exception states the faces of its parts one by one and none for itself; two lines that disagree are an error that names both. `.place.side` with no path, on the board itself, is the same requirement on every part of the board (_A board on one face_).
 - **`.silk` and `.silk_text`** say what the silkscreen prints for a part: nothing, or a text in place of its designator (_Silkscreen text_). `.silk` on a module or on the board reaches every part inside it.
 - The case numbers are the maintainer's file to review: put the source of each (a drawing, a sheet) in a comment above the line, and never invent one.
 
-`examples/enclosure_sensor/` is a complete invented board that states all of this in its physical file, and each statement has a comment that says what it asks for: a rounded outline with a cutout, mounting holes and fiducials, a 40 mm plug that hangs over an edge, an antenna and a coax connector on one line, two socket rows a fixed distance apart, a module on the back with one part on the front, a row of twelve test pads on a pitch, a height limit, and a flat cell on the back across the sockets whose pins protrude 0.2 mm (_Pin protrusion_). It is a project, because it defines four invented parts and maps them to KiCad's stock footprints and a footprint of its own in its `kicad.toml`; `crates/netsmith-fabricate/tests/enclosure_sensor.rs` runs `fab` on it and checks that every requirement is met.
+`examples/enclosure_sensor/` is a complete invented board that states all of this in its physical file and the enclosure it names (`src/case.nsm`, _A shared enclosure_), and each statement has a comment that says what it asks for: a rounded outline with a cutout, mounting holes and fiducials, a 40 mm plug that hangs over an edge, an antenna and a coax connector on one line, two socket rows a fixed distance apart, a module on the back with one part on the front, a row of twelve test pads on a pitch, a height limit, and a flat cell on the back across the sockets whose pins protrude 0.2 mm (_Pin protrusion_). It is a project, because it defines four invented parts and maps them to KiCad's stock footprints and a footprint of its own in its `kicad.toml`; `crates/netsmith-fabricate/tests/enclosure_sensor.rs` runs `fab` on it and checks that every requirement is met.
 
 The placer keeps to every requirement, `fab` measures them on the board and stops on one not met, and the editor draws the file's outline and keepouts. A requirement that is a single value fixes the part, like a lock in the layout file.
 
@@ -171,6 +171,142 @@ error: `physical for Left` names no board of the source it is paired with; its b
   |
 1 | physical for Left {
   |              ^^^^
+```
+
+#### A shared enclosure
+
+**Several boards in one case share its description (ADR 0132).** An `enclosure` is a definition whose body is what a `case { }` section holds, lifted out unchanged: the outline, the cutouts, the mounting holes, the fiducials, the labels, the keepouts and height limits of the case, and the case's STEP files (`CaseModel`), with the statements about them. A board's physical unit puts the board in it with `case Name`, and the enclosure's statements are then read as if they were written in the unit's `case { }` section: its members are members of the board, the rest of the unit names them as before (`.outline.height`), and a panel or a system that places the board sees them as it sees any of the board's physical intent. A case revision is then a diff of one file, which every board in the case picks up.
+
+```nsm module=src::snap_case
+//! The snap case: numbers from its drawing.
+
+import std::pcb::{Cutout, Keepout, Outline}
+
+enclosure SnapCase {
+    // Drawing SC-1: the inside of the base.
+    .outline: Outline {
+        .width &= 40mm
+        .height &= 24mm
+        .corner_radius &= 1mm
+    }
+    // Drawing SC-1: the window for the indicator.
+    .window: Cutout {
+        .x &= 30mm
+        .y &= 2mm
+        .width &= 6mm
+        .height &= 3mm
+    }
+    // Drawing SC-1: the lid's rib leaves 4 mm above the board along the right side.
+    .rib: Keepout {
+        .x &= 36mm
+        .y &= 0mm
+        .width &= 4mm
+        .height &= 24mm
+        .layers &= "top"
+        .max_height &= 4mm
+    }
+}
+```
+
+```nsm solve
+import std::parts::connector::Header1x2
+import std::mfg::jlcpcb::TwoLayer
+
+board Logger {
+    .process: TwoLayer {
+        .stackup.thickness &= 1.6mm
+    }
+    .power: Header1x2
+}
+
+board Relay {
+    .process: TwoLayer {
+        .stackup.thickness &= 1.6mm
+    }
+    .power: Header1x2
+}
+```
+
+```nsm-physical
+import src::snap_case::SnapCase
+import std::parts::mechanical::Label
+
+physical for Logger {
+    case SnapCase
+    // Case drawing, slot A: the header is 1.5 mm in from the left edge.
+    .power.place.left &= 1.5mm +/- 0.1mm
+}
+
+physical for Relay {
+    case SnapCase
+    // What this board adds to the case: its name on the silkscreen.
+    case {
+        .name: Label {
+            .text &= "RELAY"
+        }
+    }
+    .power.place.y >= .outline.height / 2 - 0.1mm
+}
+```
+
+- **Where it is written.** In a file of its own under `src/` (`src/snap_case.nsm` is the module `src::snap_case`), which the physical files of the boards import by name, as a module is imported; or in a physical file, where the units of that file use it. An enclosure is physical intent, so a file that defines a board, a system or a panel does not hold one. The mechanical side owns the file: `netsmith dxf import` prints the outline, cutouts and hole circles of a drawing to paste into it, and its `CaseModel` names the STEP file of ADR 0109.
+- **Its names, imports and lines are its file's.** An enclosure imports the types it uses itself, a finding about one of its lines points at its file, and a `CaseModel`'s `.file` is relative to the file of the enclosure, as it is to the file that states it everywhere.
+- **A board is in one case.** A unit names at most one enclosure. What one board adds to the case (a fiducial, a label) goes in the unit's own `case { }` section beside `case Name`, and a name that both declare is declared twice. An enclosure names no other enclosure, and holds no `case` of its own.
+- **It is not a member.** `.case: SnapCase` is refused: nothing in the circuit refers to the case, and the enclosure's members are the board's, with the names the `case { }` section gave them.
+- **On its own**, as the editor and `netsmith check` read a file of `src/`, an enclosure is checked as the case of a board: what a `case { }` section refuses, it refuses.
+
+Misuse: an enclosure in a board's circuit source.
+
+```nsm fails
+import std::mfg::jlcpcb::TwoLayer
+import std::pcb::Outline
+
+enclosure Tray {
+    .outline: Outline {
+        .width &= 40mm
+        .height &= 24mm
+    }
+}
+
+board Held {
+    .process: TwoLayer {
+        .stackup.thickness &= 1.6mm
+    }
+}
+```
+
+```text
+error: `enclosure Tray` is physical intent, and a file that defines a board (`Held`) is circuit source, which does not hold it (ADR 0048); put it in `main.physical.nsm`, or in a file of its own under `src/` that the physical files of several boards import
+  --> main.nsm:4:11
+  |
+4 | enclosure Tray {
+  |           ^^^^
+```
+
+Misuse: a name that is no enclosure.
+
+```nsm fails
+import std::mfg::jlcpcb::TwoLayer
+
+board Held {
+    .process: TwoLayer {
+        .stackup.thickness &= 1.6mm
+    }
+}
+```
+
+```nsm-physical
+physical for Held {
+    case SnapCase
+}
+```
+
+```text
+error: `case SnapCase` names no enclosure: this file neither defines nor imports `SnapCase`; import it (`import src::case::SnapCase`), or define `enclosure SnapCase { ... }` in this physical file
+  --> main.physical.nsm:2:10
+  |
+2 |     case SnapCase
+  |          ^^^^^^^^
 ```
 
 ### How tracks bend

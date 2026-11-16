@@ -88,6 +88,13 @@ describe('tokenize', () => {
     expect(kinds('.provides &= 1')[1]).toEqual(['provides', 'member']);
   });
 
+  it('reads an enclosure (ADR 0132)', () => {
+    expect(kinds('enclosure SnapCase {').slice(0, 2)).toEqual([
+      ['enclosure', 'keyword'],
+      ['SnapCase', 'type'],
+    ]);
+  });
+
   it('reads peripheral and shared with their clauses as keywords only where the parser does (ADR 0071)', () => {
     expect(kinds('peripheral UARTE0 on APP_GPIO { UARTE0_TX:output UARTE0_RX:input }').slice(0, 4)).toEqual([
       ['peripheral', 'keyword'],

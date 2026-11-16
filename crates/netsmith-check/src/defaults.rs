@@ -498,6 +498,7 @@ fn item_span(item: &Item) -> Span {
         Item::Shared(s) => s.span,
         Item::Lines(l) => l.span,
         Item::Case(c) => c.span,
+        Item::CaseOf(c) => c.span,
         Item::Support(s) => s.span,
         Item::Defaults(d) => d.span,
         Item::Row(r) => r.span,

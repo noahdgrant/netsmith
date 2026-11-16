@@ -1,7 +1,8 @@
 # enclosure_sensor
 
-An invented sensor board that goes in a small enclosure (see `enclosure_sensor.nsm` and
-`enclosure_sensor.physical.nsm`). It is not a design to build. It builds and fabs with no KiCad
+An invented sensor board that goes in a small case (see `enclosure_sensor.nsm`,
+`enclosure_sensor.physical.nsm`, and `src/case.nsm`, the enclosure that the physical file names
+with `case SensorCase`, ADR 0132). It is not a design to build. It builds and fabs with no KiCad
 install: the symbols are drawn by netsmith (ADR 0097) and every footprint is a generator's or
 a file of `libs/`, listed in `kicad.toml`.
 
