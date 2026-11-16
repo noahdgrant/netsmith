@@ -604,6 +604,9 @@ impl Checker<'_> {
             .map(|(id, _)| id)
             .collect();
 
+        // The groups that `~` joins, before a shared name joins them into nets.
+        let joined: std::collections::HashMap<InstId, usize> =
+            pins.iter().map(|&p| (p, self.find(p.0))).collect();
         // A net name is board-wide, so two boards of a system may both have a `GND`.
         let mut first_named: std::collections::HashMap<(Option<InstId>, String), InstId> =
             Default::default();
@@ -702,11 +705,27 @@ impl Checker<'_> {
                     (candidate, false)
                 }
             };
+            let mut named_groups: Vec<Vec<InstId>> = Vec::new();
+            let mut roots: Vec<usize> = Vec::new();
+            for &p in &pins {
+                let root = joined[&p];
+                match roots.iter().position(|&r| r == root) {
+                    Some(i) => named_groups[i].push(p),
+                    None => {
+                        roots.push(root);
+                        named_groups.push(vec![p]);
+                    }
+                }
+            }
+            if named_groups.len() < 2 {
+                named_groups.clear();
+            }
             built.push(Net {
                 pins,
                 terminals,
                 name,
                 explicit,
+                named_groups,
             });
         }
         built.sort_by(|a, b| a.name.cmp(&b.name));
