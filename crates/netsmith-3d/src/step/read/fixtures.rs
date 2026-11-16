@@ -635,3 +635,70 @@ pub fn case_lid() -> String {
     );
     f.file(&[wall, block, lid, rib, boss], MM)
 }
+
+/// An invented case with shaped undersides and a floor, a test model written for `netsmith case
+/// import --limits`, in the frame of [`case_box`]: a `floor` plate from z = -10 to -8 under the
+/// whole case and a `wall` from z = -8 to 14 round a pocket of 60 x 40 mm (corners of 2 mm),
+/// closed by a `lid` plate from z = 14 to 16. Standing from the floor: a `post` of 6 mm at
+/// (6, 6) up to the board's bottom face (z = -1.6) and a round `pad` of 8 mm at (30, 10) up to
+/// z = -4.6. Hanging from the lid: an L-shaped `bracket` (the corners (5, 5), (35, 5), (35, 15),
+/// (15, 15), (15, 35), (5, 35)) down to z = 9, and a `ramp` from x = 40 to 56 and y = 5 to 35
+/// whose underside slopes from z = 14 at x = 40 down to z = 8 at x = 56.
+pub fn case_shaped() -> String {
+    let mut f = F::new();
+    let pocket: Loop = vec![
+        line([2.0, 0.0]),
+        arc([58.0, 0.0], [58.0, 2.0]),
+        line([60.0, 2.0]),
+        arc([60.0, 38.0], [58.0, 38.0]),
+        line([58.0, 40.0]),
+        arc([2.0, 40.0], [2.0, 38.0]),
+        line([0.0, 38.0]),
+        arc([0.0, 2.0], [2.0, 2.0]),
+    ];
+    let floor = prism("floor", &mut f, vec![outside()], -10.0, -8.0);
+    let wall = prism("wall", &mut f, vec![outside(), pocket], -8.0, 14.0);
+    let lid = prism("lid", &mut f, vec![outside()], 14.0, 16.0);
+    let post = prism(
+        "post",
+        &mut f,
+        vec![circle_loop([6.0, 6.0], 3.0)],
+        -8.0,
+        -1.6,
+    );
+    let pad = prism(
+        "pad",
+        &mut f,
+        vec![circle_loop([30.0, 10.0], 4.0)],
+        -8.0,
+        -4.6,
+    );
+    let bracket = prism(
+        "bracket",
+        &mut f,
+        vec![polygon(&[
+            [5.0, 5.0],
+            [35.0, 5.0],
+            [35.0, 15.0],
+            [15.0, 15.0],
+            [15.0, 35.0],
+            [5.0, 35.0],
+        ])],
+        9.0,
+        14.0,
+    );
+    // The ramp's profile is in the x-z plane, swept along y.
+    let wedge = Extrusion {
+        origin: [0.0; 3],
+        u: [1.0, 0.0, 0.0],
+        v: [0.0, 0.0, 1.0],
+        n: [0.0, 1.0, 0.0],
+        loops: vec![polygon(&[[40.0, 14.0], [56.0, 14.0], [56.0, 8.0]])],
+        from: 5.0,
+        to: 35.0,
+    }
+    .normalised()
+    .unwrap();
+    let ramp = f.w.extrusion("ramp", &wedge);
+    f.file(&[floor, wall, lid, post, pad, bracket, ramp], MM)
+}

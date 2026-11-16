@@ -15,7 +15,7 @@
 use std::collections::BTreeMap;
 use std::fmt;
 
-use super::{PlacedCase, Triangle, nm};
+use super::{CaseSolid, PlacedCase, Triangle, nm};
 
 /// One closed curve of a section, in the scene's frame (x, y in mm; the plane's height is the
 /// section's).
@@ -226,11 +226,19 @@ const GRID: f64 = 0.05;
 /// How many cells, along each side of a bounding box, are tried to tell what an area is made of.
 const CELLS: usize = 24;
 
+/// A face whose normal points down by less than this (the sine of its tilt from upright) is
+/// part of a wall, not an underside: a wall's draft of a few degrees limits nothing.
+const UPRIGHT: f64 = 0.17;
+
+/// The least area, seen from above, that a sloped face has to be an underside (mm²): the
+/// triangles of a vertical curved wall are slivers whose normal points where rounding says.
+const SLOPE_AREA: f64 = 0.01;
+
 /// A height limit the case puts over part of a board's pocket: nothing taller than `height`
-/// (mm above the board's top face) stands inside the box `lo`..`hi`.
+/// (mm from the board's face) stands inside the box `lo`..`hi`.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Ceiling {
-    /// The height of the underside, from the board's top face.
+    /// The height of the underside, from the board's face.
     pub height: f64,
     /// The box's corner nearest the origin, in the scene's frame.
     pub lo: [f64; 2],
@@ -238,6 +246,9 @@ pub struct Ceiling {
     pub hi: [f64; 2],
     /// The solid whose underside it is.
     pub solid: String,
+    /// Whether the underside is not flat: the limit is the height of a step of a slope, and
+    /// the underside is no lower than it over the box.
+    pub sloped: bool,
 }
 
 /// The limits [`PlacedCase::ceilings`] found, and the planes it could not cut.
@@ -266,42 +277,131 @@ fn bounds(points: &[[f64; 2]]) -> ([f64; 2], [f64; 2]) {
     (lo, hi)
 }
 
+/// A height a limit may be at, and the plane that shows the material over it. A step of a
+/// slope is read of the solid that has the sloped face only.
+struct Level {
+    limit: f64,
+    plane: f64,
+    sloped: Option<String>,
+}
+
 impl PlacedCase {
-    /// The heights of the flat faces of the model above the board's top face (z = 0), lowest
-    /// first, those within [`FLAT`] of one another counted once.
-    fn flat_heights(&self) -> Vec<f64> {
+    /// The case seen from the other face of the board: every height `z` is `-thickness - z`
+    /// (the board's bottom face is the top face of the result, and what is below it is above),
+    /// and each triangle keeps facing out.
+    pub fn mirrored(&self, thickness: f64) -> PlacedCase {
+        let solids = self
+            .solids
+            .iter()
+            .map(|s| {
+                let flip = |p: [f64; 3]| [p[0], p[1], nm(-thickness - p[2])];
+                let triangles = s
+                    .triangles
+                    .iter()
+                    .map(|t| [flip(t[0]), flip(t[2]), flip(t[1])]);
+                CaseSolid::new(s.name.clone(), triangles.collect(), s.closed)
+            })
+            .collect();
+        PlacedCase {
+            solids,
+            ..self.clone()
+        }
+    }
+
+    /// The levels at which an underside may be, above the board's top face: the heights of the
+    /// flat faces (exact), and for each stretch of heights that a sloped face (a dome, a
+    /// chamfer, a slope) spans, a step of `step` mm at a time, each limited to the height of its
+    /// lower end (a point first under material at the plane just below the next step is no
+    /// lower than that).
+    fn levels(&self, step: f64) -> Vec<Level> {
         let mut heights: Vec<f64> = Vec::new();
+        let mut sloped: Vec<(&str, Vec<(f64, f64)>)> = Vec::new();
         for solid in &self.solids {
+            let mut spans: Vec<(f64, f64)> = Vec::new();
             for t in &solid.triangles {
                 let z = t[0][2];
-                if t.iter().all(|v| (v[2] - z).abs() < 1e-6) && z > FLAT {
-                    heights.push(z);
+                if t.iter().all(|v| (v[2] - z).abs() < 1e-6) {
+                    if z > FLAT {
+                        heights.push(z);
+                    }
+                    continue;
+                }
+                let (u, v) = (
+                    [t[1][0] - t[0][0], t[1][1] - t[0][1], t[1][2] - t[0][2]],
+                    [t[2][0] - t[0][0], t[2][1] - t[0][1], t[2][2] - t[0][2]],
+                );
+                let n = [
+                    u[1] * v[2] - u[2] * v[1],
+                    u[2] * v[0] - u[0] * v[2],
+                    u[0] * v[1] - u[1] * v[0],
+                ];
+                let len = (n[0] * n[0] + n[1] * n[1] + n[2] * n[2]).sqrt();
+                if len < 1e-12 || n[2] / len > -UPRIGHT || -n[2] / 2.0 < SLOPE_AREA {
+                    continue;
+                }
+                let lo = t.iter().map(|p| p[2]).fold(f64::INFINITY, f64::min);
+                let hi = t.iter().map(|p| p[2]).fold(f64::NEG_INFINITY, f64::max);
+                if hi > FLAT {
+                    spans.push((lo.max(FLAT), hi));
+                }
+            }
+            sloped.push((&solid.name, spans));
+        }
+        heights.sort_by(f64::total_cmp);
+        let mut levels: Vec<Level> = Vec::new();
+        let mut last = f64::NEG_INFINITY;
+        for z in heights {
+            if z - last >= FLAT {
+                levels.push(Level {
+                    limit: z,
+                    plane: z + ABOVE,
+                    sloped: None,
+                });
+                last = z;
+            }
+        }
+        // The stretches of height the sloped faces of a solid span, joined where they meet.
+        for (name, mut spans) in sloped {
+            spans.sort_by(|a, b| a.0.total_cmp(&b.0));
+            let mut stretches: Vec<(f64, f64)> = Vec::new();
+            for s in spans {
+                match stretches.last_mut() {
+                    Some(last) if s.0 <= last.1 => last.1 = last.1.max(s.1),
+                    _ => stretches.push(s),
+                }
+            }
+            for (lo, hi) in stretches {
+                let mut limit = lo;
+                while limit < hi - ABOVE {
+                    levels.push(Level {
+                        limit,
+                        plane: (limit + step - ABOVE).min(hi - ABOVE),
+                        sloped: Some(name.to_string()),
+                    });
+                    limit += step;
                 }
             }
         }
-        heights.sort_by(f64::total_cmp);
-        let mut out: Vec<f64> = Vec::new();
-        for z in heights {
-            if out.last().is_none_or(|&last| z - last >= FLAT) {
-                out.push(z);
-            }
-        }
-        out
+        levels.sort_by(|a, b| a.limit.total_cmp(&b.limit));
+        levels
     }
 
     /// The height limits the case puts over the pocket `pocket` (the board's outline, from
     /// [`PlacedCase::section`] at the board's plane): where a part would meet the case if it
     /// stood tall enough, from the lowest underside up.
     ///
-    /// Every flat face above the board's top face is a height at which an underside may be. The
-    /// plane just above it cuts the material there: each curve of material with a part of the
-    /// pocket under it that nothing stands in from the board's top face (a post through the
-    /// board is a cutout, not a limit) is a limit of that height over the curve's box, cut
-    /// to the pocket's. A limit whose box lies in a lower one is left out. A box is the
-    /// curve's bounding box taken outward to 0.05 mm, so a shape that is not a rectangle
-    /// limits more than it covers, and an underside that is not flat (a dome, a slope) is not
-    /// read.
-    pub fn ceilings(&self, pocket: &[[f64; 2]]) -> Ceilings {
+    /// The plane just above a flat face above the board's top face, and the planes a step
+    /// (`step` mm) apart through the heights a sloped face spans, cut the material there: each
+    /// curve of material with a part of the pocket under it that nothing stands in from the
+    /// board's top face (a post through the board is a cutout, not a limit) is a limit of the
+    /// level's height over the region the curve bounds (holes left out). A region is covered
+    /// by rectangles taken outward to 0.05 mm: one for a rectangle, one for each part of an L
+    /// or a notched shape, a slab of at most `step` mm for a curve, so a round underside is
+    /// limited a little more than it covers, not over its box. A limit whose rectangle lies in
+    /// one of the same height or a lower one is left out. A slope is limited by its steps: over a step the underside is
+    /// no lower than the limit and up to `step` mm higher, and a feature thinner than a step
+    /// is not seen.
+    pub fn ceilings(&self, pocket: &[[f64; 2]], step: f64) -> Ceilings {
         let mut skipped = Vec::new();
         let mut zones: Vec<Ceiling> = Vec::new();
         let base = match self.section(BOARD_TOP) {
@@ -312,15 +412,22 @@ impl PlacedCase {
             }
         };
         let (plo, phi) = bounds(pocket);
-        for height in self.flat_heights() {
-            let rings = match self.section(height + ABOVE) {
+        let down = |v: f64, least: f64| nm(((v / GRID + 1e-6).floor() * GRID).max(least));
+        let up = |v: f64, most: f64| nm(((v / GRID - 1e-6).ceil() * GRID).min(most));
+        for level in self.levels(step) {
+            let height = level.limit;
+            let rings = match self.section(level.plane) {
                 Ok(r) => r,
                 Err(e) => {
                     skipped.push(e);
                     continue;
                 }
             };
-            for ring in rings.iter().filter(|r| r.depth % 2 == 0) {
+            let only = level.sloped.as_deref();
+            for ring in rings
+                .iter()
+                .filter(|r| r.depth % 2 == 0 && only.is_none_or(|n| r.solid == n))
+            {
                 // The curves just inside it: the holes of this curve's material.
                 let holes: Vec<&Ring> = rings
                     .iter()
@@ -355,29 +462,55 @@ impl PlacedCase {
                 if under == 0 || standing == under {
                     continue;
                 }
-                let lower = zones.iter().any(|z| {
-                    z.height < height
-                        && z.lo[0] <= lo[0] + 1e-3
-                        && z.lo[1] <= lo[1] + 1e-3
-                        && z.hi[0] >= hi[0] - 1e-3
-                        && z.hi[1] >= hi[1] - 1e-3
-                });
-                if !lower {
-                    let down =
-                        |v: f64, least: f64| nm(((v / GRID + 1e-6).floor() * GRID).max(least));
-                    let up = |v: f64, most: f64| nm(((v / GRID - 1e-6).ceil() * GRID).min(most));
-                    zones.push(Ceiling {
-                        height,
-                        lo: [down(lo[0], plo[0]), down(lo[1], plo[1])],
-                        hi: [up(hi[0], phi[0]), up(hi[1], phi[1])],
-                        solid: ring.solid.clone(),
+                let mut region: Vec<&[[f64; 2]]> = vec![&ring.points];
+                region.extend(holes.iter().map(|h| h.points.as_slice()));
+                let rects: Vec<cover::Rect> = cover::rectangles(&region, lo, hi, step)
+                    .into_iter()
+                    .map(|(a, b)| {
+                        (
+                            [down(a[0], plo[0]), down(a[1], plo[1])],
+                            [up(b[0], phi[0]), up(b[1], phi[1])],
+                        )
+                    })
+                    .collect();
+                for (rlo, rhi) in cover::join(rects) {
+                    let lower = zones.iter().any(|z| {
+                        z.height <= height
+                            && z.lo[0] <= rlo[0] + 1e-3
+                            && z.lo[1] <= rlo[1] + 1e-3
+                            && z.hi[0] >= rhi[0] - 1e-3
+                            && z.hi[1] >= rhi[1] - 1e-3
                     });
+                    if !lower {
+                        zones.push(Ceiling {
+                            height,
+                            lo: rlo,
+                            hi: rhi,
+                            solid: ring.solid.clone(),
+                            sloped: level.sloped.is_some(),
+                        });
+                    }
                 }
             }
         }
         Ceilings { zones, skipped }
     }
+
+    /// The height limits the case puts under the board, for the parts on its bottom face: the
+    /// same as [`PlacedCase::ceilings`] of the case seen from below, so each height is from the
+    /// board's bottom face (`thickness` mm below its top face) down to the top of the floor, a
+    /// rib or a boss standing under the pocket. A post that stands from there up to the board is
+    /// not a limit.
+    pub fn ceilings_below(&self, pocket: &[[f64; 2]], thickness: f64, step: f64) -> Ceilings {
+        let mut found = self.mirrored(thickness).ceilings(pocket, step);
+        for e in &mut found.skipped {
+            let SectionError::Open { z, .. } = e;
+            *z = nm(-thickness - *z);
+        }
+        found
+    }
 }
 
+mod cover;
 #[cfg(test)]
 mod tests;

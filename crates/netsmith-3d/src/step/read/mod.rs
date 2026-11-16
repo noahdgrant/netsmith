@@ -55,6 +55,12 @@ pub(crate) fn case_lid_step() -> String {
     fixtures::case_lid()
 }
 
+/// The invented case with shaped undersides and a floor, as STEP text.
+#[cfg(test)]
+pub(crate) fn case_shaped_step() -> String {
+    fixtures::case_shaped()
+}
+
 pub(crate) use model::{Model, Rgb};
 pub(crate) use part21::{Exchange, ParseError};
 pub(crate) use tessellate::CHORD_TOLERANCE;
