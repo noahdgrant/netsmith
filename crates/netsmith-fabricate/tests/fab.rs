@@ -1006,7 +1006,7 @@ fn fab_says_which_stage_it_is_in_so_that_a_long_run_is_not_silent() {
     let said = PROGRESS.lock().unwrap().join("\n");
     assert!(said.contains("LedExample: placing 3 parts"), "{said}");
     assert!(said.contains("placed on a "), "{said}");
-    assert!(said.contains("routing 3 connections"), "{said}");
+    assert!(said.contains("LedExample: routing: 3 connections"), "{said}");
 }
 
 #[test]
