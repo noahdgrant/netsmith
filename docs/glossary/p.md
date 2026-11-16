@@ -24,13 +24,13 @@ _Avoid_: Component, device
 What a part's own relations on a field bound, written as `>=` and `<=` with values (`.vin.voltage >= 3V`, `<= 65V`): the lowest lower bound and the highest upper bound. The solver starts a circle of values only inside it; a state below it is the part switched off, which its equations do not describe (ADR 0053, proposed).
 _Avoid_: Operating domain, valid range, working window
 
-**Parts file**:
-`reference/parts.toml` of a ported board: the original's reference designator of each part of the design, by the part's member path (`[parts]`, `"usb_uart.receptacle" = "J1"`, #456). The nets proof of the port's tests names the design's parts as the original does by it, and `netsmith parity` pairs the original's parts with the board `fab` wrote by it and the member path `fab` writes on each footprint as a hidden property (`netsmith_path`). A member renamed in the source is renamed in the file; nothing else maps designators.
-_Avoid_: designator map, `designators.toml` (the map of the fab board's designators that it replaced, which went stale when a member was renamed or a part was added ahead of another)
-
 **Partial mate**:
 A _Mate_ that joins only some contacts of a connector, such as a 1x8 header in contacts 3 to 10 of a 1x10 socket. The system says which with the connector's `.mating.contacts` (`.carrier.slot.mating.contacts &= 3..10`); contact k of one side's subset meets contact k of the other's, the rest stay free, and every check of the mate reads the subset (issue #792).
 _Avoid_: Offset mate, shifted header
+
+**Parts file**:
+`reference/parts.toml` of a ported board: the original's reference designator of each part of the design, by the part's member path (`[parts]`, `"usb_uart.receptacle" = "J1"`, #456). The nets proof of the port's tests names the design's parts as the original does by it, and `netsmith parity` pairs the original's parts with the board `fab` wrote by it and the member path `fab` writes on each footprint as a hidden property (`netsmith_path`). A member renamed in the source is renamed in the file; nothing else maps designators.
+_Avoid_: designator map, `designators.toml` (the map of the fab board's designators that it replaced, which went stale when a member was renamed or a part was added ahead of another)
 
 **Pass-through**:
 A role that an interface has no `lines` for, such as `UsbRole::Passthrough`, which a receptacle (`std::parts::connector::UsbC2`) states: the bus goes through the part, so it is not an end of the bus and the role is the one of the end behind it. It has no table to judge, counts toward no limit, satisfies the `bus role` guideline, and the guideline and the note name the end behind it that states no role, never the pass-through (ADR 0064, section 10). A **Role** that is an end of the bus has `lines`.
