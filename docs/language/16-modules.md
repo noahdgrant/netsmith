@@ -91,6 +91,33 @@ error: `r1` is inside `Stage` and is not part of its interface: only narrowing (
    |            ^^
 ```
 
+A relation that only checks, a bound the board puts on a value inside, is refused as well: it is a rule the module's author did not write. A requirement of the board that needs a number inside a module is a bound on a value the module declares, and a module that has such a number reads it out as a member (`.r_value: Resistance` with `.r_value == .r1.resistance`), as `Buck` reads out its IC's `.max_input_voltage` (_Switching regulators_ in the chapter on standard parts):
+
+```nsm evaluate
+import std::parts::passive::Resistor
+import std::sources::Rail
+
+module Stage {
+    .supply: Rail
+    .r1: Resistor
+    .supply.pos ~> .r1 ~> .supply.neg
+    /// The resistance of `r1`, read out for a bound the user states.
+    .r_value: Resistance
+    .r_value == .r1.resistance
+}
+
+board Bounded {
+    .input: Rail {
+        .voltage &= 5V +/- 5%
+        .pos.net &= "VCC"
+        .neg.net &= "GND"
+    }
+    .stage: Stage { .r1.resistance &= 10kohm +/- 1% }
+    .input ~ .stage.supply
+    .stage.r_value >= 1kohm
+}
+```
+
 A join reaches inside no more than a relation does:
 
 ```nsm fails

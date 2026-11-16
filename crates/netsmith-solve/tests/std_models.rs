@@ -582,6 +582,35 @@ fn the_buck_stage_states_the_current_its_divider_draws() {
     assert!(i.lo() > 0.0 && i.hi() < 1e-3, "{i}");
 }
 
+#[test]
+fn a_board_bounds_its_input_by_the_ics_maximum_read_out_of_the_buck_stage() {
+    // The stage reads the IC's maximum input out (issue #747): a requirement of the board,
+    // the input's peak 20 % under it, is written without the IC's 6 V.
+    let s = run(&converter(&guide_ic(), "0mA..1A", ""));
+    let max = range(&s, "stage.max_input_voltage");
+    assert!((max.lo() - 6.0).abs() < 1e-9 && (max.hi() - 6.0).abs() < 1e-9, "{max}");
+
+    let held = converter(
+        &guide_ic(),
+        "0mA..1A",
+        "    .input.peak &= 5.5V\n    .input.peak <= .stage.max_input_voltage * 0.95\n",
+    );
+    let s = run(&held);
+    assert!(messages(&s).is_empty(), "{:?}", messages(&s));
+
+    let refused = converter(
+        &guide_ic(),
+        "0mA..1A",
+        "    .input.peak &= 5.5V\n    .input.peak <= .stage.max_input_voltage * 0.8\n",
+    );
+    let m = messages(&run(&refused));
+    assert!(
+        m.iter()
+            .any(|m| m.contains("input.peak must always be at most") && m.contains("4.8V")),
+        "{m:#?}"
+    );
+}
+
 /// The current through `stage.divider`, which must lie inside `lo..hi` amperes.
 fn assert_divider_current_within(s: &Solution, lo: f64, hi: f64) {
     let i = range(s, "stage.divider.current");
