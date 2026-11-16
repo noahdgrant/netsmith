@@ -49,16 +49,24 @@ fn least_gap(board: &Board, net: &str) -> f64 {
 
 #[test]
 fn nets_kept_further_route_completely_keep_their_clearance_and_pass_the_check() {
-    let mut board = synthetic_board(4, 40, 8, 8, 20, 20);
-    let kept: Vec<String> = board
-        .nets
-        .iter()
-        .filter(|n| n.name.starts_with('S'))
-        .step_by(4)
-        .take(4)
-        .map(|n| n.name.clone())
-        .collect();
-    assert_eq!(kept.len(), 4);
+    let mut board = synthetic_board(3, 40, 8, 8, 20, 20);
+    // Four signal nets off the fine-pitch package (whose pads are nearer each other than the
+    // clearance): `S23`, which the router packs nearer than 0.4 mm to another net's track when
+    // nothing keeps it further, and the first three others.
+    let off_package = |n: &&netsmith_pcb::BoardNet| {
+        n.name.starts_with('S') && !n.pads.iter().any(|p| p.refdes.starts_with('U'))
+    };
+    let mut kept: Vec<String> = vec!["S23".to_string()];
+    kept.extend(
+        board
+            .nets
+            .iter()
+            .filter(off_package)
+            .map(|n| n.name.clone())
+            .filter(|n| n != "S23")
+            .take(3),
+    );
+    assert!(kept.iter().all(|k| board.nets.iter().any(|n| n.name == *k)));
     for net in &kept {
         board.net_clearances.push((net.clone(), 0.4));
     }
@@ -72,10 +80,11 @@ fn nets_kept_further_route_completely_keep_their_clearance_and_pass_the_check() 
     blind.net_clearances.clear();
     route_with(&mut blind, RouteOptions::default());
     blind.net_clearances = board.net_clearances.clone();
-    let broken = errors(&blind);
+    let gaps: Vec<f64> = kept.iter().map(|n| least_gap(&blind, n)).collect();
+    eprintln!("routed blind, the least gaps of {kept:?}: {gaps:?}");
     assert!(
-        broken.iter().any(|e| e.contains("[clearance]")),
-        "the clearance changed nothing: {broken:?}"
+        gaps.iter().any(|&g| g < 0.4 - 1e-6),
+        "the clearance changed nothing: {gaps:?}"
     );
     let routing = route_with(&mut board, RouteOptions::default());
     assert!(routing.left.is_empty(), "{:?}", routing.left.lines);
@@ -85,3 +94,4 @@ fn nets_kept_further_route_completely_keep_their_clearance_and_pass_the_check() 
         assert!(gap >= 0.4 - 1e-6, "{net}: {gap} mm from another net's track");
     }
 }
+

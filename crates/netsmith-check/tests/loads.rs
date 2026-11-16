@@ -103,8 +103,8 @@ fn a_capacitor_draws_nothing_at_dc() {
     assert!(!all.iter().any(|t| t.contains("cap")), "{all:?}");
     // The decoupling chains have no current to count and add no equality: only the four joins of rails, which tie a voltage, a peak
     // voltage, a reverse peak (ADR 0091), the most current the source gives at an instant (issue
-    // #750), a track width and the `.isolated` mark (issue #793) each.
-    assert_eq!(m.equalities().len(), 24);
+    // #750), a track width, a clearance (issue #758) and the `.isolated` mark (issue #793) each.
+    assert_eq!(m.equalities().len(), 28);
     // The same on a board of its own: the chain has a part, and no balance gets a term.
     let m = board("    .bypass: Capacitor\n    .supply.pos ~> .bypass ~> .supply.neg\n");
     assert_eq!(terms(&m, "", "V").unwrap(), ["supply.current"]);
