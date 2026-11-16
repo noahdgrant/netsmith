@@ -921,7 +921,7 @@ body: PcbBox,
  */
 height: number | null, pads: Array<PcbPad>, };
 
-export type KeepoutOrigin = "source" | "placed" | "drawn" | "part";
+export type KeepoutOrigin = "source" | "placed" | "drawn" | "stated" | "part";
 
 export type PcbKeepout = { name: string, origin: KeepoutOrigin, 
 /**
