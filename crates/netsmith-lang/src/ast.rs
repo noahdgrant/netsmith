@@ -50,7 +50,9 @@ pub struct Support {
 /// `defaults { Resistor.package ?= "0402" }`: values a board offers to every part or module of
 /// a kind on it that states nothing on the field (issue #625). Each item is a `?=` statement
 /// whose left side names a kind and one of its fields; the checker refuses anything else. Only
-/// a board may hold one.
+/// a board may hold one. The field is a value the kind declares, or the built-in `.assembly` of
+/// every part (issue #847: `Resistor.assembly ?= AssemblyMode::Hand`, still an offer that a
+/// statement on the part replaces); the other built-in members (`.mpn`) are not offered.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Defaults {
     pub items: Vec<Item>,

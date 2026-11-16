@@ -71,6 +71,7 @@ Where the value comes from, weakest first (ADR 0028 amends ADR 0024):
 | 2 | The project's default, `assembly = "fab"`, `"hand"`, `"none"` or `"consigned"` under `[project]` in `netsmith.toml`. It is for every part of every board that nothing below speaks for. |
 | 3 | The part kind's own statement: `MountingHole`, `PlatedHole`, `Fiducial`, `TestPoint` and `ProgrammingPads6` are `None`, and neither the project nor a board can change that. |
 | 4 | The catalog file's optional `assembly` column: the picked row's value. |
+| 4a | A line of the board's `defaults` block, `Resistor.assembly ?= AssemblyMode::Hand` (issue #847, below): an offer for every part of the kind on the board, or inside its modules, that no statement on the part's own `.assembly` speaks for. It beats rows 1, 2 and 4, and gives way to any `&=` or `?=` on the part, so to rows 3 and 5. |
 | 5 | The board narrowing it on a part it owns: `.assembly &= AssemblyMode::Hand`; or narrowing the value that a module offers for its parts (below). |
 
 The manifest and the catalog files are not source text, so they write the variant as a lower-case word (`"fab"`, `"hand"`, `"none"`, `"consigned"`); in `.nsm` it is always the variant.
@@ -81,7 +82,7 @@ name = "blink"
 assembly = "fab"
 ```
 
-With that manifest the header of the example below is placed by the board house too, and a board that wants one part by hand still says so on the part. Rows 3 and 5 are one field, so a board that contradicts a kind gets the usual empty-intersection error. There is no per-board default: the project has one, and a part says otherwise on itself. A word that is not one of the four variants is refused where it is written (see Enums, below). A part marked `Hand` or `None` still counts in the solver and in the current balance.
+With that manifest the header of the example below is placed by the board house too, and a board that wants one part by hand still says so on the part. Rows 3 and 5 are one field, so a board that contradicts a kind gets the usual empty-intersection error. The project has one default for every board; a board that wants its own for a kind of part says it in its `defaults` block (below), and a part says otherwise on itself. A word that is not one of the four variants is refused where it is written (see Enums, below). A part marked `Hand` or `None` still counts in the solver and in the current balance.
 
 ```nsm
 import std::parts::connector::Header1x2
@@ -98,6 +99,30 @@ board Assembly {
     }
 }
 ```
+
+**One choice for every part of a kind.** A board that solders all its resistors by hand, or ships all its connectors to the board house, says so once in its `defaults` block (ADR 0128), as it does for a package (see _Defaults for every part of a kind_ in chapter 7). `.assembly` is a built-in member of every part and a value of the type `AssemblyMode`, and a line may offer it to a part or a generic:
+
+```nsm
+import std::parts::connector::Header1x2
+import std::parts::passive::{Resistor, Led}
+
+board DefaultAssembly {
+    defaults {
+        Resistor.assembly ?= AssemblyMode::Hand
+    }
+    /// By hand, from the line.
+    .r1: Resistor
+    /// The board house, because this part says so itself.
+    .r2: Resistor {
+        .assembly &= AssemblyMode::Fab
+    }
+    /// The line is for resistors and not for LEDs.
+    .d1: Led
+    .j1: Header1x2
+}
+```
+
+The line is an offer (ADR 0051): a `&=` or a `?=` on a part's `.assembly` replaces it for that part, as does anything a kind states of itself (`MountingHole`, `Fiducial`, `TestPoint` and the others of row 3 are fitted by nobody whatever a line says; a line that reaches only such parts is a note that it reaches nothing). It is a statement of the design, so, like a `?=` on the part, it wins over the project's default, the catalog row and the built-in rule (a through-hole header is `Hand` unless a line or a statement says otherwise). A module has no `.assembly` of its own: `Lamp.assembly ?= ...` is refused, and a module that offers `.assembly_mode` (below) takes `Lamp.assembly_mode ?= AssemblyMode::Hand`. Of the other built-in members only `.assembly` is a value a line may offer: `.mpn` and `.lcsc` name one catalog row, so a board states them on the part.
 
 A part that the board house is to assemble from its stock (`AssemblyMode::Fab`; a consigned part is the exception) must have a supplier part number, an `lcsc` in its catalog row. `fab` checks that before it places or routes anything, and refuses with all the parts that have none in one message: each reference designator, its path, what its row says (the manufacturer's number), and what to write and where. There is no flag for it: the design says who does not assemble the part, with `.assembly &= AssemblyMode::Hand` (or `AssemblyMode::None`, or `AssemblyMode::Consigned` if you ship the part to the board house) on the part in the board, in the module's definition for a part inside a module, or in the `assembly` column of the part's own catalog row. The part is then out of `bom.csv` and `cpl.csv`, and `fab-notes.txt` lists it under `hand-solder:` and, if its catalog row has a manufacturer's number and no `lcsc`, in a line saying the board house does not assemble it and that you buy it yourself. `--allow-drc-violations` does not waive this.
 

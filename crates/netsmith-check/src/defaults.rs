@@ -3,8 +3,8 @@
 //! the field.
 //!
 //! A line is checked where it is written: the kind is a part, a module or a generic in scope,
-//! the field is a value it declares (or a generic it provides declares), and the value is one
-//! the field holds. When every statement of the board has been read, and before the defaults
+//! the field is a value it declares (or a generic it provides declares, or the built-in
+//! `.assembly` of a part, issue #847), and the value is one the field holds. When every statement of the board has been read, and before the defaults
 //! of ADR 0051 are settled, each line becomes a pending default of each field it reaches. It
 //! gives way to anything a statement says of the field: a `&=` or a `?=` on it, or on a field
 //! that `==` or a join makes equal to it. A line that reaches no field is a note.
@@ -139,6 +139,17 @@ impl Checker<'_> {
         }
         let (kind_id, field_id) = (&path.segments[0], &path.segments[1]);
         let kind = self.default_kind(kind_id)?;
+        if field_id.name == "assembly" && self.modules[kind.0].defs[kind.1].kind == DefKind::Module
+        {
+            self.error(
+                field_id.span,
+                format!(
+                    "`{}` is a module, and a module has no `.assembly`: its parts do. Name a part or a generic (`Resistor.assembly ?= AssemblyMode::Hand`), or, if the module offers `.assembly_mode`, that value",
+                    kind_id.name
+                ),
+            );
+            return None;
+        }
         let fields = self.value_members(kind);
         let Some(&(_, declared)) = fields.iter().find(|(n, _)| *n == field_id.name) else {
             let kind_name = &kind_id.name;
@@ -275,11 +286,19 @@ impl Checker<'_> {
 
     /// The value members a kind declares, with their types: its own, then those of the
     /// generics it provides. A member whose type is not a value (a pin, an interface, a part)
-    /// is left out.
+    /// is left out. Of the built-in members of every part only `.assembly` is a value a line
+    /// may offer (issue #847): who assembles a part is a choice a board makes for a kind, and
+    /// `.mpn` and the others name one row or one part.
     fn value_members(&mut self, kind: (usize, usize)) -> Vec<(String, Declared)> {
         let def = self.modules[kind.0].defs[kind.1].clone();
         let mut out = Vec::new();
         self.collect_values(kind.0, &def, &mut out);
+        if matches!(def.kind, DefKind::Part | DefKind::Generic) {
+            let (m, i) = self
+                .prelude_def("AssemblyMode")
+                .expect("the prelude defines AssemblyMode");
+            out.push(("assembly".to_string(), Declared::Enum(m, i)));
+        }
         let saved = self.enter_def(kind);
         let provided = self.provided(&def);
         self.leave_def(saved);

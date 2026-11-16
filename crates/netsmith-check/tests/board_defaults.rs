@@ -362,3 +362,100 @@ board B {
         Some("Twin.package ?= \"SOT23\"")
     );
 }
+
+#[test]
+fn a_line_may_offer_who_assembles_the_parts_of_a_kind() {
+    // `.assembly` is a member of every part and not one it declares, and a line may offer it
+    // (issue #847): a statement on it anywhere, `&=` or `?=`, replaces the line.
+    let c = run(&board(
+        "        Resistor.assembly ?= AssemblyMode::Hand",
+        "    .r1: Resistor\n    .r2: Resistor { .assembly &= AssemblyMode::Fab }\n    .r3: Resistor { .assembly ?= AssemblyMode::Consigned }\n    .stage: Stage\n    .c1: Capacitor",
+    ));
+    assert!(c.is_ok(), "{}", c.render());
+    assert_eq!(text(&c, "r1.assembly").as_deref(), Some("Hand"));
+    assert_eq!(text(&c, "r2.assembly").as_deref(), Some("Fab"));
+    assert_eq!(text(&c, "r3.assembly").as_deref(), Some("Consigned"));
+    // Inside a module, and not a capacitor.
+    assert_eq!(text(&c, "stage.r.assembly").as_deref(), Some("Hand"));
+    assert_eq!(text(&c, "stage.c.assembly"), None);
+    assert_eq!(text(&c, "c1.assembly"), None);
+}
+
+#[test]
+fn a_line_for_assembly_gives_way_to_what_a_kind_states_of_itself() {
+    // A test point is fitted by nobody (`&= AssemblyMode::None` in std); no line changes that,
+    // and the line says so as a note when it reaches nothing else.
+    let c = run(
+        "import std::parts::mechanical::TestPoint\nimport std::sources::Rail\n\nboard B {\n    defaults {\n        TestPoint.assembly ?= AssemblyMode::Fab\n    }\n    .src: Rail { .voltage &= 3V }\n    .tp: TestPoint\n    .tp.p1 ~ .src.pos\n}\n",
+    );
+    assert!(c.is_ok(), "{}", c.render());
+    assert_eq!(text(&c, "tp.assembly").as_deref(), Some("None"));
+    assert_eq!(
+        notes(&c),
+        ["the default for `TestPoint.assembly` reaches nothing: every `TestPoint` on the board states `.assembly` itself"]
+    );
+}
+
+#[test]
+fn a_line_for_assembly_names_a_variant_the_enum_has() {
+    let c = run(&board(
+        "        Resistor.assembly ?= AssemblyMode::Solder",
+        "    .r1: Resistor",
+    ));
+    assert_eq!(c.diagnostics.len(), 1, "{}", c.render());
+    assert!(
+        messages(&c)[0].contains("Solder") && messages(&c)[0].contains("Hand"),
+        "{}",
+        c.render()
+    );
+    let c = run(&board("        Resistor.assembly ?= \"hand\"", "    .r1: Resistor"));
+    assert_eq!(c.diagnostics.len(), 1, "{}", c.render());
+}
+
+#[test]
+fn a_module_has_no_assembly_to_offer_but_its_value_is_one() {
+    let c = run(&board(
+        "        Stage.assembly ?= AssemblyMode::Hand",
+        "    .stage: Stage",
+    ));
+    assert_eq!(
+        messages(&c),
+        ["`Stage` is a module, and a module has no `.assembly`: its parts do. Name a part or a generic (`Resistor.assembly ?= AssemblyMode::Hand`), or, if the module offers `.assembly_mode`, that value"]
+    );
+    let src = "\
+import std::parts::passive::Resistor
+
+module Lamp {
+    .assembly_mode: AssemblyMode
+    .r: Resistor
+    .r.assembly &= .assembly_mode
+}
+
+board B {
+    defaults {
+        Lamp.assembly_mode ?= AssemblyMode::Hand
+    }
+    .lamp: Lamp
+}
+";
+    let c = run(src);
+    assert!(c.is_ok(), "{}", c.render());
+    // The module's tie carries it to the part (the solver settles that relation).
+    assert_eq!(text(&c, "lamp.assembly_mode").as_deref(), Some("Hand"));
+}
+
+#[test]
+fn the_other_built_in_members_are_no_value_a_line_offers() {
+    for field in ["mpn", "lcsc", "designator", "height"] {
+        let c = run(&board(
+            &format!("        Resistor.{field} ?= \"x\""),
+            "    .r1: Resistor",
+        ));
+        assert_eq!(c.diagnostics.len(), 1, "{field}: {}", c.render());
+        assert!(
+            messages(&c)[0].starts_with(&format!("`Resistor` declares no value `{field}`")),
+            "{}",
+            c.render()
+        );
+    }
+}
