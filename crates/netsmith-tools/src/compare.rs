@@ -205,8 +205,14 @@ fn design_of(path: &str, board: Option<&str>) -> Result<(Design, Mapping), Strin
     let built = outcome_with(path, &text, &loader, catalogs, None)
         .map_err(|problems| render_problems(&problems))?
         .boards;
-    let mapping = Mapping::for_project(target.project.as_ref().map(|p| p.root.as_path()))
-        .map_err(|e| e.to_string())?;
+    let mapping = Mapping::for_project_with(
+        target.project.as_ref().map(|p| p.root.as_path()),
+        &match &target.project {
+            Some(project) => project.kicad_folders()?,
+            None => Vec::new(),
+        },
+    )
+    .map_err(|e| e.to_string())?;
     let labels = || {
         built
             .iter()

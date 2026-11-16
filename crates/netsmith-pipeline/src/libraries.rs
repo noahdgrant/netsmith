@@ -228,6 +228,22 @@ impl Libraries {
         Libraries::for_project_by(root, &Search::machine())
     }
 
+    /// [`Libraries::for_project`], with the `kicad.toml` of each dependency of the project too:
+    /// its folder and the name messages give the file (`../shared/kicad.toml`), issue #1012.
+    pub fn for_project_with(
+        root: Option<&Path>,
+        dependencies: &[(std::path::PathBuf, String)],
+    ) -> Result<Libraries, String> {
+        let mapping = Mapping::for_project_with(root, dependencies).map_err(|e| e.to_string())?;
+        check_generated_footprints(&mapping)?;
+        let search = Search::machine();
+        Ok(Libraries::with_mapping(
+            mapping,
+            SymbolLib::installed_by(&search),
+            FootprintLibrary::installed_by(&search),
+        ))
+    }
+
     /// [`Libraries::for_project`] over another machine (`Search::under` an empty folder is
     /// one with no KiCad), for tests.
     pub fn for_project_by(root: Option<&Path>, search: &Search) -> Result<Libraries, String> {

@@ -56,7 +56,7 @@ pub struct Entry {
 
 impl Workspace {
     /// Every file the editor knows, in tree order: the top-level files, the modules, the
-    /// manifest and the standard library.
+    /// dependencies' modules, the manifest and the standard library.
     fn entries(&self) -> Vec<Entry> {
         let mut entries: Vec<Entry> = self
             .target()
@@ -84,6 +84,18 @@ impl Workspace {
                     fs: Some(module.path.clone()),
                     embedded: None,
                     readonly: false,
+                });
+            }
+            // The modules of the dependencies, named as messages name them
+            // (`../shared/src/power.nsm`, or `shared@0123456789ab/src/power.nsm` for one by
+            // `git`), read-only: they are changed in their own project (issue #1012).
+            for (module, name) in project.dependency_modules().unwrap_or_default() {
+                entries.push(Entry {
+                    path: name,
+                    role: FileRole::Dependency,
+                    fs: Some(module.path),
+                    embedded: None,
+                    readonly: true,
                 });
             }
             entries.push(Entry {

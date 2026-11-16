@@ -1006,3 +1006,57 @@ fn a_requirement_can_be_added_to_a_named_environment_that_offers_none() {
     let b = build(&named("    .environment: Industrial { }\n"), &jlcpcb()).unwrap();
     assert!(qualification_findings(&b).is_empty());
 }
+
+#[test]
+fn the_manifest_may_name_the_environment_of_a_dependency_by_its_module() {
+    // The project of `project()`, with `Automotive` in another project's `src/env.nsm`, which
+    // the manifest names as `shared::env::Automotive` (issue #1012).
+    let main = board("");
+    let root = TempDir::new("environment-test-dependency");
+    let app = root.join("app");
+    fs::create_dir_all(app.join("src")).unwrap();
+    fs::create_dir_all(app.join("catalogs")).unwrap();
+    fs::create_dir_all(root.join("shared/src")).unwrap();
+    fs::write(
+        root.join("shared/netsmith.toml"),
+        "[project]\nname = \"shared\"\ntop_level = []\n",
+    )
+    .unwrap();
+    fs::write(root.join("shared/src/env.nsm"), VEHICLE).unwrap();
+    fs::write(
+        app.join("netsmith.toml"),
+        "[project]\nname = \"widget\"\nenvironment = \"shared::env::Automotive\"\n\n[dependencies]\nshared = { path = \"../shared\" }\n",
+    )
+    .unwrap();
+    fs::write(app.join("src/main.nsm"), &main).unwrap();
+    fs::write(app.join("catalogs/resistor.csv"), UNJUDGED_ROW).unwrap();
+    let target = Target::resolve_from(&app, None).unwrap();
+    let loader = target.loader().unwrap();
+    let catalogs = target.catalogs().unwrap();
+    let b = outcome_with("src/main.nsm", &main, &loader, &catalogs, None)
+        .map(|o| o.boards.into_iter().next().expect("one board"))
+        .map_err(|problems| render_problems(&problems))
+        .unwrap();
+    let findings = environment_findings(&b);
+    assert_eq!(findings.len(), 1, "{findings:#?}");
+    assert!(
+        findings[0].contains("233.15 K to 358.15 K (-40degC to 85degC)"),
+        "{}",
+        findings[0]
+    );
+    // A module the dependency does not have is named.
+    fs::write(
+        app.join("netsmith.toml"),
+        "[project]\nname = \"widget\"\nenvironment = \"shared::nope::Automotive\"\n\n[dependencies]\nshared = { path = \"../shared\" }\n",
+    )
+    .unwrap();
+    let e = Target::resolve_from(&app, None)
+        .unwrap()
+        .loader()
+        .map(|_| ())
+        .unwrap_err();
+    assert!(
+        e.contains("names the module `shared::nope`") && e.contains("a module of a dependency"),
+        "{e}"
+    );
+}

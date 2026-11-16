@@ -447,6 +447,27 @@ impl Mapping {
         standard.merged(Mapping::parse(&text, PROJECT_FILE, dir)?)
     }
 
+    /// [`Mapping::for_project`], and the `kicad.toml` of each dependency of the project (issue
+    /// #1012): each folder with the name messages give its file (`../shared/kicad.toml`). A
+    /// dependency's rows and libraries are merged as the project's are, so a (part, package) pair
+    /// or a library name that two of the files both have is an error that names both.
+    pub fn for_project_with(
+        project: Option<&Path>,
+        dependencies: &[(PathBuf, String)],
+    ) -> Result<Mapping, MapError> {
+        let mut mapping = Mapping::for_project(project)?;
+        for (dir, shown) in dependencies {
+            let file = dir.join(PROJECT_FILE);
+            if !file.is_file() {
+                continue;
+            }
+            let text = std::fs::read_to_string(&file)
+                .map_err(|e| MapError::Invalid(format!("{shown}: {e}")))?;
+            mapping = mapping.merged(Mapping::parse(&text, shown, dir)?)?;
+        }
+        Ok(mapping)
+    }
+
     /// The project's own libraries.
     pub fn libraries(&self) -> &[ProjectLibrary] {
         &self.libraries

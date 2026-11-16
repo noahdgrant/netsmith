@@ -134,7 +134,7 @@ findings: Array<HintFindingInfo>,
  */
 version: bigint, };
 
-export type FileRole = "top_level" | "module" | "std" | "manifest" | "physical" | "schematic_layout";
+export type FileRole = "top_level" | "module" | "dependency" | "std" | "manifest" | "physical" | "schematic_layout";
 
 export type Def = { kind: string, name: string, line: number, 
 /**

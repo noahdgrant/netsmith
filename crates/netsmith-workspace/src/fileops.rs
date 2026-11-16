@@ -285,6 +285,11 @@ impl Workspace {
                         "`{MANIFEST}` is the project's manifest: edit it outside the editor"
                     )));
                 }
+                FileRole::Dependency => {
+                    return Err(leaves(format!(
+                        "`{path}` is a file of a dependency, another project: change it in that project"
+                    )));
+                }
                 FileRole::Std => {
                     return Err(leaves(format!(
                         "`{path}` is part of the standard library, which is built into netsmith"

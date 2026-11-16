@@ -132,6 +132,11 @@ pub(super) fn run_build(run: &BuildRun) -> ExitCode {
         Ok(t) => t,
         Err(code) => return code,
     };
+    if run.write
+        && let Err(code) = common::write_dependency_lock(&target)
+    {
+        return code;
+    }
     // The solved file says why each row was taken or passed over, which the solver records only
     // when asked (issue #744).
     let catalogs = catalogs.with_explain(run.emit_solved.is_some());

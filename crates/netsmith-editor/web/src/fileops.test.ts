@@ -16,7 +16,7 @@ import { buildTree, filesOf, revealScroll, type FolderNode, type Node, type Sect
 const file = (path: string, role: FileRole = 'module', ...kinds: string[]): TreeFile => ({
   path,
   role,
-  readonly: role === 'std' || role === 'manifest',
+  readonly: role === 'std' || role === 'manifest' || role === 'dependency',
   defs: kinds.map((kind, i) => ({ kind, name: `${kind}${i}`, line: 1 })),
 });
 
@@ -132,6 +132,7 @@ describe('where and what', () => {
     file('src/main.sch.toml', 'schematic_layout'),
     file('netsmith.toml', 'manifest'),
     file('std/bus.nsm', 'std', 'interface'),
+    file('../shared/src/rf.nsm', 'dependency', 'interface'),
   ];
   const tree = buildTree(files, ['src/empty', 'src/sheets']);
   const nodes = (): Node[] => {
@@ -183,6 +184,8 @@ describe('where and what', () => {
     expect(allowed(fileNode('src/main.sch.toml')).remove).toBeNull();
     expect(allowed(fileNode('netsmith.toml')).remove).toContain('outside the editor');
     expect(allowed(fileNode('std/bus.nsm')).rename).toContain('standard library');
+    expect(allowed(fileNode('../shared/src/rf.nsm')).remove).toContain('its own project');
+    expect(allowed(folder('../shared/src')).rename).toContain('below src/');
     expect(allowed(section('module')).rename).toContain('Select');
   });
 

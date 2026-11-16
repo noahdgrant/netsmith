@@ -42,7 +42,7 @@ Naming one file builds only that file's boards: `netsmith fab src/unit/unit.nsm`
 
 Modules are shared by importing them: `import src::modules::power::LdoStage` works from any file of the project.
 
-Modules and catalogs are shared between projects (between repositories checked out side by side, or between folders of one repository) through a `[dependencies]` table beside `[project]`: `shared = { path = "../shared" }` makes `../shared/src/power.nsm` the module `shared::power`, and the catalogs of `../shared` are read with the project's own. See _Dependencies_ in chapter 26 of the guide.
+Modules and catalogs are shared between projects (between repositories checked out side by side, or between folders of one repository) through a `[dependencies]` table beside `[project]`: `shared = { path = "../shared" }` makes `../shared/src/power.nsm` the module `shared::power`, and the catalogs of `../shared` are read with the project's own. A dependency may also be a git repository, `shared = { git = "https://example.com/shared.git", rev = "main" }` or `version = "1.2"`; the commit each was read at is kept in `dependencies.lock.toml` beside `netsmith.toml`, which is committed. See _Dependencies_ in chapter 26 of the guide.
 
 A board's physical intent (its outline, cutouts, mounting holes, keepouts and where its parts must be, ADR 0048) is in a file beside its source with the same stem and the suffix `.physical.nsm`: `src/unit/unit.nsm` has `src/unit/unit.physical.nsm`, as the layout file is `unit.pcb.toml`. The file holds `physical for Board { ... }` units, is optional, and is not a module: nothing imports it.
 

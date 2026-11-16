@@ -478,9 +478,7 @@ impl Workspace {
                 return snapshot;
             }
         };
-        let libraries = Arc::new(Libraries::for_project(
-            target.project.as_ref().map(|p| p.root.as_path()),
-        ));
+        let libraries = Arc::new(target.libraries());
         // Where the target's files are, to find the STEP models its parts are drawn from in
         // the 3D view (ADR 0108).
         let places = netsmith_fabricate::models::Places::of(&target);

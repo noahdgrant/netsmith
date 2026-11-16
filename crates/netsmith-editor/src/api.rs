@@ -182,6 +182,9 @@ pub enum FileRole {
     TopLevel,
     /// Under `src/`: imported by others.
     Module,
+    /// Under the `src/` of another project, a dependency the manifest names (issue #1012):
+    /// imported by the dependency's name, and changed in its own project, not here.
+    Dependency,
     /// The standard library, built into netsmith.
     Std,
     /// `netsmith.toml`.

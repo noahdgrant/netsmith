@@ -27,7 +27,7 @@ Only `name` is required.
 | `catalog_dirs` | The folders whose `*.csv` files are the project's own catalogs, each named by its file name (`catalogs/acme_ldo.csv` is the catalog `acme_ldo`), in addition to the standard ones. Default `["catalogs"]`; `init` writes it out. See Catalog files. |
 | `catalogs` | Optional. Single catalog files to add that are not in a `catalog_dirs` folder, each named by its catalog. See Catalog files. |
 | `assembly` | Optional. Who assembles a part nothing else speaks for: `"fab"`, `"hand"`, `"none"` or `"consigned"`. See Who assembles a part. |
-| `environment` | Optional. The environment every board has when it declares none: `"std::env::Environment"` or a definition of the project's own, `"src/vehicle.nsm::Automotive"`. See The environment of a board. |
+| `environment` | Optional. The environment every board has when it declares none: `"std::env::Environment"`, a definition of the project's own, `"src/vehicle.nsm::Automotive"`, or one of a dependency by its module, `"shared::env::Lab"` (_Dependencies_, below). See The environment of a board. |
 | `guidelines` | Optional. What a design that goes against a guideline gets: `"warn"` (the default) reports it and builds, `"error"` refuses to build. `--strict` asks for `"error"` for one run. See Track width against current, and The voltage a power track drops (a guideline of `fab`, which then stops before it writes the package). |
 | `lock` | Optional. Which source files get a pick lock (ADR 0100): `"all"`, the default, every file a command reads; `"top_level"` only the files of `top_level`, so a unit test of one part or a scratch file named on the command line has none; `"none"` no file. A source with no lock is not read for one, written one or held to one, and `lock --update` and `lock --check` skip it. See _The pick lock_ in the chapter on the shape of a board. |
 | `place_seeds` | Optional. How many seeds the placer tries for a board before it gives up: the layout file's seed (0 if it states none) and the ones after it, 8 by default; 1 tries only the file's. It must be from 1 to 32 (issue #458). The seed that places the board is written to the layout file. |
@@ -90,7 +90,7 @@ netsmith.toml:8: order `devkit` names `Unitt`, but the project has no such board
 
 ### Dependencies
 
-A project can use the modules and catalogs of another project: circuits that several products share, or the catalogs of a team (issue #68, ADR 0136, proposed). The other project is named in a `[dependencies]` table beside `[project]`, by its folder, the one that holds its `netsmith.toml`:
+A project can use the modules and catalogs of another project: circuits that several products share, or the catalogs of a team (issue #68, ADR 0136, proposed). The other project is named in a `[dependencies]` table beside `[project]`, by its folder, the one that holds its `netsmith.toml`, or by a git repository (_Dependencies by git_, below):
 
 ```toml
 [project]
@@ -114,14 +114,49 @@ work/
     └── src/unit.nsm        import shared::power::LdoStage
 ```
 
-The key of the entry is the first step of an import of the other project's modules, as `src` is of the project's own: `../shared/src/power.nsm` is the module `shared::power`, and `import shared::power::LdoStage` reads it. A file of the dependency that imports `src::parts::ldo` means its own `src/parts/ldo.nsm`, so the shared project builds the same alone and from `unit`. The dependency's catalog files (its `catalog_dirs` folders and its `catalogs` list) are read with the project's own, and a message names them from the project's root, `../shared/catalogs/acme_ldo.csv`. The editor builds again when a dependency's manifest, modules or catalogs change.
+The key of the entry is the first step of an import of the other project's modules, as `src` is of the project's own: `../shared/src/power.nsm` is the module `shared::power`, and `import shared::power::LdoStage` reads it. A file of the dependency that imports `src::parts::ldo` means its own `src/parts/ldo.nsm`, so the shared project builds the same alone and from `unit`. The dependency's catalog files (its `catalog_dirs` folders and its `catalogs` list) are read with the project's own, and a message names them from the project's root, `../shared/catalogs/acme_ldo.csv`. So is its `kicad.toml`: its `[[part]]` rows and its `[[library]]` symbol and footprint libraries (paths relative to the dependency's folder) are added to the project's. The editor lists the dependency's modules, read-only, in a _Dependencies_ section of the file tree, with their outline, and builds again when a dependency's manifest, modules or catalogs change.
 
 - The key is letters, digits and `_`, not starting with a digit, and not `src` or `std`. It need not be the other project's `name`.
 - `path` is relative to the project's root and may go up (`../shared`); it is not absolute, and the folder must hold a `netsmith.toml`: `` netsmith.toml: [dependencies] shared: ../shared is not a project: it has no netsmith.toml ``.
 - A dependency's own dependencies are read too, under their keys, and every key names one project: two folders under one key are refused, naming both, and a project that depends on itself through others is refused with the chain (`app -> shared -> app`).
-- A catalog that the project and a dependency both hold is refused naming both files, as two files of one catalog in one project are.
-- A dependency gives its modules and its catalogs only. Its boards are not built, and its `kicad.toml`, `preferred.csv`, orders and `[supply]` are not read: a part of the dependency that needs a footprint mapping needs it in the depending project's `kicad.toml` too.
-- Only a folder is read. `git` (with `rev`) and `version` are not built yet, and an entry that has them is refused saying so.
+- A catalog that the project and a dependency both hold is refused naming both files, as two files of one catalog in one project are. A (part, package) row or a library name that the `kicad.toml` of the project and of a dependency both have is refused naming both files, as one file that has it twice is.
+- A dependency gives its modules, its catalogs and its `kicad.toml`. Its boards are not built, and its `preferred.csv`, orders and `[supply]` are not read.
+- The manifest's `environment` may name a definition of a dependency by its module path, `environment = "shared::env::Lab"`: the key of a direct dependency, then the module and the definition.
+
+#### Dependencies by git
+
+A dependency may be a git repository whose top folder is the project, at a `rev` (a branch, a tag or a commit) or at the newest tag that a `version` requirement admits (issue #1012, ADR 0137, proposed):
+
+```toml
+[project]
+name = "unit"
+top_level = ["src/unit.nsm"]
+
+[dependencies]
+shared = { git = "https://example.com/acme/shared.git", rev = "main" }
+radio = { git = "git@example.com:acme/radio.git", version = "1.2" }
+```
+
+- `git` is a URL (`https://...`, `ssh://...`, `git@host:path`, `file:///...`) or an absolute path; a folder given by a relative path is a `path` dependency. netsmith runs the `git` command to fetch it, so git must be installed.
+- `rev` or `version`, one of them. A `version` is a requirement in cargo's syntax: `"1.2"` admits 1.2.0 up to, not including, 2.0.0, `"=1.2.3"` that one only, `">=2"` any from 2.0.0. The tags read as versions are `v1.2.3` and `1.2.3`; there is no registry.
+- The repository is fetched into a cache shared by every project of the machine: `git/` in the folder `NETSMITH_CACHE_DIR` names, else `$XDG_CACHE_HOME/netsmith`, else `~/.cache/netsmith`. A build fetches only what the cache cannot answer, so a branch read once stays where it was until `netsmith lock --update`. With `--offline`, a dependency the cache does not hold is an error that says so.
+- A message names a file of a dependency by git by its key and commit: `shared@0123456789ab/src/power.nsm`.
+- A dependency by git may have dependencies of its own, by git, or by a `path` inside its repository.
+
+The commit each dependency by git was read at is kept in `dependencies.lock.toml`, beside `netsmith.toml`, to commit with the project:
+
+```toml
+# The commit of each dependency by git (issue #1012). `netsmith lock --update` rewrites it.
+version = 1
+
+[[dependency]]
+name = "shared"
+git = "https://example.com/acme/shared.git"
+rev = "main"
+commit = "0123456789abcdef0123456789abcdef01234567"
+```
+
+`build` and `fab` write it when it does not exist, with every dependency by git of the project and of its dependencies, and never rewrite it. While it holds an entry for what the manifest asks (the same `git` and the same `rev` or `version`), a build reads that commit, from the cache with no fetch, so a moved branch or a new tag changes nothing. `netsmith lock --update` fetches each dependency by git again, takes the commit its `rev` or `version` names now, rewrites the lock and prints each entry that changed. `netsmith lock --check` fails when the lock lacks an entry for a dependency by git or holds one no manifest asks for; it fetches nothing, so it runs in CI with no network.
 
 ### Preferred parts
 

@@ -253,3 +253,41 @@ fn two_projects_under_one_name_are_refused() {
         "netsmith.toml: [dependencies] shared: two projects are named `shared`, ../elsewhere and ../shared; the modules of a dependency are imported by its name, so the name is one project's"
     );
 }
+
+/// A `kicad.toml` with one part row and one library, as a dependency or the project has it.
+fn kicad_toml(kind: &str) -> String {
+    format!(
+        "[[library]]\nname = \"acme\"\nsymbols = \"libs/acme.kicad_sym\"\n\n[[part]]\nkind = \"{kind}\"\npackage = \"DFN-8-EP\"\nsymbol = \"acme:LDO9\"\nfootprint = \"acme:DFN-8-1EP\"\n"
+    )
+}
+
+#[test]
+fn a_dependencys_kicad_toml_adds_its_rows_and_libraries() {
+    let root = workspace("shared = { path = \"../shared\" }\n");
+    write(&root.join("shared/kicad.toml"), &kicad_toml("Ldo9"));
+    let project = Project::load(&root.join("app")).unwrap();
+    let folders = project.kicad_folders().unwrap();
+    assert_eq!(folders.len(), 1);
+    assert_eq!(folders[0].1, "../shared/kicad.toml");
+    let mapping =
+        netsmith_kicad::Mapping::for_project_with(Some(&project.root), &folders).unwrap();
+    let row = mapping.rows().iter().find(|r| r.kind == "Ldo9").unwrap();
+    assert_eq!(row.source, "../shared/kicad.toml");
+    // A library's path is relative to the dependency's folder.
+    let library = &mapping.libraries()[0];
+    assert!(
+        library
+            .symbols
+            .as_ref()
+            .unwrap()
+            .ends_with("shared/libs/acme.kicad_sym"),
+        "{library:?}"
+    );
+    // The project mapping the same part too is refused, naming both files.
+    write(&root.join("app/kicad.toml"), &kicad_toml("Ldo9"));
+    let e = project.libraries().map(|_| ()).unwrap_err();
+    assert!(
+        e.contains("../shared/kicad.toml") && e.contains("kicad.toml"),
+        "{e}"
+    );
+}
