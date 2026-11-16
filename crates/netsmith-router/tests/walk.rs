@@ -202,7 +202,7 @@ fn copper_of_the_walked_net_and_of_the_other_layer_is_no_obstacle() {
 }
 
 #[test]
-fn an_end_on_copper_is_refused_with_no_search() {
+fn an_end_on_copper_is_refused_with_no_search_and_names_the_copper() {
     let c = empty_place(&led());
     let board = with_bar(c, "GND");
     let w = walk(
@@ -212,7 +212,10 @@ fn an_end_on_copper_is_refused_with_no_search() {
         at(c, 0.1, 0.0),
         None,
     );
-    assert_eq!(path(&board, &w), Err(Blocked::End));
+    let gnd_track = Some("a track of net GND".to_string());
+    let end = path(&board, &w).unwrap_err();
+    assert_eq!(end, Blocked::End { by: gnd_track.clone() });
+    assert!(end.to_string().contains("too near a track of net GND"), "{end}");
     let w = walk(
         "TEST",
         CopperLayer::Front,
@@ -220,7 +223,36 @@ fn an_end_on_copper_is_refused_with_no_search() {
         at(c, 2.0, 0.0),
         None,
     );
-    assert_eq!(path(&board, &w), Err(Blocked::Start));
+    assert_eq!(path(&board, &w), Err(Blocked::Start { by: gnd_track }));
+}
+
+#[test]
+fn an_end_on_a_pad_or_at_the_board_edge_names_it() {
+    let board = led();
+    let art = netsmith_pcb::copper_artwork(&board).unwrap();
+    // A pad of a net, on the front: the end on it is too near that pad.
+    let pad = art
+        .pads
+        .iter()
+        .find(|p| p.net.is_some() && p.layers.iter().any(|l| l == "F.Cu"))
+        .expect("the LED board has a pad of a net on the front");
+    let c = empty_place(&board);
+    let to = Pt::new(pad.at.x, pad.at.y);
+    let w = walk("TEST", CopperLayer::Front, c, to, None);
+    let want = format!(
+        "pad {} of {} (net {})",
+        pad.number,
+        pad.part,
+        pad.net.as_deref().unwrap()
+    );
+    assert_eq!(path(&board, &w), Err(Blocked::End { by: Some(want) }));
+    // Just inside the board edge, in the empty part of the outline.
+    let o = board.outline;
+    let edge = Pt::new(o.max.x - 0.05, o.max.y - 2.0);
+    let w = walk("TEST", CopperLayer::Front, c, edge, None);
+    let blocked = path(&board, &w).unwrap_err();
+    assert_eq!(blocked.by(), Some("the board edge"), "{blocked:?}");
+    assert!(blocked.to_string().contains("too near the board edge"), "{blocked}");
 }
 
 #[test]
@@ -240,15 +272,21 @@ fn a_pocket_closed_by_copper_has_no_way_out_and_says_so_after_a_bounded_search()
     }
     let w = walk("TEST", CopperLayer::Front, c, at(c, 2.9, 0.0), None);
     match path(&board, &w) {
-        Err(Blocked::WalledIn { tried }) => assert!(tried > 0 && tried < MOST_TRIED, "{tried}"),
+        Err(Blocked::WalledIn { tried, by }) => {
+            assert!(tried > 0 && tried < MOST_TRIED, "{tried}");
+            // The obstacle named is the one the straight way runs into: the wall of the box.
+            assert_eq!(by.as_deref(), Some("a track of net GND"));
+        }
         other => panic!("{other:?}"),
     }
-    // The reason is a sentence for the person drawing.
-    assert!(
-        Blocked::WalledIn { tried: 1 }
-            .to_string()
-            .contains("no way round")
-    );
+    // The reason is a sentence for the person drawing, with the obstacle in it.
+    let reason = Blocked::WalledIn {
+        tried: 1,
+        by: Some("pad 1 of R1 (net GND)".into()),
+    }
+    .to_string();
+    assert!(reason.contains("no way round"), "{reason}");
+    assert!(reason.contains("runs into pad 1 of R1 (net GND)"), "{reason}");
 }
 
 #[test]

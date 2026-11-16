@@ -41,6 +41,12 @@
 //! not timed: [`Walked::tried`] is the number of states the search took off its queue, at most
 //! [`MOST_TRIED`], so a board that has no way round says so after a bounded effort.
 //!
+//! **The obstacle named.** A way not found says what is in it ([`Blocked`]'s `by`, from
+//! [`Room::in_the_way`]): what an end is too near, or, where the search found no way, the first
+//! thing the straight segment from the start to the end runs into, found by halving the segment
+//! ([`FIRST_HIT_STEPS`] questions to the room). Where several things are too near, the first the
+//! room finds is named, not the nearest.
+//!
 //! **Shove** ([`crate::shove`], the third slice of #726) is the other half: it moves the unlocked
 //! copper of the routes file out of the way of a track, and the walkaround goes round what stays.
 //!
@@ -67,6 +73,8 @@ const DIAGONAL: i64 = 14;
 const NEAR_END: f64 = 2.0 * LATTICE;
 /// The most a corner may turn, in degrees, with a little for rounding.
 const MOST_TURN: f64 = 45.0 + 1e-3;
+/// How many times [`Walker::first_hit`] halves the straight segment: to a part in 4096 of it.
+const FIRST_HIT_STEPS: usize = 12;
 
 /// What a walk is checked against: the board's copper as the design rules check reads it. Built
 /// once for a board ([`Ground::of`]) and asked as often as needed ([`Ground::walker`]).
@@ -196,28 +204,43 @@ pub struct Walked {
     pub tried: usize,
 }
 
-/// Why no way was found.
+/// Why no way was found. `by` names the obstacle, as a person would say it (`pad 2 of R1 (net
+/// GND)`, `the board edge`, [`Room::in_the_way`]): for [`Blocked::Start`] and [`Blocked::End`]
+/// what that end is too near, and for [`Blocked::WalledIn`] and [`Blocked::Gave`] the first
+/// thing the straight segment from the start to the end runs into (`None` where the straight
+/// segment is free and only its turn from the heading is too sharp).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Blocked {
     /// A track of this width at the start keeps no space from the copper round it.
-    Start,
+    Start { by: Option<String> },
     /// A track of this width at the end keeps no space from the copper round it: the end is on
     /// or too near a pad, another net's copper, a keepout or the board edge.
-    End,
+    End { by: Option<String> },
     /// The layer is not a copper layer of the board.
     Layer,
     /// Every place the search could reach in the area was tried and none joins the end.
-    WalledIn { tried: usize },
+    WalledIn { tried: usize, by: Option<String> },
     /// The search took [`MOST_TRIED`] states and found nothing: no way was found in the area.
-    Gave { tried: usize },
+    Gave { tried: usize, by: Option<String> },
 }
 
 impl Blocked {
     /// What was tried, in states taken off the queue.
     pub fn tried(&self) -> usize {
         match self {
-            Blocked::WalledIn { tried } | Blocked::Gave { tried } => *tried,
+            Blocked::WalledIn { tried, .. } | Blocked::Gave { tried, .. } => *tried,
             _ => 0,
+        }
+    }
+
+    /// The obstacle named, where one is.
+    pub fn by(&self) -> Option<&str> {
+        match self {
+            Blocked::Start { by }
+            | Blocked::End { by }
+            | Blocked::WalledIn { by, .. }
+            | Blocked::Gave { by, .. } => by.as_deref(),
+            Blocked::Layer => None,
         }
     }
 }
@@ -225,11 +248,19 @@ impl Blocked {
 impl std::fmt::Display for Blocked {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Blocked::Start => write!(
+            Blocked::Start { by: Some(by) } => write!(
+                f,
+                "the track's last corner has no room: it is too near {by} for a track of this width"
+            ),
+            Blocked::Start { by: None } => write!(
                 f,
                 "the track's last corner has no room: it is too near other copper or the board edge for a track of this width"
             ),
-            Blocked::End => write!(
+            Blocked::End { by: Some(by) } => write!(
+                f,
+                "no room for a track there: that place is on or too near {by}"
+            ),
+            Blocked::End { by: None } => write!(
                 f,
                 "no room for a track there: that place is on or too near a pad, other copper, a keepout or the board edge"
             ),
@@ -242,6 +273,12 @@ impl std::fmt::Display for Blocked {
                 f,
                 "no way round was found within {REACH} mm of the track: it would have to go farther"
             ),
+        }?;
+        match self {
+            Blocked::WalledIn { by: Some(by), .. } | Blocked::Gave { by: Some(by), .. } => {
+                write!(f, " (the straight way runs into {by})")
+            }
+            _ => Ok(()),
         }
     }
 }
@@ -310,6 +347,32 @@ impl Walker<'_> {
         self.room.fits(&segment(a, b, width), net, layer, false)
     }
 
+    /// What a straight track from `a` to `b` is too near, by name ([`Room::in_the_way`]).
+    fn in_the_way(&self, ask: &Ask<'_>, a: Pt, b: Pt) -> Option<String> {
+        self.room
+            .in_the_way(&segment(a, b, ask.width), ask.net, ask.layer, false, &[])
+    }
+
+    /// The first obstacle the straight segment from `a` (which fits) to `b` runs into: the
+    /// shortest part of it from `a` that does not fit, found by halving ([`FIRST_HIT_STEPS`]
+    /// questions), and what that part is too near. `None` where the whole segment fits.
+    fn first_hit(&self, ask: &Ask<'_>, a: Pt, b: Pt) -> Option<String> {
+        if self.fits(ask.net, ask.layer, ask.width, a, b) {
+            return None;
+        }
+        let along = |t: f64| Pt::new(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t);
+        let (mut free, mut hit) = (0.0, 1.0);
+        for _ in 0..FIRST_HIT_STEPS {
+            let mid = (free + hit) / 2.0;
+            if self.fits(ask.net, ask.layer, ask.width, a, along(mid)) {
+                free = mid;
+            } else {
+                hit = mid;
+            }
+        }
+        self.in_the_way(ask, a, along(hit))
+    }
+
     /// The way for a track from `walk.from` to `walk.to`, or why there is none. See the module's
     /// header for what it tries, in this order: the straight segment, one bend of 45 degrees,
     /// the search.
@@ -322,11 +385,11 @@ impl Walker<'_> {
             layer,
             width: walk.width,
         };
-        if !self.fits(ask.net, layer, ask.width, walk.from, walk.from) {
-            return Err(Blocked::Start);
+        if let Some(by) = self.in_the_way(&ask, walk.from, walk.from) {
+            return Err(Blocked::Start { by: Some(by) });
         }
-        if !self.fits(ask.net, layer, ask.width, walk.to, walk.to) {
-            return Err(Blocked::End);
+        if let Some(by) = self.in_the_way(&ask, walk.to, walk.to) {
+            return Err(Blocked::End { by: Some(by) });
         }
         let done = |points: Vec<Pt>, tried: usize| Walked {
             points: points.into_iter().map(round).collect(),
@@ -335,7 +398,14 @@ impl Walker<'_> {
         if let Some(points) = self.join(&ask, walk.from, walk.to, walk.heading) {
             return Ok(done(points, 0));
         }
-        let (points, tried) = self.search(&ask, walk)?;
+        let (points, tried) = self.search(&ask, walk).map_err(|blocked| {
+            let by = self.first_hit(&ask, walk.from, walk.to);
+            match blocked {
+                Blocked::WalledIn { tried, .. } => Blocked::WalledIn { tried, by },
+                Blocked::Gave { tried, .. } => Blocked::Gave { tried, by },
+                other => other,
+            }
+        })?;
         Ok(done(self.tidy(&ask, points, walk.heading), tried))
     }
 
@@ -427,7 +497,10 @@ impl Walker<'_> {
             }
             tried += 1;
             if tried > MOST_TRIED {
-                return Err(Blocked::Gave { tried: tried - 1 });
+                return Err(Blocked::Gave {
+                    tried: tried - 1,
+                    by: None,
+                });
             }
             let here = at(i, j);
             if came != 8 && here.distance(b) <= NEAR_END {
@@ -485,7 +558,7 @@ impl Walker<'_> {
                 }
             }
         }
-        Err(Blocked::WalledIn { tried })
+        Err(Blocked::WalledIn { tried, by: None })
     }
 }
 

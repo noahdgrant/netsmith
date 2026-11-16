@@ -867,12 +867,25 @@ fn a_walk_that_has_no_way_says_why_and_a_wrong_ask_is_a_400() {
     let scene = editor.pcb_scene(BOARD).unwrap();
     let vcc = pads_of(&scene, "VCC")[0];
     let gnd = pads_of(&scene, "GND")[0];
-    // The end is on a pad of another net: an answer, with the reason, not an error.
+    // The end is on a pad of another net: an answer, with the reason, not an error, and the
+    // reason names the pad.
     let blocked = editor.pcb_walk(&walk_of("VCC", "top", vcc, gnd)).unwrap();
     assert_eq!(blocked.points, None);
+    let (part, pad) = scene
+        .parts
+        .iter()
+        .find_map(|p| {
+            let pad = p.pads.iter().find(|d| d.net.as_deref() == Some("GND"))?;
+            Some((p.refdes.as_str(), pad.number.as_str()))
+        })
+        .unwrap();
+    let named = format!("pad {pad} of {part} (net GND)");
     assert!(
-        blocked.reason.as_deref().is_some_and(|r| r.contains("no room")),
-        "{blocked:?}"
+        blocked
+            .reason
+            .as_deref()
+            .is_some_and(|r| r.contains("no room") && r.contains(&named)),
+        "{blocked:?} should name {named}"
     );
     let net = editor.pcb_walk(&walk_of("NOPE", "top", vcc, gnd)).unwrap_err();
     assert_eq!(net.status, 400, "{}", net.message);
