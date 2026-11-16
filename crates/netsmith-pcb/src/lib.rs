@@ -54,6 +54,7 @@ mod miss;
 mod origin;
 mod overhang;
 mod part_fit;
+mod part_geometry;
 mod part_layout;
 mod placement;
 mod polygon;
@@ -124,6 +125,7 @@ pub use overhang::{
     reached as overhang_reached,
 };
 pub use part_fit::{FIT_STEP, FitNear, FitPlace, FitTarget, PartFit};
+pub use part_geometry::{PadGeometry, PartFrame, PartGeometries, PartGeometry};
 pub use part_layout::{
     LayoutFinding, Limit, LoopPair, Measure, NearPair, PartGuideline, away_pairs, edge_parts,
     layout_findings, loop_pairs, measures, near_findings, near_pairs, pins_of,
