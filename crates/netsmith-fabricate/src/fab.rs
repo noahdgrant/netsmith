@@ -2567,6 +2567,7 @@ mod tests {
             lock: Some(netsmith_pipeline::pick_lock::Use {
                 file: dir.path().join("main.lock.toml"),
                 locked: true,
+                off: false,
             }),
             ..FabOptions::default()
         };

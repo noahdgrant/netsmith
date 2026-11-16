@@ -838,6 +838,7 @@ pub fn fab_order(
                 &source.path,
                 catalogs,
                 locks == OrderLocks::Locked,
+                target.locks(source),
             )?),
         };
         files.push((i, mine, opened));

@@ -2,13 +2,14 @@ use std::fs;
 use std::process::ExitCode;
 
 use clap::{ArgGroup, Args as ClapArgs};
+use netsmith_pipeline::pick_lock::Parts;
 
 use super::common::{no_boards, target};
 
 #[derive(Debug, PartialEq, ClapArgs)]
 #[command(args_override_self = true)]
 #[command(
-    after_long_help = "`lock --update` solves each board without the pick lock's holding (a hand pick in the source, `.lcsc &= ...`, still holds its part) and writes the lock with the rows the solver picks now, printing for each part that changed the old row and the new one (nothing when nothing changed). `lock --check` does the same without writing, prints the same and exits 1 when the lock is not current or does not exist (for CI). Both exit 2 when they cannot tell: the lock is not readable, a picks file from an older netsmith is beside the source (move its entries into the source as the message says), or the design does not build. With no file it acts on the project's boards."
+    after_long_help = "`lock --update` solves each board without the pick lock's holding (a hand pick in the source, `.lcsc &= ...`, still holds its part) and writes the lock with the rows the solver picks now, printing for each part that changed the old row and the new one (nothing when nothing changed). `lock --check` does the same without writing, prints the same and exits 1 when the lock is not current or does not exist (for CI). Both exit 2 when they cannot tell: the lock is not readable, a picks file from an older netsmith is beside the source (move its entries into the source as the message says), or the design does not build. With no file it acts on the project's boards. A source the project leaves out of the locks (`lock` in netsmith.toml) is skipped. `lock --update --part r1,stage.cap` takes new picks for those parts only, and `--except r1` for every part but those: the other parts stay on the row the lock has for them, which is judged by everything the design says, and an error says so when it no longer passes. A part named is looked for by its path in every board of the file (or of the project), and one that no board has is an error that lists the parts there are."
 )]
 #[command(group(ArgGroup::new("mode").required(true).args(["update", "check"])))]
 pub struct Args {
@@ -21,6 +22,17 @@ pub struct Args {
     /// Write nothing; fail when the lock is not current.
     #[arg(long)]
     pub check: bool,
+    /// With `--update`, take new picks only for these parts (by path, comma-separated) and keep the rest on their rows.
+    #[arg(
+        long,
+        value_name = "PATH",
+        value_delimiter = ',',
+        conflicts_with = "except"
+    )]
+    pub part: Vec<String>,
+    /// With `--update`, take new picks for every part but these (by path, comma-separated).
+    #[arg(long, value_name = "PATH", value_delimiter = ',')]
+    pub except: Vec<String>,
 }
 
 impl Args {
@@ -31,18 +43,33 @@ impl Args {
             LockMode::Check
         }
     }
+
+    /// The parts that take a new pick.
+    pub fn parts(&self) -> Parts {
+        if !self.part.is_empty() {
+            Parts::Only(self.part.clone())
+        } else if !self.except.is_empty() {
+            Parts::Except(self.except.clone())
+        } else {
+            Parts::All
+        }
+    }
 }
 
 /// Refreshes or checks the pick lock of each source file (ADR 0100).
 pub fn run(args: Args) -> ExitCode {
-    run_lock(args.file.as_deref(), args.mode())
+    if args.mode() == LockMode::Check && args.parts() != Parts::All {
+        eprintln!("error: --part and --except go with --update: a check compares every part");
+        return ExitCode::from(2);
+    }
+    run_lock(args.file.as_deref(), args.mode(), &args.parts())
 }
 
 /// `netsmith lock --update` and `--check`: the pick lock of each source file, solved again with
 /// no holding. The diff goes to stdout; what the lock held that no longer passes, the reason a
 /// check fails and every error go to stderr. Exit 0 when nothing is wrong (a lock was written,
 /// or is current), 1 when `--check` finds a lock that is not current, 2 when it cannot tell.
-fn run_lock(file: Option<&str>, mode: LockMode) -> ExitCode {
+fn run_lock(file: Option<&str>, mode: LockMode, parts: &Parts) -> ExitCode {
     let (target, loader, catalogs) = match target(file, false) {
         Ok(t) => t,
         Err(code) => return code,
@@ -50,8 +77,10 @@ fn run_lock(file: Option<&str>, mode: LockMode) -> ExitCode {
     if no_boards(&target) {
         return ExitCode::from(2);
     }
-    let mut stale = false;
-    for source in &target.files {
+    // Every source is solved before any lock is written, so that a part named that no board has
+    // stops the run with nothing changed.
+    let mut found = Vec::new();
+    for source in target.files.iter().filter(|s| target.locks(s)) {
         let text = match fs::read_to_string(&source.path) {
             Ok(t) => t,
             Err(e) => {
@@ -59,19 +88,45 @@ fn run_lock(file: Option<&str>, mode: LockMode) -> ExitCode {
                 return ExitCode::from(2);
             }
         };
-        let found = match netsmith_pipeline::pick_lock::refresh(
+        match netsmith_pipeline::pick_lock::refresh_parts(
             &source.path,
             &source.name,
             &text,
             &loader,
             &catalogs,
+            parts,
         ) {
-            Ok(found) => found,
+            Ok(f) => found.push(f),
             Err(e) => {
                 eprintln!("{}", e.trim_end());
                 return ExitCode::from(2);
             }
+        }
+    }
+    let unknown: Vec<&String> = parts
+        .named()
+        .iter()
+        .filter(|n| !found.iter().any(|f| f.paths.contains(n)))
+        .collect();
+    if !unknown.is_empty() {
+        let mut every: Vec<&String> = found.iter().flat_map(|f| &f.paths).collect();
+        every.sort();
+        every.dedup();
+        let list = |v: &[&String]| {
+            v.iter()
+                .map(|p| format!("`{p}`"))
+                .collect::<Vec<_>>()
+                .join(", ")
         };
+        eprintln!(
+            "error: no board has the part {}; the parts there are: {}",
+            list(&unknown),
+            list(&every)
+        );
+        return ExitCode::from(2);
+    }
+    let mut stale = false;
+    for found in &found {
         let name = found.file.display();
         let lines: String = found.diff.iter().map(|l| format!("  {l}\n")).collect();
         if !found.reported.is_empty() {
@@ -136,6 +191,7 @@ mod tests {
     use crate::commands::common::testing::{kind, parse};
     use crate::commands::{Command, lock};
     use clap::error::ErrorKind;
+    use netsmith_pipeline::pick_lock::Parts;
 
     #[test]
     fn lock_takes_update_or_check_and_not_both() {
@@ -147,6 +203,23 @@ mod tests {
         assert_eq!(
             mode(&["lock", "--check", "a.nsm"]),
             (lock::LockMode::Check, Some("a.nsm".into()))
+        );
+        let parts = |args: &[&str]| match parse(args) {
+            Ok(Command::Lock(l)) => l.parts(),
+            other => panic!("{args:?}: {other:?}"),
+        };
+        assert_eq!(parts(&["lock", "--update"]), Parts::All);
+        assert_eq!(
+            parts(&["lock", "--update", "--part", "r1,stage.cap"]),
+            Parts::Only(vec!["r1".into(), "stage.cap".into()])
+        );
+        assert_eq!(
+            parts(&["lock", "--update", "--except", "r1"]),
+            Parts::Except(vec!["r1".into()])
+        );
+        assert_eq!(
+            kind(&["lock", "--update", "--part", "a", "--except", "b"]),
+            ErrorKind::ArgumentConflict
         );
         assert_eq!(kind(&["lock"]), ErrorKind::MissingRequiredArgument);
         assert_eq!(
