@@ -33,7 +33,7 @@ pub use lock::{LockedProvider, LockedRow, PickLock};
 pub use place::{PlaceOffset, Window, offsets, window};
 pub use preferred::Preferred;
 pub use solve::{
-    CurrentBound, DcSummary, HeldBy, NetCurrent, OpenCircle, Pick, Seeded, Solution,
-    UnconstrainedPick, Unresolved, UnsolvedNet, UnstatedValue, solve, solve_system,
+    CurrentBound, DcSummary, HeldBy, NetCurrent, OpenCircle, Passed, PassedWhy, Pick, Seeded,
+    Solution, UnconstrainedPick, Unresolved, UnsolvedNet, UnstatedValue, solve, solve_system,
 };
 pub use table::{Record, Supplier, Table, parse_csv};

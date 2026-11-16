@@ -70,6 +70,8 @@ pub(crate) fn judge_resolved(built: &Built, sourcing: &[Sourced]) -> Result<Reso
             qualification: row.qualification.clone(),
             generic: None,
             rejected: 0,
+            passed: Vec::new(),
+            held: None,
             count: 1,
         });
         picks.push((part, at, pick));

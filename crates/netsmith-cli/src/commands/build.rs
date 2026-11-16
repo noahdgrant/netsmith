@@ -52,7 +52,10 @@ pub struct Args {
     /// resistor, the row a part was picked as. The file is a JSON array with one object per
     /// board, in the order they are built, each with the board's name and its members: a
     /// quantity's `unit` and its `range` in that unit (`"inf"` for an open end), text's `value`,
-    /// and `shown`, the value as a message prints it. Nothing is written when a board fails.
+    /// and `shown`, the value as a message prints it. Each board also has its `picks`: each part
+    /// the solver chose a row for, the row, and the rows it passed over before it with `why`
+    /// (`unfit`, `refused`, `later`, `same`, `skipped`, `partly`), the `message` and, for a
+    /// refusal, `at`, the relation's `file:line`. Nothing is written when a board fails.
     #[arg(long, value_name = "FILE")]
     pub emit_solved: Option<PathBuf>,
     #[command(flatten)]
@@ -129,6 +132,9 @@ pub(super) fn run_build(run: &BuildRun) -> ExitCode {
         Ok(t) => t,
         Err(code) => return code,
     };
+    // The solved file says why each row was taken or passed over, which the solver records only
+    // when asked (issue #744).
+    let catalogs = catalogs.with_explain(run.emit_solved.is_some());
     let libraries = match timings::stage("libraries", "", || libraries(&target)) {
         Ok(l) => l,
         Err(code) => return code,
