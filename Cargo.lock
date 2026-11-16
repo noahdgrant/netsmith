@@ -865,6 +865,7 @@ dependencies = [
  "netsmith-placer",
  "netsmith-quantity",
  "netsmith-router",
+ "netsmith-sexp",
  "netsmith-solve",
  "netsmith-testkit",
  "netsmith-view",
