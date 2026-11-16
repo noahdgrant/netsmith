@@ -26,6 +26,34 @@ impl Solver<'_> {
         }
     }
 
+    /// Whether every equation on `f` and the fields joined to it is one that a pick changes,
+    /// and nothing narrows any of them: no equation is a window (an allowance, as `verify`
+    /// reads it), so each says what the value is and the value lies in what they all allow
+    /// together. Only then may `propagate` narrow the value to the overlap of two of them, and
+    /// `verify` judges each such equation by whether it shares a value with the field
+    /// (`several_equations`, ADR 0065, 9.1). It reads `fed`, as `verify` does: before the parts
+    /// are looked at it is empty, and no value is narrowed this way.
+    pub(super) fn only_picks_state(&self, f: FieldId) -> bool {
+        let Some(class) = self.several_classes.get(&f) else {
+            return false;
+        };
+        let changes = |e: &RExpr| {
+            let mut read = Vec::new();
+            fields_in(e, &mut read);
+            read.iter().any(|g| self.fed.contains(g))
+        };
+        class.fields.iter().all(|&g| {
+            let field = self.model.field(g);
+            field.narrowed_at.is_empty() && !self.derived.contains(&g)
+        }) && class.equations.iter().all(|&i| {
+            let r = &self.model.relations()[i];
+            let RExpr::Field(g) = &r.lhs else {
+                return false;
+            };
+            self.fed.contains(g) && changes(&r.rhs)
+        })
+    }
+
     pub(super) fn domain(&self, f: FieldId) -> Domain {
         self.model.field(f).domain.clone()
     }
@@ -205,16 +233,30 @@ impl Solver<'_> {
                     // pick was (ADR 0065, "A value that two equations state"). Only for a value
                     // that a pick can change (`fed`), as in `verify`: two equations that no pick
                     // changes keep the old rule (ADR 0065, section 9.1, "Not done").
+                    // Where every equation on the value is one a pick changes (no window among
+                    // them, `only_picks_state`), the value is in what every equation allows, so
+                    // it takes what it and this equation share even when neither range lies
+                    // inside the other (issue #852): `verify` then asks only that the equations
+                    // share a value, which the field's range is part of.
                     (CmpOp::EqEq, Domain::Quantity(d))
                         if self.several_equations.contains(f)
                             && (self.fed.contains(f) || self.fed_at_start.contains(f))
                             && self.model.field(*f).narrowed_at.is_empty() =>
                     {
-                        if let Domain::Quantity(v) = &value
-                            && v != d
-                            && d.encloses(v).unwrap_or(false)
+                        let Domain::Quantity(v) = &value else {
+                            continue;
+                        };
+                        let next = if d.encloses(v).unwrap_or(false) {
+                            Some(*v)
+                        } else if self.only_picks_state(*f) {
+                            d.intersect(v).ok().flatten()
+                        } else {
+                            None
+                        };
+                        if let Some(next) = next
+                            && next != *d
                         {
-                            self.set_field(*f, value);
+                            self.set_field(*f, Domain::Quantity(next));
                             changed = true;
                         }
                     }

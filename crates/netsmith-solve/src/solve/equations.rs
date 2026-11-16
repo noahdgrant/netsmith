@@ -115,6 +115,50 @@ pub(super) fn several_equations(model: &Model) -> HashSet<FieldId> {
         .collect()
 }
 
+/// A field that several equations state, with the fields joined to it: what decides whether
+/// the field may be narrowed to what all its equations allow (`several_classes`).
+pub(super) struct SeveralClass {
+    /// The field and every field joined to it.
+    pub(super) fields: Vec<FieldId>,
+    /// The `==` relations (by their place in the model's list) whose left side is one of
+    /// `fields`.
+    pub(super) equations: Vec<usize>,
+}
+
+/// For each field of `several_equations`, its class: the fields joined to it and every equation
+/// on any of them.
+pub(super) fn several_classes(model: &Model) -> HashMap<FieldId, std::rc::Rc<SeveralClass>> {
+    let eq = equations(model);
+    let several = several_equations(model);
+    let roots: HashSet<usize> = several.iter().map(|f| eq.root[f.0]).collect();
+    let mut by_root: HashMap<usize, SeveralClass> = HashMap::new();
+    for (x, &r) in eq.root.iter().enumerate() {
+        if roots.contains(&r) {
+            by_root
+                .entry(r)
+                .or_insert_with(|| SeveralClass {
+                    fields: Vec::new(),
+                    equations: Vec::new(),
+                })
+                .fields
+                .push(FieldId(x));
+        }
+    }
+    for (i, side) in eq.sides.iter().enumerate() {
+        if let Some(class) = side.and_then(|r| by_root.get_mut(&r)) {
+            class.equations.push(i);
+        }
+    }
+    let by_root: HashMap<usize, std::rc::Rc<SeveralClass>> = by_root
+        .into_iter()
+        .map(|(r, c)| (r, std::rc::Rc::new(c)))
+        .collect();
+    several
+        .into_iter()
+        .map(|f| (f, by_root[&eq.root[f.0]].clone()))
+        .collect()
+}
+
 /// For each relation, whether it is the only `==` whose left side is its field or a field
 /// that holds the same value (`~` joins interfaces and so their fields, ADR 0007).
 ///
@@ -153,6 +197,8 @@ pub(super) struct Equations {
     /// For each root, how many `==` have it on the left, and how many of them are not a chain's.
     count: Vec<usize>,
     written: Vec<usize>,
+    /// For each field, the root of the fields joined to it.
+    root: Vec<usize>,
 }
 
 pub(super) fn equations(model: &Model) -> Equations {
@@ -188,11 +234,13 @@ pub(super) fn equations(model: &Model) -> Equations {
         sides.push(side);
         chain_law.push(law);
     }
+    let root = (0..parent.len()).map(|x| find(&mut parent, x)).collect();
     Equations {
         sides,
         chain_law,
         count,
         written,
+        root,
     }
 }
 
