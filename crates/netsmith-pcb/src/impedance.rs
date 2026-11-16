@@ -244,6 +244,26 @@ pub fn impedance_notes(stackup: &Stackup, track_width: f64, target: f64) -> Vec<
     let is_plane =
         |i: usize| i > 0 && i < n - 1 && matches!(inner.layers[i - 1], InnerUse::Plane(_));
     let describe = |d: &DielectricLayer| {
+        if !d.plies.is_empty() {
+            let plies: Vec<String> = d
+                .plies
+                .iter()
+                .map(|p| {
+                    if p.core {
+                        "core".to_string()
+                    } else {
+                        p.glass.clone()
+                    }
+                })
+                .collect();
+            return format!(
+                "{} mm of {} plies ({}), er {:.2} in series",
+                d.thickness,
+                d.plies.len(),
+                plies.join(", "),
+                d.epsilon
+            );
+        }
         let what = if d.core {
             "core".to_string()
         } else {

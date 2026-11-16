@@ -195,9 +195,29 @@ pub enum InnerUse {
     Signal,
 }
 
-/// One dielectric layer of a build-up.
+/// One dielectric layer of a build-up: the dielectric between two copper layers. A layer pressed
+/// from several plies has them in `plies`, and its own fields are what they make together
+/// ([`DielectricLayer::of_plies`]); a layer of one prepreg or core has no plies.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DielectricLayer {
+    /// A core, or else a prepreg. A layer of several plies is a prepreg unless every ply is a
+    /// core.
+    pub core: bool,
+    /// The glass style of a prepreg (`7628`), empty for a core. A layer of several plies has
+    /// the glass of each prepreg ply, from the top, joined by `+` (`7628+2116`).
+    pub glass: String,
+    pub thickness: f64,
+    /// The relative permittivity.
+    pub epsilon: f64,
+    /// The plies of a layer pressed from several, from the top; empty for one prepreg or core.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub plies: Vec<DielectricPly>,
+}
+
+/// One ply of a dielectric layer pressed from several: a sheet of prepreg, or a core with no
+/// copper on it. Lengths are in mm.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct DielectricPly {
     /// A core, or else a prepreg.
     pub core: bool,
     /// The glass style of a prepreg (`7628`), empty for a core.
@@ -205,6 +225,56 @@ pub struct DielectricLayer {
     pub thickness: f64,
     /// The relative permittivity.
     pub epsilon: f64,
+}
+
+impl DielectricLayer {
+    /// A layer of one prepreg or core.
+    pub fn single(core: bool, glass: String, thickness: f64, epsilon: f64) -> Self {
+        DielectricLayer {
+            core,
+            glass,
+            thickness,
+            epsilon,
+            plies: Vec::new(),
+        }
+    }
+
+    /// A layer pressed from `plies`, from the top. Its thickness is their sum. Its permittivity
+    /// is theirs in series, `h / sum(h_i / e_i)`: the plies lie one over the other across the
+    /// field between two copper layers, as capacitors in series do. That holds exactly for a
+    /// field straight across the layer (a plate capacitor) and approximately for a track's,
+    /// whose impedance (`netsmith_pcb::impedance`) reads the layer as one dielectric. One ply is
+    /// a layer of one.
+    pub fn of_plies(plies: Vec<DielectricPly>) -> Self {
+        if let [ply] = plies.as_slice() {
+            return DielectricLayer::single(
+                ply.core,
+                ply.glass.clone(),
+                ply.thickness,
+                ply.epsilon,
+            );
+        }
+        // Rounded to a nanometre of the millimetre, as the design stage rounds a length, so that
+        // the sum of `0.218` and `0.2104` is `0.4284`.
+        let thickness = (plies.iter().map(|p| p.thickness).sum::<f64>() * 1e6).round() / 1e6;
+        let across: f64 = plies.iter().map(|p| p.thickness / p.epsilon).sum();
+        let glass: Vec<&str> = plies
+            .iter()
+            .filter(|p| !p.core)
+            .map(|p| p.glass.as_str())
+            .collect();
+        DielectricLayer {
+            core: plies.iter().all(|p| p.core),
+            glass: glass.join("+"),
+            thickness,
+            epsilon: if across > 0.0 {
+                thickness / across
+            } else {
+                0.0
+            },
+            plies,
+        }
+    }
 }
 
 impl InnerLayers {

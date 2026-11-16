@@ -9,6 +9,7 @@ const LOGIC: &str = include_str!("../../../std/logic.nsm");
 const REGULATOR: &str = include_str!("../../../std/parts/regulator.nsm");
 const STACKUP: &str = include_str!("../../../std/mfg/stackup.nsm");
 const JLCPCB: &str = include_str!("../../../std/mfg/jlcpcb.nsm");
+const BUILDUPS: &str = include_str!("../../../std/mfg/jlcpcb_buildups.nsm");
 const ACME: &str = include_str!("../../../std/mfg/acme.nsm");
 const DIODE: &str = include_str!("../../../std/parts/diode.nsm");
 const TRANSISTOR: &str = include_str!("../../../std/parts/transistor.nsm");
@@ -189,8 +190,8 @@ fn the_fictional_fabricator_has_an_eight_and_a_ten_layer_process() {
 #[test]
 fn library_files_round_trip_through_the_printer() {
     for src in [
-        PASSIVE, SOURCES, LOGIC, REGULATOR, STACKUP, JLCPCB, ACME, DIODE, TRANSISTOR, MECHANICAL,
-        CONNECTOR, BUS,
+        PASSIVE, SOURCES, LOGIC, REGULATOR, STACKUP, JLCPCB, BUILDUPS, ACME, DIODE, TRANSISTOR,
+        MECHANICAL, CONNECTOR, BUS,
     ] {
         let once = parse(src).unwrap().to_source();
         assert_eq!(parse(&once).unwrap().to_source(), once);
@@ -303,9 +304,14 @@ fn a_manufacturing_process_is_an_interface_of_quantities_with_no_pins() {
 /// The providers of a multilayer process, from the text of `std/mfg/jlcpcb.nsm`: each one's
 /// name and its `&=` lines (field, value), in order.
 fn providers_of(process: &str) -> Vec<(String, Vec<(String, String)>)> {
+    providers_in(JLCPCB, process)
+}
+
+/// The providers of a multilayer process in the text of a std file.
+fn providers_in(text: &str, process: &str) -> Vec<(String, Vec<(String, String)>)> {
     let header = format!(" provides {process} {{");
     let mut found = Vec::new();
-    let mut lines = JLCPCB.lines();
+    let mut lines = text.lines();
     while let Some(line) = lines.next() {
         let Some(name) = line
             .strip_prefix("interface ")
@@ -437,5 +443,105 @@ fn every_multilayer_provider_states_a_whole_build_up_that_adds_up() {
         // One provider for each thickness: every provider multiplies the search of ADR 0068,
         // which is bounded at 64 provider combinations for a board.
         assert_eq!(providers.len(), 5, "{process}: one provider for each thickness");
+    }
+}
+
+/// Every provider of `std/mfg/jlcpcb_buildups.nsm` states a whole build-up of JLCPCB's
+/// impedance page: a name made of the page's, a build that is not the default of its thickness
+/// (those are `std::mfg::jlcpcb`'s), each dielectric layer either as one prepreg or core or as
+/// plies from `.ply1` with no gap, the page's permittivity for each glass and 4.6 for a core, and
+/// layers that add up to within the fabricator's tolerance of the thickness. Of the page's 54
+/// four-layer and 56 six-layer build-ups, 49 and 47 are here (the comment of the file says why
+/// four are not).
+#[test]
+fn every_other_build_up_states_its_dielectric_layers_ply_by_ply_and_adds_up() {
+    const EPSILON: [(&str, &str); 4] = [
+        ("7628", "4.4"),
+        ("3313", "4.1"),
+        ("1080", "3.91"),
+        ("2116", "4.16"),
+    ];
+    let defaults: Vec<String> = ["FourLayer", "SixLayer"]
+        .iter()
+        .flat_map(|p| providers_of(p))
+        .map(|(_, fields)| {
+            fields
+                .iter()
+                .find(|(f, _)| f == ".stackup.build")
+                .unwrap()
+                .1
+                .clone()
+        })
+        .collect();
+    for (process, layers, count) in [("FourLayer", 4, 49), ("SixLayer", 6, 47)] {
+        let providers = providers_in(BUILDUPS, process);
+        assert_eq!(providers.len(), count, "{process}");
+        let mut plied = 0;
+        for (name, fields) in &providers {
+            let get = |field: &str| -> Option<&str> {
+                fields
+                    .iter()
+                    .find(|(f, _)| f == field)
+                    .map(|(_, v)| v.as_str())
+            };
+            let build = get(".stackup.build").unwrap();
+            assert!(!defaults.iter().any(|d| d == build), "{name}: a default");
+            let code = build.trim_matches('"').strip_prefix("JLC").unwrap();
+            let word = &process[..process.len() - 5];
+            assert_eq!(*name, format!("Jlc{word}Layer{}", code.replace('-', "")));
+            assert_eq!(code[..2], format!("{layers:02}"), "{name}: layers");
+            let thickness = mm(get(".stackup.thickness").unwrap());
+            assert_eq!(
+                code[2..4],
+                format!("{thickness:.1}").replace('.', ""),
+                "{name}: thickness"
+            );
+            let inner = mm(get(".stackup.inner_copper").unwrap());
+            assert_eq!(inner, 0.0152, "{name}: inner copper");
+            // One prepreg or core, or plies; each with the page's permittivity.
+            let mut checked = 0;
+            let mut ply = |at: &str| -> Option<f64> {
+                let kind = get(&format!("{at}.kind"))?;
+                let epsilon = get(&format!("{at}.epsilon")).unwrap();
+                match kind {
+                    "\"core\"" => {
+                        assert_eq!(epsilon, "4.6", "{name}: {at}");
+                        assert_eq!(get(&format!("{at}.glass")), None, "{name}: {at}");
+                    }
+                    "\"prepreg\"" => {
+                        let glass = get(&format!("{at}.glass")).unwrap().trim_matches('"');
+                        let (_, e) = EPSILON
+                            .iter()
+                            .find(|(g, _)| *g == glass)
+                            .unwrap_or_else(|| panic!("{name}: no permittivity for {glass}"));
+                        assert_eq!(epsilon, *e, "{name}: {at}");
+                    }
+                    other => panic!("{name}: {at} is {other}"),
+                }
+                checked += 4 - usize::from(kind == "\"core\"");
+                Some(mm(get(&format!("{at}.thickness")).unwrap()))
+            };
+            let mut sum = 2.0 * 0.035 + (layers - 2) as f64 * inner;
+            for n in 1..layers {
+                let at = format!(".stackup.dielectric{n}");
+                if let Some(t) = ply(&at) {
+                    assert_eq!(get(&format!("{at}.ply1.kind")), None, "{name}: {at}");
+                    sum += t;
+                    continue;
+                }
+                let plies: Vec<f64> = (1..=4).map_while(|i| ply(&format!("{at}.ply{i}"))).collect();
+                assert!(plies.len() >= 2, "{name}: {at} states neither its kind nor plies");
+                plied += 1;
+                sum += plies.iter().sum::<f64>();
+            }
+            // Nothing else: the four fields above, every dielectric and ply's.
+            assert_eq!(fields.len(), 3 + checked, "{name}: {fields:?}");
+            let tolerance = if thickness >= 1.0 { 0.1 * thickness } else { 0.1 };
+            assert!(
+                (sum - thickness).abs() <= tolerance,
+                "{name}: the layers add up to {sum} mm, more than {tolerance} mm from {thickness} mm"
+            );
+        }
+        assert!(plied > 0, "{process}: some build-ups have plies");
     }
 }

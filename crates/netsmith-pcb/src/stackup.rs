@@ -63,6 +63,11 @@ pub struct StackLayer {
     pub material: Option<String>,
     /// The relative permittivity of a mask or dielectric layer, `None` for copper.
     pub epsilon: Option<f64>,
+    /// The plies of a dielectric layer pressed from several, from the top, each its thickness,
+    /// material and permittivity; empty for every other layer. The layer's own fields are what
+    /// they make together (`netsmith_core::DielectricLayer::of_plies`); KiCad's board file lists
+    /// each as a sublayer.
+    pub plies: Vec<(f64, String, f64)>,
 }
 
 /// A length rounded to a nanometre, so sums of millimetre values print as written.
@@ -81,6 +86,7 @@ pub fn layers(board: &Board) -> Vec<StackLayer> {
         thickness: MASK,
         material: Some("Dry Film".into()),
         epsilon: Some(3.3),
+        plies: Vec::new(),
     };
     let copper = |name: &str, mm: f64| StackLayer {
         name: name.to_string(),
@@ -88,6 +94,7 @@ pub fn layers(board: &Board) -> Vec<StackLayer> {
         thickness: mm,
         material: None,
         epsilon: None,
+        plies: Vec::new(),
     };
     let dielectric =
         |number: usize, kind: LayerKind, mm: f64, material: String, epsilon| StackLayer {
@@ -96,6 +103,7 @@ pub fn layers(board: &Board) -> Vec<StackLayer> {
             thickness: mm,
             material: Some(material),
             epsilon: Some(epsilon),
+            plies: Vec::new(),
         };
     let mut layers = vec![mask("F.Mask"), copper("F.Cu", copper_mm)];
     match &stackup.inner {
@@ -118,7 +126,20 @@ pub fn layers(board: &Board) -> Vec<StackLayer> {
                 } else {
                     (LayerKind::Prepreg, d.glass.clone())
                 };
-                layers.push(dielectric(i + 1, kind, d.thickness, material, d.epsilon));
+                let mut layer = dielectric(i + 1, kind, d.thickness, material, d.epsilon);
+                layer.plies = d
+                    .plies
+                    .iter()
+                    .map(|p| {
+                        let material = if p.core {
+                            "FR4".into()
+                        } else {
+                            p.glass.clone()
+                        };
+                        (p.thickness, material, p.epsilon)
+                    })
+                    .collect();
+                layers.push(layer);
                 if i + 1 < inner.dielectrics.len() {
                     layers.push(copper(&format!("In{}.Cu", i + 1), inner.copper));
                 }

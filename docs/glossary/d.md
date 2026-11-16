@@ -56,7 +56,7 @@ The class of a ceramic capacitor, `C0G`, `X5R` or `X7R`: the enum `Dielectric` o
 _Avoid_: Temperature code, temperature characteristic, material
 
 **Dielectric layer**:
-One prepreg or core of a _Build-up_, a `DielectricLayer` with its kind, glass style, thickness and relative permittivity. Not a capacitor's _Dielectric_.
+The dielectric between two copper layers of a _Build-up_, a `DielectricLayer`: one prepreg or core, with its kind, glass style, thickness and relative permittivity, or several _Plies_ pressed together, stated each from the top. Not a capacitor's _Dielectric_.
 _Avoid_: Dielectric (that is a capacitor's class), substrate
 
 **Diff pair**:

@@ -33,13 +33,36 @@ interface Stackup {
     .dielectric9: DielectricLayer
 }
 
-/// One dielectric layer of a build-up: a prepreg or a core, as the fabricator's build-up
-/// table gives it.
+/// One dielectric layer of a build-up, the dielectric between two copper layers, as the
+/// fabricator's build-up table gives it: one prepreg or core, stated in the four fields below,
+/// or several plies pressed together (two sheets of prepreg, or a prepreg, a core with no copper
+/// and a prepreg), stated each in a `.plyN` from the top and not in the four fields. A layer
+/// states one or the other; the design stage adds up the plies' thicknesses and takes their
+/// permittivity in series (`netsmith_core::DielectricLayer::of_plies`).
 interface DielectricLayer {
     /// `"prepreg"` or `"core"`.
     .kind: String
     /// The glass style of a prepreg as the table names it (`"7628"`, `"3313"`, `"2116"`); a
     /// core states none.
+    .glass: String
+    .thickness: Length
+    /// The relative permittivity.
+    .epsilon: Number
+    /// The plies of a layer pressed from several, from the top: `.ply1` lies on the copper
+    /// above. Four are declared, the most JLCPCB's impedance page puts between two copper
+    /// layers.
+    .ply1: DielectricPly
+    .ply2: DielectricPly
+    .ply3: DielectricPly
+    .ply4: DielectricPly
+}
+
+/// One ply of a dielectric layer pressed from several: a sheet of prepreg, or a core with no
+/// copper on it, with the fields of a one-ply `DielectricLayer`.
+interface DielectricPly {
+    /// `"prepreg"` or `"core"`.
+    .kind: String
+    /// The glass style of a prepreg; a core states none.
     .glass: String
     .thickness: Length
     /// The relative permittivity.
