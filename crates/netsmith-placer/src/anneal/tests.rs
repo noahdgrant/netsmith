@@ -1461,6 +1461,34 @@ fn silkscreen_is_kept_off_a_cutout_the_same_way() {
 }
 
 #[test]
+fn the_designator_is_kept_off_a_cutout_as_silkscreen_is() {
+    // The check measures the text to the edge of a cutout as to the outline's, so a box of
+    // text on a cutout costs, and one `silk_to_pad` away does not.
+    let mut board = resistors_with_a_far_silk_line(1);
+    board.parts[0].footprint.graphics.clear();
+    let rules = board.rules.clone();
+    let fixed = [false];
+    let cutouts = [Rect::new(Pt::new(11.0, 5.0), Pt::new(14.0, 15.0))];
+    let mut problem = problem_beside(&board.nets, board.outline, &fixed, &rules);
+    problem.cutouts = &cutouts;
+    let mut e = Engine::new(&mut board.parts, &problem);
+    let at = |x: f64| Pose {
+        x: (x / UNIT).round() as i64,
+        y: (10.0 / UNIT).round() as i64,
+        turn: 0,
+        text: 0,
+    };
+    e.put(0, at(5.0));
+    let text = e.shape(0).text.expect("a resistor has a designator");
+    // Moved so that the box's right side is 0.05 mm from the cutout, then 1 mm.
+    let reach = text.max.x;
+    e.put(0, at(11.0 - 0.05 - reach));
+    assert!(e.silk_edge_cost(0, false, false) > 0.0);
+    e.put(0, at(11.0 - 1.0 - reach));
+    assert_eq!(e.silk_edge_cost(0, false, false), 0.0);
+}
+
+#[test]
 fn a_connector_pulled_to_an_edge_stops_where_its_silkscreen_is_clear_of_it() {
     // A connector is pulled to the nearest edge, where its courtyard wall alone would leave a
     // frame drawn 1.5 mm round the courtyard over the edge. Over three seeds, the frame ends
