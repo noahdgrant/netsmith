@@ -168,19 +168,24 @@ fn a_buck_stage_builds_with_no_window_for_its_input() {
         vin.0 < 9.0 && vin.0 > 8.9 && (vin.1 - 16.0).abs() < 1e-3,
         "{vin:?}"
     );
-    // The load is 0 A to 1 A, through the inductor.
+    // The load is 0 A to 1 A, through the inductor with the divider's current (#746): the
+    // DC analysis keeps it inside the load and the divider's range.
     let current = range(&s, "reg.stage.inductor.current").unwrap();
+    let divider = range(&s, "reg.stage.divider_current").unwrap();
     assert!(
-        current.0 < 1e-3 && (current.1 - 1.0).abs() < 1e-6,
-        "{current:?}"
+        current.0 >= divider.0 - 1e-12
+            && current.0 < 1e-3
+            && current.1 > 1.0
+            && current.1 <= 1.0 + divider.1 + 1e-9,
+        "{current:?}, the divider {divider:?}"
     );
     let dcr = range(&s, "reg.stage.inductor.dc_resistance").unwrap().0;
     let drop = range(&s, "reg.stage.inductor.drop").unwrap();
     near(drop.1, current.1 * dcr);
-    // The input draws `Pout / (efficiency * Vin)` at its worst: 1.854 V at 1 A, 85 %, the
-    // lowest input.
+    // The input draws `Pout / (efficiency * Vin)` at its worst: 1.854 V at what the inductor
+    // carries, 85 %, the lowest input.
     let i_in = range(&s, "reg.vin.current").unwrap();
-    near(i_in.1, 1.854 / (0.85 * vin.0));
+    near(i_in.1, current.1 * 1.854 / (0.85 * vin.0));
     // The node past the inductor is the switch node (1.746 V to 1.854 V, what the output
     // asks) less the winding's drop at the load: a regulator holds the node its part names, and
     // the probe on the net past the inductor reads the winding's drop.

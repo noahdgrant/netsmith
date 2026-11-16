@@ -588,20 +588,20 @@
       "net_currents": [
         {
           "net": "12V",
-          "current": 0.20263157894836845,
-          "least_width": 0.04152641350736484,
+          "current": 0.2026536383368799,
+          "least_width": 0.041532649157284315,
           "vias": 1
         },
         {
           "net": "3V3",
-          "current": 0.5000544322573658,
-          "least_width": 0.14435833883579147,
+          "current": 0.5000544322573659,
+          "least_width": 0.14435833883579152,
           "vias": 1
         },
         {
           "net": "GND",
-          "current": 1.0782268170426066,
-          "least_width": 0.41658907200155015,
+          "current": 1.0783441976818149,
+          "least_width": 0.41665162745466755,
           "vias": 2
         },
         {
@@ -612,8 +612,8 @@
         },
         {
           "net": "net-reg.ic.boost.b",
-          "current": 0.8755952380952381,
-          "least_width": 0.3126143604316366,
+          "current": 0.8756905593459349,
+          "least_width": 0.31266130293272976,
           "vias": 2
         },
         {
@@ -670,6 +670,20 @@
       "line_texts": {}
     },
     "interfaces": [
+      {
+        "path": "reg.divider.supply",
+        "type_name": "Rail",
+        "members": [
+          {
+            "name": "pos",
+            "net": "3V3"
+          },
+          {
+            "name": "neg",
+            "net": "GND"
+          }
+        ]
+      },
       {
         "path": "reg.ic.sw",
         "type_name": "Rail",
@@ -813,6 +827,14 @@
           {
             "name": "fb",
             "net": "net-reg.divider.rbottom.a"
+          },
+          {
+            "name": "supply.neg",
+            "net": "GND"
+          },
+          {
+            "name": "supply.pos",
+            "net": "3V3"
           },
           {
             "name": "top",

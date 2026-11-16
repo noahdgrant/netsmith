@@ -384,7 +384,7 @@ error: the `resistor` catalog has nothing for `r`, which needs resistance within
 
 An adjustable regulator holds its feedback pin at a reference voltage `vref`, and a divider from the output to the pin sets the output: `vout = vref * (1 + rtop / rbottom)`. `std::parts::regulator::FeedbackDivider` is that divider as a module (ADR 0025). Its interface is three pins, `top` (joined to the output's positive pin), `fb` (the regulator's feedback pin) and `bottom` (the output's ground), and three values: `vref`, which the board states with the datasheet's tolerance, `vout`, the output it wants, and `current`, what it draws from the output, which a board bounds to fix the size of the two resistors. The solver picks `rtop` and `rbottom` from the resistor catalog so that, with the tolerance of the reference and of both resistors, the output stays inside the wanted range in the worst case. It evaluates the formula tightly (each resistance appears in the ratio once and the reference once), so the tolerance a design has to allow is the real one.
 
-The feedback pin is taken to draw nothing, so the divider carries `(vout - vref) / rtop` through both resistors, and each resistor's power rating is checked against it. The divider is pins and voltages and no rail, so it adds nothing to the currents that are summed at a net (ADR 0007): its current, a few microamps to a milliamp, is not added to the load.
+The feedback pin is taken to draw nothing, so the divider carries `(vout - vref) / rtop` through both resistors, and each resistor's power rating is checked against it. The board joins the pins; the divider's own rail, `supply`, is joined to `top` and `bottom` inside it and draws `current` there, so the divider's few microamps to a milliamp count in the currents that are summed at each net (ADR 0007). A board does not join `supply`.
 
 A 3.8 V output from a 1.0 V reference, each good to 1%, with the output allowed 3% either way:
 
@@ -429,9 +429,9 @@ board TooTight {
 
 ```text
 error: no combination of candidates satisfies `divider.rbottom` and `divider.rtop` together: the closest, divider.rbottom = 20kΩ 1% 0402 C25765 and divider.rtop = 56kΩ 1% 0603 C23206, fails because `divider.vout` must stay within 3.762V..3.838V, but (divider.vref * (1 + (divider.rtop.resistance / divider.rbottom.resistance))) works out to 3.707V..3.896V
-    --> std/parts/regulator.nsm:110:5
+    --> std/parts/regulator.nsm:124:5
     |
-110 |     .vout == .vref * (1 + .rtop.resistance / .rbottom.resistance)
+124 |     .vout == .vref * (1 + .rtop.resistance / .rbottom.resistance)
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -587,7 +587,7 @@ A line of a board's `defaults` block for `FeedbackDivider.current` does not reac
 
 The two inductor limits are optional, as are the other numbers an IC may leave open: an IC that states `.min_inductor_saturation` (a datasheet that asks for more than the current limit, say) or `.max_inductor_dcr` has them checked against the picked inductor's `saturation_current` and `dc_resistance`, and an inductor that does not meet them is refused with the numbers. Both are `optional` members of `BuckIc` (ADR 0074): one that the IC leaves unstated has no such check, and the build says nothing about it, where it lists a check on any other value that nothing states as not evaluated. A limit is checked when the IC states it. A heating (RMS) rating of the inductor is not checked by the converter: `Inductor` has the optional column `rms_current`, which the standard rows leave empty (see Dielectric and package size), so a check that needed it would refuse every standard inductor.
 
-Misuse: a load larger than the IC can give is refused twice, once on the converter's output and once on the IC's switch node (`BuckIc` states `-.sw.current <= .max_output_current`, ADR 0076, amendment 6, which is also the limit that encloses a load nothing states before the picks); the lower end of the current is the divider's, which the DC analysis of the converter's output side gives. An input above its range, such as 12 V, is refused the same way, by `reg.vin.voltage must always be at most reg.ic.max_input_voltage`.
+Misuse: a load larger than the IC can give is refused twice, once on the converter's output and once on the IC's switch node (`BuckIc` states `-.sw.current <= .max_output_current`, ADR 0076, amendment 6, which is also the limit that encloses a load nothing states before the picks); the lower end of the current is the divider's, which the DC analysis of the converter's output side gives. The switch node carries the divider's current too (#746), so the divider's pick feeds both checks, and the search of the converter's parts names the divider's two resistors first, with the closest pair it tried: the two lines about the load are the cause (a limit of how the solver blames a group, issue #904). An input above its range, such as 12 V, is refused the same way, by `reg.vin.voltage must always be at most reg.ic.max_input_voltage`.
 
 ```nsm fails
 import src::zbk2::Zbk2
@@ -611,15 +611,20 @@ board Overload {
 ```
 
 ```text
-error: -reg.ic.sw.current must always be at most reg.ic.max_output_current, but 15.11uA..3A is not always below 2A (the currents on net `net-reg.ic.sw.pos` in `reg`: reg.ic.sw.current (-3A..-15.11uA) + reg.inductor.current (15.11uA..3A) add up to zero; net `1V8` in `reg`: -reg.inductor.current (15.11uA..3A) + -reg.vout.current (-3A..-15.11uA) add up to zero, but the balance is incomplete: `reg.divider.rtop.a` is not modelled; net `1V8`: output.current (0A..3A) + reg.vout.current (-3A..-15.11uA) add up to zero)
-    --> std/parts/regulator.nsm:201:5
+error: no combination of candidates satisfies `reg.divider.rbottom` and `reg.divider.rtop` together: the closest, reg.divider.rbottom = 330Ω 1% 0402 C25104 and reg.divider.rtop = 100kΩ 1% 0402 C25741, fails because `reg.divider.current` must stay within 10uA..1mA, but reg.divider.rtop.current works out to 9.247uA..10.77uA
+    --> std/parts/regulator.nsm:123:5
     |
-201 |     -.sw.current <= .max_output_current
+123 |     .current == .rtop.current
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^
+error: -reg.ic.sw.current must always be at most reg.ic.max_output_current, but 10uA..3.001A is not always below 2A (the currents on net `net-reg.ic.sw.pos` in `reg`: reg.ic.sw.current (-3.001A..-10uA) + reg.inductor.current (10uA..3.001A) add up to zero; net `1V8` in `reg`: reg.divider.supply.current (10uA..1mA) + -reg.inductor.current (10uA..3.001A) + -reg.vout.current (-3A..0A) add up to zero; net `1V8`: output.current (0A..3A) + reg.vout.current (-3A..0A) add up to zero; net `1V8` in `reg.divider`: -reg.divider.supply.current (10uA..1mA) add up to zero, but the balance is incomplete: `reg.divider.rtop.a` is not modelled)
+    --> std/parts/regulator.nsm:215:5
+    |
+215 |     -.sw.current <= .max_output_current
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-error: -reg.vout.current must always be at most reg.ic.max_output_current, but 15.11uA..3A is not always below 2A (the currents on net `1V8`: output.current (0A..3A) + reg.vout.current (-3A..-15.11uA) add up to zero; net `1V8` in `reg`: -reg.inductor.current (15.11uA..3A) + -reg.vout.current (-3A..-15.11uA) add up to zero, but the balance is incomplete: `reg.divider.rtop.a` is not modelled; net `net-reg.ic.sw.pos` in `reg`: reg.ic.sw.current (-3A..-15.11uA) + reg.inductor.current (15.11uA..3A) add up to zero)
-    --> std/parts/regulator.nsm:565:5
+error: -reg.vout.current must always be at most reg.ic.max_output_current, but 0A..3A is not always below 2A (the currents on net `1V8`: output.current (0A..3A) + reg.vout.current (-3A..0A) add up to zero; net `1V8` in `reg`: reg.divider.supply.current (10uA..1mA) + -reg.inductor.current (10uA..3.001A) + -reg.vout.current (-3A..0A) add up to zero; net `net-reg.ic.sw.pos` in `reg`: reg.ic.sw.current (-3.001A..-10uA) + reg.inductor.current (10uA..3.001A) add up to zero; net `1V8` in `reg.divider`: -reg.divider.supply.current (10uA..1mA) add up to zero, but the balance is incomplete: `reg.divider.rtop.a` is not modelled)
+    --> std/parts/regulator.nsm:584:5
     |
-565 |     -.vout.current <= .ic.max_output_current
+584 |     -.vout.current <= .ic.max_output_current
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -681,9 +686,9 @@ board HighInput {
 
 ```text
 error: reg.on_time must always be at least reg.ic.min_on_time, but 122ns..490.8ns is not always above 150ns
-    --> std/parts/regulator.nsm:578:5
+    --> std/parts/regulator.nsm:597:5
     |
-578 |     .on_time >= .ic.min_on_time
+597 |     .on_time >= .ic.min_on_time
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -746,9 +751,9 @@ board TooQuiet {
 
 ```text
 error: no `capacitor` candidate satisfies `reg.output_cap`: the closest of the 34 that fit, 1 x 10uF 20% 10V X5R 0402 C315248, fails because reg.output_cap.total_effective_capacitance must always be at least reg.ic.min_output_capacitance, but 4.908uF..7.686uF is not always above 10uF (`reg.output_cap.effective_capacitance` is unknown for some candidates, so they were not used: no derating data for 27)
-    --> std/parts/regulator.nsm:585:5
+    --> std/parts/regulator.nsm:604:5
     |
-585 |     .output_cap.total_effective_capacitance >= .ic.min_output_capacitance
+604 |     .output_cap.total_effective_capacitance >= .ic.min_output_capacitance
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -1006,7 +1011,30 @@ error: a part holds other parts only in its `support` section, the circuit its d
   |             ^^^^^^^^^
 ```
 
-What is not modelled: the divider's current is not added to the load, and the IC's quiescent current is not in the inductor's (it is in the IC's own input current, if the IC states it, as the `Lt8641` does), the loop and its stability are not checked (the IC's capacitor and inductor ranges stand for them), the inductor's saturation is its datasheet current at a fall of the inductance (30% for the catalog's parts) and not a curve, and the ripple current of the capacitors is not modelled, so it is not shared out between the capacitors of a bank.
+The inductor carries the load and the divider's current (`.inductor.current == -.vout.current + .divider_current`), so a converter whose load is smaller than its divider's current is a valid stage: here the load draws at most 5 uA and the divider about 50 uA (issue #746). The IC's own output rating and the inductor's saturation are checked with the divider's share in, and the converter's `-.vout.current <= .ic.max_output_current` with the load alone.
+
+```nsm evaluate
+import std::parts::regulator::{Buck, Lmr16006y}
+import std::sources::Rail
+
+board Sleepy {
+    .input: Rail {
+        .voltage &= 9V..16V
+        .peak &= 24V
+        .pos.net &= "VIN"
+    }
+    .reg: Buck<Lmr16006y> {
+        .vout.pos.net &= "V3V3"
+        .vout.voltage &= 3.3V +/- 5%
+    }
+    .load: Rail { .current &= 0A..5uA }
+
+    .input ~ .reg.vin
+    .reg.vout ~ .load
+}
+```
+
+What is not modelled: the IC's quiescent current is not in the inductor's (it is in the IC's own input current, if the IC states it, as the `Lt8641` does), the loop and its stability are not checked (the IC's capacitor and inductor ranges stand for them), the inductor's saturation is its datasheet current at a fall of the inductance (30% for the catalog's parts) and not a curve, and the ripple current of the capacitors is not modelled, so it is not shared out between the capacitors of a bank.
 
 The library has four real buck ICs. `Lmr16006y` (TI LMR16006Y, 4 V to 60 V, 0.6 A, asynchronous, with its catch diode in its `support` section), `Rt8059` (Richtek RT8059, 2.8 V to 5.5 V, 1 A) and `Tps54202` (TI TPS54202, 4.5 V to 28 V, 2 A) each have a catalog row, so a board picks among them with `BuckConverter` (_A module that takes a part_); their datasheet figures, pages and what each leaves unstated are in their doc comments and `data/jlcpcb/README.md`. Each one's efficiency is the `efficiency` column of its catalog row, not a statement of the part (an optional column, chapter 12); the `Lt8641` has no row and states its own. The fourth is `std::parts::regulator::Lt8641`, Analog Devices' 3 V to 65 V, 3.5 A LT8641 in its 18-lead 3 x 4 mm QFN (datasheet Rev. C). It is written as above, with each number's datasheet page and table in its doc comment and in `data/jlcpcb/README.md`: the reference 0.79 V to 0.822 V, the input range, 3.5 A, the efficiency, `min_inductance` from the datasheet's Equation 10, a DCR of at most 0.04 ohm, 2.2 uF at the input, and 47 uF at the output by default (every Typical Application of the datasheet uses it; the datasheet states no minimum). The switching frequency follows the resistor on RT, `.fsw == 46.5MHz * 1kohm / (.rt_resistance + 5.2kohm)` with the oscillator's accuracy (Equation 3 and Table 1); the part refuses a resistor outside 18.2 kohm to 60.4 kohm (2 MHz to 700 kHz), the span the datasheet gives the accuracy for. It also refuses an input and output at which the datasheet's Equations 4 and 5 say the frequency is no longer held, because the converter computes its ripple at the programmed frequency. Its `support` section is the datasheet's application circuit: 0.1 uF from BST to SW, 1 uF on INTVCC, 1 uF at VIN1 and at VIN2, 10 nF on TR/SS, the resistor on RT (47 kohm, 0.89 MHz, by default), BIAS to ground and EN/UV to the input; SYNC/MODE and PG are left open. The automotive ordering code `LT8641IUDC#WPBF` is the same die and tables as the other grades. The standard `lt8641` catalog has a header and no row, like `p_mosfet` (a row needs a stock above zero on a record that was read), so the board's project has the row, in its own file of that name (the part number is the datasheet's Order Information; a project adds the LCSC number it has read). The catalog is not keyed by `.mpn`: the solver takes the first row that fits, and a board that wants one ordering code narrows `.reg.ic.mpn` (ADR 0116).
 
@@ -1035,9 +1063,9 @@ board Converter {
 
 ```text
 error: the `lt8641` catalog is empty (no file of it has a row), so nothing can be picked for `reg.ic`: add rows to `catalogs/lt8641.csv` in the project (docs/language/12, "Catalog files")
-    --> std/parts/regulator.nsm:469:5
+    --> std/parts/regulator.nsm:488:5
     |
-469 |     .ic: Ic
+488 |     .ic: Ic
     |     ^^^^^^^
 ```
 
@@ -1142,7 +1170,7 @@ The part states the absolute maximum of four pins besides VIN, from its Absolute
 
 `BIAS` is on ground by default, the datasheet's option for an output of any voltage and the one the part can state, since it cannot reach the output that `Buck` makes: its `support` section says `.bias ?~ .vin.neg`, a default join (ADR 0130, _Connections_). The datasheet says "for output voltages of 3.3V to 25V this pin should be tied to VOUT" (Pin Functions, p.10), and a board that wants that joins the pin, `.reg.ic.bias ~ .reg.vout.pos` (ADR 0120), which replaces the default; the net it joins is judged against the 25 V of the row, so a pin on an input of 30 V is refused. `SYNC/MODE` is left open by the part, and a board that wants Burst Mode grounds it and states the figure, `.reg.ic.sync_mode ~ .reg.ic.vin.neg` and `.reg.ic.quiescent_current &= 0A .. 10uA`: neither needs a copy of the part.
 
-The IC draws current from its input for itself with nothing loaded, and the input current of the part is the load's and that (ADR 0096): `.quiescent_current`, a range from zero to the largest figure of the mode the converter runs in, which the DC analysis draws at the input too (`dc switching_regulator ... .quiescent_current`), so a sleep-current budget summed from `.u.vin.current` is judged against it. The datasheet gives 10 uA over temperature in Burst Mode, with `SYNC/MODE` tied to ground (`.iq_max`, Electrical Characteristics, p.2), and "several hundred uA" with it floating, high or clocked (0.5 mA at most at 25 C, `.iq_skipping_max`). The part cannot see how the board ties the pin, so the default is the larger, and a board that grounds `SYNC/MODE` says so: `.u.quiescent_current &= 0A .. .u.iq_max`. The 10 uA is a maximum and not a minimum, so the least the input draws is still zero, and a board cannot ask for `.u.vin.current >= 10uA`. The converter's feedback divider is a load on the output and is not in this current (`.divider_current` has it).
+The IC draws current from its input for itself with nothing loaded, and the input current of the part is the load's and that (ADR 0096): `.quiescent_current`, a range from zero to the largest figure of the mode the converter runs in, which the DC analysis draws at the input too (`dc switching_regulator ... .quiescent_current`), so a sleep-current budget summed from `.u.vin.current` is judged against it. The datasheet gives 10 uA over temperature in Burst Mode, with `SYNC/MODE` tied to ground (`.iq_max`, Electrical Characteristics, p.2), and "several hundred uA" with it floating, high or clocked (0.5 mA at most at 25 C, `.iq_skipping_max`). The part cannot see how the board ties the pin, so the default is the larger, and a board that grounds `SYNC/MODE` says so: `.u.quiescent_current &= 0A .. .u.iq_max`. The 10 uA is a maximum and not a minimum, so the least the input draws is still zero, and a board cannot ask for `.u.vin.current >= 10uA`. The converter's feedback divider is a load on the output and is not in this current: its share reaches the input through the efficiency, as the load's does (`.divider_current` has it).
 
 The datasheet's other parts (the feedback phase-lead capacitor, an enable divider for an undervoltage lockout above the IC's own) are not in its `support` section. The package has no footprint or symbol in KiCad's libraries, so `std/kicad.toml` maps `Lt8641` in the package `UDC20(18)` to netsmith's own footprint, `netsmith:UDC-QFN-18-2EP_3x4mm_P0.5mm_ExpPadAA` (the _Standard libraries of footprints_ paragraph below says what that is), and names no symbol, so the symbol is drawn from the pin table: a board built around it exports with no KiCad install and no `kicad.toml`. The footprint's pads are the datasheet's recommended solder pad pitch and dimensions (p.24); a project that wants another land pattern maps the part and package to its own, as for any other part (`std/kicad.toml` and a project's `kicad.toml` may not both map one pair, so the project uses its own package name in its row).
 

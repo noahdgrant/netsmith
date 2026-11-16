@@ -2497,11 +2497,11 @@
         ],
         [
           "GND",
-          6.62
+          6.63
         ],
         [
           "VIN",
-          3.36
+          3.37
         ],
         [
           "VIN_RAW",
@@ -2519,8 +2519,8 @@
       "net_currents": [
         {
           "net": "3V3",
-          "current": 1.5020976720399042,
-          "least_width": 0.6581305815939393,
+          "current": 1.5020976720399046,
+          "least_width": 0.6581305815939394,
           "vias": 3
         },
         {
@@ -2531,20 +2531,20 @@
         },
         {
           "net": "5V",
-          "current": 1.5560555156436617,
-          "least_width": 0.6909595809587172,
+          "current": 1.5560555156436622,
+          "least_width": 0.6909595809587175,
           "vias": 3
         },
         {
           "net": "GND",
-          "current": 8.006503428919533,
-          "least_width": 6.617875359254233,
+          "current": 8.008529131452518,
+          "least_width": 6.620184945537908,
           "vias": 15
         },
         {
           "net": "VIN",
-          "current": 4.897885095586199,
-          "least_width": 3.3599007077690004,
+          "current": 4.898694125587133,
+          "least_width": 3.360666230472865,
           "vias": 9
         },
         {
@@ -2573,8 +2573,8 @@
         },
         {
           "net": "net-buck_3v3.stage.ic.boost.b",
-          "current": 1.5017168181818183,
-          "least_width": 0.6579004303289926,
+          "current": 1.5020976720399046,
+          "least_width": 0.6581305815939394,
           "vias": 3
         },
         {
@@ -2603,8 +2603,8 @@
         },
         {
           "net": "net-buck_5v.stage.ic.boost.b",
-          "current": 1.5552196969696972,
-          "least_width": 0.690447713677679,
+          "current": 1.5560555156436622,
+          "least_width": 0.6909595809587175,
           "vias": 3
         },
         {
@@ -2839,6 +2839,20 @@
         ]
       },
       {
+        "path": "buck_3v3.stage.divider.supply",
+        "type_name": "Rail",
+        "members": [
+          {
+            "name": "pos",
+            "net": "3V3"
+          },
+          {
+            "name": "neg",
+            "net": "GND"
+          }
+        ]
+      },
+      {
         "path": "buck_3v3.stage.ic.sw",
         "type_name": "Rail",
         "members": [
@@ -2924,6 +2938,20 @@
       },
       {
         "path": "buck_5v.pg_pullup.supply",
+        "type_name": "Rail",
+        "members": [
+          {
+            "name": "pos",
+            "net": "5V"
+          },
+          {
+            "name": "neg",
+            "net": "GND"
+          }
+        ]
+      },
+      {
+        "path": "buck_5v.stage.divider.supply",
         "type_name": "Rail",
         "members": [
           {
@@ -3399,6 +3427,14 @@
             "net": "net-buck_3v3.stage.divider.rbottom.a"
           },
           {
+            "name": "supply.neg",
+            "net": "GND"
+          },
+          {
+            "name": "supply.pos",
+            "net": "3V3"
+          },
+          {
             "name": "top",
             "net": "3V3"
           }
@@ -3477,6 +3513,14 @@
           {
             "name": "fb",
             "net": "net-buck_5v.stage.divider.rbottom.a"
+          },
+          {
+            "name": "supply.neg",
+            "net": "GND"
+          },
+          {
+            "name": "supply.pos",
+            "net": "5V"
           },
           {
             "name": "top",

@@ -3913,6 +3913,20 @@
     },
     "interfaces": [
       {
+        "path": "buck_boost.divider.supply",
+        "type_name": "Rail",
+        "members": [
+          {
+            "name": "pos",
+            "net": "+3.3V"
+          },
+          {
+            "name": "neg",
+            "net": "GND"
+          }
+        ]
+      },
+      {
         "path": "buck_boost.pg_pullup.supply",
         "type_name": "Rail",
         "members": [
@@ -4814,6 +4828,14 @@
           {
             "name": "fb",
             "net": "net-buck_boost.divider.rbottom.a"
+          },
+          {
+            "name": "supply.neg",
+            "net": "GND"
+          },
+          {
+            "name": "supply.pos",
+            "net": "+3.3V"
           },
           {
             "name": "top",

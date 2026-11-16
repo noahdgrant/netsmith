@@ -83,6 +83,18 @@ fn rails_on_the_same_nets_give_one_bias() {
 }
 
 #[test]
+fn the_scopes_own_rail_comes_before_the_rail_of_what_it_holds() {
+    // The held part's rail sorts first by path (`s.a...` before `s.out`), but the module's own
+    // port is the one that stands: a feedback divider's `supply` inside `Buck` is on the output
+    // nets too, and its voltage waits for the divider's picks (issue #746).
+    let b = biases(
+        "part Chip {\n    .power: Rail\n}\nmodule Stage {\n    .out: Rail\n    .a: Chip\n    .c: Capacitor\n    .a.power.pos ~ .out.pos\n    .a.power.neg ~ .out.neg\n    .out.pos ~> .c ~> .out.neg\n}\nboard B {\n    .s: Stage\n}\n",
+        "B",
+    );
+    assert_eq!(b, ["s.c.bias = s.out.voltage"]);
+}
+
+#[test]
 fn a_capacitor_across_no_rail_has_no_derived_bias() {
     for body in [
         // One end on a rail, the other on a resistor.

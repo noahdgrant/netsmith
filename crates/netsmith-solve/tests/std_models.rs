@@ -181,20 +181,28 @@ fn the_buck_stage_picks_an_inductor_that_carries_the_load_and_half_the_ripple() 
     // the least inductance and the lowest frequency.
     let ripple = range(&s, "stage.ripple");
     assert!(ripple.lo() > 0.29 && ripple.hi() < 0.70, "{ripple}");
-    // The inductor carries 1 A and half the ripple: under 1.4 A of 3.6 A.
+    // The inductor carries the load and the divider's current (#746), and half the ripple:
+    // under 1.4 A of 3.6 A.
     let i = range(&s, "stage.inductor.current");
-    assert!(i.hi() <= 1.0 + 1e-9, "the chain current is the load: {i}");
+    let divider = range(&s, "stage.divider_current");
+    assert!(
+        (i.hi() - (1.0 + divider.hi())).abs() < 1e-9,
+        "the chain current is the load and the divider's: {i}, the divider {divider}"
+    );
     assert!(i.hi() + ripple.hi() / 2.0 < 1.4);
 }
 
 #[test]
 fn the_input_current_follows_from_the_efficiency_and_reaches_the_supply() {
     let s = run(&converter(&guide_ic(), "0mA..1A", ""));
-    // 1 A at 1.746 V.. 1.854 V from 4.75 V..5.25 V at 85%..95% efficiency.
+    // 1 A and the divider's current (#746) at 1.746 V.. 1.854 V from 4.75 V..5.25 V at
+    // 85%..95% efficiency.
+    let divider = range(&s, "stage.divider_current");
     let drawn = range(&s, "stage.ic.vin.current");
     assert!(
-        drawn.lo() <= 1e-9 && (drawn.hi() - 1.854 / (4.75 * 0.85)).abs() < 1e-3,
-        "{drawn}"
+        (drawn.lo() - divider.lo() * 1.746 / (5.25 * 0.95)).abs() < 1e-9
+            && (drawn.hi() - (1.0 + divider.hi()) * 1.854 / (4.75 * 0.85)).abs() < 1e-6,
+        "{drawn}, the divider {divider}"
     );
     // The supply gives what the IC draws.
     let given = range(&s, "input.current");
@@ -321,8 +329,9 @@ fn a_load_over_the_ics_current_or_an_input_over_its_range_is_refused_with_the_nu
     let s = run(&converter(&guide_ic(), "0mA..3A", ""));
     let m = messages(&s);
     // The stage says it of its output, and the IC (ADR 0076, amendment 6) of its switch node:
-    // two sides of one load.
-    assert_eq!(m.len(), 2, "{m:#?}");
+    // two sides of one load. The switch node carries the divider's current too (#746), so the
+    // divider's pick feeds the IC's check and the search of the group may also name the
+    // divider's two resistors; the count is not pinned.
     assert!(
         m.iter().any(|m| m
             .contains("-stage.vout.current must always be at most stage.ic.max_output_current")
@@ -332,7 +341,7 @@ fn a_load_over_the_ics_current_or_an_input_over_its_range_is_refused_with_the_nu
     assert!(
         m.iter().any(|m| m
             .contains("-stage.ic.sw.current must always be at most stage.ic.max_output_current")
-            && m.contains("0A..3A is not always below 2A")),
+            && m.contains("..3.001A is not always below 2A")),
         "{m:#?}"
     );
     let hot = converter(&guide_ic(), "0mA..1A", "").replace("5V +/- 5%", "12V +/- 5%");
@@ -609,6 +618,26 @@ fn a_board_bounds_its_input_by_the_ics_maximum_read_out_of_the_buck_stage() {
             .any(|m| m.contains("input.peak must always be at most") && m.contains("4.8V")),
         "{m:#?}"
     );
+}
+
+#[test]
+fn a_load_smaller_than_the_divider_s_current_is_a_valid_stage() {
+    // Issue #746: a load of at most 5 uA, under the divider's tens of microamps, was refused as
+    // inconsistent: the inductor carried the load alone, and the DC analysis, which has the
+    // divider's resistors, found the divider's current through it.
+    let s = run(&converter(&guide_ic(), "0A..5uA", ""));
+    assert!(messages(&s).is_empty(), "{:?}", messages(&s));
+    let divider = range(&s, "stage.divider_current");
+    assert!(divider.lo() > 5e-6, "{divider}");
+    // The inductor carries both: from the divider's least to its most and 5 uA.
+    let i = range(&s, "stage.inductor.current");
+    assert!(
+        (i.lo() - divider.lo()).abs() < 1e-12 && (i.hi() - (divider.hi() + 5e-6)).abs() < 1e-12,
+        "{i}, the divider {divider}"
+    );
+    // The divider's rail draws it from the output: the stage's output still gives the load.
+    let given = range(&s, "stage.vout.current");
+    assert!(given.lo() >= -5e-6 - 1e-12 && given.hi() <= 1e-12, "{given}");
 }
 
 /// The current through `stage.divider`, which must lie inside `lo..hi` amperes.
@@ -971,9 +1000,11 @@ fn the_half_ripple_reaches_the_row_a_generic_inductor_has_to_become() {
         panic!("{:?}", saturation_need(&s, "stage.inductor"))
     };
     let ripple = range(&s, "stage.ripple");
+    // The inductor carries the divider's current too (#746).
+    let divider = range(&s, "stage.divider_current");
     assert!(
-        (demand - (3.9 + ripple.hi() / 2.0)).abs() < 1e-6 && demand > 3.9,
-        "{demand} for a ripple of {ripple}"
+        (demand - (3.9 + divider.hi() + ripple.hi() / 2.0)).abs() < 1e-6 && demand > 3.9,
+        "{demand} for a ripple of {ripple} and a divider of {divider}"
     );
     // The need is a requirement on the row: no row of the catalog meets it, and the step that
     // resolves the part says so by name instead of ordering a part that does not.
