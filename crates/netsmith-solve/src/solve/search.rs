@@ -335,15 +335,8 @@ impl Solver<'_> {
             for &count in &counts {
                 let checkpoint = self.model.checkpoint();
                 let bank = job.count.zip(count);
-                let tried = self.try_candidate(
-                    job.part,
-                    &job.columns,
-                    c,
-                    bank,
-                    coupling,
-                    &later,
-                    false,
-                );
+                let tried =
+                    self.try_candidate(job.part, &job.columns, c, bank, coupling, &later, false);
                 self.model.rollback(checkpoint);
                 passed.push(match tried {
                     Err(r) => Passed {
@@ -1122,11 +1115,7 @@ fn keep_turn(search: &mut Search, depth: usize, unfit: &[(usize, Passed)], tried
     if search.turns.contains_key(&depth) {
         return;
     }
-    let passed = unfit
-        .iter()
-        .map(|(_, p)| p.clone())
-        .chain(tried)
-        .collect();
+    let passed = unfit.iter().map(|(_, p)| p.clone()).chain(tried).collect();
     search.turns.insert(
         depth,
         Turn {

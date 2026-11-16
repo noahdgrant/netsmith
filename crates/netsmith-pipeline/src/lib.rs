@@ -174,6 +174,11 @@ pub struct Problem {
     pub board: Option<String>,
     /// The instance it is about, from the board, if it is about one.
     pub path: Option<String>,
+    /// For the first problem of a board whose solve failed, when the catalogs explain
+    /// (`Catalogs::with_explain`): what the solve left each member with and why each row was
+    /// taken or passed over, as the solved file writes a board that failed
+    /// ([`solved::failed_value`], issue 1008).
+    pub solved: Option<serde_json::Value>,
 }
 
 impl Problem {
@@ -186,6 +191,7 @@ impl Problem {
             stage,
             board: None,
             path: None,
+            solved: None,
         }
     }
 
@@ -197,6 +203,7 @@ impl Problem {
             stage,
             board: None,
             path: None,
+            solved: None,
         }
     }
 
@@ -486,15 +493,27 @@ pub fn outcome_observed(
                 providers::Outcome::Unchanged => match &first {
                     None => return Err(held_conflicts(&checked, &held, &board.name)),
                     Some(first) if !first.diagnostics.is_empty() => {
-                        return Err(diagnostic_problems(
-                            &first.diagnostics,
+                        return Err(with_solved(
+                            diagnostic_problems(&first.diagnostics, &checked.sources, &|_| {
+                                board.name.clone()
+                            }),
+                            catalogs,
+                            &board.name,
+                            Some(first),
                             &checked.sources,
-                            &|_| board.name.clone(),
                         ));
                     }
                     Some(_) => {}
                 },
-                providers::Outcome::Failed(problems) => return Err(problems),
+                providers::Outcome::Failed(problems) => {
+                    return Err(with_solved(
+                        problems,
+                        catalogs,
+                        &board.name,
+                        first.as_ref(),
+                        &checked.sources,
+                    ));
+                }
                 providers::Outcome::Found(found) => picked = Some(*found),
             }
         }
@@ -616,10 +635,8 @@ pub fn outcome_observed(
                     let first = first.as_ref().expect("the guard says it is there");
                     // A message written inside the definition of a member's board is about that
                     // board; any other is about the system.
-                    return Err(diagnostic_problems(
-                        &first.diagnostics,
-                        &checked.sources,
-                        &|d| {
+                    let problems =
+                        diagnostic_problems(&first.diagnostics, &checked.sources, &|d| {
                             let member = system.boards.iter().find(|m| {
                                 inside_definition(&first.model, m.inst, d.source, d.span)
                             });
@@ -627,11 +644,25 @@ pub fn outcome_observed(
                                 Some(m) => format!("{}/{}", system.name, m.name),
                                 None => system.name.clone(),
                             }
-                        },
+                        });
+                    return Err(with_solved(
+                        problems,
+                        catalogs,
+                        &system.name,
+                        Some(first),
+                        &checked.sources,
                     ));
                 }
                 providers::Outcome::Unchanged => {}
-                providers::Outcome::Failed(problems) => return Err(problems),
+                providers::Outcome::Failed(problems) => {
+                    return Err(with_solved(
+                        problems,
+                        catalogs,
+                        &system.name,
+                        first.as_ref(),
+                        &checked.sources,
+                    ));
+                }
                 providers::Outcome::Found(found) => picked = Some(*found),
             }
         }
@@ -889,6 +920,7 @@ fn refuse_power(
                 stage: Stage::Power,
                 board: Some(label.to_string()),
                 path: Some(i.subject.clone()),
+                solved: None,
             }
         })
         .collect();
@@ -897,6 +929,24 @@ fn refuse_power(
     } else {
         Err(problems)
     }
+}
+
+/// Puts what a failed solve left (`solved::failed_value`) on the first of `problems`, when the
+/// catalogs explain (`Catalogs::with_explain`) and there is a solve to show.
+fn with_solved(
+    mut problems: Vec<Problem>,
+    catalogs: &Catalogs,
+    label: &str,
+    solution: Option<&Solution>,
+    sources: &Sources,
+) -> Vec<Problem> {
+    if catalogs.explain()
+        && let Some(solution) = solution
+        && let Some(first) = problems.first_mut()
+    {
+        first.solved = Some(solved::failed_value(label, solution, sources));
+    }
+    problems
 }
 
 /// The solver's mistakes. `board_of` says which board a mistake is about.

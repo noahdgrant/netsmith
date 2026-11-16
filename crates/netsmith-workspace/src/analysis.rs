@@ -524,6 +524,7 @@ impl Workspace {
                     stage: Stage::Check,
                     board: None,
                     path: None,
+                    solved: None,
                 }]),
                 Ok(text) => job::reporting(Rc::clone(&sink), || {
                     outcome_observed(
