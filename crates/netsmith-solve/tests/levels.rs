@@ -200,6 +200,21 @@ part PlainIn {
     }
 }
 
+/// Like `Driver`, with the load its levels are measured at, so the DC analysis models its
+/// output (ADR 0076, amendment 4).
+part Measured {
+    .vdd: Rail
+    .out: Logic
+    .out.reference ~ .vdd
+    .out.voh &= .vdd.voltage - 0.1V at 100uA
+    .out.vol &= 0.1V at 100uA
+    pins {
+        .vdd.pos   power  "VDD" "1"
+        .vdd.neg   power  "GND" "2"
+        .out.line  output "OUT" "3"
+    }
+}
+
 /// A receiver that states no levels.
 part Bare {
     .vdd: Rail
@@ -681,5 +696,79 @@ fn a_pull_down_is_no_series_part_and_a_net_with_its_own_driver_is_judged_on_it()
         notes(&s).iter().all(|n| !n.contains("comes through")),
         "{:#?}",
         notes(&s)
+    );
+}
+
+// ---- a level through a series part, judged by the DC analysis (#850) ----
+
+fn through(extra: &str) -> Solution {
+    solved(&format!(
+        "{S3}    .a: Measured\n    .b: Receiver\n    .r: Resistor {{ .resistance &= 10kohm +/- 1% }}\n    .s3 ~ .a.vdd\n    .s3 ~ .b.vdd\n    .a.out.line ~> .r ~> .b.in.line\n{extra}"
+    ))
+}
+
+#[test]
+fn a_modelled_driver_behind_a_series_resistor_is_judged_by_the_voltage_it_gives_the_receiver() {
+    // Nothing else on the receiver's net: the line follows the driver, and the pair holds.
+    let s = through("");
+    assert_eq!(faults(&s), Vec::<String>::new());
+    assert!(
+        notes(&s).iter().all(|n| !n.contains("comes through")),
+        "{:#?}",
+        notes(&s)
+    );
+}
+
+#[test]
+fn a_series_resistor_into_a_pull_down_gives_a_high_the_receiver_does_not_read() {
+    // 10 kohm into 10 kohm to ground: the high is about half the supply.
+    let s = through(
+        "    .p: Resistor { .resistance &= 10kohm +/- 1% }\n    .b.in.line ~> .p ~> .s3.neg\n",
+    );
+    let f = faults(&s);
+    assert_eq!(f.len(), 1, "{f:?}");
+    assert!(
+        f[0].starts_with("net `net-b.in.line`: with `a.out` driving high, the DC analysis holds the line at ")
+            && f[0].contains(" through `r` from net `net-a.out.line` but `b.in.vih` needs 2.194V..2.426V: a high of "),
+        "{f:?}"
+    );
+    assert!(
+        notes(&s).iter().all(|n| !n.contains("comes through")),
+        "{:#?}",
+        notes(&s)
+    );
+}
+
+#[test]
+fn a_series_resistor_into_a_pull_up_gives_a_low_the_receiver_does_not_read() {
+    // 10 kohm against 10 kohm to the supply: the low is about half the supply.
+    let s = through(
+        "    .p: Resistor { .resistance &= 10kohm +/- 1% }\n    .s3.pos ~> .p ~> .b.in.line\n",
+    );
+    let f = faults(&s);
+    assert_eq!(f.len(), 1, "{f:?}");
+    assert!(
+        f[0].starts_with("net `net-b.in.line`: with `a.out` driving low, the DC analysis holds the line at ")
+            && f[0].contains(" through `r` from net `net-a.out.line` but `b.in.vil` allows 940.5mV..1.04V: a low of "),
+        "{f:?}"
+    );
+}
+
+#[test]
+fn a_level_that_crosses_a_series_part_into_a_net_whose_drivers_let_go_is_named() {
+    // A `tri_state` driver on the receiver's net lets go of it, and then the far driver's level
+    // comes through the resistor.
+    let s = solved(&format!(
+        "{S3}    .a: Driver\n    .c: ShareDriver\n    .b: Receiver\n    .r: Resistor {{ .resistance &= 100ohm +/- 1% }}\n    .s3 ~ .a.vdd\n    .s3 ~ .b.vdd\n    .s3 ~ .c.vdd\n    .c.out.line ~ .b.in.line\n    .a.out.line ~> .r ~> .b.in.line\n"
+    ));
+    let crossing: Vec<String> = notes(&s)
+        .into_iter()
+        .filter(|n| n.contains("that cross"))
+        .collect();
+    assert_eq!(
+        crossing,
+        [
+            "not evaluated: the logic levels that cross `r` from net `net-a.out.line` into net `net-b.in.line`: every driver of net `net-b.in.line` can let go of it, and then the level that `a.out` drives reaches `b.in` through `r`, which the levels check does not follow"
+        ]
     );
 }

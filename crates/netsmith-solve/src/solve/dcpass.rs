@@ -41,7 +41,7 @@
 //! enclose the circuit's range) and `dc_disagree` (a worked-out current the analysis cannot
 //! share is an error that names both ranges).
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::rc::Rc;
 
 use netsmith_check::{Domain, FieldId, FieldKind, InstId};
@@ -51,7 +51,7 @@ use crate::catalog::Value;
 use crate::dc::{self, Error, Modelled, Which};
 use crate::eval::relation_reads_end;
 use crate::generic::Need;
-use crate::levels::{NetReads, NotEvaluated};
+use crate::levels::{Driven, NetReads, NotEvaluated};
 
 use super::Solver;
 
@@ -199,6 +199,49 @@ fn open_drain_reads(planned: &dc::Planned, reads: &mut NetReads) {
     }
 }
 
+/// The voltage of each free net of an island with each logic pin that `wanted` lists held driving
+/// high and held driving low (#850): what a receiver behind a series part sees. Only a pin that
+/// drives both ways; an island that has no consistent combination in either state gives nothing.
+fn driven_reads(planned: &dc::Planned, wanted: &BTreeSet<InstId>, reads: &mut NetReads) {
+    let Some(ground) = planned.ground else { return };
+    for &(pin, element) in &planned.pins {
+        if !wanted.contains(&pin) {
+            continue;
+        }
+        let dc::net::Kind::Pin {
+            high: Some(_),
+            low: Some(_),
+            ..
+        } = planned.island.elements[element].kind
+        else {
+            continue;
+        };
+        let solve = |high: bool| {
+            let report = planned
+                .island
+                .driving(element, high)
+                .analyze(dc::MAX_COMBINATIONS)
+                .ok()?;
+            (report.consistent > 0).then_some(report)
+        };
+        let (Some(up), Some(down)) = (solve(true), solve(false)) else {
+            continue;
+        };
+        for (k, &net) in planned.free_nets.iter().enumerate() {
+            let range = |report: &dc::Report| {
+                let r = report.range(Which::NodeVoltage(k));
+                (!r.is_empty() && r.lo.is_finite() && r.hi.is_finite())
+                    .then(|| widen(Dimension::VOLTAGE, r.lo, r.hi))
+            };
+            if let (Some(high), Some(low)) = (range(&up), range(&down)) {
+                reads
+                    .driven
+                    .insert((pin, net), Driven { ground, high, low });
+            }
+        }
+    }
+}
+
 impl Solver<'_> {
     /// Run the analysis and write its results. The notes are the islands it left alone.
     pub(super) fn dc_pass(
@@ -214,6 +257,7 @@ impl Solver<'_> {
         let mut summary = DcSummary::default();
         let mut reads = NetReads::default();
         let mut notes = Vec::new();
+        let series = crate::levels::series_drivers(&self.model);
         // The rails on the nodes of the islands, written when every island is done, and the
         // fields that a part's own write covers (a regulator's input voltage).
         let mut rails: Vec<(dc::RailNode, Rc<Run>)> = Vec::new();
@@ -271,6 +315,7 @@ impl Solver<'_> {
                             let (lo, hi) = widen(Dimension::VOLTAGE, r.lo, r.hi);
                             reads.volts.insert(net, (ground, lo, hi));
                         }
+                        driven_reads(&planned, &series, &mut reads);
                     }
                     // The most that flows into each net the island solved, over every corner
                     // (amendment 8), unless an inferred open-drain pin is in it.
