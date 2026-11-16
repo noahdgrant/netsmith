@@ -238,19 +238,16 @@ interface JlcTwoLayer2oz provides TwoLayer {
 /// outer layers only.
 ///
 /// The thickness and the build-up are the provider's (ADR 0113): `FourLayer` is a generic, and
-/// each build-up of the impedance page that `Stackup` can state is an interface that provides
-/// it, `JlcFourLayerAA04161H7628` for the page's `JLC04161H-7628`. A board that says nothing is
-/// made 1.6 mm thick in that build-up, the first provider and the page's "no requirement"
-/// default for 1.6 mm. `.process.stackup.thickness &= 1.2mm` picks the first provider of that
-/// thickness, which is the page's default for it (0.8, 1.0, 1.2, 1.6 and 2.0 mm are offered),
-/// and `.process.stackup.build &= "JLC04121H-3313"` picks a build-up by the page's name.
+/// the page's default build-up of each thickness it offers is an interface that provides it,
+/// `JlcFourLayerA04161H7628` for the 1.6 mm `JLC04161H-7628`. A board that says nothing is made
+/// 1.6 mm thick in that build-up, the first provider. `.process.stackup.thickness &= 1.2mm`
+/// makes it 1.2 mm thick, in `JLC04121H-7628`, and `.process.stackup.build &= "JLC04121H-7628"`
+/// picks a build-up by the page's name.
 ///
 /// A board gets the first provider that holds, and the order of providers is the order of their
-/// names (ADR 0068), so each name starts, after `JlcFourLayer`, with two letters that put the
-/// provider a board gets first: the first says the thickness (`A` 1.6 mm, `B` 0.8, `C` 1.0,
-/// `D` 1.2, `E` 2.0 mm), the second whether it is the page's default build-up of that
-/// thickness (`A`) or another (`B`); the rest is the page's name without `JLC` and the
-/// hyphen. `.process.stackup.thickness &= 1.2mm` thus reaches `JlcFourLayerDA04121H7628`.
+/// names (ADR 0068), so each name starts, after `JlcFourLayer`, with a letter that puts the
+/// 1.6 mm provider, the one an unstated board gets, first: `A` 1.6 mm, `B` 0.8, `C` 1.0,
+/// `D` 1.2, `E` 2.0 mm; the rest is the page's name without `JLC` and the hyphen.
 ///
 /// Numbers are from the page's multilayer rows, https://jlcpcb.com/capabilities/pcb-capabilities
 /// (fetched 2026-11-01), and the stackups from https://jlcpcb.com/impedance (fetched
@@ -287,9 +284,15 @@ interface JlcTwoLayer2oz provides TwoLayer {
 /// 3.91, 2116 prepreg 4.16, core 4.6. The data is what the page's thickness buttons ask its
 /// service for (1 oz outer, 0.5 oz inner), read for each of 0.8, 1.0, 1.2, 1.6 and 2.0 mm.
 ///
-/// Not stated, because `Stackup` has one dielectric layer between two copper layers
-/// (ADR 0111): the page's build-ups with two or more prepreg sheets there (`JLC04161H-7628A`
-/// and 32 others across the five thicknesses), so a board that needs one is told that no
+/// Not stated: the page lists 54 four-layer build-ups in all, and `FourLayer` has the five that
+/// are its default for a thickness. The other 49 are `JLC04161H-3313` and the like, which
+/// differ in the prepreg (3313, 1080, 2116) or stack two or more prepreg sheets between two
+/// copper layers, which `Stackup` cannot state (one dielectric layer there, ADR 0111). Of the
+/// 49, 16 have one sheet there and could be providers (their numbers were read, 2026-11-16);
+/// they are left out because every provider of a process multiplies the search of ADR 0068,
+/// whose bound is 64 provider combinations for a whole board: with 21 providers a board with
+/// two other provider choices that fails to build exhausts the bound and the build reports
+/// that it gave up instead of the failure. A board that needs one of them is told that no
 /// provider has it. Price is not stated either: the page marks some build-ups as carrying a
 /// fixed fee and some as not offered in its expedited service, and neither is a rule of the
 /// board.
@@ -446,7 +449,7 @@ generic FourLayer {
 /// x 1 0.2104 mm, inner copper 0.0152 mm, core 1.065 mm, inner copper 0.0152 mm, prepreg 7628
 /// x 1 0.2104 mm, outer copper 0.035 mm, 1.5862 mm in all. The page's "no requirement"
 /// default for 1.6 mm.
-interface JlcFourLayerAA04161H7628 provides FourLayer {
+interface JlcFourLayerA04161H7628 provides FourLayer {
     .stackup.thickness &= 1.6mm
     .stackup.build &= "JLC04161H-7628"
     .stackup.inner_copper &= 0.0152mm
@@ -463,71 +466,11 @@ interface JlcFourLayerAA04161H7628 provides FourLayer {
     .stackup.dielectric3.epsilon &= 4.4
 }
 
-/// JLCPCB's four-layer build-up `JLC04161H-3313`, 1.6 mm: outer copper 0.035 mm, prepreg 3313
-/// x 1 0.0994 mm, inner copper 0.0152 mm, core 1.265 mm, inner copper 0.0152 mm, prepreg 3313
-/// x 1 0.0994 mm, outer copper 0.035 mm, 1.5642 mm in all.
-interface JlcFourLayerAB04161H3313 provides FourLayer {
-    .stackup.thickness &= 1.6mm
-    .stackup.build &= "JLC04161H-3313"
-    .stackup.inner_copper &= 0.0152mm
-    .stackup.dielectric1.kind &= "prepreg"
-    .stackup.dielectric1.glass &= "3313"
-    .stackup.dielectric1.thickness &= 0.0994mm
-    .stackup.dielectric1.epsilon &= 4.1
-    .stackup.dielectric2.kind &= "core"
-    .stackup.dielectric2.thickness &= 1.265mm
-    .stackup.dielectric2.epsilon &= 4.6
-    .stackup.dielectric3.kind &= "prepreg"
-    .stackup.dielectric3.glass &= "3313"
-    .stackup.dielectric3.thickness &= 0.0994mm
-    .stackup.dielectric3.epsilon &= 4.1
-}
-
-/// JLCPCB's four-layer build-up `JLC04161H-1080`, 1.6 mm: outer copper 0.035 mm, prepreg 1080
-/// x 1 0.0764 mm, inner copper 0.0152 mm, core 1.265 mm, inner copper 0.0152 mm, prepreg 1080
-/// x 1 0.0764 mm, outer copper 0.035 mm, 1.5182 mm in all.
-interface JlcFourLayerAB04161H1080 provides FourLayer {
-    .stackup.thickness &= 1.6mm
-    .stackup.build &= "JLC04161H-1080"
-    .stackup.inner_copper &= 0.0152mm
-    .stackup.dielectric1.kind &= "prepreg"
-    .stackup.dielectric1.glass &= "1080"
-    .stackup.dielectric1.thickness &= 0.0764mm
-    .stackup.dielectric1.epsilon &= 3.91
-    .stackup.dielectric2.kind &= "core"
-    .stackup.dielectric2.thickness &= 1.265mm
-    .stackup.dielectric2.epsilon &= 4.6
-    .stackup.dielectric3.kind &= "prepreg"
-    .stackup.dielectric3.glass &= "1080"
-    .stackup.dielectric3.thickness &= 0.0764mm
-    .stackup.dielectric3.epsilon &= 3.91
-}
-
-/// JLCPCB's four-layer build-up `JLC04161H-2116`, 1.6 mm: outer copper 0.035 mm, prepreg 2116
-/// x 1 0.1164 mm, inner copper 0.0152 mm, core 1.265 mm, inner copper 0.0152 mm, prepreg 2116
-/// x 1 0.1164 mm, outer copper 0.035 mm, 1.5982 mm in all.
-interface JlcFourLayerAB04161H2116 provides FourLayer {
-    .stackup.thickness &= 1.6mm
-    .stackup.build &= "JLC04161H-2116"
-    .stackup.inner_copper &= 0.0152mm
-    .stackup.dielectric1.kind &= "prepreg"
-    .stackup.dielectric1.glass &= "2116"
-    .stackup.dielectric1.thickness &= 0.1164mm
-    .stackup.dielectric1.epsilon &= 4.16
-    .stackup.dielectric2.kind &= "core"
-    .stackup.dielectric2.thickness &= 1.265mm
-    .stackup.dielectric2.epsilon &= 4.6
-    .stackup.dielectric3.kind &= "prepreg"
-    .stackup.dielectric3.glass &= "2116"
-    .stackup.dielectric3.thickness &= 0.1164mm
-    .stackup.dielectric3.epsilon &= 4.16
-}
-
 /// JLCPCB's four-layer build-up `JLC04081H-7628`, 0.8 mm: outer copper 0.035 mm, prepreg 7628
 /// x 1 0.2104 mm, inner copper 0.0152 mm, core 0.25 mm, inner copper 0.0152 mm, prepreg 7628
 /// x 1 0.2104 mm, outer copper 0.035 mm, 0.7712 mm in all. The page's "no requirement"
 /// default for 0.8 mm.
-interface JlcFourLayerBA04081H7628 provides FourLayer {
+interface JlcFourLayerB04081H7628 provides FourLayer {
     .stackup.thickness &= 0.8mm
     .stackup.build &= "JLC04081H-7628"
     .stackup.inner_copper &= 0.0152mm
@@ -544,91 +487,11 @@ interface JlcFourLayerBA04081H7628 provides FourLayer {
     .stackup.dielectric3.epsilon &= 4.4
 }
 
-/// JLCPCB's four-layer build-up `JLC04081H-3313`, 0.8 mm: outer copper 0.035 mm, prepreg 3313
-/// x 1 0.0994 mm, inner copper 0.0152 mm, core 0.5 mm, inner copper 0.0152 mm, prepreg 3313 x
-/// 1 0.0994 mm, outer copper 0.035 mm, 0.7992 mm in all.
-interface JlcFourLayerBB04081H3313 provides FourLayer {
-    .stackup.thickness &= 0.8mm
-    .stackup.build &= "JLC04081H-3313"
-    .stackup.inner_copper &= 0.0152mm
-    .stackup.dielectric1.kind &= "prepreg"
-    .stackup.dielectric1.glass &= "3313"
-    .stackup.dielectric1.thickness &= 0.0994mm
-    .stackup.dielectric1.epsilon &= 4.1
-    .stackup.dielectric2.kind &= "core"
-    .stackup.dielectric2.thickness &= 0.5mm
-    .stackup.dielectric2.epsilon &= 4.6
-    .stackup.dielectric3.kind &= "prepreg"
-    .stackup.dielectric3.glass &= "3313"
-    .stackup.dielectric3.thickness &= 0.0994mm
-    .stackup.dielectric3.epsilon &= 4.1
-}
-
-/// JLCPCB's four-layer build-up `JLC04081H-2116B`, 0.8 mm: outer copper 0.035 mm, prepreg
-/// 2116 x 1 0.1164 mm, inner copper 0.0152 mm, core 0.45 mm, inner copper 0.0152 mm, prepreg
-/// 2116 x 1 0.1164 mm, outer copper 0.035 mm, 0.7832 mm in all.
-interface JlcFourLayerBB04081H2116B provides FourLayer {
-    .stackup.thickness &= 0.8mm
-    .stackup.build &= "JLC04081H-2116B"
-    .stackup.inner_copper &= 0.0152mm
-    .stackup.dielectric1.kind &= "prepreg"
-    .stackup.dielectric1.glass &= "2116"
-    .stackup.dielectric1.thickness &= 0.1164mm
-    .stackup.dielectric1.epsilon &= 4.16
-    .stackup.dielectric2.kind &= "core"
-    .stackup.dielectric2.thickness &= 0.45mm
-    .stackup.dielectric2.epsilon &= 4.6
-    .stackup.dielectric3.kind &= "prepreg"
-    .stackup.dielectric3.glass &= "2116"
-    .stackup.dielectric3.thickness &= 0.1164mm
-    .stackup.dielectric3.epsilon &= 4.16
-}
-
-/// JLCPCB's four-layer build-up `JLC04081H-1080`, 0.8 mm: outer copper 0.035 mm, prepreg 1080
-/// x 1 0.0764 mm, inner copper 0.0152 mm, core 0.55 mm, inner copper 0.0152 mm, prepreg 1080
-/// x 1 0.0764 mm, outer copper 0.035 mm, 0.8032 mm in all.
-interface JlcFourLayerBB04081H1080 provides FourLayer {
-    .stackup.thickness &= 0.8mm
-    .stackup.build &= "JLC04081H-1080"
-    .stackup.inner_copper &= 0.0152mm
-    .stackup.dielectric1.kind &= "prepreg"
-    .stackup.dielectric1.glass &= "1080"
-    .stackup.dielectric1.thickness &= 0.0764mm
-    .stackup.dielectric1.epsilon &= 3.91
-    .stackup.dielectric2.kind &= "core"
-    .stackup.dielectric2.thickness &= 0.55mm
-    .stackup.dielectric2.epsilon &= 4.6
-    .stackup.dielectric3.kind &= "prepreg"
-    .stackup.dielectric3.glass &= "1080"
-    .stackup.dielectric3.thickness &= 0.0764mm
-    .stackup.dielectric3.epsilon &= 3.91
-}
-
-/// JLCPCB's four-layer build-up `JLC04081H-7628A`, 0.8 mm: outer copper 0.035 mm, prepreg
-/// 7628 x 1 0.2104 mm, inner copper 0.0152 mm, core 0.2 mm, inner copper 0.0152 mm, prepreg
-/// 7628 x 1 0.2104 mm, outer copper 0.035 mm, 0.7212 mm in all.
-interface JlcFourLayerBB04081H7628A provides FourLayer {
-    .stackup.thickness &= 0.8mm
-    .stackup.build &= "JLC04081H-7628A"
-    .stackup.inner_copper &= 0.0152mm
-    .stackup.dielectric1.kind &= "prepreg"
-    .stackup.dielectric1.glass &= "7628"
-    .stackup.dielectric1.thickness &= 0.2104mm
-    .stackup.dielectric1.epsilon &= 4.4
-    .stackup.dielectric2.kind &= "core"
-    .stackup.dielectric2.thickness &= 0.2mm
-    .stackup.dielectric2.epsilon &= 4.6
-    .stackup.dielectric3.kind &= "prepreg"
-    .stackup.dielectric3.glass &= "7628"
-    .stackup.dielectric3.thickness &= 0.2104mm
-    .stackup.dielectric3.epsilon &= 4.4
-}
-
 /// JLCPCB's four-layer build-up `JLC04101H-7628`, 1.0 mm: outer copper 0.035 mm, prepreg 7628
 /// x 1 0.2104 mm, inner copper 0.0152 mm, core 0.5 mm, inner copper 0.0152 mm, prepreg 7628 x
 /// 1 0.2104 mm, outer copper 0.035 mm, 1.0212 mm in all. The page's "no requirement" default
 /// for 1.0 mm.
-interface JlcFourLayerCA04101H7628 provides FourLayer {
+interface JlcFourLayerC04101H7628 provides FourLayer {
     .stackup.thickness &= 1.0mm
     .stackup.build &= "JLC04101H-7628"
     .stackup.inner_copper &= 0.0152mm
@@ -645,91 +508,11 @@ interface JlcFourLayerCA04101H7628 provides FourLayer {
     .stackup.dielectric3.epsilon &= 4.4
 }
 
-/// JLCPCB's four-layer build-up `JLC04101H-3313`, 1.0 mm: outer copper 0.035 mm, prepreg 3313
-/// x 1 0.0994 mm, inner copper 0.0152 mm, core 0.7 mm, inner copper 0.0152 mm, prepreg 3313 x
-/// 1 0.0994 mm, outer copper 0.035 mm, 0.9992 mm in all.
-interface JlcFourLayerCB04101H3313 provides FourLayer {
-    .stackup.thickness &= 1.0mm
-    .stackup.build &= "JLC04101H-3313"
-    .stackup.inner_copper &= 0.0152mm
-    .stackup.dielectric1.kind &= "prepreg"
-    .stackup.dielectric1.glass &= "3313"
-    .stackup.dielectric1.thickness &= 0.0994mm
-    .stackup.dielectric1.epsilon &= 4.1
-    .stackup.dielectric2.kind &= "core"
-    .stackup.dielectric2.thickness &= 0.7mm
-    .stackup.dielectric2.epsilon &= 4.6
-    .stackup.dielectric3.kind &= "prepreg"
-    .stackup.dielectric3.glass &= "3313"
-    .stackup.dielectric3.thickness &= 0.0994mm
-    .stackup.dielectric3.epsilon &= 4.1
-}
-
-/// JLCPCB's four-layer build-up `JLC04101H-1080`, 1.0 mm: outer copper 0.035 mm, prepreg 1080
-/// x 1 0.0764 mm, inner copper 0.0152 mm, core 0.7 mm, inner copper 0.0152 mm, prepreg 1080 x
-/// 1 0.0764 mm, outer copper 0.035 mm, 0.9532 mm in all.
-interface JlcFourLayerCB04101H1080 provides FourLayer {
-    .stackup.thickness &= 1.0mm
-    .stackup.build &= "JLC04101H-1080"
-    .stackup.inner_copper &= 0.0152mm
-    .stackup.dielectric1.kind &= "prepreg"
-    .stackup.dielectric1.glass &= "1080"
-    .stackup.dielectric1.thickness &= 0.0764mm
-    .stackup.dielectric1.epsilon &= 3.91
-    .stackup.dielectric2.kind &= "core"
-    .stackup.dielectric2.thickness &= 0.7mm
-    .stackup.dielectric2.epsilon &= 4.6
-    .stackup.dielectric3.kind &= "prepreg"
-    .stackup.dielectric3.glass &= "1080"
-    .stackup.dielectric3.thickness &= 0.0764mm
-    .stackup.dielectric3.epsilon &= 3.91
-}
-
-/// JLCPCB's four-layer build-up `JLC04101H-2116C`, 1.0 mm: outer copper 0.035 mm, prepreg
-/// 2116 x 1 0.1164 mm, inner copper 0.0152 mm, core 0.665 mm, inner copper 0.0152 mm, prepreg
-/// 2116 x 1 0.1164 mm, outer copper 0.035 mm, 0.9982 mm in all.
-interface JlcFourLayerCB04101H2116C provides FourLayer {
-    .stackup.thickness &= 1.0mm
-    .stackup.build &= "JLC04101H-2116C"
-    .stackup.inner_copper &= 0.0152mm
-    .stackup.dielectric1.kind &= "prepreg"
-    .stackup.dielectric1.glass &= "2116"
-    .stackup.dielectric1.thickness &= 0.1164mm
-    .stackup.dielectric1.epsilon &= 4.16
-    .stackup.dielectric2.kind &= "core"
-    .stackup.dielectric2.thickness &= 0.665mm
-    .stackup.dielectric2.epsilon &= 4.6
-    .stackup.dielectric3.kind &= "prepreg"
-    .stackup.dielectric3.glass &= "2116"
-    .stackup.dielectric3.thickness &= 0.1164mm
-    .stackup.dielectric3.epsilon &= 4.16
-}
-
-/// JLCPCB's four-layer build-up `JLC04101H-7628B`, 1.0 mm: outer copper 0.035 mm, prepreg
-/// 7628 x 1 0.2104 mm, inner copper 0.0152 mm, core 0.4 mm, inner copper 0.0152 mm, prepreg
-/// 7628 x 1 0.2104 mm, outer copper 0.035 mm, 0.9212 mm in all.
-interface JlcFourLayerCB04101H7628B provides FourLayer {
-    .stackup.thickness &= 1.0mm
-    .stackup.build &= "JLC04101H-7628B"
-    .stackup.inner_copper &= 0.0152mm
-    .stackup.dielectric1.kind &= "prepreg"
-    .stackup.dielectric1.glass &= "7628"
-    .stackup.dielectric1.thickness &= 0.2104mm
-    .stackup.dielectric1.epsilon &= 4.4
-    .stackup.dielectric2.kind &= "core"
-    .stackup.dielectric2.thickness &= 0.4mm
-    .stackup.dielectric2.epsilon &= 4.6
-    .stackup.dielectric3.kind &= "prepreg"
-    .stackup.dielectric3.glass &= "7628"
-    .stackup.dielectric3.thickness &= 0.2104mm
-    .stackup.dielectric3.epsilon &= 4.4
-}
-
 /// JLCPCB's four-layer build-up `JLC04121H-7628`, 1.2 mm: outer copper 0.035 mm, prepreg 7628
 /// x 1 0.2104 mm, inner copper 0.0152 mm, core 0.6 mm, inner copper 0.0152 mm, prepreg 7628 x
 /// 1 0.2104 mm, outer copper 0.035 mm, 1.1212 mm in all. The page's "no requirement" default
 /// for 1.2 mm.
-interface JlcFourLayerDA04121H7628 provides FourLayer {
+interface JlcFourLayerD04121H7628 provides FourLayer {
     .stackup.thickness &= 1.2mm
     .stackup.build &= "JLC04121H-7628"
     .stackup.inner_copper &= 0.0152mm
@@ -746,51 +529,11 @@ interface JlcFourLayerDA04121H7628 provides FourLayer {
     .stackup.dielectric3.epsilon &= 4.4
 }
 
-/// JLCPCB's four-layer build-up `JLC04121H-3313`, 1.2 mm: outer copper 0.035 mm, prepreg 3313
-/// x 1 0.0994 mm, inner copper 0.0152 mm, core 0.865 mm, inner copper 0.0152 mm, prepreg 3313
-/// x 1 0.0994 mm, outer copper 0.035 mm, 1.1642 mm in all.
-interface JlcFourLayerDB04121H3313 provides FourLayer {
-    .stackup.thickness &= 1.2mm
-    .stackup.build &= "JLC04121H-3313"
-    .stackup.inner_copper &= 0.0152mm
-    .stackup.dielectric1.kind &= "prepreg"
-    .stackup.dielectric1.glass &= "3313"
-    .stackup.dielectric1.thickness &= 0.0994mm
-    .stackup.dielectric1.epsilon &= 4.1
-    .stackup.dielectric2.kind &= "core"
-    .stackup.dielectric2.thickness &= 0.865mm
-    .stackup.dielectric2.epsilon &= 4.6
-    .stackup.dielectric3.kind &= "prepreg"
-    .stackup.dielectric3.glass &= "3313"
-    .stackup.dielectric3.thickness &= 0.0994mm
-    .stackup.dielectric3.epsilon &= 4.1
-}
-
-/// JLCPCB's four-layer build-up `JLC04121H-1080`, 1.2 mm: outer copper 0.035 mm, prepreg 1080
-/// x 1 0.0764 mm, inner copper 0.0152 mm, core 0.865 mm, inner copper 0.0152 mm, prepreg 1080
-/// x 1 0.0764 mm, outer copper 0.035 mm, 1.1182 mm in all.
-interface JlcFourLayerDB04121H1080 provides FourLayer {
-    .stackup.thickness &= 1.2mm
-    .stackup.build &= "JLC04121H-1080"
-    .stackup.inner_copper &= 0.0152mm
-    .stackup.dielectric1.kind &= "prepreg"
-    .stackup.dielectric1.glass &= "1080"
-    .stackup.dielectric1.thickness &= 0.0764mm
-    .stackup.dielectric1.epsilon &= 3.91
-    .stackup.dielectric2.kind &= "core"
-    .stackup.dielectric2.thickness &= 0.865mm
-    .stackup.dielectric2.epsilon &= 4.6
-    .stackup.dielectric3.kind &= "prepreg"
-    .stackup.dielectric3.glass &= "1080"
-    .stackup.dielectric3.thickness &= 0.0764mm
-    .stackup.dielectric3.epsilon &= 3.91
-}
-
 /// JLCPCB's four-layer build-up `JLC04201H-7628`, 2.0 mm: outer copper 0.035 mm, prepreg 7628
 /// x 1 0.2104 mm, inner copper 0.0152 mm, core 1.465 mm, inner copper 0.0152 mm, prepreg 7628
 /// x 1 0.2104 mm, outer copper 0.035 mm, 1.9862 mm in all. The page's "no requirement"
 /// default for 2.0 mm.
-interface JlcFourLayerEA04201H7628 provides FourLayer {
+interface JlcFourLayerE04201H7628 provides FourLayer {
     .stackup.thickness &= 2.0mm
     .stackup.build &= "JLC04201H-7628"
     .stackup.inner_copper &= 0.0152mm
@@ -807,77 +550,17 @@ interface JlcFourLayerEA04201H7628 provides FourLayer {
     .stackup.dielectric3.epsilon &= 4.4
 }
 
-/// JLCPCB's four-layer build-up `JLC04201H-3313`, 2.0 mm: outer copper 0.035 mm, prepreg 3313
-/// x 1 0.0994 mm, inner copper 0.0152 mm, core 1.665 mm, inner copper 0.0152 mm, prepreg 3313
-/// x 1 0.0994 mm, outer copper 0.035 mm, 1.9642 mm in all.
-interface JlcFourLayerEB04201H3313 provides FourLayer {
-    .stackup.thickness &= 2.0mm
-    .stackup.build &= "JLC04201H-3313"
-    .stackup.inner_copper &= 0.0152mm
-    .stackup.dielectric1.kind &= "prepreg"
-    .stackup.dielectric1.glass &= "3313"
-    .stackup.dielectric1.thickness &= 0.0994mm
-    .stackup.dielectric1.epsilon &= 4.1
-    .stackup.dielectric2.kind &= "core"
-    .stackup.dielectric2.thickness &= 1.665mm
-    .stackup.dielectric2.epsilon &= 4.6
-    .stackup.dielectric3.kind &= "prepreg"
-    .stackup.dielectric3.glass &= "3313"
-    .stackup.dielectric3.thickness &= 0.0994mm
-    .stackup.dielectric3.epsilon &= 4.1
-}
-
-/// JLCPCB's four-layer build-up `JLC04201H-1080`, 2.0 mm: outer copper 0.035 mm, prepreg 1080
-/// x 1 0.0764 mm, inner copper 0.0152 mm, core 1.665 mm, inner copper 0.0152 mm, prepreg 1080
-/// x 1 0.0764 mm, outer copper 0.035 mm, 1.9182 mm in all.
-interface JlcFourLayerEB04201H1080 provides FourLayer {
-    .stackup.thickness &= 2.0mm
-    .stackup.build &= "JLC04201H-1080"
-    .stackup.inner_copper &= 0.0152mm
-    .stackup.dielectric1.kind &= "prepreg"
-    .stackup.dielectric1.glass &= "1080"
-    .stackup.dielectric1.thickness &= 0.0764mm
-    .stackup.dielectric1.epsilon &= 3.91
-    .stackup.dielectric2.kind &= "core"
-    .stackup.dielectric2.thickness &= 1.665mm
-    .stackup.dielectric2.epsilon &= 4.6
-    .stackup.dielectric3.kind &= "prepreg"
-    .stackup.dielectric3.glass &= "1080"
-    .stackup.dielectric3.thickness &= 0.0764mm
-    .stackup.dielectric3.epsilon &= 3.91
-}
-
-/// JLCPCB's four-layer build-up `JLC04201H-7628B`, 2.0 mm: outer copper 0.035 mm, prepreg
-/// 7628 x 1 0.2104 mm, inner copper 0.0152 mm, core 1.665 mm, inner copper 0.0152 mm, prepreg
-/// 7628 x 1 0.2104 mm, outer copper 0.035 mm, 2.1862 mm in all.
-interface JlcFourLayerEB04201H7628B provides FourLayer {
-    .stackup.thickness &= 2.0mm
-    .stackup.build &= "JLC04201H-7628B"
-    .stackup.inner_copper &= 0.0152mm
-    .stackup.dielectric1.kind &= "prepreg"
-    .stackup.dielectric1.glass &= "7628"
-    .stackup.dielectric1.thickness &= 0.2104mm
-    .stackup.dielectric1.epsilon &= 4.4
-    .stackup.dielectric2.kind &= "core"
-    .stackup.dielectric2.thickness &= 1.665mm
-    .stackup.dielectric2.epsilon &= 4.6
-    .stackup.dielectric3.kind &= "prepreg"
-    .stackup.dielectric3.glass &= "7628"
-    .stackup.dielectric3.thickness &= 0.2104mm
-    .stackup.dielectric3.epsilon &= 4.4
-}
-
 /// JLCPCB's standard six-layer rigid board: 1 oz outer copper, 0.5 oz inner copper. Each of
 /// the four inner layers is a plane, whose net the board names
 /// (`.process.inner1.net &= "GND"`), or a signal layer (`.process.inner2.use &= "signal"`,
 /// ADR 0111); the router draws signals on the outer layers only.
 ///
 /// The thickness and the build-up are the provider's, as for `FourLayer` (ADR 0113): a board
-/// that says nothing is made 1.6 mm thick in `JlcSixLayerAA06161H3313`, the first provider;
-/// `.process.stackup.thickness &= 1.2mm` picks the first provider of that thickness, the
-/// page's default for it (0.8, 1.0, 1.2, 1.6 and 2.0 mm are offered), and
-/// `.process.stackup.build &= "JLC06121H-7628"` picks a build-up by the page's name. The names
-/// of the providers are made as `FourLayer`'s are, two letters after `JlcSixLayer` that order
+/// that says nothing is made 1.6 mm thick in `JlcSixLayerA06161H3313`, the first provider;
+/// `.process.stackup.thickness &= 1.2mm` makes it 1.2 mm thick, in the page's default build-up
+/// of that thickness, `JLC06121H-3313` (0.8, 1.0, 1.2, 1.6 and 2.0 mm are offered), and
+/// `.process.stackup.build &= "JLC06121H-3313"` picks a build-up by the page's name. The names
+/// of the providers are made as `FourLayer`'s are, one letter after `JlcSixLayer` that orders
 /// them.
 ///
 /// The rules are the multilayer rows of https://jlcpcb.com/capabilities/pcb-capabilities
@@ -906,13 +589,14 @@ interface JlcFourLayerEB04201H7628B provides FourLayer {
 /// build-up of the same name. Relative permittivity, from the same page: 7628 prepreg 4.4,
 /// 3313 prepreg 4.1, 1080 prepreg 3.91, 2116 prepreg 4.16, core 4.6.
 ///
-/// Not stated, because `Stackup` has one dielectric layer between two copper layers
-/// (ADR 0111): the build-ups with two or more prepreg sheets there or a bare core between two
-/// prepreg sheets (`JLC06161H-7628D`, `JLC06161H-2116A` and 35 others across the five
-/// thicknesses, one of which, `JLC06081H-2313`, also uses 2313 prepreg, which has no
-/// permittivity on the page). The
-/// page states no build-up of 8 or 10 layers, so JLCPCB has no process for them here;
-/// `std::mfg::acme` has fictional ones, not for ordering (ADR 0112).
+/// Not stated: the page lists 56 six-layer build-ups in all, and `SixLayer` has the five that
+/// are its default for a thickness. The other 51 differ in the prepreg or the cores, stack two or
+/// more prepreg sheets between two copper layers, or put a bare core between prepreg sheets,
+/// which `Stackup` cannot state (ADR 0111); one of them, `JLC06081H-2313`, also uses 2313
+/// prepreg, which has no permittivity on the page. Of the 51, 14 have a form `Stackup` can
+/// state and are left out for the reason `FourLayer` gives (the search bound). The page states
+/// no build-up of 8 or 10 layers, so JLCPCB has no process for them here; `std::mfg::acme` has
+/// fictional ones, not for ordering (ADR 0112).
 generic SixLayer {
     /// Who makes it, and where the numbers are published.
     .fabricator: String
@@ -1070,121 +754,9 @@ generic SixLayer {
 /// x 1 0.1088 mm, inner copper 0.0152 mm, core 0.55 mm, inner copper 0.0152 mm, prepreg 3313
 /// x 1 0.0994 mm, outer copper 0.035 mm, 1.5384 mm in all. The page's "no requirement"
 /// default for 1.6 mm.
-interface JlcSixLayerAA06161H3313 provides SixLayer {
+interface JlcSixLayerA06161H3313 provides SixLayer {
     .stackup.thickness &= 1.6mm
     .stackup.build &= "JLC06161H-3313"
-    .stackup.inner_copper &= 0.0152mm
-    .stackup.dielectric1.kind &= "prepreg"
-    .stackup.dielectric1.glass &= "3313"
-    .stackup.dielectric1.thickness &= 0.0994mm
-    .stackup.dielectric1.epsilon &= 4.1
-    .stackup.dielectric2.kind &= "core"
-    .stackup.dielectric2.thickness &= 0.55mm
-    .stackup.dielectric2.epsilon &= 4.6
-    .stackup.dielectric3.kind &= "prepreg"
-    .stackup.dielectric3.glass &= "2116"
-    .stackup.dielectric3.thickness &= 0.1088mm
-    .stackup.dielectric3.epsilon &= 4.16
-    .stackup.dielectric4.kind &= "core"
-    .stackup.dielectric4.thickness &= 0.55mm
-    .stackup.dielectric4.epsilon &= 4.6
-    .stackup.dielectric5.kind &= "prepreg"
-    .stackup.dielectric5.glass &= "3313"
-    .stackup.dielectric5.thickness &= 0.0994mm
-    .stackup.dielectric5.epsilon &= 4.1
-}
-
-/// JLCPCB's six-layer build-up `JLC06161H-7628`, 1.6 mm: outer copper 0.035 mm, prepreg 7628
-/// x 1 0.2104 mm, inner copper 0.0152 mm, core 0.4 mm, inner copper 0.0152 mm, prepreg 7628 x
-/// 1 0.2028 mm, inner copper 0.0152 mm, core 0.4 mm, inner copper 0.0152 mm, prepreg 7628 x 1
-/// 0.2104 mm, outer copper 0.035 mm, 1.5544 mm in all.
-interface JlcSixLayerAB06161H7628 provides SixLayer {
-    .stackup.thickness &= 1.6mm
-    .stackup.build &= "JLC06161H-7628"
-    .stackup.inner_copper &= 0.0152mm
-    .stackup.dielectric1.kind &= "prepreg"
-    .stackup.dielectric1.glass &= "7628"
-    .stackup.dielectric1.thickness &= 0.2104mm
-    .stackup.dielectric1.epsilon &= 4.4
-    .stackup.dielectric2.kind &= "core"
-    .stackup.dielectric2.thickness &= 0.4mm
-    .stackup.dielectric2.epsilon &= 4.6
-    .stackup.dielectric3.kind &= "prepreg"
-    .stackup.dielectric3.glass &= "7628"
-    .stackup.dielectric3.thickness &= 0.2028mm
-    .stackup.dielectric3.epsilon &= 4.4
-    .stackup.dielectric4.kind &= "core"
-    .stackup.dielectric4.thickness &= 0.4mm
-    .stackup.dielectric4.epsilon &= 4.6
-    .stackup.dielectric5.kind &= "prepreg"
-    .stackup.dielectric5.glass &= "7628"
-    .stackup.dielectric5.thickness &= 0.2104mm
-    .stackup.dielectric5.epsilon &= 4.4
-}
-
-/// JLCPCB's six-layer build-up `JLC06161H-1080`, 1.6 mm: outer copper 0.035 mm, prepreg 1080
-/// x 1 0.0764 mm, inner copper 0.0152 mm, core 0.55 mm, inner copper 0.0152 mm, prepreg 7628
-/// x 1 0.2104 mm, inner copper 0.0152 mm, core 0.55 mm, inner copper 0.0152 mm, prepreg 1080
-/// x 1 0.0764 mm, outer copper 0.035 mm, 1.594 mm in all.
-interface JlcSixLayerAB06161H1080 provides SixLayer {
-    .stackup.thickness &= 1.6mm
-    .stackup.build &= "JLC06161H-1080"
-    .stackup.inner_copper &= 0.0152mm
-    .stackup.dielectric1.kind &= "prepreg"
-    .stackup.dielectric1.glass &= "1080"
-    .stackup.dielectric1.thickness &= 0.0764mm
-    .stackup.dielectric1.epsilon &= 3.91
-    .stackup.dielectric2.kind &= "core"
-    .stackup.dielectric2.thickness &= 0.55mm
-    .stackup.dielectric2.epsilon &= 4.6
-    .stackup.dielectric3.kind &= "prepreg"
-    .stackup.dielectric3.glass &= "7628"
-    .stackup.dielectric3.thickness &= 0.2104mm
-    .stackup.dielectric3.epsilon &= 4.4
-    .stackup.dielectric4.kind &= "core"
-    .stackup.dielectric4.thickness &= 0.55mm
-    .stackup.dielectric4.epsilon &= 4.6
-    .stackup.dielectric5.kind &= "prepreg"
-    .stackup.dielectric5.glass &= "1080"
-    .stackup.dielectric5.thickness &= 0.0764mm
-    .stackup.dielectric5.epsilon &= 3.91
-}
-
-/// JLCPCB's six-layer build-up `JLC06161H-1080A`, 1.6 mm: outer copper 0.035 mm, prepreg 1080
-/// x 1 0.0764 mm, inner copper 0.0152 mm, core 0.6 mm, inner copper 0.0152 mm, prepreg 3313 x
-/// 1 0.0994 mm, inner copper 0.0152 mm, core 0.6 mm, inner copper 0.0152 mm, prepreg 1080 x 1
-/// 0.0764 mm, outer copper 0.035 mm, 1.583 mm in all.
-interface JlcSixLayerAB06161H1080A provides SixLayer {
-    .stackup.thickness &= 1.6mm
-    .stackup.build &= "JLC06161H-1080A"
-    .stackup.inner_copper &= 0.0152mm
-    .stackup.dielectric1.kind &= "prepreg"
-    .stackup.dielectric1.glass &= "1080"
-    .stackup.dielectric1.thickness &= 0.0764mm
-    .stackup.dielectric1.epsilon &= 3.91
-    .stackup.dielectric2.kind &= "core"
-    .stackup.dielectric2.thickness &= 0.6mm
-    .stackup.dielectric2.epsilon &= 4.6
-    .stackup.dielectric3.kind &= "prepreg"
-    .stackup.dielectric3.glass &= "3313"
-    .stackup.dielectric3.thickness &= 0.0994mm
-    .stackup.dielectric3.epsilon &= 4.1
-    .stackup.dielectric4.kind &= "core"
-    .stackup.dielectric4.thickness &= 0.6mm
-    .stackup.dielectric4.epsilon &= 4.6
-    .stackup.dielectric5.kind &= "prepreg"
-    .stackup.dielectric5.glass &= "1080"
-    .stackup.dielectric5.thickness &= 0.0764mm
-    .stackup.dielectric5.epsilon &= 3.91
-}
-
-/// JLCPCB's six-layer build-up `JLC06161H-3313A`, 1.6 mm: outer copper 0.035 mm, prepreg 3313
-/// x 1 0.0994 mm, inner copper 0.0152 mm, core 0.55 mm, inner copper 0.0152 mm, prepreg 2116
-/// x 1 0.1088 mm, inner copper 0.0152 mm, core 0.55 mm, inner copper 0.0152 mm, prepreg 3313
-/// x 1 0.0994 mm, outer copper 0.035 mm, 1.5384 mm in all.
-interface JlcSixLayerAB06161H3313A provides SixLayer {
-    .stackup.thickness &= 1.6mm
-    .stackup.build &= "JLC06161H-3313A"
     .stackup.inner_copper &= 0.0152mm
     .stackup.dielectric1.kind &= "prepreg"
     .stackup.dielectric1.glass &= "3313"
@@ -1211,7 +783,7 @@ interface JlcSixLayerAB06161H3313A provides SixLayer {
 /// x 1 0.2104 mm, inner copper 0.0152 mm, core 0.13 mm, inner copper 0.0152 mm, prepreg 2116
 /// x 1 0.1164 mm, outer copper 0.035 mm, 0.834 mm in all. The page's "no requirement" default
 /// for 0.8 mm.
-interface JlcSixLayerBA06081H2116 provides SixLayer {
+interface JlcSixLayerB06081H2116 provides SixLayer {
     .stackup.thickness &= 0.8mm
     .stackup.build &= "JLC06081H-2116"
     .stackup.inner_copper &= 0.0152mm
@@ -1235,96 +807,12 @@ interface JlcSixLayerBA06081H2116 provides SixLayer {
     .stackup.dielectric5.epsilon &= 4.16
 }
 
-/// JLCPCB's six-layer build-up `JLC06081H-7628A`, 0.8 mm: outer copper 0.035 mm, prepreg 7628
-/// x 1 0.2084 mm, inner copper 0.0152 mm, core 0.075 mm, inner copper 0.0152 mm, prepreg 2116
-/// x 1 0.1194 mm, inner copper 0.0152 mm, core 0.075 mm, inner copper 0.0152 mm, prepreg 7628
-/// x 1 0.2084 mm, outer copper 0.035 mm, 0.817 mm in all.
-interface JlcSixLayerBB06081H7628A provides SixLayer {
-    .stackup.thickness &= 0.8mm
-    .stackup.build &= "JLC06081H-7628A"
-    .stackup.inner_copper &= 0.0152mm
-    .stackup.dielectric1.kind &= "prepreg"
-    .stackup.dielectric1.glass &= "7628"
-    .stackup.dielectric1.thickness &= 0.2084mm
-    .stackup.dielectric1.epsilon &= 4.4
-    .stackup.dielectric2.kind &= "core"
-    .stackup.dielectric2.thickness &= 0.075mm
-    .stackup.dielectric2.epsilon &= 4.6
-    .stackup.dielectric3.kind &= "prepreg"
-    .stackup.dielectric3.glass &= "2116"
-    .stackup.dielectric3.thickness &= 0.1194mm
-    .stackup.dielectric3.epsilon &= 4.16
-    .stackup.dielectric4.kind &= "core"
-    .stackup.dielectric4.thickness &= 0.075mm
-    .stackup.dielectric4.epsilon &= 4.6
-    .stackup.dielectric5.kind &= "prepreg"
-    .stackup.dielectric5.glass &= "7628"
-    .stackup.dielectric5.thickness &= 0.2084mm
-    .stackup.dielectric5.epsilon &= 4.4
-}
-
-/// JLCPCB's six-layer build-up `JLC06081H-7628`, 0.8 mm: outer copper 0.035 mm, prepreg 7628
-/// x 1 0.2104 mm, inner copper 0.0152 mm, core 0.075 mm, inner copper 0.0152 mm, prepreg 2116
-/// x 1 0.1164 mm, inner copper 0.0152 mm, core 0.075 mm, inner copper 0.0152 mm, prepreg 7628
-/// x 1 0.2104 mm, outer copper 0.035 mm, 0.818 mm in all.
-interface JlcSixLayerBB06081H7628 provides SixLayer {
-    .stackup.thickness &= 0.8mm
-    .stackup.build &= "JLC06081H-7628"
-    .stackup.inner_copper &= 0.0152mm
-    .stackup.dielectric1.kind &= "prepreg"
-    .stackup.dielectric1.glass &= "7628"
-    .stackup.dielectric1.thickness &= 0.2104mm
-    .stackup.dielectric1.epsilon &= 4.4
-    .stackup.dielectric2.kind &= "core"
-    .stackup.dielectric2.thickness &= 0.075mm
-    .stackup.dielectric2.epsilon &= 4.6
-    .stackup.dielectric3.kind &= "prepreg"
-    .stackup.dielectric3.glass &= "2116"
-    .stackup.dielectric3.thickness &= 0.1164mm
-    .stackup.dielectric3.epsilon &= 4.16
-    .stackup.dielectric4.kind &= "core"
-    .stackup.dielectric4.thickness &= 0.075mm
-    .stackup.dielectric4.epsilon &= 4.6
-    .stackup.dielectric5.kind &= "prepreg"
-    .stackup.dielectric5.glass &= "7628"
-    .stackup.dielectric5.thickness &= 0.2104mm
-    .stackup.dielectric5.epsilon &= 4.4
-}
-
-/// JLCPCB's six-layer build-up `JLC06081H-1080B`, 0.8 mm: outer copper 0.035 mm, prepreg 1080
-/// x 1 0.0784 mm, inner copper 0.0152 mm, core 0.15 mm, inner copper 0.0152 mm, prepreg 7628
-/// x 1 0.2084 mm, inner copper 0.0152 mm, core 0.15 mm, inner copper 0.0152 mm, prepreg 1080
-/// x 1 0.0784 mm, outer copper 0.035 mm, 0.796 mm in all.
-interface JlcSixLayerBB06081H1080B provides SixLayer {
-    .stackup.thickness &= 0.8mm
-    .stackup.build &= "JLC06081H-1080B"
-    .stackup.inner_copper &= 0.0152mm
-    .stackup.dielectric1.kind &= "prepreg"
-    .stackup.dielectric1.glass &= "1080"
-    .stackup.dielectric1.thickness &= 0.0784mm
-    .stackup.dielectric1.epsilon &= 3.91
-    .stackup.dielectric2.kind &= "core"
-    .stackup.dielectric2.thickness &= 0.15mm
-    .stackup.dielectric2.epsilon &= 4.6
-    .stackup.dielectric3.kind &= "prepreg"
-    .stackup.dielectric3.glass &= "7628"
-    .stackup.dielectric3.thickness &= 0.2084mm
-    .stackup.dielectric3.epsilon &= 4.4
-    .stackup.dielectric4.kind &= "core"
-    .stackup.dielectric4.thickness &= 0.15mm
-    .stackup.dielectric4.epsilon &= 4.6
-    .stackup.dielectric5.kind &= "prepreg"
-    .stackup.dielectric5.glass &= "1080"
-    .stackup.dielectric5.thickness &= 0.0784mm
-    .stackup.dielectric5.epsilon &= 3.91
-}
-
 /// JLCPCB's six-layer build-up `JLC06101H-3313`, 1.0 mm: outer copper 0.035 mm, prepreg 3313
 /// x 1 0.0994 mm, inner copper 0.0152 mm, core 0.25 mm, inner copper 0.0152 mm, prepreg 7628
 /// x 1 0.2104 mm, inner copper 0.0152 mm, core 0.25 mm, inner copper 0.0152 mm, prepreg 3313
 /// x 1 0.0994 mm, outer copper 0.035 mm, 1.04 mm in all. The page's "no requirement" default
 /// for 1.0 mm.
-interface JlcSixLayerCA06101H3313 provides SixLayer {
+interface JlcSixLayerC06101H3313 provides SixLayer {
     .stackup.thickness &= 1.0mm
     .stackup.build &= "JLC06101H-3313"
     .stackup.inner_copper &= 0.0152mm
@@ -1348,96 +836,12 @@ interface JlcSixLayerCA06101H3313 provides SixLayer {
     .stackup.dielectric5.epsilon &= 4.1
 }
 
-/// JLCPCB's six-layer build-up `JLC06101H-7628`, 1.0 mm: outer copper 0.035 mm, prepreg 7628
-/// x 1 0.2104 mm, inner copper 0.0152 mm, core 0.1 mm, inner copper 0.0152 mm, prepreg 7628 x
-/// 1 0.2104 mm, inner copper 0.0152 mm, core 0.1 mm, inner copper 0.0152 mm, prepreg 7628 x 1
-/// 0.2104 mm, outer copper 0.035 mm, 0.962 mm in all.
-interface JlcSixLayerCB06101H7628 provides SixLayer {
-    .stackup.thickness &= 1.0mm
-    .stackup.build &= "JLC06101H-7628"
-    .stackup.inner_copper &= 0.0152mm
-    .stackup.dielectric1.kind &= "prepreg"
-    .stackup.dielectric1.glass &= "7628"
-    .stackup.dielectric1.thickness &= 0.2104mm
-    .stackup.dielectric1.epsilon &= 4.4
-    .stackup.dielectric2.kind &= "core"
-    .stackup.dielectric2.thickness &= 0.1mm
-    .stackup.dielectric2.epsilon &= 4.6
-    .stackup.dielectric3.kind &= "prepreg"
-    .stackup.dielectric3.glass &= "7628"
-    .stackup.dielectric3.thickness &= 0.2104mm
-    .stackup.dielectric3.epsilon &= 4.4
-    .stackup.dielectric4.kind &= "core"
-    .stackup.dielectric4.thickness &= 0.1mm
-    .stackup.dielectric4.epsilon &= 4.6
-    .stackup.dielectric5.kind &= "prepreg"
-    .stackup.dielectric5.glass &= "7628"
-    .stackup.dielectric5.thickness &= 0.2104mm
-    .stackup.dielectric5.epsilon &= 4.4
-}
-
-/// JLCPCB's six-layer build-up `JLC06101H-1080B`, 1.0 mm: outer copper 0.035 mm, prepreg 1080
-/// x 1 0.0764 mm, inner copper 0.0152 mm, core 0.3 mm, inner copper 0.0152 mm, prepreg 3313 x
-/// 1 0.0994 mm, inner copper 0.0152 mm, core 0.3 mm, inner copper 0.0152 mm, prepreg 1080 x 1
-/// 0.0764 mm, outer copper 0.035 mm, 0.983 mm in all.
-interface JlcSixLayerCB06101H1080B provides SixLayer {
-    .stackup.thickness &= 1.0mm
-    .stackup.build &= "JLC06101H-1080B"
-    .stackup.inner_copper &= 0.0152mm
-    .stackup.dielectric1.kind &= "prepreg"
-    .stackup.dielectric1.glass &= "1080"
-    .stackup.dielectric1.thickness &= 0.0764mm
-    .stackup.dielectric1.epsilon &= 3.91
-    .stackup.dielectric2.kind &= "core"
-    .stackup.dielectric2.thickness &= 0.3mm
-    .stackup.dielectric2.epsilon &= 4.6
-    .stackup.dielectric3.kind &= "prepreg"
-    .stackup.dielectric3.glass &= "3313"
-    .stackup.dielectric3.thickness &= 0.0994mm
-    .stackup.dielectric3.epsilon &= 4.1
-    .stackup.dielectric4.kind &= "core"
-    .stackup.dielectric4.thickness &= 0.3mm
-    .stackup.dielectric4.epsilon &= 4.6
-    .stackup.dielectric5.kind &= "prepreg"
-    .stackup.dielectric5.glass &= "1080"
-    .stackup.dielectric5.thickness &= 0.0764mm
-    .stackup.dielectric5.epsilon &= 3.91
-}
-
-/// JLCPCB's six-layer build-up `JLC06101H-7628A`, 1.0 mm: outer copper 0.035 mm, prepreg 7628
-/// x 1 0.2084 mm, inner copper 0.0152 mm, core 0.13 mm, inner copper 0.0152 mm, prepreg 7628
-/// x 1 0.2084 mm, inner copper 0.0152 mm, core 0.13 mm, inner copper 0.0152 mm, prepreg 7628
-/// x 1 0.2084 mm, outer copper 0.035 mm, 1.016 mm in all.
-interface JlcSixLayerCB06101H7628A provides SixLayer {
-    .stackup.thickness &= 1.0mm
-    .stackup.build &= "JLC06101H-7628A"
-    .stackup.inner_copper &= 0.0152mm
-    .stackup.dielectric1.kind &= "prepreg"
-    .stackup.dielectric1.glass &= "7628"
-    .stackup.dielectric1.thickness &= 0.2084mm
-    .stackup.dielectric1.epsilon &= 4.4
-    .stackup.dielectric2.kind &= "core"
-    .stackup.dielectric2.thickness &= 0.13mm
-    .stackup.dielectric2.epsilon &= 4.6
-    .stackup.dielectric3.kind &= "prepreg"
-    .stackup.dielectric3.glass &= "7628"
-    .stackup.dielectric3.thickness &= 0.2084mm
-    .stackup.dielectric3.epsilon &= 4.4
-    .stackup.dielectric4.kind &= "core"
-    .stackup.dielectric4.thickness &= 0.13mm
-    .stackup.dielectric4.epsilon &= 4.6
-    .stackup.dielectric5.kind &= "prepreg"
-    .stackup.dielectric5.glass &= "7628"
-    .stackup.dielectric5.thickness &= 0.2084mm
-    .stackup.dielectric5.epsilon &= 4.4
-}
-
 /// JLCPCB's six-layer build-up `JLC06121H-3313`, 1.2 mm: outer copper 0.035 mm, prepreg 3313
 /// x 1 0.0994 mm, inner copper 0.0152 mm, core 0.35 mm, inner copper 0.0152 mm, prepreg 2116
 /// x 1 0.1088 mm, inner copper 0.0152 mm, core 0.35 mm, inner copper 0.0152 mm, prepreg 3313
 /// x 1 0.0994 mm, outer copper 0.035 mm, 1.1384 mm in all. The page's "no requirement"
 /// default for 1.2 mm.
-interface JlcSixLayerDA06121H3313 provides SixLayer {
+interface JlcSixLayerD06121H3313 provides SixLayer {
     .stackup.thickness &= 1.2mm
     .stackup.build &= "JLC06121H-3313"
     .stackup.inner_copper &= 0.0152mm
@@ -1461,96 +865,12 @@ interface JlcSixLayerDA06121H3313 provides SixLayer {
     .stackup.dielectric5.epsilon &= 4.1
 }
 
-/// JLCPCB's six-layer build-up `JLC06121H-7628`, 1.2 mm: outer copper 0.035 mm, prepreg 7628
-/// x 1 0.2104 mm, inner copper 0.0152 mm, core 0.2 mm, inner copper 0.0152 mm, prepreg 7628 x
-/// 1 0.2104 mm, inner copper 0.0152 mm, core 0.2 mm, inner copper 0.0152 mm, prepreg 7628 x 1
-/// 0.2104 mm, outer copper 0.035 mm, 1.162 mm in all.
-interface JlcSixLayerDB06121H7628 provides SixLayer {
-    .stackup.thickness &= 1.2mm
-    .stackup.build &= "JLC06121H-7628"
-    .stackup.inner_copper &= 0.0152mm
-    .stackup.dielectric1.kind &= "prepreg"
-    .stackup.dielectric1.glass &= "7628"
-    .stackup.dielectric1.thickness &= 0.2104mm
-    .stackup.dielectric1.epsilon &= 4.4
-    .stackup.dielectric2.kind &= "core"
-    .stackup.dielectric2.thickness &= 0.2mm
-    .stackup.dielectric2.epsilon &= 4.6
-    .stackup.dielectric3.kind &= "prepreg"
-    .stackup.dielectric3.glass &= "7628"
-    .stackup.dielectric3.thickness &= 0.2104mm
-    .stackup.dielectric3.epsilon &= 4.4
-    .stackup.dielectric4.kind &= "core"
-    .stackup.dielectric4.thickness &= 0.2mm
-    .stackup.dielectric4.epsilon &= 4.6
-    .stackup.dielectric5.kind &= "prepreg"
-    .stackup.dielectric5.glass &= "7628"
-    .stackup.dielectric5.thickness &= 0.2104mm
-    .stackup.dielectric5.epsilon &= 4.4
-}
-
-/// JLCPCB's six-layer build-up `JLC06121H-1080`, 1.2 mm: outer copper 0.035 mm, prepreg 1080
-/// x 1 0.0764 mm, inner copper 0.0152 mm, core 0.35 mm, inner copper 0.0152 mm, prepreg 7628
-/// x 1 0.2104 mm, inner copper 0.0152 mm, core 0.35 mm, inner copper 0.0152 mm, prepreg 1080
-/// x 1 0.0764 mm, outer copper 0.035 mm, 1.194 mm in all.
-interface JlcSixLayerDB06121H1080 provides SixLayer {
-    .stackup.thickness &= 1.2mm
-    .stackup.build &= "JLC06121H-1080"
-    .stackup.inner_copper &= 0.0152mm
-    .stackup.dielectric1.kind &= "prepreg"
-    .stackup.dielectric1.glass &= "1080"
-    .stackup.dielectric1.thickness &= 0.0764mm
-    .stackup.dielectric1.epsilon &= 3.91
-    .stackup.dielectric2.kind &= "core"
-    .stackup.dielectric2.thickness &= 0.35mm
-    .stackup.dielectric2.epsilon &= 4.6
-    .stackup.dielectric3.kind &= "prepreg"
-    .stackup.dielectric3.glass &= "7628"
-    .stackup.dielectric3.thickness &= 0.2104mm
-    .stackup.dielectric3.epsilon &= 4.4
-    .stackup.dielectric4.kind &= "core"
-    .stackup.dielectric4.thickness &= 0.35mm
-    .stackup.dielectric4.epsilon &= 4.6
-    .stackup.dielectric5.kind &= "prepreg"
-    .stackup.dielectric5.glass &= "1080"
-    .stackup.dielectric5.thickness &= 0.0764mm
-    .stackup.dielectric5.epsilon &= 3.91
-}
-
-/// JLCPCB's six-layer build-up `JLC06121H-1080B`, 1.2 mm: outer copper 0.035 mm, prepreg 1080
-/// x 1 0.0764 mm, inner copper 0.0152 mm, core 0.4 mm, inner copper 0.0152 mm, prepreg 3313 x
-/// 1 0.0918 mm, inner copper 0.0152 mm, core 0.4 mm, inner copper 0.0152 mm, prepreg 1080 x 1
-/// 0.0764 mm, outer copper 0.035 mm, 1.1754 mm in all.
-interface JlcSixLayerDB06121H1080B provides SixLayer {
-    .stackup.thickness &= 1.2mm
-    .stackup.build &= "JLC06121H-1080B"
-    .stackup.inner_copper &= 0.0152mm
-    .stackup.dielectric1.kind &= "prepreg"
-    .stackup.dielectric1.glass &= "1080"
-    .stackup.dielectric1.thickness &= 0.0764mm
-    .stackup.dielectric1.epsilon &= 3.91
-    .stackup.dielectric2.kind &= "core"
-    .stackup.dielectric2.thickness &= 0.4mm
-    .stackup.dielectric2.epsilon &= 4.6
-    .stackup.dielectric3.kind &= "prepreg"
-    .stackup.dielectric3.glass &= "3313"
-    .stackup.dielectric3.thickness &= 0.0918mm
-    .stackup.dielectric3.epsilon &= 4.1
-    .stackup.dielectric4.kind &= "core"
-    .stackup.dielectric4.thickness &= 0.4mm
-    .stackup.dielectric4.epsilon &= 4.6
-    .stackup.dielectric5.kind &= "prepreg"
-    .stackup.dielectric5.glass &= "1080"
-    .stackup.dielectric5.thickness &= 0.0764mm
-    .stackup.dielectric5.epsilon &= 3.91
-}
-
 /// JLCPCB's six-layer build-up `JLC06201H-3313`, 2.0 mm: outer copper 0.035 mm, prepreg 3313
 /// x 1 0.0994 mm, inner copper 0.0152 mm, core 0.7 mm, inner copper 0.0152 mm, prepreg 7628 x
 /// 1 0.2028 mm, inner copper 0.0152 mm, core 0.7 mm, inner copper 0.0152 mm, prepreg 3313 x 1
 /// 0.0994 mm, outer copper 0.035 mm, 1.9324 mm in all. The page's "no requirement" default
 /// for 2.0 mm.
-interface JlcSixLayerEA06201H3313 provides SixLayer {
+interface JlcSixLayerE06201H3313 provides SixLayer {
     .stackup.thickness &= 2.0mm
     .stackup.build &= "JLC06201H-3313"
     .stackup.inner_copper &= 0.0152mm
@@ -1572,34 +892,6 @@ interface JlcSixLayerEA06201H3313 provides SixLayer {
     .stackup.dielectric5.glass &= "3313"
     .stackup.dielectric5.thickness &= 0.0994mm
     .stackup.dielectric5.epsilon &= 4.1
-}
-
-/// JLCPCB's six-layer build-up `JLC06201H-7628`, 2.0 mm: outer copper 0.035 mm, prepreg 7628
-/// x 1 0.2104 mm, inner copper 0.0152 mm, core 0.6 mm, inner copper 0.0152 mm, prepreg 7628 x
-/// 1 0.2104 mm, inner copper 0.0152 mm, core 0.6 mm, inner copper 0.0152 mm, prepreg 7628 x 1
-/// 0.2104 mm, outer copper 0.035 mm, 1.962 mm in all.
-interface JlcSixLayerEB06201H7628 provides SixLayer {
-    .stackup.thickness &= 2.0mm
-    .stackup.build &= "JLC06201H-7628"
-    .stackup.inner_copper &= 0.0152mm
-    .stackup.dielectric1.kind &= "prepreg"
-    .stackup.dielectric1.glass &= "7628"
-    .stackup.dielectric1.thickness &= 0.2104mm
-    .stackup.dielectric1.epsilon &= 4.4
-    .stackup.dielectric2.kind &= "core"
-    .stackup.dielectric2.thickness &= 0.6mm
-    .stackup.dielectric2.epsilon &= 4.6
-    .stackup.dielectric3.kind &= "prepreg"
-    .stackup.dielectric3.glass &= "7628"
-    .stackup.dielectric3.thickness &= 0.2104mm
-    .stackup.dielectric3.epsilon &= 4.4
-    .stackup.dielectric4.kind &= "core"
-    .stackup.dielectric4.thickness &= 0.6mm
-    .stackup.dielectric4.epsilon &= 4.6
-    .stackup.dielectric5.kind &= "prepreg"
-    .stackup.dielectric5.glass &= "7628"
-    .stackup.dielectric5.thickness &= 0.2104mm
-    .stackup.dielectric5.epsilon &= 4.4
 }
 
 /// JLCPCB's V-cut panel: one board repeated in a grid, the boards side by side with no space

@@ -6,7 +6,7 @@ version = 1
 
 [EasyduinoEsp32s3.providers."process"]
 generic = "FourLayer"
-provider = "std::mfg::jlcpcb::JlcFourLayerAA04161H7628"
+provider = "std::mfg::jlcpcb::JlcFourLayerA04161H7628"
 
 [EasyduinoEsp32s3.providers."usb_native.receptacle"]
 generic = "UsbCSinkReceptacle"

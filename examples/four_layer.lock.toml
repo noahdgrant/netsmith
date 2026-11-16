@@ -6,7 +6,7 @@ version = 1
 
 [FourLayerExample.providers."process"]
 generic = "FourLayer"
-provider = "std::mfg::jlcpcb::JlcFourLayerAA04161H7628"
+provider = "std::mfg::jlcpcb::JlcFourLayerA04161H7628"
 
 [FourLayerExample.parts."power_in"]
 catalog = "header"

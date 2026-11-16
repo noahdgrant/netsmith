@@ -127,48 +127,18 @@ Parts are numbered by their letters in the order of their paths in the board (a 
 | `std::mfg::jlcpcb::TwoLayer` | JLCPCB's two-layer board, a generic whose providers are the copper weights, `JlcTwoLayer1oz` (the first, so the default) and `JlcTwoLayer2oz`; the board narrows `.stackup.copper_weight` to pick one (ADR 0113). Rules from `.min_track` to `.min_mask_bridge`, `.max_temperature_rise` (the rise the track width check designs to, unstated by the process), `.via_in_pad` (the largest via the fabricator fills and caps so that it may stand in a pad: an upper bound, `0mm` refuses vias in pads), `.finish` (the surface finish, one of `.finishes`; every process has them), `.stackup`, and the outer pours `.top` and `.bottom`. Thickness 0.4 mm to 2 mm, chosen by the board. |
 | `std::mfg::jlcpcb::JlcTwoLayer1oz` | The provider of `TwoLayer` with 1 oz copper: track and space 0.1 mm, annular ring 0.18 mm, mask bridge 0.13 mm. |
 | `std::mfg::jlcpcb::JlcTwoLayer2oz` | The provider of `TwoLayer` with 2 oz copper: track and space 0.16 mm, annular ring 0.254 mm, mask bridge 0.2 mm. |
-| `std::mfg::jlcpcb::FourLayer` | JLCPCB's four-layer board, 1 oz outer and 0.5 oz inner copper, a generic with a provider for each build-up of JLCPCB's impedance page at 0.8, 1.0, 1.2, 1.6 and 2.0 mm that a process can state (`JlcFourLayerAA04161H7628`, the 1.6 mm build-up `JLC04161H-7628`, is the first and the default). Inner layers `.inner1` and `.inner2`, each a plane on a net the board names or a signal layer. |
-| `std::mfg::jlcpcb::JlcFourLayerAA04161H7628` | The provider of `FourLayer` for JLCPCB's `JLC04161H-7628`, 1.6 mm (1.5862 mm in all). The page's default for 1.6 mm. |
-| `std::mfg::jlcpcb::JlcFourLayerAB04161H1080` | The provider of `FourLayer` for JLCPCB's `JLC04161H-1080`, 1.6 mm (1.5182 mm in all). |
-| `std::mfg::jlcpcb::JlcFourLayerAB04161H2116` | The provider of `FourLayer` for JLCPCB's `JLC04161H-2116`, 1.6 mm (1.5982 mm in all). |
-| `std::mfg::jlcpcb::JlcFourLayerAB04161H3313` | The provider of `FourLayer` for JLCPCB's `JLC04161H-3313`, 1.6 mm (1.5642 mm in all). |
-| `std::mfg::jlcpcb::JlcFourLayerBA04081H7628` | The provider of `FourLayer` for JLCPCB's `JLC04081H-7628`, 0.8 mm (0.7712 mm in all). The page's default for 0.8 mm. |
-| `std::mfg::jlcpcb::JlcFourLayerBB04081H1080` | The provider of `FourLayer` for JLCPCB's `JLC04081H-1080`, 0.8 mm (0.8032 mm in all). |
-| `std::mfg::jlcpcb::JlcFourLayerBB04081H2116B` | The provider of `FourLayer` for JLCPCB's `JLC04081H-2116B`, 0.8 mm (0.7832 mm in all). |
-| `std::mfg::jlcpcb::JlcFourLayerBB04081H3313` | The provider of `FourLayer` for JLCPCB's `JLC04081H-3313`, 0.8 mm (0.7992 mm in all). |
-| `std::mfg::jlcpcb::JlcFourLayerBB04081H7628A` | The provider of `FourLayer` for JLCPCB's `JLC04081H-7628A`, 0.8 mm (0.7212 mm in all). |
-| `std::mfg::jlcpcb::JlcFourLayerCA04101H7628` | The provider of `FourLayer` for JLCPCB's `JLC04101H-7628`, 1.0 mm (1.0212 mm in all). The page's default for 1.0 mm. |
-| `std::mfg::jlcpcb::JlcFourLayerCB04101H1080` | The provider of `FourLayer` for JLCPCB's `JLC04101H-1080`, 1.0 mm (0.9532 mm in all). |
-| `std::mfg::jlcpcb::JlcFourLayerCB04101H2116C` | The provider of `FourLayer` for JLCPCB's `JLC04101H-2116C`, 1.0 mm (0.9982 mm in all). |
-| `std::mfg::jlcpcb::JlcFourLayerCB04101H3313` | The provider of `FourLayer` for JLCPCB's `JLC04101H-3313`, 1.0 mm (0.9992 mm in all). |
-| `std::mfg::jlcpcb::JlcFourLayerCB04101H7628B` | The provider of `FourLayer` for JLCPCB's `JLC04101H-7628B`, 1.0 mm (0.9212 mm in all). |
-| `std::mfg::jlcpcb::JlcFourLayerDA04121H7628` | The provider of `FourLayer` for JLCPCB's `JLC04121H-7628`, 1.2 mm (1.1212 mm in all). The page's default for 1.2 mm. |
-| `std::mfg::jlcpcb::JlcFourLayerDB04121H1080` | The provider of `FourLayer` for JLCPCB's `JLC04121H-1080`, 1.2 mm (1.1182 mm in all). |
-| `std::mfg::jlcpcb::JlcFourLayerDB04121H3313` | The provider of `FourLayer` for JLCPCB's `JLC04121H-3313`, 1.2 mm (1.1642 mm in all). |
-| `std::mfg::jlcpcb::JlcFourLayerEA04201H7628` | The provider of `FourLayer` for JLCPCB's `JLC04201H-7628`, 2.0 mm (1.9862 mm in all). The page's default for 2.0 mm. |
-| `std::mfg::jlcpcb::JlcFourLayerEB04201H1080` | The provider of `FourLayer` for JLCPCB's `JLC04201H-1080`, 2.0 mm (1.9182 mm in all). |
-| `std::mfg::jlcpcb::JlcFourLayerEB04201H3313` | The provider of `FourLayer` for JLCPCB's `JLC04201H-3313`, 2.0 mm (1.9642 mm in all). |
-| `std::mfg::jlcpcb::JlcFourLayerEB04201H7628B` | The provider of `FourLayer` for JLCPCB's `JLC04201H-7628B`, 2.0 mm (2.1862 mm in all). |
-| `std::mfg::jlcpcb::SixLayer` | JLCPCB's six-layer board, 1 oz outer and 0.5 oz inner copper, a generic with a provider for each build-up of JLCPCB's impedance page at 0.8, 1.0, 1.2, 1.6 and 2.0 mm that a process can state (`JlcSixLayerAA06161H3313`, the 1.6 mm build-up `JLC06161H-3313`, is the first and the default). Inner layers `.inner1` to `.inner4`, each a plane on a net the board names or a signal layer. |
-| `std::mfg::jlcpcb::JlcSixLayerAA06161H3313` | The provider of `SixLayer` for JLCPCB's `JLC06161H-3313`, 1.6 mm (1.5384 mm in all). The page's default for 1.6 mm. |
-| `std::mfg::jlcpcb::JlcSixLayerAB06161H1080` | The provider of `SixLayer` for JLCPCB's `JLC06161H-1080`, 1.6 mm (1.594 mm in all). |
-| `std::mfg::jlcpcb::JlcSixLayerAB06161H1080A` | The provider of `SixLayer` for JLCPCB's `JLC06161H-1080A`, 1.6 mm (1.583 mm in all). |
-| `std::mfg::jlcpcb::JlcSixLayerAB06161H3313A` | The provider of `SixLayer` for JLCPCB's `JLC06161H-3313A`, 1.6 mm (1.5384 mm in all). |
-| `std::mfg::jlcpcb::JlcSixLayerAB06161H7628` | The provider of `SixLayer` for JLCPCB's `JLC06161H-7628`, 1.6 mm (1.5544 mm in all). |
-| `std::mfg::jlcpcb::JlcSixLayerBA06081H2116` | The provider of `SixLayer` for JLCPCB's `JLC06081H-2116`, 0.8 mm (0.834 mm in all). The page's default for 0.8 mm. |
-| `std::mfg::jlcpcb::JlcSixLayerBB06081H1080B` | The provider of `SixLayer` for JLCPCB's `JLC06081H-1080B`, 0.8 mm (0.796 mm in all). |
-| `std::mfg::jlcpcb::JlcSixLayerBB06081H7628` | The provider of `SixLayer` for JLCPCB's `JLC06081H-7628`, 0.8 mm (0.818 mm in all). |
-| `std::mfg::jlcpcb::JlcSixLayerBB06081H7628A` | The provider of `SixLayer` for JLCPCB's `JLC06081H-7628A`, 0.8 mm (0.817 mm in all). |
-| `std::mfg::jlcpcb::JlcSixLayerCA06101H3313` | The provider of `SixLayer` for JLCPCB's `JLC06101H-3313`, 1.0 mm (1.04 mm in all). The page's default for 1.0 mm. |
-| `std::mfg::jlcpcb::JlcSixLayerCB06101H1080B` | The provider of `SixLayer` for JLCPCB's `JLC06101H-1080B`, 1.0 mm (0.983 mm in all). |
-| `std::mfg::jlcpcb::JlcSixLayerCB06101H7628` | The provider of `SixLayer` for JLCPCB's `JLC06101H-7628`, 1.0 mm (0.962 mm in all). |
-| `std::mfg::jlcpcb::JlcSixLayerCB06101H7628A` | The provider of `SixLayer` for JLCPCB's `JLC06101H-7628A`, 1.0 mm (1.016 mm in all). |
-| `std::mfg::jlcpcb::JlcSixLayerDA06121H3313` | The provider of `SixLayer` for JLCPCB's `JLC06121H-3313`, 1.2 mm (1.1384 mm in all). The page's default for 1.2 mm. |
-| `std::mfg::jlcpcb::JlcSixLayerDB06121H1080` | The provider of `SixLayer` for JLCPCB's `JLC06121H-1080`, 1.2 mm (1.194 mm in all). |
-| `std::mfg::jlcpcb::JlcSixLayerDB06121H1080B` | The provider of `SixLayer` for JLCPCB's `JLC06121H-1080B`, 1.2 mm (1.1754 mm in all). |
-| `std::mfg::jlcpcb::JlcSixLayerDB06121H7628` | The provider of `SixLayer` for JLCPCB's `JLC06121H-7628`, 1.2 mm (1.162 mm in all). |
-| `std::mfg::jlcpcb::JlcSixLayerEA06201H3313` | The provider of `SixLayer` for JLCPCB's `JLC06201H-3313`, 2.0 mm (1.9324 mm in all). The page's default for 2.0 mm. |
-| `std::mfg::jlcpcb::JlcSixLayerEB06201H7628` | The provider of `SixLayer` for JLCPCB's `JLC06201H-7628`, 2.0 mm (1.962 mm in all). |
+| `std::mfg::jlcpcb::FourLayer` | JLCPCB's four-layer board, 1 oz outer and 0.5 oz inner copper, a generic with a provider for the page's default build-up of each of 0.8, 1.0, 1.2, 1.6 and 2.0 mm (`JlcFourLayerA04161H7628`, the 1.6 mm build-up `JLC04161H-7628`, is the first and the default). Inner layers `.inner1` and `.inner2`, each a plane on a net the board names or a signal layer. |
+| `std::mfg::jlcpcb::JlcFourLayerA04161H7628` | The provider of `FourLayer` for JLCPCB's `JLC04161H-7628`, 1.6 mm (1.5862 mm in all), the page's default build-up of that thickness. |
+| `std::mfg::jlcpcb::JlcFourLayerB04081H7628` | The provider of `FourLayer` for JLCPCB's `JLC04081H-7628`, 0.8 mm (0.7712 mm in all), the page's default build-up of that thickness. |
+| `std::mfg::jlcpcb::JlcFourLayerC04101H7628` | The provider of `FourLayer` for JLCPCB's `JLC04101H-7628`, 1.0 mm (1.0212 mm in all), the page's default build-up of that thickness. |
+| `std::mfg::jlcpcb::JlcFourLayerD04121H7628` | The provider of `FourLayer` for JLCPCB's `JLC04121H-7628`, 1.2 mm (1.1212 mm in all), the page's default build-up of that thickness. |
+| `std::mfg::jlcpcb::JlcFourLayerE04201H7628` | The provider of `FourLayer` for JLCPCB's `JLC04201H-7628`, 2.0 mm (1.9862 mm in all), the page's default build-up of that thickness. |
+| `std::mfg::jlcpcb::SixLayer` | JLCPCB's six-layer board, 1 oz outer and 0.5 oz inner copper, a generic with a provider for the page's default build-up of each of 0.8, 1.0, 1.2, 1.6 and 2.0 mm (`JlcSixLayerA06161H3313`, the 1.6 mm build-up `JLC06161H-3313`, is the first and the default). Inner layers `.inner1` to `.inner4`, each a plane on a net the board names or a signal layer. |
+| `std::mfg::jlcpcb::JlcSixLayerA06161H3313` | The provider of `SixLayer` for JLCPCB's `JLC06161H-3313`, 1.6 mm (1.5384 mm in all), the page's default build-up of that thickness. |
+| `std::mfg::jlcpcb::JlcSixLayerB06081H2116` | The provider of `SixLayer` for JLCPCB's `JLC06081H-2116`, 0.8 mm (0.834 mm in all), the page's default build-up of that thickness. |
+| `std::mfg::jlcpcb::JlcSixLayerC06101H3313` | The provider of `SixLayer` for JLCPCB's `JLC06101H-3313`, 1.0 mm (1.04 mm in all), the page's default build-up of that thickness. |
+| `std::mfg::jlcpcb::JlcSixLayerD06121H3313` | The provider of `SixLayer` for JLCPCB's `JLC06121H-3313`, 1.2 mm (1.1384 mm in all), the page's default build-up of that thickness. |
+| `std::mfg::jlcpcb::JlcSixLayerE06201H3313` | The provider of `SixLayer` for JLCPCB's `JLC06201H-3313`, 2.0 mm (1.9324 mm in all), the page's default build-up of that thickness. |
 | `std::mfg::acme::EightLayer` | ACME's eight-layer board. ACME is a fictional fabricator: the numbers were chosen, not sourced, and the board cannot be ordered (ADR 0112). JLCPCB's multilayer rules, 1 oz outer and 0.5 oz inner copper, 1.6 mm, build-up `ACME-8L-1.6`. Inner layers `.inner1` to `.inner6`, each a plane or a signal layer. |
 | `std::mfg::acme::TenLayer` | ACME's ten-layer board, as `EightLayer`, build-up `ACME-10L-1.6`. Inner layers `.inner1` to `.inner8`. |
 | `std::mfg::jlcpcb::VCutPanel` | JLCPCB's V-cut panel, the member `.fab` of a `panel`: `.columns`, `.rows` and `.rail`, and the limits of the board house (panel size, lines, line spacing, copper clearance, thickness, tooling holes and fiducials), each with its source. |

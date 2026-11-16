@@ -6,7 +6,7 @@ version = 1
 
 [SixLayerExample.providers."process"]
 generic = "SixLayer"
-provider = "std::mfg::jlcpcb::JlcSixLayerAA06161H3313"
+provider = "std::mfg::jlcpcb::JlcSixLayerA06161H3313"
 
 [SixLayerExample.parts."input_cap"]
 catalog = "capacitor"

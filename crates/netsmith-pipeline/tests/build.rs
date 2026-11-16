@@ -492,13 +492,13 @@ fn a_four_layer_board_that_asks_for_another_thickness_is_made_in_the_default_bui
 #[test]
 fn a_four_layer_board_asks_for_a_build_up_by_the_name_the_page_gives_it() {
     let boards = built(&four_layer_with(
-        "        .stackup.build &= \"JLC04121H-3313\"",
+        "        .stackup.build &= \"JLC04121H-7628\"",
     ));
     let p = boards[0].design.process.as_ref().unwrap();
     // The build-up names its thickness, so the board need not.
     assert_eq!(p.stackup.chosen_thickness(), Some(1.2));
     let inner = p.stackup.inner.as_ref().unwrap();
-    assert_eq!(inner.build, "JLC04121H-3313");
+    assert_eq!(inner.build, "JLC04121H-7628");
     assert_eq!(
         inner
             .dielectrics
@@ -506,16 +506,20 @@ fn a_four_layer_board_asks_for_a_build_up_by_the_name_the_page_gives_it() {
             .map(|d| (d.core, d.glass.as_str(), d.thickness, d.epsilon))
             .collect::<Vec<_>>(),
         [
-            (false, "3313", 0.0994, 4.1),
-            (true, "", 0.865, 4.6),
-            (false, "3313", 0.0994, 4.1)
+            (false, "7628", 0.2104, 4.4),
+            (true, "", 0.6, 4.6),
+            (false, "7628", 0.2104, 4.4)
         ]
     );
-    // A build-up that is not the board's thickness is no provider's.
-    let e = error(&four_layer_with(
-        "        .stackup.build &= \"JLC04121H-3313\"\n        .stackup.thickness &= 1.6mm",
-    ));
-    assert!(e.contains("no FourLayer provider satisfies `process`"), "{e}");
+    // A build-up that is not the board's thickness is no provider's, and nor is one of the
+    // page's that std has no provider for.
+    for lines in [
+        "        .stackup.build &= \"JLC04121H-7628\"\n        .stackup.thickness &= 1.6mm",
+        "        .stackup.build &= \"JLC04121H-3313\"",
+    ] {
+        let e = error(&four_layer_with(lines));
+        assert!(e.contains("no FourLayer provider satisfies `process`"), "{e}");
+    }
 }
 
 #[test]
@@ -523,7 +527,7 @@ fn a_four_layer_board_that_asks_for_a_thickness_no_provider_has_is_told_each() {
     let e = error(&four_layer_with("        .stackup.thickness &= 1.4mm"));
     assert!(e.contains("no FourLayer provider satisfies `process`"), "{e}");
     assert!(
-        e.contains("JlcFourLayerAA04161H7628") && e.contains("JlcFourLayerEB04201H1080"),
+        e.contains("JlcFourLayerA04161H7628") && e.contains("JlcFourLayerE04201H7628"),
         "{e}"
     );
     assert!(

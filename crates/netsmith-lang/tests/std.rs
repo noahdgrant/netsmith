@@ -350,8 +350,8 @@ fn every_multilayer_provider_states_a_whole_build_up_that_adds_up() {
         ("2116", "4.16"),
     ];
     for (process, layers, first) in [
-        ("FourLayer", 4, "JlcFourLayerAA04161H7628"),
-        ("SixLayer", 6, "JlcSixLayerAA06161H3313"),
+        ("FourLayer", 4, "JlcFourLayerA04161H7628"),
+        ("SixLayer", 6, "JlcSixLayerA06161H3313"),
     ] {
         let mut providers = providers_of(process);
         providers.sort_by(|a, b| a.0.cmp(&b.0));
@@ -375,9 +375,8 @@ fn every_multilayer_provider_states_a_whole_build_up_that_adds_up() {
             assert_eq!(&head[4..], "1H", "{name}: 1 oz outside, 0.5 oz inside");
             let nominal = format!("{:.1}", mm(thickness));
             assert_eq!(head[2..4], nominal.replace('.', ""), "{name}: thickness");
-            // `JlcFourLayerDB04121H3313`: the order of the names is the order the providers
-            // are tried in (ADR 0068), so two letters put the 1.6 mm default first, and the
-            // page's default of each thickness first among its own.
+            // `JlcFourLayerD04121H7628`: the order of the names is the order the providers are
+            // tried in (ADR 0068), so the letter puts the 1.6 mm default first.
             let group = match thickness {
                 "1.6mm" => 'A',
                 "0.8mm" => 'B',
@@ -387,13 +386,11 @@ fn every_multilayer_provider_states_a_whole_build_up_that_adds_up() {
                 other => panic!("{name}: {other} is not a thickness the page offers"),
             };
             let word = &process[..process.len() - 5];
-            assert!(
-                name.starts_with(&format!("Jlc{word}Layer{group}"))
-                    && name.ends_with(&format!("{head}{glass}")),
+            assert_eq!(
+                *name,
+                format!("Jlc{word}Layer{group}{head}{glass}"),
                 "{name}: not named for {build} at {thickness}"
             );
-            let rank = name.as_bytes()[format!("Jlc{word}Layer{group}").len()] as char;
-            assert!(rank == 'A' || rank == 'B', "{name}: rank {rank}");
             if !thicknesses.contains(&thickness.to_string()) {
                 thicknesses.push(thickness.to_string());
             }
@@ -437,16 +434,8 @@ fn every_multilayer_provider_states_a_whole_build_up_that_adds_up() {
             ["1.6mm", "0.8mm", "1.0mm", "1.2mm", "2.0mm"],
             "{process}: every thickness the process offers has a provider, in name order"
         );
-        // The first of each thickness is the page's default, and it is the only one.
-        for group in ["A", "B", "C", "D", "E"] {
-            let prefix = format!("Jlc{}Layer{group}", &process[..process.len() - 5]);
-            let ranks: Vec<char> = providers
-                .iter()
-                .filter(|(n, _)| n.starts_with(&prefix))
-                .map(|(n, _)| n.as_bytes()[prefix.len()] as char)
-                .collect();
-            assert_eq!(ranks[0], 'A', "{process}: the default of {group} is first");
-            assert_eq!(ranks.iter().filter(|r| **r == 'A').count(), 1, "{process} {group}");
-        }
+        // One provider for each thickness: every provider multiplies the search of ADR 0068,
+        // which is bounded at 64 provider combinations for a board.
+        assert_eq!(providers.len(), 5, "{process}: one provider for each thickness");
     }
 }
