@@ -439,3 +439,56 @@ error: `~` joins two pins or two interfaces of the same kind
 7 |     .supply ~ .r1.a
   |               ^^^^^
 ```
+
+### A default join: `?~`
+
+A part may offer a join of two of its pins that a board replaces, as `?=` offers a value (ADR 0130). `.bias ?~ .vin.neg` in a part's own definition (or in its `support` section) joins `.bias` to `.vin.neg` as `~` does, unless something else joins `.bias`: a `~` or `~>` from the board, or from a module, to the pin. Then the default is gone, and the pin is on the net the board gave it and not on the part's. The `Lt8641`'s `BIAS` pin is on ground this way (the datasheet's option that holds for every output), and a board that wants it on the output joins it: `.reg.ic.bias ~ .reg.vout.pos`.
+
+- `?~` joins exactly two pins: `.a ?~ .b`. The first is the pin the default offers a net to, and the one a join replaces it by. It is not part of a chain (`.a ?~ .b ~ .c` is a syntax error), and it joins no interface and no part.
+- It is written only in a part's own definition. A board that wants a join writes `~`.
+- Every default is judged after every other join has been read, so the order of statements never matters. Two defaults on one pin both apply, and a join of the pin removes both.
+- A pin that a default tied is judged as any pin on that net: its absolute limits (`abs_max`) are compared with the net it ends up on, and a pin joined to nothing outside its part is not judged.
+
+```nsm
+part Chip {
+    pins {
+        .vin passive "VIN" "1"
+        .gnd passive "GND" "2"
+        .mode passive "MODE" "3"
+    }
+    .mode ?~ .gnd
+}
+
+board Left {
+    .chip: Chip
+}
+
+board Right {
+    .chip: Chip
+    .chip.mode ~ .chip.vin
+}
+```
+
+In `Left` the `MODE` pin is on the part's ground. In `Right` the board joined it to `VIN` and the part's default is gone.
+
+```nsm fails
+part Chip {
+    pins {
+        .vin passive "VIN" "1"
+        .gnd passive "GND" "2"
+    }
+}
+
+board Wrong {
+    .chip: Chip
+    .chip.vin ?~ .chip.gnd
+}
+```
+
+```text
+error: `?~` offers a default join in a part's own definition, and this is not one: a board joins with `~`
+   --> main.nsm:10:5
+   |
+10 |     .chip.vin ?~ .chip.gnd
+   |     ^^^^^^^^^
+```

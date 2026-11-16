@@ -231,9 +231,8 @@ fn the_support_section_is_the_datasheets_application_circuit() {
     }
     // The capacitors at VIN1 and VIN2 are rated for the input.
     assert!(range(&s, "stage.ic.vin1_cap.max_voltage").lo() >= 16.0);
-    // BIAS is tied to ground, and the soft-start time follows the 10 nF of 10 %: 9 nF * 0.8 V /
-    // 2.6 uA to 11 nF * 0.8 V / 1.2 uA.
-    assert_eq!(range(&s, "stage.ic.bias_voltage").hi(), 0.0);
+    // The soft-start time follows the 10 nF of 10 %: 9 nF * 0.8 V / 2.6 uA to 11 nF * 0.8 V /
+    // 1.2 uA.
     let t = range(&s, "stage.soft_start_time");
     assert!(
         (t.lo() - 9e-9 * 0.8 / 2.6e-6).abs() < 1e-6 && (t.hi() - 11e-9 * 0.8 / 1.2e-6).abs() < 1e-6,
@@ -328,6 +327,49 @@ fn en_uv_on_an_input_over_65_v_is_refused() {
     );
     let (_, text) = solved(&bare("60V", "0A..1A", ""));
     assert!(!text.contains("`u.en_uv.abs_max`"), "{text}");
+}
+
+#[test]
+fn bias_is_on_ground_by_default_and_a_board_can_put_it_on_the_output() {
+    // The support section ties BIAS to ground by default (`?~`, ADR 0130); a join of the pin
+    // from the board replaces it, here with the output and SYNC/MODE grounded for Burst Mode,
+    // which is the datasheet's recommendation for an output of 3.3 V to 25 V (p.10) and its
+    // ultralow quiescent current (p.2), with no copy of the part.
+    let net = |src: &str, pin: &str| {
+        let checked = check("test.nsm", src, &Loader::std());
+        assert!(checked.is_ok(), "{}", checked.render());
+        let m = &checked.standalone_boards().next().expect("one board").model;
+        m.nets()
+            .iter()
+            .find(|n| n.pins.iter().any(|&p| m.path_of(p) == pin))
+            .map(|n| n.name.clone())
+            .unwrap_or_default()
+    };
+    assert_eq!(net(&converter(), "stage.ic.bias"), "GND");
+    let on_output = board(
+        "3.3V +/- 4%",
+        "0A..2A",
+        "    .stage.ic.bias ~ .output.pos\n    .stage.ic.sync_mode ~ .output.neg\n    .stage.ic.quiescent_current &= 0A .. 10uA\n",
+    );
+    assert_eq!(net(&on_output, "stage.ic.bias"), "VOUT");
+    assert_eq!(net(&on_output, "stage.ic.sync_mode"), "GND");
+    let (_, text) = solved(&on_output);
+    assert!(text.is_empty(), "{text}");
+}
+
+#[test]
+fn bias_on_the_input_is_refused_above_25_v() {
+    // The joined pin is judged against the 25 V of its row: an input up to 30 V is over it, and
+    // the 9 V to 16 V of the other tests is not.
+    let src = board("3.3V +/- 4%", "0A..2A", "    .stage.ic.bias ~ .input.pos\n");
+    let (_, text) = solved(&src.replace("9V..16V", "9V..30V"));
+    assert!(
+        text.contains("net `VIN` reaches 30V above its ground `GND`")
+            && text.contains("`stage.ic.bias.abs_max` is 25V"),
+        "{text}"
+    );
+    let (_, text) = solved(&src);
+    assert!(!text.contains("bias.abs_max"), "{text}");
 }
 
 #[test]
