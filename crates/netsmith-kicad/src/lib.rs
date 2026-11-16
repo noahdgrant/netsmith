@@ -11,6 +11,7 @@ mod generate;
 mod hierarchy;
 mod install;
 mod mapping;
+mod model_rows;
 mod passives;
 mod pinout;
 mod resolve;
@@ -33,6 +34,10 @@ pub use install::{kicad_libraries_installed, skip_without_kicad_libraries};
 pub use mapping::{
     MapError, Mapped, Mapping, POWER_FLAG_SYMBOL, PROJECT_FILE, ProjectLibrary, Row,
     library_stanzas, library_tables,
+};
+pub use model_rows::{
+    Line as FootprintModelLine, ModelLine, ModelRows, Skip as ModelSkip, model_line, model_row,
+    model_rows,
 };
 pub use netsmith_core::{PartPin, PinKind, PowerFlow};
 pub use passives::{

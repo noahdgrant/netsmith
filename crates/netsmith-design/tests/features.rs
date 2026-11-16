@@ -425,6 +425,7 @@ fn a_part_carries_its_step_model_with_its_offset_and_rotation() {
             stated_in: Vec::new(),
             resolved: None,
             footprint: None,
+            placement_only: None,
         }]
     );
     // The model is drawn, never measured: it gives the part no height.
@@ -432,10 +433,19 @@ fn a_part_carries_its_step_model_with_its_offset_and_rotation() {
 }
 
 #[test]
-fn a_placement_of_a_model_with_no_file_is_refused() {
+fn a_placement_of_a_model_with_no_file_is_kept_for_the_model_table() {
+    // The design stage holds the placement; `locate` gives it the table's model, or says there
+    // is nothing to place (issue #1005).
+    let d = designed(&board("    .r.model.z &= 0.1mm\n    .r.model.rz &= 90\n")).unwrap();
+    assert_eq!(d.features.models.len(), 1, "{:?}", d.features.models);
+    let m = &d.features.models[0];
+    assert_eq!(m.path, "r");
+    assert_eq!(m.file, "");
+    assert_eq!(m.offset, [0.0, 0.0, 0.1]);
+    assert_eq!(m.rotation, [0.0, 0.0, 90.0]);
     assert_eq!(
-        errors_of(&board("    .r.model.rz &= 90\n")),
-        "`r.model.rz` is stated, and `r.model.file` is not, so there is no STEP model to place: name the file with `.r.model.file &= \"models/part.step\"`, or remove the placement"
+        m.placement_only,
+        Some([false, false, true, false, false, true])
     );
 }
 

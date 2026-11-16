@@ -37,7 +37,7 @@ The shortest time a buck IC's high-side switch stays on, and its twin the minimu
 _Avoid_: Minimum pulse width, minimum duty cycle, tON limit
 
 **Model table**:
-The STEP model of each footprint, in the project's `netsmith.toml` (issue #763): `[[model]]` rows keyed by footprint id (`Resistor_SMD:R_0402_1005Metric`, with `file`, `offset` and `rotation`), and a `[models] folder` where a footprint `Lib:Name` finds `<Lib>.3dshapes/<Name>.step`, KiCad's own layout. It is the default of a part's _STEP model_: a part that states its own `.model.file` is drawn from that, and one that states `""` has none. Like a part's own model it is a drawing, never a height.
+The STEP model of each footprint, in the project's `netsmith.toml` (issue #763): `[[model]]` rows keyed by footprint id (`Resistor_SMD:R_0402_1005Metric`, with `file`, `offset` and `rotation`), and a `[models] folder` where a footprint `Lib:Name` finds `<Lib>.3dshapes/<Name>.step`, KiCad's own layout. It is the default of a part's _STEP model_: a part that states its own `.model.file` is drawn from that, and one that states `""` has none. A part may state only the placement (`.model.rz`) of the table's model, which takes the place of the row's numbers. Like a part's own model it is a drawing, never a height, and it is checked to sit on its footprint's courtyard and pads.
 _Avoid_: Model library, 3D library, model map
 
 **Module**:

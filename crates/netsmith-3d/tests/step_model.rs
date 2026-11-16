@@ -200,7 +200,8 @@ fn the_y_of_a_model_runs_up_the_footprint() {
 
 #[test]
 fn a_model_keeps_its_colours_and_takes_its_parts_id() {
-    let (_, s) = drawn("a", 0.0, [0.0; 3], [0.0; 3]);
+    // Placed to sit on its footprint, so that it is no warning.
+    let (_, s) = drawn("a", 0.0, [-1.5, -0.5, 0.0], [0.0; 3]);
     let model = s.body("a").unwrap().model.as_ref().unwrap();
     let colours: Vec<Option<[u8; 3]>> = model.meshes.iter().map(|m| m.colour).collect();
     assert_eq!(colours, [Some([51, 51, 56]), Some([217, 26, 26])]);
@@ -213,7 +214,7 @@ fn a_model_keeps_its_colours_and_takes_its_parts_id() {
 #[test]
 fn a_model_above_its_parts_height_is_a_warning_and_changes_no_height() {
     // `a` is 2 mm tall; sunk 1.7 mm up, the model's top is 2.3 mm.
-    let (_, s) = drawn("a", 0.0, [0.0, 0.0, 1.7], [0.0; 3]);
+    let (_, s) = drawn("a", 0.0, [-1.5, -0.5, 1.7], [0.0; 3]);
     let a = s.body("a").unwrap();
     assert_eq!(a.height, Some(2.0));
     assert_eq!(a.z_far, Some(2.0));
@@ -223,7 +224,7 @@ fn a_model_above_its_parts_height_is_a_warning_and_changes_no_height() {
     assert!(w.contains("the part's height of 2.000 mm (stated)"), "{w}");
     assert!(w.contains("`.a.height &= 2.30mm`"), "{w}");
     // Within the chord tolerance it is not.
-    let (_, s) = drawn("a", 0.0, [0.0, 0.0, 1.405], [0.0; 3]);
+    let (_, s) = drawn("a", 0.0, [-1.5, -0.5, 1.405], [0.0; 3]);
     assert!(s.warnings.is_empty(), "{:?}", s.warnings);
 }
 
@@ -325,4 +326,60 @@ fn a_model_in_inches_is_copied_with_its_own_unit() {
     let body = back.pieces.iter().find(|p| p.mesh.id == "body").unwrap();
     let b = body.mesh.bounds().unwrap();
     assert!((b.max[2] - 0.5 * 25.4).abs() < 1e-6, "{b:?}");
+}
+
+/// The warnings of a model that does not sit on its footprint.
+fn misfits(s: &Scene) -> Vec<&String> {
+    s.warnings
+        .iter()
+        .filter(|w| w.contains("does not sit on its footprint"))
+        .collect()
+}
+
+#[test]
+fn a_model_that_sits_on_its_footprint_is_no_warning() {
+    // `a`'s footprint has pads at x = +-1.5 and a courtyard 4.4 x 2.4 mm. The block is 3 mm
+    // along x and 1 mm along y from its origin: moved to span x -1.5 to 1.5 and y -0.5 to 0.5
+    // it covers the centres of both pads and lies inside the courtyard.
+    let (_, s) = drawn("a", 0.0, [-1.5, -0.5, 0.0], [0.0; 3]);
+    assert!(misfits(&s).is_empty(), "{:?}", s.warnings);
+    // The check is made in the footprint's frame, so a turned part changes nothing.
+    let (_, s) = drawn("a", 37.0, [-1.5, -0.5, 0.0], [0.0; 3]);
+    assert!(misfits(&s).is_empty(), "{:?}", s.warnings);
+    let (_, s) = drawn("under", 90.0, [-1.5, -0.5, 0.0], [0.0; 3]);
+    assert!(misfits(&s).is_empty(), "{:?}", s.warnings);
+}
+
+#[test]
+fn a_model_turned_a_quarter_turn_is_a_warning_naming_both_boxes() {
+    let (_, s) = drawn("a", 0.0, [-1.5, -0.5, 0.0], [0.0, 0.0, 90.0]);
+    let w = misfits(&s);
+    assert_eq!(w.len(), 1, "{:?}", s.warnings);
+    let w = w[0];
+    assert!(w.starts_with("the model of `a` (`models/blocks.step`) does not sit on its footprint"), "{w}");
+    assert!(w.contains("past the courtyard, which spans x -2.20 to 2.20 and y -1.20 to 1.20 mm"), "{w}");
+    assert!(w.contains("short of the centres of the pads, which span x -1.50 to 1.50 and y 0.00 to 0.00 mm"), "{w}");
+    assert!(w.contains("`.a.model.rz`"), "{w}");
+}
+
+#[test]
+fn a_model_is_late_to_warn_by_a_quarter_millimetre() {
+    // Shifted along x by 0.2 mm, the box still reaches the pad centre it was covering by 0.2.
+    let (_, s) = drawn("a", 0.0, [-1.3, -0.5, 0.0], [0.0; 3]);
+    assert!(misfits(&s).is_empty(), "{:?}", s.warnings);
+    // By 0.3 mm it falls short of the pad at x = -1.5 and of nothing else.
+    let (_, s) = drawn("a", 0.0, [-1.2, -0.5, 0.0], [0.0; 3]);
+    let w = misfits(&s);
+    assert_eq!(w.len(), 1, "{:?}", s.warnings);
+    assert!(w[0].contains("falls 0.30 mm short of the centres of the pads"), "{}", w[0]);
+    assert!(!w[0].contains("past the courtyard"), "{}", w[0]);
+}
+
+#[test]
+fn a_model_past_the_courtyard_is_a_warning() {
+    // Moved 1.5 mm along x, the box ends at x = 3 and the courtyard at 2.2.
+    let (_, s) = drawn("a", 0.0, [0.0, -0.5, 0.0], [0.0; 3]);
+    let w = misfits(&s);
+    assert_eq!(w.len(), 1, "{:?}", s.warnings);
+    assert!(w[0].contains("reaches 0.80 mm past the courtyard"), "{}", w[0]);
 }

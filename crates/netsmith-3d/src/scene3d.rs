@@ -360,7 +360,26 @@ pub struct Body {
     /// [`Scene::draw_models`] has placed it. A drawing only: the height, the provenance, the
     /// limits and the overlaps never read it.
     pub model: Option<DrawnModel>,
+    /// What the footprint draws that a STEP model of the part must fit (issue #1005).
+    pub fit: FootprintFit,
 }
+
+/// What a part's footprint draws, in the footprint's own frame (x right, y down, as its file
+/// writes it), for [`Scene::draw_models`] to check that the part's STEP model sits on it.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct FootprintFit {
+    /// The box round the courtyard drawings; `None` for a footprint that draws none, whose
+    /// courtyard is made from its pads and says nothing about a body.
+    pub courtyard: Option<Rect>,
+    /// The box round the centres of the pads; `None` for a footprint with no pad.
+    pub pad_centres: Option<Rect>,
+}
+
+/// How far, in mm, a STEP model's plan box may reach past the courtyard, or fall short of the
+/// centres of the pads, before [`Scene::draw_models`] warns (issue #1005): a model's pins, tabs
+/// and shell are not always inside what the footprint draws, but a model turned a quarter turn
+/// or moved off its footprint is far from it.
+pub(crate) const MODEL_FIT_TOLERANCE: f64 = 0.25;
 
 /// A part's STEP model as read, for [`Scene::draw_models`] to place: what the caller that reads
 /// the file found (`netsmith_fabricate::models`).
@@ -816,6 +835,9 @@ impl Scene {
                     body.provenance.word(),
                     u.path,
                 ));
+            }
+            if let Some(warning) = misfit(u, body) {
+                self.warnings.push(warning);
             }
             let exact = u.read.model.placed.iter().all(|p| rigid(&p.place.m));
             if !exact {
@@ -1295,7 +1317,85 @@ fn body(
         shape,
         place,
         model: None,
+        fit: FootprintFit {
+            courtyard: (p.footprint.courtyard_faces != (false, false))
+                .then_some(p.footprint.courtyard),
+            pad_centres: Rect::around(p.footprint.pads.iter().map(|pad| pad.at)),
+        },
     }
+}
+
+/// The warning for a model whose plan box does not sit on its part's footprint (issue #1005),
+/// or `None` when it does: the box, in the footprint's own frame, reaches more than
+/// [`MODEL_FIT_TOLERANCE`] past the courtyard, or does not reach within that much of the centres
+/// of the pads. A model turned a quarter turn or moved off its footprint is both. Only a
+/// warning: the model is drawn as it is placed.
+fn misfit(u: &ModelUse, body: &Body) -> Option<String> {
+    let in_footprint = model_frame(
+        &Placement {
+            origin: Plan { x: 0.0, y: 0.0 },
+            ex: Plan { x: 1.0, y: 0.0 },
+            ey: Plan { x: 0.0, y: 1.0 },
+            z_face: 0.0,
+            out: 1.0,
+        },
+        u.offset,
+        u.rotation,
+    );
+    let corners = u
+        .read
+        .mesh
+        .pieces
+        .iter()
+        .flat_map(|piece| piece.mesh.positions.iter())
+        .map(|p| {
+            let at = |k: usize| {
+                in_footprint.m[k][0] * p[0]
+                    + in_footprint.m[k][1] * p[1]
+                    + in_footprint.m[k][2] * p[2]
+                    + in_footprint.t[k]
+            };
+            Pt::new(at(0), at(1))
+        });
+    let b = Rect::around(corners)?;
+    let mut reasons = Vec::new();
+    if let Some(c) = body.fit.courtyard {
+        let over = (c.min.x - b.min.x)
+            .max(b.max.x - c.max.x)
+            .max(c.min.y - b.min.y)
+            .max(b.max.y - c.max.y);
+        if over > MODEL_FIT_TOLERANCE {
+            reasons.push(format!(
+                "it reaches {over:.2} mm past the courtyard, which spans x {:.2} to {:.2} and y {:.2} to {:.2} mm",
+                c.min.x, c.max.x, c.min.y, c.max.y
+            ));
+        }
+    }
+    if let Some(p) = body.fit.pad_centres {
+        let short = (b.min.x - p.min.x)
+            .max(p.max.x - b.max.x)
+            .max(b.min.y - p.min.y)
+            .max(p.max.y - b.max.y);
+        if short > MODEL_FIT_TOLERANCE {
+            reasons.push(format!(
+                "it falls {short:.2} mm short of the centres of the pads, which span x {:.2} to {:.2} and y {:.2} to {:.2} mm",
+                p.min.x, p.max.x, p.min.y, p.max.y
+            ));
+        }
+    }
+    if reasons.is_empty() {
+        return None;
+    }
+    Some(format!(
+        "the model of `{path}` (`{file}`) does not sit on its footprint: its plan box spans x {:.2} to {:.2} and y {:.2} to {:.2} mm (the footprint's frame, y down), and {}; a model turned a quarter turn, or moved off the footprint, looks like this, so check its rotation and offset (`.{path}.model.rz`, `.x`, `.y`, or the `rotation` and `offset` of its row in the model table)",
+        b.min.x,
+        b.max.x,
+        b.min.y,
+        b.max.y,
+        reasons.join(", and "),
+        path = u.path,
+        file = u.file,
+    ))
 }
 
 /// The map from a STEP model's frame to the scene's, for a part placed by `place` (ADR 0108).

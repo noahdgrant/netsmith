@@ -1433,9 +1433,11 @@ error: contradiction on `plug.model.file`: it is already "models/plug.step", whi
   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
-An offset or a rotation with no file is refused, as there is nothing to place, and so is a rotation or an offset that is a range.
+An offset or a rotation with no file places the model the project's model table gives the part (below), and is refused where the table gives none, as there is nothing to place; so is a rotation or an offset that is a range.
 
 **A part that has no model.** `.model.file &= ""` says the part has none: it is drawn with its generated shape, and the project's model table (below) gives it none. Use it for a part the table would cover but that is not that package, such as a connector whose footprint is named like a stock one. An offset or a rotation stated with an empty file is refused.
+
+**A model that does not sit on its footprint.** Once a board is placed, each model drawn is checked against its part's footprint, in the footprint's own frame: the model's plan box must not reach more than 0.25 mm past the courtyard (a footprint that draws no courtyard says nothing about a body), and must reach to within 0.25 mm of the centres of the pads. A model turned a quarter turn, or moved off its footprint, is both. The check is a warning from `board3d` and `fab` and in the editor's 3D view, naming the box and the footprint's, and the model is drawn as it is placed. A model whose pins, tabs or shell stand outside what the footprint draws is a warning too: it is a check to read, not a measurement.
 
 ### A model table
 
@@ -1462,6 +1464,8 @@ A part's footprint `Lib:Name` finds its model this way: a `[[model]]` row of tha
 
 The folder is a second place models are read from, besides the project: it may be outside the project, so a checkout of KiCad's models is used without a copy in every project. It is relative to `netsmith.toml`, or absolute, and may start with an environment variable (`${KICAD9_3DMODEL_DIR}`, KiCad 9's own). A row's `file` is spelled the same way and must be inside the project or inside the folder; one outside both is an error. netsmith still bundles and downloads no model. A row whose file is not there is a warning that names the parts it would draw, and they keep their generated shape, as a part's own missing model does; so is a folder that is not there, or a variable that is not set (a clone or a CI job may have neither). A footprint the folder has no file for is no warning: the folder is only looked in.
 
+A part may state only the placement of the model the table gives it: `.model.rz &= 90` with no `.model.file` draws the table's model turned 90 degrees, and `.model.x` ... `.model.rz` that it states take the place of the row's number of the same name (a row's `rotation = [0, 0, 180]` and a part's `.model.rz &= 90` give a rotation of 0, 0, 90), while those it does not state keep the row's. A part states the whole placement with its own `.model.file`. Where the table has no model for the part (no row, no file in the folder, a row whose file is not there), the placement is an error, as there is nothing to place.
+
 A model from the table is what a part's own model is: a drawing, never a height, so its top above the part's height is the same warning. `build` and `fab` say what the table did, and which parts are drawn with no model, so "every part has a model" is one line:
 
 ```text
@@ -1469,6 +1473,17 @@ note: LedExample: the model table (netsmith.toml) draws 2 parts from a STEP mode
 ```
 
 `fab-notes.txt` and `board3d --json` name a model from the folder as `<folder>/<Lib>.3dshapes/<Name>.step`, with the folder as `netsmith.toml` spells it, and its SHA-256. A design file (`build --emit-design`) holds only the models the design states, as the table is the project's and the folder this machine's.
+
+**Rows from a KiCad project's footprint libraries.** `netsmith kicad-libs models fp-lib-table` prints a `[[model]]` row for each footprint of the table's libraries whose `(model ...)` line names a STEP file, with the line's offset and rotation (an old `(at (xyz ...))` in inches is turned into mm), to review and paste into `netsmith.toml`, as `kicad-libs import` prints the `[[library]]` stanzas for `kicad.toml`. `--library NAME` (repeat for several) reads only those libraries; `${KIPRJMOD}` is the folder of the table and another `${NAME}` is the environment variable. A footprint with no model line, a model that is not STEP (a `.wrl`) or a scaled one is no row: notes on stderr count them. A library whose folder is not there, or whose variable is not set, is a note.
+
+```text
+note: the library `acme`: 3 footprints have no model line: left out
+[[model]]
+footprint = "acme:Chip"
+file = "models/chip.step"
+offset = [0, 0, 0.1]
+rotation = [0, 0, 90]
+```
 
 ### A case model
 
