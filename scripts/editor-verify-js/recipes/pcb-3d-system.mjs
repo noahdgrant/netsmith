@@ -57,7 +57,9 @@ export async function run({ page, url, project, shot, step, expect, binary }) {
   await systemDrawn(page);
   await whenIdle(page);
   const chip = await page.getByTestId('system-chip').innerText();
-  expect(chip.trim() === 'System TwoBoards: 2 boards, mated at 10.65–11.35 mm', `the chip, with no finding: ${chip}`);
+  // The LED board's diode and resistor have no known height and face the power board: two
+  // `system_unchecked` warnings, which are the findings of the board as it is.
+  expect(chip.trim() === 'System TwoBoards: 2 boards, mated at 10.65–11.35 mm · 2 findings', `the chip, with the two warnings only: ${chip}`);
   const drawn = await ask(page, 'sample');
   expect(drawn.drawn > 0.05, `the canvas is drawn (${(drawn.drawn * 100).toFixed(0)} % not the background)`);
   await shot('system-iso');
@@ -104,7 +106,7 @@ export async function run({ page, url, project, shot, step, expect, binary }) {
 async function finding(page, shot, expect) {
   await page.waitForSelector('[data-testid=system-chip].bad');
   const bad = await page.getByTestId('system-chip').innerText();
-  expect(bad.includes('1 finding'), `the chip: ${bad}`);
+  expect(bad.includes('3 findings'), `the chip: ${bad}`);
   await page.getByTestId('system-chip').click();
   const row = page.locator('[data-testid=system-findings] [data-code=system_collision]');
   await row.waitFor();

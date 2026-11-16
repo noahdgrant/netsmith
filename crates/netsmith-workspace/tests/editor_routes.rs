@@ -671,8 +671,11 @@ fn hang(name: &str) -> Hang {
     let scene = editor.pcb_scene(BOARD).unwrap();
     let d1 = scene.parts.iter().find(|p| p.refdes == "D1").unwrap();
     let pad = d1.pads.iter().find(|p| p.net.as_deref() == Some("GND")).unwrap();
-    let pad = PcbPoint { x: pad.x, y: pad.y };
-    let foot = PcbPoint { x: pad.x, y: pad.y + 2.25 };
+    // The places are as the routes file keeps them, to a tenth of a micrometre: a sum of the
+    // pad's place and an offset would differ from them in the last bit.
+    let tidy = |v: f64| (v * 1e4).round() / 1e4;
+    let pad = PcbPoint { x: tidy(pad.x), y: tidy(pad.y) };
+    let foot = PcbPoint { x: pad.x, y: tidy(pad.y + 2.25) };
     let drawn = editor
         .pcb_routes(&edit_of(&scene, vec![track("GND", "top", pad, foot)]))
         .unwrap_or_else(|e| panic!("{}", e.message));
@@ -683,6 +686,19 @@ fn hang(name: &str) -> Hang {
         pad,
         foot,
     }
+}
+
+/// Whether a walk's points are `want`, each within a nanometre: the end points are sums of
+/// the pad's place and an offset, which the walk returns as it was given but not always to
+/// the last bit.
+fn is_path(got: &Option<Vec<PcbPoint>>, want: &[PcbPoint]) -> bool {
+    got.as_ref().is_some_and(|got| {
+        got.len() == want.len()
+            && got
+                .iter()
+                .zip(want)
+                .all(|(g, w)| (g.x - w.x).abs() < 1e-6 && (g.y - w.y).abs() < 1e-6)
+    })
 }
 
 fn shove_walk(from: PcbPoint, to: PcbPoint) -> PcbWalk {
@@ -705,7 +721,7 @@ fn a_walk_that_shoves_moves_an_unlocked_track_and_the_edit_is_one_step_of_undo_o
     assert!(round.shoved.tracks.is_empty() && round.stuck.is_none());
     // With the shove it goes straight and the ground track turns about its pad, out of the way.
     let walked = h.editor.pcb_walk(&shove_walk(from, to)).unwrap();
-    assert_eq!(walked.points, Some(vec![from, to]), "{walked:?}");
+    assert!(is_path(&walked.points, &[from, to]), "{walked:?}");
     assert_eq!(walked.tried, 0);
     assert!(walked.stuck.is_none(), "{walked:?}");
     let [shoved] = walked.shoved.tracks.as_slice() else {
@@ -954,7 +970,7 @@ fn the_routers_copper_gives_way_to_a_walk_and_is_named_when_it_is_crossed() {
     let [a, b] = [pads_of(&scene, "VCC")[0], pads_of(&scene, "VCC")[1]];
     let (c, d) = (along(a, b, 0.3), along(a, b, 0.7));
     let through = editor.pcb_walk(&walk_of("GND", "top", c, d)).unwrap();
-    assert_eq!(through.points, Some(vec![c, d]), "{through:?}");
+    assert!(is_path(&through.points, &[c, d]), "{through:?}");
     assert_eq!(through.tried, 0);
 
     // An edit of the routes file discards the router's copper: nothing is crossed after it.

@@ -49,24 +49,35 @@ fn least_gap(board: &Board, net: &str) -> f64 {
 
 #[test]
 fn nets_kept_further_route_completely_keep_their_clearance_and_pass_the_check() {
-    let mut board = synthetic_board(3, 40, 8, 8, 20, 20);
-    // Four signal nets off the fine-pitch package (whose pads are nearer each other than the
-    // clearance): `S23`, which the router packs nearer than 0.4 mm to another net's track when
-    // nothing keeps it further, and the first three others.
-    let off_package = |n: &&netsmith_pcb::BoardNet| {
-        n.name.starts_with('S') && !n.pads.iter().any(|p| p.refdes.starts_with('U'))
-    };
-    let mut kept: Vec<String> = vec!["S23".to_string()];
-    kept.extend(
-        board
-            .nets
-            .iter()
-            .filter(off_package)
-            .map(|n| n.name.clone())
-            .filter(|n| n != "S23")
-            .take(3),
-    );
-    assert!(kept.iter().all(|k| board.nets.iter().any(|n| n.name == *k)));
+    // The witness: routed as if no net were kept further, the board breaks the space of the
+    // 0.4 mm somewhere. Four signal nets off the fine-pitch package (whose pads are nearer
+    // each other than the clearance) are kept further: the four whose tracks the router packed
+    // nearest to another net's when nothing kept them off. A seed whose board the router packs
+    // loosely, as a change to the placer can make it, has no witness: the next seed is tried.
+    let (mut board, kept) = [3, 1, 2, 4, 5, 6]
+        .into_iter()
+        .find_map(|seed| {
+            let board = synthetic_board(seed, 40, 8, 8, 20, 20);
+            let mut blind = board.clone();
+            route_with(&mut blind, RouteOptions::default());
+            let off_package = |n: &&netsmith_pcb::BoardNet| {
+                n.name.starts_with('S') && !n.pads.iter().any(|p| p.refdes.starts_with('U'))
+            };
+            let mut gaps: Vec<(f64, String)> = board
+                .nets
+                .iter()
+                .filter(off_package)
+                .map(|n| (least_gap(&blind, &n.name), n.name.clone()))
+                .filter(|(gap, _)| gap.is_finite())
+                .collect();
+            gaps.sort_by(|a, b| a.0.total_cmp(&b.0).then_with(|| a.1.cmp(&b.1)));
+            gaps.truncate(4);
+            eprintln!("seed {seed}, routed blind, the least gaps of the nets kept: {gaps:?}");
+            gaps.iter()
+                .any(|(g, _)| *g < 0.4 - 1e-6)
+                .then(|| (board, gaps.into_iter().map(|(_, n)| n).collect::<Vec<String>>()))
+        })
+        .expect("a seed whose blind routing breaks the space: the clearance changes something");
     for net in &kept {
         board.net_clearances.push((net.clone(), 0.4));
     }
@@ -75,17 +86,6 @@ fn nets_kept_further_route_completely_keep_their_clearance_and_pass_the_check() 
     assert!(pro.contains(r#""name": "Clearance_0.4mm""#), "{pro}");
     let rules = DrcRules::from_project(&pro).unwrap();
     assert_eq!(rules.net_clearance(Some(&kept[0])), 0.4);
-    // The witness: routed as if no net were kept further, the same board breaks the space.
-    let mut blind = board.clone();
-    blind.net_clearances.clear();
-    route_with(&mut blind, RouteOptions::default());
-    blind.net_clearances = board.net_clearances.clone();
-    let gaps: Vec<f64> = kept.iter().map(|n| least_gap(&blind, n)).collect();
-    eprintln!("routed blind, the least gaps of {kept:?}: {gaps:?}");
-    assert!(
-        gaps.iter().any(|&g| g < 0.4 - 1e-6),
-        "the clearance changed nothing: {gaps:?}"
-    );
     let routing = route_with(&mut board, RouteOptions::default());
     assert!(routing.left.is_empty(), "{:?}", routing.left.lines);
     assert_eq!(errors(&board), Vec::<String>::new());
