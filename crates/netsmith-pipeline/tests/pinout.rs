@@ -117,3 +117,94 @@ fn every_disagreement_is_reported_not_only_the_first() {
         "{err}"
     );
 }
+
+/// An invented 3.3 V regulator that provides `LinearRegulator`, in a package `SOT-6` of
+/// three pads, and a board that draws up to 100 mA from it (issue 751).
+const LDO3: &str = "\
+import std::parts::regulator::LinearRegulator
+import std::sources::Rail
+
+/// An invented 3.3 V regulator.
+part Ldo3 provides LinearRegulator {
+    pins {
+        .vin.pos  power \"IN\"  \"1\"
+        .vin.neg  power \"GND\" \"2\"
+        .vout.pos power \"OUT\" \"3\"
+    }
+    .vout.voltage &= 3.3V +/- 3%
+    .dropout &= 300mV
+    .max_current &= 500mA
+    .max_power &= 1W
+    catalog ldo3 { .mpn, .package }
+}
+
+board Repro {
+    .input: Rail {
+        .voltage &= 4.5V..5.5V
+        .pos.net &= \"VIN\"
+    }
+    .reg: Ldo3
+    .input ~ .reg.vin
+    .load: Rail {
+        .current &= 0A..100mA
+        .pos.net &= \"V3V3\"
+    }
+    .reg.vout ~ .load
+}
+";
+
+const LDO3_CSV: &str = "\
+mpn,name,package,library,source
+LDO3-33,LDO3 3.3V,SOT-6,Extended,https://example.invalid/ldo3
+";
+
+/// Build `LDO3` with `Ldo3` drawn with a library symbol whose output pin (pad 3) has the
+/// electrical type `output`, as many library regulator symbols type it.
+fn build_ldo3(source: &str) -> Result<(), String> {
+    let dir = TempDir::new("pinout-ldo3");
+    let mut libraries = common::chip_libraries(
+        dir.path(),
+        &common::chip_symbol(&[
+            ("power_in", "IN", "1"),
+            ("power_in", "GND", "2"),
+            ("output", "OUT", "3"),
+        ]),
+        &common::chip_footprint(&["1", "2", "3"]),
+    );
+    // The project's mapping names `Chip`; map `Ldo3` to the same symbol and footprint.
+    let toml = std::fs::read_to_string(dir.path().join("kicad.toml"))
+        .unwrap()
+        .replace("kind = \"Chip\"", "kind = \"Ldo3\"");
+    std::fs::write(dir.path().join("kicad.toml"), toml).unwrap();
+    libraries.mapping =
+        netsmith_kicad::Mapping::for_project(Some(dir.path())).unwrap_or_else(|e| panic!("{e}"));
+    let mut catalogs = Catalogs::jlcpcb();
+    catalogs
+        .add_file("ldo3", "catalogs/ldo3.csv", LDO3_CSV)
+        .unwrap();
+    build_with("t.nsm", source, &Loader::std(), &catalogs, &libraries).map(|_| ())
+}
+
+#[test]
+fn a_regulators_output_drawn_with_a_symbol_typed_output_builds() {
+    // The pin table says `power` (the generic's kind) and the symbol `output`: the solved
+    // design says the pin gives power, so the symbol is used as it is.
+    build_ldo3(LDO3).unwrap_or_else(|e| panic!("{e}"));
+}
+
+#[test]
+fn an_output_symbol_pin_on_a_power_pin_that_gives_no_power_stops_the_build() {
+    // The same symbol pin on the input, which takes power, does not suit it.
+    let swapped = LDO3
+        .replace("\"IN\"  \"1\"", "\"IN\"  \"3\"")
+        .replace("\"OUT\" \"3\"", "\"OUT\" \"1\"");
+    let err = build_ldo3(&swapped).unwrap_err();
+    assert!(
+        err.contains(
+            "pad 3 is the power pin `vin.pos` (`IN`) in the part, but pin 3 of the symbol \
+             `tiny:Chip` has the electrical type `output`, which does not suit a power pin; a \
+             power pin suits `output` when the solved design says it gives power"
+        ),
+        "{err}"
+    );
+}
