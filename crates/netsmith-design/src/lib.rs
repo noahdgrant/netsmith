@@ -859,6 +859,9 @@ fn process_of(model: &Model, nets: &[String], errors: &mut Vec<String>) -> Optio
         min_test_point_pitch: mm("min_test_point_pitch"),
         min_test_point_body: mm("min_test_point_body"),
         min_test_point_edge: mm("min_test_point_edge"),
+        min_power_test_point_pad: mm("min_power_test_point_pad"),
+        tall_part_height: mm("tall_part_height"),
+        min_test_point_tall_body: mm("min_test_point_tall_body"),
         // An upper bound, so the top of what the board left.
         via_in_pad: match find("via_in_pad") {
             Some(Domain::Quantity(q)) => (end("via_in_pad", &q, true) * 1e12).round() / 1e9,

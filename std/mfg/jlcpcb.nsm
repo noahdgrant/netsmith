@@ -82,9 +82,12 @@
 //! is a guideline, and the "recommended production value" is named in the finding and not
 //! enforced) are guidelines. The page's edge space reads "including the keep-out area" and its
 //! own panel puts a 1 mm fiducial 3.85 mm from the edge (3.35 mm of copper), so the space is
-//! measured to the copper. Not stated, and why: the larger pad of a power or ground net and the
-//! larger clearance to a tall part (both need a fact of the board, which net is a supply and how
-//! tall the part is, that `fab` does not hand the check yet), the round board's fiducial angles,
+//! measured to the copper. The two rows that depend on the board (the 1.0 mm pad on a power or
+//! ground net, the 2.0 mm space to a part above 6.4 mm tall) are the same rules as the pad and
+//! the body, guidelines, with the larger figure where the net is a supply or a ground (a pin the
+//! part's pin table calls `power` is on it) or the part stands taller
+//! than 6.4 mm by its stated or catalog height; a part of unknown height is judged as any other.
+//! Not stated, and why: the round board's fiducial angles,
 //! the global fiducial of a panel (the panel's rails, `VCutPanel`), the surface finish advice and
 //! the "no silkscreen over a fiducial" advice (the check of silkscreen over a pad's mask opening
 //! already covers it).
@@ -162,7 +165,10 @@ generic TwoLayer {
     /// minimum clearance of 3.35 mm") is a limit. The test point rules are the "absolute
     /// minimum" column of the DFT blog's tables, advice for a probe fixture and so guidelines:
     /// the pad 0.8 mm (a signal net), the pitch 1.27 mm, the space to a component body 0.5 mm
-    /// and to the board edge 3.2 mm.
+    /// and to the board edge 3.2 mm; and the two rows that depend on the board: the pad of a
+    /// test point on a power or ground net, 1.0 mm, and the space to the body of a part above
+    /// 6.4 mm tall, 2.0 mm (`tall_part_height` is the 6.4 mm, an offer of the process like the
+    /// fiducial's diameter).
     .min_fiducials: Number
     .min_fiducials &= 2..
     .fiducial_diameter: Length
@@ -179,6 +185,12 @@ generic TwoLayer {
     .min_test_point_body &= 0.5mm..
     .min_test_point_edge: Length
     .min_test_point_edge &= 3.2mm..
+    .min_power_test_point_pad: Length
+    .min_power_test_point_pad &= 1mm..
+    .tall_part_height: Length
+    .tall_part_height ?= 6.4mm
+    .min_test_point_tall_body: Length
+    .min_test_point_tall_body &= 2mm..
     /// The least copper round a via's hole: the page's "via diameter should be 0.1 mm (0.15
     /// mm preferred) larger than via hole size", half of it on each side (issue #431).
     .min_via_ring: Length
@@ -425,7 +437,10 @@ generic FourLayer {
     /// minimum clearance of 3.35 mm") is a limit. The test point rules are the "absolute
     /// minimum" column of the DFT blog's tables, advice for a probe fixture and so guidelines:
     /// the pad 0.8 mm (a signal net), the pitch 1.27 mm, the space to a component body 0.5 mm
-    /// and to the board edge 3.2 mm.
+    /// and to the board edge 3.2 mm; and the two rows that depend on the board: the pad of a
+    /// test point on a power or ground net, 1.0 mm, and the space to the body of a part above
+    /// 6.4 mm tall, 2.0 mm (`tall_part_height` is the 6.4 mm, an offer of the process like the
+    /// fiducial's diameter).
     .min_fiducials: Number
     .min_fiducials &= 2..
     .fiducial_diameter: Length
@@ -442,6 +457,12 @@ generic FourLayer {
     .min_test_point_body &= 0.5mm..
     .min_test_point_edge: Length
     .min_test_point_edge &= 3.2mm..
+    .min_power_test_point_pad: Length
+    .min_power_test_point_pad &= 1mm..
+    .tall_part_height: Length
+    .tall_part_height ?= 6.4mm
+    .min_test_point_tall_body: Length
+    .min_test_point_tall_body &= 2mm..
     /// The least copper round a via's hole: the page's "via diameter should be 0.1 mm (0.15
     /// mm preferred) larger than via hole size", half of it on each side (issue #431).
     .min_via_ring: Length
@@ -754,7 +775,10 @@ generic SixLayer {
     /// minimum clearance of 3.35 mm") is a limit. The test point rules are the "absolute
     /// minimum" column of the DFT blog's tables, advice for a probe fixture and so guidelines:
     /// the pad 0.8 mm (a signal net), the pitch 1.27 mm, the space to a component body 0.5 mm
-    /// and to the board edge 3.2 mm.
+    /// and to the board edge 3.2 mm; and the two rows that depend on the board: the pad of a
+    /// test point on a power or ground net, 1.0 mm, and the space to the body of a part above
+    /// 6.4 mm tall, 2.0 mm (`tall_part_height` is the 6.4 mm, an offer of the process like the
+    /// fiducial's diameter).
     .min_fiducials: Number
     .min_fiducials &= 2..
     .fiducial_diameter: Length
@@ -771,6 +795,12 @@ generic SixLayer {
     .min_test_point_body &= 0.5mm..
     .min_test_point_edge: Length
     .min_test_point_edge &= 3.2mm..
+    .min_power_test_point_pad: Length
+    .min_power_test_point_pad &= 1mm..
+    .tall_part_height: Length
+    .tall_part_height ?= 6.4mm
+    .min_test_point_tall_body: Length
+    .min_test_point_tall_body &= 2mm..
     /// The least copper round a via's hole: the page's "via diameter should be 0.1 mm (0.15
     /// mm preferred) larger than via hole size", half of it on each side (issue #431).
     .min_via_ring: Length

@@ -73,6 +73,12 @@ pub struct Process {
     pub min_test_point_pitch: f64,
     pub min_test_point_body: f64,
     pub min_test_point_edge: f64,
+    /// The test point rules that depend on the net or on the part (guidelines): the least width
+    /// of the pad of a test point on a power or ground net, the height above which a part is
+    /// tall, and the least space from a test point's copper to the body of a tall part.
+    pub min_power_test_point_pad: f64,
+    pub tall_part_height: f64,
+    pub min_test_point_tall_body: f64,
     /// The largest via the fabricator fills and caps, so that it may sit in a pad. This is
     /// an upper bound: 0 where the board does not want vias in pads or the process cannot
     /// make them.

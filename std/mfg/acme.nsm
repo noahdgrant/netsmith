@@ -99,6 +99,12 @@ interface EightLayer {
     .min_test_point_body &= 0.5mm..
     .min_test_point_edge: Length
     .min_test_point_edge &= 3.2mm..
+    .min_power_test_point_pad: Length
+    .min_power_test_point_pad &= 1mm..
+    .tall_part_height: Length
+    .tall_part_height ?= 6.4mm
+    .min_test_point_tall_body: Length
+    .min_test_point_tall_body &= 2mm..
     /// The least copper round a via's hole, on each side.
     .min_via_ring: Length
     .min_via_ring &= 0.05mm..
@@ -280,6 +286,12 @@ interface TenLayer {
     .min_test_point_body &= 0.5mm..
     .min_test_point_edge: Length
     .min_test_point_edge &= 3.2mm..
+    .min_power_test_point_pad: Length
+    .min_power_test_point_pad &= 1mm..
+    .tall_part_height: Length
+    .tall_part_height ?= 6.4mm
+    .min_test_point_tall_body: Length
+    .min_test_point_tall_body &= 2mm..
     /// The least copper round a via's hole, on each side.
     .min_via_ring: Length
     .min_via_ring &= 0.05mm..

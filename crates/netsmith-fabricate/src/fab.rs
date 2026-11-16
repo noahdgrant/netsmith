@@ -2670,6 +2670,33 @@ pub fn marks_of(board: &Board) -> netsmith_geom::DrcMarks {
                 })
         })
     };
+    // A net is a supply or a ground when a pin the part's pin table calls `power` is on it (ADR
+    // 0016, `power_pads`, what the placer reads to find the supply nets): a chip's supply and
+    // ground pins. A test point's own pin is `passive`, so it never makes its net one, and the
+    // net a rail joins passive parts to alone is not known as one.
+    let power_nets: Vec<String> = board
+        .nets
+        .iter()
+        .filter(|net| {
+            net.pads.iter().any(|pad| {
+                board
+                    .parts
+                    .iter()
+                    .any(|p| p.refdes == pad.refdes && p.power_pads.contains(&pad.number))
+            })
+        })
+        .map(|net| net.name.clone())
+        .collect();
+    // A part is tall when the design or its catalog row states a height above the process's. An
+    // unknown height is no height: the part is judged as any other (the package standard's
+    // figure is an upper bound and none of the table is above 6.4 mm, so it never shows a part
+    // to be tall).
+    let tall_parts: Vec<(String, f64)> = board
+        .parts
+        .iter()
+        .filter_map(|part| Some((part.refdes.clone(), part.height?)))
+        .filter(|(_, h)| p.tall_part_height > 0.0 && *h > p.tall_part_height + 1e-9)
+        .collect();
     netsmith_geom::DrcMarks {
         fiducials: named(PartKind::Fiducial),
         test_points: named(PartKind::TestPoint),
@@ -2683,6 +2710,11 @@ pub fn marks_of(board: &Board) -> netsmith_geom::DrcMarks {
         min_test_point_pitch: p.min_test_point_pitch,
         min_test_point_body: p.min_test_point_body,
         min_test_point_edge: p.min_test_point_edge,
+        power_nets,
+        min_power_test_point_pad: p.min_power_test_point_pad,
+        tall_parts,
+        tall_part_height: p.tall_part_height,
+        min_test_point_tall_body: p.min_test_point_tall_body,
     }
 }
 
@@ -3192,7 +3224,7 @@ mod tests {
 
     /// The fields of a process that are not a rule the router and the design rules check keep,
     /// each with the reason (issue #431).
-    const NOT_A_COPPER_RULE: [(&str, &str); 28] = [
+    const NOT_A_COPPER_RULE: [(&str, &str); 31] = [
         (
             "finish",
             "the surface finish, a word for the notes and the order",
@@ -3268,6 +3300,18 @@ mod tests {
         (
             "min_test_point_edge",
             "a test point's space to the board edge, judged on the placed board: the router draws none of it; `the_marks_rules_a_process_states_reach_the_check` proves the check keeps it",
+        ),
+        (
+            "min_power_test_point_pad",
+            "the pad of a test point on a supply or a ground, judged on the placed board: the router draws none of it; `the_marks_rules_a_process_states_reach_the_check` proves the check keeps it",
+        ),
+        (
+            "tall_part_height",
+            "the height above which a part is tall to a test point, judged on the placed board: the router draws none of it; `the_marks_rules_a_process_states_reach_the_check` proves the check keeps it",
+        ),
+        (
+            "min_test_point_tall_body",
+            "a test point's space to a tall part, judged on the placed board: the router draws none of it; `the_marks_rules_a_process_states_reach_the_check` proves the check keeps it",
         ),
     ];
 
@@ -3392,6 +3436,10 @@ mod tests {
                 min_test_point_pitch: p.min_test_point_pitch,
                 min_test_point_body: p.min_test_point_body,
                 min_test_point_edge: p.min_test_point_edge,
+                min_power_test_point_pad: p.min_power_test_point_pad,
+                tall_parts: vec![("U1".into(), p.tall_part_height + 1.0)],
+                tall_part_height: p.tall_part_height,
+                min_test_point_tall_body: p.min_test_point_tall_body,
                 ..Default::default()
             }),
             ..Default::default()
@@ -3422,6 +3470,9 @@ mod tests {
             ("min_test_point_pitch", "2.54mm.."),
             ("min_test_point_body", "1mm.."),
             ("min_test_point_edge", "3.8mm.."),
+            ("min_power_test_point_pad", "1.5mm.."),
+            ("tall_part_height", "7mm"),
+            ("min_test_point_tall_body", "5mm.."),
         ] {
             let narrowed = format!(".{field} &= {raised}");
             let after =
