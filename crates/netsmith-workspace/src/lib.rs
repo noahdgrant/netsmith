@@ -42,7 +42,7 @@ use std::{
 
 use netsmith_core::job::{self, Cancel};
 use netsmith_editor::{
-    AnalysisEvent, ApiError, Attachment, Backend, Observer, Say,
+    AnalysisEvent, ApiError, Attachment, Backend, Observer, Say, Show,
     api::{
         Analysis, BoardDetail, Bom, BuildReport, CatalogRefresh, Changed, Compare, Definition,
         FabReport, FileContent, GitInfo, KeepoutPlacement, OrderInfo, OrderReport, PanelView,
@@ -1296,6 +1296,10 @@ impl Backend for Workspace {
     }
 
     fn route(&self, board: &str, say: &Say) -> Result<PcbReport, ApiError> {
+        self.route_watched(board, say, &(std::sync::Arc::new(|_: &_| {}) as Show))
+    }
+
+    fn route_watched(&self, board: &str, say: &Say, show: &Show) -> Result<PcbReport, ApiError> {
         // Placed under the lock, routed without it: the router takes seconds, and every
         // other request (and the watcher) waits for the lock.
         say(&format!("{board}: placing"));
@@ -1303,7 +1307,7 @@ impl Backend for Workspace {
             let state = self.fresh();
             (state.version, state.snapshot.board_handle(board)?)
         };
-        let mut entry = pcb::place(&data, board)?;
+        let mut entry = pcb::place_watched(&data, board, say, show, None)?;
         // A board routed before from this very board is that route again; else the board routed
         // last, to keep the copper of what a change left alone (issue #825).
         let (restored, before) = {
@@ -1324,7 +1328,7 @@ impl Backend for Workspace {
             }
             return Ok(report);
         }
-        let routed = entry.route(board, say, before.as_ref());
+        let routed = entry.route(board, say, show, before.as_ref());
         let report = entry.report(board);
         let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
         // Kept only when it ran to its end: a route stopped short is no board to start from.
@@ -1346,7 +1350,16 @@ impl Backend for Workspace {
         pcb::cancel();
     }
 
+    fn cancel_placing(&self) {
+        pcb::cancel_placing();
+    }
+
     fn pcb_scene(&self, board: &str) -> Result<PcbScene, ApiError> {
+        let quiet: Say = std::sync::Arc::new(|_: &str| {});
+        self.pcb_scene_watched(board, &quiet, &(std::sync::Arc::new(|_: &_| {}) as Show))
+    }
+
+    fn pcb_scene_watched(&self, board: &str, say: &Say, show: &Show) -> Result<PcbScene, ApiError> {
         let (version, data) = {
             let state = self.fresh();
             let data = state.snapshot.board_handle(board)?;
@@ -1355,7 +1368,7 @@ impl Backend for Workspace {
             }
             (state.version, data)
         };
-        let entry = pcb::place(&data, board)?;
+        let entry = pcb::place_watched(&data, board, say, show, None)?;
         let scene = pcb::scene(&entry, &data, board);
         let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
         if state.version == version {

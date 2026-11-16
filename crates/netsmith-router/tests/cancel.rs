@@ -138,3 +138,40 @@ fn the_router_reports_its_progress_to_the_job_and_routes_the_same_board_while_it
         assert_eq!(last.done, total, "{:?}", last.detail);
     }
 }
+
+#[test]
+fn a_watched_routing_shows_its_copper_at_the_end_of_each_try_and_routes_the_same_board() {
+    // Issue #764: the editor draws the tracks as the router lays them.
+    use std::{cell::RefCell, rc::Rc};
+    let board = hard_boards(1).remove(0);
+    let mut quiet = board.clone();
+    let alone = route_with(&mut quiet, RouteOptions::default());
+
+    let seen = Rc::new(RefCell::new(Vec::<netsmith_pcb::Glimpse>::new()));
+    let sink = {
+        let seen = Rc::clone(&seen);
+        Rc::new(move |g: &netsmith_pcb::Glimpse| seen.borrow_mut().push(g.clone()))
+    };
+    let mut watched = board.clone();
+    let routing = netsmith_pcb::watching_glimpses(sink, || {
+        route_with(&mut watched, RouteOptions::default())
+    });
+    assert_eq!(routing, alone);
+    assert_eq!(watched.tracks, quiet.tracks);
+    assert_eq!(watched.vias, quiet.vias);
+
+    let seen = seen.borrow();
+    // Each try ends with a glimpse, whatever came between (those are at most four a second).
+    assert!(seen.len() >= routing.tries, "{} glimpses", seen.len());
+    let netsmith_pcb::Glimpse::Routing { tracks, .. } = seen.last().unwrap() else {
+        panic!("the router shows copper");
+    };
+    assert!(!tracks.is_empty());
+    // Copper the router laid on the board it was given: on its nets.
+    assert!(
+        tracks
+            .iter()
+            .all(|t| board.nets.iter().any(|n| n.name == t.net)),
+        "a track of a net the board does not have"
+    );
+}

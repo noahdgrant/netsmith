@@ -128,8 +128,7 @@ impl Args {
 
 /// Makes the fab package of each board, or an order.
 pub fn run(args: Args) -> ExitCode {
-    let (constraints_warn, pins_locked, order) =
-        (args.constraints_warn(), args.pins_locked(), args.order());
+    let order = args.order();
     let format: Format = args.output.format.into();
     if order.is_some() && format == Format::Json {
         eprintln!(
@@ -140,6 +139,28 @@ pub fn run(args: Args) -> ExitCode {
     if let Some(code) = sync_pins(args.file.as_deref(), args.locked) {
         return code;
     }
+    // `--format json` keeps stdout for its document and prints the progress only when it is
+    // asked for as JSON too (issue #764).
+    args.placing.tell_progress(
+        "fab",
+        args.quiet
+            || (format == Format::Json && args.placing.progress == crate::progress::Print::Text),
+    );
+    let code = common::with_stage_events(|| run_chosen(&args, order, format));
+    crate::progress::ended(
+        code == ExitCode::SUCCESS,
+        if code == ExitCode::SUCCESS {
+            "fab: done"
+        } else {
+            "fab: failed (its output says why)"
+        },
+    );
+    code
+}
+
+/// `fab` of the files or the project's boards, or of an order.
+fn run_chosen(args: &Args, order: Option<OrderRequest>, format: Format) -> ExitCode {
+    let (constraints_warn, pins_locked) = (args.constraints_warn(), args.pins_locked());
     match order {
         Some(request) => run_order(
             &request,
@@ -322,9 +343,9 @@ fn run_fab(
             None => FabOptions::default().route_timeout,
         },
         progress: Some(match (json, output.quiet) {
-            (true, _) => keep_line,
-            (false, true) => quiet_line,
-            (false, false) => |message| eprintln!("{message}"),
+            (true, _) => keep_and_tell,
+            (false, true) => quiet_and_post,
+            (false, false) => crate::progress::tell,
         }),
         layout: None,
         allow_drc_violations,
@@ -515,6 +536,19 @@ fn keep_line(message: &str) {
     }
 }
 
+/// `fab --format json`: the line kept, and told as `--progress` says (as JSON, or not at all).
+fn keep_and_tell(message: &str) {
+    keep_line(message);
+    crate::progress::tell(message);
+}
+
+/// `fab --quiet`: the line printed if it is a warning or a note, and posted to `--to-editor`'s
+/// editor whatever it is.
+fn quiet_and_post(message: &str) {
+    quiet_line(message);
+    crate::progress::post_only(message);
+}
+
 fn take_kept_lines() -> Vec<String> {
     KEPT.lock()
         .map(|mut k| std::mem::take(&mut *k))
@@ -609,7 +643,7 @@ fn run_order(
             Some(secs) => Some(Duration::from_secs(secs)),
             None => FabOptions::default().route_timeout,
         },
-        progress: Some(|message| eprintln!("{message}")),
+        progress: Some(crate::progress::tell),
         layout: None,
         only: None,
         allow_drc_violations,
@@ -738,11 +772,22 @@ mod tests {
                 placing: crate::commands::common::Placing {
                     place_seeds: None,
                     place_budget: None,
+                    progress: crate::progress::Print::Text,
+                    to_editor: None,
                 },
                 output: output(),
             }
         );
         assert!(parse(&["fab", "a.nsm", "--port", "9"]).is_err());
+        // Issue #764: the progress as JSON lines, and to a running editor.
+        let f = fab(&["--progress", "json", "--to-editor", "a.nsm"]);
+        assert_eq!(f.placing.progress, crate::progress::Print::Json);
+        assert_eq!(f.placing.to_editor, Some(8787));
+        assert_eq!(
+            fab(&["--to-editor=9000", "a.nsm"]).placing.to_editor,
+            Some(9000)
+        );
+        assert!(parse(&["fab", "a.nsm", "--progress", "nothing"]).is_err());
         let f = fab(&[
             "--allow-drc-violations",
             "--cross-check",

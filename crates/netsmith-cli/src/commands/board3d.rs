@@ -54,14 +54,26 @@ pub struct Args {
 
 /// Prints the board's 3D scene, or writes it.
 pub fn run(args: Args) -> ExitCode {
-    run_board3d(
-        args.file.as_deref(),
-        args.board.as_deref(),
-        args.json,
-        args.glb.as_deref(),
-        args.step.as_deref(),
-        &args.placing,
-    )
+    args.placing.tell_progress("board3d", false);
+    let code = super::common::with_stage_events(|| {
+        run_board3d(
+            args.file.as_deref(),
+            args.board.as_deref(),
+            args.json,
+            args.glb.as_deref(),
+            args.step.as_deref(),
+            &args.placing,
+        )
+    });
+    crate::progress::ended(
+        code == ExitCode::SUCCESS,
+        if code == ExitCode::SUCCESS {
+            "board3d: done"
+        } else {
+            "board3d: failed (its output says why)"
+        },
+    );
+    code
 }
 
 /// `netsmith board3d`: one board placed as `fab` places it (the pick lock and the layout file

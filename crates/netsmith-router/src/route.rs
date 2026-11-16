@@ -695,6 +695,8 @@ const ROOM_TIGHT: f64 = 0.02 - MARGIN;
 const WINDOW_MARGINS: [f64; 2] = [4.0, 16.0];
 /// How often progress is reported while routing, at most.
 const REPORT_EVERY: Duration = Duration::from_secs(2);
+/// How often the copper so far is shown to a view that watches, at most (issue #764).
+const GLIMPSE_EVERY: Duration = Duration::from_millis(250);
 /// How many of the lines a try left its progress line names ([`Router::try_ended`]).
 const TRY_ENDED_NAMES: usize = 3;
 
@@ -1043,6 +1045,8 @@ struct Router<'a> {
     progress: Option<fn(&str)>,
     cancel: Option<&'static AtomicBool>,
     last_report: Cell<Instant>,
+    /// When the last glimpse of the copper was shown ([`Router::glimpse`]).
+    last_glimpse: Cell<Option<Instant>>,
     /// What the search's moves cost.
     costs: Costs,
     /// The stage the router is in, and for each line the stage of this try it last failed in.

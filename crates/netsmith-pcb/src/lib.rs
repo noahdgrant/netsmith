@@ -48,6 +48,7 @@ mod geometry;
 mod impedance;
 mod layout;
 mod layout_notes;
+mod live;
 mod miss;
 mod origin;
 mod overhang;
@@ -114,6 +115,7 @@ pub use layout::{
     BoardLayout, Face as LayoutFace, IMPORT_SOURCE, KeepoutPlace, Layout, LayoutError, PartPlace,
     apply_layout, check_drawn_keepout, copper_layers, keepout_declaration, place_options,
 };
+pub use live::{Glimpse, GlimpsePart, glimpses_watched, show_glimpse, watching_glimpses};
 pub use miss::RequirementMiss;
 pub use origin::{ORIGINS_HEAD, PartOrigin, mm as mm_text, origins_text};
 pub use overhang::{

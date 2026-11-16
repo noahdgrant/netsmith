@@ -25,6 +25,8 @@
 //! | `POST /api/pins/lock`, `POST /api/pins/move` | lock or unlock a pin request, and move it to another pin of its part: the `lock` and the `pin` and `source` lines of its entry in the pin file (ADR 0101), and no other line; `422` with the reason when the choice is refused |
 //! | `POST /api/pcb/route`, `cancel`, `edit`, `drc`; `GET /api/pcb/scene`, `findings` | place and route on demand; `cancel` stops the router and keeps what it routed |
 //! | `GET /api/pcb/summary?board=` (`near=`, `within=`, `between=`) | the placed board summed up as data, what `netsmith layout summary` prints: totals, area and free space of each face, module boxes, decoupling distances, nets, the parts near a part and the distance between two pads (`PcbSummary`, issue #1003); `400` for a part or pad the board has none of |
+//! | `POST /api/pcb/place/cancel` | stops the placings of the PCB view that run (issue #764): a `scene` (or the placing of a `route`) that is placing answers `499` and keeps nothing; while a `scene` places, the socket carries `progress` with the task `place` (the placer's lines, as `fab` prints them) and `pcb_live` with the parts where the placer has them, and while a `route` routes, `pcb_live` with the copper laid so far |
+//! | `POST /api/progress` | a line of a run the editor did not start (`netsmith fab --to-editor`, an `OutsideProgress`), passed to every page as `outside`; `204` |
 //! | `POST /api/pcb/regenerate` | one module placed again with every other part held (issue #825): the proposal, the edit that makes it (sent to `edit` as any edit, one step of undo), where its parts go, the nets routed again, and the findings and totals before and after; nothing is written; while it runs the socket carries `progress` with the task `regenerate`; `409` for a stale stamp, `422` with the reason when it is refused |
 //! | `POST /api/pcb/routes` | an edit of the routes file (draw or move a track or via, delete, lock, unlock, put a record back for undo), as `netsmith routes` makes it (the changes may be of several nets: a track drawn with shoved copper), answered with the record of each net it changed before and after; `409` for a stale stamp, `422` with the reason when it is refused |
 //! | `GET /api/pcb/pours?board=` | the fill of the placed board's pours, planes and routes-file zones, by copper layer, as SVG paths (`PcbPours`), for the 2D view to draw under the copper; asked after the scene, since filling takes longer than placing |
@@ -37,7 +39,7 @@
 //! | `GET /api/download`, `/api/order/download` | a file `fab` or an order wrote |
 //! | `POST /api/definition` | where the name under the cursor is defined |
 //! | `GET /api/view`, `POST /api/view`, `GET /api/view/picture` | the 3D view of the open page, as an agent reads and drives it, with the names of `netsmith render` (P8a of issue 430, docs/BOARD3D.md): its state as JSON, a change answered with the state once the page has drawn it, a PNG of the canvas; `409` with no page open, `504` when the page does not answer |
-//! | WebSocket `/api/events` | `rebuilt`, `analysing`, `progress`, `cancelled` to the page; `check` from the page and `checked` back; `view` and `view_picture` to one page, `focus`, `view_state`, `view_error` and a binary frame (a picture) back |
+//! | WebSocket `/api/events` | `rebuilt`, `analysing`, `progress`, `cancelled`, `pcb_live` and `outside` to the page; `check` from the page and `checked` back; `view` and `view_picture` to one page, `focus`, `view_state`, `view_error` and a binary frame (a picture) back |
 //!
 //! **The guard.** The server listens on `127.0.0.1` only. A request whose Host is not
 //! `127.0.0.1:<port>` or `localhost:<port>` is refused (a rebinding page), an `Origin` header, if
@@ -363,6 +365,8 @@ fn router(state: Shared) -> Router {
         .route("/api/pins/move", post(pin_move))
         .route("/api/pcb/route", post(route_pcb))
         .route("/api/pcb/cancel", post(cancel_route))
+        .route("/api/pcb/place/cancel", post(cancel_placing))
+        .route("/api/progress", post(outside_progress))
         .route("/api/pcb/scene", get(pcb_scene))
         .route("/api/pcb/pours", get(pcb_pours))
         .route("/api/pcb/3d", get(pcb_3d))
@@ -755,13 +759,39 @@ async fn route_pcb(
 ) -> Result<Json<crate::api::PcbReport>, ApiError> {
     let board = param(&q, "board")?;
     let say = progress(&s, "route", &board);
-    json(move || s.backend.route(&board, &say)).await
+    let show = live(&s);
+    json(move || s.backend.route_watched(&board, &say, &show)).await
 }
 
 /// Stops the route that is running, if one is.
 async fn cancel_route(State(s): State<Shared>) -> StatusCode {
     s.backend.cancel_route();
     StatusCode::NO_CONTENT
+}
+
+/// Stops the placings of the PCB view that run (issue #764): their requests answer `499`.
+async fn cancel_placing(State(s): State<Shared>) -> StatusCode {
+    s.backend.cancel_placing();
+    StatusCode::NO_CONTENT
+}
+
+/// A way for the placer and the router to show every page what they have made so far.
+fn live(s: &Shared) -> crate::backend::Show {
+    let events = s.events.clone();
+    Arc::new(move |live: &crate::api::PcbLive| {
+        send(&events, &ServerMessage::PcbLive { live: live.clone() });
+    })
+}
+
+/// A line of a run the editor did not start (`netsmith fab --to-editor`, issue #764), passed to
+/// every page as `outside`.
+async fn outside_progress(
+    State(s): State<Shared>,
+    bytes: axum::body::Bytes,
+) -> Result<StatusCode, ApiError> {
+    let progress: crate::api::OutsideProgress = body(&bytes)?;
+    send(&s.events, &ServerMessage::Outside { progress });
+    Ok(StatusCode::NO_CONTENT)
 }
 
 /// A way for a job on a thread of its own to tell every page what it is doing.
@@ -877,7 +907,9 @@ async fn pcb_scene(
     Query(q): Query1,
 ) -> Result<Json<crate::api::PcbScene>, ApiError> {
     let board = param(&q, "board")?;
-    json(move || s.backend.pcb_scene(&board)).await
+    let say = progress(&s, "place", &board);
+    let show = live(&s);
+    json(move || s.backend.pcb_scene_watched(&board, &say, &show)).await
 }
 
 async fn pcb_pours(

@@ -164,6 +164,7 @@ impl<'a> Router<'a> {
             progress: options.progress,
             cancel: options.cancel,
             last_report: Cell::new(Instant::now()),
+            last_glimpse: Cell::new(None),
             costs: options.costs,
             stage: Cell::new(Stage::FirstPass),
             failed_in: RefCell::new(Vec::new()),
@@ -467,6 +468,9 @@ impl<'a> Router<'a> {
         state: Option<&State>,
         message: impl FnOnce() -> String,
     ) {
+        if let Some(state) = state {
+            self.glimpse(now, state);
+        }
         let job = netsmith_core::job::listening();
         if self.progress.is_none() && !job {
             return;
@@ -506,6 +510,36 @@ impl<'a> Router<'a> {
                 },
             );
         }
+    }
+
+    /// Show the copper the try has so far to a view that watches (`netsmith_pcb::show_glimpse`,
+    /// issue #764): always with `now` (the end of a try), else at most once in
+    /// [`GLIMPSE_EVERY`]. Only reads.
+    fn glimpse(&self, now: bool, state: &State) {
+        if !netsmith_pcb::glimpses_watched() {
+            return;
+        }
+        if !now
+            && self
+                .last_glimpse
+                .get()
+                .is_some_and(|at| at.elapsed() < GLIMPSE_EVERY)
+        {
+            return;
+        }
+        self.last_glimpse.set(Some(Instant::now()));
+        netsmith_pcb::show_glimpse(|| netsmith_pcb::Glimpse::Routing {
+            tracks: state
+                .routed
+                .iter()
+                .flat_map(|r| r.tracks.iter().cloned())
+                .collect(),
+            vias: state
+                .routed
+                .iter()
+                .flat_map(|r| r.vias.iter().cloned())
+                .collect(),
+        });
     }
 
     /// What a try ended with, for [`Self::report`]: `routing, try 1 of 3: ended with 38 of 40
