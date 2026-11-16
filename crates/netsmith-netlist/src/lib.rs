@@ -2,7 +2,8 @@
 //! is the design it was ported from (ADR 0017).
 //!
 //! A [`Netlist`] is read from a KiCad netlist (the XML `kicad-cli sch export netlist`
-//! writes), from a `.kicad_pcb`, or built from parts and nets, and written as that XML
+//! writes), from a `.kicad_pcb`, from a `.kicad_sch` and its sheets (the `schematic` module says
+//! which of KiCad's rules it follows), or built from parts and nets, and written as that XML
 //! ([`Netlist::to_kicad_xml`]). [`compare`] decides whether
 //! two of them are the same circuit: components are matched by their value and footprint
 //! and by how their pins are wired, not by net name or designator, and the answer is
@@ -14,6 +15,7 @@ mod graph;
 mod model;
 mod parse;
 mod report;
+mod schematic;
 mod value;
 mod write;
 

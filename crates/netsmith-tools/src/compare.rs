@@ -1,6 +1,6 @@
 //! `netsmith compare`: whether two designs are the same circuit (ADR 0017).
 //!
-//! Each side is a `.kicad_sch` (exported to a netlist by `kicad-cli`), a `.kicad_pcb`, the
+//! Each side is a `.kicad_sch` (read with its sheets from the files, with no KiCad: #855), a `.kicad_pcb`, the
 //! XML of a KiCad netlist, or a `.nsm` file, whose board is built as `netsmith build`
 //! does, held to the pick lock beside the source (#743). The comparison itself is in `netsmith-netlist`, whose module docs say where it
 //! departs from ADR 0017 (#67): a two-pad part without polarity may have its pads swapped,
@@ -10,7 +10,6 @@ use std::fs;
 use std::path::Path;
 
 use netsmith_core::Design;
-use netsmith_fab::KicadCli;
 use netsmith_kicad::Mapping;
 use netsmith_netlist::{Identity, Netlist, Options, Outcome, compare, report};
 
@@ -46,11 +45,11 @@ pub struct Compared {
     pub json: String,
 }
 
-/// Read both sides and compare them. `kicad` is needed only for a `.kicad_sch`. The error
-/// is a problem with the request or the files, not a difference.
-pub fn compare_files(request: &Request, kicad: Option<&dyn KicadCli>) -> Result<Compared, String> {
-    let a = load(request.a, request.board, kicad)?;
-    let b = load(request.b, request.board, kicad)?;
+/// Read both sides and compare them. The error is a problem with the request or the files, not a
+/// difference.
+pub fn compare_files(request: &Request) -> Result<Compared, String> {
+    let a = load(request.a, request.board)?;
+    let b = load(request.b, request.board)?;
     let identity = match (request.map, request.by_refdes) {
         (Some(map), _) => {
             let text = fs::read_to_string(map).map_err(|e| format!("{}: {e}", map.display()))?;
@@ -167,11 +166,7 @@ fn outcome_json(outcome: &Outcome, a: serde_json::Value, b: serde_json::Value) -
 }
 
 /// The netlist of one argument, by its extension.
-pub fn load(
-    path: &str,
-    board: Option<&str>,
-    kicad: Option<&dyn KicadCli>,
-) -> Result<Netlist, String> {
+pub fn load(path: &str, board: Option<&str>) -> Result<Netlist, String> {
     let read = || fs::read_to_string(path).map_err(|e| format!("{path}: {e}"));
     let extension = Path::new(path)
         .extension()
@@ -181,17 +176,7 @@ pub fn load(
             if !Path::new(path).is_file() {
                 return Err(format!("{path}: no such file"));
             }
-            let kicad = kicad.ok_or_else(|| {
-                match netsmith_fabricate::fab::kicad_switched_off(&netsmith_kicad::Search::machine()) {
-                    Some(off) => format!(
-                        "{path}: reading a schematic needs KiCad's command-line tool, and {off}"
-                    ),
-                    None => format!(
-                        "{path}: reading a schematic needs KiCad's command-line tool: set KICAD_CLI to its path"
-                    ),
-                }
-            })?;
-            Netlist::from_kicad_schematic(Path::new(path), |p| kicad.netlist(p))
+            Netlist::from_kicad_schematic(Path::new(path))
         }
         Some("kicad_pcb") => Netlist::from_kicad_pcb(&read()?).map_err(|e| format!("{path}: {e}")),
         Some("xml") => Netlist::from_kicad_xml(&read()?).map_err(|e| format!("{path}: {e}")),
@@ -314,7 +299,7 @@ mod tests {
 
     #[test]
     fn an_unknown_kind_of_file_says_what_is_taken() {
-        let e = load("design.net", None, None).unwrap_err();
+        let e = load("design.net", None).unwrap_err();
         assert!(
             e.contains("design.net") && e.contains(".kicad_sch") && e.contains(".nsm"),
             "{e}"
@@ -322,17 +307,19 @@ mod tests {
     }
 
     #[test]
-    fn a_schematic_without_kicad_says_how_to_find_it() {
+    fn a_schematic_is_read_with_no_kicad() {
         let dir = netsmith_testkit::TempDir::new("compare");
         let sch = dir.join("x.kicad_sch");
-        fs::write(&sch, "(kicad_sch)").unwrap();
-        let e = load(sch.to_str().unwrap(), None, None).unwrap_err();
-        assert!(e.contains("KICAD_CLI"), "{e}");
+        fs::write(&sch, "(kicad_sch (version 20250114) (uuid \"r\"))").unwrap();
+        let n = load(sch.to_str().unwrap(), None).unwrap();
+        assert!(n.components.is_empty() && n.nets.is_empty());
+        let e = load(dir.join("none.kicad_sch").to_str().unwrap(), None).unwrap_err();
+        assert!(e.contains("no such file"), "{e}");
     }
 
     #[test]
     fn a_missing_file_is_named() {
-        let e = load("/nonexistent/x.xml", None, None).unwrap_err();
+        let e = load("/nonexistent/x.xml", None).unwrap_err();
         assert!(e.contains("/nonexistent/x.xml"), "{e}");
     }
 }

@@ -311,9 +311,10 @@ crates_row "netsmith-tools" .agents/skills/netsmith-dev-verify-editor/SKILL.md
 crates_row "netsmith-tools" docs/LANGUAGE.md docs/symbol-gallery.html .agents/skills/netsmith-read-errors/SKILL.md crates/netsmith-tools/tests/pure.rs
 crates_row "netsmith-view netsmith-tools" crates/netsmith-view/src/layout.rs docs/LANGUAGE.md
 crates_row "netsmith-view netsmith-tools" crates/netsmith-view/src/layout.rs .agents/skills/netsmith-write-nsm/SKILL.md
-# An example is read by the crates whose tests include it, and by the crates of `any_example` for all of them.
-crates_row "netsmith-tools netsmith-workspace" examples/orbit/src/main.nsm
-crates_row "netsmith-tools netsmith-workspace" examples/orbit/netsmith.toml examples/orbit/reference/orbit.kicad_pcb
+# An example is read by the crates whose tests include it (netsmith-netlist reads orbit's original), and by the
+# crates of `any_example` for all of them.
+crates_row "netsmith-tools netsmith-workspace netsmith-netlist" examples/orbit/src/main.nsm
+crates_row "netsmith-tools netsmith-workspace netsmith-netlist" examples/orbit/netsmith.toml examples/orbit/reference/orbit.kicad_pcb
 crates_row "netsmith-tools netsmith-workspace netsmith-fabricate" examples/two_buck/src/main.nsm
 crates_row "netsmith-tools netsmith-workspace netsmith-fabricate" examples/led_panel.physical.nsm examples/led_panel.lock.toml
 crates_row "netsmith-tools netsmith-workspace netsmith-fabricate" examples/outline_and_pours.pcb.toml examples/outline_and_pours.physical.nsm
@@ -325,7 +326,7 @@ crates_row "netsmith-tools netsmith-workspace netsmith-core netsmith-lang netsmi
 crates_row "netsmith-tools netsmith-workspace netsmith-lang netsmith-check netsmith-solve netsmith-design netsmith-pipeline netsmith-placer netsmith-router netsmith-core netsmith-fabricate" examples/status_indicator.nsm examples/led.lock.toml
 crates_row "netsmith-tools netsmith-workspace netsmith-design netsmith-pipeline netsmith-placer netsmith-router netsmith-fabricate" examples/four_layer.nsm examples/ten_layer.nsm examples/six_layer.nsm
 crates_row "netsmith-tools netsmith-workspace" examples/schematic_bench/src/main.nsm
-crates_row "netsmith-tools netsmith-workspace netsmith-view" examples/orbit/src/main.nsm crates/netsmith-view/src/layout.rs
+crates_row "netsmith-tools netsmith-workspace netsmith-netlist netsmith-view" examples/orbit/src/main.nsm crates/netsmith-view/src/layout.rs
 # A path outside the crates that names no crate keeps the whole run wide, whatever else is there.
 crates_row "" examples/orbit/src/main.nsm std/kicad.toml
 crates_row "" docs/LANGUAGE.md std/kicad.toml

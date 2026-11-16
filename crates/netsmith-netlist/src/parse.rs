@@ -1,7 +1,5 @@
 //! Reading a netlist from KiCad's files.
 
-use std::path::Path;
-
 use netsmith_sexp::Sexp;
 
 use crate::model::{Netlist, NetlistError};
@@ -122,16 +120,6 @@ impl Netlist {
             }
         }
         Netlist::from_parts(components, nets)
-    }
-
-    /// Read the netlist of a schematic, which KiCad exports: `export` gives the XML of
-    /// `kicad-cli sch export netlist --format kicadxml` (`netsmith_fab::KicadCli::netlist`).
-    pub fn from_kicad_schematic<E: std::fmt::Display>(
-        sch: &Path,
-        export: impl FnOnce(&Path) -> Result<String, E>,
-    ) -> Result<Netlist, String> {
-        let xml = export(sch).map_err(|e| e.to_string())?;
-        Netlist::from_kicad_xml(&xml).map_err(|e| format!("{}: {e}", sch.display()))
     }
 }
 

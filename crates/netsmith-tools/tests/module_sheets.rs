@@ -1,8 +1,8 @@
 //! A board's modules as the sheets of its KiCad schematic (issue #563), on a board of three
 //! instances of one module (two the same circuit, one with another resistor) and a module of
 //! two more inside a module. The files, the instance paths and the board's links to them are
-//! read as text with no KiCad; the netlist and the electrical rules check run `kicad-cli` and
-//! skip where it is not installed.
+//! read as text with no KiCad, and so is their netlist (#855); KiCad's netlist of them and the
+//! electrical rules check run `kicad-cli` and skip where it is not installed.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
@@ -254,6 +254,35 @@ fn kicads_netlist_of_the_sheets_is_the_netlist_of_one_sheet() {
     }
 }
 
+#[test]
+fn the_sheets_read_from_their_files_are_the_netlist_of_one_sheet_and_of_the_design() {
+    let b = built();
+    let libraries = Libraries::sample();
+    let hierarchy = TempDir::new("module-sheets-read");
+    let sheets = write(&hierarchy, &b.design.name, &b.schematic, &b.sheets);
+    let from_sheets = Netlist::from_kicad_schematic(&sheets).unwrap_or_else(|e| panic!("{e}"));
+    let mut flat_design = b.design.clone();
+    flat_design.modules.clear();
+    let flat_schematic =
+        netsmith_kicad::emit_schematic(&flat_design, &libraries.mapping, &libraries.symbols)
+            .unwrap();
+    let flat = TempDir::new("module-sheets-read-flat");
+    let one = write(&flat, &b.design.name, &flat_schematic.root, &[]);
+    let from_one = Netlist::from_kicad_schematic(&one).unwrap_or_else(|e| panic!("{e}"));
+    let from_design =
+        netsmith_tools::compare::netlist_of_design(&b.design, &libraries.mapping).unwrap();
+    let options = Options {
+        identity: Identity::ByRefdes,
+        ..Options::default()
+    };
+    for (what, other) in [("one sheet", &from_one), ("the design", &from_design)] {
+        match compare(&from_sheets, other, &options).unwrap() {
+            Outcome::Match(_) => {}
+            different => panic!("the sheets and {what} differ: {different:?}"),
+        }
+    }
+}
+
 /// KiCad's netlist of a built board's sheets, after checking that it is that of the same design
 /// drawn as one sheet, part for part by designator; `None` where KiCad is not here.
 pub(crate) fn sheets_are_one_sheet_to_kicad(b: &Built, libraries: &Libraries) -> Option<Netlist> {
@@ -275,8 +304,10 @@ pub(crate) fn sheets_are_one_sheet_to_kicad(b: &Built, libraries: &Libraries) ->
     let flat = TempDir::new("module-sheets-flat");
     let one = write(&flat, &b.design.name, &flat_schematic.root, &[]);
 
-    let from_sheets = Netlist::from_kicad_schematic(&sheets, |p| kicad.netlist(p)).unwrap();
-    let from_one = Netlist::from_kicad_schematic(&one, |p| kicad.netlist(p)).unwrap();
+    let exported = |sch: &Path| Netlist::from_kicad_xml(&kicad.netlist(sch).unwrap()).unwrap();
+    let (from_sheets, from_one) = (exported(&sheets), exported(&one));
+    // The sheets read from their files, with no KiCad, are what KiCad reads.
+    crate::compare::read_as_kicad_reads(&kicad, &sheets);
     // The same designators: every part keeps its reference on its sheet.
     let options = Options {
         identity: Identity::ByRefdes,

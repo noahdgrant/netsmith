@@ -1,4 +1,3 @@
-use netsmith_fab::{KicadCli, KicadCliExe};
 use std::path::PathBuf;
 use std::process::ExitCode;
 
@@ -11,7 +10,7 @@ use super::common;
 #[derive(Debug, PartialEq, ClapArgs)]
 #[command(args_override_self = true)]
 #[command(
-    after_long_help = "`compare` checks a design against another by connectivity (ADR 0017), for example a port against the KiCad design it came from. Each of `<A>` and `<B>` is a `.kicad_sch`, a `.kicad_pcb`, a KiCad netlist (the XML of `kicad-cli sch export netlist --format kicadxml`) or a `.nsm` file, which is built as `build` does, held to the pick lock beside it (`<file>.lock.toml`, read and never written). Net names and, by default, designators may differ between the two; components are matched by value, footprint (without its library) and how their pins are wired. A pin number is identity, except on a two-pad part without polarity (a footprint of KiCad's `R_`, `C_`, `L_` or `Fuse_` families, both pads on nets): its pads may be the other way round, and the match lists it as swapped (`swapped` in the JSON). A polarised capacitor (`CP_`), a diode, an LED and any other footprint keep their pin numbers. It prints `match` with the designators and net names that correspond, or each difference: a component with no counterpart, a pair that differs in value or footprint, a net whose pins differ (each pin in its own side's designators), a net with no counterpart.\n\nPower ports and flags (`#PWR`, `#FLG`) are not parts. A pin joined to nothing is on no net, so it differs only from a pin that is joined to something. Reading a `.kicad_sch` needs KiCad's command-line tool, found as for `fab --cross-check`.\n\nThe exit code is 0 for a match, 1 for a difference and 2 for a mistake or a comparison that could not be decided (many interchangeable parts and a search past its bound, which is 20 refinements per component of the two designs and at least 20000; the answer says how many ran and which components and nets were still alike)."
+    after_long_help = "`compare` checks a design against another by connectivity (ADR 0017), for example a port against the KiCad design it came from. Each of `<A>` and `<B>` is a `.kicad_sch`, a `.kicad_pcb`, a KiCad netlist (the XML of `kicad-cli sch export netlist --format kicadxml`) or a `.nsm` file, which is built as `build` does, held to the pick lock beside it (`<file>.lock.toml`, read and never written). Net names and, by default, designators may differ between the two; components are matched by value, footprint (without its library) and how their pins are wired. A pin number is identity, except on a two-pad part without polarity (a footprint of KiCad's `R_`, `C_`, `L_` or `Fuse_` families, both pads on nets): its pads may be the other way round, and the match lists it as swapped (`swapped` in the JSON). A polarised capacitor (`CP_`), a diode, an LED and any other footprint keep their pin numbers. It prints `match` with the designators and net names that correspond, or each difference: a component with no counterpart, a pair that differs in value or footprint, a net whose pins differ (each pin in its own side's designators), a net with no counterpart.\n\nPower ports and flags (`#PWR`, `#FLG`) are not parts. A pin joined to nothing is on no net, so it differs only from a pin that is joined to something. A `.kicad_sch` is read with the sheets it places, from their files, with no KiCad (a schematic with a bus is refused: compare the netlist `kicad-cli` exports from it).\n\nThe exit code is 0 for a match, 1 for a difference and 2 for a mistake or a comparison that could not be decided (many interchangeable parts and a search past its bound, which is 20 refinements per component of the two designs and at least 20000; the answer says how many ran and which components and nets were still alike)."
 )]
 pub struct Args {
     /// The first design.
@@ -63,8 +62,7 @@ pub fn run(args: Args) -> ExitCode {
 /// Exit 0 when the designs match, 1 when they differ, 2 when they could not be compared or
 /// the comparison could not be decided.
 fn run_compare(request: &Request, format: Format) -> ExitCode {
-    let kicad = KicadCliExe::locate();
-    match compare_files(request, kicad.as_ref().map(|k| k as &dyn KicadCli)) {
+    match compare_files(request) {
         Ok(done) if format == Format::Json => {
             print!("{}", done.json);
             match done.verdict {
