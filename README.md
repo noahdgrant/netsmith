@@ -90,7 +90,7 @@ KiCad 9 is needed for these, and for nothing else:
   pin table).
 
 netsmith finds KiCad's `symbols` and `footprints` folders by itself, and `kicad-cli` as
-`$KICAD_CLI`, else on `PATH`, else (under WSL only) the newest Windows KiCad in
+`$KICAD_CLI`, else `kicad-cli` or `kicad-cli.exe` on `PATH`, else (under WSL only) the newest Windows KiCad in
 `/mnt/c/Program Files/KiCad/<version>/bin`; set `NETSMITH_KICAD_SYMBOLS` and
 `NETSMITH_KICAD_FOOTPRINTS` to name the folders. `NETSMITH_NO_KICAD=1` makes every one of those
 searches find nothing, whatever is installed (for tests and CI). KiCad 9 is the version
