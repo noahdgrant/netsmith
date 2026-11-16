@@ -28,9 +28,12 @@
 //! 0.001 mm; the outline is the one loop that is not inside another, two such loops are an
 //! error naming both, and a loop that crosses or touches itself or another, or lies inside a
 //! cutout, is an error with its position. A closed loop that crosses the outline, smaller than
-//! it and crossing nothing else, is an *opening*: it is left out and reported in a warning with
-//! its layer, size and top left corner in the board's frame (what an opening should become, a
-//! notch, a `Keepout` or the place of a part, is issue #90). A `SPLINE` with only fit points or
+//! it and crossing nothing else, is an *opening*: its part inside the outline is cut out of the
+//! outline as a notch (owner decision 2026-11-15, issue #90), by cutting both loops where they
+//! meet and keeping the outline outside the opening and the opening inside the outline, so the
+//! outline becomes a polygon of lines and arcs and the board's origin is its box's top left
+//! corner after the cut. It is refused (an [`Error::Opening`]) when it cuts the board into
+//! several pieces, when an edge of it runs along the outline, or when a cutout lies inside it. A `SPLINE` with only fit points or
 //! a periodic one is an error. `$INSUNITS` 1, 4, 5 and 6 are inch, millimetre, centimetre and
 //! metre; `--units` overrules the file with a warning if they differ. Layers are chosen by name,
 //! ignoring case, and a name the file's `LAYER` table declares is accepted with nothing drawn on
@@ -46,6 +49,7 @@
 //! fiducials, the screw-head clearance), and `--json` output.
 
 mod chain;
+mod clip;
 mod entities;
 mod geom;
 mod logo;
@@ -217,6 +221,8 @@ pub enum Error {
     Island { inner: String, within: String },
     /// A loop on a holes layer that is not a circle.
     HoleNotCircle { loop_: String },
+    /// An opening that cannot be cut into the outline as a notch.
+    Opening { opening: String, why: String },
 }
 
 impl fmt::Display for Error {
@@ -310,6 +316,10 @@ impl fmt::Display for Error {
             Error::HoleNotCircle { loop_ } => write!(
                 f,
                 "a shape on the holes layer is not a circle ({loop_}); holes are circles"
+            ),
+            Error::Opening { opening, why } => write!(
+                f,
+                "an opening ({opening}) crosses the board edge and cannot be cut into the outline as a notch: {why}"
             ),
         }
     }
@@ -472,7 +482,8 @@ pub struct Hole {
 
 /// A closed loop that crosses the board edge: part of it is inside the outline and part is
 /// outside, like a window in a case wall that is partly beyond the board. It is neither the
-/// outline nor a cutout, so it is reported and not placed.
+/// outline nor a cutout: its part inside the board is cut out of [`Outline::outer`] as a notch,
+/// and the loop is kept here for the report.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Opening {
     /// The loop, in the board's frame.
@@ -484,11 +495,13 @@ pub struct Opening {
 /// What a DXF file says of a board.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Outline {
-    /// The board edge. Its vertices run clockwise on the screen (y down).
+    /// The board edge, with every opening cut out of it as a notch. Its vertices run clockwise
+    /// on the screen (y down).
     pub outer: Polygon,
     /// The loops inside it, by their top left corner (y, then x).
     pub cutouts: Vec<Polygon>,
-    /// The loops that cross the board edge, by position (y, then x).
+    /// The loops that cross the board edge, by position (y, then x), already cut out of
+    /// [`Outline::outer`].
     pub openings: Vec<Opening>,
     /// The circles of the holes layers, by position (y, then x).
     pub holes: Vec<Hole>,
@@ -729,6 +742,36 @@ pub fn read_outline(text: &str, options: &Options) -> Result<Outline, Error> {
         cutouts,
         openings,
     } = chain::classify(loops, options.join_tolerance)?;
+    // An opening is a notch: its part inside the board is taken out of the outline, before the
+    // frame is fixed, because the outline's top left corner is the origin.
+    let mut outer = outer;
+    for o in &openings {
+        let refuse = |why: String| Error::Opening {
+            opening: o.describe(),
+            why,
+        };
+        if let Some(c) = cutouts.iter().find(|c| clip::lies_in(c, o)) {
+            return Err(refuse(format!(
+                "a cutout ({}) lies inside it, and would be left outside the board",
+                c.describe()
+            )));
+        }
+        outer = clip::notch(&outer, o, options.join_tolerance).map_err(|r| {
+            refuse(match r {
+                clip::Refused::Along => {
+                    "an edge of it runs along the outline's edge; draw it so that it crosses".into()
+                }
+                clip::Refused::Pieces(n) => {
+                    format!("it cuts the board into {n} pieces, and a board has one outline")
+                }
+                clip::Refused::NoCut => "it takes nothing out of the outline".into(),
+                clip::Refused::Open => {
+                    "the pieces of the new edge do not join; a corner of it may touch the outline"
+                        .into()
+                }
+            })
+        })?;
+    }
     let opening_layers: Vec<Vec<String>> = openings
         .iter()
         .map(|o| {

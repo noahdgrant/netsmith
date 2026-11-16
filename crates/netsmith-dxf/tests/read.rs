@@ -652,6 +652,157 @@ fn an_opening_names_its_own_layer() {
     assert_eq!(o.openings[0].layers, ["CASE"]);
 }
 
+/// The corners of a polygon as a sorted list, to compare without caring where the loop starts.
+fn corners(p: &Polygon) -> Vec<(i64, i64)> {
+    let mut c: Vec<(i64, i64)> = p
+        .vertices
+        .iter()
+        .map(|v| ((v.x * 1e3).round() as i64, (v.y * 1e3).round() as i64))
+        .collect();
+    c.sort_unstable();
+    c
+}
+
+#[test]
+fn a_window_over_the_edge_is_cut_out_of_the_outline_as_a_notch() {
+    let mut f = File::mm();
+    f.rect("EDGE", 0.0, 0.0, 20.0, 10.0)
+        .rect("EDGE", 15.0, 2.0, 25.0, 8.0);
+    let o = read(&f).unwrap();
+    // 20 x 10 less the 5 x 6 mm of the window that is over the board.
+    assert!(close(o.outer.area(), 200.0 - 30.0), "{}", o.outer.area());
+    assert_eq!(o.outer.edge_counts(), (0, 8), "{:?}", o.outer);
+    assert_eq!(
+        corners(&o.outer),
+        [
+            (0, 0),
+            (0, 10_000),
+            (15_000, 2_000),
+            (15_000, 8_000),
+            (20_000, 0),
+            (20_000, 2_000),
+            (20_000, 8_000),
+            (20_000, 10_000),
+        ]
+    );
+    assert!(o.outer.as_rounded_rect().is_none());
+    // The loop is kept for the report, in the board's frame.
+    assert_eq!(o.openings.len(), 1);
+}
+
+#[test]
+fn a_round_window_is_a_notch_of_one_arc() {
+    let mut f = File::mm();
+    f.rect("EDGE", 0.0, 0.0, 20.0, 10.0)
+        .circle("EDGE", (20.0, 5.0), 3.0);
+    let o = read(&f).unwrap();
+    let half_disc = std::f64::consts::PI * 9.0 / 2.0;
+    assert!(
+        (o.outer.area() - (200.0 - half_disc)).abs() < 1e-3,
+        "{}",
+        o.outer.area()
+    );
+    assert_eq!(o.outer.edge_counts(), (1, 5), "{:?}", o.outer);
+    assert!(o.outer.vertices.iter().any(|v| close(v.bulge.abs(), 1.0)), "one half circle");
+    // The arc is the half circle of the window, bulging into the board.
+    let (lo, hi) = bounds(&o.outer);
+    assert!(close(lo.0, 0.0) && close(hi.0, 20.0), "{lo:?} {hi:?}");
+}
+
+#[test]
+fn a_rounded_window_over_a_rounded_corner_is_a_notch_of_lines_and_arcs() {
+    // A 40 x 30 board with 4 mm corners, and a 12 x 8 mm window with 2 mm corners over its
+    // top right corner (the drawing's y is up).
+    let mut f = File::mm();
+    f.add(rounded("EDGE", 0.0, 0.0, 40.0, 30.0, 4.0))
+        .add(rounded("EDGE", 30.0, 20.0, 42.0, 28.0, 2.0));
+    let o = read(&f).unwrap();
+    assert!(o.outer.area() < 40.0 * 30.0 - 20.0, "{}", o.outer.area());
+    let (arcs, lines) = o.outer.edge_counts();
+    assert!(arcs >= 3 && lines >= 5, "{:?}", o.outer);
+    // The board is still 40 x 30 (the window is over a corner), with its origin at the corner.
+    let (lo, hi) = bounds(&o.outer);
+    assert!(close(lo.0, 0.0) && close(lo.1, 0.0), "{lo:?}");
+    assert!(close(hi.0, 40.0) && close(hi.1, 30.0), "{hi:?}");
+}
+
+#[test]
+fn the_origin_is_the_top_left_of_the_outline_after_the_notch() {
+    // The window takes the whole left 5 mm of the board: its edge is now at x = 5 (a point
+    // on its side puts a corner inside the board, as the reader asks of an opening).
+    let mut f = File::mm();
+    f.rect("EDGE", 0.0, 0.0, 20.0, 10.0).polygon(
+        "EDGE",
+        &[
+            (-5.0, -2.0),
+            (5.0, -2.0),
+            (5.0, 4.0),
+            (6.0, 5.0),
+            (5.0, 6.0),
+            (5.0, 12.0),
+            (-5.0, 12.0),
+        ],
+    );
+    let o = read(&f).unwrap();
+    assert!(close(o.origin.0, 5.0) && close(o.origin.1, 10.0), "{:?}", o.origin);
+    let (lo, hi) = bounds(&o.outer);
+    assert!(close(lo.0, 0.0) && close(lo.1, 0.0), "{lo:?}");
+    assert!(close(hi.0, 15.0) && close(hi.1, 10.0), "{hi:?}");
+    assert!(close(o.outer.area(), 149.0), "{}", o.outer.area());
+}
+
+#[test]
+fn an_opening_that_cuts_the_board_in_two_is_refused() {
+    // A band across the board with a point on its side, so that a corner is inside the board.
+    let mut f = File::mm();
+    f.rect("EDGE", 0.0, 0.0, 20.0, 10.0).polygon(
+        "EDGE",
+        &[
+            (8.0, -2.0),
+            (12.0, -2.0),
+            (12.0, 4.0),
+            (13.0, 5.0),
+            (12.0, 6.0),
+            (12.0, 12.0),
+            (8.0, 12.0),
+        ],
+    );
+    let e = read(&f).unwrap_err();
+    assert!(matches!(e, Error::Opening { .. }), "{e:?}");
+    let text = e.to_string();
+    assert!(
+        text.contains("5.000 x 14.000 mm") && text.contains("cuts the board into 2 pieces"),
+        "{text}"
+    );
+}
+
+#[test]
+fn an_opening_with_an_edge_along_the_outline_is_refused() {
+    // The window's bottom side lies on the outline's bottom edge from x = 15 to 20 and goes on
+    // outside it.
+    let mut f = File::mm();
+    f.rect("EDGE", 0.0, 0.0, 20.0, 10.0)
+        .polygon("EDGE", &[(15.0, 0.0), (25.0, 0.0), (25.0, 4.0), (15.0, 4.0)]);
+    let e = read(&f).unwrap_err();
+    assert!(
+        matches!(e, Error::Opening { .. }) && e.to_string().contains("runs along the outline"),
+        "{e}"
+    );
+}
+
+#[test]
+fn a_cutout_inside_an_opening_is_refused() {
+    let mut f = File::mm();
+    f.rect("EDGE", 0.0, 0.0, 30.0, 10.0)
+        .rect("EDGE", 18.0, 3.0, 22.0, 7.0)
+        .rect("EDGE", 15.0, 2.0, 35.0, 8.0);
+    let e = read(&f).unwrap_err();
+    assert!(
+        matches!(e, Error::Opening { .. }) && e.to_string().contains("a cutout"),
+        "{e}"
+    );
+}
+
 #[test]
 fn a_loop_that_crosses_a_cutout_is_still_an_error() {
     let mut f = File::mm();

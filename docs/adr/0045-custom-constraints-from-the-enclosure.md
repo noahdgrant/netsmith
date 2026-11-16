@@ -32,5 +32,5 @@ Meets tests 1 (the `.place` member, the `constraints` key and flag), 2 (the chec
 - Sections 13 and 14, proofs: the conflicts proved before placing and those left to the check after, locks left out of the proofs, and no line that would allow only a courtyard past an edge, which the message says and refers to issue #99 for (`explain.rs`).
 - Section 15, protrusion: the eight readings of the owner's decisions (`protrusion.rs`).
 - Section 8: the fields are spelt as `String` for `side`, and `x`/`y` on a module are accepted, measured on the box round all its parts.
-- Section 9 follow-up, not built: what an opening that crosses the outline should become (issue #90). A hole of any diameter is a `.diameter` of `MountingHole`.
+- Section 9 follow-up: an opening that crosses the outline is cut into it as a notch (owner decision 2026-11-15, issue #90). A hole of any diameter is a `.diameter` of `MountingHole`.
 - Section 3, not planned until a board needs it: a module handle through the tied values of ADR 0042 or a `Pose` interface joined with `~`. ADR 0048 replaced the handle by a path, so the question is open only for the module layer, which is not built (issue #52).

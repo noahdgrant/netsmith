@@ -204,7 +204,7 @@ pub(crate) fn shoelace(vertices: &[Vertex]) -> f64 {
 /// How far a chord of a flattened arc may be from it (mm), for the tests of crossing.
 const FLAT: f64 = 2e-4;
 
-fn ring(poly: &Polygon) -> Vec<P> {
+pub(crate) fn ring(poly: &Polygon) -> Vec<P> {
     let mut points = Vec::new();
     for (a, b, bulge) in poly.edges() {
         let mut pts = flatten_edge(a, b, bulge, FLAT);
