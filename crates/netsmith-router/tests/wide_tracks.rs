@@ -232,3 +232,22 @@ fn a_rail_whose_current_one_via_does_not_carry_changes_layer_through_vias_side_b
     .unwrap();
     assert!(report.count(DrcRule::ViaCurrent) >= 1, "{report}");
 }
+
+#[test]
+fn a_rail_whose_current_one_via_does_not_carry_takes_no_via_in_a_pad() {
+    // The others of a cluster never stand in a pad, so a via in a pad of such a rail would stand
+    // alone: on seeds 3 and 6 the paths that began in a passive's pad left clusters of one.
+    for seed in [3, 6] {
+        let mut board = with_currents(synthetic_board(seed, 40, 8, 8, 20, 20));
+        for c in &mut board.net_currents {
+            c.vias = 3;
+        }
+        let routing = route_with(&mut board, RouteOptions::default());
+        assert!(routing.left.is_empty(), "seed {seed}: {:?}", routing.left.lines);
+        assert_eq!(
+            netsmith_router::parallel::short_clusters(&board),
+            Vec::new(),
+            "seed {seed}: every via of a rail stands with two more"
+        );
+    }
+}
