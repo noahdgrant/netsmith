@@ -2456,7 +2456,7 @@ mod tests {
                 && message.contains("the outline is 15.0 x 10.0 mm")
                 && message.contains("mm over in y")
                 && message.contains("the courtyards add up to ")
-                && message.contains(" part(s) do not fit the outline of 15.0 x 10.0 mm: "),
+                && message.ends_with("the placer did not try"),
             "{message}"
         );
         // A board 3 mm wide is narrower than an 0603 as it lies but not as it is turned: the
