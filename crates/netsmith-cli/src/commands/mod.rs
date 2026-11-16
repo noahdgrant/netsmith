@@ -10,6 +10,7 @@ pub(crate) mod common;
 mod compare;
 mod dxf;
 mod editor;
+mod explain;
 mod fab;
 mod init;
 mod kicad_libs;
@@ -37,6 +38,8 @@ pub enum Command {
     Build(build::Args),
     /// Check and solve the boards, write nothing, and print the findings.
     Check(check::Args),
+    /// Print what the solve left a part or member with, and why each part has its row.
+    Explain(explain::Args),
     /// Make the fab package of the boards (Gerbers, drill, BOM, CPL, notes, 3D scene), or an order.
     Fab(fab::Args),
     /// Route a placed board that `fab --save-placed` wrote, alone.
@@ -80,6 +83,7 @@ pub fn run(command: Command) -> ExitCode {
         Command::Init(args) => init::run(args),
         Command::Build(args) => build::run(args),
         Command::Check(args) => check::run(args),
+        Command::Explain(args) => explain::run(args),
         Command::Fab(args) => fab::run(args),
         Command::Route(args) => route::run(args),
         Command::Routes(args) => routes::run(args),

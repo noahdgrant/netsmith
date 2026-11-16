@@ -55,7 +55,11 @@ pub struct Args {
     /// and `shown`, the value as a message prints it. Each board also has its `picks`: each part
     /// the solver chose a row for, the row, and the rows it passed over before it with `why`
     /// (`unfit`, `refused`, `later`, `same`, `skipped`, `partly`), the `message` and, for a
-    /// refusal, `at`, the relation's `file:line`. Nothing is written when a board fails.
+    /// refusal, `at`, the relation's `file:line`. A board whose solve fails is written too, with
+    /// `"failed": true`: the members and picks the solve got to, and `unpicked`, for each part of
+    /// the group that failed the rows its first turn passed over (`with` the choices before it).
+    /// The file is written when a board fails only if some board left such a record; a mistake
+    /// before the solve (a name that is not defined) leaves none and nothing is written.
     #[arg(long, value_name = "FILE")]
     pub emit_solved: Option<PathBuf>,
     #[command(flatten)]
@@ -80,6 +84,7 @@ pub fn run(args: Args) -> ExitCode {
             write: true,
             emit_design: args.emit_design.as_deref(),
             emit_solved: args.emit_solved.as_deref(),
+            explain: None,
         })
     })
 }
@@ -98,6 +103,17 @@ pub(super) struct BuildRun<'a> {
     pub(super) emit_design: Option<&'a Path>,
     /// The file to write the members' solved values to (`build --emit-solved`).
     pub(super) emit_solved: Option<&'a Path>,
+    /// What to print as text of what the solve left (`explain`).
+    pub(super) explain: Option<Explain<'a>>,
+}
+
+/// What `explain` prints: the part or member `path` and what is inside it, in the board named
+/// `board` or in every board.
+pub(super) struct Explain<'a> {
+    pub(super) path: &'a str,
+    pub(super) board: Option<&'a str>,
+    /// How many rows passed over each part lists; every row when `None`.
+    pub(super) rows: Option<usize>,
 }
 
 /// What a board said that did not stop it: printed as text, or kept for the JSON report.
@@ -139,7 +155,7 @@ pub(super) fn run_build(run: &BuildRun) -> ExitCode {
     }
     // The solved file says why each row was taken or passed over, which the solver records only
     // when asked (issue #744).
-    let catalogs = catalogs.with_explain(run.emit_solved.is_some());
+    let catalogs = catalogs.with_explain(run.emit_solved.is_some() || run.explain.is_some());
     let libraries = match timings::stage("libraries", "", || libraries(&target)) {
         Ok(l) => l,
         Err(code) => return code,
@@ -191,6 +207,8 @@ pub(super) fn run_build(run: &BuildRun) -> ExitCode {
             Err(problems) => {
                 code = ExitCode::FAILURE;
                 unchecked = true;
+                // What the solve got to before it failed (issue 1008).
+                solved.extend(problems.iter().filter_map(|p| p.solved.clone()));
                 if json {
                     report
                         .findings
@@ -381,7 +399,7 @@ pub(super) fn run_build(run: &BuildRun) -> ExitCode {
                 dir: written.map(|d| d.display().to_string()),
                 parts: Vec::new(),
             });
-            if run.emit_solved.is_some() {
+            if run.emit_solved.is_some() || run.explain.is_some() {
                 solved.push(netsmith_pipeline::solved::to_value(&b));
             }
             if run.emit_design.is_some() {
@@ -389,16 +407,43 @@ pub(super) fn run_build(run: &BuildRun) -> ExitCode {
             }
         }
     }
+    if let Some(explain) = &run.explain {
+        let shown: Vec<serde_json::Value> = solved
+            .iter()
+            .filter(|b| {
+                explain.board.is_none_or(|name| {
+                    let label = b["board"].as_str().unwrap_or("");
+                    label == name || label.rsplit('/').next() == Some(name)
+                })
+            })
+            .cloned()
+            .collect();
+        match netsmith_pipeline::solved::explain(&shown, explain.path, explain.rows) {
+            Ok(text) => print!("{text}"),
+            Err(message) => {
+                eprintln!("error: {message}");
+                code = ExitCode::FAILURE;
+            }
+        }
+    }
+    // The solved file is written when a board failed too, if the failure left a record of what
+    // the solve got to (issue 1008); the design file only when every board is built.
+    let failed_with_record = solved.iter().any(|b| b["failed"] == true);
     let emits = [
         (
             run.emit_design,
             netsmith_core::design_file::to_json(&designs),
+            false,
         ),
-        (run.emit_solved, netsmith_pipeline::solved::to_json(solved)),
+        (
+            run.emit_solved,
+            netsmith_pipeline::solved::to_json(solved),
+            failed_with_record,
+        ),
     ];
-    for (file, text) in emits {
+    for (file, text, with_record) in emits {
         let Some(file) = file else { continue };
-        if code != ExitCode::SUCCESS {
+        if code != ExitCode::SUCCESS && !with_record {
             eprintln!("note: {} is not written, as a board failed", file.display());
         } else if let Err(e) = fs::write(file, text) {
             eprintln!("{}: {e}", file.display());

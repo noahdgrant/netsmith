@@ -4,7 +4,7 @@ use std::collections::{BTreeSet, HashSet};
 
 use super::{
     Accepted, Closest, Coupling, Failure, Job, MAX_BANK, Outcome, Passed, PassedWhy, Pick, Search,
-    Solver, Unresolved, choice_name, dcpass, give_up_message, nearer,
+    Solver, Turn, Unpicked, Unresolved, choice_name, dcpass, give_up_message, nearer,
 };
 use crate::catalog::Candidate;
 use netsmith_check::{Domain, FieldId};
@@ -262,6 +262,28 @@ impl Solver<'_> {
                 );
             }
         }
+        // The rows of each part that no choice could use (issue 1008): the first turn the
+        // search made of it, or, for a part the search did not reach because it had no row at
+        // all or was refused whatever the others are, each of its rows alone.
+        if self.catalogs.explain() {
+            let alone = starved.or(culprit);
+            for (depth, &j) in group.iter().enumerate() {
+                let turn = if Some(j) == alone {
+                    Some(self.turn_alone(jobs, group, j, coupling, &search.elsewhere))
+                } else {
+                    search.turns.remove(&depth)
+                };
+                let Some(turn) = turn else { continue };
+                let job = &jobs[j];
+                self.unpicked.push(Unpicked {
+                    part: job.part,
+                    catalog: job.catalog.name.clone(),
+                    with: turn.with,
+                    passed: turn.passed,
+                    held: self.held_by(&job.path),
+                });
+            }
+        }
         for &j in group {
             if let Some(count) = jobs[j].count {
                 self.refused_counts.insert(count);
@@ -274,6 +296,71 @@ impl Solver<'_> {
                     "no combination of candidates satisfies these parts together".into()
                 },
             });
+        }
+    }
+
+    /// The rows of the part `j` of a group passed over, each tried alone: the rows that do not
+    /// fit what the design states, then each row that fits with what refuses it. For a part
+    /// that has no row that fits, or that every row is refused for whatever the other parts are
+    /// (`hopeless`), the search made no turn of it. Only when explaining; it changes neither the
+    /// work counted nor what the solver chose.
+    fn turn_alone(
+        &mut self,
+        jobs: &[Job],
+        group: &[usize],
+        j: usize,
+        coupling: &Coupling,
+        elsewhere: &HashSet<usize>,
+    ) -> Turn {
+        let job = &jobs[j];
+        let mut passed = Vec::new();
+        let mut fitting: Vec<&Candidate> = Vec::new();
+        for c in &job.catalog.candidates {
+            match self.misfit(job.part, &job.columns, c) {
+                None => fitting.push(c),
+                Some(misfit) => passed.push(Passed {
+                    row: c.name.clone(),
+                    count: None,
+                    why: PassedWhy::Unfit,
+                    message: self.misfit_message(job.part, &job.columns, c, misfit),
+                    at: None,
+                }),
+            }
+        }
+        let mut later = elsewhere.clone();
+        later.extend(group.iter().copied().filter(|&o| o != j));
+        let (work, derived) = (self.work, self.derived.clone());
+        let counts = self.counts_of(job);
+        for c in fitting {
+            for &count in &counts {
+                let checkpoint = self.model.checkpoint();
+                let bank = job.count.zip(count);
+                let tried =
+                    self.try_candidate(job.part, &job.columns, c, bank, coupling, &later, false);
+                self.model.rollback(checkpoint);
+                passed.push(match tried {
+                    Err(r) => Passed {
+                        row: c.name.clone(),
+                        count: count.map(|n| n as u32),
+                        why: PassedWhy::Refused,
+                        message: r.message,
+                        at: Some(r.at),
+                    },
+                    Ok(_) => Passed {
+                        row: c.name.clone(),
+                        count: count.map(|n| n as u32),
+                        why: PassedWhy::Later,
+                        message: "it was accepted alone, and the parts after it in its group could not all be chosen with it".into(),
+                        at: None,
+                    },
+                });
+            }
+        }
+        self.work = work;
+        self.derived = derived;
+        Turn {
+            with: Vec::new(),
+            passed,
         }
     }
 
@@ -595,6 +682,9 @@ impl Solver<'_> {
         };
         if fitting.is_empty() {
             search.no_fit.get_or_insert(group[depth]);
+            if explain {
+                keep_turn(search, depth, &unfit, Vec::new());
+            }
             return Outcome::Failed(failure(conflict, BTreeSet::new(), None));
         }
 
@@ -603,6 +693,19 @@ impl Solver<'_> {
         let counts = self.counts_of(job);
         if counts.is_empty() {
             search.no_fit.get_or_insert(group[depth]);
+            if explain {
+                let tried = fitting
+                    .iter()
+                    .map(|c| Passed {
+                        row: c.name.clone(),
+                        count: None,
+                        why: PassedWhy::Refused,
+                        message: "the range of its `.count` holds no whole number".into(),
+                        at: None,
+                    })
+                    .collect();
+                keep_turn(search, depth, &unfit, tried);
+            }
             return Outcome::Failed(failure(conflict, BTreeSet::new(), None));
         }
 
@@ -638,6 +741,19 @@ impl Solver<'_> {
                     names.join(" and ")
                 )
             };
+            if explain {
+                let tried = fitting
+                    .iter()
+                    .map(|c| Passed {
+                        row: c.name.clone(),
+                        count: None,
+                        why: PassedWhy::Refused,
+                        message: message.clone(),
+                        at: Some(ahead.rejection.at),
+                    })
+                    .collect();
+                keep_turn(search, depth, &unfit, tried);
+            }
             let closest = Closest {
                 depth: depth.saturating_sub(1),
                 margin: ahead.rejection.margin,
@@ -944,6 +1060,9 @@ impl Solver<'_> {
                 }
             }
         }
+        if explain {
+            keep_turn(search, depth, &unfit, passed);
+        }
         Outcome::Failed(match jump {
             Some(below) => below,
             None => failure(conflict, core, nearest),
@@ -988,6 +1107,22 @@ impl Solver<'_> {
             .zip(&job.used)
             .all(|((_, key), &used)| !(used || every) || a.column(key) == b.column(key))
     }
+}
+
+/// Keeps the turn of the part at `depth` if it is the first the search made at that depth: the
+/// rows that do not fit, then the rows it tried, with the choices before it (`Unpicked`).
+fn keep_turn(search: &mut Search, depth: usize, unfit: &[(usize, Passed)], tried: Vec<Passed>) {
+    if search.turns.contains_key(&depth) {
+        return;
+    }
+    let passed = unfit.iter().map(|(_, p)| p.clone()).chain(tried).collect();
+    search.turns.insert(
+        depth,
+        Turn {
+            with: search.chosen.clone(),
+            passed,
+        },
+    );
 }
 
 /// What a row the parts after it failed with is passed over for: the closest of their

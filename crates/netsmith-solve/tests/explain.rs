@@ -129,3 +129,70 @@ fn without_explain_nothing_is_recorded_and_the_search_is_the_same() {
     // Recording counts as no trial and no work.
     assert_eq!((plain.trials, plain.work), (explained.trials, explained.work));
 }
+
+/// Solves `body` as the body of a board of resistors.
+fn fails(body: &str, catalogs: &Catalogs) -> Solution {
+    let src = format!("import std::parts::passive::Resistor\n\nboard Bench {{\n{body}}}\n");
+    let c = check("explain.nsm", &src, &Loader::std());
+    assert!(c.is_ok(), "the source should check clean:\n{}", c.render());
+    solve(&c.boards[0], catalogs)
+}
+
+fn rows(passed: &[netsmith_solve::Passed]) -> Vec<(&str, PassedWhy)> {
+    passed.iter().map(|p| (p.row.as_str(), p.why)).collect()
+}
+
+#[test]
+fn a_part_no_row_works_for_says_what_refused_each_row() {
+    let s = fails(
+        "    .r: Resistor\n    .r.resistance >= 700ohm\n",
+        &catalogs().with_explain(true),
+    );
+    assert!(!s.diagnostics.is_empty());
+    assert!(s.picks.is_empty());
+    assert_eq!(s.unpicked.len(), 1, "{:?}", s.unpicked);
+    let r = &s.unpicked[0];
+    assert_eq!(s.model.path_of(r.part), "r");
+    assert_eq!(r.catalog, "resistor");
+    assert!(r.with.is_empty());
+    assert_eq!(rows(&r.passed).len(), 5);
+    assert!(r.passed.iter().all(|p| p.why == PassedWhy::Refused && p.at.is_some()));
+    assert!(r.passed[0].message.contains("r.resistance"), "{}", r.passed[0].message);
+}
+
+#[test]
+fn a_part_with_no_row_that_fits_says_which_columns_do_not() {
+    let s = fails(
+        "    .r: Resistor { .resistance &= 700ohm +/- 5% }\n",
+        &catalogs().with_explain(true),
+    );
+    assert_eq!(s.unpicked.len(), 1, "{:?}", s.unpicked);
+    let r = &s.unpicked[0];
+    assert!(r.passed.iter().all(|p| p.why == PassedWhy::Unfit));
+    assert_eq!(r.passed.len(), 5);
+    assert!(r.passed[0].message.contains("`r.resistance` is"), "{}", r.passed[0].message);
+}
+
+#[test]
+fn the_parts_of_a_failing_group_each_keep_their_first_turn() {
+    let s = fails(
+        "    .a: Resistor\n    .b: Resistor\n    .a.resistance + .b.resistance >= 650ohm\n    .a.resistance + .b.resistance <= 690ohm\n",
+        &catalogs().with_explain(true),
+    );
+    assert!(!s.diagnostics.is_empty());
+    let paths: Vec<String> = s.unpicked.iter().map(|u| s.model.path_of(u.part)).collect();
+    assert_eq!(paths, ["a", "b"]);
+    // The first part's rows were each accepted and the second part had nothing after them; the
+    // second part's turn is the one made with the first part's first row.
+    let (a, b) = (&s.unpicked[0], &s.unpicked[1]);
+    assert!(a.with.is_empty() && a.passed.iter().all(|p| p.why == PassedWhy::Later));
+    assert_eq!(b.with, ["a = 100 1%"]);
+    assert!(b.passed.iter().all(|p| p.why == PassedWhy::Refused));
+}
+
+#[test]
+fn without_explain_a_failure_keeps_no_record() {
+    let s = fails("    .r: Resistor\n    .r.resistance >= 700ohm\n", &catalogs());
+    assert!(!s.diagnostics.is_empty());
+    assert!(s.unpicked.is_empty());
+}

@@ -610,3 +610,7 @@ error: `f2` is a `Zshunt`, and `Zfuse` also uses the `zfuse` catalog with other 
 ```
 
 Parts are taken in path order, so the first kind to use the name is the one that is not told. Give one kind a catalog name of its own (`catalog zshunt { ... }` with a file of that name) or list the same columns in both.
+
+### Why a part has its row
+
+`netsmith explain reg.inductor` says why the solver took the row it did for a part, and the rows before it that it passed over, with the relation that refused each (`file:line`) or the column of the design that the row does not fit (see _The solved values_ in the commands chapter). When no row works for a part, the build fails with the closest row and the relation it failed, and `netsmith explain <part>` lists every row the part's first turn passed over, so the rows that miss by a little and the rows that miss by a lot can be told apart; `build --emit-solved` writes the same record as JSON.
