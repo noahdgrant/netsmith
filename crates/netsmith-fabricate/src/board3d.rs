@@ -271,6 +271,10 @@ pub struct HoleReport {
     pub plated: bool,
 }
 
+fn is_zero(v: &f64) -> bool {
+    *v == 0.0
+}
+
 #[derive(Debug, Serialize)]
 pub struct PartReport {
     pub path: String,
@@ -283,9 +287,15 @@ pub struct PartReport {
     /// The courtyard as its shapes (each its own room in the placement check); `body` is
     /// the box of the fabrication outline, or of the courtyard where none is drawn.
     pub courtyards: Vec<CourtyardBox>,
+    /// The Z of the underside and of the top of the body: from the face for a part on the board,
+    /// from `standoff` above it for a part that stands off.
     pub z_bottom: Option<f64>,
     pub z_top: Option<f64>,
     pub height: Option<f64>,
+    /// How far the underside of the body is from the face, in mm (`.standoff`); left out for a
+    /// body on the board.
+    #[serde(skip_serializing_if = "is_zero")]
+    pub standoff: f64,
     pub provenance: &'static str,
     /// The catalog row the height is from, for a `catalog` height.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -608,6 +618,7 @@ pub fn report(
                 z_bottom,
                 z_top,
                 height: b.height,
+                standoff: b.standoff,
                 provenance: b.provenance.word(),
                 catalog_row: (b.provenance == HeightProvenance::Catalog)
                     .then(|| catalog.get(b.path.as_str()).cloned())

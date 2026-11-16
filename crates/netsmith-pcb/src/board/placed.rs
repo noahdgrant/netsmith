@@ -49,6 +49,10 @@ impl ReferenceSide {
     pub const ALL: [ReferenceSide; 4] = [Self::Above, Self::Below, Self::Left, Self::Right];
 }
 
+fn is_zero(v: &f64) -> bool {
+    *v == 0.0
+}
+
 /// A footprint on the board.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Placed {
@@ -80,6 +84,11 @@ pub struct Placed {
     /// How tall the body stands above its face of the board, in mm, as the design states it
     /// (`.height`, ADR 0045 "Height limits"). `None` is unknown, never zero.
     pub height: Option<f64>,
+    /// How high the underside of the body is above its face of the board, in mm, as the design
+    /// states it (`.standoff`, issue #775): a body that stands on pins. Zero, as for every
+    /// ordinary part, when the design states none. The body stands from here up to `height`.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub standoff: f64,
     /// How far its pins protrude out of the opposite face
     /// (`.pin_protrusion`, ADR 0045 section 15). `None` is unknown: the pads are an obstacle.
     pub protrusion: Option<crate::protrusion::Protrusion>,
@@ -103,6 +112,32 @@ impl Placed {
             return None;
         }
         crate::standard_height::of(&self.library_id)
+    }
+
+    /// The name of the limit a standoff makes (`standoff of J1`), and the word the messages use
+    /// to say a limit is a body's and not a keepout's.
+    pub const STANDOFF_ZONE: &'static str = "standoff of ";
+
+    /// What the standoff of the part's body limits (issue #775): a part on the same face may
+    /// stand under the body only as tall as the body stands off the board. A zone the part
+    /// carries, in its footprint's frame, over its body, on its own face, that forbids
+    /// nothing. `None` for a part on the board (a standoff of zero limits nothing: the courtyard
+    /// does) and for a label.
+    pub fn standoff_zone(&self) -> Option<crate::placement::CarriedZone> {
+        if self.standoff <= 0.0 || self.kind == "Label" {
+            return None;
+        }
+        let back = self.side == Side::Back;
+        Some(crate::placement::CarriedZone {
+            name: format!("{}{}", Self::STANDOFF_ZONE, self.refdes),
+            part: self.path.clone(),
+            local: self.footprint.body,
+            parts: false,
+            front: !back,
+            back,
+            limit: Some(self.standoff),
+            on_carrier_face: true,
+        })
     }
 
     /// The height of the reference text on the board, in mm: what the library draws, or the

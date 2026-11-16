@@ -8,7 +8,7 @@
 use netsmith_check::{Domain, InstId, InstKind, Member, Model, SourceId};
 use netsmith_core::{
     CaseModel, Cutout, Features, Keepout, Label, Offset, OffsetEnd, Outline, PartHeight,
-    PinProtrusion, PlaceBound, PlaceField, Placement, Pour, StepModel,
+    PartStandoff, PinProtrusion, PlaceBound, PlaceField, Placement, Pour, StepModel,
 };
 use netsmith_lang::Span;
 use std::collections::{BTreeMap, BTreeSet};
@@ -185,6 +185,45 @@ fn heights(model: &Model, errors: &mut Vec<String>) -> Vec<PartHeight> {
             continue;
         }
         found.push(PartHeight { path, height });
+    }
+    found
+}
+
+/// The standoffs the design states for its parts (`.standoff`, issue #775), by path: how high
+/// the underside of the body stands above the board. A part that states none stands on the
+/// board and is not listed. A negative standoff is an error, as is one that is not below the
+/// part's own stated height: the body would have no thickness.
+fn standoffs(model: &Model, errors: &mut Vec<String>) -> Vec<PartStandoff> {
+    let mut parts: Vec<(String, InstId)> = model
+        .instances()
+        .filter(|(_, i)| i.kind == InstKind::Part)
+        .map(|(id, _)| (model.path_of(id), id))
+        .collect();
+    parts.sort();
+    let mut found = Vec::new();
+    for (path, id) in parts {
+        netsmith_core::job::checkpoint();
+        let Some(standoff) = exact(model, id, "standoff", errors) else {
+            continue;
+        };
+        if standoff < 0.0 {
+            errors.push(format!(
+                "`{path}.standoff` is {standoff} mm, and a body does not stand below the board"
+            ));
+            continue;
+        }
+        // The height is read quietly: `heights` has said what is wrong with it.
+        if let Some(Domain::Quantity(q)) = domain(model, id, "height")
+            && (q.hi() - q.lo()).abs() < 1e-12
+            && standoff >= mm(q.lo()) - 1e-9
+        {
+            errors.push(format!(
+                "`{path}.standoff` is {standoff} mm and `{path}.height` is {} mm: the body stands from its standoff up to its height, so the height is the top of the body, above the standoff",
+                mm(q.lo())
+            ));
+            continue;
+        }
+        found.push(PartStandoff { path, standoff });
     }
     found
 }
@@ -640,6 +679,7 @@ pub(crate) fn features_of(
         pours: pours(model, nets, errors),
         labels: labels(model, least_text, errors),
         heights: heights(model, errors),
+        standoffs: standoffs(model, errors),
         ..Features::default()
     };
 
@@ -972,6 +1012,12 @@ pub(crate) fn expand_banks(
     for h in old {
         for path in members(&h.path, banks) {
             features.heights.push(PartHeight { path, ..h.clone() });
+        }
+    }
+    let old = std::mem::take(&mut features.standoffs);
+    for s in old {
+        for path in members(&s.path, banks) {
+            features.standoffs.push(PartStandoff { path, ..s.clone() });
         }
     }
     let (old, old_sites) = (

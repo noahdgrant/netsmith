@@ -87,6 +87,45 @@ impl Board {
             .collect()
     }
 
+    /// The areas under the bodies that stand off the board (`.standoff`, issue #775), each
+    /// limiting the parts on the same face to the standoff, on the sheet. They are not keepouts of
+    /// the board and are not among [`Board::keepout_areas`]; the checks that compare a part's
+    /// height with a limit read both.
+    pub fn standoff_areas(&self) -> Vec<KeepoutArea> {
+        self.parts
+            .iter()
+            .filter_map(|p| {
+                let zone = p.standoff_zone()?;
+                Some(KeepoutArea {
+                    name: zone.name,
+                    carrier: Some(p.path.clone()),
+                    rect: p.body(),
+                    layers: vec![
+                        if p.side == Side::Back {
+                            "bottom"
+                        } else {
+                            "top"
+                        }
+                        .into(),
+                    ],
+                    tracks: false,
+                    vias: false,
+                    copper: false,
+                    parts: false,
+                    max_height: zone.limit,
+                })
+            })
+            .collect()
+    }
+
+    /// The keepouts that have a place and the standoff areas: what limits the height of the
+    /// parts over a place.
+    pub fn height_areas(&self) -> Vec<KeepoutArea> {
+        let mut areas = self.keepout_areas();
+        areas.extend(self.standoff_areas());
+        areas
+    }
+
     /// The areas that limit how tall a part may stand, for the placer.
     pub fn height_zones(&self) -> Vec<crate::placement::HeightZone> {
         self.keepout_areas()
@@ -127,6 +166,7 @@ impl Board {
 
     /// The keepouts that parts carry, each in its part's own frame, for the placer.
     pub fn carried_zones(&self) -> Vec<crate::placement::CarriedZone> {
+        let standoffs = self.parts.iter().filter_map(Placed::standoff_zone);
         self.keepouts
             .iter()
             .filter_map(|k| {
@@ -140,8 +180,10 @@ impl Board {
                     front: on("top"),
                     back: on("bottom"),
                     limit: k.max_height,
+                    on_carrier_face: false,
                 })
             })
+            .chain(standoffs)
             .collect()
     }
 

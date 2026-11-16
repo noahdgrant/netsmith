@@ -84,7 +84,7 @@ impl Board {
                 name: k.name.clone(),
             });
         }
-        let keepouts = self.keepout_areas();
+        let keepouts = self.height_areas();
         let edge = self.edge();
         for (cutout, hole) in &cutouts {
             if edge.box_depth(&hole.rect) < -1e-6 {

@@ -468,6 +468,7 @@ fn carrier_with_a_zone(parts: bool, limit: Option<f64>) -> (Board, netsmith_pcb:
         front: true,
         back: true,
         limit,
+        on_carrier_face: false,
     };
     board.keepouts.push(netsmith_pcb::BoardKeepout {
         name: zone.name.clone(),

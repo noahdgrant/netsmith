@@ -67,7 +67,7 @@ physical for Cased {
 ```
 
 - **`case { ... }`** is the section for what the case fixes: the outline, the cutouts, the mounting holes (`MountingHole`), the fiducials (`Fiducial`) and the labels (`Label`) of the board, and the case's own STEP file (`CaseModel`, see _A case model_). It holds the same statements as the rest of the unit, and lifts out unchanged if a case is ever shared. These six belong in it; a keepout may be anywhere in the unit.
-- **A path crosses a module boundary here for any statement of physical intent.** `.sensor.j.place.left` names the header inside the `Sensor` module. The circuit source reaches into a module only to narrow a value (ADR 0116); the physical file can also state physical intent about the part. A statement may set or compare only a part's `.place`, a part's `.height`, and what the unit declares itself (the fields of its `.outline`, `.window`, `.rib`). Anything that changes what a part is, or a connection, is refused.
+- **A path crosses a module boundary here for any statement of physical intent.** `.sensor.j.place.left` names the header inside the `Sensor` module. The circuit source reaches into a module only to narrow a value (ADR 0116); the physical file can also state physical intent about the part. A statement may set or compare only a part's `.place`, a part's `.height`, a part's `.standoff`, and what the unit declares itself (the fields of its `.outline`, `.window`, `.rib`). Anything that changes what a part is, or a connection, is refused.
 - **A relation between two parts** is the equation of _Where a part goes_: `.b.place.x - .a.place.x == 17.5mm +/- 0.05mm`. The placer holds it and `fab` measures it (_A relation between two parts_).
 - **`.place.side` on a module** is a requirement on every part of it, at any depth. A module with an exception states the faces of its parts one by one and none for itself; two lines that disagree are an error that names both. `.place.side` with no path, on the board itself, is the same requirement on every part of the board (_A board on one face_).
 - The case numbers are the maintainer's file to review: put the source of each (a drawing, a sheet) in a comment above the line, and never invent one.
@@ -135,7 +135,7 @@ physical for Wrong {
 ```
 
 ```text
-error: `b.j.assembly` is not physical intent: a physical file states where a part is (its `.place`), how tall it is (`.height`), how far its pins protrude (`.pin_protrusion`), the STEP model it is drawn from (`.model`) and the outline, cutouts, keepouts, holes, fiducials, labels and case models it declares, never what a part is; put this in the circuit source
+error: `b.j.assembly` is not physical intent: a physical file states where a part is (its `.place`), how tall it is (`.height`), how high its body stands off the board (`.standoff`), how far its pins protrude (`.pin_protrusion`), the STEP model it is drawn from (`.model`) and the outline, cutouts, keepouts, holes, fiducials, labels and case models it declares, never what a part is; put this in the circuit source
   --> main.physical.nsm:2:5
   |
 2 |     .b.j.assembly &= AssemblyMode::Hand
@@ -870,6 +870,76 @@ error: `r1` cannot be chosen from the `resistor` catalog: catalogs/resistor.csv:
   |
 4 |     .r1: Resistor { .resistance &= 316ohm +/- 1% }
   |     ^^^^^^^^^^^^^
+```
+
+### A body that stands off the board
+
+A plug-in module stands on pins, and its body has a gap under it. A part has the built-in member `.standoff` (a length, one value, zero or more): how far the underside of its body is above the face of the board it is on, so that the body stands from the standoff up to its `.height`. The board's physical file states it as it states `.height`, and a path may reach a part inside a module. A part that states none stands on the board, a standoff of zero, as every part did before. A standoff at or above the part's own `.height` is an error: `.height` is the top of the body, measured from the face, and the body would have no thickness.
+
+A standoff changes four things. Another part on the same face may stand under the body only as tall as the standoff: the body is a height limit over its fabrication outline (its courtyard, where the footprint draws none) for the parts on its face, named `standoff of J1`, and a part that is taller is `too tall` with the numbers, as under a keepout's `.max_height`; a part of no stated height under it is reported as unchecked, as under a lid. The placer keeps a part too tall for it out from under the body. The overlap that `board3d --json` reports for two bodies compares Z ranges, each from its standoff up to its height, so a low part under a body that stands off it is no overlap. And the 3D view, the `.glb`, the STEP export and `render` draw the body from the standoff, not from the board; the pins under it and the part's own STEP model (`.model`, placed by its own `.model.z`) are drawn where they are stated. The standoff does not change the courtyard: a footprint that draws a courtyard shape for each socket strip lets a part stand between the strips, under the body, and the standoff is then what limits that part's height.
+
+```nsm solve place
+import std::parts::passive::Resistor
+import std::sources::Rail
+import std::mfg::jlcpcb::TwoLayer
+
+board Module {
+    .process: TwoLayer {
+        .stackup.thickness &= 1.6mm
+    }
+    .rail: Rail {
+        .voltage &= 5V +/- 5%
+        .pos.net &= "VCC"
+    }
+    .module: Resistor { .resistance &= 15kohm +/- 1% }
+    .low: Resistor { .resistance &= 15kohm +/- 1% }
+    .rail.pos ~> .module ~> .rail.neg
+    .rail.pos ~> .low ~> .rail.neg
+    // The module is 6 mm tall on pins that lift its underside 2 mm off the board.
+    .module.height &= 6mm
+    .module.standoff &= 2mm
+    // A part up to 2 mm tall fits under it.
+    .low.height &= 1mm
+}
+```
+
+```nsm-physical
+import std::pcb::Outline
+
+physical for Module {
+    case {
+        .outline: Outline {
+            .width &= 40mm
+            .height &= 30mm
+        }
+    }
+}
+```
+
+Were `.low.height` 3 mm and the part put under the module by hand (a layout file that locks it there), the check would say:
+
+```text
+error: Module: `low` (R1) stands 3.00 mm tall on the top face, and the standoff of R2 allows 2.00 mm there (1.00 mm too tall), where its body is, around (20.0, 15.0) mm from the board's top left corner
+```
+
+Misuse: a standoff is below the height.
+
+```nsm fails
+import std::parts::passive::Resistor
+import std::mfg::jlcpcb::TwoLayer
+
+board Flat {
+    .process: TwoLayer {
+        .stackup.thickness &= 1.6mm
+    }
+    .r: Resistor { .resistance &= 15kohm +/- 1% }
+    .r.height &= 2mm
+    .r.standoff &= 6mm
+}
+```
+
+```text
+error: Flat: `r.standoff` is 6 mm and `r.height` is 2 mm: the body stands from its standoff up to its height, so the height is the top of the body, above the standoff
 ```
 
 ### Pin protrusion

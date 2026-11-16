@@ -16,7 +16,8 @@ impl<'a> Engine<'a> {
         let at = self.shape_index(c);
         let model = &self.models[j];
         for carry in &self.models[c].carries {
-            let zone = &self.p.carried[carry.zone];
+            let named = &self.p.carried[carry.zone];
+            let zone = named.for_carrier_on(self.models[c].side);
             let rect = carry.boxes[at.min(carry.boxes.len() - 1)].translated(self.pos(c));
             let mut depth = 0.0f64;
             if zone.keeps_out(model.side) {
@@ -28,7 +29,7 @@ impl<'a> Engine<'a> {
                 depth = depth.max(penetration(&self.zone_box(j), &rect, gap));
             }
             if depth > 0.0 {
-                found.push((zone.name.as_str(), rect, depth));
+                found.push((named.name.as_str(), rect, depth));
             }
         }
         found

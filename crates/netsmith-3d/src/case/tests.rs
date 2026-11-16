@@ -136,6 +136,8 @@ fn body(path: &str, min: [f64; 2], max: [f64; 2], height: Option<f64>) -> Body {
         courtyards: Vec::new(),
         z_face: 0.0,
         z_far: height,
+        standoff: 0.0,
+        z_near: 0.0,
         height,
         provenance: if height.is_some() {
             HeightProvenance::Stated

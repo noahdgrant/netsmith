@@ -27,6 +27,8 @@ fn body(path: &str, refdes: &str, min: Plan, max: Plan, height: Option<f64>) -> 
         courtyards: Vec::new(),
         z_face: 0.0,
         z_far: height,
+        standoff: 0.0,
+        z_near: 0.0,
         height,
         provenance: if height.is_some() {
             HeightProvenance::Stated
@@ -107,6 +109,7 @@ pub(crate) fn scene() -> Scene {
     q1.side = Side::Back;
     q1.z_face = -1.6;
     q1.z_far = Some(-2.4);
+    q1.z_near = -1.6;
     // Turned a quarter and mirrored for the bottom face: ex = (0, 1), ey = (1, 0).
     q1.shape = Some(PlacedShape {
         solids: package(),

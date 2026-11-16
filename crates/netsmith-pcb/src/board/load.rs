@@ -58,7 +58,7 @@ impl Board {
                 placement.carried.push(zone);
             }
         }
-        let placement = placement.clone();
+        let mut placement = placement.clone();
 
         let mut loaded: HashMap<String, Footprint> = HashMap::new();
         let mut parts = Vec::with_capacity(design.parts.len());
@@ -92,6 +92,7 @@ impl Board {
                         .unwrap_or_default(),
                     reference_side: ReferenceSide::default(),
                     height: None,
+                    standoff: 0.0,
                     protrusion: None,
                     hand_fitted: true,
                     symbol,
@@ -143,6 +144,12 @@ impl Board {
                     .iter()
                     .find(|h| h.path == part.path)
                     .map(|h| h.height),
+                standoff: design
+                    .features
+                    .standoffs
+                    .iter()
+                    .find(|s| s.path == part.path)
+                    .map_or(0.0, |s| s.standoff),
                 protrusion: design
                     .features
                     .protrusions
@@ -155,6 +162,12 @@ impl Board {
                 hand_fitted: design.features.hand_fitted.contains(&part.path),
                 symbol,
             });
+        }
+        // The body of a part that stands off the board limits the height of the parts under it.
+        for zone in parts.iter().filter_map(Placed::standoff_zone) {
+            if !placement.carried.contains(&zone) {
+                placement.carried.push(zone);
+            }
         }
         Ok(Loaded {
             process,
