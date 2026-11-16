@@ -195,14 +195,21 @@ impl Solver<'_> {
             };
             let inst = self.model.instance(job.part);
             let (source, span) = inst.at();
-            self.report(
-                source,
-                span,
+            // A catalog with no row at all offers nothing to any design, so what the design
+            // needs is not the reason: say that it is empty and which file adds the rows.
+            let message = if job.catalog.candidates.is_empty() {
+                format!(
+                    "the `{name}` catalog is empty (no file of it has a row), so nothing can be picked for `{path}`: add rows to `catalogs/{name}.csv` in the project (docs/language/12, \"Catalog files\")",
+                    name = job.catalog.name,
+                    path = job.path
+                )
+            } else {
                 format!(
                     "the `{}` catalog has nothing for `{}`, which needs {wants}",
                     job.catalog.name, job.path
-                ),
-            );
+                )
+            };
+            self.report(source, span, message);
         }
         // A part that the lock holds to one row was offered no other: the failure above may be the
         // lock's, and the message says how to look at it.

@@ -926,6 +926,39 @@ What is not modelled: the divider's current is not added to the load, and the IC
 
 The library has four real buck ICs. `Lmr16006y` (TI LMR16006Y, 4 V to 60 V, 0.6 A, asynchronous, with its catch diode in its `support` section), `Rt8059` (Richtek RT8059, 2.8 V to 5.5 V, 1 A) and `Tps54202` (TI TPS54202, 4.5 V to 28 V, 2 A) each have a catalog row, so a board picks among them with `BuckConverter` (_A module that takes a part_); their datasheet figures, pages and what each leaves unstated are in their doc comments and `data/jlcpcb/README.md`. The fourth is `std::parts::regulator::Lt8641`, Analog Devices' 3 V to 65 V, 3.5 A LT8641 in its 18-lead 3 x 4 mm QFN (datasheet Rev. C). It is written as above, with each number's datasheet page and table in its doc comment and in `data/jlcpcb/README.md`: the reference 0.79 V to 0.822 V, the input range, 3.5 A, the efficiency, `min_inductance` from the datasheet's Equation 10, a DCR of at most 0.04 ohm, 2.2 uF at the input, and 47 uF at the output by default (every Typical Application of the datasheet uses it; the datasheet states no minimum). The switching frequency follows the resistor on RT, `.fsw == 46.5MHz * 1kohm / (.rt_resistance + 5.2kohm)` with the oscillator's accuracy (Equation 3 and Table 1); the part refuses a resistor outside 18.2 kohm to 60.4 kohm (2 MHz to 700 kHz), the span the datasheet gives the accuracy for. It also refuses an input and output at which the datasheet's Equations 4 and 5 say the frequency is no longer held, because the converter computes its ripple at the programmed frequency. Its `support` section is the datasheet's application circuit: 0.1 uF from BST to SW, 1 uF on INTVCC, 1 uF at VIN1 and at VIN2, 10 nF on TR/SS, the resistor on RT (47 kohm, 0.89 MHz, by default), BIAS to ground and EN/UV to the input; SYNC/MODE and PG are left open. The automotive ordering code `LT8641IUDC#WPBF` is the same die and tables as the other grades. The standard `lt8641` catalog has a header and no row, like `p_mosfet` (a row needs a stock above zero on a record that was read), so the board's project has the row, in its own file of that name (the part number is the datasheet's Order Information; a project adds the LCSC number it has read). The catalog is not keyed by `.mpn`: the solver takes the first row that fits, and a board that wants one ordering code narrows `.reg.ic.mpn` (ADR 0116).
 
+A board that names the IC with no `catalogs/lt8641.csv` is refused with a message that says the catalog is empty and names the file to write, not one that lists what the design needs:
+
+```nsm fails
+import std::parts::regulator::{Buck, Lt8641}
+import std::sources::Rail
+
+board Converter {
+    .input: Rail {
+        .voltage &= 9V..16V
+        .peak &= 36V
+        .pos.net &= "VIN"
+    }
+    .output: Rail {
+        .pos.net &= "3V3"
+        .current &= 0A..2A
+    }
+    .reg: Buck<Lt8641> { .vout.voltage &= 3.3V +/- 4% }
+
+    .input ~ .reg.vin
+    .reg.vout ~ .output
+}
+```
+
+```text
+error: the `lt8641` catalog is empty (no file of it has a row), so nothing can be picked for `reg.ic`: add rows to `catalogs/lt8641.csv` in the project (docs/language/12, "Catalog files")
+    --> std/parts/regulator.nsm:467:5
+    |
+467 |     .ic: Ic
+    |     ^^^^^^^
+```
+
+The file, with the row of the datasheet's Order Information (a project adds the LCSC number it has read):
+
 ```csv file=catalogs/lt8641.csv set=lt8641
 mpn,package,library,source
 LT8641IUDC#WPBF,UDC20(18),Extended,"datasheet Rev. C, Order Information p.2 (automotive products)"
