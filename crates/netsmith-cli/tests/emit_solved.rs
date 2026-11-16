@@ -83,9 +83,12 @@ fn the_current_range_of_a_part_is_written_with_its_unit() {
     assert_eq!(member(&boards[0], "reg.inductor.inductance")["unit"], "H");
     // Text is a value.
     assert!(member(&boards[0], "reg.inductor.package")["value"].is_string());
-    // The same board is the same bytes.
+    // The same board is the same bytes. The first build wrote the pick lock, which the
+    // second holds the parts to (each pick then says so), so the third is compared with it.
     assert!(build(&dir, "buck.nsm", &emit).status.success());
-    assert_eq!(fs::read_to_string(&emit).unwrap(), text);
+    let held = fs::read_to_string(&emit).unwrap();
+    assert!(build(&dir, "buck.nsm", &emit).status.success());
+    assert_eq!(fs::read_to_string(&emit).unwrap(), held);
 }
 
 #[test]
@@ -102,4 +105,78 @@ fn nothing_is_written_when_a_board_fails() {
     assert!(!emit.exists());
     let said = String::from_utf8_lossy(&run.stderr);
     assert!(said.contains("is not written, as a board failed"), "{said}");
+}
+
+/// The pick of `board` of the part at `path`.
+fn pick<'a>(board: &'a serde_json::Value, path: &str) -> &'a serde_json::Value {
+    board["picks"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|p| p["path"] == path)
+        .unwrap_or_else(|| panic!("no pick of `{path}` in {board:#}"))
+}
+
+#[test]
+fn a_pick_says_why_the_rows_before_it_were_passed_over() {
+    let dir = TempDir::new("emit-solved-picks");
+    fs::write(dir.join("buck.nsm"), BUCK).unwrap();
+    let emit = dir.join("buck.solved.json");
+    let run = build(&dir, "buck.nsm", &emit);
+    assert!(
+        run.status.success(),
+        "{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    let boards: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(&emit).unwrap()).unwrap();
+    let inductor = pick(&boards[0], "reg.inductor");
+    assert_eq!(inductor["catalog"], "inductor");
+    assert!(inductor.get("held").is_none(), "{inductor:#}");
+    // A row before it was refused by the converter's least inductance, with where that is.
+    let passed = inductor["passed"].as_array().unwrap();
+    let refused = passed
+        .iter()
+        .find(|r| r["why"] == "refused")
+        .unwrap_or_else(|| panic!("no refused row in {inductor:#}"));
+    assert!(
+        refused["message"]
+            .as_str()
+            .unwrap()
+            .contains("min_inductance"),
+        "{refused:#}"
+    );
+    assert!(
+        refused["at"]
+            .as_str()
+            .unwrap()
+            .starts_with("std/parts/regulator.nsm:"),
+        "{refused:#}"
+    );
+    // A pull-up with a stated value passes over the rows that do not fit it.
+    let pullup = pick(&boards[0], "reg.ic.shdn_pullup");
+    let unfit = &pullup["passed"][0];
+    assert_eq!(unfit["why"], "unfit", "{pullup:#}");
+    assert!(
+        unfit["message"]
+            .as_str()
+            .unwrap()
+            .contains("`reg.ic.shdn_pullup.resistance` is"),
+        "{unfit:#}"
+    );
+
+    // The first build wrote the pick lock, which now holds each part to its row.
+    assert!(dir.join("buck.lock.toml").exists());
+    assert!(build(&dir, "buck.nsm", &emit).status.success());
+    let boards: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(&emit).unwrap()).unwrap();
+    let inductor = pick(&boards[0], "reg.inductor");
+    assert!(
+        inductor["held"]
+            .as_str()
+            .unwrap()
+            .starts_with("the pick lock"),
+        "{inductor:#}"
+    );
+    assert_eq!(inductor["passed"], serde_json::json!([]));
 }

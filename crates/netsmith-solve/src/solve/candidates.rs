@@ -11,6 +11,17 @@ use netsmith_lang::Span;
 use netsmith_lang::ast::CmpOp;
 use netsmith_quantity::Quantity;
 
+/// What of the design a candidate does not fit (`Solver::misfit`).
+#[derive(Debug, Clone, Copy)]
+pub(super) enum Misfit {
+    /// Its package lacks a pin the board connects.
+    Pins,
+    /// It is outside the board's environment.
+    Environment,
+    /// The column at this place in the job's columns.
+    Column(usize),
+}
+
 impl Solver<'_> {
     /// Whether anything but the part's own constraints reads a field: a connection joins it
     /// to another field, a net sums it, or a relation also names another field. A relation
@@ -35,37 +46,111 @@ impl Solver<'_> {
     }
 
     pub(super) fn fits(&self, part: InstId, columns: &[(FieldId, String)], c: &Candidate) -> bool {
+        self.misfit(part, columns, c).is_none()
+    }
+
+    /// What of the design a candidate does not fit, or `None` when it fits (see [`Self::fits`]).
+    pub(super) fn misfit(
+        &self,
+        part: InstId,
+        columns: &[(FieldId, String)],
+        c: &Candidate,
+    ) -> Option<Misfit> {
         if !self.package_has_the_pins(part, c) {
-            return false;
+            return Some(Misfit::Pins);
         }
         if self.outside_environment(part, c) {
-            return false;
+            return Some(Misfit::Environment);
         }
-        columns.iter().all(|(f, key)| {
-            let domain = &self.model.field(*f).domain;
-            match (c.column(key), domain) {
-                // A row with no value there fits no design that asks for one (a rating it
-                // does not state cannot be shown to be met). A design that does not mention
-                // the field has no use for the value, so the row is still offered, but only
-                // for a column that a catalog may leave empty (marked `optional`, ADR 0078): an empty
-                // package or resistance is not a value that nothing needs.
-                (None, _) => self.may_be_empty(part, *f, key) && !self.asked_by_design(*f),
-                (Some(Value::Open(sense)), _) => self.need_of(*f, *sense).is_some(),
-                (Some(Value::Derated(d)), domain) => match self.derated(part, d) {
-                    Ok(q) => match domain {
-                        Domain::Quantity(want) => want.encloses(&q).unwrap_or(false),
-                        Domain::Unset => true,
-                        Domain::Text(_) => false,
+        columns
+            .iter()
+            .position(|(f, key)| {
+                let domain = &self.model.field(*f).domain;
+                !match (c.column(key), domain) {
+                    // A row with no value there fits no design that asks for one (a rating it
+                    // does not state cannot be shown to be met). A design that does not mention
+                    // the field has no use for the value, so the row is still offered, but only
+                    // for a column that a catalog may leave empty (marked `optional`, ADR 0078): an empty
+                    // package or resistance is not a value that nothing needs.
+                    (None, _) => self.may_be_empty(part, *f, key) && !self.asked_by_design(*f),
+                    (Some(Value::Open(sense)), _) => self.need_of(*f, *sense).is_some(),
+                    (Some(Value::Derated(d)), domain) => match self.derated(part, d) {
+                        Ok(q) => match domain {
+                            Domain::Quantity(want) => want.encloses(&q).unwrap_or(false),
+                            Domain::Unset => true,
+                            Domain::Text(_) => false,
+                        },
+                        // Not knowing the value matters only if the design asks for it.
+                        Err(_) => !self.asked(*f),
                     },
-                    // Not knowing the value matters only if the design asks for it.
-                    Err(_) => !self.asked(*f),
-                },
-                (Some(_), Domain::Unset) => true,
-                (Some(Value::Quantity(q)), Domain::Quantity(d)) => d.encloses(q).unwrap_or(false),
-                (Some(Value::Text(t)), Domain::Text(d)) => t == d,
-                _ => false,
+                    (Some(_), Domain::Unset) => true,
+                    (Some(Value::Quantity(q)), Domain::Quantity(d)) => {
+                        d.encloses(q).unwrap_or(false)
+                    }
+                    (Some(Value::Text(t)), Domain::Text(d)) => t == d,
+                    _ => false,
+                }
+            })
+            .map(Misfit::Column)
+    }
+
+    /// Why a candidate does not fit, as `explain` says it (issue #744): what the row has and
+    /// what the design states.
+    pub(super) fn misfit_message(
+        &self,
+        part: InstId,
+        columns: &[(FieldId, String)],
+        c: &Candidate,
+        misfit: Misfit,
+    ) -> String {
+        match misfit {
+            Misfit::Pins => {
+                let package = match c.column("package") {
+                    Some(Value::Text(p)) => p.as_str(),
+                    _ => "",
+                };
+                format!("its package {package} lacks a pin the board connects")
             }
-        })
+            Misfit::Environment => {
+                "it is outside the board's environment (its temperatures or its qualification)"
+                    .to_string()
+            }
+            Misfit::Column(i) => {
+                let (f, key) = &columns[i];
+                let path = self.model.path_of_field(*f);
+                let domain = &self.model.field(*f).domain;
+                let stated = match domain {
+                    Domain::Unset => "nothing".to_string(),
+                    d => self.model.show_value(*f, d),
+                };
+                match c.column(key) {
+                    None => format!("it has no `{key}`, and `{path}` needs one"),
+                    Some(Value::Quantity(q)) => {
+                        format!("its `{key}` is {q}, and `{path}` is {stated}")
+                    }
+                    Some(Value::Text(t)) => format!("its `{key}` is {t}, and `{path}` is {stated}"),
+                    Some(Value::Open(_)) => {
+                        format!(
+                            "its `{key}` is what the design needs, and nothing asks for `{path}`"
+                        )
+                    }
+                    Some(Value::Derated(d)) => match self.derated(part, d) {
+                        Ok(q) => format!("its `{key}` is {q}, and `{path}` is {stated}"),
+                        Err(Underated::NoBias(bias)) => format!(
+                            "its `{key}` is not known, as the design gives `{bias}` no bias voltage, and `{path}` is {stated}"
+                        ),
+                        Err(Underated::Curve(DeratingError::NoData)) => format!(
+                            "its `{key}` is not known, as its row has no bias curve, and `{path}` is {stated}"
+                        ),
+                        Err(Underated::Curve(DeratingError::BeyondData { known_to, .. })) => {
+                            format!(
+                                "its `{key}` is not known, as its bias curve stops at {known_to} V, and `{path}` is {stated}"
+                            )
+                        }
+                    },
+                }
+            }
+        }
     }
 
     /// The range of temperatures the board's environment states for a part, in kelvin: the ends

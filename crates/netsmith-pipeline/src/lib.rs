@@ -86,6 +86,10 @@ pub struct Built {
     /// efficiency it did not settle. A rail that can draw more than its supply gives stops
     /// the build instead ([`Stage::Power`]), so none of these is an error.
     pub power: Vec<PowerIssue>,
+    /// The solver's pick of each part of this board that it chose a row for, in the order it
+    /// picked them. With `Catalogs::with_explain` each has the rows it passed over and why
+    /// (`Pick::passed`, issue #744).
+    pub picks: Vec<netsmith_solve::Pick>,
     /// What the build knew about the source, for a tool that points back into it.
     pub trace: Trace,
 }
@@ -551,6 +555,7 @@ pub fn outcome_observed(
         })?;
         one.providers = provided;
         one.power = power_issues;
+        one.picks = solution.picks.clone();
         one.rechecks = resolve::Rechecks::plan(solution, &one.design.parts, catalogs, || {
             let board = board.clone();
             Box::new(move |pinned: &Catalogs| quietly(|| solve(&board, pinned)))
@@ -714,6 +719,12 @@ pub fn outcome_observed(
             })?;
             one.providers = provided;
             one.power = power_issues.iter().filter(|i| mine(i)).cloned().collect();
+            one.picks = solution
+                .picks
+                .iter()
+                .filter(|p| solution.model.is_inside(p.part, member.inst))
+                .cloned()
+                .collect();
             one.rechecks = resolve::Rechecks::plan(solution, &one.design.parts, catalogs, || {
                 let system = system.clone();
                 Box::new(move |pinned: &Catalogs| quietly(|| solve_system(&system, pinned)))
@@ -1538,6 +1549,7 @@ fn export(
         guidelines: designed.guidelines,
         environment: designed.environment,
         power: Vec::new(),
+        picks: Vec::new(),
         trace: Trace {
             model: model.clone(),
             sources: sources.clone(),

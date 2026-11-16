@@ -3,8 +3,8 @@
 use std::collections::{BTreeSet, HashSet};
 
 use super::{
-    Accepted, Closest, Coupling, Failure, Job, MAX_BANK, Outcome, Pick, Search, Solver, Unresolved,
-    choice_name, dcpass, give_up_message, nearer,
+    Accepted, Closest, Coupling, Failure, Job, MAX_BANK, Outcome, Passed, PassedWhy, Pick, Search,
+    Solver, Unresolved, choice_name, dcpass, give_up_message, nearer,
 };
 use crate::catalog::Candidate;
 use netsmith_check::{Domain, FieldId};
@@ -506,12 +506,33 @@ impl Solver<'_> {
         let budget = self.catalogs.search_budget();
         let job = &jobs[group[depth]];
         self.work += job.catalog.candidates.len() as u64;
-        let fitting: Vec<&Candidate> = job
-            .catalog
-            .candidates
-            .iter()
-            .filter(|c| self.fits(job.part, &job.columns, c))
-            .collect();
+        // With `explain` on (issue #744), the turn keeps the rows that do not fit, with their
+        // place in the catalog, and the place of each that fits.
+        let explain = self.catalogs.explain();
+        let mut unfit = Vec::new();
+        let mut positions = Vec::new();
+        let mut fitting: Vec<&Candidate> = Vec::new();
+        for (position, c) in job.catalog.candidates.iter().enumerate() {
+            match self.misfit(job.part, &job.columns, c) {
+                None => {
+                    fitting.push(c);
+                    if explain {
+                        positions.push(position);
+                    }
+                }
+                Some(misfit) if explain => unfit.push((
+                    position,
+                    Passed {
+                        row: c.name.clone(),
+                        count: None,
+                        why: PassedWhy::Unfit,
+                        message: self.misfit_message(job.part, &job.columns, c, misfit),
+                        at: None,
+                    },
+                )),
+                Some(_) => {}
+            }
+        }
         if depth == 0 {
             search.first_level_fits = fitting.len();
         }
@@ -626,8 +647,30 @@ impl Solver<'_> {
         // candidates that were left out because a bound holds only for some values, in the same
         // order. The fewest count still comes first.
         let mut deferred = vec![false; counts.len() * fitting.len()];
+        // The rows this turn tried and passed over, in order, when explaining: every call is
+        // behind `explain`, so a build that does not ask makes no message.
+        let mut passed: Vec<Passed> = Vec::new();
+        let tell = |passed: &mut Vec<Passed>,
+                    c: &Candidate,
+                    count: Option<f64>,
+                    why: PassedWhy,
+                    message: String,
+                    at| {
+            passed.push(Passed {
+                row: c.name.clone(),
+                count: count.map(|n| n as u32),
+                why,
+                message,
+                at,
+            })
+        };
         for (pass, &count) in counts.iter().enumerate() {
             for tier in 0..2 {
+                // A row the first tier left for the second is tried again now, and says so then.
+                if tier == 1 && explain {
+                    let n = count.map(|n| n as u32);
+                    passed.retain(|p| !(p.why == PassedWhy::Partly && p.count == n));
+                }
                 for (index, c) in fitting.iter().enumerate() {
                     let examined = pass * fitting.len() + index;
                     if tier == 1 && !deferred[examined] {
@@ -638,16 +681,39 @@ impl Solver<'_> {
                     }
                     if skip.as_ref().is_some_and(|s| s[index]) {
                         search.skipped += 1;
+                        if explain {
+                            tell(
+                                &mut passed,
+                                c,
+                                count,
+                                PassedWhy::Skipped,
+                                "a trial would refuse it: the search left it out with the rows around it that a relation refuses, without trying each".into(),
+                                None,
+                            );
+                        }
                         if self.catalogs.narrowing_audit() {
                             self.audit_skipped(job, c, coupling, &later);
                         }
                         continue;
                     }
                     self.work += failed.len() as u64;
-                    if failed
+                    if let Some(&(same, _)) = failed
                         .iter()
-                        .any(|&(f, n)| n == count && self.interchangeable(job, f, c))
+                        .find(|&&(f, n)| n == count && self.interchangeable(job, f, c))
                     {
+                        if explain {
+                            tell(
+                                &mut passed,
+                                c,
+                                count,
+                                PassedWhy::Same,
+                                format!(
+                                    "it is the same as `{}` for every relation, which was passed over",
+                                    same.name
+                                ),
+                                None,
+                            );
+                        }
                         continue;
                     }
                     if search.trials >= budget.trials || self.work - search.work_from >= budget.work
@@ -676,16 +742,45 @@ impl Solver<'_> {
                             // Not yet: a candidate that meets every waiting bound comes first.
                             self.model.rollback(checkpoint);
                             deferred[examined] = true;
+                            if explain {
+                                tell(
+                                    &mut passed,
+                                    c,
+                                    count,
+                                    PassedWhy::Partly,
+                                    "a bound that waits for a part still to be chosen holds for only some of its values, and a row for which it holds for all comes first".into(),
+                                    None,
+                                );
+                            }
                         }
                         Ok(_) if jump.is_some() => {
                             // The parts after this one would fail again, as they did.
                             self.model.rollback(checkpoint);
                             failed.push((c, count));
+                            if explain {
+                                let below = jump.as_ref().and_then(|j| j.closest.as_ref());
+                                tell(
+                                    &mut passed,
+                                    c,
+                                    count,
+                                    PassedWhy::Later,
+                                    later_message(below),
+                                    below.map(|b| b.at),
+                                );
+                            }
                         }
                         Ok(Accepted { needs, .. }) => {
                             search
                                 .chosen
                                 .push(format!("{} = {}", job.path, choice_name(c, count)));
+                            let (explained, held) = if explain {
+                                (
+                                    explained(&unfit, positions[index], &passed),
+                                    self.held_by(&job.path),
+                                )
+                            } else {
+                                (Vec::new(), None)
+                            };
                             search.picks.push(Pick {
                                 part: job.part,
                                 catalog: job.catalog.name.clone(),
@@ -703,6 +798,8 @@ impl Solver<'_> {
                                 generic: c.generic.as_ref().map(|g| g.with_needs(&needs)),
                                 rejected: examined,
                                 count: count.map_or(1, |n| n as u32),
+                                passed: explained,
+                                held,
                             });
                             let outcome = self.search(jobs, group, depth + 1, search, coupling);
                             if let Outcome::Solved = outcome {
@@ -714,6 +811,16 @@ impl Solver<'_> {
                             self.model.rollback(checkpoint);
                             match outcome {
                                 Outcome::Failed(mut below) => {
+                                    if explain {
+                                        tell(
+                                            &mut passed,
+                                            c,
+                                            count,
+                                            PassedWhy::Later,
+                                            later_message(below.closest.as_ref()),
+                                            below.closest.as_ref().map(|b| b.at),
+                                        );
+                                    }
                                     if below.depends.remove(&depth) {
                                         conflict.extend(below.depends.iter().copied());
                                         core.extend(below.core.iter().copied());
@@ -732,6 +839,16 @@ impl Solver<'_> {
                             let mut assignment = search.chosen.clone();
                             assignment.push(format!("{} = {}", job.path, choice_name(c, count)));
                             let failure_fed_by = coupling.fed_by(&self.failure_reads(&r));
+                            if explain {
+                                tell(
+                                    &mut passed,
+                                    c,
+                                    count,
+                                    PassedWhy::Refused,
+                                    r.message.clone(),
+                                    Some(r.at),
+                                );
+                            }
                             let rejected = Closest {
                                 depth,
                                 margin: r.margin,
@@ -823,5 +940,44 @@ impl Solver<'_> {
             .iter()
             .zip(&job.used)
             .all(|((_, key), &used)| !(used || every) || a.column(key) == b.column(key))
+    }
+}
+
+/// What a row the parts after it failed with is passed over for: the closest of their
+/// failures, if the search kept one.
+fn later_message(closest: Option<&Closest>) -> String {
+    match closest {
+        Some(c) => format!(
+            "the parts after it in its group could not all be chosen with it; the closest was {}: {}",
+            c.assignment.join(", "),
+            c.message
+        ),
+        None => "the parts after it in its group could not all be chosen with it".to_string(),
+    }
+}
+
+/// The rows a pick passed over (`Pick::passed`): the rows before it (at `at` in its catalog)
+/// that do not fit, then the rows its turn tried.
+fn explained(unfit: &[(usize, Passed)], at: usize, tried: &[Passed]) -> Vec<Passed> {
+    unfit
+        .iter()
+        .take_while(|(position, _)| *position < at)
+        .map(|(_, p)| p.clone())
+        .chain(tried.iter().cloned())
+        .collect()
+}
+
+impl Solver<'_> {
+    /// What held a part to one row, if anything did, in the order `hold_to_lock` asks.
+    fn held_by(&self, path: &str) -> Option<String> {
+        if self.catalogs.pinned(path).is_some() {
+            Some("a check of an alternative".to_string())
+        } else if self.chosen.contains_key(path) {
+            Some("a stated choice".to_string())
+        } else if self.locked.contains_key(path) {
+            Some(format!("the pick lock {}", self.lock_file()))
+        } else {
+            None
+        }
     }
 }

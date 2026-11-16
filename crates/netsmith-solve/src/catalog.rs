@@ -256,6 +256,7 @@ pub struct Catalogs {
     search_budget: SearchBudget,
     no_narrowing: bool,
     narrowing_audit: bool,
+    explain: bool,
 }
 
 impl Catalogs {
@@ -347,6 +348,18 @@ impl Catalogs {
 
     pub fn narrowing_audit(&self) -> bool {
         self.narrowing_audit
+    }
+
+    /// Whether each pick records the rows its part's turn passed over before it, and why
+    /// (`Pick::passed`, issue #744): `build --emit-solved` writes them. Off by default, so a
+    /// build that does not ask keeps no record; it changes nothing the solver chooses or says.
+    pub fn with_explain(mut self, on: bool) -> Self {
+        self.explain = on;
+        self
+    }
+
+    pub fn explain(&self) -> bool {
+        self.explain
     }
 
     /// Where the step that resolves generic parts asks about stock (ADR 0047). It travels

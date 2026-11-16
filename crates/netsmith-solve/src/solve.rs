@@ -419,6 +419,63 @@ pub struct Pick {
     /// value of the part's `.count` when the design leaves it to the solver or states it, and
     /// 1 for a part that has none.
     pub count: u32,
+    /// The rows the part's turn passed over before this one, and why (issue #744): the rows
+    /// before it in catalog order that do not fit what the design states, then the rows it
+    /// tried, in the order it tried them. Recorded only when `Catalogs::with_explain` is on, and
+    /// empty otherwise. The turn is the one that made this pick: rows an earlier turn tried,
+    /// with other choices of the parts before it, are not in it.
+    pub passed: Vec<Passed>,
+    /// What held the part to its row, when something did and no other row was tried (`a pick
+    /// lock`, `a stated choice`, `a check of an alternative`). Set only with `explain`.
+    pub held: Option<String>,
+}
+
+/// A row a part's turn passed over before its pick, and why (`Pick::passed`, issue #744).
+#[derive(Debug, Clone, PartialEq)]
+pub struct Passed {
+    pub row: String,
+    /// The count of a bank (ADR 0052) the row was tried at; `None` for a part with no count and
+    /// for a row that does not fit, which no count changes.
+    pub count: Option<u32>,
+    pub why: PassedWhy,
+    /// What it did not meet, as a message says it.
+    pub message: String,
+    /// Where the relation or the statement that refused it is written, for a refusal.
+    pub at: Option<(SourceId, Span)>,
+}
+
+/// Why a row was passed over.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PassedWhy {
+    /// It does not fit what the design states of the part's columns, its pins or its
+    /// environment: it was not tried.
+    Unfit,
+    /// A trial refused it: the first relation it failed, or a conflict found while propagating.
+    Refused,
+    /// It was accepted, and the parts after it in its group could not all be chosen with it.
+    Later,
+    /// It behaves as a row the turn passed over before it, for every relation, so it was not
+    /// tried.
+    Same,
+    /// The search found without a trial that a trial would refuse it (issue #184).
+    Skipped,
+    /// A bound that waits for a part still to be chosen holds for only some of its values, and
+    /// a row for which it holds for all came first (ADR 0065, 9.6).
+    Partly,
+}
+
+impl PassedWhy {
+    /// The word a file says it with.
+    pub fn word(self) -> &'static str {
+        match self {
+            PassedWhy::Unfit => "unfit",
+            PassedWhy::Refused => "refused",
+            PassedWhy::Later => "later",
+            PassedWhy::Same => "same",
+            PassedWhy::Skipped => "skipped",
+            PassedWhy::Partly => "partly",
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
