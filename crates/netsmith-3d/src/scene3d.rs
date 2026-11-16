@@ -165,7 +165,8 @@ impl PartCategory {
             | PartKind::PlatedHole
             | PartKind::Fiducial
             | PartKind::TestPoint
-            | PartKind::Label => None,
+            | PartKind::Label
+            | PartKind::Logo => None,
         });
         if let Some(c) = by_kind {
             return c;
@@ -754,8 +755,11 @@ impl Scene {
             .expect("a board is only made once its thickness is chosen");
         let solid = solid(board, &frame, thickness);
         let copper = copper_of(board).and_then(|c| scene_copper(&c, &solid.layers, &frame));
-        let mut parts: Vec<&netsmith_pcb::Placed> =
-            board.parts.iter().filter(|p| p.kind != "Label").collect();
+        let mut parts: Vec<&netsmith_pcb::Placed> = board
+            .parts
+            .iter()
+            .filter(|p| !netsmith_core::is_artwork(&p.kind))
+            .collect();
         parts.sort_by(|a, b| a.path.cmp(&b.path));
         let bodies: Vec<Body> = parts
             .iter()

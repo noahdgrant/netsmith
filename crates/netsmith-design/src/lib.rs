@@ -1079,6 +1079,8 @@ pub struct Designed {
     /// Where the design states the file of each of `design.features.case_models`, in the same
     /// order.
     pub case_model_sites: Vec<Vec<(netsmith_check::SourceId, netsmith_lang::Span)>>,
+    /// Where the design states the file of each of `design.features.logos`, in the same order.
+    pub logo_sites: Vec<Vec<(netsmith_check::SourceId, netsmith_lang::Span)>>,
 }
 
 /// A panel as the specification `fab` builds it from: the board it repeats, the grid and the
@@ -1281,6 +1283,10 @@ fn design_model(name: &str, model: &Model, solution: &Solution) -> Result<Design
         // A label's value is the text it prints.
         let value = match (inst.marks.declared_kind, text_of(model, *id, "text")) {
             (Some(PartKind::Label), Some(text)) => text,
+            // A logo's value is its file, so a list of parts says which drawing it is.
+            (Some(PartKind::Logo), _) => {
+                text_of(model, *id, "file").unwrap_or_else(|| default_value(inst, kind))
+            }
             _ => pick
                 .map(|p| p.label.clone())
                 .unwrap_or_else(|| default_value(inst, kind)),
@@ -1444,6 +1450,9 @@ fn design_model(name: &str, model: &Model, solution: &Solution) -> Result<Design
     features.models = models;
     let (case_models, case_model_sites) = features::case_models(model, &mut errors);
     features.case_models = case_models;
+    let least_track = process.as_ref().map_or(0.0, |p| p.min_track);
+    let (logos, logo_sites) = features::logos(model, least_text, least_track, &mut errors);
+    features.logos = logos;
     let (mut constraint_sites, mut offset_sites) = (constraint_sites, offset_sites);
     let mut bank_notes: Vec<String> = Vec::new();
     features::expand_banks(
@@ -1507,6 +1516,7 @@ fn design_model(name: &str, model: &Model, solution: &Solution) -> Result<Design
             protrusion_sites,
             model_sites,
             case_model_sites,
+            logo_sites,
         })
     } else {
         errors.sort();
@@ -1665,6 +1675,7 @@ mod tests {
             ("PlatedHole", "H"),
             ("Fiducial", "FID"),
             ("Label", "LBL"),
+            ("Logo", "LOGO"),
             ("LinearRegulator", "U"),
         ];
         let parts = std_parts();

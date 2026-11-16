@@ -33,7 +33,7 @@
 //! Rejected: a board-level `text "REV A" at ...` statement (it needs coordinates in the
 //! source) and derived text such as a net name beside each connector pad (derivable with no
 //! statement, but a board might want it off, so it would be a switch on the connector).
-//! Logos are not built.
+//! A `Logo` is a part like a `Label`, with a drawing in a vector file in place of text.
 //!
 //! Assembly is the part's field: what is always true of a kind is stated by the library (a
 //! hole, a fiducial and a label are never fitted), what a fab cannot place is a column of the
@@ -122,4 +122,35 @@ part Label {
     .assembly &= AssemblyMode::None
     .text: String
     .text_height: Length
+}
+
+/// A drawing printed on the silkscreen or etched in the copper, from a vector file kept in the
+/// project: a logo, a mark, a certification symbol. It has no pins, is fitted by nobody, and is
+/// placed like any other part, with a courtyard round the drawing's box.
+///
+/// `.file` is an SVG or a DXF file, relative to the file that states it and inside the
+/// project; `netsmith` bundles and downloads none. An SVG gives the outlines of its `path`,
+/// `polygon`, `rect` and `circle` elements (curves are cut into short straight pieces); a
+/// `transform`, a stroke without a fill, an image or text in it is an error that names it: draw
+/// the mark as filled shapes and convert text to paths. A DXF gives its closed loops of lines,
+/// arcs and polylines. A shape inside another is a hole in it. Only the shapes' form is read:
+/// the file's units, colours and fill rule are not, so the drawing is scaled to `.size`.
+///
+/// `.size` is the longer side of the drawing's box. It is a range: the least wins, never below
+/// the process's least text height on the silkscreen (`.layer &= "silkscreen"`, the default) or
+/// its least track in copper (`.layer &= "copper"`), which is the smallest mark that is
+/// legible. A logo states its size; there is none to take from the file. The drawing is made on
+/// the face the part is on (a part on the back is mirrored, as text is). A file that is not
+/// there or cannot be read is an error that names it.
+///
+/// A copper logo is copper of no net: the pours keep their clearance from it, and the design
+/// rules check holds it clear of the copper of every net, as it holds a pad.
+#[kind(logo)]
+part Logo {
+    .designator &= "LOGO"
+    .assembly &= AssemblyMode::None
+    .file: String
+    .size: Length
+    .layer: String
+    .layer ?= "silkscreen"
 }

@@ -1393,6 +1393,7 @@ fn export(
     constraints::name_protrusion_sources(&mut design, &designed.protrusion_sites, sources);
     constraints::name_model_sources(&mut design, &designed.model_sites, sources);
     constraints::name_case_model_sources(&mut design, &designed.case_model_sites, sources);
+    constraints::name_logo_sources(&mut design, &designed.logo_sites, sources);
     let mut sourcing = designed.sourcing;
     let (schematic, sheets, project) = match libraries {
         None => (String::new(), Vec::new(), String::new()),
@@ -1484,7 +1485,7 @@ fn export(
                 parts: design
                     .parts
                     .iter()
-                    .filter(|p| p.kind != "Label")
+                    .filter(|p| !netsmith_core::is_artwork(&p.kind))
                     .cloned()
                     .collect(),
                 ..design.clone()
@@ -1550,6 +1551,11 @@ fn report(heading: &str, design: &Design, sourcing: &[Sourced], mapping: &Mappin
     for (p, source) in design.parts.iter().zip(sourcing) {
         let footprint = if p.kind == "Label" {
             "silkscreen text".to_string()
+        } else if p.kind == "Logo" {
+            match design.features.logos.iter().find(|l| l.path == p.path) {
+                Some(l) => format!("logo in {}", l.layer.word()),
+                None => "logo".to_string(),
+            }
         } else {
             mapping
                 .map_part(&p.path, &p.kind, p.package.as_deref())

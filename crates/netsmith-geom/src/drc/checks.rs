@@ -189,7 +189,7 @@ fn sizes(out: &mut Out<'_>) {
                     );
                 }
             }
-            Kind::Teardrop(_) => {}
+            Kind::Teardrop(_) | Kind::Graphic(_) => {}
             Kind::Pad(i) => {
                 let pad = &m.art.pads[i];
                 let Some(d) = &pad.drill else { continue };
@@ -996,6 +996,7 @@ fn rule_areas(out: &mut Out<'_>) {
                 Kind::Track(_) | Kind::Teardrop(_) => k.tracks,
                 Kind::Via(_) => k.vias,
                 Kind::Pad(_) => k.pads,
+                Kind::Graphic(_) => false,
             };
             if !forbidden || !c.layers.iter().any(|l| on.contains(l)) {
                 continue;

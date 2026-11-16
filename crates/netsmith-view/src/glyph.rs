@@ -184,7 +184,7 @@ impl Glyph {
         mapping: &Mapping,
         lib: &SymbolLib,
     ) -> Glyph {
-        if part.kind == "Label" {
+        if netsmith_core::is_artwork(&part.kind) {
             return Glyph::text_box(part);
         }
         let mapped = match mapping.map_part(&part.path, &part.kind, part.package.as_deref()) {
@@ -289,7 +289,7 @@ impl Glyph {
         mapping: &Mapping,
         lib: &SymbolLib,
     ) -> Option<Vec<(u32, Glyph)>> {
-        if part.kind == "Label" {
+        if netsmith_core::is_artwork(&part.kind) {
             return None;
         }
         let mapped = mapping

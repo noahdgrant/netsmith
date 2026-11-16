@@ -20,8 +20,9 @@
 //! cutouts inside it.
 //!
 //! **Decisions and details** (ADR 0045 section 9). A DXF is the interchange because every CAD
-//! tool exports a section as one and the format is plain text; SVG is not planned (px has no
-//! unit, and curves and transforms need a larger reader) and STEP is not read (a CAD kernel):
+//! tool exports a section as one and the format is plain text; SVG is not planned for an
+//! outline (px has no unit, and curves and transforms need a larger reader; a logo, whose size is
+//! stated and not read from the file, takes one, see [`read_logo`]) and STEP is not read (a CAD kernel):
 //! the agent turns a STEP model or a drawing into a DXF at the board plane, and a number it
 //! cannot find stays out of the source. Entities join into loops when their ends are within
 //! 0.001 mm; the outline is the one loop that is not inside another, two such loops are an
@@ -47,6 +48,7 @@
 mod chain;
 mod entities;
 mod geom;
+mod logo;
 mod parse;
 
 use std::collections::BTreeMap;
@@ -54,6 +56,7 @@ use std::fmt;
 
 pub use geom::ArcGeom;
 use geom::{P, edge_bounds, edge_length};
+pub use logo::read_logo;
 
 /// The unit a drawing is in.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -742,4 +745,52 @@ pub fn read_outline(text: &str, options: &Options) -> Result<Outline, Error> {
         holes_layers,
         warnings,
     })
+}
+
+/// The closed loops of every layer of an ASCII DXF file, as rings of points in millimetres in the
+/// frame of a screen (y downward: the drawing is turned over), for a logo (`read_logo`). A
+/// loop's curves are chords within 0.005 mm. A file with no `$INSUNITS` is taken to be in
+/// millimetres. Loops that touch or cross are not told apart: a logo is filled by its shapes,
+/// a shape inside another is a hole.
+pub fn read_loops(text: &str) -> Result<Vec<Vec<(f64, f64)>>, Error> {
+    let dxf = parse::parse(text)?;
+    let scale = match dxf.insunits {
+        Some(1) => Units::Inches,
+        Some(5) => Units::Centimetres,
+        Some(6) => Units::Metres,
+        _ => Units::Millimetres,
+    }
+    .millimetres();
+    let options = Options::default();
+    let drawing = entities::expand(&dxf, scale, options.curve_tolerance)?;
+    let mut segs = Vec::new();
+    let mut circles = Vec::new();
+    for item in &drawing.items {
+        for p in &item.prims {
+            match *p {
+                entities::Prim::Seg(s) => segs.push(s),
+                entities::Prim::Circle { centre, radius } => circles.push((centre, radius)),
+            }
+        }
+    }
+    if segs.is_empty() && circles.is_empty() {
+        return Ok(Vec::new());
+    }
+    let mut warnings = Vec::new();
+    let mut loops = chain::loops(&segs, options.join_tolerance, &mut warnings)?;
+    loops.extend(circles.iter().map(|&(c, r)| chain::circle_loop(c, r)));
+    Ok(loops
+        .iter()
+        .map(|poly| {
+            let n = poly.vertices.len();
+            let mut ring: Vec<(f64, f64)> = Vec::new();
+            for i in 0..n {
+                let (a, b) = (&poly.vertices[i], &poly.vertices[(i + 1) % n]);
+                let pts =
+                    geom::flatten_edge((a.x, a.y), (b.x, b.y), a.bulge, options.curve_tolerance);
+                ring.extend(pts[..pts.len() - 1].iter().map(|&(x, y)| (x, -y)));
+            }
+            ring
+        })
+        .collect())
 }

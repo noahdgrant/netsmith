@@ -64,15 +64,32 @@ impl Board {
         let mut parts = Vec::with_capacity(design.parts.len());
         let links = netsmith_kicad::Hierarchy::of(design).links(design);
         for (part, symbol) in design.parts.iter().zip(links) {
-            // A label is text, not a footprint of a library.
-            if part.kind == "Label" {
-                let height = design
-                    .features
-                    .labels
-                    .iter()
-                    .find(|l| l.path == part.path)
-                    .and_then(|l| l.text_height)
-                    .unwrap_or(rules.min_text_height);
+            // A label is text and a logo a drawing, not a footprint of a library.
+            if netsmith_core::is_artwork(&part.kind) {
+                let (footprint, library_id) = if part.kind == "Logo" {
+                    let logo = design.features.logos.iter().find(|l| l.path == part.path);
+                    (
+                        Footprint::logo(
+                            logo.map_or(&[][..], |l| &l.outlines),
+                            logo.map_or(netsmith_core::LogoLayer::Silkscreen, |l| l.layer),
+                            logo.map_or(1.0, |l| l.size),
+                            rules.clearance.max(0.25),
+                        ),
+                        "Logo",
+                    )
+                } else {
+                    let height = design
+                        .features
+                        .labels
+                        .iter()
+                        .find(|l| l.path == part.path)
+                        .and_then(|l| l.text_height)
+                        .unwrap_or(rules.min_text_height);
+                    (
+                        Footprint::label(&part.value, height, rules.min_text_thickness),
+                        "Label",
+                    )
+                };
                 parts.push(Placed {
                     refdes: part.refdes.clone(),
                     path: part.path.clone(),
@@ -80,9 +97,9 @@ impl Board {
                     provides: part.provides.clone(),
                     declared_kind: part.declared_kind,
                     value: part.value.clone(),
-                    footprint: Footprint::label(&part.value, height, rules.min_text_thickness),
+                    footprint,
                     power_pads: Vec::new(),
-                    library_id: "Label".to_string(),
+                    library_id: library_id.to_string(),
                     at: Pt::default(),
                     rotation: 0.0,
                     side: placement

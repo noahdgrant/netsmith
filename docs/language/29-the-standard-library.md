@@ -61,6 +61,7 @@ Parts are numbered by their letters in the order of their paths in the board (a 
 | `std::parts::mechanical::Fiducial` | A fiducial mark. No pins. |
 | `std::parts::mechanical::TestPoint` | A test point. One pin `p1`, which must be on a net. |
 | `std::parts::mechanical::Label` | Silkscreen text. No pins. `.text` and `.text_height`. |
+| `std::parts::mechanical::Logo` | A drawing from an SVG or DXF file, on the silkscreen or in the copper. No pins. `.file`, `.size` and `.layer`. |
 
 ### Interfaces
 

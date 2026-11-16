@@ -58,6 +58,36 @@ fn a_clearance_finding_has_the_numbers_the_place_the_layer_and_both_items() {
 }
 
 #[test]
+fn a_polygon_drawn_on_a_copper_layer_is_copper_of_no_net_held_clear_of_every_net() {
+    // A logo etched in copper: a filled polygon of no net on the front, with a track of a net
+    // 0.3 mm away (fine), and another 0.05 mm away (under the 0.127 mm of the rule).
+    let mut b = Pcb::new(2);
+    b.raw(
+        r#"(gr_poly (pts (xy 10 10) (xy 14 10) (xy 14 14) (xy 10 14)) (stroke (width 0) (type solid)) (fill solid) (layer "F.Cu"))"#,
+    );
+    b.track("A", "F.Cu", (14.3, 9.0), (14.3, 15.0), 0.2);
+    let r = check(&mut b);
+    assert_eq!(r.count(DrcRule::Clearance), 0, "{r}");
+    let mut b = Pcb::new(2);
+    b.raw(
+        r#"(gr_poly (pts (xy 10 10) (xy 14 10) (xy 14 14) (xy 10 14)) (stroke (width 0) (type solid)) (fill solid) (layer "F.Cu"))"#,
+    );
+    b.track("A", "F.Cu", (14.15, 9.0), (14.15, 15.0), 0.2);
+    let r = check(&mut b);
+    let f = only(&r, DrcRule::Clearance);
+    assert!(f.message.contains("Polygon on F.Cu"), "{}", f.message);
+    assert_eq!(f.layer.as_deref(), Some("F.Cu"));
+    // The same polygon on the back does not meet a track of the front.
+    let mut b = Pcb::new(2);
+    b.raw(
+        r#"(gr_poly (pts (xy 10 10) (xy 14 10) (xy 14 14) (xy 10 14)) (stroke (width 0) (type solid)) (fill solid) (layer "B.Cu"))"#,
+    );
+    b.track("A", "F.Cu", (14.15, 9.0), (14.15, 15.0), 0.2);
+    let r = check(&mut b);
+    assert_eq!(r.count(DrcRule::Clearance), 0, "{r}");
+}
+
+#[test]
 fn a_net_class_asks_for_more_clearance_than_the_default() {
     let mut b = Pcb::new(2);
     b.track("PWR", "F.Cu", (10.0, 10.0), (20.0, 10.0), 0.2);

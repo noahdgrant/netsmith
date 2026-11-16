@@ -248,7 +248,11 @@ fn design_of(path: &str, board: Option<&str>) -> Result<(Design, Mapping), Strin
 pub fn netlist_of_design(design: &Design, mapping: &Mapping) -> Result<Netlist, String> {
     let mut components = Vec::new();
     // Silkscreen text is not in the circuit.
-    for p in design.parts.iter().filter(|p| p.kind != "Label") {
+    for p in design
+        .parts
+        .iter()
+        .filter(|p| !netsmith_core::is_artwork(&p.kind))
+    {
         let mapped = mapping
             .map_part(&p.path, &p.kind, p.package.as_deref())
             .map_err(|e| format!("{}: {e}", p.refdes))?;

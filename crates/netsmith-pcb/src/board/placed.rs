@@ -134,7 +134,7 @@ impl Placed {
     /// design or the catalog row gives one, which always wins, and for a footprint the table has
     /// no row for.
     pub fn standard_height(&self) -> Option<&'static crate::standard_height::StandardHeight> {
-        if self.height.is_some() || self.kind == "Label" {
+        if self.height.is_some() || netsmith_core::is_artwork(&self.kind) {
             return None;
         }
         crate::standard_height::of(&self.library_id)
@@ -150,7 +150,7 @@ impl Placed {
     /// nothing. `None` for a part on the board (a standoff of zero limits nothing: the courtyard
     /// does) and for a label.
     pub fn standoff_zone(&self) -> Option<crate::placement::CarriedZone> {
-        if self.standoff <= 0.0 || self.kind == "Label" {
+        if self.standoff <= 0.0 || netsmith_core::is_artwork(&self.kind) {
             return None;
         }
         let back = self.side == Side::Back;

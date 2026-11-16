@@ -245,7 +245,14 @@ pub fn locate(design: &mut Design, places: &Places, mapping: Option<&Mapping>) -
         }
         let path = &model.path;
         let field = format!("{path}.model.file");
-        match find(&field, &model.file, &model.source, &model.stated_in, places) {
+        match find(
+            &field,
+            &model.file,
+            &model.source,
+            &model.stated_in,
+            places,
+            "STEP file",
+        ) {
             Find::There(file) => model.resolved = Some(file),
             Find::Missing(file) => found.warnings.push(format!(
                 "`{field}` names `{}` ({}), and there is no such file, so `{path}` is drawn with its generated shape; add the file, or leave it out on a machine that may not have it",
@@ -258,13 +265,53 @@ pub fn locate(design: &mut Design, places: &Places, mapping: Option<&Mapping>) -
     }
     for case in &mut design.features.case_models {
         let field = format!("{}.file", case.name);
-        match find(&field, &case.file, &case.source, &case.stated_in, places) {
+        match find(
+            &field,
+            &case.file,
+            &case.source,
+            &case.stated_in,
+            places,
+            "STEP file",
+        ) {
             Find::There(file) => case.resolved = Some(file),
             Find::Missing(file) => found.unchecked.push(format!(
                 "`{field}` names `{}` ({}), and there is no such file, so the board's fit in its case model `{}` is not checked; add the file, or leave it out on a machine that may not have it",
                 shown(&file, &places.root),
                 case.source,
                 case.name
+            )),
+            Find::Refused(error) => found.errors.push(error),
+            Find::Unstated => {}
+        }
+    }
+    for logo in &mut design.features.logos {
+        let field = format!("{}.file", logo.path);
+        match find(
+            &field,
+            &logo.file,
+            &logo.source,
+            &logo.stated_in,
+            places,
+            "SVG or DXF file",
+        ) {
+            Find::There(file) => {
+                let drawn = std::fs::read_to_string(&file)
+                    .map_err(|e| format!("it cannot be read: {e}"))
+                    .and_then(|text| netsmith_dxf::read_logo(&logo.file, &text, logo.size));
+                match drawn {
+                    Ok(outlines) => logo.outlines = outlines,
+                    Err(e) => found.errors.push(format!(
+                        "`{field}` ({}), the logo's file `{}`: {e}",
+                        logo.source,
+                        shown(&file, &places.root)
+                    )),
+                }
+            }
+            Find::Missing(file) => found.errors.push(format!(
+                "`{field}` names `{}` ({}), and there is no such file, so `{}` has nothing to print: add the SVG or DXF file, or take the logo out",
+                shown(&file, &places.root),
+                logo.source,
+                logo.path
             )),
             Find::Refused(error) => found.errors.push(error),
             Find::Unstated => {}
@@ -375,10 +422,13 @@ fn from_table(
     let (mut drawn, mut none): (usize, Vec<String>) = (0, Vec::new());
     let mut added = Vec::new();
     for part in &design.parts {
-        if part
-            .declared_kind
-            .is_some_and(|k| k.is_mechanical() || k == netsmith_core::PartKind::Label)
-        {
+        if part.declared_kind.is_some_and(|k| {
+            k.is_mechanical()
+                || matches!(
+                    k,
+                    netsmith_core::PartKind::Label | netsmith_core::PartKind::Logo
+                )
+        }) {
             continue;
         }
         if stated.contains(&part.path) {
@@ -540,11 +590,18 @@ enum Find {
 
 /// Find the file `stated` (the value of the field `field`, stated at `source` in the files
 /// `stated_in`) relative to the file that states it.
-fn find(field: &str, stated: &str, source: &str, stated_in: &[String], places: &Places) -> Find {
+fn find(
+    field: &str,
+    stated: &str,
+    source: &str,
+    stated_in: &[String],
+    places: &Places,
+    what: &str,
+) -> Find {
     let path = Path::new(stated);
     if path.has_root() || path.is_absolute() {
         return Find::Refused(format!(
-            "`{field}` is `{stated}`, an absolute path ({source}); name the STEP file relative to the file that states it, inside the project"
+            "`{field}` is `{stated}`, an absolute path ({source}); name the {what} relative to the file that states it, inside the project"
         ));
     }
     let mut files: Vec<PathBuf> = Vec::new();
@@ -571,7 +628,7 @@ fn find(field: &str, stated: &str, source: &str, stated_in: &[String], places: &
     }
     if !file.starts_with(&places.root) {
         return Find::Refused(format!(
-            "`{field}` is `{stated}` ({source}), which is `{}`, outside the project (`{}`): put the STEP file inside the project, as netsmith never reads a model from elsewhere",
+            "`{field}` is `{stated}` ({source}), which is `{}`, outside the project (`{}`): put the {what} inside the project, as netsmith never reads a file from elsewhere",
             file.display(),
             places.root.display()
         ));

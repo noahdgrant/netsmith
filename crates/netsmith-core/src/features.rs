@@ -1,7 +1,7 @@
 //! The current of each net and the optional features of a design.
 
 use crate::{
-    CaseModel, Cutout, Keepout, Label, Offset, Outline, PartHeight, PartSilk, PartStandoff,
+    CaseModel, Cutout, Keepout, Label, Logo, Offset, Outline, PartHeight, PartSilk, PartStandoff,
     PinProtrusion, Placement, Pour, StepModel,
 };
 
@@ -70,6 +70,10 @@ pub struct Features {
     /// board house.
     pub hand_fitted: Vec<String>,
     pub labels: Vec<Label>,
+    /// The vector drawings printed or etched on the board (`Logo` parts), by path. Left out of a
+    /// design file when empty.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub logos: Vec<Logo>,
     /// Requirements on where parts and modules go (ADR 0045), by path.
     pub constraints: Vec<Placement>,
     /// Relations between the places of two parts (ADR 0045, section 3).

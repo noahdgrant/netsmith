@@ -15,6 +15,8 @@ pub(crate) enum Kind {
     Track(usize),
     /// A teardrop: an index into the artwork's zones.
     Teardrop(usize),
+    /// A drawing on a copper layer, of no net (a logo): an index into the artwork's graphics.
+    Graphic(usize),
 }
 
 impl Kind {
@@ -306,6 +308,44 @@ impl<'a> Model<'a> {
                 own_clearance: 0.0,
                 anchors: vec![start, end],
                 length,
+            });
+        }
+
+        // A line, arc, circle or polygon drawn on a copper layer is copper of no net, as KiCad has
+        // it: checked against everything else, like a pad of no net.
+        for (i, g) in art.graphics.iter().enumerate() {
+            let Some(layer) = layer_index(&g.layer) else {
+                continue;
+            };
+            let shape = drawn_shape(&g.shape, g.width, g.fill);
+            let what = match g.shape {
+                Drawn::Line(..) => "Segment",
+                Drawn::Arc(_) => "Arc",
+                Drawn::Circle { .. } => "Circle",
+                Drawn::Poly(_) => "Polygon",
+            };
+            let at = drawn_at(&g.shape);
+            let owner = if g.owner.is_empty() {
+                String::new()
+            } else {
+                format!(" of {}", g.owner)
+            };
+            items.push(Copper {
+                kind: Kind::Graphic(i),
+                net: None,
+                layers: vec![layer],
+                bounds: shape.bounds,
+                shapes: vec![shape],
+                item: Item {
+                    what: format!("{what} on {}{owner}", g.layer),
+                    at,
+                    part: (!g.owner.is_empty()).then(|| g.owner.clone()),
+                    pad: None,
+                    net: None,
+                },
+                own_clearance: 0.0,
+                anchors: vec![at],
+                length: 0.0,
             });
         }
 

@@ -35,3 +35,7 @@ _Avoid_: Duty group, exclusive loads, load set
 **Logic level**:
 One of the four voltages of a `Logic` line, or of the `Levels` of a bus interface (`.spi.levels`, ADR 0064), as a datasheet gives them and relative to the line's ground (the `neg` of its `.reference` rail): `.vih` the lowest an input reads as high, `.vil` the highest it reads as low, `.voh` the lowest an output drives a high to, `.vol` the highest it drives a low to. After the rails are solved, the solver requires `voh >= vih` and `vol <= vil` for every output and input on a net, and says "not evaluated" when a level has no value or the grounds differ (ADR 0046).
 _Avoid_: Threshold, noise margin
+
+**Logo**:
+A part that prints a drawing from an SVG or DXF file beside the source on the silkscreen, or etches it in copper (`std::parts::mechanical::Logo`). It has no pins and is fitted by nobody; `.file` names the drawing, `.size` the longer side of its box and `.layer` where it is made. Text is a _Label_.
+_Avoid_: Image, picture, artwork, bitmap (a raster file is not read)
