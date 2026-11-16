@@ -45,6 +45,7 @@ mod footprint;
 mod generate;
 mod geometry;
 mod layout;
+mod layout_notes;
 mod miss;
 mod origin;
 mod overhang;

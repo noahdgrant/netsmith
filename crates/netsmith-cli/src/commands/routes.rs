@@ -514,7 +514,8 @@ fn write_places(file: &Path, board: &Board, import: &Import) -> Result<(), Strin
             entries.parts.insert(path.clone(), place.clone());
         }
     }
-    fs::write(file, layout.to_text()).map_err(|e| format!("{name}: {e}"))
+    fs::write(file, netsmith_fabricate::layout::text_over(file, &layout))
+        .map_err(|e| format!("{name}: {e}"))
 }
 
 #[cfg(test)]

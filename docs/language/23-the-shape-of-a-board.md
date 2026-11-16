@@ -2115,7 +2115,7 @@ side = "bottom"
 lock = true
 ```
 
-**The command line.** A script or an agent changes the file with `netsmith layout`, which reads and writes it as the editor does (the other tables are kept; a comment in the file is not) and places nothing:
+**The command line.** A script or an agent changes the file with `netsmith layout`, which reads and writes it as the editor does (the other tables are kept, and so are the comments: a comment stays above its entry or after its line, and goes with the entry when the entry goes; the entries are written in name order) and places nothing:
 
 ```sh
 netsmith layout show                  # every part and its entry, with the line of the entry

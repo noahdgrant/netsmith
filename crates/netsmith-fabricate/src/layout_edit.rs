@@ -4,8 +4,8 @@
 //! misspelt, a part left out or a turn that is not a multiple of 90 would be found much later,
 //! by a refusal with no hint of the line. These are the three steps the command line takes:
 //! [`show`] says the entry of each part as the placer reads it, [`set`] writes one entry (the
-//! file read and written as the editor does, [`Layout::parse`] and [`Layout::to_text`], so a
-//! comment in it is not kept) and refuses what the board does not have, and [`check`] says what
+//! file read and written as the editor does, [`Layout::parse`] and [`Layout::to_text_over`], so
+//! a comment in it is kept) and refuses what the board does not have, and [`check`] says what
 //! the file has wrong against the board, one finding for each with the line of its entry.
 //!
 //! The frame is the layout file's (the header of `netsmith_pcb::layout`): `at` is the part's
@@ -362,7 +362,7 @@ pub fn set(design: &Design, file: &Path, path: &str, change: &Change) -> Result<
         },
     };
     table.parts.insert(path.to_string(), place);
-    let text = layout.to_text();
+    let text = crate::layout::text_over(file, &layout);
     std::fs::write(file, &text).map_err(|e| format!("{name}: {e}"))?;
     let line = Layout::part_lines(&text, &design.name).get(path).copied();
     let place = &layout.boards[&design.name].parts[path];
