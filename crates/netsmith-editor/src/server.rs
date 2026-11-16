@@ -24,6 +24,7 @@
 //! | `GET /api/git`, `GET /api/compare`, `GET /api/git/file` | what the project can be compared with, what changed in the circuit, a file at a ref (ADR 0059) |
 //! | `POST /api/pins/lock`, `POST /api/pins/move` | lock or unlock a pin request, and move it to another pin of its part: the `lock` and the `pin` and `source` lines of its entry in the pin file (ADR 0101), and no other line; `422` with the reason when the choice is refused |
 //! | `POST /api/pcb/route`, `cancel`, `edit`, `drc`; `GET /api/pcb/scene`, `findings` | place and route on demand; `cancel` stops the router and keeps what it routed |
+//! | `GET /api/pcb/summary?board=` (`near=`, `within=`, `between=`) | the placed board summed up as data, what `netsmith layout summary` prints: totals, area and free space of each face, module boxes, decoupling distances, nets, the parts near a part and the distance between two pads (`PcbSummary`, issue #1003); `400` for a part or pad the board has none of |
 //! | `POST /api/pcb/regenerate` | one module placed again with every other part held (issue #825): the proposal, the edit that makes it (sent to `edit` as any edit, one step of undo), where its parts go, the nets routed again, and the findings and totals before and after; nothing is written; while it runs the socket carries `progress` with the task `regenerate`; `409` for a stale stamp, `422` with the reason when it is refused |
 //! | `POST /api/pcb/routes` | an edit of the routes file (draw or move a track or via, delete, lock, unlock, put a record back for undo), as `netsmith routes` makes it (the changes may be of several nets: a track drawn with shoved copper), answered with the record of each net it changed before and after; `409` for a stale stamp, `422` with the reason when it is refused |
 //! | `GET /api/pcb/pours?board=` | the fill of the placed board's pours, planes and routes-file zones, by copper layer, as SVG paths (`PcbPours`), for the 2D view to draw under the copper; asked after the scene, since filling takes longer than placing |
@@ -164,6 +165,7 @@ const NEEDS_ANALYSIS: &[&str] = &[
     "/api/pcb/routes",
     "/api/pcb/walk",
     "/api/pcb/findings",
+    "/api/pcb/summary",
     "/api/pcb/drc",
     "/api/build",
     "/api/fab",
@@ -363,6 +365,7 @@ fn router(state: Shared) -> Router {
         .route("/api/pcb/routes", post(pcb_routes))
         .route("/api/pcb/walk", post(pcb_walk))
         .route("/api/pcb/findings", get(pcb_findings))
+        .route("/api/pcb/summary", get(pcb_summary))
         .route("/api/pcb/drc", post(pcb_drc))
         .route("/api/build", post(build))
         .route("/api/build/cancel", post(cancel_build))
@@ -897,6 +900,51 @@ async fn pcb_findings(
 ) -> Result<Json<crate::api::PcbFindings>, ApiError> {
     let board = param(&q, "board")?;
     json(move || s.backend.pcb_findings(&board)).await
+}
+
+/// How far a `near` part's neighbours are listed when the request has no `within`, in mm
+/// (`layout summary --within`'s default).
+const SUMMARY_WITHIN: f64 = 2.0;
+
+async fn pcb_summary(
+    State(s): State<Shared>,
+    Query(q): Query<Vec<(String, String)>>,
+) -> Result<Json<crate::api::PcbSummary>, ApiError> {
+    let mut board = None;
+    let mut near = Vec::new();
+    let mut within = SUMMARY_WITHIN;
+    let mut between = Vec::new();
+    for (key, value) in q {
+        match key.as_str() {
+            "board" => board = Some(value),
+            "near" => near.push(value),
+            "within" => {
+                within = value
+                    .parse::<f64>()
+                    .ok()
+                    .filter(|w| w.is_finite() && *w >= 0.0)
+                    .ok_or_else(|| {
+                        ApiError::bad_request(format!(
+                            "`within` is a distance in mm, 0 or more, not `{value}`"
+                        ))
+                    })?;
+            }
+            "between" => match value.split_once(',') {
+                Some((a, b)) if !a.is_empty() && !b.is_empty() && !b.contains(',') => {
+                    between.push((a.to_string(), b.to_string()));
+                }
+                _ => {
+                    return Err(ApiError::bad_request(format!(
+                        "`between` is two pads, `PART.PAD,PART.PAD`, not `{value}`"
+                    )));
+                }
+            },
+            _ => {}
+        }
+    }
+    let board =
+        board.ok_or_else(|| ApiError::bad_request("the request needs `board`".to_string()))?;
+    json(move || s.backend.pcb_summary(&board, &near, within, &between)).await
 }
 
 async fn pcb_drc(

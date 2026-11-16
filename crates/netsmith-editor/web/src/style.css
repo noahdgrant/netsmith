@@ -1132,3 +1132,15 @@ h1, h2, h3 { font-weight: var(--fw-semibold); }
   .tabbar.sections .tab.active .tab-label { display: inline; }
   .pane-btn span { display: none; }
 }
+
+/* The Summary tab of the PCB view (issue 1003). */
+.summary { display: flex; flex-direction: column; min-height: 0; flex: 1; }
+.summary-line { padding: 0.25rem 0.75rem; font-size: var(--fs-sm); color: var(--text-muted); overflow-wrap: anywhere; }
+.summary-line b { color: var(--text); font-weight: var(--fw-medium); }
+.summary-line.clickable { cursor: pointer; }
+.summary-line.clickable:hover { background: var(--hover); }
+.summary-line .chip { margin-left: 0.375rem; cursor: pointer; }
+.summary-line .tag { margin-left: 0.375rem; }
+.summary-line input[type='number'] { width: 4.5rem; }
+.summary-pads { display: flex; flex-wrap: wrap; gap: 0.375rem; padding: 0.25rem 0.75rem; }
+.summary-pads .filter { width: 5.5rem; }

@@ -62,6 +62,10 @@ pub struct Summary {
     /// The parts near each part asked about, with [`Summary::neighbours`]; left out otherwise.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub neighbours: Vec<Neighbours>,
+    /// The distance between each pair of pads asked about, with [`Summary::pad_distances`];
+    /// left out otherwise.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub pads: Vec<PadDistance>,
     /// What the placement check finds, as `fab` says it.
     pub findings: Vec<String>,
 }
@@ -184,6 +188,29 @@ pub struct Neighbour {
     pub gap: f64,
 }
 
+/// The distance between two pads, named `PART.PAD` (the part's path or designator, then the
+/// pad's number: `stage.r1.2`, `R1.2`).
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct PadDistance {
+    /// The pads, as the designator and the number: `R1.2`.
+    pub from: String,
+    pub to: String,
+    /// The net each pad is on, when it is on one.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub from_net: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub to_net: Option<String>,
+    /// From the centre of the first pad to the centre of the second, in mm.
+    pub distance: f64,
+    /// The way from the first pad's centre to the second's, in the layout file's frame (x to
+    /// the right, y down), in mm.
+    pub dx: f64,
+    pub dy: f64,
+    /// The space between the two pads' boxes, in mm: 0 where they touch or overlap. It does
+    /// not look at the face, so two pads on opposite faces are measured as if on one.
+    pub gap: f64,
+}
+
 /// A number to 0.01 (a hundredth of a mm, of a mm2, or of a fill), which keeps the document
 /// small.
 fn round(v: f64) -> f64 {
@@ -279,6 +306,7 @@ impl Summary {
             decoupling,
             nets,
             neighbours: Vec::new(),
+            pads: Vec::new(),
             findings: board
                 .check_placement()
                 .iter()
@@ -325,6 +353,54 @@ impl Summary {
                 face: face_word(part.side),
                 within,
                 near,
+            });
+        }
+        Ok(self)
+    }
+
+    /// The summary with the distance between each pair of pads of `pairs`, each pad named
+    /// `PART.PAD`: the part by its path or its designator, then the pad's number after the last
+    /// dot (`stage.r1.2`, `R1.2`). Where a footprint has several pads with the number, the
+    /// nearest pair of the two is measured. A part the board has no part by, or a pad the part
+    /// has none of, is the error, with the nearest names or the part's pad numbers.
+    pub fn pad_distances(
+        mut self,
+        board: &Board,
+        pairs: &[(String, String)],
+    ) -> Result<Summary, String> {
+        for (a, b) in pairs {
+            let (ra, na, pa) = find_pads(board, a)?;
+            let (rb, nb, pb) = find_pads(board, b)?;
+            let mut best: Option<(f64, Pt, Pt, f64)> = None;
+            for (ca, ba) in &pa {
+                for (cb, bb) in &pb {
+                    let d = ca.distance(*cb);
+                    if best.is_none_or(|(m, ..)| d < m) {
+                        best = Some((d, *ca, *cb, rect_gap(ba, bb)));
+                    }
+                }
+            }
+            let (distance, ca, cb, gap) = best.expect("find_pads gives at least one pad");
+            let net_of = |refdes: &str, number: &str| {
+                board
+                    .nets
+                    .iter()
+                    .find(|n| {
+                        n.pads
+                            .iter()
+                            .any(|p| p.refdes == refdes && p.number == number)
+                    })
+                    .map(|n| n.name.clone())
+            };
+            self.pads.push(PadDistance {
+                from: format!("{ra}.{na}"),
+                to: format!("{rb}.{nb}"),
+                from_net: net_of(&ra, &na),
+                to_net: net_of(&rb, &nb),
+                distance: round(distance),
+                dx: round(cb.x - ca.x),
+                dy: round(cb.y - ca.y),
+                gap: round(gap),
             });
         }
         Ok(self)
@@ -396,11 +472,59 @@ impl Summary {
             }
             text.push('\n');
         }
+        for p in &self.pads {
+            text += &format!(
+                "pads {} to {}: {} mm between centres (dx {}, dy {}), {} mm between the copper",
+                p.from, p.to, p.distance, p.dx, p.dy, p.gap
+            );
+            let nets = match (&p.from_net, &p.to_net) {
+                (Some(a), Some(b)) if a == b => format!(", both on {a}"),
+                (Some(a), Some(b)) => format!(", on {a} and {b}"),
+                (Some(a), None) => format!(", {} on {a}", p.from),
+                (None, Some(b)) => format!(", {} on {b}", p.to),
+                (None, None) => String::new(),
+            };
+            text += &nets;
+            text.push('\n');
+        }
         for f in &self.findings {
             text += &format!("finding: {f}\n");
         }
         text
     }
+}
+
+/// The designator and pad number a `PART.PAD` names, with the centre and box of each pad.
+type FoundPads = (String, String, Vec<(Pt, Rect)>);
+
+/// The part and the pads a `PART.PAD` names: the part's designator, the pad's number, and the
+/// centre and box of every pad of the footprint with the number.
+fn find_pads(board: &Board, name: &str) -> Result<FoundPads, String> {
+    let Some((part, number)) = name.rsplit_once('.') else {
+        return Err(format!(
+            "`{name}` is not a pad: name it `PART.PAD`, the part's path or designator, a dot and the pad's number (`R1.2`)"
+        ));
+    };
+    let Some(placed) = board
+        .parts
+        .iter()
+        .find(|p| p.path == part || p.refdes == part)
+    else {
+        return Err(no_part(board, part));
+    };
+    let pads: Vec<(Pt, Rect)> = placed
+        .footprint
+        .pads_numbered(number)
+        .map(|p| (placed.pad_centre(p), placed.pad_bounds(p)))
+        .collect();
+    if pads.is_empty() {
+        return Err(format!(
+            "the part `{}` has no pad `{number}`; its pads are: {}",
+            placed.refdes,
+            placed.footprint.pad_numbers().join(", ")
+        ));
+    }
+    Ok((placed.refdes.clone(), number.to_string(), pads))
 }
 
 /// The error for a name the board has no part by, with the nearest names.
@@ -908,6 +1032,58 @@ mod tests {
                 .moved
                 .is_empty()
         );
+    }
+
+    #[test]
+    fn two_pads_are_measured_centre_to_centre_and_copper_to_copper() {
+        let board = led_board();
+        let (a, b) = {
+            let net = board.nets.iter().find(|n| n.pads.len() == 2).unwrap();
+            let p = |i: usize| format!("{}.{}", net.pads[i].refdes, net.pads[i].number);
+            (p(0), p(1))
+        };
+        let summary = Summary::of(&board)
+            .pad_distances(&board, &[(a.clone(), b.clone())])
+            .unwrap();
+        let d = &summary.pads[0];
+        assert_eq!((d.from.as_str(), d.to.as_str()), (a.as_str(), b.as_str()));
+        assert_eq!(d.from_net, d.to_net);
+        assert!(d.from_net.is_some());
+        assert!((d.distance - d.dx.hypot(d.dy)).abs() < 0.02, "{d:?}");
+        assert!(d.gap <= d.distance, "{d:?}");
+        // The other way round: the same distance, the way reversed.
+        let back = Summary::of(&board)
+            .pad_distances(&board, &[(b, a)])
+            .unwrap();
+        assert_eq!(back.pads[0].distance, d.distance);
+        assert_eq!(back.pads[0].dx, round(-d.dx));
+        // A pad is no distance from itself.
+        let same = Summary::of(&board)
+            .pad_distances(&board, &[(d.from.clone(), d.from.clone())])
+            .unwrap();
+        assert_eq!(same.pads[0].distance, 0.0);
+    }
+
+    #[test]
+    fn a_pad_is_named_by_path_or_designator_and_a_wrong_name_is_refused() {
+        let board = led_board();
+        let part = &board.parts[0];
+        let number = part.footprint.pad_numbers()[0].to_string();
+        let by_path = format!("{}.{number}", part.path);
+        let by_refdes = format!("{}.{number}", part.refdes);
+        let measure = |a: &str, b: &str| {
+            Summary::of(&board).pad_distances(&board, &[(a.to_string(), b.to_string())])
+        };
+        assert_eq!(measure(&by_path, &by_refdes).unwrap().pads[0].distance, 0.0);
+        let e = measure(&by_refdes, "nothing.1").unwrap_err();
+        assert!(e.contains("no part `nothing`"), "{e}");
+        let e = measure(&by_refdes, &format!("{}.999", part.refdes)).unwrap_err();
+        assert!(
+            e.contains("has no pad `999`") && e.contains("its pads are"),
+            "{e}"
+        );
+        let e = measure(&by_refdes, "R1").unwrap_err();
+        assert!(e.contains("is not a pad"), "{e}");
     }
 
     #[test]

@@ -50,7 +50,7 @@ pub enum Command {
     Check(CheckArgs),
     /// Place the board and sum up the placement: wire, decoupling, modules, area per face, nets, free space.
     #[command(
-        after_long_help = "The board is placed as `board3d` places it (the layout file and the physical file read, nothing written) and summed up in numbers the placer and the checks use, in the layout file's frame (mm from the outline's top left corner, y down): the totals (`hpwl`, the half perimeter wire length; `ratsnest`; `crossings`; `decoupling_mean` and `decoupling_max`); for each face the area the courtyards take against what the outline gives inside the edge wall (`usable`, `courtyards`, `fill`, `free`) and its largest free rectangles; for each module instance of two parts or more its box, the area its courtyards take, its `spread` (the placer's cohesion term: the half perimeter of the box round its parts' courtyard centres) and its `intruders` (parts of other modules whose courtyard centre is in that box); each decoupling capacitor's distance to the pins it serves; for each net its half perimeter, its crossings with other nets and its longest ratsnest line; and the placement check's findings. `--near PATH` adds the parts within `--within` mm (courtyard to courtyard, on either face) of a part, nearest first. `--format json` prints one JSON document on one line; the language guide's \"The layout file\" has its fields. The exit code is 0 when the summary is printed, also with findings, and 1 when the board does not build or place."
+        after_long_help = "The board is placed as `board3d` places it (the layout file and the physical file read, nothing written) and summed up in numbers the placer and the checks use, in the layout file's frame (mm from the outline's top left corner, y down): the totals (`hpwl`, the half perimeter wire length; `ratsnest`; `crossings`; `decoupling_mean` and `decoupling_max`); for each face the area the courtyards take against what the outline gives inside the edge wall (`usable`, `courtyards`, `fill`, `free`) and its largest free rectangles; for each module instance of two parts or more its box, the area its courtyards take, its `spread` (the placer's cohesion term: the half perimeter of the box round its parts' courtyard centres) and its `intruders` (parts of other modules whose courtyard centre is in that box); each decoupling capacitor's distance to the pins it serves; for each net its half perimeter, its crossings with other nets and its longest ratsnest line; and the placement check's findings. `--near PATH` adds the parts within `--within` mm (courtyard to courtyard, on either face) of a part, nearest first. `--between PART.PAD PART.PAD` (the part's path or designator, a dot and the pad's number: `U1.3 stage.c1.1`; may be given again) adds the distance between two pads, as `pads`: `distance` between their centres, its `dx` and `dy` (from the first pad to the second), and the `gap` between their copper (0 where they touch), with the net each is on. `--format json` prints one JSON document on one line; the language guide's \"The layout file\" has its fields. The exit code is 0 when the summary is printed, also with findings, and 1 when the board does not build or place."
     )]
     Summary(SummaryArgs),
     /// Place the board with two layout files and say what moved and which findings appeared or went.
@@ -189,6 +189,9 @@ pub struct SummaryArgs {
     /// How far from a `--near` part another may be and be listed, courtyard to courtyard, in mm.
     #[arg(long, value_name = "MM", default_value_t = 2.0)]
     pub within: f64,
+    /// Two pads, `PART.PAD PART.PAD` (`U1.3 stage.c1.1`), whose distance to give; may be given again.
+    #[arg(long = "between", num_args = 2, value_names = ["PAD", "PAD"])]
+    pub between: Vec<String>,
     #[command(flatten)]
     pub placing: common::Placing,
     /// Text for a person, or one JSON document on stdout.
@@ -556,7 +559,16 @@ fn summary(args: &SummaryArgs) -> ExitCode {
         |placed| {
             placed
                 .with_board(|_, board| {
-                    netsmith_pcb::Summary::of(board).neighbours(board, &args.near, args.within)
+                    let pairs: Vec<(String, String)> = args
+                        .between
+                        .as_chunks::<2>()
+                        .0
+                        .iter()
+                        .map(|p| (p[0].clone(), p[1].clone()))
+                        .collect();
+                    netsmith_pcb::Summary::of(board)
+                        .neighbours(board, &args.near, args.within)?
+                        .pad_distances(board, &pairs)
                 })
                 .and_then(|done| done.map_err(|e| format!("error: {e}\n")))
         },
@@ -824,6 +836,13 @@ mod tests {
                 command: Command::Summary(SummaryArgs { ref near, within, format: common::Format::Json, .. })
             })) if near == &["a.b", "C1"] && within == 3.5
         ));
+        assert!(matches!(
+            parse(&["layout", "summary", "--between", "U1.3", "a.c1.1", "--between", "R1.1", "R1.2"]),
+            Ok(Top::Layout(Args {
+                command: Command::Summary(SummaryArgs { ref between, .. })
+            })) if between == &["U1.3", "a.c1.1", "R1.1", "R1.2"]
+        ));
+        assert!(parse(&["layout", "summary", "--between", "U1.3"]).is_err());
         assert!(matches!(
             parse(&["layout", "summary"]),
             Ok(Top::Layout(Args {

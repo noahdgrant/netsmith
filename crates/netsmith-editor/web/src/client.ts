@@ -26,6 +26,7 @@ import type {
   PcbWalk,
   PcbWalked,
   PcbFindings,
+  PcbSummary,
   PcbPours,
   PcbReport,
   PcbScene,
@@ -191,6 +192,8 @@ export const api = {
   /** Move a request to another pin of its part that offers its function: the entry's `pin` and `source` lines. `ApiFailure` 422 says why not. */
   pinMove: (edit: PinMove) => post<PinWritten>('/api/pins/move', edit),
   pcbFindings: (board: string) => getJson<PcbFindings>(`/api/pcb/findings?${q({ board })}`),
+  /** The placed board summed up (`netsmith layout summary`): `near`, `within` and `between` as `summaryQuery` writes them. `ApiFailure` 400 says which part or pad the board has none of. */
+  pcbSummary: (query: string) => getJson<PcbSummary>(`/api/pcb/summary?${query}`),
   pcbDrc: (board: string) => post<PcbFindings>(`/api/pcb/drc?${q({ board })}`),
   cancelRoute: (): Promise<void> =>
     held(async () => {

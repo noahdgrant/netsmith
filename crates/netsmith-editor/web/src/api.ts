@@ -1405,6 +1405,140 @@ routed: boolean,
  */
 findings: Array<PcbFinding>, kicad: KicadState, kicadNote: string, };
 
+export type SummaryBox = { min: [number, number], max: [number, number], };
+
+export type SummaryTotals = { 
+/**
+ * The sum over the nets of the half perimeter of the box round the net's pads, in mm.
+ */
+hpwl: number, 
+/**
+ * The length of the ratsnest, in mm.
+ */
+ratsnest: number, 
+/**
+ * The pairs of ratsnest lines of different nets that cross.
+ */
+crossings: number, 
+/**
+ * The mean and the greatest distance of a decoupling capacitor from its part, in mm.
+ */
+decouplingMean: number, decouplingMax: number, };
+
+export type SummaryFace = { 
+/**
+ * `top` or `bottom`.
+ */
+face: string, parts: number, 
+/**
+ * The area a courtyard may take, in mm2.
+ */
+usable: number, 
+/**
+ * The area the parts' courtyards take, in mm2.
+ */
+courtyards: number, 
+/**
+ * `courtyards` over `usable`.
+ */
+fill: number, 
+/**
+ * The usable area no part takes, in mm2.
+ */
+free: number, 
+/**
+ * The side of a cell of the grid the areas are measured on, in mm.
+ */
+cell: number, 
+/**
+ * The largest empty rectangles, largest first.
+ */
+largestFree: Array<SummaryBox>, };
+
+export type SummaryModule = { path: string, 
+/**
+ * The parts' designators, in board order.
+ */
+parts: Array<string>, 
+/**
+ * The box round the parts' courtyards.
+ */
+box: SummaryBox, boxArea: number, courtyards: number, 
+/**
+ * The half perimeter of the box round the parts' courtyard centres, in mm.
+ */
+spread: number, 
+/**
+ * The parts of other modules whose courtyard centre is inside that box, by designator.
+ */
+intruders: Array<string>, };
+
+export type SummaryDecoupling = { cap: string, capPath: string, part: string, 
+/**
+ * The mean distance of the capacitor's pads from the part's nearest pin pad on their net, in mm.
+ */
+distance: number, };
+
+export type SummaryLine = { from: string, to: string, length: number, };
+
+export type SummaryNet = { name: string, pads: number, hpwl: number, crossings: number, 
+/**
+ * Its longest ratsnest line; left out for a net all of whose lines go to its plane.
+ */
+longest?: SummaryLine, };
+
+export type SummaryNeighbour = { part: string, path: string, face: string, 
+/**
+ * The space between the two courtyards, in mm: 0 where they touch or overlap.
+ */
+gap: number, };
+
+export type SummaryNeighbours = { part: string, path: string, face: string, within: number, near: Array<SummaryNeighbour>, };
+
+export type SummaryPads = { 
+/**
+ * The pads, `R1.2`.
+ */
+from: string, to: string, fromNet?: string, toNet?: string, 
+/**
+ * Between the pads' centres, in mm.
+ */
+distance: number, 
+/**
+ * From the first pad to the second, in mm.
+ */
+dx: number, dy: number, 
+/**
+ * Between the pads' copper, in mm: 0 where they touch.
+ */
+gap: number, };
+
+export type PcbSummary = { board: string, 
+/**
+ * The layout stamp of the placement this is of, as `PcbScene.layoutStamp` has it.
+ */
+layoutStamp: string, width: number, height: number, 
+/**
+ * The space the placer keeps between a courtyard and the edge, in mm.
+ */
+edgeWall: number, parts: number, totals: SummaryTotals, 
+/**
+ * The top face, then the bottom.
+ */
+faces: Array<SummaryFace>, modules: Array<SummaryModule>, decoupling: Array<SummaryDecoupling>, nets: Array<SummaryNet>, 
+/**
+ * The parts near each `near` part of the request.
+ */
+neighbours: Array<SummaryNeighbours>, 
+/**
+ * The distance of each `between` pair of the request.
+ */
+pads: Array<SummaryPads>, 
+/**
+ * What the placement check finds, as `fab` says it.
+ */
+findings: Array<string>, };
+
 export type BuildReport = { ok: boolean, written: Array<string>, output: string, 
 /**
  * How long it took, in milliseconds.
