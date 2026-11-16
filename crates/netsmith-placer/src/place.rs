@@ -706,10 +706,7 @@ pub(crate) fn arrange_best(
     // Share the parts that nobody placed between the faces, the largest first, each to the
     // face with the least area so far. Connectors, parts with holes and parts the layout
     // fixes stay as they are.
-    let area = |p: &Placed| {
-        let c = p.courtyard();
-        (c.width() + GAP_X) * (c.height() + GAP_Y)
-    };
+    let area = |i: usize, p: &Placed| face_load(p, fixed[i], fit, options);
     let free = |i: usize, p: &Placed| {
         !fixed[i] && !options.sides.contains_key(&p.refdes) && !is_connector(p) && !is_through(p)
     };
@@ -742,15 +739,10 @@ pub(crate) fn arrange_best(
     }
     restore(parts, start);
     let mut load = [0.0f64; 2];
-    for p in parts
-        .iter()
-        .enumerate()
-        .filter(|(i, p)| !free(*i, p))
-        .map(|(_, p)| p)
-    {
-        load[usize::from(p.side == Side::Back)] += area(p);
+    for (i, p) in parts.iter().enumerate().filter(|(i, p)| !free(*i, p)) {
+        load[usize::from(p.side == Side::Back)] += area(i, p);
     }
-    movable.sort_by(|&a, &b| area(&parts[b]).total_cmp(&area(&parts[a])));
+    movable.sort_by(|&a, &b| area(b, &parts[b]).total_cmp(&area(a, &parts[a])));
     for i in movable {
         let mut face = usize::from(load[1] < load[0]);
         // A face whose height limit leaves no room for the part is not its to take, when the
@@ -761,7 +753,7 @@ pub(crate) fn arrange_best(
         {
             face = 1 - face;
         }
-        load[face] += area(&parts[i]);
+        load[face] += area(i, &parts[i]);
         parts[i].side = faces[face];
     }
     arrangement = arrange_free(parts, &fixed, options);
@@ -778,6 +770,20 @@ pub(crate) fn arrange_best(
             retries: true,
         },
     )
+}
+
+/// What a part adds to the load of its face when the free parts are shared between the faces:
+/// its courtyard and the gaps around it. A part the layout fixes that the person said hangs
+/// over an edge counts only as its courtyard clipped to the outline of the size `fit`, the
+/// part of it that takes room on the board, as [`fixed_needs`] counts it. A part that is not
+/// fixed has no known place against the outline, so it counts whole.
+fn face_load(part: &Placed, fixed: bool, fit: (f64, f64), options: &PlaceOptions) -> f64 {
+    let mut court = part.courtyard();
+    if fixed && options.overhang.contains_key(&part.refdes) {
+        let outline = Rect::new(ORIGIN, Pt::new(ORIGIN.x + fit.0, ORIGIN.y + fit.1));
+        court = netsmith_pcb::clip_to_outline(&court, &outline);
+    }
+    (court.width() + GAP_X) * (court.height() + GAP_Y)
 }
 
 /// Turn the part whose courtyard is too big for the outline to fit in the turn it has, and
@@ -2186,6 +2192,44 @@ mod tests {
             (needs.1 - (60.0 + Rules::DEFAULT_EDGE_WALL)).abs() < 1e-9,
             "{needs:?}"
         );
+    }
+
+    #[test]
+    fn the_face_load_of_a_fixed_part_that_hangs_over_is_its_courtyard_clipped_to_the_outline() {
+        let board = board_of(vec![
+            part("J1", "Header1x2", None),
+            part("R1", "Resistor", Some("0402")),
+        ]);
+        let mut j1 = board.parts[0].clone();
+        let c = j1.courtyard();
+        let at = j1.at;
+        // The courtyard's bottom is 3 mm past the bottom edge of a 35 x 60 mm outline.
+        j1.at = Pt::new(
+            at.x + ORIGIN.x + 5.0 - c.min.x,
+            at.y + ORIGIN.y + 63.0 - c.max.y,
+        );
+        let court = j1.courtyard();
+        let fit = (35.0, 60.0);
+        let whole = (court.width() + GAP_X) * (court.height() + GAP_Y);
+        let clipped = (court.width() + GAP_X) * (court.height() - 3.0 + GAP_Y);
+        let mut options = PlaceOptions {
+            fit: Some(fit),
+            ..PlaceOptions::default()
+        };
+        // Unstated, or not fixed, the whole courtyard counts.
+        assert!((face_load(&j1, true, fit, &options) - whole).abs() < 1e-9);
+        let mut edges = netsmith_pcb::Edges::default();
+        edges.set(netsmith_pcb::Edge::Bottom);
+        options.overhang.insert(
+            "J1".into(),
+            Overhang::Stated {
+                edges,
+                says: String::new(),
+            },
+        );
+        assert!((face_load(&j1, false, fit, &options) - whole).abs() < 1e-9);
+        // Stated and fixed, only the part on the board counts.
+        assert!((face_load(&j1, true, fit, &options) - clipped).abs() < 1e-9);
     }
 
     #[test]
