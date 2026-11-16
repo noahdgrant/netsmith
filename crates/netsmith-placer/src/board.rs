@@ -109,6 +109,38 @@ pub fn board_from_design_placed(
     Ok(u.into_board(design, outline, corner_radius))
 }
 
+/// The board as the placer ended with it when it refused with `error` (the parts do not fit,
+/// or a seed's closest try): every part where [`DoesNotFit::parts`] says it ended, in the outline
+/// it was given. Nothing is placed again. A caller that shows a layout file's conflicts (the
+/// editor, `board3d`, issue #779) shows this board with the placement check's findings instead of
+/// no board; `fab` still refuses it.
+pub fn board_where_ended(
+    design: &Design,
+    mapping: &Mapping,
+    library: &FootprintLibrary,
+    placement: &PlaceOptions,
+    error: &DoesNotFit,
+) -> Result<Board, BoardError> {
+    let mut u = Board::unplaced(design, mapping, library, placement)?;
+    for p in &mut u.parts {
+        if let Some(state) = error.parts.iter().find(|s| s.part == p.refdes) {
+            p.at = ORIGIN + Pt::new(state.at.0, state.at.1);
+            p.rotation = state.rotation;
+            p.side = state.side;
+        }
+    }
+    let outline = Rect::new(
+        ORIGIN,
+        Pt::new(ORIGIN.x + error.outline.0, ORIGIN.y + error.outline.1),
+    );
+    let corner_radius = design
+        .features
+        .outline
+        .as_ref()
+        .map_or(0.0, |o| o.corner_radius);
+    Ok(u.into_board(design, outline, corner_radius))
+}
+
 /// The refusal with the requirements of the physical file that are not met where the placer
 /// ended with the parts, and the lines that cannot all hold (ADR 0045).
 /// `base` is what the layout file and the caller said, before the requirements were turned

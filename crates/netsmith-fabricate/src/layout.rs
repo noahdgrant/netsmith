@@ -576,6 +576,91 @@ pub fn place(
     })
 }
 
+/// The board of a placement the layout file makes the placer refuse, with the layout file's
+/// places put on it: what the editor and `board3d` show, with its findings, in place of no board
+/// (issue #779). Two refusals have one:
+///
+/// - a lock that breaks a requirement of the physical file (a part dragged out of its window):
+///   the parts so locked are placed as if free and then put where the file locks them, so the
+///   board shows them there and the requirement they break is measured on it;
+/// - the parts do not fit with the locks (two locks whose courtyards overlap, locks that leave the
+///   free parts no room): the board is where the placer ended.
+///
+/// `None` where there is no such board: the layout file puts no part of the board (the refusal
+/// is the design's), or the failure is of another kind (a footprint, a process, a requirement
+/// proved before placing, courtyards that are more than the outline holds, so that the placer did
+/// not try).
+pub fn where_ended(
+    design: &netsmith_core::Design,
+    layout: Option<&(Layout, String)>,
+    libraries: &netsmith_pipeline::Libraries,
+    lines_warn: bool,
+    failure: &PlaceFailure,
+) -> Option<Ended> {
+    let (file_layout, file) = layout?;
+    if file_layout
+        .boards
+        .get(&design.name)
+        .is_none_or(|b| b.parts.is_empty())
+    {
+        return None;
+    }
+    let mut options = netsmith_pcb::place_options(design, Some(file_layout));
+    options.lines_warn = lines_warn;
+    let (mapping, footprints) = (&libraries.mapping, &libraries.footprints);
+    let laid_out = |mut board: netsmith_pcb::Board, options: netsmith_pcb::PlaceOptions| {
+        netsmith_pcb::apply_layout(&mut board, file_layout, file).ok()?;
+        Some(Ended { board, options })
+    };
+    let ended = |error: &netsmith_pcb::DoesNotFit, options: netsmith_pcb::PlaceOptions| {
+        // A refusal before the placer tried has no place where it ended.
+        error.ended.as_ref()?;
+        let board =
+            netsmith_placer::board_where_ended(design, mapping, footprints, &options, error)
+                .ok()?;
+        laid_out(board, options)
+    };
+    match failure {
+        PlaceFailure::Board(netsmith_pcb::BoardError::DoesNotFit(e)) => ended(e, options),
+        PlaceFailure::Unplaced { error, .. } => ended(error, options),
+        PlaceFailure::Board(netsmith_pcb::BoardError::Constraints(_)) => {
+            let loaded = netsmith_pcb::Board::load(design, mapping, footprints, &options).ok()?;
+            let broken = netsmith_pcb::constraint_locked_breaks(design, &loaded.parts, &options);
+            if broken.is_empty() {
+                return None;
+            }
+            for (path, _) in &broken {
+                if let Some(part) = loaded.parts.iter().find(|p| &p.path == path) {
+                    options.fixed.remove(&part.refdes);
+                }
+            }
+            match netsmith_placer::board_from_design_placed(design, mapping, footprints, &options) {
+                Ok(board) => laid_out(board, options),
+                Err(netsmith_pcb::BoardError::DoesNotFit(e)) => ended(&e, options),
+                Err(_) => None,
+            }
+        }
+        PlaceFailure::Board(_) | PlaceFailure::Layout(_) => None,
+    }
+}
+
+/// A board of [`where_ended`] and the options it was placed with, which the requirements are
+/// explained against.
+pub struct Ended {
+    pub board: netsmith_pcb::Board,
+    pub options: netsmith_pcb::PlaceOptions,
+}
+
+impl Ended {
+    /// What the requirements of the physical file say of the board as it stands: the
+    /// requirements not met and the lines and locks that cannot all hold.
+    pub fn explain(&self, design: &netsmith_core::Design) -> netsmith_pcb::RequirementReport {
+        self.board
+            .explain_requirements(design, &self.options)
+            .unwrap_or_default()
+    }
+}
+
 /// Write `seed` as the seed of `board` in the layout file at `file`, keeping the rest of what
 /// it holds; the file is made, with that alone, if it does not exist.
 pub fn write_seed(file: &Path, board: &str, seed: u64) -> Result<(), String> {

@@ -96,6 +96,15 @@ pub struct Finding {
     /// place (#817).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub does_not_fit: Option<Box<netsmith_pcb::FitReport>>,
+    /// The sets of lines of the physical file and locks of the layout file that cannot all
+    /// hold, each with its kind, the lines, the parts with the box each courtyard lies within,
+    /// and the overlap (#779).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub conflicts: Vec<netsmith_pcb::Conflict>,
+    /// The faults the placement check found where the placer ended, each with its kind, the
+    /// parts with their courtyards, and its numbers (#779).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub placement: Vec<netsmith_pcb::PlacementFault>,
 }
 
 impl Finding {
@@ -112,6 +121,8 @@ impl Finding {
             message: message.into(),
             requirements: Vec::new(),
             does_not_fit: None,
+            conflicts: Vec::new(),
+            placement: Vec::new(),
         }
     }
 
@@ -138,7 +149,6 @@ pub fn of_problems(problems: &[Problem]) -> Vec<Finding> {
     problems
         .iter()
         .map(|p| Finding {
-            severity: Severity::Error,
             code: stage_code(p.stage).to_string(),
             board: p.board.clone(),
             path: p.path.clone(),
@@ -146,8 +156,7 @@ pub fn of_problems(problems: &[Problem]) -> Vec<Finding> {
             line: p.at.as_ref().map(|a| a.line),
             column: p.at.as_ref().map(|a| a.column),
             message: p.message.clone(),
-            requirements: Vec::new(),
-            does_not_fit: None,
+            ..Finding::plain(Severity::Error, "", "")
         })
         .collect()
 }

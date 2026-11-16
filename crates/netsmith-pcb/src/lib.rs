@@ -36,6 +36,7 @@
 
 mod board;
 mod body3d;
+mod conflict;
 mod constraints;
 mod copper;
 mod explain;
@@ -76,6 +77,9 @@ pub use body3d::{
     Axis as BodyAxis, Material as BodyMaterial, Primitive as BodyPrimitive, Solid as BodySolid,
     header_of_file, package_of, package_shape, pin_tails,
 };
+pub use conflict::{
+    Conflict, ConflictArea, ConflictLine, ConflictOutline, EdgePast, PartBox, PlacementFault, Span,
+};
 pub use constraints::{
     PartWindow, PlanOffset, Want, axis_of as constraint_axis_of,
     locked_breaks as constraint_locked_breaks, offset as constraint_offset, part_windows,
@@ -89,7 +93,7 @@ pub use explain::{
     Fault, Precheck, RequirementReport, before_placing, explain as explain_requirements,
 };
 pub use export::{PATH_PROPERTY, kicad_pcb, kicad_pro};
-pub use fit_report::FitReport;
+pub use fit_report::{FitReport, PartRef, Size};
 pub use footprint::{
     Drill, Footprint, FootprintError, FootprintLibrary, Graphic, Layer, Mount, Pad, PadKind,
     PadShape, Shape, SilkText,

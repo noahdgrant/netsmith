@@ -406,6 +406,12 @@ pub struct FabFailure {
     /// The parts that do not fit the outline, as data (#817), when that is why the run
     /// stopped.
     pub does_not_fit: Option<Box<netsmith_pcb::FitReport>>,
+    /// The sets of lines and locks that cannot all hold, as data (#779), when that is why the
+    /// run stopped: proved before placing, or where the placer ended.
+    pub conflicts: Box<[netsmith_pcb::Conflict]>,
+    /// The faults of the placement check where the placer ended, as data (#779), when they are
+    /// why the run stopped.
+    pub placement: Box<[netsmith_pcb::PlacementFault]>,
 }
 
 impl From<String> for FabFailure {
@@ -661,6 +667,8 @@ pub struct PrecheckReport {
     pub errors: Vec<String>,
     /// What is only suspicious.
     pub warnings: Vec<String>,
+    /// The lines that cannot all hold among `errors`, as data (#779).
+    pub conflicts: Vec<netsmith_pcb::Conflict>,
 }
 
 /// The pre-check of one built board with the layout file's locks, if any. A board the
@@ -686,6 +694,7 @@ pub fn precheck_board(
     ) {
         Ok(found) => {
             report.errors = found.errors();
+            report.conflicts = found.proofs;
             report.warnings = found.warnings;
         }
         Err(e @ netsmith_pcb::BoardError::Constraints(_)) => report.errors = vec![e.to_string()],
@@ -709,6 +718,11 @@ fn does_not_fit(text: String, e: &netsmith_pcb::DoesNotFit) -> FabFailure {
             .flat_map(|r| r.misses.iter().cloned())
             .collect(),
         does_not_fit: Some(Box::new(e.report())),
+        conflicts: e
+            .requirements
+            .iter()
+            .flat_map(|r| r.proofs.iter().cloned())
+            .collect(),
         ..FabFailure::default()
     }
 }
@@ -920,12 +934,11 @@ fn fab_board(
             say(format!("{}: warning: {warning}", built.label()));
         }
         if !precheck.errors.is_empty() {
-            return Err(precheck
-                .errors
-                .into_iter()
-                .map(fail)
-                .collect::<String>()
-                .into());
+            return Err(FabFailure {
+                text: precheck.errors.into_iter().map(fail).collect(),
+                conflicts: precheck.conflicts.into(),
+                ..FabFailure::default()
+            });
         }
         say(format!(
             "{}: placing {} parts",
@@ -983,11 +996,8 @@ fn fab_board(
             options,
             say,
         )?;
-        let problems: Vec<String> = board
-            .check_placement()
-            .iter()
-            .map(ToString::to_string)
-            .collect();
+        let faults = board.placement_faults();
+        let problems: Vec<String> = faults.iter().map(|f| f.text.clone()).collect();
         // When the placer could not meet the requirements of the physical file, the faults
         // above are its symptoms: say first which lines are not met and which cannot all hold,
         // and keep the same list in `placement-failure.txt` (ADR 0045).
@@ -1001,9 +1011,12 @@ fn fab_board(
                 errors.push_str(&fail(requirement_failure(report, &problems, &board, out)));
             }
             errors.extend(problems.iter().map(|p| fail(p.clone())));
+            let (requirements, conflicts) = unmet.map(|r| (r.misses, r.proofs)).unwrap_or_default();
             return Err(FabFailure {
                 text: errors,
-                requirements: unmet.map(|r| r.misses).unwrap_or_default(),
+                requirements,
+                conflicts: conflicts.into(),
+                placement: faults.into(),
                 ..FabFailure::default()
             });
         }
@@ -1019,6 +1032,7 @@ fn fab_board(
                 text: no_seed.unwrap_or_default()
                     + &fail(requirement_failure(&report, &[], &board, out)),
                 requirements: report.misses,
+                conflicts: report.proofs.into(),
                 ..FabFailure::default()
             });
         }

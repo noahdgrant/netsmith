@@ -511,7 +511,7 @@ pub fn precheck_findings(pre: &netsmith_pcb::Precheck) -> Vec<PcbFinding> {
             Severity::Error,
             format!("conflict:{n}"),
             format!("these lines cannot both hold: {conflict}"),
-            Vec::new(),
+            pre.proofs.get(n).map(conflict_parts).unwrap_or_default(),
         );
     }
     for fault in &pre.faults {
@@ -529,6 +529,64 @@ pub fn precheck_findings(pre: &netsmith_pcb::Precheck) -> Vec<PcbFinding> {
             warning.clone(),
             Vec::new(),
         );
+    }
+    found
+}
+
+/// The designators of the parts a conflict is about, each once.
+fn conflict_parts(c: &netsmith_pcb::Conflict) -> Vec<String> {
+    let mut parts: Vec<String> = Vec::new();
+    for p in &c.parts {
+        if !parts.contains(&p.part.refdes) {
+            parts.push(p.part.refdes.clone());
+        }
+    }
+    parts
+}
+
+/// What a refused placement leaves to say on the board shown with the layout file's places
+/// (issue #779): the refusal (`placement_refused`, its message the placer's, `why`), which `fab`
+/// gives too, and each set of lines and locks that cannot all hold where the parts stand, as
+/// `constraint` errors at the parts' courtyards. The faults of the placement check (the overlaps)
+/// and the requirements measured on the board are the board's own findings.
+pub fn refusal_findings(
+    board: &Board,
+    why: &str,
+    conflicts: &[netsmith_pcb::Conflict],
+) -> Vec<PcbFinding> {
+    let mut ids = Ids(Vec::new());
+    let mut refused = make(
+        ids.id("placement:placement_refused".to_string()),
+        FindingSource::Placement,
+        Severity::Error,
+        "placement_refused",
+        format!(
+            "the board is shown with the layout file's places, which the placer refuses (as `fab` does): {}",
+            why.trim_end()
+        ),
+        board.outline,
+        Vec::new(),
+    );
+    refused.at = stated_at(why);
+    let mut found = vec![refused];
+    for (n, c) in conflicts.iter().enumerate() {
+        let parts = conflict_parts(c);
+        let area = parts
+            .iter()
+            .filter_map(|r| board.part(r).map(|p| p.courtyard()))
+            .reduce(|a, b| a.union(&b))
+            .unwrap_or(board.outline);
+        let mut finding = make(
+            ids.id(format!("constraint:refusal:conflict:{n}")),
+            FindingSource::Placement,
+            Severity::Error,
+            "constraint",
+            format!("these lines cannot both hold: {}", c.text),
+            area,
+            parts,
+        );
+        finding.at = stated_at(&c.text);
+        found.push(finding);
     }
     found
 }

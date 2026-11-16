@@ -9,7 +9,7 @@ use super::common::{Placing, with_placed_board};
 #[derive(Debug, PartialEq, ClapArgs)]
 #[command(args_override_self = true)]
 #[command(
-    after_long_help = "`board3d` places a board as `fab` does, with the layout file and the physical file, and prints its 3D scene (ADR 0105) without routing or writing anything but the `--glb` and `--step` files, and without KiCad. With neither `--json`, `--glb` nor `--step` it prints a short summary. A file of several boards needs `--board`. The placer says on stderr how it goes: each seed it begins, each run with what is still out, and the counts of a long run; `--place-budget` bounds it. docs/BOARD3D.md has the frame and every field."
+    after_long_help = "`board3d` places a board as `fab` does, with the layout file and the physical file, and prints its 3D scene (ADR 0105) without routing or writing anything but the `--glb` and `--step` files, and without KiCad. With neither `--json`, `--glb` nor `--step` it prints a short summary. A file of several boards needs `--board`. The placer says on stderr how it goes: each seed it begins, each run with what is still out, and the counts of a long run; `--place-budget` bounds it. The report lists the placement check's faults (`placement`) and the lines and locks that cannot all hold (`conflicts`), each as data. A layout file the placer cannot keep (two locks whose courtyards overlap, locks that leave the free parts no room) is reported with the parts where the placer ended and the layout file's places, `placement_refused` says why, and the command ends with 1. docs/BOARD3D.md has the frame and every field."
 )]
 pub struct Args {
     /// The source file; with none, the project's boards.
@@ -68,7 +68,8 @@ pub fn run(args: Args) -> ExitCode {
 /// beside its source are read, nothing is written) and its 3D scene printed: the JSON report on
 /// stdout with `--json`, the scene as a `.glb` file with `--glb` and as a STEP file with
 /// `--step` (and no summary), a summary with none of them. Exit 0 when the report is printed (and the file written), 1 when the board does not
-/// build or place, 2 when the command cannot start or the file cannot be written.
+/// build or place (a layout file the placer refuses is reported where the placer ended, and is
+/// 1 too), 2 when the command cannot start or the file cannot be written.
 fn run_board3d(
     file: Option<&str>,
     board: Option<&str>,
@@ -126,6 +127,12 @@ fn run_board3d(
         print!("{}", report.json());
     } else if glb.is_none() && step.is_none() {
         print!("{}", report.summary());
+    }
+    // A layout file the placer refused: the report is of the board where it ended, and the
+    // command fails, as `fab` would (issue #779).
+    if let Some(refused) = &report.placement_refused {
+        eprintln!("error: {label}: {}", refused.trim_end());
+        return ExitCode::FAILURE;
     }
     ExitCode::SUCCESS
 }

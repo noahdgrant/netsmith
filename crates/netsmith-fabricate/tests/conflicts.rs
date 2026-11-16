@@ -774,3 +774,185 @@ fn parts_that_do_not_fit_are_data_with_every_pair_and_every_part() {
     }
     assert!(json["parts"][0].get("refdes").is_some());
 }
+
+// ---- the conflicts as data (issue #779) ----------------------------------------------------
+
+#[test]
+fn a_conflict_is_data_with_its_kind_lines_parts_and_how_far() {
+    let report = report(2, (40, 30), PITCH_AND_WINDOWS);
+    assert_eq!(report.proofs.len(), report.conflicts.len());
+    let proof = &report.proofs[0];
+    assert_eq!(proof.text, report.conflicts[0]);
+    let json = serde_json::to_value(proof).unwrap();
+    assert_eq!(json["kind"], "relation");
+    // The relation first, then the windows of its parts, each with its line and text.
+    let sources: Vec<&str> = json["lines"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|l| l["source"].as_str().unwrap())
+        .collect();
+    assert_eq!(
+        sources,
+        [
+            "widget.physical.nsm:12",
+            "widget.physical.nsm:10",
+            "widget.physical.nsm:11"
+        ]
+    );
+    assert_eq!(json["lines"][0]["kind"], "requirement");
+    assert_eq!(
+        json["lines"][0]["text"],
+        ".r2.place.x - .r1.place.x == 30mm +/- 0.1mm"
+    );
+    // The parts as the id reads them, each with the box its courtyard lies within.
+    assert_eq!(json["parts"][0]["refdes"], "R2");
+    assert_eq!(json["parts"][1]["path"], "r1");
+    assert!(json["parts"][1]["courtyard"]["x_min"].as_f64().is_some(), "{json}");
+    assert_eq!(json["by"], 24.9);
+    // The sentence is the finding's message, not a field.
+    assert!(json.get("text").is_none());
+}
+
+/// The headers of [`HEADERS`] locked by a layout file over each other, with a line of the
+/// physical file on the resistor (so that the requirements are explained).
+const LOCKED_OVER: &str = "version = 1
+
+[Widget.parts.h1]
+at = [7.0, 4.0]
+lock = true
+
+[Widget.parts.h2]
+at = [7.0, 4.3]
+lock = true
+";
+
+#[test]
+fn locks_of_the_layout_file_that_overlap_are_a_conflict_with_the_locks_and_the_boxes() {
+    let libraries = Libraries::sample();
+    let built = build_with(
+        "widget.nsm",
+        &source(1, HEADERS),
+        &loader(14, 9, "    .r1.place.x >= 1mm\n"),
+        &Catalogs::jlcpcb(),
+        &libraries,
+    )
+    .unwrap_or_else(|e| panic!("{e}"));
+    let design = &built[0].design;
+    let layout = (
+        netsmith_pcb::Layout::parse(LOCKED_OVER, "widget.pcb.toml").unwrap(),
+        "widget.pcb.toml".to_string(),
+    );
+    let placed = netsmith_fabricate::layout::place(
+        design,
+        Some(&layout),
+        &libraries,
+        false,
+        netsmith_fabricate::layout::DEFAULT_PLACE_SEEDS,
+    );
+    // Placed or refused, the locks are proved not to hold, with the boxes and the overlap.
+    let (board, options) = match placed {
+        Ok(p) => (p.board, p.options),
+        Err(failure) => {
+            let ended = netsmith_fabricate::layout::where_ended(
+                design,
+                Some(&layout),
+                &libraries,
+                false,
+                &failure,
+            )
+            .expect("the board where the placer ended");
+            (ended.board, ended.options)
+        }
+    };
+    let conflicts = board
+        .explain_requirements(design, &options)
+        .map(|r| r.proofs)
+        .unwrap_or_default();
+    let overlap = conflicts
+        .iter()
+        .find(|c| c.kind == "overlap")
+        .unwrap_or_else(|| panic!("{conflicts:?}"));
+    let locks: Vec<(&str, Option<f64>, Option<f64>)> = overlap
+        .lines
+        .iter()
+        .filter(|l| l.kind == "lock")
+        .map(|l| (l.part.as_ref().unwrap().refdes.as_str(), l.x, l.y))
+        .collect();
+    assert_eq!(
+        locks,
+        [("J1", Some(7.0), Some(4.0)), ("J2", Some(7.0), Some(4.3))]
+    );
+    assert_eq!(overlap.parts.len(), 2);
+    assert!(overlap.parts.iter().all(|p| p.courtyard.is_some()));
+    let size = overlap.overlap.as_ref().expect("the overlap");
+    assert!(size.width > 0.0 && size.height > 0.0, "{size:?}");
+    // The board has the layout file's places and the overlap the placement check finds.
+    let j1 = board.part("J1").unwrap();
+    assert_eq!(j1.at - board.outline.min, Pt::new(7.0, 4.0));
+    let faults = board.placement_faults();
+    let pair = faults
+        .iter()
+        .find(|f| {
+            f.kind == "overlap"
+                && f.parts.iter().any(|p| p.part.refdes == "J1")
+                && f.parts.iter().any(|p| p.part.refdes == "J2")
+        })
+        .unwrap_or_else(|| panic!("{faults:?}"));
+    assert!(pair.area.unwrap() > 0.0 && pair.shared.is_some(), "{pair:?}");
+    let json = serde_json::to_value(pair).unwrap();
+    assert!(json["parts"][0]["courtyard"]["x_min"].is_number(), "{json}");
+}
+
+#[test]
+fn locks_that_break_a_requirement_give_the_board_with_the_locks_and_the_misses() {
+    // The headers' lines of the physical file, and the layout file locks both lower than they
+    // allow (as a drag in the editor does): the placer refuses the locks before placing, and the
+    // board is shown with the parts where the file locks them and the requirements not met.
+    let libraries = Libraries::sample();
+    let built = build_with(
+        "widget.nsm",
+        &source(1, HEADERS),
+        &loader(14, 9, HEADER_LINES),
+        &Catalogs::jlcpcb(),
+        &libraries,
+    )
+    .unwrap_or_else(|e| panic!("{e}"));
+    let design = &built[0].design;
+    let layout = (
+        netsmith_pcb::Layout::parse(LOCKED_OVER, "widget.pcb.toml").unwrap(),
+        "widget.pcb.toml".to_string(),
+    );
+    let failure = match netsmith_fabricate::layout::place(design, Some(&layout), &libraries, true, 1)
+    {
+        Ok(_) => panic!("the locks break the lines"),
+        Err(failure) => failure,
+    };
+    assert!(
+        failure.message().contains("is locked in the layout file at (7, 4) mm, and that breaks a requirement"),
+        "{}",
+        failure.message()
+    );
+    let ended =
+        netsmith_fabricate::layout::where_ended(design, Some(&layout), &libraries, true, &failure)
+            .expect("the board with the layout file's places");
+    let at = |r: &str| {
+        let at = ended.board.part(r).unwrap().at - ended.board.outline.min;
+        ((at.x * 1e6).round() / 1e6, (at.y * 1e6).round() / 1e6)
+    };
+    assert_eq!((at("J1"), at("J2")), ((7.0, 4.0), (7.0, 4.3)));
+    assert!(
+        ended.board.placement_faults().iter().any(|f| f.kind == "overlap"),
+        "{:?}",
+        ended.board.check_placement()
+    );
+    // The lines the locks break, measured where the parts stand.
+    let explained = ended.explain(design);
+    let missed: Vec<&str> = explained.misses.iter().map(|m| m.id.as_str()).collect();
+    assert!(missed.contains(&"h1.place.y") && missed.contains(&"h2.place.y"), "{missed:?}");
+    // With no layout file the refusal is the design's: there is no board to show.
+    assert!(
+        netsmith_fabricate::layout::where_ended(design, None, &libraries, true, &failure)
+            .is_none()
+    );
+}

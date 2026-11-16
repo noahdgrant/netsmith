@@ -27,7 +27,7 @@ mod pcb_fixtures;
 #[cfg(test)]
 mod testlib;
 
-pub use board::{board_from_design, board_from_design_placed, precheck};
+pub use board::{board_from_design, board_from_design_placed, board_where_ended, precheck};
 pub use netsmith_pcb::{DecouplingDistance, Quality, crossings};
 pub use place::{PlaceError, place_subset};
 pub use regenerate::{

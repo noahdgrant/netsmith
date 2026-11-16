@@ -73,12 +73,16 @@ use std::collections::BTreeSet;
 use netsmith_core::{Design, PlaceField};
 
 use crate::board::{Placed, Side, outside_text};
+use crate::conflict::{
+    Conflict, ConflictArea, ConflictLine, ConflictOutline, PartBox, face_word, span_from_origin,
+};
 use crate::constraints::{
     self, Plan, Reach, TOLERANCE, axis_of, base_turn, body_at, measured, miss, number, offset,
     range_text, requirements, turns_allowed, what,
 };
+use crate::fit_report::{PartRef, Size};
 use crate::geometry::{Pt, Rect};
-use crate::miss::RequirementMiss;
+use crate::miss::{RequirementMiss, finite};
 use crate::overhang::{Edge, Edges};
 use crate::placement::{ORIGIN, PlaceOptions};
 use crate::rules::Rules;
@@ -94,6 +98,9 @@ const HEIGHT_TOLERANCE: f64 = 0.0005;
 pub struct RequirementReport {
     /// Sets of lines that cannot all hold, each as a sentence with the numbers.
     pub conflicts: Vec<String>,
+    /// The same sets as data, in the same order: `proofs[i]` is the data of `conflicts[i]`
+    /// (`--format json`, issue #779).
+    pub proofs: Vec<Conflict>,
     /// Every requirement not met where the placer ended, each as a sentence with the line
     /// (`file:line` and its text), the part, the measured value, the window and how far out.
     pub unmet: Vec<String>,
@@ -168,6 +175,8 @@ pub struct Fault {
 pub struct Precheck {
     /// Sets of lines that cannot all hold, each as [`RequirementReport::conflicts`] words it.
     pub conflicts: Vec<String>,
+    /// The same sets as data, in the same order (issue #779).
+    pub proofs: Vec<Conflict>,
     /// Courtyards past an edge nobody stated, and parts bigger than the outline in every
     /// turn: each about one part.
     pub faults: Vec<Fault>,
@@ -185,6 +194,7 @@ impl Precheck {
     /// the faults about a part stay errors.
     pub fn lines_as_warnings(mut self) -> Self {
         let lines = std::mem::take(&mut self.conflicts);
+        self.proofs.clear();
         let mut warned: Vec<String> = lines
             .into_iter()
             .map(|c| {
@@ -206,8 +216,7 @@ impl Precheck {
             out.push(
                 RequirementReport {
                     conflicts: self.conflicts.clone(),
-                    unmet: Vec::new(),
-                    misses: Vec::new(),
+                    ..RequirementReport::default()
                 }
                 .render(""),
             );
@@ -247,23 +256,20 @@ pub fn before_placing(
         finite,
         limit,
     };
-    let mut found = Precheck {
-        conflicts: cx.conflicts(),
-        ..Precheck::default()
-    };
+    let mut found = Precheck::default();
+    let mut proofs = cx.conflicts();
     cx.edges(&mut found);
     // A window that has no place inside the outline is said once: by the fault when the
     // courtyard is past an edge for every place (it names the edge and what would allow it),
     // else by the conflict.
-    let faults = found.faults.clone();
-    found.conflicts.retain(|c| {
-        !faults.iter().any(|f| {
-            c.contains(&format!(
-                "keeps the courtyard of {} inside the outline",
-                crate::board::member(&f.path, &f.refdes)
-            ))
-        })
+    proofs.retain(|c| {
+        !found
+            .faults
+            .iter()
+            .any(|f| c.kind == "outside" && c.parts.iter().any(|p| p.part.refdes == f.refdes))
     });
+    found.conflicts = proofs.iter().map(|c| c.text.clone()).collect();
+    found.proofs = proofs;
     if finite {
         cx.oversize(&mut found);
     }
@@ -357,7 +363,7 @@ impl Context<'_> {
                         if w.lines.is_empty() {
                             "none".to_string()
                         } else {
-                            w.lines.join("; ")
+                            said(self.design, &w.lines)
                         }
                     ),
                 });
@@ -445,7 +451,7 @@ pub fn explain(
     let unmet = unmet(design, parts);
     let mut options = options.clone();
     options.wall = Some(rules.edge_wall());
-    let conflicts = match constraints::plan(design, parts, &options, rules.clearance) {
+    let proofs = match constraints::plan(design, parts, &options, rules.clearance) {
         Ok(plan) => Context {
             design,
             parts,
@@ -462,7 +468,8 @@ pub fn explain(
     };
     let (unmet, misses) = unmet.into_iter().unzip();
     let report = RequirementReport {
-        conflicts,
+        conflicts: proofs.iter().map(|c| c.text.clone()).collect(),
+        proofs,
         unmet,
         misses,
     };
@@ -619,10 +626,10 @@ struct Win<'a> {
     part: &'a Placed,
     side: Side,
     quarters: Vec<Quarter>,
-    /// The lines that bound its place or turn, quoted, and the layout file's lock if any.
-    lines: Vec<String>,
-    /// The line that states its face, quoted.
-    side_line: Option<String>,
+    /// The lines that bound its place or turn, and the layout file's lock if any.
+    lines: Vec<Line>,
+    /// The line that states its face.
+    side_line: Option<Line>,
     /// Whether it may hang over an edge: its window is not bounded by the outline.
     may_hang: bool,
     /// Whether the clip by the outline left it no place at all.
@@ -642,6 +649,14 @@ struct Context<'a> {
     /// Whether the outline is only the most the design allows (its size is a range), so that
     /// the real one may be smaller; what is proved against it holds for every size.
     limit: bool,
+}
+
+/// A least overlap along x and y as data.
+fn size((x, y): (f64, f64)) -> Size {
+    Size {
+        width: finite(x).unwrap_or_default(),
+        height: finite(y).unwrap_or_default(),
+    }
 }
 
 /// The least overlap of two intervals `a` and `b` (each at their origin) when the origins are
@@ -672,8 +687,93 @@ fn always_overlap(
     Some((x, y))
 }
 
-fn dedupe(lines: impl IntoIterator<Item = String>) -> Vec<String> {
-    let mut out: Vec<String> = Vec::new();
+/// A line that takes part in a conflict: a requirement of the physical file (its `source`,
+/// `file:line` joined by `, ` where lines state it together, and its id), or the layout file's
+/// lock of a part at a place (its origin on the sheet).
+#[derive(Debug, Clone, PartialEq)]
+enum Line {
+    Requirement {
+        source: String,
+        id: String,
+    },
+    Lock {
+        refdes: String,
+        path: String,
+        at: Pt,
+    },
+}
+
+impl Line {
+    fn requirement(source: &str, id: &str) -> Line {
+        Line::Requirement {
+            source: source.to_string(),
+            id: id.to_string(),
+        }
+    }
+
+    /// The line as a person reads it.
+    fn quoted(&self, design: &Design) -> String {
+        match self {
+            Line::Requirement { source, id } => quote(design, source, id),
+            Line::Lock { refdes, at, .. } => format!(
+                "the layout file locks {refdes} at ({}, {}) mm",
+                number(at.x),
+                number(at.y)
+            ),
+        }
+    }
+
+    /// The line as data: a requirement stated by several lines is one entry for each.
+    fn data(&self, design: &Design) -> Vec<ConflictLine> {
+        match self {
+            Line::Requirement { source, id } => {
+                let one = |source: Option<&str>| ConflictLine {
+                    kind: "requirement",
+                    id: Some(id.clone()),
+                    source: source.map(str::to_string),
+                    text: source.and_then(|s| design.features.line_texts.get(s).cloned()),
+                    part: None,
+                    x: None,
+                    y: None,
+                };
+                if source.is_empty() {
+                    vec![one(None)]
+                } else {
+                    source.split(", ").map(|s| one(Some(s))).collect()
+                }
+            }
+            Line::Lock { refdes, path, at } => vec![ConflictLine {
+                kind: "lock",
+                id: None,
+                source: None,
+                text: None,
+                part: Some(PartRef {
+                    refdes: refdes.clone(),
+                    path: path.clone(),
+                }),
+                x: finite(at.x),
+                y: finite(at.y),
+            }],
+        }
+    }
+}
+
+/// Lines as a person reads them, joined.
+fn said(design: &Design, lines: &[Line]) -> String {
+    lines
+        .iter()
+        .map(|l| l.quoted(design))
+        .collect::<Vec<_>>()
+        .join("; ")
+}
+
+/// Lines as data.
+fn line_data(design: &Design, lines: &[Line]) -> Vec<ConflictLine> {
+    lines.iter().flat_map(|l| l.data(design)).collect()
+}
+
+fn dedupe<T: PartialEq>(lines: impl IntoIterator<Item = T>) -> Vec<T> {
+    let mut out: Vec<T> = Vec::new();
     for l in lines {
         if !out.contains(&l) {
             out.push(l);
@@ -778,21 +878,20 @@ impl<'a> Context<'a> {
                 });
                 clipped_out = quarters.is_empty();
             }
-            let mut lines: Vec<String> = reqs
+            let mut lines: Vec<Line> = reqs
                 .iter()
-                .map(|r| quote(self.design, &r.source, &r.id))
+                .map(|r| Line::requirement(&r.source, &r.id))
                 .collect();
             if let Some(f) = locked {
-                lines.push(format!(
-                    "the layout file locks {} at ({}, {}) mm",
-                    part.refdes,
-                    number(f.at.x),
-                    number(f.at.y)
-                ));
+                lines.push(Line::Lock {
+                    refdes: part.refdes.clone(),
+                    path: part.path.clone(),
+                    at: f.at,
+                });
             }
             let side_line = side_req.as_ref().map(|_| {
                 let (source, id) = side_source(self.design, &part.path).unwrap_or_default();
-                quote(self.design, &source, &id)
+                Line::requirement(&source, &id)
             });
             wins.push(Win {
                 part,
@@ -807,21 +906,72 @@ impl<'a> Context<'a> {
         wins
     }
 
-    /// The box the courtyards of a window can cover, as text: `x 52.9 to 57.1, y 2.9 to 7.1`.
-    fn span(w: &Win, body: bool) -> String {
+    /// The box on the sheet the courtyards of a window can cover.
+    fn span_rect(w: &Win) -> Rect {
         let (mut lo, mut hi) = (Pt::new(f64::MAX, f64::MAX), Pt::new(f64::MIN, f64::MIN));
         for q in &w.quarters {
-            let r = if body { q.body } else { q.court };
+            let r = q.court;
             lo = Pt::new(lo.x.min(r.min.x + q.x.0), lo.y.min(r.min.y + q.y.0));
             hi = Pt::new(hi.x.max(r.max.x + q.x.1), hi.y.max(r.max.y + q.y.1));
         }
+        Rect::new(lo, hi)
+    }
+
+    /// The box the courtyards of a window can cover, as text: `x 52.9 to 57.1, y 2.9 to 7.1`.
+    fn span(w: &Win) -> String {
+        let r = Self::span_rect(w);
         format!(
             "x {} to {}, y {} to {}",
-            number(lo.x - ORIGIN.x),
-            number(hi.x - ORIGIN.x),
-            number(lo.y - ORIGIN.y),
-            number(hi.y - ORIGIN.y)
+            number(r.min.x - ORIGIN.x),
+            number(r.max.x - ORIGIN.x),
+            number(r.min.y - ORIGIN.y),
+            number(r.max.y - ORIGIN.y)
         )
+    }
+
+    /// The part of a window as data, with the box its courtyard lies within.
+    fn part_box(w: &Win) -> PartBox {
+        PartBox {
+            part: Self::part_ref(w.part),
+            courtyard: (!w.quarters.is_empty()).then(|| span_from_origin(&Self::span_rect(w))),
+        }
+    }
+
+    fn part_ref(part: &Placed) -> PartRef {
+        PartRef {
+            refdes: part.refdes.clone(),
+            path: part.path.clone(),
+        }
+    }
+
+    /// A conflict of `kind` with the rest left empty, for the proof to fill.
+    fn conflict(
+        &self,
+        kind: &'static str,
+        lines: &[Line],
+        parts: Vec<PartBox>,
+        text: String,
+    ) -> Conflict {
+        Conflict {
+            kind,
+            lines: line_data(self.design, lines),
+            parts,
+            overlap: None,
+            area: None,
+            by: None,
+            outline: None,
+            text,
+        }
+    }
+
+    /// The outline a proof with the outline holds inside, where `clip` says it needs it.
+    fn outline_data(&self, clip: bool) -> Option<ConflictOutline> {
+        clip.then(|| ConflictOutline {
+            width: finite(self.outline.width()).unwrap_or_default(),
+            height: finite(self.outline.height()).unwrap_or_default(),
+            margin: finite(self.wall).unwrap_or_default(),
+            at_most: self.limit,
+        })
     }
 
     fn name(w: &Win) -> String {
@@ -832,9 +982,9 @@ impl<'a> Context<'a> {
         crate::board::member(&part.path, &part.refdes)
     }
 
-    /// The lines of the windows, once each, joined.
-    fn joined(wins: &[&Win]) -> String {
-        dedupe(wins.iter().flat_map(|w| w.lines.iter().cloned())).join("; ")
+    /// The lines of the windows, once each.
+    fn joined(wins: &[&Win]) -> Vec<Line> {
+        dedupe(wins.iter().flat_map(|w| w.lines.iter().cloned()))
     }
 
     fn outline_note(&self) -> String {
@@ -847,8 +997,8 @@ impl<'a> Context<'a> {
         )
     }
 
-    fn conflicts(&self) -> Vec<String> {
-        let mut found: Vec<String> = Vec::new();
+    fn conflicts(&self) -> Vec<Conflict> {
+        let mut found: Vec<Conflict> = Vec::new();
         let mut seen: BTreeSet<String> = BTreeSet::new();
         for clip in [false, true] {
             if clip && !self.finite {
@@ -863,6 +1013,7 @@ impl<'a> Context<'a> {
             if !clip {
                 self.relations_together(&mut seen, &mut found);
             }
+            let note = (note.as_str(), self.outline_data(clip));
             self.relations(&wins, &note, &mut seen, &mut found);
             self.pairs(&wins, &note, &mut seen, &mut found);
             self.areas(&wins, &note, &mut seen, &mut found);
@@ -876,7 +1027,7 @@ impl<'a> Context<'a> {
 
     /// Two relations between the same two parts, of the same fields, whose windows have no
     /// value in common: no places of the parts hold both.
-    fn relations_together(&self, seen: &mut BTreeSet<String>, found: &mut Vec<String>) {
+    fn relations_together(&self, seen: &mut BTreeSet<String>, found: &mut Vec<Conflict>) {
         let offsets = &self.design.features.offsets;
         let id = |o: &netsmith_core::Offset| {
             format!(
@@ -909,10 +1060,13 @@ impl<'a> Context<'a> {
                 ) else {
                     continue;
                 };
-                found.push(format!(
-                    "{}; {}: they ask for {} of the body of {} minus {} of the body of {} to be {} and {}, and no value is in both ({} mm apart)",
-                    quote(self.design, &p.source, &id(p)),
-                    quote(self.design, &q.source, &id(q)),
+                let lines = [
+                    Line::requirement(&p.source, &id(p)),
+                    Line::requirement(&q.source, &id(q)),
+                ];
+                let text = format!(
+                    "{}: they ask for {} of the body of {} minus {} of the body of {} to be {} and {}, and no value is in both ({} mm apart)",
+                    said(self.design, &lines),
                     what(p.b.field),
                     Self::name_of(b),
                     what(p.a.field),
@@ -920,7 +1074,17 @@ impl<'a> Context<'a> {
                     range_text(p.lo, p.hi, "mm"),
                     range_text(window.0, window.1, "mm"),
                     number(gap)
-                ));
+                );
+                let parts = [b, a]
+                    .into_iter()
+                    .map(|x| PartBox {
+                        part: Self::part_ref(x),
+                        courtyard: None,
+                    })
+                    .collect();
+                let mut c = self.conflict("relations", &lines, parts, text);
+                c.by = finite(gap);
+                found.push(c);
             }
         }
     }
@@ -929,9 +1093,9 @@ impl<'a> Context<'a> {
     fn relations(
         &self,
         wins: &[Win],
-        note: &str,
+        (note, outline): &(&str, Option<ConflictOutline>),
         seen: &mut BTreeSet<String>,
-        found: &mut Vec<String>,
+        found: &mut Vec<Conflict>,
     ) {
         for (i, o) in self.design.features.offsets.iter().enumerate() {
             let key = format!("relation:{i}");
@@ -972,15 +1136,12 @@ impl<'a> Context<'a> {
                 o.a.path,
                 o.a.field.word()
             );
-            let others = Self::joined(&[a, b]);
-            found.push(format!(
-                "{}{}: {} of the body of {} minus {} of the body of {} must be {} along {}, and the places the other lines leave them make it {} ({} mm out){note}",
-                quote(self.design, &o.source, &id),
-                if others.is_empty() {
-                    String::new()
-                } else {
-                    format!("; {others}")
-                },
+            let lines = dedupe(
+                std::iter::once(Line::requirement(&o.source, &id)).chain(Self::joined(&[a, b])),
+            );
+            let text = format!(
+                "{}: {} of the body of {} minus {} of the body of {} must be {} along {}, and the places the other lines leave them make it {} ({} mm out){note}",
+                said(self.design, &lines),
                 what(o.b.field),
                 Self::name(b),
                 what(o.a.field),
@@ -989,7 +1150,16 @@ impl<'a> Context<'a> {
                 if axis == 0 { "x" } else { "y" },
                 range_text(diff.0, diff.1, "mm"),
                 number(out)
-            ));
+            );
+            let mut c = self.conflict(
+                "relation",
+                &lines,
+                vec![Self::part_box(b), Self::part_box(a)],
+                text,
+            );
+            c.by = finite(out);
+            c.outline = outline.clone();
+            found.push(c);
         }
     }
 
@@ -1028,9 +1198,9 @@ impl<'a> Context<'a> {
     fn pairs(
         &self,
         wins: &[Win],
-        note: &str,
+        (note, outline): &(&str, Option<ConflictOutline>),
         seen: &mut BTreeSet<String>,
-        found: &mut Vec<String>,
+        found: &mut Vec<Conflict>,
     ) {
         for (i, a) in wins.iter().enumerate() {
             for b in &wins[i + 1..] {
@@ -1065,23 +1235,33 @@ impl<'a> Context<'a> {
                     continue;
                 }
                 seen.insert(key);
-                found.push(format!(
+                let lines = Self::joined(&[a, b]);
+                let text = format!(
                     "{}: they leave the courtyard of {} within {} mm and that of {} within {} mm, and the two overlap by at least {} x {} mm wherever they are put{note}",
-                    Self::joined(&[a, b]),
+                    said(self.design, &lines),
                     Self::name(a),
-                    Self::span(a, false),
+                    Self::span(a),
                     Self::name(b),
-                    Self::span(b, false),
+                    Self::span(b),
                     number(least.0),
                     number(least.1)
-                ));
+                );
+                let mut c = self.conflict(
+                    "overlap",
+                    &lines,
+                    vec![Self::part_box(a), Self::part_box(b)],
+                    text,
+                );
+                c.overlap = Some(size(least));
+                c.outline = outline.clone();
+                found.push(c);
             }
         }
     }
 
     /// The keepouts and cutouts that forbid parts, named, with the box each covers and the
     /// faces whose parts it keeps out as `(front, back)`.
-    fn forbidden(&self) -> Vec<(String, String, Rect, (bool, bool))> {
+    fn forbidden(&self) -> Vec<(&'static str, String, Rect, (bool, bool))> {
         let rect = |at: (f64, f64), size: (f64, f64)| {
             let min = ORIGIN + Pt::new(at.0, at.1);
             Rect::new(min, Pt::new(min.x + size.0, min.y + size.1))
@@ -1089,19 +1269,14 @@ impl<'a> Context<'a> {
         let mut areas = Vec::new();
         for c in &self.design.features.cutouts {
             if let Some(at) = c.at {
-                areas.push((
-                    "cutout".to_string(),
-                    c.name.clone(),
-                    rect(at, c.size),
-                    (true, true),
-                ));
+                areas.push(("cutout", c.name.clone(), rect(at, c.size), (true, true)));
             }
         }
         for k in &self.design.features.keepouts {
             if let (true, None, Some(at)) = (k.parts, &k.part, k.at) {
                 let on = |layer: &str| k.layers.iter().any(|l| l == layer);
                 areas.push((
-                    "keepout".to_string(),
+                    "keepout",
                     k.name.clone(),
                     rect(at, k.size),
                     (on("top"), on("bottom")),
@@ -1115,9 +1290,9 @@ impl<'a> Context<'a> {
     fn areas(
         &self,
         wins: &[Win],
-        note: &str,
+        (note, outline): &(&str, Option<ConflictOutline>),
         seen: &mut BTreeSet<String>,
-        found: &mut Vec<String>,
+        found: &mut Vec<Conflict>,
     ) {
         for w in wins {
             if w.lines.is_empty() || w.quarters.is_empty() || !Self::solid(w.part) {
@@ -1163,20 +1338,29 @@ impl<'a> Context<'a> {
                     None
                 } else {
                     w.side_line.clone()
-                }))
-                .join("; ");
-                found.push(format!(
+                }));
+                let text = format!(
                     "{}: they leave the courtyard of {} within {} mm, and it overlaps the {kind} `{name}` (x {} to {}, y {} to {} mm, which forbids parts{which}) by at least {} x {} mm wherever it is put{note}",
-                    lines,
+                    said(self.design, &lines),
                     Self::name(w),
-                    Self::span(w, false),
+                    Self::span(w),
                     number(area.min.x - ORIGIN.x),
                     number(area.max.x - ORIGIN.x),
                     number(area.min.y - ORIGIN.y),
                     number(area.max.y - ORIGIN.y),
                     number(least.0),
                     number(least.1)
-                ));
+                );
+                let mut c = self.conflict(kind, &lines, vec![Self::part_box(w)], text);
+                c.overlap = Some(size(least));
+                c.area = Some(ConflictArea {
+                    kind,
+                    name: name.clone(),
+                    span: span_from_origin(&area),
+                    face: (!on_both).then(|| face_word(w.side)),
+                });
+                c.outline = outline.clone();
+                found.push(c);
             }
         }
     }
@@ -1188,9 +1372,9 @@ impl<'a> Context<'a> {
     fn protrusions(
         &self,
         wins: &[Win],
-        note: &str,
+        (note, outline): &(&str, Option<ConflictOutline>),
         seen: &mut BTreeSet<String>,
-        found: &mut Vec<String>,
+        found: &mut Vec<Conflict>,
     ) {
         for s in wins {
             let Some(protrusion) = &s.part.protrusion else {
@@ -1271,29 +1455,38 @@ impl<'a> Context<'a> {
                 lines.extend(c.lines.iter().cloned());
                 lines.push(side_line.clone());
                 if !protrusion.source.is_empty() {
-                    lines.push(quote(
-                        self.design,
+                    lines.push(Line::requirement(
                         &protrusion.source,
                         &format!("{}.pin_protrusion", s.part.path),
                     ));
                 }
-                found.push(format!(
+                let lines = dedupe(lines);
+                let text = format!(
                     "{}: they keep the courtyard of {} within {} mm, over a pad of {} (pins protruding {} mm) by at least {} x {} mm wherever it is put, and the protrusion does not excuse that: {}{note}",
-                    dedupe(lines).join("; "),
+                    said(self.design, &lines),
                     Self::name(c),
-                    Self::span(c, false),
+                    Self::span(c),
                     Self::name(s),
                     number(protrusion.length),
                     number(least.0),
                     number(least.1),
                     why.because(protrusion.length, &c.part.refdes, &c.part.path, c.side)
-                ));
+                );
+                let mut conflict = self.conflict(
+                    "over_pins",
+                    &lines,
+                    vec![Self::part_box(s), Self::part_box(c)],
+                    text,
+                );
+                conflict.overlap = Some(size(least));
+                conflict.outline = outline.clone();
+                found.push(conflict);
             }
         }
     }
 
     /// A window that has no place inside the outline and its margin.
-    fn fits(&self, wins: &[Win], seen: &mut BTreeSet<String>, found: &mut Vec<String>) {
+    fn fits(&self, wins: &[Win], seen: &mut BTreeSet<String>, found: &mut Vec<Conflict>) {
         for w in wins {
             let key = format!("fit:{}", w.part.refdes);
             if !w.clipped_out || w.may_hang || w.lines.is_empty() || seen.contains(&key) {
@@ -1359,15 +1552,26 @@ impl<'a> Context<'a> {
                 })
                 .collect();
             seen.insert(key);
-            found.push(format!(
+            let text = format!(
                 "{}: no place meets them and keeps the courtyard of {} inside the outline of {} x {} mm and {} mm from its edge; {}",
-                w.lines.join("; "),
+                said(self.design, &w.lines),
                 Self::name(w),
                 number(o.width()),
                 number(o.height()),
                 number((self.wall * 100.0).round() / 100.0),
                 turns.join("; ")
-            ));
+            );
+            // The courtyard's box is where the lines alone leave it.
+            let part = open.as_ref().map_or_else(
+                || PartBox {
+                    part: Self::part_ref(w.part),
+                    courtyard: None,
+                },
+                Self::part_box,
+            );
+            let mut c = self.conflict("outside", &w.lines, vec![part], text);
+            c.outline = self.outline_data(true);
+            found.push(c);
         }
     }
 }
