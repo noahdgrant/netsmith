@@ -2,7 +2,7 @@
 //! numbering (`crate::step::writer`): one for each kind of surface, a unit, an assembly.
 
 use super::geometry::{P3, dot, sub};
-use crate::step::writer::{Extrusion, Id, Writer, polygon};
+use crate::step::writer::{Extrusion, Id, Loop, Segment, Writer, polygon};
 
 pub const MM: &str = "(LENGTH_UNIT()NAMED_UNIT(*)SI_UNIT(.MILLI.,.METRE.))";
 
@@ -461,4 +461,118 @@ pub fn loop_round_a_cylinder() -> (String, u64) {
     let face = f.face(&[lp], cyl, true);
     let s = f.solid("bad", &[face]);
     (f.file(&[s], MM), face.0 as u64)
+}
+
+/// A straight run from `start` to the next segment's start.
+fn line(start: [f64; 2]) -> Segment {
+    Segment::Line { start }
+}
+
+/// A counterclockwise quarter turn round `centre` from `start` to the next segment's start.
+fn arc(start: [f64; 2], centre: [f64; 2]) -> Segment {
+    Segment::Arc {
+        start,
+        centre,
+        ccw: true,
+    }
+}
+
+/// A circle of radius `r` at `centre`, as a loop.
+fn circle_loop(centre: [f64; 2], r: f64) -> Loop {
+    vec![Segment::Arc {
+        start: [centre[0] + r, centre[1]],
+        centre,
+        ccw: true,
+    }]
+}
+
+fn prism(name: &str, f: &mut F, loops: Vec<Loop>, from: f64, to: f64) -> Id {
+    let e = Extrusion {
+        origin: [0.0; 3],
+        u: [1.0, 0.0, 0.0],
+        v: [0.0, 1.0, 0.0],
+        n: [0.0, 0.0, 1.0],
+        loops,
+        from,
+        to,
+    }
+    .normalised()
+    .unwrap();
+    f.w.extrusion(name, &e)
+}
+
+/// An invented case, a test model written for `netsmith case import` (no maker's file): in a
+/// frame where z = 0 is the top face of a 1.6 mm board and x, y are the board's, a `wall` from
+/// z = -6 to 6, 70 x 50 mm outside with rounded corners, round a pocket of 60 x 40 mm (corners
+/// of 2 mm) with a rib 4 mm wide standing 6 mm into it from the bottom edge (y = 0); a round
+/// `pin` of 3 mm and a `block` of 8 x 4 mm standing through the board's plane; and two
+/// standoffs below the board, `post_a` at (6, 6) with a hole of 3.2 mm and `post_b` at (54, 34)
+/// with a hole of 2.5 mm, each ending at the board's bottom face.
+pub fn case_box() -> String {
+    let mut f = F::new();
+    // The outside: a rounded rectangle from (-5, -5) to (65, 45), corners of 6 mm.
+    let (x0, y0, x1, y1, r) = (-5.0, -5.0, 65.0, 45.0, 6.0);
+    let wall_outside: Loop = vec![
+        line([x0 + r, y0]),
+        arc([x1 - r, y0], [x1 - r, y0 + r]),
+        line([x1, y0 + r]),
+        arc([x1, y1 - r], [x1 - r, y1 - r]),
+        line([x1 - r, y1]),
+        arc([x0 + r, y1], [x0 + r, y1 - r]),
+        line([x0, y1 - r]),
+        arc([x0, y0 + r], [x0 + r, y0 + r]),
+    ];
+    // The pocket, with the rib standing out of its bottom edge.
+    let pocket: Loop = vec![
+        line([2.0, 0.0]),
+        line([28.0, 0.0]),
+        line([28.0, 6.0]),
+        line([32.0, 6.0]),
+        line([32.0, 0.0]),
+        arc([58.0, 0.0], [58.0, 2.0]),
+        line([60.0, 2.0]),
+        arc([60.0, 38.0], [58.0, 38.0]),
+        line([58.0, 40.0]),
+        arc([2.0, 40.0], [2.0, 38.0]),
+        line([0.0, 38.0]),
+        arc([0.0, 2.0], [2.0, 2.0]),
+    ];
+    let wall = prism("wall", &mut f, vec![wall_outside, pocket], -6.0, 6.0);
+    let pin = prism(
+        "pin",
+        &mut f,
+        vec![circle_loop([15.0, 20.0], 1.5)],
+        -6.0,
+        6.0,
+    );
+    let block = prism(
+        "block",
+        &mut f,
+        vec![polygon(&[
+            [41.0, 18.0],
+            [49.0, 18.0],
+            [49.0, 22.0],
+            [41.0, 22.0],
+        ])],
+        -6.0,
+        6.0,
+    );
+    let post_a = prism(
+        "post_a",
+        &mut f,
+        vec![circle_loop([6.0, 6.0], 3.0), circle_loop([6.0, 6.0], 1.6)],
+        -6.0,
+        -1.6,
+    );
+    let post_b = prism(
+        "post_b",
+        &mut f,
+        vec![
+            circle_loop([54.0, 34.0], 3.0),
+            circle_loop([54.0, 34.0], 1.25),
+        ],
+        -6.0,
+        -1.6,
+    );
+    f.file(&[wall, pin, block, post_a, post_b], MM)
 }

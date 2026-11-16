@@ -6,6 +6,7 @@
 //! and the part draft. The commands themselves are `netsmith-cli`; the tests that start the
 //! binary are there, and the tests of this code, with the board tests that use it, are here.
 
+pub mod case_import;
 pub mod compare;
 pub mod copper;
 pub mod dxf;

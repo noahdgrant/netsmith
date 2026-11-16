@@ -1,3 +1,5 @@
+use std::fs;
+use std::path::PathBuf;
 use std::process::ExitCode;
 
 use clap::{Args as ClapArgs, Subcommand};
@@ -12,6 +14,8 @@ pub struct Args {
 pub enum Command {
     /// Print a case model's `.rx`, `.ry`, `.rz` and `.x`, `.y`, `.z` for a pose given as a matrix, and check them.
     Place(PlaceArgs),
+    /// Print the outline, cutouts and mounting holes of a case's STEP model as source to paste (ADR 0109).
+    Import(ImportArgs),
 }
 
 #[derive(Debug, PartialEq, ClapArgs)]
@@ -25,10 +29,138 @@ pub struct PlaceArgs {
     pub matrix: Vec<String>,
 }
 
+#[derive(Debug, PartialEq, ClapArgs)]
+#[command(
+    after_long_help = "`case import` cuts the STEP model of a case by a plane parallel to the board and prints what the cut says of the board, to paste into the `case { }` section of the board's physical file, as `dxf import` prints a drawing's (the output is reviewed, and never derived at build time, ADR 0109). It writes nothing without `--write`.\n\nThe model is posed as a `CaseModel` poses it: `--rx`, `--ry`, `--rz` (degrees, about x, then y, then z) and then `--x`, `--y`, `--z` (mm); `case place` gives them for a matrix. The plane is at `--at` mm in that frame, where the board's top face is z = 0 and its bottom face z = -1.6 (the default, -0.8, is the middle of a 1.6 mm board). The cut draws closed curves on the model's solids, and how many of the others enclose each is its depth:\n\n- depth 0, the outside of a wall: not used;\n- depth 1, a pocket in the wall: the board's outline (the largest pocket, if there are several; the others are said and left out). A rib, a notch or a rounded corner of the wall is the outline's, so it is printed as `dxf import` prints one: `.width`, `.height` and `.corner_radius` for a rectangle with equal rounded corners, and any other as a `polygon` of the corners, each arc `arc through` its middle point;\n- depth 2, inside the pocket: a post, a pin or a block standing where the board is, a `Cutout` (a rounded rectangle, a slot or a circle; another shape is refused, as `dxf import` refuses it);\n- deeper: not used.\n\nWith `--holes-at` (a standoff's height, below the board) a second cut gives the mounting holes: each circle at depth 3, a hole in a post inside the pocket, is a `MountingHole` at its centre, stated by its diameter (`.diameter`, as `dxf import` states a hole); a drill outside what a mounting hole's footprint can be drawn for refuses the import, as it does there.\n\nThe cut is of the model's triangles (0.01 mm of chord): the arcs are found again within 2 micrometres and the collinear corners joined; a shape that is not lines and circular arcs stays chords. The board's frame is the outline's top left corner with y down, and the output says which point of the posed model that is, and the `.x` and `.y` that put the model's pocket where the board's frame has it. A solid that is not closed at the plane is an error that says where."
+)]
+#[command(args_override_self = true)]
+pub struct ImportArgs {
+    /// The case's STEP file.
+    #[arg(value_name = "FILE.STEP")]
+    pub file: PathBuf,
+    /// The model's rotation about x, in degrees (`.rx`).
+    #[arg(
+        long,
+        value_name = "DEG",
+        default_value_t = 0.0,
+        allow_hyphen_values = true
+    )]
+    pub rx: f64,
+    /// The model's rotation about y, in degrees (`.ry`).
+    #[arg(
+        long,
+        value_name = "DEG",
+        default_value_t = 0.0,
+        allow_hyphen_values = true
+    )]
+    pub ry: f64,
+    /// The model's rotation about z, in degrees (`.rz`).
+    #[arg(
+        long,
+        value_name = "DEG",
+        default_value_t = 0.0,
+        allow_hyphen_values = true
+    )]
+    pub rz: f64,
+    /// The model's offset in x, in mm (`.x`).
+    #[arg(
+        long,
+        value_name = "MM",
+        default_value_t = 0.0,
+        allow_hyphen_values = true
+    )]
+    pub x: f64,
+    /// The model's offset in y, in mm (`.y`).
+    #[arg(
+        long,
+        value_name = "MM",
+        default_value_t = 0.0,
+        allow_hyphen_values = true
+    )]
+    pub y: f64,
+    /// The model's offset in z, in mm (`.z`).
+    #[arg(
+        long,
+        value_name = "MM",
+        default_value_t = 0.0,
+        allow_hyphen_values = true
+    )]
+    pub z: f64,
+    /// The height of the plane that cuts the outline and the cutouts, in mm (the board's top face is 0).
+    #[arg(long, value_name = "MM", default_value_t = -0.8, allow_hyphen_values = true)]
+    pub at: f64,
+    /// The height of a second plane that cuts the standoffs for the mounting holes, in mm.
+    #[arg(long, value_name = "MM", allow_hyphen_values = true)]
+    pub holes_at: Option<f64>,
+    /// The board, when the file `--write` names has several.
+    #[arg(long, value_name = "NAME")]
+    pub board: Option<String>,
+    /// Put the import into the physical file beside this source file, and print the diff (ADR 0048).
+    ///
+    /// It edits `<stem>.physical.nsm` beside that file as `dxf import --write` does: the members
+    /// of an earlier import (`outline`, `cutout1`, `hole1`...) and the lines that state their
+    /// places are replaced, every other line and comment stays. The circuit source and the
+    /// layout file are never written.
+    #[arg(long, value_name = "FILE.NSM")]
+    pub write: Option<PathBuf>,
+}
+
 pub fn run(args: Args) -> ExitCode {
     match args.command {
         Command::Place(a) => run_place(&a.matrix),
+        Command::Import(a) => run_import(&a),
     }
+}
+
+/// `netsmith case import`: the source to paste goes to stdout, the report and warnings to
+/// stderr (as `dxf import` does).
+fn run_import(a: &ImportArgs) -> ExitCode {
+    use netsmith_tools::{case_import, dxf};
+    let fail = |e: String| {
+        eprintln!("error: {e}");
+        ExitCode::FAILURE
+    };
+    let bytes = match fs::read(&a.file) {
+        Ok(b) => b,
+        Err(e) => return fail(format!("{}: {e}", a.file.display())),
+    };
+    let name = a.file.display().to_string();
+    let imported = match case_import::import(
+        &bytes,
+        &name,
+        &case_import::Request {
+            rotation: [a.rx, a.ry, a.rz],
+            offset: [a.x, a.y, a.z],
+            at: a.at,
+            holes_at: a.holes_at,
+        },
+    ) {
+        Ok(i) => i,
+        Err(e) => return fail(e),
+    };
+    for w in &imported.warnings {
+        eprintln!("warning: {w}");
+    }
+    let written = match a.write.as_deref() {
+        Some(source) => match dxf::write_physical(source, a.board.as_deref(), &imported) {
+            Ok(w) => Some(w),
+            Err(e) => return fail(e),
+        },
+        None => None,
+    };
+    let board_name = written
+        .as_ref()
+        .map(|(b, _)| b.as_str())
+        .or(a.board.as_deref());
+    print!(
+        "{}",
+        dxf::render(&imported, board_name, &name, written.is_some())
+    );
+    if let Some((_, diff)) = written {
+        println!("\n// physical file written; what changed:");
+        print!("{diff}");
+    }
+    ExitCode::SUCCESS
 }
 
 fn run_place(words: &[String]) -> ExitCode {

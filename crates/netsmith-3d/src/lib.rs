@@ -32,9 +32,9 @@ mod system;
 
 pub use case::{
     CaseScene, FitFinding, FitKind, NotAPose as CaseNotAPose, PlacedCase, Pose as CasePose,
-    ROTATION_TOLERANCE as CASE_ROTATION_TOLERANCE, Subject as CaseSubject, Weight as CaseWeight,
-    Why as CaseWhy, check as check_case, place as place_case,
-    pose_of_matrix as case_pose_of_matrix,
+    ROTATION_TOLERANCE as CASE_ROTATION_TOLERANCE, Ring as CaseRing,
+    SectionError as CaseSectionError, Subject as CaseSubject, Weight as CaseWeight, Why as CaseWhy,
+    check as check_case, place as place_case, pose_of_matrix as case_pose_of_matrix,
 };
 pub use gltf::{glb, json_chunk, system_glb};
 pub use mesh::{

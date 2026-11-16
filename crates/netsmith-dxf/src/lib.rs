@@ -410,7 +410,13 @@ impl Polygon {
         if r > w.min(h) / 2.0 + TOL {
             return None;
         }
-        let r = r.min(w.min(h) / 2.0);
+        // A radius within the tolerance of half the short side is half of it: a slot or a
+        // circle, with no sliver of straight edge between its arcs.
+        let r = if (r - w.min(h) / 2.0).abs() <= TOL {
+            w.min(h) / 2.0
+        } else {
+            r.min(w.min(h) / 2.0)
+        };
         let c = ((lo.0 + hi.0) / 2.0, (lo.1 + hi.1) / 2.0);
         let (ix, iy) = (w / 2.0 - r, h / 2.0 - r);
         // The signed distance from the boundary of the rounded rectangle.
@@ -499,6 +505,72 @@ pub struct Outline {
     /// Things worth saying that did not stop the read: entities that were not read, layers
     /// that were not used, units overruled.
     pub warnings: Vec<String>,
+}
+
+/// `poly`, a loop of the drawing (y up), in the board's frame: the point `origin` of the
+/// drawing is its origin and y points down. The vertices run clockwise on the screen.
+fn flip_polygon(poly: &Polygon, origin: P) -> Polygon {
+    let mut vertices: Vec<Vertex> = poly
+        .vertices
+        .iter()
+        .map(|v| Vertex {
+            x: v.x - origin.0,
+            y: origin.1 - v.y,
+            bulge: -v.bulge,
+        })
+        .collect();
+    // Clockwise on the screen: a positive shoelace sum with y down.
+    if chain::shoelace(&vertices) < 0.0 {
+        // Reverse the loop: each edge now runs the other way with the opposite bulge.
+        let n = vertices.len();
+        let bulges: Vec<f64> = vertices.iter().map(|v| v.bulge).collect();
+        vertices.reverse();
+        for (i, v) in vertices.iter_mut().enumerate() {
+            // The vertex now at i was at n-1-i; its edge to the next was the edge from
+            // the one before it in the old order, reversed.
+            v.bulge = -bulges[(2 * n - 2 - i) % n];
+        }
+    }
+    Polygon { vertices }
+}
+
+/// The outline a drawing in millimetres (y up) has when its board edge is `outer`, the loops in
+/// it `cutouts` and its mounting holes `holes`, as [`read_outline`] gives it for a DXF file: in
+/// the board's frame (the outline's top left corner is the origin, y down), the cutouts and the
+/// holes by position. Nothing is checked about how the loops lie.
+pub fn outline_of_loops(outer: &Polygon, cutouts: &[Polygon], holes: &[Hole]) -> Outline {
+    let (lo, hi) = outer.bounds();
+    let origin = (lo.0, hi.1);
+    let mut cutouts: Vec<Polygon> = cutouts.iter().map(|c| flip_polygon(c, origin)).collect();
+    cutouts.sort_by(|a, b| {
+        let (ka, kb) = (a.bounds().0, b.bounds().0);
+        (ka.1, ka.0).partial_cmp(&(kb.1, kb.0)).expect("finite")
+    });
+    let mut holes: Vec<Hole> = holes
+        .iter()
+        .map(|h| Hole {
+            centre: (h.centre.0 - origin.0, origin.1 - h.centre.1),
+            diameter: h.diameter,
+        })
+        .collect();
+    holes.sort_by(|a, b| {
+        (a.centre.1, a.centre.0)
+            .partial_cmp(&(b.centre.1, b.centre.0))
+            .expect("finite")
+    });
+    Outline {
+        outer: flip_polygon(outer, origin),
+        cutouts,
+        openings: Vec::new(),
+        holes,
+        units: Units::Millimetres,
+        units_from_file: false,
+        origin,
+        layers: Vec::new(),
+        outline_layers: Vec::new(),
+        holes_layers: Vec::new(),
+        warnings: Vec::new(),
+    }
 }
 
 /// Read the board outline, cutouts and holes from the text of an ASCII DXF file.
@@ -674,30 +746,7 @@ pub fn read_outline(text: &str, options: &Options) -> Result<Outline, Error> {
     // To the board's frame: the outline's left and top edges are the origin, y down.
     let (lo, hi) = outer.bounds();
     let origin = (lo.0, hi.1);
-    let flip = |poly: &Polygon| {
-        let mut vertices: Vec<Vertex> = poly
-            .vertices
-            .iter()
-            .map(|v| Vertex {
-                x: v.x - origin.0,
-                y: origin.1 - v.y,
-                bulge: -v.bulge,
-            })
-            .collect();
-        // Clockwise on the screen: a positive shoelace sum with y down.
-        if chain::shoelace(&vertices) < 0.0 {
-            // Reverse the loop: each edge now runs the other way with the opposite bulge.
-            let n = vertices.len();
-            let bulges: Vec<f64> = vertices.iter().map(|v| v.bulge).collect();
-            vertices.reverse();
-            for (i, v) in vertices.iter_mut().enumerate() {
-                // The vertex now at i was at n-1-i; its edge to the next was the edge from
-                // the one before it in the old order, reversed.
-                v.bulge = -bulges[(2 * n - 2 - i) % n];
-            }
-        }
-        Polygon { vertices }
-    };
+    let flip = |poly: &Polygon| flip_polygon(poly, origin);
     let outer = flip(&outer);
     let mut cutouts: Vec<Polygon> = cutouts.iter().map(&flip).collect();
     cutouts.sort_by(|a, b| {

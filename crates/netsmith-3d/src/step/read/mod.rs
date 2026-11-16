@@ -43,6 +43,12 @@ mod tests;
 
 use std::fmt;
 
+/// The invented case the tests of `netsmith case import` read, as STEP text.
+#[cfg(test)]
+pub(crate) fn case_box_step() -> String {
+    fixtures::case_box()
+}
+
 pub(crate) use model::{Model, Rgb};
 pub(crate) use part21::{Exchange, ParseError};
 pub(crate) use tessellate::CHORD_TOLERANCE;

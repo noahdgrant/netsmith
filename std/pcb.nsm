@@ -117,7 +117,8 @@ interface Keepout {
 /// by `netsmith case place`, which refuses a matrix that mirrors, scales or shears.
 ///
 /// A case model is a drawing and a check, never a height, an outline or a hole: those stay
-/// statements of the `case { }` section (by hand or `netsmith dxf import`), and the check says
+/// statements of the `case { }` section (by hand, `netsmith dxf import`, or `netsmith case
+/// import`, which prints the outline, cutouts and holes from the model's section), and the check says
 /// where they disagree with the model. A file that is not there is a warning (the fit is not
 /// checked), an error with strict constraints. netsmith bundles and downloads none.
 ///

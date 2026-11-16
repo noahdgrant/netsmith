@@ -69,7 +69,7 @@ pub enum Command {
     Catalog(catalog::Args),
     /// Import an enclosure's DXF drawing.
     Dxf(dxf::Args),
-    /// Pose a case model: its angles and offset from a matrix.
+    /// A case model: its pose from a matrix (`place`), the board it holds from its STEP model (`import`).
     Case(case::Args),
     /// Start a port of a KiCad board (its first source and its parts file), or derive its tables.
     Port(port::Args),
@@ -129,6 +129,7 @@ mod tests {
             &["catalog", "refresh", "--help"],
             &["dxf", "-h"],
             &["case", "place", "--help"],
+            &["case", "import", "--help"],
             &["kicad-libs", "--help"],
         ] {
             assert_eq!(kind(args), ErrorKind::DisplayHelp, "{args:?}");
