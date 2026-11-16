@@ -2565,7 +2565,7 @@ error: net `net-a.out.line`: `a.out.voh` is 3.035V..3.365V but `b.in.vih` needs 
    |     ^^^^^^^^^^
 ```
 
-The library has one real part that states levels, `std::parts::logic::Sn74lvc1g04`, a single inverter from TI's datasheet SCES214AF, modelled for a supply of 3 V to 3.6 V. Its source is in the definition, table by table: `vih` 2 V and `vil` 0.8 V (table 5.3), `voh` as VCC - 0.1 V and `vol` 0.1 V at 100 uA (table 5.5), and the absolute maximums of table 5.1. Its symbol is drawn from its pin table (the row in `std/kicad.toml` names none). Two of them in a row, with a header on the input, check and solve with one note, because nothing on the board sets the voltage of the header's net:
+The library has two real parts that state levels, `std::parts::logic::Sn74lvc1g04` and `std::parts::mcu::Attiny13a` (below). `Sn74lvc1g04` is a single inverter from TI's datasheet SCES214AF, modelled for a supply of 3 V to 3.6 V. Its source is in the definition, table by table: `vih` 2 V and `vil` 0.8 V (table 5.3), `voh` as VCC - 0.1 V and `vol` 0.1 V at 100 uA (table 5.5), and the absolute maximums of table 5.1. Its symbol is drawn from its pin table (the row in `std/kicad.toml` names none). Two of them in a row, with a header on the input, check and solve with one note, because nothing on the board sets the voltage of the header's net:
 
 ```nsm evaluate
 import std::parts::connector::Header1x2
@@ -2593,6 +2593,55 @@ board Inverters {
 ```
 
 The note, in `netsmith build`'s output: `not evaluated: the absolute maximum of `u1.a.line` against net `net-j.p1`: nothing sets its voltage: no rail is on it and no `Logic` line drives it`.
+
+Its catalog `sn74lvc1g04` has one row, TI's SN74LVC1G04DBVR in the SOT-23-5 (LCSC C7827, library type Extended), so a board that names the package is given that row and `fab` can order the part.
+
+`std::parts::mcu::Attiny13a` is the first standard part that states pin functions. It is Microchip's ATtiny13A (data sheet DS40002307A) in its 150 mil SOIC-8. Its pins `pb0` to `pb5` are `Logic` lines, and each has the functions of the data sheet's Table 10-3 (`.pb0` is `GPIO`, `MOSI`, `AIN0`, `OC0A` or `PCINT0`), with a kind after a function where the table says which way it goes (`OC0A:output`, `INT0:input`); `GPIO` is a class, so the board may choose it on several pins. A pin that is connected and has several functions needs the board to choose one, as in chapter 11. The part states the input levels of Table 18-1 for a supply of 2.4 V to 5.5 V as fractions of the supply (`vil` 0.3 VCC and `vih` 0.6 VCC; the reset pin, `.pb5`, 0.2 VCC and 0.9 VCC) and refuses a supply outside that range. It states no output level, because the table gives VOH and VOL at two supplies and two currents for each group of pins; a receiver on an output is listed as not evaluated against it. Its source is in the definition, table by table (`std/parts/mcu.nsm`). An inverter on 3.3 V drives a high of at least 3.035 V, which the microcontroller reads as a high at 3.3 V (it needs up to 2.079 V) and does not at 5 V, where it needs up to 3.15 V; the 5 V supply of the microcontroller's line also puts 5.25 V on the inverter's output, above its absolute maximum, which the second message says:
+
+```nsm fails
+import std::parts::connector::Header1x2
+import std::parts::logic::Sn74lvc1g04
+import std::parts::mcu::Attiny13a
+import std::sources::Rail
+import std::mfg::jlcpcb::TwoLayer
+
+board Dimmer {
+    .process: TwoLayer {
+        .stackup.thickness &= 1.6mm
+    }
+    .logic_supply: Rail {
+        .voltage &= 3.3V +/- 5%
+        .pos.net &= "3V3"
+    }
+    .mcu_supply: Rail {
+        .voltage &= 5V +/- 5%
+        .pos.net &= "5V"
+    }
+    .inv: Sn74lvc1g04 { .package &= "SOT-23-5" }
+    .mcu: Attiny13a { .package &= "SOIC-8" }
+    .j: Header1x2
+    .logic_supply ~ .inv.vcc
+    .mcu_supply ~ .mcu.vcc
+    .j.p1 ~ .inv.a.line
+    .inv.y.line ~ .mcu.pb2.line
+    .mcu.pb2.line.function &= GPIO
+    .j.p2 ~ .mcu.pb0.line
+    .mcu.pb0.line.function &= GPIO
+}
+```
+
+```text
+error: net `net-inv.y.line`: `inv.y.voh` is 3.035V..3.365V but `mcu.pb2.vih` needs 2.85V..3.15V: a high of 3.035V is not always read as a high, which takes 3.15V
+   --> main.nsm:19:5
+   |
+19 |     .inv: Sn74lvc1g04 { .package &= "SOT-23-5" }
+   |     ^^^^^^^^^^^^^^^^^
+error: net `net-inv.y.line` reaches 5.25V above its ground `GND` (`mcu.pb2.line`, a line of `mcu.pb2.reference`) but `inv.y.line.abs_max` is 3.635V..3.965V: it must not exceed 3.635V
+   --> main.nsm:19:5
+   |
+19 |     .inv: Sn74lvc1g04 { .package &= "SOT-23-5" }
+   |     ^^^^^^^^^^^^^^^^^
+```
 
 The level checks apply to the lines that are `Logic` and to the pins of a bus interface that states `.levels` (see "Logic levels of a bus" below). A rating of any other pin is judged the same way, from its pin row (`abs_max 65V`), which names its ground. A rating is stated nowhere but in the row, so no pin has one whose ground is not known.
 

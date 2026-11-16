@@ -770,3 +770,11 @@ footprint = "Package_TO_SOT_SMD:SOT-23-5"
 kind = "Tps54202"
 package = "SOT-23-6"
 footprint = "Package_TO_SOT_SMD:SOT-23-6"
+
+# The ATtiny13A (`std/parts/mcu.nsm`) in the 8-pin 150 mil SOIC that its data sheet calls 8S1
+# (DS40002307A, section 23.3: 3.90 mm body, 1.27 mm pitch). Generated (ADR 0043); no `symbol`, so
+# the symbol is drawn from the pin table.
+[[part]]
+kind = "Attiny13a"
+package = "SOIC-8"
+footprint = "Package_SO:SOIC-8_3.9x4.9mm_P1.27mm"

@@ -79,3 +79,20 @@ fn an_input_on_a_5v_line_is_within_its_absolute_maximum_and_a_7v_one_is_not() {
         "{m:?}"
     );
 }
+
+#[test]
+fn the_inverter_is_picked_from_its_catalog_row() {
+    let s = run(&format!(
+        "{}    .u: Sn74lvc1g04 {{ .package &= \"SOT-23-5\" }}\n    .j: Header1x2\n    .v ~ .u.vcc\n    .j.p1 ~ .u.a.line\n    .j.p2 ~ .u.y.line\n",
+        rail("v", "3.3V +/- 5%")
+    ));
+    assert_eq!(messages(&s), Vec::<String>::new());
+    let pick = s
+        .picks
+        .iter()
+        .find(|p| s.model.path_of(p.part) == "u")
+        .expect("the inverter is picked");
+    assert_eq!(pick.catalog, "sn74lvc1g04");
+    assert_eq!(pick.lcsc.as_deref(), Some("C7827"));
+    assert_eq!(pick.mpn.as_deref(), Some("SN74LVC1G04DBVR"));
+}

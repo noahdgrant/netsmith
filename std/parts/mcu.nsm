@@ -1,0 +1,112 @@
+//! Microcontrollers, with the pin functions and the logic levels of their datasheets (ADR 0046).
+//!
+//! A part here states the numbers of one datasheet and says which table each came from, as
+//! `std::parts::logic` does. Where a level depends on the supply, the part is restricted to the
+//! supply range of the row it states, and a board outside that range is refused.
+
+import std::logic::Logic
+import std::sources::Rail
+
+/// Microchip's ATtiny13A, an 8-bit AVR microcontroller, in the 8-pin 150 mil (3.9 mm) SOIC that
+/// the data sheet calls 8S1 (ordering code `ATtiny13A-SSU`, LCSC C14075). The standard
+/// `attiny13a` catalog has that one row; the same die in the 8S2 (208 mil) and the PDIP, QFN
+/// and MLF packages has no row and no pin table here.
+///
+/// Datasheet: Microchip, ATtiny13A Data Sheet, DS40002307A (2021; the complete data sheet,
+/// 189 pages, https://ww1.microchip.com/downloads/en/DeviceDoc/ATtiny13A-Data-Sheet-DS40002307A.pdf).
+/// The datasheet that LCSC links is the 20-page summary 8126FS (05/12), which has the pinout
+/// and no electrical tables, so the numbers below are the complete data sheet's, read from the
+/// PDF text. Page numbers are the PDF's printed pages.
+///
+/// - Functions: Table 10-3, Port B Pins Alternate Functions (p.62), and Figure 1-1 for the
+///   pads (pad 1 PB5, 2 PB3, 3 PB4, 4 GND, 5 PB0, 6 PB1, 7 PB2, 8 VCC). A function's kind is
+///   written only where the table says which way it goes: `RESET`, `CLKI`, `SCK`, `T0`, `INT0`
+///   and the analog inputs `ADCn` and `AINn` are inputs, `OC0A` and `OC0B` are outputs, `dW` is
+///   the debugWIRE I/O. `MOSI` and `MISO` carry no kind: the table calls them host data output
+///   or client data input (`MOSI`) and the other way round (`MISO`), so the direction is the
+///   role the board chooses. `PCINTn` (a pin change interrupt source) carries none either.
+///   `GPIO` is Port B's I/O function (section 10, "Ports as General Digital I/O"), a
+///   bidirectional pin that the board may choose on many pins at once (`class`); it is the name
+///   this library gives that function, because the table gives none. PB5 has no `GPIO`: it is a port pin only when the RSTDISBL fuse is
+///   programmed, which this part does not model, so PB5 is the reset input.
+/// - Logic levels (Table 18-1, DC Characteristics, TA = -40 C to 85 C, p.123), for a supply
+///   of 2.4 V to 5.5 V: an I/O pin reads a low up to 0.3 VCC and a high from 0.6 VCC (the rows
+///   "Any Pin as I/O", VCC = 2.4 - 5.5V). The reset pin has its own rows, VCC = 1.8 - 5.5V: a
+///   low up to 0.2 VCC and a high from 0.9 VCC (note 4, "Not tested in production"). The
+///   datasheet gives other levels for a supply of 1.8 V to 2.4 V (0.2 VCC and 0.7 VCC), which
+///   are not stated here, so the part is restricted to 2.4 V to 5.5 V and refuses a supply
+///   outside it (the datasheet's operating range is 1.8 V to 5.5 V).
+/// - Outputs state no level. The datasheet gives VOL and VOH only at two supplies and two load
+///   currents for each group of pins (PB0 and PB1: 0.8 V and 4.0 V at 20 mA and 5 V, 0.6 V and
+///   2.3 V at 10 mA and 3 V; PB2 to PB4: 0.8 V and 4.2 V at 10 mA and 5 V, 0.6 V and 2.5 V at
+///   5 mA and 3 V), which one statement cannot hold, as for the output of `LevelTranslator`; a
+///   receiver on an output of this part is listed as not evaluated against it, and a board
+///   that wants a pair states it (`.u.pb0.voh &= 4.0V at 20mA`).
+/// - Absolute maximums (section 18.1, p.123): the voltage on any pin but RESET is -0.5 V to
+///   VCC + 0.5 V, and on RESET -0.5 V to 13 V. The maximum operating voltage of 6 V, the
+///   current per I/O pin (40 mA) and the current in VCC and GND (200 mA) are not stated: the
+///   supply is held to 5.5 V, and a board states the currents it puts on the part.
+///
+/// The supply current is not stated: the datasheet gives it by mode and clock (Table 18-1, p.124),
+/// so a board states `.vcc.current` for its use. The lines name the supply for their levels and
+/// carry nothing, as in `LevelTranslator`. The part is named for the part number because its
+/// numbers are that datasheet's. `std/kicad.toml` maps it to the generated footprint
+/// `SOIC-8_3.9x4.9mm_P1.27mm` and names no symbol, so the symbol is drawn from the pin table.
+/// The catalog is keyed by `.mpn`, so a board that has several rows names the one it buys.
+#[kind(ic)]
+part Attiny13a {
+    .designator &= "U"
+
+    .vcc: Rail
+    .pb0: Logic
+    .pb1: Logic
+    .pb2: Logic
+    .pb3: Logic
+    .pb4: Logic
+    .pb5: Logic
+    .pb0.reference ~ .vcc
+    .pb1.reference ~ .vcc
+    .pb2.reference ~ .vcc
+    .pb3.reference ~ .vcc
+    .pb4.reference ~ .vcc
+    .pb5.reference ~ .vcc
+    .pb0.reference.current &= 0A
+    .pb1.reference.current &= 0A
+    .pb2.reference.current &= 0A
+    .pb3.reference.current &= 0A
+    .pb4.reference.current &= 0A
+    .pb5.reference.current &= 0A
+
+    // Table 18-1, the rows "VCC = 2.4 - 5.5V" of VIL and VIH for any pin as I/O.
+    .vcc.voltage >= 2.4V
+    .vcc.voltage <= 5.5V
+    .pb0.vil &= 0.3 * .vcc.voltage
+    .pb1.vil &= 0.3 * .vcc.voltage
+    .pb2.vil &= 0.3 * .vcc.voltage
+    .pb3.vil &= 0.3 * .vcc.voltage
+    .pb4.vil &= 0.3 * .vcc.voltage
+    .pb0.vih &= 0.6 * .vcc.voltage
+    .pb1.vih &= 0.6 * .vcc.voltage
+    .pb2.vih &= 0.6 * .vcc.voltage
+    .pb3.vih &= 0.6 * .vcc.voltage
+    .pb4.vih &= 0.6 * .vcc.voltage
+    // The rows "RESET Pin as Reset", VCC = 1.8 - 5.5V.
+    .pb5.vil &= 0.2 * .vcc.voltage
+    .pb5.vih &= 0.9 * .vcc.voltage
+
+    // Figure 1-1 for the pads, Table 10-3 for the functions, the absolute maximums
+    // (section 18.1) in the rows.
+    pins "SOIC-8" {
+        .pb5.line bidirectional "PB5" "1" fn RESET:input dW:bidirectional ADC0:input PCINT5 abs_min -0.5V abs_max 13V
+        .pb3.line bidirectional "PB3" "2" fn GPIO:bidirectional class CLKI:input ADC3:input PCINT3 abs_min -0.5V abs_max .vcc.voltage + 0.5V
+        .pb4.line bidirectional "PB4" "3" fn GPIO:bidirectional class ADC2:input PCINT4 abs_min -0.5V abs_max .vcc.voltage + 0.5V
+        .vcc.neg  power         "GND" "4"
+        .pb0.line bidirectional "PB0" "5" fn GPIO:bidirectional class MOSI AIN0:input OC0A:output PCINT0 abs_min -0.5V abs_max .vcc.voltage + 0.5V
+        .pb1.line bidirectional "PB1" "6" fn GPIO:bidirectional class MISO AIN1:input OC0B:output INT0:input PCINT1 abs_min -0.5V abs_max .vcc.voltage + 0.5V
+        .pb2.line bidirectional "PB2" "7" fn GPIO:bidirectional class SCK:input ADC1:input T0:input PCINT2 abs_min -0.5V abs_max .vcc.voltage + 0.5V
+        .vcc.pos  power         "VCC" "8"
+    }
+
+    .package: Package
+    catalog attiny13a by .mpn { .mpn, .package }
+}
