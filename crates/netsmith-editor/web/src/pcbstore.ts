@@ -8,6 +8,7 @@ import type { PcbChange, PcbCrossed, PcbFindings, PcbPours, PcbRoutesEdited, Pcb
 import { ApiFailure, api } from './client';
 import { type History, NO_HISTORY, type Run, type Step, record, redoing, undoing } from './pcb/edits';
 import { labelOf } from './pcb/routes';
+import type { Side } from './pcb/side';
 import { type Answer, answerTo, latestOnly, saidOf, walkKey } from './pcb/walk';
 import { type Selection, partSel, sameSelection, selection as shared, setSelection } from './selection';
 import { beginJob, endJob, pcbReports, say } from './store';
@@ -32,6 +33,8 @@ export const pickedRoute = signal<RoutePick | null>(null);
 /** Select (and drag), draw a keepout, draw a track, or place a via. */
 export type Tool = 'select' | 'keepout' | 'track' | 'via';
 export const tool = signal<Tool>('select');
+/** The side of the board the 2D view looks at (the key B goes through them): both faces as the file has them, until a person turns the board over. */
+export const pcbSide = signal<Side>('both');
 /** The layer a track is drawn on: the outer layers only, as the routes file has them. */
 export const trackLayer = signal<'top' | 'bottom'>('top');
 

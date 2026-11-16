@@ -68,7 +68,6 @@ export function prepare(text: string, pours = ''): Drawing | null {
   const defs = doc.createElementNS('http://www.w3.org/2000/svg', 'defs');
   defs.innerHTML = [
     ['pcb-hatch-keepout', 'var(--pcb-keepout)', '.2'],
-    ['pcb-hatch-limit', 'var(--pcb-height-limit)', '.16'],
   ]
     .map(
       ([id, colour, alpha]) =>
@@ -76,6 +75,7 @@ export function prepare(text: string, pours = ''): Drawing | null {
     )
     .join('');
   svg.insertBefore(defs, svg.firstChild);
+  stackLimitLabels(svg);
   svg.setAttribute('width', String(w * SCALE));
   svg.setAttribute('height', String(h * SCALE));
   // A track wider than a millimetre is a power track: it is drawn at its true width, and more
@@ -149,6 +149,28 @@ export function prepare(text: string, pours = ''): Drawing | null {
     mmHeight: h,
     nets: [...nets.values()],
   };
+}
+
+/** The space a height limit's label takes, and how far apart two corners may be (mm) and still be one place, in the drawing's units. */
+const LIMIT_LINE = 0.8;
+const LIMIT_REACH = 5;
+
+/** Where the labels of the height limits go: each at its own corner, but one that would write over a label already there (`x`, `y` of each,
+ * in the order drawn) goes a line below it. Gives the `y` of each. */
+export function stackedLabels(at: { x: number; y: number }[]): number[] {
+  const placed: { x: number; y: number }[] = [];
+  return at.map((p) => {
+    let y = p.y;
+    while (placed.some((q) => Math.abs(q.x - p.x) < LIMIT_REACH && Math.abs(q.y - y) < LIMIT_LINE * 0.9)) y += LIMIT_LINE;
+    placed.push({ x: p.x, y });
+    return Math.round(y * 1000) / 1000;
+  });
+}
+
+function stackLimitLabels(svg: Element) {
+  const labels = [...svg.querySelectorAll('text[data-height-limit]')];
+  const ys = stackedLabels(labels.map((l) => ({ x: Number(l.getAttribute('x')), y: Number(l.getAttribute('y')) })));
+  labels.forEach((l, i) => l.setAttribute('y', String(ys[i])));
 }
 
 /** An attribute value for a selector. */

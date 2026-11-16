@@ -5,7 +5,7 @@
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 
 import type { PcbBox, PcbCrossed, PcbKeepout, PcbPart, PcbScene, PcbShoved, PcbWalk } from '../api';
-import { PanZoom } from '../components/PanZoom';
+import { PanZoom, type PanZoomApi } from '../components/PanZoom';
 import { hoverEnter, hoverLeave } from '../hover';
 import {
   askWalk,
@@ -19,6 +19,7 @@ import {
   pickKeepout,
   pickRoute,
   pickedFinding,
+  pcbSide,
   pickedKeepout,
   pickedRoute,
   redo,
@@ -68,6 +69,7 @@ import { fitView } from '../sheets';
 import { heightLines, heldTip, limitMove, zonesOf } from './limits';
 import { type Drawing, SCALE, light, previewMove } from './drawing';
 import { moveParts } from './edits';
+import { appliesTo, faceWord, nextSide } from './side';
 import { type HiddenPlane, fitPlaneLabels } from './planeLabels';
 import { PlaneMore } from './PlaneMore';
 import {
@@ -178,6 +180,8 @@ export function Canvas(props: {
   const frame = frameOf(sc);
   const picked = selection.value;
   const selected = useMemo(() => sc.parts.filter((p) => picked.includes(p.path)), [sc, picked]);
+  const side = pcbSide.value;
+  const back = side === 'back';
   const keepoutPicked = pickedKeepout.value;
   const activeTool = tool.value;
   const step = grid.value;
@@ -361,7 +365,8 @@ export function Canvas(props: {
     const m = svg?.getScreenCTM();
     if (!svg || !m) return null;
     const at = new DOMPoint(e.clientX, e.clientY).matrixTransform(m.inverse());
-    return { p: { x: at.x, y: at.y }, scale: m.a };
+    // The back of the board is drawn mirrored, so the matrix's `a` is negative there: the scale is its length.
+    return { p: { x: at.x, y: at.y }, scale: Math.hypot(m.a, m.b) };
   }
 
   const keepoutAt = (name: string | null) => sc.keepouts.find((k) => k.name === name) ?? null;
@@ -401,9 +406,9 @@ export function Canvas(props: {
     if (copper) return { ...at, title: `net ${copper.getAttribute('data-net')}`, lines: [] };
     if (part) {
       const how = part.locked ? 'locked' : part.placement === 'derived' ? 'placed by netsmith' : `placed by ${part.placement}`;
-      return { ...at, title: part.refdes, lines: [...info(part), `${part.side} side, ${how}`, ...heightLines(part, zones)] };
+      return { ...at, title: part.refdes, lines: [...info(part), `${faceWord(part.side)} side, ${how}`, ...heightLines(part, zones)] };
     }
-    const keepout = sc.keepouts.find((k) => k.area && distanceToEdge(k.area, p) < 0.3 && contains(expand(k.area, 0.3), p));
+    const keepout = sc.keepouts.find((k) => k.area && appliesTo(k.layers, side) && distanceToEdge(k.area, p) < 0.3 && contains(expand(k.area, 0.3), p));
     if (keepout) {
       const what = forbids(keepout);
       const limit = keepout.maxHeight != null ? [`parts at most ${Math.round(keepout.maxHeight * 100) / 100} mm tall`] : [];
@@ -698,6 +703,10 @@ export function Canvas(props: {
       } else if (k === 'l') {
         used();
         void toggleLock();
+      } else if (k === 'b') {
+        used();
+        pcbSide.value = nextSide(pcbSide.value);
+        say(`Looking at the ${pcbSide.value === 'both' ? 'front and the back' : pcbSide.value} of the board`);
       } else if (k === 'k') {
         used();
         tool.value = tool.value === 'keepout' ? 'select' : 'keepout';
@@ -728,7 +737,8 @@ export function Canvas(props: {
         }
       } else if (k.startsWith('arrow')) {
         used();
-        const dx = k === 'arrowleft' ? -1 : k === 'arrowright' ? 1 : 0;
+        // The back is seen mirrored: the arrow that points left on the screen moves a part toward the board's larger x.
+        const dx = (k === 'arrowleft' ? -1 : k === 'arrowright' ? 1 : 0) * (pcbSide.value === 'back' ? -1 : 1);
         const dy = k === 'arrowup' ? -1 : k === 'arrowdown' ? 1 : 0;
         void nudge(dx, dy, e.shiftKey);
       }
@@ -737,16 +747,30 @@ export function Canvas(props: {
     return () => window.removeEventListener('keydown', key);
   });
 
-  // The sheet's box to canvas pixels, for PanZoom.
+  // The sheet's box to canvas pixels, for PanZoom. On the back the board is mirrored, so a box is as far from the right edge as it is
+  // from the left in the drawing.
+  const focusW = props.focus ? Math.max(props.focus.box.width, 4) : 0;
+  const focusX = props.focus ? props.focus.box.x - drawing.left : 0;
   const focus = props.focus
     ? {
-        x: (props.focus.box.x - drawing.left) * SCALE,
+        x: (back ? drawing.mmWidth - focusX - focusW : focusX) * SCALE,
         y: (props.focus.box.y - drawing.top) * SCALE,
-        w: Math.max(props.focus.box.width, 4) * SCALE,
+        w: focusW * SCALE,
         h: Math.max(props.focus.box.height, 4) * SCALE,
         seq: props.focus.seq,
       }
     : undefined;
+
+  // Turning the board over mirrors it about the middle of the canvas: the view moves with it, so what was in the window is still there.
+  const api = useRef<PanZoomApi | null>(null);
+  const wasBack = useRef(back);
+  useEffect(() => {
+    if (wasBack.current === back) return;
+    wasBack.current = back;
+    const view = api.current?.view();
+    const box = api.current?.size();
+    if (view && box) api.current?.set({ k: view.k, x: box.w - view.x - view.k * drawing.width, y: view.y });
+  }, [back]);
 
   const dots = step > 0 && step * SCALE * zoom >= 7;
   const o = sc.outline;
@@ -773,11 +797,12 @@ export function Canvas(props: {
       memoKey={`pcb|${sc.board}`}
       onView={setZoom}
       focus={focus}
+      onApi={(a) => (api.current = a)}
       overlay={<PlaneMore planes={noRoom} onPeek={setPeek} onZoom={(p) => props.onZoomPlane?.(p.box)} />}
     >
       <style>{props.css}</style>
       <div
-        class="hit-target pcb-stage"
+        class={`hit-target pcb-stage side-${side}`}
         // --px is a millimetre of the drawing per screen pixel (a number, for a width); --pxl is the same with its unit, for a size of text
         style={{ '--px': 1 / (SCALE * zoom), '--pxl': `${1 / (SCALE * zoom)}px` }}
         onPointerDown={down}

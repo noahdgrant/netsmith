@@ -1,0 +1,23 @@
+version = 1
+
+# Two headers on the front and one on the back, in a row under the enclosure's limits.
+[Enclosed.parts."front_a"]
+at = [10.0, 15.0]
+rotation = 0.0
+side = "top"
+lock = false
+source = "hand"
+
+[Enclosed.parts."back_a"]
+at = [22.0, 15.0]
+rotation = 0.0
+side = "bottom"
+lock = false
+source = "hand"
+
+[Enclosed.parts."front_b"]
+at = [32.0, 15.0]
+rotation = 0.0
+side = "top"
+lock = false
+source = "hand"

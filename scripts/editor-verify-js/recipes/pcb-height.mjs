@@ -30,14 +30,15 @@ export async function run(tools) {
     return page.locator('[data-testid=tip]').innerText();
   };
 
-  step('the scene has the limit and the heights; the lid is drawn amber with its limit in words');
+  step('the scene has the limit and the heights; the lid is drawn as an amber outline with its limit and face in words');
   const s0 = await scene(page, BOARD);
   const lid = lidOf(s0);
   expect(lid && lid.maxHeight === 3 && lid.layers.join() === 'top', 'the lid limits the top face to 3 mm');
   expect(partOf(s0, 'tall').height === 9 && partOf(s0, 'flat').height === 1.5 && partOf(s0, 'bare').height === null, 'heights 9, 1.5 and not stated');
-  expect((await page.locator('.pcb-host svg text[data-height-limit="lid"]').textContent()) === 'max 3 mm', 'the zone says max 3 mm');
+  expect((await page.locator('.pcb-host svg text[data-height-limit="lid"]').textContent()) === '3 mm, top', 'the zone says its limit and its face: 3 mm, top');
   const fill = await page.locator('.pcb-host svg rect[data-keepout="lid"]').getAttribute('stroke');
   expect(fill === '#e0a030', 'drawn in amber');
+  expect((await page.locator('.pcb-host svg rect[data-keepout="lid"]').evaluate((e) => getComputedStyle(e).fill)) === 'none', 'as an outline, with no fill to hide the board');
 
   step('the hover says how tall each part is and what the lid allows under it');
   const tall = await partAt(page, 'tall', BOARD);

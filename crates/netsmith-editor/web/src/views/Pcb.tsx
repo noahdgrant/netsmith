@@ -18,6 +18,7 @@ import { FindingsList } from '../pcb/Findings';
 import { Panel } from '../pcb/Panel';
 import { PanelPreview } from '../pcb/PanelPreview';
 import { prepare } from '../pcb/drawing';
+import { SIDES, type Side } from '../pcb/side';
 import { type Pt, unite } from '../pcb/geometry';
 import { POUR_HIDDEN, fills, poursMarkup } from '../pcb/pours';
 import {
@@ -26,6 +27,7 @@ import {
   history,
   keepoutDefaults,
   loadScene,
+  pcbSide,
   pickedFinding,
   pours,
   recheck,
@@ -60,9 +62,18 @@ const LAYERS: { id: string; label: string }[] = [
   { id: 'silk', label: 'Silkscreen' },
   { id: 'fab', label: 'Fab' },
   { id: 'courtyard', label: 'Courtyard' },
+  { id: 'keepouts', label: 'Keepouts' },
+  { id: 'limits', label: 'Height limits' },
   { id: 'refs', label: 'References' },
   { id: 'key', label: 'Key' },
 ];
+
+// Keepouts and height limits are rectangles among the drawing's marks, not groups of their own: a keepout forbids something, a height
+// limit (`data-limit-only`, or the label a keepout that forbids and limits has) only limits how tall a part may stand.
+const ZONE_HIDDEN: Record<string, string> = {
+  keepouts: '.pcb-host svg [data-keepout]:not([data-limit-only])',
+  limits: '.pcb-host svg [data-keepout][data-limit-only], .pcb-host svg [data-height-limit]',
+};
 
 /** The box with room round it, so a zoom to a small part still shows what is near it. */
 /** Route the board, and say how it went when it is done, wherever the person is by then. */
@@ -146,9 +157,10 @@ export function Pcb() {
   const css = useMemo(
     () =>
       hidden
-        .map(
-          (l) =>
-            `.pcb-host .l-${l}${l === 'planes' ? ', .pcb-host .l-plane-labels' : ''}${fixedOf[l] ? `, .pcb-host .fixed-shape${fixedOf[l]}` : ''}${POUR_HIDDEN[l] ? `, .pcb-host .l-pours ${POUR_HIDDEN[l]}` : ''}{display:none}`,
+        .map((l) =>
+          ZONE_HIDDEN[l]
+            ? `${ZONE_HIDDEN[l]}{display:none}`
+            : `.pcb-host .l-${l}${l === 'planes' ? ', .pcb-host .l-plane-labels' : ''}${fixedOf[l] ? `, .pcb-host .fixed-shape${fixedOf[l]}` : ''}${POUR_HIDDEN[l] ? `, .pcb-host .l-pours ${POUR_HIDDEN[l]}` : ''}{display:none}`,
         )
         .join(''),
     [hidden],
@@ -245,6 +257,25 @@ export function Pcb() {
               { value: '3d', label: '3D', icon: 'cube', tip: 'The board in 3D, with the heights netsmith knows (read-only)', keys: 'D', testid: 'pcb-3d-toggle' },
             ]}
           />
+          {!in3d && (
+            <Segmented<Side>
+              label="Side"
+              value={pcbSide.value}
+              onChange={(v) => (pcbSide.value = v)}
+              options={SIDES.map((v) => ({
+                value: v,
+                label: v === 'front' ? 'Front' : v === 'back' ? 'Back' : 'Both',
+                tip:
+                  v === 'front'
+                    ? 'The board seen from the front, the back dimmed'
+                    : v === 'back'
+                      ? 'The board seen from the back, mirrored left to right as KiCad shows it, the front dimmed'
+                      : 'Both faces as they are in the file',
+                keys: 'B',
+                testid: `pcb-side-${v}`,
+              }))}
+            />
+          )}
           {!in3d && (
             <Segmented<Tool>
               label="Tool"

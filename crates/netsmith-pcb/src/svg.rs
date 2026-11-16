@@ -12,7 +12,8 @@
 //! What a page needs to pick things out is in data attributes: a part's group has `data-ref`
 //! and `data-path` (its path in the design), a pad `data-pad` (its number) and, if it has a
 //! net, `data-net`; a ratsnest line `data-net`, `data-from` and `data-to` (the references of
-//! the parts at its ends), a keepout `data-keepout` and a cutout `data-cutout`.
+//! the parts at its ends), a keepout `data-keepout` (with `data-layers`, the layers it applies to, and
+//! `data-limit-only` when it only limits height) and a cutout `data-cutout`.
 
 use std::fmt::Write as _;
 
@@ -298,6 +299,19 @@ fn part(out: &mut String, placed: &Placed, colours: &dyn Fn(&str, &str) -> PadNe
     let _ = writeln!(out, "</g>");
 }
 
+/// The faces of the board a keepout's layers name, for the label of a height limit: `top`, `bottom` or `both faces`
+/// (a limit that names an inner layer only says its layers).
+fn faces(layers: &[String]) -> String {
+    let top = layers.iter().any(|l| l == "top");
+    let bottom = layers.iter().any(|l| l == "bottom");
+    match (top, bottom) {
+        (true, true) => "both faces".into(),
+        (true, false) => "top".into(),
+        (false, true) => "bottom".into(),
+        (false, false) => layers.join(", "),
+    }
+}
+
 /// The group a footprint's drawings of one layer are in.
 fn layer_class(layer: Layer) -> &'static str {
     match layer {
@@ -477,9 +491,17 @@ fn draw(board: &Board, with_key: bool) -> String {
                 k.layers.join(", ")
             ));
         }
+        // The layers it applies to and whether it only limits height are data for the page, which shows the keepouts and
+        // the height limits apart and only those of the face it looks at.
+        let layers = escape(&k.layers.join(" "));
+        let limit_only = if k.forbids_anything() {
+            ""
+        } else {
+            r#" data-limit-only="true""#
+        };
         let _ = writeln!(
             out,
-            r#"<rect data-keepout="{}" x="{}" y="{}" width="{}" height="{}" fill="{colour}" fill-opacity="0.12" stroke="{colour}" stroke-width="0.1" stroke-dasharray="0.8 0.5"><title>{}: {}</title></rect>"#,
+            r#"<rect data-keepout="{}" data-layers="{layers}"{limit_only} x="{}" y="{}" width="{}" height="{}" fill="{colour}" fill-opacity="0.12" stroke="{colour}" stroke-width="0.1" stroke-dasharray="0.8 0.5"><title>{}: {}</title></rect>"#,
             escape(&k.name),
             n(k.rect.min.x),
             n(k.rect.min.y),
@@ -491,12 +513,13 @@ fn draw(board: &Board, with_key: bool) -> String {
         if let Some(limit) = k.max_height {
             let _ = writeln!(
                 out,
-                r#"<text data-height-limit="{}" x="{}" y="{}" font-size="{}" fill="{HEIGHT_LIMIT}" font-family="monospace" dominant-baseline="hanging">max {} mm</text>"#,
+                r#"<text data-height-limit="{}" data-layers="{layers}" x="{}" y="{}" font-size="{}" fill="{HEIGHT_LIMIT}" font-family="monospace" dominant-baseline="hanging">{} mm, {}</text>"#,
                 escape(&k.name),
                 n(k.rect.min.x + 0.4),
                 n(k.rect.min.y + 0.3),
                 n(KEY_TEXT),
-                n(limit)
+                n(limit),
+                escape(&faces(&k.layers))
             );
         }
     }
@@ -848,7 +871,8 @@ mod tests {
                 && view.contains(HEIGHT_LIMIT)
                 && view.contains("lid_ribs: parts at most 3 mm tall on top")
                 && view.contains(r#"data-height-limit="lid_ribs""#)
-                && view.contains(">max 3 mm</text>"),
+                && view.contains(">3 mm, top</text>")
+                && view.contains(r#"data-layers="top" data-limit-only="true""#),
             "{view}"
         );
         // KiCad has no height to enforce: a zone that forbids nothing is not a rule area.

@@ -26,10 +26,13 @@ type Spot = { x: number; y: number; anchor: 'start' | 'end' };
 const ownBox = (el: SVGTextElement, x: number, y: number, anchor: 'start' | 'middle' | 'end'): Box => {
   const m = el.getScreenCTM();
   if (!m) return boxOf(el.getBoundingClientRect());
-  const fontPx = parseFloat(getComputedStyle(el).fontSize) * m.a;
+  // The back of the board is drawn mirrored (`m.a` is then negative): a label's letters stay as they read, and the end of the text that
+  // is its first letter is on the other side of its point.
+  const fontPx = parseFloat(getComputedStyle(el).fontSize) * Math.hypot(m.a, m.b);
+  const turned = m.a < 0 ? ({ start: 'end', end: 'start', middle: 'middle' } as const)[anchor] : anchor;
   // The letters of the label, not those of a tooltip (`<title>`) it carries.
   const chars = [...el.childNodes].filter((n) => n.nodeType === 3).reduce((n, t) => n + (t.textContent ?? '').length, 0);
-  return labelBox(m.a * x + m.c * y + m.e, m.b * x + m.d * y + m.f, fontPx, chars, anchor);
+  return labelBox(m.a * x + m.c * y + m.e, m.b * x + m.d * y + m.f, fontPx, chars, turned);
 };
 
 /** The places to try for a plane's label (`x y w h` in the drawing's units): each of the four corners at the first line, then at the second

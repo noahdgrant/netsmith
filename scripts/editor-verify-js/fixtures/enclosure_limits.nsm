@@ -1,0 +1,17 @@
+//! A board in an enclosure for the editor recipes. Its physical file, `enclosure_limits.physical.nsm`, states the
+//! enclosure's limits as seven height-only keepouts (a floor clearance over the whole back, a lower limit near an
+//! edge, a boss, a tab, a screw shank and two ribs on the front) and one keepout that forbids parts on the front.
+//! The layout file puts one header on the back and two on the front, so the view has both faces to look at and
+//! limits that overlap one another and the parts.
+
+import std::parts::connector::{Header1x2, Header2x3}
+import std::mfg::jlcpcb::TwoLayer
+
+board Enclosed {
+    .process: TwoLayer {
+        .stackup.thickness &= 1.6mm
+    }
+    .front_a: Header1x2
+    .back_a: Header1x2
+    .front_b: Header2x3
+}
