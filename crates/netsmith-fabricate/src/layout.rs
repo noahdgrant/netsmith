@@ -62,6 +62,130 @@ pub fn place_seeds(project: Option<&crate::project::Project>) -> u32 {
         .unwrap_or(DEFAULT_PLACE_SEEDS)
 }
 
+/// How [`place`] may look for a seed that places a board: how many seeds it may try
+/// (`place_seeds`) and the place budget (`--place-budget`, `place_budget` in `netsmith.toml`,
+/// issue #764), which ends the placing early and keeps the closest try. A number alone is
+/// that many seeds and no budget.
+#[derive(Debug, Clone, Copy)]
+pub struct Seeding {
+    pub seeds: u32,
+    pub budget: netsmith_core::job::Limit,
+    /// Where a caller that places through `board3d` wants the placer's progress lines
+    /// ([`place_progress`]); `fab` tells its own. `None` tells nothing.
+    pub progress: Option<fn(&str)>,
+}
+
+impl From<u32> for Seeding {
+    fn from(seeds: u32) -> Seeding {
+        Seeding {
+            seeds,
+            budget: netsmith_core::job::Limit::default(),
+            progress: None,
+        }
+    }
+}
+
+/// The place budget of a board of `project`, from `--place-budget` (`flag`) or else its
+/// `place_budget` (checked when the manifest was read): none when neither says.
+pub fn place_budget(
+    project: Option<&crate::project::Project>,
+    flag: Option<netsmith_core::job::Limit>,
+) -> netsmith_core::job::Limit {
+    flag.or_else(|| {
+        project
+            .and_then(|p| p.manifest.place_budget.as_deref())
+            .and_then(|text| parse_place_budget(text).ok())
+    })
+    .unwrap_or_default()
+}
+
+/// Reads a place budget as `--place-budget` and `place_budget` write it: seconds (`120`,
+/// `120s`, `2m`), a number of tries (`5tries`, `1try`), or both joined by `+`
+/// (`120s+5tries`), whichever is spent first. A try is one run of the annealer in a fixed
+/// outline: a seed's first run and each of its retries. `0` and `0tries` are refused: a budget
+/// of nothing places nothing.
+pub fn parse_place_budget(text: &str) -> Result<netsmith_core::job::Limit, String> {
+    let wrong = || {
+        format!(
+            "place budget `{text}`: write seconds (`120`, `120s`, `2m`), tries (`5tries`), or both (`120s+5tries`)"
+        )
+    };
+    let mut limit = netsmith_core::job::Limit::default();
+    for part in text.split('+').map(str::trim) {
+        let digits = part
+            .find(|c: char| !c.is_ascii_digit() && c != '.')
+            .unwrap_or(part.len());
+        let (number, unit) = part.split_at(digits);
+        let number: f64 = number.parse().map_err(|_| wrong())?;
+        if !number.is_finite() || number <= 0.0 {
+            return Err(format!(
+                "place budget `{text}`: a budget must be more than 0"
+            ));
+        }
+        match unit.trim() {
+            "" | "s" => {
+                if limit.time.is_some() {
+                    return Err(wrong());
+                }
+                limit.time = Some(std::time::Duration::from_secs_f64(number));
+            }
+            "m" | "min" => {
+                if limit.time.is_some() {
+                    return Err(wrong());
+                }
+                limit.time = Some(std::time::Duration::from_secs_f64(number * 60.0));
+            }
+            "try" | "tries" => {
+                if limit.tries.is_some() || number.fract() != 0.0 {
+                    return Err(wrong());
+                }
+                limit.tries = Some(number as u64);
+            }
+            _ => return Err(wrong()),
+        }
+    }
+    Ok(limit)
+}
+
+/// The least time between two lines of the placer's progress that carry a count alone (`moves
+/// tried`, `parts legalised`); a line that says what a run or a seed found is always told.
+pub const PLACE_PROGRESS_EVERY: std::time::Duration = std::time::Duration::from_secs(5);
+
+/// A sink for the job's progress while a board is placed (issue #764) that tells `say` one
+/// line at a time: `<label>: placing: seed 2 (3 of 8); the closest so far is seed 0, with 7
+/// faults [41 s]`, `<label>: placing: run 2 in 35.0 x 60.0 mm: 11 overlaps and 2 parts
+/// outside; the worst: ... [75 s]`, and the counts of a run (`120000 of 300000 moves tried`)
+/// at most once in [`PLACE_PROGRESS_EVERY`]. The time is from when the sink was made.
+pub fn place_progress(
+    label: String,
+    say: impl Fn(&str) + 'static,
+) -> std::rc::Rc<dyn Fn(&netsmith_core::job::Work)> {
+    let began = std::time::Instant::now();
+    let told = std::cell::Cell::new(None::<std::time::Instant>);
+    std::rc::Rc::new(move |w: &netsmith_core::job::Work| {
+        let what = match &w.detail {
+            Some(detail) => detail.clone(),
+            None => {
+                if told
+                    .get()
+                    .is_some_and(|at| at.elapsed() < PLACE_PROGRESS_EVERY)
+                {
+                    return;
+                }
+                match w.total {
+                    Some(total) => format!("{} of {total} {}", w.done, w.unit),
+                    None => format!("{} {}", w.done, w.unit),
+                }
+            }
+        };
+        told.set(Some(std::time::Instant::now()));
+        say(&format!(
+            "{label}: placing: {what} [{:.0} s]",
+            began.elapsed().as_secs_f64()
+        ));
+    })
+}
+
 /// Why [`place`] made no board.
 pub enum PlaceFailure {
     /// The design cannot be made into a placed board (a footprint, a process, the placer).
@@ -115,6 +239,11 @@ pub struct Seeds {
     /// What blocks the closest try, when no seed places the board: one sentence each, the
     /// members by path with the designator beside, and by how much.
     pub blockers: Vec<String>,
+    /// The place budget the seeds were tried under (issue #764).
+    pub budget: netsmith_core::job::Limit,
+    /// Whether the budget was spent before a seed placed the board: the closest try is then
+    /// of the seeds tried in it.
+    pub ran_out: bool,
 }
 
 impl Seeds {
@@ -162,7 +291,12 @@ impl Seeds {
     /// more, the closest, and what blocks it there.
     pub fn report(&self) -> String {
         let tried = self.missed.len();
-        let mut out = if tried <= 1 {
+        let mut out = if self.ran_out {
+            format!(
+                "placed nothing in {} (`--place-budget`, or `place_budget` in netsmith.toml): the placer tried {tried} of {} seeds from seed {}, and the closest is seed {}",
+                self.budget, self.limit, self.first, self.used
+            )
+        } else if tried <= 1 {
             format!(
                 "seed {} does not place the board, and no other was tried (`place_seeds = {}` in netsmith.toml; a larger number tries the seeds after it)",
                 self.first, self.limit
@@ -218,18 +352,56 @@ impl<B> Try<B> {
 /// first that places it, or the closest try (the fewest faults, then the least area and
 /// distance; the earlier seed on a tie) with what blocks it. An error of `run` is given at
 /// once: no seed changes it.
+///
+/// The seeds are tried under the place budget (`job::limited`): once it is spent no other seed
+/// is begun, the placer ends the run it is in with what it has, and the closest try so far is
+/// given. The job's progress is told which seed begins and the closest so far (`seeds
+/// tried`).
 fn search<B>(
     first: u64,
     stated: bool,
-    limit: u32,
+    seeding: impl Into<Seeding>,
+    run: impl FnMut(u64) -> Result<Try<B>, PlaceFailure>,
+) -> Result<(B, Seeds), PlaceFailure> {
+    let seeding = seeding.into();
+    netsmith_core::job::limited(seeding.budget, || {
+        search_within(first, stated, seeding, run)
+    })
+}
+
+fn search_within<B>(
+    first: u64,
+    stated: bool,
+    seeding: Seeding,
     mut run: impl FnMut(u64) -> Result<Try<B>, PlaceFailure>,
 ) -> Result<(B, Seeds), PlaceFailure> {
-    let limit = limit.max(1);
+    let limit = seeding.seeds.max(1);
+    let budget = seeding.budget;
     let mut missed = Vec::new();
     let mut best: Option<(u64, Try<B>)> = None;
+    let mut ran_out = false;
     for k in 0..limit {
         // The layout file's seed is a u32; the next ones wrap round within it.
         let seed = u64::from(u32::try_from(first).unwrap_or(0).wrapping_add(k));
+        if k > 0 && netsmith_core::job::spent() {
+            ran_out = true;
+            break;
+        }
+        netsmith_core::job::report_detail(
+            "seeds tried",
+            u64::from(k),
+            Some(u64::from(limit)),
+            || {
+                let closest = best.as_ref().map_or(String::new(), |(s, b)| {
+                    let (faults, _) = b.badness();
+                    format!(
+                        "; the closest so far is seed {s}, with {faults} {}",
+                        if faults == 1 { "fault" } else { "faults" }
+                    )
+                });
+                format!("seed {seed} ({} of {limit}){closest}", k + 1)
+            },
+        );
         let attempt = run(seed)?;
         if let Try::Board { blockers, .. } = &attempt
             && blockers.is_empty()
@@ -245,6 +417,8 @@ fn search<B>(
                 placed: true,
                 missed,
                 blockers: Vec::new(),
+                budget,
+                ran_out: false,
             };
             return Ok((board, seeds));
         }
@@ -262,6 +436,8 @@ fn search<B>(
         }
     }
     let (used, closest) = best.expect("at least one seed is tried");
+    // A budget spent in the last seed's run cut that run short too.
+    ran_out = ran_out || netsmith_core::job::spent();
     let seeds = Seeds {
         first,
         stated,
@@ -270,6 +446,8 @@ fn search<B>(
         placed: false,
         missed,
         blockers: closest.blockers(),
+        budget,
+        ran_out,
     };
     match closest {
         Try::Board { board, .. } => Ok((board, seeds)),
@@ -337,13 +515,15 @@ fn blockers_of(
 /// When none does, the closest try is given (the fewest faults, then the least area and
 /// distance), with what blocks it: as the board, or as the refusal for parts that do not fit.
 /// A failure no seed changes (a footprint, a process, a requirement proved not to hold) is
-/// given at once.
+/// given at once. `seeds` may carry a place budget ([`Seeding`]): when it is spent the closest
+/// try so far is given, as when no seed places the board, and [`Seeds::report`] says that the
+/// budget ended it.
 pub fn place(
     design: &netsmith_core::Design,
     layout: Option<&(Layout, String)>,
     libraries: &netsmith_pipeline::Libraries,
     lines_warn: bool,
-    seeds: u32,
+    seeds: impl Into<Seeding>,
 ) -> Result<Placing, PlaceFailure> {
     let mut base = netsmith_pcb::place_options(design, layout.map(|l| &l.0));
     base.lines_warn = lines_warn;
@@ -581,6 +761,125 @@ mod tests {
                 "no seed places the board: the placer tried 2 seeds, 0 to 1 (`place_seeds = 2` in netsmith.toml sets how many), and the closest is seed 1, where this blocks it:\n  `stage.r3` (R3): 0.30 mm outside the left edge\n{error}"
             )
         );
+    }
+
+    #[test]
+    fn a_spent_budget_begins_no_other_seed_and_the_report_says_so() {
+        use netsmith_core::job;
+        let heard = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+        let sink = {
+            let heard = std::rc::Rc::clone(&heard);
+            std::rc::Rc::new(move |w: &job::Work| heard.borrow_mut().push(w.clone()))
+        };
+        let budget = job::Limit {
+            time: None,
+            tries: Some(2),
+        };
+        let mut tried = Vec::new();
+        let (_, seeds) = job::reporting(sink, || {
+            search(
+                0,
+                false,
+                Seeding {
+                    seeds: 8,
+                    budget,
+                    progress: None,
+                },
+                |seed| {
+                    tried.push(seed);
+                    // Each seed is one run of the placer in the outline.
+                    job::spend_try();
+                    Ok(board(1, 0.5 + seed as f64))
+                },
+            )
+        })
+        .ok()
+        .unwrap();
+        assert_eq!(tried, [0, 1]);
+        assert!(seeds.ran_out && !seeds.placed);
+        assert_eq!(
+            seeds.report(),
+            "placed nothing in 2 tries (`--place-budget`, or `place_budget` in netsmith.toml): the placer tried 2 of 8 seeds from seed 0, and the closest is seed 0, where this blocks it:\n  the courtyards of `a0` (C0) and `b` (R1) overlap by 0.50 mm2"
+        );
+        let told: Vec<(u64, Option<u64>, Option<String>)> = heard
+            .borrow()
+            .iter()
+            .map(|w| (w.done, w.total, w.detail.clone()))
+            .collect();
+        assert_eq!(
+            told,
+            [
+                (0, Some(8), Some("seed 0 (1 of 8)".to_string())),
+                (
+                    1,
+                    Some(8),
+                    Some("seed 1 (2 of 8); the closest so far is seed 0, with 1 fault".to_string())
+                ),
+            ]
+        );
+        // With no budget every seed is tried, and nothing is said of a budget.
+        let (_, seeds) = search(0, false, 3, |_| Ok(board(1, 0.5))).ok().unwrap();
+        assert!(!seeds.ran_out);
+        assert!(seeds.report().starts_with("no seed places the board"));
+    }
+
+    #[test]
+    fn a_place_budget_is_seconds_minutes_tries_or_both() {
+        use std::time::Duration;
+        let limit = |time: Option<u64>, tries: Option<u64>| netsmith_core::job::Limit {
+            time: time.map(Duration::from_secs),
+            tries,
+        };
+        assert_eq!(parse_place_budget("120"), Ok(limit(Some(120), None)));
+        assert_eq!(parse_place_budget("120s"), Ok(limit(Some(120), None)));
+        assert_eq!(parse_place_budget("2m"), Ok(limit(Some(120), None)));
+        assert_eq!(parse_place_budget("1try"), Ok(limit(None, Some(1))));
+        assert_eq!(
+            parse_place_budget("90s+5tries"),
+            Ok(limit(Some(90), Some(5)))
+        );
+        assert_eq!(
+            parse_place_budget("0").unwrap_err(),
+            "place budget `0`: a budget must be more than 0"
+        );
+        for bad in ["", "soon", "5x", "1s+2s", "2.5tries", "-3"] {
+            assert!(parse_place_budget(bad).is_err(), "{bad}");
+        }
+        assert_eq!(
+            place_budget(None, None),
+            netsmith_core::job::Limit::default()
+        );
+    }
+
+    #[test]
+    fn the_progress_of_the_placer_is_one_line_with_the_board_and_the_time() {
+        use netsmith_core::job;
+        let said = std::rc::Rc::new(std::cell::RefCell::new(Vec::<String>::new()));
+        let sink = {
+            let said = std::rc::Rc::clone(&said);
+            place_progress("Board".into(), move |line| {
+                said.borrow_mut().push(line.to_string())
+            })
+        };
+        job::reporting(sink, || {
+            job::report_detail("seeds tried", 0, Some(8), || "seed 0 (1 of 8)".into());
+            job::report_detail("placer runs", 1, None, || {
+                "run 1 in 35.0 x 60.0 mm: placed".into()
+            });
+        });
+        let lines: Vec<String> = said
+            .borrow()
+            .iter()
+            .map(|l| l.rsplit_once(" [").expect("the time is last").0.to_string())
+            .collect();
+        assert_eq!(
+            lines,
+            [
+                "Board: placing: seed 0 (1 of 8)",
+                "Board: placing: run 1 in 35.0 x 60.0 mm: placed"
+            ]
+        );
+        assert!(said.borrow().iter().all(|l| l.ends_with(" s]")));
     }
 
     #[test]

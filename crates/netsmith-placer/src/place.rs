@@ -88,6 +88,17 @@
 //! retries cost up to five times the time of a refused placement, and the large-part corner is
 //! chosen without looking at the nets.
 //!
+//! **Progress and a budget** (issue #764). The placer tells the job's progress
+//! (`netsmith_core::job::report`) the moves of a run (`moves tried`) and the parts of a
+//! legalising pass (`parts legalised`), before a run in a fixed size what the courtyards need
+//! on each face against what a face holds (`report_area`), and after each run what was still
+//! out, the worst by name (`placer runs`, with a detail). Under a `job::limited` limit a run in
+//! a fixed size is a try (`job::spend_try`): once the limit is spent no retry and no run with
+//! the faces shared is begun, and once its time is up the run in hand ends where it is (the
+//! annealer looks every 256 moves, a legalising pass at each part) and is judged as any run
+//! that ends short. A run that ends within the limit is the same as with none. The caller (the
+//! seed search of `netsmith-fabricate`) begins no other seed and gives the closest try.
+//!
 //! **What a layout file does.** [`netsmith_pcb::place_options`] gives the placer the face of every
 //! part the file has an entry for, its seed, and `PlaceOptions::fixed` for the parts whose
 //! entry has `lock = true`. A locked part is where the file says (its text side too), the others
@@ -685,6 +696,7 @@ pub(crate) fn arrange_best(
             },
         );
     };
+    report_area(parts, fit, options);
     let fits = |a: &Arrangement| a.needs.0 <= fit.0 + 1e-9 && a.needs.1 <= fit.1 + 1e-9;
     if fits(&arrangement) {
         return refine(
@@ -732,7 +744,8 @@ pub(crate) fn arrange_best(
     } else {
         None
     };
-    if movable.is_empty()
+    // A spent limit (issue #764) keeps the run there was.
+    if (movable.is_empty() || netsmith_core::job::spent())
         && let Some(error) = first
     {
         return Err(error);
@@ -874,6 +887,13 @@ fn part_states(parts: &[Placed], fixed: &[bool], ended: &Ended) -> Vec<PartState
 /// that may hang over the edge are not counted, for it is not known how much of them is
 /// inside.
 fn could_fit(parts: &[Placed], fit: (f64, f64), options: &PlaceOptions) -> bool {
+    let (load, inside) = face_loads(parts, fit, options);
+    load[0] <= inside + 1e-9 && load[1] <= inside + 1e-9
+}
+
+/// What the courtyards certainly take on the front and on the back, on the faces the parts are
+/// on now, and what one face holds inside the margin, in mm2: [`could_fit`]'s numbers.
+fn face_loads(parts: &[Placed], fit: (f64, f64), options: &PlaceOptions) -> ([f64; 2], f64) {
     let inside = (fit.0 - 2.0 * options.wall()).max(0.0) * (fit.1 - 2.0 * options.wall()).max(0.0);
     let mut load = [0.0f64; 2];
     for p in parts
@@ -903,7 +923,7 @@ fn could_fit(parts: &[Placed], fit: (f64, f64), options: &PlaceOptions) -> bool 
             load[usize::from(p.side == Side::Back)] += area;
         }
     }
-    load[0] <= inside + 1e-9 && load[1] <= inside + 1e-9
+    (load, inside)
 }
 
 /// The rows arrangement of the parts that are not fixed, with the fixed ones where they stay.
@@ -1087,6 +1107,10 @@ fn retry(
     let large = large_parts(parts, problem.fixed, options, problem.region);
     let mut tries = 1;
     for k in 1..=RETRIES {
+        // A spent limit keeps the closest run so far (issue #764).
+        if netsmith_core::job::spent() {
+            break;
+        }
         restore(parts, rows_at.to_vec());
         let mut frozen = problem.fixed.to_vec();
         put_large_in_corners(parts, &mut frozen, &large, options, problem.region);
@@ -1100,8 +1124,10 @@ fn retry(
             seed,
             ..*problem
         };
+        netsmith_core::job::spend_try();
         let outcome = anneal::anneal(parts, &attempt, 1.0);
         tries += 1;
+        report_run(tries, options.fit, &outcome);
         if outcome.feasible {
             return (outcome, tries);
         }
@@ -1112,6 +1138,44 @@ fn retry(
     }
     restore(parts, best_poses);
     (best, tries)
+}
+
+/// Tells the job's progress how a run of the annealer ended (issue #764): `placer runs`, the
+/// run's number for this seed, and what was still out, the worst by name.
+/// A run in a fixed size says it (`run 2 in 35.0 x 60.0 mm: ...`); one with no size, which
+/// finds the size the parts need, says that (`run 1 sized to the parts: placed`).
+fn report_run(run: usize, fit: Option<(f64, f64)>, outcome: &Outcome) {
+    netsmith_core::job::report_detail("placer runs", run as u64, None, || {
+        let ended = if outcome.feasible {
+            "placed".to_string()
+        } else {
+            outcome.ended.summary(3)
+        };
+        match fit {
+            Some((w, h)) => format!("run {run} in {w:.1} x {h:.1} mm: {ended}"),
+            None => format!("run {run} sized to the parts: {ended}"),
+        }
+    });
+}
+
+/// Tells the job's progress, before the placer tries a fixed size, what the courtyards need on
+/// each face and what a face holds inside the margin (issue #764), as [`could_fit`] counts
+/// them, so that a board that cannot fit says so before the search and not after it.
+fn report_area(parts: &[Placed], fit: (f64, f64), options: &PlaceOptions) {
+    netsmith_core::job::report_detail("placer runs", 0, None, || {
+        let (load, inside) = face_loads(parts, fit, options);
+        let verdict = if load[0] + load[1] > 2.0 * inside + 1e-9 {
+            ": more than both faces hold, so the parts cannot fit"
+        } else if load[0] > inside + 1e-9 || load[1] > inside + 1e-9 {
+            ": more than one face holds, so parts must change face"
+        } else {
+            ""
+        };
+        format!(
+            "the courtyards need {:.0} mm2 on the front and {:.0} mm2 on the back, and each face of the {:.1} x {:.1} mm outline holds {:.0} mm2 inside its margin{verdict}",
+            load[0], load[1], fit.0, fit.1, inside
+        )
+    });
 }
 
 /// What `refine` is told of the try it is.
@@ -1197,8 +1261,12 @@ fn refine(
         carried: &options.carried,
         face_keepouts: &options.face_keepouts,
     };
+    if options.fit.is_some() {
+        netsmith_core::job::spend_try();
+    }
     let mut outcome = anneal::anneal(parts, &problem, 1.0);
     let mut tries = 1;
+    report_run(tries, options.fit, &outcome);
     // A run that ends a hair short is tried again (B2 and B5, PROVISIONAL), only where the
     // answer would be a refusal and the courtyards could fit.
     if !outcome.feasible
@@ -1992,6 +2060,113 @@ mod tests {
             }
         }
         assert_eq!(board.check_placement(), vec![]);
+    }
+
+    /// [`placed_with`] under `limit`, with what the job's progress was told.
+    fn placed_limited(
+        parts: Vec<Part>,
+        options: &PlaceOptions,
+        limit: netsmith_core::job::Limit,
+    ) -> (
+        Result<Board, netsmith_pcb::BoardError>,
+        Vec<netsmith_core::job::Work>,
+    ) {
+        use netsmith_core::job;
+        let heard = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+        let sink = {
+            let heard = std::rc::Rc::clone(&heard);
+            std::rc::Rc::new(move |w: &job::Work| heard.borrow_mut().push(w.clone()))
+        };
+        let result = job::reporting(sink, || job::limited(limit, || placed_with(parts, options)));
+        let heard = heard.borrow().clone();
+        (result, heard)
+    }
+
+    /// The details the placer told, in order.
+    fn details(heard: &[netsmith_core::job::Work]) -> Vec<String> {
+        heard.iter().filter_map(|w| w.detail.clone()).collect()
+    }
+
+    #[test]
+    fn a_limit_spent_before_the_run_ends_it_at_once_with_what_is_out_and_tries_no_more() {
+        // 40 resistors on 15 x 10 mm do not fit, though their courtyards are less than both
+        // faces hold: the placer would run the outline again with the parts shared between
+        // the faces. A limit of no time ends the first run before its first move.
+        let options = PlaceOptions {
+            fit: Some((15.0, 10.0)),
+            ..PlaceOptions::default()
+        };
+        let limit = netsmith_core::job::Limit {
+            time: Some(std::time::Duration::ZERO),
+            tries: None,
+        };
+        let (result, heard) = placed_limited(resistors(40, "0603"), &options, limit);
+        let Err(netsmith_pcb::BoardError::DoesNotFit(error)) = result else {
+            panic!("40 parts fit 15 x 10 mm");
+        };
+        assert!(error.seed_may_help(), "{error}");
+        assert_eq!(error.ended.as_ref().map(|e| e.tries), Some(1), "{error}");
+        let moves: Vec<u64> = heard
+            .iter()
+            .filter(|w| w.unit == "moves tried")
+            .map(|w| w.done)
+            .collect();
+        assert!(
+            !moves.is_empty() && moves.iter().all(|&d| d == 0),
+            "{moves:?}"
+        );
+        let details = details(&heard);
+        assert!(
+            details[0].starts_with("the courtyards need ")
+                && details[0].contains(" mm2 on the front and ")
+                && details[0].contains("each face of the 15.0 x 10.0 mm outline holds "),
+            "{details:?}"
+        );
+        let runs: Vec<&String> = details.iter().filter(|d| d.starts_with("run ")).collect();
+        assert_eq!(runs.len(), 1, "{details:?}");
+        assert!(
+            runs[0].starts_with("run 1 in 15.0 x 10.0 mm: ") && runs[0].contains("; the worst: "),
+            "{details:?}"
+        );
+    }
+
+    #[test]
+    fn a_limit_of_one_try_lets_the_first_run_finish_and_begins_no_other() {
+        let options = PlaceOptions {
+            fit: Some((15.0, 10.0)),
+            ..PlaceOptions::default()
+        };
+        let one = netsmith_core::job::Limit {
+            time: None,
+            tries: Some(1),
+        };
+        let (result, heard) = placed_limited(resistors(40, "0603"), &options, one);
+        let Err(netsmith_pcb::BoardError::DoesNotFit(error)) = result else {
+            panic!("40 parts fit 15 x 10 mm");
+        };
+        assert_eq!(error.ended.as_ref().map(|e| e.tries), Some(1), "{error}");
+        // The run was whole: its moves were all tried.
+        let last = heard
+            .iter()
+            .rfind(|w| w.unit == "moves tried")
+            .expect("the run counts its moves");
+        assert_eq!(Some(last.done), last.total);
+        let runs = details(&heard)
+            .into_iter()
+            .filter(|d| d.starts_with("run "))
+            .count();
+        assert_eq!(runs, 1);
+        // With no limit the same board is run again, with the parts shared between the faces.
+        let (_, heard) = placed_limited(
+            resistors(40, "0603"),
+            &options,
+            netsmith_core::job::Limit::default(),
+        );
+        let runs = details(&heard)
+            .into_iter()
+            .filter(|d| d.starts_with("run "))
+            .count();
+        assert!(runs > 1, "{runs} runs");
     }
 
     #[test]

@@ -84,6 +84,10 @@ impl Workspace {
                 progress: Some(forward),
                 allow_drc_violations,
                 place_seeds: netsmith_fabricate::layout::place_seeds(target.project.as_ref()),
+                place_budget: netsmith_fabricate::layout::place_budget(
+                    target.project.as_ref(),
+                    None,
+                ),
                 seed_writes: netsmith_fabricate::fab::SeedWrites::Order,
                 offline: target.offline(),
                 ..FabOptions::default()

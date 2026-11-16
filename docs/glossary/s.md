@@ -21,7 +21,7 @@ How far above the face of its board a connector's partner rests when the two are
 _Avoid_: Stack height (that is the _Mated height_), seating plane, insertion depth
 
 **Seed**:
-A whole number in the layout file (`seed = 3` in a board's table) that picks which arrangement the placer finds: the same seed always gives the same board, another seed another one (ADR 0033). When it does not place the board, the placer tries the seeds after it, up to `place_seeds` in `netsmith.toml` (8 by default), and `fab` writes the seed that places it to the file; a seed the file states that no longer places the board is stale, and is told as a stale pick lock is (#458).
+A whole number in the layout file (`seed = 3` in a board's table) that picks which arrangement the placer finds: the same seed always gives the same board, another seed another one (ADR 0033). When it does not place the board, the placer tries the seeds after it, up to `place_seeds` in `netsmith.toml` (8 by default), and `fab` writes the seed that places it to the file; a seed the file states that no longer places the board is stale, and is told as a stale pick lock is (#458). `--place-seeds` sets how many for one run, and a _Place budget_ may end the search before the last.
 
 **Shared bus**:
 A bus whose members have a pin on more than two main parts of a module, or on two and go on to another module: an I2C bus with several devices, an SPI bus with a clock and data lines that every device has. One thick line with a spine at each part and a branch from each spine to the line, and the members' entries as for any bus (ADR 0067). It needs three members between two places and two among three or more.

@@ -186,6 +186,10 @@ pub struct FabOptions {
     /// `netsmith.toml`, issue #458; [`crate::layout::DEFAULT_PLACE_SEEDS`] when it does not
     /// say).
     pub place_seeds: u32,
+    /// How long the placer may look for a placement of a board before it gives the closest
+    /// try (`--place-budget`, `place_budget` in `netsmith.toml`, issue #764). The default is
+    /// no limit.
+    pub place_budget: netsmith_core::job::Limit,
     /// Whether a seed that places the board and is not the layout file's may be written to the
     /// file (issue #458): `fab` writes it; an order and the editor's release never change a
     /// choice by themselves, and stop instead.
@@ -307,6 +311,7 @@ impl Default for FabOptions {
             step: true,
             models: None,
             place_seeds: crate::layout::DEFAULT_PLACE_SEEDS,
+            place_budget: netsmith_core::job::Limit::default(),
             seed_writes: SeedWrites::Write,
             offline: false,
         }
@@ -807,14 +812,29 @@ fn fab_board(
             built.label(),
             built.design.parts.len()
         ));
+        // The placer tells how it goes (issue #764), as the other stages do.
+        let sink = crate::layout::place_progress(built.label(), {
+            let progress = options.progress;
+            move |line: &str| {
+                if let Some(progress) = progress {
+                    progress(line);
+                }
+            }
+        });
         let placing = timings::stage("fab.place", &label, || {
-            crate::layout::place(
-                &built.design,
-                layout.as_ref(),
-                libraries,
-                catalogs.constraints_warn(),
-                options.place_seeds,
-            )
+            netsmith_core::job::reporting(sink, || {
+                crate::layout::place(
+                    &built.design,
+                    layout.as_ref(),
+                    libraries,
+                    catalogs.constraints_warn(),
+                    crate::layout::Seeding {
+                        seeds: options.place_seeds,
+                        budget: options.place_budget,
+                        progress: None,
+                    },
+                )
+            })
         })
         .map_err(|e| match e {
             crate::layout::PlaceFailure::Board(netsmith_pcb::BoardError::DoesNotFit(e)) => {
@@ -2395,6 +2415,8 @@ mod tests {
                 "the courtyards of `usb` (J2) and `c37` (C37) overlap by 0.42 mm2".into(),
             )],
             blockers: Vec::new(),
+            budget: netsmith_core::job::Limit::default(),
+            ran_out: false,
         }
     }
 

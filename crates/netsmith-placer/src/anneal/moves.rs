@@ -29,16 +29,29 @@ impl<'a> Engine<'a> {
     /// pass of a run uses one unit (0.05 mm) and 40 steps: a part left a hair past a line or
     /// over a neighbour moves by the least that clears it, where the coarse pass, which is in
     /// half millimetres, would have gone further or found nothing (B5, PROVISIONAL).
+    ///
+    /// On a crowded board most parts start over others and each searches rings far out, so a
+    /// pass can take minutes (issue #766): it says how many parts it has been through
+    /// (`parts legalised`), a cancel stops it at each ring, and a limit whose time is up (issue #764) ends
+    /// it, the parts not yet reached left where they are.
     pub(super) fn legalise_by(&mut self, step: i64, reach: i64) -> bool {
         let mut all = true;
+        let total = self.free.len() as u64;
         for k in 0..self.free.len() {
+            netsmith_core::job::report("parts legalised", k as u64, Some(total));
             let i = self.free[k];
             if self.hard_of(i) <= HARD_EPS {
                 continue;
             }
+            if netsmith_core::job::time_up() {
+                all = false;
+                break;
+            }
             let start = self.poses[i];
             let mut found = false;
             'rings: for ring in 1..=reach {
+                // A ring is up to `8 * ring` poses, each a pass over the parts.
+                netsmith_core::job::checkpoint();
                 for dy in -ring..=ring {
                     for dx in -ring..=ring {
                         if dx.abs().max(dy.abs()) != ring {
@@ -75,6 +88,7 @@ impl<'a> Engine<'a> {
                 all = false;
             }
         }
+        netsmith_core::job::report("parts legalised", total, Some(total));
         self.refresh_all();
         all
     }

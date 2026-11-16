@@ -1959,3 +1959,35 @@ fn a_header_taller_than_the_mated_height_stops_fab_of_the_system() {
     );
     assert!(!dir.join("out/TwoBoards/TwoBoards.glb").exists());
 }
+
+/// A board whose parts nearly fill both faces of its outline (issues #764 and #766): 50 0805
+/// resistors, 333 mm2 of courtyard, on 12 x 16 mm, whose faces hold 340 mm2 inside the margin.
+/// With a budget of one try the placer runs the outline once, says on stderr how it goes and
+/// what is out, begins no other seed and gives the closest try.
+#[test]
+fn a_place_budget_ends_the_placing_with_the_closest_try_and_the_placer_says_how_it_went() {
+    let dir = netsmith_testkit::TempDir::new("board3d-place-budget");
+    std::fs::write(
+        dir.path().join("crowd.nsm"),
+        "import std::parts::passive::Resistor\nimport std::sources::Rail\nimport std::mfg::jlcpcb::TwoLayer\n\nboard Crowd {\n    .process: TwoLayer {\n        .stackup.thickness &= 1.6mm\n    }\n    .supply: Rail {\n        .voltage &= 5V +/- 5%\n        .pos.net &= \"VCC\"\n    }\n    .load: 50 x Resistor {\n        .package &= \"0805\"\n        .resistance &= 10kohm +/- 5%\n    }\n    .supply.pos ~> .load ~> .supply.neg\n}\n",
+    )
+    .unwrap();
+    std::fs::write(
+        dir.path().join("crowd.physical.nsm"),
+        "import std::pcb::Outline\n\nphysical for Crowd {\n    case {\n        .outline: Outline {\n            .width &= 12mm\n            .height &= 16mm\n        }\n    }\n}\n",
+    )
+    .unwrap();
+    let out = board3d(dir.path(), &["crowd.nsm", "--place-budget", "1try"]);
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert_eq!(out.status.code(), Some(1), "{stderr}");
+    for said in [
+        "Crowd: placing: seed 0 (1 of 8)",
+        "Crowd: placing: the courtyards need ",
+        "each face of the 12.0 x 16.0 mm outline holds ",
+        "Crowd: placing: run 1 in 12.0 x 16.0 mm: ",
+        "placed nothing in 1 try (`--place-budget`, or `place_budget` in netsmith.toml): the placer tried 1 of 8 seeds from seed 0, and the closest is seed 0, where this blocks it:",
+    ] {
+        assert!(stderr.contains(said), "no `{said}` in:\n{stderr}");
+    }
+    assert!(!stderr.contains("seed 1 (2 of 8)"), "{stderr}");
+}

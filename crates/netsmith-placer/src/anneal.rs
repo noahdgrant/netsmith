@@ -259,6 +259,9 @@ const W_ESCAPE: f64 = 300.0;
 /// The moves tried for each part that is free, at most [`MAX_MOVES`] and at least 2000.
 const MOVES_PER_PART: f64 = 3000.0;
 const MAX_MOVES: usize = 300_000;
+/// How many moves are made between two looks at the thread's limit (`job::time_up`, issue #764):
+/// a look reads the clock, which is some tens of nanoseconds against moves of microseconds.
+const ASK_EVERY: usize = 256;
 
 /// The weight of a conflict of reference text with another part at the start of a run and
 /// before its last part, and how far through the run the weight is that of a hard rule.
@@ -777,6 +780,11 @@ pub(crate) fn anneal(parts: &mut [Placed], p: &Problem, effort: f64) -> Outcome 
             stages += 1;
         }
         let per_stage = (moves / stages.max(1)).max(1);
+        let total_moves = (per_stage * stages) as u64;
+        netsmith_core::job::report("moves tried", 0, Some(total_moves));
+        // A limit whose time is up ends the run here with the best it has (issue #764): the
+        // limit is asked once in a stage and every `ASK_EVERY` moves, a clock read each.
+        let mut spent = netsmith_core::job::time_up();
         // The best arrangement the run itself finds, not the one it began with: another seed
         // is another arrangement even when the start was a good one.
         let mut best_poses: Option<Vec<Pose>> = None;
@@ -784,6 +792,9 @@ pub(crate) fn anneal(parts: &mut [Placed], p: &Problem, effort: f64) -> Outcome 
         let mut t = start;
         let mut since_sync = 0usize;
         for stage in 0..stages {
+            if spent {
+                break;
+            }
             // The cost of reference text over other parts grows through the run, from a hint
             // to as much as a hard rule, so that parts find their places first and the text
             // is cleared of them last. The best state is one of the last part, when the
@@ -807,10 +818,14 @@ pub(crate) fn anneal(parts: &mut [Placed], p: &Problem, effort: f64) -> Outcome 
             }
             // Moves shrink with the temperature, from half the board down to a few units.
             let reach = ((region_reach as f64 * t / start) as i64).clamp(8, region_reach);
-            for _ in 0..per_stage {
+            for k in 0..per_stage {
                 // A move is some microseconds, so this is no cost; a cancelled job (`fab`)
                 // ends here, in the middle of the placing.
                 netsmith_core::job::checkpoint();
+                if k % ASK_EVERY == ASK_EVERY - 1 && netsmith_core::job::time_up() {
+                    spent = true;
+                    break;
+                }
                 let change = e.propose(&mut rng, reach);
                 if change.is_empty() {
                     continue;
@@ -838,7 +853,13 @@ pub(crate) fn anneal(parts: &mut [Placed], p: &Problem, effort: f64) -> Outcome 
                     }
                 }
             }
-            if since_sync > 2000 || stage + 1 == stages {
+            netsmith_core::job::report(
+                "moves tried",
+                ((stage + 1) * per_stage) as u64,
+                Some(total_moves),
+            );
+            spent = spent || netsmith_core::job::time_up();
+            if since_sync > 2000 || stage + 1 == stages || spent {
                 current = e.eval(&all);
                 since_sync = 0;
                 if e.text_last && current.hard <= HARD_EPS && current.total() < best_cost {

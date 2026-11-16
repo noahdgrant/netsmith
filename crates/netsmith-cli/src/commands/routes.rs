@@ -352,10 +352,15 @@ fn with_board<T>(
     target: &Target,
     then: impl Fn(&Placed, &Board) -> Result<T, String>,
 ) -> Result<T, ExitCode> {
-    common::with_placed_board(target.file.as_deref(), target.board.as_deref(), |placed| {
-        let board = placed.with_board(|_, board| board.clone())?;
-        then(placed, &board).map_err(|e| format!("error: {e}\n"))
-    })
+    common::with_placed_board(
+        target.file.as_deref(),
+        target.board.as_deref(),
+        None,
+        |placed| {
+            let board = placed.with_board(|_, board| board.clone())?;
+            then(placed, &board).map_err(|e| format!("error: {e}\n"))
+        },
+    )
 }
 
 fn show(args: &ShowArgs) -> ExitCode {
@@ -381,15 +386,19 @@ fn show(args: &ShowArgs) -> ExitCode {
 /// which the editor's PCB view calls too): `change` is made from the placed board; exit 0 when
 /// it is written, 1 when it is refused, 2 when it could not be tried.
 fn edit(target: &Target, change: impl Fn(&Board) -> lib::Edit) -> ExitCode {
-    let outcome =
-        common::with_placed_board(target.file.as_deref(), target.board.as_deref(), |placed| {
+    let outcome = common::with_placed_board(
+        target.file.as_deref(),
+        target.board.as_deref(),
+        None,
+        |placed| {
             let board = placed.with_board(|_, board| board.clone())?;
             Ok(lib::edit_file(
                 &board,
                 &routes_file(placed),
                 &change(&board),
             ))
-        });
+        },
+    );
     match outcome {
         Ok(Ok(said)) => {
             println!("{said}");

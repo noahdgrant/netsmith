@@ -91,6 +91,10 @@ _Avoid_: Pin assignment (the word for choosing providers is _Assignment_), pin c
 The pin table of a part in one package: for each pin its kind, the name the datasheet prints, its pads, and its functions. Written as a `pins "PACKAGE" { ... }` block in the part, `pins "SOT-23" "SOT-223" { ... }` for packages that share it (ADR 0124), or an unnamed `pins { ... }` for a part whose pads do not depend on the package. A row may end with the pin's **absolute maximum**, `abs_min -0.5V abs_max 65V` (ADR 0126). A pin that a package lacks does not exist in that package. It names no CAD tool (ADR 0002, ADR 0016).
 _Avoid_: Pin table, pin map (the pin map is the pins that requests got, _Pin map_)
 
+**Place budget**:
+How long the placer may look for a placement of a board before it gives the closest try (issue #764): seconds, tries, or both (`--place-budget 120s+5tries`, `place_budget` in `netsmith.toml`), whichever is spent first. A try is one run of the placer in a fixed outline. When it is spent the placer ends the run it is in with what it has and begins no other seed, and `fab` and `board3d` stop with `placed nothing in ...` and what blocks the closest try. Unlike a cancel, it keeps what was made, as the router's Stop does. It is not a current _budget_ (see _Balance_).
+_Avoid_: Timeout (for the placer: a timeout is the router's `--route-timeout`), place limit
+
 **Placed board**:
 A board as `fab` placed it, just before routing, saved as `<board>.placed.json` in the board's output folder by `fab --save-placed` (the `netsmith_pcb::Board` with the track margin `fab` routes with; `crates/netsmith-fabricate/src/placed.rs`). `netsmith route` routes it again alone, with no checking, solving or placing, for experiments on the router. A file of a working tool, not of the design: it is not committed, a `fab` without the flag removes it, and a file of another version of netsmith is refused.
 _Avoid_: Layout (the layout file holds positions a person or the editor keeps), snapshot, checkpoint

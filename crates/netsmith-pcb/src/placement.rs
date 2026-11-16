@@ -802,6 +802,53 @@ impl Ended {
             lists.join("; ")
         }
     }
+
+    /// One line for a progress report: the counts, and the worst `most` of what is out:
+    /// `11 overlaps and 2 parts outside; the worst: R3 0.80 mm outside, R1 and R2 1.20 mm2`.
+    /// A run that ended clear is `placed`.
+    pub fn summary(&self, most: usize) -> String {
+        let plural =
+            |n: usize, one: &str, many: &str| format!("{n} {}", if n == 1 { one } else { many });
+        let mut counts = Vec::new();
+        if self.overlaps > 0 {
+            counts.push(plural(self.overlaps, "overlap", "overlaps"));
+        }
+        if self.outside > 0 {
+            counts.push(plural(self.outside, "part outside", "parts outside"));
+        }
+        if !self.relations.is_empty() {
+            counts.push(plural(
+                self.relations.len(),
+                "relation not met",
+                "relations not met",
+            ));
+        }
+        if self.silk > 0 {
+            counts.push(plural(self.silk, "text over a pad", "texts over pads"));
+        }
+        if counts.is_empty() {
+            return "placed".to_string();
+        }
+        let mut worst: Vec<String> = self
+            .outside_parts
+            .iter()
+            .filter(|o| o.worst > 1e-6)
+            .map(|o| format!("{} {} mm outside", o.part, short(o.worst)))
+            .take(most)
+            .collect();
+        worst.extend(
+            self.overlapping
+                .iter()
+                .map(|o| format!("{} and {} {} mm2", o.a, o.b, short(o.area)))
+                .take(most.saturating_sub(worst.len())),
+        );
+        let mut line = counts.join(" and ");
+        if !worst.is_empty() {
+            line.push_str("; the worst: ");
+            line.push_str(&worst.join(", "));
+        }
+        line
+    }
 }
 
 /// Two courtyards that overlap when a run ended.

@@ -114,6 +114,12 @@ pub struct Manifest {
     /// file's seed, or 0, then the ones after it. The seed that places the board is written to the layout file (issue #458).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub place_seeds: Option<u32>,
+    /// How long the placer may look for a placement of a board before it gives the closest try
+    /// (`place_budget = "120s"`, or `"5tries"`, or `"120s+5tries"`; none by default, issue
+    /// #764): `fab` and `board3d` say what was out when it ran out. `--place-budget` wins over
+    /// it. [`crate::layout::parse_place_budget`] reads it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub place_budget: Option<String>,
     /// The E-series the solver may pick generic resistors from when no catalog row works:
     /// `"E12"`, `"E24"` (the default) or `"E96"` (ADR 0047). `"none"` offers
     /// only the catalog's rows.
@@ -235,6 +241,7 @@ impl Manifest {
             step: None,
             track_margin: None,
             place_seeds: None,
+            place_budget: None,
             environment: None,
             guidelines: None,
             constraints: None,
@@ -323,6 +330,10 @@ impl Manifest {
             return Err(format!(
                 "{MANIFEST}: place_seeds = {n} must be from 1 (the layout file's seed only) to {MAX_PLACE_SEEDS}"
             ));
+        }
+        if let Some(text) = &self.place_budget {
+            crate::layout::parse_place_budget(text)
+                .map_err(|e| format!("{MANIFEST}: place_budget = {text:?}: {e}"))?;
         }
         if let Some(word) = &self.series
             && word != "none"
@@ -1154,6 +1165,16 @@ mod tests {
         assert_eq!(parse(&m.render()), Ok(m));
         let e = parse("[project]\nname = \"a\"\ntrack_margin = 0.5\n").unwrap_err();
         assert!(e.contains("track_margin = 0.5 must be from 1"), "{e}");
+    }
+
+    #[test]
+    fn place_budget_is_read_and_must_be_a_time_or_tries() {
+        let m = parse("[project]\nname = \"a\"\nplace_budget = \"90s+3tries\"\n").unwrap();
+        assert_eq!(m.place_budget.as_deref(), Some("90s+3tries"));
+        assert_eq!(
+            parse("[project]\nname = \"a\"\nplace_budget = \"soon\"\n").unwrap_err(),
+            "netsmith.toml: place_budget = \"soon\": place budget `soon`: write seconds (`120`, `120s`, `2m`), tries (`5tries`), or both (`120s+5tries`)"
+        );
     }
 
     #[test]
