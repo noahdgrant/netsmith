@@ -1947,21 +1947,53 @@ impl Parser {
     }
 
     // expr := range
-    // range := tol ("..", tol)?       tol := add ("+/-" add)?
+    // range := tol ".." tol? | ".." tol | tol       tol := add ("+/-" add)?
     // add := mul (("+" | "-") mul)*   mul := unary (("*" | "/") unary)*
+    //
+    // A range with an open end is `lo..` (no upper limit) or `..hi` (no lower limit). After
+    // `..` the high end is whatever value starts on the same line (inside parentheses, the
+    // next token); a line that ends there leaves the end open.
     fn expr(&mut self) -> Res<Expr> {
-        let lo = self.tolerance()?;
-        if self.eat(&Tok::DotDot) {
-            self.skip_newlines();
-            let hi = self.tolerance()?;
-            let span = Span::new(lo.span().start, hi.span().end);
-            return Ok(Expr::Range {
-                lo: Box::new(lo),
-                hi: Box::new(hi),
-                span,
-            });
+        let start = self.peek().span.start;
+        let lo = if self.at(&Tok::DotDot) {
+            None
+        } else {
+            let lo = self.tolerance()?;
+            if !self.at(&Tok::DotDot) {
+                return Ok(lo);
+            }
+            Some(Box::new(lo))
+        };
+        let dots = self.bump().span;
+        let hi = if self.starts_value() {
+            Some(Box::new(self.tolerance()?))
+        } else {
+            None
+        };
+        if lo.is_none() && hi.is_none() {
+            let next = self.peek().clone();
+            return Err(unexpected(&next, "a value on either side of `..`"));
         }
-        Ok(lo)
+        let end = hi.as_ref().map_or(dots.end, |h| h.span().end);
+        Ok(Expr::Range {
+            lo,
+            hi,
+            span: Span::new(start, end),
+        })
+    }
+
+    /// Whether the next token begins a value (the high end of a range).
+    fn starts_value(&mut self) -> bool {
+        matches!(
+            self.peek().tok,
+            Tok::Number(_)
+                | Tok::Str(_)
+                | Tok::Ident(_)
+                | Tok::QuotedIdent(_)
+                | Tok::LeadingDot
+                | Tok::LParen
+                | Tok::Minus
+        )
     }
 
     fn tolerance(&mut self) -> Res<Expr> {

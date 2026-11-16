@@ -99,7 +99,7 @@ fn wide_regulator() -> Board {
     );
     let text = std::fs::read_to_string(&path).unwrap().replace(
         "        .voltage &= 5V +/- 5%\n",
-        "        .voltage &= 5V +/- 5%\n        .min_track &= 0.6mm..1m\n",
+        "        .voltage &= 5V +/- 5%\n        .min_track &= 0.6mm..\n",
     );
     board_from(&path, &text)
 }

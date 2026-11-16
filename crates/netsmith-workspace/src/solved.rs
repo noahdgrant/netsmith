@@ -81,9 +81,11 @@ pub fn of(model: &Model, inst: InstId, source: &Sourced) -> Option<Solved> {
 }
 
 fn range_of(q: &Quantity) -> Range {
+    // An open end (`lo..`) is the largest number there is, so the JSON stays numbers; `text`
+    // shows it as it is written.
     Range {
-        lo: q.lo(),
-        hi: q.hi(),
+        lo: q.lo().max(f64::MIN),
+        hi: q.hi().min(f64::MAX),
         text: q.to_string(),
     }
 }
@@ -91,7 +93,7 @@ fn range_of(q: &Quantity) -> Range {
 /// Half the range over its middle, as a percentage; none for a point or a range that
 /// reaches zero or below.
 fn tolerance_of(q: &Quantity) -> Option<Tolerance> {
-    if q.is_point() || q.lo() <= 0.0 {
+    if q.is_point() || q.lo() <= 0.0 || !q.is_bounded() {
         return None;
     }
     let percent = (q.hi() - q.lo()) / (q.hi() + q.lo()) * 100.0;

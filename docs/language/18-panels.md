@@ -12,7 +12,7 @@ board Tile {
     .process: TwoLayer {
         .stackup.thickness &= 1.6mm
         // Copper at least 0.4 mm from the edge, as a V-cut needs.
-        .min_edge_clearance &= 0.4mm..1m
+        .min_edge_clearance &= 0.4mm..
     }
     .supply: Rail {
         .voltage &= 5V +/- 5%

@@ -10,6 +10,13 @@
 //! rounding error, never accept one that misses it, and a range that ends exactly at a
 //! limit (`16V - 0A * 100mΩ` against `..16V`) is not pushed past it by a widening that was
 //! not needed (ADR 0056). Values built from literals are not widened.
+//!
+//! An end can be open: `lo..` has no upper limit (the high end is positive infinity) and
+//! `..hi` no lower one (negative infinity). Only [`Quantity::at_least`] and
+//! [`Quantity::at_most`] make one, and the arithmetic on a range with an open end keeps the
+//! end open (`[1, inf) + 2 = [3, inf)`, `0 * [1, inf) = 0`); an arithmetic result that
+//! overflows, with both operands closed, is still an error. A consumer that needs a number
+//! of such a range asks [`Quantity::is_bounded`] first: `mid` of one is not finite.
 
 use crate::dimension::Dimension;
 use crate::error::QuantityError;
@@ -46,6 +53,67 @@ impl Quantity {
             lo: lo + 0.0,
             hi: hi + 0.0,
         })
+    }
+
+    /// The result of an operation on ranges, at least one of which has an open end: an end
+    /// may be infinite there, and only there. A range with no open end is made by
+    /// [`Quantity::interval`], which refuses an overflow.
+    fn interval_open(dim: Dimension, lo: f64, hi: f64) -> Res<Self> {
+        // The only infinite ends a range has: negative at the low end, positive at the high.
+        if lo.is_nan() || hi.is_nan() || lo == f64::INFINITY || hi == f64::NEG_INFINITY {
+            return Err(QuantityError::NotFinite);
+        }
+        if lo > hi {
+            return Err(QuantityError::EmptyRange);
+        }
+        Ok(Self {
+            dim,
+            lo: lo + 0.0,
+            hi: hi + 0.0,
+        })
+    }
+
+    /// The result of an operation: checked as a range with an open end when an operand has
+    /// one, as a closed range (no infinite end) when none has.
+    fn result(dim: Dimension, lo: f64, hi: f64, operands: &[&Self]) -> Res<Self> {
+        if operands.iter().all(|q| q.is_bounded()) {
+            Self::interval(dim, lo, hi)
+        } else {
+            Self::interval_open(dim, lo, hi)
+        }
+    }
+
+    /// `lo..`: every value from the low end of `lo` up, with no upper limit.
+    pub fn at_least(lo: &Self) -> Res<Self> {
+        if !lo.lo.is_finite() {
+            return Err(QuantityError::OpenEnd {
+                op: "start a range",
+            });
+        }
+        Self::interval_open(lo.dim, lo.lo, f64::INFINITY)
+    }
+
+    /// `..hi`: every value up to the high end of `hi`, with no lower limit.
+    pub fn at_most(hi: &Self) -> Res<Self> {
+        if !hi.hi.is_finite() {
+            return Err(QuantityError::OpenEnd { op: "end a range" });
+        }
+        Self::interval_open(hi.dim, f64::NEG_INFINITY, hi.hi)
+    }
+
+    /// Whether both ends are numbers: no end is open.
+    pub fn is_bounded(&self) -> bool {
+        self.lo.is_finite() && self.hi.is_finite()
+    }
+
+    /// Whether the range has no upper limit (`lo..`).
+    pub fn is_open_above(&self) -> bool {
+        self.hi == f64::INFINITY
+    }
+
+    /// Whether the range has no lower limit (`..hi`).
+    pub fn is_open_below(&self) -> bool {
+        self.lo == f64::NEG_INFINITY
     }
 
     pub fn point(dim: Dimension, value: f64) -> Res<Self> {
@@ -87,12 +155,17 @@ impl Quantity {
     /// `lo..hi`, the smallest range holding both ends.
     pub fn range(lo: &Self, hi: &Self) -> Res<Self> {
         same_dim("form a range from", lo, hi)?;
-        Self::interval(lo.dim, lo.lo, hi.hi)
+        Self::result(lo.dim, lo.lo, hi.hi, &[lo, hi])
     }
 
     /// `center +/- tol`. A relative tolerance (`5%`) scales the center; an absolute
     /// one (`10mV`) must have the center's dimension.
     pub fn tolerance(center: &Self, tol: &Self, tol_relative: bool) -> Res<Self> {
+        if !center.is_bounded() || !tol.is_bounded() {
+            return Err(QuantityError::OpenEnd {
+                op: "give a tolerance to",
+            });
+        }
         if tol_relative {
             if !tol.dim.is_dimensionless() {
                 return Err(QuantityError::BadTolerance {
@@ -133,6 +206,7 @@ impl Quantity {
         self.hi
     }
 
+    /// The mean of the ends: not finite for a range with an open end, which has no centre.
     pub fn mid(&self) -> f64 {
         self.lo / 2.0 + self.hi / 2.0
     }
@@ -151,19 +225,21 @@ impl Quantity {
 
     pub fn add(&self, other: &Self) -> Res<Self> {
         same_dim("add", self, other)?;
-        Self::interval(
+        Self::result(
             self.dim,
             add_ends(self.lo, other.lo).0,
             add_ends(self.hi, other.hi).1,
+            &[self, other],
         )
     }
 
     pub fn sub(&self, other: &Self) -> Res<Self> {
         same_dim("subtract", self, other)?;
-        Self::interval(
+        Self::result(
             self.dim,
             add_ends(self.lo, -other.hi).0,
             add_ends(self.hi, -other.lo).1,
+            &[self, other],
         )
     }
 
@@ -175,7 +251,7 @@ impl Quantity {
             mul_ends(self.hi, other.hi),
         ];
         let (lo, hi) = extremes(&products);
-        Self::interval(self.dim * other.dim, lo, hi)
+        Self::result(self.dim * other.dim, lo, hi, &[self, other])
     }
 
     pub fn div(&self, other: &Self) -> Res<Self> {
@@ -189,7 +265,7 @@ impl Quantity {
             div_ends(self.hi, other.hi),
         ];
         let (lo, hi) = extremes(&quotients);
-        Self::interval(self.dim / other.dim, lo, hi)
+        Self::result(self.dim / other.dim, lo, hi, &[self, other])
     }
 
     /// The values both ranges allow, or `None` if they do not overlap.
@@ -266,8 +342,12 @@ fn add_ends(a: f64, b: f64) -> (f64, f64) {
 
 /// `a * b` rounded down and rounded up. A product with zero is exact.
 fn mul_ends(a: f64, b: f64) -> (f64, f64) {
+    // Zero times an open end is zero: the values at the end are finite however far it goes.
+    if a == 0.0 || b == 0.0 {
+        return (0.0, 0.0);
+    }
     let p = a * b;
-    if !p.is_finite() || a == 0.0 || b == 0.0 {
+    if !p.is_finite() {
         return (p, p);
     }
     if !(plain(a) && plain(b)) || p.abs() < SAFE_LOW {
@@ -278,6 +358,18 @@ fn mul_ends(a: f64, b: f64) -> (f64, f64) {
 
 /// `a / b` rounded down and rounded up (`b` is not zero). A quotient of zero is exact.
 fn div_ends(a: f64, b: f64) -> (f64, f64) {
+    // A number over an open end is zero, and an open end over an open end is anything of the
+    // sign the quotient has, from zero to infinity.
+    if b.is_infinite() {
+        if a.is_finite() {
+            return (0.0, 0.0);
+        }
+        return if (a > 0.0) == (b > 0.0) {
+            (0.0, f64::INFINITY)
+        } else {
+            (f64::NEG_INFINITY, 0.0)
+        };
+    }
     let q = a / b;
     if !q.is_finite() || a == 0.0 {
         return (q, q);

@@ -94,9 +94,11 @@ fn draws(q: &Quantity) -> bool {
 }
 
 fn range_of(q: &Quantity) -> Range {
+    // An open end (`lo..`) is the largest number there is, so the JSON stays numbers; `text`
+    // shows it as it is written.
     Range {
-        lo: q.lo(),
-        hi: q.hi(),
+        lo: q.lo().max(f64::MIN),
+        hi: q.hi().min(f64::MAX),
         text: q.to_string(),
     }
 }

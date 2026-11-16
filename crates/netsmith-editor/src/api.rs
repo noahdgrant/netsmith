@@ -775,7 +775,8 @@ pub struct PickLockInfo {
 /// A quantity's range as the language writes it, for example `3.135V..3.465V`: the unit follows
 /// the number with no space, as in source and in the compiler's messages (`netsmith-quantity`'s
 /// `Display`, which the language guide's examples depend on), so a page that wants a space
-/// formats `lo` and `hi` itself.
+/// formats `lo` and `hi` itself. A range with an open end (`1mm..`, `..5mm`) has the largest
+/// number there is for that end (`f64::MAX`, `f64::MIN`), and `text` shows it as written.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 pub struct Range {
     pub lo: f64,

@@ -141,7 +141,8 @@ type Unjudged = Vec<(InstId, Vec<&'static str>)>;
 fn stated(model: &Model, part: InstId, name: &str, hi: bool) -> Option<f64> {
     match model.member(part, name)? {
         Member::Field(f) => match &model.field(f).domain {
-            Domain::Quantity(q) => Some(if hi { q.hi() } else { q.lo() }),
+            // An open end (`..85degC`) states no limit at that end.
+            Domain::Quantity(q) => Some(if hi { q.hi() } else { q.lo() }).filter(|v| v.is_finite()),
             _ => None,
         },
         _ => None,
@@ -214,6 +215,14 @@ fn judge_temperatures(model: &Model, parts: &[Fitted<'_>], errors: &mut Vec<Stri
             };
         }
     };
+    // A temperature with no upper or no lower limit (`..85degC`) judges no part: a part is
+    // met when its own range holds the environment's, and one that has no end holds none.
+    if !(lo.is_finite() && hi.is_finite()) {
+        errors.push(format!(
+            "`{path}` has an open end, so no part can be judged against it: state both the coldest and the hottest the board reaches, `.{path} &= -40degC..125degC`"
+        ));
+        return Judged::default();
+    }
     let range = show_range(lo, hi);
     let mut tally = Tally {
         range: Some(((lo, hi), path.clone())),

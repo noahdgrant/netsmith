@@ -85,7 +85,7 @@ impl Rules {
 
     /// The rules a process asks for. The router draws at the narrowest track and the
     /// smallest via the process allows, so a board that wants more margin narrows the
-    /// process (`.process.min_track &= 0.2mm..1m`). A via's copper is its drill with the
+    /// process (`.process.min_track &= 0.2mm..`). A via's copper is its drill with the
     /// ring on both sides, and at least the process's smallest via.
     ///
     /// Fails if the process is not one this router can draw: an even number of layers, with
@@ -546,8 +546,8 @@ mod tests {
     #[test]
     fn narrowing_the_process_changes_the_rules() {
         let tight = Rules::for_process(&process_from(&[
-            ".min_track &= 0.15mm..1m",
-            ".min_clearance &= 0.2mm..1m",
+            ".min_track &= 0.15mm..",
+            ".min_clearance &= 0.2mm..",
         ]))
         .unwrap();
         assert_eq!((tight.min_track_width, tight.track_width), (0.15, 0.15));
@@ -625,7 +625,7 @@ mod tests {
 
     #[test]
     fn a_narrowed_rule_reaches_the_project_file() {
-        let process = process_from(&[".min_clearance &= 0.25mm..1m"]);
+        let process = process_from(&[".min_clearance &= 0.25mm.."]);
         let text = Rules::for_process(&process).unwrap().kicad_pro("Led", &[]);
         assert!(text.contains(r#""min_clearance": 0.25"#), "{text}");
         assert!(!text.contains(r#""min_clearance": 0.1"#));

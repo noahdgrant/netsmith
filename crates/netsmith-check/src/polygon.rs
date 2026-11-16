@@ -165,10 +165,13 @@ impl Checker<'_> {
                     let s = format!("{:.4}", v * 1e3);
                     s.trim_end_matches('0').trim_end_matches('.').to_string()
                 };
+                let shown = if q.is_bounded() {
+                    format!("{}mm..{}mm", mm(q.lo()), mm(q.hi()))
+                } else {
+                    q.to_string()
+                };
                 format!(
-                    "{what} of a `polygon` is one value, and `{text}` is a range ({}mm..{}mm): the outline is what the case drawing says, so write the one number",
-                    mm(q.lo()),
-                    mm(q.hi())
+                    "{what} of a `polygon` is one value, and `{text}` is a range ({shown}): the outline is what the case drawing says, so write the one number"
                 )
             }
             NotFixed::Relation => format!(

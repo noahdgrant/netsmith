@@ -66,7 +66,7 @@ pub fn edge_gap(board: &Board) -> f64 {
 }
 
 /// `TwoLayer` as the whole pipeline resolves it, with the board choosing 1.6 mm and
-/// narrowing each rule as `narrowings` say (`.min_track &= 0.25mm..1m`).
+/// narrowing each rule as `narrowings` say (`.min_track &= 0.25mm..`).
 pub fn process_with(narrowings: &[&str]) -> netsmith_core::Process {
     let body: String = narrowings
         .iter()
@@ -103,14 +103,14 @@ fn process_of(source: &str) -> netsmith_core::Process {
 /// small crowded board is hard to route. The library's own numbers are far finer.
 pub fn process() -> netsmith_core::Process {
     process_with(&[
-        ".min_track &= 0.25mm..1m",
-        ".min_clearance &= 0.2mm..1m",
-        ".min_drill &= 0.24mm..1m",
-        ".min_via_diameter &= 0.6mm..1m",
+        ".min_track &= 0.25mm..",
+        ".min_clearance &= 0.2mm..",
+        ".min_drill &= 0.24mm..",
+        ".min_via_diameter &= 0.6mm..",
         ".via_drill &= 0.24mm",
         ".via_diameter &= 0.6mm",
-        ".min_hole_to_hole &= 0.5mm..1m",
-        ".min_edge_clearance &= 0.3mm..1m",
+        ".min_hole_to_hole &= 0.5mm..",
+        ".min_edge_clearance &= 0.3mm..",
     ])
 }
 
@@ -192,7 +192,7 @@ pub fn four_layer_process() -> netsmith_core::Process {
     four_layer_process_with(&[])
 }
 
-/// [`four_layer_process`], with the board narrowing each of `narrowings` (`.min_track &= 0.2mm..1m`).
+/// [`four_layer_process`], with the board narrowing each of `narrowings` (`.min_track &= 0.2mm..`).
 pub fn four_layer_process_with(narrowings: &[&str]) -> netsmith_core::Process {
     let body: String = narrowings
         .iter()

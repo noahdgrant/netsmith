@@ -23,7 +23,7 @@ against them first (`GLOSSARY.md` has the vocabulary, `docs/adr/` the decisions 
   own ground, and the system reports which grounds the mates join.
 - **A board is made by a process it imports.** Design rules and the stackup are the `.process`
   member of the board (`import std::mfg::jlcpcb::TwoLayer`), not tool constants. A board
-  narrows them like any value (`.process.min_track &= 0.15mm..1m`); a board with no process
+  narrows them like any value (`.process.min_track &= 0.15mm..`); a board with no process
   has a schematic but no PCB.
 - **A part number needs a source.** No LCSC number goes into a catalog from memory, and no
   derating curve either.

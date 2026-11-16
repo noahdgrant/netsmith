@@ -180,9 +180,9 @@ fn the_rules_come_from_the_source_and_reach_the_router_and_the_project_file() {
 #[test]
 fn narrowing_a_rule_in_the_source_changes_the_tracks_and_the_project_file() {
     let mut board = led_board_narrowed(&[
-        ".min_track &= 0.3mm..1m",
-        ".min_clearance &= 0.25mm..1m",
-        ".min_drill &= 0.4mm..1m",
+        ".min_track &= 0.3mm..",
+        ".min_clearance &= 0.25mm..",
+        ".min_drill &= 0.4mm..",
         // A hole that big needs a via of its own: the process's offer is 0.2 in 0.45 mm.
         ".via_drill &= 0.4mm",
         ".via_diameter &= 0.8mm",

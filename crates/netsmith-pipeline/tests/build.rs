@@ -440,7 +440,7 @@ fn narrowing_a_rule_outside_what_the_process_can_make_names_the_field() {
     let e = error(&finer);
     assert!(
         e.contains("contradiction on `process.min_track`")
-            && e.contains("100um..1m")
+            && e.contains("100um..")
             && e.contains("50um..80um"),
         "{e}"
     );

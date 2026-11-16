@@ -82,12 +82,12 @@ board Carrier {
         .voltage &= 3.3V +/- 5%
         .peak &= 3.6V
         .pos.net &= "3V3"
-        .min_track &= 0.5mm..1m
+        .min_track &= 0.5mm..
     }
     /// What the carrier gives to its cards, through a fuse: up to 500 mA.
     .cards: Rail {
         .pos.net &= "3V3_CARDS"
-        .min_track &= 0.5mm..1m
+        .min_track &= 0.5mm..
         .current &= 0mA..500mA
     }
     .fuse: Fuse

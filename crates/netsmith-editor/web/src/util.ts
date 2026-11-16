@@ -59,5 +59,6 @@ export const THIN = ' ';
 export function spaceUnits(text: string): string {
   return text
     .replace(/(\d)\s*(?!e[-+]?\d)(?=[A-Za-zµΩ%])/g, `$1${THIN}`)
-    .replace(/\s*\.\.\s*/g, `${THIN}..${THIN}`);
+    .replace(/\s*\.\.\s*/g, `${THIN}..${THIN}`)
+    .trim(); // a range with an open end (`1.6mm..`, `..5mm`) has no number beside one of its dots
 }

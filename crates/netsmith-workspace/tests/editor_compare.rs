@@ -1836,7 +1836,7 @@ board Heater {{
         .pos.net &= \"5V\"
         .neg.net &= \"GND\"
         .current &= 0A..2A
-        .min_track &= {width}..1m
+        .min_track &= {width}..
     }}
     .source: Rail {{
         .pos.net &= \"5V\"

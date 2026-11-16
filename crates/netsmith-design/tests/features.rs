@@ -60,7 +60,7 @@ fn a_part_knows_its_path() {
 #[test]
 fn a_rail_gives_its_nets_the_bottom_of_its_min_track() {
     let d = designed(&board(
-        "    .input: Rail {\n        .pos.net &= \"VIN\"\n        .neg.net &= \"GND\"\n        .min_track &= 0.8mm..1m\n    }\n",
+        "    .input: Rail {\n        .pos.net &= \"VIN\"\n        .neg.net &= \"GND\"\n        .min_track &= 0.8mm..\n    }\n",
     ))
     .unwrap();
     assert_eq!(
@@ -72,7 +72,7 @@ fn a_rail_gives_its_nets_the_bottom_of_its_min_track() {
 #[test]
 fn a_net_takes_the_widest_of_its_rails() {
     let d = designed(&board(
-        "    .input: Rail {\n        .pos.net &= \"VIN\"\n        .neg.net &= \"GND\"\n        .min_track &= 0.8mm..1m\n    }\n    .other: Rail {\n        .pos.net &= \"VIN\"\n        .neg.net &= \"GND\"\n        .min_track &= 0.5mm..2mm\n    }\n",
+        "    .input: Rail {\n        .pos.net &= \"VIN\"\n        .neg.net &= \"GND\"\n        .min_track &= 0.8mm..\n    }\n    .other: Rail {\n        .pos.net &= \"VIN\"\n        .neg.net &= \"GND\"\n        .min_track &= 0.5mm..2mm\n    }\n",
     ))
     .unwrap();
     assert_eq!(
@@ -304,7 +304,7 @@ fn a_keepout_in_a_module_is_refused() {
 
 #[test]
 fn a_module_carries_a_width_to_its_rail_through_a_connection() {
-    let src = "import std::mfg::jlcpcb::TwoLayer\nimport std::parts::passive::Resistor\nimport std::sources::Rail\nmodule Stage {\n    .out: Rail\n    .r: Resistor\n    .out.pos ~ .r.a\n    .out.neg ~ .r.b\n}\nboard B {\n    .process: TwoLayer {\n        .stackup.thickness &= 1.6mm\n    }\n    .stage: Stage\n    .output: Rail {\n        .pos.net &= \"3V3\"\n        .neg.net &= \"GND\"\n        .min_track &= 0.5mm..1m\n    }\n    .stage.out ~ .output\n}\n";
+    let src = "import std::mfg::jlcpcb::TwoLayer\nimport std::parts::passive::Resistor\nimport std::sources::Rail\nmodule Stage {\n    .out: Rail\n    .r: Resistor\n    .out.pos ~ .r.a\n    .out.neg ~ .r.b\n}\nboard B {\n    .process: TwoLayer {\n        .stackup.thickness &= 1.6mm\n    }\n    .stage: Stage\n    .output: Rail {\n        .pos.net &= \"3V3\"\n        .neg.net &= \"GND\"\n        .min_track &= 0.5mm..\n    }\n    .stage.out ~ .output\n}\n";
     let d = designed(src).unwrap();
     assert_eq!(
         d.features.net_widths,

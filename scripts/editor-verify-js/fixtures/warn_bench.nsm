@@ -13,7 +13,7 @@ board Heater {
         .pos.net &= "5V"
         .neg.net &= "GND"
         .current &= 0A..2A
-        .min_track &= 0.1mm..1m
+        .min_track &= 0.1mm..
     }
     .source: Rail {
         .pos.net &= "5V"

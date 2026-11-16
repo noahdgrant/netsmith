@@ -687,8 +687,9 @@ pub enum RExpr {
     Neg(Box<RExpr>),
     Bin(BinOp, Box<RExpr>, Box<RExpr>),
     /// `lo..hi` where an end is not a fixed number (ADR 0066): the smallest range that holds
-    /// the low end's lowest value and the high end's highest, once both are known.
-    Range(Box<RExpr>, Box<RExpr>),
+    /// the low end's lowest value and the high end's highest, once both are known. An end that
+    /// is `None` is open (`lo..` has no upper limit, `..hi` no lower one).
+    Range(Option<Box<RExpr>>, Option<Box<RExpr>>),
     /// `min(.f)`, `max(.f)` (ADR 0098) or `nominal(.f)`: the least value, the greatest value or
     /// the centre of a field's range, as one value. It is read, never solved for: the solver
     /// does not narrow `.f` through a relation that holds it, and a statement that is not `<=`
@@ -724,9 +725,14 @@ impl RExpr {
             Self::Const(_) | Self::Text(_) => {}
             Self::Field(f) | Self::End(_, f) => out.push(*f),
             Self::Neg(inner) => inner.fields(out),
-            Self::Bin(_, a, b) | Self::Range(a, b) => {
+            Self::Bin(_, a, b) => {
                 a.fields(out);
                 b.fields(out);
+            }
+            Self::Range(a, b) => {
+                for end in [a, b].into_iter().flatten() {
+                    end.fields(out);
+                }
             }
         }
     }
@@ -1631,7 +1637,12 @@ impl Model {
                 format!("({} {sym} {})", self.show_expr(a), self.show_expr(b))
             }
             RExpr::Range(lo, hi) => {
-                format!("({}..{})", self.show_expr(lo), self.show_expr(hi))
+                let end = |e: &Option<Box<RExpr>>| e.as_ref().map(|e| self.show_expr(e));
+                format!(
+                    "({}..{})",
+                    end(lo).unwrap_or_default(),
+                    end(hi).unwrap_or_default()
+                )
             }
         }
     }

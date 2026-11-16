@@ -99,7 +99,7 @@ board Bench {
         .pos.net &= \"V5\"
         .neg.net &= \"GND\"
         .current &= 0mA..10mA
-        .min_track &= 1mm..1m
+        .min_track &= 1mm..
     }
     .out: Header1x2
     .out.p1 ~ .load.pos

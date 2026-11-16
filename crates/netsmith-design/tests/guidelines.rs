@@ -126,12 +126,12 @@ fn the_capacity_of_a_width_is_the_formula_the_other_way_round() {
 
 #[test]
 fn a_2_a_rail_drawn_at_0_2_mm_is_told_the_numbers() {
-    let found = findings(&board(2.0, "        .min_track &= 0.2mm..1m\n", ""));
+    let found = findings(&board(2.0, "        .min_track &= 0.2mm..\n", ""));
     let five = about(&found, "5V");
     assert_eq!(five.len(), 1, "{found:?}");
     assert_eq!(
         five[0],
-        "net `5V` carries up to 2 A (rail `load`: 0 mA to 2 A) but its tracks are 0.2 mm wide (a rail's `.min_track`), in 1 oz (0.035 mm) outer copper; at a temperature rise of 10 K (the default) that width carries 633 mA (at its narrowest, 20% under, the fabricator's tolerance) and IPC-2221 needs 0.98 mm: give a rail on the net `.min_track &= 0.98mm..1m`, or allow a higher `.process.max_temperature_rise`"
+        "net `5V` carries up to 2 A (rail `load`: 0 mA to 2 A) but its tracks are 0.2 mm wide (a rail's `.min_track`), in 1 oz (0.035 mm) outer copper; at a temperature rise of 10 K (the default) that width carries 633 mA (at its narrowest, 20% under, the fabricator's tolerance) and IPC-2221 needs 0.98 mm: give a rail on the net `.min_track &= 0.98mm..`, or allow a higher `.process.max_temperature_rise`"
     );
     // The return is the same current on the same width.
     assert_eq!(about(&found, "GND").len(), 1);
@@ -140,18 +140,18 @@ fn a_2_a_rail_drawn_at_0_2_mm_is_told_the_numbers() {
 
 #[test]
 fn a_wide_enough_rail_passes_and_the_width_the_message_asks_for_passes() {
-    assert!(findings(&board(2.0, "        .min_track &= 1mm..1m\n", "")).is_empty());
+    assert!(findings(&board(2.0, "        .min_track &= 1mm..\n", "")).is_empty());
     // 0.7814 mm is needed by the narrowest finished track, so a drawn width of 0.7814 / 0.8 =
     // 0.9768 mm: 0.97 fails and the 0.98 the message asks for passes.
     assert_eq!(
         about(
-            &findings(&board(2.0, "        .min_track &= 0.97mm..1m\n", "")),
+            &findings(&board(2.0, "        .min_track &= 0.97mm..\n", "")),
             "5V"
         )
         .len(),
         1
     );
-    assert!(findings(&board(2.0, "        .min_track &= 0.98mm..1m\n", "")).is_empty());
+    assert!(findings(&board(2.0, "        .min_track &= 0.98mm..\n", "")).is_empty());
 }
 
 #[test]
@@ -184,8 +184,8 @@ fn the_process_least_track_is_the_floor_of_a_narrower_min_track() {
     // The process narrowed to 0.3 mm: a rail's 0.1 mm is drawn at 0.3.
     let found = findings(&board(
         2.0,
-        "        .min_track &= 0.1mm..1m\n",
-        "        .min_track &= 0.3mm..1m\n",
+        "        .min_track &= 0.1mm..\n",
+        "        .min_track &= 0.3mm..\n",
     ));
     assert!(
         about(&found, "5V")[0].contains("tracks are 0.3 mm wide"),
@@ -202,7 +202,7 @@ fn the_temperature_rise_is_the_process_s_and_a_stated_one_is_not_called_the_defa
     let at = |rise: &str, width: &str| {
         findings(&board(
             2.0,
-            &format!("        .min_track &= {width}..1m\n"),
+            &format!("        .min_track &= {width}..\n"),
             &format!("        .max_temperature_rise &= {rise}\n"),
         ))
     };
@@ -226,7 +226,7 @@ fn the_temperature_rise_is_the_process_s_and_a_stated_one_is_not_called_the_defa
 fn copper_weight_comes_from_the_process() {
     // 1 A: 1 oz needs 0.3004 mm, 0.5 oz 0.6008 mm, 2 oz 0.1502 mm; drawn, over 0.8, 0.3755 mm,
     // 0.7510 mm and 0.1877 mm. A 0.38 mm track is enough for 1 oz and 2 oz.
-    let one_amp = board(1.0, "        .min_track &= 0.38mm..1m\n", "");
+    let one_amp = board(1.0, "        .min_track &= 0.38mm..\n", "");
     assert!(findings_in(&loader_with_copper("1"), &one_amp).is_empty());
     assert!(findings_in(&loader_with_copper("2"), &one_amp).is_empty());
     let half = findings_in(&loader_with_copper("0.5"), &one_amp);
@@ -238,7 +238,7 @@ fn copper_weight_comes_from_the_process() {
         five[0]
     );
     // And 2 oz is why the thinner track suffices: 0.19 mm is enough for it.
-    let thin = board(1.0, "        .min_track &= 0.19mm..1m\n", "");
+    let thin = board(1.0, "        .min_track &= 0.19mm..\n", "");
     assert!(findings_in(&loader_with_copper("2"), &thin).is_empty());
     assert!(!findings_in(&loader_with_copper("1"), &thin).is_empty());
 }
@@ -250,7 +250,7 @@ fn the_2_oz_provider_of_two_layer_rates_a_track_by_its_copper() {
     // so 0.19 mm is enough, as it is not in 1 oz.
     let thin = board(
         1.0,
-        "        .min_track &= 0.19mm..1m\n",
+        "        .min_track &= 0.19mm..\n",
         "        .stackup.copper_weight &= 2\n",
     );
     let mut assign = Assignment::new();
@@ -281,7 +281,7 @@ fn the_2_oz_provider_of_two_layer_rates_a_track_by_its_copper() {
         ),
         (0.16, 0.16, 0.254, 0.2)
     );
-    let one_oz = board(1.0, "        .min_track &= 0.19mm..1m\n", "");
+    let one_oz = board(1.0, "        .min_track &= 0.19mm..\n", "");
     assert!(!findings(&one_oz).is_empty());
 }
 
@@ -308,7 +308,7 @@ board Chain {
         .pos.net &= \"5V\"
         .neg.net &= \"GND\"
         .current &= -1A..0A
-        .min_track &= 0.38mm..1m
+        .min_track &= 0.38mm..
     }
     .r1: Link
     .r2: Link
@@ -516,7 +516,7 @@ fn the_width_follows_the_temperature_rise() {
 #[test]
 fn a_stated_min_track_is_an_override_and_is_still_checked() {
     let src = fuse_diode(
-        "        .current &= 1A..2A\n        .min_track &= 0.3mm..1m\n",
+        "        .current &= 1A..2A\n        .min_track &= 0.3mm..\n",
         "",
         "",
     );
@@ -653,7 +653,7 @@ fn a_stated_min_track_on_a_shared_ground_is_checked_against_the_sum() {
     let l = designed_of(&shared_ground(
         "2A",
         "1A",
-        "        .min_track &= 1mm..1m\n",
+        "        .min_track &= 1mm..\n",
     ));
     let ground = about(&l.guidelines, "GND");
     assert_eq!(ground.len(), 1, "{:?}", l.guidelines);
@@ -902,7 +902,7 @@ fn a_stated_min_track_wider_than_the_known_current_needs_is_respected() {
     let l = designed_of(&converter_of(
         true,
         "1.2A",
-        "        .min_track &= 0.9mm..1m\n",
+        "        .min_track &= 0.9mm..\n",
     ));
     // The rail decided the width of its nets: neither raised nor reduced, no finding, and no
     // note on a net whose width the board stated.
@@ -917,7 +917,7 @@ fn a_stated_min_track_narrower_than_the_known_current_needs_is_still_a_finding()
     let l = designed_of(&converter_of(
         true,
         "1.2A",
-        "        .min_track &= 0.2mm..1m\n",
+        "        .min_track &= 0.2mm..\n",
     ));
     assert_eq!(width_of(&l, "GND"), Some(0.2));
     let found = about(&l.guidelines, "GND");

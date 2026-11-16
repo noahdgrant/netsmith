@@ -134,8 +134,8 @@ fn a_range_may_have_values_at_its_ends_and_prints_back_so() {
     let Expr::Range { lo, hi, .. } = expr("0A .. .max_supply_current") else {
         panic!("range")
     };
-    assert!(matches!(*lo, Expr::Number(..)));
-    assert!(matches!(*hi, Expr::Path(..)));
+    assert!(matches!(lo.as_deref(), Some(Expr::Number(..))));
+    assert!(matches!(hi.as_deref(), Some(Expr::Path(..))));
     // The printer puts a space where a path with a leading dot follows `..`, so the text is
     // not read as `...`, and the printed text parses to the same tree.
     assert_eq!(
@@ -152,13 +152,45 @@ fn a_range_may_have_values_at_its_ends_and_prints_back_so() {
         let once = canon(src);
         assert_eq!(canon(&once), once, "{src}");
     }
-    // An end may wrap to the next line after `..`.
-    assert_eq!(canon("0A..\n    .max"), "0A.. .max");
+    // Inside parentheses an end may wrap to the next line after `..`; outside them a line
+    // that ends at `..` leaves the end open (see `a_range_may_have_an_open_end`).
+    assert_eq!(canon("(0A..\n    .max)"), "(0A.. .max)");
     // A range is still the loosest operator: arithmetic binds inside each end.
     let Expr::Range { hi, .. } = expr("0A .. .a + .b") else {
         panic!("range")
     };
-    assert!(matches!(*hi, Expr::Binary { op: BinOp::Add, .. }));
+    assert!(matches!(hi.as_deref(), Some(Expr::Binary { op: BinOp::Add, .. })));
+}
+
+#[test]
+fn a_range_may_have_an_open_end() {
+    let Expr::Range { lo, hi, .. } = expr("1.6mm..") else {
+        panic!("range")
+    };
+    assert!(matches!(lo.as_deref(), Some(Expr::Number(..))) && hi.is_none());
+    let Expr::Range { lo, hi, .. } = expr("..5mm") else {
+        panic!("range")
+    };
+    assert!(lo.is_none() && matches!(hi.as_deref(), Some(Expr::Number(..))));
+    // The ends print back as written, and the printed text parses to the same tree.
+    for (src, shown) in [
+        ("1.6mm..", "1.6mm.."),
+        ("..5mm", "..5mm"),
+        ("..  .max", ".. .max"),
+        (".min..", ".min.."),
+        ("-1V..", "-1V.."),
+        ("..-1V", "..-1V"),
+        ("1V +/- 5%..", "1V +/- 5%.."),
+        ("(1mm..) + 1mm", "(1mm..) + 1mm"),
+        ("max(.a.., 1mm)", "max(.a.., 1mm)"),
+    ] {
+        assert_eq!(canon(src), shown, "{src}");
+        assert_eq!(canon(shown), shown, "{src}");
+    }
+    // A line that ends at `..` ends the range: the next line is the next statement.
+    let source = "board B {\n    .a &= 1mm..\n    .b &= ..2mm\n}\n";
+    let file = parse(source).expect("parses");
+    assert_eq!(file.to_source(), source);
 }
 
 #[test]
@@ -182,7 +214,7 @@ fn precedence() {
     let Expr::Range { lo, .. } = expr("1V +/- 5%..2V") else {
         panic!("range")
     };
-    assert!(matches!(*lo, Expr::Tolerance { .. }));
+    assert!(matches!(lo.as_deref(), Some(Expr::Tolerance { .. })));
     assert!(matches!(expr("-x"), Expr::Neg(..)));
     // Subtraction is left-associative: (a - b) - c.
     let Expr::Binary { lhs, .. } = expr("a - b - c") else {

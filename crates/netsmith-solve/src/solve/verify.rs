@@ -672,7 +672,15 @@ impl Solver<'_> {
                     }
                 }
                 Err(EvalError::Unknown(_)) => Verdict::Unknown,
-                Err(e) => fail(format!("{e}"), 1.0),
+                Err(e) => fail(
+                    format!(
+                        "{} {} {}: {e}",
+                        show(&r.lhs),
+                        if r.op == CmpOp::Ge { ">=" } else { "<=" },
+                        show(&r.rhs)
+                    ),
+                    1.0,
+                ),
                 Ok(_) => fail("a comparison needs numbers, not text".into(), 1.0),
             },
         }

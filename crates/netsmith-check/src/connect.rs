@@ -43,14 +43,14 @@ impl Side {
             Side::Rail(v) => RExpr::Field(*v),
             Side::Ground => RExpr::Const(Quantity::point(Dimension::VOLTAGE, 0.0).expect("zero")),
             Side::Pin(_, level) if high => RExpr::Range(
-                Box::new(RExpr::Field(level.level)),
-                Box::new(RExpr::Field(level.reference)),
+                Some(Box::new(RExpr::Field(level.level))),
+                Some(Box::new(RExpr::Field(level.reference))),
             ),
             Side::Pin(_, level) => RExpr::Range(
-                Box::new(RExpr::Const(
+                Some(Box::new(RExpr::Const(
                     Quantity::point(Dimension::VOLTAGE, 0.0).expect("zero"),
-                )),
-                Box::new(RExpr::Field(level.level)),
+                ))),
+                Some(Box::new(RExpr::Field(level.level))),
             ),
         }
     }

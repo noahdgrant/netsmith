@@ -15,9 +15,9 @@ path = "tests/main.rs"
 netsmith-check = { path = "../netsmith-check" }
 netsmith-core = { path = "../netsmith-core" }
 netsmith-lang = { path = "../netsmith-lang" }
+netsmith-quantity = { path = "../netsmith-quantity" }
 netsmith-solve = { path = "../netsmith-solve" }
 
 [dev-dependencies]
 automod = "1.0.17"
-netsmith-quantity = { path = "../netsmith-quantity" }
 netsmith-testkit = { path = "../netsmith-testkit" }

@@ -41,68 +41,68 @@ interface EightLayer {
 
     /// The narrowest track.
     .min_track: Length
-    .min_track &= 0.09mm..1m
+    .min_track &= 0.09mm..
     /// The least space between copper of different nets.
     .min_clearance: Length
-    .min_clearance &= 0.1mm..1m
+    .min_clearance &= 0.1mm..
     /// The smallest drilled hole, which is a via's drill.
     .min_drill: Length
-    .min_drill &= 0.15mm..1m
+    .min_drill &= 0.15mm..
     /// The smallest copper disc of a via.
     .min_via_diameter: Length
-    .min_via_diameter &= 0.25mm..1m
+    .min_via_diameter &= 0.25mm..
     /// The least copper left round a plated pad's hole. A via's is `.min_via_ring`.
     .min_annular_ring: Length
-    .min_annular_ring &= 0.15mm..1m
+    .min_annular_ring &= 0.15mm..
     /// The least space between the edges of two holes when one is a pad's, and between two
     /// vias' holes.
     .min_hole_to_hole: Length
-    .min_hole_to_hole &= 0.45mm..1m
+    .min_hole_to_hole &= 0.45mm..
     .min_via_hole_to_hole: Length
-    .min_via_hole_to_hole &= 0.2mm..1m
+    .min_via_hole_to_hole &= 0.2mm..
     /// The least space between copper and a routed board edge.
     .min_edge_clearance: Length
-    .min_edge_clearance &= 0.2mm..1m
+    .min_edge_clearance &= 0.2mm..
     /// The least space between a plane and the hole of a via or a through-hole pad that is
     /// not on its net.
     .min_plane_hole_clearance: Length
-    .min_plane_hole_clearance &= 0.3mm..1m
+    .min_plane_hole_clearance &= 0.3mm..
     /// The thinnest silkscreen stroke.
     .min_silk_width: Length
-    .min_silk_width &= 0.15mm..1m
+    .min_silk_width &= 0.15mm..
     /// The smallest silkscreen text.
     .min_text_height: Length
-    .min_text_height &= 1mm..1m
+    .min_text_height &= 1mm..
     /// The least space between silkscreen and a pad.
     .min_silk_to_pad: Length
-    .min_silk_to_pad &= 0.15mm..1m
+    .min_silk_to_pad &= 0.15mm..
     /// The least solder mask left between two pads.
     .min_mask_bridge: Length
-    .min_mask_bridge &= 0.13mm..1m
+    .min_mask_bridge &= 0.13mm..
     /// The least copper round a via's hole, on each side.
     .min_via_ring: Length
-    .min_via_ring &= 0.05mm..1m
+    .min_via_ring &= 0.05mm..
     /// The least space from the edge of a via's hole or a non-plated hole to a track of
     /// another net.
     .min_hole_clearance: Length
-    .min_hole_clearance &= 0.2mm..1m
+    .min_hole_clearance &= 0.2mm..
     /// The least space from a plated pad's hole to a track of another net.
     .min_plated_hole_clearance: Length
-    .min_plated_hole_clearance &= 0.28mm..1m
+    .min_plated_hole_clearance &= 0.28mm..
     /// The least space between surface-mount pads of different nets.
     .min_pad_to_pad: Length
-    .min_pad_to_pad &= 0.15mm..1m
+    .min_pad_to_pad &= 0.15mm..
     /// The least space between a solder mask opening and a track of another net.
     .min_mask_to_track: Length
-    .min_mask_to_track &= 0.09mm..1m
+    .min_mask_to_track &= 0.09mm..
     /// The smallest non-plated hole, the narrowest plated slot and the narrowest non-plated
     /// slot.
     .min_npth_drill: Length
-    .min_npth_drill &= 0.5mm..1m
+    .min_npth_drill &= 0.5mm..
     .min_plated_slot: Length
-    .min_plated_slot &= 0.35mm..1m
+    .min_plated_slot &= 0.35mm..
     .min_npth_slot: Length
-    .min_npth_slot &= 1mm..1m
+    .min_npth_slot &= 1mm..
     /// The via the router draws, its hole and its copper: an offer the board may replace
     /// (`.process.via_drill &= 0.3mm`), checked against the rules above.
     .via_drill: Length
@@ -191,68 +191,68 @@ interface TenLayer {
 
     /// The narrowest track.
     .min_track: Length
-    .min_track &= 0.09mm..1m
+    .min_track &= 0.09mm..
     /// The least space between copper of different nets.
     .min_clearance: Length
-    .min_clearance &= 0.1mm..1m
+    .min_clearance &= 0.1mm..
     /// The smallest drilled hole, which is a via's drill.
     .min_drill: Length
-    .min_drill &= 0.15mm..1m
+    .min_drill &= 0.15mm..
     /// The smallest copper disc of a via.
     .min_via_diameter: Length
-    .min_via_diameter &= 0.25mm..1m
+    .min_via_diameter &= 0.25mm..
     /// The least copper left round a plated pad's hole. A via's is `.min_via_ring`.
     .min_annular_ring: Length
-    .min_annular_ring &= 0.15mm..1m
+    .min_annular_ring &= 0.15mm..
     /// The least space between the edges of two holes when one is a pad's, and between two
     /// vias' holes.
     .min_hole_to_hole: Length
-    .min_hole_to_hole &= 0.45mm..1m
+    .min_hole_to_hole &= 0.45mm..
     .min_via_hole_to_hole: Length
-    .min_via_hole_to_hole &= 0.2mm..1m
+    .min_via_hole_to_hole &= 0.2mm..
     /// The least space between copper and a routed board edge.
     .min_edge_clearance: Length
-    .min_edge_clearance &= 0.2mm..1m
+    .min_edge_clearance &= 0.2mm..
     /// The least space between a plane and the hole of a via or a through-hole pad that is
     /// not on its net.
     .min_plane_hole_clearance: Length
-    .min_plane_hole_clearance &= 0.3mm..1m
+    .min_plane_hole_clearance &= 0.3mm..
     /// The thinnest silkscreen stroke.
     .min_silk_width: Length
-    .min_silk_width &= 0.15mm..1m
+    .min_silk_width &= 0.15mm..
     /// The smallest silkscreen text.
     .min_text_height: Length
-    .min_text_height &= 1mm..1m
+    .min_text_height &= 1mm..
     /// The least space between silkscreen and a pad.
     .min_silk_to_pad: Length
-    .min_silk_to_pad &= 0.15mm..1m
+    .min_silk_to_pad &= 0.15mm..
     /// The least solder mask left between two pads.
     .min_mask_bridge: Length
-    .min_mask_bridge &= 0.13mm..1m
+    .min_mask_bridge &= 0.13mm..
     /// The least copper round a via's hole, on each side.
     .min_via_ring: Length
-    .min_via_ring &= 0.05mm..1m
+    .min_via_ring &= 0.05mm..
     /// The least space from the edge of a via's hole or a non-plated hole to a track of
     /// another net.
     .min_hole_clearance: Length
-    .min_hole_clearance &= 0.2mm..1m
+    .min_hole_clearance &= 0.2mm..
     /// The least space from a plated pad's hole to a track of another net.
     .min_plated_hole_clearance: Length
-    .min_plated_hole_clearance &= 0.28mm..1m
+    .min_plated_hole_clearance &= 0.28mm..
     /// The least space between surface-mount pads of different nets.
     .min_pad_to_pad: Length
-    .min_pad_to_pad &= 0.15mm..1m
+    .min_pad_to_pad &= 0.15mm..
     /// The least space between a solder mask opening and a track of another net.
     .min_mask_to_track: Length
-    .min_mask_to_track &= 0.09mm..1m
+    .min_mask_to_track &= 0.09mm..
     /// The smallest non-plated hole, the narrowest plated slot and the narrowest non-plated
     /// slot.
     .min_npth_drill: Length
-    .min_npth_drill &= 0.5mm..1m
+    .min_npth_drill &= 0.5mm..
     .min_plated_slot: Length
-    .min_plated_slot &= 0.35mm..1m
+    .min_plated_slot &= 0.35mm..
     .min_npth_slot: Length
-    .min_npth_slot &= 1mm..1m
+    .min_npth_slot &= 1mm..
     /// The via the router draws, its hole and its copper: an offer the board may replace
     /// (`.process.via_drill &= 0.3mm`), checked against the rules above.
     .via_drill: Length

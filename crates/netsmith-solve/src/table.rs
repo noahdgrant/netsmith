@@ -772,9 +772,16 @@ fn constant(e: &Expr) -> Result<Quantity, String> {
             }
             .map_err(|e| e.to_string())
         }
-        Expr::Range { lo, hi, .. } => {
-            Quantity::range(&constant(lo)?, &constant(hi)?).map_err(|e| e.to_string())
-        }
+        Expr::Range {
+            lo: Some(lo),
+            hi: Some(hi),
+            ..
+        } => Quantity::range(&constant(lo)?, &constant(hi)?).map_err(|e| e.to_string()),
+        // What a catalog states is a part's own value, which has both its ends.
+        Expr::Range { .. } => Err(format!(
+            "`{}` has an open end; a catalog value has both ends",
+            e.to_source()
+        )),
         Expr::Tolerance { center, tol, .. } => {
             if matches!(&**tol, Expr::Number(n, _) if n.unit.as_deref().is_some_and(is_offset_unit))
             {
@@ -860,5 +867,10 @@ mod tests {
         assert_eq!(v("(1V + 2V) * 2").mid(), 6.0);
         assert!(quantity("1V + 2A").unwrap_err().contains("cannot add"));
         assert!(quantity("3.3V 5%").unwrap_err().contains("expected"));
+        // A part's own value has both ends, so a range with an open end is no cell.
+        for open in ["1.8V..", "..5.5V"] {
+            let e = quantity(open).unwrap_err();
+            assert!(e.contains("has an open end"), "{open}: {e}");
+        }
     }
 }

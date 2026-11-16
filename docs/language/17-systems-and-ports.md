@@ -203,12 +203,12 @@ board Carrier {
         .voltage &= 3.3V +/- 5%
         .peak &= 3.6V
         .pos.net &= "3V3"
-        .min_track &= 0.5mm..1m
+        .min_track &= 0.5mm..
     }
     /// What the carrier gives to its cards, through a fuse: up to 500 mA.
     .cards: Rail {
         .pos.net &= "3V3_CARDS"
-        .min_track &= 0.5mm..1m
+        .min_track &= 0.5mm..
         .current &= 0mA..500mA
     }
     .fuse: Fuse
@@ -583,12 +583,12 @@ board Carrier {
     .a: Rail {
         .voltage &= 3.3V +/- 5%
         .pos.net &= "RAIL_A"
-        .min_track &= 0.5mm..1m
+        .min_track &= 0.5mm..
     }
     .b: Rail {
         .voltage &= 3.3V +/- 5%
         .pos.net &= "RAIL_B"
-        .min_track &= 0.5mm..1m
+        .min_track &= 0.5mm..
     }
     .slot: Socket1x4
     .a.neg ~ .slot.p1
@@ -600,11 +600,11 @@ board Carrier {
 board Card {
     .a: Rail {
         .pos.net &= "RAIL_A"
-        .min_track &= 0.5mm..1m
+        .min_track &= 0.5mm..
     }
     .b: Rail {
         .pos.net &= "RAIL_B"
-        .min_track &= 0.5mm..1m
+        .min_track &= 0.5mm..
     }
     .j1: Header1x4
     .a.neg ~ .j1.p1

@@ -31,10 +31,12 @@ fn exact(model: &Model, inst: InstId, name: &str, errors: &mut Vec<String>) -> O
     match domain(model, inst, name)? {
         Domain::Quantity(q) if q.is_point() || (q.hi() - q.lo()).abs() < 1e-12 => Some(mm(q.lo())),
         Domain::Quantity(q) => {
+            // A range with an open end names the end it has.
+            let end = if q.lo().is_finite() { q.lo() } else { q.hi() };
             errors.push(format!(
                 "`{}.{name}` is {q}, a range, and a position, a size or a height is one value: say it with `&= {}mm`",
                 model.path_of(inst),
-                mm(q.lo())
+                mm(end)
             ));
             None
         }
@@ -42,7 +44,8 @@ fn exact(model: &Model, inst: InstId, name: &str, errors: &mut Vec<String>) -> O
     }
 }
 
-/// A length that may be a range: its bottom and its top, in mm.
+/// A length that may be a range: its bottom and its top, in mm. An end that is open
+/// (`1mm..`, `..5mm`) is infinite: a caller that needs a number there asks `is_finite`.
 fn range(model: &Model, inst: InstId, name: &str) -> Option<(f64, f64)> {
     match domain(model, inst, name)? {
         Domain::Quantity(q) => Some((mm(q.lo()), mm(q.hi()))),
@@ -133,7 +136,7 @@ fn net_widths(model: &Model) -> Vec<(String, f64)> {
         if inst.kind != InstKind::Interface {
             continue;
         }
-        let Some((lo, _)) = range(model, id, "min_track") else {
+        let Some((lo, _)) = range(model, id, "min_track").filter(|(lo, _)| lo.is_finite()) else {
             continue;
         };
         let pins: Vec<InstId> = ["pos", "neg"]
@@ -599,7 +602,10 @@ fn pours(model: &Model, nets: &[String], errors: &mut Vec<String>) -> Vec<Pour> 
             ));
             continue;
         }
-        let stitch_pitch = range(model, pour, "stitch_pitch").map(|(_, hi)| hi);
+        // The most space between stitching vias; with no upper limit (`5mm..`) it is no limit.
+        let stitch_pitch = range(model, pour, "stitch_pitch")
+            .map(|(_, hi)| hi)
+            .filter(|hi| hi.is_finite());
         if let Some(pitch) = stitch_pitch
             && pitch <= 0.0
         {
@@ -699,8 +705,13 @@ fn outline_of(model: &Model, inst: InstId, errors: &mut Vec<String>) -> Outline 
     if let Some(polygon) = model.polygon_of(inst) {
         return polygon_outline(model, inst, polygon, errors);
     }
-    let width = range(model, inst, "width").unwrap_or(unbounded);
-    let height = range(model, inst, "height").unwrap_or(unbounded);
+    // A size has no negative values, so `..100mm` is from nothing up to 100 mm.
+    let size = |name: &str| {
+        range(model, inst, name)
+            .map(|(lo, hi)| (lo.max(0.0), hi))
+            .unwrap_or(unbounded)
+    };
+    let (width, height) = (size("width"), size("height"));
     let tight = (width.0.is_finite() && width.1.is_finite())
         .then_some(())
         .and((height.0.is_finite() && height.1.is_finite()).then_some((width.1, height.1)));
@@ -780,7 +791,9 @@ fn labels(model: &Model, least_text: f64, errors: &mut Vec<String>) -> Vec<Label
                 continue;
             }
         };
-        let height = range(model, id, "text_height").map(|(lo, _)| lo);
+        let height = range(model, id, "text_height")
+            .map(|(lo, _)| lo)
+            .filter(|lo| lo.is_finite());
         if let Some(h) = height
             && h < least_text - 1e-9
         {

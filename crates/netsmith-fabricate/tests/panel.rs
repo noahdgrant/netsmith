@@ -197,8 +197,8 @@ fn a_panel_that_the_board_house_would_refuse_says_why_with_the_numbers() {
     // Copper only 0.2 mm from the edge.
     let e = make(
         &changed(
-            ".min_edge_clearance &= 0.4mm..1m",
-            ".min_edge_clearance &= 0.2mm..1m",
+            ".min_edge_clearance &= 0.4mm..",
+            ".min_edge_clearance &= 0.2mm..",
         ),
         &dir,
     )
