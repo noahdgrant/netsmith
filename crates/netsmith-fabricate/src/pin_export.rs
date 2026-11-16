@@ -86,7 +86,8 @@ pub fn render(
                 pad: row
                     .map(|p| p.pads.join(", "))
                     .filter(|pads| !pads.is_empty()),
-                function: &r.capability,
+                // The channel of a class where the row names one (`AIN1` for `ANALOG`, #787).
+                function: r.function_on(&r.pin),
                 locked: r.lock,
             });
         }

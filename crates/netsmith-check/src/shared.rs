@@ -544,6 +544,54 @@ impl Checker<'_> {
                 }
             }
         }
+
+        // The channel markers (`AIN1 of ANALOG`, #787): `of` names a class of the same row, a
+        // channel is no class itself, and a pin is one channel of one class.
+        for table in &tables {
+            for row in &table.rows {
+                let pin = pin_of(&self.model, row);
+                let mut first_channel: Option<(&str, &str)> = None;
+                for f in &row.functions {
+                    let Some(class) = f.of.as_deref() else {
+                        continue;
+                    };
+                    let message = if f.class {
+                        Some(format!(
+                            "`{pin}` marks `{}` as a class and as the channel of `{class}`; a channel is one function on one pin, so remove `class` or `of {class}`",
+                            f.name
+                        ))
+                    } else if !row.functions.iter().any(|g| g.name == class) {
+                        Some(format!(
+                            "`{pin}` writes `{} of {class}`, but the row does not list `{class}`; `of` names a class of the same row, as in `fn GPIO class ANALOG class AIN1 of ANALOG`",
+                            f.name
+                        ))
+                    } else if !self.model.is_class(part, class) {
+                        Some(format!(
+                            "`{pin}` writes `{} of {class}`, but `{class}` is not a class; mark it `{class} class` on every row that lists it, or remove `of {class}`",
+                            f.name
+                        ))
+                    } else {
+                        match first_channel {
+                            Some((name, other)) if other == class => Some(format!(
+                                "`{pin}` has two channels of `{class}`, `{name}` and `{}`; a pin is one channel of a class",
+                                f.name
+                            )),
+                            Some((name, other)) => Some(format!(
+                                "`{pin}` is a channel of two classes, `{name} of {other}` and `{} of {class}`; a pin is the channel of one class",
+                                f.name
+                            )),
+                            None => {
+                                first_channel = Some((&f.name, class));
+                                None
+                            }
+                        }
+                    };
+                    if let Some(message) = message {
+                        found.push((table.source, row.span, message));
+                    }
+                }
+            }
+        }
         for (source, span, message) in found {
             self.report(source, span, message);
         }

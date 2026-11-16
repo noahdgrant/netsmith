@@ -689,3 +689,49 @@ fn a_generics_row_may_state_the_limits_every_provider_meets() {
     let (msg, ..) = row_error(".en input abs_max 6V");
     assert!(msg.contains("the datasheet name of `.en`"), "{msg}");
 }
+
+#[test]
+fn a_function_may_name_the_class_whose_channel_it_is() {
+    // #787: `of CLASS` after a function (and its kind) names the class whose channel it is.
+    let src = row(
+        ".p03 bidirectional \"P0.03\" \"6\" fn GPIO class ANALOG class AIN1:input of ANALOG optional",
+    );
+    let file = parse(&src).unwrap();
+    let Item::Pins(table) = &file.definitions[0].items[0] else {
+        panic!()
+    };
+    let got: Vec<(&str, bool, Option<&str>)> = table.rows[0]
+        .functions
+        .iter()
+        .map(|f| {
+            (
+                f.name.name.as_str(),
+                f.class.is_some(),
+                f.of.as_ref().map(|o| o.name.as_str()),
+            )
+        })
+        .collect();
+    assert_eq!(
+        got,
+        [
+            ("GPIO", true, None),
+            ("ANALOG", true, None),
+            ("AIN1", false, Some("ANALOG")),
+        ]
+    );
+    let printed = file.to_source();
+    assert!(
+        printed.contains("fn GPIO class ANALOG class AIN1:input of ANALOG optional"),
+        "{printed}"
+    );
+    assert_eq!(parse(&printed).unwrap().to_source(), printed);
+}
+
+#[test]
+fn of_needs_the_name_of_a_class() {
+    let (message, _, _) = row_error(".p03 bidirectional \"P0.03\" \"6\" fn AIN1 of \"ANALOG\"");
+    assert!(
+        message.contains("the class whose channel the function is"),
+        "{message}"
+    );
+}

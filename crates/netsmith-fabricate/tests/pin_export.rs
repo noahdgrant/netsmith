@@ -173,3 +173,40 @@ fn the_files_in_the_guide_are_what_a_run_writes() {
     assert_eq!(map.header, header);
     assert_eq!(map.json, json);
 }
+
+#[test]
+fn a_request_for_a_class_exports_the_channel_of_its_pin() {
+    // #787: the rows say which function of each is the channel of `ANALOG`.
+    // `GPIO` is a class already: `UARTE0` is `on` it.
+    let part = PART
+        .replace(
+            "\"3\" fn GPIO ANALOG",
+            "\"3\" fn GPIO ANALOG class AIN0 of ANALOG",
+        )
+        .replace(
+            "\"4\" fn GPIO ANALOG",
+            "\"4\" fn GPIO ANALOG class AIN1 of ANALOG",
+        );
+    let text = source(REQUESTS).replace(PART, &part);
+    assert!(text.contains("AIN1 of ANALOG"), "{text}");
+    let map = map_of(&text, None).unwrap().unwrap();
+    assert!(
+        map.header.contains(
+            "// sense: pin P0.02, pad 3 of u, function AIN0\n#define SENSORS_PIN_SENSE_NAME \"P0.02\"\n#define SENSORS_PIN_SENSE_FUNCTION \"AIN0\"\n"
+        ),
+        "{}",
+        map.header
+    );
+    assert!(
+        map.json.contains("\"sense\": {\n      \"function\": \"AIN0\","),
+        "{}",
+        map.json
+    );
+    // A class whose row names no channel exports the class.
+    assert!(
+        map.header
+            .contains("#define SENSORS_PIN_STATUS_FUNCTION \"GPIO\"\n"),
+        "{}",
+        map.header
+    );
+}

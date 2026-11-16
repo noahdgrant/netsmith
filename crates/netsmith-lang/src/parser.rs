@@ -1105,6 +1105,7 @@ impl Parser {
                         name: function,
                         kind,
                         class: None,
+                        of: None,
                         line,
                     });
                 }
@@ -1562,10 +1563,22 @@ impl Parser {
                             Tok::Ident(w) if w == "class" => Some(self.bump().span),
                             _ => None,
                         };
+                        // `of CLASS` after that is the class whose channel the function is, read
+                        // the same way: `of` there is always the marker.
+                        let of = match &self.peek().tok {
+                            Tok::Ident(w) if w == "of" => {
+                                self.bump();
+                                Some(self.ident(
+                                    "the class whose channel the function is, such as `of ANALOG`",
+                                )?)
+                            }
+                            _ => None,
+                        };
                         functions.push(PinFunction {
                             name,
                             kind,
                             class,
+                            of,
                             line: None,
                         });
                     }

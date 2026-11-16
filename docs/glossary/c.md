@@ -35,6 +35,10 @@ _Avoid_: Slot, tile
 **Chain**:
 A run of series connections from one pin through bridge parts to another. A series chain passes one current, the through-current (`.current`) of each of its parts, taken from the first terminal of the part's `bridge` to the second; the first part's is drawn from the net the chain starts on (ADR 0014). A chain from a rail's `pos` to the same rail's `neg`, untapped, whose parts are each a `dc resistor` or a `dc diode` the way it runs, also has its current set by Kirchhoff's voltage law before the pick: the rail's voltage less the forward voltages, over the resistances (ADR 0113).
 
+**Channel**:
+The function of a pin row that is the pin's channel of a class, written `of CLASS` after it in the row (`fn GPIO class ANALOG class AIN1 of ANALOG`): the name firmware reads the pin by when the board asks for the class. The pin file and the firmware's pin map record it for a request of the class (issue #787). A pin is one channel of one class.
+_Avoid_: Channel for a line of a bus (that is a _Line_) or for the room between two rows of pads (that is a _Corridor_)
+
 **Checkpoint**:
 A place in a long call (the checker's instances, a trial of the solver's search, a part or a net of the design stage, a sheet or a pass of the schematic's layout, a move of the placer) that asks whether the job it belongs to was cancelled, and ends the call if so. A job is cancelled with a token (`netsmith_core::job::Cancel`) that the one who started it installs for its thread; a cancelled call unwinds to him with nothing of what it made kept, and the analysis that was cancelled leaves the last reading as it was (ADR 0062). It is the _Cancel_ button's reach: a call is stopped at its next checkpoint, not at once.
 _Avoid_: Interrupt, abort, kill (a job is never killed; it is asked, and ends where it can)

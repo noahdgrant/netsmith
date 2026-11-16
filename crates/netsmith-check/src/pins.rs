@@ -608,6 +608,7 @@ impl Checker<'_> {
                     name: f.name.name.clone(),
                     kind: f.kind.map(|(k, _)| k),
                     class: f.class.is_some(),
+                    of: f.of.as_ref().map(|o| o.name.clone()),
                 })
                 .collect(),
             requirement: row.requirement.map(|(r, _)| r),

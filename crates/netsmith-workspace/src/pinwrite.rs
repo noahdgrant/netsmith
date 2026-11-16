@@ -1,6 +1,7 @@
 //! The editor writes the pin file (ADR 0101), the `lock`, `pin` and `source` lines of one entry at
-//! a time and no other line: a padlock click locks or unlocks a request's pin, and a move puts a
-//! request on another pin that offers its function. The owner decided that the editor may write
+//! a time (and its `function` line, when a move puts a request for a class on a pin whose row
+//! names another channel of it, #787) and no other line: a padlock click locks or unlocks a
+//! request's pin, and a move puts a request on another pin that offers its function. The owner decided that the editor may write
 //! these lines and not the pick lock (ED2 of the pin epic).
 //!
 //! A choice is judged from the analysis of the files on disk, with the rules the check applies
@@ -56,7 +57,7 @@ fn decide(
             }
             Ok(PinEntry {
                 pin: request.pin.clone(),
-                function: request.capability.clone(),
+                function: request.function_on(&request.pin).to_string(),
                 lock: *locked,
                 // Who chose the pin does not change with a padlock: a pin the tool picked stays
                 // the tool's, and a pin a person put there stays theirs.
@@ -109,7 +110,8 @@ fn decide(
             }
             Ok(PinEntry {
                 pin: pin.clone(),
-                function: function.clone(),
+                // The channel of a class on the new pin, when its row names one (#787).
+                function: request.function_on(pin).to_string(),
                 lock: false,
                 // A person chose this pin.
                 source: EntrySource::Hand,
