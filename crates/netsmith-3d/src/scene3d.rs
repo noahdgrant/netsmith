@@ -35,7 +35,10 @@
 //!   its _Package shape_ ([`PlacedShape`]): the solids of [`netsmith_pcb::package_shape`] in the
 //!   footprint's frame and the map that puts them where the box is, mirrored and hanging down
 //!   for a part on the bottom face. Only the meshes draw it: the height limits, the overlaps and
-//!   every report measure the body box.
+//!   every report measure the body box. A body that stands off the board (`.standoff`, issue
+//!   #775) stands from its standoff up to its height: the box and the shape are drawn there, a
+//!   part under it needs only be lower than the standoff, and the standoff is a height limit
+//!   over the body for the parts on the same face (`height_areas`, named `standoff of J1`).
 //! - A part's STEP model, where the design names one and its caller has read it
 //!   ([`Scene::draw_models`], ADR 0108): its triangles placed in KiCad's frame for a model
 //!   ([`model_frame`]), drawn in place of the package shape. A drawing only, like the shape.
@@ -44,12 +47,12 @@
 //!   pins one by one ([`netsmith_pcb::pin_tails`], drawn from the far end up through the
 //!   board to the part's face); another part's are the box of its plated pads. The case fit
 //!   measures the box.
-//! - The height limits ([`HeightLimit`]): every placed keepout with `.max_height`, per face it
-//!   limits, with the tallest part under it and the margin.
+//! - The height limits ([`HeightLimit`]): every placed keepout with `.max_height`, and the
+//!   standoff of every body that has one, per face it limits, with the tallest part under it and the margin.
 //! - [`Findings`] that are 3D facts: the parts too tall for a limit (the placement check's own
 //!   `TooTall`, not measured again here), the parts of unknown height under a limit (the board's
 //!   `heights_unchecked`), and bodies that overlap in 3D (two bodies on one face whose turned
-//!   boxes share area in plan and whose heights both start at the face).
+//!   boxes share area in plan and whose Z ranges, each from its standoff up to its height, share space).
 //!
 //! - The copper ([`SceneCopper`]): per copper layer, at that layer's Z of the stackup, the pads,
 //!   the tracks (each a straight piece with round ends, an arc as such pieces), the planes and the pours as polygons
@@ -332,6 +335,13 @@ pub struct Body {
     /// The far end of the body: above the top face or below the bottom. `None` when the height
     /// is unknown.
     pub z_far: Option<f64>,
+    /// How far the underside of the body is from the face, in mm (`.standoff`, issue #775):
+    /// zero for a body that stands on the board. The body fills the space from here to
+    /// `z_far`; the pins under it, and the part's STEP model, are not measured from here.
+    pub standoff: f64,
+    /// The underside of the body: `z_face` for a body on the board, else the standoff above the
+    /// top face or below the bottom one.
+    pub z_near: f64,
     pub height: Option<f64>,
     pub provenance: HeightProvenance,
     /// The package standard the height is from, for a `standard` height (ADR 0106).
@@ -436,8 +446,8 @@ impl Body {
     /// The lowest and the highest Z of the body, each `None` where the unknown height leaves it.
     pub fn z_range(&self) -> (Option<f64>, Option<f64>) {
         match self.side {
-            Side::Back => (self.z_far, Some(self.z_face)),
-            _ => (Some(self.z_face), self.z_far),
+            Side::Back => (self.z_far, Some(self.z_near)),
+            _ => (Some(self.z_near), self.z_far),
         }
     }
 }
@@ -511,7 +521,7 @@ pub struct Overlap {
     pub a_refdes: String,
     pub b_refdes: String,
     pub side: Side,
-    /// The Z range both fill: from the face out to the shorter body's height.
+    /// The Z range both fill: from the higher underside (a standoff) out to the lower top.
     pub z_bottom: f64,
     pub z_top: f64,
 }
@@ -1243,13 +1253,18 @@ fn body(
         }
     };
     let place = placement(p, frame, z_face, out);
+    let z_near = clean(z_face + out * p.standoff);
+    // The package shape is drawn from the underside of the body.
     let shape = height
         .is_some()
-        .then(|| netsmith_pcb::package_shape(&p.footprint, height))
+        .then(|| netsmith_pcb::package_shape(&p.footprint, height.map(|h| h - p.standoff)))
         .filter(|s| s.shaped && !s.solids.is_empty())
         .map(|s| PlacedShape {
             solids: s.solids,
-            place,
+            place: Placement {
+                z_face: z_near,
+                ..place
+            },
         });
     Body {
         path: p.path.clone(),
@@ -1266,6 +1281,8 @@ fn body(
         courtyards: p.courtyards().into_iter().map(|r| frame.rect(r)).collect(),
         z_face,
         z_far: height.map(|h| clean(z_face + out * h)),
+        standoff: p.standoff,
+        z_near,
         height,
         provenance,
         standard,
@@ -1361,7 +1378,7 @@ fn limits(board: &Board, frame: &Frame, thickness: f64, bodies: &[Body]) -> Vec<
     let parts: BTreeMap<&str, &netsmith_pcb::Placed> =
         board.parts.iter().map(|p| (p.path.as_str(), p)).collect();
     let mut limits: Vec<HeightLimit> = board
-        .keepout_areas()
+        .height_areas()
         .into_iter()
         .filter_map(|k| {
             let max_height = k.max_height?;
@@ -1453,7 +1470,9 @@ fn findings(board: &Board, bodies: &[Body]) -> Findings {
 }
 
 /// The pairs of bodies on one face, both of known height above zero, whose turned boxes share
-/// area in plan. Both stand from the face, so they share the space up to the shorter one.
+/// area in plan and whose Z ranges share space: each fills from its standoff (zero for a body on
+/// the board) up to its height, so a low part under a body that stands off the board is no
+/// overlap.
 fn overlaps(bodies: &[Body]) -> Vec<Overlap> {
     let mut found = Vec::new();
     for (i, a) in bodies.iter().enumerate() {
@@ -1464,13 +1483,17 @@ fn overlaps(bodies: &[Body]) -> Vec<Overlap> {
             if a.side != b.side || ha <= TOLERANCE || hb <= TOLERANCE {
                 continue;
             }
+            // Out from the face: from the higher underside to the lower top.
+            let (from, to) = (a.standoff.max(b.standoff), ha.min(hb));
+            if to - from <= TOLERANCE {
+                continue;
+            }
             if !boxes_overlap(&a.bounds, &b.bounds) || !turned_overlap(&a.corners, &b.corners) {
                 continue;
             }
-            let reach = ha.min(hb);
             let (z_bottom, z_top) = match a.side {
-                Side::Back => (clean(a.z_face - reach), a.z_face),
-                _ => (a.z_face, clean(a.z_face + reach)),
+                Side::Back => (clean(a.z_face - to), clean(a.z_face - from)),
+                _ => (clean(a.z_face + from), clean(a.z_face + to)),
             };
             found.push(Overlap {
                 a: a.path.clone(),

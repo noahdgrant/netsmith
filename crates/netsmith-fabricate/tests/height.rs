@@ -510,3 +510,124 @@ fn a_part_too_tall_for_the_limit_on_its_stated_face_is_placed_and_named_not_refu
         "{e}"
     );
 }
+
+/// R1 stands on pins, 2 mm off the board and 6 mm tall; R2 and R3 are the parts under it, 3 mm
+/// and 1 mm tall (issue #775).
+const STANDOFF: &str = "    .r1.height &= 6mm
+    .r1.standoff &= 2mm
+    .r2.height &= 3mm
+    .r3.height &= 1mm
+";
+
+/// The board with R2 and R3 put under R1's body, where only the standoff decides.
+fn under_the_body() -> Board {
+    let mut board = place(3, STANDOFF, &[]);
+    let top = board.outline.min;
+    let at = Pt::new(top.x + 20.0, top.y + 15.0);
+    for p in &mut board.parts {
+        p.at = at;
+    }
+    board
+}
+
+#[test]
+fn a_part_states_its_standoff_and_the_body_stands_from_it_up_to_its_height() {
+    let libraries = Libraries::sample();
+    let built = build_with(
+        "widget.nsm",
+        &source(3),
+        &loader(STANDOFF),
+        &Catalogs::jlcpcb(),
+        &libraries,
+    )
+    .unwrap_or_else(|e| panic!("{e}"));
+    let standoffs: Vec<(&str, f64)> = built[0]
+        .design
+        .features
+        .standoffs
+        .iter()
+        .map(|s| (s.path.as_str(), s.standoff))
+        .collect();
+    assert_eq!(standoffs, [("r1", 2.0)]);
+    let board = under_the_body();
+    let r1 = board.part("R1").expect("R1");
+    assert_eq!(r1.standoff, 2.0);
+    assert_eq!(board.part("R2").expect("R2").standoff, 0.0);
+}
+
+#[test]
+fn a_part_under_a_body_that_stands_off_is_limited_to_the_standoff() {
+    let board = under_the_body();
+    // R2 (3 mm) is under the 2 mm standoff of R1 and too tall; R3 (1 mm) fits under it; R1 is
+    // not limited by its own standoff.
+    let found = too_tall(&board);
+    assert_eq!(found.len(), 1, "{found:?}");
+    let text = found[0].to_string();
+    for want in [
+        "`r2` (R2) stands 3.00 mm tall on the top face",
+        "the standoff of R1 allows 2.00 mm there (1.00 mm too tall)",
+    ] {
+        assert!(text.contains(want), "{want:?} is not in {text:?}");
+    }
+}
+
+#[test]
+fn a_part_of_no_height_under_a_body_that_stands_off_is_unchecked() {
+    let mut board = place(3, "    .r1.height &= 6mm\n    .r1.standoff &= 2mm\n", &[]);
+    let top = board.outline.min;
+    let at = Pt::new(top.x + 20.0, top.y + 15.0);
+    for p in &mut board.parts {
+        p.at = at;
+    }
+    let text = board
+        .heights_unchecked()
+        .iter()
+        .find(|u| u.refdes == "R2")
+        .expect("R2 is unchecked")
+        .to_string();
+    assert!(
+        text.contains("the standoff of R1 limits parts on the top face to 2.00 mm")
+            && text.contains("states no height"),
+        "{text}"
+    );
+}
+
+#[test]
+fn the_scene_draws_the_body_at_its_standoff_and_a_low_part_under_it_is_no_overlap() {
+    let board = under_the_body();
+    let scene = netsmith_3d::Scene::of(&board, &Default::default());
+    let body = |refdes: &str| {
+        scene
+            .bodies
+            .iter()
+            .find(|b| b.refdes == refdes)
+            .unwrap_or_else(|| panic!("{refdes}"))
+    };
+    assert_eq!(body("R1").z_range(), (Some(2.0), Some(6.0)));
+    assert_eq!(body("R3").z_range(), (Some(0.0), Some(1.0)));
+    let pairs: Vec<(&str, &str, f64, f64)> = scene
+        .findings
+        .overlaps
+        .iter()
+        .map(|o| (o.a_refdes.as_str(), o.b_refdes.as_str(), o.z_bottom, o.z_top))
+        .collect();
+    // R2 reaches 3 mm, 1 mm into R1's body; R3 stays under it. R2 and R3 stand on the board
+    // together.
+    assert!(pairs.contains(&("R1", "R2", 2.0, 3.0)), "{pairs:?}");
+    assert!(
+        pairs.iter().all(|p| !(p.0 == "R1" && p.1 == "R3")),
+        "{pairs:?}"
+    );
+}
+
+#[test]
+fn the_annealer_keeps_a_part_too_tall_for_the_standoff_out_from_under_the_body() {
+    let board = place(3, STANDOFF, &[]);
+    assert_eq!(too_tall(&board), vec![], "{:?}", board.check_placement());
+    let holder = board.part("R1").expect("R1").body();
+    let tall = board.part("R2").expect("R2").body();
+    assert!(
+        !holder.overlaps(&tall),
+        "R2 (3 mm) stands under R1's body, which stands off 2 mm: R1 {holder:?}, R2 {tall:?}"
+    );
+}

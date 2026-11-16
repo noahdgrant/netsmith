@@ -144,9 +144,26 @@ pub struct CarriedZone {
     pub back: bool,
     /// The tallest a part may stand in it, in mm, if it limits height.
     pub limit: Option<f64>,
+    /// Whether it is on the face its carrier is on, wherever that is, and `front` and `back`
+    /// are only where it was when it was made: the limit a body's standoff makes
+    /// (issue #775), which the placer may turn over with the part.
+    pub on_carrier_face: bool,
 }
 
 impl CarriedZone {
+    /// The zone with its faces those of a carrier on `carrier`, if it follows the carrier's face.
+    pub fn for_carrier_on(&self, carrier: Side) -> std::borrow::Cow<'_, CarriedZone> {
+        if !self.on_carrier_face {
+            return std::borrow::Cow::Borrowed(self);
+        }
+        let back = carrier == Side::Back;
+        std::borrow::Cow::Owned(CarriedZone {
+            front: !back,
+            back,
+            ..self.clone()
+        })
+    }
+
     /// Whether it keeps the parts on `side` out: it forbids parts and its layers name that
     /// face.
     pub fn keeps_out(&self, side: Side) -> bool {

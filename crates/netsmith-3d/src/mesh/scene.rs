@@ -549,10 +549,10 @@ fn body(b: &Body) -> BodyPieces {
         }
         (Some(_), Some(shape)) => super::package::meshes(&b.path, shape, &mut body),
         (Some(far), None) => {
-            let (z0, z1) = if far < b.z_face {
-                (far, b.z_face)
+            let (z0, z1) = if far < b.z_near {
+                (far, b.z_near)
             } else {
-                (b.z_face, far)
+                (b.z_near, far)
             };
             body.extend(Mesh::prism(b.path.clone(), Material::Body, &ring, z0, z1).ok());
         }

@@ -171,7 +171,7 @@ impl Board {
         f64,
         Option<&'static crate::standard_height::StandardHeight>,
     )> {
-        let keepouts = self.keepout_areas();
+        let keepouts = self.height_areas();
         let mut found = Vec::new();
         for a in self
             .parts

@@ -1,8 +1,8 @@
 //! The current of each net and the optional features of a design.
 
 use crate::{
-    CaseModel, Cutout, Keepout, Label, Offset, Outline, PartHeight, PinProtrusion, Placement, Pour,
-    StepModel,
+    CaseModel, Cutout, Keepout, Label, Offset, Outline, PartHeight, PartStandoff, PinProtrusion,
+    Placement, Pour, StepModel,
 };
 
 /// The current a net carries, and the least track that carries it (issue #431).
@@ -39,6 +39,10 @@ pub struct Features {
     pub keepouts: Vec<Keepout>,
     /// The heights the design states for parts, by path (ADR 0045, "Height limits").
     pub heights: Vec<PartHeight>,
+    /// How high the underside of the body of a part stands above the board, as the design
+    /// states it (`.standoff`, issue #775), by path. Left out of a design file when empty.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub standoffs: Vec<PartStandoff>,
     /// How far the pins of through-hole parts protrude, as the design states it, by path
     /// (ADR 0045 section 15).
     pub protrusions: Vec<PinProtrusion>,

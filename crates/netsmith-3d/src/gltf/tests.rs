@@ -26,6 +26,8 @@ fn body(path: &str, refdes: &str, min: Plan, max: Plan, height: Option<f64>) -> 
         courtyards: Vec::new(),
         z_face: 0.0,
         z_far: height,
+        standoff: 0.0,
+        z_near: 0.0,
         height,
         provenance: if height.is_some() {
             HeightProvenance::Stated

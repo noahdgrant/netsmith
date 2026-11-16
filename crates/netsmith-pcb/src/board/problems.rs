@@ -221,6 +221,15 @@ pub(super) fn pad_text(number: &str) -> String {
 /// the rest of the checks measure.
 pub(super) const HEIGHT_TOLERANCE: f64 = 0.0005;
 
+/// What a message calls the thing that limits a height: a keepout by its name, or the standoff
+/// of a body (`standoff of J1`, [`Placed::STANDOFF_ZONE`](super::Placed::STANDOFF_ZONE)).
+pub(super) fn limit_word(name: &str) -> String {
+    match name.strip_prefix(Placed::STANDOFF_ZONE) {
+        Some(holder) => format!("the standoff of {holder}"),
+        None => format!("the keepout `{name}`"),
+    }
+}
+
 /// A part under a height limit that states no height (ADR 0045, "Height limits"): whether it
 /// fits is unknown, which is not a pass.
 #[derive(Debug, Clone, PartialEq)]
@@ -241,18 +250,18 @@ impl std::fmt::Display for HeightUnchecked {
         match &self.standard {
             None => write!(
                 f,
-                "height of {} is unchecked: the keepout `{}` limits parts on the {} face to {:.2} mm and the part states no height (say `.{}.height &= 8mm`, with the real number)",
+                "height of {} is unchecked: {} limits parts on the {} face to {:.2} mm and the part states no height (say `.{}.height &= 8mm`, with the real number)",
                 member(&self.path, &self.refdes),
-                self.keepout,
+                limit_word(&self.keepout),
                 self.side.word(),
                 self.limit,
                 self.path
             ),
             Some(s) => write!(
                 f,
-                "height of {} is unchecked: the keepout `{}` limits parts on the {} face to {:.2} mm, the part states no height, and its package standard ({}) allows up to {:.2} mm, so a part in that package may or may not fit (say `.{}.height &= 1mm`, with the real number from its datasheet)",
+                "height of {} is unchecked: {} limits parts on the {} face to {:.2} mm, the part states no height, and its package standard ({}) allows up to {:.2} mm, so a part in that package may or may not fit (say `.{}.height &= 1mm`, with the real number from its datasheet)",
                 member(&self.path, &self.refdes),
-                self.keepout,
+                limit_word(&self.keepout),
                 self.side.word(),
                 self.limit,
                 s.standard,
@@ -280,10 +289,10 @@ impl std::fmt::Display for StandardPass {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "{} fits the {:.2} mm the keepout `{}` allows on the {} face by its package standard ({}, at most {:.2} mm), not by a height of its own: the design states none and its catalog row has none",
+            "{} fits the {:.2} mm {} allows on the {} face by its package standard ({}, at most {:.2} mm), not by a height of its own: the design states none and its catalog row has none",
             member(&self.path, &self.refdes),
             self.limit,
-            self.keepout,
+            limit_word(&self.keepout),
             self.side.word(),
             self.standard.cited(),
             self.standard.max
@@ -563,9 +572,10 @@ impl std::fmt::Display for PlacementProblem {
                 at,
             } => write!(
                 f,
-                "{} stands {height:.2} mm tall on the {} face, and the keepout `{keepout}` allows {limit:.2} mm there ({:.2} mm too tall), where its body is, around ({:.1}, {:.1}) mm from the board's top left corner",
+                "{} stands {height:.2} mm tall on the {} face, and {} allows {limit:.2} mm there ({:.2} mm too tall), where its body is, around ({:.1}, {:.1}) mm from the board's top left corner",
                 member(path, refdes),
                 side.word(),
+                limit_word(keepout),
                 height - limit,
                 at.0,
                 at.1

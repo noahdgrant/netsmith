@@ -443,7 +443,7 @@ fn board_product(
             let mut points: Vec<Id> = b
                 .corners
                 .iter()
-                .map(|c| f.w.point([c.x, c.y, b.z_face]))
+                .map(|c| f.w.point([c.x, c.y, b.z_near]))
                 .collect();
             points.push(points[0]);
             let line = f.w.add(format!("POLYLINE('outline',{})", list(&points)));
@@ -770,7 +770,7 @@ fn part_solids(b: &Body) -> Vec<(&'static str, Colour, Solid)> {
                 v: Y,
                 n: Z,
                 loops: vec![polygon(&ring)],
-                from: b.z_face,
+                from: b.z_near,
                 to: far,
             };
             out.extend(

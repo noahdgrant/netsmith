@@ -88,6 +88,18 @@ pub struct PartHeight {
     pub height: f64,
 }
 
+/// How high the underside of a part's body is above the board, as the design states it
+/// (`.standoff`, issue #775): a body that stands on pins, a plug-in module with a gap under it.
+/// A part the design states no standoff for is not here: its body stands on the board, which
+/// is a standoff of zero, as for every ordinary part.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct PartStandoff {
+    /// The part's path in the design.
+    pub path: String,
+    /// In mm, from the face of the board the part is on to the underside of its body.
+    pub standoff: f64,
+}
+
 /// How far the pins of a through-hole part protrude out of the board on the face opposite the
 /// part, whether they were cut after soldering or bought short, as the board's physical file
 /// states it (`.pin_protrusion`, ADR 0045 section 15). A part the design states no

@@ -15,7 +15,9 @@ use netsmith_fab::{KicadCli, KicadCliExe};
 use netsmith_geom::{
     Artwork, Constraints, DrcFinding, DrcRule, DrcSeverity, constraint_outcome_findings, drc_check,
 };
-use netsmith_pcb::{Board, PlacementProblem, Pt, Ratsnest, Rect, RoutesNote, kicad_pcb, kicad_pro};
+use netsmith_pcb::{
+    Board, Placed, PlacementProblem, Pt, Ratsnest, Rect, RoutesNote, kicad_pcb, kicad_pro,
+};
 
 /// What KiCad's check found on a board, or why it could not be run.
 #[derive(Debug, Clone, PartialEq)]
@@ -199,7 +201,7 @@ pub fn placement_findings(board: &Board) -> Vec<PcbFinding> {
     };
     let keepout = |name: &str| {
         board
-            .keepout_areas()
+            .height_areas()
             .into_iter()
             .find(|k| k.name == name)
             .map(|k| k.rect)
@@ -329,7 +331,9 @@ pub fn placement_findings(board: &Board) -> Vec<PcbFinding> {
                 | PlacementProblem::PadInKeepout { keepout, .. }
                 | PlacementProblem::TooTall { keepout, .. } => Some(keepout.clone()),
                 _ => None,
-            };
+            }
+            // The standoff of a body is not a keepout of the board, so the page has none to light.
+            .filter(|k| !k.starts_with(Placed::STANDOFF_ZONE));
             finding
         })
         .chain(unchecked)

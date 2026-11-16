@@ -624,6 +624,7 @@ pub(crate) fn carried_zones(design: &Design) -> Vec<CarriedZone> {
                 front: on("top"),
                 back: on("bottom"),
                 limit: k.max_height,
+                on_carrier_face: false,
             })
         })
         .collect()
