@@ -121,6 +121,8 @@ Only the boards named are made, and `--out <dir>` puts `orders/devkit/` under `<
 
 A plain `netsmith fab` still makes every board of the project, and `netsmith fab src/unit/unit.nsm` the boards of one file.
 
+An order does not route a board again that a plain `netsmith fab` has just made: when `fab/<board>/` holds the package of a plain `fab` run from the same inputs and none of its files has changed, the order copies it, and the last line of `netsmith fab --order` says how many boards were reused and how many stages ran (`reused 2 of 3 boards from a plain fab; 11 stages run`). Anything else (a changed source, catalog, layout or option, a rebuilt netsmith, a package edited by hand, a board of a system, a panel) makes the board again, and the progress says why.
+
 ### Panels
 
 An order is separate packages ordered together; a panel is one outline made from copies of a board (ADR 0040). A `panel Name { .cell: Board  .fab: VCutPanel { ... } }` next to the board in the same file repeats it in a V-cut grid, and a plain `netsmith fab` makes it with the boards:

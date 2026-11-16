@@ -65,6 +65,43 @@ fn an_order_without_kicad_is_made_and_its_boards_pass_the_check() {
 }
 
 #[test]
+fn an_order_reuses_the_package_a_plain_fab_made_and_says_how_many_stages_it_ran() {
+    if netsmith_kicad::skip_without_kicad_libraries() {
+        return;
+    }
+    let root = project("reuse", "\n[order.one.boards]\nLedExample = 4\n");
+    let fab = netsmith(&root, &["fab", "src/led.nsm"]);
+    assert!(fab.status.success(), "{}", String::from_utf8_lossy(&fab.stderr));
+    let made = netsmith(&root, &["fab", "--order", "one"]);
+    let said = String::from_utf8_lossy(&made.stderr);
+    assert!(made.status.success(), "{said}");
+    assert!(
+        said.contains("LedExample: reused the package a plain fab made"),
+        "{said}"
+    );
+    let out = String::from_utf8_lossy(&made.stdout);
+    assert!(
+        out.contains("reused 1 of 1 boards from a plain fab; 0 stages run"),
+        "{out}"
+    );
+    assert!(root.join("fab/orders/one/LedExample/bom.csv").is_file());
+
+    // A source that changed since is made again, and the count says so. (The pick lock of the
+    // old picks goes, so that the parts are picked again for the new supply.)
+    fs::remove_file(root.join("src/led.lock.toml")).unwrap();
+    fs::write(
+        root.join("src/led.nsm"),
+        LED.replace("5V +/- 5%", "9V +/- 5%"),
+    )
+    .unwrap();
+    let again = netsmith(&root, &["fab", "--order", "one"]);
+    let out = String::from_utf8_lossy(&again.stdout);
+    assert!(again.status.success(), "{}", String::from_utf8_lossy(&again.stderr));
+    assert!(out.contains("reused 0 of 1 boards from a plain fab; "), "{out}");
+    assert!(!out.contains("; 0 stages run"), "{out}");
+}
+
+#[test]
 fn the_program_refuses_to_order_a_board_of_a_fictional_fabricator() {
     let root = project("fictional", "\n[order.big.boards]\nTenLayerExample = 1\n");
     fs::write(

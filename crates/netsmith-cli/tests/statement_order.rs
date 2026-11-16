@@ -158,6 +158,12 @@ fn reversing_the_statements_of_an_example_changes_no_output() {
         if path.as_os_str() == "status_indicator.nsm" {
             continue;
         }
+        // The record `fab` leaves for an order to reuse the package by (`.fab-record.json`)
+        // holds the key of the design, which says where each statement is written, so it moves
+        // with the statements. It is not part of the package.
+        if path.file_name().is_some_and(|n| n == ".fab-record.json") {
+            continue;
+        }
         if path.as_os_str() == "status_indicator.design.json" {
             assert_eq!(
                 without_source_lines(bytes),
