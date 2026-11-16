@@ -284,6 +284,9 @@ pub struct Solution {
     pub picks: Vec<Pick>,
     /// Parts with a catalog that were not picked, and why.
     pub unresolved: Vec<Unresolved>,
+    /// For each part of a group whose search failed, the rows its first turn passed over
+    /// (issue 1008). Recorded only when `Catalogs::with_explain` is on, and empty otherwise.
+    pub unpicked: Vec<Unpicked>,
     /// Indices into `model.relations()` that could not be evaluated: something they
     /// depend on has no value.
     pub deferred: Vec<usize>,
@@ -483,6 +486,32 @@ impl PassedWhy {
     }
 }
 
+/// A part of a group that failed, with the rows that no choice of it could use (issue 1008).
+///
+/// It is the part's first turn: the one the search made the first time it reached the part,
+/// with the parts before it at the first rows that fit, `with`. What a later turn tried, with
+/// other rows of the parts before it, is not in it. A part the search never reached (the part
+/// before it had no row that works) has none.
+#[derive(Debug, Clone)]
+pub struct Unpicked {
+    pub part: InstId,
+    pub catalog: String,
+    /// The choices of the parts before it in the group that its turn was made with, as
+    /// `path = row`; empty for the first part.
+    pub with: Vec<String>,
+    /// The rows its turn passed over, in the order `Pick::passed` has them.
+    pub passed: Vec<Passed>,
+    /// What held the part to its row when no other row was tried (see `Pick::held`).
+    pub held: Option<String>,
+}
+
+/// What one turn of a part's search passed over, kept for a part that no turn picked.
+#[derive(Clone)]
+struct Turn {
+    with: Vec<String>,
+    passed: Vec<Passed>,
+}
+
 #[derive(Debug, Clone)]
 pub struct Unresolved {
     pub part: InstId,
@@ -542,6 +571,7 @@ struct Mark {
     seen: HashSet<Diagnostic>,
     picks: usize,
     unresolved: usize,
+    unpicked: usize,
     refused_counts: HashSet<FieldId>,
     derived: HashSet<FieldId>,
 }
@@ -616,6 +646,8 @@ struct Search {
     /// The choices currently made, as `path = candidate`.
     chosen: Vec<String>,
     picks: Vec<Pick>,
+    /// The first turn the search made at each depth, kept when explaining (issue 1008).
+    turns: std::collections::BTreeMap<usize, Turn>,
     closest: Option<Closest>,
     /// The jobs of the groups not searched yet.
     elsewhere: HashSet<usize>,
@@ -861,6 +893,7 @@ fn solve_model(model: &Model, catalogs: &Catalogs, unit: &str) -> Solution {
         seen: HashSet::new(),
         picks: Vec::new(),
         unresolved: Vec::new(),
+        unpicked: Vec::new(),
         refused_counts: HashSet::new(),
         derived: HashSet::new(),
         stated: stated_currents(model),
@@ -1045,6 +1078,7 @@ fn solve_model(model: &Model, catalogs: &Catalogs, unit: &str) -> Solution {
         model: s.model,
         picks: s.picks,
         unresolved: s.unresolved,
+        unpicked: s.unpicked,
         deferred,
         circular,
         open_circles,
@@ -1269,6 +1303,7 @@ struct Solver<'a> {
     seen: HashSet<Diagnostic>,
     picks: Vec<Pick>,
     unresolved: Vec<Unresolved>,
+    unpicked: Vec<Unpicked>,
     /// The `.count` of each bank whose search for a row failed (ADR 0052).
     refused_counts: HashSet<FieldId>,
     /// Currents that propagation worked out from a balance (they were not stated). Such a

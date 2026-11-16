@@ -426,6 +426,7 @@ impl Solver<'_> {
             seen: self.seen.clone(),
             picks: self.picks.len(),
             unresolved: self.unresolved.len(),
+            unpicked: self.unpicked.len(),
             refused_counts: self.refused_counts.clone(),
             derived: self.derived.clone(),
         }
@@ -437,6 +438,7 @@ impl Solver<'_> {
         self.seen = mark.seen.clone();
         self.picks.truncate(mark.picks);
         self.unresolved.truncate(mark.unresolved);
+        self.unpicked.truncate(mark.unpicked);
         self.refused_counts = mark.refused_counts.clone();
         self.derived = mark.derived.clone();
     }
@@ -510,6 +512,7 @@ impl Solver<'_> {
         let left_as_failed = self.mark();
         let first_diagnostics = self.diagnostics.clone();
         let first_unresolved = self.unresolved.clone();
+        let first_unpicked = self.unpicked.clone();
         self.restore(&steps[first].mark.clone());
         let mut new_steps: Vec<Step> = Vec::new();
         let mut ok = true;
@@ -543,6 +546,7 @@ impl Solver<'_> {
             self.restore(&left_as_failed);
             self.diagnostics = first_diagnostics;
             self.unresolved = first_unresolved;
+            self.unpicked = first_unpicked;
             steps.push(failed);
         }
     }

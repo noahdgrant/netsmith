@@ -34,6 +34,6 @@ pub use place::{PlaceOffset, Window, offsets, window};
 pub use preferred::Preferred;
 pub use solve::{
     CurrentBound, DcSummary, HeldBy, NetCurrent, OpenCircle, Passed, PassedWhy, Pick, Seeded,
-    Solution, UnconstrainedPick, Unresolved, UnsolvedNet, UnstatedValue, solve, solve_system,
+    Solution, UnconstrainedPick, Unpicked, Unresolved, UnsolvedNet, UnstatedValue, solve, solve_system,
 };
 pub use table::{Record, Supplier, Table, parse_csv};
