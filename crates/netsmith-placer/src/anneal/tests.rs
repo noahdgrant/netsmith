@@ -1347,4 +1347,159 @@ fn a_board_with_inner_signal_layers_overflows_less_than_one_with_the_outer_two_a
         four < two && two > 0.0,
         "{two} mm on two layers, {four} mm on four"
     );
+
+/// A problem for a board whose parts are borrowed mutably beside it.
+fn problem_beside<'a>(
+    nets: &'a [BoardNet],
+    region: Rect,
+    fixed: &'a [bool],
+    rules: &'a Rules,
+) -> Problem<'a> {
+    Problem {
+        nets,
+        rules,
+        planes: &[],
+        region,
+        corner_radius: 0.0,
+        fixed,
+        keepouts: &[],
+        zones: &[],
+        carried: &[],
+        face_keepouts: &[],
+        cutouts: &[],
+        open_outside: &[],
+        pours: false,
+        seed: 0,
+        wants: &[],
+        offsets: &[],
+        overhangs: &[],
+        outline: region,
+        overflow: 1.0,
+    }
+}
+
+/// A board of `n` resistors on a 20 mm square, each drawing a silkscreen line 2.5 mm to the
+/// right of its origin, further out than its courtyard reaches.
+fn resistors_with_a_far_silk_line(n: usize) -> Board {
+    let names = vec![""; n];
+    let mut board = resistors(&names);
+    board.outline = Rect::new(Pt::new(0.0, 0.0), Pt::new(20.0, 20.0));
+    for part in &mut board.parts {
+        part.footprint.graphics.push(netsmith_pcb::Graphic {
+            layer: netsmith_pcb::Layer::Silk,
+            shape: netsmith_pcb::Shape::Line {
+                a: Pt::new(2.5, -1.0),
+                b: Pt::new(2.5, 1.0),
+            },
+            stroke: 0.12,
+            filled: false,
+        });
+        part.footprint.silk_texts.clear();
+    }
+    board
+}
+
+#[test]
+fn silkscreen_beyond_a_courtyard_costs_a_little_where_it_is_nearer_the_edge_than_the_silk_space() {
+    let mut board = resistors_with_a_far_silk_line(1);
+    let rules = board.rules.clone();
+    let fixed = [false];
+    let problem = problem_beside(&board.nets, board.outline, &fixed, &rules);
+    let mut e = Engine::new(&mut board.parts, &problem);
+    let to = |x: f64, y: f64| Pose {
+        x: (x / UNIT).round() as i64,
+        y: (y / UNIT).round() as i64,
+        turn: 0,
+        text: 0,
+    };
+    let gap = rules.silk_to_pad;
+    assert_eq!(gap, 0.15);
+    // In the middle, nothing. With the line 0.3 mm from the edge (its stroke reaches to
+    // 0.24), nothing.
+    e.put(0, to(10.0, 10.0));
+    assert_eq!(e.silk_edge_cost(0, false, false), 0.0);
+    e.put(0, to(17.2, 10.0));
+    assert_eq!(e.silk_edge_cost(0, false, false), 0.0);
+    // The line 0.1 mm from the edge: its stroke is 0.04 mm from it, 0.11 mm short of the
+    // space, and the cost is for that and a little more, as every silk conflict is.
+    e.put(0, to(17.4, 10.0));
+    let near = e.silk_edge_cost(0, false, false);
+    assert!((near - W_SILK_EDGE * (0.11 + 0.05)).abs() < 1e-6, "{near}");
+    // Further out it costs more, and it is soft: `single` holds it in `soft`, not `hard`,
+    // while the courtyard is still inside its wall.
+    e.put(0, to(17.6, 10.0));
+    assert!(e.silk_edge_cost(0, false, false) > near);
+    let single = e.single(0);
+    assert!(single.soft > 0.0 && single.hard == 0.0, "{single:?}");
+    // A part that hangs over an edge, or a side the design holds, is not charged.
+    assert_eq!(e.silk_edge_cost(0, true, false), 0.0);
+    e.models[0].overhangs = true;
+    let hangs = e.single(0);
+    assert!(hangs.soft < single.soft);
+}
+
+#[test]
+fn silkscreen_is_kept_off_a_cutout_the_same_way() {
+    let mut board = resistors_with_a_far_silk_line(1);
+    let rules = board.rules.clone();
+    let fixed = [false];
+    let cutouts = [Rect::new(Pt::new(11.0, 5.0), Pt::new(14.0, 15.0))];
+    let mut problem = problem_beside(&board.nets, board.outline, &fixed, &rules);
+    problem.cutouts = &cutouts;
+    let mut e = Engine::new(&mut board.parts, &problem);
+    let to = |x: f64| Pose {
+        x: (x / UNIT).round() as i64,
+        y: (10.0 / UNIT).round() as i64,
+        turn: 0,
+        text: 0,
+    };
+    // The line at x = 11 - 0.05 is nearer the cutout than the silk space; at 5 it is not.
+    e.put(0, to(11.0 - 0.05 - 2.5));
+    assert!(e.silk_edge_cost(0, false, false) > 0.0);
+    e.put(0, to(5.0));
+    assert_eq!(e.silk_edge_cost(0, false, false), 0.0);
+}
+
+#[test]
+fn a_connector_pulled_to_an_edge_stops_where_its_silkscreen_is_clear_of_it() {
+    // A connector is pulled to the nearest edge, where its courtyard wall alone would leave a
+    // frame drawn 1.5 mm round the courtyard over the edge. Over three seeds, the frame ends
+    // no nearer than the silk space, and still at the edge: the term moves it in, no further.
+    for seed in 0..3 {
+        let mut board = resistors_with_a_far_silk_line(1);
+        let part = &mut board.parts[0];
+        part.declared_kind = Some(netsmith_core::PartKind::Connector);
+        part.footprint.graphics.clear();
+        let court = part.footprint.courtyard;
+        part.footprint.graphics.push(netsmith_pcb::Graphic {
+            layer: netsmith_pcb::Layer::Silk,
+            shape: netsmith_pcb::Shape::Rect {
+                a: Pt::new(court.min.x - 1.5, court.min.y - 1.5),
+                b: Pt::new(court.max.x + 1.5, court.max.y + 1.5),
+            },
+            stroke: 0.12,
+            filled: false,
+        });
+        let rules = board.rules.clone();
+        let fixed = [false];
+        let mut problem = problem_beside(&board.nets, board.outline, &fixed, &rules);
+        problem.seed = seed;
+        let out = anneal(&mut board.parts, &problem, 1.0);
+        assert!(out.feasible, "seed {seed}");
+        let court = board.parts[0].courtyard();
+        let to_edge = (court.min.x - board.outline.min.x)
+            .min(court.min.y - board.outline.min.y)
+            .min(board.outline.max.x - court.max.x)
+            .min(board.outline.max.y - court.max.y);
+        // The frame is 1.5 mm out, its stroke 0.06 more: the silk space (0.15) beyond that.
+        let kept = 1.5 + 0.06 + rules.silk_to_pad;
+        assert!(
+            to_edge > kept - 1e-6,
+            "seed {seed}: {to_edge} mm from the edge"
+        );
+        assert!(
+            to_edge < kept + 1.0,
+            "seed {seed}: {to_edge} mm from the edge"
+        );
+    }
 }
