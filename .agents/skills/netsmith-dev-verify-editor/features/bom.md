@@ -19,6 +19,10 @@ A header (title, the board, an info popover with the note about prices; at the r
 
 Refresh needs `scripts/editor-verify launch --fixture catalog_refresh` (the LED example, a project catalog with an invented part and a stand-in for LCSC's endpoint on a local port, which answers 404 and logs `UNEXPECTED REQUEST` in the server log to anything but `GET /lcsc`) and `drive refresh`: it asserts the stale mark, a preview that writes nothing, the stock note, the MISSING row, and that after the real run the BOM still shows the hand-entered price and stock and is still stale, and screenshots each. Never point it at the real endpoints.
 
+## Swap an unresolved part
+
+`scripts/editor-verify launch --fixture swap` (the LED example with a 249 ohm resistor and `series = "E96"` from `fixtures/swap.project.toml`, so no row stands for it), then `drive bom-swap`. The unresolved line (`data-sourcing="ambiguous"`, sourcing "Ambiguous") has a **Swap** button beside its designators; it opens a panel over the table (`[data-testid="swap-panel"]`) with the unresolved message, a button to where the value is stated, and one row for each nearest catalog row: its name, a pill **Passes**, **Fails** (with the failing relation under it) or **Not checked** (past the cap of 30 re-solves), the edit (`249ohm +/- 1% → 240ohm +/- 1%`), and **Use this**, disabled with the reason as its tooltip when the swap cannot write that part (a value stated in several places, in a shared definition, in `defaults` or in the standard library). **Use this** writes the file through `POST /api/swap` (and the pick lock beside the source, when there is one), the panel closes, a toast says what was written, and after the new analysis the line has an LCSC number. A file open in the page with unsaved changes is refused in the page (save first). The recipe puts the source back at the end.
+
 ## Gotchas
 
 - Price and stock are recorded data, not live. The solver never needs the network. Only "Check parts against LCSC" does, and only for the project's own catalog files.

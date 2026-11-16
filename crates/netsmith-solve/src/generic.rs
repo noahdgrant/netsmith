@@ -390,7 +390,7 @@ impl Generic {
     }
 
     /// The column that holds the value, for a kind that has one.
-    fn value_column(&self) -> Option<&str> {
+    pub fn value_column(&self) -> Option<&str> {
         match &self.spec {
             Spec::Series { column, .. } => Some(column),
             spec => Standard::of_spec(spec).and_then(Standard::marked),
@@ -1193,6 +1193,9 @@ pub struct Alternative {
     pub mpn: Option<String>,
     /// The row's value, in the base unit, if the kind has one.
     pub value: Option<f64>,
+    /// The row's value with its tolerance, as its cell reads (`240Ω +/- 1%` is
+    /// `237.6Ω..242.4Ω`): what the editor's swap writes in the design (issue #800).
+    pub quantity: Option<Quantity>,
     /// `330Ω Basic (-7.7%, Basic)`.
     pub line: String,
 }
@@ -1235,7 +1238,8 @@ pub fn nearest(generic: &Generic, rows: &[&Candidate], fits: &[&Candidate]) -> V
     near.iter()
         .take(3)
         .map(|(c, _, _)| {
-            let value = column.and_then(|col| quantity_of(c, col)).map(|q| q.mid());
+            let quantity = column.and_then(|col| quantity_of(c, col));
+            let value = quantity.map(|q| q.mid());
             let library = c.library.map(|l| format!(", {l}")).unwrap_or_default();
             let line = match (value, nominal) {
                 (Some(v), Some(n)) => {
@@ -1252,6 +1256,7 @@ pub fn nearest(generic: &Generic, rows: &[&Candidate], fits: &[&Candidate]) -> V
                 lcsc: c.lcsc.clone(),
                 mpn: c.mpn.clone(),
                 value,
+                quantity,
                 line,
             }
         })

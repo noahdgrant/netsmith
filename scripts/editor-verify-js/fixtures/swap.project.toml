@@ -1,0 +1,2 @@
+# Lines that go into the [project] table of the scratch project: 249 ohm is an E96 value.
+series = "E96"

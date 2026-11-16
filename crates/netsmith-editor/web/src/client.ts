@@ -36,6 +36,9 @@ import type {
   SchematicHints,
   ServerMessage,
   PanelView,
+  Swap,
+  SwapApply,
+  Swapped,
   SystemView,
 } from './api';
 import { PENDING_HEADER, pendingElapsed } from './feedback/early';
@@ -167,6 +170,10 @@ export const api = {
   system: (name: string) => getJson<SystemView>(`/api/system?${q({ name })}`),
   panel: (name: string) => getJson<PanelView>(`/api/panel?${q({ name })}`),
   bom: (board: string) => getJson<Bom>(`/api/bom?${q({ board })}`),
+  /** The swap of a generic part no catalog row stands for: its nearest rows, the board's checks with each, and the edit of each. */
+  swap: (board: string, refdes: string) => getJson<Swap>(`/api/swap?${q({ board, refdes })}`),
+  /** Write the alternative into the source (and pick the part again in the pick lock). `ApiFailure` 422 says why not. */
+  swapApply: (edit: SwapApply) => post<Swapped>('/api/swap', edit),
   route: (board: string) => post<PcbReport>(`/api/pcb/route?${q({ board })}`),
   pcbScene: (board: string) => getJson<PcbScene>(`/api/pcb/scene?${q({ board })}`),
   /** The fill of the board's pours, planes and zones (the 2D view draws it under the copper). */

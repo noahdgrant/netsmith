@@ -23,6 +23,7 @@ import { boardCompare, refText, showChanges } from '../compare/store';
 import { JobProgress } from '../components/JobProgress';
 import { EmptyState, Pill, Popover, Segmented, Spinner, type Tone } from '../components/ui';
 import { NoBoard, ViewLoading } from '../components/ViewStatus';
+import { SwapPanel } from './BomSwap';
 import { analysis, board, catalogReport, checkParts, detail, job, pickPart, revealSection, selectedRefdes } from '../store';
 import { type Hover, hoverAttrs, hoverOfRefs } from '../hover';
 import { revealRequest } from '../selection';
@@ -144,7 +145,7 @@ function RefreshResult({ report }: { report: CatalogRefresh }) {
 }
 
 /** Designators as chips and ranges; a click on one selects that part. */
-function Designators({ line, lit, staleAfter }: { line: BomLine; lit: Set<string>; staleAfter: number }) {
+function Designators({ line, lit, staleAfter, onSwap }: { line: BomLine; lit: Set<string>; staleAfter: number; onSwap?: (designators: string[]) => void }) {
   const chips = designatorRanges(line.designators);
   const flag = line.stale || line.unresolved;
   return (
@@ -172,6 +173,19 @@ function Designators({ line, lit, staleAfter }: { line: BomLine; lit: Set<string
           </button>
         );
       })}
+      {line.unresolved && onSwap && (
+        <button
+          type="button"
+          class="tool small swap-btn"
+          data-tip="Show the nearest rows, what the checks say with each, and write one into the source"
+          onClick={(e) => {
+            e.stopPropagation();
+            onSwap(line.designators);
+          }}
+        >
+          Swap
+        </button>
+      )}
     </div>
   );
 }
@@ -189,7 +203,7 @@ function DeltaCell({ mark }: { mark: BomMark | undefined }) {
   );
 }
 
-function Row({ l, cols, lit, staleAfter, mark, marking }: { l: BomLine; cols: Set<ColumnId>; lit: Set<string>; staleAfter: number; mark?: BomMark; marking?: boolean }) {
+function Row({ l, cols, lit, staleAfter, mark, marking, onSwap }: { l: BomLine; cols: Set<ColumnId>; lit: Set<string>; staleAfter: number; mark?: BomMark; marking?: boolean; onSwap?: (designators: string[]) => void }) {
   const on = l.designators.some((d) => lit.has(d));
   const st = sourcing(l);
   return (
@@ -207,7 +221,7 @@ function Row({ l, cols, lit, staleAfter, mark, marking }: { l: BomLine; cols: Se
       }}
     >
       <td class="des">
-        <Designators line={l} lit={lit} staleAfter={staleAfter} />
+        <Designators line={l} lit={lit} staleAfter={staleAfter} onSwap={onSwap} />
       </td>
       {marking && <DeltaCell mark={mark} />}
       {cols.has('qty') && <td class="num">{l.quantity}</td>}
@@ -274,6 +288,8 @@ export function Bom() {
   const [group, setGroup] = useState<GroupBy>(() => load<GroupBy>(GROUP_KEY, 'none'));
   const [hidden, setHidden] = useState<ColumnId[]>(() => load<ColumnId[]>(COLUMN_KEY, []));
   const [folded, setFolded] = useState<Record<string, boolean>>({});
+  // The designators of the unresolved line whose swap is open, if one is.
+  const [swapping, setSwapping] = useState<string[] | null>(null);
   // The table scrolls sideways in a narrow window: the edge that has more fades, and the first column stays.
   const { ref: scroller, edges, onScroll } = useScrollEdges<HTMLDivElement>(bom);
   const refreshing = job.value?.task === 'catalog';
@@ -282,6 +298,9 @@ export function Bom() {
   const ask = revealRequest.value;
   const d = detail.value;
   const moduleByRef = useMemo(() => new Map((d?.parts ?? []).map((p) => [p.refdes, moduleOfPath(p.path)])), [d]);
+
+  // Another board has its own parts.
+  useEffect(() => setSwapping(null), [name]);
 
   useEffect(() => {
     if (!name) return;
@@ -460,6 +479,7 @@ export function Bom() {
       </div>
       <JobProgress task="catalog" />
       {report && <RefreshResult report={report} />}
+      {swapping && <SwapPanel key={swapping.join(',')} board={name} designators={swapping} onClose={() => setSwapping(null)} />}
       <div class={`bom-frame ${edges.l ? 'scrolled' : ''} ${edges.r ? 'more' : ''}`}>
       <div class="bom-scroll" ref={scroller} onScroll={onScroll}>
         {empty ? (
@@ -511,7 +531,7 @@ export function Bom() {
                       </td>
                     </tr>
                   )}
-                  {!closed && g.lines.map((l) => <Row key={`${g.key}/${l.designators.join(',')}`} l={l} cols={cols} lit={lit} staleAfter={bom.staleAfterDays} mark={markOf(l)} marking={marking} />)}
+                  {!closed && g.lines.map((l) => <Row key={`${g.key}/${l.designators.join(',')}`} l={l} cols={cols} lit={lit} staleAfter={bom.staleAfterDays} mark={markOf(l)} marking={marking} onSwap={setSwapping} />)}
                 </tbody>
               );
             })}
@@ -527,7 +547,7 @@ export function Bom() {
                   </td>
                 </tr>
                 {hand.map((l) => (
-                  <Row key={`hand/${l.designators.join(',')}`} l={l} cols={cols} lit={lit} staleAfter={bom.staleAfterDays} mark={markOf(l)} marking={marking} />
+                  <Row key={`hand/${l.designators.join(',')}`} l={l} cols={cols} lit={lit} staleAfter={bom.staleAfterDays} mark={markOf(l)} marking={marking} onSwap={setSwapping} />
                 ))}
               </tbody>
             )}
@@ -590,6 +610,9 @@ export function Bom() {
         </p>
         <p>
           <b>Each</b> and <b>Stock</b> are the catalog's own figures, entered by hand. <b>Checked</b> is the day Check parts last found the row's manufacturer number and package equal to LCSC's record.
+        </p>
+        <p>
+          <b>Swap</b>, on a generic part that no catalog row stands for, lists its nearest rows with what the board's checks say with each in its place, and <b>Use this</b> writes the row's value into the source (and picks the part again in the pick lock, if the source has one).
         </p>
         <p>Click a row to pick its parts in every other view.</p>
       </ViewHelp>

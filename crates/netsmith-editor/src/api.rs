@@ -1028,6 +1028,94 @@ pub struct BomLine {
     pub via: Option<String>,
 }
 
+/// The swap of a generic part that no catalog row stands for (`GET /api/swap?board=&refdes=`):
+/// its nearest rows, the board's checks run again with each in its place, and the
+/// change to the source that would choose it.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct Swap {
+    pub board: String,
+    pub refdes: String,
+    /// The part's path in the board (`r1`), as the pick lock names it.
+    pub path: String,
+    /// What is wanted and why no row stands for it: the unresolved message of the bill of
+    /// materials, without the checks, which are in `alternatives`.
+    pub message: String,
+    /// The member the swap writes (`resistance`), if the part's kind has a value.
+    pub member: Option<String>,
+    /// Where the value is stated now, if it is stated once.
+    pub stated: Option<Location>,
+    /// Why no alternative can be written by the swap (the value is stated in several places,
+    /// in a definition other parts share, or in the standard library): the person changes the
+    /// value by hand. `None` when each alternative has its edit.
+    pub refused: Option<String>,
+    pub alternatives: Vec<SwapAlternative>,
+}
+
+/// One nearest row of a [`Swap`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct SwapAlternative {
+    /// The row's name, `240Ω 1% 0402 C25094`.
+    pub name: String,
+    /// The name with how far it is from the value and its library, `240Ω 1% 0402 C25094 (-3.6%,
+    /// Extended)`.
+    pub line: String,
+    pub lcsc: Option<String>,
+    pub mpn: Option<String>,
+    pub check: SwapCheck,
+    /// What fails, in one line, when `check` is `fails`.
+    pub why: Option<String>,
+    /// The text the swap writes for the value (`240ohm +/- 1%`), when it can write one.
+    pub value: Option<String>,
+    /// The source as the swap would change it, when it can.
+    pub edit: Option<SwapEdit>,
+}
+
+/// What the board's checks said with an alternative in the part's place (its stated value left
+/// out, every relation kept, ADR 0047).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub enum SwapCheck {
+    Passes,
+    Fails,
+    /// Past the board's cap of re-solves, so not checked.
+    NotChecked,
+}
+
+/// A change to one source file: the text between two places replaced.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct SwapEdit {
+    /// The place of the text that is replaced (where it is inserted, for an empty one).
+    pub at: Location,
+    /// The text there now.
+    pub old: String,
+    /// The text that replaces it.
+    pub new: String,
+}
+
+/// Choose an alternative of a [`Swap`] (`POST /api/swap`): the source is changed as its
+/// `edit` says, and the part's entry of the pick lock is picked again, if the source has a lock.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct SwapApply {
+    pub board: String,
+    pub refdes: String,
+    /// The alternative's row name.
+    pub alternative: String,
+}
+
+/// What a swap wrote.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct Swapped {
+    /// The source file, as the project names it.
+    pub file: String,
+    /// The pick lock, if it was written too.
+    pub lock: Option<String>,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 pub struct Bom {
@@ -2034,6 +2122,12 @@ pub fn typescript() -> String {
         SystemView,
         BomLine,
         Bom,
+        Swap,
+        SwapAlternative,
+        SwapCheck,
+        SwapEdit,
+        SwapApply,
+        Swapped,
         CatalogChange,
         CatalogRow,
         CatalogFile,

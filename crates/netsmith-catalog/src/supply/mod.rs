@@ -89,7 +89,6 @@
 //!   whose key a user brings: a person must do this, checklist in issue #10.
 //! - A named preferred-parts file (`preferred.csv`, a project's list that wins) and the quantity
 //!   of an order across boards: issue #32.
-//! - The editor's swap, with the checks run for each alternative: issue #31.
 //! - Currency conversion, taxes, shipping and JLCPCB's feeder fee for each Extended part: not
 //!   planned until a board needs it.
 

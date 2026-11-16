@@ -1,7 +1,7 @@
 // What the bill of materials view works out from the lines the server sends: designators as ranges,
 // the sourcing status of a line, and the lines in groups. No page here, so it can be tested.
 
-import type { BomLine } from './api';
+import type { BomLine, SwapAlternative } from './api';
 
 /** `C1 C2 C3 C5 R1` as `C1–C3`, `C5`, `R1`: a run of three or more is a range, a pair is two names. */
 export function designatorRanges(designators: string[]): string[] {
@@ -103,4 +103,11 @@ export function groupLines(lines: BomLine[], by: GroupBy, moduleOf: (designator:
     for (const [m, ds] of split) put(m, m || 'Top level of the board', split.size === 1 ? l : { ...l, designators: ds, quantity: ds.length });
   }
   return [...groups.values()].sort((a, b) => a.label.localeCompare(b.label, undefined, { numeric: true }));
+}
+
+/** What a person reads before a write: the value that replaces the text there now, or the statement that is added. */
+export function editLabel(a: SwapAlternative): string {
+  const e = a.edit;
+  if (!e) return '';
+  return e.old ? `${e.old} → ${e.new.trim()}` : `adds ${e.new.trim().replace(/^\{\s*/, '').replace(/\s*\}$/, '')}`;
 }

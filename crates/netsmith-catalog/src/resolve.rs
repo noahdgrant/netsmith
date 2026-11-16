@@ -15,8 +15,8 @@
 //! the board is solved; the package and colour statements and every relation stay. The message
 //! then says, for each alternative, "passes every check" or "fails: <the relation and the
 //! numbers>". The solves are capped at [`MAX_RECHECKS`] for a board; a part past the cap is
-//! listed without the check. The editor's swap action, which would be a view of the same
-//! values, is not built.
+//! listed without the check. The editor's swap (issue #800) shows the same results for one
+//! part, beside each alternative, and writes the one chosen into the design.
 
 use netsmith_check::InstId;
 use netsmith_core::Part;
