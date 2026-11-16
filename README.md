@@ -105,7 +105,7 @@ tried them.
 mkdir blink && cd blink
 netsmith init       # netsmith.toml, src/main.nsm (a working LED board), agent files
 netsmith build      # a KiCad schematic in out/
-netsmith editor     # the source and the board in a browser, at 127.0.0.1:8787
+netsmith editor     # the source and the board in a browser, at 127.0.0.1:8787 (`--offline` asks no supplier for stock or price, and the bill of materials says they are not checked; `fab --offline` says it in `fab-notes.txt`)
 netsmith fab        # a package for JLCPCB in fab/: Gerbers, drill, bom.csv, cpl.csv, fab-notes.txt, the board's 3D scene as `<board>.glb` (`--no-glb` or `glb = false` in netsmith.toml leaves it out), the board as STEP for mechanical CAD as `<board>.step` (`--no-step` or `step = false` leaves it out), and for a board with pin requests its pin map for firmware from the final layout (`.pins.h`, `.pins.json`)
 netsmith board3d --json   # the board's 3D facts for an agent: heights, limits, overlaps (docs/BOARD3D.md)
 netsmith board3d --glb board.glb   # the same scene as glTF 2.0 binary, the file the editor's 3D view shows

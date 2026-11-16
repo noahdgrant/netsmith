@@ -15,6 +15,9 @@ use netsmith_catalog::refresh;
 use netsmith_catalog::resolve::resolve_generics;
 use netsmith_catalog::supply::{Lookup, PartKey, Quote, Supply};
 
+/// What the note of the bill of materials says of a run with `--offline` (issue #803).
+pub const OFFLINE_NOTE: &str = "Offline (--offline): no supplier was asked, so stock and price are not checked now; a price shown is an answer kept earlier or the project's own file, with the day it was read.";
+
 /// Parts that are the same kind, value, package and number go on one line.
 pub fn bom(
     data: &BoardData,
@@ -128,6 +131,9 @@ pub fn bom(
          The total is for one board, without the feeder fee JLCPCB charges for each Extended \
          part and without shipping.",
     );
+    if supply.is_offline() {
+        note.push_str(&format!(" {OFFLINE_NOTE}"));
+    }
     if unpriced > 0 {
         note.push_str(&format!(
             " The total leaves out {unpriced} line{} with no known price.",

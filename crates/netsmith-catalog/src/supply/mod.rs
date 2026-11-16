@@ -49,6 +49,10 @@
 //!   value (owner, 2026-11-03), and the value is never stored in the manifest, a project file or
 //!   the cache. The series of generic parts is the `series` key of `[project]` (owner,
 //!   2026-11-04: not a statement of the language).
+//! - *`--offline`* (`fab` and `editor`, [`Supply::with_offline`]): no provider that would use the
+//!   network is asked and a kept answer of any age is used. The bill of materials (the editor's
+//!   note) and `fab-notes.txt` (so `order.txt`) say that the stock and price were not checked.
+//!   A file provider is local and is still read: its numbers are the project's own.
 //! - *Terms of use.* Nothing here contacts a supplier. No provider that does is built until the
 //!   maintainer has read the supplier's terms and the official API's licence: JLCPCB's
 //!   `robots.txt` disallows `/api`, and ADR 0039 recorded that its terms could not be read. A
@@ -83,9 +87,8 @@
 //!   Nexar API, or a community snapshot such as the one the KiCad JLCPCB plugin downloads
 //!   daily): not now; issue #30. Each needs a person to read its terms of use and to decide
 //!   whose key a user brings: a person must do this, checklist in issue #10.
-//! - A named preferred-parts file (`preferred.csv`, a project's list that wins), a `--offline`
-//!   flag for the bill of materials and `fab` (`Supply::with_offline` exists and is tested), and
-//!   the quantity of an order across boards: issue #32.
+//! - A named preferred-parts file (`preferred.csv`, a project's list that wins) and the quantity
+//!   of an order across boards: issue #32.
 //! - The editor's swap, with the checks run for each alternative: issue #31.
 //! - Currency conversion, taxes, shipping and JLCPCB's feeder fee for each Extended part: not
 //!   planned until a board needs it.
@@ -329,6 +332,11 @@ impl Supply {
     pub fn with_offline(mut self, offline: bool) -> Supply {
         self.offline = offline;
         self
+    }
+
+    /// Whether the run is offline ([`Supply::with_offline`]).
+    pub fn is_offline(&self) -> bool {
+        self.offline
     }
 
     /// The time a cached answer's age is counted from, Unix seconds (a test sets it).

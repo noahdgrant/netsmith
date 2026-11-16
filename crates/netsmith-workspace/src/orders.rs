@@ -85,6 +85,7 @@ impl Workspace {
                 allow_drc_violations,
                 place_seeds: netsmith_fabricate::layout::place_seeds(target.project.as_ref()),
                 seed_writes: netsmith_fabricate::fab::SeedWrites::Order,
+                offline: target.offline(),
                 ..FabOptions::default()
             },
             // The editor does not read or write the pick lock yet.

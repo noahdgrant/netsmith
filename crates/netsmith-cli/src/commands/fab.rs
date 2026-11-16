@@ -11,7 +11,7 @@ use netsmith_fabricate::order::OrderLocks;
 use netsmith_fabricate::project::Target;
 use netsmith_tools::findings::{BoardOut, Finding, Format, NotesMode, Report, Severity};
 
-use super::common::{self, libraries, no_boards, sync_pins, target};
+use super::common::{self, libraries, no_boards, sync_pins, target_offline};
 
 #[derive(Debug, PartialEq, ClapArgs)]
 #[command(args_override_self = true)]
@@ -88,6 +88,13 @@ pub struct Args {
     /// An order names its boards in netsmith.toml, so `--order` takes no file. It prints text only.
     #[arg(long, value_name = "NAME", num_args = 0..=1, conflicts_with = "file")]
     pub order: Option<Option<String>>,
+    /// Ask no supplier for stock or price; say in `fab-notes.txt` that they were not checked.
+    ///
+    /// No provider that would use the network is asked, and an answer kept earlier is used at any
+    /// age. `fab-notes.txt` (and `order.txt` of an order) then says that the stock and price of
+    /// the parts were not checked, so look each part up at the supplier before you order.
+    #[arg(long)]
+    pub offline: bool,
     /// Print the result of each board and the findings, not the stages.
     #[arg(long)]
     pub quiet: bool,
@@ -143,6 +150,7 @@ pub fn run(args: Args) -> ExitCode {
             constraints_warn,
             args.no_glb,
             args.no_step,
+            args.offline,
         ),
         None => timings::stage("fab.total", "", || {
             run_fab(
@@ -158,6 +166,7 @@ pub fn run(args: Args) -> ExitCode {
                 args.no_glb,
                 args.no_step,
                 args.save_placed,
+                args.offline,
                 FabOutput {
                     quiet: args.quiet,
                     format,
@@ -256,11 +265,12 @@ fn run_fab(
     no_glb: bool,
     no_step: bool,
     save_placed: bool,
+    offline: bool,
     output: FabOutput,
 ) -> ExitCode {
     let json = output.format == Format::Json;
     let mut report = Report::new("fab");
-    let (target, loader, mut catalogs) = match target(file, strict) {
+    let (target, loader, mut catalogs) = match target_offline(file, strict, offline) {
         Ok(t) => t,
         Err(code) => return code,
     };
@@ -323,6 +333,7 @@ fn run_fab(
         models: Some(netsmith_fabricate::models::Places::of(&target)),
         place_seeds: netsmith_fabricate::layout::place_seeds(target.project.as_ref()),
         seed_writes: netsmith_fabricate::fab::SeedWrites::Write,
+        offline,
     };
     let (pins_mode, locked_by) = pins_mode(&target, pins_locked, locked);
     let mut code = ExitCode::SUCCESS;
@@ -509,8 +520,9 @@ fn run_order(
     constraints_warn: Option<bool>,
     no_glb: bool,
     no_step: bool,
+    offline: bool,
 ) -> ExitCode {
-    let (target, loader, mut catalogs) = match target(None, strict) {
+    let (target, loader, mut catalogs) = match target_offline(None, strict, offline) {
         Ok(t) => t,
         Err(code) => return code,
     };
@@ -573,6 +585,7 @@ fn run_order(
         place_seeds: netsmith_fabricate::layout::place_seeds(target.project.as_ref()),
         // An order is a release: a seed that would change stops it (issue #458).
         seed_writes: netsmith_fabricate::fab::SeedWrites::Order,
+        offline,
     };
     let out = out.unwrap_or(&target.fab_out);
     match netsmith_fabricate::order::fab_order(
@@ -670,6 +683,7 @@ mod tests {
                 no_step: false,
                 save_placed: false,
                 order: None,
+                offline: false,
                 quiet: false,
                 output: output(),
             }
@@ -686,6 +700,18 @@ mod tests {
         assert!(parse(&["build", "--cross-check"]).is_err());
         assert!(parse(&["build", "--no-glb"]).is_err());
         assert!(parse(&["build", "--no-step"]).is_err());
+    }
+
+    #[test]
+    fn fab_and_the_editor_take_offline_and_the_other_commands_do_not() {
+        assert!(!fab(&[]).offline);
+        assert!(fab(&["--offline"]).offline);
+        assert!(fab(&["--order", "d", "--offline"]).offline);
+        assert!(matches!(
+            parse(&["editor", "--offline"]),
+            Ok(Command::Editor(e)) if e.offline
+        ));
+        assert!(parse(&["build", "--offline"]).is_err());
     }
 
     #[test]

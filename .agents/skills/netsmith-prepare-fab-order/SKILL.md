@@ -14,7 +14,7 @@ For each board, in `fab/<Board>/`:
 - `<Board>-gerbers.zip`: the Gerbers and drill files, written by netsmith itself (not KiCad; ADR 0034).
 - `bom.csv`: bill of materials with LCSC part numbers.
 - `cpl.csv`: placement: designator, position, side, rotation.
-- `fab-notes.txt`: what netsmith could not verify.
+- `fab-notes.txt`: what netsmith could not verify. A run with `--offline` asked no supplier, and a line `offline: stock and price of the parts were not checked` says so: tell the user to look each part up at the supplier before ordering.
 - `<Board>.kicad_pcb`, `<Board>.kicad_pro`, `<Board>.svg`: the board for KiCad and a picture.
 - `<Board>.glb`: the board's 3D scene (glTF 2.0 binary, as routed) for a mechanical engineer or a viewer; not for the order form and not in the Gerber zip. It is absent when the run had `--no-glb` or `netsmith.toml` says `glb = false`; a `warning:` in `fab-notes.txt` says when it could not be written. Heights in it are `null` where unknown, never guessed.
 - `<Board>.step`: the board and its parts as STEP (AP214) for a mechanical engineer's CAD, with no copper; not for the order form and not in the Gerber zip. It is absent when the run had `--no-step` or `netsmith.toml` says `step = false`; a `warning:` in `fab-notes.txt` says when it could not be written. A part of unknown height is its outline only there, never a guessed solid.

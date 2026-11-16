@@ -132,6 +132,51 @@ fn the_bom_takes_price_stock_and_day_from_the_provider_and_says_which_stock_it_i
 }
 
 #[test]
+fn an_offline_run_says_in_the_bom_that_stock_and_price_are_not_checked() {
+    let (root, _) = open(&priced("offline"));
+    let note = |offline: bool| {
+        let target = Target::resolve_from(&root, None)
+            .unwrap()
+            .with_offline(offline);
+        assert_eq!(target.offline(), offline);
+        let editor = Workspace::open(target).unwrap().with_network(Network {
+            now: Some(NOW),
+            offline: true,
+            cache_dir: None,
+            ..Network::default()
+        });
+        bom_of(&editor)
+    };
+    let online = note(false);
+    assert!(!online.note.contains("--offline"), "{}", online.note);
+    let offline = note(true);
+    assert!(
+        offline
+            .note
+            .contains("no supplier was asked, so stock and price are not checked now"),
+        "{}",
+        offline.note
+    );
+    // The file is the project's own and is still read; only the words differ.
+    assert_eq!(offline.lines, online.lines);
+}
+
+#[test]
+fn the_offline_choice_of_a_run_survives_a_reload_of_the_manifest() {
+    let (root, _) = open(&priced("offline-reload"));
+    let target = Target::resolve_from(&root, None)
+        .unwrap()
+        .with_offline(true);
+    let supply = target.project.as_ref().unwrap().supply().unwrap();
+    assert!(supply.is_offline());
+    // A changed manifest builds the target again, and the run is still offline.
+    let manifest = fs::read_to_string(root.join("netsmith.toml")).unwrap();
+    fs::write(root.join("netsmith.toml"), manifest.replace("name = \"own\"", "name = \"renamed\"")).unwrap();
+    let again = target.reloaded().unwrap().expect("the manifest changed");
+    assert!(again.offline());
+}
+
+#[test]
 fn the_channel_of_the_manifest_chooses_which_stock_is_shown() {
     let mut setup = priced("channel");
     setup.supply =

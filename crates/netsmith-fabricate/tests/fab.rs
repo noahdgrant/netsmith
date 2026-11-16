@@ -999,6 +999,36 @@ fn fab_says_which_stage_it_is_in_so_that_a_long_run_is_not_silent() {
     assert!(said.contains("routing 3 connections"), "{said}");
 }
 
+#[test]
+fn an_offline_run_says_in_the_notes_that_stock_and_price_were_not_checked() {
+    if netsmith_kicad::skip_without_kicad_libraries() {
+        return;
+    }
+    let notes_of = |name: &str, offline: bool| {
+        let dir = out(name);
+        let made = fab_with_options(
+            "led.nsm",
+            LED,
+            &netsmith_check::Loader::std(),
+            &dir,
+            &Catalogs::jlcpcb(),
+            &Libraries::standard(),
+            None,
+            &FabOptions {
+                offline,
+                ..FabOptions::default()
+            },
+        )
+        .unwrap_or_else(|e| panic!("{e}"));
+        (made[0].notes.clone(), read(&dir, "LedExample", "fab-notes.txt"))
+    };
+    let (summary, file) = notes_of("offline", true);
+    assert!(file.contains(netsmith_fabricate::fab::OFFLINE_NOTE), "{file}");
+    assert!(summary.contains(netsmith_fabricate::fab::OFFLINE_NOTE), "{summary}");
+    let (_, file) = notes_of("online", false);
+    assert!(!file.contains("offline:"), "{file}");
+}
+
 /// `fab` of the outline-and-pours example with `layout` as its layout file, in a folder of
 /// its own.
 fn fab_with_layout(
