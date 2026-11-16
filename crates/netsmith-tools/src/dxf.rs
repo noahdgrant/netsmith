@@ -63,6 +63,10 @@ pub struct Imported {
     pub members: String,
     /// The names of the members, which a later import replaces.
     pub names: Vec<String>,
+    /// The prefixes of the numbered members (`cutout`, `hole`, `limit`): a later import takes
+    /// out every member named one and digits, not only the names above, so the surplus of an
+    /// import that found more is not left.
+    pub families: Vec<&'static str>,
     pub warnings: Vec<String>,
     /// The command that printed it, as `render` names it in the first comment.
     command: &'static str,
@@ -331,6 +335,7 @@ pub(crate) fn translate(
         needed,
         members,
         names,
+        families: vec!["cutout", "hole"],
         warnings,
         command,
     })
@@ -429,6 +434,7 @@ pub fn write_physical(
             board: &board,
             section: Section::Case,
             remove: &imported.names,
+            families: &imported.families,
             text: &imported.members,
             imports: &imported.needed,
         },

@@ -315,6 +315,7 @@ pub(crate) fn rewrite(
             board,
             section: Section::Unit,
             remove: &[],
+            families: &[],
             text: &added,
             imports: &[],
         },

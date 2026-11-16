@@ -156,6 +156,10 @@ pub struct Edit<'a> {
     /// Members whose declaration, and every statement that starts with the member's name
     /// (`.hole1.place.x`), is taken out first. The `///` lines above a declaration go with it.
     pub remove: &'a [String],
+    /// Prefixes of numbered members (`cutout`, `limit`): every member named a prefix and
+    /// digits (`limit7`) goes too, as a member of `remove` does, so an import of fewer members
+    /// than an earlier one leaves none of the earlier one's.
+    pub families: &'a [&'a str],
     /// The statements to add at the end of the section, at column 0; they are indented to
     /// fit. Empty to only remove.
     pub text: &'a str,
@@ -250,7 +254,13 @@ fn remove_members(old: &str, file: &netsmith_lang::ast::File, edit: &Edit) -> St
     let Some(unit) = file.physicals.iter().find(|u| u.board.name == edit.board) else {
         return old.to_string();
     };
-    let named = |name: &str| edit.remove.iter().any(|r| r == name);
+    let named = |name: &str| {
+        edit.remove.iter().any(|r| r == name)
+            || edit.families.iter().any(|f| {
+                name.strip_prefix(f)
+                    .is_some_and(|n| !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()))
+            })
+    };
     // A statement's range: whole lines, the `///` lines right above it, and a blank line
     // after it if one stands on both sides (so that removing leaves one, not two), or the
     // blank line before it if the section closes after it (so that none is left above the `}`).
@@ -432,11 +442,38 @@ mod tests {
                 board: "B",
                 section,
                 remove: &remove,
+                families: &[],
                 text,
                 imports: &[("std::pcb", "Outline"), ("std::pcb", "Keepout")],
             },
         )
         .unwrap()
+    }
+
+    #[test]
+    fn a_family_takes_out_every_numbered_member_and_its_place_lines() {
+        let old = "physical for B {\n    case {\n        .limit1: Outline { .width &= 1mm }\n        .limit12: Outline { .width &= 1mm }\n        .limits: Outline { .width &= 1mm }\n        .limit: Outline { .width &= 1mm }\n        .hole3: Outline { .width &= 1mm }\n    }\n    .limit7.place.x &= 1mm\n}\n";
+        let text = edit(
+            Some(old),
+            &Edit {
+                board: "B",
+                section: Section::Case,
+                remove: &[],
+                families: &["limit"],
+                text: "",
+                imports: &[],
+            },
+        )
+        .unwrap();
+        // `limits`, `limit` and `hole3` are not numbered members of the family.
+        assert!(
+            text.contains(".limits:") && text.contains(".limit:") && text.contains(".hole3:"),
+            "{text}"
+        );
+        assert!(
+            !text.contains(".limit1") && !text.contains(".limit7"),
+            "{text}"
+        );
     }
 
     #[test]
@@ -511,6 +548,7 @@ mod tests {
                 board: "B",
                 section: Section::Case,
                 remove: &[],
+                families: &[],
                 text: ".x: Outline\n",
                 imports: &[],
             },

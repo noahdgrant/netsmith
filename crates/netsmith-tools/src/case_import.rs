@@ -25,11 +25,16 @@
 //!
 //! With `limits`, the **height limits**: each underside of the case above the board's top
 //! face (a lid, a rib or a boss hanging from it) is a `Keepout` that states `.max_height`
-//! over the box of the underside, on the top face (`.layers &= "top"`), found by
-//! [`netsmith_3d::CaseCeilings`]. A part of the board that is taller meets the case there.
-//! What stands from the board up to the case is a cutout, not a limit. A box is the
-//! underside's bounding box, so a shape that is not a rectangle limits more than it covers;
-//! an underside that is not flat is not read; the bottom face has no limit read.
+//! over the region of the underside, on the top face (`.layers &= "top"`), found by
+//! [`netsmith_3d::CaseCeilings`]; the same for what the case holds below the board's bottom
+//! face (a floor, a rib or a boss standing under it, `thickness` mm below the top face), on
+//! the bottom face (`.layers &= "bottom"`), each height from that face. A part of the board
+//! that is taller meets the case there. What stands from the board up to the case is a
+//! cutout, not a limit. A region is covered by rectangles, each a `Keepout`: one for a
+//! rectangle, one for each part of an L, slabs of at most `limit_step` mm for a curve (a round
+//! underside is limited a little more than it covers, not over its box). A sloped underside
+//! (a dome, a slope, a chamfer) is followed in steps of `limit_step` mm, each limited to the
+//! height of its lower end.
 //!
 //! The section of a model is of its triangles (0.01 mm of chord), so a curve of arcs has a
 //! corner for each chord, and some of them inside the circle by up to that chord;
@@ -58,8 +63,14 @@ pub struct Request {
     pub at: f64,
     /// The height of the plane of the mounting holes, if the model has any to read.
     pub holes_at: Option<f64>,
-    /// Whether to print the height limits the case puts over the board (`Keepout`s).
+    /// Whether to print the height limits the case puts over and under the board (`Keepout`s).
     pub limits: bool,
+    /// The board's thickness, in mm: its bottom face is z = -thickness (for the limits of the
+    /// bottom face).
+    pub thickness: f64,
+    /// How finely a sloped or curved underside is followed, in mm: the height of a step of a
+    /// slope, the height of a slab of a curve.
+    pub limit_step: f64,
 }
 
 impl Default for Request {
@@ -70,6 +81,8 @@ impl Default for Request {
             at: -0.8,
             holes_at: None,
             limits: false,
+            thickness: 1.6,
+            limit_step: 0.5,
         }
     }
 }
@@ -139,6 +152,18 @@ fn bounds(points: &[[f64; 2]]) -> ([f64; 2], [f64; 2]) {
 
 /// Read the STEP model in `bytes` (`name` is its name for messages) and translate its section.
 pub fn import(bytes: &[u8], name: &str, request: &Request) -> Result<Imported, String> {
+    if request.limits && !(request.limit_step >= 0.05 && request.limit_step.is_finite()) {
+        return Err(format!(
+            "{name}: the step of a limit is {} mm, and it must be at least 0.05 mm",
+            number(request.limit_step)
+        ));
+    }
+    if request.limits && !(request.thickness > 0.0 && request.thickness.is_finite()) {
+        return Err(format!(
+            "{name}: the board's thickness is {} mm, and it must be more than 0",
+            number(request.thickness)
+        ));
+    }
     let mesh = read_step(bytes).map_err(|e| format!("{name}: {e}"))?;
     let case = place_case(
         "case",
@@ -256,59 +281,94 @@ pub fn import(bytes: &[u8], name: &str, request: &Request) -> Result<Imported, S
         ),
     ];
     head.extend(holes_report);
+    imported.families = vec!["cutout"];
+    if request.holes_at.is_some() {
+        imported.families.push("hole");
+    }
     if request.limits {
-        head.extend(limits(&case, pocket, &mut imported));
+        imported.families.push("limit");
+        head.extend(limits(&case, pocket, request, &mut imported));
     }
     imported.report.splice(0..0, head);
     Ok(imported)
 }
 
-/// The `Keepout`s of the case's height limits over `pocket`, added to `imported`, and the lines
-/// that say what was found. A plane that could not be cut is a warning.
-fn limits(case: &PlacedCase, pocket: &CaseRing, imported: &mut Imported) -> Vec<String> {
-    let found = case.ceilings(&pocket.points);
-    for e in &found.skipped {
-        imported.warnings.push(format!(
-            "{e}: the height limits that plane shows are not read"
-        ));
+/// The `Keepout`s of the case's height limits over and under `pocket`, added to `imported`, and
+/// the lines that say what was found. A plane that could not be cut is a warning.
+fn limits(
+    case: &PlacedCase,
+    pocket: &CaseRing,
+    request: &Request,
+    imported: &mut Imported,
+) -> Vec<String> {
+    let step = request.limit_step;
+    let faces = [
+        ("top", case.ceilings(&pocket.points, step)),
+        (
+            "bottom",
+            case.ceilings_below(&pocket.points, request.thickness, step),
+        ),
+    ];
+    for (face, found) in &faces {
+        for e in &found.skipped {
+            imported.warnings.push(format!(
+                "{e}: the height limits that plane shows for the {face} face are not read"
+            ));
+        }
     }
-    if found.zones.is_empty() {
+    if faces.iter().all(|(_, f)| f.zones.is_empty()) {
         return vec![
-            "limits: no underside of the case above the board's top face limits a part (no lid, rib or boss over the pocket, or none flat)"
+            "limits: no underside of the case above the board's top face and no top of it below the board's bottom face limits a part (no lid, rib, boss or floor over or under the pocket, or none that is not a wall)"
                 .to_string(),
         ];
     }
     let (lo, hi) = bounds(&pocket.points);
     // The board's frame: the outline's top left corner, y down.
     let mm = |v: f64| format!("{}mm", number(um(v)));
+    let total: usize = faces.iter().map(|(_, f)| f.zones.len()).sum();
     let mut report = vec![format!(
-        "limits: {} height limit{} over the board, each over the box of an underside of the case (a shape that is not a rectangle is limited over its box), for the parts on the top face",
-        found.zones.len(),
-        if found.zones.len() == 1 { "" } else { "s" }
+        "limits: {total} height limit{} over and under the board, each over a rectangle of an underside of the case (a round underside is covered by slabs of at most {} mm, a slope followed in steps of {} mm), for the parts on the face it names",
+        if total == 1 { "" } else { "s" },
+        number(step),
+        number(step),
     )];
     imported.members.push('\n');
-    for (i, z) in found.zones.iter().enumerate() {
-        let id = format!("limit{}", i + 1);
-        let (x, y) = (z.lo[0] - lo[0], hi[1] - z.hi[1]);
-        let (width, height) = (z.hi[0] - z.lo[0], z.hi[1] - z.lo[1]);
-        let _ = writeln!(imported.members, ".{id}: Keepout {{");
-        let _ = writeln!(imported.members, "    .x &= {}", mm(x));
-        let _ = writeln!(imported.members, "    .y &= {}", mm(y));
-        let _ = writeln!(imported.members, "    .width &= {}", mm(width));
-        let _ = writeln!(imported.members, "    .height &= {}", mm(height));
-        let _ = writeln!(imported.members, "    .layers &= \"top\"");
-        let _ = writeln!(imported.members, "    .max_height &= {}", mm(z.height));
-        let _ = writeln!(imported.members, "}}");
-        imported.names.push(id.clone());
-        report.push(format!(
-            "{id}: at most {} mm over {} x {} mm with its top left corner at ({}, {}) on the board: the underside of `{}`",
-            number(z.height),
-            number(width),
-            number(height),
-            number(x),
-            number(y),
-            z.solid
-        ));
+    let mut n = 0;
+    for (face, found) in &faces {
+        for z in &found.zones {
+            n += 1;
+            let id = format!("limit{n}");
+            let (x, y) = (z.lo[0] - lo[0], hi[1] - z.hi[1]);
+            let (width, height) = (z.hi[0] - z.lo[0], z.hi[1] - z.lo[1]);
+            let _ = writeln!(imported.members, ".{id}: Keepout {{");
+            let _ = writeln!(imported.members, "    .x &= {}", mm(x));
+            let _ = writeln!(imported.members, "    .y &= {}", mm(y));
+            let _ = writeln!(imported.members, "    .width &= {}", mm(width));
+            let _ = writeln!(imported.members, "    .height &= {}", mm(height));
+            let _ = writeln!(imported.members, "    .layers &= \"{face}\"");
+            let _ = writeln!(imported.members, "    .max_height &= {}", mm(z.height));
+            let _ = writeln!(imported.members, "}}");
+            imported.names.push(id.clone());
+            report.push(format!(
+                "{id}: on the {face} face at most {} mm over {} x {} mm with its top left corner at ({}, {}) on the board: {} of `{}`{}",
+                number(z.height),
+                number(width),
+                number(height),
+                number(x),
+                number(y),
+                if *face == "top" {
+                    "the underside"
+                } else {
+                    "the top"
+                },
+                z.solid,
+                if z.sloped {
+                    " (a step of a slope: the underside is no lower)"
+                } else {
+                    ""
+                }
+            ));
+        }
     }
     imported.needed.push(("std::pcb", "Keepout"));
     imported.imports = imports_text(&imported.needed);

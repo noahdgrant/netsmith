@@ -31,7 +31,7 @@ pub struct PlaceArgs {
 
 #[derive(Debug, PartialEq, ClapArgs)]
 #[command(
-    after_long_help = "`case import` cuts the STEP model of a case by a plane parallel to the board and prints what the cut says of the board, to paste into the `case { }` section of the board's physical file, as `dxf import` prints a drawing's (the output is reviewed, and never derived at build time, ADR 0109). It writes nothing without `--write`.\n\nThe model is posed as a `CaseModel` poses it: `--rx`, `--ry`, `--rz` (degrees, about x, then y, then z) and then `--x`, `--y`, `--z` (mm); `case place` gives them for a matrix. The plane is at `--at` mm in that frame, where the board's top face is z = 0 and its bottom face z = -1.6 (the default, -0.8, is the middle of a 1.6 mm board). The cut draws closed curves on the model's solids, and how many of the others enclose each is its depth:\n\n- depth 0, the outside of a wall: not used;\n- depth 1, a pocket in the wall: the board's outline (the largest pocket, if there are several; the others are said and left out). A rib, a notch or a rounded corner of the wall is the outline's, so it is printed as `dxf import` prints one: `.width`, `.height` and `.corner_radius` for a rectangle with equal rounded corners, and any other as a `polygon` of the corners, each arc `arc through` its middle point;\n- depth 2, inside the pocket: a post, a pin or a block standing where the board is, a `Cutout` (a rounded rectangle, a slot or a circle; another shape is refused, as `dxf import` refuses it);\n- deeper: not used.\n\nWith `--holes-at` (a standoff's height, below the board) a second cut gives the mounting holes: each circle at depth 3, a hole in a post inside the pocket, is a `MountingHole` at its centre, stated by its diameter (`.diameter`, as `dxf import` states a hole); a drill outside what a mounting hole's footprint can be drawn for refuses the import, as it does there.\n\nThe cut is of the model's triangles (0.01 mm of chord): the arcs are found again within 2 micrometres and the collinear corners joined; a shape that is not lines and circular arcs stays chords. The board's frame is the outline's top left corner with y down, and the output says which point of the posed model that is, and the `.x` and `.y` that put the model's pocket where the board's frame has it. With `--limits` the cut is not the only one: the case's flat undersides above the board's top face (a lid, a rib or a boss hanging from it) are the **height limits**, each a `Keepout` with `.max_height` (the underside's height from the board's top face) over the box of the underside, `.layers &= \"top\"`, named `limit1`... from the lowest. A limit is cut to the outline, and one that lies in a lower one is left out. What stands from the board's top face up to the case (a post or a block, a cutout) is not a limit. A shape that is not a rectangle is limited over its bounding box (taken outward to 0.05 mm), so the limit may cover more than the underside does; an underside that is not flat (a dome, a slope) and the limits of the bottom face are not read; a plane at which a solid is not closed is a warning and its limits are left out.\n\nA solid that is not closed at the plane is an error that says where."
+    after_long_help = "`case import` cuts the STEP model of a case by a plane parallel to the board and prints what the cut says of the board, to paste into the `case { }` section of the board's physical file, as `dxf import` prints a drawing's (the output is reviewed, and never derived at build time, ADR 0109). It writes nothing without `--write`.\n\nThe model is posed as a `CaseModel` poses it: `--rx`, `--ry`, `--rz` (degrees, about x, then y, then z) and then `--x`, `--y`, `--z` (mm); `case place` gives them for a matrix. The plane is at `--at` mm in that frame, where the board's top face is z = 0 and its bottom face z = -1.6 (the default, -0.8, is the middle of a 1.6 mm board). The cut draws closed curves on the model's solids, and how many of the others enclose each is its depth:\n\n- depth 0, the outside of a wall: not used;\n- depth 1, a pocket in the wall: the board's outline (the largest pocket, if there are several; the others are said and left out). A rib, a notch or a rounded corner of the wall is the outline's, so it is printed as `dxf import` prints one: `.width`, `.height` and `.corner_radius` for a rectangle with equal rounded corners, and any other as a `polygon` of the corners, each arc `arc through` its middle point;\n- depth 2, inside the pocket: a post, a pin or a block standing where the board is, a `Cutout` (a rounded rectangle, a slot or a circle; another shape is refused, as `dxf import` refuses it);\n- deeper: not used.\n\nWith `--holes-at` (a standoff's height, below the board) a second cut gives the mounting holes: each circle at depth 3, a hole in a post inside the pocket, is a `MountingHole` at its centre, stated by its diameter (`.diameter`, as `dxf import` states a hole); a drill outside what a mounting hole's footprint can be drawn for refuses the import, as it does there.\n\nThe cut is of the model's triangles (0.01 mm of chord): the arcs are found again within 2 micrometres and the collinear corners joined; a shape that is not lines and circular arcs stays chords. The board's frame is the outline's top left corner with y down, and the output says which point of the posed model that is, and the `.x` and `.y` that put the model's pocket where the board's frame has it. With `--limits` the cut is not the only one: what the case holds over and under the board are the **height limits**, each a `Keepout` with `.max_height`, named `limit1`... (the top face's from the lowest, then the bottom face's). The case's undersides above the board's top face (a lid, a rib or a boss hanging from it) limit the parts on the top face (`.layers &= \"top\"`, `.max_height` the underside's height from the top face); what the case holds below the board's bottom face (z = -`--thickness`, 1.6 mm unless said: a floor, a rib or a boss standing under it) limits the parts on the bottom face (`.layers &= \"bottom\"`, `.max_height` from the bottom face down to it). A limit is cut to the outline, and one that lies in another of the same height or a lower one is left out. What stands through the board or from its face to the case (a post or a block, a cutout) is not a limit. A region that is not a rectangle is covered by rectangles taken outward to 0.05 mm: an L is two, a round underside slabs of at most `--limit-step` mm (0.5 by default), so it is limited a little more than it covers; a sloped underside (a dome, a slope, a chamfer: a face that leans more than about 10 degrees from upright) is followed in steps of `--limit-step` mm, each step limited to the height of its lower end, so the underside is no lower over the step and up to a step higher, and a feature thinner than a step is not seen (a smaller step gives more, finer limits). A plane at which a solid is not closed is a warning and its limits are left out.\n\nA solid that is not closed at the plane is an error that says where."
 )]
 #[command(args_override_self = true)]
 pub struct ImportArgs {
@@ -92,18 +92,26 @@ pub struct ImportArgs {
     /// The height of a second plane that cuts the standoffs for the mounting holes, in mm.
     #[arg(long, value_name = "MM", allow_hyphen_values = true)]
     pub holes_at: Option<f64>,
-    /// Also print the height limits the case puts over the board, as `Keepout`s with `.max_height`.
+    /// Also print the height limits the case puts over and under the board, as `Keepout`s with `.max_height`.
     #[arg(long)]
     pub limits: bool,
+    /// The board's thickness, in mm: its bottom face is at z = -THICKNESS (for the limits of the bottom face).
+    #[arg(long, value_name = "MM", default_value_t = 1.6)]
+    pub thickness: f64,
+    /// How finely `--limits` follows a sloped or curved underside, in mm: the height of a step of a slope and of a slab of a curve.
+    #[arg(long, value_name = "MM", default_value_t = 0.5)]
+    pub limit_step: f64,
     /// The board, when the file `--write` names has several.
     #[arg(long, value_name = "NAME")]
     pub board: Option<String>,
     /// Put the import into the physical file beside this source file, and print the diff (ADR 0048).
     ///
     /// It edits `<stem>.physical.nsm` beside that file as `dxf import --write` does: the members
-    /// of an earlier import (`outline`, `cutout1`, `hole1`...) and the lines that state their
-    /// places are replaced, every other line and comment stays. The circuit source and the
-    /// layout file are never written.
+    /// of an earlier import (`outline`, `cutout1`, `hole1`, `limit1`...) and the lines that
+    /// state their places are replaced, every other line and comment stays. Every numbered
+    /// member of a kind the import prints is replaced, also the ones above the new count
+    /// (`limit7` of an import that now finds 5; the holes only with `--holes-at`, the limits only
+    /// with `--limits`). The circuit source and the layout file are never written.
     #[arg(long, value_name = "FILE.NSM")]
     pub write: Option<PathBuf>,
 }
@@ -137,6 +145,8 @@ fn run_import(a: &ImportArgs) -> ExitCode {
             at: a.at,
             holes_at: a.holes_at,
             limits: a.limits,
+            thickness: a.thickness,
+            limit_step: a.limit_step,
         },
     ) {
         Ok(i) => i,

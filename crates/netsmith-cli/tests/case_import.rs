@@ -51,6 +51,28 @@ fn case_import_prints_the_height_limits_with_limits() {
 }
 
 #[test]
+fn case_import_limits_take_the_thickness_and_the_step() {
+    let shaped = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../netsmith-3d/tests/models/case_shaped.step"
+    );
+    let out = netsmith(&["case", "import", shaped, "--limits", "--limit-step", "2"]);
+    assert!(out.status.success(), "{out:?}");
+    let text = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        text.contains(".layers &= \"bottom\"") && text.contains(".max_height &= 6.4mm"),
+        "{text}"
+    );
+    let out = netsmith(&[
+        "case", "import", shaped, "--limits", "--limit-step", "2", "--thickness", "1",
+    ]);
+    assert!(String::from_utf8_lossy(&out.stdout).contains(".max_height &= 7mm"));
+    let out = netsmith(&["case", "import", shaped, "--limits", "--limit-step", "0"]);
+    assert_eq!(out.status.code(), Some(1), "{out:?}");
+    assert!(String::from_utf8_lossy(&out.stderr).contains("at least 0.05 mm"));
+}
+
+#[test]
 fn case_import_takes_the_pose_and_the_plane() {
     // Turned half a turn about z and moved, the pocket's corner is where the pose puts it.
     let out = netsmith(&[

@@ -186,6 +186,46 @@ fn with_limits() -> Request {
     }
 }
 
+/// The `.max_height` and the box of each `Keepout` of the text: `(height, x, y, width, height)`
+/// in mm, and its layer.
+fn keepouts(members: &str) -> Vec<(String, [f64; 5])> {
+    let mut out = Vec::new();
+    let mut cur = [0.0; 5];
+    let mut layer = String::new();
+    let mut limit = false;
+    for line in members.lines().map(str::trim) {
+        if line.starts_with(".") && line.ends_with("{") {
+            limit = line.starts_with(".limit");
+            continue;
+        }
+        if !limit {
+            continue;
+        }
+        let value = |key: &str| {
+            line.strip_prefix(key)
+                .and_then(|v| v.strip_suffix("mm"))
+                .map(|v| v.parse::<f64>().unwrap())
+        };
+        if let Some(v) = value(".x &= ") {
+            cur[1] = v;
+        } else if let Some(v) = value(".y &= ") {
+            cur[2] = v;
+        } else if let Some(v) = value(".width &= ") {
+            cur[3] = v;
+        } else if let Some(v) = value(".height &= ") {
+            cur[4] = v;
+        } else if let Some(v) = value(".max_height &= ") {
+            cur[0] = v;
+        } else if let Some(l) = line.strip_prefix(".layers &= ") {
+            layer = l.trim_matches('"').to_string();
+        } else if line == "}" && line.len() == 1 && cur[3] > 0.0 {
+            out.push((layer.clone(), cur));
+            cur = [0.0; 5];
+        }
+    }
+    out
+}
+
 #[test]
 fn the_undersides_over_the_board_are_keepouts_that_limit_the_height() {
     let imported = import(CASE_LID, "case_lid.step", &with_limits()).unwrap();
@@ -206,37 +246,130 @@ fn the_undersides_over_the_board_are_keepouts_that_limit_the_height() {
             .height &= 40mm
             .layers &= \"top\"
             .max_height &= 4mm
-        }
-        .limit2: Keepout {
-            .x &= 41mm
-            .y &= 6mm
-            .width &= 8mm
-            .height &= 8mm
-            .layers &= \"top\"
-            .max_height &= 7mm
-        }
-        .limit3: Keepout {
-            .x &= 0mm
-            .y &= 0mm
-            .width &= 60mm
-            .height &= 40mm
-            .layers &= \"top\"
-            .max_height &= 10mm
         }"
         ),
         "{text}"
     );
+    let all = keepouts(&imported.members);
+    let n = all.len();
+    // The rib, the boss as slabs of its circle (not its 8 x 8 box), and the lid, lowest first.
+    assert!(all.iter().all(|(layer, _)| layer == "top"), "{all:?}");
+    let heights: Vec<f64> = all.iter().map(|(_, k)| k[0]).collect();
+    assert!(heights.windows(2).all(|w| w[0] <= w[1]), "{heights:?}");
+    assert_eq!(all[0].1, [4.0, 20.0, 0.0, 6.0, 40.0]);
+    assert_eq!(all[n - 1].1, [10.0, 0.0, 0.0, 60.0, 40.0]);
+    let boss: Vec<&[f64; 5]> = all.iter().map(|(_, k)| k).filter(|k| k[0] == 7.0).collect();
+    assert_eq!(boss.len(), n - 2);
+    let area: f64 = boss.iter().map(|k| k[3] * k[4]).sum();
+    assert!(
+        area > std::f64::consts::PI * 16.0 && area < 64.0 * 0.9,
+        "{area}"
+    );
     // The block that stands from the board to the lid is a cutout, not a limit.
     assert!(text.contains(".cutout1: Cutout {"), "{text}");
-    assert_eq!(text.matches("Keepout {").count(), 3, "{text}");
+    assert_eq!(text.matches("Keepout {").count(), n, "{text}");
     let report = imported.report.join("\n");
     assert!(
-        report.contains("limits: 3 height limits")
-            && report.contains("limit1: at most 4 mm over 6 x 40 mm")
+        report.contains(&format!("limits: {n} height limits over and under the board"))
+            && report.contains("limit1: on the top face at most 4 mm over 6 x 40 mm")
             && report.contains("the underside of `lid`"),
         "{report}"
     );
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+}
+
+const CASE_SHAPED: &[u8] = include_bytes!("../../netsmith-3d/tests/models/case_shaped.step");
+
+#[test]
+fn an_l_a_slope_a_floor_and_a_pad_are_limits_on_the_faces_they_are_over() {
+    let request = Request {
+        limit_step: 2.0,
+        ..with_limits()
+    };
+    let imported = import(CASE_SHAPED, "case_shaped.step", &request).unwrap();
+    let all = keepouts(&imported.members);
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    let top: Vec<[f64; 5]> = all
+        .iter()
+        .filter(|(l, _)| l == "top")
+        .map(|(_, k)| *k)
+        .collect();
+    let bottom: Vec<[f64; 5]> = all
+        .iter()
+        .filter(|(l, _)| l == "bottom")
+        .map(|(_, k)| *k)
+        .collect();
+    // The numbers run on from the top face's to the bottom face's.
+    assert_eq!(top.len() + bottom.len(), all.len());
+    // The L (the model's y 5 to 35 is the board's y 40 - 35 = 5 to 35): two rectangles at 9 mm.
+    assert!(top.contains(&[9.0, 5.0, 25.0, 30.0, 10.0]), "{top:?}");
+    assert!(top.contains(&[9.0, 5.0, 5.0, 10.0, 20.0]), "{top:?}");
+    assert!(
+        !top.iter().any(|k| k[0] == 9.0 && k[3] == 30.0 && k[4] == 30.0),
+        "the L is not its box: {top:?}"
+    );
+    // The ramp: steps of 2 mm from the lowest end, 8, 10 and 12 mm.
+    let ramp: Vec<f64> = top
+        .iter()
+        .filter(|k| k[1] > 39.0 && k[3] < 20.0 && k[2] == 5.0 && k[4] == 30.0)
+        .map(|k| k[0])
+        .collect();
+    assert_eq!(ramp, [8.0, 10.0, 12.0], "{top:?}");
+    // The floor limits the bottom face at 6.4 mm over the whole board; the pad at 3 mm; the
+    // post that reaches the board is none.
+    assert!(bottom.contains(&[6.4, 0.0, 0.0, 60.0, 40.0]), "{bottom:?}");
+    assert!(bottom.iter().any(|k| k[0] == 3.0), "{bottom:?}");
+    assert!(
+        bottom.iter().all(|k| k[0] == 3.0 || k[0] == 6.4),
+        "{bottom:?}"
+    );
+    let report = imported.report.join("\n");
+    assert!(
+        report.contains("on the bottom face at most 6.4 mm over 60 x 40 mm")
+            && report.contains("the top of `floor`")
+            && report.contains("a step of a slope"),
+        "{report}"
+    );
+    // A thinner board has its bottom face higher: the floor is 0.4 mm nearer.
+    let thin = Request {
+        thickness: 1.0,
+        ..request.clone()
+    };
+    let imported = import(CASE_SHAPED, "case_shaped.step", &thin).unwrap();
+    assert!(
+        keepouts(&imported.members)
+            .iter()
+            .any(|(l, k)| l == "bottom" && k[0] == 7.0 && k[3] == 60.0),
+        "{}",
+        imported.members
+    );
+}
+
+#[test]
+fn a_step_or_a_thickness_that_is_not_a_length_is_refused() {
+    for request in [
+        Request {
+            limit_step: 0.0,
+            ..with_limits()
+        },
+        Request {
+            limit_step: f64::NAN,
+            ..with_limits()
+        },
+        Request {
+            thickness: 0.0,
+            ..with_limits()
+        },
+    ] {
+        let e = import(CASE_LID, "case_lid.step", &request).unwrap_err();
+        assert!(e.contains("must be"), "{e}");
+    }
+    // Without `--limits` neither is looked at.
+    let plain = Request {
+        limit_step: 0.0,
+        ..Request::default()
+    };
+    assert!(import(CASE_LID, "case_lid.step", &plain).is_ok());
 }
 
 #[test]
@@ -273,7 +406,11 @@ fn the_imported_limits_go_through_fab() {
     // Importing again replaces the members of the first import and leaves one of each.
     write_physical(&nsm, None, &imported).unwrap();
     let again = fs::read_to_string(dir.join("lidded.physical.nsm")).unwrap();
-    assert_eq!(again.matches("Keepout {").count(), 3, "{again}");
+    assert_eq!(
+        again.matches("Keepout {").count(),
+        imported.members.matches("Keepout {").count(),
+        "{again}"
+    );
     assert_eq!(again.matches("Outline {").count(), 1, "{again}");
     let made = fab_with_options(
         "lidded.nsm",
@@ -287,4 +424,41 @@ fn the_imported_limits_go_through_fab() {
     )
     .unwrap_or_else(|e| panic!("{e}"));
     assert_eq!(made.len(), 1);
+}
+
+#[test]
+fn an_import_of_fewer_members_leaves_none_of_the_earlier_import() {
+    let dir = TempDir::new("case-import-surplus");
+    let source = "board Lidded {\n}\n";
+    let nsm = dir.join("lidded.nsm");
+    fs::write(&nsm, source).unwrap();
+    let many = import(CASE_SHAPED, "case_shaped.step", &with_limits()).unwrap();
+    let before = many.members.matches("Keepout {").count();
+    assert!(before > 12, "{before}");
+    write_physical(&nsm, None, &many).unwrap();
+    // A hand-written member of another name and a comment stay.
+    let path = dir.join("lidded.physical.nsm");
+    let text = fs::read_to_string(&path).unwrap();
+    let text = text.replacen("    case {\n", "    case {\n        // mine\n        .keep: Keepout {\n            .x &= 1mm\n            .y &= 1mm\n            .width &= 1mm\n            .height &= 1mm\n        }\n", 1);
+    fs::write(&path, text).unwrap();
+    let few = import(CASE_LID, "case_lid.step", &with_limits()).unwrap();
+    let after = few.members.matches("Keepout {").count();
+    assert!(after < before);
+    write_physical(&nsm, None, &few).unwrap();
+    let physical = fs::read_to_string(&path).unwrap();
+    assert_eq!(physical.matches("Keepout {").count(), after + 1, "{physical}");
+    assert!(physical.contains("// mine") && physical.contains(".keep: Keepout"), "{physical}");
+    assert!(!physical.contains(&format!(".limit{}:", after + 1)), "{physical}");
+    // Without --limits the limits already in the file are not touched.
+    let plain = import(CASE_LID, "case_lid.step", &Request::default()).unwrap();
+    write_physical(&nsm, None, &plain).unwrap();
+    let kept = fs::read_to_string(&path).unwrap();
+    assert_eq!(kept.matches("Keepout {").count(), after + 1, "{kept}");
+    // With --limits and nothing to find, they all go.
+    let none = import(CASE_BOX, "case_box.step", &with_limits()).unwrap();
+    write_physical(&nsm, None, &none).unwrap();
+    let gone = fs::read_to_string(&path).unwrap();
+    assert_eq!(gone.matches("Keepout {").count(), 1, "{gone}");
+    assert!(gone.contains(".keep: Keepout"), "{gone}");
+    assert!(!gone.contains(".limit"), "{gone}");
 }
