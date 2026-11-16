@@ -92,13 +92,21 @@ C47U6,47uF +/- 20%,derate capacitance by bias: 0:1 3:0.8 6.3:0.5,6.3V,0805,X5R,i
 C4U35,4.7uF +/- 10%,derate capacitance by bias: 0:1 10:0.8 35:0.3,35V,1206,X7R,invented
 ";
 
-fn catalogs() -> Catalogs {
+/// The same two capacitors with an `esr` column: the 47 uF one records 4 mohm, the other leaves
+/// the cell empty.
+const CAPACITOR_ESR: &str =
+    "mpn,capacitance,effective_capacitance,max_voltage,package,dielectric,esr,source
+C47U6,47uF +/- 20%,derate capacitance by bias: 0:1 3:0.8 6.3:0.5,6.3V,0805,X5R,4mohm,invented
+C4U35,4.7uF +/- 10%,derate capacitance by bias: 0:1 10:0.8 35:0.3,35V,1206,X7R,,invented
+";
+
+fn catalogs_with(capacitor: &str) -> Catalogs {
     let mut c = Catalogs::empty();
     for (name, text) in [
         ("zbk2", IC),
         ("resistor", RESISTOR),
         ("inductor", INDUCTOR),
-        ("capacitor", CAPACITOR),
+        ("capacitor", capacitor),
     ] {
         c.add_file(name, &format!("catalogs/{name}.csv"), text)
             .unwrap();
@@ -107,9 +115,13 @@ fn catalogs() -> Catalogs {
 }
 
 fn run(extra: &str) -> Solution {
+    run_with(extra, CAPACITOR)
+}
+
+fn run_with(extra: &str, capacitor: &str) -> Solution {
     let c = check("ripple.nsm", &board(extra), &Loader::std());
     assert!(c.is_ok(), "{}", c.render());
-    solve(&c.boards[0], &catalogs())
+    solve(&c.boards[0], &catalogs_with(capacitor))
 }
 
 fn messages(s: &Solution) -> Vec<String> {
@@ -265,4 +277,71 @@ fn a_board_with_neither_is_as_it_was() {
     let s = run("");
     assert!(messages(&s).is_empty(), "{:#?}", messages(&s));
     assert!(not_evaluated(&s).is_empty(), "{:#?}", not_evaluated(&s));
+}
+
+/// The capacitor's own `esr` column is read when the board states no `.output_esr`: the picked
+/// row's 4 mohm is the ESR of the bank, the ripple has a value, and a limit on it is judged
+/// with nothing stated about the ESR.
+#[test]
+fn the_picked_rows_esr_is_read_when_the_board_states_none() {
+    let s = run_with(
+        "        .output_cap.count &= 1\n        .output_ripple <= 12mV\n",
+        CAPACITOR_ESR,
+    );
+    assert!(messages(&s).is_empty(), "{:#?}", messages(&s));
+    assert!(not_evaluated(&s).is_empty(), "{:#?}", not_evaluated(&s));
+    near(range(&s, "stage.output_esr").unwrap().1, 4e-3);
+    near(
+        range(&s, "stage.output_ripple").unwrap().1,
+        output_ripple(1.0, 4e-3),
+    );
+    // The limit is exact at the row's figure: 4 mohm gives 8.5 mV, 5 mohm 9.54 mV.
+    let s = run_with(
+        "        .output_cap.count &= 1\n        .output_ripple <= 9mV\n",
+        CAPACITOR_ESR,
+    );
+    assert!(messages(&s).is_empty(), "{:#?}", messages(&s));
+    let s = run_with(
+        "        .output_cap.count &= 1\n        .output_ripple <= 8mV\n",
+        CAPACITOR_ESR,
+    );
+    assert_eq!(messages(&s).len(), 1, "{:#?}", messages(&s));
+}
+
+/// A stated `.output_esr` wins over the row's cell, whichever is larger, and the row is still
+/// picked with it.
+#[test]
+fn a_stated_output_esr_wins_over_the_rows_cell() {
+    for esr in ["2mohm", "9mohm"] {
+        let s = run_with(
+            &format!(
+                "        .output_cap.count &= 1\n        .output_esr &= {esr}\n        .output_ripple <= 20mV\n"
+            ),
+            CAPACITOR_ESR,
+        );
+        assert!(messages(&s).is_empty(), "{esr}: {:#?}", messages(&s));
+        let want = if esr == "2mohm" { 2e-3 } else { 9e-3 };
+        near(range(&s, "stage.output_esr").unwrap().1, want);
+        near(
+            range(&s, "stage.output_ripple").unwrap().1,
+            output_ripple(1.0, want),
+        );
+    }
+}
+
+/// A row that leaves the cell empty is offered, and the ripple stays open as it does with no
+/// column at all: a limit on it is not evaluated and nothing else is said.
+#[test]
+fn a_row_with_an_empty_esr_cell_leaves_the_ripple_open() {
+    // The 4.7 uF row has no cell; the board's rating for it (35 V) picks it, in a bank.
+    let s = run_with(
+        "        .output_cap.max_voltage &= 20V..50V\n        .output_ripple <= 20mV\n",
+        CAPACITOR_ESR,
+    );
+    let n = not_evaluated(&s);
+    assert!(
+        n.iter().all(|r| r == "stage.output_ripple <= 20mV"),
+        "{n:#?}"
+    );
+    assert!(range(&s, "stage.output_ripple").is_none());
 }

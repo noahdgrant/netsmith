@@ -38,6 +38,10 @@ pub(crate) struct PendingDefault {
     pub(crate) value: Typed,
     pub(crate) source: SourceId,
     pub(crate) span: Span,
+    /// Whether a module wrote it (`Relation::own`): a default is applied after the definition is
+    /// left, so it is recorded where it is written. Only a module's is `own`; the default of a
+    /// part or a generic has always been the design's, and stays so.
+    pub(crate) own: bool,
 }
 
 /// What decides whether a net default applies, by class of pins joined with `~`.
@@ -780,6 +784,7 @@ impl Checker<'_> {
                         value: t,
                         source,
                         span: c.span,
+                        own: self.in_kind(DefKind::Module),
                     });
                 }
             }
@@ -929,7 +934,7 @@ impl Checker<'_> {
                 crate::model::DefaultFrom::Field
             };
             self.model.fields[d.field.0].default_from = Some(from);
-            self.apply_checked(d.field, d.value, CmpOp::Narrow, d.span);
+            self.apply_checked(d.field, d.value, CmpOp::Narrow, d.span, d.own);
         }
         self.source_override = None;
     }
@@ -1100,7 +1105,7 @@ impl Checker<'_> {
         self.note_layer_offset(&l.e, &r.e, c.op, c.span);
         let source = self.cur_source();
         let written = self.written(c.span);
-        let own = self.in_own_definition();
+        let own = self.in_used_definition();
         std::sync::Arc::make_mut(&mut self.model.relations).push(Relation {
             lhs: l.e,
             op: c.op,
@@ -1116,7 +1121,8 @@ impl Checker<'_> {
     /// Narrow `field` by a constant now, or queue the constraint for the solver.
     fn apply(&mut self, field: FieldId, value: Typed, op: CmpOp, span: Span) {
         if self.check_value(field, &value, span, false) {
-            self.apply_checked(field, value, op, span);
+            let own = self.in_used_definition();
+            self.apply_checked(field, value, op, span, own);
         }
     }
 
@@ -1174,13 +1180,12 @@ impl Checker<'_> {
         true
     }
 
-    fn apply_checked(&mut self, field: FieldId, value: Typed, op: CmpOp, span: Span) {
+    fn apply_checked(&mut self, field: FieldId, value: Typed, op: CmpOp, span: Span, own: bool) {
         match value.e {
             RExpr::Const(q) => self.narrow(field, Domain::Quantity(q), span),
             RExpr::Text(s) => self.narrow(field, Domain::Text(s), span),
             other => {
                 let source = self.cur_source();
-                let own = self.in_own_definition();
                 std::sync::Arc::make_mut(&mut self.model.relations).push(Relation {
                     lhs: RExpr::Field(field),
                     op,

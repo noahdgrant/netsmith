@@ -456,6 +456,7 @@ impl Checker<'_> {
                     },
                     source: line.source,
                     span: line.span,
+                    own: false,
                 });
             }
             if given == 0 {

@@ -50,6 +50,7 @@ fn columns(name: &str) -> Vec<(String, FieldKind)> {
             q("max_voltage", Dimension::VOLTAGE),
             t("package"),
             t("dielectric"),
+            q("esr", Dimension::RESISTANCE),
         ],
         "led" => vec![
             t("color"),
@@ -252,6 +253,47 @@ fn every_efficiency_is_a_fraction_range_and_its_source_names_the_curve() {
             );
         }
     }
+}
+
+/// A capacitor row that states an `esr` (issue #420) states one maximum, in ohms, read off its
+/// maker's document at a point: the row's `source` has an `esr:` entry that begins with the cell
+/// and says which document, page and table or graph, and its `notes` say the frequency and the
+/// bias the figure was read at. The standard rows state it only where a maker's document draws
+/// or prints it.
+#[test]
+fn every_esr_cell_is_one_resistance_and_its_source_names_the_page_and_the_point() {
+    let mut with = Vec::new();
+    for row in records("jlcpcb/catalog/capacitor.csv") {
+        let lcsc = &row["lcsc"];
+        let cell = &row["esr"];
+        if cell.is_empty() {
+            continue;
+        }
+        with.push(lcsc.clone());
+        let mohm: f64 = cell
+            .strip_suffix("mohm")
+            .and_then(|n| n.parse().ok())
+            .unwrap_or_else(|| panic!("{lcsc}: esr `{cell}` is not like 4mohm"));
+        assert!(mohm > 0.0 && mohm <= 1000.0, "{lcsc}: esr {mohm} mohm");
+        let entry = row["source"]
+            .split(" ; ")
+            .find_map(|e| e.strip_prefix("esr: "))
+            .unwrap_or_else(|| panic!("{lcsc}: no `esr:` in the source"));
+        assert!(
+            entry.starts_with(cell.as_str())
+                && entry.contains("page")
+                && (entry.contains("graph") || entry.contains("table") || entry.contains("figure"))
+                && (entry.contains("kHz") || entry.contains("MHz")),
+            "{lcsc}: the cell says {cell} and the source says {entry}"
+        );
+        assert!(
+            row["notes"].contains("ESR: ") && row["notes"].contains("typical")
+                || row["notes"].contains("maximum"),
+            "{lcsc}: the notes do not say whether the figure is typical or a maximum"
+        );
+    }
+    // Update it with the rows: the one capacitor row whose maker's document draws the ESR.
+    assert_eq!(with, ["C23733"], "{with:?}");
 }
 
 /// How many rows of the standard catalogs have a `height` (ADR 0094). Update it with the rows.

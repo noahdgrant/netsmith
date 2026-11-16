@@ -385,7 +385,7 @@ generic BuckConverter {
 }
 ```
 
-A board narrows the output's voltage, the load (the current of the rail it joins to `.vout`), the input (the rail it joins to `.vin`) and, with `.output_esr` stated, a bound on `.output_ripple`. It reaches nothing of how the converter is built. The soft-start time and the capacitors' `.voltage_margin` stay on `Buck`, for a board that names the IC: an IC that states no soft-start time cannot be judged against a bound on it, and a candidate that cannot be judged is not picked, so the bound would refuse every such IC (decided by the agent while the owner was away, 2026-11-13).
+A board narrows the output's voltage, the load (the current of the rail it joins to `.vout`), the input (the rail it joins to `.vin`) and a bound on `.output_ripple` (judged when `.output_esr` is stated or the picked capacitor's row records an ESR). It reaches nothing of how the converter is built. The soft-start time and the capacitors' `.voltage_margin` stay on `Buck`, for a board that names the IC: an IC that states no soft-start time cannot be judged against a bound on it, and a candidate that cannot be judged is not picked, so the bound would refuse every such IC (decided by the agent while the owner was away, 2026-11-13).
 
 ### A module that takes a part
 

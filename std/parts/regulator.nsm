@@ -340,21 +340,20 @@ generic BuckConverter {
     /// capacitor bank, not of the board: the traces' resistance and the load's own ripple are
     /// not in it.
     ///
-    /// Not evaluated until the board states `.output_esr`, since the capacitor term alone
-    /// would be too small. A bound on this member with no ESR stated is listed as not
-    /// evaluated, never a pass.
+    /// Not evaluated until the board states `.output_esr` or the picked capacitor's row records
+    /// an ESR, since the capacitor term alone would be too small. A bound on this member with
+    /// no ESR is listed as not evaluated, never a pass.
     .output_ripple: Voltage
     /// The ESR of one capacitor of the output bank at the switching frequency, at the
     /// highest the board accepts (a range gives the worst case: use the datasheet's maximum
     /// and not its typical figure, at the DC bias and the temperature of the board).
-    /// Optional (ADR 0074): a board that states nothing here has no ripple of the output
-    /// voltage and nothing is checked against it. The standard capacitor catalog has no ESR
-    /// column yet (a column needs a number from the maker's datasheet or tool, with its
-    /// conditions as the recorded source), so this is the board's own figure, the last
-    /// resort of the design rules: a board states it from the datasheet of the capacitor
-    /// it means to fit, and the solver picks `.output_cap` without checking it against this
-    /// number. Whether the board states it here or the capacitor carries it is the owner's
-    /// to confirm.
+    /// Optional (ADR 0074): with nothing stated here and no ESR in the picked capacitor's row,
+    /// there is no ripple of the output voltage and nothing is checked against it. `Buck` gives
+    /// it the output capacitor's `esr` by default (`?=`, issue #420): the optional `esr` column
+    /// of the capacitor catalog, which a row states only from its maker's document with the
+    /// page and the point it was read at (`data/jlcpcb/README.md`). A figure the board states
+    /// here wins over the row's: the board's own, from the datasheet of the capacitor it means
+    /// to fit, and the solver picks `.output_cap` without checking it against this number.
     .output_esr: Resistance optional
 }
 
@@ -386,8 +385,9 @@ generic BuckConverter {
 ///   `current <= saturation_current` is the weaker check of the average;
 /// - the ripple of the output voltage, `.output_ripple`, is the sum of the two terms of
 ///   `dI / (8 * fsw * n * C) + dI * ESR / n`, where `dI` is the ripple current above, `n` the
-///   output bank's count, `C` one capacitor's effective capacitance and `ESR` the board's
-///   `.output_esr`: a limit the board states on it is checked in the worst case (see
+///   output bank's count, `C` one capacitor's effective capacitance and `ESR` the stage's
+///   `.output_esr` (the board's, or the picked capacitor's `esr` by default): a limit the board
+///   states on it is checked in the worst case (see
 ///   `.output_ripple` below, and what that check assumes);
 /// - the inductor is at least the IC's minimum, has at least the saturation current and at
 ///   most the DC resistance that the IC states (`.min_inductor_saturation`,
@@ -596,6 +596,7 @@ module Buck<Ic: BuckIc> provides BuckConverter {
     .off_time == (.vin.voltage - .vout.voltage) / (.vin.voltage * .ic.fsw)
     .soft_start_time == .ic.soft_start_time
     .output_ripple == .ripple / (8 * .ic.fsw * .output_cap.total_effective_capacitance) + .ripple * .output_esr / .output_cap.count
+    .output_esr ?= .output_cap.esr
     .on_time >= .ic.min_on_time
     .off_time >= .ic.min_off_time
     .inductor.current + .ripple / 2 <= .inductor.saturation_current

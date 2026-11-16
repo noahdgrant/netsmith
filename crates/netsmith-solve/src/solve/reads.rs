@@ -64,6 +64,15 @@ impl Reads {
         let mut inside: HashMap<InstId, Vec<usize>> = HashMap::new();
         let mut by_field: HashMap<FieldId, Vec<usize>> = HashMap::new();
         let mut by_design = HashSet::new();
+        // The `optional` members that an optional column of the part's catalog provides: a
+        // relation of a definition that names one is its reading of what the row records, not
+        // the design asking for it (ADR 0074), so a row with an empty cell is still offered.
+        let provided: HashSet<FieldId> = model
+            .instances()
+            .filter_map(|(_, i)| i.catalog.as_ref())
+            .flat_map(|c| c.optional.iter().copied())
+            .filter(|&f| model.field(f).optional.is_some())
+            .collect();
         for (index, r) in model.relations().iter().enumerate() {
             fields.clear();
             fields_in(&r.rhs, &mut fields);
@@ -85,7 +94,7 @@ impl Reads {
                 // A relation of the part's own definition is the design's ask when it names
                 // an `optional` member: it is in the model because the design stated that
                 // member (ADR 0074), as a zener's shift asks for its coefficient.
-                if !r.own || optional_member {
+                if (!r.own || optional_member) && !(r.own && provided.contains(&f)) {
                     by_design.insert(f);
                 }
                 by_field.entry(f).or_default().push(index);

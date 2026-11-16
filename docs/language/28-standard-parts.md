@@ -322,9 +322,9 @@ board Bright {
 
 ```text
 error: no `led` candidate satisfies `led`: the closest of the 3 that fit, KT-0603R RED LED 0603 C2286, fails because led.current must always be at most led.max_forward_current, but 30mA is not always below 25mA
-    --> std/parts/passive.nsm:244:5
+    --> std/parts/passive.nsm:251:5
     |
-244 |     .current <= .max_forward_current
+251 |     .current <= .max_forward_current
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -686,15 +686,15 @@ board HighInput {
 
 ```text
 error: reg.on_time must always be at least reg.ic.min_on_time, but 122ns..490.8ns is not always above 150ns
-    --> std/parts/regulator.nsm:599:5
+    --> std/parts/regulator.nsm:600:5
     |
-599 |     .on_time >= .ic.min_on_time
+600 |     .on_time >= .ic.min_on_time
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 The input of a 12 V board that stays under 16 V holds it (4.7 V over 16 V at 1.1 MHz is 267 ns); a datasheet that gives no figure leaves the check out. A linear regulator's dropout is checked the same way by `LinearRegulator` and by a part that states `.vin.voltage >= .vout.voltage + .dropout` (the section on `LinearRegulator`).
 
-The ripple of the output voltage is a closed-form check, not a simulation (`docs/research/closed-form-checks.md`, check 3; the converter has no time in it, only the charge balance of a capacitor over one period). `Buck` has `.output_ripple`, the sum of the capacitor's term and the ESR's, `dI / (8 * fsw * C) + dI * ESR / n`, with `dI` the inductor's ripple current above, `C` the output bank's effective capacitance (`.output_cap.total_effective_capacitance`), `n` its count (`.output_cap.count`) and `ESR` the converter's `.output_esr`. A board bounds it (`.output_ripple <= 20mV`) and the bound holds in the worst case of every range: the highest input, the lowest inductance, frequency and capacitance (each with its tolerance, the capacitance at its DC bias) and the highest ESR. Each term moves one way with each of them, so the range is exact. The ESR is the board's own figure, since the standard capacitor catalog has no ESR column (a column needs the maker's number with its conditions as the recorded source, `data/jlcpcb/README.md`): `.output_esr` is `optional` (ADR 0074), and the board states the datasheet's maximum for the capacitor it means to fit, at the switching frequency, the bias and the temperature of the board; a range gives the worst end. The solver picks the capacitor without checking its own ESR against the figure. The member and where the board states it (on the converter, or on the capacitor as a catalog column) are provisional, the owner's to confirm.
+The ripple of the output voltage is a closed-form check, not a simulation (`docs/research/closed-form-checks.md`, check 3; the converter has no time in it, only the charge balance of a capacitor over one period). `Buck` has `.output_ripple`, the sum of the capacitor's term and the ESR's, `dI / (8 * fsw * C) + dI * ESR / n`, with `dI` the inductor's ripple current above, `C` the output bank's effective capacitance (`.output_cap.total_effective_capacitance`), `n` its count (`.output_cap.count`) and `ESR` the converter's `.output_esr`. A board bounds it (`.output_ripple <= 20mV`) and the bound holds in the worst case of every range: the highest input, the lowest inductance, frequency and capacitance (each with its tolerance, the capacitance at its DC bias) and the highest ESR. Each term moves one way with each of them, so the range is exact. The ESR comes from the output capacitor's row or from the board. `Capacitor` and `CapacitorBank` have an optional `esr` member that an optional `esr` column of the capacitor catalog provides (ADR 0078), and a row states it only where its maker's document prints or draws one, with the page, the table or figure and the point it was read at (frequency and bias) as the recorded source (`data/jlcpcb/README.md`): the cell is one value in ohms, at most the figure the document gives at the frequency the row's `notes` name. `Buck` reads it as `.output_esr ?= .output_cap.esr`, so the picked row's figure is the converter's ESR when the board states none, and a board that states `.output_esr` (the datasheet's maximum for the capacitor it means to fit, at the switching frequency, the bias and the temperature of the board; a range gives the worst end) wins over what the row records, as over any `?=`. A row that records no ESR leaves `.output_ripple` open, as no row at all did (below). The solver picks the capacitor without checking a stated figure against the row's own.
 
 ```nsm evaluate
 import src::zbk2::Zbk2
@@ -751,13 +751,13 @@ board TooQuiet {
 
 ```text
 error: no `capacitor` candidate satisfies `reg.output_cap`: the closest of the 34 that fit, 1 x 10uF 20% 10V X5R 0402 C315248, fails because reg.output_cap.total_effective_capacitance must always be at least reg.ic.min_output_capacitance, but 4.908uF..7.686uF is not always above 10uF (`reg.output_cap.effective_capacitance` is unknown for some candidates, so they were not used: no derating data for 27)
-    --> std/parts/regulator.nsm:606:5
+    --> std/parts/regulator.nsm:607:5
     |
-606 |     .output_cap.total_effective_capacitance >= .ic.min_output_capacitance
+607 |     .output_cap.total_effective_capacitance >= .ic.min_output_capacitance
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
-A board that states a limit and no ESR is not judged: the relation that reads `.output_esr` is skipped (ADR 0074), so `.output_ripple` has no value and the limit is listed as not evaluated, never passed. The capacitor's term alone would pass a limit that the ESR's would break, so it is not used. A board that states neither has no ripple check and the build says nothing about it.
+A board that states a limit and no ESR, with a capacitor whose row records none, is not judged: the relation that reads `.output_esr` has nothing to read (ADR 0074), so `.output_ripple` has no value and the limit is listed as not evaluated, never passed. The capacitor's term alone would pass a limit that the ESR's would break, so it is not used. A board that states neither has no ripple check and the build says nothing about it.
 
 ```nsm evaluate
 import src::zbk2::Zbk2
@@ -775,6 +775,38 @@ board NoEsr {
     }
     .reg: Buck<Zbk2> {
         .vout.voltage &= 1.8V +/- 3%
+        .output_ripple <= 20mV
+    }
+
+    .input ~ .reg.vin
+    .reg.vout ~ .output
+}
+```
+
+A capacitor row that records an `esr` is the other way to state it. This file (invented, like the file of chapter 12) adds a 47 uF capacitor that records 3 mohm, and the board picks it by its `.mpn` and states a limit and no ESR: the row's figure is the converter's `.output_esr`, and the limit is judged with it, in the worst case of every range as above. A board that stated `.output_esr &= 5mohm` too would be judged with 5 mohm, and a row that left the cell empty would leave the ripple open, as in the board above.
+
+```csv file=catalogs/capacitor.csv set=esr
+mpn,capacitance,effective_capacitance,max_voltage,package,dielectric,esr,library,source,notes
+ACME-C47U,47uF +/- 20%,derate capacitance by bias: 0:1 6.3:0.5,6.3V,0805,X5R,3mohm,Basic,https://example.invalid/acme-c47u.pdf page 4 table 2,"ESR: invented, one maximum at 1 MHz with no DC bias"
+```
+
+```nsm evaluate catalogs=esr
+import src::zbk2::Zbk2
+import std::parts::regulator::Buck
+import std::sources::Rail
+
+board RowEsr {
+    .input: Rail {
+        .voltage &= 5V +/- 5%
+        .pos.net &= "VIN"
+    }
+    .output: Rail {
+        .pos.net &= "1V8"
+        .current &= 0mA..1A
+    }
+    .reg: Buck<Zbk2> {
+        .vout.voltage &= 1.8V +/- 3%
+        .output_cap.mpn &= "ACME-C47U"
         .output_ripple <= 20mV
     }
 
@@ -1203,9 +1235,9 @@ board Budget {
 
 ```text
 error: no `fuse` candidate satisfies `fuse`: the closest of the 8 that fit, 1206HV-3A fuse 3A 125V 1206 C21261120, fails because fuse.current must always be at most fuse.rated_current, but 100mA..1kA is not always below 3A (the currents on net `VFUSED`: -fuse.current (100mA..1kA) + load.current (100mA..1kA) add up to zero; net `VIN`: fuse.current (100mA..1kA) + input.current (-1kA..-100mA) add up to zero)
-    --> std/parts/passive.nsm:413:5
+    --> std/parts/passive.nsm:420:5
     |
-413 |     .current <= .rated_current
+420 |     .current <= .rated_current
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -1229,9 +1261,9 @@ board Saturates {
 
 ```text
 error: no `inductor` candidate satisfies `l`: the closest of the 1 that fit, MHCD322512A-2R2M-A8S 2.2uH 3.6A inductor 1210 C285758, fails because l.current must always be at most l.saturation_current, but 500A is not always below 3.6A
-    --> std/parts/passive.nsm:288:5
+    --> std/parts/passive.nsm:295:5
     |
-288 |     .current <= .saturation_current
+295 |     .current <= .saturation_current
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -1295,9 +1327,9 @@ board Arcs {
 
 ```text
 error: no `fuse` candidate satisfies `fuse`: the closest of the 8 that fit, 1206HV-3A fuse 3A 125V 1206 C21261120, fails because fuse.supply_peak must always be at most fuse.rated_voltage, but 5kV is not always below 125V
-    --> std/parts/passive.nsm:414:5
+    --> std/parts/passive.nsm:421:5
     |
-414 |     .supply_peak <= .rated_voltage
+421 |     .supply_peak <= .rated_voltage
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 

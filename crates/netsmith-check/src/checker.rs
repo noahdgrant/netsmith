@@ -1615,6 +1615,15 @@ impl<'a> Checker<'a> {
         })
     }
 
+    /// Whether the statement being lowered is in a definition that is used (a part's, a
+    /// generic's or a module's, the library's or a project's) and not in a board: the relations
+    /// of `Relation::own`. A module states what is always true of the parts it holds, as a part
+    /// does of itself, and the board that uses it has said nothing about a value those
+    /// relations read.
+    pub(crate) fn in_used_definition(&self) -> bool {
+        self.in_own_definition() || self.in_kind(DefKind::Module)
+    }
+
     pub(crate) fn current(&self) -> InstId {
         *self
             .scope

@@ -876,6 +876,9 @@ fn solve_model(model: &Model, catalogs: &Catalogs, unit: &str) -> Solution {
         match s.verify(r) {
             Verdict::Pass => {}
             Verdict::Unknown if own || between_parts.contains(&i) => {}
+            // A member that a catalog column provides and the picked row leaves empty (ADR
+            // 0074): nothing was stated that is missing, so nothing is listed.
+            Verdict::Unknown if waits_on_an_empty_cell(&s.model, r) => {}
             Verdict::Unknown if chain_currents.contains_key(&(r.source, r.span)) => {
                 chains_waiting.push(i);
             }
@@ -965,6 +968,18 @@ fn solve_model(model: &Model, catalogs: &Catalogs, unit: &str) -> Solution {
         dc,
         net_currents,
     }
+}
+
+/// Whether a relation reads an `optional` member that only an optional column of its part's
+/// catalog states (`Field::waits_on_row`) and that no row gave a value.
+fn waits_on_an_empty_cell(model: &Model, r: &Relation) -> bool {
+    let mut fields = Vec::new();
+    fields_in(&r.lhs, &mut fields);
+    fields_in(&r.rhs, &mut fields);
+    fields.iter().any(|&f| {
+        let field = model.field(f);
+        field.waits_on_row && matches!(field.domain, Domain::Unset)
+    })
 }
 
 /// The circles of values that stayed open and have a bound that reads them (or a value
