@@ -293,9 +293,15 @@ mod tests {
                 // Each strip is in the box round it, and together they take far less room.
                 assert!(cover.iter().all(|c| whole.contains(c)));
                 let area = Rect::union_area(&cover);
-                assert!(area < whole.width() * whole.height() * 0.7, "{area} at {deg}");
+                assert!(
+                    area < whole.width() * whole.height() * 0.7,
+                    "{area} at {deg}"
+                );
                 // More than the rectangle's own 4 mm2, by less than a strip along its outline.
-                assert!(area > 4.0 - 1e-9 && area < 4.0 + 10.0 * TURNED_STRIP, "{area}");
+                assert!(
+                    area > 4.0 - 1e-9 && area < 4.0 + 10.0 * TURNED_STRIP,
+                    "{area}"
+                );
             }
         }
     }
