@@ -1067,3 +1067,68 @@ fn weighing_track_overflow_leaves_the_bins_less_overflowed_than_not() {
     eprintln!("overflow over four seeds: {weighed:.1} mm weighed, {not:.1} mm not");
     assert!(weighed < not, "{weighed} weighed, {not} not");
 }
+
+/// `n` resistors (a multiple of 12) two to a place, six places to a row 6 mm apart, in a
+/// region of 30 mm by 6 mm for each row: half of them overlap another at the start, and a
+/// board of twice the parts is twice the area. With `away`, every part starts 130 mm right
+/// of the region instead.
+fn piled(n: usize, away: bool) -> (Board, Rect) {
+    let paths = vec![""; n];
+    let mut board = resistors(&paths);
+    for (k, part) in board.parts.iter_mut().enumerate() {
+        let spot = k / 2;
+        part.at = Pt::new(
+            3.0 + (spot % 6) as f64 * 4.5 + if away { 130.0 } else { 0.0 },
+            3.0 + (spot / 6) as f64 * 6.0,
+        );
+    }
+    let region = Rect::new(Pt::new(0.0, 0.0), Pt::new(30.0, (n / 12) as f64 * 6.0));
+    (board, region)
+}
+
+/// What legalising the piled board of `n` parts did: whether it succeeded, the poses it
+/// tried and the pairs of parts it costed.
+fn legalise_piled(n: usize, away: bool) -> (bool, u64, u64) {
+    let (board, region) = piled(n, away);
+    let mut parts = board.parts.clone();
+    let fixed = vec![false; n];
+    let rules = board.rules.clone();
+    let mut problem = problem_of(&board, &fixed, &rules);
+    problem.region = region;
+    problem.outline = region;
+    let mut e = Engine::new(&mut parts, &problem);
+    e.pairs_costed.set(0);
+    let all = e.legalise();
+    (all, e.poses_tried, e.pairs_costed.get())
+}
+
+#[test]
+fn legalising_costs_each_pose_against_the_parts_near_it_not_against_every_part() {
+    // Issue #766: each pose a part was tried at cost a pass over every part, so a crowded
+    // board of twice the parts cost about four times the work. The parts a pose is costed
+    // against are those its reach meets, about as many on a board of twice the size.
+    let (small_ok, small_poses, small_pairs) = legalise_piled(48, false);
+    let (big_ok, big_poses, big_pairs) = legalise_piled(96, false);
+    assert!(small_ok && big_ok);
+    assert!(small_poses > 0 && big_poses > small_poses);
+    let (small, big) = (
+        small_pairs as f64 / small_poses as f64,
+        big_pairs as f64 / big_poses as f64,
+    );
+    println!("pairs costed for each pose tried: {small:.1} of 48 parts, {big:.1} of 96");
+    // A pass over every part would be 47 for each pose, and 95 on the board of 96.
+    assert!(small < 36.0, "{small_pairs} pairs for {small_poses} poses");
+    assert!(
+        big < 1.5 * small,
+        "{big_pairs} pairs for {big_poses} poses, against {small_pairs} for {small_poses}"
+    );
+}
+
+#[test]
+fn a_part_that_starts_beyond_the_reach_of_legalising_tries_no_pose() {
+    // Issue #766: the rows the annealer starts from may be far outside a fixed outline, and
+    // each part there tried every pose round it, none inside the walls.
+    let (all, poses, _) = legalise_piled(48, true);
+    assert!(!all);
+    assert_eq!(poses, 0);
+}

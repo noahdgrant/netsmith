@@ -9,7 +9,8 @@ impl<'a> Engine<'a> {
         for &k in &self.links_of[i] {
             hard += self.link_cost(k);
         }
-        for j in 0..self.models.len() {
+        // Only the parts that can cost something with it: the others add nothing.
+        for j in self.near(i) {
             if j != i {
                 hard += self.pair(i, j).hard;
             }
@@ -30,8 +31,10 @@ impl<'a> Engine<'a> {
     /// over a neighbour moves by the least that clears it, where the coarse pass, which is in
     /// half millimetres, would have gone further or found nothing (B5, PROVISIONAL).
     ///
-    /// On a crowded board most parts start over others and each searches rings far out, so a
-    /// pass can take minutes (issue #766): it says how many parts it has been through
+    /// On a crowded board most parts start over others and each searches rings far out
+    /// (issue #766). A pose is costed only against the parts near it ([`Engine::near`]), and the poses
+    /// whose courtyard cannot be inside the walls are not tried ([`Engine::inside_walls`]);
+    /// neither changes which pose is found first. The pass says how many parts it has been through
     /// (`parts legalised`), a cancel stops it at each ring, and a limit whose time is up (issue #764) ends
     /// it, the parts not yet reached left where they are.
     pub(super) fn legalise_by(&mut self, step: i64, reach: i64) -> bool {
@@ -48,15 +51,31 @@ impl<'a> Engine<'a> {
                 break;
             }
             let start = self.poses[i];
+            let inside = self.inside_walls(i, start, step);
             let mut found = false;
             'rings: for ring in 1..=reach {
-                // A ring is up to `8 * ring` poses, each a pass over the parts.
+                // A ring is up to `8 * ring` poses, each a pass over the parts near it.
                 netsmith_core::job::checkpoint();
+                if let Some(b) = inside
+                    && (b.0 > ring || b.2 < -ring || b.1 > ring || b.3 < -ring)
+                {
+                    // No pose of this ring has the courtyard inside the walls.
+                    continue;
+                }
+                // The ring's poses row by row, each row from left to right.
                 for dy in -ring..=ring {
-                    for dx in -ring..=ring {
-                        if dx.abs().max(dy.abs()) != ring {
+                    let edge = dy.abs() == ring;
+                    let mut dx = -ring;
+                    while dx <= ring {
+                        let here = (dx, dy);
+                        dx = if edge || dx == ring { dx + 1 } else { ring };
+                        let (dx, dy) = here;
+                        if let Some(b) = inside
+                            && !((b.0..=b.2).contains(&dx) && (b.1..=b.3).contains(&dy))
+                        {
                             continue;
                         }
+                        self.poses_tried += 1;
                         let pose = self.clamp(
                             i,
                             Pose {
@@ -91,6 +110,43 @@ impl<'a> Engine<'a> {
         netsmith_core::job::report("parts legalised", total, Some(total));
         self.refresh_all();
         all
+    }
+
+    /// The steps `(dx, dy)` of `step` units from `start` that can put part `i`'s courtyard
+    /// inside the walls, as a box `(dx_lo, dy_lo, dx_hi, dy_hi)`: a pose outside it costs
+    /// more than [`HARD_EPS`] by the walls alone ([`Engine::single`]), so trying it is no use.
+    /// The box is a little larger than what holds, never smaller. `None` for a part whose
+    /// poses the requirements limit or that relations move others with (any pose is tried).
+    ///
+    /// On a crowded fixed outline most parts start in the rows far outside it (issue #766):
+    /// each tried every pose of every ring before, all outside the walls.
+    pub(super) fn inside_walls(
+        &self,
+        i: usize,
+        start: Pose,
+        step: i64,
+    ) -> Option<(i64, i64, i64, i64)> {
+        if self.models[i].want.is_some() || !self.links_of[i].is_empty() {
+            return None;
+        }
+        let court = self.shape(i).court;
+        let sub = self.sub[i];
+        let r = &self.p.region;
+        // A corner nearer the outline than the wall less this costs more than `HARD_EPS`.
+        let wall = self.p.rules.edge_wall() - HARD_EPS / W_HARD - 1e-6;
+        let unit = UNIT * step as f64;
+        // The origin is `start * UNIT + d * unit + sub`.
+        let at = |lo: f64, origin: f64| (lo - origin) / unit;
+        let (ox, oy) = (start.x as f64 * UNIT + sub.x, start.y as f64 * UNIT + sub.y);
+        let x_lo = at(r.min.x + wall - court.min.x, ox).floor();
+        let x_hi = at(r.max.x - wall - court.max.x, ox).ceil();
+        let y_lo = at(r.min.y + wall - court.min.y, oy).floor();
+        let y_hi = at(r.max.y - wall - court.max.y, oy).ceil();
+        if ![x_lo, x_hi, y_lo, y_hi].iter().all(|v| v.is_finite()) {
+            return None;
+        }
+        let bound = |v: f64| v.clamp(-1e15, 1e15) as i64;
+        Some((bound(x_lo), bound(y_lo), bound(x_hi), bound(y_hi)))
     }
 
     /// Where `i` goes to be beside `j`, on the side of `j`'s courtyard nearest `towards`.
