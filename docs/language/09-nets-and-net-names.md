@@ -72,7 +72,7 @@ error: these pins are connected but name their net differently: `A` on `supply.p
 
 ### Ground
 
-Ground is stated once, by not stating it. `std::sources::Rail` offers `.neg.net ?= "GND"` (a default, ADR 0051), so a rail whose ground no statement names is on `GND`, and every such rail on a board shares that one net. A rail that has its own ground, an analog one or an isolated one, states it with `&=`, which replaces the default on that rail (ADR 0121).
+Ground is stated once, by not stating it. `std::sources::Rail` offers `.neg.net ?= "GND"` (a default, ADR 0051), so a rail whose ground no statement names is on `GND`, and every such rail on a board shares that one net. A rail that has its own ground, an analog one or an isolated one, states it with `&=`, which replaces the default on that rail (ADR 0121). An isolated one says so as well, `.isolated &= "isolated DC-DC"`, and is then refused on the ground of a rail that is not isolated (see Systems and ports, "Isolated grounds").
 
 ```nsm
 import std::parts::passive::Resistor

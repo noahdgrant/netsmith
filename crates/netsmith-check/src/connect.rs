@@ -713,6 +713,7 @@ impl Checker<'_> {
         self.model.nets = built;
         self.chain_currents();
         self.analyse_mates();
+        self.check_isolated_grounds();
         self.balance_currents();
         self.derive_bias();
         self.derive_chain_values();

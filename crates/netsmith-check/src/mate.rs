@@ -75,7 +75,8 @@
 //! **Grounds.** Each board keeps its ground net. [`Model::ground_groups`] lists the nets joined by
 //! contacts that are ground on both sides (union-find over board and net name), with how many
 //! contacts each mate gives, and the editor's System view shows them (`carrier.GND + sensor.GND`).
-//! Isolated grounds (a barrier that must not join grounds) cannot be said.
+//! An isolated ground (a barrier that must not join grounds, issue #793) is the `.isolated` of a
+//! rail, and the mates must not join it to another ground of its board: `isolation.rs`.
 //!
 //! **The current in the contacts.** For each rail pair a mate joins and each connector with a
 //! `pin_current`, two relations (the current and its negative): `contacts * pin_current >=
@@ -97,16 +98,14 @@
 //! where pin 1 sits on the PCB.
 //!
 //! **Not built** (issues #16 and #62): edge connectors and the plug-in's `card_thickness` check;
-//! flat cables and wire to board (they need a cable or harness definition); isolated grounds;
-//! stacking, side, `.mount` and `.mated_height` (they need the layout file and part heights); pin
-//! 1 on the PCB; a rating for the 2x10 header; derating of several loaded contacts (no datasheet
-//! read gives one). Messages are one line each (the multi-line form would need a notes field on
-//! diagnostics).
+//! flat cables and wire to board (they need a cable or harness definition); a rating of an
+//! isolation barrier; stacking, side, `.mount` and `.mated_height` (they need the layout file
+//! and part heights); pin 1 on the PCB; a rating for the 2x10 header; derating of several
+//! loaded contacts (no datasheet read gives one). Messages are one line each (the multi-line
+//! form would need a notes field on diagnostics).
 //!
-//! **Refused, not built** (ADR 0040, issue #16): isolated grounds are "refused in v1. Recommend
-//! ... a `.isolated` mark on a rail, with its own check, if a design needs them". Pin ratings are sourced by
-//! series from public datasheets, starting with the one series the kit uses, and the rating check
-//! is "not evaluated" for a connector with no row.
+//! Pin ratings are sourced by series from public datasheets, starting with the one series the
+//! kit uses, and the rating check is "not evaluated" for a connector with no row.
 
 use std::collections::{BTreeMap, HashMap};
 

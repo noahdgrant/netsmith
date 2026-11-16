@@ -80,4 +80,14 @@ interface Rail {
     // only a board names nets (ADR 0121); a rail joined (`~`) to a pin or rail whose net a
     // `&=` names keeps that name.
     .neg.net ?= "GND"
+    /// `"none"`, or what keeps this rail's ground apart from the board's other grounds (`"isolated
+    /// DC-DC"`, `"digital isolator"`): an isolated ground. Unset is the same as `"none"`. A rail
+    /// that states it has a ground of its own, so it states its net too (`.neg.net &=
+    /// "ISO_GND"`), and its ground is refused on the net of a rail of the board that is not
+    /// isolated. A system's mates must not join it to another ground of its board, through
+    /// other boards' grounds, since that joins the two sides of the barrier. Each ground is a
+    /// net of its own, so the voltages, the balance of currents and the current through mated
+    /// contacts are read for each apart. Rails joined with `~` share it (issue #793, the
+    /// direction of ADR 0040).
+    .isolated: String
 }
