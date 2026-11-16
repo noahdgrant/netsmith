@@ -603,7 +603,11 @@ impl Workspace {
                         // there or cannot be read, or a path outside the project, is a problem
                         // and the part keeps its generated shape. The files are read once
                         // here and again only when they change (`models::read`).
-                        let found = netsmith_fabricate::models::locate(&mut built.design, &places);
+                        let found = netsmith_fabricate::models::locate(
+                            &mut built.design,
+                            &places,
+                            (*libraries).as_ref().ok().map(|l| &l.mapping),
+                        );
                         for (severity, message) in found
                             .errors
                             .iter()

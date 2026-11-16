@@ -436,9 +436,12 @@ pub fn fab_detailed(
         let mut errors = String::new();
         for built in &mut built_boards {
             let label = built.label();
-            let found = crate::models::locate(&mut built.design, places);
+            let found = crate::models::locate(&mut built.design, places, Some(&libraries.mapping));
             for warning in found.warnings {
                 say(format!("warning: {label}: {warning}"));
+            }
+            for note in found.notes {
+                say(format!("note: {label}: {note}"));
             }
             for error in found.errors {
                 errors.push_str(&format!("error: {label}: {error}\n"));

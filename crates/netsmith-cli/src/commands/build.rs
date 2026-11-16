@@ -249,7 +249,11 @@ pub(super) fn run_build(run: &BuildRun) -> ExitCode {
         let mut misplaced = false;
         for b in &mut boards {
             let label = b.label();
-            let found = netsmith_fabricate::models::locate(&mut b.design, &places);
+            let found = netsmith_fabricate::models::locate(
+                &mut b.design,
+                &places,
+                Some(&libraries.mapping),
+            );
             // A case model that is not there leaves the fit unchecked (ADR 0109): a warning
             // here, and an error from `fab` when constraints are strict.
             for warning in found.warnings.iter().chain(&found.unchecked) {
@@ -260,6 +264,17 @@ pub(super) fn run_build(run: &BuildRun) -> ExitCode {
                     });
                 } else {
                     eprintln!("warning: {label}: {warning}");
+                }
+            }
+            // What the project's model table drew, and which parts have no model (#763).
+            for note in &found.notes {
+                if json {
+                    report.findings.push(Finding {
+                        board: Some(label.clone()),
+                        ..Finding::plain(Severity::Note, "note.other", note.clone())
+                    });
+                } else {
+                    eprintln!("note: {label}: {note}");
                 }
             }
             for error in &found.errors {

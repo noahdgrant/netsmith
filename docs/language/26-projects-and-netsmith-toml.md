@@ -33,6 +33,8 @@ Only `name` is required.
 | `step` | Optional. Whether `fab` writes the board as STEP, `<board>.step`, into the fab package, for mechanical CAD: `true`, the default, writes it; `step = false` leaves it out, and removes the one of an earlier run. `fab --no-step` leaves it out for one run. See `docs/BOARD3D.md`, "In the fab package". |
 | `glb` | Optional. Whether `fab` writes the board's 3D scene as `<board>.glb` into the fab package: `true`, the default, writes it; `glb = false` leaves it out, and removes the one of an earlier run. `fab --no-glb` leaves it out for one run. See `docs/BOARD3D.md`, "In the fab package". |
 
+Beside `[project]`, the file may have `[order.<name>.boards]` tables (_Orders_, below), a `[supply]` table (_Catalog files_), and a model table: a `[models]` table with `folder`, and `[[model]]` rows with `footprint`, `file`, `offset` and `rotation`, the STEP model a part is drawn from when it states none (_A model table_ in the chapter on the shape of a board). Any other table is refused.
+
 ### Orders
 
 An order says which boards go into one fabrication order and how many of each (ADR 0035). It is a table `[order.<name>.boards]` beside `[project]`: each key is a board as its output folder is named (`Board`, or `System/member`), or a system's name for all its members, and the value is the quantity.
