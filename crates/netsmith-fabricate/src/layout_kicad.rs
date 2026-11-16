@@ -154,14 +154,61 @@ pub fn marked_kicad_pcb(board: &Board, findings: usize) -> String {
     Sexp::List(items).to_kicad_string()
 }
 
-/// Write the placed `board` (named `label`) to `out` (a `.kicad_pcb`), with its `.kicad_pro` and
-/// the list of the placement's findings (`<stem>.findings.txt`) beside it. The folder is made.
-pub fn export(
-    label: &str,
-    board: &Board,
-    placing: Placing,
-    out: &Path,
-) -> Result<Exported, String> {
+/// The three files of an export, in memory: [`export`] writes them, and the editor's download
+/// hands them out as a zip (issue #1001).
+#[derive(Debug)]
+pub struct Package {
+    pub exported: Exported,
+    /// The text of the `.kicad_pcb`, marked as not for fabrication.
+    pub pcb: String,
+    /// The text of the `.kicad_pro` beside it.
+    pub pro: String,
+    /// The list of the placement's findings.
+    pub findings: String,
+}
+
+impl Package {
+    /// The files in a zip, inside a folder of the board file's stem so that unzipping gives one
+    /// folder KiCad opens as a project. Every entry has the same fixed timestamp and
+    /// permissions, so equal input gives equal bytes.
+    pub fn zip(&self) -> Result<Vec<u8>, String> {
+        use std::io::Write as _;
+        use zip::write::SimpleFileOptions;
+        let err = |e: &dyn std::fmt::Display| format!("zip: {e}");
+        let named = |file: &str| {
+            Path::new(file)
+                .file_name()
+                .map_or_else(|| file.to_string(), |n| n.to_string_lossy().into_owned())
+        };
+        let board_file = named(&self.exported.file);
+        let folder = board_file
+            .strip_suffix(".kicad_pcb")
+            .unwrap_or(&board_file)
+            .to_string();
+        let options = SimpleFileOptions::default()
+            .compression_method(zip::CompressionMethod::Deflated)
+            .last_modified_time(zip::DateTime::default());
+        let mut writer = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+        writer
+            .add_directory(format!("{folder}/"), options.unix_permissions(0o755))
+            .map_err(|e| err(&e))?;
+        for (file, text) in [
+            (board_file, &self.pcb),
+            (named(&self.exported.project), &self.pro),
+            (named(&self.exported.findings_file), &self.findings),
+        ] {
+            writer
+                .start_file(format!("{folder}/{file}"), options.unix_permissions(0o644))
+                .map_err(|e| err(&e))?;
+            writer.write_all(text.as_bytes()).map_err(|e| err(&e))?;
+        }
+        Ok(writer.finish().map_err(|e| err(&e))?.into_inner())
+    }
+}
+
+/// The files of the placed `board` (named `label`) as [`export`] writes them to `out`, with
+/// nothing written.
+pub fn package(label: &str, board: &Board, placing: Placing, out: &Path) -> Package {
     let project = out.with_extension("kicad_pro");
     let findings_file = out.with_extension("findings.txt");
     let exported = Exported {
@@ -174,25 +221,42 @@ pub fn export(
         conflicts: placing.conflicts,
         placement_refused: placing.refused,
     };
-    let mut listed = format!(
+    let mut findings = format!(
         "{label}: {NOT_FOR_FABRICATION}\n\nThe findings of the placement on {} ({}):\n",
         exported.file,
         exported.findings()
     );
     for line in exported.lines() {
-        listed.push_str(&format!("{line}\n"));
+        findings.push_str(&format!("{line}\n"));
     }
+    Package {
+        pcb: marked_kicad_pcb(board, exported.findings()),
+        pro: netsmith_pcb::kicad_pro(board),
+        findings,
+        exported,
+    }
+}
+
+/// Write the placed `board` (named `label`) to `out` (a `.kicad_pcb`), with its `.kicad_pro` and
+/// the list of the placement's findings (`<stem>.findings.txt`) beside it. The folder is made.
+pub fn export(
+    label: &str,
+    board: &Board,
+    placing: Placing,
+    out: &Path,
+) -> Result<Exported, String> {
+    let package = package(label, board, placing, out);
     if let Some(dir) = out.parent().filter(|d| !d.as_os_str().is_empty()) {
         std::fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
     }
     for (file, text) in [
-        (out, marked_kicad_pcb(board, exported.findings())),
-        (project.as_path(), netsmith_pcb::kicad_pro(board)),
-        (findings_file.as_path(), listed),
+        (out.to_path_buf(), &package.pcb),
+        (out.with_extension("kicad_pro"), &package.pro),
+        (out.with_extension("findings.txt"), &package.findings),
     ] {
-        std::fs::write(file, text).map_err(|e| format!("{}: {e}", file.display()))?;
+        std::fs::write(&file, text).map_err(|e| format!("{}: {e}", file.display()))?;
     }
-    Ok(exported)
+    Ok(package.exported)
 }
 
 /// One footprint of a KiCad board as [`import`] reads it.

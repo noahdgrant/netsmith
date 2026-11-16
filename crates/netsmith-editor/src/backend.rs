@@ -309,6 +309,14 @@ pub trait Backend: Send + Sync + 'static {
             "there is no 3D scene of `{board}`"
         )))
     }
+    /// The board as [`Backend::pcb_scene`] has it placed, not routed, as the files `netsmith
+    /// layout export` writes (the `.kicad_pcb`, the `.kicad_pro` and the list of the placement's
+    /// findings) in a zip: also while the placement has findings (issue #1001).
+    fn pcb_kicad(&self, board: &str) -> Result<Attachment, ApiError> {
+        Err(ApiError::not_found(format!(
+            "there is no KiCad board of `{board}`"
+        )))
+    }
     /// The fill of the board's pours, planes and routes-file zones as [`Backend::pcb_scene`] has
     /// it placed (and routed): what the 3D scene and the Gerbers hold, for the 2D view to draw
     /// under the copper. A board that cannot be filled is answered with the reason in the

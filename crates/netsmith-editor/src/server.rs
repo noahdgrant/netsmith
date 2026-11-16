@@ -31,6 +31,7 @@
 //! | `POST /api/pcb/walk` | the way for a straight track of a net from its last corner to a point, round the copper the routes file's check reads (issue #726): the corners (at most 45 degrees) or why there is none, always `200`, the router's copper the track crosses (`crossed`, not an obstacle: an edit throws it away), and with `shove` the unlocked shapes of the routes file the way moves aside (`shoved`, or `stuck`: why none could); a track on several layers sends its runs before the last layer change (`earlier`) and the vias at the changes (issue 1009); nothing is written |
 //! | `POST /api/pcb/shove` | whether a via, or the shapes a drag moves, may go where they are, by name what they are too near (`reason`), and with `shove` the unlocked shapes of the routes file moved aside (issue 1009); always `200`; nothing is written |
 //! | `POST /api/pcb/reroute` | the router's nets a track being drawn (a `PcbWalk`) crosses, routed again round it with everything else fixed, as a preview (issue 1009); nothing is written |
+//! | `GET /api/pcb/kicad?board=` | the board as `scene` has it placed and not routed, as a zip (`<board>.placed-kicad.zip`) of what `netsmith layout export` writes: the `.kicad_pcb`, the `.kicad_pro` and the list of the placement's findings, also while the placement has findings (issue #1001) |
 //! | `GET /api/pcb/3d?board=` | the board as `scene` has it placed, as glTF 2.0 binary (`model/gltf-binary`, ADR 0105), the bytes `netsmith board3d --glb` writes; the layout stamp of that placement in `X-Netsmith-Layout-Stamp` |
 //! | `POST /api/build`, `/api/fab`, `/api/order` and their `/cancel` | the commands of the same names; a cancelled job answers `499` and keeps nothing it was making (ADR 0062) |
 //! | `GET /api/download`, `/api/order/download` | a file `fab` or an order wrote |
@@ -162,6 +163,7 @@ const NEEDS_ANALYSIS: &[&str] = &[
     "/api/pcb/route",
     "/api/pcb/scene",
     "/api/pcb/pours",
+    "/api/pcb/kicad",
     "/api/pcb/edit",
     "/api/pcb/regenerate",
     "/api/pcb/routes",
@@ -364,6 +366,7 @@ fn router(state: Shared) -> Router {
         .route("/api/pcb/scene", get(pcb_scene))
         .route("/api/pcb/pours", get(pcb_pours))
         .route("/api/pcb/3d", get(pcb_3d))
+        .route("/api/pcb/kicad", get(pcb_kicad))
         .route("/api/pcb/edit", post(pcb_edit))
         .route("/api/pcb/regenerate", post(pcb_regenerate))
         .route("/api/pcb/routes", post(pcb_routes))
@@ -898,6 +901,13 @@ async fn pcb_3d(State(s): State<Shared>, Query(q): Query1) -> Result<Response, A
         response.headers_mut().insert(LAYOUT_STAMP_HEADER, stamp);
     }
     Ok(response)
+}
+
+/// The placed board, not routed, as a zip of KiCad files to download (issue #1001).
+async fn pcb_kicad(State(s): State<Shared>, Query(q): Query1) -> Result<Response, ApiError> {
+    let board = param(&q, "board")?;
+    let attachment = blocking(move || s.backend.pcb_kicad(&board)).await??;
+    Ok(attached(attachment))
 }
 
 async fn pcb_findings(

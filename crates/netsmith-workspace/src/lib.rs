@@ -154,6 +154,19 @@ fn cancellable<T>(cancel: &Cancel, what: &str, work: impl FnOnce() -> T) -> Resu
 }
 
 /// The fingerprint of the program of each `.nsm` file in `paths` that reads and lexes.
+/// The files of the placed board as one zip to download (issue #1001).
+fn kicad_attachment(
+    board: &str,
+    package: &netsmith_fabricate::layout_kicad::Package,
+) -> Result<Attachment, ApiError> {
+    let bytes = package.zip().map_err(ApiError::internal)?;
+    Ok(Attachment {
+        name: format!("{board}.placed-kicad.zip"),
+        content_type: "application/zip".to_string(),
+        bytes,
+    })
+}
+
 fn code_of(paths: &[PathBuf]) -> HashMap<PathBuf, u64> {
     paths
         .iter()
@@ -1382,6 +1395,27 @@ impl Backend for Workspace {
             state.pcb.entry(board.to_string()).or_insert(entry);
         }
         Ok(glb)
+    }
+
+    fn pcb_kicad(&self, board: &str) -> Result<Attachment, ApiError> {
+        // The placement `pcb_scene` draws, kept in `state.pcb`: placed here only when the board
+        // has not been placed since the files were read, and then kept for the 2D view too.
+        let (version, data) = {
+            let state = self.fresh();
+            let data = state.snapshot.board_handle(board)?;
+            if let Some(entry) = state.pcb.get(board) {
+                let package = entry.kicad_package(&data, board);
+                return kicad_attachment(board, &package);
+            }
+            (state.version, data)
+        };
+        let entry = pcb::place(&data, board)?;
+        let package = entry.kicad_package(&data, board);
+        let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        if state.version == version {
+            state.pcb.entry(board.to_string()).or_insert(entry);
+        }
+        kicad_attachment(board, &package)
     }
 
     fn pcb_pours(&self, board: &str) -> Result<netsmith_editor::api::PcbPours, ApiError> {

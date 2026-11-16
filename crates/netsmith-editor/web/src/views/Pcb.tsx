@@ -229,6 +229,16 @@ export function Pcb() {
             {busy ? <Spinner size={13} /> : <Icon name="route" size={14} />}
             {busy ? 'Routing…' : report?.routed ? 'Route again' : 'Place and route'}
           </button>
+          <a
+            class="tool"
+            href={api.pcbKicadUrl(name)}
+            download
+            data-testid="pcb-kicad"
+            data-tip="Download the board as it is placed, not routed, as KiCad files (a zip with the .kicad_pcb, the .kicad_pro and the placement's findings): also while the placement has findings. Not for fabrication"
+          >
+            <Icon name="download" size={14} />
+            <span class="tb-label">Download KiCad board</span>
+          </a>
           {busy && (
             <button class="tool" data-tip="Stop the router; what it has routed is kept" onClick={() => void api.cancelRoute()}>
               Cancel

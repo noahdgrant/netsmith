@@ -183,6 +183,8 @@ export const api = {
   route: (board: string) => post<PcbReport>(`/api/pcb/route?${q({ board })}`),
   pcbScene: (board: string) => getJson<PcbScene>(`/api/pcb/scene?${q({ board })}`),
   /** The fill of the board's pours, planes and zones (the 2D view draws it under the copper). */
+  /** The placed board, not routed, as a zip of KiCad files (the same as `netsmith layout export` writes), also while its placement has findings (issue 1001). */
+  pcbKicadUrl: (board: string) => `/api/pcb/kicad?${q({ board })}`,
   pcbPours: (board: string) => getJson<PcbPours>(`/api/pcb/pours?${q({ board })}`),
   pcbEdit: (edit: PcbEdit) => post<PcbEdited>('/api/pcb/edit', edit),
   /** One module placed again with the rest held (issue 825): a proposal, nothing written. `ApiFailure` 422 says why not. */
