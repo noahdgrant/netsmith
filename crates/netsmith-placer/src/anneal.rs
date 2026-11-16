@@ -20,6 +20,9 @@
 //!   with vias and detours.
 //! - **Track overflow** (off unless asked for, [`overflow`]): the track the nets ask of each bin
 //!   of 1 mm or more, and the room the pads take there, beyond what the bin holds.
+//! - **Escape room** (off unless asked for, [`escape`]): the nets that leave each side of a busy
+//!   part beyond what the corridor in front of the side holds, where the board's edge or another
+//!   part on its face is nearer than the escape ring's 1.5 mm.
 //! - **Cohesion**: the half perimeter of the box round the parts of each module instance
 //!   (each prefix of the instance path), so a module stays together.
 //! - **Decoupling**: the distance from a capacitor's pads to the power pins it decouples
@@ -215,7 +218,10 @@
 //! with many pads and few ratsnest lines crossing. Its estimate of the track each bin of the
 //! board is asked for beyond what it holds ([`overflow`], issue #820) is built and measured, but
 //! off: it lowered that overflow without leaving the router clearly fewer lines on the boards
-//! here, so a board packed harder than the router can untangle is still not helped. The placer shares the faces
+//! here, so a board packed harder than the router can untangle is still not helped. Nor is its
+//! measure of the nets that cannot leave a busy part's sides ([`escape`], issue #997), which is
+//! built and off: on the tight board the module stays against the edge and the router leaves
+//! more lines. The placer shares the faces
 //! only when a size to fit needs it, and never flips a part for wire length. Hierarchical
 //! placement (arrange each module, then place the blocks) is not built: cohesion is the cost
 //! above. The weights were tuned on four boards (one not in this repository) and a handful of
@@ -244,6 +250,7 @@ use netsmith_pcb::{Edges, Ended, OutsideAt, OverlapAt, Pt, Rect, Rules, short_mm
 
 mod build;
 mod cost;
+mod escape;
 mod explain;
 mod grid;
 mod moves;
@@ -340,6 +347,10 @@ const W_EDGE: f64 = 0.4;
 const W_AREA: f64 = 0.03;
 /// Each pair of ratsnest lines of two nets that cross.
 const W_CROSSING: f64 = 1.0;
+/// Each net that cannot leave a side of a busy part through the corridor in front of it, at
+/// the weight measured ([`escape`]); the placer's default is 0, the term left out.
+#[cfg(test)]
+const W_ESCAPE_ROOM: f64 = 10.0;
 /// Nets with more pads than this have no lines counted.
 const MAX_LINE_PADS: usize = 10;
 /// A part that is turned, or has its text off the top.
@@ -351,6 +362,9 @@ pub(crate) struct Problem<'a> {
     pub rules: &'a Rules,
     /// The nets poured as planes on inner layers: a pad reaches one with a via.
     pub planes: &'a [String],
+    /// The layers tracks run on: the two outer layers and the inner layers that are not
+    /// planes.
+    pub signal_layers: usize,
     /// The board's outline: the parts are placed inside it.
     pub region: Rect,
     pub corner_radius: f64,
@@ -392,6 +406,8 @@ pub(crate) struct Problem<'a> {
     pub face_keepouts: &'a [netsmith_pcb::FaceKeepout],
     /// The weight of track overflow ([`overflow`]), 0 for none.
     pub overflow: f64,
+    /// The weight of the escape shortfall of busy parts ([`escape`]), 0 for none.
+    pub escape_room: f64,
 }
 
 /// What a run ended with.
@@ -609,6 +625,9 @@ struct Model {
     body_is_courtyard: bool,
     /// The keepouts the part carries, which keep the other parts out where the part is.
     carries: Vec<Carry>,
+    /// For a busy part, the pads that leave it on each side of the box round its pads, for
+    /// each of its turns (one for a part that stays), [`escape`]; empty for any other part.
+    rims: Vec<Option<escape::Rim>>,
 }
 
 /// A keepout that a part carries, as the annealer measures it (ADR 0045 section 11).
@@ -730,6 +749,8 @@ struct NetModel {
     /// Whether the net's ratsnest lines are counted for crossings: a net that is not a plane
     /// and has few pads.
     lines: bool,
+    /// Whether the net is poured as a plane on an inner layer.
+    plane: bool,
 }
 
 struct Engine<'a> {
@@ -791,6 +812,11 @@ struct Engine<'a> {
     /// when `w_overflow` is more than 0.
     bins: overflow::Bins,
     w_overflow: f64,
+    /// The busy parts with pads that leave them ([`escape`]), and for each its escape
+    /// shortfall and the parts in front of it as last kept (by [`Engine::refresh`]).
+    escapers: Vec<usize>,
+    escape_kept: Vec<(f64, Vec<usize>)>,
+    w_escape: f64,
 }
 
 /// Place the parts that are not fixed so that the cost is least the search finds, and write

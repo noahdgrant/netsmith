@@ -71,6 +71,12 @@ pub fn board_from_design_placed(
     let mut u = Board::unplaced(design, mapping, library, placement)?;
     // A board that states no outline is as big as its parts need, as ever.
     let plane_nets: Vec<String> = u.planes.iter().map(|p| p.net.clone()).collect();
+    // The outer layers and each inner layer that no plane takes.
+    let inner = u.process.stackup.layers.saturating_sub(2) as usize;
+    let planes_inner = (1..=inner)
+        .filter(|n| u.planes.iter().any(|p| p.layer == format!("In{n}.Cu")))
+        .count();
+    let signal_layers = 2 + inner - planes_inner;
     let (outline, corner_radius) = match &design.features.outline {
         None => (
             place::arrange_best(
@@ -82,6 +88,7 @@ pub fn board_from_design_placed(
                     planes: &plane_nets,
                     corner_radius: 0.0,
                     pours: !design.features.pours.is_empty(),
+                    signal_layers,
                 },
             )
             .map_err(|e| {
@@ -99,6 +106,7 @@ pub fn board_from_design_placed(
                 &u.placement,
                 &plane_nets,
                 !design.features.pours.is_empty(),
+                signal_layers,
             )
             .map_err(|e| {
                 BoardError::DoesNotFit(explained(e, design, &u.parts, &u.base, &u.rules))

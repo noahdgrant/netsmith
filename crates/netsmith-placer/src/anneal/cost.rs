@@ -396,6 +396,9 @@ impl<'a> Engine<'a> {
         if self.w_overflow > 0.0 {
             c.soft += self.w_overflow * self.overflow_with(&touched, set);
         }
+        if self.w_escape > 0.0 {
+            c.soft += self.w_escape * self.escape_with(set);
+        }
         c.soft += self.area_cost();
         c
     }

@@ -71,6 +71,9 @@ impl<'a> Engine<'a> {
                 self.refresh_bins_part(i);
             }
         }
+        if self.w_escape > 0.0 {
+            self.refresh_escape(set);
+        }
     }
 
     pub(super) fn refresh_all(&mut self) {
@@ -84,6 +87,9 @@ impl<'a> Engine<'a> {
             for i in 0..self.models.len() {
                 self.refresh_bins_part(i);
             }
+        }
+        if self.w_escape > 0.0 {
+            self.refresh_escape_all();
         }
     }
 
