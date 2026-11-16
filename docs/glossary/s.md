@@ -98,6 +98,10 @@ _Avoid_: Nominal height (a nominal is the middle of a tolerance), default height
 How far the underside of a part's body is above the face of the board it is on (`.standoff`, a length, issue #775): a plug-in module on pins, with a gap under it. The body stands from the standoff up to the part's `.height`; the board's physical file states it as it states `.height`, and a part that states none stands on the board. The gap is a height limit over the body for the other parts on that face (`standoff of J1`), and the body is drawn and checked for overlap from the standoff up. Not a _Pin protrusion_ (the pins on the other face).
 _Avoid_: Lift, clearance height, stand-off (a standoff is the part's own member, `.standoff`)
 
+**Starved thermal**:
+A pad in a _Pour_, a _Plane_ or a _Zone_ of its net, joined by a thermal relief, that fewer than two of the relief's spokes, and the tracks of its net that run from it onto the fill, join to the fill: the others end in another net's clearance, a keepout or the edge band, and the fill takes them out. A warning of the design rules check, `starved_thermal`, by KiCad's name and its least of two spokes (issue #838); a pad no spoke joins is one too, since the pour joins it by nothing.
+_Avoid_: Weak thermal, starved pad, thermal starvation (the issue's word for the rule)
+
 **Stated rail**:
 A rail whose `.voltage`, or the `.voltage` of any rail joined to it by `~`, a statement of the design narrowed (`.stage.vin.voltage &= 4.2V..5.5V`, a module port's seed or a window), on a node the DC analysis solved. The range it states has to enclose the range the analysis found, and a statement that does is kept as it is; one that does not is an error that names the field, both ranges and the states at the end that goes outside (ADR 0076, amendment 17). Not checked: a rail past a regulator's output, and a node a source holds (a source's voltage is an input).
 _Avoid_: Seed (the start window of a circle, which is one use of a stated rail), claim, assumed window (it is never kept, and is not stated)
