@@ -5,8 +5,9 @@
 //! ratsnest; it is moved by dragging on a grid (a setting of the page), turned (`R`),
 //! flipped (`F`), locked (`L`, drawn as a padlock) and handed back to the placer (`Delete`),
 //! and every edit can be undone and redone (`Ctrl+Z`, `Ctrl+Shift+Z`). Keepouts are drawn
-//! with a rectangle tool, moved, resized and deleted; the outline and the cutouts are the
-//! source's and are only drawn. The keys and the tooltips are listed in
+//! with a rectangle tool, moved, resized and deleted, and written to the board's physical file,
+//! as requirements are (ADR 0048, `keepouts.rs`); the outline and the cutouts are the source's
+//! and are only drawn. The keys and the tooltips are listed in
 //! `.agents/skills/netsmith-dev-verify-editor/features/pcb.md`.
 //!
 //! **The edit protocol.** The page keeps the history and the server keeps none. An edit is a
@@ -598,6 +599,10 @@ pub fn scene(entry: &Entry, data: &BoardData, name: &str) -> PcbScene {
         })
         .collect();
     let areas = board.keepout_areas();
+    // The keepouts of the physical file that the editor drew, or could have: it changes them there.
+    let in_physical = std::fs::read_to_string(&data.physical)
+        .map(|text| crate::keepouts::drawn_in(&text, &data.built.design.name))
+        .unwrap_or_default();
     let keepouts = board
         .keepouts
         .iter()
@@ -611,7 +616,7 @@ pub fn scene(entry: &Entry, data: &BoardData, name: &str) -> PcbScene {
                 .any(|d| d.name == k.name && d.at.is_some());
             let origin = if k.part.is_some() {
                 KeepoutOrigin::Part
-            } else if k.drawn {
+            } else if k.drawn || in_physical.contains_key(&k.name) {
                 KeepoutOrigin::Drawn
             } else if stated {
                 KeepoutOrigin::Source
@@ -1238,7 +1243,7 @@ fn keepout_placement(place: &KeepoutPlace, layers: &[String]) -> KeepoutPlacemen
     }
 }
 
-fn same_keepout(
+pub(crate) fn same_keepout(
     before: Option<&KeepoutPlacement>,
     now: Option<&KeepoutPlace>,
     layers: &[String],
@@ -1268,7 +1273,10 @@ fn same_keepout(
     }
 }
 
-fn keepout_place(after: &KeepoutPlacement, layers: &[String]) -> Result<KeepoutPlace, ApiError> {
+pub(crate) fn keepout_place(
+    after: &KeepoutPlacement,
+    layers: &[String],
+) -> Result<KeepoutPlace, ApiError> {
     let mut place = KeepoutPlace::at(round(after.x), round(after.y));
     if !after.x.is_finite() || !after.y.is_finite() {
         return Err(ApiError::bad_request(

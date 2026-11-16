@@ -21,6 +21,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { writeBig } from './fixtures/big.mjs';
+import { poursPhysical } from './pcb-helpers.mjs';
 import { gitHere, makeCompareRepo, resetCompareRepo } from './fixtures/gitrepo.mjs';
 import { writeRefresh } from './fixtures/refresh.mjs';
 import { HANG_MS, whenIdle } from './settle.mjs';
@@ -203,7 +204,7 @@ async function launch() {
       if (path.basename(fixture) === 'outline_and_pours.nsm') {
         // The recipes move the antenna keepout, which only a keepout the source does not place
         // allows: the layout file beside the fixture says where it is.
-        text = text.replace('        .x &= 18mm\n        .y &= 2mm\n', '');
+        text = poursPhysical();
         layout = path.join(here, 'fixtures/outline_and_pours.pcb.toml');
       }
       fs.writeFileSync(path.join(project, 'src/main.physical.nsm'), text);

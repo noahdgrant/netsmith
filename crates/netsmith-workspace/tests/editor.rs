@@ -2064,16 +2064,23 @@ fn the_scene_says_where_each_keepout_comes_from_and_the_outline_has_four_layers(
     );
 }
 
+fn physical_file(root: &Path) -> PathBuf {
+    root.join("src/main.physical.nsm")
+}
+
 #[test]
-fn a_keepout_is_drawn_moved_resized_and_deleted_in_the_layout_file() {
+fn a_keepout_is_drawn_moved_resized_and_deleted_in_the_physical_file() {
     if !footprints_here() {
         return;
     }
     let (root, editor) = pours_project("kdraw");
     let file = layout_file(&root);
+    let physical = physical_file(&root);
+    let physical_before = fs::read_to_string(&physical).unwrap();
     let scene = editor.pcb_scene(POURS_BOARD).unwrap();
 
-    // Draw one: the file gets a keepout with a size, and the antenna's entry stays.
+    // Draw one: the physical file gets a `Keepout` member at the end of the unit, every other
+    // line of it stays, and the layout file (the antenna's place) is not touched.
     let d = drawn(2.0, 2.0, 10.0, 6.0);
     let scene = editor
         .pcb_edit(&keepout_edit(&scene, "keepout1", None, Some(d.clone())))
@@ -2096,13 +2103,14 @@ fn a_keepout_is_drawn_moved_resized_and_deleted_in_the_layout_file() {
         (2.0, 2.0, 10.0, 6.0)
     );
     assert!(!k.copper && k.parts && k.layers.len() == 4);
-    let text = fs::read_to_string(&file).unwrap();
-    assert!(
-        text.contains("[OutlineAndPours.keepouts.antenna]\nat = [18.0, 2.0]")
-            && text.contains("[OutlineAndPours.keepouts.keepout1]\nat = [2.0, 2.0]\nsize = [10.0, 6.0]\ncopper = \"allow\""),
-        "{text}"
+    assert_eq!(fs::read_to_string(&file).unwrap(), POURS_LAYOUT);
+    let text = fs::read_to_string(&physical).unwrap();
+    let drawn_text = "\n    .keepout1: Keepout {\n        .x &= 2mm\n        .y &= 2mm\n        .width &= 10mm\n        .height &= 6mm\n        .copper &= \"allow\"\n    }\n}\n";
+    assert_eq!(
+        text,
+        format!("{}{drawn_text}", physical_before.strip_suffix("}\n").unwrap()),
     );
-    // The file is what `apply_layout` reads: a new reading shows the same board.
+    // The file is what the checker reads: a new reading shows the same board.
     assert_eq!(
         editor.pcb_scene(POURS_BOARD).unwrap().keepouts,
         scene.keepouts
@@ -2125,7 +2133,12 @@ fn a_keepout_is_drawn_moved_resized_and_deleted_in_the_layout_file() {
         .find(|k| k.name == "keepout1")
         .unwrap();
     assert_eq!((k.width, k.height), (12.0, 8.0));
-    // A keepout the source sizes is only moved.
+    let text = fs::read_to_string(&physical).unwrap();
+    assert!(
+        text.contains(".x &= 4mm\n        .y &= 3mm\n        .width &= 12mm\n        .height &= 8mm\n"),
+        "{text}"
+    );
+    // A keepout the source sizes is only moved, in the layout file.
     let scene = editor
         .pcb_edit(&keepout_edit(
             &scene,
@@ -2157,10 +2170,80 @@ fn a_keepout_is_drawn_moved_resized_and_deleted_in_the_layout_file() {
         .unwrap()
         .scene;
     assert!(scene.keepouts.iter().all(|k| k.name != "keepout1"));
+    assert_eq!(fs::read_to_string(&physical).unwrap(), physical_before);
     let text = fs::read_to_string(&file).unwrap();
     assert!(
         !text.contains("keepout1") && text.contains("[OutlineAndPours.keepouts.antenna]"),
         "{text}"
+    );
+}
+
+#[test]
+fn a_keepout_drawn_in_the_layout_file_moves_to_the_physical_file_on_its_first_change() {
+    if !footprints_here() {
+        return;
+    }
+    let (root, editor) = pours_project("klegacy");
+    let file = layout_file(&root);
+    let physical = physical_file(&root);
+    fs::write(
+        &file,
+        format!(
+            "{POURS_LAYOUT}\n[OutlineAndPours.keepouts.old]\nat = [2.0, 2.0]\nsize = [10.0, 6.0]\ncopper = \"allow\"\n"
+        ),
+    )
+    .unwrap();
+    let scene = editor.pcb_scene(POURS_BOARD).unwrap();
+    let old = scene.keepouts.iter().find(|k| k.name == "old").unwrap();
+    assert_eq!(old.origin, KeepoutOrigin::Drawn);
+    let scene = editor
+        .pcb_edit(&keepout_edit(
+            &scene,
+            "old",
+            Some(drawn(2.0, 2.0, 10.0, 6.0)),
+            Some(drawn(3.0, 2.0, 10.0, 6.0)),
+        ))
+        .unwrap()
+        .scene;
+    let old = scene.keepouts.iter().find(|k| k.name == "old").unwrap();
+    assert_eq!(old.area.unwrap().x - scene.origin_x, 3.0);
+    assert_eq!(fs::read_to_string(&file).unwrap(), POURS_LAYOUT);
+    let text = fs::read_to_string(&physical).unwrap();
+    assert!(text.contains("    .old: Keepout {\n        .x &= 3mm\n"), "{text}");
+}
+
+#[test]
+fn a_keepout_the_physical_file_states_as_the_editor_writes_one_is_the_editors_to_change() {
+    if !footprints_here() {
+        return;
+    }
+    let (root, editor) = pours_project("kstated");
+    let physical = physical_file(&root);
+    // The example's own antenna keepout, with its place stated in the physical file.
+    fs::write(
+        &physical,
+        include_str!("../../../examples/outline_and_pours.physical.nsm"),
+    )
+    .unwrap();
+    fs::write(layout_file(&root), "version = 1\n").unwrap();
+    let scene = editor.pcb_scene(POURS_BOARD).unwrap();
+    let antenna = scene.keepouts.iter().find(|k| k.name == "antenna").unwrap();
+    assert_eq!(antenna.origin, KeepoutOrigin::Drawn);
+    let mut before = drawn(18.0, 2.0, 14.0, 5.0);
+    let d = before.drawn.as_mut().unwrap();
+    d.layers = vec!["top".into()];
+    (d.vias, d.copper) = (false, true);
+    let mut after = before.clone();
+    after.x = 20.0;
+    editor
+        .pcb_edit(&keepout_edit(&scene, "antenna", Some(before), Some(after)))
+        .unwrap();
+    // Changed where it stands, with its `///` line and the case above it.
+    let text = fs::read_to_string(&physical).unwrap();
+    assert_eq!(
+        text,
+        include_str!("../../../examples/outline_and_pours.physical.nsm")
+            .replace(".x &= 18mm", ".x &= 20mm")
     );
 }
 
@@ -2183,12 +2266,12 @@ fn a_keepout_that_is_wrong_is_refused_naming_the_field_and_what_the_board_has() 
             .pcb_edit(&keepout_edit(&scene, name, before, Some(after)))
             .unwrap_err()
     };
+    let physical_before = fs::read_to_string(physical_file(&root)).unwrap();
     let e = refuse("antenna", drawn(1.0, 1.0, 3.0, 3.0));
     assert_eq!(e.status, 400);
     assert!(
-        e.message.contains(
-            "`antenna` is drawn in the layout file, and the source has a keepout of that name"
-        ),
+        e.message
+            .contains("a keepout or cutout `antenna` that the editor does not draw"),
         "{}",
         e.message
     );
@@ -2229,6 +2312,18 @@ fn a_keepout_that_is_wrong_is_refused_naming_the_field_and_what_the_board_has() 
         fs::read_to_string(layout_file(&root)).unwrap(),
         before,
         "nothing was written"
+    );
+    assert_eq!(
+        fs::read_to_string(physical_file(&root)).unwrap(),
+        physical_before
+    );
+    // A name another member of the board has: the checker refuses it, and nothing is written.
+    let e = refuse("hole1", drawn(1.0, 1.0, 3.0, 3.0));
+    assert_eq!(e.status, 400, "{}", e.message);
+    assert!(e.message.contains("nothing was written"), "{}", e.message);
+    assert_eq!(
+        fs::read_to_string(physical_file(&root)).unwrap(),
+        physical_before
     );
 }
 
@@ -2747,8 +2842,9 @@ fn the_pcb_view_draws_the_outline_and_the_keepout_the_physical_file_states() {
         .iter()
         .find(|k| k.name == "antenna")
         .expect("the antenna keepout");
-    // Sized and placed by the source (the physical file), so the editor does not move it.
-    assert_eq!(antenna.origin, KeepoutOrigin::Source);
+    // Sized and placed by the physical file in the shape the editor writes (issue #809), so the
+    // editor moves, resizes and deletes it there.
+    assert_eq!(antenna.origin, KeepoutOrigin::Drawn);
     let area = antenna.area.unwrap();
     assert_eq!(
         (area.x - scene.origin_x, area.y - scene.origin_y),

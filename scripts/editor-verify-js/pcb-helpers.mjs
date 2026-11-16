@@ -6,13 +6,27 @@ import { fileURLToPath } from 'node:url';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 export const BOARD = 'OutlineAndPours';
+const POURS_LAYOUT = path.join(here, 'fixtures/outline_and_pours.pcb.toml');
+
+/** The `outline_and_pours` fixture's physical file: the example's, with the antenna keepout's
+ * `.x` and `.y` taken out, since the recipes move it, which only a keepout the source does not
+ * place allows (the fixture's layout file says where it is). */
+export function poursPhysical() {
+  const example = path.join(here, '../../examples/outline_and_pours.physical.nsm');
+  return fs.readFileSync(example, 'utf8').replace('        .x &= 18mm\n        .y &= 2mm\n', '');
+}
 
 /** Put the layout file back as the fixture has it (`outline_and_pours` unless `original` says
  * otherwise), and load the page again, so every recipe starts from the same board whatever ran
  * before it. */
-export async function fresh({ page, url, project }, original = path.join(here, 'fixtures/outline_and_pours.pcb.toml')) {
+export async function fresh({ page, url, project }, original = POURS_LAYOUT) {
   const layout = path.join(project, 'src/main.pcb.toml');
   fs.copyFileSync(original, layout);
+  // The physical file too, as the editor writes the keepouts it draws there (issue #809).
+  const physical = path.join(project, 'src/main.physical.nsm');
+  if (original === POURS_LAYOUT && fs.existsSync(physical) && fs.readFileSync(physical, 'utf8') !== poursPhysical()) {
+    fs.writeFileSync(physical, poursPhysical());
+  }
   await page.goto(url);
   await page.waitForSelector('.app');
   // The server's watcher has noticed the file when the scene it serves carries the file's stamp (the file's modified time in
@@ -108,6 +122,16 @@ export async function drag(page, from, to, options = {}) {
 }
 
 /** Wait until the board has been placed again after an edit: the scene's stamp moved on. */
+/** The scene once it shows what a step expects (`test` of the scene is true): for an edit that
+ * writes the physical file and not the layout file, whose stamp then stays. */
+export async function sceneWhere(page, what, test, board = BOARD) {
+  await whenIdle(page);
+  return waitFor(what, async () => {
+    const s = await scene(page, board);
+    return test(s) ? s : null;
+  });
+}
+
 export async function settled(page, before, board = BOARD) {
   return waitFor('the layout file to be written (the scene stamp moves on)', async () => {
     const s = await scene(page, board);

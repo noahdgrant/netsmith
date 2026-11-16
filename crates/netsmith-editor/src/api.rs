@@ -1188,7 +1188,9 @@ pub enum KeepoutOrigin {
     Source,
     /// The source states its size and leaves its place to the layout file: it can be moved.
     Placed,
-    /// Drawn in the editor and kept in the layout file: it can be moved, resized and removed.
+    /// Drawn in the editor, or stated in the physical file as the editor writes one (ADR 0048,
+    /// issue #809): it can be moved, resized and removed, and is kept in the physical file. One
+    /// drawn before that is in the layout file, and the first change moves it.
     Drawn,
     /// Carried by a part, in the part's frame: it moves with the part.
     Part,

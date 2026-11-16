@@ -83,9 +83,9 @@
 //! mechanical side can export data (issue #46). What leaves the circuit source is what decision
 //! 7 names (`.place`, `Outline`, `Cutout`, `MountingHole`, `Fiducial`, `Label` and a board-drawn
 //! `Keepout`); the spelling inside the physical file stays `.place` (accepted as built by the
-//! owner, 2026-11-11). The editor writes the keepouts it draws, and the moves of a keepout the
-//! physical file sizes, to the layout file as before; writing them here is decision 6 and is
-//! not built (issue #52).
+//! owner, 2026-11-11). The editor writes the keepouts it draws here (decision 6, issue #809,
+//! `netsmith-workspace/src/keepouts.rs`), and the place of a keepout the physical file sizes and
+//! does not place to the layout file, as a solution.
 
 use std::collections::HashMap;
 use std::fs;
@@ -245,7 +245,8 @@ fn remove_members(old: &str, file: &netsmith_lang::ast::File, edit: &Edit) -> St
     };
     let named = |name: &str| edit.remove.iter().any(|r| r == name);
     // A statement's range: whole lines, the `///` lines right above it, and a blank line
-    // after it if one stands on both sides (so that removing leaves one, not two).
+    // after it if one stands on both sides (so that removing leaves one, not two), or the
+    // blank line before it if the section closes after it (so that none is left above the `}`).
     let range_of = |start: usize, end: usize| -> (usize, usize) {
         let mut from = line_start(old, start);
         while from > 0 {
@@ -262,8 +263,14 @@ fn remove_members(old: &str, file: &netsmith_lang::ast::File, edit: &Edit) -> St
             .lines()
             .next()
             .is_some_and(|l| l.trim().is_empty());
+        let closes = old[to..]
+            .lines()
+            .next()
+            .is_some_and(|l| l.trim_start().starts_with('}'));
         if blank_before && blank_after {
             to = line_end(old, to);
+        } else if blank_before && closes && from > 0 {
+            from = line_start(old, from - 1);
         }
         (from, to)
     };

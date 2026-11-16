@@ -264,7 +264,7 @@ function KeepoutInspector(props: { scene: PcbScene; keepout: PcbKeepout }) {
         title={k.name}
         sub={
           drawn
-            ? 'Drawn here, kept in the layout file.'
+            ? 'Drawn here, kept in the physical file.'
             : k.origin === 'placed'
               ? 'Sized by the source; the layout file places it.'
               : k.origin === 'part'
