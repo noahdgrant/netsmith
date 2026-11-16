@@ -7,7 +7,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { waitFor, whenIdle } from '../settle.mjs';
-import { scene, screenAt } from '../pcb-helpers.mjs';
+import { scene, screenAt, writeAtomic } from '../pcb-helpers.mjs';
 
 export const fixture = 'routed_led';
 const BOARD = 'LedExample';
@@ -31,7 +31,7 @@ tracks = [
 export async function run(tools) {
   const { page, shot, step, expect, project, url } = tools;
   const file = path.join(project, 'src/main.routes.toml');
-  fs.writeFileSync(file, ROUTES);
+  writeAtomic(file, ROUTES);
   const stampOf = () => {
     const on = fs.statSync(file, { bigint: true });
     return `${on.mtimeNs}-${on.size}`;

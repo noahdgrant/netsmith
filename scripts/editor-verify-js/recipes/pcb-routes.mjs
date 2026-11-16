@@ -8,7 +8,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { waitFor, whenIdle } from '../settle.mjs';
-import { scene, screenAt } from '../pcb-helpers.mjs';
+import { scene, screenAt, writeAtomic } from '../pcb-helpers.mjs';
 
 export const fixture = 'routed_led';
 const BOARD = 'LedExample';
@@ -21,7 +21,7 @@ export async function run(tools) {
   const file = path.join(project, 'src/main.routes.toml');
   const text = () => fs.readFileSync(file, 'utf8');
   // Every run starts from the fixture's file, whatever ran before.
-  fs.copyFileSync(path.join(here, '../fixtures/routed_led.routes.toml'), file);
+  writeAtomic(file, fs.readFileSync(path.join(here, '../fixtures/routed_led.routes.toml'), 'utf8'));
   const stampOf = () => {
     const on = fs.statSync(file, { bigint: true });
     return `${on.mtimeNs}-${on.size}`;
@@ -136,7 +136,7 @@ export async function run(tools) {
   await shot('net-locked');
 
   step('a record whose pads moved is a warning in the findings and the problems dock');
-  fs.writeFileSync(file, text().replace(/(\[LedExample\.nets\.GND\]\npads = )"[0-9a-f]+"/, '$1"0000000000000000"'));
+  writeAtomic(file, text().replace(/(\[LedExample\.nets\.GND\]\npads = )"[0-9a-f]+"/, '$1"0000000000000000"'));
   const stale = stampOf();
   await waitFor('the server to have read the changed routes file', async () => (await scene(page, BOARD)).routesStamp === stale);
   await page.reload();
