@@ -611,7 +611,7 @@ board Overload {
 ```
 
 ```text
-error: no combination of candidates satisfies `reg.divider.rbottom` and `reg.divider.rtop` together: the closest, reg.divider.rbottom = 330Ω 1% 0402 C25104 and reg.divider.rtop = 100kΩ 1% 0402 C25741, fails because `reg.divider.current` must stay within 10uA..1mA, but reg.divider.rtop.current works out to 9.247uA..10.77uA
+error: no combination of candidates satisfies `reg.divider.rbottom` and `reg.divider.rtop` together: the closest, reg.divider.rbottom = 75kΩ 1% 0603 C23242 and reg.divider.rtop = 100kΩ 1% 0402 C25741, fails because `reg.divider.current` must stay within 10uA..1mA, but reg.divider.rtop.current works out to 9.959uA..10.77uA
     --> std/parts/regulator.nsm:123:5
     |
 123 |     .current == .rtop.current
