@@ -1243,7 +1243,9 @@ pub struct PcbScene {
     pub outline: PcbBox,
     /// The layout file beside the source, which may not exist yet.
     pub layout_file: String,
-    /// What it was like when read: an edit must give it back.
+    /// What the layout file and the board's physical file were like when read (an edit writes
+    /// a keepout it draws to the physical file, ADR 0048): an edit must give it back, and is
+    /// refused if either file changed since.
     pub layout_stamp: String,
     /// The copper layers of the board, top first: `top`, `inner1`, `bottom`.
     pub layers: Vec<String>,

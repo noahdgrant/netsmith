@@ -951,7 +951,9 @@ originX: number, originY: number, outline: PcbBox,
  */
 layoutFile: string, 
 /**
- * What it was like when read: an edit must give it back.
+ * What the layout file and the board's physical file were like when read (an edit writes
+ * a keepout it draws to the physical file, ADR 0048): an edit must give it back, and is
+ * refused if either file changed since.
  */
 layoutStamp: string, 
 /**

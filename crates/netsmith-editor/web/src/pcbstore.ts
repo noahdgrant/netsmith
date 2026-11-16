@@ -219,7 +219,7 @@ async function send(changes: PcbChange[]): Promise<boolean> {
   } catch (e) {
     say(e instanceof Error ? e.message : String(e), true);
     if (e instanceof ApiFailure && e.status === 409) {
-      // The file is not what this page had: what it could undo is not either.
+      // The layout file or the physical file is not what this page had: what it could undo is not either.
       history.value = NO_HISTORY;
       try {
         show(await api.pcbScene(current.board));
