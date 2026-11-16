@@ -46,6 +46,10 @@ fn body(path: &str, refdes: &str, min: Plan, max: Plan, height: Option<f64>) -> 
             out: 1.0,
         },
         model: None,
+        fit: crate::scene3d::FootprintFit {
+            courtyard: None,
+            pad_centres: None,
+        },
     }
 }
 

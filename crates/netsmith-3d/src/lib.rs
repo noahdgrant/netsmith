@@ -55,7 +55,7 @@ pub use render::{
     parse_section as parse_render_section, parse_size as parse_render_size,
 };
 pub use scene3d::{
-    Body as SceneBody, CopperLayer as SceneCopperLayer, CopperPad as SceneCopperPad,
+    Body as SceneBody, CopperLayer as SceneCopperLayer, CopperPad as SceneCopperPad, FootprintFit,
     HeightProvenance, HoleOwner, ModelUse, Pins as ScenePins, Plan as ScenePlan,
     PlanArea as ScenePlanArea, PlanBox as ScenePlanBox, Scene, SceneCopper, Tallest,
 };

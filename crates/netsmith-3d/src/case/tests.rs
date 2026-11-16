@@ -155,6 +155,10 @@ fn body(path: &str, min: [f64; 2], max: [f64; 2], height: Option<f64>) -> Body {
             out: 1.0,
         },
         model: None,
+        fit: crate::scene3d::FootprintFit {
+            courtyard: None,
+            pad_centres: None,
+        },
     }
 }
 
