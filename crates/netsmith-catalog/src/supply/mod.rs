@@ -26,8 +26,10 @@
 //!   never presented as assembly stock. The manifest's `channel` says which a project means.
 //! - *A price is a ladder.* A line is priced at the highest break at or below the quantity it
 //!   needs; below the first break the first break's price is shown, marked "from N pieces". No
-//!   currency is converted. The quantity is for one board (ADR 0035's order quantity is not
-//!   spread across boards).
+//!   currency is converted. The bill of materials of the editor is for one board, so its
+//!   quantity is the parts of one board; `order.txt` of an order prices each line at the quantity
+//!   of the whole order (copies of every board, and of a panel with all its cells, summed over
+//!   the order, issue #804).
 //! - *Cache* (`$NETSMITH_CACHE_DIR`, else `$XDG_CACHE_HOME/netsmith`, else `~/.cache/netsmith`,
 //!   in `supply/<provider>.csv`, the format in [`cache`]). An entry younger than `cache_hours`
 //!   (24) is used without asking; an older one makes a request and a good answer replaces it; if
@@ -88,7 +90,6 @@
 //!   Nexar API, or a community snapshot such as the one the KiCad JLCPCB plugin downloads
 //!   daily): not now; issue #30. Each needs a person to read its terms of use and to decide
 //!   whose key a user brings: a person must do this, checklist in issue #10.
-//! - The quantity of an order across boards: issue #32.
 //! - Currency conversion, taxes, shipping and JLCPCB's feeder fee for each Extended part: not
 //!   planned until a board needs it.
 
@@ -198,13 +199,13 @@ impl Quote {
     /// below the quantity. Below the first break the first break's price is given and the
     /// second value is the quantity it starts at (the price applies "from N pieces").
     /// `None` if the quote has no price.
-    pub fn price_for(&self, quantity: u32) -> Option<(f64, Option<u32>)> {
+    pub fn price_for(&self, quantity: u64) -> Option<(f64, Option<u32>)> {
         let first = self.price_breaks.first()?;
         match self
             .price_breaks
             .iter()
             .rev()
-            .find(|b| b.from <= quantity.max(1))
+            .find(|b| u64::from(b.from) <= quantity.max(1))
         {
             Some(b) => Some((b.price, None)),
             None => Some((first.price, Some(first.from))),

@@ -59,9 +59,18 @@
 //!   finish (the process's `.finish`, `finish HASL lead-free`, which the order form has to match:
 //!   `std::mfg::jlcpcb` gives each process the finishes JLCPCB offers and the one it defaults to,
 //!   issue #842), the parts the board house assembles and on how many BOM lines, the hand-solder
-//!   parts; the combined bill of materials; "before you order", each board's
+//!   parts; the combined bill of materials; with a `[supply]` provider, its `prices`
+//!   (below); "before you order", each board's
 //!   `fab-notes.txt` lines; and the total of unverified items, counted once for each board and not
 //!   once for each copy because the check is of the design (`Package::unverified`).
+//! - **The prices of `order.txt`** (issue #804): a line of the combined bill is priced at the
+//!   quantity of the whole order, so a part used on several boards, or on a panel (a panel's parts
+//!   are those of the whole panel and its quantity counts panels), gets the price break the total
+//!   reaches and not the break of one board. A quantity below the provider's first break is
+//!   shown at the first break's price, marked "from N pieces" (owner, 2026-11-04); a part with no
+//!   quote is "no known price" with the reason, and the total counts the priced lines and says how
+//!   many are left out. The section is there only when the project configures a provider (ADR
+//!   0047); `order-bom.csv` has no prices.
 //! - **`order-bom.csv`**: `Comment,Footprint,LCSC Part #,Quantity,Used on`, one row for each LCSC
 //!   number. The quantity is the copies of each board times the parts of that number on one board,
 //!   summed over the boards, with **no spares or overage**: how many spares to buy is a decision
@@ -99,7 +108,9 @@ use toml::Spanned;
 
 use crate::fab::{FabOptions, Fabricated, fab_with_options};
 use crate::project::{MANIFEST, Target, is_project_name};
+use crate::refresh;
 use netsmith_pipeline::pick_lock::{self, Use};
+use netsmith_pipeline::supply::{Lookup, PartKey, Supply};
 use netsmith_pipeline::{Built, Libraries, outcome_with, render_problems};
 
 /// The directory of `fab` that holds the orders: `fab/orders/<name>/`.
@@ -389,7 +400,7 @@ impl BoardFacts {
 }
 
 /// One line of the order's bill of materials: a part number, how many in all, and where.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct BomLine {
     pub lcsc: String,
     pub value: String,
@@ -398,6 +409,28 @@ pub struct BomLine {
     pub quantity: u64,
     /// `(board, copies, parts on one board)`.
     pub used_on: Vec<(String, u32, usize)>,
+    /// What the supplier says the line costs at `quantity`, the whole order's (issue #804);
+    /// `None` until [`price_bom`] asks, and when the project configures no provider.
+    pub price: Option<Price>,
+}
+
+/// What a supply provider says of one line of the order, at the quantity of the whole order.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Price {
+    /// A quote in US dollars.
+    Quoted {
+        /// One piece, at the highest price break at or below the quantity of the line.
+        unit_usd: f64,
+        /// The quantity of the first break when the line needs fewer: the price applies "from
+        /// N pieces" and is the first break's (owner, 2026-11-04).
+        from: Option<u32>,
+        /// `file, JLCPCB assembly stock`.
+        source: String,
+        /// The day the provider answered, `2026-10-31`.
+        day: String,
+    },
+    /// No price: the reason, never a guess and never 0.
+    Unknown(String),
 }
 
 /// The bill of materials of the whole order, one line for each part number, by number.
@@ -417,6 +450,7 @@ pub fn combined_bom(boards: &[(Selected, &BoardFacts)]) -> Vec<BomLine> {
                         footprint: entry.footprint.clone(),
                         quantity: 0,
                         used_on: Vec::new(),
+                        price: None,
                     });
                     lines.len() - 1
                 }
@@ -437,6 +471,92 @@ pub fn combined_bom(boards: &[(Selected, &BoardFacts)]) -> Vec<BomLine> {
         )
     });
     lines
+}
+
+/// Ask `supply` for the price of each line at the quantity of the **whole order**: the copies of
+/// every board times the parts of one board, summed over the boards (a panel's parts are those of
+/// the whole panel, and its quantity counts panels), so a part used on several boards of an order
+/// is priced at the break the total reaches, not the break of one board (issue #804). A line
+/// needing fewer pieces than the first break gets the first break's price, marked "from N
+/// pieces" (ADR 0047). With no provider configured nothing is asked and no line has a price.
+pub fn price_bom(bom: &mut [BomLine], supply: &Supply) {
+    if !supply.is_configured() {
+        return;
+    }
+    for line in bom {
+        line.price = Some(match supply.lookup(&PartKey::lcsc(&line.lcsc)) {
+            Lookup::Quoted(quote) if quote.currency != "USD" => Price::Unknown(format!(
+                "{} answered in {}, and only US dollars are shown",
+                quote.provider, quote.currency
+            )),
+            Lookup::Quoted(quote) => match quote.price_for(line.quantity) {
+                Some((unit_usd, from)) => Price::Quoted {
+                    unit_usd,
+                    from,
+                    source: quote.source(),
+                    day: refresh::date_of(quote.fetched),
+                },
+                None => Price::Unknown(format!("{} gave no price", quote.provider)),
+            },
+            Lookup::Unknown(why) => Price::Unknown(why),
+        });
+    }
+}
+
+/// The `prices` section of `order.txt`: each priced line at the quantity of the whole order, the
+/// total of the priced lines, and how many lines have no known price. Empty when no line was
+/// asked (no provider).
+fn prices_text(bom: &[BomLine]) -> String {
+    if bom.iter().all(|l| l.price.is_none()) {
+        return String::new();
+    }
+    let mut s = String::from(
+        "\nprices (each line at the quantity of the whole order, so a part on several boards or a panel gets the break the total reaches; no spares, shipping or feeder fee; they move, so check the order preview)\n",
+    );
+    let mut total = 0.0;
+    let mut priced = 0usize;
+    let mut unknown = 0usize;
+    for l in bom {
+        match &l.price {
+            Some(Price::Quoted {
+                unit_usd,
+                from,
+                source,
+                day,
+            }) => {
+                let line = unit_usd * l.quantity as f64;
+                total += line;
+                priced += 1;
+                let from = from.map_or(String::new(), |n| {
+                    format!("; the price is for {n} pieces or more")
+                });
+                s.push_str(&format!(
+                    "  {:<10} {:>6} x {unit_usd:.4} = {line:.2} USD  ({source}, read {day}{from})\n",
+                    l.lcsc, l.quantity
+                ));
+            }
+            Some(Price::Unknown(why)) => {
+                unknown += 1;
+                s.push_str(&format!(
+                    "  {:<10} {:>6}  no known price: {why}\n",
+                    l.lcsc, l.quantity
+                ));
+            }
+            None => {}
+        }
+    }
+    s.push_str(&format!(
+        "  total {total:.2} USD for {priced} priced line{}",
+        if priced == 1 { "" } else { "s" }
+    ));
+    if unknown > 0 {
+        s.push_str(&format!(
+            "; {unknown} line{} left out with no known price",
+            if unknown == 1 { "" } else { "s" }
+        ));
+    }
+    s.push('\n');
+    s
 }
 
 /// A number of millimetres as short as it reads: `50`, `12.5`.
@@ -618,6 +738,8 @@ pub fn summary_text(
             used.join("; ")
         ));
     }
+
+    s.push_str(&prices_text(bom));
 
     s.push_str("\nbefore you order\n");
     for (selected, _, notes) in boards {
@@ -853,6 +975,13 @@ pub fn fab_order(
         let opened: Vec<(usize, &Opened)> = files.iter().map(|(i, _, o)| (*i, o)).collect();
         refuse_changed_locks(&opened, target, loader, catalogs)?;
     }
+    // The price of a line is for the quantity of the whole order (issue #804). A project with no
+    // `[supply]` table has no provider, and its summary says nothing of price. Read before
+    // anything is removed or written, so a supply file that is wrong stops the order whole.
+    let supply = match &target.project {
+        Some(project) => project.supply()?,
+        None => Supply::none(),
+    };
     let dir = out.join(ORDERS_DIR).join(&order.name);
     // An order folder netsmith made before is replaced whole, so that a board dropped from
     // the order does not stay in it. Anything else at that path is left alone.
@@ -910,7 +1039,8 @@ pub fn fab_order(
 
     let rows: Vec<(Selected, &BoardFacts)> =
         made.iter().map(|(s, f)| (s.clone(), &f.facts)).collect();
-    let bom = combined_bom(&rows);
+    let mut bom = combined_bom(&rows);
+    price_bom(&mut bom, &supply);
     let listed: Vec<(Selected, &BoardFacts, &str)> = made
         .iter()
         .map(|(s, f)| (s.clone(), &f.facts, f.notes.as_str()))
@@ -1191,6 +1321,121 @@ mod tests {
             assert!(text.contains(expected), "missing {expected:?} in\n{text}");
         }
         assert!(!text.contains("fab-notes for"), "{text}");
+    }
+
+    /// Invented quotes: C1525 breaks at 1, 10 and 100; C25744 from 100 only; C77 is in
+    /// another currency; nothing lists C99.
+    fn quotes() -> Supply {
+        let text = "lcsc,mpn,channel,stock,price_breaks,currency,date\n\
+             C1525,,jlcpcb-assembly,5000,1:0.0100 10:0.0080 100:0.0050,USD,2026-10-31\n\
+             C25744,,jlcpcb-assembly,5000,100:0.0200,USD,2026-10-31\n\
+             C77,,jlcpcb-assembly,5000,1:0.5,EUR,2026-10-31\n";
+        Supply::none().with_provider(Box::new(
+            netsmith_pipeline::supply::FileProvider::parse("quotes.csv", text).unwrap(),
+        ))
+    }
+
+    fn unit_of(line: &BomLine) -> (f64, Option<u32>) {
+        match line.price.as_ref().expect("priced") {
+            Price::Quoted { unit_usd, from, .. } => (*unit_usd, *from),
+            Price::Unknown(why) => panic!("no price: {why}"),
+        }
+    }
+
+    #[test]
+    fn a_line_is_priced_at_the_break_the_whole_order_reaches_and_not_one_boards() {
+        // 4 on each carrier x 2 and 1 on each of 10 units: 4 on one board (the first break), 18 in
+        // the order (the second).
+        let carrier = facts(vec![entry(&["C1", "C2", "C3", "C4"], "100n", "C1525")]);
+        let unit = facts(vec![entry(&["C1"], "100n", "C1525")]);
+        let mut bom = combined_bom(&[
+            (pick("DevKit/carrier", 2), &carrier),
+            (pick("Unit", 10), &unit),
+        ]);
+        assert_eq!(bom[0].quantity, 18);
+        price_bom(&mut bom, &quotes());
+        assert_eq!(unit_of(&bom[0]), (0.0080, None));
+        // A bigger order reaches the third break: 4 x 25 + 10.
+        let mut bom = combined_bom(&[
+            (pick("DevKit/carrier", 25), &carrier),
+            (pick("Unit", 10), &unit),
+        ]);
+        price_bom(&mut bom, &quotes());
+        assert_eq!(bom[0].quantity, 110);
+        assert_eq!(unit_of(&bom[0]), (0.0050, None));
+        // One board alone stays at the first break.
+        let mut bom = combined_bom(&[(pick("DevKit/carrier", 1), &carrier)]);
+        price_bom(&mut bom, &quotes());
+        assert_eq!(unit_of(&bom[0]), (0.0100, None));
+    }
+
+    #[test]
+    fn a_panel_counts_all_its_cells_and_its_quantity_counts_panels() {
+        // The facts of a panel hold the parts of the whole panel: 6 cells x 2 parts = 12 on one
+        // panel, so 2 panels need 24 pieces, the second break.
+        let mut panel = facts(vec![entry(
+            &[
+                "C1", "C2", "C3", "C4", "C5", "C6", "C7", "C8", "C9", "C10", "C11", "C12",
+            ],
+            "100n",
+            "C1525",
+        )]);
+        panel.panel = Some(PanelFacts {
+            board: "Unit".into(),
+            columns: 3,
+            rows: 2,
+            cell_width_mm: 20.0,
+            cell_height_mm: 10.0,
+            rail_mm: 5.0,
+        });
+        let mut bom = combined_bom(&[(pick("UnitPanel", 2), &panel)]);
+        price_bom(&mut bom, &quotes());
+        assert_eq!(bom[0].quantity, 24);
+        assert_eq!(unit_of(&bom[0]), (0.0080, None));
+    }
+
+    #[test]
+    fn below_the_first_break_the_first_breaks_price_is_marked_from_n_pieces() {
+        let unit = facts(vec![entry(&["C1", "C2"], "10k", "C25744")]);
+        let mut bom = combined_bom(&[(pick("Unit", 3), &unit)]);
+        price_bom(&mut bom, &quotes());
+        assert_eq!(unit_of(&bom[0]), (0.0200, Some(100)));
+        let text = summary_text("d", &[(pick("Unit", 3), &unit, "")], &bom);
+        assert!(
+            text.contains("6 x 0.0200 = 0.12 USD  (file, JLCPCB assembly stock, read 2026-10-31; the price is for 100 pieces or more)"),
+            "{text}"
+        );
+    }
+
+    #[test]
+    fn a_part_with_no_quote_is_unknown_and_left_out_of_the_total() {
+        let unit = facts(vec![
+            entry(&["C1"], "100n", "C1525"),
+            entry(&["C2"], "1u", "C99"),
+            entry(&["C3"], "2u", "C77"),
+        ]);
+        let mut bom = combined_bom(&[(pick("Unit", 20), &unit)]);
+        price_bom(&mut bom, &quotes());
+        let text = summary_text("d", &[(pick("Unit", 20), &unit, "")], &bom);
+        for expected in [
+            "prices (each line at the quantity of the whole order",
+            "C1525          20 x 0.0080 = 0.16 USD  (file, JLCPCB assembly stock, read 2026-10-31)",
+            "C77            20  no known price: file answered in EUR, and only US dollars are shown",
+            "C99            20  no known price: file does not list the part",
+            "total 0.16 USD for 1 priced line; 2 lines left out with no known price",
+        ] {
+            assert!(text.contains(expected), "missing {expected:?} in\n{text}");
+        }
+    }
+
+    #[test]
+    fn with_no_provider_the_summary_says_nothing_of_price() {
+        let unit = facts(vec![entry(&["C1"], "100n", "C1525")]);
+        let mut bom = combined_bom(&[(pick("Unit", 20), &unit)]);
+        price_bom(&mut bom, &Supply::none());
+        assert_eq!(bom[0].price, None);
+        let text = summary_text("d", &[(pick("Unit", 20), &unit, "")], &bom);
+        assert!(!text.contains("prices"), "{text}");
     }
 
     #[test]
