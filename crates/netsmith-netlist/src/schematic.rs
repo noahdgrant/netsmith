@@ -22,7 +22,8 @@
 //!
 //! A symbol excluded from the board (`(on_board no)`) is not in the netlist, as the board does
 //! not get it. A pin joined to nothing else is on a net named `unconnected-(...)`, which
-//! [`Netlist::from_parts`] leaves out. Net names follow KiCad's choice of driver (a global name
+//! [`Netlist::from_parts`] leaves out; so is a net that nothing names and that has a no-connect
+//! flag on it, or only no-connect pins (pins stacked at one point, as KiCad names them). Net names follow KiCad's choice of driver (a global name
 //! before a local one, a local label before a hierarchical one, a named net before a pin's
 //! `Net-(R1-Pad1)`) but are not part of a comparison. A bus (a bus wire or a bus entry) is
 //! refused with its file named: the reader does not split one into its members.
@@ -317,6 +318,15 @@ impl Reader<'_> {
             let mut points: HashMap<Point, Vec<usize>> = HashMap::new();
             let mut wires: Vec<(Point, Point, usize)> = Vec::new();
             let mut labels: Vec<(Point, usize)> = Vec::new();
+            // A no-connect flag names the net it is on `unconnected-(...)` (when nothing else
+            // names it), as KiCad does; it joins nothing.
+            for flag in file.root.find_all("no_connect") {
+                if let Some(p) = at(flag) {
+                    let node = graph.node();
+                    points.entry(p).or_default().push(node);
+                    graph.no_connects.push(node);
+                }
+            }
             for wire in file.root.find_all("wire") {
                 let ends: Vec<Point> = wire
                     .find("pts")
@@ -424,6 +434,7 @@ impl Reader<'_> {
                         refdes: refdes.clone(),
                         number: pin.number.clone(),
                         name: pin.name.clone(),
+                        no_connect: pin.no_connect,
                         node,
                     });
                     let global_power = pin.power_in && (pin.hidden || lib.power != Power::No);
@@ -565,6 +576,8 @@ struct LibPin {
     unit: u32,
     style: u32,
     power_in: bool,
+    /// A pin of the electrical type `no_connect`.
+    no_connect: bool,
     hidden: bool,
 }
 
@@ -643,6 +656,7 @@ impl<'a> Library<'a> {
                     unit,
                     style,
                     power_in: text(pin, 1) == Some("power_in"),
+                    no_connect: text(pin, 1) == Some("no_connect"),
                     hidden: flag(pin, "hide") == Some(true),
                 });
             }
@@ -678,6 +692,7 @@ struct PinNode {
     refdes: String,
     number: String,
     name: String,
+    no_connect: bool,
     node: usize,
 }
 
@@ -688,6 +703,8 @@ struct Graph {
     keys: Vec<(String, usize)>,
     names: Vec<(usize, Priority, String)>,
     pins: Vec<PinNode>,
+    /// The nodes of the no-connect flags.
+    no_connects: Vec<usize>,
 }
 
 impl Graph {
@@ -739,6 +756,9 @@ impl Graph {
             let root = self.find(self.pins[i].node);
             pins_of.entry(root).or_default().push(i);
         }
+        let flagged: std::collections::HashSet<usize> = (0..self.no_connects.len())
+            .map(|i| self.find(self.no_connects[i]))
+            .collect();
         let mut named: HashMap<usize, (Priority, usize, String)> = HashMap::new();
         for i in 0..self.names.len() {
             let (node, priority, name) = self.names[i].clone();
@@ -758,7 +778,16 @@ impl Graph {
                 let name = match named.get(&root) {
                     Some((_, _, n)) => n.clone(),
                     None => {
-                        let unconnected = pins.len() == 1;
+                        // A net with a no-connect flag on it, of no-connect pins only, or of one
+                        // pin (though a symbol may draw it more than once: pins of one number
+                        // stacked, or a pin common to several units).
+                        let distinct: std::collections::HashSet<(&str, &str)> = pins
+                            .iter()
+                            .map(|&i| (self.pins[i].refdes.as_str(), self.pins[i].number.as_str()))
+                            .collect();
+                        let unconnected = distinct.len() == 1
+                            || flagged.contains(&root)
+                            || pins.iter().all(|&i| self.pins[i].no_connect);
                         pins.iter()
                             .map(|&i| default_name(&self.pins[i], unconnected))
                             .min()
@@ -778,7 +807,7 @@ impl Graph {
 }
 
 /// KiCad's name of a net that only pins name: `Net-(D1-A)`, `Net-(R1-Pad1)`, or
-/// `unconnected-(U1-PA0-Pad12)` for a pin joined to nothing.
+/// `unconnected-(U1-PA0-Pad12)` for a pin joined to nothing or a net with a no-connect flag.
 fn default_name(pin: &PinNode, unconnected: bool) -> String {
     let named = !pin.name.is_empty() && pin.name != "~";
     match (unconnected, named) {

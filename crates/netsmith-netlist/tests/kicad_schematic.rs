@@ -168,6 +168,24 @@ fn a_label_joins_a_wire_anywhere_along_it_and_a_pin_only_at_its_ends() {
 }
 
 #[test]
+fn a_net_with_a_no_connect_flag_is_named_unconnected() {
+    let dir = TempDir::new("kicad-sch-no-connect");
+    // J1.1 and J2.1 meet at (10, 0); a no-connect flag is on that point.
+    let body = [
+        part("J1", (8.73, 3.81)),
+        part("J2", (8.73, 3.81)),
+        "(no_connect (at 10 0))\n".to_string(),
+        part("J3", (28.73, 3.81)),
+        part("J4", (28.73, 3.81)),
+    ]
+    .concat();
+    let n = read(&dir, &[("flag.kicad_sch", file(ROOT, &body))]).unwrap();
+    assert_eq!(net_name(&n, "J1.1"), "unconnected-(J1-Pad1)");
+    assert_eq!(net_name(&n, "J3.1"), "Net-(J3-Pad1)");
+    assert_eq!(nets(&n), expect(&[&["J1.1", "J2.1"], &["J1.2", "J2.2"], &["J3.1", "J4.1"], &["J3.2", "J4.2"]]));
+}
+
+#[test]
 fn a_sheet_in_another_folder_placed_twice_is_two_instances_joined_by_its_pins_and_global_names() {
     let dir = TempDir::new("kicad-sch-sheets");
     // A sheet symbol at (10, y), 10 by 10, with its pin on its right edge.
