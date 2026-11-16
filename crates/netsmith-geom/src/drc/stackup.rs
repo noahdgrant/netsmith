@@ -8,7 +8,7 @@
 //!   process's.
 //! - **The thickness.** The board's thickness (`(general (thickness ...))`) is one the process
 //!   makes.
-//! - **The stackup adds up.** The layers of the setup's stackup (copper, dielectric and mask)
+//! - **The stackup adds up.** The layers of the setup's stackup (copper, dielectric layers and mask)
 //!   add up to the board's thickness within the fabricator's tolerance of the thickness
 //!   (`netsmith_pcb::thickness_tolerance`, from JLCPCB's capabilities page), and its copper
 //!   layers are the file's. A file with no stackup is not judged on it.

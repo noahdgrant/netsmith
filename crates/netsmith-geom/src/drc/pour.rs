@@ -1,8 +1,11 @@
-//! The rules that judge a pour by its fill (issue #838): `starved_thermal`, a pad that fewer
-//! than two of its thermal spokes join to the fill, and `isolated_copper`, a piece of the fill
-//! that touches no copper of its net and that the zone's island setting keeps. Both are KiCad's
-//! names. The fill is the one `fab` plots ([`crate::fill`]), worked out again here; a fill the
-//! board file already holds is not judged.
+//! The rules that judge a pour by its fill (issues #838, #993): `starved_thermal`, a pad that
+//! fewer than two of its thermal spokes join to the fill, `isolated_copper`, a piece of the fill
+//! that touches no copper of its net and that the zone's island setting keeps, and
+//! `copper_sliver`, copper of the fill narrower than the least track. All three are KiCad's
+//! names. The fill is the one `fab` plots: the fill the board file holds where a zone holds
+//! one (`filled_polygon`, as a board ported from KiCad does), else the fill [`crate::fill`]
+//! works out, again here. A spoke joins the fill where the fill has its copper across the
+//! thermal gap and at its outer end.
 //!
 //! **Warnings.** Both are warnings, as `silk_over_copper` is (ADR 0037), until a real order shows
 //! the rule is a limit: the fabricator's capabilities page names neither. A project file may say
@@ -19,7 +22,19 @@
 //!
 //! **Islands.** The fill takes out every island unless the zone's `island_removal_mode` keeps
 //! them (never, or above `island_area_min`), so a board netsmith writes, whose zones keep the
-//! default, has none. A kept island is copper of the net joined to nothing.
+//! default, has none. A kept island is copper of the net joined to nothing. Of a fill the file
+//! holds, every island is reported, whatever the zone's setting: the board house makes that
+//! copper as the file draws it.
+//!
+//! **Copper slivers.** A copper sliver is copper of the fill narrower than the least track the process makes
+//! (the project file's `min_track_width`; with none, not judged) that runs further than that
+//! width from what trimming the fill to it keeps ([`fill::slivers`]): a strip between two
+//! clearances or a spike. A corner, which trimming only rounds, stays within the width and is not
+//! one. The width is the fabricator's (JLCPCB's least track, a recorded number); KiCad's
+//! `copper_sliver` measures with an angle and a width of its own (its advanced settings), which
+//! no fabricator publishes, so the two are not compared. A fill worked out here is already
+//! trimmed to the zone's `min_thickness`, so only a zone with a thinner one is measured; a fill
+//! the file holds always is. A warning, as the other two are.
 
 use super::checks::Out;
 use super::model::Kind;
@@ -134,7 +149,7 @@ pub(crate) fn run(out: &mut Out<'_>) {
                     out.push(
                         Rule::CopperSliver,
                         format!(
-                            "a sliver of {whose} of {area:.4} mm² is narrower than the least track, {width} mm, and runs further than that from the rest of the fill; a fabricator may not etch it or it may lift: widen the gap it is in, or raise the zone's minimum thickness"
+                            "a copper sliver of {whose} of {area:.4} mm² is narrower than the least track, {width} mm, and runs further than that from the rest of the fill; a fabricator may not etch it or it may lift: widen the gap it is in, or raise the zone's minimum thickness"
                         ),
                         at,
                         Some(layer),
@@ -449,7 +464,7 @@ mod tests {
         let found = of(&held(&[&strip], "", Some(LEAST_TRACK)), Rule::CopperSliver);
         assert_eq!(found.len(), 1, "{found:?}");
         assert!(
-            found[0].starts_with("a sliver of the fill the board file holds of 0.2")
+            found[0].starts_with("a copper sliver of the fill the board file holds of 0.2")
                 && found[0].contains("is narrower than the least track, 0.2 mm")
                 && found[0].ends_with(": Zone [GND] on F.Cu"),
             "{}",
@@ -490,7 +505,7 @@ mod tests {
         let found = of(&thin, Rule::CopperSliver);
         assert_eq!(found.len(), 1, "{found:?}");
         assert!(
-            found[0].starts_with("a sliver of the pour of "),
+            found[0].starts_with("a copper sliver of the pour of "),
             "{}",
             found[0]
         );
