@@ -102,13 +102,14 @@ export async function run(tools) {
   await whenIdle(page);
   const picked = await page.locator('[data-testid=part-inspector]').innerText();
   expect(picked.includes('2 parts') && picked.includes('Regenerate b'), `the parts of b are picked: ${picked.replace(/\n/g, ' | ')}`);
+  await shot('module-tree');
   const fileNow = fs.readFileSync(layout, 'utf8');
   await rowB.locator('[data-testid=regen-module]').click();
   await page.waitForSelector('[data-testid=regen-card] :text("Regenerate b")');
   await whenIdle(page);
   expect((await page.locator('[data-testid=regen-ghost]').count()) === 2, 'two ghosts, for b.led and b.r');
   expect((await rowB.getAttribute('class')).includes('proposed'), 'the row of b is marked as the module proposed');
-  await shot('module-tree');
+  await shot('module-proposed');
   await page.locator('[data-testid=regen-reject]').click();
   await whenIdle(page);
   expect((await page.locator('[data-testid=regen-card]').count()) === 0, 'Reject drops the proposal');
