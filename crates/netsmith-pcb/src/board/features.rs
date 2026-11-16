@@ -121,8 +121,6 @@ pub struct BoardKeepout {
     /// The tallest a part may stand in it, in mm, on the faces in `layers` (ADR 0045,
     /// "Height limits").
     pub max_height: Option<f64>,
-    /// Drawn in the editor and kept in the layout file, not stated in the source (ADR 0029).
-    pub drawn: bool,
 }
 
 /// A keepout where it is on the sheet.

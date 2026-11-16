@@ -528,7 +528,6 @@ fn crossing_with_keepout(at: Pt, size: (f64, f64), what: &str) -> (Board, Rect) 
         copper: false,
         parts: false,
         max_height: None,
-        drawn: false,
     });
     let area = b.keepout_areas()[0].rect;
     assert!(route(&mut b).is_empty(), "still routable around it");

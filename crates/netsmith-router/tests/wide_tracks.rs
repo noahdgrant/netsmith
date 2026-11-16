@@ -95,7 +95,6 @@ fn a_board_that_cannot_be_routed_says_so_and_what_it_drew_passes_the_check() {
         copper: false,
         parts: false,
         max_height: None,
-        drawn: false,
     });
     for net in board
         .nets

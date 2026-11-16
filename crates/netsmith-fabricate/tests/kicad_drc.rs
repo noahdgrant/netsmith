@@ -958,14 +958,50 @@ fn a_label_is_silkscreen_text_that_passes_kicads_check() {
     assert_eq!(report.unconnected, 0);
 }
 
-/// A drawn keepout, 10 by 6 mm at (20, 4), that forbids parts and tracks on the top layer.
+/// A keepout an earlier editor drew in the layout file, 10 by 6 mm at (20, 4), that forbids
+/// parts and tracks on the top layer.
 const DRAWN: &str = "version = 1\n[@.keepouts.drawn1]\nat = [20.0, 4.0]\nsize = [10.0, 6.0]\nlayers = \"top\"\nvias = \"allow\"\ncopper = \"allow\"\n";
 
+/// The same keepout as the member the error for [`DRAWN`] says to write in the physical file.
+const DRAWN_MEMBER: &str = ".drawn1: Keepout { .x &= 20mm; .y &= 4mm; .width &= 10mm; .height &= 6mm; .layers &= \"top\"; .vias &= \"allow\"; .copper &= \"allow\" }";
+
+/// The board with [`DRAWN_MEMBER`] in its physical file.
+fn with_drawn() -> Board {
+    laid(&format!("{FIXED}    {DRAWN_MEMBER}\n"), "version = 1\n")
+}
+
 #[test]
-fn a_keepout_drawn_in_the_layout_file_is_a_keepout_of_the_board() {
-    let b = laid(FIXED, DRAWN);
+fn a_keepout_stated_whole_in_the_layout_file_is_refused_with_the_member_to_write_in_the_physical_file()
+ {
+    let mut b = regulator_with(FIXED);
+    let before = b.clone();
+    let err = apply(&mut b, DRAWN).unwrap_err();
+    assert!(
+        err.starts_with("demo.pcb.toml: the keepout `drawn1` is stated whole here (it gives `size`)")
+            && err.contains(&format!(
+                "write `{DRAWN_MEMBER}` in `physical for RegulatorExample {{ }}` of `demo.physical.nsm`"
+            )),
+        "{err}"
+    );
+    assert_eq!(b, before, "nothing changed");
+    // A field of what it forbids with no size is refused too, by name.
+    let err = apply(
+        &mut b,
+        "version = 1\n[@.keepouts.left]\nat = [1.0, 1.0]\nlayers = \"top\"\ntracks = \"allow\"\n",
+    )
+    .unwrap_err();
+    assert!(
+        err.contains("the keepout `left` gives `layers`, `tracks`: what a keepout forbids and its layers are stated in `demo.physical.nsm`"),
+        "{err}"
+    );
+    assert_eq!(b, before, "nothing changed");
+}
+
+#[test]
+fn the_member_the_error_gives_is_the_keepout_the_layout_file_drew() {
+    let b = with_drawn();
     let k = b.keepouts.iter().find(|k| k.name == "drawn1").unwrap();
-    assert!(k.drawn && k.part.is_none());
+    assert!(k.part.is_none());
     assert_eq!(k.size, (10.0, 6.0));
     assert_eq!(k.layers, ["top"]);
     assert_eq!(
@@ -984,7 +1020,7 @@ fn a_keepout_drawn_in_the_layout_file_is_a_keepout_of_the_board() {
 
 #[test]
 fn a_part_put_in_a_drawn_keepout_is_found_and_named() {
-    let mut b = laid(FIXED, DRAWN);
+    let mut b = with_drawn();
     let path = b.parts[0].path.clone();
     apply(
         &mut b,
@@ -1001,71 +1037,43 @@ fn a_part_put_in_a_drawn_keepout_is_found_and_named() {
 }
 
 #[test]
-fn a_drawn_keepout_is_captured_whole_and_read_back_the_same() {
-    let b = laid(FIXED, DRAWN);
+fn a_keepout_the_physical_file_states_whole_is_not_captured_in_the_layout() {
+    let b = with_drawn();
     let kept = Layout::capture(&b, None);
-    let entry = &kept.keepouts["drawn1"];
-    assert_eq!(entry.size, Some([10.0, 6.0]));
-    assert_eq!(entry.layers.as_deref(), Some("top"));
-    assert_eq!(
-        (entry.vias.as_deref(), entry.tracks.as_deref()),
-        (Some("allow"), None),
-        "what is forbidden is the default and is left out"
-    );
-    let mut layout = Layout::default();
-    layout.boards.insert(b.name.clone(), kept);
-    let text = layout.to_text();
-    assert_eq!(Layout::parse(&text, "x").unwrap(), layout);
-    let mut again = regulator_with(FIXED);
-    apply_layout(&mut again, &layout, "x").unwrap();
-    assert_eq!(again.keepout_areas(), b.keepout_areas());
+    assert!(kept.keepouts.values().all(|k| k.size.is_none()), "{kept:?}");
 }
 
 #[test]
-fn a_drawn_keepout_that_is_wrong_is_refused_with_the_field_and_changes_nothing() {
-    let members = format!(
-        "{FIXED}    .antenna: Keepout {{\n        .x &= 40mm\n        .y &= 4mm\n        .width &= 8mm\n        .height &= 8mm\n    }}\n    .left: Keepout {{\n        .width &= 4mm\n        .height &= 4mm\n    }}\n"
-    );
-    let mut b = regulator_with(&members);
-    let before = b.clone();
-    let mut e = |text: &str| apply(&mut b, text).unwrap_err();
-    let drawn = |fields: &str| format!("version = 1\n[@.keepouts.k]\nat = [1.0, 1.0]\n{fields}");
+fn a_drawn_keepout_that_is_wrong_is_refused_with_the_field() {
+    let layers: Vec<String> = ["top", "bottom"].map(String::from).to_vec();
+    let e = |fields: &str| {
+        let text = format!("version = 1\n[B.keepouts.k]\nat = [1.0, 1.0]\n{fields}");
+        let place = Layout::parse(&text, "x").unwrap().boards["B"].keepouts["k"].clone();
+        netsmith_pcb::check_drawn_keepout("k", &place, &layers).unwrap_err()
+    };
     assert!(
-        e(&drawn("size = [0.0, 3.0]\n")).contains("the keepout `k` has the size 0 by 3 mm"),
+        e("size = [0.0, 3.0]\n").contains("the keepout `k` has the size 0 by 3 mm"),
         "size"
     );
-    let layers = e(&drawn("size = [3.0, 3.0]\nlayers = \"top,inner1\"\n"));
+    let named = e("size = [3.0, 3.0]\nlayers = \"top,inner1\"\n");
     assert!(
-        layers
+        named
             .contains("names the layer \"inner1\", and this 2-layer board has \"top\", \"bottom\""),
-        "{layers}"
+        "{named}"
     );
     assert!(
-        e(&drawn("size = [3.0, 3.0]\ntracks = \"never\"\n"))
+        e("size = [3.0, 3.0]\ntracks = \"never\"\n")
             .contains("has `tracks` that is \"never\"; say \"forbid\" or \"allow\""),
     );
     assert!(
-        e(&drawn(
-            "size = [3.0, 3.0]\ntracks = \"allow\"\nvias = \"allow\"\ncopper = \"allow\"\nparts = \"allow\"\n"
-        ))
-        .contains("forbids nothing"),
+        e("size = [3.0, 3.0]\ntracks = \"allow\"\nvias = \"allow\"\ncopper = \"allow\"\nparts = \"allow\"\n")
+            .contains("forbids nothing"),
     );
-    // A source keepout takes only a place; a drawn one must not have the name of one.
-    assert!(
-        e("version = 1\n[@.keepouts.left]\nat = [1.0, 1.0]\nlayers = \"top\"\n")
-            .contains("the keepout `left` gives `layers` and no `size`"),
-    );
-    let clash = e("version = 1\n[@.keepouts.antenna]\nat = [1.0, 1.0]\nsize = [3.0, 3.0]\n");
-    assert!(
-        clash.contains("the keepout `antenna` is drawn in the layout file, and the source has a keepout of that name"),
-        "{clash}"
-    );
-    assert_eq!(b, before, "nothing changed");
 }
 
 #[test]
 fn a_board_with_a_drawn_keepout_routes_around_it_and_passes_kicads_check() {
-    let mut b = laid(FIXED, DRAWN);
+    let mut b = with_drawn();
     let area = b.keepout_areas()[0].rect;
     assert!(route(&mut b).is_empty());
     for t in b.tracks.iter().filter(|t| t.layer == CopperLayer::Front) {

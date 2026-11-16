@@ -2179,37 +2179,27 @@ fn a_keepout_is_drawn_moved_resized_and_deleted_in_the_physical_file() {
 }
 
 #[test]
-fn a_keepout_drawn_in_the_layout_file_moves_to_the_physical_file_on_its_first_change() {
+fn a_keepout_drawn_in_the_layout_file_is_refused_with_the_member_to_write_in_the_physical_file() {
     if !footprints_here() {
         return;
     }
     let (root, editor) = pours_project("klegacy");
-    let file = layout_file(&root);
-    let physical = physical_file(&root);
     fs::write(
-        &file,
+        layout_file(&root),
         format!(
             "{POURS_LAYOUT}\n[OutlineAndPours.keepouts.old]\nat = [2.0, 2.0]\nsize = [10.0, 6.0]\ncopper = \"allow\"\n"
         ),
     )
     .unwrap();
-    let scene = editor.pcb_scene(POURS_BOARD).unwrap();
-    let old = scene.keepouts.iter().find(|k| k.name == "old").unwrap();
-    assert_eq!(old.origin, KeepoutOrigin::Drawn);
-    let scene = editor
-        .pcb_edit(&keepout_edit(
-            &scene,
-            "old",
-            Some(drawn(2.0, 2.0, 10.0, 6.0)),
-            Some(drawn(3.0, 2.0, 10.0, 6.0)),
-        ))
-        .unwrap()
-        .scene;
-    let old = scene.keepouts.iter().find(|k| k.name == "old").unwrap();
-    assert_eq!(old.area.unwrap().x - scene.origin_x, 3.0);
-    assert_eq!(fs::read_to_string(&file).unwrap(), POURS_LAYOUT);
-    let text = fs::read_to_string(&physical).unwrap();
-    assert!(text.contains("    .old: Keepout {\n        .x &= 3mm\n"), "{text}");
+    let e = editor.pcb_scene(POURS_BOARD).unwrap_err();
+    assert!(
+        e.message.contains("the keepout `old` is stated whole here")
+            && e.message.contains(
+                "write `.old: Keepout { .x &= 2mm; .y &= 2mm; .width &= 10mm; .height &= 6mm; .copper &= \"allow\" }` in `physical for OutlineAndPours { }`"
+            ),
+        "{}",
+        e.message
+    );
 }
 
 #[test]
