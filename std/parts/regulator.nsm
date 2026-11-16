@@ -458,9 +458,11 @@ generic BuckConverter {
 /// is a valid stage (issue #746). The IC supplies both, so its own rating
 /// (`-.sw.current <= .max_output_current`) and the inductor's saturation are checked with the
 /// divider's share in; the module's `-.vout.current <= .ic.max_output_current` is on the load
-/// alone. The quiescent current of the IC is not added (it is in its input's, as its part writes
-/// it, ADR 0096); a design that adds up a quiescent budget reads the divider's share from
-/// `.divider_current`.
+/// alone. The IC's input current carries the divider's share too: the IC draws what its switch
+/// node supplies over its efficiency, so an unloaded stage draws the divider's current through
+/// the efficiency and the IC's quiescent current, and a sleep budget on the input is judged
+/// with both (ADR 0096, issue #844). The quiescent current of the IC is not in the inductor's
+/// (it is in its input's, as its part writes it).
 ///
 /// Each side is a `CapacitorBank` of identical capacitors in parallel (ADR 0052): `.input_cap` and
 /// `.output_cap` stand for one capacitor of the bank, and their `.count` says how many. The
@@ -737,16 +739,15 @@ module Buck<Ic: BuckIc> provides BuckConverter {
 ///   other modes); reading the member by name in the analysis (a part that calls it `.iq_max`
 ///   would be silently not modelled, so the `dc` statement names it); one figure for each
 ///   mode, picked by a member or by the voltage of the SYNC/MODE net (the language has no way
-///   for a relation to choose); adding the stage's feedback divider here (it is a load on the
-///   output, about 350 uA at 3.3 V in a test board, and `Buck` keeps it apart as
-///   `.divider_current`). The DC analysis solves the output side, so its input current for an
-///   unloaded stage is larger than this relation's, and a current that the balance and the
-///   analysis cannot share is an error naming both ranges (ADR 0076, amendment 15): a std
-///   stage with a 0 A output is refused for its inductor's current and for `u.vin.current`,
-///   and a sleep budget cannot be shown to pass on one (not built; issue #63: whether the
-///   stage's divider belongs in the IC's input current, as it does at the physical
-///   converter). The default, the floor of zero and the 0.5 mA as the upper end for modes
-///   with no figure over temperature are accepted as built (the owner, 2026-11-11).
+///   for a relation to choose); adding the stage's feedback divider to this member (it is a
+///   load on the output, about 350 uA at 3.3 V in a test board). In `Buck` the switch node
+///   supplies the divider with the load (`.divider_current`), so the input current above
+///   carries the divider's share through the efficiency, as at the physical converter (issue
+///   #844): an unloaded stage draws that share and `.quiescent_current`, and a sleep budget on
+///   its input is judged with both. The default, the floor of zero and the 0.5 mA as the upper
+///   end for modes with no figure over temperature are accepted as built (the owner,
+///   2026-11-11). Adding the divider to the input current is the owner's (2026-11-15, ADR
+///   0096).
 /// - `BIAS` takes at most 25 V (Absolute Maximum Ratings, p.2), the end of its pin row. The
 ///   datasheet says "for output voltages of 3.3V to 25V this pin should be tied to VOUT" and
 ///   to ground when no supply is available (Pin Functions, p.10). The part cannot reach the

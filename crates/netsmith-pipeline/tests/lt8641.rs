@@ -782,3 +782,57 @@ fn a_board_without_a_part_of_the_library_gets_no_library_files() {
     assert!(!dir.join("netsmith.kicad_sym").exists());
     assert!(!dir.join("fp-lib-table").exists());
 }
+
+/// What a board that grounds SYNC/MODE on the stage states (Burst Mode, 10 uA at most).
+const STAGE_BURST: &str =
+    "    .stage.ic.sync_mode ~ .input.neg\n    .stage.ic.quiescent_current &= 0A .. 10uA\n";
+
+#[test]
+fn an_unloaded_stage_is_valid_and_its_input_carries_the_divider_s_share() {
+    // Nothing loaded (issue #844): the switch node supplies the feedback divider alone, so the
+    // IC draws the divider's share through its efficiency (0.70 to 0.95) and its quiescent
+    // current. The DC analysis of the output side and the balance agree, so nothing is said.
+    let (s, text) = solved(&board("3.3V +/- 4%", "0A", STAGE_BURST));
+    assert!(text.is_empty(), "{text}");
+    let divider = range(&s, "stage.divider_current");
+    assert!(divider.lo() > 0.0, "{divider}");
+    let inductor = range(&s, "stage.inductor.current");
+    assert!((inductor.lo() - divider.lo()).abs() < 1e-9, "{inductor}");
+    assert!((inductor.hi() - divider.hi()).abs() < 1e-9, "{inductor}");
+    // 3.168 V to 3.432 V out, 9 V to 16 V in.
+    let least = divider.lo() * 3.168 / (16.0 * 0.95);
+    let most = divider.hi() * 3.432 / (9.0 * 0.70) + 10e-6;
+    let drawn = range(&s, "stage.ic.vin.current");
+    assert!((drawn.lo() - least).abs() < 1e-8, "{drawn}");
+    assert!((drawn.hi() - most).abs() < 1e-8, "{drawn}");
+    // What the board's input supplies is the same current.
+    let input = range(&s, "input.current");
+    assert!((input.lo() + most).abs() < 1e-8, "{input}");
+    assert!((input.hi() + least).abs() < 1e-8, "{input}");
+}
+
+#[test]
+fn a_sleep_budget_of_an_unloaded_stage_is_judged_with_the_divider_s_share() {
+    let budget = |limit: &str| format!("{STAGE_BURST}    -.input.current <= {limit}\n");
+    // Left free, the divider would take about 350 uA to 385 uA and the input about 220 uA at
+    // most. A 100 uA budget turns the divider's larger currents away (ADR 0065, 9.5), so its
+    // pick fits the budget with the IC's 10 uA.
+    let (s, text) = solved(&board("3.3V +/- 4%", "0A", &budget("100uA")));
+    assert!(text.is_empty(), "{text}");
+    let divider = range(&s, "stage.divider_current");
+    let input = range(&s, "input.current");
+    assert!(-input.lo() <= 100e-6, "{input}");
+    assert!(
+        (-input.lo() - (divider.hi() * 3.432 / (9.0 * 0.70) + 10e-6)).abs() < 1e-8,
+        "{input} {divider}"
+    );
+    // The least the divider may carry is 10 uA (`Buck`'s default bound), which takes up to
+    // 10 uA * 3.432 V / (9 V * 0.70), about 5.4 uA, from the input, and the IC 10 uA more:
+    // a 12 uA budget cannot be met, and the divider's search says no pair of resistors fits.
+    let (_, text) = solved(&board("3.3V +/- 4%", "0A", &budget("12uA")));
+    assert!(
+        text.contains("-input.current must always be at most 12uA")
+            && text.contains("`stage.divider.current` must stay within 10uA..1mA"),
+        "{text}"
+    );
+}

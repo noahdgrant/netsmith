@@ -622,9 +622,9 @@ error: -reg.ic.sw.current must always be at most reg.ic.max_output_current, but 
 215 |     -.sw.current <= .max_output_current
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 error: -reg.vout.current must always be at most reg.ic.max_output_current, but 0A..3A is not always below 2A (the currents on net `1V8`: output.current (0A..3A) + reg.vout.current (-3A..0A) add up to zero; net `1V8` in `reg`: reg.divider.supply.current (10uA..1mA) + -reg.inductor.current (10uA..3.001A) + -reg.vout.current (-3A..0A) add up to zero; net `net-reg.ic.sw.pos` in `reg`: reg.ic.sw.current (-3.001A..-10uA) + reg.inductor.current (10uA..3.001A) add up to zero; net `1V8` in `reg.divider`: -reg.divider.supply.current (10uA..1mA) add up to zero, but the balance is incomplete: `reg.divider.rtop.a` is not modelled)
-    --> std/parts/regulator.nsm:584:5
+    --> std/parts/regulator.nsm:586:5
     |
-584 |     -.vout.current <= .ic.max_output_current
+586 |     -.vout.current <= .ic.max_output_current
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -686,9 +686,9 @@ board HighInput {
 
 ```text
 error: reg.on_time must always be at least reg.ic.min_on_time, but 122ns..490.8ns is not always above 150ns
-    --> std/parts/regulator.nsm:597:5
+    --> std/parts/regulator.nsm:599:5
     |
-597 |     .on_time >= .ic.min_on_time
+599 |     .on_time >= .ic.min_on_time
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -751,9 +751,9 @@ board TooQuiet {
 
 ```text
 error: no `capacitor` candidate satisfies `reg.output_cap`: the closest of the 34 that fit, 1 x 10uF 20% 10V X5R 0402 C315248, fails because reg.output_cap.total_effective_capacitance must always be at least reg.ic.min_output_capacitance, but 4.908uF..7.686uF is not always above 10uF (`reg.output_cap.effective_capacitance` is unknown for some candidates, so they were not used: no derating data for 27)
-    --> std/parts/regulator.nsm:604:5
+    --> std/parts/regulator.nsm:606:5
     |
-604 |     .output_cap.total_effective_capacitance >= .ic.min_output_capacitance
+606 |     .output_cap.total_effective_capacitance >= .ic.min_output_capacitance
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -1011,7 +1011,7 @@ error: a part holds other parts only in its `support` section, the circuit its d
   |             ^^^^^^^^^
 ```
 
-The inductor carries the load and the divider's current (`.inductor.current == -.vout.current + .divider_current`), so a converter whose load is smaller than its divider's current is a valid stage: here the load draws at most 5 uA and the divider about 50 uA (issue #746). The IC's own output rating and the inductor's saturation are checked with the divider's share in, and the converter's `-.vout.current <= .ic.max_output_current` with the load alone.
+The inductor carries the load and the divider's current (`.inductor.current == -.vout.current + .divider_current`), so a converter whose load is smaller than its divider's current is a valid stage: here the load draws at most 5 uA and the divider about 50 uA (issue #746). The IC's own output rating and the inductor's saturation are checked with the divider's share in, and the converter's `-.vout.current <= .ic.max_output_current` with the load alone. The IC draws what its switch node supplies over its efficiency, so its input current carries the divider's share too: a converter with nothing loaded draws the divider's current through the efficiency, and the IC's quiescent current when the IC states one (issue #844). A sleep budget on the board's input rail, such as `-.input.current <= 100uA`, is judged with both: one that the divider's least allowed current already exceeds is refused, and one above that turns the divider's larger currents away, so its resistors are picked to fit the budget.
 
 ```nsm evaluate
 import std::parts::regulator::{Buck, Lmr16006y}
@@ -1063,9 +1063,9 @@ board Converter {
 
 ```text
 error: the `lt8641` catalog is empty (no file of it has a row), so nothing can be picked for `reg.ic`: add rows to `catalogs/lt8641.csv` in the project (docs/language/12, "Catalog files")
-    --> std/parts/regulator.nsm:488:5
+    --> std/parts/regulator.nsm:490:5
     |
-488 |     .ic: Ic
+490 |     .ic: Ic
     |     ^^^^^^^
 ```
 
