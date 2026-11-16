@@ -1,7 +1,7 @@
 # Glossary: D
 
 **3D view**:
-The editor's view of a board in three dimensions, in the PCB section: the board as its stackup makes it, the copper, and each part's _Body_ extruded to its height, read-only (ADR 0105). It displays the _Scene_; it moves nothing (a part is moved in the 2D PCB view) and draws no third-party 3D model.
+The editor's view of a board in three dimensions, in the PCB section: the board as its stackup makes it, the copper, and each part's _Body_ extruded to its height (ADR 0105). It displays the _Scene_ and draws no third-party 3D model. A picked part is moved there in the board's plane, turned, flipped and locked as in the 2D PCB view, through the same edits of the layout file; nothing else is edited in 3D.
 _Avoid_: 3D viewer, 3D model (netsmith bundles none), render (a render is a picture of the scene)
 
 **DC element**:

@@ -138,7 +138,8 @@ export interface PadPoint {
   side: 'top' | 'bottom';
 }
 
-export type Hit = { kind: 'part'; info: PartInfo3d } | { kind: 'limit'; info: LimitInfo } | { kind: 'copper'; info: CopperInfo };
+/** What a point of the window picks; a part's hit has the point of the part it meets (`at`, the scene's frame). */
+export type Hit = { kind: 'part'; info: PartInfo3d; at: P3 } | { kind: 'limit'; info: LimitInfo } | { kind: 'copper'; info: CopperInfo };
 
 /** The colours the view is drawn in, as CSS colours: one per role, the four of `TOKENS`, and those of colour by kind, the height map and the preview (inspect.ts). */
 export type Colours = Record<Role, string> & {
@@ -322,6 +323,10 @@ export class Viewer {
   private explodeAnim = 0;
   private baseBox = this.box.clone();
   private drawHooks = new Set<() => void>();
+  /** A part's pins out of the far face, by the part's path: they move with it in a drag. */
+  private protrusions = new Map<string, Mesh[]>();
+  /** What a drag of picked parts moved (issue 772), with how far in its parent's frame, so it can be put back. */
+  private offsets = new Map<Object3D, Vector3>();
   board: BoardInfo | null = null;
   /** A system's file (ADR 0110): its root and its members, in order; null and none for a board's. */
   system: SystemInfo | null = null;
@@ -495,6 +500,8 @@ export class Viewer {
     this.holes = [];
     this.movers = [];
     this.lineSrc.clear();
+    this.offsets.clear();
+    this.protrusions.clear();
     this.solids = [];
     this.holeKeys.clear();
     this.stacks.clear();
@@ -590,6 +597,10 @@ export class Viewer {
       const st = this.stacks.get(stack);
       if (info?.kind === 'silk' && st) st.silk[face] = true;
       if (slot) this.movers.push({ obj: o, base: o.position.y, slot, stack });
+      if (info?.kind === 'protrusion' && typeof raw.path === 'string') {
+        const key = stack ? `${stack}/${raw.path}` : raw.path;
+        this.protrusions.set(key, [...(this.protrusions.get(key) ?? []), o]);
+      }
       if (role !== 'limit' && role !== 'limit-violated' && role !== 'case') this.solids.push(o);
       if (part) {
         let entry = this.parts.get(part.path);
@@ -1506,6 +1517,58 @@ export class Viewer {
   }
 
   /** What is under a point of the window: a part before the limit volume around it. */
+  /** Where the pointer's ray meets the board's plane at the height `z` (the scene's frame), as
+   * the scene's x and y; null when the ray runs along the plane or away from it. */
+  planeAt(clientX: number, clientY: number, z: number): { x: number; y: number } | null {
+    const r = this.canvas.getBoundingClientRect();
+    if (r.width === 0) return null;
+    const at = new Vector2(((clientX - r.left) / r.width) * 2 - 1, -((clientY - r.top) / r.height) * 2 + 1);
+    this.ray.setFromCamera(at, this.camera());
+    const hit = this.ray.ray.intersectPlane(new Plane(new Vector3(0, 1, 0), -z), new Vector3());
+    if (!hit) return null;
+    const p = sceneOf(hit);
+    return { x: p[0], y: p[1] };
+  }
+
+  /** Draw the parts at `paths` moved by `dx`, `dy` in the board's plane (the scene's frame), while
+   * a drag moves them; each call replaces the last, and 0, 0 puts them back. A new scene starts
+   * with none moved. */
+  offsetParts(paths: string[], dx: number, dy: number) {
+    for (const [o, d] of this.offsets) o.position.sub(d);
+    const moved = [...this.offsets.keys()];
+    this.offsets.clear();
+    if (dx !== 0 || dy !== 0) {
+      const by = worldOf([dx, dy, 0]);
+      for (const path of paths) {
+        for (const o of [...(this.parts.get(path)?.meshes ?? []), ...(this.protrusions.get(path) ?? [])]) {
+          const parent = o.parent;
+          if (!parent) continue;
+          parent.updateMatrixWorld(true);
+          const zero = parent.worldToLocal(new Vector3());
+          const d = parent.worldToLocal(by.clone()).sub(zero);
+          o.position.add(d);
+          this.offsets.set(o, d);
+          moved.push(o);
+        }
+      }
+    }
+    if (moved.length === 0) return;
+    this.model?.updateMatrixWorld(true);
+    const touched = new Set(moved);
+    for (const [line, src] of this.lineSrc) if (touched.has(src)) line.matrix.copy(src.matrixWorld);
+    this.request();
+  }
+
+  /** Whether the parts are drawn moved by a drag (for a recipe). */
+  isOffset(): boolean {
+    return this.offsets.size > 0;
+  }
+
+  /** Let the main button orbit the camera, or not while it drags a part. */
+  setOrbit(on: boolean) {
+    this.controls.enabled = on;
+  }
+
   pick(clientX: number, clientY: number): Hit | null {
     const r = this.canvas.getBoundingClientRect();
     if (!this.model || r.width === 0) return null;
@@ -1522,7 +1585,7 @@ export class Viewer {
       if (!this.kept(h.point) || !shown(h.object)) continue;
       const info = this.infoOf.get(h.object);
       if (info?.kind === 'case_solid') return limit ? { kind: 'limit', info: limit } : null;
-      if (info?.kind === 'part') return { kind: 'part', info: info as PartInfo3d };
+      if (info?.kind === 'part') return { kind: 'part', info: info as PartInfo3d, at: sceneOf(h.point) };
       if (info?.kind === 'copper' || info?.kind === 'hole') {
         const net = this.netOf(info as CopperInfo);
         if (net !== null) return { kind: 'copper', info: { ...(info as CopperInfo), net } };

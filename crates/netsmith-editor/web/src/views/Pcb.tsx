@@ -242,7 +242,7 @@ export function Pcb() {
             onChange={(v) => (pcbMode.value = v)}
             options={[
               { value: '2d', label: '2D', tip: 'The board in 2D, where parts are placed and moved', keys: 'D', testid: 'pcb-2d' },
-              { value: '3d', label: '3D', icon: 'cube', tip: 'The board in 3D, with the heights netsmith knows (read-only)', keys: 'D', testid: 'pcb-3d-toggle' },
+              { value: '3d', label: '3D', icon: 'cube', tip: 'The board in 3D, with the heights netsmith knows: drag a picked part to move it', keys: 'D', testid: 'pcb-3d-toggle' },
             ]}
           />
           {!in3d && (

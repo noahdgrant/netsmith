@@ -1,6 +1,6 @@
 # PCB view in 3D
 
-The board's _Scene_ (ADR 0105) drawn by three.js in the PCB section: the same file `netsmith board3d --glb` writes, served at `GET /api/pcb/3d?board=<name>`. Read-only. What it is and is not, for a person: `docs/BOARD3D.md`, "The editor's 3D view".
+The board's _Scene_ (ADR 0105) drawn by three.js in the PCB section: the same file `netsmith board3d --glb` writes, served at `GET /api/pcb/3d?board=<name>`. A picked part can be moved there (below, and the recipe `pcb-3d-move`); nothing else is edited. What it is and is not, for a person: `docs/BOARD3D.md`, "The editor's 3D view".
 
 ## How to get to it
 
@@ -13,10 +13,14 @@ The section "PCB", then `3D` in the toolbar's `2D | 3D` switch (`[data-testid=pc
 1. It opens on the isometric view: the board as thick as its stackup, the laminate's edge, the mask, the bodies of known height as their package shapes (a header's plastic and pins) or as boxes, the body tinted by its height's source and the leads and marks in their own colours, the part with no height as a flat hatched outline with a dashed edge, and the lid's volume see-through in the error colour (it is broken). The coverage chip says `2 of 3 parts have a known height`; the legend counts `Stated 2`, `Catalog 0`, `Package standard 0`, `Unknown 1` and shows `Limit exceeded` (or `Height limit` for one that holds).
 2. Hover a part: the tooltip (`[data-testid=tip-3d]`) names the designator and value, the height and where it came from (`9 mm tall, stated in the design`, `from the catalog row`, `the package standard's maximum (JEDEC TO-236)` for a part whose height is its footprint's _Standard height_ (ADR 0106; the `inspect_3d` fixture's regulator, drawn in its own colour and counted apart in the chip, `(1 from the package standard)`), or `Height not known: drawn flat and hatched, not guessed`), the face, and the 3D findings about it (`Too tall for the limit lid`). The shared hover lights the part's row in the side panel and in the other views; a hover elsewhere lights the part here. Hover a limit's volume: what it allows and its margin.
 3. Click a part: it is the page's selection (the inspector names it; the 2D view, the schematic and the tree show it), drawn in the selection's blue. Shift+click adds. A click on nothing clears. A pick made in the side panel, the schematic or the problems dock lights here; go to anything frames the part. Double click: the source opens at the part's declaration.
-4. The bar at the top left: `Top`, `Bottom`, `Front`, `Back`, `Left`, `Right`, `Iso` (`[data-testid=view-<id>]`; keys `T`, `B`, `I`), the flip (`Shift+F`, the other face), `Perspective`/`Orthographic` (`P`). The zoom bar: `−`, `+`, `Fit` (keys `-`, `+`, `F` or `0`). Drag orbits, right or middle drag pans, the wheel zooms at the pointer, the arrow keys orbit (Shift+arrows pan), `Esc` clears the selection. Camera moves take 180 ms, and none with reduced motion.
+4. The bar at the top left: `Top`, `Bottom`, `Front`, `Back`, `Left`, `Right`, `Iso` (`[data-testid=view-<id>]`; keys `T`, `B`, `I`), the flip (`Shift+F`, the other face), `Perspective`/`Orthographic` (`P`). The zoom bar: `−`, `+`, `Fit` (keys `-`, `+`, `F` or `0`). Drag orbits (but on a picked part it moves the part), right or middle drag pans, the wheel zooms at the pointer, the arrow keys orbit (Shift+arrows pan) while no part is picked, `Esc` clears the selection. Camera moves take 180 ms, and none with reduced motion.
 5. The coverage chip opens the list of the parts with no height (`[data-testid=unknown-heights]`); a click on a row selects the part and frames it.
 6. A theme change repaints the view in the theme's `--pcb3d-*` tokens (themes.css; dark, light and both high contrast).
 7. `2D` brings the editing canvas back; the 3D view keeps nothing that the 2D view needs.
+
+## Moving a part
+
+Recipe `pcb-3d-move` (fixture `height_limits`). Pick a part with a click, then drag it: a press on a picked part does not orbit (`viewer.setOrbit(false)` until the release), the part's body is drawn moved while the pointer moves (`view3d.offset()` is true), on the grid of the 2D toolbar, and the drop writes `src/main.pcb.toml` (`source = "hand"`) through the same edit as a 2D drag, so the scene's stamp moves on and the 3D scene is loaded again. A drag on a part that is not picked, or on nothing, orbits and writes nothing. A part too tall for a height limit (`tall` against `lid`) stops at its edge and the tip says `limited by lid`. With a part picked, `R`, `F`, `L` and the arrows rotate, flip, lock and nudge it as in 2D (the arrows along the board's axes, whatever the camera), `Ctrl+Z` undoes; a locked part does not move and the status line says so. In a system's scene a part is not dragged.
 
 ## Tools
 

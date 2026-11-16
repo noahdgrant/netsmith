@@ -1,6 +1,8 @@
 // The PCB view in 3D (ADR 0105): the board's scene as the server writes it (`GET /api/pcb/3d`, the
-// file `netsmith board3d --glb` writes), drawn by three.js. It is read-only: a part is picked and
-// hovered here through the page's shared selection and hover, and moved in the 2D view. A part
+// file `netsmith board3d --glb` writes), drawn by three.js. A part is picked and hovered here
+// through the page's shared selection and hover; a drag on a picked part moves it in the board's
+// plane, and R, F, L and the arrows turn, flip, lock and nudge it, as in the 2D view, through the
+// same edits of the layout file (issue 772, move.ts). A part
 // with no known height is a flat hatched outline, never a box of a guessed height, and the chip
 // says how many parts have a known height. This component and three.js are a chunk of their own,
 // loaded the first time 3D opens.
@@ -15,11 +17,14 @@ import { notify } from '../feedback/state';
 import { theme as pageTheme } from '../theme';
 import { Icon } from '../components/Icons';
 import { type Hover, hover as sharedHover, hoverEnter, hoverLeave, resolveHover, sameHover } from '../hover';
-import { scene as scene2d, select, selection as pcbSelection } from '../pcbstore';
+import { commit, grid, redo, scene as scene2d, select, selection as pcbSelection, undo } from '../pcbstore';
+import { flipSelection, frameOf, nudge, rotateSelection, toggleLock } from '../pcb/actions';
+import { moveParts } from '../pcb/edits';
+import { heldTip } from '../pcb/limits';
 import { partPathsOf, revealRequest, selection as sharedSelection } from '../selection';
 import { reducedMotion, settings } from '../settings';
 import { api } from '../client';
-import { analysis, chooseBoard, detail, pcbStamp, pickNet, pickPart } from '../store';
+import { analysis, chooseBoard, detail, pcbStamp, pickNet, pickPart, say } from '../store';
 import { InspectBar, InspectLegend, PreviewLabel } from './InspectBar';
 import { KINDS, MARGIN_TOKENS, findingTargets, litNets } from './inspect';
 import { type Ids, litIds, memberSelection, planChange, sectionText } from './control';
@@ -31,6 +36,7 @@ import { systemShown, view3d } from './mode';
 import { LOOKS, type Role, TOKENS } from './palette';
 import { PRESETS, type Preset } from './presets';
 import { type Colours, type Hit, type PadPoint, Viewer } from './viewer';
+import { type Move3d, editKey, moveTo, startMove, toSceneOffset } from './move';
 import { hold, watchMoving } from '../idle';
 import './view3d.css';
 
@@ -205,6 +211,7 @@ export function View3d({ board }: { board: string }) {
       hidden: () => v.hiddenList(),
       litNets: () => v.litNetList(),
       box: (path: string) => v.partBox(path),
+      offset: () => v.isOffset(),
       lifts: () => v.memberLifts(),
       camera: () => v.cameraPlace(),
     };
@@ -556,12 +563,36 @@ export function View3d({ board }: { board: string }) {
   // The keys of the drawing (the commands of mode.ts have the presets, the flip and the projection).
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
-      if (e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey || typing(e.target)) return;
+      if (e.defaultPrevented || e.altKey || typing(e.target)) return;
       if (focusedSection() !== 'pcb') return;
       const v = viewer.current;
       if (!v) return;
       const k = e.key;
       const used = () => e.preventDefault();
+      // Undo and redo the edits of the layout file, as in 2D.
+      if (e.ctrlKey || e.metaKey) {
+        const c = k.toLowerCase();
+        if (c === 'z' || c === 'y') {
+          used();
+          void (c === 'y' || e.shiftKey ? redo() : undo());
+        }
+        return;
+      }
+      if (k === 'Escape' && dragging.current) {
+        used();
+        cancelDrag();
+        return;
+      }
+      // The picked parts: R, F, L and the arrows edit them as in 2D (move.ts); with none picked F fits and the arrows orbit.
+      const edit = tools.current.measuring ? null : editKey(k, e.shiftKey, pcbSelection.peek().length > 0);
+      if (edit) {
+        used();
+        if (edit.kind === 'rotate') void rotateSelection(edit.degrees);
+        else if (edit.kind === 'flip') void flipSelection();
+        else if (edit.kind === 'lock') void toggleLock();
+        else void nudge(edit.dx, edit.dy, edit.big);
+        return;
+      }
       const step = Math.PI / 12;
       if (k === 'f' || k === 'F' || k === '0') {
         if (e.shiftKey && k !== '0') return;
@@ -604,6 +635,71 @@ export function View3d({ board }: { board: string }) {
   // The pointer: hover lights and names a part, a click picks it, a double click shows it in the source.
   const down = useRef<{ x: number; y: number; button: number } | null>(null);
   const moveFrame = useRef(0);
+  // A drag of the picked parts (move.ts): where it started on screen, the height of the plane it
+  // moves in (the point of the part taken), whether it has gone past a click, and how far it has moved.
+  const dragging = useRef<{ move: Move3d; z: number; screen: { x: number; y: number }; active: boolean; delta: { x: number; y: number } } | null>(null);
+  /** A press of the main button on a picked part of the board begins a drag of the selection, and
+   * the camera does not orbit; anywhere else (or with Shift, or in the measure tool) it orbits. */
+  const beginDrag = (e: PointerEvent) => {
+    const v = viewer.current;
+    const sc = scene2d.peek();
+    if (e.button !== 0 || e.shiftKey || e.ctrlKey || e.metaKey || e.altKey || tools.current.measuring || shownRef.current.showSys) return;
+    if (!v || !sc || sc.board !== boardRef.current) return;
+    const hit = v.pick(e.clientX, e.clientY);
+    if (hit?.kind !== 'part' || hit.info.member) return;
+    const start = v.planeAt(e.clientX, e.clientY, hit.at[2]);
+    const move = start ? startMove(sc, pcbSelection.peek(), hit.info.path, start) : null;
+    if (!move) return;
+    v.setOrbit(false);
+    (e.currentTarget as Element).setPointerCapture?.(e.pointerId);
+    dragging.current = { move, z: hit.at[2], screen: { x: e.clientX, y: e.clientY }, active: false, delta: { x: 0, y: 0 } };
+  };
+  const dragTo = (x: number, y: number) => {
+    const g = dragging.current;
+    const v = viewer.current;
+    const el = host.current;
+    if (!g || !v || !el) return;
+    if (!g.active && Math.hypot(x - g.screen.x, y - g.screen.y) > 4) g.active = true;
+    if (!g.active || g.move.free.length === 0) return;
+    const now = v.planeAt(x, y, g.z);
+    if (!now) return;
+    const { delta, held } = moveTo(g.move, now, grid.peek());
+    g.delta = delta;
+    const d = toSceneOffset(delta);
+    v.offsetParts(g.move.free.map((p) => p.path), d.x, d.y);
+    const r = el.getBoundingClientRect();
+    setTip(held ? { x: x - r.left + 14, y: y - r.top + 16, ...heldTip(held) } : null);
+  };
+  /** The drag ends: the parts are written where they were dropped. They stay drawn there until
+   * the scene of the new placement is loaded, or go back if the server refuses the edit. Returns
+   * whether the press was a drag (else it is a click). */
+  const endDrag = (): boolean => {
+    const g = dragging.current;
+    dragging.current = null;
+    viewer.current?.setOrbit(true);
+    if (!g) return false;
+    if (!g.active) return false;
+    setTip(null);
+    const free = g.move.free;
+    if (free.length === 0) {
+      const p = g.move.parts;
+      say(`${p.length === 1 ? `${p[0].refdes} is` : 'the parts are'} locked: select it and press L to unlock`, true);
+      return true;
+    }
+    const sc = scene2d.peek();
+    if (!sc) return true;
+    void commit(moveParts(free, frameOf(sc), g.delta), free.length === 1 ? `move ${free[0].refdes}` : `move ${free.length} parts`).then((ok) => {
+      if (!ok) viewer.current?.offsetParts([], 0, 0);
+    });
+    return true;
+  };
+  const cancelDrag = () => {
+    dragging.current = null;
+    down.current = null;
+    setTip(null);
+    viewer.current?.setOrbit(true);
+    viewer.current?.offsetParts([], 0, 0);
+  };
   const hoverOf = (path: string): Hover => ({ kind: 'part', key: path });
   const hoverOfHit = (hit: Hit | null | undefined): Hover | null =>
     hit?.kind === 'part'
@@ -633,6 +729,10 @@ export function View3d({ board }: { board: string }) {
       const v = viewer.current;
       const el = host.current;
       if (!v || !el) return;
+      if (dragging.current) {
+        dragTo(at.x, at.y);
+        return;
+      }
       if (at.buttons) {
         setTip(null);
         return;
@@ -712,7 +812,9 @@ export function View3d({ board }: { board: string }) {
         data-testid="pcb-3d"
         tabIndex={0}
         role="img"
-        aria-label={`The board ${board} in 3D. ${coverage ? coverageLine(coverage) : ''}. Read-only: move parts in the 2D view.`}
+        aria-label={`The board ${board} in 3D. ${coverage ? coverageLine(coverage) : ''}. Drag a picked part to move it; R turns, F flips and L locks it.`}
+        onPointerDownCapture={beginDrag}
+        onPointerCancel={cancelDrag}
         onPointerDown={(e) => {
           down.current = { x: e.clientX, y: e.clientY, button: e.button };
           setTip(null);
@@ -720,6 +822,7 @@ export function View3d({ board }: { board: string }) {
         onPointerUp={(e) => {
           const was = down.current;
           down.current = null;
+          if (endDrag()) return;
           if (!was || was.button !== 0 || Math.hypot(e.clientX - was.x, e.clientY - was.y) > 4) return;
           const v = viewer.current;
           if (measuring && v && !e.shiftKey) {
@@ -1088,7 +1191,7 @@ export function View3d({ board }: { board: string }) {
           <InspectBar />
           {!measuring && (
             <div class="v3-note" aria-hidden="true">
-              Read-only: move parts in 2D · drag to orbit, right-drag to pan, scroll to zoom
+              Drag a picked part to move it · drag elsewhere to orbit, right-drag to pan, scroll to zoom
             </div>
           )}
           <div class="zoombar no-pan" role="toolbar" aria-label="Zoom" data-toast-clear>
