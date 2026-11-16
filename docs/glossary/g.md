@@ -25,5 +25,5 @@ Several identical members declared in one statement, `.decoupling: 4 x Capacitor
 _Avoid_: Array, vector, list, repeat, instances (for the members, which are members)
 
 **Guideline**:
-Advice that a person decides about, as opposed to a limit of the fabricator. A design that goes against one gets a `warning:` and still builds; `guidelines = "error"` in `netsmith.toml`, or `--strict` for one run, makes it an error. The first is the track width against current (ADR 0036); the datasheet layout rules of ADR 0030 are the next. An **Open circle** (ADR 0057), an **Unconstrained pick** and an **Unstated value** (ADR 0065) are findings of the same kind.
+Advice that a person decides about, as opposed to a limit of the fabricator. A design that goes against one gets a `warning:` and still builds; `guidelines = "error"` in `netsmith.toml`, or `--strict` for one run, makes it an error. The first is the track width against current (ADR 0036); the datasheet layout rules of ADR 0030 are the next. An **Open circle** (ADR 0057), an **Unconstrained pick**, an **Unstated value** (ADR 0065) and a **Track drop** over its budget (`fab` only, once the board is routed) are findings of the same kind.
 _Avoid_: Lint, soft rule

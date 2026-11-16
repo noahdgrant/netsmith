@@ -61,6 +61,7 @@ mod stackup;
 mod standard_height;
 mod summary;
 mod svg;
+mod track_drop;
 mod validate;
 
 pub use board::{
@@ -134,4 +135,7 @@ pub use summary::{
     PlacementComparison, RatsnestLine, Summary, SummaryBox, Totals,
 };
 pub use svg::{render as render_svg, render_view as render_svg_view};
+pub use track_drop::{
+    COPPER_RESISTIVITY, DEFAULT_DROP_BUDGET, NetPad, TrackDrop, net_drop as track_drop_of,
+};
 pub use validate::{Subject, validate_pinout};
