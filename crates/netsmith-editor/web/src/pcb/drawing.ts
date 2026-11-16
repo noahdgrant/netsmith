@@ -37,7 +37,7 @@ export const SCALE = 12;
 
 /** The drawing, and the nets in it: their names, colours and pad counts are read from it, so
  * the page needs nothing but the drawing. */
-export function prepare(text: string, pours = ''): Drawing | null {
+export function prepare(text: string, pours = '', over = ''): Drawing | null {
   const doc = new DOMParser().parseFromString(text, 'image/svg+xml');
   const svg = doc.documentElement;
   const box = svg.getAttribute('viewBox')?.split(' ').map(Number);
@@ -80,6 +80,12 @@ export function prepare(text: string, pours = ''): Drawing | null {
     )
     .join('');
   svg.insertBefore(defs, svg.firstChild);
+  // What goes over everything: the copper the router is laying while it routes (`live.ts`, issue 764).
+  if (over) {
+    const group = doc.createElementNS('http://www.w3.org/2000/svg', 'g');
+    group.innerHTML = over;
+    if (group.firstElementChild) svg.appendChild(group.firstElementChild);
+  }
   stackLimitLabels(svg);
   svg.setAttribute('width', String(w * SCALE));
   svg.setAttribute('height', String(h * SCALE));

@@ -68,6 +68,10 @@ pub struct Workspace {
     state: Mutex<State>,
     /// Held while a layout edit is made, so two edits are one after the other.
     editing: Mutex<()>,
+    /// The token the PCB view's placings run under (issue #764): [`Backend::cancel_placing`]
+    /// cancels it and puts a new one in its place, so a cancel stops the placings that run and
+    /// none that begins after it.
+    placing: Mutex<netsmith_core::job::Cancel>,
     /// How "Check parts against LCSC" asks the endpoints (ADR 0039); the tests point it at a fake.
     network: netsmith_catalog::refresh::Network,
     /// Who hears of each analysis of the files on disk, once the server has said.
@@ -292,6 +296,7 @@ impl Workspace {
             std::fs::metadata(&file.path).map_err(|e| format!("{}: {e}", file.name))?;
         }
         Ok(Workspace {
+            placing: Mutex::new(netsmith_core::job::Cancel::new()),
             target: RwLock::new(Arc::new(target)),
             manifest_error: Mutex::new(None),
             state: Mutex::new(State::default()),
@@ -1089,6 +1094,16 @@ impl Workspace {
     }
 }
 
+impl Workspace {
+    /// The token a placing of the PCB view that begins now runs under.
+    fn placing_token(&self) -> netsmith_core::job::Cancel {
+        self.placing
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
+    }
+}
+
 impl Backend for Workspace {
     fn title(&self) -> String {
         self.target().title.clone()
@@ -1307,7 +1322,7 @@ impl Backend for Workspace {
             let state = self.fresh();
             (state.version, state.snapshot.board_handle(board)?)
         };
-        let mut entry = pcb::place_watched(&data, board, say, show, None)?;
+        let mut entry = pcb::place_watched(&data, board, say, show, &self.placing_token())?;
         // A board routed before from this very board is that route again; else the board routed
         // last, to keep the copper of what a change left alone (issue #825).
         let (restored, before) = {
@@ -1351,7 +1366,8 @@ impl Backend for Workspace {
     }
 
     fn cancel_placing(&self) {
-        pcb::cancel_placing();
+        let mut token = self.placing.lock().unwrap_or_else(|e| e.into_inner());
+        std::mem::take(&mut *token).cancel();
     }
 
     fn pcb_scene(&self, board: &str) -> Result<PcbScene, ApiError> {
@@ -1368,7 +1384,7 @@ impl Backend for Workspace {
             }
             (state.version, data)
         };
-        let entry = pcb::place_watched(&data, board, say, show, None)?;
+        let entry = pcb::place_watched(&data, board, say, show, &self.placing_token())?;
         let scene = pcb::scene(&entry, &data, board);
         let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
         if state.version == version {

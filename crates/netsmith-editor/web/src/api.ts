@@ -961,6 +961,16 @@ elapsedMs: number, };
 
 export type PcbBox = { x: number, y: number, width: number, height: number, };
 
+export type PcbLive = { board: string, task: string, region?: PcbBox, parts: Array<PcbLivePart>, tracks: Array<PcbLiveTrack>, vias: Array<PcbLiveVia>, };
+
+export type PcbLivePart = { refdes: string, box: PcbBox, back: boolean, };
+
+export type PcbLiveTrack = { x1: number, y1: number, x2: number, y2: number, width: number, layer: string, };
+
+export type PcbLiveVia = { x: number, y: number, diameter: number, };
+
+export type OutsideProgress = { run: string, command: string, board: string, message: string, unit?: string, done?: number, total?: number, ended: boolean, ok?: boolean, };
+
 export type PcbSide = "top" | "bottom";
 
 export type PcbPad = { number: string, x: number, y: number, net: string | null, };
@@ -2242,4 +2252,4 @@ command?: string, };
 
 export type ClientMessage = { "type": "check", id: number, path: string, text: string, } | { "type": "focus" } | { "type": "view_state", id: number, state: ViewState, } | { "type": "view_error", id: number, message: string, status?: number, };
 
-export type ServerMessage = { "type": "rebuilt", analysis: Analysis, elapsedMs?: number, } | { "type": "analysing", since: number, } | { "type": "checked", id: number, analysis: Analysis, } | { "type": "progress", task: string, board: string, message: string, stage?: string, done?: number, total?: number, unit?: string, unitDone?: number, unitTotal?: number, } | { "type": "cancelled", task: string, board: string, message: string, } | { "type": "view", id: number, change?: ViewChange, } | { "type": "view_picture", id: number, };
+export type ServerMessage = { "type": "rebuilt", analysis: Analysis, elapsedMs?: number, } | { "type": "analysing", since: number, } | { "type": "checked", id: number, analysis: Analysis, } | { "type": "progress", task: string, board: string, message: string, stage?: string, done?: number, total?: number, unit?: string, unitDone?: number, unitTotal?: number, } | { "type": "cancelled", task: string, board: string, message: string, } | { "type": "view", id: number, change?: ViewChange, } | { "type": "view_picture", id: number, } | { "type": "pcb_live", live: PcbLive, } | { "type": "outside", progress: OutsideProgress, };

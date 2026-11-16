@@ -22,12 +22,16 @@ import { prepare } from '../pcb/drawing';
 import { SIDES, type Side } from '../pcb/side';
 import { type Pt, unite } from '../pcb/geometry';
 import { POUR_HIDDEN, fills, poursMarkup } from '../pcb/pours';
+import { placingLine, placingSvg, routingMarkup } from '../pcb/live';
+import { livePlace, liveRoute, liveSeen, placingSaid } from '../pcb/liveState';
 import {
   GRIDS,
   findings,
   history,
   keepoutDefaults,
   loadScene,
+  cancelPlacing,
+  placingCancelled,
   pcbSide,
   pickedFinding,
   pours,
@@ -94,6 +98,34 @@ function roomAround(b: PcbBox): PcbBox {
 
 const mm = (v: number) => (v === 0 ? 'no grid' : `${v} mm`);
 
+/** The board while the server places it (issue 764): the parts where the placer has them now, the last line it told, and
+ * Cancel. Before the first glimpse, the skeleton of a loading view. */
+function Placing({ board: name }: { board: string }) {
+  const live = livePlace.value?.board === name ? livePlace.value : null;
+  const said = placingSaid.value?.board === name ? placingSaid.value.line : null;
+  const svg = useMemo(() => placingSvg(live), [live]);
+  return (
+    <div class="pcb-placing" data-testid="pcb-placing">
+      <div class="job">
+        <div class="job-head">
+          <span class="spinner" />
+          <span class="job-line" data-testid="placing-line">
+            {placingLine(said, live)}
+          </span>
+          <button class="tool small" data-testid="cancel-placing" data-tip="Stop placing the board. Nothing it placed is kept" onClick={() => void cancelPlacing()}>
+            Cancel
+          </button>
+        </div>
+      </div>
+      {svg ? (
+        <div class="pcb-live" data-testid="pcb-live" data-parts={live?.parts.length} dangerouslySetInnerHTML={{ __html: svg }} />
+      ) : (
+        <ViewLoading what="Placing the board" />
+      )}
+    </div>
+  );
+}
+
 export function Pcb() {
   const name = board.value;
   const version = analysis.value?.version;
@@ -155,7 +187,10 @@ export function Pcb() {
   // placed), and while the board changes the last fill stays, marked as not current, rather than the board going bare.
   const poured = pours.value && pours.value.board === name ? pours.value : null;
   const pouredNow = fills(poured, sc);
-  const drawing = useMemo(() => (sc ? prepare(sc.svg, poursMarkup(poured, pouredNow)) : null), [sc?.svg, poured, pouredNow]);
+  // While the board is routed, the copper the router has laid so far goes over it (issue 764).
+  const routing = job.value?.task === 'route' && job.value.board === name;
+  const laid = routing && liveRoute.value?.board === name ? routingMarkup(liveRoute.value) : '';
+  const drawing = useMemo(() => (sc ? prepare(sc.svg, poursMarkup(poured, pouredNow), laid) : null), [sc?.svg, poured, pouredNow, laid]);
   // The planes layer takes the planes' labels with it: a name on nothing is noise.
   // The marks of the routes file's copper go with the layer of their copper.
   const fixedOf: Record<string, string> = { 'front-copper': '[data-layer=top]', 'back-copper': '[data-layer=bottom]', vias: '.fixed-via' };
@@ -204,7 +239,7 @@ export function Pcb() {
     );
   }
   return (
-    <div class="pcb-view">
+    <div class="pcb-view" data-live-place={liveSeen.value.place} data-live-route={liveSeen.value.route}>
       <div class="toolbar pcb-bar" role="toolbar" aria-label="Board">
         {/* First in the bar, so it is where it was whichever view is shown and whatever the groups after it hold (issue 784). */}
         <div class="tb-group">
@@ -483,8 +518,19 @@ export function Pcb() {
             <span class="text">{sceneError.value}</span>
           </div>
         </EmptyState>
+      ) : placingCancelled.value === name && !sc && !sysIn3d ? (
+        <EmptyState
+          icon="stop"
+          title="The placing was cancelled"
+          help="Nothing it placed was kept. Place the board again when you want to see it."
+          actions={
+            <button class="tool primary" data-testid="place-again" onClick={() => void loadScene(name)}>
+              Place again
+            </button>
+          }
+        />
       ) : (!sc || !drawing) && !sysIn3d ? (
-        <ViewLoading what="Placing the board" />
+        sc ? <ViewLoading what="Drawing the board" /> : <Placing board={name} />
       ) : (
         <div class="pcb-main">
           {in3d ? (

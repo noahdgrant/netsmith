@@ -197,3 +197,20 @@
 .module-row .module-icon { color: var(--text-muted); flex: none; }
 .module-row.proposed .ref { color: var(--accent); }
 .module-row .regen-module { width: 1.5rem; height: 1.5rem; }
+
+/* The board while the server places it (issue 764): the parts where the placer has them, each the box round its courtyard,
+   the back face apart, in the region it places them in; drawn on their own, since the placer may move the whole placement after. */
+.pcb-placing { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.pcb-live { flex: 1; min-height: 0; display: flex; padding: 1rem; background: var(--pcb-bg); }
+.pcb-live svg { flex: 1; width: 100%; height: 100%; }
+.pcb-live .live-region { fill: var(--pcb-board); stroke: var(--pcb-outline); stroke-width: 0.15; }
+.pcb-live .live-part rect { stroke-width: 0.08; fill-opacity: 0.35; }
+.pcb-live .live-part.front rect { fill: var(--pcb-front); stroke: var(--pcb-front); }
+.pcb-live .live-part.back rect { fill: var(--pcb-back); stroke: var(--pcb-back); stroke-dasharray: 0.3 0.2; }
+.pcb-live .live-part text { fill: var(--pcb-refdes); text-anchor: middle; dominant-baseline: central; font-family: var(--mono); }
+/* The copper the router has laid so far, over the board while it routes. */
+.pcb-host .l-live .live-track { stroke-linecap: round; stroke-opacity: var(--pcb-track-opacity); }
+.pcb-host .l-live .live-track[data-layer='top'] { stroke: var(--pcb-front); }
+.pcb-host .l-live .live-track[data-layer='bottom'] { stroke: var(--pcb-back); }
+.pcb-host .l-live .live-track:not([data-layer='top']):not([data-layer='bottom']) { stroke: var(--pcb-inner); }
+.pcb-host .l-live .live-via { fill: var(--pcb-via); }

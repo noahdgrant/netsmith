@@ -17,7 +17,8 @@ import type {
   PcbWalk,
   RoutesChange,
 } from './api';
-import { ApiFailure, api } from './client';
+import { ApiFailure, api, wasCancelled } from './client';
+import { livePlace, placingSaid } from './pcb/liveState';
 import { type History, NO_HISTORY, type Run, type Step, record, redoing, undoing } from './pcb/edits';
 import { proposalSaid } from './pcb/regenerate';
 import { labelOf } from './pcb/routes';
@@ -112,18 +113,40 @@ function enqueue<T>(job: () => Promise<T>): Promise<T> {
   return next;
 }
 
-/** Take the scene of a board from the server. The selection keeps what is still there. */
+/** The board whose placing a person cancelled (issue 764): the view says so and offers to place it again. */
+export const placingCancelled = signal<string | null>(null);
+
+/** Take the scene of a board from the server. The selection keeps what is still there. While the server places the board
+ * the socket shows the parts where the placer has them (`liveState.ts`); a placing that is cancelled leaves no scene. */
 export function loadScene(board: string): Promise<void> {
   return enqueue(async () => {
+    if (scene.peek()?.board !== board) {
+      // A placing of this board begins: what was shown of another placing is not of it.
+      livePlace.value = null;
+      placingSaid.value = null;
+    }
+    placingCancelled.value = null;
     try {
       const next = await api.pcbScene(board);
       show(next);
       sceneError.value = null;
     } catch (e) {
       scene.value = null;
-      sceneError.value = e instanceof Error ? e.message : String(e);
+      if (wasCancelled(e)) {
+        placingCancelled.value = board;
+        sceneError.value = null;
+      } else sceneError.value = e instanceof Error ? e.message : String(e);
     }
   });
+}
+
+/** Stop the placing of the board that runs: its scene answers `cancelled` and the view offers to place it again. */
+export async function cancelPlacing(): Promise<void> {
+  try {
+    await api.cancelPlacing();
+  } catch (e) {
+    say(e instanceof Error ? e.message : String(e), true);
+  }
 }
 
 let findingsAsked = 0;

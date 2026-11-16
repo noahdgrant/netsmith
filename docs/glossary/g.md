@@ -16,6 +16,10 @@ _Avoid_: Abstract part, trait, protocol, role (a **Role** is a part's end of a b
 (A pick, not a definition: see **generic**.) A passive or LED the solver chooses by value alone: a resistor, a ceramic capacitor, an inductor or an LED with no supplier or part number. A rating it cannot know (a capacitor's rated voltage, an inductor's saturation current and DC resistance, an LED's forward voltage) is taken from what the design states or demands. A separate step resolves it to a catalog row (the project's _Preferred parts file_ first, then JLCPCB Basic; a capacitor only to a row with a recorded DC-bias curve), or reports it unresolved with the nearest alternatives and whether the checks pass with each (ADR 0047).
 _Avoid_: Virtual part, ideal part
 
+**Glimpse**:
+What the placer or the router has made so far, handed to a view while it runs (issue #764, `netsmith_pcb::Glimpse`): the parts where the placer has them, each the box round its courtyard, at the end of each stage of its annealer and of each run, or the copper the router has laid, as it reports its progress and at the end of each try. It is made only when a view watches, and making one changes nothing of the placement or the routing. The editor's PCB view draws it (`pcb_live` on the socket). A glimpse is not a result: the placer may still move the whole placement, and the board placed or routed replaces it.
+_Avoid_: Live placement, partial result (the router's Stop keeps a result: the copper it routed)
+
 **Ground group**:
 The ground nets of boards that mated ground contacts join, as the system view shows them (`carrier.GND + sensor.GND`). Each board keeps its own ground net; the system never merges them, it reports which ones are one ground. A mate that carries power or a signal must carry a ground contact, and a group holds no _Isolated ground_ with another ground of the same board.
 _Avoid_: Common ground, ground plane

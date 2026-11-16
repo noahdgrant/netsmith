@@ -50,6 +50,7 @@ import { THEMES, type ThemePref, theme, themePref } from '../theme';
 import { chooseTheme } from '../themeUi';
 import { plural } from '../util';
 import { useElapsed } from './JobProgress';
+import { type OutsideRun, dropOutside, outsideRuns } from '../pcb/liveState';
 import { Icon, SeverityIcon } from './Icons';
 import { settings } from '../settings';
 import { COMMENT_FONTS, FONT, autosave, commentFont, fontSize, hoverCards, inlineHints, outlineOpen, rebuildOnSave, resetEditorZoom, sortImportsOnSave, vimMode, wordWrap, zoomEditor } from '../source/prefs';
@@ -189,6 +190,37 @@ function JobItem() {
         {names[j.task] ?? j.task}: {j.lines[j.lines.length - 1] ?? 'starting'} ({clock(elapsed)})
       </span>
     </Item>
+  );
+}
+
+/** A run the editor did not start (`netsmith fab --to-editor` in a terminal, issue 764): its last line and its time while it
+ * runs, and how it ended until it is closed or another begins. */
+function OutsideItem({ run }: { run: OutsideRun }) {
+  const elapsed = useElapsed(run.ended ? null : run.started);
+  const last = run.lines[run.lines.length - 1] ?? 'starting';
+  const took = run.ended ? clock(run.ended.at - run.started) : clock(elapsed);
+  return (
+    <Item
+      class={`job-item outside-item ${run.ended ? (run.ended.ok ? 'ok' : 'bad') : ''}`}
+      title={`${run.command} started outside the editor (with --to-editor). ${run.ended ? 'It has ended; click to close this.' : 'It is running; the editor only shows its lines.'}`}
+      label={`${run.command} in a terminal: ${last}`}
+      onClick={run.ended ? () => dropOutside(run.run) : undefined}
+    >
+      {run.ended ? <Icon name={run.ended.ok ? 'check-circle' : 'error'} size={12} /> : <Spinner />}
+      <span class="sb-label sb-long" data-testid="outside-run" data-run={run.run} data-ended={run.ended ? (run.ended.ok ? 'ok' : 'failed') : undefined}>
+        {run.command} (terminal): {last} ({took})
+      </span>
+    </Item>
+  );
+}
+
+function OutsideItems() {
+  return (
+    <>
+      {Object.values(outsideRuns.value).map((r) => (
+        <OutsideItem key={r.run} run={r} />
+      ))}
+    </>
   );
 }
 
@@ -411,6 +443,7 @@ export function StatusBar() {
         </Item>
         <AnalysisItem />
         <JobItem />
+        <OutsideItems />
         <CompareChip />
         {anyDirty.value && (
           <Item

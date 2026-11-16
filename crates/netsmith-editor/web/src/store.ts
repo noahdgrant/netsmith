@@ -27,6 +27,7 @@ import {
   visiblePanes,
 } from './layout';
 import { noteCompareProgress } from './compare/progress';
+import { noteOutside, notePcbLive, notePlacingLine } from './pcb/liveState';
 import { booting, noteElapsed, notify, pending, setSocket, track } from './feedback/state';
 import { sourceEditor } from './source/handle';
 import { sortImports } from './source/imports';
@@ -298,6 +299,11 @@ export async function start() {
             }
             break;
           }
+          if (message.task === 'place') {
+            // The placer of a board the PCB view places (issue 764): its last line, under the drawing of the parts.
+            notePlacingLine(message.board, message.message);
+            break;
+          }
           const j = job.value;
           if (j && j.task === message.task) {
             job.value = { ...j, lines: [...j.lines.slice(-39), message.message] };
@@ -319,6 +325,14 @@ export async function start() {
           break;
         case 'cancelled':
           noteCancelled(message);
+          break;
+        case 'pcb_live':
+          // What the placer or the router has made so far (issue 764): the PCB view draws it.
+          notePcbLive(message.live);
+          break;
+        case 'outside':
+          // A run the editor did not start (`fab --to-editor`): the status bar shows it.
+          noteOutside(message.progress);
           break;
         case 'view':
         case 'view_picture':

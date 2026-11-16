@@ -109,6 +109,13 @@
 //! far, at most once in two seconds, and what each try ended with. `fab` prints them as it prints
 //! the placer's (`Board: routing: ...`). Its limit is its own time limit (`--route-timeout`), which
 //! keeps what it routed, and its checkpoints are where it tests that time.
+//!
+//! **Pictures as well as counts** (issue #764). The placer and the router also hand what they
+//! have made so far to a sink of the thread, the same way: `netsmith_pcb::watching_glimpses`
+//! installs it, `show_glimpse` is given a glimpse made only when one watches, and making one only
+//! reads. It is in `netsmith-pcb`, which knows parts and copper; this module does not. The
+//! editor's PCB view draws them, and runs its placing under a token of its own that its Cancel
+//! cancels.
 
 use std::{
     cell::{Cell, RefCell},

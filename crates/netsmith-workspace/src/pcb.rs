@@ -328,48 +328,23 @@ pub fn board_error(name: &str, error: &netsmith_pcb::BoardError) -> ApiError {
     }
 }
 
-/// The token every placing of the PCB view runs under ([`place_watched`]); [`cancel_placing`]
-/// cancels it and puts a new one in its place, so a cancel stops the placings that run and none
-/// that begins after it.
-static PLACING: std::sync::Mutex<Option<Cancel>> = std::sync::Mutex::new(None);
-
-fn placing_token() -> Cancel {
-    PLACING
-        .lock()
-        .unwrap_or_else(|e| e.into_inner())
-        .get_or_insert_with(Cancel::new)
-        .clone()
-}
-
-/// Stops every placing of the PCB view that runs ([`place_watched`]) at its next checkpoint:
-/// its request is answered `cancelled` and nothing it placed is kept. Whether one was running
-/// cannot be told; a placing that begins after this is not stopped.
-pub fn cancel_placing() {
-    let mut token = PLACING.lock().unwrap_or_else(|e| e.into_inner());
-    if let Some(running) = token.replace(Cancel::new()) {
-        running.cancel();
-    }
-}
-
 /// [`place`] for the PCB view, watched (issue #764): the placer's progress lines go to `say`
 /// (`Board: placing: run 1 in ... [6 s]`, as `fab` prints them), where it has the parts goes to
-/// `show` as it works, and [`cancel_placing`] stops it (`ApiError::cancelled`). `token` is the
-/// one to run under; `None` takes the view's own.
+/// `show` as it works, and a cancel of `token` stops it (`ApiError::cancelled`).
 pub fn place_watched(
     data: &BoardData,
     name: &str,
     say: &Say,
     show: &Show,
-    token: Option<&Cancel>,
+    token: &Cancel,
 ) -> Result<Entry, ApiError> {
-    let token = token.cloned().unwrap_or_else(placing_token);
     let progress = netsmith_fabricate::layout::place_progress(name.to_string(), {
         let say = say.clone();
         move |line: &str| say(line)
     });
     let glimpses = live_sink(name, "place", show);
     job::catch(|| {
-        job::scope(&token, || {
+        job::scope(token, || {
             job::reporting(progress, || {
                 netsmith_pcb::watching_glimpses(glimpses, || place(data, name))
             })
@@ -382,17 +357,19 @@ pub fn place_watched(
     })
 }
 
-/// How often a glimpse of the placer or the router is passed to the page, at most: the first
-/// is passed at once.
+/// How often a glimpse of the placer is passed to the page, at most: the first is passed at
+/// once. The router keeps its own pace (at most four a second, and always the end of a try), so
+/// its glimpses are all passed.
 const LIVE_EVERY: Duration = Duration::from_millis(200);
 
 /// A sink of the placer's or the router's glimpses that passes them to `show` as [`PcbLive`]s
-/// of `task`, at most once in [`LIVE_EVERY`].
+/// of `task`, the placer's at most once in [`LIVE_EVERY`].
 fn live_sink(name: &str, task: &str, show: &Show) -> std::rc::Rc<dyn Fn(&netsmith_pcb::Glimpse)> {
     let (name, task, show) = (name.to_string(), task.to_string(), show.clone());
     let last = std::cell::Cell::new(None::<Instant>);
     std::rc::Rc::new(move |g: &netsmith_pcb::Glimpse| {
-        if last.get().is_some_and(|at| at.elapsed() < LIVE_EVERY) {
+        let placing = matches!(g, netsmith_pcb::Glimpse::Placing { .. });
+        if placing && last.get().is_some_and(|at| at.elapsed() < LIVE_EVERY) {
             return;
         }
         last.set(Some(Instant::now()));
