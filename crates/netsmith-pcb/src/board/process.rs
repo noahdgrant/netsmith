@@ -208,6 +208,16 @@ impl Board {
             .collect()
     }
 
+    /// The inner layers that are signal layers (ADR 0111), from the top: each inner layer that
+    /// is not a plane. The router draws tracks on them as on the outer layers (issue #833).
+    pub fn signal_layers(&self) -> Vec<CopperLayer> {
+        self.inner_layers()
+            .iter()
+            .filter(|l| !self.planes.iter().any(|pl| pl.layer == **l))
+            .filter_map(|l| CopperLayer::of_name(l))
+            .collect()
+    }
+
     /// Each via that stands in a surface-mount pad (its centre is on the pad's copper): the
     /// via's place in [`Board::vias`] and the pad. A via in a pad has to be filled and capped
     /// by the fabricator, or the solder runs down the hole.

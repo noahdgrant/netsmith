@@ -19,20 +19,24 @@ pub(super) fn pad_of<'a>(
     (part, found)
 }
 
-/// The copper layers a pad of this footprint has, and its centre.
+/// The copper layers a pad of this footprint has, and its centre. A through-hole pad is on
+/// every one of the router's `layers`, the inner signal layers too (issue #833).
 pub(super) fn pad_spots(
     board: &Board,
     pad: &netsmith_pcb::PadRef,
     at: Pt,
     grid: &Grid,
+    layers: usize,
 ) -> Vec<Spot> {
     let (part, found) = pad_of(board, pad, at);
     let (front, back) = part.pad_layers(found);
     let (i, j) = grid.cell(at);
+    let through = front && back && found.drill.is_some();
     [(front, FRONT), (back, BACK)]
         .iter()
         .filter(|(has, _)| *has)
         .map(|&(_, layer)| (i, j, layer))
+        .chain((2..layers).filter(|_| through).map(|layer| (i, j, layer)))
         .collect()
 }
 

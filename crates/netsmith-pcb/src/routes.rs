@@ -38,8 +38,8 @@
 //! ```
 //!
 //! A track is straight from `from` to `to`, or an arc through `mid` (KiCad's `(arc (start)
-//! (mid) (end))`); `layer` is `top` or `bottom` (tracks are drawn on the outer layers only, as
-//! the router's are); `width`, `diameter` and `drill` are in mm. An unknown key is an error.
+//! (mid) (end))`); `layer` is `top`, `bottom` or an inner signal layer of the process, `inner2`
+//! (issue #833; an inner plane holds no track); `width`, `diameter` and `drill` are in mm. An unknown key is an error.
 //!
 //! **Zones** ([`RouteZone`]) are KiCad's zones (issue #724): copper filled inside `outline`,
 //! less each of `holes`, on each of `layers` (`top`, `bottom`, `inner1`, ...), joined to the
@@ -87,7 +87,6 @@ use serde::{Deserialize, Serialize};
 
 use crate::board::{Board, BoardZone, CopperLayer, Track, Via, ZoneIslands, ZonePads};
 use crate::geometry::Pt;
-use crate::layout::Face;
 
 /// The version of the file format this reads and writes.
 pub const VERSION: u32 = 1;
@@ -101,7 +100,9 @@ pub fn routes_path(source: &std::path::Path) -> std::path::PathBuf {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RouteTrack {
-    pub layer: Face,
+    /// `top`, `bottom`, or an inner signal layer, `inner2` (issue #833).
+    #[serde(with = "layer_word")]
+    pub layer: CopperLayer,
     pub width: f64,
     pub from: [f64; 2],
     /// For an arc, a point on it halfway from `from` to `to`.
@@ -298,10 +299,7 @@ impl Routes {
                 if !record.tracks.is_empty() {
                     out.push_str("tracks = [\n");
                     for t in &record.tracks {
-                        let layer = match t.layer {
-                            Face::Top => "top",
-                            Face::Bottom => "bottom",
-                        };
+                        let layer = t.layer.word();
                         let _ = write!(
                             out,
                             "  {{ layer = \"{layer}\", width = {}, from = {}",
@@ -464,17 +462,23 @@ pub fn pad_hash(board: &Board, net: &str) -> Option<String> {
     Some(format!("{hash:016x}"))
 }
 
-fn layer_of(face: Face) -> CopperLayer {
-    match face {
-        Face::Top => CopperLayer::Front,
-        Face::Bottom => CopperLayer::Back,
-    }
-}
+/// A track's layer in the file: its word, `top`, `bottom` or `inner2`
+/// ([`CopperLayer::word`]).
+mod layer_word {
+    use super::CopperLayer;
+    use serde::{Deserialize, Deserializer, Serializer};
 
-fn face_of(layer: CopperLayer) -> Face {
-    match layer {
-        CopperLayer::Front => Face::Top,
-        CopperLayer::Back => Face::Bottom,
+    pub(super) fn serialize<S: Serializer>(layer: &CopperLayer, s: S) -> Result<S::Ok, S::Error> {
+        s.serialize_str(layer.word())
+    }
+
+    pub(super) fn deserialize<'de, D: Deserializer<'de>>(d: D) -> Result<CopperLayer, D::Error> {
+        let word = String::deserialize(d)?;
+        CopperLayer::of_word(&word).ok_or_else(|| {
+            serde::de::Error::custom(format!(
+                "a track's layer is `top`, `bottom` or an inner layer (`inner2`), not `{word}`"
+            ))
+        })
     }
 }
 
@@ -484,7 +488,7 @@ impl RouteTrack {
         let at = |p: [f64; 2]| board.outline.min + Pt::new(p[0], p[1]);
         Track {
             net: net.to_string(),
-            layer: layer_of(self.layer),
+            layer: self.layer,
             from: at(self.from),
             to: at(self.to),
             width: self.width,
@@ -499,7 +503,7 @@ impl RouteTrack {
             [q.x, q.y]
         };
         RouteTrack {
-            layer: face_of(track.layer),
+            layer: track.layer,
             width: track.width,
             from: at(track.from),
             mid: track.mid.map(at),
@@ -508,7 +512,13 @@ impl RouteTrack {
         }
     }
 
-    fn check(&self) -> Result<(), String> {
+    fn check(&self, board: &Board) -> Result<(), String> {
+        if !self.layer.is_outer() && !board.signal_layers().contains(&self.layer) {
+            return Err(format!(
+                "a track on `{}`, which is not a signal layer of the board's process (a track is on `top`, `bottom` or an inner layer whose `.use` is \"signal\")",
+                self.layer.word()
+            ));
+        }
         let points = [Some(self.from), self.mid, Some(self.to)];
         if points.iter().flatten().flatten().any(|v| !v.is_finite()) {
             return Err("a track at a place that is not a number".into());
@@ -730,7 +740,7 @@ pub fn apply_routes(
     let mut zones = Vec::new();
     for (net, record) in &table.nets {
         for t in &record.tracks {
-            t.check().map_err(|why| RoutesError::BadShape {
+            t.check(board).map_err(|why| RoutesError::BadShape {
                 file: file.to_string(),
                 net: net.clone(),
                 why,
@@ -846,7 +856,7 @@ mod tests {
                 lock: true,
                 tracks: vec![
                     RouteTrack {
-                        layer: Face::Top,
+                        layer: CopperLayer::Front,
                         width: 0.2,
                         from: [1.0, 2.5],
                         mid: None,
@@ -854,7 +864,7 @@ mod tests {
                         lock: false,
                     },
                     RouteTrack {
-                        layer: Face::Bottom,
+                        layer: CopperLayer::Back,
                         width: 0.15,
                         from: [3.125, 2.5],
                         mid: Some([3.5, 2.6]),
@@ -1035,7 +1045,7 @@ mod tests {
             pads: pad_hash(&board, &net).unwrap(),
             lock: true,
             tracks: vec![RouteTrack {
-                layer: Face::Top,
+                layer: CopperLayer::Front,
                 width: 0.25,
                 from: [1.0, 1.0],
                 mid: None,
@@ -1104,6 +1114,63 @@ mod tests {
             }]
         );
         assert!(board.fixed.is_empty() && board.tracks.is_empty());
+    }
+
+    #[test]
+    fn a_track_on_an_inner_signal_layer_reads_back_and_one_on_a_plane_is_an_error() {
+        let board = crate::board::tests::six_layer_board();
+        assert_eq!(
+            board.signal_layers(),
+            [CopperLayer::Inner(2), CopperLayer::Inner(3)]
+        );
+        let net = "net-led.anode".to_string();
+        let track = |layer| RouteTrack {
+            layer,
+            width: 0.2,
+            from: [1.0, 2.0],
+            mid: None,
+            to: [3.0, 2.0],
+            lock: false,
+        };
+        let routes_with = |layer| {
+            let mut routes = Routes::default();
+            routes
+                .boards
+                .entry(board.name.clone())
+                .or_default()
+                .nets
+                .insert(
+                    net.clone(),
+                    NetRoutes {
+                        pads: pad_hash(&board, &net).unwrap(),
+                        tracks: vec![track(layer)],
+                        ..NetRoutes::default()
+                    },
+                );
+            routes
+        };
+        let routes = routes_with(CopperLayer::Inner(3));
+        let text = routes.to_text();
+        assert!(text.contains("{ layer = \"inner3\", width = 0.2"), "{text}");
+        assert_eq!(Routes::parse(&text, "f").unwrap(), routes);
+        let mut on = board.clone();
+        apply_routes(&mut on, &routes, "f").unwrap();
+        assert_eq!(on.tracks[0].layer, CopperLayer::Inner(3));
+        assert_eq!(
+            record_of(&on, &net, false).unwrap().tracks,
+            [track(CopperLayer::Inner(3))]
+        );
+        // A plane holds no track, and a layer word that names no layer is not read.
+        let e = apply_routes(&mut board.clone(), &routes_with(CopperLayer::Inner(1)), "f")
+            .unwrap_err()
+            .to_string();
+        assert!(
+            e.contains("inner1") && e.contains("not a signal layer"),
+            "{e}"
+        );
+        let bad = text.replace("inner3", "middle");
+        let e = Routes::parse(&bad, "f").unwrap_err().to_string();
+        assert!(e.contains("middle"), "{e}");
     }
 
     #[test]

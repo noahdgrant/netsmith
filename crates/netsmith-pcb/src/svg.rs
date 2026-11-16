@@ -48,6 +48,8 @@ const UNCONNECTED: &str = "#8b949e";
 const KEY: &str = "#c9d1d9";
 const FRONT_COPPER: &str = "#d63c3c";
 const BACK_COPPER: &str = "#3c78d6";
+/// Tracks on an inner signal layer (issue #833), between the back and the front.
+const INNER_COPPER: &str = "#d6a23c";
 const VIA_COPPER: &str = "#c8c8c8";
 /// Pad number text, dark so it reads on any net colour.
 const PAD_TEXT: &str = "#0d1117";
@@ -565,13 +567,33 @@ fn draw(board: &Board, with_key: bool) -> String {
     for placed in &board.parts {
         part(&mut out, placed, &colours);
     }
-    for layer in [CopperLayer::Back, CopperLayer::Front] {
-        let (colour, class) = if layer == CopperLayer::Front {
-            (FRONT_COPPER, "l-front-copper")
-        } else {
-            (BACK_COPPER, "l-back-copper")
+    // The back, the inner signal layers from the bottom up (only those with tracks, so a board
+    // with none draws as before), and the front.
+    let mut layers = vec![CopperLayer::Back];
+    let mut inner: Vec<CopperLayer> = board
+        .tracks
+        .iter()
+        .map(|t| t.layer)
+        .filter(|l| !l.is_outer())
+        .collect();
+    inner.sort_by_key(|l| match l {
+        CopperLayer::Inner(n) => std::cmp::Reverse(*n),
+        _ => std::cmp::Reverse(0),
+    });
+    inner.dedup();
+    layers.extend(inner);
+    layers.push(CopperLayer::Front);
+    for layer in layers {
+        let (colour, class) = match layer {
+            CopperLayer::Front => (FRONT_COPPER, "l-front-copper"),
+            CopperLayer::Back => (BACK_COPPER, "l-back-copper"),
+            CopperLayer::Inner(_) => (INNER_COPPER, "l-inner-copper"),
         };
-        let _ = writeln!(out, r#"<g class="{class}">"#);
+        if layer.is_outer() {
+            let _ = writeln!(out, r#"<g class="{class}">"#);
+        } else {
+            let _ = writeln!(out, r#"<g class="{class}" data-layer="{}">"#, layer.name());
+        }
         for t in board.tracks.iter().filter(|t| t.layer == layer) {
             if let Some(arc) = t.arc() {
                 // SVG's arc: the radius, then whether it sweeps the short way (an arc at a

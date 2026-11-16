@@ -103,7 +103,7 @@ impl Rules {
     ///
     /// Fails if the process is not one this router can draw: an even number of layers, with
     /// what each inner layer is (a plane or a signal layer, ADR 0111). The router draws on the
-    /// outer layers only.
+    /// outer layers and the signal layers (issue #833).
     pub fn for_process(process: &Process) -> Result<Rules, String> {
         let layers = process.stackup.layers;
         if layers < 2 || !layers.is_multiple_of(2) {

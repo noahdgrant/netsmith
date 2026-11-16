@@ -171,6 +171,7 @@ pub(crate) fn return_lines(board: &Board) -> Vec<Ratline> {
             let on_pour = pours.iter().any(|p| match p.layer {
                 netsmith_pcb::CopperLayer::Front => node.front,
                 netsmith_pcb::CopperLayer::Back => node.back,
+                netsmith_pcb::CopperLayer::Inner(_) => false,
             });
             if on_pour {
                 continue;

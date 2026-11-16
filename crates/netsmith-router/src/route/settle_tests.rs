@@ -110,7 +110,7 @@ fn the_print_of_a_window_changes_with_the_copper_near_it_only() {
     assert_eq!(print(&[&near], true, &[other]), hard);
     // So is what the negotiation has learnt about the window's cells.
     let cells = router.grid.nx * router.grid.ny;
-    *router.history.borrow_mut() = [vec![0; cells], vec![0; cells]];
+    *router.history.borrow_mut() = vec![vec![0; cells], vec![0; cells]];
     let learnt = print(&[], false, &[]);
     router.learn(&[(1, 1, FRONT)]);
     assert_ne!(print(&[], false, &[]), learnt);
@@ -351,7 +351,10 @@ fn an_opening_drawn_in_the_mask_is_an_obstacle_to_a_track_of_any_net_on_both_fac
     let opening = r1.mask_openings()[0];
     let found = opening_obstacles(&board, opening);
     assert_eq!(found.len(), 1);
-    assert_eq!((found[0].net, found[0].layers), (None, [true, true]));
+    assert_eq!(
+        (found[0].net, found[0].layers),
+        (None, Layers::outer(true, true))
+    );
 }
 
 #[test]
@@ -403,7 +406,7 @@ fn an_opening_drawn_over_pads_of_one_net_is_an_obstacle_to_other_nets_only_and_o
 fn soft_wall(grid: &Grid, masks: &mut Masks, i: usize, gap: std::ops::Range<usize>) {
     let cells = masks.window.cells();
     let mut soft = Soft {
-        track: [vec![false; cells], vec![false; cells]],
+        track: vec![vec![false; cells], vec![false; cells]],
         via: vec![false; cells],
     };
     for j in (0..grid.ny).filter(|j| !gap.contains(j)) {

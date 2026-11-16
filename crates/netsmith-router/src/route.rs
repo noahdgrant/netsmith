@@ -1,8 +1,22 @@
-//! A small router: A* over a grid of two copper layers, with vias.
+//! A small router: A* over a grid of copper layers, with vias.
 //!
-//! On a four-layer board the router draws on the two outer layers only. The inner layers are
-//! planes, so a pad on a plane's net is joined to it by a via dropped beside the pad and a
-//! short track from the pad to the via; that is all such a pad needs. Two such pads near each
+//! The router draws on the two outer layers and on each inner layer the process declares a
+//! signal layer (ADR 0111, ADR 0133, issue #833), the `Stack`: index 0 is the front, 1 the back, and the
+//! signal layers follow from the top, so a board with none searches exactly as before. A via
+//! is a through via: from a cell it takes the path to any other layer (the outer one first) at
+//! one via's cost, and it is checked against the copper of every layer. A through-hole pad is
+//! an end on every layer and an obstacle on every layer; a surface-mount pad, a mask opening and
+//! a keepout of the outer faces only on its own; every hole keeps the process's space between
+//! inner copper and a hole ([`netsmith_pcb::Rules::plane_clearance`]) from a track on a signal
+//! layer. A net with a known current (`Board::net_currents`) keeps to the outer layers: its width
+//! is sized for the outer copper (ADR 0036), which an inner layer's thinner copper and IPC-2221's
+//! halved constant would not carry. The coarse plan and the escape lanes are of the outer layers
+//! and cost nothing on an inner one; a via in a pad leads to the pad's far outer layer only.
+//! Blind and buried vias are not drawn.
+//!
+//! The inner layers that are planes are not drawn on: a pad on a plane's net is joined to it
+//! by a via dropped beside the pad and a short track from the pad to the via; that is all such
+//! a pad needs. Two such pads near each
 //! other may share one via ([`Router::share_vias`]), and a pad in an outer pour of its net gives
 //! its via up once the pour is stitched (`crate::pour_pads`), both issue #834.
 //!
@@ -808,11 +822,41 @@ const AFTER_VIA: usize = 9;
 /// The directions a search state remembers.
 const DIRECTIONS: usize = 10;
 
-fn layer_of(index: usize) -> CopperLayer {
-    if index == FRONT {
-        CopperLayer::Front
-    } else {
-        CopperLayer::Back
+/// The router's copper layers by index (issue #833): [`FRONT`], [`BACK`], then the board's
+/// inner signal layers from the top ([`Board::signal_layers`]). A board of two layers, or one
+/// whose inner layers are all planes, has the two outer layers only and routes as before.
+#[derive(Clone, Debug)]
+pub(crate) struct Stack {
+    pub(crate) copper: Vec<CopperLayer>,
+}
+
+impl Stack {
+    pub(crate) fn of(board: &Board) -> Stack {
+        let mut copper = vec![CopperLayer::Front, CopperLayer::Back];
+        copper.extend(board.signal_layers());
+        Stack { copper }
+    }
+
+    /// How many layers the router draws on.
+    pub(crate) fn len(&self) -> usize {
+        self.copper.len()
+    }
+
+    /// The copper layer of an index.
+    pub(crate) fn layer(&self, index: usize) -> CopperLayer {
+        self.copper[index]
+    }
+
+    /// The index of a copper layer, `None` for one the router does not draw on (a plane).
+    pub(crate) fn index(&self, layer: CopperLayer) -> Option<usize> {
+        self.copper.iter().position(|&l| l == layer)
+    }
+
+    /// The layers a track on `layer` is on: that one, or none for a layer the router does not
+    /// draw on.
+    pub(crate) fn layers_of(&self, layer: CopperLayer) -> Layers {
+        self.index(layer)
+            .map_or(Layers::outer(false, false), Layers::one)
     }
 }
 
@@ -856,13 +900,13 @@ fn keeps_fewer_vias(before: (f64, usize, f64), after: (f64, usize, f64)) -> bool
 }
 
 /// The faces whose solder mask a pad opens, on the board: front first.
-fn mask_sides(part: &netsmith_pcb::Placed, pad: &netsmith_pcb::Pad) -> [bool; 2] {
+fn mask_sides(part: &netsmith_pcb::Placed, pad: &netsmith_pcb::Pad) -> Layers {
     let has = |name: &str| pad.layers.iter().any(|l| l == name || l == "*.Mask");
     let (front, back) = (has("F.Mask"), has("B.Mask"));
     if part.mirrored() {
-        [back, front]
+        Layers::outer(back, front)
     } else {
-        [front, back]
+        Layers::outer(front, back)
     }
 }
 
@@ -977,7 +1021,13 @@ struct Router<'a> {
     /// Whether lines left over are negotiated for and given a chain of rip-ups, and what the
     /// negotiation has learnt.
     negotiate: bool,
-    history: RefCell<[Vec<u8>; 2]>,
+    history: RefCell<Vec<Vec<u8>>>,
+    /// The layers the router draws on.
+    stack: Stack,
+    /// For each net, whether it is kept to the outer layers: a net with a known current, whose
+    /// width is sized for the outer copper (ADR 0036), which an inner layer's thinner copper
+    /// and IPC-2221's halved constant would not carry at that width (issue #833).
+    outer_only: Vec<bool>,
     /// Whether the router is in the first pass of a try, which searches in eight directions.
     fine: Cell<bool>,
     /// When to stop, if there is a limit.

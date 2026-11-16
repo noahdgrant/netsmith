@@ -40,7 +40,7 @@ impl<'a> Router<'a> {
         let own = self.clearance_of(line);
         let apart = |o: &Obstacle| o.space(own) - MARGIN - EXACT_SLACK;
         for track in &mut routed.tracks {
-            let layer = usize::from(track.layer == CopperLayer::Back);
+            let layer = self.stack.index(track.layer).unwrap_or(FRONT);
             let clear = |width: f64| {
                 let reach = Rect::new(
                     Pt::new(track.from.x.min(track.to.x), track.from.y.min(track.to.y)),
@@ -111,7 +111,7 @@ impl<'a> Router<'a> {
         let tracks: Vec<&Track> = own.iter().flat_map(|r| r.tracks.iter()).collect();
         let same = |p: Pt, q: Pt| p.distance(q) < 1e-3;
         for t in &routed.tracks {
-            let layer = usize::from(t.layer == CopperLayer::Back);
+            let layer = self.stack.index(t.layer).unwrap_or(FRONT);
             for at in [t.from, t.to] {
                 if pads
                     .iter()
@@ -224,7 +224,7 @@ impl<'a> Router<'a> {
                 if la < 1e-6 || lb < 1e-6 || ((u.x * v.x + u.y * v.y) / (la * lb)).abs() > 1e-3 {
                     continue;
                 }
-                let layer = usize::from(a.layer == CopperLayer::Back);
+                let layer = self.stack.index(a.layer).unwrap_or(FRONT);
                 if in_pad(corner, layer) {
                     continue;
                 }

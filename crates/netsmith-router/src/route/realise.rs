@@ -5,7 +5,7 @@ use super::*;
 impl<'a> Router<'a> {
     /// The pads of a net, each as the square a round pad of its size holds (where a corner is
     /// inside the pad's copper whatever its shape), with the layers it has copper on.
-    pub(super) fn own_pad_squares(&self, net: usize) -> Vec<(Rect, [bool; 2])> {
+    pub(super) fn own_pad_squares(&self, net: usize) -> Vec<(Rect, Layers)> {
         self.fixed_by_net[net]
             .iter()
             .filter_map(|&k| {
@@ -75,7 +75,7 @@ impl<'a> Router<'a> {
             for (a, b, narrow) in runs_with(&self.grid, &cells, &neck) {
                 tracks.push(Track {
                     net: l.net.clone(),
-                    layer: layer_of(layer),
+                    layer: self.stack.layer(layer),
                     from: a,
                     to: b,
                     width: width_of(narrow),
@@ -131,7 +131,7 @@ impl<'a> Router<'a> {
             if pad_at != cell {
                 tracks.push(Track {
                     net: l.net.clone(),
-                    layer: layer_of(spot.2),
+                    layer: self.stack.layer(spot.2),
                     from: pad_at,
                     to: cell,
                     width: width_of(necked(&spot)),

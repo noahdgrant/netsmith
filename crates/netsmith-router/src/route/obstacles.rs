@@ -2,8 +2,24 @@
 
 use super::*;
 
-pub(crate) fn initial_obstacles(board: &Board) -> Obstacles {
+pub(crate) fn initial_obstacles(board: &Board, stack: &Stack) -> Obstacles {
     let rules = &board.rules;
+    // An inner signal layer keeps the process's space between inner copper and a hole
+    // (`Rules::plane_clearance`, the larger of the copper space and the inner layers' space to
+    // a hole) from every hole, plated or not (issue #833); a board with none keeps the outer
+    // layers' spaces alone, as before.
+    let inner = stack.len() > 2;
+    let inner_hole = |list: &mut Vec<Obstacle>, net: Option<usize>, form: Form, keep: f64| {
+        if inner && rules.plane_clearance > keep {
+            list.push(Obstacle {
+                net,
+                layers: Layers::inner(),
+                form,
+                clearance: rules.plane_clearance + MARGIN,
+                copper: false,
+            });
+        }
+    };
     let net_of: HashMap<(&str, &str), usize> = board
         .nets
         .iter()
@@ -24,13 +40,15 @@ pub(crate) fn initial_obstacles(board: &Board) -> Obstacles {
                 // copper and other holes away from its edge.
                 if let Some((a, b, radius)) = part.hole(pad) {
                     // The page's "NPTH to track" (issue #431).
+                    let keep = rules.clearance.max(rules.hole_clearance);
                     list.push(Obstacle {
                         net: None,
-                        layers: [true, true],
+                        layers: Layers::ALL,
                         form: Form::Segment(a, b, radius),
-                        clearance: rules.clearance.max(rules.hole_clearance) + MARGIN,
+                        clearance: keep + MARGIN,
                         copper: false,
                     });
+                    inner_hole(&mut list, None, Form::Segment(a, b, radius), keep);
                     // A via's hole keeps `hole_to_hole` from this hole's edge.
                     via_keepouts.push((
                         Form::Segment(a, b, radius),
@@ -40,7 +58,7 @@ pub(crate) fn initial_obstacles(board: &Board) -> Obstacles {
                 // Its opening in the solder mask, which may be wider than the hole, exposes
                 // copper: a track keeps the process's space from it (issue #431).
                 let mask = mask_sides(part, pad);
-                if mask != [false, false] && pad.width > 0.0 && pad.height > 0.0 {
+                if !mask.is_empty() && pad.width > 0.0 && pad.height > 0.0 {
                     let form = match pad.shape {
                         netsmith_pcb::PadShape::Circle => {
                             Form::Circle(part.pad_centre(pad), pad.width.min(pad.height) / 2.0)
@@ -72,24 +90,26 @@ pub(crate) fn initial_obstacles(board: &Board) -> Obstacles {
                 };
                 list.push(Obstacle {
                     net: pad_net,
-                    layers: [true, true],
+                    layers: Layers::ALL,
                     form: Form::Segment(a, b, radius),
                     clearance: keep + MARGIN,
                     copper: false,
                 });
+                inner_hole(&mut list, pad_net, Form::Segment(a, b, radius), keep);
             }
             // A pad whose opening in the solder mask reaches past its copper by a margin of
             // its own keeps a track of another net the process's mask to track space from
             // the opening.
             let mask_keep = match pad.mask_margin {
-                Some(margin) if margin > 0.0 && mask_sides(part, pad) != [false, false] => {
+                Some(margin) if margin > 0.0 && !mask_sides(part, pad).is_empty() => {
                     margin + rules.mask_to_track
                 }
                 _ => 0.0,
             };
             list.push(Obstacle {
                 net: pad_net,
-                layers: [front, back],
+                // A through-hole pad has copper on every layer, the inner ones too.
+                layers: Layers::of_pad(front, back),
                 form: Form::Rect(bounds),
                 // The larger of the board's clearance (or its net's, issue #758) and the pad's
                 // own, as the design rules check applies it, and of the space from its mask
@@ -148,7 +168,7 @@ pub(crate) fn initial_obstacles(board: &Board) -> Obstacles {
             if nets.len() <= 1 {
                 list.push(Obstacle {
                     net: nets.first().copied().flatten(),
-                    layers: [true, true],
+                    layers: Layers::outer(true, true),
                     form: Form::Rect(opening),
                     clearance: rules.mask_to_track + MARGIN,
                     copper: false,
@@ -164,8 +184,13 @@ pub(crate) fn initial_obstacles(board: &Board) -> Obstacles {
     // track's cells also bound vias here, vias keep out of them too), and vias of the
     // areas that forbid them.
     for k in board.keepout_areas() {
-        let layers = [k.on(CopperLayer::Front), k.on(CopperLayer::Back)];
-        if k.tracks && layers != [false, false] {
+        let mut layers = Layers::outer(k.on(CopperLayer::Front), k.on(CopperLayer::Back));
+        for (n, &inner) in stack.copper.iter().enumerate().skip(2) {
+            if k.on(inner) {
+                layers = layers.with(n);
+            }
+        }
+        if k.tracks && !layers.is_empty() {
             list.push(Obstacle {
                 net: None,
                 layers,
@@ -189,7 +214,7 @@ pub(crate) fn initial_obstacles(board: &Board) -> Obstacles {
     for (from, to) in edges {
         list.push(Obstacle {
             net: None,
-            layers: [true, true],
+            layers: Layers::ALL,
             form: Form::Segment(from, to, 0.0),
             clearance: rules.copper_to_edge + MARGIN,
             copper: false,
@@ -202,7 +227,12 @@ pub(crate) fn initial_obstacles(board: &Board) -> Obstacles {
 /// (`netsmith_pcb::Routes`): obstacles of their nets, as the router's own copper is
 /// ([`Router::copper_of`]), that no rip-up removes. An arc is its chords, kept
 /// [`netsmith_geom::ARC_ERROR`] wider.
-pub(crate) fn fixed_copper(board: &Board, net_index: &HashMap<&str, usize>, fixed: &mut Obstacles) {
+pub(crate) fn fixed_copper(
+    board: &Board,
+    stack: &Stack,
+    net_index: &HashMap<&str, usize>,
+    fixed: &mut Obstacles,
+) {
     // The space of copper of a net: its clearance (issue #758), with the margin.
     let clearance = |net: &str| board.clearance(net) + MARGIN;
     for t in &board.tracks {
@@ -216,7 +246,7 @@ pub(crate) fn fixed_copper(board: &Board, net_index: &HashMap<&str, usize>, fixe
         for w in t.centre_line().windows(2) {
             fixed.list.push(Obstacle {
                 net,
-                layers: [t.layer == CopperLayer::Front, t.layer == CopperLayer::Back],
+                layers: stack.layers_of(t.layer),
                 form: Form::Segment(w[0], w[1], half),
                 clearance: clearance(&t.net),
                 copper: true,
@@ -226,7 +256,7 @@ pub(crate) fn fixed_copper(board: &Board, net_index: &HashMap<&str, usize>, fixe
     for v in &board.vias {
         fixed.list.push(Obstacle {
             net: net_index.get(v.net.as_str()).copied(),
-            layers: [true, true],
+            layers: Layers::ALL,
             form: Form::Circle(v.at, v.diameter / 2.0),
             clearance: clearance(&v.net),
             copper: true,

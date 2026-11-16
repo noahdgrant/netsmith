@@ -169,10 +169,18 @@ fn crosses(a: Pt, b: Pt, c: Pt, d: Pt) -> bool {
     d1 * d2 < 0.0 && d3 * d4 < 0.0
 }
 
+/// Whether the pad has copper on the layer: an inner layer holds only a through-hole pad.
+fn has_layer(node: &Node, layer: CopperLayer) -> bool {
+    match layer {
+        CopperLayer::Front => node.front,
+        CopperLayer::Back => node.back,
+        CopperLayer::Inner(_) => node.front && node.back,
+    }
+}
+
 fn on_pad(node: &Node, at: Pt, layer: Option<CopperLayer>) -> bool {
     let on_layer = match layer {
-        Some(CopperLayer::Front) => node.front,
-        Some(CopperLayer::Back) => node.back,
+        Some(layer) => has_layer(node, layer),
         None => node.front || node.back,
     };
     on_layer && node.bounds.expanded(TOUCH).contains(&Rect::new(at, at))
@@ -192,10 +200,7 @@ fn overlap(a: &Node, b: &Node) -> bool {
 /// Whether the track's centre line runs through the pad (its box) on the track's layer: a
 /// track drawn over a pad of its net, as a hand-routed board has it, joins the pad.
 fn runs_over(node: &Node, track: &Track) -> bool {
-    let on_layer = match track.layer {
-        CopperLayer::Front => node.front,
-        CopperLayer::Back => node.back,
-    };
+    let on_layer = has_layer(node, track.layer);
     let b = node.bounds.expanded(TOUCH);
     on_layer
         && track
@@ -247,6 +252,7 @@ impl Ratsnest {
                                 match (p.layer, part.pad_layers(pad)) {
                                     (CopperLayer::Front, (front, _)) => front,
                                     (CopperLayer::Back, (_, back)) => back,
+                                    (CopperLayer::Inner(_), (front, back)) => front && back,
                                 }
                             })
                         })
@@ -429,8 +435,7 @@ fn join_pieces(
         let mut reached: Vec<usize> = Vec::new();
         for (ni, node) in nodes.iter().enumerate() {
             let on = match piece.layer {
-                Some(CopperLayer::Front) => node.front,
-                Some(CopperLayer::Back) => node.back,
+                Some(layer) => has_layer(node, layer),
                 None => node.front && node.back,
             };
             let near = node.bounds.expanded(TOUCH);
@@ -553,11 +558,7 @@ fn spanning_tree(
     }
     for (ni, node) in nodes.iter().enumerate() {
         for &layer in poured {
-            let on = match layer {
-                CopperLayer::Front => node.front,
-                CopperLayer::Back => node.back,
-            };
-            if on {
+            if has_layer(node, layer) {
                 sets.join(ni, pour_item(layer));
             }
         }

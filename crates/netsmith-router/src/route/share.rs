@@ -148,6 +148,7 @@ impl<'a> Router<'a> {
                         && match p.layer {
                             CopperLayer::Front => front,
                             CopperLayer::Back => back,
+                            CopperLayer::Inner(_) => false,
                         }
                 });
                 poured.then(|| crate::pour_pads::PadVia {

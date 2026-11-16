@@ -70,6 +70,7 @@ fn each_example_routes_completely_and_cleanly() {
             let layer_has_copper = |pad_front: bool, pad_back: bool| match t.layer {
                 CopperLayer::Front => pad_front,
                 CopperLayer::Back => pad_back,
+                CopperLayer::Inner(_) => pad_front && pad_back,
             };
             for p in samples(t) {
                 assert!(
@@ -291,7 +292,8 @@ fn the_six_layer_example_has_two_planes_two_empty_signal_layers_and_routes_on_th
         text.matches("(zone").count() - text.matches("$teardrop_padvia$").count(),
         2
     );
-    // Every track is on an outer layer.
+    // A board this small needs no inner layer: a track there costs two vias, so every track is on
+    // an outer layer (`inner_layers.rs` has a board that needs one).
     assert!(
         !text
             .lines()

@@ -45,11 +45,8 @@ pub fn add(board: &mut Board) {
         // A net a routes file locks gets no copper (`netsmith_pcb::Routes`).
         .filter(|t| !board.fixed.is_locked(&t.net))
         .filter_map(|t| {
-            let layer = match t.layer.as_str() {
-                "F.Cu" => CopperLayer::Front,
-                "B.Cu" => CopperLayer::Back,
-                _ => return None,
-            };
+            // An inner signal layer's tracks get teardrops as an outer layer's do (issue #833).
+            let layer = CopperLayer::of_name(&t.layer)?;
             Some(Teardrop {
                 net: t.net,
                 layer,
