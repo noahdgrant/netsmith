@@ -1522,6 +1522,36 @@ export type SummaryDecoupling = { cap: string, capPath: string, part: string,
  */
 distance: number, };
 
+export type SummaryGuideline = { 
+/**
+ * The path of the part that states it, and the guideline's name.
+ */
+part: string, name: string, 
+/**
+ * `near`, `away`, `loop`, `edge`, `vias` or `route`.
+ */
+statement: string, 
+/**
+ * The designator of the part found, for `near`, `away` and `loop`.
+ */
+other?: string, 
+/**
+ * In mm (a count of vias for `vias`); none when a pad to measure is not on the footprint.
+ */
+measured?: number, 
+/**
+ * The most the datasheet allows, or the least it asks for; neither for "close to".
+ */
+atMost?: number, atLeast?: number, 
+/**
+ * Whether the measure meets the number; none when there is no number.
+ */
+met?: boolean, 
+/**
+ * The document and section the part's block cites.
+ */
+source: string, };
+
 export type SummaryLine = { from: string, to: string, length: number, };
 
 export type SummaryNet = { name: string, pads: number, hpwl: number, crossings: number, 
@@ -1569,6 +1599,10 @@ edgeWall: number, parts: number, totals: SummaryTotals,
  * The top face, then the bottom.
  */
 faces: Array<SummaryFace>, modules: Array<SummaryModule>, decoupling: Array<SummaryDecoupling>, nets: Array<SummaryNet>, 
+/**
+ * What each guideline of the parts' `layout` blocks measures, by part and guideline.
+ */
+guidelines: Array<SummaryGuideline>, 
 /**
  * The parts near each `near` part of the request.
  */

@@ -1389,6 +1389,13 @@ fn fab_board(
                 .map(|w| format!("warning: {w}")),
         );
         extras.extend(drops.iter().map(|d| format!("warning: {d}")));
+        // The guidelines the layout file waives, with its reasons (issue #994).
+        extras.extend(
+            layout_findings
+                .waived
+                .iter()
+                .map(|w| format!("note: {}: {w}", built.label())),
+        );
         // What the check of the environment did and did not do, for a board that has one.
         extras.extend(environment.notes);
         // The notes lead with what is wrong, so that nobody orders an incomplete board.

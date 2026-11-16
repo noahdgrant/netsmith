@@ -344,7 +344,10 @@ pub fn placement_findings(board: &Board) -> Vec<PcbFinding> {
 /// #994), as warnings, as `fab` warns of them: the parts it is about lit and their box zoomed
 /// to. A guideline that the layout file (`waivers`, the board's table of it) waives is not
 /// listed.
-pub fn layout_findings(board: &Board, waivers: Option<&netsmith_pcb::BoardLayout>) -> Vec<PcbFinding> {
+pub fn layout_findings(
+    board: &Board,
+    waivers: Option<&netsmith_pcb::BoardLayout>,
+) -> Vec<PcbFinding> {
     let mut ids = Ids(Vec::new());
     netsmith_pcb::layout_findings(board)
         .into_iter()

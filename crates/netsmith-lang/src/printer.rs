@@ -625,13 +625,14 @@ impl Guideline {
                 let _ = write!(out, " bridging {} {}", a.to_source(), b.to_source());
                 after(&mut out, "within", within);
             }
-            Rule::Keepout {
-                x,
-                y,
-                width,
-                height,
-                forbid,
-            } => {
+            Rule::Keepout(area) => {
+                let KeepoutArea {
+                    x,
+                    y,
+                    width,
+                    height,
+                    forbid,
+                } = &**area;
                 let _ = write!(
                     out,
                     " at {}, {} size {}, {}",

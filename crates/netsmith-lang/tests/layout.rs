@@ -160,9 +160,12 @@ fn the_rules_of_every_statement() {
         words,
         ["away", "loop", "keepout", "keepout", "edge", "edge", "vias", "route", "route"]
     );
-    let Rule::Keepout { x, height, forbid, .. } = rules[2] else {
+    let Rule::Keepout(area) = rules[2] else {
         panic!("{:?}", rules[2])
     };
+    let KeepoutArea {
+        x, height, forbid, ..
+    } = &**area;
     assert_eq!((x.to_source(), height.to_source()), ("-1mm".into(), "5mm".into()));
     let forbid: Vec<&str> = forbid.iter().map(|f| f.name.as_str()).collect();
     assert_eq!(forbid, ["tracks", "vias"]);

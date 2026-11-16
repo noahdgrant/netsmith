@@ -259,9 +259,7 @@ use netsmith_pcb::{
     rect_distance,
 };
 
-use netsmith_pcb::{
-    DecouplingPair, away_pairs, decoupling_pairs, loop_pairs, near_pairs,
-};
+use netsmith_pcb::{DecouplingPair, away_pairs, decoupling_pairs, loop_pairs, near_pairs};
 use netsmith_pcb::{Edges, Ended, OutsideAt, OverlapAt, Pt, Rect, Rules, short_mm};
 
 mod build;

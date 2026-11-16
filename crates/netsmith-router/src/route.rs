@@ -1420,6 +1420,9 @@ pub fn route_with(board: &mut Board, options: RouteOptions) -> Routing {
     };
     // A via that does not carry its net's current gets others beside it (issue #431).
     crate::parallel::parallel_vias(board);
+    // The vias a datasheet asks for in a pin's pads (issue #994), before the stitching keeps
+    // clear of them.
+    crate::pad_vias::add(board);
     // Pours are stitched to the other layers of their nets in what the routing left free.
     crate::stitch::stitch(board);
     // A pad that a pour of its net joins to those vias gives up its own (issue #834).

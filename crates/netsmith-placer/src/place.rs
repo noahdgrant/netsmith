@@ -126,7 +126,8 @@
 //! rule passes, `courtyards_overlap` agrees layer by layer, and where the rule keeps a
 //! courtyard off a part's pads KiCad's `pth_inside_courtyard` (ignored by default) flags only
 //! the holes, so the rule is stricter by about 0.55 mm round the pads. Hierarchical placement
-//! and the `layout` block of the language are not built (issues #58 and #59).
+//! is not built (issue #58); the `layout` block of the language is read by the annealer
+//! (`anneal.rs`, **Datasheet guidelines**).
 
 use std::collections::VecDeque;
 
@@ -3085,7 +3086,10 @@ mod tests {
         let board = board_with_layout(parts, nets, layout);
         let u1 = &board.parts[0];
         assert_eq!(u1.layout.len(), 2);
-        assert_eq!(u1.layout[0].pads, [vec!["2".to_string()], vec!["2".to_string()]]);
+        assert_eq!(
+            u1.layout[0].pads,
+            [vec!["2".to_string()], vec!["2".to_string()]]
+        );
         assert_eq!(
             u1.layout[1].pads,
             [
@@ -3227,16 +3231,21 @@ mod tests {
             )
         };
         let mut plain = coil_board(Vec::new());
-        plain.parts[0].layout = PartGuideline::of_part(
-            &regulator_with_fb("U1"),
-            &[away()],
-        );
+        plain.parts[0].layout = PartGuideline::of_part(&regulator_with_fb("U1"), &[away()]);
         let before = measured(&plain, "coil", Some("L1"));
         let board = coil_board(vec![away()]);
         let after = measured(&board, "coil", Some("L1"));
-        println!("the capacitor is {before:.2} mm from FB without the guideline, {after:.2} mm with it");
-        assert!(before < 6.0, "the board does not test the push: {before:.2} mm");
-        assert!(after >= 6.0 - 1e-6, "the capacitor is {after:.2} mm from FB");
+        println!(
+            "the capacitor is {before:.2} mm from FB without the guideline, {after:.2} mm with it"
+        );
+        assert!(
+            before < 6.0,
+            "the board does not test the push: {before:.2} mm"
+        );
+        assert!(
+            after >= 6.0 - 1e-6,
+            "the capacitor is {after:.2} mm from FB"
+        );
         assert_eq!(board.check_placement(), vec![]);
         assert!(netsmith_pcb::layout_findings(&board).is_empty());
         let found = netsmith_pcb::layout_findings(&plain);
@@ -3283,11 +3292,17 @@ mod tests {
         let before = measured(&plain, "hot", Some("RL"));
         let board = loop_board(vec![rule(None)]);
         let after = measured(&board, "hot", Some("RL"));
-        println!("the loop through RL is {before:.2} mm without the guideline, {after:.2} mm with it");
-        assert!(after < before, "{after:.2} mm with it, {before:.2} mm without");
+        println!(
+            "the loop through RL is {before:.2} mm without the guideline, {after:.2} mm with it"
+        );
+        assert!(
+            after < before,
+            "{after:.2} mm with it, {before:.2} mm without"
+        );
         assert_eq!(board.check_placement(), vec![]);
         // A number the loop is longer than is a finding.
-        plain.parts[0].layout = PartGuideline::of_part(&regulator_with_fb("U1"), &[rule(Some(1.0))]);
+        plain.parts[0].layout =
+            PartGuideline::of_part(&regulator_with_fb("U1"), &[rule(Some(1.0))]);
         let found = netsmith_pcb::layout_findings(&plain);
         let [f] = found.as_slice() else {
             panic!("{found:?}")
@@ -3349,7 +3364,10 @@ mod tests {
         let board = board_of(vec![rule()]);
         let after = measured(&board, "feed", None);
         println!("IN is {before:.2} mm from the edge without the guideline, {after:.2} mm with it");
-        assert!(after < before, "{after:.2} mm with it, {before:.2} mm without");
+        assert!(
+            after < before,
+            "{after:.2} mm with it, {before:.2} mm without"
+        );
         assert_eq!(board.check_placement(), vec![]);
     }
 

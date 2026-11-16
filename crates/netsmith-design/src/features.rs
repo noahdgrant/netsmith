@@ -1636,10 +1636,9 @@ pub(crate) fn layout(model: &Model, copper_layers: u32) -> PartLayout {
                 pin: pin(p),
                 within,
             },
-            GuidelineRule::Vias { pin: p, count } => netsmith_core::LayoutRule::Vias {
-                pin: pin(p),
-                count,
-            },
+            GuidelineRule::Vias { pin: p, count } => {
+                netsmith_core::LayoutRule::Vias { pin: pin(p), count }
+            }
             GuidelineRule::Route {
                 pin: p,
                 width,

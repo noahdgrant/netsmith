@@ -1693,8 +1693,10 @@ impl Parser {
                         name.to_source()
                     ),
                 )?;
-                let a = self.layout_pin("a pin of the part, such as `.vin.pos`, after `bridging`")?;
-                let b = self.layout_pin("a second pin of the part after the first of `bridging`")?;
+                let a =
+                    self.layout_pin("a pin of the part, such as `.vin.pos`, after `bridging`")?;
+                let b =
+                    self.layout_pin("a second pin of the part after the first of `bridging`")?;
                 let within = self.optional_after("within")?;
                 Rule::Loop { a, b, within }
             }
@@ -1727,13 +1729,13 @@ impl Parser {
                         ));
                     }
                 }
-                Rule::Keepout {
+                Rule::Keepout(Box::new(KeepoutArea {
                     x,
                     y,
                     width,
                     height,
                     forbid,
-                }
+                }))
             }
             "edge" => {
                 let pin = self.layout_pin(
@@ -1743,9 +1745,8 @@ impl Parser {
                 Rule::Edge { pin, within }
             }
             "vias" => {
-                let pin = self.layout_pin(
-                    "the pin of the part whose pads take the vias, such as `.gnd`",
-                )?;
+                let pin = self
+                    .layout_pin("the pin of the part whose pads take the vias, such as `.gnd`")?;
                 let count = self.expr()?;
                 Rule::Vias { pin, count }
             }

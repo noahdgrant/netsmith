@@ -135,13 +135,7 @@ pub enum Rule {
     /// `keepout NAME at X, Y size W, H [forbid tracks vias copper parts]`: an area in the
     /// part's own frame (its footprint's, turned with it) that forbids what `forbid` names on
     /// every copper layer, all four when it names none.
-    Keepout {
-        x: Expr,
-        y: Expr,
-        width: Expr,
-        height: Expr,
-        forbid: Vec<Ident>,
-    },
+    Keepout(Box<KeepoutArea>),
     /// `edge NAME .pin [within LENGTH]`: the pads of the pin go at the board's edge, within
     /// the length of it when one is given.
     Edge { pin: Path, within: Option<Expr> },
@@ -163,7 +157,7 @@ impl Rule {
             Rule::Near { .. } => "near",
             Rule::Away { .. } => "away",
             Rule::Loop { .. } => "loop",
-            Rule::Keepout { .. } => "keepout",
+            Rule::Keepout(_) => "keepout",
             Rule::Edge { .. } => "edge",
             Rule::Vias { .. } => "vias",
             Rule::Route { .. } => "route",
@@ -184,18 +178,32 @@ impl Rule {
                 out.push(to);
                 out
             }
-            Rule::Away { select: s, from, .. } => {
+            Rule::Away {
+                select: s, from, ..
+            } => {
                 let mut out = select(s);
                 out.push(from);
                 out
             }
             Rule::Loop { a, b, .. } => vec![a, b],
-            Rule::Keepout { .. } => Vec::new(),
+            Rule::Keepout(_) => Vec::new(),
             Rule::Edge { pin, .. } | Rule::Vias { pin, .. } | Rule::Route { pin, .. } => {
                 vec![pin]
             }
         }
     }
+}
+
+/// The area of a `keepout` statement, in the part's own frame.
+#[derive(Debug, Clone, PartialEq)]
+pub struct KeepoutArea {
+    /// The corner nearest the part's origin.
+    pub x: Expr,
+    pub y: Expr,
+    pub width: Expr,
+    pub height: Expr,
+    /// The words after `forbid`: `tracks`, `vias`, `copper`, `parts`. None for all four.
+    pub forbid: Vec<Ident>,
 }
 
 /// Which parts of the board a `near` or an `away` is about, found from the nets of the part's

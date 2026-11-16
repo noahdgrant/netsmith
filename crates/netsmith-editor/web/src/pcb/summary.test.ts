@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import type { PcbScene, SummaryPads } from '../api';
-import { fillWord, mm, padName, padProblem, padsLine, sheetBox, summaryQuery } from './summary';
+import type { PcbScene, SummaryGuideline, SummaryPads } from '../api';
+import { fillWord, guidelineLine, mm, padName, padProblem, padsLine, sheetBox, summaryQuery } from './summary';
 
 describe('a number of the summary', () => {
   it('is to the hundredth with no trailing zeros', () => {
@@ -55,5 +55,17 @@ describe('a pad the board does not have', () => {
     expect(padProblem(scene, 'stage.r1.1')).toBeNull();
     expect(padProblem(scene, 'R1.9')).toBe('the part `R1` has no pad `9`; its pads are: 1, 2');
     expect(padProblem(scene, 'R7.1')).toBe('the board `Led` has no part `R7`');
+  });
+});
+
+describe('a datasheet guideline of the summary', () => {
+  const g = (more: Partial<SummaryGuideline>): SummaryGuideline => ({ part: 'reg.ic', name: 'input_cap', statement: 'near', source: 'SNVSA24, p.17', ...more });
+  it('says what it measures, the number and whether it is met', () => {
+    expect(guidelineLine(g({ other: 'C1', measured: 1.234, atMost: 2, met: true }))).toBe('(near, C1) 1.23 mm, at most 2 mm, met');
+    expect(guidelineLine(g({ statement: 'away', other: 'L1', measured: 3, atLeast: 5, met: false }))).toBe('(away, L1) 3 mm, at least 5 mm, not met');
+  });
+  it('counts vias with no unit, and says when nothing is measured', () => {
+    expect(guidelineLine(g({ statement: 'vias', measured: 2, atLeast: 4, met: false }))).toBe('(vias) 2, at least 4, not met');
+    expect(guidelineLine(g({ statement: 'edge' }))).toBe('(edge) not measured');
   });
 });

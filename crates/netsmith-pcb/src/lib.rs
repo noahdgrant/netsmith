@@ -111,8 +111,8 @@ pub use impedance::{
     impedance_at, impedance_notes, microstrip, stripline, target_notes, width_for,
 };
 pub use layout::{
-    BoardLayout, Face as LayoutFace, IMPORT_SOURCE, KeepoutPlace, Layout, LayoutError, PartPlace, Waiver,
-    apply_layout, check_drawn_keepout, copper_layers, keepout_declaration, place_options,
+    BoardLayout, Face as LayoutFace, IMPORT_SOURCE, KeepoutPlace, Layout, LayoutError, PartPlace,
+    Waiver, apply_layout, check_drawn_keepout, copper_layers, keepout_declaration, place_options,
 };
 pub use miss::RequirementMiss;
 pub use origin::{ORIGINS_HEAD, PartOrigin, mm as mm_text, origins_text};
@@ -149,8 +149,8 @@ pub use stackup::{
 };
 pub use standard_height::StandardHeight;
 pub use summary::{
-    DecouplingSummary, FaceSummary, GuidelineSummary, ModuleSummary, Moved, Neighbour, Neighbours, NetSummary, Place,
-    PlacementComparison, RatsnestLine, Summary, SummaryBox, Totals,
+    DecouplingSummary, FaceSummary, GuidelineSummary, ModuleSummary, Moved, Neighbour, Neighbours,
+    NetSummary, Place, PlacementComparison, RatsnestLine, Summary, SummaryBox, Totals,
 };
 pub use svg::{render as render_svg, render_view as render_svg_view};
 pub use track_drop::{

@@ -192,13 +192,14 @@ impl Checker<'_> {
                 };
                 GuidelineRule::Loop { a, b, within }
             }
-            Rule::Keepout {
-                x,
-                y,
-                width,
-                height,
-                forbid,
-            } => {
+            Rule::Keepout(area) => {
+                let netsmith_lang::ast::KeepoutArea {
+                    x,
+                    y,
+                    width,
+                    height,
+                    forbid,
+                } = &**area;
                 let x = self.any_length(x, "at", &what);
                 let y = self.any_length(y, "at", &what);
                 let w = self.positive_length(width, "size", &what);

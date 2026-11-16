@@ -59,13 +59,17 @@ pub fn pins_of(rule: &LayoutRule) -> Vec<&str> {
             out.push(to);
             out
         }
-        LayoutRule::Away { select: s, from, .. } => {
+        LayoutRule::Away {
+            select: s, from, ..
+        } => {
             let mut out = select(s);
             out.push(from);
             out
         }
         LayoutRule::Loop { a, b, .. } => vec![a, b],
-        LayoutRule::Edge { pin, .. } | LayoutRule::Vias { pin, .. } | LayoutRule::Route { pin, .. } => {
+        LayoutRule::Edge { pin, .. }
+        | LayoutRule::Vias { pin, .. }
+        | LayoutRule::Route { pin, .. } => {
             vec![pin]
         }
     }
@@ -275,9 +279,8 @@ fn pairs_of(parts: &[Placed], nets: &[BoardNet], away: bool) -> Vec<NearPair> {
     for (i, part) in parts.iter().enumerate() {
         for (r, g) in part.layout.iter().enumerate() {
             let select = match (&g.rule.rule, away) {
-                (LayoutRule::Near { select, .. }, false) | (LayoutRule::Away { select, .. }, true) => {
-                    select
-                }
+                (LayoutRule::Near { select, .. }, false)
+                | (LayoutRule::Away { select, .. }, true) => select,
                 _ => continue,
             };
             let selector = &g.pads[..g.pads.len() - 1];
@@ -526,7 +529,12 @@ fn vias_on(board: &Board, part: &Placed, pads: &[String]) -> usize {
     board
         .vias
         .iter()
-        .filter(|v| v.net == net && boxes.iter().any(|b| b.contains(&crate::geometry::Rect::new(v.at, v.at))))
+        .filter(|v| {
+            v.net == net
+                && boxes
+                    .iter()
+                    .any(|b| b.contains(&crate::geometry::Rect::new(v.at, v.at)))
+        })
         .count()
 }
 
