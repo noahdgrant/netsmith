@@ -28,7 +28,7 @@ use netsmith_check::{
 use netsmith_core::{
     Design, DielectricLayer, DielectricPly, InnerLayers, InnerUse, InterfaceInstance,
     InterfaceMember, ModuleInstance, Net, Note, NoteAt, NoteKind, PanelRules, PanelSpec, Part,
-    PartKind, PartPin, PinRef, PowerFlow, Process, Stackup,
+    PartKind, PartPin, PinRef, PowerFlow, Process, SolderMask, Stackup,
 };
 use netsmith_solve::{Library, Solution};
 
@@ -1005,12 +1005,34 @@ fn process_of(model: &Model, nets: &[String], errors: &mut Vec<String>) -> Optio
                 dielectrics.push(DielectricLayer::of_plies(plies));
             }
         }
+        // What the fabricator's impedance calculator uses, where the process states it (issue
+        // #1007): unstated, the member is not in the model with a value.
+        let stated = |path: &str| match model
+            .field_at(&format!("process.{path}"))
+            .map(|f| &model.field(f).domain)
+        {
+            Some(Domain::Quantity(q)) => Some(end(path, q, false)),
+            _ => None,
+        };
+        let round = |v: f64| (v * 1e12).round() / 1e9;
+        let mask = match (
+            stated("stackup.impedance_mask_thickness"),
+            stated("stackup.impedance_mask_epsilon"),
+        ) {
+            (Some(thickness), Some(epsilon)) => Some(SolderMask {
+                thickness: round(thickness),
+                epsilon,
+            }),
+            _ => None,
+        };
         built.stackup.inner = Some(InnerLayers {
             layers: uses,
             copper: mm("stackup.inner_copper"),
             dielectrics,
             build: text(find("stackup.build")),
             hole_clearance: mm("min_plane_hole_clearance"),
+            mask,
+            outer_copper: stated("stackup.impedance_outer_copper").map(round),
         });
     }
     let problems = problems.into_inner();

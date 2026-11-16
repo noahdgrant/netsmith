@@ -552,6 +552,16 @@ generic FourLayer {
     .stackup: Stackup
     .stackup.layers        &= 4
     .stackup.copper_weight &= 1
+    // The numbers of JLCPCB's impedance calculator (issue #1007), from "Calculation Parameters
+    // Used" in https://jlcpcb.com/help/article/User-Guide-to-the-JLCPCB-Impedance-Calculator
+    // (last updated 2026-11-10, read 2026-11-16) and the "Solder mask Parameters" table of
+    // https://jlcpcb.com/impedance (read 2026-11-16): external copper thickness (1 oz) 1.6 mil
+    // = 0.04064 mm, base soldermask thickness (coating above substrate) 1.2 mil = 0.03048 mm,
+    // soldermask dielectric constant 3.8. The guide says the values are for reference and some
+    // were worked out from JLCPCB's test results.
+    .stackup.impedance_outer_copper    &= 0.04064mm
+    .stackup.impedance_mask_thickness  &= 0.03048mm
+    .stackup.impedance_mask_epsilon    &= 3.8
 
     /// The first and second inner layers, counted from the top: planes, or signal layers.
     /// The board says what each is and names the net of a plane.
@@ -892,6 +902,16 @@ generic SixLayer {
     .stackup: Stackup
     .stackup.layers        &= 6
     .stackup.copper_weight &= 1
+    // The numbers of JLCPCB's impedance calculator (issue #1007), from "Calculation Parameters
+    // Used" in https://jlcpcb.com/help/article/User-Guide-to-the-JLCPCB-Impedance-Calculator
+    // (last updated 2026-11-10, read 2026-11-16) and the "Solder mask Parameters" table of
+    // https://jlcpcb.com/impedance (read 2026-11-16): external copper thickness (1 oz) 1.6 mil
+    // = 0.04064 mm, base soldermask thickness (coating above substrate) 1.2 mil = 0.03048 mm,
+    // soldermask dielectric constant 3.8. The guide says the values are for reference and some
+    // were worked out from JLCPCB's test results.
+    .stackup.impedance_outer_copper    &= 0.04064mm
+    .stackup.impedance_mask_thickness  &= 0.03048mm
+    .stackup.impedance_mask_epsilon    &= 3.8
 
     /// The four inner layers, counted from the top: planes, or signal layers. The board says
     /// what each is and names the net of a plane.

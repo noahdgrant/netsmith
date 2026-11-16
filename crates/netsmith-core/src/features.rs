@@ -24,6 +24,22 @@ pub struct NetCurrent {
     pub vias: usize,
 }
 
+/// The impedance a design states for the tracks of one net or of a pair of nets (issue #1007):
+/// a `TrackImpedance` or a `PairImpedance` of the design (`std::pcb`).
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ImpedanceTarget {
+    /// The member's path in the design.
+    pub path: String,
+    /// The net of a single-ended target, or the two nets of a pair, the positive one first.
+    pub nets: Vec<String>,
+    /// The impedance in ohms: from the track to the reference layer, or between the pair's
+    /// two tracks.
+    pub ohms: f64,
+    /// The space between the two tracks of a pair, edge to edge, in mm; none for a single net.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub spacing: Option<f64>,
+}
+
 /// What a design says about the board beyond its parts and nets (ADR 0020). Everything is
 /// optional; a design that says none of it is laid out as before.
 #[derive(Debug, Clone, PartialEq, Default, serde::Serialize, serde::Deserialize)]
@@ -40,6 +56,10 @@ pub struct Features {
     /// name. Left out of a design file when empty.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub net_clearances: Vec<(String, f64)>,
+    /// The impedance the design states for the tracks of some nets (issue #1007), in the order
+    /// of their paths. Left out of a design file when empty.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub impedance_targets: Vec<ImpedanceTarget>,
     /// The current each net carries, where it is known, and the least width that carries it
     /// (IPC-2221 at the width tolerance, ADR 0036): what the router may not narrow a track of
     /// the net below, away from its pads, and what the design rules check holds the routed

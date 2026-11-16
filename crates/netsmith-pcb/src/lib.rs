@@ -106,8 +106,9 @@ pub use generate::{
 };
 pub use geometry::{Pt, Rect};
 pub use impedance::{
-    Line as ImpedanceLine, OutOfRange, TrackDielectric, impedance_notes, microstrip, stripline,
-    width_for,
+    Line as ImpedanceLine, OutOfRange, Pair as ImpedancePair, TEST_TOLERANCE, TrackDielectric,
+    coated_coupled_microstrip, coated_microstrip, coupled_microstrip, coupled_stripline,
+    impedance_notes, microstrip, stripline, target_notes, width_for,
 };
 pub use layout::{
     BoardLayout, Face as LayoutFace, IMPORT_SOURCE, KeepoutPlace, Layout, LayoutError, PartPlace,

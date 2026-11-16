@@ -200,6 +200,10 @@ pub struct Board {
     /// other net (issue #758), by net name. Every other net keeps the rules' clearance.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub net_clearances: Vec<(String, f64)>,
+    /// The impedance the design states for the tracks of some nets (issue #1007), which
+    /// `fab-notes.txt` gives the width for on each layer.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub impedance_targets: Vec<netsmith_core::ImpedanceTarget>,
     /// The current each net carries where it is known, and the least width that carries it
     /// (issue #431): no track of the net is narrower, away from its pads.
     pub net_currents: Vec<netsmith_core::NetCurrent>,

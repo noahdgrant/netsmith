@@ -184,6 +184,27 @@ pub struct InnerLayers {
     pub build: String,
     /// The least space between a plane and the hole of a via or pad that is not on its net.
     pub hole_clearance: f64,
+    /// The solder mask the fabricator's impedance calculator puts over an outer track, if the
+    /// process states it (issue #1007).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mask: Option<SolderMask>,
+    /// The thickness the fabricator's impedance calculator gives an outer track's copper, in
+    /// mm, if the process states it (the finished copper, with the plating): the track
+    /// impedance is worked out with it where there is one, else with the copper weight's
+    /// nominal thickness (issue #1007).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub outer_copper: Option<f64>,
+}
+
+/// A solder mask over a microstrip, as a fabricator's impedance calculator takes it (issue
+/// #1007). Lengths are in mm.
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct SolderMask {
+    /// The mask over the dielectric layer, beside the track: JLCPCB's "coating above
+    /// substrate".
+    pub thickness: f64,
+    /// The mask's relative permittivity.
+    pub epsilon: f64,
 }
 
 /// What an inner copper layer is.

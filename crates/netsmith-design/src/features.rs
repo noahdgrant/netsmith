@@ -7,9 +7,9 @@
 
 use netsmith_check::{Domain, InstId, InstKind, Member, Model, SourceId};
 use netsmith_core::{
-    CaseModel, Cutout, Features, Keepout, Label, Logo, LogoLayer, Offset, OffsetEnd, Outline,
-    PartHeight, PartKind, PartSilk, PartStandoff, PinProtrusion, PlaceBound, PlaceField, Placement,
-    Pour, SilkPrint, StepModel,
+    CaseModel, Cutout, Features, ImpedanceTarget, Keepout, Label, Logo, LogoLayer, Offset,
+    OffsetEnd, Outline, PartHeight, PartKind, PartSilk, PartStandoff, PinProtrusion, PlaceBound,
+    PlaceField, Placement, Pour, SilkPrint, StepModel,
 };
 use netsmith_lang::Span;
 use std::collections::{BTreeMap, BTreeSet};
@@ -171,6 +171,113 @@ fn by_net_of_rails(model: &Model, field: &str) -> Vec<(String, f64)> {
     }
     widths.sort_by(|a, b| a.0.cmp(&b.0));
     widths
+}
+
+/// A quantity that must be one value, in its base unit (ohms for a resistance, metres for a
+/// length): `None` if the design did not state it.
+fn point(model: &Model, inst: InstId, name: &str, errors: &mut Vec<String>) -> Option<f64> {
+    match domain(model, inst, name)? {
+        Domain::Quantity(q) if q.is_point() || (q.hi() - q.lo()).abs() < 1e-12 => Some(q.lo()),
+        Domain::Quantity(q) => {
+            errors.push(format!(
+                "`{}.{name}` is {q}, a range, and a target impedance is one value",
+                model.path_of(inst)
+            ));
+            None
+        }
+        _ => None,
+    }
+}
+
+/// The impedance the design states for the tracks of nets (issue #1007): each `TrackImpedance`
+/// and `PairImpedance`, with the nets its pins are on, in the order of their paths.
+fn impedance_targets(model: &Model, errors: &mut Vec<String>) -> Vec<ImpedanceTarget> {
+    let mut found = Vec::new();
+    let mut members: Vec<(String, InstId)> = model
+        .instances()
+        .filter(|(_, i)| {
+            i.kind == InstKind::Interface
+                && (i.type_name == "TrackImpedance" || i.type_name == "PairImpedance")
+        })
+        .map(|(id, _)| (model.path_of(id), id))
+        .collect();
+    members.sort();
+    for (path, id) in members {
+        let pair = model.instance(id).type_name == "PairImpedance";
+        let pins: &[&str] = if pair { &["p", "n"] } else { &["net"] };
+        let mut nets = Vec::new();
+        for pin in pins {
+            let on = match model.member(id, pin) {
+                Some(Member::Inst(p)) => model
+                    .nets()
+                    .iter()
+                    .find(|n| n.pins.contains(&p))
+                    .map(|n| n.name.clone()),
+                _ => None,
+            };
+            match on {
+                Some(net) => nets.push(net),
+                None => errors.push(format!(
+                    "`{path}.{pin}` is on no net: join it with `~` to the pin or the net the tracks are on"
+                )),
+            }
+        }
+        let ohms = point(model, id, "impedance", errors);
+        if ohms.is_none()
+            && domain(model, id, "impedance").is_none_or(|d| matches!(d, Domain::Unset))
+        {
+            errors.push(format!(
+                "`{path}.impedance` is not stated: say it with `&= 50ohm`"
+            ));
+        }
+        let spacing = if pair {
+            let s = point(model, id, "spacing", errors).map(|m| mm(m));
+            if s.is_none()
+                && domain(model, id, "spacing").is_none_or(|d| matches!(d, Domain::Unset))
+            {
+                errors.push(format!(
+                    "`{path}.spacing` is not stated: say the space between the two tracks, edge to edge, with `&= 0.15mm`"
+                ));
+            }
+            s
+        } else {
+            None
+        };
+        let (Some(ohms), true) = (
+            ohms,
+            nets.len() == pins.len() && (!pair || spacing.is_some()),
+        ) else {
+            continue;
+        };
+        if ohms <= 0.0 {
+            errors.push(format!(
+                "`{path}.impedance` is {ohms} ohm: a target is above 0"
+            ));
+            continue;
+        }
+        if let Some(s) = spacing
+            && s <= 0.0
+        {
+            errors.push(format!(
+                "`{path}.spacing` is {s} mm: a pair's tracks are apart"
+            ));
+            continue;
+        }
+        if pair && nets[0] == nets[1] {
+            errors.push(format!(
+                "`{path}` joins both of its pins to the net `{}`: a pair is two nets",
+                nets[0]
+            ));
+            continue;
+        }
+        found.push(ImpedanceTarget {
+            path,
+            nets,
+            ohms,
+            spacing,
+        });
+    }
+    found
 }
 
 /// The height limit a keepout states, in mm: one value above zero, or none.
@@ -996,6 +1103,7 @@ pub(crate) fn features_of(
     let mut features = Features {
         net_widths: net_widths(model),
         net_clearances: net_clearances(model),
+        impedance_targets: impedance_targets(model, errors),
         pours: pours(model, nets, errors),
         labels: labels(model, least_text, errors),
         heights: heights(model, errors),
