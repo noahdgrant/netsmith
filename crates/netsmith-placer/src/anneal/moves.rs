@@ -76,6 +76,11 @@ impl<'a> Engine<'a> {
                             continue;
                         }
                         self.poses_tried += 1;
+                        if inside.is_some()
+                            && self.overlaps_at(i, start.x + dx * step, start.y + dy * step)
+                        {
+                            continue;
+                        }
                         let pose = self.clamp(
                             i,
                             Pose {
@@ -147,6 +152,44 @@ impl<'a> Engine<'a> {
         }
         let bound = |v: f64| v.clamp(-1e15, 1e15) as i64;
         Some((bound(x_lo), bound(y_lo), bound(x_hi), bound(y_hi)))
+    }
+
+    /// Whether part `i` with its origin at `(x, y)` units, as it is turned now, would overlap
+    /// the courtyard of a part near it on its face, neither with a hole through the board: a
+    /// pair that costs more than [`HARD_EPS`] ([`Engine::court_cost_escape`]), so the pose is
+    /// no use. It measures what [`Engine::pair_of_parts`] would with the part put there,
+    /// without putting it. Only for a part that [`Engine::inside_walls`] bounds (no
+    /// requirements on its place and no relations, so it would be put exactly there).
+    pub(super) fn overlaps_at(&self, i: usize, x: i64, y: i64) -> bool {
+        let a = &self.models[i];
+        if a.hole {
+            return false;
+        }
+        let sub = self.sub[i];
+        let at = Pt::new(x as f64 * UNIT + sub.x, y as f64 * UNIT + sub.y);
+        let shape = self.shape(i);
+        let clip = a.may.any();
+        let mine: Vec<Rect> = shape
+            .courts
+            .iter()
+            .map(|r| {
+                let court = r.translated(at);
+                if clip {
+                    netsmith_pcb::clip_to_outline(&court, &self.p.outline)
+                } else {
+                    court
+                }
+            })
+            .collect();
+        self.grid
+            .near(i, &shape.reach.translated(at))
+            .into_iter()
+            .filter(|&j| j != i && self.models[j].side == a.side && !self.models[j].hole)
+            .any(|j| {
+                let theirs = self.rooms(j);
+                mine.iter()
+                    .any(|m| theirs.iter().any(|t| penetration(m, t, 0.0) > 1e-6))
+            })
     }
 
     /// Where `i` goes to be beside `j`, on the side of `j`'s courtyard nearest `towards`.
