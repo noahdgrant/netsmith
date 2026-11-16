@@ -20,6 +20,7 @@ import {
   toggleLock,
 } from './actions';
 import type { Drawing } from './drawing';
+import { faceWord } from './side';
 
 export function Panel(props: {
   scene: PcbScene;
@@ -95,7 +96,7 @@ function PartList(props: { scene: PcbScene; onFocus: (box: PcbBox) => void }) {
             <span class="faint kind">{p.kind}</span>
             {p.locked && <span class="tag lock" title="locked">lock</span>}
             {!p.locked && p.placement !== 'derived' && <span class="tag" title={`placed by ${p.placement}`}>{p.placement}</span>}
-            {p.side === 'bottom' && <span class="tag" title="on the bottom face">bottom</span>}
+            {p.side === 'bottom' && <span class="tag back" data-testid="side-tag" title="on the back of the board (the bottom face)">back</span>}
           </div>
         ))}
         {parts.length === 0 && <EmptyState compact class="none" icon="search" title="No part matches" help="Try a designator, a value or a path." />}
@@ -188,7 +189,7 @@ function PartInspector(props: { scene: PcbScene; parts: PcbPart[]; onPickNet: (n
           rows={[
             { label: 'Position', value: `${fmt(one.x - sc.originX)}, ${fmt(one.y - sc.originY)} mm` },
             { label: 'Turn', value: `${fmt(one.rotation)}°` },
-            { label: 'Face', value: one.side },
+            { label: 'Face', value: faceWord(one.side) },
             { label: 'Placed by', value: `${one.locked ? 'locked, ' : ''}${one.placement}` },
             { label: 'Height', value: one.height == null ? 'not stated' : `${fmt(one.height)} mm` },
           ]}

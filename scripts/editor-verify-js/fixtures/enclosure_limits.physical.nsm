@@ -1,0 +1,79 @@
+import std::pcb::{Keepout, Outline}
+
+physical for Enclosed {
+    case {
+        .outline: Outline {
+            .width &= 48mm
+            .height &= 30mm
+        }
+    }
+
+    // The enclosure drawing: the back faces the floor, which stands 3.9 mm clear of the whole board.
+    .floor: Keepout {
+        .x &= 0mm
+        .y &= 0mm
+        .width &= 48mm
+        .height &= 30mm
+        .layers &= "bottom"
+        .max_height &= 3.9mm
+    }
+    // Near the left edge the floor rises: 2.4 mm.
+    .floor_edge: Keepout {
+        .x &= 0mm
+        .y &= 0mm
+        .width &= 6mm
+        .height &= 30mm
+        .layers &= "bottom"
+        .max_height &= 2.4mm
+    }
+    // A boss, a tab and a screw shank on the front, under the lid.
+    .boss: Keepout {
+        .x &= 2mm
+        .y &= 2mm
+        .width &= 8mm
+        .height &= 8mm
+        .layers &= "top"
+        .max_height &= 1.2mm
+    }
+    .tab: Keepout {
+        .x &= 0mm
+        .y &= 0mm
+        .width &= 48mm
+        .height &= 4mm
+        .layers &= "top"
+        .max_height &= 6mm
+    }
+    .shank: Keepout {
+        .x &= 40mm
+        .y &= 22mm
+        .width &= 6mm
+        .height &= 6mm
+        .layers &= "top"
+        .max_height &= 0.8mm
+    }
+    .rib_a: Keepout {
+        .x &= 0mm
+        .y &= 0mm
+        .width &= 48mm
+        .height &= 30mm
+        .layers &= "top"
+        .max_height &= 9mm
+    }
+    .rib_b: Keepout {
+        .x &= 0mm
+        .y &= 14mm
+        .width &= 48mm
+        .height &= 3mm
+        .layers &= "top"
+        .max_height &= 7.5mm
+    }
+    // A keepout that forbids parts on the front, over the right edge.
+    .antenna: Keepout {
+        .x &= 40mm
+        .y &= 4mm
+        .width &= 8mm
+        .height &= 12mm
+        .layers &= "top"
+        .parts &= "forbid"
+    }
+}

@@ -13,10 +13,29 @@
 .pcb-host svg .l-outline > rect[data-cutout] { fill: var(--pcb-bg); stroke: var(--pcb-outline); stroke-width: calc(1.5 * var(--px, .04)); }
 /* a hairline stays one when the board is zoomed: its width is a count of screen pixels times --px (Canvas sets it from the zoom); a track and a pad scale, they are copper */
 
-/* keepouts: hatched in a muted tone (the patterns are put into the drawing by pcb/drawing.ts) */
+/* keepouts: hatched in a muted tone (the pattern is put into the drawing by pcb/drawing.ts). A height limit (data-limit-only) is no area to look
+ * through: it is an outline with its limit written at its corner, never a fill, so that seven of them over one board (an enclosure's floor, ribs,
+ * bosses) stay readable and the parts under them can be seen. The Layers menu hides the keepouts and the height limits apart. */
 .pcb-host svg [data-keepout] { fill: url(#pcb-hatch-keepout); fill-opacity: 1; stroke-width: calc(1.25 * var(--px, .04)); stroke-dasharray: calc(6 * var(--px, .04)) calc(4 * var(--px, .04)); stroke-opacity: .75; }
-.pcb-host svg [data-keepout][stroke="#e0a030"] { fill: url(#pcb-hatch-limit); }
+.pcb-host svg [data-keepout][data-limit-only] { fill: none; stroke-opacity: .7; stroke-dasharray: calc(2 * var(--px, .04)) calc(3 * var(--px, .04)); stroke-linecap: round; }
 .pcb-host svg [data-height-limit] { font-family: var(--sans); font-size: .7px; font-weight: 600; paint-order: stroke; stroke: var(--pcb-board); stroke-width: .22px; stroke-linejoin: round; }
+
+/* the side looked at (the Side switch, the key B). Each zone says its copper layers in data-layers: the front shows those on the top layer and the
+ * back those on the bottom layer (a zone of the inner layers alone is in neither); both shows every one. The face not looked at is dimmed, not hidden:
+ * its parts and its copper are still there to be picked. The back is the board mirrored left to right, as in KiCad's flipped view: a part on the back
+ * is its footprint mirrored in the drawing, so mirrored again it reads as it is on the real board; every text stays readable, turned back about its
+ * own middle (the text of a pad of a part on the back is mirrored by that part already, so it is only left as it is). */
+.pcb-host .side-front svg :is([data-keepout], [data-height-limit]):not([data-layers~="top"]),
+.pcb-host .side-back svg :is([data-keepout], [data-height-limit]):not([data-layers~="bottom"]) { display: none; }
+.pcb-host .side-front svg g[data-path][transform*="scale(-1 1)"],
+.pcb-host .side-front svg .l-back-copper,
+.pcb-host .side-front svg .l-pours > .pour-back,
+.pcb-host .side-back svg g[data-path]:not([transform*="scale(-1 1)"]),
+.pcb-host .side-back svg .l-front-copper,
+.pcb-host .side-back svg .l-pours > .pour-front { opacity: .22; }
+.pcb-host .pcb-stage.side-back { transform: scaleX(-1); transform-origin: center; }
+.pcb-host .side-back svg text { transform-box: fill-box; transform-origin: center; transform: scaleX(-1); }
+.pcb-host .side-back svg g[data-path][transform*="scale(-1 1)"] text { transform: none; }
 
 /* planes: the copper of an inner layer is a translucent fill in the layer's tone with a dashed border, and the net's name in a corner.
  * The server draws one rectangle per plane and names its copper layer (data-layer: In1.Cu); pcb/drawing.ts turns the layer into data-plane
