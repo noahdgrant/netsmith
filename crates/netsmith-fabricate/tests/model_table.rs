@@ -144,6 +144,76 @@ fn a_part_that_states_its_model_wins_and_an_empty_file_says_none() {
 }
 
 #[test]
+fn a_placement_with_no_file_replaces_the_numbers_of_the_rows_model() {
+    // The part states `.rz` and `.z` and no file: it keeps the row's file and the row's other
+    // numbers, and the members it states take the place of the row's (issue #1005).
+    let root = TempDir::new("model-table-placement");
+    let base = design("");
+    let fp = footprint(&base, "r1");
+    touch(&root, "models/r.step");
+    let mut r = row(&fp, "models/r.step");
+    r.offset = [0.5, 0.25, 0.0];
+    r.rotation = [90.0, 0.0, 180.0];
+    let d = design("    .r1.model.rz &= 90\n    .r1.model.z &= 0.1mm");
+    let (d, found) = located(d, &root, None, vec![r]);
+    assert!(found.errors.is_empty() && found.warnings.is_empty(), "{found:?}");
+    let models: Vec<_> = d.features.models.iter().filter(|m| m.path == "r1").collect();
+    assert_eq!(models.len(), 1, "{:?}", d.features.models);
+    let m = models[0];
+    assert_eq!(m.file, "models/r.step");
+    assert_eq!(m.offset, [0.5, 0.25, 0.1]);
+    assert_eq!(m.rotation, [90.0, 0.0, 90.0]);
+    assert_eq!(m.placement_only, None);
+    assert_eq!(m.footprint.as_deref(), Some(fp.as_str()));
+    assert!(m.resolved.is_some());
+    assert!(m.source.contains("placed by"), "{}", m.source);
+    // The note counts the part as drawn from the table.
+    assert!(found.notes[0].starts_with("the model table (netsmith.toml) draws 1 part"));
+}
+
+#[test]
+fn a_placement_with_no_file_over_the_folders_model_replaces_zero() {
+    let root = TempDir::new("model-table-placement-folder");
+    let d = design("    .r1.model.rz &= 90");
+    let fp = footprint(&d, "r1");
+    let (lib, name) = fp.split_once(':').unwrap();
+    touch(&root, &format!("lib3d/{lib}.3dshapes/{name}.step"));
+    let (d, found) = located(d, &root, Some("lib3d"), Vec::new());
+    assert!(found.errors.is_empty() && found.warnings.is_empty(), "{found:?}");
+    let m = d.features.models.iter().find(|m| m.path == "r1").unwrap();
+    assert_eq!(m.rotation, [0.0, 0.0, 90.0]);
+    assert_eq!(m.file, format!("lib3d/{lib}.3dshapes/{name}.step"));
+}
+
+#[test]
+fn a_placement_with_no_file_and_no_model_in_the_table_is_an_error() {
+    let root = TempDir::new("model-table-placement-none");
+    // No table at all: the old message.
+    let (_, found) = located(design("    .r1.model.rz &= 90"), &root, None, Vec::new());
+    let mut places = Places::under(&root);
+    let mut d = design("    .r1.model.rz &= 90");
+    let alone = locate(&mut d, &places, Some(&Mapping::standard()));
+    assert_eq!(
+        alone.errors,
+        ["`r1.model.rz` is stated, and `r1.model.file` is not, so there is no STEP model to place: name the file with `.r1.model.file &= \"models/part.step\"`, or remove the placement"]
+    );
+    // A table with nothing for the part says so.
+    assert_eq!(found.errors.len(), 1, "{found:?}");
+    assert!(
+        found.errors[0].starts_with("`r1.model.rz` is stated, and `r1.model.file` is not, and the model table (netsmith.toml) has no model for the part's footprint, so there is no STEP model to place"),
+        "{found:?}"
+    );
+    // No mapping, no table's model.
+    places = places.with_table(None, vec![row("A:B", "x.step")]);
+    let mut d = design("    .r1.model.x &= 1mm\n    .r1.model.y &= 2mm");
+    let none = locate(&mut d, &places, None);
+    assert!(
+        none.errors[0].starts_with("`r1.model.x`, `r1.model.y` are stated"),
+        "{none:?}"
+    );
+}
+
+#[test]
 fn a_row_whose_file_is_not_there_is_one_warning_and_the_parts_keep_their_shape() {
     let root = TempDir::new("model-table-missing");
     let d = design("");

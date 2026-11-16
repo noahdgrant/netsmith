@@ -320,7 +320,37 @@ pub fn locate(design: &mut Design, places: &Places, mapping: Option<&Mapping>) -
     if let (Some(table), Some(mapping)) = (&places.table, mapping) {
         from_table(design, places, table, mapping, &mut found);
     }
+    // A part that states a placement and no file, whom the table gave no model: there is
+    // nothing to place (issue #1005).
+    for model in &design.features.models {
+        if let Some(mask) = model.placement_only {
+            found
+                .errors
+                .push(no_model_to_place(&model.path, mask, places.table.is_some()));
+        }
+    }
     found
+}
+
+/// The error of a part that states members of its model's placement and no `.model.file`, and
+/// whom the project's model table (when there is one, `table`) gives no model.
+fn no_model_to_place(path: &str, mask: [bool; 6], table: bool) -> String {
+    let stated: Vec<String> = ["x", "y", "z", "rx", "ry", "rz"]
+        .iter()
+        .zip(mask)
+        .filter(|(_, on)| *on)
+        .map(|(n, _)| format!("`{path}.model.{n}`"))
+        .collect();
+    format!(
+        "{} {} stated, and `{path}.model.file` is not{}, so there is no STEP model to place: name the file with `.{path}.model.file &= \"models/part.step\"`, or remove the placement",
+        stated.join(", "),
+        if stated.len() == 1 { "is" } else { "are" },
+        if table {
+            ", and the model table (netsmith.toml) has no model for the part's footprint"
+        } else {
+            ""
+        }
+    )
 }
 
 /// The environment variable a path starts with, `${NAME}`, put in: the path, or the name of
@@ -411,16 +441,20 @@ fn from_table(
             }
         },
     };
+    // A part that states a placement and no file is still given its model by the table: its
+    // numbers replace the row's (issue #1005).
     let stated: std::collections::BTreeSet<String> = design
         .features
         .models
         .iter()
+        .filter(|m| m.placement_only.is_none())
         .map(|m| m.path.clone())
         .collect();
     // The parts of each row whose file is not there, by row, for one warning a row.
     let mut row_missing: BTreeMap<usize, (String, Vec<String>)> = BTreeMap::new();
     let (mut drawn, mut none): (usize, Vec<String>) = (0, Vec::new());
     let mut added = Vec::new();
+    let mut replaced: Vec<(usize, netsmith_core::StepModel)> = Vec::new();
     for part in &design.parts {
         if part.declared_kind.is_some_and(|k| {
             k.is_mechanical()
@@ -521,9 +555,9 @@ fn from_table(
             none.push(format!("`{}` ({id})", part.path));
             continue;
         };
-        let (file, shown, offset, rotation, from) = model;
+        let (file, shown, mut offset, mut rotation, from) = model;
         drawn += 1;
-        added.push(netsmith_core::StepModel {
+        let mut made = netsmith_core::StepModel {
             path: part.path.clone(),
             file: shown,
             offset,
@@ -532,7 +566,38 @@ fn from_table(
             stated_in: Vec::new(),
             resolved: Some(file),
             footprint: Some(id),
-        });
+            placement_only: None,
+        };
+        // The members the part states take the place of the row's numbers.
+        if let Some(i) = design
+            .features
+            .models
+            .iter()
+            .position(|m| m.path == part.path && m.placement_only.is_some())
+        {
+            let own = &design.features.models[i];
+            let mask = own.placement_only.unwrap_or_default();
+            for k in 0..3 {
+                if mask[k] {
+                    offset[k] = own.offset[k];
+                }
+                if mask[k + 3] {
+                    rotation[k] = own.rotation[k];
+                }
+            }
+            made.offset = offset;
+            made.rotation = rotation;
+            made.stated_in = own.stated_in.clone();
+            if !own.source.is_empty() {
+                made.source = format!("{}, placed by {}", made.source, own.source);
+            }
+            replaced.push((i, made));
+        } else {
+            added.push(made);
+        }
+    }
+    for (i, made) in replaced {
+        design.features.models[i] = made;
     }
     for (index, (why, parts)) in row_missing {
         let id = &table.rows[index].footprint;

@@ -183,6 +183,13 @@ pub struct StepModel {
     /// is the project's and this machine's, not the design's ([`crate::Features::models`]).
     #[serde(skip)]
     pub footprint: Option<String>,
+    /// For a part that states members of the placement and no file (`.model.rz &= 90`, issue
+    /// #1005): which of `.x`, `.y`, `.z`, `.rx`, `.ry`, `.rz` it states, in that order. Its
+    /// `file` is empty. The project's model table gives the part its model, and these members
+    /// take the place of the row's numbers; a member not stated keeps the row's. `None` for
+    /// every other model.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub placement_only: Option<[bool; 6]>,
 }
 
 /// A STEP file of the board's case that the board is drawn in and checked against (a

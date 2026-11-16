@@ -563,8 +563,11 @@ pub(crate) fn protrusions(
 
 /// The STEP models the design's parts are drawn from (`.model`, ADR 0108), by path, and the
 /// statements that state each file. The offset and the rotation are each one value, zero when
-/// unstated. A part that states an offset or a rotation and no file is an error, as is an
-/// empty file name: there is nothing to place.
+/// unstated. A part that states an offset or a rotation and no file is kept as a model with no
+/// file and [`StepModel::placement_only`], for the project's model table to give it its model
+/// with these numbers (issue #1005); where the table has no model for it,
+/// `netsmith_fabricate::models::locate` says there is nothing to place. An empty file name with
+/// a placement is an error.
 pub(crate) fn models(
     model: &Model,
     errors: &mut Vec<String>,
@@ -588,17 +591,35 @@ pub(crate) fn models(
         let file = match &model.field(file_field).domain {
             Domain::Text(file) => file.clone(),
             _ => {
-                let stated: Vec<String> = PLACEMENT
-                    .iter()
-                    .filter(|n| !matches!(domain(model, m, n), None | Some(Domain::Unset)))
-                    .map(|n| format!("`{path}.model.{n}`"))
-                    .collect();
-                if !stated.is_empty() {
-                    errors.push(format!(
-                        "{} {} stated, and `{path}.model.file` is not, so there is no STEP model to place: name the file with `.{path}.model.file &= \"models/part.step\"`, or remove the placement",
-                        stated.join(", "),
-                        if stated.len() == 1 { "is" } else { "are" }
-                    ));
+                let mut mask = [false; 6];
+                let mut at = Vec::new();
+                for (slot, n) in mask.iter_mut().zip(PLACEMENT) {
+                    if let Some(Member::Field(f)) = model.member(m, n)
+                        && !matches!(model.field(f).domain, Domain::Unset)
+                    {
+                        *slot = true;
+                        for site in &model.field(f).narrowed_at {
+                            if !at.contains(site) {
+                                at.push(*site);
+                            }
+                        }
+                    }
+                }
+                if mask.contains(&true) {
+                    let (offset, rotation) =
+                        placement_of(model, m, &format!("{path}.model"), errors);
+                    found.push(StepModel {
+                        path,
+                        file: String::new(),
+                        offset,
+                        rotation,
+                        source: String::new(),
+                        stated_in: Vec::new(),
+                        resolved: None,
+                        footprint: None,
+                        placement_only: Some(mask),
+                    });
+                    sites.push(at);
                 }
                 continue;
             }
@@ -638,6 +659,7 @@ pub(crate) fn models(
             stated_in: Vec::new(),
             resolved: None,
             footprint: None,
+            placement_only: None,
         });
         sites.push(model.field(file_field).narrowed_at.clone());
     }
