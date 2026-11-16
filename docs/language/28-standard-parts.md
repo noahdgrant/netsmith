@@ -750,7 +750,7 @@ board TooQuiet {
 ```
 
 ```text
-error: no `capacitor` candidate satisfies `reg.output_cap`: the closest of the 34 that fit, 1 x 10uF 20% 10V X5R 0402 C315248, fails because reg.output_cap.total_effective_capacitance must always be at least reg.ic.min_output_capacitance, but 4.908uF..7.686uF is not always above 10uF (`reg.output_cap.effective_capacitance` is unknown for some candidates, so they were not used: no derating data for 27)
+error: no `capacitor` candidate satisfies `reg.output_cap`: the closest of the 36 that fit, 1 x 10uF 20% 10V X5R 0402 C315248, fails because reg.output_cap.total_effective_capacitance must always be at least reg.ic.min_output_capacitance, but 4.908uF..7.686uF is not always above 10uF (`reg.output_cap.effective_capacitance` is unknown for some candidates, so they were not used: no derating data for 25)
     --> std/parts/regulator.nsm:607:5
     |
 607 |     .output_cap.total_effective_capacitance >= .ic.min_output_capacitance

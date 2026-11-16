@@ -669,10 +669,10 @@ fn capacitors_carry_tolerance_voltage_and_package() {
 }
 
 /// A capacitor has no curve only for a recorded reason, so a missing curve is never an
-/// oversight: a maker with no obtainable curve (Murata, Yageo, Fenghua, see
-/// `data/jlcpcb/README.md`), or a Samsung class II part of 2.2 uF or more whose Component
-/// Library curve is measured at 1 Vrms, which is less deep than the characteristics sheet's
-/// 0.5 Vrms for the 4.7 uF part where both were compared.
+/// oversight: a maker with no obtainable curve (Murata, Fenghua, see `data/jlcpcb/README.md`),
+/// or a 0603 Samsung class II part of 2.2 uF or more, whose only curve is the Component
+/// Library's at 1 Vrms and whose characteristics sheet could not be fetched (the Library's
+/// curve is less deep than the sheet's 0.5 Vrms for the 4.7 uF part where both were compared).
 #[test]
 fn a_capacitor_without_a_curve_is_one_of_the_recorded_cases() {
     let cat = catalog("capacitor");
@@ -727,7 +727,8 @@ fn a_curve_names_where_it_came_from_and_stops_at_the_rated_voltage() {
         let source = &row["source"];
         assert!(
             source.contains("bias-curve: samsung-componentcenter:https://")
-                || source.contains("bias-curve: samsung-characteristics-sheet:https://"),
+                || source.contains("bias-curve: samsung-characteristics-sheet:https://")
+                || source.contains("bias-curve: yageo-spec-sheet:https://"),
             "{lcsc}: {source}"
         );
         assert!(source.contains("; measured "), "{lcsc}: {source}");
