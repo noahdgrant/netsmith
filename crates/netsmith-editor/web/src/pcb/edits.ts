@@ -123,7 +123,7 @@ export function keepoutEntry(
   k: { area: PcbBox | null; layers: string[]; tracks: boolean; vias: boolean; copper: boolean; parts: boolean; origin: string },
   f: Frame,
 ): KeepoutPlacement | null {
-  if (!k.area || (k.origin !== 'drawn' && k.origin !== 'placed')) return null;
+  if (!k.area || (k.origin !== 'drawn' && k.origin !== 'placed' && k.origin !== 'stated')) return null;
   const at = { x: tidy(k.area.x - f.originX), y: tidy(k.area.y - f.originY) };
   if (k.origin === 'placed') return { ...at, drawn: null };
   return {

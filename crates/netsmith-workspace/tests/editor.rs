@@ -2248,6 +2248,105 @@ fn a_keepout_the_physical_file_states_as_the_editor_writes_one_is_the_editors_to
 }
 
 #[test]
+fn a_keepout_the_physical_file_states_in_another_shape_is_moved_and_resized_there() {
+    if !footprints_here() {
+        return;
+    }
+    let (root, _) = pours_project("kspan");
+    let physical = physical_file(&root);
+    // The example's antenna with a height limit, a sum and a length in micrometres: a shape the
+    // editor does not write whole, so a move or a resize changes only its numbers.
+    let stated = include_str!("../../../examples/outline_and_pours.physical.nsm")
+        .replace(".x &= 18mm", ".x &= 10mm + 8mm")
+        .replace(
+            "        .width &= 14mm\n        .height &= 5mm\n",
+            "        // The antenna's own clearance.\n        .width &= 14mm\n        .height &= 5000um\n",
+        )
+        .replace(".vias &= \"allow\"\n", ".vias &= \"allow\"\n        .max_height &= 4mm\n");
+    fs::write(&physical, &stated).unwrap();
+    fs::write(layout_file(&root), "version = 1\n").unwrap();
+    // Opened again, so that the design is read from these files.
+    let editor = Workspace::open(Target::resolve_from(&root, None).unwrap())
+        .unwrap_or_else(|e| panic!("{e}"));
+    let scene = editor.pcb_scene(POURS_BOARD).unwrap();
+    let antenna = scene.keepouts.iter().find(|k| k.name == "antenna").unwrap();
+    assert_eq!(antenna.origin, KeepoutOrigin::Stated);
+    assert_eq!(antenna.max_height, Some(4.0));
+    let mut before = drawn(18.0, 2.0, 14.0, 5.0);
+    let d = before.drawn.as_mut().unwrap();
+    d.layers = vec!["top".into()];
+    // A keepout that states a height limit forbids only what it says, and this one says
+    // nothing but `.vias &= "allow"`.
+    (d.tracks, d.vias, d.copper, d.parts) = (false, false, false, false);
+
+    // Moved: only `.x` is written, in millimetres; the sum's place is now a number.
+    let mut moved = before.clone();
+    moved.x = 20.0;
+    let scene = editor
+        .pcb_edit(&keepout_edit(
+            &scene,
+            "antenna",
+            Some(before.clone()),
+            Some(moved.clone()),
+        ))
+        .unwrap()
+        .scene;
+    let text = fs::read_to_string(&physical).unwrap();
+    assert_eq!(text, stated.replace(".x &= 10mm + 8mm", ".x &= 20mm"));
+    let antenna = scene.keepouts.iter().find(|k| k.name == "antenna").unwrap();
+    assert_eq!(antenna.area.unwrap().x - scene.origin_x, 20.0);
+    assert_eq!(antenna.max_height, Some(4.0));
+
+    // Resized taller: the height in micrometres becomes millimetres, the rest stays.
+    let mut taller = moved.clone();
+    taller.drawn.as_mut().unwrap().height = 6.0;
+    let scene = editor
+        .pcb_edit(&keepout_edit(
+            &scene,
+            "antenna",
+            Some(moved.clone()),
+            Some(taller.clone()),
+        ))
+        .unwrap()
+        .scene;
+    let text = fs::read_to_string(&physical).unwrap();
+    assert_eq!(
+        text,
+        stated
+            .replace(".x &= 10mm + 8mm", ".x &= 20mm")
+            .replace(".height &= 5000um", ".height &= 6mm")
+    );
+    assert_eq!(fs::read_to_string(layout_file(&root)).unwrap(), "version = 1\n");
+
+    // What it forbids, its layers and its removal are the file's: refused, nothing written.
+    let refused = |after: Option<KeepoutPlacement>| {
+        editor
+            .pcb_edit(&keepout_edit(&scene, "antenna", Some(taller.clone()), after))
+            .unwrap_err()
+    };
+    let mut allow = taller.clone();
+    allow.drawn.as_mut().unwrap().tracks = true;
+    for e in [refused(Some(allow)), refused(None)] {
+        assert_eq!(e.status, 400, "{}", e.message);
+        assert!(
+            e.message.contains("in a shape the editor does not write"),
+            "{}",
+            e.message
+        );
+    }
+    let mut flat = taller.clone();
+    flat.drawn.as_mut().unwrap().width = 0.0;
+    let e = refused(Some(flat));
+    assert!(e.message.contains("has the size 0 by 6 mm"), "{}", e.message);
+    // A page that saw another place.
+    let e = editor
+        .pcb_edit(&keepout_edit(&scene, "antenna", Some(before), Some(moved)))
+        .unwrap_err();
+    assert_eq!(e.status, 409, "{}", e.message);
+    assert_eq!(fs::read_to_string(&physical).unwrap(), text);
+}
+
+#[test]
 fn a_keepout_that_is_wrong_is_refused_naming_the_field_and_what_the_board_has() {
     if !footprints_here() {
         return;

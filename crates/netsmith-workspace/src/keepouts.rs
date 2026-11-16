@@ -16,11 +16,19 @@
 //!
 //! The editor moves, resizes and deletes a board's keepout of the physical file that has this
 //! shape ([`drawn_in`]): its place and its size stated in millimetres, `.layers` and the four
-//! words of what it forbids as strings, and nothing else. One the editor could not write back
-//! the same (a place computed from another field, a range, a `.max_height`) is shown and
-//! changed in the file by hand. A change rewrites the declaration where it stands, so its `///`
-//! lines and every other line of the file stay; a new keepout goes at the end of the unit, and
-//! a removed one is taken out with its `///` lines ([`netsmith_fabricate::physical::edit`]).
+//! words of what it forbids as strings, and nothing else. A change rewrites the declaration
+//! where it stands, so its `///` lines and every other line of the file stay; a new keepout
+//! goes at the end of the unit, and a removed one is taken out with its `///` lines
+//! ([`netsmith_fabricate::physical::edit`]).
+//!
+//! A keepout of the physical file in another shape is moved and resized by a span edit
+//! ([`stated_in`], issue #810) when each of its `.x`, `.y`, `.width` and `.height` is stated by
+//! one `&=` whose right side is a length of numbers alone (`18mm`, `2500um`, `10mm + 8mm`), in
+//! its body or as `.antenna.x &= 18mm` in the unit: a move or a resize writes the new number in
+//! millimetres over the right side of each of those statements whose value changes
+//! ([`restate`]), and every other character of the file stays, `.max_height` and comments in
+//! the body among them. What such a keepout forbids and its layers are changed in the file, and
+//! so is one whose place or size is computed from another member, a range, or stated twice.
 //!
 //! A keepout drawn before this was written to the layout file (`[Board.keepouts.<name>]` with a
 //! `size`); `apply_layout` still reads it, and the editor's first change to it moves it to the
@@ -81,6 +89,132 @@ pub(crate) fn drawn_in(text: &str, board: &str) -> HashMap<String, Drawn> {
         }
     }
     out
+}
+
+/// A keepout of the physical file that the editor moves and resizes by a span edit: where the
+/// right side of the one statement of each of `.x`, `.y`, `.width` and `.height` is.
+#[derive(Debug, Clone)]
+pub(crate) struct Stated {
+    values: [Span; 4],
+}
+
+/// The fields a span edit rewrites, in the order of [`Stated`]'s spans.
+const PLACE_AND_SIZE: [&str; 4] = ["x", "y", "width", "height"];
+
+/// The keepouts of the unit `physical for board` in `text` that are not [`drawn_in`] it and that
+/// the editor may move and resize by a span edit, by name. A file that does not parse has none.
+pub(crate) fn stated_in(text: &str, board: &str) -> HashMap<String, Stated> {
+    let Ok(file) = netsmith_lang::parse(text) else {
+        return HashMap::new();
+    };
+    let Some(unit) = file.physicals.iter().find(|u| u.board.name == board) else {
+        return HashMap::new();
+    };
+    let drawn = drawn_in(text, board);
+    let mut items: Vec<&Item> = unit.items.iter().collect();
+    for item in &unit.items {
+        if let Item::Case(case) = item {
+            items.extend(&case.items);
+        }
+    }
+    // Every statement of a field of a board's keepout, by keepout and field: those of its body,
+    // and those of the unit that name it (`.antenna.x &= 18mm`).
+    let mut keepouts: Vec<String> = Vec::new();
+    let mut statements: HashMap<(String, String), Vec<&netsmith_lang::ast::Constraint>> =
+        HashMap::new();
+    for item in &items {
+        match item {
+            Item::Decl(d)
+                if d.name.leading_dot
+                    && d.name.segments.len() == 1
+                    && d.count.is_none()
+                    && d.ty.segments.last().is_some_and(|s| s.name == "Keepout") =>
+            {
+                let name = d.name.segments[0].name.clone();
+                for item in d.body.iter().flatten() {
+                    if let Item::Constraint(c) = item
+                        && let Expr::Path(p) = &c.lhs
+                        && p.leading_dot
+                        && p.segments.len() == 1
+                    {
+                        statements
+                            .entry((name.clone(), p.segments[0].name.clone()))
+                            .or_default()
+                            .push(c);
+                    }
+                }
+                keepouts.push(name);
+            }
+            Item::Constraint(c) => {
+                if let Expr::Path(p) = &c.lhs
+                    && p.leading_dot
+                    && p.segments.len() == 2
+                {
+                    statements
+                        .entry((p.segments[0].name.clone(), p.segments[1].name.clone()))
+                        .or_default()
+                        .push(c);
+                }
+            }
+            _ => {}
+        }
+    }
+    let mut out = HashMap::new();
+    for name in keepouts {
+        if drawn.contains_key(&name) || out.contains_key(&name) {
+            continue;
+        }
+        let value = |field: &str| -> Option<Span> {
+            let [c] = statements
+                .get(&(name.clone(), field.to_string()))?
+                .as_slice()
+            else {
+                return None;
+            };
+            (c.op == CmpOp::Narrow && c.at.is_none() && numbers_alone(&c.rhs)).then(|| c.rhs.span())
+        };
+        let values = PLACE_AND_SIZE.map(value);
+        if let [Some(x), Some(y), Some(width), Some(height)] = values {
+            out.insert(
+                name,
+                Stated {
+                    values: [x, y, width, height],
+                },
+            );
+        }
+    }
+    out
+}
+
+/// Whether `expr` is made of numbers alone: no member, call, range or tolerance.
+fn numbers_alone(expr: &Expr) -> bool {
+    match expr {
+        Expr::Number(..) => true,
+        Expr::Neg(inner, _) | Expr::Paren(inner, _) => numbers_alone(inner),
+        Expr::Binary { lhs, rhs, .. } => numbers_alone(lhs) && numbers_alone(rhs),
+        _ => false,
+    }
+}
+
+/// `text` with the place and size of [`Stated`] keepouts changed, each from `now` to `after`
+/// (`[x, y, width, height]` in mm): the right side of the statement of each field whose value
+/// changes becomes the new value in millimetres, and nothing else changes.
+pub(crate) fn restate(text: &str, changes: &[(&Stated, [f64; 4], [f64; 4])]) -> String {
+    let mut edits: Vec<(Span, f64)> = changes
+        .iter()
+        .flat_map(|(stated, now, after)| {
+            (0..4)
+                .filter(|&i| (now[i] - after[i]).abs() >= 0.006)
+                .map(|i| (stated.values[i], after[i]))
+        })
+        .collect();
+    // From the end, so that each span still points at its statement.
+    edits.sort_by_key(|(span, _)| std::cmp::Reverse(span.start));
+    let mut text = text.to_string();
+    for (span, value) in edits {
+        text.replace_range(span.start..span.end, &length(value));
+    }
+    text
 }
 
 /// What a keepout's body states, if it is only `&=` of literals the editor writes.
@@ -317,5 +451,51 @@ mod tests {
         assert_eq!(have["a"].place.vias.as_deref(), Some("allow"));
         assert!(drawn_in(text, "Other").is_empty());
         assert!(drawn_in("physical for B {", "B").is_empty());
+    }
+
+    const STATED: &str = "import std::pcb::Keepout\n\nphysical for B {\n    .a: Keepout {\n        .x &= 1mm\n        .y &= 1mm\n        .width &= 3mm\n        .height &= 3mm\n    }\n    /// Under the lid.\n    .tall: Keepout {\n        .x &= 1mm\n        .y &= 1mm // from the top edge\n        .width &= 3mm\n        .height &= 3mm\n        .max_height &= 2mm\n    }\n    .sum: Keepout {\n        .x &= 10mm + 8mm\n        .y &= -(1mm)\n        .width &= 25400um\n        .height &= 3mm\n    }\n    .outside: Keepout {\n        .width &= 3mm\n        .height &= 3mm\n    }\n    .outside.x &= 4mm\n    .outside.y &= 5mm\n    .placed: Keepout {\n        .width &= 3mm\n        .height &= 3mm\n    }\n    .computed: Keepout {\n        .x &= .outside.x + 1mm\n        .y &= 1mm\n        .width &= 3mm\n        .height &= 3mm\n    }\n    .range: Keepout {\n        .x &= 1mm..2mm\n        .y &= 1mm\n        .width &= 3mm\n        .height &= 3mm\n    }\n    .twice: Keepout {\n        .x &= 1mm\n        .y &= 1mm\n        .width &= 3mm\n        .height &= 3mm\n    }\n    .twice.x &= 1mm\n}\n";
+
+    #[test]
+    fn a_keepout_whose_place_and_size_are_numbers_stated_once_is_moved_by_a_span_edit() {
+        let have = stated_in(STATED, "B");
+        let mut names: Vec<&String> = have.keys().collect();
+        names.sort();
+        // `a` is the editor's whole; the others state a place that is not numbers alone, no
+        // place, or a field twice.
+        assert_eq!(names, ["outside", "sum", "tall"]);
+        assert!(stated_in(STATED, "Other").is_empty());
+        assert!(stated_in("physical for B {", "B").is_empty());
+    }
+
+    #[test]
+    fn a_span_edit_rewrites_only_the_numbers_that_change() {
+        let have = stated_in(STATED, "B");
+        let text = restate(
+            STATED,
+            &[
+                // Moved right: only `.x`, and the comment after `.y` and `.max_height` stay.
+                (&have["tall"], [1.0, 1.0, 3.0, 3.0], [2.5, 1.0, 3.0, 3.0]),
+                // Resized: the sum stays, the width in micrometres becomes millimetres.
+                (
+                    &have["sum"],
+                    [18.0, -1.0, 25.4, 3.0],
+                    [18.0, -1.0, 20.0, 3.0],
+                ),
+                // Stated outside its body.
+                (&have["outside"], [4.0, 5.0, 3.0, 3.0], [4.0, 6.0, 3.0, 3.0]),
+            ],
+        );
+        let expected = STATED
+            .replacen(
+                "    .tall: Keepout {\n        .x &= 1mm\n",
+                "    .tall: Keepout {\n        .x &= 2.5mm\n",
+                1,
+            )
+            .replace(".width &= 25400um", ".width &= 20mm")
+            .replace(".outside.y &= 5mm", ".outside.y &= 6mm");
+        assert_eq!(text, expected);
+        assert!(text.contains(".x &= 10mm + 8mm\n") && text.contains(".max_height &= 2mm"));
+        // The file still reads the same keepouts the same way.
+        assert_eq!(stated_in(&text, "B").len(), 3);
     }
 }

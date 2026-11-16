@@ -1192,6 +1192,11 @@ pub enum KeepoutOrigin {
     /// issue #809): it can be moved, resized and removed, and is kept in the physical file. One
     /// drawn before that is in the layout file, and the first change moves it.
     Drawn,
+    /// Stated in the physical file in a shape the editor does not write whole (a `.max_height`,
+    /// a length in micrometres, a sum, a field stated outside its body; issue #810): it can be moved
+    /// and resized, and a change rewrites only the numbers of its place and size there. What it
+    /// forbids and its layers are changed in the file, and it is removed there.
+    Stated,
     /// Carried by a part, in the part's frame: it moves with the part.
     Part,
 }

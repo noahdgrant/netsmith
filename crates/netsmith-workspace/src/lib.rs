@@ -619,7 +619,11 @@ impl Workspace {
         let have = old
             .as_deref()
             .map_or_else(Default::default, |t| keepouts::drawn_in(t, board));
+        let stated = old
+            .as_deref()
+            .map_or_else(Default::default, |t| keepouts::stated_in(t, board));
         let mut wanted: Vec<(String, Option<netsmith_pcb::KeepoutPlace>)> = Vec::new();
+        let mut restated: Vec<(String, &keepouts::Stated, [f64; 4], [f64; 4])> = Vec::new();
         for change in changes {
             let PcbChange::Keepout {
                 name,
@@ -629,6 +633,11 @@ impl Workspace {
             else {
                 continue;
             };
+            if let Some(s) = stated.get(name) {
+                let (now, after) = Self::restated(data, &shown, layers, name, before, after)?;
+                restated.push((name.clone(), s, now, after));
+                continue;
+            }
             let drawn =
                 |p: &Option<KeepoutPlacement>| p.as_ref().is_some_and(|p| p.drawn.is_some());
             if !have.contains_key(name) && !drawn(before) && !drawn(after) {
@@ -685,16 +694,97 @@ impl Workspace {
             }
             wanted.push((name.clone(), after));
         }
-        if wanted.is_empty() {
+        if wanted.is_empty() && restated.is_empty() {
             return Ok(None);
         }
-        let text = keepouts::rewrite(old.as_deref(), board, &wanted)
+        // The span edits first, on the file as it is, whose places their spans are.
+        let text = old.as_deref().map(|t| {
+            let spans: Vec<_> = restated.iter().map(|(_, s, n, a)| (*s, *n, *a)).collect();
+            keepouts::restate(t, &spans)
+        });
+        let text = keepouts::rewrite(text.as_deref(), board, &wanted)
             .map_err(|e| ApiError::bad_request(format!("{shown}: {e}")))?;
         Ok(Some(PhysicalChange {
-            names: wanted.into_iter().map(|(name, _)| name).collect(),
+            names: wanted
+                .into_iter()
+                .map(|(name, _)| name)
+                .chain(restated.into_iter().map(|(name, ..)| name))
+                .collect(),
             old,
             text,
         }))
+    }
+
+    /// The place and size, now and after the change from `before` to `after` (each
+    /// `[x, y, width, height]` in mm), of the keepout `name` that the physical file states in a
+    /// shape the editor does not write whole, for a span edit ([`keepouts::restate`]). Refused if
+    /// the keepout is not as the page last saw it (409), or if the change removes it or changes
+    /// anything but its place and size (400).
+    fn restated(
+        data: &analysis::BoardData,
+        shown: &str,
+        layers: &[String],
+        name: &str,
+        before: &Option<KeepoutPlacement>,
+        after: &Option<KeepoutPlacement>,
+    ) -> Result<([f64; 4], [f64; 4]), ApiError> {
+        let now = data
+            .built
+            .design
+            .features
+            .keepouts
+            .iter()
+            .find(|k| k.part.is_none() && k.name == name)
+            .and_then(|k| {
+                let (x, y) = k.at?;
+                let allow = |forbids: bool| (!forbids).then(|| "allow".to_string());
+                let mut place = netsmith_pcb::KeepoutPlace::at(x, y);
+                place.size = Some([k.size.0, k.size.1]);
+                place.layers = Some(k.layers.join(","));
+                place.tracks = allow(k.tracks);
+                place.vias = allow(k.vias);
+                place.copper = allow(k.copper);
+                place.parts = allow(k.parts);
+                Some(place)
+            });
+        if !pcb::same_keepout(before.as_ref(), now.as_ref(), layers) {
+            return Err(ApiError::conflict(format!(
+                "the keepout `{name}` is not what the page last saw (the file changed, or the page is out of date): reload the board"
+            )));
+        }
+        let now = now.expect("the same as a keepout the page saw");
+        let Some(after) = after.as_ref().filter(|a| a.drawn.is_some()) else {
+            return Err(ApiError::bad_request(format!(
+                "the keepout `{name}` is stated in {shown} in a shape the editor does not write: the editor moves and resizes it there, and it is removed or changed otherwise in the file"
+            )));
+        };
+        let place = pcb::keepout_place(after, layers)?;
+        let size = place.size.expect("a change with a size");
+        if !place.at.iter().chain(&size).all(|v| v.is_finite()) {
+            return Err(ApiError::bad_request(format!(
+                "{shown}: the keepout `{name}` has a position or size that is not a number"
+            )));
+        }
+        if size[0] <= 0.0 || size[1] <= 0.0 {
+            return Err(ApiError::bad_request(format!(
+                "{shown}: the keepout `{name}` has the size {} by {} mm; a keepout is wider and higher than nothing",
+                size[0], size[1]
+            )));
+        }
+        // What it is stays as the file states it: only its place and size are the editor's.
+        let mut same = now.clone();
+        same.at = place.at;
+        same.size = place.size;
+        if !pcb::same_keepout(Some(after), Some(&same), layers) {
+            return Err(ApiError::bad_request(format!(
+                "the keepout `{name}` is stated in {shown} in a shape the editor does not write: the editor changes only its place and size there, and what it forbids and its layers are changed in the file"
+            )));
+        }
+        let [width, height] = now.size.expect("a stated keepout has a size");
+        Ok((
+            [now.at[0], now.at[1], width, height],
+            [place.at[0], place.at[1], size[0], size[1]],
+        ))
     }
 
     /// Write the physical file of an edit and the layout file beside it, if the project as it

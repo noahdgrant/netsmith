@@ -110,7 +110,7 @@ export async function addKeepout(box: { x: number; y: number; width: number; hei
   return ok ? name : null;
 }
 
-/** Change a keepout that was drawn or placed: where it is and, if drawn, what it is. */
+/** Change a keepout that was drawn, stated or placed: where it is and, if drawn, what it is. */
 export async function changeKeepout(k: PcbKeepout, to: Partial<PcbKeepout>, label: string) {
   const sc = scene.value;
   if (!sc) return false;

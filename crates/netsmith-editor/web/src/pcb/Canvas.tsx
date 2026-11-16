@@ -460,7 +460,7 @@ export function Canvas(props: {
     }
     const additive = e.shiftKey || e.ctrlKey || e.metaKey;
     const k = keepoutAt(pickedKeepout.value);
-    if (k?.area && k.origin === 'drawn') {
+    if (k?.area && (k.origin === 'drawn' || k.origin === 'stated')) {
       const handle = hitHandle(k.area, p, REACH / scale);
       if (handle) {
         gesture.current = { kind: 'kresize', start: p, name: k.name, handle, box0: k.area };
@@ -502,7 +502,7 @@ export function Canvas(props: {
       .sort((a, b) => a.area!.width * a.area!.height - b.area!.width * b.area!.height)[0];
     if (near?.area) {
       pickKeepout(near.name);
-      if (near.origin === 'drawn' || near.origin === 'placed') {
+      if (near.origin === 'drawn' || near.origin === 'placed' || near.origin === 'stated') {
         gesture.current = { kind: 'kmove', start: p, screen, name: near.name, box0: near.area, active: false };
       }
       return;
@@ -917,7 +917,7 @@ export function Canvas(props: {
                   return (
                     <>
                       <rect x={b.x} y={b.y} width={b.width} height={b.height} />
-                      {k.origin === 'drawn' &&
+                      {(k.origin === 'drawn' || k.origin === 'stated') &&
                         handlesOf(b).map((h) => <rect key={h.handle} class="handle" x={h.x - 0.35} y={h.y - 0.35} width={0.7} height={0.7} />)}
                     </>
                   );

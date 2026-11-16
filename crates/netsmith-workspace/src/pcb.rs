@@ -600,9 +600,10 @@ pub fn scene(entry: &Entry, data: &BoardData, name: &str) -> PcbScene {
         .collect();
     let areas = board.keepout_areas();
     // The keepouts of the physical file that the editor drew, or could have: it changes them there.
-    let in_physical = std::fs::read_to_string(&data.physical)
-        .map(|text| crate::keepouts::drawn_in(&text, &data.built.design.name))
-        .unwrap_or_default();
+    let physical_text = std::fs::read_to_string(&data.physical).unwrap_or_default();
+    let in_physical = crate::keepouts::drawn_in(&physical_text, &data.built.design.name);
+    // Those it moves and resizes there by rewriting the numbers of their place and size.
+    let stated_in_physical = crate::keepouts::stated_in(&physical_text, &data.built.design.name);
     let keepouts = board
         .keepouts
         .iter()
@@ -618,6 +619,8 @@ pub fn scene(entry: &Entry, data: &BoardData, name: &str) -> PcbScene {
                 KeepoutOrigin::Part
             } else if k.drawn || in_physical.contains_key(&k.name) {
                 KeepoutOrigin::Drawn
+            } else if stated && stated_in_physical.contains_key(&k.name) {
+                KeepoutOrigin::Stated
             } else if stated {
                 KeepoutOrigin::Source
             } else {

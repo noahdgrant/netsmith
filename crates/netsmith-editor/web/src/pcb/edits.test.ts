@@ -155,6 +155,8 @@ describe('what the file has of a keepout', () => {
       y: 2,
       drawn: { width: 14, height: 5, layers: ['top'], tracks: true, vias: false, copper: true, parts: true },
     });
+    // One the physical file states in another shape is moved and resized as a drawn one is.
+    expect(keepoutEntry(k('stated', area), frame)).toEqual(keepoutEntry(k('drawn', area), frame));
   });
 
   it('is nothing for one the editor does not change, or one that has no place', () => {

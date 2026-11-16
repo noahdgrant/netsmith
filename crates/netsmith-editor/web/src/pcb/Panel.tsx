@@ -107,7 +107,7 @@ function PartList(props: { scene: PcbScene; onFocus: (box: PcbBox) => void }) {
           }}>
             <b class="ref">{k.name}</b>
             <span class="faint kind">{k.area ? summary(k) : 'no place yet'}</span>
-            <span class="tag">{{ drawn: 'drawn', placed: 'layout', part: 'part', source: 'source' }[k.origin]}</span>
+            <span class="tag">{{ drawn: 'drawn', stated: 'physical', placed: 'layout', part: 'part', source: 'source' }[k.origin]}</span>
           </div>
         ))}
       </div>
@@ -265,7 +265,9 @@ function KeepoutInspector(props: { scene: PcbScene; keepout: PcbKeepout }) {
         sub={
           drawn
             ? 'Drawn here, kept in the physical file.'
-            : k.origin === 'placed'
+            : k.origin === 'stated'
+              ? 'Stated in the physical file: moving or resizing it changes its numbers there; the rest is changed in the file.'
+              : k.origin === 'placed'
               ? 'Sized by the source; the layout file places it.'
               : k.origin === 'part'
                 ? 'Carried by a part: it moves with it.'
