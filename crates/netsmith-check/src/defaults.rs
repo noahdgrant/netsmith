@@ -8,6 +8,11 @@
 //! of ADR 0051 are settled, each line becomes a pending default of each field it reaches. It
 //! gives way to anything a statement says of the field: a `&=` or a `?=` on it, or on a field
 //! that `==` or a join makes equal to it. A line that reaches no field is a note.
+//!
+//! A board's physical file holds a `defaults` block too, for what the silkscreen prints
+//! (issue #881): its lines offer `.silk` only (`Resistor.silk ?= "hide"`), the built-in member
+//! of every part and module, and the circuit source's block may not. A part that states
+//! `.silk_text` is not reached by a `.silk` line: its text is its own statement.
 
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
@@ -42,16 +47,27 @@ enum Declared {
 }
 
 const EXAMPLE: &str = "`Resistor.package ?= \"0402\"`";
+const SILK_EXAMPLE: &str = "`Resistor.silk ?= \"hide\"`";
 
 impl Checker<'_> {
     /// Check the lines of a `defaults` block of the board being read and keep them.
     pub(crate) fn defaults_block(&mut self, block: &ast::Defaults) {
-        if self.phys.is_some() {
-            self.error(
-                block.span,
-                "`defaults` belongs in the board's source, not in its physical file: it offers values of the circuit",
-            );
-            return;
+        if let Some(phys) = &self.phys {
+            let message = if phys.module.is_some() {
+                Some(
+                    "a module's physical file holds no `defaults`: a line offers a value to every part of a kind on a board, so it is in the board's physical file",
+                )
+            } else if phys.in_case {
+                Some(
+                    "`defaults` is not part of the case: put it at the top of the board's physical file",
+                )
+            } else {
+                None
+            };
+            if let Some(message) = message {
+                self.error(block.span, message);
+                return;
+            }
         }
         if !self.in_board() {
             self.error(
@@ -139,6 +155,44 @@ impl Checker<'_> {
         }
         let (kind_id, field_id) = (&path.segments[0], &path.segments[1]);
         let kind = self.default_kind(kind_id)?;
+        let physical = self.phys.is_some();
+        let silk = matches!(field_id.name.as_str(), "silk" | "silk_text");
+        if physical && field_id.name == "silk_text" {
+            self.error(
+                field_id.span,
+                format!(
+                    "a text on the silkscreen belongs to one part: state `.silk_text` on the part, and offer `.silk` to a kind, such as {SILK_EXAMPLE}"
+                ),
+            );
+            return None;
+        }
+        if physical && !silk {
+            self.error(
+                field_id.span,
+                format!(
+                    "a physical file's `defaults` offers only what the silkscreen prints, `.silk` ({SILK_EXAMPLE}); `{}.{}` is a value of the circuit, so its line is in the `defaults` of the board's source",
+                    kind_id.name, field_id.name
+                ),
+            );
+            return None;
+        }
+        if !physical && silk {
+            let board = self
+                .cur_def
+                .map(|(m, i)| self.modules[m].defs[i].name.name.clone())
+                .unwrap_or_default();
+            self.error(
+                field_id.span,
+                format!(
+                    "`{}.{}` is what the silkscreen prints, which is physical intent (ADR 0048): put the line in a `defaults` block of `physical for {board}`",
+                    kind_id.name, field_id.name
+                ),
+            );
+            return None;
+        }
+        if physical {
+            return self.silk_line(c, kind, kind_id);
+        }
         if field_id.name == "assembly" && self.modules[kind.0].defs[kind.1].kind == DefKind::Module
         {
             self.error(
@@ -217,6 +271,42 @@ impl Checker<'_> {
             kind_name: kind_id.name.clone(),
             field: field_id.name.clone(),
             value,
+            source: self.cur_source(),
+            span: c.span,
+        })
+    }
+
+    /// A line of a physical file's `defaults`, `Kind.silk ?= "hide"`: every part and module has
+    /// a `.silk`, and its value is one of two words, checked at the line.
+    fn silk_line(
+        &mut self,
+        c: &ast::Constraint,
+        kind: (usize, usize),
+        kind_id: &ast::Ident,
+    ) -> Option<BoardDefault> {
+        let word = match &c.rhs {
+            Expr::Str(t, _) => Some(t.clone()),
+            _ => None,
+        };
+        let Some(word) = word.filter(|w| w == "show" || w == "hide") else {
+            self.error(
+                c.rhs.span(),
+                format!(
+                    "`{}.silk` is \"show\" or \"hide\": say whether the silkscreen prints the designators of every `{}`",
+                    kind_id.name, kind_id.name
+                ),
+            );
+            return None;
+        };
+        Some(BoardDefault {
+            board: self.current(),
+            kind,
+            kind_name: kind_id.name.clone(),
+            field: "silk".to_string(),
+            value: Typed {
+                e: RExpr::Text(word),
+                ty: VTy::Text,
+            },
             source: self.cur_source(),
             span: c.span,
         })
@@ -433,6 +523,13 @@ impl Checker<'_> {
                 if spoken_classes.contains(&find(&mut eq, field.0)) {
                     continue;
                 }
+                // A part that prints a text of its own says what its silkscreen shows.
+                if line.field == "silk"
+                    && let Some(Member::Field(text)) = self.model.member(inst, "silk_text")
+                    && spoken.contains(&text)
+                {
+                    continue;
+                }
                 if let Some(&other) = reached.get(&field) {
                     let path = self.model.path_of_field(field);
                     let place = self.place_of(line.source, other);
@@ -469,7 +566,12 @@ impl Checker<'_> {
                 } else {
                     format!(
                         "the default for {what} reaches nothing: every `{}` on the board states `.{}` itself",
-                        line.kind_name, line.field
+                        line.kind_name,
+                        if line.field == "silk" {
+                            "silk` or `.silk_text"
+                        } else {
+                            &line.field
+                        }
                     )
                 };
                 self.model.default_notes.push(DefaultNote {

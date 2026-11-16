@@ -358,7 +358,7 @@ Rules.
 - The value is a number with a unit, a range, `x +/- y%`, text or a variant, of the type the value holds. A value read from a field is refused: the line is about every part of the kind, and a field of one of them is not.
 - One kind and value has one line. Two lines that reach one part (`Resistor.package` and `Thin.package` for a `part Thin provides Resistor`) are an error at the second line: state that part's package with `&=`.
 - A line that reaches nothing, because the board has no part of the kind or every one states the value itself, is a note and not an error.
-- Only a board holds `defaults`, in its source and not in its physical file. A project-wide setting in `netsmith.toml` was not taken: a board says what its parts are. The editor's card for a part says which statement gave its package: a line of `defaults`, a `?=` or a `&=`, with its file and line.
+- Only a board holds `defaults`, in its source. Its physical file holds a `defaults` block of its own that offers only what the silkscreen prints, `Resistor.silk ?= "hide"` (_Silkscreen text_ in _The shape of a board_), and the source's block may not name `.silk`. A project-wide setting in `netsmith.toml` was not taken: a board says what its parts are. The editor's card for a part says which statement gave its package: a line of `defaults`, a `?=` or a `&=`, with its file and line.
 
 Misuse: a kind that is not in scope.
 
