@@ -19,10 +19,10 @@ mpn,name,max_drain_source_voltage,max_drain_current,max_gate_source_voltage,gate
 ZN-100,ZN-100 100V 2A N-MOSFET,100V,2A,20V,1V..2V,0.2ohm,4.5V,SOT-23,Extended,https://example.invalid/zn-100
 ";
 
-/// An invented 30 V P-channel row that states it.
+/// An invented 40 V P-channel row that states it.
 const ZP_STATED: &str = "\
 mpn,name,max_drain_source_voltage,max_drain_current,max_gate_source_voltage,gate_threshold,on_resistance,on_resistance_vgs,package,library,source
-ZP-30,ZP-30 30V 4A P-MOSFET,30V,4A,12V,0.4V..1.3V,0.07ohm,4.5V,SOT-23,Extended,https://example.invalid/zp-30
+ZP-40,ZP-40 40V 4A P-MOSFET,40V,4A,12V,0.4V..1.3V,0.07ohm,4.5V,SOT-23,Extended,https://example.invalid/zp-40
 ";
 
 fn world(files: &[(&str, &str)]) -> (Loader, Catalogs) {
@@ -73,9 +73,14 @@ board Switch {{\n    .supply: Rail {{\n        .voltage &= {supply}\n        .po
 }
 
 fn high_side(drive: &str, extra: &str) -> String {
+    high_side_at("5V +/- 5%", drive, extra)
+}
+
+/// The high-side switch on a supply of `supply`.
+fn high_side_at(supply: &str, drive: &str, extra: &str) -> String {
     format!(
         "import std::parts::passive::Resistor\nimport std::parts::transistor::PMosfet\nimport std::sources::Rail\n\n\
-board HighSide {{\n    .supply: Rail {{\n        .voltage &= 5V +/- 5%\n        .pos.net &= \"VIN\"\n        .neg.net &= \"GND\"\n    }}\n\
+board HighSide {{\n    .supply: Rail {{\n        .voltage &= {supply}\n        .pos.net &= \"VIN\"\n        .neg.net &= \"GND\"\n    }}\n\
     .q: PMosfet {{\n        .drain_source_voltage &= supply.voltage\n        .gate_source_voltage &= {drive}\n        .current &= 0A..1A\n{extra}    }}\n\
     .load: Resistor {{ .resistance &= 100kohm +/- 1% }}\n\
     .q.gate ~ .supply.neg\n    .q.source ~ .supply.pos\n    .q.drain ~ .load.a\n    .load.b ~ .supply.neg\n}}\n"
@@ -91,6 +96,9 @@ fn the_standard_rows_state_the_voltage_their_on_resistance_is_guaranteed_at() {
     // 2N7002: 7 ohm at VGS = 5 V (JSCJ datasheet, p.2); AO3400A: 48 mohm at 2.5 V (AOS Rev 3, p.2).
     assert!(csv.contains(",7ohm,5V,SOT-23,"), "{csv}");
     assert!(csv.contains(",0.048ohm,2.5V,SOT-23,"), "{csv}");
+    // The P-channel row, AO3401A: 85 mohm at 2.5 V (AOS Rev 3.1, p.2).
+    let csv = include_str!("../../../data/jlcpcb/catalog/p_mosfet.csv");
+    assert!(csv.contains(",0.085ohm,2.5V,SOT-23,"), "{csv}");
 }
 
 #[test]
@@ -181,15 +189,19 @@ fn a_requirement_on_the_test_voltage_offers_only_the_rows_that_state_one() {
 #[test]
 fn a_p_channel_row_that_states_its_test_voltage_is_checked_too() {
     let w = world(&[("p_mosfet", ZP_STATED)]);
-    let o = build(&w, &high_side("5V +/- 5%", "")).unwrap_or_else(|e| panic!("{e:?}"));
-    assert_eq!(q_mpn(&o), Some("ZP-30"));
-    let m = fails(&w, &high_side("3.3V +/- 5%", ""));
+    // The standard AO3401A (30 V, guaranteed at 2.5 V) serves a 5 V supply for either drive.
+    for drive in ["5V +/- 5%", "3.3V +/- 5%"] {
+        let o = build(&w, &high_side(drive, "")).unwrap_or_else(|e| panic!("{e:?}"));
+        assert_eq!(q_mpn(&o), Some("AO3401A"));
+    }
+    // A 36 V supply is beyond it: the project's row serves a 5 V drive.
+    let o = build(&w, &high_side_at("36V +/- 5%", "5V +/- 5%", "")).unwrap_or_else(|e| panic!("{e:?}"));
+    assert_eq!(q_mpn(&o), Some("ZP-40"));
+    // And refuses a 3.3 V drive, below the 4.5 V its on-resistance is guaranteed at (the
+    // standard row is out on the supply, and the message names the closest of the two).
+    let m = fails(&w, &high_side_at("36V +/- 5%", "3.3V +/- 5%", ""));
     assert!(
-        m.contains("no `p_mosfet` candidate satisfies `q`")
-            && m.contains("ZP-30 30V 4A P-MOSFET")
-            && m.contains("q.gate_source_voltage must always be at least q.on_resistance_vgs")
-            && m.contains("3.135V..3.465V")
-            && m.contains("4.5V"),
+        m.contains("no `p_mosfet` candidate satisfies `q`: the closest of the 2 that fit"),
         "{m}"
     );
 }

@@ -1,5 +1,6 @@
-//! `PMosfet` and `LevelTranslator` are standard generics with a catalog that has no rows
-//! (ADR 0063): a project's own rows, or a provider of its own, serve a design. Every part, row
+//! `PMosfet` and `LevelTranslator` are standard generics (ADR 0063). The standard catalog of
+//! `PMosfet` has one row (the AO3401A) and that of `LevelTranslator` has none: a project's own
+//! rows, or a provider of its own, serve what the standard rows cannot. Every project part, row
 //! and number here is invented.
 
 use netsmith_pipeline::{Outcome, Problem, outcome_with};
@@ -9,10 +10,11 @@ use netsmith_solve::Catalogs;
 const P_MOSFET_CSV: &str = include_str!("../../../data/jlcpcb/catalog/p_mosfet.csv");
 const TRANSLATOR_CSV: &str = include_str!("../../../data/jlcpcb/catalog/level_translator.csv");
 
-/// An invented 30 V, 4 A P-channel part, as a project's own row of the standard catalog.
+/// An invented 40 V, 4 A P-channel part, as a project's own row of the standard catalog. It
+/// comes after the standard row, so it serves what the AO3401A (30 V) cannot.
 const ZP_ROWS: &str = "\
 mpn,name,max_drain_source_voltage,max_drain_current,max_gate_source_voltage,gate_threshold,on_resistance,package,library,source
-ZP-30,ZP-30 30V 4A P-MOSFET,30V,4A,12V,0.4V..1.3V,0.07ohm,SOT-23,Extended,https://example.invalid/zp-30
+ZP-40,ZP-40 40V 4A P-MOSFET,40V,4A,12V,0.4V..1.3V,0.07ohm,SOT-23,Extended,https://example.invalid/zp-40
 ";
 
 /// An invented translator, as a project's own row of the standard catalog.
@@ -150,20 +152,17 @@ fn only_header(csv: &str) -> bool {
 }
 
 #[test]
-fn the_standard_catalogs_of_the_two_have_a_header_and_no_row_and_say_where_rows_go() {
-    assert!(only_header(P_MOSFET_CSV), "{P_MOSFET_CSV}");
+fn the_standard_catalog_of_the_translator_has_a_header_and_no_row_and_says_where_rows_go() {
     assert!(only_header(TRANSLATOR_CSV), "{TRANSLATOR_CSV}");
-    // The header is the catalog's columns and the fixed ones, in the order of the n_mosfet file.
+    // The P-channel header is the catalog's columns and the fixed ones, in the order of the
+    // n_mosfet file, and its one row is the AO3401A (the sources are checked in
+    // `crates/netsmith-solve/tests/data.rs`).
     let header = P_MOSFET_CSV.lines().next().unwrap();
     let n_mosfet = include_str!("../../../data/jlcpcb/catalog/n_mosfet.csv");
     assert_eq!(header, n_mosfet.lines().next().unwrap());
+    assert_eq!(P_MOSFET_CSV.lines().count(), 2, "{P_MOSFET_CSV}");
+    assert!(P_MOSFET_CSV.contains("\nC15127,AO3401A,"), "{P_MOSFET_CSV}");
     // With no rows and no file of the project, a board is refused where the row is missing.
-    let m = fails(&world(&[], &[]), &high_side("", "5V +/- 5%", "5V +/- 5%"));
-    assert!(
-        m.contains("the `p_mosfet` catalog is empty")
-            && m.contains("`catalogs/p_mosfet.csv`"),
-        "{m}"
-    );
     let m = fails(&world(&[], &[]), &translated("", "3.3V +/- 5%", ""));
     assert!(
         m.contains("the `level_translator` catalog is empty")
@@ -174,13 +173,17 @@ fn the_standard_catalogs_of_the_two_have_a_header_and_no_row_and_say_where_rows_
 
 #[test]
 fn a_project_row_of_an_invented_p_channel_part_is_picked_for_the_requirement() {
+    // The standard row serves a 5 V design, and comes first.
     let w = world(&[], &[("p_mosfet", ZP_ROWS)]);
     let o = build(&w, &high_side("", "5V +/- 5%", "5V +/- 5%")).unwrap_or_else(|e| panic!("{e:?}"));
+    assert_eq!(q_mpn(&o.boards[0]), Some("AO3401A"));
+    // A 36 V supply (a 10 V drive) is beyond the 30 V of that row: the project's row serves.
+    let o = build(&w, &high_side("", "36V +/- 5%", "10V")).unwrap_or_else(|e| panic!("{e:?}"));
     let b = &o.boards[0];
     let q = b.design.parts.iter().find(|p| p.path == "q").unwrap();
     assert_eq!((q.kind.as_str(), q.refdes.as_str()), ("PMosfet", "Q1"));
     assert!(q.provides.is_empty(), "the generic itself, no provider");
-    assert_eq!(q_mpn(b), Some("ZP-30"));
+    assert_eq!(q_mpn(b), Some("ZP-40"));
     assert!(b.providers.is_empty());
 }
 
@@ -191,17 +194,17 @@ fn a_p_channel_stress_beyond_the_maxima_is_refused_with_the_numbers() {
     let m = fails(&w, &high_side("", "24V +/- 5%", "24V +/- 5%"));
     assert!(
         m.contains("no `p_mosfet` candidate satisfies `q`")
-            && m.contains("ZP-30 30V 4A P-MOSFET")
+            && m.contains("the closest of the 2 that fit, AO3401A 30V 4A P-MOSFET SOT-23 C15127")
             && m.contains(
                 "q.gate_source_voltage must always be at most q.max_gate_source_voltage, but 22.8V..25.2V is not always below 12V"
             ),
         "{m}"
     );
-    // A 40 V supply is beyond the drain-source maximum of 30 V first.
-    let m = fails(&w, &high_side("", "40V +/- 5%", "5V"));
+    // A 50 V supply is beyond the drain-source maximum of 40 V first (the closest row is the project's).
+    let m = fails(&w, &high_side("", "50V +/- 5%", "5V"));
     assert!(
         m.contains(
-            "q.drain_source_voltage must always be at most q.max_drain_source_voltage, but 38V..42V is not always below 30V"
+            "q.drain_source_voltage must always be at most q.max_drain_source_voltage, but 47.5V..52.5V is not always below 40V"
         ),
         "{m}"
     );
@@ -213,11 +216,11 @@ fn an_invented_provider_of_pmosfet_conforms_and_is_picked_when_the_rows_cannot_s
         &[("src::zp", ZP_PROVIDER)],
         &[("p_mosfet", ZP_ROWS), ("zp_power", ZP_POWER_CSV)],
     );
-    // The standard row (30 V) serves a 12 V design: no provider is tried.
+    // The standard row (30 V) serves a 5 V design: no provider is tried.
     let imports = "import src::zp::ZpPower\n";
     let o = build(&w, &high_side(imports, "5V +/- 5%", "5V +/- 5%")).unwrap();
     assert!(o.boards[0].providers.is_empty());
-    assert_eq!(q_mpn(&o.boards[0]), Some("ZP-30"));
+    assert_eq!(q_mpn(&o.boards[0]), Some("AO3401A"));
     // A 48 V supply is beyond the row, and the provider's 60 V part serves.
     let o = build(&w, &high_side(imports, "48V +/- 5%", "10V")).unwrap_or_else(|e| panic!("{e:?}"));
     let b = &o.boards[0];
@@ -239,11 +242,12 @@ fn an_invented_provider_of_pmosfet_conforms_and_is_picked_when_the_rows_cannot_s
 }
 
 #[test]
-fn a_provider_of_pmosfet_alone_serves_when_the_standard_catalog_has_no_row() {
-    // No project row of the standard catalog: the generic has nothing, the provider is tried.
+fn a_provider_of_pmosfet_alone_serves_when_the_standard_catalog_has_no_row_that_fits() {
+    // No project row of the standard catalog, and a 48 V supply beyond the 30 V of the standard
+    // row: the generic has nothing that fits, the provider is tried.
     let w = world(&[("src::zp", ZP_PROVIDER)], &[("zp_power", ZP_POWER_CSV)]);
     let imports = "import src::zp::ZpPower\n";
-    let o = build(&w, &high_side(imports, "12V +/- 5%", "10V")).unwrap_or_else(|e| panic!("{e:?}"));
+    let o = build(&w, &high_side(imports, "48V +/- 5%", "10V")).unwrap_or_else(|e| panic!("{e:?}"));
     let b = &o.boards[0];
     assert_eq!(b.providers[0].chosen, "ZpPower");
     assert_eq!(b.providers[0].passed_over[0].0, "PMosfet");

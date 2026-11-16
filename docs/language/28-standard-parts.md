@@ -1442,11 +1442,11 @@ error: q.gate_source_voltage must always be at least q.on_resistance_vgs, but 3.
    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
-`PMosfet` is a generic like `NMosfet`, with the catalog `p_mosfet` (the same columns as `n_mosfet`), and its standard catalog has no rows yet, because no P-channel part has been entered with a recorded source (`data/jlcpcb/README.md`). A project that needs one writes the rows of its parts in a file named `p_mosfet.csv` in `catalogs/`; the rows are added after the standard ones, as for any standard catalog. Without a row, a `PMosfet` is refused with the message of an empty catalog. This is a high-side switch with an invented part: the source of a P-channel MOSFET is the supply, its gate is pulled to ground to turn it on, and `.gate_source_voltage` is the magnitude of the drive.
+`PMosfet` is a generic like `NMosfet`, with the catalog `p_mosfet` (the same columns as `n_mosfet`), and its standard catalog has one row, the Alpha & Omega AO3401A (30 V, 4 A, `.gate_threshold` 0.5 V to 1.3 V, 85 mohm at a gate drive of 2.5 V, SOT-23, Basic; its sources are in `data/jlcpcb/README.md`). A project that needs another writes the rows of its parts in a file named `p_mosfet.csv` in `catalogs/`; the rows are added after the standard one, as for any standard catalog. This is a high-side switch with an invented part for a supply the AO3401A cannot take: the source of a P-channel MOSFET is the supply, its gate is pulled to ground to turn it on, and `.gate_source_voltage` is the magnitude of the drive.
 
 ```csv file=catalogs/p_mosfet.csv set=pfet
 mpn,name,max_drain_source_voltage,max_drain_current,max_gate_source_voltage,gate_threshold,on_resistance,package,library,source
-ZP-30,ZP-30 30V 4A P-MOSFET,30V,4A,12V,0.4V..1.3V,0.07ohm,SOT-23,Extended,https://example.invalid/zp-30
+ZP-40,ZP-40 40V 4A P-MOSFET,40V,4A,12V,0.4V..1.3V,0.07ohm,SOT-23,Extended,https://example.invalid/zp-40
 ```
 
 ```nsm evaluate catalogs=pfet
@@ -1456,15 +1456,15 @@ import std::sources::Rail
 
 board HighSide {
     .supply: Rail {
-        .voltage &= 5V +/- 5%
-        .pos.net &= "V5"
+        .voltage &= 36V +/- 5%
+        .pos.net &= "V36"
     }
     .q: PMosfet {
         .drain_source_voltage &= supply.voltage
-        .gate_source_voltage &= supply.voltage
+        .gate_source_voltage &= 10V
         .current &= 0A..1A
     }
-    .load: Resistor { .resistance &= 1kohm +/- 1% }
+    .load: Resistor { .resistance &= 100kohm +/- 1% }
     .q.gate ~ .supply.neg
     .q.source ~ .supply.pos
     .q.drain ~ .load.a
@@ -1472,7 +1472,7 @@ board HighSide {
 }
 ```
 
-The switch's drain goes to a load. Joined to the ground instead, a switch that is on is a short across the supply, and the DC analysis says so (`q.current` is stated up to 1 A, and the circuit puts 5.25 V across 70 mohm, 75 A): a MOSFET is solved as a switch (see "DC analysis").
+The switch's drain goes to a load. Joined to the ground instead, a switch that is on is a short across the supply, and the DC analysis says so (`q.current` is stated up to 1 A, and the circuit puts 37.8 V across 70 mohm, 540 A): a MOSFET is solved as a switch (see "DC analysis").
 
 The stresses are checked against the maxima as they are for an `NMosfet`. A 100 V supply puts 100 V across the drain and the source and between the gate and the source, which is more than this part takes, and the design is refused with the numbers:
 
@@ -1497,10 +1497,10 @@ board HighSide {
 ```
 
 ```text
-error: no `p_mosfet` candidate satisfies `q`: the closest of the 1 that fit, ZP-30 30V 4A P-MOSFET, fails because q.drain_source_voltage must always be at most q.max_drain_source_voltage, but 95V..105V is not always below 30V
-    --> std/parts/transistor.nsm:135:5
+error: no `p_mosfet` candidate satisfies `q`: the closest of the 2 that fit, ZP-40 40V 4A P-MOSFET, fails because q.drain_source_voltage must always be at most q.max_drain_source_voltage, but 95V..105V is not always below 40V
+    --> std/parts/transistor.nsm:136:5
     |
-135 |     .drain_source_voltage <= .max_drain_source_voltage
+136 |     .drain_source_voltage <= .max_drain_source_voltage
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 

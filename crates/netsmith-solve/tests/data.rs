@@ -107,7 +107,7 @@ fn columns(name: &str) -> Vec<(String, FieldKind)> {
             q("resistance", Dimension::RESISTANCE),
             t("package"),
         ],
-        "n_mosfet" => vec![
+        "n_mosfet" | "p_mosfet" => vec![
             q("max_drain_source_voltage", Dimension::VOLTAGE),
             q("max_drain_current", Dimension::CURRENT),
             q("max_gate_source_voltage", Dimension::VOLTAGE),
@@ -150,7 +150,7 @@ fn catalog(name: &str) -> Catalog {
         ]
         .map(String::from)
         .to_vec(),
-        "n_mosfet" => vec!["on_resistance_vgs".to_string()],
+        "n_mosfet" | "p_mosfet" => vec!["on_resistance_vgs".to_string()],
         "led" => vec!["max_forward_current".to_string(), "test_current".to_string()],
         "header" => vec!["mating.seat".to_string()],
         "lmr16006y" | "rt8059" | "tps54202" => vec!["efficiency".to_string()],
@@ -178,7 +178,7 @@ fn tolerance(value: f64, unit: &str, percent: f64) -> Quantity {
     Quantity::tolerance(&quantity(value, unit), &quantity(percent, "%"), true).unwrap()
 }
 
-const CATALOGS: [&str; 17] = [
+const CATALOGS: [&str; 18] = [
     "resistor",
     "capacitor",
     "led",
@@ -191,6 +191,7 @@ const CATALOGS: [&str; 17] = [
     "inductor",
     "fuse",
     "n_mosfet",
+    "p_mosfet",
     "crystal",
     "header",
     "lmr16006y",
@@ -310,17 +311,24 @@ fn every_height_is_one_length_that_a_document_says_and_its_source_names_where() 
 }
 
 /// How many rows of the standard catalogs state `temp_min` and `temp_max` (ADR 0099): the four
-/// crystals, whose figure is the JLCPCB listing text, and 341 rows read from a datasheet (303
-/// ambient or operating ranges, 26 junction ranges of the diodes and the MOSFET, and 12 operating
+/// crystals, whose figure is the JLCPCB listing text, and 342 rows read from a datasheet (303
+/// ambient or operating ranges, 27 junction ranges of the diodes and the MOSFETs, and 12 operating
 /// ranges of LEDs; the 1N5819WS, whose range is the one figure of its operating and storage
 /// range, is counted with the ranges and not with the junction ones). Update it with the rows.
-const ROWS_WITH_TEMPERATURE: usize = 345;
+const ROWS_WITH_TEMPERATURE: usize = 346;
 
 /// The catalogs of semiconductors whose datasheets print a junction range (`TJ`) and no ambient
 /// one. A row of them that states a range says in its `notes` which temperature it is (ADR 0099): a
 /// junction range is the part's range, and the environment check judges the part by it, which is
 /// the limit of that check.
-const JUNCTION_CATALOGS: [&str; 5] = ["schottky", "tvs", "tvs_bidirectional", "zener", "n_mosfet"];
+const JUNCTION_CATALOGS: [&str; 6] = [
+    "schottky",
+    "tvs",
+    "tvs_bidirectional",
+    "zener",
+    "n_mosfet",
+    "p_mosfet",
+];
 
 /// A temperature cell such as `233.15K`, in kelvin.
 fn kelvin(name: &str, lcsc: &str, column: &str, cell: &str) -> f64 {
@@ -409,7 +417,7 @@ fn every_temperature_range_is_two_kelvin_figures_and_its_row_names_the_datasheet
         }
     }
     assert_eq!(with, ROWS_WITH_TEMPERATURE);
-    assert_eq!(junction, 26, "the rows whose range is a junction range");
+    assert_eq!(junction, 27, "the rows whose range is a junction range");
 }
 
 #[test]
@@ -921,7 +929,7 @@ fn every_resistor_has_the_power_both_suppliers_list() {
 }
 
 /// The kinds of ADR 0023 that gained a catalog (ADR 0025), with the file that holds it.
-const STD_KINDS: [(&str, &str); 9] = [
+const STD_KINDS: [(&str, &str); 10] = [
     ("schottky", "Schottky"),
     ("zener", "Zener"),
     ("tvs", "Tvs"),
@@ -930,6 +938,7 @@ const STD_KINDS: [(&str, &str); 9] = [
     ("inductor", "Inductor"),
     ("fuse", "Fuse"),
     ("n_mosfet", "NMosfet"),
+    ("p_mosfet", "PMosfet"),
     ("crystal", "Crystal"),
 ];
 
@@ -1344,6 +1353,18 @@ fn the_fuses_the_beads_and_the_mosfets_have_their_rows() {
     let th = value(&fet, "gate_threshold");
     assert_eq!((th.lo(), th.hi()), (0.65, 1.45));
     assert_eq!(row_of("n_mosfet", "C8545").library, Some(Library::Basic));
+    // The one P-channel row: the AO3401A, Basic, from the AOS Rev 3.1 datasheet. Voltages and
+    // currents are magnitudes; the threshold is the table's -0.5 V to -1.3 V.
+    let pfet = row_of("p_mosfet", "C15127");
+    assert_eq!(pfet.mpn.as_deref(), Some("AO3401A"));
+    assert_eq!(pfet.library, Some(Library::Basic));
+    assert_eq!(value(&pfet, "max_drain_source_voltage"), quantity(30.0, "V"));
+    assert_eq!(value(&pfet, "max_drain_current"), quantity(4.0, "A"));
+    assert_eq!(value(&pfet, "max_gate_source_voltage"), quantity(12.0, "V"));
+    let th = value(&pfet, "gate_threshold");
+    assert_eq!((th.lo(), th.hi()), (0.5, 1.3));
+    assert_eq!(value(&pfet, "on_resistance"), quantity(0.085, "ohm"));
+    assert_eq!(value(&pfet, "on_resistance_vgs"), quantity(2.5, "V"));
     // The gate-source voltage each row's on-resistance is guaranteed at (ADR 0092): the test
     // condition of the datasheet's RDS(on) row that `on_resistance` is the maximum of.
     for (lcsc, ohms, volts) in [("C8545", 7.0, 5.0), ("C20917", 0.048, 2.5)] {
