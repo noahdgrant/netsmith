@@ -14,7 +14,7 @@ import type {
   Problem,
   Project,
 } from './api';
-import { AnalysisPending, ApiFailure, Events, api } from './client';
+import { AnalysisPending, ApiFailure, Events, api, wasCancelled } from './client';
 import { answerView } from './pcb3d/agent';
 import { nextDelay } from './feedback/early';
 import {
@@ -201,7 +201,9 @@ export async function routeBoard(name: string): Promise<PcbReport | null> {
     pcbStamp.value++;
     return report;
   } catch (e) {
-    say(e instanceof Error ? e.message : String(e), true);
+    // Cancel while the route still placed the board (issue 764): nothing was placed or routed, a person's choice.
+    if (wasCancelled(e)) say(`${name}: cancelled while the board was placed; nothing was kept`);
+    else say(e instanceof Error ? e.message : String(e), true);
     return null;
   } finally {
     endJob();

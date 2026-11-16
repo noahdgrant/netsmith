@@ -275,7 +275,14 @@ export function Pcb() {
             <span class="tb-label">Download KiCad board</span>
           </a>
           {busy && (
-            <button class="tool" data-tip="Stop the router; what it has routed is kept" onClick={() => void api.cancelRoute()}>
+            <button
+              class="tool"
+              data-tip="Stop the router; what it has routed is kept. While the board is still placed, the placing stops and nothing is kept"
+              onClick={() => {
+                void api.cancelRoute();
+                void cancelPlacing();
+              }}
+            >
               Cancel
             </button>
           )}

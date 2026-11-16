@@ -101,6 +101,8 @@ pub struct Args {
     #[command(flatten)]
     pub placing: common::Placing,
     #[command(flatten)]
+    pub watching: common::Watching,
+    #[command(flatten)]
     pub output: common::Output,
 }
 
@@ -141,10 +143,10 @@ pub fn run(args: Args) -> ExitCode {
     }
     // `--format json` keeps stdout for its document and prints the progress only when it is
     // asked for as JSON too (issue #764).
-    args.placing.tell_progress(
+    args.watching.tell_progress(
         "fab",
         args.quiet
-            || (format == Format::Json && args.placing.progress == crate::progress::Print::Text),
+            || (format == Format::Json && args.watching.progress == crate::progress::Print::Text),
     );
     let code = common::with_stage_events(|| run_chosen(&args, order, format));
     crate::progress::ended(
@@ -772,6 +774,8 @@ mod tests {
                 placing: crate::commands::common::Placing {
                     place_seeds: None,
                     place_budget: None,
+                },
+                watching: crate::commands::common::Watching {
                     progress: crate::progress::Print::Text,
                     to_editor: None,
                 },
@@ -781,10 +785,10 @@ mod tests {
         assert!(parse(&["fab", "a.nsm", "--port", "9"]).is_err());
         // Issue #764: the progress as JSON lines, and to a running editor.
         let f = fab(&["--progress", "json", "--to-editor", "a.nsm"]);
-        assert_eq!(f.placing.progress, crate::progress::Print::Json);
-        assert_eq!(f.placing.to_editor, Some(8787));
+        assert_eq!(f.watching.progress, crate::progress::Print::Json);
+        assert_eq!(f.watching.to_editor, Some(8787));
         assert_eq!(
-            fab(&["--to-editor=9000", "a.nsm"]).placing.to_editor,
+            fab(&["--to-editor=9000", "a.nsm"]).watching.to_editor,
             Some(9000)
         );
         assert!(parse(&["fab", "a.nsm", "--progress", "nothing"]).is_err());

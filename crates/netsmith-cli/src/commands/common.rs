@@ -35,6 +35,24 @@ pub struct Placing {
     /// gives the same answer on every machine; a budget of time does not.
     #[arg(long, value_name = "BUDGET", value_parser = netsmith_fabricate::layout::parse_place_budget)]
     pub place_budget: Option<netsmith_core::job::Limit>,
+}
+
+impl Placing {
+    /// The seeds to try for a board of `target`: `--place-seeds`, else the manifest's.
+    pub fn seeds(&self, target: &Target) -> u32 {
+        self.place_seeds
+            .unwrap_or_else(|| netsmith_fabricate::layout::place_seeds(target.project.as_ref()))
+    }
+
+    /// The place budget for a board of `target`: `--place-budget`, else the manifest's.
+    pub fn budget(&self, target: &Target) -> netsmith_core::job::Limit {
+        netsmith_fabricate::layout::place_budget(target.project.as_ref(), self.place_budget)
+    }
+}
+
+/// `--progress` and `--to-editor`, of `fab` and `board3d` (issue #764).
+#[derive(Debug, PartialEq, ClapArgs)]
+pub struct Watching {
     /// How the progress is printed on stderr: lines for a person, or one JSON object per line.
     ///
     /// `json` prints each line of the placer and the router as `{"board", "stage", "unit",
@@ -54,20 +72,7 @@ pub struct Placing {
     pub to_editor: Option<u16>,
 }
 
-impl Placing {
-    /// The seeds to try for a board of `target`: `--place-seeds`, else the manifest's.
-    pub fn seeds(&self, target: &Target) -> u32 {
-        self.place_seeds
-            .unwrap_or_else(|| netsmith_fabricate::layout::place_seeds(target.project.as_ref()))
-    }
-
-    /// The place budget for a board of `target`: `--place-budget`, else the manifest's.
-    pub fn budget(&self, target: &Target) -> netsmith_core::job::Limit {
-        netsmith_fabricate::layout::place_budget(target.project.as_ref(), self.place_budget)
-    }
-}
-
-impl Placing {
+impl Watching {
     /// Says where the progress of this run of `command` goes ([`crate::progress::setup`]):
     /// printed as `--progress` says unless `quiet` (`--quiet`, or `fab --format json` with text
     /// progress), and posted to `--to-editor`'s editor.
