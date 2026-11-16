@@ -88,6 +88,38 @@ pub struct SummaryDecoupling {
     pub distance: f64,
 }
 
+/// What one guideline of a part's `layout` block measures on the board (issue #994).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct SummaryGuideline {
+    /// The path of the part that states it, and the guideline's name.
+    pub part: String,
+    pub name: String,
+    /// `near`, `away`, `loop`, `edge`, `vias` or `route`.
+    pub statement: String,
+    /// The designator of the part found, for `near`, `away` and `loop`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub other: Option<String>,
+    /// In mm (a count of vias for `vias`); none when a pad to measure is not on the footprint.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub measured: Option<f64>,
+    /// The most the datasheet allows, or the least it asks for; neither for "close to".
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub at_most: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub at_least: Option<f64>,
+    /// Whether the measure meets the number; none when there is no number.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub met: Option<bool>,
+    /// The document and section the part's block cites.
+    pub source: String,
+}
+
 /// One ratsnest line: the pads, `R1.2`, and its length in mm.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
@@ -173,6 +205,9 @@ pub struct PcbSummary {
     pub modules: Vec<SummaryModule>,
     pub decoupling: Vec<SummaryDecoupling>,
     pub nets: Vec<SummaryNet>,
+    /// What each guideline of the parts' `layout` blocks measures, by part and guideline.
+    #[serde(default)]
+    pub guidelines: Vec<SummaryGuideline>,
     /// The parts near each `near` part of the request.
     #[serde(default)]
     pub neighbours: Vec<SummaryNeighbours>,

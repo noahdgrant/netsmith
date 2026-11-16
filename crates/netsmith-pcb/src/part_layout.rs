@@ -379,6 +379,8 @@ pub struct LayoutFinding {
     pub name: String,
     /// The sentence: the guideline, what is measured, the source and what to do.
     pub message: String,
+    /// The designators of the part that states it and of the part found, if one is.
+    pub refdes: Vec<String>,
 }
 
 /// What every guideline of the board's parts measures, for `netsmith layout summary`: one line
@@ -635,10 +637,13 @@ pub fn layout_findings(board: &Board) -> Vec<LayoutFinding> {
             ),
             _ => continue,
         };
+        let mut refdes = vec![part.refdes.clone()];
+        refdes.extend(other.map(|o| o.refdes.clone()));
         out.push(LayoutFinding {
             part: g.part.clone(),
             name: g.name.clone(),
             message,
+            refdes,
         });
     }
     out

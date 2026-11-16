@@ -340,6 +340,35 @@ pub fn placement_findings(board: &Board) -> Vec<PcbFinding> {
         .collect()
 }
 
+/// The guidelines of the parts' `layout` blocks with a number the board does not meet (issue
+/// #994), as warnings, as `fab` warns of them: the parts it is about lit and their box zoomed
+/// to. A guideline that the layout file (`waivers`, the board's table of it) waives is not
+/// listed.
+pub fn layout_findings(board: &Board, waivers: Option<&netsmith_pcb::BoardLayout>) -> Vec<PcbFinding> {
+    let mut ids = Ids(Vec::new());
+    netsmith_pcb::layout_findings(board)
+        .into_iter()
+        .filter(|f| waivers.and_then(|w| w.waiver(&f.part, &f.name)).is_none())
+        .map(|f| {
+            let area = f
+                .refdes
+                .iter()
+                .filter_map(|r| board.part(r).map(|p| p.courtyard()))
+                .reduce(|a, b| a.union(&b))
+                .unwrap_or(board.outline);
+            make(
+                ids.id(format!("placement:layout:{}.{}", f.part, f.name)),
+                FindingSource::Placement,
+                Severity::Warning,
+                "layout",
+                f.message,
+                area,
+                f.refdes,
+            )
+        })
+        .collect()
+}
+
 /// The connections still to be made on a routed board, each from pad to pad.
 pub fn unrouted_findings(board: &Board) -> Vec<PcbFinding> {
     let mut ids = Ids(Vec::new());

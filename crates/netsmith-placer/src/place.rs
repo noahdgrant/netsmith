@@ -1784,7 +1784,7 @@ mod tests {
     use netsmith_pcb::Fixed;
 
     use crate::testlib::{fixtures, led_design};
-    use netsmith_pcb::Board;
+    use netsmith_pcb::{Board, PartGuideline};
 
     use super::*;
 
@@ -2994,23 +2994,37 @@ mod tests {
         p
     }
 
-    /// A `near` guideline of the regulator at `ldo.u`, as the design stage hands it on.
-    fn near(name: &str, select: netsmith_core::NearSelect, to: &str) -> netsmith_core::LayoutNear {
-        netsmith_core::LayoutNear {
+    /// A guideline of the regulator at `ldo.u`, as the design stage hands it on.
+    fn guideline(name: &str, rule: netsmith_core::LayoutRule) -> netsmith_core::LayoutGuideline {
+        netsmith_core::LayoutGuideline {
             part: "ldo.u".into(),
             name: name.into(),
             source: "LD9, 9.1 Layout, p.12".into(),
             site: "ld9.nsm:20".into(),
-            select,
-            to: to.into(),
-            within: Some(2.0),
+            rule,
         }
+    }
+
+    /// A `near` guideline of the regulator at `ldo.u` with a `within` of 2 mm.
+    fn near(
+        name: &str,
+        select: netsmith_core::NearSelect,
+        to: &str,
+    ) -> netsmith_core::LayoutGuideline {
+        guideline(
+            name,
+            netsmith_core::LayoutRule::Near {
+                select,
+                to: to.into(),
+                within: Some(2.0),
+            },
+        )
     }
 
     fn board_with_layout(
         parts: Vec<Part>,
         nets: Vec<Net>,
-        layout: Vec<netsmith_core::LayoutNear>,
+        layout: Vec<netsmith_core::LayoutGuideline>,
     ) -> Board {
         let design = Design {
             modules: Vec::new(),
@@ -3071,10 +3085,14 @@ mod tests {
         let board = board_with_layout(parts, nets, layout);
         let u1 = &board.parts[0];
         assert_eq!(u1.layout.len(), 2);
-        assert_eq!(u1.layout[0].to_pads, ["2"]);
+        assert_eq!(u1.layout[0].pads, [vec!["2".to_string()], vec!["2".to_string()]]);
         assert_eq!(
-            u1.layout[1].select_pads,
-            [vec!["3".to_string()], vec!["1".to_string()]]
+            u1.layout[1].pads,
+            [
+                vec!["3".to_string()],
+                vec!["1".to_string()],
+                vec!["3".to_string()]
+            ]
         );
         let found: Vec<(&str, &str, Vec<String>)> =
             netsmith_pcb::near_pairs(&board.parts, &board.nets)
@@ -3141,7 +3159,9 @@ mod tests {
             },
             "fb",
         );
-        rule.within = Some(8.0);
+        if let netsmith_core::LayoutRule::Near { within, .. } = &mut rule.rule {
+            *within = Some(8.0);
+        }
         let layout = vec![rule];
         let mut board = board_with_layout(parts, nets, layout);
         assert_eq!(
@@ -3165,6 +3185,172 @@ mod tests {
                 && line.contains(&format!(" is {text} mm from it (LD9, 9.1 Layout, p.12; ld9.nsm:20): move RF nearer U1")),
             "{line}"
         );
+    }
+
+    /// The measure of the guideline `name` on the board, for the part found `other` (none for
+    /// `edge`, `vias` and `route`).
+    fn measured(board: &Board, name: &str, other: Option<&str>) -> f64 {
+        netsmith_pcb::measures(board)
+            .into_iter()
+            .find(|m| m.guideline.name == name && m.other.as_deref() == other)
+            .and_then(|m| m.measured)
+            .unwrap_or_else(|| panic!("no measure of {name}: {:?}", netsmith_pcb::measures(board)))
+    }
+
+    /// A regulator with a feedback pin, a capacitor whose one net is the regulator's input,
+    /// which pulls it next to the regulator, and twenty resistors in a chain.
+    fn coil_board(layout: Vec<netsmith_core::LayoutGuideline>) -> Board {
+        let mut parts = vec![
+            regulator_with_fb("U1"),
+            at_path(part("L1", "Capacitor", Some("0603")), "ldo.coil"),
+        ];
+        let (rest, mut nets) = chain("R", "other", 20);
+        parts.extend(rest);
+        nets.push(wire("IN", &[("U1", "3"), ("L1", "1")]));
+        nets.push(wire("FB", &[("U1", "2"), ("R1", "1")]));
+        board_with_layout(parts, nets, layout)
+    }
+
+    #[test]
+    fn a_part_a_datasheet_away_finds_is_pushed_beyond_its_distance() {
+        let away = || {
+            guideline(
+                "coil",
+                netsmith_core::LayoutRule::Away {
+                    select: netsmith_core::NearSelect::On {
+                        pin: "vin".into(),
+                        kind: Some(netsmith_core::PartKind::Capacitor),
+                    },
+                    from: "fb".into(),
+                    beyond: 6.0,
+                },
+            )
+        };
+        let mut plain = coil_board(Vec::new());
+        plain.parts[0].layout = PartGuideline::of_part(
+            &regulator_with_fb("U1"),
+            &[away()],
+        );
+        let before = measured(&plain, "coil", Some("L1"));
+        let board = coil_board(vec![away()]);
+        let after = measured(&board, "coil", Some("L1"));
+        println!("the capacitor is {before:.2} mm from FB without the guideline, {after:.2} mm with it");
+        assert!(before < 6.0, "the board does not test the push: {before:.2} mm");
+        assert!(after >= 6.0 - 1e-6, "the capacitor is {after:.2} mm from FB");
+        assert_eq!(board.check_placement(), vec![]);
+        assert!(netsmith_pcb::layout_findings(&board).is_empty());
+        let found = netsmith_pcb::layout_findings(&plain);
+        let [f] = found.as_slice() else {
+            panic!("{found:?}")
+        };
+        assert_eq!((f.part.as_str(), f.name.as_str()), ("ldo.u", "coil"));
+        assert!(
+            f.message.starts_with("`ldo.u` (U1) asks for `coil`: no part it finds within 6 mm of its pin `.fb` (pads 2), and L1 (`ldo.coil`) is ")
+                && f.message.ends_with("(LD9, 9.1 Layout, p.12; ld9.nsm:20): move L1 further from U1"),
+            "{}",
+            f.message
+        );
+    }
+
+    /// A regulator with a feedback pin and a resistor across its input and feedback pins, which
+    /// the two ends of a chain of thirty resistors pull away from it.
+    fn loop_board(layout: Vec<netsmith_core::LayoutGuideline>) -> Board {
+        let mut parts = vec![
+            regulator_with_fb("U1"),
+            at_path(part("RL", "Resistor", Some("0603")), "ldo.rl"),
+        ];
+        let (rest, mut nets) = chain("R", "other", 30);
+        parts.extend(rest);
+        nets.push(wire("IN", &[("U1", "3"), ("RL", "1"), ("R1", "1")]));
+        nets.push(wire("FB", &[("U1", "2"), ("RL", "2"), ("R30", "2")]));
+        board_with_layout(parts, nets, layout)
+    }
+
+    #[test]
+    fn a_part_a_datasheet_loop_finds_closes_a_short_loop() {
+        let rule = |within| {
+            guideline(
+                "hot",
+                netsmith_core::LayoutRule::Loop {
+                    a: "vin".into(),
+                    b: "fb".into(),
+                    within,
+                },
+            )
+        };
+        let mut plain = loop_board(Vec::new());
+        plain.parts[0].layout = PartGuideline::of_part(&regulator_with_fb("U1"), &[rule(None)]);
+        let before = measured(&plain, "hot", Some("RL"));
+        let board = loop_board(vec![rule(None)]);
+        let after = measured(&board, "hot", Some("RL"));
+        println!("the loop through RL is {before:.2} mm without the guideline, {after:.2} mm with it");
+        assert!(after < before, "{after:.2} mm with it, {before:.2} mm without");
+        assert_eq!(board.check_placement(), vec![]);
+        // A number the loop is longer than is a finding.
+        plain.parts[0].layout = PartGuideline::of_part(&regulator_with_fb("U1"), &[rule(Some(1.0))]);
+        let found = netsmith_pcb::layout_findings(&plain);
+        let [f] = found.as_slice() else {
+            panic!("{found:?}")
+        };
+        assert!(
+            f.message.starts_with("`ldo.u` (U1) asks for `hot`: the loop from its pin `.vin` through RL (`ldo.rl`) to its pin `.fb` and back at most 1 mm long, and it is "),
+            "{}",
+            f.message
+        );
+    }
+
+    #[test]
+    fn a_part_with_a_datasheet_edge_is_pulled_to_the_edge() {
+        let rule = || {
+            guideline(
+                "feed",
+                netsmith_core::LayoutRule::Edge {
+                    pin: "vin".into(),
+                    within: Some(2.0),
+                },
+            )
+        };
+        // On a board of 30 by 30 mm, so that the edge is not where the parts end.
+        let board_of = |layout: Vec<netsmith_core::LayoutGuideline>| {
+            let mut parts = vec![regulator_with_fb("U1")];
+            let (rest, mut nets) = chain("R", "other", 30);
+            parts.extend(rest);
+            nets.push(wire("IN", &[("U1", "3"), ("R10", "1"), ("R20", "1")]));
+            let design = Design {
+                modules: Vec::new(),
+                name: "T".into(),
+                process: Some(crate::testlib::test_process()),
+                features: netsmith_core::Features {
+                    layout,
+                    outline: Some(netsmith_core::Outline {
+                        width: (30.0, 30.0),
+                        height: (30.0, 30.0),
+                        corner_radius: 0.0,
+                        polygon: None,
+                    }),
+                    ..Default::default()
+                },
+                interfaces: Vec::new(),
+                notes: Vec::new(),
+                parts,
+                nets,
+            };
+            crate::board_from_design_placed(
+                &design,
+                &netsmith_kicad::Mapping::standard(),
+                &fixtures(),
+                &PlaceOptions::default(),
+            )
+            .unwrap_or_else(|e| panic!("{e}"))
+        };
+        let mut plain = board_of(Vec::new());
+        plain.parts[0].layout = PartGuideline::of_part(&regulator_with_fb("U1"), &[rule()]);
+        let before = measured(&plain, "feed", None);
+        let board = board_of(vec![rule()]);
+        let after = measured(&board, "feed", None);
+        println!("IN is {before:.2} mm from the edge without the guideline, {after:.2} mm with it");
+        assert!(after < before, "{after:.2} mm with it, {before:.2} mm without");
+        assert_eq!(board.check_placement(), vec![]);
     }
 
     #[test]

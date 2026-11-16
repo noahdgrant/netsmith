@@ -46,7 +46,7 @@
 //! order improved by up to 8 passes of pair swaps) as the placer. The rows are kept as the
 //! annealer's start and as the first test of whether the parts fit a size that was asked for
 //! ([`crate::place::PlaceOptions::fit`]); the pair swaps are gone. P3 of ADR 0030, the
-//! `layout` block of the language, is language and is not built.
+//! `layout` block of the language, is read as below (**Datasheet guidelines**).
 //!
 //! - **State.** For each part: its origin on a grid of 0.05 mm, its turn (0, 90, 180 or 270
 //!   degrees from the angle it began at, which is a right angle unless a requirement states
@@ -156,11 +156,16 @@
 //! instance path are kept, so a module's capacitor goes with the module's part. The cost is the
 //! nearest pin pad of the part on each net. No number and no annotation is read.
 //!
-//! **Datasheet guidelines** (ADR 0030, issue #829). Each part that a `near` statement of a
-//! part's `layout` block finds ([`netsmith_pcb::near_pairs`]) is one more pair of the same kind:
-//! its pads on the net of the pin after `to` are pulled to that pin's pads at the weight of a
-//! decoupling capacitor. The statement's number is not a hard limit here: `fab` reports a part
-//! that ends further away as a guideline.
+//! **Datasheet guidelines** (ADR 0030, issues #829 and #994). Each part that a `near` statement
+//! of a part's `layout` block finds ([`netsmith_pcb::near_pairs`]) is one more pair of the same
+//! kind: its pads on the net of the pin after `to` are pulled to that pin's pads at the weight
+//! of a decoupling capacitor. A part a `loop` finds ([`netsmith_pcb::loop_pairs`]) is pulled
+//! to both pins, as a decoupling capacitor is to the two pins of its rail. A part an `away`
+//! finds ([`netsmith_pcb::away_pairs`]) costs, at the same weight, each mm it is nearer the pin
+//! than the statement's distance, and nothing beyond it. The nearest pad of an `edge`
+//! statement's pin costs its distance from the outline, at the same weight. A statement's number
+//! is not a hard limit here: `fab` reports a board that does not meet it as a guideline. A
+//! `keepout` is a keepout the part carries, kept to as any other.
 //!
 //! **Busy parts** (ADR 0031). A part with 16 to 66 pads ([`BUSY_ESCAPE`] to [`BUSY_MOST`] of
 //! escape) asks, from its neighbour, the sum of the two escape spaces and not the larger (the
@@ -246,8 +251,7 @@
 //!
 //! **For a person** (the owner's review of 2026-11-04 asked for it; checklist in issue #10): a
 //! public reference board of a real design, with a module, whose wire, crossings and check results
-//! are measured and kept, so the weights are tuned on something a reader can run. The `layout`
-//! block of the language (P3 of ADR 0030) is not built (issues #58 and #59).
+//! are measured and kept, so the weights are tuned on something a reader can run.
 
 use netsmith_core::PlaceField;
 use netsmith_pcb::{
@@ -256,7 +260,7 @@ use netsmith_pcb::{
 };
 
 use netsmith_pcb::{
-    DecouplingPair, away_pairs, decoupling_pairs, edge_parts, loop_pairs, near_pairs,
+    DecouplingPair, away_pairs, decoupling_pairs, loop_pairs, near_pairs,
 };
 use netsmith_pcb::{Edges, Ended, OutsideAt, OverlapAt, Pt, Rect, Rules, short_mm};
 
@@ -620,6 +624,9 @@ struct Model {
     /// Which layers the footprint draws its courtyard on, `(F.CrtYd, B.CrtYd)`.
     court_faces: (bool, bool),
     role: Role,
+    /// The pads its datasheet puts at the board's edge (`edge`, issue #994), by index: the
+    /// nearest of them is pulled to the edge as hard as a decoupling capacitor to its pins.
+    edge_pads: Vec<usize>,
     fixed: bool,
     /// Extra space wanted round the part so that its pads can be reached: the more pads, the
     /// more tracks leave it.

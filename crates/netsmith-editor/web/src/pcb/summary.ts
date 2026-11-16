@@ -2,7 +2,7 @@
 // reads the answer. The numbers are the server's (`netsmith layout summary` has the same); this
 // file only turns them into the words and boxes the tab shows.
 
-import type { PcbBox, PcbScene, SummaryBox, SummaryPads } from '../api';
+import type { PcbBox, PcbScene, SummaryBox, SummaryGuideline, SummaryPads } from '../api';
 
 /** A number to the hundredth, without trailing zeros: `3.5`, `12`. */
 export function mm(v: number): string {
@@ -50,4 +50,15 @@ export function padsLine(p: SummaryPads): string {
 /** The fill of a face as a percentage: `34%`. */
 export function fillWord(fill: number): string {
   return `${Math.round(fill * 100)}%`;
+}
+
+/** What a datasheet's layout guideline measures, in words (issue 994): `(near, C1) 1.2 mm, at most 2 mm, met`. A count of vias has no unit. */
+export function guidelineLine(g: SummaryGuideline): string {
+  const unit = g.statement === 'vias' ? '' : ' mm';
+  const parts = [g.measured === undefined ? 'not measured' : `${mm(g.measured)}${unit}`];
+  if (g.atMost !== undefined) parts.push(`at most ${mm(g.atMost)}${unit}`);
+  if (g.atLeast !== undefined) parts.push(`at least ${mm(g.atLeast)}${unit}`);
+  if (g.met === true) parts.push('met');
+  if (g.met === false) parts.push('not met');
+  return `(${g.statement}${g.other ? `, ${g.other}` : ''}) ${parts.join(', ')}`;
 }

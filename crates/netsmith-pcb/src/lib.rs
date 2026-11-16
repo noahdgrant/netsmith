@@ -149,7 +149,7 @@ pub use stackup::{
 };
 pub use standard_height::StandardHeight;
 pub use summary::{
-    DecouplingSummary, FaceSummary, ModuleSummary, Moved, Neighbour, Neighbours, NetSummary, Place,
+    DecouplingSummary, FaceSummary, GuidelineSummary, ModuleSummary, Moved, Neighbour, Neighbours, NetSummary, Place,
     PlacementComparison, RatsnestLine, Summary, SummaryBox, Totals,
 };
 pub use svg::{render as render_svg, render_view as render_svg_view};

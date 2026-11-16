@@ -139,6 +139,15 @@ impl<'a> Engine<'a> {
         let r = &self.p.region;
         let to_x = (court.min.x - r.min.x).min(r.max.x - court.max.x) - self.p.rules.edge_wall();
         let to_y = (court.min.y - r.min.y).min(r.max.y - court.max.y) - self.p.rules.edge_wall();
+        // A pin a datasheet puts at the edge: its nearest pad, pulled to the outline.
+        if let Some(nearest) = model
+            .edge_pads
+            .iter()
+            .map(|&k| self.depth(self.pad_at(i, k)).max(0.0))
+            .reduce(f64::min)
+        {
+            c.soft += W_DECOUPLING * nearest;
+        }
         match model.role {
             Role::Connector => c.soft += W_EDGE * to_x.min(to_y).max(0.0),
             Role::Mechanical => c.soft += W_EDGE * (to_x.max(0.0) + to_y.max(0.0)),

@@ -9,7 +9,6 @@ impl<'a> Engine<'a> {
         let gap = GAP + if p.pours { POUR_GAP } else { 0.0 };
         let hole_gap = rules.clearance.max(rules.hole_to_hole).max(gap);
         let reach_pad = (hole_gap.max(rules.silk_to_pad)).max(gap + 2.0 * MAX_ESCAPE) / 2.0 + 0.01;
-        let edges = edge_parts(parts);
         let mut models: Vec<Model> = (0..n)
             .map(|i| {
                 let base = parts[i].rotation;
@@ -55,15 +54,14 @@ impl<'a> Engine<'a> {
                     height: parts[i].height,
                     hand_fitted: parts[i].hand_fitted,
                     court_faces: parts[i].footprint.courtyard_faces,
-                    // A part whose datasheet puts a pin at the edge (`edge`, issue #994) is pulled
-                    // there as a connector is.
-                    role: if crate::place::is_connector(&parts[i]) || edges.contains(&i) {
+                    role: if crate::place::is_connector(&parts[i]) {
                         Role::Connector
                     } else if netsmith_pcb::is_mechanical(parts[i].declared_kind) {
                         Role::Mechanical
                     } else {
                         Role::Plain
                     },
+                    edge_pads: edge_pads(&parts[i]),
                     fixed: p.fixed[i],
                     escape: (parts[i].footprint.pads.len() as f64 * ESCAPE_PER_PAD).min(MAX_ESCAPE),
                     want: p
@@ -511,4 +509,22 @@ impl<'a> Engine<'a> {
         engine.refresh_all();
         engine
     }
+}
+
+/// The pads of a part that its datasheet puts at the board's edge (`edge`, issue #994), by
+/// their index in the footprint.
+fn edge_pads(part: &Placed) -> Vec<usize> {
+    let numbers: Vec<&String> = part
+        .layout
+        .iter()
+        .filter(|g| matches!(g.rule.rule, netsmith_core::LayoutRule::Edge { .. }))
+        .flat_map(|g| g.pads.iter().flatten())
+        .collect();
+    part.footprint
+        .pads
+        .iter()
+        .enumerate()
+        .filter(|(_, q)| numbers.contains(&&q.number))
+        .map(|(k, _)| k)
+        .collect()
 }

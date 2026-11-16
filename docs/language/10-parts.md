@@ -284,7 +284,7 @@ A kind's letters are one value, so a board that contradicts them gets the usual 
 
 ### What the datasheet says about layout
 
-A datasheet's layout section says where the parts around a part go: "the input capacitor close to the VIN pin", "the inductor next to SW", "the feedback resistors within 2 mm of FB". A part states it once, in a `layout` block, with the document and the section it comes from (ADR 0030, issue #829). Every board that uses the part gets it.
+A datasheet's layout section says where the parts around a part go: "the input capacitor close to the VIN pin", "the inductor next to SW", "the feedback resistors within 2 mm of FB". A part states it once, in a `layout` block, with the document and the section it comes from (ADR 0030, issues #829 and #994). Every board that uses the part gets it.
 
 ```nsm
 import std::parts::connector::Header1x2
@@ -332,15 +332,83 @@ board Supply {
 Rules.
 
 - `source "..."` is mandatory, once in each block: the document (its title or number) and the section or page. A part whose guidelines come from two documents has a block for each. A `layout` block is only in a part's own definition, not in a generic (whose catalog parts each have their own datasheet), a module or a board.
-- `near NAME SELECTOR to .pin [within LENGTH]` is the one statement so far. The name (`input_cap`) is what a finding calls it, and is used once in a part. The selector says which parts of the board it is about, found from the nets of the part's own pins, so the part names no other part and no net:
+- `near NAME SELECTOR to .pin [within LENGTH]` says that parts go next to a pin. The name (`input_cap`) is what a finding calls it, and is used once in a part. The selector says which parts of the board it is about, found from the nets of the part's own pins, so the part names no other part and no net:
   - `bridging .a .b`: every other part with two pads, one on the net of each pin (a capacitor across the input);
   - `on .pin`, or `on .pin kind inductor`: every other part with a pad on the pin's net, of that kind when one is given (the words of `#[kind(...)]`, chapter _Attributes_).
 - `to .pin` is the pin the parts go next to. A part found is measured from its pads on the net of that pin (all its pads, when none is on it) to the pin's pads, the nearest two, centre to centre.
 - `within 2mm` is the number the datasheet gives. With none ("close to"), the placer pulls the parts and nothing is checked: the tool adds no number of its own.
 - The placer pulls each part found toward the pin as it pulls a decoupling capacitor (chapter _The shape of a board_). A part that ends further than `within` is a guideline of `fab` (`warning: Supply: layout guideline: ...`, an error with `guidelines = "error"` or `--strict`), never an error of `build`.
-- `///` above a `near` holds the datasheet's sentence. The standard library's first block is `Lmr16006y`'s, from section 11.1 of its datasheet.
+- `///` above a statement holds the datasheet's sentence. The standard library's first block is `Lmr16006y`'s, from section 11.1 of its datasheet.
 
-Not built yet: the other statements ADR 0030 sketches (`away`, `loop`, `keepout`, `edge`, `vias`, `route`), a block for one package, and a waiver in the layout file.
+The other statements say what a datasheet says beyond "close to". Each has a name, as `near` has, and every number in them is one value, as the datasheet gives it:
+
+```nsm
+import std::parts::connector::Header1x2
+import std::parts::passive::{Capacitor, Inductor}
+import std::sources::Rail
+
+/// An invented switching regulator, in two packages.
+part Ld8 {
+    .designator &= "U"
+    .vin: Rail
+    pins "SOT-23-5" "TSOT-23-5" {
+        .vin.pos power   "IN"  "5"
+        .vin.neg power   "GND" "2"
+        .sw      passive "SW"  "1"
+        .fb      passive "FB"  "3"
+    }
+    .package: Package
+    .package &= "TSOT-23-5"
+
+    layout {
+        source "LD8 datasheet, 10 Layout, p.21"
+        /// "Keep the inductor at least 3 mm from the FB pin."
+        away coil on .sw kind inductor from .fb beyond 3mm
+        /// "Keep the loop of the input capacitor, IN and GND within 10 mm."
+        loop hot bridging .vin.pos .vin.neg within 10mm
+        /// "No vias under the IC."
+        keepout under at -1.5mm, -1.5mm size 3mm, 3mm forbid vias
+        /// "Route SW with a short, wide track."
+        route sw_track .sw width 0.6mm length 8mm
+    }
+    layout "TSOT-23-5" {
+        source "LD8 datasheet, 10.2 TSOT-23-5, p.22"
+        /// "Use two vias at the GND pin."
+        vias ground .vin.neg 2
+    }
+}
+
+board Converter {
+    .feed: Header1x2
+    .load: Header1x2
+    .reg: Ld8
+    .cin: Capacitor
+    .coil: Inductor
+    .feed.p1 ~ .reg.vin.pos
+    .feed.p2 ~ .reg.vin.neg
+    .load.p1 ~ .reg.fb
+    .load.p2 ~ .reg.vin.neg
+    .reg.vin.pos ~> .cin ~> .reg.vin.neg
+    .reg.sw ~> .coil ~> .load.p1
+}
+```
+
+- `away NAME SELECTOR from .pin beyond LENGTH`: the parts the selector finds stay at least the length from the pin's pads, measured from their nearest pad. The number is mandatory: "away from" with no number gives the placer nothing to keep to. The placer pushes the parts out to the distance.
+- `loop NAME bridging .a .b [within LENGTH]`: each part with a pad on the net of each pin closes a current loop with the part, from `.a` through the part found to `.b` and back. Its length, the shortest such path from pad centre to pad centre, is at most the number. The placer pulls the part found to both pins, as it pulls a decoupling capacitor.
+- `keepout NAME at X, Y size W, H [forbid tracks vias copper parts]`: an area in the part's own frame (its footprint's, turned with it), as a `Keepout` member of a part has (chapter _The shape of a board_). It forbids what `forbid` names on every copper layer, all four when it names none. It is a keepout the part carries, `reg.under`, which the placer, the router and the pour keep to, as they keep to any other.
+- `edge NAME .pin [within LENGTH]`: the pin's pads go at the board's edge, within the length of it. The placer pulls the part to an edge as it pulls a connector.
+- `vias NAME .pin N`: the pin's pads take at least N vias of their net, each with its centre on one of them. It is checked on the routed board.
+- `route NAME .pin [width LENGTH] [length LENGTH]`, one of the two at least: the tracks of the pin's net are at least the width wide (the net's least width, which the router keeps to) and at most the length long in all (checked on the routed board).
+- `layout "TSOT-23-5" { }` holds the guidelines of one package of the part: a board uses them only when the part is in that package. The package is one that a pin table of the part names, when its tables name packages. A `keepout` or `vias` of a tab or an exposed pad goes in such a block.
+
+A number a board does not meet is a guideline of `fab`, as for `near`. A board that does not meet one on purpose says why in its layout file, under the part's path and the guideline's name; `fab` then says it is waived, with the reason, and neither warns nor stops (an entry for a guideline the board does not have, or with no reason, is an error):
+
+```toml
+[Converter.waive."reg.hot"]
+reason = "the input capacitor is on the bottom under IN and GND, with two vias each"
+```
+
+`netsmith layout summary` lists what each guideline measures on the board, with the number it asks for.
 
 A block without its source is refused:
 
