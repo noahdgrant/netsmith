@@ -17,3 +17,4 @@ roxmltree = "0.21"
 
 [dev-dependencies]
 automod = "1.0.17"
+netsmith-testkit = { path = "../netsmith-testkit" }

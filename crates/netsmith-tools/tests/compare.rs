@@ -1,7 +1,7 @@
-//! `netsmith compare` on the example boards. The tests that read a schematic run real
-//! KiCad (`kicad-cli sch export netlist`), so they skip when it is not installed, or is Windows KiCad that
-//! this shell cannot start (no `cmd.exe`, as under `systemd-run --user`); the
-//! rest need no KiCad.
+//! `netsmith compare` on the example boards, with no KiCad: a schematic is read from its files
+//! (#855). The tests that hold that reading to KiCad's own (`kicad-cli sch export netlist`) skip
+//! when it is not installed, or is Windows KiCad that this shell cannot start (no `cmd.exe`, as
+//! under `systemd-run --user`).
 
 use netsmith_testkit::TempDir;
 use std::fs;
@@ -11,7 +11,7 @@ use netsmith_tools::compare::{Request, Verdict, compare_files, netlist_of_design
 use netsmith_pipeline::{Libraries, build_with};
 use netsmith_check::Loader;
 use netsmith_fab::{CliError, KicadCli, KicadCliExe};
-use netsmith_netlist::{Netlist, Options, Outcome, compare, report};
+use netsmith_netlist::{Identity, Netlist, Options, Outcome, compare, report};
 use netsmith_pcb::kicad_pcb;
 use netsmith_router::route;
 use netsmith_solve::Catalogs;
@@ -68,13 +68,13 @@ fn write_board(source: &str, dir: &Path) -> (PathBuf, PathBuf) {
     (sch, pcb)
 }
 
-fn same(a: &Path, b: &Path, kicad: &dyn KicadCli) -> Compared {
+fn same(a: &Path, b: &Path) -> Compared {
     let request = Request {
         a: a.to_str().unwrap(),
         b: b.to_str().unwrap(),
         ..Request::default()
     };
-    let done = compare_files(&request, Some(kicad)).unwrap_or_else(|e| panic!("{e}"));
+    let done = compare_files(&request).unwrap_or_else(|e| panic!("{e}"));
     Compared(done.verdict, done.text)
 }
 
@@ -82,13 +82,10 @@ struct Compared(Verdict, String);
 
 #[test]
 fn the_generated_schematic_matches_its_own_board() {
-    let Some(kicad) = kicad() else {
-        return;
-    };
     for (name, source) in [("led", LED), ("regulator", REGULATOR)] {
         let dir = scratch(name);
         let (sch, pcb) = write_board(source, &dir);
-        let Compared(verdict, text) = same(&sch, &pcb, &kicad);
+        let Compared(verdict, text) = same(&sch, &pcb);
         assert_eq!(verdict, Verdict::Match, "{name}: {text}");
         assert!(text.starts_with("A: "), "{text}");
     }
@@ -96,27 +93,21 @@ fn the_generated_schematic_matches_its_own_board() {
 
 #[test]
 fn the_source_matches_its_schematic_and_its_board() {
-    let Some(kicad) = kicad() else {
-        return;
-    };
     let dir = scratch("source");
     let (sch, pcb) = write_board(LED, &dir);
     let nsm = dir.join("led.nsm");
     fs::write(&nsm, LED).unwrap();
     for other in [&sch, &pcb] {
-        let Compared(verdict, text) = same(&nsm, other, &kicad);
+        let Compared(verdict, text) = same(&nsm, other);
         assert_eq!(verdict, Verdict::Match, "{text}");
     }
 }
 
 #[test]
 fn a_schematic_compared_with_itself_matches() {
-    let Some(kicad) = kicad() else {
-        return;
-    };
     let dir = scratch("self");
     let (sch, _) = write_board(REGULATOR, &dir);
-    let Compared(verdict, text) = same(&sch, &sch, &kicad);
+    let Compared(verdict, text) = same(&sch, &sch);
     assert_eq!(verdict, Verdict::Match, "{text}");
     assert!(
         text.contains("same designator") && text.contains("same name"),
@@ -126,9 +117,6 @@ fn a_schematic_compared_with_itself_matches() {
 
 #[test]
 fn renumbered_designators_and_other_net_names_still_match() {
-    let Some(kicad) = kicad() else {
-        return;
-    };
     let dir = scratch("renumber");
     let (sch, _) = write_board(LED, &dir);
     let text = fs::read_to_string(&sch).unwrap();
@@ -140,7 +128,7 @@ fn renumbered_designators_and_other_net_names_still_match() {
     assert_ne!(renamed, text);
     let other = dir.join("renamed.kicad_sch");
     fs::write(&other, renamed).unwrap();
-    let Compared(verdict, out) = same(&sch, &other, &kicad);
+    let Compared(verdict, out) = same(&sch, &other);
     assert_eq!(verdict, Verdict::Match, "{out}");
     assert!(
         out.contains("R1 -> R7") && out.contains("D1 -> D4"),
@@ -158,7 +146,7 @@ fn renumbered_designators_and_other_net_names_still_match() {
         by_refdes: true,
         ..Request::default()
     };
-    let done = compare_files(&request, Some(&kicad)).unwrap();
+    let done = compare_files(&request).unwrap();
     assert_eq!(done.verdict, Verdict::Different);
     assert!(
         done.text.contains("component only in A: R1"),
@@ -168,16 +156,13 @@ fn renumbered_designators_and_other_net_names_still_match() {
 }
 
 #[test]
-fn a_resistor_of_another_value_is_found_by_kicad_too() {
-    let Some(kicad) = kicad() else {
-        return;
-    };
+fn a_resistor_of_another_value_is_found() {
     let dir = scratch("value");
     let (sch, _) = write_board(LED, &dir);
     let text = fs::read_to_string(&sch).unwrap();
     let other = dir.join("other.kicad_sch");
     fs::write(&other, text.replace("\"330\"", "\"470\"")).unwrap();
-    let Compared(verdict, out) = same(&sch, &other, &kicad);
+    let Compared(verdict, out) = same(&sch, &other);
     assert_eq!(verdict, Verdict::Different, "{out}");
     assert!(
         out.contains("1 difference") && out.contains("A is 330") && out.contains("B is 470"),
@@ -237,11 +222,11 @@ fn a_board_is_chosen_by_name_when_a_file_has_several() {
         board,
         ..Request::default()
     };
-    let e = compare_files(&request(None), None).unwrap_err();
+    let e = compare_files(&request(None)).unwrap_err();
     assert!(e.contains("2 boards") && e.contains("--board"), "{e}");
-    let e = compare_files(&request(Some("Nope")), None).unwrap_err();
+    let e = compare_files(&request(Some("Nope"))).unwrap_err();
     assert!(e.contains("`Nope`") && e.contains("TwoBoards/power"), "{e}");
-    let done = compare_files(&request(Some("TwoBoards/power")), None).unwrap();
+    let done = compare_files(&request(Some("TwoBoards/power"))).unwrap();
     assert_eq!(done.verdict, Verdict::Match);
 }
 
@@ -262,4 +247,66 @@ fn windows_kicad_that_cannot_be_started_skips_the_test_and_other_faults_do_not()
 #[test]
 fn a_linux_kicad_needs_no_windows() {
     assert!(KicadCliExe::new("/usr/bin/kicad-cli").interop().is_ok());
+}
+
+/// KiCad's netlist of a schematic, read from the XML `kicad-cli` exports.
+fn kicads_netlist(kicad: &KicadCliExe, sch: &Path) -> Netlist {
+    let xml = kicad
+        .netlist(sch)
+        .unwrap_or_else(|e| panic!("{}: {e}", sch.display()));
+    Netlist::from_kicad_xml(&xml).unwrap_or_else(|e| panic!("{}: {e}", sch.display()))
+}
+
+/// The netlist read from a schematic's files is KiCad's: the same parts with the same values and
+/// footprints, the same pins on each net, and the same names of the nets a label or a power
+/// symbol names (a net only pins name, `Net-(R1-Pad1)`, may be named after another of its pins).
+pub(crate) fn read_as_kicad_reads(kicad: &KicadCliExe, sch: &Path) {
+    let ours = Netlist::from_kicad_schematic(sch).unwrap_or_else(|e| panic!("{e}"));
+    let theirs = kicads_netlist(kicad, sch);
+    let options = Options {
+        identity: Identity::ByRefdes,
+        ..Options::default()
+    };
+    let outcome = compare(&ours, &theirs, &options).unwrap();
+    let Outcome::Match(pairs) = &outcome else {
+        panic!(
+            "{}: the netlist read from the files is not KiCad's: {}",
+            sch.display(),
+            report(&outcome)
+        );
+    };
+    let renamed: Vec<_> = pairs
+        .nets
+        .iter()
+        .filter(|(a, b)| a != b && !b.starts_with("Net-("))
+        .collect();
+    assert!(
+        renamed.is_empty(),
+        "{}: nets named otherwise than KiCad names them (ours, KiCad's): {renamed:?}",
+        sch.display()
+    );
+}
+
+#[test]
+fn a_schematic_is_read_as_kicad_reads_it() {
+    let Some(kicad) = kicad() else {
+        return;
+    };
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    // The ports' originals in KiCad 7's format and netsmith's own schematics. The other ports'
+    // originals are in KiCad 10's format, which KiCad 9 does not open; netsmith-netlist's
+    // `kicad_schematic` tests hold them to their boards.
+    for sch in [
+        "examples/orbit/reference/ORBIT.kicad_sch",
+        "crates/netsmith-kicad/testdata/flat/led.kicad_sch",
+        "crates/netsmith-kicad/testdata/flat/regulator.kicad_sch",
+        "crates/netsmith-kicad/testdata/flat/two_drawn_regulators.kicad_sch",
+    ] {
+        read_as_kicad_reads(&kicad, &root.join(sch));
+    }
+    for (name, source) in [("led", LED), ("regulator", REGULATOR)] {
+        let dir = scratch(name);
+        let (sch, _) = write_board(source, &dir);
+        read_as_kicad_reads(&kicad, &sch);
+    }
 }

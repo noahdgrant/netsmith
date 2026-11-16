@@ -80,8 +80,6 @@ KiCad 9 is needed for these, and for nothing else:
   KiCad's check (without it the findings list says "KiCad not found: set KICAD_CLI or install
   KiCad", once). `fab --cross-check` plots the board with KiCad as well, and `fab` runs
   netsmith's own design rules check without it.
-- `netsmith compare` of a `.kicad_sch` file (it exports a netlist with `kicad-cli`; a
-  `.kicad_pcb`, a KiCad netlist and a `.nsm` file need none).
 - A project whose own `kicad.toml` names a KiCad symbol or footprint that netsmith does not
   make, with no `[[library]]` of the project and no `gen:` footprint for it. Only then does a
   run stop, and the message names the part, the id and the line of `kicad.toml`, lists where

@@ -225,16 +225,13 @@ fn fab_with_kicad_switched_off_says_it_is_switched_off_not_that_it_is_not_instal
 }
 
 #[test]
-fn compare_of_a_schematic_with_kicad_switched_off_says_what_hides_kicad_cli() {
+fn compare_of_a_schematic_with_kicad_switched_off_reads_its_files() {
+    // A schematic is read from its files (#855): no kicad-cli, and no note about it.
     let dir = TempDir::new("own-part-compare");
-    fs::write(dir.join("a.kicad_sch"), "").unwrap();
-    fs::write(dir.join("b.kicad_sch"), "").unwrap();
+    let sch = "(kicad_sch (version 20250114) (uuid \"r\"))";
+    fs::write(dir.join("a.kicad_sch"), sch).unwrap();
+    fs::write(dir.join("b.kicad_sch"), sch).unwrap();
     let (ok, err) = switched_off(&dir, &["compare", "a.kicad_sch", "b.kicad_sch"]);
-    assert!(!ok, "{err}");
-    assert!(
-        err.contains("reading a schematic needs KiCad's command-line tool"),
-        "{err}"
-    );
-    assert!(err.contains("NETSMITH_NO_KICAD is set"), "{err}");
-    assert!(!err.contains("set KICAD_CLI"), "{err}");
+    assert!(ok, "{err}");
+    assert!(!err.contains("KiCad"), "{err}");
 }
