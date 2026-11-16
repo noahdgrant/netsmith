@@ -69,7 +69,12 @@
 //! window) is the allowance, and what the others work out must lie inside it. With no pick able
 //! to change any of them the old rule stands (a correction of 2026-11-06 made both halves test
 //! that). Rejected: narrowing to the intersection of the equations everywhere, which would
-//! report a range nobody wrote and pass partly overlapping ranges.
+//! report a range nobody wrote and pass partly overlapping ranges. Where every equation on the
+//! field and the fields joined to it is one a pick changes and nothing narrows any of them (no
+//! window, `Solver::only_picks_state`), the field takes what it and each equation share, also
+//! when neither range lies inside the other (issue #852): `verify` asks such equations only to
+//! share a value, so no window is passed by the overlap, and the field's value lies in every
+//! equation's range, so the overlap loses none of it.
 //!
 //! **A generic inductor is held to what the stage asks of it.** Its saturation current is "the
 //! least that any relation demands", but the relations were read before the part's marked
@@ -262,8 +267,8 @@ use crate::generic::Need;
 use crate::lock::LockedRow;
 
 use equations::{
-    claimed_by_ranges, equations_of, several_equations, sole_equations, stated_currents,
-    stated_late,
+    claimed_by_ranges, equations_of, several_classes, several_equations, sole_equations,
+    stated_currents, stated_late,
 };
 
 /// The result of solving one board.
@@ -778,6 +783,7 @@ fn solve_model(model: &Model, catalogs: &Catalogs, unit: &str) -> Solution {
         sole_equation: sole_equations(model),
         claimed: claimed_by_ranges(model),
         several_equations: several_equations(model),
+        several_classes: several_classes(model),
         equations_of: equations_of(model),
         fed: HashSet::new(),
         fed_at_start: HashSet::new(),
@@ -1201,6 +1207,9 @@ struct Solver<'a> {
     /// The fields that more than one equation states (the left side of an equation that is not
     /// a sole one): each equation says what the value is, none says what it may be.
     several_equations: HashSet<FieldId>,
+    /// For each field of `several_equations`, the fields joined to it and every equation on any
+    /// of them (`Solver::only_picks_state`).
+    several_classes: HashMap<FieldId, std::rc::Rc<equations::SeveralClass>>,
     /// The equations (by their place in the model's list) that have each field alone on the left.
     equations_of: HashMap<FieldId, Vec<usize>>,
     /// The fields that a pick can change: worked out, however indirectly, from the columns of a

@@ -49,13 +49,17 @@ impl std::fmt::Display for EvalError {
 /// is the plain interval result, which is looser but still sound.
 const BUDGET: usize = 50_000;
 
-/// How many pieces a range is cut into when a formula is not monotone in a variable.
-const PIECES: usize = 8;
+/// The least budget left with which a variable is still tightened: below it the rest is read
+/// with plain interval arithmetic.
+const MIN_BUDGET: usize = 32;
 
-/// How many times in a row a range may be cut up, so the range is resolved to
-/// `PIECES.pow(MAX_SPLITS)` parts at most. A piece that still straddles the awkward spot,
-/// such as zero for `x * x`, is cut again until this runs out.
-const MAX_SPLITS: usize = 4;
+/// How many times in a row a range may be halved where a formula is not provably monotone in
+/// it, so the piece that holds a turning point (zero for `x * x`) is at most `2^-MAX_SPLITS`
+/// of the range wide. The halves that are monotone are read exactly at their ends; the last
+/// piece that is not is read by the mean value form, whose excess shrinks with the square of
+/// the piece's width, so at 2^-16 of the range what is left over is below a part in 10^9 of
+/// the result for the smooth formulas circuits are made of.
+const MAX_SPLITS: usize = 16;
 
 /// Values fixed for the moment, in place of a field's domain.
 type Env = Vec<(FieldId, Quantity)>;
@@ -67,9 +71,13 @@ type Env = Vec<(FieldId, Quantity)>;
 /// range wider than the true one. Here, a variable that appears more than once is handled
 /// separately: if the formula is provably monotone in it over the whole range (its symbolic
 /// derivative cannot change sign), the true range is spanned by the two end points, so each
-/// is evaluated and the results joined; otherwise its range is cut into pieces and the
-/// pieces' results joined. Either way the answer contains every value the expression can
-/// take, and for the monotone formulas circuits are made of, it is exact.
+/// is evaluated and the results joined; otherwise its range is halved and the halves' results
+/// joined, each half judged the same way, so only the halves that hold a turning point are cut
+/// again. A piece cut as far as it goes (`MAX_SPLITS`) is read by the mean value form, `f(m) +
+/// f'(piece) * (piece - m)` with `m` its middle, where that is tighter than plain interval
+/// arithmetic. Either way the answer contains every value the expression can take; for the
+/// monotone formulas circuits are made of it is exact, and for one with a turning point (a
+/// ripple that peaks at half the input voltage) it is exact but for a part in 10^9 or so.
 pub fn eval(model: &Model, e: &RExpr) -> Result<Val, EvalError> {
     let mut budget = BUDGET;
     tight(model, e, &Env::new(), &mut budget, 0)
@@ -136,7 +144,7 @@ fn tight(
     let Some(&var) = repeated.first() else {
         return plain(model, e, env, budget);
     };
-    if *budget < 4 * PIECES {
+    if *budget < MIN_BUDGET {
         return plain(model, e, env, budget);
     }
     let range = value_of(model, var, env)?;
@@ -163,23 +171,14 @@ fn tight(
         return join(low, high);
     }
 
-    // Not provably monotone: cut the range up and join what each piece gives, unless it has
-    // been cut as far as it will be.
-    if splits >= MAX_SPLITS {
-        return plain(model, e, env, budget);
+    // Not provably monotone: halve the range and join what each half gives, unless it has
+    // been cut as far as it will be (or is too narrow for a double to have a middle).
+    let middle = range.lo() + (range.hi() - range.lo()) / 2.0;
+    if splits >= MAX_SPLITS || middle <= range.lo() || middle >= range.hi() {
+        return last_piece(model, e, env, var, &range, budget, splits);
     }
     let mut joined: Option<Val> = None;
-    for i in 0..PIECES {
-        let lo = if i == 0 {
-            range.lo()
-        } else {
-            piece_edge(&range, i)
-        };
-        let hi = if i + 1 == PIECES {
-            range.hi()
-        } else {
-            piece_edge(&range, i + 1)
-        };
+    for (lo, hi) in [(range.lo(), middle), (middle, range.hi())] {
         let piece = Quantity::interval(range.dim(), lo, hi).map_err(EvalError::Quantity)?;
         let value = tight(model, e, &with(env, var, piece), budget, splits + 1)?;
         joined = Some(match joined {
@@ -187,13 +186,48 @@ fn tight(
             Some(so_far) => join(so_far, value)?,
         });
     }
-    Ok(joined.expect("there is at least one piece"))
+    Ok(joined.expect("there are two halves"))
 }
 
-/// The `i`-th of `PIECES` equal cuts through `range`, computed the same way for both of the
-/// pieces that meet there so that they share the edge exactly.
-fn piece_edge(range: &Quantity, i: usize) -> f64 {
-    range.lo() + (range.hi() - range.lo()) * (i as f64) / (PIECES as f64)
+/// A piece of `var`'s range that is cut no further: the values plain interval arithmetic gives,
+/// narrowed to the mean value form's where that is tighter. For every value `x` of the piece
+/// (and every value of the other fields), `f(x) = f(m) + f'(c) * (x - m)` for some `c` between
+/// `m` and `x`, and the slope (the derivative read over the piece) holds every `f'(c)`, so
+/// `f(m) + slope * (piece - m)` holds every `f(x)`: both enclosures are sound, and so is what
+/// they share. The slope is read from the derivative as it was built, not from its tidied form,
+/// which collects like terms in plain floating point: only outward-rounded interval arithmetic
+/// goes into a bound. Where the form cannot be made (a slope that could not be worked out, a
+/// dimension that does not match) the plain result stands.
+fn last_piece(
+    model: &Model,
+    e: &RExpr,
+    env: &Env,
+    var: FieldId,
+    range: &Quantity,
+    budget: &mut usize,
+    splits: usize,
+) -> Result<Val, EvalError> {
+    let plain_value = plain(model, e, env, budget)?;
+    let Val::Q(wide) = plain_value else {
+        return Ok(plain_value);
+    };
+    let slope = match derivative(e, var).map(|d| plain(model, &d, env, budget)) {
+        Some(Ok(Val::Q(slope))) if slope.is_bounded() => slope,
+        _ => return Ok(Val::Q(wide)),
+    };
+    let middle = Quantity::point(range.dim(), range.mid()).map_err(EvalError::Quantity)?;
+    let form = match tight(model, e, &with(env, var, middle), budget, splits) {
+        Ok(Val::Q(at_middle)) => range
+            .sub(&middle)
+            .and_then(|offset| slope.mul(&offset))
+            .and_then(|spread| at_middle.add(&spread))
+            .ok(),
+        _ => None,
+    };
+    Ok(Val::Q(match form.map(|form| wide.intersect(&form)) {
+        Some(Ok(Some(both))) => both,
+        _ => wide,
+    }))
 }
 
 fn with(env: &Env, var: FieldId, value: Quantity) -> Env {

@@ -1273,8 +1273,10 @@ fn a_divider_only_the_true_range_can_prove_is_accepted() {
 }
 
 #[test]
-fn a_formula_that_is_not_monotone_is_cut_into_pieces() {
-    // x * x over -1..2 is 0..4. Interval arithmetic alone says -2..4.
+fn a_formula_that_is_not_monotone_is_read_to_its_true_range() {
+    // x * x over -1..2 is 0..4. Interval arithmetic alone says -2..4; eight pieces said a
+    // little below zero. Halving where the formula turns and the mean value form on the last
+    // piece leave a part in 10^9 or less (issue #852).
     let src = "\
 import std::sources::Rail
 
@@ -1287,10 +1289,84 @@ board B {
     let (_, s) = run(src);
     let (lo, hi) = range(&s, "b.voltage");
     assert!((4.0..4.0001).contains(&hi), "the top is exact: {hi}");
+    assert!((-1e-9..=0.0).contains(&lo), "the bottom is 0 but for 1e-9: {lo}");
+}
+
+/// The least and the greatest of `f` over a fine grid of `lo..hi` and `lo2..hi2`, ends included.
+fn sampled(f: impl Fn(f64, f64) -> f64, (lo, hi): (f64, f64), (lo2, hi2): (f64, f64)) -> (f64, f64) {
+    let n = 400;
+    let mut out = (f64::INFINITY, f64::NEG_INFINITY);
+    for i in 0..=n {
+        for j in 0..=n {
+            let x = lo + (hi - lo) * i as f64 / n as f64;
+            let y = lo2 + (hi2 - lo2) * j as f64 / n as f64;
+            let v = f(x, y);
+            out = (out.0.min(v), out.1.max(v));
+        }
+    }
+    out
+}
+
+#[test]
+fn a_ripple_that_peaks_inside_the_range_is_read_to_its_true_range() {
+    // The ripple of a buck stage goes as `vout * (vin - vout) / vin`, which peaks at half the
+    // input: with the output over 4.1 V to 8.3 V and the input over 12.3 V to 14.7 V the peak
+    // (7.35 V of 14.7 V, a quarter of the input: 3.675 V) is inside and on no edge of an even
+    // cut, and `vout` and `vin` each appear twice. The least is at 8.3 V of 12.3 V. The result
+    // holds every value of a fine grid of the inputs (no value is lost) and is within a part in
+    // 10^9 of the true extremes.
+    let src = "\
+import std::sources::Rail
+
+board B {
+    .vin: Rail { .voltage &= 12.3V..14.7V }
+    .vout: Rail { .voltage &= 4.1V..8.3V }
+    .ripple: Rail
+    .ripple.voltage == .vout.voltage * (.vin.voltage - .vout.voltage) / .vin.voltage
+}
+";
+    let (_, s) = run(src);
+    let (lo, hi) = range(&s, "ripple.voltage");
+    let f = |o: f64, i: f64| o * (i - o) / i;
+    let (grid_lo, grid_hi) = sampled(f, (4.1, 8.3), (12.3, 14.7));
+    assert!(lo <= grid_lo && hi >= grid_hi, "{lo}..{hi} lost {grid_lo}..{grid_hi}");
+    let (want_lo, want_hi) = (f(8.3, 12.3), 14.7 / 4.0);
     assert!(
-        lo >= -0.1,
-        "far tighter than -2, though not exactly 0: {lo}"
+        (want_lo - lo).abs() <= 1e-9 * want_lo && (hi - want_hi).abs() <= 1e-9 * want_hi,
+        "{lo}..{hi} against the true {want_lo}..{want_hi}"
     );
+}
+
+#[test]
+fn a_formula_with_a_turning_point_never_loses_a_value() {
+    // Formulas that turn inside their ranges, in one or two repeated fields: each result holds
+    // every value of a fine grid of the inputs.
+    type Formula = (&'static str, fn(f64, f64) -> f64);
+    let cases: [Formula; 4] = [
+        (".a.voltage * .a.voltage / 1V - .a.voltage", |a, _| a * a - a),
+        (".a.voltage * (3V - .a.voltage) / (.b.voltage + 1V)", |a, b| a * (3.0 - a) / (b + 1.0)),
+        (".a.voltage * .b.voltage / 1V - .a.voltage * .a.voltage / 2V + .b.voltage * .b.voltage / 4V - .b.voltage", |a, b| {
+            a * b - a * a / 2.0 + b * b / 4.0 - b
+        }),
+        ("(.a.voltage - .b.voltage) * (.a.voltage - .b.voltage) / 1V", |a, b| (a - b) * (a - b)),
+    ];
+    for (formula, f) in cases {
+        let src = format!(
+            "import std::sources::Rail
+
+board B {{
+    .a: Rail {{ .voltage &= -1V..2.5V }}
+    .b: Rail {{ .voltage &= 0.5V..3V }}
+    .out: Rail
+    .out.voltage == {formula}
+}}
+"
+        );
+        let (_, s) = run(&src);
+        let (lo, hi) = range(&s, "out.voltage");
+        let (want_lo, want_hi) = sampled(f, (-1.0, 2.5), (0.5, 3.0));
+        assert!(lo <= want_lo && hi >= want_hi, "{formula}: {lo}..{hi} lost {want_lo}..{want_hi}");
+    }
 }
 
 #[test]
