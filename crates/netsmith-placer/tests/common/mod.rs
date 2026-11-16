@@ -204,6 +204,14 @@ pub fn four_layer_process_with(narrowings: &[&str]) -> netsmith_core::Process {
     process_of(&source)
 }
 
+/// JLCPCB's `FourLayer` with GND on the first inner layer and the second a signal layer (ADR
+/// 0111), which the router draws on (issue #833).
+pub fn four_layer_signal_process() -> netsmith_core::Process {
+    process_of(
+        "import std::mfg::jlcpcb::FourLayer\nimport std::parts::passive::Resistor\nboard T {\n    .process: FourLayer {\n        .inner1.net &= \"GND\"\n        .inner2.use &= \"signal\"\n        .stackup.thickness &= 1.6mm\n    }\n    .r: Resistor {\n        .a.net &= \"GND\"\n        .b.net &= \"N\"\n    }\n}\n",
+    )
+}
+
 /// ACME's `TenLayer` (a fictional fabricator, ADR 0112): GND on the first inner layer, 3V3 on the
 /// last, and signal layers between them.
 pub fn ten_layer_process() -> netsmith_core::Process {

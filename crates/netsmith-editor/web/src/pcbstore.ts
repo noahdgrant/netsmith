@@ -36,7 +36,7 @@ export type Tool = 'select' | 'keepout' | 'track' | 'via';
 export const tool = signal<Tool>('select');
 /** The side of the board the 2D view looks at (the key B goes through them): both faces as the file has them, until a person turns the board over. */
 export const pcbSide = signal<Side>('both');
-/** The layer a track is drawn on: the outer layers only, as the routes file has them. */
+/** The layer the track tool draws on: an outer layer. The routes file and the router also put tracks on a process's inner signal layers (issue 833); the tool does not draw there yet. */
 export const trackLayer = signal<'top' | 'bottom'>('top');
 
 /** How the track tool treats the unlocked copper of the routes file that is in the way (issue 726): shoved aside (the default), or

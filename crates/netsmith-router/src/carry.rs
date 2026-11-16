@@ -258,9 +258,11 @@ fn moved_pads(board: &Board, moved: &[&Placed]) -> Vec<MovedPad> {
 }
 
 fn track_clashes(track: &Track, pads: &[MovedPad], clearance: f64) -> bool {
-    let (front, back) = match track.layer {
-        CopperLayer::Front => (true, false),
-        CopperLayer::Back => (false, true),
+    // An inner track meets only a through-hole pad, which has copper on every layer.
+    let on = |pad: &MovedPad| match track.layer {
+        CopperLayer::Front => pad.front,
+        CopperLayer::Back => pad.back,
+        CopperLayer::Inner(_) => pad.front && pad.back,
     };
     let reach = track.width / 2.0 + clearance;
     let pieces: Vec<(Pt, Pt)> = match track.mid {
@@ -268,12 +270,10 @@ fn track_clashes(track: &Track, pads: &[MovedPad], clearance: f64) -> bool {
         None => vec![(track.from, track.to)],
     };
     pads.iter().any(|pad| {
-        ((pad.front && front) || (pad.back && back))
-            && pad.net.as_deref() != Some(track.net.as_str())
-            && {
-                let grown = pad.rect.expanded(reach);
-                pieces.iter().any(|(a, b)| segment_meets(*a, *b, &grown))
-            }
+        on(pad) && pad.net.as_deref() != Some(track.net.as_str()) && {
+            let grown = pad.rect.expanded(reach);
+            pieces.iter().any(|(a, b)| segment_meets(*a, *b, &grown))
+        }
     })
 }
 

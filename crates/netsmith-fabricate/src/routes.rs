@@ -533,7 +533,10 @@ fn change_record(
             lock,
         } => {
             record.tracks.push(RouteTrack {
-                layer: *layer,
+                layer: match layer {
+                    Face::Top => netsmith_pcb::CopperLayer::Front,
+                    Face::Bottom => netsmith_pcb::CopperLayer::Back,
+                },
                 width: width.unwrap_or_else(|| board.track_width(net)),
                 from: *from,
                 mid: *mid,
@@ -864,11 +867,7 @@ impl Shown {
                 }
             );
             for (i, t) in n.tracks.iter().enumerate() {
-                let layer = if t.layer == Face::Top {
-                    "top"
-                } else {
-                    "bottom"
-                };
+                let layer = t.layer.word();
                 let mid = t
                     .mid
                     .map(|m| format!(" through {}", pt(m)))

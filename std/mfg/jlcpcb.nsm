@@ -305,8 +305,8 @@ interface JlcTwoLayer2oz provides TwoLayer {
 
 /// JLCPCB's standard four-layer rigid board: 1 oz outer copper, 0.5 oz inner copper. Each
 /// inner layer is a plane, whose net the board names (`.process.inner1.net &= "GND"`), or a
-/// signal layer (`.process.inner2.use &= "signal"`, ADR 0111); the router draws signals on the
-/// outer layers only.
+/// signal layer (`.process.inner2.use &= "signal"`, ADR 0111), which the router draws tracks on
+/// as on the outer layers, with through vias (issue #833).
 ///
 /// The thickness and the build-up are the provider's (ADR 0113): `FourLayer` is a generic, and
 /// the page's default build-up of each thickness it offers is an interface that provides it,
@@ -651,7 +651,8 @@ interface JlcFourLayerE04201H7628 provides FourLayer {
 /// JLCPCB's standard six-layer rigid board: 1 oz outer copper, 0.5 oz inner copper. Each of
 /// the four inner layers is a plane, whose net the board names
 /// (`.process.inner1.net &= "GND"`), or a signal layer (`.process.inner2.use &= "signal"`,
-/// ADR 0111); the router draws signals on the outer layers only.
+/// ADR 0111), which the router draws tracks on as on the outer layers, with through vias (issue
+/// #833).
 ///
 /// The thickness and the build-up are the provider's, as for `FourLayer` (ADR 0113): a board
 /// that says nothing is made 1.6 mm thick in `JlcSixLayerA06161H3313`, the first provider;

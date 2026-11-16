@@ -34,7 +34,7 @@ use std::collections::HashMap;
 use netsmith_geom::ARC_ERROR;
 use netsmith_pcb::{Board, CopperLayer, Pt, Rect, Track};
 
-use crate::route::{EXACT_SLACK, Form, MARGIN, Obstacle, initial_obstacles};
+use crate::route::{EXACT_SLACK, Form, Layers, MARGIN, Obstacle, Stack, initial_obstacles};
 
 /// The largest radius of an arc at a bend, in widths of its track.
 pub const ARC_WIDTHS: f64 = 4.0;
@@ -47,7 +47,7 @@ const LEAST_TURN: f64 = 1.0;
 const MOST_TURN: f64 = 45.5;
 
 /// A place where tracks end: the net, whether on the back, and the place to 0.1 µm.
-type Joint<'a> = (&'a str, bool, (i64, i64));
+type Joint<'a> = (&'a str, CopperLayer, (i64, i64));
 
 /// Round the bends of `board`'s tracks with arcs of radius at most `widths` track widths (the
 /// module's header). Returns how many arcs were drawn.
@@ -69,9 +69,10 @@ pub fn round_bends(board: &mut Board, widths: f64) -> usize {
         .map(|(i, n)| (n.name.as_str(), i))
         .collect();
     let net_index = |name: &str| net_of.get(name).copied();
-    let fixed = initial_obstacles(board).list;
+    let stack = Stack::of(board);
+    let fixed = initial_obstacles(board, &stack).list;
     let clearance = |net: &str| clearances.get(net).copied().unwrap_or(base);
-    let layers_of = |layer: CopperLayer| [layer == CopperLayer::Front, layer == CopperLayer::Back];
+    let layers_of = |layer: CopperLayer| stack.layers_of(layer);
     // The copper of each track as obstacles, kept as the tracks change; the vias.
     let copper = |t: &Track| -> Vec<Obstacle> {
         let net = net_index(&t.net);
@@ -96,7 +97,7 @@ pub fn round_bends(board: &mut Board, widths: f64) -> usize {
         .iter()
         .map(|v| Obstacle {
             net: net_index(&v.net),
-            layers: [true, true],
+            layers: Layers::ALL,
             form: Form::Circle(v.at, v.diameter / 2.0),
             clearance: clearance(&v.net),
             copper: true,
@@ -145,7 +146,7 @@ pub fn round_bends(board: &mut Board, widths: f64) -> usize {
     let mut ends: HashMap<Joint, Vec<(usize, bool)>> = HashMap::new();
     for (i, t) in board.tracks.iter().enumerate() {
         for (at, is_to) in [(t.from, false), (t.to, true)] {
-            ends.entry((t.net.as_str(), t.layer == CopperLayer::Back, key(at)))
+            ends.entry((t.net.as_str(), t.layer, key(at)))
                 .or_default()
                 .push((i, is_to));
         }
@@ -189,7 +190,9 @@ pub fn round_bends(board: &mut Board, widths: f64) -> usize {
         }
         let net = net_index(&ta.net);
         let own = clearance(&ta.net);
-        let layer = usize::from(ta.layer == CopperLayer::Back);
+        let Some(layer) = stack.index(ta.layer) else {
+            continue;
+        };
         let width = ta.width;
         let half_turn = (turn / 2.0).tan();
         // At most half of each track, less a few micrometres, so the arcs at its two ends stay

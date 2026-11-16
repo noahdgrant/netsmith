@@ -29,7 +29,13 @@ impl<'a> Router<'a> {
             .borrow_mut()
             .entry(key)
             .or_insert_with(|| {
-                std::rc::Rc::new(Base::new(self.board, &self.grid, &self.fixed, reach))
+                std::rc::Rc::new(Base::new(
+                    self.board,
+                    &self.grid,
+                    &self.fixed,
+                    reach,
+                    self.stack.len(),
+                ))
             })
             .clone();
         let counts = &base.counts;

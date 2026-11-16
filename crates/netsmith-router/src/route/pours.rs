@@ -6,8 +6,8 @@ impl<'a> Router<'a> {
     /// What a step of a line of `net` costs beyond its length on each layer in
     /// [`Self::off_the_pours`]: [`POUR`] on an outer layer another net is poured on, where the
     /// other outer layer is free of other nets' pours (where both are poured, either way cuts
-    /// one).
-    pub(super) fn pour_costs(&self, net: usize) -> [i64; 2] {
+    /// one). An inner signal layer has no pour and costs nothing (issue #833).
+    pub(super) fn pour_costs(&self, net: usize) -> Vec<i64> {
         let name = &self.board.nets[net].name;
         let poured = |layer: CopperLayer| {
             self.board
@@ -16,10 +16,10 @@ impl<'a> Router<'a> {
                 .any(|p| p.layer == layer && &p.net != name)
         };
         let (front, back) = (poured(CopperLayer::Front), poured(CopperLayer::Back));
-        [
-            if front && !back { POUR } else { 0 },
-            if back && !front { POUR } else { 0 },
-        ]
+        let mut costs = vec![0; self.stack.len()];
+        costs[FRONT] = if front && !back { POUR } else { 0 };
+        costs[BACK] = if back && !front { POUR } else { 0 };
+        costs
     }
 
     /// What a line's copper costs as the search counts it in [`Self::off_the_pours`]: its
@@ -31,8 +31,8 @@ impl<'a> Router<'a> {
             .tracks
             .iter()
             .map(|t| {
-                let layer = usize::from(t.layer == CopperLayer::Back);
-                t.from.distance(t.to) / PITCH * (STEP + cost[layer]) as f64
+                let extra = self.stack.index(t.layer).map_or(0, |l| cost[l]);
+                t.from.distance(t.to) / PITCH * (STEP + extra) as f64
             })
             .sum();
         steps.round() as i64 + (VIA + POUR_VIA) * r.vias.len() as i64
@@ -43,7 +43,7 @@ impl<'a> Router<'a> {
         let cost = self.pour_costs(self.nets[r.line]);
         r.tracks
             .iter()
-            .filter(|t| cost[usize::from(t.layer == CopperLayer::Back)] > 0)
+            .filter(|t| self.stack.index(t.layer).is_some_and(|l| cost[l] > 0))
             .map(|t| t.from.distance(t.to))
             .sum()
     }
@@ -56,7 +56,7 @@ impl<'a> Router<'a> {
     /// unchanged. The nets of a diff pair ([`diff_pair_partners`]) are left as they are: moving
     /// one alone pulls it off its partner.
     pub(super) fn off_the_pours(&self, state: &mut State, attempt: usize, attempts: usize) {
-        if (0..self.board.nets.len()).all(|n| self.pour_costs(n) == [0, 0]) {
+        if (0..self.board.nets.len()).all(|n| self.pour_costs(n).iter().all(|&c| c == 0)) {
             return;
         }
         let stage = self.stage.get();

@@ -20,7 +20,7 @@ use netsmith_editor::{
     },
 };
 use netsmith_fabricate::project::Target;
-use netsmith_pcb::{LayoutFace, RouteTrack, Routes};
+use netsmith_pcb::{CopperLayer, RouteTrack, Routes};
 use netsmith_testkit::TempDir;
 use netsmith_workspace::Workspace;
 
@@ -135,7 +135,7 @@ fn the_view_locks_unlocks_and_deletes_as_the_routes_commands_do() {
             .get_mut("VCC")
             .unwrap();
         record.tracks.push(RouteTrack {
-            layer: LayoutFace::Top,
+            layer: CopperLayer::Front,
             width: 0.3,
             from,
             mid: None,
@@ -218,7 +218,7 @@ fn a_record_not_used_as_written_is_a_warning_in_the_findings() {
         // As if the pads moved since the record was written.
         gnd.pads = "0000000000000000".into();
         gnd.tracks.push(RouteTrack {
-            layer: LayoutFace::Bottom,
+            layer: CopperLayer::Back,
             width: 0.25,
             from: at,
             mid: None,
@@ -226,7 +226,7 @@ fn a_record_not_used_as_written_is_a_warning_in_the_findings() {
             lock: true,
         });
         gnd.tracks.push(RouteTrack {
-            layer: LayoutFace::Bottom,
+            layer: CopperLayer::Back,
             width: 0.25,
             from: at,
             mid: None,

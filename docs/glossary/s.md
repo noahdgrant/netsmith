@@ -43,7 +43,7 @@ _Avoid_: push (alone), nudge, bump, reroute (that is the router's)
 The face of the board a part is on, front or back. A part on the back is its footprint seen in a mirror, with its surface-mount pads on the back copper.
 
 **Signal layer**:
-An inner layer for tracks, which names no net: `.process.inner2.use &= "signal"`. The router draws on the outer layers only, so it holds only the copper of through-hole pads for now; it is plotted and checked like the outer layers.
+An inner layer for tracks, which names no net: `.process.inner2.use &= "signal"`. The router draws tracks on it as on the outer layers, joined by through vias, except for a net with a known current, which keeps to the outer layers (issue #833); it is plotted and checked like the outer layers.
 _Avoid_: Routing layer, mixed layer
 
 **Silkscreen text**:

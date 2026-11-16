@@ -555,8 +555,8 @@ pub struct TrackPlan {
 /// given the width IPC-2221 needs (ADR 0036) in [`TrackPlan::widths`]. Where some current on
 /// the net is not known, the known ones are a lower bound (loads only add up) and the net is
 /// given the width they need, never narrower than the process's least, and is named in
-/// [`TrackPlan::notes`] (ADR 0036, amendment 3). The router draws on the outer layers only,
-/// so the outer-layer constant and the outer copper are used. A current that is not known but
+/// [`TrackPlan::notes`] (ADR 0036, amendment 3). The router keeps a net with a known current on
+/// the outer layers (issue #833), so the outer-layer constant and the outer copper are used. A current that is not known but
 /// has an upper bound (`bounds`, Ohm's law over the voltages at the ends of a resistor) leaves
 /// the width as it is and says nothing more when the width drawn already carries the known
 /// current and every bound together, at both signs (ADR 0036, amendment 4). A net that is a plane or an

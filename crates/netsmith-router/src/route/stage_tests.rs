@@ -515,7 +515,7 @@ fn the_four_layer_board_is_routed_with_a_via_to_the_plane_beside_each_surface_mo
     .unwrap();
     let left = route(&mut board);
     assert!(left.is_empty(), "{:?}", left.lines);
-    // Tracks are on the two outer layers only: the type has no other.
+    // Tracks are on the two outer layers only: both inner layers are planes.
     for (refdes, pad, net) in [("D1", "1", "GND"), ("R1", "1", "3V3")] {
         let part = board.part(refdes).unwrap();
         let at = part.pad_centre(part.footprint.pads_numbered(pad).next().unwrap());

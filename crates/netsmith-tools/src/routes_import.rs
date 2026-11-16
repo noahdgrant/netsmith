@@ -393,6 +393,7 @@ pub fn import(
     lock: bool,
 ) -> Result<Import, String> {
     let kicad = crate::reference_table::read_board(pcb, "the KiCad board")?;
+    let signal = board.signal_layers();
     // The design's reference of each KiCad reference.
     let ours_of: BTreeMap<String, String> = board
         .parts
@@ -481,12 +482,14 @@ pub fn import(
         } else {
             "segment"
         };
-        let layer = match shape.layer.as_str() {
-            "F.Cu" => Face::Top,
-            "B.Cu" => Face::Bottom,
-            other => {
+        // A track is on an outer layer or on one of the board's inner signal layers (issue
+        // #833); an inner plane holds none.
+        let layer = match netsmith_pcb::CopperLayer::of_name(&shape.layer) {
+            Some(l) if l.is_outer() || signal.contains(&l) => l,
+            _ => {
+                let other = shape.layer.as_str();
                 out.skipped.push(format!(
-                    "a {kind} of net `{theirs}` on {}: netsmith draws tracks on the outer layers only; left out",
+                    "a {kind} of net `{theirs}` on {}: netsmith draws tracks on the outer layers and the process's inner signal layers only; left out",
                     if other.is_empty() { "no layer" } else { other }
                 ));
                 continue;

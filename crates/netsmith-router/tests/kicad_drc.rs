@@ -257,6 +257,22 @@ fn pads_that_share_a_via_or_give_theirs_up_to_the_pour_pass_kicads_check() {
     }
 }
 
+#[test]
+fn a_line_routed_on_an_inner_signal_layer_passes_kicads_check() {
+    // Issue #833: the line of `inner_layers.rs`'s walled board crosses under the wall on In2.Cu;
+    // KiCad fills the plane and finds no violation and nothing unconnected.
+    let mut b = crate::inner_layers::walled(crate::common::four_layer_signal_process());
+    let routing = netsmith_router::route_with(&mut b, RouteOptions::default());
+    assert!(routing.left.is_empty(), "{:?}", routing.left.lines);
+    assert!(b.tracks.iter().any(|t| t.layer == CopperLayer::Inner(2)));
+    let Some(report) = check("inner", &b) else {
+        eprintln!("skipped: no KiCad");
+        return;
+    };
+    assert_eq!(copper_only(&report), Vec::<&String>::new());
+    assert_eq!(report.unconnected, 0);
+}
+
 // ---- holes and custom pads, on footprints of our own -----------------------------------
 
 /// A footprint library `tiny` of invented parts: a mounting hole (a hole with no copper, like

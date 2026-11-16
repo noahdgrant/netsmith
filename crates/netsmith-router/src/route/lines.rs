@@ -143,7 +143,7 @@ impl<'a> Router<'a> {
                         // The estimate is cut to match, so that the search does go out of its
                         // way to run beside the partner; the pass keeps the new copper only if
                         // it is no longer.
-                        if !masks.follow[FRONT].is_empty() {
+                        if masks.follow.iter().any(|f| !f.is_empty()) {
                             masks.estimate = FOLLOW;
                         }
                     }
@@ -333,12 +333,14 @@ impl<'a> Router<'a> {
                     )
                     .track;
                 let near = self.near_ends(line, window);
-                let pinch = [FRONT, BACK].map(|l| {
-                    (0..window.cells())
-                        .map(|c| narrow[l][c] && !thin[l][c] && near[c])
-                        .collect::<Vec<bool>>()
-                });
-                for l in [FRONT, BACK] {
+                let pinch: Vec<Vec<bool>> = (0..self.stack.len())
+                    .map(|l| {
+                        (0..window.cells())
+                            .map(|c| narrow[l][c] && !thin[l][c] && near[c])
+                            .collect::<Vec<bool>>()
+                    })
+                    .collect();
+                for l in 0..self.stack.len() {
                     for c in 0..window.cells() {
                         if pinch[l][c] {
                             narrow[l][c] = false;
@@ -349,6 +351,11 @@ impl<'a> Router<'a> {
             }
             if floor < track_width - 1e-9 || masks.pinch.is_some() {
                 masks.wide = Some(std::mem::replace(&mut masks.track, narrow));
+            }
+        }
+        if self.outer_only[net] {
+            for track in masks.track.iter_mut().skip(2) {
+                track.fill(true);
             }
         }
         self.room_for_vias(line, &mut masks);
@@ -374,7 +381,8 @@ impl<'a> Router<'a> {
                     })
                     .collect()
             };
-            let off = [cost(FRONT), cost(BACK)];
+            // The plan is of the outer layers: an inner layer costs nothing off it.
+            let off = vec![cost(FRONT), cost(BACK)];
             if off.iter().flatten().any(|&c| c > 0) {
                 masks.off_plan = Some(off);
             }
@@ -422,7 +430,7 @@ impl<'a> Router<'a> {
                 for t in &r.tracks {
                     if seen.overlaps(&Form::Segment(t.from, t.to, t.width / 2.0).bounds()) {
                         pieces.push(one(&|h| {
-                            (0u8, hard, t.layer == CopperLayer::Front).hash(h);
+                            (0u8, hard, t.layer).hash(h);
                             [t.from.x, t.from.y, t.to.x, t.to.y, t.width]
                                 .map(f64::to_bits)
                                 .hash(h);
@@ -446,10 +454,10 @@ impl<'a> Router<'a> {
             seed.hash(&mut h);
             pieces.hash(&mut h);
             if !history[FRONT].is_empty() {
-                for layer in [FRONT, BACK] {
+                for layer in history.iter() {
                     for j in window.j0..window.j0 + window.ny {
                         let row = j * self.grid.nx + window.i0;
-                        history[layer][row..row + window.nx].hash(&mut h);
+                        layer[row..row + window.nx].hash(&mut h);
                     }
                 }
             }

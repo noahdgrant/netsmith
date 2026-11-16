@@ -103,10 +103,66 @@ pub(super) fn line_gap(a: Pt, b: Pt, c: Pt, d: Pt) -> f64 {
     .fold(f64::MAX, f64::min)
 }
 
+/// A set of the router's layers ([`Stack`]), by index: [`FRONT`], [`BACK`], then the inner
+/// signal layers. `layers[l]` says whether layer `l` is in it.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(crate) struct Layers(u32);
+
+impl Layers {
+    /// Every layer: what a hole, a through-hole pad, a via and the board edge are on.
+    pub(crate) const ALL: Layers = Layers(u32::MAX);
+
+    /// The outer layers that are asked for, and no inner one.
+    pub(crate) fn outer(front: bool, back: bool) -> Layers {
+        Layers(u32::from(front) | (u32::from(back) << 1))
+    }
+
+    /// One layer.
+    pub(crate) fn one(index: usize) -> Layers {
+        Layers(1 << index)
+    }
+
+    /// The inner layers, and no outer one.
+    pub(crate) fn inner() -> Layers {
+        Layers(!0b11)
+    }
+
+    /// The layers of a pad that is on these outer faces: every layer for a through-hole pad,
+    /// which has copper on each, else the face it is on.
+    pub(crate) fn of_pad(front: bool, back: bool) -> Layers {
+        if front && back {
+            Layers::ALL
+        } else {
+            Layers::outer(front, back)
+        }
+    }
+
+    /// The set with layer `index` too.
+    pub(crate) fn with(self, index: usize) -> Layers {
+        Layers(self.0 | 1 << index)
+    }
+
+    pub(crate) fn is_empty(self) -> bool {
+        self.0 == 0
+    }
+}
+
+impl std::ops::Index<usize> for Layers {
+    type Output = bool;
+
+    fn index(&self, index: usize) -> &bool {
+        if index < 32 && (self.0 >> index) & 1 == 1 {
+            &true
+        } else {
+            &false
+        }
+    }
+}
+
 pub(crate) struct Obstacle {
     /// The net it carries, as an index into the board's nets.
     pub(crate) net: Option<usize>,
-    pub(crate) layers: [bool; 2],
+    pub(crate) layers: Layers,
     pub(crate) form: Form,
     /// The space other copper keeps from it, with the router's margin: for copper, the larger
     /// of the rules' clearance and its net's (issue #758).
@@ -240,25 +296,26 @@ pub(super) fn add_scalar(p: Pt, by: f64) -> Pt {
 /// Which cells of a window a track, or a via, of one net may not use.
 pub(super) struct Masks {
     pub(super) window: Window,
-    pub(super) track: [Vec<bool>; 2],
+    /// By layer of the [`Stack`].
+    pub(super) track: Vec<Vec<bool>>,
     pub(super) via: Vec<bool>,
     /// The cells a track at its full width may not use, when `track` is for the narrowest
     /// track the process makes: a track through a cell of this is necked down there. `None`
     /// when `track` is for the full width.
-    pub(super) wide: Option<[Vec<bool>; 2]>,
+    pub(super) wide: Option<Vec<Vec<bool>>>,
     /// Of the necked cells, those near the line's own pads where only the process's least track
     /// fits: elsewhere a necked track is the width its current needs. `None` when the two are
     /// one width.
-    pub(super) pinch: Option<[Vec<bool>; 2]>,
+    pub(super) pinch: Option<Vec<Vec<bool>>>,
     /// Where a via could stand before [`Router::room_for_vias`] kept only the cells with room
     /// for a cluster: where the others of a cluster stand. `None` when it did not run.
     pub(super) via_alone: Option<Vec<bool>>,
     /// The cells inside a pad of the line's own net, by layer, where a path may turn by more
     /// than 45 degrees: the corner is inside the pad's copper (issue #415). Empty when unset.
-    pub(super) free_turn: [Vec<bool>; 2],
+    pub(super) free_turn: Vec<Vec<bool>>,
     /// How often lines have fought over each cell while the router negotiated, which makes
     /// a track through it dearer. Empty when it is not negotiating.
-    pub(super) history: [Vec<u8>; 2],
+    pub(super) history: Vec<Vec<u8>>,
     /// Cells that other nets' routed copper keeps tracks and vias from, which a search for
     /// the nets least in the way may cross at a price.
     pub(super) soft: Option<Soft>,
@@ -269,45 +326,57 @@ pub(super) struct Masks {
     pub(super) lane: Option<LaneCost>,
     /// What a track pays, beyond a step, on each cell by layer for the coarse plan
     /// ([`crate::plan`]): nothing in the line's corridor, and outside it the crowding of the
-    /// cell's tile on that layer. `None` when the try follows no plan or nothing costs.
-    pub(super) off_plan: Option<[Vec<i64>; 2]>,
+    /// cell's tile on that layer. `None` when the try follows no plan or nothing costs. The plan
+    /// is of the outer layers: an inner layer has no entry and costs nothing.
+    pub(super) off_plan: Option<Vec<Vec<i64>>>,
     /// For a net of a diff pair whose partner is routed, the cells beside the partner's tracks
     /// (within [`PAIR_NEAR`] of their centre lines), by layer: a step onto one costs [`FOLLOW`]
     /// of its length, so the net runs beside its partner (issue #431, S9). Empty when unset.
-    pub(super) follow: [Vec<bool>; 2],
+    pub(super) follow: Vec<Vec<bool>>,
     /// The share of the octile distance the search's estimate is, as a fraction: whole, or
     /// [`FOLLOW`] where a step may cost that little.
     pub(super) estimate: (i64, i64),
     /// What a step costs beyond its length on each layer ([`POUR`] on another net's pour), and
     /// a via beyond [`VIA`] ([`POUR_VIA`]), in the pass off the pours; zero elsewhere.
-    pub(super) pour: ([i64; 2], i64),
+    pub(super) pour: (Vec<i64>, i64),
 }
 
 pub(super) struct Soft {
-    pub(super) track: [Vec<bool>; 2],
+    pub(super) track: Vec<Vec<bool>>,
     pub(super) via: Vec<bool>,
 }
 
 impl Masks {
-    /// Nothing in the way anywhere in the window.
+    /// Nothing in the way anywhere in the window, on the two outer layers.
+    #[cfg(test)]
     pub(super) fn open(window: Window) -> Masks {
+        Masks::open_on(window, 2)
+    }
+
+    /// Nothing in the way anywhere in the window, on `layers` layers.
+    pub(super) fn open_on(window: Window, layers: usize) -> Masks {
         Masks {
             window,
-            track: [vec![false; window.cells()], vec![false; window.cells()]],
+            track: vec![vec![false; window.cells()]; layers],
             via: vec![false; window.cells()],
             wide: None,
             pinch: None,
             via_alone: None,
-            free_turn: [Vec::new(), Vec::new()],
-            history: [Vec::new(), Vec::new()],
+            free_turn: vec![Vec::new(); layers],
+            history: vec![Vec::new(); layers],
             soft: None,
             turn: TURN,
             lane: None,
             off_plan: None,
-            follow: [Vec::new(), Vec::new()],
+            follow: vec![Vec::new(); layers],
             estimate: (1, 1),
-            pour: ([0, 0], 0),
+            pour: (vec![0; layers], 0),
         }
+    }
+
+    /// How many layers the search runs on.
+    pub(super) fn layers(&self) -> usize {
+        self.track.len()
     }
 
     pub(super) fn at(&self, i: usize, j: usize) -> usize {
@@ -317,8 +386,9 @@ impl Masks {
     /// Whether a path may turn by more than 45 degrees on the cell: it is inside a pad of the
     /// line's net.
     pub(super) fn turns_freely(&self, layer: usize, i: usize, j: usize) -> bool {
-        self.free_turn[layer]
-            .get(self.at(i, j))
+        self.free_turn
+            .get(layer)
+            .and_then(|f| f.get(self.at(i, j)))
             .copied()
             .unwrap_or(false)
     }
@@ -342,7 +412,7 @@ impl Masks {
     /// keeps tracks from.
     pub(super) fn soft_cost(&self, layer: usize, i: usize, j: usize) -> i64 {
         match &self.soft {
-            Some(soft) if soft.track[layer][self.at(i, j)] => SOFT,
+            Some(soft) if soft.track.get(layer).is_some_and(|t| t[self.at(i, j)]) => SOFT,
             _ => 0,
         }
     }
@@ -358,7 +428,7 @@ impl Masks {
     /// What a step of `length` costs onto a cell: less by [`FOLLOW`] on a cell beside a
     /// pair's partner.
     pub(super) fn follow_cost(&self, layer: usize, i: usize, j: usize, length: i64) -> i64 {
-        match self.follow[layer].get(self.at(i, j)) {
+        match self.follow.get(layer).and_then(|f| f.get(self.at(i, j))) {
             Some(true) => length * FOLLOW.0 / FOLLOW.1,
             _ => length,
         }
@@ -367,7 +437,7 @@ impl Masks {
     /// What it costs, beyond a step, to put a track on a cell of another net's escape lane.
     pub(super) fn lane_cost(&self, layer: usize, i: usize, j: usize) -> i64 {
         match &self.lane {
-            Some(lane) if lane.track[layer][self.at(i, j)] => LANE_TRACK,
+            Some(lane) if lane.track.get(layer).is_some_and(|t| t[self.at(i, j)]) => LANE_TRACK,
             _ => 0,
         }
     }
@@ -384,13 +454,15 @@ impl Masks {
     pub(super) fn off_plan_cost(&self, layer: usize, i: usize, j: usize) -> i64 {
         self.off_plan
             .as_ref()
-            .map_or(0, |cost| cost[layer][self.at(i, j)])
+            .and_then(|cost| cost.get(layer))
+            .map_or(0, |cost| cost[self.at(i, j)])
     }
 
     /// What it costs, beyond a step, to put a track on the cell.
     pub(super) fn history_cost(&self, layer: usize, i: usize, j: usize) -> i64 {
-        self.history[layer]
-            .get(self.at(i, j))
+        self.history
+            .get(layer)
+            .and_then(|h| h.get(self.at(i, j)))
             .map_or(0, |&h| i64::from(h) * HISTORY_COST)
     }
 }
@@ -429,15 +501,15 @@ pub(crate) struct Obstacles {
 /// away again from counts made for all of them.
 pub(super) struct Counts {
     pub(super) window: Window,
-    pub(super) track: [Vec<u16>; 2],
+    pub(super) track: Vec<Vec<u16>>,
     pub(super) via: Vec<u16>,
 }
 
 impl Counts {
-    pub(super) fn new(window: Window) -> Counts {
+    pub(super) fn new(window: Window, layers: usize) -> Counts {
         Counts {
             window,
-            track: [vec![0; window.cells()], vec![0; window.cells()]],
+            track: vec![vec![0; window.cells()]; layers],
             via: vec![0; window.cells()],
         }
     }
@@ -483,9 +555,11 @@ impl Counts {
                     *c -= 1;
                 }
             };
-            for layer in [FRONT, BACK] {
-                if o.layers[layer] && d < track_reach {
-                    bump(&mut self.track[layer][at]);
+            if d < track_reach {
+                for (layer, track) in self.track.iter_mut().enumerate() {
+                    if o.layers[layer] {
+                        bump(&mut track[at]);
+                    }
                 }
             }
             if d < via_reach {
@@ -511,8 +585,14 @@ pub(super) struct Base {
 }
 
 impl Base {
-    pub(super) fn new(board: &Board, grid: &Grid, fixed: &Obstacles, reach: Reach) -> Base {
-        let mut counts = Counts::new(Window::full(grid));
+    pub(super) fn new(
+        board: &Board,
+        grid: &Grid,
+        fixed: &Obstacles,
+        reach: Reach,
+        layers: usize,
+    ) -> Base {
+        let mut counts = Counts::new(Window::full(grid), layers);
         let (outline, rules) = (&board.outline, &board.rules);
         // The grid lies over the outline's bounding box; a cell outside a polygon outline
         // (in a notch, past an arc) is closed to everything, as a cell off the box is.
@@ -522,8 +602,9 @@ impl Base {
                 let p = grid.centre(i, j);
                 if !outline.contains(&Rect::new(p, p)) || polygon.is_some_and(|s| !s.contains(p)) {
                     let at = counts.window.index(i, j);
-                    counts.track[FRONT][at] += 1;
-                    counts.track[BACK][at] += 1;
+                    for track in &mut counts.track {
+                        track[at] += 1;
+                    }
                     counts.via[at] += 1;
                 }
             }
@@ -554,9 +635,10 @@ pub(super) fn masks_for(
     reach: Reach,
 ) -> Masks {
     let rules = &board.rules;
-    let mut counts = Counts::new(window);
+    let layers = base.counts.track.len();
+    let mut counts = Counts::new(window, layers);
     let from = &base.counts;
-    for layer in [FRONT, BACK] {
+    for layer in 0..layers {
         copy_window(&from.track[layer], &mut counts.track[layer], grid, window);
     }
     copy_window(&from.via, &mut counts.via, grid, window);
@@ -569,8 +651,8 @@ pub(super) fn masks_for(
     for (form, keep) in keepouts {
         counts.stamp_keepout(grid, form, *keep);
     }
-    let mut m = Masks::open(window);
-    for layer in [FRONT, BACK] {
+    let mut m = Masks::open_on(window, layers);
+    for layer in 0..layers {
         m.track[layer] = counts.track[layer].iter().map(|&c| c > 0).collect();
     }
     m.via = counts.via.iter().map(|&c| c > 0).collect();

@@ -154,7 +154,7 @@ fn a_pairs_net_goes_out_of_its_way_to_run_beside_its_partner() {
     for i in 10..=90 {
         beside[masks.at(i, 6)] = true;
     }
-    masks.follow = [beside, vec![false; masks.window.cells()]];
+    masks.follow = vec![beside, vec![false; masks.window.cells()]];
     masks.estimate = FOLLOW;
     let path = find(&masks, &[(0, 2, FRONT)], Goal::Spots(&[(100, 2, FRONT)])).unwrap();
     let on = path.iter().filter(|s| s.1 == 6).count();

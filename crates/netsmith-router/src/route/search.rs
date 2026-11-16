@@ -86,7 +86,7 @@ pub(super) fn link(masks: &Masks, from: &[Spot], goal: Goal, extras: Extras) -> 
     };
     // Each side: the cells it has reached (by whom: 1 for the first side, 2 for the second),
     // its queue, and whether it has reached an edge of the window.
-    let mut seen = vec![0u8; cells * 2];
+    let mut seen = vec![0u8; cells * masks.layers()];
     let mark = |(i, j, layer): Spot| layer * cells + window.index(i, j);
     let sides: &[&[Spot]] = match goal {
         Goal::Spots(to) => &[from, to],
@@ -136,9 +136,14 @@ pub(super) fn link(masks: &Masks, from: &[Spot], goal: Goal, extras: Extras) -> 
                     return Link::Joined;
                 }
             }
-            let other = (i, j, 1 - layer);
-            if !masks.via[masks.at(i, j)] && passable(other) && next(other, &mut queues) {
-                return Link::Joined;
+            // A via joins every layer: it is a through via (issue #833).
+            if !masks.via[masks.at(i, j)] {
+                for other in (0..masks.layers()).filter(|&l| l != layer) {
+                    let other = (i, j, other);
+                    if passable(other) && next(other, &mut queues) {
+                        return Link::Joined;
+                    }
+                }
             }
         }
     }
@@ -157,7 +162,7 @@ pub(super) fn search(
     stop: &dyn Fn() -> bool,
 ) -> Result<Vec<Spot>, Miss> {
     let window = masks.window;
-    let states = window.cells() * 2 * DIRECTIONS;
+    let states = window.cells() * masks.layers() * DIRECTIONS;
     let state = |(i, j, layer): Spot, dir: usize| {
         (layer * window.cells() + window.index(i, j)) * DIRECTIONS + dir
     };
@@ -363,14 +368,16 @@ pub(super) fn moves(
                 + masks.pour.0[layer],
         );
     }
-    let other = 1 - layer;
+    // A via is a through via (issue #833): it takes the path to any other layer, the outer one
+    // first, so a board of two layers searches as it did.
     let at = masks.at(i, j);
-    if dir != AFTER_VIA && !masks.via[at] && (!masks.track[other][at] || open((i, j, other))) {
-        relax(
-            (i, j, other),
-            AFTER_VIA,
-            VIA + masks.pour.1 + masks.soft_via_cost(i, j) + masks.lane_via_cost(i, j),
-        );
+    if dir != AFTER_VIA && !masks.via[at] {
+        let cost = VIA + masks.pour.1 + masks.soft_via_cost(i, j) + masks.lane_via_cost(i, j);
+        for other in (0..masks.layers()).filter(|&l| l != layer) {
+            if !masks.track[other][at] || open((i, j, other)) {
+                relax((i, j, other), AFTER_VIA, cost);
+            }
+        }
     }
 }
 
@@ -398,7 +405,7 @@ pub(super) fn reachable(
         Goal::Spots(to) => to.contains(&spot) || extras.to.contains(&spot),
         Goal::Via => !masks.via[masks.at(spot.0, spot.1)],
     };
-    let mut seen = vec![false; cells * 2 * DIRECTIONS];
+    let mut seen = vec![false; cells * masks.layers() * DIRECTIONS];
     let mut stack: Vec<(Spot, usize)> = Vec::new();
     for &spot in from
         .iter()

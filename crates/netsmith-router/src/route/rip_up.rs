@@ -120,13 +120,13 @@ impl<'a> Router<'a> {
             let tracks = r.tracks.iter().map(|t| {
                 (
                     Form::Segment(t.from, t.to, t.width / 2.0),
-                    [t.layer == CopperLayer::Front, t.layer == CopperLayer::Back],
+                    self.stack.layers_of(t.layer),
                 )
             });
             let vias = r
                 .vias
                 .iter()
-                .map(|v| (Form::Circle(v.at, v.diameter / 2.0), [true, true]));
+                .map(|v| (Form::Circle(v.at, v.diameter / 2.0), Layers::ALL));
             let mut least = f64::MAX;
             for (f, layers) in tracks.chain(vias) {
                 for &(i, j, layer) in &path {
@@ -269,7 +269,7 @@ impl<'a> Router<'a> {
             return;
         }
         let window = masks.window;
-        for layer in [FRONT, BACK] {
+        for layer in 0..history.len() {
             let mut cells = vec![0u8; window.cells()];
             for j in window.j0..window.j0 + window.ny {
                 let row = j * self.grid.nx;
@@ -298,7 +298,7 @@ impl<'a> Router<'a> {
     /// state seen is kept.
     pub(super) fn negotiate(&self, state: &mut State, room: f64, attempt: usize, attempts: usize) {
         let cells = self.grid.nx * self.grid.ny;
-        *self.history.borrow_mut() = [vec![0; cells], vec![0; cells]];
+        *self.history.borrow_mut() = vec![vec![0; cells]; self.stack.len()];
         let mut best = state.clone();
         for round in 1..=NEGOTIATION_ROUNDS {
             if state.failed.is_empty() || self.out_of_time() {
@@ -353,7 +353,7 @@ impl<'a> Router<'a> {
             }
         }
         *state = best;
-        *self.history.borrow_mut() = [Vec::new(), Vec::new()];
+        *self.history.borrow_mut() = vec![Vec::new(); self.stack.len()];
     }
 
     /// Try to get a failed line routed by ripping up the nets in its way, routing it, and

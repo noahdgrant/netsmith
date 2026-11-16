@@ -5,6 +5,12 @@ use super::*;
 impl<'a> Router<'a> {
     pub(super) fn new(board: &'a Board, options: &RouteOptions) -> Self {
         let grid = Grid::over(&board.outline);
+        let stack = Stack::of(board);
+        let outer_only: Vec<bool> = board
+            .nets
+            .iter()
+            .map(|n| board.net_currents.iter().any(|c| c.net == n.name))
+            .collect();
         let net_index: HashMap<&str, usize> = board
             .nets
             .iter()
@@ -36,12 +42,17 @@ impl<'a> Router<'a> {
         let ends = lines
             .iter()
             .map(|l| {
+                let layers = if outer_only[net_index[l.net.as_str()]] {
+                    2
+                } else {
+                    stack.len()
+                };
                 let to = if l.to_plane {
                     Vec::new()
                 } else {
-                    pad_spots(board, &l.to, l.to_at, &grid)
+                    pad_spots(board, &l.to, l.to_at, &grid, layers)
                 };
-                (pad_spots(board, &l.from, l.from_at, &grid), to)
+                (pad_spots(board, &l.from, l.from_at, &grid, layers), to)
             })
             .collect();
         // A net whose current one via does not carry changes layer only where its cluster fits
@@ -89,8 +100,8 @@ impl<'a> Router<'a> {
             })
             .collect();
         let class = classes(board, &lines, &depth);
-        let mut fixed = initial_obstacles(board);
-        fixed_copper(board, &net_index, &mut fixed);
+        let mut fixed = initial_obstacles(board, &stack);
+        fixed_copper(board, &stack, &net_index, &mut fixed);
         let mut fixed_by_net = vec![Vec::new(); board.nets.len()];
         for (k, o) in fixed.list.iter().enumerate() {
             if let Some(n) = o.net {
@@ -132,7 +143,9 @@ impl<'a> Router<'a> {
             class_use: options.classes,
             classed: Cell::new(false),
             negotiate: options.negotiate,
-            history: RefCell::new([Vec::new(), Vec::new()]),
+            history: RefCell::new(vec![Vec::new(); stack.len()]),
+            stack,
+            outer_only,
             fine: Cell::new(true),
             deadline: options.time_limit.map(|t| Instant::now() + t),
             stopped: Cell::new(false),
@@ -175,7 +188,13 @@ impl<'a> Router<'a> {
             .borrow_mut()
             .entry(key)
             .or_insert_with(|| {
-                std::rc::Rc::new(Base::new(self.board, &self.grid, &self.fixed, reach))
+                std::rc::Rc::new(Base::new(
+                    self.board,
+                    &self.grid,
+                    &self.fixed,
+                    reach,
+                    self.stack.len(),
+                ))
             })
             .clone();
         let own: Vec<&Obstacle> = self.fixed_by_net[net]
@@ -188,7 +207,7 @@ impl<'a> Router<'a> {
         m.turn = self.costs.turn;
         if !soft.is_empty() || !soft_keepouts.is_empty() {
             // The cells only the soft copper keeps tracks and vias from.
-            let mut counts = Counts::new(window);
+            let mut counts = Counts::new(window, self.stack.len());
             for o in soft.iter().filter(|o| o.net != Some(net)) {
                 counts.stamp(&self.grid, &self.board.rules, o, reach, true);
             }
@@ -196,11 +215,13 @@ impl<'a> Router<'a> {
                 counts.stamp_keepout(&self.grid, form, *keep);
             }
             m.soft = Some(Soft {
-                track: [FRONT, BACK].map(|l| {
-                    (0..window.cells())
-                        .map(|c| counts.track[l][c] > 0 && !m.track[l][c])
-                        .collect()
-                }),
+                track: (0..self.stack.len())
+                    .map(|l| {
+                        (0..window.cells())
+                            .map(|c| counts.track[l][c] > 0 && !m.track[l][c])
+                            .collect()
+                    })
+                    .collect(),
                 via: (0..window.cells())
                     .map(|c| counts.via[c] > 0 && !m.via[c])
                     .collect(),
@@ -250,16 +271,16 @@ impl<'a> Router<'a> {
     /// The cells inside a pad of the net, on each layer the pad has copper on.
     pub(super) fn mark_own_pads(&self, net: usize, masks: &mut Masks) {
         let w = masks.window;
-        let mut free = [vec![false; w.cells()], vec![false; w.cells()]];
+        let mut free = vec![vec![false; w.cells()]; self.stack.len()];
         // The box round a pad of any shape is more than its copper: a round pad fills only the
         // square inside it, so only that is counted, for every pad.
         for (r, layers) in self.own_pad_squares(net) {
             for (i, j) in self.grid.cells_near(&w, &r, 0.0) {
                 let p = self.grid.centre(i, j);
                 if r.contains(&Rect::new(p, p)) {
-                    for layer in [FRONT, BACK] {
+                    for (layer, free) in free.iter_mut().enumerate() {
                         if layers[layer] {
-                            free[layer][w.index(i, j)] = true;
+                            free[w.index(i, j)] = true;
                         }
                     }
                 }
@@ -277,9 +298,10 @@ impl<'a> Router<'a> {
         routed: &[&Routed],
         w: Window,
         width: f64,
-    ) -> [Vec<bool>; 2] {
+    ) -> Vec<Vec<bool>> {
+        let layers = self.stack.len();
         let Some(partner) = self.partners[net] else {
-            return [Vec::new(), Vec::new()];
+            return vec![Vec::new(); layers];
         };
         let tracks: Vec<&Track> = routed
             .iter()
@@ -287,12 +309,14 @@ impl<'a> Router<'a> {
             .flat_map(|r| r.tracks.iter())
             .collect();
         if tracks.is_empty() {
-            return [Vec::new(), Vec::new()];
+            return vec![Vec::new(); layers];
         }
-        let mut cells = [vec![false; w.cells()], vec![false; w.cells()]];
+        let mut cells = vec![vec![false; w.cells()]; layers];
         for t in tracks {
             let spacing = t.width / 2.0 + width / 2.0 + self.board.rules.clearance;
-            let layer = usize::from(t.layer == CopperLayer::Back);
+            let Some(layer) = self.stack.index(t.layer) else {
+                continue;
+            };
             let form = Form::Segment(t.from, t.to, 0.0);
             for (i, j) in self.grid.cells_near(&w, &form.bounds(), PAIR_NEAR) {
                 let d = point_to_line(self.grid.centre(i, j), t.from, t.to);
@@ -422,7 +446,7 @@ impl<'a> Router<'a> {
             for t in &r.tracks {
                 list.push(Obstacle {
                     net,
-                    layers: [t.layer == CopperLayer::Front, t.layer == CopperLayer::Back],
+                    layers: self.stack.layers_of(t.layer),
                     form: Form::Segment(t.from, t.to, t.width / 2.0),
                     clearance,
                     copper: true,
@@ -431,7 +455,7 @@ impl<'a> Router<'a> {
             for v in &r.vias {
                 list.push(Obstacle {
                     net,
-                    layers: [true, true],
+                    layers: Layers::ALL,
                     form: Form::Circle(v.at, v.diameter / 2.0),
                     clearance,
                     copper: true,

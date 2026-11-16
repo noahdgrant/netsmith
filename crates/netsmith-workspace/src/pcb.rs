@@ -895,10 +895,6 @@ fn route_nets(entry: &Entry) -> Vec<PcbRouteNet> {
         x: board.outline.min.x + p[0],
         y: board.outline.min.y + p[1],
     };
-    let face = |f: LayoutFace| match f {
-        LayoutFace::Top => "top",
-        LayoutFace::Bottom => "bottom",
-    };
     table
         .nets
         .iter()
@@ -914,7 +910,7 @@ fn route_nets(entry: &Entry) -> Vec<PcbRouteNet> {
                     .tracks
                     .iter()
                     .map(|t| PcbRouteTrack {
-                        layer: face(t.layer).to_string(),
+                        layer: t.layer.word().to_string(),
                         width: t.width,
                         from: at(t.from),
                         mid: t.mid.map(at),
@@ -1275,11 +1271,7 @@ fn shoved_of(movable: &[Movable], done: &netsmith_router::shove::Shoved) -> PcbS
                 out.tracks.push(PcbShovedTrack {
                     net: found.net.clone(),
                     track: found.number,
-                    layer: if t.layer == netsmith_pcb::CopperLayer::Back {
-                        "bottom".to_string()
-                    } else {
-                        "top".to_string()
-                    },
+                    layer: t.layer.word().to_string(),
                     width: t.width,
                     was_from: at(t.from),
                     was_to: at(t.to),
@@ -1335,11 +1327,7 @@ fn crossed_of(router: &RouterCopper, crossed: &netsmith_router::walk::Crossed) -
                 let t = &router.tracks[i];
                 PcbCrossedTrack {
                     net: t.net.clone(),
-                    layer: if t.layer == netsmith_pcb::CopperLayer::Back {
-                        "bottom".to_string()
-                    } else {
-                        "top".to_string()
-                    },
+                    layer: t.layer.word().to_string(),
                     width: t.width,
                     from: at(t.from),
                     mid: t.mid.map(at),

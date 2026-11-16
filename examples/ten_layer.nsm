@@ -2,7 +2,7 @@
 //! not sourced, and the board cannot be ordered (`std::mfg::acme`, ADR 0112). `fab` writes the
 //! package all the same, with ten copper Gerbers and the stackup of the build-up ACME-10L-1.6.
 //! Three inner layers are ground planes and one a 3.3 V plane; the other four are signal
-//! layers, which stay empty because the router draws on the outer layers only.
+//! layers, which the router draws on as on the outer layers (issue #833).
 
 import std::parts::connector::Header1x2
 import std::parts::passive::Capacitor

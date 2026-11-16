@@ -2,12 +2,32 @@
 
 use super::*;
 
-/// An outer copper layer, the two a track can be on. Inner layers are planes.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+/// A copper layer a track can be on: an outer layer, or an inner signal layer (ADR 0111, issue
+/// #833). An inner plane holds no track; the router draws on the inner layers the process
+/// declares signal layers only.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum CopperLayer {
     Front,
     Back,
+    /// The inner layer `In{n}.Cu`, counted from the top from 1.
+    Inner(u8),
 }
+
+/// KiCad's names of the inner layers, `In1.Cu` to `In30.Cu`: KiCad has at most 30.
+const INNER_NAMES: [&str; 30] = [
+    "In1.Cu", "In2.Cu", "In3.Cu", "In4.Cu", "In5.Cu", "In6.Cu", "In7.Cu", "In8.Cu", "In9.Cu",
+    "In10.Cu", "In11.Cu", "In12.Cu", "In13.Cu", "In14.Cu", "In15.Cu", "In16.Cu", "In17.Cu",
+    "In18.Cu", "In19.Cu", "In20.Cu", "In21.Cu", "In22.Cu", "In23.Cu", "In24.Cu", "In25.Cu",
+    "In26.Cu", "In27.Cu", "In28.Cu", "In29.Cu", "In30.Cu",
+];
+
+/// The layout file's names of the inner layers, `inner1` to `inner30`.
+const INNER_WORDS: [&str; 30] = [
+    "inner1", "inner2", "inner3", "inner4", "inner5", "inner6", "inner7", "inner8", "inner9",
+    "inner10", "inner11", "inner12", "inner13", "inner14", "inner15", "inner16", "inner17",
+    "inner18", "inner19", "inner20", "inner21", "inner22", "inner23", "inner24", "inner25",
+    "inner26", "inner27", "inner28", "inner29", "inner30",
+];
 
 impl CopperLayer {
     /// KiCad's name for the layer.
@@ -15,7 +35,46 @@ impl CopperLayer {
         match self {
             Self::Front => "F.Cu",
             Self::Back => "B.Cu",
+            Self::Inner(n) => INNER_NAMES[usize::from(n.clamp(1, 30)) - 1],
         }
+    }
+
+    /// The layer's name in the layout, routes and physical files: `top`, `inner2`, `bottom`.
+    pub fn word(self) -> &'static str {
+        match self {
+            Self::Front => "top",
+            Self::Back => "bottom",
+            Self::Inner(n) => INNER_WORDS[usize::from(n.clamp(1, 30)) - 1],
+        }
+    }
+
+    /// The layer a [`CopperLayer::word`] names, if it names one.
+    pub fn of_word(word: &str) -> Option<CopperLayer> {
+        match word {
+            "top" => Some(Self::Front),
+            "bottom" => Some(Self::Back),
+            _ => {
+                let n: u8 = word.strip_prefix("inner")?.parse().ok()?;
+                (1..=30).contains(&n).then_some(Self::Inner(n))
+            }
+        }
+    }
+
+    /// The layer KiCad names `name` (`F.Cu`, `In2.Cu`, `B.Cu`), if it is a copper layer.
+    pub fn of_name(name: &str) -> Option<CopperLayer> {
+        match name {
+            "F.Cu" => Some(Self::Front),
+            "B.Cu" => Some(Self::Back),
+            _ => {
+                let n = inner_number(name);
+                (1..=30).contains(&n).then_some(Self::Inner(n as u8))
+            }
+        }
+    }
+
+    /// Whether it is an outer layer, where parts stand.
+    pub fn is_outer(self) -> bool {
+        !matches!(self, Self::Inner(_))
     }
 }
 
@@ -164,12 +223,9 @@ impl KeepoutArea {
         self.parts && self.on(side.copper())
     }
 
-    /// Whether it applies to a copper layer, `top` or `bottom`.
+    /// Whether it applies to a copper layer, `top`, `inner2` or `bottom`.
     pub fn on(&self, layer: CopperLayer) -> bool {
-        let name = match layer {
-            CopperLayer::Front => "top",
-            CopperLayer::Back => "bottom",
-        };
+        let name = layer.word();
         self.layers.iter().any(|l| l == name)
     }
 }

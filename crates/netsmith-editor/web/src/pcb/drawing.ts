@@ -59,8 +59,13 @@ export function prepare(text: string, pours = ''): Drawing | null {
   // ends on. Copper goes under the parts: pads, outlines and reference text stay readable.
   const firstPart = svg.querySelector('g[data-path]');
   if (firstPart?.parentNode) {
-    for (const cls of ['l-back-copper', 'l-front-copper']) {
-      const copper = svg.querySelector(`.${cls}`);
+    // The back, the inner signal layers (issue #833) from the bottom up, as the server orders them, and the front.
+    const groups = [
+      svg.querySelector('.l-back-copper'),
+      ...Array.from(svg.querySelectorAll('.l-inner-copper')),
+      svg.querySelector('.l-front-copper'),
+    ];
+    for (const copper of groups) {
       if (copper && copper.parentNode === firstPart.parentNode) firstPart.parentNode.insertBefore(copper, firstPart);
     }
   }
@@ -80,7 +85,7 @@ export function prepare(text: string, pours = ''): Drawing | null {
   svg.setAttribute('height', String(h * SCALE));
   // A track wider than a millimetre is a power track: it is drawn at its true width, and more
   // transparent, so the board under it (pads, outlines, other tracks) can still be read.
-  svg.querySelectorAll('.l-front-copper line, .l-back-copper line').forEach((t) => {
+  svg.querySelectorAll('.l-front-copper line, .l-inner-copper line, .l-back-copper line').forEach((t) => {
     if (Number(t.getAttribute('stroke-width')) >= WIDE_TRACK) t.classList.add('wide');
   });
   const nets = new Map<string, NetItem>();

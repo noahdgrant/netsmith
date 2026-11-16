@@ -1,6 +1,6 @@
 //! A regulator on a six-layer board: the outer inner layers are a ground plane and a 3.3 V
-//! plane, the two in the middle are signal layers, and signals are routed on the outer layers
-//! only (the router does not draw on inner layers yet, so the signal layers stay empty).
+//! plane, and the two in the middle are signal layers, which the router draws on as on the outer
+//! layers (a net with a known current keeps to the outer layers, issue #833).
 
 import std::parts::connector::Header1x2
 import std::parts::passive::Capacitor

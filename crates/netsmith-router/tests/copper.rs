@@ -152,12 +152,12 @@ fn the_planes_of_the_four_layer_example_are_its_gerbers_copper() {
 }
 
 #[test]
-fn the_planes_and_empty_signal_layers_of_the_six_layer_example_are_its_gerbers_copper() {
+fn the_planes_and_signal_layers_of_the_six_layer_example_are_its_gerbers_copper() {
     compare("six_layer", &[]);
 }
 
 #[test]
-fn the_planes_and_empty_signal_layers_of_the_ten_layer_example_are_its_gerbers_copper() {
+fn the_planes_and_signal_layers_of_the_ten_layer_example_are_its_gerbers_copper() {
     compare("ten_layer", &[]);
 }
 

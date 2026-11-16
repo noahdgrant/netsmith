@@ -185,7 +185,7 @@ pub struct InnerLayers {
 pub enum InnerUse {
     /// One sheet of copper on the net.
     Plane(String),
-    /// A layer for tracks. The router does not draw on inner layers yet, so it is empty.
+    /// A layer for tracks, which the router draws on as on the outer layers (issue #833).
     Signal,
 }
 

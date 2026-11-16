@@ -25,8 +25,8 @@ import std::mfg::stackup::{InnerLayer, Pour, Stackup}
 /// fictional fabricator: every number was chosen, not sourced, and a board on this process
 /// cannot be ordered (see the file's header). Each of the six inner layers is a plane, whose
 /// net the board names (`.process.inner1.net &= "GND"`), or a signal layer
-/// (`.process.inner2.use &= "signal"`, ADR 0111); the router draws signals on the outer layers
-/// only.
+/// (`.process.inner2.use &= "signal"`, ADR 0111), which the router draws tracks on as on the
+/// outer layers (issue #833).
 ///
 /// The build-up `ACME-8L-1.6`, from the top: outer copper 0.035 mm, prepreg 2116 0.1088 mm,
 /// core 0.3 mm, prepreg 2116 0.1088 mm, core 0.41 mm, prepreg 2116 0.1088 mm, core 0.3 mm,
