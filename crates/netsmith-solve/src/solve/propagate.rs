@@ -51,9 +51,10 @@ impl Solver<'_> {
     /// value is narrowed this way.
     pub(super) fn overlap_rule(&self, f: FieldId) -> Option<Option<Quantity>> {
         let class = self.several_classes.get(&f)?;
-        let plain = class.fields.iter().all(|&g| {
-            self.model.field(g).narrowed_at.is_empty() && !self.derived.contains(&g)
-        });
+        let plain = class
+            .fields
+            .iter()
+            .all(|&g| self.model.field(g).narrowed_at.is_empty() && !self.derived.contains(&g));
         if !plain {
             return None;
         }
@@ -287,9 +288,7 @@ impl Solver<'_> {
                         };
                         let next = if d.encloses(v).unwrap_or(false) {
                             Some(*v)
-                        } else if self.changed_by_picks(&r.rhs)
-                            && self.overlap_rule(*f).is_some()
-                        {
+                        } else if self.changed_by_picks(&r.rhs) && self.overlap_rule(*f).is_some() {
                             d.intersect(v).ok().flatten()
                         } else {
                             None

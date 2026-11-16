@@ -1,6 +1,7 @@
-//! A value that two equations state, both worked out from picks, with no window among them,
-//! takes what the two equations share even when neither range lies inside the other (issue
-//! #852). Two invented resistors feed one value `.x`; a check on `.x` holds for the overlap of
+//! A value that two equations state, both worked out from picks, takes what the two equations
+//! share even when neither range lies inside the other (issue #852), also with a window among
+//! them, on the field or on a field joined to it (issue #991), and the window still holds each
+//! equation. Two invented resistors feed one value `.x`; a check on `.x` holds for the overlap of
 //! the two equations and for neither alone. Every value here is invented.
 
 use netsmith_check::{Loader, check};
