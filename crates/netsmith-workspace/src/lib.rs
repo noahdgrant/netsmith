@@ -617,10 +617,13 @@ impl Workspace {
             e @ pcb::PlaceError::Unplaceable(..) => e.read(),
             pcb::PlaceError::Other(e) => e,
         })?;
+        // The lock is held from the write to the entry being kept: a request that came between
+        // (`fresh`) would see a layout file this editor wrote itself as another program's
+        // change, and throw away the board with the copper an undo is about to restore.
+        let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
         files::write_atomic(file, &netsmith_fabricate::layout::text_over(file, &layout))
             .map_err(|e| ApiError::internal(format!("{shown}: {e}")))?;
         entry.set_layout_stamp(pcb::stamp(&data));
-        let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
         // Back to a placement that was routed (an undo): its copper again, with no router.
         if let Some(routed) = state.routed.get(name) {
             entry.restore(routed);
