@@ -18,8 +18,22 @@ use crate::geom::{Bounds, Pt};
 /// How much more than each rule's space new copper keeps, in mm.
 pub(super) const MARGIN: f64 = 0.001;
 
-/// A pad's solder mask opening on a face: the pad's net, the opening's shapes and their box.
-type Opening = (Option<String>, Vec<Shape>, Bounds);
+/// A pad's solder mask opening on a face: the pad's net, the opening's shapes and their box, and
+/// the pad (an index into the artwork's pads).
+type Opening = (Option<String>, Vec<Shape>, Bounds, usize);
+
+/// The first thing [`Room::fits_with`] found new copper too near: an index into what it was
+/// checked against, named only when someone asks ([`Room::in_the_way`]).
+#[derive(Debug, Clone, Copy)]
+enum Hit {
+    Copper(usize),
+    Kept(usize),
+    Extra(usize),
+    Hole(usize),
+    Edge,
+    Opening(usize, usize),
+    Keepout(usize),
+}
 
 /// The board's copper, holes, edge and mask openings, and the copper kept so far, that new
 /// copper is checked against.
@@ -37,9 +51,10 @@ impl<'a> Room<'a> {
         let opening = |front: bool| {
             art.pads
                 .iter()
-                .filter_map(|p| {
+                .enumerate()
+                .filter_map(|(i, p)| {
                     let s = m.mask_opening(p, front);
-                    (!s.is_empty()).then(|| (p.net.clone(), s.clone(), Model::bounds_of(&s)))
+                    (!s.is_empty()).then(|| (p.net.clone(), s.clone(), Model::bounds_of(&s), i))
                 })
                 .collect::<Vec<_>>()
         };
@@ -88,6 +103,77 @@ impl<'a> Room<'a> {
         smd: bool,
         extra: &[(&str, usize, &Shape)],
     ) -> bool {
+        self.hit(shape, net, layer, smd, extra).is_none()
+    }
+
+    /// What `shape`, copper of `net` on `layer`, is too near, as a person would name it (`pad 2
+    /// of R1 (net GND)`, `a track of net SDA`, `the board edge`, `keepout USB`), or `None` where
+    /// it keeps every space ([`Room::fits_with`]). Where it is too near several things, the first
+    /// found is named: copper, then holes, the edge, mask openings and keepouts.
+    pub fn in_the_way(
+        &self,
+        shape: &Shape,
+        net: &str,
+        layer: usize,
+        smd: bool,
+        extra: &[(&str, usize, &Shape)],
+    ) -> Option<String> {
+        let hit = self.hit(shape, net, layer, smd, extra)?;
+        let m = &self.m;
+        let of_net = |n: &Option<String>| match n {
+            Some(n) => format!(" of net {n}"),
+            None => String::new(),
+        };
+        let pad = |i: usize| {
+            let p = &m.art.pads[i];
+            format!("pad {} of {}", p.number, p.part)
+        };
+        Some(match hit {
+            Hit::Copper(i) => {
+                let c = &m.items[i];
+                match c.kind {
+                    Kind::Pad(p) => match &c.net {
+                        Some(n) => format!("{} (net {n})", pad(p)),
+                        None => pad(p),
+                    },
+                    Kind::Via(_) => format!("a via{}", of_net(&c.net)),
+                    Kind::Track(_) => format!("a track{}", of_net(&c.net)),
+                    Kind::Teardrop(_) => format!("a teardrop{}", of_net(&c.net)),
+                    Kind::Graphic(_) => "a drawing in copper".to_string(),
+                }
+            }
+            Hit::Kept(i) => format!("copper of net {}", self.kept.borrow()[i].0),
+            Hit::Extra(i) => format!("copper of net {}", extra[i].0),
+            Hit::Hole(i) => {
+                let h = &m.holes[i];
+                match h.owner.map(|o| m.items[o].kind) {
+                    Some(Kind::Pad(p)) => format!("the hole of {}", pad(p)),
+                    Some(Kind::Via(_)) => format!("the hole of a via{}", of_net(&h.item.net)),
+                    _ => "a hole".to_string(),
+                }
+            }
+            Hit::Edge => "the board edge".to_string(),
+            Hit::Opening(face, i) => {
+                format!(
+                    "the solder mask opening of {}",
+                    pad(self.openings[face][i].3)
+                )
+            }
+            Hit::Keepout(z) => match m.art.zones[z].name.as_str() {
+                "" => "a keepout".to_string(),
+                name => format!("keepout {name}"),
+            },
+        })
+    }
+
+    fn hit(
+        &self,
+        shape: &Shape,
+        net: &str,
+        layer: usize,
+        smd: bool,
+        extra: &[(&str, usize, &Shape)],
+    ) -> Option<Hit> {
         let m = &self.m;
         let r = m.rules;
         let x = m.extras;
@@ -95,7 +181,7 @@ impl<'a> Room<'a> {
         let near = |b: &Bounds, d: f64| shape.bounds.expanded(d + MARGIN).overlaps(b);
         let own_class = r.net_clearance(Some(net));
         let reach = m.max_gap() + x.pad_to_pad.unwrap_or(0.0) + x.mask_to_track.unwrap_or(0.0);
-        for c in &m.items {
+        for (i, c) in m.items.iter().enumerate() {
             if c.net == mine || !c.layers.contains(&layer) || !near(&c.bounds, reach) {
                 continue;
             }
@@ -109,26 +195,26 @@ impl<'a> Room<'a> {
                 need = need.max(x.pad_to_pad.unwrap_or(0.0));
             }
             if c.shapes.iter().any(|s| gap(shape, s).d < need + MARGIN) {
-                return false;
+                return Some(Hit::Copper(i));
             }
         }
-        for (n, l, s) in self.kept.borrow().iter() {
+        for (i, (n, l, s)) in self.kept.borrow().iter().enumerate() {
             if n != net && *l == layer {
                 let need = own_class.max(r.net_clearance(Some(n)));
                 if near(&s.bounds, need) && gap(shape, s).d < need + MARGIN {
-                    return false;
+                    return Some(Hit::Kept(i));
                 }
             }
         }
-        for (n, l, s) in extra {
+        for (i, (n, l, s)) in extra.iter().enumerate() {
             if *n != net && *l == layer {
                 let need = own_class.max(r.net_clearance(Some(n)));
                 if near(&s.bounds, need) && gap(shape, s).d < need + MARGIN {
-                    return false;
+                    return Some(Hit::Extra(i));
                 }
             }
         }
-        for h in &m.holes {
+        for (i, h) in m.holes.iter().enumerate() {
             if h.item.net == mine || !near(&h.shape.bounds, reach) {
                 continue;
             }
@@ -142,12 +228,12 @@ impl<'a> Room<'a> {
             };
             let need = r.hole_clearance.max(to_track.unwrap_or(0.0));
             if gap(shape, &h.shape).d < need + MARGIN {
-                return false;
+                return Some(Hit::Hole(i));
             }
         }
         for (s, _) in &m.edge {
             if near(&s.bounds, r.copper_edge) && gap(shape, s).d < r.copper_edge + MARGIN {
-                return false;
+                return Some(Hit::Edge);
             }
         }
         let last = m.layers.len().saturating_sub(1);
@@ -160,17 +246,17 @@ impl<'a> Room<'a> {
         };
         if let Some(face) = face {
             let need = x.mask_to_track.unwrap_or(0.0);
-            for (n, shapes, b) in &self.openings[face] {
+            for (i, (n, shapes, b, _)) in self.openings[face].iter().enumerate() {
                 if n.as_deref() == Some(net) || !near(b, need) {
                     continue;
                 }
                 if shapes.iter().any(|s| gap(shape, s).d < need + MARGIN) {
-                    return false;
+                    return Some(Hit::Opening(face, i));
                 }
             }
         }
         let layer_name = &m.layers[layer];
-        for z in m.art.zones.iter().filter(|z| {
+        for (zi, z) in m.art.zones.iter().enumerate().filter(|(_, z)| {
             z.owner.is_empty()
                 && z.keepout.as_ref().is_some_and(|k| k.tracks)
                 && z.layers.iter().any(|l| l == layer_name)
@@ -179,10 +265,10 @@ impl<'a> Room<'a> {
                 .iter()
                 .any(|o| o.len() >= 3 && touches_area(shape, o))
             {
-                return false;
+                return Some(Hit::Keepout(zi));
             }
         }
-        true
+        None
     }
 
     /// The least distance from `shape` on `layer` to the copper of its own `net` (its pads,

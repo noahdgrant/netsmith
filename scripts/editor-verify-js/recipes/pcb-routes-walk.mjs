@@ -1,7 +1,8 @@
 // The walkaround of the track tool (issue #726): while a track is drawn, the segment from its last corner to
 // the pointer bends round the copper in the way (the server asks `netsmith_router::walk`, the router's room: the
 // design rules check's own spaces) with corners of 45 degrees at most; a click fixes the corners it chose as
-// ordinary track corners; where there is no way the preview says so and the click is refused with the reason;
+// ordinary track corners; where there is no way the preview says so and the click is refused with the reason,
+// which names the obstacle (the pad of another net);
 // and the end of the track still goes through the routes file's check.
 import fs from 'node:fs';
 import path from 'node:path';
@@ -104,7 +105,7 @@ export async function run(tools) {
   await waitFor('the track to be undone', async () => !(await scene(page, BOARD)).routes.some((n) => n.net === 'VCC'));
   await whenIdle(page);
 
-  step('where there is no way (the point is on a pad of another net) the preview says so and a click is refused with the reason');
+  step('where there is no way (the point is on a pad of another net) the preview says so and a click is refused with the reason, which names the pad');
   p = await at(j1);
   await page.mouse.click(p.x, p.y);
   await whenIdle(page);
@@ -116,7 +117,7 @@ export async function run(tools) {
   p = await at(gnd);
   await page.mouse.click(p.x, p.y);
   await whenIdle(page);
-  await page.locator('.toast', { hasText: 'no room for a track there' }).first().waitFor();
+  await page.locator('.toast', { hasText: /no room for a track there: that place is on or too near pad \S+ of \S+ \(net GND\)/ }).first().waitFor();
   expect((await state()).points === 1, 'the click added no corner');
 
   step('the other layer has its own copper: the same pointer, on the bottom, has a way where the top had none');
