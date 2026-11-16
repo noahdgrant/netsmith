@@ -107,8 +107,8 @@
 //! beside a part (0.4 mm for JLCPCB's, 0.75 mm for the test process), never less than the
 //! copper to edge space. A placer given no rules keeps 2.0 mm (`Rules::DEFAULT_EDGE_WALL`). The
 //! cost: less room for a track beside a part that close to the edge, which the router handles,
-//! and a layout's silkscreen may come nearer the edge by chance (a warning, 0.07 mm silk to silk
-//! on one seed).
+//! and a layout's silkscreen may come nearer the edge than the wall (a warning, and a soft cost
+//! of its own: see Silkscreen and the board edge).
 //!
 //! **Silkscreen** is a cost that grows during the run, from 2 per mm to 40 and then to a ban
 //! for the last 30 % of the moves. A ban from the start makes the board 30 % longer in wire,
@@ -129,8 +129,18 @@
 //! stroke does not take the corner of its box. A filled rectangle, circle or polygon is silkscreen
 //! all over. Text the footprint prints besides the designator (a `Value` property or `fp_text
 //! value` on `F.SilkS`, not hidden, and any other text there) is a box, as the designator's is,
-//! at its place with the part's turn and the letters upright. Not yet: a wall that keeps the
-//! silkscreen off the board edge (#823).
+//! at its place with the part's turn and the letters upright.
+//!
+//! **Silkscreen and the board edge** is a soft cost, [`W_SILK_EDGE`] for each mm of the
+//! process's silk to pad space that a drawing, or text, lacks to the outline or to a cutout,
+//! and a little more once it does (`Engine::silk_edge_cost`, in `single`). It is not a wall:
+//! the owner decided (2026-11-03, `netsmith-pcb`'s `overhang.rs`) that silkscreen over the
+//! edge stays a warning, as in KiCad, so a board with no room keeps it. The courtyard wall
+//! already holds most silkscreen off the edge, since it is drawn inside the courtyard or just
+//! outside it; the term moves the part whose drawing reaches out of its courtyard (a connector's shield
+//! lines, a pin 1 arrow). The distance is the straight one, to the line the drawing makes. A
+//! part that hangs over an edge states that it needs the room, so it has no such cost, and no
+//! side along an axis the design holds does.
 //!
 //! **Crossings.** With no term for the lines that cross the wire was as short but the boards
 //! were hard to route (the big board's seed 0 took 54 s and left two lines in a release
@@ -335,6 +345,9 @@ const HARD_EPS: f64 = 1e-3;
 const W_GAP: f64 = 4.0;
 /// Reference text over another part's courtyard, for each mm.
 const W_TEXT: f64 = 3.0;
+/// Silkscreen nearer the board edge than the process's silk space, for each mm: soft, since the
+/// check's `silk_edge_clearance` is a warning.
+const W_SILK_EDGE: f64 = 3.0;
 /// The half perimeter of the box round a module instance's parts, and each part of another
 /// instance inside that box.
 const W_COHESION: f64 = 0.3;

@@ -109,6 +109,13 @@ impl<'a> Engine<'a> {
                 }
             }
         }
+        // Silkscreen keeps the process's silk space from the outline and from a cutout, a
+        // little: KiCad's `silk_edge_clearance` is a warning (ADR 0037), so this is a soft cost
+        // that a tight board gives up, not a wall. A part that hangs over an edge states that
+        // it needs the room, and an axis the design holds is not the placer's to keep.
+        if !model.overhangs {
+            c.soft += self.silk_edge_cost(i, skip_x, skip_y);
+        }
         let tall = self.zone_box(i);
         // A keepout for parts is kept out of by each shape of the courtyard.
         let shapes: Vec<Rect> = self.courts(i).collect();
@@ -249,6 +256,42 @@ impl<'a> Engine<'a> {
             }
         }
         c
+    }
+
+    /// What the silkscreen of part `i`, and its designator, cost for being nearer than the
+    /// process's silk space to the outline, or to a cutout's edge: [`W_SILK_EDGE`] for each mm that is missing, and
+    /// a little more once it is. The outline's sides along an axis in `skip_x` or `skip_y`
+    /// are not counted (the design holds the part along it).
+    pub(super) fn silk_edge_cost(&self, i: usize, skip_x: bool, skip_y: bool) -> f64 {
+        let silk = &self.shape(i).silk;
+        let text = self.shape(i).text;
+        if silk.is_empty() && text.is_none() {
+            return 0.0;
+        }
+        let gap = self.p.rules.silk_to_pad;
+        let at = self.pos(i);
+        let mut cost = 0.0;
+        let mut add = |missing: f64| {
+            if missing > 0.0 {
+                cost += W_SILK_EDGE * (missing + 0.05);
+            }
+        };
+        for piece in silk {
+            add(piece.edge_depth(at, gap, |p| self.depth_without(p, skip_x, skip_y)));
+            for cut in self.p.cutouts {
+                add(piece.depth(at, cut, gap));
+            }
+        }
+        // The designator's own box keeps `TEXT_EDGE` from the outline as a hard rule (in
+        // `single`); a cutout's edge is the same edge to the check, so the box is kept `gap`
+        // from it here.
+        if let Some(t) = text {
+            let t = t.translated(at);
+            for cut in self.p.cutouts {
+                add(penetration(&t, cut, gap));
+            }
+        }
+        cost
     }
 
     /// What the reference text and silk strokes of one part cost against another part: the

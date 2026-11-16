@@ -61,6 +61,26 @@ impl Piece {
         (gap + self.half - self.distance(&local)).max(0.0)
     }
 
+    /// How much of `gap` the piece, with its origin at `at`, is short of an edge: `depth`
+    /// says how far inside the edge a point of the board is (negative outside it, and
+    /// concave, as the depth inside a convex outline is). The piece's nearest point to the
+    /// edge is one of the points of its line, so these are what is measured; its stroke
+    /// reaches `half` further. `0` when the piece is `gap` or more inside.
+    pub(super) fn edge_depth(&self, at: Pt, gap: f64, depth: impl Fn(Pt) -> f64) -> f64 {
+        let near = |p: Pt| depth(Pt::new(p.x + at.x, p.y + at.y));
+        // The box's corners tell most pieces from the edge at once: where the depth is
+        // concave, the least of it over the box is at a corner.
+        if self.bounds.corners().into_iter().all(|c| near(c) >= gap) {
+            return 0.0;
+        }
+        let inside = self
+            .points
+            .iter()
+            .map(|p| near(*p))
+            .fold(f64::MAX, f64::min);
+        (gap + self.half - inside).max(0.0)
+    }
+
     /// The distance from the piece's line (or area, if solid) to `r`, 0 where they meet.
     fn distance(&self, r: &Rect) -> f64 {
         if self.solid && self.points.len() > 3 && r.corners().iter().any(|c| self.encloses(*c)) {
@@ -268,6 +288,30 @@ mod tests {
         );
         assert!(line.depth(Pt::new(10.0, 5.0), &pad(11.0, 5.0), 0.15) > 0.15);
         assert_eq!(line.depth(Pt::new(10.0, 5.0), &pad(1.0, 0.0), 0.15), 0.0);
+    }
+
+    #[test]
+    fn a_piece_is_short_of_an_edge_by_what_its_stroke_and_the_gap_ask_beyond_its_line() {
+        // The inside of a 10 mm square, as the annealer measures it along the sides.
+        let inside = |p: Pt| p.x.min(p.y).min(10.0 - p.x).min(10.0 - p.y);
+        let ring = piece(
+            &Shape::Circle {
+                centre: Pt::new(0.0, 0.0),
+                radius: 1.0,
+            },
+            0.2,
+            false,
+        );
+        // Stood at x = 1, the circle's left point is on the side: the stroke reaches 0.1 mm
+        // past its line, and 0.15 mm is asked.
+        // (The circle is chords within 0.01 mm of the curve, so its nearest vertex may be that
+        // much short of the curve's.)
+        let v = ring.edge_depth(Pt::new(1.0, 5.0), 0.15, inside);
+        assert!((v - 0.25).abs() <= SAGITTA + 1e-9, "{v}");
+        // Far enough in, nothing; and the part's origin moves the piece.
+        assert_eq!(ring.edge_depth(Pt::new(5.0, 5.0), 0.15, inside), 0.0);
+        assert_eq!(ring.edge_depth(Pt::new(1.27, 5.0), 0.15, inside), 0.0);
+        assert!(ring.edge_depth(Pt::new(1.2, 5.0), 0.15, inside) > 0.0);
     }
 
     #[test]

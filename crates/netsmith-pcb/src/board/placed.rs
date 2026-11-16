@@ -1,6 +1,11 @@
 //! The sides of a board, and a part placed on it: its footprint, face, place and turn.
 
 use super::*;
+use crate::footprint::Shape;
+
+/// How far a chord of a drawn arc may lie from the curve when the reference text is kept
+/// clear of the silkscreen, in mm.
+const ARC_SAGITTA: f64 = 0.01;
 
 /// Which face of the board a part is on.
 ///
@@ -350,8 +355,12 @@ impl Placed {
             .iter()
             .filter(|g| g.layer == Layer::Silk)
             .flat_map(|g| {
-                g.shape
-                    .extent_points()
+                // An arc bulges past its three points: its chords follow the curve.
+                let points = match g.shape {
+                    Shape::Arc { .. } => g.shape.outline(ARC_SAGITTA),
+                    _ => g.shape.extent_points(),
+                };
+                points
                     .into_iter()
                     .map(move |p| Rect::new(p, p).expanded(g.stroke / 2.0))
             })
@@ -501,5 +510,43 @@ pub struct PadRef {
 impl std::fmt::Display for PadRef {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}.{}", self.refdes, self.number)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::footprint::Graphic;
+
+    #[test]
+    fn the_reference_text_keeps_clear_of_the_bulge_of_an_arc_not_only_of_its_three_points() {
+        // An arc of a circle of radius 2 from -20 to 20 degrees, through -10: its three points
+        // reach x = 1.88 at the most, and the curve 2.0, at 0 degrees.
+        let mut board = crate::board::tests::led_board();
+        let rules = board.rules.clone();
+        let part = &mut board.parts[0];
+        part.at = Pt::default();
+        part.rotation = 0.0;
+        part.side = Side::Front;
+        part.reference_side = ReferenceSide::Right;
+        part.footprint.courtyard = Rect::new(Pt::default(), Pt::default());
+        part.footprint.graphics.clear();
+        let on_circle =
+            |deg: f64| Pt::new(2.0 * deg.to_radians().cos(), 2.0 * deg.to_radians().sin());
+        part.footprint.graphics.push(Graphic {
+            layer: Layer::Silk,
+            shape: Shape::Arc {
+                start: on_circle(-20.0),
+                mid: on_circle(-10.0),
+                end: on_circle(20.0),
+            },
+            stroke: 0.12,
+            filled: false,
+        });
+        let at = part.reference_at(&rules);
+        let away = rules.silk_to_pad + rules.min_text_thickness;
+        let clear = 2.0 + 0.06 + away + part.text_width(&rules) / 2.0;
+        assert!(at.x > clear - 0.011, "{} against {clear}", at.x);
+        assert!(at.x < clear + 1e-6, "{} against {clear}", at.x);
     }
 }
