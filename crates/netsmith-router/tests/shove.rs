@@ -66,6 +66,7 @@ fn drawn<'a>(net: &'a str, corners: &'a [Pt]) -> Drawn<'a> {
         layer: CopperLayer::Front,
         width: WIDTH,
         corners,
+        others: &[],
     }
 }
 
@@ -115,10 +116,11 @@ fn after(base: &Board, pieces: &[Piece], d: &Drawn<'_>, shoved: &Shoved) -> Boar
     for p in pieces {
         let moved = shoved.moved.iter().find(|m| m.id() == p.id);
         match (&p.what, moved) {
-            (What::Track(t), Some(Moved::Track { from, to, .. })) => {
+            (What::Track(t), Some(Moved::Track { from, to, mid, .. })) => {
                 board.tracks.push(Track {
                     from: *from,
                     to: *to,
+                    mid: *mid,
                     ..t.clone()
                 });
             }
@@ -135,6 +137,12 @@ fn after(base: &Board, pieces: &[Piece], d: &Drawn<'_>, shoved: &Shoved) -> Boar
         board
             .tracks
             .push(Track::straight(d.net, d.layer, w[0], w[1], d.width));
+    }
+    for o in d.others {
+        match o {
+            What::Track(t) => board.tracks.push(t.clone()),
+            What::Via(v) => board.vias.push(v.clone()),
+        }
     }
     board
 }
@@ -352,4 +360,148 @@ fn the_work_is_counted_and_far_copper_adds_none_to_it() {
     let more = shove(&base, &drawn("VCC", &corners), &many).unwrap();
     assert_eq!(more.moved.len(), few.moved.len());
     assert_eq!(more.pushed, few.pushed);
+}
+
+#[test]
+fn an_arc_in_the_way_moves_whole_and_the_check_is_quiet() {
+    let base = led();
+    let c = empty_place(&base);
+    // A half circle of GND that bulges to the left, its middle on the track's way.
+    let (a, b) = (at(c, 0.5, -1.5), at(c, 0.5, 1.5));
+    let mid = at(c, -1.0, 0.0);
+    let arc = Track {
+        mid: Some(mid),
+        ..Track::straight("GND", CopperLayer::Front, a, b, BAR)
+    };
+    assert!(arc.arc().is_some(), "{arc:?}");
+    let pieces = [Piece {
+        id: 4,
+        what: What::Track(arc),
+    }];
+    let corners = [at(c, -2.5, 0.0), at(c, -0.6, 0.0)];
+    let d = drawn("VCC", &corners);
+    let shoved = shove(&base, &d, &pieces).unwrap();
+    let Some(Moved::Track {
+        from,
+        to,
+        mid: Some(now),
+        ..
+    }) = shoved.moved.iter().find(|m| m.id() == 4)
+    else {
+        panic!("the arc did not move whole: {shoved:?}");
+    };
+    // One step for its three points, away from the track (to the right).
+    let step = Pt::new(from.x - a.x, from.y - a.y);
+    assert!(step.x > 0.0, "{step:?}");
+    for (p, q) in [(*to, b), (*now, mid)] {
+        assert!(
+            (p.x - q.x - step.x).abs() < 1e-5 && (p.y - q.y - step.y).abs() < 1e-5,
+            "{p:?} {q:?} {step:?}"
+        );
+    }
+    assert_eq!(errors(&after(&base, &pieces, &d, &shoved)), errors(&base));
+}
+
+#[test]
+fn an_arc_with_a_held_end_is_stuck() {
+    let mut base = led();
+    let c = empty_place(&base);
+    let (a, b) = (at(c, 0.5, -1.5), at(c, 0.5, 1.5));
+    // Copper of the arc's net that stays, at its end.
+    base.tracks.push(Track::straight(
+        "GND",
+        CopperLayer::Front,
+        b,
+        at(c, 0.5, 2.5),
+        BAR,
+    ));
+    let arc = Track {
+        mid: Some(at(c, -1.0, 0.0)),
+        ..Track::straight("GND", CopperLayer::Front, a, b, BAR)
+    };
+    let pieces = [Piece {
+        id: 4,
+        what: What::Track(arc),
+    }];
+    let corners = [at(c, -2.5, 0.0), at(c, -0.6, 0.0)];
+    let stuck = shove(&base, &drawn("VCC", &corners), &pieces).unwrap_err();
+    assert_eq!(stuck.by(), Some(4), "{stuck:?}");
+}
+
+#[test]
+fn a_tee_rides_the_body_it_is_on_and_stays_when_its_own_track_is_pushed() {
+    let base = led();
+    let c = empty_place(&base);
+    // A vertical body with a stem from the right whose end is on the body's middle.
+    let pieces = [
+        bar(1, "GND", at(c, 0.0, -1.5), at(c, 0.0, 1.5)),
+        bar(2, "GND", at(c, 0.0, 0.0), at(c, 2.5, 0.0)),
+    ];
+    // The track comes from the left and stops just short of the body: the body moves right.
+    let corners = [at(c, -2.5, -0.8), at(c, -0.2, -0.8)];
+    let d = drawn("VCC", &corners);
+    let shoved = shove(&base, &d, &pieces).unwrap();
+    let (top, bottom) = moved_track(&shoved, 1);
+    let (joint, far) = moved_track(&shoved, 2);
+    assert!(top.x > c.x && (top.x - bottom.x).abs() < 1e-9, "{top:?} {bottom:?}");
+    // The stem's end is still on the body, half way along it; its far end stayed.
+    assert!((joint.x - top.x).abs() < 1e-5, "{joint:?} {top:?}");
+    assert!((joint.y - (top.y + bottom.y) / 2.0).abs() < 1e-5, "{joint:?}");
+    assert_eq!(far, at(c, 2.5, 0.0));
+    assert_eq!(errors(&after(&base, &pieces, &d, &shoved)), errors(&base));
+
+    // The stem pushed from below: its end on the body stays, it turns about it.
+    let corners = [at(c, 1.5, 2.0), at(c, 1.5, 0.2)];
+    let d = drawn("VCC", &corners);
+    let shoved = shove(&base, &d, &pieces).unwrap();
+    let (joint, far) = moved_track(&shoved, 2);
+    assert_eq!(joint, at(c, 0.0, 0.0));
+    assert!(far.y < c.y, "{far:?}");
+    assert!(shoved.moved.iter().all(|m| m.id() != 1), "{shoved:?}");
+}
+
+#[test]
+fn more_new_copper_than_the_track_pushes_too_a_via_on_its_own_and_a_track_on_the_back() {
+    let base = led();
+    let c = empty_place(&base);
+    let via = Via {
+        net: "VCC".into(),
+        at: at(c, -0.3, 0.0),
+        diameter: 0.6,
+        drill: 0.3,
+    };
+    let pieces = [bar(1, "GND", at(c, 0.0, -1.5), at(c, 0.0, 1.5))];
+    // A via placed alone, no track: the bar is pushed out of its way.
+    let others = [What::Via(via)];
+    let d = Drawn {
+        others: &others,
+        ..drawn("VCC", &[])
+    };
+    let shoved = shove(&base, &d, &pieces).unwrap();
+    let (from, _) = moved_track(&shoved, 1);
+    assert!(from.x > c.x, "{from:?}");
+    assert_eq!(errors(&after(&base, &pieces, &d, &shoved)), errors(&base));
+
+    // A track on the back in the new copper pushes a bar on the back, not one on the front.
+    let back = Track::straight("GND", CopperLayer::Back, at(c, 0.0, -1.5), at(c, 0.0, 1.5), BAR);
+    let pieces = [Piece {
+        id: 2,
+        what: What::Track(back),
+    }];
+    let others = [What::Track(Track::straight(
+        "VCC",
+        CopperLayer::Back,
+        at(c, -2.0, 0.0),
+        at(c, 0.3, 0.0),
+        WIDTH,
+    ))];
+    let d = Drawn {
+        others: &others,
+        ..drawn("VCC", &[])
+    };
+    let shoved = shove(&base, &d, &pieces).unwrap();
+    let (from, _) = moved_track(&shoved, 2);
+    assert!(from.x > c.x + 0.3, "{from:?}");
+    let front = [bar(3, "GND", at(c, 0.0, -1.5), at(c, 0.0, 1.5))];
+    assert!(shove(&base, &d, &front).unwrap().moved.is_empty());
 }

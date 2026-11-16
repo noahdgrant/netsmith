@@ -50,8 +50,19 @@
 //! **Shove** ([`crate::shove`], the third slice of #726) is the other half: it moves the unlocked
 //! copper of the routes file out of the way of a track, and the walkaround goes round what stays.
 //!
-//! **Not done:** a track never changes layer and does not look for the shortest way over the whole
-//! board: the area is the ends' box widened by [`REACH`].
+//! **Layers.** A walk is on one layer. A track that changes layer is walked one layer at a time:
+//! the editor puts a via at the corner where the layer changes and walks on from it on the new
+//! layer (issue 1009); the copper of the net, the via among it, is never in its own way.
+//!
+//! **The ground is built once for a board** ([`Ground::of`]) and kept by the caller as long as
+//! the board's copper is the same: the editor keeps it with the board it placed (issue 1009).
+//! [`grounds_built`] counts the grounds a thread built, for a test of that cache.
+//!
+//! **The router's crossed nets routed again** round the track, as a preview, are
+//! [`crate::round`]'s.
+//!
+//! **Not done:** the search does not look for the shortest way over the whole board: the area is
+//! the ends' box widened by [`REACH`].
 
 use std::cmp::Reverse;
 use std::collections::{BinaryHeap, HashMap};
@@ -86,9 +97,20 @@ pub struct Ground {
     edge: netsmith_pcb::BoardEdge,
 }
 
+thread_local! {
+    static BUILT: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+/// How many grounds this thread has built ([`Ground::of`]): the work a cache of them saves is
+/// counted with it (issue 1009), never timed.
+pub fn grounds_built() -> usize {
+    BUILT.with(|b| b.get())
+}
+
 impl Ground {
     /// The ground of `board`, or why its copper cannot be read.
     pub fn of(board: &Board) -> Result<Ground, String> {
+        BUILT.with(|b| b.set(b.get() + 1));
         let art = netsmith_pcb::copper_artwork(board).map_err(|e| e.to_string())?;
         let rules = DrcRules::from_project(&netsmith_pcb::kicad_pro(board))
             .map_err(|e| format!("the design rules: {e}"))?;

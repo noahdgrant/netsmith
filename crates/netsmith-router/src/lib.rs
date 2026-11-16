@@ -16,7 +16,8 @@
 //!
 //! [`walk`] is not a step of routing: the query the editor's track tool asks while a track is drawn
 //! (issue #726), whether a segment is free and the way round the copper in the way, with the
-//! design rules check's own spaces.
+//! design rules check's own spaces. [`shove`] moves the routes file's unlocked copper out of the
+//! way of it, and [`round`] routes the router's nets it crosses again round it, as a preview.
 //!
 //! The board model and the decoupling pairs ([`netsmith_pcb::Quality`]) are in `netsmith-pcb`,
 //! the placer in `netsmith-placer`. This crate depends on `netsmith-pcb`, never the reverse
@@ -30,6 +31,7 @@ pub mod meander;
 pub mod parallel;
 mod plan;
 mod pour_pads;
+pub mod round;
 pub mod route;
 pub mod shove;
 mod stitch;
