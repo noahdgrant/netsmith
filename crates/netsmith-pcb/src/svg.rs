@@ -642,13 +642,17 @@ fn draw(board: &Board, with_key: bool) -> String {
     let _ = writeln!(out, "</g>");
     let _ = writeln!(out, r#"<g class="l-refs">"#);
     for placed in &board.parts {
+        // The silkscreen's text: the designator, or what the design prints in its place.
+        let Some(text) = placed.silk_text() else {
+            continue;
+        };
         let at = placed.to_board(placed.reference_at(&board.rules));
         let _ = writeln!(
             out,
             r#"<text x="{}" y="{}" font-size="1" fill="{SILK}" text-anchor="middle" dominant-baseline="central" font-family="monospace">{}</text>"#,
             n(at.x),
             n(at.y),
-            escape(&placed.refdes)
+            escape(text)
         );
     }
     let _ = writeln!(out, "</g>");

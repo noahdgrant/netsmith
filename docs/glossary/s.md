@@ -42,6 +42,10 @@ The face of the board a part is on, front or back. A part on the back is its foo
 An inner layer for tracks, which names no net: `.process.inner2.use &= "signal"`. The router draws on the outer layers only, so it holds only the copper of through-hole pads for now; it is plotted and checked like the outer layers.
 _Avoid_: Routing layer, mixed layer
 
+**Silkscreen text**:
+What the silkscreen prints for a part: its reference designator, nothing, or a text of the board's physical file in its place (`.silk`, a word `"show"` or `"hide"` of a part, a module or the board, and `.silk_text` of a part; the most specific statement wins). Only the text on `F.SilkS` or `B.SilkS` changes: the designator stays on the schematic, in the bill of materials, in the placement file and on `F.Fab`. A part that prints nothing takes no room for text. Not a _Label_, which is a part of its own.
+_Avoid_: Silk label, reference text (when the text is not the designator), marking
+
 **Sink current**:
 The current a driver can sink while it holds a line at its low level, as a datasheet gives it with the `VOL` it guarantees: `.sink_current` of an `I2c` interface, an **Optional member** that `~` does not equate between two parts (the datasheet's `IOL`, at the part's `.levels.vol`). A driver sets a least pull-up resistance, `(supply.voltage - low_level) / sink_current` (NXP UM10204 Rev. 7.0, section 7.1), a **Closed-form check**: the checker states it for each part on the bus with the part's own figures (ADR 0102, a **Derived figure**), and a board may state the optional `.sink_current` and `.low_level` of `I2cPullups` itself instead. A part with no figure beside parts that have one is named. Not the current a pull-up draws (`.current`) and not the current a supply can give.
 _Avoid_: IOL (as a name), sink (alone), drive current

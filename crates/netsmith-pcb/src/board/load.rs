@@ -91,6 +91,7 @@ impl Board {
                         .copied()
                         .unwrap_or_default(),
                     reference_side: ReferenceSide::default(),
+                    silk: Silk::default(),
                     height: None,
                     standoff: 0.0,
                     protrusion: None,
@@ -138,6 +139,15 @@ impl Board {
                     .copied()
                     .unwrap_or_default(),
                 reference_side: ReferenceSide::default(),
+                silk: design
+                    .features
+                    .silks
+                    .iter()
+                    .find(|s| s.path == part.path)
+                    .map_or(Silk::Designator, |s| match &s.print {
+                        netsmith_core::SilkPrint::Nothing => Silk::Nothing,
+                        netsmith_core::SilkPrint::Text(t) => Silk::Text(t.clone()),
+                    }),
                 height: design
                     .features
                     .heights

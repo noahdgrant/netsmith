@@ -62,8 +62,8 @@ mod validate;
 pub use board::{
     Board, BoardCutout, BoardError, BoardKeepout, BoardNet, BoardPour, BoardZone, CopperLayer,
     FixedCopper, Hang, HeightUnchecked, HoleNeighbour, KeepoutArea, Loaded as LoadedBoard, PadRef,
-    Placed, PlacementProblem, Plane, ReferenceSide, Side, StandardPass, Teardrop, Track, Trim,
-    Unplaced, Via, ZoneIslands, ZonePads, member as board_member, outline_box, rect_distance,
+    Placed, PlacementProblem, Plane, ReferenceSide, Side, Silk, StandardPass, Teardrop, Track,
+    Trim, Unplaced, Via, ZoneIslands, ZonePads, member as board_member, outline_box, rect_distance,
 };
 pub use body3d::{
     Axis as BodyAxis, Material as BodyMaterial, Primitive as BodyPrimitive, Solid as BodySolid,

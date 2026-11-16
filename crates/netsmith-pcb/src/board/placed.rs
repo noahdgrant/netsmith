@@ -53,6 +53,27 @@ fn is_zero(v: &f64) -> bool {
     *v == 0.0
 }
 
+/// What a part's silkscreen prints, where the library draws its reference text (the
+/// `.silk` and `.silk_text` of the physical file). The designator stays in the BOM, the
+/// placement file and on the fabrication layer whatever is printed here.
+#[derive(Debug, Clone, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
+pub enum Silk {
+    /// The part's reference designator.
+    #[default]
+    Designator,
+    /// Nothing: no text, no room for one and no finding about one.
+    Nothing,
+    /// This text, in the place and at the size the designator would have.
+    Text(String),
+}
+
+impl Silk {
+    /// Whether this is the default, which a serialized part leaves out.
+    pub fn is_designator(&self) -> bool {
+        *self == Silk::Designator
+    }
+}
+
 /// A footprint on the board.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Placed {
@@ -81,6 +102,9 @@ pub struct Placed {
     pub side: Side,
     /// Which side of the part its reference text is on.
     pub reference_side: ReferenceSide,
+    /// What its silkscreen prints in place of its designator, if the design says.
+    #[serde(default, skip_serializing_if = "Silk::is_designator")]
+    pub silk: Silk,
     /// How tall the body stands above its face of the board, in mm, as the design states it
     /// (`.height`, ADR 0045 "Height limits"). `None` is unknown, never zero.
     pub height: Option<f64>,
@@ -140,16 +164,27 @@ impl Placed {
         })
     }
 
-    /// The height of the reference text on the board, in mm: what the library draws, or the
-    /// process's smallest if that is more.
+    /// The height of the text the silkscreen prints, in mm: what the library draws for the
+    /// reference, or the process's smallest if that is more.
     pub fn text_height(&self, rules: &Rules) -> f64 {
         self.footprint.reference_size.max(rules.min_text_height)
     }
 
-    /// The width of the reference text, in mm: about one text height for each letter.
+    /// The width of the text the silkscreen prints, in mm: about one text height for each
+    /// letter.
     pub fn text_width(&self, rules: &Rules) -> f64 {
-        self.refdes.chars().count() as f64 * self.text_height(rules) * 0.95
+        self.silk_text().map_or(0, |t| t.chars().count()) as f64 * self.text_height(rules) * 0.95
             + rules.min_text_thickness
+    }
+
+    /// The text the silkscreen prints for the part: its designator, or the text the design
+    /// gives in its place; `None` when it prints nothing.
+    pub fn silk_text(&self) -> Option<&str> {
+        match &self.silk {
+            Silk::Designator => Some(&self.refdes),
+            Silk::Nothing => None,
+            Silk::Text(t) => Some(t),
+        }
     }
 
     /// Whether the footprint has a drilled hole, which takes room on both faces.

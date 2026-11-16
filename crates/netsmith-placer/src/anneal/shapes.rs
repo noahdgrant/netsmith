@@ -2,11 +2,12 @@
 
 use super::*;
 
-/// The box the reference text takes, on the board, or `None` for a part that prints none.
+/// The box the text the silkscreen prints for the part takes, on the board (its designator,
+/// or the text the design gives in its place), or `None` for a part that prints none.
 /// The text is upright whatever the part's turn: its place turns with the part, and its
 /// letters do not (KiCad takes the angle of a footprint's text as the board's).
 pub(crate) fn text_box(part: &Placed, rules: &Rules) -> Option<Rect> {
-    if part.kind == "Label" {
+    if part.kind == "Label" || part.silk_text().is_none() {
         return None;
     }
     let (height, width) = (part.text_height(rules), part.text_width(rules));

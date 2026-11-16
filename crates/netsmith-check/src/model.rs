@@ -2144,6 +2144,22 @@ impl Model {
         owner.kind == InstKind::Interface && owner.type_name == "Place" && owner.def.is_none()
     }
 
+    /// Whether `field` is the built-in `.silk` of a part, a module or a board, or the
+    /// `.silk_text` of a part: what the silkscreen prints, which is physical intent, so the
+    /// physical file states it and a board's circuit source does not.
+    pub fn is_silk_field(&self, field: FieldId) -> bool {
+        let f = self.field(field);
+        let owner = self.instance(f.owner);
+        match f.name.as_str() {
+            "silk" => matches!(
+                owner.kind,
+                InstKind::Part | InstKind::Module | InstKind::Board
+            ),
+            "silk_text" => owner.kind == InstKind::Part,
+            _ => false,
+        }
+    }
+
     /// Whether an instance is the built-in `.model` of a part (ADR 0108): its `StepModel`.
     pub fn is_step_model(&self, inst: InstId) -> bool {
         let i = self.instance(inst);

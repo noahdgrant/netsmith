@@ -7,8 +7,8 @@
 
 use netsmith_check::{Domain, InstId, InstKind, Member, Model, SourceId};
 use netsmith_core::{
-    CaseModel, Cutout, Features, Keepout, Label, Offset, OffsetEnd, Outline, PartHeight,
-    PartStandoff, PinProtrusion, PlaceBound, PlaceField, Placement, Pour, StepModel,
+    CaseModel, Cutout, Features, Keepout, Label, Offset, OffsetEnd, Outline, PartHeight, PartSilk,
+    PartStandoff, PinProtrusion, PlaceBound, PlaceField, Placement, Pour, SilkPrint, StepModel,
 };
 use netsmith_lang::Span;
 use std::collections::{BTreeMap, BTreeSet};
@@ -224,6 +224,92 @@ fn standoffs(model: &Model, errors: &mut Vec<String>) -> Vec<PartStandoff> {
             continue;
         }
         found.push(PartStandoff { path, standoff });
+    }
+    found
+}
+
+/// What a field of text holds when it is one value (`"hide"`), if the design states it.
+fn text(model: &Model, inst: InstId, name: &str) -> Option<String> {
+    match domain(model, inst, name)? {
+        Domain::Text(t) => Some(t),
+        _ => None,
+    }
+}
+
+/// What the silkscreen prints for the parts that do not print their designator, by path
+/// (`.silk`, `.silk_text`, stated in the physical file). A part prints a text of its own
+/// (`.silk_text`) when it states one; otherwise it takes the first `.silk` that says "show" or
+/// "hide" of these, the most specific first: its own (a statement, or the default of its
+/// kind), the module it is in, the module that module is in and so on, and the board. A part
+/// that none of them says anything of prints its designator and is not listed.
+fn silks(model: &Model, errors: &mut Vec<String>) -> Vec<PartSilk> {
+    // A `.silk` that is neither "show" nor "hide" is an error wherever it is stated.
+    let mut stated: Vec<(String, InstId)> = model
+        .instances()
+        .filter(|(_, i)| matches!(i.kind, InstKind::Part | InstKind::Module | InstKind::Board))
+        .map(|(id, i)| {
+            let path = model.path_of(id);
+            let name = if i.kind == InstKind::Board {
+                "the board".to_string()
+            } else {
+                format!("`{path}`")
+            };
+            (name, id)
+        })
+        .collect();
+    stated.sort();
+    for (name, id) in &stated {
+        if let Some(t) = text(model, *id, "silk")
+            && t != "show"
+            && t != "hide"
+        {
+            errors.push(format!(
+                "{name} has `.silk` \"{t}\", which is not \"show\" or \"hide\": say whether the silkscreen prints designators"
+            ));
+        }
+    }
+    let mut parts: Vec<(String, InstId)> = model
+        .instances()
+        .filter(|(_, i)| i.kind == InstKind::Part)
+        .map(|(id, _)| (model.path_of(id), id))
+        .collect();
+    parts.sort();
+    let mut found = Vec::new();
+    for (path, id) in parts {
+        netsmith_core::job::checkpoint();
+        if let Some(t) = text(model, id, "silk_text") {
+            if t.trim().is_empty() {
+                errors.push(format!(
+                    "`{path}.silk_text` is empty: give the text the silkscreen prints, or hide the designator with `.{path}.silk &= \"hide\"`"
+                ));
+                continue;
+            }
+            if text(model, id, "silk").as_deref() == Some("hide") {
+                errors.push(format!(
+                    "`{path}` hides its silkscreen text with `.silk` and gives it the text \"{t}\" with `.silk_text`: keep one of the two"
+                ));
+                continue;
+            }
+            found.push(PartSilk {
+                path,
+                print: SilkPrint::Text(t),
+            });
+            continue;
+        }
+        let mut cur = Some(id);
+        while let Some(at) = cur {
+            match text(model, at, "silk").as_deref() {
+                Some("hide") => {
+                    found.push(PartSilk {
+                        path,
+                        print: SilkPrint::Nothing,
+                    });
+                    break;
+                }
+                Some("show") => break,
+                _ => cur = model.instance(at).parent,
+            }
+        }
     }
     found
 }
@@ -680,6 +766,7 @@ pub(crate) fn features_of(
         labels: labels(model, least_text, errors),
         heights: heights(model, errors),
         standoffs: standoffs(model, errors),
+        silks: silks(model, errors),
         ..Features::default()
     };
 
@@ -1018,6 +1105,12 @@ pub(crate) fn expand_banks(
     for s in old {
         for path in members(&s.path, banks) {
             features.standoffs.push(PartStandoff { path, ..s.clone() });
+        }
+    }
+    let old = std::mem::take(&mut features.silks);
+    for s in old {
+        for path in members(&s.path, banks) {
+            features.silks.push(PartSilk { path, ..s.clone() });
         }
     }
     let (old, old_sites) = (

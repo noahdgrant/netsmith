@@ -12,7 +12,7 @@ use std::collections::HashMap;
 use netsmith_kicad::Sexp;
 use uuid::Uuid;
 
-use crate::board::{Board, KeepoutArea, Placed, Plane};
+use crate::board::{Board, KeepoutArea, Placed, Plane, Silk};
 use crate::geometry::{Pt, Rect};
 use crate::placement::ORIGIN;
 use crate::polygon::BoardEdge;
@@ -286,11 +286,24 @@ fn footprint(board: &Board, part: &Placed, nets: &NetNumbers) -> Sexp {
         };
         // KiCad stores a footprint on the back already flipped: the drawings of the file as
         // seen in a mirror, and on the layers of the other face.
+        // The text the design prints in place of the designator (`.silk_text`): a text of its
+        // own where the reference was, which the reference gives up (it is hidden, below).
+        let own_text = (child.head() == Some("property")
+            && child.args().first().and_then(Sexp::text) == Some("Reference"))
+        .then(|| silk_text(&written, part, &format!("{key}/silk_text")))
+        .flatten();
         items.push(if part.mirrored() && child.head() != Some("model") {
             flipped(&written, None)
         } else {
-            written
+            written.clone()
         });
+        if let Some(text) = own_text {
+            items.push(if part.mirrored() {
+                flipped(&text, None)
+            } else {
+                text
+            });
+        }
     }
     // The part's member path, hidden, so that a tool that reads the board knows which part of
     // the source each footprint is without building the design (the parity checker pairs a
@@ -445,12 +458,46 @@ fn flipped(node: &Sexp, parent: Option<&str>) -> Sexp {
     Sexp::List(out)
 }
 
+/// `(fp_text user "UART" ...)` in the place of the written reference `property`, for a part
+/// whose silkscreen prints a text of the design's in place of its designator.
+fn silk_text(property: &Sexp, part: &Placed, key: &str) -> Option<Sexp> {
+    let Silk::Text(text) = &part.silk else {
+        return None;
+    };
+    let mut out = vec![
+        Sexp::atom("fp_text"),
+        Sexp::atom("user"),
+        Sexp::string(text.clone()),
+    ];
+    for name in ["at", "layer"] {
+        out.extend(property.find(name).cloned());
+    }
+    out.push(uuid_for(key));
+    // The text is shown, whatever the library does with its reference.
+    if let Some(Sexp::List(effects)) = property.find("effects") {
+        out.push(Sexp::List(
+            effects
+                .iter()
+                .filter(|e| e.head() != Some("hide"))
+                .cloned()
+                .collect(),
+        ));
+    }
+    Some(Sexp::List(out))
+}
+
 /// The reference and value are the part's; every other property is the library's.
 fn property(child: &Sexp, part: &Placed, rules: &Rules, key: &str) -> Sexp {
     let mut items = without_uuid(child);
     match child.args().first().and_then(Sexp::text) {
         Some("Reference") => {
             items[2] = Sexp::string(part.refdes.clone());
+            // A part whose silkscreen prints something else, or nothing, keeps its designator
+            // as a hidden property: KiCad's BOM, its placement file and the fabrication layer
+            // read it from there.
+            if part.silk != Silk::Designator && !items.iter().any(|i| i.head() == Some("hide")) {
+                items.push(Sexp::node("hide", vec![Sexp::atom("yes")]));
+            }
             let at = part.reference_at(rules);
             for item in &mut items {
                 if item.head() == Some("at") {
@@ -1234,6 +1281,72 @@ mod tests {
                 number(pad.find("at").unwrap(), 1)
             ),
             (local.x, local.y)
+        );
+    }
+
+    /// The reference property of a footprint and its `fp_text user` items.
+    fn silk_of<'a>(pcb: &'a Sexp, refdes: &str) -> (&'a Sexp, Vec<&'a Sexp>) {
+        let fp = footprint_of(pcb, refdes);
+        let property = fp
+            .find_all("property")
+            .find(|p| p.args()[0].text() == Some("Reference"))
+            .unwrap();
+        let texts = fp
+            .find_all("fp_text")
+            .filter(|t| t.args()[0].text() == Some("user"))
+            .filter(|t| {
+                t.find("layer")
+                    .and_then(|l| l.args()[0].text())
+                    .is_some_and(|l| l.ends_with("SilkS"))
+            })
+            .collect();
+        (property, texts)
+    }
+
+    #[test]
+    fn a_part_that_prints_nothing_keeps_its_designator_as_a_hidden_property() {
+        let mut board = led();
+        board.parts[0].silk = Silk::Nothing;
+        let refdes = board.parts[0].refdes.clone();
+        let other = board.parts[1].refdes.clone();
+        let pcb = parsed(&board);
+        let (property, texts) = silk_of(&pcb, &refdes);
+        assert_eq!(property.args()[1].text(), Some(refdes.as_str()));
+        assert!(property.find("hide").is_some(), "the reference is hidden");
+        assert!(texts.is_empty(), "and nothing takes its place");
+        let (property, _) = silk_of(&pcb, &other);
+        assert!(property.find("hide").is_none(), "the others print theirs");
+    }
+
+    #[test]
+    fn a_part_that_prints_a_text_has_it_in_the_place_of_its_reference() {
+        let mut board = led();
+        board.parts[0].silk = Silk::Text("5V".into());
+        let refdes = board.parts[0].refdes.clone();
+        let pcb = parsed(&board);
+        let (property, texts) = silk_of(&pcb, &refdes);
+        assert_eq!(property.args()[1].text(), Some(refdes.as_str()));
+        assert!(property.find("hide").is_some());
+        assert_eq!(texts.len(), 1);
+        let text = texts[0];
+        assert_eq!(text.args()[1].text(), Some("5V"));
+        assert_eq!(text.find("at"), property.find("at"));
+        assert_eq!(text.find("layer"), property.find("layer"));
+        assert!(text.find("effects").unwrap().find("hide").is_none());
+    }
+
+    #[test]
+    fn a_text_on_a_part_on_the_back_is_on_the_back_silkscreen() {
+        let mut board = led();
+        board.parts[0].side = crate::board::Side::Back;
+        board.parts[0].silk = Silk::Text("5V".into());
+        let refdes = board.parts[0].refdes.clone();
+        let pcb = parsed(&board);
+        let (_, texts) = silk_of(&pcb, &refdes);
+        assert_eq!(texts.len(), 1);
+        assert_eq!(
+            texts[0].find("layer").unwrap().args()[0].text(),
+            Some("B.SilkS")
         );
     }
 
