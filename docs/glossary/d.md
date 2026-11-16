@@ -24,6 +24,10 @@ _Avoid_: Initial value, preset, fallback, soft constraint, weak narrowing
 A join of two pins of a part that a join of the first pin from outside gives way to, written `.bias ?~ .vin.neg` in a part's own definition or its `support` section (ADR 0130). It holds when nothing else joins the first pin once every join has been read; a `~` or `~>` of the pin from a board or a module replaces it. The join counterpart of a _Default_.
 _Avoid_: Weak join, soft join, optional tie, fallback tie
 
+**Dependency**:
+Another project that a project reads, named by an entry of the `[dependencies]` table of its `netsmith.toml`, `shared = { path = "../shared" }` (ADR 0136, proposed). The entry's key is the first step of an import of the other project's modules (`import shared::power::Rails` reads `../shared/src/power.nsm`), and its catalogs are read with the project's own. Only a folder is built; a dependency by git URL or version is not.
+_Avoid_: Package (a package is a part's case), library (a library is KiCad's, of symbols or footprints), crate, external project
+
 **Derived figure**:
 A value the checker gives a member of a module from the parts it cannot reach, by the nets and by a field's name, as it gives a part its `.bias` from the rail it is across: the bus capacitance and the least pull-up of an I2C bus from the `I2c` interfaces on the bus (ADR 0102). The board states only what is its own (the estimate of its traces) and may state the figure itself, which then stands in place of the derivation. A part that states no figure is named when a check waits for it, never skipped without a word.
 _Avoid_: Computed value, inferred value, rollup

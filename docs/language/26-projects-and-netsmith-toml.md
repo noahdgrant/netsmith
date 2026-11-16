@@ -36,7 +36,7 @@ Only `name` is required.
 | `step` | Optional. Whether `fab` writes the board as STEP, `<board>.step`, into the fab package, for mechanical CAD: `true`, the default, writes it; `step = false` leaves it out, and removes the one of an earlier run. `fab --no-step` leaves it out for one run. See `docs/BOARD3D.md`, "In the fab package". |
 | `glb` | Optional. Whether `fab` writes the board's 3D scene as `<board>.glb` into the fab package: `true`, the default, writes it; `glb = false` leaves it out, and removes the one of an earlier run. `fab --no-glb` leaves it out for one run. See `docs/BOARD3D.md`, "In the fab package". |
 
-Beside `[project]`, the file may have `[order.<name>.boards]` tables (_Orders_, below), a `[supply]` table (_Catalog files_), and a model table: a `[models]` table with `folder`, and `[[model]]` rows with `footprint`, `file`, `offset` and `rotation`, the STEP model a part is drawn from when it states none (_A model table_ in the chapter on the shape of a board). Any other table is refused.
+Beside `[project]`, the file may have `[order.<name>.boards]` tables (_Orders_, below), a `[supply]` table (_Catalog files_), a `[dependencies]` table (_Dependencies_, below), and a model table: a `[models]` table with `folder`, and `[[model]]` rows with `footprint`, `file`, `offset` and `rotation`, the STEP model a part is drawn from when it states none (_A model table_ in the chapter on the shape of a board). Any other table is refused.
 
 ### Orders
 
@@ -87,6 +87,41 @@ unknown field `topl`, expected one of `name`, `top_level`, `out`, `fab`, `kicad`
 $ netsmith fab --order devkit        # "Unitt" is not a board of the project
 netsmith.toml:8: order `devkit` names `Unitt`, but the project has no such board, panel or system; the boards and panels are: DevKit/carrier, DevKit/power_card, Unit
 ```
+
+### Dependencies
+
+A project can use the modules and catalogs of another project: circuits that several products share, or the catalogs of a team (issue #68, ADR 0136, proposed). The other project is named in a `[dependencies]` table beside `[project]`, by its folder, the one that holds its `netsmith.toml`:
+
+```toml
+[project]
+name = "unit"
+top_level = ["src/unit.nsm"]
+
+[dependencies]
+shared = { path = "../shared" }
+```
+
+```text
+work/
+├── shared/                 a project of modules only (top_level = [])
+│   ├── netsmith.toml
+│   ├── catalogs/acme_ldo.csv
+│   └── src/
+│       ├── power.nsm       module LdoStage, which imports src::parts::ldo
+│       └── parts/ldo.nsm
+└── unit/
+    ├── netsmith.toml       [dependencies] shared = { path = "../shared" }
+    └── src/unit.nsm        import shared::power::LdoStage
+```
+
+The key of the entry is the first step of an import of the other project's modules, as `src` is of the project's own: `../shared/src/power.nsm` is the module `shared::power`, and `import shared::power::LdoStage` reads it. A file of the dependency that imports `src::parts::ldo` means its own `src/parts/ldo.nsm`, so the shared project builds the same alone and from `unit`. The dependency's catalog files (its `catalog_dirs` folders and its `catalogs` list) are read with the project's own, and a message names them from the project's root, `../shared/catalogs/acme_ldo.csv`. The editor builds again when a dependency's manifest, modules or catalogs change.
+
+- The key is letters, digits and `_`, not starting with a digit, and not `src` or `std`. It need not be the other project's `name`.
+- `path` is relative to the project's root and may go up (`../shared`); it is not absolute, and the folder must hold a `netsmith.toml`: `` netsmith.toml: [dependencies] shared: ../shared is not a project: it has no netsmith.toml ``.
+- A dependency's own dependencies are read too, under their keys, and every key names one project: two folders under one key are refused, naming both, and a project that depends on itself through others is refused with the chain (`app -> shared -> app`).
+- A catalog that the project and a dependency both hold is refused naming both files, as two files of one catalog in one project are.
+- A dependency gives its modules and its catalogs only. Its boards are not built, and its `kicad.toml`, `preferred.csv`, orders and `[supply]` are not read: a part of the dependency that needs a footprint mapping needs it in the depending project's `kicad.toml` too.
+- Only a folder is read. `git` (with `rev`) and `version` are not built yet, and an entry that has them is refused saying so.
 
 ### Preferred parts
 

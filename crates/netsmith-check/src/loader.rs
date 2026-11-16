@@ -1,6 +1,6 @@
 //! Where `import` paths come from. The standard library is embedded in the binary.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 /// The standard library's files: module path, display name and text (made by build.rs from the
 /// `std/` folder).
@@ -22,6 +22,10 @@ pub struct Loader {
     /// The definition the project's manifest names as every board's `.environment` when the
     /// board declares none (ADR 0099): the module's key and the definition's name.
     default_environment: Option<(String, String)>,
+    /// The names of the project's dependencies (issue #68): the first step of the module path
+    /// of each of their files (`shared::power`). In such a file, an import of `src::` is of the
+    /// dependency's own `src/`.
+    dependencies: HashSet<String>,
 }
 
 impl Loader {
@@ -46,6 +50,17 @@ impl Loader {
             module.to_string(),
             (file_name.to_string(), text.to_string()),
         );
+    }
+
+    /// Say that `name` is a dependency of the project, whose files are inserted as the modules
+    /// `name::...`: an import of `src::` in one of them is of `name::` (issue #68).
+    pub fn add_dependency(&mut self, name: &str) {
+        self.dependencies.insert(name.to_string());
+    }
+
+    /// Whether `name` is a dependency of the project ([`Loader::add_dependency`]).
+    pub(crate) fn is_dependency(&self, name: &str) -> bool {
+        self.dependencies.contains(name)
     }
 
     /// Pair the physical file `file_name` (text `text`) with the source file called

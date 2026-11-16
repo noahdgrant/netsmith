@@ -3,7 +3,8 @@
 //!
 //! The manifest is read with the `toml` crate and holds one `[project]` table whose values
 //! are strings, whole numbers and lists of strings, and the `[order.*]` tables of ADR 0035
-//! (`crate::order`), `[supply]`, and the model table (`[models]`, `[[model]]`, `crate::models`).
+//! (`crate::order`), `[supply]`, the model table (`[models]`, `[[model]]`, `crate::models`) and
+//! `[dependencies]`, the other projects whose modules and catalogs this one reads (issue #68).
 //! Any other table or key is refused with its line and column, so the
 //! file stays plain TOML.
 
@@ -160,6 +161,51 @@ pub struct Manifest {
     /// `[project]`.
     #[serde(skip)]
     pub model: Vec<crate::models::ModelRow>,
+    /// The `[dependencies]` table (issue #68): the other projects this one reads, each under the
+    /// name its key gives, which is the first step of an import of its modules (`shared =
+    /// { path = "../shared" }` makes `../shared/src/power.nsm` the module `shared::power`). Read
+    /// and written beside `[project]`.
+    #[serde(skip)]
+    pub dependencies: BTreeMap<String, Dependency>,
+}
+
+/// One entry of `[dependencies]`: where another project is. Only `path` is built; `git` (with
+/// `rev`) and `version` are read so that they are refused with a message that says so, rather
+/// than as unknown keys (issue #68).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Dependency {
+    /// The project's folder, the one that holds its `netsmith.toml`, relative to this project's
+    /// root (`../shared`); `..` is allowed, an absolute path is not.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub git: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rev: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub version: Option<String>,
+}
+
+impl Dependency {
+    fn validate(&self, name: &str) -> Result<(), String> {
+        if !is_identifier(name) || [SOURCE_DIR, "std"].contains(&name) {
+            return Err(format!(
+                "{MANIFEST}: [dependencies] {name:?} is not a name an import can start with: letters, digits and `_`, not starting with a digit, and not `src` or `std`"
+            ));
+        }
+        if self.git.is_some() || self.rev.is_some() || self.version.is_some() {
+            return Err(format!(
+                "{MANIFEST}: [dependencies] {name}: netsmith reads a dependency from a folder only, `{name} = {{ path = \"../{name}\" }}`; a dependency by `git` or `version` is not built yet (issue #68)"
+            ));
+        }
+        match &self.path {
+            None => Err(format!(
+                "{MANIFEST}: [dependencies] {name} needs `path`, the folder of its netsmith.toml: `{name} = {{ path = \"../{name}\" }}`"
+            )),
+            Some(path) => check_folder(&format!("[dependencies] {name} path"), path),
+        }
+    }
 }
 
 /// The `[supply]` table of `netsmith.toml`.
@@ -245,6 +291,8 @@ struct File {
     models: Option<crate::models::ModelsConfig>,
     #[serde(default)]
     model: Vec<crate::models::ModelRow>,
+    #[serde(default)]
+    dependencies: BTreeMap<String, Dependency>,
 }
 
 /// [`File`] as it is written back.
@@ -259,6 +307,8 @@ struct Rendered<'a> {
     models: &'a Option<crate::models::ModelsConfig>,
     #[serde(skip_serializing_if = "<[_]>::is_empty")]
     model: &'a [crate::models::ModelRow],
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    dependencies: &'a BTreeMap<String, Dependency>,
 }
 
 impl Manifest {
@@ -288,6 +338,7 @@ impl Manifest {
             supply: None,
             models: None,
             model: Vec::new(),
+            dependencies: BTreeMap::new(),
         }
     }
 
@@ -299,6 +350,7 @@ impl Manifest {
             supply: &self.supply,
             models: &self.models,
             model: &self.model,
+            dependencies: &self.dependencies,
         })
         .expect("a manifest of strings and a number is always TOML")
     }
@@ -311,6 +363,7 @@ impl Manifest {
         manifest.supply = file.supply;
         manifest.models = file.models;
         manifest.model = file.model;
+        manifest.dependencies = file.dependencies;
         manifest.validate()?;
         crate::models::check_table(manifest.models.as_ref(), &manifest.model)
             .map_err(|e| format!("{MANIFEST}: {e}"))?;
@@ -405,6 +458,9 @@ impl Manifest {
         }
         if let Some(supply) = &self.supply {
             supply.validate()?;
+        }
+        for (name, dependency) in &self.dependencies {
+            dependency.validate(name)?;
         }
         for file in &self.top_level {
             check_relative("top_level", file)?;
@@ -542,6 +598,19 @@ pub struct Project {
     pub offline: bool,
 }
 
+/// A project that this one reads through `[dependencies]`, directly or through another
+/// dependency (issue #68).
+#[derive(Debug, Clone)]
+pub struct DependencyProject {
+    /// The name its modules are imported under, the key of its `[dependencies]` entry:
+    /// `shared` makes its `src/power.nsm` the module `shared::power`.
+    pub name: String,
+    /// Its folder as messages name it: relative to the depending project's root, with `/`
+    /// (`../shared`).
+    pub folder: String,
+    pub project: Project,
+}
+
 /// One catalog file of a project: found in a `catalog_dirs` folder, or listed under
 /// `catalogs`.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -607,6 +676,46 @@ impl Project {
         Ok(found)
     }
 
+    /// The projects this one reads through `[dependencies]`, and theirs, each once, depth first,
+    /// the entries of each manifest in the order of their names (issue #68). They share one set of names: two projects under
+    /// one name, a dependency that is not a project, and a project that depends on itself
+    /// through others are errors that name the manifest and the entry.
+    pub fn dependencies(&self) -> Result<Vec<DependencyProject>, String> {
+        let mut found = Vec::new();
+        let root = fs::canonicalize(&self.root).unwrap_or_else(|_| self.root.clone());
+        let mut chain = vec![(root, self.manifest.name.clone())];
+        walk_dependencies(self, "", &mut chain, &mut found)?;
+        Ok(found)
+    }
+
+    /// The `.nsm` files of the dependencies' `src/` folders (issue #68), each with the module it
+    /// is under its dependency's name (`shared::power`) and the name messages give it, from this
+    /// project's root (`../shared/src/power.nsm`).
+    pub fn dependency_modules(&self) -> Result<Vec<(Module, String)>, String> {
+        let mut out = Vec::new();
+        for dependency in self.dependencies()? {
+            for module in dependency.project.modules()? {
+                let shown = format!(
+                    "{}/{}",
+                    dependency.folder,
+                    module.name(&dependency.project.root)
+                );
+                let rest = module
+                    .key
+                    .strip_prefix(SOURCE_DIR)
+                    .expect("a module of a project is under src/");
+                out.push((
+                    Module {
+                        key: format!("{}{rest}", dependency.name),
+                        path: module.path,
+                    },
+                    shown,
+                ));
+            }
+        }
+        Ok(out)
+    }
+
     /// The module path of a file of this project, however its name was typed: `src/power.nsm`,
     /// `./src/power.nsm` and its absolute path are all `src::power`. `None` for a file that
     /// is not under the project's root or cannot be read.
@@ -668,6 +777,29 @@ impl Project {
     /// file that the folder and the list both name, and two files of one catalog are
     /// errors that name the files.
     pub fn catalog_files(&self) -> Result<Vec<CatalogFile>, String> {
+        let found = self.own_catalog_files()?;
+        one_file_each(&found)?;
+        Ok(found)
+    }
+
+    /// The catalog files a build reads: the project's own ([`Project::catalog_files`]) and then
+    /// those of each dependency (issue #68), named from this project's root
+    /// (`../shared/catalogs/acme_ldo.csv`). A catalog that two of them hold is an error that names
+    /// both files: a catalog is one file.
+    pub fn all_catalog_files(&self) -> Result<Vec<CatalogFile>, String> {
+        let mut found = self.own_catalog_files()?;
+        for dependency in self.dependencies()? {
+            for mut file in dependency.project.own_catalog_files()? {
+                file.file = format!("{}/{}", dependency.folder, file.file);
+                file.folder = file.folder.map(|f| format!("{}/{f}", dependency.folder));
+                found.push(file);
+            }
+        }
+        one_file_each(&found)?;
+        Ok(found)
+    }
+
+    fn own_catalog_files(&self) -> Result<Vec<CatalogFile>, String> {
         let mut found: Vec<CatalogFile> = Vec::new();
         for (folder, file, path, file_name) in self.folder_csvs()? {
             let name = catalog_name(&file_name).ok_or_else(|| {
@@ -692,33 +824,54 @@ impl Project {
                 folder: None,
             });
         }
-        for (index, later) in found.iter().enumerate() {
-            let Some(earlier) = found[..index].iter().find(|f| f.name == later.name) else {
-                continue;
-            };
-            let same_file = earlier.file == later.file
-                || matches!(
-                    (fs::canonicalize(&earlier.path), fs::canonicalize(&later.path)),
-                    (Ok(a), Ok(b)) if a == b
-                );
-            return Err(match (&earlier.folder, &later.folder) {
-                (Some(folder), None) if same_file => format!(
-                    "{MANIFEST}: {} is named twice: the catalog_dirs folder {folder:?} holds it and `catalogs` lists it. Remove it from `catalogs`: a file in a catalog_dirs folder needs no entry",
-                    later.file
-                ),
-                _ => format!(
-                    "{MANIFEST}: the catalog `{}` is in two files, {} and {}; a catalog is one file. Rename or remove one",
-                    later.name, earlier.file, later.file
-                ),
-            });
-        }
         Ok(found)
     }
+}
 
+/// Refuse two files of one catalog among `found`, naming both.
+fn one_file_each(found: &[CatalogFile]) -> Result<(), String> {
+    for (index, later) in found.iter().enumerate() {
+        let Some(earlier) = found[..index].iter().find(|f| f.name == later.name) else {
+            continue;
+        };
+        let same_file = earlier.file == later.file
+            || matches!(
+                (fs::canonicalize(&earlier.path), fs::canonicalize(&later.path)),
+                (Ok(a), Ok(b)) if a == b
+            );
+        return Err(match (&earlier.folder, &later.folder) {
+            (Some(folder), None) if same_file => format!(
+                "{MANIFEST}: {} is named twice: the catalog_dirs folder {folder:?} holds it and `catalogs` lists it. Remove it from `catalogs`: a file in a catalog_dirs folder needs no entry",
+                later.file
+            ),
+            _ => format!(
+                "{MANIFEST}: the catalog `{}` is in two files, {} and {}; a catalog is one file. Rename or remove one",
+                later.name, earlier.file, later.file
+            ),
+        });
+    }
+    Ok(())
+}
+
+impl Project {
     /// The catalog files to watch for changes: those of `catalog_dirs` folders as they are
     /// now (a new or a removed file changes the list, so the editor sees it) and those
     /// `catalogs` lists. A mistake in a name is reported by [`Project::catalogs`], not here.
     fn catalog_paths(&self) -> Vec<PathBuf> {
+        let mut paths = self.own_catalog_paths();
+        // A dependency's manifest, catalogs and modules are read by every build (issue #68).
+        for dependency in self.dependencies().unwrap_or_default() {
+            paths.push(dependency.project.root.join(MANIFEST));
+            paths.extend(dependency.project.own_catalog_paths());
+            for module in dependency.project.modules().unwrap_or_default() {
+                paths.push(module.path);
+            }
+        }
+        paths
+    }
+
+    /// [`Project::catalog_paths`] without the dependencies'.
+    fn own_catalog_paths(&self) -> Vec<PathBuf> {
         let mut paths: Vec<PathBuf> = self
             .folder_csvs()
             .unwrap_or_default()
@@ -746,7 +899,7 @@ impl Project {
             .with_series(series_of(self.manifest.series.as_deref()));
         for CatalogFile {
             name, file, path, ..
-        } in self.catalog_files()?
+        } in self.all_catalog_files()?
         {
             let text = fs::read_to_string(&path).map_err(|e| format!("{MANIFEST}: {file}: {e}"))?;
             catalogs.add_file(&name, &file, &text)?;
@@ -816,6 +969,17 @@ impl Project {
             loader.insert(&m.key, &name, &text);
             crate::physical::attach(&mut loader, &name, &m.path, unsaved)?;
         }
+        for dependency in self.dependencies()? {
+            loader.add_dependency(&dependency.name);
+        }
+        for (m, name) in self.dependency_modules()? {
+            let text = match unsaved.get(&m.path) {
+                Some(text) => text.clone(),
+                None => fs::read_to_string(&m.path).map_err(|e| format!("{name}: {e}"))?,
+            };
+            loader.insert(&m.key, &name, &text);
+            crate::physical::attach(&mut loader, &name, &m.path, unsaved)?;
+        }
         if let Some(spelled) = &self.manifest.environment {
             let (module, name) = environment_key(spelled)?;
             if !loader.modules().iter().any(|(key, _, _)| *key == module) {
@@ -826,6 +990,91 @@ impl Project {
             loader = loader.with_default_environment(&module, &name);
         }
         Ok(loader)
+    }
+}
+
+/// Add the dependencies of `project` to `found`, depth first. `folder` is `project`'s folder from
+/// the first project's root (empty for the first project itself), and `chain` the projects from
+/// the first to this one, to find one that depends on itself.
+fn walk_dependencies(
+    project: &Project,
+    folder: &str,
+    chain: &mut Vec<(PathBuf, String)>,
+    found: &mut Vec<DependencyProject>,
+) -> Result<(), String> {
+    let manifest = if folder.is_empty() {
+        MANIFEST.to_string()
+    } else {
+        format!("{folder}/{MANIFEST}")
+    };
+    for (name, dependency) in &project.manifest.dependencies {
+        let path = dependency
+            .path
+            .as_deref()
+            .expect("the manifest was validated");
+        let shown = normal_folder(&if folder.is_empty() {
+            path.to_string()
+        } else {
+            format!("{folder}/{path}")
+        });
+        let dir = project.root.join(path);
+        if !dir.join(MANIFEST).is_file() {
+            return Err(format!(
+                "{manifest}: [dependencies] {name}: {shown} is not a project: it has no {MANIFEST} ({})",
+                dir.display()
+            ));
+        }
+        let canonical = fs::canonicalize(&dir)
+            .map_err(|e| format!("{manifest}: [dependencies] {name}: {shown}: {e}"))?;
+        if let Some(at) = chain.iter().position(|(root, _)| *root == canonical) {
+            let mut names: Vec<&str> = chain[at..].iter().map(|(_, n)| n.as_str()).collect();
+            names.push(name);
+            return Err(format!(
+                "{manifest}: [dependencies] {name}: {shown} depends on itself ({}); a project cannot depend on itself through others",
+                names.join(" -> ")
+            ));
+        }
+        if let Some(earlier) = found.iter().find(|d| d.name == *name) {
+            let same = fs::canonicalize(&earlier.project.root).is_ok_and(|r| r == canonical);
+            if same {
+                continue;
+            }
+            return Err(format!(
+                "{manifest}: [dependencies] {name}: two projects are named `{name}`, {} and {shown}; the modules of a dependency are imported by its name, so the name is one project's",
+                earlier.folder
+            ));
+        }
+        let loaded =
+            Project::load(&dir).map_err(|e| format!("{manifest}: [dependencies] {name}: {e}"))?;
+        found.push(DependencyProject {
+            name: name.clone(),
+            folder: shown.clone(),
+            project: loaded.clone(),
+        });
+        chain.push((canonical, name.clone()));
+        walk_dependencies(&loaded, &shown, chain, found)?;
+        chain.pop();
+    }
+    Ok(())
+}
+
+/// A folder as messages show it: with `/`, without `.` steps, and with each `..` that undoes a
+/// step before it taken out with that step (`../a/../b` is `../b`).
+fn normal_folder(path: &str) -> String {
+    let mut steps: Vec<&str> = Vec::new();
+    for step in path.split(['/', '\\']) {
+        match step {
+            "" | "." => {}
+            ".." if steps.last().is_some_and(|last| *last != "..") => {
+                steps.pop();
+            }
+            step => steps.push(step),
+        }
+    }
+    if steps.is_empty() {
+        ".".to_string()
+    } else {
+        steps.join("/")
     }
 }
 
@@ -1481,5 +1730,37 @@ mod tests {
         assert!(
             parse("[project]\nname = \"a\"\ncatalog_dirs = [\"../shared\", \"./x\"]\n").is_ok()
         );
+    }
+
+    #[test]
+    fn dependencies_are_read_by_path_and_survive_a_round_trip() {
+        let m =
+            parse("[project]\nname = \"a\"\n\n[dependencies]\nshared = { path = \"../shared\" }\n")
+                .unwrap();
+        assert_eq!(m.dependencies["shared"].path.as_deref(), Some("../shared"));
+        assert_eq!(parse(&m.render()).unwrap(), m);
+        assert!(!Manifest::new("a").render().contains("dependencies"));
+    }
+
+    #[test]
+    fn a_dependency_is_a_folder_under_a_name_an_import_can_start_with() {
+        let with = |entry: &str| {
+            parse(&format!(
+                "[project]\nname = \"a\"\n\n[dependencies]\n{entry}\n"
+            ))
+            .unwrap_err()
+        };
+        for name in ["src", "std", "\"my-lib\"", "\"2lib\""] {
+            let e = with(&format!("{name} = {{ path = \"../x\" }}"));
+            assert!(e.contains("not a name an import can start with"), "{e}");
+        }
+        assert_eq!(
+            with("shared = { git = \"https://example.invalid/shared.git\", rev = \"abc\" }"),
+            "netsmith.toml: [dependencies] shared: netsmith reads a dependency from a folder only, `shared = { path = \"../shared\" }`; a dependency by `git` or `version` is not built yet (issue #68)"
+        );
+        assert!(with("shared = { version = \"1.0.0\" }").contains("not built yet"));
+        assert!(with("shared = {}").contains("needs `path`"));
+        assert!(with("shared = { path = \"/abs\" }").contains("[dependencies] shared path"));
+        assert!(with("shared = { paht = \"../x\" }").contains("unknown field `paht`"));
     }
 }
