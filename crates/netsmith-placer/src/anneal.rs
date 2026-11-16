@@ -18,6 +18,8 @@
 //!   these grows through a run.
 //! - **Crossing**: pairs of ratsnest lines of two nets that cross, which the router has to untangle
 //!   with vias and detours.
+//! - **Track overflow** (off unless asked for, [`overflow`]): the track the nets ask of each bin
+//!   of 1 mm or more, and the room the pads take there, beyond what the bin holds.
 //! - **Cohesion**: the half perimeter of the box round the parts of each module instance
 //!   (each prefix of the instance path), so a module stays together.
 //! - **Decoupling**: the distance from a capacitor's pads to the power pins it decouples
@@ -199,8 +201,10 @@
 //! this repository, so no figure from it is kept.
 //!
 //! **Limits.** Routability is a proxy: the placer keeps a gap between parts, room round parts
-//! with many pads and few ratsnest lines crossing, but it does not estimate congestion, and a
-//! board packed harder than the router can untangle is not helped. The placer shares the faces
+//! with many pads and few ratsnest lines crossing. Its estimate of the track each bin of the
+//! board is asked for beyond what it holds ([`overflow`], issue #820) is built and measured, but
+//! off: it lowered that overflow without leaving the router clearly fewer lines on the boards
+//! here, so a board packed harder than the router can untangle is still not helped. The placer shares the faces
 //! only when a size to fit needs it, and never flips a part for wire length. Hierarchical
 //! placement (arrange each module, then place the blocks) is not built: cohesion is the cost
 //! above. The weights were tuned on four boards (one not in this repository) and a handful of
@@ -232,6 +236,7 @@ mod cost;
 mod explain;
 mod moves;
 mod nets;
+mod overflow;
 mod pose;
 mod rooms;
 mod shapes;
@@ -372,6 +377,8 @@ pub(crate) struct Problem<'a> {
     /// The keepouts that forbid parts on one face only (issue #767): the courtyards of the
     /// parts on that face are kept out of them, as of `keepouts`.
     pub face_keepouts: &'a [netsmith_pcb::FaceKeepout],
+    /// The weight of track overflow ([`overflow`]), 0 for none.
+    pub overflow: f64,
 }
 
 /// What a run ended with.
@@ -759,6 +766,10 @@ struct Engine<'a> {
     /// as heavy as a hard rule: it grows through a run, from a hint to a rule (`text_last`).
     text_weight: f64,
     text_last: bool,
+    /// What the nets and pads ask of the routing room, bin by bin ([`overflow`]), kept only
+    /// when `w_overflow` is more than 0.
+    bins: overflow::Bins,
+    w_overflow: f64,
 }
 
 /// Place the parts that are not fixed so that the cost is least the search finds, and write

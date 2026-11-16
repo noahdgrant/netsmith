@@ -410,6 +410,8 @@ impl<'a> Engine<'a> {
             reach_abs: vec![Rect::new(Pt::default(), Pt::default()); n],
             text_weight: TEXT_WEIGHT_FROM,
             text_last: false,
+            bins: overflow::Bins::new(&p.region, rules, nn, n),
+            w_overflow: p.overflow.max(0.0),
         };
         for i in 0..n {
             let pose = engine.clamp(i, engine.poses[i]);
