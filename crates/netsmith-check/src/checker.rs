@@ -468,7 +468,9 @@ impl<'a> Checker<'a> {
             return Some(id);
         }
         let (file_name, text) = self.loader.get(&key)?.clone();
-        Some(self.add_module(&file_name, &text, Some(key)))
+        // The module path is the import's: a file of a dependency (`../shared/src/power.nsm`)
+        // is the module `shared::power`, not a path made from its name.
+        Some(self.add_module_as(&file_name, &text, Some(key.clone()), key))
     }
 
     fn add_module(&mut self, name: &str, text: &str, key: Option<String>) -> usize {
@@ -808,6 +810,18 @@ impl<'a> Checker<'a> {
         }
     }
 
+    /// An import's module path as the file `module` means it: a file of a dependency (its
+    /// module path starts with a name of `[dependencies]`) that imports `src::power` imports its
+    /// own project's `shared::power`. Every other path is left as written.
+    fn within_dependency(&self, module: usize, mut path: Vec<String>) -> Vec<String> {
+        let importer = &self.modules[module].key;
+        let package = importer.split("::").next().unwrap_or_default();
+        if path.first().is_some_and(|first| first == "src") && self.loader.is_dependency(package) {
+            path[0] = package.to_string();
+        }
+        path
+    }
+
     fn apply_import(&mut self, module: usize, import: &Import) {
         let source = self.modules[module].source;
         let segments: Vec<String> = import.path.iter().map(|i| i.name.clone()).collect();
@@ -832,6 +846,9 @@ impl<'a> Checker<'a> {
             self.bind_imported(module, source, &names, |_, _| Binding::Poison);
             return;
         }
+        // In a file of a dependency, `src::` is that project's own `src/`, which this project
+        // reads under the dependency's name (issue #68).
+        let module_path = self.within_dependency(module, module_path);
         let target = self.load_module(&module_path);
         // `import a::b::Enum::Variant` or `import a::b::Enum::{X, Y}`: the variants of an enum
         // of module `a::b` (ADR 0118).
