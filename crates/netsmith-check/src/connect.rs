@@ -1014,8 +1014,12 @@ impl Checker<'_> {
     ///
     /// The bias is one relation, `bias = rail.voltage`, so a bias the design also states
     /// is checked against it by the solver, which reports a contradiction. Rails on the
-    /// same two nets are joined at the pins, so they are one voltage; the first by path
-    /// stands for them, which keeps the choice independent of statement order. A part across
+    /// same two nets are joined at the pins, so they are one voltage; the rails the scope
+    /// declares itself come before the rails of what it holds (as in `derive_chain_values`),
+    /// and then the first by path stands for them, which keeps the choice independent of
+    /// statement order. A module's own port is what its user states, while the rail of a
+    /// module inside it (a feedback divider's `supply`, issue #746) may be narrowed by that
+    /// module's picks, which would make the bias wait for them. A part across
     /// no rail keeps its bias unset, and the solver says so if the design needs it.
     ///
     /// A part that is not symmetric has a `bridge_voltage` and not a `bias` of this kind
@@ -1048,8 +1052,10 @@ impl Checker<'_> {
                 continue;
             }
             let scope = self.model.instance(part).parent;
-            // The rail's path, its voltage, and whether the first terminal is on its `neg`.
-            let mut across: Vec<(String, _, bool)> = Vec::new();
+            // Whether the rail is of a part or module the scope holds (the scope's own come
+            // first), the rail's path, its voltage, and whether the first terminal is on its
+            // `neg`.
+            let mut across: Vec<(bool, String, _, bool)> = Vec::new();
             for &(rail, (voltage, pos, neg)) in &rails {
                 let Some(owner) = self.model.owner_of(rail) else {
                     continue;
@@ -1057,15 +1063,16 @@ impl Checker<'_> {
                 if Some(owner) != scope && self.model.instance(owner).parent != scope {
                     continue;
                 }
+                let held = Some(owner) != scope;
                 let (np, nn) = (self.find(pos.0), self.find(neg.0));
                 if (np, nn) == (na, nb) {
-                    across.push((self.model.path_of(rail), voltage, false));
+                    across.push((held, self.model.path_of(rail), voltage, false));
                 } else if (np, nn) == (nb, na) {
-                    across.push((self.model.path_of(rail), voltage, true));
+                    across.push((held, self.model.path_of(rail), voltage, true));
                 }
             }
-            across.sort_by(|x, y| x.0.cmp(&y.0));
-            let Some(&(_, voltage, flipped)) = across.first() else {
+            across.sort_by(|x, y| (x.0, &x.1).cmp(&(y.0, &y.1)));
+            let Some(&(_, _, voltage, flipped)) = across.first() else {
                 continue;
             };
             // Point at the statement that gave the value, if the design gave one: that is

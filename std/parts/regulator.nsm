@@ -62,22 +62,27 @@ generic LinearRegulator {
 /// (`.divider.vout &= 3.8V +/- 3%`) and the regulator's reference with its tolerance
 /// (`.divider.vref &= 1.0V +/- 1%`, from the datasheet), and the solver picks two resistors
 /// whose tolerances keep the output inside the wanted range in the worst case. The output is
-/// a plain voltage and the pins are plain pins, so the divider adds nothing to the currents
-/// of a rail; the board joins `top` to the positive pin of the output rail, `bottom` to its
-/// negative pin and `fb` to the regulator's feedback pin.
+/// a plain voltage and the pins are plain pins; the board joins `top` to the positive pin of
+/// the output rail, `bottom` to its negative pin and `fb` to the regulator's feedback pin. The
+/// divider's own rail, `supply`, is on the same two nets and draws its `current` there, so the
+/// divider's few microamps to a milliamp are counted in the balance of each net (ADR 0007).
 ///
 /// The feedback pin draws nothing (its bias current is ignored), so the same current runs
 /// through both resistors, `(vout - vref) / rtop` and `vref / rbottom`, and each resistor's
 /// power rating is checked against it. An output below the reference cannot be made, because the
 /// divider can only raise it: it is refused with the numbers.
 ///
-/// Why pins and voltages, not a `Rail` (ADR 0025). A first version had an `output: Rail`. Inside a
-/// stage that makes the output, the divider's rail and the stage's port are two terms on one net
-/// with no supplier among them, and the balance of currents (ADR 0007, ADR 0014) attributes the
-/// whole load to the divider and then refuses the divider's own current. A divider that is pins
-/// and voltages adds no term to any net, so it can sit under any rail. The board says
-/// `.out.voltage == .divider.vout`, or a stage does it for the board. The cost is a limit: the
-/// divider's few microamps to a milliamp are not added to the load.
+/// Why pins and voltages for the board to join, and a rail for the current (issue #746). ADR
+/// 0025 left the rail out: inside a stage, the divider's rail and the stage's port were then
+/// the only two terms on the output net, with no supplier among them, and the balance of
+/// currents (ADR 0007, ADR 0014) gave the whole load to the divider. Since the inductor of
+/// `Buck` is a chain from the IC's switch pin to the output (ADR 0014, ADR 0026), its end is a
+/// term on that net too, so the balance there is the inductor against the load and the
+/// divider. Without the rail the divider's pins were not modelled (ADR 0027), and a converter
+/// whose load is smaller than the divider's current (a few microamps in a sleep mode) was
+/// refused: the inductor's current, the load alone, and the DC analysis, which has the
+/// resistors, shared no value. The pins stay, so a board that joins them is unchanged, and
+/// `supply` is joined to them here; a board does not join it.
 module FeedbackDivider {
     /// Joined to the positive pin of the output the divider measures.
     .top: Pin
@@ -99,6 +104,15 @@ module FeedbackDivider {
     .current: Current
     .rtop: Resistor
     .rbottom: Resistor
+    /// The rail the divider draws its `current` from: `pos` on `top` and `neg` on `bottom`,
+    /// joined here (see above). Its voltage is `vout`. A capacitor across the same nets takes
+    /// its bias from the output's own rail where the module around the divider has one
+    /// (`Buck`'s `vout`), so its pick does not wait for the divider's.
+    .supply: Rail
+    .supply.pos ~ .top
+    .supply.neg ~ .bottom
+    .supply.current == .current
+    .supply.voltage == .vout
     /// The package of both resistors, a text such as `"0402"`; a board that does not state it
     /// leaves the pick to the solver. One package for the pair, as `I2cPullups` has: it ties the two
     /// resistors to one package, which a narrowing of each cannot say (ADR 0116).
@@ -436,12 +450,17 @@ generic BuckConverter {
 /// one); bounding the current in `FeedbackDivider` itself (`Buck` could then give no default of
 /// its own, two defaults on one field being an error, ADR 0051).
 ///
-/// The divider's current and the quiescent current of the IC are not added to the load, so
-/// the inductor carries the load: `.inductor.current == -.vout.current` (the IC's own current
-/// is in its input's, as its part writes it, ADR 0096). A design that adds
-/// up a quiescent budget reads the divider's share from `.divider_current`. The divider's pins
-/// are on the output net and are not modelled, so the balance there is not complete and
-/// cannot say that itself (ADR 0027).
+/// The inductor carries the load and the feedback divider's current, which flows from the
+/// output through the divider to ground: `.inductor.current == -.vout.current + .divider_current`.
+/// The divider's rail counts that current on the output net and on its ground (see
+/// `FeedbackDivider`), and the DC analysis has the two resistors, so a load below the
+/// divider's own current (a few microamps in a sleep mode, a rail that only a supervisor reads)
+/// is a valid stage (issue #746). The IC supplies both, so its own rating
+/// (`-.sw.current <= .max_output_current`) and the inductor's saturation are checked with the
+/// divider's share in; the module's `-.vout.current <= .ic.max_output_current` is on the load
+/// alone. The quiescent current of the IC is not added (it is in its input's, as its part writes
+/// it, ADR 0096); a design that adds up a quiescent budget reads the divider's share from
+/// `.divider_current`.
 ///
 /// Each side is a `CapacitorBank` of identical capacitors in parallel (ADR 0052): `.input_cap` and
 /// `.output_cap` stand for one capacitor of the bank, and their `.count` says how many. The
@@ -540,7 +559,7 @@ module Buck<Ic: BuckIc> provides BuckConverter {
     .voltage_margin ?= 1
 
     .ic.vin ~ .vin
-    .inductor.current == -.vout.current
+    .inductor.current == -.vout.current + .divider_current
 
     // A bank is from one to eight capacitors unless the board says otherwise (its own default).
 

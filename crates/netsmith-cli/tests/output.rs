@@ -13,8 +13,10 @@ fn examples() -> std::path::PathBuf {
 }
 
 /// A copy of the `two_buck` example, a project whose board has notes, with a guideline warning
-/// added: a `FeedbackDivider` on the 5 V rail with no bound on its current, whose two resistors
-/// are therefore unconstrained in size (the example's own dividers are bounded by `Buck`, #702).
+/// added: a `FeedbackDivider` on a rail of its own with no bound on its current, whose two
+/// resistors are therefore unconstrained in size (the example's own dividers are bounded by
+/// `Buck`, #702; on the 5 V rail the divider's current is a load that the supply's rating bounds,
+/// #746).
 /// Its lock is refreshed for the added resistors.
 fn two_buck(label: &str) -> TempDir {
     let root = TempDir::new(label);
@@ -32,7 +34,8 @@ fn two_buck(label: &str) -> TempDir {
             "    .tp_gnd_b: TestPoint\n",
             "    .tp_gnd_b: TestPoint\n    \
              .sense: FeedbackDivider { .vref &= 0.8V +/- 1%; .vout &= 5V +/- 5% }\n    \
-             .sense.top ~ .out_5v.pos\n    .sense.bottom ~ .out_5v.neg\n",
+             .sense_in: Rail { .pos.net &= \"SENSE\" }\n    \
+             .sense.top ~ .sense_in.pos\n    .sense.bottom ~ .sense_in.neg\n",
             1,
         );
     assert!(source.contains(".sense.top"), "the example changed");

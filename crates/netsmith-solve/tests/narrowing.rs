@@ -95,13 +95,18 @@ fn both(src: &str, catalogs: Catalogs) -> (Solution, Solution) {
 fn the_second_resistor_of_a_feedback_divider_is_found_without_trying_every_row() {
     // The pair is searched as a pair: once the first resistor is chosen, nearly every row of
     // the second is refused for the output window or the power rating.
+    // The divider is on the output it measures: its rail draws its current from there (#746).
     let src = "import std::parts::regulator::FeedbackDivider
+import std::sources::Rail
 
 board B {
     .divider: FeedbackDivider {
         .vout &= 3.8V +/- 3%
         .vref &= 1.0V +/- 1%
     }
+    .out: Rail
+    .divider.top ~ .out.pos
+    .divider.bottom ~ .out.neg
 }
 ";
     let (narrowed, reference) = both(src, Catalogs::jlcpcb());
