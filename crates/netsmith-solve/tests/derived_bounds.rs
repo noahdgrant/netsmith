@@ -126,8 +126,12 @@ fn a_named_bound_that_no_pair_meets_is_refused_with_the_pair_and_the_numbers() {
         ),
         "{text:?}"
     );
+    // The hulls of the two resistors' candidates already give no ratio that low, so the pair
+    // is refused before a trial (`ahead.rs`), with the range the ratio can be.
     assert!(
-        text[0].contains("divider.ratio must always be at most 0.0001"),
+        text[0].contains(
+            "whichever candidates they take, divider.ratio must be at most 0.0001, but 0.0009792..0.9991 is always above 0.0001"
+        ),
         "{text:?}"
     );
     assert!(!s.unresolved.is_empty());

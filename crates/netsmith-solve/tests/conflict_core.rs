@@ -1,8 +1,11 @@
 //! A search that cannot succeed says which parts it cannot succeed for, and stops when it has
 //! learned it (ADR 0065, 9.7). `board` chains `a`, `u01`..`uNN` and `z` through one sum, which
 //! puts every part in the same group and the same class of values: the sum reads them all. The
-//! conflict is between a few of them, through a bound that reads only those. Every part and
-//! number here is invented.
+//! conflict is between a few of them, through a bound that reads only those. A bound that no
+//! value of the candidates' ranges can meet is refused before a trial, by the hulls of the parts
+//! it reads (`ahead.rs`, issue #851); a bound that some value meets but no choice meets over its
+//! whole range (a window narrower than the spread of the sum) is left to the search. Every part
+//! and number here is invented.
 
 use netsmith_check::{Loader, check};
 use netsmith_quantity::Quantity;
@@ -102,9 +105,32 @@ fn a_pair_that_cannot_be_met_is_named_among_many_parts_that_share_a_sum() {
     let text = messages(&s);
     assert_eq!(text.len(), 1, "{text:#?}");
     assert!(!text[0].contains("gave up"), "{}", text[0]);
+    assert_eq!(
+        text[0],
+        "no combination of candidates satisfies `a` and `z` together: whichever candidates they take, (a.resistance + z.resistance) must be at least 1MΩ, but 198Ω..1.616kΩ is always below 1MΩ"
+    );
+    assert_eq!(s.trials, 0);
+    assert!(s.picks.is_empty());
+}
+
+#[test]
+fn a_pair_whose_window_no_choice_fits_is_named_among_many_parts_that_share_a_sum() {
+    // Some value of the pair's range is in the window, so nothing is refused before the pair is
+    // chosen, but the sum of two 1 % resistors spreads over more than the window: every choice
+    // of `z` is refused for the choice of `a`, and the search goes back to `a` over the twelve
+    // parts between them.
+    let s = run(
+        &board(
+            12,
+            "    .a.resistance + .z.resistance >= 1001ohm\n    .a.resistance + .z.resistance <= 1002ohm\n",
+        ),
+        &catalogs(8),
+    );
+    let text = messages(&s);
+    assert_eq!(text.len(), 1, "{text:#?}");
     assert!(
         text[0].starts_with(
-            "no combination of candidates satisfies `a` and `z` together, whatever the other parts of the group are: the closest, a = 800 1% and z = 800 1%, fails because (a.resistance + z.resistance) must always be at least 1MΩ"
+            "no combination of candidates satisfies `a` and `z` together, whatever the other parts of the group are: the closest, "
         ),
         "{}",
         text[0]
@@ -124,14 +150,11 @@ fn three_parts_that_cannot_be_met_together_are_named() {
     );
     let text = messages(&s);
     assert_eq!(text.len(), 1, "{text:#?}");
-    assert!(
-        text[0].starts_with(
-            "no combination of candidates satisfies `a` and `m` and `z` together, whatever the other parts of the group are: the closest, a = 800 1% and m = 800 1% and z = 800 1%, fails because "
-        ),
-        "{}",
-        text[0]
+    assert_eq!(
+        text[0],
+        "no combination of candidates satisfies `a` and `m` and `z` together: whichever candidates they take, ((a.resistance + m.resistance) + z.resistance) must be at least 1MΩ, but 297Ω..2.424kΩ is always below 1MΩ"
     );
-    assert!(s.trials < 20_000, "{} trials", s.trials);
+    assert_eq!(s.trials, 0);
 }
 
 #[test]
@@ -162,6 +185,21 @@ fn a_failure_that_every_part_takes_part_in_names_every_part() {
     let s = run(&board(2, "    .total >= 1Mohm\n"), &catalogs(3));
     let text = messages(&s);
     assert_eq!(text.len(), 1, "{text:#?}");
+    assert_eq!(
+        text[0],
+        "no combination of candidates satisfies `a` and `m` and `u01` and `u02` and `z` together: whichever candidates they take, total must be at least 1MΩ, but 495Ω..1.515kΩ is always below 1MΩ"
+    );
+}
+
+#[test]
+fn a_window_that_every_part_feeds_names_every_part_and_the_closest() {
+    // The window is inside what the sum can be, so the search runs, and every part feeds it.
+    let s = run(
+        &board(2, "    .total >= 501ohm\n    .total <= 502ohm\n"),
+        &catalogs(3),
+    );
+    let text = messages(&s);
+    assert_eq!(text.len(), 1, "{text:#?}");
     assert!(
         text[0].starts_with(
             "no combination of candidates satisfies `a` and `m` and `u01` and `u02` and `z` together: the closest, "
@@ -173,16 +211,41 @@ fn a_failure_that_every_part_takes_part_in_names_every_part() {
 }
 
 #[test]
-fn a_failure_that_every_part_feeds_still_gives_up_at_the_limit_with_the_same_message() {
-    // The bound reads the sum and every candidate of the last part fails it for the choices
-    // before it, so nothing is learned that cuts the 8^9 combinations: the limit is the safety
-    // net, and its message names the parts and says what to change (issue #177).
+fn a_chain_that_no_choice_can_reach_is_refused_before_a_trial() {
+    // Nine parts of eight candidates whose total is at most 7.3 kohm: 8^9 combinations, which the
+    // search tried until its limit (250000) when a bound was judged only once every part it
+    // reads was chosen. The hulls of the candidates show that none reaches 100 Mohm.
     let s = run(&board(6, "    .total >= 100Mohm\n"), &catalogs(8));
     assert_eq!(
         messages(&s),
         [
-            "gave up after trying 250000 combinations of candidates for `a` and `m` and `u01` and `u02` and `u03` and `u04` and `u05` and `u06` and `z`; a bound reads values of all of them, so no part could be blamed alone. State a value for one of them, narrow a window that a bound on them reads, or split the group so that fewer parts share a bound"
+            "no combination of candidates satisfies `a` and `m` and `u01` and `u02` and `u03` and `u04` and `u05` and `u06` and `z` together: whichever candidates they take, total must be at least 100MΩ, but 891Ω..7.272kΩ is always below 100MΩ"
         ]
     );
-    assert_eq!(s.trials, 250_000);
+    assert_eq!(s.trials, 0);
+}
+
+#[test]
+fn a_failure_that_every_part_feeds_still_gives_up_at_the_limit_and_names_a_part_to_state() {
+    // A window of 1 ohm in the middle of what the nine parts can add up to: every choice of the
+    // first eight leaves a sum that some choice of the last reaches, so nothing is refused before
+    // the last part, and every choice of it fails, so nothing is learned that cuts the 8^9
+    // combinations. The limit is the safety net (issue #177), and its message names the part
+    // with the most candidates to state a value for (issue #851). The limit is lowered so that the
+    // test ends in a moment; `search_budget.rs` has the default.
+    let catalogs = catalogs(8).with_search_budget(netsmith_solve::SearchBudget {
+        trials: 20_000,
+        work: u64::MAX,
+    });
+    let s = run(
+        &board(6, "    .total >= 4000ohm\n    .total <= 4001ohm\n"),
+        &catalogs,
+    );
+    assert_eq!(
+        messages(&s),
+        [
+            "gave up after trying 20000 combinations of candidates for `a` and `m` and `u01` and `u02` and `u03` and `u04` and `u05` and `u06` and `z`; a bound reads values of all of them, so no part could be blamed alone. State a value for `a`: it has the most candidates that fit (8), so a value for it leaves the fewest combinations to try. Or narrow a window that a bound on them reads, or split the group so that fewer parts share a bound"
+        ]
+    );
+    assert_eq!(s.trials, 20_000);
 }
