@@ -117,11 +117,21 @@ pub(super) fn target(
     file: Option<&str>,
     strict: bool,
 ) -> Result<(Target, Loader, Catalogs), ExitCode> {
+    target_offline(file, strict, false)
+}
+
+/// [`target`] for a run that may be `--offline`: the project's supply then asks no provider that
+/// would use the network (issue #803).
+pub(super) fn target_offline(
+    file: Option<&str>,
+    strict: bool,
+    offline: bool,
+) -> Result<(Target, Loader, Catalogs), ExitCode> {
     let fail = |e: String| {
         eprintln!("{e}");
         ExitCode::from(2)
     };
-    let target = Target::resolve(file).map_err(fail)?;
+    let target = Target::resolve(file).map_err(fail)?.with_offline(offline);
     let loader = target.loader().map_err(fail)?;
     let mut catalogs = timings::stage("catalogs", "", || target.catalogs()).map_err(fail)?;
     // `--strict` makes guideline findings errors for this run; the manifest's

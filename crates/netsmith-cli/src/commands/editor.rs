@@ -20,14 +20,21 @@ pub struct Args {
     /// The port to listen on.
     #[arg(long, default_value_t = DEFAULT_PORT)]
     pub port: u16,
+    /// Ask no supplier for stock or price; say in the bill of materials that they are not checked.
+    ///
+    /// No provider that would use the network is asked, and an answer kept earlier is used at any
+    /// age. The bill of materials and the `fab-notes.txt` the editor's Build writes say that the
+    /// stock and price of the parts were not checked.
+    #[arg(long)]
+    pub offline: bool,
 }
 
 /// Serves the editor until it is stopped.
 pub fn run(args: Args) -> ExitCode {
-    run_editor(args.file.as_deref(), args.port)
+    run_editor(args.file.as_deref(), args.port, args.offline)
 }
 
-fn run_editor(file: Option<&str>, port: u16) -> ExitCode {
+fn run_editor(file: Option<&str>, port: u16, offline: bool) -> ExitCode {
     // A binary built without Node serves a placeholder page that says so; the server still runs.
     if !netsmith_editor::bundle_is_present() {
         eprintln!("warning: {}", netsmith_editor::missing_bundle_message());
@@ -41,7 +48,7 @@ fn run_editor(file: Option<&str>, port: u16) -> ExitCode {
     };
     let port = listener.local_addr().map_or(port, |a| a.port());
     let target = match Target::resolve(file) {
-        Ok(t) => t,
+        Ok(t) => t.with_offline(offline),
         Err(e) => {
             eprintln!("{e}");
             return ExitCode::from(2);

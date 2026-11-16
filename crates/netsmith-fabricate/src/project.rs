@@ -465,6 +465,10 @@ fn same_folder(a: &str, b: &str) -> bool {
 pub struct Project {
     pub root: PathBuf,
     pub manifest: Manifest,
+    /// `--offline` was given (`fab`, `editor`): [`Project::supply`] asks no provider that would
+    /// use the network, and uses an answer kept earlier of any age (issue #803). Not a key of the
+    /// manifest: it is a choice of the run, and [`Target::reloaded`] keeps it.
+    pub offline: bool,
 }
 
 /// One catalog file of a project: found in a `catalog_dirs` folder, or listed under
@@ -500,7 +504,14 @@ impl Project {
         Ok(Project {
             root: root.to_path_buf(),
             manifest,
+            offline: false,
         })
+    }
+
+    /// This project for a run that asks no supplier (`--offline`): see [`Project::offline`].
+    pub fn with_offline(mut self, offline: bool) -> Project {
+        self.offline = offline;
+        self
     }
 
     /// The directory `netsmith build` writes to.
@@ -671,14 +682,17 @@ impl Project {
 
     /// The providers of the `[supply]` table, with the cache in front of them, read again on
     /// each call. Without the table no provider is configured, and every price and stock is
-    /// unknown (ADR 0047).
+    /// unknown (ADR 0047). With [`Project::offline`] no provider that would use the network is
+    /// asked.
     pub fn supply(&self) -> Result<Supply, String> {
         let Some(config) = &self.manifest.supply else {
             return Ok(Supply::none());
         };
         let file = config.file.as_deref().expect("the manifest was validated");
         let provider = FileProvider::open(&self.root.join(file), file)?;
-        let mut supply = Supply::none().with_provider(Box::new(provider));
+        let mut supply = Supply::none()
+            .with_provider(Box::new(provider))
+            .with_offline(self.offline);
         if let Some(word) = &config.channel {
             supply = supply.with_channel(Channel::parse(word).expect("the manifest was validated"));
         }
@@ -951,7 +965,7 @@ impl Target {
         let Some(old) = &self.project else {
             return Ok(None);
         };
-        let project = Project::load(&old.root)?;
+        let project = Project::load(&old.root)?.with_offline(old.offline);
         if project.manifest == old.manifest {
             return Ok(None);
         }
@@ -1017,6 +1031,19 @@ impl Target {
             }
         }
         Ok(loader)
+    }
+
+    /// This target for a run that asks no supplier (`--offline`, issue #803): the project's
+    /// supply asks no provider that would use the network. A target with no project has no
+    /// supply, so nothing changes for it.
+    pub fn with_offline(mut self, offline: bool) -> Target {
+        self.project = self.project.map(|p| p.with_offline(offline));
+        self
+    }
+
+    /// Whether the run asks no supplier ([`Target::with_offline`]).
+    pub fn offline(&self) -> bool {
+        self.project.as_ref().is_some_and(|p| p.offline)
     }
 
     /// The catalogs a build picks parts from: the standard ones, and the project's own if

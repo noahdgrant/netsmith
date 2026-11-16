@@ -190,6 +190,9 @@ pub struct FabOptions {
     /// file (issue #458): `fab` writes it; an order and the editor's release never change a
     /// choice by themselves, and stop instead.
     pub seed_writes: SeedWrites,
+    /// The run was given `--offline`: no supplier was asked, so the stock and price of the parts
+    /// were not checked, and `fab-notes.txt` says so (issue #803). The default is `false`.
+    pub offline: bool,
 }
 
 /// What a run may do with a seed that places the board and is not the layout file's.
@@ -305,9 +308,14 @@ impl Default for FabOptions {
             models: None,
             place_seeds: crate::layout::DEFAULT_PLACE_SEEDS,
             seed_writes: SeedWrites::Write,
+            offline: false,
         }
     }
 }
+
+/// The line of `fab-notes.txt` of a run with `--offline`: the stock and price of the parts were
+/// not checked (the bill of materials of the package names neither).
+pub const OFFLINE_NOTE: &str = "offline: stock and price of the parts were not checked (no supplier was asked); look each part up at the supplier before you order";
 
 /// How many times the process's least track a signal is drawn at where there is room, when the
 /// project does not say (`track_margin` in `netsmith.toml`, issue #431): JLCPCB's page says of its
@@ -1104,6 +1112,9 @@ fn fab_board(
             extras.extend(model_notes(scene));
         }
         extras.extend(crate::no_supplier::note(&sourcing));
+        if options.offline {
+            extras.push(OFFLINE_NOTE.to_string());
+        }
         // The notes say which part hangs over which edge, how far, and who said it may; each
         // is a warning (owner decision, 2026-11-03, ADR 0045 section 10).
         extras.extend(board.hangs().into_iter().map(|h| format!("warning: {h}")));
