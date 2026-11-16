@@ -160,12 +160,14 @@ fn the_standard_catalogs_of_the_two_have_a_header_and_no_row_and_say_where_rows_
     // With no rows and no file of the project, a board is refused where the row is missing.
     let m = fails(&world(&[], &[]), &high_side("", "5V +/- 5%", "5V +/- 5%"));
     assert!(
-        m.contains("the `p_mosfet` catalog has nothing for `q`"),
+        m.contains("the `p_mosfet` catalog is empty")
+            && m.contains("`catalogs/p_mosfet.csv`"),
         "{m}"
     );
     let m = fails(&world(&[], &[]), &translated("", "3.3V +/- 5%", ""));
     assert!(
-        m.contains("the `level_translator` catalog has nothing for `u`"),
+        m.contains("the `level_translator` catalog is empty")
+            && m.contains("`catalogs/level_translator.csv`"),
         "{m}"
     );
 }

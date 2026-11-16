@@ -133,3 +133,20 @@ full,SOT-23-5,3.3V,\n";
     assert!(messages(&s).is_empty(), "{:?}", messages(&s));
     assert_eq!(picked(&s, "a"), "full");
 }
+
+#[test]
+fn a_catalog_with_no_row_is_reported_as_empty_with_the_file_to_write() {
+    // A header and no row: nothing is on offer, whatever the design needs, so the message does
+    // not say "needs nothing in particular" but that the catalog is empty and where its rows go.
+    let src = format!("{}{}", part(""), board(""));
+    let s = solved(&src, &catalogs("name,package,vin.voltage,rating\n"));
+    let m = messages(&s);
+    assert_eq!(m.len(), 1, "{m:#?}");
+    assert!(
+        m[0].starts_with("the `zo` catalog is empty")
+            && m[0].contains("nothing can be picked for `a`")
+            && m[0].contains("`catalogs/zo.csv`"),
+        "{}",
+        m[0]
+    );
+}
