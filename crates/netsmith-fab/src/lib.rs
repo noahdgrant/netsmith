@@ -57,8 +57,11 @@
 //! per-zone island settings are not. A pad's `remove_unused_layers` is approximated: an inner
 //! layer keeps the pad if a track of its net ends on the pad or a zone of its net covers it (KiCad
 //! asks the connectivity engine). Text uses our font, so the silkscreen's letters differ from
-//! KiCad's, `bold` is ignored, and text boxes, curves (`fp_curve`) and images are not plotted
-//! and are named in the notes. Without a `.kicad_pro` beside the board the zone fill uses no
+//! KiCad's, `bold` is ignored, and images are not plotted and are named in the notes. Text boxes
+//! (`fp_text_box`, `gr_text_box`: the border and the text, wrapped at the words) and curves
+//! (`fp_curve`, `gr_curve`: straight pieces of a cubic Bézier) are plotted; a character the
+//! font lacks is a box named in the notes (the font has the Latin-1 letters, Greek letters and
+//! signs of a board). Without a `.kicad_pro` beside the board the zone fill uses no
 //! edge clearance and the zone's own hole clearance (netsmith always writes one).
 
 #![cfg_attr(not(test), warn(unreachable_pub))]

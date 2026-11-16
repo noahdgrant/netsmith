@@ -6,9 +6,14 @@
 //! that work in the project it also writes `AGENTS.md`, the user skills in
 //! `.agents/skills/` (linked from `.claude/skills`) and the language guide (ADR 0015): its index
 //! as `docs/netsmith/LANGUAGE.md` and its chapters in `docs/netsmith/language/`. Each of those
-//! that exists is kept.
+//! that exists is kept, and `CLAUDE.md` is written as one line importing `AGENTS.md`, which is
+//! what Claude Code reads (issue #797). `netsmith init --refresh` brings those files up to a
+//! newer netsmith (see [`refresh`]); `init` itself still never overwrites.
 
 use std::{fs, io, path::Path};
+
+mod refresh;
+pub use refresh::refresh;
 
 use netsmith_fabricate::project::{MANIFEST, Manifest, SOURCE_DIR, is_project_name};
 
@@ -24,6 +29,9 @@ const MAIN: &str = "src/main.nsm";
 const README: &str = "README.md";
 const GITIGNORE: &str = ".gitignore";
 const AGENTS: &str = "AGENTS.md";
+const CLAUDE: &str = "CLAUDE.md";
+/// Claude Code reads `CLAUDE.md`, not `AGENTS.md`, so this one line makes it read the other.
+const CLAUDE_TEXT: &str = "@AGENTS.md\n";
 const GUIDE: &str = "docs/netsmith/LANGUAGE.md";
 const GUIDE_CHAPTERS_DIR: &str = "docs/netsmith/language";
 const SKILLS_DIR: &str = ".agents/skills";
@@ -193,6 +201,14 @@ pub fn init(dir: &Path, name: Option<&str>) -> Result<String, String> {
         report.push_str(&format!("created {AGENTS}\n"));
     }
 
+    let claude = dir.join(CLAUDE);
+    if claude.symlink_metadata().is_ok() {
+        report.push_str(&refresh::claude_note(&claude).unwrap_or_default());
+    } else {
+        write(CLAUDE, CLAUDE_TEXT)?;
+        report.push_str(&format!("created {CLAUDE}\n"));
+    }
+
     if dir.join(GUIDE).symlink_metadata().is_ok() {
         report.push_str(&format!("kept {GUIDE}\n"));
     } else {
@@ -229,6 +245,12 @@ pub fn init(dir: &Path, name: Option<&str>) -> Result<String, String> {
         ));
     }
     report.push_str(&link_skills(&dir, symlink_dir)?);
+    if refresh::write_record(&dir)? {
+        report.push_str(&format!(
+            "created {}, what netsmith wrote, so that `netsmith init --refresh` after an upgrade knows the files you have not edited\n",
+            refresh::RECORD
+        ));
+    }
 
     if !in_git_repo(&dir) {
         report.push_str("note: this is not a git repository; netsmith did not run git (run `git init` if you want one)\n");
@@ -336,7 +358,8 @@ fn readme(name: &str) -> String {
          \n\
          For people and coding agents: `AGENTS.md` says how to work here, `docs/netsmith/LANGUAGE.md`\n\
          is the language guide, and `.agents/skills/` has the netsmith skills (`.claude/skills`\n\
-         links to it). netsmith wrote them once and never overwrites them: they are yours to edit.\n"
+         links to it). They are yours to edit: `netsmith init` never overwrites them, and after an\n\
+         upgrade `netsmith init --refresh` rewrites only those you have not edited.\n"
     )
 }
 

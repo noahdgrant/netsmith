@@ -63,7 +63,7 @@ The first source of a port, which `netsmith port skeleton <original.kicad_pcb>` 
 _Avoid_: scaffold (the word for `netsmith init`), template, stub
 
 **Skill**:
-A directory in `.agents/skills/` with a `SKILL.md`: instructions an agent loads when its description matches the task. `netsmith-*` skills are for working in a netsmith project and `netsmith init` copies them into one; `netsmith-dev-*` skills are for working on netsmith and stay in its repository (ADR 0015).
+A directory in `.agents/skills/` with a `SKILL.md`: instructions an agent loads when its description matches the task. `netsmith-*` skills are for working in a netsmith project and `netsmith init` copies them into one and `netsmith init --refresh` updates the copies you have not edited; `netsmith-dev-*` skills are for working on netsmith and stay in its repository (ADR 0015).
 _Avoid_: Prompt, plugin
 
 **Source (at DC)**:
