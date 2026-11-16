@@ -34,6 +34,10 @@ _Avoid_: region, bin, gcell
 The voltage a power net's routed tracks drop at its worst-case current: the current through the largest resistance, along its tracks, between two of the net's pads (issue #652). `fab` measures it once the board is routed and warns, as the guideline `track drop`, when it is more than 1 % of the voltage of the net's rail.
 _Avoid_: IR drop, voltage loss, track loss
 
+**Track impedance**:
+The characteristic impedance of a track on one layer of a board with a _Build-up_, worked out from the thickness and relative permittivity of each _Dielectric layer_ and the copper's thickness by closed forms, microstrip on an outer layer and stripline on an inner one (`netsmith_pcb::impedance`, issue #759). `fab-notes.txt` lists it for each layer a track may be on: the width of a 50 ohm track and the impedance of the router's width.
+_Avoid_: Trace impedance; controlled impedance and impedance control for the figure (those are the fabricator's service of making a board to an impedance and testing it)
+
 **Transferred bound**:
 A bound on a member that a part's field is held to (`.top.resistance &= .balance`, `.balance >= 20kohm`), read as a bound on the field too, because `&=` puts the field inside the member and a bound on all of the member is a bound on every part of it (ADR 0065). The solver adds it as a relation of its own while it picks and checks the parts, and takes it out of the model it returns. It adds a refusal and never a value.
 _Avoid_: Propagated bound, inherited bound, derived bound (ADR 0057 uses that for a bound on a value worked out from a part)

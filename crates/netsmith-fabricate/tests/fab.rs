@@ -368,6 +368,14 @@ fn the_four_layer_board_becomes_a_package_with_its_inner_layers() {
         notes.contains("4 layers (In1.Cu is a plane on GND, In2.Cu is a plane on 3V3)"),
         "{notes}"
     );
+    // The track impedance of the outer layers, each over its plane (issue #759).
+    assert!(
+        notes.contains("track impedance: from build-up JLC04161H-7628")
+            && notes.contains("  F.Cu: microstrip over In1.Cu (0.2104 mm of 7628 prepreg, er 4.4): a 50 ohm track is")
+            && notes.contains("  B.Cu: microstrip over In2.Cu")
+            && !notes.contains("not a plane on this board"),
+        "{notes}"
+    );
     for layer in ["F_Cu", "In1_Cu", "In2_Cu", "B_Cu", "Edge_Cuts"] {
         assert!(
             made[0]

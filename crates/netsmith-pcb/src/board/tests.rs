@@ -1059,3 +1059,31 @@ fn a_slot_lies_at_its_pads_and_parts_turn_and_its_hole_is_off_the_copper_by_the_
         Pt::new(-axis.x, axis.y).rotate(45.0),
     );
 }
+
+#[test]
+fn a_six_layer_board_lists_its_track_impedance_from_the_build_up() {
+    let process = crate::rules::six_layer_process();
+    let lines = crate::impedance_notes(&process.stackup, 0.2, 50.0);
+    assert!(
+        lines[0].starts_with("track impedance: from build-up JLC06161H-3313"),
+        "{lines:?}"
+    );
+    // The outer layers and the two signal layers, not the planes.
+    let layers: Vec<&str> = lines[1..]
+        .iter()
+        .map(|l| l.trim_start().split(':').next().unwrap())
+        .collect();
+    assert_eq!(layers, ["F.Cu", "In2.Cu", "In3.Cu", "B.Cu"]);
+    assert!(lines[1].contains("microstrip over In1.Cu"), "{}", lines[1]);
+    assert!(
+        lines[2].contains("stripline between In1.Cu"),
+        "{}",
+        lines[2]
+    );
+    // In2.Cu's other neighbour is In3.Cu, a signal layer.
+    assert!(lines[2].contains("In3.Cu is not a plane"), "{}", lines[2]);
+    assert!(!lines[1].contains("not a plane"), "{}", lines[1]);
+    // A two-layer board records no build-up and has no lines.
+    let two = crate::rules::process_from(&[]);
+    assert!(crate::impedance_notes(&two.stackup, 0.2, 50.0).is_empty());
+}
