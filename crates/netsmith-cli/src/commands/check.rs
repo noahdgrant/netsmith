@@ -33,6 +33,7 @@ pub fn run(args: Args) -> ExitCode {
         notes: args.output.notes.into(),
         write: false,
         emit_design: None,
+        emit_solved: None,
     })
 }
 
