@@ -1282,7 +1282,8 @@ fn the_fuses_the_beads_and_the_mosfets_have_their_rows() {
 #[test]
 fn every_header_and_socket_row_states_the_contact_rating_from_its_datasheet() {
     // The catalog rates the contacts of a connector (ADR 0040): one row for each series and
-    // pin count, for the single-row 2.54 mm headers and sockets of the standard library.
+    // pin count, for the single-row 2.54 mm headers and sockets of the standard library and the
+    // 2x3 and 2x5 headers (the 2x10 has no row: its JLCPCB record could not be read).
     let rows = records("jlcpcb/catalog/header.csv");
     let mut found: Vec<(String, String)> = Vec::new();
     for row in &rows {
@@ -1292,7 +1293,7 @@ fn every_header_and_socket_row_states_the_contact_rating_from_its_datasheet() {
             "{lcsc} cites no datasheet"
         );
         assert_eq!(row["mating.pitch"], "2.54mm", "{lcsc}");
-        assert_eq!(row["mating.rows"], "1", "{lcsc}");
+        assert!(["1", "2"].contains(&row["mating.rows"].as_str()), "{lcsc}");
         // The rating of one contact is the datasheet's, and the notes say what it is and what
         // it leaves out.
         assert_eq!(row["mating.pin_current"], "3A", "{lcsc}");
@@ -1306,6 +1307,16 @@ fn every_header_and_socket_row_states_the_contact_rating_from_its_datasheet() {
             row["mating.gender"].clone(),
             row["mating.positions"].clone(),
         ));
+        // The two-row rows say which drawing the rating is from and no derating.
+        if row["mating.rows"] == "2" {
+            assert_eq!(row["mating.gender"], "header", "{lcsc}");
+            assert!(
+                row["source"].contains("mating.pin_current: 3 A, JXTCONN drawing A254M01-0BxP51-H25A60")
+                    && row["source"].contains("read 2026-11-15"),
+                "{lcsc}: {}",
+                row["source"]
+            );
+        }
     }
     for gender in ["header", "socket"] {
         for positions in ["2", "4", "8", "10"] {
@@ -1319,6 +1330,27 @@ fn every_header_and_socket_row_states_the_contact_rating_from_its_datasheet() {
     let c = row_of("header", "C42431810");
     assert_eq!(value(&c, "mating.pin_current"), quantity(3.0, "A"));
     assert_eq!(c.label, "Conn_01x10");
+    // The two-row headers: 2x3 and 2x5 are rated, the 2x10 has no row.
+    for (lcsc, positions, label) in [
+        ("C41426970", "6", "Conn_02x03_Odd_Even"),
+        ("C41426972", "10", "Conn_02x05_Odd_Even"),
+    ] {
+        let two = rows
+            .iter()
+            .find(|r| r["lcsc"] == lcsc)
+            .unwrap_or_else(|| panic!("no row {lcsc}"));
+        assert_eq!(two["mating.rows"], "2");
+        assert_eq!(two["mating.positions"], positions);
+        assert_eq!(two["label"], label);
+        let c = row_of("header", lcsc);
+        assert_eq!(value(&c, "mating.pin_current"), quantity(3.0, "A"));
+    }
+    assert!(
+        !rows
+            .iter()
+            .any(|r| r["mating.rows"] == "2" && r["mating.positions"] == "20"),
+        "a 2x10 row needs its JLCPCB record read first"
+    );
 }
 
 #[test]
@@ -1329,6 +1361,11 @@ fn every_header_and_socket_row_states_its_seat_from_the_makers_drawing() {
     // 10.65 mm to 11.35 mm.
     for row in &records("jlcpcb/catalog/header.csv") {
         let lcsc = &row["lcsc"];
+        // The two-row rows state the rating only; their seat, height and range are not filled.
+        if row["mating.rows"] == "2" {
+            assert!(row["mating.seat"].is_empty(), "{lcsc}");
+            continue;
+        }
         let (cell, figure) = match row["mating.gender"].as_str() {
             "header" => ("2.5mm +/- 0.2mm", "mating.seat: 2.50 +/- 0.20 mm"),
             "socket" => ("8.5mm +/- 0.15mm", "mating.seat: 8.50 +/- 0.15 mm"),
