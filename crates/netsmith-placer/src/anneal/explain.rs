@@ -153,6 +153,7 @@ impl<'a> Engine<'a> {
             .p
             .keepouts
             .iter()
+            .filter(|k| !self.open_to(i, k))
             .chain(self.models[i].barred.iter())
             .map(|k| (k, &court))
             .chain(self.models[i].no_go.iter().map(|k| (k, &tall)))

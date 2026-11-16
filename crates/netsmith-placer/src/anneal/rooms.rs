@@ -176,6 +176,20 @@ impl<'a> Engine<'a> {
         self.shape(i).courts.iter().map(move |r| r.translated(at))
     }
 
+    /// Whether keepout `k` is a piece of the outside of a polygon outline that part `i` may
+    /// hang into: it may hang over a side the piece touches, and its courtyard reaches that
+    /// side (issue #783).
+    pub(super) fn open_to(&self, i: usize, k: &Rect) -> bool {
+        let may = self.models[i].may;
+        if !may.any() || self.p.open_outside.is_empty() {
+            return false;
+        }
+        let room = netsmith_pcb::clip_to_outline(&self.court(i), &self.p.outline);
+        self.p.open_outside.iter().any(|(r, sides)| {
+            r == k && netsmith_pcb::overhang_reached(&room, &self.p.outline, may, *sides).any()
+        })
+    }
+
     /// The rooms part `i` takes against other courtyards: its courtyard's shapes, each
     /// clipped to the outline if the design says it may hang over an edge (as
     /// `Board::check_placement` counts them, so that two parts that hang over the same edge

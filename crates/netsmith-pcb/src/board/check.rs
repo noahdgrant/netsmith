@@ -106,10 +106,17 @@ impl Board {
                 // A polygon's edge is measured along all of it, not only at the room's
                 // corners, which may all be inside an L while its inner corner is in the room.
                 // Past a side of the box the design allows, the room is clipped to the box.
-                Some(polygon) => {
-                    let depth = polygon.box_depth(&rooms[i]);
-                    (depth < -1e-6, (depth < -1e-6).then_some(-depth))
-                }
+                Some(polygon) => match polygon.overreach(&rooms[i], declared) {
+                    Some((depth, point)) => (
+                        true,
+                        Some((
+                            depth,
+                            (point.x - o.min.x, point.y - o.min.y),
+                            overhang::place_word(&self.outline, point),
+                        )),
+                    ),
+                    None => (false, None),
+                },
                 None => {
                     let shape = self.outline_shape();
                     let in_corner = rooms[i].corners().iter().any(|&c| {
@@ -122,6 +129,10 @@ impl Board {
                     (in_corner, None)
                 }
             };
+            let (cut, at, near) = match cut {
+                Some((depth, at, near)) => (Some(depth), Some(at), near),
+                None => (None, None, None),
+            };
             if !past.is_empty() || in_corner {
                 let stated = self.overhang.get(&a.refdes);
                 problems.push(PlacementProblem::OutsideOutline {
@@ -131,6 +142,8 @@ impl Board {
                     stated: declared.list(),
                     by: stated.map(Overhang::by).unwrap_or_default(),
                     cut,
+                    at,
+                    near,
                 });
             }
             for k in keepouts

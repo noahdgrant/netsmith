@@ -573,8 +573,24 @@ fn every_placement_check_message_names_the_member_by_path_with_the_designator() 
             stated: Vec::new(),
             by: String::new(),
             cut: None,
+            at: None,
+            near: None,
         })
         .starts_with("`stage.r3` (R3) is not wholly inside the board outline: its courtyard is 0.50 mm past the left edge")
+    );
+    // On a polygon outline the message says where, by the side or corner of the box.
+    assert_eq!(
+        text(PlacementProblem::OutsideOutline {
+            refdes: r(),
+            path: path(),
+            past: Vec::new(),
+            stated: Vec::new(),
+            by: String::new(),
+            cut: Some(0.41),
+            at: Some((34.6, 59.8)),
+            near: Some("bottom right corner"),
+        }),
+        "`stage.r3` (R3) is not wholly inside the board outline: its courtyard is 0.41 mm past the outline's edge by the bottom right corner of the outline's box, at (34.6, 59.8) mm from the board's top left corner"
     );
     assert_eq!(
         HeightUnchecked {

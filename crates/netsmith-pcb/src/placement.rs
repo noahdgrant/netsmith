@@ -38,6 +38,11 @@ pub struct PlaceOptions {
     /// The cutouts among `keepouts`: besides the courtyards, no pad of a part is nearer to
     /// one than the process's distance from copper to an edge, as the placement check asks.
     pub cutouts: Vec<Rect>,
+    /// The boxes of `keepouts` that are the outside of a polygon outline (issue #57), each
+    /// with the sides of the outline's box the piece of the outside it is in touches (issue
+    /// #783): a part that may hang over one of those sides, and whose courtyard reaches it,
+    /// is not kept out of the piece, as a rounded corner of a rectangle is not kept out of.
+    pub outside: Vec<(Rect, crate::Edges)>,
     /// Parts that stay where they are, by reference designator: the entries of a layout file
     /// (ADR 0032). The others are placed round them.
     pub fixed: BTreeMap<String, Fixed>,

@@ -30,6 +30,9 @@
 //!   the outline or nearer than `copper_to_edge` is still `PadNearEdge`; a courtyard past an
 //!   edge nobody stated is still `OutsideOutline`, and the finding names the part, each edge,
 //!   how far, and the line that would allow it (`.plug.place.right >= outline.width`).
+//!   On a polygon outline a stated edge also takes the pieces of the outside of the polygon
+//!   that touch it, where the room reaches it (issue #783: `Polygon::overreach`, and the
+//!   placer's `open_outside`).
 //!   `Board::hangs()` lists what is past a stated edge, and `fab` prints each as a warning and
 //!   writes it to `fab-notes.txt`.
 //! - *The body's centre.* The placer refuses a requirement that leaves the body's centre
@@ -176,6 +179,51 @@ pub fn clip(court: &Rect, outline: &Rect) -> Rect {
         )
     };
     Rect::new(into(court.min), into(court.max))
+}
+
+/// The sides among `open` that a box reaches (is at or past) and that `touching` also has: where a
+/// part that may hang over a side has its room against a piece of the outside of a polygon
+/// that touches the same side (issue #783).
+pub fn reached(room: &Rect, outline: &Rect, open: Edges, touching: Edges) -> Edges {
+    const NEAR: f64 = 1e-6;
+    Edges {
+        left: open.left && touching.left && room.min.x <= outline.min.x + NEAR,
+        right: open.right && touching.right && room.max.x >= outline.max.x - NEAR,
+        top: open.top && touching.top && room.min.y <= outline.min.y + NEAR,
+        bottom: open.bottom && touching.bottom && room.max.y >= outline.max.y - NEAR,
+    }
+}
+
+/// The side or corner of `outline`'s box that a point is near, if any: near a side when
+/// within a quarter of the box's width (height) of it, a corner when near two (issue #783).
+pub(crate) fn place_word(outline: &Rect, p: Pt) -> Option<&'static str> {
+    let x = (p.x - outline.min.x) / outline.width().max(1e-9);
+    let y = (p.y - outline.min.y) / outline.height().max(1e-9);
+    let col = if x <= 0.25 {
+        Some("left")
+    } else if x >= 0.75 {
+        Some("right")
+    } else {
+        None
+    };
+    let row = if y <= 0.25 {
+        Some("top")
+    } else if y >= 0.75 {
+        Some("bottom")
+    } else {
+        None
+    };
+    match (row, col) {
+        (Some("top"), Some("left")) => Some("top left corner"),
+        (Some("top"), Some("right")) => Some("top right corner"),
+        (Some("bottom"), Some("left")) => Some("bottom left corner"),
+        (Some("bottom"), Some("right")) => Some("bottom right corner"),
+        (Some("top"), None) => Some("top side"),
+        (Some("bottom"), None) => Some("bottom side"),
+        (None, Some("left")) => Some("left side"),
+        (None, Some("right")) => Some("right side"),
+        _ => None,
+    }
 }
 
 /// How far `court` is past each edge of `outline`, in mm, for the edges it is past.
