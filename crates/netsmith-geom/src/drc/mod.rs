@@ -69,7 +69,9 @@
 //! editor add it to the findings, as an error or, with `constraints = "warn"`, a warning), the
 //! rules of the fabricator's page for fiducials and test points (`fiducial_edge`, `fiducial_mask`
 //! and `fiducial_keepout`, limits, errors; `fiducial_count`, `fiducial_size` and the
-//! `test_point_*` rules, guidelines, warnings: `marks.rs`, issue #761), and,
+//! `test_point_*` rules, guidelines, warnings: `marks.rs`, issue #761), `acid_trap` (a track
+//! that meets a pad's straight edge or another track of its net at an acute angle, a warning:
+//! `acid.rs`, issue #838), and,
 //! from the placement check and shown in the editor, `too_tall` (a part with a stated `.height`
 //! under a lower height limit of a keepout, ADR 0045 section 11) and `height_unchecked` (a part
 //! with no `.height` under a height limit, a warning unless constraints are strict). The other
@@ -132,8 +134,8 @@
 //! on the warnings except three (two silkscreen texts that our font puts a hair nearer a pad, and
 //! a mask opening drawn as a graphic on `F.Mask`, which is not checked).
 //!
-//! **What is not checked.** Impedance and controlled-impedance rules, acid traps and copper
-//! slivers, the fill a board file holds, differential pairs and
+//! **What is not checked.** Impedance and controlled-impedance rules, copper slivers, acid
+//! traps at round copper and custom pads (`acid.rs` says why), the fill a board file holds, differential pairs and
 //! lengths, custom rules (`.kicad_dru`), blind, buried and micro vias, stackup rules,
 //! unrouted-by-design nets, footprint-against-library and schematic parity (KiCad's
 //! `lib_footprint_*`, `extra_footprint`), and the electrical rules check (the solver does most of
@@ -143,6 +145,7 @@
 //! KiCad, not that a fabricator will accept the board (issue #12; a person must do it, checklist
 //! in issue #10).
 
+mod acid;
 mod checks;
 mod connect;
 pub(crate) mod constraints;
@@ -293,10 +296,13 @@ pub enum Rule {
     /// A piece of a pour's fill that touches no copper of its net, which the zone's island
     /// setting keeps (issue #838).
     IsolatedCopper,
+    /// A track that meets a pad's straight edge or another track of its net at an acute angle,
+    /// a wedge that traps etchant (netsmith's, issue #838).
+    AcidTrap,
 }
 
 impl Rule {
-    pub const ALL: [Rule; 47] = [
+    pub const ALL: [Rule; 48] = [
         Rule::Clearance,
         Rule::ShortingItems,
         Rule::TracksCrossing,
@@ -344,6 +350,7 @@ impl Rule {
         Rule::TestPointEdge,
         Rule::StarvedThermal,
         Rule::IsolatedCopper,
+        Rule::AcidTrap,
     ];
 
     /// KiCad's name for the rule (its `type` in a JSON report).
@@ -396,6 +403,7 @@ impl Rule {
             Rule::TestPointEdge => "test_point_edge",
             Rule::StarvedThermal => "starved_thermal",
             Rule::IsolatedCopper => "isolated_copper",
+            Rule::AcidTrap => "acid_trap",
         }
     }
 
@@ -426,6 +434,7 @@ impl Rule {
                 | Rule::TestPointPitch
                 | Rule::TestPointBody
                 | Rule::TestPointEdge
+                | Rule::AcidTrap
         )
     }
 
@@ -452,7 +461,8 @@ impl Rule {
             | Rule::TestPointBody
             | Rule::TestPointEdge
             | Rule::StarvedThermal
-            | Rule::IsolatedCopper => Severity::Warning,
+            | Rule::IsolatedCopper
+            | Rule::AcidTrap => Severity::Warning,
             _ => Severity::Error,
         })
     }

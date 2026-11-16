@@ -4,6 +4,10 @@
 The voltages a pin survives, `.abs_min` and `.abs_max` of the pin, relative to its ground. The solver holds them against the worst-case voltage of the pin's net (ADR 0046), which for a net the DC analysis solved is the range of its node voltage (ADR 0076, amendment 12). A part states a pin's limits only at the end of its pin row, `abs_min -0.5V abs_max 6V` (ADR 0124, ADR 0126), never with a statement; a `Logic` line or a bus pin is measured from its interface's ground, any other pin from the part's ground or from the pin `from` names (the `Lt8641`'s `SYNC/MODE`); a pin joined to nothing outside its part is not judged.
 _Avoid_: Rating (a rating is a field such as `.max_power`)
 
+**Acid trap**:
+A narrow wedge outside an acute angle where a track meets copper of its net: where it leaves a pad through a straight edge on the slant, ends on the middle of another track, or meets another track's end. The etchant pools there and eats into the track. A warning of the design rules check, `acid_trap`, netsmith's own rule (issue #838); a wedge a teardrop or a pour fills is none.
+_Avoid_: Etch trap, acid pocket
+
 **Alias**:
 A pin with no row in the pin table that the part joins to a pin that has one (`.vin.neg ~ .vout.neg`). It is that pin, so it needs no pad of its own and adds no pin to a net in the schematic.
 
