@@ -429,6 +429,33 @@ fn outer_pours_are_zones_on_the_outer_layers() {
 }
 
 #[test]
+fn a_pours_thermal_relief_is_in_its_zone_and_the_planes_keep_the_default() {
+    let b = four_layer_with(
+        &format!("{POURS}        .top.thermal_gap &= 0.3mm..\n        .top.spoke_width &= 0.25mm..\n"),
+        "",
+    );
+    assert_eq!(
+        (b.pours[0].thermal_gap, b.pours[0].spoke_width),
+        (Some(0.3), Some(0.25))
+    );
+    let pcb = kicad_pcb(&b);
+    let relief = |layer: &str| {
+        let zone = pcb
+            .split("\n\t(zone")
+            .skip(1)
+            .find(|z| z.contains(&format!("(net_name \"GND\")\n\t\t(layer \"{layer}\")")))
+            .unwrap();
+        let fill = &zone[zone.find("(fill").unwrap()..];
+        let fill = &fill[..fill.find("(polygon").unwrap()];
+        (fill.contains("(thermal_gap 0.3)"), fill.contains("(thermal_bridge_width 0.25)"))
+    };
+    assert_eq!(relief("F.Cu"), (true, true));
+    // The pour on the other side and the plane say nothing of it.
+    assert_eq!(relief("B.Cu"), (false, false));
+    assert_eq!(relief("In1.Cu"), (false, false));
+}
+
+#[test]
 fn stitching_vias_join_the_pours_to_the_ground_plane_on_a_grid() {
     let mut b = four_layer_with(POURS, "");
     let before = b.vias.len();

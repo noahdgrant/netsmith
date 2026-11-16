@@ -989,6 +989,8 @@ mod tests {
             layer: CopperLayer::Front,
             net: "GND".into(),
             stitch_pitch: None,
+            thermal_gap: None,
+            spoke_width: None,
         });
         // Not locked: the router routes it, as before.
         assert!(Ratsnest::of(&board).lines.iter().any(|l| l.net == "GND"));
@@ -1041,6 +1043,8 @@ mod tests {
             layer: CopperLayer::Front,
             net: "GND".into(),
             stitch_pitch: None,
+            thermal_gap: None,
+            spoke_width: None,
         });
         board.fixed.locked.insert("GND".into());
         assert!(Ratsnest::of(&board).lines.iter().all(|l| l.net != "GND"));

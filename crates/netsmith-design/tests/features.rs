@@ -189,6 +189,38 @@ fn outer_pours_are_the_layers_whose_pour_has_a_net() {
 }
 
 #[test]
+fn a_pours_thermal_relief_is_the_bottom_of_its_ranges() {
+    let d = designed(&board_with_process(
+        "        .top.net &= \"GND\"\n        .top.thermal_gap &= 0.3mm..0.6mm\n        .top.spoke_width &= 0.25mm..\n        .bottom.net &= \"GND\"\n        .bottom.thermal_gap &= ..0.6mm\n",
+        "",
+    ))
+    .unwrap();
+    let relief = |layer: &str| {
+        let p = d.features.pours.iter().find(|p| p.layer == layer).unwrap();
+        (p.thermal_gap, p.spoke_width)
+    };
+    assert_eq!(relief("top"), (Some(0.3), Some(0.25)));
+    // A range with no bottom states no least, and KiCad's default stays.
+    assert_eq!(relief("bottom"), (None, None));
+}
+
+#[test]
+fn a_thermal_relief_that_is_not_positive_is_refused_with_the_field() {
+    let text = errors_of(&board_with_process(
+        "        .top.net &= \"GND\"\n        .top.thermal_gap &= 0mm..1mm\n        .top.spoke_width &= 0mm..\n",
+        "",
+    ));
+    assert!(
+        text.contains("`process.top.thermal_gap` has a bottom of 0 mm, and the gap of a thermal relief must be positive"),
+        "{text}"
+    );
+    assert!(
+        text.contains("`process.top.spoke_width` has a bottom of 0 mm, and the spoke width of a thermal relief must be positive"),
+        "{text}"
+    );
+}
+
+#[test]
 fn a_pour_on_a_net_the_board_lacks_is_refused_with_the_nets() {
     let text = errors_of(&board_with_process("        .bottom.net &= \"5V\"\n", ""));
     assert!(

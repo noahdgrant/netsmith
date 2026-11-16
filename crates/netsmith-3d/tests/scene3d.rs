@@ -575,6 +575,8 @@ pub(crate) fn routed() -> Board {
         layer: CopperLayer::Front,
         net: "GND".into(),
         stitch_pitch: None,
+        thermal_gap: None,
+        spoke_width: None,
     });
     board
 }

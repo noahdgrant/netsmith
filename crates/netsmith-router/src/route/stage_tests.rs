@@ -236,6 +236,8 @@ fn a_line_of_the_pours_net_or_of_a_diff_pair_has_no_corridor() {
         layer: netsmith_pcb::CopperLayer::Back,
         net: board.nets[poured].name.clone(),
         stitch_pitch: None,
+        thermal_gap: None,
+        spoke_width: None,
     });
     let mut router = Router::new(&board, &options);
     router.partners[paired] = Some(poured);
@@ -288,6 +290,8 @@ fn off_the_pours_of_the_led_board(names: [&str; 2]) -> (Board, Vec<Routed>) {
         layer: CopperLayer::Back,
         net: "GND".into(),
         stitch_pitch: None,
+        thermal_gap: None,
+        spoke_width: None,
     });
     let router = Router::new(&board, &RouteOptions::default());
     let order = router.orders(false).remove(0);
@@ -425,6 +429,8 @@ fn under_a_wall(wall: &str, poured: bool) -> (Board, State, Routed, Routed) {
             layer: CopperLayer::Back,
             net: wall.into(),
             stitch_pitch: None,
+            thermal_gap: None,
+            spoke_width: None,
         });
     }
     let router = Router::new(&board, &RouteOptions::default());

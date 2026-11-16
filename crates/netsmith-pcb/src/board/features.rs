@@ -43,6 +43,12 @@ pub struct BoardPour {
     pub net: String,
     /// The most space between the vias that stitch it to the other layers of its net.
     pub stitch_pitch: Option<f64>,
+    /// The gap of a thermal relief, in mm, if the design states one; KiCad's default otherwise.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub thermal_gap: Option<f64>,
+    /// The width of the spokes of a thermal relief, in mm, likewise.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub spoke_width: Option<f64>,
 }
 
 /// How a zone joins the pads of its net: KiCad's `connect_pads` (`yes`, nothing, `no`,

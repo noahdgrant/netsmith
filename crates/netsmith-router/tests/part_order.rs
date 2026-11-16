@@ -163,6 +163,8 @@ fn usb_board() -> Board {
         layer: CopperLayer::Back,
         net: "GND".into(),
         stitch_pitch: None,
+        thermal_gap: None,
+        spoke_width: None,
     });
     assert_eq!(board.check_placement(), vec![]);
     board

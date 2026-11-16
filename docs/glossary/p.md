@@ -115,7 +115,7 @@ _Avoid_: intersection (of two tracks' copper, a short)
 A pin of an interface on a module or board. A port only passes a connection along to the terminals behind it. An interface that a board declares directly (`.output: Rail`) is also the port of that board in a system, which can join it to another board's port and reach nothing else of the board.
 
 **Pour**:
-Copper filled on an outer layer round the tracks and joined to one net, such as ground: `.process.top.net &= "GND"`. Unlike a plane it leaves room for the tracks, KiCad fills it, and vias at a pitch the board states (`.stitch_pitch`) join it to the other layers of its net.
+Copper filled on an outer layer round the tracks and joined to one net, such as ground: `.process.top.net &= "GND"`. Unlike a plane it leaves room for the tracks, KiCad fills it, and vias at a pitch the board states (`.stitch_pitch`) join it to the other layers of its net. Its thermal reliefs are KiCad's unless the process states the gap and the spoke width (`.thermal_gap`, `.spoke_width`).
 _Avoid_: Copper fill, ground plane (that is a plane)
 
 **Power symbol**:

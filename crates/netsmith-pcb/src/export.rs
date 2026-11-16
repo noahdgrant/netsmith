@@ -607,6 +607,11 @@ pub fn kicad_pro(board: &Board) -> String {
 /// The file holds no fill. KiCad fills a zone when a person opens the board and presses
 /// `B`; the fabrication step has KiCad fill it before it checks and plots the board.
 fn zone(board: &Board, plane: &Plane, net: Sexp) -> Sexp {
+    zone_with(board, plane, net, (THERMAL, THERMAL))
+}
+
+/// [`zone`] with the gap and the spoke width of its thermal reliefs, in mm.
+fn zone_with(board: &Board, plane: &Plane, net: Sexp, (gap, spoke): (f64, f64)) -> Sexp {
     let inset = board.outline.expanded(-board.rules.copper_to_edge);
     let points: Vec<Sexp> = inset
         .corners()
@@ -635,8 +640,8 @@ fn zone(board: &Board, plane: &Plane, net: Sexp) -> Sexp {
                 "fill",
                 vec![
                     Sexp::atom("yes"),
-                    Sexp::node("thermal_gap", vec![Sexp::num(THERMAL)]),
-                    Sexp::node("thermal_bridge_width", vec![Sexp::num(THERMAL)]),
+                    Sexp::node("thermal_gap", vec![Sexp::num(gap)]),
+                    Sexp::node("thermal_bridge_width", vec![Sexp::num(spoke)]),
                 ],
             ),
             Sexp::node("polygon", vec![Sexp::node("pts", points)]),
@@ -1017,7 +1022,11 @@ pub(crate) fn board_tree(board: &Board) -> Sexp {
             layer: pour.layer.name().to_string(),
             net: pour.net.clone(),
         };
-        items.push(zone(board, &layer, net_number(&pour.net)));
+        let relief = (
+            pour.thermal_gap.unwrap_or(THERMAL),
+            pour.spoke_width.unwrap_or(THERMAL),
+        );
+        items.push(zone_with(board, &layer, net_number(&pour.net), relief));
     }
     for (i, z) in board.zones.iter().enumerate() {
         items.push(fixed_zone(board, i, z, net_number(&z.net)));
