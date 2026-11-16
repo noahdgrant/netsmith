@@ -2,7 +2,11 @@
 //! written one entry at a time and checked against the board, so that a script or an agent
 //! that moves a few parts need not write the TOML itself. The file's format and frame are in the
 //! language guide's "The layout file"; the work is `netsmith_fabricate::layout_edit`.
+//! `layout summary` and `layout compare` (issue #773) place the board as `board3d` does and print
+//! what decides whether the placement is good, `netsmith_pcb::Summary` and
+//! `netsmith_pcb::PlacementComparison`.
 
+use std::path::PathBuf;
 use std::process::ExitCode;
 
 use clap::{Args as ClapArgs, Subcommand, ValueEnum};
@@ -14,7 +18,7 @@ use super::routes::{Target, parse_point};
 
 #[derive(Debug, PartialEq, ClapArgs)]
 #[command(
-    after_long_help = "The layout file `<stem>.pcb.toml` sits beside the source and holds the solution: where each part is (`at`, `turn`, `side`, `lock`), keyed by the part's path in the design (`stage.output_cap`; the capacitors of a bank are `bank[0]`, `bank[1]`). The requirements on where a part may be are in the board's physical file, never here.\n\nThe frame is the file's: `--at X,Y` is the footprint's origin in mm from the outline's top left corner, x to the right and y down; a turn is in degrees, counterclockwise on screen, and a part is turned by 0, 90, 180 or 270; a part on the bottom face is the top face's footprint mirrored left to right (about its own y axis), then turned as it is seen from the top. The guide's \"The layout file\" has an example of a part on each face.\n\nEach command checks and solves the board as `build` does and places nothing. The exit code is 0 when it did what it was asked, 1 when it refused (a part the board does not have, a turn that is not allowed, a file with an error `check` reports), and 2 when it could not run (a usage mistake included)."
+    after_long_help = "The layout file `<stem>.pcb.toml` sits beside the source and holds the solution: where each part is (`at`, `turn`, `side`, `lock`), keyed by the part's path in the design (`stage.output_cap`; the capacitors of a bank are `bank[0]`, `bank[1]`). The requirements on where a part may be are in the board's physical file, never here.\n\nThe frame is the file's: `--at X,Y` is the footprint's origin in mm from the outline's top left corner, x to the right and y down; a turn is in degrees, counterclockwise on screen, and a part is turned by 0, 90, 180 or 270; a part on the bottom face is the top face's footprint mirrored left to right (about its own y axis), then turned as it is seen from the top. The guide's \"The layout file\" has an example of a part on each face.\n\n`show`, `set` and `check` check and solve the board as `build` does and place nothing; `summary` and `compare` place it as `board3d` does and write nothing. The exit code is 0 when it did what it was asked, 1 when it refused (a part the board does not have, a turn that is not allowed, a file with an error `check` reports), and 2 when it could not run (a usage mistake included)."
 )]
 pub struct Args {
     #[command(subcommand)]
@@ -38,6 +42,50 @@ pub enum Command {
         after_long_help = "One line for each finding, with the line of the entry in the file: an entry that names no part of the board (with the nearest names), an entry with a turn that is not 0, 90, 180 or 270 or a position that is not a number, and a locked entry that breaks a requirement of the physical file (the same words `fab` uses; the footprints are loaded and nothing is placed). A part with no entry is a note: the placer places it. The exit code is 1 when there is an error, and a note does not make it so. `--format json` prints one JSON document on stdout: the `board`, the `file`, `ok` and the `findings`, each with a `severity` (`error` or `note`), a `kind` (`no_entry`, `no_part`, `bad_turn`, `bad_place`, `requirement`, `unmeasured`), the part's `path`, the `line` and the `message`."
     )]
     Check(CheckArgs),
+    /// Place the board and sum up the placement: wire, decoupling, modules, area per face, nets, free space.
+    #[command(
+        after_long_help = "The board is placed as `board3d` places it (the layout file and the physical file read, nothing written) and summed up in numbers the placer and the checks use, in the layout file's frame (mm from the outline's top left corner, y down): the totals (`hpwl`, the half perimeter wire length; `ratsnest`; `crossings`; `decoupling_mean` and `decoupling_max`); for each face the area the courtyards take against what the outline gives inside the edge wall (`usable`, `courtyards`, `fill`, `free`) and its largest free rectangles; for each module instance of two parts or more its box, the area its courtyards take, its `spread` (the placer's cohesion term: the half perimeter of the box round its parts' courtyard centres) and its `intruders` (parts of other modules whose courtyard centre is in that box); each decoupling capacitor's distance to the pins it serves; for each net its half perimeter, its crossings with other nets and its longest ratsnest line; and the placement check's findings. `--near PATH` adds the parts within `--within` mm (courtyard to courtyard, on either face) of a part, nearest first. `--format json` prints one JSON document on one line; the language guide's \"The layout file\" has its fields. The exit code is 0 when the summary is printed, also with findings, and 1 when the board does not build or place."
+    )]
+    Summary(SummaryArgs),
+    /// Place the board with two layout files and say what moved and which findings appeared or went.
+    #[command(
+        after_long_help = "The board is placed once with the layout file BEFORE and once with AFTER (with none, the layout file beside the source), each as `board3d` places it; a part with no entry in a file is placed by the placer, so it may move between the two. Printed: each part that moved, turned or changed face, with its two places and how far its origin moved; the placement check's findings that appeared and those that went; and the totals of each (`hpwl`, `ratsnest`, `crossings`, `decoupling_mean`, `decoupling_max`). `--format json` prints one JSON document on one line: `board`, `moved` (`path`, `refdes`, `from`, `to`, each `x`, `y`, `turn`, `side`, and `distance`), `appeared`, `gone`, `before` and `after`. The exit code is 0 when it is printed, 1 when a board does not build or place, and 2 when a layout file is not there."
+    )]
+    Compare(CompareArgs),
+}
+
+#[derive(Debug, PartialEq, ClapArgs)]
+pub struct SummaryArgs {
+    #[command(flatten)]
+    pub target: Target,
+    /// A part, by path or designator, whose neighbours to list; may be given again.
+    #[arg(long = "near", value_name = "PATH")]
+    pub near: Vec<String>,
+    /// How far from a `--near` part another may be and be listed, courtyard to courtyard, in mm.
+    #[arg(long, value_name = "MM", default_value_t = 2.0)]
+    pub within: f64,
+    #[command(flatten)]
+    pub placing: common::Placing,
+    /// Text for a person, or one JSON document on stdout.
+    #[arg(long, value_enum, default_value = "text")]
+    pub format: common::Format,
+}
+
+#[derive(Debug, PartialEq, ClapArgs)]
+pub struct CompareArgs {
+    /// The layout file of the first placement.
+    #[arg(value_name = "BEFORE.PCB.TOML")]
+    pub before: PathBuf,
+    /// The layout file of the second; with none, the one beside the source.
+    #[arg(value_name = "AFTER.PCB.TOML")]
+    pub after: Option<PathBuf>,
+    #[command(flatten)]
+    pub target: Target,
+    #[command(flatten)]
+    pub placing: common::Placing,
+    /// Text for a person, or one JSON document on stdout.
+    #[arg(long, value_enum, default_value = "text")]
+    pub format: common::Format,
 }
 
 #[derive(Debug, PartialEq, ClapArgs)]
@@ -112,6 +160,71 @@ pub fn run(args: Args) -> ExitCode {
         Command::Show(a) => show(&a),
         Command::Set(a) => set(&a),
         Command::Check(a) => check(&a),
+        Command::Summary(a) => summary(&a),
+        Command::Compare(a) => compare(&a),
+    }
+}
+
+/// `layout summary`: the board placed and summed up.
+fn summary(args: &SummaryArgs) -> ExitCode {
+    let made = common::with_placed_board(
+        args.target.file.as_deref(),
+        args.target.board.as_deref(),
+        Some(&args.placing),
+        |placed| {
+            placed
+                .with_board(|_, board| {
+                    netsmith_pcb::Summary::of(board).neighbours(board, &args.near, args.within)
+                })
+                .and_then(|done| done.map_err(|e| format!("error: {e}\n")))
+        },
+    );
+    match made {
+        Ok(summary) => {
+            match args.format {
+                common::Format::Json => {
+                    println!("{}", serde_json::to_string(&summary).expect("plain data"))
+                }
+                common::Format::Text => print!("{}", summary.text()),
+            }
+            ExitCode::SUCCESS
+        }
+        Err(code) => code,
+    }
+}
+
+/// `layout compare`: the board placed with two layout files, and what changed between them.
+fn compare(args: &CompareArgs) -> ExitCode {
+    for file in std::iter::once(&args.before).chain(&args.after) {
+        if !file.is_file() {
+            eprintln!("error: {}: no such layout file", file.display());
+            return ExitCode::from(2);
+        }
+    }
+    let made = common::with_placed_board(
+        args.target.file.as_deref(),
+        args.target.board.as_deref(),
+        Some(&args.placing),
+        |placed| {
+            let before = placed.with_board_laid_out(&args.before, |_, board| board.clone())?;
+            let after = args.after.as_deref().unwrap_or(&placed.layout);
+            placed.with_board_laid_out(after, |_, board| {
+                netsmith_pcb::PlacementComparison::between(&before, board)
+            })
+        },
+    );
+    match made {
+        Ok(difference) => {
+            match args.format {
+                common::Format::Json => println!(
+                    "{}",
+                    serde_json::to_string(&difference).expect("plain data")
+                ),
+                common::Format::Text => print!("{}", difference.text()),
+            }
+            ExitCode::SUCCESS
+        }
+        Err(code) => code,
     }
 }
 
@@ -270,6 +383,45 @@ mod tests {
                 command: Command::Check(_)
             }))
         ));
+    }
+
+    #[test]
+    fn summary_and_compare_take_their_arguments() {
+        assert!(matches!(
+            parse(&["layout", "summary", "--near", "a.b", "--near", "C1", "--within", "3.5", "--format", "json"]),
+            Ok(Top::Layout(Args {
+                command: Command::Summary(SummaryArgs { ref near, within, format: common::Format::Json, .. })
+            })) if near == &["a.b", "C1"] && within == 3.5
+        ));
+        assert!(matches!(
+            parse(&["layout", "summary"]),
+            Ok(Top::Layout(Args {
+                command: Command::Summary(SummaryArgs { ref near, within, .. })
+            })) if near.is_empty() && within == 2.0
+        ));
+        assert!(matches!(
+            parse(&["layout", "compare", "old.pcb.toml"]),
+            Ok(Top::Layout(Args {
+                command: Command::Compare(CompareArgs { after: None, .. })
+            }))
+        ));
+        assert!(matches!(
+            parse(&[
+                "layout",
+                "compare",
+                "a.pcb.toml",
+                "b.pcb.toml",
+                "--place-seeds",
+                "2"
+            ]),
+            Ok(Top::Layout(Args {
+                command: Command::Compare(CompareArgs { after: Some(_), .. })
+            }))
+        ));
+        assert_eq!(
+            kind(&["layout", "compare"]),
+            ErrorKind::MissingRequiredArgument
+        );
     }
 
     #[test]

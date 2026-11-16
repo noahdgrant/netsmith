@@ -58,6 +58,7 @@ mod rules;
 mod shape;
 mod stackup;
 mod standard_height;
+mod summary;
 mod svg;
 mod validate;
 
@@ -127,5 +128,9 @@ pub use stackup::{
     LayerKind, StackLayer, layers as stackup_layers, round as round_nm, thickness_tolerance,
 };
 pub use standard_height::StandardHeight;
+pub use summary::{
+    DecouplingSummary, FaceSummary, ModuleSummary, Moved, Neighbour, Neighbours, NetSummary, Place,
+    PlacementComparison, RatsnestLine, Summary, SummaryBox, Totals,
+};
 pub use svg::{render as render_svg, render_view as render_svg_view};
 pub use validate::{Subject, validate_pinout};

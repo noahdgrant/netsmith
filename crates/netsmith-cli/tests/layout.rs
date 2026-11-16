@@ -338,3 +338,104 @@ fn check_passes_with_notes_for_parts_the_placer_places() {
     let json: serde_json::Value = serde_json::from_str(&stdout(&run)).unwrap();
     assert_eq!(json["ok"], true);
 }
+
+/// The led placed by hand, and nothing else in the file.
+const PLACED: &str = "\
+version = 1
+
+[Widget.parts.led]
+at = [30.0, 12.0]
+rotation = 0
+side = \"top\"
+";
+
+#[test]
+fn summary_sums_up_the_placed_board_as_one_line_of_json() {
+    let dir = project("layout-summary", Some(PLACED));
+    let run = netsmith(&dir, &["summary", "--format", "json", "--near", "led", "--within", "50"]);
+    assert_eq!(code(&run), 0, "{}", stderr(&run));
+    let text = stdout(&run);
+    assert_eq!(text.lines().count(), 1, "{text}");
+    let json: serde_json::Value = serde_json::from_str(&text).unwrap();
+    assert_eq!(json["board"], "Widget");
+    assert_eq!(json["width"], 40.0);
+    assert_eq!(json["height"], 24.0);
+    assert_eq!(json["parts"], 3);
+    assert!(json["totals"]["hpwl"].as_f64().unwrap() > 0.0, "{json}");
+    let faces = json["faces"].as_array().unwrap();
+    assert_eq!(faces[0]["face"], "top");
+    assert_eq!(faces[1]["face"], "bottom");
+    assert_eq!(faces[0]["parts"], 3);
+    let usable = faces[0]["usable"].as_f64().unwrap();
+    let courtyards = faces[0]["courtyards"].as_f64().unwrap();
+    assert!(usable > 0.0 && usable < 40.0 * 24.0, "{json}");
+    assert!(courtyards > 0.0 && courtyards < usable, "{json}");
+    // The bottom face is empty: its largest free rectangle is most of the board.
+    let free = &faces[1]["largest_free"][0];
+    let width = free["max"][0].as_f64().unwrap() - free["min"][0].as_f64().unwrap();
+    assert!(width > 30.0, "{json}");
+    // The nets of two pads or more, each with its longest ratsnest line.
+    let nets = json["nets"].as_array().unwrap();
+    assert!(nets.iter().any(|n| n["name"] == "VCC"), "{json}");
+    assert!(nets.iter().all(|n| n["pads"].as_u64().unwrap() >= 2), "{json}");
+    // The led's neighbours, nearest first: the two other parts.
+    let near = &json["neighbours"][0];
+    assert_eq!(near["path"], "led");
+    let gaps: Vec<f64> = near["near"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|n| n["gap"].as_f64().unwrap())
+        .collect();
+    assert_eq!(gaps.len(), 2, "{json}");
+    assert!(gaps[0] <= gaps[1], "{gaps:?}");
+    assert!(json["findings"].as_array().unwrap().is_empty(), "{json}");
+
+    // For a person, a line per face.
+    let run = netsmith(&dir, &["summary"]);
+    assert_eq!(code(&run), 0, "{}", stderr(&run));
+    let text = stdout(&run);
+    assert!(text.starts_with("Widget: 40 x 24 mm, 3 parts"), "{text}");
+    assert!(text.contains("\ntop: 3 parts, courtyards"), "{text}");
+
+    // A part the board does not have is refused with the nearest names.
+    let run = netsmith(&dir, &["summary", "--near", "power_n"]);
+    assert_eq!(code(&run), 1);
+    assert!(stderr(&run).contains("no part `power_n`"), "{}", stderr(&run));
+}
+
+#[test]
+fn compare_says_which_parts_moved_between_two_layout_files() {
+    let dir = project("layout-compare", Some(PLACED));
+    fs::write(
+        dir.join("before.pcb.toml"),
+        PLACED.replace("at = [30.0, 12.0]", "at = [26.0, 9.0]"),
+    )
+    .unwrap();
+    let run = netsmith(&dir, &["compare", "before.pcb.toml", "--format", "json"]);
+    assert_eq!(code(&run), 0, "{}", stderr(&run));
+    let json: serde_json::Value = serde_json::from_str(&stdout(&run)).unwrap();
+    assert_eq!(json["board"], "Widget");
+    let moved = json["moved"].as_array().unwrap();
+    let led = moved
+        .iter()
+        .find(|m| m["path"] == "led")
+        .unwrap_or_else(|| panic!("{json}"));
+    assert_eq!(led["from"]["x"], 26.0);
+    assert_eq!(led["from"]["y"], 9.0);
+    assert_eq!(led["to"]["x"], 30.0);
+    assert_eq!(led["to"]["y"], 12.0);
+    assert_eq!(led["distance"], 5.0);
+    assert!(json["before"]["hpwl"].as_f64().is_some(), "{json}");
+    assert!(json["appeared"].as_array().is_some(), "{json}");
+
+    // The same file on both sides: nothing moved.
+    let run = netsmith(&dir, &["compare", "main.pcb.toml", "main.pcb.toml"]);
+    assert_eq!(code(&run), 0, "{}", stderr(&run));
+    assert!(stdout(&run).starts_with("Widget: 0 parts moved"), "{}", stdout(&run));
+
+    // A layout file that is not there cannot be compared.
+    let run = netsmith(&dir, &["compare", "nothing.pcb.toml"]);
+    assert_eq!(code(&run), 2);
+    assert!(stderr(&run).contains("nothing.pcb.toml"), "{}", stderr(&run));
+}

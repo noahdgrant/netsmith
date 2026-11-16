@@ -1200,13 +1200,23 @@ impl Placed<'_> {
 
     /// `then` of the board picked, built and placed (the layout file read, the routes file not).
     pub fn with_board<T>(&self, then: impl FnOnce(&Built, &Board) -> T) -> Result<T, String> {
+        self.with_board_laid_out(&self.layout, then)
+    }
+
+    /// [`Self::with_board`] placed with the layout file `layout` in place of the one beside the
+    /// source: `layout diff` places a board with two layout files.
+    pub fn with_board_laid_out<T>(
+        &self,
+        layout: &std::path::Path,
+        then: impl FnOnce(&Built, &Board) -> T,
+    ) -> Result<T, String> {
         placed(
             self.name,
             self.text,
             self.loader,
             self.catalogs,
             self.libraries,
-            Some(&self.layout),
+            Some(layout),
             self.board,
             self.seeds,
             None,
