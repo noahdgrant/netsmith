@@ -15,6 +15,6 @@ board Cased {
     }
     .tall: Header1x2
     .edge: Header1x2
-    // A 2x3 header has no catalog row, so it has no height from one (ADR 0094).
+    // A 2x3 header's catalog row states no height (it rates the contacts only), so it has none (ADR 0094).
     .bare: Header2x3
 }

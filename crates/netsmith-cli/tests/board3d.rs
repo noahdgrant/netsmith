@@ -83,11 +83,12 @@ fn the_lidded_board_reports_the_part_too_tall_the_unknown_one_and_the_margin() {
     assert_eq!(unknown.as_array().unwrap().len(), 1);
     assert_eq!(unknown[0]["path"], "bare");
     assert_eq!(unknown[0]["under_limits"], serde_json::json!(["lid"]));
+    // A 2x3 header's catalog row rates the contacts and states no height.
     assert!(
         unknown[0]["reason"]
             .as_str()
             .unwrap()
-            .contains("no catalog row"),
+            .contains("the `height` cell of its catalog row A254M01-0B6P51-H25A60 (C41426970) is empty"),
         "{}",
         unknown[0]["reason"]
     );

@@ -42,8 +42,9 @@
 //! are always true of a part, so the library states them (ADR 0002); the pin current depends on the
 //! maker, so it is a column of the `header` catalog (`data/jlcpcb/catalog/header.csv`: 1x2, 1x4,
 //! 1x8 and 1x10 headers and sockets, 3 A a contact from JXTCONN and Hanxia datasheets read on
-//! 2026-11-02, sources in `data/jlcpcb/README.md`). The two-row headers have no source for a rating,
-//! so they are unrated and the check of the current through them is listed as not evaluated. A
+//! 2026-11-02, sources in `data/jlcpcb/README.md`), and the 2x3 and 2x5 headers (JXTCONN, 3 A, read
+//! 2026-11-15). The 2x10 header has no row (its JLCPCB record could not be read), so it is unrated
+//! and the check of the current through it is listed as not evaluated. A
 //! catalog row's label is the KiCad symbol's name, so the value field of a schematic reads as
 //! before, and headers and sockets carry an LCSC number though they are hand-soldered. Contact N is
 //! pin `pN`; a header and its socket number alike. This is a library convention and not a field.
@@ -87,8 +88,8 @@
 //! **Not built** (issues #16 and #62): edge connectors and the plug-in's `card_thickness` check;
 //! flat cables and wire to board (they need a cable or harness definition); a partial mate and
 //! isolated grounds; stacking, side, `.mount` and `.mated_height` (they need the layout file and
-//! part heights); pin 1 on the PCB; a rating for the two-row headers; derating of several loaded
-//! contacts. Messages are one line each (the multi-line form would need a notes field on
+//! part heights); pin 1 on the PCB; a rating for the 2x10 header; derating of several loaded
+//! contacts (no datasheet read gives one). Messages are one line each (the multi-line form would need a notes field on
 //! diagnostics).
 //!
 //! **Refused, not built** (ADR 0040, issue #16): partial mates and isolated grounds are
