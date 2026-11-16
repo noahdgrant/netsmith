@@ -490,6 +490,21 @@ module Buck<Ic: BuckIc> provides BuckConverter {
     /// The current the feedback divider draws from the output, the divider's `.current` read
     /// out of the module (a bound or a read reaches inside no module, ADR 0116).
     .divider_current: Current
+    /// The largest input the IC takes, the IC's `.max_input_voltage` read out of the module, so
+    /// that a board states a requirement of its own against it without writing the IC's number
+    /// again: `.input.peak <= .reg.max_input_voltage * 0.8` keeps the input's peak 20 % under
+    /// it (issue #747). A bound or a read reaches inside no module (ADR 0116), so the value a
+    /// board needs is a member here, as `.divider_current` and `.soft_start_time` are. The
+    /// module's own check, `.vin.voltage <= .ic.max_input_voltage`, holds whatever the board
+    /// adds; the board's bound can only refuse more.
+    ///
+    /// Decided by the agent while the owner was away (2026-11-16, issue #747): the module
+    /// exports the value, and a board does not reach inside it. Not taken: a read-only bound
+    /// (`<=`, `>=`) that may name a value inside any module (it relaxes ADR 0116, which kept
+    /// relations outside, and the owner decided there that a value a board needs belongs on
+    /// the module's interface); the member on `BuckConverter` (a project's provider of the
+    /// generic would have to state it too; a board that wants the bound names the IC).
+    .max_input_voltage: Voltage
     /// The factor each capacitor's rating has over the highest voltage of its rail (ADR 0085):
     /// `.input_cap.max_voltage >= .vin.peak * .voltage_margin`, and the same for
     /// the steady `.voltage` and for the output. A default of 1, which asks for no more than
@@ -536,6 +551,7 @@ module Buck<Ic: BuckIc> provides BuckConverter {
     .divider.vref == .ic.vref
     .divider.vout == .vout.voltage
     .divider_current == .divider.current
+    .max_input_voltage == .ic.max_input_voltage
     // The bound on the divider's current, the IC's figure or 10 uA to 1 mA (see above, #702).
     .ic.recommended_divider_current ?= 10uA..1mA
     .divider.current ?= .ic.recommended_divider_current
