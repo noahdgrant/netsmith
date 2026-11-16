@@ -196,7 +196,7 @@ fn use_quote(line: &mut BomLine, quote: &Quote, today: &str) {
     line.stock = quote.stock;
     line.date = Some(day.clone());
     line.supply = Some(quote.source());
-    if let Some((unit, from)) = quote.price_for(line.quantity) {
+    if let Some((unit, from)) = quote.price_for(u64::from(line.quantity)) {
         line.unit_usd = Some(unit);
         line.line_usd = Some(unit * f64::from(line.quantity));
         if let Some(from) = from {

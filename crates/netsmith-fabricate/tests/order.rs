@@ -212,6 +212,44 @@ fn an_order_makes_only_its_boards_and_a_summary_with_the_numbers_scaled() {
 }
 
 #[test]
+fn the_summary_prices_a_part_at_the_quantity_of_the_whole_order() {
+    let Some(cli) = KicadCliExe::locate_runnable() else {
+        return;
+    };
+    let root = project("prices", ORDERS);
+    // An invented quote: the LED of both boards (13 in the order, 1 on a board) is at the
+    // second break only when the boards are counted together.
+    fs::create_dir_all(root.join("supply")).unwrap();
+    fs::write(
+        root.join("supply/quotes.csv"),
+        "lcsc,mpn,channel,stock,price_breaks,currency,date\n\
+         C2286,,jlcpcb-assembly,9000,1:0.0300 10:0.0200 100:0.0100,USD,2026-10-31\n",
+    )
+    .unwrap();
+    let manifest = fs::read_to_string(root.join("netsmith.toml")).unwrap();
+    fs::write(
+        root.join("netsmith.toml"),
+        format!("{manifest}\n[supply]\nprovider = \"file\"\nfile = \"supply/quotes.csv\"\n"),
+    )
+    .unwrap();
+    let made = make(&root, "small", Some(&cli)).unwrap_or_else(|e| panic!("{e}"));
+    assert!(
+        made.summary
+            .contains("C2286          13 x 0.0200 = 0.26 USD  (file, JLCPCB assembly stock, read 2026-10-31)"),
+        "{}",
+        made.summary
+    );
+    assert!(
+        made.summary.contains("no known price: file does not list the part"),
+        "{}",
+        made.summary
+    );
+    // `order-bom.csv` has no prices.
+    let csv = fs::read_to_string(made.dir.join(BOM_FILE)).unwrap();
+    assert!(!csv.contains("0.0200"), "{csv}");
+}
+
+#[test]
 fn a_system_in_an_order_is_all_its_members_and_a_new_run_replaces_the_old_folder() {
     let Some(cli) = KicadCliExe::locate_runnable() else {
         return;
