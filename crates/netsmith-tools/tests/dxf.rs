@@ -329,33 +329,126 @@ fn a_holes_layer_that_is_nowhere_in_the_file_is_an_error_listing_the_layers() {
     );
 }
 
+/// A window in a wall: 10 x 6 mm, its left part over the board's right edge, drawn with y up.
+fn window(layer: &str) -> String {
+    line(layer, (145.0, 210.0), (155.0, 210.0))
+        + &line(layer, (155.0, 210.0), (155.0, 216.0))
+        + &line(layer, (155.0, 216.0), (145.0, 216.0))
+        + &line(layer, (145.0, 216.0), (145.0, 210.0))
+}
+
 #[test]
-fn an_opening_that_crosses_the_board_edge_is_left_out_with_a_note_and_the_rest_is_imported() {
+fn an_opening_that_crosses_the_board_edge_is_cut_into_the_outline_as_a_notch() {
     let mut e = rounded("EDGE", 100.0, 200.0, 150.0, 236.0, 3.0);
-    // A window in a wall: 10 x 6 mm, its left part over the board's right edge.
-    e += &(line("EDGE", (145.0, 210.0), (155.0, 210.0))
-        + &line("EDGE", (155.0, 210.0), (155.0, 216.0))
-        + &line("EDGE", (155.0, 216.0), (145.0, 216.0))
-        + &line("EDGE", (145.0, 216.0), (145.0, 210.0)));
+    e += &window("EDGE");
     e += &circle("HOLES", (105.0, 230.5), 1.6);
     let imported = import(&file(Some(4), &e), "case.dxf", &request()).unwrap();
-    assert!(imported.members.contains(".outline: Outline"));
+    // The outline is a polygon now: the rounded corners are arcs, and the window's part over the
+    // board is the notch. The drawing's y 216 is the board's y 20 (the outline's top is 236).
+    assert!(
+        imported.members.starts_with(".outline: Outline {\n    polygon "),
+        "{}",
+        imported.members
+    );
+    for corner in ["(45mm, 20mm)", "(45mm, 26mm)", "(50mm, 20mm)", "(50mm, 26mm)"] {
+        assert!(imported.members.contains(corner), "{corner}\n{}", imported.members);
+    }
+    assert_eq!(
+        imported.members.matches("arc through").count(),
+        4,
+        "the four rounded corners:\n{}",
+        imported.members
+    );
     assert!(imported.members.contains(".hole1: MountingHole"));
     assert!(!imported.members.contains("Cutout"), "{}", imported.members);
-    let note = imported
-        .warnings
-        .iter()
-        .find(|w| w.contains("crosses the board edge"))
-        .unwrap_or_else(|| panic!("{:?}", imported.warnings));
-    // The drawing's y 216 is the board's y 20 (the outline's top is 236): 236 - 216.
+    assert_eq!(imported.imports, "import std::pcb::Outline\nimport std::parts::mechanical::MountingHole\n");
     assert!(
-        note.contains("opening 1")
+        !imported.warnings.iter().any(|w| w.contains("opening")),
+        "an opening is no longer left out: {:?}",
+        imported.warnings
+    );
+    let note = imported
+        .report
+        .iter()
+        .find(|l| l.contains("opening 1"))
+        .unwrap_or_else(|| panic!("{:?}", imported.report));
+    assert!(
+        note.contains("cut into the outline as a notch")
             && note.contains("layer `EDGE`")
             && note.contains("10 x 6 mm")
-            && note.contains("(45, 20)")
-            && note.contains("issue #90"),
+            && note.contains("(45, 20)"),
         "{note}"
     );
+    assert!(
+        imported.report.iter().any(|l| l.starts_with("outline 50 x 36 mm, a polygon of ")),
+        "{:?}",
+        imported.report
+    );
+}
+
+#[test]
+fn an_opening_that_cuts_the_board_in_two_is_refused_with_its_size() {
+    // A band with a point on its side, across the whole board.
+    let pts = [
+        (120.0, 198.0),
+        (125.0, 198.0),
+        (125.0, 216.0),
+        (126.0, 218.0),
+        (125.0, 220.0),
+        (125.0, 238.0),
+        (120.0, 238.0),
+    ];
+    let mut e = rounded("EDGE", 100.0, 200.0, 150.0, 236.0, 3.0);
+    for i in 0..pts.len() {
+        e += &line("EDGE", pts[i], pts[(i + 1) % pts.len()]);
+    }
+    let err = import(&file(Some(4), &e), "case.dxf", &Request::default()).unwrap_err();
+    assert!(
+        err.starts_with("case.dxf: an opening (") && err.contains("cuts the board into 2 pieces"),
+        "{err}"
+    );
+}
+
+#[test]
+fn an_outline_with_a_notch_from_a_window_goes_through_fab_with_its_edge_on_edge_cuts() {
+    let dir = temp("notch-fab");
+    // A 40 x 30 board, and a window 10 x 8 mm over the middle of its right edge.
+    let e = line("EDGE", (0.0, 0.0), (40.0, 0.0))
+        + &line("EDGE", (40.0, 0.0), (40.0, 30.0))
+        + &line("EDGE", (40.0, 30.0), (0.0, 30.0))
+        + &line("EDGE", (0.0, 30.0), (0.0, 0.0))
+        + &line("EDGE", (35.0, 11.0), (45.0, 11.0))
+        + &line("EDGE", (45.0, 11.0), (45.0, 19.0))
+        + &line("EDGE", (45.0, 19.0), (35.0, 19.0))
+        + &line("EDGE", (35.0, 19.0), (35.0, 11.0));
+    let imported = import(&file(Some(4), &e), "n.dxf", &Request::default()).unwrap();
+    let source = "import std::parts::connector::Header1x2\nimport std::mfg::jlcpcb::TwoLayer\n\n\
+        board Notch {\n    .process: TwoLayer {\n        .stackup.thickness &= 1.6mm\n    }\n    .a: Header1x2\n    .b: Header1x2\n    .a.p1 ~ .b.p1\n    .a.p1.net &= \"N1\"\n}\n";
+    let nsm = dir.join("notch.nsm");
+    fs::write(&nsm, source).unwrap();
+    write_physical(&nsm, None, &imported).unwrap();
+    let physical = fs::read_to_string(dir.join("notch.physical.nsm")).unwrap();
+    assert!(physical.contains("polygon (0mm, 0mm)"), "{physical}");
+    let made = fab_with_options(
+        "notch.nsm",
+        source,
+        &netsmith_check::Loader::std().with_physical("notch.nsm", "notch.physical.nsm", &physical),
+        &dir.join("fab"),
+        &Catalogs::jlcpcb(),
+        &Libraries::sample(),
+        None,
+        &FabOptions::default(),
+    )
+    .unwrap_or_else(|e| panic!("{e}"));
+    assert_eq!(made.len(), 1);
+    assert!(
+        made[0].notes.contains("design rules check: passed"),
+        "{}",
+        made[0].notes
+    );
+    let pcb = fs::read_to_string(dir.join("fab/Notch/Notch.kicad_pcb")).unwrap();
+    assert_eq!(pcb.matches("(gr_line").count(), 8, "eight edges: the box and the notch");
+    assert!(!pcb.contains("(gr_rect"));
 }
 
 #[test]

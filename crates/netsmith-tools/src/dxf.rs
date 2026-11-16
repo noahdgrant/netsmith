@@ -10,8 +10,10 @@
 //! circuit source is never written. Without `--write` the text is printed, for a person (or
 //! an agent) to paste.
 //!
-//! An outline that is not a rounded rectangle (an L, a polygon, corners of different radii) is
-//! written as a `polygon` statement in the `Outline` (issue #57): each vertex of the loop a
+//! An opening (a loop that crosses the outline, such as a window in a case wall that is partly beyond
+//! the board) is already cut out of the outline by the reader, so it is a polygon with a notch (issue
+//! #90): the report says each one. An outline that is not a rounded rectangle (an L, a notch, a polygon,
+//! corners of different radii) is written as a `polygon` statement in the `Outline` (issue #57): each vertex of the loop a
 //! corner, and each arc of the drawing `arc through` its middle point, so the source states the
 //! drawing's edge exactly (splines and ellipses are already chords). A cutout that is not a
 //! rounded rectangle, a slot or a circle is still refused with its size and edge count, and
@@ -205,27 +207,7 @@ pub(crate) fn translate(
         ));
     }
 
-    // A loop that crosses the board edge is not in the language yet (issue #90): it is
-    // reported with its place and left out, and the rest is imported.
-    let mut warnings = outline.warnings.clone();
-    for (i, o) in outline.openings.iter().enumerate() {
-        let (lo, hi) = o.shape.bounds();
-        warnings.push(format!(
-            "opening {} crosses the board edge and was left out: layer {}, {} x {} mm with its top left corner at \
-             ({}, {}) on the board (mm from the outline's top left corner, y down). It could be a notch in \
-             the outline, a keepout or the place of a connector; the options are in issue #90",
-            i + 1,
-            o.layers
-                .iter()
-                .map(|l| format!("`{l}`"))
-                .collect::<Vec<_>>()
-                .join(", "),
-            number(hi.0 - lo.0),
-            number(hi.1 - lo.1),
-            number(lo.0),
-            number(lo.1),
-        ));
-    }
+    let warnings = outline.warnings.clone();
 
     let mut members = String::new();
     let mut names = vec!["outline".to_string()];
@@ -297,6 +279,25 @@ pub(crate) fn translate(
             )
         }
     };
+    // An opening is already cut out of the outline (issue #90): said, so that the notch in the
+    // polygon is not a surprise.
+    for (i, o) in outline.openings.iter().enumerate() {
+        let (lo, hi) = o.shape.bounds();
+        report.push(format!(
+            "opening {} crosses the board edge and is cut into the outline as a notch: layer {}, {} x {} mm with \
+             its top left corner at ({}, {}) on the board",
+            i + 1,
+            o.layers
+                .iter()
+                .map(|l| format!("`{l}`"))
+                .collect::<Vec<_>>()
+                .join(", "),
+            number(hi.0 - lo.0),
+            number(hi.1 - lo.1),
+            number(lo.0),
+            number(lo.1),
+        ));
+    }
     report.push(format!(
         "{shape}; {} cutout{}; {} hole{}",
         cutouts.len(),
