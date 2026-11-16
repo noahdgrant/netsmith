@@ -631,9 +631,8 @@ fn copy_std(to: &Path) -> Vec<String> {
 fn the_standard_catalogs_refresh_with_the_saved_responses_and_change_only_checked() {
     let root = dir("std");
     let names = copy_std(&root.join("catalog"));
-    // Thirteen with rows and, since ADR 0063, `p_mosfet` and `level_translator` with a header
-    // only, `lt8641` (a buck IC with no row of recorded stock) with a header only too, and the
-    // three buck ICs of issue #620 with a row each.
+    // Eighteen with rows (`p_mosfet` has had one since issue #846) and, with a header only,
+    // `level_translator` (ADR 0063) and `lt8641` (a buck IC with no row of recorded stock).
     assert_eq!(names.len(), 20, "twenty catalogs");
     let before: Vec<String> = names
         .iter()
@@ -838,7 +837,7 @@ fn every_row_of_every_standard_file_survives_a_refresh_with_only_its_checked_cel
         report.files.iter().map(|f| f.rows.len()).sum::<usize>(),
         rows_total
     );
-    // A file with no row has nothing to write (ADR 0063: `p_mosfet` and `level_translator`).
+    // A file with no row has nothing to write (ADR 0063: `level_translator`).
     assert!(report.files.iter().all(|f| f.written || f.rows.is_empty()));
 
     for (name, old) in names.iter().zip(&before) {
