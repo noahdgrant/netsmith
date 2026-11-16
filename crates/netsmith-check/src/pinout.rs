@@ -4,7 +4,7 @@
 use crate::diag::SourceId;
 use crate::model::{
     Domain, InstId, Member, Model, Net, Peripheral, PeripheralFunction, PinKind, PinRow, PinTable,
-    Pinout,
+    Pinout, Tie,
 };
 use netsmith_lang::Span;
 
@@ -194,6 +194,35 @@ impl Model {
         pins.sort_by_key(|&p| self.path_of(p));
         pins.dedup();
         pins
+    }
+
+    /// The ties of a part that a pin table breaks: the table has both pins of the tie (a tie
+    /// that names a pin the package lacks is skipped there, ADR 0016) and the board does not
+    /// put them on one net. The checker reports each on the board (`tie`), and the solver
+    /// does not choose a catalog row whose package has a table that breaks one (#848).
+    pub fn broken_ties(&self, part: InstId, table: &PinTable) -> Vec<&Tie> {
+        // A pin with a row in no table is an alias (`vout.neg`), which every package has.
+        let missing = |p: InstId| table.row(p).is_none() && self.pin_facts(p).is_some();
+        self.instance(part)
+            .ties
+            .iter()
+            .filter(|tie| !missing(tie.a) && !missing(tie.b))
+            .filter(|tie| {
+                !matches!(
+                    (self.net_of(tie.a), self.net_of(tie.b)),
+                    (Some(x), Some(y)) if std::ptr::eq(x, y)
+                )
+            })
+            .collect()
+    }
+
+    /// The ties that a package breaks ([`Self::broken_ties`]). A package without a table
+    /// breaks none: that it has no table is a fault of its own.
+    pub fn broken_ties_in(&self, part: InstId, package: &str) -> Vec<&Tie> {
+        match self.table_for(part, package) {
+            Some(table) => self.broken_ties(part, table),
+            None => Vec::new(),
+        }
     }
 
     /// The kind of a pin for the rules of a net: the kind of the function the board chose if

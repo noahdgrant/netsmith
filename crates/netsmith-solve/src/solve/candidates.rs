@@ -16,6 +16,8 @@ use netsmith_quantity::Quantity;
 pub(super) enum Misfit {
     /// Its package lacks a pin the board connects.
     Pins,
+    /// Its package has both pins of a `tie` that the board does not make (#848).
+    Tie,
     /// It is outside the board's environment.
     Environment,
     /// The column at this place in the job's columns.
@@ -58,6 +60,9 @@ impl Solver<'_> {
     ) -> Option<Misfit> {
         if !self.package_has_the_pins(part, c) {
             return Some(Misfit::Pins);
+        }
+        if self.package_breaks_a_tie(part, c) {
+            return Some(Misfit::Tie);
         }
         if self.outside_environment(part, c) {
             return Some(Misfit::Environment);
@@ -110,6 +115,17 @@ impl Solver<'_> {
                     _ => "",
                 };
                 format!("its package {package} lacks a pin the board connects")
+            }
+            Misfit::Tie => {
+                let package = match c.column("package") {
+                    Some(Value::Text(p)) => p.as_str(),
+                    _ => "",
+                };
+                let ties = self.tie_names(part, package);
+                format!(
+                    "its package {package} has both pins of {}, which the board does not join",
+                    ties.join(", ")
+                )
             }
             Misfit::Environment => {
                 "it is outside the board's environment (its temperatures or its qualification)"
@@ -310,10 +326,36 @@ impl Solver<'_> {
         }
     }
 
+    /// Whether a candidate's package has both pins of a `tie` of the part that the board
+    /// does not make (#848). The checker would refuse the board in that package, so the
+    /// solver looks ahead and does not choose it; a package that lacks a pin of the tie
+    /// skips the tie (ADR 0016) and may still be chosen.
+    fn package_breaks_a_tie(&self, part: InstId, c: &Candidate) -> bool {
+        match c.column("package") {
+            Some(Value::Text(package)) => !self.model.broken_ties_in(part, package).is_empty(),
+            _ => false,
+        }
+    }
+
+    /// The ties that a package breaks, each as `` `tie .a ~ .b` ``, in the part's order.
+    fn tie_names(&self, part: InstId, package: &str) -> Vec<String> {
+        self.model
+            .broken_ties_in(part, package)
+            .iter()
+            .map(|t| {
+                format!(
+                    "`tie .{} ~ .{}`",
+                    self.model.path_below(t.a, part),
+                    self.model.path_below(t.b, part)
+                )
+            })
+            .collect()
+    }
+
     /// What to add to a message when candidates were left out for lacking a pin that the
-    /// board connects.
+    /// board connects, or for having both pins of a `tie` that the board does not make.
     pub(super) fn package_note(&self, job: &Job) -> Option<String> {
-        let mut left_out: Vec<(String, Vec<String>)> = Vec::new();
+        let mut left_out: Vec<(String, String)> = Vec::new();
         for c in &job.catalog.candidates {
             let Some(Value::Text(package)) = c.column("package") else {
                 continue;
@@ -323,11 +365,25 @@ impl Solver<'_> {
             }
             let lacking = self.model.missing_in(job.part, package);
             if !lacking.is_empty() {
-                let names = lacking
+                let names: Vec<String> = lacking
                     .iter()
                     .map(|&p| format!("`{}`", self.model.path_below(p, job.part)))
                     .collect();
-                left_out.push((package.clone(), names));
+                left_out.push((
+                    package.clone(),
+                    format!("has no {}, which the board connects", names.join(", ")),
+                ));
+                continue;
+            }
+            let ties = self.tie_names(job.part, package);
+            if !ties.is_empty() {
+                left_out.push((
+                    package.clone(),
+                    format!(
+                        "has both pins of {}, which the board does not join",
+                        ties.join(", ")
+                    ),
+                ));
             }
         }
         if left_out.is_empty() {
@@ -335,12 +391,7 @@ impl Solver<'_> {
         }
         let each: Vec<String> = left_out
             .iter()
-            .map(|(package, pins)| {
-                format!(
-                    "package `{package}` has no {}, which the board connects",
-                    pins.join(", ")
-                )
-            })
+            .map(|(package, why)| format!("package `{package}` {why}"))
             .collect();
         Some(format!("rows were left out because {}", each.join("; ")))
     }
