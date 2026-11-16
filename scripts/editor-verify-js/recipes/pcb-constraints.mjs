@@ -1,7 +1,7 @@
 // A requirement on where a part goes (ADR 0045), broken by the layout file: the findings tab lists
 // the constraint finding with its numbers, a click zooms to it, and handing the part back to
-// the placer, which keeps to the requirement, clears it. (The windows and the drag clamp are
-// not drawn yet; this checks the findings only.)
+// the placer, which keeps to the requirement, clears it. The windows, the ghost, the drag that
+// stops at a window and "Require here" are `pcb-windows`.
 import { whenIdle } from '../settle.mjs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';

@@ -74,8 +74,12 @@
 //! route, or cost board area near a dense module; the placer reports the least violation.
 //! Relations are not solved, so a mistaken one shows at placement and not at `build`.
 //!
-//! **Not built** (issue #56): the editor's window overlays, ghosts and drag limit and its "pin
-//! here" (C4, C5), a `netsmith layout check` that measures more than the locked entries (C6;
+//! **The editor** (C4 and C5, issue #815) draws each part's window ([`part_windows`]) on the PCB
+//! view with a ghost of the body at the nearest place it allows, holds a drag inside it, and
+//! "Require here" writes the part's place as requirements in the physical file
+//! (`netsmith-workspace/src/required.rs`).
+//!
+//! **Not built** (issue #56): a `netsmith layout check` that measures more than the locked entries (C6;
 //! the command measures those, `netsmith_fabricate::layout_edit`), mating across boards (C7, ADR 0040),
 //! `MountingHole.head_diameter`, a box check for a module's `.place.x` and `.y`, and a polygon
 //! outline (C8, issue #57).
@@ -303,6 +307,40 @@ pub(crate) fn requirements(design: &Design, path: &str) -> (Vec<Req>, Option<(St
         }
     }
     (reqs, side)
+}
+
+/// One requirement on where a part's body goes, as the editor's PCB view draws it and holds a
+/// drag to it (issue #815): the window of one field, in millimetres from the outline's top left
+/// corner (degrees for `rotation`), an end infinite when nothing bounds it.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PartWindow {
+    pub field: PlaceField,
+    pub lo: f64,
+    pub hi: f64,
+    /// `usb.place.left`, or the module's `block.place.left`.
+    pub id: String,
+    /// `widget.physical.nsm:14`, or several places separated by commas; empty if unknown.
+    pub source: String,
+    /// Stated on a module the part is in, for every part of it: only the half that keeps a part
+    /// inside (a least `left` or `top`, a most `right` or `bottom`), as the placer holds it.
+    pub module: bool,
+}
+
+/// The requirements on where the part at `path` goes that the placer holds it to: its own, and
+/// the half of each of its modules' that keeps it inside, as [`plan`] reads them.
+pub fn part_windows(design: &Design, path: &str) -> Vec<PartWindow> {
+    requirements(design, path)
+        .0
+        .into_iter()
+        .map(|r| PartWindow {
+            field: r.field,
+            lo: r.lo,
+            hi: r.hi,
+            id: r.id,
+            source: r.source,
+            module: r.inherited,
+        })
+        .collect()
 }
 
 /// The body of a footprint with origin at 0, turned `angle`, on the face `side`.

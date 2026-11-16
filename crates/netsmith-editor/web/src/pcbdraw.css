@@ -113,6 +113,10 @@
 .pcb-overlay .mark.warning { fill: color-mix(in srgb, var(--warning) 8%, transparent); filter: drop-shadow(0 0 .35px var(--warning)); }
 .pcb-overlay .mark.on { stroke-width: calc(3 * var(--px, .04)); fill: color-mix(in srgb, var(--danger) 16%, transparent); }
 .pcb-overlay .mark.warning.on { fill: color-mix(in srgb, var(--warning) 16%, transparent); }
+/* placement requirements (ADR 0045 C4): the window a part's body may stand in, faint, strong for the picked part; the body's ghost at the nearest place it allows */
+.pcb-overlay .req-window { fill: color-mix(in srgb, var(--info) 5%, transparent); stroke: var(--info); stroke-opacity: .5; stroke-width: calc(1 * var(--px, .04)); stroke-dasharray: calc(5 * var(--px, .04)) calc(3 * var(--px, .04)); }
+.pcb-overlay .req.on .req-window { fill: color-mix(in srgb, var(--info) 13%, transparent); stroke-opacity: 1; stroke-width: calc(1.75 * var(--px, .04)); }
+.pcb-overlay .req-ghost { fill: none; stroke: var(--info); stroke-width: calc(2.25 * var(--px, .04)); stroke-dasharray: calc(2 * var(--px, .04)) calc(2 * var(--px, .04)); }
 
 /* the routes file's copper (fixed: the router keeps it): a line along each track and a ring round each via in the text's colour, which
  * stands out on the copper of either face in every theme; dashed while the router may add to the net, solid once the net is locked */

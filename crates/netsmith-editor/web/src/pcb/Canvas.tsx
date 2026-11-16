@@ -67,6 +67,7 @@ import {
 } from './actions';
 import { fitView } from '../sheets';
 import { heightLines, heldTip, limitMove, zonesOf } from './limits';
+import { ghostOf, heldTip as windowTip, requirementLines, windowBox, windowMove, windowOf } from './windows';
 import { type Drawing, SCALE, light, previewMove } from './drawing';
 import { moveParts } from './edits';
 import { appliesTo, faceWord, nextSide } from './side';
@@ -406,7 +407,7 @@ export function Canvas(props: {
     if (copper) return { ...at, title: `net ${copper.getAttribute('data-net')}`, lines: [] };
     if (part) {
       const how = part.locked ? 'locked' : part.placement === 'derived' ? 'placed by netsmith' : `placed by ${part.placement}`;
-      return { ...at, title: part.refdes, lines: [...info(part), `${faceWord(part.side)} side, ${how}`, ...heightLines(part, zones)] };
+      return { ...at, title: part.refdes, lines: [...info(part), `${faceWord(part.side)} side, ${how}`, ...heightLines(part, zones), ...requirementLines(part)] };
     }
     const keepout = sc.keepouts.find((k) => k.area && appliesTo(k.layers, side) && distanceToEdge(k.area, p) < 0.3 && contains(expand(k.area, 0.3), p));
     if (keepout) {
@@ -551,12 +552,15 @@ export function Canvas(props: {
       // The part that was taken ends on the grid and the others keep their distance to it.
       const first = free.includes(g.hit) ? g.hit : free[0];
       const anchor = { x: first.x - sc.originX, y: first.y - sc.originY };
-      // A part too tall for a height limit stops at its edge (ADR 0045 section 11): the zones of the
-      // board, not those a part carries, which move with their part.
-      const limited = limitMove(free, dragZones, snapMove(anchor, by, step), g.last, step);
+      // A part stays in the window its placement requirements leave it (ADR 0045 C4), and a part too
+      // tall for a height limit stops at its edge (section 11): the zones of the board, not those a
+      // part carries, which move with their part.
+      const kept = windowMove(free, frame, snapMove(anchor, by, step));
+      const limited = limitMove(free, dragZones, kept.delta, g.last, step);
       const delta = limited.delta;
       g.last = delta;
-      props.onTip(limited.held ? { ...tipNear(e), ...heldTip(limited.held) } : null);
+      const tip = limited.held ? heldTip(limited.held) : kept.held ? windowTip(kept.held) : null;
+      props.onTip(tip ? { ...tipNear(e), ...tip } : null);
       const svg = svgEl();
       if (svg) previewMove(svg, free, delta);
       setPreview({ delta, moving: free.map((x) => x.path) });
@@ -962,6 +966,22 @@ export function Canvas(props: {
               </g>
             ) : null,
           )}
+          <g class="req-overlay" data-testid="requirements">
+            {sc.parts.map((p) => {
+              const w = windowOf(p, frame);
+              if (!w) return null;
+              const b = windowBox(p, w, sc.outline);
+              const on = picked.includes(p.path) || !!preview.moving?.includes(p.path);
+              // The body at the nearest place the window allows, while it stands outside it.
+              const g = preview.moving?.includes(p.path) ? null : ghostOf(p, w);
+              return (
+                <g key={`req:${p.path}`} class={`req ${on ? 'on' : ''}`} data-req-part={p.path} data-req-ref={p.refdes}>
+                  <rect class="req-window" x={b.x} y={b.y} width={b.width} height={b.height} />
+                  {g && <rect class="req-ghost" data-testid="req-ghost" x={g.x} y={g.y} width={g.width} height={g.height} />}
+                </g>
+              );
+            })}
+          </g>
           {hovered && !picked.includes(hovered) && !gesture.current && (
             <Outline box={sc.parts.find((p) => p.path === hovered)?.courtyard} class="hover" />
           )}

@@ -23,6 +23,9 @@ function part(path: string, body: PcbBox, height: number | null, side: 'top' | '
     body,
     height,
     pads: [],
+    requirements: [],
+    required: { x: null, y: null, rotation: null, side: null },
+    requiredElsewhere: null,
   };
 }
 

@@ -36,6 +36,9 @@ function part(path: string, x: number, y: number, over: Partial<PcbPart> = {}): 
     body: { x: 100 + x - 1, y: 50 + y - 1, width: 2, height: 2 },
     height: null,
     pads: [],
+    requirements: [],
+    required: { x: null, y: null, rotation: null, side: null },
+    requiredElsewhere: null,
     ...over,
   };
 }

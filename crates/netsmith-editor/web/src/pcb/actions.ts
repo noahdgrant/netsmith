@@ -15,6 +15,7 @@ import {
   rotateParts,
 } from './edits';
 import { tidy } from './geometry';
+import { isRequired, requiredHere } from './windows';
 
 export function frameOf(sc: PcbScene): Frame {
   return { originX: sc.originX, originY: sc.originY };
@@ -80,6 +81,27 @@ export const nudge = (dx: number, dy: number, big: boolean) => {
   return edit(
     (c) => moveParts(c.parts, c.frame, { x: tidy(dx * step), y: tidy(dy * step) }),
     (p) => `nudge ${names(p)}`,
+  );
+};
+
+const NOT_REQUIRED = { x: null, y: null, rotation: null, side: null };
+
+/** "Require here" (ADR 0045 C5): state where the selected parts are, their turn and their face, as placement
+ * requirements of the board's physical file, so the placer keeps them there and `fab` checks it; or take those
+ * requirements out when every selected part has them. A part whose place the file states in another shape (a
+ * window, an edge, a relation) is changed in the file. */
+export const toggleRequired = () => {
+  const c = chosen();
+  if (!c) return Promise.resolve(false);
+  const other = c.parts.find((p) => p.requiredElsewhere);
+  if (other) {
+    say(`${other.refdes}: the physical file states where it goes, ${other.requiredElsewhere}: change it there`, true);
+    return Promise.resolve(false);
+  }
+  const drop = c.parts.every(isRequired);
+  return commit(
+    c.parts.map((p) => ({ what: 'required', path: p.path, before: p.required, after: drop ? NOT_REQUIRED : requiredHere(p, c.frame) })),
+    drop ? `remove the requirement on where ${names(c.parts)} goes` : `require ${names(c.parts)} here`,
   );
 };
 

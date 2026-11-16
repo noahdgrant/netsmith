@@ -919,7 +919,46 @@ body: PcbBox,
  * How tall the body stands, in mm, if the design states it (never a guess: `None` is
  * unknown).
  */
-height: number | null, pads: Array<PcbPad>, };
+height: number | null, pads: Array<PcbPad>, 
+/**
+ * The placement requirements the placer holds the part to (ADR 0045): its own and the half
+ * of each of its modules' that keeps it inside. The PCB view draws their window and holds a
+ * drag inside it (issue 815).
+ */
+requirements: Array<PcbRequirement>, 
+/**
+ * The fields of the part's `.place` that the physical file states in the shape "Require
+ * here" writes (`.usb.place.x &= 12.5mm`, one plain `&=` of a literal each): what such an
+ * edit changes, and gives back as its `before`.
+ */
+required: RequiredPlace, 
+/**
+ * Why "Require here" may not write the part's place: the physical file states it in
+ * another shape (a window, an edge, a relation), named with its line. `None` when it may.
+ */
+requiredElsewhere: string | null, };
+
+export type PcbRequirement = { 
+/**
+ * `x`, `y` (the centre of the body), `left`, `right`, `top`, `bottom` (its edges) or
+ * `rotation`.
+ */
+field: string, lo: number | null, hi: number | null, 
+/**
+ * `usb.place.left`, or a module's `block.place.left`.
+ */
+id: string, 
+/**
+ * `main.physical.nsm:14`; empty if unknown.
+ */
+source: string, 
+/**
+ * Stated on a module the part is in, for every part of it (only the half that keeps the
+ * part inside).
+ */
+module: boolean, };
+
+export type RequiredPlace = { x: number | null, y: number | null, rotation: number | null, side: PcbSide | null, };
 
 export type KeepoutOrigin = "source" | "placed" | "drawn" | "stated" | "part";
 
@@ -1150,7 +1189,7 @@ layers: Array<string>, tracks: boolean, vias: boolean, copper: boolean, parts: b
 
 export type KeepoutPlacement = { x: number, y: number, drawn: DrawnKeepout | null, };
 
-export type PcbChange = { "what": "part", path: string, before: PartPlacement | null, after: PartPlacement | null, } | { "what": "keepout", name: string, before: KeepoutPlacement | null, after: KeepoutPlacement | null, };
+export type PcbChange = { "what": "part", path: string, before: PartPlacement | null, after: PartPlacement | null, } | { "what": "keepout", name: string, before: KeepoutPlacement | null, after: KeepoutPlacement | null, } | { "what": "required", path: string, before: RequiredPlace, after: RequiredPlace, };
 
 export type PcbEdit = { board: string, 
 /**

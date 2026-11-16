@@ -18,9 +18,11 @@ import {
   releaseSelection,
   rotateSelection,
   toggleLock,
+  toggleRequired,
 } from './actions';
 import type { Drawing } from './drawing';
 import { faceWord } from './side';
+import { isRequired, rangeText } from './windows';
 
 export function Panel(props: {
   scene: PcbScene;
@@ -172,6 +174,8 @@ function PartInspector(props: { scene: PcbScene; parts: PcbPart[]; onPickNet: (n
   const { parts, scene: sc } = props;
   const one = parts.length === 1 ? parts[0] : null;
   const allLocked = parts.every((p) => p.locked);
+  const allRequired = parts.every(isRequired);
+  const elsewhere = parts.find((p) => p.requiredElsewhere);
   return (
     <section class="inspector insp" data-testid="part-inspector">
       <InspectorHead
@@ -212,7 +216,37 @@ function PartInspector(props: { scene: PcbScene; parts: PcbPart[]; onPickNet: (n
           <Icon name="close" size={13} />
           Release
         </button>
+        <button
+          class="tool small"
+          data-testid="require-here"
+          disabled={!!elsewhere}
+          title={
+            elsewhere
+              ? `The physical file states where ${elsewhere.refdes} goes, ${elsewhere.requiredElsewhere}: change it there`
+              : allRequired
+                ? 'Take out the requirements on its place from the physical file'
+                : 'Write where it is, its turn and its face as requirements in the physical file: the placer keeps it there and fab checks it'
+          }
+          onClick={() => void toggleRequired()}
+        >
+          <Icon name={allRequired ? 'close' : 'ruler'} size={13} />
+          {allRequired ? 'Drop requirement' : 'Require here'}
+        </button>
       </div>
+      {one && one.requirements.length > 0 && (
+        <>
+          <div class="ih-sec">
+            Requirements <span class="disc-count">{one.requirements.length}</span>
+          </div>
+          <ul class="req-list" data-testid="requirement-list">
+            {one.requirements.map((r) => (
+              <li key={`${r.id}:${r.field}`} title={r.source ? `${r.source}${r.module ? ', for every part of the module' : ''}` : undefined}>
+                <code>{r.id}</code> <span class="faint">{rangeText(r)}</span>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
       {one && (
         <>
           <div class="ih-sec">

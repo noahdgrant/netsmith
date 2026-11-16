@@ -1179,6 +1179,48 @@ pub struct PcbPart {
     /// unknown).
     pub height: Option<f64>,
     pub pads: Vec<PcbPad>,
+    /// The placement requirements the placer holds the part to (ADR 0045): its own and the half
+    /// of each of its modules' that keeps it inside. The PCB view draws their window and holds a
+    /// drag inside it (issue 815).
+    pub requirements: Vec<PcbRequirement>,
+    /// The fields of the part's `.place` that the physical file states in the shape "Require
+    /// here" writes (`.usb.place.x &= 12.5mm`, one plain `&=` of a literal each): what such an
+    /// edit changes, and gives back as its `before`.
+    pub required: RequiredPlace,
+    /// Why "Require here" may not write the part's place: the physical file states it in
+    /// another shape (a window, an edge, a relation), named with its line. `None` when it may.
+    pub required_elsewhere: Option<String>,
+}
+
+/// A placement requirement on one field of a part's body (ADR 0045), as the PCB view draws it:
+/// a window in mm from the outline's top left corner (degrees for `rotation`). An end that
+/// nothing bounds is `None`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct PcbRequirement {
+    /// `x`, `y` (the centre of the body), `left`, `right`, `top`, `bottom` (its edges) or
+    /// `rotation`.
+    pub field: String,
+    pub lo: Option<f64>,
+    pub hi: Option<f64>,
+    /// `usb.place.left`, or a module's `block.place.left`.
+    pub id: String,
+    /// `main.physical.nsm:14`; empty if unknown.
+    pub source: String,
+    /// Stated on a module the part is in, for every part of it (only the half that keeps the
+    /// part inside).
+    pub module: bool,
+}
+
+/// The place of a part as "Require here" states it in the board's physical file (issue 815):
+/// the centre of its body in mm from the outline's top left corner, its turn in degrees and its
+/// face. A field that is `None` is not stated in that shape.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, TS)]
+pub struct RequiredPlace {
+    pub x: Option<f64>,
+    pub y: Option<f64>,
+    pub rotation: Option<f64>,
+    pub side: Option<PcbSide>,
 }
 
 /// Where a keepout comes from, which says what the editor may do to it (ADR 0029).
@@ -1608,6 +1650,14 @@ pub enum PcbChange {
         before: Option<KeepoutPlacement>,
         after: Option<KeepoutPlacement>,
     },
+    /// The part's place as requirements of the board's physical file ("Require here", issue
+    /// 815), not an entry of the layout file: each field of `after` is written as one plain
+    /// `&=`, and a field it leaves `None` is taken out.
+    Required {
+        path: String,
+        before: RequiredPlace,
+        after: RequiredPlace,
+    },
 }
 
 /// A set of changes that is one step of undo.
@@ -1993,6 +2043,8 @@ pub fn typescript() -> String {
         PcbSide,
         PcbPad,
         PcbPart,
+        PcbRequirement,
+        RequiredPlace,
         KeepoutOrigin,
         PcbKeepout,
         PcbCutout,
