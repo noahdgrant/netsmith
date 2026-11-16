@@ -123,3 +123,91 @@ fn a_resistor_turned_round_matches_with_a_note_and_an_led_does_not() {
     assert_eq!(code, Some(1), "{out}");
     assert!(out.contains("D1.1") && out.contains("D1.2"), "{out}");
 }
+
+/// #743: a `.nsm` side is built as `build` builds it, held to the pick lock beside the
+/// source, so it is the schematic that `build` wrote. No KiCad is needed.
+#[test]
+fn a_nsm_side_is_held_to_the_pick_lock_beside_it() {
+    let dir = scratch("pick-lock");
+    fs::write(
+        dir.join("netsmith.toml"),
+        "[project]\nname = \"repro\"\ntop_level = [\"board.nsm\"]\n",
+    )
+    .unwrap();
+    fs::write(
+        dir.join("board.nsm"),
+        r#"import std::parts::passive::Resistor
+import std::sources::Rail
+
+board Repro {
+    .supply: Rail {
+        .voltage &= 5V +/- 5%
+        .pos.net &= "VCC"
+    }
+    .r: Resistor { .resistance &= 1kohm..10kohm }
+    .r2: Resistor { .resistance &= 1kohm..10kohm }
+    .supply.pos ~> .r ~> .r2 ~> .supply.neg
+}
+"#,
+    )
+    .unwrap();
+    let xml = |first: &str| {
+        format!(
+            r#"<export version="E"><components>
+              <comp ref="R1"><value>{first}</value><footprint>Resistor_SMD:R_0402_1005Metric</footprint></comp>
+              <comp ref="R2"><value>2.2k</value><footprint>Resistor_SMD:R_0402_1005Metric</footprint></comp>
+            </components><nets>
+              <net code="1" name="VCC"><node ref="R1" pin="1"/></net>
+              <net code="2" name="X"><node ref="R1" pin="2"/><node ref="R2" pin="1"/></net>
+              <net code="3" name="GND"><node ref="R2" pin="2"/></net>
+            </nets></export>"#
+        )
+    };
+    let (before, after) = (dir.join("before.xml"), dir.join("after.xml"));
+    fs::write(&before, xml("2.2k")).unwrap();
+    fs::write(&after, xml("4.7k")).unwrap();
+    let netsmith = |args: &[&Path]| {
+        Command::new(env!("CARGO_BIN_EXE_netsmith"))
+            .args(args)
+            .output()
+            .unwrap()
+    };
+    let board = dir.join("board.nsm");
+    let compare = |xml: &Path| {
+        let out = netsmith(&[Path::new("compare"), &board, xml]);
+        (
+            out.status.code(),
+            String::from_utf8_lossy(&out.stdout).into_owned(),
+        )
+    };
+    let built = netsmith(&[
+        Path::new("build"),
+        &board,
+        Path::new("--out"),
+        &dir.join("out"),
+    ]);
+    assert!(built.status.success(), "{built:?}");
+    let lock = dir.join("board.lock.toml");
+    let text = fs::read_to_string(&lock).unwrap();
+    let (code, out) = compare(&before);
+    assert_eq!(code, Some(0), "{out}");
+
+    // Hold `r` to the 4.7k row: the comparison follows the lock, as `build` does.
+    let held = text.replacen(
+        "row = \"2.2kΩ 1% 0402 C25879\"\nlcsc = \"C25879\"\nmpn = \"0402WGF2201TCE\"",
+        "row = \"4.7kΩ 1% 0402 C25900\"\nlcsc = \"C25900\"\nmpn = \"0402WGF4701TCE\"",
+        1,
+    );
+    assert_ne!(held, text, "the lock was not edited:\n{text}");
+    fs::write(&lock, &held).unwrap();
+    let (code, out) = compare(&after);
+    assert_eq!(code, Some(0), "{out}");
+    let (code, out) = compare(&before);
+    assert_eq!(code, Some(1), "{out}");
+    assert!(out.contains("4.7k"), "{out}");
+    assert_eq!(
+        fs::read_to_string(&lock).unwrap(),
+        held,
+        "compare never writes the lock"
+    );
+}
