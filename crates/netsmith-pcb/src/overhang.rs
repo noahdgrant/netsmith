@@ -68,8 +68,9 @@
 //! the requirement). (i) "Two parts that hang over the same edge may overlap beyond it in the
 //! check, but the annealer still keeps their whole courtyards apart (stricter than the check).
 //! **Decided 2026-11-04: the annealer is changed to agree with the check.**" Whether a module's
-//! physical file may state an overhang is the module layer of ADR 0048, which is not built
-//! (issue #52).
+//! physical file may state an overhang is still open: the module layer of ADR 0048 (issue #813,
+//! `netsmith-check/src/module_physical.rs`) states no `.place` of the module's parts in the
+//! board's frame, so it cannot today.
 
 use crate::geometry::{Pt, Rect};
 

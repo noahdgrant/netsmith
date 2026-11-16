@@ -489,6 +489,17 @@ fn write_block(out: &mut String, inner_docs: &[String], items: &[Item], depth: u
                     }
                 }
             }
+            Item::PhysicalFile(f) => {
+                let _ = write!(out, "physical {}", quote(&f.file));
+            }
+            Item::Anchor(a) => {
+                let _ = write!(
+                    out,
+                    "anchor .{} = {}",
+                    a.name.to_source(),
+                    a.target.to_source()
+                );
+            }
             Item::Row(r) => {
                 let _ = write!(
                     out,

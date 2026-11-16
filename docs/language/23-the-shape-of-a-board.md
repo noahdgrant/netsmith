@@ -1736,6 +1736,132 @@ error: `row .pads.tp1 .. .pads.tp4` has a gap: `pads` has no member `tp3`, and a
   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
+#### A module's own physical file
+
+A module can carry the geometry that is true wherever it goes: the 17.5 mm between two rows of sockets that a radio's datasheet gives, two parts on one line. It states it in a physical file of its own, and every board that uses the module gets it (ADR 0048, the module layer; owner decision of 2026-11-11). The module names the file in its circuit source with `physical "<stem>.physical.nsm"`, the file beside its source by stem, and the file holds a unit `physical for Module { ... }`. The same file may hold the units of the source's boards too, as below. A module that names a file that is not there, or a file with no unit for it, is an error, and so is a unit for a module that does not name its file: the geometry never goes missing without a message when the module is copied to another project.
+
+```nsm solve place
+import std::parts::connector::Header1x2
+import std::mfg::jlcpcb::TwoLayer
+
+module Radio {
+    // Where the rows stand to one another is in the physical file.
+    physical "main.physical.nsm"
+    .row_a: Header1x2
+    .row_b: Header1x2
+}
+
+board Docked {
+    .process: TwoLayer {
+        .stackup.thickness &= 1.6mm
+    }
+    .radio: Radio
+    .antenna: Header1x2
+}
+```
+
+```nsm-physical
+import std::pcb::Outline
+
+physical for Radio {
+    // Datasheet figure 4: the two rows are 17.5 mm +/- 0.05 mm apart, centre to centre, on one line.
+    .row_b.place.x - .row_a.place.x == 17.5mm +/- 0.05mm
+    .row_b.place.y == .row_a.place.y
+    // The row a case slot holds, by a name that a rename inside the module does not break.
+    anchor .dock = .row_a
+}
+
+physical for Docked {
+    case {
+        .outline: Outline {
+            .width &= 50mm
+            .height &= 30mm
+        }
+    }
+
+    // Case drawing, slot B: the dock row is 8 mm in from the left edge.
+    .radio.dock.place.left &= 8mm +/- 0.2mm
+    // This board's case holds the rows tighter than the datasheet does.
+    .radio.row_b.place.x - .radio.dock.place.x == 17.5mm +/- 0.02mm
+    // Cable drawing: the antenna header is on the line of the dock row.
+    .antenna.place.y == .radio.dock.place.y
+}
+```
+
+- **A module's file states only how its parts stand to one another**, which is the same wherever the board puts the module: a relation whose places cancel along each axis (`.b.place.x - .a.place.x`, the centre between two parts minus a third, a `row`), and a part's `.height`, `.standoff`, `.pin_protrusion`, `.model` and `.silk`. A position, a turn or a face stated with `&=` (`.row_a.place.x &= 3mm`), or a sum of two places, is in the board's frame and is refused: the board's file places the module. A module's file declares nothing (no `case { }`, no keepout). It reaches the parts of modules inside the module by path, as a board's does.
+- **A board's file may only narrow what a module's states.** An offset between two parts that the module's file states may be stated again by the board with a window inside the module's (here 17.5 mm +/- 0.02 mm inside +/- 0.05 mm); a wider window, or one that does not meet it, is an error that names both lines. A `&=` narrows as every `&=` does. A board that needs a different spacing changes the module.
+- **An anchor** (`anchor .dock = .row_a`, in the module's file only) is a second name for a part or a module inside it, which every physical file that reaches into the module may use, the module's own too. A board's file reaches a part inside a module by its path, so a rename inside the module breaks every such path; through an anchor, the rename changes the one `anchor` line. An anchor may not take the name of a member. The circuit source does not see anchors.
+
+Misuse: a part renamed inside the module.
+
+```nsm fails
+import std::parts::connector::Header1x2
+import std::mfg::jlcpcb::TwoLayer
+
+module Radio {
+    .row_first: Header1x2
+}
+
+board Renamed {
+    .process: TwoLayer {
+        .stackup.thickness &= 1.6mm
+    }
+    .radio: Radio
+}
+```
+
+```nsm-physical
+physical for Renamed {
+    .radio.row_a.place.left &= 8mm
+}
+```
+
+```text
+error: `.radio.row_a.place.left` names nothing: module `Radio` has no member `row_a`. A physical file reaches inside a module by the path of the part, so a rename inside `Radio` breaks this path; an `anchor .name = .part` line in the physical file of `Radio` gives a part a name that a rename inside the module changes in one place
+  --> main.physical.nsm:2:12
+  |
+2 |     .radio.row_a.place.left &= 8mm
+  |            ^^^^^
+```
+
+Misuse: a board's window wider than the module's.
+
+```nsm fails
+import std::parts::connector::Header1x2
+import std::mfg::jlcpcb::TwoLayer
+
+module Radio {
+    physical "main.physical.nsm"
+    .row_a: Header1x2
+    .row_b: Header1x2
+}
+
+board Loose {
+    .process: TwoLayer {
+        .stackup.thickness &= 1.6mm
+    }
+    .radio: Radio
+}
+```
+
+```nsm-physical
+physical for Radio {
+    .row_b.place.x - .row_a.place.x == 17.5mm +/- 0.05mm
+}
+
+physical for Loose {
+    .radio.row_b.place.x - .radio.row_a.place.x == 17.5mm +/- 0.1mm
+}
+```
+
+```text
+error: `.radio.row_b.place.x - .radio.row_a.place.x == 17.5mm +/- 0.1mm` would loosen the physical file of module `Radio`, which states `.row_b.place.x - .row_a.place.x == 17.5mm +/- 0.05mm` (main.physical.nsm:2): it leaves `radio.row_b.place.x - radio.row_a.place.x` between 17.4mm and 17.6mm, and the module's file between 17.45mm and 17.55mm; a physical file may only narrow what a module's states (ADR 0048), so tighten the window to lie inside the module's, or change the module
+  --> main.physical.nsm:6:5
+  |
+6 |     .radio.row_b.place.x - .radio.row_a.place.x == 17.5mm +/- 0.1mm
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+```
+
 #### A part that hangs over the board edge
 
 A plug that sticks out of the case has part of its courtyard outside the outline. That is an error ("not wholly inside the board outline") unless the design says the part may hang over that edge. **The owner decided the rule on 2026-11-03 (ADR 0045, section 10); how a module states an overhang for its parts is still open.** The design says it with a requirement it can already write: a window for an edge of the **body** that lies at or beyond the same edge of the outline. `.j.place.left &= -0.5mm +/- 0.1mm` puts the body's left edge 0.5 mm past the board's left edge, and `.plug.place.bottom >= .outline.height` puts its bottom edge on the board's bottom edge or past it (flush counts). Only the part's own `left`, `right`, `top` and `bottom` say it, and only when the whole window is at or beyond the edge. A window on `.x` or `.y`, a bound a module states for its parts, or an entry of the layout file puts the part somewhere but does not say it may hang over, so the courtyard past the edge is the error it always was. That holds for a part the layout file locks (`lock = true`) too: the lock fixes where the part is, and the part must still state every edge its courtyard is past, like any other (owner decision, 2026-11-03). A locked part past an edge nobody stated gets the error below, naming the edge, the distance and the line that would allow it. On a polygon outline the same statements cover the rounded corners at the edge they name (see _A polygon outline_, above); there `.outline.height` is not a value, so the requirement states the edge as a number (`.plug.place.bottom >= 74.5mm`).

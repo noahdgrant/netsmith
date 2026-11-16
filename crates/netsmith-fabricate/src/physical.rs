@@ -59,7 +59,8 @@
 //!   .r1.resistance`) is refused."
 //! - "A `physical for` unit that names a module, a part or a `system` is refused, with the
 //!   reason; so is a unit in a file that is not a physical file, and a definition in a physical
-//!   file."
+//!   file." Since the module layer (issue #813), a unit for a module that names its physical
+//!   file is that module's (`netsmith-check/src/module_physical.rs`).
 //! - "A file with several units: one unit for each board, and a repeated unit is an error."
 //!
 //! **Costs the owner accepted.** A module's physical file (the module layer, later) must travel
@@ -71,13 +72,17 @@
 //! across files, and needs a read-only reach into modules, a new rule for a language that has
 //! kept modules closed since ADR 0004.
 //!
-//! **Not built.** The module layer of decision 2 is not built (issue #52): how a module's
-//! physical file attaches to its module (T1, T2 or T3 of
-//! `docs/research/physical-file-syntax-options.md`, section 8), what a board's file may override
-//! of it (V1, V2 or V3 there), whether it may state an overhang, anchors (`anchor .dock =
-//! .row_a`, A1), and a `Region` carried by a part with a height limit (G2, a new type whose
-//! members are not decided). Decided by the owner, 2026-11-11: a statement in the module names its
-//! physical file (T3), and the board's file may only narrow what the module states (V1). A
+//! **The module layer** of decision 2 is built (issue #813, decided by the owner, 2026-11-11):
+//! a statement in the module names its physical file (T3 of
+//! `docs/research/physical-file-syntax-options.md`, section 8), the board's file may only narrow
+//! what the module states (V1), and a module may declare anchors (`anchor .dock = .row_a`, A1).
+//! Its rules and readings are in the header of `netsmith-check/src/module_physical.rs`. A
+//! module's file is found by stem beside the module's source like a board's, so `attach` pairs
+//! every source of the project with its file and nothing more is needed here.
+//!
+//! **Not built.** Whether a module's file may state an overhang (ADR 0045 section 10 (h)), the
+//! values a module's file offers a board to narrow (V2), and a `Region` carried by a part with
+//! a height limit (G2, a new type whose members are not decided). A
 //! physical file for a `system` or a `panel` (ADR 0040: a panel's mounting holes, mated-connector
 //! alignment across boards, a panel's rails) is not planned until a board needs it. The shared `enclosure` definition is held until the
 //! mechanical side can export data (issue #46). What leaves the circuit source is what decision

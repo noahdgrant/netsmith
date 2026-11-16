@@ -172,8 +172,9 @@ netsmith analyzes a worst-case DC operating point of the picked parts: every vol
 - Physical intent (the outline, cutouts, holes, keepouts and where parts must be) is in a file of
   its own beside a board, `<stem>.physical.nsm`, and the same lines in the board are an error
   (ADR 0048, #52). The board level is built, and the placer and `fab` hold a relation between
-  two parts (ADR 0045), and the editor writes the keepouts it draws to that file; the module
-  layer and a physical file for a `system` or a `panel` are not. The readings are in the ADR's "Built".
+  two parts (ADR 0045), and the editor writes the keepouts it draws to that file. A module owns a
+  physical file of its own, which it names, and a board's file may only narrow it (#813); a
+  physical file for a `system` or a `panel` is not built. The readings are in the ADR's "Built".
 - Nine ADRs in `docs/adr/` are `proposed` and wait for review: 0049, 0050, 0051, 0072, 0098, 0099, 0100, 0102 and 0103.
 
 ## Licence

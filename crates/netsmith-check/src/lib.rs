@@ -21,6 +21,7 @@ mod loads;
 mod lower;
 mod mate;
 mod model;
+mod module_physical;
 mod optional;
 mod params;
 mod periph_join;
