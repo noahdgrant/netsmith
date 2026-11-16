@@ -173,9 +173,11 @@
 //! 2026-11-13).** A net is sized for the heat its current makes, not for a drop budget. The width
 //! is chosen before the board is routed, and the drop depends on the length the router then
 //! draws, so a drop rule needs the routed board: a later check, not this sizing. The drop is not
-//! always small: 2 A through 50 mm of a 0.98 mm track in 1 oz copper drops about 0.1 V (2 % of
+//! always small: 2 A through 50 mm of a 0.98 mm track in 1 oz copper drops about 0.05 V (1 % of
 //! 5 V), and 0.5 A through 50 mm of 0.2 mm about 0.06 V (1.9 % of 3.3 V). A design where it
-//! matters states a wider `.min_track` on the rail.
+//! matters states a wider `.min_track` on the rail. That later check is the `track drop`
+//! guideline of `fab` (issue #652, `netsmith_fabricate::track_drop`), which reads each net's rail
+//! voltage from [`net_voltages`].
 //!
 //! **As built, not done.** A net whose rail states a `.min_track` gets no note when a current on it
 //! is not known (the guideline names the missing carriers instead), and the note is not a guideline
@@ -361,6 +363,39 @@ fn signed_range(model: &Model, member: Option<Member>) -> Option<(f64, f64)> {
     }
     // Adding zero turns a negative zero into a zero.
     Some((lo + 0.0, hi + 0.0))
+}
+
+/// The voltage of the rails on each net, by net name, for the check of the voltage a net's
+/// routed tracks drop (issue #652): a rail's `.voltage` belongs to the net its `pos` is on, at
+/// the smaller end of its range in size, and a net with several rails takes the smallest. A
+/// rail the board states unused, one whose voltage is not known and one whose range holds 0 V
+/// give none, and nor does the net of a `neg` (a ground has no voltage of its own).
+pub fn net_voltages(model: &Model) -> Vec<(String, f64)> {
+    let mut out: Vec<(String, f64)> = Vec::new();
+    for (id, inst) in model.instances() {
+        if inst.kind != InstKind::Interface || model.unused_by(id).is_some() {
+            continue;
+        }
+        let Some((_, pos)) = model.draw_of(id) else {
+            continue;
+        };
+        let Some((lo, hi)) = signed_range(model, model.member(id, "voltage")) else {
+            continue;
+        };
+        if lo * hi <= 0.0 {
+            continue;
+        }
+        let volts = lo.abs().min(hi.abs());
+        let Some(net) = model.nets().iter().find(|n| n.pins.contains(&pos)) else {
+            continue;
+        };
+        match out.iter_mut().find(|(n, _)| *n == net.name) {
+            Some((_, v)) => *v = v.min(volts),
+            None => out.push((net.name.clone(), volts)),
+        }
+    }
+    out.sort_by(|a, b| a.0.cmp(&b.0));
+    out
 }
 
 /// What flows through a net by Kirchhoff's current law: what the carriers on it take out of

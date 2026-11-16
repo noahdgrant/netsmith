@@ -475,6 +475,25 @@ Rules.
 - IPC-2221 is a conservative design guide, and IPC-2152 is more accurate (it counts the board's thickness and the copper next to the track). netsmith implements IPC-2221 only. A track the check passes is not therefore good for a certain temperature, and one it flags may be fine; read the number as a prompt to decide.
 - The router may draw a track narrower than its net's width where there is no room (the stub at a pad is the net's width, and the pad's own copper carries the rest). The check is of the width asked for.
 
+### The voltage a power track drops
+
+A track is sized for heat, before the board is routed, and not for the voltage it drops: that depends on the length the router then draws. So `fab` measures the drop once the board is routed (issue #652). Each track of a net is a resistance, `rho * length / (width * thickness)`, with copper's resistivity at 20 °C (1.72e-5 ohm mm) and the process's outer copper (0.035 mm for 1 oz). The drop of the net is its worst-case current, the one its tracks are sized for, through the largest resistance between two of its pads along its tracks. 2 A through 50 mm of the 0.98 mm that 2 A is drawn at in 1 oz copper drops about 0.05 V; 0.5 A through 50 mm of 0.2 mm about 0.06 V.
+
+When a net drops more than 1 % of the voltage of its rail, `fab` warns with the guideline `track drop`. For a 3.3 V rail that carries 2 A from one header to another 55 mm away:
+
+```text
+warning: Feed: track drop guideline: net `3V3` drops up to 0.0552 V on its tracks at 2 A (1.7% of its 3.3 V; the budget is 1%): from J1.1 to J2.1 through 55 mm of track, 0.98 mm at its narrowest, in 0.035 mm copper, with the whole current between the two pads with the most resistance between them; give a rail on the net `.min_track &= 1.64mm..` (that path at that width drops no more), or give the net an outer pour
+```
+
+Rules.
+
+- The rail's voltage is the `.voltage` of a rail whose `pos` is on the net, at the smaller end of its range; with several rails, the smallest. A net whose rails state no voltage, or one whose range holds 0 V, is not checked, and nor is a ground (the net of a `neg`), whose voltage is not its own. A net whose current is not known is not checked either.
+- The whole current is taken between the two pads with the most resistance between them, because which pad is the source and how the current divides between the loads is not known. That is the most the net can drop between its source and any load, and exactly the drop for a net with one source and one load.
+- The width that the message asks for is the least `.min_track` that would bring that path within the budget, if every run of it narrower were widened to it. The router may then draw another path, so `fab` measures again.
+- Not counted: a via's barrel, a pad's copper, a teardrop, a track warm from its current, and a track finished narrower than drawn (the fabricator's tolerance). A net that is a plane, an outer pour or a zone of the routes file is not checked: its copper is an area.
+- The budget, 1 %, is netsmith's own choice and not a published figure; a design cannot state its own yet.
+- This is a guideline, like the track width against current: `fab` prints it as `warning: ...` and writes it in `fab-notes.txt`. With `guidelines = "error"` in `netsmith.toml` or `fab --strict`, it is an error and `fab` stops before it writes the package. `build` and the editor do not show it, since the board is not routed there.
+
 ### The outline and cutouts
 
 The member `.outline` of a board's physical file (in its `case` section) is the board edge: a rectangle with rounded corners, or a polygon (_A polygon outline_, below). A range is a limit, and the placer takes the smallest board that holds the parts inside it: `.width &= 0mm..60mm` is at most 60 mm. A single value is exactly that size. Without an `.outline` the board is as big as its parts need. A `Cutout` is a rectangular hole inside the outline, with an optional corner radius. Its corner nearest the origin is `.x`, `.y`, or the layout file's entry for its name; stating both is an error. A hole that crosses the outline is refused (`the cutout is not wholly inside the board outline`): a notch in the board's edge is a polygon outline, not a cutout.

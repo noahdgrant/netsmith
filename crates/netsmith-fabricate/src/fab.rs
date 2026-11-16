@@ -1201,6 +1201,39 @@ fn fab_board(
         } else {
             say(format!("{}: routed, writing files", built.label()));
         }
+        // The voltage the routed tracks of each power net drop (issue #652): a guideline, so a
+        // warning, and an error that stops here when guidelines are strict.
+        let drops: Vec<String> = if incomplete.is_some() {
+            Vec::new()
+        } else {
+            let voltages = netsmith_design::guidelines::net_voltages(&built.trace.model);
+            crate::track_drop::findings(&board, &voltages)
+                .into_iter()
+                .map(|m| {
+                    format!(
+                        "{}: {} guideline: {m}",
+                        built.label(),
+                        crate::track_drop::RULE
+                    )
+                })
+                .collect()
+        };
+        if catalogs.strict_guidelines() && !drops.is_empty() {
+            return Err(FabFailure {
+                text: drops
+                    .iter()
+                    .map(|d| {
+                        format!(
+                            "error: {d}; this is an error because guidelines are strict (`guidelines = \"error\"` or `--strict`)\n"
+                        )
+                    })
+                    .collect(),
+                ..FabFailure::default()
+            });
+        }
+        for d in &drops {
+            say(format!("warning: {d}"));
+        }
 
         let dir = built.dir(out);
         let pcb_path = dir.join(format!("{name}.kicad_pcb"));
@@ -1283,6 +1316,7 @@ fn fab_board(
                 .chain(environment.findings)
                 .map(|w| format!("warning: {w}")),
         );
+        extras.extend(drops.iter().map(|d| format!("warning: {d}")));
         // What the check of the environment did and did not do, for a board that has one.
         extras.extend(environment.notes);
         // The notes lead with what is wrong, so that nobody orders an incomplete board.
