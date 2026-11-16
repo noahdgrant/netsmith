@@ -1147,8 +1147,10 @@ impl<'a> Checker<'a> {
             self.add_step_model(id);
         }
         // Every part and module has a `.place` for the requirements on where it goes on the
-        // board (ADR 0045): the board narrows its fields like any others.
-        if matches!(kind, InstKind::Part | InstKind::Module) {
+        // board (ADR 0045): the board narrows its fields like any others. A board has one
+        // too, with only `.side`: the face of every part of it, for a board assembled on one
+        // face.
+        if matches!(kind, InstKind::Part | InstKind::Module | InstKind::Board) {
             self.add_place(id, def.span);
         }
         // A definition's names are resolved inside that definition's own file, and bare
@@ -1315,7 +1317,8 @@ impl<'a> Checker<'a> {
     /// box of the body in the board's frame (`x` and `y` of its centre, `left`, `right`,
     /// `top` and `bottom` of its edges), the turn in degrees and the face. A module's has
     /// no `rotation`: the placer does not turn a module as a block. Its `side` is a hard
-    /// requirement on every part of it (ADR 0048, "Syntax decisions" 5).
+    /// requirement on every part of it (ADR 0048, "Syntax decisions" 5). A board's has only
+    /// `side`, the same requirement on every part of the board.
     /// The built-in `.model` of a part (ADR 0108): an instance of the prelude's `StepModel`,
     /// made in the prelude's own file like any member of that type.
     fn add_step_model(&mut self, part: InstId) {
@@ -1357,7 +1360,9 @@ impl<'a> Checker<'a> {
             placed_def: None,
             marks: Default::default(),
         });
-        let module = self.model.instance(owner).kind == InstKind::Module;
+        let owner_kind = self.model.instance(owner).kind;
+        let module = owner_kind == InstKind::Module;
+        let board = owner_kind == InstKind::Board;
         let fields = [
             ("x", FieldKind::Quantity(Dimension::LENGTH), false),
             ("y", FieldKind::Quantity(Dimension::LENGTH), false),
@@ -1369,7 +1374,7 @@ impl<'a> Checker<'a> {
             ("side", FieldKind::Text, false),
         ];
         for (name, kind, part_only) in fields {
-            if part_only && module {
+            if (part_only && module) || (board && name != "side") {
                 continue;
             }
             let field = self.model.add_field(place, name, kind);

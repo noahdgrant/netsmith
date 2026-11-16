@@ -69,7 +69,7 @@ physical for Cased {
 - **`case { ... }`** is the section for what the case fixes: the outline, the cutouts, the mounting holes (`MountingHole`), the fiducials (`Fiducial`) and the labels (`Label`) of the board, and the case's own STEP file (`CaseModel`, see _A case model_). It holds the same statements as the rest of the unit, and lifts out unchanged if a case is ever shared. These six belong in it; a keepout may be anywhere in the unit.
 - **A path crosses a module boundary here for any statement of physical intent.** `.sensor.j.place.left` names the header inside the `Sensor` module. The circuit source reaches into a module only to narrow a value (ADR 0116); the physical file can also state physical intent about the part. A statement may set or compare only a part's `.place`, a part's `.height`, and what the unit declares itself (the fields of its `.outline`, `.window`, `.rib`). Anything that changes what a part is, or a connection, is refused.
 - **A relation between two parts** is the equation of _Where a part goes_: `.b.place.x - .a.place.x == 17.5mm +/- 0.05mm`. The placer holds it and `fab` measures it (_A relation between two parts_).
-- **`.place.side` on a module** is a requirement on every part of it, at any depth. A module with an exception states the faces of its parts one by one and none for itself; two lines that disagree are an error that names both.
+- **`.place.side` on a module** is a requirement on every part of it, at any depth. A module with an exception states the faces of its parts one by one and none for itself; two lines that disagree are an error that names both. `.place.side` with no path, on the board itself, is the same requirement on every part of the board (_A board on one face_).
 - The case numbers are the maintainer's file to review: put the source of each (a drawing, a sheet) in a comment above the line, and never invent one.
 
 `examples/enclosure_sensor/` is a complete invented board that states all of this in its physical file, and each statement has a comment that says what it asks for: a rounded outline with a cutout, mounting holes and fiducials, a 40 mm plug that hangs over an edge, an antenna and a coax connector on one line, two socket rows a fixed distance apart, a module on the back with one part on the front, a row of twelve test pads on a pitch, a height limit, and a flat cell on the back across the sockets whose pins protrude 0.2 mm (_Pin protrusion_). It is a project, because it defines four invented parts and maps them to KiCad's stock footprints and a footprint of its own in its `kicad.toml`; `crates/netsmith-fabricate/tests/enclosure_sensor.rs` runs `fab` on it and checks that every requirement is met.
@@ -1247,7 +1247,7 @@ The lines are in the board's physical file (ADR 0048), in the unit `physical for
 | `.x`, `.y` | the centre of the part's body |
 | `.left`, `.right`, `.top`, `.bottom` | the edges of the body's box, after the part is turned |
 | `.rotation` | degrees counterclockwise on screen, as in the layout file; a plain number, a multiple of 90 |
-| `.side` | `"top"` or `"bottom"`; on a module it is a requirement on every part of it |
+| `.side` | `"top"` or `"bottom"`; on a module it is a requirement on every part of it, and on the board itself (the only field a board's `.place` has) one on every part of the board (_A board on one face_) |
 
 Positions are lengths in the board's frame (the outline's top left corner is the origin, x right, y down), and they are measured from the **body**: the outline the footprint draws on its fabrication layer (`F.Fab`), else its courtyard, else its pads and 0.25 mm (the courtyard the placer gives a footprint that draws none; a courtyard takes in every hole that reaches past it, and every pad that does with 0.15 mm round it, since the placer keeps courtyards apart and lets them touch; a footprint that draws several courtyard shapes keeps them apart, _A courtyard of several shapes_ in the chapter on projects). The box is found in the footprint's own frame and turned with the part, and the placer and the check measure the same one. The case states the shell of a connector, not the origin the footprint's author chose, so a requirement survives a change of package. The layout file's `at` stays the footprint's origin; the check converts, and every finding says which drawing it used. A field the board leaves alone is unconstrained.
 
@@ -1362,6 +1362,62 @@ physical for Stretchy {
 
 ```text
 error: Stretchy: `j.place.y` is measured from the outline's top left corner, and `outline.height` does not state one size, so the board has no fixed outline; give `outline.height` a single value (`&= 30mm`), or state the position without it
+```
+
+#### A board on one face
+
+A board assembled on one face only (one pass through the reflow oven, a case with no room behind the board, a back that lies on a flat surface) states it once, on the board: `.place.side` in its physical file, with no path before it. It is the requirement a module's `.place.side` is, on every part of the board at any depth, so the placer keeps every part on that face and `fab` measures each. `"bottom"` puts every part on the back, for a card whose front is a cover.
+
+```nsm
+import std::parts::connector::Header1x2
+import std::parts::passive::Resistor
+import std::mfg::jlcpcb::TwoLayer
+
+board OneFace {
+    .process: TwoLayer {
+        .stackup.thickness &= 1.6mm
+    }
+    .j: Header1x2
+    .r: Resistor {}
+}
+```
+
+```nsm-physical
+physical for OneFace {
+    // Assembled in one pass: every part on the top face.
+    .place.side &= "top"
+}
+```
+
+The board's `.place` has only `.side`: a board is not placed, so `.place.x` on it is an error. A part or a module that states the same face as the board is allowed; one that states the other face is an error that names both lines, in either order. A board with a few parts on the other face states no face for itself and states the faces of its parts or modules one by one.
+
+```nsm fails
+import std::parts::connector::Header1x2
+import std::parts::passive::Resistor
+import std::mfg::jlcpcb::TwoLayer
+
+board OneFace {
+    .process: TwoLayer {
+        .stackup.thickness &= 1.6mm
+    }
+    .j: Header1x2
+    .r: Resistor {}
+}
+```
+
+```nsm-physical
+physical for OneFace {
+    .place.side &= "top"
+    .j.place.side &= "bottom"
+}
+```
+
+```text
+error: the board `OneFace` is on the top face, which is a requirement on every part of it (stated at main.physical.nsm:2), but `j.place.side` is "bottom"; the board `OneFace` is assembled on one face only; to put some parts on the other face, take `.place.side` off the board and state the faces of its parts or modules one by one
+  --> main.physical.nsm:3:5
+  |
+3 |     .j.place.side &= "bottom"
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 #### A relation between two parts
