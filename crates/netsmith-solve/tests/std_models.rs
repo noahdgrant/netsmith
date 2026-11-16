@@ -833,8 +833,9 @@ fn an_inductor_too_weak_for_the_ic_is_refused_with_the_numbers() {
 
 #[test]
 fn an_inductor_too_resistive_for_the_ic_is_refused_with_the_numbers() {
-    // The least DC resistance in the catalog is 85 mohm, and all of them carry this small load.
-    let ic = ic_with(".max_inductor_dcr &= 0.05ohm");
+    // The least DC resistance in the catalog is 36 mohm (the TDK SLF7045), and all of them carry
+    // this small load.
+    let ic = ic_with(".max_inductor_dcr &= 0.03ohm");
     let m = messages(&run(&converter(&ic, "0mA..100mA", "")));
     assert!(
         m.iter().any(
