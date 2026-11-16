@@ -191,6 +191,14 @@ use netsmith_core::{Features, NetCurrent, OUNCE_OF_COPPER, Process};
 /// default of this tool's and not a published figure (ADR 0036).
 pub const DEFAULT_TEMPERATURE_RISE: f64 = 10.0;
 
+/// The part of a board's shorter side that a net's tracks may take before the board is told
+/// (issue #807): a fifth. Nothing else caps a net's width, so a large current on a small
+/// board makes a track that is a large part of the board. A choice of this tool's, with no
+/// published source, and PROVISIONAL like the guidelines beside it: 4 mm is a fifth of a
+/// 20 mm board, and a track drawn that wide carries about 5.6 A at 10 K in 1 oz copper, which
+/// is where a power track begins to leave little room for anything else.
+pub const WIDE_NET_FRACTION: f64 = 0.2;
+
 /// One mil, in mm.
 const MIL: f64 = 0.0254;
 
@@ -465,6 +473,16 @@ fn grouped_ranges(model: &netsmith_check::Model, counted: &[&Carrier]) -> Vec<Op
     ranges
 }
 
+/// The longest the board's shorter side can be, in mm, when its outline states a limit on at
+/// least one side: the smaller of the two largest sizes the outline allows. A board with no
+/// outline, or with none of its sides limited, has none that is known (a board as big as its
+/// parts need has no size yet).
+fn shorter_side_at_most(features: &Features) -> Option<f64> {
+    let outline = features.outline.as_ref()?;
+    let side = outline.width.1.min(outline.height.1);
+    (side.is_finite() && side > 0.0).then_some(side)
+}
+
 /// What the track check works out for a board (ADR 0036).
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct TrackPlan {
@@ -508,6 +526,13 @@ pub struct TrackPlan {
 /// the width as it is and says nothing more when the width drawn already carries the known
 /// current and every bound together, at both signs (ADR 0036, amendment 4). A net that is a plane or an
 /// outer pour is not checked: its copper is an area and not a track.
+///
+/// A net whose needed width is more than [`WIDE_NET_FRACTION`] of the board's shorter side
+/// gets a second finding, rule `net width` (issue #807). The side is the outline's: the
+/// smaller of its width and height at their largest, so a board that may still be small
+/// enough to be fine is not told; a board with no outline, or no limit on a side, is not
+/// checked. The width is what IPC-2221 needs, as it is in [`TrackPlan::widths`], whether or
+/// not a rail stated one; where a current on the net is not known the finding says "at least".
 pub fn plan_tracks(
     model: &Model,
     process: &Process,
@@ -729,6 +754,18 @@ pub fn plan_tracks(
         if total <= 0.0 {
             continue;
         }
+        if let Some(side) = shorter_side_at_most(features)
+            && asks > WIDE_NET_FRACTION * side * (1.0 + 1e-9)
+        {
+            plan.findings.push(wide_net(
+                &net.name,
+                total,
+                asks,
+                side,
+                !unknown.is_empty(),
+                worst.inst,
+            ));
+        }
         if sized {
             plan.widths.push((net.name.clone(), asks));
             continue;
@@ -805,6 +842,37 @@ pub fn plan_tracks(
     }
     plan.widths.sort_by(|a, b| a.0.cmp(&b.0));
     plan
+}
+
+/// The finding for a net whose needed width `asks` (mm) is more than [`WIDE_NET_FRACTION`] of
+/// the board's shorter side `side` (mm, at most).
+fn wide_net(
+    net: &str,
+    current: f64,
+    asks: f64,
+    side: f64,
+    lower_bound: bool,
+    at: InstId,
+) -> Guideline {
+    let (needs, current) = if lower_bound {
+        (
+            "at least ",
+            format!("at least {}, the part of it that is known", amps(current)),
+        )
+    } else {
+        ("", amps(current))
+    };
+    Guideline {
+        rule: "net width",
+        message: format!(
+            "net `{net}` needs tracks {needs}{} mm wide (IPC-2221, for {current}), which is {:.0}% of the board's shorter side, at most {} mm (the outline's largest): over {:.0}% leaves little room for anything else; make the board larger, lower the current, or give the net a plane or an outer pour",
+            mm(asks),
+            100.0 * asks / side,
+            mm(side),
+            100.0 * WIDE_NET_FRACTION,
+        ),
+        at: Some(at),
+    }
 }
 
 /// The note for a net with a current that is not known. The tracks are a lower bound: they
