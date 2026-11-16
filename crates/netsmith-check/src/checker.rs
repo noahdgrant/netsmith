@@ -1440,6 +1440,19 @@ impl<'a> Checker<'a> {
                 continue;
             }
 
+            // A request for the end of a bus (`.dbg: .u.Uart`, #788) is no pin: it stands for
+            // the peripheral it gets, which is decided when the elaboration is done.
+            if d.ty.of_member
+                && !self.in_kind(DefKind::Part)
+                && !self.in_kind(DefKind::Interface)
+                && !self.in_kind(DefKind::Generic)
+                && d.count.is_none()
+                && self.asks_for_bus_end(cur, d, items)
+            {
+                self.record_bus_request(cur, d);
+                self.model.add_member(cur, &name, Member::Poison);
+                continue;
+            }
             // A request for a pin by capability (`.status: .u.GPIO`) declares a pin of the board;
             // which pin of the part it gets is decided when the elaboration is done.
             let ty = if d.ty.of_member {
@@ -2092,10 +2105,37 @@ impl<'a> Checker<'a> {
             }
         };
 
+        // A request for the end of a bus is a path in a join and nowhere else (#788).
+        if matches!(start, Member::Poison) {
+            let owner = if p.leading_dot {
+                Some(cur)
+            } else {
+                let outer = self.scope.len() - 1;
+                self.scope[..outer]
+                    .iter()
+                    .rev()
+                    .copied()
+                    .find(|&s| self.model.member(s, &first.name).is_some())
+            };
+            if let Some(index) = owner.and_then(|o| self.bus_request_at(o, &first.name)) {
+                let message = self.bus_request_misused(index);
+                self.error(p.span, message);
+                return Res::Bad;
+            }
+        }
         let mut member = start;
+        let mut owner_of_member = cur;
+        let mut name_of_member = first.name.as_str();
         for seg in &p.segments[1..] {
             match member {
-                Member::Poison => return Res::Poison,
+                Member::Poison => {
+                    if let Some(index) = self.bus_request_at(owner_of_member, name_of_member) {
+                        let message = self.bus_request_misused(index);
+                        self.error(p.span, message);
+                        return Res::Bad;
+                    }
+                    return Res::Poison;
+                }
                 Member::Field(_) => {
                     self.error(seg.span, format!("a value has no member `{}`", seg.name));
                     return Res::Bad;
@@ -2106,6 +2146,8 @@ impl<'a> Checker<'a> {
                             return Res::Bad;
                         }
                         member = m;
+                        owner_of_member = i;
+                        name_of_member = seg.name.as_str();
                     }
                     None => {
                         if !self.named_ic(i) && self.report_outside_bound(i, seg) {

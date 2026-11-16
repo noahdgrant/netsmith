@@ -210,3 +210,43 @@ fn a_request_for_a_class_exports_the_channel_of_its_pin() {
         map.header
     );
 }
+
+#[test]
+fn a_request_for_the_end_of_a_bus_carries_its_peripheral() {
+    // `.dbg: .u.Uart` (#788): each line is a signal of its own, `dbg.rx` and `dbg.tx`, and says
+    // which peripheral the request got.
+    let text = r#"
+import std::bus::Uart
+import std::parts::passive::Resistor
+
+/// Zuart, an invented microcontroller with two UARTs on any pin.
+part Zuart {
+    peripheral UARTE0 on GPIO as Uart { UARTE0_TX:output as tx UARTE0_RX:input as rx }
+    peripheral UARTE1 on GPIO as Uart { UARTE1_TX:output as tx UARTE1_RX:input as rx }
+    pins {
+        .p00 bidirectional "GPIO7" "1" fn GPIO
+        .p01 bidirectional "P0.13" "2" fn GPIO
+    }
+}
+
+board Sensors {
+    .u: Zuart
+    .dbg: .u.Uart
+}
+"#;
+    let map = map_of(text, None).unwrap().unwrap();
+    assert!(
+        map.header.contains(
+            "// dbg.rx: pin GPIO7, pad 1 of u, function UARTE0_RX of UARTE0\n#define SENSORS_PIN_DBG_RX_NAME \"GPIO7\"\n#define SENSORS_PIN_DBG_RX_FUNCTION \"UARTE0_RX\"\n#define SENSORS_PIN_DBG_RX_PERIPHERAL \"UARTE0\"\n#define SENSORS_PIN_DBG_RX_NUMBER 7\n"
+        ),
+        "{}",
+        map.header
+    );
+    assert!(
+        map.json.contains(
+            "\"dbg.tx\": {\n      \"function\": \"UARTE0_TX\",\n      \"locked\": false,\n      \"pad\": \"2\",\n      \"part\": \"u\",\n      \"peripheral\": \"UARTE0\",\n      \"pin\": \"P0.13\"\n    }"
+        ),
+        "{}",
+        map.json
+    );
+}

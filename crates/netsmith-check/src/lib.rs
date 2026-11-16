@@ -3,6 +3,7 @@
 
 mod assign;
 mod attrs;
+mod bus_request;
 mod buses;
 mod busnets;
 mod by_name;
@@ -33,7 +34,7 @@ mod shared;
 mod support;
 mod unused;
 
-pub use assign::{PartSpace, PinsOutcome, RootPins, SpaceRequest, Unserved};
+pub use assign::{BusLine, PartSpace, PinsOutcome, RootPins, SpaceRequest, Unserved};
 pub use attrs::{Marks, MemberRole, SERIES_NAMES};
 pub use busnets::{
     BusEnds, BusGroup, bidirectional_rows, bus_beside, bus_groups, joined_without_role,
@@ -45,16 +46,16 @@ pub use faults::{pin_faults, pin_faults_solved};
 pub use loader::Loader;
 pub use lower::closest;
 pub use model::{
-    Balance, Bank, Bookmark, Catalog, Chain, ChainPin, Checkpoint, Contact, ContactSide, DcElement,
-    DcKind, DefaultFrom, DefaultNote, Domain, Draw, EnumId, EnumInfo, Field, FieldId, FieldKind,
-    GenericUse, GroundGroup, GroundNet, InstId, InstKind, Instance, LevelTest, Mate, Member, Model,
-    Net, OptionalMark, OutlinePolygon, PartRules, Peripheral, PeripheralBus, PeripheralFunction,
-    PinAssignment, PinKind, PinRequest, PinRow, PinTable, Pinout, PolygonCorner, Provider, RExpr,
-    RangeEnd, Relation, Requirement, Role, RowLimit, SharedMember, SharedRes, Snapshot, Tie,
-    Unused, Written,
+    Balance, Bank, Bookmark, BusAssignment, BusRequest, Catalog, Chain, ChainPin, Checkpoint,
+    Contact, ContactSide, DcElement, DcKind, DefaultFrom, DefaultNote, Domain, Draw, EnumId,
+    EnumInfo, Field, FieldId, FieldKind, GenericUse, GroundGroup, GroundNet, InstId, InstKind,
+    Instance, LevelTest, Mate, Member, Model, Net, OptionalMark, OutlinePolygon, PartRules,
+    Peripheral, PeripheralBus, PeripheralFunction, PinAssignment, PinKind, PinRequest, PinRow,
+    PinTable, Pinout, PolygonCorner, Provider, RExpr, RangeEnd, Relation, Requirement, Role,
+    RowLimit, SharedMember, SharedRes, Snapshot, Tie, Unused, Written,
 };
 pub use pinedit::edit_entry;
-pub use pinfile::{EntrySource, PinEntry, PinFile, PinFileError};
+pub use pinfile::{BusEntry, EntrySource, PinEntry, PinFile, PinFileError};
 pub use providers::generic_is_part_shaped;
 
 use std::collections::BTreeMap;

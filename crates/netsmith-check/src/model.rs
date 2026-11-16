@@ -1055,6 +1055,44 @@ pub struct PinRequest {
     pub capability_span: Span,
 }
 
+/// A request for the end of a bus of a part, `.dbg: .u.Uart` (#788): a member of a board or a
+/// module that stands for one peripheral of the part that is an end of the bus (ADR 0064,
+/// `peripheral UARTE0 on GPIO as Uart { ... }`), which the tool picks with a pin for each of its
+/// lines. It joins as that peripheral does (ADR 0129): `.dbg ~ .console.uart`.
+#[derive(Debug, Clone)]
+pub struct BusRequest {
+    /// The board or module that declared it, where `target` is looked up.
+    pub block: InstId,
+    /// Its name in `block` (`dbg`).
+    pub name: String,
+    /// The path of the part that is asked, from `block` (`u`), as written.
+    pub target: Vec<String>,
+    /// The bus interface it asks for the end of (`Uart`).
+    pub interface: String,
+    pub source: SourceId,
+    /// The whole declaration, and the part's and the interface's names in it.
+    pub span: Span,
+    pub target_span: Span,
+    pub capability_span: Span,
+}
+
+/// The peripheral a request for the end of a bus got, and the pin of each of its lines.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BusAssignment {
+    /// The index of the request in `Model::bus_requests`.
+    pub request: usize,
+    /// The request's path, the key of its entry in the pin file.
+    pub key: String,
+    pub part: InstId,
+    /// The index of the peripheral among the part's own (`PartRules::peripherals`).
+    pub peripheral: usize,
+    /// Each line the request has a pin for, in the byte order of the lines: the line, the pin of
+    /// the part and the function of the peripheral that is chosen on it.
+    pub lines: Vec<(String, InstId, String)>,
+    pub lock: bool,
+    pub source: crate::pinfile::EntrySource,
+}
+
 /// The pin a request got: from the pin file (a kept entry) or picked by a run.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PinAssignment {
@@ -1075,6 +1113,12 @@ pub struct Model {
     pub requests: Vec<PinRequest>,
     /// The pin each request that could be served got, in the byte order of the requests' paths.
     pub pin_assignments: Vec<PinAssignment>,
+    /// The requests for the end of a bus (`.dbg: .u.Uart`), in the order they were declared.
+    pub bus_requests: Vec<BusRequest>,
+    /// The peripheral each request for the end of a bus that could be served got, in the byte
+    /// order of the requests' paths. Its lines are in `pin_assignments` too, keyed by the
+    /// request's path and the line (`dbg.tx`).
+    pub bus_assignments: Vec<BusAssignment>,
     pub(crate) instances: Vec<Instance>,
     pub(crate) fields: Vec<Field>,
     pub(crate) relations: Arc<Vec<Relation>>,
@@ -1253,6 +1297,8 @@ impl Model {
             root: InstId(0),
             requests: Vec::new(),
             pin_assignments: Vec::new(),
+            bus_requests: Vec::new(),
+            bus_assignments: Vec::new(),
             instances: Vec::new(),
             fields: Vec::new(),
             relations: Arc::new(Vec::new()),

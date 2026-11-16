@@ -45,6 +45,8 @@ struct Signal<'a> {
     /// The pads of the pin, joined by a comma, when the part has a pin table row for it.
     pad: Option<String>,
     function: &'a str,
+    /// For a line of a request for the end of a bus (#788), the peripheral the request got.
+    peripheral: Option<&'a str>,
     locked: bool,
 }
 
@@ -61,6 +63,8 @@ struct JsonSignal<'a> {
     locked: bool,
     pad: Option<&'a str>,
     part: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    peripheral: Option<&'a str>,
     pin: &'a str,
 }
 
@@ -88,6 +92,7 @@ pub fn render(
                     .filter(|pads| !pads.is_empty()),
                 // The channel of a class where the row names one (`AIN1` for `ANALOG`, #787).
                 function: r.function_on(&r.pin),
+                peripheral: r.bus.as_ref().map(|b| b.peripheral.as_str()),
                 locked: r.lock,
             });
         }
@@ -213,11 +218,14 @@ fn header(board: &str, source: &str, signals: &[Signal]) -> String {
             .map(|p| format!(", pad {}", comment(p)))
             .unwrap_or_default();
         out.push_str(&format!(
-            "\n// {}: pin {}{pad} of {}, function {}{}\n",
+            "\n// {}: pin {}{pad} of {}, function {}{}{}\n",
             comment(s.request),
             comment(&s.pin),
             comment(s.part),
             comment(s.function),
+            s.peripheral
+                .map(|p| format!(" of {}", comment(p)))
+                .unwrap_or_default(),
             if s.locked { ", locked" } else { "" }
         ));
         out.push_str(&format!("#define {macro_name}_NAME {}\n", c_string(&s.pin)));
@@ -225,6 +233,12 @@ fn header(board: &str, source: &str, signals: &[Signal]) -> String {
             "#define {macro_name}_FUNCTION {}\n",
             c_string(s.function)
         ));
+        if let Some(p) = s.peripheral {
+            out.push_str(&format!(
+                "#define {macro_name}_PERIPHERAL {}\n",
+                c_string(p)
+            ));
+        }
         if let Some(n) = number(&s.pin) {
             out.push_str(&format!("#define {macro_name}_NUMBER {n}\n"));
         }
@@ -246,6 +260,7 @@ fn json(board: &str, source: &str, signals: &[Signal]) -> String {
                         locked: s.locked,
                         pad: s.pad.as_deref(),
                         part: s.part,
+                        peripheral: s.peripheral,
                         pin: &s.pin,
                     },
                 )

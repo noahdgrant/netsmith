@@ -46,6 +46,9 @@ use crate::model::{InstId, InstKind, Member, Requirement};
 pub(crate) enum BusSide {
     Iface(InstId),
     Periph(InstId, usize),
+    /// A request for the end of a bus (`.dbg: .u.Uart`, #788), by its index in
+    /// `Model::bus_requests`: the peripheral it gets once the pins are assigned.
+    Request(usize),
 }
 
 /// A `~` with a peripheral on one side, kept until the functions are known.
@@ -60,11 +63,21 @@ pub(crate) struct PeripheralJoin {
     text: String,
 }
 
+/// The bus that one side of a join is an end of.
+struct SideBus {
+    def: (usize, usize),
+    interface: String,
+    /// How a message names the side: `the peripheral `UARTE0``, `` `.dbg` ``.
+    what: String,
+}
+
 /// What a path of a join is, as far as peripherals go.
 enum PeriphPath {
     /// Not a peripheral: the join goes on as before.
     No,
     Yes(InstId, usize),
+    /// A request for the end of a bus.
+    Request(usize),
     /// Already reported.
     Bad,
 }
@@ -78,51 +91,68 @@ impl Checker<'_> {
             return true;
         }
         let r = self.peripheral_path(right);
-        let (a, b) = match (l, r) {
+        let side = |p: &PeriphPath| match p {
+            PeriphPath::Yes(q, j) => Some(BusSide::Periph(*q, *j)),
+            PeriphPath::Request(i) => Some(BusSide::Request(*i)),
+            _ => None,
+        };
+        let (a, b) = match (&l, &r) {
             (PeriphPath::No, PeriphPath::No) => return false,
             (_, PeriphPath::Bad) => return true,
-            (PeriphPath::Yes(p, i), PeriphPath::Yes(q, j)) => {
-                (BusSide::Periph(p, i), BusSide::Periph(q, j))
-            }
-            (PeriphPath::Yes(p, i), PeriphPath::No) => {
-                let Some(other) = self.bus_side(right, (p, i)) else {
+            (PeriphPath::No, _) => {
+                let theirs = side(&r).expect("a peripheral or a request");
+                let Some(end) = self.side_bus(theirs) else {
                     return true;
                 };
-                (BusSide::Periph(p, i), other)
-            }
-            (PeriphPath::No, PeriphPath::Yes(q, j)) => {
-                let Some(other) = self.bus_side(left, (q, j)) else {
+                let Some(other) = self.bus_side(left, end) else {
                     return true;
                 };
-                (other, BusSide::Periph(q, j))
+                (other, theirs)
             }
-            (PeriphPath::Bad, _) => unreachable!("returned above"),
+            (_, PeriphPath::No) => {
+                let ours = side(&l).expect("a peripheral or a request");
+                let Some(end) = self.side_bus(ours) else {
+                    return true;
+                };
+                let Some(other) = self.bus_side(right, end) else {
+                    return true;
+                };
+                (ours, other)
+            }
+            _ => {
+                let (a, b) = (
+                    side(&l).expect("a peripheral or a request"),
+                    side(&r).expect("a peripheral or a request"),
+                );
+                if a == b {
+                    self.error(
+                        span,
+                        format!(
+                            "`{}` is joined to itself; `~` joins a peripheral to another end of its bus",
+                            left.to_source()
+                        ),
+                    );
+                    return true;
+                }
+                let (Some(ea), Some(eb)) = (self.side_bus(a), self.side_bus(b)) else {
+                    return true;
+                };
+                if ea.def != eb.def {
+                    self.error(
+                        span,
+                        format!(
+                            "cannot connect `{}`, an end of a `{}`, to `{}`, an end of a `{}`",
+                            left.to_source(),
+                            ea.interface,
+                            right.to_source(),
+                            eb.interface
+                        ),
+                    );
+                    return true;
+                }
+                (a, b)
+            }
         };
-        if let (BusSide::Periph(p, i), BusSide::Periph(q, j)) = (a, b) {
-            if (p, i) == (q, j) {
-                self.error(
-                    span,
-                    format!(
-                        "`{}` is joined to itself; `~` joins a peripheral to another end of its bus",
-                        left.to_source()
-                    ),
-                );
-                return true;
-            }
-            let (da, db) = (self.periph_bus_def(p, i), self.periph_bus_def(q, j));
-            if da != db {
-                let (na, nb) = (self.periph_interface(p, i), self.periph_interface(q, j));
-                self.error(
-                    span,
-                    format!(
-                        "cannot connect `{}`, an end of a `{na}`, to `{}`, an end of a `{nb}`",
-                        left.to_source(),
-                        right.to_source()
-                    ),
-                );
-                return true;
-            }
-        }
         let scope = self.current();
         let source = self.cur_source();
         let text = format!("{} ~ {}", left.to_source(), right.to_source());
@@ -140,6 +170,9 @@ impl Checker<'_> {
     /// Whether a path names a peripheral of a part that is an end of a bus: its last name is a
     /// peripheral of the part the rest of the path names, and no member of it.
     fn peripheral_path(&mut self, p: &Path) -> PeriphPath {
+        if let Some(index) = self.bus_request_path(p) {
+            return PeriphPath::Request(index);
+        }
         let Some((last, rest)) = p.segments.split_last() else {
             return PeriphPath::No;
         };
@@ -197,15 +230,39 @@ impl Checker<'_> {
         PeriphPath::Yes(part, index)
     }
 
+    /// The bus a side of a join is an end of: a peripheral's, or the one a request for the end
+    /// of a bus asks for (from the first peripheral of its part that is an end of it). `None`
+    /// when the request names no part with one, which the serving of the requests reports.
+    fn side_bus(&self, side: BusSide) -> Option<SideBus> {
+        let (part, index) = match side {
+            BusSide::Periph(p, i) => (p, i),
+            BusSide::Request(r) => {
+                let part = self.bus_request_part(r)?;
+                let interface = self.model.bus_requests[r].interface.clone();
+                (part, *self.bus_ends(part, &interface).first()?)
+            }
+            BusSide::Iface(_) => return None,
+        };
+        let what = match side {
+            BusSide::Request(r) => format!("`.{}`", self.model.bus_requests[r].name),
+            _ => format!(
+                "the peripheral `{}`",
+                self.model.instance(part).rules.peripherals[index].name
+            ),
+        };
+        Some(SideBus {
+            def: self.periph_bus_def(part, index),
+            interface: self.periph_interface(part, index),
+            what,
+        })
+    }
+
     /// The other side of a join with a peripheral: an interface of the peripheral's bus.
-    fn bus_side(&mut self, p: &Path, (part, index): (InstId, usize)) -> Option<BusSide> {
+    fn bus_side(&mut self, p: &Path, end: SideBus) -> Option<BusSide> {
         self.joining = true;
         let res = self.resolve_path(p);
         self.joining = false;
-        let wanted = self.periph_interface(part, index);
-        let periph = self.model.instance(part).rules.peripherals[index]
-            .name
-            .clone();
+        let wanted = end.interface;
         let what = match res {
             Res::Inst(i) => i,
             Res::Field(_) => {
@@ -218,7 +275,7 @@ impl Checker<'_> {
             Res::Poison | Res::Bad => return None,
         };
         let inst = self.model.instance(what);
-        if inst.kind == InstKind::Interface && inst.def == Some(self.periph_bus_def(part, index)) {
+        if inst.kind == InstKind::Interface && inst.def == Some(end.def) {
             self.touches.push(crate::unused::Touch {
                 inst: what,
                 scope: self.current(),
@@ -235,7 +292,8 @@ impl Checker<'_> {
         self.error(
             p.span,
             format!(
-                "`~` joins the peripheral `{periph}`, an end of a `{wanted}`, to an interface of that kind or to another such peripheral; `{}` is {is}",
+                "`~` joins {}, an end of a `{wanted}`, to an interface of that kind or to another such peripheral; `{}` is {is}",
+                end.what,
                 p.to_source()
             ),
         );
@@ -263,14 +321,38 @@ impl Checker<'_> {
     pub(crate) fn join_peripheral_ports(&mut self) {
         let joins = std::mem::take(&mut self.periph_joins);
         for join in &joins {
-            self.join_bus_sides(join);
+            // A request for the end of a bus joins as the peripheral it got; one that got none
+            // was reported where it was served.
+            let (Some(a), Some(b)) = (self.served_side(join.a), self.served_side(join.b)) else {
+                continue;
+            };
+            let join = PeripheralJoin {
+                a,
+                b,
+                ..join.clone()
+            };
+            self.join_bus_sides(&join);
+        }
+    }
+
+    /// A side of a join as it is now that the pins are assigned: a request for the end of a bus
+    /// is the peripheral it got, or `None` when it got none.
+    fn served_side(&self, side: BusSide) -> Option<BusSide> {
+        match side {
+            BusSide::Request(r) => self
+                .model
+                .bus_assignments
+                .iter()
+                .find(|a| a.request == r)
+                .map(|a| BusSide::Periph(a.part, a.peripheral)),
+            other => Some(other),
         }
     }
 
     fn join_bus_sides(&mut self, join: &PeripheralJoin) {
         let def = match (join.a, join.b) {
             (BusSide::Periph(p, i), _) | (_, BusSide::Periph(p, i)) => self.periph_bus_def(p, i),
-            _ => unreachable!("a peripheral join has a peripheral"),
+            _ => unreachable!("a peripheral join has a peripheral once its requests are served"),
         };
         // A bus whose `lines` had a mistake was reported where it was read.
         let Some(bus) = self.model.bus_defs.get(&def).cloned() else {
@@ -315,6 +397,7 @@ impl Checker<'_> {
                     })
                     .collect()
             }
+            BusSide::Request(_) => unreachable!("a request is its peripheral by now"),
             BusSide::Periph(part, index) => {
                 let periph = self.model.instance(part).rules.peripherals[index].clone();
                 let role = periph.bus.as_ref().and_then(|b| b.role.clone());
