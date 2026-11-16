@@ -530,6 +530,8 @@ impl Parser {
                     | Item::Defaults(_)
                     | Item::Row(_)
                     | Item::Polygon(_)
+                    | Item::PhysicalFile(_)
+                    | Item::Anchor(_)
                     | Item::Constraint(_)
                     | Item::Connect(_)
                     | Item::JoinMap(_),
@@ -570,6 +572,21 @@ impl Parser {
                 }
                 "row" if matches!(self.peek_second(), Tok::LeadingDot) => {
                     return only_decls(self.row(start)?);
+                }
+                "physical" if matches!(self.peek_second(), Tok::Str(_)) => {
+                    self.bump();
+                    let t = self.bump();
+                    let Tok::Str(file) = t.tok else {
+                        unreachable!("the token after `physical` is a string")
+                    };
+                    return only_decls(Item::PhysicalFile(PhysicalFile {
+                        file,
+                        file_span: t.span,
+                        span: self.span_from(start),
+                    }));
+                }
+                "anchor" if matches!(self.peek_second(), Tok::LeadingDot) => {
+                    return only_decls(self.anchor(start)?);
                 }
                 "polygon" if matches!(self.peek_second(), Tok::LParen) => {
                     return only_decls(self.polygon(start)?);
@@ -870,6 +887,26 @@ impl Parser {
             axis,
             axis_span,
             pitch,
+            span: self.span_from(start),
+        }))
+    }
+
+    /// `anchor .dock = .row_a`.
+    fn anchor(&mut self, start: usize) -> Res<Item> {
+        self.bump();
+        let name = self.path()?;
+        if name.segments.len() != 1 {
+            return Err(ParseError::new(
+                name.span,
+                "an anchor is one name of its own, such as `anchor .dock = .row_a`, not a path",
+            ));
+        }
+        self.expect(&Tok::Eq, "`=` and the part the anchor names")?;
+        let target = self.path()?;
+        let name = name.segments.into_iter().next().expect("one segment");
+        Ok(Item::Anchor(Anchor {
+            name,
+            target,
             span: self.span_from(start),
         }))
     }

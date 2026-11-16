@@ -211,16 +211,13 @@ fn a_unit_for_a_board_that_is_not_there_lists_the_boards() {
 }
 
 #[test]
-fn a_unit_for_a_module_is_refused_until_the_module_layer_exists() {
+fn a_unit_for_a_module_that_does_not_name_its_file_is_refused() {
     let c = run(BOARD, "physical for Block {}\n");
-    let m = messages(&c);
-    assert_eq!(m.len(), 1);
-    assert!(
-        m[0].contains(
-            "names a module, and a physical file for anything but a board is not built yet"
-        ),
-        "{}",
-        m[0]
+    assert_eq!(
+        messages(&c),
+        [
+            "`physical for Block` names a module, and `module Block` does not name this file: add `physical \"t.physical.nsm\"` to it, so that every board that uses `Block` gets the file and a missing file is an error (ADR 0048)"
+        ]
     );
 }
 
@@ -236,7 +233,7 @@ fn a_file_holds_the_units_of_several_boards_and_each_only_once() {
     let c = run(src, "physical for A {}\nphysical for A {}\n");
     assert_eq!(
         messages(&c),
-        ["`physical for A` is already given in this file; keep one unit for each board"]
+        ["`physical for A` is already given in this file; keep one unit for each board or module"]
     );
 }
 
@@ -272,7 +269,12 @@ fn a_case_section_outside_a_physical_file_is_refused() {
 #[test]
 fn a_name_in_the_physical_file_that_does_not_exist_is_named() {
     let c = physical("    .b.nope.place.x &= 1mm");
-    assert_eq!(messages(&c), ["`Block` has no member `nope`"]);
+    assert_eq!(
+        messages(&c),
+        [
+            "`.b.nope.place.x` names nothing: module `Block` has no member `nope`. A physical file reaches inside a module by the path of the part, so a rename inside `Block` breaks this path; an `anchor .name = .part` line in the physical file of `Block` gives a part a name that a rename inside the module changes in one place"
+        ]
+    );
     assert_eq!(
         c.sources.get(c.diagnostics[0].source).name,
         "t.physical.nsm"

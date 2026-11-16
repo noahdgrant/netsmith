@@ -718,7 +718,9 @@ impl Checker<'_> {
                 let Some(t) = rhs else { return stated };
                 let mut fields = vec![f];
                 t.e.fields(&mut fields);
-                if !self.physical_gate(&fields, c.span) {
+                if !self.physical_gate(&fields, c.span)
+                    || !self.module_frame_narrowing(&fields, c.span)
+                {
                     return stated;
                 }
                 if c.op == CmpOp::Narrow {
@@ -1008,7 +1010,7 @@ impl Checker<'_> {
         let mut fields = Vec::new();
         l.e.fields(&mut fields);
         r.e.fields(&mut fields);
-        if !self.physical_gate(&fields, c.span) {
+        if !self.physical_gate(&fields, c.span) || !self.module_frame_relation(&l.e, &r.e, c.span) {
             return stated;
         }
 
@@ -1047,6 +1049,7 @@ impl Checker<'_> {
         if let Some(f) = crate::optional::states(c.op, &l.e, &r.e) {
             self.refuse_own_statement(f, c.op.symbol(), c.span);
         }
+        self.note_layer_offset(&l.e, &r.e, c.op, c.span);
         let source = self.cur_source();
         let written = self.written(c.span);
         let own = self.in_own_definition();

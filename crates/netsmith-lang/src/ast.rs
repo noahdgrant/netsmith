@@ -230,6 +230,35 @@ pub enum Item {
     /// A `polygon (0mm, 0mm) (40mm, 0mm) ...` statement; only an `Outline` in a physical
     /// file may hold one (issue #57).
     Polygon(Polygon),
+    /// `physical "radio_dock.physical.nsm"`: a module names its physical file (ADR 0048, the
+    /// module layer, issue #813); only a module may hold one.
+    PhysicalFile(PhysicalFile),
+    /// `anchor .dock = .row_a`: a name for a part or module inside a module that a board's
+    /// physical file can reach it by (ADR 0048 decision 4); only a module's physical file may
+    /// hold one.
+    Anchor(Anchor),
+}
+
+/// `physical "radio_dock.physical.nsm"` in a module: the module's physical intent is in that
+/// file, beside the module's source, and every board that uses the module gets it (ADR 0048,
+/// option T3 of `docs/research/physical-file-syntax-options.md` section 8).
+#[derive(Debug, Clone, PartialEq)]
+pub struct PhysicalFile {
+    /// The file's name as written, without the quotes.
+    pub file: String,
+    pub file_span: Span,
+    pub span: Span,
+}
+
+/// `anchor .dock = .row_a`: `.dock` names `.row_a` for every physical file that reaches into
+/// the module, so a rename inside the module changes this one line (ADR 0048 decision 4).
+#[derive(Debug, Clone, PartialEq)]
+pub struct Anchor {
+    /// The new name, one segment with a leading dot (`.dock`).
+    pub name: Ident,
+    /// What it names, a path inside the module (`.row_a`).
+    pub target: Path,
+    pub span: Span,
 }
 
 /// `polygon (0mm, 0mm) (40mm, 0mm) round 2mm (40mm, 15mm) arc through (30mm, 20mm) (0mm, 15mm)`:

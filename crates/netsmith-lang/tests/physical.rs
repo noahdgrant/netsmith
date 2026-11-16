@@ -251,3 +251,42 @@ fn polygon_is_still_an_ordinary_name_elsewhere() {
     let file = parse("board B {\n    .polygon: Length\n    .polygon &= 1mm\n}\n").unwrap();
     assert_eq!(file.definitions.len(), 1);
 }
+
+const DOCK: &str = "\
+module Dock {
+    physical \"dock.physical.nsm\"
+    .row_a: Header1x2
+}
+
+physical for Dock {
+    anchor .dock = .row_a
+    .row_b.place.x - .dock.place.x == 17.5mm
+}
+";
+
+#[test]
+fn a_module_names_its_physical_file_and_its_unit_declares_anchors() {
+    let file = parse(DOCK).unwrap();
+    let Item::PhysicalFile(f) = &file.definitions[0].items[0] else {
+        panic!("a physical statement")
+    };
+    assert_eq!(f.file, "dock.physical.nsm");
+    assert_eq!(&DOCK[f.file_span.start..f.file_span.end], "\"dock.physical.nsm\"");
+    let Item::Anchor(a) = &file.physicals[0].items[0] else {
+        panic!("an anchor")
+    };
+    assert_eq!(a.name.name, "dock");
+    assert_eq!(a.target.to_source(), ".row_a");
+    let printed = file.to_source();
+    assert!(printed.contains("physical \"dock.physical.nsm\""), "{printed}");
+    assert!(printed.contains("anchor .dock = .row_a"), "{printed}");
+    assert_eq!(parse(&printed).unwrap().to_source(), printed);
+}
+
+#[test]
+fn an_anchor_is_one_name() {
+    let e = parse("physical for D {\n    anchor .a.b = .row_a\n}\n").unwrap_err();
+    assert!(e.message.contains("an anchor is one name of its own"), "{}", e.message);
+    // `physical` and `anchor` stay usable as names.
+    assert!(parse("module M {\n    .physical: Pin\n    .anchor: Pin\n    .anchor ~ .physical\n}\n").is_ok());
+}

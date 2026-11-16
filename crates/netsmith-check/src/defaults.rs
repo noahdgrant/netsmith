@@ -483,5 +483,7 @@ fn item_span(item: &Item) -> Span {
         Item::Defaults(d) => d.span,
         Item::Row(r) => r.span,
         Item::Polygon(p) => p.span,
+        Item::PhysicalFile(f) => f.span,
+        Item::Anchor(a) => a.span,
     }
 }

@@ -77,6 +77,9 @@ pub(crate) struct PhysState {
     /// The members of the board that the physical file declared (an outline, a keepout, a
     /// mounting hole): it may set any of their fields.
     pub declared: HashSet<InstId>,
+    /// The module instance whose own physical file is being read (the module layer of
+    /// ADR 0048, `module_physical.rs`), or `None` for a board's.
+    pub module: Option<InstId>,
 }
 
 #[derive(Clone, Copy)]
@@ -136,6 +139,12 @@ pub(crate) struct Checker<'a> {
     attached: HashMap<(usize, usize), Vec<AttachedUnit>>,
     /// Set while a board's physical file is being read (ADR 0048).
     pub(crate) phys: Option<PhysState>,
+    /// The anchors of each module instance (`anchor .dock = .row_a`): its name to what it
+    /// names (ADR 0048 decision 4, `module_physical.rs`).
+    pub(crate) anchors: HashMap<InstId, Vec<crate::module_physical::AnchorName>>,
+    /// The offsets between two parts' places that physical files have stated so far, with
+    /// the layer each came from, so that a board's file only narrows a module's (V1).
+    pub(crate) layer_offsets: Vec<crate::module_physical::LayerOffset>,
     /// The fields that some `&=` statement states, in the elaboration in progress. A default
     /// (`?=`) gives way to one of these (ADR 0051).
     pub(crate) stated: HashSet<crate::model::FieldId>,
@@ -285,6 +294,8 @@ impl<'a> Checker<'a> {
             skipped: HashSet::new(),
             table_pins: HashSet::new(),
             attached: HashMap::new(),
+            anchors: HashMap::new(),
+            layer_offsets: Vec::new(),
             phys: None,
             narrowing: false,
             stating_row_limits: false,
@@ -530,7 +541,20 @@ impl<'a> Checker<'a> {
         if let Some((physical_name, physical_text)) = loader.physical_of(name) {
             self.add_physical(id, physical_name, physical_text);
         }
+        self.check_physical_statements(id, name);
         id
+    }
+
+    /// The loader the checker reads from.
+    pub(crate) fn loader_ref(&self) -> &'a Loader {
+        self.loader
+    }
+
+    /// Whether a `physical for` unit is attached to the definition.
+    pub(crate) fn has_attached(&self, def: (usize, usize)) -> bool {
+        self.attached
+            .get(&def)
+            .is_some_and(|units| !units.is_empty())
     }
 
     /// Read the physical file paired with module `owner` and attach each of its units to
@@ -599,12 +623,17 @@ impl<'a> Checker<'a> {
                 continue;
             };
             let kind = owner_defs[index].kind;
-            if kind != DefKind::Board {
+            if kind == DefKind::Module
+                && !self.module_names_file(source, &owner_defs[index], name, unit.board.span)
+            {
+                continue;
+            }
+            if !matches!(kind, DefKind::Board | DefKind::Module) {
                 self.report(
                     source,
                     unit.board.span,
                     format!(
-                        "`physical for {}` names a {}, and a physical file for anything but a board is not built yet (ADR 0048); name a board, and reach the parts of a module by their path",
+                        "`physical for {}` names a {}, and a physical file is a board's or a module's (ADR 0048); name a board or a module, and reach the parts of a module by their path",
                         unit.board.name,
                         kind.keyword()
                     ),
@@ -617,7 +646,7 @@ impl<'a> Checker<'a> {
                     source,
                     unit.board.span,
                     format!(
-                        "`physical for {}` is already given in this file; keep one unit for each board",
+                        "`physical for {}` is already given in this file; keep one unit for each board or module",
                         unit.board.name
                     ),
                 );
@@ -1240,8 +1269,8 @@ impl<'a> Checker<'a> {
         if !generics.is_empty() {
             self.conform(id, def, &generics);
         }
-        if kind == InstKind::Board {
-            self.merge_physical(def_ref);
+        if matches!(kind, InstKind::Board | InstKind::Module) {
+            self.merge_physical(def_ref, id);
         }
         self.phys = saved_phys;
         self.cur_module = saved_module;
@@ -1317,14 +1346,25 @@ impl<'a> Checker<'a> {
     /// Read the physical file of the board being made, as part of the board (ADR 0048): its
     /// declarations become members of the board, and its statements are checked with the
     /// reach into modules that a physical file has and a circuit source does not.
-    fn merge_physical(&mut self, board: (usize, usize)) {
-        let Some(units) = self.attached.get(&board).cloned() else {
+    ///
+    /// A module's physical file is read the same way each time the module is made, inside the
+    /// module, before the board's: its anchors first, so that the order of its statements
+    /// never matters (`module_physical.rs`).
+    fn merge_physical(&mut self, def: (usize, usize), inst: InstId) {
+        let Some(units) = self.attached.get(&def).cloned() else {
             return;
         };
+        let module_layer = (self.model.instance(inst).kind == InstKind::Module).then_some(inst);
         let saved_module = self.cur_module;
         for (module, unit) in units {
             self.cur_module = module;
-            let saved = self.phys.replace(PhysState::default());
+            let saved = self.phys.replace(PhysState {
+                module: module_layer,
+                ..PhysState::default()
+            });
+            if module_layer.is_some() {
+                self.declare_anchors(&unit.items);
+            }
             self.declare(&unit.items);
             self.process(&unit.items);
             self.phys = saved;
@@ -1429,7 +1469,9 @@ impl<'a> Checker<'a> {
                 continue;
             }
             if let Item::Case(case) = item {
-                if let Some(phys) = &mut self.phys {
+                if self.phys.as_ref().is_some_and(|p| p.module.is_some()) {
+                    self.error(case.span, crate::module_physical::CASE_IN_MODULE);
+                } else if let Some(phys) = &mut self.phys {
                     let outer = std::mem::replace(&mut phys.in_case, true);
                     self.declare(&case.items);
                     if let Some(phys) = &mut self.phys {
@@ -1757,7 +1799,9 @@ impl<'a> Checker<'a> {
                 }
                 Item::Constraint(c) => self.constraint(c),
                 Item::Case(case) => {
-                    if let Some(phys) = &mut self.phys {
+                    if self.phys.as_ref().is_some_and(|p| p.module.is_some()) {
+                        // Reported when it was declared.
+                    } else if let Some(phys) = &mut self.phys {
                         let outer = std::mem::replace(&mut phys.in_case, true);
                         self.process(&case.items);
                         if let Some(phys) = &mut self.phys {
@@ -1774,6 +1818,8 @@ impl<'a> Checker<'a> {
                 }
                 Item::Row(r) => self.row(r),
                 Item::Polygon(p) => self.polygon(p),
+                Item::PhysicalFile(f) => self.physical_file_here(f),
+                Item::Anchor(a) => self.anchor_here(a),
                 Item::Connect(c) if self.phys.is_none() => self.connect(c),
                 Item::JoinMap(b) if self.phys.is_none() => self.join_map(b),
                 Item::Bridge(b) if self.phys.is_none() => self.bridge(b),
@@ -2066,6 +2112,11 @@ impl<'a> Checker<'a> {
                     }
                     m
                 }
+                // A module's anchor, in a physical file (ADR 0048 decision 4).
+                None if self.anchor_target(cur, &first.name).is_some() => Member::Inst(
+                    self.anchor_target(cur, &first.name)
+                        .expect("the guard found it"),
+                ),
                 None => {
                     if let Some(hint) = self.group_hint(cur, &first.name) {
                         self.error(first.span, hint);
@@ -2172,6 +2223,23 @@ impl<'a> Checker<'a> {
                         member = m;
                         owner_of_member = i;
                         name_of_member = seg.name.as_str();
+                    }
+                    // A module's anchor, in a physical file (ADR 0048 decision 4).
+                    None if self.anchor_target(i, &seg.name).is_some() => {
+                        member = Member::Inst(
+                            self.anchor_target(i, &seg.name)
+                                .expect("the guard found it"),
+                        );
+                        owner_of_member = i;
+                        name_of_member = seg.name.as_str();
+                    }
+                    None if self.phys.is_some()
+                        && self.model.instance(i).kind == InstKind::Module
+                        && self.group_hint(i, &seg.name).is_none() =>
+                    {
+                        let message = self.broken_path(i, seg, p);
+                        self.error(seg.span, message);
+                        return Res::Bad;
                     }
                     None => {
                         if !self.named_ic(i) && self.report_outside_bound(i, seg) {
@@ -2283,6 +2351,15 @@ impl Checker<'_> {
         if let Some(phys) = &self.phys {
             if self.scope.len() != 1 {
                 return true;
+            }
+            if phys.module.is_some() {
+                self.error(
+                    d.ty.segments[0].span,
+                    format!(
+                        "a module's physical file declares nothing: it states how the module's parts stand to one another (a relation, a `row`, an `anchor`); `{member}: {type_name}` belongs in the module's circuit source, or in the physical file of the board that uses the module if it is the board's outline, cutout, keepout, hole, fiducial, label or case model"
+                    ),
+                );
+                return false;
             }
             let in_case = phys.in_case;
             return match physical {

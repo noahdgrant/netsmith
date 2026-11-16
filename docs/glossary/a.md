@@ -7,6 +7,10 @@ _Avoid_: Rating (a rating is a field such as `.max_power`)
 **Alias**:
 A pin with no row in the pin table that the part joins to a pin that has one (`.vin.neg ~ .vout.neg`). It is that pin, so it needs no pad of its own and adds no pin to a net in the schematic.
 
+**Anchor**:
+`anchor .dock = .row_a` in a module's physical file: a second name for a part or a module inside the module, which every physical file that reaches into the module may use (`.radio.dock.place.left &= 8mm`), so that a rename inside the module changes the one `anchor` line and no board's file (ADR 0048 decision 4, issue #813). It may not take the name of a member, and the circuit source does not see it.
+_Avoid_: Alias (an alias is a pin joined to a pin that has a row), handle (ADR 0042's handle through a module's interface, which the physical file replaced for placement)
+
 **Assembly**:
 Who puts a part on the board: the field `.assembly` of every part, of the type `AssemblyMode`: `AssemblyMode::Fab` (the board house places it), `AssemblyMode::Hand` (soldered by hand), `AssemblyMode::None` (not fitted at all: a hole, a fiducial) or `AssemblyMode::Consigned` (the board house places it, and the owner ships the part to it). It decides the BOM, the placement file and the notes of `fab` (ADR 0024, provisional). A project may set a default for it in `netsmith.toml` (`assembly = "fab"`, ADR 0028; the manifest and the catalog files write the lower-case word). A board may narrow a part inside a module (`.a.j.assembly &= AssemblyMode::Hand`, ADR 0116); a module that offers one choice for all its parts declares a value of the type `AssemblyMode` (`.assembly_mode`) and ties its parts to it with `.j.assembly &= .assembly_mode`; the board's narrowing of that value is the design's own statement for those parts (ADR 0042, ADR 0054).
 _Avoid_: Population, fitting, DNP
