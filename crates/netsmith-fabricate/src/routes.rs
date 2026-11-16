@@ -79,7 +79,9 @@ pub fn load(file: &Path) -> Result<Routes, String> {
     Ok(read_unchecked(file)?.map(|(r, _)| r).unwrap_or_default())
 }
 
-/// Write `routes` to `file`, or remove the file when it holds no record.
+/// Write `routes` to `file`, or remove the file when it holds no record. The text is written to a
+/// temporary file beside it and renamed into place, so the editor, which reads the file whenever
+/// it changes, never reads half of it (a half file is a parse error, an empty one no copper).
 pub fn save(file: &Path, routes: &Routes) -> Result<(), String> {
     let empty = routes.boards.values().all(|b| b.nets.is_empty());
     let result = if empty {
@@ -88,9 +90,22 @@ pub fn save(file: &Path, routes: &Routes) -> Result<(), String> {
             _ => Ok(()),
         }
     } else {
-        std::fs::write(file, routes.to_text())
+        write_atomic(file, &routes.to_text())
     };
     result.map_err(|e| format!("{}: {e}", file.display()))
+}
+
+/// Write `text` over `file` as a temporary file in the same folder renamed into place.
+fn write_atomic(file: &Path, text: &str) -> std::io::Result<()> {
+    let name = file
+        .file_name()
+        .map_or(String::new(), |n| n.to_string_lossy().into_owned());
+    let temporary = file.with_file_name(format!(".{name}.netsmith-save"));
+    std::fs::write(&temporary, text)
+        .and_then(|()| std::fs::rename(&temporary, file))
+        .inspect_err(|_| {
+            let _ = std::fs::remove_file(&temporary);
+        })
 }
 
 /// `board` with `routes` on it, as `fab` would route it, and what of the file was not used.

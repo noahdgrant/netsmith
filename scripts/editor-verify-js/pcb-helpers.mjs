@@ -47,9 +47,23 @@ export async function openPcb(page, board = BOARD) {
   await page.waitForSelector('.pcb-overlay');
 }
 
-/** The board's scene, as the server has it now. */
+/** The board's scene, as the server has it now. A refusal (the server's errors are plain text) is
+ * thrown with its status and the start of its body, not as a JSON parse error. */
 export async function scene(page, board = BOARD) {
-  return page.evaluate(async (b) => (await fetch(`/api/pcb/scene?board=${encodeURIComponent(b)}`)).json(), board);
+  const r = await page.evaluate(async (b) => {
+    const res = await fetch(`/api/pcb/scene?board=${encodeURIComponent(b)}`);
+    return { ok: res.ok, status: res.status, body: await res.text() };
+  }, board);
+  if (!r.ok) throw new Error(`GET /api/pcb/scene?board=${board} answered ${r.status}: ${r.body.slice(0, 200)}`);
+  return JSON.parse(r.body);
+}
+
+/** Write `text` over `file` as a temporary file renamed into place, so the editor's server, which
+ * reads a routes or layout file whenever it changes, never reads half of it. */
+export function writeAtomic(file, text) {
+  const temporary = path.join(path.dirname(file), `.${path.basename(file)}.recipe-save`);
+  fs.writeFileSync(temporary, text);
+  fs.renameSync(temporary, file);
 }
 
 /** A point of the board with nothing under it: the point of the outline (3 mm in from the edge)
