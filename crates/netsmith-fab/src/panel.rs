@@ -67,7 +67,7 @@
 //! **The checks** are in [`check`], each message with the numbers and the page: rail width, panel
 //! size (and the assembled size), lines per side, line spacing, thickness, the board's edge
 //! clearance (its own check ran at its `min_edge_clearance`, so a panel needs that to be 0.4 mm or
-//! more: `.process.min_edge_clearance &= 0.4mm..1m`), tooling holes and fiducials when anything is
+//! more: `.process.min_edge_clearance &= 0.4mm..`), tooling holes and fiducials when anything is
 //! assembled, cells that overlap (by construction they cannot) and a rectangle with square
 //! corners. Then netsmith's own check runs on the panel board itself.
 //!
@@ -395,7 +395,7 @@ pub fn check(spec: &Spec, g: &Geometry, facts: &CellFacts) -> Vec<Finding> {
     }
     if facts.edge_clearance + 1e-9 < r.min_edge_clearance {
         error(format!(
-            "{} keeps copper {} mm from its edge and copper is at least {} mm from a V-cut edge: narrow the board, `.process.min_edge_clearance &= {}mm..1m`",
+            "{} keeps copper {} mm from its edge and copper is at least {} mm from a V-cut edge: narrow the board, `.process.min_edge_clearance &= {}mm..`",
             facts.board,
             mm(facts.edge_clearance),
             mm(r.min_edge_clearance),

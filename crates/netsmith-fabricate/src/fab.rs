@@ -3163,8 +3163,8 @@ mod tests {
                     .next()
                     .and_then(|n| n.parse().ok())
                     .unwrap_or_else(|| panic!("{name}.{field}: cannot read {value}"));
-                let narrowed = if value.ends_with("..1m") {
-                    format!(".{field} &= {}mm..1m", number + 0.01)
+                let narrowed = if value.ends_with("..") {
+                    format!(".{field} &= {}mm..", number + 0.01)
                 } else if value.starts_with("0mm..") {
                     format!(".{field} &= 0mm")
                 } else {

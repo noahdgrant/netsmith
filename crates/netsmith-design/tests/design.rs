@@ -607,7 +607,7 @@ fn a_board_that_does_not_choose_a_thickness_leaves_the_whole_range() {
 #[test]
 fn narrowing_a_rule_moves_the_bottom_of_its_range() {
     let d = designed(&board_with(
-        ".process: TwoLayer {\n        .min_track &= 0.15mm..0.3mm\n        .min_edge_clearance &= 0.5mm..1m\n    }",
+        ".process: TwoLayer {\n        .min_track &= 0.15mm..0.3mm\n        .min_edge_clearance &= 0.5mm..\n    }",
     ))
     .unwrap();
     let p = d.process.unwrap();

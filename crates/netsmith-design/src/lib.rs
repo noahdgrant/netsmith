@@ -794,71 +794,88 @@ fn process_of(model: &Model, nets: &[String], errors: &mut Vec<String>) -> Optio
             Some(domain) => Some(domain.clone()),
         }
     };
-    // A rule is the bottom of its range. A length is rounded to a nanometre of the
+    // A rule is the bottom of its range, and one that is not a number at its end is refused:
+    // `.min_track &= ..5mm` has no bottom. A length is rounded to a nanometre of the
     // millimetre so that `0.1mm` is `0.1`, not `0.10000000000000002`.
-    let mm = |d: Option<Domain>| match d {
-        Some(Domain::Quantity(q)) => (q.lo() * 1e12).round() / 1e9,
+    let end = |path: &str, q: &netsmith_quantity::Quantity, top: bool| {
+        let v = if top { q.hi() } else { q.lo() };
+        if v.is_finite() {
+            return v;
+        }
+        let (word, open) = if top {
+            ("top", "has no upper limit")
+        } else {
+            ("bottom", "has no lower limit")
+        };
+        problems.borrow_mut().push(format!(
+            "`process.{path}` is {q}, which {open}: a process states a number at the {word} of the range that the design reads"
+        ));
+        0.0
+    };
+    let mm = |path: &str| match find(path) {
+        Some(Domain::Quantity(q)) => (end(path, &q, false) * 1e12).round() / 1e9,
         _ => 0.0,
     };
     let text = |d: Option<Domain>| match d {
         Some(Domain::Text(t)) => t,
         _ => String::new(),
     };
-    let number = |d: Option<Domain>| match d {
-        Some(Domain::Quantity(q)) => q.lo(),
+    let number = |path: &str| match find(path) {
+        Some(Domain::Quantity(q)) => end(path, &q, false),
         _ => 0.0,
     };
-    let layers = number(find("stackup.layers")).round() as u32;
+    let layers = number("stackup.layers").round() as u32;
     let mut built = Process {
         name: kind.clone(),
         fabricator: text(find("fabricator")),
         source: text(find("source")),
-        min_track: mm(find("min_track")),
-        min_clearance: mm(find("min_clearance")),
-        min_drill: mm(find("min_drill")),
-        min_via_diameter: mm(find("min_via_diameter")),
-        min_annular_ring: mm(find("min_annular_ring")),
-        min_via_ring: mm(find("min_via_ring")),
-        min_hole_clearance: mm(find("min_hole_clearance")),
-        min_plated_hole_clearance: mm(find("min_plated_hole_clearance")),
-        min_pad_to_pad: mm(find("min_pad_to_pad")),
-        min_mask_to_track: mm(find("min_mask_to_track")),
-        min_npth_drill: mm(find("min_npth_drill")),
-        min_plated_slot: mm(find("min_plated_slot")),
-        min_npth_slot: mm(find("min_npth_slot")),
-        via_drill: mm(find("via_drill")),
-        via_diameter: mm(find("via_diameter")),
-        min_hole_to_hole: mm(find("min_hole_to_hole")),
-        min_via_hole_to_hole: mm(find("min_via_hole_to_hole")),
-        min_edge_clearance: mm(find("min_edge_clearance")),
-        min_silk_width: mm(find("min_silk_width")),
-        min_text_height: mm(find("min_text_height")),
-        min_silk_to_pad: mm(find("min_silk_to_pad")),
-        min_mask_bridge: mm(find("min_mask_bridge")),
+        min_track: mm("min_track"),
+        min_clearance: mm("min_clearance"),
+        min_drill: mm("min_drill"),
+        min_via_diameter: mm("min_via_diameter"),
+        min_annular_ring: mm("min_annular_ring"),
+        min_via_ring: mm("min_via_ring"),
+        min_hole_clearance: mm("min_hole_clearance"),
+        min_plated_hole_clearance: mm("min_plated_hole_clearance"),
+        min_pad_to_pad: mm("min_pad_to_pad"),
+        min_mask_to_track: mm("min_mask_to_track"),
+        min_npth_drill: mm("min_npth_drill"),
+        min_plated_slot: mm("min_plated_slot"),
+        min_npth_slot: mm("min_npth_slot"),
+        via_drill: mm("via_drill"),
+        via_diameter: mm("via_diameter"),
+        min_hole_to_hole: mm("min_hole_to_hole"),
+        min_via_hole_to_hole: mm("min_via_hole_to_hole"),
+        min_edge_clearance: mm("min_edge_clearance"),
+        min_silk_width: mm("min_silk_width"),
+        min_text_height: mm("min_text_height"),
+        min_silk_to_pad: mm("min_silk_to_pad"),
+        min_mask_bridge: mm("min_mask_bridge"),
         // An upper bound, so the top of what the board left.
         via_in_pad: match find("via_in_pad") {
-            Some(Domain::Quantity(q)) => (q.hi() * 1e12).round() / 1e9,
+            Some(Domain::Quantity(q)) => (end("via_in_pad", &q, true) * 1e12).round() / 1e9,
             _ => 0.0,
         },
         // Unstated in the library; a board may state it. An upper bound, so the top.
         max_temperature_rise: match model.field_at("process.max_temperature_rise") {
             Some(f) => match &model.field(f).domain {
-                Domain::Quantity(q) => Some(q.hi()),
+                Domain::Quantity(q) => Some(end("max_temperature_rise", q, true)),
                 _ => None,
             },
             None => None,
         },
-        track_width_tolerance: number(find("track_width_tolerance")),
-        hole_plating: mm(find("hole_plating")),
+        track_width_tolerance: number("track_width_tolerance"),
+        hole_plating: mm("hole_plating"),
         stackup: Stackup {
             layers,
             thickness: match find("stackup.thickness") {
-                Some(Domain::Quantity(q)) => {
-                    ((q.lo() * 1e12).round() / 1e9, (q.hi() * 1e12).round() / 1e9)
-                }
+                Some(Domain::Quantity(q)) => (
+                    (end("stackup.thickness", &q, false) * 1e12).round() / 1e9,
+                    (end("stackup.thickness", &q, true) * 1e12).round() / 1e9,
+                ),
                 _ => (0.0, 0.0),
             },
-            copper_weight: number(find("stackup.copper_weight")),
+            copper_weight: number("stackup.copper_weight"),
             inner: None,
         },
     };
@@ -925,16 +942,16 @@ fn process_of(model: &Model, nets: &[String], errors: &mut Vec<String>) -> Optio
                 } else {
                     text(find(&format!("{at}.glass")))
                 },
-                thickness: mm(find(&format!("{at}.thickness"))),
-                epsilon: number(find(&format!("{at}.epsilon"))),
+                thickness: mm(&format!("{at}.thickness")),
+                epsilon: number(&format!("{at}.epsilon")),
             });
         }
         built.stackup.inner = Some(InnerLayers {
             layers: uses,
-            copper: mm(find("stackup.inner_copper")),
+            copper: mm("stackup.inner_copper"),
             dielectrics,
             build: text(find("stackup.build")),
-            hole_clearance: mm(find("min_plane_hole_clearance")),
+            hole_clearance: mm("min_plane_hole_clearance"),
         });
     }
     let problems = problems.into_inner();

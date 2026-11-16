@@ -132,7 +132,7 @@ fn the_list_of_generics_may_wrap_after_a_comma() {
 
 #[test]
 fn an_interface_provides_a_generic() {
-    let def = only("interface JlcTwoLayer2oz provides TwoLayer {\n .min_track &= 0.16mm..1m\n}\n");
+    let def = only("interface JlcTwoLayer2oz provides TwoLayer {\n .min_track &= 0.16mm..\n}\n");
     assert_eq!(def.kind, DefKind::Interface);
     assert_eq!(def.provides[0].name, "TwoLayer");
 }

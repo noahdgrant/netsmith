@@ -753,10 +753,11 @@ pub enum Expr {
         rhs: Box<Expr>,
         span: Span,
     },
-    /// `lo..hi`
+    /// `lo..hi`, or with an open end: `lo..` (no upper limit, `hi` is `None`) or `..hi` (no lower
+    /// limit, `lo` is `None`). At least one end is written.
     Range {
-        lo: Box<Expr>,
-        hi: Box<Expr>,
+        lo: Option<Box<Expr>>,
+        hi: Option<Box<Expr>>,
         span: Span,
     },
     /// `center +/- tol`

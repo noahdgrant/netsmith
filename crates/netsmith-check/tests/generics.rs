@@ -1289,12 +1289,12 @@ const FAB_PROVIDERS: &str = "\
 import src::fab::Fab
 
 interface FabOne provides Fab {
-    .min_track &= 0.1mm..1m
+    .min_track &= 0.1mm..
     .weight &= 1
 }
 
 interface FabTwo provides Fab {
-    .min_track &= 0.2mm..1m
+    .min_track &= 0.2mm..
     .weight &= 2
 }
 ";

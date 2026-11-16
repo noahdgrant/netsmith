@@ -317,8 +317,9 @@ fn expr_paths<'a>(e: &'a Expr, out: &mut Vec<&'a Path>) {
             expr_paths(rhs, out);
         }
         Expr::Range { lo, hi, .. } => {
-            expr_paths(lo, out);
-            expr_paths(hi, out);
+            for end in [lo, hi].into_iter().flatten() {
+                expr_paths(end, out);
+            }
         }
         Expr::Tolerance { center, tol, .. } => {
             expr_paths(center, out);

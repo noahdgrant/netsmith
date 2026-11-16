@@ -343,11 +343,27 @@ impl Checker<'_> {
                 self.binary(*op, l?, r?, *span)
             }
             Expr::Range { lo, hi, span } => {
-                let l = self.lower(lo);
-                let h = self.lower(hi);
-                let (l, h) = (l?, h?);
-                match (&l.e, &h.e) {
-                    (RExpr::Const(a), RExpr::Const(b)) => match Quantity::range(a, b) {
+                let l = lo.as_ref().map(|e| self.lower(e));
+                let h = hi.as_ref().map(|e| self.lower(e));
+                // Each end that is written lowers; an end that does not lower is reported.
+                let l = match l {
+                    Some(l) => Some(l?),
+                    None => None,
+                };
+                let h = match h {
+                    Some(h) => Some(h?),
+                    None => None,
+                };
+                if let (
+                    Some(Typed {
+                        e: RExpr::Const(a), ..
+                    }),
+                    Some(Typed {
+                        e: RExpr::Const(b), ..
+                    }),
+                ) = (&l, &h)
+                {
+                    return match Quantity::range(a, b) {
                         Ok(q) => Some(Typed {
                             ty: VTy::Q(q.dim()),
                             e: RExpr::Const(q),
@@ -356,25 +372,57 @@ impl Checker<'_> {
                             self.error(*span, err.to_string());
                             None
                         }
-                    },
-                    _ => {
-                        // An end that is a value (a member, an expression over members) is
-                        // read when the solver knows it (ADR 0066). The ends are numbers of
-                        // one dimension, and an end text is not one.
-                        let (VTy::Q(ld), VTy::Q(hd)) = (l.ty, h.ty) else {
-                            self.error(*span, "the ends of a range are numbers, not text");
-                            return None;
-                        };
-                        if ld != hd {
-                            self.error(*span, format!("cannot form a range from {ld} and {hd}"));
-                            return None;
-                        }
-                        Some(Typed {
-                            ty: VTy::Q(ld),
-                            e: RExpr::Range(Box::new(l.e), Box::new(h.e)),
-                        })
-                    }
+                    };
                 }
+                // A range of a number with an open end (`1.6mm..`, `..5mm`) is a constant too.
+                if let (
+                    Some(Typed {
+                        e: RExpr::Const(a), ..
+                    }),
+                    None,
+                )
+                | (
+                    None,
+                    Some(Typed {
+                        e: RExpr::Const(a), ..
+                    }),
+                ) = (&l, &h)
+                {
+                    let made = if l.is_some() {
+                        Quantity::at_least(a)
+                    } else {
+                        Quantity::at_most(a)
+                    };
+                    return match made {
+                        Ok(q) => Some(Typed {
+                            ty: VTy::Q(q.dim()),
+                            e: RExpr::Const(q),
+                        }),
+                        Err(err) => {
+                            self.error(*span, err.to_string());
+                            None
+                        }
+                    };
+                }
+                // An end that is a value (a member, an expression over members) is
+                // read when the solver knows it (ADR 0066). The ends are numbers of
+                // one dimension, and an end text is not one.
+                let mut dim = None;
+                for end in [&l, &h].into_iter().flatten() {
+                    let VTy::Q(d) = end.ty else {
+                        self.error(*span, "the ends of a range are numbers, not text");
+                        return None;
+                    };
+                    if let Some(first) = dim.filter(|first| *first != d) {
+                        self.error(*span, format!("cannot form a range from {first} and {d}"));
+                        return None;
+                    }
+                    dim = Some(d);
+                }
+                Some(Typed {
+                    ty: VTy::Q(dim.expect("a range has an end")),
+                    e: RExpr::Range(l.map(|t| Box::new(t.e)), h.map(|t| Box::new(t.e))),
+                })
             }
             Expr::Tolerance { center, tol, span } => {
                 let c = self.lower(center);

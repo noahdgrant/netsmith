@@ -188,10 +188,11 @@ impl Expr {
                 format!("{}({})", name.to_source(), args.join(", "))
             }
             Self::Range { lo, hi, .. } => {
+                let lo = lo.as_ref().map(|e| e.to_source()).unwrap_or_default();
+                let hi = hi.as_ref().map(|e| e.to_source()).unwrap_or_default();
                 // A path with a leading dot after `..` would read as `...`.
-                let hi = hi.to_source();
                 let gap = if hi.starts_with('.') { " " } else { "" };
-                format!("{}..{gap}{hi}", lo.to_source())
+                format!("{lo}..{gap}{hi}")
             }
             Self::Tolerance { center, tol, .. } => {
                 format!("{} +/- {}", center.to_source(), tol.to_source())

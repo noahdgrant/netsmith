@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { ageLabel, spaceUnits } from './util';
+import { THIN, ageLabel, spaceUnits } from './util';
 
 describe('ageLabel', () => {
   it('says how long ago a price was checked', () => {
@@ -17,6 +17,10 @@ describe('spaceUnits', () => {
     expect(spaceUnits('3.135V..3.465V')).toBe('3.135 V .. 3.465 V');
     expect(spaceUnits('1.72uF..2.916uF')).toBe('1.72 uF .. 2.916 uF');
     expect(spaceUnits('-50mA..0A')).toBe('-50 mA .. 0 A');
+  });
+  it('leaves no space beside the dots of a range with an open end', () => {
+    expect(spaceUnits('1.6mm..')).toBe(`1.6${THIN}mm${THIN}..`);
+    expect(spaceUnits('..5mm')).toBe(`..${THIN}5${THIN}mm`);
   });
   it('does the same for a single value, a tolerance and a rating', () => {
     expect(spaceUnits('3.3V')).toBe('3.3 V');

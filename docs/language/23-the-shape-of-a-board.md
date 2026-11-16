@@ -225,11 +225,11 @@ board Widths {
     }
     .input: Rail {
         .pos.net &= "VIN"
-        .min_track &= 0.8mm..1m
+        .min_track &= 0.8mm..
     }
     .output: Rail {
         .pos.net &= "3V3"
-        .min_track &= 0.5mm..1m
+        .min_track &= 0.5mm..
     }
     .in: Header1x2
     .out: Header1x2
@@ -346,7 +346,7 @@ board Heater {
     .load: Rail {
         .pos.net &= "5V"
         .current &= 0A..2A
-        .min_track &= 0.2mm..1m
+        .min_track &= 0.2mm..
     }
     .source: Rail {
         .pos.net &= "5V"
@@ -362,8 +362,8 @@ board Heater {
 ```
 
 ```text
-Heater: IPC-2221 guideline: net `5V` carries up to 2 A (rail `load`: 0 mA to 2 A) but its tracks are 0.2 mm wide (a rail's `.min_track`), in 1 oz (0.035 mm) outer copper; at a temperature rise of 10 K (the default) that width carries 633 mA (at its narrowest, 20% under, the fabricator's tolerance) and IPC-2221 needs 0.98 mm: give a rail on the net `.min_track &= 0.98mm..1m`, or allow a higher `.process.max_temperature_rise`
-Heater: IPC-2221 guideline: net `GND` carries up to 2 A (rail `load`: 0 mA to 2 A) but its tracks are 0.2 mm wide (a rail's `.min_track`), in 1 oz (0.035 mm) outer copper; at a temperature rise of 10 K (the default) that width carries 633 mA (at its narrowest, 20% under, the fabricator's tolerance) and IPC-2221 needs 0.98 mm: give a rail on the net `.min_track &= 0.98mm..1m`, or allow a higher `.process.max_temperature_rise`
+Heater: IPC-2221 guideline: net `5V` carries up to 2 A (rail `load`: 0 mA to 2 A) but its tracks are 0.2 mm wide (a rail's `.min_track`), in 1 oz (0.035 mm) outer copper; at a temperature rise of 10 K (the default) that width carries 633 mA (at its narrowest, 20% under, the fabricator's tolerance) and IPC-2221 needs 0.98 mm: give a rail on the net `.min_track &= 0.98mm..`, or allow a higher `.process.max_temperature_rise`
+Heater: IPC-2221 guideline: net `GND` carries up to 2 A (rail `load`: 0 mA to 2 A) but its tracks are 0.2 mm wide (a rail's `.min_track`), in 1 oz (0.035 mm) outer copper; at a temperature rise of 10 K (the default) that width carries 633 mA (at its narrowest, 20% under, the fabricator's tolerance) and IPC-2221 needs 0.98 mm: give a rail on the net `.min_track &= 0.98mm..`, or allow a higher `.process.max_temperature_rise`
 ```
 
 A ground is sized for the sum of what returns through it. Here two supplies share `GND`: the 5 V one carries 2 A, the 3.3 V one 1 A, and the `GND` track that the rail `load_a` states at 1 mm carries 2.03 A at 10 K at its narrowest (20% under, the tolerance; 2.39 A drawn exactly), enough for the 2 A of `5V` but not for the 3 A that return together:
@@ -388,7 +388,7 @@ board Shared {
     .load_a: Rail {
         .pos.net &= "5V"
         .current &= 0A..2A
-        .min_track &= 1mm..1m
+        .min_track &= 1mm..
     }
     .load_b: Rail {
         .pos.net &= "3V3"
@@ -410,7 +410,7 @@ board Shared {
 ```
 
 ```text
-Shared: IPC-2221 guideline: net `GND` carries up to 3 A (the sum of the currents on it with every load on at once: rail `load_a` 2 A + rail `load_b` 1 A) but its tracks are 1 mm wide (a rail's `.min_track`), in 1 oz (0.035 mm) outer copper; at a temperature rise of 10 K (the default) that width carries 2.03 A (at its narrowest, 20% under, the fabricator's tolerance) and IPC-2221 needs 1.71 mm: give a rail on the net `.min_track &= 1.71mm..1m`, or allow a higher `.process.max_temperature_rise`
+Shared: IPC-2221 guideline: net `GND` carries up to 3 A (the sum of the currents on it with every load on at once: rail `load_a` 2 A + rail `load_b` 1 A) but its tracks are 1 mm wide (a rail's `.min_track`), in 1 oz (0.035 mm) outer copper; at a temperature rise of 10 K (the default) that width carries 2.03 A (at its narrowest, 20% under, the fabricator's tolerance) and IPC-2221 needs 1.71 mm: give a rail on the net `.min_track &= 1.71mm..`, or allow a higher `.process.max_temperature_rise`
 ```
 
 A net that needs very wide tracks takes a large part of a small board, and nothing else limits a net's width. When the width IPC-2221 needs for a net is more than a fifth (20%) of the board's shorter side, the build warns with a finding of its own, `net width`. The side is the outline's: the smaller of its width and its height at their largest (`.height &= 0mm..30mm` is up to 30 mm), so a board that may still be big enough is not told; a board with no outline, or none that limits a side, is not checked. Here 8 A needs tracks 6.62 mm wide (drawn at 6.62 mm so that the narrowest finished track, 20% under, carries it), which is 33% of the 20 mm side:

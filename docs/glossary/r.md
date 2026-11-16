@@ -12,6 +12,10 @@ _Avoid_: Power, supply
 `min(.f)` and `max(.f)` (ADR 0098, proposed): the least and the greatest value of the range of the field `.f`, each as one number of the field's own kind, written in a `<=` or `>=` statement (`min(.bias) <= max(.zener_voltage)`). The comparison is then made on two numbers, so it says "can hold for some value", which a plain `<=` ("for every value") cannot. A range end is read and never solved for: it narrows nothing, and a relation that holds one waits, listed as not evaluated, while the field has no value. Not the smaller of two values, as `min(a, b)` is in other languages: it takes one field.
 _Avoid_: Bound function, lo and hi (the names the owner may choose instead), a range with values at its ends (that is `lo..hi` with values for `lo` and `hi`, a different thing)
 
+**Range with an open end**:
+A range with one end left out: `lo..` has no upper limit and `..hi` no lower one. An open end is no number, so no value is too large (or too small) for it: a requirement is met only by a value inside the range whatever the open end is, arithmetic keeps the end open, and a place that needs a number at that end refuses and names the field. A manufacturing process states each of its rules as `lo..`.
+_Avoid_: Half-open range, unbounded range, infinite end, a very large number standing for no limit (`1m`)
+
 **Range with values at its ends**:
 A range whose ends are values, `0A .. .max_supply_current` (ADR 0066): a member or an expression over members, read when both have a value, as the range from the low end's lowest value to the high end's highest. While an end has no value the statement claims nothing and is listed as not evaluated. It is how a part states its own draw from a catalog column. A tolerance (`+/-`) still needs numbers.
 _Avoid_: Computed range, dynamic range

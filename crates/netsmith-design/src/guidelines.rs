@@ -823,7 +823,7 @@ pub fn plan_tracks(
         plan.findings.push(Guideline {
             rule: "IPC-2221",
             message: format!(
-                "net `{}` carries {carries_word} {} ({what}) but its tracks are {} mm wide (a rail's `.min_track`), in {} oz ({} mm) {} copper; at a temperature rise of {} K{} that width carries {} (at its narrowest, {}% under, the fabricator's tolerance) and IPC-2221 needs {} mm: give a rail on the net `.min_track &= {}mm..1m`, or allow a higher `.process.max_temperature_rise`",
+                "net `{}` carries {carries_word} {} ({what}) but its tracks are {} mm wide (a rail's `.min_track`), in {} oz ({} mm) {} copper; at a temperature rise of {} K{} that width carries {} (at its narrowest, {}% under, the fabricator's tolerance) and IPC-2221 needs {} mm: give a rail on the net `.min_track &= {}mm..`, or allow a higher `.process.max_temperature_rise`",
                 net.name,
                 amps(total),
                 mm(width),

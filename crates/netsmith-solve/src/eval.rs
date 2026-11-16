@@ -19,6 +19,9 @@ pub enum EvalError {
     /// A range whose low end (its lowest value) is above its high end (its highest), with the
     /// two ends as evaluated (ADR 0066).
     EmptyRange(Quantity, Quantity),
+    /// A point of a range that has none, because the range is open there: `max(.f)` of
+    /// `1mm..` (the end read, the range as it stands).
+    OpenEnd(RangeEnd, Quantity),
     /// Text where a number belongs, or the reverse.
     Type,
 }
@@ -31,6 +34,11 @@ impl std::fmt::Display for EvalError {
             Self::EmptyRange(lo, hi) => write!(
                 f,
                 "the low end of the range is above the high end: {lo} against {hi}"
+            ),
+            Self::OpenEnd(end, range) => write!(
+                f,
+                "`{}` of {range} is no value: the range has an open end there",
+                end.word()
             ),
             Self::Type => write!(f, "text and numbers are mixed"),
         }
@@ -84,7 +92,8 @@ pub fn reads_end(e: &RExpr) -> bool {
     match e {
         RExpr::End(..) => true,
         RExpr::Neg(x) => reads_end(x),
-        RExpr::Bin(_, a, b) | RExpr::Range(a, b) => reads_end(a) || reads_end(b),
+        RExpr::Bin(_, a, b) => reads_end(a) || reads_end(b),
+        RExpr::Range(a, b) => [a, b].into_iter().flatten().any(|e| reads_end(e)),
         RExpr::Const(_) | RExpr::Text(_) | RExpr::Field(_) => false,
     }
 }
@@ -95,7 +104,8 @@ pub fn reads_nominal(e: &RExpr) -> bool {
         RExpr::End(RangeEnd::Nominal, _) => true,
         RExpr::End(..) => false,
         RExpr::Neg(x) => reads_nominal(x),
-        RExpr::Bin(_, a, b) | RExpr::Range(a, b) => reads_nominal(a) || reads_nominal(b),
+        RExpr::Bin(_, a, b) => reads_nominal(a) || reads_nominal(b),
+        RExpr::Range(a, b) => [a, b].into_iter().flatten().any(|e| reads_nominal(e)),
         RExpr::Const(_) | RExpr::Text(_) | RExpr::Field(_) => false,
     }
 }
@@ -244,7 +254,9 @@ fn repeated_variables(model: &Model, e: &RExpr, env: &Env) -> Result<Vec<FieldId
             let f = window[0];
             // Text fields and unknown fields are not tightened; plain evaluation reports them.
             match value_of(model, f, env) {
-                Ok(q) if q.lo() != q.hi() => repeated.push(f),
+                // A field with an open end is not cut up (its pieces have no size): it is
+                // read as it stands, which is wider at worst.
+                Ok(q) if q.lo() != q.hi() && q.is_bounded() => repeated.push(f),
                 _ => {}
             }
         }
@@ -342,6 +354,11 @@ fn plain(model: &Model, e: &RExpr, env: &Env, budget: &mut usize) -> Result<Val,
                 RangeEnd::Max => range.hi(),
                 RangeEnd::Nominal => centre(&range),
             };
+            // The open end of a range is no value: `max(.f)` of `1mm..` has none, while its
+            // `min(.f)` is the 1 mm.
+            if !at.is_finite() {
+                return Err(EvalError::OpenEnd(*end, range));
+            }
             Quantity::point(range.dim(), at)
                 .map(Val::Q)
                 .map_err(EvalError::Quantity)
@@ -368,16 +385,30 @@ fn plain(model: &Model, e: &RExpr, env: &Env, budget: &mut usize) -> Result<Val,
         // range holds the low end's lowest value and the high end's highest, as the written
         // `lo..hi` does, so an end that is itself a range is never trusted more than it says.
         RExpr::Range(lo, hi) => {
-            let (x, y) = (plain(model, lo, env, budget), plain(model, hi, env, budget));
-            let (Val::Q(x), Val::Q(y)) = (x?, y?) else {
-                return Err(EvalError::Type);
+            let end = |e: &Option<Box<RExpr>>, budget: &mut usize| match e {
+                Some(e) => plain(model, e, env, budget).map(Some),
+                None => Ok(None),
             };
-            if x.dim() == y.dim() && x.lo() > y.hi() {
-                return Err(EvalError::EmptyRange(x, y));
-            }
-            Quantity::range(&x, &y)
-                .map(Val::Q)
-                .map_err(EvalError::Quantity)
+            let (x, y) = (end(lo, budget), end(hi, budget));
+            let (x, y) = (x?, y?);
+            let quantity = |v: Option<Val>| match v {
+                Some(Val::Q(q)) => Ok(Some(q)),
+                Some(Val::T(_)) => Err(EvalError::Type),
+                None => Ok(None),
+            };
+            let (x, y) = (quantity(x)?, quantity(y)?);
+            let range = match (x, y) {
+                (Some(x), Some(y)) => {
+                    if x.dim() == y.dim() && x.lo() > y.hi() {
+                        return Err(EvalError::EmptyRange(x, y));
+                    }
+                    Quantity::range(&x, &y)
+                }
+                (Some(x), None) => Quantity::at_least(&x),
+                (None, Some(y)) => Quantity::at_most(&y),
+                (None, None) => unreachable!("a range has an end"),
+            };
+            range.map(Val::Q).map_err(EvalError::Quantity)
         }
     }
 }
@@ -387,9 +418,14 @@ pub fn fields_in(e: &RExpr, out: &mut Vec<FieldId>) {
     match e {
         RExpr::Field(f) | RExpr::End(_, f) => out.push(*f),
         RExpr::Neg(inner) => fields_in(inner, out),
-        RExpr::Bin(_, a, b) | RExpr::Range(a, b) => {
+        RExpr::Bin(_, a, b) => {
             fields_in(a, out);
             fields_in(b, out);
+        }
+        RExpr::Range(a, b) => {
+            for end in [a, b].into_iter().flatten() {
+                fields_in(end, out);
+            }
         }
         RExpr::Const(_) | RExpr::Text(_) => {}
     }

@@ -27,7 +27,7 @@ board Heater {{
         .pos.net &= \"5V\"
         .neg.net &= \"GND\"
         .current &= 0A..2A
-        .min_track &= {width}..1m
+        .min_track &= {width}..
     }}
     .source: Rail {{
         .pos.net &= \"5V\"
@@ -220,7 +220,7 @@ fn unstated_project(name: &str, manifest_line: &str) -> TempDir {
         format!("[project]\nname = \"heater\"\n{manifest_line}\n"),
     )
     .unwrap();
-    let src = board("0.2mm").replace("        .min_track &= 0.2mm..1m\n", "");
+    let src = board("0.2mm").replace("        .min_track &= 0.2mm..\n", "");
     assert!(!src.contains("min_track"));
     fs::write(root.join("src/main.nsm"), src).unwrap();
     root

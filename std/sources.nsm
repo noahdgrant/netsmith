@@ -53,7 +53,7 @@ interface Rail {
     .max_peak_current: Current optional
     .peak_current <= .max_peak_current
     /// The narrowest track the nets of this rail are routed with: a lower bound, written as
-    /// a range (`.min_track &= 0.5mm..1m`). Both pins get it, since the return current is the
+    /// a range (`.min_track &= 0.5mm..`). Both pins get it, since the return current is the
     /// same current. A net takes the widest of the rails on it, so `GND` is as wide as the
     /// widest rail that returns to it (ADR 0020). Unset, the net is routed at the process's
     /// least.

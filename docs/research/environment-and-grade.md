@@ -102,7 +102,7 @@ import std::env::Automotive
 .grade.derating.voltage &= 1.25
 ```
 
-Why `?=` and not `&=` in a bundle. A narrowing only intersects. `.process.min_track &= 0.15mm..1m` asks for more than the library offers, so it narrows. For a temperature it is the other way: `-40C..125C` narrowed to `-40C..85C` asks for less, and a board that needs `-55C..150C` could not narrow `-40C..125C` at all (the intersection is not what it wants, and an `&=` outside the range is a contradiction). A `?=` default is an offer the board replaces, which is what ADR 0051 is for.
+Why `?=` and not `&=` in a bundle. A narrowing only intersects. `.process.min_track &= 0.15mm..` asks for more than the library offers, so it narrows. For a temperature it is the other way: `-40C..125C` narrowed to `-40C..85C` asks for less, and a board that needs `-55C..150C` could not narrow `-40C..125C` at all (the intersection is not what it wants, and an `&=` outside the range is a contradiction). A `?=` default is an offer the board replaces, which is what ADR 0051 is for.
 
 | | Cost | Gain |
 |---|---|---|

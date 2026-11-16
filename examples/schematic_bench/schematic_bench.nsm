@@ -443,13 +443,13 @@ board SchematicBench {
         .voltage &= 3.3V +/- 5%
         .pos.net &= "+3V3"
         .current &= 0mA..100mA
-        .min_track &= 0.25mm..1m
+        .min_track &= 0.25mm..
     }
     .rail_1v8: Rail {
         .voltage &= 1.8V +/- 5%
         .pos.net &= "+1V8"
         .current &= 0mA..500mA
-        .min_track &= 0.4mm..1m
+        .min_track &= 0.4mm..
     }
 
     .adc: AdcMonitor

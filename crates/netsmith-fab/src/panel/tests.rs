@@ -247,7 +247,7 @@ fn the_checks_name_the_number_and_the_rule() {
     assert!(
         e.contains(
             "Tile keeps copper 0.2 mm from its edge and copper is at least 0.4 mm from a V-cut edge"
-        ) && e.contains(".process.min_edge_clearance &= 0.4mm..1m"),
+        ) && e.contains(".process.min_edge_clearance &= 0.4mm.."),
         "{e}"
     );
     // An assembled panel needs its marks, which the rails carry.

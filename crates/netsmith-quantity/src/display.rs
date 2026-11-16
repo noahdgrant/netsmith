@@ -46,6 +46,20 @@ impl std::fmt::Display for Quantity {
                 self.dim()
             ),
         };
+        // An open end is shown as no number: `1.6mm..`, `..5mm`, and `..` for no limit.
+        if !self.is_bounded() {
+            let end = |v: f64, round: Round| match v.is_finite() {
+                true if v.abs() < NEGLIGIBLE => render(0.0, Round::Nearest, SIGNIFICANT),
+                true => render(v, round, SIGNIFICANT),
+                false => String::new(),
+            };
+            return write!(
+                f,
+                "{}..{}",
+                end(self.lo(), Round::Down),
+                end(self.hi(), Round::Up)
+            );
+        }
         // Outward rounding leaves computed "points" a hair wide; show them as points.
         let scale = self.lo().abs().max(self.hi().abs());
         // What interval arithmetic leaves of a cancellation (`137mA - 137mA` is a few
@@ -162,6 +176,18 @@ mod tests {
     fn ranges_show_both_ends() {
         let r = Quantity::range(&q(1.8, "V"), &q(2.2, "V")).unwrap();
         assert_eq!(r.to_string(), "1.8V..2.2V");
+    }
+
+    #[test]
+    fn an_open_end_is_shown_as_no_number() {
+        let low = Quantity::at_least(&q(1.6, "mm")).unwrap();
+        assert_eq!(low.to_string(), "1.6mm..");
+        let high = Quantity::at_most(&q(5.0, "mm")).unwrap();
+        assert_eq!(high.to_string(), "..5mm");
+        assert_eq!(
+            Quantity::at_least(&q(0.0, "V")).unwrap().to_string(),
+            "0V.."
+        );
     }
 
     #[test]
