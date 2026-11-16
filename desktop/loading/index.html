@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>netsmith</title>
+<style>
+  body { font: 15px/1.5 system-ui, sans-serif; margin: 2rem; color: #222; background: #fafafa; }
+  @media (prefers-color-scheme: dark) { body { color: #ddd; background: #1e1e1e; } }
+  pre { white-space: pre-wrap; }
+</style>
+</head>
+<body>
+<!-- The desktop shell's own page: shown only when the editor could not start. The shell hands
+     the reason over as window.__netsmithProblem (netsmith_desktop::problem_script). -->
+<h1>The editor did not start</h1>
+<pre id="problem"></pre>
+<script>
+  document.getElementById("problem").textContent =
+    window.__netsmithProblem || "netsmith-desktop gave no reason.";
+</script>
+</body>
+</html>

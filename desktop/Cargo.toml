@@ -1,0 +1,54 @@
+# The desktop shell (issue #799): a window around the editor's page. A Cargo workspace of its own,
+# so the main workspace's build, tests, clippy and CI jobs never need the WebKit and GTK libraries
+# a window does: `cargo test --workspace` at the repository's root does not reach it (the root
+# manifest also excludes this folder). The plain part (the project folder, the program, starting
+# and stopping `netsmith editor`) is the library, and its tests run anywhere; the window is the
+# binary, behind the `window` feature:
+#   cargo test  --manifest-path desktop/Cargo.toml
+#   cargo build --manifest-path desktop/Cargo.toml --features window
+# The `desktop` job of .github/workflows/ci.yml does both, on Linux.
+[workspace]
+
+[package]
+name = "netsmith-desktop"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+# The tests are one executable, tests/main.rs, with the other files of the folder as its modules
+# (#190), as in the main workspace.
+autotests = false
+
+[lib]
+name = "netsmith_desktop"
+path = "src/lib.rs"
+
+[[bin]]
+name = "netsmith-desktop"
+path = "src/main.rs"
+required-features = ["window"]
+
+[[test]]
+name = "main"
+path = "tests/main.rs"
+
+[features]
+# The window: Tauri, and through it WebKitGTK on Linux. `custom-protocol` is Tauri's build for
+# shipping: the shell's own page (loading/) is embedded, and no development server is looked for.
+window = ["dep:tauri", "dep:tauri-build", "tauri/custom-protocol"]
+
+# Tauri 2.12.5 and tauri-build 2.7.4, both of 2026-10-21, pinned exactly; both are
+# "Apache-2.0 OR MIT", which this MIT project may use and ship.
+[dependencies]
+tauri = { version = "=2.12.5", optional = true }
+
+[build-dependencies]
+tauri-build = { version = "=2.7.4", optional = true }
+
+[dev-dependencies]
+automod = "1.0.17"
+netsmith-testkit = { path = "../crates/netsmith-testkit" }
+
+# As the main workspace's: line tables only keep a test build small.
+[profile.dev]
+debug = "line-tables-only"

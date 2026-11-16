@@ -1,4 +1,4 @@
-# Installs KiCad 9 or Chromium's system libraries from a cache of the .deb files, and from
+# Installs KiCad 9, Chromium's system libraries or the desktop shell's from a cache of the .deb files, and from
 # Ubuntu's archive only when the cache has none that installs (scripts/ci-apt-cache says why and
 # how). The runners' Ubuntu mirrors were unreachable on 2026-11-11; with a warm cache a job needs
 # none of them.
@@ -13,11 +13,11 @@
 # missing cache by hand (an image of today with none): `gh workflow run apt-cache.yml` on main.
 # To replace a cache that is wrong: change `v1` in the key below (or `gh cache delete` its key).
 name: apt-cache
-description: Install KiCad 9 or Chromium's system libraries from a cache of .deb files
+description: Install KiCad 9, Chromium's system libraries or the desktop shell's from a cache of .deb files
 
 inputs:
   install:
-    description: "kicad or chromium (what scripts/ci-apt-cache installs)"
+    description: "kicad, chromium or tauri (what scripts/ci-apt-cache installs)"
     required: true
   name:
     description: >-
