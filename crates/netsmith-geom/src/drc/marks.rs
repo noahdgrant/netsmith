@@ -52,7 +52,161 @@ pub(crate) fn run(out: &mut Out<'_>) {
     };
     fiducials(out, &marks);
     fiducial_count(out, &marks);
+    fiducial_angle(out, &marks);
+    finish_fine_pitch(out, &marks);
     test_points(out, &marks);
+}
+
+/// How far from the page's 90 degrees a fiducial's angle may be: the page says "approximately"
+/// and gives no figure, so this is netsmith's own (issue #1006).
+const ANGLE_TOLERANCE: f64 = 10.0;
+
+/// The centre and radius of a round board: a circle that the arcs and circles on `Edge.Cuts`
+/// that share it close (their sweeps add up to a full turn) and that the board's whole edge
+/// fits in. A rounded rectangle's corners share no circle, and a round cutout is a smaller one.
+fn round_outline(m: &Model<'_>) -> Option<(Pt, f64)> {
+    use crate::artwork::Shape as Drawn;
+    let mut circles: Vec<(Pt, f64, f64)> = Vec::new();
+    for g in m
+        .art
+        .graphics
+        .iter()
+        .filter(|g| g.layer == "Edge.Cuts" && g.owner.is_empty())
+    {
+        let (centre, radius, turn) = match &g.shape {
+            Drawn::Circle { centre, radius } => (*centre, *radius, std::f64::consts::TAU),
+            Drawn::Arc(a) => (a.centre, a.radius, a.sweep().abs()),
+            _ => continue,
+        };
+        match circles.iter_mut().find(|(c, r, _)| {
+            (c.x - centre.x).hypot(c.y - centre.y) < 0.05 && (r - radius).abs() < 0.05
+        }) {
+            Some((_, _, t)) => *t += turn,
+            None => circles.push((centre, radius, turn)),
+        }
+    }
+    // The board's whole edge fits in the circle's box: a circle cut out of a rectangle is a hole.
+    let b = Model::bounds_of(&m.edge.iter().map(|(s, _)| s.clone()).collect::<Vec<_>>());
+    circles
+        .into_iter()
+        .filter(|(_, r, turn)| {
+            *turn >= std::f64::consts::TAU - 0.02
+                && (b.max.x - b.min.x - 2.0 * r).abs() < 0.5
+                && (b.max.y - b.min.y - 2.0 * r).abs() < 0.5
+        })
+        .max_by(|a, b| a.1.total_cmp(&b.1))
+        .map(|(c, r, _)| (c, r))
+}
+
+/// A guideline: on a round board, the fiducials of a side are three in an "L", about
+/// `round_angle` degrees apart about the board's centre ("three global fiducials ... spaced
+/// approximately 90 degrees apart (e.g., 0, 90, and 180 degrees) in a non-symmetrical,
+/// non-linear "L" pattern"). A side with none is the count's finding, not this one's.
+fn fiducial_angle(out: &mut Out<'_>, marks: &Marks) {
+    let m = out.m;
+    if marks.round_angle <= 0.0 {
+        return;
+    }
+    let Some((centre, _)) = round_outline(m) else {
+        return;
+    };
+    for back in [false, true] {
+        let angles: Vec<f64> = m
+            .art
+            .footprints
+            .iter()
+            .filter(|f| f.back == back && marks.fiducials.contains(&f.part))
+            .map(|f| (-(f.at.y - centre.y)).atan2(f.at.x - centre.x).to_degrees())
+            .collect();
+        if angles.is_empty() {
+            continue;
+        }
+        // The angle from `from` to `to`, turning counter-clockwise, from -180 to 180.
+        let turn = |from: f64, to: f64| (to - from + 180.0).rem_euclid(360.0) - 180.0;
+        let near = |angle: f64, want: f64| (turn(0.0, angle) - want).abs() <= ANGLE_TOLERANCE;
+        let l_shape = angles.iter().any(|&corner| {
+            angles
+                .iter()
+                .any(|&a| near(turn(corner, a), marks.round_angle))
+                && angles
+                    .iter()
+                    .any(|&b| near(turn(corner, b), -marks.round_angle))
+        });
+        if !l_shape {
+            let side = if back { "back" } else { "front" };
+            out.push(
+                Rule::FiducialAngle,
+                format!(
+                    "the board is round and the {side} has {} fiducial(s) that are not three in an \"L\", one with a neighbour {} degrees either way about the board's centre (within {} degrees); the board house recommends \"three global fiducials ... spaced approximately 90 degrees apart (e.g., 0, 90, and 180 degrees) in a non-symmetrical, non-linear L pattern\"",
+                    angles.len(),
+                    marks.round_angle,
+                    ANGLE_TOLERANCE
+                ),
+                centre,
+                Some(layer_name(back)),
+                Vec::new(),
+            );
+        }
+    }
+}
+
+/// A guideline: a board finished with HASL has no part whose pads are `fine_pitch` or closer
+/// ("a flat, less-reflective finish like ENIG or OSP ... is the recommended choice for designs
+/// with ultra-fine-pitch components (e.g., 0.4mm pitch BGAs)"; HASL "leaves a slightly uneven,
+/// domed, and reflective solder surface"). The pitch of a part is the least distance between
+/// the centres of two of its surface mount pads on a side the board house assembles; pads
+/// at one place (a pin drawn twice) are one. One finding for the board, at the part with the
+/// finest pitch.
+fn finish_fine_pitch(out: &mut Out<'_>, marks: &Marks) {
+    let m = out.m;
+    let Some(finish) = &marks.uneven_finish else {
+        return;
+    };
+    if marks.fine_pitch <= 0.0 {
+        return;
+    }
+    let mut parts: std::collections::BTreeMap<&str, Vec<&Pad>> = std::collections::BTreeMap::new();
+    for pad in &m.art.pads {
+        let assembled = if back_of(m, pad) {
+            marks.assembled_back
+        } else {
+            marks.assembled_front
+        };
+        if pad.kind == crate::artwork::PadKind::Smd
+            && assembled
+            && !marks.fiducials.contains(&pad.part)
+            && !marks.test_points.contains(&pad.part)
+        {
+            parts.entry(&pad.part).or_default().push(pad);
+        }
+    }
+    let mut finest: Option<(f64, &str, &Pad)> = None;
+    for (part, pads) in &parts {
+        for (i, a) in pads.iter().enumerate() {
+            for b in &pads[i + 1..] {
+                let d = (a.at.x - b.at.x).hypot(a.at.y - b.at.y);
+                if d > 0.05
+                    && d <= marks.fine_pitch + EPS
+                    && finest.is_none_or(|(best, _, _)| d < best)
+                    && back_of(m, a) == back_of(m, b)
+                {
+                    finest = Some((d, part, a));
+                }
+            }
+        }
+    }
+    if let Some((pitch, part, pad)) = finest {
+        out.push(
+            Rule::FinishFinePitch,
+            format!(
+                "{part} has pads {:.2} mm apart (at most {:.2} mm is ultra-fine pitch) and the board is finished with {finish}, which leaves an uneven, domed surface; the board house recommends \"a flat, less-reflective finish like ENIG or OSP\" for it: `.process.finish &= \"ENIG\"`",
+                pitch, marks.fine_pitch
+            ),
+            pad.at,
+            None,
+            vec![pad_item(pad)],
+        );
+    }
 }
 
 fn back_of(m: &Model<'_>, pad: &Pad) -> bool {
@@ -84,7 +238,18 @@ fn pad_item(p: &Pad) -> Item {
 /// the edge is drawn along, as the pages measure "from the board edge".
 fn edge_gap(m: &Model<'_>, shapes: &[Shape]) -> Option<(Gap, Item)> {
     let mut best: Option<(Gap, Item)> = None;
+    // A V-cut line drawn on `Edge.Cuts` is not the board's edge: a panel's rails keep their
+    // fiducials beside the line that cuts them off, and the page's space is to the panel's edge
+    // (issue #1006).
+    let cuts = crate::edge::cut_lines(m.art);
     for (edge, item) in &m.edge {
+        if let [a, b] = edge.pts[..]
+            && cuts.iter().any(|(p, q)| {
+                (a.dist(*p) < 1e-6 && b.dist(*q) < 1e-6) || (a.dist(*q) < 1e-6 && b.dist(*p) < 1e-6)
+            })
+        {
+            continue;
+        }
         for s in shapes {
             // To the edge's path, not to the ink of the line that draws it.
             let mut g = gap(s, edge);

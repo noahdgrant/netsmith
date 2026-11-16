@@ -28,6 +28,9 @@ fn jlcpcb() -> DrcExtras {
             tall_parts: vec![("TALL1".into(), 8.0)],
             tall_part_height: 6.4,
             min_test_point_tall_body: 2.0,
+            round_angle: 90.0,
+            fine_pitch: 0.4,
+            uneven_finish: None,
         }),
         ..DrcExtras::default()
     }
@@ -79,6 +82,8 @@ fn the_rules_are_netsmiths_and_a_limit_is_an_error_where_a_guideline_is_a_warnin
     let guidelines = [
         DrcRule::FiducialCount,
         DrcRule::FiducialSize,
+        DrcRule::FiducialAngle,
+        DrcRule::FinishFinePitch,
         DrcRule::TestPointPad,
         DrcRule::TestPointPitch,
         DrcRule::TestPointBody,
@@ -349,4 +354,190 @@ fn a_test_point_is_2_mm_from_the_body_of_a_part_taller_than_6_4_mm() {
     let mut same = jlcpcb();
     same.marks.as_mut().unwrap().min_test_point_tall_body = 0.5;
     assert_eq!(count(&check(&mut b, &same), DrcRule::TestPointBody), 0);
+}
+
+/// A round board of 40 mm across, written as a circle on `Edge.Cuts` in a square outline of its
+/// own box, with a fiducial of the front at each of `degrees` about its centre, 16 mm from it
+/// (angles counter-clockwise from the right).
+fn round_board(degrees: &[f64], back: bool) -> Pcb {
+    let mut b = Pcb::new(2);
+    b.outline = (0.0, 0.0, 40.0, 40.0);
+    b.raw("(gr_circle (center 20 20) (end 40 20) (stroke (width 0.05) (type default)) (fill none) (layer \"Edge.Cuts\"))");
+    for (i, d) in degrees.iter().enumerate() {
+        let a = d.to_radians();
+        let at = (20.0 + 16.0 * a.cos(), 20.0 - 16.0 * a.sin());
+        fiducial(&mut b, &format!("FID{}", i + 1), at, 1.0, 0.5, back);
+    }
+    b
+}
+
+#[test]
+fn the_fiducials_of_a_round_board_are_three_in_an_l_about_90_degrees_apart() {
+    for (degrees, found) in [
+        // The page's own example: 0, 90 and 180 degrees.
+        (vec![0.0, 90.0, 180.0], 0),
+        // The same turned: any corner with a neighbour 90 degrees each way.
+        (vec![200.0, 290.0, 20.0], 0),
+        // Within the tolerance of 10 degrees, and just over it.
+        (vec![0.0, 99.0, 180.0], 0),
+        (vec![0.0, 101.0, 180.0], 1),
+        // Evenly spread, a straight line, two, and a corner with one neighbour.
+        (vec![0.0, 120.0, 240.0], 1),
+        (vec![0.0, 180.0, 135.0], 1),
+        (vec![0.0, 90.0], 1),
+        (vec![45.0], 1),
+        // More than three: one corner with its two neighbours is enough.
+        (vec![0.0, 90.0, 180.0, 270.0], 0),
+        // None is the count's finding, not this one's.
+        (vec![], 0),
+    ] {
+        let mut b = round_board(&degrees, false);
+        let r = check(&mut b, &jlcpcb());
+        assert_eq!(count(&r, DrcRule::FiducialAngle), found, "{degrees:?}\n{r}");
+        for f in r.findings.iter().filter(|f| f.rule == DrcRule::FiducialAngle) {
+            assert_eq!(f.severity, DrcSeverity::Warning);
+            assert!(f.message.contains("round") && f.message.contains("90"), "{}", f.message);
+        }
+    }
+    // Each side by itself: a good front and a bad back.
+    let mut b = round_board(&[0.0, 90.0, 180.0], false);
+    fiducial(&mut b, "FID4", (30.0, 20.0), 1.0, 0.5, true);
+    let mut with_four = jlcpcb();
+    with_four.marks.as_mut().unwrap().fiducials.push("FID4".into());
+    let r = check(&mut b, &with_four);
+    assert_eq!(count(&r, DrcRule::FiducialAngle), 1, "{r}");
+    assert!(r.findings.iter().any(|f| f.message.contains("the back")), "{r}");
+    // Another angle of the process, and no figure: not checked.
+    let mut b = round_board(&[0.0, 120.0, 240.0], false);
+    let mut other = jlcpcb();
+    other.marks.as_mut().unwrap().round_angle = 120.0;
+    assert_eq!(count(&check(&mut b, &other), DrcRule::FiducialAngle), 0);
+    other.marks.as_mut().unwrap().round_angle = 0.0;
+    let mut b = round_board(&[0.0, 45.0], false);
+    assert_eq!(count(&check(&mut b, &other), DrcRule::FiducialAngle), 0);
+    assert_eq!(
+        count(&check(&mut b, &DrcExtras::default()), DrcRule::FiducialAngle),
+        0,
+        "not checked without the process"
+    );
+}
+
+#[test]
+fn a_board_that_is_not_round_has_no_angle_to_keep() {
+    // A rectangle, with two fiducials: the corner rule does not apply.
+    let mut b = Pcb::new(2);
+    fiducial(&mut b, "FID1", (5.0, 5.0), 1.0, 0.5, false);
+    fiducial(&mut b, "FID2", (35.0, 25.0), 1.0, 0.5, false);
+    assert_eq!(count(&check(&mut b, &jlcpcb()), DrcRule::FiducialAngle), 0);
+    // A rectangle with a round hole cut out of it is not round either.
+    b.raw("(gr_circle (center 20 15) (end 25 15) (stroke (width 0.05) (type default)) (fill none) (layer \"Edge.Cuts\"))");
+    assert_eq!(count(&check(&mut b, &jlcpcb()), DrcRule::FiducialAngle), 0);
+    // A circle drawn as two arcs is round.
+    let mut b = Pcb::new(2);
+    b.outline = (0.0, 0.0, 40.0, 40.0);
+    b.raw("(gr_arc (start 40 20) (mid 20 0) (end 0 20) (stroke (width 0.05) (type default)) (layer \"Edge.Cuts\"))");
+    b.raw("(gr_arc (start 0 20) (mid 20 40) (end 40 20) (stroke (width 0.05) (type default)) (layer \"Edge.Cuts\"))");
+    fiducial(&mut b, "FID1", (20.0, 4.0), 1.0, 0.5, false);
+    assert_eq!(count(&check(&mut b, &jlcpcb()), DrcRule::FiducialAngle), 1);
+}
+
+/// A part of two pads `pitch` mm apart (and a third far away), on the front.
+fn fine_part(b: &mut Pcb, refdes: &str, pitch: f64) {
+    b.part(
+        refdes,
+        (20.0, 15.0),
+        0.0,
+        &[
+            smd("1", 0.0, 0.0, 0.2, 0.6, "A"),
+            smd("2", pitch, 0.0, 0.2, 0.6, "B"),
+            smd("3", 5.0, 0.0, 0.2, 0.6, "C"),
+        ],
+        Draw::default(),
+    );
+}
+
+fn hasl() -> DrcExtras {
+    let mut extras = jlcpcb();
+    let marks = extras.marks.as_mut().unwrap();
+    marks.assembled_front = true;
+    marks.assembled_back = true;
+    marks.uneven_finish = Some("HASL lead-free".into());
+    extras
+}
+
+#[test]
+fn hasl_is_advised_against_for_a_part_of_ultra_fine_pitch() {
+    for (pitch, found) in [(0.4, 1), (0.35, 1), (0.45, 0), (0.5, 0), (1.27, 0)] {
+        let mut b = Pcb::new(2);
+        fine_part(&mut b, "U1", pitch);
+        let r = check(&mut b, &hasl());
+        assert_eq!(count(&r, DrcRule::FinishFinePitch), found, "pitch {pitch}\n{r}");
+        for f in r.findings.iter().filter(|f| f.rule == DrcRule::FinishFinePitch) {
+            assert_eq!(f.severity, DrcSeverity::Warning);
+            assert!(
+                f.message.contains("U1")
+                    && f.message.contains("HASL lead-free")
+                    && f.message.contains("ENIG or OSP"),
+                "{}",
+                f.message
+            );
+        }
+    }
+    // One finding for the board, whatever the number of parts, at the finest.
+    let mut b = Pcb::new(2);
+    fine_part(&mut b, "U1", 0.4);
+    b.part("U2", (30.0, 15.0), 0.0, &[smd("1", 0.0, 0.0, 0.2, 0.6, "A"), smd("2", 0.3, 0.0, 0.2, 0.6, "B")], Draw::default());
+    let r = check(&mut b, &hasl());
+    assert_eq!(count(&r, DrcRule::FinishFinePitch), 1, "{r}");
+    assert!(r.findings.iter().any(|f| f.message.starts_with("U2")), "{r}");
+}
+
+#[test]
+fn a_flat_finish_or_a_side_nothing_is_assembled_on_is_not_advised_against() {
+    let mut b = Pcb::new(2);
+    fine_part(&mut b, "U1", 0.4);
+    // ENIG and OSP are `None`; a process with no pitch is not checked; nor is a board read with
+    // no process.
+    let mut flat = hasl();
+    flat.marks.as_mut().unwrap().uneven_finish = None;
+    assert_eq!(count(&check(&mut b, &flat), DrcRule::FinishFinePitch), 0);
+    let mut none = hasl();
+    none.marks.as_mut().unwrap().fine_pitch = 0.0;
+    assert_eq!(count(&check(&mut b, &none), DrcRule::FinishFinePitch), 0);
+    assert_eq!(count(&check(&mut b, &DrcExtras::default()), DrcRule::FinishFinePitch), 0);
+    // A side the board house assembles nothing on, and a hole's pads.
+    let mut front_open = hasl();
+    front_open.marks.as_mut().unwrap().assembled_front = false;
+    assert_eq!(count(&check(&mut b, &front_open), DrcRule::FinishFinePitch), 0);
+    let mut b = Pcb::new(2);
+    b.part(
+        "J1",
+        (20.0, 15.0),
+        0.0,
+        &[thru("1", 0.0, 0.0, 0.6, 0.3, "A"), thru("2", 0.4, 0.0, 0.6, 0.3, "B")],
+        Draw::default(),
+    );
+    assert_eq!(count(&check(&mut b, &hasl()), DrcRule::FinishFinePitch), 0);
+}
+
+#[test]
+fn a_v_cut_line_is_not_the_board_edge_a_fiducial_keeps_away_from() {
+    // A panel's rail keeps its fiducial 0.65 mm from the line that cuts it off, and the space the
+    // page asks is to the panel's own edge.
+    for (x, found) in [(3.85, 0), (3.8, 1)] {
+        let mut b = Pcb::new(2);
+        // The outline as a panel draws it, one rectangle, and the line across it.
+        b.raw("(gr_rect (start 0 0) (end 40 30) (stroke (width 0.05) (type default)) (fill no) (layer \"Edge.Cuts\"))");
+        b.edge_line((5.0, 0.0), (5.0, 30.0));
+        fiducial(&mut b, "FID1", (x, 15.0), 1.0, 0.5, false);
+        let r = check(&mut b, &jlcpcb());
+        assert_eq!(count(&r, DrcRule::FiducialEdge), found, "x {x}\n{r}");
+    }
+    // A line that is not a cut (an end off the outline) is an edge.
+    let mut b = Pcb::new(2);
+    b.raw("(gr_rect (start 0 0) (end 40 30) (stroke (width 0.05) (type default)) (fill no) (layer \"Edge.Cuts\"))");
+    b.edge_line((5.0, 10.0), (5.0, 20.0));
+    fiducial(&mut b, "FID1", (3.85, 15.0), 1.0, 0.5, false);
+    let r = check(&mut b, &jlcpcb());
+    assert_eq!(count(&r, DrcRule::FiducialEdge), 1, "{r}");
 }

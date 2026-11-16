@@ -2758,20 +2758,22 @@ pub fn marks_of(board: &Board) -> netsmith_geom::DrcMarks {
                 })
         })
     };
-    // A net is a supply or a ground when a pin the part's pin table calls `power` is on it (ADR
-    // 0016, `power_pads`, what the placer reads to find the supply nets): a chip's supply and
-    // ground pins. A test point's own pin is `passive`, so it never makes its net one, and the
-    // net a rail joins passive parts to alone is not known as one.
+    // A net is a supply or a ground when a `Rail` of the design has a pin on it (the design
+    // stage hands the board its `rail_nets`, issue #1006), or a pin the part's pin table calls
+    // `power` is on it (ADR 0016, `power_pads`, what the placer reads to find the supply nets): a
+    // chip's supply and ground pins. A test point's own pin is `passive`, so it never makes its
+    // net one.
     let power_nets: Vec<String> = board
         .nets
         .iter()
         .filter(|net| {
-            net.pads.iter().any(|pad| {
-                board
-                    .parts
-                    .iter()
-                    .any(|p| p.refdes == pad.refdes && p.power_pads.contains(&pad.number))
-            })
+            board.rail_nets.contains(&net.name)
+                || net.pads.iter().any(|pad| {
+                    board
+                        .parts
+                        .iter()
+                        .any(|p| p.refdes == pad.refdes && p.power_pads.contains(&pad.number))
+                })
         })
         .map(|net| net.name.clone())
         .collect();
@@ -2803,6 +2805,9 @@ pub fn marks_of(board: &Board) -> netsmith_geom::DrcMarks {
         tall_parts,
         tall_part_height: p.tall_part_height,
         min_test_point_tall_body: p.min_test_point_tall_body,
+        round_angle: p.fiducial_round_angle,
+        fine_pitch: p.fine_pitch,
+        uneven_finish: p.finish.starts_with("HASL").then(|| p.finish.clone()),
     }
 }
 
@@ -3312,7 +3317,7 @@ mod tests {
 
     /// The fields of a process that are not a rule the router and the design rules check keep,
     /// each with the reason (issue #431).
-    const NOT_A_COPPER_RULE: [(&str, &str); 31] = [
+    const NOT_A_COPPER_RULE: [(&str, &str); 33] = [
         (
             "finish",
             "the surface finish, a word for the notes and the order",
@@ -3400,6 +3405,14 @@ mod tests {
         (
             "min_test_point_tall_body",
             "a test point's space to a tall part, judged on the placed board: the router draws none of it; `the_marks_rules_a_process_states_reach_the_check` proves the check keeps it",
+        ),
+        (
+            "fiducial_round_angle",
+            "the angle between the fiducials of a round board, judged on the placed board: the router draws none of it; `the_marks_rules_a_process_states_reach_the_check` proves the check keeps it",
+        ),
+        (
+            "fine_pitch",
+            "the pitch of an ultra-fine-pitch part, to the finish advice, judged on the placed board: the router draws none of it; `the_marks_rules_a_process_states_reach_the_check` proves the check keeps it",
         ),
     ];
 
@@ -3528,6 +3541,8 @@ mod tests {
                 tall_parts: vec![("U1".into(), p.tall_part_height + 1.0)],
                 tall_part_height: p.tall_part_height,
                 min_test_point_tall_body: p.min_test_point_tall_body,
+                round_angle: p.fiducial_round_angle,
+                fine_pitch: p.fine_pitch,
                 ..Default::default()
             }),
             ..Default::default()
@@ -3561,6 +3576,8 @@ mod tests {
             ("min_power_test_point_pad", "1.5mm.."),
             ("tall_part_height", "7mm"),
             ("min_test_point_tall_body", "5mm.."),
+            ("fiducial_round_angle", "120"),
+            ("fine_pitch", "0.5mm"),
         ] {
             let narrowed = format!(".{field} &= {raised}");
             let after =

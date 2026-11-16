@@ -38,6 +38,9 @@ board Rp2350Minimal {
         // ground zone on `B.Cu`): every ground pad joins it through a via, and the router has
         // no ground track to draw on the front.
         .bottom.net &= "GND"
+        // The RP2350A's QFN has 0.4 mm pitch, which JLCPCB's fiducial blog calls ultra-fine
+        // pitch: it advises a flat finish (ENIG or OSP) over HASL's domed pads for it.
+        .finish &= "ENIG"
     }
 
     // ---- The connectors: J1 to J4 ----

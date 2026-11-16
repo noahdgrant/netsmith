@@ -200,6 +200,10 @@ pub struct Board {
     /// other net (issue #758), by net name. Every other net keeps the rules' clearance.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub net_clearances: Vec<(String, f64)>,
+    /// The nets a rail of the design has a pin on (issue #1006), by net name: with the nets of a
+    /// part's `power` pins they are the board's supplies and grounds to the test point rules.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub rail_nets: Vec<String>,
     /// The impedance the design states for the tracks of some nets (issue #1007), which
     /// `fab-notes.txt` gives the width for on each layer.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]

@@ -87,10 +87,28 @@
 //! the body, guidelines, with the larger figure where the net is a supply or a ground (a pin the
 //! part's pin table calls `power` is on it) or the part stands taller
 //! than 6.4 mm by its stated or catalog height; a part of unknown height is judged as any other.
-//! Not stated, and why: the round board's fiducial angles,
-//! the global fiducial of a panel (the panel's rails, `VCutPanel`), the surface finish advice and
-//! the "no silkscreen over a fiducial" advice (the check of silkscreen over a pad's mask opening
-//! already covers it).
+//! Not stated, and why: the "no silkscreen over a fiducial" advice (the check of silkscreen over a
+//! pad's mask opening already covers it).
+//!
+//! The rest of the fiducial blog, read again on 2026-11-16 (issue #1006), each a guideline by its
+//! wording ("should", "is ideal", "recommended"):
+//!
+//! - round boards, the FAQ "Where should I place fiducials on a round or oddly-shaped PCB?":
+//!   "three global fiducials should be positioned on the board's outer edge. These should be
+//!   spaced approximately 90 degrees apart (e.g., 0, 90, and 180 degrees) in a non-symmetrical,
+//!   non-linear "L" pattern." The 90 is `fiducial_round_angle`; "approximately" has no figure in
+//!   the page, so the check allows 10 degrees either way, netsmith's own tolerance
+//!   (`fiducial_angle`, `marks.rs`).
+//! - the surface finish: "a flat, less-reflective finish like ENIG (Electroless Nickel Immersion
+//!   Gold) or OSP is ideal", "the recommended choice for designs with ultra-fine-pitch
+//!   components (e.g., 0.4mm pitch BGAs)"; HASL "is a very common and reliable choice", it "leaves
+//!   a slightly uneven, domed, and reflective solder surface on the pad", "perfectly acceptable for
+//!   most standard SMT designs". So HASL is advised against only for a board with a part of
+//!   ultra-fine pitch, and the page's one example, 0.4 mm, is `fine_pitch` (`finish_fine_pitch`).
+//! - a panel's fiducials: "they are placed on the "tooling rails" or "waste strips" that surround
+//!   the array". The page gives no count, size or space of its own for them, so the rails'
+//!   fiducials are held to the same rules as a board's (the fiducial rules above); where `fab`
+//!   puts them, 3.85 mm from the edge, is `VCutPanel`'s figure of the help article on panelization.
 //!
 //! Where the page lists more than one number, the one stated here is the one that holds
 //! everywhere on the board: the pad to pad hole spacing, the mask bridge for any colour.
@@ -168,7 +186,11 @@ generic TwoLayer {
     /// and to the board edge 3.2 mm; and the two rows that depend on the board: the pad of a
     /// test point on a power or ground net, 1.0 mm, and the space to the body of a part above
     /// 6.4 mm tall, 2.0 mm (`tall_part_height` is the 6.4 mm, an offer of the process like the
-    /// fiducial's diameter).
+    /// fiducial's diameter). Two more guidelines from the fiducial blog (issue #1006): the angle
+    /// between neighbouring fiducials about the centre of a round board (`fiducial_round_angle`,
+    /// degrees: "approximately 90 degrees apart", in an L of three), and the pitch at or under
+    /// which a part is ultra-fine-pitch to the finish advice (`fine_pitch`, "0.4mm pitch BGAs":
+    /// ENIG or OSP is ideal for it, the uneven surface HASL leaves is harder for the vision system).
     .min_fiducials: Number
     .min_fiducials &= 2..
     .fiducial_diameter: Length
@@ -191,6 +213,10 @@ generic TwoLayer {
     .tall_part_height ?= 6.4mm
     .min_test_point_tall_body: Length
     .min_test_point_tall_body &= 2mm..
+    .fiducial_round_angle: Number
+    .fiducial_round_angle ?= 90
+    .fine_pitch: Length
+    .fine_pitch ?= 0.4mm
     /// The least copper round a via's hole: the page's "via diameter should be 0.1 mm (0.15
     /// mm preferred) larger than via hole size", half of it on each side (issue #431).
     .min_via_ring: Length
@@ -439,7 +465,11 @@ generic FourLayer {
     /// and to the board edge 3.2 mm; and the two rows that depend on the board: the pad of a
     /// test point on a power or ground net, 1.0 mm, and the space to the body of a part above
     /// 6.4 mm tall, 2.0 mm (`tall_part_height` is the 6.4 mm, an offer of the process like the
-    /// fiducial's diameter).
+    /// fiducial's diameter). Two more guidelines from the fiducial blog (issue #1006): the angle
+    /// between neighbouring fiducials about the centre of a round board (`fiducial_round_angle`,
+    /// degrees: "approximately 90 degrees apart", in an L of three), and the pitch at or under
+    /// which a part is ultra-fine-pitch to the finish advice (`fine_pitch`, "0.4mm pitch BGAs":
+    /// ENIG or OSP is ideal for it, the uneven surface HASL leaves is harder for the vision system).
     .min_fiducials: Number
     .min_fiducials &= 2..
     .fiducial_diameter: Length
@@ -462,6 +492,10 @@ generic FourLayer {
     .tall_part_height ?= 6.4mm
     .min_test_point_tall_body: Length
     .min_test_point_tall_body &= 2mm..
+    .fiducial_round_angle: Number
+    .fiducial_round_angle ?= 90
+    .fine_pitch: Length
+    .fine_pitch ?= 0.4mm
     /// The least copper round a via's hole: the page's "via diameter should be 0.1 mm (0.15
     /// mm preferred) larger than via hole size", half of it on each side (issue #431).
     .min_via_ring: Length
@@ -788,7 +822,11 @@ generic SixLayer {
     /// and to the board edge 3.2 mm; and the two rows that depend on the board: the pad of a
     /// test point on a power or ground net, 1.0 mm, and the space to the body of a part above
     /// 6.4 mm tall, 2.0 mm (`tall_part_height` is the 6.4 mm, an offer of the process like the
-    /// fiducial's diameter).
+    /// fiducial's diameter). Two more guidelines from the fiducial blog (issue #1006): the angle
+    /// between neighbouring fiducials about the centre of a round board (`fiducial_round_angle`,
+    /// degrees: "approximately 90 degrees apart", in an L of three), and the pitch at or under
+    /// which a part is ultra-fine-pitch to the finish advice (`fine_pitch`, "0.4mm pitch BGAs":
+    /// ENIG or OSP is ideal for it, the uneven surface HASL leaves is harder for the vision system).
     .min_fiducials: Number
     .min_fiducials &= 2..
     .fiducial_diameter: Length
@@ -811,6 +849,10 @@ generic SixLayer {
     .tall_part_height ?= 6.4mm
     .min_test_point_tall_body: Length
     .min_test_point_tall_body &= 2mm..
+    .fiducial_round_angle: Number
+    .fiducial_round_angle ?= 90
+    .fine_pitch: Length
+    .fine_pitch ?= 0.4mm
     /// The least copper round a via's hole: the page's "via diameter should be 0.1 mm (0.15
     /// mm preferred) larger than via hole size", half of it on each side (issue #431).
     .min_via_ring: Length
