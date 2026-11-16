@@ -73,6 +73,8 @@ pub(crate) fn board(poured: bool) -> Board {
             layer: netsmith_pcb::CopperLayer::Front,
             net: "GND".into(),
             stitch_pitch: Some(4.0),
+            thermal_gap: None,
+            spoke_width: None,
         });
     }
     board
