@@ -58,7 +58,7 @@ use netsmith_core::Design;
 
 use crate::board::{Board, BoardKeepout, ReferenceSide, Side};
 use crate::geometry::{Pt, Rect};
-use crate::placement::{CarriedZone, Fixed, HeightZone, ORIGIN, PlaceOptions};
+use crate::placement::{CarriedZone, FaceKeepout, Fixed, HeightZone, ORIGIN, PlaceOptions};
 
 /// The version of the file format this reads and writes.
 pub(crate) const VERSION: u32 = 1;
@@ -488,18 +488,24 @@ impl Layout {
     }
 }
 
-/// The boxes the placer keeps the rows of parts clear of: every cutout and every keepout that
-/// forbids parts, wherever the source or the layout file puts it (the source wins; a layout
-/// entry for one the source places is an error that [`apply_layout`] reports). A keepout a
-/// part carries moves with the part and is left out.
-pub(crate) fn clear_of(design: &Design, layout: Option<&Layout>) -> Vec<Rect> {
+/// The faces of the board whose parts a keepout keeps out, from its `.layers` (`all`, or
+/// layer names separated by commas): `(front, back)`. A part stands on a face, so a keepout
+/// whose layers are all inner ones keeps out no part.
+fn faces_of(layers: &[String]) -> (bool, bool) {
+    let on = |name: &str| layers.iter().any(|l| l == name);
+    (on("top"), on("bottom"))
+}
+
+/// The keepouts that forbid parts, wherever the source or the layout file puts them, with the
+/// faces whose parts each keeps out: its name, its box and `(front, back)`. A keepout a part
+/// carries moves with the part and is left out; so is one that keeps out no face.
+fn forbidding(design: &Design, layout: Option<&Layout>) -> Vec<(String, Rect, (bool, bool))> {
     let entries = layout.and_then(|l| l.boards.get(&design.name));
     let rect = |at: (f64, f64), size: (f64, f64)| {
         let min = ORIGIN + Pt::new(at.0, at.1);
         Rect::new(min, Pt::new(min.x + size.0, min.y + size.1))
     };
-    let cutouts = cutouts_of(design, layout);
-    let keepouts = design
+    let mut found: Vec<(String, Rect, (bool, bool))> = design
         .features
         .keepouts
         .iter()
@@ -509,19 +515,58 @@ pub(crate) fn clear_of(design: &Design, layout: Option<&Layout>) -> Vec<Rect> {
                 let p = entries?.keepouts.get(&k.name)?;
                 Some((p.at[0], p.at[1]))
             })?;
-            Some(rect(at, k.size))
-        });
+            Some((k.name.clone(), rect(at, k.size), faces_of(&k.layers)))
+        })
+        .collect();
     // A keepout drawn in the editor keeps parts out too, if it forbids them.
-    let drawn = entries.into_iter().flat_map(|e| {
-        e.keepouts
-            .values()
-            .filter(|k| k.is_drawn() && forbids(k.parts.as_deref()) == Ok(true))
-            .filter_map(|k| {
-                let size = k.size?;
-                Some(rect((k.at[0], k.at[1]), (size[0], size[1])))
-            })
-    });
-    cutouts.into_iter().chain(keepouts).chain(drawn).collect()
+    for (name, k) in entries.into_iter().flat_map(|e| &e.keepouts) {
+        if !(k.is_drawn() && forbids(k.parts.as_deref()) == Ok(true)) {
+            continue;
+        }
+        let Some(size) = k.size else { continue };
+        let faces = match k.layers.as_deref().map(str::trim) {
+            None | Some("all") => (true, true),
+            Some(list) => {
+                let words: Vec<String> = list.split(',').map(|w| w.trim().to_string()).collect();
+                faces_of(&words)
+            }
+        };
+        found.push((
+            name.clone(),
+            rect((k.at[0], k.at[1]), (size[0], size[1])),
+            faces,
+        ));
+    }
+    found.retain(|(_, _, (front, back))| *front || *back);
+    found
+}
+
+/// The boxes the placer keeps the rows of parts clear of: every cutout and every keepout that
+/// forbids parts on both faces, wherever the source or the layout file puts it (the source
+/// wins; a layout entry for one the source places is an error that [`apply_layout`]
+/// reports). A keepout a part carries moves with the part and is left out. One that forbids
+/// parts on a single face is in [`face_keepouts`].
+pub(crate) fn clear_of(design: &Design, layout: Option<&Layout>) -> Vec<Rect> {
+    let both = forbidding(design, layout)
+        .into_iter()
+        .filter(|(_, _, (front, back))| *front && *back)
+        .map(|(_, rect, _)| rect);
+    cutouts_of(design, layout).into_iter().chain(both).collect()
+}
+
+/// The keepouts that forbid parts on one face of the board only (`.layers &= "bottom"`,
+/// issue #767), wherever the source or the layout file puts them, for the placer.
+pub(crate) fn face_keepouts(design: &Design, layout: Option<&Layout>) -> Vec<FaceKeepout> {
+    forbidding(design, layout)
+        .into_iter()
+        .filter(|(_, _, (front, back))| front != back)
+        .map(|(name, rect, (front, back))| FaceKeepout {
+            name,
+            rect,
+            front,
+            back,
+        })
+        .collect()
 }
 
 /// The areas that limit how tall a part may stand (a keepout with a `max_height`), wherever
@@ -628,6 +673,7 @@ fn forbids(word: Option<&str>) -> Result<bool, String> {
 pub fn place_options(design: &Design, layout: Option<&Layout>) -> PlaceOptions {
     let mut options = PlaceOptions {
         keepouts: clear_of(design, layout),
+        face_keepouts: face_keepouts(design, layout),
         cutouts: cutouts_of(design, layout),
         height_zones: height_zones(design, layout),
         carried: carried_zones(design),

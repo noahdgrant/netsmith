@@ -116,6 +116,7 @@ impl<'a> Engine<'a> {
             .p
             .keepouts
             .iter()
+            .chain(model.barred.iter())
             .flat_map(|k| shapes.iter().map(move |s| (k, s)))
             .chain(model.no_go.iter().map(|k| (k, &tall)))
         {

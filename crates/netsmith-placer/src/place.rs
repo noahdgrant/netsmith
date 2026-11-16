@@ -1141,6 +1141,7 @@ fn refine(
         .keepouts
         .iter()
         .chain(options.height_zones.iter().map(|z| &z.rect))
+        .chain(options.face_keepouts.iter().map(|k| &k.rect))
     {
         if options.fit.is_none() {
             region = region.union(&k.expanded(options.wall()));
@@ -1187,6 +1188,7 @@ fn refine(
         outline: region,
         zones: &options.height_zones,
         carried: &options.carried,
+        face_keepouts: &options.face_keepouts,
     };
     let mut outcome = anneal::anneal(parts, &problem, 1.0);
     let mut tries = 1;
@@ -1246,6 +1248,7 @@ fn refine(
     let pinned = fixed.iter().any(|&f| f)
         || !options.keepouts.is_empty()
         || !options.height_zones.is_empty()
+        || !options.face_keepouts.is_empty()
         || !options.wants.is_empty();
     if pinned {
         let width = (court.max.x + hi.0 - ORIGIN.x).max(size.0).ceil();
@@ -1300,6 +1303,7 @@ pub(crate) fn anneal_within(
         outline: region,
         zones: &options.height_zones,
         carried: &options.carried,
+        face_keepouts: &options.face_keepouts,
     };
     let outcome = anneal::anneal(parts, &problem, 1.0);
     if !outcome.feasible {
@@ -1388,7 +1392,9 @@ pub fn place_subset(
     let mut keepouts: Vec<Rect> = board
         .keepout_areas()
         .into_iter()
-        .filter(|k| k.parts && k.carrier.is_none())
+        .filter(|k| {
+            k.forbids_parts_on(Side::Front) && k.forbids_parts_on(Side::Back) && k.carrier.is_none()
+        })
         .map(|k| k.rect)
         .collect();
     let cutouts: Vec<Rect> = board
@@ -1401,6 +1407,7 @@ pub fn place_subset(
     let planes: Vec<String> = board.planes.iter().map(|p| p.net.clone()).collect();
     let zones = board.height_zones();
     let carried = board.carried_zones();
+    let faces = board.face_keepouts();
     let overhangs: Vec<Edges> = board
         .parts
         .iter()
@@ -1440,6 +1447,7 @@ pub fn place_subset(
         outline: board.outline,
         zones: &zones,
         carried: &carried,
+        face_keepouts: &faces,
     };
     // The parts are kept in the region by a keepout round it.
     let mut walls = keepouts.clone();

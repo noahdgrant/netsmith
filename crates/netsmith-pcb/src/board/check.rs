@@ -137,7 +137,7 @@ impl Board {
                 .iter()
                 .filter(|k| k.carrier.as_deref() != Some(a.path.as_str()))
             {
-                if k.parts && shapes[i].iter().any(|s| s.overlaps(&k.rect)) {
+                if k.forbids_parts_on(a.side) && shapes[i].iter().any(|s| s.overlaps(&k.rect)) {
                     problems.push(PlacementProblem::InKeepout {
                         refdes: a.refdes.clone(),
                         path: a.path.clone(),

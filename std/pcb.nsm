@@ -91,7 +91,9 @@ interface Keepout {
     .vias: String
     /// No copper pour is filled in it.
     .copper: String
-    /// No part is placed with its courtyard in it.
+    /// No part is placed with its courtyard in it, on the faces `.layers` names: with
+    /// `.layers &= "bottom"` the parts on the bottom face are kept out and those on the top
+    /// face are not. A keepout whose layers are all inner ones keeps out no part.
     .parts: String
     /// The tallest a part may stand in it, on the faces `.layers` names (PROVISIONAL, ADR
     /// 0045): a lid rib, a bracket or a neighbouring board. A part states its height with

@@ -1022,8 +1022,9 @@ impl<'a> Context<'a> {
         }
     }
 
-    /// The keepouts and cutouts that forbid parts, named, with the box each covers.
-    fn forbidden(&self) -> Vec<(String, String, Rect)> {
+    /// The keepouts and cutouts that forbid parts, named, with the box each covers and the
+    /// faces whose parts it keeps out as `(front, back)`.
+    fn forbidden(&self) -> Vec<(String, String, Rect, (bool, bool))> {
         let rect = |at: (f64, f64), size: (f64, f64)| {
             let min = ORIGIN + Pt::new(at.0, at.1);
             Rect::new(min, Pt::new(min.x + size.0, min.y + size.1))
@@ -1031,12 +1032,23 @@ impl<'a> Context<'a> {
         let mut areas = Vec::new();
         for c in &self.design.features.cutouts {
             if let Some(at) = c.at {
-                areas.push(("cutout".to_string(), c.name.clone(), rect(at, c.size)));
+                areas.push((
+                    "cutout".to_string(),
+                    c.name.clone(),
+                    rect(at, c.size),
+                    (true, true),
+                ));
             }
         }
         for k in &self.design.features.keepouts {
             if let (true, None, Some(at)) = (k.parts, &k.part, k.at) {
-                areas.push(("keepout".to_string(), k.name.clone(), rect(at, k.size)));
+                let on = |layer: &str| k.layers.iter().any(|l| l == layer);
+                areas.push((
+                    "keepout".to_string(),
+                    k.name.clone(),
+                    rect(at, k.size),
+                    (on("top"), on("bottom")),
+                ));
             }
         }
         areas
@@ -1054,9 +1066,23 @@ impl<'a> Context<'a> {
             if w.lines.is_empty() || w.quarters.is_empty() || !Self::solid(w.part) {
                 continue;
             }
-            for (kind, name, area) in self.forbidden() {
+            for (kind, name, area, (front, back)) in self.forbidden() {
                 let key = format!("area:{}:{name}", w.part.refdes);
                 if seen.contains(&key) {
+                    continue;
+                }
+                // A keepout for the parts on one face is only proved against a part whose
+                // face the design states.
+                let on_both = front && back;
+                let face = if w.side == Side::Back {
+                    "bottom"
+                } else {
+                    "top"
+                };
+                if !on_both && !(w.side_line.is_some() && (front && !back) == (face == "top")) {
+                    continue;
+                }
+                if !front && !back {
                     continue;
                 }
                 let mut least = (f64::INFINITY, f64::INFINITY);
@@ -1071,9 +1097,20 @@ impl<'a> Context<'a> {
                     continue;
                 }
                 seen.insert(key);
+                let which = if on_both {
+                    String::new()
+                } else {
+                    format!(" on the {face} face")
+                };
+                let lines = dedupe(w.lines.iter().cloned().chain(if on_both {
+                    None
+                } else {
+                    w.side_line.clone()
+                }))
+                .join("; ");
                 found.push(format!(
-                    "{}: they leave the courtyard of {} within {} mm, and it overlaps the {kind} `{name}` (x {} to {}, y {} to {} mm, which forbids parts) by at least {} x {} mm wherever it is put{note}",
-                    Self::joined(&[w]),
+                    "{}: they leave the courtyard of {} within {} mm, and it overlaps the {kind} `{name}` (x {} to {}, y {} to {} mm, which forbids parts{which}) by at least {} x {} mm wherever it is put{note}",
+                    lines,
                     Self::name(w),
                     Self::span(w, false),
                     number(area.min.x - ORIGIN.x),

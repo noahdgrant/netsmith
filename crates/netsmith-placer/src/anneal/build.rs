@@ -84,6 +84,12 @@ impl<'a> Engine<'a> {
                             .collect(),
                         None => Vec::new(),
                     },
+                    barred: p
+                        .face_keepouts
+                        .iter()
+                        .filter(|k| k.keeps_out(parts[i].side))
+                        .map(|k| k.rect)
+                        .collect(),
                     body_is_courtyard: parts[i].footprint.body_is_courtyard,
                     carries,
                 }

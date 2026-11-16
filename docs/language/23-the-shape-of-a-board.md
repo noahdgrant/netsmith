@@ -651,7 +651,7 @@ Track of other nets on a pour cuts it, and a pour on one side of a two-layer boa
 
 ### Keepouts
 
-A `Keepout` is an area where something is not allowed. Four fields say what, each `"forbid"` or `"allow"`, and one that states none forbids all four (the language has no boolean, so the words stand for one): `.tracks`, `.vias`, `.copper` (the pours are not filled there) and `.parts` (no part's courtyard, and no pad). `.layers` is `"all"` (the default) or `"top"`, `"bottom"`, `"inner1"`, `"inner2"`... (as many as the board has inner layers) separated by commas. The router, the stitching vias and the placement check keep to it, and the board file has it as a KiCad rule area, so KiCad's check and fill do too.
+A `Keepout` is an area where something is not allowed. Four fields say what, each `"forbid"` or `"allow"`, and one that states none forbids all four (the language has no boolean, so the words stand for one): `.tracks`, `.vias`, `.copper` (the pours are not filled there) and `.parts` (no part's courtyard, and no pad). `.layers` is `"all"` (the default) or `"top"`, `"bottom"`, `"inner1"`, `"inner2"`... (as many as the board has inner layers) separated by commas. For `.parts` it names the faces: `.layers &= "bottom"` keeps out the courtyards of the parts on the bottom face and lets a part on the top face stand over the same area, which is how a board says "nothing on the face opposite this antenna" (issue #767). A part stands on one face, so a keepout whose layers are inner ones only keeps out no part, and one that says `.parts &= "forbid"` with such layers is refused. A part's own keepout names the board's faces the same way (not the part's own face, so a part on the bottom still reads `"bottom"` as the bottom of the board). The router, the stitching vias and the placement check keep to it, and the board file has it as a KiCad rule area, so KiCad's check and fill do too.
 
 A keepout is a member of a board's physical file, with its place in the board's frame, or a member of a part, in the part's own frame (the footprint's, turned with the part), so that a part carries its own no-copper zone. A part states it relative to itself and nothing else; the keepouts a board draws are physical intent and are in its physical file (a keepout in a board's circuit source is an error that says so).
 
@@ -724,6 +724,37 @@ physical for Open {
 
 ```text
 error: Open: `k` allows tracks, vias, copper and parts, and forbids nothing
+```
+
+A keepout that forbids parts on a face keeps out the parts that stand on it, and the other face is free. One that says `.parts &= "forbid"` and names inner layers only keeps out nothing, and says so.
+
+```nsm fails
+import std::mfg::jlcpcb::FourLayer
+
+board Buried {
+    .process: FourLayer {
+        .stackup.thickness &= 1.6mm
+        .inner1.use &= "signal"
+        .inner2.use &= "signal"
+    }
+}
+```
+
+```nsm-physical
+import std::pcb::Keepout
+
+physical for Buried {
+    .under_antenna: Keepout {
+        .width &= 5mm
+        .height &= 5mm
+        .layers &= "inner1"
+        .parts &= "forbid"
+    }
+}
+```
+
+```text
+error: Buried: `under_antenna.parts` is "forbid" and its `.layers` name neither "top" nor "bottom", the faces a part stands on, so it keeps no part out
 ```
 
 ### Height limits

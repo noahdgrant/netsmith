@@ -172,34 +172,37 @@ pub(crate) fn fit(
                 .all(|p| edge.box_depth(&p.courtyard()) >= -1e-9);
         done = pads_clear
             && inside
-            && ((keepouts.is_empty() && placement.height_zones.is_empty()) || {
-                // The mechanical parts are in the corners, and stay: with them in the run, their
-                // reference text and silkscreen are kept clear of too.
-                let count = placed.len();
-                let mut options = placement.clone();
-                for &i in &mechanical {
-                    placed.push(parts[i].clone());
-                    options.fixed.insert(
-                        parts[i].refdes.clone(),
-                        Fixed {
-                            at: parts[i].at - ORIGIN,
-                            rotation: parts[i].rotation,
-                            side: parts[i].side,
-                            text: parts[i].reference_side,
-                        },
+            && ((keepouts.is_empty()
+                && placement.height_zones.is_empty()
+                && placement.face_keepouts.is_empty())
+                || {
+                    // The mechanical parts are in the corners, and stay: with them in the run, their
+                    // reference text and silkscreen are kept clear of too.
+                    let count = placed.len();
+                    let mut options = placement.clone();
+                    for &i in &mechanical {
+                        placed.push(parts[i].clone());
+                        options.fixed.insert(
+                            parts[i].refdes.clone(),
+                            Fixed {
+                                at: parts[i].at - ORIGIN,
+                                rotation: parts[i].rotation,
+                                side: parts[i].side,
+                                text: parts[i].reference_side,
+                            },
+                        );
+                    }
+                    let ok = place::anneal_within(
+                        &mut placed,
+                        nets,
+                        &options,
+                        &context,
+                        outline_rect,
+                        &placement.keepouts,
                     );
-                }
-                let ok = place::anneal_within(
-                    &mut placed,
-                    nets,
-                    &options,
-                    &context,
-                    outline_rect,
-                    &placement.keepouts,
-                );
-                placed.truncate(count);
-                ok
-            });
+                    placed.truncate(count);
+                    ok
+                });
     }
     if !done {
         // The parts need more than the range gives, or could not be kept clear of what is in

@@ -527,6 +527,46 @@ fn a_hole_pinned_inside_a_keepout_for_parts_is_refused_before_placing_for_every_
 }
 
 // ---------------------------------------------------------------------------------------
+// Issue #767: a keepout for parts limited to one face.
+
+/// A 30 x 30 mm board with a keepout over all of it that forbids parts on `layers`, and three
+/// small parts that state `face`.
+fn under_a_face_keepout(seed: u64, layers: &[&str], face: &'static str) -> Result<Board, BoardError> {
+    let parts: Vec<Spec> = (1..=3)
+        .map(|i| {
+            let mut p = Spec::new(&format!("R{i}"), 4.0, 2.5);
+            p.side = Some(face);
+            p
+        })
+        .collect();
+    board(
+        &parts,
+        (30.0, 30.0),
+        vec![zone("shadow", (0.0, 0.0), (30.0, 30.0), layers, None)],
+        seed,
+        &PlaceOptions::default(),
+    )
+}
+
+#[test]
+fn a_keepout_for_parts_on_the_bottom_face_leaves_the_top_face_free_and_the_bottom_none() {
+    for seed in 0..2 {
+        let top = under_a_face_keepout(seed, &["bottom"], "top");
+        assert!(is_ok(&top), "seed {seed}: {}", outcome(&top));
+        let bottom = under_a_face_keepout(seed, &["bottom"], "bottom");
+        assert!(
+            !is_ok(&bottom),
+            "seed {seed}: parts on the bottom face stand in a keepout for it"
+        );
+        // And the other way round.
+        let top = under_a_face_keepout(seed, &["top"], "top");
+        assert!(!is_ok(&top), "seed {seed}: {}", outcome(&top));
+        let bottom = under_a_face_keepout(seed, &["top"], "bottom");
+        assert!(is_ok(&bottom), "seed {seed}: {}", outcome(&bottom));
+    }
+}
+
+// ---------------------------------------------------------------------------------------
 
 /// Prints, for each seed, how each repro ended.
 #[test]

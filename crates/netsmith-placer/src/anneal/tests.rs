@@ -91,6 +91,7 @@ fn a_nested_module_is_in_its_outer_modules_group_and_has_none_of_its_own() {
         keepouts: &[],
         zones: &[],
         carried: &[],
+        face_keepouts: &[],
         cutouts: &[],
         pours: false,
         seed: 0,
@@ -117,6 +118,7 @@ fn a_module_costs_more_the_further_apart_its_parts_are() {
         keepouts: &[],
         zones: &[],
         carried: &[],
+        face_keepouts: &[],
         cutouts: &[],
         pours: false,
         seed: 0,
@@ -168,6 +170,7 @@ fn parts_that_stay_are_never_moved_and_the_others_end_clear_of_them() {
         keepouts: &[],
         zones: &[],
         carried: &[],
+        face_keepouts: &[],
         cutouts: &[],
         pours: false,
         seed: 3,
@@ -205,6 +208,7 @@ fn two_parts_that_hang_over_the_same_edge_may_overlap_beyond_it() {
             keepouts: &[],
             zones: &[],
             carried: &[],
+            face_keepouts: &[],
             cutouts: &[],
             pours: false,
             seed: 0,
@@ -262,6 +266,7 @@ fn a_part_that_stays_off_the_grid_is_measured_where_the_check_measures_it() {
         keepouts: &[],
         zones: &[],
         carried: &[],
+        face_keepouts: &[],
         cutouts: &[],
         pours: false,
         seed: 0,
@@ -330,6 +335,7 @@ fn run_beside_strip(
         overhangs: &[],
         outline: board.outline,
         carried: &[],
+        face_keepouts: &[],
     };
     anneal(&mut board.parts, &problem, 1.0).feasible
 }
@@ -392,6 +398,55 @@ fn a_keepout_for_parts_still_keeps_the_whole_courtyard_out() {
     assert!(!run_beside_strip(&mut board, &[], &[zone]));
 }
 
+/// Four resistors on a 30 by 10 mm board, all on `side`, and a keepout for the parts on one
+/// face over the whole board (issue #767): whether the run ends with every
+/// courtyard clear.
+fn run_with_a_face_keepout(side: netsmith_pcb::Side, front: bool, back: bool) -> bool {
+    let mut board = resistors(&["", "", "", ""]);
+    board.outline = Rect::new(Pt::new(0.0, 0.0), Pt::new(30.0, 10.0));
+    for part in &mut board.parts {
+        part.side = side;
+    }
+    let keepout = netsmith_pcb::FaceKeepout {
+        name: "under_antenna".into(),
+        rect: Rect::new(Pt::new(0.0, 0.0), Pt::new(30.0, 10.0)),
+        front,
+        back,
+    };
+    let fixed = [false; 4];
+    let problem = Problem {
+        nets: &board.nets.clone(),
+        rules: &board.rules.clone(),
+        planes: &[],
+        region: board.outline,
+        corner_radius: 0.0,
+        fixed: &fixed,
+        keepouts: &[],
+        zones: &[],
+        cutouts: &[],
+        pours: false,
+        seed: 0,
+        wants: &[],
+        offsets: &[],
+        overhangs: &[],
+        outline: board.outline,
+        carried: &[],
+        face_keepouts: &[keepout],
+    };
+    anneal(&mut board.parts, &problem, 1.0).feasible
+}
+
+#[test]
+fn a_keepout_for_the_parts_on_one_face_keeps_out_only_the_parts_on_that_face() {
+    use netsmith_pcb::Side;
+    // On the face it keeps out the keepout leaves the parts no room, on the other it leaves
+    // them all of it.
+    assert!(!run_with_a_face_keepout(Side::Front, true, false));
+    assert!(run_with_a_face_keepout(Side::Back, true, false));
+    assert!(!run_with_a_face_keepout(Side::Back, false, true));
+    assert!(run_with_a_face_keepout(Side::Front, false, true));
+}
+
 /// Four resistors on a 26 by 12 mm board, the first (`a`) carrying a keepout of
 /// 12 by 10 mm in its own frame, from 2 mm right of its origin; the others are named `b`,
 /// `c` and `d`. Returns the board and the zone, as the annealer is told.
@@ -435,6 +490,7 @@ fn run_with_carried(board: &mut Board, carried: &[netsmith_pcb::CarriedZone]) ->
         keepouts: &[],
         zones: &[],
         carried,
+        face_keepouts: &[],
         cutouts: &[],
         pours: false,
         seed: 0,
@@ -518,6 +574,7 @@ fn a_keepout_a_part_carries_is_no_reason_to_refuse_the_part_itself() {
         keepouts: &[],
         zones: &[],
         carried: &carried,
+        face_keepouts: &[],
         cutouts: &[],
         pours: false,
         seed: 0,
@@ -577,6 +634,7 @@ fn run_with_module_fixed(board: &mut Board) -> bool {
         keepouts: &[],
         zones: &[],
         carried: &[],
+        face_keepouts: &[],
         cutouts: &[],
         pours: false,
         seed: 0,

@@ -69,6 +69,10 @@ pub struct PlaceOptions {
     /// outline) out of the zone on the faces the zone limits; a part with no stated
     /// height is not kept out (nobody knows whether it fits; the check reports it).
     pub height_zones: Vec<HeightZone>,
+    /// The keepouts that forbid parts on one face only (`.layers` names `"top"` or `"bottom"`
+    /// and not both, issue #767): the courtyards of the parts on that face are kept out of
+    /// them, those of the parts on the other face are not.
+    pub face_keepouts: Vec<FaceKeepout>,
     /// The keepouts that a part carries (ADR 0029, ADR 0045 section 11): each moves and turns
     /// with its part, so the annealer keeps the other parts out of it where the part is, as
     /// the check does (`Board::check_placement`).
@@ -93,6 +97,29 @@ pub struct HeightZone {
     pub limit: f64,
 }
 
+/// A keepout for parts that applies to one face of the board: the courtyards of the parts on
+/// that face are kept out of it, those of the parts on the other face stand under or over it.
+#[derive(Debug, Clone, PartialEq)]
+pub struct FaceKeepout {
+    /// The keepout it comes from.
+    pub name: String,
+    pub rect: Rect,
+    /// The faces whose parts it keeps out; at least one is set.
+    pub front: bool,
+    pub back: bool,
+}
+
+impl FaceKeepout {
+    /// Whether it keeps out the parts on `side`.
+    pub fn keeps_out(&self, side: Side) -> bool {
+        if side == Side::Back {
+            self.back
+        } else {
+            self.front
+        }
+    }
+}
+
 /// A keepout that a part carries: its box is in the part's own frame (the footprint's), and
 /// turns, mirrors and moves with the part. It keeps other parts out the way a keepout for
 /// parts does (`parts`) and limits their height the way a height zone does (`limit`).
@@ -104,9 +131,10 @@ pub struct CarriedZone {
     pub part: String,
     /// The box in the part's own frame.
     pub local: Rect,
-    /// Whether it forbids parts.
+    /// Whether it forbids parts, on the faces `front` and `back` name.
     pub parts: bool,
-    /// The faces its height limit applies to.
+    /// The faces its `.layers` name: the parts on them are kept out of it if it forbids
+    /// parts, and a height limit applies to them.
     pub front: bool,
     pub back: bool,
     /// The tallest a part may stand in it, in mm, if it limits height.
@@ -114,6 +142,17 @@ pub struct CarriedZone {
 }
 
 impl CarriedZone {
+    /// Whether it keeps the parts on `side` out: it forbids parts and its layers name that
+    /// face.
+    pub fn keeps_out(&self, side: Side) -> bool {
+        self.parts
+            && if side == Side::Back {
+                self.back
+            } else {
+                self.front
+            }
+    }
+
     /// Whether a part of `height` mm on `side` may not stand in it for its height: the
     /// limit is below the height, on a face the limit applies to. A part with no stated
     /// height is not ruled out (nobody knows whether it fits; the check reports it).

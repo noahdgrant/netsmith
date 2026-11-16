@@ -97,8 +97,8 @@ pub use layout::{
 pub use origin::{ORIGINS_HEAD, PartOrigin, mm as mm_text, origins_text};
 pub use overhang::{Edge, Edges, Overhang, clip as clip_to_outline, needs as overhang_needs};
 pub use placement::{
-    CarriedZone, DESCRIBED, DoesNotFit, Ended, Fixed, HeightZone, ORIGIN, OutsideAt, OverlapAt,
-    Oversize, PartState, PlaceOptions, inside as fit_inside, is_mechanical,
+    CarriedZone, DESCRIBED, DoesNotFit, Ended, FaceKeepout, Fixed, HeightZone, ORIGIN, OutsideAt,
+    OverlapAt, Oversize, PartState, PlaceOptions, inside as fit_inside, is_mechanical,
     oversize as check_oversize, short as short_mm,
 };
 pub use polygon::{BoardEdge, Polygon};

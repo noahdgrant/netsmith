@@ -698,6 +698,13 @@ pub(crate) fn features_of(
                     forbids(model, id, "copper", unstated, errors),
                     forbids(model, id, "parts", unstated, errors),
                 ];
+                if matches!(domain(model, id, "parts"), Some(Domain::Text(t)) if t == "forbid")
+                    && !layer_list.iter().any(|l| l == "top" || l == "bottom")
+                {
+                    errors.push(format!(
+                        "`{path}.parts` is \"forbid\" and its `.layers` name neither \"top\" nor \"bottom\", the faces a part stands on, so it keeps no part out"
+                    ));
+                }
                 if flags == [false; 4] && max_height.is_none() {
                     errors.push(format!(
                         "`{path}` allows tracks, vias, copper and parts, and forbids nothing"
