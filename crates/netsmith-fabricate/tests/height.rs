@@ -484,3 +484,29 @@ fn constraints_are_strict_only_when_the_run_or_the_manifest_says_error() {
     assert!(strict(None, Some(false)));
     assert!(!strict(Some("error"), Some(true)));
 }
+
+#[test]
+fn a_part_too_tall_for_the_limit_on_its_stated_face_is_placed_and_named_not_refused() {
+    // A lid over the whole top face and a part that states the top face: no placement meets
+    // the limit, so `fab` places the part and says it is too tall, with the numbers, instead of
+    // refusing with "no placement meets every requirement" (issue #777).
+    let extra = "    .r1.height &= 9mm
+    .r1.place.side &= \"top\"
+    .lid: Keepout {
+        .x &= 0mm
+        .y &= 0mm
+        .width &= 40mm
+        .height &= 30mm
+        .layers &= \"top\"
+        .max_height &= 3mm
+    }
+";
+    let (_dir, made) = fab("stated-face", extra, "");
+    let e = made.expect_err("a 9 mm part on a 3 mm limit must stop fab");
+    assert!(!e.contains("no placement meets every requirement"), "{e}");
+    assert!(
+        e.contains("`r1` (R1) stands 9.00 mm tall on the top face")
+            && e.contains("the keepout `lid` allows 3.00 mm there (6.00 mm too tall)"),
+        "{e}"
+    );
+}

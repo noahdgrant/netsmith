@@ -11,23 +11,25 @@
 //!   out;
 //! - **conflicts**: sets of lines that cannot all hold, which is only said where it is
 //!   proved from what the requirements leave: the windows of origins [`constraints::plan`]
-//!   works out for each part, the keepouts, cutouts and height limits of the design, and the
-//!   outline. Nothing is guessed: a conflict that cannot be proved is not claimed, and the
-//!   unmet lines are listed without a cause.
+//!   works out for each part, the keepouts and cutouts of the design, and the outline. Nothing
+//!   is guessed: a conflict that cannot be proved is not claimed, and the unmet lines are
+//!   listed without a cause.
 //!
 //! A conflict is one of: a relation whose window the windows of its two parts leave no way
 //! to meet; two parts whose courtyards overlap wherever their windows put them; a part whose
-//! courtyard overlaps a keepout or cutout wherever its window puts it; a part with a stated
-//! face and a height that a limit on that face rules out wherever its window puts it; a
-//! window that has no place inside the outline. Each is first tried on the lines alone, and
-//! then with the outline and its margin, which bound a window the lines leave open (a
-//! `>=` has no upper end of its own); the second form says so.
+//! courtyard overlaps a keepout or cutout wherever its window puts it; a window that has no
+//! place inside the outline. Each is first tried on the lines alone, and then with the outline and
+//! its margin, which bound a window the lines leave open (a `>=` has no upper end of its own);
+//! the second form says so.
 //!
 //! **Not proved, so not claimed**: chains of three or more constraints, relations on different
-//! fields of the same parts, a height limit against a part that states no face, and parts on
-//! opposite faces. A part with a stated face, pinned or bounded so that its courtyard lies over a
-//! pad of a through-hole part that states a protrusion wherever its window puts it, is one more
-//! proved kind when the rule refuses it wherever it is put (`protrusion.rs`). `fab` writes the
+//! fields of the same parts, and parts on opposite faces. **Not a conflict at all**: a height
+//! limit that a part's face and height cannot meet wherever it is put is no requirement of the
+//! physical file but a measure of the placement, so the placer places the part and the board
+//! check reports it as `too_tall` with the margin (issue #777). A part with a stated face, pinned
+//! or bounded so that its courtyard lies over a pad of a through-hole part that states a
+//! protrusion wherever its window puts it, is one more proved kind when the rule refuses it
+//! wherever it is put (`protrusion.rs`). `fab` writes the
 //! block to `placement-failure.txt` and stops before routing when the placer, with no layout
 //! file, ended with a requirement not met (`--constraints warn` and a layout file leave that to
 //! the check after routing). A hole to hole or hole to copper fault names the pad of each hole.
@@ -808,7 +810,6 @@ impl<'a> Context<'a> {
             self.relations(&wins, &note, &mut seen, &mut found);
             self.pairs(&wins, &note, &mut seen, &mut found);
             self.areas(&wins, &note, &mut seen, &mut found);
-            self.heights(&wins, &note, &mut seen, &mut found);
             self.protrusions(&wins, &note, &mut seen, &mut found);
             if clip {
                 self.fits(&wins, &mut seen, &mut found);
@@ -1119,72 +1120,6 @@ impl<'a> Context<'a> {
                     number(area.max.y - ORIGIN.y),
                     number(least.0),
                     number(least.1)
-                ));
-            }
-        }
-    }
-
-    /// A part with a stated face and a stated height that a height limit on that face rules
-    /// out wherever its window puts it.
-    fn heights(
-        &self,
-        wins: &[Win],
-        note: &str,
-        seen: &mut BTreeSet<String>,
-        found: &mut Vec<String>,
-    ) {
-        for w in wins {
-            let (Some(side_line), Some(height)) = (&w.side_line, w.part.height) else {
-                continue;
-            };
-            if w.quarters.is_empty() {
-                continue;
-            }
-            for k in &self.design.features.keepouts {
-                let (Some(limit), None, Some(at)) = (k.max_height, &k.part, k.at) else {
-                    continue;
-                };
-                let face = if w.side == Side::Back {
-                    "bottom"
-                } else {
-                    "top"
-                };
-                let key = format!("height:{}:{}", w.part.refdes, k.name);
-                if seen.contains(&key)
-                    || !k.layers.iter().any(|l| l == face)
-                    || height <= limit + HEIGHT_TOLERANCE
-                {
-                    continue;
-                }
-                let min = ORIGIN + Pt::new(at.0, at.1);
-                let zone = Rect::new(min, Pt::new(min.x + k.size.0, min.y + k.size.1));
-                let mut least = (f64::INFINITY, f64::INFINITY);
-                let mut all = true;
-                for q in &w.quarters {
-                    match always_overlap(&q.body, (q.x, q.y), &zone, ((0.0, 0.0), (0.0, 0.0))) {
-                        Some((dx, dy)) => least = (least.0.min(dx), least.1.min(dy)),
-                        None => all = false,
-                    }
-                }
-                if !all {
-                    continue;
-                }
-                seen.insert(key);
-                let mut lines = w.lines.clone();
-                lines.push(side_line.clone());
-                found.push(format!(
-                    "{}: they keep {} on the {face} face with its body within {} mm, which is under the keepout `{}` (x {} to {}, y {} to {} mm) wherever it is put, and that keepout allows {} mm on the {face} face while {} stands {} mm tall{note}",
-                    dedupe(lines).join("; "),
-                    Self::name(w),
-                    Self::span(w, true),
-                    k.name,
-                    number(zone.min.x - ORIGIN.x),
-                    number(zone.max.x - ORIGIN.x),
-                    number(zone.min.y - ORIGIN.y),
-                    number(zone.max.y - ORIGIN.y),
-                    number(limit),
-                    w.part.refdes,
-                    number(height)
                 ));
             }
         }

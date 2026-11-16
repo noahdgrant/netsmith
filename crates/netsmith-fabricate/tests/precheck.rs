@@ -361,7 +361,7 @@ fn two_relations_of_the_same_parts_with_no_common_value_are_refused() {
 // ---- (6) a stated face against a height limit on that face ----
 
 #[test]
-fn a_stated_face_against_a_height_limit_on_that_face_is_refused() {
+fn a_stated_face_against_a_height_limit_on_that_face_is_placed_and_reported_not_refused() {
     let lid = |face: &str| {
         format!(
             "    .r1.height &= 9mm
@@ -377,15 +377,13 @@ fn a_stated_face_against_a_height_limit_on_that_face_is_refused() {
 "
         )
     };
-    let found = precheck(2, "", (40, 30), &lid("top"));
-    assert_eq!(found.conflicts.len(), 1, "{found:?}");
-    assert!(
-        found.conflicts[0]
-            .contains("that keepout allows 3 mm on the top face while R1 stands 9 mm tall"),
-        "{found:?}"
-    );
-    // The same part on the other face, which the lid does not limit, is a board.
-    assert!(!precheck(2, "", (40, 30), &lid("bottom")).is_error());
+    // No placement can meet the limit, and that is a finding of the placement check
+    // (`too_tall`), not a refusal before placing (issue #777).
+    for face in ["top", "bottom"] {
+        let found = precheck(2, "", (40, 30), &lid(face));
+        assert!(!found.is_error(), "{face}: {found:?}");
+        place(2, "", (40, 30), &lid(face)).unwrap_or_else(|e| panic!("{face}: {e}"));
+    }
 }
 
 // ---- (7) a part bigger than the outline in every turn ----

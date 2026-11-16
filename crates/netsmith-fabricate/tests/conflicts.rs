@@ -2,7 +2,7 @@
 //! (ADR 0045): every requirement not met where the placer ended, with its
 //! `file:line`, the text of the line, the part, the measured value, the window and how far
 //! out; and the lines that cannot all hold, where that is proved from the windows the lines
-//! leave, the keepouts, the height limits and the outline. A conflict that cannot be proved
+//! leave, the keepouts and cutouts and the outline. A conflict that cannot be proved
 //! is not claimed. Every board here is invented: a 40 by 30 mm board with resistors, and
 //! headers.
 //!
@@ -235,7 +235,10 @@ fn two_parts_whose_windows_leave_their_courtyards_over_each_other_are_named() {
 }
 
 #[test]
-fn a_face_and_a_height_limit_on_that_face_are_named() {
+fn a_face_and_a_height_limit_on_that_face_are_a_finding_and_no_conflict() {
+    // R1 stands 9 mm tall on the top face, which a lid over the whole board limits to 3 mm:
+    // no placement can meet that, so it is not a requirement the lines cannot all hold but a
+    // part too tall, which the placement check names with the margin (issue #777).
     let extra = "    .r1.height &= 9mm
     .r1.place.side &= \"top\"
     .lid: Keepout {
@@ -247,19 +250,26 @@ fn a_face_and_a_height_limit_on_that_face_are_named() {
         .max_height &= 3mm
     }
 ";
-    let report = report(2, (40, 30), extra);
-    assert_eq!(report.conflicts.len(), 1, "{report}");
-    let conflict = &report.conflicts[0];
+    let (design, board) = place(2, "", (40, 30), extra);
+    let board = board.unwrap_or_else(|e| panic!("{e}"));
+    let tall: Vec<String> = board
+        .check_placement()
+        .iter()
+        .filter(|p| matches!(p, PlacementProblem::TooTall { .. }))
+        .map(ToString::to_string)
+        .collect();
+    assert_eq!(tall.len(), 1, "{tall:?}");
     for want in [
-        "widget.physical.nsm:11 `.r1.place.side &= \"top\"`",
-        "they keep `r1` (R1) on the top face",
-        "under the keepout `lid` (x 0 to 40, y 0 to 30 mm) wherever it is put",
-        "that keepout allows 3 mm on the top face while R1 stands 9 mm tall",
-        // The lines leave R1 anywhere, and it is the outline that puts it under the lid.
-        "this holds only inside the outline of 40 x 30 mm, where the placer keeps every courtyard 0.4 mm from the edge",
+        "`r1` (R1) stands 9.00 mm tall on the top face",
+        "the keepout `lid` allows 3.00 mm there (6.00 mm too tall)",
     ] {
-        assert!(conflict.contains(want), "{want:?} is not in {conflict:?}");
+        assert!(tall[0].contains(want), "{want:?} is not in {:?}", tall[0]);
     }
+    let report = board.explain_requirements(&design, &place_options(&design, None));
+    assert!(
+        report.as_ref().is_none_or(|r| r.conflicts.is_empty()),
+        "{report:?}"
+    );
 }
 
 #[test]
