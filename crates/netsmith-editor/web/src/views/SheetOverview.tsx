@@ -1,11 +1,13 @@
-// "All modules": a grid of cards in source order, each with its title, its counts and a drawing of
-// the sheet. A drawing is a copy of the sheet's group as it is in the page's SVG (a `<use>` would
+// "All modules": a grid of cards in the order the drawing sets the sheets out (row by row, so the
+// modules most tied by nets are side by side, `setOut`), each with its title, its number in the
+// source (the order of the keys and the navigator), its counts and a drawing of the sheet. A drawing is a copy of the sheet's group as it is in the page's SVG (a `<use>` would
 // not take the style rules of the drawing in every browser), taken again when the selection changes
 // so the highlight shows. A click on a card opens the sheet.
 
 import { useLayoutEffect, useRef } from 'preact/hooks';
 
 import type { Drawing } from '../schematic/load';
+import { setOut } from '../schematic/setout';
 import { SCALE } from '../schematic/zoom';
 import { plural } from '../util';
 import type { SheetRow } from './SheetNav';
@@ -51,7 +53,7 @@ export function SheetOverview({
   const size = overviewSize(rows.length);
   return (
     <div class={`sheet-overview schematic-host no-pan ov-${size}`} role="list" aria-label="All modules">
-      {rows.map((r) => {
+      {setOut(rows, (r) => r.sheet).map((r) => {
         const s = r.sheet;
         const pad = 1.5;
         const x = s.x / SCALE + drawing.mm.x - pad;

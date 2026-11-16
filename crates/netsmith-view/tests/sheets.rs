@@ -56,6 +56,59 @@ fn seventy_parts_make_seven_sheets_that_do_not_overlap() {
     }
 }
 
+/// The sheets' names in the order the drawing sets them out: row by row, each row from the left.
+/// The tops of a row differ by up to a grid step (each sheet is snapped on its own); rows are a
+/// sheet and a gap apart.
+fn set_out(l: &Layout) -> Vec<String> {
+    let mut sheets: Vec<_> = l.sheets.iter().collect();
+    sheets.sort_by(|a, b| {
+        let (p, q) = (a.frame.min, b.frame.min);
+        if (p.y - q.y).abs() < 5.0 {
+            p.x.total_cmp(&q.x)
+        } else {
+            p.y.total_cmp(&q.y)
+        }
+    });
+    sheets.iter().map(|s| s.name.clone()).collect()
+}
+
+#[test]
+fn sheets_joined_by_nets_are_set_out_one_after_the_other() {
+    // Each supply feeds the next (`out1` reaches supply2, ...): a chain. However the modules
+    // are listed, the drawing sets it out from one end to the other; ground does not count, and
+    // the rail on every sheet (VIN) ties every two sheets alike.
+    let (d, groups) = common::supplies(7);
+    let chain: Vec<String> = (1..=7).map(|m| format!("supply{m}")).collect();
+    let backwards: Vec<String> = chain.iter().rev().cloned().collect();
+    for listed in [[0, 1, 2, 3, 4, 5, 6], [3, 0, 5, 1, 6, 2, 4], [6, 5, 4, 3, 2, 1, 0]] {
+        let groups: Vec<Group> = listed.iter().map(|&i| groups[i].clone()).collect();
+        let names = set_out(&lay(&d, &groups));
+        assert!(
+            names == chain || names == backwards,
+            "listed {listed:?}, set out as {names:?}"
+        );
+    }
+}
+
+#[test]
+fn sheets_with_no_net_between_them_keep_the_order_of_the_groups() {
+    let (mut d, groups) = common::supplies(4);
+    // Take each supply's output off the next supply, and the rail off them all: no net is
+    // left between two sheets but ground, which does not count.
+    for net in &mut d.nets {
+        if let Some(m) = net.name.strip_prefix("out") {
+            let m: usize = m.parse().unwrap();
+            net.pins.retain(|p| p.refdes != format!("RB{}", m + 1));
+        }
+    }
+    d.nets.retain(|n| n.name != "VIN");
+    let reordered: Vec<Group> = [2, 0, 3, 1].iter().map(|&i| groups[i].clone()).collect();
+    assert_eq!(
+        set_out(&lay(&d, &reordered)),
+        ["supply3", "supply1", "supply4", "supply2"]
+    );
+}
+
 #[test]
 fn the_whole_drawing_is_not_a_strip() {
     for modules in [7, 12] {

@@ -257,11 +257,19 @@ export async function run({ page, shot, step, expect, section }) {
   await page.waitForSelector('.sheet-overview .ov-card');
   await page.mouse.move(5, 5);
   await whenIdle(page);
+  // The card of the selected module marks its parts; no other card marks a part as selected (the part under the source's
+  // cursor stays `linked` wherever its card is, as on its sheet).
   const marked = await page.evaluate((c) => {
-    const el = [...document.querySelectorAll('.sheet-overview .ov-card')].find((e) => e.querySelector('.ov-name')?.textContent === c);
-    return { own: el.querySelectorAll('g.part.mark').length, others: [...document.querySelectorAll('.sheet-overview .ov-card')].filter((e) => e !== el).reduce((n, e) => n + e.querySelectorAll('g.part.mark').length, 0) };
+    const all = [...document.querySelectorAll('.sheet-overview .ov-card')];
+    const el = all.find((e) => e.querySelector('.ov-name')?.textContent === c);
+    const others = all.filter((e) => e !== el);
+    return {
+      own: el.querySelectorAll('g.part.mark').length,
+      others: others.reduce((n, e) => n + e.querySelectorAll('g.part.mark:not(.linked)').length, 0),
+      where: others.filter((e) => e.querySelector('g.part.mark:not(.linked)')).map((e) => e.querySelector('.ov-name')?.textContent),
+    };
   }, card);
-  expect(marked.own > 0 && marked.others === 0, `in the overview the card of ${card} marks its ${marked.own} parts and no other card marks any`);
+  expect(marked.own > 0 && marked.others === 0, `in the overview the card of ${card} marks its ${marked.own} parts and no other card marks any as selected (${marked.where.join(', ') || 'none'})`);
   await page.keyboard.press('Escape');
 
   step('at 1920 x 1080 the same pick fits the view and the ring is round the part');

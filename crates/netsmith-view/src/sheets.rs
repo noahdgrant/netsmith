@@ -1,5 +1,5 @@
 //! A big board as sheets: one box for each module (and for the parts that are in none), each
-//! laid out on its own, set out in a grid. A net that joins parts on more than one sheet is
+//! laid out on its own, set out in rows. A net that joins parts on more than one sheet is
 //! drawn as a stub with its name at each of its pins, never as a wire across the page; ground
 //! is drawn on every sheet that has it.
 //!
@@ -11,8 +11,12 @@
 //! (ADR 0019.) A board of more than [`SHEET_THRESHOLD`] parts is drawn by module: a box for each
 //! instance of a module of the board, laid out on its own as a small board is, the boxes in rows
 //! about [`TARGET_ASPECT`] wider than tall; the parts in no module are a box named for the board.
-//! A net between boxes is a stub with its name at each pin, ground is drawn in each box. The
-//! editor's page has an outline of the boxes, zooms to one on a click, and fits the whole.
+//! The boxes are set out in the order of how they connect (`connection_order`): the boxes most
+//! tied by nets come one after the other, so they are neighbours in a row, with no random seed.
+//! A schematic layout file (ADR 0061) holds where a part is in its sheet, from the sheet's
+//! reference part, never where a sheet is on the page, so the order moves no part a person
+//! placed. A net between boxes is a stub with its name at each pin, ground is drawn in each box.
+//! The editor's page has an outline of the boxes, zooms to one on a click, and fits the whole.
 
 use std::collections::{BTreeSet, HashMap};
 
@@ -372,7 +376,8 @@ pub fn layout_sheets_hinted_findings(
             frame
         })
         .collect();
-    let offsets = arrange(&frames);
+    let order = connection_order(design, &owner, clusters.len());
+    let offsets = arrange(&frames, &order);
 
     let mut parts: Vec<Option<PlacedPart>> = vec![None; design.parts.len()];
     // The boxes of the units after the first of a part (`layout::units`), after the parts' own.
@@ -755,10 +760,91 @@ fn walk(design: &Design, parts: &[usize]) -> Vec<usize> {
     order
 }
 
-/// Where each frame's top-left corner goes: rows filled from the left until a row would pass
-/// the width that makes the whole roughly [`TARGET_ASPECT`] wide, each frame on the grid.
-/// Returns the translation to apply to each frame.
-fn arrange(frames: &[Rect]) -> Vec<Pt> {
+/// The widest a net may be, in sheets, and still tie the sheets it is on in [`connection_order`]:
+/// a net on more (a rail that feeds most of the board) says nothing about which are neighbours.
+const ORDER_NET_SHEETS: usize = 8;
+
+/// The weight one net gives each pair of the `k` sheets it is on: `ORDER_WEIGHT / (k - 1)`, so a
+/// net between two sheets ties them most and a net on many ties each pair a little (the clique
+/// model of a net). 420 is divisible by every `k - 1` up to [`ORDER_NET_SHEETS`] - 1, so the
+/// weights are whole numbers and their sum does not depend on the order the nets are listed in.
+const ORDER_WEIGHT: u64 = 420;
+
+/// The order the sheets are set out in (indices into the clusters), so that sheets joined by
+/// nets are neighbours. It starts at an end of the connections (of the sheets with a net to
+/// another, the one with the least weight to the others), so that a chain of sheets is set out
+/// from one end to the other; then again and again it takes the sheet with the most weight to
+/// the last one set out, then to all set out so far. When nothing left is tied to what is set
+/// out, it starts again at an end of what is left, and the sheets tied to nothing come last.
+/// Every tie goes to the first in the clusters' order, so sheets with no net between them keep
+/// it. A net on ground, or on more than [`ORDER_NET_SHEETS`] sheets, does not count. A pure
+/// function of the design and the clusters, with no random seed.
+fn connection_order(design: &Design, owner: &[usize], sheets: usize) -> Vec<usize> {
+    let index: HashMap<&str, usize> = design
+        .parts
+        .iter()
+        .enumerate()
+        .map(|(i, p)| (p.refdes.as_str(), i))
+        .collect();
+    let mut weight = vec![vec![0u64; sheets]; sheets];
+    for net in &design.nets {
+        if is_ground_name(&net.name) {
+            continue;
+        }
+        let on: BTreeSet<usize> = net
+            .pins
+            .iter()
+            .filter_map(|pin| index.get(pin.refdes.as_str()).map(|&p| owner[p]))
+            .collect();
+        if on.len() < 2 || on.len() > ORDER_NET_SHEETS {
+            continue;
+        }
+        let w = ORDER_WEIGHT / (on.len() as u64 - 1);
+        for &a in &on {
+            for &b in &on {
+                if a != b {
+                    weight[a][b] += w;
+                }
+            }
+        }
+    }
+    let total: Vec<u64> = weight.iter().map(|row| row.iter().sum()).collect();
+    let mut order: Vec<usize> = Vec::with_capacity(sheets);
+    let mut placed = vec![false; sheets];
+    // What ties each sheet not yet set out to those that are.
+    let mut to_placed = vec![0u64; sheets];
+    while order.len() < sheets {
+        let left = || (0..sheets).filter(|&s| !placed[s]);
+        let last = order.last().copied();
+        let next = match last {
+            // Next to the last one set out, or else to those set out so far.
+            Some(l) if left().any(|s| to_placed[s] > 0) => {
+                left().max_by_key(|&s| (weight[l][s], to_placed[s], std::cmp::Reverse(s)))
+            }
+            // A start: an end of the connections, a sheet that is tied to others, the least;
+            // a sheet tied to nothing comes after them all.
+            _ => left().max_by_key(|&s| {
+                (
+                    total[s] > 0,
+                    std::cmp::Reverse(total[s]),
+                    std::cmp::Reverse(s),
+                )
+            }),
+        }
+        .expect("a sheet is left");
+        placed[next] = true;
+        order.push(next);
+        for s in 0..sheets {
+            to_placed[s] += weight[next][s];
+        }
+    }
+    order
+}
+
+/// Where each frame's top-left corner goes: the frames in `order`, rows filled from the left
+/// until a row would pass the width that makes the whole roughly [`TARGET_ASPECT`] wide, each
+/// frame on the grid. Returns the translation to apply to each frame, by the frames' index.
+fn arrange(frames: &[Rect], order: &[usize]) -> Vec<Pt> {
     let area: f64 = frames
         .iter()
         .map(|f| (f.width() + SHEET_GAP) * (f.height() + SHEET_GAP))
@@ -766,18 +852,16 @@ fn arrange(frames: &[Rect]) -> Vec<Pt> {
     let widest = frames.iter().map(Rect::width).fold(0.0, f64::max);
     let target = (area * TARGET_ASPECT).sqrt().max(widest);
 
-    let mut offsets = Vec::with_capacity(frames.len());
+    let mut offsets = vec![Pt::new(0.0, 0.0); frames.len()];
     let (mut x, mut y, mut row_height) = (0.0, 0.0, 0.0f64);
-    for f in frames {
+    for &i in order {
+        let f = &frames[i];
         if x > 0.0 && x + f.width() > target {
             x = 0.0;
             y += row_height + SHEET_GAP;
             row_height = 0.0;
         }
-        offsets.push(Pt::new(
-            snap_up(x - f.min.x, GRID),
-            snap_up(y - f.min.y, GRID),
-        ));
+        offsets[i] = Pt::new(snap_up(x - f.min.x, GRID), snap_up(y - f.min.y, GRID));
         x += f.width() + SHEET_GAP;
         row_height = row_height.max(f.height());
     }

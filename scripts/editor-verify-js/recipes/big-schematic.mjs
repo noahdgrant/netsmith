@@ -1,5 +1,5 @@
 // A big board drawn by module: one sheet at a time, large; an "All sheets" overview with a box
-// for each module instance; the sheets by tab, button, key and the Modules list; the zoom of
+// for each module instance, set out by how the modules connect; the sheets by tab, button, key and the Modules list; the zoom of
 // each sheet remembered; nets between modules are stubs with names.
 import { whenIdle } from '../settle.mjs';
 import { activeSheet, openSheet, sheetNames, zoomPercent } from '../schematic-helpers.mjs';
@@ -38,7 +38,14 @@ export async function run({ page, shot, step, expect }) {
   const titles = await page.locator('.ov-card .ov-head').allInnerTexts();
   expect(titles.some((t) => /stage1\s*LdoStage/.test(t.replace(/\n/g, ' '))), 'a card titled with the instance and its module');
   const order = await page.locator('.ov-card .ov-name').allInnerTexts();
-  expect(order[0] === 'BigBoard' && order[1] === 'stage1' && order[2] === 'light1', `the cards are in the order of the source, not alphabetical (${order.slice(0, 4).join(', ')})`);
+  const numbers = await page.locator('.ov-card .ov-n').allInnerTexts();
+  // A stage, its light and its pull-ups share a rail (RAIL1 for the modules numbered 1, ...): the three come together.
+  const rail = (name) => name.match(/^(?:stage|light|pulls)(\d+)$/)?.[1];
+  const triples = order.slice(0, 24).every((name, i) => rail(name) !== undefined && rail(name) === rail(order[i - (i % 3)]));
+  expect(triples, `the cards are set out by how the modules connect: the stage, the light and the pull-ups on one rail side by side, rail after rail (${order.slice(0, 6).join(', ')}, ...)`);
+  expect(order.at(-1) === 'BigBoard', `the board's own sheet, tied to the stages only by the input rail every sheet has, comes last (${order.at(-1)})`);
+  const numberOf = (name) => numbers[order.indexOf(name)];
+  expect(numberOf('BigBoard') === '1' && numberOf('stage1') === '2' && numberOf('light1') === '3', `each card keeps its number in the source, the order of the keys (BigBoard ${numberOf('BigBoard')}, stage1 ${numberOf('stage1')}, light1 ${numberOf('light1')})`);
   const shape = await page.evaluate(() => {
     const svg = document.querySelector('svg.schematic');
     const [, , w, h] = svg.getAttribute('data-bounds').split(' ').map(Number);
