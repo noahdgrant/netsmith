@@ -201,7 +201,8 @@
 //! seeds, and the variation between seeds on one board is large. A footprint's own silkscreen
 //! text and strokes that clip each other or the mask are the library's and stay. KiCad's
 //! `starved_thermal` (a pad in a pour with one spoke) appeared on some seeds of a real board
-//! whose data is not in this repository, and neither check finds it (ADR 0037). Two latent faults
+//! whose data is not in this repository; netsmith's check now warns of it (issue #838), and the
+//! placer does not avoid it. Two latent faults
 //! that the new placements showed were fixed (stitching vias in the gap between two pads, the
 //! reference text of a turned part). The decoupling pull is a distance with no number from a
 //! source.

@@ -316,11 +316,27 @@ fn without_islands(
     z: &Zone,
     others: &[Area],
 ) -> Vec<Area> {
+    if z.islands == Islands::Keep {
+        return fill.to_vec();
+    }
+    let isolated = isolated(fill, art, layer, z, others);
+    fill.iter()
+        .zip(isolated)
+        .filter(|(piece, isolated)| {
+            !isolated || matches!(z.islands, Islands::RemoveBelow(min) if piece.size() >= min)
+        })
+        .map(|(piece, _)| piece.clone())
+        .collect()
+}
+
+/// For each piece of `fill`, whether it is a copper island: it touches no copper of the zone's net
+/// on `layer` and none of `others`. A zone of no net has no islands, as KiCad's has none.
+fn isolated(fill: &[Area], art: &Artwork, layer: &str, z: &Zone, others: &[Area]) -> Vec<bool> {
     let Some(net) = z.net.as_deref() else {
-        return fill.to_vec();
+        return vec![false; fill.len()];
     };
-    if z.islands == Islands::Keep || fill.is_empty() {
-        return fill.to_vec();
+    if fill.is_empty() {
+        return Vec::new();
     }
     let mut anchors = net_copper(art, layer, net);
     if !others.is_empty() {
@@ -331,14 +347,9 @@ fn without_islands(
         .map(|a| Bounds::of(a.outer.iter().copied()))
         .collect();
     fill.iter()
-        .filter(|piece| {
-            if let Islands::RemoveBelow(min) = z.islands
-                && piece.size() >= min
-            {
-                return true;
-            }
+        .map(|piece| {
             let Some(b) = Bounds::of(piece.outer.iter().copied()) else {
-                return false;
+                return true;
             };
             let near: Vec<Area> = anchors
                 .iter()
@@ -346,10 +357,135 @@ fn without_islands(
                 .filter(|(_, ab)| ab.is_some_and(|ab| ab.overlaps(&b)))
                 .map(|(a, _)| a.clone())
                 .collect();
-            !near.is_empty() && overlap(std::slice::from_ref(*piece), &near)
+            near.is_empty() || !overlap(std::slice::from_ref(piece), &near)
         })
-        .cloned()
         .collect()
+}
+
+/// What the design rules check reads of the fill of one zone on one layer (issue #838): the
+/// thermal reliefs of the pads in it and the copper islands its setting keeps.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct Judged {
+    /// The zone, by its index in the board's zones.
+    pub zone: usize,
+    /// Each pad of the zone's net that the zone joins with thermal spokes and whose centre is
+    /// in the zone's outline.
+    pub reliefs: Vec<Relief>,
+    /// Each piece of the fill that touches no copper of the zone's net and that the zone's
+    /// `island_removal_mode` keeps: a corner of it, and its area in mm².
+    pub islands: Vec<(Pt, f64)>,
+}
+
+/// A thermal relief of a pad in a zone, as the fill leaves it.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct Relief {
+    /// The pad, by its index in the board's pads.
+    pub pad: usize,
+    /// How many spokes the relief has, and how many of them reach the fill.
+    pub spokes: usize,
+    pub reach: usize,
+    /// How many tracks of the zone's net on the layer run from the pad onto the fill, which
+    /// join the pad to the pour as a spoke does.
+    pub tracks: usize,
+}
+
+/// Points along a track, at most 0.05 mm apart, its two ends among them.
+fn track_points(shape: &TrackShape) -> Vec<Pt> {
+    match shape {
+        TrackShape::Line(a, b) => {
+            let n = ((a.dist(*b) / 0.05).ceil() as usize).max(1);
+            (0..=n)
+                .map(|i| *a + (*b - *a) * (i as f64 / n as f64))
+                .collect()
+        }
+        TrackShape::Arc(arc) => arc.points(),
+    }
+}
+
+/// The fill of every zone of `layer` with a net that holds no fill of its own in the file,
+/// worked out as [`pour`] draws it, and what the check reads of it ([`Judged`]).
+pub(crate) fn judge(
+    art: &Artwork,
+    layer: &str,
+    edge: &BoardEdge,
+    rules: &Rules,
+) -> Result<Vec<Judged>, String> {
+    let index: Vec<usize> = art
+        .zones
+        .iter()
+        .enumerate()
+        .filter(|(_, z)| {
+            z.keepout.is_none()
+                && z.layers.iter().any(|l| l == layer)
+                && !z.filled.iter().any(|(l, _)| l == layer)
+        })
+        .map(|(i, _)| i)
+        .collect();
+    if !index.iter().any(|&i| art.zones[i].net.is_some()) {
+        return Ok(Vec::new());
+    }
+    let zones: Vec<&Zone> = index.iter().map(|&i| &art.zones[i]).collect();
+    let filled = fill_zones(art, layer, edge, rules, &zones)?;
+    let mut out = Vec::new();
+    for (i, fill) in &filled {
+        let z = zones[*i];
+        if z.net.is_none() {
+            continue;
+        }
+        let outline = outline_area(z);
+        let mut reliefs = Vec::new();
+        for (k, pad) in art.pads.iter().enumerate().filter(|(_, p)| {
+            own_net(z, &p.net)
+                && art.pad_copper_on(p, layer)
+                && connection(p, z) == Connect::Thermal
+                && outline.iter().any(|a| a.contains(p.at))
+        }) {
+            let shape = pads::outline(pad);
+            let spokes = spokes(&shape, pad.at, pad.angle + pad.spoke_angle(), z);
+            if spokes.is_empty() {
+                continue;
+            }
+            let on_fill = |p: &Pt| fill.iter().any(|a| a.contains(*p));
+            let reach = spokes.iter().filter(|(_, end)| on_fill(end)).count();
+            let tracks = shape.polygon().map_or(0, |poly| {
+                art.tracks
+                    .iter()
+                    .filter(|t| t.layer == layer && t.net == z.net)
+                    .filter(|t| {
+                        let points = track_points(&t.shape);
+                        let ends = [points.first(), points.last()];
+                        ends.iter().flatten().any(|p| geom::contains(&poly, **p))
+                            && points.iter().any(on_fill)
+                    })
+                    .count()
+            });
+            reliefs.push(Relief {
+                pad: k,
+                spokes: spokes.len(),
+                reach,
+                tracks,
+            });
+        }
+        let mut islands = Vec::new();
+        if z.islands != Islands::Remove {
+            let others: Vec<Area> = filled
+                .iter()
+                .filter(|(j, _)| j != i && zones[*j].net == z.net)
+                .flat_map(|(_, f)| f.iter().cloned())
+                .collect();
+            for (piece, isolated) in fill.iter().zip(isolated(fill, art, layer, z, &others)) {
+                if isolated && let Some(&corner) = piece.outer.first() {
+                    islands.push((corner, piece.size()));
+                }
+            }
+        }
+        out.push(Judged {
+            zone: index[*i],
+            reliefs,
+            islands,
+        });
+    }
+    Ok(out)
 }
 
 /// The copper of `net` on `layer` that joins a piece of its zone: its pads with copper on the
