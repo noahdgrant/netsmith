@@ -32,7 +32,7 @@ Rules.
 - A part states only what is always true of it. It does not fix a value a design might change, and it names no KiCad symbol or footprint (ADR 0002).
 - `bridge .a ~> .b` names the two terminals a chain enters and leaves by. A part has at most one.
 - `catalog name { .field, ... }` lists the fields the solver fills from a catalog (next section). A column may end with `optional` (`catalog tvs { .standoff_voltage, .breakdown_voltage optional }`, ADR 0078): a file may leave it out and a row may leave its cell empty ("An optional column" in the next section). The standard catalogs are `resistor`, `capacitor`, `led`, `ldo`, `schottky`, `zener`, `tvs`, `ferrite_bead`, `inductor`, `fuse`, `n_mosfet`, `crystal` and `header` (the contact rating of a pin header or socket, ADR 0040). A part naming another is reported as "not chosen: there is no `x` catalog to choose from".
-- A part with no catalog, such as `Header2x10`, is placed as written. A through-hole part is soldered by hand unless `.assembly` says otherwise (next section).
+- A part with no catalog, such as `ProgrammingPads6`, is placed as written. A through-hole part is soldered by hand unless `.assembly` says otherwise (next section).
 
 Misuse.
 

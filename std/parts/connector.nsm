@@ -13,8 +13,7 @@
 //! `.pin_current` is the rated current of one contact. It is not always true of a part (it depends
 //! on the maker), so a part states it only through a `header` catalog row, whose `source` is the
 //! datasheet; a part without a row is unrated, and the check of the current through a mate
-//! lists it as not evaluated. The single-row parts and the 2x3 and 2x5 headers have rows (the
-//! 2x3 and 2x5 only for the rating, `data/jlcpcb/README.md`); the 2x10 header has none yet.
+//! lists it as not evaluated. Every header and socket below has a row (`data/jlcpcb/README.md`).
 //!
 //! `.seat` is how far above its board's face the partner rests (ADR 0110), also only through a
 //! `header` row (an `optional` column: a project's row may leave it empty). Two mated seats add
@@ -374,6 +373,7 @@ part Header2x10 provides Connector {
     }
 
     .package: Package
+    catalog header { .mating.gender, .mating.pitch, .mating.rows, .mating.positions, .mating.pin_current, .mating.seat optional }
 }
 
 /// A coaxial (RF) connector: a centre conductor and a shield. `.impedance` is the connector's
