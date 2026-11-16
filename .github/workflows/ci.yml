@@ -9,7 +9,9 @@
 # need `rust`, `kicad` needs `kicad`, `recipes` needs `recipes`, `no-kicad` needs `no_kicad`, `locks` needs `locks`,
 # `designs` needs `designs`: a
 # change to prose only runs `fmt`. A
-# push to main, a change to the workflows or to scripts/, and a path the script does not know run
+# push to main, a change to the workflows or to scripts/ (except the editor's recipes, which run
+# `recipes` and `build` of netsmith-cli only, and its fixtures, which run the tests of netsmith-cli and
+# netsmith-workspace, `kicad` and `recipes`), and a path the script does not know run
 # everything. A change to a test file of a crate turns `kicad` on only if the file can ask for
 # KiCad (it names kicad-cli, the stock libraries, a Workspace, the binary...), and never turns
 # `recipes` on; a change to the source of a crate is not narrowed (the script's header says why).

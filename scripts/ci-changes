@@ -21,7 +21,14 @@
 #            (its editor, and the build, fab and order pipeline behind it, with KiCad 9 installed)
 #            against fixtures, so what is linked into that binary, the page, and the boards and
 #            catalogs the recipes open make it run. It does not follow `kicad`: a path that only
-#            the tests read does not reach the binary.
+#            the tests read does not reach the binary. A recipe of scripts/editor-verify-js/recipes
+#            and the helpers only the recipes use (the *-helpers.mjs, css-rem.mjs, slices.mjs,
+#            waits.mjs) turn on this job and no other: the binary does not contain them, no test
+#            reads them, and `build` then compiles only netsmith-cli (`crates=netsmith-cli`, `rust` off).
+#            The fixtures (scripts/editor-verify-js/fixtures) and the driver cli.mjs with the modules it
+#            imports (pcb-helpers.mjs, settle.mjs) are also read by Rust tests (netsmith-cli's board3d,
+#            case_fit and editor_verify, netsmith-workspace's editor and editor_verify: all ask for
+#            KiCad), so they turn on `rust`, `kicad` and `recipes`, and name those two crates.
 #   no_kicad the `no-kicad` job: scripts/check-no-kicad.sh builds and fabs every example with
 #            the KiCad libraries and kicad-cli hidden (ADR 0097, step 4), on a runner with no
 #            KiCad. It runs the `netsmith` binary and reads the examples and the standard library,
@@ -39,8 +46,9 @@
 #            (`example_readers`, below: `any_example` for each, and the stage crates that include it).
 #            Empty means every test: a change with no Rust in it, or one with a path outside the
 #            crates that turns `rust` on and names no crate (std/, data/, the workspace manifest,
-#            Cargo.lock, the toolchain, scripts/, the workflows, .claude/, a path nothing here
-#            knows). A push to main runs every test.
+#            Cargo.lock, the toolchain, scripts/ other than the editor's recipes and fixtures, the
+#            workflows, .claude/, a path nothing here knows). A push to main runs every test.
+#            When only `recipes` is on (no Rust), it is `netsmith-cli`, for `build` alone.
 #   locks    the `locks` job: scripts/check-example-locks.sh runs `netsmith lock --check` over every
 #            example (ADR 0100). A pick is what the solver, std/ and the catalogs in data/ say about
 #            the parts of an example, so it follows the same paths as `no_kicad`: the crates that
@@ -76,11 +84,15 @@
 # and crates/netsmith-fabricate/src/refresh.rs: CSV and HTTP, nothing of KiCad), which keeps `recipes` (the
 # editor refreshes catalogs) and drops `kicad`.
 #
-# A change to the workflows, the actions (.github/actions) or to scripts/ runs everything, and so does a path nothing here knows:
-# when in doubt, the job runs. Only files that nothing builds or tests read (prose, the licence,
+# A change to the workflows, the actions (.github/actions) or to scripts/ runs everything (those files
+# are what CI does: scripts/ci-*, scripts/check-*, editor-verify, web-bundle, the recipes' package.json and
+# lock), except the editor's recipes and their fixtures, above, and so does a path nothing here knows:
+# when in doubt, the job runs. Cargo.lock and the workspace manifest run everything too: a path list says
+# nothing of which dependency moved, and a lock change can alter any crate's build. Only files that nothing builds or tests read (prose, the licence,
 # the issue templates) leave clippy and the tests out. A test does read docs/LANGUAGE.md, every chapter in docs/language/ and
 # the skills in .agents/skills (crates/netsmith-tools/tests/guide.rs, src/init.rs), so those count as code
-# (of the netsmith-tools crate, whose dependents run too: no other crate reads them);
+# (of the netsmith-tools crate, whose dependents run too: no other crate reads them; the editor skill
+# is no exception: no recipe reads a skill);
 # so does docs/symbol-gallery.html (crates/netsmith-tools/tests/symbol_gallery.rs compares it with the rendered page).
 # A push to main skips this script: the job runs everything there.
 # The rules are pinned by scripts/ci-changes-test (the `changes` job runs it).
@@ -154,6 +166,9 @@ after_solver() {
 # reads one more has to be added here: scripts/ci-changes-test finds the ones that are missing in the
 # repository's own tests.
 any_example="netsmith-tools netsmith-workspace"
+# The crates whose tests or source name a file of scripts/editor-verify-js (a fixture, `include_str!`,
+# or the driver: `doctor`). scripts/ci-changes-test finds the ones that are missing in the repository.
+editor_verify_readers="netsmith-cli netsmith-workspace"
 example_readers() {
     name="${1#examples/}"
     name="${name%%/*}"
@@ -189,6 +204,24 @@ while IFS= read -r path; do
     rust_before="$rust" rust=false locks_before="$locks" locks=false mapped=""
     designs_before="$designs" designs=false
     case "$path" in
+        # The editor's browser recipes (scripts/editor-verify-js): the `recipes` job drives them
+        # against the binary, and nothing else reads the recipes themselves, so they run that job and
+        # no other (no Rust: the binary does not contain them). Their helpers (the *-helpers.mjs,
+        # css-rem.mjs, and slices.mjs and waits.mjs, which scripts/ci-recipe-slices runs in that job)
+        # are read by the recipes alone.
+        scripts/editor-verify-js/recipes/*) recipes=true ;;
+        # What the Rust tests read too: the fixtures (board3d.rs and case_fit.rs of netsmith-cli, and
+        # editor.rs of netsmith-workspace, include them: `editor_verify_readers`, which
+        # scripts/ci-changes-test proves against the repository), and the driver cli.mjs with the
+        # modules it imports at load (the fixtures' .mjs, pcb-helpers.mjs, settle.mjs), which the
+        # `doctor` tests of both crates run. Every file of tests that reads them asks for KiCad
+        # (a Workspace, the binary), so `kicad` runs; the recipes run with them.
+        scripts/editor-verify-js/fixtures/* | scripts/editor-verify-js/cli.mjs | scripts/editor-verify-js/pcb-helpers.mjs | scripts/editor-verify-js/settle.mjs)
+            rust=true kicad=true recipes=true mapped="$editor_verify_readers" ;;
+        # The recipes' packages: `npm ci` of the recipes job, and the key of the .deb cache (apt-cache
+        # action and workflow, scripts/ci-apt-cache): what CI does, so everything runs.
+        scripts/editor-verify-js/package.json | scripts/editor-verify-js/package-lock.json) all ;;
+        scripts/editor-verify-js/*) recipes=true ;;
         .github/workflows/* | .github/actions/* | scripts/*) all ;;
 
         # Prose that nothing reads.
@@ -197,7 +230,6 @@ while IFS= read -r path; do
         # Read by the netsmith-tools crate's tests and by its init.rs, and by no other crate.
         docs/LANGUAGE.md | docs/language/* | docs/symbol-gallery.html) rust=true mapped=netsmith-tools ;;
         docs/*) ;;
-        .agents/skills/netsmith-dev-verify-editor/*) rust=true recipes=true mapped=netsmith-tools ;;
         .agents/skills/*) rust=true mapped=netsmith-tools ;;
         .claude/*) rust=true ;;
         .agents/*) ;;
@@ -252,6 +284,10 @@ while IFS= read -r path; do
     [ "$designs_before" = true ] && designs=true
 done
 [ "$wide" = false ] || crates=""
+# A change that only the recipes need (no Rust at all: a recipe, a helper of the recipes) names no crate
+# and `test`, `kicad` and `clippy` do not run, but `build` does, to make the binary the recipes drive:
+# the command line is all of it, not the whole workspace (scripts/ci-rdeps adds it to every run anyway).
+if [ "$rust" = false ] && [ "$recipes" = true ]; then crates="netsmith-cli"; fi
 
 echo "rust=$rust"
 echo "kicad=$kicad"
