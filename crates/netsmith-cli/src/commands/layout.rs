@@ -537,7 +537,7 @@ mod tests {
             ErrorKind::MissingRequiredArgument
         );
         assert_eq!(kind(&["layout", "set"]), ErrorKind::MissingRequiredArgument);
-        for turn in ["45", "360", "-90", "ninety"] {
+        for turn in ["360", "-90", "720", "ninety"] {
             assert_eq!(
                 kind(&["layout", "set", "u1", "--turn", turn]),
                 ErrorKind::ValueValidation,
