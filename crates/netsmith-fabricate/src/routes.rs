@@ -247,11 +247,14 @@ pub enum Edit {
         on: bool,
     },
     /// Track `track` of the net (numbered from 1) with its ends at `from` and `to`: what the
-    /// editor's drag of a track's end makes. A locked track, and an arc, are refused.
+    /// editor's drag of a track's end makes. An arc is moved with its middle, `mid` (a shove
+    /// moves one whole, issue 1009); an arc given no `mid`, a straight track given one, and a
+    /// locked track are refused.
     MoveTrack {
         net: String,
         track: usize,
         from: [f64; 2],
+        mid: Option<[f64; 2]>,
         to: [f64; 2],
     },
     /// Via `via` of the net (numbered from 1) at `at`. A locked via is refused.
@@ -749,6 +752,7 @@ fn change_record(
             net,
             track: n,
             from,
+            mid,
             to,
         } => {
             let have = record.tracks.len();
@@ -761,12 +765,21 @@ fn change_record(
                     "track {n} of net {net} is locked: unlock it first"
                 )));
             }
-            if t.mid.is_some() {
-                return Err(Refusal::Refused(format!(
-                    "track {n} of net {net} is an arc, whose ends are not moved: delete it and draw it again"
-                )));
+            match (t.mid.is_some(), mid.is_some()) {
+                (true, false) => {
+                    return Err(Refusal::Refused(format!(
+                        "track {n} of net {net} is an arc, whose ends are not moved alone: delete it and draw it again"
+                    )));
+                }
+                (false, true) => {
+                    return Err(Refusal::Refused(format!(
+                        "track {n} of net {net} is straight: it has no middle to move"
+                    )));
+                }
+                _ => {}
             }
             t.from = *from;
+            t.mid = *mid;
             t.to = *to;
             Ok(format!("moved track {n} of net {net}"))
         }

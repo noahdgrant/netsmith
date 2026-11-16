@@ -187,6 +187,28 @@ impl Ground {
         }
     }
 
+    /// What new copper of `net` (`copper`: tracks on their layers, vias on every layer) is too
+    /// near on this ground, by name ([`Room::in_the_way`]), or `None` where all of it keeps
+    /// every space: the room a via or the shapes of a drag have where they are put (issue 1009).
+    /// A track on a layer the board does not have is too near nothing.
+    pub fn in_the_way(&self, net: &str, copper: &[crate::shove::What]) -> Option<String> {
+        let room = Room::new(&self.art, &self.rules, &self.extras);
+        copper.iter().find_map(|c| match c {
+            crate::shove::What::Track(t) => {
+                let layer = room.layer(t.layer.name())?;
+                let shape = DrcShape::stroke(
+                    t.centre_line().into_iter().map(fpt).collect(),
+                    t.width / 2.0,
+                );
+                room.in_the_way(&shape, net, layer, false, &[])
+            }
+            crate::shove::What::Via(v) => {
+                let shape = DrcShape::disc(fpt(v.at), v.diameter / 2.0);
+                (0..room.layers()).find_map(|l| room.in_the_way(&shape, net, l, false, &[]))
+            }
+        })
+    }
+
     /// The questions about this ground.
     pub fn walker(&self) -> Walker<'_> {
         Walker {

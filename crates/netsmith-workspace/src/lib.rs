@@ -927,6 +927,53 @@ impl Workspace {
 
     /// A change to the routes file from the PCB view, made by `netsmith_fabricate::routes::edit`
     /// as `netsmith routes` makes it, on the board as placed with no copper.
+    /// The grounds a walk, a shove or a re-route of board `name` is asked on, kept with its entry
+    /// (built once, issue 1009), with the router's copper on it and, when `shove` is asked, the
+    /// ground of the shove. Taken out of the state as shared copies, so that the search holds no
+    /// lock. A board not placed yet is placed for the question and kept nowhere.
+    #[allow(clippy::type_complexity)]
+    fn walk_grounds(
+        &self,
+        name: &str,
+        shove: bool,
+    ) -> Result<
+        (
+            std::sync::Arc<pcb::Grounds>,
+            pcb::RouterCopper,
+            Option<std::sync::Arc<pcb::ShoveGrounds>>,
+        ),
+        ApiError,
+    > {
+        let (data, found) = {
+            let state = self.fresh();
+            let data = state.snapshot.board_handle(name)?;
+            let found = match state.pcb.get(name) {
+                Some(entry) => {
+                    let grounds = entry.walk_grounds()?;
+                    let router = entry.router_copper(&grounds.board);
+                    let shove = if shove {
+                        Some(entry.shove_grounds()?)
+                    } else {
+                        None
+                    };
+                    Some((grounds, router, shove))
+                }
+                None => None,
+            };
+            (data, found)
+        };
+        if let Some(found) = found {
+            return Ok(found);
+        }
+        let entry = pcb::place_checked(&data, name).map_err(pcb::PlaceError::read)?;
+        let shove = if shove {
+            Some(entry.shove_grounds()?)
+        } else {
+            None
+        };
+        Ok((entry.walk_grounds()?, pcb::RouterCopper::default(), shove))
+    }
+
     fn edit_routes(
         &self,
         edit: &netsmith_editor::api::PcbRoutesEdit,
@@ -1491,31 +1538,24 @@ impl Backend for Workspace {
         &self,
         edit: &netsmith_editor::api::PcbWalk,
     ) -> Result<netsmith_editor::api::PcbWalked, ApiError> {
-        let name = &edit.board;
-        // The board a track is checked against, copied out so that the search holds no lock.
-        let (data, board) = {
-            let state = self.fresh();
-            let data = state.snapshot.board_handle(name)?;
-            let board = state.pcb.get(name).map(|entry| {
-                let board = entry.board_for_walk();
-                let router = entry.router_copper(&board);
-                let shove = edit.shove.then(|| entry.board_for_shove());
-                (board, router, shove)
-            });
-            (data, board)
-        };
-        let (board, router, shove) = match board {
-            Some(all) => all,
-            None => {
-                let entry = pcb::place_checked(&data, name).map_err(pcb::PlaceError::read)?;
-                (
-                    entry.board_for_walk(),
-                    pcb::RouterCopper::default(),
-                    edit.shove.then(|| entry.board_for_shove()),
-                )
-            }
-        };
-        pcb::walk(&board, &router, shove.as_ref(), edit)
+        let (grounds, router, shove) = self.walk_grounds(&edit.board, edit.shove)?;
+        pcb::walk(&grounds, &router, shove.as_deref(), edit)
+    }
+
+    fn pcb_shove(
+        &self,
+        edit: &netsmith_editor::api::PcbShove,
+    ) -> Result<netsmith_editor::api::PcbShoveAnswer, ApiError> {
+        let (grounds, _, shove) = self.walk_grounds(&edit.board, edit.shove)?;
+        pcb::shove_answer(&grounds, shove.as_deref(), edit)
+    }
+
+    fn pcb_reroute(
+        &self,
+        edit: &netsmith_editor::api::PcbWalk,
+    ) -> Result<netsmith_editor::api::PcbRerouted, ApiError> {
+        let (grounds, router, _) = self.walk_grounds(&edit.board, false)?;
+        pcb::reroute(&grounds, &router, edit)
     }
 
     fn pin_lock(&self, edit: &PinLock) -> Result<PinWritten, ApiError> {

@@ -28,7 +28,9 @@
 //! | `POST /api/pcb/regenerate` | one module placed again with every other part held (issue #825): the proposal, the edit that makes it (sent to `edit` as any edit, one step of undo), where its parts go, the nets routed again, and the findings and totals before and after; nothing is written; while it runs the socket carries `progress` with the task `regenerate`; `409` for a stale stamp, `422` with the reason when it is refused |
 //! | `POST /api/pcb/routes` | an edit of the routes file (draw or move a track or via, delete, lock, unlock, put a record back for undo), as `netsmith routes` makes it (the changes may be of several nets: a track drawn with shoved copper), answered with the record of each net it changed before and after; `409` for a stale stamp, `422` with the reason when it is refused |
 //! | `GET /api/pcb/pours?board=` | the fill of the placed board's pours, planes and routes-file zones, by copper layer, as SVG paths (`PcbPours`), for the 2D view to draw under the copper; asked after the scene, since filling takes longer than placing |
-//! | `POST /api/pcb/walk` | the way for a straight track of a net from its last corner to a point, round the copper the routes file's check reads (issue #726): the corners (at most 45 degrees) or why there is none, always `200`, the router's copper the track crosses (`crossed`, not an obstacle: an edit throws it away), and with `shove` the unlocked shapes of the routes file the way moves aside (`shoved`, or `stuck`: why none could); nothing is written |
+//! | `POST /api/pcb/walk` | the way for a straight track of a net from its last corner to a point, round the copper the routes file's check reads (issue #726): the corners (at most 45 degrees) or why there is none, always `200`, the router's copper the track crosses (`crossed`, not an obstacle: an edit throws it away), and with `shove` the unlocked shapes of the routes file the way moves aside (`shoved`, or `stuck`: why none could); a track on several layers sends its runs before the last layer change (`earlier`) and the vias at the changes (issue 1009); nothing is written |
+//! | `POST /api/pcb/shove` | whether a via, or the shapes a drag moves, may go where they are, by name what they are too near (`reason`), and with `shove` the unlocked shapes of the routes file moved aside (issue 1009); always `200`; nothing is written |
+//! | `POST /api/pcb/reroute` | the router's nets a track being drawn (a `PcbWalk`) crosses, routed again round it with everything else fixed, as a preview (issue 1009); nothing is written |
 //! | `GET /api/pcb/3d?board=` | the board as `scene` has it placed, as glTF 2.0 binary (`model/gltf-binary`, ADR 0105), the bytes `netsmith board3d --glb` writes; the layout stamp of that placement in `X-Netsmith-Layout-Stamp` |
 //! | `POST /api/build`, `/api/fab`, `/api/order` and their `/cancel` | the commands of the same names; a cancelled job answers `499` and keeps nothing it was making (ADR 0062) |
 //! | `GET /api/download`, `/api/order/download` | a file `fab` or an order wrote |
@@ -164,6 +166,8 @@ const NEEDS_ANALYSIS: &[&str] = &[
     "/api/pcb/regenerate",
     "/api/pcb/routes",
     "/api/pcb/walk",
+    "/api/pcb/shove",
+    "/api/pcb/reroute",
     "/api/pcb/findings",
     "/api/pcb/summary",
     "/api/pcb/drc",
@@ -364,6 +368,8 @@ fn router(state: Shared) -> Router {
         .route("/api/pcb/regenerate", post(pcb_regenerate))
         .route("/api/pcb/routes", post(pcb_routes))
         .route("/api/pcb/walk", post(pcb_walk))
+        .route("/api/pcb/shove", post(pcb_shove))
+        .route("/api/pcb/reroute", post(pcb_reroute))
         .route("/api/pcb/findings", get(pcb_findings))
         .route("/api/pcb/summary", get(pcb_summary))
         .route("/api/pcb/drc", post(pcb_drc))
@@ -1003,6 +1009,22 @@ async fn pcb_walk(
 ) -> Result<Json<crate::api::PcbWalked>, ApiError> {
     let walk: crate::api::PcbWalk = body(&bytes)?;
     json(move || s.backend.pcb_walk(&walk)).await
+}
+
+async fn pcb_shove(
+    State(s): State<Shared>,
+    bytes: axum::body::Bytes,
+) -> Result<Json<crate::api::PcbShoveAnswer>, ApiError> {
+    let shove: crate::api::PcbShove = body(&bytes)?;
+    json(move || s.backend.pcb_shove(&shove)).await
+}
+
+async fn pcb_reroute(
+    State(s): State<Shared>,
+    bytes: axum::body::Bytes,
+) -> Result<Json<crate::api::PcbRerouted>, ApiError> {
+    let walk: crate::api::PcbWalk = body(&bytes)?;
+    json(move || s.backend.pcb_reroute(&walk)).await
 }
 
 async fn build(State(s): State<Shared>) -> Result<Json<crate::api::BuildReport>, ApiError> {
