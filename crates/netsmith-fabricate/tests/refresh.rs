@@ -627,13 +627,18 @@ fn copy_std(to: &Path) -> Vec<String> {
     names
 }
 
+/// The number of files in the standard catalog directory, so that a new catalog changes no count.
+fn std_file_count() -> usize {
+    fs::read_dir(STD).unwrap().count()
+}
+
 #[test]
 fn the_standard_catalogs_refresh_with_the_saved_responses_and_change_only_checked() {
     let root = dir("std");
     let names = copy_std(&root.join("catalog"));
-    // Eighteen with rows (`p_mosfet` has had one since issue #846) and, with a header only,
+    // Those with rows (`p_mosfet` has had one since issue #846) and, with a header only,
     // `level_translator` (ADR 0063) and `lt8641` (a buck IC with no row of recorded stock).
-    assert_eq!(names.len(), 20, "twenty catalogs");
+    assert_eq!(names.len(), std_file_count());
     let before: Vec<String> = names
         .iter()
         .map(|n| fs::read_to_string(root.join("catalog").join(n)).unwrap())
@@ -708,7 +713,7 @@ fn the_standard_catalogs_refresh_with_the_saved_responses_and_change_only_checke
 #[test]
 fn every_standard_catalog_has_a_checked_column_just_after_date() {
     let targets = resolve_targets(Path::new(STD), &[PathBuf::from(".")]).unwrap();
-    assert_eq!(targets.len(), 20);
+    assert_eq!(targets.len(), std_file_count());
     for t in targets {
         let text = fs::read_to_string(&t.path).unwrap();
         let header = parse_csv(&text).unwrap()[0].1.clone();
@@ -917,10 +922,11 @@ fn with_no_argument_outside_a_project_and_the_repository_there_is_nothing_to_act
     assert!(e.contains("ends in .csv"), "{e}");
     // In the repository, the standard directory is the default.
     let repo = dir("repo");
-    copy_std(&repo.join("data/jlcpcb/catalog"));
+    let names = copy_std(&repo.join("data/jlcpcb/catalog"));
     let targets = resolve_targets(&repo, &[]).unwrap();
-    assert_eq!(targets.len(), 20);
-    assert_eq!(targets[0].shown, "data/jlcpcb/catalog/capacitor.csv");
+    assert_eq!(targets.len(), std_file_count());
+    // The files in the order of their names.
+    assert_eq!(targets[0].shown, format!("data/jlcpcb/catalog/{}", names[0]));
 }
 
 // ---- age -------------------------------------------------------------------------------

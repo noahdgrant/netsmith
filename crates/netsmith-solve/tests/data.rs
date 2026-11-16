@@ -135,6 +135,9 @@ fn columns(name: &str) -> Vec<(String, FieldKind)> {
         "lmr16006y" | "rt8059" | "tps54202" => {
             vec![t("package"), q("efficiency", Dimension::NONE)]
         }
+        // The datasheet-sourced ICs of `std/parts` that are keyed by `.mpn`: the package is the
+        // only column besides the key (issue #849).
+        "sn74lvc1g04" | "attiny13a" => vec![t("package")],
         other => panic!("no columns for {other}"),
     }
 }
@@ -179,7 +182,7 @@ fn tolerance(value: f64, unit: &str, percent: f64) -> Quantity {
     Quantity::tolerance(&quantity(value, unit), &quantity(percent, "%"), true).unwrap()
 }
 
-const CATALOGS: [&str; 18] = [
+const CATALOGS: [&str; 20] = [
     "resistor",
     "capacitor",
     "led",
@@ -198,6 +201,8 @@ const CATALOGS: [&str; 18] = [
     "lmr16006y",
     "rt8059",
     "tps54202",
+    "sn74lvc1g04",
+    "attiny13a",
 ];
 
 #[test]

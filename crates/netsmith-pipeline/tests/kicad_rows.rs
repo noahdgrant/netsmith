@@ -10,12 +10,13 @@ use netsmith_kicad::{PartPin, PinKind, Pinout};
 use netsmith_pcb::{Subject, validate_pinout};
 
 /// The module of the standard library that defines `kind`.
-const MODULES: [&str; 7] = [
+const MODULES: [&str; 8] = [
     "std::parts::passive",
     "std::parts::diode",
     "std::parts::transistor",
     "std::parts::regulator",
     "std::parts::logic",
+    "std::parts::mcu",
     "std::parts::connector",
     "std::parts::mechanical",
 ];
@@ -361,7 +362,7 @@ fn every_ic_row_of_the_standard_mapping_names_no_symbol_and_is_drawn_from_its_pi
         assert_eq!(drawn, table, "{}/{}", row.kind, row.package);
         checked.push(row.kind.as_str());
     }
-    for kind in ["Lt8641", "LevelTranslator", "Sn74lvc1g04"] {
+    for kind in ["Lt8641", "LevelTranslator", "Sn74lvc1g04", "Attiny13a"] {
         assert!(checked.contains(&kind), "{kind} still names a symbol");
     }
 }
