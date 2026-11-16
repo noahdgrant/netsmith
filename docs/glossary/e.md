@@ -23,3 +23,7 @@ _Avoid_: Conditions, operating conditions, grade (a grade is a qualification and
 **Escape lane**:
 The way out the router keeps in front of a pad of a fine-pitch part: the cells straight out from the pad's edge, away from the part, on its layer, 1.5 mm long. Other nets' tracks pay to use it and any via that would close it pays more, except the pad's own via at its end; the two nets of a diff pair share their lanes. A cost and not a wall, used from the router's second try of a board (`Lanes` in `netsmith_router::route`, issue #431).
 _Avoid_: Fan-out (a fixed track and via for each pad, which the router does not draw), reservation, keepout (a wall)
+
+**Escape ring**:
+The keepout the placer keeps round a fine-pitch part (the router's test for an _Escape lane_): the box round its surface-mount pads grown by 1.5 mm, the length of a lane, which no other part's courtyard on its face may reach into, except a capacitor that decouples the part. A hard rule of the placer, like a keepout a part carries, and not of the placement check (`fine_pitch` and `RING` in `netsmith_placer::anneal`, issue #830).
+_Avoid_: Escape space (the soft space the placer asks round a part for each of its pads), courtyard (the footprint's own)

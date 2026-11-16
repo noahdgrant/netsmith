@@ -149,11 +149,14 @@ impl<'a> Engine<'a> {
     }
 
     /// What two parts cost together: courtyards, reference text and silkscreen, and the
-    /// keepouts either carries against the other.
+    /// keepouts and the escape ring either carries against the other.
     pub(super) fn pair(&self, i: usize, j: usize) -> Cost {
         // A keepout a part carries reaches past the part: it is not in the part's reach.
         let mut c = self.carried_cost(i, j);
         c += self.carried_cost(j, i);
+        // So is the escape ring of a fine-pitch part.
+        c += self.ring_cost(i, j);
+        c += self.ring_cost(j, i);
         c += self.pair_of_parts(i, j);
         c
     }

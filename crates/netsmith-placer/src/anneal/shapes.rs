@@ -91,6 +91,15 @@ pub(super) fn shape_of(
         .map(|p| part.pad_bounds(p).expanded(rules.clearance))
         .collect();
     copper.extend(part.mask_openings());
+    let ring = fine_pitch(part).then(|| {
+        part.footprint
+            .pads
+            .iter()
+            .filter(|p| p.drill.is_none())
+            .map(|p| part.pad_bounds(p))
+            .reduce(|a, b| a.union(&b))
+            .map(|span| span.expanded(RING))
+    });
     part.at = at;
     part.rotation = rotation;
     part.reference_side = side;
@@ -109,8 +118,67 @@ pub(super) fn shape_of(
         pad_boxes,
         pad_inset,
         rooms,
+        ring: ring.flatten(),
         reach: reach.expanded(reach_pad),
     }
+}
+
+/// Whether a part is fine-pitch and gets an escape ring: the router's test for escape lanes
+/// (`fine_pitch` in `netsmith_router::route`), on every surface-mount pad and not only the
+/// pads on a net. At least 16 surface-mount pads, two of them 0.55 mm apart or nearer (pads at
+/// one centre, the pieces of an exposed pad, are not counted apart), facing at least three
+/// sides of the box round them: a QFN or a QFP, not a connector's single row.
+pub(crate) fn fine_pitch(part: &Placed) -> bool {
+    let pads: Vec<&netsmith_pcb::Pad> = part
+        .footprint
+        .pads
+        .iter()
+        .filter(|p| p.drill.is_none())
+        .collect();
+    if pads.len() < 16 {
+        return false;
+    }
+    let near = pads.iter().enumerate().any(|(a, p)| {
+        pads.iter().skip(a + 1).any(|q| {
+            let d = part.pad_centre(p).distance(part.pad_centre(q));
+            d > 1e-6 && d <= 0.55 + 1e-9
+        })
+    });
+    if !near {
+        return false;
+    }
+    let Some(span) = pads
+        .iter()
+        .map(|p| part.pad_bounds(p))
+        .reduce(|a, b| a.union(&b))
+    else {
+        return false;
+    };
+    // The side of the box each pad is on, as the router finds it: of two, the one that points
+    // away from the part's origin; a pad on none (an exposed pad) faces no side.
+    let mut faces: Vec<(i8, i8)> = Vec::new();
+    for pad in &pads {
+        let b = part.pad_bounds(pad);
+        let c = b.centre();
+        let sides = [
+            ((-1i8, 0i8), b.min.x - span.min.x),
+            ((1, 0), span.max.x - b.max.x),
+            ((0, -1), b.min.y - span.min.y),
+            ((0, 1), span.max.y - b.max.y),
+        ];
+        let away = |(dx, dy): (i8, i8)| {
+            f64::from(dx) * (c.x - part.at.x) + f64::from(dy) * (c.y - part.at.y)
+        };
+        if let Some(&(face, _)) = sides
+            .iter()
+            .filter(|(_, gap)| *gap <= 1e-6)
+            .max_by(|a, b| away(a.0).total_cmp(&away(b.0)))
+            && !faces.contains(&face)
+        {
+            faces.push(face);
+        }
+    }
+    faces.len() >= 3
 }
 
 /// The box of a keepout in a part's own frame, relative to the part's origin, with the part

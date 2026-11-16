@@ -75,8 +75,9 @@ impl<'a> Engine<'a> {
         ended
     }
 
-    /// The parts that stand in a keepout another part carries, added to the parts that are
-    /// outside, each with the keepout, its carrier and where it is.
+    /// The parts that stand in a keepout another part carries, or in the escape ring of a
+    /// fine-pitch part, added to the parts that are outside, each with the keepout, its
+    /// carrier and where it is.
     // The indices name the models, the designators and the names shown together.
     #[allow(clippy::needless_range_loop)]
     pub(super) fn name_carried(&self, names: &[String], shown: &[String], ended: &mut Ended) {
@@ -85,16 +86,30 @@ impl<'a> Engine<'a> {
                 if self.models[c].fixed && self.models[j].fixed {
                     continue;
                 }
-                for (zone, rect, depth) in self.carried_depths(c, j, 0.0) {
+                let ring = self
+                    .ring_depth(c, j, 0.0)
+                    .map(|(rect, depth)| (None, rect, depth));
+                let carried = self
+                    .carried_depths(c, j, 0.0)
+                    .into_iter()
+                    .map(|(zone, rect, depth)| (Some(zone), rect, depth));
+                for (zone, rect, depth) in carried.chain(ring) {
                     if depth <= 1e-6 {
                         continue;
                     }
                     let region = &self.p.region;
                     let at = rect.centre();
+                    let what = match zone {
+                        Some(zone) => format!("the keepout `{zone}` that {} carries", shown[c]),
+                        None => format!(
+                            "the escape ring of {} (its pads' box grown by {} mm)",
+                            shown[c],
+                            short_mm(RING)
+                        ),
+                    };
                     let why = format!(
-                        "{} mm into the keepout `{zone}` that {} carries, at ({:.1}, {:.1})",
+                        "{} mm into {what}, at ({:.1}, {:.1})",
                         short_mm(depth),
-                        shown[c],
                         at.x - region.min.x,
                         at.y - region.min.y
                     );

@@ -152,7 +152,21 @@
 //! escape space stays soft: a hard minimum would refuse boards that place today); 300 and 0.03
 //! mm a pad (both tuned on two invented boards over 12 seeds, where seed to seed varies by two
 //! to three lines); and the room round a part with more than 66 pads, which is still the plain
-//! gap plus its escape space at the plain weight (the "escape rings" are not built; issue #58).
+//! gap plus its escape space at the plain weight.
+//!
+//! **Escape rings** (issue #830). A fine-pitch part (the router's test for escape lanes:
+//! at least 16 surface-mount pads, two of them 0.55 mm apart or nearer, on at least three sides
+//! of the box round them; [`fine_pitch`]) carries a keepout: the box round its surface-mount
+//! pads grown by [`RING`], 1.5 mm, the length of the router's escape lanes. No other part's room
+//! on the part's face (its courtyard, or a part with a hole's room there) may reach into it, a
+//! hard rule as for a keepout a part carries, so a board with no other place for a part does not
+//! place and names the ring. A capacitor that decouples the part (a decoupling pair) is exempt,
+//! as it is from the escape space: its place is by the pins it decouples. The ring is the
+//! placer's and not the placement check's (`Board::check_placement` measures none): two parts
+//! that both stay where they are, as a layout file puts them, are not measured against it. Beside a busy part the escape space already asks for
+//! about as much at a soft weight; the ring makes it a wall where a pull of nets or a small
+//! board would win against the soft weight, and holds for a fine-pitch part of more than 66
+//! pads, which keeps the plain weight.
 //!
 //! **Measured** on the two synthetic boards of `crates/netsmith-router/tests/synthetic.rs` (the
 //! only boards in this repository, so anyone can re-measure; `cargo test --release -p
@@ -253,6 +267,10 @@ const MAX_ESCAPE: f64 = 2.5;
 /// weight, as measured on the invented tight board (ADR 0031).
 const BUSY_ESCAPE: f64 = 16.0 * ESCAPE_PER_PAD;
 const BUSY_MOST: f64 = 2.0;
+/// How far the escape ring of a fine-pitch part reaches past its pads, in mm: the length of
+/// the router's escape lanes (`LANE_LENGTH` in `netsmith_router::route`), so that no other
+/// part stands on a lane.
+const RING: f64 = 1.5;
 /// What each mm short of the escape space between two parts costs, at the most (for two
 /// parts of [`MAX_ESCAPE`] each), on top of [`W_GAP`]: much more than a plain gap, because the
 /// pads of two parts that face each other have to leave through the space between them, and
@@ -513,6 +531,10 @@ struct Shape {
     /// Every pad's box, copper or not, grown by the clearance: what a part with a hole takes
     /// on the face its footprint draws no courtyard for (`Placed::room_on`).
     rooms: Vec<Rect>,
+    /// The escape ring of a fine-pitch part ([`fine_pitch`]), relative to the origin: the box
+    /// round its surface-mount pads grown by [`RING`], which no other part's room may reach
+    /// into; `None` for any other part.
+    ring: Option<Rect>,
     /// Everything of the part that other parts must keep clear of, grown by half the
     /// widest space asked for: two parts whose reaches do not overlap do not interact.
     reach: Rect,

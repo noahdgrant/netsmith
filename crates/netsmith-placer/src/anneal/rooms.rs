@@ -50,6 +50,38 @@ impl<'a> Engine<'a> {
         cost
     }
 
+    /// How far part `j`'s room on the face of fine-pitch part `c` reaches into `c`'s escape
+    /// ring, or nearer than `gap` to it, and the ring where it is. Nothing for the part
+    /// itself, for a part with no ring, for a capacitor that decouples it (whose place is by
+    /// its pins), or for a part on the other face with no hole.
+    pub(super) fn ring_depth(&self, c: usize, j: usize, gap: f64) -> Option<(Rect, f64)> {
+        if c == j || self.near_ok[c * self.models.len() + j] {
+            return None;
+        }
+        let ring = self.shape(c).ring?.translated(self.pos(c));
+        let depth = self
+            .rooms_on(j, self.models[c].side)
+            .iter()
+            .map(|(room, _)| penetration(room, &ring, gap))
+            .fold(0.0f64, f64::max);
+        (depth > 0.0).then_some((ring, depth))
+    }
+
+    /// What the escape ring of part `c` costs part `j`: soft near it, hard in it, as a
+    /// keepout does.
+    pub(super) fn ring_cost(&self, c: usize, j: usize) -> Cost {
+        let mut cost = Cost::default();
+        if let Some((_, depth)) = self.ring_depth(c, j, KEEPOUT_GAP) {
+            cost.soft += W_GAP * depth;
+        }
+        if let Some((_, depth)) = self.ring_depth(c, j, 0.0)
+            && depth > 1e-6
+        {
+            cost.hard += W_HARD * (depth + 0.05);
+        }
+        cost
+    }
+
     /// The boxes part `i` takes on `face`, as `Placed::room_on` finds them, and whether they
     /// are its pads.
     pub(super) fn rooms_on(&self, i: usize, face: Side) -> Vec<(Rect, bool)> {

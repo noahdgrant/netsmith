@@ -187,6 +187,8 @@ A board netsmith routes gets a teardrop where each track meets a pad or a via (i
 
 When the router's first try leaves connections on a board with a fine-pitch part (at least 16 surface-mount pads, two of them 0.55 mm apart or nearer, on at least three sides, such as a QFN or a QFP), its second try routes the lines in the same order again with an escape lane in front of each of the part's pads (issue #431): the 1.5 mm straight out from the pad, on its layer, which other nets' tracks pay a little to use and where any via pays a lot, except the pad's own via at the lane's end. A lane is a cost and not a wall, so a line with no other way still crosses one. It keeps the part's lines from closing each other's way out with vias against its pins. A board that routes on its first try is routed as before, and a board with such a part may have one try more.
 
+The placer keeps the lanes free of parts (issue #830): a fine-pitch part carries an escape ring, the box round its surface-mount pads grown by the 1.5 mm of a lane, and no other part's courtyard on its face may reach into it. It is a keepout the placer keeps as it keeps the keepouts a part carries, so a board with no other place for a part does not place, and its message names the part that is in the ring, how far, and the fine-pitch part whose ring it is. A capacitor that decouples the part may stand in it, near the pins it decouples. The ring is the placer's: a part placed by hand in it (a layout file's place for both parts) is not refused, and `fab`'s check measures no ring.
+
 ### How the router orders the nets
 
 Every connection the router draws has a class, derived from the board with nothing written in the source (issue #416). In the order the router routes them:

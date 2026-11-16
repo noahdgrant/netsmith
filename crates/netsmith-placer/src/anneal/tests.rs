@@ -677,3 +677,190 @@ fn the_box_round_the_two_shapes_leaves_no_room_for_those_parts() {
     let mut board = module_with_four_small_parts(false);
     assert!(!run_with_module_fixed(&mut board));
 }
+
+/// A QFN of eight pads on each side at `pitch`, pads 0.875 x 0.25 mm, on a body of 5 mm at
+/// 0.5 mm (larger at a larger pitch, so that the rows do not meet at the corners), with an
+/// exposed pad of 3.1 mm; its courtyard 0.25 mm past the ends of the pads.
+fn qfn(pitch: f64) -> netsmith_pcb::Footprint {
+    let (length, width) = (0.875, 0.25);
+    let centre = 4.0 * pitch + 0.4375;
+    let mut text = String::from("(footprint \"QFN\" (attr smd) ");
+    for side in 0..4 {
+        for k in 0..8 {
+            let along = (f64::from(k) - 3.5) * pitch;
+            let (x, y, w, h) = match side {
+                0 => (-centre, along, length, width),
+                1 => (along, centre, width, length),
+                2 => (centre, -along, length, width),
+                _ => (-along, -centre, width, length),
+            };
+            text += &format!(
+                "(pad \"{}\" smd rect (at {x} {y}) (size {w} {h}) (layers \"F.Cu\" \"F.Mask\")) ",
+                side * 8 + k + 1
+            );
+        }
+    }
+    let court = centre + length / 2.0 + 0.25;
+    text += &format!(
+        "(pad \"33\" smd rect (at 0 0) (size 3.1 3.1) (layers \"F.Cu\" \"F.Mask\")) \
+         (fp_rect (start {n} {n}) (end {court} {court}) (layer \"F.CrtYd\")))",
+        n = -court
+    );
+    netsmith_pcb::Footprint::parse("T:QFN", &text).unwrap()
+}
+
+/// The box round a part's surface-mount pads on the board, grown by the escape ring's width.
+fn ring_of(part: &Placed) -> Rect {
+    part.footprint
+        .pads
+        .iter()
+        .filter(|p| p.drill.is_none())
+        .map(|p| part.pad_bounds(p))
+        .reduce(|a, b| a.union(&b))
+        .unwrap()
+        .expanded(RING)
+}
+
+#[test]
+fn a_qfn_at_half_a_millimetre_is_fine_pitch_and_one_at_0_65_mm_or_a_resistor_is_not() {
+    let mut board = resistors(&["", ""]);
+    assert!(!fine_pitch(&board.parts[1]));
+    board.parts[0].footprint = qfn(0.5);
+    assert!(fine_pitch(&board.parts[0]));
+    board.parts[0].footprint = qfn(0.65);
+    assert!(!fine_pitch(&board.parts[0]));
+}
+
+/// A board of a QFN at 0.5 mm in the middle of a square of `side` mm and `others` resistors,
+/// and a problem that keeps the QFN where it is.
+fn qfn_board(side: f64, others: usize) -> Board {
+    let names = vec![""; others + 1];
+    let mut board = resistors(&names);
+    board.outline = Rect::new(Pt::new(0.0, 0.0), Pt::new(side, side));
+    board.parts[0].footprint = qfn(0.5);
+    board.parts[0].at = Pt::new(side / 2.0, side / 2.0);
+    board
+}
+
+fn run_with_the_qfn_fixed(board: &mut Board, seed: u64) -> Outcome {
+    let mut fixed = vec![false; board.parts.len()];
+    fixed[0] = true;
+    let problem = Problem {
+        nets: &board.nets.clone(),
+        rules: &board.rules.clone(),
+        planes: &[],
+        region: board.outline,
+        corner_radius: 0.0,
+        fixed: &fixed,
+        keepouts: &[],
+        zones: &[],
+        carried: &[],
+        face_keepouts: &[],
+        cutouts: &[],
+        open_outside: &[],
+        pours: false,
+        seed,
+        wants: &[],
+        offsets: &[],
+        overhangs: &[],
+        outline: board.outline,
+    };
+    anneal(&mut board.parts, &problem, 1.0)
+}
+
+#[test]
+fn a_part_in_the_escape_ring_of_a_fine_pitch_part_is_a_hard_cost_but_its_decoupling_capacitor_is_not()
+ {
+    let mut board = qfn_board(30.0, 1);
+    let fixed = [true, false];
+    let problem = Problem {
+        nets: &board.nets.clone(),
+        rules: &board.rules.clone(),
+        planes: &[],
+        region: board.outline,
+        corner_radius: 0.0,
+        fixed: &fixed,
+        keepouts: &[],
+        zones: &[],
+        carried: &[],
+        face_keepouts: &[],
+        cutouts: &[],
+        open_outside: &[],
+        pours: false,
+        seed: 0,
+        wants: &[],
+        offsets: &[],
+        overhangs: &[],
+        outline: board.outline,
+    };
+    let ring = ring_of(&board.parts[0]);
+    let court = board.parts[0].courtyard();
+    let mut e = Engine::new(&mut board.parts, &problem);
+    // The resistor's courtyard is 1.65 mm from its origin along x: stood with its left end
+    // 0.5 mm past the QFN's courtyard it is in the ring, and 0.5 mm past the ring it is not.
+    let reach = e.court(1).max.x - e.pos(1).x;
+    let y = (e.pos(0).y / UNIT).round() as i64;
+    let at = |x: f64| Pose {
+        x: (x / UNIT).round() as i64,
+        y,
+        turn: 0,
+        text: 0,
+    };
+    e.put(1, at(court.max.x + 0.5 + reach));
+    assert!(e.ring_cost(0, 1).hard > 0.0);
+    assert_eq!(e.ring_cost(1, 0).hard, 0.0, "a resistor has no ring");
+    // As a capacitor that decouples the QFN it may stand there.
+    e.near_ok[1] = true;
+    e.near_ok[2] = true;
+    assert_eq!(e.ring_cost(0, 1).total(), 0.0);
+    e.near_ok[1] = false;
+    e.near_ok[2] = false;
+    // On the other face it is no part of the QFN's face.
+    e.models[1].side = Side::Back;
+    assert_eq!(e.ring_cost(0, 1).total(), 0.0);
+    e.models[1].side = Side::Front;
+    e.put(1, at(ring.max.x + 0.5 + reach));
+    assert_eq!(e.ring_cost(0, 1).total(), 0.0);
+}
+
+#[test]
+fn the_placer_leaves_the_escape_ring_of_a_fine_pitch_part_free_of_other_parts() {
+    // Eight resistors round a QFN on a 20 mm board, over four seeds: no resistor's courtyard
+    // reaches into the ring.
+    for seed in 0..4 {
+        let mut board = qfn_board(20.0, 8);
+        let outcome = run_with_the_qfn_fixed(&mut board, seed);
+        assert!(outcome.feasible, "seed {seed}: {:?}", outcome.ended);
+        let ring = ring_of(&board.parts[0]);
+        let inside = board.parts[1..]
+            .iter()
+            .filter(|p| penetration(&p.courtyard(), &ring, 0.0) > 1e-6)
+            .count();
+        assert_eq!(inside, 0, "seed {seed}");
+        assert_eq!(board.check_placement(), vec![]);
+    }
+}
+
+#[test]
+fn a_board_with_room_for_a_part_only_in_the_escape_ring_does_not_place_and_says_why() {
+    // Beside the ring there is less room to the edge wall than a resistor's narrow side; beside
+    // the courtyard there is more, so it is the ring alone that leaves the resistor no place.
+    let board = qfn_board(30.0, 1);
+    let (ring, court) = (ring_of(&board.parts[0]), board.parts[0].courtyard());
+    let resistor = board.parts[1].courtyard();
+    let narrow = resistor.width().min(resistor.height());
+    let wall = board.rules.edge_wall();
+    // The square whose strip beside the ring is half the resistor's narrow side.
+    let side = ring.width() + 2.0 * (wall + narrow / 2.0);
+    assert!((side - court.width()) / 2.0 - wall > narrow + 0.5);
+    let mut board = qfn_board(side, 1);
+    let outcome = run_with_the_qfn_fixed(&mut board, 0);
+    assert!(!outcome.feasible);
+    let why: Vec<&String> = outcome
+        .ended
+        .outside_parts
+        .iter()
+        .flat_map(|o| &o.why)
+        .collect();
+    assert!(why.iter().any(|w| w.contains("escape ring of")), "{why:?}");
+}
