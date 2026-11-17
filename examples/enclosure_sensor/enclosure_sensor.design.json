@@ -1508,24 +1508,8 @@
             "pin": "1"
           },
           {
-            "refdes": "C3",
-            "pin": "1"
-          },
-          {
-            "refdes": "C4",
-            "pin": "1"
-          },
-          {
-            "refdes": "J2",
+            "refdes": "U1",
             "pin": "2"
-          },
-          {
-            "refdes": "J3",
-            "pin": "1"
-          },
-          {
-            "refdes": "J4",
-            "pin": "1"
           },
           {
             "refdes": "R1",
@@ -1540,6 +1524,18 @@
             "pin": "1"
           },
           {
+            "refdes": "U2",
+            "pin": "8"
+          },
+          {
+            "refdes": "C3",
+            "pin": "1"
+          },
+          {
+            "refdes": "J2",
+            "pin": "2"
+          },
+          {
             "refdes": "R4",
             "pin": "1"
           },
@@ -1548,16 +1544,20 @@
             "pin": "1"
           },
           {
-            "refdes": "R8",
+            "refdes": "C4",
             "pin": "1"
           },
           {
-            "refdes": "U1",
-            "pin": "2"
+            "refdes": "J3",
+            "pin": "1"
           },
           {
-            "refdes": "U2",
-            "pin": "8"
+            "refdes": "J4",
+            "pin": "1"
+          },
+          {
+            "refdes": "R8",
+            "pin": "1"
           }
         ]
       },
@@ -1569,6 +1569,10 @@
             "pin": "2"
           },
           {
+            "refdes": "J1",
+            "pin": "2"
+          },
+          {
             "refdes": "C1",
             "pin": "2"
           },
@@ -1577,12 +1581,8 @@
             "pin": "2"
           },
           {
-            "refdes": "C3",
-            "pin": "2"
-          },
-          {
-            "refdes": "C4",
-            "pin": "2"
+            "refdes": "U1",
+            "pin": "1"
           },
           {
             "refdes": "D1",
@@ -1594,46 +1594,6 @@
           },
           {
             "refdes": "D3",
-            "pin": "1"
-          },
-          {
-            "refdes": "J1",
-            "pin": "2"
-          },
-          {
-            "refdes": "J2",
-            "pin": "1"
-          },
-          {
-            "refdes": "J3",
-            "pin": "2"
-          },
-          {
-            "refdes": "J4",
-            "pin": "2"
-          },
-          {
-            "refdes": "J5",
-            "pin": "A12"
-          },
-          {
-            "refdes": "J5",
-            "pin": "B12"
-          },
-          {
-            "refdes": "R6",
-            "pin": "2"
-          },
-          {
-            "refdes": "R7",
-            "pin": "2"
-          },
-          {
-            "refdes": "SW1",
-            "pin": "2"
-          },
-          {
-            "refdes": "U1",
             "pin": "1"
           },
           {
@@ -1651,6 +1611,46 @@
           {
             "refdes": "U2",
             "pin": "4"
+          },
+          {
+            "refdes": "C3",
+            "pin": "2"
+          },
+          {
+            "refdes": "J2",
+            "pin": "1"
+          },
+          {
+            "refdes": "C4",
+            "pin": "2"
+          },
+          {
+            "refdes": "J3",
+            "pin": "2"
+          },
+          {
+            "refdes": "J4",
+            "pin": "2"
+          },
+          {
+            "refdes": "R6",
+            "pin": "2"
+          },
+          {
+            "refdes": "R7",
+            "pin": "2"
+          },
+          {
+            "refdes": "J5",
+            "pin": "A12"
+          },
+          {
+            "refdes": "J5",
+            "pin": "B12"
+          },
+          {
+            "refdes": "SW1",
+            "pin": "2"
           }
         ]
       },
@@ -1662,16 +1662,16 @@
             "pin": "1"
           },
           {
+            "refdes": "U1",
+            "pin": "3"
+          },
+          {
             "refdes": "J5",
             "pin": "A9"
           },
           {
             "refdes": "J5",
             "pin": "B9"
-          },
-          {
-            "refdes": "U1",
-            "pin": "3"
           }
         ]
       },
@@ -1731,16 +1731,16 @@
         "name": "net-mcu.i2c.scl",
         "pins": [
           {
+            "refdes": "U2",
+            "pin": "6"
+          },
+          {
             "refdes": "J2",
             "pin": "4"
           },
           {
             "refdes": "R4",
             "pin": "2"
-          },
-          {
-            "refdes": "U2",
-            "pin": "6"
           }
         ]
       },
@@ -1748,16 +1748,16 @@
         "name": "net-mcu.i2c.sda",
         "pins": [
           {
+            "refdes": "U2",
+            "pin": "5"
+          },
+          {
             "refdes": "J2",
             "pin": "3"
           },
           {
             "refdes": "R5",
             "pin": "2"
-          },
-          {
-            "refdes": "U2",
-            "pin": "5"
           }
         ]
       },
@@ -1765,16 +1765,16 @@
         "name": "net-mcu.wp",
         "pins": [
           {
+            "refdes": "U2",
+            "pin": "7"
+          },
+          {
             "refdes": "R8",
             "pin": "2"
           },
           {
             "refdes": "SW1",
             "pin": "1"
-          },
-          {
-            "refdes": "U2",
-            "pin": "7"
           }
         ]
       },
@@ -1782,12 +1782,12 @@
         "name": "net-pads.tp1.p1",
         "pins": [
           {
-            "refdes": "J2",
-            "pin": "5"
-          },
-          {
             "refdes": "TP1",
             "pin": "1"
+          },
+          {
+            "refdes": "J2",
+            "pin": "5"
           }
         ]
       },
@@ -1795,12 +1795,12 @@
         "name": "net-pads.tp10.p1",
         "pins": [
           {
-            "refdes": "J2",
-            "pin": "14"
-          },
-          {
             "refdes": "TP10",
             "pin": "1"
+          },
+          {
+            "refdes": "J2",
+            "pin": "14"
           }
         ]
       },
@@ -1808,12 +1808,12 @@
         "name": "net-pads.tp11.p1",
         "pins": [
           {
-            "refdes": "J2",
-            "pin": "15"
-          },
-          {
             "refdes": "TP11",
             "pin": "1"
+          },
+          {
+            "refdes": "J2",
+            "pin": "15"
           }
         ]
       },
@@ -1821,12 +1821,12 @@
         "name": "net-pads.tp12.p1",
         "pins": [
           {
-            "refdes": "J2",
-            "pin": "16"
-          },
-          {
             "refdes": "TP12",
             "pin": "1"
+          },
+          {
+            "refdes": "J2",
+            "pin": "16"
           }
         ]
       },
@@ -1834,12 +1834,12 @@
         "name": "net-pads.tp2.p1",
         "pins": [
           {
-            "refdes": "J2",
-            "pin": "6"
-          },
-          {
             "refdes": "TP2",
             "pin": "1"
+          },
+          {
+            "refdes": "J2",
+            "pin": "6"
           }
         ]
       },
@@ -1847,12 +1847,12 @@
         "name": "net-pads.tp3.p1",
         "pins": [
           {
-            "refdes": "J2",
-            "pin": "7"
-          },
-          {
             "refdes": "TP3",
             "pin": "1"
+          },
+          {
+            "refdes": "J2",
+            "pin": "7"
           }
         ]
       },
@@ -1860,12 +1860,12 @@
         "name": "net-pads.tp4.p1",
         "pins": [
           {
-            "refdes": "J2",
-            "pin": "8"
-          },
-          {
             "refdes": "TP4",
             "pin": "1"
+          },
+          {
+            "refdes": "J2",
+            "pin": "8"
           }
         ]
       },
@@ -1873,12 +1873,12 @@
         "name": "net-pads.tp5.p1",
         "pins": [
           {
-            "refdes": "J2",
-            "pin": "9"
-          },
-          {
             "refdes": "TP5",
             "pin": "1"
+          },
+          {
+            "refdes": "J2",
+            "pin": "9"
           }
         ]
       },
@@ -1886,12 +1886,12 @@
         "name": "net-pads.tp6.p1",
         "pins": [
           {
-            "refdes": "J2",
-            "pin": "10"
-          },
-          {
             "refdes": "TP6",
             "pin": "1"
+          },
+          {
+            "refdes": "J2",
+            "pin": "10"
           }
         ]
       },
@@ -1899,12 +1899,12 @@
         "name": "net-pads.tp7.p1",
         "pins": [
           {
-            "refdes": "J2",
-            "pin": "11"
-          },
-          {
             "refdes": "TP7",
             "pin": "1"
+          },
+          {
+            "refdes": "J2",
+            "pin": "11"
           }
         ]
       },
@@ -1912,12 +1912,12 @@
         "name": "net-pads.tp8.p1",
         "pins": [
           {
-            "refdes": "J2",
-            "pin": "12"
-          },
-          {
             "refdes": "TP8",
             "pin": "1"
+          },
+          {
+            "refdes": "J2",
+            "pin": "12"
           }
         ]
       },
@@ -1925,12 +1925,12 @@
         "name": "net-pads.tp9.p1",
         "pins": [
           {
-            "refdes": "J2",
-            "pin": "13"
-          },
-          {
             "refdes": "TP9",
             "pin": "1"
+          },
+          {
+            "refdes": "J2",
+            "pin": "13"
           }
         ]
       },
@@ -1938,12 +1938,12 @@
         "name": "net-rd1.a",
         "pins": [
           {
-            "refdes": "J5",
-            "pin": "A5"
-          },
-          {
             "refdes": "R6",
             "pin": "1"
+          },
+          {
+            "refdes": "J5",
+            "pin": "A5"
           }
         ]
       },
@@ -1951,12 +1951,12 @@
         "name": "net-rd2.a",
         "pins": [
           {
-            "refdes": "J5",
-            "pin": "B5"
-          },
-          {
             "refdes": "R7",
             "pin": "1"
+          },
+          {
+            "refdes": "J5",
+            "pin": "B5"
           }
         ]
       }

@@ -10,6 +10,9 @@ version = 1
 # inside the RP2350's exposed pad as part of the pad (#731), seeds 0 and 4 route completely
 # (220 s and 176 s, a debug build on a busy machine); seeds 1, 2 and 3 leave three, two and one
 # connection after 300 s. Seed 3, the seed of the earlier footprints, is the one that moved.
+# Since each net's pins are in the order of their parts' paths (#1048) every seed is another
+# arrangement; seeds 4 and 3 still route completely in 300 s (161 s with 178 vias, and 56 s
+# with 152, a debug build on a busy machine), so the seed stays 4.
 # No part is locked: the file records no position.
 [Rp2350Minimal]
 seed = 4

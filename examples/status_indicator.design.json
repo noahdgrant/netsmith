@@ -167,20 +167,20 @@
         "name": "GND",
         "pins": [
           {
-            "refdes": "C1",
-            "pin": "2"
-          },
-          {
-            "refdes": "D1",
-            "pin": "1"
-          },
-          {
             "refdes": "J1",
             "pin": "2"
           },
           {
             "refdes": "J2",
             "pin": "2"
+          },
+          {
+            "refdes": "C1",
+            "pin": "2"
+          },
+          {
+            "refdes": "D1",
+            "pin": "1"
           }
         ]
       },
@@ -201,11 +201,11 @@
         "name": "net-power_in.p1",
         "pins": [
           {
-            "refdes": "C1",
+            "refdes": "J2",
             "pin": "1"
           },
           {
-            "refdes": "J2",
+            "refdes": "C1",
             "pin": "1"
           }
         ]
@@ -214,11 +214,11 @@
         "name": "net-status_indicator.current_limit.b",
         "pins": [
           {
-            "refdes": "D1",
+            "refdes": "R1",
             "pin": "2"
           },
           {
-            "refdes": "R1",
+            "refdes": "D1",
             "pin": "2"
           }
         ]

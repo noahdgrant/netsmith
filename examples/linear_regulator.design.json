@@ -177,11 +177,11 @@
         "name": "3V3",
         "pins": [
           {
-            "refdes": "C2",
+            "refdes": "J2",
             "pin": "1"
           },
           {
-            "refdes": "J2",
+            "refdes": "C2",
             "pin": "1"
           },
           {
@@ -194,19 +194,19 @@
         "name": "GND",
         "pins": [
           {
-            "refdes": "C1",
-            "pin": "2"
-          },
-          {
-            "refdes": "C2",
-            "pin": "2"
-          },
-          {
             "refdes": "J1",
             "pin": "2"
           },
           {
             "refdes": "J2",
+            "pin": "2"
+          },
+          {
+            "refdes": "C1",
+            "pin": "2"
+          },
+          {
+            "refdes": "C2",
             "pin": "2"
           },
           {
@@ -219,11 +219,11 @@
         "name": "VIN",
         "pins": [
           {
-            "refdes": "C1",
+            "refdes": "J1",
             "pin": "1"
           },
           {
-            "refdes": "J1",
+            "refdes": "C1",
             "pin": "1"
           },
           {

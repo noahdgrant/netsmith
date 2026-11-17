@@ -140,7 +140,8 @@ fn the_status_indicator_numbers_each_kind_separately() {
         ]
     );
 
-    // Four nets: the rail, ground, the enable signal, and the node between R1 and D1.
+    // Four nets: the rail, ground, the enable signal, and the node between R1 and D1, each with
+    // its pins in the order of their parts' paths (issue #1048).
     assert_eq!(d.nets.len(), 4);
     let has = |pins: &[&str]| {
         d.nets.iter().any(|n| {
@@ -151,10 +152,10 @@ fn the_status_indicator_numbers_each_kind_separately() {
                 == pins
         })
     };
-    assert!(has(&["C1.1", "J2.1"]), "the positive rail");
-    assert!(has(&["C1.2", "D1.1", "J1.2", "J2.2"]), "ground");
+    assert!(has(&["J2.1", "C1.1"]), "the positive rail");
+    assert!(has(&["J1.2", "J2.2", "C1.2", "D1.1"]), "ground");
     assert!(has(&["J1.1", "R1.1"]), "the enable signal");
-    assert!(has(&["D1.2", "R1.2"]), "between the resistor and the LED");
+    assert!(has(&["R1.2", "D1.2"]), "between the resistor and the LED");
 }
 
 #[test]
@@ -176,9 +177,9 @@ fn the_regulator_stage_is_designed_with_the_pads_its_catalog_entry_supplies() {
         ]
     );
     // Pad 1 is the regulator's ground, shared by its input and output, and listed once.
-    assert_eq!(pins(&d, "VIN"), ["C1.1", "J1.1", "U1.3"]);
-    assert_eq!(pins(&d, "3V3"), ["C2.1", "J2.1", "U1.2"]);
-    assert_eq!(pins(&d, "GND"), ["C1.2", "C2.2", "J1.2", "J2.2", "U1.1"]);
+    assert_eq!(pins(&d, "VIN"), ["J1.1", "C1.1", "U1.3"]);
+    assert_eq!(pins(&d, "3V3"), ["J2.1", "C2.1", "U1.2"]);
+    assert_eq!(pins(&d, "GND"), ["J1.2", "J2.2", "C1.2", "C2.2", "U1.1"]);
 }
 
 #[test]
@@ -1064,7 +1065,7 @@ fn each_board_of_a_system_is_designed_as_if_alone() {
     // The socket comes between the LED and the resistor, in path order, and is `J1`.
     assert_eq!(pins(led, "3V3"), ["J1.1", "R1.1"]);
     assert_eq!(pins(led, "GND"), ["D1.1", "J1.2"]);
-    assert_eq!(pins(power, "3V3"), ["C2.1", "J2.1", "U1.2"]);
+    assert_eq!(pins(power, "3V3"), ["J2.1", "C2.1", "U1.2"]);
     assert!(power.nets.iter().all(|n| n.name != "net-led.anode"));
     // The process is the board's own.
     assert!(power.process.is_some() && led.process.is_some());

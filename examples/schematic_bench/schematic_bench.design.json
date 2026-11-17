@@ -2544,6 +2544,46 @@
         "name": "+3V3",
         "pins": [
           {
+            "refdes": "U1",
+            "pin": "8"
+          },
+          {
+            "refdes": "R5",
+            "pin": "1"
+          },
+          {
+            "refdes": "C8",
+            "pin": "1"
+          },
+          {
+            "refdes": "C9",
+            "pin": "1"
+          },
+          {
+            "refdes": "U4",
+            "pin": "131"
+          },
+          {
+            "refdes": "U4",
+            "pin": "132"
+          },
+          {
+            "refdes": "U4",
+            "pin": "133"
+          },
+          {
+            "refdes": "U4",
+            "pin": "134"
+          },
+          {
+            "refdes": "U4",
+            "pin": "135"
+          },
+          {
+            "refdes": "U4",
+            "pin": "136"
+          },
+          {
             "refdes": "C10",
             "pin": "1"
           },
@@ -2556,15 +2596,11 @@
             "pin": "1"
           },
           {
-            "refdes": "C8",
-            "pin": "1"
-          },
-          {
-            "refdes": "C9",
-            "pin": "1"
-          },
-          {
             "refdes": "J1",
+            "pin": "1"
+          },
+          {
+            "refdes": "R8",
             "pin": "1"
           },
           {
@@ -2590,42 +2626,6 @@
           {
             "refdes": "R18",
             "pin": "1"
-          },
-          {
-            "refdes": "R5",
-            "pin": "1"
-          },
-          {
-            "refdes": "R8",
-            "pin": "1"
-          },
-          {
-            "refdes": "U1",
-            "pin": "8"
-          },
-          {
-            "refdes": "U4",
-            "pin": "131"
-          },
-          {
-            "refdes": "U4",
-            "pin": "132"
-          },
-          {
-            "refdes": "U4",
-            "pin": "133"
-          },
-          {
-            "refdes": "U4",
-            "pin": "134"
-          },
-          {
-            "refdes": "U4",
-            "pin": "135"
-          },
-          {
-            "refdes": "U4",
-            "pin": "136"
           }
         ]
       },
@@ -2701,39 +2701,15 @@
         "name": "GND",
         "pins": [
           {
+            "refdes": "U1",
+            "pin": "4"
+          },
+          {
             "refdes": "C1",
             "pin": "2"
           },
           {
-            "refdes": "C10",
-            "pin": "2"
-          },
-          {
-            "refdes": "C11",
-            "pin": "2"
-          },
-          {
-            "refdes": "C12",
-            "pin": "2"
-          },
-          {
-            "refdes": "C13",
-            "pin": "2"
-          },
-          {
-            "refdes": "C14",
-            "pin": "2"
-          },
-          {
-            "refdes": "C15",
-            "pin": "2"
-          },
-          {
-            "refdes": "C16",
-            "pin": "2"
-          },
-          {
-            "refdes": "C17",
+            "refdes": "R1",
             "pin": "2"
           },
           {
@@ -2749,62 +2725,6 @@
             "pin": "2"
           },
           {
-            "refdes": "C6",
-            "pin": "2"
-          },
-          {
-            "refdes": "C7",
-            "pin": "2"
-          },
-          {
-            "refdes": "C8",
-            "pin": "2"
-          },
-          {
-            "refdes": "C9",
-            "pin": "2"
-          },
-          {
-            "refdes": "D1",
-            "pin": "1"
-          },
-          {
-            "refdes": "J1",
-            "pin": "2"
-          },
-          {
-            "refdes": "J3",
-            "pin": "4"
-          },
-          {
-            "refdes": "J3",
-            "pin": "5"
-          },
-          {
-            "refdes": "R1",
-            "pin": "2"
-          },
-          {
-            "refdes": "R11",
-            "pin": "2"
-          },
-          {
-            "refdes": "R4",
-            "pin": "2"
-          },
-          {
-            "refdes": "R6",
-            "pin": "2"
-          },
-          {
-            "refdes": "R9",
-            "pin": "2"
-          },
-          {
-            "refdes": "U1",
-            "pin": "4"
-          },
-          {
             "refdes": "U2",
             "pin": "11"
           },
@@ -2817,12 +2737,36 @@
             "pin": "9"
           },
           {
+            "refdes": "R4",
+            "pin": "2"
+          },
+          {
+            "refdes": "R6",
+            "pin": "2"
+          },
+          {
+            "refdes": "C6",
+            "pin": "2"
+          },
+          {
+            "refdes": "C7",
+            "pin": "2"
+          },
+          {
             "refdes": "U3",
             "pin": "5"
           },
           {
             "refdes": "U3",
             "pin": "9"
+          },
+          {
+            "refdes": "C8",
+            "pin": "2"
+          },
+          {
+            "refdes": "C9",
+            "pin": "2"
           },
           {
             "refdes": "U4",
@@ -2919,6 +2863,62 @@
           {
             "refdes": "U4",
             "pin": "124"
+          },
+          {
+            "refdes": "C10",
+            "pin": "2"
+          },
+          {
+            "refdes": "C11",
+            "pin": "2"
+          },
+          {
+            "refdes": "C12",
+            "pin": "2"
+          },
+          {
+            "refdes": "C13",
+            "pin": "2"
+          },
+          {
+            "refdes": "C14",
+            "pin": "2"
+          },
+          {
+            "refdes": "C15",
+            "pin": "2"
+          },
+          {
+            "refdes": "C16",
+            "pin": "2"
+          },
+          {
+            "refdes": "C17",
+            "pin": "2"
+          },
+          {
+            "refdes": "J1",
+            "pin": "2"
+          },
+          {
+            "refdes": "D1",
+            "pin": "1"
+          },
+          {
+            "refdes": "R9",
+            "pin": "2"
+          },
+          {
+            "refdes": "R11",
+            "pin": "2"
+          },
+          {
+            "refdes": "J3",
+            "pin": "4"
+          },
+          {
+            "refdes": "J3",
+            "pin": "5"
           }
         ]
       },
@@ -2944,16 +2944,16 @@
         "name": "MODEM_CTS",
         "pins": [
           {
-            "refdes": "J2",
-            "pin": "4"
+            "refdes": "U4",
+            "pin": "8"
           },
           {
             "refdes": "R8",
             "pin": "2"
           },
           {
-            "refdes": "U4",
-            "pin": "8"
+            "refdes": "J2",
+            "pin": "4"
           }
         ]
       },
@@ -2961,12 +2961,12 @@
         "name": "MODEM_RTS",
         "pins": [
           {
-            "refdes": "R10",
-            "pin": "2"
-          },
-          {
             "refdes": "U4",
             "pin": "7"
+          },
+          {
+            "refdes": "R10",
+            "pin": "2"
           }
         ]
       },
@@ -2974,16 +2974,16 @@
         "name": "MODEM_RX",
         "pins": [
           {
-            "refdes": "J2",
-            "pin": "2"
+            "refdes": "U4",
+            "pin": "6"
           },
           {
             "refdes": "R11",
             "pin": "1"
           },
           {
-            "refdes": "U4",
-            "pin": "6"
+            "refdes": "J2",
+            "pin": "2"
           }
         ]
       },
@@ -2991,16 +2991,16 @@
         "name": "MODEM_TX",
         "pins": [
           {
-            "refdes": "J2",
-            "pin": "1"
+            "refdes": "U4",
+            "pin": "5"
           },
           {
             "refdes": "R13",
             "pin": "2"
           },
           {
-            "refdes": "U4",
-            "pin": "5"
+            "refdes": "J2",
+            "pin": "1"
           }
         ]
       },
@@ -3008,12 +3008,12 @@
         "name": "OBD_A",
         "pins": [
           {
-            "refdes": "J3",
-            "pin": "2"
-          },
-          {
             "refdes": "U4",
             "pin": "17"
+          },
+          {
+            "refdes": "J3",
+            "pin": "2"
           }
         ]
       },
@@ -3021,12 +3021,12 @@
         "name": "OBD_B",
         "pins": [
           {
-            "refdes": "J3",
-            "pin": "6"
-          },
-          {
             "refdes": "U4",
             "pin": "18"
+          },
+          {
+            "refdes": "J3",
+            "pin": "6"
           }
         ]
       },
@@ -3034,12 +3034,12 @@
         "name": "OBD_C",
         "pins": [
           {
-            "refdes": "J3",
-            "pin": "7"
-          },
-          {
             "refdes": "U4",
             "pin": "19"
+          },
+          {
+            "refdes": "J3",
+            "pin": "7"
           }
         ]
       },
@@ -3047,12 +3047,12 @@
         "name": "PGOOD",
         "pins": [
           {
-            "refdes": "R5",
-            "pin": "2"
-          },
-          {
             "refdes": "U2",
             "pin": "5"
+          },
+          {
+            "refdes": "R5",
+            "pin": "2"
           }
         ]
       },
@@ -3060,12 +3060,12 @@
         "name": "TEN_0",
         "pins": [
           {
-            "refdes": "J4",
-            "pin": "1"
-          },
-          {
             "refdes": "U4",
             "pin": "33"
+          },
+          {
+            "refdes": "J4",
+            "pin": "1"
           }
         ]
       },
@@ -3073,12 +3073,12 @@
         "name": "TEN_1",
         "pins": [
           {
-            "refdes": "J4",
-            "pin": "2"
-          },
-          {
             "refdes": "U4",
             "pin": "34"
+          },
+          {
+            "refdes": "J4",
+            "pin": "2"
           }
         ]
       },
@@ -3086,12 +3086,12 @@
         "name": "TEN_2",
         "pins": [
           {
-            "refdes": "J4",
-            "pin": "3"
-          },
-          {
             "refdes": "U4",
             "pin": "35"
+          },
+          {
+            "refdes": "J4",
+            "pin": "3"
           }
         ]
       },
@@ -3099,12 +3099,12 @@
         "name": "TEN_3",
         "pins": [
           {
-            "refdes": "J4",
-            "pin": "4"
-          },
-          {
             "refdes": "U4",
             "pin": "36"
+          },
+          {
+            "refdes": "J4",
+            "pin": "4"
           }
         ]
       },
@@ -3112,12 +3112,12 @@
         "name": "TEN_4",
         "pins": [
           {
-            "refdes": "J4",
-            "pin": "5"
-          },
-          {
             "refdes": "U4",
             "pin": "37"
+          },
+          {
+            "refdes": "J4",
+            "pin": "5"
           }
         ]
       },
@@ -3125,12 +3125,12 @@
         "name": "TEN_5",
         "pins": [
           {
-            "refdes": "J4",
-            "pin": "6"
-          },
-          {
             "refdes": "U4",
             "pin": "38"
+          },
+          {
+            "refdes": "J4",
+            "pin": "6"
           }
         ]
       },
@@ -3138,12 +3138,12 @@
         "name": "TEN_6",
         "pins": [
           {
-            "refdes": "J4",
-            "pin": "7"
-          },
-          {
             "refdes": "U4",
             "pin": "39"
+          },
+          {
+            "refdes": "J4",
+            "pin": "7"
           }
         ]
       },
@@ -3151,12 +3151,12 @@
         "name": "TEN_7",
         "pins": [
           {
-            "refdes": "J4",
-            "pin": "8"
-          },
-          {
             "refdes": "U4",
             "pin": "40"
+          },
+          {
+            "refdes": "J4",
+            "pin": "8"
           }
         ]
       },
@@ -3164,12 +3164,12 @@
         "name": "TEN_8",
         "pins": [
           {
-            "refdes": "J4",
-            "pin": "9"
-          },
-          {
             "refdes": "U4",
             "pin": "41"
+          },
+          {
+            "refdes": "J4",
+            "pin": "9"
           }
         ]
       },
@@ -3177,12 +3177,12 @@
         "name": "TEN_9",
         "pins": [
           {
-            "refdes": "J4",
-            "pin": "10"
-          },
-          {
             "refdes": "U4",
             "pin": "42"
+          },
+          {
+            "refdes": "J4",
+            "pin": "10"
           }
         ]
       },
@@ -3190,16 +3190,16 @@
         "name": "net-adc.amp.in_a_neg",
         "pins": [
           {
-            "refdes": "R2",
-            "pin": "1"
-          },
-          {
             "refdes": "U1",
             "pin": "1"
           },
           {
             "refdes": "U1",
             "pin": "2"
+          },
+          {
+            "refdes": "R2",
+            "pin": "1"
           }
         ]
       },
@@ -3207,16 +3207,16 @@
         "name": "net-adc.amp.in_a_pos",
         "pins": [
           {
+            "refdes": "U1",
+            "pin": "3"
+          },
+          {
             "refdes": "R1",
             "pin": "1"
           },
           {
             "refdes": "R3",
             "pin": "2"
-          },
-          {
-            "refdes": "U1",
-            "pin": "3"
           }
         ]
       },
@@ -3241,12 +3241,12 @@
             "pin": "2"
           },
           {
-            "refdes": "L1",
-            "pin": "1"
-          },
-          {
             "refdes": "U2",
             "pin": "10"
+          },
+          {
+            "refdes": "L1",
+            "pin": "1"
           }
         ]
       },
@@ -3267,16 +3267,16 @@
         "name": "net-buck.ic.fb",
         "pins": [
           {
+            "refdes": "U2",
+            "pin": "6"
+          },
+          {
             "refdes": "R4",
             "pin": "1"
           },
           {
             "refdes": "R7",
             "pin": "2"
-          },
-          {
-            "refdes": "U2",
-            "pin": "6"
           }
         ]
       },
@@ -3284,12 +3284,12 @@
         "name": "net-buck.ic.rt",
         "pins": [
           {
-            "refdes": "R6",
-            "pin": "1"
-          },
-          {
             "refdes": "U2",
             "pin": "4"
+          },
+          {
+            "refdes": "R6",
+            "pin": "1"
           }
         ]
       },
@@ -3297,12 +3297,12 @@
         "name": "net-mcu.crystal.a",
         "pins": [
           {
-            "refdes": "U4",
-            "pin": "15"
-          },
-          {
             "refdes": "Y1",
             "pin": "1"
+          },
+          {
+            "refdes": "U4",
+            "pin": "15"
           }
         ]
       },
@@ -3310,12 +3310,12 @@
         "name": "net-mcu.crystal.b",
         "pins": [
           {
-            "refdes": "U4",
-            "pin": "16"
-          },
-          {
             "refdes": "Y1",
             "pin": "2"
+          },
+          {
+            "refdes": "U4",
+            "pin": "16"
           }
         ]
       },
@@ -3427,12 +3427,12 @@
         "name": "net-modem.r_rts.a",
         "pins": [
           {
-            "refdes": "J2",
-            "pin": "3"
-          },
-          {
             "refdes": "R10",
             "pin": "1"
+          },
+          {
+            "refdes": "J2",
+            "pin": "3"
           }
         ]
       }
