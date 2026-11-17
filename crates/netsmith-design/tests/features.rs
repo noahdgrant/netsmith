@@ -257,6 +257,55 @@ fn a_thermal_relief_that_is_not_positive_is_refused_with_the_field() {
 }
 
 #[test]
+fn a_pours_clearance_min_width_and_pads_are_read_as_stated() {
+    let src = board_with_process(
+        "        .top.net &= \"GND\"\n        .top.clearance &= 0.4mm..1mm\n        .top.min_width &= 0.3mm..\n        .top.pads &= PadConnection::ThruHoleOnly\n        .bottom.net &= \"GND\"\n        .bottom.clearance &= ..1mm\n",
+        "",
+    )
+    .replacen("import ", "import std::mfg::stackup::PadConnection\nimport ", 1);
+    let d = designed(&src).unwrap();
+    let pour = |layer: &str| {
+        let p = d.features.pours.iter().find(|p| p.layer == layer).unwrap();
+        (p.clearance, p.min_width, p.pads)
+    };
+    assert_eq!(
+        pour("top"),
+        (
+            Some(0.4),
+            Some(0.3),
+            Some(netsmith_core::PadConnection::ThruHoleOnly)
+        )
+    );
+    // Unset, or a range with no bottom, states nothing: the defaults stay.
+    assert_eq!(pour("bottom"), (None, None, None));
+}
+
+#[test]
+fn a_pours_clearance_or_min_width_under_the_process_is_refused_with_the_field() {
+    // JLCPCB's four-layer process keeps 0.1 mm between copper and makes a 0.09 mm track.
+    let text = errors_of(&board_with_process(
+        "        .top.net &= \"GND\"\n        .top.clearance &= 0.05mm..\n        .top.min_width &= 0.05mm..1mm\n",
+        "",
+    ));
+    assert!(
+        text.contains("`process.top.clearance` has a bottom of 0.05 mm, under the process's least space between copper (`.min_clearance`) of 0.1 mm"),
+        "{text}"
+    );
+    assert!(
+        text.contains("`process.top.min_width` has a bottom of 0.05 mm, under the process's narrowest track (`.min_track`) of 0.09 mm"),
+        "{text}"
+    );
+    // The least the process makes is allowed.
+    assert!(
+        designed(&board_with_process(
+            "        .top.net &= \"GND\"\n        .top.clearance &= 0.1mm..\n        .top.min_width &= 0.09mm..\n",
+            "",
+        ))
+        .is_ok()
+    );
+}
+
+#[test]
 fn a_pour_on_a_net_the_board_lacks_is_refused_with_the_nets() {
     let text = errors_of(&board_with_process("        .bottom.net &= \"5V\"\n", ""));
     assert!(

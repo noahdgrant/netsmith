@@ -143,8 +143,11 @@ impl<'a> Router<'a> {
             .filter_map(|r| {
                 let line = &self.lines[r.line];
                 let (front, back) = faces(self.board, &line.from, line.from_at)?;
+                // A pour that joins no pad of its net (`.pads &= PadConnection::None`) does not
+                // take a pad's via's place.
                 let poured = self.board.pours.iter().any(|p| {
                     p.net == line.net
+                        && p.pads != Some(netsmith_pcb::ZonePads::None)
                         && match p.layer {
                             CopperLayer::Front => front,
                             CopperLayer::Back => back,

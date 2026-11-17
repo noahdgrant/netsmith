@@ -1554,7 +1554,12 @@ fn design_model(name: &str, model: &Model, solution: &Solution) -> Result<Design
     let process = process_of(model, &net_names, &mut errors);
     let layers = process.as_ref().map_or(2, |p| p.stackup.layers);
     let least_text = process.as_ref().map_or(0.0, |p| p.min_text_height);
-    let mut features = features::features_of(model, &net_names, layers, least_text, &mut errors);
+    let least = features::Least {
+        clearance: process.as_ref().map_or(0.0, |p| p.min_clearance),
+        track: process.as_ref().map_or(0.0, |p| p.min_track),
+    };
+    let mut features =
+        features::features_of(model, &net_names, layers, least_text, least, &mut errors);
     let (constraints, constraint_sites) = features::placements(model, &mut errors);
     features.constraints = constraints;
     let (offsets, offset_sites) = features::offsets(model, &mut errors);

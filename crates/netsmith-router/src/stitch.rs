@@ -51,6 +51,9 @@ struct Free<'a> {
     pads: Vec<Rect>,
     holes: Vec<(Pt, Pt, f64)>,
     keepouts: Vec<Rect>,
+    /// The pour's clearance from other nets' copper, where the design states one (issue
+    /// #1084): a via keeps it from their pads and tracks, so the fill reaches round it.
+    pour_clearance: f64,
 }
 
 impl<'a> Free<'a> {
@@ -79,6 +82,7 @@ impl<'a> Free<'a> {
             pads,
             holes,
             keepouts,
+            pour_clearance: 0.0,
         }
     }
 
@@ -110,9 +114,21 @@ impl<'a> Free<'a> {
         // the pour cannot fill, and KiCad finds it connected to nothing on that layer.
         // A pad's net is not known here, so a pad keeps the largest clearance of any net
         // (issue #758).
-        let clearance = |net: &str| self.board.clearance_between(net, self.net) + radius + MARGIN;
-        let reachable =
-            self.board.widest_clearance().max(rules.plane_clearance) + radius + MARGIN + POUR_WAY;
+        let clearance = |net: &str| {
+            self.board
+                .clearance_between(net, self.net)
+                .max(self.pour_clearance)
+                + radius
+                + MARGIN
+        };
+        let reachable = self
+            .board
+            .widest_clearance()
+            .max(rules.plane_clearance)
+            .max(self.pour_clearance)
+            + radius
+            + MARGIN
+            + POUR_WAY;
         if self.pads.iter().any(|r| to_rect(p, r) < reachable) {
             return false;
         }
@@ -169,7 +185,10 @@ pub fn stitch(board: &mut Board) {
         }
         let rules = board.rules.clone();
         let free_vias = {
-            let free = Free::of(board, &pour.net);
+            let free = Free {
+                pour_clearance: pour.clearance.unwrap_or(0.0),
+                ..Free::of(board, &pour.net)
+            };
             let o = board.outline;
             let reach = rules.copper_to_edge + rules.via_diameter / 2.0 + MARGIN;
             let search = (pitch / 3.0 / STEP).floor() as i64;

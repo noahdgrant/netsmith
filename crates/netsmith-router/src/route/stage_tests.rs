@@ -238,6 +238,9 @@ fn a_line_of_the_pours_net_or_of_a_diff_pair_has_no_corridor() {
         stitch_pitch: None,
         thermal_gap: None,
         spoke_width: None,
+        clearance: None,
+        min_width: None,
+        pads: None,
     });
     let mut router = Router::new(&board, &options);
     router.partners[paired] = Some(poured);
@@ -292,6 +295,9 @@ fn off_the_pours_of_the_led_board(names: [&str; 2]) -> (Board, Vec<Routed>) {
         stitch_pitch: None,
         thermal_gap: None,
         spoke_width: None,
+        clearance: None,
+        min_width: None,
+        pads: None,
     });
     let router = Router::new(&board, &RouteOptions::default());
     let order = router.orders(false).remove(0);
@@ -433,6 +439,9 @@ fn under_a_wall(wall: &str, poured: bool) -> (Board, State, Routed, Routed) {
             stitch_pitch: None,
             thermal_gap: None,
             spoke_width: None,
+            clearance: None,
+            min_width: None,
+            pads: None,
         });
     }
     let router = Router::new(&board, &RouteOptions::default());

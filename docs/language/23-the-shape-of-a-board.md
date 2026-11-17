@@ -875,9 +875,18 @@ The process has a pour on each outer layer, `.top` and `.bottom`. A pour with a 
 
 `.thermal_gap` (the space between a pad of the pour's net and the pour round it) and `.spoke_width` (the width of the spokes that join the pad to the pour) set the thermal relief. Both are lengths on the range convention, and the tool takes the least the process allows, the bottom of the range: `.top.thermal_gap &= 0.3mm..` makes the gap 0.3 mm. Unset means KiCad's default, 0.5 mm for both. The Gerbers, the design rules check and the pour's zone in the board file all use the same two numbers; a bottom of zero or less is an error that names the field, and a range with no bottom (`..0.6mm`) states none. The inner planes keep KiCad's defaults.
 
+A pour has the other settings of a zone drawn by hand in the routes file (Zones, below), so that a board whose source states its pour can tune it there (issue #1084):
+
+- `.clearance` is the space between the pour and copper of other nets. Unset means the space the process keeps round a plane (its `.min_clearance`, or its space to a hole in an inner layer if that is more).
+- `.min_width` is the narrowest copper the pour keeps: the fill drops what is narrower, slivers and spokes alike (KiCad's minimum thickness of a zone). Unset means 0.25 mm. A width over the spoke width drops the spokes, so the reliefs join nothing.
+- `.pads` is how the pour joins the pads of its net, a variant of the enum `PadConnection` (`import std::mfg::stackup::PadConnection`): `Thermal`, a thermal relief, the default; `Solid`, copper up to the pad; `None`, not joined, so the pad keeps the pour's clearance and needs a track; and `ThruHoleOnly`, a relief round a through-hole pad and solid copper up to a surface pad. The routes file and `netsmith routes add-zone --pads` write the same four as `thermal`, `solid`, `none` and `thru_hole_only` (`thru-hole-only` on the command line).
+
+`.clearance` and `.min_width` are lengths on the range convention, read at the bottom of the range as `.thermal_gap` is: `.top.clearance &= 0.4mm..` keeps 0.4 mm. A bottom under the process's `.min_clearance` or `.min_track` is an error that names the field, the least and the process's field. The Gerbers, the design rules check, the 3D view and the pour's zone in the board file all take the three; the inner planes keep the defaults.
+
 ```nsm solve
 import std::parts::connector::Header1x2
 import std::mfg::jlcpcb::FourLayer
+import std::mfg::stackup::PadConnection
 
 board Poured {
     .process: FourLayer {
@@ -889,6 +898,9 @@ board Poured {
         .bottom.stitch_pitch &= 0mm..8mm
         .top.thermal_gap &= 0.3mm..
         .top.spoke_width &= 0.3mm..
+        .bottom.clearance &= 0.4mm..
+        .bottom.min_width &= 0.3mm..
+        .bottom.pads &= PadConnection::Solid
     }
     .in: Header1x2
     .out: Header1x2
@@ -897,6 +909,32 @@ board Poured {
     .in.p2 ~ .out.p2
     .in.p2.net &= "GND"
 }
+```
+
+A clearance closer than the process makes is refused:
+
+```nsm fails
+import std::parts::connector::Header1x2
+import std::mfg::jlcpcb::FourLayer
+
+board Close {
+    .process: FourLayer {
+        .inner1.net &= "GND"
+        .inner2.net &= "3V3"
+        .top.net &= "GND"
+        .top.clearance &= 0.05mm..
+    }
+    .in: Header1x2
+    .out: Header1x2
+    .in.p1 ~ .out.p1
+    .in.p1.net &= "3V3"
+    .in.p2 ~ .out.p2
+    .in.p2.net &= "GND"
+}
+```
+
+```text
+error: Close: `process.top.clearance` has a bottom of 0.05 mm, under the process's least space between copper (`.min_clearance`) of 0.1 mm: raise the bottom of the range
 ```
 
 A pour on a net the board does not have is an error that lists the nets, as for a plane. A pad of the pour's net that is on a plane too gives up the via the router puts beside it where the pour joins it to a stitching via (issue #834; the router's passes over vias are described after Diff pairs); the pour is KiCad's to fill (`fab` has it fill the zones before it checks and plots the board).

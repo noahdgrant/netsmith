@@ -391,6 +391,11 @@ fn holes_and_fiducials_go_in_the_corners_of_a_fixed_outline() {
 /// The four-layer example with `process` lines added inside its `.process: FourLayer`, and
 /// `members` on the board.
 fn four_layer_with(process: &str, members: &str) -> Board {
+    four_layer_importing("", process, members)
+}
+
+/// [`four_layer_with`], with `imports` (whole lines) before the example's.
+fn four_layer_importing(imports: &str, process: &str, members: &str) -> Board {
     let path = format!(
         "{}/../../examples/four_layer.nsm",
         env!("CARGO_MANIFEST_DIR")
@@ -403,7 +408,7 @@ fn four_layer_with(process: &str, members: &str) -> Board {
     let first_import = text.find("import ").unwrap();
     let end = text.rfind('}').unwrap();
     let text = format!(
-        "{}import std::pcb::{{Cutout, Keepout, Outline}}\n{}{members}}}\n",
+        "{}{imports}import std::pcb::{{Cutout, Keepout, Outline}}\n{}{members}}}\n",
         &text[..first_import],
         &text[first_import..end]
     );
@@ -453,6 +458,57 @@ fn a_pours_thermal_relief_is_in_its_zone_and_the_planes_keep_the_default() {
     // The pour on the other side and the plane say nothing of it.
     assert_eq!(relief("B.Cu"), (false, false));
     assert_eq!(relief("In1.Cu"), (false, false));
+}
+
+#[test]
+fn a_pours_clearance_min_width_and_pads_are_in_its_zone_and_the_planes_keep_the_default() {
+    let b = four_layer_importing(
+        "import std::mfg::stackup::PadConnection\n",
+        &format!(
+            "{POURS}        .top.clearance &= 0.4mm..\n        .top.min_width &= 0.3mm..\n        .top.pads &= PadConnection::Solid\n        .bottom.pads &= PadConnection::ThruHoleOnly\n"
+        ),
+        "",
+    );
+    let pcb = kicad_pcb(&b);
+    // The zone's `(connect_pads ...)` and `(min_thickness ...)`.
+    let settings = |layer: &str| {
+        let zone = pcb
+            .split("\n\t(zone")
+            .skip(1)
+            .find(|z| z.contains(&format!("(net_name \"GND\")\n\t\t(layer \"{layer}\")")))
+            .unwrap();
+        let connect = &zone[zone.find("(connect_pads").unwrap()..];
+        let connect = &connect[..connect.find("(min_thickness").unwrap()];
+        let thickness = &zone[zone.find("(min_thickness").unwrap()..];
+        let thickness = &thickness[..thickness.find(')').unwrap() + 1];
+        (
+            connect.split_whitespace().collect::<Vec<_>>().join(" "),
+            thickness.to_string(),
+        )
+    };
+    let plane = b.rules.plane_clearance;
+    assert_eq!(
+        settings("F.Cu"),
+        (
+            "(connect_pads yes (clearance 0.4) )".to_string(),
+            "(min_thickness 0.3)".to_string()
+        )
+    );
+    assert_eq!(
+        settings("B.Cu"),
+        (
+            format!("(connect_pads thru_hole_only (clearance {plane}) )"),
+            "(min_thickness 0.25)".to_string()
+        )
+    );
+    // The plane says nothing of it.
+    assert_eq!(
+        settings("In1.Cu"),
+        (
+            format!("(connect_pads (clearance {plane}) )"),
+            "(min_thickness 0.25)".to_string()
+        )
+    );
 }
 
 #[test]

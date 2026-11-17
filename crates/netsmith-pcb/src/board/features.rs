@@ -127,23 +127,22 @@ pub struct BoardPour {
     /// The width of the spokes of a thermal relief, in mm, likewise.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub spoke_width: Option<f64>,
+    /// The space from copper of other nets, in mm, if the design states one;
+    /// [`crate::Rules::plane_clearance`] otherwise.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub clearance: Option<f64>,
+    /// The narrowest copper the fill keeps (KiCad's `min_thickness`), in mm, if the design
+    /// states one; 0.25 mm otherwise.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub min_width: Option<f64>,
+    /// How it joins its net's pads, if the design states it; a thermal relief otherwise.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pads: Option<ZonePads>,
 }
 
-/// How a zone joins the pads of its net: KiCad's `connect_pads` (`yes`, nothing, `no`,
-/// `thru_hole_only`).
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ZonePads {
-    /// Solid copper up to the pad.
-    Solid,
-    /// A thermal relief: a gap round the pad, crossed by four spokes.
-    #[default]
-    Thermal,
-    /// Not joined: the pad keeps the zone's clearance, as another net's would.
-    None,
-    /// A thermal relief round a through-hole pad, solid copper up to a surface pad.
-    ThruHoleOnly,
-}
+/// How a zone joins the pads of its net: the design's [`netsmith_core::PadConnection`], which a
+/// pour states too (KiCad's `connect_pads`).
+pub use netsmith_core::PadConnection as ZonePads;
 
 /// Which pieces of a zone's fill that join nothing KiCad removes: KiCad's
 /// `island_removal_mode` 0, 1 and 2. netsmith's own fill removes none (`netsmith_geom::fill`).

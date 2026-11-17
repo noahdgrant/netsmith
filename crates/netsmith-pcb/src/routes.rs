@@ -383,18 +383,6 @@ fn ring(points: &[[f64; 2]]) -> String {
     format!("[{}]", p.join(", "))
 }
 
-impl ZonePads {
-    /// The word the routes file writes.
-    pub fn word(self) -> &'static str {
-        match self {
-            ZonePads::Solid => "solid",
-            ZonePads::Thermal => "thermal",
-            ZonePads::None => "none",
-            ZonePads::ThruHoleOnly => "thru_hole_only",
-        }
-    }
-}
-
 impl ZoneIslands {
     /// The word the routes file writes.
     pub fn word(self) -> &'static str {

@@ -204,6 +204,9 @@ mod tests {
                 stitch_pitch: None,
                 thermal_gap: None,
                 spoke_width: None,
+                clearance: None,
+                min_width: None,
+                pads: None,
             });
         }
         board
