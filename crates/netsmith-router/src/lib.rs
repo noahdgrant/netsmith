@@ -12,7 +12,8 @@
 //! ([`teardrop`]) are steps of it too; they were in `netsmith-pcb` until issue #608.
 //!
 //! [`carry`] keeps the router's copper of the nets a change of placement left alone and routes
-//! only the rest (partial routing, issue #825).
+//! only the rest (partial routing, issue #825), and [`kept`] is that copper as a file keeps it
+//! between sessions (issue #1019).
 //!
 //! [`walk`] is not a step of routing: the query the editor's track tool asks while a track is drawn
 //! (issue #726), whether a segment is free and the way round the copper in the way, with the
@@ -27,6 +28,7 @@
 pub mod arcs;
 pub mod carry;
 mod decouple;
+pub mod kept;
 pub mod meander;
 pub mod pad_vias;
 pub mod parallel;

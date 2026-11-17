@@ -83,6 +83,15 @@ pub struct Args {
     /// saved. `--order` does not take it.
     #[arg(long, conflicts_with = "order")]
     pub save_placed: bool,
+    /// Start each route from the router's copper this machine kept, and keep it again.
+    ///
+    /// The editor keeps the copper it routes in `.netsmith/routes/<stem>.<board>.toml` in the
+    /// project's folder, which is not committed. With this flag the copper of every net the
+    /// placement left alone is kept and only the rest is routed; a kept file of another router,
+    /// other routes-file copper or other design rules is not used. Without it `fab` reads and
+    /// writes no kept file, so a clean checkout gives the same board. `--order` does not take it.
+    #[arg(long, conflicts_with = "order")]
+    pub reuse_routes: bool,
     /// Make one of the project's orders, or list them with no name (ADR 0035).
     ///
     /// An order names its boards in netsmith.toml, so `--order` takes no file. It prints text only.
@@ -192,6 +201,7 @@ fn run_chosen(args: &Args, order: Option<OrderRequest>, format: Format) -> ExitC
                 args.no_glb,
                 args.no_step,
                 args.save_placed,
+                args.reuse_routes,
                 args.offline,
                 &args.placing,
                 FabOutput {
@@ -292,6 +302,7 @@ fn run_fab(
     no_glb: bool,
     no_step: bool,
     save_placed: bool,
+    reuse_routes: bool,
     offline: bool,
     placing: &common::Placing,
     output: FabOutput,
@@ -361,6 +372,7 @@ fn run_fab(
         glb: glb_wanted(&target, no_glb),
         step: step_wanted(&target, no_step),
         save_placed,
+        reuse_routes,
         models: Some(netsmith_fabricate::models::Places::of(&target)),
         place_seeds: placing.seeds(&target),
         place_budget: placing.budget(&target),
@@ -675,6 +687,7 @@ fn run_order(
         glb: glb_wanted(&target, no_glb),
         step: step_wanted(&target, no_step),
         save_placed: false,
+        reuse_routes: false,
         models: Some(netsmith_fabricate::models::Places::of(&target)),
         place_seeds: placing.seeds(&target),
         place_budget: placing.budget(&target),
@@ -784,6 +797,7 @@ mod tests {
                 no_glb: false,
                 no_step: false,
                 save_placed: false,
+                reuse_routes: false,
                 order: None,
                 offline: false,
                 quiet: false,

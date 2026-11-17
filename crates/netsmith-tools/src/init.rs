@@ -28,6 +28,8 @@ const TEMPLATE_IMPORTS: [&str; 5] = ["Header1x2", "Resistor", "Led", "Rail", "Tw
 const MAIN: &str = "src/main.nsm";
 const README: &str = "README.md";
 const GITIGNORE: &str = ".gitignore";
+/// netsmith's cache in the project folder (`netsmith_fabricate::kept_routes`), never committed.
+const CACHE_IGNORE: &str = "/.netsmith/";
 const AGENTS: &str = "AGENTS.md";
 const CLAUDE: &str = "CLAUDE.md";
 /// Claude Code reads `CLAUDE.md`, not `AGENTS.md`, so this one line makes it read the other.
@@ -135,9 +137,11 @@ pub fn init(dir: &Path, name: Option<&str>) -> Result<String, String> {
     let manifest = Manifest::new(&name);
     let board = board_name(&name);
     let main = TEMPLATE.replace(TEMPLATE_BOARD, &board);
+    // The output folders, and netsmith's cache in the project (the router's copper, ADR 0138).
     let ignore: Vec<String> = [&manifest.out, &manifest.fab]
         .iter()
         .map(|d| format!("/{d}/"))
+        .chain(std::iter::once(CACHE_IGNORE.to_string()))
         .collect();
 
     let write = |path: &str, text: &str| -> Result<(), String> {

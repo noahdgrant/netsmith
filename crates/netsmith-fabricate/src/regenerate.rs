@@ -79,6 +79,26 @@ pub struct Proposal {
     pub routes_dropped: Vec<String>,
     /// The placement's findings and totals before and after.
     pub comparison: PlacementComparison,
+    /// What of the router's copper kept on disk (`crate::kept_routes`, issue #1019) a route
+    /// after the regeneration keeps; `None` when there is no kept file (or the editor asked,
+    /// which keeps its routed boards itself).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub copper: Option<KeptCopper>,
+}
+
+/// What of the router's copper kept on disk a route of the regenerated board keeps
+/// (`netsmith_router::carry::carry_copper`, as the editor and `fab --reuse-routes` route it).
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct KeptCopper {
+    /// The kept file.
+    pub file: String,
+    /// The nets whose kept copper is carried.
+    pub kept: Vec<String>,
+    /// The nets whose kept copper is dropped and routed again.
+    pub again: Vec<String>,
+    /// Why the file is not used at all, when it is not.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub unused: Option<String>,
 }
 
 impl Proposal {
@@ -116,6 +136,20 @@ impl Proposal {
                 "routes file records that no longer match their pads (dropped but for their locked shapes): {}\n",
                 self.routes_dropped.join(", ")
             ));
+        }
+        match &self.copper {
+            Some(KeptCopper {
+                file,
+                unused: Some(why),
+                ..
+            }) => out.push_str(&format!("kept copper ({file}): {why}\n")),
+            Some(k) => out.push_str(&format!(
+                "kept copper ({}): the router's copper of {} net(s) kept, {} routed again\n",
+                k.file,
+                k.kept.len(),
+                k.again.len()
+            )),
+            None => {}
         }
         let c = &self.comparison;
         for f in &c.appeared {
@@ -269,6 +303,7 @@ pub fn propose_on(
         nets: done.nets.clone(),
         routes_dropped,
         comparison,
+        copper: None,
     };
     Ok((proposal, after, next))
 }
@@ -295,14 +330,51 @@ pub fn propose(
     let placing = crate::layout::place(design, layout.as_ref(), libraries, lines_warn, seeds)
         .map_err(|e| e.message())?;
     let routes = crate::routes::load(&crate::routes::beside_layout(layout_file))?;
-    let (proposal, _, next) = propose_on(
+    let (mut proposal, after, next) = propose_on(
         &placing.board,
         layout.as_ref().map(|(l, _)| l),
         Some(&routes),
         request,
         &|_| {},
     )?;
+    proposal.copper = kept_copper(layout_file, &after, &routes, &proposal.nets)?;
     Ok((proposal, next))
+}
+
+/// What of the router's copper kept on disk for the source of `layout_file` a route of `after`
+/// (the regenerated board, with no copper) keeps: every net but `nets` (the regenerated parts')
+/// and those the placement changed is carried, as the editor and `fab --reuse-routes` carry it.
+/// `None` when there is no kept file.
+pub fn kept_copper(
+    layout_file: &Path,
+    after: &Board,
+    routes: &Routes,
+    nets: &[String],
+) -> Result<Option<KeptCopper>, String> {
+    let kept = crate::kept_routes::KeptRoutes::beside_layout(layout_file);
+    let file = kept.file(&after.name).display().to_string();
+    let mut board = after.clone();
+    netsmith_pcb::apply_routes(&mut board, routes, "the routes file").map_err(|e| e.to_string())?;
+    let start = match kept.start_from(&board) {
+        Ok(None) => return Ok(None),
+        Ok(Some(start)) => start,
+        Err(why) => {
+            return Ok(Some(KeptCopper {
+                file,
+                kept: Vec::new(),
+                again: Vec::new(),
+                unused: Some(why),
+            }));
+        }
+    };
+    let rip: BTreeSet<String> = nets.iter().cloned().chain(start.rip).collect();
+    let carried = netsmith_router::carry::carry_copper(&start.before, &mut board, &rip);
+    Ok(Some(KeptCopper {
+        file,
+        kept: carried.kept,
+        again: carried.ripped,
+        unused: None,
+    }))
 }
 
 /// Write `layout` over the layout file at `file`, keeping its comments.

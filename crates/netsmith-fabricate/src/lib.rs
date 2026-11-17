@@ -10,6 +10,7 @@ pub mod dependency_lock;
 pub mod fab;
 mod fab_environment;
 pub mod git_dependency;
+pub mod kept_routes;
 pub mod layout;
 pub mod layout_capture;
 pub mod layout_edit;

@@ -233,6 +233,12 @@ pub struct FabOptions {
     pub offline: bool,
     /// What the run does about reusing packages (issue #841): [`Reuse::Off`] by default.
     pub reuse: Reuse,
+    /// Start each board's route from the router's copper kept on disk
+    /// (`crate::kept_routes`, `fab --reuse-routes`, issue #1019), keeping the copper of every
+    /// net the placement left alone, and keep the copper routed for the next run. Needs
+    /// `layout`, which says where the source is. The default is `false`: the board is routed
+    /// from nothing and nothing is kept, so that a clean checkout gives the same board.
+    pub reuse_routes: bool,
 }
 
 /// What a run does about reusing the package of a board (`crate::reuse`).
@@ -367,6 +373,7 @@ impl Default for FabOptions {
             seed_writes: SeedWrites::Write,
             offline: false,
             reuse: Reuse::Off,
+            reuse_routes: false,
         }
     }
 }
@@ -1210,17 +1217,69 @@ fn fab_board(
                 }
             }
         });
+        // `--reuse-routes`: the copper kept on disk, for the nets the placement left alone.
+        let kept = options
+            .reuse_routes
+            .then_some(options.layout.as_deref())
+            .flatten()
+            .map(crate::kept_routes::KeptRoutes::beside_layout);
+        let start = kept.as_ref().map(|_| board.clone());
+        let from = kept.as_ref().and_then(|k| match k.start_from(&board) {
+            Ok(from) => from,
+            Err(why) => {
+                say(format!(
+                    "{}: warning: {why}; routing every net",
+                    built.label()
+                ));
+                None
+            }
+        });
         let routing = timings::stage("fab.route", &label, || {
-            netsmith_core::job::reporting(sink, || {
-                route_with_margin(
+            netsmith_core::job::reporting(sink, || match &from {
+                Some(from) => {
+                    let done = reroute_with_margin(
+                        &mut board,
+                        &from.before,
+                        &from.rip,
+                        options.route_timeout,
+                        RouteOptions::default(),
+                        options.track_margin,
+                        say,
+                    );
+                    let mut again = done.carried.ripped.clone();
+                    again.extend(done.also.iter().cloned());
+                    again.sort();
+                    again.dedup();
+                    say(format!(
+                        "{}: kept the router's copper of {} net(s) from {}, routed {} again",
+                        built.label(),
+                        done.carried.kept.len(),
+                        from.file.display(),
+                        again.len()
+                    ));
+                    done.routing
+                }
+                None => route_with_margin(
                     &mut board,
                     options.route_timeout,
                     RouteOptions::default(),
                     options.track_margin,
                     say,
-                )
+                ),
             })
         });
+        // Kept for the next run when it ran to its end: a route stopped short is no board to
+        // start from.
+        if let (Some(kept), Some(start), false) = (&kept, &start, routing.stopped) {
+            match kept.write(start, &board) {
+                Ok(file) => say(format!(
+                    "{}: kept the router's copper in {}",
+                    built.label(),
+                    file.display()
+                )),
+                Err(e) => say(format!("{}: warning: {e}", built.label())),
+            }
+        }
         // A diff pair whose meanders could not match it says the skew it keeps (issue #431, S11).
         for p in &routing.pairs {
             if p.after > netsmith_router::meander::SKEW_TARGET {
@@ -2668,8 +2727,50 @@ pub fn route_with_margin(
     track_margin: f64,
     say: &dyn Fn(String),
 ) -> netsmith_router::Routing {
+    with_margin(
+        board,
+        route_timeout,
+        base,
+        track_margin,
+        say,
+        route_with,
+        |routing| routing.left.len(),
+    )
+}
+
+/// [`route_with_margin`], keeping the router's copper of `before` for every net the placement
+/// left alone and `rip` does not name (`netsmith_router::carry::reroute`, `fab --reuse-routes`).
+pub fn reroute_with_margin(
+    board: &mut Board,
+    before: &Board,
+    rip: &std::collections::BTreeSet<String>,
+    route_timeout: Option<Duration>,
+    base: RouteOptions,
+    track_margin: f64,
+    say: &dyn Fn(String),
+) -> netsmith_router::carry::Rerouted {
+    with_margin(
+        board,
+        route_timeout,
+        base,
+        track_margin,
+        say,
+        |board, options| netsmith_router::carry::reroute(before, board, rip, options),
+        |done| done.routing.left.len(),
+    )
+}
+
+fn with_margin<T>(
+    board: &mut Board,
+    route_timeout: Option<Duration>,
+    base: RouteOptions,
+    track_margin: f64,
+    say: &dyn Fn(String),
+    run: impl Fn(&mut Board, RouteOptions) -> T,
+    left: impl Fn(&T) -> usize,
+) -> T {
     let route = |board: &mut Board, time: Option<Duration>, full: bool| {
-        route_with(
+        run(
             board,
             RouteOptions {
                 retry_orders: full,
@@ -2687,14 +2788,14 @@ pub fn route_with_margin(
     let mut trial = board.clone();
     trial.rules.track_width = wide;
     let routing = route(&mut trial, route_timeout.map(|t| t / 4), false);
-    if routing.left.is_empty() {
+    if left(&routing) == 0 {
         *board = trial;
         return routing;
     }
     say(format!(
         "{}: {} connection(s) left with signals at {wide} mm; routing again at the least track, {least} mm",
         board.name,
-        routing.left.len()
+        left(&routing)
     ));
     let left = route_timeout.map(|t| t.saturating_sub(started.elapsed()));
     route(board, left, true)

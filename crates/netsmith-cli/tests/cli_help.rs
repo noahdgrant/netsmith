@@ -102,6 +102,7 @@ fn a_commands_help_lists_its_usage_and_every_flag_it_takes() {
         "--cross-check",
         "--pins <PINS>",
         "--save-placed",
+        "--reuse-routes",
         "INCOMPLETE",
         "routing-failure.txt",
     ] {

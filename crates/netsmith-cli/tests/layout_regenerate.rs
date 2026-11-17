@@ -1,6 +1,7 @@
 //! `netsmith layout regenerate` (issue #825): one module placed again with the rest held, the
 //! proposal printed, and written to the layout file only with `--write`. The board is the
-//! regulator example, whose `stage` module has three parts.
+//! regulator example, whose `stage` module has three parts. With the router's copper kept on disk
+//! (issue #1019), `fab --reuse-routes` starts from it and the proposal says what of it is kept.
 
 use std::fs;
 use std::path::Path;
@@ -124,4 +125,142 @@ fn regenerate_refuses_a_module_the_board_lacks_or_holds_whole() {
     assert_eq!(run.status.code(), Some(1), "{}", text(&run.stderr));
     assert!(text(&run.stderr).contains("every part of `stage` is held"), "{}", text(&run.stderr));
     assert_eq!(fs::read_to_string(dir.join("main.pcb.toml")).unwrap(), before);
+}
+
+fn fab(dir: &Path, args: &[&str]) -> String {
+    let run = Command::new(env!("CARGO_BIN_EXE_netsmith"))
+        .args(["fab", "--no-glb", "--no-step"])
+        .args(args)
+        .current_dir(dir)
+        .env("NETSMITH_NO_KICAD", "1")
+        .env_remove("KICAD_CLI")
+        .output()
+        .unwrap();
+    let said = format!("{}{}", text(&run.stdout), text(&run.stderr));
+    assert_eq!(run.status.code(), Some(0), "{said}");
+    said
+}
+
+/// The kept files of the project (issue #1019).
+fn kept_files(dir: &Path) -> Vec<String> {
+    let mut files: Vec<String> = fs::read_dir(dir.join(".netsmith/routes"))
+        .map(|d| d.map(|e| e.unwrap().file_name().to_string_lossy().into_owned()).collect())
+        .unwrap_or_default();
+    files.sort();
+    files
+}
+
+/// `(kept, routed again)` from fab's line "kept the router's copper of N net(s) from F, routed M
+/// again".
+fn carried(said: &str) -> Option<(usize, usize)> {
+    let line = said.lines().find(|l| l.contains("kept the router's copper of "))?;
+    let after = line.split("kept the router's copper of ").nth(1)?;
+    let kept = after.split(' ').next()?.parse().ok()?;
+    let again = line.split(", routed ").nth(1)?.split(' ').next()?.parse().ok()?;
+    Some((kept, again))
+}
+
+/// Three modules of a resistor and an LED across one rail: regenerating `a` touches the rail
+/// and its own middle net, not the middle nets of `b` and `c`.
+const LIGHTS: &str = "\
+import std::parts::connector::Header1x2
+import std::parts::passive::{Resistor, Led}
+import std::sources::Rail
+import std::mfg::jlcpcb::TwoLayer
+
+/// A resistor and an LED across a rail.
+module Indicator {
+    .vin: Rail
+    .led: Led {
+        .current &= 5mA..15mA
+    }
+    .r: Resistor {}
+    .vin.pos ~> .r ~> .led ~> .vin.neg
+}
+
+board Lights {
+    .process: TwoLayer {
+        .stackup.thickness &= 1.6mm
+    }
+    .supply: Rail {
+        .voltage &= 5V +/- 5%
+        .pos.net &= \"VCC\"
+    }
+    .a: Indicator
+    .b: Indicator
+    .c: Indicator
+    .supply ~ .a.vin
+    .supply ~ .b.vin
+    .supply ~ .c.vin
+    .power_in: Header1x2
+    .supply.pos ~ .power_in.p1
+    .supply.neg ~ .power_in.p2
+}
+";
+
+#[test]
+fn fab_reuses_the_kept_copper_only_when_asked_and_regenerate_says_what_it_keeps() {
+    let dir = TempDir::new("layout-regenerate-kept");
+    fs::write(
+        dir.join("netsmith.toml"),
+        "[project]\nname = \"lights\"\ntop_level = [\"main.nsm\"]\n",
+    )
+    .unwrap();
+    fs::write(dir.join("main.nsm"), LIGHTS).unwrap();
+    // A plain fab keeps nothing and reads nothing.
+    let plain = fab(&dir, &[]);
+    assert!(kept_files(&dir).is_empty(), "{plain}");
+    assert!(carried(&plain).is_none(), "{plain}");
+    // The first run with --reuse-routes has nothing to start from, and keeps what it routed.
+    let first = fab(&dir, &["--reuse-routes"]);
+    assert!(carried(&first).is_none(), "{first}");
+    let files = kept_files(&dir);
+    assert_eq!(files.len(), 1, "{files:?}");
+    assert!(files[0].starts_with("main."), "{files:?}");
+    // The second keeps the copper of every net and routes none again: nothing moved.
+    let second = fab(&dir, &["--reuse-routes"]);
+    let (kept, again) = carried(&second).unwrap_or_else(|| panic!("{second}"));
+    println!("kept {kept} net(s), routed {again} again");
+    assert!(kept > 0, "{second}");
+    assert_eq!(again, 0, "{second}");
+
+    // A regeneration of `a` drops the copper of its nets and says what it keeps.
+    let regenerate = |seed: u32, write: bool| {
+        let seed = seed.to_string();
+        let mut args = vec!["regenerate", "a", "--format", "json", "--seed", &seed];
+        if write {
+            args.push("--write");
+        }
+        let run = netsmith(&dir, &args);
+        assert_eq!(run.status.code(), Some(0), "{}", text(&run.stderr));
+        serde_json::from_str::<serde_json::Value>(&text(&run.stdout)).unwrap()
+    };
+    let (seed, json) = (0..12)
+        .map(|seed| (seed, regenerate(seed, false)))
+        .find(|(_, json)| {
+            json["parts"].as_array().unwrap().iter().any(|p| p["was"]["at"] != p["after"]["at"])
+        })
+        .expect("a seed moves a part");
+    let copper = &json["copper"];
+    println!("{copper}");
+    assert!(copper["unused"].is_null(), "{json}");
+    assert!(copper["file"].as_str().unwrap().ends_with(&files[0]), "{json}");
+    let kept_nets: Vec<&str> = copper["kept"].as_array().unwrap().iter().map(|n| n.as_str().unwrap()).collect();
+    let again_nets: Vec<&str> = copper["again"].as_array().unwrap().iter().map(|n| n.as_str().unwrap()).collect();
+    assert_eq!(kept_nets.len() + again_nets.len(), kept, "{json}");
+    for net in ["net-b.led.anode", "net-c.led.anode"] {
+        assert!(kept_nets.contains(&net), "{net} lost its copper: {json}");
+    }
+    for net in json["nets"].as_array().unwrap() {
+        let net = net.as_str().unwrap();
+        assert!(!kept_nets.contains(&net), "{net} was kept: {json}");
+    }
+
+    // Written, and made again: fab keeps the copper the proposal said it would.
+    regenerate(seed, true);
+    let third = fab(&dir, &["--reuse-routes"]);
+    let (kept, again) = carried(&third).unwrap_or_else(|| panic!("{third}"));
+    println!("after the regeneration: kept {kept} net(s), routed {again} again");
+    assert_eq!(kept, kept_nets.len(), "{third}");
+    assert_eq!(again, again_nets.len(), "{third}");
 }

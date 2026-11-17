@@ -27,7 +27,9 @@
 //! undo. The workspace keeps the last [`ROUTED_KEPT`] routed boards of each board
 //! ([`RoutedBoards`]): a route starts from the board routed last and keeps the copper of every net
 //! the change left alone (`netsmith_router::carry`), and an edit or a route whose board is one
-//! routed before takes that copper again with no router (an undo).
+//! routed before takes that copper again with no router (an undo). The router's copper is kept on
+//! disk too (`netsmith_fabricate::kept_routes`, issue #1019): a route that ran to its end writes
+//! it, and a route with no routed board in memory (a new session) carries from it.
 //!
 //! **Findings** (`GET /api/pcb/findings`, `POST /api/pcb/drc`): netsmith's own placement
 //! problems, the connections left on a routed board, netsmith's design rules check of the
@@ -60,11 +62,11 @@
 //! step in the page); where a shape cannot move far enough the way goes round all of them and the
 //! answer says which ([`PcbWalked::stuck`]).
 //!
-//! **Not built** (ADR 0030, issue #59): waivers (the page has no way to write one), the router's
-//! copper kept on disk, a copy of the findings for an agent, and `layout show` overlays.
+//! **Not built** (ADR 0030, issue #59): waivers (the page has no way to write one), a copy of the
+//! findings for an agent, and `layout show` overlays.
 
 use std::{
-    collections::HashMap,
+    collections::{BTreeSet, HashMap},
     sync::{
         OnceLock,
         atomic::{AtomicBool, Ordering},
@@ -185,6 +187,18 @@ pub struct RoutedBoard {
 #[derive(Default)]
 pub struct RoutedBoards {
     list: std::collections::VecDeque<RoutedBoard>,
+}
+
+impl RoutedBoard {
+    /// The board it started from: placed, with the routes file's copper.
+    pub fn start(&self) -> &Board {
+        &self.start
+    }
+
+    /// The board as the router left it.
+    pub fn board(&self) -> &Board {
+        &self.board
+    }
 }
 
 impl RoutedBoards {
@@ -607,21 +621,28 @@ impl Entry {
 impl Entry {
     /// Route the board, telling `say` the stages and how far the router has got, for as long as
     /// the router's time limit lasts or until [`cancel`]. With `before`, the same board routed
-    /// before a change of its placement, the copper of every net the change left alone is kept
-    /// and only the rest is routed ([`netsmith_router::carry::reroute`], issue #825). Gives the
-    /// routed board to keep ([`RoutedBoards`]).
+    /// before a change of its placement (kept in memory, or on disk:
+    /// `netsmith_fabricate::kept_routes`) and the nets to route again whatever it says, the
+    /// copper of every net the change left alone is kept and only the rest is routed
+    /// ([`netsmith_router::carry::reroute`], issue #825). Gives the routed board to keep
+    /// ([`RoutedBoards`]).
     pub fn route(
         &mut self,
         name: &str,
         say: &Say,
         show: &Show,
-        before: Option<&Board>,
+        before: Option<(&Board, &BTreeSet<String>)>,
     ) -> RoutedBoard {
         let glimpses = live_sink(name, "route", show);
         netsmith_pcb::watching_glimpses(glimpses, || self.route_unwatched(name, say, before))
     }
 
-    fn route_unwatched(&mut self, name: &str, say: &Say, before: Option<&Board>) -> RoutedBoard {
+    fn route_unwatched(
+        &mut self,
+        name: &str,
+        say: &Say,
+        before: Option<(&Board, &BTreeSet<String>)>,
+    ) -> RoutedBoard {
         let started = Instant::now();
         CANCEL.store(false, Ordering::Relaxed);
         let _reporting = Reporting::to(say);
@@ -639,13 +660,8 @@ impl Entry {
             ..RouteOptions::default()
         };
         let routing = match before {
-            Some(before) => {
-                let done = netsmith_router::carry::reroute(
-                    before,
-                    &mut self.board,
-                    &Default::default(),
-                    options,
-                );
+            Some((before, rip)) => {
+                let done = netsmith_router::carry::reroute(before, &mut self.board, rip, options);
                 self.carried = done.carried.kept.clone();
                 let mut again = done.carried.ripped.clone();
                 again.extend(done.also.iter().cloned());
