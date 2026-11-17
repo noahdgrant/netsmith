@@ -25,27 +25,38 @@ impl<'a> Router<'a> {
             .collect()
     }
 
-    /// Whether a via in the pad would keep the rules' space from all other copper, and its
-    /// hole from other holes. The via is at a known place, so this is measured there and
-    /// not on the grid.
+    /// The via in the pad with only the layers it leads to where it would keep the rules'
+    /// space from all other copper on its own layers (all of them for a through via), and its
+    /// hole from other holes; `None` where it leads to none. The via is at a known place, so
+    /// this is measured there and not on the grid.
     pub(super) fn via_fits(
         &self,
         pad: &InPad,
         net: usize,
         obstacles: &[&Obstacle],
         keepouts: &[(Form, f64)],
-    ) -> bool {
-        let radius = self.board.rules.via_diameter / 2.0;
+    ) -> Option<InPad> {
         let own = self.board.clearance(&self.board.nets[net].name) + MARGIN;
-        obstacles
-            .iter()
-            .filter(|o| o.net != Some(net))
-            .all(|o| o.form.distance(pad.at) >= o.space(own) - MARGIN + radius + 1e-3)
-            && keepouts.iter().all(|(form, reach)| match form {
-                // The pad's own keep-out is what the via is allowed to stand in.
-                Form::Rect(b) if *b == pad.bounds => true,
-                _ => form.distance(pad.at) >= *reach,
-            })
+        let holes = keepouts.iter().all(|(form, reach)| match form {
+            // The pad's own keep-out is what the via is allowed to stand in.
+            Form::Rect(b) if *b == pad.bounds => true,
+            _ => form.distance(pad.at) >= *reach,
+        });
+        if !holes {
+            return None;
+        }
+        let fits = |l: usize| {
+            let (on, offer) = self.stack.offer_between(self.board, pad.face, l);
+            let radius = offer.diameter / 2.0;
+            obstacles
+                .iter()
+                .filter(|o| o.net != Some(net) && (on == Layers::ALL || o.layers.meets(on)))
+                .all(|o| o.form.distance(pad.at) >= o.space(own) - MARGIN + radius + 1e-3)
+        };
+        let layers = (0..32)
+            .filter(|&l| pad.layers[l] && fits(l))
+            .fold(Layers::outer(false, false), Layers::with);
+        (!layers.is_empty()).then_some(InPad { layers, ..*pad })
     }
 
     /// The tracks and vias that follow a path. A path to a plane ends in a via, which is the
@@ -129,14 +140,20 @@ impl<'a> Router<'a> {
         } else {
             pads.push((l.to_at, last));
         }
-        // A path that begins or ends on the far layer of a pad goes through a via in the pad.
-        for pad in in_from.iter().chain(&in_to) {
+        // A path that begins or ends on another layer than its pad's goes through a via in the
+        // pad, the one between the two layers (issue #1071).
+        let ends = in_from
+            .iter()
+            .map(|p| (p, path[0].2))
+            .chain(in_to.iter().map(|p| (p, last.2)));
+        for (pad, layer) in ends {
+            let (diameter, drill, span) = self.stack.via_between(self.board, pad.face, layer);
             vias.push(Via {
                 net: l.net.clone(),
                 at: pad.at,
-                diameter: rules.via_diameter,
-                drill: rules.via_drill,
-                span: None,
+                diameter,
+                drill,
+                span,
             });
         }
         // A pad's centre is rarely on the grid, so join it to the first and last cell.

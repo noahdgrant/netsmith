@@ -937,6 +937,28 @@ impl Stack {
         }
     }
 
+    /// The via from layer `a` to layer `b` of the stack, and the layers of the stack it is on:
+    /// as [`Stack::via_between`], with whether it is drilled by laser (issue #1071).
+    pub(crate) fn offer_between(
+        &self,
+        board: &Board,
+        a: usize,
+        b: usize,
+    ) -> (Layers, netsmith_pcb::ViaOffer) {
+        match &self.spans {
+            Some(spans) => spans[a][b],
+            None => (
+                Layers::ALL,
+                netsmith_pcb::ViaOffer {
+                    span: None,
+                    laser: false,
+                    drill: board.rules.via_drill,
+                    diameter: board.rules.via_diameter,
+                },
+            ),
+        }
+    }
+
     /// How many layers the router draws on.
     pub(crate) fn len(&self) -> usize {
         self.copper.len()

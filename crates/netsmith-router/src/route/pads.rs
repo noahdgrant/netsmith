@@ -41,27 +41,32 @@ pub(super) fn pad_spots(
 }
 
 /// A pad a via may stand in: a surface-mount pad of a plain shape that is wide enough for
-/// the via's copper, when the process fills and caps vias that size.
+/// the via's copper, when the process fills and caps vias that size. On an HDI process the via
+/// to a layer is the one [`Stack::via_between`] draws: a blind via to the layer under the pad's
+/// face, which the process fills and planarizes by plating whatever `.via_in_pad` says, so it
+/// stands in a pad as narrow as its own copper (issue #1071); a through via only as on any
+/// process.
 #[derive(Clone, Copy, Debug)]
 pub(super) struct InPad {
     /// Where the via goes: the pad's centre.
     pub(super) at: Pt,
     /// The pad's box, which the via stays off all the keep-outs of other pads.
     pub(super) bounds: Rect,
-    /// The cell of the pad's other outer layer, where a path through the via goes on.
-    pub(super) spot: Spot,
-    /// How many layers of the stack the line may use: the via, a through via, leads to each
-    /// inner signal layer below the first two too (issue #833). 2 when it leads to the far outer
-    /// layer only.
-    pub(super) layers: usize,
+    /// The pad's cell.
+    pub(super) cell: (usize, usize),
+    /// The pad's layer of the stack, [`FRONT`] or [`BACK`].
+    pub(super) face: usize,
+    /// The layers a path through the via goes on from: the far outer layer and each inner
+    /// signal layer the line may use (issue #833) that a via in the pad leads to.
+    pub(super) layers: Layers,
 }
 
 impl InPad {
     /// The cells a path through the via in the pad goes on from: the far outer layer's, then
-    /// those of the inner signal layers the line may use.
+    /// those of the inner signal layers, from the top.
     pub(super) fn spots(&self) -> impl Iterator<Item = Spot> + '_ {
-        let (i, j, _) = self.spot;
-        std::iter::once(self.spot).chain((2..self.layers).map(move |l| (i, j, l)))
+        let (i, j) = self.cell;
+        (0..32).filter(|&l| self.layers[l]).map(move |l| (i, j, l))
     }
 
     /// Whether a path that begins or ends at `spot` goes through the via in the pad.
@@ -70,31 +75,40 @@ impl InPad {
     }
 }
 
+/// The via in the pad at `at` a line may go through to the first `layers` layers of `stack`,
+/// `None` where it may not stand in the pad ([`InPad`]).
 pub(super) fn in_pad(
     board: &Board,
+    stack: &Stack,
     pad: &netsmith_pcb::PadRef,
     at: Pt,
     grid: &Grid,
     layers: usize,
 ) -> Option<InPad> {
     let rules = &board.rules;
-    if !rules.via_in_pad {
-        return None;
-    }
     let (part, found) = pad_of(board, pad, at);
     let (front, back) = part.pad_layers(found);
     if front == back || found.extent.is_some() || found.drill.is_some() {
         return None;
     }
-    if found.width.min(found.height) < rules.via_diameter {
+    let face = if front { FRONT } else { BACK };
+    let width = found.width.min(found.height);
+    let reach = (0..layers)
+        .filter(|&l| l != face)
+        .filter(|&l| {
+            let (_, offer) = stack.offer_between(board, face, l);
+            (offer.laser || rules.via_in_pad) && width >= offer.diameter
+        })
+        .fold(Layers::outer(false, false), Layers::with);
+    if reach.is_empty() {
         return None;
     }
-    let (i, j) = grid.cell(at);
     Some(InPad {
         at,
         bounds: part.pad_bounds(found),
-        spot: (i, j, if front { BACK } else { FRONT }),
-        layers,
+        cell: grid.cell(at),
+        face,
+        layers: reach,
     })
 }
 

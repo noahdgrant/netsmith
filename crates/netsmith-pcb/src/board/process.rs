@@ -343,17 +343,21 @@ impl Board {
             .collect()
     }
 
-    /// Each via that stands in a surface-mount pad (its centre is on the pad's copper): the
-    /// via's place in [`Board::vias`] and the pad. A via in a pad has to be filled and capped
-    /// by the fabricator, or the solder runs down the hole.
+    /// Each via that stands in a surface-mount pad (its centre is on the pad's copper, and the
+    /// via is on the pad's face): the via's place in [`Board::vias`] and the pad. A via in a pad
+    /// has to be filled and capped by the fabricator, or the solder runs down the hole.
     pub fn vias_in_pads(&self) -> Vec<(usize, PadRef)> {
+        let n = self.copper_count();
         let mut found = Vec::new();
         for (k, via) in self.vias.iter().enumerate() {
             let at = Rect::new(via.at, via.at);
             for part in &self.parts {
                 for pad in &part.footprint.pads {
-                    let surface = pad.drill.is_none() && part.pad_layers(pad) != (false, false);
-                    if surface && part.pad_bounds(pad).contains(&at) {
+                    let (front, back) = part.pad_layers(pad);
+                    let surface = pad.drill.is_none() && (front || back);
+                    let met = (front && via.on(CopperLayer::Front, n))
+                        || (back && via.on(CopperLayer::Back, n));
+                    if surface && met && part.pad_bounds(pad).contains(&at) {
                         found.push((
                             k,
                             PadRef {
@@ -381,7 +385,17 @@ impl Board {
                 self.process.fabricator
             ));
         }
-        let in_pad = self.vias_in_pads();
+        // A laser-drilled blind via of an HDI process is filled and planarized by plating, as the
+        // process makes every one (issue #1071): it is not ordered as a via in a pad is.
+        let offers = self.via_offers();
+        let laser = |k: usize| {
+            let span = self.vias[k].span;
+            span.is_some() && offers.iter().any(|o| o.laser && o.span == span)
+        };
+        let (blind_in_pad, in_pad): (Vec<_>, Vec<_>) = self
+            .vias_in_pads()
+            .into_iter()
+            .partition(|(k, _)| laser(*k));
         if !in_pad.is_empty() {
             let mut pads: Vec<String> = in_pad.iter().map(|(_, p)| p.to_string()).collect();
             pads.dedup();
@@ -391,6 +405,16 @@ impl Board {
                 pads.join(", "),
                 self.process.fabricator,
                 self.process.via_in_pad
+            ));
+        }
+        if !blind_in_pad.is_empty() {
+            let mut pads: Vec<String> = blind_in_pad.iter().map(|(_, p)| p.to_string()).collect();
+            pads.dedup();
+            extras.push(format!(
+                "blind vias in pads: {} blind via(s) stand in pads ({}); {}'s HDI service fills and planarizes its blind vias by plating, so they are ordered with the HDI board and need no epoxy fill",
+                blind_in_pad.len(),
+                pads.join(", "),
+                self.process.fabricator
             ));
         }
         // An HDI board is ordered from the fabricator's HDI service, with its own build-up

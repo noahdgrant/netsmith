@@ -231,6 +231,34 @@ mod tests {
     }
 
     #[test]
+    fn a_blind_via_in_a_pad_is_filled_by_the_hdi_process_and_a_drilled_one_is_not() {
+        // Issue #1071: a board that takes no drilled via in a pad (`.via_in_pad &= 0mm`) on an
+        // HDI process, with a micro via and a through via each in a pad of their net.
+        let pad = |x: f64| {
+            format!(
+                r#"(footprint "L:R" (layer "F.Cu") (at {x} 5) (property "Reference" "R{x}") (pad "1" smd rect (at 0 0) (size 0.4 0.4) (layers "F.Cu") (net 1 "A")))"#
+            )
+        };
+        let pcb = |kind: &str, drill: f64, size: f64| {
+            board(&[(
+                kind,
+                ("F.Cu", if kind.is_empty() { "B.Cu" } else { "In1.Cu" }),
+                drill,
+                size,
+                5.0,
+            )])
+            .replace("(net 1))", &format!("(net 1)) {}", pad(5.0)))
+        };
+        let extras = Extras {
+            via_in_pad: Some(0.0),
+            ..hdi()
+        };
+        let in_pad = |pcb: &str| check(pcb, None, &extras).unwrap().count(Rule::ViaInPad);
+        assert_eq!(in_pad(&pcb("micro", 0.1, 0.25)), 0);
+        assert_eq!(in_pad(&pcb("", 0.2, 0.35)), 1);
+    }
+
+    #[test]
     fn holes_of_blind_vias_on_different_layers_do_not_meet() {
         // A blind via from the top and one from the bottom at one place: no hole to hole, and the
         // bottom's via is no copper on the top.
