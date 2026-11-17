@@ -102,13 +102,7 @@ pub(crate) fn run(out: &mut Out<'_>) {
                 trap.what, trap.angle
             ),
         };
-        out.push(
-            Rule::AcidTrap,
-            message,
-            trap.at,
-            Some(&layer),
-            items,
-        );
+        out.push(Rule::AcidTrap, message, trap.at, Some(&layer), items);
     }
 }
 
