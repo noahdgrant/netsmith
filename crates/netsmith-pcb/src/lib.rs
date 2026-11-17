@@ -105,7 +105,7 @@ pub use copper_areas::{
 pub use explain::{
     Fault, Precheck, RequirementReport, before_placing, explain as explain_requirements,
 };
-pub use export::{PATH_PROPERTY, kicad_pcb, kicad_pro};
+pub use export::{PATH_PROPERTY, kicad_pcb, kicad_pro, process_zones};
 pub use fit_report::{FitReport, PartRef, Size};
 pub use footprint::{
     Drill, Footprint, FootprintError, FootprintLibrary, Graphic, Layer, Mount, Pad, PadKind,

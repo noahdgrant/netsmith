@@ -27,6 +27,10 @@ pub struct Import {
     /// the design's, a shape on an inner layer, a part the design does not have, a rule area, a
     /// teardrop, a hatched zone.
     pub skipped: Vec<String>,
+    /// How many zones of the KiCad board were left out because each is the process's own plane or
+    /// pour (the same net, layer, outline and settings, issue #1116); each is also said in
+    /// `skipped`.
+    pub process_zones: usize,
 }
 
 impl Import {
@@ -385,7 +389,10 @@ fn fit(
 /// board is the top left of its Edge.Cuts' box, as the parity checker reads it. `lock` locks every
 /// net imported. Copper on an inner layer, and copper of a net that maps to none of the design's,
 /// is left out and said. Each zone of copper is taken whole (its layers, outline, holes and
-/// settings, [`RouteZone`]); a rule area, a teardrop and a hatched zone are left out and said.
+/// settings, [`RouteZone`]); a rule area, a teardrop and a hatched zone are left out and said, and
+/// so is a zone that is the process's own plane or pour (same net, layer, outline and settings as
+/// the board's process states them, [`netsmith_pcb::process_zones`], issue #1116): one that differs
+/// is a hand zone.
 pub fn import(
     board: &Board,
     pcb: &str,
@@ -523,6 +530,7 @@ pub fn import(
     }
     let (zones, unread) = crate::copper::read_zones(pcb, "the KiCad board")?;
     out.skipped.extend(unread);
+    let mut process = netsmith_pcb::process_zones(board);
     let (mut rule_areas, mut teardrops) = (0, 0);
     for zone in zones {
         match zone.kind {
@@ -559,16 +567,7 @@ pub fn import(
             ));
             continue;
         };
-        if zone.smoothed {
-            out.skipped.push(format!(
-                "a zone of net `{theirs}` has smoothed corners: taken with its outline's corners as they are"
-            ));
-        }
-        let record = out.nets.entry(ours.clone()).or_insert_with(|| NetRoutes {
-            lock,
-            ..NetRoutes::default()
-        });
-        record.zones.push(RouteZone {
+        let taken = RouteZone {
             layers,
             priority: zone.priority,
             clearance: zone.clearance,
@@ -581,7 +580,31 @@ pub fn import(
             outline: zone.outline,
             holes: zone.holes,
             lock: false,
+        };
+        // The process's own plane or pour, as `fab` wrote it, is the design's already: taken, it
+        // would replace the process's with a hand zone that has the settings frozen as of now.
+        if let Some(i) = process
+            .iter()
+            .position(|(net, own)| net == ours && own.same_copper(&taken))
+        {
+            let (_, own) = process.remove(i);
+            out.process_zones += 1;
+            out.skipped.push(format!(
+                "a zone of net `{ours}` on {} is the process's own plane or pour: left out (the process draws it)",
+                own.layers.join(", ")
+            ));
+            continue;
+        }
+        if zone.smoothed {
+            out.skipped.push(format!(
+                "a zone of net `{theirs}` has smoothed corners: taken with its outline's corners as they are"
+            ));
+        }
+        let record = out.nets.entry(ours.clone()).or_insert_with(|| NetRoutes {
+            lock,
+            ..NetRoutes::default()
         });
+        record.zones.push(taken);
     }
     if rule_areas > 0 {
         out.skipped.push(format!(

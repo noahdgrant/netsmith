@@ -65,3 +65,57 @@ fn a_blind_and_a_buried_via_are_imported_with_their_layers() {
     );
     assert_eq!(gnd.vias[0].drill, 0.1);
 }
+
+/// The board with its process's plane nets, and an outer pour on top with settings of its own.
+fn poured_board(clearance: f64) -> netsmith_pcb::Board {
+    let mut board = hdi_board();
+    board.pours.push(netsmith_pcb::BoardPour {
+        layer: CopperLayer::Front,
+        net: "GND".into(),
+        stitch_pitch: None,
+        thermal_gap: Some(0.4),
+        spoke_width: None,
+        clearance: Some(clearance),
+        min_width: None,
+        pads: Some(netsmith_pcb::ZonePads::Solid),
+    });
+    board
+}
+
+#[test]
+fn the_processs_own_planes_and_pours_are_left_out_and_said() {
+    let board = poured_board(0.3);
+    let own = board.planes.len() + board.pours.len();
+    assert!(own >= 2, "the fixture has planes and a pour: {own}");
+    let pcb = kicad_pcb(&board);
+    let import = netsmith_tools::routes_import::import(&board, &pcb, None, false)
+        .unwrap_or_else(|e| panic!("{e}"));
+    assert_eq!(import.process_zones, own);
+    assert_eq!(import.zones(), 0, "{:?}", import.nets);
+    let said = import
+        .skipped
+        .iter()
+        .filter(|s| s.contains("the process's own plane or pour"))
+        .count();
+    assert_eq!(said, own, "{:?}", import.skipped);
+    assert!(
+        import.nets.values().all(|n| n.zones.is_empty()),
+        "{:?}",
+        import.nets
+    );
+}
+
+#[test]
+fn a_zone_that_differs_from_the_processs_is_imported_as_a_hand_zone() {
+    // The KiCad board has the pour with a clearance of 0.3 mm, the process states 0.4 mm.
+    let pcb = kicad_pcb(&poured_board(0.3));
+    let board = poured_board(0.4);
+    let own = board.planes.len() + board.pours.len();
+    let import = netsmith_tools::routes_import::import(&board, &pcb, None, false)
+        .unwrap_or_else(|e| panic!("{e}"));
+    assert_eq!(import.process_zones, own - 1);
+    assert_eq!(import.zones(), 1, "{:?}", import.nets);
+    let zone = &import.nets["GND"].zones[0];
+    assert_eq!(zone.layers, ["top"]);
+    assert_eq!(zone.clearance, 0.3);
+}

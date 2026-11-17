@@ -632,6 +632,38 @@ pub fn layer_word(kicad: &str) -> Option<String> {
 }
 
 impl RouteZone {
+    /// Whether `self` and `other` make the same copper (issue #1116): the same layers, priority,
+    /// settings, holes and outline, each place to a micrometre, the outline and each hole as a
+    /// ring that starts at any corner and runs either way round. `lock` is not compared. The
+    /// import tells a zone of a KiCad board that is the process's own plane or pour
+    /// ([`crate::process_zones`]) from a hand zone so.
+    pub fn same_copper(&self, other: &RouteZone) -> bool {
+        const TOL: f64 = 1e-3;
+        let near = |a: f64, b: f64| (a - b).abs() <= TOL;
+        let (mut a, mut b) = (self.layers.clone(), other.layers.clone());
+        a.sort();
+        b.sort();
+        a == b
+            && self.priority == other.priority
+            && near(self.clearance, other.clearance)
+            && near(self.min_width, other.min_width)
+            && self.pads == other.pads
+            && near(self.thermal_gap, other.thermal_gap)
+            && near(self.spoke_width, other.spoke_width)
+            && self.islands == other.islands
+            && match (self.island_min_area, other.island_min_area) {
+                (None, None) => true,
+                (Some(a), Some(b)) => near(a, b),
+                _ => false,
+            }
+            && same_ring(&self.outline, &other.outline, TOL)
+            && self.holes.len() == other.holes.len()
+            && self
+                .holes
+                .iter()
+                .all(|h| other.holes.iter().any(|o| same_ring(h, o, TOL)))
+    }
+
     /// The zone on `board`, of `net`. The layers must have been checked ([`RouteZone::check`]).
     pub fn on(&self, board: &Board, net: &str) -> BoardZone {
         let at = |p: &[f64; 2]| board.outline.min + Pt::new(p[0], p[1]);
@@ -878,6 +910,21 @@ pub fn record_of(board: &Board, net: &str, lock: bool) -> Option<NetRoutes> {
     })
 }
 
+/// Whether two rings of corners are the same polygon: the same corners in the same order, from
+/// any start, either way round, each within `tol` mm.
+fn same_ring(a: &[[f64; 2]], b: &[[f64; 2]], tol: f64) -> bool {
+    let n = a.len();
+    if n != b.len() || n == 0 {
+        return n == b.len();
+    }
+    let near =
+        |p: &[f64; 2], q: &[f64; 2]| (p[0] - q[0]).abs() <= tol && (p[1] - q[1]).abs() <= tol;
+    (0..n).any(|start| {
+        (0..n).all(|i| near(&a[i], &b[(start + i) % n]))
+            || (0..n).all(|i| near(&a[i], &b[(start + n - i) % n]))
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -978,6 +1025,32 @@ mod tests {
             (z.priority, z.pads, z.islands, z.lock),
             (0, ZonePads::Thermal, ZoneIslands::Remove, false)
         );
+    }
+
+    #[test]
+    fn a_zone_makes_the_same_copper_from_any_corner_and_either_way_round_and_not_with_other_settings()
+     {
+        let a = zone();
+        assert!(a.same_copper(&a));
+        let mut turned = a.clone();
+        turned.outline.rotate_left(1);
+        turned.outline.reverse();
+        turned.lock = true;
+        assert!(a.same_copper(&turned));
+        let mut near = a.clone();
+        near.outline[0][0] += 0.0004;
+        assert!(a.same_copper(&near));
+        near.outline[0][0] += 0.01;
+        assert!(!a.same_copper(&near));
+        let mut other = a.clone();
+        other.clearance += 0.1;
+        assert!(!a.same_copper(&other));
+        let mut other = a.clone();
+        other.priority += 1;
+        assert!(!a.same_copper(&other));
+        let mut other = a.clone();
+        other.holes.push(vec![[1.0, 1.0], [2.0, 1.0], [2.0, 2.0]]);
+        assert!(!a.same_copper(&other));
     }
 
     #[test]
