@@ -5,6 +5,9 @@ use std::{env, time::Duration};
 
 use clap::{Args as ClapArgs, Subcommand};
 use netsmith_pipeline::supply::Supply;
+use netsmith_tools::findings::{Finding, Severity};
+
+use super::common::{Format, print_json};
 
 #[derive(Debug, PartialEq, ClapArgs)]
 pub struct Args {
@@ -52,6 +55,11 @@ pub struct RefreshArgs {
     /// Keep no answer.
     #[arg(long)]
     pub no_cache: bool,
+    /// Text for a person, or one JSON document on stdout.
+    ///
+    /// `json` prints one JSON document on stdout and nothing else there: `command` (`catalog refresh`), `ok` (false when a row is a `conflict` or `missing`, as the exit code 1 says), `dry_run`, the `requests` made to LCSC, the `files` and `unknown_lcsc`, the numbers given to `--lcsc` that no row has. Each file has its `file` and `catalog`, the counts `looked_up`, `verified`, `conflict`, `missing`, `skipped` and `without_lcsc` (rows with no `lcsc` number), whether it was `written`, its `notes`, and the `rows` the text names: those that changed, are not verified or have a note, each with its `line`, `lcsc`, `status` (`verified`, `conflict`, `missing` or `skipped`), `why` for the last three, the `changes` (`column`, `from`, `to`) and its `notes`. The run's own notice is left out. The progress, one line for each row looked up, is on stderr; a run that had to stop is an error on stderr with exit code 2 and nothing on stdout.
+    #[arg(long, value_enum, default_value = "text")]
+    pub format: Format,
 }
 
 #[derive(Debug, PartialEq, ClapArgs)]
@@ -72,6 +80,11 @@ pub struct AddArgs {
     /// Keep no answer.
     #[arg(long)]
     pub no_cache: bool,
+    /// Text for a person, or one JSON document on stdout.
+    ///
+    /// `json` prints one JSON document on stdout and nothing else there: `command` (`catalog add`), `ok`, the `lcsc` number, the `mpn`, the `package` (null when LCSC lists none), the day it was `read`, `written` (the `file` and `line` of the row added, null with no `--to`), the columns `filled`, and the columns `to_fill`, which need the datasheet or JLCPCB's page. A number LCSC has no record of, or one the file already has, is `ok` false with a `findings` list of one error (the code `catalog`) and exit code 1; a run that could not be made is an error on stderr with exit code 2 and nothing on stdout.
+    #[arg(long, value_enum, default_value = "text")]
+    pub format: Format,
 }
 
 #[derive(Debug, PartialEq, ClapArgs)]
@@ -89,13 +102,18 @@ pub struct AgeArgs {
     /// Only this catalog (repeatable).
     #[arg(long, value_name = "CATALOG")]
     pub only: Vec<String>,
+    /// Text for a person, or one JSON document on stdout.
+    ///
+    /// `json` prints one JSON document on stdout and nothing else there: `command` (`catalog age`), `ok`, `today`, `days` (the age from which a row is old), `rows` (the rows with an `lcsc` number), the `old` rows (`file`, `line`, `lcsc`, the `date` the price and stock were read and `days` ago, each null when the cell is not a date) and the `unknown` rows (`file`, `line`, `lcsc`, `why` nobody knows them).
+    #[arg(long, value_enum, default_value = "text")]
+    pub format: Format,
 }
 
 pub fn run(args: Args) -> ExitCode {
     match args.command {
         Command::Refresh(a) => run_catalog_refresh(&a),
-        Command::Add(a) => run_catalog_add(&a.lcsc, a.to.as_deref(), a.offline, a.no_cache),
-        Command::Age(a) => run_catalog_age(&a.paths, &a.only, a.days),
+        Command::Add(a) => run_catalog_add(&a),
+        Command::Age(a) => run_catalog_age(&a),
     }
 }
 
@@ -103,20 +121,33 @@ pub fn run(args: Args) -> ExitCode {
 /// the run had to stop (an endpoint refused, a file could not be read) and wrote nothing.
 /// `netsmith catalog add` (#454): exit 0 when the row is written (or the record printed), 1
 /// when LCSC has no record or the file already has the number, 2 when the run could not be made.
-fn run_catalog_add(lcsc: &str, to: Option<&Path>, offline: bool, no_cache: bool) -> ExitCode {
+fn run_catalog_add(request: &AddArgs) -> ExitCode {
     use netsmith_fabricate::refresh::{self, AddError, Network};
     let mut network = Network {
-        offline,
+        offline: request.offline,
         ..Network::default()
     };
-    if no_cache {
+    if request.no_cache {
         network.cache_dir = None;
     }
+    let to: Option<&Path> = request.to.as_deref();
     let shown = to.map(|p| p.display().to_string());
-    match refresh::add(lcsc, to.zip(shown.as_deref()), network) {
+    match refresh::add(&request.lcsc, to.zip(shown.as_deref()), network) {
         Ok(added) => {
-            print!("{}", refresh::render_added(&added));
+            if request.format == Format::Json {
+                print_json(&refresh::json_added(&added));
+            } else {
+                print!("{}", refresh::render_added(&added));
+            }
             ExitCode::SUCCESS
+        }
+        Err(AddError::Refused(why)) if request.format == Format::Json => {
+            print_json(&serde_json::json!({
+                "command": "catalog add",
+                "ok": false,
+                "findings": [Finding::plain(Severity::Error, "catalog", why)],
+            }));
+            ExitCode::FAILURE
         }
         Err(AddError::Refused(why)) => {
             eprintln!("error: {why}");
@@ -171,8 +202,12 @@ fn run_catalog_refresh(request: &RefreshArgs) -> ExitCode {
             return fail(e);
         }
     };
-    print!("{}", refresh::render_diff(&report));
-    print!("{}", refresh::render_summary(&report));
+    if request.format == Format::Json {
+        print_json(&refresh::json_report(&report));
+    } else {
+        print!("{}", refresh::render_diff(&report));
+        print!("{}", refresh::render_summary(&report));
+    }
     if report.has_findings() {
         ExitCode::FAILURE
     } else {
@@ -180,7 +215,8 @@ fn run_catalog_refresh(request: &RefreshArgs) -> ExitCode {
     }
 }
 
-fn run_catalog_age(paths: &[std::path::PathBuf], only: &[String], days: u32) -> ExitCode {
+fn run_catalog_age(request: &AgeArgs) -> ExitCode {
+    let (paths, only, days) = (&request.paths, &request.only, request.days);
     use netsmith_fabricate::refresh;
     let fail = |e: String| {
         eprintln!("error: {e}");
@@ -201,7 +237,11 @@ fn run_catalog_age(paths: &[std::path::PathBuf], only: &[String], days: u32) -> 
         .and_then(|t| refresh::age(&t, only, days, &today, &supply))
     {
         Ok(report) => {
-            print!("{}", refresh::render_age(&report));
+            if request.format == Format::Json {
+                print_json(&refresh::json_age(&report));
+            } else {
+                print!("{}", refresh::render_age(&report));
+            }
             ExitCode::SUCCESS
         }
         Err(e) => fail(e),
@@ -211,6 +251,7 @@ fn run_catalog_age(paths: &[std::path::PathBuf], only: &[String], days: u32) -> 
 #[cfg(test)]
 mod tests {
     use crate::commands::catalog;
+    use crate::commands::common::Format;
     use crate::commands::common::testing::Leaf;
     use crate::commands::common::testing::{kind, parse};
     use clap::error::ErrorKind;
@@ -233,6 +274,7 @@ mod tests {
                     to: Some(PathBuf::from("catalogs/led.csv")),
                     offline: false,
                     no_cache: false,
+                    format: Format::Text,
                 })
             }))
         );
@@ -299,6 +341,7 @@ mod tests {
                     delay_ms: Some(1500),
                     cache_ttl_hours: Some(6),
                     no_cache: true,
+                    format: Format::Text,
                 })
             }))
         );
@@ -333,7 +376,8 @@ mod tests {
                 command: catalog::Command::Age(catalog::AgeArgs {
                     paths: vec![],
                     only: vec![],
-                    days: 90
+                    days: 90,
+                    format: Format::Text,
                 })
             }))
         );
@@ -343,7 +387,8 @@ mod tests {
                 command: catalog::Command::Age(catalog::AgeArgs {
                     paths: vec!["x.csv".into()],
                     only: vec!["ldo".into()],
-                    days: 30
+                    days: 30,
+                    format: Format::Text,
                 })
             }))
         );

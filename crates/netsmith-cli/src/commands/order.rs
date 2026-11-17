@@ -12,7 +12,7 @@ use super::fab::{self, Constraints, OrderRequest};
 #[derive(Debug, PartialEq, ClapArgs)]
 #[command(args_override_self = true)]
 #[command(
-    after_long_help = "An order names its boards in netsmith.toml (`[[order]]`, ADR 0035), so `project order` takes no file: with no name it lists the project's orders, and with one it makes the fab package of each board of the order, as `board fab` makes it, and the order's own files (`order.txt`) into one folder. An order is a release: it never moves a pin by itself, and a seed of the layout file that would change stops it. A board a plain `board fab` made into the same folder from the same inputs is copied, not made again. It prints text only."
+    after_long_help = "An order names its boards in netsmith.toml (`[[order]]`, ADR 0035), so `project order` takes no file: with no name it lists the project's orders, and with one it makes the fab package of each board of the order, as `board fab` makes it, and the order's own files (`order.txt`) into one folder. An order is a release: it never moves a pin by itself, and a seed of the layout file that would change stops it. A board a plain `board fab` made into the same folder from the same inputs is copied, not made again. It prints text, or with `--format json` one JSON document on stdout (the fields are under `--format`); the progress goes to stderr either way."
 )]
 pub struct Args {
     /// The order to make; with none, list the project's orders.
@@ -64,6 +64,19 @@ pub struct Args {
     pub placing: common::Placing,
     #[command(flatten)]
     pub watching: common::Watching,
+    /// Text for a person, or one JSON document on stdout.
+    ///
+    /// `json` prints one JSON document on stdout and nothing else there: `command` (`order`) and
+    /// `ok`. With no name it lists the `orders`, each its `name` and its `boards` (`name`, `quantity`),
+    /// as the editor's `GET /api/orders` does. With a name it has the `order` made, the `dir` it
+    /// was written to, its `boards` (the `board`, the `quantity` ordered, its `dir` and whether it
+    /// was `reused` from a plain `board fab`), the `files` of the order, how many boards were
+    /// `reused` and how many `stages_run`, and the `summary`, the text of `order.txt`. An order
+    /// that cannot be made has `ok` false and the `findings`, one error with the code `fab` and
+    /// the text of the message. A mistake in the arguments or an order that does not exist
+    /// is an error on stderr with exit code 2 and nothing on stdout.
+    #[arg(long, value_enum, default_value = "text")]
+    pub format: common::Format,
 }
 
 impl Args {
@@ -98,6 +111,7 @@ pub fn run(args: Args) -> ExitCode {
             args.no_pdf,
             args.offline,
             &args.placing,
+            args.format.into(),
         )
     });
     crate::progress::ended(
@@ -146,7 +160,7 @@ mod tests {
             kind(&["project", "order", "a", "b"]),
             ErrorKind::UnknownArgument
         );
-        for flag in ["--save-placed", "--reuse-routes", "--format", "--pins"] {
+        for flag in ["--save-placed", "--reuse-routes", "--pins", "--notes"] {
             assert!(parse(&["project", "order", "d", flag]).is_err(), "{flag}");
         }
         assert!(parse(&["board", "fab", "--order", "d"]).is_err());

@@ -128,9 +128,10 @@ pub struct Output {
 }
 
 /// `--format`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, ValueEnum)]
 pub enum Format {
     /// For a person.
+    #[default]
     Text,
     /// One JSON document on stdout.
     Json,
@@ -143,6 +144,14 @@ impl From<Format> for netsmith_tools::findings::Format {
             Format::Json => netsmith_tools::findings::Format::Json,
         }
     }
+}
+
+/// Prints `document` as the one JSON document of a `--format json` run: pretty, with a newline.
+pub fn print_json(document: &serde_json::Value) {
+    println!(
+        "{}",
+        serde_json::to_string_pretty(document).expect("a document is plain data")
+    );
 }
 
 /// `--notes`.

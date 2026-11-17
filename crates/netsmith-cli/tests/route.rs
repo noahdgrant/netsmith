@@ -252,3 +252,70 @@ fn route_with_one_try_makes_one_and_takes_a_turn_cost() {
     let said = String::from_utf8_lossy(&run.stdout);
     assert!(said.contains("(1 tries)"), "{said}");
 }
+
+#[test]
+fn route_prints_one_json_document_with_what_the_text_says() {
+    let examples = repo().join("examples");
+    let dir = TempDir::new("route-json");
+    let (saved, routed) = (dir.join("saved"), dir.join("routed"));
+    ok(&netsmith(
+        &examples,
+        &[
+            "board",
+            "fab",
+            "led.nsm",
+            "--out",
+            saved.to_str().unwrap(),
+            "--locked",
+            "--save-placed",
+        ],
+    ));
+    let placed = saved.join("LedExample/LedExample.placed.json");
+    let run = netsmith(
+        &examples,
+        &[
+            "dev",
+            "route",
+            placed.to_str().unwrap(),
+            "--out",
+            routed.to_str().unwrap(),
+            "--format",
+            "json",
+        ],
+    );
+    ok(&run);
+    let doc: serde_json::Value = serde_json::from_slice(&run.stdout).unwrap_or_else(|e| {
+        panic!("not one JSON document ({e}): {}", String::from_utf8_lossy(&run.stdout))
+    });
+    // The text's "LedExample: 0 connections left, N tracks, N vias, routed in S s (N tries)".
+    assert_eq!(doc["command"], "route");
+    assert_eq!(doc["ok"], true);
+    assert_eq!(doc["board"], "LedExample");
+    assert_eq!(doc["connections_left"], 0);
+    assert_eq!(doc["left"], serde_json::json!([]));
+    assert!(doc["tracks"].as_u64().unwrap() > 0);
+    assert!(doc["vias"].is_u64() && doc["tries"].as_u64().unwrap() >= 1);
+    assert_eq!(doc["stopped"], false);
+    assert!(doc["seconds"].is_f64());
+    // The files the text lists after `wrote`.
+    let written: Vec<&str> = doc["written"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|w| w.as_str().unwrap())
+        .collect();
+    assert!(
+        written.iter().any(|w| w.ends_with("LedExample.kicad_pcb")),
+        "{written:?}"
+    );
+    // The same board makes the same copper as the text run, and the files are there.
+    assert!(routed.join("LedExample.kicad_pcb").exists());
+}
+
+#[test]
+fn route_with_json_still_exits_two_on_a_file_it_cannot_read() {
+    let dir = TempDir::new("route-json-bad-file");
+    let run = netsmith(&dir, &["dev", "route", "missing.placed.json", "--format", "json"]);
+    assert_eq!(run.status.code(), Some(2));
+    assert!(run.stdout.is_empty(), "{}", String::from_utf8_lossy(&run.stdout));
+}

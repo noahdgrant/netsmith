@@ -524,7 +524,13 @@ mod tests {
         assert_eq!(
             lock.argv(&args(json!({ "part": ["a.r1", "a.r2"] })))
                 .unwrap(),
-            ["project", "lock", "--part=a.r1", "--part=a.r2"]
+            [
+                "project",
+                "lock",
+                "--part=a.r1",
+                "--part=a.r2",
+                "--format=json"
+            ]
         );
         let summary = tool("layout_summary");
         let argv = summary

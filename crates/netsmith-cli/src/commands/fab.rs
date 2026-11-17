@@ -645,7 +645,9 @@ pub(super) fn run_order(
     no_pdf: bool,
     offline: bool,
     placing: &common::Placing,
+    format: Format,
 ) -> ExitCode {
+    let json = format == Format::Json;
     let (target, loader, mut catalogs) = match target_offline(None, strict, offline) {
         Ok(t) => t,
         Err(code) => return code,
@@ -660,7 +662,21 @@ pub(super) fn run_order(
         .unwrap_or_default();
     let name = match request {
         OrderRequest::List => {
-            print!("{}", netsmith_fabricate::order::list(orders));
+            if json {
+                common::print_json(&serde_json::json!({
+                    "command": "order",
+                    "ok": true,
+                    "orders": orders.iter().map(|o| serde_json::json!({
+                        "name": o.name,
+                        "boards": o.boards.iter().map(|b| serde_json::json!({
+                            "name": b.name,
+                            "quantity": b.quantity,
+                        })).collect::<Vec<_>>(),
+                    })).collect::<Vec<_>>(),
+                }));
+            } else {
+                print!("{}", netsmith_fabricate::order::list(orders));
+            }
             return ExitCode::SUCCESS;
         }
         OrderRequest::Make(name) => name,
@@ -741,9 +757,41 @@ pub(super) fn run_order(
         },
         out,
     ) {
+        Err(problems) if json => {
+            common::print_json(&serde_json::json!({
+                "command": "order",
+                "ok": false,
+                "order": order.name,
+                "findings": [Finding::plain(
+                    Severity::Error,
+                    "fab",
+                    problems.to_string().trim().trim_start_matches("error: "),
+                )],
+            }));
+            ExitCode::FAILURE
+        }
         Err(problems) => {
             eprint!("{problems}");
             ExitCode::FAILURE
+        }
+        Ok(made) if json => {
+            common::print_json(&serde_json::json!({
+                "command": "order",
+                "ok": true,
+                "order": made.name,
+                "dir": made.dir.display().to_string(),
+                "boards": made.boards.iter().map(|(selected, b)| serde_json::json!({
+                    "board": b.board,
+                    "quantity": selected.quantity,
+                    "dir": b.dir.display().to_string(),
+                    "reused": b.reused,
+                })).collect::<Vec<_>>(),
+                "files": made.files.iter().map(|f| f.display().to_string()).collect::<Vec<_>>(),
+                "reused": made.reused(),
+                "stages_run": made.stages_run(),
+                "summary": made.summary,
+            }));
+            ExitCode::SUCCESS
         }
         Ok(made) => {
             for (_, b) in &made.boards {

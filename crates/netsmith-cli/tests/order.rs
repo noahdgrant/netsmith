@@ -203,3 +203,68 @@ fn the_program_makes_an_order_into_the_out_directory() {
         "{stdout}"
     );
 }
+
+fn json(run: &std::process::Output) -> serde_json::Value {
+    serde_json::from_slice(&run.stdout).unwrap_or_else(|e| {
+        panic!(
+            "stdout is not one JSON document ({e}): {}",
+            String::from_utf8_lossy(&run.stdout)
+        )
+    })
+}
+
+#[test]
+fn the_list_of_orders_is_json_with_what_the_text_lists() {
+    let root = project("list-json", ORDERS);
+    let run = netsmith(&root, &["project", "order", "--format", "json"]);
+    assert!(run.status.success(), "{}", String::from_utf8_lossy(&run.stderr));
+    let doc = json(&run);
+    assert_eq!((doc["command"].as_str(), doc["ok"].as_bool()), (Some("order"), Some(true)));
+    let orders = doc["orders"].as_array().unwrap();
+    let names: Vec<&str> = orders.iter().map(|o| o["name"].as_str().unwrap()).collect();
+    assert_eq!(names, ["small", "system"]);
+    // The text's `small: LedExample x10, TwoBoards/led x3`.
+    let small: Vec<(&str, u64)> = orders[0]["boards"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|b| (b["name"].as_str().unwrap(), b["quantity"].as_u64().unwrap()))
+        .collect();
+    assert_eq!(small, [("LedExample", 10), ("TwoBoards/led", 3)]);
+    // A project with no order lists none.
+    let none = project("list-json-none", "");
+    let doc = json(&netsmith(&none, &["project", "order", "--format", "json"]));
+    assert_eq!(doc["orders"], serde_json::json!([]));
+}
+
+#[test]
+fn an_order_that_is_made_is_json_and_one_that_does_not_exist_is_exit_code_two() {
+    let missing = project("make-json-missing", ORDERS);
+    let run = netsmith(&missing, &["project", "order", "nope", "--format", "json"]);
+    assert_eq!(run.status.code(), Some(2));
+    assert!(run.stdout.is_empty());
+
+    if netsmith_kicad::skip_without_kicad_libraries() {
+        return;
+    }
+    let root = project("make-json", ORDERS);
+    let made = netsmith(&root, &["project", "order", "small", "--format", "json", "--quiet"]);
+    assert!(made.status.success(), "{}", String::from_utf8_lossy(&made.stderr));
+    let doc = json(&made);
+    assert_eq!((doc["command"].as_str(), doc["ok"].as_bool()), (Some("order"), Some(true)));
+    assert_eq!(doc["order"], "small");
+    assert!(doc["dir"].as_str().unwrap().ends_with("orders/small"));
+    let boards: Vec<(&str, u64)> = doc["boards"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|b| (b["board"].as_str().unwrap(), b["quantity"].as_u64().unwrap()))
+        .collect();
+    assert_eq!(boards, [("LedExample", 10), ("TwoBoards/led", 3)]);
+    // The summary is the text of `order.txt`, and the files are what the order wrote.
+    let summary = fs::read_to_string(root.join("fab/orders/small/order.txt")).unwrap();
+    assert_eq!(doc["summary"].as_str().unwrap(), summary);
+    assert!(doc["files"].as_array().unwrap().iter().any(|f| f.as_str().unwrap().ends_with("order.txt")));
+    assert_eq!(doc["reused"], 0);
+    assert!(doc["stages_run"].as_u64().unwrap() > 0);
+}

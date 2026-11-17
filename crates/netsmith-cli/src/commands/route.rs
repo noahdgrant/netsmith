@@ -9,7 +9,7 @@ use clap::Args as ClapArgs;
 #[derive(Debug, PartialEq, ClapArgs)]
 #[command(args_override_self = true)]
 #[command(
-    after_long_help = "`route` routes the board that `board fab --save-placed` saved again, alone, the way `fab` does (signals at the track margin first where there is room, then at the process's least track), with no checking, solving or placing, so an experiment on the router (a change to its code, a time limit, a track margin) takes the time of the routing and nothing else. It writes `<board>.kicad_pcb`, `.kicad_pro`, `.svg` and, when connections are left, `routing-failure.txt` and `routing-report.json` into `--out`, as `fab` does; it prints the connections left, the tracks, the vias and the time. It is a router tool and not a fab package: it runs no design rules check and writes no Gerbers.\n\nThe exit code is 0 when every connection is routed, 1 when connections are left, and 2 when the file cannot be read: the file's layout changes with netsmith, so a file saved by another version is refused and is saved again with `board fab --save-placed`."
+    after_long_help = "`route` routes the board that `board fab --save-placed` saved again, alone, the way `fab` does (signals at the track margin first where there is room, then at the process's least track), with no checking, solving or placing, so an experiment on the router (a change to its code, a time limit, a track margin) takes the time of the routing and nothing else. It writes `<board>.kicad_pcb`, `.kicad_pro`, `.svg` and, when connections are left, `routing-failure.txt` and `routing-report.json` into `--out`, as `fab` does; it prints the connections left, the tracks, the vias and the time, as text or, with `--format json`, as one JSON document on stdout (the fields are under `--format`); the progress is on stderr either way. It is a router tool and not a fab package: it runs no design rules check and writes no Gerbers.\n\nThe exit code is 0 when every connection is routed, 1 when connections are left, and 2 when the file cannot be read: the file's layout changes with netsmith, so a file saved by another version is refused and is saved again with `board fab --save-placed`."
 )]
 pub struct Args {
     /// The placed board that `board fab --save-placed` wrote.
@@ -79,6 +79,16 @@ pub struct Args {
     /// rules' space, and change nothing the search does.
     #[arg(long, value_name = "WIDTHS", value_parser = parse_arcs)]
     pub arcs: Option<f64>,
+    /// Text for a person, or one JSON document on stdout.
+    ///
+    /// `json` prints one JSON document on stdout and nothing else there: `command` (`route`),
+    /// `ok` (every connection is routed, as the exit code 0 says), the `board`, the `left`
+    /// connections as the text lists them after `not routed:`, `connections_left` (their count), the
+    /// `tracks` and `vias` of the result, the `seconds` it took, the `tries` it made, `stopped`
+    /// (the router ran out of its route timeout) and the `written` files. A file that cannot be
+    /// read or written is an error on stderr with exit code 2 and nothing on stdout.
+    #[arg(long, value_enum, default_value = "text")]
+    pub format: super::common::Format,
 }
 
 /// Routes the saved board again, alone, the way `fab` does, and writes its board files.
@@ -99,7 +109,7 @@ pub fn run(args: Args) -> ExitCode {
         arcs: args.arcs,
         rip_rounds: args.rip_rounds,
     };
-    run_route(&args.file, args.out.as_deref(), request)
+    run_route(&args.file, args.out.as_deref(), request, args.format)
 }
 
 /// `netsmith dev route`: route the placed board that `board fab --save-placed` wrote, alone, and write
@@ -109,6 +119,7 @@ fn run_route(
     file: &Path,
     out: Option<&Path>,
     request: netsmith_fabricate::placed::RouteRequest,
+    format: super::common::Format,
 ) -> ExitCode {
     let placed = match fs::read_to_string(file)
         .map_err(|e| e.to_string())
@@ -129,26 +140,42 @@ fn run_route(
                 return ExitCode::from(2);
             }
         };
-    for path in &routed.written {
-        println!("wrote {}", path.display());
-    }
-    for line in &routed.left {
-        println!("not routed: {line}");
-    }
-    println!(
-        "{}: {} connections left, {} tracks, {} vias, routed in {:.1} s ({} tries{})",
-        routed.board.name,
-        routed.left.len(),
-        routed.board.tracks.len(),
-        routed.board.vias.len(),
-        routed.elapsed.as_secs_f64(),
-        routed.tries,
-        if routed.stopped {
-            ", stopped at the route timeout"
-        } else {
-            ""
+    if format == super::common::Format::Json {
+        super::common::print_json(&serde_json::json!({
+            "command": "route",
+            "ok": routed.left.is_empty(),
+            "board": routed.board.name,
+            "left": routed.left,
+            "connections_left": routed.left.len(),
+            "tracks": routed.board.tracks.len(),
+            "vias": routed.board.vias.len(),
+            "seconds": routed.elapsed.as_secs_f64(),
+            "tries": routed.tries,
+            "stopped": routed.stopped,
+            "written": routed.written.iter().map(|p| p.display().to_string()).collect::<Vec<_>>(),
+        }));
+    } else {
+        for path in &routed.written {
+            println!("wrote {}", path.display());
         }
-    );
+        for line in &routed.left {
+            println!("not routed: {line}");
+        }
+        println!(
+            "{}: {} connections left, {} tracks, {} vias, routed in {:.1} s ({} tries{})",
+            routed.board.name,
+            routed.left.len(),
+            routed.board.tracks.len(),
+            routed.board.vias.len(),
+            routed.elapsed.as_secs_f64(),
+            routed.tries,
+            if routed.stopped {
+                ", stopped at the route timeout"
+            } else {
+                ""
+            }
+        );
+    }
     if routed.left.is_empty() {
         ExitCode::SUCCESS
     } else {
@@ -247,6 +274,7 @@ mod tests {
                 plan: None,
                 classes: None,
                 arcs: None,
+                format: crate::commands::common::Format::Text,
             }))
         );
         assert_eq!(kind(&["dev", "route"]), ErrorKind::MissingRequiredArgument);
@@ -309,6 +337,7 @@ mod tests {
                 plan: None,
                 classes: None,
                 arcs: None,
+                format: crate::commands::common::Format::Text,
             }))
         );
         for bad in ["2.5", "steep", "10001"] {
