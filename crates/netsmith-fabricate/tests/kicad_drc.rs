@@ -98,8 +98,8 @@ fn wide_regulator() -> Board {
         env!("CARGO_MANIFEST_DIR")
     );
     let text = std::fs::read_to_string(&path).unwrap().replace(
-        "        .voltage &= 5V +/- 5%\n",
-        "        .voltage &= 5V +/- 5%\n        .min_track &= 0.6mm..\n",
+        ".input: Rail { .voltage &= 5V +/- 5%; .pos.net &= \"VIN\" }",
+        ".input: Rail { .voltage &= 5V +/- 5%; .min_track &= 0.6mm..; .pos.net &= \"VIN\" }",
     );
     board_from(&path, &text)
 }
@@ -402,8 +402,10 @@ fn four_layer_importing(imports: &str, process: &str, members: &str) -> Board {
     );
     let text = std::fs::read_to_string(&path).unwrap();
     let text = text.replace(
-        "        .inner2.net &= \"3V3\"\n",
-        &format!("        .inner2.net &= \"3V3\"\n{process}"),
+        ".process: FourLayer { .inner1.net &= \"GND\"; .inner2.net &= \"3V3\" }",
+        &format!(
+            ".process: FourLayer {{\n        .inner1.net &= \"GND\"\n        .inner2.net &= \"3V3\"\n{process}    }}"
+        ),
     );
     let first_import = text.find("import ").unwrap();
     let end = text.rfind('}').unwrap();
