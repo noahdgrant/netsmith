@@ -64,8 +64,10 @@ impl Solver<'_> {
         // A group that no choice served may fail only by bounds that no choice could meet
         // (a load over the rating of an IC that the group's divider feeds, issue #904): those
         // are set aside and the group is searched again, and the check after the picks says
-        // what they are.
-        if outcome.is_some()
+        // what they are. A part searched alone keeps its own message: it names the part and its
+        // closest row, and there is no other part to blame instead.
+        if group.len() > 1
+            && outcome.is_some()
             && !matches!(outcome, Some(Outcome::Solved))
             && let Some(again) = self.search_beyond(jobs, group, coupling, &search)
         {

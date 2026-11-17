@@ -116,6 +116,24 @@
 //! serve because of a value another part decides (a filter that sets the rail's voltage) is
 //! still searched as before and can give up.
 //!
+//! **A bound no choice of a group can meet is not the group's fault** (issue #904). Since the
+//! divider's current reaches a buck converter's switch node (#746), the divider's resistors
+//! feed the IC's `-.sw.current <= .max_output_current`, and a load over the rating failed the
+//! search of the divider: the message named the two resistors, or the search gave up after
+//! 250000 pairs. When the search of a group of two or more parts finds nothing or gives up, `beyond_the_group` looks for
+//! the bounds the group feeds that no value of its parts can meet: with the parts not yet
+//! chosen and each range the design states that the bound reads (the load) held at one end, no
+//! value of the bound meets its limit. Those are set aside (`Solver::aside`: no trial and no
+//! look-ahead judges them) and the group is searched again (`search_beyond`); when that solves
+//! it, its picks stand and the check after the picks reports the bounds, as before #746. When
+//! it does not, the first search's message stands. The first search already failed the board,
+//! so no board that builds changes. The audit (`Catalogs::with_look_ahead_audit`) asserts that
+//! every bound set aside still fails for the picks of the search again. Rejected: deciding it
+//! before the search (the argument holds the load at an end, which only a range nobody works
+//! out allows, and a mistake there would refuse a group that has a solution), and judging the
+//! parts at the hulls of their catalogs (a bound that only the catalog's rows miss, an IC that
+//! asks for more inductance than any row has, is the part's fault, and its message names it).
+//!
 //! **A failure names the picks it came from.** A failure used to depend on every part whose
 //! column was in the class of values it read, and one equation over many parts (a total, a net
 //! every part draws from) put them all in one class, so nothing was skipped and the message

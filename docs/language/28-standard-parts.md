@@ -613,17 +613,12 @@ board Overload {
 ```
 
 ```text
-error: no combination of candidates satisfies `reg.divider.rbottom` and `reg.divider.rtop` together: the closest, reg.divider.rbottom = 75kΩ 1% 0603 C23242 and reg.divider.rtop = 100kΩ 1% 0402 C25741, fails because `reg.divider.current` must stay within 10uA..1mA, but reg.divider.rtop.current works out to 9.959uA..10.77uA
-    --> std/parts/regulator.nsm:123:5
-    |
-123 |     .current == .rtop.current
-    |     ^^^^^^^^^^^^^^^^^^^^^^^^^
-error: -reg.ic.sw.current must always be at most reg.ic.max_output_current, but 10uA..3.001A is not always below 2A (the currents on net `net-reg.ic.sw.pos` in `reg`: reg.ic.sw.current (-3.001A..-10uA) + reg.inductor.current (10uA..3.001A) add up to zero; net `1V8` in `reg`: reg.divider.supply.current (10uA..1mA) + -reg.inductor.current (10uA..3.001A) + -reg.vout.current (-3A..0A) add up to zero; net `1V8`: output.current (0A..3A) + reg.vout.current (-3A..0A) add up to zero; net `1V8` in `reg.divider`: -reg.divider.supply.current (10uA..1mA) add up to zero, but the balance is incomplete: `reg.divider.rtop.a` is not modelled)
+error: -reg.ic.sw.current must always be at most reg.ic.max_output_current, but 15.11uA..3.001A is not always below 2A (the currents on net `net-reg.ic.sw.pos` in `reg`: reg.ic.sw.current (-3.001A..-15.11uA) + reg.inductor.current (15.11uA..3.001A) add up to zero; net `1V8` in `reg`: reg.divider.supply.current (14.62uA..16.37uA) + -reg.inductor.current (15.11uA..3.001A) + -reg.vout.current (-3A..0A) add up to zero; net `1V8`: output.current (0A..3A) + reg.vout.current (-3A..0A) add up to zero; net `1V8` in `reg.divider`: -reg.divider.supply.current (14.62uA..16.37uA) add up to zero, but the balance is incomplete: `reg.divider.rtop.a` is not modelled)
     --> std/parts/regulator.nsm:215:5
     |
 215 |     -.sw.current <= .max_output_current
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-error: -reg.vout.current must always be at most reg.ic.max_output_current, but 0A..3A is not always below 2A (the currents on net `1V8`: output.current (0A..3A) + reg.vout.current (-3A..0A) add up to zero; net `1V8` in `reg`: reg.divider.supply.current (10uA..1mA) + -reg.inductor.current (10uA..3.001A) + -reg.vout.current (-3A..0A) add up to zero; net `net-reg.ic.sw.pos` in `reg`: reg.ic.sw.current (-3.001A..-10uA) + reg.inductor.current (10uA..3.001A) add up to zero; net `1V8` in `reg.divider`: -reg.divider.supply.current (10uA..1mA) add up to zero, but the balance is incomplete: `reg.divider.rtop.a` is not modelled)
+error: -reg.vout.current must always be at most reg.ic.max_output_current, but 0A..3A is not always below 2A (the currents on net `1V8`: output.current (0A..3A) + reg.vout.current (-3A..0A) add up to zero; net `1V8` in `reg`: reg.divider.supply.current (14.62uA..16.37uA) + -reg.inductor.current (15.11uA..3.001A) + -reg.vout.current (-3A..0A) add up to zero; net `net-reg.ic.sw.pos` in `reg`: reg.ic.sw.current (-3.001A..-15.11uA) + reg.inductor.current (15.11uA..3.001A) add up to zero; net `1V8` in `reg.divider`: -reg.divider.supply.current (14.62uA..16.37uA) add up to zero, but the balance is incomplete: `reg.divider.rtop.a` is not modelled)
     --> std/parts/regulator.nsm:586:5
     |
 586 |     -.vout.current <= .ic.max_output_current

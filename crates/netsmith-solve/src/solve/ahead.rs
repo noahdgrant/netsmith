@@ -562,8 +562,10 @@ impl Solver<'_> {
     /// is no range of the load's), not a range that narrows one of those (the IC's recommended
     /// divider current, which narrows the divider's), and not a current a balance worked out.
     /// Asked only while the pick-time analysis can write nothing (`network_quiet`), of a bound
-    /// that no part of another group still to be chosen and no bank feeds, and not of a bound on
-    /// a position or one that reads the end of a range. A propagation that finds a conflict says
+    /// that no part of another group still to be chosen and no bank feeds, whose columns of the
+    /// group's parts have no value or only one the design states (not a row's, put there
+    /// before the search), and not of a bound on a position or one that reads the end of a
+    /// range. A propagation that finds a conflict says
     /// nothing, and so does one that moves a range held at an end. The model and the solver are
     /// put back as they were.
     ///
@@ -593,6 +595,27 @@ impl Solver<'_> {
                     && feeding.iter().all(|&j| jobs[j].count.is_none())
                     && !relation_reads_end(r)
                     && self.place_side(r).is_none()
+            })
+            .collect();
+        // A bound that reads a column of the group's parts that has a value the design did not
+        // state (the one row that fits, put there before the search) is judged by the catalog's
+        // rows, not whatever the parts are: the part is the cause, and its message says so.
+        let columns: HashSet<FieldId> = group
+            .iter()
+            .flat_map(|&j| jobs[j].columns.iter().map(|(f, _)| *f))
+            .collect();
+        let design = self.reads();
+        let bounds: Vec<usize> = bounds
+            .into_iter()
+            .filter(|&index| {
+                coupling
+                    .sources(design.fields_of(index))
+                    .iter()
+                    .filter(|f| columns.contains(f))
+                    .all(|&f| {
+                        let field = self.model.field(f);
+                        field.domain == Domain::Unset || !field.narrowed_at.is_empty()
+                    })
             })
             .collect();
         if bounds.is_empty() {
