@@ -7,5 +7,12 @@ features-inner1 fdca5922663852d2
 features-inner2 2a39d69a1c6a06dd
 features-top 512058f3bbd9c9fa
 features-top-region 1f4b0350cbd7ba41
+layers-bottom-mask aeff4eceacfd939e
+layers-bottom-silk 8eecb7f7f9dc225e
+layers-drill 1f9b62a6df537971
+layers-outline 86a0ccaa086e68c1
+layers-stack-bottom 0dc8ffd60690076b
+layers-top-copper b007fe7817c1037e
+layers-top-paste aee22cef6aa1bf01
 tracespace-all ec843517ecae88c2
 tracespace-top 07eb7cd342f31e84

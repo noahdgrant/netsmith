@@ -16,7 +16,7 @@ A picture is for your eyes, a number is for your answer. Take the number when a 
 | Are a module's parts together, how far does it spread? | `layout summary --format json` (each module's box, `spread` and `intruders`), then `view pcb --highlight module:reg` or `view 3d --highlight module:reg,module:usb` (each module in its own colour) | `spread`, `intruders` |
 | Is the height right (a lid, a rib, a stacked board)? | `dev board3d --format json`, then `view 3d --view front --section x=12.5` or `--highlight limit:lid` | `margin` of each limit, `unknown_heights` |
 | Is the copper right: what is routed, what is open, what is in the way? | `view pcb --only-open` (a `--region`, a `--layer`), `view pcb --drc`; `board copper` for planes and pours as text; `board drc --format json` | the `open:` lines, the findings by `marker` number |
-| What will the board house get? | `view gerber fab/<Board>` (`--layer top\|bottom\|inner1\|all`), `--format json` for files, sizes and holes | `board`, `holes`, `unread` |
+| What will the board house get? | `view gerber fab/<Board>` (`--layer top\|bottom\|inner1\|all`, or one function alone: `--layer top-paste`, `drill`; repeat to stack), `--format json` for files, sizes and holes | `board`, `holes`, `unread` |
 | Which pins does a net join, what did the solve leave a part (ratings, effective capacitance, row), is the pick lock current? | `board show` (text, or `--format json`) | the part's lines, the net's pins |
 | What does the bill cost, what does a rail carry? | `board bom --offline`, `board power` (text, or `--format json`) | the lines and totals |
 | What does the person see in the editor? | `view editor-3d` with the person's `view editor` running; with no flag it prints the page's state | the state it prints |

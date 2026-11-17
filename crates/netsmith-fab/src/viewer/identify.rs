@@ -63,7 +63,44 @@ impl Function {
             _ => None,
         }
     }
+
+    /// The `--layer` word that draws the files of this function alone (`top-copper`,
+    /// `bottom-paste`, `top-silk`, `outline`, `drill`, `inner2`); none for a file of no
+    /// function.
+    pub fn alone(self) -> Option<String> {
+        let face = |f: Face| match f {
+            Face::Top => "top",
+            Face::Bottom => "bottom",
+        };
+        match self {
+            Function::Copper(Layer::Top) => Some("top-copper".into()),
+            Function::Copper(Layer::Bottom) => Some("bottom-copper".into()),
+            Function::Copper(Layer::Inner(n)) => Some(format!("inner{n}")),
+            Function::Mask(f) => Some(format!("{}-mask", face(f))),
+            Function::Paste(f) => Some(format!("{}-paste", face(f))),
+            Function::Silk(f) => Some(format!("{}-silk", face(f))),
+            Function::Outline => Some("outline".into()),
+            Function::Drill => Some("drill".into()),
+            Function::Other => None,
+        }
+    }
 }
+
+/// The single functions `--layer` takes by name, each drawn alone (issue #1143): the copper of
+/// the top and the bottom (an inner layer is `inner<n>`), the mask, paste and silkscreen of each
+/// face, the outline and the drill. Their words are [`Function::alone`].
+pub const ALONE: [Function; 10] = [
+    Function::Copper(Layer::Top),
+    Function::Mask(Face::Top),
+    Function::Paste(Face::Top),
+    Function::Silk(Face::Top),
+    Function::Copper(Layer::Bottom),
+    Function::Mask(Face::Bottom),
+    Function::Paste(Face::Bottom),
+    Function::Silk(Face::Bottom),
+    Function::Outline,
+    Function::Drill,
+];
 
 /// The function of a Gerber file, and whether its X2 attribute (`x2`, the text after
 /// `%TF.FileFunction,`) or its name said so; `None` when neither did.

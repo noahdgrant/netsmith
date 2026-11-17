@@ -2,19 +2,25 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use clap::{Args as ClapArgs, ValueEnum};
-use netsmith_fab::viewer::{self, Package, Show};
+use netsmith_fab::viewer::{self, Package};
 
 #[derive(Debug, PartialEq, ClapArgs)]
 #[command(
-    after_long_help = "`view gerber` reads the RS-274X and Excellon files of a fab package (the zip, or the folder; `board fab`'s output folder opens as its `<board>-gerbers.zip`, and a package another tool made is read the same way) with netsmith's own reader, no KiCad, and draws them as the board house will see them, or sums them up (issue #1105). A file's function comes from its X2 attribute or else its name (KiCad's `-F_Cu`, Protel's `.GTL`). A file with a construct the reader does not support (a step and repeat, an arc routed in a drill file) is not drawn at all: it is named with the line and the command, and the exit code is 1. The frame is the layout and routes files': mm from the outline's top left corner, y down. The PNG is filled by netsmith's own rasterizer from the SVG, so the two are one drawing, and the same package gives the same bytes. Exit 0 when every file was read, 1 when one could not be (the rest is drawn or summed up), 2 when the command cannot run (no such package, a layer the package has no file for, a picture too large)."
+    after_long_help = "`view gerber` reads the RS-274X and Excellon files of a fab package (the zip, or the folder; `board fab`'s output folder opens as its `<board>-gerbers.zip`, and a package another tool made is read the same way) with netsmith's own reader, no KiCad, and draws them as the board house will see them, or sums them up (issue #1105). A file's function comes from its X2 attribute or else its name (KiCad's `-F_Cu`, Protel's `.GTL`). A file with a construct the reader does not support (a step and repeat, an arc routed in a drill file) is not drawn at all: it is named with the line and the command, and the exit code is 1. The frame is the layout and routes files': mm from the outline's top left corner, y down. The PNG is filled by netsmith's own rasterizer from the SVG, so the two are one drawing, and the same package gives the same bytes. Exit 0 when every file was read, 1 when one could not be (the rest is drawn or summed up), 2 when the command cannot run (no such package, a layer the package has no file for or does not know, a picture too large)."
 )]
 pub struct Args {
     /// The package: a `.zip`, a folder of Gerber and drill files, or `board fab`'s output folder of a board.
     #[arg(value_name = "PACKAGE")]
     pub package: PathBuf,
-    /// What to draw: `top` or `bottom` (that side's copper, mask openings, paste and silkscreen, the outline and the holes, the bottom mirrored as a person sees it), `inner<n>` (that copper layer), or `all`.
-    #[arg(long, value_name = "top|bottom|inner<n>|all", default_value = "top", value_parser = parse_show)]
-    pub layer: Show,
+    /// What to draw, repeated to stack layers: `top` or `bottom` (that side's copper, mask openings, paste and silkscreen, the outline and the holes, the bottom mirrored as a person sees it), `inner<n>` (that copper layer), `all`, or one function alone: `top-copper`, `top-mask`, `top-paste`, `top-silk`, `bottom-copper`, `bottom-mask`, `bottom-paste`, `bottom-silk`, `outline` or `drill`.
+    ///
+    /// A word the package has no file for is refused with the ones it has (`--format json` lists them as `layer_names`). A stack of things of the bottom alone is drawn mirrored, as a person sees the bottom; with anything of the top it is drawn from the top.
+    #[arg(
+        long,
+        value_name = "top|bottom|inner<n>|all|top-copper|top-mask|top-paste|top-silk|bottom-copper|bottom-mask|bottom-paste|bottom-silk|outline|drill",
+        default_value = "top"
+    )]
+    pub layer: Vec<String>,
     /// Only this region: `X,Y,W,H` in mm from the outline's top left corner (the frame of the layout and routes files).
     ///
     /// With none, the box of the outline's centrelines and of what the layer's other files draw,
@@ -38,10 +44,6 @@ pub enum GerberFormat {
     Png,
     Svg,
     Json,
-}
-
-fn parse_show(s: &str) -> Result<Show, String> {
-    s.parse()
 }
 
 fn parse_region(s: &str) -> Result<[f64; 4], String> {
@@ -113,7 +115,17 @@ pub fn run(args: Args) -> ExitCode {
             ExitCode::SUCCESS
         };
     }
-    let drawing = match viewer::draw(&pkg, args.layer, args.region) {
+    let mut shows = Vec::new();
+    for word in &args.layer {
+        match pkg.parse_layer(word) {
+            Ok(show) => shows.push(show),
+            Err(e) => {
+                eprintln!("error: {e}");
+                return ExitCode::from(2);
+            }
+        }
+    }
+    let drawing = match viewer::draw_stack(&pkg, &shows, args.region) {
         Ok(d) => d,
         Err(e) => {
             say_unread(&pkg);
@@ -131,10 +143,15 @@ pub fn run(args: Args) -> ExitCode {
             }
         },
     };
+    let layers = shows
+        .iter()
+        .map(ToString::to_string)
+        .collect::<Vec<_>>()
+        .join("+");
     let out = args
         .picture
         .clone()
-        .unwrap_or_else(|| PathBuf::from(format!("{}-{}.{ext}", stem(&args.package), args.layer)));
+        .unwrap_or_else(|| PathBuf::from(format!("{}-{}.{ext}", stem(&args.package), layers)));
     if let Err(e) = std::fs::write(&out, bytes) {
         eprintln!("error: {}: {e}", out.display());
         return ExitCode::from(2);

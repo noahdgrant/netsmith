@@ -20,7 +20,8 @@
 //! - [`Package::summary`] is the JSON summary: layers found, extents, apertures, objects,
 //!   holes by size and the files not read ([`Summary`]).
 //! - [`draw`] makes the SVG of a [`Show`] (a side as a person sees it, an inner layer, or all
-//!   of them) and a region, and [`png`] fills that SVG into pixels with `netsmith-draw`, so the
+//!   of them, or the files of one function alone: `top-paste`, `drill`; [`Show::Only`]) and a
+//!   region, [`draw_stack`] several of them one over the other, and [`png`] fills that SVG into pixels with `netsmith-draw`, so the
 //!   SVG and the PNG are one drawing.
 //!
 //! **The frame.** Gerber and drill files are in mm (or inches, converted) with y up, from an
@@ -53,9 +54,10 @@ use std::path::Path;
 
 pub use crate::raster::Facts;
 pub use draw::{
-    COPPER_COLOURS, Drawing, HOLE_COLOURS, PNG_LONGEST, PNG_PER_MM, Show, ViewError, draw, png,
+    COPPER_COLOURS, Drawing, HOLE_COLOURS, LAYER_WORDS, PNG_LONGEST, PNG_PER_MM, Show, ViewError,
+    draw, draw_stack, png,
 };
-pub use identify::{Face, Function, Layer, identify};
+pub use identify::{ALONE, Face, Function, Layer, identify};
 pub use shapes::Area;
 pub use summary::{Board, Extent, FileSummary, HoleSize, OriginSummary, Skipped, Summary, Unread};
 
@@ -357,6 +359,38 @@ impl Package {
     /// The summary of every file ([`Summary`]).
     pub fn summary(&self) -> Summary {
         summary::of(self)
+    }
+
+    /// Everything `--layer` can draw for this package, in the words it is given with: its views
+    /// (`top`, `inner<n>`, `bottom`, `all`), then each single function it has a file for
+    /// (`top-copper`, `top-mask`, ... `outline`, `drill`; [`Function::alone`]). The summary
+    /// lists the same, and a view not in the list is refused with it (issue #1143).
+    pub fn layer_names(&self) -> Vec<Show> {
+        draw::names(self)
+    }
+
+    /// The view a `--layer` word names, or why not: a word [`Show`] does not know, or one this
+    /// package has no file for, is refused with the words the package has.
+    pub fn parse_layer(&self, word: &str) -> Result<Show, String> {
+        let names = self.layer_names();
+        let has = || {
+            names
+                .iter()
+                .map(ToString::to_string)
+                .collect::<Vec<_>>()
+                .join(", ")
+        };
+        match word.parse::<Show>() {
+            Ok(show) if names.contains(&show) => Ok(show),
+            Ok(_) => Err(format!(
+                "the package has no file for `{word}`; it has: {}",
+                has()
+            )),
+            Err(_) => Err(format!(
+                "`{word}` is not a layer; the package has: {}",
+                has()
+            )),
+        }
     }
 
     /// The files that could not be read, with why.
