@@ -18,6 +18,7 @@ fn heading() -> Heading {
     Heading {
         project: Some("p".to_string()),
         release: "netsmith test".to_string(),
+        revision: None,
     }
 }
 

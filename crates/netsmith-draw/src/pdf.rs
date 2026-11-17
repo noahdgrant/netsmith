@@ -30,11 +30,13 @@ const LINE: f64 = 3.6;
 /// Points to a millimetre.
 const PT: f64 = 72.0 / 25.4;
 
-/// The words of a page's title block: its heading (the sheet's name) in bold, then a line
-/// for each of the rest.
+/// The words of a page's title block: its heading (the sheet's name) in bold, with the
+/// revision beside it at the right when there is one, then a line for each of the rest.
 #[derive(Debug, Clone, PartialEq)]
 pub struct TitleBlock {
     pub heading: String,
+    /// The revision of what is drawn (`Rev A`), on the heading's line, at its right.
+    pub revision: Option<String>,
     pub lines: Vec<String>,
 }
 
@@ -308,6 +310,41 @@ impl Content<'_> {
             n(x + TITLE_WIDTH),
             n(y + 2.0 + HEADING)
         );
+        let baseline = y + 2.0 + HEADING - 1.8;
+        // The revision at the right end of the heading's line; the sheet's name gets the room
+        // that is left.
+        let mut room = TITLE_WIDTH - 6.0;
+        if let Some(rev) = &page.title.revision {
+            let rev = fit(rev, Face::SansBold, 3.0, (TITLE_WIDTH - 6.0) / 2.0);
+            let width = metrics::advance(Face::SansBold, &rev, 3.0);
+            self.text(&Text {
+                at: Pt::new(x + TITLE_WIDTH - 3.0, baseline),
+                angle: 0.0,
+                size: 3.0,
+                anchor: Anchor::End,
+                face: Face::SansBold,
+                fill: Some(Rgba::BLACK),
+                halo: None,
+                runs: vec![crate::Run {
+                    text: rev,
+                    overline: false,
+                }],
+            });
+            room -= width + 3.0;
+        }
+        self.text(&Text {
+            at: Pt::new(x + 3.0, baseline),
+            angle: 0.0,
+            size: 3.4,
+            anchor: Anchor::Start,
+            face: Face::SansBold,
+            fill: Some(Rgba::BLACK),
+            halo: None,
+            runs: vec![crate::Run {
+                text: fit(&page.title.heading, Face::SansBold, 3.4, room),
+                overline: false,
+            }],
+        });
         let mut line = |text: &str, at: f64, size: f64, face: Face| {
             self.text(&Text {
                 at: Pt::new(x + 3.0, at),
@@ -323,12 +360,6 @@ impl Content<'_> {
                 }],
             });
         };
-        line(
-            &page.title.heading,
-            y + 2.0 + HEADING - 1.8,
-            3.4,
-            Face::SansBold,
-        );
         for (i, text) in page.title.lines.iter().enumerate() {
             line(
                 text,

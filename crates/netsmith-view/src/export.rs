@@ -7,9 +7,9 @@
 //! data-module="..." data-bounds="x y w h">`), its region the box with [`SHEET_MARGIN`] round
 //! it; a board drawn as one sheet (16 parts or fewer) is one sheet named for the board. The
 //! PDF has a page for each sheet of each drawing it is given, in order, sized to the sheet,
-//! with the sheet's name, the board's, the project's and the release in its title block. The
-//! PNG is [`PNG_PER_MM`] pixels a millimetre, or fewer so that its longer side is at most
-//! [`PNG_LONGEST`].
+//! with the sheet's name (and the project's revision beside it, when it has one), the board's,
+//! the project's and the release in its title block. The PNG is [`PNG_PER_MM`] pixels a
+//! millimetre, or fewer so that its longer side is at most [`PNG_LONGEST`].
 
 use netsmith_draw::pdf::{Document, Page, TitleBlock};
 use netsmith_draw::{Picture, Rect, Rgba, raster, svg};
@@ -55,6 +55,9 @@ pub struct Heading {
     pub project: Option<String>,
     /// The release of netsmith that drew it: `netsmith 0.2.0`.
     pub release: String,
+    /// The project's revision (`revision` in `netsmith.toml`, issue #1134), shown as `Rev A`
+    /// beside the sheet's name.
+    pub revision: Option<String>,
 }
 
 /// One sheet of a drawing: its name and the region of the drawing it is.
@@ -213,6 +216,7 @@ fn write_pdf(title: &str, drawings: &[Drawing], only: Option<&str>, heading: &He
                 view: sheet.region,
                 title: TitleBlock {
                     heading: sheet.name.clone(),
+                    revision: heading.revision.as_ref().map(|r| format!("Rev {r}")),
                     lines,
                 },
             }

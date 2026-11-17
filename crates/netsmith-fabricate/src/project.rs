@@ -39,6 +39,10 @@ pub const KICAD_VERSION: i64 = 9;
 /// is a whole placement, so a board no seed places costs this many times as long.
 pub const MAX_PLACE_SEEDS: u32 = 32;
 
+/// The most characters of a project's `revision` (issue #1134): room for a letter, a version or
+/// a short tag, and a line of the title block.
+pub const MAX_REVISION: usize = 32;
+
 /// What `netsmith.toml` says, the `[project]` table. Only `name` is required; the rest
 /// are what `netsmith project init` writes out. A key that is not one of these is refused.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -51,6 +55,13 @@ pub struct Manifest {
     /// it the project was made before the key, with netsmith 0.1.0 or earlier.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub netsmith: Option<String>,
+    /// The revision of the project's boards, `revision = "A"` or `"1.2"`: text on one line, up
+    /// to [`MAX_REVISION`] characters (issue #1134). The title block of the schematic PDF shows
+    /// `Rev A` beside the sheet's name, and `fab-notes.txt` and an order's `order.txt` begin
+    /// with it. One revision for the whole project, not one for each board; file names do not
+    /// carry it. `netsmith project init` does not write it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub revision: Option<String>,
     /// The files that hold boards, relative to the project root. `netsmith board build`, `fab`
     /// and `editor` with no file act on these. A `system` is listed here the same way. A
     /// project that is only a library of modules lists none (`top_level = []`).
@@ -401,6 +412,7 @@ impl Manifest {
         Manifest {
             name: name.to_string(),
             netsmith: Some(crate::release::RELEASE.to_string()),
+            revision: None,
             top_level: default_top_level(),
             out: default_out(),
             fab: default_fab(),
@@ -452,10 +464,45 @@ impl Manifest {
         manifest.model = file.model;
         manifest.dependencies = file.dependencies;
         manifest.validate()?;
+        manifest.validate_revision(text)?;
         crate::models::check_table(manifest.models.as_ref(), &manifest.model)
             .map_err(|e| format!("{MANIFEST}: {e}"))?;
         manifest.orders = order::check(text, file.order)?;
         Ok(manifest)
+    }
+
+    /// `revision` is text on one line of 1 to [`MAX_REVISION`] characters; the error names the
+    /// manifest line the key is on.
+    fn validate_revision(&self, text: &str) -> Result<(), String> {
+        let Some(revision) = &self.revision else {
+            return Ok(());
+        };
+        let why = if revision.trim().is_empty() {
+            Some("is empty".to_string())
+        } else if revision.chars().any(char::is_control) {
+            Some("must be on one line, with no line break or other control character".to_string())
+        } else if revision.chars().count() > MAX_REVISION {
+            Some(format!(
+                "is {} characters; it may be at most {MAX_REVISION}",
+                revision.chars().count()
+            ))
+        } else {
+            None
+        };
+        match why {
+            None => Ok(()),
+            Some(why) => {
+                let line = text
+                    .lines()
+                    .position(|l| {
+                        l.trim_start()
+                            .strip_prefix("revision")
+                            .is_some_and(|rest| rest.trim_start().starts_with('='))
+                    })
+                    .map_or(String::new(), |i| format!(":{}", i + 1));
+                Err(format!("{MANIFEST}{line}: revision {revision:?} {why}"))
+            }
+        }
     }
 
     fn validate(&self) -> Result<(), String> {
@@ -1807,6 +1854,28 @@ mod tests {
     fn a_manifest_renders_and_reads_back() {
         let m = Manifest::new("blinky");
         assert_eq!(parse(&m.render()), Ok(m));
+    }
+
+    #[test]
+    fn revision_is_one_line_of_at_most_32_characters() {
+        let m = parse("[project]\nname = \"a\"\nrevision = \"1.2\"\n").unwrap();
+        assert_eq!(m.revision.as_deref(), Some("1.2"));
+        assert_eq!(parse(&m.render()), Ok(m));
+        assert_eq!(parse("[project]\nname = \"a\"\n").unwrap().revision, None);
+        assert!(!Manifest::new("a").render().contains("revision"));
+        let long = "x".repeat(33);
+        let e = parse(&format!("[project]\nname = \"a\"\nrevision = \"{long}\"\n")).unwrap_err();
+        assert!(
+            e.starts_with("netsmith.toml:3: revision ") && e.contains("is 33 characters"),
+            "{e}"
+        );
+        let e = parse("[project]\nname = \"a\"\nrevision = \"A\\nB\"\n").unwrap_err();
+        assert!(
+            e.starts_with("netsmith.toml:3:") && e.contains("one line"),
+            "{e}"
+        );
+        let e = parse("[project]\nname = \"a\"\nrevision = \"  \"\n").unwrap_err();
+        assert!(e.contains("is empty"), "{e}");
     }
 
     #[test]

@@ -235,12 +235,9 @@ fn pdf_wanted(target: &Target, no_pdf: bool) -> bool {
 }
 
 /// What the schematic PDF of `source` is drawn with: the schematic layout file beside it and
-/// the project's name.
+/// the project's name and revision.
 fn schematic_inputs(target: &Target, source: &Path) -> netsmith_fabricate::schematic::Inputs {
-    netsmith_fabricate::schematic::Inputs::of(
-        source,
-        target.project.as_ref().map(|p| p.manifest.name.as_str()),
-    )
+    netsmith_fabricate::schematic::Inputs::of(source, target.project.as_ref())
 }
 
 /// Whether `fab` writes the board as STEP: `--no-step` for this run leaves it out, else `step`
@@ -383,6 +380,7 @@ fn run_fab(
         step: step_wanted(&target, no_step),
         pdf: pdf_wanted(&target, no_pdf),
         schematic: None,
+        revision: None,
         save_placed,
         reuse_routes,
         models: Some(netsmith_fabricate::models::Places::of(&target)),
@@ -422,6 +420,10 @@ fn run_fab(
         let options = FabOptions {
             layout: Some(netsmith_fabricate::layout::layout_path(&source.path)),
             schematic: Some(schematic_inputs(&target, &source.path)),
+            revision: target
+                .project
+                .as_ref()
+                .and_then(|p| p.manifest.revision.clone()),
             lock: Some(using),
             pin_map_source: Some(source.stable_name(target.project.as_ref())),
             pins: Some(netsmith_fabricate::fab::PinsUse {
@@ -706,6 +708,7 @@ pub(super) fn run_order(
         pdf: pdf_wanted(&target, no_pdf),
         // Each file's own, set by the order for each file.
         schematic: None,
+        revision: None,
         save_placed: false,
         reuse_routes: false,
         models: Some(netsmith_fabricate::models::Places::of(&target)),

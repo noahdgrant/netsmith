@@ -102,6 +102,7 @@ fn a_pdf_has_a_page_for_each_region_and_its_text() {
                 view: p.view,
                 title: TitleBlock {
                     heading: "all".to_string(),
+                    revision: Some("Rev B".to_string()),
                     lines: vec!["Board".to_string()],
                 },
             },
@@ -110,6 +111,7 @@ fn a_pdf_has_a_page_for_each_region_and_its_text() {
                 view: Rect::new(0.0, 0.0, 15.0, 10.0),
                 title: TitleBlock {
                     heading: "corner".to_string(),
+                    revision: None,
                     lines: vec![],
                 },
             },
@@ -128,6 +130,9 @@ fn a_pdf_has_a_page_for_each_region_and_its_text() {
     assert!(pages[0].contains("(GND \\() Tj") && pages[0].contains("/F5"));
     assert!(pages[0].contains("(line two) Tj"));
     assert!(pages[0].contains("(all) Tj"));
+    // The revision is on the first page only, beside the heading.
+    assert!(pages[0].contains("(Rev B) Tj"));
+    assert!(!pages[1].contains("Rev B"));
     // The corner page draws R1 and not the text that is outside it.
     assert!(pages[1].contains("(R1) Tj"));
     assert!(!pages[1].contains("(line two) Tj"));
