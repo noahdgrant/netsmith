@@ -568,6 +568,29 @@ pub struct Overlap {
     /// The Z range both fill: from the higher underside (a standoff) out to the lower top.
     pub z_bottom: f64,
     pub z_top: f64,
+    /// The part of the two that looks like a module on pin strips with no standoff stated, and
+    /// so the statement the overlap is missing (issue #1117): a part with plated holes whose
+    /// body stands on the board and is the larger of the two. Empty when neither looks like one.
+    pub missing_standoff: Option<MissingStandoff>,
+}
+
+/// A body that probably stands on pins with a gap under it, and states no `.standoff`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct MissingStandoff {
+    pub path: String,
+    pub refdes: String,
+}
+
+impl MissingStandoff {
+    /// The statement the physical file lacks, as the message names it.
+    pub fn statement(&self) -> String {
+        format!(
+            "if {} stands on pin strips with a gap under its body, state `.{}.standoff &= 2mm` (how far the underside of its body is above the board, with the real number) and `.{}.pin_protrusion` for its pins below the board",
+            netsmith_pcb::board_member(&self.path, &self.refdes),
+            self.path,
+            self.path
+        )
+    }
 }
 
 /// What the scene shows that is wrong or unknown in 3D.
@@ -576,6 +599,9 @@ pub struct Findings {
     pub too_tall: Vec<TooTall>,
     pub unchecked: Vec<Unchecked>,
     pub overlaps: Vec<Overlap>,
+    /// The parts of unknown height under a limit or under another part's body, which the checks
+    /// above could not measure: the one warning `height_unknown` (issue #1117).
+    pub unknown: Vec<netsmith_pcb::HeightUnknown>,
 }
 
 /// How many bodies have a known height (the glossary's _Height coverage_).
@@ -1629,6 +1655,7 @@ fn findings(board: &Board, bodies: &[Body]) -> Findings {
         too_tall,
         unchecked,
         overlaps: overlaps(bodies),
+        unknown: board.heights_unknown(),
     }
 }
 
@@ -1666,10 +1693,35 @@ fn overlaps(bodies: &[Body]) -> Vec<Overlap> {
                 side: a.side,
                 z_bottom,
                 z_top,
+                missing_standoff: missing_standoff(a, b),
             });
         }
     }
     found
+}
+
+/// Of two overlapping bodies, the one that looks like a module on pin strips whose standoff the
+/// design has not stated (issue #1117): it has plated holes (pins), it stands on the board (no
+/// `.standoff`), the other body does not stand off either, and its body is the larger of the two
+/// (the module over the part under it), or the only one with plated holes.
+fn missing_standoff(a: &Body, b: &Body) -> Option<MissingStandoff> {
+    let area = |x: &Body| (x.bounds.max.x - x.bounds.min.x) * (x.bounds.max.y - x.bounds.min.y);
+    let pinned = |x: &Body| !matches!(x.pins, Pins::None);
+    if a.standoff > TOLERANCE || b.standoff > TOLERANCE {
+        return None;
+    }
+    let module = |x: &Body, y: &Body| pinned(x) && (!pinned(y) || area(x) >= area(y));
+    let found = if module(a, b) {
+        a
+    } else if module(b, a) {
+        b
+    } else {
+        return None;
+    };
+    Some(MissingStandoff {
+        path: found.path.clone(),
+        refdes: found.refdes.clone(),
+    })
 }
 
 fn boxes_overlap(a: &PlanBox, b: &PlanBox) -> bool {
