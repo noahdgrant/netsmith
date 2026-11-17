@@ -34,10 +34,10 @@ Each command, what it was before, and its flags (a test walks `--help` of every 
 | `netsmith project init` | `netsmith init` | `--name` |
 | `netsmith project refresh` | `netsmith init --refresh` | none |
 | `netsmith project lock` | `netsmith lock` | `--update`, `--check`, `--part`, `--except` |
-| `netsmith project order` | `netsmith fab --order [NAME]` | `--out`, `--route-timeout`, `--allow-drc-violations`, `--cross-check`, `--strict`, `--locked`, `--constraints`, `--no-glb`, `--no-step`, `--no-pdf`, `--offline`, `--quiet`, `--place-seeds`, `--place-budget`, `--progress`, `--to-editor` |
+| `netsmith project order` | `netsmith fab --order [NAME]` | `--out`, `--route-timeout`, `--rip-rounds`, `--allow-drc-violations`, `--cross-check`, `--strict`, `--locked`, `--constraints`, `--no-glb`, `--no-step`, `--no-pdf`, `--offline`, `--quiet`, `--place-seeds`, `--place-budget`, `--progress`, `--to-editor` |
 | `netsmith board check` | `netsmith check` | `--strict`, `--format`, `--notes` |
 | `netsmith board build` | `netsmith build` | `--out`, `--strict`, `--locked`, `--emit-design`, `--emit-solved`, `--format`, `--notes` |
-| `netsmith board fab` | `netsmith fab` | `--out`, `--route-timeout`, `--allow-drc-violations`, `--cross-check`, `--strict`, `--locked`, `--constraints`, `--pins`, `--no-glb`, `--no-step`, `--no-pdf`, `--save-placed`, `--reuse-routes`, `--offline`, `--quiet`, `--place-seeds`, `--place-budget`, `--progress`, `--to-editor`, `--format`, `--notes` |
+| `netsmith board fab` | `netsmith fab` | `--out`, `--route-timeout`, `--rip-rounds`, `--allow-drc-violations`, `--cross-check`, `--strict`, `--locked`, `--constraints`, `--pins`, `--no-glb`, `--no-step`, `--no-pdf`, `--save-placed`, `--reuse-routes`, `--offline`, `--quiet`, `--place-seeds`, `--place-budget`, `--progress`, `--to-editor`, `--format`, `--notes` |
 | `netsmith board drc` | new | `--board`, `--kicad-pcb`, `--place-seeds`, `--place-budget`, `--format` |
 | `netsmith board explain` | `netsmith explain` | `--board`, `--all-rows` |
 | `netsmith board compare` | `netsmith compare` | `--ref`, `--against-ref`, `--board`, `--map`, `--by-refdes`, `--ignore-unconnected`, `--loose-values`, `--format` |
@@ -94,9 +94,7 @@ Each command, what it was before, and its flags (a test walks `--help` of every 
 | `netsmith dev parity` | `netsmith parity` | `--table`, `--parts`, `--svg`, `--format` |
 | `netsmith dev board3d` | `netsmith board3d` | `--board`, `--format` (was `--json`), `--glb`, `--step`, `--place-seeds`, `--place-budget`, `--progress`, `--to-editor` |
 
-The places left for commands to come, named by the same rules: `board bom`, `board power`, `board drc`, `board swap` and `board copper`; `view schematic`, `view pcb` and `view gerber`; `project fmt` and `project lint`; and `mcp`, the server that offers these commands to an agent.
-The places left for commands to come, named by the same rules: `board bom`, `board power`, `board drc`, `board pins` and `board copper`; `view schematic`, `view pcb` and `view gerber`; `project fmt` and `project lint`; and `mcp`, the server that offers these commands to an agent.
-The places left for commands to come, named by the same rules: `board drc`, `board swap`, `board pins` and `board copper`; `view schematic`, `view pcb` and `view gerber`; `project fmt` and `project lint`; and `mcp`, the server that offers these commands to an agent.
+The places left for commands to come, named by the same rules: `view pcb` and `view gerber`; `project fmt` and `project lint`; and `mcp`, the server that offers these commands to an agent.
 
 ### The editor's views on the command line
 
@@ -115,8 +113,6 @@ netsmith board panel                      # a panel's grid, size and checks
 - `board panel` prints a `panel`'s board, grid, cell and panel size, rails and the panel checks; the drawing is only in the JSON (`svg`).
 
 `bom` and `power` take the source file (or, with none, the project's boards) and `--board NAME`; `system` and `panel` take `--name NAME`. A name is as the editor names it, `System/Board` for a board of a system, and `Board` alone when no other board has that name. With one board (one system, one panel) the name may be left out; with several, the command exits 2 and lists them. The exit code is 0 when the view is printed, 1 when the source does not build (with its errors), and 2 when the command cannot run.
-The places left for commands to come, named by the same rules: `board bom`, `board power`, `board drc`, `board swap`, and `board pins`; `view schematic`, `view pcb` and `view gerber`; `project fmt` and `project lint`; and `mcp`, the server that offers these commands to an agent.
-The places left for commands to come, named by the same rules: `board bom`, `board power`, `board drc`, `board swap` and `board copper`; `view pcb` and `view gerber`; `project fmt` and `project lint`; and `mcp`, the server that offers these commands to an agent.
 
 ### The editor
 
