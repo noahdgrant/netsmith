@@ -1360,6 +1360,7 @@ fn while_the_first_analysis_runs_the_page_and_the_files_are_served_and_a_request
         ("GET", "/api/power?board=A"),
         ("GET", "/api/pcb/findings?board=A"),
         ("GET", "/api/pcb/summary?board=A"),
+        ("GET", "/api/pcb/copper?board=A"),
         ("GET", "/api/pcb/fit?board=A&part=R1"),
         ("POST", "/api/build"),
         ("POST", "/api/fab?board=A"),

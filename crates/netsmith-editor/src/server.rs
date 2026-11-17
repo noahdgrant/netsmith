@@ -20,12 +20,14 @@
 //! | `GET`/`PUT /api/file?path=` | `{text, stamp, readonly}`; the `PUT` takes the text and `X-Stamp` |
 //! | `POST /api/fs/*` | create, rename and delete files and folders of the project |
 //! | `GET /api/board`, `schematic.svg`, `power`, `system`, `panel`, `bom` | the views of a board or a system, computed from the solved model and not from the text |
+//! | `GET /api/schematic/export?board=&format=` | the schematic as a file to save: `pdf` (a page for each sheet), `svg` or `png`, the bytes `netsmith view schematic` writes (issue #1091); a system's PDF has its own sheet, then its members' |
 //! | `GET /api/schematic-hints`, `PUT /api/schematic-hints` | the schematic layout file beside the board's source (ADR 0061): `422` with the line for text that does not read, `409` for a stale stamp |
 //! | `GET /api/git`, `GET /api/compare`, `GET /api/git/file` | what the project can be compared with, what changed in the circuit, a file at a ref (ADR 0059) |
 //! | `POST /api/pins/lock`, `POST /api/pins/move` | lock or unlock a pin request, and move it to another pin of its part: the `lock` and the `pin` and `source` lines of its entry in the pin file (ADR 0101), and no other line; `422` with the reason when the choice is refused |
 //! | `POST /api/pcb/route`, `cancel`, `edit`, `drc`; `GET /api/pcb/scene`, `findings` | place and route on demand; `cancel` stops the router and keeps what it routed |
 //! | `GET /api/pcb/fit?board=&part=` (`near=`, `step=`, `side=`) | where one part fits with every other part where it is on the placed board, what `netsmith layout fit` says: a pose for each turn and face, the nearest place to `near` where nothing is found or the closest try with what is in the way (`PcbFit`, issue #1002); nothing is written; `400` for a part the board has none of, a `near` that is neither a part nor `X,Y`, a `step` not above 0 or a `side` that is not `top` or `bottom` |
 //! | `GET /api/pcb/summary?board=` (`near=`, `within=`, `between=`) | the placed board summed up as data, what `netsmith layout summary` prints: totals, area and free space of each face, module boxes, decoupling distances, nets, the parts near a part and the distance between two pads (`PcbSummary`, issue #1003); `400` for a part or pad the board has none of |
+//! | `GET /api/pcb/copper?board=` | the board's copper areas as data, what `netsmith board copper` prints: every copper layer with its use (`plane`, `pour`, `signal`), net and a pour's fields, the zones of the routes file counted apart from the process's pours, and the teardrop fills, counted only when the board has been routed here (`PcbCopper`, issue #1085); from the source, no placing, no routing |
 //! | `POST /api/pcb/place/cancel` | stops the placings of the PCB view that run (issue #764): a `scene` (or the placing of a `route`) that is placing answers `499` and keeps nothing; while a `scene` places, the socket carries `progress` with the task `place` (the placer's lines, as `fab` prints them) and `pcb_live` with the parts where the placer has them, and while a `route` routes, `pcb_live` with the copper laid so far |
 //! | `POST /api/progress` | a line of a run the editor did not start (`netsmith board fab --to-editor`, an `OutsideProgress`), passed to every page as `outside`; `204` |
 //! | `POST /api/pcb/regenerate` | one module placed again with every other part held (issue #825): the proposal, the edit that makes it (sent to `edit` as any edit, one step of undo), where its parts go, the nets routed again, and the findings and totals before and after; nothing is written; while it runs the socket carries `progress` with the task `regenerate`; `409` for a stale stamp, `422` with the reason when it is refused |
@@ -153,6 +155,7 @@ const NEEDS_ANALYSIS: &[&str] = &[
     "/api/fs/delete",
     "/api/board",
     "/api/schematic.svg",
+    "/api/schematic/export",
     "/api/schematic-hints",
     "/api/power",
     "/api/system",
@@ -175,6 +178,7 @@ const NEEDS_ANALYSIS: &[&str] = &[
     "/api/pcb/reroute",
     "/api/pcb/findings",
     "/api/pcb/summary",
+    "/api/pcb/copper",
     "/api/pcb/fit",
     "/api/pcb/drc",
     "/api/build",
@@ -349,6 +353,7 @@ fn router(state: Shared) -> Router {
         .route("/api/fs/delete", post(delete_path))
         .route("/api/board", get(board))
         .route("/api/schematic.svg", get(schematic))
+        .route("/api/schematic/export", get(schematic_export))
         .route(
             "/api/schematic-hints",
             get(schematic_hints).put(write_schematic_hints),
@@ -381,6 +386,7 @@ fn router(state: Shared) -> Router {
         .route("/api/pcb/reroute", post(pcb_reroute))
         .route("/api/pcb/findings", get(pcb_findings))
         .route("/api/pcb/summary", get(pcb_summary))
+        .route("/api/pcb/copper", get(pcb_copper))
         .route("/api/pcb/fit", get(pcb_fit))
         .route("/api/pcb/drc", post(pcb_drc))
         .route("/api/build", post(build))
@@ -682,6 +688,13 @@ async fn schematic(State(s): State<Shared>, Query(q): Query1) -> Result<Response
         .map(svg)
 }
 
+/// The schematic as a file to save: `format` is `pdf`, `svg` or `png` (issue #1091).
+async fn schematic_export(State(s): State<Shared>, Query(q): Query1) -> Result<Response, ApiError> {
+    let (board, format) = (param(&q, "board")?, param(&q, "format")?);
+    let attachment = blocking(move || s.backend.schematic_export(&board, &format)).await??;
+    Ok(attached(attachment))
+}
+
 async fn schematic_hints(
     State(s): State<Shared>,
     Query(q): Query1,
@@ -951,6 +964,15 @@ async fn pcb_findings(
 ) -> Result<Json<crate::api::PcbFindings>, ApiError> {
     let board = param(&q, "board")?;
     json(move || s.backend.pcb_findings(&board)).await
+}
+
+/// The board's copper areas, from the source and the routes file (issue #1085).
+async fn pcb_copper(
+    State(s): State<Shared>,
+    Query(q): Query1,
+) -> Result<Json<crate::api::PcbCopper>, ApiError> {
+    let board = param(&q, "board")?;
+    json(move || s.backend.pcb_copper(&board)).await
 }
 
 /// How far a `near` part's neighbours are listed when the request has no `within`, in mm

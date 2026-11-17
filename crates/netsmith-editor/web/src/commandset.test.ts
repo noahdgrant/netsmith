@@ -23,6 +23,9 @@ const KEYS: Record<string, string[]> = {
   'schematic.pin.next': ['Tab'],
   'schematic.pin.previous': ['Shift+Tab'],
   'schematic.source': ['Enter'],
+  // In the palette only: the schematic as a file to save (issue 1091).
+  'schematic.export.pdf': [],
+  'schematic.export.svg': [],
 };
 // Arranging by hand (ADR 0061, stage 4), in a group of their own. The nudges share the arrow chords with the pans: they never apply together (see below).
 const LAYOUT_KEYS: Record<string, string[]> = {

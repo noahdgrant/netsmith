@@ -7,6 +7,7 @@
 pub mod board3d;
 pub mod case_fit;
 pub mod dependency_lock;
+pub mod drc;
 pub mod fab;
 mod fab_environment;
 pub mod git_dependency;
@@ -31,5 +32,6 @@ pub mod regenerate;
 pub mod release;
 pub mod reuse;
 pub mod routes;
+pub mod schematic;
 pub mod system3d;
 pub mod track_drop;

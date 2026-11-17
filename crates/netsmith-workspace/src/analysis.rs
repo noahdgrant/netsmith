@@ -85,6 +85,9 @@ pub struct BoardData {
     pub constraints_warn: bool,
     /// How many seeds the placer tries (`place_seeds` in `netsmith.toml`, issue #458).
     pub place_seeds: u32,
+    /// The rounds of rip-up the router gives a try that leaves connections (`rip_rounds` in
+    /// `netsmith.toml`, issue #1088).
+    pub rip_rounds: usize,
     /// The schematic layout file of the source file (ADR 0061) and what is not used of it for
     /// this board.
     pub hints: super::hints::Hints,
@@ -650,16 +653,8 @@ impl Workspace {
                             // schematic draws boxes and says why.
                             job::reporting(Rc::clone(&sink), || {
                                 (*libraries).as_ref().map_err(Clone::clone).and_then(|l| {
-                                    hinted_layout(&built, &groups, l, &resolved).map(
-                                        |(layout, unusable)| {
-                                            (
-                                                netsmith_view::render_layout(
-                                                    &built.design,
-                                                    &layout,
-                                                ),
-                                                unusable,
-                                            )
-                                        },
+                                    netsmith_fabricate::schematic::draw_resolved(
+                                        &built, l, &groups, &resolved,
                                     )
                                 })
                             })
@@ -721,6 +716,9 @@ impl Workspace {
                                 physical: netsmith_fabricate::physical::physical_path(&file.path),
                                 constraints_warn: catalogs.constraints_warn(),
                                 place_seeds: netsmith_fabricate::layout::place_seeds(
+                                    target.project.as_ref(),
+                                ),
+                                rip_rounds: netsmith_fabricate::fab::rip_rounds(
                                     target.project.as_ref(),
                                 ),
                                 hints: hints::Hints {
@@ -996,23 +994,7 @@ impl Workspace {
     }
 }
 
-/// The layout the schematic view draws for `built`, with the inputs the editor gives it
-/// (its rails, its must-connect pins, its module groups): what `render_svg_by_module_marked`
-/// draws, before it is drawn. For tools that measure the drawing.
-pub fn schematic_layout(
-    built: &Built,
-    libraries: &Libraries,
-) -> Result<netsmith_view::Layout, String> {
-    netsmith_view::layout_sheets_marked(
-        &built.design,
-        &module_groups(built),
-        &rails_of(built),
-        &must_connect(built),
-        &libraries.mapping,
-        &libraries.symbols,
-    )
-    .map_err(|e| e.to_string())
-}
+pub use netsmith_fabricate::schematic::{module_groups, must_connect, rails_of, schematic_layout};
 
 /// The layout the schematic view draws for `built` with the entries of the schematic layout file
 /// that match it (`resolved`, from `LayoutHints::resolve` with the same `groups`), and a finding
@@ -1034,124 +1016,6 @@ pub fn hinted_layout(
         &libraries.symbols,
     )
     .map_err(|e| e.to_string())
-}
-
-/// The power nets of a board, from the checker's model: a net a rail draws from is a supply,
-/// a net the current returns on is a ground. Which nets are which is the design's to say
-/// (a `Rail`'s `pos` and `neg`), not their names.
-pub fn rails_of(built: &Built) -> netsmith_view::Rails {
-    let mut rails = netsmith_view::Rails::default();
-    for balance in built.trace.model.balances() {
-        if balance.returns {
-            rails.ground.insert(balance.net.clone());
-        } else {
-            rails.positive.insert(balance.net.clone());
-        }
-    }
-    // A net both a return and a supply (a rail stacked on another) is drawn as a ground only
-    // when it is never a supply.
-    let both: Vec<String> = rails
-        .positive
-        .intersection(&rails.ground)
-        .cloned()
-        .collect();
-    for net in both {
-        rails.ground.remove(&net);
-    }
-    rails
-}
-
-/// The pins the checker says must be connected (a power or input pin that is not `optional`,
-/// any pin that is `required`) that nothing else is on the net of, with the checker's message,
-/// so the drawing can mark them. A board that has one does not build, so this is what a pin
-/// table of a part under construction shows; it asks the checker's own question and changes
-/// nothing in it.
-pub fn must_connect(built: &Built) -> netsmith_view::Marks {
-    use netsmith_check::{InstKind, PinKind, Pinout};
-    let model = &built.trace.model;
-    let refdes: std::collections::HashMap<&str, &str> = built
-        .design
-        .parts
-        .iter()
-        .map(|p| (p.path.as_str(), p.refdes.as_str()))
-        .collect();
-    let mut marks = netsmith_view::Marks::default();
-    for (id, inst) in model.instances() {
-        if inst.kind != InstKind::Part || model.board_of(id).is_none() {
-            continue;
-        }
-        let Pinout::Table(table) = model.pinout(id) else {
-            continue;
-        };
-        let path = model.path_of(id);
-        let Some(&refdes) = refdes.get(path.as_str()) else {
-            continue;
-        };
-        for row in &table.rows {
-            let must = model.must_be_connected(row.pin, row);
-            let company = model
-                .net_of(row.pin)
-                .is_some_and(|net| net.pins.iter().any(|&p| model.owner_of(p) != Some(id)));
-            if !must || company {
-                continue;
-            }
-            let kind = match row.kind {
-                PinKind::Power => "a power pin",
-                PinKind::Input => "an input",
-                PinKind::Output => "an output",
-                PinKind::Bidirectional => "a bidirectional pin",
-                PinKind::Passive => "a passive pin",
-                PinKind::NoConnect => "a no_connect pin",
-                PinKind::TriState => "a tri_state output",
-                PinKind::OpenDrain => "an open_drain output",
-            };
-            let pads = if row.pads.len() == 1 {
-                format!("pad {}", row.pads[0])
-            } else {
-                format!("pads {}", row.pads.join(", "))
-            };
-            let message = format!(
-                "`{}` is {kind} that must be connected ({pads}, `{}`), but nothing else is on its net",
-                model.path_of(row.pin),
-                row.name
-            );
-            for pad in &row.pads {
-                marks
-                    .must
-                    .insert((refdes.to_string(), pad.clone()), message.clone());
-            }
-        }
-    }
-    marks
-}
-
-/// The parts of a board grouped by the module instance of the board each is inside (a part
-/// declared on the board itself is in none), in the order the design lists the parts.
-pub fn module_groups(built: &Built) -> Vec<netsmith_view::Group> {
-    let model = &built.trace.model;
-    let mut groups: Vec<netsmith_view::Group> = Vec::new();
-    for (part, &inst) in built.trace.origins.iter().enumerate() {
-        let mut top = inst;
-        while let Some(parent) = model.instance(top).parent {
-            if parent == model.root {
-                break;
-            }
-            top = parent;
-        }
-        if top == inst || model.instance(top).parent.is_none() {
-            continue;
-        }
-        let name = model.instance(top).name.clone();
-        match groups.iter_mut().find(|g| g.name == name) {
-            Some(g) => g.parts.push(part),
-            None => groups.push(netsmith_view::Group {
-                name,
-                detail: model.instance(top).type_name.clone(),
-                parts: vec![part],
-            }),
-        }
-    }
-    groups
 }
 
 pub(super) use netsmith_pipeline::power::api_location;

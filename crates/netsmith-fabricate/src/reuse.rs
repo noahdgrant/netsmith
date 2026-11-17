@@ -18,7 +18,7 @@
 //!   footprints the parts load with, the layout file and the routes file as they are on disk,
 //!   the STEP and case models the design names, the pin map for firmware, and the options of the
 //!   run that change what is written (the router's time limit, the track margin, the placer's
-//!   seeds and budget, the glb and STEP switches, `--strict`-ness of heights, `--allow-drc-violations`,
+//!   seeds and budget, the glb, STEP and PDF switches, `--strict`-ness of heights, `--allow-drc-violations`,
 //!   `--cross-check`, `--offline`, `--save-placed`);
 //! - the SHA-256 of every file of the package folder; and
 //! - what the order reads of the package: its summary, notes, the files of the Gerber zip and the
@@ -183,6 +183,19 @@ pub fn key(inputs: &Inputs) -> Option<String> {
             &file_or_absent(&crate::routes::beside_layout(file)),
         );
     }
+    // The schematic layout file the schematic PDF is drawn with (issue #1091).
+    if let Some(schematic) = options.schematic.as_ref().filter(|_| options.pdf) {
+        put(
+            &mut hash,
+            "schematic layout",
+            &file_or_absent(&schematic.layout),
+        );
+        put(
+            &mut hash,
+            "project",
+            schematic.project.as_deref().unwrap_or("").as_bytes(),
+        );
+    }
     // The STEP models and the case models, read from disk.
     for (name, file) in built
         .design
@@ -219,6 +232,7 @@ pub fn key(inputs: &Inputs) -> Option<String> {
                     options.strict_heights,
                     options.pin_map_source.as_deref(),
                     options.track_margin.to_bits(),
+                    options.rip_rounds,
                 ),
                 (
                     options.glb,
@@ -229,6 +243,7 @@ pub fn key(inputs: &Inputs) -> Option<String> {
                     options.offline,
                     catalogs.constraints_warn(),
                 ),
+                options.pdf,
             )
         )
         .as_bytes(),

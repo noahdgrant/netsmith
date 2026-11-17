@@ -10,7 +10,7 @@
 //! ([`netsmith_pcb::FixedCopper::locked`]), so the router adds copper to the crossed nets alone.
 //!
 //! **Bounded work.** One order of the lines (`most_tries: Some(1)`), rip-up of the crossed nets
-//! among themselves but no negotiation, no teardrops, arcs, meanders, shared vias or pour pads:
+//! among themselves but no negotiation and no rounds of rip-up of whole nets, no teardrops, arcs, meanders, shared vias or pour pads:
 //! the preview is the shape of the way, not the finished copper. The work is counted
 //! ([`Round::tries`]); a cancel (`cancel`) stops it as it stops a route, keeping what it has.
 //!
@@ -95,6 +95,7 @@ pub fn reroute_round(
             meanders: false,
             share_vias: false,
             pour_pads: false,
+            rip_rounds: 0,
             ..RouteOptions::default()
         },
     );

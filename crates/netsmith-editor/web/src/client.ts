@@ -30,6 +30,7 @@ import type {
   PcbWalked,
   PcbFindings,
   PcbSummary,
+  PcbCopper,
   PcbFit,
   PcbPours,
   PcbReport,
@@ -127,6 +128,9 @@ async function postNow<T>(url: string, body?: unknown): Promise<T> {
   return (await check(await fetch(url, init))).json();
 }
 
+/** The file the browser saves a board's schematic as: `<board>-schematic.<format>`, as the server names it (a system's member `S/m` is `S-m`). */
+export const schematicFile = (board: string, format: string) => `${board.replace(/\//g, '-')}-schematic.${format}`;
+
 export const api = {
   project: () => getJson<Project>('/api/project'),
   /** With `early` the answer is `AnalysisPending` while the server's first analysis runs, not a wait. */
@@ -186,6 +190,8 @@ export const api = {
   /** The fill of the board's pours, planes and zones (the 2D view draws it under the copper). */
   /** The placed board, not routed, as a zip of KiCad files (the same as `netsmith layout export` writes), also while its placement has findings (issue 1001). */
   pcbKicadUrl: (board: string) => `/api/pcb/kicad?${q({ board })}`,
+  /** The schematic as a file to save (issue 1091): a PDF with a page for each sheet, the SVG, or a PNG; the bytes `netsmith view schematic` writes. */
+  schematicExportUrl: (board: string, format: 'pdf' | 'svg' | 'png') => `/api/schematic/export?${q({ board, format })}`,
   pcbPours: (board: string) => getJson<PcbPours>(`/api/pcb/pours?${q({ board })}`),
   pcbEdit: (edit: PcbEdit) => post<PcbEdited>('/api/pcb/edit', edit),
   /** One module placed again with the rest held (issue 825): a proposal, nothing written. `ApiFailure` 422 says why not. */
@@ -202,6 +208,8 @@ export const api = {
   pcbFindings: (board: string) => getJson<PcbFindings>(`/api/pcb/findings?${q({ board })}`),
   /** The placed board summed up (`netsmith layout summary`): `near`, `within` and `between` as `summaryQuery` writes them. `ApiFailure` 400 says which part or pad the board has none of. */
   pcbSummary: (query: string) => getJson<PcbSummary>(`/api/pcb/summary?${query}`),
+  /** The board's copper areas (`netsmith board copper`): the planes, pours, the routes file's zones and the teardrop fills, from the source with no placing and no routing. */
+  pcbCopper: (board: string) => getJson<PcbCopper>(`/api/pcb/copper?${q({ board })}`),
   /** Where one part fits with every other part where it is (`netsmith layout fit`): `part` (a path or a designator), `near` (a part, or `X,Y` in mm), `step` (mm) and `side` (`top` or `bottom`), the last three optional. Nothing is written. `ApiFailure` 400 says what the board has none of or what is wrong with the query. */
   pcbFit: (board: string, part: string, ask: { near?: string; step?: number; side?: 'top' | 'bottom' } = {}) =>
     getJson<PcbFit>(

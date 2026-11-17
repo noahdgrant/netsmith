@@ -4,12 +4,15 @@
 //! new spelling of a command or flag of an earlier release.
 
 mod board3d;
+mod bom;
 mod build;
 mod case;
 mod catalog;
 mod check;
 pub(crate) mod common;
 mod compare;
+mod copper;
+mod drc;
 mod dxf;
 mod editor;
 mod explain;
@@ -20,15 +23,21 @@ mod layout;
 mod lock;
 pub mod moved;
 mod order;
+mod panel;
 mod parity;
 mod part;
 mod pins;
 mod port;
+mod power;
 mod render;
 mod route;
 mod routes;
 mod schematic;
+mod schematic_layout;
+mod swap;
+mod system;
 mod view;
+mod views;
 
 use std::process::ExitCode;
 
@@ -59,7 +68,7 @@ pub enum Command {
     /// Fix copper of a board in its routes file: import it from KiCad, add, delete, lock, show.
     Routes(routes::Args),
     /// Show, set or check the entries of the schematic layout file (how the schematic is arranged), and arrange its sheets.
-    Schematic(schematic::Args),
+    Schematic(schematic_layout::Args),
     /// Look at a board: draw it in 3D, serve the editor, drive the editor's 3D view.
     #[command(subcommand)]
     View(View),
@@ -95,12 +104,26 @@ pub enum Board {
     Build(build::Args),
     /// Make the fab package of the boards: Gerbers, drill, BOM, CPL, notes, 3D scene.
     Fab(fab::Args),
+    /// Run the design rules check alone, on the placed board with its routes file or on a KiCad board.
+    Drc(drc::Args),
     /// Print what the solve left a part or member with, and why each part has its row.
     Explain(explain::Args),
     /// Say whether two designs are the same circuit.
     Compare(compare::Args),
     /// Show, lock, unlock and move the pins that the board's pin requests got, or apply a proposal.
     Pins(pins::Args),
+    /// List the alternatives of a part no catalog row stands for, with their checks, or write one into the source.
+    Swap(swap::Args),
+    /// Print a board's bill of materials with price and stock.
+    Bom(bom::Args),
+    /// Print a board's power tree: rails, supplies, loads and what each leaves.
+    Power(power::Args),
+    /// Print a system's boards and mates, or a board's members and nets.
+    System(system::Args),
+    /// Print a panel: its grid, size and checks.
+    Panel(panel::Args),
+    /// Say which layers carry a plane or a pour, the hand zones of the routes file and the teardrop fills.
+    Copper(copper::Args),
 }
 
 /// `netsmith view ...`.
@@ -114,6 +137,8 @@ pub enum View {
     /// Drive the 3D view of a running editor with `view 3d`'s flags, and save its picture.
     #[command(name = "editor-3d")]
     Editor3d(view::Args),
+    /// Write a board's schematic as a PDF (a page for each sheet), an SVG or a PNG.
+    Schematic(schematic::Args),
 }
 
 /// `netsmith import ...`.
@@ -156,17 +181,25 @@ pub fn run(command: Command) -> ExitCode {
             Board::Check(args) => check::run(args),
             Board::Build(args) => build::run(args),
             Board::Fab(args) => fab::run(args),
+            Board::Drc(args) => drc::run(args),
             Board::Explain(args) => explain::run(args),
             Board::Compare(args) => compare::run(args),
             Board::Pins(args) => pins::run(args),
+            Board::Swap(args) => swap::run(args),
+            Board::Bom(args) => bom::run(args),
+            Board::Power(args) => power::run(args),
+            Board::System(args) => system::run(args),
+            Board::Panel(args) => panel::run(args),
+            Board::Copper(args) => copper::run(args),
         },
         Command::Layout(args) => layout::run(args),
         Command::Routes(args) => routes::run(args),
-        Command::Schematic(args) => schematic::run(args),
+        Command::Schematic(args) => schematic_layout::run(args),
         Command::View(command) => match command {
             View::ThreeD(args) => render::run(args),
             View::Editor(args) => editor::run(args),
             View::Editor3d(args) => view::run(args),
+            View::Schematic(args) => schematic::run(args),
         },
         Command::Catalog(args) => catalog::run(args),
         Command::Import(command) => match command {

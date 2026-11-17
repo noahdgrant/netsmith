@@ -183,7 +183,9 @@ row "1 0 1 1 0 0" crates/netsmith-editor/src/api.rs
 # The page's sources: the `build` job builds them into the binary (ADR 0114), so the recipes run.
 row "1 0 1 1 0 0" crates/netsmith-editor/web/src/app.ts crates/netsmith-editor/web/package-lock.json
 row "1 0 1 1 0 0" crates/netsmith-view/src/layout.rs
+row "1 0 1 1 0 0" crates/netsmith-draw/src/pdf.rs
 row "1 0 0 0 0 0" crates/netsmith-view/tests/layout.rs
+row "1 0 0 0 0 0" crates/netsmith-draw/tests/round_trip.rs
 row "1 0 0 0 0 0" crates/netsmith-view/tests/asks.rs
 row "1 0 0 0 0 0" crates/netsmith-editor/tests/bundle.rs
 row "1 0 1 1 0 0" crates/netsmith-editor/Cargo.toml
