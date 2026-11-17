@@ -151,8 +151,13 @@ export async function sceneWhere(page, what, test, board = BOARD) {
 }
 
 export async function settled(page, before, board = BOARD) {
-  return waitFor('the layout file to be written (the scene stamp moves on)', async () => {
+  const s = await waitFor('the layout file to be written (the scene stamp moves on)', async () => {
     const s = await scene(page, board);
     return s.layoutStamp !== before ? s : null;
   });
+  // `scene` is the server's: it has the new stamp once it has written the file, before the edit's answer has reached the page
+  // (its scene, its steps of undo and redo, the lock mark, the buttons). The edit's request keeps the page busy until it is
+  // answered and drawn, so a step that reads the page, or presses a key that sends the page's stamp, waits for that too.
+  await whenIdle(page);
+  return s;
 }
