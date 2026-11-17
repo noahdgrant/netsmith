@@ -11,7 +11,7 @@ An attribute says what a definition or a member is to the checker, the solver an
 | `#[assembly(hand)]` | a generic or a part | Who assembles it when the design, its catalog row and the project say nothing (ADR 0024): `fab`, `hand`, `none` or `consigned`. The standard headers and sockets are `hand`. |
 | `#[role(bias)]` | a member of a generic or a part | Where the member's value comes from, whatever its name: `bias`, the voltage of the rail the part is across (ADR 0013); `bridge_voltage`, the same with its sign (ADR 0088); `current`, the current through its `bridge` (ADR 0014); `supply_peak` (ADR 0086), `supply_reverse_peak`, `limit_current` and `supply_fault_current` (ADR 0091), from the chain it is in; `count`, the number of a `#[bank]`. |
 
-A part has the attributes of its own definition and of the generics it provides, its own first. A member with a role keeps the checks the definition states on it, and a member named `bias` or `current` with no role is a plain member: the role, not the name, gives it a value.
+A part has the attributes of its own definition and of the generics it provides, its own first. A member with a role keeps the checks the definition states on it, and a member named `bias` or `current` with no role is a plain member: the role, not the name, gives it a value. `netsmith project lint` finds an attribute that says what a part gets without it, from a generic it provides, its row, the manifest or `fab` (`lint.redundant`, _The linter: a statement a default already makes_, in the chapter on narrowing).
 
 A project's thermistor that the solver may give any E24 value when no row of its catalog serves, with a chain current read through a member of its own name:
 

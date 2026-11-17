@@ -388,7 +388,9 @@ error: no part, module or generic `Resistr` is in scope; did you mean `Resistor`
 - a narrowing (`&=`) whose value a default already gives: a `?=` of the kind's own definition (a `Rail` is on `GND` by default), of a module round the part, or a line of the board's `defaults` block. The linter checks the project again without the statement, and finds it when every board that reads the file then checks and has every value it had;
 - a narrowing of a column of a part that a key picks (`catalog mcu by .mpn`) whose value is the cell of the row the key names: the row gives it. The linter finds it when the project still checks without it. A part in a use of a generic with several providers is left out: there a narrowing also chooses the provider.
 
-Delete the statement. A default (`?=`) is not judged: a second default of a field is the checker's error, and a line of a `defaults` block that no part takes is the checker's note.
+- an attribute (see Attributes) on the `part` or `generic` a part of a board is made from that says what the part gets without it (issue #1132). The linter checks the project again without the attribute and finds it when every board then checks with every value it had, and every part has the attributes it had: a generic the part provides says the same (`#[kind(connector)]` on a part that provides `Connector`). `#[assembly(...)]` is read last of what says who assembles a part (the design's `.assembly`, the row's `assembly` cell, the manifest's `assembly`, the attribute, then `fab`), so each part that would read something else in its place must get the same word there: from the manifest, a generic it provides, the row its key names, or `fab` when nothing says. A part whose design states `.assembly`, or whose key names a row with another word, never reads the attribute and is left out; a row the solver picks may have a word or none, so a part with one does not count as given by its row.
+
+Delete the statement. A default (`?=`) is not judged: a second default of a field is the checker's error, and a line of a `defaults` block that no part takes is the checker's note. Nor are `#[series(...)]` against the project's `series` (the attribute offers the series and the project picks one of them: without it a part gets no made values), `#[bank]`, a member's `#[role(...)]`, and an attribute of a generic that only its providers read, which is what they inherit.
 
 ```nsm lints
 import std::parts::passive::Resistor
@@ -414,6 +416,31 @@ board Pulls {
 ```text
 main.nsm:11:9: lint.redundant: `.neg.net &= "GND"` says what the default at std/sources.nsm:95 already gives; delete it
 main.nsm:15:9: lint.redundant: `.package &= "0402"` says what the default at main.nsm:6 already gives; delete it
+```
+
+A part that provides the standard `Connector` has its `#[kind(connector)]`:
+
+```nsm lints
+import std::parts::connector::Connector
+
+#[kind(connector)]
+part Plug provides Connector {
+    pins {
+        .p1 passive "P1" "1"
+        .p2 passive "P2" "2"
+    }
+}
+
+board Cable {
+    .a: Plug
+    .b: Plug
+    .a.p1 ~ .b.p1
+    .a.p2 ~ .b.p2
+}
+```
+
+```text
+main.nsm:3:1: lint.redundant: `#[kind(connector)]` says what `Connector`, the generic it provides, already gives; delete it
 ```
 
 ### A value that nobody stated
