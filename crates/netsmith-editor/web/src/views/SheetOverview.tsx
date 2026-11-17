@@ -156,7 +156,7 @@ export function SheetOverview({
             key={s.name}
             data-sheet-card={s.name}
             class={`ov-item ${aspect > WIDE ? 'wide' : ''} ${aspect > 4.2 ? 'wider' : ''} ${dragged ? 'ov-dragging' : ''} ${target ? 'ov-target' : ''}`}
-            style={dragged ? { transform: `translate(${drag.dx}px, ${drag.dy}px)` } : undefined}
+            style={dragged ? { transform: `translate(${drag.dx}px, ${drag.dy}px) scale(0.8)` } : undefined}
           >
             <button
               class={`ov-card ${r.carries ? 'carries' : ''} ${movable ? 'movable' : ''}`}
