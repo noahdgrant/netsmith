@@ -312,7 +312,7 @@ fn every_esr_cell_is_one_resistance_and_its_source_names_the_page_and_the_point(
 }
 
 /// How many rows of the standard catalogs have a `height` (ADR 0094). Update it with the rows.
-const ROWS_WITH_HEIGHT: usize = 113;
+const ROWS_WITH_HEIGHT: usize = 128;
 
 #[test]
 fn every_height_is_one_length_that_a_document_says_and_its_source_names_where() {
