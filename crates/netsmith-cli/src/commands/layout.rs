@@ -8,7 +8,8 @@
 //! with the rest held, `netsmith_fabricate::regenerate`. `layout capture` (issue #828) writes the
 //! placement as the layout file, an entry for every part and the seed, `netsmith_fabricate::layout_capture`.
 //! `layout fit` (issue #780) says where one part fits with the rest where they are,
-//! `netsmith_pcb::Board::fit_part`. `layout export` and `layout import` (issue #781) write the
+//! `netsmith_pcb::Board::fit_part`. `layout parts` (issue #778) gives each part's frame, courtyard
+//! shapes and pads as data, `netsmith_pcb::PartGeometries`. `layout export` and `layout import` (issue #781) write the
 //! placed board as a KiCad board, also with findings, and bring the parts moved in KiCad back,
 //! `netsmith_fabricate::layout_kicad`.
 
@@ -24,7 +25,7 @@ use super::routes::{Target, parse_point};
 
 #[derive(Debug, PartialEq, ClapArgs)]
 #[command(
-    after_long_help = "The layout file `<stem>.pcb.toml` sits beside the source and holds the solution: where each part is (`at`, `turn`, `side`, `lock`), keyed by the part's path in the design (`stage.output_cap`; the capacitors of a bank are `bank[0]`, `bank[1]`). The requirements on where a part may be are in the board's physical file, never here.\n\nThe frame is the file's: `--at X,Y` is the footprint's origin in mm from the outline's top left corner, x to the right and y down; a turn is in degrees, counterclockwise on screen, any angle from 0 up to 360; a part on the bottom face is the top face's footprint mirrored left to right (about its own y axis), then turned as it is seen from the top. The guide's \"The layout file\" has an example of a part on each face.\n\n`show`, `set` and `check` check and solve the board as `build` does and place nothing; `summary`, `compare` and `fit` place it as `board3d` does and write nothing; `regenerate` and `capture` place it as `fab` does; `export` and `import` place it as `board3d` does. The exit code is 0 when it did what it was asked, 1 when it refused (a part the board does not have, a turn that is not allowed, a file with an error `check` reports), and 2 when it could not run (a usage mistake included)."
+    after_long_help = "The layout file `<stem>.pcb.toml` sits beside the source and holds the solution: where each part is (`at`, `turn`, `side`, `lock`), keyed by the part's path in the design (`stage.output_cap`; the capacitors of a bank are `bank[0]`, `bank[1]`). The requirements on where a part may be are in the board's physical file, never here.\n\nThe frame is the file's: `--at X,Y` is the footprint's origin in mm from the outline's top left corner, x to the right and y down; a turn is in degrees, counterclockwise on screen, any angle from 0 up to 360; a part on the bottom face is the top face's footprint mirrored left to right (about its own y axis), then turned as it is seen from the top. The guide's \"The layout file\" has an example of a part on each face.\n\n`show`, `set` and `check` check and solve the board as `build` does and place nothing; `summary`, `compare` and `fit` place it as `board3d` does and write nothing; `regenerate` and `capture` place it as `fab` does; `export`, `import` and `parts` place it as `board3d` does. The exit code is 0 when it did what it was asked, 1 when it refused (a part the board does not have, a turn that is not allowed, a file with an error `check` reports), and 2 when it could not run (a usage mistake included)."
 )]
 pub struct Args {
     #[command(subcommand)]
@@ -73,6 +74,11 @@ pub enum Command {
         after_long_help = "The board is placed as `board3d` places it (the layout file and the physical file read, nothing written), and the part at PATH (a path or a designator) is tried on a grid of origins every `--step` mm from the outline's top left corner, for each of the four right-angle turns from its own and on each face (one face when a requirement states it, or `--side` names it; a turn a requirement rules out is not tried). Each place is measured as the placer and `fab` measure it: the placement check of that part against every other part where it is (courtyards, holes, keepouts, height limits, the edge, cutouts) and the requirements of the physical file about it (its windows, its modules' and the relations it is an end of). For each turn and face it gives the place nearest `--near` where nothing is found, or, when there is none, the closest try (the fewest findings, then the nearest) with what is in the way there. `--near` is a part (path or designator: the centre of its courtyard) or a point `X,Y` in mm from the outline's top left corner, y down; with none, where the part is now. Distances are from that point to the centre of the part's courtyard. Nothing is written: `netsmith layout set PATH --at X,Y --turn T --side S` writes a place, as the text says for each.\n\nWith `--as-laid-out` the board is not placed: it is made exactly as the layout file has it, each part where its entry puts it (or where a requirement pins it) and the outline the physical file states, in milliseconds where placing a nearly full board takes seconds or more. It is refused, naming what is missing, when a part has no entry in the layout file and no requirement pins it, or when the outline's size is not stated exactly (a width or height left open or given as a range is known only by placing); `--place-seeds` and `--place-budget` cannot go with it. Run `netsmith layout capture` to give every part an entry.\n\n`--format json` prints one JSON document on one line: `board`, `part` (`refdes`, `path`), `near` (`x`, `y`, and `part` when it is one), `step`, `now` (the part where it is) and `poses`, each a place with `turn`, `side`, `at` (the footprint's origin, as the layout file's `at`), `distance`, `fits`, and where it does not fit `placement` (the placement check's findings as `fab --format json` has them), `requirements` (the requirements it does not meet) and `messages` (their sentences). The poses that fit come first, nearest first. The exit code is 0 when some pose fits, 1 when none does or the part or board is refused (a part the board does not have, a board that does not build or place), and 2 when it could not run."
     )]
     Fit(FitArgs),
+    /// Give each part's frame, courtyard shapes and pads (net, place, size) as data, with no editor.
+    #[command(
+        after_long_help = "The board is placed as `layout export` and the editor place it (the layout file and the physical file read, nothing written; a layout file the placer refuses gives the parts where the placer ended, and the data is printed with the findings beside it) and each part is given with everything a script needs to check a placement: its `frame` (`at`, the footprint's origin as the layout file's `at`; `turn` in degrees, counterclockwise on screen; `side`; `mirrored`; and the `width` and `height` of the box round its courtyard), its `courtyard` (the box round all its courtyard shapes), `courtyards` (each courtyard shape, its own room), `local_courtyards` (the same shapes in the footprint's own frame), `body`, `height`, and its `pads`: `number`, `net`, `kind`, `shape`, the centre of the copper `at` on the board and `local` in the footprint's frame, its own size `width` and `height`, its `turn` on the board, its `bounds` (the box its copper spans on the board), the faces it has `copper` on and its `drill`. Places are mm from the outline's top left corner, x to the right and y down, as the layout file's.\n\nThe frame is the file's: a footprint's point `(x, y)` is mirrored left to right first on the bottom face (`(-x, y)`), then turned by `turn` degrees counterclockwise on screen (`x' = x cos t + y sin t`, `y' = -x sin t + y cos t`, as y is down), then moved by `at`. A script computes where a part's pads go for a place it has not tried from each pad's `local` and that rule. A turn that is not a right angle gives `courtyards` and `bounds` as the box round the shape as turned.\n\nWithout a PATH every part is given; a PATH is a part's path or designator, or a module's, which gives the parts inside it (it may be given again). A name the board has no part by is refused with the nearest names. With `--as-laid-out` the board is not placed: it is made exactly as the layout file has it (refused, naming what is missing, when a part has no entry and no requirement pins it or the outline's size is not stated exactly; `--place-seeds` and `--place-budget` cannot go with it).\n\n`--format json` prints one JSON document on one line: `board`, `width`, `height`, `parts`, and the findings of the placement as `board3d --json` has them: `placement`, `conflicts` and `placement_refused`. The exit code is 0 when the data is printed, also with findings, 1 when the board does not build or place at all or a name is refused, and 2 when it could not run."
+    )]
+    Parts(PartsArgs),
     /// Write the placed board, not routed, as a KiCad board, also when the placement has findings.
     #[command(
         after_long_help = "The board is placed as `board3d` and the editor place it (the layout file and the physical file read, nothing routed) and written to FILE.KICAD_PCB with its `.kicad_pro` beside it of the same name, so that a person can look at it in KiCad or move parts with KiCad's tools. It is written whatever the placement check finds, and a layout file the placer refuses gives the board where the placer ended, with the layout file's places. The board has no copper: no track, no via, and the planes and pours as zones that are not filled. It is marked as not for fabrication, in its title block and in a text on `Cmts.User` above the outline; `netsmith fab` writes the board to order. The findings (the placement check's faults, the lines and locks that cannot all hold, why the placer refused the layout file) are printed and listed in `<stem>.findings.txt` beside the board.\n\nEach footprint carries the part's path in the design in a hidden `netsmith_path` property, which `layout import` reads to bring the parts' moves back to the layout file; renumbering the designators in KiCad changes nothing. `--format json` prints one JSON document on stdout: `board`, `file`, `project`, `findings_file`, `parts`, `placement` and `conflicts` (each as `board3d --json` has them) and `placement_refused`. The exit code is 0 when the board is written, also with findings, 1 when the board does not build or place at all, and 2 when it could not run or write."
@@ -203,6 +209,23 @@ pub struct SummaryArgs {
 }
 
 #[derive(Debug, PartialEq, ClapArgs)]
+pub struct PartsArgs {
+    /// A part by its path or designator, or a module by its path; may be given again. With none, every part.
+    #[arg(value_name = "PATH")]
+    pub parts: Vec<String>,
+    #[command(flatten)]
+    pub target: Target,
+    /// Place nothing: give the parts exactly as the layout file has them.
+    #[arg(long, conflicts_with_all = ["place_seeds", "place_budget"])]
+    pub as_laid_out: bool,
+    #[command(flatten)]
+    pub placing: common::Placing,
+    /// Text for a person, or one JSON document on stdout.
+    #[arg(long, value_enum, default_value = "text")]
+    pub format: common::Format,
+}
+
+#[derive(Debug, PartialEq, ClapArgs)]
 pub struct CompareArgs {
     /// The layout file of the first placement.
     #[arg(value_name = "BEFORE.PCB.TOML")]
@@ -296,6 +319,7 @@ pub fn run(args: Args) -> ExitCode {
         Command::Regenerate(a) => regenerate(&a),
         Command::Capture(a) => capture(&a),
         Command::Fit(a) => fit(&a),
+        Command::Parts(a) => parts(&a),
         Command::Export(a) => export(&a),
         Command::Import(a) => import(&a),
     }
@@ -439,6 +463,43 @@ fn fit(args: &FitArgs) -> ExitCode {
             } else {
                 ExitCode::FAILURE
             }
+        }
+        Err(code) => code,
+    }
+}
+
+/// `layout parts`: each part's frame, courtyard shapes and pads as data, findings beside them.
+fn parts(args: &PartsArgs) -> ExitCode {
+    let made = common::with_placed_board(
+        args.target.file.as_deref(),
+        args.target.board.as_deref(),
+        Some(&args.placing),
+        |placed| {
+            let geometry =
+                |board: &netsmith_pcb::Board| netsmith_pcb::PartGeometries::of(board, &args.parts);
+            if args.as_laid_out {
+                placed.with_board_as_laid_out(|_, board| geometry(board))
+            } else {
+                placed.with_board_shown(|_, board, placing| {
+                    geometry(board).map(|mut parts| {
+                        parts.conflicts = placing.conflicts;
+                        parts.placement_refused = placing.refused;
+                        parts
+                    })
+                })
+            }
+            .and_then(|done| done.map_err(|e| format!("error: {e}\n")))
+        },
+    );
+    match made {
+        Ok(parts) => {
+            match args.format {
+                common::Format::Json => {
+                    println!("{}", serde_json::to_string(&parts).expect("plain data"))
+                }
+                common::Format::Text => print!("{}", parts.text()),
+            }
+            ExitCode::SUCCESS
         }
         Err(code) => code,
     }
