@@ -182,10 +182,18 @@ pub fn layout_sheets_hinted_findings(
             Some(&sheet_of),
         )?;
         found.extend(findings);
+        // One drawing has no boxes to set out.
+        for place in hints.sheets.values() {
+            found.push(HintFinding::unusable(
+                place.entry.clone(),
+                place.line,
+                "the board is drawn as one sheet, so no sheet has a place of its own on the page",
+            ));
+        }
         found.sort_by(|a, b| (a.line, &a.message).cmp(&(b.line, &b.message)));
         return Ok((layout, found));
     }
-    let clusters = cut(design, clusters);
+    let (clusters, origin) = cut(design, clusters);
 
     let mut owner = vec![0; design.parts.len()];
     for (c, cluster) in clusters.iter().enumerate() {
@@ -377,7 +385,8 @@ pub fn layout_sheets_hinted_findings(
         })
         .collect();
     let order = connection_order(design, &owner, clusters.len());
-    let offsets = arrange(&frames, &order);
+    let fixed = placed_frames(&frames, &origin, hints, &mut found);
+    let offsets = arrange(&frames, &order, &fixed);
 
     let mut parts: Vec<Option<PlacedPart>> = vec![None; design.parts.len()];
     // The boxes of the units after the first of a part (`layout::units`), after the parts' own.
@@ -686,12 +695,14 @@ pub(crate) fn clusters(design: &Design, groups: &[Group]) -> Vec<Group> {
 }
 
 /// Cuts each group of more than [`MAX_SHEET_PARTS`] parts into equal pieces along a walk of
-/// its connections.
-fn cut(design: &Design, clusters: Vec<Group>) -> Vec<Group> {
+/// its connections. With each piece, the index of the group it is a piece of.
+fn cut(design: &Design, clusters: Vec<Group>) -> (Vec<Group>, Vec<usize>) {
     let mut out = Vec::new();
-    for g in clusters {
+    let mut origin = Vec::new();
+    for (c, g) in clusters.into_iter().enumerate() {
         if g.parts.len() <= MAX_SHEET_PARTS {
             out.push(g);
+            origin.push(c);
             continue;
         }
         let order = walk(design, &g.parts);
@@ -703,9 +714,10 @@ fn cut(design: &Design, clusters: Vec<Group>) -> Vec<Group> {
                 detail: g.detail.clone(),
                 parts: chunk.to_vec(),
             });
+            origin.push(c);
         }
     }
-    out
+    (out, origin)
 }
 
 /// The parts of a group in the order a breadth-first walk meets them: a connector first if
@@ -841,27 +853,129 @@ fn connection_order(design: &Design, owner: &[usize], sheets: usize) -> Vec<usiz
     order
 }
 
+/// The translation of each box a schematic layout file places (`at`, ADR 0139), by the boxes'
+/// index: its top-left corner at the place, to the nearest grid step, as the others are on the
+/// grid. A sheet drawn as several boxes has no one place, and a box that would lie on a box
+/// placed before it (in the order of the file) is left to the arrangement; each is a finding.
+fn placed_frames(
+    frames: &[Rect],
+    origin: &[usize],
+    hints: &ResolvedHints,
+    found: &mut Vec<HintFinding>,
+) -> Vec<Option<Pt>> {
+    let mut fixed: Vec<Option<Pt>> = vec![None; frames.len()];
+    let mut places: Vec<(usize, &crate::hints::ResolvedSheet)> = hints
+        .sheets
+        .iter()
+        .map(|(&c, place)| (c, place))
+        .collect();
+    places.sort_by_key(|(_, place)| (place.line, place.sheet.clone()));
+    let mut taken: Vec<(Rect, String)> = Vec::new();
+    for (c, place) in places {
+        let boxes: Vec<usize> = (0..frames.len()).filter(|&i| origin[i] == c).collect();
+        let [i] = boxes[..] else {
+            found.push(HintFinding::unusable(
+                place.entry.clone(),
+                place.line,
+                &format!(
+                    "the sheet `{}` is drawn as {} boxes, so it has no one place on the page",
+                    place.sheet,
+                    boxes.len()
+                ),
+            ));
+            continue;
+        };
+        let f = frames[i];
+        let (x, y) = place.at.mm();
+        let by = Pt::new(snap_round(x - f.min.x), snap_round(y - f.min.y));
+        let at = f.translated(by);
+        if let Some((_, other)) = taken.iter().find(|(r, _)| overlaps(at, *r, 0.0)) {
+            found.push(HintFinding::unusable(
+                place.entry.clone(),
+                place.line,
+                &format!("its box would lie on the box of the sheet `{other}`"),
+            ));
+            continue;
+        }
+        taken.push((at, place.sheet.clone()));
+        fixed[i] = Some(by);
+    }
+    fixed
+}
+
+fn snap_round(v: f64) -> f64 {
+    (v / GRID).round() * GRID
+}
+
+/// Whether two boxes overlap when one is grown by `gap` on every side. Boxes that only touch
+/// it, to within a rounding of the grid's snapping, do not: a box pushed to just past another
+/// must not be found on it again.
+fn overlaps(a: Rect, b: Rect, gap: f64) -> bool {
+    const SLACK: f64 = 1e-6;
+    let reach = gap - SLACK;
+    a.min.x < b.max.x + reach
+        && b.min.x < a.max.x + reach
+        && a.min.y < b.max.y + reach
+        && b.min.y < a.max.y + reach
+}
+
 /// Where each frame's top-left corner goes: the frames in `order`, rows filled from the left
 /// until a row would pass the width that makes the whole roughly [`TARGET_ASPECT`] wide, each
-/// frame on the grid. Returns the translation to apply to each frame, by the frames' index.
-fn arrange(frames: &[Rect], order: &[usize]) -> Vec<Pt> {
+/// frame on the grid. A frame with a translation in `fixed` (placed by the schematic layout
+/// file) keeps it, and the others are set out round it: a frame that would come within
+/// [`SHEET_GAP`] of a placed one goes on past it, in its row or the next. With nothing fixed the
+/// rows are as they are without the file. Returns the translation to apply to each frame, by
+/// the frames' index.
+fn arrange(frames: &[Rect], order: &[usize], fixed: &[Option<Pt>]) -> Vec<Pt> {
     let area: f64 = frames
         .iter()
         .map(|f| (f.width() + SHEET_GAP) * (f.height() + SHEET_GAP))
         .sum();
     let widest = frames.iter().map(Rect::width).fold(0.0, f64::max);
     let target = (area * TARGET_ASPECT).sqrt().max(widest);
+    let placed: Vec<Rect> = frames
+        .iter()
+        .zip(fixed)
+        .filter_map(|(f, by)| by.map(|by| f.translated(by)))
+        .collect();
 
-    let mut offsets = vec![Pt::new(0.0, 0.0); frames.len()];
+    let mut offsets: Vec<Pt> = fixed
+        .iter()
+        .map(|by| by.unwrap_or(Pt::new(0.0, 0.0)))
+        .collect();
     let (mut x, mut y, mut row_height) = (0.0, 0.0, 0.0f64);
     for &i in order {
-        let f = &frames[i];
-        if x > 0.0 && x + f.width() > target {
-            x = 0.0;
-            y += row_height + SHEET_GAP;
-            row_height = 0.0;
+        if fixed[i].is_some() {
+            continue;
         }
-        offsets[i] = Pt::new(snap_up(x - f.min.x, GRID), snap_up(y - f.min.y, GRID));
+        let f = &frames[i];
+        loop {
+            if x > 0.0 && x + f.width() > target {
+                // A row that holds nothing yet is passed by the placed boxes in it: the next
+                // row starts below the lowest of them that is in the way.
+                let step = if row_height > 0.0 {
+                    row_height
+                } else {
+                    placed
+                        .iter()
+                        .filter(|p| p.min.y < y + f.height() + SHEET_GAP && y < p.max.y + SHEET_GAP)
+                        .map(|p| p.max.y - y)
+                        .fold(0.0, f64::max)
+                };
+                x = 0.0;
+                y += step + SHEET_GAP;
+                row_height = 0.0;
+            }
+            let by = Pt::new(snap_up(x - f.min.x, GRID), snap_up(y - f.min.y, GRID));
+            let here = f.translated(by);
+            match placed.iter().find(|p| overlaps(here, **p, SHEET_GAP)) {
+                Some(p) => x = p.max.x + SHEET_GAP,
+                None => {
+                    offsets[i] = by;
+                    break;
+                }
+            }
+        }
         x += f.width() + SHEET_GAP;
         row_height = row_height.max(f.height());
     }
