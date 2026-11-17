@@ -105,7 +105,8 @@ export function caseColour(material: string): string | null {
 /** Every token the view reads, for the test that each theme has them. */
 export function allTokens(): string[] {
   const masks = MASK_COLOURS.flatMap((c) => Object.values(maskTokens(c)));
-  return [...new Set([...Object.values(LOOKS).map((l) => l.token), ...Object.values(TOKENS), ...masks])];
+  const modules = [1, 2, 3, 4, 5, 6].map((i) => `--module-${i}`);
+  return [...new Set([...Object.values(LOOKS).map((l) => l.token), ...Object.values(TOKENS), ...masks, ...modules])];
 }
 
 type Rgb = [number, number, number];

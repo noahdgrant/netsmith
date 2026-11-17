@@ -197,6 +197,19 @@
 .module-row .module-icon { color: var(--text-muted); flex: none; }
 .module-row.proposed .ref { color: var(--accent); }
 .module-row .regen-module { width: 1.5rem; height: 1.5rem; }
+.module-row .module-swatch { width: 0.5rem; height: 0.5rem; flex: none; border-radius: 2px; box-shadow: inset 0 0 0 1px var(--border); }
+/* a module lit on the board (pcb/modules.ts, issue 1129): its colour beside it and down its edge */
+.module-row.lit { box-shadow: inset 3px 0 0 var(--mod); }
+.module-row.lit .module-swatch, .module-row:hover .module-swatch { background: var(--mod); box-shadow: none; }
+.module-hint { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; min-height: var(--ctl); padding: 0 0.75rem; font-size: var(--fs-xs); }
+.module-hint .tool.small { flex: none; }
+.light-module { display: inline-flex; align-items: center; gap: 0.25rem; }
+.light-module-which { height: var(--h-sm); max-width: 9rem; font-size: var(--fs-sm); }
+/* the modules lit on the 2D board: each part's box tinted and outlined in its module's colour, a dashed box round them all, the rest dimmed */
+.pcb-overlay .module-part { fill: color-mix(in srgb, var(--mod) 20%, transparent); stroke: var(--mod); stroke-width: calc(1.75 * var(--px, .04)); }
+.pcb-overlay .module-box { fill: none; stroke: var(--mod); stroke-width: calc(1.25 * var(--px, .04)); stroke-dasharray: calc(6 * var(--px, .04)) calc(4 * var(--px, .04)); }
+.pcb-overlay .module-group.hovered .module-part { fill: color-mix(in srgb, var(--mod) 12%, transparent); }
+.pcb-host svg.has-mod g[data-path]:not(.mod-lit) { opacity: .35; }
 
 /* The board while the server places it (issue 764): the parts where the placer has them, each the box round its courtyard,
    the back face apart, in the region it places them in; drawn on their own, since the placer may move the whole placement after. */

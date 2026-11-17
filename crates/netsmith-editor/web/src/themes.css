@@ -233,6 +233,13 @@
   --pcb-lock: #e5b53b;
   --pcb-lock-fg: #151618;
   --pcb-hl: #ffffff;
+  /* the modules lit on the board (pcb/modules.ts, issue 1129), each in its own colour: netsmith_pcb::MODULE_COLOURS_DARK */
+  --module-1: #ff5fa2;
+  --module-2: #3ddc97;
+  --module-3: #b48cff;
+  --module-4: #22d3ee;
+  --module-5: #ff7a45;
+  --module-6: #d4e157;
   --pcb-track-opacity: .85;
   /* the board in 3D (pcb3d/palette.ts): materials by name, the background, the edge lines */
   --pcb3d-bg: var(--pcb-bg);
@@ -476,6 +483,13 @@
   --pcb-lock: #b57400;
   --pcb-lock-fg: #ffffff;
   --pcb-hl: #000000;
+  /* the modules lit on the board (pcb/modules.ts, issue 1129), each in its own colour: netsmith_pcb::MODULE_COLOURS_LIGHT */
+  --module-1: #c2185b;
+  --module-2: #1b8a5a;
+  --module-3: #7b4fd6;
+  --module-4: #0e7f99;
+  --module-5: #c4471b;
+  --module-6: #6f7f00;
   --pcb-track-opacity: .85;
   /* the board in 3D (pcb3d/palette.ts): materials by name, the background, the edge lines */
   --pcb3d-bg: var(--pcb-bg);
@@ -716,6 +730,13 @@
   --pcb-lock: #ffd23f;
   --pcb-lock-fg: #000000;
   --pcb-hl: #ffffff;
+  /* the modules lit on the board (pcb/modules.ts, issue 1129), each in its own colour: netsmith_pcb::MODULE_COLOURS_DARK */
+  --module-1: #ff5fa2;
+  --module-2: #3ddc97;
+  --module-3: #b48cff;
+  --module-4: #22d3ee;
+  --module-5: #ff7a45;
+  --module-6: #d4e157;
   --pcb-track-opacity: .95;
   /* the board in 3D (pcb3d/palette.ts): materials by name, the background, the edge lines */
   --pcb3d-bg: var(--pcb-bg);
@@ -956,6 +977,13 @@
   --pcb-lock: #8a5a00;
   --pcb-lock-fg: #ffffff;
   --pcb-hl: #000000;
+  /* the modules lit on the board (pcb/modules.ts, issue 1129), each in its own colour: netsmith_pcb::MODULE_COLOURS_LIGHT, darker for high contrast */
+  --module-1: #a3134c;
+  --module-2: #146b45;
+  --module-3: #6338b8;
+  --module-4: #0a6378;
+  --module-5: #a33a14;
+  --module-6: #566300;
   --pcb-track-opacity: .95;
   /* the board in 3D (pcb3d/palette.ts): materials by name, the background, the edge lines */
   --pcb3d-bg: var(--pcb-bg);

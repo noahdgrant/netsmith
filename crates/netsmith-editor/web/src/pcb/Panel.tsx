@@ -17,6 +17,7 @@ import {
   proposeAnother,
   select,
   selection,
+  wrote,
 } from '../pcbstore';
 import { boxOf, deleteChange, lockChange, nameOf, samePick, shapeOf, viaKind } from './routes';
 import { Defs, InspectorAction, InspectorHead, PinChip } from '../components/Inspector';
@@ -24,6 +25,7 @@ import { Icon } from '../components/Icons';
 import { EmptyState } from '../components/ui';
 import { hoverAttrs } from '../hover';
 import { pickPart } from '../store';
+import { moduleSel, sameSelection, selection as shared, setSelection } from '../selection';
 import {
   changeKeepout,
   deleteKeepout,
@@ -37,6 +39,7 @@ import {
 } from './actions';
 import type { Drawing } from './drawing';
 import { type ModuleRow, inModule, moduleOfAll, moduleRows, totalsLines } from './regenerate';
+import { litModules, litOn, modulesAround, moduleToken, nextSlot, setLit, toggleModule } from './modules';
 import { faceWord } from './side';
 import { isRequired, rangeText } from './windows';
 
@@ -139,53 +142,125 @@ function PartList(props: { scene: PcbScene; onFocus: (box: PcbBox) => void }) {
   );
 }
 
-/** The tree of the board's modules: a click picks the parts of one (and shows them), and its button proposes to
- * place them again, as "Regenerate" does for the parts picked on the board. */
+/** The page's selection is the module at `path`, as a module block picked in the schematic makes it, without the board
+ * following it back (the board has picked its parts already). */
+function pickModuleOnPage(path: string) {
+  const sel = moduleSel(path);
+  if (sameSelection(shared.peek(), sel)) return;
+  wrote.sel = sel;
+  setSelection(sel);
+}
+
+/** The tree of the board's modules (issue 1129). Hovering a row lights the module's parts in the 2D and 3D views; a
+ * click keeps them lit, picks them (and the module in every view) and shows them; ctrl or shift and a click adds a
+ * module, each in its own colour, and a click on one lit takes it off. Its button proposes to place the parts again,
+ * as "Regenerate" does for the parts picked on the board. */
 function ModuleList(props: { scene: PcbScene; rows: ModuleRow[]; onFocus: (box: PcbBox) => void }) {
   const sc = props.scene;
   const shown = proposal.value?.board === sc.board ? proposal.value.answer.module : null;
+  const lit = litOn(sc.board, litModules.value);
   const partsOf = (m: string) => sc.parts.filter((p) => inModule(p.path, m));
   const picked = (m: string) => {
     const mine = partsOf(m).map((p) => p.path);
     return mine.length > 0 && mine.length === selection.value.length && mine.every((p) => selection.value.includes(p));
   };
+  const click = (path: string, add: boolean) => {
+    const was = lit.some((m) => m.path === path);
+    setLit(sc.board, toggleModule(lit, path, add));
+    if (was) {
+      // Off again: a selection that was this module goes too.
+      if (sameSelection(shared.peek(), moduleSel(path))) select([]);
+      return;
+    }
+    const mine = partsOf(path);
+    if (!add) {
+      select(mine.map((p) => p.path));
+      pickModuleOnPage(path);
+    }
+    const box = around(mine.map((p) => p.courtyard));
+    if (box) props.onFocus(box);
+  };
   return (
-    <div class="rows" data-testid="module-tree" role="tree" aria-label="Modules">
-      {props.rows.map((r) => (
-        <div
-          key={r.path}
-          role="treeitem"
-          aria-level={r.depth + 1}
-          aria-selected={picked(r.path)}
-          class={`row module-row ${picked(r.path) ? 'sel' : ''} ${shown === r.path ? 'proposed' : ''}`}
-          data-module={r.path}
-          style={{ paddingLeft: `${0.75 + r.depth * 0.875}rem` }}
-          title={r.path}
-          onClick={() => {
-            const mine = partsOf(r.path);
-            select(mine.map((p) => p.path));
-            const box = around(mine.map((p) => p.courtyard));
-            if (box) props.onFocus(box);
-          }}
-        >
-          <Icon name="module" size={13} class="module-icon" />
-          <b class="ref">{r.label}</b>
-          <span class="faint kind">{`${r.parts} part${r.parts === 1 ? '' : 's'}`}</span>
-          <button
-            class="icon-btn regen-module"
-            data-testid="regen-module"
-            aria-label={`Regenerate ${r.path}`}
-            title={`Regenerate ${r.path}: place its parts again with every other part held, and show the result before anything is written`}
-            onClick={(e) => {
-              e.stopPropagation();
-              void propose(r.path, 0);
-            }}
-          >
-            <Icon name="refresh" size={13} />
+    <>
+      <div class="module-hint faint" data-testid="module-hint">
+        <span>Click lights a module; Ctrl or Shift adds one.</span>
+        {lit.length > 0 && (
+          <button class="tool small" data-testid="modules-clear" onClick={() => setLit(sc.board, [])}>
+            Clear {lit.length} lit
           </button>
-        </div>
-      ))}
-    </div>
+        )}
+      </div>
+      <div class="rows" data-testid="module-tree" role="tree" aria-label="Modules">
+        {props.rows.map((r) => {
+          const on = lit.find((m) => m.path === r.path);
+          return (
+            <div
+              key={r.path}
+              role="treeitem"
+              aria-level={r.depth + 1}
+              aria-selected={picked(r.path)}
+              class={`row module-row ${picked(r.path) ? 'sel' : ''} ${shown === r.path ? 'proposed' : ''} ${on ? 'lit' : ''}`}
+              data-module={r.path}
+              data-lit={on ? String(on.slot + 1) : undefined}
+              style={{ paddingLeft: `${0.75 + r.depth * 0.875}rem`, '--mod': `var(${moduleToken(on?.slot ?? nextSlot(lit))})` }}
+              title={`${r.path}: a click lights its parts on the board${on ? ' (lit: a click takes it off)' : ''}; Ctrl or Shift and a click adds it to the modules lit`}
+              {...hoverAttrs({ kind: 'module', key: r.path })}
+              onClick={(e) => click(r.path, e.ctrlKey || e.shiftKey || e.metaKey)}
+            >
+              <span class="module-swatch" aria-hidden="true" />
+              <Icon name="module" size={13} class="module-icon" />
+              <b class="ref">{r.label}</b>
+              <span class="faint kind">{`${r.parts} part${r.parts === 1 ? '' : 's'}`}</span>
+              <button
+                class="icon-btn regen-module"
+                data-testid="regen-module"
+                aria-label={`Regenerate ${r.path}`}
+                title={`Regenerate ${r.path}: place its parts again with every other part held, and show the result before anything is written`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  void propose(r.path, 0);
+                }}
+              >
+                <Icon name="refresh" size={13} />
+              </button>
+            </div>
+          );
+        })}
+      </div>
+    </>
+  );
+}
+
+/** The inspector's action that lights the module of the parts picked (issue 1129): the innermost by default, or one
+ * of the modules around it, as a choice. A click lights it alone, ctrl or shift and a click adds it; on one lit it
+ * takes it off. */
+function LightModule(props: { board: string; modules: string[] }) {
+  const [which, setWhich] = useState(0);
+  const path = props.modules[Math.min(which, props.modules.length - 1)];
+  const lit = litOn(props.board, litModules.value);
+  const on = lit.some((m) => m.path === path);
+  return (
+    <span class="light-module" data-testid="light-module">
+      <button
+        class={`tool small ${on ? 'on' : ''}`}
+        data-testid="light-module-btn"
+        aria-pressed={on}
+        title={on ? `Take the light off ${path}` : `Light every part of ${path} on the board, in the 2D and 3D views (Ctrl or Shift: add it to the modules lit)`}
+        onClick={(e) => setLit(props.board, toggleModule(lit, path, e.ctrlKey || e.shiftKey || e.metaKey || on))}
+      >
+        <Icon name="module" size={13} />
+        {on ? 'Unlight' : 'Light'} {props.modules.length > 1 ? 'module' : path}
+      </button>
+      {props.modules.length > 1 && (
+        <select class="light-module-which" data-testid="light-module-which" aria-label="The module to light" value={String(which)} onChange={(e) => setWhich(Number((e.target as HTMLSelectElement).value))}>
+          {props.modules.map((m, i) => (
+            <option key={m} value={String(i)}>
+              {m}
+            </option>
+          ))}
+        </select>
+      )}
+    </span>
   );
 }
 
@@ -327,6 +402,7 @@ function PartInspector(props: { scene: PcbScene; parts: PcbPart[]; onPickNet: (n
           <Icon name="close" size={13} />
           Release
         </button>
+        {module && <LightModule key={`${sc.board}:${module}`} board={sc.board} modules={[module, ...modulesAround(module)]} />}
         {module && (
           <button
             class="tool small"

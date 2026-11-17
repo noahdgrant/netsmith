@@ -2,7 +2,7 @@
 // of edits. An edit goes to the server, which writes it to the layout file and answers with
 // the board placed again; the page never keeps a second copy of the layout.
 
-import { signal } from '@preact/signals';
+import { effect, signal } from '@preact/signals';
 
 import type {
   PcbChange,
@@ -34,8 +34,9 @@ import {
   shoveKey,
   walkKey,
 } from './pcb/walk';
-import { type Selection, partSel, sameSelection, selection as shared, setSelection } from './selection';
-import { beginJob, endJob, job, pcbReports, say } from './store';
+import { type Selection, partPathsOf, partSel, sameSelection, selection as shared, setSelection } from './selection';
+import { beginJob, board, detail, endJob, job, pcbReports, say } from './store';
+import { litModules, litOn, setLit } from './pcb/modules';
 
 export const scene = signal<PcbScene | null>(null);
 /** The fill of the board's pours, planes and zones, as the server filled the placement it names (drawn only while that is the scene's). */
@@ -513,3 +514,15 @@ export function pickKeepout(name: string | null) {
     tellPage([]);
   }
 }
+
+// A module picked in any view (a card of the schematic's overview, go to anything, `/api/view`) is lit on the board, as a
+// click in the Modules tab lights it (issue 1129), whether or not the PCB view is on screen; one lit already keeps its
+// colour. A module the board has no part in (the detail of the board says so) is not.
+effect(() => {
+  const sel = shared.value;
+  if (sel?.kind !== 'module') return;
+  const b = board.peek();
+  const d = detail.peek();
+  if (!b || (d && d.name === b && !partPathsOf(d, sel).length)) return;
+  if (!litOn(b, litModules.peek()).some((m) => m.path === sel.key)) setLit(b, [{ path: sel.key, slot: 0 }]);
+});

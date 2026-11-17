@@ -62,7 +62,7 @@ pub struct Request {
     pub scale: f64,
     pub courtyards: bool,
     pub designators: bool,
-    /// The ids of `--highlight`: a part by designator or path, `net:<name>`.
+    /// The ids of `--highlight`: a part by designator or path, `net:<name>`, `module:<path>`.
     pub highlight: Vec<String>,
     /// Light the nets with open connections.
     pub only_open: bool,

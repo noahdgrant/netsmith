@@ -244,9 +244,10 @@ exempt against each other, and a body wholly inside another board's cutout does 
   board's own STEP file has it (its parts' ids `member/path`, its board `member/board`), placed
   by an `ITEM_DEFINED_TRANSFORMATION` that is the member's motion.
 - **`view 3d --board System`** draws every member moved into the system's frame and frames the
-  whole. `--highlight` names `member/<id>` (`led/J1`, `led/net:GND`, `led/limit:lid`), or a
-  member alone for all of it. A net or a limit may also be written with the member after its
-  prefix, `net:led/GND` and `limit:led/lid`, as the editor's 3D view names them: the same id. `--section` cuts in the system's frame; the cut faces are filled,
+  whole. `--highlight` names `member/<id>` (`led/J1`, `led/net:GND`, `led/limit:lid`,
+  `led/module:reg`), or a member alone for all of it. A net, a limit or a module may also be
+  written with the member after its prefix, `net:led/GND`, `limit:led/lid` and
+  `module:led/reg`, as the editor's 3D view names them: the same id. `--section` cuts in the system's frame; the cut faces are filled,
   each board as one block, not its stackup.
 - **`fab` of a file with a system** makes each board as before and then the system scene, from
   the boards as routed, after all of its members are made: `<out>/<System>/<System>.glb` and
@@ -583,8 +584,20 @@ Its tools, in the bar under the camera's (each also a command of the palette):
   `netsmith view 3d` command that draws the view: its view (the nearest of the command's, said
   when the camera is turned from it), its section, what is lit as `--highlight` (the parts picked
   by designator, the net picked as `net:<name>`, the limits lit as `limit:<name>`, the case
-  models lit as `case:<name>`), the dark
+  models lit as `case:<name>`, the modules lit as `module:<path>`), the dark
   theme and the lens.
+- **Modules lit** (issue #1129). All the parts of a module instance are lit at once, in the 3D
+  view and the 2D one, each module in its own colour (six, round again after the sixth; a
+  palette for each theme, the same as `view 3d` and `view pcb` draw), and the other parts are
+  dimmed: where a module's parts are and how far they spread shows at a glance. In the PCB
+  panel's Modules tab, the pointer on a row lights that module while it is there, and a click
+  keeps it lit (and picks its parts, and the module in every view); Ctrl or Shift and a click
+  adds a module, and a click on one lit takes it off ("Clear" puts them all out). A part's
+  inspector has "Light" for the part's module, with the modules around it to choose from; a
+  module picked in the schematic (a card of its overview) or with go to anything is lit too.
+  A part of a module lit is drawn in the module's colour even when it is picked; its edges say
+  it is picked. A module is every leading part of a part's path that ends before a `.` or a `[`
+  (`reg`, `radio.row_a`, `bank`), as `layout regenerate` and `layout summary` read it.
 
 What it is not:
 
@@ -651,8 +664,9 @@ The others are not told.
 | `section` | the cut as `--section` writes it (`x=13`), absent with none |
 | `exploded` | the stackup pulled apart |
 | `command` | the `netsmith view 3d` command that draws the view, as "Copy as command" gives it |
-| `highlight` | what is lit, as `--highlight` names it: the parts picked by designator, the net picked as `net:<name>`, the limits lit as `limit:<name>`, the case models lit as `case:<name>` (one lit by name, or the model of a solid a picked finding lights); in the System view a part and a net are their member's, `led/J1` and `net:led/GND` |
-| `selection` | the page's selection: parts by designator, or one `net:<name>` |
+| `highlight` | what is lit, as `--highlight` names it: the parts picked by designator, the net picked as `net:<name>`, the limits lit as `limit:<name>`, the case models lit as `case:<name>` (one lit by name, or the model of a solid a picked finding lights), the modules lit as `module:<path>`; in the System view a part, a net and a module are their member's, `led/J1`, `net:led/GND` and `module:led/reg` |
+| `modules` | the modules lit in the 2D and 3D views, in the order of their colours: each its `path`, its `colour` (`#rrggbb`, in the page's theme) and its `parts` by designator; `[]` with none |
+| `selection` | the page's selection: parts by designator, one `net:<name>`, or one `module:<path>` |
 | `hover` | what the pointer (or a row of another view) lights: a designator or `net:<name>`; absent with nothing |
 | `case` | how the case model is drawn, `hidden`, `see-through` or `solid`, as `--case` names it; absent when the board has no case model |
 | `caseHidden` | the case models hidden one by one, by name, as `--case hidden:<name>[,<name>]` names them; absent when none is |
@@ -670,8 +684,8 @@ page is on (`{}` only opens it):
 | `view` | a view of `view 3d --view`: the camera looks at the board's middle from that side, framed to fit, as the view's bar and keys move it (`iso` is the key `I`'s view, a few degrees from render's corner; `iso-bottom`, which the bar does not have, is render's) |
 | `camera` | `{"position": [x, y, z], "target": [x, y, z]}` in mm of the frame (an `up` is not taken: the view keeps z up); not with `view` |
 | `section` | `x=13`, `y=8`, `z=-0.8` as `--section` reads it, or `none` |
-| `highlight` | `["J1", "net:GND", "limit:lid", "case:lid"]`, as `--highlight` reads it (an item may be comma-separated): the parts or the net become the page's selection, the limits are lit, and the case models (ADR 0109) are lit in the selection's colour and shown if the `Case` toggle hid them; it replaces what was lit, and `[]` lights nothing |
-| `select` | the page's selection alone, as a click makes it: parts, or one `net:<name>`; the limits and case models lit stay (a `limit:` or `case:` here is refused); not with `highlight` |
+| `highlight` | `["J1", "net:GND", "limit:lid", "case:lid", "module:reg"]`, as `--highlight` reads it (an item may be comma-separated): the parts or the net become the page's selection, the limits are lit, the case models (ADR 0109) are lit in the selection's colour and shown if the `Case` toggle hid them, and the modules are lit in the 2D and 3D views, each in its own colour in the order given; it replaces what was lit, and `[]` lights nothing |
+| `select` | the page's selection alone, as a click makes it: parts, one `net:<name>`, or one `module:<path>` (which is lit too, as a module picked in the schematic is); the limits and case models lit stay (a `limit:` or `case:` here is refused); not with `highlight` |
 | `xray`, `exploded` | true or false |
 | `case` | `hidden`, `see-through` or `solid`: how the case model is drawn; refused (`409`) on a board with no case model, and in the System view, which draws none |
 | `caseHidden` | the names of the case models to hide one by one (an item may be comma-separated), whatever `case` says; it replaces the list, `[]` shows every model, a model lit by `highlight` in the same change is shown; refused (`409`) as `case` is, and `400` with the list of the board's case models for a name it has none of |
@@ -679,8 +693,9 @@ page is on (`{}` only opens it):
 | `colourBy` | `provenance`, `kind` or `margin` |
 | `heightPreview` | a height in mm (0.1 to 50) turns the preview on at it; true or false turns it on or off |
 
-In the System view a part and a net are their member's: `led/J1` (or the path, `led/power_in`)
-and `net:led/GND` (`led/net:GND`, `view 3d`'s spelling, is the same). The page's selection is one
+In the System view a part, a net and a module are their member's: `led/J1` (or the path,
+`led/power_in`), `net:led/GND` (`led/net:GND`, `view 3d`'s spelling, is the same) and
+`module:led/reg` (`led/module:reg` too). The page's selection and the modules lit are one
 board's, so the ids of `highlight` and `select` are of one member, which becomes the page's board
 as a click on it does; ids of two members are refused (`view 3d --board System` lights them all),
 and a designator without its member (`J1`) is an id the system does not have, refused with the
@@ -689,7 +704,7 @@ refused with that reason.
 
 The change is checked against the board's scene before any of it is made, and one that is
 refused changes nothing (only the PCB section has been opened). An id the board does not have is
-`400`, with the message `view 3d` gives: it names the id and lists the parts, nets, limits and case models
+`400`, with the message `view 3d` gives: it names the id and lists the parts, nets, limits, case models and modules
 the board has (a case model whose file is not there or cannot be read is not drawn, so it is not
 one of them, as for `view 3d`). The editor's selection holds parts or one net, so `highlight` with two nets, or with
 parts and a net, is refused, where `view 3d --highlight` draws them all. `theme` is refused: the
@@ -742,10 +757,10 @@ page has drawn it, and prints the state that results. The page driven is the one
 | `--board <name>` | `board` | `System/member` for a board of a system, `System` for its System view (ids then `led/J1`, `net:led/GND`; the summary adds `member:`) |
 | `--view top\|bottom\|front\|back\|left\|right\|iso\|iso-bottom` | `view` | as `view 3d --view`; the editor's `iso` is the key `I`'s view |
 | `--section x=<mm>\|y=<mm>\|z=<mm>\|none` | `section` | as `view 3d --section` |
-| `--highlight <id>[,<id>...]`, repeatable | `highlight` | as `view 3d --highlight`; `--highlight none` lights nothing |
+| `--highlight <id>[,<id>...]`, repeatable | `highlight` | as `view 3d --highlight` (`module:<path>` too, each module in its own colour; the summary prints each module lit as `module reg: #ff5fa2, C1, L1, U1`); `--highlight none` lights nothing |
 | `--xray` \| `--no-xray` | `xray` | |
 | `--ortho` \| `--perspective` | `ortho` | |
-| `--select <id>[,<id>...]`, repeatable | `select` | the page's selection alone, as a click makes it: parts or one `net:<name>`; `none` clears it; not with `--highlight` |
+| `--select <id>[,<id>...]`, repeatable | `select` | the page's selection alone, as a click makes it: parts, one `net:<name>` or one `module:<path>`; `none` clears it; not with `--highlight` |
 | `--colour-by provenance\|kind\|margin` | `colourBy` | `--color-by` too |
 | `--height-preview <mm>\|on\|off` | `heightPreview` | 0.1 to 50 mm |
 | `--layers-apart` \| `--no-layers-apart` | `exploded` | the stackup pulled apart or together |
@@ -784,6 +799,7 @@ netsmith view 3d examples/led.nsm --view top --picture top.png     # straight do
 netsmith view 3d examples/led.nsm --highlight J1               # the part lit up, the rest dimmed
 netsmith view 3d lidded.nsm --highlight limit:lid --xray       # a height limit's volume, in x-ray
 netsmith view 3d cased.nsm --highlight case:lid                # a case model, see-through, lit
+netsmith view 3d buck.nsm --highlight module:reg,module:usb      # two modules, each in its own colour
 netsmith view 3d cased.nsm --case solid                        # the case opaque, hiding the board inside it
 netsmith view 3d cased.nsm --case hidden:lid                   # every case model but the lid, see-through
 netsmith view 3d examples/led.nsm --view front --section x=7   # cut at x = 7 mm
@@ -802,7 +818,7 @@ open it): a picture to look at, with the numbers from `dev board3d --format json
 | `--size <w>x<h>` | The picture in pixels; default `1600x1000`. 64 to 8192 a side and at most 16 million pixels, else exit 2. |
 | `--section x=<mm>` (or `y=`, `z=`) | One cut at right angles to an axis, at that position in the scene's frame (below). The side nearer the camera is not drawn, so the cut is seen; for a view along the axis the lower side is kept. The cut faces are filled (caps, below). |
 | `--no-caps` | With `--section`: leave the cut faces open, as the cut of a hollow shell, and draw the board as one block, as without a section. |
-| `--highlight <id>[,<id>...]` | May be repeated. A part by **designator** (`J1`) or **path** (`power_in`), `net:<name>`, `limit:<name>` (a height limit, as `dev board3d` names it) and `case:<name>` (a case model, ADR 0109). What is named is drawn in the highlight colour and the rest is dimmed. An id the board does not have is an error (exit 2) that names it and lists the parts, nets, limits and case models the board has; nothing is written. |
+| `--highlight <id>[,<id>...]` | May be repeated. A part by **designator** (`J1`) or **path** (`power_in`), `net:<name>`, `limit:<name>` (a height limit, as `dev board3d` names it), `case:<name>` (a case model, ADR 0109) and `module:<path>` (every part of a module instance, by its path in the design as `layout summary` and the editor's Modules tab name it: `reg`, `radio.row_a`; issue #1129). What is named is drawn in the highlight colour, each module named in its own colour in the order given (the editor's six, light or dark with `--theme`), and the rest is dimmed. An id the board does not have is an error (exit 2) that names it and lists the parts, nets, limits, case models and modules the board has; nothing is written. |
 | `--xray` | Every mesh see-through, to look through the board and the bodies. |
 | `--case hidden\|see-through\|solid\|hidden:<name>[,<name>]` | How a case model is drawn: `see-through` (the default), `solid` (opaque: it hides the board inside it; x-ray still sees through it) or `hidden` (left out, the picture framed on the board alone). A case model that `--highlight case:<name>` names is drawn see-through, in the highlight colour, in every mode. A board with no case model draws the same in each. `--case hidden:<name>[,<name>]` leaves those case models out and draws the rest as the mode says (the flag repeats: `--case solid --case hidden:lid`); a name the board has no case model of is an error (exit 2) that lists the ones it has. |
 | `--theme light\|dark` | The palette; default `light`. The solder mask is drawn in the colour the board states (`.process.stackup.mask_colour`, issue #771), in the palette's tone of it (the mask over copper a lighter one); a board that states none keeps the palette's green. A system's scene (`--board System`) keeps the green: one palette draws every member. |

@@ -250,6 +250,13 @@ pub fn summary(state: &ViewState) -> String {
         }
     }
     line("highlight", list(&state.highlight));
+    // Each module lit, in the order of its colours: `module reg: #ff5fa2, C1, L1, U1`.
+    for m in &state.modules {
+        line(
+            &format!("module {}", m.path),
+            format!("{}, {}", m.colour, list(&m.parts)),
+        );
+    }
     line("selection", list(&state.selection));
     if let Some(hover) = &state.hover {
         line("hover", hover.clone());

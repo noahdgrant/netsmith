@@ -21,7 +21,7 @@ import { commit, grid, redo, scene as scene2d, select, selection as pcbSelection
 import { flipSelection, frameOf, nudge, rotateSelection, toggleLock } from '../pcb/actions';
 import { moveParts } from '../pcb/edits';
 import { heldTip } from '../pcb/limits';
-import { partPathsOf, revealRequest, selection as sharedSelection } from '../selection';
+import { moduleSel, partPathsOf, revealRequest, selection as sharedSelection, setSelection } from '../selection';
 import { reducedMotion, settings } from '../settings';
 import { api } from '../client';
 import { analysis, chooseBoard, detail, pcbStamp, pickNet, pickPart, say } from '../store';
@@ -38,6 +38,7 @@ import { PRESETS, type Preset } from './presets';
 import { type Colours, type Hit, type PadPoint, Viewer } from './viewer';
 import { type Move3d, editKey, moveTo, startMove, toSceneOffset } from './move';
 import { hold, watchMoving } from '../idle';
+import { MODULE_SLOTS, inOrder, litModules, litOn, moduleToken, modulePaths, setLit, tintsOf } from '../pcb/modules';
 import './view3d.css';
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
@@ -73,6 +74,7 @@ function readColours(): Colours {
   out.kinds = Object.fromEntries(KINDS.map((k) => [k.id, get(k.token)])) as Colours['kinds'];
   out.margin = { easy: get(MARGIN_TOKENS.easy), tight: get(MARGIN_TOKENS.tight), over: get(MARGIN_TOKENS.over), none: get(MARGIN_TOKENS.none) };
   out.preview = get('--pcb3d-preview');
+  out.modules = Array.from({ length: MODULE_SLOTS }, (_, i) => get(moduleToken(i)));
   out.masks = Object.fromEntries(MASK_COLOURS.map((c) => [c, Object.fromEntries(Object.entries(maskTokens(c)).map(([k, t]) => [k, get(t)]))])) as Colours['masks'];
   probe.remove();
   return out as Colours;
@@ -218,6 +220,7 @@ export function View3d({ board }: { board: string }) {
       caps: () => v.capList(),
       hidden: () => v.hiddenList(),
       litNets: () => v.litNetList(),
+      moduleTints: () => v.moduleTintList(),
       box: (path: string) => v.partBox(path),
       offset: () => v.isOffset(),
       lifts: () => v.memberLifts(),
@@ -340,6 +343,14 @@ export function View3d({ board }: { board: string }) {
   const d = detail.value;
   const shared = sharedSelection.value;
   const pickedNet = shared?.kind === 'net' ? shared.key : null;
+  // The modules lit (issue 1129), and one a row or a block the pointer is on: their parts in their colours.
+  const litMods = litOn(board, litModules.value);
+  useEffect(() => {
+    const s2 = scene2d.peek();
+    const own = (s2 && s2.board === board ? s2.parts.map((p) => p.path) : d?.name === board ? d.parts.map((p) => p.path) : null) ?? [];
+    const tints = tintsOf(own, litMods, h?.kind === 'module' ? h.key : null);
+    viewer.current?.tintModules(new Map([...tints].map(([p, slot]) => [toScene([p])[0], slot])));
+  }, [litMods, h, d, parts, showSys, scene2d.value?.parts]);
   useEffect(() => {
     const lit = h ? resolveHover(d, h) : null;
     viewer.current?.highlight(toScene(picked), toScene(lit ? [...lit.paths] : []));
@@ -486,15 +497,18 @@ export function View3d({ board }: { board: string }) {
         board: shownRef.current.showSys,
         view: nearestView(v.towardEye()).view,
         section: tools.current.cut,
-        highlight: net ? [net] : toScene(pcbSelection.peek()).map((path) => {
-          const p = v.partList().find((x) => x.path === path);
-          return p?.member ? `${p.member}/${p.refdes}` : path;
-        }),
+        highlight: [
+          ...(net ? [net] : toScene(pcbSelection.peek()).map((path) => {
+            const p = v.partList().find((x) => x.path === path);
+            return p?.member ? `${p.member}/${p.refdes}` : path;
+          })),
+          ...litOn(name, litModules.peek()).map((m) => `module:${shownRef.current.member}/${m.path}`),
+        ],
         dark: t === 'dark' || t === 'hc-dark',
         perspective: !v.isOrtho(),
       });
     }
-    const lit = litIds(pcbSelection.peek(), sel?.kind === 'net' ? sel.key : null, litLimits(v), v.partList(), v.litCaseList());
+    const lit = litIds(pcbSelection.peek(), sel?.kind === 'net' ? sel.key : null, litLimits(v), v.partList(), v.litCaseList(), litOn(name, litModules.peek()).map((m) => m.path));
     return renderCommand({
       file,
       board: name,
@@ -516,12 +530,16 @@ export function View3d({ board }: { board: string }) {
   const applyChange = async (v: Viewer, change: ViewChange) => {
     // A system's scene: a part is `led/power_in` or `led/J1` (the designators repeat across its boards), a net `led/GND`.
     const system = shownRef.current.showSys;
+    const modules = modulePaths(v.partList().map((p) => p.path));
     const have: Ids = system
-      ? { parts: v.partList().map((p) => ({ path: p.path, refdes: p.member ? `${p.member}/${p.refdes}` : p.refdes })), nets: v.netList(), limits: v.limitList().map((l) => l.name), cases: [], system }
-      : { parts: v.partList(), nets: v.netList(), limits: v.limitList().map((l) => l.name), cases: [...new Set(v.caseList().map((c) => c.case))] };
+      ? { parts: v.partList().map((p) => ({ path: p.path, refdes: p.member ? `${p.member}/${p.refdes}` : p.refdes })), nets: v.netList(), limits: v.limitList().map((l) => l.name), cases: [], modules, system }
+      : { parts: v.partList(), nets: v.netList(), limits: v.limitList().map((l) => l.name), cases: [...new Set(v.caseList().map((c) => c.case))], modules };
     const plan = planChange(change, have, v.canExplode());
-    // The page's selection is one board's: a member's ids pick on its board, which becomes the page's.
-    const picked = plan.selection && system ? memberSelection(plan.selection, change.select !== undefined ? 'select' : 'highlight') : null;
+    // The page's selection is one board's: a member's ids pick on its board, which becomes the page's. The modules lit are too.
+    const picked =
+      (plan.selection || plan.modules?.length) && system
+        ? memberSelection(plan.selection ?? { parts: [], net: null }, change.select !== undefined ? 'select' : 'highlight', plan.modules ?? [])
+        : null;
     const still = v.still;
     if (document.hidden) v.still = true;
     try {
@@ -535,10 +553,20 @@ export function View3d({ board }: { board: string }) {
       if (plan.camera) v.place(plan.camera.position, plan.camera.target);
       if (plan.section !== undefined) changeCut(plan.section);
       if (plan.exploded !== undefined && plan.exploded !== v.isExploded()) view3d.current?.toggleExplode();
+      if (system && picked?.member && picked.member !== shownRef.current.member) chooseBoard(`${system}/${picked.member}`);
+      // The modules lit (issue 1129), of the page's board, each in the next colour in the order named.
+      const pageBoard = boardRef.current;
+      if (plan.modules) setLit(system && picked?.member ? `${system}/${picked.member}` : pageBoard, inOrder(picked ? picked.modules : plan.modules));
       if (plan.selection) {
         const { parts: paths, net } = picked ?? plan.selection;
-        if (system && picked?.member && picked.member !== shownRef.current.member) chooseBoard(`${system}/${picked.member}`);
-        if (net) pickNet(net);
+        const module = picked ? picked.module : (plan.selection.module ?? null);
+        if (module) {
+          // A module picked, as a module block of the schematic picks it: its parts are picked on the board, and it is lit.
+          const on = system && picked?.member ? `${system}/${picked.member}` : pageBoard;
+          if (!litOn(on, litModules.peek()).some((m) => m.path === module)) setLit(on, inOrder([module]));
+          if (sharedSelection.peek()?.kind === 'net') pickNet(null);
+          setSelection(moduleSel(module));
+        } else if (net) pickNet(net);
         else {
           // A net picked goes first, and the views follow it before the parts are picked.
           if (sharedSelection.peek()?.kind === 'net') {

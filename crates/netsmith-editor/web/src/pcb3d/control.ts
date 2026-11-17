@@ -11,24 +11,27 @@ import { ViewRefusal } from './mode';
 import { type Axis, type P3, RENDER_VIEWS, type RenderView } from './tools';
 
 /** What the view has, to check a change's ids against: its parts, the nets with copper in it,
- * its height limits by name and its case models (ADR 0109) by name. In a system's scene (ADR
- * 0110) `system` is its name, a part's path and designator and a net are its member's
- * (`led/power_in`, `led/J1`, `led/GND`), and there is no case model: a case is one board's. */
+ * its height limits by name, its case models (ADR 0109) by name and its modules by path (issue
+ * 1129). In a system's scene (ADR 0110) `system` is its name, a part's path and designator, a net
+ * and a module are its member's (`led/power_in`, `led/J1`, `led/GND`, `led/reg`), and there is no
+ * case model: a case is one board's. */
 export interface Ids {
   parts: { path: string; refdes: string }[];
   nets: string[];
   limits: string[];
   cases: string[];
+  modules: string[];
   system?: string;
 }
 
 /** What `--highlight` (or `select`) named, sorted out: the parts by path, the nets, the limits,
- * the case models. */
+ * the case models, the modules (in the order named: the order of their colours). */
 export interface Named {
   parts: string[];
   nets: string[];
   limits: string[];
   cases: string[];
+  modules: string[];
 }
 
 /** `x=13`, `y=8`, `z=-0.8` as `view 3d --section` reads it; `none` is no cut. */
@@ -47,17 +50,21 @@ export function parseSection(text: string): { axis: Axis; at: number } | null {
 export const sectionText = (cut: { axis: Axis; at: number } | null): string | null => (cut ? `${cut.axis}=${Number(cut.at.toFixed(3))}` : null);
 
 /** The ids as `view 3d --highlight` reads them: a part by designator or path, `net:<name>`,
- * `limit:<name>`, `case:<name>` (a case model); an item may hold several, comma-separated. An id the board does not have is an
+ * `limit:<name>`, `case:<name>` (a case model), `module:<path>`; an item may hold several, comma-separated. An id the board does not have is an
  * error that names it and lists what the board has, as `view 3d` words it. */
 export function resolveIds(requested: string[], have: Ids, what = 'highlight'): Named {
-  const out: Named = { parts: [], nets: [], limits: [], cases: [] };
+  const out: Named = { parts: [], nets: [], limits: [], cases: [], modules: [] };
   const unknown: string[] = [];
   const add = (list: string[], v: string) => list.includes(v) || list.push(v);
   for (const asked of requested.flatMap((r) => r.split(',')).map((r) => r.trim()).filter(Boolean)) {
-    // A member's net as `view 3d --board System` also writes it, `led/net:GND`, is `net:led/GND`.
-    const memberNet = have.system ? /^([^/:]+)\/net:(.+)$/.exec(asked) : null;
-    const want = memberNet ? `net:${memberNet[1]}/${memberNet[2]}` : asked;
-    if (want.startsWith('net:')) {
+    // A member's net or module as `view 3d --board System` also writes it, `led/net:GND`, is `net:led/GND`.
+    const ofMember = have.system ? /^([^/:]+)\/(net|module):(.+)$/.exec(asked) : null;
+    const want = ofMember ? `${ofMember[2]}:${ofMember[1]}/${ofMember[3]}` : asked;
+    if (want.startsWith('module:')) {
+      const path = want.slice(7);
+      if (have.modules.includes(path)) add(out.modules, path);
+      else unknown.push(asked);
+    } else if (want.startsWith('net:')) {
       const net = want.slice(4);
       if (have.nets.includes(net)) add(out.nets, net);
       else unknown.push(asked);
@@ -91,6 +98,7 @@ export function resolveIds(requested: string[], have: Ids, what = 'highlight'): 
       `the nets: ${list([...new Set(have.nets)].sort().map((n) => `net:${n}`))}\n` +
       `the limits: ${list([...new Set(have.limits)].map((l) => `limit:${l}`))}` +
       (have.system ? '' : `\nthe case models: ${list([...new Set(have.cases)].map((c) => `case:${c}`))}`) +
+      `\nthe modules: ${list(have.modules.map((m) => `module:${m}`))}` +
       hint,
   );
 }
@@ -98,14 +106,18 @@ export function resolveIds(requested: string[], have: Ids, what = 'highlight'): 
 /** A selection of a system's scene (`led/power_in`, `led/GND`) as the page's selection holds it:
  * the member, and the parts and the net by its own names. The page's selection is one board's,
  * so ids of two members are refused. Null for none named. */
-export function memberSelection(sel: { parts: string[]; net: string | null }, what: string): { member: string | null; parts: string[]; net: string | null } {
-  const ids = [...sel.parts, ...(sel.net === null ? [] : [sel.net])];
+export function memberSelection(
+  sel: { parts: string[]; net: string | null; module?: string | null },
+  what: string,
+  modules: string[] = [],
+): { member: string | null; parts: string[]; net: string | null; module: string | null; modules: string[] } {
+  const ids = [...sel.parts, ...(sel.net === null ? [] : [sel.net]), ...(sel.module ? [sel.module] : []), ...modules];
   const members = [...new Set(ids.map((id) => id.slice(0, id.indexOf('/'))))];
   if (members.length > 1) {
     throw new ViewRefusal(`${what} names ids of ${members.length} members (${members.join(', ')}): the editor's selection is one board's (\`netsmith view 3d --board <System>\` lights several)`);
   }
   const own = (id: string) => id.slice(id.indexOf('/') + 1);
-  return { member: members[0] ?? null, parts: sel.parts.map(own), net: sel.net === null ? null : own(sel.net) };
+  return { member: members[0] ?? null, parts: sel.parts.map(own), net: sel.net === null ? null : own(sel.net), module: sel.module ? own(sel.module) : null, modules: modules.map(own) };
 }
 
 /** What the page's selection can hold: parts, or one net (as a click picks them). */
@@ -115,6 +127,14 @@ function selectable(n: Named, what: string): { parts: string[]; net: string | nu
   return { parts: n.parts, net: n.nets[0] ?? null };
 }
 
+/** A `select` of a module: the page's selection holds one module, alone (as a module block picked in the schematic). */
+function selectedModule(n: Named): string | null {
+  if (!n.modules.length) return null;
+  if (n.modules.length > 1) throw new ViewRefusal(`select names ${n.modules.length} modules: the editor's selection holds one module (highlight lights several, each in its own colour)`);
+  if (n.parts.length || n.nets.length) throw new ViewRefusal('select names a module and parts or a net: the editor\'s selection holds parts, one net or one module');
+  return n.modules[0];
+}
+
 /** A change, checked: what to do, in the view's terms. Absent means leave it as it is. */
 export interface Plan {
   view?: RenderView;
@@ -122,7 +142,10 @@ export interface Plan {
   towardEye?: P3;
   camera?: { position: P3; target: P3 };
   section?: { axis: Axis; at: number } | null;
-  selection?: { parts: string[]; net: string | null };
+  /** The page's selection: parts, one net, or one module (`module`, with no part and no net). */
+  selection?: { parts: string[]; net: string | null; module?: string | null };
+  /** The modules lit, in the order of their colours (`highlight` replaces them; `[]` puts them out). */
+  modules?: string[];
   limits?: string[];
   /** The case models lit, by name. */
   cases?: string[];
@@ -162,12 +185,14 @@ export function planChange(change: ViewChange, have: Ids, canExplode: boolean): 
     plan.selection = selectable(n, 'highlight');
     plan.limits = n.limits;
     plan.cases = n.cases;
+    plan.modules = n.modules;
   }
   if (change.select !== undefined) {
     const n = resolveIds(change.select, have, 'select');
     if (n.limits.length) throw new ViewRefusal('select names a limit: a limit is not selected, it is lit (use highlight)');
     if (n.cases.length) throw new ViewRefusal('select names a case model: a case model is not selected, it is lit (use highlight)');
-    plan.selection = selectable(n, 'select');
+    const module = selectedModule(n);
+    plan.selection = module ? { parts: [], net: null, module } : selectable(n, 'select');
   }
   if (change.xray !== undefined) plan.xray = change.xray;
   if (change.case !== undefined) {
@@ -214,15 +239,20 @@ export function planChange(change: ViewChange, have: Ids, canExplode: boolean): 
 }
 
 /** What is lit and picked, as `view 3d --highlight` names it: the parts by designator, the net as
- * `net:<name>`, the limits as `limit:<name>`, the case models as `case:<name>`. */
+ * `net:<name>`, the limits as `limit:<name>`, the case models as `case:<name>`, the modules lit as
+ * `module:<path>`, in the order of their colours. */
 export function litIds(
   selected: string[],
   net: string | null,
   limits: string[],
   parts: { path: string; refdes: string }[],
   cases: string[] = [],
+  modules: string[] = [],
 ): { highlight: string[]; selection: string[] } {
   const refs = selected.map((path) => parts.find((p) => p.path === path)?.refdes ?? path);
   const selection = net ? [`net:${net}`] : refs;
-  return { selection, highlight: [...selection, ...[...new Set(limits)].map((l) => `limit:${l}`), ...[...new Set(cases)].map((c) => `case:${c}`)] };
+  return {
+    selection,
+    highlight: [...selection, ...[...new Set(limits)].map((l) => `limit:${l}`), ...[...new Set(cases)].map((c) => `case:${c}`), ...[...new Set(modules)].map((m) => `module:${m}`)],
+  };
 }

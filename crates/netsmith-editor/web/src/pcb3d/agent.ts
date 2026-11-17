@@ -15,6 +15,8 @@ import { selection as shared } from '../selection';
 import { analysis, board, chooseBoard, detail, panelShown, revealSection, visible } from '../store';
 import { theme } from '../theme';
 import { colourBy, heightPreview, xray } from './inspectMode';
+import { litModules, litOn, moduleToken } from '../pcb/modules';
+import { inModule } from '../pcb/regenerate';
 import { ViewRefusal, pcbMode, systemShown, view3d } from './mode';
 
 /** How long the page waits for the 3D view to draw the board asked for (the server waits a little longer). */
@@ -83,6 +85,13 @@ async function open3d(name: string | undefined) {
   });
 }
 
+/** The colour a theme token stands for now, as `#rrggbb` (a browser may give it as red, green and blue in a function). */
+function tokenColour(token: string): string {
+  const v = getComputedStyle(document.documentElement).getPropertyValue(token).trim();
+  const m = /^rgba?\((\d+),\s*(\d+),\s*(\d+)/.exec(v);
+  return m ? `#${[m[1], m[2], m[3]].map((x) => Number(x).toString(16).padStart(2, '0')).join('')}` : v;
+}
+
 /** The view's state as `/api/view` answers it. */
 export function viewState(): ViewState {
   const sys = systemOn();
@@ -97,7 +106,14 @@ export function viewState(): ViewState {
   const net = sel?.kind === 'net' ? sel.key : null;
   const on = shown();
   const s3 = on ? view3d.current!.agent.state() : null;
-  const selection = net ? [`net:${prefix}${net}`] : pcbSelection.peek().map(refdes);
+  const selection = net ? [`net:${prefix}${net}`] : sel?.kind === 'module' ? [`module:${prefix}${sel.key}`] : pcbSelection.peek().map(refdes);
+  // The modules lit on the page's board (issue 1129), in the order of their colours.
+  const lit = litOn(board.peek(), litModules.peek());
+  const modules = lit.map((m) => ({
+    path: prefix + m.path,
+    colour: tokenColour(moduleToken(m.slot)),
+    parts: parts.filter((p) => inModule(p.path, m.path)).map((p) => refdes(p.path)),
+  }));
   const h = hover.peek();
   const pv = heightPreview.peek();
   const t = theme.peek();
@@ -106,7 +122,8 @@ export function viewState(): ViewState {
     ...(sys ? { member: sys.member } : {}),
     shown: on,
     ...(s3 ? { view: s3.view, camera: s3.camera, ortho: s3.ortho, section: s3.section, exploded: s3.exploded, case: s3.case, caseHidden: s3.caseHidden, command: s3.command } : {}),
-    highlight: [...selection, ...(s3?.limits ?? []).map((l) => `limit:${l}`), ...(s3?.cases ?? []).map((c) => `case:${c}`)],
+    highlight: [...new Set([...selection, ...(s3?.limits ?? []).map((l) => `limit:${l}`), ...(s3?.cases ?? []).map((c) => `case:${c}`), ...modules.map((m) => `module:${m.path}`)])],
+    modules,
     selection,
     hover: h?.kind === 'part' ? refdes(h.key) : h?.kind === 'net' ? `net:${prefix}${h.key}` : undefined,
     xray: xray.peek(),

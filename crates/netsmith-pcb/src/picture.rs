@@ -26,10 +26,13 @@
 //! text still reads left to right. The region is given in the board's frame either way, so the
 //! numbers of a region are the same seen from above and from below.
 //!
-//! **Lit.** [`Lit`] names parts and nets (`--highlight`); with it, what it does not name is
-//! drawn faded: a pad is lit by its part or its net, a track, a via, a pour, a fill and an open
-//! connection by its net, a courtyard and a designator by its part. Holes, the outline and the
-//! markers are never faded.
+//! **Lit.** [`Lit`] names parts, nets and modules (`--highlight`); with it, what it does not
+//! name is drawn faded: a pad is lit by its part or its net, a track, a via, a pour, a fill and
+//! an open connection by its net, a courtyard and a designator by its part. Holes, the outline
+//! and the markers are never faded. A module (`module:<path>`, issue #1129) lights its parts, and
+//! each module named is drawn in its own colour ([`crate::module_colour`], the dark set): each of
+//! its parts' boxes filled faintly and outlined, and a dashed box round all of them, so where a
+//! module's parts are and how far they spread shows at once.
 //!
 //! **Sizes in pixels.** The lines that are marks, not copper (the outline, an open connection, a
 //! courtyard, a marker) and the text are sized in pixels of the picture (the scale is given), so
@@ -102,16 +105,19 @@ const FADED: f64 = 0.2;
 /// How far a point of a pour's ring may move when the ring is simplified, in mm.
 const SIMPLIFY: f64 = 0.002;
 
-/// The parts and the nets a picture lights.
+/// The parts, the nets and the modules a picture lights.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Lit {
-    /// The parts, by path.
+    /// The parts, by path: those named and those of the modules named.
     pub parts: BTreeSet<String>,
     pub nets: BTreeSet<String>,
+    /// The modules named, in order (the order of their colours), each with the paths of its parts.
+    pub modules: Vec<(String, BTreeSet<String>)>,
 }
 
 impl Lit {
-    /// What `ids` name on `board`: a part by its designator or its path, a net as `net:<name>`.
+    /// What `ids` name on `board`: a part by its designator or its path, a net as `net:<name>`,
+    /// a module as `module:<path>` (its path in the design, as `layout summary` names it).
     /// The error names every id the board has nothing of, and lists the ids it has.
     pub fn of(board: &Board, ids: &[String]) -> Result<Lit, String> {
         let mut lit = Lit::default();
@@ -127,7 +133,7 @@ impl Lit {
             }
         };
         Err(format!(
-            "--highlight names {} that the board does not have: {}\nthe parts are: {}\nthe nets: {}",
+            "--highlight names {} that the board does not have: {}\nthe parts are: {}\nthe nets: {}\nthe modules: {}",
             if unknown.len() == 1 { "an id" } else { "ids" },
             unknown
                 .iter()
@@ -148,6 +154,12 @@ impl Lit {
                     .map(|n| format!("net:{}", n.name))
                     .collect()
             ),
+            list(
+                crate::module_paths_of(board.parts.iter().map(|p| p.path.as_str()))
+                    .into_iter()
+                    .map(|m| format!("module:{m}"))
+                    .collect()
+            ),
         ))
     }
 
@@ -160,6 +172,23 @@ impl Lit {
                 self.nets.insert(net.to_string());
             }
             return found;
+        }
+        if let Some(module) = id.strip_prefix("module:") {
+            let modules = crate::module_paths_of(board.parts.iter().map(|p| p.path.as_str()));
+            if !modules.iter().any(|m| m == module) {
+                return false;
+            }
+            let mine: BTreeSet<String> = board
+                .parts
+                .iter()
+                .filter(|p| crate::in_module(&p.path, module))
+                .map(|p| p.path.clone())
+                .collect();
+            if !self.modules.iter().any(|(m, _)| m == module) {
+                self.parts.extend(mine.iter().cloned());
+                self.modules.push((module.to_string(), mine));
+            }
+            return true;
         }
         match board.parts.iter().find(|p| p.path == id || p.refdes == id) {
             Some(p) => {
@@ -449,6 +478,9 @@ pub fn picture(
         }
         let _ = writeln!(out, "</g>");
     }
+    if let Some(lit) = options.lit.as_ref().filter(|l| !l.modules.is_empty()) {
+        modules(&mut out, &f, board, lit, &face);
+    }
 
     let _ = writeln!(out, r#"<g class="open">"#);
     for line in open.iter().filter(|l| !l.to_plane) {
@@ -597,6 +629,53 @@ impl Frame<'_> {
             d.push('Z');
         }
     }
+}
+
+/// The modules lit, each in its colour: each part's courtyard box filled faintly and outlined,
+/// and a dashed box round all of its parts (those of the face seen).
+fn modules(out: &mut String, f: &Frame, board: &Board, lit: &Lit, face: &dyn Fn(&Placed) -> bool) {
+    let _ = writeln!(out, r#"<g class="modules">"#);
+    for (k, (module, paths)) in lit.modules.iter().enumerate() {
+        let colour = crate::module_colour(k, true);
+        let boxes: Vec<Rect> = board
+            .parts
+            .iter()
+            .filter(|p| paths.contains(&p.path) && face(p))
+            .map(|p| f.rect(p.courtyard()))
+            .collect();
+        let _ = writeln!(
+            out,
+            r#"<g data-module="{}" stroke="{colour}" stroke-width="{}" stroke-linejoin="round">"#,
+            escape(module),
+            n(f.px(2.0))
+        );
+        for r in &boxes {
+            let _ = writeln!(
+                out,
+                r#"<rect x="{}" y="{}" width="{}" height="{}" fill="{colour}" fill-opacity="0.22"/>"#,
+                n(r.min.x),
+                n(r.min.y),
+                n(r.width()),
+                n(r.height())
+            );
+        }
+        if let Some(first) = boxes.first() {
+            let all = boxes.iter().skip(1).fold(*first, |a, b| a.union(b));
+            let all = all.expanded(f.px(4.0));
+            let _ = writeln!(
+                out,
+                r#"<rect x="{}" y="{}" width="{}" height="{}" fill="none" stroke-dasharray="{} {}"/>"#,
+                n(all.min.x),
+                n(all.min.y),
+                n(all.width()),
+                n(all.height()),
+                n(f.px(6.0)),
+                n(f.px(4.0))
+            );
+        }
+        let _ = writeln!(out, "</g>");
+    }
+    let _ = writeln!(out, "</g>");
 }
 
 /// A part's courtyard: the drawings of its footprint's courtyard, or the boxes the placer keeps

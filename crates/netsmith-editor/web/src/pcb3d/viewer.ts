@@ -152,6 +152,8 @@ export type Colours = Record<Role, string> & {
   preview: string;
   /** The solder mask in each colour a board can state (`.stackup.mask_colour`): the mask, the mask over copper and the silkscreen ink. */
   masks: Record<MaskColour, { mask: string; copper: string; silk: string }>;
+  /** The colours of the modules lit (`--module-1` to `--module-6`, pcb/modules.ts). */
+  modules: string[];
 };
 
 /** How the scene is looked at (inspectMode.ts): none of it is data. */
@@ -181,6 +183,8 @@ interface Touch {
   dim?: boolean;
   /** A colour in place of the role's (a body coloured by kind or by margin). */
   tint?: string | null;
+  /** The tint glows a little: a part of a module lit. */
+  glow?: boolean;
 }
 
 /** What moves when the stackup comes apart: a mesh, where it was, and the layer it goes with
@@ -294,6 +298,8 @@ export class Viewer {
   private drawn = false;
   private selected = new Set<string>();
   private hovered = new Set<string>();
+  /** The parts of the modules lit (issue 1129), by path, each with its module's colour slot. */
+  private tints = new Map<string, number>();
   private ray = new Raycaster();
   private copper: { mesh: Mesh; info: CopperInfo; exposed: boolean }[] = [];
   private previews: Mesh[] = [];
@@ -1202,7 +1208,7 @@ export class Viewer {
   private surface(role: Role, state: State, touch: Touch = {}): Material {
     const c = this.colours!;
     const see = touch.xray ? xrayOpacity(role) : null;
-    const key = `${role}:${state}:${see ?? ''}:${touch.dim ? 'dim' : ''}:${touch.tint ?? ''}`;
+    const key = `${role}:${state}:${see ?? ''}:${touch.dim ? 'dim' : ''}:${touch.tint ?? ''}:${touch.glow ? 'glow' : ''}`;
     return this.material(key, () => {
       const look = LOOKS[role];
       let base = new Color(touch.tint ?? c[role]);
@@ -1228,6 +1234,7 @@ export class Viewer {
         m.polygonOffsetUnits = -4;
       }
       if (state === 'select') m.emissive = new Color(c.select).multiplyScalar(0.18);
+      if (touch.glow && touch.tint) m.emissive = new Color(touch.tint).multiplyScalar(0.22);
       if (see !== null && state === 'rest') {
         m.transparent = true;
         m.opacity = Math.min(m.opacity, see);
@@ -1324,8 +1331,15 @@ export class Viewer {
       if (info?.kind === 'part') {
         const part = info as PartInfo3d;
         const state = this.stateOf(part.path);
+        const slot = this.tints.get(part.path);
+        const modules = this.colours?.modules ?? [];
+        if (slot !== undefined && modules.length) {
+          // A part of a module lit is in its module's colour, picked or not: its edges say it is picked.
+          o.material = this.surface(role, 'rest', { xray: xray && !netsOn, tint: modules[slot % modules.length], glow: true });
+          return;
+        }
         const tint = this.tintOf(part, role) ?? ((o.userData.modelColour as string | null) || null);
-        o.material = this.surface(role, state, { xray, dim: netsOn && state === 'rest', tint });
+        o.material = this.surface(role, state, { xray, dim: (netsOn || this.tints.size > 0) && state === 'rest', tint });
       } else if (info?.kind === 'copper' || info?.kind === 'hole') {
         const net = this.netOf(info as CopperInfo);
         const state: State = (net !== null && nets.get(net)) || 'rest';
@@ -1343,9 +1357,17 @@ export class Viewer {
     });
     for (const m of this.previews) m.material = this.previewMaterial();
     for (const l of this.edges.children as LineSegments[]) l.material = this.line(l.userData.edgeRole, 'rest');
+    const modules = this.colours.modules ?? [];
     for (const [path, p] of this.parts) {
       const state = this.stateOf(path);
-      if (state !== 'rest') for (const l of p.lines) l.material = this.line(l.userData.edgeRole, state);
+      const slot = this.tints.get(path);
+      if (state === 'select' || slot === undefined || !modules.length) {
+        if (state !== 'rest') for (const l of p.lines) l.material = this.line(l.userData.edgeRole, state);
+        continue;
+      }
+      // A part of a module lit, not picked: its outline in the module's colour, so a flat or small part shows it too.
+      const colour = modules[slot % modules.length];
+      for (const l of p.lines) l.material = this.material(`line:module:${colour}`, () => new LineBasicMaterial({ color: new Color(colour) }));
     }
   }
 
@@ -1562,6 +1584,22 @@ export class Viewer {
     this.litCases.clear();
     this.restyle();
     this.request();
+  }
+
+  /** The parts of the modules lit (issue 1129), by path (`member/path` in a system's scene), each with its module's
+   * colour slot; while any is, the other parts are dimmed. */
+  tintModules(tints: Map<string, number>) {
+    const same = tints.size === this.tints.size && [...tints].every(([k, v]) => this.tints.get(k) === v);
+    if (same) return;
+    this.tints = new Map(tints);
+    this.restyle();
+    this.request();
+  }
+
+  /** The parts drawn in a module's colour, with the colour, for a recipe and `/api/view`. */
+  moduleTintList(): { path: string; colour: string }[] {
+    const modules = this.colours?.modules ?? [];
+    return [...this.tints].map(([path, slot]) => ({ path, colour: modules[slot % Math.max(1, modules.length)] ?? '' }));
   }
 
   /** The parts picked (lit in the page's selection colour) and the parts the shared hover lights. */

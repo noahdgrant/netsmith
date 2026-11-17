@@ -393,3 +393,43 @@ fn a_finding_of_the_design_rules_check_is_a_numbered_marker() {
         drawn.markers.len()
     );
 }
+
+#[test]
+fn a_module_lights_its_parts_each_module_in_its_own_colour() {
+    // The resistor and the LED put in a module `ind`, the header in `io` (issue #1129).
+    let mut board = board();
+    for p in &mut board.parts {
+        p.path = match p.refdes.chars().next() {
+            Some('J') => format!("io.{}", p.path),
+            _ => format!("ind.{}", p.path),
+        };
+    }
+    let svg = |highlight: &[&str]| -> Result<String, String> {
+        let request = Request {
+            highlight: highlight.iter().map(|s| s.to_string()).collect(),
+            ..request(Format::Svg)
+        };
+        draw(&board, &request, None).map(|d| String::from_utf8(d.bytes).unwrap())
+    };
+    let one = svg(&["module:ind"]).unwrap();
+    let (first, second) = (
+        netsmith_pcb::module_colour(0, true),
+        netsmith_pcb::module_colour(1, true),
+    );
+    assert!(one.contains(&format!(r#"<g data-module="ind" stroke="{first}""#)), "{one}");
+    // Two boxes of its parts and the dashed box round them; the header is not in it.
+    let group = one.split(r#"data-module="ind""#).nth(1).unwrap();
+    let group = &group[..group.find("</g>").unwrap()];
+    assert_eq!(group.matches("<rect").count(), 3, "{group}");
+    assert_eq!(group.matches("stroke-dasharray").count(), 1, "{group}");
+
+    // Two modules, each in its colour, in the order named.
+    let two = svg(&["module:io", "module:ind"]).unwrap();
+    assert!(two.contains(&format!(r#"data-module="io" stroke="{first}""#)), "{two}");
+    assert!(two.contains(&format!(r#"data-module="ind" stroke="{second}""#)), "{two}");
+
+    // A module the board lacks, and a part's path, are refused with the modules it has.
+    let e = svg(&["module:nope"]).unwrap_err();
+    assert!(e.contains("`module:nope`") && e.contains("the modules: module:ind, module:io"), "{e}");
+    assert!(svg(&["module:io.power_in"]).is_err());
+}

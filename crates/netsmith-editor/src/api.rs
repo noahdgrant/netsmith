@@ -2571,6 +2571,7 @@ pub fn typescript() -> String {
         CameraPlace,
         PreviewSetting,
         ViewChange,
+        LitModule,
         ViewState,
         ClientMessage,
         ServerMessage,

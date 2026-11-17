@@ -52,6 +52,7 @@ mod layout;
 pub mod layout_notes;
 mod live;
 mod miss;
+mod modules;
 mod origin;
 mod overhang;
 mod part_fit;
@@ -127,6 +128,10 @@ pub use layout::{
 };
 pub use live::{Glimpse, GlimpsePart, glimpses_watched, show_glimpse, watching_glimpses};
 pub use miss::RequirementMiss;
+pub use modules::{
+    MODULE_COLOURS, MODULE_COLOURS_DARK, MODULE_COLOURS_LIGHT, in_module, module_colour,
+    module_paths_of, rgb_of,
+};
 pub use origin::{ORIGINS_HEAD, PartOrigin, mm as mm_text, origins_text};
 pub use overhang::{
     Edge, Edges, Overhang, clip as clip_to_outline, needs as overhang_needs,

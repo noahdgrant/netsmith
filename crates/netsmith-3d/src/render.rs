@@ -52,7 +52,8 @@ pub struct Request {
     pub view: View,
     pub size: (usize, usize),
     pub section: Option<(Axis, f64)>,
-    /// As given: part paths, designators, `net:<name>`, `limit:<name>` and `case:<name>`.
+    /// As given: part paths, designators, `net:<name>`, `limit:<name>`, `case:<name>` and
+    /// `module:<path>` (each module in its own colour, in the order given).
     pub highlight: Vec<String>,
     pub xray: bool,
     /// How the case models are drawn ([`CaseMode`]).
@@ -143,14 +144,34 @@ pub fn default_out(label: &str, view: View) -> PathBuf {
     PathBuf::from(format!("{board}-{}.png", view.name()))
 }
 
+/// What `--highlight` lights, as the ids of meshes: those in the highlight colour, and the
+/// meshes of each module named, in the order named (each in its own colour).
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Lights {
+    pub ids: Vec<String>,
+    pub modules: Vec<Vec<String>>,
+}
+
+impl Lights {
+    /// Every mesh id lit, in the highlight colour or a module's.
+    fn all(&self) -> Vec<String> {
+        let mut all = self.ids.clone();
+        all.extend(self.modules.iter().flatten().cloned());
+        all
+    }
+}
+
+/// The modules of the scene's parts ([`netsmith_pcb::module_paths_of`]).
+fn modules_of(scene: &Scene) -> Vec<String> {
+    netsmith_pcb::module_paths_of(scene.bodies.iter().map(|b| b.path.as_str()))
+}
+
 /// The ids of the meshes `requested` names, in the order given, each once. A part by path or
-/// designator, `net:<name>`, `limit:<name>` and `case:<name>` (a case model, ADR 0109); `board`
-/// is the board itself. The error names
-/// every id that is none of them.
-pub(crate) fn resolve_highlight(
-    scene: &Scene,
-    requested: &[String],
-) -> Result<Vec<String>, String> {
+/// designator, `net:<name>`, `limit:<name>`, `case:<name>` (a case model, ADR 0109) and
+/// `module:<path>` (the parts of a module instance, issue #1129: its path in the design, as
+/// `layout summary` and the editor's Modules tab name it); `board` is the board itself. The
+/// error names every id that is none of them.
+pub fn resolve_highlight(scene: &Scene, requested: &[String]) -> Result<Lights, String> {
     let mut nets: Vec<&str> = Vec::new();
     if let Ok(copper) = &scene.copper {
         nets.extend(copper.layers.iter().flat_map(|l| l.nets()).flatten());
@@ -161,9 +182,27 @@ pub(crate) fn resolve_highlight(
     }));
     nets.sort();
     nets.dedup();
-    let mut ids: Vec<String> = Vec::new();
+    let modules = modules_of(scene);
+    let mut lights = Lights::default();
+    let mut lit_modules: Vec<&str> = Vec::new();
     let mut unknown: Vec<&str> = Vec::new();
     for want in requested {
+        if let Some(module) = want.strip_prefix("module:") {
+            if !modules.iter().any(|m| m == module) {
+                unknown.push(want);
+            } else if !lit_modules.contains(&module) {
+                lit_modules.push(module);
+                lights.modules.push(
+                    scene
+                        .bodies
+                        .iter()
+                        .filter(|b| netsmith_pcb::in_module(&b.path, module))
+                        .map(|b| b.path.clone())
+                        .collect(),
+                );
+            }
+            continue;
+        }
         let found = if let Some(net) = want.strip_prefix("net:") {
             nets.contains(&net).then(|| net.to_string())
         } else if want.starts_with("limit:") {
@@ -187,13 +226,13 @@ pub(crate) fn resolve_highlight(
             (want == "board").then(|| want.clone())
         };
         match found {
-            Some(id) if !ids.contains(&id) => ids.push(id),
+            Some(id) if !lights.ids.contains(&id) => lights.ids.push(id),
             Some(_) => {}
             None => unknown.push(want),
         }
     }
     if unknown.is_empty() {
-        return Ok(ids);
+        return Ok(lights);
     }
     let list = |v: Vec<String>| {
         if v.is_empty() {
@@ -203,7 +242,7 @@ pub(crate) fn resolve_highlight(
         }
     };
     Err(format!(
-        "error: --highlight names {} that the board does not have: {}\nthe parts are: {}\nthe nets: {}\nthe limits: {}\nthe case models: {}",
+        "error: --highlight names {} that the board does not have: {}\nthe parts are: {}\nthe nets: {}\nthe limits: {}\nthe case models: {}\nthe modules: {}",
         if unknown.len() == 1 { "an id" } else { "ids" },
         unknown
             .iter()
@@ -233,6 +272,7 @@ pub(crate) fn resolve_highlight(
                 .map(|c| format!("case:{}", c.name))
                 .collect()
         ),
+        list(modules.iter().map(|m| format!("module:{m}")).collect()),
     ))
 }
 
@@ -250,7 +290,7 @@ fn keep_below(view: View, axis: Axis) -> bool {
 
 /// The render options of `request`, with the highlight already resolved to mesh ids.
 /// `mask` is the colour the board states for its solder mask (issue #771), if it states one.
-fn options(request: &Request, highlight: Vec<String>, mask: Option<&str>) -> RenderOptions {
+fn options(request: &Request, lights: Lights, mask: Option<&str>) -> RenderOptions {
     RenderOptions {
         width: request.size.0,
         height: request.size.1,
@@ -260,7 +300,8 @@ fn options(request: &Request, highlight: Vec<String>, mask: Option<&str>) -> Ren
             Theme::Light
         }
         .palette_with_mask(mask),
-        highlight,
+        highlight: lights.ids,
+        modules: lights.modules,
         xray: request.xray,
         case_solid: request.case == CaseMode::Solid,
         caps: request.caps,
@@ -315,15 +356,15 @@ fn without_hidden_case(
 
 /// The meshes of `scene` drawn as `request` says, as the bytes of a PNG.
 pub fn draw(scene: &Scene, request: &Request) -> Result<Vec<u8>, String> {
-    let highlight = resolve_highlight(scene, &request.highlight)?;
+    let lights = resolve_highlight(scene, &request.highlight)?;
     // A capped section draws the board as its stackup, a layer at a time.
     let meshes: Vec<Mesh> = match request.section {
         Some((axis, at)) if request.caps => mesh::of_scene_section(scene, axis, at),
         _ => mesh::of_scene(scene),
     };
     let hidden = hidden_case_ids(scene, &request.case_hidden)?;
-    let meshes = without_hidden_case(meshes, request.case, &hidden, &highlight);
-    let options = options(request, highlight, scene.board.mask_colour.as_deref());
+    let meshes = without_hidden_case(meshes, request.case, &hidden, &lights.all());
+    let options = options(request, lights, scene.board.mask_colour.as_deref());
     let lens = if request.perspective {
         Lens::Perspective { fov_y_deg: FOV_DEG }
     } else {
@@ -335,14 +376,14 @@ pub fn draw(scene: &Scene, request: &Request) -> Result<Vec<u8>, String> {
 
 /// The ids of the meshes `requested` names in the system scene (ADR 0110): each is
 /// `member/<id>`, the id as [`resolve_highlight`] reads it for that member's board (`led/J1`,
-/// `led/net:GND`), or a member's name alone for the whole member. A net or a limit may also be
-/// named with the member after its prefix, as the editor's 3D view names it (`net:led/GND`,
-/// `limit:led/lid`), which is the same id.
-pub(crate) fn resolve_system_highlight(
+/// `led/net:GND`, `led/module:reg`), or a member's name alone for the whole member. A net, a
+/// limit or a module may also be named with the member after its prefix, as the editor's 3D
+/// view names it (`net:led/GND`, `limit:led/lid`, `module:led/reg`), which is the same id.
+pub fn resolve_system_highlight(
     system: &SystemScene,
     requested: &[String],
-) -> Result<Vec<String>, String> {
-    let mut ids: Vec<String> = Vec::new();
+) -> Result<Lights, String> {
+    let mut lights = Lights::default();
     let mut errors = Vec::new();
     for want in requested {
         let (member, id) = system_id(want);
@@ -362,10 +403,13 @@ pub(crate) fn resolve_system_highlight(
         };
         let found = if id.is_empty() {
             // The whole member: every id of its meshes.
-            mesh::of_scene(&m.scene)
-                .into_iter()
-                .map(|mesh| mesh.id)
-                .collect()
+            Lights {
+                ids: mesh::of_scene(&m.scene)
+                    .into_iter()
+                    .map(|mesh| mesh.id)
+                    .collect(),
+                modules: Vec::new(),
+            }
         } else {
             match resolve_highlight(&m.scene, &[id.to_string()]) {
                 Ok(found) => found,
@@ -375,25 +419,31 @@ pub(crate) fn resolve_system_highlight(
                 }
             }
         };
-        for id in found {
-            let id = format!("{member}/{id}");
-            if !ids.contains(&id) {
-                ids.push(id);
+        let own = |id: String| format!("{member}/{id}");
+        for id in found.ids.into_iter().map(own) {
+            if !lights.ids.contains(&id) {
+                lights.ids.push(id);
+            }
+        }
+        for module in found.modules {
+            let module: Vec<String> = module.into_iter().map(own).collect();
+            if !lights.modules.contains(&module) {
+                lights.modules.push(module);
             }
         }
     }
     if errors.is_empty() {
-        Ok(ids)
+        Ok(lights)
     } else {
         Err(errors.join("\n"))
     }
 }
 
 /// An id of the system scene as its member and the id in the member's board: `led/J1` and
-/// `led/net:GND` as they are written, `net:led/GND` and `limit:led/lid` with the member taken out
-/// of the name; a member alone has no id (`""`).
+/// `led/net:GND` as they are written, `net:led/GND`, `limit:led/lid` and `module:led/reg` with
+/// the member taken out of the name; a member alone has no id (`""`).
 fn system_id(want: &str) -> (String, String) {
-    for prefix in ["net:", "limit:"] {
+    for prefix in ["net:", "limit:", "module:"] {
         if let Some((member, name)) = want.strip_prefix(prefix).and_then(|r| r.split_once('/')) {
             return (member.to_string(), format!("{prefix}{name}"));
         }
@@ -406,10 +456,10 @@ fn system_id(want: &str) -> (String, String) {
 /// into the system's frame ([`crate::system::meshes`]), framed as a whole. A section cuts in
 /// the system's frame; its cut faces are filled, each board as one block (not its stackup).
 pub fn draw_system(system: &SystemScene, request: &Request) -> Result<Vec<u8>, String> {
-    let highlight = resolve_system_highlight(system, &request.highlight)?;
+    let lights = resolve_system_highlight(system, &request.highlight)?;
     let meshes = crate::system::meshes(system);
     // One palette draws every member, so the system's picture keeps the default mask tone.
-    let options = options(request, highlight, None);
+    let options = options(request, lights, None);
     let lens = if request.perspective {
         Lens::Perspective { fov_y_deg: FOV_DEG }
     } else {
