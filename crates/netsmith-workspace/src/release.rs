@@ -168,8 +168,18 @@ impl Workspace {
                 progress: Some(forward),
                 allow_drc_violations,
                 layout: Some(netsmith_fabricate::layout::layout_path(&source.path)),
+                pdf: target
+                    .project
+                    .as_ref()
+                    .and_then(|p| p.manifest.pdf)
+                    .unwrap_or(true),
+                schematic: Some(netsmith_fabricate::schematic::Inputs::of(
+                    &source.path,
+                    target.project.as_ref().map(|p| p.manifest.name.as_str()),
+                )),
                 pin_map_source: Some(source.stable_name(target.project.as_ref())),
                 place_seeds: netsmith_fabricate::layout::place_seeds(target.project.as_ref()),
+                rip_rounds: netsmith_fabricate::fab::rip_rounds(target.project.as_ref()),
                 place_budget: netsmith_fabricate::layout::place_budget(
                     target.project.as_ref(),
                     None,

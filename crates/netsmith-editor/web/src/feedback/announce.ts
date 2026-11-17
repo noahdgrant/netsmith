@@ -6,7 +6,7 @@ import { type Next, type Result } from './results';
 import { type ToastAction, notify } from './state';
 
 /** Let the browser fetch a file the server wrote. */
-function download(url: string, name: string) {
+export function download(url: string, name: string) {
   const a = document.createElement('a');
   a.href = url;
   a.download = name;

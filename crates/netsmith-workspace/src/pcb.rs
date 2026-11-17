@@ -79,11 +79,11 @@ use netsmith_editor::{
     ApiError, Say, Show,
     api::{
         ComparePcbPlace, CompareSize, DrawnKeepout, KeepoutOrigin, KeepoutPlacement, KicadState,
-        PartPlacement, PcbBox, PcbChange, PcbCrossed, PcbCrossedTrack, PcbCrossedVia, PcbCutout,
-        PcbFinding, PcbFindings, PcbFit, PcbFitFault, PcbFitMiss, PcbFitNear, PcbFitPart,
-        PcbFitPlace, PcbKeepout, PcbLive, PcbLivePart, PcbLiveTrack, PcbLiveVia, PcbNetWidth,
-        PcbPad, PcbPart, PcbPoint, PcbRegenerate, PcbRegenerated, PcbRegeneratedPart, PcbReport,
-        PcbRequirement, PcbRerouted, PcbRouteNet, PcbRouteTrack, PcbRouteVia, PcbScene,
+        PartPlacement, PcbBox, PcbChange, PcbCopper, PcbCrossed, PcbCrossedTrack, PcbCrossedVia,
+        PcbCutout, PcbFinding, PcbFindings, PcbFit, PcbFitFault, PcbFitMiss, PcbFitNear,
+        PcbFitPart, PcbFitPlace, PcbKeepout, PcbLive, PcbLivePart, PcbLiveTrack, PcbLiveVia,
+        PcbNetWidth, PcbPad, PcbPart, PcbPoint, PcbRegenerate, PcbRegenerated, PcbRegeneratedPart,
+        PcbReport, PcbRequirement, PcbRerouted, PcbRouteNet, PcbRouteTrack, PcbRouteVia, PcbScene,
         PcbShapeRef, PcbShove, PcbShoveAnswer, PcbShoved, PcbShovedTrack, PcbShovedVia, PcbSide,
         PcbSummary, PcbTotals, PcbViaOffer, PcbWalk, PcbWalked, RequiredPlace, RoutesChange,
         Severity,
@@ -142,6 +142,9 @@ pub struct Entry {
     /// The board's fit in its case models (ADR 0109), measured when it is placed: routing does
     /// not move a part, so it stays.
     case_findings: Vec<PcbFinding>,
+    /// The rounds of rip-up the router gives a try that leaves connections (`rip_rounds` in
+    /// `netsmith.toml`, issue #1088).
+    rip_rounds: usize,
     /// Where the placer refused the layout file and the board is shown where it ended (issue
     /// #779): that it was refused and the lines and locks that cannot all hold. Empty for a
     /// board that was placed.
@@ -538,6 +541,7 @@ impl Entry {
         };
         Ok(Entry {
             case_findings,
+            rip_rounds: data.rip_rounds,
             refusal: Vec::new(),
             place_options: netsmith_pcb::PlaceOptions::default(),
             refused: None,
@@ -658,6 +662,7 @@ impl Entry {
             time_limit: Some(DEFAULT_ROUTE_TIMEOUT),
             progress: Some(forward),
             cancel: Some(&CANCEL),
+            rip_rounds: self.rip_rounds,
             ..RouteOptions::default()
         };
         let routing = match before {
@@ -910,6 +915,27 @@ pub fn summary(
         .map_err(|e| ApiError::internal(format!("the summary of {name}: {e}")))?;
     name.clone_into(&mut answer.board);
     Ok(answer)
+}
+
+/// The copper areas of the board of `data` (`netsmith board copper`, issue #1085): its planes,
+/// pours and the zones of the routes file beside its layout file, read now from the source and
+/// the files, with no placing and no routing. The teardrop fills are counted when `routed` is
+/// the board after the router has drawn them (the entry of a board routed here), and not
+/// otherwise.
+pub fn copper(data: &BoardData, name: &str, routed: Option<&Board>) -> Result<PcbCopper, ApiError> {
+    let design = &data.built.design;
+    let areas = match &data.layout {
+        Some((layout, _)) => netsmith_fabricate::routes::copper_areas(design, layout),
+        None => netsmith_pcb::CopperAreas::of(design, None),
+    }
+    .map_err(|e| ApiError::internal(format!("the copper areas of {name}: {e}")))?;
+    let areas = match routed {
+        Some(board) => areas.with_teardrops(board),
+        None => areas,
+    };
+    let value = serde_json::to_value(&areas).expect("plain data");
+    serde_json::from_value(camel_keys(value))
+        .map_err(|e| ApiError::internal(format!("the copper areas of {name}: {e}")))
 }
 
 /// Where the part `part` fits on the board of `entry` as placed now, with every other part where

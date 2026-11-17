@@ -2,7 +2,7 @@
 // reads the answer. The numbers are the server's (`netsmith layout summary` has the same); this
 // file only turns them into the words and boxes the tab shows.
 
-import type { PcbBox, PcbScene, SummaryBox, SummaryGuideline, SummaryPads } from '../api';
+import type { CopperLayer, CopperPour, CopperZone, PcbBox, PcbCopper, PcbScene, SummaryBox, SummaryGuideline, SummaryPads } from '../api';
 
 /** A number to the hundredth, without trailing zeros: `3.5`, `12`. */
 export function mm(v: number): string {
@@ -61,4 +61,45 @@ export function guidelineLine(g: SummaryGuideline): string {
   if (g.met === true) parts.push('met');
   if (g.met === false) parts.push('not met');
   return `(${g.statement}${g.other ? `, ${g.other}` : ''}) ${parts.join(', ')}`;
+}
+
+/** A pour's fields in words, `stitch pitch 7 mm, thermal gap default, ...`: a field the design does not state is the process's default. */
+export function pourFields(p: CopperPour): string {
+  const length = (name: string, v: number | null) => `${name} ${v === null ? 'default' : `${mm(v)} mm`}`;
+  return [
+    length('stitch pitch', p.stitchPitch),
+    length('thermal gap', p.thermalGap),
+    length('spoke width', p.spokeWidth),
+    length('clearance', p.clearance),
+    length('min width', p.minWidth),
+    `pads ${p.pads ?? 'default'}`,
+  ].join(', ');
+}
+
+/** One copper layer in words: `plane on GND`, `pour on GND: stitch pitch 7 mm, ...` or `signal`, and what the routes file's zones do to it. */
+export function copperLayerLine(l: CopperLayer): string {
+  const head = `${l.kind}${l.net ? ` on ${l.net}` : ''}${l.pour ? `: ${pourFields(l.pour)}` : ''}`;
+  if (l.replacedByZones) return `${head} (not drawn: ${l.zones} zone${l.zones === 1 ? '' : 's'} of the routes file replace${l.zones === 1 ? 's' : ''} it)`;
+  if (l.zones > 0) return `${head} (${l.zones} hand zone${l.zones === 1 ? '' : 's'})`;
+  return head;
+}
+
+/** A zone of the routes file in words: `GND on top: 24 mm², priority 0, clearance 0.2 mm, pads thermal, locked`. */
+export function copperZoneLine(z: CopperZone): string {
+  return [
+    `${z.net} on ${z.layers.join(', ')}: ${mm(z.area)} mm²`,
+    `priority ${z.priority}`,
+    `clearance ${mm(z.clearance)} mm`,
+    `min width ${mm(z.minWidth)} mm`,
+    `pads ${z.pads}`,
+    ...(z.locked ? ['locked'] : []),
+  ].join(', ');
+}
+
+/** The teardrop fills in words: `not counted until the board is routed`, or `412 (230 on top, 182 on bottom)`. Teardrops are zones of the KiCad board, and none is a pour. */
+export function teardropsLine(c: PcbCopper): string {
+  const t = c.teardrops;
+  if (!t.counted) return 'not counted: the router makes them when it routes the board';
+  const by = t.layers.map((l) => `${l.count} on ${l.layer}`).join(', ');
+  return `${t.total}${by ? ` (${by})` : ''}`;
 }

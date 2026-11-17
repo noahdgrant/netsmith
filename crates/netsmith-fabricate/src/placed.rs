@@ -117,6 +117,9 @@ pub struct RouteRequest {
     /// The largest radius of an arc at a bend, in track widths ([`RouteOptions::arcs`]); `None`
     /// is the router's own, 0 draws no arcs.
     pub arcs: Option<f64>,
+    /// The rounds of rip-up and re-route of whole nets ([`RouteOptions::rip_rounds`]); `None` is
+    /// the router's own, 0 runs none.
+    pub rip_rounds: Option<usize>,
 }
 
 /// What `route` made of a placed board.
@@ -164,6 +167,9 @@ pub fn route(
         plan: request.plan.unwrap_or(RouteOptions::default().plan),
         classes: request.classes.unwrap_or(RouteOptions::default().classes),
         arcs: request.arcs.unwrap_or(RouteOptions::default().arcs),
+        rip_rounds: request
+            .rip_rounds
+            .unwrap_or(RouteOptions::default().rip_rounds),
         ..RouteOptions::default()
     };
     let routing = route_with_margin(&mut board, request.route_timeout, base, margin, say);

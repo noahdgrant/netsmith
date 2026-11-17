@@ -10,8 +10,9 @@ import { ALL, canStep, stepPick } from '../sheets';
 import type { Sheet } from '../schematic/drawing';
 import { filterSheets, parseTitle, rowHover, type SheetStats } from '../schematic/nav';
 import { EmptyState } from '../components/ui';
-import { SeverityMark } from '../components/Icons';
+import { Icon, SeverityMark } from '../components/Icons';
 import { plural } from '../util';
+import { api, schematicFile } from '../client';
 
 /** A sheet as the lists show it. */
 export interface SheetRow {
@@ -222,8 +223,11 @@ export function SheetBar({
   toggleSide,
   total,
   help,
+  board,
 }: {
   help: () => void;
+  /** The board as the server names it, for the export links. */
+  board: string;
   rows: SheetRow[];
   names: string[];
   current: string;
@@ -270,6 +274,25 @@ export function SheetBar({
       <span class="spacer" />
       <CompareLegend />
       <ChangesSwitch />
+      <span class="sheet-export" role="group" aria-label="Export the schematic">
+        {(['pdf', 'svg'] as const).map((format) => (
+          <a
+            key={format}
+            class="tool small"
+            href={api.schematicExportUrl(board, format)}
+            download={schematicFile(board, format)}
+            data-testid={`schematic-export-${format}`}
+            data-tip={
+              format === 'pdf'
+                ? 'Export the schematic as a PDF: a page for each module, each with its title block, as `netsmith view schematic` and `board fab` write it'
+                : 'Export the schematic as the SVG this view draws'
+            }
+          >
+            <Icon name="download" size={13} />
+            {format.toUpperCase()}
+          </a>
+        ))}
+      </span>
       <button class="icon-btn" title="Keyboard shortcuts (?)" aria-label="Keyboard shortcuts" onClick={help}>
         ?
       </button>

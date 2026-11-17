@@ -43,12 +43,14 @@ use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
 mod compare;
+mod copper;
 mod fit;
 mod hints;
 mod summary;
 mod view;
 
 pub use compare::*;
+pub use copper::*;
 pub use fit::*;
 pub use hints::*;
 pub use summary::*;
@@ -2487,6 +2489,12 @@ pub fn typescript() -> String {
         SummaryNeighbours,
         SummaryPads,
         PcbSummary,
+        CopperPour,
+        CopperLayer,
+        CopperZone,
+        CopperTeardrops,
+        CopperFills,
+        PcbCopper,
         PcbFitPart,
         PcbFitNear,
         PcbFitFault,

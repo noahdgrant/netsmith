@@ -758,6 +758,7 @@ version = "0.2.0"
 dependencies = [
  "automod",
  "clap",
+ "flate2",
  "netsmith-3d",
  "netsmith-catalog",
  "netsmith-check",
@@ -776,6 +777,7 @@ dependencies = [
  "netsmith-testkit",
  "netsmith-tools",
  "netsmith-workspace",
+ "roxmltree",
  "serde_json",
  "tungstenite 0.30.0",
  "ureq",
@@ -804,6 +806,17 @@ dependencies = [
  "netsmith-quantity",
  "netsmith-solve",
  "netsmith-testkit",
+]
+
+[[package]]
+name = "netsmith-draw"
+version = "0.2.0"
+dependencies = [
+ "automod",
+ "flate2",
+ "netsmith-core",
+ "netsmith-geom",
+ "roxmltree",
 ]
 
 [[package]]
@@ -1063,8 +1076,10 @@ version = "0.2.0"
 dependencies = [
  "automod",
  "netsmith-core",
+ "netsmith-draw",
  "netsmith-kicad",
  "netsmith-testkit",
+ "roxmltree",
  "toml",
 ]
 
@@ -1092,6 +1107,7 @@ dependencies = [
  "netsmith-solve",
  "netsmith-testkit",
  "netsmith-view",
+ "serde",
  "serde_json",
  "tungstenite 0.30.0",
  "zip",

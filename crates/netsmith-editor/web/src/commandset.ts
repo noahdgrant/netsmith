@@ -7,10 +7,11 @@ import { foldAll, unfoldAll } from '@codemirror/language';
 import { EditorView, closeHoverTooltips } from '@codemirror/view';
 
 import { askForRef, toggleChanges } from './components/ChangesSwitch';
-import { api } from './client';
+import { api, schematicFile } from './client';
 import { clearCompare, diffTarget, diskCompare, openDiff, refName, refText, runCompare, showChanges } from './compare/store';
 import { diffControls } from './compare/collapse';
 import { type Command, provide, register, runCommand } from './commands';
+import { download } from './feedback/announce';
 import { stepProblem } from './feedback/derive';
 import { busy, dock, filter, pending, setDockOpen, toggleDock } from './feedback/state';
 import { SECTIONS, canSplit, closePane, splitRight } from './layout';
@@ -133,6 +134,19 @@ const schematicCommands = (): Command[] => {
       when: () => sheetOrOverview() && act().sheets() > 1,
       run: () => act().sheet(1),
     },
+    ...(['pdf', 'svg'] as const).map(
+      (format): Command => ({
+        id: `schematic.export.${format}`,
+        title: `Export schematic as ${format.toUpperCase()}`,
+        group: 'Schematic',
+        aliases: ['export', 'download', 'save', format, 'print', 'netsmith view schematic'],
+        when: () => board.value !== null,
+        run: () => {
+          const name = board.value;
+          if (name) download(api.schematicExportUrl(name, format), schematicFile(name, format));
+        },
+      }),
+    ),
     {
       id: 'schematic.fit',
       title: 'Fit the module',

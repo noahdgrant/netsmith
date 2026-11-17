@@ -49,7 +49,7 @@ mod testlib;
 use netsmith_placer::board_from_design;
 
 pub use route::{
-    CoarsePlan, Costs, Crowding, LineClasses, LineReport, RouteOptions, Routing, Snapshot,
-    SnapshotStage, Stage, route, route_with,
+    CoarsePlan, Costs, Crowding, LineClasses, LineReport, RIP_MOST, RIP_ROUNDS, RipRounds,
+    RouteOptions, Routing, Snapshot, SnapshotStage, Stage, WallVia, route, route_with,
 };
 pub use stitch::stitch;

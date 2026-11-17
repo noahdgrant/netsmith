@@ -510,6 +510,37 @@ impl Package {
     }
 }
 
+/// What [`check`] found: the design rules check's findings, the design's requirements on
+/// positions among them (each not met is a finding), and each requirement as measured.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Checked {
+    /// Everything the check found, errors first, warnings included.
+    pub report: DrcReport,
+    /// Each requirement on where a part goes, measured: met or not, with the numbers.
+    pub outcomes: Vec<ConstraintOutcome>,
+}
+
+/// The design rules check of the board file `src` (the text of a `.kicad_pcb`, with the
+/// `.kicad_pro` text in `project`) as [`package`] runs it, and the design's requirements on
+/// positions (ADR 0045) measured on the same text. `netsmith board drc` calls it alone.
+pub fn check(src: &str, project: Option<&str>, options: &Options) -> Result<Checked, Error> {
+    let mut report = drc_check(src, project, &options.drc)?;
+    let outcomes = match &options.constraints {
+        Some(c) => {
+            let outcomes = c.measure(&Artwork::parse(src)?);
+            report
+                .findings
+                .extend(constraint_outcome_findings(&outcomes, c.severity));
+            report
+                .findings
+                .sort_by_key(|f| std::cmp::Reverse(f.severity));
+            outcomes
+        }
+        None => Vec::new(),
+    };
+    Ok(Checked { report, outcomes })
+}
+
 /// Checks the board and builds the upload package for it.
 ///
 /// Order: read the board and decide which parts are assembled (errors for part numbers
@@ -527,21 +558,10 @@ pub fn package(pcb: &Path, entries: &[BomEntry], options: &Options) -> Result<Pa
         .unwrap_or_default();
     let plan = plan(&board, entries, options)?;
 
-    let mut drc_report = drc_check(&src, drc_project_of(pcb).as_deref(), &options.drc)?;
-    // The design's requirements on positions are measured on the same file (ADR 0045).
-    let outcomes = match &options.constraints {
-        Some(c) => {
-            let outcomes = c.measure(&Artwork::parse(&src)?);
-            drc_report
-                .findings
-                .extend(constraint_outcome_findings(&outcomes, c.severity));
-            drc_report
-                .findings
-                .sort_by_key(|f| std::cmp::Reverse(f.severity));
-            outcomes
-        }
-        None => Vec::new(),
-    };
+    let Checked {
+        report: drc_report,
+        outcomes,
+    } = check(&src, drc_project_of(pcb).as_deref(), options)?;
     // A requirement of the design is not a design rule: waiving the rules does not waive it.
     let unmet: Vec<String> = drc_report
         .errors()

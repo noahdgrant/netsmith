@@ -43,7 +43,7 @@ struct Notes {
 /// The text of `new` with the comments of `old` carried into it.
 ///
 /// `new` and `old` are layout files. When `old` is not TOML there is nothing to carry.
-pub(crate) fn carry(old: &str, new: &str) -> String {
+pub fn carry(old: &str, new: &str) -> String {
     let (Some(old_items), Some(new_items)) = (items(old), items(new)) else {
         return new.to_string();
     };

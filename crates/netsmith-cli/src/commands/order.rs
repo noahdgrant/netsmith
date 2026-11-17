@@ -24,6 +24,12 @@ pub struct Args {
     /// Seconds the router may take for a board; 0 is no limit (default 300).
     #[arg(long, value_name = "SECS")]
     pub route_timeout: Option<u64>,
+    /// Rounds of rip-up and re-route of whole nets for connections the router leaves; 0 is none.
+    ///
+    /// As `board fab --rip-rounds`; `rip_rounds` in netsmith.toml sets it for a project, and this
+    /// wins.
+    #[arg(long, value_name = "N")]
+    pub rip_rounds: Option<usize>,
     /// Package a board that fails the design rules check (never an unmet `[constraint]`).
     #[arg(long)]
     pub allow_drc_violations: bool,
@@ -45,6 +51,9 @@ pub struct Args {
     /// Leave the boards as STEP (`<board>.step`) out of the packages.
     #[arg(long)]
     pub no_step: bool,
+    /// Leave the boards' schematics (`<board>-schematic.pdf`) out of the packages.
+    #[arg(long)]
+    pub no_pdf: bool,
     /// Ask no supplier for stock or price; say in `order.txt` that they were not checked.
     #[arg(long)]
     pub offline: bool,
@@ -78,6 +87,7 @@ pub fn run(args: Args) -> ExitCode {
             &args.request(),
             args.out.as_deref(),
             args.route_timeout,
+            args.rip_rounds,
             args.allow_drc_violations,
             args.cross_check,
             args.strict,
@@ -85,6 +95,7 @@ pub fn run(args: Args) -> ExitCode {
             args.constraints.map(|c| c == Constraints::Warn),
             args.no_glb,
             args.no_step,
+            args.no_pdf,
             args.offline,
             &args.placing,
         )

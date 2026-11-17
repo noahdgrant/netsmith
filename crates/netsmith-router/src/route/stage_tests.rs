@@ -4,7 +4,7 @@ use crate::testlib::{fixtures, four_layer_design};
 
 use super::*;
 
-fn led_board() -> Board {
+pub(super) fn led_board() -> Board {
     crate::board_from_design(
         &crate::testlib::led_design(),
         &netsmith_kicad::Mapping::standard(),
@@ -76,7 +76,7 @@ fn the_fixed_order_of_the_classes_is_escape_decoupling_pair_clock_power_rest() {
 
 /// A state of the LED board where only line `a` is routed: a track of its net across the
 /// middle of line `b`, of another net.
-fn across(router: &Router, a: usize, b: usize) -> State {
+pub(super) fn across(router: &Router, a: usize, b: usize) -> State {
     let (from, to) = (router.lines[b].from_at, router.lines[b].to_at);
     let mid = Pt::new((from.x + to.x) / 2.0, (from.y + to.y) / 2.0);
     let (dx, dy) = (to.x - from.x, to.y - from.y);

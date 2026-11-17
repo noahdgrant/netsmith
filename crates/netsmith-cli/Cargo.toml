@@ -47,3 +47,6 @@ netsmith-lang = { path = "../netsmith-lang" }
 netsmith-netlist = { path = "../netsmith-netlist" }
 zip = { version = "6", default-features = false, features = ["deflate-flate2-zlib-rs"] }
 tungstenite = "0.30.0"
+# The schematic PDF's content streams, read back (`tests/schematic_export.rs`).
+flate2 = "1"
+roxmltree = "0.21"

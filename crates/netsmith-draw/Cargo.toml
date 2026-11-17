@@ -1,0 +1,24 @@
+[package]
+name = "netsmith-draw"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+# The tests are one executable, tests/main.rs, with the other files of the folder as its modules
+# (#190): without this, cargo builds and links every file of the folder as well.
+autotests = false
+
+[[test]]
+name = "main"
+path = "tests/main.rs"
+
+[dependencies]
+# The PNG writer and its deflate, which also compresses the PDF's content streams.
+netsmith-core = { path = "../netsmith-core" }
+# The stroke font the rasterizer draws text with.
+netsmith-geom = { path = "../netsmith-geom" }
+roxmltree = "0.21"
+
+[dev-dependencies]
+automod = "1.0.17"
+# An inflater that is not ours, to read the PDF's content streams back.
+flate2 = "1"

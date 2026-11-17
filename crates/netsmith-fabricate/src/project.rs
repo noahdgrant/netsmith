@@ -123,11 +123,21 @@ pub struct Manifest {
     /// with `--no-step`, which wins over this key.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub step: Option<bool>,
+    /// Whether `fab` writes the board's schematic, `<board>-schematic.pdf`, into the fab
+    /// package (`pdf = false` leaves it out; the default, `true`, writes it). A run can leave it
+    /// out with `--no-pdf`, which wins over this key (issue #1091).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pdf: Option<bool>,
     /// How many times the process's least track a signal is drawn at, where there is room
     /// (`track_margin = 1.5`, the default; 1 is the least). A board the router cannot finish
     /// at that width is routed at the least (issue #431).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub track_margin: Option<f64>,
+    /// The rounds of rip-up and re-route of whole nets the router gives a try that leaves
+    /// connections (`rip_rounds = 6`, the default; `0` runs none, issue #1088). `--rip-rounds`
+    /// wins over it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rip_rounds: Option<usize>,
     /// How many seeds the placer tries for a board before it gives up (`place_seeds = 8`, the
     /// default; 1 tries only the layout file's, and [`MAX_PLACE_SEEDS`] is the most): the layout
     /// file's seed, or 0, then the ones after it. The seed that places the board is written to the layout file (issue #458).
@@ -400,7 +410,9 @@ impl Manifest {
             assembly: None,
             glb: None,
             step: None,
+            pdf: None,
             track_margin: None,
+            rip_rounds: None,
             place_seeds: None,
             place_budget: None,
             environment: None,
@@ -1818,6 +1830,16 @@ mod tests {
         assert_eq!(parse(&m.render()), Ok(m));
         let e = parse("[project]\nname = \"a\"\ntrack_margin = 0.5\n").unwrap_err();
         assert!(e.contains("track_margin = 0.5 must be from 1"), "{e}");
+    }
+
+    #[test]
+    fn rip_rounds_is_a_count_and_zero_turns_the_rounds_off() {
+        let m = parse("[project]\nname = \"a\"\nrip_rounds = 0\n").unwrap();
+        assert_eq!(m.rip_rounds, Some(0));
+        assert_eq!(parse(&m.render()), Ok(m));
+        assert_eq!(parse("[project]\nname = \"a\"\n").unwrap().rip_rounds, None);
+        assert!(parse("[project]\nname = \"a\"\nrip_rounds = -1\n").is_err());
+        assert!(parse("[project]\nname = \"a\"\nrip_rounds = \"many\"\n").is_err());
     }
 
     #[test]

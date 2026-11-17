@@ -16,6 +16,7 @@ Run `scripts/editor-verify doctor`, then `launch`, then the recipe named in each
 | Source: hover cards, breadcrumbs, history, outline, inline hints, tabs, folds, find, completion | `source-editor.md` | `source-editor` | `two_boards` |
 | Source: a part's card says which statement gave its package (a line of the board's `defaults`, a `?=`, a `&=`) and goes there; a `defaults` line that reaches nothing is a note | `source-editor.md` | `board-defaults` | `board_defaults` |
 | Schematic view and click-through | `schematic.md` | `schematic`, `big-schematic` | `two_boards`, `big` |
+| Schematic export: the toolbar's PDF and SVG links and the palette's "Export schematic as PDF" save what `view schematic` writes; a system's PDF | `schematic.md` | `schematic-export` | `two_boards` |
 | Schematic box of a part with a `tri_state` pin (the side it is on, the mark of an open one) | `schematic.md` | `tri-state` | `tri_state` |
 | Pin map of the selected part (pin, pad, function, lock, where it came from, the check's message for a request with no pin) and the pick lock's state and diff, read only; the lock file is watched | `pin-map.md` | `pin-map` | `pin_map` |
 | Padlock and move of a pin request write the pin file's `lock`, `pin` and `source` lines only; refusals with the server's words | `pin-map.md` | `pin-lock` | `pin_map` |
@@ -45,6 +46,7 @@ Run `scripts/editor-verify doctor`, then `launch`, then the recipe named in each
 | PCB routes file: draw a track (pad to pad, corners, layer, net width), place a via, drag a via with the track ends there, a track the rules refuse comes back, undo and redo of every routes edit | `pcb.md` | `pcb-routes-draw` | `routed_led` |
 | PCB routes file: draw a track on an inner signal layer (the layer picker lists the signal layers, not the planes) | `pcb.md` | `pcb-routes-inner` | `six_layer` |
 | PCB routes file edited from a terminal while the editor is open: `netsmith routes add-track`, `add-via`, `lock`, `unlock`, `delete` show with no reload (copper, padlock, via ring, Routes rows), the router's copper is gone until the next route, a refused command changes nothing, the editor's write that loses the race to the CLI is a 409 and keeps its undo steps | `pcb.md` | `pcb-routes-cli` | `routed_led` |
+| PCB copper areas: the Summary tab's layers (plane, pour, signal), the routes file's hand zones and the teardrop fills, counted apart | `pcb.md` | `pcb-copper` | `routed_pours` |
 | PCB pours and zones: the pours, planes and routes-file zones drawn under the copper, in the layer's colour, light and dark, switched with the Layers menu, holes and zone priority | `pcb.md` | `pcb-pours` | `routed_pours` |
 | Panel preview (V-cut grid of one board) | `pcb.md` | `panel` | `led_panel` |
 | The Schematic's keys as commands: palette, cheat sheet group, the `?` button, keys work, not in a text field, not away from the view | `schematic.md` | `schematic-keys` | `schematic_bench` |

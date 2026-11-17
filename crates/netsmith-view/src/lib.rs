@@ -2,10 +2,13 @@
 //! drawing of it, which the editor shows. Everything here is a pure,
 //! deterministic function of a [`netsmith_core::Design`] and a symbol library.
 //!
+//! [`export`] writes the drawing as a PDF (a page for each sheet), a PNG or one sheet's SVG.
+//!
 //! [`metrics`] measures how readable a drawing is and [`check`] tests the rules every drawing
 //! must keep (its nets are the design's nets); neither changes what is drawn.
 
 pub mod check;
+pub mod export;
 pub mod geom;
 pub mod glyph;
 pub mod hints;
@@ -17,9 +20,9 @@ pub mod stability;
 mod svg;
 
 pub use hints::{
-    BoardHints, FindingKind, HintError, HintFinding, LayoutHints, Located, NoteHint, PartHint,
-    Place, ResolvedHints, ResolvedNote, ResolvedPart, ResolvedSheet, SheetHints, Steps,
-    schematic_hints_path,
+    BoardHints, DesignSheet, Entry, EntryKind, FindingKind, HintError, HintFinding, LayoutHints,
+    Located, NoteHint, PartHint, Place, ResolvedHints, ResolvedNote, ResolvedPart, ResolvedSheet,
+    SheetHints, Steps, design_sheets, schematic_hints_path,
 };
 pub use layout::{
     Bus, BusEntry, BusFlag, BusMember, Layout, MarkKind, Marks, MemberFlow, PinMark, Port,

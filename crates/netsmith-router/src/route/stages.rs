@@ -28,6 +28,7 @@ impl<'a> Router<'a> {
                 },
         );
         *self.failed_in.borrow_mut() = vec![Stage::FirstPass; self.lines.len()];
+        *self.ripped.borrow_mut() = RipRounds::default();
         if let Some(snapshots) = &self.snapshots {
             snapshots.borrow_mut().clear();
         }
@@ -325,6 +326,12 @@ impl<'a> Router<'a> {
                 self.stage.set(Stage::Chain);
                 self.finish(&mut state, ROOM_TIGHT, attempt, attempts);
             }
+        }
+        // Whole nets ripped up for the lines still left, and routed again after them (issue
+        // #1088): a board the stages above route is not touched.
+        if self.most_rip_rounds > 0 && !state.failed.is_empty() && !self.out_of_time() {
+            self.stage.set(Stage::RipRounds);
+            self.rip_rounds(&mut state, attempt, attempts);
         }
         state
     }

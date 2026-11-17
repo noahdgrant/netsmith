@@ -5,9 +5,9 @@ use netsmith_core::job::Cancel;
 
 use crate::api::{
     Analysis, BoardDetail, Bom, BuildReport, CatalogRefresh, Changed, Compare, Definition,
-    FabReport, FileContent, GitInfo, OrderInfo, OrderReport, PanelView, PcbEdit, PcbEdited,
-    PcbFindings, PcbFit, PcbPours, PcbReport, PcbScene, PcbSummary, PinLock, PinMove, PinWritten,
-    PowerTree, Project, Saved, SchematicHints, Swap, SwapApply, Swapped, SystemView,
+    FabReport, FileContent, GitInfo, OrderInfo, OrderReport, PanelView, PcbCopper, PcbEdit,
+    PcbEdited, PcbFindings, PcbFit, PcbPours, PcbReport, PcbScene, PcbSummary, PinLock, PinMove,
+    PinWritten, PowerTree, Project, Saved, SchematicHints, Swap, SwapApply, Swapped, SystemView,
 };
 
 /// A refusal, with the HTTP status that says why.
@@ -240,6 +240,15 @@ pub trait Backend: Send + Sync + 'static {
     fn check(&self, path: &str, text: &str) -> Result<Analysis, ApiError>;
     fn board(&self, name: &str) -> Result<BoardDetail, ApiError>;
     fn schematic(&self, board: &str) -> Result<String, ApiError>;
+    /// The schematic of `board` (or of a system: its own sheet and its members') as a file to
+    /// save: `format` is `pdf` (a page for each sheet), `svg` or `png`, the bytes `netsmith view
+    /// schematic` writes (issue #1091).
+    fn schematic_export(&self, board: &str, format: &str) -> Result<Attachment, ApiError> {
+        let _ = format;
+        Err(ApiError::not_found(format!(
+            "there is no schematic of `{board}` to export"
+        )))
+    }
     /// The schematic layout file of the source file `board` is in, with what it says and how
     /// it matches the board (ADR 0061). A file that is not there is no error: no hints, no
     /// findings.
@@ -363,6 +372,14 @@ pub trait Backend: Send + Sync + 'static {
     ) -> Result<PcbSummary, ApiError> {
         Err(ApiError::not_found(format!(
             "there is no summary of `{board}`"
+        )))
+    }
+    /// The board's copper areas (issue #1085): what `netsmith board copper` prints. From the
+    /// source and the routes file, with no placing and no routing; the teardrop fills are counted
+    /// only when the board has been routed here.
+    fn pcb_copper(&self, board: &str) -> Result<PcbCopper, ApiError> {
+        Err(ApiError::not_found(format!(
+            "there is no copper summary of `{board}`"
         )))
     }
     /// Where the part `part` (a path or a designator) fits on the board as placed now, every

@@ -1653,6 +1653,63 @@ pads: Array<SummaryPads>,
  */
 findings: Array<string>, };
 
+export type CopperPour = { stitchPitch: number | null, thermalGap: number | null, spokeWidth: number | null, clearance: number | null, minWidth: number | null, 
+/**
+ * `solid`, `thermal`, `none` or `thru_hole_only`; null for the default, a thermal relief.
+ */
+pads: string | null, };
+
+export type CopperLayer = { 
+/**
+ * `top`, `inner1`, `bottom`: the routes file's word for it.
+ */
+layer: string, 
+/**
+ * `plane`, `pour` or `signal`.
+ */
+kind: string, 
+/**
+ * The net of a plane or a pour.
+ */
+net: string | null, pour: CopperPour | null, 
+/**
+ * How many zones of the routes file are on the layer.
+ */
+zones: number, 
+/**
+ * Whether those zones replace the plane or the pour: the design's copper on the layer is
+ * not drawn.
+ */
+replacedByZones: boolean, };
+
+export type CopperZone = { net: string, layers: Array<string>, priority: number, clearance: number, minWidth: number, pads: string, thermalGap: number, spokeWidth: number, 
+/**
+ * `remove`, `keep` or `remove_below`.
+ */
+islands: string, 
+/**
+ * The outline's area less its holes, in mm2, on one layer.
+ */
+area: number, locked: boolean, };
+
+export type CopperTeardrops = { layer: string, count: number, };
+
+export type CopperFills = { 
+/**
+ * False when the board has not been routed: the source holds none.
+ */
+counted: boolean, total: number, layers: Array<CopperTeardrops>, };
+
+export type PcbCopper = { board: string, 
+/**
+ * Every copper layer, from the top.
+ */
+layers: Array<CopperLayer>, 
+/**
+ * The zones of the routes file.
+ */
+zones: Array<CopperZone>, teardrops: CopperFills, };
+
 export type PcbFitPart = { refdes: string, path: string, };
 
 export type PcbFitNear = { x: number, y: number, 
