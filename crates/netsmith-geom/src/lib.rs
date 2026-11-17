@@ -52,7 +52,7 @@ pub use drc::shape::{Gap as ShapeGap, Shape as DrcShape, gap as shape_gap};
 pub use drc::{
     Class as DrcClass, Counts as DrcCounts, Error as DrcError, Extras as DrcExtras,
     Finding as DrcFinding, Item as DrcItem, Marks as DrcMarks, Report as DrcReport, Room,
-    Rule as DrcRule, Rules as DrcRules, Severity as DrcSeverity, Stackup as DrcStackup,
+    Rule as DrcRule, Rules as DrcRules, Severity as DrcSeverity, Stackup as DrcStackup, ViaRules as DrcViaRules,
     Teardrop as DrcTeardrop, check as drc_check, check_artwork as drc_check_artwork,
     matches_pattern as drc_matches_pattern, outline_shapes as drc_outline_shapes,
     project_of as drc_project_of, teardrops,

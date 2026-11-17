@@ -597,7 +597,11 @@ fn net_copper(art: &Artwork, layer: &str, net: &str) -> Vec<Area> {
     {
         pads::outline(pad).draw(&mut p, None, &[]);
     }
-    for via in art.vias.iter().filter(|v| is(&v.net)) {
+    for via in art
+        .vias
+        .iter()
+        .filter(|v| is(&v.net) && art.via_on(v, layer))
+    {
         Outline::Circle {
             c: via.at,
             r: via.diameter / 2.0,
@@ -759,7 +763,9 @@ fn around_copper(
             draw_grown(g, &shape, by, &pad.part, &pad.number)?;
         }
     }
-    for via in &art.vias {
+    // A blind or a buried via has neither copper nor a hole on a layer it does not reach
+    // (issue #1015), so the zone needs no room for it there.
+    for via in art.vias.iter().filter(|v| art.via_on(v, layer)) {
         let shape = Outline::Circle {
             c: via.at,
             r: via.diameter / 2.0,

@@ -136,13 +136,15 @@ pub(super) fn link(masks: &Masks, from: &[Spot], goal: Goal, extras: Extras) -> 
                     return Link::Joined;
                 }
             }
-            // A via joins every layer: it is a through via (issue #833).
-            if !masks.via[masks.at(i, j)] {
-                for other in (0..masks.layers()).filter(|&l| l != layer) {
-                    let other = (i, j, other);
-                    if passable(other) && next(other, &mut queues) {
-                        return Link::Joined;
-                    }
+            // A via joins every layer: a through via (issue #833), or on a board with blind and
+            // buried vias the one between the two layers (issue #1015).
+            for other in (0..masks.layers()).filter(|&l| l != layer) {
+                if !masks.via_open(i, j, layer, other) {
+                    continue;
+                }
+                let other = (i, j, other);
+                if passable(other) && next(other, &mut queues) {
+                    return Link::Joined;
                 }
             }
         }
@@ -369,12 +371,14 @@ pub(super) fn moves(
         );
     }
     // A via is a through via (issue #833): it takes the path to any other layer, the outer one
-    // first, so a board of two layers searches as it did.
+    // first, so a board of two layers searches as it did. On a board with blind and buried vias
+    // it is the via between the two layers, which needs room on its own layers only (issue
+    // #1015).
     let at = masks.at(i, j);
-    if dir != AFTER_VIA && !masks.via[at] {
+    if dir != AFTER_VIA {
         let cost = VIA + masks.pour.1 + masks.soft_via_cost(i, j) + masks.lane_via_cost(i, j);
         for other in (0..masks.layers()).filter(|&l| l != layer) {
-            if !masks.track[other][at] || open((i, j, other)) {
+            if masks.via_open(i, j, layer, other) && (!masks.track[other][at] || open((i, j, other))) {
                 relax((i, j, other), AFTER_VIA, cost);
             }
         }

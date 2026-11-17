@@ -81,6 +81,13 @@ pub struct Rules {
     /// fabricator charges for, so the router uses one only where a pad cannot be reached
     /// any other way.
     pub via_in_pad: bool,
+    /// The least hole and copper of a micro via, the laser-drilled blind via of an HDI process
+    /// (issue #1015), which the project file states for KiCad's check; `None` on any other
+    /// process, and then not written.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub microvia_drill: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub microvia_diameter: Option<f64>,
 }
 
 impl Rules {
@@ -172,6 +179,11 @@ impl Rules {
             mask_bridge: process.min_mask_bridge,
             plane_clearance: process.min_clearance.max(plane_hole),
             via_in_pad: process.via_in_pad >= via_diameter,
+            microvia_drill: process.hdi.as_ref().map(|h| h.min_laser_drill),
+            microvia_diameter: process
+                .hdi
+                .as_ref()
+                .map(|h| ((h.min_laser_drill + 2.0 * h.min_ring) * 1e9).round() / 1e9),
         })
     }
 
@@ -301,7 +313,20 @@ impl Rules {
                                 ("min_track_width", N(self.min_track_width)),
                                 ("min_via_annular_width", N(self.via_ring)),
                                 ("min_via_diameter", N(self.min_via_diameter)),
-                            ]),
+                            ]
+                            .into_iter()
+                            .chain(
+                                self.microvia_drill
+                                    .zip(self.microvia_diameter)
+                                    .into_iter()
+                                    .flat_map(|(drill, diameter)| {
+                                        [
+                                            ("min_microvia_diameter", N(diameter)),
+                                            ("min_microvia_drill", N(drill)),
+                                        ]
+                                    }),
+                            )
+                            .collect()),
                         ),
                         ("rule_severities", o(severities)),
                         ("track_widths", Array(vec![N(0.0), N(self.track_width)])),

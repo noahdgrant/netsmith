@@ -64,6 +64,9 @@ pub(crate) struct Hole {
     pub owner: Option<usize>,
     pub item: Item,
     pub at: Pt,
+    /// A blind or a buried via's first and last layer, as indices into [`Model::layers`];
+    /// `None` for a hole through the board (issue #1015).
+    pub span: Option<(usize, usize)>,
 }
 
 pub(crate) struct Model<'a> {
@@ -241,18 +244,21 @@ impl<'a> Model<'a> {
         for (i, via) in art.vias.iter().enumerate() {
             let shapes = vec![Shape::disc(via.at, via.diameter / 2.0)];
             via_item.push(items.len());
+            // A blind or a buried via is copper on its own layers only (issue #1015).
+            let (first, last) = via.span.unwrap_or((0, layers.len().saturating_sub(1)));
+            let name = |k: usize, or: &'static str| layers.get(k).map_or(or, String::as_str);
             items.push(Copper {
                 kind: Kind::Via(i),
                 net: via.net.clone(),
-                layers: (0..layers.len()).collect(),
+                layers: (0..layers.len()).filter(|&k| via.on(k)).collect(),
                 bounds: bounds_of(&shapes),
                 shapes,
                 item: Item {
                     what: format!(
                         "Via{} on {} - {}",
                         net_text(&via.net),
-                        layers.first().map(String::as_str).unwrap_or("F.Cu"),
-                        layers.last().map(String::as_str).unwrap_or("B.Cu")
+                        name(first, "F.Cu"),
+                        name(last, "B.Cu")
                     ),
                     at: via.at,
                     part: None,
@@ -450,6 +456,7 @@ impl<'a> Model<'a> {
                 owner,
                 item,
                 at: h.at,
+                span: h.span,
             });
         }
 

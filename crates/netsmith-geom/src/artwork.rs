@@ -11,8 +11,9 @@
 //! as well as one netsmith wrote. It reads every pad shape KiCad has, with the footprint's turn,
 //! drill, margins, zone connection and clearance, vias, tracks and arcs, zones with their rule
 //! areas and teardrops, drawings and text, the origin and the mask settings. What it cannot make it refuses
-//! with the pad, via or zone named: a pad with a `padstack`, a blind or buried via, a zone filled
-//! in hatch mode. A custom pad's curve is drawn as straight pieces, and the box and direction KiCad
+//! with the pad, via or zone named: a pad with a `padstack`, a via whose layers are not copper layers of
+//! the board, a zone filled in hatch mode. A blind or a buried via (KiCad's `blind` and `micro`,
+//! issue #1015) is read with the layers it ends on, and is copper on those and the layers between. A custom pad's curve is drawn as straight pieces, and the box and direction KiCad
 //! keeps for the pad's number are not copper.
 
 use crate::geom::{Arc, Pt};
@@ -200,6 +201,26 @@ pub struct Via {
     pub net: Option<String>,
     /// Whether solder mask covers the via on the front and on the back.
     pub tented: (bool, bool),
+    /// A blind or a buried via's first and last layer, as places in [`Artwork::copper`] (the upper
+    /// first); `None` for a through via (issue #1015).
+    pub span: Option<(usize, usize)>,
+    /// Whether it is KiCad's `micro` via, which an HDI process drills by laser.
+    pub micro: bool,
+}
+
+impl Via {
+    /// Whether its copper is on the copper layer at place `layer` of [`Artwork::copper`].
+    pub fn on(&self, layer: usize) -> bool {
+        self.span.is_none_or(|(a, b)| a <= layer && layer <= b)
+    }
+
+    /// Whether it and `other` share a copper layer, so that their holes meet in the board.
+    pub fn meets(&self, other: &Via) -> bool {
+        match (self.span, other.span) {
+            (Some((a0, a1)), Some((b0, b1))) => a0 <= b1 && b0 <= a1,
+            _ => true,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -398,6 +419,15 @@ impl Artwork {
     /// copper round it (a mounting hole whose pad is no larger than its drill), or it
     /// removes its unused inner layers and nothing of its net reaches it on this one
     /// (a track ending on the pad or a zone of the net over its centre).
+    /// Whether a via has copper on the copper layer named `layer`: a through via on every one,
+    /// a blind or buried via on its own (issue #1015).
+    pub fn via_on(&self, via: &Via, layer: &str) -> bool {
+        match self.copper.iter().position(|c| c == layer) {
+            Some(at) => via.on(at),
+            None => via.span.is_none(),
+        }
+    }
+
     pub fn pad_copper_on(&self, pad: &Pad, layer: &str) -> bool {
         if !pad.layers.iter().any(|l| l == layer) {
             return false;
@@ -754,17 +784,23 @@ impl<'a> Reader<'a> {
             .find("layers")
             .map(|l| l.items().iter().skip(1).filter_map(Sexp::text).collect())
             .unwrap_or_default();
-        let through = self.copper.first().map(String::as_str) == layers.first().copied()
-            && self.copper.last().map(String::as_str) == layers.last().copied();
         let kind = item.items().get(1).and_then(Sexp::text);
-        if !through || matches!(kind, Some("blind" | "micro")) {
+        let place = |l: &str| self.copper.iter().position(|c| c == l);
+        let ends = match layers.as_slice() {
+            [a, b] => place(a).zip(place(b)).filter(|(a, b)| a != b),
+            _ => None,
+        };
+        let Some((a, b)) = ends else {
             return Err(ArtworkError::Unsupported(format!(
-                "the via at ({}, {}) is not a through via (it runs {}): blind, buried and micro vias are not supported",
+                "the via at ({}, {}) runs {}, which are not two copper layers of the board",
                 at.x,
                 at.y,
                 layers.join(" to ")
             )));
-        }
+        };
+        let (a, b) = (a.min(b), a.max(b));
+        let through = a == 0 && b + 1 == self.copper.len();
+        let span = (!through).then_some((a, b));
         // A via's own `(tenting front back)` (or `none`) replaces the board's.
         let tent = |name: &str, board: bool| match item.find("tenting") {
             Some(t) => t.items().iter().skip(1).any(|a| a.text() == Some(name)),
@@ -779,6 +815,8 @@ impl<'a> Reader<'a> {
                 tent("front", self.out.tent_front),
                 tent("back", self.out.tent_back),
             ),
+            span,
+            micro: kind == Some("micro"),
         };
         self.out.vias.push(via);
         Ok(())
@@ -1836,14 +1874,22 @@ mod tests {
     }
 
     #[test]
-    fn a_blind_via_is_refused_with_its_place() {
+    fn a_blind_via_is_read_with_its_layers_and_one_on_no_layer_is_refused() {
+        // Issue #1015: a blind or buried via is copper on its own layers only.
         let src = BOARD.replace(
             "(via (at 5 6) (size 0.6) (drill 0.3) (layers \"F.Cu\" \"B.Cu\")",
-            "(via blind (at 5 6) (size 0.6) (drill 0.3) (layers \"F.Cu\" \"In1.Cu\")",
+            "(via micro (at 5 6) (size 0.6) (drill 0.3) (layers \"B.Cu\" \"F.Cu\")",
+        );
+        let a = Artwork::parse(&src).unwrap();
+        // Between the outer layers it is a through via, whatever its type says.
+        assert_eq!((a.vias[0].span, a.vias[0].micro), (None, true));
+        let src = BOARD.replace(
+            "(via (at 5 6) (size 0.6) (drill 0.3) (layers \"F.Cu\" \"B.Cu\")",
+            "(via blind (at 5 6) (size 0.6) (drill 0.3) (layers \"F.Cu\" \"In7.Cu\")",
         );
         let err = Artwork::parse(&src).unwrap_err().to_string();
         assert!(
-            err.contains("via at (5, 6)") && err.contains("F.Cu to In1.Cu"),
+            err.contains("via at (5, 6)") && err.contains("F.Cu to In7.Cu"),
             "{err}"
         );
     }

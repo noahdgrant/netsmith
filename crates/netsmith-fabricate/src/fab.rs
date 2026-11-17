@@ -2844,6 +2844,45 @@ pub fn drc_extras(board: &Board) -> netsmith_geom::DrcExtras {
                     .unwrap_or(board.process.stackup.thickness.1),
             ),
         }),
+        vias: Some(via_rules(board)),
+    }
+}
+
+/// The vias the board's process makes, for the `via_span` and `via_aspect_ratio` rules (issue
+/// #1015): the blind and buried spans of an HDI process, none of any other, and its aspect
+/// ratios against the board's build-up.
+fn via_rules(board: &Board) -> netsmith_geom::DrcViaRules {
+    let n = board.copper_count();
+    let spans = board
+        .via_offers()
+        .iter()
+        .filter_map(|o| {
+            let (a, b) = o.span?.positions(n);
+            Some((a, b, o.laser))
+        })
+        .collect();
+    let dielectrics = board
+        .process
+        .stackup
+        .inner
+        .as_ref()
+        .map(|i| i.dielectrics.iter().map(|d| d.thickness).collect())
+        .unwrap_or_default();
+    match &board.process.hdi {
+        Some(h) => netsmith_geom::DrcViaRules {
+            spans,
+            dielectrics,
+            min_laser_drill: h.min_laser_drill,
+            max_laser_drill: h.max_laser_drill,
+            min_ring: h.min_ring,
+            max_buried_drill: h.max_buried_drill,
+            max_laser_aspect: h.max_laser_aspect,
+            max_drill_aspect: h.max_drill_aspect,
+        },
+        None => netsmith_geom::DrcViaRules {
+            spans,
+            ..Default::default()
+        },
     }
 }
 

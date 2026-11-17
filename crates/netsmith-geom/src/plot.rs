@@ -199,7 +199,7 @@ fn copper(
     for pad in art.pads.iter().filter(|p| art.pad_copper_on(p, layer)) {
         pads::outline(pad).draw(g, Some(pad_function(pad)), &pad_attrs(pad));
     }
-    for via in &art.vias {
+    for via in art.vias.iter().filter(|v| art.via_on(v, layer)) {
         g.flash(
             Ap::Circle(via.diameter),
             Some("ViaPad"),
@@ -253,7 +253,17 @@ pub fn mask(
         }
     }
     let front = layer.starts_with('F');
-    for via in &art.vias {
+    // The outer copper of the face: a buried via has none to open the mask over.
+    let face = if front {
+        art.copper.first()
+    } else {
+        art.copper.last()
+    };
+    for via in art
+        .vias
+        .iter()
+        .filter(|v| face.is_none_or(|f| art.via_on(v, f)))
+    {
         let tented = if front { via.tented.0 } else { via.tented.1 };
         if !tented {
             g.flash(

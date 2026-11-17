@@ -256,7 +256,7 @@ pub(crate) fn fixed_copper(
     for v in &board.vias {
         fixed.list.push(Obstacle {
             net: net_index.get(v.net.as_str()).copied(),
-            layers: Layers::ALL,
+            layers: stack.via_layers(v),
             form: Form::Circle(v.at, v.diameter / 2.0),
             clearance: clearance(&v.net),
             copper: true,

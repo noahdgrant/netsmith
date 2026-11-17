@@ -126,7 +126,7 @@ impl<'a> Router<'a> {
             let vias = r
                 .vias
                 .iter()
-                .map(|v| (Form::Circle(v.at, v.diameter / 2.0), Layers::ALL));
+                .map(|v| (Form::Circle(v.at, v.diameter / 2.0), self.stack.via_layers(v)));
             let mut least = f64::MAX;
             for (f, layers) in tracks.chain(vias) {
                 for &(i, j, layer) in &path {

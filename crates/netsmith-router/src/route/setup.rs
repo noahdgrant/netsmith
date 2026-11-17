@@ -218,6 +218,7 @@ impl<'a> Router<'a> {
             &self.grid, window, self.board, &base, &own, routed, keepouts, net, reach,
         );
         m.turn = self.costs.turn;
+        m.spans = self.stack.spans.clone();
         if !soft.is_empty() || !soft_keepouts.is_empty() {
             // The cells only the soft copper keeps tracks and vias from.
             let mut counts = Counts::new(window, self.stack.len());
@@ -627,7 +628,7 @@ impl<'a> Router<'a> {
             for v in &r.vias {
                 list.push(Obstacle {
                     net,
-                    layers: Layers::ALL,
+                    layers: self.stack.via_layers(v),
                     form: Form::Circle(v.at, v.diameter / 2.0),
                     clearance,
                     copper: true,

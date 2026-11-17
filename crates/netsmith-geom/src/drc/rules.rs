@@ -24,6 +24,10 @@ pub struct Rules {
     pub via_diameter: f64,
     pub annular_width: f64,
     pub through_hole: f64,
+    /// The least hole and copper of a micro via, if the project states them (an HDI process,
+    /// issue #1015): a micro via is held to them instead of `through_hole` and `via_diameter`.
+    pub microvia_drill: Option<f64>,
+    pub microvia_diameter: Option<f64>,
     pub hole_to_hole: f64,
     pub hole_clearance: f64,
     pub copper_edge: f64,
@@ -50,6 +54,8 @@ impl Default for Rules {
             via_diameter: 0.5,
             annular_width: 0.1,
             through_hole: 0.3,
+            microvia_drill: None,
+            microvia_diameter: None,
             hole_to_hole: 0.25,
             hole_clearance: 0.25,
             copper_edge: 0.5,
@@ -84,6 +90,8 @@ impl Rules {
         set(&mut r.via_diameter, "min_via_diameter");
         set(&mut r.annular_width, "min_via_annular_width");
         set(&mut r.through_hole, "min_through_hole_diameter");
+        r.microvia_drill = num("min_microvia_drill");
+        r.microvia_diameter = num("min_microvia_diameter");
         set(&mut r.hole_to_hole, "min_hole_to_hole");
         set(&mut r.hole_clearance, "min_hole_clearance");
         set(&mut r.copper_edge, "min_copper_edge_clearance");

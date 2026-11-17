@@ -212,6 +212,27 @@ pub fn four_layer_signal_process() -> netsmith_core::Process {
     )
 }
 
+/// JLCPCB's `HdiSixLayer` (issue #1015) with the build-up `netsmith_pcb::HDI_SIX_BUILD_UP` states:
+/// its first and last inner layers signal layers, GND and 3V3 planes between them, and each of
+/// `narrowings` (`.hdi_order &= 2`).
+pub fn hdi_six_layer_process(narrowings: &[&str]) -> netsmith_core::Process {
+    let body: String = netsmith_pcb::HDI_SIX_BUILD_UP
+        .iter()
+        .chain(&[
+            ".inner1.use &= \"signal\"",
+            ".inner2.net &= \"GND\"",
+            ".inner3.net &= \"3V3\"",
+            ".inner4.use &= \"signal\"",
+        ])
+        .chain(narrowings)
+        .map(|n| format!("        {n}\n"))
+        .collect();
+    let source = format!(
+        "import std::mfg::jlcpcb::HdiSixLayer\nimport std::parts::passive::Resistor\nboard T {{\n    .process: HdiSixLayer {{\n{body}    }}\n    .r: Resistor {{\n        .a.net &= \"GND\"\n        .b.net &= \"3V3\"\n    }}\n}}\n"
+    );
+    process_of(&source)
+}
+
 /// ACME's `TenLayer` (a fictional fabricator, ADR 0112): GND on the first inner layer, 3V3 on the
 /// last, and signal layers between them.
 pub fn ten_layer_process() -> netsmith_core::Process {
