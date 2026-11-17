@@ -17,7 +17,8 @@ pub struct Args {
     pub layer: Show,
     /// Only this region: `X,Y,W,H` in mm from the outline's top left corner (the frame of the layout and routes files).
     ///
-    /// With none, everything the layer draws, with a millimetre round it.
+    /// With none, the box of the outline's centrelines and of what the layer's other files draw,
+    /// with a millimetre round it: for a board netsmith made, the region `view pcb` draws.
     #[arg(long, value_name = "X,Y,W,H", value_parser = parse_region)]
     pub region: Option<[f64; 4]>,
     /// The PNG's pixels a millimetre (default 20, fewer for a picture longer than 8192 pixels).

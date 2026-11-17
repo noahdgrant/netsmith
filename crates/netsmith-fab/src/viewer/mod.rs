@@ -28,7 +28,12 @@
 //! use: millimetres from the top left corner of the outline, y down. The corner is the box of
 //! the outline file's centrelines (its strokes' paths, not their outer edges); with no outline
 //! file it is the corner of everything drawn. Extents and regions are in this frame, and the
-//! [`Origin`] says where its zero is in the files' coordinates.
+//! [`Origin`] says where its zero is in the files' coordinates. It is `view pcb`'s frame too:
+//! the two draw the same region at the same scale as pictures of the same size, the bottom
+//! turned over the same way (about the middle of the region), and with no region both draw the
+//! outline with a millimetre round it, so the picture of the files and the picture of the board
+//! model can be compared pixel for pixel (issue #1142, `netsmith_fabricate::gerber_compare`).
+//! [`COPPER_COLOURS`] and [`HOLE_COLOURS`] tell a reader of the drawing its copper.
 //!
 //! **Polarity.** The objects of a file are combined in order as its polarity says (`%LPD` adds,
 //! `%LPC` takes away), exactly, with polygon operations ([`shapes`]), so a layer drawn over
@@ -47,7 +52,9 @@ use std::io::Read as _;
 use std::path::Path;
 
 pub use crate::raster::Facts;
-pub use draw::{Drawing, PNG_LONGEST, PNG_PER_MM, Show, ViewError, draw, png};
+pub use draw::{
+    COPPER_COLOURS, Drawing, HOLE_COLOURS, PNG_LONGEST, PNG_PER_MM, Show, ViewError, draw, png,
+};
 pub use identify::{Face, Function, Layer, identify};
 pub use shapes::Area;
 pub use summary::{Board, Extent, FileSummary, HoleSize, OriginSummary, Skipped, Summary, Unread};
