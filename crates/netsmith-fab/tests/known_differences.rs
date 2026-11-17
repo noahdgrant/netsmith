@@ -69,9 +69,13 @@ fn a_pad_margin_that_kicad_9_0_0_drops_on_the_back_is_named_and_does_not_fail() 
         assert!(!note.contains("J1.1") && !note.contains("R1.2"), "{note}");
     } else {
         // A release that reads the margin for both faces needs no allowance, and none is made.
-        // Its back mask differs by 0.13% of the pixels on 9.0.8 (issue #104), inside the
-        // cross-check's own limits, which `back.ok` and `report.ok()` apply.
-        assert!(back.ok, "{report}");
+        // Its back mask differs by 0.13% of the pixels on 9.0.8 (issue #104): the corners of
+        // R1.1, a rounded rectangle with a margin, which KiCad's Gerber plot gives the radius
+        // of the grown pad's corner ratio (0.30 mm) and netsmith the pad's plus the margin
+        // (0.35 mm); see the known differences of `netsmith_fab::crosscheck`, where a unit test
+        // reproduces the 44 pixels. Nothing else differs, so a quarter of the cross-check's
+        // limit is asked for.
+        assert!(back.ok && back.pixels < 0.0025, "{report}");
         assert!(report.notes.is_empty(), "KiCad {version}: {report}");
     }
 }

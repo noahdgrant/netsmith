@@ -62,7 +62,7 @@
 //! reproduced on an invented board (`tests/data/known_differences.kicad_pcb`,
 //! `tests/known_differences.rs`) and decided from KiCad's source and manual and the board
 //! house's capabilities. A new difference of a release that has no entry here still fails the
-//! check; an entry is added, with its evidence, when one is understood. Two so far:
+//! check; an entry is added, with its evidence, when one is understood. Three so far:
 //!
 //! - *Thermal spokes of a round pad: netsmith was wrong, and now follows KiCad* (see
 //!   [`crate::fill`]).
@@ -86,6 +86,25 @@
 //!   by netsmith's writer, so the layer still has to agree with KiCad's in every other respect at
 //!   the same limits (a unit test shows that the copy and the real mask differ by more than the
 //!   limits, so the allowance does not pass a wrong mask).
+//! - *The corners of a rounded rectangle with a mask margin, in KiCad's Gerber plot: KiCad is
+//!   kept apart from, netsmith follows its own model.* On the board above the back mask differs
+//!   by 0.13% of the pixels on KiCad 9.0.8 (34765 lit pixels of netsmith's against 34809 of
+//!   KiCad's, issue #104), the front by none, because R1.1 is the board's only rounded
+//!   rectangle with a margin and it is on the back. netsmith opens a rounded rectangle by the
+//!   margin as a geometric offset, so its corner radius is the pad's plus the margin (0.25 mm
+//!   of a 1 by 1.2 mm pad and 0.1 mm of margin: 0.35 mm). KiCad's Gerber plotter
+//!   (`PlotStandardLayer` in `pcbnew/plot_board_layers.cpp`, case `ROUNDRECT`, tag 9.0.8) grows
+//!   the pad's size by the margin and then restores the corner *ratio*, so the radius is
+//!   0.25 of the grown short side (0.30 mm): squarer corners, 4 x (1 - pi/4) x (0.35^2 -
+//!   0.30^2) = 0.028 mm^2, which is 44.6 pixels at 40 pixels per millimetre. A margin on a
+//!   rectangle agrees (KiCad sets the radius to the margin there), as do a circle and an oval.
+//!   KiCad's own model of the opening, `PAD::TransformShapeToPolygon` with the margin as its
+//!   clearance (the board view and the checks of KiCad), is the offset netsmith draws, so the
+//!   plot is the exception. The factory is not affected (a corner of 0.05 mm of radius), and
+//!   netsmith's opening, its mask check (`solder_mask_bridge`) and its view of the board stay one
+//!   shape, so the files are kept and no allowance is made: the difference is far inside the
+//!   cross-check's limits, and a unit test reproduces KiCad's 44 pixels without KiCad (the
+//!   opening drawn with KiCad's radius), so a larger difference still fails.
 
 use crate::cpl;
 use crate::kicad::{CliError, KicadCli, Output};
@@ -932,6 +951,40 @@ mod tests {
         // ...and the copy agrees with itself, so what is left out is only that margin.
         let same = compare_layer("b-B_Mask.gbr", "exact", &quirk, &quirk, &limits).unwrap();
         assert!(same.ok && same.pixels == 0.0, "{same:?}");
+    }
+
+    /// The back mask of `MARGINS` with R1.1's opening drawn as KiCad's Gerber plotter draws a
+    /// rounded rectangle with a margin: the pad's size grown, then the corner ratio taken of the
+    /// grown size (`PlotStandardLayer`, `ROUNDRECT`, KiCad 9.0.8), which is a pad of 1.2 by 1.4
+    /// with a ratio of 0.25 and no margin of its own, a corner radius of 0.30 mm. netsmith's
+    /// opening has the radius of the pad's, 0.25 mm, plus the margin, 0.1 mm: 0.35 mm.
+    #[test]
+    fn the_back_mask_of_kicad_9_0_8_differs_by_the_corners_of_one_rounded_rectangle() {
+        let own = MARGINS.replace(
+            "(size 1 1.2) (layers \"B.Cu\" \"B.Mask\" \"B.Paste\") (roundrect_rratio 0.25) (net 2 \"SIG\") (solder_mask_margin 0.1)",
+            "(size 1.2 1.4) (layers \"B.Cu\" \"B.Mask\" \"B.Paste\") (roundrect_rratio 0.25) (net 2 \"SIG\")",
+        );
+        assert_ne!(own, MARGINS, "the pad was found");
+        let mask = |src: &str| {
+            let art = netsmith_geom::Artwork::parse(src).unwrap();
+            let files = netsmith_geom::plot_layer(&art, "b", &netsmith_geom::PlotRules::default())
+                .unwrap()
+                .files;
+            let edge = find_by(&files, "-Edge_Cuts.gbr");
+            let view = raster::gerber_extent(&String::from_utf8_lossy(&edge.bytes))
+                .unwrap()
+                .grow(1.0);
+            let m = find_by(&files, "-B_Mask.gbr");
+            raster::render_gerber(&String::from_utf8_lossy(&m.bytes), &view, 40.0).unwrap()
+        };
+        let (ours, kicads) = (mask(MARGINS), mask(&own));
+        // Four corners, each (1 - pi/4) * (0.35^2 - 0.30^2) mm^2 more in KiCad's, at 40 pixels
+        // per millimetre: 44.6 pixels. The `kicad` job measured 44 (34765 lit against 34809).
+        let more = kicads.lit() as i64 - ours.lit() as i64;
+        assert!((40..=48).contains(&more), "{more} more pixels");
+        let diff =
+            compare_layer("b-B_Mask.gbr", "exact", &ours, &kicads, &Limits::default()).unwrap();
+        assert!(diff.ok && diff.pixels < 0.002, "{diff:?}");
     }
 
     #[test]
