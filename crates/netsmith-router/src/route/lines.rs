@@ -441,8 +441,8 @@ impl<'a> Router<'a> {
                     })
                     .collect()
             };
-            // The plan is of the outer layers: an inner layer costs nothing off it.
-            let off = vec![cost(FRONT), cost(BACK)];
+            // The plan is of every layer of the stack (issue #1015).
+            let off: Vec<Vec<i64>> = (0..plan.tiles.layers).map(cost).collect();
             if off.iter().flatten().any(|&c| c > 0) {
                 masks.off_plan = Some(off);
             }

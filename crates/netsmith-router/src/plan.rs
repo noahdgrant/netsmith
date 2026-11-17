@@ -179,11 +179,13 @@ pub(crate) struct Tiles {
     pub(crate) cells: usize,
     pub(crate) nx: usize,
     pub(crate) ny: usize,
+    /// How many layers the plan is on: the router's stack, the outer layers first (issue #1015).
+    pub(crate) layers: usize,
     /// How many tracks cross each edge to the next tile in x, by layer: the edge of tile
     /// `(a, b)` and `(a + 1, b)` at `b * nx + a`.
-    pub(crate) across_x: [Vec<u32>; 2],
+    pub(crate) across_x: Vec<Vec<u32>>,
     /// The same in y: the edge of `(a, b)` and `(a, b + 1)` at `b * nx + a`.
-    pub(crate) across_y: [Vec<u32>; 2],
+    pub(crate) across_y: Vec<Vec<u32>>,
     /// How many vias each tile holds.
     pub(crate) vias: Vec<u32>,
 }
@@ -204,7 +206,7 @@ impl Tiles {
     pub(crate) fn measure(
         k: usize,
         (cells_x, cells_y): (usize, usize),
-        track_open: [&[bool]; 2],
+        track_open: &[&[bool]],
         via_open: &[bool],
         track_pitch: f64,
         via_pitch: f64,
@@ -231,9 +233,10 @@ impl Tiles {
             }
             total + close(run)
         };
-        let mut across_x = [vec![0; nx * ny], vec![0; nx * ny]];
-        let mut across_y = [vec![0; nx * ny], vec![0; nx * ny]];
-        for layer in [0, 1] {
+        let layers = track_open.len();
+        let mut across_x = vec![vec![0; nx * ny]; layers];
+        let mut across_y = vec![vec![0; nx * ny]; layers];
+        for layer in 0..layers {
             let open = track_open[layer];
             for b in 0..ny {
                 for a in 0..nx {
@@ -273,6 +276,7 @@ impl Tiles {
             cells: k,
             nx,
             ny,
+            layers,
             across_x,
             across_y,
             vias,
@@ -291,8 +295,8 @@ impl Tiles {
         let n = self.nx * self.ny;
         match u {
             Use::X(layer, e) => layer * n + e,
-            Use::Y(layer, e) => (2 + layer) * n + e,
-            Use::Via(t) => 4 * n + t,
+            Use::Y(layer, e) => (self.layers + layer) * n + e,
+            Use::Via(t) => 2 * self.layers * n + t,
         }
     }
 
@@ -323,7 +327,7 @@ impl Tiles {
     }
 
     fn uses(&self) -> usize {
-        5 * self.nx * self.ny
+        (2 * self.layers + 1) * self.nx * self.ny
     }
 
     /// The resource a move from one node to a neighbour takes, and what it costs before
@@ -368,7 +372,7 @@ impl Plan {
     /// How full each tile is on each layer: the most of its four edges' planned tracks over
     /// their capacity (an edge no track crosses is empty, and one with no room that a track
     /// crosses counts as twice full), row by row.
-    pub(crate) fn fill(&self, tiles: &Tiles) -> [Vec<f64>; 2] {
+    pub(crate) fn fill(&self, tiles: &Tiles) -> Vec<Vec<f64>> {
         let (nx, ny) = (tiles.nx, tiles.ny);
         let ratio = |u: Use| -> f64 {
             let used = self.occupied[tiles.index(u)];
@@ -399,7 +403,7 @@ impl Plan {
                 })
                 .collect()
         };
-        [layer(0), layer(1)]
+        (0..tiles.layers).map(layer).collect()
     }
 }
 
@@ -559,14 +563,14 @@ pub(crate) fn negotiate(tiles: &Tiles, ends: &[Option<Ends>], order: &[usize]) -
     let n = tiles.uses();
     let tiles_n = tiles.nx * tiles.ny;
     let mut history = vec![0u64; n];
-    let mut cross_history = vec![0u64; 2 * tiles_n];
+    let mut cross_history = vec![0u64; tiles.layers * tiles_n];
     let mut paths: Vec<Option<Vec<Node>>> = vec![None; ends.len()];
     let mut best: Option<Plan> = None;
     let mut present = PRESENT_START;
     for round in 1..=ROUNDS {
         let mut occupied = vec![0u32; n];
         let mut taken: Vec<Vec<usize>> = vec![Vec::new(); n * MOST_SLOTS];
-        let mut chords: Vec<Vec<Chord>> = vec![Vec::new(); 2 * tiles_n];
+        let mut chords: Vec<Vec<Chord>> = vec![Vec::new(); tiles.layers * tiles_n];
         for &line in order {
             let Some(e) = &ends[line] else { continue };
             let congestion = Congestion {
@@ -644,9 +648,9 @@ pub(crate) fn negotiate(tiles: &Tiles, ends: &[Option<Ends>], order: &[usize]) -
 
 fn all_uses(tiles: &Tiles) -> impl Iterator<Item = Use> + '_ {
     let n = tiles.nx * tiles.ny;
-    (0..2)
+    (0..tiles.layers)
         .flat_map(move |l| (0..n).map(move |e| Use::X(l, e)))
-        .chain((0..2).flat_map(move |l| (0..n).map(move |e| Use::Y(l, e))))
+        .chain((0..tiles.layers).flat_map(move |l| (0..n).map(move |e| Use::Y(l, e))))
         .chain((0..n).map(Use::Via))
 }
 
@@ -719,7 +723,7 @@ fn search(tiles: &Tiles, ends: &Ends, congestion: &Congestion) -> Steps {
             .filter(|c| c.net != ends.net && way.crosses(c))
             .count()
     };
-    let states = 2 * tiles_n * RIMS;
+    let states = tiles.layers * tiles_n * RIMS;
     let mut cost = vec![u64::MAX; states];
     let mut came = vec![usize::MAX; states];
     let mut done = vec![false; states];
@@ -785,9 +789,12 @@ fn search(tiles: &Tiles, ends: &Ends, congestion: &Congestion) -> Steps {
                 relax(to, enter, c, &mut queue);
             }
         }
-        let to = (a, b, 1 - l);
-        let c = so_far + cost_of(Use::Via(b * nx + a), VIA_COST) + off_line(to);
-        relax(to, Rim::Inside, c, &mut queue);
+        // A via to each other layer, the outer one first (a through via, issue #1015).
+        for m in (0..tiles.layers).filter(|&m| m != l) {
+            let to = (a, b, m);
+            let c = so_far + cost_of(Use::Via(b * nx + a), VIA_COST) + off_line(to);
+            relax(to, Rim::Inside, c, &mut queue);
+        }
     }
     // The graph is connected, so this is not reached; an end with no way is planned as itself.
     ends.from
@@ -800,11 +807,13 @@ fn search(tiles: &Tiles, ends: &Ends, congestion: &Congestion) -> Steps {
 /// The tiles of a line's corridor on each layer, row by row: those of its plan grown by `grow`
 /// tiles each way, on the layer the plan takes there (both layers in a tile where it changes
 /// layer) if `layered`, else on both (see the module's header).
-pub(crate) fn corridor(tiles: &Tiles, path: &[Node], grow: usize, layered: bool) -> [Vec<bool>; 2] {
-    let mut inside = [
-        vec![false; tiles.nx * tiles.ny],
-        vec![false; tiles.nx * tiles.ny],
-    ];
+pub(crate) fn corridor(
+    tiles: &Tiles,
+    path: &[Node],
+    grow: usize,
+    layered: bool,
+) -> Vec<Vec<bool>> {
+    let mut inside = vec![vec![false; tiles.nx * tiles.ny]; tiles.layers];
     for &(a, b, l) in path {
         for d in b.saturating_sub(grow)..=(b + grow).min(tiles.ny - 1) {
             for c in a.saturating_sub(grow)..=(a + grow).min(tiles.nx - 1) {
@@ -833,7 +842,7 @@ mod tests {
         // Two tiles side by side, 20 by 10 cells. Track pitch 2 cells (0.2 mm): an open edge of
         // 10 cells holds (10 - 1) / 2 + 1 = 5 tracks.
         let all = open(20, 10);
-        let t = Tiles::measure(10, (20, 10), [&all, &all], &all, 2.0, 5.0);
+        let t = Tiles::measure(10, (20, 10), &[&all, &all], &all, 2.0, 5.0);
         assert_eq!((t.nx, t.ny), (2, 1));
         assert_eq!(t.across_x[0][0], 5);
         // 100 cells for vias at 5 cells a via: 4 vias.
@@ -845,7 +854,7 @@ mod tests {
         for j in 3..7 {
             front[j * 20 + 10] = false;
         }
-        let t = Tiles::measure(10, (20, 10), [&front, &all], &all, 2.0, 5.0);
+        let t = Tiles::measure(10, (20, 10), &[&front, &all], &all, 2.0, 5.0);
         assert_eq!(t.across_x[0][0], 4);
         assert_eq!(t.across_x[1][0], 5);
 
@@ -854,8 +863,37 @@ mod tests {
         for j in 0..10 {
             wall[j * 20 + 10] = false;
         }
-        let t = Tiles::measure(10, (20, 10), [&wall, &wall], &all, 2.0, 5.0);
+        let t = Tiles::measure(10, (20, 10), &[&wall, &wall], &all, 2.0, 5.0);
         assert_eq!(t.across_x, [vec![0, 0], vec![0, 0]]);
+    }
+
+    #[test]
+    fn a_line_walled_off_on_the_outer_layers_is_planned_through_an_inner_one() {
+        // Issue #1015: the plan is on every layer of the router's stack. Two tiles side by side
+        // whose edge is walled on the two outer layers and open on the third, an inner signal
+        // layer: the line from the front of one to the front of the other goes down a via,
+        // across on the inner layer and up a via.
+        let all = open(20, 10);
+        let mut wall = open(20, 10);
+        for j in 0..10 {
+            wall[j * 20 + 10] = false;
+        }
+        let t = Tiles::measure(10, (20, 10), &[&wall, &wall, &all], &all, 2.0, 5.0);
+        assert_eq!(t.layers, 3);
+        assert_eq!((t.across_x[0][0], t.across_x[2][0]), (0, 5));
+        let line = Some(Ends {
+            from: vec![(0, 0, 0)],
+            to: vec![(1, 0, 0)],
+            net: 0,
+        });
+        let plan = negotiate(&t, &[line], &[0]);
+        assert_eq!(plan.overuse, 0);
+        assert_eq!(
+            plan.paths[0].as_deref(),
+            Some(&[(0, 0, 0), (0, 0, 2), (1, 0, 2), (1, 0, 0)][..])
+        );
+        assert_eq!(plan.fill(&t).len(), 3);
+        assert_eq!(corridor(&t, plan.paths[0].as_ref().unwrap(), 0, false).len(), 3);
     }
 
     #[test]
@@ -864,11 +902,12 @@ mod tests {
         // and the back layer is closed, so one of two lines from column 0 to column 2 must use
         // the other row.
         let tiles = Tiles {
+            layers: 2,
             cells: 10,
             nx: 3,
             ny: 2,
-            across_x: [vec![1, 1, 0, 1, 1, 0], vec![0; 6]],
-            across_y: [vec![5, 5, 5, 0, 0, 0], vec![0; 6]],
+            across_x: vec![vec![1, 1, 0, 1, 1, 0], vec![0; 6]],
+            across_y: vec![vec![5, 5, 5, 0, 0, 0], vec![0; 6]],
             vias: vec![0; 6],
         };
         let line = || {
@@ -897,11 +936,12 @@ mod tests {
     /// A grid of `n` by `n` tiles with room for many tracks on every edge and many vias.
     fn roomy(n: usize) -> Tiles {
         Tiles {
+            layers: 2,
             cells: 10,
             nx: n,
             ny: n,
-            across_x: [vec![8; n * n], vec![8; n * n]],
-            across_y: [vec![8; n * n], vec![8; n * n]],
+            across_x: vec![vec![8; n * n], vec![8; n * n]],
+            across_y: vec![vec![8; n * n], vec![8; n * n]],
             vias: vec![8; n * n],
         }
     }
@@ -989,11 +1029,12 @@ mod tests {
         // Two tiles side by side whose edge holds two tracks on the front and none on the back;
         // two lines cross it on the front.
         let tiles = Tiles {
+            layers: 2,
             cells: 10,
             nx: 2,
             ny: 1,
-            across_x: [vec![2, 0], vec![0, 0]],
-            across_y: [vec![0, 0], vec![0, 0]],
+            across_x: vec![vec![2, 0], vec![0, 0]],
+            across_y: vec![vec![0, 0], vec![0, 0]],
             vias: vec![0, 0],
         };
         let line = || {
@@ -1024,14 +1065,17 @@ mod tests {
     #[test]
     fn a_corridor_is_the_plan_grown_by_one_tile() {
         let tiles = Tiles {
+            layers: 2,
             cells: 10,
             nx: 5,
             ny: 3,
-            across_x: [vec![1; 15], vec![1; 15]],
-            across_y: [vec![1; 15], vec![1; 15]],
+            across_x: vec![vec![1; 15], vec![1; 15]],
+            across_y: vec![vec![1; 15], vec![1; 15]],
             vias: vec![1; 15],
         };
-        let [inside, back] = corridor(&tiles, &[(0, 0, 0), (1, 0, 1)], 1, false);
+        let [inside, back] = &corridor(&tiles, &[(0, 0, 0), (1, 0, 1)], 1, false)[..] else {
+            unreachable!()
+        };
         assert_eq!(inside, back);
         let row = |b: usize| inside[b * 5..b * 5 + 5].to_vec();
         assert_eq!(row(0), vec![true, true, true, false, false]);
@@ -1040,7 +1084,9 @@ mod tests {
         // On the plan's layer: the front where it runs on the front, the back where it runs on
         // the back, and both in the tile where it changes layer.
         let path = [(0, 0, 0), (1, 0, 0), (1, 0, 1), (2, 0, 1)];
-        let [front, back] = corridor(&tiles, &path, 0, true);
+        let [front, back] = &corridor(&tiles, &path, 0, true)[..] else {
+            unreachable!()
+        };
         assert_eq!(front[..5], [true, true, false, false, false]);
         assert_eq!(back[..5], [false, true, true, false, false]);
     }

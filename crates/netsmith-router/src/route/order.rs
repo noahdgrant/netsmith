@@ -40,11 +40,9 @@ impl<'a> Router<'a> {
             .clone();
         let counts = &base.counts;
         let open = |c: &Vec<u16>| c.iter().map(|&n| n == 0).collect::<Vec<bool>>();
-        let (mut front, mut back, via) = (
-            open(&counts.track[FRONT]),
-            open(&counts.track[BACK]),
-            open(&counts.via),
-        );
+        // Every layer of the stack: the outer layers, then the inner signal layers (issue #1015).
+        let mut track: Vec<Vec<bool>> = counts.track.iter().map(open).collect();
+        let via = open(&counts.via);
         // A pad is a way across a tile's edge for the line of its net that ends in it: the
         // cells of a pad's copper count as open for tracks.
         for o in self.fixed.list.iter().filter(|o| o.net.is_some()) {
@@ -52,11 +50,10 @@ impl<'a> Router<'a> {
             for (i, j) in self.grid.cells_near(&whole, &o.form.bounds(), 0.0) {
                 if o.form.distance(self.grid.centre(i, j)) <= 1e-9 {
                     let at = j * self.grid.nx + i;
-                    if o.layers[FRONT] {
-                        front[at] = true;
-                    }
-                    if o.layers[BACK] {
-                        back[at] = true;
+                    for (layer, open) in track.iter_mut().enumerate() {
+                        if o.layers[layer] {
+                            open[at] = true;
+                        }
                     }
                 }
             }
@@ -67,7 +64,7 @@ impl<'a> Router<'a> {
         let tiles = crate::plan::Tiles::measure(
             tile_cells,
             (self.grid.nx, self.grid.ny),
-            [&front, &back],
+            &track.iter().map(Vec::as_slice).collect::<Vec<&[bool]>>(),
             &via,
             (width + rules.clearance) / PITCH,
             via_pitch,
@@ -123,7 +120,7 @@ impl<'a> Router<'a> {
         // the pour joins anyway, or a net of a diff pair, which runs beside its partner (S9)
         // and which any cost moves off it.
         let poured = |l: usize| self.board.pours.iter().any(|p| p.net == self.lines[l].net);
-        let corridors: Vec<Option<[Vec<bool>; 2]>> = plan
+        let corridors: Vec<Option<Vec<Vec<bool>>>> = plan
             .paths
             .iter()
             .enumerate()
