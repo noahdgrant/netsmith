@@ -33,6 +33,7 @@ mod render;
 mod route;
 mod routes;
 mod schematic;
+mod schematic_layout;
 mod swap;
 mod system;
 mod view;
@@ -66,6 +67,8 @@ pub enum Command {
     Layout(layout::Args),
     /// Fix copper of a board in its routes file: import it from KiCad, add, delete, lock, show.
     Routes(routes::Args),
+    /// Show, set or check the entries of the schematic layout file (how the schematic is arranged), and arrange its sheets.
+    Schematic(schematic_layout::Args),
     /// Look at a board: draw it in 3D, serve the editor, drive the editor's 3D view.
     #[command(subcommand)]
     View(View),
@@ -191,6 +194,7 @@ pub fn run(command: Command) -> ExitCode {
         },
         Command::Layout(args) => layout::run(args),
         Command::Routes(args) => routes::run(args),
+        Command::Schematic(args) => schematic_layout::run(args),
         Command::View(command) => match command {
             View::ThreeD(args) => render::run(args),
             View::Editor(args) => editor::run(args),

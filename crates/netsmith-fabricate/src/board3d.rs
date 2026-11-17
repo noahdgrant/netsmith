@@ -1233,6 +1233,8 @@ fn scene_with(built: &Built, board: &Board, found: Vec<String>) -> Scene {
 /// by the one path.
 pub struct Placed<'a> {
     pub name: &'a str,
+    /// The source file on disk: the files beside it (the schematic layout file) are found from it.
+    pub source: &'a std::path::Path,
     pub text: &'a str,
     pub loader: &'a netsmith_check::Loader,
     pub catalogs: &'a netsmith_solve::Catalogs,
@@ -1358,6 +1360,15 @@ impl Placed<'_> {
     /// `then` of the board picked, checked, solved and designed but not placed: what a command
     /// that reads or writes the layout file needs, in milliseconds. The layout file is not read.
     pub fn with_built<T>(&self, then: impl FnOnce(&Built) -> T) -> Result<T, String> {
+        self.with_built_in_source(|built, _| then(built))
+    }
+
+    /// [`Placed::with_built`], and the names of all the boards of the source file (by definition
+    /// name, as a table of the schematic layout file names its board).
+    pub fn with_built_in_source<T>(
+        &self,
+        then: impl FnOnce(&Built, &[String]) -> T,
+    ) -> Result<T, String> {
         let outcome = netsmith_pipeline::outcome_with(
             self.name,
             self.text,
@@ -1367,7 +1378,12 @@ impl Placed<'_> {
         )
         .map_err(|problems| netsmith_pipeline::render_problems(&problems))?;
         let labels: Vec<String> = outcome.boards.iter().map(Built::label).collect();
-        pick_board(&outcome.boards, self.name, self.board, &labels).map(then)
+        let names: Vec<String> = outcome
+            .boards
+            .iter()
+            .map(|b| b.design.name.clone())
+            .collect();
+        pick_board(&outcome.boards, self.name, self.board, &labels).map(|built| then(built, &names))
     }
 
     /// [`scene_and_label`]: the scene and the board's label.

@@ -338,6 +338,7 @@ pub(super) fn with_placed_board<T>(
         })?;
         let placed = netsmith_fabricate::board3d::Placed {
             name: &source.name,
+            source: &source.path,
             text: &text,
             loader: &loader,
             catalogs: held.as_ref().unwrap_or(&catalogs),
@@ -521,8 +522,8 @@ pub(crate) mod testing {
     use crate::commands::{
         Board, Command, Dev, Import, Project, View, board3d, bom, build, case, catalog, check,
         common, compare, copper, drc, dxf, editor, explain, fab, init, kicad_libs, layout, lock,
-        order, panel, parity, part, pins, port, power, render, route, routes, schematic, swap,
-        system, view,
+        order, panel, parity, part, pins, port, power, render, route, routes, schematic,
+        schematic_layout, swap, system, view,
     };
 
     /// The command line as main.rs has it.
@@ -556,6 +557,7 @@ pub(crate) mod testing {
         Copper(copper::Args),
         Layout(layout::Args),
         Routes(routes::Args),
+        SchematicLayout(schematic_layout::Args),
         Render(render::Args),
         Editor(editor::Args),
         View(view::Args),
@@ -597,6 +599,7 @@ pub(crate) mod testing {
                 },
                 Command::Layout(a) => Leaf::Layout(a),
                 Command::Routes(a) => Leaf::Routes(a),
+                Command::Schematic(a) => Leaf::SchematicLayout(a),
                 Command::View(c) => match c {
                     View::ThreeD(a) => Leaf::Render(a),
                     View::Editor(a) => Leaf::Editor(a),

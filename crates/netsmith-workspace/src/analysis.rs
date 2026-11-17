@@ -996,6 +996,28 @@ impl Workspace {
 
 pub use netsmith_fabricate::schematic::{module_groups, must_connect, rails_of, schematic_layout};
 
+/// The layout the schematic view draws for `built` with the entries of the schematic layout file
+/// that match it (`resolved`, from `LayoutHints::resolve` with the same `groups`), and a finding
+/// for each entry the drawing could not honour. The editor's analysis and `netsmith schematic`
+/// draw with this one call (issue #1093).
+pub fn hinted_layout(
+    built: &Built,
+    groups: &[netsmith_view::Group],
+    libraries: &Libraries,
+    resolved: &netsmith_view::ResolvedHints,
+) -> Result<(netsmith_view::Layout, Vec<netsmith_view::HintFinding>), String> {
+    netsmith_view::layout_sheets_hinted_findings(
+        &built.design,
+        groups,
+        &rails_of(built),
+        &must_connect(built),
+        resolved,
+        &libraries.mapping,
+        &libraries.symbols,
+    )
+    .map_err(|e| e.to_string())
+}
+
 pub(super) use netsmith_pipeline::power::api_location;
 
 /// A note of the build, at the instance it is about if it names one. A part not chosen is a

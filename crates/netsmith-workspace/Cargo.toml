@@ -29,6 +29,7 @@ netsmith-quantity = { path = "../netsmith-quantity" }
 netsmith-router = { path = "../netsmith-router" }
 netsmith-solve = { path = "../netsmith-solve" }
 netsmith-view = { path = "../netsmith-view" }
+serde = { version = "1.0.229", features = ["derive"] }
 serde_json = { version = "1.0.154", features = ["float_roundtrip"] }
 
 [dev-dependencies]
