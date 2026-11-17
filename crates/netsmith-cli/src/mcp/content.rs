@@ -2,13 +2,17 @@
 //! `netsmith://project/<path from the project's root>`, and the language guide this netsmith
 //! writes into a project, as `netsmith://guide/LANGUAGE.md` and `netsmith://guide/language/
 //! NN-topic.md` (the paths it has under `docs/netsmith/`, so the index's links resolve). The
-//! prompts are the skills `project init` writes, one for each, whose text is the skill's.
+//! prompts are the skills `project init` writes, one for each, whose text is the skill's. A
+//! resource of a third kind has the whole `--help` of a command, `netsmith://help/board-fab`
+//! (issue #1133), as the tool list has only its first line.
 
 use std::fs;
 use std::path::{Component, Path, PathBuf};
 
 use netsmith_fabricate::project::MANIFEST;
 use serde_json::{Value, json};
+
+use super::tools::{HELP, Tool};
 
 const PROJECT: &str = "netsmith://project/";
 const GUIDE: &str = "netsmith://guide/";
@@ -43,7 +47,7 @@ pub fn project_root(dir: &Path) -> Option<PathBuf> {
 }
 
 /// `resources/list`.
-pub fn resources(root: Option<&Path>) -> Value {
+pub fn resources(root: Option<&Path>, tools: &[Tool]) -> Value {
     let mut all = Vec::new();
     if let Some(root) = root {
         let mut files = Vec::new();
@@ -57,6 +61,15 @@ pub fn resources(root: Option<&Path>) -> Value {
                 "mimeType": mime(&rel),
             }));
         }
+    }
+    for tool in tools {
+        all.push(json!({
+            "uri": tool.help_uri(),
+            "name": format!("help/{}", tool.words.join("-")),
+            "title": format!("netsmith {} --help", tool.words.join(" ")),
+            "description": format!("The whole help of `netsmith {}`.", tool.words.join(" ")),
+            "mimeType": "text/plain",
+        }));
     }
     for (path, text) in netsmith_tools::init::guide() {
         let title = text
@@ -125,8 +138,14 @@ fn mime(path: &str) -> &'static str {
 }
 
 /// `resources/read` of `uri`: its text, or why there is none.
-pub fn read(root: Option<&Path>, uri: &str) -> Result<Value, String> {
-    let text = if let Some(rel) = uri.strip_prefix(GUIDE) {
+pub fn read(root: Option<&Path>, tools: &[Tool], uri: &str) -> Result<Value, String> {
+    let text = if let Some(words) = uri.strip_prefix(HELP) {
+        tools
+            .iter()
+            .find(|t| t.words.join("-") == words)
+            .map(|t| t.help.clone())
+            .ok_or_else(|| format!("there is no command `{words}`; the commands' help is listed"))?
+    } else if let Some(rel) = uri.strip_prefix(GUIDE) {
         netsmith_tools::init::guide()
             .into_iter()
             .find(|(path, _)| path == rel)
@@ -139,7 +158,7 @@ pub fn read(root: Option<&Path>, uri: &str) -> Result<Value, String> {
         fs::read_to_string(&path).map_err(|e| format!("{rel}: {e}"))?
     } else {
         return Err(format!(
-            "`{uri}` is not a resource of this server: they begin with {PROJECT} or {GUIDE}"
+            "`{uri}` is not a resource of this server: they begin with {PROJECT}, {GUIDE} or {HELP}"
         ));
     };
     Ok(json!({
@@ -227,7 +246,7 @@ mod tests {
         fs::create_dir_all(dir.join("src")).unwrap();
         fs::write(dir.join("src/main.nsm"), "board B {}\n").unwrap();
         let root = Some(&*dir);
-        assert!(read(root, "netsmith://project/src/main.nsm").is_ok());
+        assert!(read(root, &[], "netsmith://project/src/main.nsm").is_ok());
         for uri in [
             "netsmith://project/../outside.nsm",
             "netsmith://project//etc/passwd",
@@ -235,7 +254,7 @@ mod tests {
             "netsmith://project/src",
             "file:///etc/passwd",
         ] {
-            assert!(read(root, uri).is_err(), "{uri}");
+            assert!(read(root, &[], uri).is_err(), "{uri}");
         }
     }
 

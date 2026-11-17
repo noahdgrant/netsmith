@@ -5,6 +5,11 @@
 //! a tool or an argument with no change here, and nothing can describe the commands a second
 //! time. A call is turned back into the command's words ([`Tool::argv`]) and run as the command
 //! line runs it.
+//!
+//! The list is short (issue #1133), because a host sends all of it to the model: a tool has the
+//! first line of its command's help and an argument the first line of its help, with its choices
+//! and default. The whole `--help` of a command is a resource ([`Tool::help`], `netsmith://help/
+//! board-fab`), which an agent reads when it needs it.
 
 use std::any::TypeId;
 use std::path::PathBuf;
@@ -17,8 +22,32 @@ use serde_json::{Map, Value, json};
 /// (a running editor is reached through its own address, issue #1108).
 const NOT_TOOLS: [&[&str]; 2] = [&["mcp"], &["view", "editor"]];
 
-/// What every tool says of its result.
-const RESULT: &str = "The result is what the command prints: with `--format json` (the default where the command has the flag) its JSON document, also as structured content; otherwise its text. What the command says on stderr follows. An exit code of 1 (what the command checked failed) or 2 (it could not run, a usage mistake included) makes the result an error.";
+/// The resources that hold the help of the commands.
+pub const HELP: &str = "netsmith://help/";
+
+/// What `netsmith <words> --help` prints, as clap prints it (the short layout when no argument
+/// has a long help, the long one otherwise), without colour.
+fn help(words: &[String], command: &clap::Command) -> String {
+    let name = format!("netsmith {}", words.join(" "));
+    match command
+        .clone()
+        .bin_name(&name)
+        .try_get_matches_from([name.as_str(), "--help"])
+    {
+        Err(e) => e.to_string(),
+        Ok(_) => String::new(),
+    }
+}
+
+/// The first line of a text.
+fn first_line(text: &str) -> String {
+    text.trim()
+        .lines()
+        .next()
+        .unwrap_or_default()
+        .trim()
+        .to_string()
+}
 
 /// One command as a tool.
 #[derive(Debug, Clone)]
@@ -28,6 +57,8 @@ pub struct Tool {
     /// `["board", "check"]`.
     pub words: Vec<String>,
     pub description: String,
+    /// What `netsmith <words> --help` prints.
+    pub help: String,
     /// The JSON Schema of the arguments.
     pub schema: Value,
     params: Vec<Param>,
@@ -123,7 +154,8 @@ impl Tool {
             properties.insert(param.key.clone(), schema);
             params.push(param);
         }
-        // `--format json` and `--progress json` are what a call asks for unless it chooses.
+        // `--format json` and `--progress json` are what a call asks for unless it chooses (the
+        // server's instructions say so once).
         for key in ["format", "progress"] {
             if let Some(schema) = properties.get_mut(key)
                 && schema["enum"]
@@ -131,31 +163,18 @@ impl Tool {
                     .is_some_and(|e| e.iter().any(|v| v == "json"))
             {
                 schema["default"] = Value::String("json".into());
-                let said = schema["description"]
-                    .as_str()
-                    .unwrap_or_default()
-                    .to_string();
-                schema["description"] = Value::String(format!(
-                    "{said}\n\nA call asks for `json` unless it gives another."
-                ));
             }
         }
         let about = command
-            .get_long_about()
-            .or(command.get_about())
-            .map(|s| s.to_string())
+            .get_about()
+            .or(command.get_long_about())
+            .map(|s| first_line(&s.to_string()))
             .unwrap_or_default();
-        let mut description = format!("`netsmith {}`: {about}", words.join(" "));
-        if let Some(more) = command.get_after_long_help() {
-            description.push_str("\n\n");
-            description.push_str(&more.to_string());
-        }
-        description.push_str("\n\n");
-        description.push_str(RESULT);
         Tool {
             name: words.join("_").replace('-', "_"),
             words: words.to_vec(),
-            description,
+            description: format!("`netsmith {}`: {about}", words.join(" ")),
+            help: help(words, command),
             schema: json!({
                 "type": "object",
                 "properties": properties,
@@ -164,6 +183,11 @@ impl Tool {
             }),
             params,
         }
+    }
+
+    /// The resource that has the command's whole help: `netsmith://help/board-fab`.
+    pub fn help_uri(&self) -> String {
+        format!("{HELP}{}", self.words.join("-"))
     }
 
     /// The tool as `tools/list` gives it.
@@ -326,16 +350,19 @@ fn param(arg: &clap::Arg) -> (Param, Value) {
         }
         _ => item,
     };
-    let mut description = arg
-        .get_long_help()
-        .or(arg.get_help())
-        .map(|s| s.to_string())
+    let said = arg
+        .get_help()
+        .or(arg.get_long_help())
+        .map(|s| first_line(&s.to_string()))
         .unwrap_or_default();
-    match (&flag, &how) {
-        (Some(f), How::Value { optional: true }) => description.push_str(&format!(
-            "\n\nThe flag `{f}`: `true` gives it with no value."
-        )),
-        (Some(f), _) => description.push_str(&format!("\n\nThe flag `{f}`.")),
+    // The property is the flag's name unless clap's id differs, so the flag is said only then.
+    let named = |f: &String| f.trim_start_matches('-').replace('-', "_") == key;
+    let name = match (&flag, &how) {
+        (Some(f), How::Value { optional: true }) => {
+            format!("`true` gives `{f}` with no value.")
+        }
+        (Some(f), _) if !named(f) => format!("The flag `{f}`."),
+        (Some(_), _) => String::new(),
         (None, _) => {
             let name = arg
                 .get_value_names()
@@ -346,9 +373,10 @@ fn param(arg: &clap::Arg) -> (Param, Value) {
                         .join(" ")
                 })
                 .unwrap_or_else(|| key.to_uppercase());
-            description.push_str(&format!("\n\nThe argument `{name}`."));
+            format!("The argument `{name}`.")
         }
-    }
+    };
+    let description = format!("{said} {name}");
     schema["description"] = Value::String(description.trim().to_string());
     let defaults: Vec<String> = arg
         .get_default_values()
