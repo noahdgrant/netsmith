@@ -76,6 +76,10 @@ const SKILLS: [(&str, &str); 9] = [
         include_str!("../../../.agents/skills/netsmith-read-errors/SKILL.md"),
     ),
     (
+        "netsmith-route-a-board",
+        include_str!("../../../.agents/skills/netsmith-route-a-board/SKILL.md"),
+    ),
+    (
         "netsmith-use-constraints",
         include_str!("../../../.agents/skills/netsmith-use-constraints/SKILL.md"),
     ),

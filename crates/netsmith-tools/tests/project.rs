@@ -71,6 +71,7 @@ fn init_makes_the_project_files_and_says_what_to_run() {
         ".agents/skills/netsmith-port-a-kicad-board/SKILL.md",
         ".agents/skills/netsmith-prepare-fab-order/SKILL.md",
         ".agents/skills/netsmith-read-errors/SKILL.md",
+        ".agents/skills/netsmith-route-a-board/SKILL.md",
         ".agents/skills/netsmith-use-constraints/SKILL.md",
         ".agents/skills/netsmith-use-layout/SKILL.md",
         ".agents/skills/netsmith-write-a-module/SKILL.md",
