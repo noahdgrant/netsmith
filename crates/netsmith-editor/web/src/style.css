@@ -907,6 +907,8 @@ input:focus-visible, select:focus-visible, textarea:focus-visible { outline-offs
 /* ---- schematic: sheet navigator, toolbar, canvas overlays, inspector, overview ---- */
 .sheetbar { gap: 0.375rem; min-height: 2.375rem; }
 .sheetbar .spacer, .spacer { flex: 1; }
+.sheetbar .sheet-export { display: inline-flex; gap: 0.25rem; }
+.sheetbar .sheet-export a { display: inline-flex; align-items: center; gap: 0.25rem; text-decoration: none; }
 /* in the toolbar the icon button has a frame; elsewhere (the dock, a toast, the navigator head) it is bare */
 .sheetbar .icon-btn { width: auto; min-width: var(--ctl); height: var(--ctl); padding: 0 0.5rem; background: var(--surface-raised); border: 1px solid var(--border); border-radius: var(--r-sm); font-size: var(--fs-md); line-height: 1; box-shadow: var(--elev-1); }
 .sheetbar .icon-btn:hover { border-color: var(--border-strong); background: var(--surface-3); color: var(--text); }

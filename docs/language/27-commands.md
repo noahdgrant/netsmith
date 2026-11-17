@@ -14,7 +14,7 @@ The commands are grouped under nouns, each with its verbs (issue #1090): `netsmi
 - `board`: what is done to the boards of a file or of the project: `check`, `build`, `fab`, `explain` a pick, `compare` two designs or the project with a git ref.
 - `layout`: the layout file, where each part is.
 - `routes`: the routes file, the copper fixed by hand or imported.
-- `view`: look at a board: `3d` draws it to a PNG, `editor` serves the editor, `editor-3d` drives the 3D view of a running editor.
+- `view`: look at a board: `3d` draws it to a PNG, `schematic` writes its schematic as a PDF, an SVG or a PNG, `editor` serves the editor, `editor-3d` drives the 3D view of a running editor.
 - `catalog`: the rows of the catalogs, checked against LCSC's record.
 - `import`: what comes into a project from outside: a DXF drawing (`dxf`), KiCad's library tables (`kicad-libs`), a part from a symbol (`part`), a port of a KiCad board (`port`), a case's STEP model (`case`).
 - `dev`: the tools for developing netsmith and checking ports: `route` routes a saved placed board with the router's tuning flags, `parity` compares a port with its original, `board3d` prints the 3D scene's report.
@@ -22,7 +22,7 @@ The commands are grouped under nouns, each with its verbs (issue #1090): `netsmi
 The names follow four rules:
 
 - One name for one thing. A command is named by the noun it acts on and its verb, and one verb is never a second spelling of another. A command or flag of an earlier release is an error that names the one to write and prints the whole line rewritten (ADR 0001; `docs/MIGRATING.md`).
-- `--out` is always a folder. A command that writes one file names the flag after the file: `view 3d --picture` and `view editor-3d --picture` (a PNG), `layout export --kicad-pcb`, `dev board3d --glb` and `--step`, and `--write` for the source an import writes.
+- `--out` is always a folder. A command that writes one file names the flag after the file: `view 3d --picture` and `view editor-3d --picture` (a PNG), `view schematic --picture` (the PDF, SVG or PNG), `layout export --kicad-pcb`, `dev board3d --glb` and `--step`, and `--write` for the source an import writes.
 - One way to choose a board: the source file (`FILE.NSM`; with none, the project's boards) and `--board NAME` for one board of a file with several. Where the command takes another file first (`routes import BOARD.KICAD_PCB`, `layout set PATH`), the source is `--file FILE.NSM`.
 - `--format json` wherever there is output for a program to read: one JSON document on stdout, and nothing else there.
 
@@ -33,10 +33,10 @@ Each command, what it was before, and its flags (a test walks `--help` of every 
 | `netsmith project init` | `netsmith init` | `--name` |
 | `netsmith project refresh` | `netsmith init --refresh` | none |
 | `netsmith project lock` | `netsmith lock` | `--update`, `--check`, `--part`, `--except` |
-| `netsmith project order` | `netsmith fab --order [NAME]` | `--out`, `--route-timeout`, `--rip-rounds`, `--allow-drc-violations`, `--cross-check`, `--strict`, `--locked`, `--constraints`, `--no-glb`, `--no-step`, `--offline`, `--quiet`, `--place-seeds`, `--place-budget`, `--progress`, `--to-editor` |
+| `netsmith project order` | `netsmith fab --order [NAME]` | `--out`, `--route-timeout`, `--allow-drc-violations`, `--cross-check`, `--strict`, `--locked`, `--constraints`, `--no-glb`, `--no-step`, `--no-pdf`, `--offline`, `--quiet`, `--place-seeds`, `--place-budget`, `--progress`, `--to-editor` |
 | `netsmith board check` | `netsmith check` | `--strict`, `--format`, `--notes` |
 | `netsmith board build` | `netsmith build` | `--out`, `--strict`, `--locked`, `--emit-design`, `--emit-solved`, `--format`, `--notes` |
-| `netsmith board fab` | `netsmith fab` | `--out`, `--route-timeout`, `--rip-rounds`, `--allow-drc-violations`, `--cross-check`, `--strict`, `--locked`, `--constraints`, `--pins`, `--no-glb`, `--no-step`, `--save-placed`, `--reuse-routes`, `--offline`, `--quiet`, `--place-seeds`, `--place-budget`, `--progress`, `--to-editor`, `--format`, `--notes` |
+| `netsmith board fab` | `netsmith fab` | `--out`, `--route-timeout`, `--allow-drc-violations`, `--cross-check`, `--strict`, `--locked`, `--constraints`, `--pins`, `--no-glb`, `--no-step`, `--no-pdf`, `--save-placed`, `--reuse-routes`, `--offline`, `--quiet`, `--place-seeds`, `--place-budget`, `--progress`, `--to-editor`, `--format`, `--notes` |
 | `netsmith board drc` | new | `--board`, `--kicad-pcb`, `--place-seeds`, `--place-budget`, `--format` |
 | `netsmith board explain` | `netsmith explain` | `--board`, `--all-rows` |
 | `netsmith board compare` | `netsmith compare` | `--ref`, `--against-ref`, `--board`, `--map`, `--by-refdes`, `--ignore-unconnected`, `--loose-values`, `--format` |
@@ -71,6 +71,7 @@ Each command, what it was before, and its flags (a test walks `--help` of every 
 | `netsmith routes lock` | the same | `--file` (was `--into`), `--board`, `--net`, `--track`, `--via`, `--zone` |
 | `netsmith routes unlock` | the same | `--file` (was `--into`), `--board`, `--net`, `--track`, `--via`, `--zone` |
 | `netsmith view 3d` | `netsmith render` | `--board`, `--view`, `--picture` (was `--out`), `--size`, `--section`, `--highlight`, `--xray`, `--case`, `--no-caps`, `--theme`, `--ortho`, `--perspective` |
+| `netsmith view schematic` | new (#1091) | `--board`, `--format`, `--sheet`, `--picture` |
 | `netsmith view editor` | `netsmith editor` | `--port`, `--offline` |
 | `netsmith view editor-3d` | `netsmith view` | `--port`, `--board`, `--view`, `--section`, `--highlight`, `--select`, `--xray`, `--no-xray`, `--ortho`, `--perspective`, `--case`, `--colour-by`, `--height-preview`, `--layers-apart`, `--no-layers-apart`, `--format` (was `--json`), `--picture` |
 | `netsmith catalog refresh` | the same | `--dry-run`, `--offline`, `--only`, `--lcsc`, `--delay`, `--cache-ttl`, `--no-cache` |
@@ -110,6 +111,7 @@ netsmith board panel                      # a panel's grid, size and checks
 
 `bom` and `power` take the source file (or, with none, the project's boards) and `--board NAME`; `system` and `panel` take `--name NAME`. A name is as the editor names it, `System/Board` for a board of a system, and `Board` alone when no other board has that name. With one board (one system, one panel) the name may be left out; with several, the command exits 2 and lists them. The exit code is 0 when the view is printed, 1 when the source does not build (with its errors), and 2 when the command cannot run.
 The places left for commands to come, named by the same rules: `board bom`, `board power`, `board drc`, `board swap`, and `board pins`; `view schematic`, `view pcb` and `view gerber`; `project fmt` and `project lint`; and `mcp`, the server that offers these commands to an agent.
+The places left for commands to come, named by the same rules: `board bom`, `board power`, `board drc`, `board swap` and `board copper`; `view pcb` and `view gerber`; `project fmt` and `project lint`; and `mcp`, the server that offers these commands to an agent.
 
 ### The editor
 
@@ -122,6 +124,12 @@ The editor's bill of materials marks the lines whose price and stock are old (as
 ### The design rules check alone
 
 `netsmith board drc [file.nsm]` runs netsmith's own design rules check (ADR 0037), the one `fab` runs and the editor's PCB view shows, with nothing routed and no package written. It checks the board as `fab` has it before the router: the placement with the copper of the routes file on it, so a connection the file does not make is an `unconnected_items` error (a board with no routes file has one for each), and the design's requirements on where parts go are measured as for `fab`. `netsmith board drc --kicad-pcb board.kicad_pcb` checks a KiCad board instead (the `.kicad_pro` beside it is its rules), such as one `layout export` wrote or one that came back before `layout import` or `routes import`; it has none of the process's extras that `fab` adds (the fiducials, the stackup, the mask web), so it can find less than `fab` does of the same board. The findings are the lines `fab` lists (its `fab-notes.txt` has the warnings of the same board), errors first; the exit code is 1 when there is an error and 0 when there is none, whatever the warnings. With `--format json` each finding has its `severity`, the `code` `drc`, the `rule` (`clearance`, `short_circuit`, ...), the `place` (`x`, `y` in mm in the frame of the board file, y down, and the `layer`), the `nets` and the `parts` it names, and the board's `outline_at` says where the outline's top left corner is in that frame (a place less it is in the frame of the layout and routes files), so that the places can be drawn as markers on a picture of the board.
+### The schematic as a document
+`netsmith view schematic [FILE.NSM]` writes the schematic the editor draws, with the schematic layout file beside the source honoured, as a file to hand on (issue #1091): `--format pdf` (the default), `svg` or `png`, `--board NAME` for one board of a file with several (a system's name writes the system), `--sheet NAME` for one sheet, and `--picture FILE` for the file (by default `<board>-schematic.<pdf|svg|png>` in the current folder; the path is printed). netsmith writes it itself, with no KiCad and no browser, and the same source gives the same bytes:
+- **PDF.** A page for each sheet: a module's box of a board drawn by module (`power`, `stage (2/3)`), or the whole drawing of a board of 16 parts or fewer, named for the board. Each page is sized to its sheet, with a title block that names the sheet, the board, the project and the release of netsmith, and `Sheet 3 of 7`. It is vector drawing with the text in Helvetica (Courier for a note's relation), which every PDF reader has, so no font is in the file and its text can be searched. A system's PDF begins with the system's own sheet, its boards and the joins between them, then has each member's sheets.
+- **SVG.** The drawing the editor shows, or with `--sheet` the same drawing framed on that sheet.
+- **PNG.** The drawing filled by netsmith's own rasterizer at 10 pixels a millimetre (fewer for a drawing longer than 8192 pixels), its text in netsmith's stroke font: a picture an agent can look at.
+`board fab` writes the PDF into each board's package as `<board>-schematic.pdf`, beside the `.glb` and outside the Gerber zip, and a system's as `<System>/<System>-schematic.pdf`; `--no-pdf`, or `pdf = false` under `[project]` in `netsmith.toml`, leaves it out and removes an earlier run's. A schematic that cannot be drawn is a warning in `fab-notes.txt`, never a failed `fab`. The editor's schematic has `PDF` and `SVG` buttons, and the commands "Export schematic as PDF" and "Export schematic as SVG", which save the same bytes.
 
 ### Power findings
 

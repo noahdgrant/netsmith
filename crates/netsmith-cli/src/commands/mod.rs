@@ -32,6 +32,7 @@ mod power;
 mod render;
 mod route;
 mod routes;
+mod schematic;
 mod swap;
 mod system;
 mod view;
@@ -133,6 +134,8 @@ pub enum View {
     /// Drive the 3D view of a running editor with `view 3d`'s flags, and save its picture.
     #[command(name = "editor-3d")]
     Editor3d(view::Args),
+    /// Write a board's schematic as a PDF (a page for each sheet), an SVG or a PNG.
+    Schematic(schematic::Args),
 }
 
 /// `netsmith import ...`.
@@ -192,6 +195,7 @@ pub fn run(command: Command) -> ExitCode {
             View::ThreeD(args) => render::run(args),
             View::Editor(args) => editor::run(args),
             View::Editor3d(args) => view::run(args),
+            View::Schematic(args) => schematic::run(args),
         },
         Command::Catalog(args) => catalog::run(args),
         Command::Import(command) => match command {

@@ -1038,6 +1038,10 @@ pub fn fab_order(
         let file_options = FabOptions {
             only: Some(mine),
             layout: Some(crate::layout::layout_path(&source.path)),
+            schematic: Some(crate::schematic::Inputs::of(
+                &source.path,
+                target.project.as_ref().map(|p| p.manifest.name.as_str()),
+            )),
             lock: using,
             pin_map_source: Some(source.stable_name(target.project.as_ref())),
             // An order is a release: a seed that would change stops it (issue #458).

@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/netsmith-core", "crates/netsmith-kicad", "crates/netsmith-lang", "crates/netsmith-quantity", "crates/netsmith-check", "crates/netsmith-solve", "crates/netsmith-catalog", "crates/netsmith-design", "crates/netsmith-tools", "crates/netsmith-cli", "crates/netsmith-view", "crates/netsmith-pcb", "crates/netsmith-3d", "crates/netsmith-placer", "crates/netsmith-router", "crates/netsmith-fab", "crates/netsmith-pipeline", "crates/netsmith-fabricate", "crates/netsmith-workspace", "crates/netsmith-netlist", "crates/netsmith-editor", "crates/netsmith-dxf", "crates/netsmith-testkit", "crates/netsmith-sexp", "crates/netsmith-geom"]
+members = ["crates/netsmith-core", "crates/netsmith-kicad", "crates/netsmith-lang", "crates/netsmith-quantity", "crates/netsmith-check", "crates/netsmith-solve", "crates/netsmith-catalog", "crates/netsmith-design", "crates/netsmith-tools", "crates/netsmith-cli", "crates/netsmith-view", "crates/netsmith-pcb", "crates/netsmith-3d", "crates/netsmith-placer", "crates/netsmith-router", "crates/netsmith-fab", "crates/netsmith-pipeline", "crates/netsmith-fabricate", "crates/netsmith-workspace", "crates/netsmith-netlist", "crates/netsmith-editor", "crates/netsmith-dxf", "crates/netsmith-testkit", "crates/netsmith-sexp", "crates/netsmith-geom", "crates/netsmith-draw"]
 # The desktop shell (desktop/) is a workspace of its own: its window needs WebKit and GTK, which no
 # build or test of this workspace may need.
 exclude = ["desktop"]
@@ -55,4 +55,9 @@ opt-level = 2
 opt-level = 2
 
 [profile.dev.package.netsmith-view]
+opt-level = 2
+
+# The PDF writer and the rasterizer of the schematic export (issue #1091): a picture of a large
+# board is millions of pixels, filled in a loop.
+[profile.dev.package.netsmith-draw]
 opt-level = 2

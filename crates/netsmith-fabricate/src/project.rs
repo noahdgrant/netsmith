@@ -123,6 +123,11 @@ pub struct Manifest {
     /// with `--no-step`, which wins over this key.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub step: Option<bool>,
+    /// Whether `fab` writes the board's schematic, `<board>-schematic.pdf`, into the fab
+    /// package (`pdf = false` leaves it out; the default, `true`, writes it). A run can leave it
+    /// out with `--no-pdf`, which wins over this key (issue #1091).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pdf: Option<bool>,
     /// How many times the process's least track a signal is drawn at, where there is room
     /// (`track_margin = 1.5`, the default; 1 is the least). A board the router cannot finish
     /// at that width is routed at the least (issue #431).
@@ -405,6 +410,7 @@ impl Manifest {
             assembly: None,
             glb: None,
             step: None,
+            pdf: None,
             track_margin: None,
             rip_rounds: None,
             place_seeds: None,

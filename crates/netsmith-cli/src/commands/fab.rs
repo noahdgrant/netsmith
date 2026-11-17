@@ -83,6 +83,13 @@ pub struct Args {
     /// earlier run is removed. A system's STEP (`<System>/<System>.step`) is left out with it.
     #[arg(long)]
     pub no_step: bool,
+    /// Leave the board's schematic (`<board>-schematic.pdf`) out of the package.
+    ///
+    /// `pdf = false` in netsmith.toml does it for a project; a stale `<board>-schematic.pdf` of
+    /// an earlier run is removed. A system's (`<System>/<System>-schematic.pdf`) is left out with
+    /// it.
+    #[arg(long)]
+    pub no_pdf: bool,
     /// Also write `<board>.placed.json`, the board before routing, for `netsmith dev route`.
     ///
     /// The file goes into the board's output folder, with the track margin `fab` routes with.
@@ -174,6 +181,7 @@ fn run_chosen(args: &Args, format: Format) -> ExitCode {
             pins_locked,
             args.no_glb,
             args.no_step,
+            args.no_pdf,
             args.save_placed,
             args.reuse_routes,
             args.offline,
@@ -213,6 +221,26 @@ fn glb_wanted(target: &Target, no_glb: bool) -> bool {
             .as_ref()
             .and_then(|p| p.manifest.glb)
             .unwrap_or(true)
+}
+
+/// Whether `fab` writes the board's schematic as a PDF: `--no-pdf` for this run leaves it out,
+/// else `pdf` in the manifest, else yes.
+fn pdf_wanted(target: &Target, no_pdf: bool) -> bool {
+    !no_pdf
+        && target
+            .project
+            .as_ref()
+            .and_then(|p| p.manifest.pdf)
+            .unwrap_or(true)
+}
+
+/// What the schematic PDF of `source` is drawn with: the schematic layout file beside it and
+/// the project's name.
+fn schematic_inputs(target: &Target, source: &Path) -> netsmith_fabricate::schematic::Inputs {
+    netsmith_fabricate::schematic::Inputs::of(
+        source,
+        target.project.as_ref().map(|p| p.manifest.name.as_str()),
+    )
 }
 
 /// Whether `fab` writes the board as STEP: `--no-step` for this run leaves it out, else `step`
@@ -281,6 +309,7 @@ fn run_fab(
     pins_locked: Option<bool>,
     no_glb: bool,
     no_step: bool,
+    no_pdf: bool,
     save_placed: bool,
     reuse_routes: bool,
     offline: bool,
@@ -352,6 +381,8 @@ fn run_fab(
         rip_rounds: rip_rounds_of(&target, rip_rounds),
         glb: glb_wanted(&target, no_glb),
         step: step_wanted(&target, no_step),
+        pdf: pdf_wanted(&target, no_pdf),
+        schematic: None,
         save_placed,
         reuse_routes,
         models: Some(netsmith_fabricate::models::Places::of(&target)),
@@ -390,6 +421,7 @@ fn run_fab(
         };
         let options = FabOptions {
             layout: Some(netsmith_fabricate::layout::layout_path(&source.path)),
+            schematic: Some(schematic_inputs(&target, &source.path)),
             lock: Some(using),
             pin_map_source: Some(source.stable_name(target.project.as_ref())),
             pins: Some(netsmith_fabricate::fab::PinsUse {
@@ -608,6 +640,7 @@ pub(super) fn run_order(
     constraints_warn: Option<bool>,
     no_glb: bool,
     no_step: bool,
+    no_pdf: bool,
     offline: bool,
     placing: &common::Placing,
 ) -> ExitCode {
@@ -670,6 +703,9 @@ pub(super) fn run_order(
         rip_rounds: rip_rounds_of(&target, rip_rounds),
         glb: glb_wanted(&target, no_glb),
         step: step_wanted(&target, no_step),
+        pdf: pdf_wanted(&target, no_pdf),
+        // Each file's own, set by the order for each file.
+        schematic: None,
         save_placed: false,
         reuse_routes: false,
         models: Some(netsmith_fabricate::models::Places::of(&target)),
@@ -781,6 +817,7 @@ mod tests {
                 pins: None,
                 no_glb: false,
                 no_step: false,
+                no_pdf: false,
                 save_placed: false,
                 reuse_routes: false,
                 offline: false,
@@ -812,11 +849,15 @@ mod tests {
             "--quiet",
             "--no-glb",
             "--no-step",
+            "--no-pdf",
         ]);
-        assert!(f.allow_drc_violations && f.cross_check && f.quiet && f.no_glb && f.no_step);
+        assert!(
+            f.allow_drc_violations && f.cross_check && f.quiet && f.no_glb && f.no_step && f.no_pdf
+        );
         assert!(parse(&["board", "build", "--cross-check"]).is_err());
         assert!(parse(&["board", "build", "--no-glb"]).is_err());
         assert!(parse(&["board", "build", "--no-step"]).is_err());
+        assert!(parse(&["board", "build", "--no-pdf"]).is_err());
     }
 
     #[test]

@@ -215,6 +215,16 @@ pub struct FabOptions {
     /// `step = false` in `netsmith.toml`. When it is `false`, a `<board>.step` that an earlier run
     /// left in the folder is removed, as the `.glb` is.
     pub step: bool,
+    /// Write the board's schematic as `<board>-schematic.pdf` into the board's package folder,
+    /// outside the Gerber zip: a page for each sheet, as the editor draws it (issue #1091,
+    /// `netsmith_view::export`). The default is `true`; the command line gives `false` for
+    /// `--no-pdf` or `pdf = false` in `netsmith.toml`. When it is `false`, a
+    /// `<board>-schematic.pdf` an earlier run left in the folder is removed, as the `.glb` is.
+    pub pdf: bool,
+    /// What the schematic PDF is drawn with besides the board: the schematic layout file beside
+    /// the source and the project's name. `None` draws it with no layout file and names no
+    /// project.
+    pub schematic: Option<crate::schematic::Inputs>,
     /// Where the files of the target are, to find the STEP models its parts are drawn from
     /// (ADR 0108) and its case models (ADR 0109): a path outside the project stops `fab`, a
     /// file that is not there is a warning (a case model's, an error with `strict_heights`).
@@ -372,6 +382,8 @@ impl Default for FabOptions {
             glb: true,
             save_placed: false,
             step: true,
+            pdf: true,
+            schematic: None,
             models: None,
             place_seeds: crate::layout::DEFAULT_PLACE_SEEDS,
             place_budget: netsmith_core::job::Limit::default(),
@@ -656,6 +668,7 @@ pub fn fab_detailed(
             system,
             &boards,
             out,
+            libraries,
             options,
             catalogs.strict_guidelines(),
             &say,
@@ -1461,6 +1474,19 @@ fn fab_board(
             say(format!("{}: warning: {note}", built.label()));
         }
 
+        // The schematic, a page for each sheet, the same way: a failure is a note.
+        let (pdf_file, pdf_notes) = crate::schematic::write_pdf(
+            &dir,
+            name,
+            &[built],
+            libraries,
+            options.schematic.as_ref(),
+            options.pdf,
+        );
+        for note in &pdf_notes {
+            say(format!("{}: warning: {note}", built.label()));
+        }
+
         // The project's own libraries and the standard library's own files that the board
         // uses, so KiCad finds the footprints.
         libraries
@@ -1475,6 +1501,7 @@ fn fab_board(
         extras.splice(0..0, pin_notes.iter().cloned());
         extras.extend(glb_note.map(|n| format!("warning: {n}")));
         extras.extend(step_note.map(|n| format!("warning: {n}")));
+        extras.extend(pdf_notes.iter().map(|n| format!("warning: {n}")));
         if let Some(scene) = &scene {
             extras.extend(scene.warnings.iter().map(|w| format!("warning: {w}")));
             extras.extend(model_notes(scene));
@@ -1577,6 +1604,7 @@ fn fab_board(
         files.extend(pin_files);
         files.extend(glb_file);
         files.extend(step_file);
+        files.extend(pdf_file);
         files.extend(
             timings::stage("fab.write", &label, || pkg.write(&dir))
                 .map_err(|e| fail(e.to_string()))?,
@@ -1655,6 +1683,7 @@ fn fab_system(
     system: &netsmith_pipeline::SolvedSystem,
     members: &[(&Built, &Board)],
     out: &Path,
+    libraries: &Libraries,
     options: &FabOptions,
     strict_guidelines: bool,
     say: &dyn Fn(String),
@@ -1723,6 +1752,25 @@ fn fab_system(
                 file.display()
             )),
         }
+    }
+    // The system's schematic: its own sheet, then each member's (issue #1091).
+    let boards: Vec<&Built> = members.iter().map(|(b, _)| *b).collect();
+    let (pdf, notes) = crate::schematic::write_system_pdf(
+        &dir,
+        system,
+        &boards,
+        libraries,
+        options.schematic.as_ref(),
+        options.pdf,
+    );
+    for note in notes {
+        say(format!("{name}: warning: {note}"));
+    }
+    if let Some(file) = pdf {
+        say(format!(
+            "{name}: wrote the system's schematic {}",
+            file.display()
+        ));
     }
     Ok(())
 }

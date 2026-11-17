@@ -14,6 +14,9 @@ path = "tests/main.rs"
 [dependencies]
 netsmith-core = { path = "../netsmith-core" }
 netsmith-kicad = { path = "../netsmith-kicad" }
+# The schematic as PDF and PNG (`export`).
+netsmith-draw = { path = "../netsmith-draw" }
+roxmltree = "0.21"
 toml = "1.1.8"
 
 [dev-dependencies]

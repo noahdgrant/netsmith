@@ -20,6 +20,7 @@
 //! | `GET`/`PUT /api/file?path=` | `{text, stamp, readonly}`; the `PUT` takes the text and `X-Stamp` |
 //! | `POST /api/fs/*` | create, rename and delete files and folders of the project |
 //! | `GET /api/board`, `schematic.svg`, `power`, `system`, `panel`, `bom` | the views of a board or a system, computed from the solved model and not from the text |
+//! | `GET /api/schematic/export?board=&format=` | the schematic as a file to save: `pdf` (a page for each sheet), `svg` or `png`, the bytes `netsmith view schematic` writes (issue #1091); a system's PDF has its own sheet, then its members' |
 //! | `GET /api/schematic-hints`, `PUT /api/schematic-hints` | the schematic layout file beside the board's source (ADR 0061): `422` with the line for text that does not read, `409` for a stale stamp |
 //! | `GET /api/git`, `GET /api/compare`, `GET /api/git/file` | what the project can be compared with, what changed in the circuit, a file at a ref (ADR 0059) |
 //! | `POST /api/pins/lock`, `POST /api/pins/move` | lock or unlock a pin request, and move it to another pin of its part: the `lock` and the `pin` and `source` lines of its entry in the pin file (ADR 0101), and no other line; `422` with the reason when the choice is refused |
@@ -154,6 +155,7 @@ const NEEDS_ANALYSIS: &[&str] = &[
     "/api/fs/delete",
     "/api/board",
     "/api/schematic.svg",
+    "/api/schematic/export",
     "/api/schematic-hints",
     "/api/power",
     "/api/system",
@@ -351,6 +353,7 @@ fn router(state: Shared) -> Router {
         .route("/api/fs/delete", post(delete_path))
         .route("/api/board", get(board))
         .route("/api/schematic.svg", get(schematic))
+        .route("/api/schematic/export", get(schematic_export))
         .route(
             "/api/schematic-hints",
             get(schematic_hints).put(write_schematic_hints),
@@ -683,6 +686,13 @@ async fn schematic(State(s): State<Shared>, Query(q): Query1) -> Result<Response
     blocking(move || s.backend.schematic(&board))
         .await?
         .map(svg)
+}
+
+/// The schematic as a file to save: `format` is `pdf`, `svg` or `png` (issue #1091).
+async fn schematic_export(State(s): State<Shared>, Query(q): Query1) -> Result<Response, ApiError> {
+    let (board, format) = (param(&q, "board")?, param(&q, "format")?);
+    let attachment = blocking(move || s.backend.schematic_export(&board, &format)).await??;
+    Ok(attached(attachment))
 }
 
 async fn schematic_hints(
