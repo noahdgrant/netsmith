@@ -573,3 +573,108 @@ fn render_draws_the_case_hidden_see_through_or_solid() {
         "{err}"
     );
 }
+
+/// The fixture's lid file with its solid styled `#cc3366` (a STEP file's own colour), as a CAD
+/// program writes it.
+fn colour_the_lid(dir: &Path) {
+    let path = dir.join("case_fit/lid.step");
+    let text = std::fs::read_to_string(&path).unwrap();
+    let solid = text
+        .lines()
+        .find_map(|l| {
+            l.contains("=MANIFOLD_SOLID_BREP(")
+                .then(|| l.split('=').next().unwrap().to_string())
+        })
+        .expect("a solid");
+    let last = text
+        .lines()
+        .filter_map(|l| l.strip_prefix('#')?.split('=').next()?.parse::<u64>().ok())
+        .max()
+        .unwrap();
+    let n = |k: u64| last + k;
+    let styled = format!(
+        "#{}=COLOUR_RGB('',0.8,0.2,0.4);\n#{}=FILL_AREA_STYLE_COLOUR('',#{});\n#{}=FILL_AREA_STYLE('',(#{}));\n#{}=SURFACE_STYLE_FILL_AREA(#{});\n#{}=SURFACE_SIDE_STYLE('',(#{}));\n#{}=SURFACE_STYLE_USAGE(.BOTH.,#{});\n#{}=PRESENTATION_STYLE_ASSIGNMENT((#{}));\n#{}=STYLED_ITEM('color',(#{}),{solid});\nENDSEC;",
+        n(1), n(2), n(1), n(3), n(2), n(4), n(3), n(5), n(4), n(6), n(5), n(7), n(6), n(8), n(7),
+    );
+    std::fs::write(&path, text.replacen("ENDSEC;\nEND-ISO", &format!("{styled}\nEND-ISO"), 1))
+        .unwrap();
+    assert!(std::fs::read_to_string(&path).unwrap().contains("STYLED_ITEM"));
+}
+
+/// Issue #756: a case model is drawn in its STEP file's own colours where the file has them,
+/// a `.color` the board states replaces them, and one that states none and whose file has none
+/// is drawn as it was.
+#[test]
+fn a_case_model_is_drawn_in_its_files_colour_and_a_stated_colour_replaces_it() {
+    let draw = |dir: &Path, name: &str, extra: &[&str]| {
+        let out = format!("{name}.png");
+        let mut args = vec!["render", "case_fit.nsm", "--size", "320x200", "--out", out.as_str()];
+        args.extend_from_slice(extra);
+        let run = netsmith(dir, &args);
+        assert!(run.status.success(), "{name}: {}", String::from_utf8_lossy(&run.stderr));
+        std::fs::read(dir.join(&out)).unwrap()
+    };
+    let stated = |p: String| {
+        p.replace(
+            "import std::pcb::{CaseModel, Outline}",
+            "import std::parts::passive::Color\nimport std::pcb::{CaseModel, Outline}",
+        )
+        .replace(
+            ".z &= 8mm\n        }",
+            ".z &= 8mm\n            .color &= Color::Red\n        }",
+        )
+    };
+    let plain = project("case-colour-plain", |p| p);
+    let styled = project("case-colour-styled", |p| p);
+    colour_the_lid(&styled);
+    let plain_red = project("case-colour-plain-red", stated);
+    let styled_red = project("case-colour-styled-red", stated);
+    colour_the_lid(&styled_red);
+
+    // The file's colour is a picture of its own, and the report says what the file has.
+    let (grey, own) = (draw(&plain, "a", &[]), draw(&styled, "a", &[]));
+    assert_ne!(grey, own);
+    let r = report(&styled);
+    let lid = &r["case_models"][1];
+    assert_eq!(lid["file_colours"], serde_json::json!(["#cc3366"]));
+    assert!(lid.get("color").is_none(), "{lid}");
+    let (base, plain_lid) = (&r["case_models"][0], &report(&plain)["case_models"][1]);
+    assert!(base.get("file_colours").is_none() && plain_lid.get("file_colours").is_none());
+    // The other model, and a hidden one, are as they were: the base is drawn the same.
+    assert_eq!(
+        draw(&plain, "b", &["--case", "hidden:lid"]),
+        draw(&styled, "b", &["--case", "hidden:lid"])
+    );
+    // A stated colour replaces the file's: the file's own colour makes no difference to it.
+    let (red, red_over_file) = (draw(&plain_red, "c", &[]), draw(&styled_red, "c", &[]));
+    assert_eq!(red, red_over_file);
+    assert_ne!(red, grey);
+    assert_ne!(red, own);
+    // It is the lid's alone: with the lid hidden the picture is the plain one.
+    assert_eq!(
+        draw(&plain_red, "d", &["--case", "hidden:lid"]),
+        draw(&plain, "d", &["--case", "hidden:lid"])
+    );
+    let r = report(&plain_red);
+    assert_eq!(r["case_models"][1]["color"], "Red");
+    assert!(r["case_models"][0].get("color").is_none());
+
+    // The glTF file has a see-through material for each colour.
+    let glb = styled.join("styled.glb");
+    let run = netsmith(&styled, &["board3d", "case_fit.nsm", "--glb", glb.to_str().unwrap()]);
+    assert!(run.status.success(), "{}", String::from_utf8_lossy(&run.stderr));
+    let doc = netsmith_3d::json_chunk(&std::fs::read(&glb).unwrap()).unwrap();
+    let material = doc["materials"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|m| m["name"] == "case:#cc3366")
+        .expect("the file's colour is a material");
+    assert_eq!(material["alphaMode"], "BLEND");
+    let glb = plain_red.join("red.glb");
+    let run = netsmith(&plain_red, &["board3d", "case_fit.nsm", "--glb", glb.to_str().unwrap()]);
+    assert!(run.status.success(), "{}", String::from_utf8_lossy(&run.stderr));
+    let doc = netsmith_3d::json_chunk(&std::fs::read(&glb).unwrap()).unwrap();
+    let lid = doc["nodes"].as_array().unwrap().iter().find(|n| n["name"] == "case:lid").unwrap();
+    assert_eq!(lid["extras"]["netsmith"]["color"], "Red");
+}

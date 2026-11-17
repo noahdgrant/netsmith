@@ -85,12 +85,20 @@ export function roleOf(material: string, provenance: Provenance | null, fromMode
     // A part drawn from its STEP model is solid whatever its height (ADR 0108): never the hatch of an unknown one.
     return provenance === 'unknown' && !fromModel ? 'body-unknown' : 'body';
   }
+  // A case model's piece in a colour of its own (its file's, or the board's `.color`, issue 756) is still the case: see-through, or solid, as the case mode says.
+  if (caseColour(material) !== null) return 'case';
   return (FILE_MATERIALS as readonly string[]).includes(material) ? (material as Role) : null;
 }
 
 /** The colour of a piece of a part's STEP model, from its material's name (`model:#rrggbb`, ADR 0108); null for any other material. */
 export function modelColour(material: string): string | null {
   const m = /^model:(#[0-9a-f]{6})$/.exec(material);
+  return m ? m[1] : null;
+}
+
+/** The colour of a piece of a case model, from its material's name (`case:#rrggbb`: the colour its STEP file styles it in, or the one its board states with `.color`, issue 756); null for any other material, and for the plain `case`, which is the theme's own grey. */
+export function caseColour(material: string): string | null {
+  const m = /^case:(#[0-9a-f]{6})$/.exec(material);
   return m ? m[1] : null;
 }
 

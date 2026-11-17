@@ -853,7 +853,11 @@ fn case_models_report(built: &Built, fit: &netsmith_3d::CaseScene) -> Vec<CaseMo
                 color: c.color.clone(),
                 file_colours: read.map_or_else(Vec::new, |p| {
                     let mut seen: Vec<String> = Vec::new();
-                    for [r, g, b] in p.solids.iter().flat_map(|s| s.runs.iter().filter_map(|r| r.0)) {
+                    for [r, g, b] in p
+                        .solids
+                        .iter()
+                        .flat_map(|s| s.runs.iter().filter_map(|r| r.0))
+                    {
                         let hex = format!("#{r:02x}{g:02x}{b:02x}");
                         if !seen.contains(&hex) {
                             seen.push(hex);

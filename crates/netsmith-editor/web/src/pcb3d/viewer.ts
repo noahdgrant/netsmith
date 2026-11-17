@@ -59,7 +59,7 @@ import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { DIM, type KindSwatch, type MarginBand, type NetState, extrudeFlat, kindSwatch, litReport, marginColour, pieceNet, xrayOpacity } from './inspect';
 import type { CaseMode, ColourBy } from './inspectMode';
 import { type BoardInfo, type CaseSolidInfo, type CopperInfo, type Info, type LimitInfo, type MemberInfo, type PartInfo3d, type StackLayer, type SystemInfo, readInfo } from './model';
-import { LOOKS, type MaskColour, type Role, lit, modelColour, roleOf } from './palette';
+import { LOOKS, type MaskColour, type Role, caseColour, lit, modelColour, roleOf } from './palette';
 import { type Preset, type Vec3, distanceFor, easeOut, fitPoints, fitHalfHeight, flipped, halfHeightAt, orbit, presetDirection, presetOf, slerpDir } from './presets';
 import { type Axis, type LimitPlan, type P3, type Slot, type Snap, bestSnap, easeInOut, explodeGap, explodeSlots, faceSlot, keepBelow, slabRole, spreadMembers } from './tools';
 
@@ -570,6 +570,8 @@ export class Viewer {
       o.userData.maskColour = this.stacks.get(stack)?.board.maskColour ?? null;
       // A piece of a STEP model keeps the file's colour, unless the view colours by kind or margin.
       o.userData.modelColour = modelColour(name);
+      // A piece of a case model keeps its colour too (issue 756): the file's, or the board's `.color`.
+      o.userData.caseColour = caseColour(name);
       if (role === 'body-unknown') planarUv(o);
       if (role && LOOKS[role].hatch) o.renderOrder = 2;
       if (role === 'limit' || role === 'limit-violated' || role === 'case') o.renderOrder = 3;
@@ -1326,7 +1328,8 @@ export class Viewer {
         o.material = this.focusedLimits.has(`${l.name}:${l.face}`) ? this.limitFocus(role) : this.surface(role, 'rest');
       } else if (info?.kind === 'case_solid') {
         const c = info as CaseSolidInfo;
-        o.material = this.focusedSolids.has(`case:${c.case}:${c.solid}`) ? this.caseFocus() : this.litCases.has(c.case) ? this.caseLit() : this.solidNow(c) ? this.surface('case-solid', 'rest', { xray }) : this.surface(role, 'rest');
+        const tint = (o.userData.caseColour as string | null) || null;
+        o.material = this.focusedSolids.has(`case:${c.case}:${c.solid}`) ? this.caseFocus() : this.litCases.has(c.case) ? this.caseLit() : this.solidNow(c) ? this.surface('case-solid', 'rest', { xray, tint }) : this.surface(role, 'rest', { tint });
       } else {
         o.material = this.surface(role, 'rest', { xray, dim: netsOn, tint: this.maskTint(o, role) });
       }
