@@ -91,7 +91,7 @@ _Avoid_: channel (the room between two rows of pads)
 One drawing of a footprint's courtyard layer (`F.CrtYd`), as the box round it; drawings that touch are one shape. Each is its own room in the placer and the placement check, so a part may stand between the two rectangles of a plug-in module's footprint, and a pad outside every shape is a shape of its own. The footprint's `courtyard` is the box round all of them (`netsmith_pcb::Footprint::courtyard_shapes`; the rule is in the chapter on projects, _A courtyard of several shapes_).
 
 **Cross-check**:
-`netsmith board fab --cross-check`: the board is plotted with KiCad as well and its Gerbers, drill files and placement are compared with netsmith's own (layers as bitmaps), and KiCad's design rules check is run and its findings compared with netsmith's (by rule and place). KiCad is a witness there, never a source of files or of the gate (ADR 0034, ADR 0037).
+`netsmith board fab --cross-check`: the Gerbers are compared with the board model with netsmith's own viewer (each copper layer as `view gerber` and `view pcb` draw it, no KiCad), and with KiCad installed the board is plotted with KiCad as well and its Gerbers, drill files and placement are compared with netsmith's own (layers as bitmaps), and KiCad's design rules check is run and its findings compared with netsmith's (by rule and place). KiCad is a witness there, never a source of files or of the gate (ADR 0034, ADR 0037).
 
 **Crowding**:
 How full the coarse plan leaves a tile on a layer: the most of its four edges' planned tracks over what the edge holds. A step outside a line's corridor costs nothing on a tile crowded less than 70 %, and the whole crowding cost at 100 %.

@@ -78,8 +78,9 @@ KiCad 9 is needed for these, and for nothing else:
 
 - The ERC and DRC cross-check: `kicad-cli`, and in the editor the PCB findings that run
   KiCad's check (without it the findings list says "KiCad not found: set KICAD_CLI or install
-  KiCad", once). `board fab --cross-check` plots the board with KiCad as well, and `fab` runs
-  netsmith's own design rules check without it.
+  KiCad", once). `board fab --cross-check` plots the board with KiCad as well (with no KiCad it compares the
+  Gerbers with the board with netsmith's own viewer alone), and `fab` runs netsmith's own design
+  rules check without it.
 - A project whose own `kicad.toml` names a KiCad symbol or footprint that netsmith does not
   make, with no `[[library]]` of the project and no `gen:` footprint for it. Only then does a
   run stop, and the message names the part, the id and the line of `kicad.toml`, lists where

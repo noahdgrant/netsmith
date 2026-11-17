@@ -64,7 +64,7 @@ flowchart TD
     end
     side --> place
     pack --> fabout[("fab/: the package for the board house")]
-    pack -.-> xc["Optional KiCad cross-check"]
+    pack -.-> xc["Cross-check: viewer comparison, and KiCad's when installed"]
     route -- "connections left" --> inc(["Written as INCOMPLETE, run fails"])
 ```
 

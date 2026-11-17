@@ -19,7 +19,7 @@ cargo test --workspace
 
 A test that fails once and passes on a rerun is a bug to fix, not to retry: no test passes or fails by the speed of the machine (`AGENTS.md`, Tests). A cancel test counts the checkpoints a call reached after the cancel (`Cancel::checkpoints`, `Cancel::at_checkpoint`), a scaling test compares counts of work between two sizes, and a speed worth seeing is printed by an `#[ignore]`d `measured` test (`cargo test -p netsmith-router --test main mixed::measured -- --ignored --nocapture`). A time limit in a test is a hang guard of a minute or more.
 
-Then run the fab gate. It runs netsmith's own design rules check (no KiCad needed) and must end with `design rules check: passed`. Add `--cross-check` (needs KiCad, below) to compare the files and the findings with KiCad's.
+Then run the fab gate. It runs netsmith's own design rules check (no KiCad needed) and must end with `design rules check: passed`. Add `--cross-check` to compare the Gerbers with the board model with netsmith's own viewer (no KiCad), and, when KiCad is installed (below), the files and the findings with KiCad's too.
 
 ```sh
 cargo run -p netsmith-cli -- board fab examples/linear_regulator.nsm --out /tmp/fab-<branch>

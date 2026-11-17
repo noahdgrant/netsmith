@@ -51,7 +51,7 @@ fn pad(board: &Board, refdes: &str, number: &str) -> Pt {
 /// The board 20 by 12 mm with the header on the left, the resistor in the middle and the LED on
 /// the right, all on the top; VCC routed from the header on the bottom to a via and on the top
 /// to the resistor, the anode on the top, and GND left open.
-fn board() -> Board {
+pub(crate) fn board() -> Board {
     let libraries = Libraries::sample();
     let built = netsmith_pipeline::build_with(
         "picture.nsm",

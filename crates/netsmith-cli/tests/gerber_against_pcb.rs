@@ -32,9 +32,8 @@ fn ok(run: &Output) {
     );
 }
 
-/// Fabs the example `stem` (its source and every file beside it) with the router's copper kept,
-/// then compares the two pictures of each copper layer the package has.
-fn agrees(stem: &str, board: &str, layers: &[&str]) {
+/// A folder with the example `stem`: its source and every file beside it.
+fn copy_example(stem: &str) -> netsmith_testkit::TempDir {
     let dir = netsmith_testkit::TempDir::new(&format!("gerber-against-pcb-{stem}"));
     for entry in std::fs::read_dir(repo().join("examples")).unwrap() {
         let path = entry.unwrap().path();
@@ -43,6 +42,13 @@ fn agrees(stem: &str, board: &str, layers: &[&str]) {
             std::fs::copy(&path, dir.join(&name)).unwrap();
         }
     }
+    dir
+}
+
+/// Fabs the example `stem` (its source and every file beside it) with the router's copper kept,
+/// then compares the two pictures of each copper layer the package has.
+fn agrees(stem: &str, board: &str, layers: &[&str]) {
+    let dir = copy_example(stem);
     let source = format!("{stem}.nsm");
     ok(&netsmith_in(
         &dir,
@@ -108,6 +114,72 @@ fn the_copper_of_the_led_example_agrees_with_its_gerbers() {
 #[test]
 fn the_copper_of_four_layers_with_pours_and_planes_agrees_with_its_gerbers() {
     agrees(
+        "outline_and_pours",
+        "OutlineAndPours",
+        &["top", "inner1", "inner2", "bottom"],
+    );
+}
+
+/// `board fab --cross-check` with no KiCad runs this comparison on the board it has just written
+/// (issue #1158), says that it was the only check that ran, and has it in `fab-notes.txt` and,
+/// with `--format json`, as findings of code `fab`.
+fn cross_checked(stem: &str, board: &str, layers: &[&str]) {
+    let dir = copy_example(stem);
+    let source = format!("{stem}.nsm");
+    let run = netsmith_in(
+        &dir,
+        &[
+            "board",
+            "fab",
+            &source,
+            "--reuse-routes",
+            "--cross-check",
+            "--no-glb",
+            "--no-step",
+            "--no-pdf",
+            "--offline",
+            "--out",
+            "out",
+            "--format",
+            "json",
+            "--notes",
+            "all",
+        ],
+    );
+    ok(&run);
+    let notes = std::fs::read_to_string(dir.join(format!("out/{board}/fab-notes.txt"))).unwrap();
+    assert!(
+        notes.contains("cross-check against netsmith's viewer: the Gerbers agree with the board model"),
+        "{notes}"
+    );
+    assert!(notes.contains("viewer comparison alone"), "{notes}");
+    for layer in layers {
+        assert!(
+            notes.lines().any(|l| l.trim_start().starts_with(layer)
+                && l.contains("copper:")),
+            "{layer}: {notes}"
+        );
+    }
+    // The same run, as findings.
+    let json: serde_json::Value = serde_json::from_slice(&run.stdout).unwrap();
+    let findings = json["findings"].as_array().unwrap();
+    assert!(
+        findings.iter().any(|f| f["code"] == "fab"
+            && f["message"]
+                .as_str()
+                .is_some_and(|m| m.starts_with("cross-check against netsmith's viewer: the Gerbers agree"))),
+        "{json}"
+    );
+}
+
+#[test]
+fn the_cross_check_without_kicad_compares_the_led_example_with_its_gerbers() {
+    cross_checked("led", "LedExample", &["top", "bottom"]);
+}
+
+#[test]
+fn the_cross_check_without_kicad_compares_four_layers_with_pours_and_planes() {
+    cross_checked(
         "outline_and_pours",
         "OutlineAndPours",
         &["top", "inner1", "inner2", "bottom"],
