@@ -1157,7 +1157,11 @@ fn a_section_of_the_four_layer_board_shows_its_stackup_in_bands_in_order_top_to_
     // Above the board's top face at this x there is nothing but background; the part's body is
     // cut solid where the plane crosses it (the picture's middle column of the header).
     assert_eq!(image.pixel(200, 10), palette.background);
-    let body = section_picture(&scene, "four_layer-section-body", y, (18.95, 1.0, 1.5));
+    // The middle of J1 along x, wherever the placer put it.
+    let j1 = scene.bodies.iter().find(|b| b.refdes == "J1").unwrap();
+    let xs = j1.corners.iter().map(|c| c.x);
+    let middle = (xs.clone().fold(f64::MAX, f64::min) + xs.fold(f64::MIN, f64::max)) / 2.0;
+    let body = section_picture(&scene, "four_layer-section-body", y, (middle, 1.0, 1.5));
     let top = body.pixel(400, 40);
     assert_ne!(top, palette.background, "a part's body is cut solid");
 }
@@ -1748,18 +1752,42 @@ fn the_system_is_written_as_glb_and_step_with_a_node_and_a_product_per_member() 
     let apply = |p: [f64; 3]| {
         [0, 1, 2].map(|r| (0..3).map(|c| m[c * 4 + r] * p[c]).sum::<f64>() + m[12 + r])
     };
-    // The motion is a half turn about the diagonal of the board's plane, offset (13.45, 1.05,
-    // 10.65) mm: (x, y, z) goes to (13.45 + y, 1.05 + x, 10.65 - z).
-    for p in [[0.0, 0.0, 0.0], [13.0, 8.0, -1.6], [7.5, 2.75, 0.0]] {
-        let want = gltf_point([13.45 + p[1], 1.05 + p[0], 10.65 - p[2]]);
-        let got = apply(gltf_point(p));
-        for k in 0..3 {
-            assert!(
-                (got[k] - want[k]).abs() < 1e-6,
-                "{p:?}: {got:?} != {want:?}"
-            );
+    // The motion turns the LED board over (flip) with a half turn about an axis in the board's
+    // plane, and offsets it so that its connector mates with the other board's: which half
+    // turn, and where, follow the placer's place for the two headers, so the test reads the
+    // motion in the scene's frame (mm, z up) and holds it to what makes it a flip: a rotation
+    // (orthonormal, determinant 1) that turns z over, and puts the board at the mated height.
+    let scene_of = |g: [f64; 3]| [g[0] * 1000.0, -g[2] * 1000.0, g[1] * 1000.0];
+    let origin = scene_of(apply(gltf_point([0.0, 0.0, 0.0])));
+    let basis: Vec<[f64; 3]> = [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]
+        .iter()
+        .map(|e| {
+            let g = scene_of(apply(gltf_point(*e)));
+            [0, 1, 2].map(|k| g[k] - origin[k])
+        })
+        .collect();
+    // `basis[c]` is column c of the motion's rotation: the image of a 1 mm step along c.
+    let dot = |a: [f64; 3], b: [f64; 3]| (0..3).map(|k| a[k] * b[k]).sum::<f64>();
+    for i in 0..3 {
+        for j in 0..3 {
+            let want = if i == j { 1.0 } else { 0.0 };
+            assert!((dot(basis[i], basis[j]) - want).abs() < 1e-6, "{basis:?}");
         }
     }
+    let det = dot(
+        basis[0],
+        [
+            basis[1][1] * basis[2][2] - basis[1][2] * basis[2][1],
+            basis[1][2] * basis[2][0] - basis[1][0] * basis[2][2],
+            basis[1][0] * basis[2][1] - basis[1][1] * basis[2][0],
+        ],
+    );
+    assert!((det - 1.0).abs() < 1e-6, "a rotation, not a mirror: {basis:?}");
+    assert!((basis[2][2] + 1.0).abs() < 1e-6, "the board is turned over: {basis:?}");
+    assert!(
+        (origin[2] - 10.65).abs() < 1e-3,
+        "the member stands at the mated height: {origin:?}"
+    );
     // Under the member, its board's subtree as the board alone has it, every name prefixed.
     let board = &nodes[members[1]["children"][0].as_u64().unwrap() as usize];
     assert_eq!(board["name"], "led/board");

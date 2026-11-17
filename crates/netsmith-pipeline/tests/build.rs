@@ -254,8 +254,9 @@ fn the_regulator_stage_builds_with_its_catalog_pinout() {
         "{}",
         b.report
     );
+    // A net's pins are in the order of their parts' paths (ADR 0140), not of their designators.
     assert!(
-        b.report.contains("net GND: C1.2, C2.2, J1.2, J2.2, U1.1"),
+        b.report.contains("net GND: J1.2, J2.2, C1.2, C2.2, U1.1"),
         "{}",
         b.report
     );
