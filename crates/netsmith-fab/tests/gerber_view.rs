@@ -129,6 +129,38 @@ fn the_gerbers_netsmith_writes_are_read_back_and_drawn() {
     assert_eq!(function("-Edge_Cuts.gbr"), Function::Outline);
     assert_eq!(function("-NPTH.drl"), Function::Drill);
     assert_eq!(summary.views, ["top", "inner1", "inner2", "bottom", "all"]);
+    // Every function it has a file for, by its own word, after the views (issue #1143).
+    let names = [
+        "top-copper",
+        "top-mask",
+        "top-paste",
+        "top-silk",
+        "bottom-copper",
+        "bottom-mask",
+        "bottom-paste",
+        "bottom-silk",
+        "outline",
+        "drill",
+    ];
+    assert_eq!(
+        summary.layer_names,
+        ["top", "inner1", "inner2", "bottom", "all"]
+            .into_iter()
+            .chain(names)
+            .collect::<Vec<_>>()
+    );
+    let alone = |suffix: &str| {
+        summary
+            .layers
+            .iter()
+            .find(|l| l.file.ends_with(suffix))
+            .unwrap()
+            .alone
+            .clone()
+    };
+    assert_eq!(alone("-F_Paste.gbr").as_deref(), Some("top-paste"));
+    assert_eq!(alone("-In2_Cu.gbr").as_deref(), Some("inner2"));
+    assert_eq!(alone("-NPTH.drl").as_deref(), Some("drill"));
     // The frame is the outline's: its top left corner is the board's drill origin, and the
     // board is the outline's 40.5 by 27 mm.
     let board = summary.board.unwrap();
@@ -185,6 +217,85 @@ fn the_gerbers_netsmith_writes_are_read_back_and_drawn() {
     // The same files give the same bytes.
     assert_eq!(pictures[0].1, picture(&package_of(&features()), Show::Top, None, 10.0));
     golden("features", &pictures);
+}
+
+#[test]
+fn a_single_function_is_drawn_alone_and_layers_stack() {
+    let pkg = package_of(&features());
+    // Every word of the package is a layer the reader parses back and draws.
+    for show in pkg.layer_names() {
+        assert_eq!(show.to_string().parse::<Show>(), Ok(show));
+        viewer::draw(&pkg, show, None).unwrap();
+    }
+    let only = |word: &str| {
+        let show: Show = word.parse().unwrap();
+        viewer::draw(&pkg, show, None).unwrap()
+    };
+    // The paste alone is the paste file and nothing else; the drill alone the drill files.
+    let paste = only("top-paste");
+    assert_eq!(paste.drawn.len(), 1);
+    assert!(paste.drawn[0].ends_with("-F_Paste.gbr"), "{:?}", paste.drawn);
+    assert!(paste.svg.contains("data-show=\"top-paste\""));
+    let drill = only("drill");
+    assert!(drill.drawn.iter().all(|f| f.ends_with(".drl")), "{:?}", drill.drawn);
+    assert!(!drill.svg.contains("data-function=\"outline\""));
+    assert_eq!(only("outline").drawn.len(), 1);
+    // The top's mask is not the top view: the copper is not in it.
+    assert!(!only("top-mask").drawn.iter().any(|f| f.ends_with("-F_Cu.gbr")));
+
+    // A stack draws each file once, in the order of a view; a bottom-only stack is turned over.
+    let stack = |words: &[&str]| {
+        let shows: Vec<Show> = words.iter().map(|w| w.parse().unwrap()).collect();
+        viewer::draw_stack(&pkg, &shows, None).unwrap()
+    };
+    let both = stack(&["top-paste", "top-mask", "drill", "top-paste"]);
+    let names: Vec<&str> = both.drawn.iter().map(String::as_str).collect();
+    assert!(names[0].ends_with("-F_Mask.gbr") && names[1].ends_with("-F_Paste.gbr"), "{names:?}");
+    assert!(names[2..].iter().all(|f| f.ends_with(".drl")));
+    assert!(both.svg.contains("data-show=\"top-paste+top-mask+drill\""));
+    // The stack of what the top view draws is the top view's drawing, but its name.
+    let as_top = stack(&["top-copper", "top-mask", "top-paste", "top-silk", "outline", "drill"]);
+    let top = viewer::draw(&pkg, Show::Top, None).unwrap();
+    assert_eq!(as_top.drawn, top.drawn);
+    // The bottom's silkscreen alone is mirrored as in the bottom view, and not with a top layer.
+    let r = Some([0.0, 0.0, 40.0, 27.0]);
+    let path_of = |d: &viewer::Drawing, file: &str| {
+        let at = d.svg.find(&format!("data-file=\"{file}\"")).expect(file);
+        let rest = &d.svg[at..];
+        let from = rest.find(" d=\"").unwrap();
+        rest[from..rest[from + 4..].find('"').unwrap() + from + 4].to_string()
+    };
+    let silk = "features-B_Silkscreen.gbr";
+    let by = |words: &[&str]| {
+        let shows: Vec<Show> = words.iter().map(|w| w.parse().unwrap()).collect();
+        viewer::draw_stack(&pkg, &shows, r).unwrap()
+    };
+    let alone = path_of(&by(&["bottom-silk"]), silk);
+    assert_eq!(alone, path_of(&by(&["bottom"]), silk));
+    assert_ne!(alone, path_of(&by(&["bottom-silk", "top-silk"]), silk));
+
+    // An unknown word, and a word the package has no file for, are refused with its words.
+    let err = pkg.parse_layer("middle").unwrap_err();
+    assert!(err.starts_with("`middle` is not a layer; the package has: top, inner1, inner2, bottom, all, top-copper, "), "{err}");
+    let only_top = viewer::open(&data().join("tracespace")).unwrap();
+    assert_eq!(
+        only_top.parse_layer("bottom-paste").unwrap_err(),
+        "the package has no file for `bottom-paste`; it has: top, all, top-copper, top-mask, top-silk, outline, drill"
+    );
+    let none = viewer::draw(&only_top, Show::Only(Function::Paste(Face::Top)), None).unwrap_err();
+    assert!(none.to_string().starts_with("the package has no file for `top-paste`; it has: top"), "{none}");
+
+    let mut pictures = Vec::new();
+    for word in ["top-paste", "drill", "outline", "bottom-silk", "bottom-mask", "top-copper"] {
+        pictures.push((word.to_string(), picture(&pkg, word.parse().unwrap(), None, 10.0)));
+    }
+    let shows: Vec<Show> = ["bottom-copper", "bottom-paste", "drill"]
+        .iter()
+        .map(|w| w.parse().unwrap())
+        .collect();
+    let drawing = viewer::draw_stack(&pkg, &shows, None).unwrap();
+    pictures.push(("stack-bottom".to_string(), viewer::png(&drawing, Some(10.0)).unwrap()));
+    golden("layers", &pictures);
 }
 
 #[test]
@@ -278,6 +389,6 @@ fn a_file_with_a_construct_the_reader_does_not_support_is_said_and_not_drawn() {
     let none = viewer::draw(&pkg, Show::Bottom, None).unwrap_err();
     assert_eq!(
         none.to_string(),
-        "the package has no file for `bottom`; it has: top, all"
+        "the package has no file for `bottom`; it has: top, all, top-copper, drill"
     );
 }

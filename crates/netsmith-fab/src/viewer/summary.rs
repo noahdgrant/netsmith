@@ -42,6 +42,10 @@ pub struct FileSummary {
     /// The `--layer` that draws it as its own: `top`, `bottom`, `inner<n>`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub layer: Option<String>,
+    /// The `--layer` that draws its function alone: `top-mask`, `bottom-paste`, `drill`, `inner2`
+    /// (issue #1143); none for a file of no function.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub alone: Option<String>,
     /// What said its function: `x2` (its attribute), `name`, `format` (a drill file); none when
     /// nothing did.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -117,6 +121,9 @@ pub struct Summary {
     pub extent: Option<Extent>,
     /// The views `--layer` can draw: `top`, `inner1`..., `bottom`, `all`.
     pub views: Vec<String>,
+    /// Everything `--layer` takes for this package (issue #1143): the views, then each function
+    /// it has a file for by its own word (`top-copper`, `top-paste`, `outline`, `drill`).
+    pub layer_names: Vec<String>,
     pub layers: Vec<FileSummary>,
     /// Holes by size, smallest first, plated before not.
     pub holes: Vec<HoleSize>,
@@ -165,6 +172,7 @@ pub(super) fn of(pkg: &Package) -> Summary {
             },
             function: f.function.word(),
             layer: f.function.layer(),
+            alone: f.function.alone(),
             identified_by: f.identified_by,
             file_function: None,
             polarity: None,
@@ -244,6 +252,7 @@ pub(super) fn of(pkg: &Package) -> Summary {
             .iter()
             .map(ToString::to_string)
             .collect(),
+        layer_names: pkg.layer_names().iter().map(ToString::to_string).collect(),
         layers,
         holes: sizes,
         unread,

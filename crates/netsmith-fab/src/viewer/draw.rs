@@ -16,6 +16,16 @@
 //! shows. A hole is drawn as the hole it is: the background, with a thin ring, light grey for a
 //! plated hole and yellow for one that is not. Every drill file is drawn in every view.
 //!
+//! A single function is drawn alone (issue #1143), with nothing else: `top-copper`,
+//! `top-mask`, `top-paste`, `top-silk`, `bottom-copper`, `bottom-mask`, `bottom-paste`,
+//! `bottom-silk`, `outline` and `drill` ([`Function::alone`]); `inner<n>` is the inner copper
+//! layer as before. [`draw_stack`] draws several views and layers one over the other, each file
+//! once, in the order of the lists above (a copper layer, the mask, the paste, the silkscreen,
+//! the outline, the holes; with `all`, the bottom's before the top's). A stack is drawn from the
+//! bottom, mirrored, when it asks for something of the bottom and nothing of the top, of an
+//! inner layer or of `all`; the outline and the holes look the same from either side. Copper is
+//! see-through when a stack draws more than one copper layer.
+//!
 //! The colours are KiCad's for its layers, so that a person who knows its board editor reads
 //! them at once.
 
@@ -23,9 +33,11 @@ use std::fmt::Write as _;
 
 use netsmith_draw::{Rect, Rgba, raster, svg};
 
+use super::identify::ALONE;
 use super::{Face, File, Function, Layer, Package, Read};
 
-/// What to draw: a side as a person sees it, an inner copper layer, or every layer.
+/// What to draw: a side as a person sees it, an inner copper layer, every layer, or the files of
+/// one function alone ([`Show::Only`]).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Show {
     Top,
@@ -33,6 +45,43 @@ pub enum Show {
     /// The inner copper layer counted from the top, from 1.
     Inner(u32),
     All,
+    /// The files of one function and nothing else: not an inner copper layer ([`Show::Inner`])
+    /// and not a file of no function; [`Show::alone`] makes one.
+    Only(Function),
+}
+
+impl Show {
+    /// The view that draws the files of `function` alone: `Only(function)`, or `Inner(n)` for an
+    /// inner copper layer; none for a file of no function.
+    pub fn alone(function: Function) -> Option<Show> {
+        match function {
+            Function::Copper(Layer::Inner(n)) => Some(Show::Inner(n)),
+            Function::Other => None,
+            f => Some(Show::Only(f)),
+        }
+    }
+
+    /// Whether the view is of the bottom, of the top (or what is seen from the top), or neither
+    /// (the outline and the holes).
+    fn side(self) -> Option<Face> {
+        match self {
+            Show::Bottom => Some(Face::Bottom),
+            Show::Top | Show::Inner(_) | Show::All => Some(Face::Top),
+            Show::Only(
+                Function::Copper(Layer::Top)
+                | Function::Mask(Face::Top)
+                | Function::Paste(Face::Top)
+                | Function::Silk(Face::Top),
+            ) => Some(Face::Top),
+            Show::Only(
+                Function::Copper(Layer::Bottom)
+                | Function::Mask(Face::Bottom)
+                | Function::Paste(Face::Bottom)
+                | Function::Silk(Face::Bottom),
+            ) => Some(Face::Bottom),
+            Show::Only(_) => None,
+        }
+    }
 }
 
 impl std::str::FromStr for Show {
@@ -43,12 +92,17 @@ impl std::str::FromStr for Show {
             "top" => Ok(Show::Top),
             "bottom" => Ok(Show::Bottom),
             "all" => Ok(Show::All),
-            _ => s
-                .strip_prefix("inner")
-                .and_then(|n| n.parse::<u32>().ok())
-                .filter(|n| *n > 0)
-                .map(Show::Inner)
-                .ok_or_else(|| format!("`{s}` is not top, bottom, inner<n> or all")),
+            _ => ALONE
+                .iter()
+                .find(|f| f.alone().as_deref() == Some(s))
+                .and_then(|f| Show::alone(*f))
+                .or_else(|| {
+                    s.strip_prefix("inner")
+                        .and_then(|n| n.parse::<u32>().ok())
+                        .filter(|n| *n > 0)
+                        .map(Show::Inner)
+                })
+                .ok_or_else(|| format!("`{s}` is not a layer: {LAYER_WORDS}")),
         }
     }
 }
@@ -60,9 +114,14 @@ impl std::fmt::Display for Show {
             Show::Bottom => f.write_str("bottom"),
             Show::Inner(n) => write!(f, "inner{n}"),
             Show::All => f.write_str("all"),
+            Show::Only(function) => f.write_str(&function.alone().unwrap_or_default()),
         }
     }
 }
+
+/// The words `--layer` takes, as a person reads them.
+pub const LAYER_WORDS: &str = "top, bottom, inner<n>, all, top-copper, top-mask, top-paste, \
+top-silk, bottom-copper, bottom-mask, bottom-paste, bottom-silk, outline or drill";
 
 /// The SVG of a view and what it holds.
 #[derive(Debug, Clone, PartialEq)]
@@ -155,8 +214,8 @@ const MARGIN: f64 = 1.0;
 const RING: f64 = 0.05;
 
 /// A file's colour and opacity in a view.
-fn paint(function: Function, show: Show) -> (&'static str, f64) {
-    let copper = if show == Show::All { 0.7 } else { 1.0 };
+fn paint(function: Function, see_through: bool) -> (&'static str, f64) {
+    let copper = if see_through { 0.7 } else { 1.0 };
     match function {
         Function::Copper(Layer::Top) => (TOP, copper),
         Function::Copper(Layer::Bottom) => (BOTTOM, copper),
@@ -175,6 +234,12 @@ fn paint(function: Function, show: Show) -> (&'static str, f64) {
 
 /// Where a file comes in the order of a view, or `None` when the view does not draw it.
 fn rank(function: Function, show: Show) -> Option<u32> {
+    if let Show::Only(only) = show {
+        // The same order as with every layer.
+        return (function == only)
+            .then(|| rank(function, Show::All))
+            .flatten();
+    }
     let side = |face: Face| {
         matches!(
             (show, face),
@@ -235,9 +300,23 @@ pub(super) fn views(pkg: &Package) -> Vec<Show> {
         Show::Inner(n) => *n,
         Show::Bottom => u32::MAX - 1,
         Show::All => u32::MAX,
+        Show::Only(_) => u32::MAX - 2,
     };
     out.sort_by_key(key);
     out.push(Show::All);
+    out
+}
+
+/// Everything `--layer` can draw for the package: its views ([`views`]), then each single
+/// function it has a file for ([`Function::alone`]), in the order of [`ALONE`].
+pub(super) fn names(pkg: &Package) -> Vec<Show> {
+    let mut out = views(pkg);
+    out.extend(
+        ALONE
+            .iter()
+            .filter(|f| pkg.files.iter().any(|file| file.function == **f))
+            .filter_map(|f| Show::alone(*f)),
+    );
     out
 }
 
@@ -264,23 +343,65 @@ fn escape(s: &str) -> String {
 /// of the board) and of what the view's other files draw; with no outline file, round what the
 /// view draws.
 pub fn draw(pkg: &Package, show: Show, region: Option<[f64; 4]>) -> Result<Drawing, ViewError> {
+    draw_stack(pkg, &[show], region)
+}
+
+/// The SVG of several views and layers drawn one over the other (see the module's header), over
+/// `region` as [`draw`] does. Each file is drawn once, where its function comes first among the
+/// views asked for; a view the package has no file for is refused whole.
+pub fn draw_stack(
+    pkg: &Package,
+    shows: &[Show],
+    region: Option<[f64; 4]>,
+) -> Result<Drawing, ViewError> {
+    let mut shows = shows.to_vec();
+    if shows.is_empty() {
+        shows.push(Show::Top);
+    }
+    let mut seen = Vec::new();
+    shows.retain(|s| {
+        let new = !seen.contains(s);
+        seen.push(*s);
+        new
+    });
+    for show in &shows {
+        // A side or a layer needs a file of its own, not only the outline and the holes.
+        let own = pkg.files.iter().any(|f| {
+            rank(f.function, *show).is_some()
+                && (matches!(show, Show::Only(_))
+                    || !matches!(f.function, Function::Outline | Function::Drill))
+        });
+        if !own {
+            return Err(ViewError::NoLayer {
+                asked: *show,
+                has: names(pkg),
+            });
+        }
+    }
     let mut chosen: Vec<(u32, usize, &File)> = pkg
         .files
         .iter()
         .enumerate()
-        .filter_map(|(i, f)| rank(f.function, show).map(|r| (r, i, f)))
+        .filter_map(|(i, f)| {
+            shows
+                .iter()
+                .filter_map(|show| rank(f.function, *show))
+                .min()
+                .map(|r| (r, i, f))
+        })
         .collect();
     chosen.sort_by_key(|(r, i, _)| (*r, *i));
-    // A side or a layer needs a file of its own, not only the outline and the holes.
-    let own = chosen
+    let show_word = shows
         .iter()
-        .any(|(_, _, f)| !matches!(f.function, Function::Outline | Function::Drill));
-    if !own {
-        return Err(ViewError::NoLayer {
-            asked: show,
-            has: views(pkg),
-        });
-    }
+        .map(Show::to_string)
+        .collect::<Vec<_>>()
+        .join("+");
+    let asked = shows[0];
+    let coppers = chosen
+        .iter()
+        .filter(|(_, _, f)| matches!(f.function, Function::Copper(_)))
+        .count();
+    let see_through = shows.contains(&Show::All) || coppers > 1;
     let unread: Vec<String> = chosen
         .iter()
         .filter(|(_, _, f)| f.read.is_err())
@@ -316,7 +437,7 @@ pub fn draw(pkg: &Package, show: Show, region: Option<[f64; 4]>) -> Result<Drawi
                 });
             let Some((lo, hi)) = extent else {
                 return Err(ViewError::Unread {
-                    asked: show,
+                    asked,
                     files: unread,
                 });
             };
@@ -328,7 +449,8 @@ pub fn draw(pkg: &Package, show: Show, region: Option<[f64; 4]>) -> Result<Drawi
         }
     };
     let [x0, y0, w, h] = region;
-    let mirror = show == Show::Bottom;
+    let sides: Vec<Face> = shows.iter().filter_map(|s| s.side()).collect();
+    let mirror = !sides.is_empty() && sides.iter().all(|f| *f == Face::Bottom);
     // A point of the files to the SVG: to the frame, then turned over for the bottom.
     let at = |p: (f64, f64)| -> (f64, f64) {
         let q = o.to_frame(p);
@@ -337,7 +459,7 @@ pub fn draw(pkg: &Package, show: Show, region: Option<[f64; 4]>) -> Result<Drawi
     let mut s = String::new();
     let _ = writeln!(
         s,
-        "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"{} {} {} {}\" width=\"{}mm\" height=\"{}mm\" data-show=\"{show}\">",
+        "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"{} {} {} {}\" width=\"{}mm\" height=\"{}mm\" data-show=\"{show_word}\">",
         num(x0),
         num(y0),
         num(w),
@@ -355,7 +477,7 @@ pub fn draw(pkg: &Package, show: Show, region: Option<[f64; 4]>) -> Result<Drawi
     );
     let mut drawn = Vec::new();
     for f in files {
-        let (colour, opacity) = paint(f.function, show);
+        let (colour, opacity) = paint(f.function, see_through);
         let layer = f
             .function
             .layer()
