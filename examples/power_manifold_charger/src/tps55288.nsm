@@ -66,6 +66,7 @@
 //! `std/parts/regulator.nsm` says why), so the part provides none. The external half bridge on
 //! `DR1H` and `DR1L` (the board's Q1 and Q2) carries the input power on this board, and is not
 //! part of this model.
+
 import std::sources::Rail
 
 /// The TPS55288 in the 26-pin VQFN-HR package: a synchronous four-switch buck-boost converter
@@ -102,34 +103,35 @@ part Tps55288 {
     .quiescent_current ?= 0A..860uA
 
     // What the input draws: what the output supplies over the efficiency, and the IC's own.
-    .vin.current == -.vout.current * .vout.voltage / (.vin.voltage * .efficiency) + .quiescent_current
+    .vin.current ==
+        -.vout.current * .vout.voltage / (.vin.voltage * .efficiency) + .quiescent_current
     dc switching_regulator .vin .vout .efficiency .quiescent_current
 
     pins "VQFN-26-HR(3.5x4)" {
         //  pin       kind           name         pads
-        .dr1l     output         "DR1L"       "1"
-        .dr1h     output         "DR1H"       "2"
-        .vin.pos  power          "VIN"        "3"
-        .en       input          "EN/UVLO"    "4"
-        .scl      input          "SCL"        "5"
-        .sda      bidirectional  "SDA"        "6"
-        .dith     input          "DITH/SYNC"  "7"
-        .fsw      output         "FSW"        "8"
-        .vin.neg  power          "PGND"       "9" "24"
-        .agnd     power          "AGND"       "10"
-        .vout.pos power          "VOUT"       "11" "26"
-        .isp      input          "ISP"        "12"
-        .isn      input          "ISN"        "13"
-        .fb       bidirectional  "FB/INT"     "14"
-        .mode     input          "MODE"       "15"
-        .cdc      output         "CDC"        "16"
-        .ilim     output         "ILIM"       "17"
-        .comp     input          "COMP"       "18"
-        .vcc      output         "VCC"        "19"
-        .boot2    passive        "BOOT2"      "20"
-        .sw2      passive        "SW2"        "21" "25"
-        .boot1    passive        "BOOT1"      "22"
-        .sw1      passive        "SW1"        "23"
+        .dr1l     output        "DR1L"      "1"
+        .dr1h     output        "DR1H"      "2"
+        .vin.pos  power         "VIN"       "3"
+        .en       input         "EN/UVLO"   "4"
+        .scl      input         "SCL"       "5"
+        .sda      bidirectional "SDA"       "6"
+        .dith     input         "DITH/SYNC" "7"
+        .fsw      output        "FSW"       "8"
+        .vin.neg  power         "PGND"      "9" "24"
+        .agnd     power         "AGND"      "10"
+        .vout.pos power         "VOUT"      "11" "26"
+        .isp      input         "ISP"       "12"
+        .isn      input         "ISN"       "13"
+        .fb       bidirectional "FB/INT"    "14"
+        .mode     input         "MODE"      "15"
+        .cdc      output        "CDC"       "16"
+        .ilim     output        "ILIM"      "17"
+        .comp     input         "COMP"      "18"
+        .vcc      output        "VCC"       "19"
+        .boot2    passive       "BOOT2"     "20"
+        .sw2      passive       "SW2"       "21" "25"
+        .boot1    passive       "BOOT1"     "22"
+        .sw1      passive       "SW1"       "23"
     }
 
     .package: Package

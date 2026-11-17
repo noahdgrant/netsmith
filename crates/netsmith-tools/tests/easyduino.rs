@@ -2032,8 +2032,8 @@ mod board {
     #[test]
     fn the_comparison_sees_a_header_pin_on_the_wrong_module_pin_in_the_source() {
         let text = read("src/esp32_s3_wroom_1.nsm");
-        let line4 = ".gpio4  bidirectional \"IO4\"    \"4\"";
-        let line5 = ".gpio5  bidirectional \"IO5\"    \"5\"";
+        let line4 = ".gpio4   bidirectional \"IO4\"  \"4\"";
+        let line5 = ".gpio5   bidirectional \"IO5\"  \"5\"";
         assert_eq!(text.matches(line4).count(), 1);
         assert_eq!(text.matches(line5).count(), 1);
         let theirs = PORT.theirs();
@@ -2048,8 +2048,8 @@ mod board {
         assert_eq!(PORT.net_differences(&ours, &theirs), Vec::<String>::new());
 
         let wrong = text
-            .replace(line4, ".gpio5  bidirectional \"IO4\"    \"4\"")
-            .replace(line5, ".gpio4  bidirectional \"IO5\"    \"5\"");
+            .replace(line4, ".gpio5   bidirectional \"IO4\"  \"4\"")
+            .replace(line5, ".gpio4   bidirectional \"IO5\"  \"5\"");
         assert_ne!(wrong, text);
         let (moved, ours) = wiring_of(&wrong);
         let differences = PORT.net_differences(&ours, &theirs);

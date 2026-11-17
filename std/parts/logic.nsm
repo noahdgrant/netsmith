@@ -61,11 +61,11 @@ part Sn74lvc1g04 {
     // Section 4, Pin Functions: pad 1 NC, 2 A, 3 GND, 4 Y, 5 VCC (DBV, DCK and DRL), and
     // Table 5.1, Absolute Maximum Ratings, in the rows of A and Y.
     pins "SOT-23-5" {
-        .nc       no_connect "NC"  "1"
-        .vcc.neg  power      "GND" "3"
-        .vcc.pos  power      "VCC" "5"
-        .a.line   input      "A"   "2" abs_min -0.5V abs_max 6.5V
-        .y.line   output     "Y"   "4" abs_min -0.5V abs_max .vcc.voltage + 0.5V
+        .nc      no_connect "NC"  "1"
+        .vcc.neg power      "GND" "3"
+        .vcc.pos power      "VCC" "5"
+        .a.line  input      "A"   "2" abs_min -0.5V abs_max 6.5V
+        .y.line  output     "Y"   "4" abs_min -0.5V abs_max .vcc.voltage + 0.5V
     }
 
     .package: Package
@@ -246,11 +246,11 @@ generic LevelTranslator {
     .vcc.current &= 0A .. .max_supply_current
 
     pins "SOT-23-5" "SOT-353_SC-70-5" {
-        .nc       no_connect "NC"  "1"
-        .a.line   input      "A"   "2" abs_max .a_abs_max
-        .vcc.neg  power      "GND" "3"
-        .y.line   output     "Y"   "4"
-        .vcc.pos  power      "VCC" "5"
+        .nc      no_connect "NC"  "1"
+        .a.line  input      "A"   "2" abs_max .a_abs_max
+        .vcc.neg power      "GND" "3"
+        .y.line  output     "Y"   "4"
+        .vcc.pos power      "VCC" "5"
     }
 
     .package: Package

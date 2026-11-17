@@ -17,12 +17,12 @@ import std::parts::connector::Connector
 part ShouHanMini5ptp provides Connector {
     pins {
         //  pin        kind           name       pads
-        .vbus     power         "VBUS"     "1"
-        .dm       bidirectional "D-"       "2"
-        .dp       bidirectional "D+"       "3"
-        .id       passive       "ID"       "4"
-        .gnd      power         "GND"      "5"
-        .shield   passive       "SHIELD"   "6" "7" "8" "9"
+        .vbus   power         "VBUS"   "1"
+        .dm     bidirectional "D-"     "2"
+        .dp     bidirectional "D+"     "3"
+        .id     passive       "ID"     "4"
+        .gnd    power         "GND"    "5"
+        .shield passive       "SHIELD" "6" "7" "8" "9"
     }
 
     .package: Package

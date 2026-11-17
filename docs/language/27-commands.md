@@ -6,7 +6,7 @@
 
 The commands are grouped under nouns, each with its verbs (issue #1090): `netsmith <noun> <verb>`, so `netsmith --help` lists nine nouns and `netsmith board --help` the verbs of a board.
 
-- `project`: the project as a whole: make one (`init`), bring its agent files up to this netsmith (`refresh`), refresh or check its pick lock (`lock`), report what is worth changing in its sources (`lint`), make one of its orders (`order`), print what it is made of (`show`).
+- `project`: the project as a whole: make one (`init`), bring its agent files up to this netsmith (`refresh`), refresh or check its pick lock (`lock`), report what is worth changing in its sources (`lint`), rewrite its sources in the language's one layout (`fmt`), make one of its orders (`order`), print what it is made of (`show`).
 - `board`: what is done to the boards of a file or of the project: `check`, `build`, `fab`, `drc` alone, `explain` a pick, `compare` two designs or the project with a git ref, `swap` a part for another row, `pins` (show, lock, move), `copper` (the planes, pours, hand zones and teardrop fills), and the views of the solved design the editor shows, printed as text or `--format json`: `bom`, `power`, `system`, `panel`.
 - `layout`: the layout file, where each part is.
 - `routes`: the routes file, the copper fixed by hand or imported.
@@ -31,6 +31,7 @@ Each command, what it was before, and its flags (a test walks `--help` of every 
 | `netsmith project refresh` | `netsmith init --refresh` | none |
 | `netsmith project lock` | `netsmith lock` | `--update`, `--check`, `--part`, `--except`, `--format` |
 | `netsmith project lint` | new | `--strict`, `--format` |
+| `netsmith project fmt` | new | `--check` |
 | `netsmith project order` | `netsmith fab --order [NAME]` | `--out`, `--route-timeout`, `--rip-rounds`, `--allow-drc-violations`, `--cross-check`, `--strict`, `--locked`, `--constraints`, `--no-glb`, `--no-step`, `--no-pdf`, `--offline`, `--quiet`, `--place-seeds`, `--place-budget`, `--progress`, `--to-editor`, `--format` |
 | `netsmith project show` | new | `--format` |
 | `netsmith board check` | `netsmith check` | `--strict`, `--format`, `--notes` |
@@ -95,8 +96,6 @@ Each command, what it was before, and its flags (a test walks `--help` of every 
 | `netsmith dev parity` | `netsmith parity` | `--table`, `--parts`, `--svg`, `--format` |
 | `netsmith dev board3d` | `netsmith board3d` | `--board`, `--format` (was `--json`), `--glb`, `--step`, `--place-seeds`, `--place-budget`, `--progress`, `--to-editor` |
 | `netsmith mcp` | new | `--project`, `--editor` |
-
-The place left for a command to come, named by the same rules: `project fmt`.
 
 ### The MCP server
 

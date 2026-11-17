@@ -238,18 +238,18 @@ generic Led {
         .cathode passive "K" "1"
     }
 
-    .color:           Color
+    .color: Color
     .forward_voltage: Voltage
     /// The largest continuous forward current, where the catalog row records it.
-    .max_forward_current:     Current
+    .max_forward_current: Current
     /// The current `.forward_voltage` is stated at, where the catalog row records it.
-    .test_current:    Current
+    .test_current: Current
     /// Through-current, anode to cathode. An LED does not conduct the other way, so a supply
     /// that could fall short of the forward voltage (a 3.3 V rail and a 3.4 V part) cannot
     /// drive it.
     #[role(current)]
     .current: Current
-    .drop:    Voltage
+    .drop: Voltage
 
     .drop == .forward_voltage
     .current >= 0mA

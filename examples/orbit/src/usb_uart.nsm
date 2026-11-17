@@ -10,10 +10,11 @@
 //! joined to the chip's pin by pin, because `~` between two `Uart`s crosses the lines, which is
 //! right between two ends and wrong for a port that passes one end on (ADR 0064).
 
-import src::cp2102::Cp2102
 import std::bus::Uart
 import std::parts::passive::Capacitor
 import std::sources::Rail
+
+import src::cp2102::Cp2102
 
 /// The USB to UART bridge. Join `.vbus` to the USB rail, `.dp` and `.dm` to the connector's data
 /// pins, and `.uart` to the MCU's UART with `~`, which crosses the lines.

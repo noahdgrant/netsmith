@@ -35,9 +35,9 @@ import std::mfg::stackup::{InnerLayer, Pour, Stackup}
 interface EightLayer {
     /// Who makes it: no one. ACME is fictional, and `project order` refuses a board on it.
     .fabricator: String
-    .source:     String
+    .source: String
     .fabricator &= "ACME"
-    .source     &= "std/mfg/acme.nsm: chosen, not sourced; ACME is a fictional fabricator"
+    .source &= "std/mfg/acme.nsm: chosen, not sourced; ACME is a fictional fabricator"
 
     /// The narrowest track.
     .min_track: Length
@@ -179,36 +179,36 @@ interface EightLayer {
     .finishes &= "ENIG, OSP"
 
     .stackup: Stackup
-    .stackup.layers        &= 8
-    .stackup.thickness     &= 1.6mm
+    .stackup.layers &= 8
+    .stackup.thickness &= 1.6mm
     .stackup.copper_weight &= 1
-    .stackup.build         &= "ACME-8L-1.6"
-    .stackup.inner_copper  &= 0.0152mm
-    .stackup.dielectric1.kind      &= "prepreg"
-    .stackup.dielectric1.glass     &= "2116"
+    .stackup.build &= "ACME-8L-1.6"
+    .stackup.inner_copper &= 0.0152mm
+    .stackup.dielectric1.kind &= "prepreg"
+    .stackup.dielectric1.glass &= "2116"
     .stackup.dielectric1.thickness &= 0.1088mm
-    .stackup.dielectric1.epsilon   &= 4.16
-    .stackup.dielectric2.kind      &= "core"
+    .stackup.dielectric1.epsilon &= 4.16
+    .stackup.dielectric2.kind &= "core"
     .stackup.dielectric2.thickness &= 0.3mm
-    .stackup.dielectric2.epsilon   &= 4.6
-    .stackup.dielectric3.kind      &= "prepreg"
-    .stackup.dielectric3.glass     &= "2116"
+    .stackup.dielectric2.epsilon &= 4.6
+    .stackup.dielectric3.kind &= "prepreg"
+    .stackup.dielectric3.glass &= "2116"
     .stackup.dielectric3.thickness &= 0.1088mm
-    .stackup.dielectric3.epsilon   &= 4.16
-    .stackup.dielectric4.kind      &= "core"
+    .stackup.dielectric3.epsilon &= 4.16
+    .stackup.dielectric4.kind &= "core"
     .stackup.dielectric4.thickness &= 0.41mm
-    .stackup.dielectric4.epsilon   &= 4.6
-    .stackup.dielectric5.kind      &= "prepreg"
-    .stackup.dielectric5.glass     &= "2116"
+    .stackup.dielectric4.epsilon &= 4.6
+    .stackup.dielectric5.kind &= "prepreg"
+    .stackup.dielectric5.glass &= "2116"
     .stackup.dielectric5.thickness &= 0.1088mm
-    .stackup.dielectric5.epsilon   &= 4.16
-    .stackup.dielectric6.kind      &= "core"
+    .stackup.dielectric5.epsilon &= 4.16
+    .stackup.dielectric6.kind &= "core"
     .stackup.dielectric6.thickness &= 0.3mm
-    .stackup.dielectric6.epsilon   &= 4.6
-    .stackup.dielectric7.kind      &= "prepreg"
-    .stackup.dielectric7.glass     &= "2116"
+    .stackup.dielectric6.epsilon &= 4.6
+    .stackup.dielectric7.kind &= "prepreg"
+    .stackup.dielectric7.glass &= "2116"
     .stackup.dielectric7.thickness &= 0.1088mm
-    .stackup.dielectric7.epsilon   &= 4.16
+    .stackup.dielectric7.epsilon &= 4.16
 
     /// The 6 inner layers, counted from the top: planes, or signal layers. The board says
     /// what each is and names the net of a plane.
@@ -236,9 +236,9 @@ interface EightLayer {
 interface TenLayer {
     /// Who makes it: no one. ACME is fictional, and `project order` refuses a board on it.
     .fabricator: String
-    .source:     String
+    .source: String
     .fabricator &= "ACME"
-    .source     &= "std/mfg/acme.nsm: chosen, not sourced; ACME is a fictional fabricator"
+    .source &= "std/mfg/acme.nsm: chosen, not sourced; ACME is a fictional fabricator"
 
     /// The narrowest track.
     .min_track: Length
@@ -380,43 +380,43 @@ interface TenLayer {
     .finishes &= "ENIG, OSP"
 
     .stackup: Stackup
-    .stackup.layers        &= 10
-    .stackup.thickness     &= 1.6mm
+    .stackup.layers &= 10
+    .stackup.thickness &= 1.6mm
     .stackup.copper_weight &= 1
-    .stackup.build         &= "ACME-10L-1.6"
-    .stackup.inner_copper  &= 0.0152mm
-    .stackup.dielectric1.kind      &= "prepreg"
-    .stackup.dielectric1.glass     &= "3313"
+    .stackup.build &= "ACME-10L-1.6"
+    .stackup.inner_copper &= 0.0152mm
+    .stackup.dielectric1.kind &= "prepreg"
+    .stackup.dielectric1.glass &= "3313"
     .stackup.dielectric1.thickness &= 0.0994mm
-    .stackup.dielectric1.epsilon   &= 4.1
-    .stackup.dielectric2.kind      &= "core"
+    .stackup.dielectric1.epsilon &= 4.1
+    .stackup.dielectric2.kind &= "core"
     .stackup.dielectric2.thickness &= 0.2mm
-    .stackup.dielectric2.epsilon   &= 4.6
-    .stackup.dielectric3.kind      &= "prepreg"
-    .stackup.dielectric3.glass     &= "2116"
+    .stackup.dielectric2.epsilon &= 4.6
+    .stackup.dielectric3.kind &= "prepreg"
+    .stackup.dielectric3.glass &= "2116"
     .stackup.dielectric3.thickness &= 0.1088mm
-    .stackup.dielectric3.epsilon   &= 4.16
-    .stackup.dielectric4.kind      &= "core"
+    .stackup.dielectric3.epsilon &= 4.16
+    .stackup.dielectric4.kind &= "core"
     .stackup.dielectric4.thickness &= 0.25mm
-    .stackup.dielectric4.epsilon   &= 4.6
-    .stackup.dielectric5.kind      &= "prepreg"
-    .stackup.dielectric5.glass     &= "2116"
+    .stackup.dielectric4.epsilon &= 4.6
+    .stackup.dielectric5.kind &= "prepreg"
+    .stackup.dielectric5.glass &= "2116"
     .stackup.dielectric5.thickness &= 0.1088mm
-    .stackup.dielectric5.epsilon   &= 4.16
-    .stackup.dielectric6.kind      &= "core"
+    .stackup.dielectric5.epsilon &= 4.16
+    .stackup.dielectric6.kind &= "core"
     .stackup.dielectric6.thickness &= 0.25mm
-    .stackup.dielectric6.epsilon   &= 4.6
-    .stackup.dielectric7.kind      &= "prepreg"
-    .stackup.dielectric7.glass     &= "2116"
+    .stackup.dielectric6.epsilon &= 4.6
+    .stackup.dielectric7.kind &= "prepreg"
+    .stackup.dielectric7.glass &= "2116"
     .stackup.dielectric7.thickness &= 0.1088mm
-    .stackup.dielectric7.epsilon   &= 4.16
-    .stackup.dielectric8.kind      &= "core"
+    .stackup.dielectric7.epsilon &= 4.16
+    .stackup.dielectric8.kind &= "core"
     .stackup.dielectric8.thickness &= 0.2mm
-    .stackup.dielectric8.epsilon   &= 4.6
-    .stackup.dielectric9.kind      &= "prepreg"
-    .stackup.dielectric9.glass     &= "3313"
+    .stackup.dielectric8.epsilon &= 4.6
+    .stackup.dielectric9.kind &= "prepreg"
+    .stackup.dielectric9.glass &= "3313"
     .stackup.dielectric9.thickness &= 0.0994mm
-    .stackup.dielectric9.epsilon   &= 4.1
+    .stackup.dielectric9.epsilon &= 4.1
 
     /// The 8 inner layers, counted from the top: planes, or signal layers. The board says
     /// what each is and names the net of a plane.

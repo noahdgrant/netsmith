@@ -27,10 +27,10 @@ part Abm8272T3 {
 
     pins "SMD3225-4P" {
         //  pin     kind     name      pads
-        .xtal_a  passive  "XTAL_A"  "1"
-        .gnd_2   passive  "GND_2"   "2"
-        .xtal_b  passive  "XTAL_B"  "3"
-        .gnd_4   passive  "GND_4"   "4"
+        .xtal_a passive "XTAL_A" "1"
+        .gnd_2  passive "GND_2"  "2"
+        .xtal_b passive "XTAL_B" "3"
+        .gnd_4  passive "GND_4"  "4"
     }
 
     .frequency: Frequency

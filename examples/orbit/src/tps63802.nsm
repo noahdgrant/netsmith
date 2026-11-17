@@ -35,16 +35,16 @@ part Tps63802 {
 
     pins "VSON-10(2x3)" {
         //  pin    kind     name    pads
-        .en      input    "EN"    "1"
-        .mode    input    "MODE"  "2"
-        .agnd    power    "AGND"  "3"
-        .fb      input    "FB"    "4"
-        .pg      output   "PG"    "5"
-        .vout    power    "VOUT"  "6"
-        .l2      passive  "L2"    "7"
-        .gnd     power    "GND"   "8"
-        .l1      passive  "L1"    "9"
-        .vin     power    "VIN"   "10"
+        .en   input   "EN"   "1"
+        .mode input   "MODE" "2"
+        .agnd power   "AGND" "3"
+        .fb   input   "FB"   "4"
+        .pg   output  "PG"   "5"
+        .vout power   "VOUT" "6"
+        .l2   passive "L2"   "7"
+        .gnd  power   "GND"  "8"
+        .l1   passive "L1"   "9"
+        .vin  power   "VIN"  "10"
     }
 
     /// The feedback regulation voltage, 500 mV +/- 1 % in PWM mode (page 6).

@@ -159,15 +159,15 @@ part Header1x8 provides Connector {
 #[assembly(hand)]
 part Header1x10 provides Connector {
     pins {
-        .p1 passive "P1" "1"
-        .p2 passive "P2" "2"
-        .p3 passive "P3" "3"
-        .p4 passive "P4" "4"
-        .p5 passive "P5" "5"
-        .p6 passive "P6" "6"
-        .p7 passive "P7" "7"
-        .p8 passive "P8" "8"
-        .p9 passive "P9" "9"
+        .p1  passive "P1"  "1"
+        .p2  passive "P2"  "2"
+        .p3  passive "P3"  "3"
+        .p4  passive "P4"  "4"
+        .p5  passive "P5"  "5"
+        .p6  passive "P6"  "6"
+        .p7  passive "P7"  "7"
+        .p8  passive "P8"  "8"
+        .p9  passive "P9"  "9"
         .p10 passive "P10" "10"
     }
 
@@ -259,15 +259,15 @@ part Socket1x8 provides Connector {
 #[assembly(hand)]
 part Socket1x10 provides Connector {
     pins {
-        .p1 passive "P1" "1"
-        .p2 passive "P2" "2"
-        .p3 passive "P3" "3"
-        .p4 passive "P4" "4"
-        .p5 passive "P5" "5"
-        .p6 passive "P6" "6"
-        .p7 passive "P7" "7"
-        .p8 passive "P8" "8"
-        .p9 passive "P9" "9"
+        .p1  passive "P1"  "1"
+        .p2  passive "P2"  "2"
+        .p3  passive "P3"  "3"
+        .p4  passive "P4"  "4"
+        .p5  passive "P5"  "5"
+        .p6  passive "P6"  "6"
+        .p7  passive "P7"  "7"
+        .p8  passive "P8"  "8"
+        .p9  passive "P9"  "9"
         .p10 passive "P10" "10"
     }
 
@@ -313,15 +313,15 @@ part Header2x3 provides Connector {
 #[assembly(hand)]
 part Header2x5 provides Connector {
     pins {
-        .p1 passive "P1" "1"
-        .p2 passive "P2" "2"
-        .p3 passive "P3" "3"
-        .p4 passive "P4" "4"
-        .p5 passive "P5" "5"
-        .p6 passive "P6" "6"
-        .p7 passive "P7" "7"
-        .p8 passive "P8" "8"
-        .p9 passive "P9" "9"
+        .p1  passive "P1"  "1"
+        .p2  passive "P2"  "2"
+        .p3  passive "P3"  "3"
+        .p4  passive "P4"  "4"
+        .p5  passive "P5"  "5"
+        .p6  passive "P6"  "6"
+        .p7  passive "P7"  "7"
+        .p8  passive "P8"  "8"
+        .p9  passive "P9"  "9"
         .p10 passive "P10" "10"
     }
 
@@ -342,15 +342,15 @@ part Header2x5 provides Connector {
 #[assembly(hand)]
 part Header2x10 provides Connector {
     pins {
-        .p1 passive "P1" "1"
-        .p2 passive "P2" "2"
-        .p3 passive "P3" "3"
-        .p4 passive "P4" "4"
-        .p5 passive "P5" "5"
-        .p6 passive "P6" "6"
-        .p7 passive "P7" "7"
-        .p8 passive "P8" "8"
-        .p9 passive "P9" "9"
+        .p1  passive "P1"  "1"
+        .p2  passive "P2"  "2"
+        .p3  passive "P3"  "3"
+        .p4  passive "P4"  "4"
+        .p5  passive "P5"  "5"
+        .p6  passive "P6"  "6"
+        .p7  passive "P7"  "7"
+        .p8  passive "P8"  "8"
+        .p9  passive "P9"  "9"
         .p10 passive "P10" "10"
         .p11 passive "P11" "11"
         .p12 passive "P12" "12"
@@ -600,22 +600,22 @@ part Obd2M provides Connector {
 
     pins {
         //  pin         kind           name          pad
-        .p1             bidirectional  "1"           "1"
-        .j1850_bus_pos  bidirectional  "J1850BUS+"   "2"
-        .p3             bidirectional  "3"           "3"
-        .vbatt.neg      power          "CHASGND"     "4"
-        .signal_gnd     power          "SIGGND"      "5"  optional
-        .can_high       bidirectional  "CANHIGH"     "6"
-        .iso_k          bidirectional  "ISOK-LINE"   "7"
-        .p8             bidirectional  "8"           "8"
-        .p9             bidirectional  "9"           "9"
-        .j1850_bus      bidirectional  "J1850BUS"    "10"
-        .p11            bidirectional  "11"          "11"
-        .p12            bidirectional  "12"          "12"
-        .p13            bidirectional  "13"          "13"
-        .can_low        bidirectional  "CANLOW"      "14"
-        .iso_l          bidirectional  "ISOL-LINE"   "15"
-        .vbatt.pos      power          "BATTPOWER"   "16"
+        .p1            bidirectional "1"         "1"
+        .j1850_bus_pos bidirectional "J1850BUS+" "2"
+        .p3            bidirectional "3"         "3"
+        .vbatt.neg     power         "CHASGND"   "4"
+        .signal_gnd    power         "SIGGND"    "5" optional
+        .can_high      bidirectional "CANHIGH"   "6"
+        .iso_k         bidirectional "ISOK-LINE" "7"
+        .p8            bidirectional "8"         "8"
+        .p9            bidirectional "9"         "9"
+        .j1850_bus     bidirectional "J1850BUS"  "10"
+        .p11           bidirectional "11"        "11"
+        .p12           bidirectional "12"        "12"
+        .p13           bidirectional "13"        "13"
+        .can_low       bidirectional "CANLOW"    "14"
+        .iso_l         bidirectional "ISOL-LINE" "15"
+        .vbatt.pos     power         "BATTPOWER" "16"
     }
 
     .package: Package

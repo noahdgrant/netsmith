@@ -44,11 +44,11 @@ part Mcp73831 {
 
     pins "SOT-23-5" {
         //  pin     kind       name    pads
-        .stat    tri_state  "STAT"  "1"
-        .vss     power      "VSS"   "2"
-        .vbat    power      "VBAT"  "3"
-        .vdd     power      "VDD"   "4"
-        .prog    input      "PROG"  "5"
+        .stat tri_state "STAT" "1"
+        .vss  power     "VSS"  "2"
+        .vbat power     "VBAT" "3"
+        .vdd  power     "VDD"  "4"
+        .prog input     "PROG" "5"
     }
 
     /// The programming resistor, from `PROG` to `VSS`.

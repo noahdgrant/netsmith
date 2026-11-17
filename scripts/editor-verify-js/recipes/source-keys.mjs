@@ -1,5 +1,5 @@
 // The source editor's keys and settings, one step for each: Ctrl+/ comments the lines (the shortcuts stay on `?`),
-// autosave writes a file after a pause, comments can be set in another font, Vim keys can be turned on, imports are sorted by Shift+Alt+O and on save, and the project is rebuilt by hand.
+// autosave writes a file after a pause, comments can be set in another font, Vim keys can be turned on, imports are sorted by Shift+Alt+O and on save, the file is formatted by Shift+Alt+F and on save, and the project is rebuilt by hand.
 import { whenIdle } from '../settle.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -163,6 +163,44 @@ export async function run({ page, shot, step, expect, project, section }) {
   await openOptions();
   await page.locator('[data-testid="opt-sortsave"]').click();
   await page.keyboard.press('Escape');
+
+  step('Shift+Alt+F formats the file as `netsmith project fmt` does, as one change to undo');
+  // Whether the connector's import is indented (`want`), as the page shows it.
+  const indented = (want) =>
+    page.waitForFunction((w) => [...document.querySelectorAll('.cm-line')].some((l) => l.innerText.startsWith('    import std::parts::connector')) === w, want);
+  await page.locator('.cm-line', { hasText: 'import std::parts::connector' }).first().click();
+  await page.keyboard.press('Home');
+  await page.keyboard.type('    ');
+  await indented(true);
+  await page.keyboard.press('Shift+Alt+F');
+  await indented(false);
+  expect(true, 'the import is at the start of its line again');
+  await shot('formatted');
+  await page.keyboard.press('Control+z');
+  await indented(true);
+  expect(true, 'one undo takes the formatting back');
+  await page.keyboard.press('Control+z');
+  await indented(false);
+
+  step('format on save: Ctrl+S formats first');
+  await openOptions();
+  await page.locator('[data-testid="opt-formatsave"]').click();
+  await page.keyboard.press('Escape');
+  await page.locator('.cm-line', { hasText: 'import std::parts::connector' }).first().click();
+  await page.keyboard.press('Home');
+  await page.keyboard.type('    ');
+  await page.keyboard.press('Control+s');
+  await page.waitForFunction(() => !document.querySelector('.tab .dot'), null);
+  expect(!fs.readFileSync(file, 'utf8').includes('    import std::parts::connector'), 'the file was written formatted');
+  await page.keyboard.press('Control+z');
+  await page.keyboard.press('Control+z');
+  await indented(false);
+  await openOptions();
+  await page.locator('[data-testid="opt-formatsave"]').click();
+  await page.keyboard.press('Escape');
+  await page.locator('.cm-content').click();
+  await page.keyboard.press('Control+s');
+  await page.waitForFunction(() => !document.querySelector('.tab .dot'), null);
 
   step('rebuild on save off: a saved edit is not analysed until Rebuild is pressed');
   await openOptions();

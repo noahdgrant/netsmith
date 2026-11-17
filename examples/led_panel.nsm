@@ -6,10 +6,10 @@
 //! outline is in `led_panel.physical.nsm`), and its copper keeps 0.4 mm from the edge, the
 //! least JLCPCB allows next to a V-cut.
 
-import std::parts::connector::Header1x2
-import std::parts::passive::{Resistor, Led}
-import std::sources::Rail
 import std::mfg::jlcpcb::{TwoLayer, VCutPanel}
+import std::parts::connector::Header1x2
+import std::parts::passive::{Led, Resistor}
+import std::sources::Rail
 
 /// A status LED on a 40 x 30 mm board.
 board LedTile {

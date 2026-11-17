@@ -535,6 +535,11 @@ pub trait Backend: Send + Sync + 'static {
     ) -> Result<OrderReport, ApiError>;
     /// `summary` or `bom` of an order that was run.
     fn order_download(&self, name: &str, file: &str) -> Result<Attachment, ApiError>;
+    /// `text`, a source, in the layout `netsmith project fmt` writes (issue #1103). A text that
+    /// does not parse is a 422 that says where. A backend that cannot format says so.
+    fn format(&self, _text: &str) -> Result<String, ApiError> {
+        Err(ApiError::new(501, "this editor cannot format a source"))
+    }
     /// Where the name at character `offset` of `text` is defined.
     fn definition(
         &self,

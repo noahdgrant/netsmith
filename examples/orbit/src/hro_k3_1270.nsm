@@ -23,10 +23,10 @@ part HroK3_1270 {
     .designator &= "SW"
 
     pins "SMD,8.8x2mm" {
-        .a      passive "A"      "1"
-        .b      passive "B"      "2"
-        .com    passive "COM"    "3"
-        .mount  passive "MOUNT"  "4" "5"
+        .a     passive "A"     "1"
+        .b     passive "B"     "2"
+        .com   passive "COM"   "3"
+        .mount passive "MOUNT" "4" "5"
     }
 
     .rated_current: Current

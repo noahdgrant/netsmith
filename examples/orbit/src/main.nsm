@@ -16,6 +16,12 @@
 //! (`buck_boost.nsm`), the USB-UART bridge (`usb_uart.nsm`) and the crystal (`oscillator.nsm`)
 //! are modules with the parts around each chip; the rest is here.
 
+import std::bus::{I2cPullups, PullDown}
+import std::mfg::jlcpcb::TwoLayer
+import std::parts::connector::Header1x8
+import std::parts::passive::{Capacitor, Resistor}
+import std::sources::Rail
+
 import src::at24c128c::At24C128C
 import src::buck_boost::BuckBoost
 import src::charger::Charger
@@ -27,11 +33,6 @@ import src::shouhan_mini_5ptp::ShouHanMini5ptp
 import src::stm32f030c8::Stm32F030C8
 import src::usb_uart::UsbUart
 import src::xkb_ts_1187a::XkbTs1187a
-import std::bus::{I2cPullups, PullDown}
-import std::mfg::jlcpcb::TwoLayer
-import std::parts::connector::Header1x8
-import std::parts::passive::{Capacitor, Resistor}
-import std::sources::Rail
 
 board Orbit {
     defaults {

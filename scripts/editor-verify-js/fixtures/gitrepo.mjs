@@ -41,9 +41,9 @@ export function earlierDesign(text) {
   t = replaceOnce(t, '    .power_in: Socket1x2\n', '    .debug: Header1x2\n    .power_in: Socket1x2\n');
   t = replaceOnce(t, '"3V3"', '"VOUT"');
   t = replaceOnce(t, '.current &= 0mA..50mA', '.current &= 0mA..30mA');
-  t = replaceOnce(t, '    .input_cap:  Capacitor { .effective_capacitance >= 1uF }\n', '');
-  t = replaceOnce(t, '    .input_cap.max_voltage  >= .vin.voltage * 1.5\n', '');
-  t = replaceOnce(t, '    .vin.pos  ~> .input_cap  ~> .vin.neg\n', '');
+  t = replaceOnce(t, '    .input_cap: Capacitor { .effective_capacitance >= 1uF }\n', '');
+  t = replaceOnce(t, '    .input_cap.max_voltage >= .vin.voltage * 1.5\n', '');
+  t = replaceOnce(t, '    .vin.pos ~> .input_cap ~> .vin.neg\n', '');
   return t;
 }
 

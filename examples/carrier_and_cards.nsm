@@ -12,10 +12,10 @@
 //! whole; they have no KiCad symbol, so this file is checked and solved but not exported.
 
 import std::bus::{Spi, SpiRole, Uart}
+import std::mfg::jlcpcb::TwoLayer
 import std::parts::connector::{Header1x10, Socket1x10}
 import std::parts::passive::Fuse
 import std::sources::Rail
-import std::mfg::jlcpcb::TwoLayer
 
 /// A controller with a UART and an SPI master. Invented; not a real part.
 part Controller {
@@ -60,10 +60,10 @@ part SerialChip {
     .uart: Uart
 
     pins {
-        .vdd.pos  power  "VDD"  "1"
-        .vdd.neg  power  "VSS"  "2"
-        .uart.tx  output "TX"   "3"
-        .uart.rx  input  "RX"   "4"
+        .vdd.pos power  "VDD" "1"
+        .vdd.neg power  "VSS" "2"
+        .uart.tx output "TX"  "3"
+        .uart.rx input  "RX"  "4"
     }
 }
 

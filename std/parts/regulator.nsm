@@ -12,13 +12,13 @@ import std::sources::Rail
 generic LinearRegulator {
     .designator &= "U"
 
-    .vin:  Rail
+    .vin: Rail
     .vout: Rail
     .vin.neg ~ .vout.neg
 
-    .dropout:     Voltage
+    .dropout: Voltage
     .max_current: Current
-    .max_power:   Power
+    .max_power: Power
     .vin.voltage >= .vout.voltage + .dropout
 
     /// The current the regulator itself draws from its input, with the output unloaded: the
@@ -41,7 +41,8 @@ generic LinearRegulator {
     -.vout.current <= .max_current
     // What a load draws at an instant is checked against the rated current (issue #750).
     .vout.max_peak_current == .max_current
-    (.vin.voltage - .vout.voltage) * (-.vout.current) + .vin.voltage * .quiescent_current <= .max_power
+    (.vin.voltage - .vout.voltage) * (-.vout.current) + .vin.voltage * .quiescent_current <=
+        .max_power
 
     // Pad 1 is ground, 2 the output and 3 the input, in both packages.
     pins "SOT-23" "SOT-223" {
@@ -195,11 +196,11 @@ generic BuckIc {
     .sw.neg ~ .vin.neg
 
     pins {
-        .vin.pos  power
-        .vin.neg  power
-        .sw.pos   power
+        .vin.pos power
+        .vin.neg power
+        .sw.pos  power
         // The feedback pin, joined to the tap of the divider.
-        .fb       input
+        .fb      input
     }
     /// The reference at the feedback pin, with its tolerance.
     .vref: Voltage
@@ -590,11 +591,15 @@ module Buck<Ic: BuckIc> provides BuckConverter {
     .input_cap.max_voltage >= .vin.peak * .voltage_margin
     .output_cap.max_voltage >= .vout.peak * .voltage_margin
 
-    .ripple == (.vin.voltage - .vout.voltage) * .vout.voltage / (.vin.voltage * .inductor.inductance * .ic.fsw)
+    .ripple ==
+        (.vin.voltage - .vout.voltage) * .vout.voltage /
+        (.vin.voltage * .inductor.inductance * .ic.fsw)
     .on_time == .vout.voltage / (.vin.voltage * .ic.fsw)
     .off_time == (.vin.voltage - .vout.voltage) / (.vin.voltage * .ic.fsw)
     .soft_start_time == .ic.soft_start_time
-    .output_ripple == .ripple / (8 * .ic.fsw * .output_cap.total_effective_capacitance) + .ripple * .output_esr / .output_cap.count
+    .output_ripple ==
+        .ripple / (8 * .ic.fsw * .output_cap.total_effective_capacitance) + .ripple * .output_esr /
+        .output_cap.count
     .output_esr ?= .output_cap.esr
     .on_time >= .ic.min_on_time
     .off_time >= .ic.min_off_time
@@ -906,21 +911,21 @@ part Lt8641 provides BuckIc {
 
     pins {
         //  pin          kind     name         pads, and the absolute maximums of p.2 (see above)
-        .bias          input    "BIAS"       "1"  abs_max 25V
-        .intvcc        passive  "INTVCC"     "2"  required
-        .bst           passive  "BST"        "3"  required
-        .vin.pos       power    "VIN1"       "4"
-        .gnd1          power    "GND1"       "6" "7"
-        .sw.pos   power    "SW"         "8" "9" "21" "22"
-        .gnd2          power    "GND2"       "10" "11"
-        .vin2          power    "VIN2"       "13"
-        .en_uv         input    "EN/UV"      "14" abs_max 65V
-        .rt            passive  "RT"         "15" required
-        .tr_ss         passive  "TR/SS"      "16" abs_max 4V
-        .sync_mode     input    "SYNC/MODE"  "17" optional abs_max 6V
-        .vin.neg       power    "GND"        "18"
-        .pg            output   "PG"         "19"
-        .fb       input    "FB"         "20"
+        .bias      input   "BIAS"      "1"  abs_max 25V
+        .intvcc    passive "INTVCC"    "2"  required
+        .bst       passive "BST"       "3"  required
+        .vin.pos   power   "VIN1"      "4"
+        .gnd1      power   "GND1"      "6" "7"
+        .sw.pos    power   "SW"        "8" "9" "21" "22"
+        .gnd2      power   "GND2"      "10" "11"
+        .vin2      power   "VIN2"      "13"
+        .en_uv     input   "EN/UV"     "14" abs_max 65V
+        .rt        passive "RT"        "15" required
+        .tr_ss     passive "TR/SS"     "16" abs_max 4V
+        .sync_mode input   "SYNC/MODE" "17" optional abs_max 6V
+        .vin.neg   power   "GND"       "18"
+        .pg        output  "PG"        "19"
+        .fb        input   "FB"        "20"
     }
 
     .package: Package
@@ -1039,12 +1044,12 @@ part Lmr16006y provides BuckIc {
 
     pins {
         //  pin     kind     name    pads, and the absolute maximums of p.4
-        .cb       passive  "CB"    "1" required
-        .vin.neg  power    "GND"   "2"
-        .fb       input    "FB"    "3"
-        .shdn     input    "SHDN"  "4" optional abs_max 65V
-        .vin.pos  power    "VIN"   "5" abs_max 65V
-        .sw.pos   power    "SW"    "6"
+        .cb      passive "CB"   "1" required
+        .vin.neg power   "GND"  "2"
+        .fb      input   "FB"   "3"
+        .shdn    input   "SHDN" "4" optional abs_max 65V
+        .vin.pos power   "VIN"  "5" abs_max 65V
+        .sw.pos  power   "SW"   "6"
     }
 
     .package: Package
@@ -1136,11 +1141,11 @@ part Rt8059 provides BuckIc {
 
     pins {
         //  pin     kind     name   pads, and the absolute maximum of p.4
-        .en       input    "EN"   "1"
-        .vin.neg  power    "GND"  "2"
-        .sw.pos   power    "LX"   "3"
-        .vin.pos  power    "VIN"  "4" abs_max 6.5V
-        .fb       input    "FB"   "5"
+        .en      input "EN"  "1"
+        .vin.neg power "GND" "2"
+        .sw.pos  power "LX"  "3"
+        .vin.pos power "VIN" "4" abs_max 6.5V
+        .fb      input "FB"  "5"
     }
 
     .package: Package
@@ -1222,12 +1227,12 @@ part Tps54202 provides BuckIc {
 
     pins {
         //  pin     kind     name    pads, and the absolute maximums of p.4
-        .vin.neg  power    "GND"   "1"
-        .sw.pos   power    "SW"    "2"
-        .vin.pos  power    "VIN"   "3" abs_max 30V
-        .fb       input    "FB"    "4"
-        .en       input    "EN"    "5" optional abs_max 7V
-        .boot     passive  "BOOT"  "6" required
+        .vin.neg power   "GND"  "1"
+        .sw.pos  power   "SW"   "2"
+        .vin.pos power   "VIN"  "3" abs_max 30V
+        .fb      input   "FB"   "4"
+        .en      input   "EN"   "5" optional abs_max 7V
+        .boot    passive "BOOT" "6" required
     }
 
     .package: Package

@@ -3,10 +3,10 @@
 A panel repeats one board in a grid on one fabrication panel, cut apart by V-cuts (ADR 0040). The board stays a stand-alone `board`: the panel only says how many copies there are and in what grid, and the board house's rules for such a panel come from a standard-library interface, as a board's process does. A panel names no nets and joins nothing.
 
 ```nsm solve
-import std::parts::connector::Header1x2
-import std::parts::passive::{Resistor, Led}
-import std::sources::Rail
 import std::mfg::jlcpcb::{TwoLayer, VCutPanel}
+import std::parts::connector::Header1x2
+import std::parts::passive::{Led, Resistor}
+import std::sources::Rail
 
 board Tile {
     .process: TwoLayer {

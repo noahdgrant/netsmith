@@ -44,8 +44,8 @@ board Lamps {
 A file that writes the same variants often imports them and writes them bare:
 
 ```nsm
+import std::parts::passive::Color::{Green, Red}
 import std::parts::passive::Led
-import std::parts::passive::Color::{Red, Green}
 
 board Signals {
     .fault: Led { .color &= Red }

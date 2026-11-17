@@ -51,8 +51,8 @@ error: `stage.supply.pos.net` names a net, and only a board names nets: set it w
 ```
 
 ```nsm fails
-import std::sources::Rail
 import std::parts::passive::Resistor
+import std::sources::Rail
 
 board Disagree {
     .supply: Rail { .pos.net &= "A" }

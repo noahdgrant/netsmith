@@ -23,11 +23,11 @@ import std::parts::regulator::LinearRegulator
 part Lp2985 provides LinearRegulator {
     pins "SOT-23-5" {
         //  pin       kind     name      pads
-        .vin.pos  power   "VIN"     "1"
-        .vin.neg  power   "GND"     "2"
-        .on_off   input   "ON/OFF"  "3"
-        .bypass   passive "BYPASS"  "4"
-        .vout.pos power   "VOUT"    "5"
+        .vin.pos  power   "VIN"    "1"
+        .vin.neg  power   "GND"    "2"
+        .on_off   input   "ON/OFF" "3"
+        .bypass   passive "BYPASS" "4"
+        .vout.pos power   "VOUT"   "5"
     }
 
     // Table 6.5 (printed page 5), IL = 0, VON/OFF = 2 V: the GND pin current, 125 uA at most over

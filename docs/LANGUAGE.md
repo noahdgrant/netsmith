@@ -34,7 +34,7 @@ The guide is one file for each chapter in `docs/language/`, in the order below. 
 - [The environment of a board](language/22-the-environment-of-a-board.md)
 - [The shape of a board](language/23-the-shape-of-a-board.md)
 - [Imports](language/24-imports.md)
-- [Comments](language/25-comments.md)
+- [Comments and the layout of a file](language/25-comments.md)
 - [Projects and netsmith.toml](language/26-projects-and-netsmith-toml.md)
 - [Commands](language/27-commands.md)
 - [Standard parts](language/28-standard-parts.md)

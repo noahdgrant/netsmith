@@ -5,10 +5,10 @@
 //! around it (`std::parts::regulator`, issue #620). `netsmith board build` says which it took and why
 //! it passed over the others.
 
+import std::mfg::jlcpcb::TwoLayer
 import std::parts::connector::Header1x2
 import std::parts::regulator::BuckConverter
 import std::sources::Rail
-import std::mfg::jlcpcb::TwoLayer
 
 board BuckConverterExample {
     /// Made by JLCPCB's two-layer process, on a board 1.6 mm thick.

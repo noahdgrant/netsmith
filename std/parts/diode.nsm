@@ -304,7 +304,8 @@ generic Zener {
     .bias >= 0V
     min(.bias) <= max(.zener_voltage)
     .bias * .current <= .max_power
-    .voltage_over_temperature == .zener_voltage + .temperature_coefficient * (.temperature_shift / 1K)
+    .voltage_over_temperature ==
+        .zener_voltage + .temperature_coefficient * (.temperature_shift / 1K)
     bridge .cathode ~> .anode
 
     .package: Package

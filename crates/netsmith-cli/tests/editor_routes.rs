@@ -76,6 +76,7 @@ const ROUTES: &[(&str, Way)] = &[
     ("POST /api/fs/create-dir", PageOnly(FILES)),
     ("POST /api/fs/rename", PageOnly(FILES)),
     ("POST /api/fs/delete", PageOnly(FILES)),
+    ("POST /api/format", Command(&["project fmt"])),
     (
         "POST /api/definition",
         PageOnly("where a name is defined, for a click in the page's source editor; an agent searches the sources"),

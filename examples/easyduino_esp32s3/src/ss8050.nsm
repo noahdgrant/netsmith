@@ -27,9 +27,9 @@ part Ss8050 {
 
     pins "SOT-23" {
         //  pin       kind     name  pads
-        .base      passive  "B"   "1"
-        .emitter   passive  "E"   "2"
-        .collector passive  "C"   "3"
+        .base      passive "B" "1"
+        .emitter   passive "E" "2"
+        .collector passive "C" "3"
     }
 
     .package: Package

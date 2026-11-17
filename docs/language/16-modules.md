@@ -4,7 +4,7 @@ A module is a reusable sub-circuit. Its interfaces, pins and declared values are
 
 ```nsm solve
 import std::parts::connector::Header1x2
-import std::parts::passive::{Resistor, Led}
+import std::parts::passive::{Led, Resistor}
 import std::sources::Rail
 
 /// An LED with the resistor that sets its current.
@@ -40,7 +40,7 @@ Rules.
 A board that wants the module's LED brighter and its resistor larger narrows them inside the module, without a member of the module for either:
 
 ```nsm solve
-import std::parts::passive::{Resistor, Led}
+import std::parts::passive::{Led, Resistor}
 import std::sources::Rail
 
 /// An LED with the resistor that sets its current.

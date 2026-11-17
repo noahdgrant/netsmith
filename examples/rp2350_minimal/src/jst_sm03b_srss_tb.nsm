@@ -15,10 +15,10 @@ import std::parts::connector::Connector
 part JstSm03bSrssTb provides Connector {
     pins {
         //  pin        kind     name      pads
-        .p1       passive "1"       "1"
-        .p2       passive "2"       "2"
-        .p3       passive "3"       "3"
-        .mount    passive "MOUNT"   "4" "5"
+        .p1    passive "1"     "1"
+        .p2    passive "2"     "2"
+        .p3    passive "3"     "3"
+        .mount passive "MOUNT" "4" "5"
     }
 
     .package: Package

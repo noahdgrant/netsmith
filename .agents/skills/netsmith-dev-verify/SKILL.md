@@ -38,6 +38,8 @@ scripts/check-example-designs.sh
 
 To fix a stale lock, run `netsmith project lock --update` in the example. To fix a stale design file, run `scripts/check-example-designs.sh --update`. Read the diff of each file before you commit it: a moved pick or design is a change to the board.
 
+The examples, `std/` and the guide's examples are formatted (issue #1103): `scripts/check-example-fmt.sh` runs `netsmith project fmt --check` over the examples and `std/`, and the guide's test over its blocks. After editing an `.nsm` file, run `netsmith project fmt` on it (in a project with no file, or `netsmith project fmt <files>`); `GUIDE_BLESS=1` formats the guide's blocks. A formatted file moves lines, so the design files follow (`scripts/check-example-designs.sh --update`).
+
 ## The editor
 
 For a change to the editor or to a view it shows, also run the browser check in `netsmith-dev-verify-editor` (`scripts/editor-verify`) and look at the screenshots.

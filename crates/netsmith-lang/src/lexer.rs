@@ -63,18 +63,27 @@ pub struct Token {
 }
 
 pub fn lex(src: &str) -> Result<Vec<Token>, ParseError> {
-    Lexer {
+    lex_keeping_comments(src).map(|(tokens, _)| tokens)
+}
+
+/// The tokens, and the span of every plain comment (`//` and `////`, which are not tokens), in
+/// the order written. The formatter (issue #1103) lays the comments out with the tokens.
+pub fn lex_keeping_comments(src: &str) -> Result<(Vec<Token>, Vec<Span>), ParseError> {
+    let mut lexer = Lexer {
         src,
         chars: src.char_indices().collect(),
         i: 0,
-    }
-    .run()
+        comments: Vec::new(),
+    };
+    let tokens = lexer.run()?;
+    Ok((tokens, lexer.comments))
 }
 
 struct Lexer<'a> {
     src: &'a str,
     chars: Vec<(usize, char)>,
     i: usize,
+    comments: Vec<Span>,
 }
 
 impl Lexer<'_> {
@@ -98,7 +107,7 @@ impl Lexer<'_> {
         matches
     }
 
-    fn run(mut self) -> Result<Vec<Token>, ParseError> {
+    fn run(&mut self) -> Result<Vec<Token>, ParseError> {
         let mut out: Vec<Token> = Vec::new();
         while let Some(c) = self.peek_at(0) {
             let start = self.pos();
@@ -143,6 +152,8 @@ impl Lexer<'_> {
                             tok,
                             span: Span::new(start, end),
                         });
+                    } else {
+                        self.comments.push(Span::new(start, self.pos()));
                     }
                 }
                 '/' if self.peek_at(1) == Some('*') => return Err(self.block_comment()),

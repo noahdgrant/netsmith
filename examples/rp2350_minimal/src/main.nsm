@@ -13,6 +13,12 @@
 //! pin optimizer of `fab`, so the firmware's pin map cannot change. There is no
 //! `main.pins.toml` because there is no request to keep an answer for.
 
+import std::bus::PullUp
+import std::mfg::jlcpcb::TwoLayer
+import std::parts::passive::{Capacitor, Inductor, Resistor}
+import std::parts::regulator::LinearRegulator
+import std::sources::Rail
+
 import src::amphenol_10103594::Amphenol10103594
 import src::flash::W25Q128Jv
 import src::jst_sm03b_srss_tb::JstSm03bSrssTb
@@ -20,11 +26,6 @@ import src::oscillator::Oscillator
 import src::rp2350a::Rp2350A
 import src::samtec_tsw_118::SamtecTsw11807LD
 import src::tactile_switch::TactileSwitch
-import std::bus::PullUp
-import std::mfg::jlcpcb::TwoLayer
-import std::parts::passive::{Capacitor, Inductor, Resistor}
-import std::parts::regulator::LinearRegulator
-import std::sources::Rail
 
 board Rp2350Minimal {
     defaults {

@@ -17,6 +17,13 @@
 //! connector and of the microcontroller is joined to the pin the design joins it to: the
 //! board states no request that the pin optimizer (ADR 0101) could move.
 
+import std::mfg::jlcpcb::FourLayer
+import std::parts::connector::ProgrammingPads6
+import std::parts::diode::Tvs
+import std::parts::mechanical::TestPoint
+import std::parts::passive::{Capacitor, Color, FerriteBead, Fuse, Inductor, Led, Resistor}
+import std::sources::Rail
+
 import src::antc1608_ntc::Antc1608Ntc
 import src::bsc059n04ls6::Bsc059n04ls6
 import src::gt_usb_7004::GtUsb7004
@@ -27,12 +34,6 @@ import src::tcpp02_m18::Tcpp02M18
 import src::tlv7022::Tlv7022
 import src::tps55288::Tps55288
 import src::usblc6_2sc6::Usblc62sc6
-import std::mfg::jlcpcb::FourLayer
-import std::parts::connector::ProgrammingPads6
-import std::parts::diode::Tvs
-import std::parts::mechanical::TestPoint
-import std::parts::passive::{Capacitor, Color, FerriteBead, Fuse, Inductor, Led, Resistor}
-import std::sources::Rail
 
 board PowerManifoldCharger {
     defaults {
@@ -79,7 +80,11 @@ board PowerManifoldCharger {
     /// F1: 8A
     .fuse: Fuse { .rated_current &= 8A; .package &= "2410" }
     /// FB1: BLM18KG601SN1D
-    .vcc_bead: FerriteBead { .impedance &= 600ohm +/- 25%; .impedance_frequency &= 100MHz; .package &= "0603" }
+    .vcc_bead: FerriteBead {
+        .impedance &= 600ohm +/- 25%
+        .impedance_frequency &= 100MHz
+        .package &= "0603"
+    }
     /// R28: R010
     .output_shunt: Resistor { .resistance &= 10mohm +/- 1%; .package &= "1206" }
     /// R27: R007

@@ -4558,7 +4558,7 @@
         "text": "The filter of the core regulator's analog supply: 33 ohm and 4.7 uF.",
         "at": {
           "file": "src/main.nsm",
-          "line": 115
+          "line": 116
         },
         "anchors": [
           "avdd_filter"
@@ -4571,7 +4571,7 @@
         "text": "BOOTSEL: held at power-up it pulls QSPI_SS to ground through 1 kohm, so the chip boots from USB.",
         "at": {
           "file": "src/main.nsm",
-          "line": 184
+          "line": 185
         },
         "anchors": [
           "bootsel"
@@ -4584,7 +4584,7 @@
         "text": "The inductor of the core regulator, from the chip's switch node to the core rail.",
         "at": {
           "file": "src/main.nsm",
-          "line": 107
+          "line": 108
         },
         "anchors": [
           "core_inductor"
@@ -4597,7 +4597,7 @@
         "text": "J4: the debug port, a JST-SH with SWCLK, ground and SWD.",
         "at": {
           "file": "src/main.nsm",
-          "line": 55
+          "line": 56
         },
         "anchors": [
           "debug"
@@ -4610,7 +4610,7 @@
         "text": "The QSPI flash that holds the program: 16 MB.",
         "at": {
           "file": "src/main.nsm",
-          "line": 68
+          "line": 69
         },
         "anchors": [
           "flash"
@@ -4623,7 +4623,7 @@
         "text": "J3: GPIO29 down to GPIO16, RUN, SWD and SWCLK.",
         "at": {
           "file": "src/main.nsm",
-          "line": 53
+          "line": 54
         },
         "anchors": [
           "header_high"
@@ -4636,7 +4636,7 @@
         "text": "J2: ground, +3V3 and GPIO0 to GPIO15, as Raspberry Pi's header has them.",
         "at": {
           "file": "src/main.nsm",
-          "line": 51
+          "line": 52
         },
         "anchors": [
           "header_low"
@@ -4649,7 +4649,7 @@
         "text": "The microcontroller. Every pin that a header or a part uses is named here, so none moves.",
         "at": {
           "file": "src/main.nsm",
-          "line": 60
+          "line": 61
         },
         "anchors": [
           "mcu"
@@ -4662,7 +4662,7 @@
         "text": "A 12 MHz crystal with a load capacitor on each side and a damping resistor on the output. Join `.xin` and `.xout` to the chip's pins and `.gnd` to ground.",
         "at": {
           "file": "src/oscillator.nsm",
-          "line": 12
+          "line": 13
         },
         "anchors": [],
         "result": null
@@ -4673,7 +4673,7 @@
         "text": "1 kohm between the chip's XOUT and the crystal (Raspberry Pi's value).",
         "at": {
           "file": "src/oscillator.nsm",
-          "line": 23
+          "line": 24
         },
         "anchors": [
           "oscillator.damping"
@@ -4686,7 +4686,7 @@
         "text": "On the input side, 15 pF C0G (Raspberry Pi's value).",
         "at": {
           "file": "src/oscillator.nsm",
-          "line": 19
+          "line": 20
         },
         "anchors": [
           "oscillator.load_in"
@@ -4699,7 +4699,7 @@
         "text": "On the output side, behind the damping resistor.",
         "at": {
           "file": "src/oscillator.nsm",
-          "line": 21
+          "line": 22
         },
         "anchors": [
           "oscillator.load_out"
@@ -4712,7 +4712,7 @@
         "text": "The 3.3 V regulator, an NCP1117 in a SOT-223 (a row of the project's catalog).",
         "at": {
           "file": "src/main.nsm",
-          "line": 62
+          "line": 63
         },
         "anchors": [
           "regulator"
@@ -4725,7 +4725,7 @@
         "text": "RESET: pulls RUN to ground through 1 kohm.",
         "at": {
           "file": "src/main.nsm",
-          "line": 190
+          "line": 191
         },
         "anchors": [
           "reset"
@@ -4738,7 +4738,7 @@
         "text": "The micro-USB B receptacle: the only supply of the board, and its USB port.",
         "at": {
           "file": "src/main.nsm",
-          "line": 49
+          "line": 50
         },
         "anchors": [
           "usb"
@@ -4751,7 +4751,7 @@
         "text": "The core supply, made by the MCU's own switching regulator with the inductor and a capacitor. Its voltage is the chip's choice (the datasheet's), and nothing here states it.",
         "at": {
           "file": "src/main.nsm",
-          "line": 84
+          "line": 85
         },
         "anchors": [],
         "result": null
@@ -4762,7 +4762,7 @@
         "text": "The IO supply, from the regulator.",
         "at": {
           "file": "src/main.nsm",
-          "line": 78
+          "line": 79
         },
         "anchors": [],
         "result": null
@@ -4773,7 +4773,7 @@
         "text": "USB's VBUS, the only input. 5 V +/- 5% is USB's 4.75 V to 5.25 V.",
         "at": {
           "file": "src/main.nsm",
-          "line": 73
+          "line": 74
         },
         "anchors": [],
         "result": null

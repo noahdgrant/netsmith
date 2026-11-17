@@ -4,8 +4,9 @@
 //! chip's XIN, with a load capacitor to ground; its pad 3 has the other load capacitor to
 //! ground and a damping resistor to the chip's XOUT; pads 2 and 4 are ground.
 
-import src::crystal::Abm8272T3
 import std::parts::passive::{Capacitor, Resistor}
+
+import src::crystal::Abm8272T3
 
 /// A 12 MHz crystal with a load capacitor on each side and a damping resistor on the output.
 /// Join `.xin` and `.xout` to the chip's pins and `.gnd` to ground.

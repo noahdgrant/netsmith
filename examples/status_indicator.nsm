@@ -1,10 +1,10 @@
 //! A small status-light board.
 
-import std::parts::connector::Header1x2
-import std::parts::passive::{Resistor, Led, Color, Capacitor}
-import std::sources::Rail
 import std::logic::Logic
 import std::mfg::jlcpcb::TwoLayer
+import std::parts::connector::Header1x2
+import std::parts::passive::{Capacitor, Color, Led, Resistor}
+import std::sources::Rail
 
 /// A reusable status light indicator with a logic input and local power filtering.
 module StatusIndicator {
@@ -25,7 +25,7 @@ module StatusIndicator {
     }
 
     .enable.line ~> .current_limit ~> .led ~> .power.neg
-    .power.pos   ~> .bypass        ~> .power.neg
+    .power.pos ~> .bypass ~> .power.neg
 }
 
 board IndicatorExample {
@@ -39,7 +39,7 @@ board IndicatorExample {
         .voltage &= 3.3V +/- 5%
     }
     .status_enable: Logic
-    .status_indicator:  StatusIndicator
+    .status_indicator: StatusIndicator
 
     /// The rail comes in through one header, and the enable signal through another.
     .power_in: Header1x2

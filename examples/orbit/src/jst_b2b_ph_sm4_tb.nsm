@@ -14,9 +14,9 @@ import std::parts::connector::Connector
 part JstB2bPhSm4Tb provides Connector {
     pins {
         //  pin        kind     name      pads
-        .p1       passive "1"       "1"
-        .p2       passive "2"       "2"
-        .mount    passive "MP"      "MP"
+        .p1    passive "1"  "1"
+        .p2    passive "2"  "2"
+        .mount passive "MP" "MP"
     }
 
     .package: Package

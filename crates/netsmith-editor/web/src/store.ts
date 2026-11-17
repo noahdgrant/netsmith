@@ -31,7 +31,8 @@ import { noteOutside, notePcbLive, notePlacingLine } from './pcb/liveState';
 import { booting, noteElapsed, notify, pending, setSocket, track } from './feedback/state';
 import { sourceEditor } from './source/handle';
 import { sortImports } from './source/imports';
-import { autosave, rebuildOnSave, sortImportsOnSave } from './source/prefs';
+import { textEdit } from './source/format';
+import { autosave, formatOnSave, rebuildOnSave, sortImportsOnSave } from './source/prefs';
 import { load, save as keep } from './storage';
 import {
   type Selection,
@@ -679,9 +680,33 @@ function sortBeforeSave(path: string) {
   if (change) v.dispatch({ changes: change, userEvent: 'input.sort' });
 }
 
+/** Formats the `.nsm` file in the editor as `netsmith project fmt` does (issue 1103), as one change the editor can undo. `changed`,
+ * `same` (formatted already), or `failed` (it does not parse, or the server could not: it says why, and the text is left). */
+export async function formatInEditor(path: string): Promise<'changed' | 'same' | 'failed'> {
+  const v = sourceEditor.view;
+  if (!v || sourceEditor.path !== path || v.state.readOnly || !path.endsWith('.nsm')) return 'failed';
+  const text = v.state.doc.toString();
+  let formatted: string;
+  try {
+    formatted = await api.format(text);
+  } catch (e) {
+    say(`${path}: ${e instanceof Error ? e.message : String(e)}`, true);
+    return 'failed';
+  }
+  // Typed into while the server formatted it: the newer text stays, unformatted.
+  if (sourceEditor.view !== v || v.state.doc.toString() !== text) return 'failed';
+  const edit = textEdit(text, formatted);
+  if (!edit) return 'same';
+  v.dispatch({ changes: edit, userEvent: 'input.format' });
+  return 'changed';
+}
+
 export async function save(path: string, quiet = false) {
-  // Autosave never sorts: it would move the line being typed.
-  if (!quiet) sortBeforeSave(path);
+  // Autosave never formats nor sorts: it would move the line being typed. Formatting sorts the imports too.
+  if (!quiet) {
+    if (formatOnSave.peek() && path.endsWith('.nsm')) await formatInEditor(path);
+    else sortBeforeSave(path);
+  }
   const f = openFiles.value[path];
   if (!f || f.readonly || !dirty(f) || saving.has(path)) return;
   saving.add(path);

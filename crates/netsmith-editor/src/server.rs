@@ -409,6 +409,7 @@ fn router(state: Shared) -> Router {
         .route("/api/order/cancel", post(cancel_order))
         .route("/api/order/download", get(order_download))
         .route("/api/definition", post(definition))
+        .route("/api/format", post(format_source))
         .route("/api/view", get(view_state).post(view_change))
         .route("/api/view/picture", get(view_picture))
         .route("/api/events", get(events))
@@ -1276,6 +1277,21 @@ async fn definition(
             .definition(&request.path, &request.text, request.offset)
     })
     .await
+}
+
+#[derive(serde::Deserialize)]
+struct FormatRequest {
+    text: String,
+}
+
+/// The text of a source in the layout `netsmith project fmt` writes (issue #1103), for the page's
+/// _Format the file_ and its format on save. Nothing is written: the page applies it as an edit.
+async fn format_source(
+    State(s): State<Shared>,
+    bytes: axum::body::Bytes,
+) -> Result<Json<String>, ApiError> {
+    let request: FormatRequest = body(&bytes)?;
+    json(move || s.backend.format(&request.text)).await
 }
 
 /// The web app: the file asked for, or the page itself.

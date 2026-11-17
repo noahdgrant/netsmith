@@ -289,8 +289,9 @@ MCU32-B,QFN-32,Extended,1.45,120,2026-10-31,https://example.invalid/mcu32-b.pdf
 ```
 
 ```nsm fails catalogs=ic
-import src::mcu::Mcu32
 import std::sources::Rail
+
+import src::mcu::Mcu32
 
 board WhichMcu {
     .supply: Rail {
@@ -305,17 +306,18 @@ board WhichMcu {
 
 ```text
 error: `u` is an `Mcu32`; name the part with .mpn: MCU32-A, MCU32-B
-  --> main.nsm:9:5
-  |
-9 |     .u: Mcu32 { .package &= "QFN-32" }
-  |     ^^^^^^^^^
+   --> main.nsm:10:5
+   |
+10 |     .u: Mcu32 { .package &= "QFN-32" }
+   |     ^^^^^^^^^
 ```
 
 A name is needed only when the board must choose. `.mpn &= "MCU32-B"` picks that row (a hand pick, _A hand pick_ below; `.lcsc &=` would too):
 
 ```nsm evaluate catalogs=ic
-import src::mcu::Mcu32
 import std::sources::Rail
+
+import src::mcu::Mcu32
 
 board NamedMcu {
     .supply: Rail {
@@ -336,8 +338,9 @@ MCU32-A,QFN-32,Extended,1.20,300,2026-10-31,https://example.invalid/mcu32-a.pdf
 ```
 
 ```nsm evaluate catalogs=ic_one
-import src::mcu::Mcu32
 import std::sources::Rail
+
+import src::mcu::Mcu32
 
 board OnlyMcu {
     .supply: Rail {
@@ -359,8 +362,9 @@ MCU32-B,QFN-48,Extended,1.45,120,2026-10-31,https://example.invalid/mcu32-b.pdf
 ```
 
 ```nsm evaluate catalogs=ic_pair
-import src::mcu::Mcu32
 import std::sources::Rail
+
+import src::mcu::Mcu32
 
 board NarrowedMcu {
     .supply: Rail {

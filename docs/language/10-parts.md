@@ -104,7 +104,7 @@ board Assembly {
 
 ```nsm
 import std::parts::connector::Header1x2
-import std::parts::passive::{Resistor, Led}
+import std::parts::passive::{Led, Resistor}
 
 board DefaultAssembly {
     defaults {
@@ -146,7 +146,7 @@ A board may narrow a part inside a module (ADR 0116), but a module that wants th
 
 ```nsm solve
 import std::parts::connector::Header1x2
-import std::parts::passive::{Resistor, Led}
+import std::parts::passive::{Led, Resistor}
 import std::sources::Rail
 
 /// An LED with its resistor. The board chooses who solders them.

@@ -46,6 +46,7 @@
 //! thresholds, the current-sense gain, every register of the I2C interface (the address is set
 //! by `I2C_ADD`), and the function of the part (no std generic is a USB-C protection IC, so the
 //! part provides none and has no `dc` statement).
+
 import std::sources::Rail
 
 /// The TCPP02-M18 in QFN-18 with an exposed pad: a USB Type-C protection IC for a source, with
@@ -77,23 +78,23 @@ part Tcpp02M18 {
 
     pins "QFN-18 (3.5x3.5)" {
         //  pin       kind           name         pads
-        .en       input          "EN"         "1"
-        .cc1      bidirectional  "CC1"        "2"
-        .vcc.pos  power          "VCC_VCONN"  "3"
-        .cc2      bidirectional  "CC2"        "4"
-        .iana     output         "IANA"       "5"
-        .gate     output         "GATE"       "6"
-        .src      input          "SRC"        "7"
-        .vbusc    input          "VBUSc"      "8"
-        .isense   input          "Isense"     "9"
-        .vcc.neg  power          "GND"        "10" "14" "19"
-        .cc2c     bidirectional  "CC2c"       "11"
-        .cbias    output         "CBIAS"      "12"
-        .cc1c     bidirectional  "CC1c"       "13"
-        .i2c_add  input          "I2C_ADD"    "15"
-        .sda      bidirectional  "SDA"        "16"
-        .scl      bidirectional  "SCL"        "17"
-        .flgn     output         "FLGn"       "18"
+        .en      input         "EN"        "1"
+        .cc1     bidirectional "CC1"       "2"
+        .vcc.pos power         "VCC_VCONN" "3"
+        .cc2     bidirectional "CC2"       "4"
+        .iana    output        "IANA"      "5"
+        .gate    output        "GATE"      "6"
+        .src     input         "SRC"       "7"
+        .vbusc   input         "VBUSc"     "8"
+        .isense  input         "Isense"    "9"
+        .vcc.neg power         "GND"       "10" "14" "19"
+        .cc2c    bidirectional "CC2c"      "11"
+        .cbias   output        "CBIAS"     "12"
+        .cc1c    bidirectional "CC1c"      "13"
+        .i2c_add input         "I2C_ADD"   "15"
+        .sda     bidirectional "SDA"       "16"
+        .scl     bidirectional "SCL"       "17"
+        .flgn    output        "FLGn"      "18"
     }
 
     .package: Package

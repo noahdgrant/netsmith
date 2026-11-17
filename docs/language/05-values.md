@@ -18,7 +18,7 @@ Literals.
 Units: `m`, `g`, `s`, `A`, `K`, `degC`, `V`, `ohm` (or `Ω`), `W`, `F`, `H`, `Hz`, `S`, `C` (the coulomb, a charge: a Celsius temperature is `degC`, never `C`). Prefixes: `f p n u (or µ) m k M G T`. Lowercase `m` is milli and uppercase `M` is mega, so `1mohm` is a milliohm and `1Mohm` is a megohm. Arithmetic uses `+ - * /` and parentheses. A sum or difference needs the same dimension. A product or quotient makes a new one.
 
 ```nsm solve
-import std::parts::passive::{Resistor, Capacitor}
+import std::parts::passive::{Capacitor, Resistor}
 import std::sources::Rail
 
 board Units {
@@ -132,8 +132,8 @@ error: the low end of the range is above the high end
 A limit with only one side is a range with an open end: `lo..` is every value from `lo` up, with no upper limit, and `..hi` is every value up to `hi`, with no lower limit. A manufacturing process states each rule as `0.15mm..`, the least the factory can make; a design that must stay under a height states `..5mm`. An open end is not a very large number: nothing is written for it and nothing is shown for it (`1.6mm..`), so no value is too large for it, and a message prints the range as it was written.
 
 ```nsm solve
-import std::parts::connector::Header1x2
 import std::mfg::jlcpcb::TwoLayer
+import std::parts::connector::Header1x2
 
 board Bare {
     .process: TwoLayer {
@@ -172,8 +172,8 @@ error: cannot give a tolerance to a range with an open end (`lo..` or `..hi`)
 ```
 
 ```nsm fails
-import std::parts::connector::Header1x2
 import std::mfg::jlcpcb::TwoLayer
+import std::parts::connector::Header1x2
 
 board TooFine {
     .process: TwoLayer {

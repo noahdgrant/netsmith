@@ -3,8 +3,8 @@
 A board is made by one manufacturing process. Its design rules and stackup come from a definition in the standard library, and the board has it as a member named `process` (ADR 0008, ADR 0111).
 
 ```nsm solve
-import std::parts::connector::Header1x2
 import std::mfg::jlcpcb::TwoLayer
+import std::parts::connector::Header1x2
 
 board Bare {
     .process: TwoLayer {
@@ -35,9 +35,9 @@ Rules.
 A board with a black mask:
 
 ```nsm solve
+import std::mfg::jlcpcb::TwoLayer
 import std::parts::connector::Header1x2
 import std::parts::passive::Color
-import std::mfg::jlcpcb::TwoLayer
 
 board Dark {
     .process: TwoLayer {
@@ -51,10 +51,10 @@ board Dark {
 Fiducials and test points are parts of `std::parts::mechanical` (`#[kind(fiducial)]`, `#[kind(test_point)]`), and the rules above judge them where the placer puts them. A fiducial is physical intent, so a board declares it in the `case { }` section of its physical file (`.fid1: Fiducial`, chapter 23), and the placer puts it in a corner of the outline with its copper `.min_fiducial_edge` from the edge, growing a board with no stated size to hold it. A test point is in the circuit. A board narrows a rule for margin, here the space of its test point to the board edge:
 
 ```nsm
+import std::mfg::jlcpcb::TwoLayer
 import std::parts::mechanical::TestPoint
 import std::parts::passive::Resistor
 import std::sources::Rail
-import std::mfg::jlcpcb::TwoLayer
 
 board Marks {
     .process: TwoLayer {
@@ -74,9 +74,9 @@ board Marks {
 A four-layer board 1.2 mm thick:
 
 ```nsm solve
+import std::mfg::jlcpcb::FourLayer
 import std::parts::passive::Resistor
 import std::sources::Rail
-import std::mfg::jlcpcb::FourLayer
 
 board Thin {
     .process: FourLayer {
@@ -95,9 +95,9 @@ board Thin {
 A four-layer board in a build-up that is not the default of its thickness, three sheets of 7628 prepreg between each outer layer and its plane:
 
 ```nsm solve
+import std::mfg::jlcpcb_buildups::JlcFourLayer04161H7628C
 import std::parts::passive::Resistor
 import std::sources::Rail
-import std::mfg::jlcpcb_buildups::JlcFourLayer04161H7628C
 
 board Sheets {
     .process: JlcFourLayer04161H7628C {
@@ -115,8 +115,8 @@ board Sheets {
 A board that wants a different finish says so:
 
 ```nsm solve
-import std::parts::connector::Header1x2
 import std::mfg::jlcpcb::TwoLayer
+import std::parts::connector::Header1x2
 
 board Gold {
     .process: TwoLayer {
@@ -130,9 +130,9 @@ board Gold {
 A six-layer board with planes outside and signal layers inside:
 
 ```nsm
+import std::mfg::jlcpcb::SixLayer
 import std::parts::passive::Resistor
 import std::sources::Rail
-import std::mfg::jlcpcb::SixLayer
 
 board Six {
     .process: SixLayer {
@@ -165,9 +165,9 @@ board Six {
 A six-layer HDI board of the first order with buried vias, in a build-up of its own:
 
 ```nsm solve place file=crates/netsmith-tools/tests/fixtures/hdi_dense.nsm
+import std::mfg::jlcpcb::HdiSixLayer
 import std::parts::passive::Resistor
 import std::sources::Rail
-import std::mfg::jlcpcb::HdiSixLayer
 
 board Dense {
     .process: HdiSixLayer {
@@ -230,9 +230,9 @@ error: contradiction on `process.hdi_order`: it is already 1, which does not ove
 A board of eight or ten layers is made on ACME's process, `std::mfg::acme::EightLayer` (`.inner1` to `.inner6`) or `std::mfg::acme::TenLayer` (`.inner1` to `.inner8`). ACME is a fictional fabricator (ADR 0112). Its numbers were chosen, not sourced, and stand for no real fabricator's capability: the rules are JLCPCB's multilayer rows, and each build-up is a symmetric 1.6 mm stack of common prepregs and cores (`ACME-8L-1.6`, `ACME-10L-1.6`, listed in `std/mfg/acme.nsm`). The inner layers are planes or signal layers, as above. `fab` writes the package as for any process: a Gerber for each copper layer, the stackup in the board file, the 3D scene. `fab-notes.txt` says the process is fictional and the package is not for ordering, and `project order` refuses an order that names the board. See `examples/ten_layer.nsm`.
 
 ```nsm
+import std::mfg::acme::EightLayer
 import std::parts::passive::Resistor
 import std::sources::Rail
-import std::mfg::acme::EightLayer
 
 board Eight {
     .process: EightLayer {
@@ -278,9 +278,9 @@ error: contradiction on `process.stackup.thickness`: it is already 400um..2mm, w
 ```
 
 ```nsm fails
+import std::mfg::jlcpcb::FourLayer
 import std::parts::passive::Resistor
 import std::sources::Rail
-import std::mfg::jlcpcb::FourLayer
 
 board Planes {
     .process: FourLayer {
@@ -303,9 +303,9 @@ error: Planes: `process.inner1` is a plane on the net `VCC`, but the board has n
 A signal layer carries the tracks of any net, so it names none:
 
 ```nsm fails
+import std::mfg::jlcpcb::FourLayer
 import std::parts::passive::Resistor
 import std::sources::Rail
-import std::mfg::jlcpcb::FourLayer
 
 board Signal {
     .process: FourLayer {
@@ -328,9 +328,9 @@ error: Signal: `process.inner2` is a signal layer and names the net `5V`: a sign
 A finish the process does not offer is refused, with the offer listed. JLCPCB does not make HASL on six layers or more:
 
 ```nsm fails
+import std::mfg::jlcpcb::SixLayer
 import std::parts::passive::Resistor
 import std::sources::Rail
-import std::mfg::jlcpcb::SixLayer
 
 board Hasl {
     .process: SixLayer {
@@ -357,8 +357,8 @@ error: Hasl: `process.finish` is `HASL lead-free`, but a `SixLayer` board is mad
 A design states the impedance of the tracks of a net with a `TrackImpedance` of `std::sources` (issue #1007): one pin, `.line`, that `~` joins to the pin or net the track is on, and `.impedance`, the target from the track to its reference layer, one value. An edge-coupled differential pair is a `PairImpedance`: the pins `.p` and `.n` joined to the pair's two nets, `.impedance`, the target between the two tracks, and `.spacing`, the space between the tracks edge to edge, which the figure needs because the width that gives a differential impedance depends on it (the width of a pair is the width of each track). It is a field of a std interface, as a rail's `.min_track` is, so it adds no syntax and a module carries it out through its interface.
 
 ```nsm solve
-import std::parts::connector::Header1x2
 import std::mfg::jlcpcb::SixLayer
+import std::parts::connector::Header1x2
 import std::sources::{PairImpedance, TrackImpedance}
 
 board Antenna {

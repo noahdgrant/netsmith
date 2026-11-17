@@ -15,12 +15,6 @@
 //! named pin of the module (`.mcu.gpio4`) and never to a request for "any GPIO" (ADR 0101), so
 //! the pin optimizer of `fab` has nothing to move and the firmware's pin map cannot change.
 
-import src::auto_reset::AutoReset
-import src::cp2102n::Cp2102n
-import src::devkitc_headers::Esp32S3DevKitCHeaders
-import src::esp32_s3_wroom_1::Esp32S3Wroom1
-import src::shouhan_type_c_16pin::ShouhanTypeC16Pin   // brings the Shouhan receptacle in scope as a provider of `UsbCSinkReceptacle`
-import src::xunpu_ts_1088::XunpuTs1088
 import std::bus::{PullDown, PullUp}
 import std::mfg::jlcpcb::FourLayer
 import std::parts::connector::UsbCSink
@@ -28,6 +22,13 @@ import std::parts::diode::Schottky
 import std::parts::passive::{Capacitor, Color, Led, Resistor}
 import std::parts::regulator::LinearRegulator
 import std::sources::Rail
+
+import src::auto_reset::AutoReset
+import src::cp2102n::Cp2102n
+import src::devkitc_headers::Esp32S3DevKitCHeaders
+import src::esp32_s3_wroom_1::Esp32S3Wroom1
+import src::shouhan_type_c_16pin::ShouhanTypeC16Pin  // brings the Shouhan receptacle in scope as a provider of `UsbCSinkReceptacle`
+import src::xunpu_ts_1088::XunpuTs1088
 
 board EasyduinoEsp32s3 {
     defaults {
@@ -101,7 +102,6 @@ board EasyduinoEsp32s3 {
     .v3v3: Rail {
         .pos.net &= "+3.3V"
     }
-
 
     /// D2 and D3: each receptacle's VBUS reaches VBUS through a Schottky diode (anode on the
     /// receptacle), so the two supplies cannot feed each other. ROHM RB161QS-40.

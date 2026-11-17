@@ -24,7 +24,7 @@ import { toggleLineComment } from './source/comment';
 import { sourceEditor } from './source/handle';
 import { sortImports } from './source/imports';
 import { canBack, canForward } from './source/navhistory';
-import { COMMENT_FONTS, autosave, commentFont, commentFontOf, hoverCards, inlineHints, outlineOpen, nextCommentFont, rebuildOnSave, resetEditorZoom, sortImportsOnSave, vimMode, wordWrap, zoomEditor } from './source/prefs';
+import { COMMENT_FONTS, autosave, commentFont, commentFontOf, hoverCards, inlineHints, outlineOpen, nextCommentFont, formatOnSave, rebuildOnSave, resetEditorZoom, sortImportsOnSave, vimMode, wordWrap, zoomEditor } from './source/prefs';
 import { openReplace } from './source/cm-search';
 import { type Selection, selectAndReveal, selection, setSelection } from './selection';
 import { inspectCommands } from './pcb3d/inspectMode';
@@ -39,6 +39,7 @@ import {
   chooseBoard,
   cancelAnalysis,
   closeFile,
+  formatInEditor,
   job,
   layout,
   navBack,
@@ -524,6 +525,32 @@ const sourceSwitches = (): Command[] => [
       v.focus();
       v.dispatch({ changes: edit, userEvent: 'input.sort' });
       say('Imports sorted: std, other projects, then src');
+    },
+  },
+  {
+    id: 'source.format',
+    title: 'Source: Format the file',
+    group: 'Source',
+    keys: 'Shift+Alt+F',
+    inFields: true,
+    aliases: ['fmt', 'format', 'format document', 'prettier', 'layout', 'indent', 'tidy'],
+    when: () => editorOn() && activeFile.value?.endsWith('.nsm') === true,
+    run: async () => {
+      const path = activeFile.peek();
+      if (!path) return;
+      const done = await formatInEditor(path);
+      if (done === 'changed') say('Formatted as netsmith project fmt does');
+      else if (done === 'same') say('The file is formatted already');
+    },
+  },
+  {
+    id: 'source.formatsave.toggle',
+    title: formatOnSave.value ? 'File: Do not format when saving' : 'File: Format when saving',
+    group: 'File',
+    aliases: ['format on save', 'fmt on save', 'prettier on save'],
+    run: () => {
+      formatOnSave.value = !formatOnSave.peek();
+      say(formatOnSave.peek() ? 'Ctrl+S formats the file first, imports sorted too (autosave does not)' : 'Saving leaves the layout as it is');
     },
   },
   {

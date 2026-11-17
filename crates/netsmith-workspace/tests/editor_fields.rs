@@ -135,7 +135,7 @@ fn a_definition_says_where_it_ends_and_what_is_declared_in_it() {
         ["vin", "vout", "regulator", "input_cap", "output_cap"]
     );
     let vin = &ldo.children.as_ref().unwrap()[0];
-    assert_eq!(vin.line, line_of(TWO_BOARDS, ".vin:  Rail"));
+    assert_eq!(vin.line, line_of(TWO_BOARDS, ".vin: Rail"));
     assert_eq!(vin.end_line, vin.line);
 
     // A declaration of a definition of the same file takes its kind from there; a
@@ -527,8 +527,8 @@ fn what_the_source_states_is_not_reported_as_solved() {
     // A capacitor whose range the board states keeps no solved tolerance; the solver
     // still derives what it worked out.
     let text = TWO_BOARDS.replace(
-        ".input_cap:  Capacitor { .effective_capacitance >= 1uF }",
-        ".input_cap:  Capacitor { .effective_capacitance >= 1uF; .capacitance &= 10uF +/- 20% }",
+        ".input_cap: Capacitor { .effective_capacitance >= 1uF }",
+        ".input_cap: Capacitor { .effective_capacitance >= 1uF; .capacitance &= 10uF +/- 20% }",
     );
     assert_ne!(text, TWO_BOARDS);
     let (_root, editor) = project_of("stated", &[("src/main.nsm", &text)]);

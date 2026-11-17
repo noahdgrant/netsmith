@@ -1,6 +1,6 @@
+import std::mfg::jlcpcb::HdiSixLayer
 import std::parts::passive::Resistor
 import std::sources::Rail
-import std::mfg::jlcpcb::HdiSixLayer
 
 board Dense {
     .process: HdiSixLayer {

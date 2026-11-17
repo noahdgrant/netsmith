@@ -179,9 +179,9 @@ board Standoff {
 
 ```text
 error: no `tvs` candidate satisfies `tvs`: the closest of the 10 that fit, SMAJ12A 12V TVS SMA C113957, fails because tvs.bias must always be at most tvs.standoff_voltage, but 11.4V..12.6V is not always below 12V
-    --> std/parts/diode.nsm:423:5
+    --> std/parts/diode.nsm:424:5
     |
-423 |     .bias <= .standoff_voltage
+424 |     .bias <= .standoff_voltage
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -431,9 +431,9 @@ board TooTight {
 
 ```text
 error: no combination of candidates satisfies `divider.rbottom` and `divider.rtop` together: the closest, divider.rbottom = 20kΩ 1% 0402 C25765 and divider.rtop = 56kΩ 1% 0603 C23206, fails because `divider.vout` must stay within 3.762V..3.838V, but (divider.vref * (1 + (divider.rtop.resistance / divider.rbottom.resistance))) works out to 3.707V..3.896V
-    --> std/parts/regulator.nsm:123:5
+    --> std/parts/regulator.nsm:124:5
     |
-123 |     .vout == .vref * (1 + .rtop.resistance / .rbottom.resistance)
+124 |     .vout == .vref * (1 + .rtop.resistance / .rbottom.resistance)
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -488,11 +488,11 @@ part Zbk2 provides BuckIc {
 
     pins {
         //  pin          kind    name   pads
-        .vin.pos       power   "VIN"  "1" "2"
-        .vin.neg       power   "GND"  "3" "9"
-        .sw.pos        power   "SW"   "4" "5"
-        .fb            input   "FB"   "6"
-        .en            input   "EN"   "7"
+        .vin.pos power "VIN" "1" "2"
+        .vin.neg power "GND" "3" "9"
+        .sw.pos  power "SW"  "4" "5"
+        .fb      input "FB"  "6"
+        .en      input "EN"  "7"
     }
 
     support {
@@ -504,9 +504,10 @@ part Zbk2 provides BuckIc {
 The board names the IC as the argument of `Buck`, states the input and the output it wants, and joins the supply to the converter's input and its output to the load:
 
 ```nsm evaluate
-import src::zbk2::Zbk2
 import std::parts::regulator::Buck
 import std::sources::Rail
+
+import src::zbk2::Zbk2
 
 board Converter {
     .input: Rail {
@@ -547,9 +548,10 @@ A margin on the capacitors' ratings is the converter's `.voltage_margin` (ADR 00
 The 5 V input of this guide peaks at 5.25 V, so 1.25 times it is 6.56 V and a 6.3 V capacitor, which the converter picks by default, is no longer enough: the input takes a row rated for at least that. A margin no row of the catalog can give is refused with the numbers of the closest row, and only the rating fails: with a margin of 5 the input capacitor would have to be rated for 26.25 V, and no row that keeps the capacitance the IC asks for has more than 25 V.
 
 ```nsm fails
-import src::zbk2::Zbk2
 import std::parts::regulator::Buck
 import std::sources::Rail
+
+import src::zbk2::Zbk2
 
 board TooMuchMargin {
     .input: Rail {
@@ -592,9 +594,10 @@ The two inductor limits are optional, as are the other numbers an IC may leave o
 Misuse: a load larger than the IC can give is refused twice, once on the converter's output and once on the IC's switch node (`BuckIc` states `-.sw.current <= .max_output_current`, ADR 0076, amendment 6, which is also the limit that encloses a load nothing states before the picks); the lower end of the current is the divider's, which the DC analysis of the converter's output side gives. The switch node carries the divider's current too (#746), so the divider's pick feeds both checks, but no divider brings a 3 A load under 2 A: a search of the divider's resistors that finds no pair is made again without the bounds that no pair can meet (the bound's value, with the load at the end of its range and each resistor anywhere in its catalog's range, is over the limit), and when that finds a pair the two lines about the load are the whole report, each with the least its range reaches whichever parts are picked (the picks of that search need not come near it). The divider is picked as for a load the IC serves. An input above its range, such as 12 V, is refused the same way, by `reg.vin.voltage must always be at most reg.ic.max_input_voltage`.
 
 ```nsm fails
-import src::zbk2::Zbk2
 import std::parts::regulator::Buck
 import std::sources::Rail
+
+import src::zbk2::Zbk2
 
 board Overload {
     .input: Rail {
@@ -614,14 +617,14 @@ board Overload {
 
 ```text
 error: -reg.ic.sw.current must always be at most reg.ic.max_output_current, but 15.11uA..3.001A is not always below 2A, and whichever parts are picked, its range reaches 3A or higher (the currents on net `net-reg.ic.sw.pos` in `reg`: reg.ic.sw.current (-3.001A..-15.11uA) + reg.inductor.current (15.11uA..3.001A) add up to zero; net `1V8` in `reg`: reg.divider.supply.current (14.62uA..16.37uA) + -reg.inductor.current (15.11uA..3.001A) + -reg.vout.current (-3A..0A) add up to zero; net `1V8`: output.current (0A..3A) + reg.vout.current (-3A..0A) add up to zero; net `1V8` in `reg.divider`: -reg.divider.supply.current (14.62uA..16.37uA) add up to zero, but the balance is incomplete: `reg.divider.rtop.a` is not modelled)
-    --> std/parts/regulator.nsm:214:5
+    --> std/parts/regulator.nsm:215:5
     |
-214 |     -.sw.current <= .max_output_current
+215 |     -.sw.current <= .max_output_current
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 error: -reg.vout.current must always be at most reg.ic.max_output_current, but 0A..3A is not always below 2A, and whichever parts are picked, its range reaches 3A or higher (the currents on net `1V8`: output.current (0A..3A) + reg.vout.current (-3A..0A) add up to zero; net `1V8` in `reg`: reg.divider.supply.current (14.62uA..16.37uA) + -reg.inductor.current (15.11uA..3.001A) + -reg.vout.current (-3A..0A) add up to zero; net `net-reg.ic.sw.pos` in `reg`: reg.ic.sw.current (-3.001A..-15.11uA) + reg.inductor.current (15.11uA..3.001A) add up to zero; net `1V8` in `reg.divider`: -reg.divider.supply.current (14.62uA..16.37uA) add up to zero, but the balance is incomplete: `reg.divider.rtop.a` is not modelled)
-    --> std/parts/regulator.nsm:585:5
+    --> std/parts/regulator.nsm:586:5
     |
-585 |     -.vout.current <= .ic.max_output_current
+586 |     -.vout.current <= .ic.max_output_current
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -647,11 +650,11 @@ part Zbk7 provides BuckIc {
 
     pins {
         //  pin          kind    name   pads
-        .vin.pos       power   "VIN"  "1" "2"
-        .vin.neg       power   "GND"  "3" "9"
-        .sw.pos        power   "SW"   "4" "5"
-        .fb            input   "FB"   "6"
-        .en            input   "EN"   "7"
+        .vin.pos power "VIN" "1" "2"
+        .vin.neg power "GND" "3" "9"
+        .sw.pos  power "SW"  "4" "5"
+        .fb      input "FB"  "6"
+        .en      input "EN"  "7"
     }
 
     support {
@@ -661,9 +664,10 @@ part Zbk7 provides BuckIc {
 ```
 
 ```nsm fails
-import src::zbk7::Zbk7
 import std::parts::regulator::Buck
 import std::sources::Rail
+
+import src::zbk7::Zbk7
 
 board HighInput {
     .input: Rail {
@@ -683,9 +687,9 @@ board HighInput {
 
 ```text
 error: reg.on_time must always be at least reg.ic.min_on_time, but 122ns..490.8ns is not always above 150ns
-    --> std/parts/regulator.nsm:599:5
+    --> std/parts/regulator.nsm:604:5
     |
-599 |     .on_time >= .ic.min_on_time
+604 |     .on_time >= .ic.min_on_time
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -694,9 +698,10 @@ The input of a 12 V board that stays under 16 V holds it (4.7 V over 16 V at 1.1
 The ripple of the output voltage is a closed-form check, not a simulation (`docs/research/closed-form-checks.md`, check 3; the converter has no time in it, only the charge balance of a capacitor over one period). `Buck` has `.output_ripple`, the sum of the capacitor's term and the ESR's, `dI / (8 * fsw * C) + dI * ESR / n`, with `dI` the inductor's ripple current above, `C` the output bank's effective capacitance (`.output_cap.total_effective_capacitance`), `n` its count (`.output_cap.count`) and `ESR` the converter's `.output_esr`. A board bounds it (`.output_ripple <= 20mV`) and the bound holds in the worst case of every range: the highest input, the lowest inductance, frequency and capacitance (each with its tolerance, the capacitance at its DC bias) and the highest ESR. Each term moves one way with each of them, so the range is exact. The ESR comes from the output capacitor's row or from the board. `Capacitor` and `CapacitorBank` have an optional `esr` member that an optional `esr` column of the capacitor catalog provides (ADR 0078), and a row states it only where its maker's document prints or draws one, with the page, the table or figure and the point it was read at (frequency and bias) as the recorded source (`data/jlcpcb/README.md`): the cell is one value in ohms, at most the figure the document gives at the frequency the row's `notes` name. `Buck` reads it as `.output_esr ?= .output_cap.esr`, so the picked row's figure is the converter's ESR when the board states none, and a board that states `.output_esr` (the datasheet's maximum for the capacitor it means to fit, at the switching frequency, the bias and the temperature of the board; a range gives the worst end) wins over what the row records, as over any `?=`. A row that records no ESR leaves `.output_ripple` open, as no row at all did (below). The solver picks the capacitor without checking a stated figure against the row's own.
 
 ```nsm evaluate
-import src::zbk2::Zbk2
 import std::parts::regulator::Buck
 import std::sources::Rail
+
+import src::zbk2::Zbk2
 
 board Quiet {
     .input: Rail {
@@ -721,9 +726,10 @@ board Quiet {
 The check assumes the converter switches at its programmed frequency every period (the on-time and off-time checks above hold it), that the load draws a steady current so the capacitors take only the ripple, that the bank's capacitors share the ripple current equally, and that the ESR is the one stated. It is wrong, and optimistic, where the converter skips pulses or runs in burst mode at light load (the ripple is larger and the frequency lower, as an LT8641 does in Burst Mode), where the capacitors' inductance puts spikes on the output at the switch edges (there is none in the formula), for a constant-on-time or hysteretic converter, whose ripple the ESR sets by design, and for a load that steps or a loop that rings. Adding the two terms is the conservative sum: in a ceramic capacitor they are 90 degrees apart. A limit the worst case exceeds is refused through the capacitor search, because the capacitor's capacitance is in the ripple: the message names the closest candidate and the first limit it breaks. Here is a limit no part can meet, 0.5 mV with one capacitor of 100 mohm (an electrolytic's, say): the ESR's drop alone is 100 mohm times the ripple current, 67 mV at the worst. The closest candidate is named for the limit it misses by least, which here is the capacitance the IC asks for; when the ripple is the limit that is nearest, the message is `stage.output_ripple must always be at most 9mV, but 2.558mV..9.536mV is not always below 9mV` (a board of the tests of `crates/netsmith-solve/tests/buck_ripple.rs`, whose numbers are worked out by hand there).
 
 ```nsm fails
-import src::zbk2::Zbk2
 import std::parts::regulator::Buck
 import std::sources::Rail
+
+import src::zbk2::Zbk2
 
 board TooQuiet {
     .input: Rail {
@@ -748,18 +754,19 @@ board TooQuiet {
 
 ```text
 error: no `capacitor` candidate satisfies `reg.output_cap`: the closest of the 36 that fit, 1 x 10uF 20% 10V X5R 0402 C315248, fails because reg.output_cap.total_effective_capacitance must always be at least reg.ic.min_output_capacitance, but 4.908uF..7.686uF is not always above 10uF (`reg.output_cap.effective_capacitance` is unknown for some candidates, so they were not used: no derating data for 25)
-    --> std/parts/regulator.nsm:606:5
+    --> std/parts/regulator.nsm:611:5
     |
-606 |     .output_cap.total_effective_capacitance >= .ic.min_output_capacitance
+611 |     .output_cap.total_effective_capacitance >= .ic.min_output_capacitance
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 A board that states a limit and no ESR, with a capacitor whose row records none, is not judged: the relation that reads `.output_esr` has nothing to read (ADR 0074), so `.output_ripple` has no value and the limit is listed as not evaluated, never passed. The capacitor's term alone would pass a limit that the ESR's would break, so it is not used. A board that states neither has no ripple check and the build says nothing about it.
 
 ```nsm evaluate
-import src::zbk2::Zbk2
 import std::parts::regulator::Buck
 import std::sources::Rail
+
+import src::zbk2::Zbk2
 
 board NoEsr {
     .input: Rail {
@@ -788,9 +795,10 @@ ACME-C47U,47uF +/- 20%,derate capacitance by bias: 0:1 6.3:0.5,6.3V,0805,X5R,3mo
 ```
 
 ```nsm evaluate catalogs=esr
-import src::zbk2::Zbk2
 import std::parts::regulator::Buck
 import std::sources::Rail
+
+import src::zbk2::Zbk2
 
 board RowEsr {
     .input: Rail {
@@ -836,11 +844,11 @@ part Zbk4 provides BuckIc {
 
     pins {
         //  pin          kind    name   pads
-        .vin.pos       power   "VIN"  "1" "2"
-        .vin.neg       power   "GND"  "3" "9"
-        .sw.pos        power   "SW"   "4" "5"
-        .fb            input   "FB"   "6"
-        .en            input   "EN"   "7"
+        .vin.pos power "VIN" "1" "2"
+        .vin.neg power "GND" "3" "9"
+        .sw.pos  power "SW"  "4" "5"
+        .fb      input "FB"  "6"
+        .en      input "EN"  "7"
     }
 
     support {
@@ -852,9 +860,10 @@ part Zbk4 provides BuckIc {
 A board that needs the output up within 5 ms holds it, since 4 ms is the slowest:
 
 ```nsm evaluate
-import src::zbk4::Zbk4
 import std::parts::regulator::Buck
 import std::sources::Rail
+
+import src::zbk4::Zbk4
 
 board Quick {
     .input: Rail {
@@ -878,9 +887,10 @@ board Quick {
 A requirement of 3 ms is not held by the slowest end, and the message names the span and the bound:
 
 ```nsm fails
-import src::zbk4::Zbk4
 import std::parts::regulator::Buck
 import std::sources::Rail
+
+import src::zbk4::Zbk4
 
 board TooSlow {
     .input: Rail {
@@ -903,18 +913,19 @@ board TooSlow {
 
 ```text
 error: reg.soft_start_time must always be at most 3ms, but 2ms..4ms is not always below 3ms
-   --> main.nsm:16:9
+   --> main.nsm:17:9
    |
-16 |         .soft_start_time <= 3ms
+17 |         .soft_start_time <= 3ms
    |         ^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 With `Zbk2`, which states no time, the same bound is not evaluated: the converter's member has no value, and the bound is listed as such.
 
 ```nsm evaluate
-import src::zbk2::Zbk2
 import std::parts::regulator::Buck
 import std::sources::Rail
+
+import src::zbk2::Zbk2
 
 board NoTime {
     .input: Rail {
@@ -963,9 +974,10 @@ board Derated {
 A peak of 5.5 V is more than 80 % of `Zbk2`'s 6 V, and the bound refuses the board:
 
 ```nsm fails
-import src::zbk2::Zbk2
 import std::parts::regulator::Buck
 import std::sources::Rail
+
+import src::zbk2::Zbk2
 
 board TooClose {
     .input: Rail {
@@ -987,9 +999,9 @@ board TooClose {
 
 ```text
 error: input.peak must always be at most (reg.max_input_voltage * 0.8), but 5.5V is not always below 4.8V
-   --> main.nsm:19:5
+   --> main.nsm:20:5
    |
-19 |     .input.peak <= .reg.max_input_voltage * 0.8
+20 |     .input.peak <= .reg.max_input_voltage * 0.8
    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -1092,9 +1104,9 @@ board Converter {
 
 ```text
 error: the `lt8641` catalog is empty (no file of it has a row), so nothing can be picked for `reg.ic`: add rows to `catalogs/lt8641.csv` in the project (docs/language/12, "Catalog files")
-    --> std/parts/regulator.nsm:489:5
+    --> std/parts/regulator.nsm:490:5
     |
-489 |     .ic: Ic
+490 |     .ic: Ic
     |     ^^^^^^^
 ```
 
@@ -1989,7 +2001,7 @@ part Link {
 part Drop {
     .designator &= "D"
     pins {
-        .anode passive "A" "1"
+        .anode   passive "A" "1"
         .cathode passive "K" "2"
     }
     .forward_voltage: Voltage
@@ -2083,8 +2095,8 @@ part Converter {
     .vin.voltage >= 3V
     dc switching_regulator .vin .vout .efficiency
     pins {
-        .vin.pos power "VIN" "1"
-        .vin.neg power "GND" "2"
+        .vin.pos  power "VIN"  "1"
+        .vin.neg  power "GND"  "2"
         .vout.pos power "VOUT" "3"
     }
 }
@@ -2154,7 +2166,7 @@ board Clamped {
 A divider with an LED on its middle. The LED holds the middle at its forward voltage, so it takes 1.36 mA to 2.34 mA, inside the window the board states. The top resistor carries what the bottom one and the LED take; nothing states it, and the checks of both resistors are made:
 
 ```nsm solve
-import std::parts::passive::{Resistor, Led}
+import std::parts::passive::{Led, Resistor}
 import std::sources::Rail
 
 board Lit {
@@ -2265,9 +2277,9 @@ error: `fuse.current` is stated 0A..100mA, but the DC analysis of the circuit ar
 A stated voltage is a budget as well. The load below is stated to take 1.7 V to 3.6 V on its input, and the 12 V supply reaches it through a resistor that drops 1 V to 2 V at the LED's current: the circuit puts the node at 9.98 V to 11.01 V, outside the claim. The same holds when the statement is on a module's port that the board joins to a regulator's input (a seed): it is a claim about the node, and a regulator in dropout does not build. A range that encloses what the circuit gives is accepted and stays as written.
 
 ```nsm fails
-import std::sources::Rail
-import std::parts::passive::{Resistor, Led}
 import std::parts::connector::Header1x2
+import std::parts::passive::{Led, Resistor}
+import std::sources::Rail
 
 module Load {
     .vin: Rail
@@ -2432,9 +2444,9 @@ part Pad {
     .in: Logic
     .in.reference ~ .vdd
     pins {
-        .vdd.pos  power "VDD" "1"
-        .vdd.neg  power "GND" "2"
-        .in.line  input "IN"  "3" abs_min -0.5V abs_max 3.6V
+        .vdd.pos power "VDD" "1"
+        .vdd.neg power "GND" "2"
+        .in.line input "IN"  "3" abs_min -0.5V abs_max 3.6V
     }
 }
 
@@ -2486,9 +2498,9 @@ part Receiver {
     .in.vih &= 0.7 * .vdd.voltage
     .in.vil &= 0.3 * .vdd.voltage
     pins {
-        .vdd.pos  power "VDD" "1"
-        .vdd.neg  power "GND" "2"
-        .in.line  input "IN"  "3"
+        .vdd.pos power "VDD" "1"
+        .vdd.neg power "GND" "2"
+        .in.line input "IN"  "3"
     }
 }
 
@@ -2533,9 +2545,9 @@ part Receiver {
     .in.vih &= 0.7 * .vdd.voltage
     .in.vil &= 0.3 * .vdd.voltage
     pins {
-        .vdd.pos  power "VDD" "1"
-        .vdd.neg  power "GND" "2"
-        .in.line  input "IN"  "3"
+        .vdd.pos power "VDD" "1"
+        .vdd.neg power "GND" "2"
+        .in.line input "IN"  "3"
     }
 }
 
@@ -2567,10 +2579,10 @@ error: net `net-a.out.line`: `a.out.voh` is 3.035V..3.365V but `b.in.vih` needs 
 The library has two real parts that state levels, `std::parts::logic::Sn74lvc1g04` and `std::parts::mcu::Attiny13a` (below). `Sn74lvc1g04` is a single inverter from TI's datasheet SCES214AF, modelled for a supply of 3 V to 3.6 V. Its source is in the definition, table by table: `vih` 2 V and `vil` 0.8 V (table 5.3), `voh` as VCC - 0.1 V and `vol` 0.1 V at 100 uA (table 5.5), and the absolute maximums of table 5.1. Its symbol is drawn from its pin table (the row in `std/kicad.toml` names none). Two of them in a row, with a header on the input, check and solve with one note, because nothing on the board sets the voltage of the header's net:
 
 ```nsm evaluate
+import std::mfg::jlcpcb::TwoLayer
 import std::parts::connector::Header1x2
 import std::parts::logic::Sn74lvc1g04
 import std::sources::Rail
-import std::mfg::jlcpcb::TwoLayer
 
 board Inverters {
     .process: TwoLayer {
@@ -2598,11 +2610,11 @@ Its catalog `sn74lvc1g04` has one row, TI's SN74LVC1G04DBVR in the SOT-23-5 (LCS
 `std::parts::mcu::Attiny13a` is the first standard part that states pin functions. It is Microchip's ATtiny13A (data sheet DS40002307A) in its 150 mil SOIC-8. Its pins `pb0` to `pb5` are `Logic` lines, and each has the functions of the data sheet's Table 10-3 (`.pb0` is `GPIO`, `MOSI`, `AIN0`, `OC0A` or `PCINT0`), with a kind after a function where the table says which way it goes (`OC0A:output`, `INT0:input`); `GPIO` is a class, so the board may choose it on several pins. A pin that is connected and has several functions needs the board to choose one, as in chapter 11. The part states the input levels of Table 18-1 for a supply of 2.4 V to 5.5 V as fractions of the supply (`vil` 0.3 VCC and `vih` 0.6 VCC; the reset pin, `.pb5`, 0.2 VCC and 0.9 VCC) and refuses a supply outside that range. It states no output level, because the table gives VOH and VOL at two supplies and two currents for each group of pins; a receiver on an output is listed as not evaluated against it. Its source is in the definition, table by table (`std/parts/mcu.nsm`). An inverter on 3.3 V drives a high of at least 3.035 V, which the microcontroller reads as a high at 3.3 V (it needs up to 2.079 V) and does not at 5 V, where it needs up to 3.15 V; the 5 V supply of the microcontroller's line also puts 5.25 V on the inverter's output, above its absolute maximum, which the second message says:
 
 ```nsm fails
+import std::mfg::jlcpcb::TwoLayer
 import std::parts::connector::Header1x2
 import std::parts::logic::Sn74lvc1g04
 import std::parts::mcu::Attiny13a
 import std::sources::Rail
-import std::mfg::jlcpcb::TwoLayer
 
 board Dimmer {
     .process: TwoLayer {
@@ -2685,9 +2697,9 @@ part Receiver {
     .in.vih &= 0.7 * .vdd.voltage
     .in.vil &= 0.3 * .vdd.voltage
     pins {
-        .vdd.pos  power "VDD" "1"
-        .vdd.neg  power "GND" "2"
-        .in.line  input "IN"  "3"
+        .vdd.pos power "VDD" "1"
+        .vdd.neg power "GND" "2"
+        .in.line input "IN"  "3"
     }
 }
 
@@ -2695,9 +2707,9 @@ part Receiver {
 part Enabled {
     .vdd: Rail
     pins {
-        .vdd.pos  power "VDD" "1"
-        .vdd.neg  power "GND" "2"
-        .en       input "EN"  "3"
+        .vdd.pos power "VDD" "1"
+        .vdd.neg power "GND" "2"
+        .en      input "EN"  "3"
     }
 }
 
@@ -2747,9 +2759,9 @@ part Receiver {
     .in.vih &= 0.7 * .vdd.voltage
     .in.vil &= 0.3 * .vdd.voltage
     pins {
-        .vdd.pos  power "VDD" "1"
-        .vdd.neg  power "GND" "2"
-        .in.line  input "IN"  "3"
+        .vdd.pos power "VDD" "1"
+        .vdd.neg power "GND" "2"
+        .in.line input "IN"  "3"
     }
 }
 
@@ -2794,9 +2806,9 @@ part BusPin {
     .io.vih &= 0.7 * .vdd.voltage
     .io.vil &= 0.3 * .vdd.voltage
     pins {
-        .vdd.pos  power         "VDD" "1"
-        .vdd.neg  power         "GND" "2"
-        .io.line  bidirectional "IO"  "3"
+        .vdd.pos power         "VDD" "1"
+        .vdd.neg power         "GND" "2"
+        .io.line bidirectional "IO"  "3"
     }
 }
 
@@ -2883,9 +2895,9 @@ part Receiver {
     .in.vih &= 0.7 * .vdd.voltage
     .in.vil &= 0.3 * .vdd.voltage
     pins {
-        .vdd.pos  power "VDD" "1"
-        .vdd.neg  power "GND" "2"
-        .in.line  input "IN"  "3"
+        .vdd.pos power "VDD" "1"
+        .vdd.neg power "GND" "2"
+        .in.line input "IN"  "3"
     }
 }
 
@@ -2930,9 +2942,9 @@ part Receiver {
     .in.vih &= 0.7 * .vdd.voltage
     .in.vil &= 0.3 * .vdd.voltage
     pins {
-        .vdd.pos  power "VDD" "1"
-        .vdd.neg  power "GND" "2"
-        .in.line  input "IN"  "3"
+        .vdd.pos power "VDD" "1"
+        .vdd.neg power "GND" "2"
+        .in.line input "IN"  "3"
     }
 }
 
@@ -2981,11 +2993,11 @@ part Modem {
     .vbat: Rail
     .status: Logic
     .status.reference ~ .vbat
-    .status.swing &= 0V .. 1.8V
+    .status.swing &= 0V..1.8V
     pins {
-        .vbat.pos     power  "VBAT"   "1"
-        .vbat.neg     power  "GND"    "2"
-        .status.line  output "STATUS" "3"
+        .vbat.pos    power  "VBAT"   "1"
+        .vbat.neg    power  "GND"    "2"
+        .status.line output "STATUS" "3"
     }
 }
 
@@ -2995,9 +3007,9 @@ part Sensor {
     .in: Logic
     .in.reference ~ .vdd
     pins {
-        .vdd.pos  power "VDD" "1"
-        .vdd.neg  power "GND" "2"
-        .in.line  input "IN"  "3" abs_max 2.1V
+        .vdd.pos power "VDD" "1"
+        .vdd.neg power "GND" "2"
+        .in.line input "IN"  "3" abs_max 2.1V
     }
 }
 
@@ -3030,11 +3042,11 @@ part Modem {
     .vbat: Rail
     .status: Logic
     .status.reference ~ .vbat
-    .status.swing &= 0V .. 1.8V
+    .status.swing &= 0V..1.8V
     pins {
-        .vbat.pos     power  "VBAT"   "1"
-        .vbat.neg     power  "GND"    "2"
-        .status.line  output "STATUS" "3"
+        .vbat.pos    power  "VBAT"   "1"
+        .vbat.neg    power  "GND"    "2"
+        .status.line output "STATUS" "3"
     }
 }
 
@@ -3044,9 +3056,9 @@ part Sensor {
     .in: Logic
     .in.reference ~ .vdd
     pins {
-        .vdd.pos  power "VDD" "1"
-        .vdd.neg  power "GND" "2"
-        .in.line  input "IN"  "3" abs_max 1V
+        .vdd.pos power "VDD" "1"
+        .vdd.neg power "GND" "2"
+        .in.line input "IN"  "3" abs_max 1V
     }
 }
 
@@ -3087,11 +3099,11 @@ part Modem {
     .vbat: Rail
     .status: Logic
     .status.reference ~ .vbat
-    .status.swing &= 0V .. 1.8V
+    .status.swing &= 0V..1.8V
     pins {
-        .vbat.pos     power  "VBAT"   "1"
-        .vbat.neg     power  "GND"    "2"
-        .status.line  output "STATUS" "3"
+        .vbat.pos    power  "VBAT"   "1"
+        .vbat.neg    power  "GND"    "2"
+        .status.line output "STATUS" "3"
     }
 }
 
@@ -3103,9 +3115,9 @@ part Sensor {
     .in.vih &= 1.9V
     .in.vil &= 0.4V
     pins {
-        .vdd.pos  power "VDD" "1"
-        .vdd.neg  power "GND" "2"
-        .in.line  input "IN"  "3"
+        .vdd.pos power "VDD" "1"
+        .vdd.neg power "GND" "2"
+        .in.line input "IN"  "3"
     }
 }
 
@@ -3320,9 +3332,10 @@ part Sensor {
 A 1.8 V sensor drives a 3.3 V line through the translator. The design states the stresses; the input is judged against the driver by the solver, and the supply pin's draw is the row's own:
 
 ```nsm evaluate catalogs=translator
-import src::sensor::Sensor
 import std::parts::logic::LevelTranslator
 import std::sources::Rail
+
+import src::sensor::Sensor
 
 board Sensing {
     .low: Rail {
@@ -3348,9 +3361,10 @@ board Sensing {
 The same sensor on a 0.5 V rail drives a high of 0.3 V, which the translator does not read as a high for sure:
 
 ```nsm fails catalogs=translator
-import src::sensor::Sensor
 import std::parts::logic::LevelTranslator
 import std::sources::Rail
+
+import src::sensor::Sensor
 
 board Sensing {
     .low: Rail {
@@ -3375,9 +3389,9 @@ board Sensing {
 
 ```text
 error: net `net-sensor.out.line`: `sensor.out.voh` is 275mV..325mV but `u.a.vih` needs 1.1V: a high of 275mV is not always read as a high, which takes 1.1V
-   --> main.nsm:14:5
+   --> main.nsm:15:5
    |
-14 |     .sensor: Sensor
+15 |     .sensor: Sensor
    |     ^^^^^^^^^^^^^^^
 ```
 
@@ -3466,17 +3480,17 @@ part Zshift {
     .b.levels.vol &= 0.2V
 
     pins {
-        .vcca.pos  power     "VCCA" "1"
-        .vccb.pos  power     "VCCB" "2"
-        .vcca.neg  power     "GND"  "3"
-        .a.sclk    input     "A1"   "4" abs_max 3.6V
-        .a.mosi    input     "A2"   "5" abs_max 3.6V
-        .a.miso    tri_state "A3"   "6"
-        .a.cs      input     "A4"   "7" abs_max 3.6V
-        .b.sclk    output    "B1"   "8"
-        .b.mosi    output    "B2"   "9"
-        .b.miso    input     "B3"   "10" abs_max 2.1V
-        .b.cs      output    "B4"   "11"
+        .vcca.pos power     "VCCA" "1"
+        .vccb.pos power     "VCCB" "2"
+        .vcca.neg power     "GND"  "3"
+        .a.sclk   input     "A1"   "4"  abs_max 3.6V
+        .a.mosi   input     "A2"   "5"  abs_max 3.6V
+        .a.miso   tri_state "A3"   "6"
+        .a.cs     input     "A4"   "7"  abs_max 3.6V
+        .b.sclk   output    "B1"   "8"
+        .b.mosi   output    "B2"   "9"
+        .b.miso   input     "B3"   "10" abs_max 2.1V
+        .b.cs     output    "B4"   "11"
     }
 }
 ```
@@ -3484,8 +3498,9 @@ part Zshift {
 Both on 3.3 V they would build. Here the sensor's pins are on `vddio`, which is the 1.8 V rail: the processor's 3.3 V lines are refused, once for each input that states a maximum, and the way back, a sensor's 1.69 V high that the processor does not read as a high, is refused with the numbers of both:
 
 ```nsm fails
-import src::zlevels::{Zproc, Zsense}
 import std::sources::Rail
+
+import src::zlevels::{Zproc, Zsense}
 
 board Mismatch {
     .s3: Rail {
@@ -3507,32 +3522,33 @@ board Mismatch {
 
 ```text
 error: net `net-proc.spi.miso`: `sense.spi.levels.voh` is 1.51V..1.69V but `proc.spi.levels.vih` needs 2.194V..2.426V: a high of 1.51V is not always read as a high, which takes 2.426V
-   --> main.nsm:14:5
+   --> main.nsm:15:5
    |
-14 |     .sense: Zsense
+15 |     .sense: Zsense
    |     ^^^^^^^^^^^^^^
 error: net `net-proc.spi.sclk` reaches 3.465V above its ground `GND` (`proc.spi.sclk`, a line of `proc.spi.levels.reference`) but `sense.spi.sclk.abs_max` is 2.1V: it must not exceed 2.1V
-   --> main.nsm:14:5
+   --> main.nsm:15:5
    |
-14 |     .sense: Zsense
+15 |     .sense: Zsense
    |     ^^^^^^^^^^^^^^
 error: net `net-proc.spi.mosi` reaches 3.465V above its ground `GND` (`proc.spi.mosi`, a line of `proc.spi.levels.reference`) but `sense.spi.mosi.abs_max` is 2.1V: it must not exceed 2.1V
-   --> main.nsm:14:5
+   --> main.nsm:15:5
    |
-14 |     .sense: Zsense
+15 |     .sense: Zsense
    |     ^^^^^^^^^^^^^^
 error: net `net-proc.spi.cs` reaches 3.465V above its ground `GND` (`proc.spi.cs`, a line of `proc.spi.levels.reference`) but `sense.spi.cs.abs_max` is 2.1V: it must not exceed 2.1V
-   --> main.nsm:14:5
+   --> main.nsm:15:5
    |
-14 |     .sense: Zsense
+15 |     .sense: Zsense
    |     ^^^^^^^^^^^^^^
 ```
 
 A translator between the two supplies is a part with a bus on each side. The board joins the processor to its `a` side and the sensor to its `b` side, and neither message appears, because each side's levels are judged on its own rail:
 
 ```nsm evaluate
-import src::zlevels::{Zproc, Zsense, Zshift}
 import std::sources::Rail
+
+import src::zlevels::{Zproc, Zsense, Zshift}
 
 board Translated {
     .s3: Rail {
@@ -3586,10 +3602,10 @@ part Zihost {
     .i2c.levels.vil &= 0.3 * .vdd.voltage
     .i2c.levels.vol &= 0.4V
     pins {
-        .vdd.pos  power         "VDD" "1"
-        .vdd.neg  power         "VSS" "2"
-        .i2c.sda  bidirectional "SDA" "3"
-        .i2c.scl  bidirectional "SCL" "4"
+        .vdd.pos power         "VDD" "1"
+        .vdd.neg power         "VSS" "2"
+        .i2c.sda bidirectional "SDA" "3"
+        .i2c.scl bidirectional "SCL" "4"
     }
 }
 
@@ -3604,10 +3620,10 @@ part Zitarget {
     .i2c.levels.vil &= 0.3 * .vdd.voltage
     .i2c.levels.vol &= 0.4V
     pins {
-        .vdd.pos  power         "VDD" "1"
-        .vdd.neg  power         "GND" "2"
-        .i2c.sda  bidirectional "SDA" "3"
-        .i2c.scl  input         "SCL" "4"
+        .vdd.pos power         "VDD" "1"
+        .vdd.neg power         "GND" "2"
+        .i2c.sda bidirectional "SDA" "3"
+        .i2c.scl input         "SCL" "4"
     }
 }
 ```
@@ -3615,9 +3631,10 @@ part Zitarget {
 On one 3.3 V rail with `I2cPullups`, the build says nothing about the levels of the two lines: each part's high is the rail's, 3.135V to 3.465V, and each reads it above 70 % of its own supply.
 
 ```nsm evaluate
-import src::zi2c::{Zihost, Zitarget}
 import std::bus::I2cPullups
 import std::sources::Rail
+
+import src::zi2c::{Zihost, Zitarget}
 
 board Pulled {
     .s3: Rail {
@@ -3638,9 +3655,10 @@ board Pulled {
 The same bus pulled up to 1.8 V, with parts that read a high from 70 % of 3.3 V, is refused with the numbers: a high of 1.71 V is not a high for them.
 
 ```nsm fails
-import src::zi2c::{Zihost, Zitarget}
 import std::bus::I2cPullups
 import std::sources::Rail
+
+import src::zi2c::{Zihost, Zitarget}
 
 board PulledLow {
     .s3: Rail {
@@ -3689,10 +3707,10 @@ part Uart32 {
     .uart: Uart
 
     pins {
-        .vdd.pos       power         "VDD"    "1"
-        .vdd.neg       power         "VSS"    "2"
-        .uart.tx       output        "TX"     "3"
-        .uart.rx       input         "RX"     "4"
+        .vdd.pos power  "VDD" "1"
+        .vdd.neg power  "VSS" "2"
+        .uart.tx output "TX"  "3"
+        .uart.rx input  "RX"  "4"
     }
 }
 
@@ -3702,12 +3720,12 @@ part SpiMaster {
     .spi: Spi
 
     pins {
-        .vdd.pos       power         "VDD"    "1"
-        .vdd.neg       power         "VSS"    "2"
-        .spi.sclk      output        "SCK"    "3"
-        .spi.mosi      output        "MOSI"   "4"
-        .spi.miso      input         "MISO"   "5"
-        .spi.cs        output        "CS"     "6"
+        .vdd.pos  power  "VDD"  "1"
+        .vdd.neg  power  "VSS"  "2"
+        .spi.sclk output "SCK"  "3"
+        .spi.mosi output "MOSI" "4"
+        .spi.miso input  "MISO" "5"
+        .spi.cs   output "CS"   "6"
     }
 }
 
@@ -3717,12 +3735,12 @@ part SpiSlave {
     .spi: Spi
 
     pins {
-        .vdd.pos       power         "VDD"    "1"
-        .vdd.neg       power         "GND"    "2"
-        .spi.sclk      input         "SCLK"   "3"
-        .spi.mosi      input         "SDI"    "4"
-        .spi.miso      output        "SDO"    "5"
-        .spi.cs        input         "CSN"    "6"
+        .vdd.pos  power  "VDD"  "1"
+        .vdd.neg  power  "GND"  "2"
+        .spi.sclk input  "SCLK" "3"
+        .spi.mosi input  "SDI"  "4"
+        .spi.miso output "SDO"  "5"
+        .spi.cs   input  "CSN"  "6"
     }
 }
 
@@ -3736,17 +3754,17 @@ part Controller {
     .usb.vbus.current &= 0A
 
     pins {
-        .vdd.pos       power         "VDD"    "1"
-        .vdd.neg       power         "VSS"    "2"
-        .i2c.sda       bidirectional "SDA"    "3"
-        .i2c.scl       bidirectional "SCL"    "4"
-        .swd.swdio     bidirectional "SWDIO"  "5"
-        .swd.swclk     input         "SWCLK"  "6"
-        .swd.swo       output        "SWO"    "7"
-        .swd.reset     input         "NRST"   "8" optional
-        .usb.dp        bidirectional "DP"     "9"
-        .usb.dm        bidirectional "DM"     "10"
-        .usb.vbus.pos  input         "VBUS"   "11" optional
+        .vdd.pos      power         "VDD"   "1"
+        .vdd.neg      power         "VSS"   "2"
+        .i2c.sda      bidirectional "SDA"   "3"
+        .i2c.scl      bidirectional "SCL"   "4"
+        .swd.swdio    bidirectional "SWDIO" "5"
+        .swd.swclk    input         "SWCLK" "6"
+        .swd.swo      output        "SWO"   "7"
+        .swd.reset    input         "NRST"  "8"  optional
+        .usb.dp       bidirectional "DP"    "9"
+        .usb.dm       bidirectional "DM"    "10"
+        .usb.vbus.pos input         "VBUS"  "11" optional
     }
 }
 
@@ -3756,10 +3774,10 @@ part Sensor {
     .i2c: I2c
 
     pins {
-        .vdd.pos       power         "VDD"    "1"
-        .vdd.neg       power         "GND"    "2"
-        .i2c.sda       bidirectional "SDA"    "3"
-        .i2c.scl       bidirectional "SCL"    "4"
+        .vdd.pos power         "VDD" "1"
+        .vdd.neg power         "GND" "2"
+        .i2c.sda bidirectional "SDA" "3"
+        .i2c.scl bidirectional "SCL" "4"
     }
 }
 ```
@@ -3767,10 +3785,11 @@ part Sensor {
 The board that joins them as the buses want:
 
 ```nsm evaluate
-import src::devices::{Controller, Sensor, SpiMaster, SpiSlave, Uart32}
 import std::bus::I2cPullups
 import std::parts::connector::{ProgrammingPads6, UsbC2}
 import std::sources::Rail
+
+import src::devices::{Controller, Sensor, SpiMaster, SpiSlave, Uart32}
 
 board Buses {
     .supply: Rail {
@@ -3820,8 +3839,9 @@ board Buses {
 A UART joined with `~` crosses, and builds:
 
 ```nsm evaluate
-import src::devices::Uart32
 import std::sources::Rail
+
+import src::devices::Uart32
 
 board Straight {
     .supply: Rail {
@@ -3839,8 +3859,9 @@ board Straight {
 Joined pin by pin with the same names, a `tx` meets a `tx` and an `rx` an `rx`, and each net is refused once, with the way to write it:
 
 ```nsm fails
-import src::devices::Uart32
 import std::sources::Rail
+
+import src::devices::Uart32
 
 board SameLine {
     .supply: Rail {
@@ -3858,22 +3879,23 @@ board SameLine {
 
 ```text
 error: net `net-a.uart.rx` joins `rx` to `rx` (`a.uart.rx`, `b.uart.rx`): `rx` crosses `tx` in a `Uart`, so it is joined to the other end's `tx`; write `.a.uart.rx ~ .b.uart.tx`, or join the two interfaces with `.a.uart ~ .b.uart`, which crosses `tx` to `rx` and `rts` to `cts`
-  --> main.nsm:9:5
-  |
-9 |     .a: Uart32
-  |     ^^^^^^^^^^
+   --> main.nsm:10:5
+   |
+10 |     .a: Uart32
+   |     ^^^^^^^^^^
 error: net `net-a.uart.tx` joins `tx` to `tx` (`a.uart.tx`, `b.uart.tx`): `tx` crosses `rx` in a `Uart`, so it is joined to the other end's `rx`; write `.a.uart.tx ~ .b.uart.rx`, or join the two interfaces with `.a.uart ~ .b.uart`, which crosses `tx` to `rx` and `rts` to `cts`
-  --> main.nsm:9:5
-  |
-9 |     .a: Uart32
-  |     ^^^^^^^^^^
+   --> main.nsm:10:5
+   |
+10 |     .a: Uart32
+   |     ^^^^^^^^^^
 ```
 
 A receive line left open:
 
 ```nsm fails
-import src::devices::Uart32
 import std::sources::Rail
+
+import src::devices::Uart32
 
 board OneWay {
     .supply: Rail {
@@ -3890,17 +3912,18 @@ board OneWay {
 
 ```text
 error: `a.uart.rx` is an input that must be connected (pad 4, `RX`), but nothing else is on its net
-  --> main.nsm:9:5
-  |
-9 |     .a: Uart32
-  |     ^^^^^^^^^^
+   --> main.nsm:10:5
+   |
+10 |     .a: Uart32
+   |     ^^^^^^^^^^
 ```
 
 Two masters on one SPI bus:
 
 ```nsm fails
-import src::devices::SpiMaster
 import std::sources::Rail
+
+import src::devices::SpiMaster
 
 board TwoMasters {
     .supply: Rail {
@@ -3917,25 +3940,25 @@ board TwoMasters {
 
 ```text
 error: net `net-a.spi.cs` has two outputs: `a.spi.cs`, `b.spi.cs`
-  --> main.nsm:9:5
-  |
-9 |     .a: SpiMaster
-  |     ^^^^^^^^^^^^^
+   --> main.nsm:10:5
+   |
+10 |     .a: SpiMaster
+   |     ^^^^^^^^^^^^^
 error: net `net-a.spi.miso` has only inputs (`a.spi.miso`, `b.spi.miso`): nothing drives it, so it floats; join an output, a bidirectional pin or a rail to it, or a pull resistor
-  --> main.nsm:9:5
-  |
-9 |     .a: SpiMaster
-  |     ^^^^^^^^^^^^^
+   --> main.nsm:10:5
+   |
+10 |     .a: SpiMaster
+   |     ^^^^^^^^^^^^^
 error: net `net-a.spi.mosi` has two outputs: `a.spi.mosi`, `b.spi.mosi`
-  --> main.nsm:9:5
-  |
-9 |     .a: SpiMaster
-  |     ^^^^^^^^^^^^^
+   --> main.nsm:10:5
+   |
+10 |     .a: SpiMaster
+   |     ^^^^^^^^^^^^^
 error: net `net-a.spi.sclk` has two outputs: `a.spi.sclk`, `b.spi.sclk`
-  --> main.nsm:9:5
-  |
-9 |     .a: SpiMaster
-  |     ^^^^^^^^^^^^^
+   --> main.nsm:10:5
+   |
+10 |     .a: SpiMaster
+   |     ^^^^^^^^^^^^^
 ```
 
 A net whose part pins are all `input` has nothing that drives it, and is refused with the net and the pins (an enable pin wired to another enable pin). An `output`, a `bidirectional` pin, a `power` pin, a `passive` pin (a pull resistor, a connector), a rail the board declares, or a port of the board itself each count as a driver, and so does a pin of a part that has no pin table, which the checker knows nothing about (ADR 0044).
@@ -3943,8 +3966,9 @@ A net whose part pins are all `input` has nothing that drives it, and is refused
 An `I2c` bus (`std::bus::I2c`, by that name) is open-drain, so each of its two lines needs a pull-up: a resistor, or a chain of resistors, from the line to the `pos` of a rail. One resistor on a line is enough for that line, and `I2cPullups` is one on each. A line tied to the rail itself, or pulled down to `neg`, is not a pull-up. Two cases are not judged, because the pull-up may be where this board cannot see it: a bus that is a port of the board, and a line that reaches a connector (a part of several passive pins and no `bridge`), except in a `system` that mates every connector the line reaches (below). A pull-up may be made of any resistors in any arrangement, in series, in parallel or in a divider, or be a `PullUp` or an `I2cPullups`; a part that pulls a line up some other way (a current source, a bus buffer) is not found, and the line is refused (ADR 0090). A bus with no pull-up:
 
 ```nsm fails
-import src::devices::Sensor
 import std::sources::Rail
+
+import src::devices::Sensor
 
 board NoPullups {
     .supply: Rail {
@@ -3961,15 +3985,15 @@ board NoPullups {
 
 ```text
 error: net `net-a.i2c.scl` carries the scl line of an I2C bus (`a.i2c.scl`, `b.i2c.scl`) and has no pull-up: no resistor joins it to the positive pin of a rail; add `std::bus::I2cPullups` to the bus, or a resistor from a rail's `pos` to the line
-  --> main.nsm:9:5
-  |
-9 |     .a: Sensor
-  |     ^^^^^^^^^^
+   --> main.nsm:10:5
+   |
+10 |     .a: Sensor
+   |     ^^^^^^^^^^
 error: net `net-a.i2c.sda` carries the sda line of an I2C bus (`a.i2c.sda`, `b.i2c.sda`) and has no pull-up: no resistor joins it to the positive pin of a rail; add `std::bus::I2cPullups` to the bus, or a resistor from a rail's `pos` to the line
-  --> main.nsm:9:5
-  |
-9 |     .a: Sensor
-  |     ^^^^^^^^^^
+   --> main.nsm:10:5
+   |
+10 |     .a: Sensor
+   |     ^^^^^^^^^^
 ```
 
 In a `system`, a line that goes out through a connector is followed through the mates (ADR 0040) to the board behind it, contact N to contact N, and on through any connector there. The bus is judged as one: it needs a pull-up on the board that has it or on any board it reaches, and a pull-up on either side of a mate satisfies it. If none has one, the error names the connectors the line passed (`carrier.j`, `card.h`) and is reported once for the line. A line that reaches a connector the system does not mate, or a port of a board, goes somewhere this check cannot see and is not judged, as is a board checked alone behind its own connector (ADR 0090).
@@ -3996,10 +4020,10 @@ part Zcc {
     .i2c.levels.vol &= 0.4V
     .i2c.capacitance &= 5pF
     pins {
-        .vdd.pos  power         "VDD" "1"
-        .vdd.neg  power         "VSS" "2"
-        .i2c.sda  bidirectional "SDA" "3"
-        .i2c.scl  bidirectional "SCL" "4"
+        .vdd.pos power         "VDD" "1"
+        .vdd.neg power         "VSS" "2"
+        .i2c.sda bidirectional "SDA" "3"
+        .i2c.scl bidirectional "SCL" "4"
     }
 }
 
@@ -4015,10 +4039,10 @@ part Zct {
     .i2c.levels.vol &= 0.4V
     .i2c.capacitance &= 8pF
     pins {
-        .vdd.pos  power         "VDD" "1"
-        .vdd.neg  power         "GND" "2"
-        .i2c.sda  bidirectional "SDA" "3"
-        .i2c.scl  input         "SCL" "4"
+        .vdd.pos power         "VDD" "1"
+        .vdd.neg power         "GND" "2"
+        .i2c.sda bidirectional "SDA" "3"
+        .i2c.scl input         "SCL" "4"
     }
 }
 
@@ -4033,10 +4057,10 @@ part Zcn {
     .i2c.levels.vil &= 0.3 * .vdd.voltage
     .i2c.levels.vol &= 0.4V
     pins {
-        .vdd.pos  power         "VDD" "1"
-        .vdd.neg  power         "GND" "2"
-        .i2c.sda  bidirectional "SDA" "3"
-        .i2c.scl  input         "SCL" "4"
+        .vdd.pos power         "VDD" "1"
+        .vdd.neg power         "GND" "2"
+        .i2c.sda bidirectional "SDA" "3"
+        .i2c.scl input         "SCL" "4"
     }
 }
 ```
@@ -4044,9 +4068,10 @@ part Zcn {
 A bus of the two that state it, with 20 pF to 40 pF for the traces, has a capacitance of 33 pF to 53 pF, is at worst 4.935 kohm over 53 pF, 221.6 ns (the figure is worked out by hand in `crates/netsmith-solve/tests/bus_figures.rs`), and Fast-mode's 300 ns holds:
 
 ```nsm evaluate
-import src::zicap::{Zcc, Zct}
 import std::bus::I2cPullups
 import std::sources::Rail
+
+import src::zicap::{Zcc, Zct}
 
 board FastBus {
     .supply: Rail {
@@ -4069,9 +4094,10 @@ board FastBus {
 At 200 ns the same bus is refused with the numbers, the range of the rise time and the limit:
 
 ```nsm fails
-import src::zicap::{Zcc, Zct}
 import std::bus::I2cPullups
 import std::sources::Rail
+
+import src::zicap::{Zcc, Zct}
 
 board TooSlow {
     .supply: Rail {
@@ -4093,18 +4119,19 @@ board TooSlow {
 
 ```text
 error: pullups.rise_time must always be at most 200ns, but 124.8ns..221.7ns is not always below 200ns
-   --> main.nsm:19:5
+   --> main.nsm:20:5
    |
-19 |     .pullups.rise_time <= 200ns
+20 |     .pullups.rise_time <= 200ns
    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 A part that states no capacitance leaves the sum without a value, so the bound is listed as not evaluated and not passed, though the pins that are stated would pass it, and the build names the part (`crates/netsmith-solve/tests/bus_figures.rs` has the line):
 
 ```nsm evaluate
-import src::zicap::{Zcc, Zcn}
 import std::bus::I2cPullups
 import std::sources::Rail
+
+import src::zicap::{Zcc, Zcn}
 
 board NoPinFigure {
     .supply: Rail {
@@ -4152,10 +4179,10 @@ part Zlc {
     .i2c.levels.vol &= 0.4V
     .i2c.sink_current &= 6mA
     pins {
-        .vdd.pos  power         "VDD" "1"
-        .vdd.neg  power         "VSS" "2"
-        .i2c.sda  bidirectional "SDA" "3"
-        .i2c.scl  bidirectional "SCL" "4"
+        .vdd.pos power         "VDD" "1"
+        .vdd.neg power         "VSS" "2"
+        .i2c.sda bidirectional "SDA" "3"
+        .i2c.scl bidirectional "SCL" "4"
     }
 }
 
@@ -4171,10 +4198,10 @@ part Zlt {
     .i2c.levels.vol &= 0.4V
     .i2c.sink_current &= 3mA
     pins {
-        .vdd.pos  power         "VDD" "1"
-        .vdd.neg  power         "GND" "2"
-        .i2c.sda  bidirectional "SDA" "3"
-        .i2c.scl  input         "SCL" "4"
+        .vdd.pos power         "VDD" "1"
+        .vdd.neg power         "GND" "2"
+        .i2c.sda bidirectional "SDA" "3"
+        .i2c.scl input         "SCL" "4"
     }
 }
 ```
@@ -4182,9 +4209,10 @@ part Zlt {
 On 3.3 V +/- 5 %, the target's 3 mA at 0.4 V asks for at least `(3.465 V - 0.4 V) / 3 mA = 1021.7 ohm` (worked out by hand in `crates/netsmith-solve/tests/bus_figures.rs`), and the controller's 6 mA asks for half of that, so 4.7 kohm +/- 5 % holds for both parts, and the board states nothing about the sink current:
 
 ```nsm evaluate
-import src::ziol::{Zlc, Zlt}
 import std::bus::I2cPullups
 import std::sources::Rail
+
+import src::ziol::{Zlc, Zlt}
 
 board WeakestDriver {
     .supply: Rail {
@@ -4205,9 +4233,10 @@ board WeakestDriver {
 At 800 ohm the same bus is refused with the numbers, the part whose figures ask for the most, the range of the resistance and the range of the least it may be (its top end is the worst case, the supply at 3.465 V):
 
 ```nsm fails
-import src::ziol::{Zlc, Zlt}
 import std::bus::I2cPullups
 import std::sources::Rail
+
+import src::ziol::{Zlc, Zlt}
 
 board TooStrong {
     .supply: Rail {
@@ -4227,9 +4256,9 @@ board TooStrong {
 
 ```text
 error: pullups.resistance must always be at least ((pullups.supply.voltage - sensor.i2c.levels.vol) / sensor.i2c.sink_current), but 760Ω..840Ω is not always above 911.6Ω..1.022kΩ
-   --> main.nsm:12:5
+   --> main.nsm:13:5
    |
-12 |     .pullups: I2cPullups { .resistance &= 800ohm +/- 5% }
+13 |     .pullups: I2cPullups { .resistance &= 800ohm +/- 5% }
    |     ^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -4345,8 +4374,9 @@ part Zimu {
 A board that joins them as the bus wants. The flash joins as a whole interface; the IMU shares `sclk`, `mosi` and `miso` and has the select of its own on a pin of the processor:
 
 ```nsm evaluate
-import src::zparts::{Zcpu, Zflash, Zimu}
 import std::sources::Rail
+
+import src::zparts::{Zcpu, Zflash, Zimu}
 
 board Sensors {
     .supply: Rail {
@@ -4371,8 +4401,9 @@ board Sensors {
 `mosi` joined to `miso`, which each slave's `tri_state` and `bidirectional` pins let through the net rules, is found from the line each pin is of:
 
 ```nsm fails
-import src::zparts::{Zcpu, Zflash, Zimu}
 import std::sources::Rail
+
+import src::zparts::{Zcpu, Zflash, Zimu}
 
 board Swapped {
     .supply: Rail {
@@ -4396,22 +4427,23 @@ board Swapped {
 
 ```text
 error: net `net-cpu.spi.miso` joins two different lines of a `Spi`: `miso` (`cpu.spi.miso`, `flash.spi.miso`) and `mosi` (`imu.spi.mosi`); a `Spi` joins `miso` to `miso` and `mosi` to `mosi`, and `imu.spi.mosi` is on the net of `miso`
-  --> main.nsm:9:5
-  |
-9 |     .cpu: Zcpu
-  |     ^^^^^^^^^^
+   --> main.nsm:10:5
+   |
+10 |     .cpu: Zcpu
+   |     ^^^^^^^^^^
 error: net `net-cpu.spi.mosi` joins two different lines of a `Spi`: `miso` (`imu.spi.miso`) and `mosi` (`cpu.spi.mosi`, `flash.spi.mosi`); a `Spi` joins `miso` to `miso` and `mosi` to `mosi`, and `imu.spi.miso` is on the net of `mosi`
-  --> main.nsm:9:5
-  |
-9 |     .cpu: Zcpu
-  |     ^^^^^^^^^^
+   --> main.nsm:10:5
+   |
+10 |     .cpu: Zcpu
+   |     ^^^^^^^^^^
 ```
 
 Two masters on one bus are one message for the pair of interfaces, and the rules of a net say nothing more about the nets it names:
 
 ```nsm fails
-import src::zparts::{Zcpu, Zflash}
 import std::sources::Rail
+
+import src::zparts::{Zcpu, Zflash}
 
 board TwoMasters {
     .supply: Rail {
@@ -4431,17 +4463,18 @@ board TwoMasters {
 
 ```text
 error: `cpu.spi` and `host.spi` are both `SpiRole::Master` on one `Spi` bus, and `Spi` allows 1 `Master` on a bus: they are on one bus through `net-cpu.spi.cs` (`cpu.spi.cs`, `flash.spi.cs` and `host.spi.cs`); the slave on it is `flash.spi`; give `host.spi` a bus of its own
-   --> main.nsm:10:5
+   --> main.nsm:11:5
    |
-10 |     .host: Zcpu
+11 |     .host: Zcpu
    |     ^^^^^^^^^^^
 ```
 
 Each slave has a select of its own. The select of the IMU joined to the flash's, which is on the net of the master's `cs`:
 
 ```nsm fails
-import src::zparts::{Zcpu, Zflash, Zimu}
 import std::sources::Rail
+
+import src::zparts::{Zcpu, Zflash, Zimu}
 
 board SharedSelect {
     .supply: Rail {
@@ -4465,9 +4498,9 @@ board SharedSelect {
 
 ```text
 error: net `net-cpu.spi.cs` carries the `cs` of two slaves, `flash.spi.cs` and `imu.spi.cs`: `Spi` gives each slave a `cs` of its own (`cs` is `single` for `SpiRole::Slave`); join `.imu.spi.cs` to a pin of its own
-   --> main.nsm:10:5
+   --> main.nsm:11:5
    |
-10 |     .flash: Zflash
+11 |     .flash: Zflash
    |     ^^^^^^^^^^^^^^
 ```
 
@@ -4514,8 +4547,9 @@ error: `imu.spi.mosi` is an output in the table of `Zimu`, but `SpiRole::Slave` 
 A slave's data out left open is refused once the bus is used, and says that the role requires it (an interface with no line connected is left alone):
 
 ```nsm fails
-import src::zparts::{Zcpu, Zflash}
 import std::sources::Rail
+
+import src::zparts::{Zcpu, Zflash}
 
 board OpenMiso {
     .supply: Rail {
@@ -4534,9 +4568,9 @@ board OpenMiso {
 
 ```text
 error: `flash.spi.miso` is a tri_state output that must be connected (pad 2, `DO`): `SpiRole::Slave` of `Spi` requires it, and nothing else is on its net
-   --> main.nsm:10:5
+   --> main.nsm:11:5
    |
-10 |     .flash: Zflash
+11 |     .flash: Zflash
    |     ^^^^^^^^^^^^^^
 ```
 
@@ -4559,9 +4593,10 @@ An error with `--strict` or `guidelines = "error"`, as every guideline is.
 A module that forwards a bus is a way through: its pins are not terminals, and the part inside has the role. The module says the role of its port in the same way a function is forwarded, with an equation:
 
 ```nsm
-import src::zparts::{Zcpu, Zflash}
 import std::bus::Spi
 import std::sources::Rail
+
+import src::zparts::{Zcpu, Zflash}
 
 module FlashCard {
     .supply: Rail
@@ -4603,19 +4638,20 @@ part Zdongle {
     .usb.vbus.current &= 0A
 
     pins {
-        .vdd.pos       power         "VDD"  "1"
-        .vdd.neg       power         "VSS"  "2"
-        .usb.dp        bidirectional "DP"   "3"
-        .usb.dm        bidirectional "DM"   "4"
-        .usb.vbus.pos  input         "VBUS" "5" optional
+        .vdd.pos      power         "VDD"  "1"
+        .vdd.neg      power         "VSS"  "2"
+        .usb.dp       bidirectional "DP"   "3"
+        .usb.dm       bidirectional "DM"   "4"
+        .usb.vbus.pos input         "VBUS" "5" optional
     }
 }
 ```
 
 ```nsm evaluate
-import src::usbparts::Zdongle
 import std::parts::connector::UsbC2
 import std::sources::Rail
+
+import src::usbparts::Zdongle
 
 board Dongle {
     .supply: Rail {
@@ -4679,8 +4715,9 @@ part Zimu {
 A clock above a bound is refused in the words of the bus: the clock it is joined at, the part that does not allow it, its limit, and what the other parts allow, so that the author sees which part sets the speed of the bus:
 
 ```nsm fails
-import src::clocked::{Zflash, Zimu}
 import std::sources::Rail
+
+import src::clocked::{Zflash, Zimu}
 
 board TooFast {
     .supply: Rail {
@@ -4698,9 +4735,9 @@ board TooFast {
 
 ```text
 error: bus `flash.spi` is joined at 20MHz, which `imu` (`Zimu`) does not allow: its limit `imu.spi.frequency` is at most 10MHz; `flash` (`Zflash`) allows 33MHz, so the bus runs at 10MHz at most
-   --> main.nsm:10:5
+   --> main.nsm:11:5
    |
-10 |     .imu: Zimu
+11 |     .imu: Zimu
    |     ^^^^^^^^^^
 ```
 
@@ -4787,8 +4824,8 @@ part ResetGate {
     .vcc.current &= 100uA..1mA
 
     pins {
-        .vcc.pos power "VCC" "1"
-        .vcc.neg power "GND" "2"
+        .vcc.pos power "VCC"  "1"
+        .vcc.neg power "GND"  "2"
         .reset_n input "RST#" "3"
     }
 }
@@ -4846,8 +4883,8 @@ part SizedGate {
     .vcc.current &= 100uA..1mA
 
     pins {
-        .vcc.pos power "VCC" "1"
-        .vcc.neg power "GND" "2"
+        .vcc.pos power "VCC"  "1"
+        .vcc.neg power "GND"  "2"
         .reset_n input "RST#" "3"
     }
 }
@@ -4891,7 +4928,7 @@ part EnableGate {
     pins {
         .vcc.pos power "VCC" "1"
         .vcc.neg power "GND" "2"
-        .enable input "EN" "3"
+        .enable  input "EN"  "3"
     }
 }
 

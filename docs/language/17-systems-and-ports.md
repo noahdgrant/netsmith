@@ -4,7 +4,7 @@ A system holds boards and says which of their ports meet. A port is an interface
 
 ```nsm solve
 import std::parts::connector::Header1x2
-import std::parts::passive::{Resistor, Led}
+import std::parts::passive::{Led, Resistor}
 import std::parts::regulator::LinearRegulator
 import std::sources::Rail
 
@@ -134,10 +134,10 @@ A carrier with two sockets and two plug-in cards, with power, a UART and an SPI 
 //! whole; they have no KiCad symbol, so this file is checked and solved but not exported.
 
 import std::bus::{Spi, SpiRole, Uart}
+import std::mfg::jlcpcb::TwoLayer
 import std::parts::connector::{Header1x10, Socket1x10}
 import std::parts::passive::Fuse
 import std::sources::Rail
-import std::mfg::jlcpcb::TwoLayer
 
 /// A controller with a UART and an SPI master. Invented; not a real part.
 part Controller {
@@ -182,10 +182,10 @@ part SerialChip {
     .uart: Uart
 
     pins {
-        .vdd.pos  power  "VDD"  "1"
-        .vdd.neg  power  "VSS"  "2"
-        .uart.tx  output "TX"   "3"
-        .uart.rx  input  "RX"   "4"
+        .vdd.pos power  "VDD" "1"
+        .vdd.neg power  "VSS" "2"
+        .uart.tx output "TX"  "3"
+        .uart.rx input  "RX"  "4"
     }
 }
 
@@ -376,8 +376,9 @@ The count and the pitch must agree:
 
 ```nsm fails
 import std::parts::connector::{Header1x2, Socket1x4}
-import src::kit::Header1x4Fine
 import std::sources::Rail
+
+import src::kit::Header1x4Fine
 
 board Carrier {
     .gnd: Rail
@@ -410,23 +411,24 @@ system Kit {
 
 ```text
 error: `.carrier.slot_a` (Socket1x4) has 4 positions and `.short.j1` (Header1x2) has 2; a mate joins contact N to contact N, so both need the same number, or the larger one says which of its contacts are mated (`.carrier.slot_a.mating.contacts &= 1..2`)
-   --> main.nsm:29:5
-   |
-29 |     .carrier.slot_a.mating ~ .short.j1.mating
-   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-error: `.carrier.slot_b` (Socket1x4) has a pitch of 2.54mm and `.fine.j1` (Header1x4Fine) has 2mm; they do not fit together
    --> main.nsm:30:5
    |
-30 |     .carrier.slot_b.mating ~ .fine.j1.mating
+30 |     .carrier.slot_a.mating ~ .short.j1.mating
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+error: `.carrier.slot_b` (Socket1x4) has a pitch of 2.54mm and `.fine.j1` (Header1x4Fine) has 2mm; they do not fit together
+   --> main.nsm:31:5
+   |
+31 |     .carrier.slot_b.mating ~ .fine.j1.mating
    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 A signal needs one driver. Two outputs on one contact, or an input that nothing drives, are refused:
 
 ```nsm fails
-import src::kit::{In, Out}
 import std::parts::connector::{Header1x4, Socket1x4}
 import std::sources::Rail
+
+import src::kit::{In, Out}
 
 board Carrier {
     .gnd: Rail
@@ -457,22 +459,23 @@ system Kit {
 
 ```text
 error: contact 2 of the mated connectors is an output on both boards, and two outputs cannot share a net: `.carrier.slot` pin 2 is on net `net-slot.p2`, a signal (output `carrier.tx.y`); `.card.j1` pin 2 is on net `net-j1.p2`, a signal (output `card.tx.y`); a mate joins contact N to contact N, so if one is meant to be turned end for end, its pin 2 would meet pin 3
-   --> main.nsm:28:5
+   --> main.nsm:29:5
    |
-28 |     .carrier.slot.mating ~ .card.j1.mating
+29 |     .carrier.slot.mating ~ .card.j1.mating
    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 error: contact 3 of the mated connectors has an input and nothing that drives it on either board: `.carrier.slot` pin 3 is on net `net-rx.a`, a signal (input `carrier.rx.a`); `.card.j1` pin 3 is on net `net-j1.p3`, a signal (input `card.rx.a`); a mate joins contact N to contact N, so if one is meant to be turned end for end, its pin 3 would meet pin 2
-   --> main.nsm:28:5
+   --> main.nsm:29:5
    |
-28 |     .carrier.slot.mating ~ .card.j1.mating
+29 |     .carrier.slot.mating ~ .card.j1.mating
    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 A mate that carries a signal and no ground is refused, because the two boards would share no reference:
 
 ```nsm fails
-import src::kit::{In, Out}
 import std::parts::connector::{Header1x4, Socket1x4}
+
+import src::kit::{In, Out}
 
 board Carrier {
     .tx: Out
@@ -495,9 +498,9 @@ system Kit {
 
 ```text
 error: the mate of `.carrier.slot` and `.card.j1` carries power or signals (contact 2 is a signal on `.carrier.slot` and a signal on `.card.j1`) but no ground: no contact is ground on both boards, so the two boards share no ground
-   --> main.nsm:19:5
+   --> main.nsm:20:5
    |
-19 |     .carrier.slot.mating ~ .card.j1.mating
+20 |     .carrier.slot.mating ~ .card.j1.mating
    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 

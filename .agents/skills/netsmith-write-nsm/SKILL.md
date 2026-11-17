@@ -73,4 +73,4 @@ A `Capacitor` is one part and has no `.count`. When no single capacitor meets a 
 
 ## Loop
 
-Write a little, run `netsmith board build`, read the first error, fix it. See `netsmith-read-errors`. When it builds, run `netsmith project lint` and act on what it finds: an unused import or definition, a statement a default already makes, a name against the convention (`CamelCase` definitions, `snake_case` members). A finding that is to stay gets `// lint: off <rule>` on its line.
+Write a little, run `netsmith board build`, read the first error, fix it. See `netsmith-read-errors`. When it builds, run `netsmith project lint` and act on what it finds: an unused import or definition, a statement a default already makes, a name against the convention (`CamelCase` definitions, `snake_case` members). A finding that is to stay gets `// lint: off <rule>` on its line. Then run `netsmith project fmt`: it puts the files in the language's one layout (4 spaces, 100 columns, pin tables in columns, imports sorted) and changes nothing they say, so write freely and let it lay the text out.

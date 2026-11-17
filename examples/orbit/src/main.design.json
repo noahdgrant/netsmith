@@ -4178,7 +4178,7 @@
         "text": "The battery connector, a JST PH with two contacts: pin 1 is ground, pin 2 the battery's plus.",
         "at": {
           "file": "src/main.nsm",
-          "line": 53
+          "line": 54
         },
         "anchors": [
           "battery"
@@ -4191,7 +4191,7 @@
         "text": "R2: 10 kohm from the switch's pad 1 to ground. ORBIT's pad 1 of R2 is on ground and its pad 2 on the switch, so this is a plain resistor with its pads joined that way and not a `PullDown` (which puts its resistor's pad 1 on the line): BOOT0's pad 1 is on the net of R2's pad 2 in ORBIT's board, and the parity checker compares the pad.",
         "at": {
           "file": "src/main.nsm",
-          "line": 142
+          "line": 143
         },
         "anchors": [
           "boot_pulldown"
@@ -4204,7 +4204,7 @@
         "text": "BOOT0: the slide switch that sets the MCU's BOOT0 pin. Its pad 2 is on 3.3 V, its pad 1 on a net with a 10 kohm resistor to ground, and its common pad on the MCU's BOOT0.",
         "at": {
           "file": "src/main.nsm",
-          "line": 137
+          "line": 138
         },
         "anchors": [
           "boot_switch"
@@ -4217,7 +4217,7 @@
         "text": "A battery to 3.3 V buck-boost converter. Join `.vin` to the battery's rail and `.vout` to the 3.3 V rail.",
         "at": {
           "file": "src/buck_boost.nsm",
-          "line": 20
+          "line": 21
         },
         "anchors": [],
         "result": null
@@ -4228,7 +4228,7 @@
         "text": "R7 (`rtop`, from the output to `FB`) and R8 (`rbottom`, from `FB` to ground).",
         "at": {
           "file": "src/buck_boost.nsm",
-          "line": 29
+          "line": 30
         },
         "anchors": [],
         "result": null
@@ -4239,7 +4239,7 @@
         "text": "U15: the TPS63802DLAR (LCSC C2845237).",
         "at": {
           "file": "src/buck_boost.nsm",
-          "line": 25
+          "line": 26
         },
         "anchors": [
           "buck_boost.ic"
@@ -4252,7 +4252,7 @@
         "text": "L1: 0.47 uH.",
         "at": {
           "file": "src/buck_boost.nsm",
-          "line": 27
+          "line": 28
         },
         "anchors": [
           "buck_boost.inductor"
@@ -4265,7 +4265,7 @@
         "text": "C14, the input capacitor.",
         "at": {
           "file": "src/buck_boost.nsm",
-          "line": 36
+          "line": 37
         },
         "anchors": [
           "buck_boost.input_cap"
@@ -4278,7 +4278,7 @@
         "text": "C13, the output capacitor.",
         "at": {
           "file": "src/buck_boost.nsm",
-          "line": 38
+          "line": 39
         },
         "anchors": [
           "buck_boost.output_cap"
@@ -4291,7 +4291,7 @@
         "text": "R6, the pull-up of the power-good output.",
         "at": {
           "file": "src/buck_boost.nsm",
-          "line": 34
+          "line": 35
         },
         "anchors": [],
         "result": null
@@ -4302,7 +4302,7 @@
         "text": "A single-cell Li-Ion charger from USB. Join `.vbus` to the USB rail and `.vbatt` to the battery's rail.",
         "at": {
           "file": "src/charger.nsm",
-          "line": 17
+          "line": 18
         },
         "anchors": [],
         "result": null
@@ -4313,7 +4313,7 @@
         "text": "U1: the MCP73831T-2ACI/OT (4.2 V, LCSC C424093; ORBIT's schematic writes the value as `MCP73031`).",
         "at": {
           "file": "src/charger.nsm",
-          "line": 23
+          "line": 24
         },
         "anchors": [
           "charger.ic"
@@ -4326,7 +4326,7 @@
         "text": "R3, from `PROG` to ground: 2 kohm sets 500 mA.",
         "at": {
           "file": "src/charger.nsm",
-          "line": 25
+          "line": 26
         },
         "anchors": [
           "charger.rprog"
@@ -4339,7 +4339,7 @@
         "text": "D1, the charge status LED, green.",
         "at": {
           "file": "src/charger.nsm",
-          "line": 29
+          "line": 30
         },
         "anchors": [
           "charger.status_led"
@@ -4352,7 +4352,7 @@
         "text": "R1, the status LED's series resistor.",
         "at": {
           "file": "src/charger.nsm",
-          "line": 27
+          "line": 28
         },
         "anchors": [
           "charger.status_resistor"
@@ -4365,7 +4365,7 @@
         "text": "C7, on the battery side.",
         "at": {
           "file": "src/charger.nsm",
-          "line": 33
+          "line": 34
         },
         "anchors": [
           "charger.vbatt_cap"
@@ -4378,7 +4378,7 @@
         "text": "C8, on the USB side.",
         "at": {
           "file": "src/charger.nsm",
-          "line": 31
+          "line": 32
         },
         "anchors": [
           "charger.vbus_cap"
@@ -4391,7 +4391,7 @@
         "text": "U17: the AT24C128C; `A0` and `A1` high and `A2` low (address 0x53), write protect low.",
         "at": {
           "file": "src/main.nsm",
-          "line": 197
+          "line": 198
         },
         "anchors": [
           "eeprom"
@@ -4404,7 +4404,7 @@
         "text": "J2, the east header: ground, PB11, PB10, PB2, PB1, PB0, PA7 and PA6.",
         "at": {
           "file": "src/main.nsm",
-          "line": 57
+          "line": 58
         },
         "anchors": [
           "header_east"
@@ -4417,7 +4417,7 @@
         "text": "J1, the west header: ground, SWDIO, SWCLK, NRST, PC14, PA2, PA3 and 3.3 V.",
         "at": {
           "file": "src/main.nsm",
-          "line": 55
+          "line": 56
         },
         "anchors": [
           "header_west"
@@ -4430,7 +4430,7 @@
         "text": "R9 and R10: 2.2 kohm on each line to 3.3 V.",
         "at": {
           "file": "src/main.nsm",
-          "line": 208
+          "line": 209
         },
         "anchors": [],
         "result": null
@@ -4441,7 +4441,7 @@
         "text": "D2 and R4, on PA5.",
         "at": {
           "file": "src/main.nsm",
-          "line": 176
+          "line": 177
         },
         "anchors": [
           "led1"
@@ -4454,7 +4454,7 @@
         "text": "D3 and R5, on PA4.",
         "at": {
           "file": "src/main.nsm",
-          "line": 180
+          "line": 181
         },
         "anchors": [
           "led2"
@@ -4467,7 +4467,7 @@
         "text": "U16, the STM32F030C8. Every pin that a header or a part uses is named here, so none moves.",
         "at": {
           "file": "src/main.nsm",
-          "line": 101
+          "line": 102
         },
         "anchors": [
           "mcu"
@@ -4530,7 +4530,7 @@
         "text": "PWR1: the slide switch between the battery connector and the `+BATT` rail.",
         "at": {
           "file": "src/main.nsm",
-          "line": 89
+          "line": 90
         },
         "anchors": [
           "power_switch"
@@ -4543,7 +4543,7 @@
         "text": "SW1, RESET: pulls NRST to ground.",
         "at": {
           "file": "src/main.nsm",
-          "line": 125
+          "line": 126
         },
         "anchors": [
           "reset_button"
@@ -4556,7 +4556,7 @@
         "text": "C9, on NRST.",
         "at": {
           "file": "src/main.nsm",
-          "line": 127
+          "line": 128
         },
         "anchors": [
           "reset_cap"
@@ -4569,7 +4569,7 @@
         "text": "The mini USB B receptacle: the supply and the programming port.",
         "at": {
           "file": "src/main.nsm",
-          "line": 51
+          "line": 52
         },
         "anchors": [
           "usb"
@@ -4582,7 +4582,7 @@
         "text": "The USB to UART bridge. Join `.vbus` to the USB rail, `.dp` and `.dm` to the connector's data pins, and `.uart` to the MCU's UART with `~`, which crosses the lines.",
         "at": {
           "file": "src/usb_uart.nsm",
-          "line": 20
+          "line": 21
         },
         "anchors": [],
         "result": null
@@ -4593,7 +4593,7 @@
         "text": "U22: the CP2102-GMR (LCSC C6568).",
         "at": {
           "file": "src/usb_uart.nsm",
-          "line": 28
+          "line": 29
         },
         "anchors": [
           "usb_uart.ic"
@@ -4606,7 +4606,7 @@
         "text": "The chip's UART, `tx` and `rx` (its flow control is left open).",
         "at": {
           "file": "src/usb_uart.nsm",
-          "line": 25
+          "line": 26
         },
         "anchors": [
           "mcu",
@@ -4620,7 +4620,7 @@
         "text": "C24, on `VBUS`.",
         "at": {
           "file": "src/usb_uart.nsm",
-          "line": 36
+          "line": 37
         },
         "anchors": [
           "usb_uart.vbus_100n"
@@ -4633,7 +4633,7 @@
         "text": "C23, on `VBUS`.",
         "at": {
           "file": "src/usb_uart.nsm",
-          "line": 34
+          "line": 35
         },
         "anchors": [
           "usb_uart.vbus_1u"
@@ -4646,7 +4646,7 @@
         "text": "C21, on the chip's regulator output.",
         "at": {
           "file": "src/usb_uart.nsm",
-          "line": 32
+          "line": 33
         },
         "anchors": [
           "usb_uart.vdd_100n"
@@ -4659,7 +4659,7 @@
         "text": "C20, on the chip's regulator output.",
         "at": {
           "file": "src/usb_uart.nsm",
-          "line": 30
+          "line": 31
         },
         "anchors": [
           "usb_uart.vdd_bulk"
@@ -4672,7 +4672,7 @@
         "text": "SW2, USER: connects 3.3 V to a node that a 100 kohm resistor holds low; a 1 kohm resistor and a 100 nF capacitor take it to the MCU's pin.",
         "at": {
           "file": "src/main.nsm",
-          "line": 152
+          "line": 153
         },
         "anchors": [
           "user_button"
@@ -4685,7 +4685,7 @@
         "text": "C18.",
         "at": {
           "file": "src/main.nsm",
-          "line": 156
+          "line": 157
         },
         "anchors": [
           "user_node_cap"
@@ -4698,7 +4698,7 @@
         "text": "C19, on the MCU's pin.",
         "at": {
           "file": "src/main.nsm",
-          "line": 160
+          "line": 161
         },
         "anchors": [
           "user_pin_cap"
@@ -4711,7 +4711,7 @@
         "text": "R12.",
         "at": {
           "file": "src/main.nsm",
-          "line": 154
+          "line": 155
         },
         "anchors": [],
         "result": null
@@ -4722,7 +4722,7 @@
         "text": "R11.",
         "at": {
           "file": "src/main.nsm",
-          "line": 158
+          "line": 159
         },
         "anchors": [
           "user_series"
@@ -4735,7 +4735,7 @@
         "text": "The 3.3 V rail of the buck-boost regulator. ORBIT's schematic names it `+3.3V`; the window is a stated requirement (as for the RP2350A Minimal), and the regulator's divider derives the output, which the check compares with it.",
         "at": {
           "file": "src/main.nsm",
-          "line": 74
+          "line": 75
         },
         "anchors": [],
         "result": null
@@ -4746,7 +4746,7 @@
         "text": "C2, 4.7 uF, and C3 to C6, 100 nF, on the 3.3 V rail.",
         "at": {
           "file": "src/main.nsm",
-          "line": 108
+          "line": 109
         },
         "anchors": [
           "v3v3_bulk"
@@ -4759,7 +4759,7 @@
         "text": "The battery's rail behind the power switch, `+BATT`. The schematic names no cell, so no voltage is stated.",
         "at": {
           "file": "src/main.nsm",
-          "line": 68
+          "line": 69
         },
         "anchors": [],
         "result": null
@@ -4770,7 +4770,7 @@
         "text": "USB's VBUS, the only external supply. 5 V +/- 5% is USB's 4.75 V to 5.25 V.",
         "at": {
           "file": "src/main.nsm",
-          "line": 62
+          "line": 63
         },
         "anchors": [],
         "result": null
@@ -4781,7 +4781,7 @@
         "text": ".divider.vref == .ic.vref",
         "at": {
           "file": "src/buck_boost.nsm",
-          "line": 55
+          "line": 56
         },
         "anchors": [
           "buck_boost.ic"
@@ -4794,7 +4794,7 @@
         "text": ".vout.voltage == .divider.vout",
         "at": {
           "file": "src/buck_boost.nsm",
-          "line": 56
+          "line": 57
         },
         "anchors": [],
         "result": "vout.voltage = 3.212V..3.391V"
@@ -4805,7 +4805,7 @@
         "text": ".ic.rprog == .rprog.resistance",
         "at": {
           "file": "src/charger.nsm",
-          "line": 44
+          "line": 45
         },
         "anchors": [
           "charger.ic",

@@ -25,8 +25,9 @@ module Bypassed {
 ```
 
 ```nsm solve
-import src::power::Bypassed
 import std::sources::Rail
+
+import src::power::Bypassed
 
 board Filtered {
     .supply: Rail {
@@ -81,7 +82,7 @@ error: unknown module `src::powr`
 `netsmith project lint` (_The linter_, in the chapter on commands) finds a name that an `import` brings in and the file never writes, `lint.unused_import`. The name is written when it appears anywhere in the file but its imports: as a type, an enum (`AssemblyMode::Hand`), the kind of a `defaults` line or a generic a part provides. Delete the name from the import, or the import when it names nothing else.
 
 ```nsm lints
-import std::parts::passive::{Resistor, Capacitor}
+import std::parts::passive::{Capacitor, Resistor}
 import std::sources::Rail
 
 board Pull {
@@ -95,7 +96,7 @@ board Pull {
 ```
 
 ```text
-main.nsm:1:40: lint.unused_import: `Capacitor` is imported from `std::parts::passive` and never used in this file; delete it from the import
+main.nsm:1:30: lint.unused_import: `Capacitor` is imported from `std::parts::passive` and never used in this file; delete it from the import
 ```
 
 An import that brings the providers of its file into scope and is not used by name (`import src::zbk9::Zbk9   // not used by name: brings the IC in scope`, _Generics and providers_) is used when one of the file's providers was a candidate of a use on a board of the project, and no other import of the file already names that file by a name the file writes.

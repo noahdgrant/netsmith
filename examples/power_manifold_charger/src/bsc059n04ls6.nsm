@@ -19,9 +19,9 @@ import std::parts::transistor::NMosfet
 part Bsc059n04ls6 provides NMosfet {
     pins "TDSON-8FL" {
         //  pin     kind     name  pads
-        .gate   input   "G"   "4"
-        .source passive "S"   "1" "2" "3"
-        .drain  passive "D"   "5"
+        .gate   input   "G" "4"
+        .source passive "S" "1" "2" "3"
+        .drain  passive "D" "5"
     }
 
     catalog bsc059n04ls6 by .mpn { .mpn, .package, .max_drain_source_voltage, .max_drain_current, .max_gate_source_voltage, .gate_threshold, .on_resistance, .on_resistance_vgs }
