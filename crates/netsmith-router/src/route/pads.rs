@@ -191,9 +191,9 @@ pub(super) struct Lanes {
 }
 
 /// Whether a lane goes on from its via on the inner signal layers, the cells as far again past
-/// its end, which another net's track pays [`LANE_TRACK`] a step to use (issue #1015): measured
-/// in `crate::plan`'s header.
-pub(super) const INNER_LANES: bool = true;
+/// its end, which another net's track pays [`LANE_TRACK`] a step to use (issue #1015): measured,
+/// not kept (`crate::plan`'s header: no board or line changed on 36 runs of the dense board).
+pub(super) const INNER_LANES: bool = false;
 
 /// How many nets' lanes one cell counts.
 pub(super) const LANE_SLOTS: usize = 4;

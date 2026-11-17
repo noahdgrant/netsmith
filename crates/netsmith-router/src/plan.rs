@@ -125,6 +125,48 @@
 //! variant on the tight and mixed boards too: one variant moves a board's vias by 10 % either
 //! way.
 
+//! # On inner signal layers (issue #1015, measured 2026-11-17)
+//!
+//! **Built.** The tiles, the plan and the corridors are of every layer of the router's stack:
+//! the outer layers and each inner signal layer have their own capacities, crossings and fill,
+//! and a planned via goes from a tile to any other layer of it (a through via; the plan does not
+//! tell a blind via from one). On a board of two layers, or with planes inside only, the plan is
+//! the two-layer plan above, unchanged. Before, an inner layer had no tiles and cost nothing off
+//! the plan, so a line the plan steered on a board with signal layers was pushed off them.
+//!
+//! **Measured** on the dense board of `tests/inner_plan.rs` (`inner_plan::measured`, release,
+//! one run each on a machine shared with three other builds, the router's 300 s limit): the
+//! mixed board (two QFNs, three SOICs, four SOT-23s, 52 resistors, 14 capacitors, a 1206 pair)
+//! on `SixLayer` with GND and 3V3 planes round two signal layers, placed in 30 x 45, 26 x 40 and
+//! 24 x 36 mm, seeds 0 to 5. Lines left, then vias, per seed:
+//!
+//! | outline | plan off | main's plan (outer layers) | plan on every layer |
+//! |---|---|---|---|
+//! | 30 x 45 | 0/0/0/0/0/0, 208/213/205/207/205/215 | 0/0/0/0/0/0, 205/214/205/217/208/211 | 0/0/0/0/0/0, 208/217/205/213/219/208 |
+//! | 26 x 40 | 6/6/6/0/14/14, 227/210/202/221/196/200 | 6/6/6/0/15/14, 235/210/205/223/197/203 | 6/6/6/0/15/13, 227/216/204/218/193/202 |
+//! | 24 x 36 | 1/6/8/3/6/0, 248/220/213/239/228/229 | 1/6/8/3/6/0, 258/225/214/244/228/234 | **0**/6/8/3/6/0, **227**/218/211/244/231/230 |
+//!
+//! In all: plan off 70 lines and 3886 vias, main's plan 71 and 3936, the plan on every layer 69
+//! and 3891. The plan on every layer routes one board more (24 x 36, seed 0, on its first try
+//! where the others give up after six) and one line more on another, and leaves one more on a
+//! third; its vias are within 2 % of the plan off on each outline. That is within what one
+//! seed's luck moves, so it stays off by default, as on two layers, and replaces the two-layer
+//! plan on a board with signal layers, which it is at least as good as everywhere above. Track
+//! inside: the plan on every layer puts about as much on the inner layers as the plan off (30 x
+//! 45: 363/414/445/382 mm off, 339/470/475/383 on, seeds 0 to 3). The six lines that seeds 0 to 2
+//! leave at 26 x 40 whatever the plan are signal nets between the QFNs and their series resistors
+//! (seed 1: A1, A21, A31, A33, A7, B14), not supplies. Runs that reached the 300 s limit (most of
+//! the 26 x 40 seeds 4 and 5) depend on the machine's speed, and are the least sure rows.
+//!
+//! **Not kept: escape lanes on from their via on the inner layers** (`INNER_LANES` in
+//! `route::pads`, issue #1015). A lane of a fine-pitch pad went on, past its end where its own
+//! net's via stands, as far again on every inner signal layer, so that the line that drops there
+//! has its way out inside as it has outside. Measured as above (lanes are used from the second
+//! try): no board and no line changed on any of the 36 runs (lines left 70 and 69 with the plan
+//! off and on), and vias moved by -15 to +14 on a board (30 x 45, seed 4: 214 against 205; 24 x
+//! 36, seed 3, plan on: 229 against 244). It costs a second claim per pad and changes nothing a
+//! board needs, so it is off.
+
 use std::cmp::Reverse;
 use std::collections::BinaryHeap;
 
@@ -807,12 +849,7 @@ fn search(tiles: &Tiles, ends: &Ends, congestion: &Congestion) -> Steps {
 /// The tiles of a line's corridor on each layer, row by row: those of its plan grown by `grow`
 /// tiles each way, on the layer the plan takes there (both layers in a tile where it changes
 /// layer) if `layered`, else on both (see the module's header).
-pub(crate) fn corridor(
-    tiles: &Tiles,
-    path: &[Node],
-    grow: usize,
-    layered: bool,
-) -> Vec<Vec<bool>> {
+pub(crate) fn corridor(tiles: &Tiles, path: &[Node], grow: usize, layered: bool) -> Vec<Vec<bool>> {
     let mut inside = vec![vec![false; tiles.nx * tiles.ny]; tiles.layers];
     for &(a, b, l) in path {
         for d in b.saturating_sub(grow)..=(b + grow).min(tiles.ny - 1) {
@@ -893,7 +930,10 @@ mod tests {
             Some(&[(0, 0, 0), (0, 0, 2), (1, 0, 2), (1, 0, 0)][..])
         );
         assert_eq!(plan.fill(&t).len(), 3);
-        assert_eq!(corridor(&t, plan.paths[0].as_ref().unwrap(), 0, false).len(), 3);
+        assert_eq!(
+            corridor(&t, plan.paths[0].as_ref().unwrap(), 0, false).len(),
+            3
+        );
     }
 
     #[test]
