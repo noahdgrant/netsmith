@@ -1,24 +1,17 @@
 ## Commands
 
-`netsmith --help` and `netsmith <noun> <verb> --help` document every command and flag.
+`netsmith --help` and `netsmith <noun> <verb> --help` document every command and flag. The skill `netsmith-use-netsmith` is the map for an agent: the loop of commands, the files, the exit codes and which skill fits which job.
 
 ### The command line
 
 The commands are grouped under nouns, each with its verbs (issue #1090): `netsmith <noun> <verb>`, so `netsmith --help` lists nine nouns and `netsmith board --help` the verbs of a board.
 
 - `project`: the project as a whole: make one (`init`), bring its agent files up to this netsmith (`refresh`), refresh or check its pick lock (`lock`), report what is worth changing in its sources (`lint`), make one of its orders (`order`).
-- `board`: what is done to the boards of a file or of the project: `check`, `build`, `fab`, `explain` a pick, `compare` two designs, `swap` a part for another row.
-- `board`: what is done to the boards of a file or of the project: `check`, `build`, `fab`, `explain` a pick, `compare` two designs, and the views of the solved design the editor shows, printed as text or `--format json`: `bom`, `power`, `system`, `panel`.
-- `board`: what is done to the boards of a file or of the project: `check`, `build`, `fab`, `explain` a pick, `compare` two designs, `copper` (the planes, pours, hand zones and teardrop fills).
-- `board`: what is done to the boards of a file or of the project: `check`, `build`, `fab`, `drc` alone, `explain` a pick, `compare` two designs.
-- `board`: what is done to the boards of a file or of the project: `check`, `build`, `fab`, `explain` a pick, `compare` two designs or the project with a git ref.
-- `project`: the project as a whole: make one (`init`), bring its agent files up to this netsmith (`refresh`), refresh or check its pick lock (`lock`), make one of its orders (`order`).
 - `board`: what is done to the boards of a file or of the project: `check`, `build`, `fab`, `drc` alone, `explain` a pick, `compare` two designs or the project with a git ref, `swap` a part for another row, `pins` (show, lock, move), `copper` (the planes, pours, hand zones and teardrop fills), and the views of the solved design the editor shows, printed as text or `--format json`: `bom`, `power`, `system`, `panel`.
 - `layout`: the layout file, where each part is.
 - `routes`: the routes file, the copper fixed by hand or imported.
 - `schematic`: the schematic layout file (`<stem>.sch.toml`), how the schematic is arranged: `show` it, `set` an entry, `check` it against the board, `arrange` the sheets of a big board (issue #1093). It is `layout`'s counterpart for the drawing: a noun is the thing a file holds, so the PCB's solution is `layout` and the schematic's arrangement is `schematic`, and the picture of it is the verb `view schematic`.
-- `view`: look at a board: `3d` draws it to a PNG, `schematic` writes its schematic as a PDF, an SVG or a PNG, `pcb` draws its copper in 2D to a PNG or an SVG, `editor` serves the editor, `editor-3d` drives the 3D view of a running editor.
-- `view`: look at a board: `3d` draws it to a PNG, `schematic` writes its schematic as a PDF, an SVG or a PNG, `gerber` draws the files of its fab package, `editor` serves the editor, `editor-3d` drives the 3D view of a running editor.
+- `view`: look at a board: `3d` draws it to a PNG, `schematic` writes its schematic as a PDF, an SVG or a PNG, `pcb` draws its copper in 2D to a PNG or an SVG, `gerber` draws the files of its fab package, `editor` serves the editor, `editor-3d` drives the 3D view of a running editor.
 - `catalog`: the rows of the catalogs, checked against LCSC's record.
 - `import`: what comes into a project from outside: a DXF drawing (`dxf`), KiCad's library tables (`kicad-libs`), a part from a symbol (`part`), a port of a KiCad board (`port`), a case's STEP model (`case`).
 - `dev`: the tools for developing netsmith and checking ports: `route` routes a saved placed board with the router's tuning flags, `parity` compares a port with its original, `board3d` prints the 3D scene's report.
@@ -101,8 +94,7 @@ Each command, what it was before, and its flags (a test walks `--help` of every 
 | `netsmith dev board3d` | `netsmith board3d` | `--board`, `--format` (was `--json`), `--glb`, `--step`, `--place-seeds`, `--place-budget`, `--progress`, `--to-editor` |
 | `netsmith mcp` | new | `--project` |
 
-The places left for commands to come, named by the same rules: `view gerber`; and `project fmt` and `project lint`.
-The places left for commands to come, named by the same rules: `view pcb`; and `project fmt` and `project lint`.
+The place left for a command to come, named by the same rules: `project fmt`.
 
 ### The MCP server
 
@@ -129,10 +121,11 @@ Another host that starts a server on stdio takes the same: the command `netsmith
 
 ```text
 { "mcpServers": { "netsmith": { "command": "sh", "args": ["-c", "cd /path/to/project && exec netsmith mcp"] } } }
+```
+
 ```text
 { "mcpServers": { "netsmith": { "command": "netsmith", "args": ["mcp", "--project", "/path/to/project"] } } }
 ```
-The places left for commands to come, named by the same rules: `view pcb` and `view gerber`; `project fmt`; and `mcp`, the server that offers these commands to an agent.
 
 ### The editor's views on the command line
 
