@@ -199,7 +199,14 @@
 //! on the part's face (its courtyard, or a part with a hole's room there) may reach into it, a
 //! hard rule as for a keepout a part carries, so a board with no other place for a part does not
 //! place and names the ring. A capacitor that decouples the part (a decoupling pair) is exempt,
-//! as it is from the escape space: its place is by the pins it decouples. The ring is the
+//! as it is from the escape space: its place is by the pins it decouples. It still keeps
+//! [`PIN_ROOM`], 1 mm, from each of the part's pads on a net it is not on (issue #1010), as hard
+//! a rule as the ring: pressed 0.4 mm from a QFN's signal pins, a capacitor left room for one
+//! track and no via, and the Easyduino and Orbit did not route at some seeds. Measured over
+//! seeds 0 to 7 of each (`fab --place-seeds 1`, 2026-11-16): 3 of the 16 placements left a USB
+//! wire before, none after; the scorecard's mean decoupling distance moved from 15.8 to
+//! 17.7 mm on Orbit and 27.4 to 28.8 mm on the Easyduino (seed to seed it varies by twice that),
+//! and the USB pair runs more coupled on 6 of Orbit's 8 seeds. The ring is the
 //! placer's and not the placement check's (`Board::check_placement` measures none): two parts
 //! that both stay where they are, as a layout file puts them, are not measured against it. Beside a busy part the escape space already asks for
 //! about as much at a soft weight; the ring makes it a wall where a pull of nets or a small
@@ -318,6 +325,12 @@ const BUSY_MOST: f64 = 2.0;
 /// the router's escape lanes (`LANE_LENGTH` in `netsmith_router::route`), so that no other
 /// part stands on a lane.
 const RING: f64 = 1.5;
+/// How far a part that is exempt from a fine-pitch part's escape ring (a capacitor that
+/// decouples it, or a part a datasheet pulls to its pins) keeps its room from the fine-pitch
+/// part's pads on nets it is not on, in mm (issue #1010): room for the tracks of those pads to
+/// leave between the two parts and for a via, where pressed against the pins it left room for
+/// one track and no via.
+const PIN_ROOM: f64 = 1.0;
 /// What each mm short of the escape space between two parts costs, at the most (for two
 /// parts of [`MAX_ESCAPE`] each), on top of [`W_GAP`]: much more than a plain gap, because the
 /// pads of two parts that face each other have to leave through the space between them, and
@@ -590,6 +603,8 @@ struct Shape {
     /// a pad reaches past it. The courtyard's wall keeps the pads off the edge by this much
     /// more.
     pad_inset: f64,
+    /// Every pad's box, copper or not, by its index in the footprint.
+    pad_rects: Vec<Rect>,
     /// Every pad's box, copper or not, grown by the clearance: what a part with a hole takes
     /// on the face its footprint draws no courtyard for (`Placed::room_on`).
     rooms: Vec<Rect>,
@@ -819,6 +834,10 @@ struct Engine<'a> {
     /// Pairs of parts (index `i * n + j`) that need no escape space between them: a
     /// decoupling capacitor and the part it decouples.
     near_ok: Vec<bool>,
+    /// For a fine-pitch part `c` and a part `j` that is exempt from its escape ring (`near_ok`),
+    /// the pads of `c` that `j` must keep [`PIN_ROOM`] from (key `(c, j)`): those on a net
+    /// that reaches another part and that none of `j`'s pads is on.
+    pin_rooms: std::collections::BTreeMap<(usize, usize), Vec<usize>>,
     /// Each part's reach on the board, kept up to date by [`Engine::put`].
     reach_abs: Vec<Rect>,
     /// Which parts each part's reach meets, kept up to date with `reach_abs`.

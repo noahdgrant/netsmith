@@ -52,6 +52,12 @@ pub(super) fn shape_of(
         .map(|p| part.pad_bounds(p))
         .collect();
     let pad_boxes = copper.clone();
+    let pad_rects: Vec<Rect> = part
+        .footprint
+        .pads
+        .iter()
+        .map(|p| part.pad_bounds(p))
+        .collect();
     let pad_inset = pad_boxes
         .iter()
         .map(|b| {
@@ -99,6 +105,7 @@ pub(super) fn shape_of(
         copper,
         pad_boxes,
         pad_inset,
+        pad_rects,
         rooms,
         ring: ring.flatten(),
         reach: reach.expanded(reach_pad),

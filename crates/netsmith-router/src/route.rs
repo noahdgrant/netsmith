@@ -334,8 +334,21 @@
 //! track, and no nearer than the rules allow, costs [`FOLLOW`] (half) of its length, and the
 //! search's estimate is cut to match, so the search goes out of its way for it. The new copper
 //! is kept only if more of the net runs coupled and it is no more than [`PAIR_SLACK`] 0.2 mm
-//! longer, with no more vias ([`keeps_pair`]). A line is never left and no other net moves, so
-//! a board routes exactly as completely as before; the pass takes 0.1 to 0.3 s.
+//! longer, with no more vias ([`keeps_pair`]). Then both nets are routed again together, one
+//! and then the other beside it, each first in turn, and the better copper is kept only if more
+//! of the pair runs coupled, its longer net is no more than [`PAIR_SLACK`] longer than the
+//! longer was, and no net has more vias than the pair's net with more had ([`keeps_both`],
+//! issue #1010). A line is never left and no other net moves, so a board routes exactly as
+//! completely as before; the pass takes 0.1 to 0.3 s.
+//!
+//! **Both together** (issue #1010, the agent's decision while the owner was away). On Orbit
+//! at seed 3 (placed with each capacitor kept 1 mm from a QFN's other pins), `dm` has 2 vias
+//! and `dp` none: `dp` beside `dm` takes `dm`'s 2 vias and 7 mm, and `dm` beside `dp` finds no
+//! way without vias, so the pass for one net keeps nothing and the pair runs 0 % coupled. Routed
+//! again together, the longer net is no longer, each has 2 vias and the pair runs 52 % coupled,
+//! the board 2 vias fewer once the vias are taken out. Over Orbit and the Easyduino at seeds 0
+//! to 7 (16 placements, `netsmith route` of each), this and the Easyduino at seed 7 (55 to 66 %)
+//! are the only changes, and no other copper moves.
 //!
 //! **Measured** (2026-11-12, `netsmith fab`; coupled, skew; length over the spanning length,
 //! vias). On main at 1852adb8 (the escape lanes and #550's cheaper try):
@@ -891,6 +904,18 @@ const PAIR_SLACK: f64 = 0.2;
 /// and the share of it that runs coupled, before and after: more of it coupled, by a point at
 /// least, no longer than [`PAIR_SLACK`] more, and no more vias.
 fn keeps_pair(before: (f64, usize, f64), after: (f64, usize, f64)) -> bool {
+    after.2 > before.2 + 0.01 && after.0 <= before.0 + PAIR_SLACK + 1e-6 && after.1 <= before.1
+}
+
+/// Whether [`Router::side_by_side`] keeps the new copper of both nets of a pair routed again
+/// together, from the length in mm of the longer net, the vias of the net with more and the
+/// share of their length that runs coupled, before and after (issue #1010): more of it
+/// coupled, by a point at least, the longer net no more than [`PAIR_SLACK`] longer than the
+/// longer was, and no net with more vias than the net with more had. The shorter net may grow
+/// up to the longer, which the meanders would make it anyway, and may take as many vias as its
+/// partner, so that both change layer alike, but the pair's vias never outgrow those of its
+/// net with the most.
+fn keeps_both(before: (f64, usize, f64), after: (f64, usize, f64)) -> bool {
     after.2 > before.2 + 0.01 && after.0 <= before.0 + PAIR_SLACK + 1e-6 && after.1 <= before.1
 }
 

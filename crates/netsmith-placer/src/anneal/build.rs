@@ -336,6 +336,31 @@ impl<'a> Engine<'a> {
                 }
             }
         }
+        // The pads of a fine-pitch part that a part exempt from its ring keeps clear of: on a
+        // net that reaches another part and that the exempt part is not on (issue #1010).
+        let mut pin_rooms = std::collections::BTreeMap::new();
+        for c in 0..n {
+            if !models[c].shapes.iter().any(|s| s.ring.is_some()) {
+                continue;
+            }
+            for j in 0..n {
+                if j == c || !near_ok[c * n + j] {
+                    continue;
+                }
+                let mut pads: Vec<usize> = nets
+                    .iter()
+                    .filter(|m: &&NetModel| {
+                        m.pads.iter().any(|&(i, _)| i != c) && !m.pads.iter().any(|&(i, _)| i == j)
+                    })
+                    .flat_map(|m| m.pads.iter().filter(|&&(i, _)| i == c).map(|&(_, k)| k))
+                    .collect();
+                pads.sort_unstable();
+                pads.dedup();
+                if !pads.is_empty() {
+                    pin_rooms.insert((c, j), pads);
+                }
+            }
+        }
         let in_group: Vec<Vec<bool>> = groups
             .iter()
             .map(|members| (0..n).map(|i| members.contains(&i)).collect())
@@ -480,6 +505,7 @@ impl<'a> Engine<'a> {
             gap,
             hole_gap,
             near_ok,
+            pin_rooms,
             reach_abs: vec![Rect::new(Pt::default(), Pt::default()); n],
             grid: grid::Grid::new(carrier),
             pairs_costed: std::cell::Cell::new(0),

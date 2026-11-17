@@ -8,14 +8,12 @@ version = 1
 # header rows, above the buttons, on the top face, not turned. Easyduino's own module sits 7 mm
 # higher with its antenna 6.2 mm past the top edge of the board; this one is wholly on the board,
 # so no overhang is stated. The module need not match, and nothing is gated on this entry.
-# Seed 1 routes the board completely, and seeds 6 and 8 too, each within a route timeout of 5 s.
-# The seed was 3 until designators were numbered by path (#634), which reorders the pins of each
-# net that the placer and router read and so changes every arrangement. Checked 2026-11-16
-# (#718), seeds 3, 4, 5 and 7 route too at `fab`'s own timeout; seed 0 leaves
-# `net-auto_reset.q_en.collector`, and seed 2 leaves one wire of the USB pair (`net-bridge.dp` or
-# `.dm`) in every order of the parts, because it puts a decoupling capacitor 0.4 mm from the
-# CP2102N's USB pins, room for one track past pins 3 to 7, which all need it: a placement no
-# router completes.
+# Seed 1 routes the board completely. The seed was 3 until designators were numbered by path
+# (#634), which reorders the pins of each net that the placer and router read and so changes
+# every arrangement. Seed 2 once put a decoupling capacitor 0.4 mm from the CP2102N's USB pins,
+# room for one track past pins 3 to 7, a placement no router completes; since a capacitor keeps
+# 1 mm from a fine-pitch part's pins on other nets (#1010), seeds 0 to 7 all route (checked
+# 2026-11-16 with `fab --place-seeds 1`).
 [EasyduinoEsp32s3]
 seed = 1
 
