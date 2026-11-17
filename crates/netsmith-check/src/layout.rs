@@ -20,26 +20,53 @@
 //! a catalog, whose datasheets differ. `layout "SOT-223" { }` holds the guidelines of one of the
 //! part's packages; the design keeps them only for an instance in that package.
 //!
+//! A catalog row of a standard generic has no definition to hold a block, so the standard
+//! library's `std/layouts.nsm` has one `layout "MPN" for Generic { }` block for each row that
+//! has guidelines (issue #1032), keyed by the row's manufacturer's part number. Every instance
+//! of the generic is given them, as guidelines with that number (`LayoutGuideline::mpn`), and
+//! the design keeps the ones of the row the solver picked.
+//!
 //! The statements are `near`, `away`, `loop`, `keepout`, `edge`, `vias` and `route` (see
 //! [`netsmith_lang::ast::Rule`]). Every number is one value of its dimension: a length above
 //! zero (a corner of a keepout may be any length), and a count of vias a whole number of one
 //! or more.
 
 use netsmith_core::PartKind;
-use netsmith_lang::ast::{Expr, Guideline, Layout, LayoutStatement, Rule, Select};
+use netsmith_lang::ast::{Definition, Expr, Guideline, Layout, LayoutStatement, Rule, Select};
 use netsmith_quantity::Dimension;
 
-use crate::checker::Checker;
+use crate::checker::{Checker, LAYOUTS_MODULE};
 use crate::lower::VTy;
-use crate::model::{GuidelineRule, LayoutGuideline, NearSelect, RExpr};
+use crate::model::{GuidelineRule, InstId, LayoutGuideline, NearSelect, RExpr};
 
 /// What a keepout of a `layout` block may forbid, in the order of the `Keepout` interface.
 const FORBIDS: [&str; 4] = ["tracks", "vias", "copper", "parts"];
 
 impl Checker<'_> {
+    /// The blocks of `std/layouts.nsm` for the standard generic `def`, read as statements of
+    /// the instance `inst` of it: each becomes guidelines that the design keeps only when the
+    /// solver picks the row with the block's manufacturer's part number.
+    pub(crate) fn keyed_layouts(&mut self, inst: InstId, def: &Definition) {
+        let path: Vec<String> = LAYOUTS_MODULE.split("::").map(str::to_string).collect();
+        let Some(module) = self.load_module(&path) else {
+            return;
+        };
+        let blocks = self.modules[module].layouts.clone();
+        let saved_module = std::mem::replace(&mut self.cur_module, module);
+        let saved_scope = std::mem::replace(&mut self.scope, vec![inst]);
+        for block in &blocks {
+            let Some(keyed) = &block.keyed else { continue };
+            if keyed.generic.name == def.name.name {
+                self.layout(block);
+            }
+        }
+        self.scope = saved_scope;
+        self.cur_module = saved_module;
+    }
+
     /// A `layout` block: its guidelines become [`LayoutGuideline`]s of the part instance.
     pub(crate) fn layout(&mut self, block: &Layout) {
-        if !self.support_allowed() {
+        if block.keyed.is_none() && !self.support_allowed() {
             let what = if self.in_kind(netsmith_lang::ast::DefKind::Generic) {
                 "a generic, whose catalog parts each have their own datasheet"
             } else {
@@ -118,23 +145,33 @@ impl Checker<'_> {
                 Some(package.clone())
             }
         };
+        let mpn = block.keyed.as_ref().map(|k| k.mpn.0.as_str());
+        if let Some(keyed) = &block.keyed
+            && keyed.mpn.0.trim().is_empty()
+        {
+            self.error(
+                keyed.mpn.1,
+                "the manufacturer's part number of `layout \"...\" for` is empty: name the catalog row whose guidelines the block holds",
+            );
+            return;
+        }
         for statement in &block.statements {
             if let LayoutStatement::Guideline(g) = statement {
-                self.guideline(g, &source, package.as_deref());
+                self.guideline(g, &source, package.as_deref(), mpn);
             }
         }
     }
 
-    fn guideline(&mut self, g: &Guideline, source: &str, package: Option<&str>) {
+    fn guideline(&mut self, g: &Guideline, source: &str, package: Option<&str>, mpn: Option<&str>) {
         let part = self.current();
         let site = self.place_of(self.cur_source(), g.span);
         let name = g.name.name.clone();
-        if let Some(other) = self
-            .model
-            .layout
-            .iter()
-            .find(|l| l.part == part && l.name == name)
-        {
+        if let Some(other) = self.model.layout.iter().find(|l| {
+            // Two rows' blocks may use one name: only one of them applies to a part.
+            l.part == part
+                && l.name == name
+                && !matches!((&l.mpn, mpn), (Some(a), Some(b)) if a != b)
+        }) {
             if other.site != site {
                 let message = format!(
                     "the part already states a guideline `{name}` (at {}); give this one another name",
@@ -282,6 +319,7 @@ impl Checker<'_> {
             source: source.to_string(),
             site,
             package: package.map(str::to_string),
+            mpn: mpn.map(str::to_string),
             rule,
         });
     }

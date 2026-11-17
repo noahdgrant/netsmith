@@ -1,0 +1,22 @@
+//! What the datasheets of the catalog rows of the standard generics say about layout (issue
+//! #1032).
+//!
+//! A generic such as `LinearRegulator` picks a catalog row, and each row has its own datasheet,
+//! so the guidelines are not the generic's. One block for each row that has them, keyed by the
+//! row's manufacturer's part number (`mpn` of its catalog file):
+//!
+//! ```text
+//! layout "XC6206P332MR-G" for LinearRegulator {
+//!     source "document, section, p.N"
+//!     near input_cap bridging .vin.pos .vin.neg to .vin.pos
+//! }
+//! ```
+//!
+//! The statements are those of a part's `layout` block and name the generic's pins; a board
+//! that picks the row gets the block's guidelines in its design, and a board that picks
+//! another row gets none of them. A row has one package, so its block is for that package.
+//!
+//! A row has no block when its datasheet has no layout section, or when it could not be read;
+//! `data/jlcpcb/README.md` lists each such row and says which. A statement has a number only
+//! where the datasheet gives one, and every block has the document, the section and the page
+//! as its `source`.

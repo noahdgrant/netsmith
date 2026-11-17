@@ -331,7 +331,7 @@ board Supply {
 
 Rules.
 
-- `source "..."` is mandatory, once in each block: the document (its title or number) and the section or page. A part whose guidelines come from two documents has a block for each. A `layout` block is only in a part's own definition, not in a generic (whose catalog parts each have their own datasheet), a module or a board.
+- `source "..."` is mandatory, once in each block: the document (its title or number) and the section or page. A part whose guidelines come from two documents has a block for each. A `layout` block is only in a part's own definition, not in a generic (whose catalog parts each have their own datasheet), a module or a board; a catalog row of a standard generic has its block in `std/layouts.nsm` (below).
 - `near NAME SELECTOR to .pin [within LENGTH]` says that parts go next to a pin. The name (`input_cap`) is what a finding calls it, and is used once in a part. The selector says which parts of the board it is about, found from the nets of the part's own pins, so the part names no other part and no net:
   - `bridging .a .b`: every other part with two pads, one on the net of each pin (a capacitor across the input);
   - `on .pin`, or `on .pin kind inductor`: every other part with a pad on the pin's net, of that kind when one is given (the words of `#[kind(...)]`, chapter _Attributes_).
@@ -400,6 +400,17 @@ board Converter {
 - `vias NAME .pin N`: the pin's pads take at least N vias of their net, each with its centre on one of them. It is checked on the routed board.
 - `route NAME .pin [width LENGTH] [length LENGTH]`, one of the two at least: the tracks of the pin's net are at least the width wide (the net's least width, which the router keeps to) and at most the length long in all (checked on the routed board).
 - `layout "TSOT-23-5" { }` holds the guidelines of one package of the part: a board uses them only when the part is in that package. The package is one that a pin table of the part names, when its tables name packages. A `keepout` or `vias` of a tab or an exposed pad goes in such a block.
+
+A catalog row has no definition to hold a block, and a generic such as `LinearRegulator` picks rows that each have their own datasheet. The standard library's `std/layouts.nsm` therefore has one block for each row whose datasheet has a layout section, keyed by the row's manufacturer's part number, the `mpn` of its catalog file (issue #1032):
+
+```text
+layout "XC6206P332MR-G" for LinearRegulator {
+    source "Torex ETR0305, 9 Layout, p.9"
+    near input_cap bridging .vin.pos .vin.neg to .vin.pos within 2mm
+}
+```
+
+The statements are those of a part's block and name the generic's pins. Every `LinearRegulator` is given the blocks of its rows, and a board's design keeps the guidelines of the row the solver picked (or the lock, or `.mpn &=`) and none of any other row's. A row has one package, so its block needs no `layout "PACKAGE"` of its own; a name may be used in the blocks of two rows. Only `std/layouts.nsm` may hold such a block, and `for` names a standard generic. A row whose datasheet has no layout section, or whose datasheet could not be read, has no block: `data/jlcpcb/README.md` says which. The block above is an example and not a real row's: `XC6206P332MR-G`'s datasheet has no layout section, so a board that picks it has no guideline.
 
 A number a board does not meet is a guideline of `fab`, as for `near`. A board that does not meet one on purpose says why in its layout file, under the part's path and the guideline's name; `fab` then says it is waived, with the reason, and neither warns nor stops (an entry for a guideline the board does not have, or with no reason, is an error):
 

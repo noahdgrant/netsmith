@@ -12,6 +12,10 @@ pub struct File {
     /// `physical for Board { ... }` units (ADR 0048). Only a physical file
     /// (`<stem>.physical.nsm`) may hold them; the checker says so for any other file.
     pub physicals: Vec<Physical>,
+    /// `layout "MPN" for Generic { ... }` blocks: the guidelines of one catalog row of a
+    /// standard generic. Only the standard library's `layouts` file may hold them; the checker
+    /// says so for any other file.
+    pub layouts: Vec<Layout>,
 }
 
 /// `physical for Trellis { ... }`: the physical intent of one board (ADR 0048, "Syntax
@@ -64,13 +68,29 @@ pub struct Support {
 /// parts they are about are found by the nets. Only a part's own definition may hold one.
 /// `layout "SOT-223" { ... }` holds the guidelines of one package of the part: they apply to an
 /// instance only when that package is the one it has.
+///
+/// `layout "XC6206P332MR-G" for LinearRegulator { ... }` at the top of the standard library's
+/// `layouts` file holds the guidelines of one catalog row of a generic, written once for the
+/// row's datasheet: the generic's instances get them when the solver picks the row with that
+/// manufacturer's number.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Layout {
     /// The package the block is for, with the span of its text; None for every package.
     pub package: Option<(String, Span)>,
+    /// The row and the generic of a block at the top of a file; None in a part.
+    pub keyed: Option<Keyed>,
     /// The statements in the order written; the checker asks for exactly one `source`.
     pub statements: Vec<LayoutStatement>,
     pub span: Span,
+}
+
+/// The catalog row a top-level [`Layout`] is for, and the generic whose catalog has it.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Keyed {
+    /// The row's manufacturer's part number (`mpn`), with the span of its text.
+    pub mpn: (String, Span),
+    /// The standard generic whose catalog holds the row.
+    pub generic: Ident,
 }
 
 /// One statement of a [`Layout`] block.

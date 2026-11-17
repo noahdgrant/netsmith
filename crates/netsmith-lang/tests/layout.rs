@@ -209,3 +209,48 @@ fn a_package_is_followed_by_its_block() {
         .message;
     assert!(e.contains("`{` after the package of `layout \"...\"`"), "{e}");
 }
+
+const KEYED: &str = r#"layout "XC6206P332MR-G" for LinearRegulator {
+    source "XC6206 series, 9 Layout, p.9"
+    /// "Keep the input capacitor within 2 mm of VIN."
+    near input_cap bridging .vin.pos .vin.neg to .vin.pos within 2mm
+}
+
+layout "OTHER-ROW" for LinearRegulator {
+    source "OTHER, 3 Layout, p.4"
+    vias ground .vin.neg 2
+}
+"#;
+
+#[test]
+fn a_block_at_the_top_of_a_file_is_for_one_row_of_a_generic() {
+    let file = parse(KEYED).unwrap();
+    assert!(file.definitions.is_empty());
+    let [first, second] = file.layouts.as_slice() else {
+        panic!("{:?}", file.layouts)
+    };
+    let keyed = first.keyed.as_ref().unwrap();
+    assert_eq!(keyed.mpn.0, "XC6206P332MR-G");
+    assert_eq!(keyed.generic.name, "LinearRegulator");
+    assert!(first.package.is_none());
+    assert_eq!(first.statements.len(), 2);
+    assert_eq!(second.keyed.as_ref().unwrap().mpn.0, "OTHER-ROW");
+    assert_eq!(file.to_source(), KEYED);
+    assert_eq!(parse(&file.to_source()).unwrap(), file);
+}
+
+#[test]
+fn a_block_at_the_top_of_a_file_names_its_generic() {
+    let e = parse("layout \"X\" {\n    source \"x\"\n}\n").unwrap_err().message;
+    assert!(
+        e.contains("`for` and the generic whose catalog has the row"),
+        "{e}"
+    );
+    let e = parse("layout \"X\" for {\n}\n").unwrap_err().message;
+    assert!(e.contains("the name of the generic whose catalog has the row"), "{e}");
+}
+
+#[test]
+fn a_block_in_a_part_does_not_take_for() {
+    assert!(parse("part P {\n    layout \"X\" for G {\n    }\n}\n").is_err());
+}
