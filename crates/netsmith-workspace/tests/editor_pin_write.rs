@@ -296,3 +296,31 @@ fn a_file_that_does_not_read_is_refused_and_not_touched() {
     assert!(message.contains("does not build"), "{message}");
     assert_eq!(fs::read_to_string(pins_file(&root)).unwrap(), broken);
 }
+
+#[test]
+fn a_proposal_is_applied_as_one_map_and_refused_whole_when_the_check_would_not_keep_it() {
+    let (root, editor) = project("pin-write-apply");
+    // `v` and `y` swap their pins, which two single moves cannot do (each pin is held).
+    let swap = "version = 1\n\n[B.pins.v]\npin = \"p03\"\nfunction = \"ANALOG\"\nsource = \"auto\"\n\n[B.pins.y]\npin = \"p02\"\nfunction = \"GPIO\"\nsource = \"auto\"\n";
+    assert!(moved(&editor, "v", "p03").is_err());
+    let applied = editor.apply_pins("B", swap).unwrap();
+    assert_eq!(applied.file, "src/main.pins.toml");
+    assert_eq!(applied.moved, ["v: p02 to p03", "y: p03 to p02"]);
+    let text = fs::read_to_string(pins_file(&root)).unwrap();
+    assert!(text.contains("[B.pins.v]\npin = \"p03\""), "{text}");
+    assert_eq!(request(&editor, "v").pin.as_deref(), Some("p03"));
+    assert_eq!(request(&editor, "y").pin.as_deref(), Some("p02"));
+    // Applied again it moves nothing and writes nothing.
+    let again = editor.apply_pins("B", swap).unwrap();
+    assert!(again.moved.is_empty());
+    assert_eq!(fs::read_to_string(pins_file(&root)).unwrap(), text);
+    // An entry for a request the board lacks, and a file that does not read, are refused.
+    let stray = "version = 1\n\n[B.pins.nope]\npin = \"p00\"\nfunction = \"GPIO\"\nsource = \"auto\"\n";
+    let e = editor.apply_pins("B", stray).unwrap_err();
+    assert_eq!(e.status, 422);
+    assert!(e.message.contains("not a pin request of `B`"), "{}", e.message);
+    let e = editor.apply_pins("B", "version = 1\n[B.pins.v]\npin = 3\n").unwrap_err();
+    assert!(e.message.starts_with("the proposal does not read"), "{}", e.message);
+    assert_eq!(editor.apply_pins("Nope", swap).unwrap_err().status, 404);
+    assert_eq!(fs::read_to_string(pins_file(&root)).unwrap(), text);
+}

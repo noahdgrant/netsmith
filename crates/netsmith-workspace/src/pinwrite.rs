@@ -12,13 +12,16 @@
 //! every other line survive. The write is not a source edit; the project is analysed again
 //! because a watched file changed, as for a save.
 
+use std::collections::HashMap;
 use std::fs;
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use netsmith_check::{EntrySource, PartSpace, PinEntry, PinFile, PinsOutcome, SpaceRequest};
 use netsmith_editor::ApiError;
 use netsmith_editor::api::PinWritten;
 
+use super::analysis::BoardData;
 use super::{Workspace, files};
 
 /// What a person asked to do to one request.
@@ -138,23 +141,7 @@ impl Workspace {
         change: &Change,
     ) -> Result<PinWritten, ApiError> {
         let _one_at_a_time = self.editing.lock().unwrap_or_else(|e| e.into_inner());
-        let (data, pins, stale): (_, Arc<PinsOutcome>, bool) = {
-            let state = self.fresh();
-            let (data, stale) = state
-                .snapshot
-                .boards
-                .iter()
-                .find(|(b, _)| b.built.label() == board)
-                .map(|(b, stale)| (Arc::clone(b), *stale))
-                .ok_or_else(|| ApiError::not_found(format!("there is no board `{board}`")))?;
-            let pins = state
-                .snapshot
-                .pins
-                .get(&data.file)
-                .cloned()
-                .ok_or_else(|| refused(format!("the check made no pin map for `{}`", data.file)))?;
-            (data, pins, stale)
-        };
+        let (data, pins, stale) = self.pin_site(board)?;
         let definition = &data.built.design.name;
         // A request the check gave no pin says why, whether or not the board is the last good one.
         let unserved = pins
@@ -197,6 +184,53 @@ impl Workspace {
         let held = pins.file.board(definition).and_then(|b| b.get(request));
         let to = decide(space, &names, asked, held, change)?;
 
+        let (_, path, shown, text) = self.pin_file_text(&data, &pins)?;
+        let out = netsmith_check::edit_entry(&text, definition, request, &to).map_err(refused)?;
+        files::write_atomic(&path, &out)
+            .map_err(|e| ApiError::internal(format!("{shown}: {e}")))?;
+        Ok(PinWritten { file: shown })
+    }
+}
+
+/// What [`Workspace::apply_pins`] wrote.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PinsApplied {
+    /// The pin file, as the project names it (`src/main.pins.toml`).
+    pub file: String,
+    /// The requests moved, one line each (`x: p00 to p01`). Empty when the file already had
+    /// every pin of the proposal, and nothing was written.
+    pub moved: Vec<String>,
+}
+
+impl Workspace {
+    /// The board `board` as the analysis has it, with the pin map of its source file, and
+    /// whether the source does not build now (so that the board is the last good one).
+    fn pin_site(&self, board: &str) -> Result<(Arc<BoardData>, Arc<PinsOutcome>, bool), ApiError> {
+        let state = self.fresh();
+        let (data, stale) = state
+            .snapshot
+            .boards
+            .iter()
+            .find(|(b, _)| b.built.label() == board)
+            .map(|(b, stale)| (Arc::clone(b), *stale))
+            .ok_or_else(|| ApiError::not_found(format!("there is no board `{board}`")))?;
+        let pins = state
+            .snapshot
+            .pins
+            .get(&data.file)
+            .cloned()
+            .ok_or_else(|| refused(format!("the check made no pin map for `{}`", data.file)))?;
+        Ok((data, pins, stale))
+    }
+
+    /// The source of `data`, the pin file beside it, its name as a message has it, and its text
+    /// (empty when there is none). A file that another program changed since the analysis read it
+    /// is a conflict: a write would cover what the reader never saw.
+    fn pin_file_text(
+        &self,
+        data: &BoardData,
+        pins: &PinsOutcome,
+    ) -> Result<(PathBuf, PathBuf, String, String), ApiError> {
         let source = self
             .target()
             .files
@@ -218,12 +252,112 @@ impl Workspace {
         let read = pins.existing.clone().unwrap_or_default();
         if PinFile::parse(&text).is_ok_and(|now| now != read) {
             return Err(ApiError::conflict(format!(
-                "{shown} changed on disk since the pin map was read: the page reads it again"
+                "{shown} changed on disk since the pin map was read: read it again"
             )));
         }
-        let out = netsmith_check::edit_entry(&text, definition, request, &to).map_err(refused)?;
+        Ok((source, path, shown, text))
+    }
+
+    /// Take the pins of a proposal (`pins.proposed.toml`, which `netsmith board fab --pins
+    /// locked` writes) for `board`: each request whose pin the proposal changes is written as the
+    /// proposal has its entry, in place as [`netsmith_check::edit_entry`] does, so the comments
+    /// and the order of the file survive. Only the entries of `board` are read. Refused, with
+    /// nothing written, when the proposal does not read, names a request the board lacks, moves a
+    /// locked request, or gives a pin map that the check does not keep as it is (a pin that does
+    /// not offer the function, one that two requests have, a `shared` limit): the rules of a move,
+    /// applied to the whole map, so that a swap of two pins is not refused for the order it is
+    /// written in.
+    pub fn apply_pins(&self, board: &str, proposal: &str) -> Result<PinsApplied, ApiError> {
+        let _one_at_a_time = self.editing.lock().unwrap_or_else(|e| e.into_inner());
+        let (data, pins, stale) = self.pin_site(board)?;
+        if stale {
+            return Err(refused(
+                "the source does not build, so the pin map is the last good one: fix the problems first",
+            ));
+        }
+        let definition = &data.built.design.name;
+        let proposed = PinFile::parse(proposal).map_err(|errors| {
+            let first = errors.first().map_or("", |e| e.message.as_str());
+            refused(format!("the proposal does not read ({first})"))
+        })?;
+        let (source, path, shown, text) = self.pin_file_text(&data, &pins)?;
+        let spaces = pins
+            .spaces
+            .get(definition)
+            .map(Vec::as_slice)
+            .unwrap_or(&[]);
+        let mut out = text.clone();
+        let mut moved = Vec::new();
+        let mut keys = Vec::new();
+        for (key, entry) in proposed.board(definition).into_iter().flatten() {
+            let Some(request) = spaces
+                .iter()
+                .find_map(|s| s.requests.iter().find(|r| r.key == *key))
+            else {
+                return Err(refused(format!(
+                    "the proposal has an entry for `{key}`, which is not a pin request of `{board}`"
+                )));
+            };
+            if request.bus.is_some() {
+                return Err(refused(format!(
+                    "`{key}` is a line of a request for the end of a bus: edit that entry of the pin file"
+                )));
+            }
+            if request.pin == entry.pin {
+                continue;
+            }
+            if request.lock {
+                return Err(refused(format!(
+                    "the proposal moves `{key}` from {} to {}, and `{key}` is locked: unlock it first",
+                    request.pin, entry.pin
+                )));
+            }
+            moved.push(format!("{key}: {} to {}", request.pin, entry.pin));
+            keys.push((key.as_str(), entry));
+            out = netsmith_check::edit_entry(&out, definition, key, entry).map_err(refused)?;
+        }
+        if moved.is_empty() {
+            return Ok(PinsApplied { file: shown, moved });
+        }
+        // The map the file would have, read as a run reads it: every moved request must keep
+        // its pin, and no entry may be newly stale.
+        let checked = {
+            let unsaved = HashMap::from([(path.clone(), out.clone())]);
+            let loader = self
+                .target()
+                .loader_with(&unsaved)
+                .map_err(ApiError::internal)?;
+            let source_text = fs::read_to_string(&source)
+                .map_err(|e| ApiError::internal(format!("{}: {e}", data.file)))?;
+            netsmith_check::check(&data.file, &source_text, &loader)
+        };
+        let mut why: Vec<String> = checked
+            .pins
+            .findings
+            .iter()
+            .filter(|f| !pins.findings.contains(f))
+            .cloned()
+            .collect();
+        for (key, entry) in &keys {
+            let holds = checked
+                .pins
+                .file
+                .board(definition)
+                .and_then(|b| b.get(*key))
+                .is_some_and(|e| e.pin == entry.pin);
+            if !holds {
+                why.push(format!("`{key}` does not keep {}", entry.pin));
+            }
+        }
+        if !why.is_empty() || !checked.is_ok() {
+            let mut message = String::from("the proposal is not a pin map the check keeps:");
+            for line in &why {
+                message.push_str(&format!("\n  {line}"));
+            }
+            return Err(refused(message));
+        }
         files::write_atomic(&path, &out)
             .map_err(|e| ApiError::internal(format!("{shown}: {e}")))?;
-        Ok(PinWritten { file: shown })
+        Ok(PinsApplied { file: shown, moved })
     }
 }
