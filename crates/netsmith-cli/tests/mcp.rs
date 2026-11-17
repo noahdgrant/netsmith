@@ -243,6 +243,26 @@ fn check_and_build_through_the_server_are_the_command_lines_json() {
 }
 
 #[test]
+fn a_command_with_json_added_later_returns_its_json_through_the_server() {
+    let root = led("mcp-explain-lock");
+    let mut server = Server::start(&root);
+    // `board explain` and `project lock --check` (issue #1110): the document is the command line's.
+    for (tool, args, call) in [
+        ("board_explain", &["board", "explain", "r1"][..], json!({ "path": "r1" })),
+        (
+            "project_lock",
+            &["project", "lock", "--check"][..],
+            json!({ "check": true }),
+        ),
+    ] {
+        let (expected, code) = command_line(&root, args);
+        let result = server.call(tool, call);
+        assert_eq!(result["isError"], code != Some(0), "{tool}: {result:#}");
+        assert_eq!(result["structuredContent"], expected, "{tool}");
+    }
+}
+
+#[test]
 fn a_failed_command_is_a_tool_error_with_its_exit_code() {
     let root = led("mcp-errors");
     let broken = LED.replacen(".r1: Resistor", ".r1: Resistr", 1);

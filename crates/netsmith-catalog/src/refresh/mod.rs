@@ -143,7 +143,7 @@ mod targets;
 
 use std::{fs, path::Path};
 
-pub use add::{AddError, Added, add, render_added, source_of};
+pub use add::{AddError, Added, add, json_added, render_added, source_of};
 pub use date::{age_days, date_of, days_of, now_secs};
 pub use http::{
     Endpoints, Fetcher, LCSC_URL_VAR, Network, USER_AGENT, cache_base, check_endpoint,
@@ -598,6 +598,66 @@ pub fn render_summary(report: &Report) -> String {
     out
 }
 
+/// The report of a refresh as `catalog refresh --format json` prints it: what [`render_diff`] and
+/// [`render_summary`] say, as data. `ok` is false when a row is a conflict or missing, as the exit
+/// code 1 says. Each file has its counts and the `rows` the text names: a row that changed,
+/// that is not verified or that has a note (not the rows that were verified with nothing to say).
+pub fn json_report(report: &Report) -> serde_json::Value {
+    use serde_json::json;
+    let files: Vec<serde_json::Value> = report
+        .files
+        .iter()
+        .map(|file| {
+            let n = |f: fn(&Status) -> bool| file.count(f);
+            let rows: Vec<serde_json::Value> = file
+                .rows
+                .iter()
+                .filter(|r| {
+                    r.status != Status::Verified || !r.changes.is_empty() || !r.notes.is_empty()
+                })
+                .map(|r| {
+                    let mut row = json!({
+                        "line": r.line,
+                        "lcsc": r.lcsc,
+                        "status": r.status.word().to_lowercase(),
+                        "changes": r.changes.iter().map(|c| json!({
+                            "column": c.column,
+                            "from": c.from,
+                            "to": c.to,
+                        })).collect::<Vec<_>>(),
+                        "notes": r.notes,
+                    });
+                    if let Some(why) = r.status.why() {
+                        row["why"] = why.into();
+                    }
+                    row
+                })
+                .collect();
+            json!({
+                "file": file.file,
+                "catalog": file.catalog,
+                "looked_up": file.rows.len(),
+                "verified": n(|s| *s == Status::Verified),
+                "conflict": n(|s| matches!(s, Status::Conflict(_))),
+                "missing": n(|s| matches!(s, Status::Missing(_))),
+                "skipped": n(|s| matches!(s, Status::Skipped(_))),
+                "without_lcsc": file.without_lcsc,
+                "written": file.written,
+                "notes": file.notes,
+                "rows": rows,
+            })
+        })
+        .collect();
+    json!({
+        "command": "catalog refresh",
+        "ok": !report.has_findings(),
+        "dry_run": report.dry_run,
+        "requests": report.requests,
+        "files": files,
+        "unknown_lcsc": report.unknown_lcsc,
+    })
+}
+
 // ---- age -------------------------------------------------------------------------------
 
 /// A row whose numbers are old, or not known.
@@ -732,4 +792,30 @@ pub fn render_age(report: &AgeReport) -> String {
         }
     ));
     out
+}
+
+/// The report of `catalog age` as `--format json` prints it: what [`render_age`] says, as data.
+/// The `old` rows have their `date` and `days` (none when the cell is not a date), the `unknown`
+/// ones the `why` nobody knows the price and stock.
+pub fn json_age(report: &AgeReport) -> serde_json::Value {
+    use serde_json::json;
+    let row = |a: &Aged| {
+        let mut row = json!({"file": a.file, "line": a.line, "lcsc": a.lcsc});
+        if a.unknown.is_none() {
+            row["date"] = json!(a.date);
+            row["days"] = json!(a.days);
+        } else {
+            row["why"] = json!(a.unknown);
+        }
+        row
+    };
+    json!({
+        "command": "catalog age",
+        "ok": true,
+        "today": report.today,
+        "days": report.days,
+        "rows": report.rows,
+        "old": report.old.iter().map(row).collect::<Vec<_>>(),
+        "unknown": report.unknown.iter().map(row).collect::<Vec<_>>(),
+    })
 }

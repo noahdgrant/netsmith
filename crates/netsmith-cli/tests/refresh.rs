@@ -188,6 +188,154 @@ fn the_command_lists_old_rows() {
     assert!(out.contains("1 of 3 have them unknown"), "{out}");
 }
 
+fn json(run: &std::process::Output) -> serde_json::Value {
+    serde_json::from_slice(&run.stdout).unwrap_or_else(|e| {
+        panic!(
+            "stdout is not one JSON document ({e}): {}",
+            String::from_utf8_lossy(&run.stdout)
+        )
+    })
+}
+
+#[test]
+fn refresh_prints_one_json_document_with_what_the_text_says_and_the_same_exit_codes() {
+    let root = dir("command-json");
+    write(&root, "netsmith.toml", "[project]\nname = \"acme\"\n");
+    let path = write(&root, "catalogs/acme_res.csv", &small_catalog());
+    let fake = Fake::fixtures();
+
+    let dry = netsmith(
+        &root,
+        &fake,
+        &["catalog", "refresh", "--dry-run", "--delay", "0", "--format", "json"],
+    );
+    assert_eq!(dry.status.code(), Some(0));
+    let doc = json(&dry);
+    assert_eq!(doc["command"], "catalog refresh");
+    assert_eq!(doc["ok"], true);
+    assert_eq!(doc["dry_run"], true);
+    let file = &doc["files"][0];
+    assert_eq!(file["file"], "catalogs/acme_res.csv");
+    assert_eq!(file["catalog"], "acme_res");
+    // The text's "2 rows looked up, 2 verified, 0 conflict, 0 missing, 0 skipped".
+    assert_eq!(
+        (file["looked_up"].as_u64(), file["verified"].as_u64()),
+        (Some(2), Some(2))
+    );
+    assert_eq!(
+        (file["conflict"].as_u64(), file["missing"].as_u64(), file["skipped"].as_u64()),
+        (Some(0), Some(0), Some(0))
+    );
+    assert_eq!(file["without_lcsc"], 1);
+    assert_eq!(file["written"], false);
+    // The diff of the text: the `checked` cell of the first row, and no other.
+    let row = &file["rows"][0];
+    assert_eq!((row["line"].as_u64(), row["lcsc"].as_str()), (Some(2), Some("C25104")));
+    assert_eq!(row["status"], "verified");
+    assert_eq!(row["changes"][0]["column"], "checked");
+    assert_eq!(row["changes"][0]["from"], "");
+    assert!(row["changes"][0]["to"].as_str().unwrap().starts_with("20"));
+    assert_eq!(fs::read_to_string(&path).unwrap(), small_catalog());
+
+    // A row the records no longer agree with is a finding: exit code 1, `ok` false, and its `why`.
+    fs::write(&path, small_catalog().replace("0402WGF3300TCE", "OTHER")).unwrap();
+    let bad = netsmith(&root, &fake, &["catalog", "refresh", "--offline", "--format", "json"]);
+    assert_eq!(bad.status.code(), Some(1));
+    let doc = json(&bad);
+    assert_eq!(doc["ok"], false);
+    let conflict = doc["files"][0]["rows"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|r| r["status"] == "conflict")
+        .unwrap_or_else(|| panic!("no conflict in {doc}"));
+    assert_eq!(conflict["lcsc"], "C25104");
+    assert!(conflict["why"].as_str().is_some_and(|w| !w.is_empty()));
+}
+
+#[test]
+fn age_prints_the_old_and_the_unknown_rows_as_json() {
+    let root = dir("command-age-json");
+    let fake = Fake::fixtures();
+    write(
+        &root,
+        "r.csv",
+        "lcsc,price,date\nC1,1,2020-01-01\nC2,1,2999-01-01\nC3,,\n",
+    );
+    let out = netsmith(
+        &root,
+        &fake,
+        &["catalog", "age", "r.csv", "--days", "30", "--format", "json"],
+    );
+    assert_eq!(out.status.code(), Some(0));
+    let doc = json(&out);
+    assert_eq!((doc["command"].as_str(), doc["ok"].as_bool()), (Some("catalog age"), Some(true)));
+    assert_eq!((doc["rows"].as_u64(), doc["days"].as_u64()), (Some(3), Some(30)));
+    // `r.csv:2 C1: read 2020-01-01, N days ago`.
+    let old = &doc["old"];
+    assert_eq!(old.as_array().unwrap().len(), 1);
+    assert_eq!(
+        (old[0]["file"].as_str(), old[0]["line"].as_u64(), old[0]["lcsc"].as_str(), old[0]["date"].as_str()),
+        (Some("r.csv"), Some(2), Some("C1"), Some("2020-01-01"))
+    );
+    assert!(old[0]["days"].as_i64().unwrap() > 30);
+    // `r.csv:4 C3: price and stock unknown (no supply provider ...)`.
+    let unknown = &doc["unknown"];
+    assert_eq!(unknown.as_array().unwrap().len(), 1);
+    assert_eq!((unknown[0]["line"].as_u64(), unknown[0]["lcsc"].as_str()), (Some(4), Some("C3")));
+    assert!(unknown[0]["why"].as_str().unwrap().starts_with("no supply provider"));
+}
+
+#[test]
+fn add_prints_the_record_and_the_row_written_as_json() {
+    let root = dir("command-add-json");
+    let fake = Fake::fixtures();
+    let record = netsmith(
+        &root,
+        &fake,
+        &["catalog", "add", "--lcsc", "C25104", "--no-cache", "--format", "json"],
+    );
+    assert_eq!(
+        record.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&record.stderr)
+    );
+    let doc = json(&record);
+    assert_eq!((doc["command"].as_str(), doc["ok"].as_bool()), (Some("catalog add"), Some(true)));
+    assert_eq!(doc["lcsc"], "C25104");
+    assert_eq!(doc["mpn"], "0402WGF3300TCE");
+    assert_eq!(doc["package"], "0402");
+    // With no `--to`, nothing is written.
+    assert!(doc["written"].is_null());
+
+    let to = write(&root, "res.csv", "lcsc,mpn,package,library,source\n");
+    let added = netsmith(
+        &root,
+        &fake,
+        &["catalog", "add", "--lcsc", "C25104", "--to", "res.csv", "--no-cache", "--format", "json"],
+    );
+    assert_eq!(added.status.code(), Some(0));
+    let doc = json(&added);
+    assert_eq!(doc["written"]["file"], "res.csv");
+    assert_eq!(doc["written"]["line"], 2);
+    assert!(doc["filled"].as_array().unwrap().iter().any(|c| c == "mpn"));
+    assert!(doc["to_fill"].as_array().unwrap().iter().any(|c| c == "library"));
+    assert!(fs::read_to_string(&to).unwrap().contains("C25104"));
+
+    // The number is in the file now, so a second add is refused: exit code 1 and a finding.
+    let again = netsmith(
+        &root,
+        &fake,
+        &["catalog", "add", "--lcsc", "C25104", "--to", "res.csv", "--no-cache", "--format", "json"],
+    );
+    assert_eq!(again.status.code(), Some(1));
+    let doc = json(&again);
+    assert_eq!(doc["ok"], false);
+    assert_eq!(doc["findings"][0]["severity"], "error");
+    assert_eq!(doc["findings"][0]["code"], "catalog");
+}
+
 #[test]
 fn the_help_of_the_catalog_commands_names_every_option_and_status() {
     let mut cli = crate::cli_help::model();

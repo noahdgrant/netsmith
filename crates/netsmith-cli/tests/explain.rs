@@ -115,3 +115,75 @@ board Failing {
     assert!(said.contains("... and ") && said.contains("--all-rows"), "{said}");
     assert_eq!(said.matches(": refused (at failing.nsm:5): ").count(), 20, "{said}");
 }
+
+fn json(run: &std::process::Output) -> serde_json::Value {
+    serde_json::from_slice(&run.stdout).unwrap_or_else(|e| {
+        panic!(
+            "stdout is not one JSON document ({e}): {}",
+            String::from_utf8_lossy(&run.stdout)
+        )
+    })
+}
+
+#[test]
+fn json_has_the_picks_and_members_the_text_shows_and_caps_the_rows_as_it_does() {
+    let dir = TempDir::new("explain-json");
+    fs::write(dir.join("buck.nsm"), BUCK).unwrap();
+    let all = explain(&dir, &["reg.inductor", "buck.nsm", "--all-rows", "--format", "json"]);
+    assert!(all.status.success(), "{}", String::from_utf8_lossy(&all.stderr));
+    let doc = json(&all);
+    assert_eq!(doc["command"], "explain");
+    assert_eq!(doc["ok"], true);
+    assert_eq!(doc["path"], "reg.inductor");
+    let board = &doc["boards"][0];
+    assert_eq!(board["board"], "Repro");
+    // The text's "reg.inductor: `row` from the `inductor` catalog".
+    let pick = &board["picks"][0];
+    assert_eq!(pick["path"], "reg.inductor");
+    assert_eq!(pick["catalog"], "inductor");
+    assert!(pick["row"].as_str().is_some_and(|r| !r.is_empty()));
+    // A row passed over has its row, why and message, and a refusal where it is.
+    let passed = pick["passed"].as_array().unwrap();
+    assert!(!passed.is_empty());
+    let refused = passed.iter().find(|p| p["why"] == "refused").unwrap();
+    assert!(refused["at"].as_str().unwrap().starts_with("std/parts/regulator.nsm:"));
+    assert!(refused["message"].as_str().unwrap().contains("min_inductance"));
+    assert!(pick.get("passed_more").is_none());
+    // The members at the path, with the current the inductor carries, as the text's range.
+    let current = board["members"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|m| m["path"] == "reg.inductor.current")
+        .unwrap();
+    assert!(current["shown"].as_str().unwrap().contains("..50"));
+    // Nothing of another part is there.
+    assert!(!board["picks"].to_string().contains("shdn_pullup"));
+
+    // Without `--all-rows` a part lists its first 20 rows, and says how many it leaves out.
+    let capped = explain(&dir, &["reg", "buck.nsm", "--format", "json"]);
+    assert!(capped.status.success());
+    let doc = json(&capped);
+    for pick in doc["boards"][0]["picks"].as_array().unwrap() {
+        let listed = pick["passed"].as_array().unwrap().len();
+        assert!(listed <= 20, "{pick}");
+        if let Some(more) = pick.get("passed_more") {
+            assert_eq!(listed, 20);
+            assert!(more.as_u64().unwrap() > 0);
+        }
+    }
+}
+
+#[test]
+fn json_for_a_path_with_nothing_is_a_finding_with_the_exit_code_the_text_has() {
+    let dir = TempDir::new("explain-json-none");
+    fs::write(dir.join("buck.nsm"), BUCK).unwrap();
+    let none = explain(&dir, &["re", "buck.nsm", "--format", "json"]);
+    assert_eq!(none.status.code(), Some(1));
+    let doc = json(&none);
+    assert_eq!(doc["ok"], false);
+    assert_eq!(doc["boards"], serde_json::json!([]));
+    assert_eq!(doc["findings"][0]["severity"], "error");
+    assert_eq!(doc["findings"][0]["code"], "explain");
+    assert!(doc["findings"][0]["message"].as_str().unwrap().contains("no member and no part"));
+}

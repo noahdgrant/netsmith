@@ -6,7 +6,7 @@ use netsmith_fabricate::dependency_lock;
 use netsmith_fabricate::project::{Project, Target};
 use netsmith_pipeline::pick_lock::Parts;
 
-use super::common::{no_boards, target};
+use super::common::{Format, no_boards, print_json, target};
 
 #[derive(Debug, PartialEq, ClapArgs)]
 #[command(args_override_self = true)]
@@ -35,6 +35,21 @@ pub struct Args {
     /// With `--update`, take new picks for every part but these (by path, comma-separated).
     #[arg(long, value_name = "PATH", value_delimiter = ',')]
     pub except: Vec<String>,
+    /// Text for a person, or one JSON document on stdout.
+    ///
+    /// `json` prints one JSON document on stdout and nothing else there: `command` (`lock`),
+    /// `ok` (the exit code is 0), the `mode` (`update` or `check`), the `files` and, for a project with a dependency by `git`, the
+    /// `dependencies`. Each of the `files` is a pick lock: its `file`, its `status` (`wrote` and
+    /// `updated` for `--update` when it changed, `current`, and for `--check` `not_current`, or
+    /// `missing` when there is none), the `changes`, one line for each part whose row changed, as
+    /// the text prints them, and `no_longer_pass`, what the solver said of the rows the file holds
+    /// that no longer pass, when there are some. The `dependencies` are the dependency lock's
+    /// `file`, its `status` (as for a pick lock, without `missing`) and its `changes`, the lines
+    /// the text prints. What the text says on stderr as an error (a lock that cannot be read, a
+    /// part no board has, a design that does not build) is still on stderr, as text, with exit
+    /// code 2, and nothing on stdout.
+    #[arg(long, value_enum, default_value = "text")]
+    pub format: Format,
 }
 
 impl Args {
@@ -64,22 +79,28 @@ pub fn run(args: Args) -> ExitCode {
         eprintln!("error: --part and --except go with --update: a check compares every part");
         return ExitCode::from(2);
     }
-    run_lock(args.file.as_deref(), args.mode(), &args.parts())
+    run_lock(
+        args.file.as_deref(),
+        args.mode(),
+        &args.parts(),
+        args.format,
+    )
 }
 
 /// `netsmith project lock --update` and `--check`: the pick lock of each source file, solved again with
 /// no holding. The diff goes to stdout; what the lock held that no longer passes, the reason a
 /// check fails and every error go to stderr. Exit 0 when nothing is wrong (a lock was written,
 /// or is current), 1 when `--check` finds a lock that is not current, 2 when it cannot tell.
-fn run_lock(file: Option<&str>, mode: LockMode, parts: &Parts) -> ExitCode {
+fn run_lock(file: Option<&str>, mode: LockMode, parts: &Parts, format: Format) -> ExitCode {
+    let json = format == Format::Json;
     // The dependency lock first: `--update` fetches the dependencies by `git` again, and the
     // boards are then solved with what it took.
     let dependencies = match Target::resolve(file) {
         Ok(Target {
             project: Some(project),
             ..
-        }) => match dependency_lock(&project, mode) {
-            Ok(stale) => Some(stale),
+        }) => match dependency_lock(&project, mode, json) {
+            Ok(found) => Some(found),
             Err(code) => return code,
         },
         Ok(_) => None,
@@ -99,7 +120,16 @@ fn run_lock(file: Option<&str>, mode: LockMode, parts: &Parts) -> ExitCode {
         .as_ref()
         .is_some_and(|p| p.manifest.dependencies.values().any(|d| d.git.is_some()));
     if target.files.is_empty() && has_git {
-        return exit(dependencies == Some(true));
+        let stale = dependencies.as_ref().is_some_and(|d| d.stale);
+        if json {
+            print_json(&document(
+                mode,
+                stale,
+                &[],
+                dependencies.as_ref().map(|d| &d.locked),
+            ));
+        }
+        return exit(stale);
     }
     if no_boards(&target) {
         return ExitCode::from(2);
@@ -153,8 +183,9 @@ fn run_lock(file: Option<&str>, mode: LockMode, parts: &Parts) -> ExitCode {
         return ExitCode::from(2);
     }
     let mut stale = false;
+    let mut files = Vec::new();
     for found in &found {
-        let name = found.file.display();
+        let name = found.file.display().to_string();
         let lines: String = found.diff.iter().map(|l| format!("  {l}\n")).collect();
         if !found.reported.is_empty() {
             let outcome = match mode {
@@ -168,36 +199,106 @@ fn run_lock(file: Option<&str>, mode: LockMode, parts: &Parts) -> ExitCode {
                 found.reported.trim_end()
             );
         }
-        match mode {
+        let status = match mode {
             LockMode::Update => {
                 if let Err(e) = found.write() {
                     eprintln!("{e}");
                     return ExitCode::from(2);
                 }
-                if !found.is_current() {
-                    let verb = if found.existed { "updated" } else { "wrote" };
-                    println!("{verb} {name}");
-                    print!("{lines}");
+                match (found.is_current(), found.existed) {
+                    (true, _) => "current",
+                    (false, true) => "updated",
+                    (false, false) => "wrote",
                 }
             }
             LockMode::Check if !found.existed && !found.is_current() => {
-                eprintln!(
-                    "error: {name} does not exist: run `netsmith project lock --update` to write it, and commit it"
-                );
                 stale = true;
+                "missing"
             }
             LockMode::Check if !found.is_current() => {
-                println!("{name} is not current");
+                stale = true;
+                "not_current"
+            }
+            LockMode::Check => "current",
+        };
+        match status {
+            "updated" | "wrote" if !json => {
+                println!("{status} {name}");
                 print!("{lines}");
+            }
+            "missing" => eprintln!(
+                "error: {name} does not exist: run `netsmith project lock --update` to write it, and commit it"
+            ),
+            "not_current" => {
+                if !json {
+                    println!("{name} is not current");
+                    print!("{lines}");
+                }
                 eprintln!(
                     "error: {name} is not current: run `netsmith project lock --update` to refresh it, and commit it"
                 );
-                stale = true;
             }
-            LockMode::Check => {}
+            _ => {}
         }
+        files.push(Locked {
+            file: name,
+            status,
+            changes: found.diff.clone(),
+            no_longer_pass: found.reported.trim_end().to_string(),
+        });
     }
-    exit(stale || dependencies == Some(true))
+    let stale = stale || dependencies.as_ref().is_some_and(|d| d.stale);
+    if json {
+        print_json(&document(
+            mode,
+            stale,
+            &files,
+            dependencies.as_ref().map(|d| &d.locked),
+        ));
+    }
+    exit(stale)
+}
+
+/// One lock of the JSON document: a pick lock, or the dependency lock.
+struct Locked {
+    file: String,
+    status: &'static str,
+    changes: Vec<String>,
+    /// The solver's words about the rows the lock holds that no longer pass.
+    no_longer_pass: String,
+}
+
+/// The document of `project lock --format json`.
+fn document(
+    mode: LockMode,
+    stale: bool,
+    files: &[Locked],
+    dependencies: Option<&Locked>,
+) -> serde_json::Value {
+    let one = |l: &Locked| {
+        let mut lock = serde_json::json!({
+            "file": l.file,
+            "status": l.status,
+            "changes": l.changes,
+        });
+        if !l.no_longer_pass.is_empty() {
+            lock["no_longer_pass"] = l.no_longer_pass.clone().into();
+        }
+        lock
+    };
+    let mut document = serde_json::json!({
+        "command": "lock",
+        "ok": !stale,
+        "mode": match mode {
+            LockMode::Update => "update",
+            LockMode::Check => "check",
+        },
+        "files": files.iter().map(one).collect::<Vec<_>>(),
+    });
+    if let Some(d) = dependencies {
+        document["dependencies"] = one(d);
+    }
+    document
 }
 
 fn exit(stale: bool) -> ExitCode {
@@ -209,9 +310,13 @@ fn exit(stale: bool) -> ExitCode {
 }
 
 /// The dependency lock of `project` (`dependencies.lock.toml`, issue #1012): written again by
-/// `--update`, compared with the manifests by `--check`, which fetches nothing. Whether it is
-/// stale (`--check` only), or the exit code of an error.
-fn dependency_lock(project: &Project, mode: LockMode) -> Result<bool, ExitCode> {
+/// `--update`, compared with the manifests by `--check`, which fetches nothing. What it did or
+/// found, or the exit code of an error. The text of the run is printed here unless `json`.
+fn dependency_lock(
+    project: &Project,
+    mode: LockMode,
+    json: bool,
+) -> Result<DependencyLock, ExitCode> {
     let name = dependency_lock::LOCK_FILE;
     match mode {
         LockMode::Update => {
@@ -219,31 +324,63 @@ fn dependency_lock(project: &Project, mode: LockMode) -> Result<bool, ExitCode> 
                 eprintln!("{e}");
                 ExitCode::from(2)
             })?;
-            if !found.diff.is_empty() {
-                let verb = if found.existed { "updated" } else { "wrote" };
+            let verb = if found.existed { "updated" } else { "wrote" };
+            if !found.diff.is_empty() && !json {
                 println!("{verb} {name}");
                 for line in &found.diff {
                     println!("  {line}");
                 }
             }
-            Ok(false)
+            Ok(DependencyLock {
+                stale: false,
+                locked: Locked {
+                    file: name.to_string(),
+                    status: if found.diff.is_empty() {
+                        "current"
+                    } else {
+                        verb
+                    },
+                    changes: found.diff,
+                    no_longer_pass: String::new(),
+                },
+            })
         }
         LockMode::Check => {
             let found = dependency_lock::check(project).map_err(|e| {
                 eprintln!("{e}");
                 ExitCode::from(2)
             })?;
-            for why in &found.stale {
-                println!("  {why}");
+            if !json {
+                for why in &found.stale {
+                    println!("  {why}");
+                }
             }
             if !found.stale.is_empty() {
                 eprintln!(
                     "error: {name} is not current: run `netsmith project lock --update` to refresh it, and commit it"
                 );
             }
-            Ok(!found.stale.is_empty())
+            Ok(DependencyLock {
+                stale: !found.stale.is_empty(),
+                locked: Locked {
+                    file: name.to_string(),
+                    status: if found.stale.is_empty() {
+                        "current"
+                    } else {
+                        "not_current"
+                    },
+                    changes: found.stale,
+                    no_longer_pass: String::new(),
+                },
+            })
         }
     }
+}
+
+/// What [`dependency_lock`] did: whether `--check` found it stale, and the entry of the document.
+struct DependencyLock {
+    stale: bool,
+    locked: Locked,
 }
 
 /// What `netsmith project lock` does with the pick lock (ADR 0100).

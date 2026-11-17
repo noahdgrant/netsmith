@@ -171,6 +171,8 @@ pub(super) fn run_build(run: &BuildRun) -> ExitCode {
     let mut solved = Vec::new();
     // Whether a board failed its check, which may be a spelling that changed (issue #740).
     let mut unchecked = false;
+    // The record `explain --format json` prints in the place of the boards' folders.
+    let mut explained = None;
     // An error that stops a file, printed or kept.
     let fail = |report: &mut Report, finding: Finding, text: &str| {
         if json {
@@ -424,11 +426,23 @@ pub(super) fn run_build(run: &BuildRun) -> ExitCode {
             })
             .cloned()
             .collect();
-        match netsmith_pipeline::solved::explain(&shown, explain.path, explain.rows) {
-            Ok(text) => print!("{text}"),
-            Err(message) => {
-                eprintln!("error: {message}");
-                code = ExitCode::FAILURE;
+        if json {
+            match netsmith_pipeline::solved::explain_json(&shown, explain.path, explain.rows) {
+                Ok(record) => explained = Some(record),
+                Err(message) => {
+                    code = ExitCode::FAILURE;
+                    report
+                        .findings
+                        .push(Finding::plain(Severity::Error, "explain", message));
+                }
+            }
+        } else {
+            match netsmith_pipeline::solved::explain(&shown, explain.path, explain.rows) {
+                Ok(text) => print!("{text}"),
+                Err(message) => {
+                    eprintln!("error: {message}");
+                    code = ExitCode::FAILURE;
+                }
             }
         }
     }
@@ -463,7 +477,20 @@ pub(super) fn run_build(run: &BuildRun) -> ExitCode {
     }
     if json {
         report.ok = code == ExitCode::SUCCESS;
-        print!("{}", report.to_json());
+        match (explained, &run.explain) {
+            // `explain`: the report's document, with the record of the path for the boards.
+            (record, Some(explain)) => {
+                let mut document = serde_json::to_value(&report).expect("a report is plain data");
+                document["command"] = "explain".into();
+                document["path"] = explain.path.trim().trim_matches('.').into();
+                document["boards"] = record.map_or_else(
+                    || serde_json::Value::Array(Vec::new()),
+                    |mut r: serde_json::Value| r["boards"].take(),
+                );
+                common::print_json(&document);
+            }
+            _ => print!("{}", report.to_json()),
+        }
     }
     code
 }

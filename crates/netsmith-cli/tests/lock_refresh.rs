@@ -698,3 +698,72 @@ fn lock_all_is_what_a_project_has_with_no_key_and_another_word_is_refused() {
         stderr(&run)
     );
 }
+
+fn json(run: &std::process::Output) -> serde_json::Value {
+    serde_json::from_slice(&run.stdout).unwrap_or_else(|e| {
+        panic!(
+            "stdout is not one JSON document ({e}): {}",
+            String::from_utf8_lossy(&run.stdout)
+        )
+    })
+}
+
+#[test]
+fn lock_prints_one_json_document_with_the_diff_the_text_has_and_the_same_exit_codes() {
+    let root = led_project("lock-json", LED);
+    // No lock yet: `--check` fails, the text's "does not exist".
+    let check = netsmith(&root, &["project", "lock", "--check", "--format", "json"]);
+    assert_eq!(check.status.code(), Some(1), "{}", stderr(&check));
+    let doc = json(&check);
+    assert_eq!(doc["command"], "lock");
+    assert_eq!(doc["mode"], "check");
+    assert_eq!(doc["ok"], false);
+    assert_eq!(doc["files"][0]["status"], "missing");
+    assert!(doc["files"][0]["file"].as_str().unwrap().ends_with("main.lock.toml"));
+    assert!(!root.join("src/main.lock.toml").exists());
+
+    // `--update` writes it, and says which parts it has, as the text's indented lines.
+    let update = netsmith(&root, &["project", "lock", "--update", "--format", "json"]);
+    assert_eq!(update.status.code(), Some(0), "{}", stderr(&update));
+    let doc = json(&update);
+    assert_eq!((doc["mode"].as_str(), doc["ok"].as_bool()), (Some("update"), Some(true)));
+    assert_eq!(doc["files"][0]["status"], "wrote");
+    let changes = doc["files"][0]["changes"].as_array().unwrap();
+    assert!(!changes.is_empty());
+    assert!(changes.iter().any(|c| c.as_str().unwrap().contains("r1")), "{changes:?}");
+    assert!(root.join("src/main.lock.toml").exists());
+    // The text prints the same lines.
+    let text = std::fs::read_to_string(root.join("src/main.lock.toml")).unwrap();
+    assert!(text.contains("r1"));
+
+    // Now it is current: nothing to change.
+    let check = netsmith(&root, &["project", "lock", "--check", "--format", "json"]);
+    assert_eq!(check.status.code(), Some(0));
+    let doc = json(&check);
+    assert_eq!(doc["ok"], true);
+    assert_eq!(doc["files"][0]["status"], "current");
+    assert_eq!(doc["files"][0]["changes"], serde_json::json!([]));
+
+    // A part the lock lacks: not current, with the part in its changes.
+    fs::write(root.join("src/main.nsm"), with_second_led()).unwrap();
+    let check = netsmith(&root, &["project", "lock", "--check", "--format", "json"]);
+    assert_eq!(check.status.code(), Some(1), "{}", stderr(&check));
+    let doc = json(&check);
+    assert_eq!(doc["ok"], false);
+    assert_eq!(doc["files"][0]["status"], "not_current");
+    assert!(
+        doc["files"][0]["changes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|c| c.as_str().unwrap().contains("r2")),
+        "{doc}"
+    );
+    // The text's error is on stderr, and the document alone on stdout.
+    assert!(stderr(&check).contains("is not current"));
+
+    // A mistake in the run is exit code 2 with nothing on stdout.
+    let bad = netsmith(&root, &["project", "lock", "--check", "--part", "r1", "--format", "json"]);
+    assert_eq!(bad.status.code(), Some(2));
+    assert!(bad.stdout.is_empty());
+}

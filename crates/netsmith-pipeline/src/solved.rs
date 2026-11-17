@@ -241,35 +241,95 @@ pub fn explain(boards: &[Value], path: &str, rows: Option<usize>) -> Result<Stri
         }
     }
     if out.is_empty() {
-        let mut parts: Vec<&str> = boards
-            .iter()
-            .flat_map(|b| {
-                ["picks", "unpicked"]
-                    .into_iter()
-                    .filter_map(|k| b[k].as_array())
-                    .flatten()
-            })
-            .filter_map(|p| p["path"].as_str())
-            .collect();
-        parts.dedup();
-        let more = parts.len().saturating_sub(LISTED);
-        parts.truncate(LISTED);
-        let mut named: Vec<String> = parts.iter().map(|p| format!("`{p}`")).collect();
-        if more > 0 {
-            named.push(format!("{more} more"));
-        }
-        return Err(if named.is_empty() {
-            format!(
-                "no member and no part with a pick at or inside `{path}`, and the boards have no picks"
-            )
-        } else {
-            format!(
-                "no member and no part with a pick at or inside `{path}`; parts the solver chose rows for: {}",
-                named.join(", ")
-            )
-        });
+        return Err(nothing_at(boards, path));
     }
     Ok(out)
+}
+
+/// The error [`explain`] and [`explain_json`] give when nothing is at `path`: it names some parts
+/// that have a record.
+fn nothing_at(boards: &[Value], path: &str) -> String {
+    let mut parts: Vec<&str> = boards
+        .iter()
+        .flat_map(|b| {
+            ["picks", "unpicked"]
+                .into_iter()
+                .filter_map(|k| b[k].as_array())
+                .flatten()
+        })
+        .filter_map(|p| p["path"].as_str())
+        .collect();
+    parts.dedup();
+    let more = parts.len().saturating_sub(LISTED);
+    parts.truncate(LISTED);
+    let mut named: Vec<String> = parts.iter().map(|p| format!("`{p}`")).collect();
+    if more > 0 {
+        named.push(format!("{more} more"));
+    }
+    if named.is_empty() {
+        format!(
+            "no member and no part with a pick at or inside `{path}`, and the boards have no picks"
+        )
+    } else {
+        format!(
+            "no member and no part with a pick at or inside `{path}`; parts the solver chose rows for: {}",
+            named.join(", ")
+        )
+    }
+}
+
+/// What `netsmith board explain --format json` prints for `path`: the same record as [`explain`]
+/// as data, `{"path", "boards": [...]}`. Each board that has something at the path is its
+/// `board` name, `failed` when its solve failed, and the `picks`, `unpicked` and `members` at
+/// the path or inside it, as the solved file has them ([`to_value`]); a part lists its first
+/// `rows` rows `passed` over when that is `Some`, with `passed_more`, how many it leaves out.
+/// `Err` is the message [`explain`] gives when nothing is there.
+pub fn explain_json(boards: &[Value], path: &str, rows: Option<usize>) -> Result<Value, String> {
+    let path = path.trim().trim_matches('.');
+    let mut found = Vec::new();
+    for board in boards {
+        let list = |key: &str| -> Vec<Value> {
+            board[key]
+                .as_array()
+                .map(|a| {
+                    a.iter()
+                        .filter(|v| v["path"].as_str().is_some_and(|p| inside(p, path)))
+                        .map(|v| limited(v, rows))
+                        .collect()
+                })
+                .unwrap_or_default()
+        };
+        let (picks, unpicked, members) = (list("picks"), list("unpicked"), list("members"));
+        if picks.is_empty() && unpicked.is_empty() && members.is_empty() {
+            continue;
+        }
+        let mut one = Map::new();
+        one.insert("board".into(), board["board"].clone());
+        if board["failed"] == true {
+            one.insert("failed".into(), true.into());
+        }
+        one.insert("picks".into(), picks.into());
+        one.insert("unpicked".into(), unpicked.into());
+        one.insert("members".into(), members.into());
+        found.push(Value::Object(one));
+    }
+    if found.is_empty() {
+        return Err(nothing_at(boards, path));
+    }
+    Ok(json!({ "path": path, "boards": found }))
+}
+
+/// A pick or a member with the rows it `passed` over cut to `rows`, and how many were left out.
+fn limited(part: &Value, rows: Option<usize>) -> Value {
+    let mut part = part.clone();
+    let (Some(limit), Some(passed)) = (rows, part["passed"].as_array().cloned()) else {
+        return part;
+    };
+    if passed.len() > limit {
+        part["passed"] = passed[..limit].to_vec().into();
+        part["passed_more"] = (passed.len() - limit).into();
+    }
+    part
 }
 
 /// One part's record as text: a pick (`picked`) or a part of a group that failed.

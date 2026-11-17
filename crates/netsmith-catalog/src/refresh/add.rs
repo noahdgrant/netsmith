@@ -199,6 +199,25 @@ pub fn render_added(added: &Added) -> String {
     out
 }
 
+/// What `catalog add --format json` prints: what [`render_added`] says, as data. `written` is the
+/// `file` and `line` of the row made (null with no `--to`), `filled` the columns it has a value
+/// in and `to_fill` the columns a person must fill.
+pub fn json_added(added: &Added) -> serde_json::Value {
+    use serde_json::json;
+    let p = &added.product;
+    json!({
+        "command": "catalog add",
+        "ok": true,
+        "lcsc": p.lcsc,
+        "mpn": p.mpn,
+        "package": p.package,
+        "read": added.read,
+        "written": added.written.as_ref().map(|(file, line)| json!({"file": file, "line": line})),
+        "filled": added.filled,
+        "to_fill": added.to_fill,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
