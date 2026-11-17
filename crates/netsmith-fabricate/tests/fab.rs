@@ -1165,10 +1165,13 @@ fn a_part_the_layout_file_puts_on_the_bottom_is_on_the_back_in_the_package() {
     if kicad().is_none() {
         return;
     }
+    // The capacitor is put where the placer puts no through-hole part's pins: at (25, 28) the
+    // placer's place for the header (which moved when a net's pins went into path order, ADR
+    // 0140) left the header's pins under the capacitor's courtyard.
     let (dir, made) = fab_with_layout(
         "bottom-part",
         &format!(
-            "{OUTLINE_AND_POURS_LAYOUT}\n[OutlineAndPours.parts.\"stage.input_cap\"]\nat = [25.0, 28.0]\nside = \"bottom\"\n"
+            "{OUTLINE_AND_POURS_LAYOUT}\n[OutlineAndPours.parts.\"stage.input_cap\"]\nat = [10.0, 28.0]\nside = \"bottom\"\n"
         ),
     );
     let made = made.unwrap_or_else(|e| panic!("{e}"));
