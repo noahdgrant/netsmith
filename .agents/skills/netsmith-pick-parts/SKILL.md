@@ -26,7 +26,7 @@ The solver picks, for each generic part, the first row of its catalog that fits 
 `build` and `fab` write `<stem>.lock.toml` beside a source when it does not exist and never rewrite it; commit it. A change to a catalog, std or the solver cannot then move a pick unseen.
 
 - `netsmith project lock --check` exits 1 and prints the diff when the lock is stale or missing, 0 and nothing when current. In CI run it with `netsmith board build --locked`, which fails when a pick would change.
-- `netsmith project lock --update` takes the solver's picks now and prints each change as `board: part: old -> new`. Read the diff to the user before it is committed. `--update --part r1,stage.cap` refreshes only those parts, `--update --except u1` all but those; the others stay on the lock's row until an update that does not name them.
+- `netsmith project lock --update` takes the solver's picks now and prints each change as `board: part: old -> new`. Read the diff to the user before it is committed. `--update --part r1,stage.cap` refreshes only those parts, `--update --except u1` all but those; the others stay on the lock's row until an update that does not name them. After a release added a part to a built-in catalog that the project's own catalog has, the build says "a part is in a catalog once" and names the built-in row: remove the project's row from its catalog file, then `project lock --update` sets the lock's `row` to the built-in row and changes no other row.
 - A row that no longer passes stops the build and says the lock held it and no other row was tried. Change the design or the catalog so it fits, or run `--update` and review the new row.
 - A decision that must outlive refreshes is a hand pick, not a held lock entry.
 

@@ -475,6 +475,11 @@ impl Parts {
         }
     }
 
+    /// Whether the person named the part at `path` for a new pick.
+    fn names(&self, path: &str) -> bool {
+        matches!(self, Parts::Only(p) if p.iter().any(|n| n == path))
+    }
+
     /// Whether the part at `path` takes a new pick.
     fn refreshes(&self, path: &str) -> bool {
         match self {
@@ -504,7 +509,10 @@ pub fn refresh(
 /// the lock has for them, as `build` holds them, and judged by everything the design says: a
 /// held row that no longer passes is an error with the solver's words, and `parts` is the way
 /// to let it take a new pick. A part the lock has no row for takes the solver's pick, whether it
-/// is named or not. With no lock file every part does.
+/// is named or not. With no lock file every part does. A row of the lock whose part is now in a
+/// built-in catalog under another name (a release added a part the project's catalog had, issue
+/// #1119) is rewritten to the built-in row and kept on it, whichever parts are named, unless
+/// `Parts::Only` names it; if that row no longer passes, the part takes a new pick.
 pub fn refresh_parts(
     source: &Path,
     name: &str,
@@ -517,33 +525,55 @@ pub fn refresh_parts(
     let file = lock_path(source);
     let old = read(&file)?;
     let mut reported = String::new();
-    let outcome = match (&old, parts) {
-        (Some(old), Parts::Only(_) | Parts::Except(_)) => {
+    // The rows whose part a release added to a built-in catalog under another name (issue
+    // #1119): they are rewritten to the built-in row, and stay on it with no other change.
+    let (migrated, moved) = match &old {
+        Some(old) => migrate(old, catalogs),
+        None => (None, Vec::new()),
+    };
+    let held_by = |path: &str| {
+        !parts.refreshes(path) || (moved.iter().any(|m| m == path) && !parts.names(path))
+    };
+    let outcome = match (&old, &migrated, parts) {
+        (Some(old), migrated, Parts::Only(_) | Parts::Except(_))
+        | (Some(old), migrated @ Some(_), _) => {
+            let from = migrated.as_ref().unwrap_or(old);
             let mut held = PickLock::new(&old.file);
-            for (unit, rows) in old.units() {
-                let kept = rows.iter().filter(|r| !parts.refreshes(&r.path)).cloned();
+            for (unit, rows) in from.units() {
+                let kept = rows.iter().filter(|r| held_by(&r.path)).cloned();
                 held.set(unit, kept.collect());
             }
             for (unit, providers) in old.provider_units() {
                 held.set_providers(unit, providers.to_vec());
             }
             let held = catalogs.clone().with_pick_lock(held);
-            outcome_with(name, text, loader, &held, None).map_err(|problems| {
-                format!(
-                    "{}the parts not named for a new pick are held to the rows of {}, which no longer pass: name them to take a new pick\n",
-                    render_problems(&problems),
-                    file.display()
-                )
-            })?
+            match outcome_with(name, text, loader, &held, None) {
+                Ok(outcome) => {
+                    if !moved.is_empty() {
+                        reported = report_old(name, text, loader, catalogs, old);
+                    }
+                    outcome
+                }
+                // A row moved to the built-in one that no longer passes takes a new pick.
+                Err(_) if *parts == Parts::All => {
+                    reported = report_old(name, text, loader, catalogs, old);
+                    outcome_with(name, text, loader, catalogs, None)
+                        .map_err(|problems| render_problems(&problems))?
+                }
+                Err(problems) => {
+                    return Err(format!(
+                        "{}the parts not named for a new pick are held to the rows of {}, which no longer pass: name them to take a new pick\n",
+                        render_problems(&problems),
+                        file.display()
+                    ));
+                }
+            }
         }
         _ => {
             let outcome = outcome_with(name, text, loader, catalogs, None)
                 .map_err(|problems| render_problems(&problems))?;
             if let Some(old) = &old {
-                let held = catalogs.clone().with_pick_lock(old.clone());
-                if let Err(problems) = outcome_with(name, text, loader, &held, None) {
-                    reported = render_problems(&problems);
-                }
+                reported = report_old(name, text, loader, catalogs, old);
             }
             outcome
         }
@@ -568,6 +598,49 @@ pub fn refresh_parts(
         paths,
         reported,
     })
+}
+
+/// What the solver says of a build held to the rows of `old`: the rows that no longer pass or
+/// are no longer in a catalog, in its own words. Empty when every locked row still holds.
+fn report_old(
+    name: &str,
+    text: &str,
+    loader: &Loader,
+    catalogs: &Catalogs,
+    old: &PickLock,
+) -> String {
+    let held = catalogs.clone().with_pick_lock(old.clone());
+    match outcome_with(name, text, loader, &held, None) {
+        Ok(_) => String::new(),
+        Err(problems) => render_problems(&problems),
+    }
+}
+
+/// The lock with each row whose part is now in a built-in catalog under another name rewritten
+/// to that row (issue #1119): `None` when no row is, and the paths of the parts that moved. A
+/// release adds a part that a project's own catalog already had; the project's row goes (the
+/// catalogs cannot hold both), and the lock's `row` is the name the project gave it. The
+/// lock's other rows are untouched.
+fn migrate(old: &PickLock, catalogs: &Catalogs) -> (Option<PickLock>, Vec<String>) {
+    let mut moved = Vec::new();
+    let mut lock = PickLock::new(&old.file);
+    for (unit, rows) in old.units() {
+        let rows: Vec<LockedRow> = rows
+            .iter()
+            .map(|row| match catalogs.renamed_row(row) {
+                Some(now) => {
+                    moved.push(row.path.clone());
+                    now
+                }
+                None => row.clone(),
+            })
+            .collect();
+        lock.set(unit, rows);
+    }
+    for (unit, providers) in old.provider_units() {
+        lock.set_providers(unit, providers.to_vec());
+    }
+    ((!moved.is_empty()).then_some(lock), moved)
 }
 
 /// How the picks of a run differ from the lock they were made under.

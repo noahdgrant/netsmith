@@ -66,7 +66,7 @@ Many errors at once after a netsmith upgrade, in a project that built before, ar
 | ```x.lcsc` holds the part to a catalog row, but `x` (`K`) picks from no catalog`` | Only a part with a catalog has rows. Remove the narrowing. |
 | `X.picks.toml: netsmith no longer reads a picks file (ADR 0122) ...` | The file held hand picks once. Write each narrowing the message lists in the body of its board (`.boot1_cap.lcsc &= "C307331"`), delete the file, and check that `netsmith project lock --check` still passes (the rows are the same). |
 | `... rows were left out because package P has no pin` | No catalog row's package has a pin the board connects. Use another package or leave the pin unconnected. |
-| `... cannot be chosen from the X catalog: F:N: ...`, `F:N: the row for ... has no source` (or `... is already a row at ...`, `... library ... is not Basic ...`) | A catalog file is wrong at line N of file F: a column the part does not list, a cell in the wrong unit, a missing column or source, a repeated part. Fix the file. |
+| `... cannot be chosen from the X catalog: F:N: ...`, `F:N: the row for ... has no source` (or `... is already a row at ...`, `... library ... is not Basic ...`) | A catalog file is wrong at line N of file F: a column the part does not list, a cell in the wrong unit, a missing column or source, a repeated part. Fix the file. When the message says the other row is "a row of the built-in catalog", a release added the part the project's file has: remove the project's row, and run `netsmith project lock --update` to set the lock's `row` to the built-in row the message names. |
 | `pad N of X is given to both ...`, `... have no pads` | A fault in the part's `pins` table: fix the table. |
 
 ## Design-stage and fab messages

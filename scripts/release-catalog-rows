@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+# Lists the rows the built-in catalogs gained between two releases (issue #1119): a project's own
+# catalog may already have a part number on the list, and then the project stops building with
+# "a part is in a catalog once" until its row is removed and `netsmith project lock --update`
+# sets the lock to the built-in row (docs/MIGRATING.md). The list goes into the release's notes
+# (docs/RELEASING.md).
+#
+# Usage: scripts/release-catalog-rows <from-ref> [<to-ref>]
+# `to-ref` defaults to HEAD. One line for each LCSC number that is in `data/jlcpcb/catalog/` at
+# `to-ref` and was not at `from-ref`: `- resistor: C25104 (0402WGF3300TCE)`, in catalog and number
+# order. Prints nothing when no row was added. Reads git only; changes nothing.
+set -euo pipefail
+
+if [ "$#" -lt 1 ] || [ "$#" -gt 2 ]; then
+    echo "usage: $0 <from-ref> [<to-ref>]" >&2
+    exit 2
+fi
+from="$1"
+to="${2:-HEAD}"
+repo="$(cd "$(dirname "$0")/.." && pwd)"
+dir="data/jlcpcb/catalog"
+
+cd "$repo"
+git rev-parse --verify --quiet "$from^{commit}" >/dev/null || { echo "error: $from is not a commit" >&2; exit 2; }
+git rev-parse --verify --quiet "$to^{commit}" >/dev/null || { echo "error: $to is not a commit" >&2; exit 2; }
+
+# The rows of one catalog file at a ref as `lcsc<TAB>mpn`, nothing when the file is not there.
+rows() {
+    git show "$1:$2" 2>/dev/null | awk -F, 'NR > 1 && $1 != "" { print $1 "\t" $2 }' || true
+}
+
+for file in $(git ls-tree --name-only "$to" "$dir/" | sort); do
+    case "$file" in *.csv) ;; *) continue ;; esac
+    catalog="$(basename "$file" .csv)"
+    [ "$catalog" = considered ] && continue
+    comm -13 <(rows "$from" "$file" | cut -f1 | sort -u) <(rows "$to" "$file" | cut -f1 | sort -u) |
+        while read -r lcsc; do
+            mpn="$(rows "$to" "$file" | awk -F'\t' -v n="$lcsc" '$1 == n { print $2; exit }')"
+            if [ -n "$mpn" ]; then
+                echo "- $catalog: $lcsc ($mpn)"
+            else
+                echo "- $catalog: $lcsc"
+            fi
+        done
+done

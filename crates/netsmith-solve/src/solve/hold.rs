@@ -71,8 +71,22 @@ impl Solver<'_> {
                 cat.name, locked.catalog
             ))
         } else if named.is_empty() {
+            // A row of the part's number under another name: a release added the part to the
+            // built-in catalog, and the project's row was removed for it (issue #1119).
+            let renamed = locked
+                .lcsc
+                .as_ref()
+                .and_then(|l| cat.candidates.iter().find(|c| c.lcsc.as_ref() == Some(l)))
+                .map(|c| {
+                    format!(
+                        "; the row with the LCSC number {} is `{}` now, and `netsmith project lock --update` sets the lock to it",
+                        c.lcsc.as_deref().unwrap_or_default(),
+                        c.name
+                    )
+                })
+                .unwrap_or_default();
             Some(format!(
-                "the `{}` catalog has no row `{}` now",
+                "the `{}` catalog has no row `{}` now{renamed}",
                 cat.name, locked.row
             ))
         } else if let Some(changed) = named.iter().find(|c| !same_number(c)) {
