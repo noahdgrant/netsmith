@@ -99,6 +99,10 @@ The fixture is `scripts/editor-verify-js/fixtures/routed_led.nsm` (the LED examp
 - **Stale records**: a record whose pads moved, or for a net the board does not have, is a warning in the Findings tab (rule `routes_pads_moved` or `routes_no_net`, tag `routes file`) and in the problems dock (stage Routing), with the message `fab` prints. Locking the net again writes the record with its pads as they are.
 - A change to the routes file by another program (`netsmith routes ...` in a terminal) places the board again, as a change to the layout file does.
 
+## Copper areas (issue 1085): `launch --fixture routed_pours`, `drive pcb-copper`
+
+The Summary tab's "Copper areas" section is `netsmith board copper` (`GET /api/pcb/copper`, `PcbCopper`; the data is `netsmith_pcb::CopperAreas`, so the page and the command cannot differ): a line for each copper layer from the top (`summary-copper-layer`, with `data-layer` and `data-kind` of `plane`, `pour` or `signal`, its net and a pour's fields, `default` for one the design does not state), the zones of the routes file counted apart as hand zones (`summary-copper-zones`, a `summary-copper-zone` line each with its net, layers, area and settings), a layer whose pour or plane a hand zone replaces marked "not drawn", and the teardrop fills (`summary-copper-teardrops`, `data-counted`): not counted until the board is routed here, then counted apart from both. It reads the source and the routes file, so it needs no placing; it is asked again when the routes file, the layout or the routed state changes. The words are in `web/src/pcb/summary.ts` (tested).
+
 ## The pours and zones (epic #599): `launch --fixture routed_pours`, `drive pcb-pours`
 
 The fixture is the routed LED board on four layers (`scripts/editor-verify-js/fixtures/routed_pours.nsm`): a ground plane on the first inner layer, a plane on the second, ground poured on the back, and in the routes file a ground zone on the front with a hole in it and, over it at a higher priority, a zone of the anode net.

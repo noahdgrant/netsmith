@@ -79,11 +79,11 @@ use netsmith_editor::{
     ApiError, Say, Show,
     api::{
         ComparePcbPlace, CompareSize, DrawnKeepout, KeepoutOrigin, KeepoutPlacement, KicadState,
-        PartPlacement, PcbBox, PcbChange, PcbCrossed, PcbCrossedTrack, PcbCrossedVia, PcbCutout,
-        PcbFinding, PcbFindings, PcbFit, PcbFitFault, PcbFitMiss, PcbFitNear, PcbFitPart,
-        PcbFitPlace, PcbKeepout, PcbLive, PcbLivePart, PcbLiveTrack, PcbLiveVia, PcbNetWidth,
-        PcbPad, PcbPart, PcbPoint, PcbRegenerate, PcbRegenerated, PcbRegeneratedPart, PcbReport,
-        PcbRequirement, PcbRerouted, PcbRouteNet, PcbRouteTrack, PcbRouteVia, PcbScene,
+        PartPlacement, PcbBox, PcbChange, PcbCopper, PcbCrossed, PcbCrossedTrack, PcbCrossedVia,
+        PcbCutout, PcbFinding, PcbFindings, PcbFit, PcbFitFault, PcbFitMiss, PcbFitNear,
+        PcbFitPart, PcbFitPlace, PcbKeepout, PcbLive, PcbLivePart, PcbLiveTrack, PcbLiveVia,
+        PcbNetWidth, PcbPad, PcbPart, PcbPoint, PcbRegenerate, PcbRegenerated, PcbRegeneratedPart,
+        PcbReport, PcbRequirement, PcbRerouted, PcbRouteNet, PcbRouteTrack, PcbRouteVia, PcbScene,
         PcbShapeRef, PcbShove, PcbShoveAnswer, PcbShoved, PcbShovedTrack, PcbShovedVia, PcbSide,
         PcbSummary, PcbTotals, PcbViaOffer, PcbWalk, PcbWalked, RequiredPlace, RoutesChange,
         Severity,
@@ -910,6 +910,27 @@ pub fn summary(
         .map_err(|e| ApiError::internal(format!("the summary of {name}: {e}")))?;
     name.clone_into(&mut answer.board);
     Ok(answer)
+}
+
+/// The copper areas of the board of `data` (`netsmith board copper`, issue #1085): its planes,
+/// pours and the zones of the routes file beside its layout file, read now from the source and
+/// the files, with no placing and no routing. The teardrop fills are counted when `routed` is
+/// the board after the router has drawn them (the entry of a board routed here), and not
+/// otherwise.
+pub fn copper(data: &BoardData, name: &str, routed: Option<&Board>) -> Result<PcbCopper, ApiError> {
+    let design = &data.built.design;
+    let areas = match &data.layout {
+        Some((layout, _)) => netsmith_fabricate::routes::copper_areas(design, layout),
+        None => netsmith_pcb::CopperAreas::of(design, None),
+    }
+    .map_err(|e| ApiError::internal(format!("the copper areas of {name}: {e}")))?;
+    let areas = match routed {
+        Some(board) => areas.with_teardrops(board),
+        None => areas,
+    };
+    let value = serde_json::to_value(&areas).expect("plain data");
+    serde_json::from_value(camel_keys(value))
+        .map_err(|e| ApiError::internal(format!("the copper areas of {name}: {e}")))
 }
 
 /// Where the part `part` fits on the board of `entry` as placed now, with every other part where
