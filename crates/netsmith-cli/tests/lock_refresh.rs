@@ -766,14 +766,19 @@ fn lock_prints_one_json_document_with_the_diff_the_text_has_and_the_same_exit_co
     let bad = netsmith(&root, &["project", "lock", "--check", "--part", "r1", "--format", "json"]);
     assert_eq!(bad.status.code(), Some(2));
     assert!(bad.stdout.is_empty());
+}
+
 /// A project's own resistor row for the part the lock of `LED` holds (C25104), as a project
 /// that had the part before the built-in catalog did would write it (issue #1119).
 const OWN_C25104: &str = "lcsc,mpn,resistance,max_power,package,source\nC25104,ACME-R330,330ohm +/- 5%,62.5mW,0402,https://example.invalid/acme-r330\n";
+
 /// The row name the lock of `LED` has for `r1`, and the lock with the name the project's row had.
 fn lock_of_the_project_row(root: &Path) -> (String, String) {
+    assert!(
         netsmith(root, &["project", "lock", "--update"])
             .status
             .success()
+    );
     let lock = read_lock(root);
     let built_in = "330Ω 1% 0402 C25104";
     assert!(lock.contains(&format!("row = \"{built_in}\"")), "{lock}");
@@ -784,6 +789,9 @@ fn lock_of_the_project_row(root: &Path) -> (String, String) {
             "row = \"ACME-R330\"",
         ),
     )
+}
+
+#[test]
 fn a_project_row_of_a_built_in_part_is_refused_naming_the_row_to_use_and_what_differs() {
     let root = led_project("lock-built-in-twin", LED);
     fs::create_dir_all(root.join("catalogs")).unwrap();
@@ -802,27 +810,40 @@ fn a_project_row_of_a_built_in_part_is_refused_naming_the_row_to_use_and_what_di
     ] {
         assert!(said.contains(want), "wanted {want}\n{said}");
     }
+}
+
+#[test]
 fn a_lock_row_whose_part_the_built_in_catalog_has_under_another_name_is_told_and_update_repairs_it() {
     let root = led_project("lock-built-in-moved", LED);
     let (before, with_project_name) = lock_of_the_project_row(&root);
     fs::write(lock_file(&root), &with_project_name).unwrap();
+
     // The build names the row to use and the command that sets it.
     let build = netsmith(&root, &["board", "build"]);
     assert!(!build.status.success());
     let said = stderr(&build);
+    assert!(
         said.contains("the `resistor` catalog has no row `ACME-R330` now; the row with the LCSC number C25104 is `330Ω 1% 0402 C25104` now, and `netsmith project lock --update` sets the lock to it"),
         "{said}"
+    );
+
     let check = netsmith(&root, &["project", "lock", "--check"]);
+    assert_eq!(check.status.code(), Some(1), "{}", stderr(&check));
     assert_eq!(
         diff_lines(&check),
         ["LedExample: `r1`: `ACME-R330` (lcsc C25104, mpn 0402WGF3300TCE) -> `330Ω 1% 0402 C25104` (lcsc C25104, mpn 0402WGF3300TCE)"],
         "{}",
         stdout(&check)
+    );
     assert_eq!(read_lock(&root), with_project_name, "--check writes nothing");
+
     let update = netsmith(&root, &["project", "lock", "--update"]);
     assert!(update.status.success(), "{}", stderr(&update));
     assert_eq!(read_lock(&root), before, "the lock is as it was, with nothing else changed");
     assert!(netsmith(&root, &["board", "build", "--locked"]).status.success());
+}
+
+#[test]
 fn update_part_rewrites_a_row_that_moved_to_the_built_in_one_whether_it_is_named_or_not() {
     let source = with_second_led();
     let root = led_project("lock-built-in-moved-part", &source);
