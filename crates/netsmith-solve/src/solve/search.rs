@@ -4,7 +4,7 @@ use std::collections::{BTreeSet, HashSet};
 
 use super::{
     Accepted, Closest, Coupling, Failure, Job, MAX_BANK, Outcome, Passed, PassedWhy, Pick, Search,
-    Solver, Turn, Unpicked, Unresolved, choice_name, dcpass, give_up_message, nearer,
+    Solver, Turn, Unpicked, Unresolved, Verdict, choice_name, dcpass, give_up_message, nearer,
 };
 use crate::catalog::Candidate;
 use netsmith_check::{Domain, FieldId};
@@ -550,7 +550,7 @@ impl Solver<'_> {
             self.network.active,
             self.aside.clone(),
         );
-        self.aside.extend(aside);
+        self.aside.extend(aside.iter().copied());
         let mut again = Search {
             elsewhere: first.elsewhere.clone(),
             work_from: self.work,
@@ -558,6 +558,20 @@ impl Solver<'_> {
         };
         let outcome = self.search_group(jobs, group, &mut again, coupling);
         if matches!(outcome, Outcome::Solved) {
+            // With the audit on, each bound set aside must fail for the choice the search again
+            // made: a bound that a choice meets was not beyond the group.
+            if self.catalogs.look_ahead_audit() {
+                let relations = std::sync::Arc::clone(self.model.shared_relations());
+                for &index in &aside {
+                    assert!(
+                        !matches!(self.verify(&relations[index]), Verdict::Pass),
+                        "the bound `{}` was set aside as beyond the choice of {:?}, which meet it with {:?}",
+                        self.model.show_expr(&relations[index].lhs),
+                        group.iter().map(|&j| &jobs[j].path).collect::<Vec<_>>(),
+                        again.chosen
+                    );
+                }
+            }
             self.model.commit(checkpoint);
             return Some(again);
         }

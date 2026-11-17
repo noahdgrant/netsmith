@@ -541,28 +541,31 @@ impl Solver<'_> {
     }
 
     /// After the search of a group found no choice, or gave up (issue #904): the bounds that the
-    /// group's parts feed and that no choice of them can meet, which a search again without them
-    /// may then solve (`Solver::search_beyond`). A bound is one when, with every part of the
-    /// group given the hull of its candidates and every range the design states that the bound
-    /// is worked out from (a load's current, a rail's voltage) held at one end, no value of it
-    /// meets its limit (`verify_possible`). A choice of the parts lies inside the hulls and the
-    /// end lies inside the stated range, so what is worked out from them lies inside what is
-    /// worked out here, and holds no value that meets the limit either: the bound, which must
-    /// hold over the whole range, fails for every choice. A load of 0 A to 3 A on a 2 A
-    /// converter is one: its current at 3 A is over the rating whatever the divider beside it
-    /// draws, so the divider's resistors are not the cause.
+    /// group's parts feed and that no value of them can meet, which a search again without them
+    /// may then solve (`Solver::search_beyond`). A bound is one when, with the parts not yet
+    /// chosen (their columns as the design states them, whatever a catalog offers) and every
+    /// range the design states that the bound is worked out from (a load's current, a rail's
+    /// voltage) held at one end, no value of it meets its limit (`verify_possible`). A choice
+    /// of the parts lies inside what the design states of them and the end lies inside the
+    /// stated range, so what is worked out from them lies inside what is worked out here, and
+    /// holds no value that meets the limit either: the bound, which must hold over the whole
+    /// range, fails for every choice. A load of 0 A to 3 A on a 2 A converter is one: at 3 A its
+    /// current is over the rating whatever the divider beside it draws within its window, so
+    /// the divider's resistors are not the cause. A bound that only the catalog's rows miss (an
+    /// IC that asks for more inductance than any row has) is not one: a part with another value
+    /// would meet it, so the part is the cause and its own message names it.
     ///
     /// Each end is asked in turn, every stated range at its high end and then every one at its
     /// low end. A range is held at an end only where the design states it and nothing works it
     /// out: not a column of a part (that is the choice), not the left side of an equation or a
     /// field joined to one (a divider's current is worked out from its resistors, so its window
     /// is no range of the load's), not a range that narrows one of those (the IC's recommended
-    /// divider current, which narrows the divider's), and not a current a balance worked out. Asked only while the
-    /// pick-time analysis can write nothing (`network_quiet`), of a bound that no part of another
-    /// group still to be chosen and no bank feeds, and not of a bound on a position or one that
-    /// reads the end of a range. A propagation that finds a conflict says nothing, and so does
-    /// one that moves a range held at an end. The model and the solver are put back as they
-    /// were.
+    /// divider current, which narrows the divider's), and not a current a balance worked out.
+    /// Asked only while the pick-time analysis can write nothing (`network_quiet`), of a bound
+    /// that no part of another group still to be chosen and no bank feeds, and not of a bound on
+    /// a position or one that reads the end of a range. A propagation that finds a conflict says
+    /// nothing, and so does one that moves a range held at an end. The model and the solver are
+    /// put back as they were.
     ///
     /// This is asked only once the search has failed, so it changes no board that builds: the
     /// bounds it finds are set aside only for a search again, and the check after the picks
@@ -667,27 +670,10 @@ impl Solver<'_> {
         if held.is_empty() {
             return Vec::new();
         }
-        let hulls: Vec<(FieldId, Domain)> = group
-            .iter()
-            .filter(|&&j| jobs[j].count.is_none())
-            .flat_map(|&j| {
-                let columns = self.hull_of(jobs, j).columns.clone();
-                jobs[j]
-                    .columns
-                    .iter()
-                    .map(|(f, _)| *f)
-                    .zip(columns)
-                    .filter_map(|(f, d)| d.map(|d| (f, d)))
-                    .collect::<Vec<_>>()
-            })
-            .collect();
         let mut found: Vec<usize> = Vec::new();
         for high in [true, false] {
             let backup = self.model.checkpoint();
             let derived = self.derived.clone();
-            for (field, domain) in &hulls {
-                self.model.set_domain(*field, domain.clone());
-            }
             let mut ends: Vec<(FieldId, Domain)> = Vec::new();
             for &f in &held {
                 if let Domain::Quantity(q) = &self.model.field(f).domain

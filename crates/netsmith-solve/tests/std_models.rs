@@ -4,7 +4,7 @@
 
 use netsmith_check::{Domain, Loader, check};
 use netsmith_quantity::Quantity;
-use netsmith_solve::{Catalogs, Need, Series, Solution, Spec, resolve, solve};
+use netsmith_solve::{Catalogs, Need, SearchBudget, Series, Solution, Spec, resolve, solve};
 
 /// Check and solve the only board of `src` with the JLCPCB catalogs.
 fn run(src: &str) -> Solution {
@@ -324,26 +324,37 @@ fn the_board_may_state_the_count_and_the_checks_hold_it() {
     );
 }
 
+/// The two messages of a load over the IC's 2 A, and nothing else: the divider's resistors
+/// feed both checks (#746), but no divider brings a 3 A load under 2 A, so they are not named
+/// (issue #904).
+fn assert_overload_alone(m: &[String]) {
+    assert_eq!(m.len(), 2, "{m:#?}");
+    assert!(
+        m[0].contains("-stage.ic.sw.current must always be at most stage.ic.max_output_current")
+            && m[0].contains("..3.001A is not always below 2A"),
+        "{m:#?}"
+    );
+    assert!(
+        m[1].contains("-stage.vout.current must always be at most stage.ic.max_output_current")
+            && m[1].contains("0A..3A is not always below 2A"),
+        "{m:#?}"
+    );
+    assert!(
+        m.iter().all(|m| !m.contains("no combination") && !m.contains("gave up")),
+        "{m:#?}"
+    );
+}
+
 #[test]
 fn a_load_over_the_ics_current_or_an_input_over_its_range_is_refused_with_the_numbers() {
-    let s = run(&converter(&guide_ic(), "0mA..3A", ""));
-    let m = messages(&s);
     // The stage says it of its output, and the IC (ADR 0076, amendment 6) of its switch node:
     // two sides of one load. The switch node carries the divider's current too (#746), so the
-    // divider's pick feeds the IC's check and the search of the group may also name the
-    // divider's two resistors; the count is not pinned.
-    assert!(
-        m.iter().any(|m| m
-            .contains("-stage.vout.current must always be at most stage.ic.max_output_current")
-            && m.contains("0A..3A is not always below 2A")),
-        "{m:#?}"
-    );
-    assert!(
-        m.iter().any(|m| m
-            .contains("-stage.ic.sw.current must always be at most stage.ic.max_output_current")
-            && m.contains("..3.001A is not always below 2A")),
-        "{m:#?}"
-    );
+    // divider's pick feeds the IC's check, but the search of the divider's resistors does not
+    // fail on them: the load alone is over the rating (issue #904).
+    let s = run(&converter(&guide_ic(), "0mA..3A", ""));
+    assert_overload_alone(&messages(&s));
+    // The divider is still picked, as for a load the IC serves.
+    assert!(!picked(&s, "stage.divider.rtop").is_empty());
     let hot = converter(&guide_ic(), "0mA..1A", "").replace("5V +/- 5%", "12V +/- 5%");
     let m = messages(&run(&hot));
     assert!(
@@ -1409,4 +1420,75 @@ fn a_board_narrows_a_capacitor_inside_the_converter_and_the_pick_follows() {
     assert!(messages(&s).is_empty(), "{:?}", messages(&s));
     let v = range(&s, "stage.input_cap.max_voltage");
     assert!(v.lo() >= 10.0 - 1e-9, "{v}");
+}
+
+#[test]
+fn a_load_over_the_ics_current_is_reported_alone_with_the_audits_on() {
+    // Both searches of the divider are audited: every choice the look-ahead or the narrowing
+    // leaves out is searched again or tried, and each bound set aside must still fail for the
+    // pair the search again picks (a bound that pair met was not beyond the divider's choice).
+    let src = converter(&guide_ic(), "0mA..3A", "");
+    let checked = check("test.nsm", &src, &Loader::std());
+    let board = checked.standalone_boards().next().expect("one board");
+    let catalogs = Catalogs::jlcpcb()
+        .with_look_ahead_audit(true)
+        .with_narrowing_audit(true);
+    assert_overload_alone(&messages(&solve(board, &catalogs)));
+}
+
+#[test]
+fn a_load_over_the_ics_current_is_reported_alone_when_the_first_search_gives_up_early() {
+    // The search of the divider's resistors with the IC's bound in it finds no pair, whatever
+    // its budget: with 2000 trials it gives up, and the search again without the two bounds
+    // that no pair can meet solves the divider in a few more. The message is the same.
+    let src = converter(&guide_ic(), "0mA..3A", "");
+    let checked = check("test.nsm", &src, &Loader::std());
+    let board = checked.standalone_boards().next().expect("one board");
+    let catalogs = Catalogs::jlcpcb().with_search_budget(SearchBudget {
+        trials: 2000,
+        ..SearchBudget::default()
+    });
+    let s = solve(board, &catalogs);
+    assert_overload_alone(&messages(&s));
+    println!("trials: {}", s.trials);
+    assert!(s.trials < 2000 * 2, "{} trials", s.trials);
+}
+
+#[test]
+fn a_divider_window_no_pair_meets_still_names_the_divider_beside_an_overload() {
+    // The two bounds of the load are set aside for a search again, but the window of 1 nA to
+    // 2 nA is met by no pair of the catalog's resistors either: the search again fails, and the
+    // first search's message, which names the divider, stands.
+    let s = run(&converter(
+        &guide_ic(),
+        "0mA..3A",
+        "    .stage.divider.current &= 1nA..2nA\n",
+    ));
+    let m = messages(&s);
+    assert!(
+        m.iter()
+            .any(|m| m.contains("stage.divider.rbottom") && m.contains("stage.divider.rtop")),
+        "{m:#?}"
+    );
+}
+
+#[test]
+fn a_divider_window_no_pair_meets_names_the_divider_for_a_load_the_ic_serves() {
+    // No bound is beyond the divider's choice here (the load of 1 A is under the IC's 2 A), so
+    // nothing is set aside and the search's own message stands.
+    let s = run(&converter(
+        &guide_ic(),
+        "0mA..1A",
+        "    .stage.divider.current &= 1nA..2nA\n",
+    ));
+    let m = messages(&s);
+    assert!(
+        m.iter()
+            .any(|m| m.contains("stage.divider.rbottom") && m.contains("stage.divider.rtop")),
+        "{m:#?}"
+    );
+    assert!(
+        m.iter().all(|m| !m.contains("max_output_current")),
+        "{m:#?}"
+    );
 }

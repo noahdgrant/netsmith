@@ -467,7 +467,7 @@ part Zbk9 provides BuckIc {
 }
 ```
 
-From 36 V at 1 A no standard IC serves: the `Lmr16006y` takes the input but gives 0.6 A at most, the `Rt8059` and the `Tps54202` stop at 5.5 V and 28 V, and the `Lt8641` has no catalog row. Each is passed over for its own reason, and `Buck<Zbk9>` is the pick. The `Lmr16006y`'s is said through its divider: the divider's current reaches the IC's switch node (_Switching regulators_), so the search of its parts names the divider's resistors and not the 0.6 A (a limit of how the solver blames a group, issue #904):
+From 36 V at 1 A no standard IC serves: the `Lmr16006y` takes the input but gives 0.6 A at most, the `Rt8059` and the `Tps54202` stop at 5.5 V and 28 V, and the `Lt8641` has no catalog row. Each is passed over for its own reason, and `Buck<Zbk9>` is the pick. The divider's current reaches the IC's switch node (_Switching regulators_), but the `Lmr16006y`'s reason is the 0.6 A and not its divider: no divider brings a 1 A load under 0.6 A, so the divider's resistors are not blamed for it:
 
 ```nsm evaluate picks
 import std::parts::regulator::BuckConverter
