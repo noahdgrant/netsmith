@@ -803,6 +803,7 @@ dependencies = [
  "automod",
  "netsmith-check",
  "netsmith-core",
+ "netsmith-geom",
  "netsmith-lang",
  "netsmith-quantity",
  "netsmith-solve",

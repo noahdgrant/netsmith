@@ -2012,6 +2012,14 @@ impl<'a> Checker<'a> {
                 .add_field(pin, field, FieldKind::Quantity(Dimension::VOLTAGE));
             self.model.add_member(pin, field, Member::Field(f));
         }
+        // The most current the pin's branch carries: the copper from the pin's pads to the rest
+        // of its net (issue #1113). Stated on the pin of a part (`.bias.current &= 1mA`), it
+        // sizes that copper, its vias and its check for this current and not the net's; a pin
+        // that states none is drawn as its net is.
+        let f = self
+            .model
+            .add_field(pin, "current", FieldKind::Quantity(Dimension::CURRENT));
+        self.model.add_member(pin, "current", Member::Field(f));
         pin
     }
 

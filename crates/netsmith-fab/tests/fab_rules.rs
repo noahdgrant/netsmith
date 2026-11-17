@@ -342,3 +342,86 @@ fn a_tangent_arc_at_a_bend_is_no_corner_and_a_kinked_arc_is_one() {
     // pieces at about a right angle.
     assert_eq!(count((14.5, 8.5)), 2, "a kinked arc");
 }
+
+/// JLCPCB's two-layer copper, rise and tolerance, as `fab` sizes a branch with (issue #1113).
+fn sizing() -> netsmith_geom::ipc2221::TrackSizing {
+    netsmith_geom::ipc2221::TrackSizing {
+        copper: 0.035,
+        inner_copper: None,
+        rise: 10.0,
+        tolerance: 0.2,
+        via_drill: 0.3,
+        via_plating: 0.018,
+    }
+}
+
+/// Net P, which needs 0.4 mm and three vias side by side: a trunk of 0.4 mm from S1 to S2, and a
+/// branch of `width` from its middle to the through-hole pad of J1, through one via.
+fn branch_board(width: f64, trunk_neck: bool) -> Pcb {
+    let mut b = Pcb::new(2);
+    b.stub("P", 10.0, 10.0);
+    b.stub("P", 30.0, 10.0);
+    if trunk_neck {
+        b.track("P", "F.Cu", (10.0, 10.0), (20.0, 10.0), 0.4);
+        b.track("P", "F.Cu", (20.0, 10.0), (30.0, 10.0), width);
+    } else {
+        b.track("P", "F.Cu", (10.0, 10.0), (30.0, 10.0), 0.4);
+    }
+    b.part(
+        "J1",
+        (20.0, 22.0),
+        0.0,
+        &[thru("1", 0.0, 0.0, 1.2, 0.7, "P")],
+        NONE,
+    );
+    b.track("P", "F.Cu", (20.0, 10.0), (20.0, 16.0), width);
+    b.via("P", (20.0, 16.0), 0.6, 0.3);
+    b.track("P", "B.Cu", (20.0, 16.0), (20.0, 22.0), width);
+    b
+}
+
+fn branch_extras(current: Option<f64>) -> DrcExtras {
+    DrcExtras {
+        least_widths: vec![("P".to_string(), 0.4)],
+        via_counts: vec![("P".to_string(), 3)],
+        neck_reach: 0.5,
+        branches: current
+            .map(|current| netsmith_geom::DrcBranch {
+                net: "P".to_string(),
+                part: "J1".to_string(),
+                pads: vec!["1".to_string()],
+                current,
+            })
+            .into_iter()
+            .collect(),
+        sizing: Some(sizing()),
+        ..jlcpcb()
+    }
+}
+
+#[test]
+fn the_copper_of_a_branch_is_held_to_the_current_its_pin_states_and_not_to_its_nets() {
+    // Issue #1113: a 0.2 mm branch with one via to a pin that states 1 mA, on a net that needs
+    // 0.4 mm and three vias. Its two tracks and its via pass; with no statement they are the
+    // net's, and are named.
+    let counts = |b: &mut Pcb, extras: &DrcExtras| {
+        let r = check(b, extras);
+        (r.count(DrcRule::TrackCurrent), r.count(DrcRule::ViaCurrent))
+    };
+    let mut b = branch_board(0.2, false);
+    assert_eq!(counts(&mut b, &branch_extras(Some(0.001))), (0, 0));
+    assert_eq!(counts(&mut b, &branch_extras(None)), (2, 1));
+    // A branch that states more than its copper carries: 2 A needs 0.98 mm and four vias.
+    assert_eq!(counts(&mut b, &branch_extras(Some(2.0))), (2, 1));
+    // Copper of the trunk is the net's whatever the branch states: a 0.2 mm piece of it between
+    // two pads of no branch is named.
+    let mut b = branch_board(0.2, true);
+    assert_eq!(counts(&mut b, &branch_extras(Some(0.001))), (1, 0));
+    // With no sizing the branches are not read.
+    let mut b = branch_board(0.2, false);
+    let blind = DrcExtras {
+        sizing: None,
+        ..branch_extras(Some(0.001))
+    };
+    assert_eq!(counts(&mut b, &blind), (2, 1));
+}

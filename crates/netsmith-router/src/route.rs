@@ -1570,6 +1570,7 @@ pub fn route_with(board: &mut Board, options: RouteOptions) -> Routing {
     // the rest of its net (`crate::kelvin`, issue #1148); the board is put back at the end.
     let split = crate::kelvin::split(board);
     let (best, stopped, tries, why, crowding, stages, drops, rip_rounds) = {
+    let (best, stopped, tries, why, crowding, stages, drops, rip_rounds, line_vias) = {
         let mut router = Router::new(board, &options);
         let mut orders = router.tries(&options);
         if options.plan != CoarsePlan::Off {
@@ -1633,16 +1634,24 @@ pub fn route_with(board: &mut Board, options: RouteOptions) -> Routing {
         } else {
             Vec::new()
         };
+        // How many vias side by side each line needs: its net's, or its branch's (issue #1113).
+        let line_vias: Vec<usize> = (0..router.lines.len())
+            .map(|l| router.vias_needed(l))
+            .collect();
         let crowding = router.crowding.into_inner();
         (
-            best, stopped, tries, why, crowding, stages, drops, rip_rounds,
+            best, stopped, tries, why, crowding, stages, drops, rip_rounds, line_vias,
         )
     };
     let complete = best.failed.is_empty();
     let mut routed = best.routed;
     routed.sort_by_key(|r| r.line);
+    // What each via needs beside it: the line's count for the router's own vias, the net's for
+    // the copper the board had.
+    let mut via_needs: Vec<Option<usize>> = vec![None; board.vias.len()];
     for r in routed {
         board.tracks.extend(r.tracks);
+        via_needs.extend(r.vias.iter().map(|_| Some(line_vias[r.line])));
         board.vias.extend(r.vias);
     }
     // Diff pairs matched in length, on a board routed completely (issue #431, S11).
@@ -1653,7 +1662,7 @@ pub fn route_with(board: &mut Board, options: RouteOptions) -> Routing {
         Vec::new()
     };
     // A via that does not carry its net's current gets others beside it (issue #431).
-    crate::parallel::parallel_vias(board);
+    crate::parallel::parallel_vias(board, &via_needs);
     // The vias a datasheet asks for in a pin's pads (issue #994), before the stitching keeps
     // clear of them.
     crate::pad_vias::add(board);

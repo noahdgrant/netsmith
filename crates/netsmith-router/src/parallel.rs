@@ -12,7 +12,9 @@
 //! stays short, and the design rules check (`via_current`) says so.
 //!
 //! The count is for the net's whole current, which a via on a branch of the net carries only part
-//! of: the pessimism of ADR 0036's sum, kept rather than guessing the net's topology.
+//! of: the pessimism of ADR 0036's sum, kept rather than guessing the net's topology. A via of a
+//! line that carries the current of a branch whose pin states it (issue #1113) gets the count of
+//! that current instead ([`netsmith_core::BranchCurrent::vias`]).
 
 use netsmith_pcb::{Board, Pt, Rect, Via};
 
@@ -130,8 +132,10 @@ fn cluster(board: &Board, index: usize) -> Vec<usize> {
     found
 }
 
-/// Add vias beside each via of a net whose current one via does not carry.
-pub fn parallel_vias(board: &mut Board) {
+/// Add vias beside each via of a net whose current one via does not carry. `via_needs` says, by
+/// the index of a via in the board's, how many a via of a line the router drew needs (the line's
+/// count: its branch's or its net's); a via it does not name needs its net's.
+pub fn parallel_vias(board: &mut Board, via_needs: &[Option<usize>]) {
     let r = board.rules.clone();
     // Near enough that the copper overlaps, as far as the holes' space allows.
     let step = (r.via_hole_to_hole + r.via_drill + MARGIN).max(0.0);
@@ -141,11 +145,13 @@ pub fn parallel_vias(board: &mut Board) {
     let mut index = 0;
     while index < board.vias.len() {
         let net = board.vias[index].net.clone();
-        let needs = board
-            .net_currents
-            .iter()
-            .find(|c| c.net == net)
-            .map_or(1, |c| c.vias);
+        let needs = via_needs.get(index).copied().flatten().unwrap_or_else(|| {
+            board
+                .net_currents
+                .iter()
+                .find(|c| c.net == net)
+                .map_or(1, |c| c.vias)
+        });
         let mut members = cluster(board, index);
         // A cluster is grown from its first via only, and a net a routes file locks gets no
         // copper.

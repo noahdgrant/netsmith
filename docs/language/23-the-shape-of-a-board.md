@@ -555,6 +555,86 @@ Rules.
 - IPC-2221 is a conservative design guide, and IPC-2152 is more accurate (it counts the board's thickness and the copper next to the track). netsmith implements IPC-2221 only. A track the check passes is not therefore good for a certain temperature, and one it flags may be fine; read the number as a prompt to decide.
 - The router may draw a track narrower than its net's width where there is no room (the stub at a pad is the net's width, and the pad's own copper carries the rest). The check is of the width asked for.
 
+### The current of a branch
+
+A net is drawn at the width of its whole current, and that is right for the copper that carries it, but not for a branch that carries almost none: a converter's bias pin, the top of a feedback divider, a sense resistor's tap, a meter's probe on a rail of amps. Drawn at the rail's width with the rail's vias side by side, such a branch takes room a busy board does not have, and is left open. The pin at the end of the branch says what it carries with `.current`, as a pull-up states its own draw (issue #1113):
+
+```nsm solve
+import std::mfg::jlcpcb::TwoLayer
+import std::parts::connector::Header1x2
+import std::sources::Rail
+
+board Probe {
+    .process: TwoLayer { .stackup.thickness &= 1.6mm }
+    .load: Rail { .pos.net &= "5V"; .current &= 0A..3A }
+    .source: Rail { .pos.net &= "5V"; .current &= -3A..0A }
+    .supply: Header1x2
+    .out: Header1x2
+    .probe: Header1x2 { .p1.current &= 1mA; .p2.current &= 1mA }
+    .supply.p1 ~ .source.pos
+    .supply.p2 ~ .source.neg
+    .out.p1 ~ .load.pos
+    .out.p2 ~ .load.neg
+    .probe.p1 ~ .load.pos
+    .probe.p2 ~ .load.neg
+}
+```
+
+`5V` and `GND` carry 3 A, are drawn 1.71 mm wide and change layer through vias side by side; the tracks to the meter's probe header carry 1 mA and are drawn at the process's least, 0.1 mm, with one via. A part states it for its own pin (`.bias.current &= 0A..1mA` in the part's definition), or a board for a pin of a part it has (`.ldo.bias.current &= 1mA`).
+
+Rules.
+
+- The branch is the copper from the pin's pads to the rest of its net. The router joins each pad of the pin to the nearest pad of the net that is no branch, by a line of its own, and never through another pad: the pad is a leaf, so no current but the branch's passes through its line. That line is drawn at the width the branch's current needs (IPC-2221, as above: rounded up to 0.01 mm, sized for the narrowest finished track), with as many vias as that current needs where it changes layer. The rest of the net is drawn as before.
+- It is the size of the range that counts: `1mA`, `0A..1mA` and `-1mA..0A` all say 1 mA. A pin that states nothing is drawn as its net is, as before.
+- It is never narrower than the process's least track, a rail's `.min_track` on the net (a stated width is the narrowest of every track of the net), or what a part's `layout` block asks of the net with `route`. A net with an impedance target is drawn at the width that gives it, branches too.
+- It is no term of the net's balance and adds nothing to the net's current: what flows through the pin is drawn by the rail or the part that has it, which the balance already counts. It is checked against them: a pin that is a rail's `pos` or `neg`, or an end of a part's `bridge`, cannot carry less than that rail or part, and the build refuses a statement that says it does, with both currents. Here the divider draws up to 17.17 uA through its top resistor:
+
+```nsm fails
+import std::mfg::jlcpcb::TwoLayer
+import std::parts::passive::Resistor
+import std::sources::Rail
+
+board Sensor {
+    .process: TwoLayer { .stackup.thickness &= 1.6mm }
+    .supply: Rail { .voltage &= 3.3V +/- 3%; .pos.net &= "3V3" }
+    .r_top: Resistor { .resistance &= 100kohm +/- 1% }
+    .r_bottom: Resistor { .resistance &= 100kohm +/- 1% }
+    .r_top.current == .supply.voltage / (.r_top.resistance + .r_bottom.resistance)
+    .supply.pos ~> .r_top ~> .r_bottom ~> .supply.neg
+    .r_top.a.current &= 10uA
+}
+```
+
+```text
+error: Sensor: `r_top.a.current` says its branch carries at most 0.01 mA, but part `r_top` carries up to 0.0172 mA through it: state at least 0.0172 mA on the pin, or leave its current out so that its copper is drawn for its net
+```
+
+- The design rules check holds the branch's copper to the branch's current and not the net's: a track or a via cluster narrower or fewer than its net needs passes when taking it out of its net's copper leaves one piece with a pad of no branch (or a pour) and the others with branches only, and it carries what those branches state, each pin once. Copper that joins two pads of no branch, or closes a loop, is the net's. The voltage a net's tracks drop (below) is measured between the pads of no branch.
+- Only a pin of a part states it. A port's pin, of a module or a board, stands for every pin joined to it, so its branch is no one piece of copper:
+
+```nsm fails
+import std::sources::Rail
+
+module Stage {
+    .vin: Rail
+    .vin.pos.current &= 1mA
+}
+
+board B {
+    .supply: Rail { .pos.net &= "5V" }
+    .stage: Stage
+    .supply ~ .stage.vin
+}
+```
+
+```text
+error: `.vin.pos` is a pin of a module, not of a part: the current of a branch is stated on the pin of the part the branch ends at, such as `.ldo.bias.current &= 1mA`, since a module's pin stands for every pin joined to it
+  --> main.nsm:5:5
+  |
+5 |     .vin.pos.current &= 1mA
+  |     ^^^^^^^^^^^^^^^^^^^^^^^
+```
+
 ### The voltage a power track drops
 
 A track is sized for heat, before the board is routed, and not for the voltage it drops: that depends on the length the router then draws. So `fab` measures the drop once the board is routed (issue #652). Each track of a net is a resistance, `rho * length / (width * thickness)`, with copper's resistivity at 20 °C (1.72e-5 ohm mm) and the process's outer copper (0.035 mm for 1 oz). The drop of the net is its worst-case current, the one its tracks are sized for, through the largest resistance between two of its pads along its tracks. 2 A through 50 mm of the 0.98 mm that 2 A is drawn at in 1 oz copper drops about 0.05 V; 0.5 A through 50 mm of 0.2 mm about 0.06 V.

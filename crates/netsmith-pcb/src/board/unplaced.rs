@@ -112,6 +112,7 @@ impl Unplaced {
             impedance_widths,
             impedance_targets: design.features.impedance_targets.clone(),
             net_currents: design.features.net_currents.clone(),
+            branch_currents: design.features.branch_currents.clone(),
             overhang,
             pinned,
             imported: Default::default(),

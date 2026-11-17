@@ -221,6 +221,10 @@ pub struct Board {
     /// The current each net carries where it is known, and the least width that carries it
     /// (issue #431): no track of the net is narrower, away from its pads.
     pub net_currents: Vec<netsmith_core::NetCurrent>,
+    /// The branches of nets whose pins state their current (issue #1113): the line to such a
+    /// pad is drawn, and its vias counted, for the branch's current ([`Board::branch_of`]).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub branch_currents: Vec<netsmith_core::BranchCurrent>,
     /// The parts the person said may hang over the board edge, by reference designator
     /// (ADR 0045, "Built: overhang"). [`Board::check_placement`] does not report the
     /// courtyard of such a part past an edge it may hang over.

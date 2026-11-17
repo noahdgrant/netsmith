@@ -123,8 +123,14 @@ pub fn routes_hash(board: &Board) -> String {
 /// outline and its cutouts, pours, planes and keepouts, the rules, the process and the nets'
 /// own widths, clearances and currents.
 pub fn rules_hash(board: &Board) -> String {
+    // The branches only where a board has some, so the hash of every other board is as it was.
+    let branches = if board.branch_currents.is_empty() {
+        String::new()
+    } else {
+        format!("\n{:?}", board.branch_currents)
+    };
     hash(&format!(
-        "{}\n{:?}\n{:?}\n{:?}\n{:?}\n{:?}\n{:?}\n{:?}\n{:?}\n{:?}\n{:?}\n{:?}\n{:?}\n{:?}",
+        "{}\n{:?}\n{:?}\n{:?}\n{:?}\n{:?}\n{:?}\n{:?}\n{:?}\n{:?}\n{:?}\n{:?}\n{:?}\n{:?}{branches}",
         board.name,
         board.outline,
         board.corner_radius,

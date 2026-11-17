@@ -3,6 +3,7 @@
 use std::cmp::Ordering;
 
 use super::*;
+use crate::ratsnest::Ratline;
 
 impl Board {
     /// The width the router draws a net's tracks at on the outer layers: the front's
@@ -46,6 +47,81 @@ impl Board {
         match self.inner_least_width(net) {
             Some(least) => width.max((least * 100.0 - 1e-9).ceil() / 100.0),
             None => width,
+        }
+    }
+
+    /// The branch whose pin has `pad`, on `net` (issue #1113): a pin of a part that states the
+    /// current of its branch.
+    pub fn branch_of(&self, net: &str, pad: &PadRef) -> Option<&netsmith_core::BranchCurrent> {
+        self.branch_currents.iter().find(|b| {
+            b.net == net
+                && b.pins
+                    .iter()
+                    .any(|p| p.refdes == pad.refdes && p.pin == pad.number)
+        })
+    }
+
+    /// The branch a line carries the current of (issue #1113): a line with one end at a pad of a
+    /// branch and the other at a pad of no branch, or a pad's line to its plane. The ratsnest
+    /// joins a branch's pad to the rest of its net by one such line
+    /// (`crate::ratsnest`), so the line carries what the branch does and no more. A line
+    /// between the pads of two branches carries what the net does, and so does any line of a
+    /// net with an impedance target, which is drawn at the width that gives it.
+    pub fn line_branch(&self, line: &Ratline) -> Option<&netsmith_core::BranchCurrent> {
+        if self.branch_currents.is_empty()
+            || self.impedance_widths.iter().any(|w| w.net == line.net)
+        {
+            return None;
+        }
+        let from = self.branch_of(&line.net, &line.from);
+        if line.to_plane {
+            return from;
+        }
+        match (from, self.branch_of(&line.net, &line.to)) {
+            (Some(b), None) | (None, Some(b)) => Some(b),
+            _ => None,
+        }
+    }
+
+    /// The width the router draws a line's tracks at on `layer`: its branch's, when it carries
+    /// one's current ([`Board::line_branch`]), and otherwise its net's
+    /// ([`Board::track_width_on`]). A branch is drawn at its own width on an outer layer, and
+    /// on an inner signal layer at least as wide as its current needs in the inner copper.
+    pub fn line_width_on(&self, line: &Ratline, layer: CopperLayer) -> f64 {
+        let Some(b) = self.line_branch(line) else {
+            return self.track_width_on(&line.net, layer);
+        };
+        let width = b.width.max(self.rules.track_width);
+        match b.inner_least_width.filter(|_| !layer.is_outer()) {
+            Some(least) => width.max((least * 100.0 - 1e-9).ceil() / 100.0),
+            None => width,
+        }
+    }
+
+    /// The narrowest a line's track may be on `layer` away from its pads: its branch's least
+    /// width when it carries one's current, and otherwise its net's
+    /// ([`Board::least_width_on`]).
+    pub fn line_least_width_on(&self, line: &Ratline, layer: CopperLayer) -> f64 {
+        let Some(b) = self.line_branch(line) else {
+            return self.least_width_on(&line.net, layer);
+        };
+        let least = match b.inner_least_width.filter(|_| !layer.is_outer()) {
+            Some(inner) => inner,
+            None => b.least_width,
+        };
+        least.max(self.rules.min_track_width)
+    }
+
+    /// How many vias side by side a line needs where it changes layer: its branch's count when
+    /// it carries one's current, and otherwise its net's.
+    pub fn line_vias(&self, line: &Ratline) -> usize {
+        match self.line_branch(line) {
+            Some(b) => b.vias,
+            None => self
+                .net_currents
+                .iter()
+                .find(|c| c.net == line.net)
+                .map_or(1, |c| c.vias),
         }
     }
 

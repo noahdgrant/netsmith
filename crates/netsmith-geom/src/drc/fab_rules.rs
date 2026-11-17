@@ -178,7 +178,13 @@ fn via_current(out: &mut Out<'_>) {
             }
             k += 1;
         }
-        if cluster.len() < needs {
+        // A cluster that only feeds branches needs what they draw (issue #1113).
+        let feeds = |sizing: &crate::ipc2221::TrackSizing| {
+            let items: Vec<usize> = cluster.iter().map(|&v| m.via_item[v]).collect();
+            super::branches::current_through(m, net, &items)
+                .is_some_and(|i| sizing.vias(i) <= cluster.len())
+        };
+        if cluster.len() < needs && !m.extras.sizing.as_ref().is_some_and(feeds) {
             let item = m.items[m.via_item[start]].item.clone();
             out.push(
                 Rule::ViaCurrent,
@@ -203,7 +209,7 @@ fn track_current(out: &mut Out<'_>) {
     if x.least_widths.is_empty() && x.inner_least_widths.is_empty() {
         return;
     }
-    for c in &m.items {
+    for (k, c) in m.items.iter().enumerate() {
         let Kind::Track(i) = c.kind else { continue };
         let t = &m.art.tracks[i];
         let Some(net) = t.net.as_deref() else {
@@ -223,6 +229,14 @@ fn track_current(out: &mut Out<'_>) {
             continue;
         }
         if near_pads(m, c, net) {
+            continue;
+        }
+        // A track that only feeds branches needs what they draw (issue #1113).
+        let feeds = |sizing: &crate::ipc2221::TrackSizing| {
+            super::branches::current_through(m, net, &[k])
+                .is_some_and(|i| t.width >= sizing.least_width_on(i, inner) - EPS / 100.0)
+        };
+        if x.sizing.as_ref().is_some_and(feeds) {
             continue;
         }
         out.push(

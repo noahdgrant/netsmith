@@ -11,6 +11,8 @@
 //! - [`drc_check`]: netsmith's own design rules check (ADR 0037), and the room and teardrops the
 //!   router and the meanders measure with.
 //! - [`COUPLED`] and [`PAIR_SUFFIXES`]: the nets that make a diff pair.
+//! - [`ipc2221`]: the current a track or a via carries, which the design stage sizes nets with
+//!   and the design rules check holds a branch's copper to (ADR 0036, issue #1113).
 //!
 //! The package (the zip, the bill of materials, the placement file, the notes), the panel, the
 //! cross-check with KiCad and the route scorecard are `netsmith-fab`'s.
@@ -29,6 +31,7 @@ mod font;
 mod gbr;
 mod geom;
 mod gerber;
+pub mod ipc2221;
 mod pads;
 mod pairs;
 mod plot;
@@ -50,10 +53,10 @@ pub use drc::constraints::{
 };
 pub use drc::shape::{Gap as ShapeGap, Shape as DrcShape, gap as shape_gap};
 pub use drc::{
-    Class as DrcClass, Counts as DrcCounts, Error as DrcError, Extras as DrcExtras,
-    Finding as DrcFinding, Item as DrcItem, Marks as DrcMarks, Report as DrcReport, Room,
-    Rule as DrcRule, Rules as DrcRules, Severity as DrcSeverity, Stackup as DrcStackup,
-    Teardrop as DrcTeardrop, ViaRules as DrcViaRules, check as drc_check,
+    Branch as DrcBranch, Class as DrcClass, Counts as DrcCounts, Error as DrcError,
+    Extras as DrcExtras, Finding as DrcFinding, Item as DrcItem, Marks as DrcMarks,
+    Report as DrcReport, Room, Rule as DrcRule, Rules as DrcRules, Severity as DrcSeverity,
+    Stackup as DrcStackup, Teardrop as DrcTeardrop, ViaRules as DrcViaRules, check as drc_check,
     check_artwork as drc_check_artwork, matches_pattern as drc_matches_pattern,
     outline_shapes as drc_outline_shapes, project_of as drc_project_of, teardrops,
 };

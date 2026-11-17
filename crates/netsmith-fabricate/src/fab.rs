@@ -2988,6 +2988,27 @@ pub fn drc_extras(board: &Board) -> netsmith_geom::DrcExtras {
             ),
         }),
         vias: Some(via_rules(board)),
+        branches: board
+            .branch_currents
+            .iter()
+            .flat_map(|b| {
+                let mut parts: Vec<&str> = b.pins.iter().map(|p| p.refdes.as_str()).collect();
+                parts.sort_unstable();
+                parts.dedup();
+                parts.into_iter().map(move |part| netsmith_geom::DrcBranch {
+                    net: b.net.clone(),
+                    part: part.to_string(),
+                    pads: b
+                        .pins
+                        .iter()
+                        .filter(|p| p.refdes == part)
+                        .map(|p| p.pin.clone())
+                        .collect(),
+                    current: b.current,
+                })
+            })
+            .collect(),
+        sizing: netsmith_design::guidelines::sizing_of(&board.process),
     }
 }
 

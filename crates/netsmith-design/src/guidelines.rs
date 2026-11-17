@@ -201,93 +201,16 @@ pub const DEFAULT_TEMPERATURE_RISE: f64 = 10.0;
 /// is where a power track begins to leave little room for anything else.
 pub const WIDE_NET_FRACTION: f64 = 0.2;
 
-/// One mil, in mm.
-const MIL: f64 = 0.0254;
+// The formula, its constants and their source are in `netsmith_geom::ipc2221`, which the design
+// rules check sizes a branch's copper with too (issue #1113).
+pub use netsmith_geom::ipc2221::{Layer, TrackSizing, ipc2221_current, ipc2221_width, via_current};
 
-// The formula and its constants (ADR 0036).
-//
-// IPC-2221B, "Generic Standard on Printed Board Design", section 6.2 "Conductor current
-// carrying capacity" (the same fit is in IPC-2221A and, as the chart IPC-2221's Figure 6-4,
-// in IPC-D-275): `I = k * dT^b * A^c`, with
-//   I   the current in amperes,
-//   dT  the temperature rise above ambient in degrees Celsius (= kelvin),
-//   A   the conductor's cross-section in square mils (width times copper thickness),
-//   b = 0.44, c = 0.725,
-//   k = 0.048 for a conductor on an outer layer (in air) and 0.024 on an inner layer.
-// The standard is paywalled and was not read here, so the constants are PROVISIONAL until a person
-// compares them with it (issue #10); the formula, the constants and their meaning were taken from
-// several agreeing published derivations (Altium's IPC-2221 calculator page, the `pcb-toolkit`
-// crate's `current.rs`, circuit.rocks), and checked by hand in `tests/guidelines.rs`. It is an empirical fit to old measurements of tracks in
-// air, and the calculators say it holds only inside the ranges of those measurements (which
-// this code did not verify against the standard): outside them the result is extrapolated.
-//
-// Assumed, not from the standard (the tool's choices, accepted as built, ADR 0036): the copper
-// weight is the process's `stackup.copper_weight` (1 oz, 0.035 mm, for JLCPCB's two-layer outer
-// copper), and the rise is the board's `.process.max_temperature_rise` or, when it states none,
-// [`DEFAULT_TEMPERATURE_RISE`]. A net's width is for the outer layers, so `K_EXTERNAL`; on a
-// board with an inner signal layer the net also gets the width for that layer, `K_INTERNAL` in
-// the inner copper (`stackup.inner_copper`), which the router draws its tracks there at (issue
-// #833).
-
-/// The IPC-2221 constant `k` for a track on an outer layer, in air.
-const K_EXTERNAL: f64 = 0.048;
-/// The IPC-2221 constant `k` for a track on an inner layer.
-const K_INTERNAL: f64 = 0.024;
-
-/// Where a track is: outer layers shed heat to the air, inner layers do not, so IPC-2221
-/// allows an inner track half the current.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Layer {
-    External,
-    Internal,
-}
-
-impl Layer {
-    fn k(self) -> f64 {
-        match self {
-            Self::External => K_EXTERNAL,
-            Self::Internal => K_INTERNAL,
-        }
+/// The word for a layer in a message.
+fn layer_word(layer: Layer) -> &'static str {
+    match layer {
+        Layer::External => "outer",
+        Layer::Internal => "inner",
     }
-
-    fn word(self) -> &'static str {
-        match self {
-            Self::External => "outer",
-            Self::Internal => "inner",
-        }
-    }
-}
-
-/// The current a track of `width` mm in copper `copper` mm thick carries for a temperature
-/// rise of `rise` kelvin, in amperes: IPC-2221's `I = k * dT^0.44 * A^0.725`, with the
-/// cross-section `A` in square mils.
-pub fn ipc2221_current(width: f64, copper: f64, rise: f64, layer: Layer) -> f64 {
-    let area = (width / MIL) * (copper / MIL);
-    layer.k() * rise.powf(0.44) * area.powf(0.725)
-}
-
-/// The narrowest track in mm, in copper `copper` mm thick, that carries `current` amperes
-/// for a rise of `rise` kelvin: the formula of [`ipc2221_current`] solved for the area.
-pub fn ipc2221_width(current: f64, copper: f64, rise: f64, layer: Layer) -> f64 {
-    let area = (current / (layer.k() * rise.powf(0.44))).powf(1.0 / 0.725);
-    area / (copper / MIL) * MIL
-}
-
-/// The current a via with a hole of `drill` mm, plated `plating` mm thick, carries for a rise of
-/// `rise` kelvin (issue #431): IPC-2221's formula over the copper of the barrel, the ring of the
-/// plating round the finished hole, with the inner-layer constant, since the barrel is
-/// inside the board and sheds less heat than a track in air. Calculators differ here (some take
-/// the outer constant, some IPC-2152's charts); the inner one is the lower of IPC-2221's two. A
-/// 0.2 mm hole plated 0.018 mm carries 0.56 A at 10 K.
-pub fn via_current(drill: f64, plating: f64, rise: f64) -> f64 {
-    if drill <= 0.0 || plating <= 0.0 {
-        return 0.0;
-    }
-    // A drill is the finished hole: the plating is round it.
-    let inner = drill / 2.0;
-    let outer = inner + plating;
-    let area = std::f64::consts::PI * (outer * outer - inner * inner) / (MIL * MIL);
-    Layer::Internal.k() * rise.powf(0.44) * area.powf(0.725)
 }
 
 /// What a design does against a guideline.
@@ -521,6 +444,33 @@ fn shorter_side_at_most(features: &Features) -> Option<f64> {
     (side.is_finite() && side > 0.0).then_some(side)
 }
 
+/// How copper is sized for a current on a board of `process` (ADR 0036): its outer copper, the
+/// copper of an inner signal layer, the board's `.process.max_temperature_rise` or
+/// [`DEFAULT_TEMPERATURE_RISE`], the fabricator's width tolerance and its via. `None` for a
+/// process with no copper or no rise, which sizes nothing.
+pub fn sizing_of(process: &Process) -> Option<TrackSizing> {
+    let copper = process.stackup.copper_weight * OUNCE_OF_COPPER;
+    let rise = process
+        .max_temperature_rise
+        .unwrap_or(DEFAULT_TEMPERATURE_RISE);
+    if copper <= 0.0 || rise <= 0.0 {
+        return None;
+    }
+    Some(TrackSizing {
+        copper,
+        inner_copper: process
+            .stackup
+            .inner
+            .as_ref()
+            .filter(|i| i.copper > 0.0 && i.layers.contains(&InnerUse::Signal))
+            .map(|i| i.copper),
+        rise,
+        tolerance: process.track_width_tolerance.clamp(0.0, 0.9),
+        via_drill: process.via_drill,
+        via_plating: process.hole_plating,
+    })
+}
+
 /// What the track check works out for a board (ADR 0036).
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct TrackPlan {
@@ -535,6 +485,30 @@ pub struct TrackPlan {
     pub notes: Vec<String>,
     /// The current of each net where some of it is known, and the least width that carries it.
     pub currents: Vec<NetCurrent>,
+    /// The pins of parts that state the current of their branch (issue #1113), with the copper
+    /// that current needs, by the pin's path.
+    pub branches: Vec<Branch>,
+    /// A pin whose branch is stated to carry less than the model says flows through it.
+    pub errors: Vec<String>,
+}
+
+/// A pin of a part that states the current of its branch (issue #1113): the copper from the
+/// pin's pads to the rest of its net is sized for that current and not for the net's.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Branch {
+    pub pin: InstId,
+    pub net: String,
+    /// The most the branch carries, in amperes: the larger end of the stated range, in size.
+    pub current: f64,
+    /// The width its tracks are drawn at on the outer layers, in mm: what the current needs,
+    /// rounded up to the 0.01 mm a width is written in, and never less than the process's
+    /// least track or a `.min_track` a rail on the net states.
+    pub width: f64,
+    /// The narrowest a track of it may be, on an outer layer and on an inner signal layer.
+    pub least_width: f64,
+    pub inner_least_width: Option<f64>,
+    /// How many of the process's vias, side by side, carry it.
+    pub vias: usize,
 }
 
 /// The tracks of every net against the current the net carries, by IPC-2221 (ADR 0036).
@@ -579,19 +553,12 @@ pub fn plan_tracks(
     net_currents: &[netsmith_solve::NetCurrent],
 ) -> TrackPlan {
     let mut plan = TrackPlan::default();
-    let copper = process.stackup.copper_weight * OUNCE_OF_COPPER;
-    if copper <= 0.0 {
+    let Some(sizing) = sizing_of(process) else {
         return plan;
-    }
-    let layer = Layer::External;
-    let tolerance = process.track_width_tolerance.clamp(0.0, 0.9);
-    let (rise, rise_is_default) = match process.max_temperature_rise {
-        Some(r) => (r, false),
-        None => (DEFAULT_TEMPERATURE_RISE, true),
     };
-    if rise <= 0.0 {
-        return plan;
-    }
+    let (copper, rise, tolerance) = (sizing.copper, sizing.rise, sizing.tolerance);
+    let layer = Layer::External;
+    let rise_is_default = process.max_temperature_rise.is_none();
     let planes: Vec<&str> = process
         .stackup
         .inner
@@ -748,31 +715,15 @@ pub fn plan_tracks(
         // amendment 3).
         // Sized for the narrowest track the fabricator's tolerance allows (issue #431): a track
         // drawn at `needs` is finished no narrower than the width IPC-2221 asks.
-        let needs = if total > 0.0 {
-            ipc2221_width(total, copper, rise, layer) / (1.0 - tolerance)
-        } else {
-            0.0
-        };
+        let needs = sizing.least_width(total);
         if total > 0.0 {
-            let each = via_current(process.via_drill, process.hole_plating, rise);
-            let vias = if each > 0.0 {
-                ((total / each) - 1e-9).ceil().max(1.0) as usize
-            } else {
-                1
-            };
-            // On an inner signal layer: the inner constant and the inner copper (issue #833).
-            let inner_least_width = process
-                .stackup
-                .inner
-                .as_ref()
-                .filter(|i| i.copper > 0.0 && i.layers.contains(&InnerUse::Signal))
-                .map(|i| ipc2221_width(total, i.copper, rise, Layer::Internal) / (1.0 - tolerance));
             plan.currents.push(NetCurrent {
                 net: net.name.clone(),
                 current: total,
                 least_width: needs,
-                inner_least_width,
-                vias,
+                // On an inner signal layer: the inner constant and the inner copper (issue #833).
+                inner_least_width: sizing.inner_least_width(total),
+                vias: sizing.vias(total),
             });
         }
         // Rounded up to the 0.01 mm that a width is written in, so that asking for what the
@@ -875,7 +826,7 @@ pub fn plan_tracks(
                 mm(width),
                 mm(process.stackup.copper_weight),
                 mm(copper),
-                layer.word(),
+                layer_word(layer),
                 mm(rise),
                 if rise_is_default { " (the default)" } else { "" },
                 amps(carries),
@@ -887,7 +838,74 @@ pub fn plan_tracks(
         });
     }
     plan.widths.sort_by(|a, b| a.0.cmp(&b.0));
+    branches(model, process, features, &sizing, &carriers, &mut plan);
     plan
+}
+
+/// The pins of parts that state the current of their branch, sized (issue #1113), and the ones
+/// whose statement is less than what the model says flows through the pin: a rail whose `pos`
+/// or `neg` it is, or a part that passes a current with an end of its `bridge` on it.
+///
+/// A pin's `.current` says how much the copper between its pads and the rest of the net
+/// carries at most, so that copper is drawn for it: a converter's bias pin, a feedback
+/// divider's top, a sense resistor's tap carry almost nothing, though the net they are on is a
+/// rail of amps. It is the size of the range that counts, so `1mA` and `-1mA..0A` both say 1
+/// mA. It is no term of the net's balance and adds nothing to the net's current: what is
+/// drawn through the pin is drawn by the rail or the part that has it, which the balance
+/// already counts. A pin that states none is drawn as its net is.
+fn branches(
+    model: &Model,
+    process: &Process,
+    features: &Features,
+    sizing: &TrackSizing,
+    carriers: &[Carrier],
+    plan: &mut TrackPlan,
+) {
+    for (id, inst) in model.instances() {
+        if inst.kind != InstKind::Pin {
+            continue;
+        }
+        let Some((lo, hi)) = signed_range(model, model.member(id, "current")) else {
+            continue;
+        };
+        let Some(net) = model.nets().iter().find(|n| n.terminals.contains(&id)) else {
+            continue;
+        };
+        let current = lo.abs().max(hi.abs());
+        // What the model says flows through the pin: the copper cannot carry less.
+        for c in carriers.iter().filter(|c| c.pins().any(|p| p == id)) {
+            let Some((clo, chi)) = c.range else { continue };
+            let flows = clo.abs().max(chi.abs());
+            if flows > current * (1.0 + 1e-9) + 1e-15 {
+                plan.errors.push(format!(
+                    "`{}.current` says its branch carries at most {}, but {} carries up to {} through it: state at least {} on the pin, or leave its current out so that its copper is drawn for its net",
+                    model.path_of(id),
+                    amps(current),
+                    c.who,
+                    amps(flows),
+                    amps(flows),
+                ));
+            }
+        }
+        let least_width = sizing.least_width(current);
+        let stated = features
+            .net_widths
+            .iter()
+            .find(|(n, _)| *n == net.name)
+            .map_or(0.0, |(_, w)| *w);
+        let width = ((least_width * 100.0 - 1e-9).ceil() / 100.0)
+            .max(process.min_track)
+            .max(stated);
+        plan.branches.push(Branch {
+            pin: id,
+            net: net.name.clone(),
+            current,
+            width,
+            least_width,
+            inner_least_width: sizing.inner_least_width(current),
+            vias: sizing.vias(current),
+        });
+    }
 }
 
 /// The finding for a net whose needed width `asks` (mm) is more than [`WIDE_NET_FRACTION`] of

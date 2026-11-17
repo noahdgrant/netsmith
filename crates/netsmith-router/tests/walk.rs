@@ -373,6 +373,8 @@ fn errors(board: &Board) -> Vec<String> {
         marks: None,
         stackup: None,
         vias: None,
+        branches: Vec::new(),
+        sizing: None,
     };
     drc_check(&kicad_pcb(board), Some(&kicad_pro(board)), &extras)
         .unwrap()
