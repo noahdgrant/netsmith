@@ -74,8 +74,12 @@
 //! fine-pitch part, the second try is the first order again with **escape lanes** reserved
 //! softly round the part's pads, and every later try has them too (see "Escape lanes"). From the
 //! second try on, every order also keeps the lines' classes in turn (see "Classes of lines").
-//! The first complete result is kept, or failing that the one that leaves fewest lines. There is no
-//! push-and-shove, so a board can still end partly routed, and what is left is returned.
+//! The first complete result is kept, or failing that the one that leaves fewest lines. A try
+//! that still leaves lines after the chain gets **rounds of rip-up and re-route of whole nets**
+//! (`route/rip_rounds.rs`, issue #1088, [`RouteOptions::rip_rounds`]): each line left is routed
+//! through the copper of the nets its cheapest crossing path meets, those nets are removed whole
+//! and routed again after it, bounded by counts of rounds, rips of one net and searches. There is
+//! no push-and-shove, so a board can still end partly routed, and what is left is returned.
 //!
 //! The work is bounded. A line is searched for in a window round its pads first, and in a
 //! larger one only if that finds nothing. Before a search, a cheap flood from both ends finds
@@ -576,8 +580,11 @@
 //!   the time limit stops, and a line never tried before it, is out of time. A line ripped up
 //!   and not routed again in a rip-up that is put back also counts: it was tried and failed
 //!   there. The nets in its way are those of [`Router::contested`] on the final state at
-//!   [`ROOM_TIGHT`], one soft search for each line left and nothing more; after the time limit
-//!   that search stops at once and names none.
+//!   [`ROOM_TIGHT`], one soft search for each line left and nothing more. When even that search
+//!   finds no path, the pads, holes, fixed vias and edge that wall an end of the line in are named
+//!   (`route/walls.rs`, a flood of the cells a track may use; issue #1088). After the time limit
+//!   (not after a cancel) the report still looks, for the first [`WHY_LATE`] lines: a report that
+//!   named nothing because the time ran out gave a person nothing to move.
 //! - **Crowding** ([`Routing::crowding`], [`Crowding`]): squares of 1 mm (ten cells), counting
 //!   each soft path (every search for the nets in a line's way: rip-up, negotiation, whose
 //!   `learn` is of the same path and is not counted again, and the chain) once in each square it
@@ -667,18 +674,22 @@ mod lines;
 mod order;
 mod pours;
 mod realise;
+mod rip_rounds;
 mod rip_up;
 mod settle;
 mod setup;
 mod share;
 mod stages;
 mod vias;
+mod walls;
 
 mod grid;
 mod obstacles;
 mod pads;
 mod search;
 
+#[cfg(test)]
+mod rip_rounds_tests;
 #[cfg(test)]
 mod search_tests;
 #[cfg(test)]
@@ -749,6 +760,18 @@ const CHAIN_DEPTH: usize = 4;
 const CHAIN_SEARCHES: usize = 600;
 const CHAIN_TOTAL: usize = 3000;
 const CHAIN_NEAR: [f64; 3] = [0.0, 0.1, 0.25];
+
+/// The rounds of rip-up and re-route of whole nets that a try that leaves lines gets after the
+/// chain ([`RouteOptions::rip_rounds`], [`Router::rip_rounds`], issue #1088).
+pub const RIP_ROUNDS: usize = 6;
+/// How many times the rounds of one try may rip up one net: after that its copper is hard to
+/// the soft searches of the rounds, as a protected line's is.
+pub const RIP_MOST: usize = 3;
+/// The searches the rounds of one try may make, soft and for copper together.
+const RIP_SEARCHES: usize = 3000;
+/// How many of the lines left after the time limit the report still looks at for what is in
+/// their way ([`Router::why`]): one soft search each, past the limit but not past a cancel.
+const WHY_LATE: usize = 32;
 
 /// The most times the whole board is routed, each with the lines in another order: the lines
 /// of a fine-pitch grid first, shortest first, longest first, by net and in reverse net order.
@@ -1216,6 +1239,10 @@ struct Router<'a> {
     /// How far beyond a window copper is in its print: farther than any mask, check or via
     /// keeps from it.
     print_reach: f64,
+    /// The rounds of rip-up and re-route a try gets ([`RouteOptions::rip_rounds`]), and what
+    /// they did on this try.
+    most_rip_rounds: usize,
+    ripped: RefCell<RipRounds>,
     /// The other net of each net's diff pair ([`diff_pair_partners`]).
     partners: Vec<Option<usize>>,
     /// Whether this try's searches run a pair's net beside its partner ([`Masks::follow`]).
@@ -1273,6 +1300,9 @@ pub struct RouteOptions {
     /// Whether a pad of a plane net that an outer pour of its net joins to the plane gives up its
     /// own via, once the pours are stitched (`crate::pour_pads`); on by default.
     pub pour_pads: bool,
+    /// The rounds of rip-up and re-route of whole nets that a try gets when lines are still left
+    /// after the chain ([`RIP_ROUNDS`] by default; 0 runs none). Only used with `rip_up`.
+    pub rip_rounds: usize,
 }
 
 /// Which tries of the router route the lines by class, the most important first, and keep the
@@ -1322,6 +1352,7 @@ impl Default for RouteOptions {
             meanders: true,
             share_vias: true,
             pour_pads: true,
+            rip_rounds: RIP_ROUNDS,
         }
     }
 }
@@ -1359,6 +1390,8 @@ pub enum Stage {
     Negotiation,
     /// The chain of rip-ups of single lines ([`Router::rip_up_chain`]).
     Chain,
+    /// The rounds of rip-up and re-route of whole nets ([`Router::rip_rounds`]).
+    RipRounds,
     /// The time limit passed, or the router was told to stop, before or while it was tried.
     OutOfTime,
 }
@@ -1371,6 +1404,7 @@ impl std::fmt::Display for Stage {
             Stage::RipUp => "failed while ripping up the nets in its way",
             Stage::Negotiation => "failed in the negotiation",
             Stage::Chain => "failed in the chain of rip-ups",
+            Stage::RipRounds => "failed in the rounds that rip up whole nets",
             Stage::OutOfTime => "not finished, the time ran out",
         })
     }
@@ -1378,13 +1412,43 @@ impl std::fmt::Display for Stage {
 
 /// Why a line is left: the ratsnest line as the router had it, the stage it last failed in,
 /// and the nets whose copper stands in its way (those the cheapest path that may cross other
-/// nets' copper comes near, [`Router::contested`]), by name. No nets when even that path does
-/// not exist (the pads and the edge alone wall it in) or the time was up.
+/// nets' copper comes near, [`Router::contested`]), by name. When even that path does not exist,
+/// what walls an end of the line in (`route/walls.rs`, issue #1088): the other nets' pads, the
+/// routes file's vias, the board edge, and in `blockers` the nets of the routes file's tracks
+/// there. Nothing when the time was up before the line was looked at ([`WHY_LATE`]).
 #[derive(Debug, Clone, PartialEq, serde::Serialize)]
 pub struct LineReport {
     pub line: Ratline,
     pub stage: Stage,
     pub blockers: Vec<String>,
+    /// The pads (and holes) of other parts or nets that wall an end of the line in.
+    pub pads: Vec<netsmith_pcb::PadRef>,
+    /// The vias that wall an end of the line in: the routes file's, or a protected line's.
+    pub vias: Vec<WallVia>,
+    /// Whether the board's edge (or a cutout's) is part of the wall.
+    pub edge: bool,
+}
+
+/// A via in the wall round an end of a line left ([`LineReport::vias`]): its net and centre.
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+pub struct WallVia {
+    pub net: String,
+    pub at: Pt,
+}
+
+/// What the rounds of rip-up and re-route of whole nets ([`Router::rip_rounds`]) did on the
+/// try that gave the result: counts of work, the same on every machine.
+#[derive(Debug, Clone, Default, PartialEq, serde::Serialize)]
+pub struct RipRounds {
+    /// The rounds run.
+    pub rounds: usize,
+    /// The searches made, soft and for copper; at most the rounds' budget.
+    pub searches: usize,
+    /// Each net ripped up, by name, and how many times (at most [`RIP_MOST`]).
+    pub ripped: std::collections::BTreeMap<String, usize>,
+    /// The lines left when the rounds began, and when they ended (the best state they saw).
+    pub left_before: usize,
+    pub left_after: usize,
 }
 
 /// The crowding map: how often, over a whole run of the router, the paths that may cross other
@@ -1480,6 +1544,9 @@ pub struct Routing {
     /// Each diff pair's skew before and after its meanders (`crate::meander`); empty
     /// when the board was left with lines or [`RouteOptions::meanders`] is off.
     pub pairs: Vec<crate::meander::Matched>,
+    /// What the rounds of rip-up and re-route did on the try that gave the result; the default
+    /// when they did not run.
+    pub rip_rounds: RipRounds,
 }
 
 /// Route as much of the ratsnest as the router can, adding tracks and vias to the board.
@@ -1490,7 +1557,7 @@ pub fn route(board: &mut Board) -> Ratsnest {
 
 /// [`route`], with a choice of how hard to try.
 pub fn route_with(board: &mut Board, options: RouteOptions) -> Routing {
-    let (best, stopped, tries, why, crowding, stages, drops) = {
+    let (best, stopped, tries, why, crowding, stages, drops, rip_rounds) = {
         let mut router = Router::new(board, &options);
         let mut orders = router.tries(&options);
         if options.plan != CoarsePlan::Off {
@@ -1507,8 +1574,9 @@ pub fn route_with(board: &mut Board, options: RouteOptions) -> Routing {
                 board.outline.height()
             )
         });
-        // The best state, with the stage each line last failed in on its try and its snapshots.
-        let mut best: Option<(State, Vec<Stage>, Vec<Snapshot>)> = None;
+        // The best state, with the stage each line last failed in on its try, its snapshots and
+        // what its rounds of rip-up did.
+        let mut best: Option<(State, Vec<Stage>, Vec<Snapshot>, RipRounds)> = None;
         let mut tries = 0;
         for order in &orders {
             tries += 1;
@@ -1527,22 +1595,32 @@ pub fn route_with(board: &mut Board, options: RouteOptions) -> Routing {
                     .as_ref()
                     .map(|s| s.take())
                     .unwrap_or_default();
-                best = Some((state, failed_in, snapshots));
+                best = Some((state, failed_in, snapshots, router.ripped.take()));
             }
             if done || router.out_of_time() {
                 break;
             }
         }
         let stopped = router.out_of_time();
-        let (best, failed_in, stages) = best.unwrap_or_default();
-        let why = router.why(&best, &failed_in);
+        let (best, failed_in, stages, rip_rounds) = best.unwrap_or_default();
+        // What stands in the way of each line left is looked for past the time limit too, for
+        // at most [`WHY_LATE`] lines, but not past a cancel (issue #1088): a report that names
+        // nothing because the time ran out tells a person nothing to move.
+        let late = stopped && !router.cancelled();
+        if late {
+            router.deadline = None;
+            router.stopped.set(false);
+        }
+        let why = router.why(&best, &failed_in, late);
         let drops = if options.pour_pads {
             router.pour_pad_vias(&best)
         } else {
             Vec::new()
         };
         let crowding = router.crowding.into_inner();
-        (best, stopped, tries, why, crowding, stages, drops)
+        (
+            best, stopped, tries, why, crowding, stages, drops, rip_rounds,
+        )
     };
     let complete = best.failed.is_empty();
     let mut routed = best.routed;
@@ -1605,5 +1683,6 @@ pub fn route_with(board: &mut Board, options: RouteOptions) -> Routing {
         crowding,
         stages,
         pairs,
+        rip_rounds,
     }
 }

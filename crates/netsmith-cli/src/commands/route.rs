@@ -21,6 +21,13 @@ pub struct Args {
     /// Seconds the router may take; 0 is no limit.
     #[arg(long, value_name = "SECS")]
     pub route_timeout: Option<u64>,
+    /// Rounds of rip-up and re-route of whole nets for connections the router leaves; 0 is none.
+    ///
+    /// As `fab --rip-rounds`: when a try ends with connections open, each round routes every one
+    /// of them through the copper of the nets in its way, removes those nets and routes them
+    /// again after it. The default is the router's own, 6.
+    #[arg(long, value_name = "N")]
+    pub rip_rounds: Option<usize>,
     /// The track margin, from 1 (the process's least track) to 4, over the file's.
     ///
     /// It replaces the margin the file was saved with: how many times the least track a signal is
@@ -90,6 +97,7 @@ pub fn run(args: Args) -> ExitCode {
         plan: args.plan,
         classes: args.classes,
         arcs: args.arcs,
+        rip_rounds: args.rip_rounds,
     };
     run_route(&args.file, args.out.as_deref(), request)
 }
@@ -231,6 +239,7 @@ mod tests {
                 file: "b.placed.json".into(),
                 out: Some("o".into()),
                 route_timeout: Some(0),
+                rip_rounds: None,
                 margin: Some(2.5),
                 turn: None,
                 tries: None,
@@ -248,6 +257,16 @@ mod tests {
                 "{bad}: {e}"
             );
         }
+    }
+
+    #[test]
+    fn route_takes_the_rounds_of_rip_up() {
+        let Ok(Command::Route(args)) = parse(&["route", "b.placed.json", "--rip-rounds", "0"])
+        else {
+            panic!("--rip-rounds 0 parses");
+        };
+        assert_eq!(args.rip_rounds, Some(0));
+        assert!(parse(&["route", "b.placed.json", "--rip-rounds", "some"]).is_err());
     }
 
     #[test]
@@ -282,6 +301,7 @@ mod tests {
                 file: "b.placed.json".into(),
                 out: None,
                 route_timeout: Some(0),
+                rip_rounds: None,
                 margin: None,
                 turn: Some(27),
                 tries: Some(1),

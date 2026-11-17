@@ -183,6 +183,12 @@ impl<'a> Router<'a> {
             print_reach,
             partners: diff_pair_partners(board),
             pairing: Cell::new(false),
+            most_rip_rounds: if options.rip_up {
+                options.rip_rounds
+            } else {
+                0
+            },
+            ripped: RefCell::new(RipRounds::default()),
         }
     }
 
@@ -476,6 +482,11 @@ impl<'a> Router<'a> {
     }
 
     /// Whether the time limit has passed, or the caller asked for the router to stop.
+    /// Whether the router was told to stop (`RouteOptions::cancel`), which the time limit is not.
+    pub(super) fn cancelled(&self) -> bool {
+        self.cancel.is_some_and(|c| c.load(Ordering::Relaxed))
+    }
+
     pub(super) fn out_of_time(&self) -> bool {
         // A job that was cancelled (`fab`) ends here; the flag below stops the router and
         // keeps what it routed, which is what the PCB view's "stop" asks for.

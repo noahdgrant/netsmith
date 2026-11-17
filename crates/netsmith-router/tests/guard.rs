@@ -20,3 +20,27 @@ pub fn not_hung(routing: &Routing) {
         "the router was still working at its hang guard of {GUARD:?}: it hung"
     );
 }
+
+/// The rounds of rip-up and re-route of whole nets a `measured` test routes with:
+/// `NETSMITH_RIP_ROUNDS`, or the router's own (issue #1088), so that one build measures a board
+/// with the rounds and without them (`NETSMITH_RIP_ROUNDS=0`).
+pub fn rip_rounds() -> usize {
+    std::env::var("NETSMITH_RIP_ROUNDS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(netsmith_router::RIP_ROUNDS)
+}
+
+/// What the rounds of rip-up did, for a `measured` test's line.
+pub fn rounds_line(routing: &Routing) -> String {
+    let r = &routing.rip_rounds;
+    format!(
+        "rip rounds {}: {} to {} lines, {} searches, {} nets ripped ({} rips)",
+        r.rounds,
+        r.left_before,
+        r.left_after,
+        r.searches,
+        r.ripped.len(),
+        r.ripped.values().sum::<usize>()
+    )
+}

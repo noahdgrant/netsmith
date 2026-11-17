@@ -128,6 +128,11 @@ pub struct Manifest {
     /// at that width is routed at the least (issue #431).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub track_margin: Option<f64>,
+    /// The rounds of rip-up and re-route of whole nets the router gives a try that leaves
+    /// connections (`rip_rounds = 6`, the default; `0` runs none, issue #1088). `--rip-rounds`
+    /// wins over it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rip_rounds: Option<usize>,
     /// How many seeds the placer tries for a board before it gives up (`place_seeds = 8`, the
     /// default; 1 tries only the layout file's, and [`MAX_PLACE_SEEDS`] is the most): the layout
     /// file's seed, or 0, then the ones after it. The seed that places the board is written to the layout file (issue #458).
@@ -401,6 +406,7 @@ impl Manifest {
             glb: None,
             step: None,
             track_margin: None,
+            rip_rounds: None,
             place_seeds: None,
             place_budget: None,
             environment: None,

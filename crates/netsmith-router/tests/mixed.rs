@@ -691,6 +691,7 @@ fn measured() {
             &mut board,
             RouteOptions {
                 time_limit: Some(guard::GUARD),
+                rip_rounds: guard::rip_rounds(),
                 ..RouteOptions::default()
             },
         );
@@ -709,6 +710,7 @@ fn measured() {
             routing.tries,
             board.vias.len(),
         );
+        eprintln!("    {}", guard::rounds_line(&routing));
         for l in &routing.left.lines {
             eprintln!("    {l}");
             for (pad, at) in [(&l.from, l.from_at), (&l.to, l.to_at)] {

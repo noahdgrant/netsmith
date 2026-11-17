@@ -85,6 +85,9 @@ pub struct BoardData {
     pub constraints_warn: bool,
     /// How many seeds the placer tries (`place_seeds` in `netsmith.toml`, issue #458).
     pub place_seeds: u32,
+    /// The rounds of rip-up the router gives a try that leaves connections (`rip_rounds` in
+    /// `netsmith.toml`, issue #1088).
+    pub rip_rounds: usize,
     /// The schematic layout file of the source file (ADR 0061) and what is not used of it for
     /// this board.
     pub hints: super::hints::Hints,
@@ -726,6 +729,9 @@ impl Workspace {
                                 physical: netsmith_fabricate::physical::physical_path(&file.path),
                                 constraints_warn: catalogs.constraints_warn(),
                                 place_seeds: netsmith_fabricate::layout::place_seeds(
+                                    target.project.as_ref(),
+                                ),
+                                rip_rounds: netsmith_fabricate::fab::rip_rounds(
                                     target.project.as_ref(),
                                 ),
                                 hints: hints::Hints {
