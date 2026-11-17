@@ -261,18 +261,23 @@ pub fn pieces(scene: &Scene) -> Pieces {
     );
 
     let copper = scene.copper.as_ref().ok();
-    let drills: Vec<Polygon> = solid
-        .holes
-        .iter()
-        .map(|h| {
-            Polygon::new(slot(
-                xy(h.from),
-                xy(h.to),
-                h.diameter,
-                hole_segments(h.diameter),
-            ))
-        })
-        .collect();
+    // The holes that pass a copper layer: every hole through the board, and a blind or a
+    // buried via's on its own layers (issue #1071).
+    let drills = |l: &CopperLayer| -> Vec<Polygon> {
+        solid
+            .holes
+            .iter()
+            .filter(|h| h.passes(l.z_top, l.z_bottom))
+            .map(|h| {
+                Polygon::new(slot(
+                    xy(h.from),
+                    xy(h.to),
+                    h.diameter,
+                    hole_segments(h.diameter),
+                ))
+            })
+            .collect()
+    };
     let openings = |side: Side| -> Vec<Polygon> {
         copper
             .into_iter()
@@ -283,8 +288,9 @@ pub fn pieces(scene: &Scene) -> Pieces {
     // Per copper layer, each net's copper joined, with the holes drilled.
     let mut nets_of: Vec<(String, Vec<NetCopper>)> = Vec::new();
     if let Some(c) = copper {
-        for l in &c.layers {
-            let nets = layer_nets(l, &c.vias)
+        for (k, l) in c.layers.iter().enumerate() {
+            let drills = drills(l);
+            let nets = layer_nets(l, c.vias.iter().filter(|v| v.on(k)))
                 .into_iter()
                 .map(|(net, polys)| (net, difference(&polys, &drills)))
                 .filter(|(_, polys)| !polys.is_empty())
@@ -337,8 +343,9 @@ pub fn pieces(scene: &Scene) -> Pieces {
             HoleOwner::Via { net } => net.clone(),
         };
         let ring = slot(xy(h.from), xy(h.to), h.diameter, hole_segments(h.diameter));
+        let (z0, z1) = h.depth.map_or((bottom, 0.0), |(top, under)| (under, top));
         out.walls
-            .push(Mesh::wall(id, Material::Copper, &ring, bottom, 0.0).ok());
+            .push(Mesh::wall(id, Material::Copper, &ring, z0, z1).ok());
     }
     if let Some(c) = copper {
         for (k, (l, (name, nets))) in c.layers.iter().zip(nets_of).enumerate() {
@@ -423,7 +430,8 @@ pub fn pieces(scene: &Scene) -> Pieces {
     out
 }
 
-/// The board's outline with its cutouts and every drilled hole (round, or a slot) as holes.
+/// The board's outline with its cutouts and every hole drilled through it (round, or a slot)
+/// as holes: a blind or a buried via's hole is filled (issue #1071).
 pub(super) fn board_outline(solid: &BoardSolid) -> Polygon {
     let mut outline = Polygon::new(if solid.outline.is_empty() {
         rounded_rect(
@@ -440,7 +448,7 @@ pub(super) fn board_outline(solid: &BoardSolid) -> Polygon {
             .holes
             .push(rounded_rect(xy(c.at.min), xy(c.at.max), c.radius, 6));
     }
-    for h in &solid.holes {
+    for h in solid.holes.iter().filter(|h| h.is_through()) {
         outline.holes.push(slot(
             xy(h.from),
             xy(h.to),
@@ -463,10 +471,10 @@ fn polygon(a: &PlanArea) -> Polygon {
 }
 
 /// The copper of a layer by net, the copper with no net first: pads, tracks, pours (or planes),
-/// the rings of the vias, and the footprints' copper drawings (no net).
-fn layer_nets(
+/// the rings of `vias` (the vias on the layer), and the footprints' copper drawings (no net).
+fn layer_nets<'a>(
     l: &CopperLayer,
-    vias: &[crate::scene3d::Via],
+    vias: impl Iterator<Item = &'a crate::scene3d::Via>,
 ) -> BTreeMap<Option<String>, Vec<Polygon>> {
     let mut nets: BTreeMap<Option<String>, Vec<Polygon>> = BTreeMap::new();
     for p in &l.pads {

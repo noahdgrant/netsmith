@@ -400,3 +400,54 @@ fn the_routed_board_draws_the_same_bytes_each_time() {
         assert_eq!(png, render_view(&meshes, view, &options).to_png());
     }
 }
+
+#[test]
+fn a_blind_via_is_a_barrel_and_rings_on_its_own_layers_and_no_hole_through_the_board() {
+    // Issue #1071: on JLCPCB's six-layer HDI process, a blind via of SIG from the top to the
+    // first inner layer, and a through via of SIG beside it to compare.
+    let mut board = crate::scene3d::board_with(common::hdi_six_layer_process(&[]));
+    let at = board.outline.min + netsmith_pcb::Pt::new(14.0, 12.0);
+    let blind = netsmith_pcb::ViaSpan {
+        from: netsmith_pcb::CopperLayer::Front,
+        to: netsmith_pcb::CopperLayer::Inner(1),
+    };
+    let via = |span, at| netsmith_pcb::Via {
+        net: "SIG".into(),
+        at,
+        diameter: 0.25,
+        drill: 0.1,
+        span,
+    };
+    let bare = board.clone();
+    board.vias.push(via(Some(blind), at));
+    let s = scene(&board);
+    let c = copper(&s);
+    let (top, inner1) = (&c.layers[0], &c.layers[1]);
+    assert_eq!((top.name.as_str(), inner1.name.as_str()), ("F.Cu", "In1.Cu"));
+    // The barrel runs from the top of the front copper to the bottom of the first inner layer.
+    let v = &c.vias[0];
+    assert_eq!(v.span, Some((0, 1)));
+    assert_eq!((v.z_top, v.z_bottom), (top.z_top, inner1.z_bottom));
+    let hole = s.board.holes.last().unwrap();
+    assert_eq!(hole.depth, Some((top.z_top, inner1.z_bottom)));
+    let p = mesh_pieces(&s);
+    let wall = p.walls.last().unwrap().as_ref().expect("a plated barrel");
+    let b = netsmith_3d::mesh_bounds(std::slice::from_ref(wall)).unwrap();
+    assert!(
+        (b.min[2] - inner1.z_bottom).abs() < 1e-9 && (b.max[2] - top.z_top).abs() < 1e-9,
+        "{:?} {:?}",
+        b.min,
+        b.max
+    );
+    // A ring of SIG on its two layers, and none on the layers below.
+    let has = |layer: &str| !net_meshes(&p, layer, Some("SIG")).is_empty();
+    assert!(has("F.Cu") && has("In1.Cu"));
+    assert!(!has("In4.Cu") && !has("B.Cu"));
+    // The board's solid is not drilled for it (the process fills a blind via), as a through via's
+    // hole is: the STEP file of the board is the one with no via.
+    let step = |b: &netsmith_pcb::Board| netsmith_3d::scene_step(&scene(b), "Scene");
+    assert_eq!(step(&board), step(&bare));
+    let mut through = bare.clone();
+    through.vias.push(via(None, at));
+    assert_ne!(step(&through), step(&bare));
+}

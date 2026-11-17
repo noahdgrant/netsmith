@@ -277,7 +277,10 @@ pub enum HoleOwner {
 }
 
 /// A drilled hole, through the whole board: a round hole has both ends at its centre, a slot
-/// has the two ends of its axis.
+/// has the two ends of its axis. A blind or a buried via's hole goes from the top of its first
+/// copper layer to the bottom of its last only (`depth`, issue #1071), and the process fills it
+/// (a blind via with plating, a buried one with resin), so the board's solid is not drilled
+/// there: only its barrel and its copper are drawn.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Hole {
     pub owner: HoleOwner,
@@ -285,6 +288,22 @@ pub struct Hole {
     pub to: Plan,
     pub diameter: f64,
     pub plated: bool,
+    /// The Z of the top and of the bottom of a blind or a buried via's hole; `None` through the
+    /// board.
+    pub depth: Option<(f64, f64)>,
+}
+
+impl Hole {
+    /// Whether it goes through the whole board.
+    pub fn is_through(&self) -> bool {
+        self.depth.is_none()
+    }
+
+    /// Whether it passes the Z range from `z_bottom` to `z_top` (a copper layer's).
+    pub fn passes(&self, z_top: f64, z_bottom: f64) -> bool {
+        self.depth
+            .is_none_or(|(top, bottom)| bottom < z_top - 1e-9 && z_bottom + 1e-9 < top)
+    }
 }
 
 /// The pins of a through-hole part where they come out of the far face.
@@ -705,7 +724,8 @@ pub struct CopperPour {
     pub area: PlanArea,
 }
 
-/// A via: a plated barrel through the board, with a ring of copper on every copper layer.
+/// A via: a plated barrel through the board, with a ring of copper on every copper layer; a
+/// blind or a buried via's barrel and rings are on the layers of its span only (issue #1071).
 #[derive(Debug, Clone, PartialEq)]
 pub struct Via {
     pub net: Option<String>,
@@ -713,9 +733,20 @@ pub struct Via {
     /// The ring's outer diameter.
     pub diameter: f64,
     pub drill: f64,
-    /// The barrel runs from the top of the front copper to the bottom of the back copper.
+    /// The barrel runs from the top of the front copper to the bottom of the back copper, or
+    /// from the top of a blind or a buried via's first copper layer to the bottom of its last.
     pub z_top: f64,
     pub z_bottom: f64,
+    /// A blind or a buried via's first and last copper layer, as places in
+    /// [`SceneCopper::layers`]; `None` for a through via.
+    pub span: Option<(usize, usize)>,
+}
+
+impl Via {
+    /// Whether it has a ring on the copper layer at place `layer` of [`SceneCopper::layers`].
+    pub fn on(&self, layer: usize) -> bool {
+        self.span.is_none_or(|(a, b)| a <= layer && layer <= b)
+    }
 }
 
 /// Where the solder mask of a face is open.
@@ -1003,7 +1034,7 @@ fn clean(v: f64) -> f64 {
 fn solid(board: &Board, frame: &Frame, thickness: f64) -> BoardSolid {
     let stack: Vec<StackLayer> = netsmith_pcb::stackup_layers(board);
     let mut z = 0.0;
-    let layers = stack
+    let layers: Vec<SceneLayer> = stack
         .into_iter()
         .map(|l| {
             let top = z;
@@ -1035,6 +1066,7 @@ fn solid(board: &Board, frame: &Frame, thickness: f64) -> BoardSolid {
                 continue;
             };
             holes.push(Hole {
+                depth: None,
                 owner: HoleOwner::Pad {
                     path: p.path.clone(),
                     refdes: p.refdes.clone(),
@@ -1047,12 +1079,25 @@ fn solid(board: &Board, frame: &Frame, thickness: f64) -> BoardSolid {
             });
         }
     }
-    holes.extend(board.vias.iter().map(|v| Hole {
-        owner: HoleOwner::Via { net: v.net.clone() },
-        from: frame.point(v.at),
-        to: frame.point(v.at),
-        diameter: v.drill,
-        plated: true,
+    // A blind or a buried via's hole from the top of its first copper layer to the bottom of
+    // its last (issue #1071).
+    let copper_z = |l: netsmith_pcb::CopperLayer| {
+        layers
+            .iter()
+            .find(|s: &&SceneLayer| s.name == l.name())
+            .map(|s| (s.z_top, s.z_bottom))
+    };
+    holes.extend(board.vias.iter().map(|v| {
+        Hole {
+            owner: HoleOwner::Via { net: v.net.clone() },
+            from: frame.point(v.at),
+            to: frame.point(v.at),
+            diameter: v.drill,
+            plated: true,
+            depth: v
+                .span
+                .and_then(|s| Some((copper_z(s.from)?.0, copper_z(s.to)?.1))),
+        }
     }));
     BoardSolid {
         name: board.name.clone(),
@@ -1164,13 +1209,21 @@ fn scene_copper(
     let vias = c
         .vias
         .iter()
-        .map(|v| Via {
-            net: v.net.clone(),
-            at: frame.point(v.at),
-            diameter: v.diameter,
-            drill: v.drill,
-            z_top: top,
-            z_bottom: bottom,
+        .map(|v| {
+            let (z_top, z_bottom) = match v.span.and_then(|(a, b)| Some((out.get(a)?, out.get(b)?)))
+            {
+                Some((a, b)) => (a.z_top, b.z_bottom),
+                None => (top, bottom),
+            };
+            Via {
+                net: v.net.clone(),
+                at: frame.point(v.at),
+                diameter: v.diameter,
+                drill: v.drill,
+                z_top,
+                z_bottom,
+                span: v.span,
+            }
         })
         .collect();
     let mut mask = Vec::new();

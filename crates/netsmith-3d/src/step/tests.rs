@@ -163,6 +163,7 @@ pub(crate) fn scene() -> Scene {
                     to: plan(35.0, 10.0),
                     diameter: 0.4,
                     plated: true,
+                    depth: None,
                 },
                 Hole {
                     owner: HoleOwner::Pad {
@@ -174,6 +175,7 @@ pub(crate) fn scene() -> Scene {
                     to: plan(7.0, 15.0),
                     diameter: 1.0,
                     plated: false,
+                    depth: None,
                 },
             ],
         },

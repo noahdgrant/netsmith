@@ -103,6 +103,7 @@ fn scene() -> Scene {
                 to: plan(30.0, 10.0),
                 diameter: 0.4,
                 plated: true,
+                depth: None,
             }],
         },
         // The glTF has no copper yet.

@@ -85,7 +85,8 @@ fn shoelace(ring: &[Pt]) -> f64 {
 pub struct Copper {
     /// Each copper layer, from the front to the back.
     pub layers: Vec<LayerCopper>,
-    /// The vias. Each is a through via, with a ring of copper on every copper layer.
+    /// The vias: a through via has a ring of copper on every copper layer, a blind or a buried
+    /// via on the layers of its span (issue #1071).
     pub vias: Vec<ViaCopper>,
     /// Every drilled hole: the pads' (plated or not) and then the vias'.
     pub holes: Vec<Hole>,
@@ -180,9 +181,11 @@ pub struct ViaCopper {
     /// The ring's outer diameter, the same on every layer.
     pub diameter: f64,
     pub drill: f64,
-    /// Whether it runs from the front copper to the back. Always true: netsmith makes only
-    /// through vias, and the plotting reader refuses others.
+    /// Whether it runs from the front copper to the back: a through via.
     pub through: bool,
+    /// A blind or a buried via's first and last copper layer, as places in [`Copper::layers`]
+    /// (the upper first); `None` for a through via (issue #1071).
+    pub span: Option<(usize, usize)>,
 }
 
 /// What a hole is drilled for.
@@ -369,7 +372,8 @@ pub fn copper(board: &Board) -> Result<Copper, CopperError> {
             at: pt(v.at),
             diameter: v.diameter,
             drill: v.drill,
-            through,
+            through: through && v.span.is_none(),
+            span: v.span,
         })
         .collect();
 

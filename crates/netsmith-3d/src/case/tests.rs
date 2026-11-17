@@ -96,6 +96,7 @@ fn hole(path: &str, x: f64, y: f64) -> Hole {
         to: Plan { x, y },
         diameter: 3.2,
         plated: false,
+        depth: None,
     }
 }
 
