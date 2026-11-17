@@ -258,14 +258,12 @@ impl<'a> Engine<'a> {
     pub(super) fn propose(&mut self, rng: &mut Rng, reach: i64) -> Vec<(usize, Pose)> {
         // Only a run that weighs escape room pushes, so a run that does not draws the same
         // random numbers as before the push was built.
-        let mut change = if self.w_escape > 0.0
-            && !self.escapers.is_empty()
-            && rng.below(PUSH_ONE_IN) == 0
-        {
-            self.push(rng, reach)
-        } else {
-            self.propose_free(rng, reach)
-        };
+        let mut change =
+            if self.w_escape > 0.0 && !self.escapers.is_empty() && rng.below(PUSH_ONE_IN) == 0 {
+                self.push(rng, reach)
+            } else {
+                self.propose_free(rng, reach)
+            };
         for (i, pose) in &mut change {
             *pose = self.clamp(*i, *pose);
         }
