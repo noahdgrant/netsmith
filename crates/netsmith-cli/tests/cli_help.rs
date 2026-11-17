@@ -51,6 +51,42 @@ fn help_lists_every_command_on_stdout_and_exits_zero() {
     }
 }
 
+/// `--help` ends with the typical workflow, names the skills and the guide of a project, and each
+/// command it names is one of the model (issue #1099).
+#[test]
+fn help_ends_with_the_typical_workflow_and_says_where_the_skills_are() {
+    let out = netsmith(&["--help"]);
+    let text = String::from_utf8_lossy(&out.stdout);
+    let workflow = text
+        .split("A typical workflow:")
+        .nth(1)
+        .unwrap_or_else(|| panic!("no workflow in {text}"));
+    for must in [
+        ".agents/skills/",
+        "netsmith-use-netsmith",
+        "docs/netsmith/LANGUAGE.md",
+        "fab-notes.txt",
+    ] {
+        assert!(workflow.contains(must), "{must}: {workflow}");
+    }
+    let model = model();
+    let mut named = 0;
+    for line in workflow
+        .lines()
+        .filter(|l| l.trim_start().starts_with("netsmith "))
+    {
+        // `netsmith <noun> <verb>`: both words are commands of the model.
+        let mut command = &model;
+        for word in line.split_whitespace().skip(1).take(2) {
+            command = command
+                .find_subcommand(word)
+                .unwrap_or_else(|| panic!("`{line}`: `{word}` is not a command"));
+        }
+        named += 1;
+    }
+    assert!(named >= 6, "{workflow}");
+}
+
 #[test]
 fn a_commands_help_lists_its_usage_and_every_flag_it_takes() {
     let all = commands();

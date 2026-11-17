@@ -74,6 +74,7 @@ fn init_makes_the_project_files_and_says_what_to_run() {
         ".agents/skills/netsmith-route-a-board/SKILL.md",
         ".agents/skills/netsmith-use-constraints/SKILL.md",
         ".agents/skills/netsmith-use-layout/SKILL.md",
+        ".agents/skills/netsmith-use-netsmith/SKILL.md",
         ".agents/skills/netsmith-write-a-module/SKILL.md",
         ".agents/skills/netsmith-write-nsm/SKILL.md",
         ".gitignore",
@@ -293,7 +294,12 @@ fn init_writes_the_agent_guidance_and_the_project_agrees_with_the_repository() {
         .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
         .collect();
     names.sort();
-    assert_eq!(names.len(), 10, "{names:?}");
+    assert_eq!(names.len(), 11, "{names:?}");
+    // The map comes first (issue #1099): it is the first skill the project's AGENTS.md names.
+    let first = |name: &str| agents.find(&format!("`{name}`")).unwrap();
+    for name in &names {
+        assert!(first("netsmith-use-netsmith") <= first(name), "{name}");
+    }
     for name in &names {
         assert!(!name.starts_with("netsmith-dev-"), "{name}");
         assert_eq!(
@@ -357,7 +363,7 @@ fn init_keeps_a_guide_a_skill_and_a_claude_directory_that_exist() {
     assert_eq!(read(&root, ".claude/skills/other/SKILL.md"), "other\n");
     assert!(
         said.contains("kept docs/netsmith/LANGUAGE.md")
-            && said.contains("created 9 skills")
+            && said.contains("created 10 skills")
             && said.contains("kept .claude/skills"),
         "{said}"
     );

@@ -47,15 +47,22 @@ use std::process::ExitCode;
 
 use clap::Subcommand;
 
-/// What `netsmith --help` ends with: a day's work in the order it is done.
-pub const AFTER_HELP: &str = "A typical day:
+/// What `netsmith --help` ends with: the loop of a day's work in the order it is done, and where
+/// the guide and the skills are (issue #1099; the skill `netsmith-use-netsmith` is the longer map).
+pub const AFTER_HELP: &str = "A typical workflow:
   netsmith project init            make a project here (netsmith.toml, src/main.nsm)
-  netsmith board check             check and solve the boards, writing nothing
+  netsmith board check             check and solve the boards, writing nothing; fix the first error, run again
+  netsmith board build             also write the schematic, the pick lock and the pin file
+  netsmith view schematic          look: the schematic as a picture (also view 3d, view pcb, view gerber)
   netsmith view editor             edit the source and see the boards in a browser
-  netsmith board fab               make the fab package; read fab-notes.txt before you order
+  netsmith board fab               place, route, check the design rules and write the fab package
   netsmith project lock --check    in CI: the picks are the ones committed
+Then read fab/<Board>/fab-notes.txt before you order.
 
-`netsmith <noun> --help` lists its verbs. NETSMITH_TIMINGS=1 prints the time of each stage of a run to stderr.";
+In a project, `.agents/skills/` has the netsmith skills (start with `netsmith-use-netsmith`, the map) and
+`docs/netsmith/LANGUAGE.md` is the language guide. `netsmith <noun> --help` lists the verbs of a noun.
+Exit codes: 0 done, 1 what it checked failed, 2 could not run. `--format json` is output for a program.
+NETSMITH_TIMINGS=1 prints the time of each stage of a run to stderr.";
 
 /// The exit code of every command is 0 when it did what it was asked, 1 when what it checked
 /// failed, and 2 when it could not run (a usage mistake included).
