@@ -121,8 +121,8 @@ fn init_makes_the_project_files_and_says_what_to_run() {
     assert!(!main.contains("LedExample"), "{main}");
     assert_eq!(
         read(&root, ".gitignore"),
-        "/out/\n/fab/\n",
-        "the output directories of the manifest"
+        "/out/\n/fab/\n/.netsmith/\n",
+        "the output directories of the manifest, and netsmith's cache"
     );
     assert!(read(&root, "README.md").starts_with("# my-sensor\n"));
     assert!(read(&root, "README.md").contains("AGENTS.md"));
@@ -236,7 +236,7 @@ fn init_adds_to_a_gitignore_and_keeps_a_readme() {
     write(&root, ".gitignore", "target");
     write(&root, "README.md", "my own readme\n");
     let said = init(&root, None).unwrap();
-    assert_eq!(read(&root, ".gitignore"), "target\n/out/\n/fab/\n");
+    assert_eq!(read(&root, ".gitignore"), "target\n/out/\n/fab/\n/.netsmith/\n");
     assert_eq!(read(&root, "README.md"), "my own readme\n");
     assert!(
         said.contains("updated .gitignore") && said.contains("kept README.md"),
@@ -247,12 +247,12 @@ fn init_adds_to_a_gitignore_and_keeps_a_readme() {
     let root = TempFile::new("project-test-keep-out", "p");
     write(&root, ".gitignore", "out/\n# fab\n");
     init(&root, None).unwrap();
-    assert_eq!(read(&root, ".gitignore"), "out/\n# fab\n/fab/\n");
+    assert_eq!(read(&root, ".gitignore"), "out/\n# fab\n/fab/\n/.netsmith/\n");
 
     let root = TempFile::new("project-test-keep-all", "p");
-    write(&root, ".gitignore", "/out/\n/fab/\n");
+    write(&root, ".gitignore", "/out/\n/fab/\n.netsmith/\n");
     let said = init(&root, None).unwrap();
-    assert_eq!(read(&root, ".gitignore"), "/out/\n/fab/\n");
+    assert_eq!(read(&root, ".gitignore"), "/out/\n/fab/\n.netsmith/\n");
     assert!(said.contains("kept .gitignore"), "{said}");
 }
 
