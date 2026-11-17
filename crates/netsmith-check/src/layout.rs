@@ -26,7 +26,7 @@
 //! of the generic is given them, as guidelines with that number (`LayoutGuideline::mpn`), and
 //! the design keeps the ones of the row the solver picked.
 //!
-//! The statements are `near`, `away`, `loop`, `keepout`, `edge`, `vias` and `route` (see
+//! The statements are `near`, `away`, `loop`, `keepout`, `edge`, `vias`, `route` and `kelvin` (see
 //! [`netsmith_lang::ast::Rule`]). Every number is one value of its dimension: a length above
 //! zero (a corner of a keepout may be any length), and a count of vias a whole number of one
 //! or more.
@@ -312,6 +312,26 @@ impl Checker<'_> {
                 };
                 GuidelineRule::Route { pin, width, length }
             }
+            Rule::Kelvin { select, to } => {
+                let Some(select) = self.select(select, g) else {
+                    return;
+                };
+                let Some(to) = self.part_pin(to) else { return };
+                let among = match select {
+                    NearSelect::Bridging(a, b) => a == to || b == to,
+                    NearSelect::On { pin, .. } => pin == to,
+                };
+                if !among {
+                    self.error(
+                        g.span,
+                        format!(
+                            "the sense pin of {what} is a pin of its selector (`bridging .a .b` or `on .pin`): the pad it senses is the pad of the part found on the sense pin's net"
+                        ),
+                    );
+                    return;
+                }
+                GuidelineRule::Kelvin { select, to }
+            }
         };
         self.model.layout.push(LayoutGuideline {
             part,
@@ -324,7 +344,7 @@ impl Checker<'_> {
         });
     }
 
-    /// The parts a `near` or an `away` is about.
+    /// The parts a `near`, an `away` or a `kelvin` is about.
     fn select(&mut self, select: &Select, g: &Guideline) -> Option<NearSelect> {
         match select {
             Select::Bridging(a, b) => {

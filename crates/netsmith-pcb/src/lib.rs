@@ -47,6 +47,7 @@ mod footprint;
 mod generate;
 mod geometry;
 mod impedance;
+mod kelvin;
 mod laid_out;
 mod layout;
 pub mod layout_notes;
@@ -122,6 +123,10 @@ pub use impedance::{
     TargetWidth, TrackDielectric, coated_coupled_microstrip, coated_microstrip, coupled_microstrip,
     coupled_stripline, impedance_at, impedance_notes, microstrip, stripline, target_layers,
     target_notes, target_widths, width_for,
+};
+pub use kelvin::{
+    KelvinSense, SenseCopper, SensedPad, kelvin_findings, kelvin_senses, net_is_poured,
+    sense_copper,
 };
 pub use layout::{
     BoardLayout, Face as LayoutFace, IMPORT_SOURCE, KeepoutPlace, Layout, LayoutError, PartPlace,

@@ -9,7 +9,8 @@
 //! stitching vias of the pours, then the pads that a pour of their net joins to the plane lose
 //! their own vias (`pour_pads.rs`), and an arc at each bend that has room for one (the header
 //! of `arcs.rs`). The meanders that match the lengths of a diff pair ([`meander`]) and the teardrops
-//! ([`teardrop`]) are steps of it too; they were in `netsmith-pcb` until issue #608.
+//! ([`teardrop`]) are steps of it too; they were in `netsmith-pcb` until issue #608. A sense
+//! pin of a `kelvin` statement is routed from its tap alone (`kelvin.rs`, issue #1148).
 //!
 //! [`carry`] keeps the router's copper of the nets a change of placement left alone and routes
 //! only the rest (partial routing, issue #825), and [`kept`] is that copper as a file keeps it
@@ -28,6 +29,7 @@
 pub mod arcs;
 pub mod carry;
 mod decouple;
+mod kelvin;
 pub mod kept;
 pub mod meander;
 pub mod pad_vias;

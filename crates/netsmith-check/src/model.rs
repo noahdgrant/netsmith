@@ -1364,9 +1364,12 @@ pub enum GuidelineRule {
         width: Option<f64>,
         length: Option<f64>,
     },
+    /// `to` is a sense pin (issue #1148): it senses the pad of the part that [`NearSelect`]
+    /// finds on its net, and is routed from that pad, alone. `to` is a pin of the selector.
+    Kelvin { select: NearSelect, to: InstId },
 }
 
-/// Which parts a `near` or an `away` is about, by the pins of the part whose nets find them.
+/// Which parts a `near`, an `away` or a `kelvin` is about, by the pins of the part whose nets find them.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum NearSelect {
     /// Every two-pad part with a pad on the net of each pin.

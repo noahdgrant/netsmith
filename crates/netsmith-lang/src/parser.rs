@@ -57,7 +57,9 @@ struct Docs {
 }
 
 /// The words that start a guideline statement of a `layout` block.
-const GUIDELINE_WORDS: [&str; 7] = ["near", "away", "loop", "keepout", "edge", "vias", "route"];
+const GUIDELINE_WORDS: [&str; 8] = [
+    "near", "away", "loop", "keepout", "edge", "vias", "route", "kelvin",
+];
 
 impl Docs {
     fn is_empty(&self) -> bool {
@@ -1600,7 +1602,7 @@ impl Parser {
                 _ => {
                     return Err(unexpected(
                         &t,
-                        "`source \"...\"`, a guideline statement (`near`, `away`, `loop`, `keepout`, `edge`, `vias`, `route`) or `}` in a `layout` block",
+                        "`source \"...\"`, a guideline statement (`near`, `away`, `loop`, `keepout`, `edge`, `vias`, `route`, `kelvin`) or `}` in a `layout` block",
                     ));
                 }
             }
@@ -1795,6 +1797,16 @@ impl Parser {
                     ));
                 }
                 Rule::Route { pin, width, length }
+            }
+            "kelvin" => {
+                let select = self.select("kelvin", &name)?;
+                self.expect_word(
+                    "to",
+                    "`to` and the sense pin, whose pad on the part found it senses, such as `to .in_p`",
+                )?;
+                let to =
+                    self.layout_pin("the sense pin of the part after `to`, such as `.in_p`")?;
+                Rule::Kelvin { select, to }
             }
             _ => unreachable!("only the words of GUIDELINE_WORDS start a guideline"),
         };

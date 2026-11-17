@@ -109,7 +109,7 @@ fn a_source_needs_its_text_in_quotes() {
 #[test]
 fn a_block_holds_only_its_statements() {
     let e = error("        .cap: Capacitor");
-    assert!(e.contains("a guideline statement (`near`, `away`, `loop`, `keepout`, `edge`, `vias`, `route`) or `}` in a `layout` block"), "{e}");
+    assert!(e.contains("a guideline statement (`near`, `away`, `loop`, `keepout`, `edge`, `vias`, `route`, `kelvin`) or `}` in a `layout` block"), "{e}");
 }
 
 #[test]
@@ -253,4 +253,35 @@ fn a_block_at_the_top_of_a_file_names_its_generic() {
 #[test]
 fn a_block_in_a_part_does_not_take_for() {
     assert!(parse("part P {\n    layout \"X\" for G {\n    }\n}\n").is_err());
+}
+
+/// A `kelvin` statement (issue #1148), with each selector.
+const KELVIN: &str = r#"part Amp {
+    layout {
+        source "Datasheet Y, 8 Layout, p.14"
+        /// Connect IN+ and IN- to the shunt's pads with Kelvin connections.
+        kelvin sense_p bridging .in_p .in_n to .in_p
+        kelvin remote on .sense kind resistor to .sense
+    }
+}
+"#;
+
+#[test]
+fn a_kelvin_statement_prints_back_to_its_source() {
+    let file = parse(KELVIN).unwrap();
+    assert_eq!(file.to_source(), KELVIN);
+    assert_eq!(parse(&file.to_source()).unwrap(), file);
+    let l = layout(KELVIN);
+    let LayoutStatement::Guideline(g) = &l.statements[1] else {
+        panic!("{:?}", l.statements)
+    };
+    assert_eq!(g.rule.word(), "kelvin");
+    let pins: Vec<String> = g.rule.pins().iter().map(|p| p.to_source()).collect();
+    assert_eq!(pins, [".in_p", ".in_n", ".in_p"]);
+}
+
+#[test]
+fn a_kelvin_statement_names_its_sense_pin_after_to() {
+    let e = error("        kelvin sense_p bridging .in_p .in_n");
+    assert!(e.contains("`to` and the sense pin"), "{e}");
 }
