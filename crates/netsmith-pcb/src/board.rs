@@ -30,6 +30,7 @@ mod unplaced;
 pub use features::*;
 pub use placed::*;
 pub use problems::*;
+pub use process::ViasInPads;
 pub use spans::{ViaOffer, span_depth, via_offers};
 pub use targets::PairCoupling;
 pub use unplaced::*;

@@ -81,8 +81,8 @@ pub use board::{
     FixedCopper, Hang, HeightUnchecked, HeightUnknown, HoleNeighbour, KeepoutArea,
     Loaded as LoadedBoard, PadRef, PairCoupling, Placed, PlacementProblem, Plane, ReferenceSide,
     Side, Silk, StandardPass, Teardrop, Track, Trim, UnknownUnder, Unplaced, Via, ViaOffer,
-    ViaSpan, ZoneIslands, ZonePads, heights_unknown_warning, member as board_member, outline_box,
-    rect_distance, span_depth, via_offers,
+    ViaSpan, ViasInPads, ZoneIslands, ZonePads, heights_unknown_warning, member as board_member,
+    outline_box, rect_distance, span_depth, via_offers,
 };
 pub use body3d::{
     Axis as BodyAxis, Material as BodyMaterial, Primitive as BodyPrimitive, Solid as BodySolid,

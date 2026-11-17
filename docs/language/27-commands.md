@@ -32,7 +32,11 @@ Each command, what it was before, and its flags (a test walks `--help` of every 
 | `netsmith project lock` | `netsmith lock` | `--update`, `--check`, `--part`, `--except`, `--format` |
 | `netsmith project lint` | new | `--strict`, `--format` |
 | `netsmith project fmt` | new | `--check` |
+<<<<<<< Updated upstream
 | `netsmith project order` | `netsmith fab --order [NAME]` | `--out`, `--route-timeout`, `--rip-rounds`, `--allow-drc-violations`, `--cross-check`, `--strict`, `--locked`, `--constraints`, `--no-glb`, `--no-step`, `--no-pdf`, `--offline`, `--quiet`, `--place-seeds`, `--place-budget`, `--progress`, `--to-editor`, `--format` |
+=======
+| `netsmith project order` | `netsmith fab --order [NAME]` | `--out`, `--route-timeout`, `--rip-rounds`, `--allow-drc-violations`, `--cross-check`, `--strict`, `--locked`, `--accept-via-in-pad`, `--constraints`, `--no-glb`, `--no-step`, `--no-pdf`, `--offline`, `--quiet`, `--place-seeds`, `--place-budget`, `--progress`, `--to-editor` |
+>>>>>>> Stashed changes
 | `netsmith project show` | new | `--format` |
 | `netsmith board check` | `netsmith check` | `--strict`, `--format`, `--notes` |
 | `netsmith board build` | `netsmith build` | `--out`, `--strict`, `--locked`, `--emit-design`, `--emit-solved`, `--format`, `--notes` |

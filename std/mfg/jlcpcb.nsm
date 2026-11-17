@@ -305,8 +305,12 @@ generic TwoLayer {
     /// it; the board narrows it to `0mm` where it does not want the extra process step
     /// (`.process.via_in_pad &= 0mm`). A via in a pad that is not filled and capped
     /// draws solder away from the joint, so a board that has one needs the fabricator to
-    /// fill and cap it, and `fab` says so in `fab-notes.txt` (the Gerbers do not say it, and
-    /// the note says how many vias and in which pads). The number is from JLCPCB's
+    /// fill and cap it, an option of the order form that costs extra: `fab` says so in a line
+    /// of its own of `fab-notes.txt`, `N vias in pads: the board house's filled and capped
+    /// option is needed (extra cost)`, with the parts and pads that carry them (the Gerbers do
+    /// not say it), and `project order` stops until the cost is accepted (issue #1118). With
+    /// `0mm` the router takes every track out between the pads, and `fab` says how many of the connections it
+    /// left end at a pad a via could stand in. The number is from JLCPCB's
     /// capabilities page ("epoxy filled and capped" vias of 0.15 mm to 0.55 mm; "vias can be
     /// placed within BGA pads using filled and plated-over vias"). The page calls the range
     /// "via diameters", and the router uses a via in a pad only if the copper of its via is no
@@ -594,8 +598,12 @@ generic FourLayer {
     /// it; the board narrows it to `0mm` where it does not want the extra process step
     /// (`.process.via_in_pad &= 0mm`). A via in a pad that is not filled and capped
     /// draws solder away from the joint, so a board that has one needs the fabricator to
-    /// fill and cap it, and `fab` says so in `fab-notes.txt` (the Gerbers do not say it, and
-    /// the note says how many vias and in which pads). The number is from JLCPCB's
+    /// fill and cap it, an option of the order form that costs extra: `fab` says so in a line
+    /// of its own of `fab-notes.txt`, `N vias in pads: the board house's filled and capped
+    /// option is needed (extra cost)`, with the parts and pads that carry them (the Gerbers do
+    /// not say it), and `project order` stops until the cost is accepted (issue #1118). With
+    /// `0mm` the router takes every track out between the pads, and `fab` says how many of the connections it
+    /// left end at a pad a via could stand in. The number is from JLCPCB's
     /// capabilities page ("epoxy filled and capped" vias of 0.15 mm to 0.55 mm; "vias can be
     /// placed within BGA pads using filled and plated-over vias"). The page calls the range
     /// "via diameters", and the router uses a via in a pad only if the copper of its via is no
@@ -961,8 +969,12 @@ generic SixLayer {
     /// it; the board narrows it to `0mm` where it does not want the extra process step
     /// (`.process.via_in_pad &= 0mm`). A via in a pad that is not filled and capped
     /// draws solder away from the joint, so a board that has one needs the fabricator to
-    /// fill and cap it, and `fab` says so in `fab-notes.txt` (the Gerbers do not say it, and
-    /// the note says how many vias and in which pads). The number is from JLCPCB's
+    /// fill and cap it, an option of the order form that costs extra: `fab` says so in a line
+    /// of its own of `fab-notes.txt`, `N vias in pads: the board house's filled and capped
+    /// option is needed (extra cost)`, with the parts and pads that carry them (the Gerbers do
+    /// not say it), and `project order` stops until the cost is accepted (issue #1118). With
+    /// `0mm` the router takes every track out between the pads, and `fab` says how many of the connections it
+    /// left end at a pad a via could stand in. The number is from JLCPCB's
     /// capabilities page ("epoxy filled and capped" vias of 0.15 mm to 0.55 mm; "vias can be
     /// placed within BGA pads using filled and plated-over vias"). The page calls the range
     /// "via diameters", and the router uses a via in a pad only if the copper of its via is no
@@ -1342,8 +1354,12 @@ interface HdiFourLayer {
     /// it; the board narrows it to `0mm` where it does not want the extra process step
     /// (`.process.via_in_pad &= 0mm`). A via in a pad that is not filled and capped
     /// draws solder away from the joint, so a board that has one needs the fabricator to
-    /// fill and cap it, and `fab` says so in `fab-notes.txt` (the Gerbers do not say it, and
-    /// the note says how many vias and in which pads). The number is from JLCPCB's
+    /// fill and cap it, an option of the order form that costs extra: `fab` says so in a line
+    /// of its own of `fab-notes.txt`, `N vias in pads: the board house's filled and capped
+    /// option is needed (extra cost)`, with the parts and pads that carry them (the Gerbers do
+    /// not say it), and `project order` stops until the cost is accepted (issue #1118). With
+    /// `0mm` the router takes every track out between the pads, and `fab` says how many of the connections it
+    /// left end at a pad a via could stand in. The number is from JLCPCB's
     /// capabilities page ("epoxy filled and capped" vias of 0.15 mm to 0.55 mm; "vias can be
     /// placed within BGA pads using filled and plated-over vias"). The page calls the range
     /// "via diameters", and the router uses a via in a pad only if the copper of its via is no
@@ -1610,8 +1626,12 @@ interface HdiSixLayer {
     /// it; the board narrows it to `0mm` where it does not want the extra process step
     /// (`.process.via_in_pad &= 0mm`). A via in a pad that is not filled and capped
     /// draws solder away from the joint, so a board that has one needs the fabricator to
-    /// fill and cap it, and `fab` says so in `fab-notes.txt` (the Gerbers do not say it, and
-    /// the note says how many vias and in which pads). The number is from JLCPCB's
+    /// fill and cap it, an option of the order form that costs extra: `fab` says so in a line
+    /// of its own of `fab-notes.txt`, `N vias in pads: the board house's filled and capped
+    /// option is needed (extra cost)`, with the parts and pads that carry them (the Gerbers do
+    /// not say it), and `project order` stops until the cost is accepted (issue #1118). With
+    /// `0mm` the router takes every track out between the pads, and `fab` says how many of the connections it
+    /// left end at a pad a via could stand in. The number is from JLCPCB's
     /// capabilities page ("epoxy filled and capped" vias of 0.15 mm to 0.55 mm; "vias can be
     /// placed within BGA pads using filled and plated-over vias"). The page calls the range
     /// "via diameters", and the router uses a via in a pad only if the copper of its via is no
@@ -1879,8 +1899,12 @@ interface HdiEightLayer {
     /// it; the board narrows it to `0mm` where it does not want the extra process step
     /// (`.process.via_in_pad &= 0mm`). A via in a pad that is not filled and capped
     /// draws solder away from the joint, so a board that has one needs the fabricator to
-    /// fill and cap it, and `fab` says so in `fab-notes.txt` (the Gerbers do not say it, and
-    /// the note says how many vias and in which pads). The number is from JLCPCB's
+    /// fill and cap it, an option of the order form that costs extra: `fab` says so in a line
+    /// of its own of `fab-notes.txt`, `N vias in pads: the board house's filled and capped
+    /// option is needed (extra cost)`, with the parts and pads that carry them (the Gerbers do
+    /// not say it), and `project order` stops until the cost is accepted (issue #1118). With
+    /// `0mm` the router takes every track out between the pads, and `fab` says how many of the connections it
+    /// left end at a pad a via could stand in. The number is from JLCPCB's
     /// capabilities page ("epoxy filled and capped" vias of 0.15 mm to 0.55 mm; "vias can be
     /// placed within BGA pads using filled and plated-over vias"). The page calls the range
     /// "via diameters", and the router uses a via in a pad only if the copper of its via is no

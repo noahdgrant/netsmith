@@ -125,6 +125,21 @@ fn pads_walled_in_by_their_neighbours_are_left_unrouted_and_named() {
     }
     // The pads on the ring are all joined, and only the walled in ones are left.
     assert_eq!(routing.left.len(), walled.len());
+    // No via stands in a pad (issue #1118).
+    assert!(board.vias_in_pads().is_empty());
+    // What refusing vias in pads cost (issue #1118): every line left ends at a pad a via could
+    // stand in, and the line `fab` writes counts them.
+    let closed = netsmith_router::via_in_pad::closed_by_via_in_pad(&board, &routing.left);
+    assert_eq!(closed.len(), walled.len());
+    let cost = netsmith_router::via_in_pad::cost_line(&board, &routing.left).unwrap();
+    assert!(
+        cost.starts_with(&format!(
+            "vias in pads forbidden: the router went out between the pads, and it cost {} open connection(s) of the {} left",
+            walled.len(),
+            walled.len()
+        )),
+        "{cost}"
+    );
 }
 
 #[test]
@@ -168,17 +183,23 @@ fn pads_walled_in_by_their_neighbours_are_reached_by_a_via_in_the_pad_when_the_p
     let extras: Vec<String> = board
         .process_extras()
         .into_iter()
-        .filter(|e| e.starts_with("vias in pads"))
+        .filter(|e| e.contains("the board house's filled and capped option"))
         .collect();
     assert_eq!(extras.len(), 1, "{extras:?}");
+    // A line of its own that starts with the count (issue #1118), with the parts and the pads.
     assert!(
-        extras[0].starts_with(&format!("vias in pads: {} via(s)", in_pads.len()))
-            && extras[0].contains("U1.")
-            && extras[0].contains("epoxy filled and capped")
-            && extras[0].contains("JLCPCB")
-            && extras[0].contains("0.55 mm"),
+        extras[0].starts_with(&format!(
+            "{} vias in pads: the board house's filled and capped option is needed (extra cost); on U1 (pads U1.",
+            in_pads.len()
+        )) && extras[0].contains("JLCPCB fills them with epoxy and caps them with plating up to 0.55 mm"),
         "{}",
         extras[0]
+    );
+    let filled = board.filled_vias_in_pads();
+    assert_eq!((filled.count, filled.parts), (in_pads.len(), vec!["U1".to_string()]));
+    // The board allows them, so the router tried them and nothing was forbidden.
+    assert!(
+        netsmith_router::via_in_pad::cost_line(&board, &netsmith_pcb::Ratsnest::of(&board)).is_none()
     );
 }
 

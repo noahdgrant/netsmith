@@ -39,7 +39,7 @@ Only `name` is required.
 | `glb` | Optional. Whether `fab` writes the board's 3D scene as `<board>.glb` into the fab package: `true`, the default, writes it; `glb = false` leaves it out, and removes the one of an earlier run. `board fab --no-glb` leaves it out for one run. See `docs/BOARD3D.md`, "In the fab package". |
 | `pdf` | Optional. Whether `fab` writes the board's schematic as `<board>-schematic.pdf` into the fab package, a page for each sheet: `true`, the default, writes it; `pdf = false` leaves it out, and removes the one of an earlier run. `board fab --no-pdf` leaves it out for one run. See chapter 27, "The schematic as a document". |
 
-Beside `[project]`, the file may have `[order.<name>.boards]` tables (_Orders_, below), a `[supply]` table (_Catalog files_), a `[dependencies]` table (_Dependencies_, below), a `[lint]` table (the rules of `netsmith project lint` turned off for the project, `off = ["naming"]`, and `findings = "warn"` or `"error"`, which `--strict` asks for one run: _The linter_, in the chapter on commands), and a model table: a `[models]` table with `folder`, and `[[model]]` rows with `footprint`, `file`, `offset` and `rotation`, the STEP model a part is drawn from when it states none (_A model table_ in the chapter on the shape of a board). Any other table is refused.
+Beside `[project]`, the file may have `[order.<name>.boards]` tables, with `via_in_pad` in an order's own `[order.<name>]` table (_Orders_, below), a `[supply]` table (_Catalog files_), a `[dependencies]` table (_Dependencies_, below), a `[lint]` table (the rules of `netsmith project lint` turned off for the project, `off = ["naming"]`, and `findings = "warn"` or `"error"`, which `--strict` asks for one run: _The linter_, in the chapter on commands), and a model table: a `[models]` table with `folder`, and `[[model]]` rows with `footprint`, `file`, `offset` and `rotation`, the STEP model a part is drawn from when it states none (_A model table_ in the chapter on the shape of a board). Any other table is refused.
 
 ### Orders
 
@@ -64,6 +64,16 @@ DevKit = 5
 - An order name is letters, digits, `-` and `_`. A quantity is a whole number of 1 or more.
 - A board name that is not in the project, or a board named twice (`DevKit` and `"DevKit/carrier"` in one order), is an error with the manifest line, listing the boards that exist.
 - An order takes the package of a board from `fab/<board>/` instead of making the board again when a plain `netsmith board fab` made it from the same inputs and no file of it has changed since (issue #841). A plain `fab` writes a hidden `.fab-record.json` into each board's folder with a fingerprint of everything the package is made from (the netsmith executable, the built design, the parts as sourced, the footprints, the layout and routes files, the STEP and case models, the pin map and the options that change what is written) and of every file of the package. The order reuses the package only when its own fingerprint is the same and the folder holds exactly those files: a changed source, catalog, layout or option, a rebuilt netsmith, or a file edited, added or removed by hand makes the board again, and `fab` says which on a line of its progress. `netsmith project order` ends with a line such as `reused 2 of 3 boards from a plain fab; 11 stages run`: the stages are the resolve, place, route and package steps that were run, and a reused board runs none. A board of a system and a panel are always made again, and a board whose pins `--pins auto` moved leaves no record.
+- A board with vias in pads stops the order (issue #1118). The board house fills and caps such a via, an option of its order form that costs extra, so the order needs a yes first: `via_in_pad = "accepted"` in the order's own table, or `netsmith project order devkit --accept-via-in-pad` for one run. Until then the order makes the packages, names each board with its count of vias in pads and the parts that carry them, writes no `order.txt` and ends in an error. With the cost accepted, `order.txt` says under each board `3 vias in pads: the board house's filled and capped option is needed (extra cost): U1, U4`. A board that forbids vias in pads (`.process.via_in_pad &= 0mm`, chapter 21) has none.
+
+```toml
+[order.devkit]
+via_in_pad = "accepted"
+
+[order.devkit.boards]
+Unit = 10
+```
+
 - A key may be a panel (ADR 0040), and its quantity then counts panels: `LedPanel = 3` orders three panels, so 18 boards if the panel holds six. `order.txt` says so, and `order-bom.csv` multiplies the panel's parts by the quantity. A board may be ordered loose and in a panel; the two are summed in the bill of materials.
 
 Rules.

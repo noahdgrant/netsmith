@@ -110,7 +110,7 @@ fn a_walled_in_pad_is_reached_by_a_blind_via_in_the_pad_where_no_drilled_via_may
     // via in a pad.
     let extras = board.process_extras();
     assert!(
-        !extras.iter().any(|e| e.starts_with("vias in pads")),
+        !extras.iter().any(|e| e.contains("the board house's filled and capped option")),
         "{extras:?}"
     );
     let line = extras

@@ -42,6 +42,13 @@ pub struct Args {
     /// Stop when the pick lock or the pin file of a source file of the order would change.
     #[arg(long)]
     pub locked: bool,
+    /// Accept, for this run, the cost of the board house's filled and capped vias that vias in
+    /// pads need.
+    ///
+    /// An order whose boards have vias in pads stops until the cost is accepted, here or with
+    /// `via_in_pad = "accepted"` in the order's table of netsmith.toml (issue #1118).
+    #[arg(long)]
+    pub accept_via_in_pad: bool,
     /// Whether an unmet requirement on where a part goes stops the order, over netsmith.toml.
     #[arg(long, value_enum)]
     pub constraints: Option<Constraints>,
@@ -105,6 +112,7 @@ pub fn run(args: Args) -> ExitCode {
             args.cross_check,
             args.strict,
             args.locked,
+            args.accept_via_in_pad,
             args.constraints.map(|c| c == Constraints::Warn),
             args.no_glb,
             args.no_step,
@@ -155,6 +163,9 @@ mod tests {
         assert_eq!(o.request(), OrderRequest::Make("d".into()));
         assert_eq!(o.route_timeout, Some(9));
         assert!(o.offline);
+        // The cost of vias in pads is accepted for one run (issue #1118).
+        assert!(!o.accept_via_in_pad);
+        assert!(order(&["d", "--accept-via-in-pad"]).accept_via_in_pad);
         // One order at a time, and not the flags of `board fab` alone.
         assert_eq!(
             kind(&["project", "order", "a", "b"]),
