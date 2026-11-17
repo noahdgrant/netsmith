@@ -1092,6 +1092,7 @@ dependencies = [
  "netsmith-solve",
  "netsmith-testkit",
  "netsmith-view",
+ "serde",
  "serde_json",
  "tungstenite 0.30.0",
  "zip",

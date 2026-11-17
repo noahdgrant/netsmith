@@ -1211,6 +1211,25 @@ impl LayoutHints {
         findings
     }
 
+    /// The entries of the table of `board`, in the order of the file: each sheet's `at`, each
+    /// part and each note, with the header the file names it by (as a [`HintFinding`] names it).
+    pub fn entries(&self, board: &str) -> Vec<Entry> {
+        let Some(table) = self.boards.get(board) else {
+            return Vec::new();
+        };
+        let mut out = Vec::new();
+        let at = vec![board.to_string()];
+        collect_entries(&mut out, &at, None, &table.board);
+        for (name, sheet) in &table.sheets {
+            let mut here = at.clone();
+            here.push("sheets".into());
+            here.push(name.clone());
+            collect_entries(&mut out, &here, Some(name), sheet);
+        }
+        out.sort_by_key(|e| e.line);
+        out
+    }
+
     fn match_sheet(
         &self,
         sheets: &Sheets,
@@ -1453,4 +1472,113 @@ impl<'d> Sheets<'d> {
             entry: entry.to_string(),
         }
     }
+}
+
+/// What an [`Entry`] of the file is about.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EntryKind {
+    /// A sheet's place on the page (`at`).
+    Sheet,
+    Part,
+    Note,
+}
+
+/// One entry of a board's table, as [`LayoutHints::entries`] lists it.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Entry {
+    /// The sheet's name, or `None` for the board's own sheet.
+    pub sheet: Option<String>,
+    pub kind: EntryKind,
+    /// The key of the part or note on its sheet; empty for a sheet's place.
+    pub key: String,
+    /// The table's header as the file writes it: `[Trellis.sheets.stage.parts."output_cap"]`,
+    /// or the sheet's own for its place.
+    pub header: String,
+    /// The line of the entry in the file; 0 for one not read from a file.
+    pub line: u32,
+    /// The place of a sheet's box (`at`).
+    pub at: Option<Steps>,
+    /// A part's or a note's move, or a part's pin.
+    pub place: Option<Place>,
+    pub rotate: Option<u16>,
+    pub mirror: Option<bool>,
+}
+
+fn collect_entries(
+    out: &mut Vec<Entry>,
+    at: &[String],
+    sheet: Option<&String>,
+    hints: &SheetHints,
+) {
+    let entry = |kind, key: &str, header: String, line| Entry {
+        sheet: sheet.cloned(),
+        kind,
+        key: key.to_string(),
+        header,
+        line,
+        at: None,
+        place: None,
+        rotate: None,
+        mirror: None,
+    };
+    if let Some(place) = &hints.at {
+        out.push(Entry {
+            at: Some(place.value),
+            ..entry(EntryKind::Sheet, "", header(at), place.line)
+        });
+    }
+    for (key, hint) in &hints.parts {
+        let mut here = at.to_vec();
+        here.push("parts".into());
+        here.push(key.clone());
+        out.push(Entry {
+            place: hint.place,
+            rotate: hint.rotate,
+            mirror: hint.mirror,
+            ..entry(EntryKind::Part, key, header(&here), hint.line)
+        });
+    }
+    for (key, hint) in &hints.notes {
+        let mut here = at.to_vec();
+        here.push("notes".into());
+        here.push(key.clone());
+        out.push(Entry {
+            place: Some(Place::Offset(hint.by)),
+            ..entry(EntryKind::Note, key, header(&here), hint.line)
+        });
+    }
+}
+
+/// A sheet of a design as the file keys it: where an entry is written.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DesignSheet {
+    /// The module instance's name (`stage`), or the board's name for the sheet of the parts it
+    /// declares itself.
+    pub name: String,
+    /// Whether it is the board's own sheet.
+    pub own: bool,
+    /// Each part's key on the sheet, with the part's path in the design.
+    pub parts: BTreeMap<String, String>,
+    /// Each note's key on the sheet.
+    pub notes: Vec<String>,
+}
+
+/// The sheets of `design` as the file keys them (the sheets [`LayoutHints::resolve`] matches
+/// the file's tables with), in the order the drawing sets them out.
+pub fn design_sheets(design: &Design, groups: &[Group]) -> Vec<DesignSheet> {
+    let sheets = Sheets::of(design, groups);
+    sheets
+        .names
+        .iter()
+        .enumerate()
+        .map(|(c, (name, own))| DesignSheet {
+            name: name.clone(),
+            own: *own,
+            parts: sheets.parts[c]
+                .iter()
+                .map(|(key, &p)| (key.clone(), design.parts[p].path.clone()))
+                .collect(),
+            notes: sheets.notes[c].keys().cloned().collect(),
+        })
+        .collect()
 }

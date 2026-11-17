@@ -17,9 +17,9 @@ pub mod stability;
 mod svg;
 
 pub use hints::{
-    BoardHints, FindingKind, HintError, HintFinding, LayoutHints, Located, NoteHint, PartHint,
-    Place, ResolvedHints, ResolvedNote, ResolvedPart, ResolvedSheet, SheetHints, Steps,
-    schematic_hints_path,
+    BoardHints, DesignSheet, Entry, EntryKind, FindingKind, HintError, HintFinding, LayoutHints,
+    Located, NoteHint, PartHint, Place, ResolvedHints, ResolvedNote, ResolvedPart, ResolvedSheet,
+    SheetHints, Steps, design_sheets, schematic_hints_path,
 };
 pub use layout::{
     Bus, BusEntry, BusFlag, BusMember, Layout, MarkKind, Marks, MemberFlow, PinMark, Port,

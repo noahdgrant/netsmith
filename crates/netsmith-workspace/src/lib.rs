@@ -53,7 +53,10 @@ use netsmith_editor::{
 
 use netsmith_fabricate::project::Target;
 
-pub use analysis::{Snapshot, module_groups, must_connect, rails_of, schematic_layout};
+pub use analysis::{
+    Snapshot, hinted_layout, module_groups, must_connect, rails_of, schematic_layout,
+};
+pub mod schematic_file;
 pub use git::sweep_scratch;
 pub use pinwrite::PinsApplied;
 

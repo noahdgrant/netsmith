@@ -650,22 +650,17 @@ impl Workspace {
                             // schematic draws boxes and says why.
                             job::reporting(Rc::clone(&sink), || {
                                 (*libraries).as_ref().map_err(Clone::clone).and_then(|l| {
-                                    netsmith_view::layout_sheets_hinted_findings(
-                                        &built.design,
-                                        &groups,
-                                        &rails_of(&built),
-                                        &must_connect(&built),
-                                        &resolved,
-                                        &l.mapping,
-                                        &l.symbols,
+                                    hinted_layout(&built, &groups, l, &resolved).map(
+                                        |(layout, unusable)| {
+                                            (
+                                                netsmith_view::render_layout(
+                                                    &built.design,
+                                                    &layout,
+                                                ),
+                                                unusable,
+                                            )
+                                        },
                                     )
-                                    .map(|(layout, unusable)| {
-                                        (
-                                            netsmith_view::render_layout(&built.design, &layout),
-                                            unusable,
-                                        )
-                                    })
-                                    .map_err(|e| e.to_string())
                                 })
                             })
                         });
@@ -1013,6 +1008,28 @@ pub fn schematic_layout(
         &module_groups(built),
         &rails_of(built),
         &must_connect(built),
+        &libraries.mapping,
+        &libraries.symbols,
+    )
+    .map_err(|e| e.to_string())
+}
+
+/// The layout the schematic view draws for `built` with the entries of the schematic layout file
+/// that match it (`resolved`, from `LayoutHints::resolve` with the same `groups`), and a finding
+/// for each entry the drawing could not honour. The editor's analysis and `netsmith schematic`
+/// draw with this one call (issue #1093).
+pub fn hinted_layout(
+    built: &Built,
+    groups: &[netsmith_view::Group],
+    libraries: &Libraries,
+    resolved: &netsmith_view::ResolvedHints,
+) -> Result<(netsmith_view::Layout, Vec<netsmith_view::HintFinding>), String> {
+    netsmith_view::layout_sheets_hinted_findings(
+        &built.design,
+        groups,
+        &rails_of(built),
+        &must_connect(built),
+        resolved,
         &libraries.mapping,
         &libraries.symbols,
     )

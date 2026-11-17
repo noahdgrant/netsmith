@@ -48,7 +48,7 @@ mod geometry;
 mod impedance;
 mod laid_out;
 mod layout;
-mod layout_notes;
+pub mod layout_notes;
 mod live;
 mod miss;
 mod origin;
