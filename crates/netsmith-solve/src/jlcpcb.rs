@@ -22,7 +22,7 @@ include!(concat!(env!("OUT_DIR"), "/catalogs.rs"));
 pub(crate) fn embedded(files: &[(&str, &str, &str)]) -> Catalogs {
     let mut catalogs = Catalogs::empty();
     for (name, file, text) in files {
-        if let Err(e) = catalogs.add_file(name, file, text) {
+        if let Err(e) = catalogs.add_built_in_file(name, file, text) {
             panic!("{e}");
         }
     }

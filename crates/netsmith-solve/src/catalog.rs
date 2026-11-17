@@ -14,7 +14,7 @@ use netsmith_check::FieldKind;
 use netsmith_quantity::Quantity;
 
 use crate::generic::{Generic, Sense, Series};
-use crate::lock::PickLock;
+use crate::lock::{LockedRow, PickLock};
 use crate::preferred::Preferred;
 use crate::table::Table;
 
@@ -453,7 +453,21 @@ impl Catalogs {
     /// calls the file. A catalog of that name that is already here gets these rows after
     /// its own, unless one of them is a part it has already: that is an error naming both.
     pub fn add_file(&mut self, name: &str, file: &str, text: &str) -> Result<(), String> {
-        let table = Table::parse(file, text)?;
+        self.add_table(name, file, Table::parse(file, text)?)
+    }
+
+    /// [`Self::add_file`] for a file that ships in the binary (`jlcpcb.rs`): its rows are the
+    /// built-in ones (issue #1119).
+    pub(crate) fn add_built_in_file(
+        &mut self,
+        name: &str,
+        file: &str,
+        text: &str,
+    ) -> Result<(), String> {
+        self.add_table(name, file, Table::parse_built_in(file, text)?)
+    }
+
+    fn add_table(&mut self, name: &str, file: &str, table: Table) -> Result<(), String> {
         if let Some(code) = self.map.get(name)
             && !code.candidates.is_empty()
         {
@@ -468,6 +482,27 @@ impl Catalogs {
                 Ok(())
             }
         }
+    }
+
+    /// The row of the built-in catalog that a pick lock's `row` is now called, when a project's
+    /// row of that part was removed because a release added the part (issue #1119): `None` when
+    /// the catalog still has a row of the locked name, or no built-in row has the locked LCSC
+    /// number (the manufacturer part number when the lock has no LCSC number). The row that is
+    /// returned has the built-in row's name and numbers; the part's path is the lock's.
+    pub fn renamed_row(&self, locked: &LockedRow) -> Option<LockedRow> {
+        let table = self.tables.get(&locked.catalog)?;
+        if table.has_row_named(&locked.row) {
+            return None;
+        }
+        let (row, lcsc, mpn) =
+            table.built_in_row_with(locked.lcsc.as_deref(), locked.mpn.as_deref())?;
+        Some(LockedRow {
+            path: locked.path.clone(),
+            catalog: locked.catalog.clone(),
+            row,
+            lcsc,
+            mpn,
+        })
     }
 
     /// The catalog `name` for a part whose `catalog name { ... }` lists `columns`, with every

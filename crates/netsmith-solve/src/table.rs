@@ -267,6 +267,8 @@ struct Row {
     library: Option<Library>,
     name: String,
     label: String,
+    /// Whether the row is from a file that ships in the binary (`data/`), not a project's.
+    built_in: bool,
 }
 
 impl Row {
@@ -305,6 +307,16 @@ impl Table {
 
     /// Read one file. `file` is what messages call it (`catalogs/acme.csv`).
     pub fn parse(file: &str, text: &str) -> Result<Table, String> {
+        Table::parse_from(file, text, false)
+    }
+
+    /// [`Table::parse`] of a file that ships in the binary: its rows are the built-in ones, which
+    /// a message about a project's row that repeats one says so (issue #1119).
+    pub(crate) fn parse_built_in(file: &str, text: &str) -> Result<Table, String> {
+        Table::parse_from(file, text, true)
+    }
+
+    fn parse_from(file: &str, text: &str, built_in: bool) -> Result<Table, String> {
         let records = records(text).map_err(|(line, why)| format!("{file}:{line}: {why}"))?;
         let Some(((line, names), body)) = records.split_first() else {
             return Err(format!(
@@ -343,6 +355,7 @@ impl Table {
                 library: None,
                 name: String::new(),
                 label: String::new(),
+                built_in,
             };
             row.read_fixed_columns()?;
             rows.push(row);
@@ -353,7 +366,11 @@ impl Table {
     }
 
     /// Add the rows of another file after these. A part may be in a catalog once, whichever
-    /// file it is in: the same `lcsc` or the same `mpn` twice is an error naming both lines.
+    /// file it is in: the same `lcsc` or the same `mpn` twice is an error naming both lines. When
+    /// the first is a row of the built-in catalog and the second a project's (a release added the
+    /// part that the project's catalog already had, issue #1119), the error says what differs
+    /// between the two and how to fix the project: remove its row, and set the `row` of the pick
+    /// lock to the built-in row's name, which `netsmith project lock --update` does.
     pub fn append(&mut self, other: Table) -> Result<(), String> {
         let mut by_lcsc: BTreeMap<&str, &Row> = BTreeMap::new();
         let mut by_mpn: BTreeMap<&str, &Row> = BTreeMap::new();
@@ -376,6 +393,9 @@ impl Table {
                     .copied()
                     .or_else(|| added.iter().copied().find(|r| field_of(r, what) == key));
                 match earlier {
+                    Some(first) if first.built_in && !row.built_in => {
+                        Err(built_in_twin(row, first, what, key))
+                    }
                     Some(first) => Err(format!(
                         "{}: the {what} `{key}` is already a row at {}; a part is in a catalog once",
                         row.at(),
@@ -390,6 +410,31 @@ impl Table {
         }
         self.rows.extend(other.rows);
         Ok(())
+    }
+
+    /// Whether a row of this catalog is called `name` (what a pick lock's `row` says).
+    pub fn has_row_named(&self, name: &str) -> bool {
+        self.rows.iter().any(|r| r.name == name)
+    }
+
+    /// The built-in row that has the LCSC number `lcsc`, or (when the lock has none) the
+    /// manufacturer part number `mpn`: its name and its two numbers. What a pick lock's row is
+    /// rewritten to when the project's row of the part was removed for it (issue #1119).
+    pub fn built_in_row_with(
+        &self,
+        lcsc: Option<&str>,
+        mpn: Option<&str>,
+    ) -> Option<(String, Option<String>, Option<String>)> {
+        let row = self
+            .rows
+            .iter()
+            .filter(|r| r.built_in)
+            .find(|r| match lcsc {
+                Some(l) => r.lcsc == l,
+                None => mpn.is_some_and(|m| !r.mpn.is_empty() && r.mpn == m),
+            })?;
+        let number = |n: &String| (!n.is_empty()).then(|| n.clone());
+        Some((row.name.clone(), number(&row.lcsc), number(&row.mpn)))
     }
 
     pub fn len(&self) -> usize {
@@ -472,6 +517,62 @@ impl Table {
 
 fn field_of<'a>(row: &'a Row, what: &str) -> &'a str {
     if what == "lcsc" { &row.lcsc } else { &row.mpn }
+}
+
+/// The columns that say where and when a row was read, not what the part is: a project's row
+/// and the built-in one differ in them without the parts differing.
+const RECORD_ONLY: [&str; 7] = [
+    "source",
+    "date",
+    "checked",
+    "price",
+    "price_breaks",
+    "stock",
+    "notes",
+];
+
+/// The error for a project's row that repeats a part of the built-in catalog (issue #1119):
+/// which built-in row, what differs between the two, and how to fix the project.
+fn built_in_twin(project: &Row, built_in: &Row, what: &str, key: &str) -> String {
+    let mut differs: Vec<String> = Vec::new();
+    if project.name != built_in.name {
+        differs.push(format!(
+            "name (`{}` here, `{}` built in)",
+            project.name, built_in.name
+        ));
+    }
+    for column in &project.header.names {
+        if column == "name" || RECORD_ONLY.contains(&column.as_str()) {
+            continue;
+        }
+        let (Some(here), Some(there)) = (project.cell(column), built_in.cell(column)) else {
+            continue;
+        };
+        if here != there {
+            differs.push(format!("{column} (`{here}` here, `{there}` built in)"));
+        }
+    }
+    let differs = if differs.is_empty() {
+        "the two rows say the same".to_string()
+    } else {
+        format!("they differ in {}", differs.join(", "))
+    };
+    let mut fix = format!(
+        "remove the row at {} from the project's file; the built-in row is the one to use",
+        project.at()
+    );
+    if project.name != built_in.name {
+        fix.push_str(&format!(
+            ", and a pick lock (`.lock.toml`) that has `row = \"{}\"` for the part takes `row = \"{}\"` (`netsmith project lock --update` writes it, after the row is removed)",
+            project.name, built_in.name
+        ));
+    }
+    format!(
+        "{}: the {what} `{key}` is already a row at {}, a row of the built-in catalog (`{}`); {differs}; a part is in a catalog once: {fix}",
+        project.at(),
+        built_in.at(),
+        built_in.name
+    )
 }
 
 impl Row {
