@@ -1,0 +1,28 @@
+import std::parts::passive::Color
+import std::pcb::{CaseModel, Outline}
+
+physical for Tinted {
+    case {
+        .outline: Outline {
+            .width &= 40mm
+            .height &= 24mm
+        }
+        // The box, drawn as in `case_fit.physical.nsm`: the board's bottom-left corner at (2.3, 2.3).
+        .base: CaseModel {
+            .file &= "case_colour_3d/base.step"
+            .x &= -2.3mm
+            .y &= -2.3mm
+            .z &= -6mm
+            .color &= Color::Blue
+            .check &= "none"
+        }
+        // The lid, 8 mm over the board's top face, in the colour its file gives it.
+        .lid: CaseModel {
+            .file &= "case_colour_3d/lid.step"
+            .x &= -2.3mm
+            .y &= -2.3mm
+            .z &= 8mm
+            .check &= "none"
+        }
+    }
+}

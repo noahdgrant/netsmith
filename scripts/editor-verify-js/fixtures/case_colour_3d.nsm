@@ -1,0 +1,14 @@
+//! A small board in a case of two models for the recipe `pcb-3d-case-colour` (issue #756): the
+//! base states its colour, `.base.color &= Color::Blue`, over a file that has none; the lid
+//! states none and its file styles its solid `#cc3366`, so it is drawn in the file's own colour.
+//! `case_colour_3d/lid.step` is `case_fit/lid.step` with that style added.
+
+import std::parts::connector::Header1x2
+import std::mfg::jlcpcb::TwoLayer
+
+board Tinted {
+    .process: TwoLayer {
+        .stackup.thickness &= 1.6mm
+    }
+    .power_in: Header1x2
+}

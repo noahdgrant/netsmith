@@ -45,6 +45,7 @@ panel 3
 pcb 2
 pcb-3d 12
 pcb-3d-case 10
+pcb-3d-case-colour 8
 pcb-3d-control 12
 pcb-3d-measure 10
 pcb-3d-stackup 12

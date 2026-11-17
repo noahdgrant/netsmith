@@ -82,6 +82,8 @@ const FIXTURES = {
   model_3d: 'scripts/editor-verify-js/fixtures/model_3d.nsm',
   // A board that states its solder mask colour, `.stackup.mask_colour &= Color::Red` (issue #771), for pcb-3d-mask-colour.
   mask_colour_3d: 'scripts/editor-verify-js/fixtures/mask_colour_3d.nsm',
+  // A board in a case of two models, one in a stated colour and one in its file's own (issue #756), for pcb-3d-case-colour.
+  case_colour_3d: 'scripts/editor-verify-js/fixtures/case_colour_3d.nsm',
   // The LED example with a project catalog and a fake LCSC endpoint (ADR 0039).
   catalog_refresh: 'examples/led.nsm',
   // The LED example with a 249 ohm resistor no catalog row has (E96): the BOM's swap of an unresolved part.
@@ -488,7 +490,7 @@ function cleanup() {
 
 const commands = { doctor, launch, drive, groups, evidence, cleanup };
 if (!commands[command]) {
-  console.error('usage: scripts/editor-verify doctor [--no-browser] | launch [--fixture two_boards|led|regulator|lights|four_layer|six_layer|outline_and_pours|routed_pours|carrier_and_cards|led_panel|catalog_refresh|constrained|height_limits|enclosure_limits|case_fit|inspect_3d|mask_colour_3d|empty|tri_state|shared_module|schematic_bench|big|tree] [--file f.nsm] | drive <recipe>|all | groups | evidence | cleanup [--keep-evidence]  (launch also takes --git)');
+  console.error('usage: scripts/editor-verify doctor [--no-browser] | launch [--fixture two_boards|led|regulator|lights|four_layer|six_layer|outline_and_pours|routed_pours|carrier_and_cards|led_panel|catalog_refresh|constrained|height_limits|enclosure_limits|case_fit|inspect_3d|mask_colour_3d|case_colour_3d|empty|tri_state|shared_module|schematic_bench|big|tree] [--file f.nsm] | drive <recipe>|all | groups | evidence | cleanup [--keep-evidence]  (launch also takes --git)');
   process.exit(2);
 }
 await commands[command]();

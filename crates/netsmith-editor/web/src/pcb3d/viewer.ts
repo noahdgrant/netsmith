@@ -668,6 +668,13 @@ export class Viewer {
     return out;
   }
 
+  /** The colour each piece of each case model is drawn in, by model name, in the file's order: `#rrggbb` (its file's, or its board's `.color`, issue 756), or '' for the theme's own grey (for the browser recipes). */
+  caseTintState(): Record<string, string[]> {
+    const out: Record<string, string[]> = {};
+    for (const c of this.cases) (out[c.info.case] ??= []).push((c.mesh.userData.caseColour as string | null) ?? '');
+    return out;
+  }
+
   /** Hide these case models (by name) and show the rest as the mode says; none shows every model. */
   setHiddenCases(names: string[]) {
     this.hiddenCases = new Set(names);
