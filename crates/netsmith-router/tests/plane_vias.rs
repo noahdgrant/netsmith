@@ -75,6 +75,9 @@ pub(crate) fn board(poured: bool) -> Board {
             stitch_pitch: Some(4.0),
             thermal_gap: None,
             spoke_width: None,
+            clearance: None,
+            min_width: None,
+            pads: None,
         });
     }
     board

@@ -69,6 +69,9 @@ impl Unplaced {
                 stitch_pitch: p.stitch_pitch,
                 thermal_gap: p.thermal_gap,
                 spoke_width: p.spoke_width,
+                clearance: p.clearance,
+                min_width: p.min_width,
+                pads: p.pads,
             })
             .collect();
         Board {

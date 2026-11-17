@@ -8,6 +8,10 @@ _Avoid_: 3D model (KiCad's or a maker's file), parametric model, mesh
 The text identifier of a pin that its symbol and footprint share, such as `1`, `A1`, or `EP`. A pin can have several (a regulator's output on pads 1 and 2). The part's pin table gives them, for the package the part is in; a pin has no `.pad` field.
 _Avoid_: Number, pin number
 
+**Pad connection**:
+How a _Pour_ or a _Zone_ joins the pads of its net: a thermal relief (the default), solid copper, not at all, or a relief round a through-hole pad and solid copper up to a surface pad. A pour states it as a variant of the std enum `PadConnection` (`.process.top.pads &= PadConnection::Solid`), a zone of the routes file as `pads = "solid"`; KiCad's zone writes it as `connect_pads` (issue #1084).
+_Avoid_: pad connect mode, zone connection
+
 **Pair satellite**:
 A satellite whose two pins are on two different pins of one main part, such as a crystal across `XL1` and `XL2`, a resonator, or a series element across two pins. The schematic stands it beside both pins, turned so that its two wires are short, have as few bends as can be, and cross nothing, and never writes a name on its nets. The metric `pair_crossings` (target 0) counts the crossings on those wires.
 _Avoid_: Crystal rule, two-pin satellite
@@ -119,7 +123,7 @@ _Avoid_: Sublayer (KiCad's word for a ply after the first in its board file)
 A pin of an interface on a module or board. A port only passes a connection along to the terminals behind it. An interface that a board declares directly (`.output: Rail`) is also the port of that board in a system, which can join it to another board's port and reach nothing else of the board.
 
 **Pour**:
-Copper filled on an outer layer round the tracks and joined to one net, such as ground: `.process.top.net &= "GND"`. Unlike a plane it leaves room for the tracks, KiCad fills it, and vias at a pitch the board states (`.stitch_pitch`) join it to the other layers of its net. Its thermal reliefs are KiCad's unless the process states the gap and the spoke width (`.thermal_gap`, `.spoke_width`).
+Copper filled on an outer layer round the tracks and joined to one net, such as ground: `.process.top.net &= "GND"`. Unlike a plane it leaves room for the tracks, KiCad fills it, and vias at a pitch the board states (`.stitch_pitch`) join it to the other layers of its net. Its thermal reliefs are KiCad's unless the process states the gap and the spoke width (`.thermal_gap`, `.spoke_width`), and it states its clearance, narrowest copper and pad connection as a zone does (`.clearance`, `.min_width`, `.pads`).
 _Avoid_: Copper fill, ground plane (that is a plane)
 
 **Power symbol**:

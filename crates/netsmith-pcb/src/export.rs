@@ -637,11 +637,50 @@ pub fn kicad_pro(board: &Board) -> String {
 /// The file holds no fill. KiCad fills a zone when a person opens the board and presses
 /// `B`; the fabrication step has KiCad fill it before it checks and plots the board.
 fn zone(board: &Board, plane: &Plane, net: Sexp) -> Sexp {
-    zone_with(board, plane, net, (THERMAL, THERMAL))
+    zone_with(board, plane, net, &Fill::of(board, None))
 }
 
-/// [`zone`] with the gap and the spoke width of its thermal reliefs, in mm.
-fn zone_with(board: &Board, plane: &Plane, net: Sexp, (gap, spoke): (f64, f64)) -> Sexp {
+/// The settings of a plane's or a pour's zone that change its copper, in mm.
+struct Fill {
+    clearance: f64,
+    min_width: f64,
+    pads: crate::board::ZonePads,
+    thermal_gap: f64,
+    spoke_width: f64,
+}
+
+impl Fill {
+    /// A pour's settings, each the board's default where the design states none; a plane's
+    /// (`None`) are all the defaults.
+    fn of(board: &Board, pour: Option<&crate::board::BoardPour>) -> Fill {
+        Fill {
+            clearance: pour
+                .and_then(|p| p.clearance)
+                .unwrap_or(board.rules.plane_clearance),
+            min_width: pour.and_then(|p| p.min_width).unwrap_or(ZONE_MIN_THICKNESS),
+            pads: pour.and_then(|p| p.pads).unwrap_or_default(),
+            thermal_gap: pour.and_then(|p| p.thermal_gap).unwrap_or(THERMAL),
+            spoke_width: pour.and_then(|p| p.spoke_width).unwrap_or(THERMAL),
+        }
+    }
+}
+
+/// KiCad's `(connect_pads` of a zone that joins its net's pads so, `clearance` from other nets.
+fn connect_pads(pads: crate::board::ZonePads, clearance: f64) -> Sexp {
+    use crate::board::ZonePads;
+    let mut connect = Vec::new();
+    match pads {
+        ZonePads::Solid => connect.push(Sexp::atom("yes")),
+        ZonePads::Thermal => {}
+        ZonePads::None => connect.push(Sexp::atom("no")),
+        ZonePads::ThruHoleOnly => connect.push(Sexp::atom("thru_hole_only")),
+    }
+    connect.push(Sexp::node("clearance", vec![Sexp::num(clearance)]));
+    Sexp::node("connect_pads", connect)
+}
+
+/// [`zone`] with the settings of a pour.
+fn zone_with(board: &Board, plane: &Plane, net: Sexp, fill: &Fill) -> Sexp {
     let inset = board.outline.expanded(-board.rules.copper_to_edge);
     let points: Vec<Sexp> = inset
         .corners()
@@ -657,21 +696,15 @@ fn zone_with(board: &Board, plane: &Plane, net: Sexp, (gap, spoke): (f64, f64)) 
             Sexp::node("layer", vec![Sexp::string(plane.layer.clone())]),
             uuid_for(&key),
             Sexp::node("hatch", vec![Sexp::atom("edge"), Sexp::num(0.5)]),
-            Sexp::node(
-                "connect_pads",
-                vec![Sexp::node(
-                    "clearance",
-                    vec![Sexp::num(board.rules.plane_clearance)],
-                )],
-            ),
-            Sexp::node("min_thickness", vec![Sexp::num(ZONE_MIN_THICKNESS)]),
+            connect_pads(fill.pads, fill.clearance),
+            Sexp::node("min_thickness", vec![Sexp::num(fill.min_width)]),
             Sexp::node("filled_areas_thickness", vec![Sexp::atom("no")]),
             Sexp::node(
                 "fill",
                 vec![
                     Sexp::atom("yes"),
-                    Sexp::node("thermal_gap", vec![Sexp::num(gap)]),
-                    Sexp::node("thermal_bridge_width", vec![Sexp::num(spoke)]),
+                    Sexp::node("thermal_gap", vec![Sexp::num(fill.thermal_gap)]),
+                    Sexp::node("thermal_bridge_width", vec![Sexp::num(fill.spoke_width)]),
                 ],
             ),
             Sexp::node("polygon", vec![Sexp::node("pts", points)]),
@@ -683,7 +716,7 @@ fn zone_with(board: &Board, plane: &Plane, net: Sexp, (gap, spoke): (f64, f64)) 
 /// `(polygon`, and its settings, so that KiCad's fill makes the copper of the zone it was imported
 /// from (a priority of 0, and islands removed, are KiCad's defaults and not written).
 fn fixed_zone(board: &Board, i: usize, z: &crate::board::BoardZone, net: Sexp) -> Sexp {
-    use crate::board::{ZoneIslands, ZonePads};
+    use crate::board::ZoneIslands;
     let polygon = |ring: &[crate::geometry::Pt]| {
         Sexp::node(
             "polygon",
@@ -715,15 +748,7 @@ fn fixed_zone(board: &Board, i: usize, z: &crate::board::BoardZone, net: Sexp) -
             vec![Sexp::num(f64::from(z.priority))],
         ));
     }
-    let mut connect = Vec::new();
-    match z.pads {
-        ZonePads::Solid => connect.push(Sexp::atom("yes")),
-        ZonePads::Thermal => {}
-        ZonePads::None => connect.push(Sexp::atom("no")),
-        ZonePads::ThruHoleOnly => connect.push(Sexp::atom("thru_hole_only")),
-    }
-    connect.push(Sexp::node("clearance", vec![Sexp::num(z.clearance)]));
-    fields.push(Sexp::node("connect_pads", connect));
+    fields.push(connect_pads(z.pads, z.clearance));
     fields.push(Sexp::node("min_thickness", vec![Sexp::num(z.min_width)]));
     fields.push(Sexp::node("filled_areas_thickness", vec![Sexp::atom("no")]));
     let mut fill = vec![
@@ -1063,11 +1088,8 @@ pub(crate) fn board_tree(board: &Board) -> Sexp {
             layer: pour.layer.name().to_string(),
             net: pour.net.clone(),
         };
-        let relief = (
-            pour.thermal_gap.unwrap_or(THERMAL),
-            pour.spoke_width.unwrap_or(THERMAL),
-        );
-        items.push(zone_with(board, &layer, net_number(&pour.net), relief));
+        let fill = Fill::of(board, Some(pour));
+        items.push(zone_with(board, &layer, net_number(&pour.net), &fill));
     }
     for (i, z) in board.zones.iter().enumerate() {
         items.push(fixed_zone(board, i, z, net_number(&z.net)));

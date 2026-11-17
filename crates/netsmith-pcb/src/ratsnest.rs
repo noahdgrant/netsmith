@@ -323,12 +323,13 @@ impl Ratsnest {
                 .filter_map(|p| CopperLayer::of_name(&p.layer))
                 .collect();
             let plane = !plane_layers.is_empty();
-            // A locked net's pours join it (the module's header).
-            let poured: Vec<CopperLayer> = if fixed.is_locked(&net.name) {
+            // A locked net's pours join it (the module's header), and its pads unless the pour
+            // joins none (`.pads &= PadConnection::None`, as the design rules check takes it).
+            let poured: Vec<(CopperLayer, bool)> = if fixed.is_locked(&net.name) {
                 pours
                     .iter()
                     .filter(|p| p.net == net.name && !zoned.contains(&p.layer.name()))
-                    .map(|p| p.layer)
+                    .map(|p| (p.layer, p.pads != Some(crate::board::ZonePads::None)))
                     .collect()
             } else {
                 Vec::new()
@@ -514,7 +515,7 @@ fn spanning_tree(
     nodes: &[Node],
     (tracks, vias): (&[&Track], &[&Via]),
     (plane, reaches_plane): (bool, &[bool]),
-    poured: &[CopperLayer],
+    poured: &[(CopperLayer, bool)],
     joined: &[(usize, usize)],
 ) -> Vec<Ratline> {
     let (n, t) = (nodes.len(), tracks.len());
@@ -556,7 +557,7 @@ fn spanning_tree(
                 sets.join(n + ti, n + tj);
             }
         }
-        if poured.contains(&track.layer) {
+        if poured.iter().any(|&(l, _)| l == track.layer) {
             sets.join(n + ti, pour_item(track.layer));
         }
     }
@@ -581,13 +582,13 @@ fn spanning_tree(
                 sets.join(n + t + vi, n + ti);
             }
         }
-        for &layer in poured.iter().filter(|&&l| via.on(l, layers)) {
+        for &(layer, _) in poured.iter().filter(|&&(l, _)| via.on(l, layers)) {
             sets.join(n + t + vi, pour_item(layer));
         }
     }
     for (ni, node) in nodes.iter().enumerate() {
-        for &layer in poured {
-            if has_layer(node, layer) {
+        for &(layer, pads) in poured {
+            if pads && has_layer(node, layer) {
                 sets.join(ni, pour_item(layer));
             }
         }
@@ -1070,6 +1071,9 @@ mod tests {
             stitch_pitch: None,
             thermal_gap: None,
             spoke_width: None,
+            clearance: None,
+            min_width: None,
+            pads: None,
         });
         // Not locked: the router routes it, as before.
         assert!(Ratsnest::of(&board).lines.iter().any(|l| l.net == "GND"));
@@ -1124,6 +1128,9 @@ mod tests {
             stitch_pitch: None,
             thermal_gap: None,
             spoke_width: None,
+            clearance: None,
+            min_width: None,
+            pads: None,
         });
         board.fixed.locked.insert("GND".into());
         assert!(Ratsnest::of(&board).lines.iter().all(|l| l.net != "GND"));
