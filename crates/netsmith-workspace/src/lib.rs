@@ -1323,6 +1323,10 @@ impl Backend for Workspace {
             (state.version, state.snapshot.board_handle(board)?)
         };
         let mut entry = pcb::place_watched(&data, board, say, show, &self.placing_token())?;
+        let kept = data
+            .layout
+            .as_ref()
+            .map(|(file, _)| netsmith_fabricate::kept_routes::KeptRoutes::beside_layout(file));
         // A board routed before from this very board is that route again; else the board routed
         // last, to keep the copper of what a change left alone (issue #825).
         let (restored, before) = {
@@ -1343,8 +1347,36 @@ impl Backend for Workspace {
             }
             return Ok(report);
         }
-        let routed = entry.route(board, say, show, before.as_ref());
+        // No board routed in this session: the copper kept on disk by an earlier one (issue
+        // #1019), with the nets whose pads it has elsewhere routed again.
+        let mut rip = std::collections::BTreeSet::new();
+        let before = match (before, &kept) {
+            (Some(before), _) => Some(before),
+            (None, Some(kept)) => match kept.start_from(&entry.board) {
+                Ok(Some(start)) => {
+                    say(&format!(
+                        "{board}: starting from the router's copper kept in {}",
+                        start.file.display()
+                    ));
+                    rip = start.rip;
+                    Some(start.before)
+                }
+                Ok(None) => None,
+                Err(why) => {
+                    say(&format!("{board}: {why}; routing every net"));
+                    None
+                }
+            },
+            (None, None) => None,
+        };
+        let routed = entry.route(board, say, show, before.as_ref().map(|b| (b, &rip)));
         let report = entry.report(board);
+        // Kept on disk for a later session, when it ran to its end.
+        if let (false, Some(kept)) = (report.stopped, &kept)
+            && let Err(e) = kept.write(routed.start(), routed.board())
+        {
+            say(&format!("{board}: the router's copper is not kept: {e}"));
+        }
         let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
         // Kept only when it ran to its end: a route stopped short is no board to start from.
         if !report.stopped {

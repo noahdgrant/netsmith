@@ -95,7 +95,7 @@ pub fn save(file: &Path, routes: &Routes) -> Result<(), String> {
 }
 
 /// Write `text` over `file` as a temporary file in the same folder renamed into place.
-fn write_atomic(file: &Path, text: &str) -> std::io::Result<()> {
+pub(crate) fn write_atomic(file: &Path, text: &str) -> std::io::Result<()> {
     let name = file
         .file_name()
         .map_or(String::new(), |n| n.to_string_lossy().into_owned());

@@ -27,6 +27,7 @@
 pub mod arcs;
 pub mod carry;
 mod decouple;
+pub mod kept;
 pub mod meander;
 pub mod pad_vias;
 pub mod parallel;

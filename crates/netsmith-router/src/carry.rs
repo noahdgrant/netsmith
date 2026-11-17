@@ -19,7 +19,11 @@
 //! crosses the box round the parts that moved (before and after, grown by
 //! [`CROSSING_MARGIN`]) are ripped up too and the board is routed again from the carried copper
 //! less theirs; the result that leaves fewer connections is kept, and
-//! [`Rerouted::also`] names the nets of the second run.
+//! [`Rerouted::also`] names the nets of the second run. The board it leaves counts the carried
+//! copper as the router's again, not as fixed, so that it is a board to carry from in turn.
+//!
+//! The router's copper is also kept on disk ([`crate::kept`], issue #1019), so that a later
+//! editor session, `netsmith layout regenerate` and `fab --reuse-routes` carry from it too.
 
 use std::collections::BTreeSet;
 
@@ -128,8 +132,23 @@ pub fn carry_copper(before: &Board, after: &mut Board, rip: &BTreeSet<String>) -
 }
 
 /// Carry the copper of `before` onto `after` ([`carry_copper`]) and route what is left, with a
-/// second run when connections are left (the module's header).
+/// second run when connections are left (the module's header). The board it leaves has the
+/// fixed copper it was given: the carried copper is the router's again, so that the board is one
+/// to carry from in turn.
 pub fn reroute(
+    before: &Board,
+    after: &mut Board,
+    rip: &BTreeSet<String>,
+    options: RouteOptions,
+) -> Rerouted {
+    let (tracks, vias) = (after.fixed.tracks, after.fixed.vias);
+    let done = reroute_held(before, after, rip, options);
+    after.fixed.tracks = tracks;
+    after.fixed.vias = vias;
+    done
+}
+
+fn reroute_held(
     before: &Board,
     after: &mut Board,
     rip: &BTreeSet<String>,
