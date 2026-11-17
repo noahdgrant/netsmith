@@ -523,7 +523,7 @@ pub(crate) mod testing {
         Board, Command, Dev, Import, Project, View, board3d, bom, build, case, catalog, check,
         common, compare, copper, drc, dxf, editor, explain, fab, gerber, init, kicad_libs, layout,
         lint, lock, mcp, order, panel, parity, part, pcb, pins, port, power, render, route, routes,
-        schematic, schematic_layout, swap, system, view,
+        schematic, schematic_layout, show, swap, system, view,
     };
 
     /// The command line as main.rs has it.
@@ -551,6 +551,7 @@ pub(crate) mod testing {
         Compare(compare::Args),
         Pins(pins::Args),
         Swap(swap::Args),
+        Show(show::Args),
         Bom(bom::Args),
         Power(power::Args),
         System(system::Args),
@@ -596,6 +597,7 @@ pub(crate) mod testing {
                     Board::Compare(a) => Leaf::Compare(a),
                     Board::Pins(a) => Leaf::Pins(a),
                     Board::Swap(a) => Leaf::Swap(a),
+                    Board::Show(a) => Leaf::Show(a),
                     Board::Bom(a) => Leaf::Bom(a),
                     Board::Power(a) => Leaf::Power(a),
                     Board::System(a) => Leaf::System(a),

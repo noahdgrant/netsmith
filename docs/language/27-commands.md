@@ -44,6 +44,7 @@ Each command, what it was before, and its flags (a test walks `--help` of every 
 | `netsmith board pins move` | new | `--file`, `--board`, `--format` |
 | `netsmith board pins apply` | new | `--proposal`, `--file`, `--board`, `--format` |
 | `netsmith board swap` | new (the editor's Swap) | `--board`, `--apply`, `--format` |
+| `netsmith board show` | new | `--board`, `--format` |
 | `netsmith board bom` | new | `--board`, `--offline`, `--format` |
 | `netsmith board power` | new | `--board`, `--format` |
 | `netsmith board system` | new | `--name`, `--format` |
@@ -129,21 +130,23 @@ Another host that starts a server on stdio takes the same: the command `netsmith
 
 ### The editor's views on the command line
 
-`netsmith board bom`, `board power`, `board system` and `board panel` (issue #1096) print the views of the solved design that the editor draws, as text or, with `--format json`, as the document the editor's own route answers: `GET /api/bom`, `/api/power`, `/api/system` and `/api/panel`. They are made by the code those routes call (`netsmith_workspace::Workspace`'s `Backend`), so the command line and the editor cannot differ, and each is read-only: it writes no file and needs neither `fab` nor a browser.
+`netsmith board show`, `board bom`, `board power`, `board system` and `board panel` (issues #1096 and #1137) print the views of the solved design that the editor draws, as text or, with `--format json`, as the document the editor's own route answers: `GET /api/board`, `/api/bom`, `/api/power`, `/api/system` and `/api/panel`. They are made by the code those routes call (`netsmith_workspace::Workspace`'s `Backend`), so the command line and the editor cannot differ, and each is read-only: it writes no file and needs neither `fab` nor a browser.
 
 ```sh
+netsmith board show --board main          # the parts with what the solve left them, the nets with their pins, the pick lock
 netsmith board bom --offline              # what the bill costs: lines, price, stock, total
 netsmith board power --board main         # the current on each rail, what each supply leaves
 netsmith board system --format json       # a system's boards, joins, mates and grounds
 netsmith board panel                      # a panel's grid, size and checks
 ```
 
+- `board show` prints the board's parts and nets as the editor's inspector shows them: each part with its designator, kind, value, package, path, LCSC number, whether it is assembled, the declaration that made it and the scopes round it, what the solver worked out for it (effective capacitance and bias, tolerance, ratings, the catalog row), the pins its pin requests got and where its package came from; each net with its pins (the pad, and the datasheet's name and the function the board chose); the board's notes; and whether the pick lock beside the source is current (what `project lock --check` says, which it only reads).
 - `board bom` prints the lines the board house assembles (grouped as `bom.csv` is) and those soldered by hand, each with its price, stock and the day they were read, and the total of the priced lines; a line whose price is unknown says why, and a generic part no catalog row stands for says what is wanted. `--offline` asks no supplier, as `board fab --offline` does (ADR 0047).
 - `board power` prints each rail with its voltage, the supplies and loads on it with their currents, what the loads add up to against what the supply can give, the converters between rails with their efficiency, and the power issues (an overdrawn supply, a rail nothing supplies, a load or an efficiency not settled). It exits 0 with issues: `board check` and `board build` are the commands that fail on them.
 - `board system` prints a `system`'s members with their ports, the joins between them, the mated connectors with each board's role and net at each contact, and the grounds the mates join; named after a board, the members of that board and the nets between them.
 - `board panel` prints a `panel`'s board, grid, cell and panel size, rails and the panel checks; the drawing is only in the JSON (`svg`).
 
-`bom` and `power` take the source file (or, with none, the project's boards) and `--board NAME`; `system` and `panel` take `--name NAME`. A name is as the editor names it, `System/Board` for a board of a system, and `Board` alone when no other board has that name. With one board (one system, one panel) the name may be left out; with several, the command exits 2 and lists them. The exit code is 0 when the view is printed, 1 when the source does not build (with its errors), and 2 when the command cannot run.
+`show`, `bom` and `power` take the source file (or, with none, the project's boards) and `--board NAME`; `system` and `panel` take `--name NAME`. A name is as the editor names it, `System/Board` for a board of a system, and `Board` alone when no other board has that name. With one board (one system, one panel) the name may be left out; with several, the command exits 2 and lists them. The exit code is 0 when the view is printed, 1 when the source does not build (with its errors), and 2 when the command cannot run.
 
 ### Every editor route has a command
 
@@ -153,7 +156,7 @@ An agent must be able to drive and read everything a person does in the editor (
 - the command that is still to come, with the issue that builds it (`GET /api/pcb/pours` is `view pcb`, issue #1086, which draws the 2D picture of the copper). The test accepts the row until a command of that name exists and then fails, so that the row is changed to name it;
 - why the route is an affordance of the page and needs no command, in one line: the previews of a track being drawn (`/api/pcb/walk`, `/api/pcb/shove`, `/api/pcb/reroute`), the socket (`/api/events`) and the progress post (`/api/progress`), the page's reads and writes of the files of the text editor and the project tree (`/api/file`, `/api/fs/...`), the cancels (a command stops with Ctrl+C, an MCP call with the host's cancel), and the choice of the page's analysis (`/api/analysis/run` and `/api/analysis/auto`).
 
-A route of the server with no row fails the test, and so does a row with no route, so a pull request that adds a route to the editor adds its command, or the reason it has none, in the same change. The audit that made the first table found two routes whose command is not there yet: the board's parts and nets as the inspector shows them (`GET /api/board`, issue #1137) and the project's boards, systems, panels and files (`GET /api/project`, issue #1138).
+A route of the server with no row fails the test, and so does a row with no route, so a pull request that adds a route to the editor adds its command, or the reason it has none, in the same change. The audit that made the first table found two routes whose command was not there: the board's parts and nets as the inspector shows them (`GET /api/board`, issue #1137, which is `board show`) and the project's boards, systems, panels and files (`GET /api/project`, issue #1138).
 
 ### The editor
 

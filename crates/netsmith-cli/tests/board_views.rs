@@ -266,3 +266,50 @@ fn the_power_issues_are_in_the_text_and_do_not_fail_the_command() {
         "{text}"
     );
 }
+
+#[test]
+fn the_board_is_the_editors() {
+    let root = project("views-board", LED, &[]);
+    let port = serve(&root);
+    let expected = editor(port, "/api/board?name=LedExample");
+    assert_eq!(json(&root, &["board", "show"]), expected);
+    assert_eq!(
+        json(&root, &["board", "show", "src/main.nsm", "--board", "LedExample"]),
+        expected
+    );
+    assert!(!expected["parts"].as_array().unwrap().is_empty(), "{expected}");
+    assert!(!expected["nets"].as_array().unwrap().is_empty(), "{expected}");
+    assert!(expected.get("lock").is_some(), "the pick lock is in it: {expected}");
+}
+
+#[test]
+fn the_board_prints_its_parts_and_nets() {
+    let root = project("views-board-text", LED, &[]);
+    let output = netsmith(&root, &["board", "show"]);
+    assert!(output.status.success(), "{}", stderr(&output));
+    let text = stdout(&output);
+    for want in ["LedExample (", "Parts:", "R1 ", "declared at src/main.nsm:", "Nets:", "R1.1", "Pick lock"] {
+        assert!(text.contains(want), "missing {want:?} in\n{text}");
+    }
+}
+
+#[test]
+fn a_board_of_a_system_is_the_editors() {
+    let root = project("views-board-system", TWO_BOARDS, &[]);
+    let port = serve(&root);
+    assert_eq!(
+        json(&root, &["board", "show", "--board", "power"]),
+        editor(port, "/api/board?name=TwoBoards%2Fpower")
+    );
+    let output = netsmith(&root, &["board", "show"]);
+    assert_eq!(output.status.code(), Some(2), "{}", stderr(&output));
+    assert!(stderr(&output).contains("--board"), "{}", stderr(&output));
+}
+
+#[test]
+fn a_board_that_does_not_build_says_why_and_fails() {
+    let root = project("views-board-broken", "board B {\n  nonsense\n}\n", &[]);
+    let output = netsmith(&root, &["board", "show"]);
+    assert_eq!(output.status.code(), Some(2), "{}", stderr(&output));
+    assert!(stdout(&output).is_empty());
+}

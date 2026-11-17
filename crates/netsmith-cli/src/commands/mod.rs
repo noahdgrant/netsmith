@@ -38,6 +38,7 @@ mod route;
 mod routes;
 mod schematic;
 mod schematic_layout;
+mod show;
 mod swap;
 mod system;
 mod view;
@@ -129,6 +130,8 @@ pub enum Board {
     Pins(pins::Args),
     /// List the alternatives of a part no catalog row stands for, with their checks, or write one into the source.
     Swap(swap::Args),
+    /// Print a board's parts and nets as the editor's inspector shows them: solved values, pins, pick lock.
+    Show(show::Args),
     /// Print a board's bill of materials with price and stock.
     Bom(bom::Args),
     /// Print a board's power tree: rails, supplies, loads and what each leaves.
@@ -206,6 +209,7 @@ pub fn run(command: Command) -> ExitCode {
             Board::Compare(args) => compare::run(args),
             Board::Pins(args) => pins::run(args),
             Board::Swap(args) => swap::run(args),
+            Board::Show(args) => show::run(args),
             Board::Bom(args) => bom::run(args),
             Board::Power(args) => power::run(args),
             Board::System(args) => system::run(args),
