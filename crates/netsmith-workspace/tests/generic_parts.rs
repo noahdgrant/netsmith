@@ -147,10 +147,10 @@ fn fab_refuses_each_unresolved_generic_part_by_name() {
 
 #[test]
 fn each_alternative_is_checked_again_and_the_message_says_which_pass() {
-    // An inductor of 3.3 uH +/- 20% that carries 3 A. The 4.7 uH rows nearest to it saturate at
-    // 2.8 A and 2.6 A, so with either in its place the design fails its own check; the 2.2 uH row
-    // saturates at 3.6 A and passes. (The load was 2 A until the 4.7 uH rows of 2.6 A and 2.8 A
-    // were added: they pass at 2 A and are nearer than the 1.25 A and 1 A rows were.)
+    // An inductor of 3.3 uH +/- 20% that carries 4 A. The rows nearest to it are the 2.2 uH row
+    // of 3.6 A and the 10 uH Changjiang row of 3.6 A, which fail the design's own check, and the
+    // 6.8 uH Changjiang row of 4.55 A, which passes. (The load was 2 A, then 3 A, until rows that
+    // pass at those loads were added and were nearer than the rows that fail.)
     let root = TempDir::new("generic-parts-recheck");
     fs::create_dir_all(root.join("src")).unwrap();
     fs::write(
@@ -172,11 +172,11 @@ board Saturates {
     .load: Rail {
         .pos.net &= "OUT"
         .neg.net &= "GND"
-        .current &= 3A
+        .current &= 4A
     }
     .l: Inductor {
         .inductance &= 3.3uH +/- 20%
-        .current &= 3A
+        .current &= 4A
     }
     .supply.pos ~> .l ~> .load.pos
     .supply.neg ~ .load.neg
@@ -187,13 +187,13 @@ board Saturates {
     let bom = bom_of(&open(&root));
     let l = bom.lines.iter().find(|l| l.kind == "Inductor").unwrap();
     let why = l.unresolved.as_deref().expect("an unresolved inductor");
-    assert!(why.contains("saturation current at least 3 A"), "{why}");
+    assert!(why.contains("saturation current at least 4 A"), "{why}");
     assert!(
-        why.contains("ZETC322512S4R7MBT-LF 4.7uH 2.8A inductor 1210 C48945755 fails: l.current must always be at most l.saturation_current, but 3A is not always below 2.8A"),
+        why.contains("MHCD322512A-2R2M-A8S 2.2uH 3.6A inductor 1210 C285758 fails: l.current must always be at most l.saturation_current, but 4A is not always below 3.6A"),
         "{why}"
     );
     assert!(
-        why.contains("MHCD322512A-2R2M-A8S 2.2uH 3.6A inductor 1210 C285758 passes every check"),
+        why.contains("FNR8040S6R8MT 6.8uH 4.55A inductor FNR8040S C168125 passes every check"),
         "{why}"
     );
     // The advice still ends the message.
