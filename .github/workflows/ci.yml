@@ -864,8 +864,9 @@ jobs:
             *) echo "::error::KiCad 9 is wanted, the runner installed $("$cli" --version)"; exit 1 ;;
           esac
 
-      # The silent installer (NSIS `/S`) installs every component into
-      # `%ProgramFiles%\KiCad\9.0`, and returns when it is done (`-Wait`).
+      # The silent installer (NSIS `/S`; its multi-user page wants a scope, else it exits with 666660)
+      # installs every component for all users into `%ProgramFiles%\KiCad\9.0`, and returns when
+      # it is done (`-Wait`).
       - name: Install KiCad 9 from the official installer
         if: runner.os == 'Windows'
         shell: pwsh
@@ -878,7 +879,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "the download failed ($LASTEXITCODE)" }
           $hash = (Get-FileHash -Algorithm SHA256 $exe).Hash.ToLower()
           if ($hash -ne $env:KICAD_EXE_SHA256) { throw "the installer's SHA-256 is $hash, wanted $env:KICAD_EXE_SHA256" }
-          $install = Start-Process -FilePath $exe -ArgumentList '/S' -Wait -PassThru
+          $install = Start-Process -FilePath $exe -ArgumentList '/S', '/allusers' -Wait -PassThru
           if ($install.ExitCode -ne 0) { throw "the installer exited with $($install.ExitCode)" }
           Remove-Item $exe
           Get-ChildItem "$env:ProgramFiles\KiCad"
