@@ -70,6 +70,15 @@ fn plain_fab(root: &Path, reuse: Reuse) {
             None,
             &FabOptions {
                 layout: Some(netsmith_fabricate::layout::layout_path(&source.path)),
+                // What `fab` and an order give a package's reuse key about the schematic PDF.
+                schematic: Some(netsmith_fabricate::schematic::Inputs::of(
+                    &source.path,
+                    target.project.as_ref(),
+                )),
+                revision: target
+                    .project
+                    .as_ref()
+                    .and_then(|p| p.manifest.revision.clone()),
                 pin_map_source: Some(source.stable_name(target.project.as_ref())),
                 reuse: reuse.clone(),
                 progress: Some(say),
