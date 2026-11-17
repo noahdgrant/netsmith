@@ -1428,6 +1428,50 @@ fn the_tdk_slf7045_row_states_the_datasheets_numbers() {
     assert_eq!(r.column("package"), Some(&Value::Text("SLF7045".into())));
 }
 
+/// The TDK SLF7045T-6R8M1R7-PF (issue #992): the same sheet and footprint as the 4.7 uH row;
+/// Rdc is the table's 0.039 ohm +/- 20% at its upper end.
+#[test]
+fn the_tdk_slf7045_6r8_row_states_the_datasheets_numbers() {
+    let r = row_of("inductor", "C136205");
+    assert_eq!(r.mpn.as_deref(), Some("SLF7045T-6R8M1R7-PF"));
+    assert_eq!(value(&r, "inductance"), tolerance(6.8, "uH", 20.0));
+    assert_eq!(value(&r, "saturation_current"), quantity(1.7, "A"));
+    assert_eq!(value(&r, "dc_resistance"), quantity(0.0468, "ohm"));
+    assert_eq!(r.column("package"), Some(&Value::Text("SLF7045".into())));
+}
+
+/// The Changjiang FNR shielded power inductors (issue #992): each row states the maximum Isat
+/// (30% inductance drop) and the maximum DCR of the series' table on the page `source` names, in
+/// the package named for the series, whose footprint netsmith generates.
+#[test]
+fn the_changjiang_fnr_rows_state_the_datasheets_maximum_isat_and_dcr() {
+    // (lcsc, mpn, uH, Isat A maximum, DCR ohm maximum, package)
+    for (lcsc, mpn, uh, isat, dcr, package) in [
+        ("C167828", "FNR4020S4R7MT", 4.7, 2.35, 0.098, "FNR4020S"),
+        ("C167832", "FNR4020S6R8MT", 6.8, 2.20, 0.163, "FNR4020S"),
+        ("C167835", "FNR4020S100MT", 10.0, 1.60, 0.215, "FNR4020S"),
+        ("C167838", "FNR4020S220MT", 22.0, 1.05, 0.455, "FNR4020S"),
+        ("C167965", "FNR5040S6R8MT", 6.8, 2.90, 0.056, "FNR5040S"),
+        ("C167967", "FNR5040S100MT", 10.0, 2.35, 0.083, "FNR5040S"),
+        ("C167971", "FNR5040S220MT", 22.0, 1.60, 0.168, "FNR5040S"),
+        ("C167973", "FNR5040S330MT", 33.0, 1.30, 0.244, "FNR5040S"),
+        ("C168031", "FNR6028S6R8MT", 6.8, 2.60, 0.061, "FNR6028S"),
+        ("C168034", "FNR6028S100MT", 10.0, 2.04, 0.094, "FNR6028S"),
+        ("C168038", "FNR6028S220MT", 22.0, 1.45, 0.182, "FNR6028S"),
+        ("C168125", "FNR8040S6R8MT", 6.8, 4.55, 0.031, "FNR8040S"),
+        ("C168127", "FNR8040S100MT", 10.0, 3.60, 0.038, "FNR8040S"),
+        ("C168131", "FNR8040S220MT", 22.0, 2.40, 0.090, "FNR8040S"),
+    ] {
+        let r = row_of("inductor", lcsc);
+        assert_eq!(r.mpn.as_deref(), Some(mpn));
+        assert_eq!(r.library, Some(Library::Extended), "{mpn}");
+        assert_eq!(value(&r, "inductance"), tolerance(uh, "uH", 20.0), "{mpn}");
+        assert_eq!(value(&r, "saturation_current"), quantity(isat, "A"), "{mpn}");
+        assert_eq!(value(&r, "dc_resistance"), quantity(dcr, "ohm"), "{mpn}");
+        assert_eq!(r.column("package"), Some(&Value::Text(package.into())), "{mpn}");
+    }
+}
+
 #[test]
 fn the_fuses_the_beads_and_the_mosfets_have_their_rows() {
     let fuse = row_of("fuse", "C20800");

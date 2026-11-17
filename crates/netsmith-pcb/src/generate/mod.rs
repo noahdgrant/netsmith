@@ -852,7 +852,10 @@ mod tests {
             let fp = generate(&format!("Inductor_SMD:L_Changjiang_{name}")).unwrap();
             assert_eq!(fp.pad_numbers(), ["1", "2"], "{name}");
             let at = |n: &str| fp.pads_numbered(n).next().unwrap().at;
-            assert!(near(at("2").x - at("1").x - length, gap), "{name}: pads {gap} mm apart");
+            assert!(
+                near(at("2").x - at("1").x - length, gap),
+                "{name}: pads {gap} mm apart"
+            );
             for pad in &fp.pads {
                 assert!(near(pad.width, length) && near(pad.height, width), "{name}");
             }
