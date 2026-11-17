@@ -84,6 +84,12 @@ fn measured() {
                 board.vias.len(),
                 routing.stopped,
             );
+            let mut nets: Vec<&str> = routing.left.lines.iter().map(|l| l.net.as_str()).collect();
+            nets.sort_unstable();
+            nets.dedup();
+            if !nets.is_empty() {
+                eprintln!("    left on {}", nets.join(", "));
+            }
         }
     }
 }
