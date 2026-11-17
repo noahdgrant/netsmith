@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { coverageLine, heightLine, limitTip, partTip, provenanceCounts, readInfo, systemLine, unknownParts, type MemberInfo, type PartInfo3d, type SystemInfo } from './model';
+import { coverageLine, heightLine, limitTip, partTip, provenanceCounts, readInfo, systemLine, unknownParts, type BoardInfo, type MemberInfo, type PartInfo3d, type SystemInfo } from './model';
 
 const part = (path: string, refdes: string, provenance: 'stated' | 'catalog' | 'standard' | 'unknown', heightMm: number | null): PartInfo3d => ({
   kind: 'part',
@@ -40,12 +40,20 @@ describe('readInfo: the extras of the scene file (schema 1)', () => {
       widthMm: 40,
       heightMm: 24,
       thicknessMm: 1.6,
+      // A file of a board that states no mask colour has none (issue 771).
+      maskColour: null,
       // A kind it does not know is left out.
       layers: [{ name: 'F.Mask', kind: 'mask', thicknessMm: 0.01, zTopMm: 0, zBottomMm: -0.01 }],
       // A file before the package standard's heights has no `standard` count: none.
       coverage: { known: 2, total: 3, standard: 0 },
       findings: [{ code: 'too_tall', message: 'J1 stands 9 mm tall', parts: ['tall'], limit: 'lid', face: 'top' }],
     });
+  });
+  it('reads the colour a board states for its solder mask, and none the page does not draw (issue 771)', () => {
+    const board = (mask_colour?: unknown) => readInfo({ netsmith: { kind: 'board', schema: 1, board: 'B', mask_colour } }) as BoardInfo;
+    expect(board('Black').maskColour).toBe('Black');
+    expect(board('Orange').maskColour).toBeNull();
+    expect(board().maskColour).toBeNull();
   });
   it('reads the STEP model a part is drawn from, and the tooltip names its file (ADR 0108)', () => {
     const j = readInfo({ netsmith: { kind: 'part', path: 'usb', refdes: 'J1', side: 'top', provenance: 'stated', height_mm: 3.2, model: { file: 'models/usb.step', sha256: 'ab12', top_mm: 3.16 } } }) as PartInfo3d;

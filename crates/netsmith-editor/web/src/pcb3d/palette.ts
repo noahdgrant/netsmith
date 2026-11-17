@@ -59,6 +59,21 @@ export const TOKENS = {
   cut: '--pcb3d-cut',
 } as const;
 
+/** The colours a board states for its solder mask (`.stackup.mask_colour`, the variants of std's `Color`, issue 771). A board that states none keeps the theme's own mask tone. */
+export const MASK_COLOURS = ['Red', 'Green', 'Blue', 'Yellow', 'White', 'Black', 'Purple'] as const;
+export type MaskColour = (typeof MASK_COLOURS)[number];
+
+/** The tokens of a mask colour: the mask, the mask over copper, and the silkscreen ink that reads on it. */
+export function maskTokens(colour: MaskColour): { mask: string; copper: string; silk: string } {
+  const k = colour.toLowerCase();
+  return { mask: `--pcb3d-mask-${k}`, copper: `--pcb3d-mask-copper-${k}`, silk: `--pcb3d-silk-${k}` };
+}
+
+/** The colour name a file states, or null for none or one the page does not know (it keeps the theme's mask tone). */
+export function maskColourOf(name: unknown): MaskColour | null {
+  return (MASK_COLOURS as readonly unknown[]).includes(name) ? (name as MaskColour) : null;
+}
+
 export type Provenance = 'stated' | 'catalog' | 'standard' | 'unknown';
 
 /** The role a mesh is drawn in, from its material's name and, for a part's body, where the part's
@@ -81,7 +96,8 @@ export function modelColour(material: string): string | null {
 
 /** Every token the view reads, for the test that each theme has them. */
 export function allTokens(): string[] {
-  return [...new Set([...Object.values(LOOKS).map((l) => l.token), ...Object.values(TOKENS)])];
+  const masks = MASK_COLOURS.flatMap((c) => Object.values(maskTokens(c)));
+  return [...new Set([...Object.values(LOOKS).map((l) => l.token), ...Object.values(TOKENS), ...masks])];
 }
 
 type Rgb = [number, number, number];

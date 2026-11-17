@@ -59,7 +59,7 @@ import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { DIM, type KindSwatch, type MarginBand, type NetState, extrudeFlat, kindSwatch, litReport, marginColour, pieceNet, xrayOpacity } from './inspect';
 import type { CaseMode, ColourBy } from './inspectMode';
 import { type BoardInfo, type CaseSolidInfo, type CopperInfo, type Info, type LimitInfo, type MemberInfo, type PartInfo3d, type StackLayer, type SystemInfo, readInfo } from './model';
-import { LOOKS, type Role, lit, modelColour, roleOf } from './palette';
+import { LOOKS, type MaskColour, type Role, lit, modelColour, roleOf } from './palette';
 import { type Preset, type Vec3, distanceFor, easeOut, fitPoints, fitHalfHeight, flipped, halfHeightAt, orbit, presetDirection, presetOf, slerpDir } from './presets';
 import { type Axis, type LimitPlan, type P3, type Slot, type Snap, bestSnap, easeInOut, explodeGap, explodeSlots, faceSlot, keepBelow, slabRole, spreadMembers } from './tools';
 
@@ -150,6 +150,8 @@ export type Colours = Record<Role, string> & {
   kinds: Record<KindSwatch, string>;
   margin: Record<MarginBand, string>;
   preview: string;
+  /** The solder mask in each colour a board can state (`.stackup.mask_colour`): the mask, the mask over copper and the silkscreen ink. */
+  masks: Record<MaskColour, { mask: string; copper: string; silk: string }>;
 };
 
 /** How the scene is looked at (inspectMode.ts): none of it is data. */
@@ -564,6 +566,8 @@ export class Viewer {
       // The silkscreen is drawn in a colour of its own: the `mark` of a body's pin-1 dot does not read on the mask in every theme.
       const role = info?.kind === 'silk' && name === 'mark' ? 'silk' : roleOf(name, part ? part.provenance : null, part?.model != null);
       o.userData.role = role;
+      // The colour its board states for its solder mask: the mask, the silkscreen and the layers' slabs take it (`maskTint`).
+      o.userData.maskColour = this.stacks.get(stack)?.board.maskColour ?? null;
       // A piece of a STEP model keeps the file's colour, unless the view colours by kind or margin.
       o.userData.modelColour = modelColour(name);
       if (role === 'body-unknown') planarUv(o);
@@ -753,6 +757,7 @@ export class Viewer {
           mesh.quaternion.copy(sub.quaternion);
           mesh.scale.copy(sub.scale);
           mesh.userData.role = ghost ? 'copper' : slabRole(layers, i);
+          mesh.userData.maskColour = this.stacks.get(stack)?.board.maskColour ?? null;
           mesh.userData.ghost = ghost;
           mesh.visible = false;
           parent.add(mesh);
@@ -844,7 +849,7 @@ export class Viewer {
       if (!closed) return;
       const key = role ?? `file:${mat.name}`;
       let g = groups.get(key);
-      if (!g) groups.set(key, (g = { meshes: [], colour: role ? new Color(this.colours![role]) : (mat.color?.clone() ?? new Color('gray')), role }));
+      if (!g) groups.set(key, (g = { meshes: [], colour: role ? new Color(this.maskTint(o, role) ?? this.colours![role]) : (mat.color?.clone() ?? new Color('gray')), role }));
       g.meshes.push(o);
     });
     const keys = [...groups.keys()].sort((a, b) => (CAP_ORDER.indexOf(a) + 1 || 99) - (CAP_ORDER.indexOf(b) + 1 || 99));
@@ -1274,6 +1279,14 @@ export class Viewer {
     return this.selected.has(path) ? 'select' : this.hovered.has(path) ? 'hover' : 'rest';
   }
 
+  /** The colour of a mask, a silkscreen or a slab of a board that states its mask's colour (issue 771); null for the role's own, and for every other role. */
+  private maskTint(o: Mesh, role: Role): string | null {
+    const name = o.userData.maskColour as MaskColour | null | undefined;
+    const tone = name ? this.colours!.masks[name] : undefined;
+    if (!tone) return null;
+    return role === 'mask-top' || role === 'mask-bottom' ? tone.mask : role === 'mask-over-copper' ? tone.copper : role === 'silk' ? tone.silk : null;
+  }
+
   /** A body's colour when the bodies are coloured by kind or by margin; null for the role's own. */
   private tintOf(part: PartInfo3d, role: Role): string | null {
     if (role !== 'body' && role !== 'body-catalog' && role !== 'body-standard') return null;
@@ -1315,7 +1328,7 @@ export class Viewer {
         const c = info as CaseSolidInfo;
         o.material = this.focusedSolids.has(`case:${c.case}:${c.solid}`) ? this.caseFocus() : this.litCases.has(c.case) ? this.caseLit() : this.solidNow(c) ? this.surface('case-solid', 'rest', { xray }) : this.surface(role, 'rest');
       } else {
-        o.material = this.surface(role, 'rest', { xray, dim: netsOn });
+        o.material = this.surface(role, 'rest', { xray, dim: netsOn, tint: this.maskTint(o, role) });
       }
     });
     for (const m of this.previews) m.material = this.previewMaterial();

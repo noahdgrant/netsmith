@@ -33,7 +33,7 @@ import { MeasurePanel, Overlay3d, type Readout, SectionPanel } from './Tools3d';
 import { type Axis, type Measurement, type Snap, axisRange, defaultCut, faceZ, nearestView, partReadout, renderCommand } from './tools';
 import { type LimitInfo, type MemberInfo, type PartInfo3d, type SystemInfo, coverageLine, limitTip, partTip, provenanceCounts, systemLine, unknownParts } from './model';
 import { systemShown, view3d } from './mode';
-import { LOOKS, type Role, TOKENS } from './palette';
+import { LOOKS, MASK_COLOURS, type Role, TOKENS, maskTokens } from './palette';
 import { PRESETS, type Preset } from './presets';
 import { type Colours, type Hit, type PadPoint, Viewer } from './viewer';
 import { type Move3d, editKey, moveTo, startMove, toSceneOffset } from './move';
@@ -73,6 +73,7 @@ function readColours(): Colours {
   out.kinds = Object.fromEntries(KINDS.map((k) => [k.id, get(k.token)])) as Colours['kinds'];
   out.margin = { easy: get(MARGIN_TOKENS.easy), tight: get(MARGIN_TOKENS.tight), over: get(MARGIN_TOKENS.over), none: get(MARGIN_TOKENS.none) };
   out.preview = get('--pcb3d-preview');
+  out.masks = Object.fromEntries(MASK_COLOURS.map((c) => [c, Object.fromEntries(Object.entries(maskTokens(c)).map(([k, t]) => [k, get(t)]))])) as Colours['masks'];
   probe.remove();
   return out as Colours;
 }

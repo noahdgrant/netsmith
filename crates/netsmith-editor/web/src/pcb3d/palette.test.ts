@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { contrast, parseHex } from '../contrast';
 import css from '../themes.css?raw';
-import { FILE_MATERIALS, LOOKS, allTokens, lit, modelColour, roleOf } from './palette';
+import { FILE_MATERIALS, LOOKS, MASK_COLOURS, allTokens, lit, maskColourOf, maskTokens, modelColour, roleOf } from './palette';
 
 const THEMES = {
   dark: ':root, :root[data-theme="dark"]',
@@ -47,6 +47,11 @@ describe('the 3D palette', () => {
     expect(LOOKS.limit.opacity).toBeLessThan(1);
     expect(LOOKS['limit-violated'].opacity).toBeLessThan(1);
   });
+  it('names the colours of std\'s Color that a board states, and none other', () => {
+    for (const m of MASK_COLOURS) expect(maskColourOf(m)).toBe(m);
+    expect(maskColourOf('Orange')).toBeNull();
+    expect(maskColourOf(undefined)).toBeNull();
+  });
   for (const [theme, selector] of Object.entries(THEMES)) {
     describe(theme, () => {
       const t = tokens(selector);
@@ -89,6 +94,18 @@ describe('the 3D palette', () => {
         expect(contrast(c('--pcb3d-silk'), c('--pcb3d-mask'))!, `the silkscreen on the mask in ${theme}`).toBeGreaterThanOrEqual(3);
         expect(contrast(c('--pcb3d-silk'), c('--pcb3d-mask-copper'))!, `the silkscreen on the mask over copper in ${theme}`).toBeGreaterThanOrEqual(3);
         expect(contrast(c('--pcb3d-finish'), c('--pcb3d-mask'))!, `finish on the mask in ${theme}`).toBeGreaterThanOrEqual(2);
+      });
+      it('each mask colour a board can state is drawn in a tone of its own, lighter over copper, and stands out from the background (issue 771)', () => {
+        const masks = MASK_COLOURS.map((m) => c(maskTokens(m).mask));
+        expect(new Set(masks).size, `the seven mask colours in ${theme}`).toBe(MASK_COLOURS.length);
+        for (const m of MASK_COLOURS) {
+          const k = maskTokens(m);
+          expect(contrast(c(k.copper), c(k.mask))!, `${m} over copper in ${theme}`).toBeGreaterThanOrEqual(1.1);
+          expect(contrast(c(k.mask), c('--pcb3d-bg'))!, `${m} on the background in ${theme}`).toBeGreaterThanOrEqual(1.15);
+          // The silkscreen reads on the mask, and on the mask over copper.
+          expect(contrast(c(k.silk), c(k.mask))!, `the silkscreen on ${m} in ${theme}`).toBeGreaterThanOrEqual(3);
+          expect(contrast(c(k.silk), c(k.copper))!, `the silkscreen on ${m} over copper in ${theme}`).toBeGreaterThanOrEqual(3);
+        }
       });
       it('the hover lights a body visibly, and not in the colour of a pick', () => {
         for (const token of ['--pcb3d-body', '--pcb3d-body-catalog', '--pcb3d-body-standard', '--pcb3d-unknown']) {
