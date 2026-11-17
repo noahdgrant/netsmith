@@ -44,3 +44,9 @@ pub fn rounds_line(routing: &Routing) -> String {
         r.ripped.values().sum::<usize>()
     )
 }
+
+/// The most tries a `measured` test routes with: `NETSMITH_TRIES`, or the router's own, so that a
+/// run can measure what one try leaves.
+pub fn most_tries() -> Option<usize> {
+    std::env::var("NETSMITH_TRIES").ok().and_then(|v| v.parse().ok())
+}

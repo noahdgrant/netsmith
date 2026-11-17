@@ -1827,6 +1827,16 @@ mod tests {
     }
 
     #[test]
+    fn rip_rounds_is_a_count_and_zero_turns_the_rounds_off() {
+        let m = parse("[project]\nname = \"a\"\nrip_rounds = 0\n").unwrap();
+        assert_eq!(m.rip_rounds, Some(0));
+        assert_eq!(parse(&m.render()), Ok(m));
+        assert_eq!(parse("[project]\nname = \"a\"\n").unwrap().rip_rounds, None);
+        assert!(parse("[project]\nname = \"a\"\nrip_rounds = -1\n").is_err());
+        assert!(parse("[project]\nname = \"a\"\nrip_rounds = \"many\"\n").is_err());
+    }
+
+    #[test]
     fn place_budget_is_read_and_must_be_a_time_or_tries() {
         let m = parse("[project]\nname = \"a\"\nplace_budget = \"90s+3tries\"\n").unwrap();
         assert_eq!(m.place_budget.as_deref(), Some("90s+3tries"));
