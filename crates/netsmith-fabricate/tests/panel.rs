@@ -265,13 +265,15 @@ fn the_panel_definition_is_checked_like_the_rest_of_the_language() {
         "{e}"
     );
     // No rules of a board house.
-    let e = make(&changed("    .fab: VCutPanel {\n        .columns &= 3\n        .rows &= 2\n        .rail &= 5mm\n    }\n", ""), &dir).unwrap_err();
+    let fab = &PANEL[PANEL.find("    .fab: VCutPanel").unwrap()..];
+    let fab = &fab[..fab.find("}\n").unwrap() + 2];
+    let e = make(&changed(fab, ""), &dir).unwrap_err();
     assert!(
         e.contains("it does not say who makes it") && e.contains("VCutPanel"),
         "{e}"
     );
     // The grid is not stated.
-    let e = make(&changed("        .columns &= 3\n", ""), &dir).unwrap_err();
+    let e = make(&changed(".columns &= 3; ", ""), &dir).unwrap_err();
     assert!(e.contains("no value for `columns`: say how many"), "{e}");
     // A grid of no boards.
     let e = make(&changed(".columns &= 3", ".columns &= 0"), &dir).unwrap_err();

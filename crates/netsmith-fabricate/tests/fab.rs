@@ -146,8 +146,8 @@ fn who_assembles_a_part_decides_the_bom_the_placement_file_and_the_notes() {
             "module Mech {\n    .hole: MountingHole\n    .fid: Fiducial\n}\n\nboard LedExample",
         )
         .replace(
-            "    .led: Led {\n",
-            "    .led: Led {\n        .assembly &= AssemblyMode::Hand\n",
+            ".led: Led {",
+            ".led: Led { .assembly &= AssemblyMode::Hand;",
         )
         .replace(
             "    .supply.pos ~> .r1",
@@ -266,8 +266,8 @@ fn a_module_that_offers_assembly_lets_the_board_move_its_parts_out_of_the_bom() 
 #[test]
 fn a_board_at_2_oz_is_routed_to_the_2_oz_rules_and_passes_the_check() {
     let heavy = REGULATOR.replacen(
-        "        .stackup.thickness &= 1.6mm\n",
-        "        .stackup.thickness &= 1.6mm\n        .stackup.copper_weight &= 2\n",
+        ".stackup.thickness &= 1.6mm",
+        ".stackup.thickness &= 1.6mm; .stackup.copper_weight &= 2",
         1,
     );
     assert_ne!(heavy, REGULATOR, "the example states its thickness");
@@ -826,10 +826,10 @@ fn a_board_with_no_process_is_refused_and_told_what_to_add() {
         return;
     }
     let dir = out("no-process");
-    let source = LED.replace(
-        ".process: TwoLayer {\n        .stackup.thickness &= 1.6mm\n    }",
-        "",
-    );
+    // The process statement, from its name to the brace that closes its block.
+    let start = LED.find(".process: TwoLayer").unwrap();
+    let end = start + LED[start..].find('}').unwrap() + 1;
+    let source = format!("{}{}", &LED[..start], &LED[end..]);
     let err = fab(
         "led.nsm",
         &source,

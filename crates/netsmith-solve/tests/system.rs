@@ -55,21 +55,31 @@ fn close(a: (f64, f64), b: (f64, f64)) -> bool {
 /// parts picked do not matter. The chain is still whole for the balance, which counts the
 /// parts' pins (ADR 0014).
 fn led_draws(current: &str) -> String {
-    changed(
-        "    .input.pos ~> .r1 ~> .led ~> .input.neg\n",
-        "    .input.pos ~> .r1 ~> .led ~> .input.neg\n    .probe: Pin\n    .probe ~ .led.anode\n",
+    let src = changed(
+        ".input.pos ~> .r1 ~> .led ~> .input.neg\n",
+        ".input.pos ~> .r1 ~> .led ~> .input.neg\n    .probe: Pin\n    .probe ~ .led.anode\n",
+    );
+    replaced(
+        &src,
+        ".current &= 5mA..20mA",
+        &format!(".current &= {current}"),
     )
-    .replace(".current &= 5mA..20mA", &format!(".current &= {current}"))
 }
 
 /// The line of the example that joins the two boards: the two connectors are mated, and the
 /// mate derives the join of the ports they carry (ADR 0040).
 const MATE: &str = "    .power.power_out.mating ~ .led.power_in.mating\n";
 
-/// The example with one line of it changed.
+/// The example with one fragment of it changed.
 fn changed(from: &str, to: &str) -> String {
-    assert!(TWO_BOARDS.contains(from), "`{from}` is not in the example");
-    TWO_BOARDS.replacen(from, to, 1)
+    replaced(TWO_BOARDS, from, to)
+}
+
+/// `text` with the first `from` in it changed to `to`; a `from` that is not in it fails the
+/// test, so an edit cannot miss the source in silence when its layout changes.
+fn replaced(text: &str, from: &str, to: &str) -> String {
+    assert!(text.contains(from), "`{from}` is not in the source");
+    text.replacen(from, to, 1)
 }
 
 #[test]
@@ -146,7 +156,7 @@ fn a_draw_just_over_the_envelope_is_the_regulator_boards_to_refuse() {
 fn a_draw_the_regulator_board_never_stated_is_checked_by_its_regulator() {
     // The regulator board states no limit on its output, so the LED board's draw is what it
     // has to give, and the regulator in it can give 100 mA at most.
-    let src = led_draws("150mA").replacen(".current &= 0mA..50mA\n", "\n", 1);
+    let src = replaced(&led_draws("150mA"), "; .current &= 0mA..50mA", "");
     let (_, s) = run_with_unrated_led(&src);
     let msgs = messages(&s);
     assert!(
@@ -158,7 +168,7 @@ fn a_draw_the_regulator_board_never_stated_is_checked_by_its_regulator() {
 
 #[test]
 fn the_regulator_board_checks_the_draw_it_is_given_without_a_statement_of_its_own() {
-    let src = changed(".current &= 0mA..50mA\n", "\n");
+    let src = changed("; .current &= 0mA..50mA", "");
     let (_, s) = run(&src);
     assert!(s.diagnostics.is_empty(), "{:?}", messages(&s));
     // The output is what the LED board draws: the 7.28 to 16.8 mA its resistor lets through,
@@ -175,8 +185,8 @@ fn the_regulator_board_checks_the_draw_it_is_given_without_a_statement_of_its_ow
 #[test]
 fn ports_whose_voltages_cannot_meet_are_refused_naming_both_boards_and_values() {
     let src = changed(
-        "    .input: Rail {\n        .pos.net &= \"3V3\"",
-        "    .input: Rail {\n        .voltage &= 5V\n        .pos.net &= \"3V3\"",
+        ".input: Rail { .pos.net &= \"3V3\"",
+        ".input: Rail { .voltage &= 5V; .pos.net &= \"3V3\"",
     );
     let (_, s) = run(&src);
     let msgs = messages(&s);
@@ -192,8 +202,8 @@ fn ports_whose_voltages_cannot_meet_are_refused_naming_both_boards_and_values() 
 #[test]
 fn a_wider_voltage_on_one_side_is_narrowed_to_what_the_other_gives() {
     let src = changed(
-        "    .input: Rail {\n        .pos.net &= \"3V3\"",
-        "    .input: Rail {\n        .voltage &= 3V..4V\n        .pos.net &= \"3V3\"",
+        ".input: Rail { .pos.net &= \"3V3\"",
+        ".input: Rail { .voltage &= 3V..4V; .pos.net &= \"3V3\"",
     );
     let (_, s) = run(&src);
     assert!(s.diagnostics.is_empty(), "{:?}", messages(&s));

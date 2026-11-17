@@ -323,11 +323,13 @@ fn fab_writes_and_reads_the_lock_too() {
 
 /// The LED example made with 2 oz copper (ADR 0113).
 fn at_two_oz() -> String {
-    LED.replacen(
-        "        .stackup.thickness &= 1.6mm\n",
-        "        .stackup.thickness &= 1.6mm\n        .stackup.copper_weight &= 2\n",
+    let heavy = LED.replacen(
+        ".stackup.thickness &= 1.6mm",
+        ".stackup.thickness &= 1.6mm; .stackup.copper_weight &= 2",
         1,
-    )
+    );
+    assert_ne!(heavy, LED, "the example states its thickness");
+    heavy
 }
 
 #[test]

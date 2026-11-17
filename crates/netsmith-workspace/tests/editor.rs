@@ -3241,9 +3241,10 @@ fn the_tree_lists_a_physical_file_and_a_mistake_in_it_is_a_problem_at_its_line()
 
     // An unsaved change to it is checked with the board, and the problem is at its line.
     let text = content.text.replace(
-        "        .corner_radius &= 3mm\n",
-        "        .corner_radius &= 3mm\n        .nope &= 1mm\n",
+        ".corner_radius &= 3mm",
+        ".corner_radius &= 3mm\n            .nope &= 1mm\n       ",
     );
+    assert_ne!(text, content.text);
     let checked = editor.check("src/main.physical.nsm", &text).unwrap();
     assert_eq!(checked.errors, 1, "{:?}", checked.problems);
     let at = checked.problems[0].at.as_ref().unwrap();

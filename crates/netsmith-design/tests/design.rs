@@ -1009,7 +1009,7 @@ fn a_two_layer_process_has_no_inner_layers() {
 
 #[test]
 fn an_inner_layer_with_no_net_is_refused_and_told_how_to_name_it() {
-    let source = FOUR_LAYER.replace("        .inner2.net &= \"3V3\"\n", "");
+    let source = FOUR_LAYER.replace("; .inner2.net &= \"3V3\"", "");
     let errors = designed(&source).unwrap_err();
     let text = errors.join("\n");
     assert!(
@@ -2005,7 +2005,7 @@ fn a_chain_across_a_rail_gives_a_relation_note() {
     );
     assert_eq!(note.anchors, ["led", "r1"]);
     let at = note.at.as_ref().unwrap();
-    assert_eq!(at.line, 28, "the line of `.supply.pos ~> .r1 ~> .led ~> .supply.neg`");
+    assert_eq!(at.line, 21, "the line of `.supply.pos ~> .r1 ~> .led ~> .supply.neg`");
     let result = note.result.as_deref().unwrap();
     assert!(result.starts_with("led.current = "), "{result}");
     assert!(result.contains("mA"), "{result}");
