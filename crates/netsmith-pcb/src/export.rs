@@ -950,6 +950,40 @@ fn copper_name(layer: &str) -> String {
 /// A keepout as a KiCad rule area: a zone with no net that says what it does not allow.
 /// A keepout that forbids parts forbids their pads as well.
 fn rule_area(board: &Board, k: &KeepoutArea) -> Sexp {
+    let layers: Vec<String> = k.layers.iter().map(|l| copper_name(l)).collect();
+    let corners = k.rect.corners().to_vec();
+    rule_area_of(
+        &format!("{}/keepout/{}", board.name, k.name),
+        &k.name,
+        &layers,
+        Forbids {
+            tracks: k.tracks,
+            vias: k.vias,
+            pads: k.parts,
+            copperpour: k.copper,
+            footprints: k.parts,
+        },
+        &[corners],
+    )
+}
+
+/// What a rule area does not allow.
+struct Forbids {
+    tracks: bool,
+    vias: bool,
+    pads: bool,
+    copperpour: bool,
+    footprints: bool,
+}
+
+/// A KiCad rule area on `layers`: its outline the first of `rings`, the others its holes.
+fn rule_area_of(
+    key: &str,
+    name: &str,
+    layers: &[String],
+    forbids: Forbids,
+    rings: &[Vec<Pt>],
+) -> Sexp {
     let flag = |name: &str, forbidden: bool| {
         Sexp::node(
             name,
@@ -960,53 +994,78 @@ fn rule_area(board: &Board, k: &KeepoutArea) -> Sexp {
             })],
         )
     };
-    let points: Vec<Sexp> = k
-        .rect
-        .corners()
-        .iter()
-        .map(|c| Sexp::node("xy", vec![Sexp::num(c.x), Sexp::num(c.y)]))
-        .collect();
-    Sexp::node(
-        "zone",
-        vec![
-            Sexp::node("net", vec![Sexp::num(0.0)]),
-            Sexp::node("net_name", vec![Sexp::string("")]),
-            Sexp::node(
-                "layers",
-                k.layers
-                    .iter()
-                    .map(|l| Sexp::string(copper_name(l)))
-                    .collect(),
-            ),
-            uuid_for(&format!("{}/keepout/{}", board.name, k.name)),
-            Sexp::node("name", vec![Sexp::string(k.name.clone())]),
-            Sexp::node("hatch", vec![Sexp::atom("edge"), Sexp::num(0.5)]),
-            Sexp::node(
-                "connect_pads",
-                vec![Sexp::node("clearance", vec![Sexp::num(0.0)])],
-            ),
-            Sexp::node("min_thickness", vec![Sexp::num(ZONE_MIN_THICKNESS)]),
-            Sexp::node("filled_areas_thickness", vec![Sexp::atom("no")]),
-            Sexp::node(
-                "keepout",
-                vec![
-                    flag("tracks", k.tracks),
-                    flag("vias", k.vias),
-                    flag("pads", k.parts),
-                    flag("copperpour", k.copper),
-                    flag("footprints", k.parts),
-                ],
-            ),
-            Sexp::node(
-                "fill",
-                vec![
-                    Sexp::node("thermal_gap", vec![Sexp::num(THERMAL)]),
-                    Sexp::node("thermal_bridge_width", vec![Sexp::num(THERMAL)]),
-                ],
-            ),
-            Sexp::node("polygon", vec![Sexp::node("pts", points)]),
-        ],
-    )
+    let mut items = vec![
+        Sexp::node("net", vec![Sexp::num(0.0)]),
+        Sexp::node("net_name", vec![Sexp::string("")]),
+        Sexp::node(
+            "layers",
+            layers.iter().map(|l| Sexp::string(l.clone())).collect(),
+        ),
+        uuid_for(key),
+        Sexp::node("name", vec![Sexp::string(name.to_string())]),
+        Sexp::node("hatch", vec![Sexp::atom("edge"), Sexp::num(0.5)]),
+        Sexp::node(
+            "connect_pads",
+            vec![Sexp::node("clearance", vec![Sexp::num(0.0)])],
+        ),
+        Sexp::node("min_thickness", vec![Sexp::num(ZONE_MIN_THICKNESS)]),
+        Sexp::node("filled_areas_thickness", vec![Sexp::atom("no")]),
+        Sexp::node(
+            "keepout",
+            vec![
+                flag("tracks", forbids.tracks),
+                flag("vias", forbids.vias),
+                flag("pads", forbids.pads),
+                flag("copperpour", forbids.copperpour),
+                flag("footprints", forbids.footprints),
+            ],
+        ),
+        Sexp::node(
+            "fill",
+            vec![
+                Sexp::node("thermal_gap", vec![Sexp::num(THERMAL)]),
+                Sexp::node("thermal_bridge_width", vec![Sexp::num(THERMAL)]),
+            ],
+        ),
+    ];
+    for ring in rings {
+        let points: Vec<Sexp> = ring
+            .iter()
+            .map(|c| Sexp::node("xy", vec![Sexp::num(c.x), Sexp::num(c.y)]))
+            .collect();
+        items.push(Sexp::node("polygon", vec![Sexp::node("pts", points)]));
+    }
+    Sexp::node("zone", items)
+}
+
+/// The rule areas that keep the pours of a sense pin's net off its sense copper
+/// ([`crate::sense_carves`], issue #1174): one for each piece of the carve on each layer, named
+/// `kelvin U1.1`, that forbids pours alone.
+fn sense_rule_areas(board: &Board) -> Vec<Sexp> {
+    let mut out = Vec::new();
+    for carve in crate::kelvin::sense_carves(board) {
+        let name = format!("kelvin {}", carve.pin);
+        for (layer, areas) in &carve.layers {
+            for (i, area) in areas.iter().enumerate() {
+                let mut rings = vec![area.outer.clone()];
+                rings.extend(area.holes.iter().cloned());
+                out.push(rule_area_of(
+                    &format!("{}/kelvin/{}/{}/{i}", board.name, carve.pin, layer.name()),
+                    &name,
+                    &[layer.name().to_string()],
+                    Forbids {
+                        tracks: false,
+                        vias: false,
+                        pads: false,
+                        copperpour: true,
+                        footprints: false,
+                    },
+                    &rings,
+                ));
+            }
+        }
+    }
+    out
 }
 
 /// The text of a `.kicad_pcb` for the board.
@@ -1138,6 +1197,8 @@ pub(crate) fn board_tree(board: &Board) -> Sexp {
     {
         items.push(rule_area(board, area));
     }
+    // The pours of a sense pin's net keep off its sense copper (issue #1174).
+    items.extend(sense_rule_areas(board));
     items.extend(edge_cuts(&board.edge(), &format!("{}/outline", board.name)));
     for (cutout, shape) in board.cutout_shapes() {
         items.extend(edge_cuts(

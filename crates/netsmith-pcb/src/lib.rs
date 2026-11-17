@@ -125,8 +125,8 @@ pub use impedance::{
     target_notes, target_widths, width_for,
 };
 pub use kelvin::{
-    KelvinSense, SenseCopper, SensedPad, kelvin_findings, kelvin_senses, net_is_poured,
-    sense_copper,
+    KelvinSense, SenseCarve, SenseCopper, SensedPad, kelvin_findings, kelvin_senses, net_is_poured,
+    sense_carves, sense_copper,
 };
 pub use layout::{
     BoardLayout, Face as LayoutFace, IMPORT_SOURCE, KeepoutPlace, Layout, LayoutError, PartPlace,

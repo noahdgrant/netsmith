@@ -5,7 +5,7 @@ An area of a board, or of a part in its own frame, where tracks, vias, copper po
 _Avoid_: Exclusion zone, restricted area
 
 **Kelvin connection**:
-A sense pin routed from the pad it senses, alone: a part's `kelvin` statement names the pin, and the pad of the part its selector finds on the pin's net (a shunt's terminal) is the sensed pad (issue #1148). No other copper of the net joins the sense track on the way, so no load current flows in it. The router keeps the track apart by cutting the sensed pad in two while it routes; `fab` warns when the routed copper of the pin joins another pad of the net.
+A sense pin routed from the pad it senses, alone: a part's `kelvin` statement names the pin, and the pad of the part its selector finds on the pin's net (a shunt's terminal) is the sensed pad (issue #1148). No other copper of the net joins the sense track on the way, so no load current flows in it. The router keeps the track apart by cutting the sensed pad in two while it routes, and the board file carves a pour, a plane or a zone of the net round the sense copper (issue #1174); `fab` warns when the routed copper of the pin joins another pad of the net.
 _Avoid_: Kelvin tap, sense tap
 
 **Kept copper**:

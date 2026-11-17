@@ -16,12 +16,18 @@
 //! wider of the two nets' tracks, `W` the pad's longer side and `e` the router's own margin
 //! (0.15 mm), the gap `g` keeps `(W - g) / 4 + g >= c + w / 2 + e`.
 //!
+//! A net with a pour, a plane or a zone is cut the same way (issue #1174). While the board is
+//! routed the sense net is another net to the pours and planes too: the pours the stitching and
+//! the pour pads are judged by keep their clearance from the sense copper, and the sense pin's
+//! pads get no via to the net's plane. When the board is put back, the board file carves the
+//! pours round the sense copper (`netsmith_pcb::sense_carves`), so they keep that clearance in
+//! the file, the Gerbers and KiCad's refill, and touch the sense copper nowhere.
+//!
 //! A sensed pad is not cut, and the sense pin is routed as any other line of its net (the check of
 //! `netsmith_pcb::kelvin_findings` then says whether it is alone), when the statement finds no
-//! part or several, when the net has a pour, a plane or a zone, which would join the sense track
-//! anyway, when the net has copper already (a routes file's, or copper the router keeps) or is
-//! locked, when the sensed pad has a hole or a custom shape, when a half would be narrower than the
-//! process's least track, or when another sense pin senses the same pad.
+//! part or several, when the net has copper already (a routes file's, or copper the router keeps)
+//! or is locked, when the sensed pad has a hole or a custom shape, when a half would be narrower
+//! than the process's least track, or when another sense pin senses the same pad.
 
 use netsmith_pcb::{Board, BoardNet, CopperLayer, Footprint, PadRef, PadShape, Pt};
 
@@ -64,11 +70,7 @@ pub(crate) fn split(board: &mut Board) -> Split {
         let net = board.nets[n].name.clone();
         let has_copper =
             board.tracks.iter().any(|x| x.net == net) || board.vias.iter().any(|x| x.net == net);
-        if has_copper
-            || board.fixed.is_locked(&net)
-            || netsmith_pcb::net_is_poured(board, &net)
-            || cut.contains(&(t.part, t.pad))
-        {
+        if has_copper || board.fixed.is_locked(&net) || cut.contains(&(t.part, t.pad)) {
             continue;
         }
         let sensing = &board.parts[kelvin.part];
