@@ -16,7 +16,7 @@ import { Canvas, type Tip } from '../pcb/Canvas';
 import { crossedText, reroutedText, shovedText } from '../pcb/walk';
 import { viaKind } from '../pcb/routes';
 import { FindingsList } from '../pcb/Findings';
-import { SummaryTab } from '../pcb/Summary';
+import { SummaryTab } from '../pcb/SummaryTab';
 import { Panel } from '../pcb/Panel';
 import { PanelPreview } from '../pcb/PanelPreview';
 import { prepare } from '../pcb/drawing';
