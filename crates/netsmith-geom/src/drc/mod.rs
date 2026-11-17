@@ -699,6 +699,12 @@ pub struct Extras {
     /// Whether a corner of 90 degrees or sharper between two tracks is refused (issue #415):
     /// set by `fab` for the boards netsmith routes, which bend by 45 degrees only.
     pub track_angle: bool,
+    /// The least angle, in degrees, between a track's centre line and the tangent of a round
+    /// copper edge where the track leaves it (`acid_trap`, netsmith's own rule: no fabricator
+    /// publishes one); a smaller angle is an acid trap. `None`, as when the board states none, is
+    /// that round copper (a round pad or via, an oval's end, a rounded corner, a custom pad's
+    /// circle or arc) is not judged.
+    pub round_track_angle: Option<f64>,
     /// The fabricator's rules for fiducials and test points (issue #761); `None` is not
     /// checked.
     pub marks: Option<Marks>,

@@ -5,7 +5,7 @@ The voltages a pin survives, `.abs_min` and `.abs_max` of the pin, relative to i
 _Avoid_: Rating (a rating is a field such as `.max_power`)
 
 **Acid trap**:
-A narrow wedge outside an acute angle where a track meets copper of its net: where it leaves a pad through a straight edge on the slant, ends on the middle of another track, or meets another track's end. The etchant pools there and eats into the track. A warning of the design rules check, `acid_trap`, netsmith's own rule (issue #838); a wedge a teardrop or a pour fills is none.
+A narrow wedge outside an acute angle where a track meets copper of its net: where it leaves a pad through a straight edge on the slant (or, where a board states `.process.min_round_track_angle`, leaves round copper at less than that angle to its tangent), ends on the middle of another track, or meets another track's end. The etchant pools there and eats into the track. A warning of the design rules check, `acid_trap`, netsmith's own rule (issue #838); a wedge a teardrop or a pour fills is none.
 _Avoid_: Etch trap, acid pocket
 
 **Alias**:

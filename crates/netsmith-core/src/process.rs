@@ -93,6 +93,14 @@ pub struct Process {
     /// (`.process.max_temperature_rise`). `None` is the IPC-2221 check's default
     /// (ADR 0036).
     pub max_temperature_rise: Option<f64>,
+    /// The least angle, in degrees, between a track's centre line and the tangent of a round
+    /// copper edge where the track leaves it, if the board states it
+    /// (`.process.min_round_track_angle`). `None`, what every process leaves it, is that round
+    /// copper (a round pad or via, an oval's end, a rounded corner, a custom pad's circle or
+    /// arc) is not judged for acid traps. No fabricator publishes a figure; netsmith's own
+    /// rule (`acid_trap`, a warning). Not written to the design file when unstated.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub min_round_track_angle: Option<f64>,
     /// How much narrower than drawn a finished track may be, as a fraction (0.2 for ±20 %): the
     /// track width check sizes for the narrowest.
     pub track_width_tolerance: f64,

@@ -6,16 +6,20 @@
 //!
 //! **Where it looks.** Three joints, each on one copper layer and of one net:
 //!
-//! - a track that leaves a pad through a straight edge: the angle between the track and the
-//!   edge where the track's centre line crosses it. A rectangle's or a polygon's side, an oval's
-//!   straight side and the straight part of a rounded rectangle's side are straight; a round
-//!   pad, a via, an oval's end and a rounded corner are not judged, because a round edge turns
-//!   away from the track and the wedge opens within the pad's radius (the routed examples leave
-//!   round pads and rounded corners a little off square, at 79 to 86 degrees, where no etchant
-//!   is trapped). Such an edge would need an angle of its own, and no fabricator publishes one.
-//!   A custom pad is judged at the edge of its anchor and primitives the track leaves: a
-//!   straight side of its anchor, of one of its polygons or of one of its lines (a curve is the
-//!   straight pieces the board reader cuts it into); its circles and arcs are round.
+//! - a track that leaves a pad or via: the angle between the track and the edge where the
+//!   track's centre line crosses it. For a straight edge (a rectangle's or a polygon's side, an
+//!   oval's straight side, the straight part of a rounded rectangle's side, a custom pad's
+//!   straight side) it is the angle to the side. A round edge (a round pad, a via, an oval's end,
+//!   a rounded corner, a custom pad's circle or arc) turns away from the track and the wedge
+//!   opens within the pad's radius (the routed examples leave round pads and rounded corners a
+//!   little off square, at 79 to 86 degrees, where no etchant is trapped), so it is judged only
+//!   where the board asks: the process field `min_round_track_angle` (`Extras::round_track_angle`)
+//!   is the least angle between the track's centre line and the tangent of the round edge where
+//!   the track leaves it (90 along the radius, 0 along the edge). No fabricator publishes
+//!   one, and unstated, as every process leaves it, round copper is not judged. A custom pad is
+//!   judged at the edge of its anchor and primitives the track leaves: a straight side of its
+//!   anchor, of one of its polygons or of one of its lines (a curve is the straight pieces the
+//!   board reader cuts it into); its circles and arcs, and the ends of its lines, are round.
 //! - a track that ends on the middle of another track (a tee): the angle between the two. A
 //!   track that lies along the other overlaps it and is no tee.
 //! - tracks that end at one place outside a pad: the least angle between any two of them.
@@ -88,12 +92,19 @@ pub(crate) fn run(out: &mut Out<'_>) {
         let layer = m.layer_name(trap.layer).to_string();
         let mut items = vec![m.items[trap.track].item.clone()];
         items.extend(trap.other.map(|o| m.items[o].item.clone()));
-        out.push(
-            Rule::AcidTrap,
-            format!(
+        let message = match trap.round {
+            Some(least) => format!(
+                "{} at {:.0} degrees to the tangent of its round edge on {layer}, under the {least:.0} degrees `.process.min_round_track_angle` asks, where etchant is trapped; leave it nearer the radius, or fill it (a teardrop)",
+                trap.what, trap.angle
+            ),
+            None => format!(
                 "{} at {:.0} degrees on {layer}, an acute angle that traps etchant; make it a right angle or wider, or fill it (a teardrop)",
                 trap.what, trap.angle
             ),
+        };
+        out.push(
+            Rule::AcidTrap,
+            message,
             trap.at,
             Some(&layer),
             items,
@@ -110,6 +121,8 @@ struct Trap {
     /// The track, and the pad, via or track it meets (indices into the model's items).
     track: usize,
     other: Option<usize>,
+    /// The process's `min_round_track_angle` the angle is under, for a round edge.
+    round: Option<f64>,
 }
 
 /// Each end of a track and the unit direction in which the track leaves it.
@@ -209,12 +222,16 @@ fn leaves_pad(m: &Model<'_>, k: usize, layer: usize, end: Pt, way: Pt, width: f6
         }
     }
     let exit = end + way * hi;
-    // Only a straight edge makes a notch: a round one (a round pad or via, an oval's end, a
-    // rounded corner) turns away from the track, and the wedge opens within the pad's radius.
-    let normal = straight_normal(m, pad, exit + way * 1e-3)?;
+    // A straight edge makes a notch at any acute angle; a round one (a round pad or via, an
+    // oval's end, a rounded corner) turns away from the track, and the wedge opens within the
+    // pad's radius, so it is judged only against the angle the board states, if it does.
+    let (normal, round) = match edge_normal_at(m, pad, exit + way * 1e-3)? {
+        Edge::Straight(normal) => (normal, None),
+        Edge::Round(normal) => (normal, Some(m.extras.round_track_angle?)),
+    };
     let off = angle(way, normal);
     let acute = 90.0 - off;
-    if acute >= 90.0 - TOLERANCE {
+    if acute >= round.unwrap_or(90.0 - TOLERANCE) {
         return None;
     }
     // The wedge is on the side the track leans to, between the track's edge and the pad's.
@@ -236,63 +253,105 @@ fn leaves_pad(m: &Model<'_>, k: usize, layer: usize, end: Pt, way: Pt, width: f6
         layer,
         track: k,
         other: Some(pad),
+        round,
     })
 }
 
-/// The outward normal of a pad's edge near `p`, a point just outside it, where that edge is
-/// straight: a side of a rectangle, a polygon or an oval, or the straight part of a rounded
-/// rectangle's side; of a custom pad, such a side of its anchor, a side of one of its polygons
-/// or the side of one of its lines. `None` for a round edge (a round pad, a via, an oval's end,
-/// a rounded corner, a corner of a polygon, a custom pad's circles and arcs).
-fn straight_normal(m: &Model<'_>, item: usize, p: Pt) -> Option<Pt> {
-    let Kind::Pad(i) = m.items[item].kind else {
-        return None;
-    };
+/// The edge of a pad or via where a track leaves it, with its outward normal.
+enum Edge {
+    /// A straight side.
+    Straight(Pt),
+    /// A round edge: a circle, an arc, an oval's end, a rounded corner. The normal points away
+    /// from the centre of the curve.
+    Round(Pt),
+}
+
+/// The edge of a pad's or via's copper near `p`, a point just outside it, with its outward
+/// normal: a side of a rectangle, a polygon or an oval, or the straight part of a rounded
+/// rectangle's side; of a custom pad, such a side of its anchor, of one of its polygons or of
+/// one of its lines, all `Straight`. A round pad, a via, an oval's end, a rounded corner, the
+/// ends of a custom pad's lines, its circles and arcs are `Round`. `None` at a sharp corner of
+/// a polygon, where there is no one normal.
+fn edge_normal_at(m: &Model<'_>, item: usize, p: Pt) -> Option<Edge> {
     let shapes = &m.items[item].shapes;
     // The shape whose edge the track leaves: the one nearest `p`.
     let nearest = (0..shapes.len()).min_by(|&a, &b| {
         let d = |k: usize| gap(&Shape::disc(p, 0.0), &shapes[k]).d;
         d(a).total_cmp(&d(b))
     })?;
+    let Kind::Pad(i) = m.items[item].kind else {
+        // A via is a disc.
+        return path_edge(&shapes[nearest], p);
+    };
     match pads::outline(&m.art.pads[i]) {
         Outline::Custom { anchor, prims } => {
             let anchors = super::model::outline_shapes(&anchor).len();
             if nearest < anchors {
-                return edge_normal(&anchor, &shapes[nearest], p);
+                return outline_edge(&anchor, &shapes[nearest], p);
             }
             match prims.get(nearest - anchors)? {
-                Prim::Line { .. } | Prim::Poly { .. } => side_normal(&shapes[nearest], p),
-                Prim::Arc { .. } | Prim::Circle { .. } => None,
+                Prim::Line { .. } | Prim::Poly { .. } => path_edge(&shapes[nearest], p),
+                Prim::Arc { .. } | Prim::Circle { .. } => {
+                    path_edge(&shapes[nearest], p).map(|e| match e {
+                        Edge::Straight(n) | Edge::Round(n) => Edge::Round(n),
+                    })
+                }
             }
         }
-        outline => edge_normal(&outline, &shapes[nearest], p),
+        outline => outline_edge(&outline, &shapes[nearest], p),
     }
 }
 
-/// The outward normal of the straight edge of a pad's `outline` (drawn as `shape`) near `p`.
-fn edge_normal(outline: &Outline, shape: &Shape, p: Pt) -> Option<Pt> {
+/// The edge of a pad's `outline` (drawn as `shape`) near `p`.
+fn outline_edge(outline: &Outline, shape: &Shape, p: Pt) -> Option<Edge> {
     match *outline {
-        Outline::Rect { .. } | Outline::Poly(_) | Outline::Oval { .. } => side_normal(shape, p),
+        Outline::Rect { .. } | Outline::Poly(_) | Outline::Oval { .. } => path_edge(shape, p),
         Outline::RoundRect { c, w, h, r, angle } => {
             let local = (p - c).rotate(-angle);
-            let normal = if local.y.abs() <= h / 2.0 - r {
-                Pt::new(local.x.signum(), 0.0)
+            let (corner, straight) = if local.y.abs() <= h / 2.0 - r {
+                (Pt::new(local.x.signum(), 0.0), true)
             } else if local.x.abs() <= w / 2.0 - r {
-                Pt::new(0.0, local.y.signum())
+                (Pt::new(0.0, local.y.signum()), true)
+            } else if r > MEET {
+                // The centre of the corner's circle.
+                (
+                    Pt::new(
+                        local.x.signum() * (w / 2.0 - r),
+                        local.y.signum() * (h / 2.0 - r),
+                    ),
+                    false,
+                )
             } else {
                 return None;
             };
-            Some(normal.rotate(angle))
+            Some(if straight {
+                Edge::Straight(corner.rotate(angle))
+            } else {
+                Edge::Round(unit(local - corner).rotate(angle))
+            })
         }
-        Outline::Circle { .. } | Outline::Custom { .. } => None,
+        Outline::Circle { c, .. } => Some(Edge::Round(unit(p - c))),
+        Outline::Custom { .. } => None,
     }
 }
 
-/// The outward normal of a straight piece of a shape's path near `p` (grown by the shape's
-/// radius, its side is straight too); `None` near one of the path's points.
-fn side_normal(shape: &Shape, p: Pt) -> Option<Pt> {
+/// The outward edge of a shape near `p`: the normal of a straight piece of its path (grown by
+/// the shape's radius, its side is straight too), `Straight`; round, where the shape has a
+/// radius, near one of the path's points; `None` at a point of a path with no radius, a sharp
+/// corner.
+fn path_edge(shape: &Shape, p: Pt) -> Option<Edge> {
     let (near, straight) = nearest_on_path(shape, p);
-    (straight && p.dist(near) > shape.r).then(|| unit(p - near))
+    if p.dist(near) <= shape.r {
+        return None;
+    }
+    let normal = unit(p - near);
+    if straight {
+        Some(Edge::Straight(normal))
+    } else if shape.r > MEET {
+        Some(Edge::Round(normal))
+    } else {
+        None
+    }
 }
 
 /// The point of a shape's path (before it is grown by its radius) nearest `p`, and whether it
@@ -380,6 +439,7 @@ fn tee(m: &Model<'_>, k: usize, layer: usize, end: Pt, way: Pt, width: f64) -> O
             layer,
             track: k,
             other: Some(j),
+            round: None,
         });
     }
     None
@@ -464,6 +524,7 @@ fn corners(m: &Model<'_>) -> Vec<Trap> {
             layer,
             track: ways[i].2,
             other: Some(ways[j].2),
+            round: None,
         });
     }
     found
@@ -544,6 +605,96 @@ mod tests {
         assert_eq!(traps(&corner), Vec::<String>::new());
         let slant = format!("{rounded} {}", segment((10.0, 10.0), (13.0, 10.6), 1));
         assert_eq!(traps(&slant).len(), 1, "{:?}", traps(&slant));
+    }
+
+    /// The extras of a process that states `least` as its `min_round_track_angle`.
+    fn round_limit(least: f64) -> Extras {
+        Extras {
+            round_track_angle: Some(least),
+            ..Extras::default()
+        }
+    }
+
+    /// A track that leaves round copper is judged against the angle the process states, between
+    /// the track and the tangent of the edge where it leaves (90 along the radius), and not at all
+    /// where none is stated.
+    #[test]
+    fn a_track_that_leaves_round_copper_is_judged_by_the_angle_the_process_states() {
+        // (copper, the track, its angle to the edge's tangent): a track 0.3 mm off the centre of
+        // a round pad of radius 0.85 leaves at 90 - asin(0.3 / 0.85) = 69.3 degrees.
+        let round = r#"(footprint "L:J" (layer "F.Cu") (at 10 10)
+            (property "Reference" "J1")
+            (pad "1" thru_hole circle (at 0 0) (size 1.7 1.7) (drill 1) (layers "*.Cu" "*.Mask") (net 1 "SIG")))"#;
+        let via = r#"(via (at 10 10) (size 1.7) (drill 0.3) (layers "F.Cu" "B.Cu") (net 1))"#;
+        // An oval's end, a radius of 0.5 mm: 0.35 mm off the axis is 90 - asin(0.7) = 45.6.
+        let oval = r#"(footprint "L:O" (layer "F.Cu") (at 10 10)
+            (property "Reference" "O1")
+            (pad "1" smd oval (at 0 0) (size 2 1) (layers "F.Cu") (net 1 "SIG")))"#;
+        // A rounded corner of radius 0.25 mm, the track 0.05 mm off the corner's centre: 78.5.
+        let corner = r#"(footprint "L:C" (layer "F.Cu") (at 10 10)
+            (property "Reference" "C1")
+            (pad "1" smd roundrect (at 0 0) (size 1.5 1) (layers "F.Cu") (roundrect_rratio 0.25) (net 1 "SIG")))"#;
+        for (copper, from, to, angle) in [
+            (round, (10.0, 10.3), (14.0, 10.3), 69.3),
+            (via, (10.0, 10.3), (14.0, 10.3), 69.3),
+            (oval, (10.0, 10.35), (14.0, 10.35), 45.6),
+            (corner, (10.6, 9.7), (14.0, 9.7), 78.5),
+            // The custom pad's circle, a radius of 0.6 mm: 0.3 mm off its centre, 60 degrees.
+            (CUSTOM, (9.0, 10.3), (5.0, 10.3), 60.0),
+        ] {
+            let items = format!("{copper} {}", segment(from, to, 1));
+            assert_eq!(traps(&items), Vec::<String>::new(), "unstated: {items}");
+            let under = traps_with(&items, &round_limit(angle + 1.0));
+            assert_eq!(under.len(), 1, "{angle}: {under:?} for {items}");
+            assert!(
+                under[0].contains("to the tangent of its round edge on F.Cu")
+                    && under[0].contains("min_round_track_angle"),
+                "{}",
+                under[0]
+            );
+            assert!(
+                under[0].contains(&format!("at {angle:.0} degrees")),
+                "{}",
+                under[0]
+            );
+            let over = traps_with(&items, &round_limit(angle - 1.0));
+            assert_eq!(over, Vec::<String>::new(), "{angle}: {items}");
+        }
+    }
+
+    #[test]
+    fn a_track_that_leaves_round_copper_along_its_radius_is_no_trap() {
+        let round = r#"(footprint "L:J" (layer "F.Cu") (at 10 10)
+            (property "Reference" "J1")
+            (pad "1" thru_hole circle (at 0 0) (size 1.7 1.7) (drill 1) (layers "*.Cu" "*.Mask") (net 1 "SIG")))"#;
+        let radial = format!("{round} {}", segment((10.0, 10.0), (14.0, 10.0), 1));
+        // Even a limit of 90, the most, only asks for the radius itself.
+        assert_eq!(
+            traps_with(&radial, &round_limit(89.0)),
+            Vec::<String>::new()
+        );
+        // The straight edges are judged as before, with or without a limit.
+        let square = format!("{PAD} {}", segment((10.0, 10.0), (13.0, 10.0), 1));
+        assert_eq!(
+            traps_with(&square, &round_limit(89.0)),
+            Vec::<String>::new()
+        );
+    }
+
+    #[test]
+    fn copper_that_fills_the_wedge_at_round_copper_takes_the_trap_away() {
+        let round = r#"(footprint "L:J" (layer "F.Cu") (at 10 10)
+            (property "Reference" "J1")
+            (pad "1" thru_hole circle (at 0 0) (size 1.7 1.7) (drill 1) (layers "*.Cu" "*.Mask") (net 1 "SIG")))"#;
+        let track = segment((10.0, 10.7), (14.0, 10.7), 1);
+        let pour = r#"(zone (net 1) (net_name "SIG") (layer "F.Cu") (connect_pads (clearance 0.3)) (min_thickness 0.25)
+            (fill yes) (polygon (pts (xy 5 5) (xy 15 5) (xy 15 15) (xy 5 15))))"#;
+        let bare = format!("{round} {track}");
+        assert_eq!(traps_with(&bare, &round_limit(80.0)).len(), 1);
+        assert_eq!(
+            traps_with(&format!("{bare} {pour}"), &round_limit(80.0)),
+            Vec::<String>::new()
+        );
     }
 
     #[test]
