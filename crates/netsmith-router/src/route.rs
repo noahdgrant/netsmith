@@ -1059,9 +1059,9 @@ struct Planned {
     tiles: crate::plan::Tiles,
     /// For each line, the tiles of its corridor on each layer, row by row; `None` for a line
     /// the plan does not steer.
-    corridors: Vec<Option<[Vec<bool>; 2]>>,
+    corridors: Vec<Option<Vec<Vec<bool>>>>,
     /// How full the plan leaves each tile on each layer ([`crate::plan::Plan::fill`]).
-    fill: [Vec<f64>; 2],
+    fill: Vec<Vec<f64>>,
 }
 
 /// What one ratsnest line became.

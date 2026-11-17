@@ -181,7 +181,7 @@ pub(super) struct Lanes {
     /// For each layer and cell of the whole grid, the nets whose lanes take it, as a net's
     /// index plus one, 0 for none. A cell counts [`LANE_SLOTS`] nets at most; another's lane
     /// does not take it.
-    pub(super) track: [Vec<[u32; LANE_SLOTS]>; 2],
+    pub(super) track: Vec<Vec<[u32; LANE_SLOTS]>>,
     /// The cells where a via would close a lane.
     pub(super) via_block: Vec<bool>,
     /// The cells at the end of a lane where its own net's via is free, by net as `track`.
@@ -190,21 +190,27 @@ pub(super) struct Lanes {
     pub(super) partner: Vec<Option<usize>>,
 }
 
+/// Whether a lane goes on from its via on the inner signal layers, the cells as far again past
+/// its end, which another net's track pays [`LANE_TRACK`] a step to use (issue #1015): measured,
+/// not kept (`crate::plan`'s header: no board or line changed on 36 runs of the dense board).
+pub(super) const INNER_LANES: bool = false;
+
 /// How many nets' lanes one cell counts.
 pub(super) const LANE_SLOTS: usize = 4;
 
 /// The cells of a window that a line's track, or via, pays to use: [`Lanes::charged`].
 pub(super) struct LaneCost {
-    pub(super) track: [Vec<bool>; 2],
+    pub(super) track: Vec<Vec<bool>>,
     pub(super) via: Vec<bool>,
 }
 
 impl Lanes {
-    pub(super) fn over(grid: &Grid, nets: usize) -> Lanes {
+    /// No lanes yet, over `grid` on `layers` layers of the router's stack.
+    pub(super) fn over(grid: &Grid, nets: usize, layers: usize) -> Lanes {
         let cells = grid.nx * grid.ny;
         Lanes {
             nx: grid.nx,
-            track: [vec![[0; LANE_SLOTS]; cells], vec![[0; LANE_SLOTS]; cells]],
+            track: vec![vec![[0; LANE_SLOTS]; cells]; layers],
             via_block: vec![false; cells],
             via_end: vec![[0; LANE_SLOTS]; cells],
             partner: vec![None; nets],
@@ -224,6 +230,7 @@ impl Lanes {
     /// The lane of a pad of `net`: the cells whose centres are in `track`, on the layers in
     /// `layers`; for a via, the cells within `via_block` of it, and the cells within `via_end`
     /// of `end`, where its own net's via is free.
+    #[cfg(test)]
     #[allow(clippy::too_many_arguments)]
     pub(super) fn claim(
         &mut self,
@@ -235,7 +242,34 @@ impl Lanes {
         via_block: f64,
         via_end: f64,
     ) {
+        self.claim_inner(grid, net, layers, track, end, (via_block, via_end), None);
+    }
+
+    /// [`Lanes::claim`], and on every inner layer of the stack the cells whose centres are in
+    /// `inner`: the lane's way on from its via (issue #1015).
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn claim_inner(
+        &mut self,
+        grid: &Grid,
+        net: usize,
+        layers: [bool; 2],
+        track: &Rect,
+        end: Pt,
+        (via_block, via_end): (f64, f64),
+        inner: Option<&Rect>,
+    ) {
         let whole = Window::full(grid);
+        if let Some(inner) = inner {
+            for (i, j) in grid.cells_near(&whole, inner, 0.0) {
+                let p = grid.centre(i, j);
+                if inner.contains(&Rect::new(p, p)) {
+                    let at = j * self.nx + i;
+                    for layer in 2..self.track.len() {
+                        Self::take(&mut self.track[layer][at], net);
+                    }
+                }
+            }
+        }
         for (i, j) in grid.cells_near(&whole, track, via_block) {
             let p = grid.centre(i, j);
             let at = j * self.nx + i;
@@ -267,12 +301,12 @@ impl Lanes {
                 .any(|&n| slot.contains(&(n as u32 + 1)))
         };
         let mut any = false;
-        let mut track = [Vec::new(), Vec::new()];
+        let mut track = vec![Vec::new(); self.track.len()];
         let mut via = Vec::with_capacity(window.cells());
         for j in window.j0..window.j0 + window.ny {
             for i in window.i0..window.i0 + window.nx {
                 let at = j * self.nx + i;
-                for layer in [FRONT, BACK] {
+                for layer in 0..self.track.len() {
                     let slot = &self.track[layer][at];
                     let charged = slot[0] != 0 && !own(slot);
                     any |= charged;
@@ -321,7 +355,8 @@ pub(super) fn escape_lanes(board: &Board, grid: &Grid) -> Option<Lanes> {
         })
         .collect();
     let rules = &board.rules;
-    let mut lanes = Lanes::over(grid, board.nets.len());
+    let inner_layers = board.signal_layers().len();
+    let mut lanes = Lanes::over(grid, board.nets.len(), 2 + inner_layers);
     lanes.partner = diff_pair_partners(board);
     // A via closes a lane where its copper and the rules' space come within half the least
     // track of the lane's middle.
@@ -380,8 +415,20 @@ pub(super) fn escape_lanes(board: &Board, grid: &Grid) -> Option<Lanes> {
                 let r = Rect::new(Pt::new(b.min.x, b.max.y), Pt::new(b.max.x, b.max.y + reach));
                 (r, Pt::new(c.x, r.max.y))
             };
+            // The lane's way on from its via on the inner signal layers (issue #1015): as wide
+            // as the pad, from the lane's end as far again.
+            let along = Pt::new(dx * reach, dy * reach);
+            let far = Pt::new(end.x + along.x, end.y + along.y);
+            let half = Pt::new(
+                if dx == 0.0 { b.width() / 2.0 } else { 0.0 },
+                if dy == 0.0 { b.height() / 2.0 } else { 0.0 },
+            );
+            let inner = Rect::new(
+                Pt::new(end.x.min(far.x) - half.x, end.y.min(far.y) - half.y),
+                Pt::new(end.x.max(far.x) + half.x, end.y.max(far.y) + half.y),
+            );
             let (front, back) = part.pad_layers(pad);
-            claims.push(((dx as i8, dy as i8), net, [front, back], track, end));
+            claims.push(((dx as i8, dy as i8), net, [front, back], track, end, inner));
         }
         let mut faces: Vec<(i8, i8)> = claims.iter().map(|c| c.0).collect();
         faces.sort_unstable();
@@ -389,9 +436,10 @@ pub(super) fn escape_lanes(board: &Board, grid: &Grid) -> Option<Lanes> {
         if !fine_pitch(part, faces.len()) {
             continue;
         }
-        for (_, net, layers, track, end) in claims {
+        for (_, net, layers, track, end, inner) in claims {
             let via_end = rules.via_diameter / 2.0;
-            lanes.claim(grid, net, layers, &track, end, via_block, via_end);
+            let inner = (INNER_LANES && inner_layers > 0).then_some(&inner);
+            lanes.claim_inner(grid, net, layers, &track, end, (via_block, via_end), inner);
             any = true;
         }
     }

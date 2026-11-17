@@ -305,7 +305,7 @@ fn the_turn_cost_of_the_masks_is_what_a_bend_costs() {
 /// from column 10 to 20, and a via's place at its end.
 fn one_lane() -> (Grid, Lanes) {
     let grid = Grid::over(&Rect::new(Pt::new(0.0, 0.0), Pt::new(3.0, 1.0)));
-    let mut lanes = Lanes::over(&grid, 8);
+    let mut lanes = Lanes::over(&grid, 8, 2);
     let track = Rect::new(Pt::new(1.0, 0.5), Pt::new(2.0, 0.5));
     lanes.claim(&grid, 7, [true, false], &track, Pt::new(2.0, 0.5), 0.2, 0.2);
     (grid, lanes)

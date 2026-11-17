@@ -212,6 +212,14 @@ pub fn four_layer_signal_process() -> netsmith_core::Process {
     )
 }
 
+/// JLCPCB's `SixLayer` with GND on its first inner layer, 3V3 on its last and the two between
+/// them signal layers (issue #1015).
+pub fn six_layer_signal_process() -> netsmith_core::Process {
+    process_of(
+        "import std::mfg::jlcpcb::SixLayer\nimport std::parts::passive::Resistor\nboard T {\n    .process: SixLayer {\n        .inner1.net &= \"GND\"\n        .inner2.use &= \"signal\"\n        .inner3.use &= \"signal\"\n        .inner4.net &= \"3V3\"\n    }\n    .r: Resistor {\n        .a.net &= \"GND\"\n        .b.net &= \"3V3\"\n    }\n}\n",
+    )
+}
+
 /// JLCPCB's `HdiSixLayer` (issue #1015) with the build-up `netsmith_pcb::HDI_SIX_BUILD_UP` states:
 /// its first and last inner layers signal layers, GND and 3V3 planes between them, and each of
 /// `narrowings` (`.hdi_order &= 2`).
