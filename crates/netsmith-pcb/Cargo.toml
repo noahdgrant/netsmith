@@ -18,7 +18,7 @@ netsmith-kicad = { path = "../netsmith-kicad" }
 # (`copper`, ADR 0105), and the design rules check's room and teardrops.
 netsmith-geom = { path = "../netsmith-geom" }
 serde = { version = "1.0.229", features = ["derive"] }
-# `float_roundtrip`: a board read back from JSON (a placed board, `netsmith route`) has the very
+# `float_roundtrip`: a board read back from JSON (a placed board, `netsmith dev route`) has the very
 # numbers it was written with, so it routes to the same copper.
 serde_json = { version = "1.0.154", features = ["float_roundtrip"] }
 toml = "1.1.8"

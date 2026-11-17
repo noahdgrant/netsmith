@@ -1,9 +1,9 @@
 // A board's case model in the 3D view (features/pcb-3d.md, "A case model"; ADR 0109): the case's
 // solids are drawn see-through round the board, a toggle hides and shows them, a second one draws
-// them solid (opaque, in the way of a pick; `--case` of `render` and `view`), the problems dock
+// them solid (opaque, in the way of a pick; `--case` of `view 3d` and `view editor-3d`), the problems dock
 // lists the fit check's findings, and picking one flies the camera to it and lights the case solid
 // it is about (showing the case if it was hidden), and an agent lights a case model by name over
-// `/api/view` (`highlight: ["case:<name>"]`, as `render --highlight` names it), with an unknown
+// `/api/view` (`highlight: ["case:<name>"]`, as `view 3d --highlight` names it), with an unknown
 // name refused with the list. The fixture's case is two STEP files written by
 // hand: a box with a boss under one hole, and a lid 8 mm over the board that a 9 mm header goes
 // into.
@@ -175,11 +175,11 @@ export async function run(tools) {
   expect(r.status === 400 || r.status === 422, `an unknown mode is refused: ${r.status} ${r.body}`);
   expect((await ask(page, 'caseMode')) === 'see-through', 'and changes nothing');
 
-  step('netsmith view --case draws the page as asked and the summary says so');
+  step('netsmith view editor-3d --case draws the page as asked and the summary says so');
   const port = new URL(url).port;
   const view = async (...args) => {
     try {
-      const out = await exec(binary, ['view', '--port', port, ...args]);
+      const out = await exec(binary, ['view', 'editor-3d', '--port', port, ...args]);
       return { code: 0, out: out.stdout, err: out.stderr };
     } catch (e) {
       return { code: e.code, out: e.stdout ?? '', err: e.stderr ?? '' };
@@ -239,7 +239,7 @@ export async function run(tools) {
   r = await post({ caseHidden: [] });
   expect(r.status === 200 && r.body.caseHidden === undefined && (await ask(page, 'caseHidden')).length === 0, `[] shows every model: ${JSON.stringify(r.body).slice(0, 200)}`);
 
-  step('netsmith view --case hidden:<name> hides the model and the summary says so; a mode alone shows every model again; an unknown name exits 2');
+  step('netsmith view editor-3d --case hidden:<name> hides the model and the summary says so; a mode alone shows every model again; an unknown name exits 2');
   cli = await view('--case', 'hidden:lid');
   expect(cli.code === 0 && cli.out.includes('case hidden: lid'), `view --case hidden:lid:\n${cli.out}${cli.err}`);
   expect(JSON.stringify(await ask(page, 'caseHidden')) === JSON.stringify(['lid']) && (await ask(page, 'caseMode')) === 'see-through', 'the page hides the lid only');

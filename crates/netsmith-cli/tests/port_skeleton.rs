@@ -1,4 +1,4 @@
-//! `netsmith port skeleton` (#452) as a command: it writes the source and the parts file, prints
+//! `netsmith import port skeleton` (#452) as a command: it writes the source and the parts file, prints
 //! the counts, the lines marked `TODO tolerance` and the gaps, and overwrites neither file. What
 //! the skeleton holds is tested in the library (`crates/netsmith-tools/tests/port_skeleton.rs`).
 
@@ -33,10 +33,10 @@ fn the_command_writes_the_source_and_the_parts_file_and_overwrites_neither() {
     let run = || {
         Command::new(env!("CARGO_BIN_EXE_netsmith"))
             .args([
-                "port",
+                "import", "port",
                 "skeleton",
                 "small.kicad_pcb",
-                "--out",
+                "--write",
                 "src/main.nsm",
             ])
             .current_dir(&dir)

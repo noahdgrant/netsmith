@@ -1,4 +1,4 @@
-//! Why a placement cannot be met, as data (`--format json`, `board3d --json`, issue #779): each
+//! Why a placement cannot be met, as data (`--format json`, `dev board3d --format json`, issue #779): each
 //! set of lines of the physical file and locks of the layout file that cannot all hold
 //! ([`Conflict`], what [`explain`](crate::explain) proves), and each fault the placement check
 //! finds on a placed board ([`PlacementFault`], what [`Board::check_placement`] finds). The

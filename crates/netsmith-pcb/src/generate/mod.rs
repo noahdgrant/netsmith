@@ -131,7 +131,7 @@
 //! board, so the check matters more than the generator. Without KiCad installed the test cannot
 //! run (CI without it skips); the unit tests in this module pin the numbers of one footprint per
 //! family, and the design rules check and the fabrication files of the examples are the second
-//! check: all six examples pass `fab`'s check with generated footprints, and `fab --cross-check`
+//! check: all six examples pass `fab`'s check with generated footprints, and `board fab --cross-check`
 //! of `linear_regulator.nsm` shows 0 findings that KiCad's check has and netsmith's lacks, or the
 //! reverse (the pad, mask and copper layers agree; the silkscreen differs, because the drawing is
 //! netsmith's own).

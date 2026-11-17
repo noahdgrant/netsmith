@@ -6,7 +6,7 @@
 //! # How the members are placed
 //!
 //! - The base is the first member the system declares: the system scene is in its frame, so its
-//!   motion is none and its numbers are those of `board3d --board System/base`.
+//!   motion is none and its numbers are those of `dev board3d --board System/base`.
 //! - The mates are read in the order the system states them, again and again until none places
 //!   another member: a mate with one end on a placed member places the member at its other end.
 //!   Contact N meets contact N (pad N of a std header or socket), so the turn and the offset are
@@ -568,7 +568,7 @@ impl SystemScene {
 
 /// Every mesh of the system scene, in the system's frame: each member's meshes
 /// ([`crate::mesh::of_scene`]) moved by its motion, each id starting with `member/` (`led/r1`,
-/// `led/GND`), the members in order. What `render --board System` draws.
+/// `led/GND`), the members in order. What `view 3d --board System` draws.
 pub(crate) fn meshes(system: &SystemScene) -> Vec<crate::mesh::Mesh> {
     let mut out = Vec::new();
     for m in &system.members {

@@ -1,4 +1,4 @@
-//! `netsmith init`, the `netsmith.toml` manifest, and projects of several files.
+//! `netsmith project init`, the `netsmith.toml` manifest, and projects of several files.
 
 use crate::common;
 
@@ -73,7 +73,7 @@ fn init_then_build_from_a_subdirectory_through_the_program() {
     let root = TempFile::new("project-test-program", "blink");
     fs::create_dir_all(&root).unwrap();
 
-    let init = netsmith(&root, &["init"]);
+    let init = netsmith(&root, &["project", "init"]);
     assert!(
         init.status.success(),
         "{}",
@@ -81,11 +81,11 @@ fn init_then_build_from_a_subdirectory_through_the_program() {
     );
     let said = String::from_utf8_lossy(&init.stdout);
     assert!(
-        said.contains("created netsmith.toml") && said.contains("netsmith build"),
+        said.contains("created netsmith.toml") && said.contains("netsmith board build"),
         "{said}"
     );
 
-    let again = netsmith(&root, &["init"]);
+    let again = netsmith(&root, &["project", "init"]);
     assert!(!again.status.success());
     let e = String::from_utf8_lossy(&again.stderr);
     assert!(
@@ -93,7 +93,7 @@ fn init_then_build_from_a_subdirectory_through_the_program() {
         "{e}"
     );
 
-    let build = netsmith(&root.join("src"), &["build"]);
+    let build = netsmith(&root.join("src"), &["board", "build"]);
     assert!(
         build.status.success(),
         "{}",
@@ -106,25 +106,25 @@ fn init_then_build_from_a_subdirectory_through_the_program() {
     assert!(!root.join("src/out").exists());
 
     // An explicit file still goes where it always did.
-    let named = netsmith(&root, &["build", "src/main.nsm", "--out", "elsewhere"]);
+    let named = netsmith(&root, &["board", "build", "src/main.nsm", "--out", "elsewhere"]);
     assert!(named.status.success());
     assert!(root.join("elsewhere/Blink/Blink.kicad_sch").is_file());
 
     // With no project and no file there is a message, not a crash.
-    let lost = netsmith(&dir("lost"), &["build"]);
+    let lost = netsmith(&dir("lost"), &["board", "build"]);
     assert_eq!(lost.status.code(), Some(2));
-    assert!(String::from_utf8_lossy(&lost.stderr).contains("netsmith init"));
+    assert!(String::from_utf8_lossy(&lost.stderr).contains("netsmith project init"));
 }
 
 #[test]
 fn init_refresh_through_the_program_writes_what_is_missing_and_needs_a_project() {
     let root = TempFile::new("project-test-refresh-program", "blink");
     fs::create_dir_all(&root).unwrap();
-    assert!(netsmith(&root, &["init"]).status.success());
+    assert!(netsmith(&root, &["project", "init"]).status.success());
     assert_eq!(fs::read_to_string(root.join("CLAUDE.md")).unwrap(), "@AGENTS.md\n");
     fs::remove_file(root.join("CLAUDE.md")).unwrap();
 
-    let refreshed = netsmith(&root.join("src"), &["init", "--refresh"]);
+    let refreshed = netsmith(&root.join("src"), &["project", "refresh"]);
     assert!(
         refreshed.status.success(),
         "{}",
@@ -134,10 +134,10 @@ fn init_refresh_through_the_program_writes_what_is_missing_and_needs_a_project()
     assert!(said.contains("created CLAUDE.md"), "{said}");
     assert!(root.join("CLAUDE.md").is_file());
 
-    let lost = netsmith(&dir("refresh-lost"), &["init", "--refresh"]);
+    let lost = netsmith(&dir("refresh-lost"), &["project", "refresh"]);
     assert_eq!(lost.status.code(), Some(1));
     assert!(String::from_utf8_lossy(&lost.stderr).contains("netsmith.toml"));
-    let both = netsmith(&root, &["init", "--refresh", "--name", "x"]);
+    let both = netsmith(&root, &["project", "refresh", "--name", "x"]);
     assert_eq!(both.status.code(), Some(2));
 }
 
@@ -165,7 +165,7 @@ fn a_library_only_project_lists_no_top_level_file_and_its_commands_say_so() {
     assert_eq!(target.title, "lib");
 
     for command in ["build", "fab"] {
-        let run = netsmith(&root, &[command]);
+        let run = netsmith(&root, &["board", command]);
         assert_eq!(run.status.code(), Some(2), "{command}");
         let e = String::from_utf8_lossy(&run.stderr);
         assert_eq!(
@@ -180,7 +180,7 @@ fn a_library_only_project_lists_no_top_level_file_and_its_commands_say_so() {
         "src/main.nsm",
         "import src::parts::Pull\nboard B {\n    .p: Pull\n}\n",
     );
-    let named = netsmith(&root, &["build", "src/main.nsm", "--out", "named"]);
+    let named = netsmith(&root, &["board", "build", "src/main.nsm", "--out", "named"]);
     assert!(
         !String::from_utf8_lossy(&named.stderr).contains("no boards"),
         "{}",
@@ -216,7 +216,7 @@ fn a_top_level_file_with_a_system_builds_into_a_directory_per_member() {
     assert_eq!(labels, ["TwoBoards/power", "TwoBoards/led"]);
 
     // Through the program, from a subdirectory, with no file argument.
-    let run = netsmith(&root.join("src"), &["build"]);
+    let run = netsmith(&root.join("src"), &["board", "build"]);
     assert!(
         run.status.success(),
         "{}",
@@ -313,7 +313,7 @@ fn a_manifest_assembly_that_is_no_assembly_stops_every_command_naming_the_field(
         "[project]\nname = \"asm\"\nassembly = \"solder\"\n",
     );
     write(&root, "src/main.nsm", LED);
-    let run = netsmith(&root, &["build"]);
+    let run = netsmith(&root, &["board", "build"]);
     let said = String::from_utf8_lossy(&run.stderr);
     assert!(!run.status.success());
     assert!(
@@ -340,7 +340,7 @@ fn a_project_file_named_like_a_standard_catalog_adds_parts_to_it_through_the_pro
         ".r1: Resistor { .resistance &= 316ohm +/- 1% }",
     );
     write(&root, "src/main.nsm", &board);
-    let run = netsmith(&root, &["build"]);
+    let run = netsmith(&root, &["board", "build"]);
     let said = String::from_utf8_lossy(&run.stdout);
     assert!(
         run.status.success(),
@@ -375,7 +375,7 @@ fn a_mistake_in_a_project_catalog_file_names_the_file_and_line_through_the_progr
         ),
     ] {
         let root = catalog_project("own-bad", "", &csv);
-        let run = netsmith(&root, &["build"]);
+        let run = netsmith(&root, &["board", "build"]);
         let said = String::from_utf8_lossy(&run.stderr);
         assert!(!run.status.success(), "{expect}");
         assert!(said.contains(expect), "wanted {expect}\n{said}");
@@ -392,7 +392,7 @@ fn a_project_file_that_repeats_a_standard_part_is_refused_naming_both_files() {
         "lcsc,mpn,resistance,max_power,package,source\nC25104,X,330ohm +/- 1%,62.5mW,0402,https://example.invalid/x\n",
     );
     write(&root, "src/main.nsm", LED);
-    let run = netsmith(&root, &["build"]);
+    let run = netsmith(&root, &["board", "build"]);
     let said = String::from_utf8_lossy(&run.stderr);
     assert!(!run.status.success());
     assert!(
@@ -432,7 +432,7 @@ fn a_csv_in_a_catalog_folder_that_is_not_named_like_a_catalog_is_refused_naming_
     // The program says the same, and does not build.
     write(&root, "catalogs/readings-2026.csv", "x\n");
     write(&root, "src/main.nsm", LED);
-    let run = netsmith(&root, &["build"]);
+    let run = netsmith(&root, &["board", "build"]);
     let said = String::from_utf8_lossy(&run.stderr);
     assert!(!run.status.success());
     assert!(
@@ -483,7 +483,7 @@ fn a_catalog_in_two_files_or_a_file_named_twice_is_refused_naming_both() {
     );
     // The program refuses to build, with the message.
     write(&root, "src/main.nsm", LED);
-    let run = netsmith(&root, &["build"]);
+    let run = netsmith(&root, &["board", "build"]);
     let said = String::from_utf8_lossy(&run.stderr);
     assert!(!run.status.success());
     assert!(
@@ -514,7 +514,7 @@ fn kicad_libs_import_prints_the_stanzas_to_paste_into_kicad_toml() {
     .unwrap();
     let out = netsmith(
         &root,
-        &["kicad-libs", "import", "sym-lib-table", "fp-lib-table"],
+        &["import", "kicad-libs", "libraries", "sym-lib-table", "fp-lib-table"],
     );
     assert_eq!(out.status.code(), Some(0));
     assert_eq!(
@@ -522,7 +522,7 @@ fn kicad_libs_import_prints_the_stanzas_to_paste_into_kicad_toml() {
         "[[library]]\nname = \"acme\"\nsymbols = \"libs/acme.kicad_sym\"\nfootprints = \"libs/acme.pretty\"\n\n"
     );
     // A table that is not there is a message.
-    let lost = netsmith(&root, &["kicad-libs", "import", "nope"]);
+    let lost = netsmith(&root, &["import", "kicad-libs", "libraries", "nope"]);
     assert_eq!(lost.status.code(), Some(2));
     assert!(String::from_utf8_lossy(&lost.stderr).contains("nope"));
 }
@@ -545,7 +545,7 @@ fn kicad_libs_models_prints_the_model_rows_of_a_footprint_library_table() {
         "libs/acme.pretty/Bare.kicad_mod",
         "(footprint \"Bare\" (version 20240108) (layer \"F.Cu\"))\n",
     );
-    let out = netsmith(&root, &["kicad-libs", "models", "fp-lib-table"]);
+    let out = netsmith(&root, &["import", "kicad-libs", "models", "fp-lib-table"]);
     assert_eq!(out.status.code(), Some(0));
     let rows = String::from_utf8_lossy(&out.stdout);
     assert_eq!(
@@ -564,7 +564,7 @@ fn kicad_libs_models_prints_the_model_rows_of_a_footprint_library_table() {
     assert_eq!(m.model.len(), 1);
     assert_eq!(m.model[0].rotation, [0.0, 0.0, 90.0]);
     // A table that is not there is a message.
-    let lost = netsmith(&root, &["kicad-libs", "models", "nope"]);
+    let lost = netsmith(&root, &["import", "kicad-libs", "models", "nope"]);
     assert_eq!(lost.status.code(), Some(2));
 }
 
@@ -575,7 +575,7 @@ fn a_projects_kicad_toml_gives_its_own_libraries_to_build_and_the_tables_to_kica
     fs::create_dir_all(root.join("src")).unwrap();
     fs::write(root.join("src/main.nsm"), common::DUAL_BOARD).unwrap();
     let _ = common::project_libraries(&root);
-    let out = netsmith(&root, &["build"]);
+    let out = netsmith(&root, &["board", "build"]);
     let stderr = String::from_utf8_lossy(&out.stderr);
     assert_eq!(out.status.code(), Some(0), "{stderr}");
     let board = root.join("out/B");
@@ -595,7 +595,7 @@ fn a_projects_kicad_toml_gives_its_own_libraries_to_build_and_the_tables_to_kica
 
     // A mistake in kicad.toml is one message with the file's name, not a crash.
     fs::write(root.join("kicad.toml"), "[[part]]\nknid = 1\n").unwrap();
-    let bad = netsmith(&root, &["build"]);
+    let bad = netsmith(&root, &["board", "build"]);
     assert_eq!(bad.status.code(), Some(2));
     assert!(String::from_utf8_lossy(&bad.stderr).starts_with("kicad.toml: "));
 }

@@ -1,5 +1,5 @@
 //! Pictures of the router's work as PNG files, for an agent that can open a picture and not an
-//! SVG (`netsmith route --stages`, issue #431 S3b): one of each stage of the try that gave the
+//! SVG (`netsmith dev route --stages`, issue #431 S3b): one of each stage of the try that gave the
 //! result ([`netsmith_router::Snapshot`]) and one of the crowding map ([`netsmith_router::Crowding`]).
 //!
 //! A stage's picture is the board's outline, its back copper (blue) and front copper (red) as

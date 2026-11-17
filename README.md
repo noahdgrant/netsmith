@@ -10,7 +10,7 @@ A board is a set of parts and the nets that join their pins,
 written as text. netsmith checks it, picks real parts that work in the worst case, and
 exports files for CAD tools and for a board house. It writes a KiCad 9 schematic, and a placed
 and routed PCB with a Gerber package for JLCPCB, on two layers or on four with ground and
-supply planes inside. The editor (`netsmith editor`) shows the source and the board in a
+supply planes inside. The editor (`netsmith view editor`) shows the source and the board in a
 browser.
 
 Status: early (v0.1). The examples in `examples/` build and pass KiCad's checks where KiCad is installed, except `carrier_and_cards.nsm`, whose invented parts have no KiCad symbol (it is checked and solved only). The rest build and fab with no KiCad at all (see Install). Some of the decisions behind the language are still `proposed` and wait for review (see Limitations).
@@ -78,7 +78,7 @@ KiCad 9 is needed for these, and for nothing else:
 
 - The ERC and DRC cross-check: `kicad-cli`, and in the editor the PCB findings that run
   KiCad's check (without it the findings list says "KiCad not found: set KICAD_CLI or install
-  KiCad", once). `fab --cross-check` plots the board with KiCad as well, and `fab` runs
+  KiCad", once). `board fab --cross-check` plots the board with KiCad as well, and `fab` runs
   netsmith's own design rules check without it.
 - A project whose own `kicad.toml` names a KiCad symbol or footprint that netsmith does not
   make, with no `[[library]]` of the project and no `gen:` footprint for it. Only then does a
@@ -101,40 +101,40 @@ tried them.
 
 ```sh
 mkdir blink && cd blink
-netsmith init       # netsmith.toml, src/main.nsm (a working LED board), agent files (`init --refresh` updates them after an upgrade)
-netsmith build      # a KiCad schematic in out/
-netsmith editor     # the source and the board in a browser, at 127.0.0.1:8787 (`--offline` asks no supplier for stock or price, and the bill of materials says they are not checked; `fab --offline` says it in `fab-notes.txt`)
-netsmith fab        # a package for JLCPCB in fab/: Gerbers, drill, bom.csv, cpl.csv, fab-notes.txt, the board's 3D scene as `<board>.glb` (`--no-glb` or `glb = false` in netsmith.toml leaves it out), the board as STEP for mechanical CAD as `<board>.step` (`--no-step` or `step = false` leaves it out), and for a board with pin requests its pin map for firmware from the final layout (`.pins.h`, `.pins.json`)
-netsmith board3d --json   # the board's 3D facts for an agent: heights, limits, overlaps (docs/BOARD3D.md)
-netsmith board3d --glb board.glb   # the same scene as glTF 2.0 binary, the file the editor's 3D view shows
-netsmith render --view iso --out board.png   # the board drawn in 3D to a PNG by netsmith's own rasterizer, no GPU or KiCad (docs/BOARD3D.md)
-netsmith view --view top --highlight J1 --picture j1.png   # drive the 3D view of the running editor with render's flags, and save its picture (docs/BOARD3D.md)
+netsmith project init       # netsmith.toml, src/main.nsm (a working LED board), agent files (`project refresh` updates them after an upgrade)
+netsmith board build      # a KiCad schematic in out/
+netsmith view editor     # the source and the board in a browser, at 127.0.0.1:8787 (`--offline` asks no supplier for stock or price, and the bill of materials says they are not checked; `board fab --offline` says it in `fab-notes.txt`)
+netsmith board fab        # a package for JLCPCB in fab/: Gerbers, drill, bom.csv, cpl.csv, fab-notes.txt, the board's 3D scene as `<board>.glb` (`--no-glb` or `glb = false` in netsmith.toml leaves it out), the board as STEP for mechanical CAD as `<board>.step` (`--no-step` or `step = false` leaves it out), and for a board with pin requests its pin map for firmware from the final layout (`.pins.h`, `.pins.json`)
+netsmith dev board3d --format json   # the board's 3D facts for an agent: heights, limits, overlaps (docs/BOARD3D.md)
+netsmith dev board3d --glb board.glb   # the same scene as glTF 2.0 binary, the file the editor's 3D view shows
+netsmith view 3d --view iso --picture board.png   # the board drawn in 3D to a PNG by netsmith's own rasterizer, no GPU or KiCad (docs/BOARD3D.md)
+netsmith view editor-3d --view top --highlight J1 --picture j1.png   # drive the 3D view of the running editor with render's flags, and save its picture (docs/BOARD3D.md)
 netsmith layout show   # where each part is in the layout file; `layout set PATH --at X,Y --turn 90 --side bottom --lock` writes one entry, `layout check` finds a wrong path or turn, `layout summary` sums up a placement (wire, decoupling, modules, area and free space per face, nets, the parts near a part, the distance between two pads; the editor's PCB view has it as the Summary tab) `layout compare` says what moved between two layout files, `layout regenerate PATH` places one module again with the rest held, `layout capture` writes the placement and its seed as the layout file, an entry for every part, to freeze a result, `layout fit PATH` says where one part fits with the rest where they are (`--as-laid-out` asks of the layout file's board with nothing placed), `layout parts [PATH...]` gives each part's frame, courtyard shapes and pads (net, place, size) as data, with the placement's findings beside them, and `layout export --out FILE.kicad_pcb` writes the placed board, not routed, for KiCad (also with findings), whose moved parts `layout import FILE.kicad_pcb` brings back (the editor's PCB view has the same files as its "Download KiCad board" button; language guide, "The layout file")
-netsmith compare a.kicad_sch b.nsm   # are two designs the same circuit?
+netsmith board compare a.kicad_sch b.nsm   # are two designs the same circuit?
 ```
 
-Without a project, `netsmith build examples/led.nsm --out out` works on one file. `netsmith
+Without a project, `netsmith board build examples/led.nsm --out out` works on one file. `netsmith
 --help` and `netsmith <command> --help` document every command and flag, and `docs/LANGUAGE.md` ("Projects and netsmith.toml")
 describes the project folder.
 
 The first `build` or `fab` also writes `src/main.lock.toml` beside each source file: the catalog
 row each part was picked as. Commit it, as you commit `Cargo.lock`. Later runs hold each part
 to its row, and `--locked` makes a run that would change the picks an error (`docs/LANGUAGE.md`,
-"The pick lock"). `netsmith lock --update` refreshes the lock after a catalog edit and prints
+"The pick lock"). `netsmith project lock --update` refreshes the lock after a catalog edit and prints
 what changed (`--part r1,u2` or `--except r1` takes new picks for some parts only), and
-`netsmith lock --check` fails when it is not current, for CI. `lock = "top_level"` or `"none"` under
+`netsmith project lock --check` fails when it is not current, for CI. `lock = "top_level"` or `"none"` under
 `[project]` in `netsmith.toml` keeps unit-test and scratch sources free of lock files.
 
 The boards in `examples/` carry their locks, committed beside the sources, and CI runs
-`netsmith lock --check` over every one of them (`scripts/check-example-locks.sh`, the `locks` job). A
+`netsmith project lock --check` over every one of them (`scripts/check-example-locks.sh`, the `locks` job). A
 change to a catalog, `std/` or the solver that would move a pick of an example fails the job until
-someone runs `netsmith lock --update` in the example and the diff of the lock is reviewed. Each
-example also commits its design, `<stem>.design.json` (`netsmith build --emit-design`), which the
+someone runs `netsmith project lock --update` in the example and the diff of the lock is reviewed. Each
+example also commits its design, `<stem>.design.json` (`netsmith board build --emit-design`), which the
 `designs` job checks the same way (`scripts/check-example-designs.sh`, whose `--update` rewrites it).
 `NETSMITH_TIMINGS=1` prints how long each stage took.
 
 The editor also opens in a window of its own: the desktop shell in `desktop/` (a separate Cargo
-workspace, built with Tauri, on Linux for now) starts `netsmith editor` in the project folder it is
+workspace, built with Tauri, on Linux for now) starts `netsmith view editor` in the project folder it is
 opened with (`netsmith-desktop [FOLDER]`, the current folder by default) on a free port, shows it,
 and stops it when the window closes. It needs WebKitGTK (`libwebkit2gtk-4.1-dev`) to build:
 `cargo build --manifest-path desktop/Cargo.toml --features window`. It starts the `netsmith` that
@@ -151,7 +151,7 @@ with, the parts you solder yourself (`hand-solder:`) and the parts you ship to t
   start, every construct with a tested example and the real error you get when you misuse it, and the
   standard library.
 - `docs/PIPELINE.md`: the stages a design goes through, from source to a fab package, with diagrams.
-- `docs/BOARD3D.md`: `netsmith board3d`, the board's 3D scene as a JSON report and as a `.glb` file, and `netsmith render`, the same scene as a PNG, and `netsmith view`, which drives the 3D view of a running editor.
+- `docs/BOARD3D.md`: `netsmith dev board3d`, the board's 3D scene as a JSON report and as a `.glb` file, and `netsmith view 3d`, the same scene as a PNG, and `netsmith view editor-3d`, which drives the 3D view of a running editor.
 - `docs/CONCEPTS.md`: how parts, modules, boards and systems combine.
   `docs/PROJECT-LAYOUT.md`: a repository with several boards.
 - `docs/MIGRATING.md`: what to change in a project that a newer netsmith refuses, release by release, with the old and the new spelling.

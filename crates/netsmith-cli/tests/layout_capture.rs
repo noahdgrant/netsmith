@@ -82,7 +82,7 @@ fn capture_writes_an_entry_for_every_part_and_the_seed() {
         assert_eq!(entry["lock"], false, "{path}");
     }
     // The file is the placement: the board it gives is the one `fab` places with it.
-    let check = netsmith(&dir, &["check", "--format", "json"]);
+    let check = netsmith(&dir, &["board", "check", "--format", "json"]);
     assert_eq!(check.status.code(), Some(0), "{}", text(&check.stdout));
 
     // A second capture changes nothing: every part has its entry, byte for byte.

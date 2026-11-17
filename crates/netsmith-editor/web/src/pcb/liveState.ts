@@ -1,5 +1,5 @@
 // What the page has been shown of the placer and the router while they run (issue 764), and of the runs it did not start
-// (`fab --to-editor`): kept apart from the PCB store so that the socket's handler (`store.ts`) and the views share it.
+// (`board fab --to-editor`): kept apart from the PCB store so that the socket's handler (`store.ts`) and the views share it.
 
 import { signal } from '@preact/signals';
 

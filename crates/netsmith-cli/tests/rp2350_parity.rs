@@ -21,7 +21,7 @@ fn project() -> PathBuf {
 /// before the router starts. Placement takes about 3 s.
 const ROUTE_SECONDS: &str = "20";
 
-/// Builds the example with `netsmith fab`, with no KiCad (the project needs none, ADR 0097) and
+/// Builds the example with `netsmith board fab`, with no KiCad (the project needs none, ADR 0097) and
 /// the router stopped after [`ROUTE_SECONDS`], and gates on the checker: every must-match item
 /// must be `ok` on the board it writes, complete or INCOMPLETE. Any other failure of `fab` (no
 /// board written, a requirement not met, a design that does not build) fails the test.
@@ -33,7 +33,7 @@ fn rp2350_minimal_pcb_matches_raspberry_pi() {
         parts: 43,
         min_ok: 225,
         route_seconds: ROUTE_SECONDS,
-        regenerate: "from examples/rp2350_minimal run `netsmith fab --locked`, then\n  netsmith \
+        regenerate: "from examples/rp2350_minimal run `netsmith board fab --locked`, then\n  netsmith \
                      parity fab/Rp2350Minimal/Rp2350Minimal.kicad_pcb \
                      --svg reference/parity-overlay.svg",
         known_failures: &[],

@@ -652,7 +652,7 @@ export async function run({ page, shot, step, expect, section, project, resetRep
   const copy = fs.mkdtempSync(path.join(os.tmpdir(), 'nsm-nogit-'));
   fs.cpSync(project, copy, { recursive: true, filter: (src) => !src.split(path.sep).includes('.git') });
   const port = await freePort();
-  const server = spawn(binary, ['editor', '--port', String(port)], { cwd: copy, stdio: 'ignore' });
+  const server = spawn(binary, ['view', 'editor', '--port', String(port)], { cwd: copy, stdio: 'ignore' });
   try {
     // The server answers when it is up: ask until it does.
     const reason = await waitFor('the server over the copy to answer', async () => {

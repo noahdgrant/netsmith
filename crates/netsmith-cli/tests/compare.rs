@@ -1,4 +1,4 @@
-//! `netsmith compare` on the example boards. The tests that read a schematic run real
+//! `netsmith board compare` on the example boards. The tests that read a schematic run real
 //! KiCad (`kicad-cli sch export netlist`), so they skip when it is not installed, or is Windows KiCad that
 //! this shell cannot start (no `cmd.exe`, as under `systemd-run --user`); the
 //! rest need no KiCad.
@@ -32,7 +32,7 @@ fn the_command_exits_0_for_a_match_1_for_a_difference_and_2_for_a_mistake() {
     fs::write(&c, xml("4.7k")).unwrap();
     let run = |args: &[&Path]| {
         let out = Command::new(env!("CARGO_BIN_EXE_netsmith"))
-            .arg("compare")
+            .args(["board", "compare"])
             .args(args)
             .output()
             .unwrap();
@@ -99,7 +99,7 @@ fn a_resistor_turned_round_matches_with_a_note_and_an_led_does_not() {
     fs::write(&c, xml(("1", "2"), ("2", "1"))).unwrap();
     let run = |args: &[&Path]| {
         let out = Command::new(env!("CARGO_BIN_EXE_netsmith"))
-            .arg("compare")
+            .args(["board", "compare"])
             .args(args)
             .output()
             .unwrap();
@@ -174,13 +174,14 @@ board Repro {
     };
     let board = dir.join("board.nsm");
     let compare = |xml: &Path| {
-        let out = netsmith(&[Path::new("compare"), &board, xml]);
+        let out = netsmith(&[Path::new("board"), Path::new("compare"), &board, xml]);
         (
             out.status.code(),
             String::from_utf8_lossy(&out.stdout).into_owned(),
         )
     };
     let built = netsmith(&[
+        Path::new("board"),
         Path::new("build"),
         &board,
         Path::new("--out"),

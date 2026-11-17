@@ -1,4 +1,4 @@
-//! `netsmith build --emit-solved <file>` writes the values the solve left each member of each
+//! `netsmith board build --emit-solved <file>` writes the values the solve left each member of each
 //! board with (issue #744), and nothing when a board fails before the solve; a board whose solve
 //! fails is written with the rows its group passed over (issue 1008).
 
@@ -28,7 +28,7 @@ board Repro {
 
 fn build(cwd: &Path, file: &str, emit: &Path) -> std::process::Output {
     Command::new(env!("CARGO_BIN_EXE_netsmith"))
-        .args(["build", file, "--out", "out", "--emit-solved"])
+        .args(["board", "build", file, "--out", "out", "--emit-solved"])
         .arg(emit)
         .current_dir(cwd)
         .env("NETSMITH_NO_KICAD", "1")

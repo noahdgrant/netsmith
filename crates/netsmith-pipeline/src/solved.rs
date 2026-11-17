@@ -1,6 +1,6 @@
 //! The values the solve left each member of a board with, as JSON (issue #744).
 //!
-//! `netsmith build --emit-solved <file>` writes them, so a person can read the range of current an
+//! `netsmith board build --emit-solved <file>` writes them, so a person can read the range of current an
 //! inductor carries, the voltage a chain leaves at a node or the power in a resistor without making
 //! a check fail. The file is a JSON array with one object per board, in the order the run built
 //! them: the board (`System/Board` for a board of a system) and its members, each a member that
@@ -35,7 +35,7 @@
 //! turn passed over, in the shape a pick has. The first turn is the one the search made when it
 //! first reached the part, with the parts before it at the first rows that fit.
 //!
-//! [`explain`] reads the same values as text, for `netsmith explain`.
+//! [`explain`] reads the same values as text, for `netsmith board explain`.
 
 use netsmith_check::{Domain, Model};
 use serde_json::{Map, Value, json};
@@ -187,7 +187,7 @@ fn inside(path: &str, within: &str) -> bool {
 /// How many paths [`explain`] lists when it finds nothing at the path it was given.
 const LISTED: usize = 12;
 
-/// The text `netsmith explain` prints for `path` over the boards of a solved file (`to_value`
+/// The text `netsmith board explain` prints for `path` over the boards of a solved file (`to_value`
 /// and `failed_value`): for each board, the record of each part at the path or inside it (the
 /// row taken, what held it, the rows passed over and why; for a part of a group that failed, the
 /// rows its first turn passed over), then the members at the path or inside it with the ranges

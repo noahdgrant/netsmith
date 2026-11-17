@@ -1,6 +1,6 @@
 //! A colour picture drawn by the same scanline fill as the Gerber rasteriser, for pictures an
 //! agent opens (a PNG it can read, where an SVG it cannot): the router's stages and its
-//! crowding map (`netsmith route --stages`). Coordinates are millimetres in a board's own
+//! crowding map (`netsmith dev route --stages`). Coordinates are millimetres in a board's own
 //! frame, x to the right and **y down**, the frame of `netsmith_pcb::Board`.
 //!
 //! A shape is filled where its polygons' winding number is not zero, so overlapping polygons

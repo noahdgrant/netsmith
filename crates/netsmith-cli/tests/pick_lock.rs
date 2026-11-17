@@ -71,7 +71,7 @@ fn schematic(root: &Path) -> String {
 #[test]
 fn build_writes_the_lock_beside_the_source_and_two_runs_write_the_same_bytes() {
     let root = project("pick-lock-write", LED);
-    let run = netsmith(&root, &["build"]);
+    let run = netsmith(&root, &["board", "build"]);
     assert!(run.status.success(), "{}", stderr(&run));
     let first =
         fs::read_to_string(lock_file(&root)).expect("the lock is written beside the source");
@@ -93,7 +93,7 @@ fn build_writes_the_lock_beside_the_source_and_two_runs_write_the_same_bytes() {
     );
     // Pick again from nothing: the same bytes.
     fs::remove_file(lock_file(&root)).unwrap();
-    let again = netsmith(&root, &["build"]);
+    let again = netsmith(&root, &["board", "build"]);
     assert!(again.status.success(), "{}", stderr(&again));
     assert_eq!(fs::read_to_string(lock_file(&root)).unwrap(), first);
 }
@@ -101,25 +101,25 @@ fn build_writes_the_lock_beside_the_source_and_two_runs_write_the_same_bytes() {
 #[test]
 fn a_second_build_reads_the_lock_leaves_it_alone_and_makes_the_same_schematic() {
     let root = project("pick-lock-again", LED);
-    assert!(netsmith(&root, &["build"]).status.success());
+    assert!(netsmith(&root, &["board", "build"]).status.success());
     let lock = fs::read_to_string(lock_file(&root)).unwrap();
     let schematic_before = schematic(&root);
-    let run = netsmith(&root, &["build"]);
+    let run = netsmith(&root, &["board", "build"]);
     assert!(run.status.success(), "{}", stderr(&run));
     assert!(!stderr(&run).contains("note:"), "{}", stderr(&run));
     assert!(!stdout(&run).contains("lock.toml"), "{}", stdout(&run));
     assert_eq!(fs::read_to_string(lock_file(&root)).unwrap(), lock);
     assert_eq!(schematic(&root), schematic_before);
     // And `--locked` accepts a lock that matches.
-    let locked = netsmith(&root, &["build", "--locked"]);
+    let locked = netsmith(&root, &["board", "build", "--locked"]);
     assert!(locked.status.success(), "{}", stderr(&locked));
 }
 
 #[test]
 fn a_locked_row_that_still_passes_is_the_pick_though_the_solver_would_pick_another() {
     let root = project("pick-lock-passes", LED);
-    assert!(netsmith(&root, &["build"]).status.success());
-    let without = stdout(&netsmith(&root, &["build"]));
+    assert!(netsmith(&root, &["board", "build"]).status.success());
+    let without = stdout(&netsmith(&root, &["board", "build"]));
     assert!(
         without.contains("R_0402") && !without.contains("R_0603"),
         "{without}"
@@ -133,7 +133,7 @@ fn a_locked_row_that_still_passes_is_the_pick_though_the_solver_would_pick_anoth
         )
         .replace("lcsc = \"C25104\"\nmpn = \"0402WGF3300TCE\"\n", "");
     fs::write(lock_file(&root), &held).unwrap();
-    let run = netsmith(&root, &["build"]);
+    let run = netsmith(&root, &["board", "build"]);
     assert!(run.status.success(), "{}", stderr(&run));
     assert!(stdout(&run).contains("R_0603"), "{}", stdout(&run));
     // The row the lock holds is a row of the same part and the lock is as the person left it,
@@ -145,7 +145,7 @@ fn a_locked_row_that_still_passes_is_the_pick_though_the_solver_would_pick_anoth
 #[test]
 fn a_locked_row_that_fails_is_reported_with_its_numbers_and_no_other_row_is_tried() {
     let root = project("pick-lock-fails", LED);
-    assert!(netsmith(&root, &["build"]).status.success());
+    assert!(netsmith(&root, &["board", "build"]).status.success());
     let lock = fs::read_to_string(lock_file(&root)).unwrap();
     fs::write(
         lock_file(&root),
@@ -155,7 +155,7 @@ fn a_locked_row_that_fails_is_reported_with_its_numbers_and_no_other_row_is_trie
     )
     .unwrap();
     fs::remove_dir_all(root.join("out")).unwrap();
-    let run = netsmith(&root, &["build"]);
+    let run = netsmith(&root, &["board", "build"]);
     assert!(!run.status.success());
     let said = stderr(&run);
     // The failure of the relation, with its numbers, as any failure is told.
@@ -179,11 +179,11 @@ fn a_locked_row_that_fails_is_reported_with_its_numbers_and_no_other_row_is_trie
 #[test]
 fn a_row_the_catalog_no_longer_has_or_whose_number_changed_is_named() {
     let root = project("pick-lock-gone", LED);
-    assert!(netsmith(&root, &["build"]).status.success());
+    assert!(netsmith(&root, &["board", "build"]).status.success());
     let lock = fs::read_to_string(lock_file(&root)).unwrap();
 
     fs::write(lock_file(&root), lock.replace(SOLVER_ROW, "renamed row")).unwrap();
-    let run = netsmith(&root, &["build"]);
+    let run = netsmith(&root, &["board", "build"]);
     assert!(!run.status.success());
     assert!(
         stderr(&run)
@@ -194,7 +194,7 @@ fn a_row_the_catalog_no_longer_has_or_whose_number_changed_is_named() {
     );
 
     fs::write(lock_file(&root), lock.replace("\"C25104\"", "\"C1\"")).unwrap();
-    let run = netsmith(&root, &["build"]);
+    let run = netsmith(&root, &["board", "build"]);
     assert!(!run.status.success());
     assert!(
         stderr(&run).contains("now has the LCSC number C25104")
@@ -208,7 +208,7 @@ fn a_row_the_catalog_no_longer_has_or_whose_number_changed_is_named() {
         lock.replace("catalog = \"resistor\"", "catalog = \"led\""),
     )
     .unwrap();
-    let run = netsmith(&root, &["build"]);
+    let run = netsmith(&root, &["board", "build"]);
     assert!(!run.status.success());
     assert!(
         stderr(&run).contains(
@@ -222,12 +222,12 @@ fn a_row_the_catalog_no_longer_has_or_whose_number_changed_is_named() {
 #[test]
 fn a_new_part_is_told_and_with_locked_it_is_an_error_before_anything_is_written() {
     let root = project("pick-lock-new", LED);
-    assert!(netsmith(&root, &["build"]).status.success());
+    assert!(netsmith(&root, &["board", "build"]).status.success());
     let lock = fs::read_to_string(lock_file(&root)).unwrap();
     fs::write(root.join("src/main.nsm"), with_second_led()).unwrap();
 
     // Without the flag the build goes on and says what is not in the lock; the lock stays.
-    let run = netsmith(&root, &["build"]);
+    let run = netsmith(&root, &["board", "build"]);
     assert!(run.status.success(), "{}", stderr(&run));
     let said = stderr(&run);
     assert!(
@@ -240,7 +240,7 @@ fn a_new_part_is_told_and_with_locked_it_is_an_error_before_anything_is_written(
 
     // With it nothing is written.
     fs::remove_dir_all(root.join("out")).unwrap();
-    let run = netsmith(&root, &["build", "--locked"]);
+    let run = netsmith(&root, &["board", "build", "--locked"]);
     assert!(!run.status.success());
     assert!(
         stderr(&run).contains("error: the parts picked differ from")
@@ -256,9 +256,9 @@ fn a_new_part_is_told_and_with_locked_it_is_an_error_before_anything_is_written(
 #[test]
 fn a_part_that_is_gone_is_told() {
     let root = project("pick-lock-removed", &with_second_led());
-    assert!(netsmith(&root, &["build"]).status.success());
+    assert!(netsmith(&root, &["board", "build"]).status.success());
     fs::write(root.join("src/main.nsm"), LED).unwrap();
-    let run = netsmith(&root, &["build"]);
+    let run = netsmith(&root, &["board", "build"]);
     assert!(run.status.success(), "{}", stderr(&run));
     assert!(
         stderr(&run).contains("`r2` is in the lock as `")
@@ -271,7 +271,7 @@ fn a_part_that_is_gone_is_told() {
 #[test]
 fn locked_with_no_lock_file_is_an_error_and_writes_nothing() {
     let root = project("pick-lock-none", LED);
-    let run = netsmith(&root, &["build", "--locked"]);
+    let run = netsmith(&root, &["board", "build", "--locked"]);
     assert!(!run.status.success());
     assert!(
         stderr(&run).contains("does not exist, and --locked says it must not be written"),
@@ -286,7 +286,7 @@ fn locked_with_no_lock_file_is_an_error_and_writes_nothing() {
 fn a_file_that_is_not_a_lock_is_refused_naming_it() {
     let root = project("pick-lock-wrong", LED);
     fs::write(lock_file(&root), "version = 7\n").unwrap();
-    let run = netsmith(&root, &["build"]);
+    let run = netsmith(&root, &["board", "build"]);
     assert_eq!(run.status.code(), Some(2));
     assert!(
         stderr(&run).contains("main.lock.toml: version 7 is not a version of the lock"),
@@ -299,20 +299,20 @@ fn a_file_that_is_not_a_lock_is_refused_naming_it() {
 #[test]
 fn fab_writes_and_reads_the_lock_too() {
     let root = project("pick-lock-fab", LED);
-    let run = netsmith(&root, &["fab", "--allow-drc-violations"]);
+    let run = netsmith(&root, &["board", "fab", "--allow-drc-violations"]);
     assert!(run.status.success(), "{}", stderr(&run));
     let lock = fs::read_to_string(lock_file(&root)).expect("fab writes the lock too");
     assert!(lock.contains("[LedExample.parts.\"r1\"]"), "{lock}");
     // The lock of a build is the lock of a fab: the same picks, the same bytes.
     let other = project("pick-lock-fab-build", LED);
-    assert!(netsmith(&other, &["build"]).status.success());
+    assert!(netsmith(&other, &["board", "build"]).status.success());
     assert_eq!(fs::read_to_string(lock_file(&other)).unwrap(), lock);
 
     // `--locked` holds, and a lock tampered with is read.
-    let run = netsmith(&root, &["fab", "--allow-drc-violations", "--locked"]);
+    let run = netsmith(&root, &["board", "fab", "--allow-drc-violations", "--locked"]);
     assert!(run.status.success(), "{}", stderr(&run));
     fs::write(lock_file(&root), lock.replace(SOLVER_ROW, "renamed row")).unwrap();
-    let run = netsmith(&root, &["fab", "--allow-drc-violations"]);
+    let run = netsmith(&root, &["board", "fab", "--allow-drc-violations"]);
     assert!(!run.status.success());
     assert!(
         stderr(&run).contains("`r1` is locked to the row `renamed row`"),
@@ -333,7 +333,7 @@ fn at_two_oz() -> String {
 #[test]
 fn the_lock_holds_a_process_to_its_provider_and_lock_update_picks_again() {
     let root = project("pick-lock-provider", LED);
-    let run = netsmith(&root, &["build"]);
+    let run = netsmith(&root, &["board", "build"]);
     assert!(run.status.success(), "{}", stderr(&run));
     let lock = fs::read_to_string(lock_file(&root)).unwrap();
     assert!(
@@ -346,7 +346,7 @@ fn the_lock_holds_a_process_to_its_provider_and_lock_update_picks_again() {
     // The board now asks for 2 oz: the lock holds the use to 1 oz, so the build stops on the
     // contradiction and names the lock, and nothing else is tried.
     fs::write(root.join("src/main.nsm"), at_two_oz()).unwrap();
-    let run = netsmith(&root, &["build"]);
+    let run = netsmith(&root, &["board", "build"]);
     assert!(!run.status.success());
     let err = stderr(&run);
     assert!(
@@ -354,12 +354,12 @@ fn the_lock_holds_a_process_to_its_provider_and_lock_update_picks_again() {
             && err.contains(
                 "the pick lock holds `process` to the provider `std::mfg::jlcpcb::JlcTwoLayer1oz`"
             )
-            && err.contains("netsmith lock --update"),
+            && err.contains("netsmith project lock --update"),
         "{err}"
     );
 
     // A refresh picks again and says so; the build then takes 2 oz.
-    let run = netsmith(&root, &["lock", "--update"]);
+    let run = netsmith(&root, &["project", "lock", "--update"]);
     assert!(run.status.success(), "{}", stderr(&run));
     assert!(
         stdout(&run).contains(
@@ -368,7 +368,7 @@ fn the_lock_holds_a_process_to_its_provider_and_lock_update_picks_again() {
         "{}",
         stdout(&run)
     );
-    let run = netsmith(&root, &["build", "--locked"]);
+    let run = netsmith(&root, &["board", "build", "--locked"]);
     assert!(run.status.success(), "{}", stderr(&run));
 
     // A provider that is gone from scope is an error, not a quiet pick of another.
@@ -378,7 +378,7 @@ fn the_lock_holds_a_process_to_its_provider_and_lock_update_picks_again() {
         lock.replace("JlcTwoLayer2oz", "JlcTwoLayer9oz"),
     )
     .unwrap();
-    let run = netsmith(&root, &["build"]);
+    let run = netsmith(&root, &["board", "build"]);
     assert!(!run.status.success());
     assert!(
         stderr(&run).contains("the pick lock holds `process` to the provider `std::mfg::jlcpcb::JlcTwoLayer9oz`, which is not a provider of `TwoLayer` in scope"),

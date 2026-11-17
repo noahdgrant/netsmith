@@ -99,9 +99,9 @@ pub(super) struct BuildRun<'a> {
     pub(super) notes: NotesMode,
     /// `build` writes the schematic, the lock and the libraries' tables; `check` writes nothing.
     pub(super) write: bool,
-    /// The file to write the boards' designs to (`build --emit-design`).
+    /// The file to write the boards' designs to (`board build --emit-design`).
     pub(super) emit_design: Option<&'a Path>,
-    /// The file to write the members' solved values to (`build --emit-solved`).
+    /// The file to write the members' solved values to (`board build --emit-solved`).
     pub(super) emit_solved: Option<&'a Path>,
     /// What to print as text of what the solve left (`explain`).
     pub(super) explain: Option<Explain<'a>>,
@@ -469,8 +469,9 @@ pub(super) fn run_build(run: &BuildRun) -> ExitCode {
 
 #[cfg(test)]
 mod tests {
+    use crate::commands::common::testing::Leaf;
     use crate::commands::common::testing::{output, parse};
-    use crate::commands::{Command, build, lock};
+    use crate::commands::{build, lock};
 
     fn build(file: Option<&str>) -> build::Args {
         build::Args {
@@ -486,31 +487,31 @@ mod tests {
 
     #[test]
     fn a_command_takes_one_nsm_file_before_or_after_its_flags() {
-        assert_eq!(parse(&["build"]), Ok(Command::Build(build(None))));
+        assert_eq!(parse(&["board", "build"]), Ok(Leaf::Build(build(None))));
         assert_eq!(
-            parse(&["build", "a.nsm"]),
-            Ok(Command::Build(build(Some("a.nsm"))))
+            parse(&["board", "build", "a.nsm"]),
+            Ok(Leaf::Build(build(Some("a.nsm"))))
         );
-        let expected = Ok(Command::Build(build::Args {
+        let expected = Ok(Leaf::Build(build::Args {
             out: Some("x".into()),
             ..build(Some("a.nsm"))
         }));
-        assert_eq!(parse(&["build", "a.nsm", "--out", "x"]), expected);
-        assert_eq!(parse(&["build", "--out", "x", "a.nsm"]), expected);
-        assert!(parse(&["editor", "a.nsm", "b.nsm"]).is_err());
+        assert_eq!(parse(&["board", "build", "a.nsm", "--out", "x"]), expected);
+        assert_eq!(parse(&["board", "build", "--out", "x", "a.nsm"]), expected);
+        assert!(parse(&["view", "editor", "a.nsm", "b.nsm"]).is_err());
         assert!(parse(&["init", "dir"]).is_err());
     }
 
     #[test]
     fn a_flag_given_twice_is_the_last_one() {
-        let Ok(Command::Build(b)) =
-            parse(&["build", "--out", "a", "--out", "b", "--strict", "--strict"])
-        else {
+        let Ok(Leaf::Build(b)) = parse(&[
+            "board", "build", "--out", "a", "--out", "b", "--strict", "--strict",
+        ]) else {
             panic!()
         };
         assert_eq!(b.out, Some("b".into()));
         assert!(b.strict);
-        let Ok(Command::Lock(l)) = parse(&["lock", "--check", "--check"]) else {
+        let Ok(Leaf::Lock(l)) = parse(&["project", "lock", "--check", "--check"]) else {
             panic!()
         };
         assert_eq!(l.mode(), lock::LockMode::Check);

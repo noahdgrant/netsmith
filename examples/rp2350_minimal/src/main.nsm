@@ -5,7 +5,7 @@
 //!
 //! Its nets are Raspberry Pi's, and the proof is the test
 //! `every_pad_has_the_same_pads_on_its_net_as_in_raspberry_pis_board` (`README.md`, "Same
-//! nets"), which compares the wiring alone: the bare `netsmith compare` of the two files answers
+//! nets"), which compares the wiring alone: the bare `netsmith board compare` of the two files answers
 //! `different`, because it pairs parts by footprint name and their footprints are named
 //! otherwise. The pin-to-signal mapping of the two 2 x 18 headers is Raspberry Pi's too, and it
 //! is FIXED: the board joins each header pin to a named pin of the MCU (`.mcu.gpio4`) and never

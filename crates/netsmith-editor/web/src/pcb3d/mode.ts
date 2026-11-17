@@ -51,7 +51,7 @@ export interface View3dActions {
   section(axis: CutAxis): void;
   /** The stackup pulled apart, or put back. */
   toggleExplode(): void;
-  /** Copy the `netsmith render` command that draws the view. */
+  /** Copy the `netsmith view 3d` command that draws the view. */
   copyCommand(): void;
   /** What `/api/view` drives (agent.ts). */
   agent: View3dAgent;

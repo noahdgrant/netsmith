@@ -6,7 +6,7 @@
 //! the solver then offers each locked part only its locked row, and judges that row by
 //! everything the design says (`netsmith_solve::Catalogs::with_pick_lock`). A lock that no
 //! longer matches the picks is told, and with `--locked` is an error; it is never rewritten
-//! behind a person's back. `netsmith lock --update` rewrites it on purpose and `lock --check`
+//! behind a person's back. `netsmith project lock --update` rewrites it on purpose and `project lock --check`
 //! says whether it is current ([`refresh`]).
 
 use std::fmt::Write as _;
@@ -21,7 +21,7 @@ use crate::{outcome_with, render_problems};
 const VERSION: i64 = 1;
 
 /// The first lines of a written file.
-const HEADER: &str = "# The catalog row each part of each board was picked as, written by `netsmith build` and\n# `netsmith fab` when this file does not exist. Commit it: a change to a catalog or to the\n# solver that would move a pick shows here and not only in the bill of materials. Refresh it\n# with `netsmith lock --update`. Nothing in it is edited by hand.\n";
+const HEADER: &str = "# The catalog row each part of each board was picked as, written by `netsmith board build` and\n# `netsmith board fab` when this file does not exist. Commit it: a change to a catalog or to the\n# solver that would move a pick shows here and not only in the bill of materials. Refresh it\n# with `netsmith project lock --update`. Nothing in it is edited by hand.\n";
 
 /// The lock of a source file: `led.nsm` has `led.lock.toml`.
 pub fn lock_path(source: &Path) -> PathBuf {
@@ -413,7 +413,7 @@ fn provider_lines(
     found
 }
 
-/// What `lock --update` and `lock --check` found for the lock of one source file.
+/// What `project lock --update` and `project lock --check` found for the lock of one source file.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Refresh {
     /// The lock file: beside the source.
@@ -426,7 +426,7 @@ pub struct Refresh {
     /// parts of the board as added when there is no file. Empty when the lock is current.
     pub diff: Vec<String>,
     /// The path of every part of the source's boards, and of every entry of the file, in order
-    /// of the board and then the path: what a part named to `lock --update` is looked up in.
+    /// of the board and then the path: what a part named to `project lock --update` is looked up in.
     pub paths: Vec<String>,
     /// What the solver said when it held the parts to the rows of the file as it is: the rows
     /// that no longer pass or are no longer in a catalog, in its own words (the messages of a
@@ -452,7 +452,7 @@ impl Refresh {
     }
 }
 
-/// Which parts of a source `lock --update` takes new picks for (the rest keep the row the lock
+/// Which parts of a source `project lock --update` takes new picks for (the rest keep the row the lock
 /// holds them to), named by their path in the board (`r1`, `stage.output_cap`), in every board
 /// of the file that has one.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]

@@ -1,4 +1,4 @@
-//! `netsmith dxf import` (ADR 0045, C0 piece 3): an enclosure's DXF becomes an outline, a
+//! `netsmith import dxf` (ADR 0045, C0 piece 3): an enclosure's DXF becomes an outline, a
 //! cutout and mounting holes that the fab pipeline accepts. The DXF is written here by hand.
 
 use netsmith_testkit::TempDir;
@@ -91,8 +91,7 @@ fn the_command_prints_the_source_to_paste_and_writes_only_the_physical_file() {
     fs::write(&nsm, "board Case {\n}\n").unwrap();
     let args = |extra: &[&str]| {
         let mut v = vec![
-            "dxf",
-            "import",
+            "import", "dxf",
             dxf.to_str().unwrap(),
             "--layer",
             "EDGE",
@@ -124,7 +123,7 @@ fn the_command_prints_the_source_to_paste_and_writes_only_the_physical_file() {
     assert_eq!(fs::read_to_string(&nsm).unwrap(), "board Case {\n}\n");
 
     // Without --layer the reader asks which layer: it lists them.
-    let asked = netsmith(&["dxf", "import", dxf.to_str().unwrap()]);
+    let asked = netsmith(&["import", "dxf", dxf.to_str().unwrap()]);
     assert!(!asked.status.success());
     let err = String::from_utf8(asked.stderr).unwrap();
     assert!(
@@ -134,7 +133,7 @@ fn the_command_prints_the_source_to_paste_and_writes_only_the_physical_file() {
 
     // A binary file is refused with a message and exit code 1.
     fs::write(&dxf, b"AutoCAD Binary DXF\r\n\x1a\0rest").unwrap();
-    let binary = netsmith(&["dxf", "import", dxf.to_str().unwrap()]);
+    let binary = netsmith(&["import", "dxf", dxf.to_str().unwrap()]);
     assert_eq!(binary.status.code(), Some(1));
     assert!(
         String::from_utf8(binary.stderr)

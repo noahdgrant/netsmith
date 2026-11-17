@@ -11,7 +11,7 @@ use super::common::{
 #[derive(Debug, PartialEq, ClapArgs)]
 #[command(args_override_self = true)]
 #[command(
-    after_long_help = "`render` places a board as `board3d` does and draws it to a PNG with netsmith's own software rasterizer (ADR 0105): the same source and options give the same bytes, with no GPU, no browser and no KiCad. docs/BOARD3D.md, \"Pictures for agents\", has the frame and what is drawn."
+    after_long_help = "`view 3d` places a board as `dev board3d` does and draws it to a PNG with netsmith's own software rasterizer (ADR 0105): the same source and options give the same bytes, with no GPU, no browser and no KiCad. docs/BOARD3D.md, \"Pictures for agents\", has the frame and what is drawn."
 )]
 pub struct Args {
     /// The source file; with none, the project's boards.
@@ -28,11 +28,11 @@ pub struct Args {
     /// Where the camera looks from.
     #[arg(long, value_enum, default_value = "iso")]
     pub view: ViewName,
-    /// The PNG to write (default `<board>-<view>.png`).
+    /// The PNG to write (default `<board>-<view>.png`), as `view editor-3d --picture` names it.
     ///
     /// The path written is printed.
     #[arg(long, value_name = "FILE.PNG")]
-    pub out: Option<PathBuf>,
+    pub picture: Option<PathBuf>,
     /// The picture's size in pixels, 64 to 8192 a side.
     #[arg(long, value_name = "WxH", default_value = "1600x1000", value_parser = netsmith_3d::parse_render_size)]
     pub size: (usize, usize),
@@ -103,13 +103,13 @@ pub fn run(args: Args) -> ExitCode {
     run_render(
         args.file.as_deref(),
         args.board.as_deref(),
-        args.out.as_deref(),
+        args.picture.as_deref(),
         &args.request(),
     )
 }
 
-/// `netsmith render`: one board placed as `board3d` places it, drawn by netsmith's own
-/// rasterizer and written as a PNG (`<board>-<view>.png` unless `--out` says a file); the path
+/// `netsmith view 3d`: one board placed as `dev board3d` places it, drawn by netsmith's own
+/// rasterizer and written as a PNG (`<board>-<view>.png` unless `--picture` says a file); the path
 /// written is printed. Exit 0 when the picture is written, 1 when the board does not build or
 /// place, 2 when the command cannot start, an id of `--highlight` is not the board's, or the file
 /// cannot be written.
@@ -161,7 +161,7 @@ fn run_render(
     ExitCode::SUCCESS
 }
 
-/// `render --theme`.
+/// `view 3d --theme`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
 pub enum Theme {
     Light,
@@ -170,15 +170,15 @@ pub enum Theme {
 
 #[cfg(test)]
 mod tests {
-    use crate::commands::Command;
+    use crate::commands::common::testing::Leaf;
     use crate::commands::common::testing::{kind, parse};
     use clap::error::ErrorKind;
 
     fn render(args: &[&str]) -> netsmith_3d::RenderRequest {
-        let mut line = vec!["render"];
+        let mut line = vec!["view", "3d"];
         line.extend_from_slice(args);
         match parse(&line) {
-            Ok(Command::Render(r)) => r.request(),
+            Ok(Leaf::Render(r)) => r.request(),
             other => panic!("{args:?}: {other:?}"),
         }
     }
@@ -219,7 +219,7 @@ mod tests {
             assert_eq!(render(&["--case", name]).case, mode, "{name}");
             assert_eq!(mode.name(), name);
         }
-        let e = parse(&["render", "--case", "opaque"]).unwrap_err();
+        let e = parse(&["view", "3d", "--case", "opaque"]).unwrap_err();
         assert!(e.contains("see-through") && e.contains("solid"), "{e}");
         // Some case models only: the rest drawn as the mode says; the flag repeats.
         assert!(render(&[]).case_hidden.is_empty());
@@ -236,16 +236,22 @@ mod tests {
         ]);
         assert_eq!(r.case_hidden, vec!["lid", "bar"]);
         assert_eq!(r.case, netsmith_3d::RenderCaseMode::Solid);
-        let e = parse(&["render", "--case", "hidden:lid,"]).unwrap_err();
+        let e = parse(&["view", "3d", "--case", "hidden:lid,"]).unwrap_err();
         assert!(e.contains("hidden:<name>"), "{e}");
         assert!(!render(&["--ortho"]).perspective);
         assert_eq!(
-            kind(&["render", "--ortho", "--perspective"]),
+            kind(&["view", "3d", "--ortho", "--perspective"]),
             ErrorKind::ArgumentConflict
         );
-        let e = parse(&["render", "--view", "sideways"]).unwrap_err();
+        let e = parse(&["view", "3d", "--view", "sideways"]).unwrap_err();
         assert!(e.contains("iso-bottom"), "{e}");
-        let e = parse(&["render", "--size", "10x10"]).unwrap_err();
+        let e = parse(&["view", "3d", "--size", "10x10"]).unwrap_err();
         assert!(e.contains("--size"), "{e}");
+        // The PNG is `--picture`, as `view editor-3d` names it; `--out` is a folder elsewhere.
+        let Ok(Leaf::Render(r)) = parse(&["view", "3d", "--picture", "a.png"]) else {
+            panic!()
+        };
+        assert_eq!(r.picture, Some("a.png".into()));
+        assert!(parse(&["view", "3d", "--out", "a.png"]).is_err());
     }
 }

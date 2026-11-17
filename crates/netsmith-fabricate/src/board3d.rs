@@ -1,4 +1,4 @@
-//! `netsmith board3d`: the board's _Scene_ (ADR 0105, `netsmith_3d::Scene`) as numbers, for an
+//! `netsmith dev board3d`: the board's _Scene_ (ADR 0105, `netsmith_3d::Scene`) as numbers, for an
 //! agent or a person: the board's stackup, each part's body box with its Z and _Height
 //! provenance_, each height limit with the tallest part under it and the margin, bodies that
 //! overlap in 3D, the parts of unknown height with the reason, and the _Height coverage_; and a
@@ -52,13 +52,13 @@ pub fn scene_without_case(built: &Built, board: &Board) -> Scene {
 }
 
 /// The scene of a placed board as a `.glb` file (`netsmith_3d::glb`), labelled as the report
-/// labels it: what `board3d --glb` writes and the editor's `GET /api/pcb/3d` serves.
+/// labels it: what `dev board3d --glb` writes and the editor's `GET /api/pcb/3d` serves.
 pub fn glb(built: &Built, board: &Board) -> Vec<u8> {
     netsmith_3d::glb(&scene(built, board), &built.label())
 }
 
 /// A placed board as a STEP file (`netsmith_pcb::step`), labelled as the report
-/// labels it: what `board3d --step` writes.
+/// labels it: what `dev board3d --step` writes.
 pub fn step(built: &Built, board: &Board) -> Vec<u8> {
     netsmith_3d::scene_step(&scene(built, board), &built.label()).into_bytes()
 }
@@ -1196,7 +1196,7 @@ pub fn scene_of(
     scene_and_label(name, text, loader, catalogs, libraries, layout, board).map(|(scene, _)| scene)
 }
 
-/// [`scene_of`] with the board's label (its name, or `system/member`), which `render` names its
+/// [`scene_of`] with the board's label (its name, or `system/member`), which `view 3d` names its
 /// file from.
 pub fn scene_and_label(
     name: &str,
@@ -1229,7 +1229,7 @@ fn scene_with(built: &Built, board: &Board, found: Vec<String>) -> Scene {
 }
 
 /// One source file and what builds and places its board: the arguments of [`run`] and
-/// [`scene_and_label`], held together so `board3d` and `render` pick, build and place the board
+/// [`scene_and_label`], held together so `dev board3d` and `view 3d` pick, build and place the board
 /// by the one path.
 pub struct Placed<'a> {
     pub name: &'a str,
@@ -1271,7 +1271,7 @@ impl Placed<'_> {
         self.with_board_laid_out(&self.layout, then)
     }
 
-    /// `then` of the board picked, built and placed as `board3d` and the editor place it: a
+    /// `then` of the board picked, built and placed as `dev board3d` and the editor place it: a
     /// layout file the placer refuses gives the board where it ended, with the layout file's
     /// places, and why in the [`Placing`] (issue #779). `layout export` writes this board, and
     /// `layout import` measures a KiCad board's moves against it (issue #781).
@@ -1418,7 +1418,7 @@ fn pick_board<'a>(
     }
 }
 
-/// What `board3d` made of what `--board` names: a board's report and scene, or a system's.
+/// What `dev board3d` made of what `--board` names: a board's report and scene, or a system's.
 pub enum Made {
     Board(Box<(Report, Scene)>),
     System(Box<(crate::system3d::SystemReport, netsmith_3d::SystemScene)>),

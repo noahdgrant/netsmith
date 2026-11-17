@@ -1,4 +1,4 @@
-//! `netsmith board3d` (ADR 0105): the board's 3D scene as a JSON report, run on the repository's
+//! `netsmith dev board3d` (ADR 0105): the board's 3D scene as a JSON report, run on the repository's
 //! own boards as a person runs it. The board is placed as `fab` places it (the layout file beside
 //! the source respected), nothing is written, and the same source gives the same bytes.
 
@@ -9,10 +9,10 @@ fn repo() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
 }
 
-/// `netsmith board3d <args>` in `dir`, with KiCad switched off: the command needs none.
+/// `netsmith dev board3d <args>` in `dir`, with KiCad switched off: the command needs none.
 fn board3d(dir: &Path, args: &[&str]) -> Output {
     Command::new(env!("CARGO_BIN_EXE_netsmith"))
-        .arg("board3d")
+        .args(["dev", "board3d"])
         .args(args)
         .current_dir(dir)
         .env("NETSMITH_NO_KICAD", "1")
@@ -44,7 +44,7 @@ fn part<'a>(report: &'a serde_json::Value, path: &str) -> &'a serde_json::Value 
 
 #[test]
 fn the_lidded_board_reports_the_part_too_tall_the_unknown_one_and_the_margin() {
-    let (r, _) = json(&fixtures(), &["height_limits.nsm", "--json"]);
+    let (r, _) = json(&fixtures(), &["height_limits.nsm", "--format", "json"]);
     assert_eq!(r["schema"], 2);
     assert_eq!(r["units"], "mm");
     assert_eq!(r["board"]["name"], "Lidded");
@@ -107,8 +107,8 @@ fn the_same_board_gives_the_same_bytes_and_writes_nothing() {
     let examples = repo().join("examples");
     let before = std::fs::read_dir(&examples).unwrap().count();
     for file in ["led.nsm", "four_layer.nsm"] {
-        let (_, first) = json(&examples, &[file, "--json"]);
-        let (_, second) = json(&examples, &[file, "--json"]);
+        let (_, first) = json(&examples, &[file, "--format", "json"]);
+        let (_, second) = json(&examples, &[file, "--format", "json"]);
         assert_eq!(first, second, "{file}");
     }
     assert_eq!(std::fs::read_dir(&examples).unwrap().count(), before);
@@ -116,7 +116,7 @@ fn the_same_board_gives_the_same_bytes_and_writes_nothing() {
 
 #[test]
 fn a_height_from_a_catalog_row_names_the_row_and_the_stackup_has_each_layer_at_its_height() {
-    let (r, _) = json(&repo().join("examples"), &["four_layer.nsm", "--json"]);
+    let (r, _) = json(&repo().join("examples"), &["four_layer.nsm", "--format", "json"]);
     let layers = r["board"]["layers"].as_array().unwrap();
     let names: Vec<&str> = layers.iter().map(|l| l["name"].as_str().unwrap()).collect();
     assert_eq!(
@@ -163,14 +163,14 @@ fn the_summary_names_the_tallest_part_and_what_is_unknown() {
 #[test]
 fn a_file_of_several_boards_needs_board_and_names_them() {
     let examples = repo().join("examples");
-    let out = board3d(&examples, &["two_boards.nsm", "--json"]);
+    let out = board3d(&examples, &["two_boards.nsm", "--format", "json"]);
     assert_eq!(out.status.code(), Some(1));
     let text = String::from_utf8_lossy(&out.stderr);
     assert!(text.contains("--board"), "{text}");
     assert!(text.contains("TwoBoards/led"), "{text}");
     let (r, _) = json(
         &examples,
-        &["two_boards.nsm", "--board", "TwoBoards/led", "--json"],
+        &["two_boards.nsm", "--board", "TwoBoards/led", "--format", "json"],
     );
     assert_eq!(r["board"]["name"], "TwoBoards/led");
     let out = board3d(&examples, &["two_boards.nsm", "--board", "nope"]);
@@ -199,7 +199,7 @@ fn net_area(layer: &serde_json::Value, net: &str) -> f64 {
 
 #[test]
 fn the_four_layer_example_has_copper_on_four_layers_with_the_planes_inside() {
-    let (r, _) = json(&repo().join("examples"), &["four_layer.nsm", "--json"]);
+    let (r, _) = json(&repo().join("examples"), &["four_layer.nsm", "--format", "json"]);
     let copper = &r["copper"];
     let layers = copper["layers"].as_array().unwrap();
     let names: Vec<&str> = layers.iter().map(|l| l["name"].as_str().unwrap()).collect();
@@ -237,7 +237,7 @@ fn the_four_layer_example_has_copper_on_four_layers_with_the_planes_inside() {
 #[test]
 fn a_two_layer_board_has_two_copper_layers_and_the_same_bytes_every_run() {
     let examples = repo().join("examples");
-    let (r, first) = json(&examples, &["led.nsm", "--json"]);
+    let (r, first) = json(&examples, &["led.nsm", "--format", "json"]);
     let names: Vec<&str> = r["copper"]["layers"]
         .as_array()
         .unwrap()
@@ -246,12 +246,12 @@ fn a_two_layer_board_has_two_copper_layers_and_the_same_bytes_every_run() {
         .collect();
     assert_eq!(names, ["F.Cu", "B.Cu"]);
     assert!(copper_layer(&r, "F.Cu")["pads"].as_u64().unwrap() > 0);
-    let (_, second) = json(&examples, &["led.nsm", "--json"]);
+    let (_, second) = json(&examples, &["led.nsm", "--format", "json"]);
     assert_eq!(first, second);
 }
 
 /// The scene of the board in `source` (a path from the repository), built and placed as
-/// `board3d` does (the same target, loader and catalogs, its pick lock held, its physical and
+/// `dev board3d` does (the same target, loader and catalogs, its pick lock held, its physical and
 /// layout files read), with no KiCad.
 fn scene_of(source: &str) -> netsmith_3d::Scene {
     let path = repo().join(source);
@@ -453,7 +453,7 @@ fn a_pin_header_is_as_tall_as_its_catalog_row_and_its_plastic_is_the_sourced_hei
     use netsmith_3d::{Material, meshes_of_scene};
     // The four-layer example's headers are picked as JXTCONN PH2.54-1X2P-H25 (C42431798): the
     // row's height is the pin's tip, 2.50 mm of plastic plus 6.00 +/-0.2 mm of pin.
-    let (r, _) = json(&repo().join("examples"), &["four_layer.nsm", "--json"]);
+    let (r, _) = json(&repo().join("examples"), &["four_layer.nsm", "--format", "json"]);
     for path in ["power_in", "power_out"] {
         let p = part(&r, path);
         assert_eq!(p["provenance"], "catalog", "{p}");
@@ -551,11 +551,11 @@ fn glb_writes_the_scene_as_gltf_and_prints_nothing_else() {
     assert_eq!(j1["provenance"], "catalog");
     assert_eq!(std::fs::read_dir(&examples).unwrap().count(), before);
 
-    // With `--json` too, the report is printed and the same file written.
+    // With `--format json` too, the report is printed and the same file written.
     let c = out.join("c.glb");
     let (report, _) = json(
         &examples,
-        &["four_layer.nsm", "--json", "--glb", c.to_str().unwrap()],
+        &["four_layer.nsm", "--format", "json", "--glb", c.to_str().unwrap()],
     );
     assert_eq!(report["board"]["name"], "FourLayerExample");
     assert_eq!(std::fs::read(&c).unwrap(), glb);
@@ -649,13 +649,13 @@ fn step_writes_the_board_and_its_parts_as_an_assembly_and_prints_nothing_else() 
         );
     }
 
-    // With `--glb` and `--json` too, all three are written, the same as alone.
+    // With `--glb` and `--format json` too, all three are written, the same as alone.
     let (c, g) = (out.join("c.step"), out.join("c.glb"));
     let (report, _) = json(
         &examples,
         &[
             "four_layer.nsm",
-            "--json",
+            "--format", "json",
             "--glb",
             g.to_str().unwrap(),
             "--step",
@@ -725,7 +725,7 @@ fn the_editor_serves_the_bytes_that_board3d_writes_for_the_placement_it_draws() 
     // this process has it.
     let file = dir.join("cli.glb");
     let run = Command::new(env!("CARGO_BIN_EXE_netsmith"))
-        .args(["board3d", "height_limits.nsm", "--glb"])
+        .args(["dev", "board3d", "height_limits.nsm", "--glb"])
         .arg(&file)
         .current_dir(dir.path())
         .output()
@@ -783,7 +783,7 @@ fn the_editor_serves_the_system_scene_that_board3d_writes() {
     .unwrap();
     let file = dir.join("cli.glb");
     let run = Command::new(env!("CARGO_BIN_EXE_netsmith"))
-        .args(["board3d", "two_boards.nsm", "--board", "TwoBoards", "--glb"])
+        .args(["dev", "board3d", "two_boards.nsm", "--board", "TwoBoards", "--glb"])
         .arg(&file)
         .current_dir(dir.path())
         .output()
@@ -819,12 +819,12 @@ fn the_editor_serves_the_system_scene_that_board3d_writes() {
     assert_eq!(stamp.split(',').count(), 2, "{head}");
 }
 
-// ---- `netsmith render`: the scene drawn to a PNG (ADR 0105) --------------------------------
+// ---- `netsmith view 3d`: the scene drawn to a PNG (ADR 0105) --------------------------------
 
-/// `netsmith render <args>` in `dir`, with KiCad switched off: the command needs none.
+/// `netsmith view 3d <args>` in `dir`, with KiCad switched off: the command needs none.
 fn render_cmd(dir: &Path, args: &[&str]) -> Output {
     Command::new(env!("CARGO_BIN_EXE_netsmith"))
-        .arg("render")
+        .args(["view", "3d"])
         .args(args)
         .current_dir(dir)
         .env("NETSMITH_NO_KICAD", "1")
@@ -833,14 +833,14 @@ fn render_cmd(dir: &Path, args: &[&str]) -> Output {
         .unwrap()
 }
 
-/// The bytes of the PNG `netsmith render <source> <args> --out <out>` writes into `out`.
+/// The bytes of the PNG `netsmith view 3d <source> <args> --picture <out>` writes into `out`.
 fn picture(source: &Path, out: &Path, args: &[&str]) -> Vec<u8> {
     let result = render_cmd(
         source.parent().unwrap(),
         &[
             &[source.file_name().unwrap().to_str().unwrap()][..],
             args,
-            &["--out", out.to_str().unwrap()],
+            &["--picture", out.to_str().unwrap()],
         ]
         .concat(),
     );
@@ -963,7 +963,7 @@ fn a_highlight_by_designator_or_path_lights_that_part_and_an_unknown_id_is_an_er
             led().to_str().unwrap(),
             "--highlight",
             "J1,Q9,net:nope,limit:lid",
-            "--out",
+            "--picture",
             gone.to_str().unwrap(),
         ],
     );
@@ -1018,7 +1018,7 @@ fn a_section_cuts_the_picture_and_is_checked() {
     for bad in ["x", "w=3", "x=", "x=abc", "x=1,y=2", "x=NaN"] {
         let result = render_cmd(
             dir.path(),
-            &[led().to_str().unwrap(), "--section", bad, "--out", "no.png"],
+            &[led().to_str().unwrap(), "--section", bad, "--picture", "no.png"],
         );
         assert_eq!(result.status.code(), Some(2), "{bad}");
         let stderr = String::from_utf8_lossy(&result.stderr);
@@ -1213,7 +1213,7 @@ fn a_size_out_of_bounds_or_a_wrong_view_is_a_usage_error() {
 fn a_file_of_several_boards_needs_board_and_a_board_that_does_not_build_is_exit_one() {
     let dir = netsmith_testkit::TempDir::new("render-boards");
     let two = repo().join("examples/two_boards.nsm");
-    let result = render_cmd(dir.path(), &[two.to_str().unwrap(), "--out", "x.png"]);
+    let result = render_cmd(dir.path(), &[two.to_str().unwrap(), "--picture", "x.png"]);
     assert_eq!(result.status.code(), Some(1));
     let stderr = String::from_utf8_lossy(&result.stderr);
     assert!(stderr.contains("--board"), "{stderr}");
@@ -1252,13 +1252,13 @@ fn a_file_of_several_boards_needs_board_and_a_board_that_does_not_build_is_exit_
 #[test]
 fn render_is_listed_in_the_help() {
     let out = Command::new(env!("CARGO_BIN_EXE_netsmith"))
-        .args(["render", "--help"])
+        .args(["view", "3d", "--help"])
         .output()
         .unwrap();
     assert!(out.status.success());
     let text = String::from_utf8_lossy(&out.stdout);
     for word in [
-        "netsmith render",
+        "netsmith view 3d",
         "--highlight",
         "--section",
         "--xray",
@@ -1269,13 +1269,21 @@ fn render_is_listed_in_the_help() {
 }
 
 /// A board with one part and nothing to route, so that the copper `fab` draws is the copper
-/// `board3d` draws.
+/// `dev board3d` draws.
 const NOTHING_TO_ROUTE: &str = "import std::parts::connector::Header1x2\nimport std::mfg::jlcpcb::TwoLayer\n\nboard Lonely {\n    .process: TwoLayer {\n        .stackup.thickness &= 1.6mm\n    }\n    .h: Header1x2\n}\n";
 
-/// `netsmith fab <args>` in `dir`, with KiCad switched off: the package needs none (ADR 0097).
+/// `netsmith board fab <args>` in `dir`, with KiCad switched off: the package needs none (ADR 0097).
 fn fab(dir: &Path, args: &[&str]) -> Output {
+    netsmith_in(dir, &[&["board", "fab"][..], args].concat())
+}
+
+/// `netsmith project order <args>` in `dir`, with KiCad switched off, as `fab`.
+fn order(dir: &Path, args: &[&str]) -> Output {
+    netsmith_in(dir, &[&["project", "order"][..], args].concat())
+}
+
+fn netsmith_in(dir: &Path, args: &[&str]) -> Output {
     Command::new(env!("CARGO_BIN_EXE_netsmith"))
-        .arg("fab")
         .args(args)
         .current_dir(dir)
         .env("NETSMITH_NO_KICAD", "1")
@@ -1298,7 +1306,7 @@ fn fab_writes_the_scene_as_a_glb_beside_the_notes_and_not_in_the_gerber_zip() {
     let glb = std::fs::read(package.join("Lonely.glb")).expect("fab writes <board>.glb");
     assert!(package.join("fab-notes.txt").is_file());
 
-    // The bytes are those of `board3d --glb` for the board, placed as fab placed it (this board
+    // The bytes are those of `dev board3d --glb` for the board, placed as fab placed it (this board
     // has nothing to route, so routed and unrouted copper are the same).
     let by_board3d = dir.join("b.glb");
     let run = board3d(&dir, &["a.nsm", "--glb", by_board3d.to_str().unwrap()]);
@@ -1383,7 +1391,7 @@ fn no_glb_and_the_manifest_key_leave_the_scene_out_and_remove_an_old_one() {
     ok(fab(&dir, &["--out", "kept-out"]));
     assert!(!dir.join("kept-out/Lonely/Lonely.glb").exists());
     assert!(dir.join("kept-out/Lonely/Lonely.kicad_pcb").is_file());
-    ok(fab(&dir, &["--order", "one", "--out", "order-out"]));
+    ok(order(&dir, &["one", "--out", "order-out"]));
     let written: Vec<_> = walk(&dir.join("order-out"));
     assert!(written.iter().any(|f| f.ends_with("Lonely.kicad_pcb")));
     assert!(!written.iter().any(|f| f.ends_with(".glb")), "{written:?}");
@@ -1394,15 +1402,15 @@ fn no_glb_and_the_manifest_key_leave_the_scene_out_and_remove_an_old_one() {
         "[project]\nname = \"p\"\n\n[order.one.boards]\nLonely = 1\n",
     )
     .unwrap();
-    ok(fab(&dir, &["--order", "one", "--out", "order-on"]));
+    ok(order(&dir, &["one", "--out", "order-on"]));
     assert!(
         walk(&dir.join("order-on"))
             .iter()
             .any(|f| f.ends_with("Lonely.glb"))
     );
-    ok(fab(
+    ok(order(
         &dir,
-        &["--order", "one", "--out", "order-flag", "--no-glb"],
+        &["one", "--out", "order-flag", "--no-glb"],
     ));
     assert!(
         !walk(&dir.join("order-flag"))
@@ -1426,7 +1434,7 @@ fn fab_writes_the_board_as_step_beside_the_glb_and_not_in_the_gerber_zip() {
     assert!(step.starts_with(b"ISO-10303-21;"));
     assert!(package.join("Lonely.glb").is_file());
 
-    // The bytes are those of `board3d --step` for the board, placed as fab placed it.
+    // The bytes are those of `dev board3d --step` for the board, placed as fab placed it.
     let by_board3d = dir.join("b.step");
     let run = board3d(&dir, &["a.nsm", "--step", by_board3d.to_str().unwrap()]);
     assert!(
@@ -1449,7 +1457,7 @@ fn fab_writes_the_board_as_step_beside_the_glb_and_not_in_the_gerber_zip() {
 #[test]
 fn the_step_of_a_routed_board_is_the_step_board3d_writes_for_it() {
     // The STEP holds no copper, so the routing does not change it: a board that fab routes has
-    // the bytes of `board3d --step`, which routes nothing.
+    // the bytes of `dev board3d --step`, which routes nothing.
     let examples = repo().join("examples");
     let dir = netsmith_testkit::TempDir::new("fab-step-routed");
     let run = fab(
@@ -1508,7 +1516,7 @@ fn no_step_and_the_manifest_key_leave_the_step_out_and_remove_an_old_one() {
     ok(fab(&dir, &["--out", "kept-out"]));
     assert!(!dir.join("kept-out/Lonely/Lonely.step").exists());
     assert!(dir.join("kept-out/Lonely/Lonely.glb").is_file());
-    ok(fab(&dir, &["--order", "one", "--out", "order-out"]));
+    ok(order(&dir, &["one", "--out", "order-out"]));
     let written = walk(&dir.join("order-out"));
     assert!(written.iter().any(|f| f.ends_with("Lonely.kicad_pcb")));
     assert!(!written.iter().any(|f| f.ends_with(".step")), "{written:?}");
@@ -1519,15 +1527,15 @@ fn no_step_and_the_manifest_key_leave_the_step_out_and_remove_an_old_one() {
         "[project]\nname = \"p\"\n\n[order.one.boards]\nLonely = 1\n",
     )
     .unwrap();
-    ok(fab(&dir, &["--order", "one", "--out", "order-on"]));
+    ok(order(&dir, &["one", "--out", "order-on"]));
     assert!(
         walk(&dir.join("order-on"))
             .iter()
             .any(|f| f.ends_with("Lonely.step"))
     );
-    ok(fab(
+    ok(order(
         &dir,
-        &["--order", "one", "--out", "order-flag", "--no-step"],
+        &["one", "--out", "order-flag", "--no-step"],
     ));
     assert!(
         !walk(&dir.join("order-flag"))
@@ -1586,7 +1594,7 @@ fn a_manifest_glb_that_is_not_a_boolean_is_an_error() {
 fn the_stackup_adds_up_to_the_nominal_thickness_within_the_fabricators_tolerance() {
     let examples = repo().join("examples");
     for file in ["led.nsm", "four_layer.nsm"] {
-        let (report, _) = json(&examples, &[file, "--json"]);
+        let (report, _) = json(&examples, &[file, "--format", "json"]);
         let board = &report["board"];
         let nominal = board["thickness"].as_f64().unwrap();
         let sum: f64 = board["layers"]
@@ -1615,7 +1623,7 @@ fn the_two_boards_are_mated_at_the_height_their_seats_give() {
     let examples = repo().join("examples");
     let (r, text) = json(
         &examples,
-        &["two_boards.nsm", "--board", "TwoBoards", "--json"],
+        &["two_boards.nsm", "--board", "TwoBoards", "--format", "json"],
     );
     assert_eq!(r["schema"], 1);
     assert_eq!(r["system"], "TwoBoards");
@@ -1650,7 +1658,7 @@ fn the_two_boards_are_mated_at_the_height_their_seats_give() {
     // The member's report is its own command's.
     let (alone, _) = json(
         &examples,
-        &["two_boards.nsm", "--board", "TwoBoards/led", "--json"],
+        &["two_boards.nsm", "--board", "TwoBoards/led", "--format", "json"],
     );
     assert_eq!(led["report"], alone);
     // Nothing collides, and nothing of unknown height faces the other board.
@@ -1662,7 +1670,7 @@ fn the_two_boards_are_mated_at_the_height_their_seats_give() {
     // The same bytes each run.
     let (_, again) = json(
         &examples,
-        &["two_boards.nsm", "--board", "TwoBoards", "--json"],
+        &["two_boards.nsm", "--board", "TwoBoards", "--format", "json"],
     );
     assert_eq!(text, again);
     // The summary says how each member is placed.
@@ -1820,7 +1828,7 @@ fn the_system_is_written_as_glb_and_step_with_a_node_and_a_product_per_member() 
     assert_eq!(text, std::fs::read_to_string(&step2).unwrap());
 }
 
-/// `render --board System` draws the system scene, the same bytes each run, and lights a part
+/// `view 3d --board System` draws the system scene, the same bytes each run, and lights a part
 /// named `member/<id>` (a net also `net:member/<name>`); a member the system does not have is an
 /// error that names its members.
 #[test]
@@ -1830,13 +1838,13 @@ fn render_draws_the_system_and_lights_a_part_of_a_member() {
     let draw = |name: &str, extra: &[&str]| {
         let out = dir.join(name);
         let mut args = vec![
-            "render",
+            "view", "3d",
             "two_boards.nsm",
             "--board",
             "TwoBoards",
             "--size",
             "320x200",
-            "--out",
+            "--picture",
             out.to_str().unwrap(),
         ];
         args.extend_from_slice(extra);
@@ -1891,8 +1899,8 @@ fn render_draws_the_system_and_lights_a_part_of_a_member() {
 }
 
 /// `fab` of a system writes the system's `.glb` and `.step` into the system's folder, from its
-/// boards as routed (so a via is a hole in the STEP's board, which `board3d` does not route), the
-/// same bytes each run and the same products as `board3d --step`; `--no-glb` and `--no-step`
+/// boards as routed (so a via is a hole in the STEP's board, which `dev board3d` does not route), the
+/// same bytes each run and the same products as `dev board3d --step`; `--no-glb` and `--no-step`
 /// leave them out and remove an earlier run's.
 #[test]
 fn fab_writes_the_system_scene_beside_its_boards_and_the_switches_leave_it_out() {
@@ -1965,7 +1973,7 @@ fn a_header_taller_than_the_mated_height_stops_fab_of_the_system() {
             1,
         );
     std::fs::write(dir.join("c.nsm"), source).unwrap();
-    let report = board3d(&dir, &["c.nsm", "--board", "TwoBoards", "--json"]);
+    let report = board3d(&dir, &["c.nsm", "--board", "TwoBoards", "--format", "json"]);
     assert!(report.status.success());
     let r: serde_json::Value = serde_json::from_slice(&report.stdout).unwrap();
     let f = &r["findings"][0];
@@ -2024,10 +2032,10 @@ fn a_place_budget_ends_the_placing_with_the_closest_try_and_the_placer_says_how_
 
 #[test]
 fn a_board_that_states_its_mask_colour_has_it_in_the_report_the_glb_and_the_picture() {
-    let (r, _) = json(&fixtures(), &["mask_colour_3d.nsm", "--json"]);
+    let (r, _) = json(&fixtures(), &["mask_colour_3d.nsm", "--format", "json"]);
     assert_eq!(r["board"]["mask_colour"], "Red");
     // A board that states none has no key at all, so its report is the report it was.
-    let (plain, _) = json(&fixtures(), &["height_limits.nsm", "--json"]);
+    let (plain, _) = json(&fixtures(), &["height_limits.nsm", "--format", "json"]);
     assert!(plain["board"].get("mask_colour").is_none(), "{plain}");
 
     let dir = netsmith_testkit::TempDir::new("mask-colour");

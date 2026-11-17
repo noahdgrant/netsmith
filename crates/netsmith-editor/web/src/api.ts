@@ -560,11 +560,11 @@ file: string,
  */
 exists: boolean, 
 /**
- * Whether the lock is as `netsmith lock --update` would write it.
+ * Whether the lock is as `netsmith project lock --update` would write it.
  */
 current: boolean, 
 /**
- * What `lock --check` prints when it is not: one line for each part whose row changed, was
+ * What `project lock --check` prints when it is not: one line for each part whose row changed, was
  * added or was dropped. Empty when the file does not exist: `--check` prints no lines then.
  */
 diff: Array<string>, 
@@ -628,7 +628,7 @@ export type PowerTree = { title: string, nodes: Array<PowerNode>, edges: Array<E
  */
 stages: Array<Stage>, 
 /**
- * The rails and converters with trouble, worst first: what `netsmith build` and the
+ * The rails and converters with trouble, worst first: what `netsmith board build` and the
  * analysis report as the `power` stage. Computed here, not by the page.
  */
 issues: Array<PowerIssue>, };
@@ -2284,7 +2284,7 @@ export type ViewChange = {
  */
 board?: string, 
 /**
- * A view of `render`; with `camera` too, an error.
+ * A view of `view 3d`; with `camera` too, an error.
  */
 view?: RenderView, 
 /**
@@ -2292,11 +2292,11 @@ view?: RenderView,
  */
 camera?: CameraPlace, 
 /**
- * `x=13`, `y=8` or `z=-0.8` as `render --section` reads it, or `none` for no cut.
+ * `x=13`, `y=8` or `z=-0.8` as `view 3d --section` reads it, or `none` for no cut.
  */
 section?: string, 
 /**
- * What is lit, as `render --highlight` names it (a designator, a path, `net:<name>`,
+ * What is lit, as `view 3d --highlight` names it (a designator, a path, `net:<name>`,
  * `limit:<name>`, `case:<name>`; an item may be comma-separated): the parts and the net
  * through the page's selection, the limits and the case models in the view. It replaces what
  * was lit; `[]` lights nothing. In the System view a part and a net are a member's, `led/J1`
@@ -2319,7 +2319,7 @@ ortho?: boolean, perspective?: boolean,
  */
 case?: CaseMode, 
 /**
- * The case models hidden one by one, by name (`render --case hidden:<name>[,<name>]`),
+ * The case models hidden one by one, by name (`view 3d --case hidden:<name>[,<name>]`),
  * whatever `case` says; it replaces the list, and `[]` shows every model. A model lit by
  * `highlight` is shown. A board with no case model refuses it (409), and a name it has no
  * case model of is refused (400) with the list.
@@ -2347,15 +2347,15 @@ member?: string,
  */
 shown: boolean, 
 /**
- * The view of `render` the camera is at (within a few degrees), else none.
+ * The view of `view 3d` the camera is at (within a few degrees), else none.
  */
 view?: RenderView, camera?: CameraPlace, ortho?: boolean, 
 /**
- * The cut as `render --section` writes it (`x=13`), or none.
+ * The cut as `view 3d --section` writes it (`x=13`), or none.
  */
 section?: string, exploded?: boolean, 
 /**
- * What is lit, as `render --highlight` would name it: the parts picked by designator, the
+ * What is lit, as `view 3d --highlight` would name it: the parts picked by designator, the
  * net picked as `net:<name>`, the limits lit as `limit:<name>`, the case models lit as
  * `case:<name>` (in the System view, the member first: `led/J1`, `net:led/GND`).
  */
@@ -2382,11 +2382,11 @@ caseHidden?: Array<string>, colourBy: ColourBy,
  */
 heightPreview?: number, 
 /**
- * The page's palette, as `render --theme` names one: `light` or `dark`. Read-only.
+ * The page's palette, as `view 3d --theme` names one: `light` or `dark`. Read-only.
  */
 theme: string, 
 /**
- * The `netsmith render` command that draws what the view shows, as "Copy as command" has
+ * The `netsmith view 3d` command that draws what the view shows, as "Copy as command" has
  * it; absent when the view is not shown.
  */
 command?: string, };

@@ -1,5 +1,5 @@
 // An agent drives the 3D view of a running editor over HTTP (`/api/view`, P8a of issue 430,
-// docs/BOARD3D.md), with the names of `netsmith render`, while the page is open: the state is read
+// docs/BOARD3D.md), with the names of `netsmith view 3d`, while the page is open: the state is read
 // with no page drawing 3D, a change opens the PCB section in 3D, the views, the section, the
 // highlights (a part, a limit), x-ray, the lens, a camera place, the colouring, the height
 // preview and the stackup apart are set and read back, the page shows each (asked of the view

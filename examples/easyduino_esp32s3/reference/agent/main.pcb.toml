@@ -13,7 +13,7 @@ version = 1
 # every arrangement. Seed 2 once put a decoupling capacitor 0.4 mm from the CP2102N's USB pins,
 # room for one track past pins 3 to 7, a placement no router completes; since a capacitor keeps
 # 1 mm from a fine-pitch part's pins on other nets (#1010), seeds 0 to 7 all route (checked
-# 2026-11-16 with `fab --place-seeds 1`).
+# 2026-11-16 with `board fab --place-seeds 1`).
 [EasyduinoEsp32s3]
 seed = 1
 

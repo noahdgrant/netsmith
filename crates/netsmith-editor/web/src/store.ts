@@ -333,7 +333,7 @@ export async function start() {
           notePcbLive(message.live);
           break;
         case 'outside':
-          // A run the editor did not start (`fab --to-editor`): the status bar shows it.
+          // A run the editor did not start (`board fab --to-editor`): the status bar shows it.
           noteOutside(message.progress);
           break;
         case 'view':

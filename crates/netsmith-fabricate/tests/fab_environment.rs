@@ -1,4 +1,4 @@
-//! `netsmith fab` and a board's environment (ADR 0099, ADR 0047): a generic part is judged once
+//! `netsmith board fab` and a board's environment (ADR 0099, ADR 0047): a generic part is judged once
 //! `fab` has found the row that stands for it, a row outside the environment stops the run before
 //! anything is placed, and `fab-notes.txt` says what the check did and did not do for a board
 //! that has an environment, and nothing for one that has none. The boards and rows are invented.

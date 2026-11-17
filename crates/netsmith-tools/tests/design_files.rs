@@ -26,7 +26,7 @@ fn design_files() -> Vec<PathBuf> {
 }
 
 /// Each file reads back into designs that write the same bytes, so a test that starts from one
-/// gets exactly what `build --emit-design` saw.
+/// gets exactly what `board build --emit-design` saw.
 #[test]
 fn every_example_design_file_reads_back_to_the_same_bytes() {
     let files = design_files();

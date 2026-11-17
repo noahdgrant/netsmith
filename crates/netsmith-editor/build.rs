@@ -24,7 +24,7 @@
 //! not installed by this build, from this lockfile and under this Node major, or lacks `tsc` or
 //! `vite`. When a step fails, the reason (the command, the directory, the Node and npm versions,
 //! the start of `PATH`, the exit code and the last lines of its output) is printed as cargo
-//! warnings and compiled into the binary: `netsmith editor` prints it with the manual command,
+//! warnings and compiled into the binary: `netsmith view editor` prints it with the manual command,
 //! and the build runs again next time even if no file changed. Building needs the npm registry
 //! once; running never does.
 

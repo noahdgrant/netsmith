@@ -79,10 +79,10 @@ fn moved(pcb: &str, path: &str, dx: f64, turn: f64) -> String {
 fn a_board_fab_refuses_is_written_for_kicad_with_its_findings_and_marked() {
     let dir = project("layout-export-findings");
     overlapping(&dir);
-    let fab = netsmith(&dir, &["fab", "--out", "fab"]);
+    let fab = netsmith(&dir, &["board", "fab", "--out", "fab"]);
     assert_ne!(fab.status.code(), Some(0), "fab packaged overlapping parts");
 
-    let exported = json(&dir, &["export", "--out", "kicad/main.kicad_pcb"]);
+    let exported = json(&dir, &["export", "--kicad-pcb", "kicad/main.kicad_pcb"]);
     let placement = exported["placement"].as_array().unwrap();
     assert!(
         placement.iter().any(|f| f["kind"] == "overlap"),
@@ -103,7 +103,7 @@ fn a_board_fab_refuses_is_written_for_kicad_with_its_findings_and_marked() {
 fn the_parts_moved_in_kicad_come_back_as_entries_and_the_board_is_kept_as_it_was() {
     let dir = project("layout-import");
     overlapping(&dir);
-    json(&dir, &["export", "--out", "kicad/main.kicad_pcb"]);
+    json(&dir, &["export", "--kicad-pcb", "kicad/main.kicad_pcb"]);
     let file = dir.join("kicad/main.kicad_pcb");
 
     // The board as written: nothing moved, nothing written.
@@ -146,14 +146,14 @@ fn the_parts_moved_in_kicad_come_back_as_entries_and_the_board_is_kept_as_it_was
     assert_eq!(again["written"], false);
 
     // The capacitors no longer overlap.
-    let after = json(&dir, &["export", "--out", "kicad/after.kicad_pcb"]);
+    let after = json(&dir, &["export", "--kicad-pcb", "kicad/after.kicad_pcb"]);
     assert_eq!(after["placement"].as_array().unwrap().len(), 0, "{after}");
 }
 
 #[test]
 fn a_footprint_with_no_path_is_said_and_left_out_and_a_file_that_is_no_board_is_refused() {
     let dir = project("layout-import-other");
-    json(&dir, &["export", "--out", "main.kicad_pcb"]);
+    json(&dir, &["export", "--kicad-pcb", "main.kicad_pcb"]);
     let file = dir.join("main.kicad_pcb");
     let pcb = fs::read_to_string(&file).unwrap();
     let without = pcb.replacen("\"netsmith_path\"", "\"other\"", 1);
@@ -180,7 +180,7 @@ fn kicad_cli_opens_the_exported_board_with_findings_and_sees_its_parts_where_it_
     };
     let dir = project("layout-export-kicad-cli");
     overlapping(&dir);
-    let exported = json(&dir, &["export", "--out", "kicad/main.kicad_pcb"]);
+    let exported = json(&dir, &["export", "--kicad-pcb", "kicad/main.kicad_pcb"]);
     assert!(
         exported["placement"]
             .as_array()

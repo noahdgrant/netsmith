@@ -12,10 +12,10 @@ use netsmith_pipeline::Libraries;
 use netsmith_solve::Catalogs;
 use netsmith_tools::findings::{Finding, Report, Severity};
 
-/// The port `netsmith editor` listens on unless told otherwise.
+/// The port `netsmith view editor` listens on unless told otherwise.
 pub const DEFAULT_PORT: u16 = 8787;
 
-/// `--place-seeds` and `--place-budget`, of `fab` and `board3d` (issues #764 and #766).
+/// `--place-seeds` and `--place-budget`, of `fab` and `dev board3d` (issues #764 and #766).
 #[derive(Debug, PartialEq, ClapArgs)]
 pub struct Placing {
     /// How many seeds the placer tries for a board, over `place_seeds` in netsmith.toml.
@@ -50,7 +50,7 @@ impl Placing {
     }
 }
 
-/// `--progress` and `--to-editor`, of `fab` and `board3d` (issue #764).
+/// `--progress` and `--to-editor`, of `fab` and `dev board3d` (issue #764).
 #[derive(Debug, PartialEq, ClapArgs)]
 pub struct Watching {
     /// How the progress is printed on stderr: lines for a person, or one JSON object per line.
@@ -58,7 +58,7 @@ pub struct Watching {
     /// `json` prints each line of the placer and the router as `{"board", "stage", "unit",
     /// "done", "total", "detail", "elapsedMs", "message"}` (`stage` is `placing` or `routing`,
     /// `total` and `detail` only when there are some) and any other line of progress as
-    /// `{"message"}`; errors and warnings stay text. With `fab --format json` the progress is
+    /// `{"message"}`; errors and warnings stay text. With `board fab --format json` the progress is
     /// printed only with `--progress json`; `--quiet` prints none.
     #[arg(long, value_enum, value_name = "FORMAT", default_value = "text")]
     pub progress: crate::progress::Print,
@@ -74,7 +74,7 @@ pub struct Watching {
 
 impl Watching {
     /// Says where the progress of this run of `command` goes ([`crate::progress::setup`]):
-    /// printed as `--progress` says unless `quiet` (`--quiet`, or `fab --format json` with text
+    /// printed as `--progress` says unless `quiet` (`--quiet`, or `board fab --format json` with text
     /// progress), and posted to `--to-editor`'s editor.
     pub fn tell_progress(&self, command: &'static str, quiet: bool) {
         let print = if quiet {
@@ -293,11 +293,11 @@ pub(super) fn no_boards(target: &Target) -> bool {
     empty
 }
 
-/// What `board3d` and `render` do first: the one board `file` and `--board` pick, built and
+/// What `dev board3d` and `view 3d` do first: the one board `file` and `--board` pick, built and
 /// placed as `fab` places it (the pick lock and the layout file beside its source are read,
 /// nothing is written), and `then` of it. A project of several top-level files takes the first
 /// that has the board `--board` names. The error is printed and is the exit code: 1 when no file
-/// builds the board or places it, 2 when the command cannot start. With `placing` (`board3d`)
+/// builds the board or places it, 2 when the command cannot start. With `placing` (`dev board3d`)
 /// its seeds and budget are used and the placer's progress is printed to stderr; with none, the
 /// manifest's, and nothing is printed.
 pub(super) fn with_placed_board<T>(
@@ -367,7 +367,7 @@ pub(super) fn with_placed_board<T>(
     Err(ExitCode::FAILURE)
 }
 
-/// `--view` of `render` and `view`.
+/// `--view` of `view 3d` and `view editor-3d`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
 pub enum ViewName {
     /// Straight at the top face.
@@ -418,7 +418,7 @@ impl ViewName {
     }
 }
 
-/// `--case` of `render` and `view`: how a case model (ADR 0109) is drawn.
+/// `--case` of `view 3d` and `view editor-3d`: how a case model (ADR 0109) is drawn.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
 pub enum CaseName {
     /// Not drawn: the board alone.
@@ -449,7 +449,7 @@ impl CaseName {
     }
 }
 
-/// One `--case` of `render` and `view`: a mode, or `hidden:<name>[,<name>]`, which leaves those
+/// One `--case` of `view 3d` and `view editor-3d`: a mode, or `hidden:<name>[,<name>]`, which leaves those
 /// case models out and draws the rest as the mode says.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CaseArg {
@@ -518,7 +518,11 @@ pub(crate) mod testing {
     use clap::Parser;
     use clap::error::ErrorKind;
 
-    use crate::commands::{Command, common};
+    use crate::commands::{
+        Board, Command, Dev, Import, Project, View, board3d, build, case, catalog, check, common,
+        compare, dxf, editor, explain, fab, init, kicad_libs, layout, lock, order, parity, part,
+        port, render, route, routes, view,
+    };
 
     /// The command line as main.rs has it.
     #[derive(Debug, Parser)]
@@ -528,12 +532,82 @@ pub(crate) mod testing {
         command: Command,
     }
 
+    /// Every command that runs, by its own name, whatever group it is in: what the tests of a
+    /// command's arguments compare a parse with.
+    #[derive(Debug, PartialEq)]
+    pub(crate) enum Leaf {
+        Init(init::Args),
+        Refresh(init::RefreshArgs),
+        Lock(lock::Args),
+        Order(order::Args),
+        Check(check::Args),
+        Build(build::Args),
+        Fab(fab::Args),
+        Explain(explain::Args),
+        Compare(compare::Args),
+        Layout(layout::Args),
+        Routes(routes::Args),
+        Render(render::Args),
+        Editor(editor::Args),
+        View(view::Args),
+        Catalog(catalog::Args),
+        Dxf(dxf::ImportArgs),
+        KicadLibs(kicad_libs::Args),
+        Part(part::Args),
+        Port(port::Args),
+        Case(case::Args),
+        Route(route::Args),
+        Parity(parity::Args),
+        Board3d(board3d::Args),
+    }
+
+    impl From<Command> for Leaf {
+        fn from(command: Command) -> Leaf {
+            match command {
+                Command::Project(c) => match c {
+                    Project::Init(a) => Leaf::Init(a),
+                    Project::Refresh(a) => Leaf::Refresh(a),
+                    Project::Lock(a) => Leaf::Lock(a),
+                    Project::Order(a) => Leaf::Order(a),
+                },
+                Command::Board(c) => match c {
+                    Board::Check(a) => Leaf::Check(a),
+                    Board::Build(a) => Leaf::Build(a),
+                    Board::Fab(a) => Leaf::Fab(a),
+                    Board::Explain(a) => Leaf::Explain(a),
+                    Board::Compare(a) => Leaf::Compare(a),
+                },
+                Command::Layout(a) => Leaf::Layout(a),
+                Command::Routes(a) => Leaf::Routes(a),
+                Command::View(c) => match c {
+                    View::ThreeD(a) => Leaf::Render(a),
+                    View::Editor(a) => Leaf::Editor(a),
+                    View::Editor3d(a) => Leaf::View(a),
+                },
+                Command::Catalog(a) => Leaf::Catalog(a),
+                Command::Import(c) => match c {
+                    Import::Dxf(a) => Leaf::Dxf(a),
+                    Import::KicadLibs(a) => Leaf::KicadLibs(a),
+                    Import::Part(a) => Leaf::Part(a),
+                    Import::Port(a) => Leaf::Port(a),
+                    Import::Case(a) => Leaf::Case(a),
+                },
+                Command::Dev(c) => match c {
+                    Dev::Route(a) => Leaf::Route(a),
+                    Dev::Parity(a) => Leaf::Parity(a),
+                    Dev::Board3d(a) => Leaf::Board3d(a),
+                },
+            }
+        }
+    }
+
     pub(crate) fn parse_args(args: &[&str]) -> Result<Command, clap::Error> {
         Cli::try_parse_from(std::iter::once(&"netsmith").chain(args)).map(|cli| cli.command)
     }
 
-    pub(crate) fn parse(args: &[&str]) -> Result<Command, String> {
-        parse_args(args).map_err(|e| e.to_string())
+    /// The command `args` name, as its own [`Leaf`], or clap's error as text.
+    pub(crate) fn parse(args: &[&str]) -> Result<Leaf, String> {
+        parse_args(args).map(Leaf::from).map_err(|e| e.to_string())
     }
 
     pub(crate) fn kind(args: &[&str]) -> ErrorKind {

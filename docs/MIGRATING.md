@@ -4,14 +4,55 @@ netsmith keeps one spelling for each thing (ADR 0001). When a release changes a 
 
 How to move a project:
 
-1. Run `netsmith check` in the project with the new netsmith. A project whose `netsmith.toml` names an older release (`netsmith = "0.1.0"`), or names none, and whose check fails, ends the run with a note that points here.
+1. Run `netsmith board check` in the project with the new netsmith. A project whose `netsmith.toml` names an older release (`netsmith = "0.1.0"`), or names none, and whose check fails, ends the run with a note that points here.
 2. Read the section of each release after the project's own, oldest first, and fix what the errors name. Most changes are mechanical: the errors' line numbers find every place.
-3. Run `netsmith lock --check`: a release may pick other parts for the same source (a new check, a new catalog row). `netsmith lock --update` takes the new picks; review the lock's diff.
-4. When the project builds, set `netsmith = "<release>"` in the `[project]` table of `netsmith.toml`. `netsmith init --refresh` brings the project's guide and skills up to the release (ADR 0131); it does not touch the sources.
+3. Run `netsmith project lock --check`: a release may pick other parts for the same source (a new check, a new catalog row). `netsmith project lock --update` takes the new picks; review the lock's diff.
+4. When the project builds, set `netsmith = "<release>"` in the `[project]` table of `netsmith.toml`. `netsmith project refresh` brings the project's guide and skills up to the release (ADR 0131); it does not touch the sources.
 
 Every change below that makes source an error was a pull request whose title has `!` (a breaking change in Conventional Commits), and the release notes on GitHub list those commits. A change that will make source an error adds its entry under _Unreleased_ in the same pull request (`AGENTS.md`, ADR 0134).
 
 ## Unreleased: changes since 0.1.0
+
+### The commands are grouped under nouns (issue #1090)
+
+```text
+error: `fab` is now `board fab`
+  write: netsmith board fab src/main.nsm --out fab
+  (the command line is grouped under nouns now; docs/MIGRATING.md lists every move)
+```
+
+Every command is `netsmith <noun> <verb>` now. An old command or flag is an error that names the new spelling and prints the whole line rewritten, so a script or a CI step is fixed by copying the line it prints. The language guide's commands chapter has the table of every command with its flags.
+
+| Before | Now |
+|---|---|
+| `netsmith init` | `netsmith project init` |
+| `netsmith init --refresh` | `netsmith project refresh` |
+| `netsmith lock --update`, `--check` | `netsmith project lock --update`, `--check` |
+| `netsmith fab --order [NAME]` | `netsmith project order [NAME]` |
+| `netsmith check` | `netsmith board check` |
+| `netsmith build` | `netsmith board build` |
+| `netsmith fab` | `netsmith board fab` |
+| `netsmith explain` | `netsmith board explain` |
+| `netsmith compare` | `netsmith board compare` |
+| `netsmith layout ... --into FILE.NSM` | `netsmith layout ... --file FILE.NSM` |
+| `netsmith layout export --out FILE.KICAD_PCB` | `netsmith layout export --kicad-pcb FILE.KICAD_PCB` |
+| `netsmith routes ... --into FILE.NSM` | `netsmith routes ... --file FILE.NSM` |
+| `netsmith render ... --out FILE.PNG` | `netsmith view 3d ... --picture FILE.PNG` |
+| `netsmith editor` | `netsmith view editor` |
+| `netsmith view --json ...` | `netsmith view editor-3d --format json ...` |
+| `netsmith dxf import` | `netsmith import dxf` |
+| `netsmith kicad-libs import` | `netsmith import kicad-libs libraries` |
+| `netsmith kicad-libs models` | `netsmith import kicad-libs models` |
+| `netsmith part from-symbol` | `netsmith import part from-symbol` |
+| `netsmith port skeleton --out FILE.NSM` | `netsmith import port skeleton --write FILE.NSM` |
+| `netsmith port tables` | `netsmith import port tables` |
+| `netsmith case import` | `netsmith import case model` |
+| `netsmith case place` | `netsmith import case place` |
+| `netsmith route` | `netsmith dev route` |
+| `netsmith parity` | `netsmith dev parity` |
+| `netsmith board3d --json` | `netsmith dev board3d --format json` |
+
+The catalog commands (`netsmith catalog refresh`, `add`, `age`) and the verbs of `layout` and `routes` are as they were. No source file changes. A project's agent files name the old commands until `netsmith project refresh` rewrites them (a file you edited is listed with a diff, ADR 0131).
 
 ### A pin's function is a name from its part's pin table (ADR 0118)
 
@@ -124,4 +165,4 @@ These change what `fab` makes or what the checks find, without an error in the s
 - **Tracks** bend by 45 degrees only, and the design rules check refuses a right or acute corner.
 - **Checks.** A chain from a logic pin, or between two rails, sets its current before the pick and is held to the pin's test current (ADR 0127); a board whose window is above it is now an error. The DC analysis may find a stated current or voltage inconsistent with the circuit around it.
 - **Stackups.** A multilayer process names its build-up, `.process.stackup.build` or `.process.stackup.thickness`, and says what each inner layer is (`.process.inner1.net &= "GND"` for a plane, `.use &= "signal"` for a signal layer, ADR 0111); `Stackup`'s `prepreg` and `core` and the `Plane` interface are gone.
-- **Picks.** New catalog rows and checks may move a pick: `netsmith lock --check` says which.
+- **Picks.** New catalog rows and checks may move a pick: `netsmith project lock --check` says which.

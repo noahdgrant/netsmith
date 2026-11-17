@@ -74,7 +74,7 @@ describe('the pick lock view', () => {
   it('says a lock that does not exist is written by build', () => {
     const v = lockView(lock({ exists: false, current: false }));
     expect(v).toMatchObject({ state: 'absent', tone: 'warn', lines: [] });
-    expect(v.says).toContain('netsmith build');
+    expect(v.says).toContain('netsmith board build');
   });
   it('needs no file for a source with nothing to lock', () => {
     expect(lockView(lock({ exists: false, current: true })).state).toBe('none needed');

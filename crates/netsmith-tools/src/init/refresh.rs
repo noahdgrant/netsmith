@@ -1,4 +1,4 @@
-//! `netsmith init --refresh`: bring the agent files of a project up to the netsmith that
+//! `netsmith project refresh`: bring the agent files of a project up to the netsmith that
 //! runs (issue #797).
 //!
 //! The files `init` writes for agents (`AGENTS.md`, the skills, the language guide) are the
@@ -109,7 +109,7 @@ pub(super) fn write_record(dir: &Path) -> Result<bool, String> {
         return Ok(false);
     }
     let mut text = String::from(
-        "# What `netsmith init` wrote (the SHA-256 of each file). `netsmith init --refresh` rewrites\n# a file only while it still has the text recorded here; commit this file with the others.\n",
+        "# What `netsmith project init` wrote (the SHA-256 of each file). `netsmith project refresh` rewrites\n# a file only while it still has the text recorded here; commit this file with the others.\n",
     );
     for (path, hash) in &now {
         let _ = writeln!(text, "{hash}  {path}");
@@ -125,7 +125,7 @@ pub(super) fn write_record(dir: &Path) -> Result<bool, String> {
 /// The text to show after `refresh`: what was written, and what was left alone, with a diff.
 pub fn refresh(dir: &Path) -> Result<String, String> {
     let project = Project::find(dir)?.ok_or_else(|| {
-        "there is no netsmith.toml here or in a folder above: `netsmith init` makes a project, and `netsmith init --refresh` brings its agent files up to date".to_string()
+        "there is no netsmith.toml here or in a folder above: `netsmith project init` makes a project, and `netsmith project refresh` brings its agent files up to date".to_string()
     })?;
     let root = project.root;
     let record = read_record(&root);
@@ -197,7 +197,7 @@ pub fn refresh(dir: &Path) -> Result<String, String> {
     report.push_str(&dropped(&root));
     if !left.is_empty() {
         report.push_str(
-            "\nleft alone, because they are not what netsmith wrote and you may have edited them (in each diff `-` is your file and `+` is what netsmith writes now; to take netsmith's text, delete the file and run `netsmith init --refresh` again):\n\n",
+            "\nleft alone, because they are not what netsmith wrote and you may have edited them (in each diff `-` is your file and `+` is what netsmith writes now; to take netsmith's text, delete the file and run `netsmith project refresh` again):\n\n",
         );
         for said in &left {
             report.push_str(said);

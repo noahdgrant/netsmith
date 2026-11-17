@@ -265,7 +265,7 @@ fn a_source_that_does_not_build_has_nothing_to_compare_the_lock_with() {
     assert!(editor.analysis().errors > 0);
 }
 
-/// Writes the lock the solver picks now, as `netsmith lock --update` would.
+/// Writes the lock the solver picks now, as `netsmith project lock --update` would.
 fn write_lock(root: &Path) {
     let target = Target::resolve_from(root, None).unwrap();
     let source = &target.files[0];

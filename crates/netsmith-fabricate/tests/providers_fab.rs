@@ -1,4 +1,4 @@
-//! `netsmith fab` on a board that picks a provider of a generic (ADR 0068): the package is made
+//! `netsmith board fab` on a board that picks a provider of a generic (ADR 0068): the package is made
 //! with the picked part's symbol and footprint, its bill of materials and placement name it, and
 //! the provider that was passed over needs no mapping. The part and the numbers are invented.
 

@@ -2009,7 +2009,7 @@ mod board {
         );
     }
 
-    /// The same, by `netsmith-netlist`'s `compare` (what `netsmith compare` runs), with the
+    /// The same, by `netsmith-netlist`'s `compare` (what `netsmith board compare` runs), with the
     /// designators paired by `reference/parts.toml` and the value and footprint left out of the
     /// comparison.
     #[test]

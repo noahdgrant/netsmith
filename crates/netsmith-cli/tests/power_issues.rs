@@ -1,5 +1,5 @@
 //! What the power model finds wrong (issue #187) is reported where the other findings are:
-//! by `netsmith build` (an overdrawn supply stops it, the rest are notes), by the analysis the
+//! by `netsmith board build` (an overdrawn supply stops it, the rest are notes), by the analysis the
 //! editor serves, and in the power tree the page draws. The page does not work any of it out.
 //!
 //! Each kind has an invented small board: a rail that can draw more than its supply can give, a
@@ -136,7 +136,7 @@ fn netsmith(cwd: &Path, args: &[&str]) -> std::process::Output {
 #[test]
 fn build_fails_on_an_overdrawn_supply_and_says_where_and_how_much() {
     let root = project("over", &supplied("Loose", "0mA..200mA", SETTLED));
-    for args in [&["build"][..], &["build", "--strict"][..]] {
+    for args in [&["board", "build"][..], &["board", "build", "--strict"][..]] {
         let run = netsmith(&root, args);
         let said = String::from_utf8_lossy(&run.stderr);
         assert!(!run.status.success(), "{args:?}: {said}");
@@ -152,7 +152,7 @@ fn build_fails_on_an_overdrawn_supply_and_says_where_and_how_much() {
 #[test]
 fn build_prints_the_notes_and_still_succeeds_even_with_strict() {
     let root = project("note", &orphan());
-    for args in [&["build"][..], &["build", "--strict"][..]] {
+    for args in [&["board", "build"][..], &["board", "build", "--strict"][..]] {
         let run = netsmith(&root, args);
         let said = String::from_utf8_lossy(&run.stderr);
         assert!(run.status.success(), "{args:?}: {said}");

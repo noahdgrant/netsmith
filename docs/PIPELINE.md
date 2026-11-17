@@ -4,7 +4,7 @@ What netsmith does with a design, in order. Nothing is kept between runs but two
 `fab` and the editor each start from the source text and run the stages again. The files a
 person writes beside a board (layout files, the physical file) are inputs. The files netsmith
 writes are outputs, and no stage reads one back, except the pick lock (`<stem>.lock.toml`,
-ADR 0100, proposed): `build`, `fab` and `fab --order` write it when it is absent, `netsmith lock --update` rewrites it, and the solve stage then holds
+ADR 0100, proposed): `build`, `fab` and `project order` write it when it is absent, `netsmith project lock --update` rewrites it, and the solve stage then holds
 each part to the row it names; and the pin file (`<stem>.pins.toml`, ADR 0101, proposed, below).
 `NETSMITH_TIMINGS=1` prints the seconds of each stage; `docs/solver-timings.md` has them for a board with two buck stages.
 
@@ -48,11 +48,11 @@ flowchart TD
     subgraph S4["4. Export"]
         export["Map parts to symbols and footprints (netsmith's own,<br/>KiCad's libraries only for a project's KiCad id),<br/>check pin table against them, write the schematic"]
     end
-    export --> sch[("out/: .kicad_sch, .kicad_pro<br/>netsmith build ends here")]
+    export --> sch[("out/: .kicad_sch, .kicad_pro<br/>netsmith board build ends here")]
     side --> export
 
     export --> resolve
-    subgraph S5["5. Fab (netsmith fab; runs 1 to 4 first)"]
+    subgraph S5["5. Fab (netsmith board fab; runs 1 to 4 first)"]
         resolve["Generic parts become catalog rows"]
         sup["Every assembled part has a supplier number"]
         pre["Precheck the physical constraints"]

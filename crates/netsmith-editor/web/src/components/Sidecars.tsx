@@ -173,7 +173,7 @@ function PinRowView({ r, file }: { r: PinRow; file: string }) {
   );
 }
 
-/** The board's pick lock: whether the file exists, whether it is current, and the diff `netsmith lock --check` prints. It is open
+/** The board's pick lock: whether the file exists, whether it is current, and the diff `netsmith project lock --check` prints. It is open
  * when there is something to read (a lock that is not current, absent or unreadable) and folded when it is fine; the state is in
  * its header either way, and a change of state opens or folds it again. */
 export function PickLock({ lock }: { lock: PickLockInfo }) {

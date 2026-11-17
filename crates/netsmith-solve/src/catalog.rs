@@ -365,7 +365,7 @@ impl Catalogs {
     }
 
     /// Whether each pick records the rows its part's turn passed over before it, and why
-    /// (`Pick::passed`, issue #744): `build --emit-solved` writes them. Off by default, so a
+    /// (`Pick::passed`, issue #744): `board build --emit-solved` writes them. Off by default, so a
     /// build that does not ask keeps no record; it changes nothing the solver chooses or says.
     pub fn with_explain(mut self, on: bool) -> Self {
         self.explain = on;

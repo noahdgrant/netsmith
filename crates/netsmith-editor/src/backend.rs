@@ -324,7 +324,7 @@ pub trait Backend: Send + Sync + 'static {
     /// placing of [`Backend::route_watched`]): their requests are answered `cancelled`.
     fn cancel_placing(&self) {}
     /// The board placed (and routed) as [`Backend::pcb_scene`] has it, as glTF 2.0 binary:
-    /// the file `netsmith board3d --glb` writes for the same placement (ADR 0105).
+    /// the file `netsmith dev board3d --glb` writes for the same placement (ADR 0105).
     fn pcb_3d(&self, board: &str) -> Result<Pcb3d, ApiError> {
         Err(ApiError::not_found(format!(
             "there is no 3D scene of `{board}`"
@@ -482,7 +482,7 @@ pub trait Backend: Send + Sync + 'static {
     fn download(&self, board: &str, file: &str) -> Result<Attachment, ApiError>;
     /// The orders of the manifest (ADR 0035).
     fn orders(&self) -> Vec<OrderInfo>;
-    /// Run the named order, as `netsmith fab --order` does.
+    /// Run the named order, as `netsmith project order` does.
     fn fab_order(
         &self,
         name: &str,

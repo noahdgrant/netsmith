@@ -8,7 +8,7 @@
 //! `arc through (x, y)` after a corner makes the edge to the next corner an arc through that
 //! point, as KiCad's `gr_arc` gives one by its start, middle and end. Every value is fixed: a
 //! range, a tolerance or a relation in a point is refused, because the outline is what the case
-//! drawing says and the placer does not solve for it. `dxf import` keeps writing source (ADR
+//! drawing says and the placer does not solve for it. `import dxf` keeps writing source (ADR
 //! 0045 decision 8): a polygon is what it prints for an outline that is not a rounded rectangle.
 //!
 //! **Readings.** The words `round`, `arc` and `through` are read as words only inside a

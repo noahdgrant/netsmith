@@ -5,12 +5,12 @@
 //! and never rewrite it. While it exists, a build reads each such dependency at the commit the
 //! lock holds for it, as long as the entry still says what the manifest says (the same `git`
 //! and the same `rev` or `version`); an entry that no longer does is resolved again, and
-//! `lock --check` fails on it. `netsmith lock --update` fetches every one again and rewrites the
-//! file; `lock --check` compares the lock with the manifests without fetching anything, so it
+//! `project lock --check` fails on it. `netsmith project lock --update` fetches every one again and rewrites the
+//! file; `project lock --check` compares the lock with the manifests without fetching anything, so it
 //! passes with no network.
 //!
 //! ```toml
-//! # The commit of each dependency by git (issue #1012). `netsmith lock --update` rewrites it.
+//! # The commit of each dependency by git (issue #1012). `netsmith project lock --update` rewrites it.
 //! version = 1
 //!
 //! [[dependency]]
@@ -34,8 +34,7 @@ pub const LOCK_FILE: &str = "dependencies.lock.toml";
 /// The lock format's version.
 const VERSION: u32 = 1;
 
-const HEADER: &str =
-    "# The commit of each dependency by git (issue #1012). `netsmith lock --update` rewrites it.\n";
+const HEADER: &str = "# The commit of each dependency by git (issue #1012). `netsmith project lock --update` rewrites it.\n";
 
 /// One dependency by `git`, and the commit it resolved to.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -61,7 +60,7 @@ impl Locked {
             && self.version == other.version
     }
 
-    /// How the diff of `lock --update` and `--check` shows it.
+    /// How the diff of `project lock --update` and `--check` shows it.
     fn line(&self) -> String {
         let asked = match (&self.rev, &self.version) {
             (Some(rev), _) => format!("rev {rev}"),
@@ -204,7 +203,7 @@ impl DependencyLock {
 }
 
 /// `build` and `fab`: write the lock of `project` when it has none and it reads a dependency by
-/// `git`, and say what was written. An existing lock is never rewritten (`lock --update` does).
+/// `git`, and say what was written. An existing lock is never rewritten (`project lock --update` does).
 pub fn write_if_missing(project: &Project) -> Result<Option<DependencyLock>, String> {
     if DependencyLock::path(&project.root).exists() {
         return Ok(None);
@@ -217,7 +216,7 @@ pub fn write_if_missing(project: &Project) -> Result<Option<DependencyLock>, Str
     Ok(Some(lock))
 }
 
-/// What `lock --update` did with the lock of a project, or what `lock --check` found.
+/// What `project lock --update` did with the lock of a project, or what `project lock --check` found.
 #[derive(Debug)]
 pub struct Refreshed {
     /// The lines of [`DependencyLock::diff`] from the old lock to the new one (`--update`).
@@ -228,7 +227,7 @@ pub struct Refreshed {
     pub existed: bool,
 }
 
-/// `lock --update`: fetch every dependency by `git` again, take the commit its `rev` or
+/// `project lock --update`: fetch every dependency by `git` again, take the commit its `rev` or
 /// `version` names now, and write the lock (remove it when no dependency is by `git`).
 pub fn update(project: &Project) -> Result<Refreshed, String> {
     let old = DependencyLock::read(&project.root)?;
@@ -249,7 +248,7 @@ pub fn update(project: &Project) -> Result<Refreshed, String> {
     })
 }
 
-/// `lock --check`: whether the lock holds a commit for what each dependency by `git` asks for,
+/// `project lock --check`: whether the lock holds a commit for what each dependency by `git` asks for,
 /// and nothing else. Nothing is fetched: what the cache does not hold is not looked into.
 pub fn check(project: &Project) -> Result<Refreshed, String> {
     let (wanted, complete) = project.git_requests()?;

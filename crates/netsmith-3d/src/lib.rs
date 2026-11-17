@@ -8,7 +8,7 @@
 //!                                          |--glb          (.glb)
 //!                                          |--scene_step   (.step)
 //!                                          |--render_view  (.png)
-//!                                          `--render_png   (.png, as `netsmith render` asks)
+//!                                          `--render_png   (.png, as `netsmith view 3d` asks)
 //! ```
 //!
 //! The modules are private; this root lists the crate's API. A name that would be too general

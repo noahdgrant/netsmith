@@ -68,10 +68,10 @@
 # KiCad hidden and fails if a run needs it (ADR 0097, step 4). Together they say that netsmith
 # needs no KiCad and that what it draws agrees with KiCad's where KiCad is there.
 #
-# The `locks` job runs scripts/check-example-locks.sh: `netsmith lock --check` over every example,
+# The `locks` job runs scripts/check-example-locks.sh: `netsmith project lock --check` over every example,
 # which fails when an example's committed pick lock (`<stem>.lock.toml`, ADR 0100) is stale or
 # missing, that is, when a change to a catalog, `std/` or the solver would move a pick. The fix is
-# `netsmith lock --update` in the example and a review of the diff of the lock.
+# `netsmith project lock --update` in the example and a review of the diff of the lock.
 #
 # The `designs` job runs scripts/check-example-designs.sh: it builds every example with
 # `--emit-design` and fails when an example's committed design file (`<stem>.design.json`, issue
@@ -544,7 +544,7 @@ jobs:
       - name: Build and fab every example with KiCad hidden
         run: scripts/check-no-kicad.sh target/debug/netsmith
 
-  # The examples' pick locks (ADR 0100): scripts/check-example-locks.sh runs `netsmith lock --check`
+  # The examples' pick locks (ADR 0100): scripts/check-example-locks.sh runs `netsmith project lock --check`
   # over every example with no KiCad, and fails when a lock is stale or missing. It builds the same
   # debug binary as `no-kicad`, so it shares the cache.
   locks:

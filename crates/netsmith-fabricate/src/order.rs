@@ -10,8 +10,8 @@
 //! ```
 //!
 //! Each key is a board as its output folder names it (`Board`, or `System/member`) or a whole
-//! system (`System`, all its members), and the value is how many to order. `netsmith fab
-//! --order devkit` builds those boards only, writes them under `<fab>/orders/devkit/`, and
+//! system (`System`, all its members), and the value is how many to order. `netsmith project
+//! order devkit` builds those boards only, writes them under `<fab>/orders/devkit/`, and
 //! adds `order.txt` (the summary and the notes to read before ordering) and `order-bom.csv`
 //! (the bill of materials of the whole order).
 //!
@@ -20,10 +20,10 @@
 //!
 //! # What an order does, in detail (ADR 0035; the owner reviewed it on 2026-11-02)
 //!
-//! A project holds many boards (ADR 0010), and `netsmith fab` made a package for every one, with
+//! A project holds many boards (ADR 0010), and `netsmith board fab` made a package for every one, with
 //! nothing saying which go into one order to the board house or how many of each. There is one
-//! way to choose boards: a named order. A plain `netsmith fab` still makes every board of the
-//! project, and `netsmith fab <file.nsm>` one file's boards.
+//! way to choose boards: a named order. A plain `netsmith board fab` still makes every board of the
+//! project, and `netsmith board fab <file.nsm>` one file's boards.
 //!
 //! - **A key** is a board as its output folder names it, or a system's name for all its
 //!   members, each with that quantity. A name that is neither is an error naming the manifest line
@@ -895,7 +895,7 @@ pub enum OrderLocks {
     /// As `fab` does without `--locked`: holds the parts to the lock when the file exists and
     /// writes it when it does not.
     Held,
-    /// As `fab --locked`: holds the parts to the lock, and refuses a file that does not exist
+    /// As `board fab --locked`: holds the parts to the lock, and refuses a file that does not exist
     /// or that the picks differ from.
     Locked,
 }
@@ -1098,7 +1098,7 @@ pub fn fab_order(
     })
 }
 
-/// What `netsmith fab --order` with no name prints.
+/// What `netsmith project order` with no name prints.
 pub fn list(orders: &[Order]) -> String {
     if orders.is_empty() {
         return format!(

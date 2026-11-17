@@ -18,7 +18,7 @@ Make a module when a circuit appears twice or has a name of its own: a regulator
 3. Put the parts inside. Join them with `~` and `~>`, using the module's own members.
 4. Connect the module's rails to the parts' rails with `~`, as the guide's regulator stage does.
 5. In the board: `import src::<name>::Module`, declare `.stage: Module`, and set it only through its interface (`.stage.vout.voltage &= 3.3V +/- 5%`).
-6. Run `netsmith build src/main.nsm`.
+6. Run `netsmith board build src/main.nsm`.
 
 ## Rules
 
@@ -42,5 +42,5 @@ A module is a circuit on one board; a connector between boards is not a module. 
 
 ## Check
 
-`netsmith build` passes with two instances of the module on a board, each with different values, and no instance reaches another's parts.
+`netsmith board build` passes with two instances of the module on a board, each with different values, and no instance reaches another's parts.
 - A module that forwards a bus port (`.bus: Spi`) joins it to the part inside with `~` and gives it the part's role with an equation, `.bus.role == .chip.spi.role`. A `Uart` port is drawn as a part draws it (its `tx` is the line the module sends on), joined pin by pin with the same names, because `~` between two `Uart` interfaces crosses.

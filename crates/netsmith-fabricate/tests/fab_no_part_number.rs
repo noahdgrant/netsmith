@@ -1,4 +1,4 @@
-//! `netsmith fab` and a part whose catalog row has no supplier number (no `lcsc`). It
+//! `netsmith board fab` and a part whose catalog row has no supplier number (no `lcsc`). It
 //! refuses, all such parts in one message, before it places or routes anything, and the
 //! message says what to write and where. The boards here are invented.
 

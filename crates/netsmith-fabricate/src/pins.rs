@@ -90,7 +90,7 @@ pub fn sync(
             message.push_str(&format!("  {line}\n"));
         }
         message.push_str(
-            "run `netsmith build` without --locked, read the change and commit the file\n",
+            "run `netsmith board build` without --locked, read the change and commit the file\n",
         );
         return Err(message);
     }

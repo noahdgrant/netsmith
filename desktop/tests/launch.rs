@@ -80,7 +80,7 @@ fn the_editor_is_asked_for_a_free_port_in_the_project_folder() {
     let command = editor_command(Path::new("/bin/netsmith"), Path::new("/work/board"));
     assert_eq!(command.get_program(), "/bin/netsmith");
     let given: Vec<_> = command.get_args().collect();
-    assert_eq!(given, ["editor", "--port", "0"]);
+    assert_eq!(given, ["view", "editor", "--port", "0"]);
     assert_eq!(command.get_current_dir(), Some(Path::new("/work/board")));
 }
 
@@ -128,11 +128,11 @@ fn stand_in(dir: &Path, body: &str) -> PathBuf {
 #[test]
 fn a_server_is_ready_at_the_address_it_prints_and_ends_when_stopped() {
     let dir = TempDir::new("desktop-server");
-    // It is run as `netsmith editor --port 0` in the folder, says something first, and then
+    // It is run as `netsmith view editor --port 0` in the folder, says something first, and then
     // serves until it is stopped (`sleep` stands for the serving).
     let program = stand_in(
         dir.path(),
-        r#"[ "$*" = "editor --port 0" ] || { echo "wrong arguments: $*" >&2; exit 2; }
+        r#"[ "$*" = "view editor --port 0" ] || { echo "wrong arguments: $*" >&2; exit 2; }
 [ "$(pwd)" = "$EXPECTED_DIR" ] || { echo "wrong folder: $(pwd)" >&2; exit 2; }
 echo "removed 1 leftover scratch folder(s) of earlier comparisons"
 echo "editing Board at http://127.0.0.1:40123/ (Ctrl-C to stop)"

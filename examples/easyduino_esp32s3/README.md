@@ -3,7 +3,7 @@
 A port of the open **Easyduino ESP32-S3** board to netsmith, the second showcase board of epic
 #308 (after the RP2350A Minimal). **The schematic is done**: `src/main.nsm` is the board
 `EasyduinoEsp32s3`, the same circuit as Easyduino's, with its nets proved equal by a test
-(below). **The physical file and the parity gate are done too**: `netsmith fab` writes a
+(below). **The physical file and the parity gate are done too**: `netsmith board fab` writes a
 four-layer board with Easyduino's outline, receptacles, buttons and headers where theirs are
 (see "The PCB" below).
 
@@ -47,7 +47,7 @@ netsmith's** (MIT, like the rest of the repository).
 1. **The same nets.** The schematic of the port and Easyduino's design are the same circuit:
    a test proves it by comparing the wiring alone, as the RP2350A Minimal's does (see "Same
    nets" below).
-2. **A matching PCB where it matters.** A board made by `netsmith fab` is interchangeable with
+2. **A matching PCB where it matters.** A board made by `netsmith board fab` is interchangeable with
    theirs in these ways, and the parity checker with tolerances will fail when one is off:
    - the board outline (25.86 x 63.90 mm; the file draws it in U2, see NOTE-FOR-LATER);
    - the two USB-C receptacles (J1, J2), the buttons (SW1, SW2) and the headers (U2): the same
@@ -61,7 +61,7 @@ netsmith's** (MIT, like the rest of the repository).
 ## What is here
 
 - `netsmith.toml`, `src/main.nsm`, `src/main.lock.toml`: the project, its board and the board's
-  pick lock (`netsmith lock --update` refreshes it; CI checks it). `src/auto_reset.nsm` (the two transistors and
+  pick lock (`netsmith project lock --update` refreshes it; CI checks it). `src/auto_reset.nsm` (the two transistors and
   two resistors of the automatic bootloader) is the board's module (J1 and J2 are the standard
   `UsbCSink`, a receptacle and the two 5.1 kohm resistors on its CC contacts, see below); the other files of `src/` are the parts (below). `catalogs/capacitor.csv`
   is the row of the 22 uF tantalum capacitor.
@@ -86,16 +86,16 @@ netsmith's** (MIT, like the rest of the repository).
 From this folder:
 
 ```sh
-netsmith build    # the schematic, in out/
-netsmith fab      # the package for the board house, in fab/ (about 5 s)
+netsmith board build    # the schematic, in out/
+netsmith board fab      # the package for the board house, in fab/ (about 5 s)
 ```
 
-`build` and `fab` need no KiCad install (`NETSMITH_NO_KICAD=1 netsmith fab` is the same). `fab`
-with no pin request needs no `--locked`, but the gate runs it so (`netsmith fab --locked`: the
+`build` and `fab` need no KiCad install (`NETSMITH_NO_KICAD=1 netsmith board fab` is the same). `fab`
+with no pin request needs no `--locked`, but the gate runs it so (`netsmith board fab --locked`: the
 pick lock must be current, and nothing is written beside the sources).
 
-`netsmith compare` reads their board file as one side, but the bare command is not the proof:
-`netsmith compare reference/Easyduino_ESP32S3.kicad_pcb src/main.nsm --loose-values` says that
+`netsmith board compare` reads their board file as one side, but the bare command is not the proof:
+`netsmith board compare reference/Easyduino_ESP32S3.kicad_pcb src/main.nsm --loose-values` says that
 both have 35 components and 57 nets and then `different: 31 differences`, which are names and
 numbering: 11 parts correspond but carry another value or footprint name (the tantalum
 capacitors, the diode, the receptacle, the buttons, the transistors, the bridge's variant), and
@@ -109,7 +109,7 @@ parts by a table and compares the wiring alone.
 `src/main.physical.nsm` is the physical file: the outline and the place, rotation and face of
 the five parts that must match, each number read from `reference/placements.toml` with a
 comment of the line it comes from; `src/main.pcb.toml` is the layout file (the placer's seed,
-and one recorded part, below). `netsmith fab` writes the board as a four-layer JLCPCB board
+and one recorded part, below). `netsmith board fab` writes the board as a four-layer JLCPCB board
 (`.top.net`, `.bottom.net` and `.inner1.net` ground, `.inner2.net` +3.3 V, from `main.nsm`).
 
 - **The outline** is a 25.86 x 63.8972 mm rectangle with square corners (`.outline: Outline`
@@ -144,8 +144,8 @@ and one recorded part, below). `netsmith fab` writes the board as a four-layer J
 ### Run the parity check
 
 ```sh
-netsmith fab --locked          # from this folder; writes fab/EasyduinoEsp32s3/
-netsmith parity fab/EasyduinoEsp32s3/EasyduinoEsp32s3.kicad_pcb \
+netsmith board fab --locked          # from this folder; writes fab/EasyduinoEsp32s3/
+netsmith dev parity fab/EasyduinoEsp32s3/EasyduinoEsp32s3.kicad_pcb \
     --table reference/placements.toml --parts reference/parts.toml \
     --svg reference/parity-overlay.svg
 ```
@@ -156,7 +156,7 @@ Easyduino's designator of each of its 35 parts by the member path, and `fab` wri
 footprint's member path on the board (`netsmith_path`), so the checker pairs every part with the
 one `fab` wrote whatever designator it got (the headers are J3 on our board, the bridge U2, the
 regulator U3: references follow declaration order). The nets proof reads the same file. The gate is `crates/netsmith-cli/tests/easyduino_parity.rs`
-(`NETSMITH_NO_KICAD=1`, `fab --locked --route-timeout 20`, every must-match item `ok`, and the
+(`NETSMITH_NO_KICAD=1`, `board fab --locked --route-timeout 20`, every must-match item `ok`, and the
 committed overlay equal to the one the board gives). `reference/parity-overlay.svg` is the
 checker's picture of the run: Easyduino's outline, holes, parts and pads in blue and the
 board's in orange. It is regenerated by the last command above.
@@ -184,7 +184,7 @@ runs it.
 
 ## The reproduction
 
-Beside the board that `netsmith fab` makes of this project (the automatic board, placed and
+Beside the board that `netsmith board fab` makes of this project (the automatic board, placed and
 routed by netsmith), the port keeps a reproduction of Easyduino's own copper (issue #599; the
 language guide's "Reproducing a KiCad board"): `reference/agent/main.routes.toml` and
 `reference/agent/main.pcb.toml`, which `netsmith routes import reference/Easyduino_ESP32S3.kicad_pcb` writes, and `reference/agent/main.physical.nsm`, the physical file with one line
@@ -452,7 +452,7 @@ prepreg (the author's notes name JLCPCB's JLC04161H-7628 for the USB pair's impe
   stores them already mirrored), which this file does not exercise.
 - The schematic's references are not numbered gaplessly: there is no U4.
 - The position list has `U2` at y = -59.75136 (y up): the file has y = +59.75136.
-- `netsmith compare` needs KiCad's `kicad-cli` to read the schematic; the board file reads with
+- `netsmith board compare` needs KiCad's `kicad-cli` to read the schematic; the board file reads with
   no KiCad (`Netlist::from_kicad_pcb` finds 35 parts).
 
 ## Parts

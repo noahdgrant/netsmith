@@ -72,7 +72,7 @@ fn netsmith(cwd: &Path, args: &[&str]) -> std::process::Output {
 #[test]
 fn the_command_line_warns_by_default_and_refuses_with_strict_or_the_manifest_key() {
     let root = project("cli", "", "0.2mm");
-    let run = netsmith(&root, &["build"]);
+    let run = netsmith(&root, &["board", "build"]);
     let said = String::from_utf8_lossy(&run.stderr);
     assert!(run.status.success(), "{said}");
     assert!(
@@ -81,23 +81,23 @@ fn the_command_line_warns_by_default_and_refuses_with_strict_or_the_manifest_key
     );
 
     // `--strict` is for one run: the next run without it warns again.
-    let run = netsmith(&root, &["build", "--strict"]);
+    let run = netsmith(&root, &["board", "build", "--strict"]);
     let said = String::from_utf8_lossy(&run.stderr);
     assert!(!run.status.success(), "{said}");
     assert!(
         said.contains("error: Heater: IPC-2221 guideline: net `5V`"),
         "{said}"
     );
-    assert!(netsmith(&root, &["build"]).status.success());
+    assert!(netsmith(&root, &["board", "build"]).status.success());
 
     let root = project("cli-error", "guidelines = \"error\"", "0.2mm");
-    let run = netsmith(&root, &["build"]);
+    let run = netsmith(&root, &["board", "build"]);
     assert!(!run.status.success());
     assert!(String::from_utf8_lossy(&run.stderr).contains("IPC-2221 guideline"));
 
     // A board that meets the guideline builds under either.
     let root = project("cli-ok", "guidelines = \"error\"", "1mm");
-    let run = netsmith(&root, &["build"]);
+    let run = netsmith(&root, &["board", "build"]);
     assert!(
         run.status.success(),
         "{}",
@@ -109,7 +109,7 @@ fn the_command_line_warns_by_default_and_refuses_with_strict_or_the_manifest_key
 #[test]
 fn fab_puts_the_finding_in_the_notes_for_the_person_ordering() {
     let root = project("fab", "", "0.2mm");
-    let run = netsmith(&root, &["fab", "--allow-drc-violations"]);
+    let run = netsmith(&root, &["board", "fab", "--allow-drc-violations"]);
     let said = String::from_utf8_lossy(&run.stderr);
     assert!(
         run.status.success(),
@@ -125,7 +125,7 @@ fn fab_puts_the_finding_in_the_notes_for_the_person_ordering() {
     let run = netsmith(
         &root,
         &[
-            "fab",
+            "board", "fab",
             "--allow-drc-violations",
             "--strict",
             "--out",
@@ -156,7 +156,7 @@ fn unstated_project(name: &str, manifest_line: &str) -> TempDir {
 fn a_board_that_states_no_width_is_not_warned_and_is_routed_at_the_width_the_current_needs() {
     // Under `--strict` too: there is nothing to refuse.
     let root = unstated_project("sized", "");
-    let run = netsmith(&root, &["fab", "--allow-drc-violations", "--strict"]);
+    let run = netsmith(&root, &["board", "fab", "--allow-drc-violations", "--strict"]);
     let said = String::from_utf8_lossy(&run.stderr);
     assert!(run.status.success(), "{said}");
     // (The line that says the pick lock was written names the project's folder.)

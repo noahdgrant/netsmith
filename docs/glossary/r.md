@@ -59,7 +59,7 @@ A bend of a track drawn as an arc tangent to the two straight tracks it joins, i
 _Avoid_: Curved track, fillet (a teardrop's old name), mitre (a corner cut straight)
 
 **Route robustness**:
-Whether a board routes for more than one lucky set of the router's costs: its placed board routed again in one try with no time limit at the turn costs 24, 25 (the router's own), 26 and 27, and the connections each leaves (`netsmith route --tries 1 --route-timeout 0 --turn T`). `scripts/route-scorecard` prints it for each ported board beside the route scorecard, and a change to the router is judged by all four, since one unit of a cost re-rolls where the tracks go (issue #431, S3b).
+Whether a board routes for more than one lucky set of the router's costs: its placed board routed again in one try with no time limit at the turn costs 24, 25 (the router's own), 26 and 27, and the connections each leaves (`netsmith dev route --tries 1 --route-timeout 0 --turn T`). `scripts/route-scorecard` prints it for each ported board beside the route scorecard, and a change to the router is judged by all four, since one unit of a cost re-rolls where the tracks go (issue #431, S3b).
 _Avoid_: Stability (the placer's), determinism (the same input always gives the same copper; that is a separate property), variance
 
 **Route scorecard**:
@@ -67,7 +67,7 @@ The numbers that say how good a board's routing is, read from its `.kicad_pcb` a
 _Avoid_: Score (alone), quality (the placer's `Quality` is a measure of a placement), benchmark
 
 **Routes file**:
-`<stem>.routes.toml` beside a source file and its _Layout file_: copper a person, an agent or an import fixed, one record for each net of a board with its tracks (straight or arcs, on the outer layers), its vias, its _Zones_, a hash of its pads and a lock (issue #599; the format ADR 0030 sketched). `fab`, the editor's PCB view and `netsmith route` draw it on the placed board before the router, which keeps it and routes only what it leaves; a locked net gets no copper from the router. A record whose pads moved, or for a net the board does not have, is a warning and is not drawn (its locked shapes aside). Optional: with none, every board is routed as before. Written by `netsmith routes` (`import`, `add-track`, `add-via`, `add-zone`, `delete`, `lock`, `unlock`) and by the editor's PCB view (which draws and drags tracks and vias with the same code; it draws no zones yet), never by `fab`.
+`<stem>.routes.toml` beside a source file and its _Layout file_: copper a person, an agent or an import fixed, one record for each net of a board with its tracks (straight or arcs, on the outer layers), its vias, its _Zones_, a hash of its pads and a lock (issue #599; the format ADR 0030 sketched). `fab`, the editor's PCB view and `netsmith dev route` draw it on the placed board before the router, which keeps it and routes only what it leaves; a locked net gets no copper from the router. A record whose pads moved, or for a net the board does not have, is a warning and is not drawn (its locked shapes aside). Optional: with none, every board is routed as before. Written by `netsmith routes` (`import`, `add-track`, `add-via`, `add-zone`, `delete`, `lock`, `unlock`) and by the editor's PCB view (which draws and drags tracks and vias with the same code; it draws no zones yet), never by `fab`.
 _Avoid_: routes cache (ADR 0030's sketch: the file holds decisions, not a cache), fixed routes file, track file
 
 **Row statement**:

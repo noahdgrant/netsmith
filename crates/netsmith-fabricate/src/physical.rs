@@ -17,7 +17,7 @@
 //! plane nets, who assembles a part, the designator letters, currents, impedance and pairs):
 //! the test is "would a circuit check consume it?". Local pours, openings, keepouts a board
 //! draws, faces and relations between parts go here. The editor writes requirements here and
-//! solutions to the layout file; `netsmith dxf import --write` edits this file at the spans of
+//! solutions to the layout file; `netsmith import dxf --write` edits this file at the spans of
 //! its syntax tree (`edit`), keeping its comments.
 //!
 //! **The syntax the owner chose.** The header is `physical for Board { ... }` (one unit for each

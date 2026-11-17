@@ -9,10 +9,10 @@ use clap::Args as ClapArgs;
 #[derive(Debug, PartialEq, ClapArgs)]
 #[command(args_override_self = true)]
 #[command(
-    after_long_help = "`route` routes the board that `fab --save-placed` saved again, alone, the way `fab` does (signals at the track margin first where there is room, then at the process's least track), with no checking, solving or placing, so an experiment on the router (a change to its code, a time limit, a track margin) takes the time of the routing and nothing else. It writes `<board>.kicad_pcb`, `.kicad_pro`, `.svg` and, when connections are left, `routing-failure.txt` and `routing-report.json` into `--out`, as `fab` does; it prints the connections left, the tracks, the vias and the time. It is a router tool and not a fab package: it runs no design rules check and writes no Gerbers.\n\nThe exit code is 0 when every connection is routed, 1 when connections are left, and 2 when the file cannot be read: the file's layout changes with netsmith, so a file saved by another version is refused and is saved again with `fab --save-placed`."
+    after_long_help = "`route` routes the board that `board fab --save-placed` saved again, alone, the way `fab` does (signals at the track margin first where there is room, then at the process's least track), with no checking, solving or placing, so an experiment on the router (a change to its code, a time limit, a track margin) takes the time of the routing and nothing else. It writes `<board>.kicad_pcb`, `.kicad_pro`, `.svg` and, when connections are left, `routing-failure.txt` and `routing-report.json` into `--out`, as `fab` does; it prints the connections left, the tracks, the vias and the time. It is a router tool and not a fab package: it runs no design rules check and writes no Gerbers.\n\nThe exit code is 0 when every connection is routed, 1 when connections are left, and 2 when the file cannot be read: the file's layout changes with netsmith, so a file saved by another version is refused and is saved again with `board fab --save-placed`."
 )]
 pub struct Args {
-    /// The placed board that `fab --save-placed` wrote.
+    /// The placed board that `board fab --save-placed` wrote.
     #[arg(value_name = "BOARD.PLACED.JSON")]
     pub file: PathBuf,
     /// The folder to write the board files into (default `out/`).
@@ -94,7 +94,7 @@ pub fn run(args: Args) -> ExitCode {
     run_route(&args.file, args.out.as_deref(), request)
 }
 
-/// `netsmith route`: route the placed board that `fab --save-placed` wrote, alone, and write
+/// `netsmith dev route`: route the placed board that `board fab --save-placed` wrote, alone, and write
 /// its board files into `out` (`out/` when `None`). Exits 1 when connections are left, 2 when
 /// the file cannot be read or the files cannot be written.
 fn run_route(
@@ -208,14 +208,16 @@ fn parse_classes(given: &str) -> Result<netsmith_fabricate::placed::LineClasses,
 
 #[cfg(test)]
 mod tests {
+    use crate::commands::common::testing::Leaf;
     use crate::commands::common::testing::{kind, parse};
-    use crate::commands::{Command, route};
+    use crate::commands::route;
     use clap::error::ErrorKind;
 
     #[test]
     fn route_takes_a_placed_board_a_timeout_and_a_margin() {
         assert_eq!(
             parse(&[
+                "dev",
                 "route",
                 "b.placed.json",
                 "--out",
@@ -225,7 +227,7 @@ mod tests {
                 "--margin",
                 "2.5"
             ]),
-            Ok(Command::Route(route::Args {
+            Ok(Leaf::Route(route::Args {
                 file: "b.placed.json".into(),
                 out: Some("o".into()),
                 route_timeout: Some(0),
@@ -238,9 +240,9 @@ mod tests {
                 arcs: None,
             }))
         );
-        assert_eq!(kind(&["route"]), ErrorKind::MissingRequiredArgument);
+        assert_eq!(kind(&["dev", "route"]), ErrorKind::MissingRequiredArgument);
         for bad in ["0.5", "5", "wide"] {
-            let e = parse(&["route", "b.json", "--margin", bad]).unwrap_err();
+            let e = parse(&["dev", "route", "b.json", "--margin", bad]).unwrap_err();
             assert!(
                 e.contains("1 (the process's least track) to 4"),
                 "{bad}: {e}"
@@ -250,13 +252,13 @@ mod tests {
 
     #[test]
     fn route_takes_the_largest_arc_radius_in_track_widths() {
-        let Ok(Command::Route(args)) = parse(&["route", "b.placed.json", "--arcs", "0"]) else {
+        let Ok(Leaf::Route(args)) = parse(&["dev", "route", "b.placed.json", "--arcs", "0"]) else {
             panic!("--arcs 0 parses");
         };
         assert_eq!(args.arcs, Some(0.0));
         for bad in ["-1", "21", "round"] {
             let given = format!("--arcs={bad}");
-            let e = parse(&["route", "b.placed.json", &given]).unwrap_err();
+            let e = parse(&["dev", "route", "b.placed.json", &given]).unwrap_err();
             assert!(e.contains("track widths from 0 to 20"), "{bad}: {e}");
         }
     }
@@ -265,6 +267,7 @@ mod tests {
     fn route_takes_a_turn_cost_a_number_of_tries_and_stages_for_experiments() {
         assert_eq!(
             parse(&[
+                "dev",
                 "route",
                 "b.placed.json",
                 "--turn",
@@ -275,7 +278,7 @@ mod tests {
                 "--route-timeout",
                 "0",
             ]),
-            Ok(Command::Route(route::Args {
+            Ok(Leaf::Route(route::Args {
                 file: "b.placed.json".into(),
                 out: None,
                 route_timeout: Some(0),
@@ -289,14 +292,14 @@ mod tests {
             }))
         );
         for bad in ["2.5", "steep", "10001"] {
-            let e = parse(&["route", "b.placed.json", "--turn", bad]).unwrap_err();
+            let e = parse(&["dev", "route", "b.placed.json", "--turn", bad]).unwrap_err();
             assert!(
                 e.contains("takes a whole number from 0 to 10000"),
                 "{bad}: {e}"
             );
         }
         for bad in ["0", "many"] {
-            let e = parse(&["route", "b.placed.json", "--tries", bad]).unwrap_err();
+            let e = parse(&["dev", "route", "b.placed.json", "--tries", bad]).unwrap_err();
             assert!(
                 e.contains("takes a whole number of at least 1"),
                 "{bad}: {e}"
@@ -310,17 +313,17 @@ mod tests {
                 netsmith_fabricate::placed::CoarsePlan::FromSecondTry,
             ),
         ] {
-            match parse(&["route", "b.placed.json", "--plan", given]) {
-                Ok(Command::Route(args)) => assert_eq!(args.plan, Some(plan), "{given}"),
+            match parse(&["dev", "route", "b.placed.json", "--plan", given]) {
+                Ok(Leaf::Route(args)) => assert_eq!(args.plan, Some(plan), "{given}"),
                 other => panic!("{given}: {other:?}"),
             }
         }
-        let e = parse(&["route", "b.placed.json", "--plan", "always"]).unwrap_err();
+        let e = parse(&["dev", "route", "b.placed.json", "--plan", "always"]).unwrap_err();
         assert!(e.contains("takes `off`, `every` or `later`"), "{e}");
         // clap takes a negative number for a flag of its own and refuses it before the parser.
         for flag in ["--turn", "--tries"] {
             assert!(
-                parse(&["route", "b.placed.json", flag, "-1"]).is_err(),
+                parse(&["dev", "route", "b.placed.json", flag, "-1"]).is_err(),
                 "{flag} -1"
             );
         }

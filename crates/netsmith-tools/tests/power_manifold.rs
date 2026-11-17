@@ -294,7 +294,7 @@ mod board {
         PORT.assert_same_pads_on_nets(&built(), 200);
     }
 
-    /// #560: a port may hold the tables `netsmith port tables` derives (`netlist.xml`,
+    /// #560: a port may hold the tables `netsmith import port tables` derives (`netlist.xml`,
     /// `placements.toml`) instead of its board file. Derived from the charger's board file, the
     /// netlist the harness reads from `netlist.xml` is the board file's, pad for pad as the nets
     /// proof sees it, and the placements are the committed table.

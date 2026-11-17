@@ -1,4 +1,4 @@
-//! Where the progress of `fab` and `board3d` goes (issue #764): stderr as text for a person or as
+//! Where the progress of `fab` and `dev board3d` goes (issue #764): stderr as text for a person or as
 //! JSON lines for a program (`--progress`), and, with `--to-editor`, a running editor too, whose
 //! page shows a run started in a terminal in its status bar (`POST /api/progress`).
 //!

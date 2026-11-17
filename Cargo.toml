@@ -34,7 +34,7 @@ opt-level = 2
 
 # The 3D scene, its meshes and the rasterizer were optimised with netsmith-pcb before they were
 # a crate of their own (issue #518), and stay so: their tests take about 2.8 s optimised and
-# 10.6 s not, and `netsmith board3d` and `netsmith render` in a debug build keep their speed.
+# 10.6 s not, and `netsmith dev board3d` and `netsmith view 3d` in a debug build keep their speed.
 [profile.dev.package.netsmith-3d]
 opt-level = 2
 

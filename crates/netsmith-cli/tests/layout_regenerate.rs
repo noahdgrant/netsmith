@@ -1,7 +1,7 @@
 //! `netsmith layout regenerate` (issue #825): one module placed again with the rest held, the
 //! proposal printed, and written to the layout file only with `--write`. The board is the
 //! regulator example, whose `stage` module has three parts. With the router's copper kept on disk
-//! (issue #1019), `fab --reuse-routes` starts from it and the proposal says what of it is kept.
+//! (issue #1019), `board fab --reuse-routes` starts from it and the proposal says what of it is kept.
 
 use std::fs;
 use std::path::Path;
@@ -129,7 +129,7 @@ fn regenerate_refuses_a_module_the_board_lacks_or_holds_whole() {
 
 fn fab(dir: &Path, args: &[&str]) -> String {
     let run = Command::new(env!("CARGO_BIN_EXE_netsmith"))
-        .args(["fab", "--no-glb", "--no-step"])
+        .args(["board", "fab", "--no-glb", "--no-step"])
         .args(args)
         .current_dir(dir)
         .env("NETSMITH_NO_KICAD", "1")

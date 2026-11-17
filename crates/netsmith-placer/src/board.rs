@@ -120,7 +120,7 @@ pub fn board_from_design_placed(
 /// The board as the placer ended with it when it refused with `error` (the parts do not fit,
 /// or a seed's closest try): every part where [`DoesNotFit::parts`] says it ended, in the outline
 /// it was given. Nothing is placed again. A caller that shows a layout file's conflicts (the
-/// editor, `board3d`, issue #779) shows this board with the placement check's findings instead of
+/// editor, `dev board3d`, issue #779) shows this board with the placement check's findings instead of
 /// no board; `fab` still refuses it.
 pub fn board_where_ended(
     design: &Design,

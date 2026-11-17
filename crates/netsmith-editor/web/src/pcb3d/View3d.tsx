@@ -1,5 +1,5 @@
 // The PCB view in 3D (ADR 0105): the board's scene as the server writes it (`GET /api/pcb/3d`, the
-// file `netsmith board3d --glb` writes), drawn by three.js. A part is picked and hovered here
+// file `netsmith dev board3d --glb` writes), drawn by three.js. A part is picked and hovered here
 // through the page's shared selection and hover; a drag on a picked part moves it in the board's
 // plane, and R, F, L and the arrows turn, flip, lock and nudge it, as in the 2D view, through the
 // same edits of the layout file (issue 772, move.ts). A part
@@ -474,11 +474,11 @@ export function View3d({ board }: { board: string }) {
     if (!v) return '';
     const name = boardRef.current;
     const file = analysis.peek()?.boards.find((b) => b.name === name)?.file ?? '<file.nsm>';
-    // What is lit, named as `/api/view` and `render --highlight` name it: the parts picked, the net picked, the limits and the case models lit.
+    // What is lit, named as `/api/view` and `view 3d --highlight` name it: the parts picked, the net picked, the limits and the case models lit.
     const sel = sharedSelection.peek();
     const t = pageTheme.peek();
     if (shownRef.current.showSys) {
-      // `render --board System` lights a part as `member/<designator>` and a net as `net:member/<name>`, as `/api/view` names them.
+      // `view 3d --board System` lights a part as `member/<designator>` and a net as `net:member/<name>`, as `/api/view` names them.
       const sysFile = analysis.peek()?.systems.find((x) => x.name === shownRef.current.showSys)?.file ?? file;
       const net = sel?.kind === 'net' ? `net:${shownRef.current.member}/${sel.key}` : null;
       return renderCommand({
@@ -571,7 +571,7 @@ export function View3d({ board }: { board: string }) {
 
   const copyCommand = async () => {
     const text = commandText();
-    if (await copyText(text)) notify({ kind: 'ok', title: 'Copied the netsmith render command', detail: text });
+    if (await copyText(text)) notify({ kind: 'ok', title: 'Copied the netsmith view 3d command', detail: text });
     else notify({ kind: 'bad', title: 'Could not copy the command', detail: text });
   };
 
@@ -1037,7 +1037,7 @@ export function View3d({ board }: { board: string }) {
               </>
             )}
             <span class="tb-sep" aria-hidden="true" />
-            <Popover icon="more" tip="More: draw this view with netsmith render" class="v3-more">
+            <Popover icon="more" tip="More: draw this view with netsmith view 3d" class="v3-more">
               {() => {
                 const text = commandText();
                 const nearest = viewer.current ? nearestView(viewer.current.towardEye()) : null;
@@ -1045,7 +1045,7 @@ export function View3d({ board }: { board: string }) {
                   <div class="v3-cmd" data-testid="render-command">
                     <div class="v3-cmd-head">Copy as command</div>
                     <p>
-                      The picture of this view from <code>netsmith render</code>: no browser, no GPU.
+                      The picture of this view from <code>netsmith view 3d</code>: no browser, no GPU.
                       {nearest && !nearest.exact && ` The camera is turned from the command's views; the nearest is ${nearest.view}.`}
                     </p>
                     <div class="cli">

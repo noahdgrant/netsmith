@@ -1,4 +1,4 @@
-//! A board's fit in its case models (ADR 0109), as `board3d` and `fab` report it, on the
+//! A board's fit in its case models (ADR 0109), as `dev board3d` and `fab` report it, on the
 //! editor's fixture `case_fit.nsm`: a 40 by 24 mm board in a box of hand-written STEP files
 //! (`case_fit/base.step`, a floor, four walls and a boss under `hole1`; `case_fit/lid.step`).
 //! `tall` is 9 mm under a lid at 8 mm, `bare` has no height, `edge` stands 0.83 mm from the
@@ -43,7 +43,7 @@ fn netsmith(dir: &Path, args: &[&str]) -> Output {
 }
 
 fn report(dir: &Path) -> serde_json::Value {
-    let run = netsmith(dir, &["board3d", "case_fit.nsm", "--json"]);
+    let run = netsmith(dir, &["dev", "board3d", "case_fit.nsm", "--format", "json"]);
     assert!(
         run.status.success(),
         "{}",
@@ -128,12 +128,12 @@ fn board3d_lists_the_case_models_and_every_finding_with_its_numbers() {
     assert_eq!(all[4]["case"], "base, lid");
 
     // The same bytes for the same source, and the summary names them.
-    let again = netsmith(&dir, &["board3d", "case_fit.nsm", "--json"]);
+    let again = netsmith(&dir, &["dev", "board3d", "case_fit.nsm", "--format", "json"]);
     assert_eq!(
         serde_json::from_slice::<serde_json::Value>(&again.stdout).unwrap(),
         r
     );
-    let summary = netsmith(&dir, &["board3d", "case_fit.nsm"]);
+    let summary = netsmith(&dir, &["dev", "board3d", "case_fit.nsm"]);
     let text = String::from_utf8_lossy(&summary.stdout);
     assert!(
         text.contains("case model `base` (`case_fit/base.step`): 6 solid(s), 72 triangles"),
@@ -152,7 +152,7 @@ fn fab_refuses_a_collision_with_the_case_whatever_the_flags_say() {
         &["--allow-drc-violations"][..],
         &["--constraints", "warn", "--allow-drc-violations"][..],
     ] {
-        let mut args = vec!["fab", "case_fit.nsm", "--out", "fab"];
+        let mut args = vec!["board", "fab", "case_fit.nsm", "--out", "fab"];
         args.extend_from_slice(flags);
         let run = netsmith(&dir, &args);
         let err = String::from_utf8_lossy(&run.stderr);
@@ -170,7 +170,7 @@ fn fab_refuses_a_collision_with_the_case_whatever_the_flags_say() {
 fn fab_writes_the_case_findings_in_the_notes_and_strict_constraints_refuse_an_unchecked_fit() {
     let lower = |p: String| p.replace(".tall.height &= 9mm", ".tall.height &= 5mm");
     let dir = project("case-fit-fab-notes", lower);
-    let run = netsmith(&dir, &["fab", "case_fit.nsm", "--out", "fab"]);
+    let run = netsmith(&dir, &["board", "fab", "case_fit.nsm", "--out", "fab"]);
     let out =
         String::from_utf8_lossy(&run.stdout).to_string() + &String::from_utf8_lossy(&run.stderr);
     assert!(run.status.success(), "{out}");
@@ -197,7 +197,7 @@ fn fab_writes_the_case_findings_in_the_notes_and_strict_constraints_refuse_an_un
     let run = netsmith(
         &dir,
         &[
-            "fab",
+            "board", "fab",
             "case_fit.nsm",
             "--out",
             "fab",
@@ -290,7 +290,7 @@ fn a_case_file_the_reader_cannot_read_stops_fab() {
     let r = report(&dir);
     assert_eq!(r["case_models"][1]["status"], "unreadable");
     assert_eq!(r["case_findings"][0]["severity"], "error");
-    let run = netsmith(&dir, &["fab", "case_fit.nsm", "--out", "fab"]);
+    let run = netsmith(&dir, &["board", "fab", "case_fit.nsm", "--out", "fab"]);
     let err = String::from_utf8_lossy(&run.stderr);
     assert_eq!(run.status.code(), Some(1), "{err}");
     assert!(
@@ -306,7 +306,7 @@ fn the_glb_holds_the_case_and_render_lights_it() {
     let glb = dir.join("cased.glb");
     let run = netsmith(
         &dir,
-        &["board3d", "case_fit.nsm", "--glb", glb.to_str().unwrap()],
+        &["dev", "board3d", "case_fit.nsm", "--glb", glb.to_str().unwrap()],
     );
     assert!(
         run.status.success(),
@@ -345,19 +345,19 @@ fn the_glb_holds_the_case_and_render_lights_it() {
     assert_eq!(collision["parts"], serde_json::json!(["tall"]));
     assert_eq!(collision["severity"], "error");
 
-    // `render` draws it, and lights it by `case:<name>`; a name the board has not is refused
+    // `view 3d` draws it, and lights it by `case:<name>`; a name the board has not is refused
     // with the list.
     let png = dir.join("lid.png");
     let run = netsmith(
         &dir,
         &[
-            "render",
+            "view", "3d",
             "case_fit.nsm",
             "--size",
             "200x120",
             "--highlight",
             "case:lid",
-            "--out",
+            "--picture",
             png.to_str().unwrap(),
         ],
     );
@@ -369,7 +369,7 @@ fn the_glb_holds_the_case_and_render_lights_it() {
     assert!(std::fs::read(&png).unwrap().starts_with(b"\x89PNG"));
     let run = netsmith(
         &dir,
-        &["render", "case_fit.nsm", "--highlight", "case:nope"],
+        &["view", "3d", "case_fit.nsm", "--highlight", "case:nope"],
     );
     assert_eq!(run.status.code(), Some(2));
     let err = String::from_utf8_lossy(&run.stderr);
@@ -397,7 +397,7 @@ fn a_members_case_model_is_its_own_boards_and_not_the_systems() {
         let run = netsmith(
             &dir,
             &[
-                "board3d",
+                "dev", "board3d",
                 "two_boards.nsm",
                 "--board",
                 board,
@@ -457,7 +457,7 @@ fn stated_pins_below_the_far_face_are_measured_against_the_case() {
     let run = netsmith(
         &dir,
         &[
-            "fab",
+            "board", "fab",
             "case_fit.nsm",
             "--out",
             "fab",
@@ -494,19 +494,19 @@ fn stated_pins_below_the_far_face_are_measured_against_the_case() {
     assert_eq!(pins[0]["gap"], 0.4);
 }
 
-/// `render --case` draws the case model hidden, see-through (the default) or solid (a solid one
-/// hides the board inside it), and names the same modes as `view --case`.
+/// `view 3d --case` draws the case model hidden, see-through (the default) or solid (a solid one
+/// hides the board inside it), and names the same modes as `view editor-3d --case`.
 #[test]
 fn render_draws_the_case_hidden_see_through_or_solid() {
     let dir = project("case-fit-render", |p| p);
     let draw = |name: &str, extra: &[&str]| {
         let out = format!("{name}.png");
         let mut args = vec![
-            "render",
+            "view", "3d",
             "case_fit.nsm",
             "--size",
             "320x200",
-            "--out",
+            "--picture",
             out.as_str(),
         ];
         args.extend_from_slice(extra);
@@ -536,7 +536,7 @@ fn render_draws_the_case_hidden_see_through_or_solid() {
     let run = netsmith(
         &dir,
         &[
-            "render",
+            "view", "3d",
             "case_fit.nsm",
             "--case",
             "solid",
@@ -565,7 +565,7 @@ fn render_draws_the_case_hidden_see_through_or_solid() {
         draw("lit-hidden-lid", &["--case", "hidden:lid", "--highlight", "case:lid"])
     );
     // A name the board has no case model of is refused with the list.
-    let run = netsmith(&dir, &["render", "case_fit.nsm", "--case", "hidden:box"]);
+    let run = netsmith(&dir, &["view", "3d", "case_fit.nsm", "--case", "hidden:box"]);
     assert_eq!(run.status.code(), Some(2));
     let err = String::from_utf8_lossy(&run.stderr);
     assert!(
@@ -608,7 +608,7 @@ fn colour_the_lid(dir: &Path) {
 fn a_case_model_is_drawn_in_its_files_colour_and_a_stated_colour_replaces_it() {
     let draw = |dir: &Path, name: &str, extra: &[&str]| {
         let out = format!("{name}.png");
-        let mut args = vec!["render", "case_fit.nsm", "--size", "320x200", "--out", out.as_str()];
+        let mut args = vec!["view", "3d", "case_fit.nsm", "--size", "320x200", "--picture", out.as_str()];
         args.extend_from_slice(extra);
         let run = netsmith(dir, &args);
         assert!(run.status.success(), "{name}: {}", String::from_utf8_lossy(&run.stderr));
@@ -661,7 +661,7 @@ fn a_case_model_is_drawn_in_its_files_colour_and_a_stated_colour_replaces_it() {
 
     // The glTF file has a see-through material for each colour.
     let glb = styled.join("styled.glb");
-    let run = netsmith(&styled, &["board3d", "case_fit.nsm", "--glb", glb.to_str().unwrap()]);
+    let run = netsmith(&styled, &["dev", "board3d", "case_fit.nsm", "--glb", glb.to_str().unwrap()]);
     assert!(run.status.success(), "{}", String::from_utf8_lossy(&run.stderr));
     let doc = netsmith_3d::json_chunk(&std::fs::read(&glb).unwrap()).unwrap();
     let material = doc["materials"]
@@ -672,7 +672,7 @@ fn a_case_model_is_drawn_in_its_files_colour_and_a_stated_colour_replaces_it() {
         .expect("the file's colour is a material");
     assert_eq!(material["alphaMode"], "BLEND");
     let glb = plain_red.join("red.glb");
-    let run = netsmith(&plain_red, &["board3d", "case_fit.nsm", "--glb", glb.to_str().unwrap()]);
+    let run = netsmith(&plain_red, &["dev", "board3d", "case_fit.nsm", "--glb", glb.to_str().unwrap()]);
     assert!(run.status.success(), "{}", String::from_utf8_lossy(&run.stderr));
     let doc = netsmith_3d::json_chunk(&std::fs::read(&glb).unwrap()).unwrap();
     let lid = doc["nodes"].as_array().unwrap().iter().find(|n| n["name"] == "case:lid").unwrap();

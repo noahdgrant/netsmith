@@ -16,7 +16,7 @@
 //!
 //! **When the network is used.** A commit whose checkout exists needs no git command at all. A
 //! commit, a `rev` or a `version` that the cached repository already answers is answered from
-//! it, with no fetch: a branch moves only when `netsmith lock --update` asks for it
+//! it, with no fetch: a branch moves only when `netsmith project lock --update` asks for it
 //! ([`Fetch::Always`]). Only what the cache cannot answer is fetched, and `--offline` refuses
 //! that fetch with a message that names the URL.
 
@@ -42,7 +42,7 @@ pub enum Want<'a> {
 pub enum Fetch {
     /// Only when it cannot answer: a build, which reads what was fetched before.
     WhenMissing,
-    /// Before every answer: `netsmith lock --update`, which takes the branches as they are now.
+    /// Before every answer: `netsmith project lock --update`, which takes the branches as they are now.
     Always,
 }
 

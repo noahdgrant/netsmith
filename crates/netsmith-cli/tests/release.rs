@@ -31,7 +31,7 @@ fn project(label: &str, release: &str, broken: bool) -> TempDir {
 }
 
 fn check(cwd: &Path, json: bool) -> std::process::Output {
-    let mut args = vec!["check"];
+    let mut args = vec!["board", "check"];
     if json {
         args.extend(["--format", "json"]);
     }

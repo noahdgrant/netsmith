@@ -3,7 +3,7 @@
 A port of Raspberry Pi's open **RP2350A Minimal** reference board to netsmith, as a showcase.
 **The schematic is done** (`src/main.nsm`, the board `Rp2350Minimal`): the same circuit as
 theirs, proved net by net by a test. **The physical file is done** (`src/main.physical.nsm`: the
-outline, the four mounting holes, the places of the connectors and buttons), and `netsmith fab`
+outline, the four mounting holes, the places of the connectors and buttons), and `netsmith board fab`
 writes a PCB that the parity checker finds equal to Raspberry Pi's in every way that must match
 (see Parity and The result). Its parts are drawn with Raspberry Pi's footprints (#728, see
 Parts), so the placer arranges them otherwise than before, and which seed the router finishes
@@ -31,9 +31,9 @@ are netsmith's** (MIT, like the rest of the repository).
 
 1. **The same nets.** The schematic of the port and Raspberry Pi's design are the same
    circuit: the test `every_pad_has_the_same_pads_on_its_net_as_in_raspberry_pis_board` proves
-   it by comparing the wiring alone (see "Same nets"). The bare `netsmith compare` of the two
+   it by comparing the wiring alone (see "Same nets"). The bare `netsmith board compare` of the two
    files answers `different`, because it pairs parts by footprint name (see "Run it").
-2. **A matching PCB where it matters.** A board made by `netsmith fab` is interchangeable
+2. **A matching PCB where it matters.** A board made by `netsmith board fab` is interchangeable
    with theirs in these ways, and a checker with tolerances will fail when one is off:
    - the board outline and the four mounting holes;
    - the connectors (J1 to J4), the buttons (SW1, SW2) and the pin headers: the same
@@ -46,7 +46,7 @@ are netsmith's** (MIT, like the rest of the repository).
 
 - `netsmith.toml`, `src/main.nsm`, `src/oscillator.nsm`, `src/main.lock.toml`: the project, its
   board and the crystal's module (see The board). The lock is the catalog row each part was
-  picked as; commit it, refresh it with `netsmith lock --update`.
+  picked as; commit it, refresh it with `netsmith project lock --update`.
 - `catalogs/capacitor.csv`, `catalogs/resistor.csv`: two rows the standard catalogs lack, the
   10 uF 0805 capacitor and the 0 ohm link (see The catalog rows).
 - `src/tactile_switch.nsm`, `catalogs/ldo.csv`, `catalogs/inductor.csv`,
@@ -294,8 +294,8 @@ and says so.
 
 ## Parity
 
-`netsmith parity <board.kicad_pcb> [--table <placements.toml>]
-[--parts <parts.toml>] [--svg <overlay.svg>]`, run in this folder, compares the `.kicad_pcb` that `netsmith fab`
+`netsmith dev parity <board.kicad_pcb> [--table <placements.toml>]
+[--parts <parts.toml>] [--svg <overlay.svg>]`, run in this folder, compares the `.kicad_pcb` that `netsmith board fab`
 writes (in `fab/<Board>/`) with Raspberry Pi's board, as `reference/placements.toml` states it.
 It prints one line per item and `must-match: N ok, M failed`, writes the overlay (both boards at
 one scale: Raspberry Pi's in blue, netsmith's in orange, a failing must-match item in red with
@@ -305,7 +305,7 @@ must-match item is not `ok`. The checking is `netsmith_tools::parity`;
 `crates/netsmith-tools/tests/rp2350_parity.rs` tests it, also on Raspberry Pi's own board against
 itself.
 
-**The test does not wait for the router.** It runs `netsmith fab --locked --route-timeout 20`
+**The test does not wait for the router.** It runs `netsmith board fab --locked --route-timeout 20`
 with no KiCad (`NETSMITH_NO_KICAD=1`), and takes the board file that `fab` writes complete or
 marked INCOMPLETE (a run that the timeout stopped exits 1 and says `INCOMPLETE:`; any other
 failure fails the test). The placer fixes every part before the router starts, so the checker
@@ -370,8 +370,8 @@ pad's box 0.05 (as a pad's size), the layer equal.
 From this folder:
 
 ```sh
-netsmith build    # the schematic, in out/ (no KiCad needed)
-netsmith fab --locked --allow-drc-violations   # the package for the board house, in fab/Rp2350Minimal/; about 3 minutes (the flag: see The reproduction)
+netsmith board build    # the schematic, in out/ (no KiCad needed)
+netsmith board fab --locked --allow-drc-violations   # the package for the board house, in fab/Rp2350Minimal/; about 3 minutes (the flag: see The reproduction)
 ```
 
 `--locked` stops the run if the parts it picks differ from `src/main.lock.toml` and never
@@ -382,17 +382,17 @@ writes:
 
 ```sh
 cd examples/rp2350_minimal
-netsmith parity fab/Rp2350Minimal/Rp2350Minimal.kicad_pcb \
+netsmith dev parity fab/Rp2350Minimal/Rp2350Minimal.kicad_pcb \
     --svg reference/parity-overlay.svg
 ```
 
 `reference/parity-overlay.svg` is the picture of the last such run, and the test above checks
 that it is current (`fab` is deterministic, so the file only changes when the board does).
 
-`netsmith compare` takes their board file as one side and the source as the other:
+`netsmith board compare` takes their board file as one side and the source as the other:
 
 ```sh
-netsmith compare reference/RPI-RP2350A-MINIMAL_R4-S1.kicad_pcb src/main.nsm --loose-values
+netsmith board compare reference/RPI-RP2350A-MINIMAL_R4-S1.kicad_pcb src/main.nsm --loose-values
 ```
 
 and answers `different` with 82 differences, all of one kind: 43 components of theirs with no
@@ -455,16 +455,16 @@ and `.lid`, placed at x and y -2.5 mm, and z -7.6 mm and 6.5 mm.
   clear of J1 (2.99 mm) and the plug's overmould. J2 and J3 (8.38 mm) stand through slots 1 mm
   round their bodies, and a 2 mm hole over SW1 and SW2 lets a pin press them.
 
-`netsmith board3d --json` (`case_findings`) and `fab` find no `case_collision`. The parts whose
+`netsmith dev board3d --format json` (`case_findings`) and `fab` find no `case_collision`. The parts whose
 catalog rows have no height yet are `case_unchecked` warnings under the lid, until their heights
 are filled in. With those heights, J2 and J3 get a `case_reach` warning: the check measures a
 connector at the board's edge as one plugged in from the side, and these two are plugged in
-from above, through the lid's slots. `netsmith render --highlight case:lid` and
+from above, through the lid's slots. `netsmith view 3d --highlight case:lid` and
 `--section y=25.5 --view front` draw the fit.
 
 ## The result
 
-The last run (`fab --locked`, seed 3) on the machine that wrote this (a debug build, in which
+The last run (`board fab --locked`, seed 3) on the machine that wrote this (a debug build, in which
 `netsmith-pcb` is optimised; one run at a time):
 
 | Step | Result |
@@ -506,7 +506,7 @@ put them. Open it in a browser.
 
 ## The reproduction
 
-Beside the board that `netsmith fab` makes of this project (the automatic board, placed and
+Beside the board that `netsmith board fab` makes of this project (the automatic board, placed and
 routed by netsmith), the port keeps a reproduction of Raspberry Pi's own copper (issue #599; the
 language guide's "Reproducing a KiCad board"): `reference/agent/main.routes.toml` and
 `reference/agent/main.pcb.toml`, which `netsmith routes import reference/RPI-RP2350A-MINIMAL_R4-S1.kicad_pcb` writes.
@@ -597,7 +597,7 @@ overlap.
   each member and Raspberry Pi's designator), and fails when **any pad of any of the 39 parts has
   a different set of other pads on its net**. Netsmith's net names differ and do not matter.
 - `netsmith_compare_says_the_nets_are_the_same`: the same two netlists with value and
-  footprint blanked go through `netsmith-netlist`'s `compare` (the engine of `netsmith compare`),
+  footprint blanked go through `netsmith-netlist`'s `compare` (the engine of `netsmith board compare`),
   with the designators paired and again with no pairing at all: both say `match`.
 - `the_header_pins_carry_raspberry_pis_signals`: each of the 72 header pads is on the net of
   its reference signal (`+3V3`, `GND`, or the chip pin `GPIOn`, `RUN`, `SWCLK`, `SWDIO`).
@@ -627,7 +627,7 @@ overlap.
 
 ### What the checks say
 
-`netsmith build` prints no error and no warning. The notes it prints are about numbers nobody has:
+`netsmith board build` prints no error and no warning. The notes it prints are about numbers nobody has:
 the RP2350A, the flash and the crystal state no supply current (their parts are boundaries: no
 levels, ratings or models), so the regulator's output current, the inductor's current, the series
 resistors' currents and the rails' tracks are `not evaluated`, and `+3V3`, `+1V1` and `VBUS` say
@@ -646,7 +646,7 @@ Pi's board (its `lcsc_pn` property) and the JLCPCB and LCSC pages returned the s
 
 ### Heights
 
-Every part has a height (`netsmith board3d --json`: 43 of 43 known, 22 before), so the 3D view
+Every part has a height (`netsmith dev board3d --format json`: 43 of 43 known, 22 before), so the 3D view
 draws each body to it and a height limit or a case checks every part. 38 come from the `height`
 cell of the picked row (17 before), 4 are stated in the source and 1 is a package standard's. The
 cells were read on 2026-11-13, each

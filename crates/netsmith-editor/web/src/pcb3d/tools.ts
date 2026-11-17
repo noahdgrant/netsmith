@@ -1,7 +1,7 @@
 // The 3D view's tools as plain numbers and words: the measure tool (what a point snaps to, the
 // distance and its parts, a part's height and its margin to the limit above it), the section plane
-// (which side is kept, as `netsmith render --section` keeps it), the exploded stackup (where each
-// layer goes) and the `netsmith render` command that draws the view as the editor shows it.
+// (which side is kept, as `netsmith view 3d --section` keeps it), the exploded stackup (where each
+// layer goes) and the `netsmith view 3d` command that draws the view as the editor shows it.
 // Everything is in the scene's frame of docs/BOARD3D.md: millimetres, z up, the origin at the
 // outline's bottom-left corner on the board's top face. Nothing here touches three.js, and nothing
 // here is a check: the numbers are the file's, and the view decides nothing of its own.
@@ -122,7 +122,7 @@ const AXIS_INDEX: Record<Axis, number> = { x: 0, y: 1, z: 2 };
 
 /** Whether the cut keeps what is below its position along the axis, seen from `towardEye` (the
  * direction from the target to the camera): the side nearer the camera goes, so the cut is seen,
- * and a view square to the axis keeps the lower side. As `netsmith render --section` decides. */
+ * and a view square to the axis keeps the lower side. As `netsmith view 3d --section` decides. */
 export function keepBelow(towardEye: P3, axis: Axis): boolean {
   return towardEye[AXIS_INDEX[axis]] >= 0;
 }
@@ -206,7 +206,7 @@ export function faceSlot(slots: Slot[], face: Face): Slot | null {
   return (face === 'top' ? slots[0] : slots[slots.length - 1]) ?? null;
 }
 
-/** The role a layer's slab of the section is drawn in, as `netsmith render --section` colours it:
+/** The role a layer's slab of the section is drawn in, as `netsmith view 3d --section` colours it:
  * the mask, the core and the prepreg in their own colours, and a copper layer as the insulator that
  * fills round its copper (the mask for an outer layer, the prepreg for an inner one). */
 export function slabRole(layers: StackLayer[], i: number): 'mask-top' | 'mask-bottom' | 'substrate' | 'prepreg' {
@@ -227,13 +227,13 @@ export const easeInOut = (t: number): number => {
   return k < 0.5 ? 4 * k * k * k : 1 - (-2 * k + 2) ** 3 / 2;
 };
 
-// ---- the view as a `netsmith render` command ----
+// ---- the view as a `netsmith view 3d` command ----
 
 export type RenderView = 'top' | 'bottom' | 'front' | 'back' | 'left' | 'right' | 'iso' | 'iso-bottom';
 
 const K = 1 / Math.sqrt(3);
 
-/** The direction from the target to the eye of each view of `netsmith render` (raster3d's
+/** The direction from the target to the eye of each view of `netsmith view 3d` (raster3d's
  * `View::direction`), in the scene's frame. */
 export const RENDER_VIEWS: [RenderView, P3][] = [
   ['top', [0, 0, 1]],
@@ -246,7 +246,7 @@ export const RENDER_VIEWS: [RenderView, P3][] = [
   ['iso-bottom', [K, -K, -K]],
 ];
 
-/** The view of `netsmith render` nearest to a camera looking from `towardEye`, and whether it is
+/** The view of `netsmith view 3d` nearest to a camera looking from `towardEye`, and whether it is
  * that view (within a few degrees) or only the nearest. */
 export function nearestView(towardEye: P3): { view: RenderView; exact: boolean } {
   const l = Math.hypot(...towardEye) || 1;
@@ -282,10 +282,10 @@ export interface RenderRequest {
   perspective?: boolean;
 }
 
-/** The `netsmith render` command that draws what the view shows: its view, its cut, the parts
+/** The `netsmith view 3d` command that draws what the view shows: its view, its cut, the parts
  * picked lit, its theme and its lens. The size and the output are the command's defaults. */
 export function renderCommand(r: RenderRequest): string {
-  const words = ['netsmith', 'render', shellWord(r.file), '--board', shellWord(r.board), '--view', r.view];
+  const words = ['netsmith', 'view', '3d', shellWord(r.file), '--board', shellWord(r.board), '--view', r.view];
   if (r.section) words.push('--section', `${r.section.axis}=${Number(r.section.at.toFixed(3))}`);
   const lit = [...new Set(r.highlight ?? [])].filter(Boolean);
   if (lit.length) words.push('--highlight', shellWord(lit.join(',')));

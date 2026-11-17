@@ -278,7 +278,7 @@ export class Viewer {
   private hiddenCases = new Set<string>();
   /** The case solids a finding lit, as `case:<model>:<solid>`. */
   private focusedSolids = new Set<string>();
-  /** The case models `/api/view` lit (`highlight: ["case:<name>"]`), by name: in the selection's colour, as `render --highlight` lights them. */
+  /** The case models `/api/view` lit (`highlight: ["case:<name>"]`), by name: in the selection's colour, as `view 3d --highlight` lights them. */
   private litCases = new Set<string>();
   private pickable: Mesh[] = [];
   private infoOf = new Map<Object3D, Info>();
@@ -743,7 +743,7 @@ export class Viewer {
 
   /** The stackup's layers as slabs: the laminate's own shape (outline, holes, cutouts) at each
    * layer's height and thickness, from the root's `layers`. They stand in for the one laminate of
-   * the file in a section (each layer in its colour, as `netsmith render --section` draws it) and
+   * the file in a section (each layer in its colour, as `netsmith view 3d --section` draws it) and
    * when the stackup comes apart; a copper layer comes apart as a see-through sheet. */
   private buildSlabs() {
     for (const sub of this.substrate) {
@@ -813,7 +813,7 @@ export class Viewer {
     return sceneOf(new Vector3(d[0], d[1], d[2]));
   }
 
-  /** The plane where the cut is, keeping the side away from the camera (as `netsmith render` does), and the caps on it. */
+  /** The plane where the cut is, keeping the side away from the camera (as `netsmith view 3d` does), and the caps on it. */
   private placeCut() {
     if (!this.cut) return;
     const u = AXIS_DIR[this.cut.axis];
@@ -1836,7 +1836,7 @@ export class Viewer {
   // ---- the camera as an agent sets and reads it (`/api/view`, docs/BOARD3D.md), in the scene's frame ----
 
   /** Look at the whole board from a direction of the scene's frame (from the target to the eye), as
-   * `netsmith render --view` does. A view straight down or up keeps the board's top edge up. */
+   * `netsmith view 3d --view` does. A view straight down or up keeps the board's top edge up. */
   lookFrom(towardEye: P3, animate = true) {
     const w = worldOf(towardEye);
     let dir: Vec3 = [w.x, w.y, w.z];

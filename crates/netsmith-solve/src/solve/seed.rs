@@ -67,7 +67,7 @@
 //!    equation's check then holds the claim to what it gives, so a claim that is not a fixed point
 //!    cannot pass.
 //!
-//! The solver says so in a note (`Solution::seeded`; `netsmith build` prints `note: ...`; the
+//! The solver says so in a note (`Solution::seeded`; `netsmith board build` prints `note: ...`; the
 //! wording is `started_note` in `crates/netsmith-pipeline/src/lib.rs`). A range the board states on any
 //! field of the circle is used as before and nothing is started. The claim: every value of the
 //! field that satisfies the circuit's equations, with the part inside its stated range, is in the

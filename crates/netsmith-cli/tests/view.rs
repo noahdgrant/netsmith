@@ -1,4 +1,4 @@
-//! `netsmith view` against the editor's real server with a page simulated over its socket
+//! `netsmith view editor-3d` against the editor's real server with a page simulated over its socket
 //! (P8b of issue 430): the state, a change and a picture, a refusal of the page, no page open,
 //! and nothing listening. The page here answers as the browser's does; the editor's own tests
 //! (`crates/netsmith-editor/tests/server.rs`) pin the routes, these pin the command.
@@ -95,7 +95,7 @@ fn state() -> ViewState {
         colour_by: ColourBy::Provenance,
         height_preview: None,
         theme: "dark".into(),
-        command: Some("netsmith render src/main.nsm --board Led --view iso".into()),
+        command: Some("netsmith view 3d src/main.nsm --board Led --view iso".into()),
     }
 }
 
@@ -113,7 +113,7 @@ fn answer(page: &mut Socket, id: u32, state: ViewState) {
 /// `netsmith view <args>` as a child, so that the test plays the page while it waits.
 fn view(port: u16, args: &[&str]) -> Child {
     Command::new(env!("CARGO_BIN_EXE_netsmith"))
-        .arg("view")
+        .args(["view", "editor-3d"])
         .args(["--port", &port.to_string()])
         .args(args)
         .stdout(Stdio::piped())
@@ -156,13 +156,13 @@ fn with_no_change_it_prints_the_state_as_a_summary_or_as_the_routes_json() {
         "colour by: provenance",
         "height preview: off",
         "theme: dark",
-        "render: netsmith render src/main.nsm --board Led --view iso",
+        "command: netsmith view 3d src/main.nsm --board Led --view iso",
     ] {
         assert!(shown.contains(line), "no `{line}` in:\n{shown}");
     }
 
-    // `--json` is the route's JSON as it came: the state, read back, is the page's.
-    let child = view(editor.port, &["--json"]);
+    // `--format json` is the route's JSON as it came: the state, read back, is the page's.
+    let child = view(editor.port, &["--format", "json"]);
     let ServerMessage::View { id, .. } = next_ask(&mut page) else {
         unreachable!()
     };
@@ -289,7 +289,7 @@ fn a_picture_alone_opens_the_view_with_an_empty_change() {
     let mut page = open_page(editor.port);
     let dir = TempDir::new("view-cli-picture-only");
     let png = dir.join("a.png");
-    let child = view(editor.port, &["--json", "--picture", png.to_str().unwrap()]);
+    let child = view(editor.port, &["--format", "json", "--picture", png.to_str().unwrap()]);
     let ServerMessage::View { id, change } = next_ask(&mut page) else {
         unreachable!()
     };
@@ -303,7 +303,7 @@ fn a_picture_alone_opens_the_view_with_an_empty_change() {
     page.send(tungstenite::Message::binary(frame)).unwrap();
     let out = finished(child);
     assert!(out.status.success(), "{}", text(&out.stderr));
-    // With `--json` the output is the JSON alone.
+    // With `--format json` the output is the JSON alone.
     serde_json::from_str::<ViewState>(&text(&out.stdout)).unwrap();
     assert!(png.exists());
 }
@@ -341,7 +341,7 @@ fn a_change_the_page_refuses_exits_two_with_its_message_and_writes_nothing() {
 #[test]
 fn with_no_page_open_it_says_which_address_to_open() {
     let editor = start();
-    for args in [&[][..], &["--view", "top"], &["--json"]] {
+    for args in [&[][..], &["--view", "top"], &["--format", "json"]] {
         let out = finished(view(editor.port, args));
         assert_eq!(out.status.code(), Some(2), "{args:?}");
         assert!(out.stdout.is_empty());
@@ -365,7 +365,7 @@ fn with_nothing_listening_it_says_to_start_the_editor() {
     assert!(out.stdout.is_empty());
     let said = text(&out.stderr);
     assert!(
-        said.contains("no editor is listening") && said.contains("netsmith editor"),
+        said.contains("no editor is listening") && said.contains("netsmith view editor"),
         "{said}"
     );
     assert!(said.contains(&port.to_string()), "{said}");
@@ -378,7 +378,7 @@ fn a_theme_is_refused_before_anything_is_asked_and_says_why() {
     assert_eq!(out.status.code(), Some(2));
     let said = text(&out.stderr);
     assert!(said.contains("person's own setting"), "{said}");
-    assert!(said.contains("render --theme"), "{said}");
+    assert!(said.contains("view 3d --theme"), "{said}");
 }
 
 #[test]

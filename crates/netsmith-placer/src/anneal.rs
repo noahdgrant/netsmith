@@ -206,7 +206,7 @@
 //! [`PIN_ROOM`], 1 mm, from each of the part's pads on a net it is not on (issue #1010), as hard
 //! a rule as the ring: pressed 0.4 mm from a QFN's signal pins, a capacitor left room for one
 //! track and no via, and the Easyduino and Orbit did not route at some seeds. Measured over
-//! seeds 0 to 7 of each (`fab --place-seeds 1`, 2026-11-16): 3 of the 16 placements left a USB
+//! seeds 0 to 7 of each (`board fab --place-seeds 1`, 2026-11-16): 3 of the 16 placements left a USB
 //! wire before, none after; the scorecard's mean decoupling distance moved from 15.8 to
 //! 17.7 mm on Orbit and 27.4 to 28.8 mm on the Easyduino (seed to seed it varies by twice that),
 //! and the USB pair runs more coupled on 6 of Orbit's 8 seeds. The ring is the

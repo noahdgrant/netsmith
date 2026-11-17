@@ -7,8 +7,8 @@
 // The camera stays where it is as the page's board changes. The tools work across the members: a
 // net is its member's (`led/<net>`) and is lit on that board alone; the section cuts every board;
 // the layers come apart board by board, the boards apart with them; and a board can be hidden.
-// An agent asks for the System view by the system's name (`/api/view`, `netsmith view --board
-// TwoBoards`) with a member's ids (`led/J1`, `net:led/GND`), and `render --board TwoBoards`
+// An agent asks for the System view by the system's name (`/api/view`, `netsmith view editor-3d --board
+// TwoBoards`) with a member's ids (`led/J1`, `net:led/GND`), and `view 3d --board TwoBoards`
 // draws what the page's command says.
 import { whenIdle } from '../settle.mjs';
 import fs from 'node:fs';
@@ -196,8 +196,8 @@ async function tools(page, shot, step, expect) {
   await whenIdle(page);
 }
 
-/** An agent drives the System view: `/api/view` and `netsmith view` with the system's name and a
- * member's ids, and `netsmith render` of the command the page gives. */
+/** An agent drives the System view: `/api/view` and `netsmith view editor-3d` with the system's name and a
+ * member's ids, and `netsmith view 3d` of the command the page gives. */
 async function agent({ page, url, project, shot, step, expect, binary }) {
   const api = new URL('/api/view', url).href;
   const post = async (change) => {
@@ -249,17 +249,17 @@ async function agent({ page, url, project, shot, step, expect, binary }) {
   r = await post({ section: 'none', exploded: false });
   expect(r.status === 200 && r.body.section === undefined && r.body.exploded === false, `and back: ${JSON.stringify(r.body).slice(0, 200)}`);
 
-  step('netsmith view --board TwoBoards with a member\'s part saves the page\'s picture; render draws the command');
+  step('netsmith view editor-3d --board TwoBoards with a member\'s part saves the page\'s picture; render draws the command');
   const port = new URL(url).port;
   const dir = path.dirname(await shot('system-api'));
   const viewPng = path.join(dir, 'pcb-3d-system-view-cli.png');
   // No section here: a picture of a cut system takes seconds in a software renderer, near the read's 10 s (the section is driven above).
-  const v = await exec(binary, ['view', '--port', port, '--board', 'TwoBoards', '--view', 'front', '--highlight', 'led/J1', '--picture', viewPng]);
+  const v = await exec(binary, ['view', 'editor-3d', '--port', port, '--board', 'TwoBoards', '--view', 'front', '--highlight', 'led/J1', '--picture', viewPng]);
   expect(v.stdout.includes('board: TwoBoards') && v.stdout.includes('member: led') && v.stdout.includes('highlight: led/J1'), `the summary:\n${v.stdout}`);
   expect(fs.readFileSync(viewPng).subarray(1, 4).toString() === 'PNG', 'the page\'s picture is saved');
   const renderPng = path.join(dir, 'pcb-3d-system-render.png');
   const args = command.split(' ').slice(2).filter((a) => a !== 'src/main.nsm');
-  const rr = await exec(binary, ['render', path.join(project, 'src/main.nsm'), ...args, '--size', '800x500', '--out', renderPng], { env: { ...process.env, NETSMITH_NO_KICAD: '1' } });
+  const rr = await exec(binary, ['view', '3d', path.join(project, 'src/main.nsm'), ...args, '--size', '800x500', '--picture', renderPng], { env: { ...process.env, NETSMITH_NO_KICAD: '1' } });
   expect(rr.stdout.includes(renderPng) && fs.readFileSync(renderPng).subarray(1, 4).toString() === 'PNG', `render draws the page's command (${command})`);
   await post({ select: [], section: 'none' });
 }

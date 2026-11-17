@@ -17,7 +17,7 @@ standard IC row can be solved, and what the standard parts could not give).
   back to back, and the spread of the 5 runs is in the median's neighbourhood except where the load changed
   (the `debug` run of `two_buck` had `solve.pick` from 46 to 80 ms).
 - Date: 2026-11-10. Base: `origin/main` at `287f284` plus this change.
-- Command: `NETSMITH_NO_KICAD=1 NETSMITH_TIMINGS=1 netsmith build --out <folder>` in the
+- Command: `NETSMITH_NO_KICAD=1 NETSMITH_TIMINGS=1 netsmith board build --out <folder>` in the
   project's folder (the stage lines are printed to stderr; `docs/PIPELINE.md` names the stages).
 - Profiles: `debug` is the `dev` profile of `Cargo.toml` (with `netsmith-solve`, `-check`, `-core`,
   `-quantity` and `-view` at `opt-level = 2`, so not a plain unoptimised build); `release` is

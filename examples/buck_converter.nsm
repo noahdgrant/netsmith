@@ -2,7 +2,7 @@
 //! standard library by what the board asks of it: `BuckConverter`, with no IC named. The pick
 //! is the first standard buck IC whose input range, output current and reference can hold the
 //! output, with the inductor, the capacitors, the divider and the IC's own application circuit
-//! around it (`std::parts::regulator`, issue #620). `netsmith build` says which it took and why
+//! around it (`std::parts::regulator`, issue #620). `netsmith board build` says which it took and why
 //! it passed over the others.
 
 import std::parts::connector::Header1x2

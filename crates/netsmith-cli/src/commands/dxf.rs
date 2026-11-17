@@ -2,23 +2,13 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-use clap::{Args as ClapArgs, Subcommand};
+use clap::Args as ClapArgs;
 
-#[derive(Debug, PartialEq, ClapArgs)]
-pub struct Args {
-    #[command(subcommand)]
-    pub command: Command,
-}
-
-#[derive(Debug, PartialEq, Subcommand)]
-pub enum Command {
-    /// Print an enclosure's outline, cutouts and mounting holes from an ASCII DXF as source to paste (ADR 0045).
-    Import(ImportArgs),
-}
-
+/// `netsmith import dxf`: print an enclosure's outline, cutouts and mounting holes from an ASCII
+/// DXF as source to paste (ADR 0045).
 #[derive(Debug, PartialEq, ClapArgs)]
 #[command(
-    after_long_help = "`dxf import` reads the board outline of an enclosure from an ASCII DXF file and prints, to paste into the `case { }` section of the board's physical file, the `import` lines, an `.outline: Outline`, a `Cutout` with its `.x` and `.y` for each loop inside it, and a `MountingHole` for each circle on the holes layer with the requirement on the centre of its body (`.hole1.place.x &= 5mm`). It writes nothing without `--write`.\n\nThe reader takes `LINE`, `ARC`, `CIRCLE`, `LWPOLYLINE` (closed flag, bulges), `POLYLINE` with `VERTEX`, `SPLINE` and `ELLIPSE` (as chords within 0.005 mm), and `INSERT` of blocks (translate, rotate, scale, mirror); text, dimensions and the like are not read and are counted in a warning. Binary DXF is refused. Units come from `$INSUNITS` (millimetre, centimetre, metre, inch); a file without them needs `--units`. Edges whose ends are within 0.001 mm join into closed loops; a gap is listed with its size and place.\n\nThe one loop that is not inside another is the outline and the loops inside it are cutouts; two outer loops, a loop that crosses itself, a loop that crosses a cutout or only touches the outline, or a loop inside a cutout is an error. A loop that crosses the outline (a window in a case wall that is partly beyond the board) is an opening: its part inside the board is cut out of the outline as a notch, so the outline is printed as a `polygon`, and the report says each opening with its layer, size and place on the board (the board's origin is the top left corner of the outline after the cut). An opening that cuts the board into several pieces, that has an edge along the outline, or that has a cutout inside it is an error (issue #90). A circle on the outline layer is a round `Cutout`; on the holes layer it is a `MountingHole` with its drill as `.diameter` (`.hole1: MountingHole { .diameter &= 2.375mm }`), any size from 0.2 mm to 20 mm; a circle outside that range is refused. The board's frame is the outline's top left corner with y down, and the output says which point of the drawing that is. An outline that is a rectangle with equal rounded corners is printed as `.width`, `.height` and `.corner_radius`; any other (an L, a notch, a polygon, corners of different radii) as a `polygon` of the loop's corners, each arc of the drawing `arc through` its middle point (_A polygon outline_ in docs/LANGUAGE.md). Each cutout must be a rounded rectangle, a slot or a circle: any other shape is refused with its size and edge count (issue #57)."
+    after_long_help = "`import dxf` reads the board outline of an enclosure from an ASCII DXF file and prints, to paste into the `case { }` section of the board's physical file, the `import` lines, an `.outline: Outline`, a `Cutout` with its `.x` and `.y` for each loop inside it, and a `MountingHole` for each circle on the holes layer with the requirement on the centre of its body (`.hole1.place.x &= 5mm`). It writes nothing without `--write`.\n\nThe reader takes `LINE`, `ARC`, `CIRCLE`, `LWPOLYLINE` (closed flag, bulges), `POLYLINE` with `VERTEX`, `SPLINE` and `ELLIPSE` (as chords within 0.005 mm), and `INSERT` of blocks (translate, rotate, scale, mirror); text, dimensions and the like are not read and are counted in a warning. Binary DXF is refused. Units come from `$INSUNITS` (millimetre, centimetre, metre, inch); a file without them needs `--units`. Edges whose ends are within 0.001 mm join into closed loops; a gap is listed with its size and place.\n\nThe one loop that is not inside another is the outline and the loops inside it are cutouts; two outer loops, a loop that crosses itself, a loop that crosses a cutout or only touches the outline, or a loop inside a cutout is an error. A loop that crosses the outline (a window in a case wall that is partly beyond the board) is an opening: its part inside the board is cut out of the outline as a notch, so the outline is printed as a `polygon`, and the report says each opening with its layer, size and place on the board (the board's origin is the top left corner of the outline after the cut). An opening that cuts the board into several pieces, that has an edge along the outline, or that has a cutout inside it is an error (issue #90). A circle on the outline layer is a round `Cutout`; on the holes layer it is a `MountingHole` with its drill as `.diameter` (`.hole1: MountingHole { .diameter &= 2.375mm }`), any size from 0.2 mm to 20 mm; a circle outside that range is refused. The board's frame is the outline's top left corner with y down, and the output says which point of the drawing that is. An outline that is a rectangle with equal rounded corners is printed as `.width`, `.height` and `.corner_radius`; any other (an L, a notch, a polygon, corners of different radii) as a `polygon` of the loop's corners, each arc of the drawing `arc through` its middle point (_A polygon outline_ in docs/LANGUAGE.md). Each cutout must be a rounded rectangle, a slot or a circle: any other shape is refused with its size and edge count (issue #57)."
 )]
 #[command(args_override_self = true)]
 pub struct ImportArgs {
@@ -54,22 +44,20 @@ pub struct ImportArgs {
     pub write: Option<PathBuf>,
 }
 
-pub fn run(args: Args) -> ExitCode {
-    match args.command {
-        Command::Import(a) => run_dxf_import(
-            &a.file,
-            &netsmith_tools::dxf::Request {
-                layers: a.layers,
-                holes_layers: a.holes_layers,
-                units: a.units,
-            },
-            a.board.as_deref(),
-            a.write.as_deref(),
-        ),
-    }
+pub fn run(a: ImportArgs) -> ExitCode {
+    run_dxf_import(
+        &a.file,
+        &netsmith_tools::dxf::Request {
+            layers: a.layers,
+            holes_layers: a.holes_layers,
+            units: a.units,
+        },
+        a.board.as_deref(),
+        a.write.as_deref(),
+    )
 }
 
-/// `netsmith dxf import`: the source to paste goes to stdout, the report and warnings to
+/// `netsmith import dxf`: the source to paste goes to stdout, the report and warnings to
 /// stderr. With `--write`, the places go into the layout file and the diff is printed.
 fn run_dxf_import(
     file: &Path,
@@ -123,16 +111,17 @@ fn parse_units(given: &str) -> Result<netsmith_dxf::Units, String> {
 
 #[cfg(test)]
 mod tests {
+    use crate::commands::common::testing::Leaf;
     use crate::commands::common::testing::{kind, parse};
-    use crate::commands::{Command, dxf};
+    use crate::commands::dxf;
     use clap::error::ErrorKind;
 
     #[test]
-    fn dxf_import_takes_a_file_layers_units_a_board_and_a_source_to_write() {
+    fn import_dxf_takes_a_file_layers_units_a_board_and_a_source_to_write() {
         assert_eq!(
             parse(&[
-                "dxf",
                 "import",
+                "dxf",
                 "case.dxf",
                 "--layer",
                 "EDGE",
@@ -147,21 +136,19 @@ mod tests {
                 "--write",
                 "case.nsm"
             ]),
-            Ok(Command::Dxf(dxf::Args {
-                command: dxf::Command::Import(dxf::ImportArgs {
-                    file: "case.dxf".into(),
-                    layers: vec!["EDGE".into(), "RIM".into()],
-                    holes_layers: vec!["HOLES".into()],
-                    units: Some(netsmith_dxf::Units::Inches),
-                    board: Some("Case".into()),
-                    write: Some("case.nsm".into()),
-                })
+            Ok(Leaf::Dxf(dxf::ImportArgs {
+                file: "case.dxf".into(),
+                layers: vec!["EDGE".into(), "RIM".into()],
+                holes_layers: vec!["HOLES".into()],
+                units: Some(netsmith_dxf::Units::Inches),
+                board: Some("Case".into()),
+                write: Some("case.nsm".into()),
             }))
         );
-        assert_eq!(kind(&["dxf", "import"]), ErrorKind::MissingRequiredArgument);
-        let e = parse(&["dxf", "import", "a.dxf", "--units", "furlongs"]).unwrap_err();
+        assert_eq!(kind(&["import", "dxf"]), ErrorKind::MissingRequiredArgument);
+        let e = parse(&["import", "dxf", "a.dxf", "--units", "furlongs"]).unwrap_err();
         assert!(e.contains("not `furlongs`"), "{e}");
-        assert!(parse(&["dxf", "export", "a.dxf"]).is_err());
-        assert!(parse(&["dxf", "import", "a.dxf", "--bogus"]).is_err());
+        assert!(parse(&["import", "dxf", "a.dxf", "b.dxf"]).is_err());
+        assert!(parse(&["import", "dxf", "a.dxf", "--bogus"]).is_err());
     }
 }

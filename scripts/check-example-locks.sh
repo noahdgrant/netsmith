@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
-# Proves that every example's pick lock is current (ADR 0100): runs `netsmith lock --check` over
+# Proves that every example's pick lock is current (ADR 0100): runs `netsmith project lock --check` over
 # every board of examples/, with KiCad hidden (the lock is the solver's picks and needs no KiCad).
 # It fails when a lock is stale (a catalog, `std/` or the solver would now pick another row) or
 # missing (a new example with no lock), and says how to fix it.
 #
 # The examples are found by folder, as scripts/check-no-kicad.sh finds them:
 #   - each `*.nsm` file of examples/ that is not a `*.physical.nsm` file is a board's source, and
-#     is checked as `netsmith lock --check <file>.nsm` from examples/;
-#   - each folder of examples/ with a netsmith.toml is a project, checked as `netsmith lock --check`
+#     is checked as `netsmith project lock --check <file>.nsm` from examples/;
+#   - each folder of examples/ with a netsmith.toml is a project, checked as `netsmith project lock --check`
 #     from that folder (the project's boards, as the manifest lists them).
-# A board whose parts are all concrete still has a lock, an empty one: `lock --update` writes it.
+# A board whose parts are all concrete still has a lock, an empty one: `project lock --update` writes it.
 # It also fails when it finds no board at all (a changed folder layout would make the globs match
 # nothing and pass for nothing), and for an orphan lock: a `*.lock.toml` anywhere under examples/
 # whose source `<stem>.nsm` is not beside it (the board was renamed or removed; delete the lock).
@@ -18,7 +18,7 @@
 #
 # Usage: scripts/check-example-locks.sh [path/to/netsmith]
 # Without an argument it builds the debug binary with `cargo build -p netsmith-cli` first. Nothing is
-# written: `lock --check` never writes.
+# written: `project lock --check` never writes.
 set -euo pipefail
 
 repo="$(cd "$(dirname "$0")/.." && pwd)"
@@ -41,13 +41,13 @@ trap 'rm -f "$log"' EXIT
 failed=0
 runs=0
 
-# check <label> <folder> <netsmith arguments...>: one `lock --check` that must exit 0.
+# check <label> <folder> <netsmith arguments...>: one `project lock --check` that must exit 0.
 check() {
     local label="$1" dir="$2"
     shift 2
     runs=$((runs + 1))
     local code=0
-    (cd "$dir" && NETSMITH_NO_KICAD=1 "$bin" lock --check "$@") > "$log" 2>&1 || code=$?
+    (cd "$dir" && NETSMITH_NO_KICAD=1 "$bin" project lock --check "$@") > "$log" 2>&1 || code=$?
     if [ "$code" -eq 0 ]; then
         echo "ok    $label"
         return
@@ -96,7 +96,7 @@ An example's pick lock (<stem>.lock.toml, beside its source) does not match what
 now: a catalog, std/ or the solver changed a pick, or an example has no lock yet. A pick that moves
 is a change to the board, so a person reviews it:
   1. in the example's folder (examples/ for a one-file board), run
-         netsmith lock --update [<file.nsm>]
+         netsmith project lock --update [<file.nsm>]
      (it prints each part that changed, the old row and the new one);
   2. read the diff of the lock file, and commit it with the change that caused it.
 A lock named as an orphan has no source beside it any more: delete it. No board found means the

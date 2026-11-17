@@ -89,8 +89,8 @@ fn netsmith(cwd: &Path, args: &[&str]) {
     );
 }
 
-/// The example in a folder of its own, with `source` as its text: what `build --emit-design`
-/// and `fab --locked` write there.
+/// The example in a folder of its own, with `source` as its text: what `board build --emit-design`
+/// and `board fab --locked` write there.
 fn outputs(label: &str, source: &str) -> (TempDir, BTreeMap<PathBuf, Vec<u8>>) {
     let dir = TempDir::new(label);
     fs::write(dir.join("status_indicator.nsm"), source).unwrap();
@@ -98,7 +98,7 @@ fn outputs(label: &str, source: &str) -> (TempDir, BTreeMap<PathBuf, Vec<u8>>) {
     netsmith(
         &dir,
         &[
-            "build",
+            "board", "build",
             "status_indicator.nsm",
             "--out",
             "build",
@@ -110,7 +110,7 @@ fn outputs(label: &str, source: &str) -> (TempDir, BTreeMap<PathBuf, Vec<u8>>) {
     netsmith(
         &dir,
         &[
-            "fab",
+            "board", "fab",
             "status_indicator.nsm",
             "--out",
             "fab",

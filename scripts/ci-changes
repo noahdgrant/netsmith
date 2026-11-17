@@ -42,14 +42,15 @@
 #            `rust` on names the crates whose tests read it, when only some do: docs/LANGUAGE.md and
 #            docs/language/ (the guide, a file for each chapter), docs/symbol-gallery.html and the skills in .agents/skills are read by the netsmith-tools
 #            crate's tests (the guide's runner, the gallery) and by init.rs (`include_str!`), so they
-#            name `netsmith-tools` (its dependents, netsmith-cli, run too); an example names the crates whose tests read it
+#            name `netsmith-tools` (its dependents, netsmith-cli, run too, and its cli_table test
+#            reads the guide and the skills as well: every command they name parses); an example names the crates whose tests read it
 #            (`example_readers`, below: `any_example` for each, and the stage crates that include it).
 #            Empty means every test: a change with no Rust in it, or one with a path outside the
 #            crates that turns `rust` on and names no crate (std/, data/, the workspace manifest,
 #            Cargo.lock, the toolchain, scripts/ other than the editor's recipes and fixtures, the
 #            workflows, .claude/, a path nothing here knows). A push to main runs every test.
 #            When only `recipes` is on (no Rust), it is `netsmith-cli`, for `build` alone.
-#   locks    the `locks` job: scripts/check-example-locks.sh runs `netsmith lock --check` over every
+#   locks    the `locks` job: scripts/check-example-locks.sh runs `netsmith project lock --check` over every
 #            example (ADR 0100). A pick is what the solver, std/ and the catalogs in data/ say about
 #            the parts of an example, so it follows the same paths as `no_kicad`: the crates that
 #            are linked into the binary (the solver is netsmith-solve, the catalogs and the supply
@@ -70,7 +71,7 @@
 #            them runs before the design is made (the backend reads a design and writes sidecars; it feeds none).
 #   desktop  the `desktop` job: the desktop shell (desktop/, issue #799), a Cargo workspace of its own
 #            that no other job builds (its window needs WebKit and GTK). The job lints, builds and tests
-#            it on Linux, and its tests start the real `netsmith editor` of the `build` job's binary
+#            it on Linux, and its tests start the real `netsmith view editor` of the `build` job's binary
 #            (they read the line it prints when it listens). So it follows desktop/ and the editor's
 #            server: the netsmith-editor crate (not its page, web/, nor its tests), the backend's source
 #            (netsmith-workspace/src: what the server opens before it listens) and the `editor`
@@ -165,7 +166,7 @@ kicad_crate() {
 }
 
 # A crate after the solver that the design stage still runs (netsmith-geom, -pcb, -fab: the footprints): as
-# `kicad_crate`, but `netsmith lock` runs none of it, so the change does not start `locks`.
+# `kicad_crate`, but `netsmith project lock` runs none of it, so the change does not start `locks`.
 before_design() {
     kicad_crate "$@"
     locks=false
@@ -262,7 +263,7 @@ while IFS= read -r path; do
         # are linked into the binary and are read by every stage, the solver's among them.
         crates/netsmith-kicad/* | crates/netsmith-core/* | crates/netsmith-sexp/*) kicad_crate "${path#crates/*/}" "$path" ;;
         crates/netsmith-design/* | crates/netsmith-pipeline/* | crates/netsmith-tools/* | crates/netsmith-cli/*) kicad_crate "${path#crates/*/}" "$path" ;;
-        # After the solver: no pick of `netsmith lock` depends on them. The design stage loads the
+        # After the solver: no pick of `netsmith project lock` depends on them. The design stage loads the
         # footprints (netsmith-pcb, on netsmith-geom); the placer, the router, the fab driver, the
         # editor's backend (netsmith-workspace) and the netlist come after it.
         crates/netsmith-geom/* | crates/netsmith-fab/* | crates/netsmith-pcb/*) before_design "${path#crates/*/}" "$path" ;;

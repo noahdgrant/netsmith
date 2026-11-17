@@ -80,7 +80,7 @@ pub fn place_seeds(project: Option<&crate::project::Project>) -> u32 {
 pub struct Seeding {
     pub seeds: u32,
     pub budget: netsmith_core::job::Limit,
-    /// Where a caller that places through `board3d` wants the placer's progress lines
+    /// Where a caller that places through `dev board3d` wants the placer's progress lines
     /// ([`place_progress`]); `fab` tells its own. `None` tells nothing.
     pub progress: Option<fn(&str)>,
 }
@@ -228,7 +228,7 @@ fn stage_progress(
 }
 
 /// A line of the placer's or the router's progress ([`place_progress`], [`route_progress`]) as
-/// data, for a program that reads it (`fab --progress json`, issue #764): the board, the stage
+/// data, for a program that reads it (`board fab --progress json`, issue #764): the board, the stage
 /// (`placing`, `routing`), the count with its unit, what the step found if it says, the time
 /// since the stage began and the line a person reads.
 #[derive(Debug, Clone, PartialEq, serde::Serialize)]
@@ -254,7 +254,7 @@ thread_local! {
 
 /// Runs `work` with the placer's and the router's progress lines on this thread handed to
 /// `sink` as [`StageEvent`]s instead of told as text: what `--progress json` installs round a
-/// whole `fab` or `board3d`. The sink before it comes back after, also if `work` unwinds.
+/// whole `fab` or `dev board3d`. The sink before it comes back after, also if `work` unwinds.
 pub fn stage_events<R>(sink: std::rc::Rc<dyn Fn(&StageEvent)>, work: impl FnOnce() -> R) -> R {
     struct Put(Option<EventSink>);
     impl Drop for Put {
@@ -586,7 +586,7 @@ fn blockers_of(
     (blockers, (count, amount))
 }
 
-/// The board of `design` placed as `fab`, the editor's PCB view and `board3d` place it: the
+/// The board of `design` placed as `fab`, the editor's PCB view and `dev board3d` place it: the
 /// layout file's faces and locks tell the placer what to keep, and its positions are then put on
 /// the board. `lines_warn` makes an unmet requirement of the physical file a warning (ADR 0045).
 ///
@@ -649,7 +649,7 @@ pub fn place(
 }
 
 /// The board of a placement the layout file makes the placer refuse, with the layout file's
-/// places put on it: what the editor and `board3d` show, with its findings, in place of no board
+/// places put on it: what the editor and `dev board3d` show, with its findings, in place of no board
 /// (issue #779). Two refusals have one:
 ///
 /// - a lock that breaks a requirement of the physical file (a part dragged out of its window):

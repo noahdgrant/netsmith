@@ -2,7 +2,7 @@
 //! with no copper, whatever the placement check finds, and the moves a person made to it in
 //! KiCad brought back as entries of the layout file.
 //!
-//! [`export`] writes the board as `board3d` and the editor place it (a layout file the placer
+//! [`export`] writes the board as `dev board3d` and the editor place it (a layout file the placer
 //! refuses gives the board where the placer ended, with the file's places): the `.kicad_pcb`, the
 //! `.kicad_pro` beside it with the same name, and a list of the findings beside them
 //! (`<stem>.findings.txt`). The board says it is not for fabrication in its title block and in a
@@ -29,8 +29,7 @@ use serde::Serialize;
 use crate::board3d::Placing;
 
 /// The text the exported board carries in its title block and above its outline.
-pub const NOT_FOR_FABRICATION: &str =
-    "NOT FOR FABRICATION: placed by netsmith, not routed; `netsmith fab` writes the board to order";
+pub const NOT_FOR_FABRICATION: &str = "NOT FOR FABRICATION: placed by netsmith, not routed; `netsmith board fab` writes the board to order";
 
 /// What [`export`] wrote and what the placement check found on the board.
 #[derive(Debug, Serialize)]

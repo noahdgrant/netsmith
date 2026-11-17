@@ -1,5 +1,5 @@
 //! A placed board written to JSON and read back is the same board, and routes to the same
-//! copper (`netsmith fab --save-placed` and `netsmith route`).
+//! copper (`netsmith board fab --save-placed` and `netsmith dev route`).
 
 use netsmith_pcb::{Board, kicad_pcb};
 use netsmith_router::route;

@@ -22,7 +22,7 @@
 //! `symbols = "libs/acme.kicad_sym"`, `footprints = "libs/acme.pretty"`, paths relative to the
 //! file, `${NAME}` expanded from the environment and nothing else. The mapping then writes
 //! `symbol = "acme:Part"` and `footprint = "acme:Fp"`. KiCad's own `sym-lib-table` and
-//! `fp-lib-table` are not read as a second way to configure: `netsmith kicad-libs import
+//! `fp-lib-table` are not read as a second way to configure: `netsmith import kicad-libs libraries
 //! <sym-lib-table> [<fp-lib-table>]` prints the `[[library]]` stanzas to paste, which makes porting
 //! a KiCad project easy and is a generator and not a configuration. When it writes a board,
 //! `build` (and `fab`, and the editor's build and fab) writes `sym-lib-table` and `fp-lib-table`

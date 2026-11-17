@@ -27,7 +27,7 @@
 //! | `GET /api/pcb/fit?board=&part=` (`near=`, `step=`, `side=`) | where one part fits with every other part where it is on the placed board, what `netsmith layout fit` says: a pose for each turn and face, the nearest place to `near` where nothing is found or the closest try with what is in the way (`PcbFit`, issue #1002); nothing is written; `400` for a part the board has none of, a `near` that is neither a part nor `X,Y`, a `step` not above 0 or a `side` that is not `top` or `bottom` |
 //! | `GET /api/pcb/summary?board=` (`near=`, `within=`, `between=`) | the placed board summed up as data, what `netsmith layout summary` prints: totals, area and free space of each face, module boxes, decoupling distances, nets, the parts near a part and the distance between two pads (`PcbSummary`, issue #1003); `400` for a part or pad the board has none of |
 //! | `POST /api/pcb/place/cancel` | stops the placings of the PCB view that run (issue #764): a `scene` (or the placing of a `route`) that is placing answers `499` and keeps nothing; while a `scene` places, the socket carries `progress` with the task `place` (the placer's lines, as `fab` prints them) and `pcb_live` with the parts where the placer has them, and while a `route` routes, `pcb_live` with the copper laid so far |
-//! | `POST /api/progress` | a line of a run the editor did not start (`netsmith fab --to-editor`, an `OutsideProgress`), passed to every page as `outside`; `204` |
+//! | `POST /api/progress` | a line of a run the editor did not start (`netsmith board fab --to-editor`, an `OutsideProgress`), passed to every page as `outside`; `204` |
 //! | `POST /api/pcb/regenerate` | one module placed again with every other part held (issue #825): the proposal, the edit that makes it (sent to `edit` as any edit, one step of undo), where its parts go, the nets routed again, and the findings and totals before and after; nothing is written; while it runs the socket carries `progress` with the task `regenerate`; `409` for a stale stamp, `422` with the reason when it is refused |
 //! | `POST /api/pcb/routes` | an edit of the routes file (draw or move a track or via, delete, lock, unlock, put a record back for undo), as `netsmith routes` makes it (the changes may be of several nets: a track drawn with shoved copper), answered with the record of each net it changed before and after; `409` for a stale stamp, `422` with the reason when it is refused |
 //! | `GET /api/pcb/pours?board=` | the fill of the placed board's pours, planes and routes-file zones, by copper layer, as SVG paths (`PcbPours`), for the 2D view to draw under the copper; asked after the scene, since filling takes longer than placing |
@@ -35,11 +35,11 @@
 //! | `POST /api/pcb/shove` | whether a via, or the shapes a drag moves, may go where they are, by name what they are too near (`reason`), and with `shove` the unlocked shapes of the routes file moved aside (issue 1009); always `200`; nothing is written |
 //! | `POST /api/pcb/reroute` | the router's nets a track being drawn (a `PcbWalk`) crosses, routed again round it with everything else fixed, as a preview (issue 1009); nothing is written |
 //! | `GET /api/pcb/kicad?board=` | the board as `scene` has it placed and not routed, as a zip (`<board>.placed-kicad.zip`) of what `netsmith layout export` writes: the `.kicad_pcb`, the `.kicad_pro` and the list of the placement's findings, also while the placement has findings (issue #1001) |
-//! | `GET /api/pcb/3d?board=` | the board as `scene` has it placed, as glTF 2.0 binary (`model/gltf-binary`, ADR 0105), the bytes `netsmith board3d --glb` writes; the layout stamp of that placement in `X-Netsmith-Layout-Stamp` |
+//! | `GET /api/pcb/3d?board=` | the board as `scene` has it placed, as glTF 2.0 binary (`model/gltf-binary`, ADR 0105), the bytes `netsmith dev board3d --glb` writes; the layout stamp of that placement in `X-Netsmith-Layout-Stamp` |
 //! | `POST /api/build`, `/api/fab`, `/api/order` and their `/cancel` | the commands of the same names; a cancelled job answers `499` and keeps nothing it was making (ADR 0062) |
 //! | `GET /api/download`, `/api/order/download` | a file `fab` or an order wrote |
 //! | `POST /api/definition` | where the name under the cursor is defined |
-//! | `GET /api/view`, `POST /api/view`, `GET /api/view/picture` | the 3D view of the open page, as an agent reads and drives it, with the names of `netsmith render` (P8a of issue 430, docs/BOARD3D.md): its state as JSON, a change answered with the state once the page has drawn it, a PNG of the canvas; `409` with no page open, `504` when the page does not answer |
+//! | `GET /api/view`, `POST /api/view`, `GET /api/view/picture` | the 3D view of the open page, as an agent reads and drives it, with the names of `netsmith view 3d` (P8a of issue 430, docs/BOARD3D.md): its state as JSON, a change answered with the state once the page has drawn it, a PNG of the canvas; `409` with no page open, `504` when the page does not answer |
 //! | WebSocket `/api/events` | `rebuilt`, `analysing`, `progress`, `cancelled`, `pcb_live` and `outside` to the page; `check` from the page and `checked` back; `view` and `view_picture` to one page, `focus`, `view_state`, `view_error` and a binary frame (a picture) back |
 //!
 //! **The guard.** The server listens on `127.0.0.1` only. A request whose Host is not
@@ -78,7 +78,7 @@
 //! last ([`crate::pages`]) over its socket and waits for its answer: the page applies a change with
 //! the code its keys and palette run, so an agent sees what a person would, and the state it reads
 //! is the page's own. The server checks only the shape of a change; the page checks the ids, the
-//! section and the board against the scene it shows, as `netsmith render` checks them. Nothing is
+//! section and the board against the scene it shows, as `netsmith view 3d` checks them. Nothing is
 //! written and the design does not change: the view is read-only (ADR 0105).
 //!
 //! **Long jobs do not hold the server.** Routing, `fab`, a build and a compare run on a thread
@@ -786,7 +786,7 @@ fn live(s: &Shared) -> crate::backend::Show {
     })
 }
 
-/// A line of a run the editor did not start (`netsmith fab --to-editor`, issue #764), passed to
+/// A line of a run the editor did not start (`netsmith board fab --to-editor`, issue #764), passed to
 /// every page as `outside`.
 async fn outside_progress(
     State(s): State<Shared>,
@@ -1332,7 +1332,7 @@ async fn view_change(
     };
     if change.theme.is_some() {
         return Err(ApiError::bad_request(
-            "`theme` cannot be changed here: the editor's theme is the person's own setting for the whole page, not a view of the board. `GET /api/view` says which it is (light or dark); `netsmith render --theme` draws a picture in either",
+            "`theme` cannot be changed here: the editor's theme is the person's own setting for the whole page, not a view of the board. `GET /api/view` says which it is (light or dark); `netsmith view 3d --theme` draws a picture in either",
         ));
     }
     if change.ortho.is_some() && change.perspective.is_some() && change.ortho == change.perspective

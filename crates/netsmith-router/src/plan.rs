@@ -45,7 +45,7 @@
 //! **When** ([`crate::route::CoarsePlan`], `RouteOptions::plan`): off by default. `EveryTry`
 //! follows the plan on every try; `FromSecondTry` routes the first order again with it as the
 //! second try, as the escape lanes do, so a board that routes on its first try is unchanged.
-//! `netsmith route --plan every|later` turns it on for experiments.
+//! `netsmith dev route --plan every|later` turns it on for experiments.
 //!
 //! # Measured (issue #431, S10, 2026-11-13)
 //!

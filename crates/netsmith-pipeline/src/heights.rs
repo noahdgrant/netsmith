@@ -11,7 +11,7 @@
 //! say that a pass rests on a standard and not on the part.
 //!
 //! **A standard height under a limit** (ADR 0106). Where the standard's maximum fits the limit,
-//! the part passes, and `fab`, `fab-notes.txt` and `board3d` say that the pass is the
+//! the part passes, and `fab`, `fab-notes.txt` and `dev board3d` say that the pass is the
 //! standard's (`Board::standard_passes`). Where it does not, the part is unchecked, as a part of
 //! unknown height is, with the standard's figure in the message: a part in that package may be
 //! lower. It is never `TooTall`, and the placer does not read it.
@@ -29,7 +29,7 @@
 //! - *A limit.* `Keepout` has `.max_height`, one value above zero. A keepout that states it and
 //!   none of `.tracks`, `.vias`, `.copper` and `.parts` forbids nothing else (owner,
 //!   2026-11-04); one that states neither is still the error "forbids nothing". A height-only
-//!   keepout is not exported to KiCad as a rule area (owner, 2026-11-04). `netsmith dxf import`
+//!   keepout is not exported to KiCad as a rule area (owner, 2026-11-04). `netsmith import dxf`
 //!   reads no limit from a drawing, since a DXF has no height on a 2D loop.
 //! - *Both faces.* `.layers` names the faces a limit applies to: `top`, `bottom`, or `all` (the
 //!   default). A limit on inner layers only limits no face and is an error. A part is counted
@@ -39,7 +39,7 @@
 //!   height whose body (`F.Fab`, else the courtyard) overlaps a limit on its face and is over
 //!   it by more than half a micrometre; it stops `fab`. `Board::heights_unchecked` lists the
 //!   parts with no height under a limit: a warning in `fab`, `fab-notes.txt` and the editor
-//!   (`height_unchecked`), an error when constraints are strict (`fab --constraints error` or
+//!   (`height_unchecked`), an error when constraints are strict (`board fab --constraints error` or
 //!   `constraints = "error"` written in the manifest; `--constraints warn` wins; the owner's
 //!   reading, 2026-11-03). A label has no body and is left out.
 //! - *The placer.* The annealer keeps a part of known height out of a zone it is over, on its

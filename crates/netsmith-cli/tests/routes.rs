@@ -69,14 +69,14 @@ fn imported(tag: &str) -> TempDir {
     for name in ["led.nsm", "led.lock.toml"] {
         fs::copy(repo().join("examples").join(name), dir.join(name)).unwrap();
     }
-    ok(&netsmith(&dir, &["fab", "led.nsm", "--locked", "--out", "first"]));
+    ok(&netsmith(&dir, &["board", "fab", "led.nsm", "--locked", "--out", "first"]));
     let said = ok(&netsmith(
         &dir,
         &[
             "routes",
             "import",
             "first/LedExample/LedExample.kicad_pcb",
-            "--into",
+            "--file",
             "led.nsm",
         ],
     ));
@@ -95,7 +95,7 @@ fn a_board_imported_from_its_own_fab_is_drawn_again_with_nothing_routed() {
     assert!(layout.contains("source = \"import\""), "{layout}");
     assert!(layout.contains("at = [9.85, 4.6]"), "{layout}");
 
-    let said = ok(&netsmith(&dir, &["fab", "led.nsm", "--locked", "--out", "second"]));
+    let said = ok(&netsmith(&dir, &["board", "fab", "led.nsm", "--locked", "--out", "second"]));
     assert!(said.contains("LedExample: routing: 0 connections"), "{said}");
     assert!(said.contains("design rules check: passed"), "{said}");
     assert!(!said.contains("warning: led.routes.toml"), "{said}");
@@ -105,7 +105,7 @@ fn a_board_imported_from_its_own_fab_is_drawn_again_with_nothing_routed() {
     assert_eq!(first, second);
 
     // `show` lists the records and says the router has nothing left.
-    let shown = ok(&netsmith(&dir, &["routes", "show", "--into", "led.nsm"]));
+    let shown = ok(&netsmith(&dir, &["routes", "show", "--file", "led.nsm"]));
     assert!(shown.contains("net GND (locked): 4 track(s)"), "{shown}");
     assert!(shown.contains("the router would route 0 connection(s)"), "{shown}");
 }
@@ -120,7 +120,7 @@ fn a_track_that_shorts_another_net_is_refused_and_the_file_kept() {
         &[
             "routes",
             "add-track",
-            "--into",
+            "--file",
             "led.nsm",
             "--net",
             "VCC",
@@ -142,7 +142,7 @@ fn a_track_that_shorts_another_net_is_refused_and_the_file_kept() {
     let run = netsmith(
         &dir,
         &[
-            "routes", "add-via", "--into", "led.nsm", "--net", "NOPE", "--at", "1,1",
+            "routes", "add-via", "--file", "led.nsm", "--net", "NOPE", "--at", "1,1",
         ],
     );
     assert_eq!(run.status.code(), Some(1), "{}", text(&run));
@@ -154,7 +154,7 @@ fn a_locked_shape_or_net_is_not_deleted_until_unlocked() {
     let routes = |args: &[&str]| {
         let mut all = vec!["routes"];
         all.extend_from_slice(args);
-        all.extend_from_slice(&["--into", "led.nsm", "--net", "VCC"]);
+        all.extend_from_slice(&["--file", "led.nsm", "--net", "VCC"]);
         netsmith(&dir, &all)
     };
     // The import locks every net: its record is not deleted.
@@ -167,7 +167,7 @@ fn a_locked_shape_or_net_is_not_deleted_until_unlocked() {
     assert!(text(&run).contains("is locked"), "{}", text(&run));
     ok(&routes(&["unlock", "--track", "1"]));
     ok(&routes(&["delete", "--track", "1"]));
-    let shown = ok(&netsmith(&dir, &["routes", "show", "--into", "led.nsm"]));
+    let shown = ok(&netsmith(&dir, &["routes", "show", "--file", "led.nsm"]));
     assert!(shown.contains("net VCC: 3 track(s)"), "{shown}");
 }
 
@@ -180,7 +180,7 @@ fn fab_says_a_record_whose_pads_moved_and_routes_the_net_again() {
     assert_ne!(moved, text_of);
     fs::write(&layout, moved).unwrap();
 
-    let said = ok(&netsmith(&dir, &["fab", "led.nsm", "--locked", "--out", "moved"]));
+    let said = ok(&netsmith(&dir, &["board", "fab", "led.nsm", "--locked", "--out", "moved"]));
     assert!(
         said.contains(
             "warning: led.routes.toml: the pads of net `GND` are not where the routes file's record was written"
@@ -204,15 +204,15 @@ fn routes_lock_writes_a_record_whose_pads_moved_again() {
         .unwrap()
         .to_string();
     fs::write(&file, routes.replacen(&hash, "\"0000000000000000\"", 1)).unwrap();
-    let notes = |dir: &Path| ok(&netsmith(dir, &["routes", "show", "--into", "led.nsm"]));
+    let notes = |dir: &Path| ok(&netsmith(dir, &["routes", "show", "--file", "led.nsm"]));
     assert!(notes(&dir).contains("the pads of net `GND` are not where"));
 
     ok(&netsmith(
         &dir,
-        &["routes", "lock", "--into", "led.nsm", "--net", "GND"],
+        &["routes", "lock", "--file", "led.nsm", "--net", "GND"],
     ));
     assert_eq!(fs::read_to_string(&file).unwrap(), routes);
-    let said = ok(&netsmith(&dir, &["fab", "led.nsm", "--locked", "--out", "again"]));
+    let said = ok(&netsmith(&dir, &["board", "fab", "led.nsm", "--locked", "--out", "again"]));
     assert!(!said.contains("are not where"), "{said}");
     assert!(said.contains("LedExample: routing: 0 connections"), "{said}");
 }
@@ -226,11 +226,11 @@ fn led(tag: &str) -> TempDir {
     dir
 }
 
-/// `netsmith routes <args> --into led.nsm`.
+/// `netsmith routes <args> --file led.nsm`.
 fn routes(dir: &Path, args: &[&str]) -> Output {
     let mut all = vec!["routes"];
     all.extend_from_slice(args);
-    all.extend_from_slice(&["--into", "led.nsm"]);
+    all.extend_from_slice(&["--file", "led.nsm"]);
     netsmith(dir, &all)
 }
 
@@ -304,7 +304,7 @@ fn add_zone_writes_a_zone_that_show_lists_and_fab_draws() {
     // `fab` writes them into the board and draws them; GND has no connection left to route.
     let said = ok(&netsmith(
         &dir,
-        &["fab", "led.nsm", "--locked", "--out", "out"],
+        &["board", "fab", "led.nsm", "--locked", "--out", "out"],
     ));
     assert!(said.contains("LedExample: routing: 2 connections"), "{said}");
     assert!(said.contains("netsmith filled GND on F.Cu"), "{said}");
@@ -408,7 +408,7 @@ fn a_zone_over_another_nets_pad_keeps_its_clearance_round_it_and_is_no_short() {
     ));
     let said = ok(&netsmith(
         &dir,
-        &["fab", "led.nsm", "--locked", "--out", "out"],
+        &["board", "fab", "led.nsm", "--locked", "--out", "out"],
     ));
     assert!(said.contains("design rules check: passed"), "{said}");
 }
@@ -516,7 +516,7 @@ fn add_track_draws_on_an_inner_signal_layer_and_refuses_a_plane() {
                 "1.0,1.0",
                 "--to",
                 "2.0,1.0",
-                "--into",
+                "--file",
                 "six_layer.nsm",
             ],
         )
@@ -528,6 +528,6 @@ fn add_track_draws_on_an_inner_signal_layer_and_refuses_a_plane() {
     ok(&add("inner2"));
     let file = fs::read_to_string(dir.join("six_layer.routes.toml")).unwrap();
     assert!(file.contains("layer = \"inner2\""), "{file}");
-    let shown = ok(&netsmith(&dir, &["routes", "show", "--into", "six_layer.nsm"]));
+    let shown = ok(&netsmith(&dir, &["routes", "show", "--file", "six_layer.nsm"]));
     assert!(shown.contains("inner2"), "{shown}");
 }

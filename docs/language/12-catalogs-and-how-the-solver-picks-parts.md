@@ -164,7 +164,7 @@ The JLCPCB catalogs hold 1% resistors (0402 E24 from 10 ohm to 1 Mohm, Basic 060
 
 ### Catalog files
 
-The rows of a catalog are data, not code. A catalog is one CSV file named after it: `resistor.csv` is the `resistor` catalog. The standard catalogs are `data/jlcpcb/catalog/*.csv` in netsmith's source and ship inside the program. A project adds files of its own, which is how it gets a part netsmith does not list. Every `*.csv` file in the project's `catalogs/` folder is one, named by its file name: `catalogs/mcu.csv` is the catalog `mcu` (ADR 0022). `netsmith.toml` needs no line for it, because the key `catalog_dirs` has the default `["catalogs"]` (`netsmith init` writes it out, so that a reader sees it):
+The rows of a catalog are data, not code. A catalog is one CSV file named after it: `resistor.csv` is the `resistor` catalog. The standard catalogs are `data/jlcpcb/catalog/*.csv` in netsmith's source and ship inside the program. A project adds files of its own, which is how it gets a part netsmith does not list. Every `*.csv` file in the project's `catalogs/` folder is one, named by its file name: `catalogs/mcu.csv` is the catalog `mcu` (ADR 0022). `netsmith.toml` needs no line for it, because the key `catalog_dirs` has the default `["catalogs"]` (`netsmith project init` writes it out, so that a reader sees it):
 
 ```toml
 [project]
@@ -613,4 +613,4 @@ Parts are taken in path order, so the first kind to use the name is the one that
 
 ### Why a part has its row
 
-`netsmith explain reg.inductor` says why the solver took the row it did for a part, and the rows before it that it passed over, with the relation that refused each (`file:line`) or the column of the design that the row does not fit (see _The solved values_ in the commands chapter). When no row works for a part, the build fails with the closest row and the relation it failed, and `netsmith explain <part>` lists every row the part's first turn passed over, so the rows that miss by a little and the rows that miss by a lot can be told apart; `build --emit-solved` writes the same record as JSON.
+`netsmith board explain reg.inductor` says why the solver took the row it did for a part, and the rows before it that it passed over, with the relation that refused each (`file:line`) or the column of the design that the row does not fit (see _The solved values_ in the commands chapter). When no row works for a part, the build fails with the closest row and the relation it failed, and `netsmith board explain <part>` lists every row the part's first turn passed over, so the rows that miss by a little and the rows that miss by a lot can be told apart; `board build --emit-solved` writes the same record as JSON.

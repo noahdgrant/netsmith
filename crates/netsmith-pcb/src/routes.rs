@@ -59,8 +59,8 @@
 //! islands as `islands` says, as KiCad's does (that module says where they differ). A zone is not an obstacle to the router: its fill keeps its clearance from
 //! whatever the router draws, as KiCad's does.
 //!
-//! **What the copper does.** `fab`, the editor's PCB view and `netsmith route` (through the
-//! placed board `fab --save-placed` saves) put every shape of a record on the placed board
+//! **What the copper does.** `fab`, the editor's PCB view and `netsmith dev route` (through the
+//! placed board `board fab --save-placed` saves) put every shape of a record on the placed board
 //! before the router runs ([`apply_routes`]): the router keeps it as an obstacle of its net
 //! and never moves or removes it, and routes only the connections it leaves (the ratsnest
 //! counts the copper already there). The passes after the router (meanders, arcs, teardrops)

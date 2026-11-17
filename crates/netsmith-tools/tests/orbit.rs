@@ -2050,7 +2050,7 @@ mod board {
         }
     }
 
-    /// The same, by `netsmith-netlist`'s `compare` (what `netsmith compare` runs), with the
+    /// The same, by `netsmith-netlist`'s `compare` (what `netsmith board compare` runs), with the
     /// designators paired by `reference/parts.toml` and the value and footprint left out of the
     /// comparison: the verdict is a match, and the report names no net.
     #[test]
@@ -2074,7 +2074,7 @@ mod board {
         let built = built();
         // J2 pad 4 carries PB2 in ORBIT's board; say it carried the net of pad 6 (PB0).
         PORT.assert_sees_a_wrong_net(&built, ("J2", "4"), ("J2", "6"));
-        // And the netsmith compare sees a design with one pin moved: the source with the J2
+        // And the netsmith board compare sees a design with one pin moved: the source with the J2
         // pad 4 joined to the net of pad 6 is a different circuit.
         let moved = source().replace(
             "    .header_east.p4 ~ .mcu.pb2\n",

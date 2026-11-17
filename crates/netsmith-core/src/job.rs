@@ -96,7 +96,7 @@
 //! (the placer: one run of the annealer in a fixed outline) and is counted by [`spend_try`]. A
 //! limit of tries gives the same result on every machine; a limit of time does not, and a call
 //! that ends within it gives the same bytes as with none. The placer is its only user: `fab`
-//! and `board3d` run each board's placing under `--place-budget` (`place_budget` in
+//! and `dev board3d` run each board's placing under `--place-budget` (`place_budget` in
 //! `netsmith.toml`).
 //!
 //! **What a step has found.** A [`Work`] may carry a `detail`, a sentence a person reads, for a

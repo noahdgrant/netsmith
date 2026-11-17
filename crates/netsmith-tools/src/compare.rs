@@ -1,7 +1,7 @@
-//! `netsmith compare`: whether two designs are the same circuit (ADR 0017).
+//! `netsmith board compare`: whether two designs are the same circuit (ADR 0017).
 //!
 //! Each side is a `.kicad_sch` (read with its sheets from the files, with no KiCad: #855), a `.kicad_pcb`, the
-//! XML of a KiCad netlist, or a `.nsm` file, whose board is built as `netsmith build`
+//! XML of a KiCad netlist, or a `.nsm` file, whose board is built as `netsmith board build`
 //! does, held to the pick lock beside the source (#743). The comparison itself is in `netsmith-netlist`, whose module docs say where it
 //! departs from ADR 0017 (#67): a two-pad part without polarity may have its pads swapped,
 //! which a match lists (`swapped` in the JSON), and the search bound grows with the board.

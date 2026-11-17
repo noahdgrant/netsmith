@@ -69,7 +69,7 @@
 //! **What KiCad is still needed for** (the user's direction, 2026-11-02: netsmith must not need
 //! KiCad installed, and KiCad stays a supported export and a cross-check, never a requirement):
 //! the symbol and footprint libraries only for a KiCad id of a project's `kicad.toml` that netsmith
-//! does not make; `kicad-cli` for the optional cross-checks (ERC, DRC) and `netsmith compare` on a
+//! does not make; `kicad-cli` for the optional cross-checks (ERC, DRC) and `netsmith board compare` on a
 //! `.kicad_sch`. The tests that need KiCad skip themselves when it is absent.
 
 use std::collections::HashMap;

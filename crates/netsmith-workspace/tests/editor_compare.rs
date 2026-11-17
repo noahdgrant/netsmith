@@ -1052,7 +1052,7 @@ fn hostile(label: &str) -> (Repo, TempDir, Workspace) {
     fs::remove_file(r.project.join("src/main.nsm")).unwrap();
     symlink(outside.join("secret.nsm"), r.project.join("src/main.nsm")).unwrap();
     symlink(&*outside.join("folder"), r.project.join("src/linked")).unwrap();
-    // The link `netsmith init` writes for the agents' skills: removed like the others, but nothing the analysis would miss.
+    // The link `netsmith project init` writes for the agents' skills: removed like the others, but nothing the analysis would miss.
     fs::create_dir_all(r.project.join(".claude")).unwrap();
     symlink(outside.join("folder"), r.project.join(".claude/skills")).unwrap();
     r.commit("hostile");

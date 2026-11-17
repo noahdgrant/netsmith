@@ -87,7 +87,7 @@ pub struct Proposal {
 }
 
 /// What of the router's copper kept on disk a route of the regenerated board keeps
-/// (`netsmith_router::carry::carry_copper`, as the editor and `fab --reuse-routes` route it).
+/// (`netsmith_router::carry::carry_copper`, as the editor and `board fab --reuse-routes` route it).
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct KeptCopper {
     /// The kept file.
@@ -343,7 +343,7 @@ pub fn propose(
 
 /// What of the router's copper kept on disk for the source of `layout_file` a route of `after`
 /// (the regenerated board, with no copper) keeps: every net but `nets` (the regenerated parts')
-/// and those the placement changed is carried, as the editor and `fab --reuse-routes` carry it.
+/// and those the placement changed is carried, as the editor and `board fab --reuse-routes` carry it.
 /// `None` when there is no kept file.
 pub fn kept_copper(
     layout_file: &Path,

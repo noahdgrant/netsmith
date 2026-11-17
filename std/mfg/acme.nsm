@@ -6,7 +6,7 @@
 //! publishes none (`std::mfg::jlcpcb`, ADR 0111). Every number below was chosen, not sourced,
 //! and stands for no real fabricator's capability. A board on an ACME process cannot be
 //! ordered: `fab` writes its package and says in `fab-notes.txt` that it is not for ordering,
-//! and `fab --order` refuses it (ADR 0112).
+//! and `project order` refuses it (ADR 0112).
 //!
 //! The numbers were chosen to be plausible:
 //!
@@ -33,7 +33,7 @@ import std::mfg::stackup::{InnerLayer, Pour, Stackup}
 /// prepreg 2116 0.1088 mm, outer copper 0.035 mm, with 0.0152 mm of copper on each of the six
 /// inner layers: 1.6064 mm in all.
 interface EightLayer {
-    /// Who makes it: no one. ACME is fictional, and `fab --order` refuses a board on it.
+    /// Who makes it: no one. ACME is fictional, and `project order` refuses a board on it.
     .fabricator: String
     .source:     String
     .fabricator &= "ACME"
@@ -234,7 +234,7 @@ interface EightLayer {
 /// prepreg 2116 0.1088 mm, core 0.2 mm, prepreg 3313 0.0994 mm, outer copper 0.035 mm, with
 /// 0.0152 mm of copper on each of the eight inner layers: 1.6168 mm in all.
 interface TenLayer {
-    /// Who makes it: no one. ACME is fictional, and `fab --order` refuses a board on it.
+    /// Who makes it: no one. ACME is fictional, and `project order` refuses a board on it.
     .fabricator: String
     .source:     String
     .fabricator &= "ACME"

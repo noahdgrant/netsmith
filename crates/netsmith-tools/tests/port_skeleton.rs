@@ -1,4 +1,4 @@
-//! `netsmith port skeleton` (#452) over the reference boards of the four ports: one member for
+//! `netsmith import port skeleton` (#452) over the reference boards of the four ports: one member for
 //! each footprint, one join for each net, the original's net names, and a parts file that
 //! `PortParts` reads back. The joins are read back from the source and are the original's nets.
 

@@ -1,4 +1,4 @@
-//! `netsmith dxf import`: the board outline, cutouts and mounting holes of an enclosure's DXF
+//! `netsmith import dxf`: the board outline, cutouts and mounting holes of an enclosure's DXF
 //! file as source for the board's physical file (ADR 0045, step C0 piece 3, ADR 0048).
 //!
 //! The reader is `netsmith-dxf`. What this adds is the translation into what the language
@@ -38,7 +38,7 @@ use std::path::Path;
 use netsmith_dxf::{ArcGeom, Options, Outline, Polygon, RoundedRect, Units, read_outline};
 use netsmith_fabricate::physical::{Edit, Section};
 
-/// What `dxf import` is asked for.
+/// What `import dxf` is asked for.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Request {
     /// The outline layers; none lets the reader choose if there is only one possible.
@@ -144,7 +144,7 @@ pub fn import(text: &str, name: &str, request: &Request) -> Result<Imported, Str
     )
     .map_err(|e| format!("{name}: {e}"))?;
 
-    let mut imported = translate(&outline, name, "dxf import")?;
+    let mut imported = translate(&outline, name, "import dxf")?;
     let mut head = vec![
         format!(
             "units: {} ({})",
@@ -341,7 +341,7 @@ pub(crate) fn translate(
     })
 }
 
-/// What `dxf import` prints for a person to paste.
+/// What `import dxf` prints for a person to paste.
 pub fn render(imported: &Imported, board: Option<&str>, file: &str, written: bool) -> String {
     let mut out = String::new();
     let _ = writeln!(

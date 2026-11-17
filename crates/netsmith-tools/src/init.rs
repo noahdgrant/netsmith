@@ -1,4 +1,4 @@
-//! `netsmith init`: scaffold a project in a directory, like `cargo init` (ADR 0011).
+//! `netsmith project init`: scaffold a project in a directory, like `cargo init` (ADR 0011).
 //!
 //! It never overwrites a file. `netsmith.toml` and `src/main.nsm` are the project, so if
 //! either exists it refuses, lists what exists, and writes nothing. `README.md` is left
@@ -7,7 +7,7 @@
 //! `.agents/skills/` (linked from `.claude/skills`) and the language guide (ADR 0015): its index
 //! as `docs/netsmith/LANGUAGE.md` and its chapters in `docs/netsmith/language/`. Each of those
 //! that exists is kept, and `CLAUDE.md` is written as one line importing `AGENTS.md`, which is
-//! what Claude Code reads (issue #797). `netsmith init --refresh` brings those files up to a
+//! what Claude Code reads (issue #797). `netsmith project refresh` brings those files up to a
 //! newer netsmith (see [`refresh`]); `init` itself still never overwrites.
 
 use std::{fs, io, path::Path};
@@ -102,7 +102,7 @@ pub fn init(dir: &Path, name: Option<&str>) -> Result<String, String> {
     };
     if !is_project_name(&name) {
         return Err(format!(
-            "`{name}` cannot be a project name (letters, digits, `-` and `_`): say which with `netsmith init --name <name>`"
+            "`{name}` cannot be a project name (letters, digits, `-` and `_`): say which with `netsmith project init --name <name>`"
         ));
     }
 
@@ -251,7 +251,7 @@ pub fn init(dir: &Path, name: Option<&str>) -> Result<String, String> {
     report.push_str(&link_skills(&dir, symlink_dir)?);
     if refresh::write_record(&dir)? {
         report.push_str(&format!(
-            "created {}, what netsmith wrote, so that `netsmith init --refresh` after an upgrade knows the files you have not edited\n",
+            "created {}, what netsmith wrote, so that `netsmith project refresh` after an upgrade knows the files you have not edited\n",
             refresh::RECORD
         ));
     }
@@ -260,7 +260,7 @@ pub fn init(dir: &Path, name: Option<&str>) -> Result<String, String> {
         report.push_str("note: this is not a git repository; netsmith did not run git (run `git init` if you want one)\n");
     }
     report.push_str(
-        "\nnext:\n  netsmith build   # a KiCad schematic in out/\n  netsmith editor  # edit the source and see the board in a browser\n  netsmith fab     # files to upload to JLCPCB in fab/\n",
+        "\nnext:\n  netsmith board build   # a KiCad schematic in out/\n  netsmith view editor   # edit the source and see the board in a browser\n  netsmith board fab     # files to upload to JLCPCB in fab/\n",
     );
     Ok(report)
 }
@@ -350,10 +350,10 @@ fn readme(name: &str) -> String {
          `import src::power::Name`.\n\
          \n\
          ```sh\n\
-         netsmith build   # a KiCad schematic in out/\n\
-         netsmith editor  # edit the source and see the board in a browser\n\
-         netsmith fab     # files to upload to JLCPCB in fab/\n\
-         netsmith fab --order first  # only the boards of an order in netsmith.toml, with quantities\n\
+         netsmith board build          # a KiCad schematic in out/\n\
+         netsmith view editor          # edit the source and see the board in a browser\n\
+         netsmith board fab            # files to upload to JLCPCB in fab/\n\
+         netsmith project order first  # only the boards of an order in netsmith.toml, with quantities\n\
          ```\n\
          \n\
          Real parts come from catalogs. A part the standard JLCPCB catalogs lack goes in a CSV\n\
@@ -362,8 +362,8 @@ fn readme(name: &str) -> String {
          \n\
          For people and coding agents: `AGENTS.md` says how to work here, `docs/netsmith/LANGUAGE.md`\n\
          is the language guide, and `.agents/skills/` has the netsmith skills (`.claude/skills`\n\
-         links to it). They are yours to edit: `netsmith init` never overwrites them, and after an\n\
-         upgrade `netsmith init --refresh` rewrites only those you have not edited.\n"
+         links to it). They are yours to edit: `netsmith project init` never overwrites them, and after an\n\
+         upgrade `netsmith project refresh` rewrites only those you have not edited.\n"
     )
 }
 
@@ -371,7 +371,7 @@ fn readme(name: &str) -> String {
 /// choose boards and quantities for a fab order is where a person looks for it.
 fn order_example(board: &str) -> String {
     format!(
-        "\n# An order is the boards to make in one run of `netsmith fab --order first`, and how many of each.\n# A key is a board as its folder is named (`Board`, or `System/member`); a system's name alone is all its members.\n#\n# [order.first.boards]\n# {board} = 5\n"
+        "\n# An order is the boards to make in one run of `netsmith project order first`, and how many of each.\n# A key is a board as its folder is named (`Board`, or `System/member`); a system's name alone is all its members.\n#\n# [order.first.boards]\n# {board} = 5\n"
     )
 }
 

@@ -1,4 +1,4 @@
-//! The gate of the Power Manifold charger module port: the board `netsmith fab` writes for the
+//! The gate of the Power Manifold charger module port: the board `netsmith board fab` writes for the
 //! project in `examples/power_manifold_charger` must match the original where the owner said it
 //! must (the holes and the parts of `reference/must_match.toml`: the programming pads J2, the
 //! card-edge connector J3 and the USB-C receptacle J4), as judged by the parity checker
@@ -18,7 +18,7 @@ fn project() -> PathBuf {
 /// dense and does not route completely in this time; the parts' places do not depend on it).
 const ROUTE_SECONDS: &str = "20";
 
-/// Builds the example with `netsmith fab --locked` and no KiCad (the project needs none, ADR
+/// Builds the example with `netsmith board fab --locked` and no KiCad (the project needs none, ADR
 /// 0097) and gates on the checker: the holes, J2, J3 and J4 must be `ok` on the board it writes,
 /// complete or INCOMPLETE; the outline's corner radius and elements are the two known failures;
 /// the committed overlay must be the picture of that board.
@@ -30,7 +30,7 @@ fn power_manifold_pcb_matches_the_original_where_it_can() {
         parts: 89,
         min_ok: 144,
         route_seconds: ROUTE_SECONDS,
-        regenerate: "from examples/power_manifold_charger run `netsmith fab --locked`, then\n  netsmith \
+        regenerate: "from examples/power_manifold_charger run `netsmith board fab --locked`, then\n  netsmith \
                      parity fab/PowerManifoldCharger/PowerManifoldCharger.kicad_pcb \
                      --table reference/placements.toml --svg \
                      reference/parity-overlay.svg",

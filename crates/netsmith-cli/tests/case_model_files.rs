@@ -41,7 +41,7 @@ fn netsmith(cwd: &Path, args: &[&str]) -> std::process::Output {
 #[test]
 fn check_warns_of_a_missing_case_model() {
     let root = project("case-check-missing", SHELL);
-    let run = netsmith(&root, &["check", "src/main.nsm"]);
+    let run = netsmith(&root, &["board", "check", "src/main.nsm"]);
     let err = String::from_utf8_lossy(&run.stderr);
     assert!(run.status.success(), "{err}");
     assert!(
@@ -57,7 +57,7 @@ fn fab_with_strict_constraints_refuses_a_missing_case_model() {
     let run = netsmith(
         &root,
         &[
-            "fab",
+            "board", "fab",
             "src/main.nsm",
             "--constraints",
             "error",

@@ -12,7 +12,7 @@ pub struct Args {
 #[derive(Debug, PartialEq, Subcommand)]
 pub enum Command {
     /// Print the [[library]] stanzas for kicad.toml from a KiCad project's library tables (ADR 0021).
-    Import(ImportArgs),
+    Libraries(LibrariesArgs),
     /// Print the [[model]] rows for netsmith.toml from the 3D models a footprint library table's libraries name (the model table, issue #1005).
     ///
     /// Each footprint's first `(model ...)` line that names a STEP file becomes a row with its offset and rotation; notes on stderr count the footprints left out (no model line, a model that is not STEP, a scaled model).
@@ -30,7 +30,7 @@ pub struct ModelsArgs {
 }
 
 #[derive(Debug, PartialEq, ClapArgs)]
-pub struct ImportArgs {
+pub struct LibrariesArgs {
     /// The project's symbol library table.
     #[arg(value_name = "SYM-LIB-TABLE")]
     pub sym_lib_table: String,
@@ -41,7 +41,7 @@ pub struct ImportArgs {
 
 pub fn run(args: Args) -> ExitCode {
     match args.command {
-        Command::Import(a) => run_kicad_libs_import(&a.sym_lib_table, a.fp_lib_table.as_deref()),
+        Command::Libraries(a) => run_kicad_libs_import(&a.sym_lib_table, a.fp_lib_table.as_deref()),
         Command::Models(a) => run_kicad_libs_models(&a.fp_lib_table, &a.libraries),
     }
 }
@@ -89,34 +89,36 @@ fn run_kicad_libs_import(sym: &str, fp: Option<&str>) -> ExitCode {
 
 #[cfg(test)]
 mod tests {
+    use crate::commands::common::testing::Leaf;
     use crate::commands::common::testing::parse;
-    use crate::commands::{Command, kicad_libs};
+    use crate::commands::kicad_libs;
 
     #[test]
     fn kicad_libs_import_takes_one_or_two_library_tables() {
         assert_eq!(
-            parse(&["kicad-libs", "import", "sym-lib-table"]),
-            Ok(Command::KicadLibs(kicad_libs::Args {
-                command: kicad_libs::Command::Import(kicad_libs::ImportArgs {
+            parse(&["import", "kicad-libs", "libraries", "sym-lib-table"]),
+            Ok(Leaf::KicadLibs(kicad_libs::Args {
+                command: kicad_libs::Command::Libraries(kicad_libs::LibrariesArgs {
                     sym_lib_table: "sym-lib-table".into(),
                     fp_lib_table: None
                 })
             }))
         );
         assert_eq!(
-            parse(&["kicad-libs", "import", "s", "f"]),
-            Ok(Command::KicadLibs(kicad_libs::Args {
-                command: kicad_libs::Command::Import(kicad_libs::ImportArgs {
+            parse(&["import", "kicad-libs", "libraries", "s", "f"]),
+            Ok(Leaf::KicadLibs(kicad_libs::Args {
+                command: kicad_libs::Command::Libraries(kicad_libs::LibrariesArgs {
                     sym_lib_table: "s".into(),
                     fp_lib_table: Some("f".into())
                 })
             }))
         );
-        assert!(parse(&["kicad-libs"]).is_err());
-        assert!(parse(&["kicad-libs", "export", "s"]).is_err());
-        assert!(parse(&["kicad-libs", "import", "s", "f", "g"]).is_err());
+        assert!(parse(&["import", "kicad-libs"]).is_err());
+        assert!(parse(&["import", "kicad-libs", "export", "s"]).is_err());
+        assert!(parse(&["import", "kicad-libs", "libraries", "s", "f", "g"]).is_err());
         assert_eq!(
             parse(&[
+                "import",
                 "kicad-libs",
                 "models",
                 "f",
@@ -125,7 +127,7 @@ mod tests {
                 "--library",
                 "b"
             ]),
-            Ok(Command::KicadLibs(kicad_libs::Args {
+            Ok(Leaf::KicadLibs(kicad_libs::Args {
                 command: kicad_libs::Command::Models(kicad_libs::ModelsArgs {
                     fp_lib_table: "f".into(),
                     libraries: vec!["a".into(), "b".into()]

@@ -236,7 +236,7 @@ button.tab { background: none; border: none; font: inherit; }
 .statusbar .unsaved { color: var(--text); }
 .unsaved-dot { width: 0.375rem; height: 0.375rem; border-radius: 50%; background: var(--accent); flex: none; }
 .statusbar .job-item { color: var(--accent-text); }
-/* A run from outside the editor that has ended (`fab --to-editor`, issue 764). */
+/* A run from outside the editor that has ended (`board fab --to-editor`, issue 764). */
 .statusbar .outside-item.ok { color: var(--text-muted); }
 .statusbar .outside-item.bad { color: var(--danger); }
 .statusbar .spinner { width: 0.625rem; height: 0.625rem; }

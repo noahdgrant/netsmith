@@ -1,8 +1,8 @@
-//! `netsmith view`: the 3D view of a running editor, driven from the command line (P8b of issue
+//! `netsmith view editor-3d`: the 3D view of a running editor, driven from the command line (P8b of issue
 //! 430; docs/BOARD3D.md, "Driving a running editor"). It is a client of the editor's `/api/view`
 //! routes (`netsmith_editor::api::ViewChange` is what it sends, `ViewState` what it reads), with
-//! the flags of `netsmith render` where they apply, so that an agent switches between the two by
-//! changing the verb: `render` draws a picture of the source with no editor, `view` shows the
+//! the flags of `netsmith view 3d` where they apply, so that an agent switches between the two by
+//! changing the verb: `view 3d` draws a picture of the source with no editor, `view editor-3d` shows the
 //! editor's page, the one a person looks at.
 //!
 //! **Nothing here is the design.** The routes move the camera, cut and light the picture and set
@@ -17,7 +17,7 @@ use std::{
 
 use netsmith_editor::api::{ViewChange, ViewState};
 
-/// What `netsmith view` was asked to do: read the state of the page, or change it first.
+/// What `netsmith view editor-3d` was asked to do: read the state of the page, or change it first.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Request {
     pub port: u16,
@@ -139,7 +139,7 @@ impl Editor {
         };
         if refused {
             format!(
-                "no editor is listening on 127.0.0.1:{port}: start one with `netsmith editor` (it prints its address; `--port <n>` says which to drive, {default} unless told otherwise) and open the page it prints",
+                "no editor is listening on 127.0.0.1:{port}: start one with `netsmith view editor` (it prints its address; `--port <n>` says which to drive, {default} unless told otherwise) and open the page it prints",
                 port = self.port,
                 default = crate::commands::common::DEFAULT_PORT
             )
@@ -187,7 +187,7 @@ impl Editor {
         let text = text.trim();
         if answer.status == 405 || (answer.status == 404 && method == "GET") {
             return format!(
-                "the editor on 127.0.0.1:{} has no /api/view: it is older than `netsmith view`, or not a netsmith editor; restart it with `netsmith editor`",
+                "the editor on 127.0.0.1:{} has no /api/view: it is older than `netsmith view editor-3d`, or not a netsmith editor; restart it with `netsmith view editor`",
                 self.port
             );
         }
@@ -201,7 +201,7 @@ impl Editor {
     }
 }
 
-/// The state as a few lines for a person (an agent that wants every field uses `--json`).
+/// The state as a few lines for a person (an agent that wants every field uses `--format json`).
 pub fn summary(state: &ViewState) -> String {
     let mut out = String::new();
     let mut line = |label: &str, value: String| out.push_str(&format!("{label}: {value}\n"));
@@ -282,7 +282,7 @@ pub fn summary(state: &ViewState) -> String {
     );
     line("theme", state.theme.clone());
     if let Some(command) = &state.command {
-        line("render", command.clone());
+        line("command", command.clone());
     }
     out
 }

@@ -1,4 +1,4 @@
-//! `netsmith port tables` (#560) as a command: it writes `netlist.xml`, `placements.toml` and a
+//! `netsmith import port tables` (#560) as a command: it writes `netlist.xml`, `placements.toml` and a
 //! new `source.toml` into the reference folder, holds the original against an existing
 //! `source.toml`, and with `--check` writes nothing and fails on a stale table. That the derived
 //! netlist is a port's own is tested in the library (`crates/netsmith-tools/tests/power_manifold.rs`).
@@ -29,7 +29,7 @@ const URL: &str = "https://raw.githubusercontent.com/owner/repo/0123456789abcdef
 
 fn run(dir: &TempDir, args: &[&str]) -> (Option<i32>, String) {
     let out: Output = Command::new(env!("CARGO_BIN_EXE_netsmith"))
-        .args(["port", "tables"])
+        .args(["import", "port", "tables"])
         .args(args)
         .current_dir(dir)
         .output()

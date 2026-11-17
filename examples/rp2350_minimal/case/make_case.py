@@ -13,7 +13,7 @@ The frame of both files is the base's: millimetres, z up, the origin at the oute
 corner of the base, the floor's underside at z = 0. The physical file places them in the
 board's frame (the outline's bottom-left corner on the board's top face): the base at
 (-WALL - GAP, -WALL - GAP, -FLOOR - STANDOFF - BOARD), the lid at the same x and y and
-z = LID_Z. Every figure below is from the board (`netsmith board3d --json` of the example)
+z = LID_Z. Every figure below is from the board (`netsmith dev board3d --format json` of the example)
 and is in the board's frame unless it says otherwise.
 """
 

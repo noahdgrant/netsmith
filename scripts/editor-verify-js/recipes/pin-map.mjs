@@ -1,6 +1,6 @@
 // The pin map of the selected part and the pick lock of the board, read only (ADR 0101, ADR 0100). The project has a part with three
 // pin requests (one locked in the pin file by hand, one held by it, one picked by this reading) and a pick lock that is not current.
-// Select the part in the schematic and read the panel's rows; run `netsmith lock --update` in the project as a person would, and the
+// Select the part in the schematic and read the panel's rows; run `netsmith project lock --update` in the project as a person would, and the
 // lock panel says it is current without the page being touched (the lock file is watched); delete it and it says it is absent; and a
 // request nothing offers shows the check's own message in the pin map. The editor writes neither file: the recipe checks their bytes.
 import { Hung, whenIdle } from '../settle.mjs';
@@ -62,7 +62,7 @@ export async function run({ page, shot, step, expect, project, binary }) {
   await pick(part.refdes);
   await page.waitForSelector('[data-testid="pin-map"]');
 
-  step('the pick lock is not current, and lists what `lock --check` would say');
+  step('the pick lock is not current, and lists what `project lock --check` would say');
   const lock = () =>
     page.evaluate(() => {
       const state = document.querySelector('[data-testid="pick-lock-state"]')?.getAttribute('data-state');
@@ -80,8 +80,8 @@ export async function run({ page, shot, step, expect, project, binary }) {
   expect(fs.readFileSync(src('main.pins.toml'), 'utf8') === pinsBefore, 'the pin file has the bytes it had');
   expect(fs.readFileSync(src('main.lock.toml'), 'utf8') === lockBefore, 'the lock has the bytes it had');
 
-  step('`netsmith lock --update` in the project, as a person runs it: the page says the lock is current without being touched');
-  execFileSync(binary, ['lock', '--update'], { cwd: project, stdio: 'pipe' });
+  step('`netsmith project lock --update` in the project, as a person runs it: the page says the lock is current without being touched');
+  execFileSync(binary, ['project', 'lock', '--update'], { cwd: project, stdio: 'pipe' });
   await page.waitForSelector('[data-testid="pick-lock-state"][data-state="current"]');
   state = await lock();
   expect(state.lines.length === 0, 'a current lock has no diff');
@@ -94,7 +94,7 @@ export async function run({ page, shot, step, expect, project, binary }) {
   fs.rmSync(src('main.lock.toml'));
   await page.waitForSelector('[data-testid="pick-lock-state"][data-state="absent"]');
   await page.waitForSelector('[data-testid="pick-lock"]');
-  expect((await page.locator('.lock-says').innerText()).includes('netsmith build'), 'it says what writes the lock');
+  expect((await page.locator('.lock-says').innerText()).includes('netsmith board build'), 'it says what writes the lock');
   await whenIdle(page);
   expect(!fs.existsSync(src('main.lock.toml')), 'the lock is still absent');
   await shot('lock-absent');

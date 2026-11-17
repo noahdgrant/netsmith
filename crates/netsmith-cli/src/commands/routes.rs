@@ -18,7 +18,7 @@ use super::common;
 
 #[derive(Debug, PartialEq, ClapArgs)]
 #[command(
-    after_long_help = "The routes file `<stem>.routes.toml` sits beside the source and its layout file. `fab`, the editor and `netsmith route` (through `fab --save-placed`) draw its copper on the placed board before the router, which keeps it and routes only the connections it leaves; a net with `lock = true` gets no copper from the router. Places are in mm from the outline's top left corner, y down, as in the layout file. The file's format is in the language guide's \"The routes file\".\n\nEach command builds and places the board as `fab` does (nothing is routed). The exit code is 0 when it did what it was asked, 1 when it refused (a shape that breaks the design rules, a locked shape, a net the board does not have), and 2 when it could not run."
+    after_long_help = "The routes file `<stem>.routes.toml` sits beside the source and its layout file. `fab`, the editor and `netsmith dev route` (through `board fab --save-placed`) draw its copper on the placed board before the router, which keeps it and routes only the connections it leaves; a net with `lock = true` gets no copper from the router. Places are in mm from the outline's top left corner, y down, as in the layout file. The file's format is in the language guide's \"The routes file\".\n\nEach command builds and places the board as `fab` does (nothing is routed). The exit code is 0 when it did what it was asked, 1 when it refused (a shape that breaks the design rules, a locked shape, a net the board does not have), and 2 when it could not run."
 )]
 pub struct Args {
     #[command(subcommand)]
@@ -29,7 +29,7 @@ pub struct Args {
 #[derive(Debug, PartialEq, ClapArgs)]
 pub struct Target {
     /// The source file; with none, the project's boards (see netsmith.toml).
-    #[arg(value_name = "FILE.NSM", long = "into")]
+    #[arg(value_name = "FILE.NSM", long)]
     pub file: Option<String>,
     /// The board, by name, when the source has more than one.
     #[arg(long, value_name = "NAME")]
@@ -533,15 +533,16 @@ fn write_places(file: &Path, board: &Board, import: &Import) -> Result<(), Strin
 
 #[cfg(test)]
 mod tests {
+    use crate::commands::common::testing::Leaf;
     use crate::commands::common::testing::{kind, parse};
-    use crate::commands::{Command, routes};
+    use crate::commands::routes;
     use clap::error::ErrorKind;
 
     #[test]
     fn routes_takes_its_subcommands() {
         assert!(matches!(
             parse(&["routes", "import", "b.kicad_pcb", "--parts", "p.toml"]),
-            Ok(Command::Routes(routes::Args {
+            Ok(Leaf::Routes(routes::Args {
                 command: routes::Command::Import(routes::ImportArgs { parts: Some(_), .. })
             }))
         ));
@@ -558,7 +559,7 @@ mod tests {
                 "--layer",
                 "bottom"
             ]),
-            Ok(Command::Routes(routes::Args {
+            Ok(Leaf::Routes(routes::Args {
                 command: routes::Command::AddTrack(routes::AddTrackArgs {
                     from: [1.0, 2.0],
                     to: [-3.0, 4.5],
@@ -578,7 +579,7 @@ mod tests {
                 "--layers",
                 "inner4,bottom"
             ]),
-            Ok(Command::Routes(routes::Args {
+            Ok(Leaf::Routes(routes::Args {
                 command: routes::Command::AddVia(routes::AddViaArgs {
                     layers: Some([
                         netsmith_pcb::CopperLayer::Inner(4),
@@ -590,9 +591,9 @@ mod tests {
         ));
         assert!(matches!(
             parse(&[
-                "routes", "delete", "--net", "GND", "--via", "2", "--into", "a.nsm"
+                "routes", "delete", "--net", "GND", "--via", "2", "--file", "a.nsm"
             ]),
-            Ok(Command::Routes(routes::Args {
+            Ok(Leaf::Routes(routes::Args {
                 command: routes::Command::Delete(routes::ShapeArgs { via: Some(2), .. })
             }))
         ));
@@ -601,7 +602,7 @@ mod tests {
                 "routes", "add-zone", "--net", "GND", "--layer", "top", "--layer", "bottom",
                 "--rect", "1,-2,3,4.5", "--pads", "thru-hole-only", "--priority", "2"
             ]),
-            Ok(Command::Routes(routes::Args {
+            Ok(Leaf::Routes(routes::Args {
                 command: routes::Command::AddZone(routes::AddZoneArgs {
                     rect: Some([1.0, -2.0, 3.0, 4.5]),
                     priority: 2,
@@ -616,13 +617,13 @@ mod tests {
                 "routes", "add-zone", "--net", "GND", "--outline", "1,1", "--outline", "5,1",
                 "--outline", "3,4"
             ]),
-            Ok(Command::Routes(routes::Args {
+            Ok(Leaf::Routes(routes::Args {
                 command: routes::Command::AddZone(routes::AddZoneArgs { ref outline, .. })
             })) if outline.len() == 3
         ));
         assert!(matches!(
             parse(&["routes", "unlock", "--net", "GND", "--zone", "2"]),
-            Ok(Command::Routes(routes::Args {
+            Ok(Leaf::Routes(routes::Args {
                 command: routes::Command::Unlock(routes::ShapeArgs { zone: Some(2), .. })
             }))
         ));

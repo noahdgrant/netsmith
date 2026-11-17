@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# The route scorecard (issue #431, step S0): routes the three ported boards with `netsmith fab`
+# The route scorecard (issue #431, step S0): routes the three ported boards with `netsmith board fab`
 # twice each (the time of each run, and whether the two board files are byte for byte the same),
 # routes the invented `tight_board` and `mixed_board` of netsmith-router's tests for the seeds in
 # NETSMITH_SEEDS (default 0..1), and prints the scorecard (`netsmith_fab::score`) of every
@@ -7,7 +7,7 @@
 #
 # Robustness: one lucky run says little, since moving any cost of the search re-rolls where the
 # tracks go. The first fab run of each ported board saves its placed board (`--save-placed`),
-# and `netsmith route <placed> --tries 1 --route-timeout 0 --turn T` routes it again for each
+# and `netsmith dev route <placed> --tries 1 --route-timeout 0 --turn T` routes it again for each
 # turn cost T in NETSMITH_TURNS (default "24 25 26 27": the router's own, 25, and one unit
 # either way and two up), side by side (each is single-threaded and CPU-bound): one try of the
 # whole board to its end, no time limit. The scorecard prints, for each board, the connections
@@ -46,7 +46,7 @@ for example in "${examples[@]}"; do
         start=$(date +%s.%N)
         save=()
         [ "$run" = 1 ] && save=(--save-placed)
-        (cd "$repo/examples/$example" && "$bin" fab src/main.nsm --out "$dir" "${save[@]}" > "$dir.log" 2>&1) \
+        (cd "$repo/examples/$example" && "$bin" board fab src/main.nsm --out "$dir" "${save[@]}" > "$dir.log" 2>&1) \
             || echo "warning: fab of $example (run $run) failed, see $dir.log" >&2
         end=$(date +%s.%N)
         printf '%s run %s: %.1f s\n' "$example" "$run" "$(echo "$end - $start" | bc)" >> "$out/times.txt"
@@ -87,7 +87,7 @@ if [ -z "${NETSMITH_SKIP_ROBUSTNESS:-}" ]; then
             dir="$out/robustness/$example-$turn"
             rm -rf "$dir"
             mkdir -p "$dir"
-            ("$bin" route "$placed" --out "$dir" --tries 1 --route-timeout 0 --turn "$turn" \
+            ("$bin" dev route "$placed" --out "$dir" --tries 1 --route-timeout 0 --turn "$turn" \
                 > "$dir.log" 2>&1 || true) &
         done
         wait

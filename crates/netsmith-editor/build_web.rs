@@ -427,7 +427,7 @@ pub enum Done {
 
 /// Makes `web/dist` a finished, fresh bundle, with `lock_wait` as the longest it waits for a
 /// concurrent build. The error is the reason it could not, for the warning and for the message
-/// `netsmith editor` prints.
+/// `netsmith view editor` prints.
 pub fn ensure(web: &Path, dirs: &[PathBuf], lock_wait: Duration) -> Result<Done, String> {
     let _lock = lock(web, lock_wait)?;
     // Checked under the lock: a build that held it a moment ago has just made it fresh.

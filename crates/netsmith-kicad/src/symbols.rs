@@ -607,7 +607,7 @@ impl SymbolLib {
 }
 
 /// The names of the symbols in the text of a symbol library (`.kicad_sym`) or of a schematic
-/// (`.kicad_sch`, its `lib_symbols`), in the file's order, for `netsmith part from-symbol`
+/// (`.kicad_sch`, its `lib_symbols`), in the file's order, for `netsmith import part from-symbol`
 /// (#453). `file` is what a message calls the text.
 pub fn symbol_names_in(text: &str, file: &str) -> Result<Vec<String>, String> {
     Ok(symbol_items(text, file)?

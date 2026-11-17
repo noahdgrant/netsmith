@@ -32,7 +32,7 @@ fn the_binary_with_locked_stops_on_a_pin_file_that_would_change_before_it_writes
     fs::write(dir.path().join("main.nsm"), &text).unwrap();
     let out = std::process::Command::new(env!("CARGO_BIN_EXE_netsmith"))
         .current_dir(dir.path())
-        .args(["build", "main.nsm", "--locked"])
+        .args(["board", "build", "main.nsm", "--locked"])
         .output()
         .unwrap();
     assert!(!out.status.success());
