@@ -260,6 +260,34 @@ fn pads_that_share_a_via_or_give_theirs_up_to_the_pour_pass_kicads_check() {
 }
 
 #[test]
+fn a_pad_the_pour_joins_with_one_spoke_keeps_its_via_and_kicad_finds_it_so() {
+    // Issue #1115: KiCad's refill of `plane_vias.rs`'s corner board joins R1's GND pad by one
+    // spoke. With its own via and track the pad passes KiCad's check; without them KiCad finds
+    // it starved, as netsmith's count says.
+    let (b, bare) = crate::plane_vias::corner();
+    let Some(report) = check("corner", &b) else {
+        eprintln!("skipped: no KiCad");
+        return;
+    };
+    assert_eq!(copper_only(&report), Vec::<&String>::new());
+    assert_eq!(report.unconnected, 0);
+    assert_eq!(report.starved, Vec::<netsmith_geom::Pt>::new());
+    let report = check("corner-bare", &bare).unwrap();
+    let r1 = netsmith_pcb::copper_artwork(&bare)
+        .unwrap()
+        .pads
+        .into_iter()
+        .find(|p| p.part == "R1" && p.number == "1")
+        .unwrap()
+        .at;
+    assert!(
+        report.starved.iter().any(|at| at.dist(r1) < 0.01),
+        "KiCad's starved thermals: {:?}, R1.1 at {r1:?}",
+        report.starved
+    );
+}
+
+#[test]
 fn a_line_routed_on_an_inner_signal_layer_passes_kicads_check() {
     // Issue #833: the line of `inner_layers.rs`'s walled board crosses under the wall on In2.Cu;
     // KiCad fills the plane and finds no violation and nothing unconnected.

@@ -4,21 +4,29 @@
 //! `copper_sliver`, copper of the fill narrower than the least track. All three are KiCad's
 //! names. The fill is the one `fab` plots: the fill the board file holds where a zone holds
 //! one (`filled_polygon`, as a board ported from KiCad does), else the fill [`crate::fill`]
-//! works out, again here. A spoke joins the fill where the fill has its copper across the
-//! thermal gap and at its outer end.
+//! works out, again here, which makes a spoke only where KiCad's refill makes one (its module
+//! header has the rule, issue #1115).
 //!
 //! **Warnings.** Both are warnings, as `silk_over_copper` is (ADR 0037), until a real order shows
 //! the rule is a limit: the fabricator's capabilities page names neither. A project file may say
 //! otherwise in its `rule_severities` (KiCad 9 makes `starved_thermal` an error by default).
 //!
-//! **Two spokes.** A relief is starved when fewer than two of its spokes reach the fill: KiCad
-//! 9's default for its `min_resolved_spokes` constraint (the implicit rule its DRC engine adds,
-//! `drc_engine.cpp`), which is KiCad's choice and not a fabricator's number. A relief with no
-//! spoke on the fill is starved too: the pad is joined to the pour by nothing, which the
-//! connection check (which joins every pad in a pour's outline) does not see. A track of the
-//! pad's net on the layer that runs from the pad onto the fill counts as a spoke, as it carries
-//! the pad's current and heat to the pour as one does. A pad is judged when the zone joins it with
-//! thermal spokes and its centre is in the zone's outline.
+//! **Two spokes.** A relief is starved when fewer than two of its spokes reach the fill
+//! ([`fill::MIN_SPOKES`]: KiCad 9's default for its `min_resolved_spokes` constraint, the implicit
+//! rule its DRC engine adds, `drc_engine.cpp`), which is KiCad's choice and not a fabricator's
+//! number. A spoke reaches the fill where the fill has copper halfway across the thermal gap on
+//! the spoke's axis, as KiCad's check (`drc_test_provider_zone_connections.cpp`) counts the
+//! places where the fill crosses the pad grown by half the gap. A track of the pad's net on the
+//! layer that runs from the pad onto the fill counts as a spoke, as KiCad counts it, since it
+//! carries the pad's current and heat to the pour as one does. A pad is judged when the zone
+//! joins it with thermal spokes and its centre is in the zone's outline.
+//!
+//! **Where it differs from KiCad's check.** A relief with no spoke on the fill and no track is
+//! starved here; KiCad skips it and reports the pad as unconnected instead, which netsmith's
+//! connection check (it joins every pad in a pour's outline) does not see. With a track and no
+//! spoke, neither reports it. KiCad does not count a spoke onto a piece of the fill that joins
+//! nothing but the pad; here every spoke on the fill counts. Of a fill the file holds, a piece of
+//! copper across the gap off the spokes' axes is not counted, which KiCad counts.
 //!
 //! **Islands.** The fill takes out every island unless the zone's `island_removal_mode` keeps
 //! them (never, or above `island_area_min`), so a board netsmith writes, whose zones keep the
@@ -41,7 +49,7 @@
 use super::checks::Out;
 use super::model::Kind;
 use super::{Item, Rule};
-use crate::fill;
+use crate::fill::{self, MIN_SPOKES};
 use crate::plot;
 
 pub(crate) fn run(out: &mut Out<'_>) {
@@ -95,7 +103,7 @@ pub(crate) fn run(out: &mut Out<'_>) {
             };
             if starved {
                 for r in j.reliefs {
-                    if r.reach + r.tracks >= MIN_SPOKES {
+                    if !fill::starved(r.reach, r.tracks) {
                         continue;
                     }
                     let Some(item) = m
@@ -116,12 +124,19 @@ pub(crate) fn run(out: &mut Out<'_>) {
                         1 => " and 1 track".to_string(),
                         n => format!(" and {n} tracks"),
                     };
-                    out.push(
-                        Rule::StarvedThermal,
+                    let message = if r.spokes == 0 {
+                        format!(
+                            "thermal relief has no spokes: the pad is narrower than the zone's minimum thickness, so the fill makes none; the least is {MIN_SPOKES}"
+                        )
+                    } else {
                         format!(
                             "thermal relief joins the pour with {joined} of its {} spokes{tracks}; the least is {MIN_SPOKES}",
                             r.spokes
-                        ),
+                        )
+                    };
+                    out.push(
+                        Rule::StarvedThermal,
+                        message,
                         at,
                         Some(layer),
                         vec![item, zone_item(at)],
@@ -160,9 +175,6 @@ pub(crate) fn run(out: &mut Out<'_>) {
         }
     }
 }
-
-/// The fewest spokes that join a thermal relief to the fill: KiCad 9's `min_resolved_spokes`.
-const MIN_SPOKES: usize = 2;
 
 #[cfg(test)]
 mod tests {
@@ -265,14 +277,10 @@ mod tests {
     fn a_track_of_the_pads_net_onto_the_fill_joins_it_as_a_spoke_does() {
         let one = format!("{PAD} {} {} {}", cut("right"), cut("left"), cut("down"));
         assert_eq!(starved(&format!("{one} {TRACK}")), Vec::<String>::new());
+        // With no spoke, KiCad's check leaves the pad to its connection check, which the track
+        // satisfies: no starved thermal relief either.
         let none = format!("{one} {} {TRACK}", cut("up"));
-        let found = starved(&none);
-        assert_eq!(found.len(), 1, "{found:?}");
-        assert!(
-            found[0].contains("with none of its 4 spokes and 1 track; the least is 2"),
-            "{}",
-            found[0]
-        );
+        assert_eq!(starved(&none), Vec::<String>::new());
     }
 
     #[test]

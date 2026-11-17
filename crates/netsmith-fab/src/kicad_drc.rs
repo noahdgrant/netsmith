@@ -26,8 +26,9 @@ pub struct Reported {
 /// with its library, copper slivers, a zone fill that is not as the zone would make it, and the
 /// like. A board that has them is not compared on them. Also the kinds of finding that need
 /// KiCad's library tables or the schematic, and starved thermals and isolated copper, which both
-/// checks report but each of a different fill (netsmith's own, KiCad's the file's), so neither
-/// side's are compared.
+/// checks report but each of its own fill (netsmith's, and KiCad's refill of the zones before
+/// its check), so neither side's are compared here; netsmith makes the spokes KiCad makes
+/// (issue #1115), and `tests/thermal_spokes.rs` compares the starved thermals of a board.
 pub const OUT_OF_SCOPE: &[&str] = &[
     "lib_footprint_issues",
     "lib_footprint_mismatch",
@@ -195,8 +196,7 @@ pub fn compare(ours: &DrcReport, kicad: &[Reported], tolerance: f64) -> Comparis
             c.netsmith_only_rules += 1;
             continue;
         }
-        // A pour judged by its fill: netsmith works the fill out, and KiCad's check (which
-        // `kicad-cli` cannot refill) judges the fill the file holds, so the two are not compared.
+        // Out of scope, among them a pour judged by its fill: each check judges its own fill.
         if OUT_OF_SCOPE.contains(&f.rule.id()) {
             c.out_of_scope += 1;
             continue;

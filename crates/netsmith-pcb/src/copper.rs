@@ -527,6 +527,35 @@ pub fn plane_pour_fills(board: &Board) -> Result<Vec<ZoneFill>, CopperError> {
     Ok(fills)
 }
 
+/// The pads that an outer pour of a plane's net joins with fewer than two thermal spokes
+/// (`netsmith_geom::MIN_SPOKES`, KiCad's `starved_thermal`), on the layers [`plane_pour_fills`]
+/// fills, each by its designator, number and centre: the spokes counted as KiCad's refill
+/// leaves them (issue #1115). The router keeps such a pad's own via, as the pour is no good
+/// way to its plane there. Empty for a board with no such pour, at no cost.
+pub fn starved_pour_pads(board: &Board) -> Result<Vec<(String, String, Pt)>, CopperError> {
+    let layers: Vec<&str> = board
+        .pours
+        .iter()
+        .filter(|p| board.planes.iter().any(|q| q.net == p.net) && !board.zoned(p.layer.name()))
+        .map(|p| p.layer.name())
+        .collect();
+    if layers.is_empty() {
+        return Ok(Vec::new());
+    }
+    let art = artwork(board)?;
+    let rules = netsmith_geom::plot_rules_of(Some(&crate::export::kicad_pro(board)));
+    let outline = edge_outline(&art).map_err(CopperError)?;
+    let mut out = Vec::new();
+    for layer in art.copper.iter().filter(|l| layers.contains(&l.as_str())) {
+        for j in netsmith_geom::thermal_joins(&art, layer, &outline, &rules).map_err(CopperError)? {
+            if j.starved() {
+                out.push((j.part, j.number, pt(j.at)));
+            }
+        }
+    }
+    Ok(out)
+}
+
 /// The fill of the layers `wanted` picks, by net.
 fn fills_of(board: &Board, wanted: impl Fn(&str) -> bool) -> Result<Vec<ZoneFill>, CopperError> {
     let art = artwork(board)?;
