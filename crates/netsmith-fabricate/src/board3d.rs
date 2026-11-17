@@ -129,6 +129,15 @@ pub struct CaseModelReport {
     pub clearance: f64,
     pub reach: f64,
     pub boss_gap: f64,
+    /// The colour the board states for the model (`.color`, the name of a
+    /// `std::parts::passive::Color` variant, issue #756); left out when it states none.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub color: Option<String>,
+    /// The colours the file itself styles the model's faces in, as `#rrggbb`, in the order they
+    /// are first used (what the model is drawn in when the board states no `.color`); left out
+    /// when the file styles none.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub file_colours: Vec<String>,
     pub triangles: usize,
     pub solids: Vec<CaseSolidReport>,
 }
@@ -841,6 +850,17 @@ fn case_models_report(built: &Built, fit: &netsmith_3d::CaseScene) -> Vec<CaseMo
                 clearance: c.figures.clearance,
                 reach: c.figures.reach,
                 boss_gap: c.figures.boss_gap,
+                color: c.color.clone(),
+                file_colours: read.map_or_else(Vec::new, |p| {
+                    let mut seen: Vec<String> = Vec::new();
+                    for [r, g, b] in p.solids.iter().flat_map(|s| s.runs.iter().filter_map(|r| r.0)) {
+                        let hex = format!("#{r:02x}{g:02x}{b:02x}");
+                        if !seen.contains(&hex) {
+                            seen.push(hex);
+                        }
+                    }
+                    seen
+                }),
                 triangles: read.map_or(0, |p| p.triangle_count()),
                 solids: read
                     .map(|p| {

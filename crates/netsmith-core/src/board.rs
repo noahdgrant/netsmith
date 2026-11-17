@@ -216,6 +216,12 @@ pub struct CaseModel {
     /// module). A design file leaves it out when it is true.
     #[serde(default = "checked_by_default", skip_serializing_if = "is_true")]
     pub checked: bool,
+    /// The colour the board states for the model (`.color`, issue #756): the name of a
+    /// `std::parts::passive::Color` variant (`Black`). `None` when it says none, which every
+    /// drawing takes as the colours of the file itself, so a design file that states none is
+    /// unchanged.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub color: Option<String>,
     /// The lines that state the file, separated by commas. Filled by the caller that knows the
     /// source files; empty otherwise.
     pub source: String,

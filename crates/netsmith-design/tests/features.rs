@@ -525,6 +525,7 @@ fn a_case_model_is_carried_with_its_offset_and_rotation() {
                     boss_gap: 0.5,
                 },
                 checked: true,
+                color: None,
                 source: String::new(),
                 stated_in: Vec::new(),
                 resolved: None,
@@ -539,6 +540,7 @@ fn a_case_model_is_carried_with_its_offset_and_rotation() {
                     ..netsmith_core::CaseFigures::default()
                 },
                 checked: true,
+                color: None,
                 source: String::new(),
                 stated_in: Vec::new(),
                 resolved: None,
@@ -548,6 +550,24 @@ fn a_case_model_is_carried_with_its_offset_and_rotation() {
     // A case model is a drawing and a check: it gives the board no outline, hole or limit.
     assert!(d.features.outline.is_none());
     assert!(d.features.cutouts.is_empty() && d.features.keepouts.is_empty());
+}
+
+#[test]
+fn a_case_model_carries_the_colour_the_board_states() {
+    // Issue #756: the variant's name, for the model that states it, and none for the rest.
+    let physical = "import std::pcb::CaseModel\nimport std::parts::passive::Color\n\nphysical for B {\n    case {\n        .lid: CaseModel {\n            .file &= \"case/lid.step\"\n            .color &= Color::Black\n        }\n        .shell: CaseModel {\n            .file &= \"case/box.step\"\n        }\n    }\n}\n";
+    let loader = Loader::std().with_physical("t.nsm", "t.physical.nsm", physical);
+    let c = check("t.nsm", &board(""), &loader);
+    assert!(c.is_ok(), "{}", c.render());
+    let s = solve(&c.boards[0], &Catalogs::jlcpcb());
+    let d = design_board(&c.boards[0], &s).map(|l| l.design).unwrap();
+    let colours: Vec<(&str, Option<&str>)> = d
+        .features
+        .case_models
+        .iter()
+        .map(|c| (c.name.as_str(), c.color.as_deref()))
+        .collect();
+    assert_eq!(colours, [("lid", Some("Black")), ("shell", None)]);
 }
 
 #[test]

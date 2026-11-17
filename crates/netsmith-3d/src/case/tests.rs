@@ -45,6 +45,7 @@ fn case(name: &str, solids: Vec<CaseSolid>) -> PlacedCase {
         sha256: String::new(),
         figures: CaseFigures::default(),
         checked: true,
+        colour: None,
         solids,
     }
 }

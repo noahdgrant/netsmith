@@ -76,3 +76,38 @@ fn a_stated_mask_colour_is_in_the_file_and_an_unstated_one_leaves_no_trace() {
         Some("Black")
     );
 }
+
+#[test]
+fn a_stated_case_model_colour_is_in_the_file_and_an_unstated_one_leaves_no_trace() {
+    // Issue #756: the colour the board states for a case model is written and read back; a
+    // model that states none has no key, so the committed design files are as they were.
+    let file = example("examples/led.design.json");
+    let mut designs = read(&file).unwrap();
+    let model = |name: &str, color: Option<&str>| netsmith_core::CaseModel {
+        name: name.into(),
+        file: format!("case/{name}.step"),
+        offset: [0.0; 3],
+        rotation: [0.0; 3],
+        figures: netsmith_core::CaseFigures::default(),
+        checked: true,
+        color: color.map(str::to_string),
+        source: String::new(),
+        stated_in: Vec::new(),
+        resolved: None,
+    };
+    designs[0].features.case_models = vec![model("base", None), model("lid", Some("Black"))];
+    let text = to_json(&designs);
+    assert_eq!(text.matches("\"color\"").count(), 1, "{text}");
+    assert!(text.contains("\"color\": \"Black\""), "{text}");
+    let dir = TempDir::new("design-file-case-colour");
+    let path = dir.path().join("case.design.json");
+    fs::write(&path, &text).unwrap();
+    let back = read(&path).unwrap();
+    let colours: Vec<_> = back[0]
+        .features
+        .case_models
+        .iter()
+        .map(|c| c.color.as_deref())
+        .collect();
+    assert_eq!(colours, [None, Some("Black")]);
+}

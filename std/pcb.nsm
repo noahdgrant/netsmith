@@ -42,6 +42,8 @@
 //! - **Not built:** logos and images (an image needs a
 //!   bitmap-to-polygon importer, a file format and a licence record).
 
+import std::parts::passive::Color
+
 /// The board edge: a rectangle with rounded corners, the member `.outline` of a board. A
 /// board with none is as big as the parts need. A range says how big the board may be:
 /// `.width &= 0mm..60mm` is at most 60 mm and the placer takes the least that holds the
@@ -161,4 +163,12 @@ interface CaseModel {
     /// still hold it (`case_boss`, a warning when none is that near).
     .boss_gap: Length
     .boss_gap ?= 0.5mm
+    /// The colour the model is drawn in (issue #756): a variant of the same `Color` an LED's
+    /// `.color` and a board's `.process.stackup.mask_colour` are, so `.shell.color &= Color::Black`.
+    /// A model that states none is drawn in the colours of its own STEP file, where the file
+    /// styles its faces, and in the 3D view's case grey where it does not. A stated colour
+    /// replaces every colour of the file, for this model only, in the 3D view, `render` and
+    /// `board3d`'s glTF file; it changes no check. The case is still drawn see-through (or
+    /// solid, with `render --case solid` and the editor's `Shift+C`) in it.
+    .color: Color optional
 }

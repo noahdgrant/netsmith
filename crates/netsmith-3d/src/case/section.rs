@@ -300,6 +300,7 @@ impl PlacedCase {
                     .iter()
                     .map(|t| [flip(t[0]), flip(t[2]), flip(t[1])]);
                 CaseSolid::new(s.name.clone(), triangles.collect(), s.closed)
+                    .with_runs(s.runs.clone())
             })
             .collect();
         PlacedCase {

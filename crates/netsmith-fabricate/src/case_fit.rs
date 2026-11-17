@@ -127,6 +127,7 @@ pub fn read(design: &Design) -> (Vec<PlacedCase>, Vec<FitFinding>) {
                     &c.name, &c.file, &sha, c.figures, &read.mesh, c.rotation, c.offset,
                 );
                 placed.checked = c.checked;
+                placed.colour = c.color.clone();
                 cases.push(placed);
             }
             Err(e) => findings.push(unreadable(e)),
