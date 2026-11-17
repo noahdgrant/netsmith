@@ -82,6 +82,10 @@ pub(crate) const REACH_RAY: f64 = 25.0;
 /// A triangle's three corners, in mm.
 pub(crate) type Triangle = [[f64; 3]; 3];
 
+/// The colour of a run of a case solid's triangles and how many there are (issue #756): the
+/// colour the file styles them in, `None` where it does not.
+pub type ColourRun = (Option<[u8; 3]>, usize);
+
 /// One solid of a case model, placed in the scene's frame.
 #[derive(Debug, Clone, PartialEq)]
 pub struct CaseSolid {
@@ -95,7 +99,7 @@ pub struct CaseSolid {
     /// The colour of the triangles, in their order, as runs: the colour the file styles them
     /// in (`None` where it does not) and how many triangles it holds (issue #756). A solid the
     /// file colours alike is one run; the runs add up to `triangles.len()`.
-    pub runs: Vec<(Option<[u8; 3]>, usize)>,
+    pub runs: Vec<ColourRun>,
     /// The box of each triangle, for the prefilter.
     boxes: Vec<Aabb>,
 }
@@ -128,7 +132,7 @@ impl CaseSolid {
 
     /// The solid with its triangles coloured in `runs` (see [`CaseSolid::runs`]).
     #[must_use]
-    pub fn with_runs(mut self, runs: Vec<(Option<[u8; 3]>, usize)>) -> CaseSolid {
+    pub fn with_runs(mut self, runs: Vec<ColourRun>) -> CaseSolid {
         debug_assert_eq!(
             runs.iter().map(|r| r.1).sum::<usize>(),
             self.triangles.len(),
@@ -411,7 +415,7 @@ pub fn place(
         [0, 1, 2].map(|r| nm(m[r][0] * p[0] + m[r][1] * p[1] + m[r][2] * p[2] + d[r]))
     };
     // A turn never mirrors, so each triangle keeps the reader's order and still faces out.
-    let mut solids: Vec<(String, Vec<Triangle>, bool, Vec<(Option<[u8; 3]>, usize)>)> = Vec::new();
+    let mut solids: Vec<(String, Vec<Triangle>, bool, Vec<ColourRun>)> = Vec::new();
     for piece in &model.pieces {
         let mesh = &piece.mesh;
         let triangles = mesh
@@ -422,7 +426,7 @@ pub fn place(
             .map(|t| t.map(|i| apply(mesh.positions[i as usize])));
         // The runs: the colour of each piece, joined to the one before it when it is the same.
         let count = mesh.indices.len() / 3;
-        let run = |runs: &mut Vec<(Option<[u8; 3]>, usize)>| match runs.last_mut() {
+        let run = |runs: &mut Vec<ColourRun>| match runs.last_mut() {
             Some((c, n)) if *c == piece.colour => *n += count,
             _ if count == 0 => {}
             _ => runs.push((piece.colour, count)),
