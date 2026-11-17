@@ -21,6 +21,7 @@ mod problems;
 mod process;
 mod queries;
 mod reports;
+mod targets;
 #[cfg(test)]
 pub(crate) mod tests;
 mod unplaced;
@@ -28,6 +29,7 @@ mod unplaced;
 pub use features::*;
 pub use placed::*;
 pub use problems::*;
+pub use targets::PairCoupling;
 pub use unplaced::*;
 
 #[derive(Debug)]
@@ -205,9 +207,15 @@ pub struct Board {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub rail_nets: Vec<String>,
     /// The impedance the design states for the tracks of some nets (issue #1007), which
-    /// `fab-notes.txt` gives the width for on each layer.
+    /// `fab-notes.txt` gives the width for on each layer. Set with
+    /// [`Board::set_impedance_targets`], which solves `impedance_widths` with it.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub impedance_targets: Vec<netsmith_core::ImpedanceTarget>,
+    /// The width that gives each net of `impedance_targets` its impedance on each layer a track
+    /// may be on (issue #1025), solved once from the build-up: what [`Board::track_width_on`]
+    /// draws the net at.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub impedance_widths: Vec<crate::impedance::TargetWidth>,
     /// The current each net carries where it is known, and the least width that carries it
     /// (issue #431): no track of the net is narrower, away from its pads.
     pub net_currents: Vec<netsmith_core::NetCurrent>,

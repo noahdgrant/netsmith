@@ -817,9 +817,104 @@ pub fn impedance_at(
     }
 }
 
+/// The width a target asks of a track on one layer (issue #1025): a single track's that gives
+/// its impedance, or the width of each track of a pair that gives its differential impedance at
+/// its spacing. Refused outside a formula's domain.
+fn solve(layer: &TrackLayer, target: &ImpedanceTarget) -> Result<f64, OutOfRange> {
+    match target.spacing {
+        None => width_for(
+            target.ohms,
+            |w| layer.single(w).map(|l| l.impedance),
+            0.001,
+            20.0,
+        ),
+        Some(s) => width_for(
+            target.ohms,
+            |w| layer.pair(w, s).map(|p| p.differential()),
+            0.001,
+            20.0,
+        ),
+    }
+}
+
+/// The width the router draws the tracks of a net with an impedance target at on one copper
+/// layer (issue #1025), as [`target_widths`] solves it.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct TargetWidth {
+    pub net: String,
+    /// The layer, by its KiCad name (`F.Cu`, `In2.Cu`, `B.Cu`).
+    pub layer: String,
+    /// The width in mm: the one that gives the target, to the nearest 0.01 mm a width is
+    /// written in.
+    pub width: f64,
+}
+
+/// What an impedance target asks of the tracks on one layer: the width that gives it, or why
+/// none does.
+#[derive(Debug, Clone, PartialEq)]
+pub struct TargetLayer {
+    /// The layer, by its KiCad name.
+    pub layer: String,
+    /// The exact width that gives the target, in mm, or why no width does.
+    pub width: Result<f64, OutOfRange>,
+}
+
+/// For each target, what it asks on each layer a track may be on (the outer layers and the
+/// signal layers, not the planes); `None` for a board with no build-up (a two-layer board, ADR
+/// 0111), where no width gives an impedance.
+pub fn target_layers(
+    stackup: &Stackup,
+    targets: &[ImpedanceTarget],
+) -> Option<Vec<Vec<TargetLayer>>> {
+    let layers = track_layers(stackup)?;
+    Some(
+        targets
+            .iter()
+            .map(|t| {
+                layers
+                    .iter()
+                    .map(|l| TargetLayer {
+                        layer: l.name.clone(),
+                        width: solve(l, t),
+                    })
+                    .collect()
+            })
+            .collect(),
+    )
+}
+
+/// The widths the router draws the nets of the `targets` at (issue #1025): for each net of a
+/// target and each layer a track may be on, the width that gives the target, rounded to the
+/// nearest 0.01 mm. The first target that names a net, in the order of their paths, sizes it.
+/// A layer where no width gives the target has no entry, so the net is drawn there at its own
+/// width; [`target_layers`] says why, and the board's `impedance_findings` say so.
+pub fn target_widths(stackup: &Stackup, targets: &[ImpedanceTarget]) -> Vec<TargetWidth> {
+    let Some(solved) = target_layers(stackup, targets) else {
+        return Vec::new();
+    };
+    let mut out: Vec<TargetWidth> = Vec::new();
+    for (t, layers) in targets.iter().zip(solved) {
+        for net in &t.nets {
+            if out.iter().any(|w| &w.net == net) {
+                continue;
+            }
+            for l in &layers {
+                if let Ok(w) = l.width {
+                    out.push(TargetWidth {
+                        net: net.clone(),
+                        layer: l.layer.clone(),
+                        width: ((w * 100.0).round() / 100.0).max(0.01),
+                    });
+                }
+            }
+        }
+    }
+    out
+}
+
 /// `ok` or the figure's distance from a target, for a line: within JLCPCB's test tolerance or
 /// not.
-fn against(target: f64, got: f64) -> String {
+pub(crate) fn against(target: f64, got: f64) -> String {
     let off = (got - target) / target;
     if off.abs() <= TEST_TOLERANCE {
         format!(
@@ -866,25 +961,10 @@ pub fn target_notes(
         lines.push(header);
         for layer in &layers {
             let drawn = width_on(&t.nets[0], &layer.name);
-            let (width, router) = match t.spacing {
-                None => (
-                    width_for(
-                        t.ohms,
-                        |w| layer.single(w).map(|l| l.impedance),
-                        0.001,
-                        20.0,
-                    ),
-                    layer.single(drawn).map(|l| l.impedance),
-                ),
-                Some(s) => (
-                    width_for(
-                        t.ohms,
-                        |w| layer.pair(w, s).map(|p| p.differential()),
-                        0.001,
-                        20.0,
-                    ),
-                    layer.pair(drawn, s).map(|p| p.differential()),
-                ),
+            let width = solve(layer, t);
+            let router = match t.spacing {
+                None => layer.single(drawn).map(|l| l.impedance),
+                Some(s) => layer.pair(drawn, s).map(|p| p.differential()),
             };
             let width = match width {
                 Ok(w) => format!("{:.3} mm wide tracks give {} ohm", w, t.ohms),

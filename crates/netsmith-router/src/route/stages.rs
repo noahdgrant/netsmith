@@ -45,8 +45,9 @@ impl<'a> Router<'a> {
         state
     }
 
-    /// The track length of the lines of `net`, their vias, and the share of that length within
-    /// [`PAIR_NEAR`] of a track of `partner` on the same layer.
+    /// The track length of the lines of `net`, their vias, and the share of that length beside
+    /// a track of `partner` on the same layer: within the far edge of their
+    /// [`Router::pair_band`] ([`PAIR_NEAR`], or a cell past a stated spacing).
     pub(super) fn pair_measure(
         &self,
         state: &State,
@@ -73,7 +74,9 @@ impl<'a> Router<'a> {
                         t.from.y + (t.to.y - t.from.y) * f,
                     );
                     if theirs.iter().any(|o| {
-                        o.layer == t.layer && point_to_line(p, o.from, o.to) <= PAIR_NEAR + 1e-9
+                        o.layer == t.layer
+                            && point_to_line(p, o.from, o.to)
+                                <= self.pair_band(net, t.width, o.width).1 + 1e-9
                     }) {
                         near += l / n as f64;
                     }

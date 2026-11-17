@@ -1274,3 +1274,150 @@ fn parts_turned_off_the_right_angles_are_measured_by_their_turned_courtyards() {
     board.parts.push(across(-0.3));
     assert!(clash(&board), "{:?}", board.check_placement());
 }
+
+fn impedance_target(
+    nets: &[&str],
+    ohms: f64,
+    spacing: Option<f64>,
+) -> netsmith_core::ImpedanceTarget {
+    netsmith_core::ImpedanceTarget {
+        path: "z".to_string(),
+        nets: nets.iter().map(|n| n.to_string()).collect(),
+        ohms,
+        spacing,
+    }
+}
+
+#[test]
+fn a_net_with_an_impedance_target_is_drawn_at_the_width_that_gives_it() {
+    let mut board = four_layer_board();
+    let net = "net-led.anode";
+    board.set_impedance_targets(vec![impedance_target(&[net], 50.0, None)]);
+    let front = board.target_width(net, CopperLayer::Front).unwrap();
+    // To the 0.01 mm a width is written in, and 50 ohm within JLCPCB's tolerance.
+    assert!(((front * 100.0).round() / 100.0 - front).abs() < 1e-12);
+    let z = crate::impedance_at(&board.process.stackup, "F.Cu", front, None).unwrap();
+    assert!(
+        (z - 50.0).abs() < 50.0 * crate::TEST_TOLERANCE,
+        "{front} mm is {z} ohm"
+    );
+    assert_eq!(board.track_width(net), front);
+    assert_eq!(board.track_width_on(net, CopperLayer::Back), front);
+    // The planes of the board are no layer a track is on.
+    assert_eq!(board.target_width(net, CopperLayer::Inner(1)), None);
+    assert_eq!(board.impedance_findings(), Vec::<String>::new());
+    // Its net class has that width, and the design rules check holds its tracks to it.
+    let classes = board.net_classes();
+    assert!(
+        classes
+            .iter()
+            .any(|c| c.width == front && c.nets == [net.to_string()]),
+        "{classes:?}"
+    );
+    let held = board.target_track_widths();
+    assert!(
+        held.contains(&(net.to_string(), "F.Cu".to_string(), front)),
+        "{held:?}"
+    );
+    // A net with no target is drawn as before.
+    assert_eq!(board.track_width("3V3"), board.rules.track_width);
+}
+
+#[test]
+fn a_pair_with_an_impedance_target_keeps_its_spacing_and_is_a_class_with_its_gap() {
+    let mut board = four_layer_board();
+    let (p, n) = ("3V3", "net-led.anode");
+    board.set_impedance_targets(vec![impedance_target(&[p, n], 90.0, Some(0.15))]);
+    assert_eq!(board.pair_spacing(p), Some((n, 0.15)));
+    assert_eq!(board.pair_spacing(n), Some((p, 0.15)));
+    assert_eq!(board.clearance(p), 0.15);
+    assert_eq!(board.clearance("GND"), board.rules.clearance);
+    assert_eq!(board.widest_clearance(), 0.15);
+    let width = board.track_width(p);
+    assert_eq!(board.track_width(n), width);
+    let classes = board.net_classes();
+    let class = classes
+        .iter()
+        .find(|c| c.nets.contains(&p.to_string()))
+        .unwrap();
+    assert_eq!(class.pair_gap, Some(0.15));
+    assert!(class.nets.contains(&n.to_string()), "{classes:?}");
+    assert_eq!(board.impedance_findings(), Vec::<String>::new());
+    // Two tracks at the pair's width and spacing run coupled; one far off does not.
+    let track = |net: &str, y: f64| {
+        Track::straight(
+            net,
+            CopperLayer::Front,
+            Pt::new(2.0, y),
+            Pt::new(12.0, y),
+            width,
+        )
+    };
+    board.tracks = vec![track(p, 5.0), track(n, 5.0 + width + 0.15)];
+    let c = &board.pair_couplings()[0];
+    assert!((c.share() - 1.0).abs() < 1e-9, "{c:?}");
+    let (lo, hi) = c.gaps.unwrap();
+    assert!(
+        (lo - 0.15).abs() < 1e-9 && (hi - 0.15).abs() < 1e-9,
+        "{c:?}"
+    );
+    assert!(
+        board.process_extras().iter().any(|l| l.starts_with(
+            "track impedance pair: nets `3V3` and `net-led.anode` (z): 10.0 mm of the 10.0 mm"
+        )),
+        "{:?}",
+        board.process_extras()
+    );
+    board.tracks = vec![track(p, 5.0), track(n, 6.5)];
+    let c = &board.pair_couplings()[0];
+    assert_eq!((c.within, c.gaps), (0.0, None), "{c:?}");
+}
+
+#[test]
+fn a_target_the_board_cannot_give_is_a_finding() {
+    // A two-layer board records no build-up.
+    let mut two = led_board();
+    let net = two.nets[0].name.clone();
+    two.set_impedance_targets(vec![impedance_target(&[&net], 50.0, None)]);
+    assert!(two.impedance_widths.is_empty());
+    let found = two.impedance_findings();
+    assert_eq!(found.len(), 1, "{found:?}");
+    assert!(found[0].contains("records no build-up"), "{found:?}");
+    assert_eq!(two.track_width(&net), two.rules.track_width);
+    // A pair whose spacing is under the process's clearance.
+    let mut board = four_layer_board();
+    board.set_impedance_targets(vec![impedance_target(
+        &["3V3", "net-led.anode"],
+        90.0,
+        Some(0.05),
+    )]);
+    let found = board.impedance_findings();
+    assert!(
+        found
+            .iter()
+            .any(|f| f.contains("is under the process's clearance")),
+        "{found:?}"
+    );
+    // A target so high that its width is under the narrowest track the process makes, or that
+    // no width gives at all: the tracks are drawn at least that wide, and the finding says so.
+    board.set_impedance_targets(vec![impedance_target(&["net-led.anode"], 140.0, None)]);
+    let found = board.impedance_findings();
+    assert!(
+        found.iter().any(
+            |f| f.contains("narrower than the narrowest track the process makes")
+                || f.contains("no width gives 140 ohm")
+        ),
+        "{found:?}"
+    );
+    assert!(board.track_width("net-led.anode") >= board.rules.min_track_width);
+    // A net two targets name is sized by the first.
+    board.set_impedance_targets(vec![
+        impedance_target(&["net-led.anode"], 50.0, None),
+        impedance_target(&["net-led.anode"], 60.0, None),
+    ]);
+    let found = board.impedance_findings();
+    assert!(
+        found.iter().any(|f| f.contains("has a target in `z` too")),
+        "{found:?}"
+    );
+}

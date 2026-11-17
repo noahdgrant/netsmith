@@ -74,8 +74,9 @@ mod validate;
 pub use board::{
     Board, BoardCutout, BoardError, BoardKeepout, BoardNet, BoardPour, BoardZone, CopperLayer,
     FixedCopper, Hang, HeightUnchecked, HoleNeighbour, KeepoutArea, Loaded as LoadedBoard, PadRef,
-    Placed, PlacementProblem, Plane, ReferenceSide, Side, Silk, StandardPass, Teardrop, Track,
-    Trim, Unplaced, Via, ZoneIslands, ZonePads, member as board_member, outline_box, rect_distance,
+    PairCoupling, Placed, PlacementProblem, Plane, ReferenceSide, Side, Silk, StandardPass,
+    Teardrop, Track, Trim, Unplaced, Via, ZoneIslands, ZonePads, member as board_member,
+    outline_box, rect_distance,
 };
 pub use body3d::{
     Axis as BodyAxis, Material as BodyMaterial, Primitive as BodyPrimitive, Solid as BodySolid,
@@ -109,9 +110,10 @@ pub use generate::{
 };
 pub use geometry::{Pt, Rect, TURNED_STRIP, TURNED_STRIPS, is_right_angle};
 pub use impedance::{
-    Line as ImpedanceLine, OutOfRange, Pair as ImpedancePair, TEST_TOLERANCE, TrackDielectric,
-    coated_coupled_microstrip, coated_microstrip, coupled_microstrip, coupled_stripline,
-    impedance_at, impedance_notes, microstrip, stripline, target_notes, width_for,
+    Line as ImpedanceLine, OutOfRange, Pair as ImpedancePair, TEST_TOLERANCE, TargetLayer,
+    TargetWidth, TrackDielectric, coated_coupled_microstrip, coated_microstrip, coupled_microstrip,
+    coupled_stripline, impedance_at, impedance_notes, microstrip, stripline, target_layers,
+    target_notes, target_widths, width_for,
 };
 pub use layout::{
     BoardLayout, Face as LayoutFace, IMPORT_SOURCE, KeepoutPlace, Layout, LayoutError, PartPlace,

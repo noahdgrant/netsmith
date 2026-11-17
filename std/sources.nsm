@@ -110,8 +110,10 @@ interface Rail {
 /// 50 ohm antenna line is `.rf_line: TrackImpedance { .impedance &= 50ohm }` and
 /// `.rf_line.line ~ .rf.signal`. `fab-notes.txt` then says, for each layer a track may be on,
 /// the width that gives it, from the process's build-up, and the impedance of the width the
-/// router draws, which is the net's own (`.min_track` of a rail on it) or the process's least.
-/// It is a target and not an instruction: the router does not size the track from it.
+/// router draws. The router draws the net at that width on each layer (issue #1025), never
+/// narrower than the process's least track or what the net's current needs; what the board
+/// cannot give (no build-up, no width in a formula's domain) is a finding of the guideline
+/// `impedance target`.
 ///
 /// Why an interface of its own, joined with `~` (the choice follows `Rail`'s `.min_track`,
 /// the owner's decision of 2026-11-02 that a width is a field of a std interface and not a
@@ -131,9 +133,10 @@ interface TrackImpedance {
 /// #1007): `.p` and `.n` are joined with `~` to the pair's two nets (`.usb.dp` and
 /// `.usb.dm`), `.impedance` is the target between them (90 ohm for USB 2.0) and `.spacing`
 /// the space between the two tracks, edge to edge, which the figure needs because the width
-/// that gives a differential impedance depends on it. Like `TrackImpedance` it states a
-/// target and does not size anything. A pair is not marked by it: the router still finds a
-/// diff pair by the names of its nets.
+/// that gives a differential impedance depends on it. The router draws the two nets as a diff
+/// pair, whatever their names (issue #1025): each at the width that gives the differential
+/// impedance at `.spacing`, never nearer its partner (or other copper) than `.spacing`, and
+/// beside its partner within a grid cell of it.
 interface PairImpedance {
     .p: Pin
     .n: Pin

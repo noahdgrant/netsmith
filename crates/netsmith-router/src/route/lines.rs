@@ -139,7 +139,7 @@ impl<'a> Router<'a> {
                     if self.pairing.get()
                         && let Some(masks) = built.as_mut()
                     {
-                        masks.follow = self.follow_cells(net, &others, window, self.width_of(line));
+                        masks.follow = self.follow_cells(net, &others, window, line);
                         // The estimate is cut to match, so that the search does go out of its
                         // way to run beside the partner; the pass keeps the new copper only if
                         // it is no longer.
@@ -359,37 +359,52 @@ impl<'a> Router<'a> {
             for track in masks.track.iter_mut().skip(2) {
                 track.fill(true);
             }
-        } else if self.stack.len() > 2
-            && self
-                .board
-                .net_currents
-                .iter()
-                .any(|c| c.net == self.lines[line].net)
-        {
-            // On an inner signal layer a net with a known current is drawn for the inner copper
-            // (issue #833), wider than on the outer layers: its cells there are those of that
-            // width, and it is never necked there.
-            let inner = self.masks(
-                window,
-                net,
-                (hard, hard_keepouts),
-                (soft_list, soft_keepouts),
-                Reach {
-                    room,
-                    width: self.width_on(line, 2),
-                    clearance: self.clearance_of(line),
-                },
-            );
-            for l in 2..self.stack.len() {
-                masks.track[l].clone_from(&inner.track[l]);
+        } else {
+            // On a layer where the line is drawn at another width than on the front, its cells
+            // there are those of that width, and it is never necked there: an inner signal
+            // layer of a net with a known current, drawn for the inner copper (issue #833), or
+            // any layer of a net with an impedance target, drawn at the width that gives it
+            // there (issue #1025).
+            let mut by_width: Vec<(f64, Masks)> = Vec::new();
+            for l in 1..self.stack.len() {
+                let width = self.width_on(line, l);
+                let current_inner = l >= 2
+                    && self
+                        .board
+                        .net_currents
+                        .iter()
+                        .any(|c| c.net == self.lines[line].net);
+                if (width - track_width).abs() < 1e-9 && !current_inner {
+                    continue;
+                }
+                let k = match by_width.iter().position(|(w, _)| (w - width).abs() < 1e-9) {
+                    Some(k) => k,
+                    None => {
+                        let other = self.masks(
+                            window,
+                            net,
+                            (hard, hard_keepouts),
+                            (soft_list, soft_keepouts),
+                            Reach {
+                                room,
+                                width,
+                                clearance: self.clearance_of(line),
+                            },
+                        );
+                        by_width.push((width, other));
+                        by_width.len() - 1
+                    }
+                };
+                let other = &by_width[k].1;
+                masks.track[l].clone_from(&other.track[l]);
                 if let Some(wide) = &mut masks.wide {
-                    wide[l].clone_from(&inner.track[l]);
+                    wide[l].clone_from(&other.track[l]);
                 }
                 if let Some(pinch) = &mut masks.pinch {
                     pinch[l].fill(false);
                 }
-                if let (Some(soft), Some(inner_soft)) = (&mut masks.soft, &inner.soft) {
-                    soft.track[l].clone_from(&inner_soft.track[l]);
+                if let (Some(soft), Some(other_soft)) = (&mut masks.soft, &other.soft) {
+                    soft.track[l].clone_from(&other_soft.track[l]);
                 }
             }
         }

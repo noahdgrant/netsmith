@@ -41,6 +41,9 @@ impl Unplaced {
             polygon,
             ..
         } = self;
+        // The widths the design's impedance targets give, solved once (issue #1025).
+        let impedance_widths =
+            crate::impedance::target_widths(&process.stackup, &design.features.impedance_targets);
         let cutouts = design
             .features
             .cutouts
@@ -103,6 +106,7 @@ impl Unplaced {
             net_widths: design.features.net_widths.clone(),
             net_clearances: design.features.net_clearances.clone(),
             rail_nets: design.features.rail_nets.clone(),
+            impedance_widths,
             impedance_targets: design.features.impedance_targets.clone(),
             net_currents: design.features.net_currents.clone(),
             overhang,

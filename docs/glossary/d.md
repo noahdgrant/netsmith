@@ -60,7 +60,7 @@ The dielectric between two copper layers of a _Build-up_, a `DielectricLayer`: o
 _Avoid_: Dielectric (that is a capacitor's class), substrate
 
 **Diff pair**:
-Two nets whose names differ only in a pair of suffixes (`dp` and `dm`, `D+` and `D-`, `_P` and `_N`, `.p` and `.n`, and the like: `netsmith_geom::PAIR_SUFFIXES`), such as the nets of the fields of `std::bus::Usb2`. Nothing in the source marks one: the names say it. When a try of the router has routed every line, it routes each net of a pair again beside the other, then both together, and keeps that copper only where more of it runs coupled at no more length or vias (for both together: the longer net no longer, and no net with more vias than the pair's net with more had, issue #1010); the route scorecard reports each pair's skew and how much of it runs coupled (issue #431).
+Two nets whose names differ only in a pair of suffixes (`dp` and `dm`, `D+` and `D-`, `_P` and `_N`, `.p` and `.n`, and the like: `netsmith_geom::PAIR_SUFFIXES`), such as the nets of the fields of `std::bus::Usb2`. Nothing in the source marks one: the names say it, or a `PairImpedance` on the two nets (an _Impedance target_, issue #1025), which also makes the router keep the pair's spacing. When a try of the router has routed every line, it routes each net of a pair again beside the other, then both together, and keeps that copper only where more of it runs coupled at no more length or vias (for both together: the longer net no longer, and no net with more vias than the pair's net with more had, issue #1010); the route scorecard reports each pair's skew and how much of it runs coupled (issue #431).
 _Avoid_: Differential pair marking, pair class
 
 **Draw**:

@@ -1,11 +1,19 @@
 //! What the process of a board says: track widths, layers, vias and the notes for the order.
 
+use std::cmp::Ordering;
+
 use super::*;
 
 impl Board {
-    /// The width the router draws a net's tracks at: the widest its rails ask for, and never
-    /// less than the rules' track width.
+    /// The width the router draws a net's tracks at on the outer layers: the front's
+    /// [`Board::track_width_on`]. For a net with no impedance target it is the widest its rails
+    /// ask for, and never less than the rules' track width.
     pub fn track_width(&self, net: &str) -> f64 {
+        self.track_width_on(net, CopperLayer::Front)
+    }
+
+    /// The widest a net's rails ask for, and never less than the rules' track width.
+    fn rail_width(&self, net: &str) -> f64 {
         self.net_widths
             .iter()
             .find(|(n, _)| n == net)
@@ -14,13 +22,24 @@ impl Board {
             })
     }
 
-    /// The width the router draws a net's tracks at on `layer`. On an outer layer it is
-    /// [`Board::track_width`]; on an inner signal layer, a net whose current is known is drawn at
+    /// The width the router draws a net's tracks at on `layer`.
+    ///
+    /// A net with an impedance target (issue #1025) is drawn on each layer at the width that
+    /// gives it there ([`Board::target_width`]), and never narrower than the least its current
+    /// needs or the process makes ([`Board::least_width_on`]; the board's
+    /// `impedance_findings` say where that floor moves it off the target). Its rails' widths and
+    /// the rules' track width do not size it.
+    ///
+    /// Any other net: on an outer layer the widest its rails ask for, and never less than the
+    /// rules' track width; on an inner signal layer, a net whose current is known is drawn at
     /// least as wide as that current needs in the inner copper (IPC-2221's inner constant,
     /// `NetCurrent::inner_least_width`), rounded up to the 0.01 mm a width is written in (issue
     /// #833).
     pub fn track_width_on(&self, net: &str, layer: CopperLayer) -> f64 {
-        let width = self.track_width(net);
+        if let Some(w) = self.target_width(net, layer) {
+            return w.max(self.least_width_on(net, layer));
+        }
+        let width = self.rail_width(net);
         if layer.is_outer() {
             return width;
         }
@@ -28,6 +47,36 @@ impl Board {
             Some(least) => width.max((least * 100.0 - 1e-9).ceil() / 100.0),
             None => width,
         }
+    }
+
+    /// The width that gives a net its impedance target on `layer` (issue #1025), to the nearest
+    /// 0.01 mm; `None` when the net has no target, or no width gives it there.
+    pub fn target_width(&self, net: &str, layer: CopperLayer) -> Option<f64> {
+        let name = layer.name();
+        self.impedance_widths
+            .iter()
+            .find(|w| w.net == net && w.layer == name)
+            .map(|w| w.width)
+    }
+
+    /// Give the board the impedance targets of its design and solve the width each net of
+    /// them is drawn at on each layer (`impedance_widths`, issue #1025).
+    pub fn set_impedance_targets(&mut self, targets: Vec<netsmith_core::ImpedanceTarget>) {
+        self.impedance_widths = crate::impedance::target_widths(&self.process.stackup, &targets);
+        self.impedance_targets = targets;
+    }
+
+    /// The pair a net is one track of by a `PairImpedance` (issue #1025): its partner and the
+    /// spacing the target states between the two tracks, edge to edge, in mm. The first target
+    /// that names the net, as for its width.
+    pub fn pair_spacing(&self, net: &str) -> Option<(&str, f64)> {
+        let t = self
+            .impedance_targets
+            .iter()
+            .find(|t| t.nets.iter().any(|n| n == net))?;
+        let spacing = t.spacing?;
+        let partner = t.nets.iter().find(|n| *n != net)?;
+        Some((partner.as_str(), spacing))
     }
 
     /// The narrowest a track of `net` on `layer` may be away from its pads: on an inner layer,
@@ -59,11 +108,17 @@ impl Board {
 
     /// The least space between copper of `net` and copper of any other net: the largest its
     /// rails ask for, and never less than the rules' clearance (issue #758).
+    ///
+    /// A net of a pair with an impedance target keeps at least the pair's spacing (issue
+    /// #1025), from its partner and so from any copper: copper of another net nearer than the
+    /// partner would couple to the track more strongly than the partner does.
     pub fn clearance(&self, net: &str) -> f64 {
+        let spacing = self.pair_spacing(net).map_or(0.0, |(_, s)| s);
         self.net_clearances
             .iter()
             .find(|(n, _)| n == net)
             .map_or(self.rules.clearance, |(_, c)| c.max(self.rules.clearance))
+            .max(spacing)
     }
 
     /// The space copper of `a` keeps from copper of `b`: the larger of their clearances, as
@@ -77,6 +132,7 @@ impl Board {
         self.net_clearances
             .iter()
             .map(|(_, c)| *c)
+            .chain(self.impedance_targets.iter().filter_map(|t| t.spacing))
             .fold(self.rules.clearance, f64::max)
     }
 
@@ -135,25 +191,35 @@ impl Board {
             .collect()
     }
 
-    /// The nets that are routed wider than the rules' track width or keep more than the
-    /// rules' clearance, grouped by width and clearance, from the narrowest and then the
-    /// least clearance: the net classes of the project file (issue #758).
+    /// The nets that are routed at another width than the rules' track width (wider for their
+    /// current or rails, or at the width an impedance target gives), keep more than the rules'
+    /// clearance or are a pair with an impedance target, grouped by width, clearance and
+    /// pair gap, from the narrowest and then the least clearance: the net classes of the
+    /// project file (issues #758, #1025). The width is the outer layers'.
     pub fn net_classes(&self) -> Vec<NetClass> {
         let mut classes: Vec<NetClass> = Vec::new();
         for net in &self.nets {
             let width = self.track_width(&net.name);
             let clearance = self.clearance(&net.name);
-            if width <= self.rules.track_width && clearance <= self.rules.clearance {
+            // A pair's gap is never less than the clearance its tracks keep.
+            let pair_gap = self
+                .pair_spacing(&net.name)
+                .map(|(_, s)| s.max(self.rules.clearance));
+            if (width - self.rules.track_width).abs() < 1e-9
+                && clearance <= self.rules.clearance
+                && pair_gap.is_none()
+            {
                 continue;
             }
             match classes
                 .iter_mut()
-                .find(|c| c.width == width && c.clearance == clearance)
+                .find(|c| c.width == width && c.clearance == clearance && c.pair_gap == pair_gap)
             {
                 Some(c) => c.nets.push(net.name.clone()),
                 None => classes.push(NetClass {
                     width,
                     clearance,
+                    pair_gap,
                     nets: vec![net.name.clone()],
                 }),
             }
@@ -162,6 +228,11 @@ impl Board {
             a.width
                 .total_cmp(&b.width)
                 .then(a.clearance.total_cmp(&b.clearance))
+                .then(
+                    a.pair_gap
+                        .partial_cmp(&b.pair_gap)
+                        .unwrap_or(Ordering::Equal),
+                )
         });
         classes
     }
@@ -337,6 +408,24 @@ impl Board {
                 None => self.track_width(net),
             },
         ));
+        // How much of each routed pair keeps a gap that gives its impedance (issue #1025).
+        extras.extend(self.pair_couplings().iter().map(|c| {
+            let gaps = match c.gaps {
+                Some((lo, hi)) => format!(", at gaps of {lo:.3} to {hi:.3} mm edge to edge"),
+                None => String::new(),
+            };
+            format!(
+                "track impedance pair: nets `{}` and `{}` ({}): {:.1} mm of the {:.1} mm of `{}`'s track runs beside `{}` at a gap whose differential impedance is within JLCPCB's test tolerance ({:.0} %){gaps}; the rest is where the pair parts at its ends, or the router could not keep it together",
+                c.p,
+                c.n,
+                c.path,
+                c.within,
+                c.length,
+                c.p,
+                c.n,
+                c.share() * 100.0
+            )
+        }));
         extras
     }
 }

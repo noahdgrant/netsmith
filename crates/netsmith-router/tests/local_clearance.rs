@@ -176,6 +176,7 @@ fn check(board: &Board) -> DrcReport {
         pad_ring: Some(board.rules.min_annular_ring),
         least_widths: board.least_widths(),
         inner_least_widths: board.inner_least_widths(),
+        target_widths: board.target_track_widths(),
         neck_reach: netsmith_router::route::NECK_REACH,
         via_counts: board.via_counts(),
         track_angle: true,
