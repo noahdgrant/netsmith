@@ -480,6 +480,7 @@ fn a_track_end_and_a_via_are_moved_and_a_lock_or_the_rules_refuse_it() {
             vec![RoutesChange::AddVia {
                 net: "VCC".into(),
                 at: corner,
+                layers: None,
             }],
         ))
         .unwrap_or_else(|e| panic!("{}", e.message));
@@ -1100,7 +1101,7 @@ fn shove_of(net: &str, tracks: Vec<PcbShoveTrack>, vias: Vec<PcbShoveVia>) -> Pc
 fn a_via_placed_shoves_an_unlocked_track_and_with_no_room_names_what_is_in_the_way() {
     let h = hang("shove-via");
     let at = PcbPoint { x: h.pad.x + 0.3, y: h.pad.y + 1.45 };
-    let via = vec![PcbShoveVia { at, diameter: None }];
+    let via = vec![PcbShoveVia { at, diameter: None, layers: None }];
     // With the shove the ground track turns about its pad out of the via's way.
     let shoved = h.editor.pcb_shove(&shove_of("VCC", Vec::new(), via.clone())).unwrap();
     assert!(shoved.reason.is_none() && shoved.stuck.is_none(), "{shoved:?}");
@@ -1125,7 +1126,7 @@ fn a_via_placed_shoves_an_unlocked_track_and_with_no_room_names_what_is_in_the_w
         .pcb_shove(&shove_of(
             "VCC",
             Vec::new(),
-            vec![PcbShoveVia { at: h.pad, diameter: None }],
+            vec![PcbShoveVia { at: h.pad, diameter: None, layers: None }],
         ))
         .unwrap();
     assert!(
@@ -1138,7 +1139,7 @@ fn a_via_placed_shoves_an_unlocked_track_and_with_no_room_names_what_is_in_the_w
         .pcb_routes(&edit_of(
             &h.scene,
             vec![
-                RoutesChange::AddVia { net: "VCC".into(), at },
+                RoutesChange::AddVia { net: "VCC".into(), at, layers: None },
                 RoutesChange::MoveTrack {
                     net: "GND".into(),
                     track: 1,
@@ -1298,7 +1299,7 @@ fn a_shove_and_a_reroute_are_asked_over_the_wire() {
     let body = serde_json::to_string(&shove_of(
         "VCC",
         Vec::new(),
-        vec![PcbShoveVia { at, diameter: None }],
+        vec![PcbShoveVia { at, diameter: None, layers: None }],
     ))
     .unwrap();
     let walk = serde_json::to_string(&walk_of("VCC", "top", at, at)).unwrap();

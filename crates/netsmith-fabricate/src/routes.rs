@@ -213,12 +213,16 @@ pub enum Edit {
         to: [f64; 2],
         lock: bool,
     },
-    /// A via of `net`; `None` is the process's via.
+    /// A via of `net`; `None` is the process's via. `layers` are the two layers a blind or a
+    /// buried via ends on (issue #1071), which must be a via the process makes
+    /// ([`netsmith_pcb::Board::via_offers`]), and its size is then that via's; `None`, or the top
+    /// and the bottom, is a through via.
     AddVia {
         net: String,
         at: [f64; 2],
         diameter: Option<f64>,
         drill: Option<f64>,
+        layers: Option<[netsmith_pcb::CopperLayer; 2]>,
         lock: bool,
     },
     /// A zone of `net` on `layers` (`top`, `bottom`, `inner1`, ...) inside the polygon
@@ -471,6 +475,43 @@ pub fn edit_file_all(board: &Board, file: &Path, changes: &[Edit]) -> Result<Str
     Ok(format!("{said}; wrote {}", file.display()))
 }
 
+/// The via of the process that ends on `layers` (issue #1071): the through via for `None` or
+/// for the top and the bottom, else the blind or the buried via of that span the process makes
+/// ([`netsmith_pcb::Board::via_offers`]), refused with the spans it does make when it makes
+/// none.
+pub fn via_offer(
+    board: &Board,
+    layers: Option<&[netsmith_pcb::CopperLayer; 2]>,
+) -> Result<netsmith_pcb::ViaOffer, Refusal> {
+    let offers = board.via_offers();
+    let through = *offers.last().expect("every process makes a through via");
+    let Some(&[a, b]) = layers else {
+        return Ok(through);
+    };
+    let n = board.copper_count();
+    let span = netsmith_pcb::ViaSpan::between(a, b, n);
+    let (top, bottom) = span.positions(n);
+    if a != b && top == 0 && bottom + 1 == n as usize {
+        return Ok(through);
+    }
+    if let Some(o) = offers.iter().find(|o| o.span == Some(span)) {
+        return Ok(*o);
+    }
+    let made: Vec<String> = offers
+        .iter()
+        .map(|o| match o.span {
+            Some(s) => format!("{},{}", s.from.word(), s.to.word()),
+            None => "top,bottom (the through via)".to_string(),
+        })
+        .collect();
+    Err(Refusal::Refused(format!(
+        "the process makes no via from `{}` to `{}`: the vias it makes end on {}",
+        a.word(),
+        b.word(),
+        made.join(", ")
+    )))
+}
+
 /// The text of one net's record as the routes file writes it, or `None` for no record: what the
 /// editor keeps to undo an edit and hands back to put the record back ([`Edit::Restore`]). Two
 /// records are the same when their texts are, to the 0.000001 mm the file keeps.
@@ -557,16 +598,29 @@ fn change_record(
             at,
             diameter,
             drill,
+            layers,
             lock,
         } => {
+            let offer = via_offer(board, layers.as_ref())?;
             record.vias.push(RouteVia {
                 at: *at,
-                diameter: diameter.unwrap_or(board.rules.via_diameter),
-                drill: drill.unwrap_or(board.rules.via_drill),
-                layers: Vec::new(),
+                diameter: diameter.unwrap_or(offer.diameter),
+                drill: drill.unwrap_or(offer.drill),
+                layers: offer
+                    .span
+                    .map(|s| vec![s.from.word().to_string(), s.to.word().to_string()])
+                    .unwrap_or_default(),
                 lock: *lock,
             });
-            Ok(format!("added a via to net {net}"))
+            Ok(match offer.span {
+                Some(s) => format!(
+                    "added a {} via from {} to {} to net {net}",
+                    if s.is_blind() { "blind" } else { "buried" },
+                    s.from.word(),
+                    s.to.word()
+                ),
+                None => format!("added a via to net {net}"),
+            })
         }
         Edit::AddZone {
             net,
