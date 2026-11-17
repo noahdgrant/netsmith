@@ -51,7 +51,7 @@ The `.reverse_peak` of a `Rail`: the highest voltage the rail reaches the wrong 
 _Avoid_: Negative peak, reverse transient
 
 **Rip-up round**:
-A round of the router's last stage of a try that leaves connections (issue #1088): for each connection left, the cheapest path that may cross other nets' copper names the nets it crosses, their copper the router laid is removed whole, the connection is routed through the room and those nets are routed again after it, and what does not fit is left for the next round. A try gets 6 rounds unless `--rip-rounds` or `rip_rounds` in `netsmith.toml` says otherwise (0 runs none), one net is ripped up at most 3 times, and the best state any round reaches is kept. The routes file's copper is never ripped up.
+A round of the router's last stage of a try that leaves connections (issue #1088): for each connection left, the cheapest path that may cross other nets' copper names the nets it crosses, their copper the router laid is removed whole, the connection is routed through the room and those nets are routed again after it, and what does not fit is left for the next round. A try gets 6 rounds unless `--rip-rounds` or `rip_rounds` in `netsmith.toml` says otherwise (0 runs none), one net is ripped up at most 3 times, and the best state any round reaches is kept; a try the rounds finish is used only when no other try finishes the board without them. The routes file's copper is never ripped up.
 _Avoid_: Negotiation (the earlier stage, which stops when a round spreads the connections left), shove (moves copper aside without removing it)
 
 **Role**:

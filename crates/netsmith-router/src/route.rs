@@ -78,8 +78,10 @@
 //! that still leaves lines after the chain gets **rounds of rip-up and re-route of whole nets**
 //! (`route/rip_rounds.rs`, issue #1088, [`RouteOptions::rip_rounds`]): each line left is routed
 //! through the copper of the nets its cheapest crossing path meets, those nets are removed whole
-//! and routed again after it, bounded by counts of rounds, rips of one net and searches. There is
-//! no push-and-shove, so a board can still end partly routed, and what is left is returned.
+//! and routed again after it, bounded by counts of rounds, rips of one net and searches. A try the
+//! rounds complete does not end the tries: it is kept only when no later try routes the board
+//! without them, so a board that routed before keeps its copper. There is no push-and-shove, so a
+//! board can still end partly routed, and what is left is returned.
 //!
 //! The work is bounded. A line is searched for in a window round its pads first, and in a
 //! larger one only if that finds nothing. Before a search, a cheap flood from both ends finds
@@ -1451,6 +1453,13 @@ pub struct RipRounds {
     pub left_after: usize,
 }
 
+impl RipRounds {
+    /// Whether the rounds left fewer lines than they began with, and so changed the try's copper.
+    pub fn improved(&self) -> bool {
+        self.left_after < self.left_before
+    }
+}
+
 /// The crowding map: how often, over a whole run of the router, the paths that may cross other
 /// nets' copper (each search for the nets in a line's way, in rip-up, negotiation and the chain)
 /// passed through each square of the board, a path counted once in a square.
@@ -1584,11 +1593,15 @@ pub fn route_with(board: &mut Board, options: RouteOptions) -> Routing {
             router.report(true, Some(&state), || {
                 router.try_ended(&state, tries, orders.len())
             });
-            let done = state.failed.is_empty();
-            if best
-                .as_ref()
-                .is_none_or(|b| state.failed.len() < b.0.failed.len())
-            {
+            // A try the rounds of rip-up improved (issue #1088) is kept only as a fallback: the
+            // router goes on with its other orders, and a try that routes the board on its own
+            // wins over it, so a board that routed before keeps its copper.
+            let rounded = router.ripped.borrow().improved();
+            let done = state.failed.is_empty() && !rounded;
+            if best.as_ref().is_none_or(|b| {
+                state.failed.len() < b.0.failed.len()
+                    || (state.failed.len() == b.0.failed.len() && b.3.improved() && !rounded)
+            }) {
                 let failed_in = router.failed_in.take();
                 let snapshots = router
                     .snapshots

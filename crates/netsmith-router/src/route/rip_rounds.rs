@@ -21,7 +21,24 @@
 //! (after that its copper is hard to these searches, as a protected line's is), and
 //! [`RIP_SEARCHES`] searches in all. The best state the rounds see, the fewest lines left, is
 //! kept, and the state the stage began with when no round did better: a try the rounds cannot
-//! improve keeps its copper.
+//! improve keeps its copper. A try the rounds improve is a fallback (`route_with`): the router
+//! goes on with its other orders, and the first try that routes the board without the rounds wins,
+//! so a board that routed before keeps its copper; a try the rounds completed is kept only when no
+//! other try completes, and otherwise the try with the fewest lines left.
+//!
+//! **Measured** (2026-11-17, main at db86ed84 against this; the agent's choice of the bounds).
+//! The three ported boards (`netsmith fab`, and `netsmith route --tries 1 --route-timeout 0
+//! --turn T` at T = 24 to 27) route before the rounds and write byte for byte the same board
+//! files. One try of the invented boards (`NETSMITH_TRIES=1`, `tight::measured` seeds 0 to 10,
+//! `mixed::measured` seeds 0 to 8): tight leaves 5 lines with the rounds and without; mixed 7
+//! without and 6 with (seed 4 routes, in one round of 60 searches and 7 nets ripped). The other
+//! lines left are on a fine-pitch part, where the line and a net ripped for it take turns in one
+//! gap; a round there makes 500 to 650 searches and adds 8 to 12 s to the try. Tried and not
+//! kept: the nets of a line the rounds routed kept hard for the rest of them (the chain's lock),
+//! and 20 rounds with 6 rips a net: no seed more. With every try (the scorecard's way), the
+//! boards that route keep their copper (mixed seed 4 routes on its second try with the same 226
+//! vias); taking a try the rounds complete as final gave it 242 vias, which is why it is only a
+//! fallback.
 //!
 //! **Never ripped.** Copper the router did not lay this run: the routes file's, locked or not
 //! (ADR 0030), and what `carry` kept. A net with `lock = true` has no copper of the router's, so
