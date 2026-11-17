@@ -6,7 +6,7 @@
 
 The commands are grouped under nouns, each with its verbs (issue #1090): `netsmith <noun> <verb>`, so `netsmith --help` lists nine nouns and `netsmith board --help` the verbs of a board.
 
-- `project`: the project as a whole: make one (`init`), bring its agent files up to this netsmith (`refresh`), refresh or check its pick lock (`lock`), report what is worth changing in its sources (`lint`), make one of its orders (`order`).
+- `project`: the project as a whole: make one (`init`), bring its agent files up to this netsmith (`refresh`), refresh or check its pick lock (`lock`), report what is worth changing in its sources (`lint`), make one of its orders (`order`), print what it is made of (`show`).
 - `board`: what is done to the boards of a file or of the project: `check`, `build`, `fab`, `drc` alone, `explain` a pick, `compare` two designs or the project with a git ref, `swap` a part for another row, `pins` (show, lock, move), `copper` (the planes, pours, hand zones and teardrop fills), and the views of the solved design the editor shows, printed as text or `--format json`: `bom`, `power`, `system`, `panel`.
 - `layout`: the layout file, where each part is.
 - `routes`: the routes file, the copper fixed by hand or imported.
@@ -32,6 +32,7 @@ Each command, what it was before, and its flags (a test walks `--help` of every 
 | `netsmith project lock` | `netsmith lock` | `--update`, `--check`, `--part`, `--except` |
 | `netsmith project lint` | new | `--strict`, `--format` |
 | `netsmith project order` | `netsmith fab --order [NAME]` | `--out`, `--route-timeout`, `--rip-rounds`, `--allow-drc-violations`, `--cross-check`, `--strict`, `--locked`, `--constraints`, `--no-glb`, `--no-step`, `--no-pdf`, `--offline`, `--quiet`, `--place-seeds`, `--place-budget`, `--progress`, `--to-editor` |
+| `netsmith project show` | new | `--format` |
 | `netsmith board check` | `netsmith check` | `--strict`, `--format`, `--notes` |
 | `netsmith board build` | `netsmith build` | `--out`, `--strict`, `--locked`, `--emit-design`, `--emit-solved`, `--format`, `--notes` |
 | `netsmith board fab` | `netsmith fab` | `--out`, `--route-timeout`, `--rip-rounds`, `--allow-drc-violations`, `--cross-check`, `--strict`, `--locked`, `--constraints`, `--pins`, `--no-glb`, `--no-step`, `--no-pdf`, `--save-placed`, `--reuse-routes`, `--offline`, `--quiet`, `--place-seeds`, `--place-budget`, `--progress`, `--to-editor`, `--format`, `--notes` |
@@ -148,6 +149,17 @@ netsmith board panel                      # a panel's grid, size and checks
 
 `show`, `bom` and `power` take the source file (or, with none, the project's boards) and `--board NAME`; `system` and `panel` take `--name NAME`. A name is as the editor names it, `System/Board` for a board of a system, and `Board` alone when no other board has that name. With one board (one system, one panel) the name may be left out; with several, the command exits 2 and lists them. The exit code is 0 when the view is printed, 1 when the source does not build (with its errors), and 2 when the command cannot run.
 
+### The project as the editor's tree shows it
+
+`netsmith project show` (issue #1138) prints what the editor's project tree is made of, as text or, with `--format json`, as the documents the editor's own routes answer, in one: `{"project": ..., "analysis": ..., "orders": [...]}` for `GET /api/project`, `GET /api/analysis` and `GET /api/orders`. It is made by the code those routes call, and it is read-only: it writes no file and builds no board.
+
+```sh
+netsmith project show                     # the boards, systems, panels, files and orders
+netsmith project show --format json       # the same, for a program
+```
+
+It prints the project (its title, folder, the version of netsmith, whether KiCad was found and where), the boards with their definition, file, system and counts of parts and nets, the systems with their boards, the panels with the board they repeat and their grid, the modules with the boards that use them, the files with their roles (top level, module, dependency, manifest, physical, schematic layout) and the definitions in them, and the orders of `netsmith.toml`. The names are the ones `board bom --board`, `board system --name` and `board panel --name` take, so an agent need not read them out of the sources. The files of the standard library are counted in the text and listed in the JSON. A mistake in a source is counted (`board check` lists the problems), not an error of this command: the exit code is 0 when the project is printed and 2 when the command cannot run. A project with no `top_level` file shows its files and orders.
+
 ### Every editor route has a command
 
 An agent must be able to drive and read everything a person does in the editor (issue #1098). A test holds the editor to that: `crates/netsmith-cli/tests/editor_routes.rs` reads the routes of the editor's server (`crates/netsmith-editor/src/server.rs`, the `.route("/api/...")` table) and has a row for each method of each route, which says one of three things:
@@ -156,7 +168,7 @@ An agent must be able to drive and read everything a person does in the editor (
 - the command that is still to come, with the issue that builds it (`GET /api/pcb/pours` is `view pcb`, issue #1086, which draws the 2D picture of the copper). The test accepts the row until a command of that name exists and then fails, so that the row is changed to name it;
 - why the route is an affordance of the page and needs no command, in one line: the previews of a track being drawn (`/api/pcb/walk`, `/api/pcb/shove`, `/api/pcb/reroute`), the socket (`/api/events`) and the progress post (`/api/progress`), the page's reads and writes of the files of the text editor and the project tree (`/api/file`, `/api/fs/...`), the cancels (a command stops with Ctrl+C, an MCP call with the host's cancel), and the choice of the page's analysis (`/api/analysis/run` and `/api/analysis/auto`).
 
-A route of the server with no row fails the test, and so does a row with no route, so a pull request that adds a route to the editor adds its command, or the reason it has none, in the same change. The audit that made the first table found two routes whose command was not there: the board's parts and nets as the inspector shows them (`GET /api/board`, issue #1137, which is `board show`) and the project's boards, systems, panels and files (`GET /api/project`, issue #1138).
+A route of the server with no row fails the test, and so does a row with no route, so a pull request that adds a route to the editor adds its command, or the reason it has none, in the same change. The audit that made the first table found two routes whose command was not there: the board's parts and nets as the inspector shows them (`GET /api/board`, issue #1137, which is `board show`) and the project's boards, systems, panels and files (`GET /api/project`, issue #1138, which is `project show`); both are commands now.
 
 ### The editor
 

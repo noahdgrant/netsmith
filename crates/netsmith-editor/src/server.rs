@@ -542,17 +542,21 @@ fn body<T: DeserializeOwned>(bytes: &[u8]) -> Result<T, ApiError> {
 }
 
 async fn project(State(s): State<Shared>) -> Result<Json<crate::api::Project>, ApiError> {
-    blocking(move || {
-        let mut project = s.backend.project();
-        // What this binary knows of itself; the backend knows the rest.
-        project.bundle_hash = crate::assets::bundle_hash().map(str::to_string);
-        project.git_describe = project
-            .git_describe
-            .or_else(|| crate::assets::git_describe().map(str::to_string));
-        project
-    })
-    .await
-    .map(Json)
+    blocking(move || served_project(&*s.backend))
+        .await
+        .map(Json)
+}
+
+/// What `GET /api/project` answers: the backend's tree with what this binary knows of itself
+/// added (the hash of its page and the `git describe` it was built from). `netsmith project show`
+/// prints it, so the command line and the editor say the same (issue #1138).
+pub fn served_project(backend: &(impl Backend + ?Sized)) -> crate::api::Project {
+    let mut project = backend.project();
+    project.bundle_hash = crate::assets::bundle_hash().map(str::to_string);
+    project.git_describe = project
+        .git_describe
+        .or_else(|| crate::assets::git_describe().map(str::to_string));
+    project
 }
 
 async fn analysis(State(s): State<Shared>) -> Result<Json<crate::api::Analysis>, ApiError> {

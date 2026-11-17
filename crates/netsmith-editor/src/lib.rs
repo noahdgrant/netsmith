@@ -47,4 +47,4 @@ pub use backend::{
     AnalysisEvent, ApiError, Attachment, Backend, ErrorDetail, Observer, Pcb3d, Say, Show, Work,
 };
 pub use netsmith_core::job::Cancel;
-pub use server::{PENDING_HEADER, Server, serve, serve_with_backlog};
+pub use server::{PENDING_HEADER, Server, serve, serve_with_backlog, served_project};

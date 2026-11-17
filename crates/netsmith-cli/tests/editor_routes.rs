@@ -49,9 +49,9 @@ const PREVIEW: &str =
 /// Every route, as `METHOD /path`, and how a command line reaches it.
 const ROUTES: &[(&str, Way)] = &[
     // The project and its analysis.
-    // The list of boards, systems and panels that `Analysis` also carries is #1138.
-    ("GET /api/project", Pending("project show", 1138)),
-    ("GET /api/analysis", Command(&["board check"])),
+    // `project show` prints both, with the orders: the boards, systems, panels and files.
+    ("GET /api/project", Command(&["project show"])),
+    ("GET /api/analysis", Command(&["board check", "project show"])),
     ("POST /api/analysis/cancel", PageOnly(CANCEL)),
     (
         "POST /api/analysis/run",
@@ -150,7 +150,7 @@ const ROUTES: &[(&str, Way)] = &[
     // `view gerber` reads and draws it (issue #1107).
     ("GET /api/gerber", Command(&["view gerber"])),
     ("POST /api/gerber", Command(&["view gerber"])),
-    ("GET /api/orders", Command(&["project order"])),
+    ("GET /api/orders", Command(&["project order", "project show"])),
     ("POST /api/order", Command(&["project order"])),
     ("POST /api/order/cancel", PageOnly(CANCEL)),
     ("GET /api/order/download", Command(&["project order"])),
