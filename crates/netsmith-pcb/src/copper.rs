@@ -263,7 +263,7 @@ fn area(a: PolygonArea) -> Area {
     }
 }
 
-fn areas(pen: &Polygons) -> Vec<Area> {
+pub(crate) fn areas(pen: &Polygons) -> Vec<Area> {
     pen.areas().into_iter().map(area).collect()
 }
 

@@ -287,6 +287,9 @@ impl Ratsnest {
             .iter()
             .flat_map(|z| z.layers.iter().map(String::as_str))
             .collect();
+        // The sense copper the board file carves the pours round (issue #1174) joins no pour
+        // or plane.
+        let carved = crate::kelvin::sense_carves(board);
         Self::from_parts(
             board.copper_count(),
             &board.parts,
@@ -297,6 +300,7 @@ impl Ratsnest {
             &board.fixed,
             (&zoned, &fills),
             &board.branch_currents,
+            &carved,
         )
     }
 
@@ -311,6 +315,7 @@ impl Ratsnest {
         fixed: &FixedCopper,
         (zoned, fills): (&[&str], &[ZoneFill]),
         branches: &[netsmith_core::BranchCurrent],
+        carved: &[crate::kelvin::SenseCarve],
     ) -> Ratsnest {
         let mut lines = Vec::new();
         for net in nets {
@@ -327,8 +332,30 @@ impl Ratsnest {
                     })
                 })
                 .collect();
-            let tracks: Vec<&Track> = tracks.iter().filter(|t| t.net == net.name).collect();
-            let vias: Vec<&Via> = vias.iter().filter(|v| v.net == net.name).collect();
+            let (track_at, tracks): (Vec<usize>, Vec<&Track>) = tracks
+                .iter()
+                .enumerate()
+                .filter(|(_, t)| t.net == net.name)
+                .unzip();
+            let (via_at, vias): (Vec<usize>, Vec<&Via>) = vias
+                .iter()
+                .enumerate()
+                .filter(|(_, v)| v.net == net.name)
+                .unzip();
+            // Items (pads, then tracks, then vias) that no pour or plane joins: a sense pin's
+            // copper, which the pours are carved round.
+            let mut alone = vec![false; nodes.len() + tracks.len() + vias.len()];
+            for c in carved.iter().filter(|c| c.net == net.name) {
+                for (k, node) in nodes.iter().enumerate() {
+                    alone[k] |= c.copper.pads.contains(&node.pad);
+                }
+                for (k, at) in track_at.iter().enumerate() {
+                    alone[nodes.len() + k] |= c.copper.tracks.contains(at);
+                }
+                for (k, at) in via_at.iter().enumerate() {
+                    alone[nodes.len() + tracks.len() + k] |= c.copper.vias.contains(at);
+                }
+            }
             // The layers of the net's planes, which a via reaches if it has copper on one: every
             // via but a blind or a buried one that ends short of them (issue #1015).
             let plane_layers: Vec<CopperLayer> = planes
@@ -367,6 +394,7 @@ impl Ratsnest {
                 &poured,
                 &joined,
                 &branch,
+                &alone,
             ));
         }
         Ratsnest { lines }
@@ -587,15 +615,15 @@ fn copper_joins(
 }
 
 /// What the copper of a net joins to the pads `from` when the pad `cut` is taken away: a sense
-/// pin's copper, without the pad it senses (issue #1148). Pours and planes are not counted (a net with
-/// one is never routed alone).
+/// pin's copper, without the pad it senses (issue #1148). Pours and planes are not counted: the
+/// board file carves them round the sense copper (`crate::kelvin`, issue #1174).
 #[derive(Debug, Clone, PartialEq, Default)]
 pub(crate) struct Reach {
     /// The other pads of the net it joins, by index of `nodes`.
     pub pads: Vec<usize>,
-    /// The tracks and the vias it holds.
-    pub tracks: usize,
-    pub vias: usize,
+    /// The tracks and the vias it holds, by index of the slices it was given.
+    pub tracks: Vec<usize>,
+    pub vias: Vec<usize>,
     /// Whether a track or a via of it touches the pad `cut`.
     pub touches_cut: bool,
 }
@@ -634,8 +662,8 @@ pub(crate) fn reach_without(
         .any(|&(a, b)| (a == cut && b >= n && held[b]) || (b == cut && a >= n && held[a]));
     Reach {
         pads: (0..n).filter(|&i| held[i] && !from.contains(&i)).collect(),
-        tracks: (n..n + t).filter(|&i| held[i]).count(),
-        vias: (n + t..n + t + vias.len()).filter(|&i| held[i]).count(),
+        tracks: (0..t).filter(|&i| held[n + i]).collect(),
+        vias: (0..vias.len()).filter(|&i| held[n + t + i]).collect(),
         touches_cut,
     }
 }
@@ -659,6 +687,7 @@ fn spanning_tree(
     poured: &[(CopperLayer, bool)],
     joined: &[(usize, usize)],
     branch: &[bool],
+    alone: &[bool],
 ) -> Vec<Ratline> {
     let (n, t) = (nodes.len(), tracks.len());
     // Items 0..n are pads, then tracks, then vias, then the net's plane, then its pours on the
@@ -673,16 +702,20 @@ fn spanning_tree(
         sets.join(a, b);
     }
     for (ti, track) in tracks.iter().enumerate() {
-        if poured.iter().any(|&(l, _)| l == track.layer) {
+        if !alone[n + ti] && poured.iter().any(|&(l, _)| l == track.layer) {
             sets.join(n + ti, pour_item(track.layer));
         }
     }
-    for (vi, via) in vias.iter().enumerate() {
+    for (vi, via) in vias
+        .iter()
+        .enumerate()
+        .filter(|&(vi, _)| !alone[n + t + vi])
+    {
         for &(layer, _) in poured.iter().filter(|&&(l, _)| via.on(l, layers)) {
             sets.join(n + t + vi, pour_item(layer));
         }
     }
-    for (ni, node) in nodes.iter().enumerate() {
+    for (ni, node) in nodes.iter().enumerate().filter(|&(ni, _)| !alone[ni]) {
         for &(layer, pads) in poured {
             if pads && has_layer(node, layer) {
                 sets.join(ni, pour_item(layer));
@@ -693,11 +726,11 @@ fn spanning_tree(
     if plane {
         // A through-hole pad has copper on every layer, and so has a via.
         for (ni, node) in nodes.iter().enumerate() {
-            if node.front && node.back {
+            if node.front && node.back && !alone[ni] {
                 sets.join(ni, plane_item);
             }
         }
-        for vi in (0..vias.len()).filter(|&vi| reaches_plane[vi]) {
+        for vi in (0..vias.len()).filter(|&vi| reaches_plane[vi] && !alone[n + t + vi]) {
             sets.join(n + t + vi, plane_item);
         }
         // The plane joins every pad that reaches it, so the pads that do not need a line
