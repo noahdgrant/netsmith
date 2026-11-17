@@ -26,6 +26,7 @@
 //! | `POST /api/pcb/route`, `cancel`, `edit`, `drc`; `GET /api/pcb/scene`, `findings` | place and route on demand; `cancel` stops the router and keeps what it routed |
 //! | `GET /api/pcb/fit?board=&part=` (`near=`, `step=`, `side=`) | where one part fits with every other part where it is on the placed board, what `netsmith layout fit` says: a pose for each turn and face, the nearest place to `near` where nothing is found or the closest try with what is in the way (`PcbFit`, issue #1002); nothing is written; `400` for a part the board has none of, a `near` that is neither a part nor `X,Y`, a `step` not above 0 or a `side` that is not `top` or `bottom` |
 //! | `GET /api/pcb/summary?board=` (`near=`, `within=`, `between=`) | the placed board summed up as data, what `netsmith layout summary` prints: totals, area and free space of each face, module boxes, decoupling distances, nets, the parts near a part and the distance between two pads (`PcbSummary`, issue #1003); `400` for a part or pad the board has none of |
+//! | `GET /api/pcb/copper?board=` | the board's copper areas as data, what `netsmith board copper` prints: every copper layer with its use (`plane`, `pour`, `signal`), net and a pour's fields, the zones of the routes file counted apart from the process's pours, and the teardrop fills, counted only when the board has been routed here (`PcbCopper`, issue #1085); from the source, no placing, no routing |
 //! | `POST /api/pcb/place/cancel` | stops the placings of the PCB view that run (issue #764): a `scene` (or the placing of a `route`) that is placing answers `499` and keeps nothing; while a `scene` places, the socket carries `progress` with the task `place` (the placer's lines, as `fab` prints them) and `pcb_live` with the parts where the placer has them, and while a `route` routes, `pcb_live` with the copper laid so far |
 //! | `POST /api/progress` | a line of a run the editor did not start (`netsmith board fab --to-editor`, an `OutsideProgress`), passed to every page as `outside`; `204` |
 //! | `POST /api/pcb/regenerate` | one module placed again with every other part held (issue #825): the proposal, the edit that makes it (sent to `edit` as any edit, one step of undo), where its parts go, the nets routed again, and the findings and totals before and after; nothing is written; while it runs the socket carries `progress` with the task `regenerate`; `409` for a stale stamp, `422` with the reason when it is refused |
@@ -175,6 +176,7 @@ const NEEDS_ANALYSIS: &[&str] = &[
     "/api/pcb/reroute",
     "/api/pcb/findings",
     "/api/pcb/summary",
+    "/api/pcb/copper",
     "/api/pcb/fit",
     "/api/pcb/drc",
     "/api/build",
@@ -381,6 +383,7 @@ fn router(state: Shared) -> Router {
         .route("/api/pcb/reroute", post(pcb_reroute))
         .route("/api/pcb/findings", get(pcb_findings))
         .route("/api/pcb/summary", get(pcb_summary))
+        .route("/api/pcb/copper", get(pcb_copper))
         .route("/api/pcb/fit", get(pcb_fit))
         .route("/api/pcb/drc", post(pcb_drc))
         .route("/api/build", post(build))
@@ -951,6 +954,15 @@ async fn pcb_findings(
 ) -> Result<Json<crate::api::PcbFindings>, ApiError> {
     let board = param(&q, "board")?;
     json(move || s.backend.pcb_findings(&board)).await
+}
+
+/// The board's copper areas, from the source and the routes file (issue #1085).
+async fn pcb_copper(
+    State(s): State<Shared>,
+    Query(q): Query1,
+) -> Result<Json<crate::api::PcbCopper>, ApiError> {
+    let board = param(&q, "board")?;
+    json(move || s.backend.pcb_copper(&board)).await
 }
 
 /// How far a `near` part's neighbours are listed when the request has no `within`, in mm

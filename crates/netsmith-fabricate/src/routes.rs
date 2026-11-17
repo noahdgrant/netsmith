@@ -78,6 +78,18 @@ pub fn load(file: &Path) -> Result<Routes, String> {
     Ok(read_unchecked(file)?.map(|(r, _)| r).unwrap_or_default())
 }
 
+/// The copper areas of `design` (issue #1085): its planes and pours, and the zones of the routes
+/// file beside the layout file `layout`, with no placing and no routing. `netsmith board copper`
+/// and the editor's PCB summary tab both ask this, so they cannot differ. A routes file that
+/// cannot be read is an error naming it.
+pub fn copper_areas(
+    design: &netsmith_core::Design,
+    layout: &Path,
+) -> Result<netsmith_pcb::CopperAreas, String> {
+    let routes = load(&beside_layout(layout))?;
+    netsmith_pcb::CopperAreas::of(design, Some(&routes))
+}
+
 /// Write `routes` to `file`, or remove the file when it holds no record. The text is written to a
 /// temporary file beside it and renamed into place, so the editor, which reads the file whenever
 /// it changes, never reads half of it (a half file is a parse error, an empty one no copper).

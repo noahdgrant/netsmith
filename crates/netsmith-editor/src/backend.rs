@@ -5,9 +5,9 @@ use netsmith_core::job::Cancel;
 
 use crate::api::{
     Analysis, BoardDetail, Bom, BuildReport, CatalogRefresh, Changed, Compare, Definition,
-    FabReport, FileContent, GitInfo, OrderInfo, OrderReport, PanelView, PcbEdit, PcbEdited,
-    PcbFindings, PcbFit, PcbPours, PcbReport, PcbScene, PcbSummary, PinLock, PinMove, PinWritten,
-    PowerTree, Project, Saved, SchematicHints, Swap, SwapApply, Swapped, SystemView,
+    FabReport, FileContent, GitInfo, OrderInfo, OrderReport, PanelView, PcbCopper, PcbEdit,
+    PcbEdited, PcbFindings, PcbFit, PcbPours, PcbReport, PcbScene, PcbSummary, PinLock, PinMove,
+    PinWritten, PowerTree, Project, Saved, SchematicHints, Swap, SwapApply, Swapped, SystemView,
 };
 
 /// A refusal, with the HTTP status that says why.
@@ -363,6 +363,14 @@ pub trait Backend: Send + Sync + 'static {
     ) -> Result<PcbSummary, ApiError> {
         Err(ApiError::not_found(format!(
             "there is no summary of `{board}`"
+        )))
+    }
+    /// The board's copper areas (issue #1085): what `netsmith board copper` prints. From the
+    /// source and the routes file, with no placing and no routing; the teardrop fills are counted
+    /// only when the board has been routed here.
+    fn pcb_copper(&self, board: &str) -> Result<PcbCopper, ApiError> {
+        Err(ApiError::not_found(format!(
+            "there is no copper summary of `{board}`"
         )))
     }
     /// Where the part `part` (a path or a designator) fits on the board as placed now, every

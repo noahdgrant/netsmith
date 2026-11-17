@@ -11,6 +11,7 @@ mod catalog;
 mod check;
 pub(crate) mod common;
 mod compare;
+mod copper;
 mod dxf;
 mod editor;
 mod explain;
@@ -114,6 +115,8 @@ pub enum Board {
     System(system::Args),
     /// Print a panel: its grid, size and checks.
     Panel(panel::Args),
+    /// Say which layers carry a plane or a pour, the hand zones of the routes file and the teardrop fills.
+    Copper(copper::Args),
 }
 
 /// `netsmith view ...`.
@@ -177,6 +180,7 @@ pub fn run(command: Command) -> ExitCode {
             Board::Power(args) => power::run(args),
             Board::System(args) => system::run(args),
             Board::Panel(args) => panel::run(args),
+            Board::Copper(args) => copper::run(args),
         },
         Command::Layout(args) => layout::run(args),
         Command::Routes(args) => routes::run(args),

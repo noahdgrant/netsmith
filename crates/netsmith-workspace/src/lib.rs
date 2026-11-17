@@ -46,8 +46,9 @@ use netsmith_editor::{
     api::{
         Analysis, BoardDetail, Bom, BuildReport, CatalogRefresh, Changed, Compare, Definition,
         FabReport, FileContent, GitInfo, KeepoutPlacement, OrderInfo, OrderReport, PanelView,
-        PcbChange, PcbEdit, PcbEdited, PcbFindings, PcbFit, PcbReport, PcbScene, PcbSummary,
-        PinLock, PinMove, PinWritten, PowerTree, Project, Saved, SchematicHints, SystemView,
+        PcbChange, PcbCopper, PcbEdit, PcbEdited, PcbFindings, PcbFit, PcbReport, PcbScene,
+        PcbSummary, PinLock, PinMove, PinWritten, PowerTree, Project, Saved, SchematicHints,
+        SystemView,
     },
 };
 
@@ -1552,6 +1553,19 @@ impl Backend for Workspace {
             state.pcb.entry(board.to_string()).or_insert(entry);
         }
         answer
+    }
+
+    fn pcb_copper(&self, board: &str) -> Result<PcbCopper, ApiError> {
+        // From the source and the routes file; the board placed and routed here, if there is
+        // one, only says how many teardrop fills it has.
+        let state = self.fresh();
+        let data = state.snapshot.board_handle(board)?;
+        let routed = state
+            .pcb
+            .get(board)
+            .filter(|e| e.is_routed())
+            .map(|e| &e.board);
+        pcb::copper(&data, board, routed)
     }
 
     fn pcb_fit(

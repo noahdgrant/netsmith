@@ -2,15 +2,15 @@
 // summary` prints. Wire length and crossings, how full each face is and where it is free, each
 // module's box, the decoupling distances, what the datasheets' layout guidelines measure (issue
 // 994), the longest nets, the parts near the selected parts, and
-// the distance between two pads typed in. A click on a box or a part zooms the canvas to it.
+// the distance between two pads typed in, and the copper areas (issue 1085, `netsmith board copper`): the planes, pours, the routes file's zones and the teardrop fills. A click on a box or a part zooms the canvas to it.
 
 import { useEffect, useState } from 'preact/hooks';
 
-import type { PcbBox, PcbScene, PcbSummary } from '../api';
+import type { PcbBox, PcbCopper, PcbScene, PcbSummary } from '../api';
 import { api, ApiFailure } from '../client';
 import { EmptyState } from '../components/ui';
 import { select, selection } from '../pcbstore';
-import { fillWord, guidelineLine, mm, padName, padProblem, padsLine, sheetBox, summaryQuery } from './summary';
+import { copperLayerLine, copperZoneLine, fillWord, guidelineLine, mm, padName, padProblem, padsLine, sheetBox, summaryQuery, teardropsLine } from './summary';
 
 /** How many of the longest nets the tab lists. */
 const LONGEST_NETS = 8;
@@ -55,6 +55,28 @@ export function SummaryTab(props: { scene: PcbScene; onFocus: (box: PcbBox) => v
       current = false;
     };
   }, [ask, sc.layoutStamp]);
+  // The copper areas come from the source and the routes file, not from the placement: asked again
+  // when either changes (the scene's stamps) or the board is routed (that counts the teardrop fills).
+  const [copper, setCopper] = useState<PcbCopper | null>(null);
+  const [copperError, setCopperError] = useState<string | null>(null);
+  useEffect(() => {
+    let current = true;
+    api
+      .pcbCopper(sc.board)
+      .then((r) => {
+        if (!current) return;
+        setCopper(r);
+        setCopperError(null);
+      })
+      .catch((e) => {
+        if (!current) return;
+        setCopperError(e instanceof ApiFailure || e instanceof Error ? e.message : String(e));
+        setCopper(null);
+      });
+    return () => {
+      current = false;
+    };
+  }, [sc.board, sc.layoutStamp, sc.routesStamp, sc.routed]);
   const measure = () => {
     const [x, y] = [padName(a), padName(b)];
     if (!x || !y) {
@@ -142,6 +164,32 @@ export function SummaryTab(props: { scene: PcbScene; onFocus: (box: PcbBox) => v
               <button class="tool" data-testid="summary-clear" onClick={() => setPairs([])}>
                 Clear the pads
               </button>
+            </div>
+          )}
+          <div class="sub">Copper areas</div>
+          {copperError && (
+            <div class="note-line bad" data-testid="summary-copper-error">
+              {copperError}
+            </div>
+          )}
+          {copper?.layers.map((l) => (
+            <div key={l.layer} class="summary-line" data-testid="summary-copper-layer" data-layer={l.layer} data-kind={l.kind}>
+              <b>{l.layer}</b>: {copperLayerLine(l)}
+            </div>
+          ))}
+          {copper && (
+            <div class="summary-line" data-testid="summary-copper-zones">
+              <b>Hand zones</b> (routes file): {copper.zones.length}
+            </div>
+          )}
+          {copper?.zones.map((z, i) => (
+            <div key={i} class="summary-line faint" data-testid="summary-copper-zone">
+              {copperZoneLine(z)}
+            </div>
+          ))}
+          {copper && (
+            <div class="summary-line" data-testid="summary-copper-teardrops" data-counted={copper.teardrops.counted}>
+              <b>Teardrop fills</b>: {teardropsLine(copper)}
             </div>
           )}
           <div class="sub">Faces</div>

@@ -9,6 +9,7 @@ The commands are grouped under nouns, each with its verbs (issue #1090): `netsmi
 - `project`: the project as a whole: make one (`init`), bring its agent files up to this netsmith (`refresh`), refresh or check its pick lock (`lock`), make one of its orders (`order`).
 - `board`: what is done to the boards of a file or of the project: `check`, `build`, `fab`, `explain` a pick, `compare` two designs, `swap` a part for another row.
 - `board`: what is done to the boards of a file or of the project: `check`, `build`, `fab`, `explain` a pick, `compare` two designs, and the views of the solved design the editor shows, printed as text or `--format json`: `bom`, `power`, `system`, `panel`.
+- `board`: what is done to the boards of a file or of the project: `check`, `build`, `fab`, `explain` a pick, `compare` two designs, `copper` (the planes, pours, hand zones and teardrop fills).
 - `layout`: the layout file, where each part is.
 - `routes`: the routes file, the copper fixed by hand or imported.
 - `view`: look at a board: `3d` draws it to a PNG, `editor` serves the editor, `editor-3d` drives the 3D view of a running editor.
@@ -46,6 +47,7 @@ Each command, what it was before, and its flags (a test walks `--help` of every 
 | `netsmith board power` | new | `--board`, `--format` |
 | `netsmith board system` | new | `--name`, `--format` |
 | `netsmith board panel` | new | `--name`, `--format` |
+| `netsmith board copper` | new | `--board`, `--format` |
 | `netsmith layout show` | the same | `--file` (was `--into`), `--board`, `--format` |
 | `netsmith layout set` | the same | `--file` (was `--into`), `--board`, `--at`, `--turn`, `--side`, `--lock`, `--unlock`, `--format` |
 | `netsmith layout check` | the same | `--file` (was `--into`), `--board`, `--format` |
@@ -104,6 +106,7 @@ netsmith board panel                      # a panel's grid, size and checks
 - `board panel` prints a `panel`'s board, grid, cell and panel size, rails and the panel checks; the drawing is only in the JSON (`svg`).
 
 `bom` and `power` take the source file (or, with none, the project's boards) and `--board NAME`; `system` and `panel` take `--name NAME`. A name is as the editor names it, `System/Board` for a board of a system, and `Board` alone when no other board has that name. With one board (one system, one panel) the name may be left out; with several, the command exits 2 and lists them. The exit code is 0 when the view is printed, 1 when the source does not build (with its errors), and 2 when the command cannot run.
+The places left for commands to come, named by the same rules: `board bom`, `board power`, `board drc`, `board swap`, and `board pins`; `view schematic`, `view pcb` and `view gerber`; `project fmt` and `project lint`; and `mcp`, the server that offers these commands to an agent.
 
 ### The editor
 
