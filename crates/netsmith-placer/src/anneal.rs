@@ -386,10 +386,6 @@ const W_EDGE: f64 = 0.4;
 const W_AREA: f64 = 0.03;
 /// Each pair of ratsnest lines of two nets that cross.
 const W_CROSSING: f64 = 1.0;
-/// Each net that cannot leave a side of a busy part through the corridor in front of it, at
-/// the weight measured ([`escape`]); the placer's default is 0, the term left out.
-#[cfg(test)]
-const W_ESCAPE_ROOM: f64 = 10.0;
 /// Nets with more pads than this have no lines counted.
 const MAX_LINE_PADS: usize = 10;
 /// A part that is turned, or has its text off the top.
@@ -879,6 +875,8 @@ struct Engine<'a> {
     /// sizes; nothing else reads them.
     pairs_costed: std::cell::Cell<u64>,
     poses_tried: u64,
+    /// The pushes of a busy part proposed ([`Engine::push_by`]), counted for a test.
+    pushes: u64,
     /// What a conflict of reference text or silkscreen with another part costs while it is
     /// as heavy as a hard rule: it grows through a run, from a hint to a rule (`text_last`).
     text_weight: f64,
@@ -1004,14 +1002,7 @@ pub(crate) fn anneal(parts: &mut [Placed], p: &Problem, effort: f64) -> Outcome 
                 }
                 let after = e.eval(&set);
                 let delta = after.total() - before.total();
-                let pushed = moves::dbg_push::LAST.swap(false, std::sync::atomic::Ordering::Relaxed);
-                if pushed && after.hard > before.hard + HARD_EPS {
-                    moves::dbg_push::HARD.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-                }
                 if delta <= 0.0 || rng.unit() < exp_neg(delta / t) {
-                    if pushed {
-                        moves::dbg_push::OK.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-                    }
                     e.refresh(&set);
                     current.soft += after.soft - before.soft;
                     current.hard += after.hard - before.hard;
@@ -1061,17 +1052,6 @@ pub(crate) fn anneal(parts: &mut [Placed], p: &Problem, effort: f64) -> Outcome 
         }
     }
 
-    if std::env::var("NETSMITH_PUSH_DEBUG").is_ok() {
-        use std::sync::atomic::Ordering::Relaxed;
-        eprintln!(
-            "push: {} proposed, mean {:.1} parts, {} raised hard, {} kept; escape now {:.1}",
-            moves::dbg_push::N.swap(0, Relaxed),
-            moves::dbg_push::LEN.swap(0, Relaxed) as f64 / 1.0,
-            moves::dbg_push::HARD.swap(0, Relaxed),
-            moves::dbg_push::OK.swap(0, Relaxed),
-            if e.w_escape > 0.0 { e.escape_with(&e.escapers.clone()) } else { 0.0 },
-        );
-    }
     // Where the run ended, legalised: the last a view that watches it sees of this run.
     netsmith_pcb::show_glimpse(|| e.glimpse(&names));
     let ended = if feasible {

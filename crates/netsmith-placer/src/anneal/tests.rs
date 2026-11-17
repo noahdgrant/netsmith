@@ -1289,6 +1289,61 @@ fn the_escape_shortfall_kept_through_moves_is_the_one_counted_afresh() {
     assert!(short > 20, "{short} moves fell short");
 }
 
+#[test]
+fn a_push_takes_along_the_parts_a_busy_part_lands_on_and_no_others() {
+    // Issue #1035: the QFN in the middle, a resistor 0.2 mm beyond its +x side, one 0.2 mm
+    // beyond its -x side and one far off. Pushed 0.5 mm toward +x, the QFN lands on the first,
+    // which goes with it by the same step; it leaves the second behind, and the third is
+    // nowhere near.
+    let board = busy_board(30.0);
+    let mut parts = board.parts.clone();
+    let fixed = vec![false; parts.len()];
+    let rules = board.rules.clone();
+    let problem = problem_with_escape(&board, &fixed, &rules, 1.0);
+    let mut e = Engine::new(&mut parts, &problem);
+    put_at(&mut e, 0, Pt::new(15.0, 15.0));
+    for i in 1..9 {
+        put_at(&mut e, i, Pt::new(3.0 * i as f64, 27.0));
+    }
+    let qfn = e.court(0);
+    let r = e.shape(1).court;
+    put_at(&mut e, 1, Pt::new(qfn.max.x + 0.2 - r.min.x, 15.0));
+    put_at(&mut e, 2, Pt::new(qfn.min.x - 0.2 - r.max.x, 15.0));
+    e.refresh_all();
+    let (q, r1) = (e.poses[0], e.poses[1]);
+    let change = e.push_by(0, 10, 0);
+    let moved: Vec<usize> = change.iter().map(|&(i, _)| i).collect();
+    assert_eq!(moved, vec![0, 1]);
+    assert_eq!((change[0].1.x - q.x, change[0].1.y - q.y), (10, 0));
+    assert_eq!((change[1].1.x - r1.x, change[1].1.y - r1.y), (10, 0));
+    // The parts are where they were: a push is proposed, not made.
+    assert!(e.poses[0] == q && e.poses[1] == r1);
+    assert_eq!(e.pushes, 1);
+}
+
+#[test]
+fn only_a_run_that_weighs_escape_room_pushes() {
+    // At weight 0 the moves are the ones from before the push was built (the same random
+    // numbers drawn), so a placement that does not weigh escape room is unchanged.
+    let board = busy_board(30.0);
+    let fixed = vec![false; board.parts.len()];
+    let rules = board.rules.clone();
+    let pushes = |weight: f64| {
+        let mut parts = board.parts.clone();
+        let problem = problem_with_escape(&board, &fixed, &rules, weight);
+        let mut e = Engine::new(&mut parts, &problem);
+        let mut rng = Rng::new(5);
+        for _ in 0..1000 {
+            e.propose(&mut rng, 60);
+        }
+        e.pushes
+    };
+    assert_eq!(pushes(0.0), 0);
+    // One move in `PUSH_ONE_IN`, less the few with no step.
+    let weighed = pushes(1.0);
+    assert!((30..=70).contains(&weighed), "{weighed} pushes");
+}
+
 /// The escape shortfall of a placed board's busy parts.
 fn escape_of(board: &mut Board) -> f64 {
     let fixed = vec![true; board.parts.len()];
@@ -1305,7 +1360,7 @@ fn weighing_escape_room_leaves_a_busy_part_less_short_of_it_than_not() {
     // out: over four seeds, the one that weighs it leaves fewer (9 against 19 when written).
     let (mut weighed, mut not) = (0.0, 0.0);
     for seed in 0..4 {
-        for (weight, total) in [(W_ESCAPE_ROOM, &mut weighed), (0.0, &mut not)] {
+        for (weight, total) in [(netsmith_pcb::ESCAPE_ROOM, &mut weighed), (0.0, &mut not)] {
             let mut board = busy_board(11.0);
             let fixed = vec![false; board.parts.len()];
             let rules = board.rules.clone();

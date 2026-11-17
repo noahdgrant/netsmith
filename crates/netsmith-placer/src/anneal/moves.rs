@@ -273,19 +273,25 @@ impl<'a> Engine<'a> {
         self.expand(change)
     }
 
-    /// A shift of a busy part that takes along the parts it lands on (issue #1035): busy part
-    /// `b` moves by a step of at most [`PUSH_REACH`] units, and each free part that would then
-    /// break a hard rule with a part moved (its courtyard, or the escape ring) moves by the
-    /// same step, and so on from it, up to [`PUSH_MOST`] parts. A plain shift of a part as big
-    /// as an 80-pad module lands on the parts of its face at once and is refused, so without
-    /// this it never leaves the place the rows gave it. Empty if `b` stays where it is.
+    /// A shift of a busy part that takes along the parts it lands on (issue #1035): a busy
+    /// part moves by a step of at most [`PUSH_REACH`] units, as [`Engine::push_by`] moves it.
     pub(super) fn push(&mut self, rng: &mut Rng, reach: i64) -> Vec<(usize, Pose)> {
         let b = self.escapers[rng.below(self.escapers.len())];
         let r = reach.min(PUSH_REACH);
         let (dx, dy) = (rng.spread(r), rng.spread(r));
+        self.push_by(b, dx, dy)
+    }
+
+    /// Part `b` moved by `(dx, dy)` units, and each free part that would then break a hard rule
+    /// with a part moved (their courtyards, or the escape ring) moved by the same step, and so
+    /// on from it, up to [`PUSH_MOST`] parts. A plain shift of a part as big as an 80-pad
+    /// module lands on the parts of its face and is refused, so without this the module never
+    /// leaves the place the rows gave it. Empty if `b` stays where it is.
+    pub(super) fn push_by(&mut self, b: usize, dx: i64, dy: i64) -> Vec<(usize, Pose)> {
         if self.models[b].fixed || (dx, dy) == (0, 0) {
             return Vec::new();
         }
+        self.pushes += 1;
         let by = |p: Pose| Pose {
             x: p.x + dx,
             y: p.y + dy,
@@ -300,8 +306,8 @@ impl<'a> Engine<'a> {
             for j in self.near(m) {
                 if j == m
                     || self.models[j].fixed
-                    || old.iter().any(|&(o, _)| o == j)
                     || old.len() >= PUSH_MOST
+                    || old.iter().any(|&(o, _)| o == j)
                     || self.pair(m, j).hard <= HARD_EPS
                 {
                     continue;
@@ -311,9 +317,6 @@ impl<'a> Engine<'a> {
             }
         }
         let change = old.iter().map(|&(j, _)| (j, self.poses[j])).collect();
-        dbg_push::LAST.store(true, std::sync::atomic::Ordering::Relaxed);
-        dbg_push::N.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        dbg_push::LEN.fetch_add(old.len() as u64, std::sync::atomic::Ordering::Relaxed);
         for &(j, p) in old.iter().rev() {
             self.put(j, p);
         }
@@ -438,13 +441,4 @@ impl<'a> Engine<'a> {
     pub(super) fn all(&self) -> Vec<usize> {
         (0..self.models.len()).collect()
     }
-}
-
-pub(super) mod dbg_push {
-    use std::sync::atomic::{AtomicBool, AtomicU64};
-    pub static LAST: AtomicBool = AtomicBool::new(false);
-    pub static N: AtomicU64 = AtomicU64::new(0);
-    pub static LEN: AtomicU64 = AtomicU64::new(0);
-    pub static OK: AtomicU64 = AtomicU64::new(0);
-    pub static HARD: AtomicU64 = AtomicU64::new(0);
 }

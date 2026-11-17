@@ -518,6 +518,7 @@ impl<'a> Engine<'a> {
             grid: grid::Grid::new(carrier),
             pairs_costed: std::cell::Cell::new(0),
             poses_tried: 0,
+            pushes: 0,
             text_weight: TEXT_WEIGHT_FROM,
             text_last: false,
             bins: overflow::Bins::new(&p.region, rules, p.signal_layers, nn, n),

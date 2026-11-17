@@ -133,7 +133,7 @@ pub use part_layout::{
     layout_findings, loop_pairs, measures, near_findings, near_pairs, pins_of,
 };
 pub use placement::{
-    CarriedZone, DESCRIBED, DoesNotFit, Ended, FaceKeepout, Fixed, HeightZone, ORIGIN, OutsideAt,
+    CarriedZone, DESCRIBED, DoesNotFit, ESCAPE_ROOM, Ended, FaceKeepout, Fixed, HeightZone, ORIGIN, OutsideAt,
     OverlapAt, Oversize, PartState, PlaceOptions, inside as fit_inside, is_mechanical,
     oversize as check_oversize, short as short_mm,
 };

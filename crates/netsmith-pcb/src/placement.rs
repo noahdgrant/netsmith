@@ -20,8 +20,15 @@ use crate::rules::Rules;
 /// The outline's top left corner on the sheet, so the board sits inside a KiCad page.
 pub const ORIGIN: Pt = Pt { x: 20.0, y: 20.0 };
 
+/// The weight of escape room the placer uses unless told otherwise
+/// ([`PlaceOptions::escape_room`], issue #1035): each net that cannot leave a side of a busy
+/// part costs as much as 2 mm of wire. Chosen over seeds 0 to 31 of the router's tight board,
+/// one router pass each: 818 lines left without the term, 692 at 2, 731 at 10, 711 at 40 (the
+/// header of the placer's `anneal/escape.rs`).
+pub const ESCAPE_ROOM: f64 = 2.0;
+
 /// What is known about where the parts go, besides the design.
-#[derive(Debug, Clone, Default, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct PlaceOptions {
     /// Parts that are to be on a given face, by reference designator. The placer puts the
     /// others where it likes: all on the front, unless `fit` says they must share.
@@ -94,9 +101,35 @@ pub struct PlaceOptions {
     pub track_overflow: f64,
     /// The weight of the escape shortfall of busy parts in the annealer's cost (issue #997):
     /// what each net that cannot leave a side of a busy part through the corridor in front of
-    /// it costs, in mm of wire. 0, the default, leaves it out: on the tight board it was
-    /// measured on it left the router more lines (the header of the placer's `anneal/escape.rs`).
+    /// it costs, in mm of wire. The default is [`ESCAPE_ROOM`]; 0 leaves the term out, and with
+    /// it the push of a busy part (issue #1035), so the run is the one from before either was
+    /// built.
     pub escape_room: f64,
+}
+
+impl Default for PlaceOptions {
+    fn default() -> Self {
+        PlaceOptions {
+            sides: BTreeMap::new(),
+            fit: None,
+            keepouts: Vec::new(),
+            cutouts: Vec::new(),
+            outside: Vec::new(),
+            fixed: BTreeMap::new(),
+            imported: std::collections::BTreeSet::new(),
+            seed: 0,
+            wants: BTreeMap::new(),
+            offsets: Vec::new(),
+            overhang: BTreeMap::new(),
+            wall: None,
+            height_zones: Vec::new(),
+            face_keepouts: Vec::new(),
+            carried: Vec::new(),
+            lines_warn: false,
+            track_overflow: 0.0,
+            escape_room: ESCAPE_ROOM,
+        }
+    }
 }
 
 /// An area that limits the height of the parts standing in it, on one or both faces.
