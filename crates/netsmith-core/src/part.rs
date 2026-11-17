@@ -256,5 +256,8 @@ pub struct PinRef {
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Net {
     pub name: String,
+    /// In the order of their parts in the design, which is the order of the parts' paths, and
+    /// by pad within a part: never by designator, so renumbering the parts changes no net and
+    /// so no placement or copper (issue #1048).
     pub pins: Vec<PinRef>,
 }
