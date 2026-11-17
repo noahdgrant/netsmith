@@ -709,7 +709,7 @@ dependencies = [
 
 [[package]]
 name = "netsmith-3d"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "automod",
  "i_overlay",
@@ -726,7 +726,7 @@ dependencies = [
 
 [[package]]
 name = "netsmith-catalog"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "automod",
  "netsmith-check",
@@ -754,7 +754,7 @@ dependencies = [
 
 [[package]]
 name = "netsmith-cli"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "automod",
  "clap",
@@ -846,7 +846,7 @@ dependencies = [
 
 [[package]]
 name = "netsmith-fabricate"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "automod",
  "netsmith-3d",
@@ -880,7 +880,7 @@ dependencies = [
 
 [[package]]
 name = "netsmith-geom"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "i_overlay",
  "netsmith-sexp",
@@ -937,7 +937,7 @@ dependencies = [
 
 [[package]]
 name = "netsmith-pipeline"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "automod",
  "netsmith-3d",
@@ -962,7 +962,7 @@ dependencies = [
 
 [[package]]
 name = "netsmith-placer"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "automod",
  "netsmith-check",
@@ -986,7 +986,7 @@ dependencies = [
 
 [[package]]
 name = "netsmith-router"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "automod",
  "netsmith-check",
@@ -1005,7 +1005,7 @@ dependencies = [
 
 [[package]]
 name = "netsmith-sexp"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "serde",
 ]
@@ -1023,11 +1023,11 @@ dependencies = [
 
 [[package]]
 name = "netsmith-testkit"
-version = "0.1.0"
+version = "0.2.0"
 
 [[package]]
 name = "netsmith-tools"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "automod",
  "netsmith-3d",
@@ -1070,7 +1070,7 @@ dependencies = [
 
 [[package]]
 name = "netsmith-workspace"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "automod",
  "netsmith-3d",
