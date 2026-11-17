@@ -797,6 +797,7 @@ mod tests {
                 no_glb: false,
                 no_step: false,
                 save_placed: false,
+                reuse_routes: false,
                 order: None,
                 offline: false,
                 quiet: false,

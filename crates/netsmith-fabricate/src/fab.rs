@@ -2725,7 +2725,7 @@ pub fn route_with_margin(
         base,
         track_margin,
         say,
-        |board, options| route_with(board, options),
+        route_with,
         |routing| routing.left.len(),
     )
 }
