@@ -61,7 +61,6 @@ export function shapeOf(net: PcbRouteNet, pick: RoutePick): PcbRouteTrack | PcbR
   return null;
 }
 
-/** What a pick is called in a message: `track 2 of net VCC`, `net VCC`. */
 /** What a via is by its two layers (issue 1071): a through via for none, a blind via when one is an outer layer, else a buried via. */
 export function viaKind(layers: string[] | null | undefined): string {
   if (!layers || layers.length !== 2) return 'through via';
@@ -85,6 +84,7 @@ export function viaBetween(offers: PcbViaOffer[], order: string[], a: string, b:
   return best && best.layers.length === 2 ? best.layers : null;
 }
 
+/** What a pick is called in a message: `track 2 of net VCC`, `net VCC`. */
 export function nameOf(pick: RoutePick): string {
   if (pick.track != null) return `track ${pick.track} of net ${pick.net}`;
   if (pick.via != null) return `via ${pick.via} of net ${pick.net}`;

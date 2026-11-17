@@ -12,7 +12,7 @@ _Avoid_: Array, capacitor slots (`cap_a`, `cap_b`), parallel group, multiplier, 
 The DC voltage across a part: a capacitor, a diode, a Zener or a TVS diode. A part with a `.bias` and a `bridge` placed between a rail's `pos` and `neg` has the rail's voltage as its `.bias` without being told; a design states `.bias` only for a part that is across no rail. A diode's bias is the voltage in the direction it blocks, and it is negative when the diode is wired to conduct (see **Bridge voltage**).
 
 **Blind via**:
-A via that joins an outer layer to an inner one and goes no further: on an HDI process (issue #1015), the laser-drilled via from an outer layer to the layer under it, through one dielectric layer, which the board file writes as KiCad's `micro` via. Its copper and its hole are on its own layers only, so the layers past it keep their room. See _Via span_.
+A via that joins an outer layer to an inner one and goes no further: on an HDI process (issue #1015), the laser-drilled via from an outer layer to the layer under it, through one dielectric layer, which the board file writes as KiCad's `micro` via. Its copper and its hole are on its own layers only, so the layers past it keep their room. The process fills it with plating, so the router may stand one in a surface-mount pad whatever `.via_in_pad` says (issue #1071). See _Via span_.
 _Avoid_: Microvia (KiCad's word for its type, not netsmith's), partial via
 
 **Board**:
