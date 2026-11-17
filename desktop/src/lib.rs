@@ -64,7 +64,9 @@ pub fn netsmith_program(variable: Option<OsString>, beside: Option<&Path>) -> Pa
 /// The command that serves the editor for `folder`: `netsmith view editor --port 0`, run in the folder.
 pub fn editor_command(program: &Path, folder: &Path) -> Command {
     let mut command = Command::new(program);
-    command.args(["view", "editor", "--port", "0"]).current_dir(folder);
+    command
+        .args(["view", "editor", "--port", "0"])
+        .current_dir(folder);
     command
 }
 
