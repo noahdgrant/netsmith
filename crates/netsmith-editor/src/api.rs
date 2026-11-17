@@ -2440,6 +2440,7 @@ pub fn typescript() -> String {
         PcbRouteNet,
         PcbRouteTrack,
         PcbRouteVia,
+        PcbViaOffer,
         RoutesChange,
         PcbRoutesEdit,
         PcbRoutesEdited,

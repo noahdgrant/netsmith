@@ -37,6 +37,7 @@ import {
   trackLayer,
   trackShove,
   undo,
+  viaSpan,
   walkNow,
   walked,
 } from '../pcbstore';
@@ -57,6 +58,8 @@ import {
   samePoint,
   shapeOf,
   trackPath,
+  viaBetween,
+  viaKind,
 } from './routes';
 import {
   NOTHING_SHOVED,
@@ -243,6 +246,8 @@ export function Canvas(props: {
   // way, as the server works it out (netsmith_router::walk), and the preview and the click use that path.
   // A layer the board has no track on (the tool's layer of another board) is its top.
   const layerNow = sc.trackLayers.includes(trackLayer.value) ? trackLayer.value : 'top';
+  // The via the via tool places: the span picked, where the board's process makes it, else the through via (issue 1071).
+  const viaNow = sc.viaOffers.find((o) => o.layers.join(',') === viaSpan.value) ?? sc.viaOffers[sc.viaOffers.length - 1];
   const shoveNow = trackShove.value;
   const walkAsk = (d: Draft, to: Pt): PcbWalk => ({
     board: sc.board,
@@ -408,7 +413,7 @@ export function Canvas(props: {
     setDraft(null);
     setGhost(null);
     if (!d) return;
-    const drawn = drawLayered(d);
+    const drawn = drawLayered(d, (a, b) => viaBetween(sc.viaOffers, sc.layers, a, b));
     if (!drawn.some((c) => c.what === 'add_track')) {
       say('A track needs a second point: click where it goes, then double-click or press Enter');
       return;
@@ -553,14 +558,15 @@ export function Canvas(props: {
         return;
       }
       const at = a && a.net === net ? a.at : onGrid(p);
+      const layers = viaNow?.layers.length ? viaNow.layers : null;
       // Refused with what is in the way where it has no room; with the shove, the copper it moves aside goes in the same edit
-      // (issue 1009).
-      void roomNow(viaShove(sc.board, net, at, trackShove.value)).then((room) => {
+      // (issue 1009). A blind or a buried via is the one of the span picked in the toolbar (issue 1071).
+      void roomNow(viaShove(sc.board, net, at, trackShove.value, layers)).then((room) => {
         if (room.reason) {
-          say(`No via there: ${room.reason}`, true);
+          say(`No ${layers ? viaKind(layers) : 'via'} there: ${room.reason}`, true);
           return;
         }
-        void changeRoutes([{ what: 'add_via', net, at }, ...shoveChanges(room.shoved)]);
+        void changeRoutes([{ what: 'add_via', net, at, ...(layers ? { layers } : {}) }, ...shoveChanges(room.shoved)]);
       });
       return;
     }
@@ -1079,7 +1085,7 @@ export function Canvas(props: {
               );
             })()}
           {activeTool === 'via' && ghost && (
-            <circle class="via-ghost" data-testid="via-ghost" cx={ghost.x} cy={ghost.y} r={sc.viaDiameter / 2} />
+            <circle class="via-ghost" data-testid="via-ghost" cx={ghost.x} cy={ghost.y} r={(viaNow?.diameter ?? sc.viaDiameter) / 2} />
           )}
           {preview.keepout &&
             (() => {

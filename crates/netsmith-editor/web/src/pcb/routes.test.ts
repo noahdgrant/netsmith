@@ -13,6 +13,8 @@ import {
   nameOf,
   nearestAnchor,
   trackPath,
+  viaBetween,
+  viaKind,
 } from './routes';
 
 const net: PcbRouteNet = {
@@ -23,7 +25,7 @@ const net: PcbRouteNet = {
     { layer: 'top', width: 0.3, from: { x: 0, y: 0 }, mid: null, to: { x: 2, y: 0 }, lock: false, drawn: true },
     { layer: 'top', width: 0.3, from: { x: 0, y: 0 }, mid: { x: 1, y: -1 }, to: { x: 2, y: 0 }, lock: true, drawn: true },
   ],
-  vias: [{ at: { x: 5, y: 5 }, diameter: 0.6, drill: 0.3, lock: false, drawn: true }],
+  vias: [{ at: { x: 5, y: 5 }, diameter: 0.6, drill: 0.3, layers: [], lock: false, drawn: true }],
 };
 
 describe('the routes file in the view', () => {
@@ -72,7 +74,7 @@ describe('drawing and moving copper', () => {
       { layer: 'top', width: 0.2, from: { x: 1, y: 1 }, mid: null, to: { x: 3, y: 1 }, lock: false, drawn: true },
       { layer: 'top', width: 0.2, from: { x: 3, y: 1 }, mid: null, to: { x: 4, y: 1 }, lock: false, drawn: false },
     ],
-    vias: [{ at: { x: 1, y: 1 }, diameter: 0.6, drill: 0.3, lock: false, drawn: true }],
+    vias: [{ at: { x: 1, y: 1 }, diameter: 0.6, drill: 0.3, layers: [], lock: false, drawn: true }],
   };
 
   it('draws one straight track for each segment, at the net width of the rules, and none of no length', () => {
@@ -128,5 +130,33 @@ describe('drawing and moving copper', () => {
     expect(labelOf([...dragChanges(corner, { x: 1, y: 1 }, { x: 2, y: 2 }), vcc])).toBe('move 3 shapes of net GND, shoving 1 shape');
     expect(labelOf([vcc, move])).toBe('move track 1 of net VCC, shoving 1 shape');
     expect(labelOf([...track, via, move])).toBe('draw a track on net VCC through 1 via, shoving 1 shape');
+  });
+});
+
+describe('the vias of an HDI process (issue 1071)', () => {
+  // JLCPCB's six-layer HDI process with buried vias: a blind via from each face to the layer beside it, the buried via of the core, then
+  // the through via.
+  const order = ['top', 'inner1', 'inner2', 'inner3', 'inner4', 'bottom'];
+  const offers = [
+    { layers: ['top', 'inner1'], diameter: 0.25, drill: 0.1 },
+    { layers: ['inner4', 'bottom'], diameter: 0.25, drill: 0.1 },
+    { layers: ['inner1', 'inner4'], diameter: 0.45, drill: 0.2 },
+    { layers: [], diameter: 0.45, drill: 0.2 },
+  ];
+
+  it('names a via by its layers', () => {
+    expect(viaKind([])).toBe('through via');
+    expect(viaKind(['top', 'inner1'])).toBe('blind via top to inner1');
+    expect(viaKind(['inner1', 'inner4'])).toBe('buried via inner1 to inner4');
+  });
+
+  it('changes layer through the via of fewest layers that joins both, and through the through via elsewhere', () => {
+    expect(viaBetween(offers, order, 'top', 'inner1')).toEqual(['top', 'inner1']);
+    expect(viaBetween(offers, order, 'bottom', 'inner4')).toEqual(['inner4', 'bottom']);
+    expect(viaBetween(offers, order, 'inner1', 'inner4')).toEqual(['inner1', 'inner4']);
+    expect(viaBetween(offers, order, 'top', 'inner4')).toBeNull();
+    expect(viaBetween(offers, order, 'top', 'bottom')).toBeNull();
+    // A board that is not HDI makes the through via only.
+    expect(viaBetween(offers.slice(-1), order, 'top', 'inner1')).toBeNull();
   });
 });
