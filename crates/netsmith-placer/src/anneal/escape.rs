@@ -10,8 +10,8 @@
 //! the side blocked at a gap `g` holds as many tracks as fit in `g` (with a clearance to each
 //! side), times two (they leave by both ends). The escape shortfall of a run is the pads behind
 //! it beyond what it holds, and of a part the sum over its runs, a count of nets. The cost is
-//! the shortfall of every busy part times `Problem::escape_room` (`PlaceOptions::escape_room`),
-//! which is 0, and the term left out, unless a caller asks for it.
+//! the shortfall of every busy part times `Problem::escape_room` (`PlaceOptions::escape_room`,
+//! 2 by default, `netsmith_pcb::ESCAPE_ROOM`; 0 leaves the term out).
 //!
 //! A capacitor that decouples the part is not counted against it, as for the escape space: its
 //! place is by the pins it decouples. It is incremental: each busy part's shortfall and the parts
@@ -25,22 +25,36 @@
 //! front or not at all. On every seed, 0 to 7, the module's courtyard ends 0.4 to 0.8 mm from
 //! the board's left edge, where two tracks fit beside a side of eleven pads.
 //!
-//! **Measured** (`cargo test -p netsmith-router --test main escape_room::measured -- --ignored
-//! --nocapture`), the lines one pass of the router leaves (no other orders, no rip-up, no
-//! negotiation: a fixed amount of work), seeds 0 to 7 of the tight board:
+//! **The push** (issue #1035). The term alone did not take the module off the edge: every
+//! shift of a part that big lands on the parts of its face and is refused, so the annealer moved
+//! it by half a millimetre at most and moved the small parts in front of its other sides instead.
+//! So a run that weighs escape room also pushes (`Engine::push_by`): one move in
+//! [`PUSH_ONE_IN`] shifts a busy part by up to 1 mm and takes along, by the same step, each part
+//! it would then overlap (its courtyard or its escape ring), and the parts those would overlap,
+//! up to [`PUSH_MOST`]. A run that does not weigh it never pushes and draws the same random
+//! numbers as before.
 //!
-//! | weight | lines left | the module from the left edge |
-//! |---|---|---|
-//! | 0 (without) | 194 | 0.4 to 0.8 mm |
-//! | 10 | 219 | 0.6 to 1.0 mm |
-//! | 40, the edge alone (no parts counted) | 216 | 0.5 to 1.0 mm |
+//! **Measured** (`cargo test --release -p netsmith-router --test main escape_room::measured --
+//! --ignored --nocapture`, `NETSMITH_SEEDS` and `NETSMITH_ESCAPE` choose the seeds and the
+//! weights), the lines one pass of the router leaves (no other orders, no rip-up, no
+//! negotiation: a fixed amount of work) on the tight board, with the push:
 //!
-//! The term does not take the module off the edge: the annealer moves it by half a millimetre
-//! at most, since every move of a part that big lands on the parts of its face; it moves the
-//! small parts in front of the module's other sides instead, the wire grows by about 5 % and
-//! the crossings by a tenth, and the router leaves more lines. (Spacing every small part away
-//! from the module was measured to leave more lines before, ADR 0031's busy parts.) So the
-//! weight stays 0 until the placer can move a part that big (issue #997's follow-up).
+//! | weight | seeds 0 to 15 | seeds 16 to 31 | all 32 | mean wire, crossings |
+//! |---|---|---|---|---|
+//! | 0 (without) | 400 | 418 | 818 | 862 mm, 139 |
+//! | 0.001 (the push alone) | 390 | | | |
+//! | 2 (the default) | 340 | 352 | 692 | 810 mm, 131 |
+//! | 10 | 384 | 347 | 731 | 814 mm, 127 |
+//! | 40 | 350 | 361 | 711 | 786 mm, 126 |
+//!
+//! Without the term the module ends 0.4 to 0.8 mm from an edge on all 32 seeds; at weight 2 it
+//! is 1 mm or more from every edge on 16 of them. The weights were tried on seeds 0 to 15 and
+//! held on 16 to 31. Seed to seed the lines left vary by more than the mean difference: weight 2
+//! leaves fewer than without on 19 of the 32 seeds and more on 12. The push alone (a weight too
+//! small to count) changes little, so it is the measure that moves the module, once the push lets
+//! it. Before the push (issue #997) the term left more lines: 219 at weight 10 against 194
+//! without, seeds 0 to 7. Weight 2 left the fewest and the heavier weights more, so the
+//! lightest that counts is the default.
 
 use super::*;
 
