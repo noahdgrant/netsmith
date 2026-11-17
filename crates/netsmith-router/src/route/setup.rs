@@ -342,8 +342,9 @@ impl<'a> Router<'a> {
     }
 
     /// [`Masks::follow`] for a line of `net`: the cells of [`Router::pair_band`] round the
-    /// centre line of the partner's routed tracks, on their layers, for the line's width on
-    /// each (`line`); empty when the net has no routed partner.
+    /// centre line of the partner's routed tracks, on their layers, for the width of `line`
+    /// (on each layer for a pair with an impedance target, else the outer one); empty when the
+    /// net has no routed partner.
     pub(super) fn follow_cells(
         &self,
         net: usize,
@@ -368,7 +369,14 @@ impl<'a> Router<'a> {
             let Some(layer) = self.stack.index(t.layer) else {
                 continue;
             };
-            let (lo, hi) = self.pair_band(net, self.width_on(line, layer), t.width);
+            // A pair with a target is drawn at its width on each layer; any other at the outer
+            // width, as before (issue #1025).
+            let width = if self.board.pair_spacing(&self.board.nets[net].name).is_some() {
+                self.width_on(line, layer)
+            } else {
+                self.width_of(line)
+            };
+            let (lo, hi) = self.pair_band(net, width, t.width);
             let form = Form::Segment(t.from, t.to, 0.0);
             for (i, j) in self.grid.cells_near(&w, &form.bounds(), hi) {
                 let d = point_to_line(self.grid.centre(i, j), t.from, t.to);

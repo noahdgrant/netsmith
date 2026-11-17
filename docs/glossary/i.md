@@ -1,7 +1,7 @@
 # Glossary: I
 
 **Impedance target**:
-The impedance a design states for the tracks of one net (a `TrackImpedance`, `.rf_line: TrackImpedance { .impedance &= 50ohm }` with `.rf_line.line ~ .rf.signal`) or of the two nets of an edge-coupled pair (a `PairImpedance`, a differential impedance and the space between the tracks), both of `std::sources` (issue #1007). It is a target and not an instruction: the router does not size a track from it, and `fab-notes.txt` gives the width that reaches it on each layer and the impedance of the width the router draws.
+The impedance a design states for the tracks of one net (a `TrackImpedance`, `.rf_line: TrackImpedance { .impedance &= 50ohm }` with `.rf_line.line ~ .rf.signal`) or of the two nets of an edge-coupled pair (a `PairImpedance`, a differential impedance and the space between the tracks), both of `std::sources` (issue #1007). The router draws the net at the width that gives it on each layer, and a pair's two nets as a _Diff pair_ that keeps the stated spacing (issue #1025); `fab-notes.txt` gives that width and its impedance on each layer, and what the board cannot give (no build-up, no width in a formula's domain, a width under the process's least track) is a finding of the guideline `impedance target`.
 _Avoid_: Controlled-impedance net, impedance class, net class for impedance
 
 **Inner layer**:

@@ -90,6 +90,49 @@ fn a_stated_target_is_in_the_design_and_in_the_fab_notes_with_the_routers_width(
 }
 
 #[test]
+fn the_router_draws_a_target_at_the_width_that_gives_it_and_the_first_target_of_a_net_sizes_it() {
+    // `3V3` is in the pair `pz` and has a single target `z`: the pair, first by path, sizes it,
+    // and the single one is a finding (issue #1025).
+    let loader = Loader::std();
+    let built = build_with(
+        "six.nsm",
+        &source(),
+        &loader,
+        &Catalogs::jlcpcb(),
+        &Libraries::sample(),
+    )
+    .unwrap_or_else(|e| panic!("{e}"))
+    .remove(0);
+    let libraries = Libraries::sample();
+    let board = netsmith_placer::board_from_design_placed(
+        &built.design,
+        &libraries.mapping,
+        &libraries.footprints,
+        &place_options(&built.design, None),
+    )
+    .unwrap_or_else(|e| panic!("{e}"));
+    let found = board.impedance_findings();
+    assert_eq!(found.len(), 1, "{found:?}");
+    assert!(
+        found[0].starts_with("net `3V3` (z): net `3V3` has a target in `pz` too, which sizes it"),
+        "{found:?}"
+    );
+    assert_eq!(board.track_width("VIN"), board.track_width("3V3"));
+    // Every layer's line of the pair says the drawn width is within the tolerance.
+    let notes = board.process_extras().join("\n");
+    let pair: Vec<&str> = notes
+        .lines()
+        .skip_while(|l| !l.starts_with("track impedance target: nets `VIN`"))
+        .skip(1)
+        .take(4)
+        .collect();
+    assert_eq!(pair.len(), 4, "{notes}");
+    for line in pair {
+        assert!(line.contains("within JLCPCB's test tolerance"), "{line}");
+    }
+}
+
+#[test]
 fn a_design_with_no_target_has_no_target_lines() {
     let loader = Loader::std();
     let built = build_with(
