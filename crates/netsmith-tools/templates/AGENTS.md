@@ -19,6 +19,7 @@ This is a netsmith project. Boards are written in `.nsm` files under `src/`; `ne
   - `netsmith-read-errors`: what each message means.
   - `netsmith-use-constraints`: where parts must be (a case, a carrier) and the findings when they are not.
   - `netsmith-use-layout`: where parts are (the layout file): place, turn, flip and lock them, and check.
+  - `netsmith-route-a-board`: copper the router left open, copper by hand (`routes`), `fab --reuse-routes`, `board drc`.
   - `netsmith-prepare-fab-order`: `fab-notes.txt` and the order preview checklist.
   - `netsmith-pick-parts`: why a part was picked, keeping a pick (the lock), choosing a row by hand, adding a catalog part with its source.
   - `netsmith-port-a-kicad-board`: porting a KiCad design a sheet at a time.
