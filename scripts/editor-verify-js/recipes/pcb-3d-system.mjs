@@ -258,7 +258,7 @@ async function agent({ page, url, project, shot, step, expect, binary }) {
   expect(v.stdout.includes('board: TwoBoards') && v.stdout.includes('member: led') && v.stdout.includes('highlight: led/J1'), `the summary:\n${v.stdout}`);
   expect(fs.readFileSync(viewPng).subarray(1, 4).toString() === 'PNG', 'the page\'s picture is saved');
   const renderPng = path.join(dir, 'pcb-3d-system-render.png');
-  const args = command.split(' ').slice(2).filter((a) => a !== 'src/main.nsm');
+  const args = command.split(' ').slice(3).filter((a) => a !== 'src/main.nsm');
   const rr = await exec(binary, ['view', '3d', path.join(project, 'src/main.nsm'), ...args, '--size', '800x500', '--picture', renderPng], { env: { ...process.env, NETSMITH_NO_KICAD: '1' } });
   expect(rr.stdout.includes(renderPng) && fs.readFileSync(renderPng).subarray(1, 4).toString() === 'PNG', `render draws the page's command (${command})`);
   await post({ select: [], section: 'none' });
