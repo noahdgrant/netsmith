@@ -522,8 +522,8 @@ pub(crate) mod testing {
     use crate::commands::{
         Board, Command, Dev, Import, Project, View, board3d, bom, build, case, catalog, check,
         common, compare, copper, drc, dxf, editor, explain, fab, gerber, init, kicad_libs, layout,
-        lint, lock, mcp, order, panel, parity, part, pcb, pins, port, power, render, route, routes,
-        schematic, schematic_layout, show, swap, system, view,
+        lint, lock, mcp, order, panel, parity, part, pcb, pins, port, power, project_show, render,
+        route, routes, schematic, schematic_layout, show, swap, system, view,
     };
 
     /// The command line as main.rs has it.
@@ -543,6 +543,7 @@ pub(crate) mod testing {
         Lock(lock::Args),
         Lint(lint::Args),
         Order(order::Args),
+        ProjectShow(project_show::Args),
         Check(check::Args),
         Build(build::Args),
         Fab(fab::Args),
@@ -587,6 +588,7 @@ pub(crate) mod testing {
                     Project::Lock(a) => Leaf::Lock(a),
                     Project::Lint(a) => Leaf::Lint(a),
                     Project::Order(a) => Leaf::Order(a),
+                    Project::Show(a) => Leaf::ProjectShow(a),
                 },
                 Command::Board(c) => match c {
                     Board::Check(a) => Leaf::Check(a),

@@ -33,6 +33,7 @@ mod pcb;
 mod pins;
 mod port;
 mod power;
+mod project_show;
 mod render;
 mod route;
 mod routes;
@@ -109,6 +110,8 @@ pub enum Project {
     Lint(lint::Args),
     /// Make one of the project's orders, or list them with no name (ADR 0035).
     Order(order::Args),
+    /// Print the project's boards, systems, panels, modules, files and orders as the editor's tree shows them.
+    Show(project_show::Args),
 }
 
 /// `netsmith board ...`.
@@ -199,6 +202,7 @@ pub fn run(command: Command) -> ExitCode {
             Project::Lock(args) => lock::run(args),
             Project::Lint(args) => lint::run(args),
             Project::Order(args) => order::run(args),
+            Project::Show(args) => project_show::run(args),
         },
         Command::Board(command) => match command {
             Board::Check(args) => check::run(args),
