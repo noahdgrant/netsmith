@@ -220,3 +220,26 @@ fn a_net_whose_design_gives_no_inner_width_keeps_to_the_outer_layers() {
     );
     assert!(board.tracks.iter().all(|t| t.layer.is_outer()));
 }
+
+#[test]
+fn the_coarse_plan_crosses_the_wall_on_the_inner_signal_layer() {
+    // Issue #1015: the plan is of every layer of the stack, so a line it steers may plan its
+    // way under the wall, as the search finds it.
+    let mut board = walled(common::four_layer_signal_process());
+    let routing = route_with(
+        &mut board,
+        RouteOptions {
+            plan: netsmith_router::route::CoarsePlan::EveryTry,
+            ..RouteOptions::default()
+        },
+    );
+    assert!(routing.left.is_empty(), "{:?}", routing.left.lines);
+    assert!(
+        board
+            .tracks
+            .iter()
+            .any(|t| t.net == "S" && t.layer == CopperLayer::Inner(2)),
+        "{:?}",
+        board.tracks
+    );
+}
