@@ -890,6 +890,7 @@ export function Schematic() {
           save('netsmith.schematic.details', detailsPref.value);
         }}
         total={total}
+        board={name}
         help={() => toggleCheatSheet(true, 'Schematic')}
       />
       <div class="schematic-body">

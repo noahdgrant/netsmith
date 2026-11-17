@@ -425,6 +425,37 @@ fn the_system_view_shows_boards_ports_and_joins_or_the_members_of_a_board() {
 }
 
 #[test]
+fn the_schematic_exports_as_the_command_line_writes_it() {
+    // Issue #1091: the editor's export is the drawing it shows, written by the writer `netsmith
+    // view schematic` and `fab` use, with the project's name in the title blocks.
+    let (_root, editor) = project("schematic-export");
+    let board = "TwoBoards/led";
+    let svg = editor.schematic(board).unwrap();
+    let pdf = editor.schematic_export(board, "pdf").unwrap();
+    assert_eq!(pdf.name, "TwoBoards-led-schematic.pdf");
+    assert_eq!(pdf.content_type, "application/pdf");
+    let heading = netsmith_fabricate::schematic::heading(Some("demo"));
+    assert_eq!(
+        pdf.bytes,
+        netsmith_fabricate::schematic::export::pdf("TwoBoards/led schematic", &[&svg], &heading)
+            .unwrap()
+    );
+    assert_eq!(editor.schematic_export(board, "svg").unwrap().bytes, svg.as_bytes());
+    let png = editor.schematic_export(board, "png").unwrap();
+    assert!(png.bytes.starts_with(b"\x89PNG") && png.content_type == "image/png");
+    // A system: its own sheet, then each member's (each is one sheet).
+    let system = editor.schematic_export("TwoBoards", "pdf").unwrap();
+    assert_eq!(system.name, "TwoBoards-schematic.pdf");
+    assert_eq!(
+        String::from_utf8_lossy(&system.bytes)
+            .matches("/Type /Page ")
+            .count(),
+        3
+    );
+    assert!(editor.schematic_export(board, "jpeg").is_err());
+}
+
+#[test]
 fn the_bom_groups_parts_like_the_fab_bom_with_price_and_stock() {
     let (_root, editor) = project("bom");
     let bom = editor.bom("TwoBoards/led").unwrap();

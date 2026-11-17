@@ -16,6 +16,7 @@ Run `scripts/editor-verify doctor`, then `launch`, then the recipe named in each
 | Source: hover cards, breadcrumbs, history, outline, inline hints, tabs, folds, find, completion | `source-editor.md` | `source-editor` | `two_boards` |
 | Source: a part's card says which statement gave its package (a line of the board's `defaults`, a `?=`, a `&=`) and goes there; a `defaults` line that reaches nothing is a note | `source-editor.md` | `board-defaults` | `board_defaults` |
 | Schematic view and click-through | `schematic.md` | `schematic`, `big-schematic` | `two_boards`, `big` |
+| Schematic export: the toolbar's PDF and SVG links and the palette's "Export schematic as PDF" save what `view schematic` writes; a system's PDF | `schematic.md` | `schematic-export` | `two_boards` |
 | Schematic box of a part with a `tri_state` pin (the side it is on, the mark of an open one) | `schematic.md` | `tri-state` | `tri_state` |
 | Pin map of the selected part (pin, pad, function, lock, where it came from, the check's message for a request with no pin) and the pick lock's state and diff, read only; the lock file is watched | `pin-map.md` | `pin-map` | `pin_map` |
 | Padlock and move of a pin request write the pin file's `lock`, `pin` and `source` lines only; refusals with the server's words | `pin-map.md` | `pin-lock` | `pin_map` |

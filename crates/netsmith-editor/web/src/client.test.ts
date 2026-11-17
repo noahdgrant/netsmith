@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { ApiFailure, api, wasCancelled } from './client';
+import { ApiFailure, api, schematicFile, wasCancelled } from './client';
 
 const reply = (status: number, body: string, type: string) => new Response(body, { status, headers: { 'content-type': type } });
 
@@ -106,5 +106,13 @@ describe('the schematic layout file', () => {
 
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(reply(409, 'changed on disk\n', 'text/plain')));
     expect(((await api.writeSchematicHints('b', 'x', '1').catch((e: unknown) => e)) as ApiFailure).status).toBe(409);
+  });
+});
+
+describe('the schematic export (issue 1091)', () => {
+  it('asks for the board and the format, and saves the file as the server names it', () => {
+    expect(api.schematicExportUrl('Sys/led', 'pdf')).toBe('/api/schematic/export?board=Sys%2Fled&format=pdf');
+    expect(schematicFile('Sys/led', 'pdf')).toBe('Sys-led-schematic.pdf');
+    expect(schematicFile('Led', 'svg')).toBe('Led-schematic.svg');
   });
 });

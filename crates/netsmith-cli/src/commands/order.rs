@@ -51,6 +51,9 @@ pub struct Args {
     /// Leave the boards as STEP (`<board>.step`) out of the packages.
     #[arg(long)]
     pub no_step: bool,
+    /// Leave the boards' schematics (`<board>-schematic.pdf`) out of the packages.
+    #[arg(long)]
+    pub no_pdf: bool,
     /// Ask no supplier for stock or price; say in `order.txt` that they were not checked.
     #[arg(long)]
     pub offline: bool,
@@ -92,6 +95,7 @@ pub fn run(args: Args) -> ExitCode {
             args.constraints.map(|c| c == Constraints::Warn),
             args.no_glb,
             args.no_step,
+            args.no_pdf,
             args.offline,
             &args.placing,
         )

@@ -240,6 +240,15 @@ pub trait Backend: Send + Sync + 'static {
     fn check(&self, path: &str, text: &str) -> Result<Analysis, ApiError>;
     fn board(&self, name: &str) -> Result<BoardDetail, ApiError>;
     fn schematic(&self, board: &str) -> Result<String, ApiError>;
+    /// The schematic of `board` (or of a system: its own sheet and its members') as a file to
+    /// save: `format` is `pdf` (a page for each sheet), `svg` or `png`, the bytes `netsmith view
+    /// schematic` writes (issue #1091).
+    fn schematic_export(&self, board: &str, format: &str) -> Result<Attachment, ApiError> {
+        let _ = format;
+        Err(ApiError::not_found(format!(
+            "there is no schematic of `{board}` to export"
+        )))
+    }
     /// The schematic layout file of the source file `board` is in, with what it says and how
     /// it matches the board (ADR 0061). A file that is not there is no error: no hints, no
     /// findings.

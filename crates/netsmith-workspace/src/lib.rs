@@ -9,6 +9,7 @@ mod compare;
 mod compare_text;
 mod definition;
 mod diff;
+mod export;
 mod fileops;
 mod files;
 mod findings;
@@ -1235,6 +1236,10 @@ impl Backend for Workspace {
         let state = self.fresh();
         let data = state.snapshot.board(board)?;
         data.svg.clone().map_err(ApiError::internal)
+    }
+
+    fn schematic_export(&self, board: &str, format: &str) -> Result<Attachment, ApiError> {
+        self.schematic_export_of(board, format)
     }
 
     fn schematic_hints(&self, board: &str) -> Result<SchematicHints, ApiError> {

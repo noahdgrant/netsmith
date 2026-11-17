@@ -57,7 +57,7 @@
 #            logic are netsmith-catalog, and the checker and the design stage change what it is asked), std/, examples/, data/ (the catalogs), and the
 #            script itself; not a test file, the catalog refresh (it never runs in a build), or prose.
 #            Not the crates after the solver either: `lock` reads no KiCad library, no footprint and
-#            no board, so a change to netsmith-geom, -pcb, -placer, -router, -fab, -fabricate, -workspace, -netlist, -3d, -view or
+#            no board, so a change to netsmith-geom, -pcb, -placer, -router, -fab, -fabricate, -workspace, -netlist, -3d, -view, -draw or
 #            -editor cannot move a pick (the netsmith-kicad crate keeps `locks`: the
 #            design stage still reads its mapping, and so does netsmith-sexp, which reads it).
 #   designs  the `designs` job: scripts/check-example-designs.sh builds every example with
@@ -270,12 +270,14 @@ while IFS= read -r path; do
         crates/netsmith-placer/* | crates/netsmith-router/* | crates/netsmith-fabricate/* | crates/netsmith-workspace/* | crates/netsmith-netlist/*) after_solver "${path#crates/*/}" "$path" ;;
         # The 3D scene and its writers (netsmith-3d, issue #518): the editor's 3D view draws them,
         # and no test of the crate asks for KiCad, so a change to it does not need `kicad`.
-        crates/netsmith-editor/tests/* | crates/netsmith-view/tests/* | crates/netsmith-3d/tests/*) rust=true ;;
+        crates/netsmith-editor/tests/* | crates/netsmith-view/tests/* | crates/netsmith-3d/tests/* | crates/netsmith-draw/tests/*) rust=true ;;
         # The editor's page, its sources: the build script builds them into the binary (ADR 0114;
         # no built page is committed), so the `build` job's archive and binary embed them and the
         # recipes drive them.
         crates/netsmith-editor/web/*) rust=true recipes=true no_kicad=true ;;
-        crates/netsmith-editor/* | crates/netsmith-view/* | crates/netsmith-3d/*) rust=true recipes=true no_kicad=true ;;
+        # The PDF writer and the rasterizer of the schematic's export (netsmith-draw, issue #1091):
+        # the editor's export saves what they write.
+        crates/netsmith-editor/* | crates/netsmith-view/* | crates/netsmith-3d/* | crates/netsmith-draw/*) rust=true recipes=true no_kicad=true ;;
         # The test helpers: never linked into the binary, and every test builds with them.
         crates/netsmith-testkit/*) rust=true kicad=true ;;
         crates/*/tests/*) rust=true ;;
