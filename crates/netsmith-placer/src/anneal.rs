@@ -1,6 +1,7 @@
 //! The annealer behind derived placement (ADR 0033).
 //!
-//! It moves footprints about on a grid of 0.05 mm, turns them by right angles, and keeps a
+//! It moves footprints about on a grid of 0.05 mm, turns them by right angles (or by 45
+//! degrees, a part whose `.place.turn_step` allows it, issue #1046), and keeps a
 //! change when it lowers a cost, or, with a probability that falls as the run goes on, when
 //! it raises it. The cost is the sum of the terms below; `W_*` are their weights.
 //!
@@ -50,7 +51,8 @@
 //!
 //! - **State.** For each part: its origin on a grid of 0.05 mm, its turn (0, 90, 180 or 270
 //!   degrees from the angle it began at, which is a right angle unless a requirement states
-//!   another, issue #822) and which side of it the reference text is on. The
+//!   another, issue #822; any of the eight steps of 45 degrees for a part whose
+//!   `.place.turn_step` is 45, issue #1046) and which side of it the reference text is on. The
 //!   face is not part of the state (it comes from `PlaceOptions::sides`).
 //! - **Start.** The rows arrangement, parts in the order of their instance paths, inside the
 //!   outline the rows made (or the size asked for).
@@ -563,8 +565,9 @@ impl std::ops::AddAssign for Cost {
     }
 }
 
-/// Where a part is: its footprint origin in units, its turn in quarter turns from the angle
-/// it began at, and which side of the part its reference text is on (a [`ReferenceSide`] as a
+/// Where a part is: its footprint origin in units, its turn as an index into the part's
+/// `Model::angles` (quarter turns from the angle it began at, or eighths for a part that may
+/// turn by 45 degrees), and which side of the part its reference text is on (a [`ReferenceSide`] as a
 /// number).
 #[derive(Clone, Copy, PartialEq)]
 struct Pose {
@@ -574,11 +577,11 @@ struct Pose {
     text: u8,
 }
 
-/// The shapes of a part: four turns, each with the text on each of four sides.
-const VARIANTS: usize = 16;
+/// The sides of a part its reference text may be on: each turn has a shape for each.
+const TEXT_SIDES: usize = 4;
 
 fn variant(turn: u8, text: u8) -> usize {
-    usize::from(turn) * 4 + usize::from(text)
+    usize::from(turn) * TEXT_SIDES + usize::from(text)
 }
 
 /// The boxes of one part in one turn, relative to its origin.
@@ -625,8 +628,13 @@ enum Role {
 }
 
 struct Model {
+    /// For a part that moves, a shape for each turn with the text on each side
+    /// ([`variant`]); for one that stays, its one shape.
     shapes: Vec<Shape>,
-    angles: [f64; 4],
+    /// The turns the part may take, in degrees: the angle it began at and the right angles
+    /// from it, or the eight steps of 45 degrees from it for a part whose `.place.turn_step`
+    /// is 45 (issue #1046).
+    angles: Vec<f64>,
     side: Side,
     hole: bool,
     /// How far its pins protrude out of the opposite face, and the facts a part
@@ -665,6 +673,24 @@ struct Model {
     rims: Vec<Option<escape::Rim>>,
 }
 
+impl Model {
+    /// How many turns the part may take: four, or eight for a part that may turn by 45
+    /// degrees.
+    fn turns(&self) -> u8 {
+        self.angles.len() as u8
+    }
+
+    /// Whether the part moves, so that it has a shape for every turn and text side.
+    fn turnable(&self) -> bool {
+        self.shapes.len() == self.angles.len() * TEXT_SIDES
+    }
+
+    /// The part's angle in turn `turn`, in degrees from 0 up to 360.
+    fn angle(&self, turn: u8) -> f64 {
+        self.angles[usize::from(turn)].rem_euclid(360.0)
+    }
+}
+
 /// A keepout that a part carries, as the annealer measures it (ADR 0045 section 11).
 struct Carry {
     /// Which of `Problem::carried` it is.
@@ -674,12 +700,12 @@ struct Carry {
     boxes: Vec<Rect>,
 }
 
-/// A [`Want`] in the engine's terms, for each of the part's four turns (as the annealer
-/// numbers them, from the angle the part began at).
+/// A [`Want`] in the engine's terms, for each of the part's turns (as the annealer numbers
+/// them, from the angle the part began at: `Model::angles`).
 struct Limits {
     /// For each turn: the allowed origins in units of the grid, `None` if the turn is ruled
     /// out, and the exact origin of an axis the requirements pin.
-    turns: [Option<Turn>; 4],
+    turns: Vec<Option<Turn>>,
     holds_x: bool,
     holds_y: bool,
 }
@@ -693,7 +719,7 @@ struct Turn {
 }
 
 impl Limits {
-    fn of(want: &Want, base: f64) -> Limits {
+    fn of(want: &Want, angles: &[f64]) -> Limits {
         let units = |(lo, hi): (f64, f64)| {
             let first = if lo.is_finite() {
                 ((lo - 1e-9) / UNIT).ceil() as i64
@@ -715,18 +741,17 @@ impl Limits {
             }
             None => units(range),
         };
-        let mut turns = [None; 4];
-        for (t, slot) in turns.iter_mut().enumerate() {
-            *slot = want
-                .turn(base + 90.0 * t as f64)
-                .and_then(|q| want.reach[q])
-                .map(|r| Turn {
+        let turns = angles
+            .iter()
+            .map(|&angle| {
+                want.turn(angle).and_then(|q| want.reach[q]).map(|r| Turn {
                     x: at(r.x),
                     y: at(r.y),
                     pin_x: pin(r.x),
                     pin_y: pin(r.y),
-                });
-        }
+                })
+            })
+            .collect();
         Limits {
             turns,
             holds_x: want.holds_x,
@@ -1046,7 +1071,7 @@ pub(crate) fn anneal(parts: &mut [Placed], p: &Problem, effort: f64) -> Outcome 
         if !e.links_of[i].is_empty() {
             let at = e.pos(i);
             part.at = Pt::new(exact(at.x), exact(at.y));
-            part.rotation = (e.models[i].angles[0] + 90.0 * f64::from(pose.turn)).rem_euclid(360.0);
+            part.rotation = e.models[i].angle(pose.turn);
             part.reference_side = ReferenceSide::ALL[usize::from(pose.text)];
             continue;
         }
@@ -1058,7 +1083,7 @@ pub(crate) fn anneal(parts: &mut [Placed], p: &Problem, effort: f64) -> Outcome 
                 .and_then(|t| t.pin_y)
                 .map_or((pose.y as f64 * 5.0).round() / 100.0, exact),
         );
-        part.rotation = (e.models[i].angles[0] + 90.0 * f64::from(pose.turn)).rem_euclid(360.0);
+        part.rotation = e.models[i].angle(pose.turn);
         part.reference_side = ReferenceSide::ALL[usize::from(pose.text)];
     }
     Outcome { feasible, ended }

@@ -403,6 +403,12 @@ pub struct Placement {
     /// `top` or `bottom`, if the design says, and where.
     pub side: Option<String>,
     pub side_source: String,
+    /// The step in degrees the placer may turn the part by (`.place.turn_step`, issue #1046):
+    /// 45 for a part that may be turned off the right angles, `None` for the default, 90.
+    /// Left out of the design file when `None`, so a design that does not state it is
+    /// written as before.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub turn_step: Option<f64>,
 }
 
 impl Placement {

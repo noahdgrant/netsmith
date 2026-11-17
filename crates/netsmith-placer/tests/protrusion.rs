@@ -112,6 +112,7 @@ fn design(case: &Case) -> Design {
         ],
         side: Some(side.into()),
         side_source: String::new(),
+        turn_step: None,
     };
     Design {
         modules: Vec::new(),

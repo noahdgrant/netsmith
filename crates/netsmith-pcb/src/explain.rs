@@ -79,7 +79,7 @@ use crate::conflict::{
 };
 use crate::constraints::{
     self, Plan, Reach, TOLERANCE, axis_of, base_turn, body_at, measured, miss, number, offset,
-    range_text, requirements, turns_allowed, what,
+    range_text, requirements, turn_step, turns_allowed, what,
 };
 use crate::fit_report::{PartRef, Size};
 use crate::geometry::{Pt, Rect};
@@ -991,26 +991,31 @@ impl<'a> Context<'a> {
                 let at = ORIGIN + f.at;
                 quarters.push(make(f.rotation, (at.x, at.x), (at.y, at.y)));
             } else {
-                let (base, reach): (f64, [Option<Reach>; 4]) =
+                let (base, step, reach): (f64, f64, Vec<Option<Reach>>) =
                     match self.plan.wants.get(&part.refdes) {
-                        Some(w) => (w.base, w.reach),
+                        Some(w) => (w.base, w.step, w.reach.clone()),
                         None => {
                             let base = base_turn(&reqs).unwrap_or(0.0);
-                            let allowed = turns_allowed(&reqs, base);
+                            let step = turn_step(self.design, &part.path);
+                            let allowed = turns_allowed(&reqs, base, step);
                             (
                                 base,
-                                std::array::from_fn(|q| {
-                                    allowed[q].then_some(Reach {
-                                        x: (f64::NEG_INFINITY, f64::INFINITY),
-                                        y: (f64::NEG_INFINITY, f64::INFINITY),
+                                step,
+                                allowed
+                                    .iter()
+                                    .map(|&ok| {
+                                        ok.then_some(Reach {
+                                            x: (f64::NEG_INFINITY, f64::INFINITY),
+                                            y: (f64::NEG_INFINITY, f64::INFINITY),
+                                        })
                                     })
-                                }),
+                                    .collect(),
                             )
                         }
                     };
                 for (q, r) in reach.iter().enumerate() {
                     if let Some(r) = r {
-                        quarters.push(make(base + 90.0 * q as f64, r.x, r.y));
+                        quarters.push(make(base + step * q as f64, r.x, r.y));
                     }
                 }
             }

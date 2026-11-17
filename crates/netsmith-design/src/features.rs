@@ -1348,7 +1348,12 @@ pub(crate) fn placements(model: &Model, errors: &mut Vec<String>) -> (Vec<Placem
             side = Some(t.clone());
             spots.push(("side".to_string(), model.field(id).narrowed_at.clone()));
         }
-        if bounds.is_empty() && side.is_none() {
+        let turn_step = if module {
+            None
+        } else {
+            turn_step(model, place, &path, errors)
+        };
+        if bounds.is_empty() && side.is_none() && turn_step.is_none() {
             continue;
         }
         let index = found.len();
@@ -1358,10 +1363,46 @@ pub(crate) fn placements(model: &Model, errors: &mut Vec<String>) -> (Vec<Placem
             bounds,
             side,
             side_source: String::new(),
+            turn_step,
         });
         sites.extend(spots.into_iter().map(|(f, s)| (index, f, s)));
     }
     (found, sites)
+}
+
+/// The steps a part may be turned by (issue #1046): 90 degrees, the default, or 45, which
+/// lets the placer try the turns between the right angles too.
+const TURN_STEPS: [f64; 2] = [90.0, 45.0];
+
+/// The step the part's `.place.turn_step` states, or `None` when it states none or states the
+/// default, 90 degrees (so a design that says 90 is written as one that says nothing). A
+/// window that is not one value, or a value other than 45 or 90, is an error.
+fn turn_step(model: &Model, place: InstId, path: &str, errors: &mut Vec<String>) -> Option<f64> {
+    let Some(Member::Field(id)) = model.member(place, "turn_step") else {
+        return None;
+    };
+    let w = netsmith_solve::window(model, id);
+    if w.is_open() {
+        return None;
+    }
+    let step = (w.lo == w.hi).then_some(w.lo);
+    match step.filter(|s| TURN_STEPS.iter().any(|t| (t - s).abs() < 1e-9)) {
+        Some(s) if s < 90.0 => Some(45.0),
+        Some(_) => None,
+        None => {
+            let n = |v: f64| format!("{}", (v * 1e6).round() / 1e6);
+            let said = match (w.lo == w.hi, w.lo.is_finite(), w.hi.is_finite()) {
+                (true, _, _) => n(w.lo),
+                (false, true, true) => format!("{}..{}", n(w.lo), n(w.hi)),
+                (false, true, false) => format!("at least {}", n(w.lo)),
+                _ => format!("at most {}", n(w.hi)),
+            };
+            errors.push(format!(
+                "`{path}.place.turn_step` is {said}, and the placer turns a part by steps of 90 or 45 degrees; state one of them (`.place.turn_step &= 45`)"
+            ));
+            None
+        }
+    }
 }
 
 /// The paths of the parts a bank stands for (ADR 0052): `path[0]`, `path[1]`, ... for a bank

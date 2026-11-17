@@ -286,16 +286,20 @@ impl<'a> Engine<'a> {
                 },
             )];
         }
-        if roll < 46 && self.models[i].shapes.len() == VARIANTS {
+        if roll < 46 && self.models[i].turnable() {
             // The text to another side of the part.
             let text = (now.text + 1 + rng.below(3) as u8) % 4;
             return vec![(i, Pose { text, ..now })];
         }
         if roll < 52 {
-            if self.models[i].shapes.len() < VARIANTS {
+            let m = &self.models[i];
+            if !m.turnable() {
                 return Vec::new();
             }
-            let turn = (now.turn + 1 + rng.below(3) as u8) % 4;
+            // Any other turn the part may take: one of three, or of seven for a part that may
+            // turn by 45 degrees.
+            let n = m.turns();
+            let turn = (now.turn + 1 + rng.below(usize::from(n) - 1) as u8) % n;
             return vec![(i, self.turned(i, turn))];
         }
         if roll < 66 {
@@ -334,8 +338,8 @@ impl<'a> Engine<'a> {
             }
             let (j, k) = list[rng.below(list.len())];
             let mut pose = self.beside(i, j, self.pad_at(j, k), rng);
-            if self.models[i].shapes.len() == VARIANTS && rng.below(3) == 0 {
-                let turn = rng.below(4) as u8;
+            if self.models[i].turnable() && rng.below(3) == 0 {
+                let turn = rng.below(usize::from(self.models[i].turns())) as u8;
                 let (now_turn, text) = (self.poses[i].turn, self.poses[i].text);
                 let m = &self.models[i];
                 let from = m.shapes[variant(now_turn, text)].court.centre();

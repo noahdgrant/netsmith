@@ -161,6 +161,7 @@ mod tests {
             }],
             side: None,
             side_source: String::new(),
+            turn_step: None,
         });
         let text = to_json(std::slice::from_ref(&d));
         assert!(

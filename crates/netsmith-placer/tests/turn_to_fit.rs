@@ -294,6 +294,7 @@ fn states(side: Option<&str>, bounds: &[(PlaceField, f64, f64)]) -> Vec<Placemen
             .collect(),
         side: side.map(str::to_string),
         side_source: String::new(),
+        turn_step: None,
     }]
 }
 

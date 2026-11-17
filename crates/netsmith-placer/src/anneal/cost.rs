@@ -153,9 +153,7 @@ impl<'a> Engine<'a> {
             Role::Mechanical => c.soft += W_EDGE * (to_x.max(0.0) + to_y.max(0.0)),
             Role::Plain => {}
         }
-        if self.poses[i].turn != 0
-            && (model.angles[0] + 90.0 * f64::from(self.poses[i].turn)) % 360.0 != 0.0
-        {
+        if self.poses[i].turn != 0 && model.angles[usize::from(self.poses[i].turn)] % 360.0 != 0.0 {
             c.soft += W_TURN;
         }
         if self.poses[i].text != 0 && !model.fixed {
