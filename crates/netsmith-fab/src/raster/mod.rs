@@ -23,6 +23,9 @@ use netsmith_core::png;
 
 pub use canvas::{Canvas, Point, capsule, disc};
 pub use excellon::{Hole, parse_excellon};
+pub(crate) use geom::{Item, Rule};
+pub use gerber::Facts;
+pub(crate) use gerber::read as read_gerber;
 pub use gerber::{gerber_extent, render_gerber};
 
 /// Why a file could not be read or two images could not be compared.

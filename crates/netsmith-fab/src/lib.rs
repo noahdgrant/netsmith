@@ -9,6 +9,9 @@
 //! - `cpl.csv`: where each of those parts sits, with JLCPCB's rotation conventions
 //! - `fab-notes.txt`: what a person still has to do or check
 //!
+//! [`viewer`] reads a package back, netsmith's or another tool's, and draws it or sums it up
+//! (`netsmith view gerber`, issue #1105), with the reader of [`raster`].
+//!
 //! netsmith writes the Gerbers, the drill files and the placement file itself, from the
 //! board file ([`artwork`], [`plot`], [`drill`], [`fill`], [`cpl`]), and checks the board's
 //! design rules itself ([`drc`], ADR 0037); KiCad is not needed for any of it. KiCad's
@@ -80,6 +83,7 @@ mod panel;
 mod raster;
 mod rotation;
 mod score;
+pub mod viewer;
 
 // The board's geometry, the drawing of its layers and the design rules check are
 // `netsmith-geom`'s, which the board model and the router share (issue #611); the code here

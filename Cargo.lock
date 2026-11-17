@@ -848,7 +848,9 @@ name = "netsmith-fab"
 version = "0.2.0"
 dependencies = [
  "automod",
+ "i_overlay",
  "netsmith-core",
+ "netsmith-draw",
  "netsmith-geom",
  "netsmith-kicad",
  "netsmith-sexp",

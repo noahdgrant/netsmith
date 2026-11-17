@@ -71,8 +71,42 @@ struct Region {
     current: Vec<Pt>,
 }
 
+/// What a file says about itself and what it drew, beside the shapes: what a summary of the
+/// file reports ([`crate::viewer`]).
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Facts {
+    /// The apertures the file defines (`%AD`).
+    pub apertures: usize,
+    pub flashes: usize,
+    /// Straight and curved draws with an aperture (`D01` outside a region).
+    pub strokes: usize,
+    pub regions: usize,
+    /// The objects drawn in clear polarity (`%LPC`), of the three kinds above.
+    pub clear: usize,
+    /// The X2 attribute `%TF.FileFunction` (also as a `G04 #@!` comment), as written after the
+    /// name: `Copper,L1,Top`.
+    pub file_function: Option<String>,
+    /// The X2 attribute `%TF.FilePolarity`: `Positive` or `Negative`.
+    pub file_polarity: Option<String>,
+    /// The box round the points the operations went through (a draw's ends and the points of
+    /// its arcs, a flash's point, a region's contour), without the apertures' sizes: the
+    /// outline as drawn is this box, not its stroke's outer edge. `None` when nothing is drawn.
+    pub centre: Option<((f64, f64), (f64, f64))>,
+}
+
+impl Facts {
+    fn saw(&mut self, p: Pt) {
+        let (lo, hi) = self.centre.unwrap_or((p, p));
+        self.centre = Some((
+            (lo.0.min(p.0), lo.1.min(p.1)),
+            (hi.0.max(p.0), hi.1.max(p.1)),
+        ));
+    }
+}
+
 struct Parser<'a> {
     sink: &'a mut dyn FnMut(&Item),
+    facts: Facts,
     tess: Tess,
     format: Option<Format>,
     /// Millimetres per file unit.
@@ -133,6 +167,7 @@ impl<'a> Parser<'a> {
     fn new(sink: &'a mut dyn FnMut(&Item), ppm: f64) -> Self {
         Self {
             sink,
+            facts: Facts::default(),
             tess: Tess { ppm },
             format: None,
             unit: None,
@@ -222,7 +257,11 @@ impl<'a> Parser<'a> {
         };
         let code: String = first.chars().take(2).collect();
         match code.as_str() {
-            "TF" | "TA" | "TO" | "TD" | "LN" => Ok(()),
+            "TF" => {
+                self.file_attribute(&first);
+                Ok(())
+            }
+            "TA" | "TO" | "TD" | "LN" => Ok(()),
             "FS" => self.set_format(&first, first_line),
             "MO" => match &first[2..] {
                 "MM" => {
@@ -295,6 +334,19 @@ impl<'a> Parser<'a> {
                 first_line,
                 format!("unsupported command `%{first}`"),
             )),
+        }
+    }
+
+    /// Keeps the X2 file attributes a summary reports (`TF.FileFunction,...`, with the `TF`
+    /// still on: `cmd` is the command or the comment's text after `#@!`).
+    fn file_attribute(&mut self, cmd: &str) {
+        let Some(rest) = cmd.strip_prefix("TF.") else {
+            return;
+        };
+        if let Some(v) = rest.strip_prefix("FileFunction,") {
+            self.facts.file_function = Some(v.to_string());
+        } else if let Some(v) = rest.strip_prefix("FilePolarity,") {
+            self.facts.file_polarity = Some(v.to_string());
         }
     }
 
@@ -376,7 +428,9 @@ impl<'a> Parser<'a> {
                 }
             }
         };
-        self.apertures.insert(n, ap);
+        if self.apertures.insert(n, ap).is_none() {
+            self.facts.apertures += 1;
+        }
         Ok(())
     }
 
@@ -478,6 +532,10 @@ impl<'a> Parser<'a> {
         let comment = block.starts_with("G04")
             || (block.starts_with("G4") && !block[2..].starts_with(|c: char| c.is_ascii_digit()));
         if comment {
+            // KiCad 5 wrote the X2 attributes as comments: `G04 #@! TF.FileFunction,...*`.
+            if let Some(attr) = block.strip_prefix("G04#@!") {
+                self.file_attribute(attr);
+            }
             return Ok(());
         }
         let (mut x, mut y, mut i, mut j, mut d) = (None, None, None, None, None);
@@ -580,6 +638,11 @@ impl<'a> Parser<'a> {
                 close_contour(&mut r);
                 let polys: Vec<Vec<Pt>> = r.contours;
                 if !polys.is_empty() {
+                    self.facts.regions += 1;
+                    self.facts.clear += usize::from(!self.dark);
+                    for p in polys.iter().flatten() {
+                        self.facts.saw(*p);
+                    }
                     let item = Item {
                         dark: self.dark,
                         prims: vec![Prim {
@@ -639,6 +702,9 @@ impl<'a> Parser<'a> {
                 on: p.on,
             })
             .collect();
+        self.facts.flashes += 1;
+        self.facts.clear += usize::from(!self.dark);
+        self.facts.saw(at);
         (self.sink)(&Item {
             dark: self.dark,
             prims,
@@ -704,6 +770,11 @@ impl<'a> Parser<'a> {
                 ));
             }
         };
+        self.facts.strokes += 1;
+        self.facts.clear += usize::from(!self.dark);
+        for p in &chain {
+            self.facts.saw(*p);
+        }
         (self.sink)(&Item {
             dark: self.dark,
             prims: vec![Prim {
@@ -827,6 +898,18 @@ fn coordinate(
 
 fn parse(text: &str, ppm: f64, sink: &mut dyn FnMut(&Item)) -> Result<(), RasterError> {
     Parser::new(sink, ppm).run(text)
+}
+
+/// Reads `text`, handing each object to `sink` as [`parse`] does, with its curves cut for
+/// `ppm` pixels a millimetre, and says what the file said about itself ([`Facts`]).
+pub(crate) fn read(
+    text: &str,
+    ppm: f64,
+    sink: &mut dyn FnMut(&Item),
+) -> Result<Facts, RasterError> {
+    let mut parser = Parser::new(sink, ppm);
+    parser.run(text)?;
+    Ok(parser.facts)
 }
 
 /// The bounding box, in millimetres, of everything the file draws: strokes and flashes

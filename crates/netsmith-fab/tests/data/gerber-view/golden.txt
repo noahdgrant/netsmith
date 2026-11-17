@@ -1,0 +1,11 @@
+# FNV-1a 64 of the PNG bytes of each picture of tests/gerber_view.rs.
+# Rewrite with NETSMITH_GERBER_VIEW_BLESS=1 cargo test -p netsmith-fab --test main gerber_view:: -- --test-threads 1
+# and look at the pictures first (NETSMITH_GERBER_VIEW_OUT=<folder>).
+features-all 5a709a5cced39fee
+features-bottom dea936b7135f2407
+features-inner1 e74be38294823719
+features-inner2 a9092dcec2d53274
+features-top 9db57084de9ba000
+features-top-region 1f4b0350cbd7ba41
+tracespace-all ec843517ecae88c2
+tracespace-top 07eb7cd342f31e84
