@@ -8,6 +8,7 @@ The commands are grouped under nouns, each with its verbs (issue #1090): `netsmi
 
 - `project`: the project as a whole: make one (`init`), bring its agent files up to this netsmith (`refresh`), refresh or check its pick lock (`lock`), make one of its orders (`order`).
 - `board`: what is done to the boards of a file or of the project: `check`, `build`, `fab`, `explain` a pick, `compare` two designs, `swap` a part for another row.
+- `board`: what is done to the boards of a file or of the project: `check`, `build`, `fab`, `explain` a pick, `compare` two designs, and the views of the solved design the editor shows, printed as text or `--format json`: `bom`, `power`, `system`, `panel`.
 - `layout`: the layout file, where each part is.
 - `routes`: the routes file, the copper fixed by hand or imported.
 - `view`: look at a board: `3d` draws it to a PNG, `editor` serves the editor, `editor-3d` drives the 3D view of a running editor.
@@ -41,6 +42,10 @@ Each command, what it was before, and its flags (a test walks `--help` of every 
 | `netsmith board pins move` | new | `--file`, `--board`, `--format` |
 | `netsmith board pins apply` | new | `--proposal`, `--file`, `--board`, `--format` |
 | `netsmith board swap` | new (the editor's Swap) | `--board`, `--apply`, `--format` |
+| `netsmith board bom` | new | `--board`, `--offline`, `--format` |
+| `netsmith board power` | new | `--board`, `--format` |
+| `netsmith board system` | new | `--name`, `--format` |
+| `netsmith board panel` | new | `--name`, `--format` |
 | `netsmith layout show` | the same | `--file` (was `--into`), `--board`, `--format` |
 | `netsmith layout set` | the same | `--file` (was `--into`), `--board`, `--at`, `--turn`, `--side`, `--lock`, `--unlock`, `--format` |
 | `netsmith layout check` | the same | `--file` (was `--into`), `--board`, `--format` |
@@ -80,6 +85,25 @@ Each command, what it was before, and its flags (a test walks `--help` of every 
 
 The places left for commands to come, named by the same rules: `board bom`, `board power`, `board drc`, `board swap` and `board copper`; `view schematic`, `view pcb` and `view gerber`; `project fmt` and `project lint`; and `mcp`, the server that offers these commands to an agent.
 The places left for commands to come, named by the same rules: `board bom`, `board power`, `board drc`, `board pins` and `board copper`; `view schematic`, `view pcb` and `view gerber`; `project fmt` and `project lint`; and `mcp`, the server that offers these commands to an agent.
+The places left for commands to come, named by the same rules: `board drc`, `board swap`, `board pins` and `board copper`; `view schematic`, `view pcb` and `view gerber`; `project fmt` and `project lint`; and `mcp`, the server that offers these commands to an agent.
+
+### The editor's views on the command line
+
+`netsmith board bom`, `board power`, `board system` and `board panel` (issue #1096) print the views of the solved design that the editor draws, as text or, with `--format json`, as the document the editor's own route answers: `GET /api/bom`, `/api/power`, `/api/system` and `/api/panel`. They are made by the code those routes call (`netsmith_workspace::Workspace`'s `Backend`), so the command line and the editor cannot differ, and each is read-only: it writes no file and needs neither `fab` nor a browser.
+
+```sh
+netsmith board bom --offline              # what the bill costs: lines, price, stock, total
+netsmith board power --board main         # the current on each rail, what each supply leaves
+netsmith board system --format json       # a system's boards, joins, mates and grounds
+netsmith board panel                      # a panel's grid, size and checks
+```
+
+- `board bom` prints the lines the board house assembles (grouped as `bom.csv` is) and those soldered by hand, each with its price, stock and the day they were read, and the total of the priced lines; a line whose price is unknown says why, and a generic part no catalog row stands for says what is wanted. `--offline` asks no supplier, as `board fab --offline` does (ADR 0047).
+- `board power` prints each rail with its voltage, the supplies and loads on it with their currents, what the loads add up to against what the supply can give, the converters between rails with their efficiency, and the power issues (an overdrawn supply, a rail nothing supplies, a load or an efficiency not settled). It exits 0 with issues: `board check` and `board build` are the commands that fail on them.
+- `board system` prints a `system`'s members with their ports, the joins between them, the mated connectors with each board's role and net at each contact, and the grounds the mates join; named after a board, the members of that board and the nets between them.
+- `board panel` prints a `panel`'s board, grid, cell and panel size, rails and the panel checks; the drawing is only in the JSON (`svg`).
+
+`bom` and `power` take the source file (or, with none, the project's boards) and `--board NAME`; `system` and `panel` take `--name NAME`. A name is as the editor names it, `System/Board` for a board of a system, and `Board` alone when no other board has that name. With one board (one system, one panel) the name may be left out; with several, the command exits 2 and lists them. The exit code is 0 when the view is printed, 1 when the source does not build (with its errors), and 2 when the command cannot run.
 
 ### The editor
 

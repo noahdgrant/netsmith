@@ -519,9 +519,9 @@ pub(crate) mod testing {
     use clap::error::ErrorKind;
 
     use crate::commands::{
-        Board, Command, Dev, Import, Project, View, board3d, build, case, catalog, check, common,
-        compare, dxf, editor, explain, fab, init, kicad_libs, layout, lock, order, parity, part,
-        pins, port, render, route, routes, swap, view,
+        Board, Command, Dev, Import, Project, View, board3d, bom, build, case, catalog, check,
+        common, compare, dxf, editor, explain, fab, init, kicad_libs, layout, lock, order, panel,
+        parity, part, pins, port, power, render, route, routes, swap, system, view,
     };
 
     /// The command line as main.rs has it.
@@ -547,6 +547,10 @@ pub(crate) mod testing {
         Compare(compare::Args),
         Pins(pins::Args),
         Swap(swap::Args),
+        Bom(bom::Args),
+        Power(power::Args),
+        System(system::Args),
+        Panel(panel::Args),
         Layout(layout::Args),
         Routes(routes::Args),
         Render(render::Args),
@@ -580,6 +584,10 @@ pub(crate) mod testing {
                     Board::Compare(a) => Leaf::Compare(a),
                     Board::Pins(a) => Leaf::Pins(a),
                     Board::Swap(a) => Leaf::Swap(a),
+                    Board::Bom(a) => Leaf::Bom(a),
+                    Board::Power(a) => Leaf::Power(a),
+                    Board::System(a) => Leaf::System(a),
+                    Board::Panel(a) => Leaf::Panel(a),
                 },
                 Command::Layout(a) => Leaf::Layout(a),
                 Command::Routes(a) => Leaf::Routes(a),

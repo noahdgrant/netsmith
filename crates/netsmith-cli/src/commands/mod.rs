@@ -4,6 +4,7 @@
 //! new spelling of a command or flag of an earlier release.
 
 mod board3d;
+mod bom;
 mod build;
 mod case;
 mod catalog;
@@ -20,15 +21,19 @@ mod layout;
 mod lock;
 pub mod moved;
 mod order;
+mod panel;
 mod parity;
 mod part;
 mod pins;
 mod port;
+mod power;
 mod render;
 mod route;
 mod routes;
 mod swap;
+mod system;
 mod view;
+mod views;
 
 use std::process::ExitCode;
 
@@ -101,6 +106,14 @@ pub enum Board {
     Pins(pins::Args),
     /// List the alternatives of a part no catalog row stands for, with their checks, or write one into the source.
     Swap(swap::Args),
+    /// Print a board's bill of materials with price and stock.
+    Bom(bom::Args),
+    /// Print a board's power tree: rails, supplies, loads and what each leaves.
+    Power(power::Args),
+    /// Print a system's boards and mates, or a board's members and nets.
+    System(system::Args),
+    /// Print a panel: its grid, size and checks.
+    Panel(panel::Args),
 }
 
 /// `netsmith view ...`.
@@ -160,6 +173,10 @@ pub fn run(command: Command) -> ExitCode {
             Board::Compare(args) => compare::run(args),
             Board::Pins(args) => pins::run(args),
             Board::Swap(args) => swap::run(args),
+            Board::Bom(args) => bom::run(args),
+            Board::Power(args) => power::run(args),
+            Board::System(args) => system::run(args),
+            Board::Panel(args) => panel::run(args),
         },
         Command::Layout(args) => layout::run(args),
         Command::Routes(args) => routes::run(args),
