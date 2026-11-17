@@ -533,9 +533,7 @@ impl<'a> Checker<'a> {
                 self.report(
                     source,
                     block.span,
-                    format!(
-                        "`layout \"MPN\" for ...` belongs in the standard library's `std/layouts.nsm`, which holds the guidelines of the catalog rows of its generics; a part of a project states its own in a `layout {{ }}` block"
-                    ),
+                    "`layout \"MPN\" for ...` belongs in the standard library's `std/layouts.nsm`, which holds the guidelines of the catalog rows of its generics; a part of a project states its own in a `layout { }` block",
                 );
             }
             Vec::new()

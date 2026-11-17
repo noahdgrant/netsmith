@@ -9,11 +9,10 @@ impl File {
     pub fn to_source(&self) -> String {
         let mut out = String::new();
         write_docs(&mut out, &self.inner_docs, "//!", 0);
-        let has_body =
-            !(self.imports.is_empty()
-                && self.definitions.is_empty()
-                && self.physicals.is_empty()
-                && self.layouts.is_empty());
+        let has_body = !(self.imports.is_empty()
+            && self.definitions.is_empty()
+            && self.physicals.is_empty()
+            && self.layouts.is_empty());
         if !self.inner_docs.is_empty() && has_body {
             out.push('\n');
         }

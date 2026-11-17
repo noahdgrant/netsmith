@@ -166,17 +166,12 @@ impl Checker<'_> {
         let part = self.current();
         let site = self.place_of(self.cur_source(), g.span);
         let name = g.name.name.clone();
-        if let Some(other) = self
-            .model
-            .layout
-            .iter()
-            .find(|l| {
-                // Two rows' blocks may use one name: only one of them applies to a part.
-                l.part == part
-                    && l.name == name
-                    && !matches!((&l.mpn, mpn), (Some(a), Some(b)) if a != b)
-            })
-        {
+        if let Some(other) = self.model.layout.iter().find(|l| {
+            // Two rows' blocks may use one name: only one of them applies to a part.
+            l.part == part
+                && l.name == name
+                && !matches!((&l.mpn, mpn), (Some(a), Some(b)) if a != b)
+        }) {
             if other.site != site {
                 let message = format!(
                     "the part already states a guideline `{name}` (at {}); give this one another name",
