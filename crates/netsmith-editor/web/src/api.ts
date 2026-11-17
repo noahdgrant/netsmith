@@ -2453,17 +2453,20 @@ camera?: CameraPlace,
 section?: string, 
 /**
  * What is lit, as `view 3d --highlight` names it (a designator, a path, `net:<name>`,
- * `limit:<name>`, `case:<name>`; an item may be comma-separated): the parts and the net
- * through the page's selection, the limits and the case models in the view. It replaces what
- * was lit; `[]` lights nothing. In the System view a part and a net are a member's, `led/J1`
- * and `net:led/GND` (`led/net:GND` too); one of another member makes it the page's board; a
- * case model is one board's, so `case:` there is refused.
+ * `limit:<name>`, `case:<name>`, `module:<path>`; an item may be comma-separated): the parts
+ * and the net through the page's selection, the limits and the case models in the view, the
+ * modules in the 2D and 3D views, each in its own colour in the order given (issue 1129).
+ * It replaces what was lit; `[]` lights nothing. In the System view a part, a net and a
+ * module are a member's, `led/J1`, `net:led/GND` (`led/net:GND` too) and `module:led/reg`;
+ * one of another member makes it the page's board; a case model is one board's, so `case:`
+ * there is refused.
  */
 highlight?: Array<string>, 
 /**
- * The page's selection, as a click makes it: parts by designator or path, or one
- * `net:<name>` (in the System view, `led/J1` and `net:led/GND`, of one member). The limits
- * and the case models lit stay as they are; `[]` clears it.
+ * The page's selection, as a click makes it: parts by designator or path, one `net:<name>`,
+ * or one `module:<path>`, which is lit too, as a module picked in the schematic is (in the
+ * System view, `led/J1` and `net:led/GND`, of one member). The limits and the case models
+ * lit stay as they are; `[]` clears it.
  */
 select?: Array<string>, xray?: boolean, 
 /**
@@ -2485,6 +2488,20 @@ caseHidden?: Array<string>, colourBy?: ColourBy, heightPreview?: PreviewSetting,
  * The stackup pulled apart (`true`) or together.
  */
 exploded?: boolean, };
+
+export type LitModule = { 
+/**
+ * As `--highlight module:<path>` names it (`reg`, `radio.row_a`).
+ */
+path: string, 
+/**
+ * `#rrggbb`.
+ */
+colour: string, 
+/**
+ * The designators of its parts.
+ */
+parts: Array<string>, };
 
 export type ViewState = { 
 /**
@@ -2513,11 +2530,16 @@ section?: string, exploded?: boolean,
 /**
  * What is lit, as `view 3d --highlight` would name it: the parts picked by designator, the
  * net picked as `net:<name>`, the limits lit as `limit:<name>`, the case models lit as
- * `case:<name>` (in the System view, the member first: `led/J1`, `net:led/GND`).
+ * `case:<name>`, the modules lit as `module:<path>` (in the System view, the member first:
+ * `led/J1`, `net:led/GND`, `module:led/reg`).
  */
 highlight: Array<string>, 
 /**
- * The page's selection: the parts by designator, or one `net:<name>`.
+ * The modules lit in the 2D and 3D views (issue 1129), in the order of their colours.
+ */
+modules: Array<LitModule>, 
+/**
+ * The page's selection: the parts by designator, one `net:<name>`, or one `module:<path>`.
  */
 selection: Array<string>, 
 /**

@@ -285,6 +285,15 @@ describe.each(Object.keys(THEME_TOKENS) as Theme[])('contrast of %s', (name) => 
       }
     }
   });
+  it('the modules lit on the board take six colours, each a mark on the board (3:1, 4.5 in high contrast) and none the pick or the brand', () => {
+    const tones = [1, 2, 3, 4, 5, 6].map((i) => ink(`--module-${i}`).toLowerCase());
+    expect(new Set(tones).size).toBe(6);
+    const min = name.startsWith('hc') ? 4.5 : 3;
+    for (const [i, c] of tones.entries()) {
+      for (const bg of ['--pcb-bg', '--pcb-board', '--pcb3d-bg']) expect(contrast(c, ink(bg))!, `--module-${i + 1} on ${bg}`).toBeGreaterThanOrEqual(min);
+      for (const k of ['--sel', '--accent', '--hover-lit']) expect(c, `--module-${i + 1} is not ${k}`).not.toBe(ink(k).toLowerCase());
+    }
+  });
   it('the segment that is on is a step from its track', () => {
     expect(contrast(ink('--seg-on'), ink('--seg-track'))!).toBeGreaterThanOrEqual(1.1);
   });

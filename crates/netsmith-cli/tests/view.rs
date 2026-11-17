@@ -16,8 +16,8 @@ use std::{
 use netsmith_workspace::Workspace;
 use netsmith_fabricate::project::Target;
 use netsmith_editor::api::{
-    CameraPlace, CaseMode, ClientMessage, ColourBy, RenderView, ServerMessage, ViewChange,
-    ViewState,
+    CameraPlace, CaseMode, ClientMessage, ColourBy, LitModule, RenderView, ServerMessage,
+    ViewChange, ViewState,
 };
 
 const LED: &str = include_str!("../../../examples/led.nsm");
@@ -86,7 +86,12 @@ fn state() -> ViewState {
         ortho: Some(true),
         section: Some("x=13".into()),
         exploded: Some(false),
-        highlight: vec!["J1".into(), "limit:lid".into()],
+        highlight: vec!["J1".into(), "limit:lid".into(), "module:reg".into()],
+        modules: vec![LitModule {
+            path: "reg".into(),
+            colour: "#ff5fa2".into(),
+            parts: vec!["C1".into(), "U1".into()],
+        }],
         selection: vec!["J1".into()],
         hover: None,
         xray: false,
@@ -149,7 +154,8 @@ fn with_no_change_it_prints_the_state_as_a_summary_or_as_the_routes_json() {
         "view: iso, orthographic",
         "camera: eye (40.0, -30.0, 40.0) looking at (10.0, 8.0, 0.0) (mm)",
         "section: x=13",
-        "highlight: J1, limit:lid",
+        "highlight: J1, limit:lid, module:reg",
+        "module reg: #ff5fa2, C1, U1",
         "selection: J1",
         "x-ray: off",
         "case: see-through",

@@ -20,7 +20,7 @@ pub struct Args {
     ///
     /// A system's name shows every member placed by its mates (ADR 0110), as `render --board
     /// System` draws it; the ids of `--highlight` and `--select` are then a member's (`led/J1`,
-    /// `net:led/GND`).
+    /// `net:led/GND`, `module:led/reg`).
     #[arg(long, value_name = "NAME")]
     pub board: Option<String>,
     /// Where the camera looks from.
@@ -29,18 +29,21 @@ pub struct Args {
     /// Cut the scene as `view 3d --section` does, or `none` for no cut.
     #[arg(long, value_name = "AXIS=MM|none", value_parser = parse_view_section)]
     pub section: Option<String>,
-    /// Light a part, `net:<name>`, `limit:<name>` or `case:<name>` (a case model), comma-separated
-    /// or repeated; `none` for nothing.
+    /// Light a part, `net:<name>`, `limit:<name>`, `case:<name>` (a case model) or `module:<path>`,
+    /// comma-separated or repeated; `none` for nothing.
     ///
-    /// In the System view a part and a net are a member's: `led/J1`, `net:led/GND`; a case model
-    /// is one board's, and the System view refuses `case:`. An id the board (or the system) does
-    /// not have exits 2 with the list of the ones it has.
+    /// `module:<path>` lights the parts of a module instance in the 2D and 3D views, each module
+    /// in its own colour in the order given, as a click in the PCB panel's Modules tab does. In
+    /// the System view a part, a net and a module are a member's: `led/J1`, `net:led/GND`,
+    /// `module:led/reg`; a case model is one board's, and the System view refuses `case:`. An id
+    /// the board (or the system) does not have exits 2 with the list of the ones it has.
     #[arg(long, value_name = "ID[,ID...]|none", value_parser = parse_ids, conflicts_with = "select")]
     pub highlight: Vec<Ids>,
-    /// Select parts or one `net:<name>`, as a click does (comma-separated or repeated); `none` clears it.
+    /// Select parts, one `net:<name>` or one `module:<path>`, as a click does (comma-separated or repeated); `none` clears it.
     ///
-    /// The editor's selection holds parts or one net, so `--select` takes no limit and no case
-    /// model; in the System view, of one member (`led/J1`), which becomes the page's board.
+    /// The editor's selection holds parts, one net or one module (which is lit too, as a module
+    /// block picked in the schematic is), so `--select` takes no limit and no case model; in the
+    /// System view, of one member (`led/J1`), which becomes the page's board.
     #[arg(long, value_name = "ID[,ID...]|none", value_parser = parse_select)]
     pub select: Vec<Ids>,
     /// Draw everything see-through.
@@ -173,7 +176,7 @@ fn parse_select(given: &str) -> Result<Ids, String> {
         .find_map(|id| ["limit:", "case:"].into_iter().find(|k| id.starts_with(k)))
     {
         return Err(format!(
-            "takes parts or one net, as a click does; a `{kind}` is lit with --highlight"
+            "takes parts, one net or one module, as a click does; a `{kind}` is lit with --highlight"
         ));
     }
     Ok(ids)

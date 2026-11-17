@@ -56,6 +56,8 @@ import {
 } from '../pcbstore';
 import { analysis, board, detail, fabReports, job, panelShown, pcbReports, pcbStamp, pickNet, routeBoard } from '../store';
 import { partPathsOf, revealRequest, sameSelection, selection } from '../selection';
+import { hover as sharedHover } from '../hover';
+import { groupsOf, litModules, litOn } from '../pcb/modules';
 import { Board3d } from '../pcb3d/Lazy';
 import { pcbMode, systemShown } from '../pcb3d/mode';
 import { DrawingSwitch } from '../pcb/DrawingSwitch';
@@ -186,6 +188,13 @@ export function Pcb() {
   }, [asked?.nonce]);
 
   const sc = scene.value && scene.value.board === name ? scene.value : null;
+  // The modules lit (and one a row or a block the pointer is on lights), drawn over the board.
+  const pointed = sharedHover.value;
+  const litNow = litOn(name, litModules.value);
+  const moduleGroups = useMemo(
+    () => (sc ? groupsOf(sc.parts.map((p) => p.path), litNow, pointed?.kind === 'module' ? pointed.key : null) : []),
+    [sc?.parts, litNow, pointed],
+  );
   const found = findings.value && findings.value.board === name ? findings.value : null;
   // The pours and zones go into the drawing under the copper. They come after the board (the server fills after it has
   // placed), and while the board changes the last fill stays, marked as not current, rather than the board going bare.
@@ -579,6 +588,7 @@ export function Pcb() {
                 focus={focus}
                 onZoomPlane={(box) => setFocus({ box, seq: (focus?.seq ?? 0) + 1 })}
                 cmp={cmpMarks.value?.parts ?? null}
+                modules={moduleGroups}
                 marks={(found?.findings ?? []).map((f) => ({
                   id: f.id,
                   box: f.area,

@@ -50,9 +50,11 @@ pub use raster3d::{
 };
 pub use render::{
     CaseMode as RenderCaseMode, DEFAULT_SIZE as DEFAULT_RENDER_SIZE,
-    DEFAULT_VIEW as DEFAULT_RENDER_VIEW, Request as RenderRequest,
+    DEFAULT_VIEW as DEFAULT_RENDER_VIEW, Lights as RenderLights, Request as RenderRequest,
     default_out as default_render_out, draw as render_png, draw_system as render_system_png,
     parse_section as parse_render_section, parse_size as parse_render_size,
+    resolve_highlight as resolve_render_highlight,
+    resolve_system_highlight as resolve_render_system_highlight,
 };
 pub use scene3d::{
     Body as SceneBody, CopperLayer as SceneCopperLayer, CopperPad as SceneCopperPad, FootprintFit,

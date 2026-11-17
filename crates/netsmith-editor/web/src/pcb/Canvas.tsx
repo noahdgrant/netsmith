@@ -93,6 +93,7 @@ import { type Drawing, SCALE, light, previewMove } from './drawing';
 import { moveParts } from './edits';
 import { appliesTo, faceWord, nextSide } from './side';
 import { type HiddenPlane, fitPlaneLabels } from './planeLabels';
+import { moduleToken } from './modules';
 import { PlaneMore } from './PlaneMore';
 import {
   type Handle,
@@ -193,6 +194,9 @@ export function Canvas(props: {
   cmp?: ReadonlyMap<string, 'added' | 'changed' | 'renumbered'> | null;
   /** The chip `+N` zooms the board to a plane whose label has no room. */
   onZoomPlane?: (box: PcbBox) => void;
+  /** The modules lit or hovered (issue 1129, modules.ts): each part's box in its module's colour, a dashed box round
+   * them all, and the parts of no module lit dimmed. */
+  modules?: { path: string; slot: number; parts: string[]; hovered: boolean }[];
 }) {
   const { drawing, scene: sc } = props;
   const holder = useRef<HTMLDivElement>(null);
@@ -436,6 +440,15 @@ export function Canvas(props: {
     else for (const p of selected) for (const pad of p.pads) if (pad.net) nets.add(pad.net);
     light(svg, nets, new Set(selected.map((p) => p.refdes)));
   }, [drawing, props.litNet, selected]);
+
+  // The parts of the modules lit stand out and the rest step back (issue 1129).
+  useEffect(() => {
+    const svg = svgEl();
+    if (!svg) return;
+    const lit = new Set((props.modules ?? []).flatMap((m) => m.parts));
+    svg.classList.toggle('has-mod', lit.size > 0);
+    svg.querySelectorAll('g[data-path]').forEach((e) => e.classList.toggle('mod-lit', lit.has(e.getAttribute('data-path')!)));
+  }, [drawing, props.modules]);
 
   // A plane's label goes to the corner of its plane where no part lies, at the zoom the board is shown at (planeLabels.ts); the planes
   // that have no room are the chip's. A layer switched off (`props.css`) changes which planes are drawn.
@@ -1173,6 +1186,25 @@ export function Canvas(props: {
               const b = expand(preview.moving?.includes(p.path) ? moved(p.courtyard, delta) : p.courtyard, 0.35);
               return <rect key={`cmp:${p.path}`} class={`cmp-rect cmp-${m}`} x={b.x} y={b.y} width={b.width} height={b.height} rx="0.3" data-cmp-ref={p.refdes} />;
             })}
+          {(props.modules ?? []).map((m) => {
+            const boxes = sc.parts
+              .filter((p) => m.parts.includes(p.path))
+              .map((p) => (preview.moving?.includes(p.path) ? moved(p.courtyard, delta) : p.courtyard));
+            if (!boxes.length) return null;
+            const x0 = Math.min(...boxes.map((b) => b.x));
+            const y0 = Math.min(...boxes.map((b) => b.y));
+            const x1 = Math.max(...boxes.map((b) => b.x + b.width));
+            const y1 = Math.max(...boxes.map((b) => b.y + b.height));
+            const pad = 0.4;
+            return (
+              <g key={`mod:${m.path}`} class={`module-group ${m.hovered ? 'hovered' : ''}`} data-module={m.path} data-slot={m.slot + 1} style={{ '--mod': `var(${moduleToken(m.slot)})` }}>
+                {boxes.map((b, i) => (
+                  <rect key={i} class="module-part" x={b.x} y={b.y} width={b.width} height={b.height} rx="0.2" />
+                ))}
+                <rect class="module-box" x={x0 - pad} y={y0 - pad} width={x1 - x0 + 2 * pad} height={y1 - y0 + 2 * pad} rx="0.4" />
+              </g>
+            );
+          })}
           {selected.map((p) => (
             <Outline
               key={p.path}

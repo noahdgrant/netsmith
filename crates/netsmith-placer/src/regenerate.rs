@@ -89,24 +89,13 @@ impl std::error::Error for RegenerateError {}
 
 /// Whether the part at `path` is in the module at `module` (or is that part).
 pub fn in_module(path: &str, module: &str) -> bool {
-    !module.is_empty()
-        && path
-            .strip_prefix(module)
-            .is_some_and(|rest| rest.is_empty() || rest.starts_with('.') || rest.starts_with('['))
+    netsmith_pcb::in_module(path, module)
 }
 
 /// The module paths of the board's parts: every prefix of a part's path that ends before a `.`
 /// or a `[`, sorted, each once.
 pub fn module_paths(board: &Board) -> Vec<String> {
-    let mut all = BTreeSet::new();
-    for p in &board.parts {
-        for (i, c) in p.path.char_indices() {
-            if (c == '.' || c == '[') && i > 0 {
-                all.insert(p.path[..i].to_string());
-            }
-        }
-    }
-    all.into_iter().collect()
+    netsmith_pcb::module_paths_of(board.parts.iter().map(|p| p.path.as_str()))
 }
 
 /// Place the parts of the module `module` again, inside the box round them grown by `margin`

@@ -12,6 +12,7 @@ const have: Ids = {
   nets: ['VBUS', 'GND', 'GND'],
   limits: ['lid', 'lid'],
   cases: ['base', 'base', 'top'],
+  modules: ['status'],
 };
 
 const refusal = (f: () => unknown): ViewRefusal => {
@@ -42,10 +43,10 @@ describe('the section, as render --section reads and writes it', () => {
 
 describe('the ids of --highlight', () => {
   it('finds a part by designator or path, a net and a limit, each once, comma-separated or not', () => {
-    expect(resolveIds(['J1', 'status.led,net:GND', 'limit:lid', 'power_in'], have)).toEqual({ parts: ['power_in', 'status.led'], nets: ['GND'], limits: ['lid'], cases: [] });
+    expect(resolveIds(['J1', 'status.led,net:GND', 'limit:lid', 'power_in'], have)).toEqual({ parts: ['power_in', 'status.led'], nets: ['GND'], limits: ['lid'], cases: [], modules: [] });
   });
   it('finds a case model by name, as render --highlight case:<name> does', () => {
-    expect(resolveIds(['case:base,case:top', 'case:base'], have)).toEqual({ parts: [], nets: [], limits: [], cases: ['base', 'top'] });
+    expect(resolveIds(['case:base,case:top', 'case:base'], have)).toEqual({ parts: [], nets: [], limits: [], cases: ['base', 'top'], modules: [] });
   });
   it('names the ids the board does not have and lists what it has, as render does', () => {
     const e = refusal(() => resolveIds(['J9', 'net:NOPE', 'R1', 'case:lid'], have));
@@ -55,9 +56,10 @@ describe('the ids of --highlight', () => {
         'the parts are: J1 (power_in), D1 (status.led), R1 (r1)\n' +
         'the nets: net:GND, net:VBUS\n' +
         'the limits: limit:lid\n' +
-        'the case models: case:base, case:top',
+        'the case models: case:base, case:top\n' +
+        'the modules: module:status',
     );
-    const none = refusal(() => resolveIds(['x'], { parts: [], nets: [], limits: [], cases: [] })).message;
+    const none = refusal(() => resolveIds(['x'], { parts: [], nets: [], limits: [], cases: [], modules: [] })).message;
     expect(none).toContain('an id that the board does not have: `x`\nthe parts are: (none)');
     expect(none).toContain('the case models: (none)');
   });
@@ -65,7 +67,7 @@ describe('the ids of --highlight', () => {
 
 describe("the ids of a system's scene (ADR 0110)", () => {
   it('refuses a case model: a case is one board\'s, and the system draws none (ADR 0109)', () => {
-    const sys: Ids = { parts: [], nets: [], limits: [], cases: [], system: 'TwoBoards' };
+    const sys: Ids = { parts: [], nets: [], limits: [], cases: [], modules: [], system: 'TwoBoards' };
     const why = refusal(() => resolveIds(['case:lid'], sys)).message;
     expect(why).toContain('names `case:lid`, a case model, and the system `TwoBoards` draws none');
     expect(why).toContain('--board <System>/<member>');
@@ -79,10 +81,11 @@ describe("the ids of a system's scene (ADR 0110)", () => {
     nets: ['led/GND', 'power/GND'],
     limits: [],
     cases: [],
+    modules: ['led/status'],
     system: 'TwoBoards',
   };
   it("names a member's part and net, the net also as render writes it", () => {
-    expect(resolveIds(['led/J1', 'power/power_out'], system)).toEqual({ parts: ['led/power_in', 'power/power_out'], nets: [], limits: [], cases: [] });
+    expect(resolveIds(['led/J1', 'power/power_out'], system)).toEqual({ parts: ['led/power_in', 'power/power_out'], nets: [], limits: [], cases: [], modules: [] });
     expect(resolveIds(['net:led/GND'], system).nets).toEqual(['led/GND']);
     expect(resolveIds(['led/net:GND'], system).nets).toEqual(['led/GND']);
   });
@@ -93,13 +96,14 @@ describe("the ids of a system's scene (ADR 0110)", () => {
         'the parts are: power/J1 (power/power_out), led/J1 (led/power_in)\n' +
         'the nets: net:led/GND, net:power/GND\n' +
         'the limits: (none)\n' +
+        'the modules: module:led/status\n' +
         "(in the system, a part and a net are a member's: such as power/J1 and net:led/GND)",
     );
   });
   it("picks on one member's board, by its own names", () => {
-    expect(memberSelection({ parts: ['led/power_in'], net: null }, 'select')).toEqual({ member: 'led', parts: ['power_in'], net: null });
-    expect(memberSelection({ parts: [], net: 'power/GND' }, 'select')).toEqual({ member: 'power', parts: [], net: 'GND' });
-    expect(memberSelection({ parts: [], net: null }, 'select')).toEqual({ member: null, parts: [], net: null });
+    expect(memberSelection({ parts: ['led/power_in'], net: null }, 'select')).toEqual({ member: 'led', parts: ['power_in'], net: null, module: null, modules: [] });
+    expect(memberSelection({ parts: [], net: 'power/GND' }, 'select')).toEqual({ member: 'power', parts: [], net: 'GND', module: null, modules: [] });
+    expect(memberSelection({ parts: [], net: null }, 'select')).toEqual({ member: null, parts: [], net: null, module: null, modules: [] });
     expect(refusal(() => memberSelection({ parts: ['led/power_in', 'power/power_out'], net: null }, 'highlight')).message).toContain('highlight names ids of 2 members (led, power)');
   });
 });
@@ -116,7 +120,7 @@ describe('a change, checked before anything is done', () => {
   });
   it('leaves alone what a change does not name', () => {
     expect(planChange({}, have, true)).toEqual({});
-    expect(planChange({ section: 'none', highlight: [] }, have, true)).toEqual({ section: null, selection: { parts: [], net: null }, limits: [], cases: [] });
+    expect(planChange({ section: 'none', highlight: [] }, have, true)).toEqual({ section: null, selection: { parts: [], net: null }, limits: [], cases: [], modules: [] });
     expect(planChange({ heightPreview: false }, have, true).preview).toEqual({ on: false });
   });
   it('takes the case models hidden by name, as render --case hidden:<name> does', () => {
@@ -170,5 +174,30 @@ describe('what is lit, as the state and the copied command name it', () => {
     const cmd = renderCommand({ file: 'src/main.nsm', board: 'B', view: 'iso', highlight: lit.highlight });
     expect(cmd).toContain("--highlight D1,limit:lid,case:base");
     expect(planChange({ highlight: lit.highlight }, have, true)).toMatchObject({ selection: { parts: ['status.led'] }, limits: ['lid'], cases: ['base'] });
+  });
+});
+
+describe('a module (issue 1129)', () => {
+  it('lights the modules named, in order, and refuses one the board has not with the list', () => {
+    expect(resolveIds(['module:status', 'J1'], have)).toEqual({ parts: ['power_in'], nets: [], limits: [], cases: [], modules: ['status'] });
+    expect(planChange({ highlight: ['module:status'] }, have, true).modules).toEqual(['status']);
+    expect(planChange({ highlight: [] }, have, true).modules).toEqual([]);
+    const e = refusal(() => resolveIds(['module:stat'], have)).message;
+    expect(e).toContain('`module:stat`');
+    expect(e).toContain('the modules: module:status');
+  });
+  it('selects one module alone', () => {
+    expect(planChange({ select: ['module:status'] }, have, true).selection).toEqual({ parts: [], net: null, module: 'status' });
+    expect(refusal(() => planChange({ select: ['module:status', 'J1'] }, have, true)).message).toContain('holds parts, one net or one module');
+  });
+  it("names a member's module both ways in a system, and keeps it to one member", () => {
+    const system: Ids = { parts: [{ path: 'led/status.led', refdes: 'led/D1' }], nets: [], limits: [], cases: [], modules: ['led/status'], system: 'TwoBoards' };
+    expect(resolveIds(['module:led/status'], system).modules).toEqual(['led/status']);
+    expect(resolveIds(['led/module:status'], system).modules).toEqual(['led/status']);
+    expect(memberSelection({ parts: [], net: null }, 'highlight', ['led/status'])).toEqual({ member: 'led', parts: [], net: null, module: null, modules: ['status'] });
+    expect(refusal(() => memberSelection({ parts: ['power/r1'], net: null }, 'highlight', ['led/status'])).message).toContain('2 members');
+  });
+  it('names the modules lit in the command', () => {
+    expect(litIds([], null, [], have.parts, [], ['status']).highlight).toEqual(['module:status']);
   });
 });

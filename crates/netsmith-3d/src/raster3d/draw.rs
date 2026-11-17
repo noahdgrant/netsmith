@@ -286,6 +286,15 @@ pub(super) fn render(meshes: &[Mesh], camera: &Camera, options: &RenderOptions) 
     let to_f = |c: Rgba| [c[0], c[1], c[2]].map(|x| f64::from(x) / 255.0);
     let bg_f = to_f(bg);
     let lit: BTreeSet<&str> = options.highlight.iter().map(String::as_str).collect();
+    // A mesh of a module lit, in its module's colour: the first module named that has it.
+    let mut tinted: std::collections::BTreeMap<&str, Rgba> = std::collections::BTreeMap::new();
+    for (k, ids) in options.modules.iter().enumerate() {
+        let colour = palette.modules[k % palette.modules.len()];
+        for id in ids {
+            tinted.entry(id.as_str()).or_insert(colour);
+        }
+    }
+    let any_lit = !lit.is_empty() || !tinted.is_empty();
 
     let mut opaque: Vec<Tri> = Vec::new();
     let mut flat: Vec<Tri> = Vec::new();
@@ -301,12 +310,15 @@ pub(super) fn render(meshes: &[Mesh], camera: &Camera, options: &RenderOptions) 
             Some([r, g, b]) => [r, g, b, 255],
             None => palette.colour(mesh.material),
         };
-        let highlighted = lit.contains(mesh.id.as_str());
+        let tint = tinted.get(mesh.id.as_str()).copied();
+        let highlighted = lit.contains(mesh.id.as_str()) || tint.is_some();
         let mut base = to_f(colour);
         let mut alpha = f64::from(colour[3]) / 255.0;
-        if !lit.is_empty() {
-            if highlighted {
+        if any_lit {
+            if lit.contains(mesh.id.as_str()) {
                 base = to_f(palette.highlight);
+            } else if let Some(t) = tint {
+                base = to_f(t);
             } else {
                 base = [0, 1, 2].map(|k| base[k] + (bg_f[k] - base[k]) * DIM);
                 alpha *= 0.5;

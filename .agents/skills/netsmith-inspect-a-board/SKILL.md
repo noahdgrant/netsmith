@@ -13,6 +13,7 @@ A picture is for your eyes, a number is for your answer. Take the number when a 
 |---|---|---|
 | Is the schematic legible, is a net or a sheet where it should be? | `view schematic --format png` (`--sheet NAME` for one sheet, `--board NAME`); PDF or SVG to hand on | the sheet names it prints |
 | Do the parts fit, is a part too close to another or past the edge? | `layout summary --format json` (`--near PATH --within MM`, `--between U1.3 C1.1`), `layout check`, `layout fit PATH` for a free place, `layout parts --format json` for geometry | the distances and findings |
+| Are a module's parts together, how far does it spread? | `layout summary --format json` (each module's box, `spread` and `intruders`), then `view pcb --highlight module:reg` or `view 3d --highlight module:reg,module:usb` (each module in its own colour) | `spread`, `intruders` |
 | Is the height right (a lid, a rib, a stacked board)? | `dev board3d --format json`, then `view 3d --view front --section x=12.5` or `--highlight limit:lid` | `margin` of each limit, `unknown_heights` |
 | Is the copper right: what is routed, what is open, what is in the way? | `view pcb --only-open` (a `--region`, a `--layer`), `view pcb --drc`; `board copper` for planes and pours as text; `board drc --format json` | the `open:` lines, the findings by `marker` number |
 | What will the board house get? | `view gerber fab/<Board>` (`--layer top\|bottom\|inner1\|all`), `--format json` for files, sizes and holes | `board`, `holes`, `unread` |
@@ -33,7 +34,7 @@ A picture is a view of the design, not a check: the checks are `board build`, `l
 
 ## Light a part or a net
 
-`--highlight` lights what it names and dims the rest, on `view 3d`, `view pcb` and `view editor-3d`: a part by its designator or path (`J1`, `power_in`), `net:GND`, and on the 3D ones `limit:lid` (a height limit's volume, red where a part is too tall) and `case:lid` (a case model). Several go in one flag, `--highlight net:GND,R1`. An id the board lacks is exit 2, with the parts, nets and limits it has. `view pcb --only-open` lights the nets that still have an open connection. `--xray` sees through the bodies; `--case hidden` leaves the case out so the board shows.
+`--highlight` lights what it names and dims the rest, on `view 3d`, `view pcb` and `view editor-3d`: a part by its designator or path (`J1`, `power_in`), `net:GND`, `module:<path>` (every part of a module, by its path in the design as `layout summary` names it; each module named in its own colour), and on the 3D ones `limit:lid` (a height limit's volume, red where a part is too tall) and `case:lid` (a case model). Several go in one flag, `--highlight net:GND,R1`. An id the board lacks is exit 2, with the parts, nets, limits and modules it has. `view pcb --only-open` lights the nets that still have an open connection. `--xray` sees through the bodies; `--case hidden` leaves the case out so the board shows.
 
 ## When to look, and when to ask the person
 

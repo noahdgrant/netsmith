@@ -21,8 +21,8 @@ pub struct Args {
     ///
     /// A system's name draws its _System scene_ (ADR 0110): every member placed against the
     /// others by its mates, framed as a whole, in the frame of its first member. `--highlight`
-    /// then names `member/<id>` (`led/J1`, `led/net:GND`, also written `net:led/GND` as the
-    /// editor's 3D view names it), or a member alone.
+    /// then names `member/<id>` (`led/J1`, `led/net:GND`, `led/module:reg`, also written
+    /// `net:led/GND` and `module:led/reg` as the editor's 3D view names them), or a member alone.
     #[arg(long, value_name = "NAME")]
     pub board: Option<String>,
     /// Where the camera looks from.
@@ -43,10 +43,13 @@ pub struct Args {
     /// its true thickness in its own colour, unless `--no-caps` leaves them open.
     #[arg(long, value_name = "AXIS=MM", value_parser = netsmith_3d::parse_render_section)]
     pub section: Option<(netsmith_3d::Axis, f64)>,
-    /// Light a part, `net:<name>`, `limit:<name>` or `case:<name>` and dim the rest (comma-separated or repeated).
+    /// Light a part, `net:<name>`, `limit:<name>`, `case:<name>` or `module:<path>` and dim the rest (comma-separated or repeated).
     ///
-    /// A part is named by its designator or its path. An id the board does not have is an error
-    /// that lists the ones it has.
+    /// A part is named by its designator or its path. `module:<path>` lights every part of a
+    /// module instance, by its path in the design as `layout summary` and the editor's Modules tab
+    /// name it (`reg`, `radio.row_a`); each module named takes its own colour, in the order given,
+    /// the rest in the highlight colour. An id the board does not have is an error that lists the
+    /// ones it has.
     #[arg(long, value_name = "ID[,ID...]", value_parser = parse_ids)]
     pub highlight: Vec<Ids>,
     /// Draw everything see-through.

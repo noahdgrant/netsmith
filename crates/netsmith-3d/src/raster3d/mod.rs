@@ -38,7 +38,8 @@
 //!   mesh to another or to the background, where its depth jumps, and at a crease (faces at
 //!   more than [`CREASE_DEG`]).
 //! - **Highlight.** The meshes whose `id` is in [`RenderOptions::highlight`] are drawn in the
-//!   palette's highlight colour and the rest are dimmed toward the background.
+//!   palette's highlight colour, those of a module lit ([`RenderOptions::modules`]) in that
+//!   module's colour, and the rest are dimmed toward the background.
 //! - **Anti-aliasing.** Each pixel is the mean of `supersample` x `supersample` samples.
 //!
 //! # Determinism
@@ -300,6 +301,9 @@ pub struct Palette {
     /// its opacity.
     pub materials: [Rgba; 14],
     pub highlight: Rgba,
+    /// The colours of the modules lit ([`RenderOptions::modules`]), in order: the editor's
+    /// (`netsmith_pcb::MODULE_COLOURS_LIGHT` and `_DARK`).
+    pub modules: [Rgba; netsmith_pcb::MODULE_COLOURS],
     pub outline: Rgba,
 }
 
@@ -340,6 +344,7 @@ impl Theme {
                     [120, 132, 150, 52],  // case (see-through)
                 ],
                 highlight: [255, 190, 0, 255],
+                modules: module_colours(false),
                 outline: [24, 26, 30, 255],
             },
             Theme::Dark => Palette {
@@ -361,10 +366,19 @@ impl Theme {
                     [176, 188, 206, 44],
                 ],
                 highlight: [255, 200, 40, 255],
+                modules: module_colours(true),
                 outline: [8, 9, 11, 255],
             },
         }
     }
+}
+
+/// The modules' colours of a light or a dark picture, opaque.
+fn module_colours(dark: bool) -> [Rgba; netsmith_pcb::MODULE_COLOURS] {
+    std::array::from_fn(|i| {
+        let [r, g, b] = netsmith_pcb::rgb_of(netsmith_pcb::module_colour(i, dark));
+        [r, g, b, 255]
+    })
 }
 
 /// The solder mask tones of a board's stated colour (issue #771, `std::parts::passive::Color`):
@@ -443,8 +457,12 @@ pub struct RenderOptions {
     pub shading: Shading,
     /// Lines at the edges of meshes and at creases.
     pub outlines: bool,
-    /// The ids of the meshes to light up; when empty nothing is dimmed.
+    /// The ids of the meshes to light up; when empty (and no module is lit) nothing is dimmed.
     pub highlight: Vec<String>,
+    /// The ids of the meshes of each module lit (issue #1129), in the order named: the k-th is
+    /// drawn in the palette's k-th module colour, round again after the last. A mesh of two
+    /// modules takes the first one's colour; one that `highlight` names too, the highlight's.
+    pub modules: Vec<Vec<String>>,
     /// Every mesh see-through.
     pub xray: bool,
     /// Draw a case model's solids ([`Material::Case`]) solid, so they hide the board inside:
@@ -467,6 +485,7 @@ impl Default for RenderOptions {
             shading: Shading::Smooth,
             outlines: true,
             highlight: Vec::new(),
+            modules: Vec::new(),
             xray: false,
             case_solid: false,
             section: None,

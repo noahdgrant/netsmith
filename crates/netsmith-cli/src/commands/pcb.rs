@@ -51,11 +51,14 @@ pub struct Args {
     /// one layer).
     #[arg(long, value_name = "FILE")]
     pub picture: Option<PathBuf>,
-    /// Light a part (by designator or path) or `net:<name>` and fade the rest (comma-separated or
-    /// repeated).
+    /// Light a part (by designator or path), `net:<name>` or `module:<path>` and fade the rest
+    /// (comma-separated or repeated).
     ///
     /// A part lights its pads, courtyard and designator; a net its copper and its open
-    /// connections. An id the board does not have exits 2 with the list of the ones it has.
+    /// connections; a module (its path in the design, as `layout summary` names it) its parts,
+    /// each part's box filled and outlined in the module's colour with a dashed box round them
+    /// all, each module named in its own colour. An id the board does not have exits 2 with the
+    /// list of the ones it has.
     #[arg(long, value_name = "ID[,ID...]", value_parser = parse_ids)]
     pub highlight: Vec<Ids>,
     /// Light the nets that have open connections and fade the rest.

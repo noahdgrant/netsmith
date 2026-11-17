@@ -2213,6 +2213,7 @@ fn view_state(board: &str) -> ViewState {
         section: Some("x=13".into()),
         exploded: Some(false),
         highlight: vec!["J1".into(), "limit:lid".into()],
+        modules: Vec::new(),
         selection: vec!["J1".into()],
         hover: None,
         xray: false,
