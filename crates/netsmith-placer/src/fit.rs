@@ -279,9 +279,10 @@ fn corners(parts: &mut [Placed], mechanical: &[usize], r: Rect, shape: &BoardEdg
         Some(PartKind::PlatedHole) => 1,
         _ => 2,
     };
+    // By path, not designator, so renumbering the parts moves none (issue #1048).
     order.sort_by(|&a, &b| {
-        (rank(parts[a].declared_kind), &parts[a].refdes)
-            .cmp(&(rank(parts[b].declared_kind), &parts[b].refdes))
+        (rank(parts[a].declared_kind), &parts[a].path)
+            .cmp(&(rank(parts[b].declared_kind), &parts[b].path))
     });
     // How far from the side edge each corner has been used, counting the gap after it.
     let mut used = [0.0f64; 4];

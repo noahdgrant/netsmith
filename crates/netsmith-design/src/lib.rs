@@ -1440,6 +1440,15 @@ fn design_model(name: &str, model: &Model, solution: &Solution) -> Result<Design
         }
     }
 
+    // Where each part is in the order of the design's parts, which is the order of their paths
+    // (above): a net's pins are sorted by it, not by designator, so renumbering or relettering
+    // the parts reorders no net, and the placer's nets and the router's lines stay as they were
+    // (owner decision, issue #1048).
+    let position: HashMap<&str, usize> = parts
+        .iter()
+        .enumerate()
+        .map(|(i, p)| (p.refdes.as_str(), i))
+        .collect();
     let mut nets = Vec::new();
     // Pins with no pad, gathered per part so each part is reported once.
     let mut padless: BTreeMap<InstId, Vec<String>> = BTreeMap::new();
@@ -1477,7 +1486,9 @@ fn design_model(name: &str, model: &Model, solution: &Solution) -> Result<Design
                 }
             }
         }
-        pins.sort_by(|a, b| (&a.refdes, &a.pin).cmp(&(&b.refdes, &b.pin)));
+        pins.sort_by(|a, b| {
+            (position[a.refdes.as_str()], &a.pin).cmp(&(position[b.refdes.as_str()], &b.pin))
+        });
         if !pins.is_empty() {
             nets.push(Net {
                 name: net.name.clone(),
