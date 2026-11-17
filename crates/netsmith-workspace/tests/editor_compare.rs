@@ -153,9 +153,20 @@ fn edit_all(r: &Repo, file: &str, from: &str, to: &str) {
     fs::write(path, text.replace(from, to)).unwrap();
 }
 
+/// A capacitor and its chain, written in front of [`INPUT_CAP`] (with the indent the line
+/// had, so the source stays in its layout).
 const BULK: &str =
-    "    .bulk: Capacitor { .effective_capacitance >= 10uF }\n    .vin.pos ~> .bulk ~> .vin.neg\n";
-const INPUT_CAP: &str = "    .input_cap:  Capacitor { .effective_capacitance >= 1uF }\n";
+    ".bulk: Capacitor { .effective_capacitance >= 10uF }\n    .vin.pos ~> .bulk ~> .vin.neg\n    ";
+/// The start of the stage's input capacitor, where [`BULK`] goes.
+const INPUT_CAP: &str = ".input_cap: Capacitor";
+
+/// The line of the example that `fragment` is on, counted from 1.
+fn line_of(fragment: &str) -> u32 {
+    let at = TWO_BOARDS
+        .find(fragment)
+        .unwrap_or_else(|| panic!("the example has no `{fragment}`"));
+    TWO_BOARDS[..at].matches('\n').count() as u32 + 1
+}
 
 /// A repository with the project committed once, and its workspace.
 fn committed(label: &str, sub: &str) -> (Repo, String, Workspace) {
@@ -271,7 +282,7 @@ fn a_part_added_comes_with_its_nets_its_bom_line_and_renumbers_the_rest() {
         (bulk.path.as_str(), bulk.kind.as_str()),
         ("stage.bulk", "Capacitor")
     );
-    assert_eq!(bulk.at.as_ref().unwrap().line, 24);
+    assert_eq!(bulk.at.as_ref().unwrap().line, line_of(INPUT_CAP));
     assert!(bulk.lcsc.is_some());
     // It is on the two nets of the stage's input, which gain its pins.
     let names: Vec<&str> = power.nets.changed.iter().map(|n| n.name.as_str()).collect();
@@ -283,7 +294,7 @@ fn a_part_added_comes_with_its_nets_its_bom_line_and_renumbers_the_rest() {
         ("stage.bulk", "1")
     );
     assert!(vin.left.is_empty());
-    assert_eq!(vin.at.as_ref().unwrap().line, 24);
+    assert_eq!(vin.at.as_ref().unwrap().line, line_of(INPUT_CAP));
     // The capacitors after it take the next designators, and that is not a change.
     assert!(power.parts.changed.is_empty());
     assert_eq!(power.parts.renumbered.len(), 2);
@@ -312,7 +323,10 @@ fn a_part_removed_is_listed_with_the_line_it_was_declared_on_at_the_ref() {
     let power = board(&c, "TwoBoards/power");
     assert_eq!(power.parts.removed.len(), 1);
     assert_eq!(power.parts.removed[0].path, "stage.bulk");
-    assert_eq!(power.parts.removed[0].at.as_ref().unwrap().line, 24);
+    assert_eq!(
+        power.parts.removed[0].at.as_ref().unwrap().line,
+        line_of(INPUT_CAP)
+    );
     assert!(power.parts.added.is_empty());
     let vin = power.nets.changed.iter().find(|n| n.name == "VIN").unwrap();
     assert!(vin.joined.is_empty() && vin.left.len() == 1);
@@ -853,7 +867,7 @@ fn a_file_that_does_not_build_on_disk_keeps_its_last_boards_marked_stale() {
     let led = board(&c, "TwoBoards/led");
     assert_eq!(led.problems.new.len(), 1, "{:#?}", led.problems);
     let error = &led.problems.new[0];
-    assert!(error.message.contains("Resistr") && error.at.as_ref().unwrap().line == 88);
+    assert!(error.message.contains("Resistr") && error.at.as_ref().unwrap().line == line_of(".r1: Resistor {}"));
     assert!(
         led.parts.changed.is_empty() && led.parts.added.is_empty() && led.parts.removed.is_empty()
     );

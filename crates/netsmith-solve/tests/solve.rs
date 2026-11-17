@@ -306,7 +306,7 @@ fn a_regulator_output_no_part_offers_is_blamed_on_the_regulator_not_the_capacito
     let source = c.sources.get(d.source);
     assert_eq!(
         &source.text[d.span.start..d.span.end],
-        ".regulator:  LinearRegulator"
+        ".regulator: LinearRegulator"
     );
     // The input capacitor reads only the range the board states for the input, so nothing the
     // regulator is decides it: it is chosen (ADR 0057). The output capacitor's voltage is
@@ -2482,8 +2482,8 @@ fn an_equation_that_does_not_fit_the_window_is_reported_against_the_window_as_wr
     let fixed = |window: &str| {
         LED_EXAMPLE
             .replace(
-                "        .current &= 5mA..15mA",
-                &format!("        .forward_voltage &= 1.8V..2.4V\n        .current &= {window}"),
+                ".current &= 5mA..15mA",
+                &format!(".forward_voltage &= 1.8V..2.4V; .current &= {window}"),
             )
             .replace(
                 ".r1: Resistor {}",
@@ -2656,8 +2656,8 @@ fn a_derived_current_is_worked_out_again_from_every_net_it_is_on() {
     let src = REGULATOR
         .replace(".current &= 0mA..50mA", ".current &= 10mA..20mA")
         .replace(
-            ".voltage &= 5V +/- 5%\n        .pos.net &= \"VIN\"",
-            ".voltage &= 5V +/- 5%\n        .current &= -15mA..-5mA\n        .pos.net &= \"VIN\"",
+            ".voltage &= 5V +/- 5%",
+            ".voltage &= 5V +/- 5%; .current &= -15mA..-5mA",
         );
     assert_ne!(src, REGULATOR);
     let (_, s) = run(&src);

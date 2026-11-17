@@ -149,7 +149,12 @@ fn a_definition_says_where_it_ends_and_what_is_declared_in_it() {
     );
     let first = line_of(TWO_BOARDS, ".stage: LdoStage {");
     assert_eq!(stage.line, first);
-    assert_eq!(stage.end_line, first + 2);
+    let block = TWO_BOARDS.find(".stage: LdoStage {").unwrap();
+    let close = block + TWO_BOARDS[block..].find('}').unwrap();
+    assert_eq!(
+        stage.end_line,
+        first + TWO_BOARDS[block..close].matches('\n').count() as u32
+    );
     // Only the declarations written directly in the body are children.
     assert!(kids.iter().all(|c| !c.name.contains("thickness")));
     // The system's members are boards.

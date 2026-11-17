@@ -282,10 +282,16 @@ impl Made {
 
 /// A copy of the example in which a source file of `reference/agent/` that is also in `src/` is
 /// the example's with one run of lines added, and no other line changed: the reproduction
-/// changes what it needs and follows the example in the rest.
+/// changes what it needs and follows the example in the rest. Both are compared in the layout of
+/// `netsmith project fmt`, so a statement the formatter joins or breaks in one of them is no
+/// change.
 fn assert_adds_one_block(port: &Port, name: &str) {
-    let agent = fs::read_to_string(example(port).join("reference/agent").join(name)).unwrap();
-    let own = fs::read_to_string(example(port).join("src").join(name)).unwrap();
+    let formatted = |path: PathBuf| {
+        let text = fs::read_to_string(&path).unwrap();
+        netsmith_lang::format(&text).unwrap_or_else(|e| panic!("{}: {e}", path.display()))
+    };
+    let agent = formatted(example(port).join("reference/agent").join(name));
+    let own = formatted(example(port).join("src").join(name));
     let (a, o): (Vec<&str>, Vec<&str>) = (agent.lines().collect(), own.lines().collect());
     let head = a.iter().zip(&o).take_while(|(x, y)| x == y).count();
     let tail = a[head..]

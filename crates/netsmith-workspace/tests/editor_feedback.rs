@@ -79,9 +79,10 @@ fn a_parse_error_is_syntax_and_names_no_board_and_a_checker_error_names_the_boar
 fn a_checker_error_written_inside_a_board_says_the_board() {
     // A contradiction the checker finds.
     let bad = LED.replace(
-        "        .current &= 5mA..15mA\n",
-        "        .current &= 5mA..15mA\n        .current &= 1A..2A\n",
+        ".current &= 5mA..15mA",
+        ".current &= 5mA..15mA\n        .current &= 1A..2A\n   ",
     );
+    assert_ne!(bad, LED);
     let root = project("stage-check-board", &bad);
     let analysis = open(&root).analysis();
     let p = analysis
@@ -103,8 +104,8 @@ fn a_checker_error_written_inside_a_board_says_the_board() {
 
     // A statement of the board itself.
     let bad = LED.replace(
-        "    .supply.pos ~> .r1 ~> .led ~> .supply.neg\n",
-        "    .supply.voltage &= 12V\n    .supply.pos ~> .r1 ~> .led ~> .supply.neg\n",
+        ".supply.pos ~> .r1 ~> .led ~> .supply.neg",
+        ".supply.voltage &= 12V\n    .supply.pos ~> .r1 ~> .led ~> .supply.neg",
     );
     assert_ne!(bad, LED);
     let root = project("stage-check-board-level", &bad);
@@ -123,9 +124,10 @@ fn a_checker_error_written_inside_a_board_says_the_board() {
 #[test]
 fn a_checker_error_in_a_board_a_system_places_is_named_as_the_systems_member() {
     let bad = TWO_BOARDS.replace(
-        "        .vout.voltage &= 3.3V +/- 5%\n",
-        "        .vout.voltage &= 3.3V +/- 5%\n        .vout.voltage &= 12V\n",
+        ".vout.voltage &= 3.3V +/- 5%",
+        ".vout.voltage &= 3.3V +/- 5%; .vout.voltage &= 12V",
     );
+    assert_ne!(bad, TWO_BOARDS);
     let root = project("stage-check-system", &bad);
     let analysis = open(&root).analysis();
     assert!(!analysis.problems.is_empty());
@@ -282,7 +284,7 @@ fn the_power_tree_points_a_node_at_its_supply_and_a_stage_at_its_converter() {
     // The 3.3 V net: where the regulator that gives its capacity is declared.
     let at = node("power:3V3").at.as_ref().expect("the supply's place");
     assert_eq!(at.file, "src/main.nsm");
-    assert_eq!(at.line, line_of(TWO_BOARDS, ".regulator:  LinearRegulator"));
+    assert_eq!(at.line, line_of(TWO_BOARDS, ".regulator: LinearRegulator"));
     // A net nothing limits is still somewhere: at what draws from it.
     let vin = node("power:VIN");
     assert_eq!(vin.capacity, None);

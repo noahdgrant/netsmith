@@ -406,14 +406,18 @@ fn a_file_with_no_board_is_an_error() {
     assert!(e.contains("has no `board` to build"), "{e}");
 }
 
-/// The LED example without its manufacturing process.
+/// The LED example without its manufacturing process: the statement from its doc comment to
+/// the brace that closes its block, however the source lays it out.
 fn led_without_a_process() -> String {
-    let source = LED.replace(
-        "    /// Made by JLCPCB's two-layer process, on a board 1.6 mm thick.\n    .process: TwoLayer {\n        .stackup.thickness &= 1.6mm\n    }\n\n",
-        "",
-    );
-    assert_ne!(source, LED, "the example names a process");
-    source
+    let process = LED.find(".process:").expect("the example names a process");
+    let start = LED[..process]
+        .rfind("///")
+        .filter(|at| !LED[*at..process].contains("\n\n"))
+        .unwrap_or(process);
+    let start = LED[..start].rfind('\n').map_or(0, |at| at + 1);
+    let end = process + LED[process..].find('}').unwrap() + 1;
+    let end = end + LED[end..].len() - LED[end..].trim_start().len();
+    format!("{}{}", &LED[..start], &LED[end..])
 }
 
 #[test]
