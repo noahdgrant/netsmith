@@ -123,7 +123,7 @@ Another host that starts a server on stdio takes the same: the command `netsmith
 
 ```text
 { "mcpServers": { "netsmith": { "command": "sh", "args": ["-c", "cd /path/to/project && exec netsmith mcp"] } } }
-```json
+```text
 { "mcpServers": { "netsmith": { "command": "netsmith", "args": ["mcp", "--project", "/path/to/project"] } } }
 ```
 The places left for commands to come, named by the same rules: `view pcb` and `view gerber`; `project fmt`; and `mcp`, the server that offers these commands to an agent.
