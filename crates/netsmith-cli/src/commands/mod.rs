@@ -12,6 +12,7 @@ mod check;
 pub(crate) mod common;
 mod compare;
 mod copper;
+mod drc;
 mod dxf;
 mod editor;
 mod explain;
@@ -99,6 +100,8 @@ pub enum Board {
     Build(build::Args),
     /// Make the fab package of the boards: Gerbers, drill, BOM, CPL, notes, 3D scene.
     Fab(fab::Args),
+    /// Run the design rules check alone, on the placed board with its routes file or on a KiCad board.
+    Drc(drc::Args),
     /// Print what the solve left a part or member with, and why each part has its row.
     Explain(explain::Args),
     /// Say whether two designs are the same circuit.
@@ -172,6 +175,7 @@ pub fn run(command: Command) -> ExitCode {
             Board::Check(args) => check::run(args),
             Board::Build(args) => build::run(args),
             Board::Fab(args) => fab::run(args),
+            Board::Drc(args) => drc::run(args),
             Board::Explain(args) => explain::run(args),
             Board::Compare(args) => compare::run(args),
             Board::Pins(args) => pins::run(args),

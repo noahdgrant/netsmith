@@ -403,6 +403,7 @@ pub(super) fn run_build(run: &BuildRun) -> ExitCode {
                 board: b.label(),
                 dir: written.map(|d| d.display().to_string()),
                 parts: Vec::new(),
+                outline_at: None,
             });
             if run.emit_solved.is_some() || run.explain.is_some() {
                 solved.push(netsmith_pipeline::solved::to_value(&b));

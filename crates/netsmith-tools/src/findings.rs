@@ -105,6 +105,31 @@ pub struct Finding {
     /// parts with their courtyards, and its numbers (#779).
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub placement: Vec<netsmith_pcb::PlacementFault>,
+    /// For a finding of the design rules check (`board drc`, issue #1095): the rule that found it
+    /// (`clearance`, `short_circuit`, `unconnected_items`, ...). The `code` is the stage, `drc`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rule: Option<String>,
+    /// For a finding of the design rules check: where the problem is, in mm in the frame of the
+    /// board file (y down), and the layer it is on when it has one.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub place: Option<Place>,
+    /// The nets the finding names (each once, in the order of the things it is about), for a
+    /// finding of the design rules check.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub nets: Vec<String>,
+    /// The parts (designators) the finding names, each once, for a finding of the design rules
+    /// check.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub parts: Vec<String>,
+}
+
+/// Where a finding of the design rules check is.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct Place {
+    pub x: f64,
+    pub y: f64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub layer: Option<String>,
 }
 
 impl Finding {
@@ -123,6 +148,10 @@ impl Finding {
             does_not_fit: None,
             conflicts: Vec::new(),
             placement: Vec::new(),
+            rule: None,
+            place: None,
+            nets: Vec::new(),
+            parts: Vec::new(),
         }
     }
 
@@ -130,6 +159,44 @@ impl Finding {
         self.board = Some(board.to_string());
         self
     }
+}
+
+/// The findings of netsmith's own design rules check (ADR 0037) as `board drc` and `fab` have
+/// them: the code `drc`, the severity (a warning of the check is a warning, an error an error),
+/// the rule, where it is, the nets and the parts it names, and the message with the things it is
+/// about. `board` names the board a design's check was made on.
+pub fn of_drc(report: &netsmith_geom::DrcReport, board: Option<&str>) -> Vec<Finding> {
+    report
+        .findings
+        .iter()
+        .map(|f| {
+            let mut nets: Vec<String> = Vec::new();
+            for n in f.items.iter().filter_map(|i| i.net.clone()) {
+                if !nets.contains(&n) {
+                    nets.push(n);
+                }
+            }
+            Finding {
+                board: board.map(str::to_string),
+                rule: Some(f.rule.id().to_string()),
+                place: Some(Place {
+                    x: f.at.x,
+                    y: f.at.y,
+                    layer: f.layer.clone(),
+                }),
+                nets,
+                parts: f.parts(),
+                ..Finding::plain(
+                    match f.severity {
+                        netsmith_geom::DrcSeverity::Error => Severity::Error,
+                        _ => Severity::Warning,
+                    },
+                    "drc",
+                    f.with_items(),
+                )
+            }
+        })
+        .collect()
 }
 
 /// The word of a stage, as the code of an error it found.
@@ -243,6 +310,11 @@ pub struct BoardOut {
     /// centre (#457).
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub parts: Vec<netsmith_pcb::PartOrigin>,
+    /// For `board drc` of a design's board: the outline's top left corner in the frame of the
+    /// places of its findings, so that a place less this is in mm from the outline's corner (y
+    /// down), the frame of the layout file and the routes file.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub outline_at: Option<Place>,
 }
 
 /// The count of the notes of the run, for each cause, whether or not they are listed.
