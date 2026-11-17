@@ -8,8 +8,10 @@
 //! editor is asked to end at its next checkpoint (ADR 0062), but the command line has no cancel
 //! of its own but Ctrl+C, so what a cancelled call leaves is what an interrupted command leaves.
 //!
-//! A tool call that is to act on a running editor (issue #1108) is another way of running the
-//! same call; [`run`] is the one this server has.
+//! A tool call that is to act on a running editor's page (issue #1108) is this same call with the
+//! editor's port in its arguments ([`super::attach`]); a command that would run in the editor's
+//! own process would be another way of running it, chosen in [`super::Server::execute`], and
+//! [`run`] is the one this server has.
 
 use std::io::{BufRead, BufReader, Read};
 use std::path::Path;

@@ -12,7 +12,14 @@
 //! `resources/read`, `prompts/list` and `prompts/get`, and the `notifications/progress` and
 //! `notifications/cancelled` notifications. Each tool call runs on a thread of its own, so the
 //! loop goes on reading and a cancel reaches the call it names.
+//!
+//! With `--editor` the server is attached to a running editor (issue #1108, [`attach`]): the
+//! tool of the commands that read or change the page a person looks at, `view_editor_3d`, is
+//! given the editor's port, and its `picture` comes back as an image. The call is the same child
+//! process; [`Server::execute`] is the one place that runs a call, where a command that runs in
+//! the editor's own process would be run instead.
 
+mod attach;
 mod content;
 mod run;
 mod tools;
@@ -24,6 +31,7 @@ use std::sync::{Arc, Mutex};
 
 use serde_json::{Map, Value, json};
 
+pub use attach::Attach;
 use run::Job;
 use tools::Tool;
 
@@ -43,8 +51,9 @@ const INVALID_PARAMS: i64 = -32602;
 const RESOURCE_NOT_FOUND: i64 = -32002;
 
 /// Serves on this process's stdin and stdout until stdin closes; the commands run from this
-/// binary in `project`, or in the current folder when there is none (issue #1133).
-pub fn serve_stdio(project: Option<&Path>) -> std::io::Result<()> {
+/// binary in `project`, or in the current folder when there is none (issue #1133), attached to
+/// a running editor when `attach` says so (issue #1108).
+pub fn serve_stdio(project: Option<&Path>, attach: Option<Attach>) -> std::io::Result<()> {
     let dir = match project {
         // Not `canonicalize`: on Windows it gives the `\\?\` form, which the commands print.
         Some(project) => std::path::absolute(project)?,
@@ -56,7 +65,7 @@ pub fn serve_stdio(project: Option<&Path>) -> std::io::Result<()> {
             format!("--project {}: not a folder", dir.display()),
         ));
     }
-    let server = Server::new(std::env::current_exe()?, dir);
+    let server = Server::new(std::env::current_exe()?, dir, attach);
     server.serve(std::io::stdin().lock(), std::io::stdout());
     Ok(())
 }
@@ -67,6 +76,8 @@ struct Server {
     /// The folder the commands run in: `--project`, or the folder the server was started in.
     dir: PathBuf,
     tools: Vec<Tool>,
+    /// The running editor the page tool is attached to (`--editor`).
+    attach: Option<Attach>,
     /// The tool calls running, by their request id (as its JSON text).
     jobs: Mutex<HashMap<String, Arc<Job>>>,
 }
@@ -95,11 +106,21 @@ impl<W: Write> Out<W> {
 }
 
 impl Server {
-    fn new(program: PathBuf, dir: PathBuf) -> Server {
+    fn new(program: PathBuf, dir: PathBuf, attach: Option<Attach>) -> Server {
+        let mut tools = tools::tools();
+        if let Some(attach) = attach {
+            for tool in tools
+                .iter_mut()
+                .filter(|t| t.words.iter().eq(attach::PAGE_TOOL.iter()))
+            {
+                attach.describe(&mut tool.schema);
+            }
+        }
         Server {
             program,
             dir,
-            tools: tools::tools(),
+            tools,
+            attach,
             jobs: Mutex::new(HashMap::new()),
         }
     }
@@ -186,7 +207,10 @@ impl Server {
                         "title": "netsmith",
                         "version": env!("CARGO_PKG_VERSION"),
                     },
-                    "instructions": INSTRUCTIONS,
+                    "instructions": match self.attach {
+                        Some(attach) => format!("{INSTRUCTIONS}{}", attach.instructions()),
+                        None => INSTRUCTIONS.to_string(),
+                    },
                 }))
             }
             "ping" => Ok(json!({})),
@@ -214,6 +238,18 @@ impl Server {
         }
     }
 
+    /// Runs one command for a call, as a child process of this binary in the server's folder.
+    /// The one place a call is run: attached to an editor (issue #1108), a command that is to
+    /// run in the editor's own process would be run here, in its place.
+    fn execute(
+        &self,
+        argv: &[String],
+        job: &Job,
+        progress: impl FnMut(&str),
+    ) -> std::io::Result<run::Ran> {
+        run::run(&self.program, argv, &self.dir, job, progress)
+    }
+
     /// A tool call: runs the command and answers with what it printed, unless it was cancelled
     /// (a cancelled request is not answered).
     fn call<W: Write>(&self, out: &Out<W>, id: Value, params: &Value) {
@@ -227,6 +263,22 @@ impl Server {
             Some(Value::Object(a)) => a.clone(),
             Some(_) => {
                 out.error(&id, INVALID_PARAMS, "`arguments` is not an object");
+                return;
+            }
+        };
+        // Attached, the page tool is given the editor's port: an editor that is not there is the
+        // tool's error, as a command that cannot run is.
+        let arguments = match self
+            .attach
+            .map(|a| a.arguments(&tool.words, &arguments, &self.dir))
+        {
+            None => arguments,
+            Some(Ok(arguments)) => arguments,
+            Some(Err(e)) => {
+                out.answer(
+                    &id,
+                    failed(&format!("{e} (exit code 2: the command could not run)")),
+                );
                 return;
             }
         };
@@ -249,7 +301,7 @@ impl Server {
             .insert(key.clone(), job.clone());
         let token = params["_meta"].get("progressToken").cloned();
         let mut told = 0u64;
-        let ran = run::run(&self.program, &argv, &self.dir, &job, |line| {
+        let ran = self.execute(&argv, &job, |line| {
             if let Some(token) = &token {
                 told += 1;
                 out.send(&json!({
@@ -267,7 +319,19 @@ impl Server {
             return;
         }
         match ran {
-            Ok(ran) => out.answer(&id, result(tool.wants_json(&arguments), ran)),
+            Ok(ran) => {
+                let picture = (ran.code == Some(0))
+                    .then(|| attach::picture(&self.dir, &tool.words, &arguments))
+                    .flatten();
+                let mut answer = result(tool.wants_json(&arguments), ran);
+                if let Some(picture) = picture {
+                    answer["content"]
+                        .as_array_mut()
+                        .expect("a result has content")
+                        .push(picture);
+                }
+                out.answer(&id, answer)
+            }
             Err(e) => out.answer(&id, failed(&format!("the command could not start: {e}"))),
         }
     }
@@ -342,7 +406,7 @@ mod tests {
         let program = waits(&dir);
         let (requests, mut input) = std::io::pipe().unwrap();
         let (answers, output) = std::io::pipe().unwrap();
-        let server = Arc::new(Server::new(program, dir.to_path_buf()));
+        let server = Arc::new(Server::new(program, dir.to_path_buf(), None));
         let serving = {
             let server = server.clone();
             std::thread::spawn(move || server.serve(BufReader::new(requests), output))

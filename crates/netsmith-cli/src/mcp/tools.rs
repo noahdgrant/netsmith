@@ -19,7 +19,7 @@ use clap::Subcommand;
 use serde_json::{Map, Value, json};
 
 /// The commands that are not tools: the server itself, and the editor's server, which never ends
-/// (a running editor is reached through its own address, issue #1108).
+/// (a running editor is reached through its own address: `mcp --editor`, issue #1108).
 const NOT_TOOLS: [&[&str]; 2] = [&["mcp"], &["view", "editor"]];
 
 /// The resources that hold the help of the commands.
