@@ -272,7 +272,9 @@ fn all_efforts() -> Vec<String> {
 /// the only difference), recorded before the conversion. `two_boards` was 72 trials until the
 /// search left out candidates that a trial would refuse (issue #184): its picks are the same.
 /// A plain `Capacitor` is no longer searched as a bank (ADR 0123), so `ldo` (62), `two_boards`
-/// (67) and `behind` (28) try fewer candidates, and pick the same parts.
+/// (67) and `behind` (28) try fewer candidates, and pick the same parts. `Diode` became a
+/// generic with its own catalog (issue #846), so the diode of `clamp`, which states a rating no row
+/// has, is refused at its pick as well as by its relation: `clamp` has one more finding.
 const BEFORE: &str = "\
 led/LedExample: trials 3 picks [led=KT-0603R RED LED 0603 C2286x1, power_in=PH2.54-1X2P-H25 2-pin 2.54mm header C42431798x1, r1=330Ω 1% 0402 C25104x1] findings 0\n\
 status/IndicatorExample: trials 5 picks [enable_in=PH2.54-1X2P-H25 2-pin 2.54mm header C42431798x1, power_in=PH2.54-1X2P-H25 2-pin 2.54mm header C42431798x1, status_indicator.bypass=100nF 10% 16V X7R 0402 C1525x1, status_indicator.current_limit=1kΩ 1% 0402 C11702x1, status_indicator.led=LTST-C190KGKT GREEN LED 0603 C125094x1] findings 0\n\
@@ -280,7 +282,7 @@ ldo/RegulatorExample: trials 13 picks [power_in=PH2.54-1X2P-H25 2-pin 2.54mm hea
 two_boards/TwoBoards: trials 18 picks [led.led=KT-0603R RED LED 0603 C2286x1, led.power_in=PM2.54-1X2PM-H85 2-pin 2.54mm socket C42431841x1, led.r1=100Ω 1% 0402 C25076x1, power.power_in=PH2.54-1X2P-H25 2-pin 2.54mm header C42431798x1, power.power_out=PH2.54-1X2P-H25 2-pin 2.54mm header C42431798x1, power.stage.input_cap=10uF 20% 10V X5R 0402 C315248x1, power.stage.output_cap=22uF 20% 6.3V X5R 0603 C59461x1, power.stage.regulator=XC6206P332MR-G 3.3V 100mA LDO SOT-23 C5446x1] findings 0\n\
 protect/Protected: trials 5 picks [fuse=SMD1206P100TF 1A 6V resettable fuse 1206 C20800x1, tvs=SMAJ15A 15V TVS SMA C113958x1] findings 0\n\
 behind/Behind: trials 4 picks [a_cap=10uF 20% 6.3V X5R 0402 C15525x1, z_diode=1N5819WS 40V 1A Schottky SOD-323 C191023x1] findings 0\n\
-clamp/Clamp: trials 1 picks [] findings 3\n\
+clamp/Clamp: trials 1 picks [] findings 4\n\
 switch/Switch: trials 3 picks [load=10kΩ 1% 0603 C25804x1, q=AO3400A 30V 5.7A N-MOSFET SOT-23 C20917x1] findings 0\n\
 switch_weak/Switch: trials 2 picks [] findings 1\n\
 inductor/Filter: trials 4 picks [fb=BLM18PG221SN1D 220R 1.4A ferrite bead 0603 C80165x1, l=MHCD322512A-2R2M-A8S 2.2uH 3.6A inductor 1210 C285758x1, xtal=X503216MSB2GI 16MHz 20pF crystal 5032 C112572x1] findings 0\n\

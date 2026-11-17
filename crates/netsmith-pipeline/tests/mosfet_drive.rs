@@ -198,10 +198,10 @@ fn a_p_channel_row_that_states_its_test_voltage_is_checked_too() {
     let o = build(&w, &high_side_at("36V +/- 5%", "5V +/- 5%", "")).unwrap_or_else(|e| panic!("{e:?}"));
     assert_eq!(q_mpn(&o), Some("ZP-40"));
     // And refuses a 3.3 V drive, below the 4.5 V its on-resistance is guaranteed at (the
-    // standard row is out on the supply, and the message names the closest of the two).
+    // standard rows are out on the supply, and the message names the closest of the four).
     let m = fails(&w, &high_side_at("36V +/- 5%", "3.3V +/- 5%", ""));
     assert!(
-        m.contains("no `p_mosfet` candidate satisfies `q`: the closest of the 2 that fit"),
+        m.contains("no `p_mosfet` candidate satisfies `q`: the closest of the 4 that fit"),
         "{m}"
     );
 }

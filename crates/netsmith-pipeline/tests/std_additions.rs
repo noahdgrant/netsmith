@@ -155,13 +155,15 @@ fn only_header(csv: &str) -> bool {
 fn the_standard_catalog_of_the_translator_has_a_header_and_no_row_and_says_where_rows_go() {
     assert!(only_header(TRANSLATOR_CSV), "{TRANSLATOR_CSV}");
     // The P-channel header is the catalog's columns and the fixed ones, in the order of the
-    // n_mosfet file, and its one row is the AO3401A (the sources are checked in
-    // `crates/netsmith-solve/tests/data.rs`).
+    // n_mosfet file, and its rows are the AO3401A, AO3407A and AO3415A (the sources are checked
+    // in `crates/netsmith-solve/tests/data.rs`).
     let header = P_MOSFET_CSV.lines().next().unwrap();
     let n_mosfet = include_str!("../../../data/jlcpcb/catalog/n_mosfet.csv");
     assert_eq!(header, n_mosfet.lines().next().unwrap());
-    assert_eq!(P_MOSFET_CSV.lines().count(), 2, "{P_MOSFET_CSV}");
-    assert!(P_MOSFET_CSV.contains("\nC15127,AO3401A,"), "{P_MOSFET_CSV}");
+    assert_eq!(P_MOSFET_CSV.lines().count(), 4, "{P_MOSFET_CSV}");
+    for row in ["C15127,AO3401A,", "C15155,AO3407A,", "C133233,AO3415A,"] {
+        assert!(P_MOSFET_CSV.contains(&format!("\n{row}")), "{row}");
+    }
     // With no rows and no file of the project, a board is refused where the row is missing.
     let m = fails(&world(&[], &[]), &translated("", "3.3V +/- 5%", ""));
     assert!(
@@ -194,9 +196,9 @@ fn a_p_channel_stress_beyond_the_maxima_is_refused_with_the_numbers() {
     let m = fails(&w, &high_side("", "24V +/- 5%", "24V +/- 5%"));
     assert!(
         m.contains("no `p_mosfet` candidate satisfies `q`")
-            && m.contains("the closest of the 2 that fit, AO3401A 30V 4A P-MOSFET SOT-23 C15127")
+            && m.contains("the closest of the 4 that fit, AO3407A 30V 4.3A P-MOSFET SOT-23 C15155")
             && m.contains(
-                "q.gate_source_voltage must always be at most q.max_gate_source_voltage, but 22.8V..25.2V is not always below 12V"
+                "q.gate_source_voltage must always be at most q.max_gate_source_voltage, but 22.8V..25.2V is not always below 20V"
             ),
         "{m}"
     );

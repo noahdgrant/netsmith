@@ -66,7 +66,7 @@ fn columns(name: &str) -> Vec<(String, FieldKind)> {
             q("max_power", Dimension::POWER),
             t("package"),
         ],
-        "schottky" => vec![
+        "schottky" | "diode" => vec![
             q("forward_voltage", Dimension::VOLTAGE),
             q("max_reverse_voltage", Dimension::VOLTAGE),
             q("max_forward_current", Dimension::CURRENT),
@@ -182,11 +182,12 @@ fn tolerance(value: f64, unit: &str, percent: f64) -> Quantity {
     Quantity::tolerance(&quantity(value, unit), &quantity(percent, "%"), true).unwrap()
 }
 
-const CATALOGS: [&str; 20] = [
+const CATALOGS: [&str; 21] = [
     "resistor",
     "capacitor",
     "led",
     "ldo",
+    "diode",
     "schottky",
     "zener",
     "tvs",
@@ -312,7 +313,7 @@ fn every_esr_cell_is_one_resistance_and_its_source_names_the_page_and_the_point(
 }
 
 /// How many rows of the standard catalogs have a `height` (ADR 0094). Update it with the rows.
-const ROWS_WITH_HEIGHT: usize = 136;
+const ROWS_WITH_HEIGHT: usize = 138;
 
 #[test]
 fn every_height_is_one_length_that_a_document_says_and_its_source_names_where() {
@@ -368,11 +369,11 @@ fn every_height_is_one_length_that_a_document_says_and_its_source_names_where() 
 }
 
 /// How many rows of the standard catalogs state `temp_min` and `temp_max` (ADR 0099): the fifteen
-/// crystals, whose figure is the JLCPCB listing text, and 345 rows read from a datasheet (306
-/// ambient or operating ranges, 27 junction ranges of the diodes and the MOSFETs, and 12 operating
-/// ranges of LEDs; the 1N5819WS, whose range is the one figure of its operating and storage
+/// crystals, whose figure is the JLCPCB listing text, and 348 rows read from a datasheet (307
+/// ambient or operating ranges, 29 junction ranges of the diodes and the MOSFETs, and 12 operating
+/// ranges of LEDs; the 1N5819WS and the M7, whose range is the one figure of its operating and storage
 /// range, is counted with the ranges and not with the junction ones). Update it with the rows.
-const ROWS_WITH_TEMPERATURE: usize = 360;
+const ROWS_WITH_TEMPERATURE: usize = 363;
 
 /// The catalogs of semiconductors whose datasheets print a junction range (`TJ`) and no ambient
 /// one. A row of them that states a range says in its `notes` which temperature it is (ADR 0099): a
@@ -474,7 +475,7 @@ fn every_temperature_range_is_two_kelvin_figures_and_its_row_names_the_datasheet
         }
     }
     assert_eq!(with, ROWS_WITH_TEMPERATURE);
-    assert_eq!(junction, 27, "the rows whose range is a junction range");
+    assert_eq!(junction, 29, "the rows whose range is a junction range");
 }
 
 #[test]
@@ -987,7 +988,8 @@ fn every_resistor_has_the_power_both_suppliers_list() {
 }
 
 /// The kinds of ADR 0023 that gained a catalog (ADR 0025), with the file that holds it.
-const STD_KINDS: [(&str, &str); 10] = [
+const STD_KINDS: [(&str, &str); 11] = [
+    ("diode", "Diode"),
     ("schottky", "Schottky"),
     ("zener", "Zener"),
     ("tvs", "Tvs"),

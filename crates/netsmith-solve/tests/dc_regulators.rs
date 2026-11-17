@@ -96,10 +96,24 @@ fn load(name: &str, net: &str, current: &str) -> String {
     )
 }
 
+/// A diode that states its ratings as a range, as a project's own row of the standard `diode`
+/// catalog (it comes after the standard rows, none of which has a forward voltage this low).
+/// The standard `Diode` is a generic, so a design's ratings are requirements that a row meets.
+const HAND_DIODE_ROWS: &str = "mpn,forward_voltage,max_reverse_voltage,max_forward_current,package,source
+ZD-1,0.5V..0.8V,40V,3A,SMA,invented
+";
+
+fn catalogs() -> Catalogs {
+    let mut c = Catalogs::jlcpcb();
+    c.add_file("diode", "catalogs/diode.csv", HAND_DIODE_ROWS)
+        .unwrap();
+    c
+}
+
 fn solved(src: &str) -> Solution {
     let c = check("test.nsm", src, &Loader::std());
     assert!(c.is_ok(), "{}", c.render());
-    solve(&c.boards[0], &Catalogs::jlcpcb())
+    solve(&c.boards[0], &catalogs())
 }
 
 fn messages(s: &Solution) -> Vec<String> {
