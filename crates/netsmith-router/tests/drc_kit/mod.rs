@@ -12,10 +12,13 @@ use netsmith_fab::KicadCliExe;
 use netsmith_pcb::{Board, kicad_pcb, kicad_pro};
 use netsmith_testkit::TempDir;
 
-/// What a DRC run found: the type of each violation, and how many connections are missing.
+/// What a DRC run found: the type of each violation, how many connections are missing, and
+/// the places of KiCad's `starved_thermal` findings (a kind not compared with netsmith's,
+/// [`netsmith_fab::KICAD_DRC_OUT_OF_SCOPE`], so not among the violations).
 pub struct Report {
     pub violations: Vec<String>,
     pub unconnected: usize,
+    pub starved: Vec<netsmith_geom::Pt>,
 }
 
 impl Report {
@@ -64,10 +67,12 @@ pub fn drc(name: &str, pcb: &str, pro: &str) -> Option<Report> {
     let mut report = Report {
         violations: Vec::new(),
         unconnected: 0,
+        starved: Vec::new(),
     };
     for f in &theirs {
         match f.kind.as_str() {
             "unconnected_items" => report.unconnected += 1,
+            "starved_thermal" => report.starved.extend(f.items.iter().map(|(_, at)| *at)),
             // These tests lay boards out with our own small footprints, which are not the
             // ones in KiCad's library, so KiCad says they differ from it. That comparison is
             // `fab`'s, which uses the installed footprints.

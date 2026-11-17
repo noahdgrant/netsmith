@@ -9,13 +9,12 @@
 //!    round holes, and the thermal gaps round the pads of its own net, drawn as the four pieces
 //!    between the spokes so that the spokes stay copper. Where zones of one layer overlap, a
 //!    zone also gives up what a zone of higher priority has ([`fill_zones`]).
-//! 2. **The minimum thickness.** The copper narrower than the zone's `min_thickness` is taken
+//! 2. **Spokes KiCad would not make.** A spoke is kept only where KiCad's filler makes one
+//!    (below): the others are taken out, the pad's own copper left.
+//! 3. **The minimum thickness.** The copper narrower than the zone's `min_thickness` is taken
 //!    out ([`crate::polygons::trimmed`]: shrunk by half the width and grown back), so a sliver
-//!    goes and a neck narrower than it parts the copper in two.
-//! 3. **Spokes that reach nothing.** A spoke whose outer end is not on the fill (it runs into
-//!    another net's clearance, a keepout or the edge band) is taken out, as KiCad adds a spoke
-//!    only where its end meets the fill. A spoke the fill reaches stays, even if a clearance
-//!    cuts across it further in.
+//!    goes and a neck narrower than it parts the copper in two, a spoke narrowed by a clearance
+//!    with it.
 //! 4. **Copper islands.** A piece of the fill that touches no copper of the zone's net on the layer (a
 //!    pad, a via, a track, a teardrop, or a piece of another zone of the net) is removed, as
 //!    the zone's `island_removal_mode` says ([`crate::artwork::Islands`]: always, the default,
@@ -28,32 +27,56 @@
 //! any [`Pen`]: the Gerber file, or `Polygons` again. `netsmith_pcb::copper_of` fills a board's
 //! pours that way for the 3D view (ADR 0105), so its pours are this fill and there is one filler.
 //!
-//! The gap and spoke width come from the zone; the spokes' turn is the pad's own
-//! `thermal_bridge_angle`, else KiCad's default: 45 degrees from the pad's axes for a round pad
-//! or a custom pad with a round anchor, along the axes for every other shape (KiCad's board
-//! reader, `parsePAD`, the same in 9.0.0 and 9.0.5; a file older than KiCad 6, version
-//! 20211014 or earlier, gave a custom pad with a round anchor 90 degrees, and netsmith does not
-//! read the file's version and gives it 45). netsmith once drew every spoke along the axes, so
-//! its planes differed from the ones KiCad fills round every round pad (0.64% of the pixels of a
-//! small plane, 1.2% with more pads). Neither angle is better for the factory (JLCPCB's page
-//! lists no rule about spokes), and matching KiCad costs nothing, so the file is the same as the
-//! one the designer sees (`crates/netsmith-fab/tests/known_differences.rs`). A via of the
-//! pour's net is joined solid, as KiCad joins it. Fills the file already holds
+//! The gap and spoke width come from the zone (the width no wider than the pad, below); the
+//! spokes' turn is the pad's own `thermal_bridge_angle`, else KiCad's default: 45 degrees from
+//! the pad's axes for a round pad or a custom pad with a round anchor, along the axes for every
+//! other shape (KiCad's board reader, `parsePAD`, the same in 9.0.0 and 9.0.5; a file older than
+//! KiCad 6, version 20211014 or earlier, gave a custom pad with a round anchor 90 degrees, and
+//! netsmith does not read the file's version and gives it 45). netsmith once drew every spoke
+//! along the axes, so its planes differed from the ones KiCad fills round every round pad (0.64%
+//! of the pixels of a small plane, 1.2% with more pads). Neither angle is better for the factory
+//! (JLCPCB's page lists no rule about spokes), and matching KiCad costs nothing, so the file is
+//! the same as the one the designer sees (`crates/netsmith-fab/tests/known_differences.rs`). A via
+//! of the pour's net is joined solid, as KiCad joins it. Fills the file already holds
 //! (`filled_polygon`) are used as they are.
 //!
-//! **Where it differs from KiCad.** Copper islands are removed once every zone of the layer is filled,
-//! and a zone of lower priority keeps away from a higher one's fill as it was before its islands
-//! went, so it does not grow into the room an island leaves. The spokes' ends are tried against
-//! the fill after the minimum thickness is taken out, so a spoke into a sliver goes with the
-//! sliver and leaves no stub.
+//! **Spokes (issue #1115).** netsmith makes the spokes KiCad 9's filler makes
+//! (`ZONE_FILLER::buildThermalSpokes` and `fillCopperZone`), so that its design rules check counts
+//! the `starved_thermal` pads KiCad's refill leaves, and the router keeps a pad's own via where
+//! the pour would join the pad by one spoke or none (`netsmith_pcb::starved_pour_pads`):
+//!
+//! - A spoke is as wide as the zone's `thermal_bridge_width`, but no wider than the pad's narrower
+//!   side; where that is narrower than the zone's minimum thickness the pad gets no spokes and
+//!   its whole gap is cleared ([`spoke_width`]).
+//! - A spoke runs from the pad's centre to a test point on its axis: where the pad's bounding box
+//!   in its own frame, grown by the gap, KiCad's `m_MaxError` (0.005 mm) and half the minimum
+//!   thickness, meets the axis (on the circle, for a round pad).
+//! - It is made where the test point is on the fill as it is before any spoke is added (every
+//!   relief cleared whole, every clearance taken out) and trimmed to the minimum thickness, or
+//!   where it lies in another spoke whose own test point lies in it (two pads of the net that
+//!   face each other). So a spoke whose end only a strip of fill thinner than the minimum
+//!   thickness reaches is not made: the strip goes with the trimming, and the spoke would be a
+//!   stub that joins nothing. netsmith once tried a point 0.01 mm beyond the gap against the
+//!   fill with the spokes in it and trimmed, where the spoke's own copper kept that strip, and
+//!   counted such stubs (three spokes on a pad KiCad joins by one).
+//!
+//! **Where it differs from KiCad.** Copper islands are removed once every zone of the layer is
+//! filled, and a zone of lower priority keeps away from a higher one's fill as it was before its
+//! islands went, so it does not grow into the room an island leaves. A same-net zone of higher
+//! priority takes its area out before the spokes are tried, where KiCad takes it out last. A
+//! spoke of a custom pad runs along the pad's axes from its centre, where KiCad uses the spokes
+//! the pad's own primitives draw, if it has any, and the centre of its bounding box. The trimming
+//! is one shrink and grow by half the minimum thickness; KiCad's subtracts a micrometre from it,
+//! drops a piece less than twice that thickness across, and joins nearby pieces before it grows
+//! the copper back.
 
-use crate::artwork::{Artwork, Connect, Islands, Pad, PadKind, Shape, TrackShape, Zone};
+use crate::artwork::{Artwork, Connect, Islands, Pad, PadKind, PadShape, Shape, TrackShape, Zone};
 use crate::edge::Outline as BoardEdge;
 use crate::gbr::{Contour, Pen};
 use crate::geom::{self, Arc, Bounds, Pt};
 use crate::pads::{self, Outline};
 use crate::plot::Rules;
-use crate::polygons::{Area, Polygons, difference, grown, overlap, trimmed, union};
+use crate::polygons::{Area, Polygons, difference, grown, intersection, overlap, trimmed, union};
 
 /// KiCad's clearance when a zone gives none.
 const DEFAULT_CLEARANCE: f64 = 0.2;
@@ -61,9 +84,6 @@ const DEFAULT_CLEARANCE: f64 = 0.2;
 /// Whether a via joins a pour with thermal spokes (as a pad does) rather than solid copper:
 /// KiCad joins it solid (found by the cross-check, ADR 0034).
 const VIA_THERMAL: bool = false;
-
-/// How far beyond a thermal gap a spoke's end is tried against the fill, in mm.
-const SPOKE_PROBE: f64 = 0.01;
 
 /// How far a piece of another zone of the net is grown to count as touching an island, in mm:
 /// two zones of one net that meet share an edge and no area.
@@ -222,8 +242,8 @@ fn fill_zones(
         if !taken.is_empty() {
             fill = difference(&fill, &taken);
         }
-        let fill = trimmed(&fill, z.min_thickness);
         let fill = without_dead_spokes(fill, art, layer, z);
+        let fill = trimmed(&fill, z.min_thickness);
         filled.push((i, fill));
     }
     let kept: Vec<Vec<Area>> = filled
@@ -260,7 +280,13 @@ fn own_net(z: &Zone, net: &Option<String>) -> bool {
     z.net.is_some() && *net == z.net
 }
 
-/// The fill less each thermal spoke of the zone whose outer end is not on the fill (step 3).
+/// The fill less each thermal spoke of the zone that KiCad's filler would not make (step 2),
+/// before the fill is trimmed to its minimum thickness, as KiCad decides it
+/// (`ZONE_FILLER::fillCopperZone`, KiCad 9): a spoke is made where its test point
+/// ([`Spoke::end`]) is on the fill with every relief cleared whole and with the copper
+/// narrower than the minimum thickness trimmed off, or where it lies in another spoke whose own
+/// test point lies in it (two pads of the net that face each other). The spoke's own copper
+/// does not count, so a spoke whose end only a thin strip of fill reaches is not made.
 fn without_dead_spokes(fill: Vec<Area>, art: &Artwork, layer: &str, z: &Zone) -> Vec<Area> {
     if fill.is_empty() || z.net.is_none() {
         return fill;
@@ -268,12 +294,8 @@ fn without_dead_spokes(fill: Vec<Area>, art: &Artwork, layer: &str, z: &Zone) ->
     let Some(area) = zone_bounds(z).map(|b| b.expanded(z.thermal_gap.max(0.0))) else {
         return fill;
     };
-    let on_fill = |p: Pt| fill.iter().any(|a| a.contains(p));
-    let mut dead: Vec<Area> = Vec::new();
-    // What a dead spoke's cut must leave: the pads it leaves and the live spokes. A spoke runs
-    // from the pad's centre and may be wider than the pad (a QFN pin narrower than the bridge),
-    // so a dead spoke can cover the root of a live one beside the pad.
-    let mut kept: Vec<Area> = Vec::new();
+    // Each pad's spokes, with the pad's outline.
+    let mut reliefs: Vec<(Outline, Vec<Spoke>)> = Vec::new();
     for pad in art.pads.iter().filter(|p| {
         own_net(z, &p.net) && art.pad_copper_on(p, layer) && connection(p, z) == Connect::Thermal
     }) {
@@ -281,21 +303,63 @@ fn without_dead_spokes(fill: Vec<Area>, art: &Artwork, layer: &str, z: &Zone) ->
         if !shape.bounds().overlaps(&area) {
             continue;
         }
-        let mut any = false;
-        let mut live: Vec<Area> = Vec::new();
-        for (spoke, end, _) in spokes(&shape, pad.at, pad.angle + pad.spoke_angle(), z) {
-            if on_fill(end) {
-                live.push(Area::of(&spoke));
+        let spokes = spokes(pad, z);
+        if !spokes.is_empty() {
+            reliefs.push((shape, spokes));
+        }
+    }
+    if reliefs.is_empty() {
+        return fill;
+    }
+    let all: Vec<&Spoke> = reliefs.iter().flat_map(|(_, s)| s).collect();
+    // KiCad's test area: the fill with the reliefs cleared whole (the spokes taken out), trimmed
+    // to the minimum thickness. Only the fill near a test point can decide it (trimming keeps a
+    // point where a disc as wide as the minimum thickness round it fits), so it is worked out in
+    // a square round each test point, wide enough that its sides decide nothing.
+    let reach = z.min_thickness.max(0.0) + 0.1;
+    let windows: Vec<Area> = all
+        .iter()
+        .map(|s| {
+            Area::of(&[
+                Pt::new(s.end.x - reach, s.end.y - reach),
+                Pt::new(s.end.x + reach, s.end.y - reach),
+                Pt::new(s.end.x + reach, s.end.y + reach),
+                Pt::new(s.end.x - reach, s.end.y + reach),
+            ])
+        })
+        .collect();
+    let spoke_copper: Vec<Area> = all.iter().map(|s| Area::of(&s.gap)).collect();
+    let near = intersection(&fill, &windows);
+    let test = trimmed(&difference(&near, &spoke_copper), z.min_thickness);
+    let on_test = |p: Pt| test.iter().any(|a| a.contains(p));
+    let lives = |s: &Spoke| {
+        on_test(s.end)
+            || all.iter().any(|o| {
+                !std::ptr::eq(*o, s)
+                    && geom::contains(&o.whole, s.end)
+                    && geom::contains(&s.whole, o.end)
+            })
+    };
+    let mut dead: Vec<Area> = Vec::new();
+    // What a dead spoke's cut must leave: the pads it leaves and the live spokes. A spoke runs
+    // from the pad's centre, so a dead spoke can cover the root of a live one beside the pad.
+    let mut kept: Vec<Area> = Vec::new();
+    for (shape, spokes) in &reliefs {
+        let live: Vec<bool> = spokes.iter().map(lives).collect();
+        if live.iter().all(|&l| l) {
+            continue;
+        }
+        for (s, &l) in spokes.iter().zip(&live) {
+            if l {
+                kept.push(Area::of(&s.gap));
             } else {
-                dead.push(Area::of(&spoke));
-                any = true;
+                dead.push(Area::of(&s.gap));
             }
         }
-        if any {
-            kept.extend(live);
-            if let Some(p) = shape.polygon() {
-                kept.push(Area::of(&p));
-            }
+        if live.contains(&true)
+            && let Some(p) = shape.polygon()
+        {
+            kept.push(Area::of(&p));
         }
     }
     if dead.is_empty() {
@@ -398,6 +462,73 @@ pub(crate) struct Relief {
     pub tracks: usize,
 }
 
+/// The fewest spokes (or tracks of the pad's net onto the fill) that join a thermal relief to
+/// its pour: KiCad 9's default for its `min_resolved_spokes` constraint (the implicit rule its
+/// design rules engine adds, `drc_engine.cpp`). Fewer is a `starved_thermal`.
+pub const MIN_SPOKES: usize = 2;
+
+/// A pad a pour of its net joins with thermal spokes, and how many of them reach the fill
+/// (issue #1115), as the design rules check counts them for `starved_thermal`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ThermalJoin {
+    /// The pad's footprint's designator and the pad's number, and its centre.
+    pub part: String,
+    pub number: String,
+    pub at: Pt,
+    /// How many spokes the relief has (none where the pad is too narrow for one), how many of
+    /// them reach the fill, and how many tracks of the pad's net run from it onto the fill.
+    pub spokes: usize,
+    pub reach: usize,
+    pub tracks: usize,
+}
+
+impl ThermalJoin {
+    /// Whether the pour starves the pad ([`starved`]).
+    pub fn starved(&self) -> bool {
+        starved(self.reach, self.tracks)
+    }
+}
+
+/// Whether a relief with `reach` spokes on the fill and `tracks` tracks of the pad's net onto
+/// it is starved: one or more spokes, but fewer than [`MIN_SPOKES`] with the tracks (KiCad's
+/// `starved_thermal`), or no spoke and no track, a pad the pour joins with nothing. KiCad leaves
+/// a pad with no spoke to its connection check (`unconnected_items`), so a track joins it
+/// enough; netsmith's connection check joins every pad in a pour's outline and would not see the
+/// pad with neither, so it is a starved thermal relief here.
+pub(crate) fn starved(reach: usize, tracks: usize) -> bool {
+    if reach == 0 {
+        tracks == 0
+    } else {
+        reach + tracks < MIN_SPOKES
+    }
+}
+
+/// Each pad that a zone of its net on `layer` joins with thermal spokes, and how well
+/// ([`ThermalJoin`]): of the fill the file holds where a zone holds one, else of the fill
+/// [`pour`] draws.
+pub fn thermal_joins(
+    art: &Artwork,
+    layer: &str,
+    edge: &BoardEdge,
+    rules: &Rules,
+) -> Result<Vec<ThermalJoin>, String> {
+    Ok(judge(art, layer, edge, rules, None)?
+        .into_iter()
+        .flat_map(|j| j.reliefs)
+        .map(|r| {
+            let pad = &art.pads[r.pad];
+            ThermalJoin {
+                part: pad.part.clone(),
+                number: pad.number.clone(),
+                at: pad.at,
+                spokes: r.spokes,
+                reach: r.reach,
+                tracks: r.tracks,
+            }
+        })
+        .collect())
+}
+
 /// Points along a track, at most 0.05 mm apart, its two ends among them.
 fn track_points(shape: &TrackShape) -> Vec<Pt> {
     match shape {
@@ -481,14 +612,10 @@ pub(crate) fn judge(
                 && outline.iter().any(|a| a.contains(p.at))
         }) {
             let shape = pads::outline(pad);
-            let spokes = spokes(&shape, pad.at, pad.angle + pad.spoke_angle(), z);
-            if spokes.is_empty() {
-                continue;
-            }
-            let reach = spokes
-                .iter()
-                .filter(|(_, end, root)| on_fill(end) && on_fill(root))
-                .count();
+            let spokes = spokes(pad, z);
+            // KiCad's check counts the places where the fill crosses the pad grown by half the
+            // gap: a spoke whose middle there is on the fill.
+            let reach = spokes.iter().filter(|s| on_fill(&s.root)).count();
             let tracks = shape.polygon().map_or(0, |poly| {
                 art.tracks
                     .iter()
@@ -754,7 +881,8 @@ fn around_copper(
         let mode = connection(pad, z);
         if own(&pad.net) && mode != Connect::None {
             if mode == Connect::Thermal {
-                thermal(g, &shape, pad.at, pad.angle + pad.spoke_angle(), z)?;
+                let width = spoke_width(pad, z);
+                thermal(g, &shape, pad.at, pad.angle + pad.spoke_angle(), width, z)?;
             }
         } else {
             let by = pad
@@ -775,7 +903,7 @@ fn around_copper(
         }
         if own(&via.net) {
             if VIA_THERMAL && z.connect == Connect::Thermal {
-                thermal(g, &shape, via.at, 0.0, z)?;
+                thermal(g, &shape, via.at, 0.0, Some(z.thermal_bridge), z)?;
             }
         } else {
             draw_grown(g, &shape, from(&via.net), "via", "")?;
@@ -884,12 +1012,14 @@ fn draw_grown(
 
 /// The thermal relief of a pad or via: the gap round it, in the four pieces between the
 /// spokes, which run along the axes turned by `angle` (the pad's turn and its spoke angle,
-/// [`crate::artwork::Pad::spoke_angle`]). A custom pad is joined solid.
+/// [`crate::artwork::Pad::spoke_angle`]) and are `width` wide ([`spoke_width`]). With no width
+/// the whole gap is cleared, as KiCad clears it round a pad too narrow for a spoke.
 fn thermal(
     g: &mut dyn Pen,
     shape: &Outline,
     centre: Pt,
     angle: f64,
+    width: Option<f64>,
     z: &Zone,
 ) -> Result<(), String> {
     let Ok(Some(grown)) = shape.grow(z.thermal_gap) else {
@@ -898,8 +1028,12 @@ fn thermal(
     let Some(poly) = grown.polygon() else {
         return Ok(());
     };
+    let Some(width) = width else {
+        g.region(Contour::polygon(&poly), None, &[]);
+        return Ok(());
+    };
     let local: Vec<Pt> = poly.iter().map(|p| (*p - centre).rotate(-angle)).collect();
-    let half = z.thermal_bridge / 2.0;
+    let half = width / 2.0;
     // Each piece: the part of the gap in one quadrant beyond the spokes' half width.
     let quadrants = [
         [
@@ -932,22 +1066,76 @@ fn thermal(
     Ok(())
 }
 
-/// The four spokes of a thermal relief, each as the polygon of copper it is across the gap
-/// (the pad's own copper with it) and the point just beyond the gap at its outer end, which the
-/// fill has to reach (KiCad adds a spoke only where its end is on the fill). They run as
-/// [`thermal`] leaves them, along the axes turned by `angle`.
-fn spokes(shape: &Outline, centre: Pt, angle: f64, z: &Zone) -> Vec<(Vec<Pt>, Pt, Pt)> {
+/// How wide a pad's thermal spokes are in a zone, as KiCad's filler makes them
+/// (`buildThermalSpokes`): the zone's spoke width, but no wider than the pad's narrower side;
+/// `None` (no spokes, the whole gap cleared) when that is narrower than the zone's minimum
+/// thickness, since KiCad makes no spoke the fill's trimming would take out.
+fn spoke_width(pad: &Pad, z: &Zone) -> Option<f64> {
+    let width = z.thermal_bridge.min(pad.size.0.min(pad.size.1));
+    (width > 0.0 && width >= z.min_thickness).then_some(width)
+}
+
+/// How far KiCad's spoke test point lies beyond the thermal gap, besides half the zone's
+/// minimum thickness: KiCad's `m_MaxError` (its default, 0.005 mm), which KiCad adds so that a
+/// point on the edge of a polygon counts as inside.
+const MAX_ERROR: f64 = 0.005;
+
+/// A thermal spoke of a pad, as KiCad's filler builds it (`buildThermalSpokes`, KiCad 9).
+struct Spoke {
+    /// The spoke's copper from the pad's centre across the gap, to the outline of the pad grown
+    /// by the gap: what [`thermal`] leaves of the relief there.
+    gap: Vec<Pt>,
+    /// KiCad's whole spoke, a rectangle from the pad's centre to `end`, which another spoke's
+    /// end may lie in.
+    whole: Vec<Pt>,
+    /// KiCad's test point, the middle of the spoke's outer end: where the pad's bounding box
+    /// (in its own frame), grown by the gap, [`MAX_ERROR`] and half the zone's minimum
+    /// thickness, meets the spoke's axis. The spoke is made only where the fill reaches it.
+    end: Pt,
+    /// The middle of the spoke halfway across the gap: KiCad's check counts a spoke where the
+    /// fill crosses the pad grown by half the gap.
+    root: Pt,
+}
+
+/// The four spokes of a pad's thermal relief in a zone, along the axes [`thermal`] leaves them
+/// on; none when the pad is too narrow for one ([`spoke_width`]).
+fn spokes(pad: &Pad, z: &Zone) -> Vec<Spoke> {
+    let Some(width) = spoke_width(pad, z) else {
+        return Vec::new();
+    };
+    let shape = pads::outline(pad);
     let Ok(Some(grown)) = shape.grow(z.thermal_gap) else {
         return Vec::new();
     };
     let Some(poly) = grown.polygon() else {
         return Vec::new();
     };
-    let half = z.thermal_bridge / 2.0;
+    let centre = pad.at;
+    // The pad's bounding box in its own frame, as KiCad takes it from the pad unturned.
+    let (hx, hy) = shape
+        .polygon()
+        .and_then(|p| Bounds::of(p.iter().map(|q| (*q - centre).rotate(-pad.angle))))
+        .map_or((pad.size.0 / 2.0, pad.size.1 / 2.0), |b| {
+            (
+                b.max.x.abs().max(b.min.x.abs()),
+                b.max.y.abs().max(b.min.y.abs()),
+            )
+        });
+    let beyond = z.thermal_gap + MAX_ERROR + z.min_thickness / 2.0;
+    let (hx, hy) = (hx + beyond, hy + beyond);
+    // KiCad builds a round pad's spokes along the axes and turns them, so their ends lie on
+    // the circle, not on the box's corners.
+    let circular = match pad.shape {
+        PadShape::Circle => true,
+        PadShape::Oval => (pad.size.0 - pad.size.1).abs() < 1e-9,
+        _ => false,
+    };
+    let half = width / 2.0;
     let mut out = Vec::new();
     for k in 0..4 {
+        let local_angle = pad.spoke_angle() + 90.0 * f64::from(k);
         // In a frame where the spoke runs along +x.
-        let turn = angle + 90.0 * f64::from(k);
+        let turn = pad.angle + local_angle;
         let local: Vec<Pt> = poly.iter().map(|p| (*p - centre).rotate(-turn)).collect();
         let mut spoke = geom::clip_half_plane(&local, Pt::new(0.0, half), Pt::new(-1.0, 0.0));
         spoke = geom::clip_half_plane(&spoke, Pt::new(0.0, -half), Pt::new(1.0, 0.0));
@@ -956,11 +1144,35 @@ fn spokes(shape: &Outline, centre: Pt, angle: f64, z: &Zone) -> Vec<(Vec<Pt>, Pt
             continue;
         }
         let reach = spoke.iter().map(|p| p.x).fold(0.0, f64::max);
-        let end = centre + Pt::new(reach + SPOKE_PROBE, 0.0).rotate(turn);
-        // The middle of the spoke where it crosses the thermal gap.
-        let root = centre + Pt::new(reach - z.thermal_gap / 2.0, 0.0).rotate(turn);
-        let world = spoke.iter().map(|p| centre + p.rotate(turn)).collect();
-        out.push((world, end, root));
+        // The length to the test point: where the spoke's axis leaves the grown box.
+        let length = if circular {
+            hx
+        } else {
+            let d = Pt::new(1.0, 0.0).rotate(local_angle);
+            let (dx, dy) = (d.x.abs(), d.y.abs());
+            if dx < 1e-9 {
+                hy
+            } else if dy < 1e-9 {
+                hx
+            } else {
+                (hx / dx).min(hy / dy)
+            }
+        };
+        let world = |p: Pt| centre + p.rotate(turn);
+        out.push(Spoke {
+            gap: spoke.iter().map(|p| world(*p)).collect(),
+            whole: [
+                Pt::new(0.0, -half),
+                Pt::new(length, -half),
+                Pt::new(length, half),
+                Pt::new(0.0, half),
+            ]
+            .into_iter()
+            .map(world)
+            .collect(),
+            end: world(Pt::new(length, 0.0)),
+            root: world(Pt::new(reach - z.thermal_gap / 2.0, 0.0)),
+        });
     }
     out
 }
@@ -1227,6 +1439,90 @@ mod tests {
                 "the dead spoke at ({x}, {y}) goes"
             );
         }
+    }
+
+    /// A row of three 0.6 x 1 mm pads at (x, y): `left`, GND and `right`, 1.55 mm apart, so that
+    /// the clearances of the outer two (0.3 mm) leave 0.15 mm of fill beside the GND pad's relief.
+    fn row(refdes: &str, x: f64, y: f64, left: &str, right: &str) -> String {
+        format!(
+            r#"(footprint "L:R" (layer "F.Cu") (at {x} {y}) (property "Reference" "{refdes}")
+                (pad "1" smd rect (at -1.55 0) (size 0.6 1) (layers "F.Cu") (net {left}))
+                (pad "2" smd rect (at 0 0) (size 0.6 1) (layers "F.Cu") (net 1 "GND"))
+                (pad "3" smd rect (at 1.55 0) (size 0.6 1) (layers "F.Cu") (net {right})))"#
+        )
+    }
+
+    /// The spokes of each GND pad that reach the fill, by its part, as the check counts them.
+    fn reaching(a: &Artwork) -> Vec<(String, usize, usize)> {
+        let edge = crate::edge::outline(a).unwrap();
+        let mut out: Vec<(String, usize, usize)> = judge(a, "F.Cu", &edge, &rules(), None)
+            .unwrap()
+            .into_iter()
+            .flat_map(|j| j.reliefs)
+            .map(|r| (a.pads[r.pad].part.clone(), r.spokes, r.reach))
+            .collect();
+        out.sort();
+        out
+    }
+
+    #[test]
+    fn a_spoke_whose_end_only_a_strip_thinner_than_the_minimum_reaches_is_not_made() {
+        // The board of issue #1115: U1 between two other nets' pads, the pour's lower edge 0.85
+        // mm below it; U2 between two others in the open pour; U3 alone. KiCad's refill gives
+        // them one spoke (up), two (up and down) and four; netsmith once counted three, four
+        // and four, its spokes to the sides reaching the 0.15 mm strip beside the relief.
+        let items = format!(
+            r#"{GND_VIA} {} {}
+            (footprint "L:R" (layer "F.Cu") (at 10 4) (property "Reference" "U3")
+                (pad "1" smd rect (at 0 0) (size 0.6 1) (layers "F.Cu") (net 1 "GND")))"#,
+            row("U1", 6.0, 18.95, "2 \"SIG\"", "3 \"SIG2\""),
+            row("U2", 12.0, 10.0, "2 \"SIG\"", "3 \"SIG2\""),
+        );
+        let a = Artwork::parse(&format!(
+            r#"(kicad_pcb (layers (0 "F.Cu" signal) (2 "B.Cu" signal))
+            (net 0 "") (net 1 "GND") (net 2 "SIG") (net 3 "SIG2")
+            (gr_rect (start 0 0) (end 20 20) (stroke (width 0.05) (type default)) (fill no) (layer "Edge.Cuts"))
+            (zone (net 1) (net_name "GND") (layer "F.Cu") (connect_pads (clearance 0.3)) (min_thickness 0.25)
+              (fill yes (thermal_gap 0.5) (thermal_bridge_width 0.5))
+              (polygon (pts (xy 0.2 0.2) (xy 19.8 0.2) (xy 19.8 19.8) (xy 0.2 19.8))))
+            {items})"#
+        ))
+        .unwrap();
+        assert_eq!(
+            reaching(&a),
+            [
+                ("U1".to_string(), 4, 1),
+                ("U2".to_string(), 4, 2),
+                ("U3".to_string(), 4, 4)
+            ]
+        );
+        // The spokes to the sides are not drawn: no stub of them is left on the pad.
+        let f = fill_by_net(&a);
+        for x in [11.4, 12.6] {
+            assert!(!copper(&f, "GND", x, 10.0), "a stub at ({x}, 10)");
+        }
+        assert!(copper(&f, "GND", 12.0, 9.25) && copper(&f, "GND", 12.0, 10.75));
+    }
+
+    #[test]
+    fn a_spoke_is_no_wider_than_its_pad_and_a_pad_narrower_than_the_minimum_has_none() {
+        // A 0.3 mm tall pad: its spokes to the sides are 0.3 mm wide, not the zone's 0.5 mm.
+        let pad = |h: f64| {
+            format!(
+                r#"{GND_VIA} (footprint "L:R" (layer "F.Cu") (at 10 10) (property "Reference" "U1")
+                (pad "1" smd rect (at 0 0) (size 1 {h}) (layers "F.Cu") (net 1 "GND")))"#
+            )
+        };
+        let f = fill_by_net(&art(&pad(0.3)));
+        assert!(copper(&f, "GND", 10.75, 10.1) && !copper(&f, "GND", 10.75, 10.2));
+        assert_eq!(reaching(&art(&pad(0.3))), [("U1".to_string(), 4, 4)]);
+        // A 0.2 mm tall pad is under the zone's 0.25 mm minimum: KiCad makes it no spoke, and
+        // the whole gap is cleared.
+        let f = fill_by_net(&art(&pad(0.2)));
+        for (x, y) in [(10.75, 10.0), (10.0, 9.6), (10.0, 10.4)] {
+            assert!(!copper(&f, "GND", x, y), "a spoke at ({x}, {y})");
+        }
+        assert_eq!(reaching(&art(&pad(0.2))), [("U1".to_string(), 0, 0)]);
     }
 
     #[test]

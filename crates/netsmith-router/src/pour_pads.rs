@@ -8,13 +8,16 @@
 //! ([`Ratsnest::of`]): the pour filled as the Gerbers fill it, less the copper narrower than its
 //! minimum width that KiCad's fill trims, so that KiCad's own check finds the pad joined as well
 //! (ADR 0020 made KiCad's unconnected check the gate; the router's tests run it). A pad inside a
-//! ring of other nets' tracks, on an island of the pour with no via, keeps its via.
+//! ring of other nets' tracks, on an island of the pour with no via, keeps its via. So does a pad
+//! the pour joins with fewer than two thermal spokes, counted as KiCad's refill leaves them
+//! ([`netsmith_pcb::starved_pour_pads`], issue #1115): KiCad's check calls it a starved thermal
+//! relief, and its own track and via join it to the plane as a second spoke would.
 //!
 //! All the vias that may go are taken out at once and the ratsnest made again; a via whose pad
-//! the ratsnest then finds cut off is put back with its track, and so on until no more come
-//! back. Copper of the net put back only joins more, so this ends, and the board is left with
-//! no more lines than before. The pass runs after the stitching and before the teardrops, so a
-//! pad that gave up its track gets no teardrop.
+//! the ratsnest then finds cut off, or that the pour then starves, is put back with its track,
+//! and so on until no more come back. Copper of the net put back only joins more, so this ends,
+//! and the board is left with no more lines than before. The pass runs after the stitching and
+//! before the teardrops, so a pad that gave up its track gets no teardrop.
 
 use netsmith_pcb::{Board, PadRef, Pt, Ratsnest, Track, Via};
 
@@ -53,22 +56,31 @@ pub(crate) fn drop_vias(board: &mut Board, drops: &[PadVia]) -> usize {
     loop {
         let trial = without(board, drops, &out);
         let left = Ratsnest::of(&trial);
-        if left.len() <= before {
-            *board = trial;
-            return out.iter().filter(|&&o| o).count();
-        }
+        // A fill that cannot be made starves nothing: the ratsnest joins nothing through it.
+        let starved = netsmith_pcb::starved_pour_pads(&trial).unwrap_or_default();
         let mut back = false;
         for (d, o) in drops.iter().zip(out.iter_mut()).filter(|(_, o)| **o) {
-            let cut = left.lines.iter().any(|l| {
-                (l.from == d.pad && l.from_at.distance(d.at) < 1e-6)
-                    || (l.to == d.pad && l.to_at.distance(d.at) < 1e-6)
+            let cut = left.len() > before
+                && left.lines.iter().any(|l| {
+                    (l.from == d.pad && l.from_at.distance(d.at) < 1e-6)
+                        || (l.to == d.pad && l.to_at.distance(d.at) < 1e-6)
+                });
+            let thin = starved.iter().any(|(refdes, number, at)| {
+                *refdes == d.pad.refdes && *number == d.pad.number && at.distance(d.at) < 0.01
             });
-            if cut {
+            if cut || thin {
                 *o = false;
                 back = true;
             }
         }
-        if !back || !out.contains(&true) {
+        if !back {
+            if left.len() > before {
+                return 0;
+            }
+            *board = trial;
+            return out.iter().filter(|&&o| o).count();
+        }
+        if !out.contains(&true) {
             return 0;
         }
     }

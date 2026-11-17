@@ -99,7 +99,7 @@ pub use constraints::{
 };
 pub use copper::{
     Area, Copper, CopperError, LayerPours, Pour, SilkInk, ZoneFill, artwork as copper_artwork,
-    copper as copper_of, plane_pour_fills, pours as pours_of, zone_fills,
+    copper as copper_of, plane_pour_fills, pours as pours_of, starved_pour_pads, zone_fills,
 };
 pub use copper_areas::{
     AreaKind, AreaLayer, AreaPour, AreaTeardropLayer, AreaTeardrops, AreaZone, CopperAreas,

@@ -185,3 +185,71 @@ fn the_ratsnest_counts_a_pad_joined_to_its_plane_by_the_pour_and_a_via_it_covers
     board.vias.retain(|v| v.net != "GND");
     assert_eq!(Ratsnest::of(&board).len(), 2);
 }
+
+/// The poured board with R1 in its top left corner (issue #1115), routed with the pour pass
+/// alone, and the same board with R1's GND pad's own track and via taken off. The
+/// board's edge takes the ends of that pad's spokes to the left and up, and its S1 pad's
+/// clearance the one to the right, so the pour joins the pad by the spoke down alone.
+pub(crate) fn corner() -> (Board, Board) {
+    let mut b = board(true);
+    b.parts[0].at = Pt::new(4.3, 3.8);
+    let options = RouteOptions {
+        share_vias: false,
+        ..RouteOptions::default()
+    };
+    let routing = route_with(&mut b, options);
+    assert!(routing.left.is_empty(), "{:?}", routing.left);
+    assert_eq!(Ratsnest::of(&b).len(), 0);
+    let r1 = gnd_pad(&b, "R1");
+    let mut bare = b.clone();
+    let touches = |t: &netsmith_pcb::Track| t.from.distance(r1) < 0.01 || t.to.distance(r1) < 0.01;
+    let ends: Vec<Pt> = b
+        .tracks
+        .iter()
+        .filter(|t| t.net == "GND" && touches(t))
+        .flat_map(|t| [t.from, t.to])
+        .collect();
+    bare.tracks.retain(|t| t.net != "GND" || !touches(t));
+    bare.vias
+        .retain(|v| v.net != "GND" || !ends.iter().any(|e| e.distance(v.at) < 0.01));
+    (b, bare)
+}
+
+/// The centre of the GND pad of a resistor of [`board`].
+fn gnd_pad(b: &Board, refdes: &str) -> Pt {
+    let art = netsmith_pcb::copper_artwork(b).unwrap();
+    let p = art
+        .pads
+        .iter()
+        .find(|p| p.part == refdes && p.number == "1")
+        .unwrap();
+    Pt::new(p.at.x, p.at.y)
+}
+
+#[test]
+fn a_pad_the_pour_joins_with_one_spoke_keeps_its_via() {
+    // KiCad's check calls R1's GND pad a starved thermal relief without its via: it keeps it, and
+    // R2's, in the open pour, still goes.
+    let (b, bare) = corner();
+    let own_via = |at: Pt| {
+        b.tracks.iter().any(|t| {
+            t.net == "GND"
+                && [(t.from, t.to), (t.to, t.from)].iter().any(|(a, z)| {
+                    a.distance(at) < 0.01 && b.vias.iter().any(|v| v.at.distance(*z) < 0.01)
+                })
+        })
+    };
+    assert!(own_via(gnd_pad(&b, "R1")), "R1 keeps its via: {:?}", b.vias);
+    assert!(!own_via(gnd_pad(&b, "R2")), "R2 gives its via up: {:?}", b.vias);
+    let starved = |b: &Board| -> Vec<String> {
+        netsmith_pcb::starved_pour_pads(b)
+            .unwrap()
+            .into_iter()
+            .map(|(r, n, _)| format!("{r}.{n}"))
+            .collect()
+    };
+    assert_eq!(starved(&b), Vec::<String>::new());
+    // Without its track and via the pad is starved: the track joins it as a second spoke would.
+    assert_eq!(starved(&bare), ["R1.1"]);
+    assert_eq!(own_findings(&b), Vec::<String>::new());
+}

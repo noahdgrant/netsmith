@@ -178,6 +178,19 @@ pub(crate) fn difference(subject: &[Area], clip: &[Area]) -> Vec<Area> {
     )))
 }
 
+/// What of `a` is also in `b`.
+pub(crate) fn intersection(a: &[Area], b: &[Area]) -> Vec<Area> {
+    let (ra, rb) = (rings_of(a), rings_of(b));
+    if ra.is_empty() || rb.is_empty() {
+        return Vec::new();
+    }
+    to_areas(flatten(ra.overlay(
+        &rb,
+        OverlayRule::Intersect,
+        FillRule::NonZero,
+    )))
+}
+
 /// The union of `areas`, as areas that do not overlap.
 pub(crate) fn union(areas: &[Area]) -> Vec<Area> {
     to_areas(rings_of(areas))
