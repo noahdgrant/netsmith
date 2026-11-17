@@ -34,6 +34,9 @@
 //!     `case_reach`, `case_boss` and `case_unchecked`, each with `severity` (`error` or
 //!     `warning`), `case` (the model), `solid` (the node `case:<name>:<solid>` it is about, or
 //!     `null`) and `at_mm` (where to look, in the scene's frame); added without a new schema.
+//!     `mask_colour` is the name of the colour the board states for its solder mask (`"Black"`,
+//!     a variant of `std::parts::passive::Color`), present only when it states one (issue #771);
+//!     the file's three mask materials are drawn in it, and a viewer may draw it in its own tone.
 //!   - `substrate`: `{kind: "substrate"}`, the laminate as its mesh, with children `mask:top`
 //!     and `mask:bottom` (`{kind: "mask", face}`, where the stackup has them: the mask with its
 //!     openings cut out, material `mask-top` or `mask-bottom` over laminate and
@@ -84,8 +87,8 @@
 //!   `limit`, `limit-violated` (these two `alphaMode: BLEND`), `finish` and `mask-over-copper`
 //!   (added at the end in schema 1, so no index moved), then `prepreg` and `case` (a case
 //!   model's solids, ADR 0109, `BLEND`), added at the end the same way. Their colours are the
-//!   rasterizer's light palette ([`Theme::Light`]), turned into linear light as glTF wants
-//!   them. The materials of open surfaces (a barrel, a flat outline, a limit) are
+//!   rasterizer's light palette ([`Theme::Light`], with the mask in the board's `mask_colour`
+//!   where it states one), turned into linear light as glTF wants them. The materials of open surfaces (a barrel, a flat outline, a limit) are
 //!   double-sided.
 //!   A part drawn from its STEP model (ADR 0108) has the model's triangles as its mesh: a
 //!   piece the file colours has a material of its own after these (after `case`), `model:#rrggbb`,
@@ -136,6 +139,10 @@ struct Builder {
     /// The colours of the STEP models' pieces (ADR 0108), in the order they are first used:
     /// each a material after [`Material::ALL`]'s.
     colours: Vec<[u8; 3]>,
+    /// The colour the board states for its solder mask (issue #771), which its three mask
+    /// materials take; `None` for the default tone, and for a system's file (its materials are
+    /// shared by every member).
+    mask_colour: Option<String>,
 }
 
 /// A node before it is numbered.
@@ -300,8 +307,8 @@ fn linear(c: u8) -> f64 {
 
 /// The thirteen materials of [`Material::ALL`], then one per colour of a STEP model, named
 /// `model:#rrggbb`, opaque, as the `body` material is but for its colour.
-fn materials(colours: &[[u8; 3]]) -> Vec<Value> {
-    let palette = Theme::Light.palette();
+fn materials(colours: &[[u8; 3]], mask: Option<&str>) -> Vec<Value> {
+    let palette = Theme::Light.palette_with_mask(mask);
     let model = colours.iter().map(|&[r, g, b]| {
         json!({
             "name": format!("model:#{r:02x}{g:02x}{b:02x}"),
@@ -429,7 +436,10 @@ fn margin_of<'a>(scene: &'a Scene, body: &crate::scene3d::Body) -> Option<(f64, 
 
 /// The scene as a `.glb` file, for the board labelled `board` (its name, or `system/member`).
 pub fn glb(scene: &Scene, board: &str) -> Vec<u8> {
-    let mut b = Builder::default();
+    let mut b = Builder {
+        mask_colour: scene.board.mask_colour.clone(),
+        ..Builder::default()
+    };
     let root = board_node(&mut b, scene, board, None);
     finish(b, root, board)
 }
@@ -503,6 +513,11 @@ fn board_node(b: &mut Builder, scene: &Scene, board: &str, member: Option<&str>)
             "findings": findings(scene),
         }),
     );
+    // Only a board that states the colour has the key, so the file of a board that does not is
+    // the file it was (issue #771).
+    if let Some(colour) = &solid.mask_colour {
+        root.extras["mask_colour"] = json!(colour);
+    }
     root.children.push(substrate);
 
     // The parts.
@@ -774,7 +789,7 @@ fn finish(mut b: Builder, root: Node, name: &str) -> Vec<u8> {
         "scene": 0,
         "scenes": [{ "name": name, "nodes": [root] }],
         "nodes": b.nodes,
-        "materials": materials(&b.colours),
+        "materials": materials(&b.colours, b.mask_colour.as_deref()),
     });
     if !b.meshes.is_empty() {
         doc["meshes"] = json!(b.meshes);

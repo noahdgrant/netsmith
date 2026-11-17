@@ -109,7 +109,17 @@ fn setup(board: &Board) -> Sexp {
                     &l.name,
                     kind,
                     vec![
-                        text("color", "Green"),
+                        // The board's stated mask colour (issue #771), KiCad's own default green
+                        // where it states none.
+                        text(
+                            "color",
+                            board
+                                .process
+                                .stackup
+                                .mask_colour
+                                .as_deref()
+                                .unwrap_or("Green"),
+                        ),
                         thickness(l.thickness),
                         material(),
                         epsilon(),

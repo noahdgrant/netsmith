@@ -181,6 +181,12 @@ pub struct Stackup {
     pub copper_weight: f64,
     /// What the inner layers are, if the board has any (more than two copper layers).
     pub inner: Option<InnerLayers>,
+    /// The colour of the solder mask, as the board's `.stackup.mask_colour` states it (issue
+    /// #771): the name of a `std::parts::passive::Color` variant (`Black`). `None` when the board
+    /// says nothing, which every drawing and file takes as it did before the member existed (so
+    /// a design file that states none is unchanged).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mask_colour: Option<String>,
 }
 
 /// The inner copper layers of a board of more than two layers and how the board is built up

@@ -2542,6 +2542,7 @@ fn fab_panel(
         height_mm: pkg.geometry.height,
         thickness_mm: process.stackup.chosen_thickness(),
         finish: process.finish.clone(),
+        mask_colour: process.stackup.mask_colour.clone(),
         assembled_parts: crate::order::stock_parts(&pkg.plan),
         bom: pkg.plan.bom.clone(),
         consigned: pkg.plan.consigned.clone(),

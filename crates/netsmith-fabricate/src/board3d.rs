@@ -206,6 +206,10 @@ pub struct BoardReport {
     pub layers: Vec<LayerReport>,
     pub cutouts: Vec<CutoutReport>,
     pub holes: Vec<HoleReport>,
+    /// The colour the board states for its solder mask (`Black`, issue #771); left out of the
+    /// report of a board that states none.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub mask_colour: Option<String>,
 }
 
 /// The copper in numbers: no polygons.
@@ -582,6 +586,7 @@ pub fn report(
                 }
             })
             .collect(),
+        mask_colour: solid.mask_colour.clone(),
     };
     let parts = scene
         .bodies

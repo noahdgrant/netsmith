@@ -61,7 +61,8 @@
 //!   copies, copper layers, size in mm, thickness (or "thickness open"), the surface
 //!   finish (the process's `.finish`, `finish HASL lead-free`, which the order form has to match:
 //!   `std::mfg::jlcpcb` gives each process the finishes JLCPCB offers and the one it defaults to,
-//!   issue #842), the parts the board house assembles and on how many BOM lines, the hand-solder
+//!   issue #842) and the solder mask colour where the board states one (`, solder mask Black`,
+//!   issue #771), the parts the board house assembles and on how many BOM lines, the hand-solder
 //!   parts; the combined bill of materials; with a `[supply]` provider, its `prices`
 //!   (below); "before you order", each board's
 //!   `fab-notes.txt` lines; and the total of unverified items, counted once for each board and not
@@ -332,6 +333,9 @@ pub struct BoardFacts {
     /// The surface finish the process states (`HASL lead-free`, `ENIG`...), which the order form
     /// has to match.
     pub finish: String,
+    /// The solder mask colour the board states (`Black`, issue #771), which the order form has to
+    /// match; `None` where the board states none, and the order line says nothing of it.
+    pub mask_colour: Option<String>,
     /// Parts the board house places from its own stock (the consigned ones are in `consigned`).
     pub assembled_parts: usize,
     /// The BOM lines of those parts, each with a part number.
@@ -390,6 +394,7 @@ impl BoardFacts {
             height_mm: board.outline.height(),
             thickness_mm: stackup.chosen_thickness(),
             finish: board.process.finish.clone(),
+            mask_colour: stackup.mask_colour.clone(),
             assembled_parts: stock_parts(&package.plan),
             bom: package.plan.bom.clone(),
             consigned: package.plan.consigned.clone(),
@@ -641,13 +646,17 @@ pub fn summary_text(
                 format!("{} mm thick", mm(t))
             });
         s.push_str(&format!(
-            "  {} x{}: {} layers, {} x {} mm, {thickness}, finish {}\n",
+            "  {} x{}: {} layers, {} x {} mm, {thickness}, finish {}{}\n",
             selected.label,
             selected.quantity,
             facts.layers,
             mm(facts.width_mm),
             mm(facts.height_mm),
             facts.finish,
+            facts
+                .mask_colour
+                .as_ref()
+                .map_or(String::new(), |c| format!(", solder mask {c}")),
         ));
         if let Some(p) = &facts.panel {
             s.push_str(&format!(
@@ -1268,6 +1277,7 @@ mod tests {
             height_mm: 40.5,
             thickness_mm: Some(1.6),
             finish: "HASL lead-free".into(),
+            mask_colour: None,
             assembled_parts: bom.iter().map(|e| e.designators.len()).sum(),
             bom,
             consigned: vec![],
