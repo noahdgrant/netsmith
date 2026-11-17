@@ -89,9 +89,19 @@ line: number, };
 
 export type HintNote = { dx: number, dy: number, line: number, };
 
-export type HintSheet = { parts: { [key in string]: HintPart }, notes: { [key in string]: HintNote }, };
+export type HintAt = { x: number, y: number, 
+/**
+ * The line of `at` in the file.
+ */
+line: number, };
 
-export type HintBoard = { parts: { [key in string]: HintPart }, notes: { [key in string]: HintNote }, sheets: { [key in string]: HintSheet }, };
+export type HintSheet = { at?: HintAt, parts: { [key in string]: HintPart }, notes: { [key in string]: HintNote }, };
+
+export type HintBoard = { 
+/**
+ * The place of the board's own sheet on the page.
+ */
+at?: HintAt, parts: { [key in string]: HintPart }, notes: { [key in string]: HintNote }, sheets: { [key in string]: HintSheet }, };
 
 export type SchematicHints = { 
 /**

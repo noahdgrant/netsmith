@@ -24,6 +24,8 @@ export type PartEntry = Omit<HintPart, 'line'>;
 export type NoteEntry = Omit<HintNote, 'line'>;
 
 export interface SheetTables {
+  /** Where the sheet's box goes on the page (ADR 0139): its top-left corner in millimetres from the page's origin. */
+  at?: [number, number];
   parts: Record<string, PartEntry>;
   notes: Record<string, NoteEntry>;
 }
@@ -66,6 +68,7 @@ const strip = <T extends { line: number }>(e: T): Omit<T, 'line'> => {
 };
 
 const sheetOf = (s: HintSheet | HintBoard): SheetTables => ({
+  ...(s.at ? { at: [s.at.x, s.at.y] as [number, number] } : {}),
   parts: Object.fromEntries(Object.entries(s.parts).map(([k, v]) => [k, strip(v)])),
   notes: Object.fromEntries(Object.entries(s.notes).map(([k, v]) => [k, strip(v)])),
 });
@@ -114,6 +117,20 @@ export function withNote(tables: Tables, board: string, at: HintAddress, entry: 
   return tidy(next);
 }
 
+/** The place of a sheet on the page (`null`: the board's own sheet), if the file has one. */
+export const sheetAt = (tables: Tables, board: string, sheet: string | null): [number, number] | undefined => tableOf(tables, board, sheet)?.at;
+
+/** The tables with the sheet's place set (`null` removes it, and the sheet goes back to the arrangement by connections). Nothing is
+ * changed in `tables`. */
+export function withSheetAt(tables: Tables, board: string, sheet: string | null, at: [number, number] | null): Tables {
+  const next: Tables = structuredClone(tables);
+  const b = (next[board] ??= { ...emptySheet(), sheets: {} });
+  const t = sheet === null ? b : (b.sheets[sheet] ??= emptySheet());
+  if (at === null) delete t.at;
+  else t.at = [at[0], at[1]];
+  return tidy(next);
+}
+
 /** An entry that changes nothing: no offset, no pin, no turn, no mirror. */
 export function isBlank(e: PartEntry): boolean {
   return !e.dx && !e.dy && e.pin === undefined && e.rotate === undefined && e.mirror === undefined;
@@ -121,19 +138,20 @@ export function isBlank(e: PartEntry): boolean {
 
 /** Drop the empty tables, so the file keeps no header that holds nothing. */
 function tidy(tables: Tables): Tables {
+  const empty = (t: SheetTables) => t.at === undefined && Object.keys(t.parts).length === 0 && Object.keys(t.notes).length === 0;
   for (const [name, b] of Object.entries(tables)) {
     for (const [s, t] of Object.entries(b.sheets)) {
-      if (Object.keys(t.parts).length === 0 && Object.keys(t.notes).length === 0) delete b.sheets[s];
+      if (empty(t)) delete b.sheets[s];
     }
-    if (Object.keys(b.parts).length === 0 && Object.keys(b.notes).length === 0 && Object.keys(b.sheets).length === 0) delete tables[name];
+    if (empty(b) && Object.keys(b.sheets).length === 0) delete tables[name];
   }
   return tables;
 }
 
-/** How many entries (parts and notes) a sheet has; `null` is the board's own sheet. */
+/** How many entries (its place, parts and notes) a sheet has; `null` is the board's own sheet. */
 export function countIn(tables: Tables, board: string, sheet: string | null): number {
   const t = tableOf(tables, board, sheet);
-  return t ? Object.keys(t.parts).length + Object.keys(t.notes).length : 0;
+  return t ? (t.at ? 1 : 0) + Object.keys(t.parts).length + Object.keys(t.notes).length : 0;
 }
 
 /** How many entries the whole file has, in every board. */
@@ -152,6 +170,7 @@ export function withoutSheet(tables: Tables, board: string, sheet: string | null
   const b = next[board];
   if (!b) return next;
   if (sheet === null) {
+    delete b.at;
     b.parts = {};
     b.notes = {};
   } else delete b.sheets[sheet];
@@ -187,12 +206,13 @@ function partLines(header: string, e: PartEntry): string[] {
   return lines;
 }
 
-/** The text of the file for the tables: `version = 1`, then each board, its own sheet's parts and notes, then the sheets
+/** The text of the file for the tables: `version = 1`, then each board, its own sheet's place, parts and notes, then the sheets
  * in name order. The server reads it and writes its own canonical text, which is this one. */
 export function toToml(tables: Tables): string {
   const out: string[] = ['version = 1'];
   const sorted = (o: Record<string, unknown>) => Object.keys(o).sort();
   const table = (prefix: string, t: SheetTables) => {
+    if (t.at) out.push('', `[${prefix}]`, `at = [${numberText(t.at[0])}, ${numberText(t.at[1])}]`);
     for (const k of sorted(t.parts)) out.push('', ...partLines(`${prefix}.parts.${keyText(k)}`, t.parts[k]));
     for (const k of sorted(t.notes)) {
       const n = t.notes[k];

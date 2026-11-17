@@ -66,9 +66,20 @@
 //!   of stage `layout` opens it at its line. It cannot be renamed on its own; it can be deleted
 //!   on its own (the file is then gone, not `version = 1`), and it goes with its source.
 //!
+//! - *Dragging a sheet in the overview* (all modules, ADR 0139). A press on a card and a move of 4
+//!   screen pixels is a drag; a press that does not move is a click (it opens the sheet). The
+//!   card follows the pointer and the card under it is marked; the drop writes the dragged
+//!   sheet's `at` as the top-left corner the sheet under the pointer has in the drawing (from each
+//!   card's `data-at`, in millimetres), so the dragged card takes that card's place and the
+//!   sheets never moved are set out again round it. When that sheet has a place of its own the
+//!   two swap: it is written at the dragged one's corner. A drop on its own card, or off every
+//!   card, writes nothing; Esc cancels. A sheet drawn as several boxes cannot be dragged.
+//!   `Backspace` or `Delete` on a card with a place removes `at`, and "Clear the layout of this
+//!   module" removes it with the module's entries. A placed card wears a pin mark.
+//!
 //! Not built (issue #19): the preview of a drag moves the part and not its block, so satellites
 //! and wires jump when the file is written (showing the block needs its membership in the
-//! drawing); a drag in the overview (all modules) is not offered, the cards being thumbnails.
+//! drawing).
 
 use std::collections::BTreeMap;
 
@@ -153,11 +164,26 @@ pub struct HintNote {
     pub line: u32,
 }
 
-/// The entries of one sheet: a part by its path from the sheet, a note by `<path>#doc` or
-/// `<path>#relation`.
+/// Where a sheet's box goes on the page of a board drawn by module (ADR 0139): its top-left
+/// corner, title included, from the page's origin (the corner of the first box the automatic
+/// arrangement sets out).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct HintAt {
+    pub x: f64,
+    pub y: f64,
+    /// The line of `at` in the file.
+    pub line: u32,
+}
+
+/// The entries of one sheet: its place on the page, a part by its path from the sheet, a note by
+/// `<path>#doc` or `<path>#relation`.
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 pub struct HintSheet {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub at: Option<HintAt>,
     pub parts: BTreeMap<String, HintPart>,
     pub notes: BTreeMap<String, HintNote>,
 }
@@ -167,6 +193,10 @@ pub struct HintSheet {
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 pub struct HintBoard {
+    /// The place of the board's own sheet on the page.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub at: Option<HintAt>,
     pub parts: BTreeMap<String, HintPart>,
     pub notes: BTreeMap<String, HintNote>,
     pub sheets: BTreeMap<String, HintSheet>,
