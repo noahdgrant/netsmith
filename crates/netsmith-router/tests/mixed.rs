@@ -159,6 +159,18 @@ pub fn mixed_board_weighing_overflow(
     mix: Mix,
     overflow: f64,
 ) -> Result<Board, BoardError> {
+    mixed_board_on(seed, area, mix, overflow, four_layer_process())
+}
+
+/// [`mixed_board_weighing_overflow`] made with `process`, whose inner layers carry GND and 3V3
+/// as planes, as [`four_layer_process`]'s do, and may add signal layers (issue #1015).
+pub fn mixed_board_on(
+    seed: u64,
+    area: (f64, f64),
+    mix: Mix,
+    overflow: f64,
+    process: netsmith_core::Process,
+) -> Result<Board, BoardError> {
     let mut specs: Vec<Spec> = Vec::new();
     let mut add = |refdes: String,
                    kind: &'static str,
@@ -390,7 +402,7 @@ pub fn mixed_board_weighing_overflow(
         interfaces: Vec::new(),
         notes: Vec::new(),
         name: "Mixed".into(),
-        process: Some(four_layer_process()),
+        process: Some(process),
         features: Features {
             outline: Some(Outline {
                 width: (area.0, area.0),
