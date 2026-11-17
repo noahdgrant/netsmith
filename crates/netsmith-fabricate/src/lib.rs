@@ -7,6 +7,7 @@
 pub mod board3d;
 pub mod case_fit;
 pub mod dependency_lock;
+pub mod drc;
 pub mod fab;
 mod fab_environment;
 pub mod git_dependency;

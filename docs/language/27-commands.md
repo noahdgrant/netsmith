@@ -10,6 +10,7 @@ The commands are grouped under nouns, each with its verbs (issue #1090): `netsmi
 - `board`: what is done to the boards of a file or of the project: `check`, `build`, `fab`, `explain` a pick, `compare` two designs, `swap` a part for another row.
 - `board`: what is done to the boards of a file or of the project: `check`, `build`, `fab`, `explain` a pick, `compare` two designs, and the views of the solved design the editor shows, printed as text or `--format json`: `bom`, `power`, `system`, `panel`.
 - `board`: what is done to the boards of a file or of the project: `check`, `build`, `fab`, `explain` a pick, `compare` two designs, `copper` (the planes, pours, hand zones and teardrop fills).
+- `board`: what is done to the boards of a file or of the project: `check`, `build`, `fab`, `drc` alone, `explain` a pick, `compare` two designs.
 - `layout`: the layout file, where each part is.
 - `routes`: the routes file, the copper fixed by hand or imported.
 - `view`: look at a board: `3d` draws it to a PNG, `editor` serves the editor, `editor-3d` drives the 3D view of a running editor.
@@ -35,6 +36,7 @@ Each command, what it was before, and its flags (a test walks `--help` of every 
 | `netsmith board check` | `netsmith check` | `--strict`, `--format`, `--notes` |
 | `netsmith board build` | `netsmith build` | `--out`, `--strict`, `--locked`, `--emit-design`, `--emit-solved`, `--format`, `--notes` |
 | `netsmith board fab` | `netsmith fab` | `--out`, `--route-timeout`, `--allow-drc-violations`, `--cross-check`, `--strict`, `--locked`, `--constraints`, `--pins`, `--no-glb`, `--no-step`, `--save-placed`, `--reuse-routes`, `--offline`, `--quiet`, `--place-seeds`, `--place-budget`, `--progress`, `--to-editor`, `--format`, `--notes` |
+| `netsmith board drc` | new | `--board`, `--kicad-pcb`, `--place-seeds`, `--place-budget`, `--format` |
 | `netsmith board explain` | `netsmith explain` | `--board`, `--all-rows` |
 | `netsmith board compare` | `netsmith compare` | `--board`, `--map`, `--by-refdes`, `--ignore-unconnected`, `--loose-values`, `--format` |
 | `netsmith board pins show` | new | `--file`, `--board`, `--format` |
@@ -115,6 +117,10 @@ The places left for commands to come, named by the same rules: `board bom`, `boa
 In the schematic, a part can be dragged on the grid, nudged with the arrow keys, turned with `r` and mirrored with `m`. The editor writes where it was put to `<stem>.sch.toml` beside the source file (`src/main.nsm` has `src/main.sch.toml`), so the drawing stays as arranged across edits; the file never holds a wire or a net, an entry that no longer matches the design is listed in the problems and ignored, and deleting the file gives the automatic drawing back (ADR 0061). The editor can also compare the project with a git ref, or with a second ref, and say what changed in the circuit (parts, nets, rails, systems, the PCB, the bill of materials, problems) and not which lines (ADR 0059). An analysis, a comparison, a build and `fab` can be cancelled with their Cancel button; a cancelled analysis leaves the last reading (ADR 0062).
 
 The editor's bill of materials marks the lines whose price and stock are old (as `netsmith catalog age` lists them), says `unknown` for the rest, and has a "Check parts against LCSC" button for the project's own catalogs.
+
+### The design rules check alone
+
+`netsmith board drc [file.nsm]` runs netsmith's own design rules check (ADR 0037), the one `fab` runs and the editor's PCB view shows, with nothing routed and no package written. It checks the board as `fab` has it before the router: the placement with the copper of the routes file on it, so a connection the file does not make is an `unconnected_items` error (a board with no routes file has one for each), and the design's requirements on where parts go are measured as for `fab`. `netsmith board drc --kicad-pcb board.kicad_pcb` checks a KiCad board instead (the `.kicad_pro` beside it is its rules), such as one `layout export` wrote or one that came back before `layout import` or `routes import`; it has none of the process's extras that `fab` adds (the fiducials, the stackup, the mask web), so it can find less than `fab` does of the same board. The findings are the lines `fab` lists (its `fab-notes.txt` has the warnings of the same board), errors first; the exit code is 1 when there is an error and 0 when there is none, whatever the warnings. With `--format json` each finding has its `severity`, the `code` `drc`, the `rule` (`clearance`, `short_circuit`, ...), the `place` (`x`, `y` in mm in the frame of the board file, y down, and the `layer`), the `nets` and the `parts` it names, and the board's `outline_at` says where the outline's top left corner is in that frame (a place less it is in the frame of the layout and routes files), so that the places can be drawn as markers on a picture of the board.
 
 ### Power findings
 

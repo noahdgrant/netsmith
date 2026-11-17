@@ -468,6 +468,7 @@ fn run_fab(
                             board: b.board.clone(),
                             dir: Some(b.dir.display().to_string()),
                             parts: b.origins.clone(),
+                            outline_at: None,
                         });
                         continue;
                     }
