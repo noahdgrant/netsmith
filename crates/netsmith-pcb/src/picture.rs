@@ -90,6 +90,11 @@ const BACK: &str = "#46a3bc";
 /// The inner layers' tones, `In1.Cu` the first; a fifth inner layer takes the first again.
 const INNER: [&str; 4] = ["#9a8cf0", "#5fc98f", "#e0b050", "#e07aa8"];
 const VIA: &str = "#a3adbc";
+/// Every colour the picture fills copper with, as `#rrggbb`: each layer's tone and the vias'. A
+/// reader of the picture tells copper from what is not by them, as the comparison of a board's
+/// copper with its Gerbers' does (issue #1142, `netsmith_fabricate::gerber_compare`); a hole is
+/// drawn in [`BACKGROUND`].
+pub const COPPER: [&str; 7] = [FRONT, BACK, INNER[0], INNER[1], INNER[2], INNER[3], VIA];
 const COURTYARD: &str = "#ff26e2";
 const DESIGNATOR: &str = "#d3cfc1";
 const KEEPOUT: &str = "#e0707a";

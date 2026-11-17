@@ -128,9 +128,28 @@ impl std::error::Error for ViewError {}
 const BACKGROUND: &str = "#10141a";
 const BACKGROUND_RGBA: Rgba = Rgba::opaque(0x10, 0x14, 0x1a);
 
+/// The copper of the top, the bottom and the inner layers (the inner ones by their number, the
+/// fifth taking the first's again).
+const TOP: &str = "#c83434";
+const BOTTOM: &str = "#4d7fc4";
+const INNER: [&str; 4] = ["#c2a000", "#b04ad0", "#2fb8b8", "#d07020"];
+/// The ring of a plated hole and of one that is not.
+const PLATED: &str = "#e6e6e6";
+const UNPLATED: &str = "#f0c040";
+
+/// Every colour a drawing fills copper with, as `#rrggbb`. A reader of the drawing tells copper
+/// from what is not by them, as the comparison with the picture of the board model does (issue
+/// #1142, `netsmith_fabricate::gerber_compare`).
+pub const COPPER_COLOURS: [&str; 6] = [TOP, BOTTOM, INNER[0], INNER[1], INNER[2], INNER[3]];
+/// The colours of a hole: the background it is open to, and its ring, plated and not.
+pub const HOLE_COLOURS: [&str; 3] = [BACKGROUND, PLATED, UNPLATED];
+
 /// The pixels a millimetre of a PNG when no scale is given, and its longest side then.
 pub const PNG_PER_MM: f64 = 20.0;
 pub const PNG_LONGEST: usize = 8192;
+
+/// The space round the board when no region is given, in mm: `view pcb`'s.
+const MARGIN: f64 = 1.0;
 
 /// The width of a hole's ring, in mm (less for a small hole).
 const RING: f64 = 0.05;
@@ -139,12 +158,9 @@ const RING: f64 = 0.05;
 fn paint(function: Function, show: Show) -> (&'static str, f64) {
     let copper = if show == Show::All { 0.7 } else { 1.0 };
     match function {
-        Function::Copper(Layer::Top) => ("#c83434", copper),
-        Function::Copper(Layer::Bottom) => ("#4d7fc4", copper),
-        Function::Copper(Layer::Inner(n)) => {
-            const INNER: [&str; 4] = ["#c2a000", "#b04ad0", "#2fb8b8", "#d07020"];
-            (INNER[(n as usize - 1) % INNER.len()], copper)
-        }
+        Function::Copper(Layer::Top) => (TOP, copper),
+        Function::Copper(Layer::Bottom) => (BOTTOM, copper),
+        Function::Copper(Layer::Inner(n)) => (INNER[(n as usize - 1) % INNER.len()], copper),
         Function::Mask(Face::Top) => ("#d864ff", 0.4),
         Function::Mask(Face::Bottom) => ("#02ffee", 0.4),
         Function::Paste(Face::Top) => ("#b4a0a0", 0.6),
@@ -152,7 +168,7 @@ fn paint(function: Function, show: Show) -> (&'static str, f64) {
         Function::Silk(Face::Top) => ("#f2eda1", 0.95),
         Function::Silk(Face::Bottom) => ("#e8b2a7", 0.95),
         Function::Outline => ("#d0d2cd", 1.0),
-        Function::Drill => ("#e6e6e6", 1.0),
+        Function::Drill => (PLATED, 1.0),
         Function::Other => ("#8fb3ff", 0.6),
     }
 }
@@ -243,8 +259,10 @@ fn escape(s: &str) -> String {
         .replace('"', "&quot;")
 }
 
-/// The SVG of `show` over `region` (x, y, width, height in mm in the viewer's frame), or over
-/// what the view draws, with a millimetre round it, when there is no region.
+/// The SVG of `show` over `region` (x, y, width, height in mm in the viewer's frame). With no
+/// region, a millimetre round the box of the outline's centrelines (the region `view pcb` draws
+/// of the board) and of what the view's other files draw; with no outline file, round what the
+/// view draws.
 pub fn draw(pkg: &Package, show: Show, region: Option<[f64; 4]>) -> Result<Drawing, ViewError> {
     let mut chosen: Vec<(u32, usize, &File)> = pkg
         .files
@@ -278,13 +296,18 @@ pub fn draw(pkg: &Package, show: Show, region: Option<[f64; 4]>) -> Result<Drawi
         Some(r) if r[2] > 0.0 && r[3] > 0.0 && r.iter().all(|v| v.is_finite()) => r,
         Some(_) => return Err(ViewError::Region),
         None => {
+            // With an outline, its centrelines' box, as `view pcb` draws the board (#1142), and
+            // what the other files draw beyond it; with none, everything drawn.
+            let outline = o.board.map(|(bw, bh)| ((0.0, 0.0), (bw, bh)));
             let extent = files
                 .iter()
+                .filter(|f| outline.is_none() || f.function != Function::Outline)
                 .filter_map(|f| super::file_extent(f))
                 .map(|(lo, hi)| {
                     let (a, b) = (o.to_frame(lo), o.to_frame(hi));
                     ((a.0.min(b.0), a.1.min(b.1)), (a.0.max(b.0), a.1.max(b.1)))
                 })
+                .chain(outline)
                 .reduce(|a, b| {
                     (
                         (a.0.0.min(b.0.0), a.0.1.min(b.0.1)),
@@ -297,7 +320,11 @@ pub fn draw(pkg: &Package, show: Show, region: Option<[f64; 4]>) -> Result<Drawi
                     files: unread,
                 });
             };
-            [lo.0 - 1.0, lo.1 - 1.0, hi.0 - lo.0 + 2.0, hi.1 - lo.1 + 2.0]
+            let (lo, hi) = (
+                (lo.0 - MARGIN, lo.1 - MARGIN),
+                (hi.0 + MARGIN, hi.1 + MARGIN),
+            );
+            [lo.0, lo.1, hi.0 - lo.0, hi.1 - lo.1]
         }
     };
     let [x0, y0, w, h] = region;
@@ -364,7 +391,7 @@ pub fn draw(pkg: &Package, show: Show, region: Option<[f64; 4]>) -> Result<Drawi
             }
             Ok(Read::Drill(holes)) => {
                 for hole in holes {
-                    let ring = if hole.plated { "#e6e6e6" } else { "#f0c040" };
+                    let ring = if hole.plated { PLATED } else { UNPLATED };
                     let r = hole.diameter / 2.0;
                     let inner = r - RING.min(hole.diameter / 4.0);
                     let (ax, ay) = at((hole.x, hole.y));

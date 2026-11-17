@@ -8,9 +8,11 @@
 //! ([`crate::kept_routes`], `.netsmith/routes/`) for every net whose pads are where they were when
 //! it was routed, carried as a route carries it ([`netsmith_router::carry::carry_copper`]) and
 //! with no router. A kept file that is stale or cannot be read is not used, and the reason is
-//! said. With a [`Route`] (`--route`) the router runs first, from that copper, as `fab
-//! --reuse-routes` runs it, and the picture is of the board it leaves; nothing is written but the
-//! picture, the kept file neither. The open connections are what the copper leaves
+//! said. The teardrops are drawn on that copper as the router's last pass draws them on the
+//! board `fab` writes ([`netsmith_router::teardrop::add`]): no file keeps them. With a
+//! [`Route`] (`--route`) the router runs first, from that copper, as `fab --reuse-routes` runs
+//! it, and the picture is of the board it leaves; nothing is written but the picture, the kept
+//! file neither. The open connections are what the copper leaves
 //! ([`netsmith_pcb::Ratsnest`], the connections `netsmith routes show` lists as left to route).
 //!
 //! **The markers** (`--drc`) are the places of netsmith's design rules check of the board drawn
@@ -126,6 +128,9 @@ pub fn put_copper(
                 kept.file(&board.name).display()
             )),
         }
+        // The teardrops the router draws on the finished board, which no file keeps: the
+        // Gerbers `fab` writes have them (issue #1142).
+        netsmith_router::teardrop::add(board);
         return Ok(());
     };
     let options = RouteOptions {
