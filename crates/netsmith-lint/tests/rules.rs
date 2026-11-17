@@ -206,3 +206,119 @@ fn a_source_that_does_not_check_is_refused_and_a_misspelt_rule_too() {
         .unwrap_err();
     assert!(e.0.starts_with("main.nsm:10: `// lint: off nameing` names no rule"), "{e}");
 }
+
+/// The redundant findings of one file, with `catalogs`.
+fn redundant_with(text: &str, catalogs: &Catalogs) -> Vec<String> {
+    let loader = Loader::std();
+    let project = Project {
+        loader: &loader,
+        roots: vec![Root {
+            name: "main.nsm".into(),
+            text: text.into(),
+            assignment: Default::default(),
+        }],
+        whole: true,
+        catalogs: Some(catalogs),
+        off: BTreeSet::new(),
+        named: Vec::new(),
+    };
+    lint(&project)
+        .unwrap_or_else(|e| panic!("{e}"))
+        .into_iter()
+        .filter(|l| l.rule == Rule::Redundant)
+        .map(|l| l.render())
+        .collect()
+}
+
+/// A part that provides the standard `Connector`, with an attribute on line 3, and a board of
+/// two of it.
+fn plug(attribute: &str, body: &str, use_: &str) -> String {
+    format!(
+        "import std::parts::connector::Connector\n\n{attribute}\npart Plug provides Connector {{\n    pins {{\n        .p1 passive \"P1\" \"1\"\n        .p2 passive \"P2\" \"2\"\n    }}\n{body}}}\n\nboard B {{\n    .a: Plug{use_}\n    .b: Plug{use_}\n    .a.p1 ~ .b.p1\n    .a.p2 ~ .b.p2\n}}\n"
+    )
+}
+
+#[test]
+fn an_attribute_the_generic_it_provides_already_gives_is_found_and_another_value_is_not() {
+    let catalogs = Catalogs::jlcpcb();
+    assert_eq!(
+        redundant_with(&plug("#[kind(connector)]", "", ""), &catalogs),
+        ["main.nsm:3:1: lint.redundant: `#[kind(connector)]` says what `Connector`, the generic it provides, already gives; delete it"]
+    );
+    assert_eq!(
+        redundant_with(&plug("#[kind(ic)]", "", ""), &catalogs),
+        Vec::<String>::new()
+    );
+}
+
+#[test]
+fn an_assembly_the_language_or_the_manifest_already_gives_is_found_and_another_is_not() {
+    let catalogs = Catalogs::jlcpcb();
+    assert_eq!(
+        redundant_with(&plug("#[assembly(fab)]", "", ""), &catalogs),
+        ["main.nsm:3:1: lint.redundant: `#[assembly(fab)]` says what `fab`, who assembles a part when nothing says, already gives; delete it"]
+    );
+    assert_eq!(
+        redundant_with(&plug("#[assembly(hand)]", "", ""), &catalogs),
+        Vec::<String>::new()
+    );
+    let hand = Catalogs::jlcpcb().with_default_assembly(Some("hand"));
+    assert_eq!(
+        redundant_with(&plug("#[assembly(hand)]", "", ""), &hand),
+        ["main.nsm:3:1: lint.redundant: `#[assembly(hand)]` says what the manifest's `assembly = \"hand\"` already gives; delete it"]
+    );
+    // The manifest's word wins over the attribute, which then is never read: not this rule's.
+    let fab = Catalogs::jlcpcb().with_default_assembly(Some("fab"));
+    assert_eq!(
+        redundant_with(&plug("#[assembly(hand)]", "", ""), &fab),
+        Vec::<String>::new()
+    );
+    // A part whose design states `.assembly` never reads it.
+    assert_eq!(
+        redundant_with(
+            &plug("#[assembly(fab)]", "", " { .assembly &= AssemblyMode::Hand }"),
+            &catalogs
+        ),
+        Vec::<String>::new()
+    );
+}
+
+#[test]
+fn an_assembly_a_project_generic_gives_is_found_on_its_provider_not_on_the_generic() {
+    let text = "#[assembly(hand)]\ngeneric Jack {\n    .designator &= \"J\"\n    pins {\n    }\n}\n\n#[assembly(hand)]\npart Jack3 provides Jack {\n    pins {\n        .p1 passive \"P1\" \"1\"\n    }\n}\n\nboard B {\n    .a: Jack3\n    .b: Jack3\n    .a.p1 ~ .b.p1\n}\n";
+    assert_eq!(
+        redundant_with(text, &Catalogs::jlcpcb()),
+        ["main.nsm:8:1: lint.redundant: `#[assembly(hand)]` says what `Jack`, the generic it provides, already gives; delete it"]
+    );
+}
+
+#[test]
+fn an_assembly_the_row_a_key_names_gives_is_found_and_a_picked_row_is_not() {
+    let mut catalogs = Catalogs::jlcpcb();
+    catalogs
+        .add_file(
+            "plug",
+            "plug.csv",
+            "lcsc,mpn,name,label,assembly,source\nC1,PLUG-1,Plug 1,Plug,hand,invented for this test\nC2,PLUG-2,Plug 2,Plug,fab,invented for this test\n",
+        )
+        .unwrap();
+    let keyed = |mpn: &str| {
+        plug(
+            "#[assembly(hand)]",
+            "    catalog plug by .mpn { .mpn }\n",
+            &format!(" {{ .mpn &= \"{mpn}\" }}"),
+        )
+    };
+    assert_eq!(
+        redundant_with(&keyed("PLUG-1"), &catalogs),
+        ["main.nsm:3:1: lint.redundant: `#[assembly(hand)]` says what the `assembly` cell of the row that `.mpn` names (`PLUG-1`) already gives; delete it"]
+    );
+    // The row says another word: the attribute is never read.
+    assert_eq!(
+        redundant_with(&keyed("PLUG-2"), &catalogs),
+        Vec::<String>::new()
+    );
+    // The solver picks the row, which may have no cell: the attribute may be read.
+    let picked = plug("#[assembly(hand)]", "    catalog plug by .mpn { .mpn }\n", "");
+    assert_eq!(redundant_with(&picked, &catalogs), Vec::<String>::new());
+}

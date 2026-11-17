@@ -12,7 +12,8 @@
 //!   module or a board that is never joined or used (`unused.rs`; the chapter on definitions).
 //! - [`Rule::Redundant`]: a narrowing or a default that a default of the kind, of a module round
 //!   it or of the board's `defaults` block, or the catalog row the part is picked by, already
-//!   gives (`redundant.rs`; the chapter on narrowing).
+//!   gives, and an attribute that a generic the part provides, the row, the manifest or the
+//!   language's own default already gives (`redundant.rs`; the chapter on narrowing).
 //! - [`Rule::Naming`]: a name that breaks the convention the guide teaches, `CamelCase`
 //!   definitions and `snake_case` members (`naming.rs`; the chapter on definitions).
 //!

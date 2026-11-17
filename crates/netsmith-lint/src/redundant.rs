@@ -12,7 +12,8 @@
 //!   A part in a use of a generic with several providers is left out: there a narrowing also
 //!   chooses the provider, which the row cannot do.
 //!
-//! An attribute that a row or a default gives is not judged yet.
+//! - An attribute (ADR 0125) on a definition that a generic it provides, a row or a default
+//!   already gives (issue #1132): see [`attributes`].
 
 use std::collections::{HashMap, HashSet};
 
@@ -22,6 +23,8 @@ use netsmith_lang::ast::{CmpOp, Constraint, Expr, Item};
 use netsmith_solve::Value;
 
 use crate::{Context, FileKind, Lint, Rule, SourceFile};
+
+mod attributes;
 
 pub(crate) fn lint(cx: &Context) -> Vec<Lint> {
     let defaults = defaults(cx);
@@ -60,6 +63,7 @@ pub(crate) fn lint(cx: &Context) -> Vec<Lint> {
         }
     }
     out.extend(row_gives(cx, &done));
+    out.extend(attributes::lint(cx));
     out
 }
 
@@ -283,44 +287,20 @@ fn row_gives(cx: &Context, done: &HashSet<(String, usize)>) -> Vec<Lint> {
     let mut seen: HashSet<(String, usize)> = done.clone();
     for (checked, model) in cx.models() {
         for (part, inst) in model.instances() {
-            let Some(catalog) = &inst.catalog else {
-                continue;
-            };
-            let Some(key) = catalog.key else {
-                continue;
-            };
-            // In a use of a generic with several providers, a narrowing also chooses the
-            // provider (ADR 0113): what the row gives, it says of the others too.
-            if model.in_varied_use(part) {
-                continue;
-            }
-            let Domain::Text(wanted) = &model.field(key).domain else {
-                continue;
-            };
-            let path = model.path_of(part);
-            let column = |f| {
-                let full = model.path_of_field(f);
-                full.strip_prefix(&format!("{path}."))
-                    .unwrap_or(&full)
-                    .to_string()
-            };
-            let kinds: Vec<(String, netsmith_check::FieldKind)> = catalog
-                .fields
-                .iter()
-                .map(|&f| (column(f), model.field(f).kind))
-                .collect();
-            let optional: Vec<String> = catalog.optional.iter().map(|&f| column(f)).collect();
-            let Some(Ok(rows)) = catalogs.identity(&catalog.name, &kinds, &optional) else {
-                continue;
-            };
-            let key_column = column(key);
-            let Some(row) = rows
-                .candidates
-                .iter()
-                .find(|c| matches!(c.column(&key_column), Some(Value::Text(t)) if t == wanted))
+            let Some(Keyed {
+                row,
+                key,
+                key_column,
+                wanted,
+            }) = keyed_row(catalogs, model, part)
             else {
                 continue;
             };
+            let Some(catalog) = &inst.catalog else {
+                continue;
+            };
+            let path = model.path_of(part);
+            let column = |f| column_of(model, &path, f);
             for &f in &catalog.fields {
                 if f == key {
                     continue;
@@ -365,4 +345,62 @@ fn row_gives(cx: &Context, done: &HashSet<(String, usize)>) -> Vec<Lint> {
         }
     }
     out
+}
+
+/// The row of a catalog that a part's key names (`catalog mcu by .mpn` and `.mpn &= "..."`),
+/// with the key's field, its column and its value.
+pub(crate) struct Keyed {
+    pub row: netsmith_solve::Candidate,
+    pub key: netsmith_check::FieldId,
+    pub key_column: String,
+    pub wanted: String,
+}
+
+/// The path of a field of `part` (whose path is `path`) inside the part: its catalog column.
+fn column_of(model: &Model, path: &str, f: netsmith_check::FieldId) -> String {
+    let full = model.path_of_field(f);
+    full.strip_prefix(&format!("{path}."))
+        .unwrap_or(&full)
+        .to_string()
+}
+
+/// The row the key of `part` names, when the part is picked by a key whose value is stated and
+/// a row of its catalog has it. A part in a use of a generic with several providers has none
+/// here: there a narrowing also chooses the provider (ADR 0113), so what the row gives it says
+/// of the others too.
+pub(crate) fn keyed_row(
+    catalogs: &netsmith_solve::Catalogs,
+    model: &Model,
+    part: netsmith_check::InstId,
+) -> Option<Keyed> {
+    let catalog = model.instance(part).catalog.as_ref()?;
+    let key = catalog.key?;
+    if model.in_varied_use(part) {
+        return None;
+    }
+    let Domain::Text(wanted) = &model.field(key).domain else {
+        return None;
+    };
+    let path = model.path_of(part);
+    let column = |f| column_of(model, &path, f);
+    let kinds: Vec<(String, netsmith_check::FieldKind)> = catalog
+        .fields
+        .iter()
+        .map(|&f| (column(f), model.field(f).kind))
+        .collect();
+    let optional: Vec<String> = catalog.optional.iter().map(|&f| column(f)).collect();
+    let Some(Ok(rows)) = catalogs.identity(&catalog.name, &kinds, &optional) else {
+        return None;
+    };
+    let key_column = column(key);
+    let row = rows
+        .candidates
+        .into_iter()
+        .find(|c| matches!(c.column(&key_column), Some(Value::Text(t)) if t == wanted))?;
+    Some(Keyed {
+        row,
+        key,
+        key_column,
+        wanted: wanted.clone(),
+    })
 }
