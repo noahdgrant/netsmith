@@ -521,7 +521,7 @@ pub(crate) mod testing {
     use crate::commands::{
         Board, Command, Dev, Import, Project, View, board3d, build, case, catalog, check, common,
         compare, dxf, editor, explain, fab, init, kicad_libs, layout, lock, order, parity, part,
-        pins, port, render, route, routes, view,
+        pins, port, render, route, routes, swap, view,
     };
 
     /// The command line as main.rs has it.
@@ -546,6 +546,7 @@ pub(crate) mod testing {
         Explain(explain::Args),
         Compare(compare::Args),
         Pins(pins::Args),
+        Swap(swap::Args),
         Layout(layout::Args),
         Routes(routes::Args),
         Render(render::Args),
@@ -578,6 +579,7 @@ pub(crate) mod testing {
                     Board::Explain(a) => Leaf::Explain(a),
                     Board::Compare(a) => Leaf::Compare(a),
                     Board::Pins(a) => Leaf::Pins(a),
+                    Board::Swap(a) => Leaf::Swap(a),
                 },
                 Command::Layout(a) => Leaf::Layout(a),
                 Command::Routes(a) => Leaf::Routes(a),

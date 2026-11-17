@@ -27,6 +27,7 @@ mod port;
 mod render;
 mod route;
 mod routes;
+mod swap;
 mod view;
 
 use std::process::ExitCode;
@@ -98,6 +99,8 @@ pub enum Board {
     Compare(compare::Args),
     /// Show, lock, unlock and move the pins that the board's pin requests got, or apply a proposal.
     Pins(pins::Args),
+    /// List the alternatives of a part no catalog row stands for, with their checks, or write one into the source.
+    Swap(swap::Args),
 }
 
 /// `netsmith view ...`.
@@ -156,6 +159,7 @@ pub fn run(command: Command) -> ExitCode {
             Board::Explain(args) => explain::run(args),
             Board::Compare(args) => compare::run(args),
             Board::Pins(args) => pins::run(args),
+            Board::Swap(args) => swap::run(args),
         },
         Command::Layout(args) => layout::run(args),
         Command::Routes(args) => routes::run(args),

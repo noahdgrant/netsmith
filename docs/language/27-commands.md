@@ -7,7 +7,7 @@
 The commands are grouped under nouns, each with its verbs (issue #1090): `netsmith <noun> <verb>`, so `netsmith --help` lists eight nouns and `netsmith board --help` the verbs of a board.
 
 - `project`: the project as a whole: make one (`init`), bring its agent files up to this netsmith (`refresh`), refresh or check its pick lock (`lock`), make one of its orders (`order`).
-- `board`: what is done to the boards of a file or of the project: `check`, `build`, `fab`, `explain` a pick, `compare` two designs.
+- `board`: what is done to the boards of a file or of the project: `check`, `build`, `fab`, `explain` a pick, `compare` two designs, `swap` a part for another row.
 - `layout`: the layout file, where each part is.
 - `routes`: the routes file, the copper fixed by hand or imported.
 - `view`: look at a board: `3d` draws it to a PNG, `editor` serves the editor, `editor-3d` drives the 3D view of a running editor.
@@ -40,6 +40,7 @@ Each command, what it was before, and its flags (a test walks `--help` of every 
 | `netsmith board pins unlock` | new | `--file`, `--board`, `--format` |
 | `netsmith board pins move` | new | `--file`, `--board`, `--format` |
 | `netsmith board pins apply` | new | `--proposal`, `--file`, `--board`, `--format` |
+| `netsmith board swap` | new (the editor's Swap) | `--board`, `--apply`, `--format` |
 | `netsmith layout show` | the same | `--file` (was `--into`), `--board`, `--format` |
 | `netsmith layout set` | the same | `--file` (was `--into`), `--board`, `--at`, `--turn`, `--side`, `--lock`, `--unlock`, `--format` |
 | `netsmith layout check` | the same | `--file` (was `--into`), `--board`, `--format` |
@@ -78,6 +79,7 @@ Each command, what it was before, and its flags (a test walks `--help` of every 
 | `netsmith dev board3d` | `netsmith board3d` | `--board`, `--format` (was `--json`), `--glb`, `--step`, `--place-seeds`, `--place-budget`, `--progress`, `--to-editor` |
 
 The places left for commands to come, named by the same rules: `board bom`, `board power`, `board drc`, `board swap` and `board copper`; `view schematic`, `view pcb` and `view gerber`; `project fmt` and `project lint`; and `mcp`, the server that offers these commands to an agent.
+The places left for commands to come, named by the same rules: `board bom`, `board power`, `board drc`, `board pins` and `board copper`; `view schematic`, `view pcb` and `view gerber`; `project fmt` and `project lint`; and `mcp`, the server that offers these commands to an agent.
 
 ### The editor
 
@@ -100,3 +102,5 @@ The same file says why each part has its row. Each board has its `picks`, one fo
 A board whose solve fails has a record too, so a group that fails can be read and not only its error. Its object has `"failed": true`, the `members` and `picks` the solve got to (the parts of the groups that were chosen, and what the DC analysis wrote for the rest), and `unpicked`, one entry for each part of the group that failed: the `path`, the `catalog`, `held` as for a pick, `with`, the choices of the parts before it in the group that its turn was made with (`["a = 100 1%"]`; left out for the first part), and `passed`, every row its first turn passed over in the shape a pick has (a row `later` for a part that is not the first means the parts after it could not be chosen with it). A turn is the first one the search made when it reached the part, with the parts before it at the first rows that fit: what other choices of those parts would have tried is not there. A part that has no row that fits what the design states, or that every row is refused for whatever the other parts are, has its rows tried one at a time. With `--emit-solved` the file is written when a board fails if some board left such a record, and the exit code stays 1; `--emit-design` still writes nothing.
 
 `netsmith board explain <path> [file.nsm]` prints the same record as text, for one part, module or member: `netsmith board explain reg.inductor buck.nsm` prints the row `reg.inductor` was picked as, what held it, the rows it passed over with why and where (`refused (at std/parts/regulator.nsm:603): reg.inductor.inductance must always be at least reg.ic.min_inductance, ...`), then each member at the path or inside it with the range the solve left it (`reg.inductor.current  5.047mA..50.06mA`). The path is a part, a module (`reg` is every part inside it, and `re` is nothing) or a member. It lists the first 20 rows a part passed over and counts the rest; `--all-rows` lists them all, and `--board` keeps one board of a file with several. When a board fails the error is printed as `check` prints it and the record of the failed group follows, with the exit code 1; it also exits 1 when nothing is at the path, and says which parts the solver chose rows for. Like `check` it writes nothing. A part the pick lock holds to a row has no rows passed over, as no other row was tried; run `netsmith project lock --update`, or delete the lock, to see the rows the solver takes now.
+
+`netsmith board swap <part> [file.nsm]` is the editor's swap of a generic part that no catalog row stands for (_Catalogs_, issue #1094): it lists the nearest rows, each with what the board's checks say with it in the part's place and the change to the source that chooses it, and `--apply <row>` writes that change (a hand pick, ADR 0122), with the rest of the file as it was and the part picked again in the pick lock if the source has one. The part is a designator (`R1`) or a path (`r1`); the row is its name, its LCSC number or its number in the list. It reads the project as the editor does and asks the editor's own swap, so `--format json` is what `GET /api/swap` answers, and with `--apply` the row written and what `POST /api/swap` answers. It exits 1 when the board does not build or the part has nothing the swap can do (a row stands for it, or its value is stated where one edit would change other parts too).
