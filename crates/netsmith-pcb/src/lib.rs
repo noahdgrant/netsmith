@@ -57,6 +57,7 @@ mod overhang;
 mod part_fit;
 mod part_geometry;
 mod part_layout;
+mod picture;
 mod placement;
 mod polygon;
 mod protrusion;
@@ -65,6 +66,7 @@ mod ratsnest;
 mod routes;
 mod rules;
 mod shape;
+mod simplify;
 mod stackup;
 mod standard_height;
 mod summary;
@@ -136,6 +138,10 @@ pub use part_layout::{
     LayoutFinding, Limit, LoopPair, Measure, NearPair, PartGuideline, away_pairs, edge_parts,
     layout_findings, loop_pairs, measures, near_findings, near_pairs, pins_of,
 };
+pub use picture::{
+    BACKGROUND as PICTURE_BACKGROUND, Layers as PictureLayers, Lit, MARGIN as PICTURE_MARGIN,
+    Marker, Picture as PictureOptions, picture as picture_svg, whole as picture_whole,
+};
 pub use placement::{
     CarriedZone, DESCRIBED, DoesNotFit, ESCAPE_ROOM, Ended, FaceKeepout, Fixed, HeightZone, ORIGIN,
     OutsideAt, OverlapAt, Oversize, PartState, PlaceOptions, inside as fit_inside, is_mechanical,
@@ -155,6 +161,7 @@ pub use routes::{
 };
 pub use rules::{HDI_SIX_BUILD_UP, NetClass, Rules};
 pub use shape::{Edge as ShapeEdge, RoundRect};
+pub use simplify::{distance_to_segment, simplify_ring};
 pub use stackup::{
     LayerKind, StackLayer, layers as stackup_layers, round as round_nm, thickness_tolerance,
 };

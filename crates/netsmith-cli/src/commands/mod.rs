@@ -28,6 +28,7 @@ mod order;
 mod panel;
 mod parity;
 mod part;
+mod pcb;
 mod pins;
 mod port;
 mod power;
@@ -145,6 +146,8 @@ pub enum View {
     Editor3d(view::Args),
     /// Write a board's schematic as a PDF (a page for each sheet), an SVG or a PNG.
     Schematic(schematic::Args),
+    /// Draw a board's copper in 2D, a layer or all, a region or the whole, with the open connections, to a PNG or an SVG.
+    Pcb(pcb::Args),
 }
 
 /// `netsmith import ...`.
@@ -207,6 +210,7 @@ pub fn run(command: Command) -> ExitCode {
             View::Editor(args) => editor::run(args),
             View::Editor3d(args) => view::run(args),
             View::Schematic(args) => schematic::run(args),
+            View::Pcb(args) => pcb::run(args),
         },
         Command::Catalog(args) => catalog::run(args),
         Command::Import(command) => match command {

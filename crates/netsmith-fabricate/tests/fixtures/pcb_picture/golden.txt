@@ -1,0 +1,7 @@
+# FNV-1a 64 of the PNG bytes of each golden picture of tests/pcb_picture.rs.
+# Rewrite with NETSMITH_PCB_PICTURE_BLESS=1 cargo test -p netsmith-fabricate --test main pcb_picture::
+# and look at the pictures first (NETSMITH_PCB_PICTURE_OUT=<folder>).
+whole 471694aa5f04e8f8
+region 0d6759defde5c405
+bottom a29c5492f95f5846
+only-open ef74cf5d46d30ebc

@@ -868,6 +868,7 @@ dependencies = [
  "netsmith-check",
  "netsmith-core",
  "netsmith-design",
+ "netsmith-draw",
  "netsmith-dxf",
  "netsmith-fab",
  "netsmith-fabricate",

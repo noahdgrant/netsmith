@@ -15,7 +15,7 @@ The commands are grouped under nouns, each with its verbs (issue #1090): `netsmi
 - `layout`: the layout file, where each part is.
 - `routes`: the routes file, the copper fixed by hand or imported.
 - `schematic`: the schematic layout file (`<stem>.sch.toml`), how the schematic is arranged: `show` it, `set` an entry, `check` it against the board, `arrange` the sheets of a big board (issue #1093). It is `layout`'s counterpart for the drawing: a noun is the thing a file holds, so the PCB's solution is `layout` and the schematic's arrangement is `schematic`, and the picture of it is the verb `view schematic`.
-- `view`: look at a board: `3d` draws it to a PNG, `schematic` writes its schematic as a PDF, an SVG or a PNG, `editor` serves the editor, `editor-3d` drives the 3D view of a running editor.
+- `view`: look at a board: `3d` draws it to a PNG, `schematic` writes its schematic as a PDF, an SVG or a PNG, `pcb` draws its copper in 2D to a PNG or an SVG, `editor` serves the editor, `editor-3d` drives the 3D view of a running editor.
 - `catalog`: the rows of the catalogs, checked against LCSC's record.
 - `import`: what comes into a project from outside: a DXF drawing (`dxf`), KiCad's library tables (`kicad-libs`), a part from a symbol (`part`), a port of a KiCad board (`port`), a case's STEP model (`case`).
 - `dev`: the tools for developing netsmith and checking ports: `route` routes a saved placed board with the router's tuning flags, `parity` compares a port with its original, `board3d` prints the 3D scene's report.
@@ -23,7 +23,7 @@ The commands are grouped under nouns, each with its verbs (issue #1090): `netsmi
 The names follow four rules:
 
 - One name for one thing. A command is named by the noun it acts on and its verb, and one verb is never a second spelling of another. A command or flag of an earlier release is an error that names the one to write and prints the whole line rewritten (ADR 0001; `docs/MIGRATING.md`).
-- `--out` is always a folder. A command that writes one file names the flag after the file: `view 3d --picture` and `view editor-3d --picture` (a PNG), `view schematic --picture` (the PDF, SVG or PNG), `layout export --kicad-pcb`, `dev board3d --glb` and `--step`, and `--write` for the source an import writes.
+- `--out` is always a folder. A command that writes one file names the flag after the file: `view 3d --picture` and `view editor-3d --picture` (a PNG), `view schematic --picture` (the PDF, SVG or PNG), `view pcb --picture` (the PNG or SVG), `layout export --kicad-pcb`, `dev board3d --glb` and `--step`, and `--write` for the source an import writes.
 - One way to choose a board: the source file (`FILE.NSM`; with none, the project's boards) and `--board NAME` for one board of a file with several. Where the command takes another file first (`routes import BOARD.KICAD_PCB`, `layout set PATH`), the source is `--file FILE.NSM`.
 - `--format json` wherever there is output for a program to read: one JSON document on stdout, and nothing else there.
 
@@ -78,6 +78,7 @@ Each command, what it was before, and its flags (a test walks `--help` of every 
 | `netsmith schematic arrange` | new (#1093) | `--file`, `--board`, `--reset`, `--write`, `--format` |
 | `netsmith view 3d` | `netsmith render` | `--board`, `--view`, `--picture` (was `--out`), `--size`, `--section`, `--highlight`, `--xray`, `--case`, `--no-caps`, `--theme`, `--ortho`, `--perspective` |
 | `netsmith view schematic` | new (#1091) | `--board`, `--format`, `--sheet`, `--picture` |
+| `netsmith view pcb` | new (#1086) | `--board`, `--layer`, `--side`, `--region`, `--scale`, `--format`, `--picture`, `--highlight`, `--only-open`, `--courtyards`, `--designators`, `--drc`, `--route`, `--route-timeout`, `--place-seeds`, `--place-budget` |
 | `netsmith view editor` | `netsmith editor` | `--port`, `--offline` |
 | `netsmith view editor-3d` | `netsmith view` | `--port`, `--board`, `--view`, `--section`, `--highlight`, `--select`, `--xray`, `--no-xray`, `--ortho`, `--perspective`, `--case`, `--colour-by`, `--height-preview`, `--layers-apart`, `--no-layers-apart`, `--format` (was `--json`), `--picture` |
 | `netsmith catalog refresh` | the same | `--dry-run`, `--offline`, `--only`, `--lcsc`, `--delay`, `--cache-ttl`, `--no-cache` |
@@ -96,7 +97,7 @@ Each command, what it was before, and its flags (a test walks `--help` of every 
 | `netsmith dev board3d` | `netsmith board3d` | `--board`, `--format` (was `--json`), `--glb`, `--step`, `--place-seeds`, `--place-budget`, `--progress`, `--to-editor` |
 | `netsmith mcp` | new | `--project` |
 
-The places left for commands to come, named by the same rules: `view pcb` and `view gerber`; and `project fmt` and `project lint`.
+The places left for commands to come, named by the same rules: `view gerber`; and `project fmt` and `project lint`.
 
 ### The MCP server
 
@@ -163,6 +164,21 @@ The editor's bill of materials marks the lines whose price and stock are old (as
 - **SVG.** The drawing the editor shows, or with `--sheet` the same drawing framed on that sheet.
 - **PNG.** The drawing filled by netsmith's own rasterizer at 10 pixels a millimetre (fewer for a drawing longer than 8192 pixels), its text in netsmith's stroke font: a picture an agent can look at.
 `board fab` writes the PDF into each board's package as `<board>-schematic.pdf`, beside the `.glb` and outside the Gerber zip, and a system's as `<System>/<System>-schematic.pdf`; `--no-pdf`, or `pdf = false` under `[project]` in `netsmith.toml`, leaves it out and removes an earlier run's. A schematic that cannot be drawn is a warning in `fab-notes.txt`, never a failed `fab`. The editor's schematic has `PDF` and `SVG` buttons, and the commands "Export schematic as PDF" and "Export schematic as SVG", which save the same bytes.
+
+### The copper as a picture
+
+`netsmith view pcb [FILE.NSM]` draws a board's copper in 2D, as the editor's PCB view does, to a PNG or an SVG (`--format png|svg`, the same drawing in both; issue #1086), with no editor, no browser, no GPU and no KiCad; the same board and flags give the same bytes. It is the picture for routing by hand or by an agent: where the tracks, vias and pours of a region are, which connections are still open, and what is in their way.
+
+- **The copper** is the copper of the routes file beside the source and the router's copper the editor keeps (`.netsmith/routes/`) for every net whose pads have not moved since it was routed: what `board fab --reuse-routes` starts from. Nothing is routed unless `--route` is given, which runs the router first from that copper (`--route-timeout`, as for `fab`); the picture is the only file written. A pour is drawn as the Gerbers fill it.
+- **The open connections** are what that copper leaves, the connections `routes show` lists as left to route: bright straight lines from pad to pad, printed after the path (`open: net GND: D1.1 to J1.2`). `--only-open` lights their nets and fades the rest; `--highlight net:GND,R1` lights nets and parts (a part by its designator or its path) as `view 3d --highlight` does.
+- **A layer, a side, a region.** `--layer top|bottom|inner1|...|all` (all by default, the layer nearest the eye drawn last); `bottom` is seen from below, mirrored left to right as the editor's Side switch shows it, and `--side top|bottom` says the side for any layer. `--region X,Y,W,H` draws only that rectangle, in mm from the outline's top left corner (the frame of the layout file and the routes file, seen from above also when the board is drawn from below), and `--scale` is the pixels a millimetre (20 by default; a picture is at most 16384 pixels a side).
+- **More marks.** `--courtyards` and `--designators` draw the parts' courtyards and designators (of the face of an outer layer drawn alone, else of every part); `--drc` runs the design rules check of the board drawn (`board drc`'s) and marks each finding's place with a numbered ring, red for an error and amber for a warning, and prints the findings by number (`marker 1: error [clearance] ...`). A missing connection is no marker: it is an open connection.
+
+```sh
+netsmith view pcb --region 10,5,20,15 --scale 40 --only-open   # main-pcb.png: a region, its open connections lit
+netsmith view pcb --layer bottom --designators --drc            # main-pcb-bottom.png: the bottom seen from below
+netsmith view pcb --route --format svg --picture routed.svg     # route first, then draw the result
+```
 
 ### Power findings
 
