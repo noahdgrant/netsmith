@@ -114,8 +114,8 @@ const ROUTES: &[(&str, Way)] = &[
     ("POST /api/pcb/cancel", PageOnly(CANCEL)),
     ("POST /api/pcb/place/cancel", PageOnly(CANCEL)),
     ("GET /api/pcb/scene", Command(&["layout parts"])),
-    // The 2D picture of the copper (`view pcb`, issue #1086) is built by another pull request.
-    ("GET /api/pcb/pours", Pending("view pcb", 1086)),
+    // The fill of the pours is drawn into the 2D picture of the copper.
+    ("GET /api/pcb/pours", Command(&["view pcb"])),
     ("GET /api/pcb/3d", Command(&["view 3d", "dev board3d"])),
     ("GET /api/pcb/kicad", Command(&["layout export"])),
     ("POST /api/pcb/edit", Command(&["layout set"])),
