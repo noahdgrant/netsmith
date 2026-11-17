@@ -4,7 +4,7 @@
 // the page assumes no node beyond what the contract names, and a node of a kind it does not know
 // (copper, later shapes) is drawn and otherwise left alone. Nothing here touches three.js.
 
-import type { Provenance } from './palette';
+import { type MaskColour, type Provenance, maskColourOf } from './palette';
 
 export type Face = 'top' | 'bottom';
 
@@ -39,6 +39,8 @@ export interface BoardInfo {
   heightMm: number;
   thicknessMm: number;
   layers: StackLayer[];
+  /** The colour the board states for its solder mask (`Black`, a variant of std's `Color`); null when it states none or one the page does not draw. */
+  maskColour: MaskColour | null;
   /** `standard`: how many of the known heights are a package standard's maximum (ADR 0106); 0 in a file that has none. */
   coverage: { known: number; total: number; standard: number };
   findings: Finding3d[];
@@ -166,6 +168,7 @@ export function readInfo(userData: unknown): Info | null {
         widthMm: num(n.width_mm),
         heightMm: num(n.height_mm),
         thicknessMm: num(n.thickness_mm),
+        maskColour: maskColourOf(n.mask_colour),
         layers: (Array.isArray(n.layers) ? n.layers : []).flatMap((l: Record<string, unknown>) => {
           const kind = l.kind;
           if (kind !== 'mask' && kind !== 'copper' && kind !== 'core' && kind !== 'prepreg') return [];

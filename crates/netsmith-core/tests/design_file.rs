@@ -56,3 +56,23 @@ fn a_file_that_is_not_there_or_not_designs_is_named_in_the_error() {
     let e = Design::from_json_file(&bad).unwrap_err();
     assert!(e.starts_with(&bad.display().to_string()), "{e}");
 }
+
+#[test]
+fn a_stated_mask_colour_is_in_the_file_and_an_unstated_one_leaves_no_trace() {
+    // Issue #771: the colour the board states for its solder mask is written and read back; a
+    // board that states none has no key, so the committed design files are as they were.
+    let file = example("examples/led.design.json");
+    let mut designs = read(&file).unwrap();
+    assert!(!to_json(&designs).contains("mask_colour"));
+    designs[0].process.as_mut().unwrap().stackup.mask_colour = Some("Black".into());
+    let text = to_json(&designs);
+    assert!(text.contains("\"mask_colour\": \"Black\""), "{text}");
+    let dir = TempDir::new("design-file-mask");
+    let path = dir.path().join("black.design.json");
+    fs::write(&path, &text).unwrap();
+    let back = read(&path).unwrap();
+    assert_eq!(
+        back[0].process.as_ref().unwrap().stackup.mask_colour.as_deref(),
+        Some("Black")
+    );
+}

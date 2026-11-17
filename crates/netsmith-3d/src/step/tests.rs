@@ -140,6 +140,7 @@ pub(crate) fn scene() -> Scene {
             corner_radius: 2.0,
             outline: Vec::new(),
             outline_edges: Vec::new(),
+            mask_colour: None,
             thickness: 1.6,
             stack_thickness: 1.6,
             layers: vec![

@@ -367,6 +367,48 @@ impl Theme {
     }
 }
 
+/// The solder mask tones of a board's stated colour (issue #771, `std::parts::passive::Color`):
+/// the top face's mask over bare laminate and the mask over copper, in the light picture.
+/// `Green` is not here: the palette's own tone is green, so a board that states it is drawn as
+/// one that states none. The bottom face's mask is a little darker than the top's,
+/// as it is in the default palette, and the dark picture dims each tone, as the default
+/// palette's green is dimmed. A word that is not a mask colour has no tones.
+fn mask_tones(colour: &str) -> Option<([u8; 3], [u8; 3])> {
+    Some(match colour {
+        "Red" => ([176, 40, 44], [208, 78, 80]),
+        "Blue" => ([36, 76, 160], [72, 114, 196]),
+        "Yellow" => ([214, 176, 40], [236, 204, 84]),
+        "White" => ([226, 226, 222], [244, 244, 240]),
+        "Black" => ([30, 32, 36], [58, 60, 66]),
+        "Purple" => ([96, 48, 140], [132, 88, 176]),
+        _ => return None,
+    })
+}
+
+impl Theme {
+    /// The palette with the solder mask in the board's stated colour (issue #771); the
+    /// palette itself where the board states none, or a colour that is not a mask's.
+    pub fn palette_with_mask(self, colour: Option<&str>) -> Palette {
+        let mut palette = self.palette();
+        let Some((top, over)) = colour.and_then(mask_tones) else {
+            return palette;
+        };
+        let (dim, bottom) = match self {
+            Theme::Light => (1.0, 0.93),
+            Theme::Dark => (0.87, 0.93),
+        };
+        let tone = |c: [u8; 3], k: f64| {
+            let [r, g, b] = c.map(|v| (f64::from(v) * k).round().min(255.0) as u8);
+            [r, g, b, 255]
+        };
+        let at = |m: Material| Material::ALL.iter().position(|&x| x == m).unwrap_or(0);
+        palette.materials[at(Material::MaskTop)] = tone(top, dim);
+        palette.materials[at(Material::MaskBottom)] = tone(top, dim * bottom);
+        palette.materials[at(Material::MaskOverCopper)] = tone(over, dim);
+        palette
+    }
+}
+
 /// How a triangle's light is worked out.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Shading {

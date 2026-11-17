@@ -80,6 +80,7 @@ fn board(holes: Vec<Hole>) -> BoardSolid {
         holes,
         outline: Vec::new(),
         outline_edges: Vec::new(),
+        mask_colour: None,
     }
 }
 

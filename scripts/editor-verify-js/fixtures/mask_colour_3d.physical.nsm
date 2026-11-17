@@ -1,0 +1,10 @@
+import std::pcb::Outline
+
+physical for Crimson {
+    case {
+        .outline: Outline {
+            .width &= 40mm
+            .height &= 24mm
+        }
+    }
+}

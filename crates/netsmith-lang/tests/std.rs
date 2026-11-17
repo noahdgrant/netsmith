@@ -65,7 +65,7 @@ fn passive_parts_parse() {
         .iter()
         .map(|v| v.name.name.as_str())
         .collect();
-    assert_eq!(variants, ["Red", "Green", "Blue", "White", "Yellow"]);
+    assert_eq!(variants, ["Red", "Green", "Blue", "White", "Yellow", "Black", "Purple"]);
 
     let r = def(&file, "Resistor");
     let bridges: Vec<_> = r

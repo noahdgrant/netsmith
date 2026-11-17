@@ -109,7 +109,17 @@ fn setup(board: &Board) -> Sexp {
                     &l.name,
                     kind,
                     vec![
-                        text("color", "Green"),
+                        // The board's stated mask colour (issue #771), KiCad's own default green
+                        // where it states none.
+                        text(
+                            "color",
+                            board
+                                .process
+                                .stackup
+                                .mask_colour
+                                .as_deref()
+                                .unwrap_or("Green"),
+                        ),
                         thickness(l.thickness),
                         material(),
                         epsilon(),
@@ -1660,6 +1670,44 @@ mod tests {
             setup.find("copper_finish").unwrap().args()[0].text(),
             Some("HAL lead-free")
         );
+    }
+
+    #[test]
+    fn the_masks_colour_is_what_the_board_states_and_kicads_green_where_it_states_none() {
+        // Issue #771: both mask layers of the board file's stackup, and no other layer's colour.
+        let colours = |board: &Board| -> Vec<(String, String)> {
+            let pcb = parsed(board);
+            let setup = pcb.find("setup").unwrap().find("stackup").unwrap();
+            setup
+                .find_all("layer")
+                .filter(|l| {
+                    l.find("type")
+                        .and_then(|t| t.args()[0].text())
+                        .is_some_and(|t| t.ends_with("Solder Mask"))
+                })
+                .map(|l| {
+                    (
+                        l.args()[0].text().unwrap().to_string(),
+                        l.find("color").unwrap().args()[0]
+                            .text()
+                            .unwrap()
+                            .to_string(),
+                    )
+                })
+                .collect()
+        };
+        let green = vec![
+            ("F.Mask".to_string(), "Green".to_string()),
+            ("B.Mask".to_string(), "Green".to_string()),
+        ];
+        assert_eq!(colours(&led()), green);
+        let mut black = led();
+        black.process.stackup.mask_colour = Some("Black".into());
+        let want: Vec<_> = green
+            .iter()
+            .map(|(n, _)| (n.clone(), "Black".to_string()))
+            .collect();
+        assert_eq!(colours(&black), want);
     }
 
     #[test]

@@ -597,6 +597,22 @@ fn the_process_arrives_in_the_design_as_the_library_states_it() {
 }
 
 #[test]
+fn a_board_states_its_solder_mask_colour_and_one_that_does_not_has_none() {
+    // Issue #771: a variant of `Color`, which an LED's colour is too; no process states one.
+    let none = designed(&board_with(".process: TwoLayer")).unwrap();
+    assert_eq!(none.process.unwrap().stackup.mask_colour, None);
+    let with = |colour: &str| {
+        format!(
+            "import std::parts::passive::{{Color, Resistor}}\nimport std::mfg::jlcpcb::TwoLayer\nboard B {{\n    .process: TwoLayer {{\n        .stackup.mask_colour &= Color::{colour}\n    }}\n    .r: Resistor\n}}\n"
+        )
+    };
+    for colour in ["Red", "Green", "Blue", "Yellow", "White", "Black", "Purple"] {
+        let d = designed(&with(colour)).unwrap();
+        assert_eq!(d.process.unwrap().stackup.mask_colour.as_deref(), Some(colour));
+    }
+}
+
+#[test]
 fn the_finish_is_the_process_default_unless_the_board_chooses_another_it_offers() {
     // Offered by the process (`?=`): lead-free HASL on two layers.
     let d = designed(&board_with(".process: TwoLayer")).unwrap();

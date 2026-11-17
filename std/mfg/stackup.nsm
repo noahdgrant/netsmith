@@ -1,5 +1,7 @@
 //! The layers a board is built from.
 
+import std::parts::passive::Color
+
 /// What a board is built from: how many copper layers, how thick the finished board is, and
 /// how heavy the copper is. A manufacturer's process fixes some of these and leaves the
 /// rest for the board to choose.
@@ -45,6 +47,15 @@ interface Stackup {
     /// The thickness the calculator gives an outer track's copper, which is the finished
     /// copper with its plating, and not the nominal thickness of the copper weight.
     .impedance_outer_copper: Length optional
+
+    /// The colour of the solder mask, both faces (issue #771): a variant of the same `Color` an
+    /// LED's `.color` is, and a board states it, `.process.stackup.mask_colour &= Color::Black`.
+    /// It is a choice of the board, not a rule of the process, so no process states it; a board
+    /// that does not is drawn and written as before (the 3D view's own mask tone, KiCad's
+    /// green). The 3D view, `render`, `board3d`'s glTF file and the board file's stackup draw
+    /// and write the mask in it, and `order.txt` names it. A colour the fabricator does not
+    /// offer is the board's to check against its order form.
+    .mask_colour: Color optional
 }
 
 /// One dielectric layer of a build-up, the dielectric between two copper layers, as the

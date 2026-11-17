@@ -1,0 +1,16 @@
+//! A small board for the recipe `pcb-3d-mask-colour` (the board states its solder mask colour,
+//! issue #771): `.stackup.mask_colour &= Color::Red`, so the 3D view draws the mask red, in the
+//! theme's own red, and a board that states none keeps the theme's mask tone. Its physical file
+//! gives the board a 40 x 24 mm outline, so there is bare mask round the one header.
+
+import std::parts::connector::Header1x2
+import std::parts::passive::Color
+import std::mfg::jlcpcb::TwoLayer
+
+board Crimson {
+    .process: TwoLayer {
+        .stackup.thickness &= 1.6mm
+        .stackup.mask_colour &= Color::Red
+    }
+    .power_in: Header1x2
+}

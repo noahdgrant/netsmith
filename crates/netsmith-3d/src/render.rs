@@ -249,7 +249,8 @@ fn keep_below(view: View, axis: Axis) -> bool {
 }
 
 /// The render options of `request`, with the highlight already resolved to mesh ids.
-fn options(request: &Request, highlight: Vec<String>) -> RenderOptions {
+/// `mask` is the colour the board states for its solder mask (issue #771), if it states one.
+fn options(request: &Request, highlight: Vec<String>, mask: Option<&str>) -> RenderOptions {
     RenderOptions {
         width: request.size.0,
         height: request.size.1,
@@ -258,7 +259,7 @@ fn options(request: &Request, highlight: Vec<String>) -> RenderOptions {
         } else {
             Theme::Light
         }
-        .palette(),
+        .palette_with_mask(mask),
         highlight,
         xray: request.xray,
         case_solid: request.case == CaseMode::Solid,
@@ -322,7 +323,7 @@ pub fn draw(scene: &Scene, request: &Request) -> Result<Vec<u8>, String> {
     };
     let hidden = hidden_case_ids(scene, &request.case_hidden)?;
     let meshes = without_hidden_case(meshes, request.case, &hidden, &highlight);
-    let options = options(request, highlight);
+    let options = options(request, highlight, scene.board.mask_colour.as_deref());
     let lens = if request.perspective {
         Lens::Perspective { fov_y_deg: FOV_DEG }
     } else {
@@ -407,7 +408,8 @@ fn system_id(want: &str) -> (String, String) {
 pub fn draw_system(system: &SystemScene, request: &Request) -> Result<Vec<u8>, String> {
     let highlight = resolve_system_highlight(system, &request.highlight)?;
     let meshes = crate::system::meshes(system);
-    let options = options(request, highlight);
+    // One palette draws every member, so the system's picture keeps the default mask tone.
+    let options = options(request, highlight, None);
     let lens = if request.perspective {
         Lens::Perspective { fov_y_deg: FOV_DEG }
     } else {

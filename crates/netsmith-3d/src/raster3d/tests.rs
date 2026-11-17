@@ -647,3 +647,51 @@ fn a_thousand_parts_are_drawn() {
         "the picture is one colour: nothing was drawn"
     );
 }
+
+#[test]
+fn a_stated_mask_colour_changes_the_three_mask_materials_and_nothing_else() {
+    // Issue #771: a board that states none, or `Green`, keeps the palette's own tone.
+    for theme in [Theme::Light, Theme::Dark] {
+        let base = theme.palette();
+        assert_eq!(theme.palette_with_mask(None), base);
+        assert_eq!(
+            theme.palette_with_mask(Some("Green")).materials,
+            base.materials
+        );
+        assert_eq!(theme.palette_with_mask(Some("Orange")), base);
+        let mut seen = BTreeSet::new();
+        for colour in ["Red", "Green", "Blue", "Yellow", "White", "Black", "Purple"] {
+            let p = theme.palette_with_mask(Some(colour));
+            let (top, bottom, over) = (
+                p.colour(Material::MaskTop),
+                p.colour(Material::MaskBottom),
+                p.colour(Material::MaskOverCopper),
+            );
+            seen.insert(top);
+            // The bottom face's mask is a little darker, the mask over copper a lighter tone.
+            let luma = |c: Rgba| u32::from(c[0]) + u32::from(c[1]) + u32::from(c[2]);
+            assert!(
+                luma(bottom) < luma(top) && luma(top) < luma(over),
+                "{colour}"
+            );
+            for m in Material::ALL {
+                if !matches!(
+                    m,
+                    Material::MaskTop | Material::MaskBottom | Material::MaskOverCopper
+                ) {
+                    assert_eq!(p.colour(m), base.colour(m), "{colour} moved {m}");
+                }
+            }
+            assert_eq!(
+                (p.background, p.highlight, p.outline),
+                (base.background, base.highlight, base.outline)
+            );
+        }
+        assert_eq!(seen.len(), 7, "each colour has a tone of its own");
+    }
+    // The red board is drawn red, not green.
+    let [r, g, b, _] = Theme::Light
+        .palette_with_mask(Some("Red"))
+        .colour(Material::MaskTop);
+    assert!(r > 2 * g && r > 2 * b);
+}

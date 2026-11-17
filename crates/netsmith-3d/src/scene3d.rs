@@ -224,6 +224,10 @@ pub struct BoardSolid {
     pub layers: Vec<SceneLayer>,
     pub cutouts: Vec<SceneCutout>,
     pub holes: Vec<Hole>,
+    /// The colour of the solder mask the board states (issue #771): the name of a
+    /// `std::parts::passive::Color` variant (`Black`). `None` where the board says nothing, which
+    /// every drawing takes as the default tone.
+    pub mask_colour: Option<String>,
 }
 
 /// A piece of a polygon outline in plan.
@@ -1086,6 +1090,7 @@ fn solid(board: &Board, frame: &Frame, thickness: f64) -> BoardSolid {
         layers,
         cutouts,
         holes,
+        mask_colour: board.process.stackup.mask_colour.clone(),
     }
 }
 

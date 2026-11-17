@@ -61,7 +61,8 @@
 //!   copies, copper layers, size in mm, thickness (or "thickness open"), the surface
 //!   finish (the process's `.finish`, `finish HASL lead-free`, which the order form has to match:
 //!   `std::mfg::jlcpcb` gives each process the finishes JLCPCB offers and the one it defaults to,
-//!   issue #842), the parts the board house assembles and on how many BOM lines, the hand-solder
+//!   issue #842) and the solder mask colour where the board states one (`, solder mask Black`,
+//!   issue #771), the parts the board house assembles and on how many BOM lines, the hand-solder
 //!   parts; the combined bill of materials; with a `[supply]` provider, its `prices`
 //!   (below); "before you order", each board's
 //!   `fab-notes.txt` lines; and the total of unverified items, counted once for each board and not
@@ -332,6 +333,9 @@ pub struct BoardFacts {
     /// The surface finish the process states (`HASL lead-free`, `ENIG`...), which the order form
     /// has to match.
     pub finish: String,
+    /// The solder mask colour the board states (`Black`, issue #771), which the order form has to
+    /// match; `None` where the board states none, and the order line says nothing of it.
+    pub mask_colour: Option<String>,
     /// Parts the board house places from its own stock (the consigned ones are in `consigned`).
     pub assembled_parts: usize,
     /// The BOM lines of those parts, each with a part number.
@@ -390,6 +394,7 @@ impl BoardFacts {
             height_mm: board.outline.height(),
             thickness_mm: stackup.chosen_thickness(),
             finish: board.process.finish.clone(),
+            mask_colour: stackup.mask_colour.clone(),
             assembled_parts: stock_parts(&package.plan),
             bom: package.plan.bom.clone(),
             consigned: package.plan.consigned.clone(),
@@ -641,13 +646,17 @@ pub fn summary_text(
                 format!("{} mm thick", mm(t))
             });
         s.push_str(&format!(
-            "  {} x{}: {} layers, {} x {} mm, {thickness}, finish {}\n",
+            "  {} x{}: {} layers, {} x {} mm, {thickness}, finish {}{}\n",
             selected.label,
             selected.quantity,
             facts.layers,
             mm(facts.width_mm),
             mm(facts.height_mm),
             facts.finish,
+            facts
+                .mask_colour
+                .as_ref()
+                .map_or(String::new(), |c| format!(", solder mask {c}")),
         ));
         if let Some(p) = &facts.panel {
             s.push_str(&format!(
@@ -1268,6 +1277,7 @@ mod tests {
             height_mm: 40.5,
             thickness_mm: Some(1.6),
             finish: "HASL lead-free".into(),
+            mask_colour: None,
             assembled_parts: bom.iter().map(|e| e.designators.len()).sum(),
             bom,
             consigned: vec![],
@@ -1312,6 +1322,33 @@ mod tests {
         assert_eq!(
             bom_csv(&lines),
             "Comment,Footprint,LCSC Part #,Quantity,Used on\n100n,C_0402_1005Metric,C1525,18,2 x 4 DevKit/carrier; 10 x 1 Unit\n10k,C_0402_1005Metric,C25744,20,10 x 2 Unit\n"
+        );
+    }
+
+    #[test]
+    fn the_summary_names_the_solder_mask_colour_the_board_states_and_says_nothing_otherwise() {
+        // Issue #771: the order form has to match the colour, so the line says it.
+        let mut black = facts(vec![entry(&["C1"], "100n", "C1525")]);
+        black.mask_colour = Some("Black".into());
+        let plain = facts(vec![entry(&["C1"], "100n", "C1525")]);
+        let bom = combined_bom(&[(pick("Dark", 1), &black), (pick("Plain", 1), &plain)]);
+        let text = summary_text(
+            "colours",
+            &[
+                (pick("Dark", 1), &black, ""),
+                (pick("Plain", 1), &plain, ""),
+            ],
+            &bom,
+        );
+        assert!(
+            text.contains("Dark x1: 2 layers, 50 x 40.5 mm, 1.6 mm thick, finish HASL lead-free, solder mask Black\n"),
+            "{text}"
+        );
+        assert!(
+            text.contains(
+                "Plain x1: 2 layers, 50 x 40.5 mm, 1.6 mm thick, finish HASL lead-free\n"
+            ),
+            "{text}"
         );
     }
 

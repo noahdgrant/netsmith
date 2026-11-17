@@ -899,6 +899,14 @@ fn process_of(model: &Model, nets: &[String], errors: &mut Vec<String>) -> Optio
             },
             copper_weight: number("stackup.copper_weight"),
             inner: None,
+            // The board's choice (issue #771): a variant's name, or nothing where it says none.
+            mask_colour: match model.field_at("process.stackup.mask_colour") {
+                Some(f) => match &model.field(f).domain {
+                    Domain::Text(t) if !t.is_empty() => Some(t.clone()),
+                    _ => None,
+                },
+                None => None,
+            },
         },
     };
     // The finish is one of the process's offer (issue #842): a word in the list `.finishes`,
