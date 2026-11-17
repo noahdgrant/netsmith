@@ -11,6 +11,10 @@ _Avoid_: Array, capacitor slots (`cap_a`, `cap_b`), parallel group, multiplier, 
 **Bias**:
 The DC voltage across a part: a capacitor, a diode, a Zener or a TVS diode. A part with a `.bias` and a `bridge` placed between a rail's `pos` and `neg` has the rail's voltage as its `.bias` without being told; a design states `.bias` only for a part that is across no rail. A diode's bias is the voltage in the direction it blocks, and it is negative when the diode is wired to conduct (see **Bridge voltage**).
 
+**Blind via**:
+A via that joins an outer layer to an inner one and goes no further: on an HDI process (issue #1015), the laser-drilled via from an outer layer to the layer under it, through one dielectric layer, which the board file writes as KiCad's `micro` via. Its copper and its hole are on its own layers only, so the layers past it keep their room. See _Via span_.
+_Avoid_: Microvia (KiCad's word for its type, not netsmith's), partial via
+
 **Board**:
 One physical PCB, described as a manufacturing process, parts, and the modules placed on it.
 _Avoid_: Design (for the board itself: _Design_ is the `netsmith_core::Design` that the design stage makes, and the word for that stage), PCB
@@ -45,6 +49,9 @@ _Avoid_: Buck module, power stage
 **Build-up**:
 How a board of more than two layers is pressed together, the fabricator's named build (`JLC06161H-3313`): the inner copper and each _Dielectric layer_ from the top, `.stackup.dielectric1` to `.dielectricN` (ADR 0111).
 _Avoid_: Lamination, stack-up (for this; the _Stackup_ is the whole)
+
+**Buried via**:
+A via that joins two inner layers and reaches neither outer one: on an HDI process with `.buried_vias &= "core"` (issue #1015), the mechanically drilled via through the core, between the inner layers the build-up layers end on, which the fabricator plugs with resin and caps. See _Via span_.
 
 **Bus**:
 The interfaces of one definition that share a net: the processor's `spi` and a flash's `spi` are one bus because `sclk` is on one net. The limit of a role is counted for a bus (ADR 0064). The editor's schematic draws the members of a bus's interfaces as one thick line (_Bus drawing_).

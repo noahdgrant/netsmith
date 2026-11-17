@@ -194,6 +194,29 @@ mod tests {
     }
 
     #[test]
+    fn the_fab_notes_say_the_board_is_ordered_as_hdi() {
+        let mut board = hdi_board();
+        board.vias.push(Via {
+            net: "GND".into(),
+            at: crate::Pt::new(5.0, 5.0),
+            diameter: 0.25,
+            drill: 0.1,
+            span: span(CopperLayer::Front, CopperLayer::Inner(1)),
+        });
+        let notes = board.process_extras();
+        let hdi = notes.iter().find(|n| n.starts_with("HDI: ")).expect("an HDI note");
+        assert!(
+            hdi.contains("6-layer board of order 1 with the build-up `HDI-6L-1.2`")
+                && hdi.contains("1 blind via(s)")
+                && hdi.contains("0 buried via(s)")
+                && hdi.contains("F.Cu-In1.Cu, In4.Cu-B.Cu, In1.Cu-In4.Cu"),
+            "{hdi}"
+        );
+        let six = crate::board::tests::six_layer_board();
+        assert!(!six.process_extras().iter().any(|n| n.starts_with("HDI")));
+    }
+
+    #[test]
     fn a_routes_file_keeps_a_blind_vias_layers() {
         let mut board = hdi_board();
         let net = board.nets[0].name.clone();

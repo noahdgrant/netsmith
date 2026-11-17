@@ -393,6 +393,33 @@ impl Board {
                 self.process.via_in_pad
             ));
         }
+        // An HDI board is ordered from the fabricator's HDI service, with its own build-up
+        // (issue #1015).
+        if let Some(hdi) = &self.process.hdi {
+            let (mut blind, mut buried) = (0, 0);
+            for v in &self.vias {
+                match v.span {
+                    Some(s) if s.is_blind() => blind += 1,
+                    Some(_) => buried += 1,
+                    None => {}
+                }
+            }
+            let spans: Vec<String> = self
+                .via_offers()
+                .iter()
+                .filter_map(|o| o.span)
+                .map(|s| format!("{}-{}", s.from.name(), s.to.name()))
+                .collect();
+            extras.push(format!(
+                "HDI: order it from {}'s HDI service as a {}-layer board of order {} with the build-up `{}` the board states, which {} confirms before it makes the board; {blind} blind via(s), laser drilled and filled and planarized by plating, and {buried} buried via(s), resin plugged and capped, of the spans {}; each span has its own drill file",
+                self.process.fabricator,
+                self.process.stackup.layers,
+                hdi.order,
+                self.process.stackup.inner.as_ref().map_or("", |i| i.build.as_str()),
+                self.process.fabricator,
+                spans.join(", ")
+            ));
+        }
         // What a track's impedance is on each layer, from the recorded build-up (issue #759).
         extras.extend(crate::impedance::impedance_notes(
             &self.process.stackup,
