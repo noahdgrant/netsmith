@@ -193,7 +193,7 @@ function JobItem() {
   );
 }
 
-/** A run the editor did not start (`netsmith fab --to-editor` in a terminal, issue 764): its last line and its time while it
+/** A run the editor did not start (`netsmith board fab --to-editor` in a terminal, issue 764): its last line and its time while it
  * runs, and how it ended until it is closed or another begins. */
 function OutsideItem({ run }: { run: OutsideRun }) {
   const elapsed = useElapsed(run.ended ? null : run.started);

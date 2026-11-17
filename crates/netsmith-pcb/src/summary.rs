@@ -1,5 +1,5 @@
 //! A placed board summed up as data (issue #773): what decides whether a placement is good,
-//! in one small document that a person or an agent reads in one go, where `board3d --json` and
+//! in one small document that a person or an agent reads in one go, where `dev board3d --format json` and
 //! the editor's scene give the parts one by one.
 //!
 //! The numbers are the ones the placer and the checks use, so that a person, an agent and the

@@ -29,7 +29,7 @@ Another project that a project reads, named by an entry of the `[dependencies]` 
 _Avoid_: Package (a package is a part's case), library (a library is KiCad's, of symbols or footprints), crate, external project
 
 **Dependency lock**:
-`dependencies.lock.toml` beside `netsmith.toml`: the commit each dependency by git was read at, written by `build` and `fab` when it does not exist, rewritten by `netsmith lock --update` and checked by `lock --check` (ADR 0137, proposed). A build reads the locked commit from the cache, so a moved branch changes nothing until the lock is updated.
+`dependencies.lock.toml` beside `netsmith.toml`: the commit each dependency by git was read at, written by `build` and `fab` when it does not exist, rewritten by `netsmith project lock --update` and checked by `project lock --check` (ADR 0137, proposed). A build reads the locked commit from the cache, so a moved branch changes nothing until the lock is updated.
 _Avoid_: Lockfile (Cargo's word), pick lock (that is a source's `<stem>.lock.toml`, of catalog rows), manifest lock
 
 **Derived figure**:
@@ -68,5 +68,5 @@ The current taken from a net: by a rail through its `pos` pin on behalf of whate
 _Avoid_: Load current (as a field name), sink, source
 
 **DXF import**:
-`netsmith dxf import <file.dxf>`, which reads the outline, the loops inside it and the circles on a holes layer from an enclosure's ASCII DXF and prints an `Outline`, `Cutout`s and `MountingHole`s as source to paste; `--write` puts them in the `case` section of the physical file (ADR 0045, ADR 0048). An outline that is not a rectangle with equal rounded corners is printed as a `polygon`; a cutout of another shape than a rounded rectangle, a slot or a circle is refused.
+`netsmith import dxf <file.dxf>`, which reads the outline, the loops inside it and the circles on a holes layer from an enclosure's ASCII DXF and prints an `Outline`, `Cutout`s and `MountingHole`s as source to paste; `--write` puts them in the `case` section of the physical file (ADR 0045, ADR 0048). An outline that is not a rectangle with equal rounded corners is printed as a `polygon`; a cutout of another shape than a rounded rectangle, a slot or a circle is refused.
 _Avoid_: Enclosure read

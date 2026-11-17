@@ -31,7 +31,7 @@ pub struct Port {
     /// The folder of the example (`examples/<folder>`).
     pub folder: &'static str,
     /// The original's board file in `reference/`, or `None` when the port holds its derived
-    /// tables instead (`reference/netlist.xml`, written by `netsmith port tables`, #560).
+    /// tables instead (`reference/netlist.xml`, written by `netsmith import port tables`, #560).
     pub board: Option<&'static str>,
     /// The name the messages give the original (`Easyduino has [...]`).
     pub original: &'static str,
@@ -283,7 +283,7 @@ impl Port {
         )
     }
 
-    /// `netsmith-netlist`'s `compare` (what `netsmith compare` runs) of the design's wiring and
+    /// `netsmith-netlist`'s `compare` (what `netsmith board compare` runs) of the design's wiring and
     /// the original's, with the parts paired by `parts.toml`.
     pub fn compare(&self, built: &netsmith_pipeline::Built) -> Outcome {
         let pairs = self

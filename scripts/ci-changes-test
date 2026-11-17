@@ -205,7 +205,7 @@ row "1 1 1 1 1 1" crates/netsmith-kicad/src/symbols.rs
 row "1 1 1 1 1 1" crates/netsmith-core/src/lib.rs crates/netsmith-design/src/lib.rs
 row "1 1 1 1 1 1" crates/netsmith-core/src/lib.rs
 row "1 1 1 1 1 1" crates/netsmith-design/src/lib.rs
-# After the solver: `netsmith lock` runs none of it, so `locks` stays off (a pick lock is solver output).
+# After the solver: `netsmith project lock` runs none of it, so `locks` stays off (a pick lock is solver output).
 # The design stage loads footprints (netsmith-pcb, on netsmith-fab), so a design can move with them:
 # `designs` stays on for those two, and off for the placer, the router and the netlist, which come
 # after it.
@@ -256,7 +256,7 @@ row "1 1 0 0 0 0" crates/netsmith-router/tests/main.rs
 row "1 1 0 0 0 0" crates/netsmith-router/tests/drc_kit/mod.rs
 # The 3D scene (issue #518): in the binary and the editor's 3D view, and no test of it asks for KiCad.
 row "1 0 1 1 0 0" crates/netsmith-3d/src/gltf.rs
-# `netsmith render`'s drawing (it was a file of the retired netsmith crate): the 3D crate's, after the design stage, with the recipes.
+# `netsmith view 3d`'s drawing (it was a file of the retired netsmith crate): the 3D crate's, after the design stage, with the recipes.
 row "1 0 1 1 0 0" crates/netsmith-3d/src/render.rs
 row "1 0 1 1 0 0" crates/netsmith-3d/Cargo.toml
 row "1 0 0 0 0 0" crates/netsmith-3d/tests/scene3d.rs

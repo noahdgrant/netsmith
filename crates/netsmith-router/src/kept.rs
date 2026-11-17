@@ -1,6 +1,6 @@
 //! The router's copper kept on disk (ADR 0030, issue #1019): what partial routing
 //! ([`crate::carry`]) starts from in a later editor session, after `netsmith layout regenerate`,
-//! and in `fab --reuse-routes`.
+//! and in `board fab --reuse-routes`.
 //!
 //! A [`Kept`] is one routed board's router copper (the tracks and vias after the routes file's,
 //! [`netsmith_pcb::Board::fixed`]), net by net with each net's [`pad_hash`], the place, turn and

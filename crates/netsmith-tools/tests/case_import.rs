@@ -1,4 +1,4 @@
-//! `netsmith case import` (ADR 0109 "Left open"): the outline, cutouts and mounting holes of an
+//! `netsmith import case model` (ADR 0109 "Left open"): the outline, cutouts and mounting holes of an
 //! invented case (`netsmith-3d/tests/models/case_box.step`, written for these tests: a wall
 //! round a 60 x 40 mm pocket with a rib, a pin and a block standing through the board's plane,
 //! and two standoffs below it) become source that the fab pipeline accepts.
@@ -26,7 +26,7 @@ fn the_section_at_the_board_prints_the_outline_with_its_rib_cutouts_and_holes() 
     let imported = import(CASE_BOX, "case_box.step", &with_holes()).unwrap();
     let text = render(&imported, Some("Boxed"), "case_box.step", false);
     assert!(
-        text.starts_with("// Imported from case_box.step by `netsmith case import`.\n"),
+        text.starts_with("// Imported from case_box.step by `netsmith import case model`.\n"),
         "{text}"
     );
     assert!(text.contains("physical for Boxed {"), "{text}");

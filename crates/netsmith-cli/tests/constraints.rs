@@ -84,7 +84,7 @@ fn run_fab(name: &str, manifest: &str, args: &[&str]) -> std::process::Output {
     fs::write(root.join("src/main.physical.nsm"), PHYSICAL).unwrap();
     fs::write(root.join("src/main.pcb.toml"), MOVED).unwrap();
     std::process::Command::new(env!("CARGO_BIN_EXE_netsmith"))
-        .arg("fab")
+        .args(["board", "fab"])
         .args(args)
         .args(["--out", "fab"])
         .current_dir(&root)
@@ -260,7 +260,7 @@ fn locks_that_overlap_are_conflicts_and_faults_as_data_in_fab_and_board3d() {
         "locked-over-fab",
         LOCKED_PHYSICAL,
         LOCKED_OVER,
-        &["fab", "--format", "json", "--out", "fab"],
+        &["board", "fab", "--format", "json", "--out", "fab"],
     );
     assert!(!run.status.success());
     let doc: serde_json::Value = serde_json::from_slice(&run.stdout)
@@ -295,12 +295,12 @@ fn locks_that_overlap_are_conflicts_and_faults_as_data_in_fab_and_board3d() {
         .unwrap_or_else(|| panic!("{finding}"));
     assert!(fault["area"].as_f64().unwrap() > 0.0, "{fault}");
 
-    // `board3d --json` has the same lists for the board it places.
+    // `dev board3d --format json` has the same lists for the board it places.
     let run = run_in(
         "locked-over-board3d",
         LOCKED_PHYSICAL,
         LOCKED_OVER,
-        &["board3d", "--json"],
+        &["dev", "board3d", "--format", "json"],
     );
     let doc: serde_json::Value = serde_json::from_slice(&run.stdout)
         .unwrap_or_else(|e| panic!("{e}: {}", String::from_utf8_lossy(&run.stderr)));
@@ -323,7 +323,7 @@ fn board3d_reports_a_lock_that_breaks_a_requirement_with_the_layout_and_ends_wit
         "refused-board3d",
         LOCKED_PHYSICAL,
         layout,
-        &["board3d", "--json"],
+        &["dev", "board3d", "--format", "json"],
     );
     assert_eq!(run.status.code(), Some(1), "{}", String::from_utf8_lossy(&run.stderr));
     let doc: serde_json::Value = serde_json::from_slice(&run.stdout)
@@ -349,7 +349,7 @@ fn fab_json_has_the_requirements_and_faults_of_a_lock_that_breaks_a_requirement(
         "refused-fab",
         LOCKED_PHYSICAL,
         layout,
-        &["fab", "--format", "json", "--out", "fab"],
+        &["board", "fab", "--format", "json", "--out", "fab"],
     );
     assert!(!run.status.success());
     let doc: serde_json::Value = serde_json::from_slice(&run.stdout)
@@ -378,7 +378,7 @@ fn fab_json_has_the_part_too_big_for_the_outline_as_data() {
         "too-big-fab",
         &physical,
         "version = 1\n",
-        &["fab", "--format", "json", "--out", "fab"],
+        &["board", "fab", "--format", "json", "--out", "fab"],
     );
     assert!(!run.status.success());
     let doc: serde_json::Value = serde_json::from_slice(&run.stdout)
@@ -404,7 +404,7 @@ fn board3d_ends_with_1_for_a_placed_board_whose_courtyards_overlap() {
         "unlocked-over-board3d",
         LOCKED_PHYSICAL,
         UNLOCKED_OVER,
-        &["board3d", "--json"],
+        &["dev", "board3d", "--format", "json"],
     );
     let stderr = String::from_utf8_lossy(&run.stderr);
     assert_eq!(run.status.code(), Some(1), "{stderr}");
@@ -461,7 +461,7 @@ fn layout_fit_gives_the_nearest_place_clear_of_the_others_and_writes_nothing() {
     assert_eq!(first["fits"], true, "{doc}");
     let x = first["at"][0].as_f64().unwrap();
     assert!(x <= 30.0, "{first}");
-    // Put there, `layout check` and `board3d` find nothing about it.
+    // Put there, `layout check` and `dev board3d` find nothing about it.
     let at = format!("{},{}", x, first["at"][1].as_f64().unwrap());
     let turn = first["turn"].as_f64().unwrap().to_string();
     let side = first["side"].as_str().unwrap();
@@ -536,7 +536,7 @@ fn build_json_has_the_place_findings_with_the_lines_their_windows_and_the_faults
         "build-place-overlap",
         &physical,
         "version = 1\n",
-        &["build", "--format", "json", "--out", "out"],
+        &["board", "build", "--format", "json", "--out", "out"],
     );
     assert!(!run.status.success());
     let doc: serde_json::Value = serde_json::from_slice(&run.stdout)
@@ -576,7 +576,7 @@ fn build_json_has_the_part_too_big_and_a_refused_lock_as_place_findings_with_dat
         "build-place-too-big",
         &physical,
         "version = 1\n",
-        &["build", "--format", "json", "--out", "out"],
+        &["board", "build", "--format", "json", "--out", "out"],
     );
     assert!(!run.status.success());
     let doc: serde_json::Value = serde_json::from_slice(&run.stdout)
@@ -602,7 +602,7 @@ fn build_json_has_the_part_too_big_and_a_refused_lock_as_place_findings_with_dat
         "build-place-lock",
         LOCKED_PHYSICAL,
         layout,
-        &["build", "--format", "json", "--out", "out"],
+        &["board", "build", "--format", "json", "--out", "out"],
     );
     assert!(!run.status.success());
     let doc: serde_json::Value = serde_json::from_slice(&run.stdout)
@@ -631,7 +631,7 @@ fn constraints_warn_makes_the_lines_that_cannot_hold_a_place_warning_with_data()
         "constraints = \"warn\"",
         &physical,
         "version = 1\n",
-        &["build", "--format", "json", "--out", "out"],
+        &["board", "build", "--format", "json", "--out", "out"],
     );
     let stderr = String::from_utf8_lossy(&run.stderr).to_string();
     let doc: serde_json::Value = serde_json::from_slice(&run.stdout)

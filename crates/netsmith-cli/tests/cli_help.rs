@@ -55,13 +55,13 @@ fn help_lists_every_command_on_stdout_and_exits_zero() {
 fn a_commands_help_lists_its_usage_and_every_flag_it_takes() {
     let all = commands();
     for name in [
-        "build",
-        "fab",
-        "route",
+        "board build",
+        "board fab",
+        "dev route",
         "catalog refresh",
-        "dxf import",
-        "kicad-libs import",
-        "kicad-libs models",
+        "import dxf",
+        "import kicad-libs libraries",
+        "import kicad-libs models",
     ] {
         assert!(all.iter().any(|(path, _)| path.join(" ") == name), "{name}");
     }
@@ -97,7 +97,7 @@ fn a_commands_help_lists_its_usage_and_every_flag_it_takes() {
             }
         }
     }
-    let fab = String::from_utf8_lossy(&netsmith(&["fab", "--help"]).stdout).to_string();
+    let fab = String::from_utf8_lossy(&netsmith(&["board", "fab", "--help"]).stdout).to_string();
     for word in [
         "--cross-check",
         "--pins <PINS>",
@@ -108,7 +108,7 @@ fn a_commands_help_lists_its_usage_and_every_flag_it_takes() {
     ] {
         assert!(fab.contains(word), "{word}: {fab}");
     }
-    let build = String::from_utf8_lossy(&netsmith(&["build", "--help"]).stdout).to_string();
+    let build = String::from_utf8_lossy(&netsmith(&["board", "build", "--help"]).stdout).to_string();
     for word in [
         "note.not_stated",
         "summary",
@@ -124,12 +124,12 @@ fn a_mistake_exits_two_with_the_error_on_stderr() {
     for args in [
         &["frobnicate"][..],
         &[],
-        &["build", "--bogus"],
-        &["build", "a.nsm", "b.nsm"],
-        &["lock"],
-        &["lock", "--update", "--check"],
-        &["render", "--ortho", "--perspective"],
-        &["view", "--theme", "dark"],
+        &["board", "build", "--bogus"],
+        &["board", "build", "a.nsm", "b.nsm"],
+        &["project", "lock"],
+        &["project", "lock", "--update", "--check"],
+        &["view", "3d", "--ortho", "--perspective"],
+        &["view", "editor-3d", "--theme", "dark"],
     ] {
         let out = netsmith(args);
         assert_eq!(out.status.code(), Some(2), "{args:?}");
@@ -141,6 +141,29 @@ fn a_mistake_exits_two_with_the_error_on_stderr() {
         text.contains("frobnicate") && text.contains("--help"),
         "{text}"
     );
+}
+
+#[test]
+fn a_command_of_an_earlier_release_names_the_one_to_write_and_exits_two() {
+    for (args, says) in [
+        (&["build", "a.nsm"][..], "write: netsmith board build a.nsm"),
+        (&["fab", "--order", "kit"], "write: netsmith project order kit"),
+        (&["init", "--refresh"], "write: netsmith project refresh"),
+        (&["render", "--out", "a.png"], "write: netsmith view 3d --picture a.png"),
+        (&["editor", "--port", "0"], "write: netsmith view editor --port 0"),
+        (&["view", "--board", "X"], "write: netsmith view editor-3d --board X"),
+        (&["dxf", "import", "a.dxf"], "write: netsmith import dxf a.dxf"),
+        (&["layout", "show", "--into", "a.nsm"], "write: netsmith layout show --file a.nsm"),
+    ] {
+        let out = netsmith(args);
+        assert_eq!(out.status.code(), Some(2), "{args:?}");
+        assert!(out.stdout.is_empty(), "{args:?}");
+        let text = String::from_utf8_lossy(&out.stderr);
+        assert!(
+            text.contains(says) && text.contains("is now") && text.contains("docs/MIGRATING.md"),
+            "{args:?}: {text}"
+        );
+    }
 }
 
 #[test]

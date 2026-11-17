@@ -18,7 +18,7 @@ fn project(label: &str) -> TempDir {
 fn build(cwd: &Path, timings: Option<&str>) -> std::process::Output {
     let mut command = Command::new(env!("CARGO_BIN_EXE_netsmith"));
     command
-        .arg("build")
+        .args(["board", "build"])
         .current_dir(cwd)
         .env("KICAD_CLI", "/nonexistent/kicad-cli")
         .env("NETSMITH_KICAD_SYMBOLS", netsmith_testkit::sample_symbols())

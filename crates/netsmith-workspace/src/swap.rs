@@ -8,7 +8,7 @@
 //! refused, with the reason, where one edit would not change this part alone: the value stated
 //! in more than one place, in a definition other parts share, in a board's `defaults`, or in the
 //! standard library. When the source has a pick lock, the part takes a new pick in it and the
-//! other parts stay on their rows (`lock --update --part`, ADR 0100).
+//! other parts stay on their rows (`project lock --update --part`, ADR 0100).
 
 use std::collections::HashMap;
 use std::fs;

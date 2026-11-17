@@ -1,4 +1,4 @@
-//! The PCB that `netsmith fab` writes for ORBIT (`examples/orbit/`) against the original's, as
+//! The PCB that `netsmith board fab` writes for ORBIT (`examples/orbit/`) against the original's, as
 //! the parity checker (`netsmith_tools::parity`) judges it: the gate of the port's board stage. The
 //! checker itself is tested in `rp2350_parity.rs`, on the RP2350A Minimal; this file only builds
 //! ORBIT and gates on the must-match items of `reference/must_match.toml`.

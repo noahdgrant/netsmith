@@ -1,5 +1,5 @@
 //! Structured and quiet output for agents (#455): `--format json`, `--notes`, `check`, `fab
-//! --quiet`, `compare --format json` and the `parity` command.
+//! --quiet`, `board compare --format json` and the `parity` command.
 
 use std::{fs, path::Path, process::Command};
 
@@ -40,7 +40,7 @@ fn two_buck(label: &str) -> TempDir {
         );
     assert!(source.contains(".sense.top"), "the example changed");
     fs::write(root.join("two_buck.nsm"), source).unwrap();
-    let run = netsmith(&root, &["lock", "--update"]);
+    let run = netsmith(&root, &["project", "lock", "--update"]);
     assert!(run.status.success(), "{}", stderr(&run));
     root
 }
@@ -89,7 +89,7 @@ fn note_lines(text: &str) -> Vec<&str> {
 fn check_writes_nothing_and_prints_the_findings_only() {
     let root = two_buck("output-check");
     let lock = fs::read(root.join("two_buck.lock.toml")).unwrap();
-    let run = netsmith(&root, &["check"]);
+    let run = netsmith(&root, &["board", "check"]);
     assert!(run.status.success(), "{}", stderr(&run));
     // No bill of materials, no `wrote`.
     assert!(
@@ -102,7 +102,7 @@ fn check_writes_nothing_and_prints_the_findings_only() {
     assert_eq!(fs::read(root.join("two_buck.lock.toml")).unwrap(), lock);
     // A check with no lock beside it writes none either.
     fs::remove_file(root.join("two_buck.lock.toml")).unwrap();
-    assert!(netsmith(&root, &["check"]).status.success());
+    assert!(netsmith(&root, &["board", "check"]).status.success());
     assert!(!root.join("two_buck.lock.toml").exists());
 }
 
@@ -112,10 +112,10 @@ fn a_board_that_does_not_build_is_exit_one_and_a_finding_with_its_stage_and_plac
     let broken = LED.replacen(".r1: Resistor", ".r1: Resistr", 1);
     assert_ne!(broken, LED);
     fs::write(root.join("src/main.nsm"), broken).unwrap();
-    let run = netsmith(&root, &["check"]);
+    let run = netsmith(&root, &["board", "check"]);
     assert_eq!(run.status.code(), Some(1), "{}", stderr(&run));
     assert!(stderr(&run).contains("error:"), "{}", stderr(&run));
-    let run = netsmith(&root, &["check", "--format", "json"]);
+    let run = netsmith(&root, &["board", "check", "--format", "json"]);
     assert_eq!(run.status.code(), Some(1));
     let doc = json(&run);
     assert_eq!(doc["command"], "check");
@@ -137,10 +137,10 @@ fn a_board_that_does_not_build_is_exit_one_and_a_finding_with_its_stage_and_plac
 #[test]
 fn notes_summary_counts_the_notes_by_cause_and_none_leaves_them_out() {
     let root = two_buck("output-notes");
-    let all = stderr(&netsmith(&root, &["check", "--notes", "all"]));
+    let all = stderr(&netsmith(&root, &["board", "check", "--notes", "all"]));
     let listed = note_lines(&all).len();
     assert!(listed > 1, "{all}");
-    let summary = stderr(&netsmith(&root, &["check", "--notes", "summary"]));
+    let summary = stderr(&netsmith(&root, &["board", "check", "--notes", "summary"]));
     let lines = note_lines(&summary);
     assert_eq!(lines.len(), 1, "{summary}");
     assert!(
@@ -149,7 +149,7 @@ fn notes_summary_counts_the_notes_by_cause_and_none_leaves_them_out() {
             && lines[0].ends_with("(`--notes all` lists them)"),
         "{summary}"
     );
-    let none = stderr(&netsmith(&root, &["check", "--notes", "none"]));
+    let none = stderr(&netsmith(&root, &["board", "check", "--notes", "none"]));
     assert!(note_lines(&none).is_empty(), "{none}");
     // The warnings stay whatever `--notes` says.
     assert!(none.contains("warning: TwoBuck:"), "{none}");
@@ -158,8 +158,8 @@ fn notes_summary_counts_the_notes_by_cause_and_none_leaves_them_out() {
 #[test]
 fn json_lists_the_notes_with_their_cause_or_counts_them() {
     let root = two_buck("output-json-notes");
-    let listed = note_lines(&stderr(&netsmith(&root, &["check"]))).len();
-    let doc = json(&netsmith(&root, &["check", "--format", "json"]));
+    let listed = note_lines(&stderr(&netsmith(&root, &["board", "check"]))).len();
+    let doc = json(&netsmith(&root, &["board", "check", "--format", "json"]));
     assert_eq!(doc["ok"], true);
     assert_eq!(doc["boards"][0]["board"], "TwoBuck");
     let findings = doc["findings"].as_array().unwrap();
@@ -185,7 +185,7 @@ fn json_lists_the_notes_with_their_cause_or_counts_them() {
     // `summary` keeps the counts and leaves the notes out of the findings.
     let doc = json(&netsmith(
         &root,
-        &["check", "--format", "json", "--notes", "summary"],
+        &["board", "check", "--format", "json", "--notes", "summary"],
     ));
     assert_eq!(doc["notes"]["total"], listed);
     assert!(
@@ -200,7 +200,7 @@ fn json_lists_the_notes_with_their_cause_or_counts_them() {
 #[test]
 fn build_as_json_says_what_it_wrote_and_prints_nothing_else_on_stdout() {
     let root = led("output-build-json");
-    let run = netsmith(&root, &["build", "--format", "json"]);
+    let run = netsmith(&root, &["board", "build", "--format", "json"]);
     assert!(run.status.success(), "{}", stderr(&run));
     let doc = json(&run);
     assert_eq!(doc["command"], "build");
@@ -216,9 +216,9 @@ fn build_as_json_says_what_it_wrote_and_prints_nothing_else_on_stdout() {
 #[test]
 fn fab_quiet_prints_the_result_and_not_the_stages() {
     let root = led("output-fab-quiet");
-    let loud = netsmith(&root, &["fab"]);
+    let loud = netsmith(&root, &["board", "fab"]);
     assert!(loud.status.success(), "{}", stderr(&loud));
-    let quiet = netsmith(&root, &["fab", "--quiet"]);
+    let quiet = netsmith(&root, &["board", "fab", "--quiet"]);
     assert!(quiet.status.success(), "{}", stderr(&quiet));
     assert!(String::from_utf8_lossy(&quiet.stdout).contains("wrote "));
     // Every line of a quiet run's stderr is a finding or the notes before ordering, and it
@@ -230,7 +230,7 @@ fn fab_quiet_prints_the_result_and_not_the_stages() {
         stderr(&loud)
     );
     assert!(!said.contains("routing"), "{said}");
-    let doc = json(&netsmith(&root, &["fab", "--format", "json"]));
+    let doc = json(&netsmith(&root, &["board", "fab", "--format", "json"]));
     assert_eq!(doc["command"], "fab");
     assert_eq!(doc["ok"], true);
     assert!(
@@ -247,7 +247,7 @@ fn compare_as_json_says_match_and_the_pairs() {
     let run = netsmith(
         &root,
         &[
-            "compare",
+            "board", "compare",
             "two_buck.nsm",
             "two_buck.nsm",
             "--format",
@@ -263,12 +263,12 @@ fn compare_as_json_says_match_and_the_pairs() {
 }
 
 /// `fab` writes the member path of each part on its footprint as a hidden property
-/// (`netsmith_path`, #456), so that `netsmith parity` pairs a port's parts by it, with no build.
+/// (`netsmith_path`, #456), so that `netsmith dev parity` pairs a port's parts by it, with no build.
 #[test]
 fn fab_writes_the_member_path_of_each_footprint() {
     use netsmith_kicad::{Sexp};
     let root = led("output-fab-path");
-    let run = netsmith(&root, &["fab", "--quiet"]);
+    let run = netsmith(&root, &["board", "fab", "--quiet"]);
     assert!(run.status.success(), "{}", stderr(&run));
     let pcb = fs::read_to_string(root.join("fab/LedExample/LedExample.kicad_pcb")).unwrap();
     let board = Sexp::parse(&pcb).unwrap();
@@ -298,7 +298,7 @@ fn fab_writes_the_member_path_of_each_footprint() {
 }
 
 /// The charger's reference board with the member path of each part of `reference/parts.toml`
-/// on its footprint, as `fab` writes it: the board that `netsmith parity` pairs part by part.
+/// on its footprint, as `fab` writes it: the board that `netsmith dev parity` pairs part by part.
 fn charger_reference_with_paths() -> String {
     let reference = examples().join("power_manifold_charger/reference");
     let parts = netsmith_tools::port::PortParts::read(&reference.join("parts.toml")).unwrap();
@@ -326,7 +326,8 @@ fn parity_is_a_command_with_a_json_report() {
     let table = reference.join("placements.toml");
     let args = |format: &'static str| {
         vec![
-            "parity".to_string(),
+            "dev".to_string(),
+            "parity".into(),
             pcb.display().to_string(),
             "--table".into(),
             table.display().to_string(),
@@ -379,7 +380,7 @@ fn parity_is_a_command_with_a_json_report() {
     // A file that is not there is exit 2.
     let missing = Command::new(env!("CARGO_BIN_EXE_netsmith"))
         .args([
-            "parity",
+            "dev", "parity",
             "nowhere.kicad_pcb",
             "--table",
             "x.toml",
@@ -393,7 +394,7 @@ fn parity_is_a_command_with_a_json_report() {
     // A board that holds no member paths (the original, or one that an older `fab` wrote) is
     // refused, exit 2, with what to do.
     let original = Command::new(env!("CARGO_BIN_EXE_netsmith"))
-        .arg("parity")
+        .args(["dev", "parity"])
         .arg(reference.join("charger-module.kicad_pcb"))
         .args(["--table", &table.display().to_string()])
         .args(["--parts", &parts.display().to_string()])
@@ -419,14 +420,14 @@ fn fab_lists_each_footprints_origin_and_its_offset_from_the_body() {
         "physical for LedExample {\n    .power_in.place.x &= 12mm\n    .power_in.place.y &= 9mm\n    .power_in.place.rotation &= 90\n}\n",
     )
     .unwrap();
-    let run = netsmith(&root, &["fab", "--quiet"]);
+    let run = netsmith(&root, &["board", "fab", "--quiet"]);
     assert!(run.status.success(), "{}", stderr(&run));
     let out = String::from_utf8_lossy(&run.stdout).to_string();
     assert!(
         out.contains(&format!("{}:\n", netsmith_pcb::ORIGINS_HEAD)),
         "{out}"
     );
-    let doc = json(&netsmith(&root, &["fab", "--format", "json"]));
+    let doc = json(&netsmith(&root, &["board", "fab", "--format", "json"]));
     let parts = doc["boards"][0]["parts"].as_array().unwrap();
     assert_eq!(parts.len(), 3, "{doc:#}");
     for p in parts {

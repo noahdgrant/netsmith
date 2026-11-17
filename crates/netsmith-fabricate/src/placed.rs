@@ -1,6 +1,6 @@
-//! A placed board saved to a file, and routed again from it alone: `netsmith fab
+//! A placed board saved to a file, and routed again from it alone: `netsmith board fab
 //! --save-placed` writes `<board>.placed.json` into the board's output folder, the board as
-//! placed just before it is routed, and `netsmith route <file>` routes that board the way
+//! placed just before it is routed, and `netsmith dev route <file>` routes that board the way
 //! `fab` does and writes the board files, with no checking, solving or placing first. It is a
 //! router tool, for experiments on the router: what it writes is not a fab package, and no
 //! design rules check is run on it.
@@ -58,7 +58,7 @@ pub fn from_json(text: &str) -> Result<PlacedFile, String> {
         serde_json::from_str(text).map_err(|e| format!("not a placed board: {e}"))?;
     if version.format != Some(FORMAT) {
         return Err(format!(
-            "a placed board of format {}, but this netsmith reads format {FORMAT}: save it again with `netsmith fab --save-placed`",
+            "a placed board of format {}, but this netsmith reads format {FORMAT}: save it again with `netsmith board fab --save-placed`",
             version
                 .format
                 .map_or("(none)".to_string(), |f| f.to_string())

@@ -1,4 +1,4 @@
-//! A case model cut by a plane parallel to the board (`netsmith case import`, ADR 0109 "Left
+//! A case model cut by a plane parallel to the board (`netsmith import case model`, ADR 0109 "Left
 //! open"): the closed curves the plane draws on each solid, and how deep each lies inside the
 //! others.
 //!

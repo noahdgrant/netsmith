@@ -52,7 +52,7 @@ interface Stackup {
     /// LED's `.color` is, and a board states it, `.process.stackup.mask_colour &= Color::Black`.
     /// It is a choice of the board, not a rule of the process, so no process states it; a board
     /// that does not is drawn and written as before (the 3D view's own mask tone, KiCad's
-    /// green). The 3D view, `render`, `board3d`'s glTF file and the board file's stackup draw
+    /// green). The 3D view, `view 3d`, `dev board3d`'s glTF file and the board file's stackup draw
     /// and write the mask in it, and `order.txt` names it. A colour the fabricator does not
     /// offer is the board's to check against its order form.
     .mask_colour: Color optional

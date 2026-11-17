@@ -1,4 +1,4 @@
-//! `fab --order` and the pick lock (ADR 0100, ADR 0035): an order holds the boards of each source
+//! `project order` and the pick lock (ADR 0100, ADR 0035): an order holds the boards of each source
 //! file it makes boards from to that file's lock, as `fab` on the file alone does, and `--locked`
 //! refuses a change before anything is made. These run the program, with the sample KiCad
 //! libraries and no KiCad.
@@ -55,7 +55,7 @@ fn netsmith(cwd: &Path, args: &[&str]) -> std::process::Output {
 }
 
 fn order(root: &Path, extra: &[&str]) -> std::process::Output {
-    let mut args = vec!["fab", "--order", "kit", "--allow-drc-violations"];
+    let mut args = vec!["project", "order", "kit", "--allow-drc-violations"];
     args.extend_from_slice(extra);
     netsmith(root, &args)
 }
@@ -75,7 +75,7 @@ fn bom_of(root: &Path, board: &str) -> String {
 /// Writes the locks of both files (what `build` writes) and holds `r1` of `stem` to `row`.
 fn locked_to(root: &Path, stem: &str, row: &str) {
     for file in ["src/led.nsm", "src/led2.nsm"] {
-        let run = netsmith(root, &["build", file]);
+        let run = netsmith(root, &["board", "build", file]);
         assert!(run.status.success(), "{}", stderr(&run));
     }
     let text = fs::read_to_string(lock(root, stem)).unwrap();
@@ -110,7 +110,7 @@ fn an_order_over_two_files_gets_the_rows_each_lock_holds() {
     for file in ["src/led.nsm", "src/led2.nsm"] {
         let alone = netsmith(
             &root,
-            &["fab", file, "--allow-drc-violations", "--out", "alone"],
+            &["board", "fab", file, "--allow-drc-violations", "--out", "alone"],
         );
         assert!(alone.status.success(), "{}", stderr(&alone));
     }
@@ -139,7 +139,7 @@ fn a_board_whose_file_has_no_lock_is_picked_and_locked_as_fab_does() {
     );
     let written = fs::read_to_string(lock(&root, "led2")).expect("an absent lock is written");
     let other = project("order-lock-mixed-fab");
-    let fab = netsmith(&other, &["fab", "src/led2.nsm", "--allow-drc-violations"]);
+    let fab = netsmith(&other, &["board", "fab", "src/led2.nsm", "--allow-drc-violations"]);
     assert!(fab.status.success(), "{}", stderr(&fab));
     assert_eq!(
         written,
@@ -174,7 +174,7 @@ fn locked_refuses_a_lock_that_does_not_exist_before_anything_is_written() {
 fn locked_refuses_a_stale_lock_and_leaves_every_file_alone() {
     let root = project("order-lock-stale");
     for file in ["src/led.nsm", "src/led2.nsm"] {
-        assert!(netsmith(&root, &["build", file]).status.success());
+        assert!(netsmith(&root, &["board", "build", file]).status.success());
     }
     // The first file's lock is current; the second's has lost the entry of `r1`, as when a
     // part was added to the board after the lock was written.

@@ -5,7 +5,7 @@
 //! else the courtyard, else the pads and a margin), and a port's parity check compares the
 //! footprint's origin. The offset between the two is fixed for a part on one face and turned
 //! one way, so a `.place.x` and `.place.y` that put the origin where it must be can be written
-//! once from it: `x - dx` and `y - dy`. `fab` lists it for every part, and `netsmith parity`
+//! once from it: `x - dx` and `y - dy`. `fab` lists it for every part, and `netsmith dev parity`
 //! for every part that must match.
 
 use crate::board::{Board, Placed, Side};

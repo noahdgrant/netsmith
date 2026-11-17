@@ -4,7 +4,7 @@ netsmith reads `.nsm` files. A file describes boards: the parts on them, the net
 
 This guide has a quick start, then one section for each construct of the language. Each section gives what the construct means, its syntax, a complete example, its rules, and the message you get when you misuse it. The last section lists the standard library.
 
-`netsmith init` copies this guide into a project: this page as `docs/netsmith/LANGUAGE.md` and the chapters into `docs/netsmith/language/`. Vocabulary is in `GLOSSARY.md` and the reasons for the design are in `docs/adr/`, in netsmith's source repository.
+`netsmith project init` copies this guide into a project: this page as `docs/netsmith/LANGUAGE.md` and the chapters into `docs/netsmith/language/`. Vocabulary is in `GLOSSARY.md` and the reasons for the design are in `docs/adr/`, in netsmith's source repository.
 
 ## The chapters
 

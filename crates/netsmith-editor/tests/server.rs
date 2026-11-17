@@ -2220,7 +2220,7 @@ fn view_state(board: &str) -> ViewState {
         colour_by: ColourBy::Provenance,
         height_preview: None,
         theme: "dark".into(),
-        command: Some("netsmith render src/main.nsm --board B --view iso".into()),
+        command: Some("netsmith view 3d src/main.nsm --board B --view iso".into()),
     }
 }
 

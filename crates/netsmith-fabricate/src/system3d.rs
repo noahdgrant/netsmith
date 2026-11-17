@@ -1,6 +1,6 @@
-//! `netsmith board3d --board System`: the _System scene_ (ADR 0110, `netsmith_3d::SystemScene`) of a
+//! `netsmith dev board3d --board System`: the _System scene_ (ADR 0110, `netsmith_3d::SystemScene`) of a
 //! system's boards placed against each other by their mates, as numbers. Each member is placed as
-//! `board3d --board System/member` places it, and its report is that command's; the members'
+//! `dev board3d --board System/member` places it, and its report is that command's; the members'
 //! motions, the mates with their mated heights and the findings across boards are added. The
 //! fields are described in `docs/BOARD3D.md`; [`SCHEMA`] counts the versions of the shape.
 

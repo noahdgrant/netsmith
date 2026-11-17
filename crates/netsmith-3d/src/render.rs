@@ -1,6 +1,6 @@
-//! `netsmith render`: the board's _Scene_ (ADR 0105) drawn to a PNG by netsmith's own
+//! `netsmith view 3d`: the board's _Scene_ (ADR 0105) drawn to a PNG by netsmith's own
 //! rasterizer ([`crate::raster3d`]), for an agent that can read a picture, a golden test and a
-//! person with no 3D viewer. The caller hands over the scene (the fab driver's `board3d` places
+//! person with no 3D viewer. The caller hands over the scene (the fab driver's `dev board3d` places
 //! the board as `fab` and the editor place it); nothing is routed, asked of KiCad or written but
 //! the PNG. The same source and options give the same bytes. `docs/BOARD3D.md`, "Pictures for
 //! agents", says what is drawn and in which frame.
@@ -46,7 +46,7 @@ impl CaseMode {
     }
 }
 
-/// What `netsmith render` was asked to draw.
+/// What `netsmith view 3d` was asked to draw.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Request {
     pub view: View,
@@ -127,7 +127,7 @@ pub fn parse_section(text: &str) -> Result<(Axis, f64), String> {
     Ok((axis, at))
 }
 
-/// The file `render` writes unless `--out` says one: `<board>-<view>.png`, a board of a system
+/// The file `view 3d` writes unless `--picture` says one: `<board>-<view>.png`, a board of a system
 /// (`System/member`) as `System-member`.
 pub fn default_out(label: &str, view: View) -> PathBuf {
     let board: String = label

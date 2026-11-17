@@ -381,7 +381,7 @@ impl Board {
         let mut extras = Vec::new();
         if self.process.is_fictional() {
             extras.push(format!(
-                "fictional fabricator: {} does not exist; its numbers were chosen, not sourced, and stand for no real fabricator's capability, so this package cannot be ordered (`fab --order` refuses it, ADR 0112)",
+                "fictional fabricator: {} does not exist; its numbers were chosen, not sourced, and stand for no real fabricator's capability, so this package cannot be ordered (`project order` refuses it, ADR 0112)",
                 self.process.fabricator
             ));
         }

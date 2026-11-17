@@ -82,4 +82,4 @@ name none, so each is drawn from its pin table as a box.
 
 ## Run it
 
-From this folder, `netsmith build` and `netsmith fab`.
+From this folder, `netsmith board build` and `netsmith board fab`.

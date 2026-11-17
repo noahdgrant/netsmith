@@ -1,4 +1,4 @@
-//! `netsmith compare` on the example boards, with no KiCad: a schematic is read from its files
+//! `netsmith board compare` on the example boards, with no KiCad: a schematic is read from its files
 //! (#855). The tests that hold that reading to KiCad's own (`kicad-cli sch export netlist`) skip
 //! when it is not installed, or is Windows KiCad that this shell cannot start (no `cmd.exe`, as
 //! under `systemd-run --user`).
@@ -170,7 +170,7 @@ fn a_resistor_of_another_value_is_found() {
     );
 }
 
-/// The netlist of the LED example as `netsmith build` sees it, which needs no KiCad.
+/// The netlist of the LED example as `netsmith board build` sees it, which needs no KiCad.
 fn led_netlist() -> Netlist {
     let built = build("led.nsm", LED, &Catalogs::jlcpcb()).unwrap();
     netlist_of_design(&built[0].design, &Libraries::sample().mapping).unwrap()

@@ -4,7 +4,7 @@ A netsmith project is a directory with a `netsmith.toml`. It can hold any number
 
 ## What a project is
 
-`netsmith init` makes the starting point:
+`netsmith project init` makes the starting point:
 
 ```text
 my-project/
@@ -33,12 +33,12 @@ Two more keys are optional, and orders (below) are tables beside `[project]`. `c
 
 ## Several boards in one project
 
-Every file in `top_level` can hold boards, a `system`, or both. `netsmith build` and `netsmith fab` with no file argument build all of them, and each board comes out in its own folder:
+Every file in `top_level` can hold boards, a `system`, or both. `netsmith board build` and `netsmith board fab` with no file argument build all of them, and each board comes out in its own folder:
 
 - a `board Name` writes `out/Name/` and `fab/Name/` (schematic, PCB, SVG, `bom.csv`, `cpl.csv`, `fab-notes.txt`, `Name-gerbers.zip`, `Name.glb` (the board's 3D scene; `glb = false` in `netsmith.toml` leaves it out), `Name.step` (the board as STEP; `step = false` leaves it out), and `Name.pins.h` and `Name.pins.json` when the board has pin requests);
 - a board placed in a `system Sys` as `.member: Name` writes `out/Sys/member/` and `fab/Sys/member/`, so two instances of one board design do not collide.
 
-Naming one file builds only that file's boards: `netsmith fab src/unit/unit.nsm`. To choose boards and quantities across files, use an order (below). The editor lists every board and system of the project in its tree.
+Naming one file builds only that file's boards: `netsmith board fab src/unit/unit.nsm`. To choose boards and quantities across files, use an order (below). The editor lists every board and system of the project in its tree.
 
 Modules are shared by importing them: `import src::modules::power::LdoStage` works from any file of the project.
 
@@ -46,7 +46,7 @@ Modules and catalogs are shared between projects (between repositories checked o
 
 A board's physical intent (its outline, cutouts, mounting holes, keepouts and where its parts must be, ADR 0048) is in a file beside its source with the same stem and the suffix `.physical.nsm`: `src/unit/unit.nsm` has `src/unit/unit.physical.nsm`, as the layout file is `unit.pcb.toml`. The file holds `physical for Board { ... }` units, is optional, and is not a module: nothing imports it.
 
-Beside a source, with the same stem, are also the files a run writes for it and you commit: the pick lock, `<stem>.lock.toml` (ADR 0100), and the pin file, `<stem>.pins.toml`, when the board requests pins. A part number a person chose for a part is in the source, as a narrowing (`.c1.lcsc &= "C307331"`, a hand pick, ADR 0122), and in no file of its own: a `<stem>.picks.toml` from an older netsmith is refused with the narrowings to write in its place. The examples of netsmith's own repository also commit a design file, `<stem>.design.json`: the designs of the file's boards as the design stage hands them to the placer, written by `netsmith build --emit-design`. The tests of the placer, the router and fab start from it, and CI fails when it is stale (`scripts/check-example-designs.sh`, which `--update` rewrites; read the diff before you commit it). A project of your own needs none.
+Beside a source, with the same stem, are also the files a run writes for it and you commit: the pick lock, `<stem>.lock.toml` (ADR 0100), and the pin file, `<stem>.pins.toml`, when the board requests pins. A part number a person chose for a part is in the source, as a narrowing (`.c1.lcsc &= "C307331"`, a hand pick, ADR 0122), and in no file of its own: a `<stem>.picks.toml` from an older netsmith is refused with the narrowings to write in its place. The examples of netsmith's own repository also commit a design file, `<stem>.design.json`: the designs of the file's boards as the design stage hands them to the placer, written by `netsmith board build --emit-design`. The tests of the placer, the router and fab start from it, and CI fails when it is stale (`scripts/check-example-designs.sh`, which `--update` rewrites; read the diff before you commit it). A project of your own needs none.
 
 ## Example: a development kit and a production unit
 
@@ -91,9 +91,9 @@ product-repo/
 
 with `top_level = ["src/devkit/devkit.nsm", "src/unit/unit.nsm"]` and the order `devkit` of the section below in `netsmith.toml`.
 
-- `netsmith fab` makes every package. `netsmith fab src/unit/unit.nsm` makes only the unit's. `netsmith fab --order devkit` makes the order below.
+- `netsmith board fab` makes every package. `netsmith board fab src/unit/unit.nsm` makes only the unit's. `netsmith project order devkit` makes the order below.
 - Each board of the development kit is a stand-alone board (its own `board`, its own process, its own outputs). `DevKit` only says which ports meet and checks voltages and currents across the joins.
-- The production unit and the development kit share `PowerStage` and `SensorBlock`; a change to a module shows up in both on the next build, and `netsmith compare` can show what changed.
+- The production unit and the development kit share `PowerStage` and `SensorBlock`; a change to a module shows up in both on the next build, and `netsmith board compare` can show what changed.
 
 ## Ordering boards: orders
 
@@ -106,7 +106,7 @@ A project's `fab` directory holds one package for every board. To order only som
 Unit = 10
 ```
 
-Each key is a board as its output folder is named: `Board`, or `System/member` for a board of a system. A system's name alone (`DevKit = 2`) means all its members, each that many times. The value is how many to order (1 or more; a board you do not order is left out). `netsmith fab --order` lists the orders, and `netsmith fab --order devkit` makes this one:
+Each key is a board as its output folder is named: `Board`, or `System/member` for a board of a system. A system's name alone (`DevKit = 2`) means all its members, each that many times. The value is how many to order (1 or more; a board you do not order is left out). `netsmith project order` lists the orders, and `netsmith project order devkit` makes this one:
 
 ```text
 fab/orders/devkit/
@@ -121,13 +121,13 @@ fab/orders/devkit/
 
 Only the boards named are made, and `--out <dir>` puts `orders/devkit/` under `<dir>`. An unknown board name stops the command with the manifest line and the boards that exist; an order folder from an earlier run is replaced. The combined bill of materials is the number of copies times the parts of each LCSC number on one board, with no overage: how many spares to buy is yours to decide. The editor's Build panel lists the orders and has a Make order button.
 
-A plain `netsmith fab` still makes every board of the project, and `netsmith fab src/unit/unit.nsm` the boards of one file.
+A plain `netsmith board fab` still makes every board of the project, and `netsmith board fab src/unit/unit.nsm` the boards of one file.
 
-An order does not route a board again that a plain `netsmith fab` has just made: when `fab/<board>/` holds the package of a plain `fab` run from the same inputs and none of its files has changed, the order copies it, and the last line of `netsmith fab --order` says how many boards were reused and how many stages ran (`reused 2 of 3 boards from a plain fab; 11 stages run`). Anything else (a changed source, catalog, layout or option, a rebuilt netsmith, a package edited by hand, a board of a system, a panel) makes the board again, and the progress says why.
+An order does not route a board again that a plain `netsmith board fab` has just made: when `fab/<board>/` holds the package of a plain `fab` run from the same inputs and none of its files has changed, the order copies it, and the last line of `netsmith project order` says how many boards were reused and how many stages ran (`reused 2 of 3 boards from a plain fab; 11 stages run`). Anything else (a changed source, catalog, layout or option, a rebuilt netsmith, a package edited by hand, a board of a system, a panel) makes the board again, and the progress says why.
 
 ### Panels
 
-An order is separate packages ordered together; a panel is one outline made from copies of a board (ADR 0040). A `panel Name { .cell: Board  .fab: VCutPanel { ... } }` next to the board in the same file repeats it in a V-cut grid, and a plain `netsmith fab` makes it with the boards:
+An order is separate packages ordered together; a panel is one outline made from copies of a board (ADR 0040). A `panel Name { .cell: Board  .fab: VCutPanel { ... } }` next to the board in the same file repeats it in a V-cut grid, and a plain `netsmith board fab` makes it with the boards:
 
 ```text
 fab/LedPanel/                  the panel: LedPanel-gerbers.zip (one Gerber set and drill file),
@@ -147,4 +147,4 @@ LedPanel = 3        # three panels: 18 boards if the panel holds six
 
 ## What is not in a repo
 
-`out/` and `fab/` are generated: keep them out of version control. `netsmith init` writes the `.gitignore` lines.
+`out/` and `fab/` are generated: keep them out of version control. `netsmith project init` writes the `.gitignore` lines.

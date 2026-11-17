@@ -40,11 +40,11 @@
 //! it. `INSERT` with mirroring, `MINSERT` arrays and a downward extrusion (a mirror) are read; a
 //! duplicate edge is counted once, with a warning. The user decided on 2026-11-02 that the reader
 //! keeps reading splines and ellipses as chords (within 0.005 mm) and does not refuse them. A hole
-//! is read as a circle with its diameter, and `netsmith dxf import` states it as `.diameter` of a
+//! is read as a circle with its diameter, and `netsmith import dxf` states it as `.diameter` of a
 //! `MountingHole`, whatever the size (issue #89).
 //! Tests: `crates/netsmith-dxf/tests/read.rs` (hand-written files for each of the cases) and
 //! `crates/netsmith-tools/tests/dxf.rs` (a rounded case with a slot and four holes through `fab`).
-//! An outline that is not a rounded rectangle is returned as it is; `netsmith dxf import` prints
+//! An outline that is not a rounded rectangle is returned as it is; `netsmith import dxf` prints
 //! it as a `polygon` (issue #57). Not done: datums other than mounting holes (a `PlatedHole`,
 //! fiducials, the screw-head clearance), and `--json` output.
 

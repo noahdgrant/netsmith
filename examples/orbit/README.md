@@ -5,7 +5,7 @@ regulator, to netsmith, as the second showcase after the RP2350A Minimal (epic #
 schematic is done:** `src/main.nsm` is the board `Orbit`, the circuit of their design with the
 same nets (proved by a test, see "The board"). **So is the board:** `src/main.physical.nsm` states
 the outline, the four plated holes and the places of the connectors, switches and buttons, and
-`netsmith fab` writes a 50 x 50 mm PCB that routes completely in about 10 s and that the parity
+`netsmith board fab` writes a 50 x 50 mm PCB that routes completely in about 10 s and that the parity
 checker finds equal to theirs in every must-match item (129 of 129, see "The result").
 
 ## Source
@@ -29,7 +29,7 @@ netsmith's** (MIT, like the rest of the repository).
 ## Goal
 
 The same as for the RP2350A Minimal: (1) the schematic of the port has the same nets as theirs,
-proved by a test; (2) a board made by `netsmith fab` matches theirs where it must, checked with
+proved by a test; (2) a board made by `netsmith board fab` matches theirs where it must, checked with
 tolerances by the parity checker: the outline, the mounting holes, the connectors (USB, battery,
 the two pin headers), the buttons and switches, and each header pin carrying the same signal.
 The ICs, the crystal, the regulator, the passives and the routing may differ and are reported,
@@ -40,8 +40,8 @@ not required. Which parts must match is `reference/must_match.toml` (see below).
 - `netsmith.toml`, `src/main.nsm`: the project and its board, `Orbit`, with the modules
   `src/charger.nsm`, `src/buck_boost.nsm`, `src/usb_uart.nsm` and `src/oscillator.nsm`.
 - `src/main.lock.toml`: the pick lock of the board (the catalog row each part was picked as),
-  written by `netsmith lock --update`; CI checks it with `scripts/check-example-locks.sh`. A
-  change to the board's parts needs `netsmith lock --update` and the new lock committed.
+  written by `netsmith project lock --update`; CI checks it with `scripts/check-example-locks.sh`. A
+  change to the board's parts needs `netsmith project lock --update` and the new lock committed.
 - `src/main.physical.nsm`: the physical file (outline, holes, the must-match parts' places);
   `src/main.pcb.toml`: the layout file, only the placer's seed (see "The physical file").
 - `libs/orbit_small_parts.pretty/MountingHole_2.5mm_M2.5_Pad.kicad_mod` and
@@ -98,7 +98,7 @@ two files; nothing is a datasheet number.
 **What the reference reader met that the first board did not** (fixed in this stage, each with a
 test): a KiCad 7 footprint states its reference as `(fp_text reference "J1" ...)` and has no
 `(property "Reference" ...)`, so the table's reader and `Netlist::from_kicad_pcb` (used by
-`netsmith compare` on a `.kicad_pcb`) found no reference (the table failed with "has no
+`netsmith board compare` on a `.kicad_pcb`) found no reference (the table failed with "has no
 Reference property"; the netlist silently had no component at all); the four mounting holes are
 KiCad's plated `MountingHole_*_Pad_Via` footprints (a drilled 5 mm pad and a ring of eight
 0.8 mm vias, all nine pads numbered `1`) and no pad is `np_thru_hole`, so the table had no
@@ -345,7 +345,7 @@ on 2026-11-10.
 
 ### The five ICs (`src/`, `catalogs/`, `kicad.toml`)
 
-Each IC of ORBIT is a netsmith part with a pin table written by hand from the maker's
+Each IC of ORBIT is a netsmith import part with a pin table written by hand from the maker's
 datasheet (the datasheets are copyrighted: only facts, that is numbers, names and kinds, are
 taken, and the arrangement and the words are ours), a footprint, a catalog row and a symbol
 drawn from the pin table (no `symbol` key, ADR 0097). Every document was fetched on
@@ -449,7 +449,7 @@ its own, `Net-(U22-VDD)`, which is not the 3.3 V rail.
 
 `src/main.nsm` is ORBIT's circuit, 48 parts: their 53 footprints less the four mounting holes
 (`H1` to `H4`) and the logo `O`, which are the physical file's. Build it from this folder with
-`netsmith build` (with `NETSMITH_NO_KICAD=1` too: the project needs no KiCad install). It builds
+`netsmith board build` (with `NETSMITH_NO_KICAD=1` too: the project needs no KiCad install). It builds
 with no error and no warning; what the build prints are notes (below).
 
 - **Structure.** Four modules hold the parts around each chip: `Charger` (the MCP73831 U1, its
@@ -485,7 +485,7 @@ Tests in `crates/netsmith-tools/tests/orbit.rs`, module `board` (no KiCad; run
   (every pad on a net with another pad: both sides have the same number of them).
 - `netsmith_compare_says_the_nets_are_the_same`: `netsmith-netlist::compare` (what `netsmith
   compare` runs) with value and footprint blanked: `match`, with the designators paired and with no
-  pairing. Why not the bare `netsmith compare reference/ORBIT.kicad_pcb src/main.nsm`: it pairs
+  pairing. Why not the bare `netsmith board compare reference/ORBIT.kicad_pcb src/main.nsm`: it pairs
   parts by value and footprint, and ORBIT's footprints have other names (`Project Footprints:...`).
 - `the_comparison_sees_a_pad_on_the_wrong_net`: the comparison can fail (a pad on another net, a
   pad on no net, and a design with one header pin moved).
@@ -567,15 +567,15 @@ physical sample. The ERC test ran only where `kicad-cli` was found.
 
 ## Parity
 
-`netsmith parity <board.kicad_pcb> --table reference/placements.toml
+`netsmith dev parity <board.kicad_pcb> --table reference/placements.toml
 --parts reference/parts.toml [--svg <overlay.svg>]` compares the `.kicad_pcb` that `netsmith
-fab` writes (in `fab/Orbit/`) with their board, as `reference/placements.toml` states it. What it
+board fab` writes (in `fab/Orbit/`) with their board, as `reference/placements.toml` states it. What it
 compares, the tolerances (outline and holes 0.05 mm, positions of parts 0.1 mm, rotation exact,
 pad numbers and nets equal), the origin (the upper-left corner of the outline) and the meaning of
 the verdicts are those of the RP2350A Minimal's checker, described in
 `examples/rp2350_minimal/README.md` ("Parity"); the checker is `netsmith_tools::parity`. Without
 `--table` and `--parts` the command reads those of the project's `reference/` folder. The test
-`orbit_pcb_matches_the_original` (`crates/netsmith-cli/tests/orbit_parity.rs`) runs `netsmith fab
+`orbit_pcb_matches_the_original` (`crates/netsmith-cli/tests/orbit_parity.rs`) runs `netsmith board fab
 --locked --route-timeout 20` with no KiCad, accepts a complete or an INCOMPLETE board (only a
 failure that says `INCOMPLETE:`), fails when a must-match item is not `ok`, and fails when
 `reference/parity-overlay.svg` is not the overlay of the board it got. It shares its code with
@@ -601,10 +601,10 @@ copy of their board with no vias passes; a hole moved by 0.1 mm, with another dr
 
 **The overlay** `reference/parity-overlay.svg` is a generated file: both boards at one scale,
 theirs in blue and netsmith's in orange, a failing must-match item in red with its offset. Make
-it again, from this folder, after `netsmith fab --locked`, from the repository's root:
+it again, from this folder, after `netsmith board fab --locked`, from the repository's root:
 
 ```sh
-netsmith parity examples/orbit/fab/Orbit/Orbit.kicad_pcb \
+netsmith dev parity examples/orbit/fab/Orbit/Orbit.kicad_pcb \
     --table examples/orbit/reference/placements.toml \
     --parts examples/orbit/reference/parts.toml \
     --svg examples/orbit/reference/parity-overlay.svg
@@ -624,8 +624,8 @@ capacitors are all elsewhere, which is allowed. Open it in a browser.
 From this folder:
 
 ```sh
-netsmith build          # the schematic, in out/ (no KiCad needed)
-netsmith fab --locked   # the package for the board house, in fab/Orbit/; about 10 s
+netsmith board build          # the schematic, in out/ (no KiCad needed)
+netsmith board fab --locked   # the package for the board house, in fab/Orbit/; about 10 s
 ```
 
 `--locked` stops the run if the parts it picks differ from `src/main.lock.toml` and never writes
@@ -675,7 +675,7 @@ requirement; it locks no part). The seed does not move the physical file's parts
 
 ## The result
 
-The last run (`fab --locked`, seed 7; a debug build in which `netsmith-pcb` is optimised; one run
+The last run (`board fab --locked`, seed 7; a debug build in which `netsmith-pcb` is optimised; one run
 at a time, on an otherwise idle machine; `NETSMITH_TIMINGS=1`):
 
 | Step | Result |
@@ -700,7 +700,7 @@ same under every seed. The must-match items passed on every one of those boards.
 
 **Seed 1, since #457.** The placer began to measure a part that the requirements pin where it
 is, and not at the nearest point of its 0.05 mm grid, which changed every seed's arrangement:
-seed 7 no longer finished, and seed 1 routes everything (`fab --locked` in 57 s, a debug build on
+seed 7 no longer finished, and seed 1 routes everything (`board fab --locked` in 57 s, a debug build on
 a machine running other builds; seeds 5 and 8 route too). The table above is seed 7's run.
 
 **Seed 4, since #634.** Designators numbered by path reorder the pins of each net that the
@@ -736,7 +736,7 @@ the four holes; and the routing: the copper is netsmith's own, and nothing is cl
 
 ## The reproduction
 
-Beside the board that `netsmith fab` makes of this project (the automatic board, placed and
+Beside the board that `netsmith board fab` makes of this project (the automatic board, placed and
 routed by netsmith), the port keeps a reproduction of ORBIT's own copper (issue #599; the
 language guide's "Reproducing a KiCad board"): `reference/agent/main.routes.toml` and
 `reference/agent/main.pcb.toml`, which `netsmith routes import reference/ORBIT.kicad_pcb` writes.

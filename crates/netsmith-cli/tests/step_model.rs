@@ -41,7 +41,7 @@ fn check_warns_of_a_missing_model_and_refuses_one_outside_the_project() {
         "model-check-missing",
         "    .power_in.model.file &= \"../models/header.step\"",
     );
-    let run = netsmith(&root, &["check", "src/main.nsm"]);
+    let run = netsmith(&root, &["board", "check", "src/main.nsm"]);
     let err = String::from_utf8_lossy(&run.stderr);
     assert!(run.status.success(), "{err}");
     assert!(
@@ -53,7 +53,7 @@ fn check_warns_of_a_missing_model_and_refuses_one_outside_the_project() {
         "model-check-outside",
         "    .power_in.model.file &= \"../../header.step\"",
     );
-    let run = netsmith(&root, &["check", "src/main.nsm"]);
+    let run = netsmith(&root, &["board", "check", "src/main.nsm"]);
     let err = String::from_utf8_lossy(&run.stderr);
     assert_eq!(run.status.code(), Some(1), "{err}");
     assert!(
@@ -64,9 +64,9 @@ fn check_warns_of_a_missing_model_and_refuses_one_outside_the_project() {
 
 const BLOCKS: &[u8] = include_bytes!("../../netsmith-3d/tests/models/blocks.step");
 
-/// `board3d --json` of `root`'s board, its stderr, and the parsed report.
+/// `dev board3d --format json` of `root`'s board, its stderr, and the parsed report.
 fn board3d(root: &Path, extra: &[&str]) -> (String, serde_json::Value) {
-    let mut args = vec!["board3d", "src/main.nsm", "--json"];
+    let mut args = vec!["dev", "board3d", "src/main.nsm", "--format", "json"];
     args.extend(extra);
     let run = netsmith(root, &args);
     let err = String::from_utf8_lossy(&run.stderr).into_owned();
@@ -166,11 +166,11 @@ fn a_member_of_a_system_is_drawn_from_its_model_in_the_system_scene() {
     let run = netsmith(
         &root,
         &[
-            "board3d",
+            "dev", "board3d",
             "two_boards.nsm",
             "--board",
             "TwoBoards",
-            "--json",
+            "--format", "json",
         ],
     );
     let err = String::from_utf8_lossy(&run.stderr);
@@ -190,7 +190,7 @@ fn a_member_of_a_system_is_drawn_from_its_model_in_the_system_scene() {
     let run = netsmith(
         &root,
         &[
-            "board3d",
+            "dev", "board3d",
             "two_boards.nsm",
             "--board",
             "TwoBoards",
@@ -226,7 +226,7 @@ fn fab_draws_the_model_in_the_glb_and_the_step_and_names_it_in_the_notes() {
     fs::create_dir_all(root.join("models")).unwrap();
     fs::write(root.join("models/blocks.step"), BLOCKS).unwrap();
     let run = Command::new(env!("CARGO_BIN_EXE_netsmith"))
-        .args(["fab", "src/main.nsm", "--out", "out"])
+        .args(["board", "fab", "src/main.nsm", "--out", "out"])
         .current_dir(&root)
         .env("NETSMITH_NO_KICAD", "1")
         .env_remove("KICAD_CLI")
@@ -273,7 +273,7 @@ fn a_part_with_no_model_is_drawn_from_the_models_folder() {
     for size in ["0402_1005", "0603_1608", "0805_2012"] {
         fs::write(dir.join(format!("R_{size}Metric.step")), BLOCKS).unwrap();
     }
-    let run = netsmith(&root, &["check", "src/main.nsm"]);
+    let run = netsmith(&root, &["board", "check", "src/main.nsm"]);
     let err = String::from_utf8_lossy(&run.stderr);
     assert!(run.status.success(), "{err}");
     assert!(

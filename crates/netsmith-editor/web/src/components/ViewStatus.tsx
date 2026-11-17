@@ -96,7 +96,7 @@ export function NoBoard({ what }: { what: string }) {
         title="The editor server is not answering"
         help={
           <>
-            Start <code>netsmith editor</code> in the project; this page connects by itself and shows the board when it is read.
+            Start <code>netsmith view editor</code> in the project; this page connects by itself and shows the board when it is read.
           </>
         }
       />

@@ -45,7 +45,7 @@ fn an_order_may_name_a_panel_and_its_quantity_counts_panels() {
         return;
     }
     let root = project("order", "\n[order.run.boards]\nLedPanel = 3\n");
-    let made = netsmith(&root, &["fab", "--order", "run"]);
+    let made = netsmith(&root, &["project", "order", "run"]);
     let said = String::from_utf8_lossy(&made.stderr);
     assert!(made.status.success(), "{said}");
     let dir = root.join("fab/orders/run");
@@ -77,7 +77,7 @@ fn a_board_and_a_panel_may_both_be_ordered_and_a_plain_fab_makes_both() {
         "both",
         "\n[order.mixed.boards]\nLedPanel = 2\nLedTile = 4\n",
     );
-    let made = netsmith(&root, &["fab", "--order", "mixed"]);
+    let made = netsmith(&root, &["project", "order", "mixed"]);
     let said = String::from_utf8_lossy(&made.stderr);
     assert!(made.status.success(), "{said}");
     let summary = fs::read_to_string(root.join("fab/orders/mixed/order.txt")).unwrap();
@@ -93,7 +93,7 @@ fn a_board_and_a_panel_may_both_be_ordered_and_a_plain_fab_makes_both() {
         bom.contains("C25104,16,4 x 1 LedTile; 2 x 6 LedPanel"),
         "{bom}"
     );
-    let plain = netsmith(&root, &["fab"]);
+    let plain = netsmith(&root, &["board", "fab"]);
     assert!(
         plain.status.success(),
         "{}",
@@ -106,7 +106,7 @@ fn a_board_and_a_panel_may_both_be_ordered_and_a_plain_fab_makes_both() {
 #[test]
 fn an_order_that_names_neither_a_board_nor_a_panel_lists_both() {
     let root = project("unknown", "\n[order.bad.boards]\nLedPanl = 1\n");
-    let made = netsmith(&root, &["fab", "--order", "bad"]);
+    let made = netsmith(&root, &["project", "order", "bad"]);
     let said = String::from_utf8_lossy(&made.stderr);
     assert!(!made.status.success());
     assert!(

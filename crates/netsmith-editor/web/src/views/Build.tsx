@@ -231,7 +231,7 @@ export function Build() {
           icon="kicad"
           title="Schematic"
           blurb="Writes a KiCad schematic and project file for every board."
-          command="netsmith build"
+          command="netsmith board build"
           scope={<Pill tone="neutral" title="Every board of the project">all {plural(boards.length, 'board')}</Pill>}
           running={busy === 'build'}
         >
@@ -275,7 +275,7 @@ export function Build() {
           icon="fab"
           title="Fab package"
           blurb="Places and routes the board, checks the design rules and writes the files JLCPCB needs."
-          command={boardFile ? `netsmith fab ${boardFile}` : 'netsmith fab'}
+          command={boardFile ? `netsmith board fab ${boardFile}` : 'netsmith board fab'}
           scope={name ? <Pill icon="board" tone="neutral">{name}</Pill> : undefined}
           running={busy === 'fab'}
         >
@@ -324,7 +324,7 @@ export function Build() {
           icon="layers"
           title="Order"
           blurb="Makes the fab package of every board in an order of netsmith.toml, with one combined bill of materials."
-          command={order ? `netsmith fab --order ${order.name}` : 'netsmith fab --order'}
+          command={order ? `netsmith project order ${order.name}` : 'netsmith project order'}
           scope={order ? <Pill tone="neutral" title="The quantities of the order added up: the boards the fab house makes">{plural(totalBoards, 'board')} in this order</Pill> : undefined}
           running={busy === 'order'}
           wide

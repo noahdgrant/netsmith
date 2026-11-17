@@ -1,5 +1,5 @@
 //! The build panel's orders: listing the manifest's `[order.*]` tables and running one
-//! (ADR 0035), which is `netsmith fab --order`.
+//! (ADR 0035), which is `netsmith project order`.
 
 use std::{fs, time::Instant};
 
@@ -42,7 +42,7 @@ impl Workspace {
             .collect()
     }
 
-    /// What `netsmith fab --order <name>` does.
+    /// What `netsmith project order <name>` does.
     pub(super) fn make_order(
         &self,
         name: &str,
@@ -68,7 +68,7 @@ impl Workspace {
         let loader = target.loader().map_err(ApiError::internal)?;
         let catalogs = target.catalogs().map_err(ApiError::internal)?;
         let libraries = target.libraries().map_err(ApiError::internal)?;
-        // The stages `netsmith fab` prints to stderr go to the page instead.
+        // The stages `netsmith board fab` prints to stderr go to the page instead.
         let _reporting = Reporting::to(say);
         let made = fab_order(
             order,

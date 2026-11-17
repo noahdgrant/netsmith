@@ -11,7 +11,7 @@ use super::common::{no_boards, target};
 #[derive(Debug, PartialEq, ClapArgs)]
 #[command(args_override_self = true)]
 #[command(
-    after_long_help = "`lock --update` solves each board without the pick lock's holding (a hand pick in the source, `.lcsc &= ...`, still holds its part) and writes the lock with the rows the solver picks now, printing for each part that changed the old row and the new one (nothing when nothing changed). `lock --check` does the same without writing, prints the same and exits 1 when the lock is not current or does not exist (for CI). Both exit 2 when they cannot tell: the lock is not readable, a picks file from an older netsmith is beside the source (move its entries into the source as the message says), or the design does not build. With no file it acts on the project's boards. A source the project leaves out of the locks (`lock` in netsmith.toml) is skipped. A project with a dependency by `git` has a dependency lock too, `dependencies.lock.toml` beside netsmith.toml, the commit each one was read at: `--update` fetches each again and takes the commit its `rev` or `version` names now, printing the entries that changed, and `--check` fails when the lock lacks an entry for one or holds one no manifest asks for, fetching nothing. `lock --update --part r1,stage.cap` takes new picks for those parts only, and `--except r1` for every part but those: the other parts stay on the row the lock has for them, which is judged by everything the design says, and an error says so when it no longer passes. A part named is looked for by its path in every board of the file (or of the project), and one that no board has is an error that lists the parts there are."
+    after_long_help = "`project lock --update` solves each board without the pick lock's holding (a hand pick in the source, `.lcsc &= ...`, still holds its part) and writes the lock with the rows the solver picks now, printing for each part that changed the old row and the new one (nothing when nothing changed). `project lock --check` does the same without writing, prints the same and exits 1 when the lock is not current or does not exist (for CI). Both exit 2 when they cannot tell: the lock is not readable, a picks file from an older netsmith is beside the source (move its entries into the source as the message says), or the design does not build. With no file it acts on the project's boards. A source the project leaves out of the locks (`lock` in netsmith.toml) is skipped. A project with a dependency by `git` has a dependency lock too, `dependencies.lock.toml` beside netsmith.toml, the commit each one was read at: `--update` fetches each again and takes the commit its `rev` or `version` names now, printing the entries that changed, and `--check` fails when the lock lacks an entry for one or holds one no manifest asks for, fetching nothing. `project lock --update --part r1,stage.cap` takes new picks for those parts only, and `--except r1` for every part but those: the other parts stay on the row the lock has for them, which is judged by everything the design says, and an error says so when it no longer passes. A part named is looked for by its path in every board of the file (or of the project), and one that no board has is an error that lists the parts there are."
 )]
 #[command(group(ArgGroup::new("mode").required(true).args(["update", "check"])))]
 pub struct Args {
@@ -67,7 +67,7 @@ pub fn run(args: Args) -> ExitCode {
     run_lock(args.file.as_deref(), args.mode(), &args.parts())
 }
 
-/// `netsmith lock --update` and `--check`: the pick lock of each source file, solved again with
+/// `netsmith project lock --update` and `--check`: the pick lock of each source file, solved again with
 /// no holding. The diff goes to stdout; what the lock held that no longer passes, the reason a
 /// check fails and every error go to stderr. Exit 0 when nothing is wrong (a lock was written,
 /// or is current), 1 when `--check` finds a lock that is not current, 2 when it cannot tell.
@@ -160,7 +160,7 @@ fn run_lock(file: Option<&str>, mode: LockMode, parts: &Parts) -> ExitCode {
             let outcome = match mode {
                 LockMode::Update => "replaced with the rows above",
                 LockMode::Check => {
-                    "`lock --update` replaces them with the rows the solver picks now"
+                    "`project lock --update` replaces them with the rows the solver picks now"
                 }
             };
             eprintln!(
@@ -182,7 +182,7 @@ fn run_lock(file: Option<&str>, mode: LockMode, parts: &Parts) -> ExitCode {
             }
             LockMode::Check if !found.existed && !found.is_current() => {
                 eprintln!(
-                    "error: {name} does not exist: run `netsmith lock --update` to write it, and commit it"
+                    "error: {name} does not exist: run `netsmith project lock --update` to write it, and commit it"
                 );
                 stale = true;
             }
@@ -190,7 +190,7 @@ fn run_lock(file: Option<&str>, mode: LockMode, parts: &Parts) -> ExitCode {
                 println!("{name} is not current");
                 print!("{lines}");
                 eprintln!(
-                    "error: {name} is not current: run `netsmith lock --update` to refresh it, and commit it"
+                    "error: {name} is not current: run `netsmith project lock --update` to refresh it, and commit it"
                 );
                 stale = true;
             }
@@ -238,7 +238,7 @@ fn dependency_lock(project: &Project, mode: LockMode) -> Result<bool, ExitCode> 
             }
             if !found.stale.is_empty() {
                 eprintln!(
-                    "error: {name} is not current: run `netsmith lock --update` to refresh it, and commit it"
+                    "error: {name} is not current: run `netsmith project lock --update` to refresh it, and commit it"
                 );
             }
             Ok(!found.stale.is_empty())
@@ -246,7 +246,7 @@ fn dependency_lock(project: &Project, mode: LockMode) -> Result<bool, ExitCode> 
     }
 }
 
-/// What `netsmith lock` does with the pick lock (ADR 0100).
+/// What `netsmith project lock` does with the pick lock (ADR 0100).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LockMode {
     /// `--update`: write the rows the solver picks now.
@@ -257,42 +257,51 @@ pub enum LockMode {
 
 #[cfg(test)]
 mod tests {
+    use crate::commands::common::testing::Leaf;
     use crate::commands::common::testing::{kind, parse};
-    use crate::commands::{Command, lock};
+    use crate::commands::lock;
     use clap::error::ErrorKind;
     use netsmith_pipeline::pick_lock::Parts;
 
     #[test]
     fn lock_takes_update_or_check_and_not_both() {
         let mode = |args: &[&str]| match parse(args) {
-            Ok(Command::Lock(l)) => (l.mode(), l.file),
+            Ok(Leaf::Lock(l)) => (l.mode(), l.file),
             other => panic!("{args:?}: {other:?}"),
         };
-        assert_eq!(mode(&["lock", "--update"]), (lock::LockMode::Update, None));
         assert_eq!(
-            mode(&["lock", "--check", "a.nsm"]),
+            mode(&["project", "lock", "--update"]),
+            (lock::LockMode::Update, None)
+        );
+        assert_eq!(
+            mode(&["project", "lock", "--check", "a.nsm"]),
             (lock::LockMode::Check, Some("a.nsm".into()))
         );
         let parts = |args: &[&str]| match parse(args) {
-            Ok(Command::Lock(l)) => l.parts(),
+            Ok(Leaf::Lock(l)) => l.parts(),
             other => panic!("{args:?}: {other:?}"),
         };
-        assert_eq!(parts(&["lock", "--update"]), Parts::All);
+        assert_eq!(parts(&["project", "lock", "--update"]), Parts::All);
         assert_eq!(
-            parts(&["lock", "--update", "--part", "r1,stage.cap"]),
+            parts(&["project", "lock", "--update", "--part", "r1,stage.cap"]),
             Parts::Only(vec!["r1".into(), "stage.cap".into()])
         );
         assert_eq!(
-            parts(&["lock", "--update", "--except", "r1"]),
+            parts(&["project", "lock", "--update", "--except", "r1"]),
             Parts::Except(vec!["r1".into()])
         );
         assert_eq!(
-            kind(&["lock", "--update", "--part", "a", "--except", "b"]),
+            kind(&[
+                "project", "lock", "--update", "--part", "a", "--except", "b"
+            ]),
             ErrorKind::ArgumentConflict
         );
-        assert_eq!(kind(&["lock"]), ErrorKind::MissingRequiredArgument);
         assert_eq!(
-            kind(&["lock", "--update", "--check"]),
+            kind(&["project", "lock"]),
+            ErrorKind::MissingRequiredArgument
+        );
+        assert_eq!(
+            kind(&["project", "lock", "--update", "--check"]),
             ErrorKind::ArgumentConflict
         );
     }

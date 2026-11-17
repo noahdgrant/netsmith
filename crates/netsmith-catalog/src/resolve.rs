@@ -54,7 +54,7 @@ impl Recheck {
 /// with each (ADR 0047). What to re-solve is planned when the board is built, and costs no
 /// solve; the solves are made when the first caller asks for the result (`get`), because the
 /// only places that show it are the unresolved message of `fab` and of the bill of materials.
-/// A build that shows neither (`netsmith build`, the editor's analysis) solves the board once.
+/// A build that shows neither (`netsmith board build`, the editor's analysis) solves the board once.
 #[derive(Clone, Default)]
 pub struct Rechecks {
     plan: Option<Arc<Plan>>,

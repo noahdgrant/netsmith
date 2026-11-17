@@ -8,7 +8,7 @@ The voltage of a rail on a node of a `~>` chain, as the analysis gives it: the s
 _Avoid_: Propagated voltage, derived voltage (a derived value is any worked-out field; this one is the node's)
 
 **Case model**:
-A STEP file of the board's case, kept in the project, that a `CaseModel` member of the `case { }` section of the board's physical file names (`.shell: CaseModel { .file &= "case/box.step"  .z &= -1.6mm  .rx &= 180 }`, with the fields and the rotation order of a _STEP model_, in the _Scene_'s frame), for the board and its parts' bodies to be drawn in and checked against (ADR 0109). It is a drawing and a check, never a height, an outline or a hole: those stay statements of the `case` section (`netsmith case import` prints the outline, cutouts and mounting holes from a model's section, and with `--limits` its height limits over and under the board as `Keepout`s, to review and paste, never read at build time). netsmith bundles and downloads none; a file that is not there leaves the fit unchecked, a warning, and an error with strict constraints. A model that is not the board's case (a mating plug, a neighbouring module) is declared the same way with `.check &= "none"`: drawn and never measured against. A model is drawn in the colours its file styles it in, or in the `Color` its `.color` states (issue #756), see-through or solid, and can be hidden by name (`render --case hidden:<name>`).
+A STEP file of the board's case, kept in the project, that a `CaseModel` member of the `case { }` section of the board's physical file names (`.shell: CaseModel { .file &= "case/box.step"  .z &= -1.6mm  .rx &= 180 }`, with the fields and the rotation order of a _STEP model_, in the _Scene_'s frame), for the board and its parts' bodies to be drawn in and checked against (ADR 0109). It is a drawing and a check, never a height, an outline or a hole: those stay statements of the `case` section (`netsmith import case model` prints the outline, cutouts and mounting holes from a model's section, and with `--limits` its height limits over and under the board as `Keepout`s, to review and paste, never read at build time). netsmith bundles and downloads none; a file that is not there leaves the fit unchecked, a warning, and an error with strict constraints. A model that is not the board's case (a mating plug, a neighbouring module) is declared the same way with `.check &= "none"`: drawn and never measured against. A model is drawn in the colours its file styles it in, or in the `Color` its `.color` states (issue #756), see-through or solid, and can be hidden by name (`view 3d --case hidden:<name>`).
 _Avoid_: Enclosure (a solver range, above), case STEP, housing model
 
 **Catalog**:
@@ -52,7 +52,7 @@ A relation written in the std library that gives a number from a formula (no tim
 _Avoid_: Simulation, transient analysis, estimate
 
 **Coarse plan**:
-A global route of every line of a board over its tiles, made before the router's detailed search: each line is routed from tile to tile, and the lines negotiate for the tiles' edges and vias until as few as possible carry more than they hold and as few lines as possible cross (a planned crossing; the header of the router's `plan.rs`). Off by default; `netsmith route --plan` turns it on for experiments.
+A global route of every line of a board over its tiles, made before the router's detailed search: each line is routed from tile to tile, and the lines negotiate for the tiles' edges and vias until as few as possible carry more than they hold and as few lines as possible cross (a planned crossing; the header of the router's `plan.rs`). Off by default; `netsmith dev route --plan` turns it on for experiments.
 _Avoid_: global route (the general term, for any router), floor plan (where parts go)
 
 **Collapse**:
@@ -91,14 +91,14 @@ _Avoid_: channel (the room between two rows of pads)
 One drawing of a footprint's courtyard layer (`F.CrtYd`), as the box round it; drawings that touch are one shape. Each is its own room in the placer and the placement check, so a part may stand between the two rectangles of a plug-in module's footprint, and a pad outside every shape is a shape of its own. The footprint's `courtyard` is the box round all of them (`netsmith_pcb::Footprint::courtyard_shapes`; the rule is in the chapter on projects, _A courtyard of several shapes_).
 
 **Cross-check**:
-`netsmith fab --cross-check`: the board is plotted with KiCad as well and its Gerbers, drill files and placement are compared with netsmith's own (layers as bitmaps), and KiCad's design rules check is run and its findings compared with netsmith's (by rule and place). KiCad is a witness there, never a source of files or of the gate (ADR 0034, ADR 0037).
+`netsmith board fab --cross-check`: the board is plotted with KiCad as well and its Gerbers, drill files and placement are compared with netsmith's own (layers as bitmaps), and KiCad's design rules check is run and its findings compared with netsmith's (by rule and place). KiCad is a witness there, never a source of files or of the gate (ADR 0034, ADR 0037).
 
 **Crowding**:
 How full the coarse plan leaves a tile on a layer: the most of its four edges' planned tracks over what the edge holds. A step outside a line's corridor costs nothing on a tile crowded less than 70 %, and the whole crowding cost at 100 %.
 _Avoid_: congestion (the router's negotiation over cells), demand
 
 **Crowding map**:
-The router's count, for each 1 mm square of a board, of how often its searches for the nets in a line's way (paths that may cross other nets' copper, in rip-up, negotiation and the chain of rip-ups) passed through the square, over a whole run (`Routing::crowding`, written to `routing-report.json` when connections are left, and drawn as `crowding.png` by `netsmith route --stages`). A high count is where lines fought over the room.
+The router's count, for each 1 mm square of a board, of how often its searches for the nets in a line's way (paths that may cross other nets' copper, in rip-up, negotiation and the chain of rip-ups) passed through the square, over a whole run (`Routing::crowding`, written to `routing-report.json` when connections are left, and drawn as `crowding.png` by `netsmith dev route --stages`). A high count is where lines fought over the room.
 _Avoid_: congestion map, heat map
 
 **Cutout**:

@@ -1,4 +1,4 @@
-//! `netsmith init`, the `netsmith.toml` manifest, and projects of several files.
+//! `netsmith project init`, the `netsmith.toml` manifest, and projects of several files.
 
 use netsmith_testkit::{TempDir, TempFile};
 use std::fs;
@@ -49,7 +49,7 @@ fn files_in(root: &Path) -> Vec<String> {
     out
 }
 
-/// A project in a directory named `name`, as `netsmith init` makes it.
+/// A project in a directory named `name`, as `netsmith project init` makes it.
 fn scaffold(name: &str) -> TempFile {
     let root = TempFile::new(&format!("project-test-{name}"), name);
     fs::create_dir_all(&root).unwrap();
@@ -130,9 +130,9 @@ fn init_makes_the_project_files_and_says_what_to_run() {
     for line in [
         "netsmith.toml",
         "src/main.nsm",
-        "netsmith build",
-        "netsmith editor",
-        "netsmith fab",
+        "netsmith board build",
+        "netsmith view editor",
+        "netsmith board fab",
     ] {
         assert!(said.contains(line), "{line}: {said}");
     }
@@ -274,11 +274,11 @@ fn init_writes_the_agent_guidance_and_the_project_agrees_with_the_repository() {
     }
     let agents = read(&root, "AGENTS.md");
     for must in [
-        "netsmith build",
-        "netsmith editor",
-        "netsmith fab",
+        "netsmith board build",
+        "netsmith view editor",
+        "netsmith board fab",
         "docs/netsmith/LANGUAGE.md",
-        "Run `netsmith build` before you say a design works",
+        "Run `netsmith board build` before you say a design works",
         "needs a source",
         "Ask the user before a decision about the language",
     ] {
@@ -365,7 +365,7 @@ fn init_keeps_a_guide_a_skill_and_a_claude_directory_that_exist() {
     );
 }
 
-// ---- CLAUDE.md and `init --refresh` (issue #797) --------------------------------------
+// ---- CLAUDE.md and `project refresh` (issue #797) --------------------------------------
 
 /// The first AGENTS.md netsmith shipped: a file of a project made by the first version.
 const FIRST_AGENTS: &str = include_str!("fixtures/agents-first-version.md");
@@ -547,7 +547,7 @@ fn refresh_works_from_a_folder_of_the_project_and_needs_a_project() {
 
     let lost = dir("refresh-lost");
     let e = refresh(&lost).unwrap_err();
-    assert!(e.contains("netsmith.toml") && e.contains("netsmith init"), "{e}");
+    assert!(e.contains("netsmith.toml") && e.contains("netsmith project init"), "{e}");
     assert!(files_in(&lost).is_empty());
 }
 
@@ -673,7 +673,7 @@ fn with_no_manifest_and_no_file_the_message_says_what_to_do() {
     let root = dir("none");
     let e = Target::resolve_from(&root, None).unwrap_err();
     assert!(
-        e.contains("no netsmith.toml") && e.contains("netsmith init"),
+        e.contains("no netsmith.toml") && e.contains("netsmith project init"),
         "{e}"
     );
 }

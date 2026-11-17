@@ -52,7 +52,7 @@ fn project(name: &str) -> TempDir {
     root
 }
 
-/// What `netsmith fab` does on every file of the project: one run, with `reuse` as given.
+/// What `netsmith board fab` does on every file of the project: one run, with `reuse` as given.
 fn plain_fab(root: &Path, reuse: Reuse) {
     let target = Target::resolve_from(root, None).unwrap();
     let loader = target.loader().unwrap();
@@ -80,7 +80,7 @@ fn plain_fab(root: &Path, reuse: Reuse) {
     }
 }
 
-/// The order `name`, made as `netsmith fab --order` makes it, reusing what a plain fab made.
+/// The order `name`, made as `netsmith project order` makes it, reusing what a plain fab made.
 fn order(root: &Path, name: &str, options: FabOptions) -> Made {
     let target = Target::resolve_from(root, None).unwrap();
     let loader = target.loader().unwrap();

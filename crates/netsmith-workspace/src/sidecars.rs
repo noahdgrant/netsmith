@@ -1,9 +1,9 @@
 //! What the editor shows of the two files a run of netsmith keeps beside a source file, read
 //! only: the pin file (`<stem>.pins.toml`, ADR 0101) as the pin map of a part, and the pick
-//! lock (`<stem>.lock.toml`, ADR 0100) as what `netsmith lock --check` says of it.
+//! lock (`<stem>.lock.toml`, ADR 0100) as what `netsmith project lock --check` says of it.
 //!
 //! The pin map is what the check assigned in memory, as it does on every analysis; the lock is
-//! solved again with no holding and compared with the file, as `lock --check` does, which needs
+//! solved again with no holding and compared with the file, as `project lock --check` does, which needs
 //! no KiCad. The lock is never written here. The pin file is written by `pinwrite.rs`, the
 //! `lock`, `pin` and `source` lines of one entry at a time (the owner's decision on the editor's
 //! writes, ED2 of the pin epic).
@@ -93,7 +93,7 @@ pub(super) fn pin_requests(
     out
 }
 
-/// What `netsmith lock --check` finds for the source file called `name`, as the editor shows it:
+/// What `netsmith project lock --check` finds for the source file called `name`, as the editor shows it:
 /// `None` when there is nothing to compare, because the source cannot be read or does not
 /// build (the problems list says why), and an `error` when the lock file is not one this
 /// netsmith reads.
@@ -128,7 +128,7 @@ pub(super) fn lock_info(target: &Target, name: &str) -> Option<PickLockInfo> {
         file: shown,
         exists: found.existed,
         current: found.is_current(),
-        // `lock --check` prints no lines for a lock that does not exist: only that it does
+        // `project lock --check` prints no lines for a lock that does not exist: only that it does
         // not, which the page says.
         diff: if found.existed {
             found.diff

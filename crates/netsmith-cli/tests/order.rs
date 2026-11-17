@@ -1,4 +1,4 @@
-//! Orders (ADR 0035): `[order.*]` in `netsmith.toml` and `netsmith fab --order`. The mistakes
+//! Orders (ADR 0035): `[order.*]` in `netsmith.toml` and `netsmith project order`. The mistakes
 //! and the listing and the orders themselves need no KiCad (ADR 0037).
 
 use netsmith_testkit::TempDir;
@@ -54,7 +54,7 @@ fn an_order_without_kicad_is_made_and_its_boards_pass_the_check() {
     let root = project("nokicad", ORDERS);
     // KICAD_CLI points nowhere, so there is no KiCad: the files and the design rules check
     // are netsmith's own, and nothing has to be allowed.
-    let made = netsmith(&root, &["fab", "--order", "small"]);
+    let made = netsmith(&root, &["project", "order", "small"]);
     let said = String::from_utf8_lossy(&made.stderr);
     assert!(made.status.success(), "{said}");
     let dir = root.join("fab/orders/small");
@@ -70,9 +70,9 @@ fn an_order_reuses_the_package_a_plain_fab_made_and_says_how_many_stages_it_ran(
         return;
     }
     let root = project("reuse", "\n[order.one.boards]\nLedExample = 4\n");
-    let fab = netsmith(&root, &["fab", "src/led.nsm"]);
+    let fab = netsmith(&root, &["board", "fab", "src/led.nsm"]);
     assert!(fab.status.success(), "{}", String::from_utf8_lossy(&fab.stderr));
-    let made = netsmith(&root, &["fab", "--order", "one"]);
+    let made = netsmith(&root, &["project", "order", "one"]);
     let said = String::from_utf8_lossy(&made.stderr);
     assert!(made.status.success(), "{said}");
     assert!(
@@ -94,7 +94,7 @@ fn an_order_reuses_the_package_a_plain_fab_made_and_says_how_many_stages_it_ran(
         LED.replace("5V +/- 5%", "9V +/- 5%"),
     )
     .unwrap();
-    let again = netsmith(&root, &["fab", "--order", "one"]);
+    let again = netsmith(&root, &["project", "order", "one"]);
     let out = String::from_utf8_lossy(&again.stdout);
     assert!(again.status.success(), "{}", String::from_utf8_lossy(&again.stderr));
     assert!(out.contains("reused 0 of 1 boards from a plain fab; "), "{out}");
@@ -113,7 +113,7 @@ fn the_program_refuses_to_order_a_board_of_a_fictional_fabricator() {
         .unwrap()
         .replace("\"src/two.nsm\"]", "\"src/two.nsm\", \"src/ten.nsm\"]");
     fs::write(root.join("netsmith.toml"), manifest).unwrap();
-    let refused = netsmith(&root, &["fab", "--order", "big"]);
+    let refused = netsmith(&root, &["project", "order", "big"]);
     assert!(!refused.status.success());
     let said = String::from_utf8_lossy(&refused.stderr);
     assert!(
@@ -128,14 +128,14 @@ fn the_program_refuses_to_order_a_board_of_a_fictional_fabricator() {
 #[test]
 fn the_program_lists_the_orders_and_refuses_an_unknown_one() {
     let root = project("cli", ORDERS);
-    let listed = netsmith(&root, &["fab", "--order"]);
+    let listed = netsmith(&root, &["project", "order"]);
     assert!(listed.status.success());
     assert_eq!(
         String::from_utf8_lossy(&listed.stdout),
         "orders in netsmith.toml:\n  small: LedExample x10, TwoBoards/led x3\n  system: TwoBoards x2\n"
     );
 
-    let unknown = netsmith(&root, &["fab", "--order", "devkit"]);
+    let unknown = netsmith(&root, &["project", "order", "devkit"]);
     assert!(!unknown.status.success());
     let said = String::from_utf8_lossy(&unknown.stderr);
     assert!(
@@ -149,7 +149,7 @@ fn the_program_lists_the_orders_and_refuses_an_unknown_one() {
         "[project]\nname = \"kit\"\ntop_level = [\"src/led.nsm\"]\n[order.d.boards]\nOther = 1\n",
     )
     .unwrap();
-    let missing = netsmith(&root, &["fab", "--order", "d"]);
+    let missing = netsmith(&root, &["project", "order", "d"]);
     assert!(!missing.status.success());
     let said = String::from_utf8_lossy(&missing.stderr);
     assert!(
@@ -164,7 +164,7 @@ fn the_program_lists_the_orders_and_refuses_an_unknown_one() {
         "[project]\nname = \"kit\"\n[order.d.boards]\nLedExample = 0\n",
     )
     .unwrap();
-    let broken = netsmith(&root, &["fab", "--order"]);
+    let broken = netsmith(&root, &["project", "order"]);
     assert!(!broken.status.success());
     let said = String::from_utf8_lossy(&broken.stderr);
     assert!(
@@ -173,7 +173,7 @@ fn the_program_lists_the_orders_and_refuses_an_unknown_one() {
     );
 
     let none = project("cli-none", "");
-    let listed = netsmith(&none, &["fab", "--order"]);
+    let listed = netsmith(&none, &["project", "order"]);
     assert!(String::from_utf8_lossy(&listed.stdout).contains("has no orders"));
 }
 
@@ -186,7 +186,7 @@ fn the_program_makes_an_order_into_the_out_directory() {
     let root = project("program", ORDERS);
     let out = root.join("elsewhere");
     let run = Command::new(env!("CARGO_BIN_EXE_netsmith"))
-        .args(["fab", "--order", "small", "--out", out.to_str().unwrap()])
+        .args(["project", "order", "small", "--out", out.to_str().unwrap()])
         .current_dir(&root)
         .output()
         .unwrap();

@@ -3,7 +3,7 @@
 //
 //   doctor [--no-browser]   what is installed, and whether a browser can be launched
 //   launch [--fixture <name>|schematic_bench|big|tree|shared_module|pin_map] [--file <path.nsm>] [--git]
-//                           start `netsmith editor` on a free port over a scratch project; --git makes the
+//                           start `netsmith view editor` on a free port over a scratch project; --git makes the
 //                           (two_boards) project a git repository with a branch that changes it (fixtures/gitrepo.mjs)
 //   drive <recipe>|all      run a recipe in headless Chromium, with screenshots
 //   groups                  the recipes by the session they need, from each recipe's `fixture` and `needs`: one line,
@@ -188,7 +188,7 @@ async function launch() {
   const project = path.join(root, 'project');
   fs.mkdirSync(project, { recursive: true });
   const run = (args) => spawnSync(bin, args, { cwd: project, encoding: 'utf8' });
-  const init = run(['init', '--name', 'verify']);
+  const init = run(['project', 'init', '--name', 'verify']);
   if (init.status !== 0) {
     console.error(init.stderr || init.stdout);
     process.exit(2);
@@ -293,7 +293,7 @@ async function launch() {
     env.NETSMITH_LCSC_URL = `http://127.0.0.1:${fakePort}/lcsc`;
     env.NETSMITH_CACHE_DIR = path.join(root, 'cache');
   }
-  const child = spawn(bin, ['editor', '--port', String(port)], { cwd: project, detached: true, stdio: ['ignore', log, log], env });
+  const child = spawn(bin, ['view', 'editor', '--port', String(port)], { cwd: project, detached: true, stdio: ['ignore', log, log], env });
   child.unref();
   const url = `http://127.0.0.1:${port}/`;
   for (let i = 0; i < 100; i++) {

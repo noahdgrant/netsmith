@@ -1,4 +1,4 @@
-//! Orders (ADR 0035): `[order.*]` in `netsmith.toml` and `netsmith fab --order`. The mistakes
+//! Orders (ADR 0035): `[order.*]` in `netsmith.toml` and `netsmith project order`. The mistakes
 //! and the listing and the orders themselves need no KiCad (ADR 0037).
 
 use netsmith_testkit::TempDir;

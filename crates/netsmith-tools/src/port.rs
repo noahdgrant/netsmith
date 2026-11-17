@@ -2,7 +2,7 @@
 //! original's reference designator of each part of the design, by the part's member path.
 //!
 //! It is the one map of a port. The nets proof of the port's tests reads it to name the design's
-//! parts as the original does, the parity checker (`netsmith parity`) to pair the original's parts
+//! parts as the original does, the parity checker (`netsmith dev parity`) to pair the original's parts
 //! with the board `fab` wrote (each footprint of which holds its member path, `netsmith_path`); the
 //! command that writes the first `.nsm` of a port (#452) is to write it too. A member renamed in
 //! the source is renamed here, and a map of the fab board's designators, which went stale when a

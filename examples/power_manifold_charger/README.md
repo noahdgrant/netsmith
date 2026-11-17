@@ -6,7 +6,7 @@ Easyduino ESP32-S3), and the one that stresses the solver's DC analysis hardest:
 converter with a feedback network and an inductor, a linear regulator, comparator thresholds and
 a USB-C Power Delivery front end. **The schematic is done**: `src/main.nsm` is the board
 `PowerManifoldCharger`, the same circuit as the design's, with its nets proved equal by a test
-(below). **The physical file and the parity gate are done too**: `netsmith fab` writes a four-layer board
+(below). **The physical file and the parity gate are done too**: `netsmith board fab` writes a four-layer board
 with the original's card-edge connector, USB-C receptacle and programming pads where theirs are
 (see "The PCB" below), and the outline is the one known difference.
 
@@ -58,7 +58,7 @@ folder are netsmith's** (MIT, like the rest of the repository).
 
 1. **The same nets.** The schematic of the port and the charger module's design are the same
    circuit: a test proves it by comparing the wiring alone, as the earlier ports' do.
-2. **A matching PCB where it matters.** A board made by `netsmith fab` is interchangeable with
+2. **A matching PCB where it matters.** A board made by `netsmith board fab` is interchangeable with
    theirs in these ways, and the parity checker (with tolerances) fails when one is off:
    - the card-edge connector (J3: 36 fingers, every finger on its signal, pad for pad), the
      USB-C receptacle (J4) and the Tag-Connect programming pads (J2): the same positions,
@@ -75,7 +75,7 @@ folder are netsmith's** (MIT, like the rest of the repository).
 ## What is here
 
 - `netsmith.toml`, `src/main.nsm`, `src/main.lock.toml`: the project, its board and the board's
-  pick lock (`netsmith lock --update` refreshes it; CI checks it). The other files of `src/` are
+  pick lock (`netsmith project lock --update` refreshes it; CI checks it). The other files of `src/` are
   the parts (see "Parts"), `catalogs/` the rows they and the passives need, `libs/` the
   footprints, `kicad.toml` what KiCad calls them.
 - `LICENSE`: the CERN-OHL-P-2.0 text, as the author ships it.
@@ -96,7 +96,7 @@ folder are netsmith's** (MIT, like the rest of the repository).
 From this folder:
 
 ```sh
-netsmith build    # the schematic, in out/ (no KiCad install needed)
+netsmith board build    # the schematic, in out/ (no KiCad install needed)
 ```
 
 The checks are in `crates/netsmith-tools/tests/power_manifold.rs` (the board and the table),
@@ -112,7 +112,7 @@ and routes about 240 of the 257 connections in the gate's 20 s (the gate allows 
 parts' places do not depend on the router). The board is dense (89 parts on 101.2 x 24 mm); seeds 3 to 14, which once stopped with the
 courtyards of the receptacle (`usb`) and the capacitor `vbus_2u2` 0.005 mm in each other (the
 placer measured the receptacle, pinned at x 97.405 mm, on its 0.05 mm grid), place too (#457); when a seed does not place a board, the placer tries the next ones, 8 by default, and
-`fab` writes the one that places it to `src/main.pcb.toml` (#458). `netsmith fab` writes a four-layer JLCPCB
+`fab` writes the one that places it to `src/main.pcb.toml` (#458). `netsmith board fab` writes a four-layer JLCPCB
 board (`.top.net`, `.bottom.net` and `.inner1.net` ground, `.inner2.net` +5 V).
 **The router does not finish this board**: with its default effort (4 tries, 5 min in a debug
 build) 4 of the 256 connections are left, so `fab` exits 1 with `INCOMPLETE`, writes the board
@@ -152,14 +152,14 @@ it; the gate runs `fab` with a 20 s timeout and allows `INCOMPLETE`.
 ### Run the parity check
 
 ```sh
-netsmith fab --locked          # from this folder; writes fab/PowerManifoldCharger/
-netsmith parity fab/PowerManifoldCharger/PowerManifoldCharger.kicad_pcb \
+netsmith board fab --locked          # from this folder; writes fab/PowerManifoldCharger/
+netsmith dev parity fab/PowerManifoldCharger/PowerManifoldCharger.kicad_pcb \
     --table reference/placements.toml --parts reference/parts.toml \
     --svg reference/parity-overlay.svg
 ```
 
 The gate is `crates/netsmith-cli/tests/power_manifold_parity.rs` (`NETSMITH_NO_KICAD=1`,
-`fab --locked --route-timeout 20`, every must-match item `ok` but the two known failures of the
+`board fab --locked --route-timeout 20`, every must-match item `ok` but the two known failures of the
 outline, which it names, and the committed overlay equal to the one the board gives).
 
 **Result: `must-match: 144 ok, 2 failed`** (the two are the outline's corner radius and
@@ -365,7 +365,7 @@ the pin tables (no `symbol` key). Documents fetched 2026-11-11.
 ##
 `cargo test -p netsmith-fabricate --test main power_manifold_ics::` 12 passed (also `power_manifold::`, 17 total); `cargo fmt --all --check`
 clean; `cargo clippy -p netsmith-fabricate --all-targets` clean. The fixture board (the test's own) builds with no KiCad install.
-Not run: the workspace suite, `netsmith lock --check`, any KiCad ERC/DRC.
+Not run: the workspace suite, `netsmith project lock --check`, any KiCad ERC/DRC.
 
 #### U1, kind `Stm32G071C8` (src/stm32g071c8.nsm), package "LQFP-48(7x7)", 48 pads
 Datasheet: ST DS12232 Rev 3 (March 2020, 133 pp; LCSC's copy, SHA-256 96d7e9ca1500; ST's server did not answer; a later

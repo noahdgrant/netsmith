@@ -14,7 +14,7 @@
 //! are never touched. Every git command runs with `GIT_OPTIONAL_LOCKS=0`, so not even
 //! `git status` rewrites the index. The project may be a folder of the repository
 //! (`hardware/board`): only that folder is archived, and the paths in the answer are the
-//! project's. A project with no `netsmith.toml` (`netsmith editor file.nsm`) compares that file
+//! project's. A project with no `netsmith.toml` (`netsmith view editor file.nsm`) compares that file
 //! and the files beside it that start with its name (its physical file, its layout). `git
 //! archive` honours `export-ignore` in `.gitattributes`, so a project that excludes its sources
 //! from archives is read without them: that is the repository's choice and the cost of not
@@ -489,7 +489,7 @@ const MAX_REF_TREE_BYTES: u64 = 256 * 1024 * 1024;
 const NOT_SOURCES: [&str; 3] = ["out", "target", "node_modules"];
 
 /// Folders of tools and editors (`.claude`, `.agents`, `.git`, ...): never sources of a project. A link in one of them (the
-/// `.claude/skills` link `netsmith init` writes) is removed like any other, but is not what the analysis would miss, so the answer
+/// `.claude/skills` link `netsmith project init` writes) is removed like any other, but is not what the analysis would miss, so the answer
 /// does not name it.
 const TOOL_FOLDERS: [&str; 7] = [
     ".claude", ".agents", ".git", ".github", ".vscode", ".idea", ".cursor",

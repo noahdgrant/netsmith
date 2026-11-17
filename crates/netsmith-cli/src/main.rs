@@ -10,7 +10,7 @@ use netsmith_cli::commands;
     name = "netsmith",
     version,
     about = "Electronics as code.",
-    after_help = "NETSMITH_TIMINGS=1 prints the time of each stage of a run to stderr."
+    after_help = commands::AFTER_HELP
 )]
 struct Cli {
     #[command(subcommand)]
@@ -18,6 +18,15 @@ struct Cli {
 }
 
 fn main() -> ExitCode {
+    // A command or flag of an earlier release is an error that names the one to write (#1090).
+    let args: Vec<String> = std::env::args_os()
+        .skip(1)
+        .map(|a| a.to_string_lossy().into_owned())
+        .collect();
+    if let Some(moved) = commands::moved::moved(&args) {
+        eprint!("{}", moved.message());
+        return ExitCode::from(2);
+    }
     // A usage mistake exits 2, as netsmith's "cannot run" does; help and the version exit 0.
     commands::run(Cli::parse().command)
 }

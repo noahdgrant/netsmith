@@ -1,6 +1,6 @@
 //! The dependency lock from the command line (issue #1012): `build` writes
-//! `dependencies.lock.toml` for a dependency by git, `lock --check` fails when it does not hold
-//! what the manifest asks for and fetches nothing, and `lock --update` takes the commit a branch
+//! `dependencies.lock.toml` for a dependency by git, `project lock --check` fails when it does not hold
+//! what the manifest asks for and fetches nothing, and `project lock --update` takes the commit a branch
 //! names now. The repository is a local one the test makes, so nothing uses the network.
 
 use std::{fs, path::Path, process::Command};
@@ -77,7 +77,7 @@ fn build_writes_the_dependency_lock_and_lock_checks_and_updates_it() {
     manifest(&root, &format!("shared = {{ git = \"{url}\", rev = \"main\" }}"));
     write(&root.join("app/src/main.nsm"), LED);
 
-    let build = netsmith(&root, &["build"]);
+    let build = netsmith(&root, &["board", "build"]);
     assert!(build.status.success(), "{}", text(&build.stderr));
     assert!(
         text(&build.stderr).contains("wrote dependencies.lock.toml, the commit of each dependency by git"),
@@ -86,15 +86,15 @@ fn build_writes_the_dependency_lock_and_lock_checks_and_updates_it() {
     );
     let lock = fs::read_to_string(root.join("app/dependencies.lock.toml")).unwrap();
     assert!(lock.contains(&format!("commit = \"{first}\"")), "{lock}");
-    let check = netsmith(&root, &["lock", "--check"]);
+    let check = netsmith(&root, &["project", "lock", "--check"]);
     assert!(check.status.success(), "{}", text(&check.stderr));
 
     // The branch moves: the lock still holds, and the check, which fetches nothing, passes.
     write(&repo.join("src/more.nsm"), "interface More {\n}\n");
     let second = commit(&repo, "second");
-    let check = netsmith(&root, &["lock", "--check"]);
+    let check = netsmith(&root, &["project", "lock", "--check"]);
     assert!(check.status.success(), "{}", text(&check.stderr));
-    let update = netsmith(&root, &["lock", "--update"]);
+    let update = netsmith(&root, &["project", "lock", "--update"]);
     assert!(update.status.success(), "{}", text(&update.stderr));
     let out = text(&update.stdout);
     assert!(
@@ -106,7 +106,7 @@ fn build_writes_the_dependency_lock_and_lock_checks_and_updates_it() {
     // The manifest asks for something else: the check fails, naming it.
     git(&repo, &["tag", "v1.0.0"]);
     manifest(&root, &format!("shared = {{ git = \"{url}\", version = \"1\" }}"));
-    let check = netsmith(&root, &["lock", "--check"]);
+    let check = netsmith(&root, &["project", "lock", "--check"]);
     assert_eq!(check.status.code(), Some(1), "{}", text(&check.stderr));
     assert!(
         text(&check.stdout).contains("no commit for shared")

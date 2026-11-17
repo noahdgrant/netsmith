@@ -1,5 +1,5 @@
 //! The board's _Scene_ (ADR 0105): one three-dimensional description of a placed board, built
-//! from netsmith's own data, that `netsmith board3d` reports as numbers and that the editor's 3D
+//! from netsmith's own data, that `netsmith dev board3d` reports as numbers and that the editor's 3D
 //! view, the `.glb` writer and the rasterizer will draw. [`Scene::of`] is a pure function of the
 //! [`Board`] and the parts' _Height provenance_; it reads no file and needs no KiCad.
 //!

@@ -98,7 +98,7 @@ export async function run(tools) {
 
   step('a run in a terminal with --to-editor: the status bar shows it, and --progress json prints JSON lines');
   const port = new URL(url).port;
-  const run = await guarded('`netsmith board3d --to-editor` to exit', exec(binary, ['board3d', '--board', BOARD, '--progress', 'json', `--to-editor=${port}`], { cwd: project, maxBuffer: 64 * 1024 * 1024 }));
+  const run = await guarded('`netsmith dev board3d --to-editor` to exit', exec(binary, ['dev', 'board3d', '--board', BOARD, '--progress', 'json', `--to-editor=${port}`], { cwd: project, maxBuffer: 64 * 1024 * 1024 }));
   const lines = run.stderr.split('\n').filter((l) => l.startsWith('{'));
   const events = lines.map((l) => JSON.parse(l));
   expect(events.some((e) => e.stage === 'placing' && e.board && typeof e.elapsedMs === 'number' && e.message), `a line of the placer as data (${lines[0]})`);

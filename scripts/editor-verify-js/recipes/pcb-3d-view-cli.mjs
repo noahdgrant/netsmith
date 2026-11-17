@@ -1,5 +1,5 @@
-// `netsmith view` drives the 3D view of the running editor from the command line (P8b of issue
-// 430, docs/BOARD3D.md, "Driving a running editor"), with the flags of `netsmith render`: the
+// `netsmith view editor-3d` drives the 3D view of the running editor from the command line (P8b of issue
+// 430, docs/BOARD3D.md, "Driving a running editor"), with the flags of `netsmith view 3d`: the
 // state is read as a summary and as JSON, a change with a picture is made and the page shows it,
 // the PNG saved is the page's canvas, and a refusal, no page and nothing listening exit 2 with
 // their reasons. The page is open in this recipe's browser; the command is the binary's own.
@@ -24,10 +24,10 @@ export async function run(tools) {
   const { page, shot, step, expect, url, binary } = tools;
   await fresh(tools, path.join(here, '../fixtures/height_limits.pcb.toml'));
   const port = new URL(url).port;
-  // As an agent runs it: `netsmith view --port N ...`, the exit status and both streams kept.
+  // As an agent runs it: `netsmith view editor-3d --port N ...`, the exit status and both streams kept.
   const view = async (...args) => {
     try {
-      const r = await exec(binary, ['view', '--port', port, ...args]);
+      const r = await exec(binary, ['view', 'editor-3d', '--port', port, ...args]);
       return { code: 0, out: r.stdout, err: r.stderr };
     } catch (e) {
       return { code: e.code, out: e.stdout ?? '', err: e.stderr ?? '' };
@@ -37,11 +37,11 @@ export async function run(tools) {
   const tall = partOf(s, 'tall');
   await page.selectOption('.boardpick select', BOARD);
 
-  step('view alone prints the state of the page, as a summary and as the editor\'s JSON');
+  step('view editor-3d alone prints the state of the page, as a summary and as the editor\'s JSON');
   let r = await view();
   expect(r.code === 0 && r.out.includes(`board: ${BOARD}`) && r.out.includes('3D view: not on screen'), `the summary says the 3D view is not shown:\n${r.out}`);
-  r = await view('--json');
-  expect(r.code === 0 && JSON.parse(r.out).board === BOARD && JSON.parse(r.out).shown === false, `--json is the route's JSON: ${r.out.trim()}`);
+  r = await view('--format', 'json');
+  expect(r.code === 0 && JSON.parse(r.out).board === BOARD && JSON.parse(r.out).shown === false, `--format json is the route's JSON: ${r.out.trim()}`);
 
   step('a change with a picture: the top, a part lit, x-ray; the page shows it and the PNG is its canvas');
   const png = path.join(path.dirname(await shot('before')), 'pcb-3d-view-cli-top.png');
@@ -51,7 +51,7 @@ export async function run(tools) {
   expect(r.out.includes(`highlight: ${tall.refdes}`) && r.out.includes('x-ray: on') && r.out.includes(`picture: ${png}`), `lit, seen through, and the path of the picture:\n${r.out}`);
   expect((await ask(page, 'preset')) === 'top', 'the page looks from the top');
   expect((await page.getByTestId('view-xray').getAttribute('aria-pressed')) === 'true', 'x-ray is on in the page');
-  expect(r.out.includes('render: netsmith render') && r.out.includes(`--highlight ${tall.refdes}`), 'the render command is in the summary');
+  expect(r.out.includes('command: netsmith view 3d') && r.out.includes(`--highlight ${tall.refdes}`), 'the view 3d command is in the summary');
   const bytes = fs.readFileSync(png);
   expect(bytes.subarray(1, 4).toString() === 'PNG' && bytes.length > 5000, `the saved file is a PNG with something in it (${bytes.length} bytes)`);
   const canvas = await page.evaluate((sel) => {
@@ -70,10 +70,10 @@ export async function run(tools) {
   expect((await page.getByTestId('colour-by').inputValue()) === 'margin', 'the page colours by margin');
 
   step('a refusal exits 2 with the editor\'s message and changes nothing');
-  const before = JSON.parse((await view('--json')).out);
+  const before = JSON.parse((await view('--format', 'json')).out);
   r = await view('--view', 'front', '--highlight', 'NOPE');
   expect(r.code === 2 && r.out === '' && r.err.includes('`NOPE`') && r.err.includes('the parts are:') && r.err.includes(tall.refdes), `an unknown id lists what the board has: ${r.err.trim()}`);
-  const after = JSON.parse((await view('--json')).out);
+  const after = JSON.parse((await view('--format', 'json')).out);
   expect(after.view === before.view && JSON.stringify(after.camera) === JSON.stringify(before.camera), 'the camera did not move');
   r = await view('--board', 'NoSuchBoard');
   expect(r.code === 2 && r.err.includes(BOARD), `a board the project has not lists the ones it has: ${r.err.trim()}`);
@@ -91,10 +91,10 @@ export async function run(tools) {
     });
   });
   try {
-    await exec(binary, ['view', '--port', String(free), '--view', 'top']);
+    await exec(binary, ['view', 'editor-3d', '--port', String(free), '--view', 'top']);
     expect(false, 'a port with nothing on it is an error');
   } catch (e) {
-    expect(e.code === 2 && e.stderr.includes('netsmith editor') && e.stderr.includes(String(free)), `no editor: ${e.stderr.trim()}`);
+    expect(e.code === 2 && e.stderr.includes('netsmith view editor') && e.stderr.includes(String(free)), `no editor: ${e.stderr.trim()}`);
   }
   await shot('done');
 }

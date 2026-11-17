@@ -121,7 +121,7 @@ fn a_solid_that_is_not_closed_is_an_error_that_says_where() {
 /// How finely a slope or a curve is followed in these tests (mm).
 const STEP: f64 = 0.5;
 
-/// The file the tests of `netsmith case import` (here and in `netsmith-tools`) read.
+/// The file the tests of `netsmith import case model` (here and in `netsmith-tools`) read.
 const COMMITTED: &str = include_str!("../../../tests/models/case_box.step");
 
 #[test]
@@ -140,7 +140,7 @@ fn write_case_box() {
     std::fs::write(path, case_box_step()).unwrap();
 }
 
-/// The file the tests of `netsmith case import --limits` read.
+/// The file the tests of `netsmith import case model --limits` read.
 const COMMITTED_LID: &str = include_str!("../../../tests/models/case_lid.step");
 
 #[test]

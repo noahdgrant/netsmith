@@ -152,7 +152,7 @@ fn applying_an_alternative_writes_its_value_and_the_part_resolves() {
 fn applying_picks_the_part_again_in_the_pick_lock_and_keeps_the_others() {
     let source = led(".r1: Resistor { .resistance &= 249ohm +/- 1% }");
     let root = project("swap-lock", &source);
-    // The lock as `lock --update` writes it, with the generic part at 249 ohm.
+    // The lock as `project lock --update` writes it, with the generic part at 249 ohm.
     let project = Project::load(&root).unwrap();
     let catalogs = project.catalogs().unwrap();
     let loader = project.loader().unwrap();

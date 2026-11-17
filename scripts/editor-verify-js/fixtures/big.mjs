@@ -132,7 +132,7 @@ export function bigSource(stages = STAGES) {
   return lines.join('\n');
 }
 
-/** Writes the board and its module files into a project made by `netsmith init`. */
+/** Writes the board and its module files into a project made by `netsmith project init`. */
 export function writeBig(project, stages = STAGES) {
   for (const [file, text] of [
     ['src/sheets/power/ldo_stage.nsm', LDO],

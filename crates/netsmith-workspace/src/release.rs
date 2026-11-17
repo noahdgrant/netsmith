@@ -27,7 +27,7 @@ const DOWNLOADS: [(&str, &str); 5] = [
 ];
 
 impl Workspace {
-    /// What `netsmith build` does: a KiCad schematic for each board of each top-level file.
+    /// What `netsmith board build` does: a KiCad schematic for each board of each top-level file.
     pub(super) fn write_schematics(&self, say: &Say) -> BuildReport {
         // No lock is held while the files are written: it takes long enough to matter.
         let started = Instant::now();
@@ -108,7 +108,7 @@ impl Workspace {
         }
     }
 
-    /// What `netsmith fab` does for the file that holds `board`.
+    /// What `netsmith board fab` does for the file that holds `board`.
     pub(super) fn make_fab(
         &self,
         board: &str,
@@ -142,7 +142,7 @@ impl Workspace {
             .map_err(|e| ApiError::internal(format!("{}: {e}", source.name)))?;
         let loader = target.loader().map_err(ApiError::internal)?;
         let libraries = target.libraries().map_err(ApiError::internal)?;
-        // The stages `netsmith fab` prints to stderr go to the page instead.
+        // The stages `netsmith board fab` prints to stderr go to the page instead.
         let _reporting = Reporting::to(say);
         netsmith_catalog::picks::refuse(&source.path).map_err(ApiError::internal)?;
         // The board is made of the rows the pick lock holds, as the view of it is; the lock is

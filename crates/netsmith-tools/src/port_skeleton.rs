@@ -1,4 +1,4 @@
-//! `netsmith port skeleton` (#452): the first source of a port, written from the original's
+//! `netsmith import port skeleton` (#452): the first source of a port, written from the original's
 //! `.kicad_pcb`, and the port's parts file, `reference/parts.toml` ([`crate::port::PortParts`]).
 //!
 //! The board file is read as it is (`Netlist::from_kicad_pcb`), with no KiCad. What is written:
@@ -35,7 +35,7 @@
 //! When that file is not there, the member is marked `GAP` and its import names the file to
 //! write, so the source does not build until each has a part. The joins name a gap's pins by the
 //! original board's pin names (each pad's `pinfunction`), made into paths by the rule of
-//! `netsmith part from-symbol` ([`pin_path`]), so they are the pins of the part file it drafts
+//! `netsmith import part from-symbol` ([`pin_path`]), so they are the pins of the part file it drafts
 //! from the original's symbol (#453); a pad with no name is its quoted number (`.u1.'3'`). The
 //! command guesses no pin kinds. When the file is there, its part's pin table gives the pins
 //! their names; the first table that has every pad the board joins is used.
@@ -120,13 +120,13 @@ pub fn skeleton(pcb: &str, file: &str, board: &str, src: &Path) -> Result<Skelet
     let mut out = String::new();
     out.push_str(&format!(
         "//! The first source of the port of the KiCad board\n\
-         //! `{file}`, written by `netsmith port skeleton`:\n\
+         //! `{file}`, written by `netsmith import port skeleton`:\n\
          //! one member for each footprint of the original, named by its designator, and one join\n\
          //! for each net, after a comment with the original's net name.\n\
          //!\n\
          //! A member marked GAP has no part file yet, and its import names the file to write: the\n\
          //! source does not build until each has one. The joins name a gap's pins by the\n\
-         //! original's pin names, as `netsmith part from-symbol` does, and a pin with no name by\n\
+         //! original's pin names, as `netsmith import part from-symbol` does, and a pin with no name by\n\
          //! its pad (`.u1.'3'`). The tolerance of each line marked `TODO tolerance` is the\n\
          //! skeleton's (resistors {RESISTOR_TOLERANCE}, capacitors {CAPACITOR_TOLERANCE}, \
          inductors {INDUCTOR_TOLERANCE}): check it against the\n\
@@ -255,9 +255,9 @@ pub fn skeleton(pcb: &str, file: &str, board: &str, src: &Path) -> Result<Skelet
 
     let mut parts = format!(
         "# The original's reference designator of each part of this port, by the part's member path\n\
-         # (#456), written by `netsmith port skeleton` from\n\
+         # (#456), written by `netsmith import port skeleton` from\n\
          # `{file}`.\n\
-         # The nets proof of the port's tests and `netsmith parity` read it. A member that is\n\
+         # The nets proof of the port's tests and `netsmith dev parity` read it. A member that is\n\
          # renamed in the source is renamed here.\n\n\
          [parts]\n"
     );
@@ -295,7 +295,7 @@ pub fn skeleton(pcb: &str, file: &str, board: &str, src: &Path) -> Result<Skelet
     })
 }
 
-/// `netsmith port skeleton <original> [--out <file.nsm>]`: write the skeleton of `original` to
+/// `netsmith import port skeleton <original> [--write <file.nsm>]`: write the skeleton of `original` to
 /// `out` (default `src/main.nsm`) and its parts file to `reference/parts.toml` of the project
 /// (the folder above the source's folder). Neither file may exist yet: the command never
 /// overwrites a port's work. The board is named after the original's file.
@@ -308,7 +308,7 @@ pub fn write(original: &Path, out: Option<&Path>) -> Result<(Skeleton, PathBuf),
     for path in [&out, &parts_path] {
         if path.exists() {
             return Err(format!(
-                "{} is there already; `port skeleton` writes the first source of a port and \
+                "{} is there already; `import port skeleton` writes the first source of a port and \
                  overwrites nothing (move it away, or give --out another file)",
                 path.display()
             ));
@@ -350,7 +350,7 @@ enum Kind {
 /// standard part's pins are its generic's; a part whose file is there, its pin table's; a gap's,
 /// the original's pin names ([`pin_path`]), and a pad with no name is its quoted number (`'3'`,
 /// `'A1'`, so that it never reads as a pin's name). Two pads whose names make one path get `_2`,
-/// `_3`... in pad order, as `netsmith part from-symbol` does, unless they have one name and are
+/// `_3`... in pad order, as `netsmith import part from-symbol` does, unless they have one name and are
 /// on one net: then they are one pin, as a stacked pin of the symbol is.
 fn member_pins(
     kind: &Kind,
@@ -401,7 +401,7 @@ fn member_pins(
 }
 
 /// A member path from a pin's name on the original board (`pinfunction`), made as
-/// `netsmith part from-symbol` makes a pin's path from the symbol (`path_of` and `printed` in
+/// `netsmith import part from-symbol` makes a pin's path from the symbol (`path_of` and `printed` in
 /// `part_draft.rs`, #453), so that the joins name the pins of the part file it drafts. The two
 /// must stay the same rule: lower case, a `_` between words, never starting with a digit (`3V3`
 /// is `p3v3`), a trailing `+` or `-` is `_pos` or `_neg` (`INA-` is `ina_neg`), and an overbar

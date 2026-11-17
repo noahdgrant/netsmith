@@ -31,7 +31,7 @@ What changed in the circuit since a branch, a tag or a commit: parts, nets, rail
 6. The switch: the Schematic of `TwoBoards/led` (D1 and R1 outlined as changed in the comparison's colours, the socket as renumbered, a legend, the removed header in the inspector, the drawing not replaced: a mark on the `svg` survives and no node is added or removed), the BOM (a `Change` column, `+1` on two new lines, three removed lines struck through at the end), the Power tree (the badge `70 mA → 50 mA`, changed rails of both boards), the System view (both boards), the Source (bars and `7 changes`); `Hide changes` in the palette leaves no class of a mark anywhere; the chip's menu turns them on again.
 7. A reload keeps the ref (the comparison is there with no choice made). An error written to `src/main.nsm` is a new problem (`1 error on disk`, the Problems tile `1 new`), gone when the file is right.
 8. `HEAD`: `No changes in the circuit`, `Only the source differs`, `NOTES.md`. `broken` while the answer is held back: the stage text and the time, no `%`, the chip `comparing…`; then the sentence of the ref that does not analyse with `unknown type`, the chip `cannot compare` and the way out. A name that is no ref says so (the browser logs the server's 404: the recipe lets that one error through with `allowConsole`).
-9. Not a repository: a second `netsmith editor` over a copy of the project without `.git` answers `GET /api/git`; the page is given that answer and shows the state with the reason and no picker.
+9. Not a repository: a second `netsmith view editor` over a copy of the project without `.git` answers `GET /api/git`; the page is given that answer and shows the state with the reason and no picker.
 
 ## Beside the rest (`compare-interactions`)
 

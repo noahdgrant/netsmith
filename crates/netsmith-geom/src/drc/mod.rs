@@ -23,8 +23,8 @@
 //!
 //! The owner accepted these choices on 2026-11-04. ADR 0034 made the fabrication files netsmith's
 //! own and left the check to `kicad-cli`: without KiCad `fab` refused to package, or packaged with
-//! a note that nothing had been checked. This check is now the gate in `fab`, `fab --order` and
-//! the editor's Fab button. KiCad's check stays as a witness (`fab --cross-check`, the tests) and
+//! a note that nothing had been checked. This check is now the gate in `fab`, `project order` and
+//! the editor's Fab button. KiCad's check stays as a witness (`board fab --cross-check`, the tests) and
 //! as a second opinion in the editor (the button "Also ask KiCad", through `Project.kicad`).
 //!
 //! **Where it lives: here, over the `.kicad_pcb` text and the `.kicad_pro` beside it, and not in

@@ -2,7 +2,7 @@
 
 ## How it looks
 
-A header (the number of boards in the project, what the page makes, `The source has no errors` or `Fix the N errors first`) and a card for each thing it makes (`.acard[data-task=build|fab|order]`, two columns at 1100 px and wider, one below; the order card has the full row): an icon, the title and one line, the command line that does the same as a chip with a copy button (`[data-testid=cli-chip]`: `netsmith build`, `netsmith fab src/main.nsm`, `netsmith fab --order demo`), the button, and a last-run line (`.lastrun`: the pill `built` / `package made` / `order made` / `stopped`, `took 0.7 s`, `just now`, kept fresh by a timer; the time of a run is the page's, from `ranAt` in the store, so it says `Not run in this session` after a reload). A run adds the files it wrote (`wrote out/TwoBoards/led`, with a copy button; downloads as chips with a download icon, `.downloads a`) and the output as a panel (`.log`: a number and a severity colour for each line, folded or open, copyable, `LogPanel.tsx`; `fab-notes.txt` is its own panel with the note `read before you order`). While a card runs it has a line sweeping along its top, a spinner in the button, and the stage and the clock in `.job`. The order card has the order picker, a table of its boards and quantities (`.order-boards`, a `Quantity` column and a total) and, before a run, a note on where its files go. KiCad's folder cannot be opened from the page (the server has no call for it): the path is copyable.
+A header (the number of boards in the project, what the page makes, `The source has no errors` or `Fix the N errors first`) and a card for each thing it makes (`.acard[data-task=build|fab|order]`, two columns at 1100 px and wider, one below; the order card has the full row): an icon, the title and one line, the command line that does the same as a chip with a copy button (`[data-testid=cli-chip]`: `netsmith board build`, `netsmith board fab src/main.nsm`, `netsmith project order demo`), the button, and a last-run line (`.lastrun`: the pill `built` / `package made` / `order made` / `stopped`, `took 0.7 s`, `just now`, kept fresh by a timer; the time of a run is the page's, from `ranAt` in the store, so it says `Not run in this session` after a reload). A run adds the files it wrote (`wrote out/TwoBoards/led`, with a copy button; downloads as chips with a download icon, `.downloads a`) and the output as a panel (`.log`: a number and a severity colour for each line, folded or open, copyable, `LogPanel.tsx`; `fab-notes.txt` is its own panel with the note `read before you order`). While a card runs it has a line sweeping along its top, a spinner in the button, and the stage and the clock in `.job`. The order card has the order picker, a table of its boards and quantities (`.order-boards`, a `Quantity` column and a total) and, before a run, a note on where its files go. KiCad's folder cannot be opened from the page (the server has no call for it): the path is copyable.
 
 ## How to get to it
 
@@ -16,14 +16,14 @@ The section "Build" (key 7), or the two actions at the top right, "Write KiCad f
 2. "Make fab files" (the card's "Make fab package") runs `fab` for the file of the selected board: chips `package made` and `design rules check: passed`, download links (Gerber zip, `bom.csv`, `cpl.csv`, `fab-notes.txt`, the `.kicad_pcb`), the summary and the text of `fab-notes.txt` ("read before you order").
 3. If `fab` stops, the chip says `stopped` and the output pane shows exactly what the command line would print (a design rules failure, a missing LCSC number, a routing failure).
 
-While it runs the panel shows the stages `netsmith fab` prints to stderr, with a clock, and the status bar shows them in every tab; the editor stays usable. The report says how long it took.
+While it runs the panel shows the stages `netsmith board fab` prints to stderr, with a clock, and the status bar shows them in every tab; the editor stays usable. The report says how long it took.
 
 ### Orders
 
 `scripts/editor-verify drive order` (needs KiCad; `launch` adds an order `demo` to the scratch project's `netsmith.toml` for the `two_boards` fixture).
 
 1. The "Order" section has a select of the manifest's orders and the boards of the picked one with their quantities. With no orders it says how to add one.
-2. "Make order" runs `netsmith fab --order <name>`: stages in the panel and status bar, then the chip `order made`, the folder written, links to `order.txt` and `order-bom.csv`, and the text of `order.txt` (boards, combined bill of materials, notes to read before you order, unverified items).
+2. "Make order" runs `netsmith project order <name>`: stages in the panel and status bar, then the chip `order made`, the folder written, links to `order.txt` and `order-bom.csv`, and the text of `order.txt` (boards, combined bill of materials, notes to read before you order, unverified items).
 3. If a board fails (a design rules failure, a missing LCSC number) the chip says `stopped` and the output pane shows what the command line prints. Nothing of the order's summary is written then.
 
 ## Gotchas

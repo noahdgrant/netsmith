@@ -1,4 +1,4 @@
-//! `netsmith fab --save-placed` writes the board as placed before routing, and `netsmith route`
+//! `netsmith board fab --save-placed` writes the board as placed before routing, and `netsmith dev route`
 //! routes that file alone to the copper `fab` drew.
 
 use std::path::{Path, PathBuf};
@@ -56,7 +56,7 @@ fn route_of_the_saved_placed_board_draws_the_copper_fab_drew() {
     let run = netsmith(
         &examples,
         &[
-            "fab",
+            "board", "fab",
             "led.nsm",
             "--out",
             saved.to_str().unwrap(),
@@ -73,7 +73,7 @@ fn route_of_the_saved_placed_board_draws_the_copper_fab_drew() {
     ok(&netsmith(
         &examples,
         &[
-            "fab",
+            "board", "fab",
             "led.nsm",
             "--out",
             plain.to_str().unwrap(),
@@ -87,7 +87,7 @@ fn route_of_the_saved_placed_board_draws_the_copper_fab_drew() {
     let run = netsmith(
         &examples,
         &[
-            "route",
+            "dev", "route",
             placed.to_str().unwrap(),
             "--out",
             routed.to_str().unwrap(),
@@ -115,7 +115,7 @@ fn route_of_the_saved_placed_board_draws_the_copper_fab_drew() {
     ok(&netsmith(
         &examples,
         &[
-            "fab",
+            "board", "fab",
             "led.nsm",
             "--out",
             saved.to_str().unwrap(),
@@ -129,11 +129,11 @@ fn route_of_the_saved_placed_board_draws_the_copper_fab_drew() {
 fn route_refuses_a_file_it_cannot_read_with_exit_code_two() {
     let dir = TempDir::new("route-bad-file");
     std::fs::write(dir.join("old.placed.json"), r#"{"format": 0, "board": {}}"#).unwrap();
-    let run = netsmith(&dir, &["route", "old.placed.json"]);
+    let run = netsmith(&dir, &["dev", "route", "old.placed.json"]);
     assert_eq!(run.status.code(), Some(2));
     let said = String::from_utf8_lossy(&run.stderr);
     assert!(said.contains("--save-placed"), "{said}");
-    let run = netsmith(&dir, &["route", "missing.placed.json"]);
+    let run = netsmith(&dir, &["dev", "route", "missing.placed.json"]);
     assert_eq!(run.status.code(), Some(2));
     assert!(!dir.join("out").exists(), "nothing is written");
 }
@@ -154,7 +154,7 @@ fn route_with_stages_draws_a_png_of_each_stage_and_the_crowding_the_same_each_ru
     ok(&netsmith(
         &examples,
         &[
-            "fab",
+            "board", "fab",
             "led.nsm",
             "--out",
             saved.to_str().unwrap(),
@@ -165,7 +165,7 @@ fn route_with_stages_draws_a_png_of_each_stage_and_the_crowding_the_same_each_ru
     let placed = saved.join("LedExample/LedExample.placed.json");
     let route = |out: &Path, more: &[&str]| {
         let mut args = vec![
-            "route",
+            "dev", "route",
             placed.to_str().unwrap(),
             "--out",
             out.to_str().unwrap(),
@@ -223,7 +223,7 @@ fn route_with_one_try_makes_one_and_takes_a_turn_cost() {
     ok(&netsmith(
         &examples,
         &[
-            "fab",
+            "board", "fab",
             "led.nsm",
             "--out",
             saved.to_str().unwrap(),
@@ -236,7 +236,7 @@ fn route_with_one_try_makes_one_and_takes_a_turn_cost() {
     let run = netsmith(
         &examples,
         &[
-            "route",
+            "dev", "route",
             placed.to_str().unwrap(),
             "--out",
             out.to_str().unwrap(),

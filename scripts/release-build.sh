@@ -8,8 +8,8 @@
 #   1. the workspace version and the target;
 #   2. `cargo build --release --locked -p netsmith-cli`, which must print no warning;
 #   3. `netsmith --version` must print the workspace version;
-#   4. a smoke test in a scratch directory: `netsmith init`, `build` and `fab` (which must end
-#      with `design rules check: passed`) on the starter board, and `netsmith editor` must serve
+#   4. a smoke test in a scratch directory: `netsmith project init`, `build` and `fab` (which must end
+#      with `design rules check: passed`) on the starter board, and `netsmith view editor` must serve
 #      the page and its script;
 #   5. strip (Linux and macOS), pack, checksum.
 #
@@ -88,23 +88,23 @@ cleanup() {
 trap cleanup EXIT
 mkdir "$scratch/blink"
 cd "$scratch/blink"
-"$bin" init >/dev/null || fail "netsmith init failed"
-[ -f netsmith.toml ] && [ -f src/main.nsm ] || fail "netsmith init wrote no netsmith.toml and src/main.nsm"
+"$bin" project init >/dev/null || fail "netsmith project init failed"
+[ -f netsmith.toml ] && [ -f src/main.nsm ] || fail "netsmith project init wrote no netsmith.toml and src/main.nsm"
 
 # The binary finds the libraries itself; a build that stops with "no KiCad ... libraries found"
 # means there is no install here.
 have_kicad=1
-"$bin" build >"$scratch/build.log" 2>&1 || {
+"$bin" board build >"$scratch/build.log" 2>&1 || {
     if grep -q "no KiCad .* libraries found" "$scratch/build.log"; then
         have_kicad=0
     else
-        cat "$scratch/build.log" >&2; fail "netsmith build failed on the starter board"
+        cat "$scratch/build.log" >&2; fail "netsmith board build failed on the starter board"
     fi
 }
 if [ "$have_kicad" = 1 ]; then
-    [ -d out/Blink ] || fail "netsmith build wrote no out/Blink"
-    "$bin" fab >"$scratch/fab.log" 2>&1 || { cat "$scratch/fab.log" >&2; fail "netsmith fab failed on the starter board"; }
-    grep -q "design rules check: passed" "$scratch/fab.log" || { cat "$scratch/fab.log" >&2; fail "netsmith fab did not end with \"design rules check: passed\""; }
+    [ -d out/Blink ] || fail "netsmith board build wrote no out/Blink"
+    "$bin" board fab >"$scratch/fab.log" 2>&1 || { cat "$scratch/fab.log" >&2; fail "netsmith board fab failed on the starter board"; }
+    grep -q "design rules check: passed" "$scratch/fab.log" || { cat "$scratch/fab.log" >&2; fail "netsmith board fab did not end with \"design rules check: passed\""; }
     step "smoke: init, build and fab on the starter board passed"
 elif [ "${NETSMITH_RELEASE_SKIP_KICAD_SMOKE:-}" = 1 ]; then
     step "WARNING: build and fab were NOT tried: no KiCad libraries found"
@@ -112,16 +112,16 @@ else
     fail "build and fab need KiCad's libraries: set NETSMITH_KICAD_SYMBOLS and NETSMITH_KICAD_FOOTPRINTS (or NETSMITH_RELEASE_SKIP_KICAD_SMOKE=1 to skip build and fab)"
 fi
 
-"$bin" editor --port 0 >"$scratch/editor.log" 2>&1 &
+"$bin" view editor --port 0 >"$scratch/editor.log" 2>&1 &
 editor_pid=$!
 url=""
 for _ in $(seq 1 100); do
     url="$(sed -n 's/^editing .* at \(http[^ ]*\) .*/\1/p' "$scratch/editor.log" | head -n1)"
     [ -n "$url" ] && break
-    kill -0 "$editor_pid" 2>/dev/null || { cat "$scratch/editor.log" >&2; fail "netsmith editor stopped"; }
+    kill -0 "$editor_pid" 2>/dev/null || { cat "$scratch/editor.log" >&2; fail "netsmith view editor stopped"; }
     sleep 0.1
 done
-[ -n "$url" ] || { cat "$scratch/editor.log" >&2; fail "netsmith editor printed no address"; }
+[ -n "$url" ] || { cat "$scratch/editor.log" >&2; fail "netsmith view editor printed no address"; }
 page="$(curl -fsS "$url")" || fail "the editor did not serve $url"
 echo "$page" | grep -q "<title>netsmith</title>" || fail "the editor's page at $url has no <title>netsmith</title>"
 script_path="$(echo "$page" | sed -n 's/.*<script[^>]* src="\([^"]*\)".*/\1/p' | head -n1)"

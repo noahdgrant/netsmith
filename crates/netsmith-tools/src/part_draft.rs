@@ -1,4 +1,4 @@
-//! `netsmith part from-symbol <lib.kicad_sym | .kicad_sch> <symbol>` (#453): a draft part file
+//! `netsmith import part from-symbol <lib.kicad_sym | .kicad_sch> <symbol>` (#453): a draft part file
 //! from a KiCad symbol's pins.
 //!
 //! A port's original schematic already carries each pin's name, number and electrical type in its
@@ -227,7 +227,7 @@ pub fn draft(symbol: &Symbol, file: &str, asked: &str) -> String {
 
     let mut out = String::new();
     out.push_str(&format!(
-        "// DRAFT written by `netsmith part from-symbol` from {file}, symbol `{asked}`.\n"
+        "// DRAFT written by `netsmith import part from-symbol` from {file}, symbol `{asked}`.\n"
     ));
     out.push_str("// It is the symbol's pin table, not the datasheet's. Check every row against the datasheet's pin\n");
     out.push_str("// table (names, numbers, kinds) and say so with the page; KiCad's types are often looser than the\n");

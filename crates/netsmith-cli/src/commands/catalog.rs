@@ -210,8 +210,9 @@ fn run_catalog_age(paths: &[std::path::PathBuf], only: &[String], days: u32) -> 
 
 #[cfg(test)]
 mod tests {
+    use crate::commands::catalog;
+    use crate::commands::common::testing::Leaf;
     use crate::commands::common::testing::{kind, parse};
-    use crate::commands::{Command, catalog};
     use clap::error::ErrorKind;
     use std::path::PathBuf;
 
@@ -226,7 +227,7 @@ mod tests {
                 "--to",
                 "catalogs/led.csv"
             ]),
-            Ok(Command::Catalog(catalog::Args {
+            Ok(Leaf::Catalog(catalog::Args {
                 command: catalog::Command::Add(catalog::AddArgs {
                     lcsc: "C2286".into(),
                     to: Some(PathBuf::from("catalogs/led.csv")),
@@ -244,7 +245,7 @@ mod tests {
                 "--offline",
                 "--no-cache"
             ]),
-            Ok(Command::Catalog(catalog::Args {
+            Ok(Leaf::Catalog(catalog::Args {
                 command: catalog::Command::Add(catalog::AddArgs {
                     to: None,
                     offline: true,
@@ -265,7 +266,7 @@ mod tests {
     fn catalog_refresh_takes_paths_and_the_flags_of_a_polite_opt_in_run() {
         assert_eq!(
             parse(&["catalog", "refresh"]),
-            Ok(Command::Catalog(catalog::Args {
+            Ok(Leaf::Catalog(catalog::Args {
                 command: catalog::Command::Refresh(catalog::RefreshArgs::default())
             }))
         );
@@ -288,7 +289,7 @@ mod tests {
                 "6",
                 "--no-cache"
             ]),
-            Ok(Command::Catalog(catalog::Args {
+            Ok(Leaf::Catalog(catalog::Args {
                 command: catalog::Command::Refresh(catalog::RefreshArgs {
                     paths: vec!["catalogs/a.csv".into(), "data".into()],
                     dry_run: true,
@@ -301,7 +302,7 @@ mod tests {
                 })
             }))
         );
-        let Ok(Command::Catalog(catalog::Args {
+        let Ok(Leaf::Catalog(catalog::Args {
             command: catalog::Command::Refresh(r),
         })) = parse(&["catalog", "refresh", "--offline"])
         else {
@@ -328,7 +329,7 @@ mod tests {
     fn catalog_age_takes_paths_a_catalog_and_the_days_with_90_as_the_default() {
         assert_eq!(
             parse(&["catalog", "age"]),
-            Ok(Command::Catalog(catalog::Args {
+            Ok(Leaf::Catalog(catalog::Args {
                 command: catalog::Command::Age(catalog::AgeArgs {
                     paths: vec![],
                     only: vec![],
@@ -338,7 +339,7 @@ mod tests {
         );
         assert_eq!(
             parse(&["catalog", "age", "x.csv", "--days", "30", "--only", "ldo"]),
-            Ok(Command::Catalog(catalog::Args {
+            Ok(Leaf::Catalog(catalog::Args {
                 command: catalog::Command::Age(catalog::AgeArgs {
                     paths: vec!["x.csv".into()],
                     only: vec!["ldo".into()],

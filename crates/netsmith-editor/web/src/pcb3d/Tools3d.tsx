@@ -302,7 +302,7 @@ export function SectionPanel({
         />
         <span>mm</span>
       </label>
-      <span class="v3-panel-hint" data-tip="As netsmith render --section: the side nearer the camera is not drawn">
+      <span class="v3-panel-hint" data-tip="As netsmith view 3d --section: the side nearer the camera is not drawn">
         keeps the far side
       </span>
       <button class="icon-btn" aria-label="Turn the section off" data-tip="Turn the section off" data-tip-keys="S" onClick={onClose}>

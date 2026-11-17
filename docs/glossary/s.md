@@ -59,11 +59,11 @@ The three generics of a USB Type-C receptacle in `std::parts::connector`, one fo
 _Avoid_: host port, device port (for the power direction), DRP
 
 **Skeleton**:
-The first source of a port, which `netsmith port skeleton <original.kicad_pcb>` writes with the port's _Parts file_ (#452): one member for each footprint of the original, named by its designator, and one join for each net, with the original's net names. A footprint that is not a plain resistor, capacitor, inductor or LED is a **gap** (marked `GAP`) until the project has its part file, so the skeleton does not build until each has one.
-_Avoid_: scaffold (the word for `netsmith init`), template, stub
+The first source of a port, which `netsmith import port skeleton <original.kicad_pcb>` writes with the port's _Parts file_ (#452): one member for each footprint of the original, named by its designator, and one join for each net, with the original's net names. A footprint that is not a plain resistor, capacitor, inductor or LED is a **gap** (marked `GAP`) until the project has its part file, so the skeleton does not build until each has one.
+_Avoid_: scaffold (the word for `netsmith project init`), template, stub
 
 **Skill**:
-A directory in `.agents/skills/` with a `SKILL.md`: instructions an agent loads when its description matches the task. `netsmith-*` skills are for working in a netsmith project and `netsmith init` copies them into one and `netsmith init --refresh` updates the copies you have not edited; `netsmith-dev-*` skills are for working on netsmith and stay in its repository (ADR 0015).
+A directory in `.agents/skills/` with a `SKILL.md`: instructions an agent loads when its description matches the task. `netsmith-*` skills are for working in a netsmith project and `netsmith project init` copies them into one and `netsmith project refresh` updates the copies you have not edited; `netsmith-dev-*` skills are for working on netsmith and stay in its repository (ADR 0015).
 _Avoid_: Prompt, plugin
 
 **Source (at DC)**:
@@ -79,8 +79,8 @@ The layers a board is built from: the number of copper layers, the finished thic
 _Avoid_: Layer stack
 
 **Stage picture**:
-A PNG of one stage of the router's winning try (`stage-1-first-pass.png` to `stage-4-final.png`, written by `netsmith route --stages`): that stage's copper, front and back in two colours, the pads and vias, and the lines still left drawn bright on top; `crowding.png` beside them draws the crowding map. A picture for an agent to open, not a file of the fab package (`netsmith_pcb::picture`).
-_Avoid_: Screenshot, render (`netsmith render` draws the 3D scene), snapshot (the router's data a picture is drawn from)
+A PNG of one stage of the router's winning try (`stage-1-first-pass.png` to `stage-4-final.png`, written by `netsmith dev route --stages`): that stage's copper, front and back in two colours, the pads and vias, and the lines still left drawn bright on top; `crowding.png` beside them draws the crowding map. A picture for an agent to open, not a file of the fab package (`netsmith_pcb::picture`).
+_Avoid_: Screenshot, render (`netsmith view 3d` draws the 3D scene), snapshot (the router's data a picture is drawn from)
 
 **Stage timings**:
 One line on stderr for each stage of a run (`timing: solve LedExample 12.3 ms`), printed when the environment variable `NETSMITH_TIMINGS` is set to anything but empty or `0`, and nothing otherwise (`netsmith_core::timings`). A stage inside another (`solve.dc` in `solve`) is counted in the one around it. The numbers are wall time of one run, taken on whatever the machine was doing.
@@ -107,7 +107,7 @@ A rail whose `.voltage`, or the `.voltage` of any rail joined to it by `~`, a st
 _Avoid_: Seed (the start window of a circle, which is one use of a stated rail), claim, assumed window (it is never kept, and is not stated)
 
 **STEP file**:
-The board and its parts as exact solids for mechanical CAD (ISO 10303-21, AP214), that `netsmith board3d --step` writes from the _Scene_ and `netsmith fab` writes into the fab package as `<board>.step`: an assembly with the board and one product per part, named by its designator; a part of unknown height is its outline only, never a solid (ADR 0107). A part drawn from its _STEP model_ holds that model's own solids, copied in (ADR 0108).
+The board and its parts as exact solids for mechanical CAD (ISO 10303-21, AP214), that `netsmith dev board3d --step` writes from the _Scene_ and `netsmith board fab` writes into the fab package as `<board>.step`: an assembly with the board and one product per part, named by its designator; a part of unknown height is its outline only, never a solid (ADR 0107). A part drawn from its _STEP model_ holds that model's own solids, copied in (ADR 0108).
 _Avoid_: STEP model (a maker's or KiCad's file of one part, the next term), 3D export, MCAD export
 
 **STEP model**:
@@ -151,5 +151,5 @@ Several boards and the joins between their ports, written `system Demo { .main: 
 _Avoid_: Assembly, backplane, harness
 
 **System scene**:
-The boards of a _System_ placed against each other by their _Mates_, in one scene (ADR 0110): each member's _Scene_ as it is alone, moved by one rigid motion (a turn about z, a flip when it faces the other way, an offset) so that each mated connector's pad centres land on its partner's and the boards' faces are the least _Mated height_ apart, in the frame of the first member. A member no mate places is drawn apart with its reason, never at a guessed height. `netsmith board3d --board System` reports it, with the findings across boards (`system_collision`, `system_unchecked`, `mate_misaligned`, `system_apart`, `pin1_unmarked`).
+The boards of a _System_ placed against each other by their _Mates_, in one scene (ADR 0110): each member's _Scene_ as it is alone, moved by one rigid motion (a turn about z, a flip when it faces the other way, an offset) so that each mated connector's pad centres land on its partner's and the boards' faces are the least _Mated height_ apart, in the frame of the first member. A member no mate places is drawn apart with its reason, never at a guessed height. `netsmith dev board3d --board System` reports it, with the findings across boards (`system_collision`, `system_unchecked`, `mate_misaligned`, `system_apart`, `pin1_unmarked`).
 _Avoid_: Assembly (that is `.assembly`, who solders the parts), stack, system model

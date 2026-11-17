@@ -10,14 +10,14 @@ one for each output. It has 59 parts in the bill of materials (the two stages' c
 count: each input takes two capacitors). It is not a design to build. It exists to time the
 solver on a board with regulators in it: `docs/solver-timings.md` has the numbers.
 
-It builds with no KiCad (`NETSMITH_NO_KICAD=1 netsmith build`), solves with every generic part
+It builds with no KiCad (`NETSMITH_NO_KICAD=1 netsmith board build`), solves with every generic part
 picked and the DC analysis passing, and has a pick lock (`two_buck.lock.toml`, which
 `scripts/check-example-locks.sh` checks). It has no physical file, so no board outline and no
 `fab` run yet.
 
 ```
 cd examples/two_buck
-NETSMITH_TIMINGS=1 netsmith build --out out    # one line per stage on stderr
+NETSMITH_TIMINGS=1 netsmith board build --out out    # one line per stage on stderr
 ```
 
 ## What is invented, and why

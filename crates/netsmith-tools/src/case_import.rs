@@ -1,4 +1,4 @@
-//! `netsmith case import`: the outline and cutouts of a board, and its mounting holes, from the
+//! `netsmith import case model`: the outline and cutouts of a board, and its mounting holes, from the
 //! STEP model of its case, as source for the board's physical file (ADR 0109 "Left open").
 //!
 //! The model is posed as a `CaseModel` poses it (`.rx`, `.ry`, `.rz`, then `.x`, `.y`, `.z`)
@@ -12,15 +12,15 @@
 //!   largest, if there are several; the others are said and left out). Where the case's wall
 //!   has a rib, a notch or a rounded corner, the outline has it too, so it is a `polygon`
 //!   (corners, `arc through` for arcs) unless it is a rectangle with equal rounded corners,
-//!   exactly as `dxf import` prints one;
+//!   exactly as `import dxf` prints one;
 //! - depth 2, inside the pocket: a post, a pin or a block standing where the board is: **a
 //!   `Cutout`** (a rounded rectangle, a slot or a circle; any other shape is refused, as it is
-//!   by `dxf import`);
+//!   by `import dxf`);
 //! - deeper: not used.
 //!
 //! A second plane, `holes_at` (a standoff's height, below the board), gives the **mounting
 //! holes**: each circle at depth 3, a hole in a post inside the pocket, is a `MountingHole` at
-//! its centre, stated by its diameter (`.diameter`, as `dxf import` states a hole); a drill the
+//! its centre, stated by its diameter (`.diameter`, as `import dxf` states a hole); a drill the
 //! generator cannot draw refuses the import, as it does there.
 //!
 //! With `limits`, the **height limits**: each underside of the case above the board's top
@@ -41,7 +41,7 @@
 //! [`polygon_of_ring`] finds the arcs again, within the reader's chord, and joins the collinear
 //! runs, and the lengths are printed to a micrometre. A shape that is not made of lines and
 //! circular arcs stays chords.
-//! The result is the same kind of text as `dxf import`'s and is reviewed the same way; nothing
+//! The result is the same kind of text as `import dxf`'s and is reviewed the same way; nothing
 //! is derived at build time (ADR 0109).
 
 use netsmith_3d::{CaseRing, PlacedCase, place_case, read_step};
@@ -52,7 +52,7 @@ use std::fmt::Write as _;
 
 use crate::dxf::{Imported, imports_text, translate};
 
-/// What `case import` is asked for.
+/// What `import case model` is asked for.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Request {
     /// The model's `.rx`, `.ry`, `.rz`, in degrees.
@@ -242,7 +242,7 @@ pub fn import(bytes: &[u8], name: &str, request: &Request) -> Result<Imported, S
 
     let mut outline = outline_of_loops(&outer, &cutouts, &holes);
     outline.warnings = warnings;
-    let mut imported = translate(&outline, name, "case import")?;
+    let mut imported = translate(&outline, name, "import case model")?;
 
     let (lo, _) = bounds(&pocket.points);
     let walls: Vec<String> = rings
@@ -379,7 +379,7 @@ fn limits(
 // From chords to lines and arcs.
 
 /// How far a corner may be from the line or the circle it is taken to lie on, in mm (the
-/// tolerance `dxf import` recognises a rounded rectangle by).
+/// tolerance `import dxf` recognises a rounded rectangle by).
 const FIT: f64 = 2e-3;
 
 /// The most a chord of an arc may be from its arc, in mm: the reader's chord tolerance is

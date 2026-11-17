@@ -18,7 +18,7 @@
 //!   reader cannot read stops `fab`, as a path outside the project does.
 //! - `case_clearance`, `case_reach` and `case_boss` are warnings.
 //!
-//! The check needs a placement, so `fab`, `board3d` and the editor run it; `build` and `check`
+//! The check needs a placement, so `fab`, `dev board3d` and the editor run it; `build` and `check`
 //! place nothing and only say that a file is not there.
 
 use netsmith_3d::{

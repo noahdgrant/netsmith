@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Proves that every example's design file is current (issue #609): builds every board of examples/
-# with `netsmith build --emit-design`, with KiCad hidden, and compares the designs with the
+# with `netsmith board build --emit-design`, with KiCad hidden, and compares the designs with the
 # committed `<stem>.design.json` beside each board's source. The design is what the design stage
 # hands the placer, and the tests of the placer, the router and fab start from these files, so a
 # change to the checker, the solver, the design stage, std/ or a catalog that moves a design shows
@@ -8,10 +8,10 @@
 #
 # The examples are found by folder, as scripts/check-example-locks.sh finds them:
 #   - each `*.nsm` file of examples/ that is not a `*.physical.nsm` file is a board's source, built
-#     as `netsmith build <file>.nsm` from examples/, and its design file is
+#     as `netsmith board build <file>.nsm` from examples/, and its design file is
 #     examples/<stem>.design.json;
 #   - each folder of examples/ with a netsmith.toml is a project: each file of its `top_level` list
-#     is built as `netsmith build <file>` from that folder, and its design file is beside it
+#     is built as `netsmith board build <file>` from that folder, and its design file is beside it
 #     (`src/main.nsm` has `src/main.design.json`).
 # A board that cannot build has no design, and is named in `no_design` below with its reason (it
 # then has no design file); a name there that is no longer an example fails, so the list cannot rot.
@@ -83,7 +83,7 @@ check() {
     runs=$((runs + 1))
     rm -rf "$work/out" "$new"
     local code=0
-    (cd "$dir" && NETSMITH_NO_KICAD=1 "$bin" build --locked --notes none --out "$work/out" \
+    (cd "$dir" && NETSMITH_NO_KICAD=1 "$bin" board build --locked --notes none --out "$work/out" \
         --emit-design "$new" "$source") > "$log" 2>&1 || code=$?
     if [ "$code" -ne 0 ] || [ ! -f "$new" ]; then
         failed=1

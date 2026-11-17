@@ -1,7 +1,7 @@
 // What an agent asks of the 3D view over `/api/view` (P8a of issue 430, docs/BOARD3D.md), as plain
 // words and numbers: a change read and checked against the scene the view shows, before anything
 // is done, so a change the view cannot make changes nothing; and what the view shows, named as
-// `netsmith render` names it. The names are render's: the views, `--section x=13`, the ids of
+// `netsmith view 3d` names it. The names are render's: the views, `--section x=13`, the ids of
 // `--highlight` and its error. Nothing here touches three.js or the page.
 
 import type { ViewChange } from '../api';
@@ -31,7 +31,7 @@ export interface Named {
   cases: string[];
 }
 
-/** `x=13`, `y=8`, `z=-0.8` as `render --section` reads it; `none` is no cut. */
+/** `x=13`, `y=8`, `z=-0.8` as `view 3d --section` reads it; `none` is no cut. */
 export function parseSection(text: string): { axis: Axis; at: number } | null {
   const t = text.trim();
   if (t === 'none') return null;
@@ -43,18 +43,18 @@ export function parseSection(text: string): { axis: Axis; at: number } | null {
   return { axis: m[1] as Axis, at };
 }
 
-/** A cut as `render --section` writes it. */
+/** A cut as `view 3d --section` writes it. */
 export const sectionText = (cut: { axis: Axis; at: number } | null): string | null => (cut ? `${cut.axis}=${Number(cut.at.toFixed(3))}` : null);
 
-/** The ids as `render --highlight` reads them: a part by designator or path, `net:<name>`,
+/** The ids as `view 3d --highlight` reads them: a part by designator or path, `net:<name>`,
  * `limit:<name>`, `case:<name>` (a case model); an item may hold several, comma-separated. An id the board does not have is an
- * error that names it and lists what the board has, as `render` words it. */
+ * error that names it and lists what the board has, as `view 3d` words it. */
 export function resolveIds(requested: string[], have: Ids, what = 'highlight'): Named {
   const out: Named = { parts: [], nets: [], limits: [], cases: [] };
   const unknown: string[] = [];
   const add = (list: string[], v: string) => list.includes(v) || list.push(v);
   for (const asked of requested.flatMap((r) => r.split(',')).map((r) => r.trim()).filter(Boolean)) {
-    // A member's net as `render --board System` also writes it, `led/net:GND`, is `net:led/GND`.
+    // A member's net as `view 3d --board System` also writes it, `led/net:GND`, is `net:led/GND`.
     const memberNet = have.system ? /^([^/:]+)\/net:(.+)$/.exec(asked) : null;
     const want = memberNet ? `net:${memberNet[1]}/${memberNet[2]}` : asked;
     if (want.startsWith('net:')) {
@@ -102,7 +102,7 @@ export function memberSelection(sel: { parts: string[]; net: string | null }, wh
   const ids = [...sel.parts, ...(sel.net === null ? [] : [sel.net])];
   const members = [...new Set(ids.map((id) => id.slice(0, id.indexOf('/'))))];
   if (members.length > 1) {
-    throw new ViewRefusal(`${what} names ids of ${members.length} members (${members.join(', ')}): the editor's selection is one board's (\`netsmith render --board <System>\` lights several)`);
+    throw new ViewRefusal(`${what} names ids of ${members.length} members (${members.join(', ')}): the editor's selection is one board's (\`netsmith view 3d --board <System>\` lights several)`);
   }
   const own = (id: string) => id.slice(id.indexOf('/') + 1);
   return { member: members[0] ?? null, parts: sel.parts.map(own), net: sel.net === null ? null : own(sel.net) };
@@ -110,7 +110,7 @@ export function memberSelection(sel: { parts: string[]; net: string | null }, wh
 
 /** What the page's selection can hold: parts, or one net (as a click picks them). */
 function selectable(n: Named, what: string): { parts: string[]; net: string | null } {
-  if (n.nets.length > 1) throw new ViewRefusal(`${what} names ${n.nets.length} nets: the editor lights one net at a time (\`netsmith render\` lights several)`);
+  if (n.nets.length > 1) throw new ViewRefusal(`${what} names ${n.nets.length} nets: the editor lights one net at a time (\`netsmith view 3d\` lights several)`);
   if (n.nets.length && n.parts.length) throw new ViewRefusal(`${what} names parts and a net: the editor's selection holds parts or one net, not both`);
   return { parts: n.parts, net: n.nets[0] ?? null };
 }
@@ -213,7 +213,7 @@ export function planChange(change: ViewChange, have: Ids, canExplode: boolean): 
   return plan;
 }
 
-/** What is lit and picked, as `render --highlight` names it: the parts by designator, the net as
+/** What is lit and picked, as `view 3d --highlight` names it: the parts by designator, the net as
  * `net:<name>`, the limits as `limit:<name>`, the case models as `case:<name>`. */
 export function litIds(
   selected: string[],

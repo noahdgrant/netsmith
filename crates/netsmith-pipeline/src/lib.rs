@@ -1132,7 +1132,7 @@ fn held_conflicts(
     let mut problems = problems_of(checked);
     for (path, id) in held.get(unit).into_iter().flatten() {
         let message = format!(
-            "the pick lock holds `{path}` to the provider `{id}`; if the board now asks for what another provider has, run `netsmith lock --update` to pick again, and review the change"
+            "the pick lock holds `{path}` to the provider `{id}`; if the board now asks for what another provider has, run `netsmith project lock --update` to pick again, and review the change"
         );
         problems.push(
             Problem::general(Stage::Solve, message.clone(), format!("note: {message}\n"))
@@ -1163,7 +1163,7 @@ fn locked_providers_gone(checked: &Checked, held: &netsmith_check::Assignment) -
             let in_scope: Vec<String> =
                 u.candidates.iter().map(|c| format!("`{}`", c.id)).collect();
             let message = format!(
-                "the pick lock holds `{path}` to the provider `{id}`, which is not a provider of `{}` in scope (in scope: {}); run `netsmith lock --update` to pick again, and review the change",
+                "the pick lock holds `{path}` to the provider `{id}`, which is not a provider of `{}` in scope (in scope: {}); run `netsmith project lock --update` to pick again, and review the change",
                 u.generic,
                 in_scope.join(", ")
             );

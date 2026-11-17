@@ -1,6 +1,6 @@
 # The original's reference designator of each part of this port, by the part's member path in
 # the design (#456): the parts file of the port. The nets proof of the port's tests and the parity
-# checker (`netsmith parity`, which finds each member on the fab board by its `netsmith_path`)
+# checker (`netsmith dev parity`, which finds each member on the fab board by its `netsmith_path`)
 # read it. A member that is renamed in the source is renamed here.
 # The four mounting holes are members of the physical file (`.hole1` to `.hole4`).
 

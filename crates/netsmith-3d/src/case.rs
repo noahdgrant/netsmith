@@ -190,7 +190,7 @@ impl PlacedCase {
 
 impl PlacedCase {
     /// The meshes of the model, in the order of its solids and, in each, of its colour runs
-    /// ([`CaseSolid::runs`]): its id `case:<name>` (what `render --highlight` names), material
+    /// ([`CaseSolid::runs`]): its id `case:<name>` (what `view 3d --highlight` names), material
     /// [`Material::Case`], each triangle shaded flat; closed when the solid is. A mesh has the
     /// colour the board states for the model, else the file's own where it styles the faces,
     /// else none (the case grey of the palette).
@@ -458,7 +458,7 @@ pub fn place(
     }
 }
 
-/// The finding's name, as `board3d --json`, the notes and the editor write it.
+/// The finding's name, as `dev board3d --format json`, the notes and the editor write it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum FitKind {
     Collision,

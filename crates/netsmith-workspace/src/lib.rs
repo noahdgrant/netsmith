@@ -1,4 +1,4 @@
-//! `netsmith editor`: the project as the editor's server sees it (ADR 0019). A
+//! `netsmith view editor`: the project as the editor's server sees it (ADR 0019). A
 //! [`Workspace`] implements [`netsmith_editor::Backend`] over the files of a [`Target`]:
 //! it reads and saves them, builds them again when one changes on disk, and answers with
 //! the views of a board computed from the solved model.
@@ -269,7 +269,7 @@ struct State {
     /// are read again, so that a route after a change keeps the copper the change left alone
     /// and an undo shows the copper it had.
     routed: HashMap<String, pcb::RoutedBoards>,
-    /// What `lock --check` said of the pick lock of each source file, by the file's name,
+    /// What `project lock --check` said of the pick lock of each source file, by the file's name,
     /// made when a board of the file is asked for and dropped when the files are read again.
     locks: HashMap<String, Option<Arc<netsmith_editor::api::PickLockInfo>>>,
     /// What `fab` wrote for each board, keyed by the board's name.

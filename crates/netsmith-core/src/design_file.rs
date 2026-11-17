@@ -1,6 +1,6 @@
 //! A design saved as JSON: the form between the design stage and the placer (issue #609).
 //!
-//! `netsmith build --emit-design <file>` writes the designs of a run, and each example has its
+//! `netsmith board build --emit-design <file>` writes the designs of a run, and each example has its
 //! own beside its source (`<stem>.design.json`, checked by `scripts/check-example-designs.sh`), so
 //! a test of the placer, the router or fab starts from the file instead of checking, solving and
 //! designing the board again. The file is a JSON array of [`Design`]s in the order the run built

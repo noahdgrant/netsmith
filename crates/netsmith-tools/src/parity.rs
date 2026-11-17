@@ -1,5 +1,5 @@
 //! The parity checker of the RP2350A Minimal port (`examples/rp2350_minimal/`): it compares a
-//! `.kicad_pcb` written by `netsmith fab` with Raspberry Pi's board, as the reference table
+//! `.kicad_pcb` written by `netsmith board fab` with Raspberry Pi's board, as the reference table
 //! (`reference/placements.toml`) states it, and says in which ways the two are interchangeable.
 //!
 //! What must match (`must_match = true` in the table): the outline and the mounting holes, and
@@ -160,7 +160,7 @@ impl DesignatorMap {
         }
         if with_path == 0 {
             return Err(format!(
-                "the board's footprints have no `{}`: it was written by a netsmith that did not write the member path, so make it again with `netsmith fab`",
+                "the board's footprints have no `{}`: it was written by a netsmith that did not write the member path, so make it again with `netsmith board fab`",
                 netsmith_pcb::PATH_PROPERTY
             ));
         }
@@ -471,7 +471,7 @@ impl ParityReport {
         self.items.iter().filter(|i| i.verdict == Verdict::Fail)
     }
 
-    /// The report as one JSON document, for `netsmith parity --format json` (#455): whether it
+    /// The report as one JSON document, for `netsmith dev parity --format json` (#455): whether it
     /// passed, the counts of the must-match items, each item with its figures, and the warnings.
     pub fn json(&self) -> String {
         let items: Vec<serde_json::Value> = self
@@ -1917,7 +1917,7 @@ mod tests {
         );
         let refused = DesignatorMap::from_parts(&parts, &pcb).unwrap_err();
         assert!(
-            refused.contains("no `netsmith_path`") && refused.contains("netsmith fab"),
+            refused.contains("no `netsmith_path`") && refused.contains("netsmith board fab"),
             "{refused}"
         );
     }

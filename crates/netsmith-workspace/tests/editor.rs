@@ -633,7 +633,7 @@ fn fab_makes_the_package_and_offers_its_files() {
             &netsmith_editor::Cancel::new(),
         )
         .unwrap();
-    // The stages `netsmith fab` prints are told to the page.
+    // The stages `netsmith board fab` prints are told to the page.
     assert!(
         heard.lock().unwrap().iter().any(|m| m.contains("placing")),
         "{:?}",
@@ -1032,7 +1032,7 @@ fn a_catalog_the_manifest_gains_while_the_editor_runs_is_read() {
     );
 
     // The file is written first (nothing lists it yet), then the manifest lists it: the
-    // build that `netsmith build` would make is the editor's too, with no restart.
+    // build that `netsmith board build` would make is the editor's too, with no restart.
     write_the_316_ohm_catalog(&root);
     assert_eq!(editor.analysis().errors, 1);
     fs::write(root.join("netsmith.toml"), MANIFEST_WITH_THE_CATALOG).unwrap();
@@ -1072,7 +1072,7 @@ fn a_manifest_that_cannot_be_read_is_the_problem_until_it_is_mended() {
     let good = editor.analysis();
     assert_eq!(good.errors, 0, "{:?}", good.problems);
 
-    // The manifest's own message, as `netsmith build` prints it, and nothing else: the page is
+    // The manifest's own message, as `netsmith board build` prints it, and nothing else: the page is
     // not told the last good reading is the project's now.
     fs::write(
         root.join("netsmith.toml"),

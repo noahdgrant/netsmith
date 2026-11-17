@@ -23,7 +23,7 @@ cp "$pcb" "$win_tmp/$name.kicad_pcb"
 wdir=$(wslpath -w "$win_tmp")
 
 # A board with planes holds zones with no fill, and KiCad's DRC does not fill them: have
-# KiCad's Python fill them on this copy first (netsmith fab does the same).
+# KiCad's Python fill them on this copy first (netsmith board fab does the same).
 if grep -q $'^\t(zone' "$pcb"; then
     mkdir "$win_tmp/filled"
     cat > "$win_tmp/fill_zones.py" <<'PY'

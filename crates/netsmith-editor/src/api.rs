@@ -755,7 +755,7 @@ pub struct BoardDetail {
     pub lock: Option<PickLockInfo>,
 }
 
-/// What `netsmith lock --check` says of the pick lock of one source file, which holds every
+/// What `netsmith project lock --check` says of the pick lock of one source file, which holds every
 /// board of the file. The editor shows it and writes nothing.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 pub struct PickLockInfo {
@@ -763,9 +763,9 @@ pub struct PickLockInfo {
     pub file: String,
     /// Whether the file exists. A source with no part to lock needs none.
     pub exists: bool,
-    /// Whether the lock is as `netsmith lock --update` would write it.
+    /// Whether the lock is as `netsmith project lock --update` would write it.
     pub current: bool,
-    /// What `lock --check` prints when it is not: one line for each part whose row changed, was
+    /// What `project lock --check` prints when it is not: one line for each part whose row changed, was
     /// added or was dropped. Empty when the file does not exist: `--check` prints no lines then.
     pub diff: Vec<String>,
     /// What the solver said when it held the parts to the rows of the file as it is: the rows
@@ -883,7 +883,7 @@ pub struct PowerTree {
     pub edges: Vec<Edge>,
     /// The converters of the edges, with the efficiency of each that has one.
     pub stages: Vec<Stage>,
-    /// The rails and converters with trouble, worst first: what `netsmith build` and the
+    /// The rails and converters with trouble, worst first: what `netsmith board build` and the
     /// analysis report as the `power` stage. Computed here, not by the page.
     #[serde(default)]
     pub issues: Vec<PowerIssue>,
@@ -1430,7 +1430,7 @@ pub struct PcbViaOffer {
 }
 
 /// The copper pours of a board as the PCB view draws them under the tracks and pads: the fill of
-/// each pour, plane and routes-file zone, as `netsmith fab` plots it, by copper layer. It is a
+/// each pour, plane and routes-file zone, as `netsmith board fab` plots it, by copper layer. It is a
 /// separate answer from [`PcbScene`] because filling a board takes longer than placing it: the
 /// page draws the board first and the fill when it arrives, and drops an answer whose stamps
 /// are not those of the scene it shows.
@@ -2106,7 +2106,7 @@ pub struct OrderInfo {
     pub boards: Vec<OrderBoardInfo>,
 }
 
-/// What running an order (`netsmith fab --order`) did.
+/// What running an order (`netsmith project order`) did.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 pub struct OrderReport {
@@ -2213,8 +2213,8 @@ pub struct PcbLiveVia {
     pub diameter: f64,
 }
 
-/// A line of progress of a run the editor did not start (issue #764): `netsmith fab` or
-/// `netsmith board3d` with `--to-editor` posts each line it tells to `POST /api/progress`, and the
+/// A line of progress of a run the editor did not start (issue #764): `netsmith board fab` or
+/// `netsmith dev board3d` with `--to-editor` posts each line it tells to `POST /api/progress`, and the
 /// socket passes it to every page as `outside`. `run` tells one run from another (`fab 4711`, the
 /// command and its process), `command` is the command, `board` the board the line is of, if it
 /// is of one, `message` the line the command prints, and `unit`, `done` and `total` the count
@@ -2322,7 +2322,7 @@ pub enum ServerMessage {
     /// What the placer or the router of a board the editor places or routes has made so far
     /// (issue #764), at most a few times a second while it runs.
     PcbLive { live: PcbLive },
-    /// A line of a run the editor did not start (`fab --to-editor`, issue #764).
+    /// A line of a run the editor did not start (`board fab --to-editor`, issue #764).
     Outside { progress: OutsideProgress },
 }
 

@@ -182,7 +182,7 @@
 //! which routes the first order again with the lanes, and on every try after it (so a board
 //! with lanes may have six tries). A board that routes on its first try is unchanged.
 //!
-//! **Measured** (2026-11-12, main at ec7d165's placements, `netsmith route --margin 1 --tries N
+//! **Measured** (2026-11-12, main at ec7d165's placements, `netsmith dev route --margin 1 --tries N
 //! --route-timeout 0 --turn T`; lines left at T = 24 / 25 / 26 / 27):
 //!
 //! | | RP2350, one try | RP2350, two tries | Orbit (one try) | EasyDuino (one try) |
@@ -306,11 +306,11 @@
 //! Measured on the same machine, back to back with main at fda6cd4f, the copper byte-identical:
 //! RP2350's `fab` takes 136 and 133 s against main's 138 and 166 s (a loaded machine, load
 //! average 6 to 12), and Orbit routed at the least track from a saved placement
-//! (`netsmith route --margin 1 --route-timeout 0`) takes 18.5 s against 32.6 s.
+//! (`netsmith dev route --margin 1 --route-timeout 0`) takes 18.5 s against 32.6 s.
 //!
 //! The negotiation's stop, measured back to back with main at 8691e071 (the two runs side by
 //! side), the copper byte-identical everywhere and the same lines left: one RP2350 try
-//! (`netsmith route --tries 1 --route-timeout 0 --turn T`, T = 24 to 27) takes 28 to 43 s
+//! (`netsmith dev route --tries 1 --route-timeout 0 --turn T`, T = 24 to 27) takes 28 to 43 s
 //! against 47 to 68 s at the least track and 59 to 64 s against 95 to 101 s with the 0.15 mm
 //! trial first; RP2350's `fab` 103 s against 119 s. Orbit and EasyDuino take what they took
 //! (their negotiations never spread). The tight and mixed seeds 0 to 11 take 857 and 607 s
@@ -355,10 +355,10 @@
 //! way without vias, so the pass for one net keeps nothing and the pair runs 0 % coupled. Routed
 //! again together, the longer net is no longer, each has 2 vias and the pair runs 52 % coupled,
 //! the board 2 vias fewer once the vias are taken out. Over Orbit and the Easyduino at seeds 0
-//! to 7 (16 placements, `netsmith route` of each), this and the Easyduino at seed 7 (55 to 66 %)
+//! to 7 (16 placements, `netsmith dev route` of each), this and the Easyduino at seed 7 (55 to 66 %)
 //! are the only changes, and no other copper moves.
 //!
-//! **Measured** (2026-11-12, `netsmith fab`; coupled, skew; length over the spanning length,
+//! **Measured** (2026-11-12, `netsmith board fab`; coupled, skew; length over the spanning length,
 //! vias). On main at 1852adb8 (the escape lanes and #550's cheaper try):
 //!
 //! | | RP2350 `mcu.usb` / `usb` | Orbit `usb` | EasyDuino `bridge` |
@@ -381,7 +381,7 @@
 //! | the pass, a slack of 0.05 mm | 7 % / 0 % (nothing kept) | 27 % | 85 % |
 //!
 //! Robustness (one try at turn costs 24 to 27) is main's: RP2350 0 / 0 / 0 / 1, Orbit and
-//! EasyDuino 0 / 0 / 0 / 0 lines left, and at the least track (`netsmith route --margin 1`) every
+//! EasyDuino 0 / 0 / 0 / 0 lines left, and at the least track (`netsmith dev route --margin 1`) every
 //! board routes completely, as on main: the pass runs only on a try that routed every line and
 //! never leaves one. In every search, earlier (before the lanes), the discount with the
 //! estimate cut to match left RP2350 with 2 connections at 300 s; in the pass the same pull
@@ -404,7 +404,7 @@
 //! It runs after the pairs' pass for the same reason: before it, the other nets it moved let
 //! the pairs' pass shorten `usb.dp` the same way. One sweep ([`POUR_SWEEPS`]).
 //!
-//! **Measured** (2026-11-12, main at d07d6e8f with S9, `netsmith fab`, the same machine back to
+//! **Measured** (2026-11-12, main at d07d6e8f with S9, `netsmith board fab`, the same machine back to
 //! back; other nets' track on the pour, length over the spanning length, vias, `fab` time):
 //!
 //! | | RP2350 | Orbit | EasyDuino |
@@ -416,7 +416,7 @@
 //!
 //! The same board gives the same copper on every run. A second `fab` of each, at a load of 6 to
 //! 10 against 2 to 3, took 130 / 26 / 9 s on main and 154 / 32 / 12 s with the pass. The pass
-//! itself, from one try of each (`netsmith route --tries 1 --route-timeout 0`, six at once):
+//! itself, from one try of each (`netsmith dev route --tries 1 --route-timeout 0`, six at once):
 //! 6 to 10 s of RP2350's 170 to 185 s, 4 to 12 s of Orbit's 17 to 48 s, nothing on EasyDuino.
 //! Three sweeps took 5 s more on RP2350 and 19 s more on Orbit (doubling its try) for a sixth of
 //! the first sweep's gain, so one sweep is kept. Robustness (one try at turn costs 24 / 25 / 26 /
@@ -446,7 +446,7 @@
 //! near capacitors got the via (issue #718). EasyDuino's ground is a plane, so its capacitors
 //! had their vias already; its 3.3 V plane pins now reach the plane through the capacitor's via.
 //!
-//! **Measured** (2026-11-13, main at 19861713 against this, `netsmith fab` back to back, the same
+//! **Measured** (2026-11-13, main at 19861713 against this, `netsmith board fab` back to back, the same
 //! placements; the scorecard's decoupling track from the capacitor to the part's nearest pad, mean
 //! / max, and from its ground pad to the nearest via, mean / max; length over the spanning length,
 //! vias, other nets' track on the GND pour, pair coupling):
@@ -491,7 +491,7 @@
 //! before. One sweep ([`VIA_SWEEPS`]).
 //!
 //! **Measured** (2026-11-13, decided by the agent under the owner's delegation; the placed
-//! boards of `fab`, one try, `netsmith route --tries 1 --route-timeout 0`; vias, length over the
+//! boards of `fab`, one try, `netsmith dev route --tries 1 --route-timeout 0`; vias, length over the
 //! spanning length, other nets' track on the GND pour):
 //!
 //! | | RP2350 | Orbit | EasyDuino |
@@ -545,7 +545,7 @@
 //! and the classes on the first try made RP2350's one try less robust.
 //!
 //! **Measured** (2026-11-13, main at 0e05e4d9 with S7, the placed boards of `fab`; lines left at
-//! turn cost 24 / 25 / 26 / 27, `netsmith route --route-timeout 0 --tries N --turn T`, at the
+//! turn cost 24 / 25 / 26 / 27, `netsmith dev route --route-timeout 0 --tries N --turn T`, at the
 //! default margin and at `--margin 1`; `every` is [`LineClasses::EveryTry`]):
 //!
 //! | | RP2350 one try, default / margin 1 | RP2350 two tries, default / margin 1 | Orbit, EasyDuino |
@@ -555,7 +555,7 @@
 //! | every try | **1/1**/0/0, **1/1**/0/1 | 0/**1**/0/0, 0/**1**/0/**1** | 0/0/0/0; EasyDuino 108 vias against 105 |
 //!
 //! `fab` writes the same board as main for all three (each routes on its first try), and
-//! `netsmith route --margin 1` at `fab`'s 300 s routes all three; with classes on every try it
+//! `netsmith dev route --margin 1` at `fab`'s 300 s routes all three; with classes on every try it
 //! leaves RP2350 a line at the timeout. Where the second try ran (RP2350, default margin, two
 //! tries, T = 26 and 27), it routed the board at its track margin (signals at 0.15 mm, where main
 //! falls back to 0.1 mm), with the longest decoupling track 22.1 mm against 36.1 and 35.3 mm (mean

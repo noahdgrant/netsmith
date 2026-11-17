@@ -1,6 +1,6 @@
 //! The desktop shell's launcher: everything the app does that needs no window.
 //!
-//! The shell is a window around the editor's page (issue #799). It starts `netsmith editor` in the
+//! The shell is a window around the editor's page (issue #799). It starts `netsmith view editor` in the
 //! project folder it was opened with, asks it for a free port (`--port 0`: the system picks one,
 //! so two windows never collide and nothing races between a probe and the bind), reads the
 //! address the editor prints once it listens, and points the window there. Closing the window
@@ -61,10 +61,12 @@ pub fn netsmith_program(variable: Option<OsString>, beside: Option<&Path>) -> Pa
     PathBuf::from(name)
 }
 
-/// The command that serves the editor for `folder`: `netsmith editor --port 0`, run in the folder.
+/// The command that serves the editor for `folder`: `netsmith view editor --port 0`, run in the folder.
 pub fn editor_command(program: &Path, folder: &Path) -> Command {
     let mut command = Command::new(program);
-    command.args(["editor", "--port", "0"]).current_dir(folder);
+    command
+        .args(["view", "editor", "--port", "0"])
+        .current_dir(folder);
     command
 }
 
@@ -81,7 +83,7 @@ pub fn ready_address(line: &str) -> Option<&str> {
     Some(address)
 }
 
-/// A running `netsmith editor`, stopped when this is dropped.
+/// A running `netsmith view editor`, stopped when this is dropped.
 #[derive(Debug)]
 pub struct Server {
     child: Child,
@@ -228,7 +230,7 @@ pub enum LaunchError {
     Usage(String),
     /// The `netsmith` program could not be started.
     Spawn { program: PathBuf, reason: String },
-    /// `netsmith editor` stopped before it printed its address.
+    /// `netsmith view editor` stopped before it printed its address.
     Stopped {
         program: PathBuf,
         status: Option<ExitStatus>,

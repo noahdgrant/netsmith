@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Proves that `build`, `fab`, `board3d` (with `--json` and `--glb`) and `render` need no KiCad (ADR 0097, step 4): builds and fabs every example
+# Proves that `build`, `fab`, `dev board3d` (with `--format json` and `--glb`) and `view 3d` need no KiCad (ADR 0097, step 4): builds and fabs every example
 # that is meant to build, with KiCad's symbol and footprint libraries and `kicad-cli` hidden, and
 # fails if a run exits with an error or says that KiCad is missing.
 #
 # The examples are listed from the examples/ folder, never by hand, so a new one is covered by
 # adding it: every `*.nsm` of examples/ that is a board (not a `*.physical.nsm`, the physical file
 # of a board) is built and fabbed from examples/, and every folder of examples/ is a project (it
-# has a `netsmith.toml`, which is how `netsmith build` takes a folder) and is built from its own
+# has a `netsmith.toml`, which is how `netsmith board build` takes a folder) and is built from its own
 # folder, as a person runs it, and fabbed too when it has a physical file (`*.physical.nsm`):
 # without one the parts are placed on a board with no size and `fab` has nothing to say yet.
 # What cannot build is named in `skipped` below, and a project that is built and not fabbed in
@@ -158,26 +158,26 @@ for file in "$repo"/examples/*.nsm; do
         continue
     fi
     name="${base%.nsm}"
-    step "build examples/$base" "$work/examples" build "$base" --out "$work/out/$name"
-    step "fab   examples/$base" "$work/examples" fab "$base" --out "$work/fab/$name"
+    step "build examples/$base" "$work/examples" board build "$base" --out "$work/out/$name"
+    step "fab   examples/$base" "$work/examples" board fab "$base" --out "$work/fab/$name"
 done
 
-# `board3d` places a board as `fab` does and prints its 3D scene (ADR 0105), with no KiCad either:
+# `dev board3d` places a board as `fab` does and prints its 3D scene (ADR 0105), with no KiCad either:
 # a board of two layers, of four, with an outline and pours from a layout file, and one board of a
 # file of several.
 for args in "led.nsm" "four_layer.nsm" "outline_and_pours.nsm" "two_boards.nsm --board TwoBoards/led"; do
     # shellcheck disable=SC2086 # the arguments are words
-    step "board3d examples/$args" "$work/examples" board3d $args --json
+    step "board3d examples/$args" "$work/examples" dev board3d $args --format json
 done
 # `fab` writes the board as STEP and its 3D scene as `.glb` beside the notes, with no KiCad.
 for ext in step glb; do
     [ -s "$work/fab/led/LedExample/LedExample.$ext" ] || { echo "FAIL  fab examples/led.nsm wrote no .$ext"; failed=1; }
 done
 # And the same scene as a `.glb` file (the one the editor's 3D view shows).
-step "board3d examples/four_layer.nsm --glb" "$work/examples" board3d four_layer.nsm --glb "$work/four_layer.glb"
+step "board3d examples/four_layer.nsm --glb" "$work/examples" dev board3d four_layer.nsm --glb "$work/four_layer.glb"
 [ -s "$work/four_layer.glb" ] || { echo "FAIL  board3d --glb wrote no file"; failed=1; }
-# And the picture of it (`render`, netsmith's own rasterizer), with a part lit up.
-step "render examples/led.nsm" "$work/examples" render led.nsm --view iso --highlight J1 --out "$work/led-iso.png"
+# And the picture of it (`view 3d`, netsmith's own rasterizer), with a part lit up.
+step "render examples/led.nsm" "$work/examples" view 3d led.nsm --view iso --highlight J1 --picture "$work/led-iso.png"
 [ -s "$work/led-iso.png" ] || { echo "FAIL  render wrote no file"; failed=1; }
 
 # The projects: run from their folder, as a person does.
@@ -193,7 +193,7 @@ for dir in "$repo"/examples/*/; do
         failed=1
         continue
     fi
-    step "build examples/$name" "$work/examples/$name" build --out "$work/out/$name"
+    step "build examples/$name" "$work/examples/$name" board build --out "$work/out/$name"
     # A project with no physical file has no board outline: its parts sit on a board with no size
     # and `fab` has nothing to say yet, so it is run when the file is there.
     if [ -z "$(find "$dir" -name '*.physical.nsm' -not -path '*/libs/*' -not -path '*/reference/*' -print -quit)" ]; then
@@ -201,7 +201,7 @@ for dir in "$repo"/examples/*/; do
     elif reason="$(no_fab_reason "$name")"; then
         echo "note  examples/$name: no fab run here: $reason"
     else
-        step "fab   examples/$name" "$work/examples/$name" fab --out "$work/fab/$name"
+        step "fab   examples/$name" "$work/examples/$name" board fab --out "$work/fab/$name"
     fi
 done
 

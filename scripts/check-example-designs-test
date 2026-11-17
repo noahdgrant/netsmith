@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Tests scripts/check-example-designs.sh over a fake examples folder with a stub `netsmith`: for
-# `build --emit-design <file>` it writes $STUB_DESIGN (default `[]`) to the file and exits with
+# `board build --emit-design <file>` it writes $STUB_DESIGN (default `[]`) to the file and exits with
 # $STUB_CODE (default 0). The script must pass for boards whose design files are current, and fail
 # for no board at all, for a missing, a stale and an orphan design file (naming the file), and
 # for a board that does not build; `--update` must write what is missing or stale. It needs

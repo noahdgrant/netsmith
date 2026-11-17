@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Tests scripts/check-example-locks.sh over a fake examples folder with a stub `netsmith` (it
-# exits with the code in $STUB_CODE for `lock --check`, and records nothing): the script must pass
+# exits with the code in $STUB_CODE for `project lock --check`, and records nothing): the script must pass
 # for boards with locks, and fail for no board at all, for an orphan lock (naming the file), and
 # for a stale lock. It needs nothing but bash.
 #   scripts/check-example-locks-test

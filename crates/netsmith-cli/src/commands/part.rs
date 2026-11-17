@@ -1,4 +1,4 @@
-//! `netsmith part from-symbol` (#453): a draft part file from a KiCad symbol's pins.
+//! `netsmith import part from-symbol` (#453): a draft part file from a KiCad symbol's pins.
 
 use std::fs;
 use std::path::PathBuf;
@@ -61,20 +61,21 @@ fn from_symbol(args: &FromSymbolArgs) -> ExitCode {
 
 #[cfg(test)]
 mod tests {
+    use crate::commands::common::testing::Leaf;
     use crate::commands::common::testing::{kind, parse};
-    use crate::commands::{Command, part};
+    use crate::commands::part;
     use clap::error::ErrorKind;
 
     #[test]
     fn part_from_symbol_takes_a_file_and_a_symbol() {
         assert!(matches!(
-            parse(&["part", "from-symbol", "a.kicad_sch", "U1"]),
-            Ok(Command::Part(part::Args {
+            parse(&["import", "part", "from-symbol", "a.kicad_sch", "U1"]),
+            Ok(Leaf::Part(part::Args {
                 command: part::Command::FromSymbol(part::FromSymbolArgs { ref symbol, .. })
             })) if symbol == "U1"
         ));
         assert_eq!(
-            kind(&["part", "from-symbol", "a.kicad_sch"]),
+            kind(&["import", "part", "from-symbol", "a.kicad_sch"]),
             ErrorKind::MissingRequiredArgument
         );
     }

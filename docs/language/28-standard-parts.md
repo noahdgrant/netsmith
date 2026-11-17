@@ -1925,7 +1925,7 @@ board Mix {
 
 After the parts are picked, the solver builds the network of the parts that state what they are at DC and solves it (ADR 0076). Where the equations of the design cannot say what a part carries (a net with two currents that nothing states, ADR 0026), the network can: the pass writes `.current` and `.drop` of a part, and the checks that waited for them (`.drop == .current * .resistance`, `.drop * .current <= .max_power`, a fuse's `.current <= .rated_current`) are judged with the numbers. A pass that finds a rating exceeded is an error, like any relation, and says which states of the circuit give it.
 
-To see what the pass wrote, `netsmith explain <path>` prints the members at a path with the ranges the solve left them (`reg.inductor.current  5.047mA..50.06mA`), also when the build fails after the pass, and `build --emit-solved` writes every member as JSON (see _The solved values_ in the commands chapter).
+To see what the pass wrote, `netsmith board explain <path>` prints the members at a path with the ranges the solve left them (`reg.inductor.current  5.047mA..50.06mA`), also when the build fails after the pass, and `board build --emit-solved` writes every member as JSON (see _The solved values_ in the commands chapter).
 
 What it models in this stage:
 
@@ -2591,7 +2591,7 @@ board Inverters {
 }
 ```
 
-The note, in `netsmith build`'s output: `not evaluated: the absolute maximum of `u1.a.line` against net `net-j.p1`: nothing sets its voltage: no rail is on it and no `Logic` line drives it`.
+The note, in `netsmith board build`'s output: `not evaluated: the absolute maximum of `u1.a.line` against net `net-j.p1`: nothing sets its voltage: no rail is on it and no `Logic` line drives it`.
 
 Its catalog `sn74lvc1g04` has one row, TI's SN74LVC1G04DBVR in the SOT-23-5 (LCSC C7827, library type Extended), so a board that names the package is given that row and `fab` can order the part.
 

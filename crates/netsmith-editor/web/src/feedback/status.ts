@@ -260,7 +260,7 @@ export function connectionTip(c: Connection, lostMs: number | null): string {
     case 'reconnecting':
       return `The connection to the editor server was lost${lostMs ? ` ${clock(lostMs)} ago` : ''}; trying again every second. What you typed is kept in the page.`;
     case 'offline':
-      return `The editor server has not answered for ${clock(lostMs ?? 0)}. Is \`netsmith editor\` still running? What you typed is kept in the page; saving needs the server.`;
+      return `The editor server has not answered for ${clock(lostMs ?? 0)}. Is \`netsmith view editor\` still running? What you typed is kept in the page; saving needs the server.`;
   }
 }
 

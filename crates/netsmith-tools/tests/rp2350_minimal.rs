@@ -1919,7 +1919,7 @@ mod board {
     /// The proof of item S7: for every pad of every part of Raspberry Pi's board, the set of
     /// the other pads on its net is the same as on the board's. It is made from the committed
     /// `.kicad_pcb` as a file (`Netlist::from_kicad_pcb`, netsmith's own s-expression reader) and
-    /// the design's nets, with no `kicad-cli`: `netsmith compare` reads the same file the same
+    /// the design's nets, with no `kicad-cli`: `netsmith board compare` reads the same file the same
     /// way, but a `.nsm` side and a `.kicad_pcb` side differ in the footprints' names (theirs are
     /// `RPI_COMPILED:generic_capc1005x50`), so the test compares the wiring alone.
     #[test]
@@ -1927,7 +1927,7 @@ mod board {
         PORT.assert_same_pads_on_nets(&built(), 200);
     }
 
-    /// The same, by `netsmith-netlist`'s `compare` (what `netsmith compare` runs), with the
+    /// The same, by `netsmith-netlist`'s `compare` (what `netsmith board compare` runs), with the
     /// designators paired by `reference/parts.toml` and the value and footprint left out of the
     /// comparison (the mounting holes are no part of the circuit: they have no pin and no net):
     /// the verdict is a match, and the report names no net.

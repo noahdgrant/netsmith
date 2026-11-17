@@ -517,7 +517,7 @@ fn outside() -> Loop {
     ]
 }
 
-/// An invented case, a test model written for `netsmith case import` (no maker's file): in a
+/// An invented case, a test model written for `netsmith import case model` (no maker's file): in a
 /// frame where z = 0 is the top face of a 1.6 mm board and x, y are the board's, a `wall` from
 /// z = -6 to 6, 70 x 50 mm outside with rounded corners, round a pocket of 60 x 40 mm (corners
 /// of 2 mm) with a rib 4 mm wide standing 6 mm into it from the bottom edge (y = 0); a round
@@ -582,7 +582,7 @@ pub fn case_box() -> String {
     f.file(&[wall, pin, block, post_a, post_b], MM)
 }
 
-/// An invented case with a lid, a test model written for `netsmith case import --limits`, in
+/// An invented case with a lid, a test model written for `netsmith import case model --limits`, in
 /// the frame of [`case_box`]: a `wall` from z = -6 to 10 round a pocket of 60 x 40 mm (corners
 /// of 2 mm), a `block` of 8 x 4 mm standing through the board's plane up to the lid, a `lid`
 /// plate from z = 10 to 12 over the whole case with a `rib` 6 mm wide and 40 mm long hanging
@@ -636,8 +636,8 @@ pub fn case_lid() -> String {
     f.file(&[wall, block, lid, rib, boss], MM)
 }
 
-/// An invented case with shaped undersides and a floor, a test model written for `netsmith case
-/// import --limits`, in the frame of [`case_box`]: a `floor` plate from z = -10 to -8 under the
+/// An invented case with shaped undersides and a floor, a test model written for `netsmith import case
+/// model --limits`, in the frame of [`case_box`]: a `floor` plate from z = -10 to -8 under the
 /// whole case and a `wall` from z = -8 to 14 round a pocket of 60 x 40 mm (corners of 2 mm),
 /// closed by a `lid` plate from z = 14 to 16. Standing from the floor: a `post` of 6 mm at
 /// (6, 6) up to the board's bottom face (z = -1.6) and a round `pad` of 8 mm at (30, 10) up to

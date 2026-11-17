@@ -1,6 +1,6 @@
 //! The desktop shell: the editor's page in a window of its own (issue #799).
 //!
-//! `netsmith-desktop [FOLDER]` starts `netsmith editor` in the project folder (the argument, or
+//! `netsmith-desktop [FOLDER]` starts `netsmith view editor` in the project folder (the argument, or
 //! the folder it is started in) on a free port and shows the editor in a window; closing the
 //! window stops the server. When the editor cannot start, the window shows why. The work that
 //! needs no window is in the library (`netsmith_desktop`), with its tests.

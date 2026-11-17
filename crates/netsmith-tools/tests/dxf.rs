@@ -1,4 +1,4 @@
-//! `netsmith dxf import` (ADR 0045, C0 piece 3): an enclosure's DXF becomes an outline, a
+//! `netsmith import dxf` (ADR 0045, C0 piece 3): an enclosure's DXF becomes an outline, a
 //! cutout and mounting holes that the fab pipeline accepts. The DXF is written here by hand.
 
 use netsmith_testkit::TempDir;
@@ -572,7 +572,7 @@ fn write_names_the_boards_when_the_choice_is_wrong() {
 }
 
 /// The example's physical file with its outline, slot and holes replaced by what the DXF said,
-/// made as `dxf import --write` makes it: on a physical file that has the old ones.
+/// made as `import dxf --write` makes it: on a physical file that has the old ones.
 fn imported_physical(dir: &std::path::Path) -> String {
     let imported = import(&enclosure(), "case.dxf", &request()).unwrap();
     let nsm = dir.join("case.nsm");

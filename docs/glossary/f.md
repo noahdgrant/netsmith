@@ -12,7 +12,7 @@ The two resistors that set the output of an adjustable regulator, `std::parts::r
 _Avoid_: Voltage divider (that is any divider; this one sets a regulator's output)
 
 **Fictional fabricator**:
-A fabricator std names that does not exist, ACME (`std::mfg::acme`), whose 8- and 10-layer processes have numbers chosen, not sourced (ADR 0112). `fab` makes a board on one into a package that says it is not for ordering, and `fab --order` refuses it.
+A fabricator std names that does not exist, ACME (`std::mfg::acme`), whose 8- and 10-layer processes have numbers chosen, not sourced (ADR 0112). `fab` makes a board on one into a package that says it is not for ordering, and `project order` refuses it.
 _Avoid_: Mock fab, dummy process, generic fabricator
 
 **Flag**:

@@ -99,7 +99,7 @@ const OWN_SYMBOLS: &str = r#"(kicad_symbol_lib (version 20241209) (generator "te
 /// with no KiCad (`NETSMITH_NO_KICAD=1`), and return its stderr or the failure.
 fn run_in(dir: &Path, command: &str) -> Result<String, String> {
     let run = std::process::Command::new(env!("CARGO_BIN_EXE_netsmith"))
-        .arg(command)
+        .args(["board", command])
         .current_dir(dir)
         .env("NETSMITH_NO_KICAD", "1")
         .env_remove("NETSMITH_KICAD_SYMBOLS")
@@ -139,7 +139,7 @@ fn a_projects_own_libraries_beside_its_kicad_toml_are_not_installed_ones_with_no
     fs::write(dir.join("own.kicad_sym"), OWN_SYMBOLS).unwrap();
 
     for command in ["build", "fab"] {
-        let err = run_in(&dir, command).unwrap_or_else(|e| panic!("`netsmith {command}`: {e}"));
+        let err = run_in(&dir, command).unwrap_or_else(|e| panic!("`netsmith board {command}`: {e}"));
         assert!(!err.contains("both installed"), "{err}");
     }
     assert!(dir.join("out").is_dir() || dir.join("fab").is_dir());
@@ -172,7 +172,7 @@ fn an_installed_id_with_no_kicad_is_never_read_from_the_working_directory() {
     for command in ["build", "fab"] {
         let err = run_in(&dir, command)
             .err()
-            .unwrap_or_else(|| panic!("`netsmith {command}` read the working directory's Foo"));
+            .unwrap_or_else(|| panic!("`netsmith board {command}` read the working directory's Foo"));
         assert!(err.contains("`Foo:Bar`"), "{err}");
         assert!(err.contains("NETSMITH_NO_KICAD"), "{err}");
         assert!(!err.contains("not found: looked for"), "{err}");
@@ -202,7 +202,7 @@ fn switched_off(dir: &Path, args: &[&str]) -> (bool, String) {
 fn cross_check_with_kicad_switched_off_says_what_hides_kicad_cli() {
     let dir = TempDir::new("own-part-cross-check");
     project(&dir, &sensor_row("gen:SOT23(pins=3)"));
-    let (ok, err) = switched_off(&dir, &["fab", "--cross-check"]);
+    let (ok, err) = switched_off(&dir, &["board", "fab", "--cross-check"]);
     assert!(!ok, "{err}");
     assert!(err.contains("--cross-check"), "{err}");
     assert!(err.contains("kicad-cli"), "{err}");
@@ -216,7 +216,7 @@ fn fab_with_kicad_switched_off_says_it_is_switched_off_not_that_it_is_not_instal
     let dir = TempDir::new("own-part-fab-note");
     project(&dir, &sensor_row("gen:SOT23(pins=3)"));
     // The run may stop at a later stage: the note comes first.
-    let (_, err) = switched_off(&dir, &["fab"]);
+    let (_, err) = switched_off(&dir, &["board", "fab"]);
     assert!(
         err.contains("note: KiCad is switched off (NETSMITH_NO_KICAD is set)"),
         "{err}"
@@ -231,7 +231,7 @@ fn compare_of_a_schematic_with_kicad_switched_off_reads_its_files() {
     let sch = "(kicad_sch (version 20250114) (uuid \"r\"))";
     fs::write(dir.join("a.kicad_sch"), sch).unwrap();
     fs::write(dir.join("b.kicad_sch"), sch).unwrap();
-    let (ok, err) = switched_off(&dir, &["compare", "a.kicad_sch", "b.kicad_sch"]);
+    let (ok, err) = switched_off(&dir, &["board", "compare", "a.kicad_sch", "b.kicad_sch"]);
     assert!(ok, "{err}");
     assert!(!err.contains("KiCad"), "{err}");
 }

@@ -81,7 +81,7 @@ describe('the measure tool', () => {
 });
 
 describe('the section plane', () => {
-  it('keeps the side away from the camera, and the lower side seen square to the axis, as netsmith render does', () => {
+  it('keeps the side away from the camera, and the lower side seen square to the axis, as netsmith view 3d does', () => {
     expect(keepBelow([0, 0, 1], 'z')).toBe(true);
     expect(keepBelow([0, 0, -1], 'z')).toBe(false);
     expect(keepBelow([0, -1, 0], 'x')).toBe(true);
@@ -152,7 +152,7 @@ describe('the exploded stackup', () => {
   });
 });
 
-describe('copy the view as a netsmith render command', () => {
+describe('copy the view as a netsmith view 3d command', () => {
   it('names the nearest view of the command, and whether it is that view', () => {
     expect(nearestView([0, 0, 1])).toEqual({ view: 'top', exact: true });
     expect(nearestView([1, -1, 1])).toEqual({ view: 'iso', exact: true });
@@ -167,22 +167,22 @@ describe('copy the view as a netsmith render command', () => {
     expect(shellWord("it's")).toBe("'it'\\''s'");
   });
   it('is the exact command for the view', () => {
-    expect(renderCommand({ file: 'src/main.nsm', board: 'Lidded', view: 'iso' })).toBe('netsmith render src/main.nsm --board Lidded --view iso');
+    expect(renderCommand({ file: 'src/main.nsm', board: 'Lidded', view: 'iso' })).toBe('netsmith view 3d src/main.nsm --board Lidded --view iso');
     expect(
       renderCommand({ file: 'src/main.nsm', board: 'Lidded', view: 'front', section: { axis: 'x', at: 12.34567 }, highlight: ['J1', 'U2', 'J1'], dark: true, perspective: true }),
-    ).toBe('netsmith render src/main.nsm --board Lidded --view front --section x=12.346 --highlight J1,U2 --theme dark --perspective');
+    ).toBe('netsmith view 3d src/main.nsm --board Lidded --view front --section x=12.346 --highlight J1,U2 --theme dark --perspective');
     // The case is named when it is not the command's default, see-through.
     const cased = { file: 'src/main.nsm', board: 'Cased', view: 'iso' as const };
-    expect(renderCommand({ ...cased, case: 'see-through' })).toBe('netsmith render src/main.nsm --board Cased --view iso');
-    expect(renderCommand({ ...cased, case: 'solid', highlight: ['case:lid'] })).toBe('netsmith render src/main.nsm --board Cased --view iso --highlight case:lid --case solid');
-    expect(renderCommand({ ...cased, case: 'hidden', dark: true })).toBe('netsmith render src/main.nsm --board Cased --view iso --case hidden --theme dark');
+    expect(renderCommand({ ...cased, case: 'see-through' })).toBe('netsmith view 3d src/main.nsm --board Cased --view iso');
+    expect(renderCommand({ ...cased, case: 'solid', highlight: ['case:lid'] })).toBe('netsmith view 3d src/main.nsm --board Cased --view iso --highlight case:lid --case solid');
+    expect(renderCommand({ ...cased, case: 'hidden', dark: true })).toBe('netsmith view 3d src/main.nsm --board Cased --view iso --case hidden --theme dark');
     // Some case models only: `--case hidden:<name>[,<name>]`, after the mode; with the whole case hidden it says nothing more.
-    expect(renderCommand({ ...cased, caseHidden: ['lid', 'screw'] })).toBe('netsmith render src/main.nsm --board Cased --view iso --case hidden:lid,screw');
-    expect(renderCommand({ ...cased, case: 'solid', caseHidden: ['lid'] })).toBe('netsmith render src/main.nsm --board Cased --view iso --case solid --case hidden:lid');
-    expect(renderCommand({ ...cased, case: 'hidden', caseHidden: ['lid'] })).toBe('netsmith render src/main.nsm --board Cased --view iso --case hidden');
-    expect(renderCommand({ ...cased, caseHidden: [] })).toBe('netsmith render src/main.nsm --board Cased --view iso');
+    expect(renderCommand({ ...cased, caseHidden: ['lid', 'screw'] })).toBe('netsmith view 3d src/main.nsm --board Cased --view iso --case hidden:lid,screw');
+    expect(renderCommand({ ...cased, case: 'solid', caseHidden: ['lid'] })).toBe('netsmith view 3d src/main.nsm --board Cased --view iso --case solid --case hidden:lid');
+    expect(renderCommand({ ...cased, case: 'hidden', caseHidden: ['lid'] })).toBe('netsmith view 3d src/main.nsm --board Cased --view iso --case hidden');
+    expect(renderCommand({ ...cased, caseHidden: [] })).toBe('netsmith view 3d src/main.nsm --board Cased --view iso');
     expect(renderCommand({ file: 'boards/a b.nsm', board: 'Sys/led', view: 'top', section: { axis: 'z', at: -0.8 } })).toBe(
-      "netsmith render 'boards/a b.nsm' --board Sys/led --view top --section z=-0.8",
+      "netsmith view 3d 'boards/a b.nsm' --board Sys/led --view top --section z=-0.8",
     );
   });
 });

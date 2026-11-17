@@ -185,7 +185,7 @@ board Radio {
 rf is a CoaxReceptacle: picked AcmeMicroCoax; passed over AcmeBasicCoax (`rf` is held by `.mpn &= "ACME-MC-1"` to a row of the `acme_basic_coax` catalog, and the catalog has no row with the manufacturer part number ACME-MC-1: no other row was tried for it; change the narrowing to a number the catalog has, or remove it to let the solver pick)
 ```
 
-When no provider works, one error at the line of the use says so in a headline (the generic, the use and its line) and lists the providers in scope, in the order they were tried, each with the first requirement it failed and the numbers. A provider whose own pick from its catalog failed has the closest candidate and the requirement as a sub-list under it. The closest provider (the trial with the fewest failures; ties in candidate order) is marked. `--json` carries the same text in the finding's `message`, with the lines separated by newlines:
+When no provider works, one error at the line of the use says so in a headline (the generic, the use and its line) and lists the providers in scope, in the order they were tried, each with the first requirement it failed and the numbers. A provider whose own pick from its catalog failed has the closest candidate and the requirement as a sub-list under it. The closest provider (the trial with the fewest failures; ties in candidate order) is marked. `--format json` carries the same text in the finding's `message`, with the lines separated by newlines:
 
 ```nsm fails catalogs=coax
 import src::rf::CoaxReceptacle

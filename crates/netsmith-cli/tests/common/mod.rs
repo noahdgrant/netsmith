@@ -34,7 +34,7 @@ pub struct ParityGate<'a> {
     pub waive_drc: Option<&'a str>,
 }
 
-/// Builds the project with `netsmith fab --locked`, with no KiCad, and gates on the parity
+/// Builds the project with `netsmith board fab --locked`, with no KiCad, and gates on the parity
 /// checker (`reference/placements.toml`, the original's parts paired with the fab board's by
 /// `reference/parts.toml` and each footprint's `netsmith_path`): every must-match item
 /// must be `ok` on the board `fab` writes, complete or INCOMPLETE (a run that the route timeout
@@ -49,7 +49,13 @@ pub fn fab_matches_the_reference(gate: &ParityGate) {
     // `--locked` ends the run when the pick lock is not current and never writes it, so the test
     // leaves the project's folder as it was; it also means `--pins locked`.
     let output = Command::new(env!("CARGO_BIN_EXE_netsmith"))
-        .args(["fab", "--locked", "--route-timeout", gate.route_seconds])
+        .args([
+            "board",
+            "fab",
+            "--locked",
+            "--route-timeout",
+            gate.route_seconds,
+        ])
         .args(gate.waive_drc.map(|_| "--allow-drc-violations"))
         .arg("--out")
         .arg(&*out)
@@ -67,7 +73,7 @@ pub fn fab_matches_the_reference(gate: &ParityGate) {
     // fails with `INCOMPLETE`, which is allowed: nothing else.
     assert!(
         output.status.success() || text.contains("INCOMPLETE:"),
-        "netsmith fab failed, and not for an unfinished route:\n{text}"
+        "netsmith board fab failed, and not for an unfinished route:\n{text}"
     );
     let pcb = find_pcb(&out)
         .unwrap_or_else(|| panic!("fab wrote no .kicad_pcb in {}:\n{text}", out.display()));

@@ -92,7 +92,7 @@ parts.forEach((p, i) => { FILES[`src/parts/${p.toLowerCase()}.nsm`] = part(p, 'U
 for (const p of ['Bme280', 'Sht31', 'Tsl2561']) FILES[`src/parts/sensors/${p.toLowerCase()}.nsm`] = part(p, 'U');
 for (const p of ['Jst4', 'ScrewTerminal2']) FILES[`src/parts/connectors/${p.toLowerCase()}.nsm`] = part(p, 'J');
 
-/** Writes the invented project into a project made by `netsmith init`. */
+/** Writes the invented project into a project made by `netsmith project init`. */
 export function writeTree(project) {
   for (const [file, text] of Object.entries(FILES)) {
     fs.mkdirSync(path.dirname(path.join(project, file)), { recursive: true });

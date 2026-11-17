@@ -10,7 +10,7 @@ use super::common::{
 #[derive(Debug, PartialEq, ClapArgs)]
 #[command(args_override_self = true)]
 #[command(
-    after_long_help = "`view` drives the 3D view of a running editor (start `netsmith editor` and open its page; docs/BOARD3D.md, \"Driving a running editor\") with the names of `render`, so that an agent changes the verb to switch between the two. With no flag that changes the page it prints the state of the page (a short summary, or with `--json` the editor's JSON as it came); with any, it changes the page, which draws it, and prints the state that results. The page driven is the one focused last.\n\nA change the page refuses (an id the board does not have, a section, a preview height) exits 2 with the editor's message, as does an editor that is not running or has no page open. There is no `--theme`: the theme is the person's own setting for the whole editor (the state reports it). Nothing changes the design or a file."
+    after_long_help = "`view editor-3d` drives the 3D view of a running editor (start `netsmith view editor` and open its page; docs/BOARD3D.md, \"Driving a running editor\") with the names of `view 3d`, so that an agent changes the verb to switch between the two. With no flag that changes the page it prints the state of the page (a short summary, or with `--format json` the editor's JSON as it came); with any, it changes the page, which draws it, and prints the state that results. The page driven is the one focused last.\n\nA change the page refuses (an id the board does not have, a section, a preview height) exits 2 with the editor's message, as does an editor that is not running or has no page open. There is no `--theme`: the theme is the person's own setting for the whole editor (the state reports it). Nothing changes the design or a file."
 )]
 pub struct Args {
     /// The editor's port.
@@ -26,7 +26,7 @@ pub struct Args {
     /// Where the camera looks from.
     #[arg(long, value_enum)]
     pub view: Option<ViewName>,
-    /// Cut the scene as `render --section` does, or `none` for no cut.
+    /// Cut the scene as `view 3d --section` does, or `none` for no cut.
     #[arg(long, value_name = "AXIS=MM|none", value_parser = parse_view_section)]
     pub section: Option<String>,
     /// Light a part, `net:<name>`, `limit:<name>` or `case:<name>` (a case model), comma-separated
@@ -76,9 +76,9 @@ pub struct Args {
     /// Put the stackup together again.
     #[arg(long, overrides_with = "layers_apart")]
     pub no_layers_apart: bool,
-    /// Print the editor's JSON as it came, not the summary.
-    #[arg(long)]
-    pub json: bool,
+    /// `json` prints the editor's JSON as it came; `text` a short summary.
+    #[arg(long, value_enum, default_value = "text")]
+    pub format: super::common::Format,
     /// Save what the page's canvas shows after the change.
     ///
     /// It opens the 3D view if it is not on screen.
@@ -87,7 +87,7 @@ pub struct Args {
     /// Refused with the reason: the theme is the person's own setting.
     #[arg(long, hide = true)]
     pub theme: Option<String>,
-    /// Refused with the reason: `view` saves with `--picture`.
+    /// Refused with the reason: `view editor-3d` saves with `--picture`.
     #[arg(long, hide = true)]
     pub out: Option<String>,
     /// Refused with the reason: `view` drives the editor's open project.
@@ -97,19 +97,20 @@ pub struct Args {
 
 impl Args {
     /// The request to the editor, or the mistake clap cannot see: an id with `none`, and the
-    /// flags of `render` that `view` has not.
+    /// flags of `view 3d` that `view editor-3d` has not.
     pub fn request(&self) -> Result<crate::view_client::Request, String> {
         if self.theme.is_some() {
-            return Err("`view` has no --theme: the theme is the person's own setting for the whole editor, not a view of the board (the state says which it is); `render --theme light|dark` draws a picture in either".to_string());
+            return Err("`view editor-3d` has no --theme: the theme is the person's own setting for the whole editor, not a view of the board (the state says which it is); `view 3d --theme light|dark` draws a picture in either".to_string());
         }
         if self.out.is_some() {
             return Err(
-                "`view` saves the page's picture with --picture <file.png>, not --out".to_string(),
+                "`view editor-3d` saves the page's picture with --picture <file.png>, not --out"
+                    .to_string(),
             );
         }
         if let Some(file) = &self.file {
             return Err(format!(
-                "`view` takes no file: it drives the editor's open project (`--board` says which board), not a source file; `netsmith render {file}` draws one without an editor"
+                "`view editor-3d` takes no file: it drives the editor's open project (`--board` says which board), not a source file; `netsmith view 3d {file}` draws one without an editor"
             ));
         }
         let switch = |on: bool, off: bool| (on || off).then_some(on);
@@ -132,7 +133,7 @@ impl Args {
         Ok(crate::view_client::Request {
             port: self.port,
             change,
-            json: self.json,
+            json: self.format == super::common::Format::Json,
             picture: self.picture.clone(),
         })
     }
@@ -149,7 +150,7 @@ pub fn run(args: Args) -> ExitCode {
     }
 }
 
-/// `netsmith view`: read or change the 3D view of a running editor's page. A refusal (the
+/// `netsmith view editor-3d`: read or change the 3D view of a running editor's page. A refusal (the
 /// editor's own message), no editor and no page open all exit 2.
 fn run_view(request: &crate::view_client::Request) -> ExitCode {
     match crate::view_client::run(request) {
@@ -213,7 +214,7 @@ fn parse_height_preview(given: &str) -> Result<netsmith_editor::api::PreviewSett
     }
 }
 
-/// `view --colour-by`.
+/// `view editor-3d --colour-by`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
 pub enum ColourByName {
     /// Where each height came from.
@@ -237,24 +238,25 @@ impl ColourByName {
 
 #[cfg(test)]
 mod tests {
+    use crate::commands::common;
+    use crate::commands::common::testing::Leaf;
     use crate::commands::common::testing::parse;
-    use crate::commands::{Command, common};
     use std::path::PathBuf;
 
     /// The error of a `view` line: clap's, or the one its request gives.
     fn view_err(line: &[&str]) -> String {
         match parse(line) {
             Err(e) => e,
-            Ok(Command::View(v)) => v.request().unwrap_err(),
+            Ok(Leaf::View(v)) => v.request().unwrap_err(),
             Ok(other) => panic!("{other:?}"),
         }
     }
 
     fn view_request(args: &[&str]) -> crate::view_client::Request {
-        let mut line = vec!["view"];
+        let mut line = vec!["view", "editor-3d"];
         line.extend_from_slice(args);
         match parse(&line) {
-            Ok(Command::View(v)) => v.request().unwrap(),
+            Ok(Leaf::View(v)) => v.request().unwrap(),
             other => panic!("{args:?}: {other:?}"),
         }
     }
@@ -292,7 +294,8 @@ mod tests {
             "--height-preview",
             "2.5",
             "--layers-apart",
-            "--json",
+            "--format",
+            "json",
             "--picture",
             "j1.png",
         ]);
@@ -341,7 +344,7 @@ mod tests {
         assert_eq!(change.section.as_deref(), Some("none"));
         assert_eq!(change.select, Some(vec!["R1".into()]));
         assert_eq!(change.case, None, "no --case leaves the case as it is");
-        // The three modes, by the names of `render --case`; any other is refused.
+        // The three modes, by the names of `view 3d --case`; any other is refused.
         use netsmith_editor::api::CaseMode;
         for (name, mode) in [
             ("hidden", CaseMode::Hidden),
@@ -350,7 +353,7 @@ mod tests {
         ] {
             assert_eq!(view_request(&["--case", name]).change.case, Some(mode));
         }
-        let e = parse(&["view", "--case", "opaque"]).unwrap_err();
+        let e = parse(&["view", "editor-3d", "--case", "opaque"]).unwrap_err();
         assert!(e.contains("see-through") && e.contains("solid"), "{e}");
         // Some case models only: the list is replaced by any `--case`, and the mode is left alone.
         assert_eq!(change.case_hidden, None);
@@ -394,9 +397,16 @@ mod tests {
             Some(Vec::new())
         );
         for args in [
-            &["view", "--highlight", "none,J1"][..],
-            &["view", "--highlight", "none", "--highlight", "J1"],
-            &["view", "--select", "J1", "--select", "none"],
+            &["view", "editor-3d", "--highlight", "none,J1"][..],
+            &[
+                "view",
+                "editor-3d",
+                "--highlight",
+                "none",
+                "--highlight",
+                "J1",
+            ],
+            &["view", "editor-3d", "--select", "J1", "--select", "none"],
         ] {
             let e = view_err(args);
             assert!(e.contains("clears it"), "{args:?}: {e}");
@@ -439,7 +449,7 @@ mod tests {
             (&["--size", "100x100"], "--size"),
             (&["examples/led.nsm"], "takes no file"),
         ] {
-            let mut line = vec!["view"];
+            let mut line = vec!["view", "editor-3d"];
             line.extend_from_slice(args);
             let e = view_err(&line);
             assert!(e.contains(says), "{args:?}: {e}");

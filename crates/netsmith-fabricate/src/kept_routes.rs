@@ -3,7 +3,7 @@
 //! `netsmith.toml`, or the source's when it has none), holding a [`netsmith_router::kept::Kept`].
 //!
 //! It is a cache, never committed: the folder `.netsmith` gets a `.gitignore` of its own that
-//! ignores everything in it, and `netsmith init` ignores it in the project's. The editor writes
+//! ignores everything in it, and `netsmith project init` ignores it in the project's. The editor writes
 //! it after every route that ran to its end and starts a route from it when it has no routed
 //! board of its own; `netsmith layout regenerate` says what of it a regeneration keeps; `fab`
 //! reads and writes it only with `--reuse-routes`, so that a clean checkout gives the same board

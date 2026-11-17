@@ -1,4 +1,4 @@
-//! The pure parts of `netsmith render`'s drawing: what its flags parse to and the file it writes.
+//! The pure parts of `netsmith view 3d`'s drawing: what its flags parse to and the file it writes.
 
 use netsmith_3d::{DEFAULT_RENDER_SIZE, DEFAULT_RENDER_VIEW, default_render_out, parse_render_section, parse_render_size, Axis, View, RenderCaseMode, RenderRequest};
 

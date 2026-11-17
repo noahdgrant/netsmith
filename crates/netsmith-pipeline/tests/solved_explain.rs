@@ -1,4 +1,4 @@
-//! The text of `netsmith explain` (issue 1008), read from the values of a solved file. Every
+//! The text of `netsmith board explain` (issue 1008), read from the values of a solved file. Every
 //! value here is invented.
 
 use netsmith_pipeline::solved::explain;

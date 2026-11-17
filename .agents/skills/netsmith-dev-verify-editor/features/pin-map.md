@@ -17,7 +17,7 @@ The editor writes the pin file's `lock`, `pin` and `source` lines of one entry, 
 
 ## Driving it
 
-`scripts/editor-verify launch --fixture pin_map`, then `scripts/editor-verify drive pin-lock pin-map` (`pin-lock` puts the pin file back, so `pin-map` finds it as it was). The fixture is an invented microcontroller with three requests, a pin file that locks one and holds another, and a lock that is not current (it names a part the board no longer has). The recipe selects the microcontroller by its path, reads the rows, runs `netsmith lock --update` in the scratch project (the page says `current` without being touched), deletes the lock (`absent`, and nothing writes it back), and adds a request nothing offers (the message appears). It checks that the pin file and the lock keep their bytes. Look at its screenshots.
+`scripts/editor-verify launch --fixture pin_map`, then `scripts/editor-verify drive pin-lock pin-map` (`pin-lock` puts the pin file back, so `pin-map` finds it as it was). The fixture is an invented microcontroller with three requests, a pin file that locks one and holds another, and a lock that is not current (it names a part the board no longer has). The recipe selects the microcontroller by its path, reads the rows, runs `netsmith project lock --update` in the scratch project (the page says `current` without being touched), deletes the lock (`absent`, and nothing writes it back), and adds a request nothing offers (the message appears). It checks that the pin file and the lock keep their bytes. Look at its screenshots.
 
 `pin-lock` clicks the padlock of a request with no entry, unlocks another, moves a request with the keyboard (Tab to the pin, Enter), is refused for a pin another request holds, drags a pin onto a free one, and asserts the pin file's text on disk after each step.
 
@@ -26,4 +26,4 @@ The editor writes the pin file's `lock`, `pin` and `source` lines of one entry, 
 - A part no request asks has no Pin map section.
 - The lock is solved for on the first ask after each reading (a solve of the whole source file, with no KiCad): a big project pays for it once per reading, on the first board asked for.
 - A pin the editor writes is one the next reading keeps: the move is judged by the rules the check applies to a pin file (offers the function, one request each, nothing the source holds, `shared`), from the analysis of the files on disk.
-- The editor still solves from the source and does not hold parts to the lock; the panel says what `netsmith lock --check` says.
+- The editor still solves from the source and does not hold parts to the lock; the panel says what `netsmith project lock --check` says.

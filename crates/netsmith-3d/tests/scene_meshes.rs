@@ -1,6 +1,6 @@
 //! The copper, solder mask and silkscreen of a scene as meshes (`netsmith_3d::mesh_pieces`)
 //! and in the `.glb` file: the board of `scene3d`'s tests, with a track, a via and a pour
-//! routed by hand (`board3d` places but does not route).
+//! routed by hand (`dev board3d` places but does not route).
 
 use netsmith_3d::{Material, Mesh, NO_NET, MeshPieces, SILK_LIFT, meshes_of_scene, mesh_pieces, ScenePlan, ScenePlanArea, Scene, SceneCopper};
 use netsmith_pcb::Side;

@@ -29,7 +29,7 @@
 //!
 //! # Why bitmaps, what they measured, and the differences of a KiCad release (ADR 0034)
 //!
-//! `netsmith fab --cross-check` plots the written board with KiCad as well, compares, then
+//! `netsmith board fab --cross-check` plots the written board with KiCad as well, compares, then
 //! fails with the differences and writes a picture of each layer that differs
 //! (`cross-check-<file>.png`: grey where both draw, white only netsmith, dark grey only KiCad).
 //! It needs KiCad. Three methods were weighed: comparing the Gerber text, comparing lists of

@@ -22,7 +22,7 @@ A test that fails once and passes on a rerun is a bug to fix, not to retry: no t
 Then run the fab gate. It runs netsmith's own design rules check (no KiCad needed) and must end with `design rules check: passed`. Add `--cross-check` (needs KiCad, below) to compare the files and the findings with KiCad's.
 
 ```sh
-cargo run -p netsmith-cli -- fab examples/linear_regulator.nsm --out /tmp/fab-<branch>
+cargo run -p netsmith-cli -- board fab examples/linear_regulator.nsm --out /tmp/fab-<branch>
 ```
 
 The examples in `examples/*.nsm` must still build, except `examples/carrier_and_cards.nsm`, whose invented parts have no KiCad symbol: it is checked and solved (`cargo run -p netsmith-solve --example solve -- examples/carrier_and_cards.nsm`) and its tests are in `crates/netsmith-check/tests/mate.rs` and `crates/netsmith-solve/tests/mate.rs`.
@@ -36,7 +36,7 @@ scripts/check-example-locks.sh
 scripts/check-example-designs.sh
 ```
 
-To fix a stale lock, run `netsmith lock --update` in the example. To fix a stale design file, run `scripts/check-example-designs.sh --update`. Read the diff of each file before you commit it: a moved pick or design is a change to the board.
+To fix a stale lock, run `netsmith project lock --update` in the example. To fix a stale design file, run `scripts/check-example-designs.sh --update`. Read the diff of each file before you commit it: a moved pick or design is a change to the board.
 
 ## The editor
 
@@ -44,7 +44,7 @@ For a change to the editor or to a view it shows, also run the browser check in 
 
 ## The editor's page
 
-No built page is committed (ADR 0114). `crates/netsmith-editor/build.rs` builds the page from `web/` with Node 20+ when Node is there (`PATH`, else `~/.nvm`) and embeds it; without Node the binary embeds a placeholder page and `cargo build` prints a warning (`cargo:warning=the editor's page was not built...`). `scripts/web-bundle build` builds `web/dist` by hand, `scripts/web-bundle hash` prints the hash of the sources. `cargo test -p netsmith-editor --test main bundle::` checks the page the build embedded (complete, of the current sources, the 3D chunk within its budget); with no page in the build it skips with a message, and `NETSMITH_REQUIRE_BUNDLE_CHECK=1` (CI sets it) makes a placeholder fail it. To see a no-Node build, put a `PATH` and `HOME` without Node on the build (`build_web.rs` also looks in `~/.nvm`): `cargo build -p netsmith-cli` must succeed with that warning and `netsmith editor` must serve the placeholder (a 503 page). Never commit `web-dist`.
+No built page is committed (ADR 0114). `crates/netsmith-editor/build.rs` builds the page from `web/` with Node 20+ when Node is there (`PATH`, else `~/.nvm`) and embeds it; without Node the binary embeds a placeholder page and `cargo build` prints a warning (`cargo:warning=the editor's page was not built...`). `scripts/web-bundle build` builds `web/dist` by hand, `scripts/web-bundle hash` prints the hash of the sources. `cargo test -p netsmith-editor --test main bundle::` checks the page the build embedded (complete, of the current sources, the 3D chunk within its budget); with no page in the build it skips with a message, and `NETSMITH_REQUIRE_BUNDLE_CHECK=1` (CI sets it) makes a placeholder fail it. To see a no-Node build, put a `PATH` and `HOME` without Node on the build (`build_web.rs` also looks in `~/.nvm`): `cargo build -p netsmith-cli` must succeed with that warning and `netsmith view editor` must serve the placeholder (a 503 page). Never commit `web-dist`.
 
 ## Language guide
 
@@ -52,7 +52,7 @@ No built page is committed (ADR 0114). `crates/netsmith-editor/build.rs` builds 
 
 ## KiCad
 
-`netsmith fab`, the editor and the tests find `kicad-cli` in this order: `$KICAD_CLI`, `kicad-cli` or `kicad-cli.exe` on `PATH`, then under WSL the newest Windows KiCad in `/mnt/c/Program Files/KiCad/<version>/bin/kicad-cli.exe` (ADR 0021). The shell scripts (`scripts/check-kicad.sh`) still default to the 9.0 path. Tests that need KiCad skip themselves when it is absent. Say so in your report when they skipped.
+`netsmith board fab`, the editor and the tests find `kicad-cli` in this order: `$KICAD_CLI`, `kicad-cli` or `kicad-cli.exe` on `PATH`, then under WSL the newest Windows KiCad in `/mnt/c/Program Files/KiCad/<version>/bin/kicad-cli.exe` (ADR 0021). The shell scripts (`scripts/check-kicad.sh`) still default to the 9.0 path. Tests that need KiCad skip themselves when it is absent. Say so in your report when they skipped.
 
 `build` and `fab` find KiCad's `symbols` and `footprints` folders with `netsmith_kicad::Search` (ADR 0021): `NETSMITH_KICAD_SYMBOLS` and `NETSMITH_KICAD_FOOTPRINTS`, then beside `kicad-cli`, then the usual install places. A test of the lookup builds a fake install tree with `Search::under(<temp dir>)`; do not rely on this machine's KiCad.
 

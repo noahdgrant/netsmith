@@ -1,4 +1,4 @@
-//! `netsmith build --emit-design <file>` writes the designs of the boards it builds (issue #609),
+//! `netsmith board build --emit-design <file>` writes the designs of the boards it builds (issue #609),
 //! and nothing when a board fails.
 
 use std::{fs, path::Path, process::Command};
@@ -10,7 +10,7 @@ const TWO_BOARDS: &str = include_str!("../../../examples/two_boards.nsm");
 
 fn build(cwd: &Path, file: &str, emit: &Path) -> std::process::Output {
     Command::new(env!("CARGO_BIN_EXE_netsmith"))
-        .args(["build", file, "--out", "out", "--emit-design"])
+        .args(["board", "build", file, "--out", "out", "--emit-design"])
         .arg(emit)
         .current_dir(cwd)
         .env("NETSMITH_NO_KICAD", "1")

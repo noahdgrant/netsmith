@@ -2,7 +2,7 @@
 # so the main workspace's build, tests, clippy and CI jobs never need the WebKit and GTK libraries
 # a window does: `cargo test --workspace` at the repository's root does not reach it (the root
 # manifest also excludes this folder). The plain part (the project folder, the program, starting
-# and stopping `netsmith editor`) is the library, and its tests run anywhere; the window is the
+# and stopping `netsmith view editor`) is the library, and its tests run anywhere; the window is the
 # binary, behind the `window` feature:
 #   cargo test  --manifest-path desktop/Cargo.toml
 #   cargo build --manifest-path desktop/Cargo.toml --features window

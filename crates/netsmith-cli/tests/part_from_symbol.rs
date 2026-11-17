@@ -1,4 +1,4 @@
-//! `netsmith part from-symbol` (#453): a draft part file from a KiCad symbol's pins.
+//! `netsmith import part from-symbol` (#453): a draft part file from a KiCad symbol's pins.
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -16,7 +16,7 @@ fn charger_schematic() -> String {
 
 fn draft(file: &str, symbol: &str) -> std::process::Output {
     Command::new(env!("CARGO_BIN_EXE_netsmith"))
-        .args(["part", "from-symbol", file, symbol])
+        .args(["import", "part", "from-symbol", file, symbol])
         .output()
         .unwrap()
 }
@@ -35,7 +35,7 @@ fn a_schematics_symbol_gives_a_row_for_each_pin_with_its_kind() {
     );
     let text = stdout(&run);
     assert!(
-        text.starts_with("// DRAFT written by `netsmith part from-symbol`"),
+        text.starts_with("// DRAFT written by `netsmith import part from-symbol`"),
         "{text}"
     );
     assert!(

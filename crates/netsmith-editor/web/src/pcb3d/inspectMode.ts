@@ -21,7 +21,7 @@ export const COLOUR_BY: { id: ColourBy; label: string; tip: string }[] = [
   { id: 'margin', label: 'Height margin', tip: 'A height map: each body by its margin to the height limit over it, green to amber to red; grey where no limit is over it' },
 ];
 
-/** How the case model (ADR 0109) is drawn, as `netsmith render --case` names it: not at all, see-through (the default) or solid. */
+/** How the case model (ADR 0109) is drawn, as `netsmith view 3d --case` names it: not at all, see-through (the default) or solid. */
 export type CaseMode = 'hidden' | 'see-through' | 'solid';
 
 export const CASE_MODES: { id: CaseMode; label: string; tip: string }[] = [

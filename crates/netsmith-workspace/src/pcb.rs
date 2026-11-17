@@ -982,7 +982,7 @@ pub fn fit(
     })
 }
 
-/// The board as placed (and routed) in `entry`, as the `.glb` file `board3d --glb` writes
+/// The board as placed (and routed) in `entry`, as the `.glb` file `dev board3d --glb` writes
 /// (ADR 0105), with the stamp of the layout file it was placed with.
 pub fn glb(entry: &Entry, data: &BoardData) -> netsmith_editor::Pcb3d {
     netsmith_editor::Pcb3d {

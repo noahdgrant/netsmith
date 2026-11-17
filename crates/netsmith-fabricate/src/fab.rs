@@ -1,4 +1,4 @@
-//! `netsmith fab`: from source text to the files a board house wants.
+//! `netsmith board fab`: from source text to the files a board house wants.
 //!
 //! For each board it builds the design, places and routes a PCB, writes the board and its
 //! design rules, and packages Gerbers, a drill file, a bill of materials and a placement
@@ -87,7 +87,7 @@ impl PrecheckReport {
     }
 }
 
-/// What `netsmith fab` says when it finds no KiCad, and why there is none: KiCad is switched off
+/// What `netsmith board fab` says when it finds no KiCad, and why there is none: KiCad is switched off
 /// (`NETSMITH_NO_KICAD`, which hides an install that may be there) or it was not found. netsmith's
 /// own design rules check and its Gerbers need none; KiCad is only the witness of
 /// `--cross-check`, which plots the boards and runs KiCad's design rules check to compare with
@@ -171,7 +171,7 @@ pub struct FabOptions {
     /// Make only the boards with these labels (`Unit`, `DevKit/carrier`) and skip the rest of
     /// the file. `None` makes every board. An order uses it (ADR 0035).
     pub only: Option<Vec<String>>,
-    /// Constraints were asked to be strict (`fab --constraints error`, or `constraints =
+    /// Constraints were asked to be strict (`board fab --constraints error`, or `constraints =
     /// "error"` in the manifest, and not the default): a part under a height limit that states
     /// no height is then an error and not a warning (ADR 0045, "Height limits").
     /// `--allow-drc-violations` does not waive it.
@@ -196,17 +196,17 @@ pub struct FabOptions {
     pub track_margin: f64,
     /// Write the board's 3D scene as `<board>.glb` into the board's package folder, beside the
     /// pin map and `fab-notes.txt` and outside the Gerber zip: the scene of the board as routed,
-    /// as `board3d --glb` writes it (docs/BOARD3D.md). The default is `true`; the command line
+    /// as `dev board3d --glb` writes it (docs/BOARD3D.md). The default is `true`; the command line
     /// gives `false` for `--no-glb` or `glb = false` in `netsmith.toml`. When it is `false`, a
     /// `<board>.glb` that an earlier run left in the folder is removed, as the pin map's files
     /// are, so that the folder never holds a scene of another layout.
     pub glb: bool,
     /// Write the board as placed, just before it is routed, as `<board>.placed.json` into the
-    /// board's output folder (`fab --save-placed`), for `netsmith route` to route again with no
+    /// board's output folder (`board fab --save-placed`), for `netsmith dev route` to route again with no
     /// placing. The default is `false`.
     pub save_placed: bool,
     /// Write the board as STEP, `<board>.step`, into the board's package folder beside the
-    /// `.glb` and outside the Gerber zip, as `board3d --step` writes it (ADR 0107,
+    /// `.glb` and outside the Gerber zip, as `dev board3d --step` writes it (ADR 0107,
     /// docs/BOARD3D.md). The default is `true`; the command line gives `false` for `--no-step` or
     /// `step = false` in `netsmith.toml`. When it is `false`, a `<board>.step` that an earlier run
     /// left in the folder is removed, as the `.glb` is.
@@ -234,7 +234,7 @@ pub struct FabOptions {
     /// What the run does about reusing packages (issue #841): [`Reuse::Off`] by default.
     pub reuse: Reuse,
     /// Start each board's route from the router's copper kept on disk
-    /// (`crate::kept_routes`, `fab --reuse-routes`, issue #1019), keeping the copper of every
+    /// (`crate::kept_routes`, `board fab --reuse-routes`, issue #1019), keeping the copper of every
     /// net the placement left alone, and keep the copper routed for the next run. Needs
     /// `layout`, which says where the source is. The default is `false`: the board is routed
     /// from nothing and nothing is kept, so that a clean checkout gives the same board.
@@ -263,7 +263,7 @@ pub enum SeedWrites {
     /// Write it to the layout file (`fab`).
     #[default]
     Write,
-    /// Stop with an error that says the seed: an order (`fab --order`) is a release.
+    /// Stop with an error that says the seed: an order (`project order`) is a release.
     Order,
     /// Stop with an error that says the seed: the editor's release is a release.
     EditorRelease,
@@ -889,7 +889,7 @@ fn settle_seed(
     };
     if let (Some(what), Some(_)) = (release, &options.layout) {
         return Err(fail(format!(
-            "{note}, and {what} is a release, which never changes a choice by itself: run `netsmith fab` on the source to write `seed = {}` to {name}, review it and commit it, then make the release again",
+            "{note}, and {what} is a release, which never changes a choice by itself: run `netsmith board fab` on the source to write `seed = {}` to {name}, review it and commit it, then make the release again",
             seeds.used
         )));
     }
@@ -1192,7 +1192,7 @@ fn fab_board(
         }
         // The board as placed, for the pin optimizer if the router leaves connections.
         let placed = options.pins.is_some().then(|| board.clone());
-        // `--save-placed`: the board as placed, for `netsmith route`; without it, one an earlier
+        // `--save-placed`: the board as placed, for `netsmith dev route`; without it, one an earlier
         // run left is removed, so the folder never holds a placed board of another layout.
         if let Some(file) = crate::placed::save_or_remove(
             &built.dir(out),
@@ -1709,7 +1709,7 @@ fn fab_system(
 }
 
 /// The board's 3D scene as `<name>.glb` in `dir` (or, with `write` false, the removal of one an
-/// earlier run left): the bytes `board3d --glb` writes for `board`, which is the board as fab
+/// earlier run left): the bytes `dev board3d --glb` writes for `board`, which is the board as fab
 /// placed and routed it, with its copper (the editor's `/api/pcb/3d` draws the same). Returns the
 /// file written and a note for the person ordering when it could not be written.
 fn write_glb(
@@ -1748,8 +1748,8 @@ fn write_glb(
 }
 
 /// The board as `<name>.step` in `dir` (or, with `write` false, the removal of one an earlier
-/// run left): the bytes `board3d --step` writes for `board`, the board as fab placed and routed
-/// it; the STEP holds no copper, so they are those of `board3d --step` for the same placement.
+/// run left): the bytes `dev board3d --step` writes for `board`, the board as fab placed and routed
+/// it; the STEP holds no copper, so they are those of `dev board3d --step` for the same placement.
 /// Returns the file written and a note for the person ordering when it could not be written.
 fn write_step(
     dir: &Path,
@@ -1986,7 +1986,7 @@ fn fab_board_pinned(
                     fs::write(
                         &target,
                         format!(
-                            "# Proposed by `netsmith fab` ({}): placed and not routed, so not yet known to route. Copy it over the pin file to take it.\n{}",
+                            "# Proposed by `netsmith board fab` ({}): placed and not routed, so not yet known to route. Copy it over the pin file to take it.\n{}",
                             pins.locked_by.given(),
                             file.to_text()
                         ),
@@ -2718,7 +2718,7 @@ fn designator_key(designator: &str) -> (String, u32) {
 /// time, and a board it leaves unfinished is routed again from the same placement at the
 /// process's least track, in what is left. The short trial keeps a board that has no room for
 /// the margin from spending most of its time on it first.
-/// `netsmith route` routes a saved placed board with it too, so the two route alike. `base`
+/// `netsmith dev route` routes a saved placed board with it too, so the two route alike. `base`
 /// gives the router's other options (`fab` gives the defaults, `route` may set the costs, the
 /// tries and the snapshots); its time limit and retries are set here.
 pub fn route_with_margin(
@@ -2740,7 +2740,7 @@ pub fn route_with_margin(
 }
 
 /// [`route_with_margin`], keeping the router's copper of `before` for every net the placement
-/// left alone and `rip` does not name (`netsmith_router::carry::reroute`, `fab --reuse-routes`).
+/// left alone and `rip` does not name (`netsmith_router::carry::reroute`, `board fab --reuse-routes`).
 pub fn reroute_with_margin(
     board: &mut Board,
     before: &Board,
@@ -3042,7 +3042,7 @@ mod tests {
             assert_eq!(
                 e,
                 format!(
-                    "error: Board: the seed 3 that {name} states no longer places the board, so it is stale: the placer tried seed 3 (the courtyards of `usb` (J2) and `c37` (C37) overlap by 0.42 mm2); seed 4 places it, and {what} is a release, which never changes a choice by itself: run `netsmith fab` on the source to write `seed = 4` to {name}, review it and commit it, then make the release again\n"
+                    "error: Board: the seed 3 that {name} states no longer places the board, so it is stale: the placer tried seed 3 (the courtyards of `usb` (J2) and `c37` (C37) overlap by 0.42 mm2); seed 4 places it, and {what} is a release, which never changes a choice by itself: run `netsmith board fab` on the source to write `seed = 4` to {name}, review it and commit it, then make the release again\n"
                 )
             );
             assert_eq!(

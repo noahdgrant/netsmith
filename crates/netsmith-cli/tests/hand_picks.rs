@@ -58,7 +58,7 @@ fn hand_picked(lcsc: &str) -> String {
 #[test]
 fn a_hand_pick_is_the_pick_and_the_lock_records_it() {
     let root = project("hand-pick", &hand_picked("C23151"));
-    let run = netsmith(&root, &["build"]);
+    let run = netsmith(&root, &["board", "build"]);
     assert!(run.status.success(), "{}", stderr(&run));
     assert!(stdout(&run).contains("R_0603"), "{}", stdout(&run));
     assert!(
@@ -72,11 +72,11 @@ fn a_hand_pick_is_the_pick_and_the_lock_records_it() {
 #[test]
 fn a_hand_pick_comes_before_the_lock_and_lock_update_records_it() {
     let root = project("hand-pick-over-lock", LED);
-    assert!(netsmith(&root, &["build"]).status.success());
+    assert!(netsmith(&root, &["board", "build"]).status.success());
     assert!(lock(&root).contains(SOLVER_ROW));
     fs::write(root.join("src/main.nsm"), hand_picked("C23151")).unwrap();
     // The build takes the hand pick and says that the lock differs, which it leaves alone.
-    let run = netsmith(&root, &["build"]);
+    let run = netsmith(&root, &["board", "build"]);
     assert!(run.status.success(), "{}", stderr(&run));
     assert!(stdout(&run).contains("R_0603"), "{}", stdout(&run));
     assert!(
@@ -86,15 +86,15 @@ fn a_hand_pick_comes_before_the_lock_and_lock_update_records_it() {
         "{}",
         stderr(&run)
     );
-    assert!(!netsmith(&root, &["build", "--locked"]).status.success());
-    // `lock --check` says the lock is not current, and `--update` writes the hand-picked row.
-    let check = netsmith(&root, &["lock", "--check"]);
+    assert!(!netsmith(&root, &["board", "build", "--locked"]).status.success());
+    // `project lock --check` says the lock is not current, and `--update` writes the hand-picked row.
+    let check = netsmith(&root, &["project", "lock", "--check"]);
     assert_eq!(check.status.code(), Some(1), "{}", stderr(&check));
-    let update = netsmith(&root, &["lock", "--update"]);
+    let update = netsmith(&root, &["project", "lock", "--update"]);
     assert!(update.status.success(), "{}", stderr(&update));
     assert!(lock(&root).contains(OTHER_ROW), "{}", lock(&root));
-    assert!(netsmith(&root, &["lock", "--check"]).status.success());
-    assert!(netsmith(&root, &["build", "--locked"]).status.success());
+    assert!(netsmith(&root, &["project", "lock", "--check"]).status.success());
+    assert!(netsmith(&root, &["board", "build", "--locked"]).status.success());
 }
 
 #[test]
@@ -102,7 +102,7 @@ fn a_hand_picked_row_that_fails_stops_the_build_at_the_narrowing() {
     // 2.2 kohm in 0402 overheats at the LED's current.
     let source = hand_picked("C25879");
     let root = project("hand-pick-fails", &source);
-    let run = netsmith(&root, &["build"]);
+    let run = netsmith(&root, &["board", "build"]);
     assert!(!run.status.success());
     let said = stderr(&run);
     assert!(said.contains("max_power"), "{said}");
@@ -117,8 +117,8 @@ fn a_hand_picked_row_that_fails_stops_the_build_at_the_narrowing() {
         said.contains(&format!("`r1` is held by `.lcsc &= \"C25879\"` to one row of the `resistor` catalog, and no other row was tried for it: if the failure above is about it, change the design so that the row fits, or change the narrowing\n   --> src/{at}")),
         "{said}"
     );
-    // `lock --check` cannot tell, and says why in the solver's words.
-    let check = netsmith(&root, &["lock", "--check"]);
+    // `project lock --check` cannot tell, and says why in the solver's words.
+    let check = netsmith(&root, &["project", "lock", "--check"]);
     assert_eq!(check.status.code(), Some(2), "{}", stderr(&check));
     assert!(stderr(&check).contains("max_power"), "{}", stderr(&check));
 }
@@ -131,7 +131,7 @@ fn a_picks_file_is_refused_with_the_narrowings_to_write() {
         "version = 1\n[LedExample.parts.\"r1\"]\ncatalog = \"resistor\"\nlcsc = \"C23151\"\n",
     )
     .unwrap();
-    for args in [&["build"][..], &["lock", "--check"], &["lock", "--update"]] {
+    for args in [&["board", "build"][..], &["project", "lock", "--check"], &["project", "lock", "--update"]] {
         let run = netsmith(&root, args);
         assert_eq!(run.status.code(), Some(2), "{args:?}: {}", stderr(&run));
         assert!(
@@ -145,7 +145,7 @@ fn a_picks_file_is_refused_with_the_narrowings_to_write() {
     // Moved into the source and deleted, the entry is the same pick.
     fs::write(root.join("src/main.nsm"), hand_picked("C23151")).unwrap();
     fs::remove_file(root.join("src/main.picks.toml")).unwrap();
-    let run = netsmith(&root, &["build"]);
+    let run = netsmith(&root, &["board", "build"]);
     assert!(run.status.success(), "{}", stderr(&run));
     assert!(lock(&root).contains(OTHER_ROW), "{}", lock(&root));
 }

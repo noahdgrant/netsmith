@@ -37,7 +37,7 @@ pub struct PartGeometries {
     /// The parts asked for, in board order; every part when none was asked for.
     pub parts: Vec<PartGeometry>,
     /// The faults of the placement check where the parts are, as `layout fit` and
-    /// `fab --format json` have them. Empty for a board `fab` would place.
+    /// `board fab --format json` have them. Empty for a board `fab` would place.
     pub placement: Vec<PlacementFault>,
     /// The sets of lines that cannot all hold where the parts are; set by the caller from what
     /// placing said.

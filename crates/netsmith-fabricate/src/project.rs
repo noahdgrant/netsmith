@@ -40,26 +40,26 @@ pub const KICAD_VERSION: i64 = 9;
 pub const MAX_PLACE_SEEDS: u32 = 32;
 
 /// What `netsmith.toml` says, the `[project]` table. Only `name` is required; the rest
-/// are what `netsmith init` writes out. A key that is not one of these is refused.
+/// are what `netsmith project init` writes out. A key that is not one of these is refused.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Manifest {
     pub name: String,
     /// The netsmith release the project's source is written for, `netsmith = "0.2.0"`, which
-    /// `netsmith init` writes. A command whose check fails on a project written for another
+    /// `netsmith project init` writes. A command whose check fails on a project written for another
     /// release says so and points to `docs/MIGRATING.md` (`crate::release`, ADR 0134). Without
     /// it the project was made before the key, with netsmith 0.1.0 or earlier.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub netsmith: Option<String>,
-    /// The files that hold boards, relative to the project root. `netsmith build`, `fab`
+    /// The files that hold boards, relative to the project root. `netsmith board build`, `fab`
     /// and `editor` with no file act on these. A `system` is listed here the same way. A
     /// project that is only a library of modules lists none (`top_level = []`).
     #[serde(default = "default_top_level")]
     pub top_level: Vec<String>,
-    /// Where `netsmith build` writes, relative to the project root.
+    /// Where `netsmith board build` writes, relative to the project root.
     #[serde(default = "default_out")]
     pub out: String,
-    /// Where `netsmith fab` writes, relative to the project root.
+    /// Where `netsmith board fab` writes, relative to the project root.
     #[serde(default = "default_fab")]
     pub fab: String,
     /// The KiCad version the output is for.
@@ -110,7 +110,7 @@ pub struct Manifest {
     /// Which source files get a pick lock (ADR 0100): `"all"`, the default, every file a command
     /// reads; `"top_level"` only the files of `top_level`, so a unit test of one part, or a
     /// scratch file, has none; `"none"` no file. A source with no lock is not read for one,
-    /// written one, or held to one, and `lock --update` and `lock --check` skip it.
+    /// written one, or held to one, and `project lock --update` and `project lock --check` skip it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub lock: Option<String>,
     /// Whether `fab` writes the board's 3D scene as `<board>.glb` into the fab package
@@ -135,7 +135,7 @@ pub struct Manifest {
     pub place_seeds: Option<u32>,
     /// How long the placer may look for a placement of a board before it gives the closest try
     /// (`place_budget = "120s"`, or `"5tries"`, or `"120s+5tries"`; none by default, issue
-    /// #764): `fab` and `board3d` say what was out when it ran out. `--place-budget` wins over
+    /// #764): `fab` and `dev board3d` say what was out when it ran out. `--place-budget` wins over
     /// it. [`crate::layout::parse_place_budget`] reads it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub place_budget: Option<String>,
@@ -754,12 +754,12 @@ impl Project {
         Ok(crate::git_dependency::GitCache::at(&dir).offline(self.offline))
     }
 
-    /// The directory `netsmith build` writes to.
+    /// The directory `netsmith board build` writes to.
     pub fn out_dir(&self) -> PathBuf {
         self.root.join(&self.manifest.out)
     }
 
-    /// The directory `netsmith fab` writes to.
+    /// The directory `netsmith board fab` writes to.
     pub fn fab_dir(&self) -> PathBuf {
         self.root.join(&self.manifest.fab)
     }
@@ -827,7 +827,7 @@ impl Project {
     /// What every dependency by `git` (this project's and its dependencies') asks for, with no
     /// commit, as far as the manifests can be read without fetching: a dependency by `git` that
     /// the cache does not hold contributes no dependencies of its own, and the flag is then
-    /// false: the list is this project's own. For `lock --check`.
+    /// false: the list is this project's own. For `project lock --check`.
     pub fn git_requests(&self) -> Result<(Vec<crate::dependency_lock::Locked>, bool), String> {
         let lock = crate::dependency_lock::DependencyLock::read(&self.root)?;
         let offline = self.clone().with_offline(true);
@@ -1543,9 +1543,9 @@ impl Target {
 pub struct Target {
     pub project: Option<Project>,
     pub files: Vec<SourceFile>,
-    /// `netsmith build`'s output directory when `--out` is not given.
+    /// `netsmith board build`'s output directory when `--out` is not given.
     pub build_out: PathBuf,
-    /// `netsmith fab`'s output directory when `--out` is not given.
+    /// `netsmith board fab`'s output directory when `--out` is not given.
     pub fab_out: PathBuf,
     /// What the editor's page is titled: the project's name, or the file's.
     pub title: String,
@@ -1580,7 +1580,7 @@ impl Target {
             None => {
                 let project = Project::find(cwd)?.ok_or_else(|| {
                     format!(
-                        "no {MANIFEST} in {} or any directory above it: name a .nsm file, or run `netsmith init` to start a project",
+                        "no {MANIFEST} in {} or any directory above it: name a .nsm file, or run `netsmith project init` to start a project",
                         cwd.display()
                     )
                 })?;

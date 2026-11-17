@@ -1,8 +1,8 @@
 // The 3D view's section plane and exploded stackup on a four-layer board (features/pcb-3d.md,
 // "Tools"): a cut across Y, set by typing its place in mm, seen from the front shows the stackup
 // filled as bands at their true thickness (the mask, the prepreg and the core in two laminate
-// tones, as `netsmith render --section` colours them); "copy as command" gives the exact
-// `netsmith render` command of the view; E pulls the layers apart, each labelled with its name and
+// tones, as `netsmith view 3d --section` colours them); "copy as command" gives the exact
+// `netsmith view 3d` command of the view; E pulls the layers apart, each labelled with its name and
 // thickness from the scene file, and puts them back.
 import { whenIdle } from '../settle.mjs';
 export const fixture = 'four_layer';
@@ -69,10 +69,10 @@ export async function run(tools) {
   expect(bottom.y - top.y > 200 && bottom.y - top.y < 700, `the board's thickness fills ${bottom.y - top.y} pixels`);
   await shot('section-bands');
 
-  step('copy as command: the exact netsmith render command of this view');
+  step('copy as command: the exact netsmith view 3d command of this view');
   await page.locator('.v3-more .pop-btn').click();
   const cmd = await page.getByTestId('render-command-text').innerText();
-  const want = `netsmith render src/main.nsm --board ${board} --view front --section y=${at} --theme dark`;
+  const want = `netsmith view 3d src/main.nsm --board ${board} --view front --section y=${at} --theme dark`;
   expect(cmd === want, `the command: ${cmd} (want ${want})`);
   await page.keyboard.press('Escape');
   await page.mouse.move(5, 5);

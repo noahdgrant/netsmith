@@ -294,7 +294,7 @@ fn fab_locked_never_rewrites_the_pin_file_of_a_board_that_does_not_route() {
     // The first run makes the pick lock that `--locked` wants; `--pins locked` changes no pin.
     let first = netsmith(
         root.path(),
-        &["fab", "--allow-drc-violations", "--pins", "locked"],
+        &["board", "fab", "--allow-drc-violations", "--pins", "locked"],
     );
     assert!(!first.status.success());
     assert_eq!(fs::read(&pin_file).unwrap(), before);
@@ -303,7 +303,7 @@ fn fab_locked_never_rewrites_the_pin_file_of_a_board_that_does_not_route() {
 
     // `--locked` alone: the board does not route, the optimizer finds a swap, and the run says
     // so and ends in an error, as `--pins locked` does. It writes no pin file and no pick lock.
-    let run = netsmith(root.path(), &["fab", "--allow-drc-violations", "--locked"]);
+    let run = netsmith(root.path(), &["board", "fab", "--allow-drc-violations", "--locked"]);
     let err = String::from_utf8_lossy(&run.stderr);
     assert!(!run.status.success(), "{err}");
     assert!(err.contains("9 connections could not be routed"), "{err}");
@@ -328,7 +328,7 @@ fn fab_locked_never_rewrites_the_pin_file_of_a_board_that_does_not_route() {
     let both = netsmith(
         root.path(),
         &[
-            "fab",
+            "board", "fab",
             "--allow-drc-violations",
             "--locked",
             "--pins",
@@ -344,7 +344,7 @@ fn fab_locked_never_rewrites_the_pin_file_of_a_board_that_does_not_route() {
     // `--pins locked` alone names itself.
     let named = netsmith(
         root.path(),
-        &["fab", "--allow-drc-violations", "--pins", "locked"],
+        &["board", "fab", "--allow-drc-violations", "--pins", "locked"],
     );
     let err = String::from_utf8_lossy(&named.stderr);
     assert!(err.contains("--pins locked, so no pin moves"), "{err}");
@@ -359,7 +359,7 @@ fn fab_locked_never_rewrites_the_pin_file_of_a_board_that_does_not_route() {
         original.replace("[project]", "[project]\npins = \"locked\""),
     )
     .unwrap();
-    let set = netsmith(root.path(), &["fab", "--allow-drc-violations"]);
+    let set = netsmith(root.path(), &["board", "fab", "--allow-drc-violations"]);
     let err = String::from_utf8_lossy(&set.stderr);
     assert!(!set.status.success(), "{err}");
     assert!(
@@ -372,7 +372,7 @@ fn fab_locked_never_rewrites_the_pin_file_of_a_board_that_does_not_route() {
     fs::write(&manifest, original).unwrap();
 
     // Without it the same board is made routable and the pin file changes: the contrast.
-    let free = netsmith(root.path(), &["fab", "--allow-drc-violations"]);
+    let free = netsmith(root.path(), &["board", "fab", "--allow-drc-violations"]);
     assert!(
         free.status.success(),
         "{}",

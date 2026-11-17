@@ -29,7 +29,7 @@ A value declared with the word `optional` after its type, `.max_inductor_dcr: Re
 _Avoid_: Nullable, maybe, conditional check
 
 **Order**:
-A named list of boards and quantities in `netsmith.toml` (`[order.devkit.boards]`, each key a board as its folder is named, `Board` or `System/member`, a system for all its members, or a panel), made by `netsmith fab --order devkit` into `fab/orders/devkit/`: the package of each board, an `order.txt` summary and a combined bill of materials for the quantities, priced at the quantity of the whole order when a supply provider is configured (ADR 0035). It chooses which separate packages are ordered together; a panel's quantity counts panels. A board's package a plain `fab` just made from the same inputs is copied, not made again (issue #841).
+A named list of boards and quantities in `netsmith.toml` (`[order.devkit.boards]`, each key a board as its folder is named, `Board` or `System/member`, a system for all its members, or a panel), made by `netsmith project order devkit` into `fab/orders/devkit/`: the package of each board, an `order.txt` summary and a combined bill of materials for the quantities, priced at the quantity of the whole order when a supply provider is configured (ADR 0035). It chooses which separate packages are ordered together; a panel's quantity counts panels. A board's package a plain `fab` just made from the same inputs is copied, not made again (issue #841).
 _Avoid_: Batch, job, build set
 
 **Outline**:

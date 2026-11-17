@@ -1,5 +1,5 @@
 //! The reproductions of the ported boards (issue #599): the RP2350A Minimal, ORBIT and Easyduino
-//! ESP32-S3 ports, each drawn by `netsmith fab` from the routes file and the layout file that
+//! ESP32-S3 ports, each drawn by `netsmith board fab` from the routes file and the layout file that
 //! `netsmith routes import` writes from the original's KiCad board, must have every track, arc,
 //! via and zone of the original, on the same layer and net (a zone with the same outline, holes
 //! and settings), and nothing else; it must leave no connection but those named below with why,
@@ -357,7 +357,7 @@ fn reproduce(port: &Port, tag: &str) -> Made {
     let run = netsmith(
         &folder,
         &[
-            "fab",
+            "board", "fab",
             "--locked",
             "--allow-drc-violations",
             "--no-glb",
@@ -691,7 +691,7 @@ fn measured_copper_of_the_three_boards() {
         copy_tree(&example(port), &auto);
         let run = netsmith(
             &auto,
-            &["fab", "--locked", "--no-glb", "--no-step", "--out", "fab"],
+            &["board", "fab", "--locked", "--no-glb", "--no-step", "--out", "fab"],
         );
         let automatic = auto
             .join("fab")

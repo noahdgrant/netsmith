@@ -1,4 +1,4 @@
-//! The gate of the Easyduino ESP32-S3 port: the board `netsmith fab` writes for the project in
+//! The gate of the Easyduino ESP32-S3 port: the board `netsmith board fab` writes for the project in
 //! `examples/easyduino_esp32s3` must match Easyduino's where the owner said it must (the
 //! outline, the holes and the parts of `reference/must_match.toml`), as judged by the parity
 //! checker (`netsmith_tools::parity`, which `rp2350_parity.rs` tests against synthetic boards).
@@ -16,7 +16,7 @@ fn project() -> PathBuf {
 /// routes completely in about 2 s).
 const ROUTE_SECONDS: &str = "20";
 
-/// Builds the example with `netsmith fab --locked` and no KiCad (the project needs none, ADR
+/// Builds the example with `netsmith board fab --locked` and no KiCad (the project needs none, ADR
 /// 0097) and gates on the checker: the outline, the receptacles' four pegs, J1, J2, SW1, SW2 and
 /// the headers (U2) must be `ok` on the board it writes, complete or INCOMPLETE; the committed
 /// overlay must be the picture of that board.
@@ -28,7 +28,7 @@ fn easyduino_pcb_matches_the_original_where_it_must() {
         parts: 35,
         min_ok: 202,
         route_seconds: ROUTE_SECONDS,
-        regenerate: "from examples/easyduino_esp32s3 run `netsmith fab --locked`, then\n  netsmith \
+        regenerate: "from examples/easyduino_esp32s3 run `netsmith board fab --locked`, then\n  netsmith \
                      parity fab/EasyduinoEsp32s3/EasyduinoEsp32s3.kicad_pcb \
                      --table reference/placements.toml --svg \
                      reference/parity-overlay.svg",

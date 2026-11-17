@@ -1,4 +1,4 @@
-//! `netsmith explain <path> [file]` prints, as text, what the solve left at a part or member
+//! `netsmith board explain <path> [file]` prints, as text, what the solve left at a part or member
 //! and why each part has its row (issue 1008).
 
 use std::{fs, path::Path, process::Command};
@@ -27,7 +27,7 @@ board Repro {
 
 fn explain(cwd: &Path, args: &[&str]) -> std::process::Output {
     Command::new(env!("CARGO_BIN_EXE_netsmith"))
-        .arg("explain")
+        .args(["board", "explain"])
         .args(args)
         .current_dir(cwd)
         .env("NETSMITH_NO_KICAD", "1")

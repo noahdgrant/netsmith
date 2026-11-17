@@ -1,5 +1,5 @@
 //! The 3D view of an open page, as an agent drives it (P8a of issue 430; docs/BOARD3D.md, "Driving
-//! the editor's 3D view"). The names are `netsmith render`'s: a view, a section, highlights, x-ray,
+//! the editor's 3D view"). The names are `netsmith view 3d`'s: a view, a section, highlights, x-ray,
 //! a lens; with the editor's own tools beside them (what the bodies are coloured by, the height
 //! preview, the stackup pulled apart, the selection).
 //!
@@ -9,13 +9,13 @@
 //! **Nothing here is the design.** A change moves the camera, cuts the picture, lights parts and
 //! picks them in the page's shared selection; no file is written and no part moves. The server
 //! reads only the shape of a change (`deny_unknown_fields`, so a misspelt name is an error); the
-//! page decides whether the ids and the section are the board's, as `render` does, since only the
+//! page decides whether the ids and the section are the board's, as `view 3d` does, since only the
 //! page has the scene it shows.
 
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
-/// A view of `netsmith render --view`: the camera looks at the board's middle from that side,
+/// A view of `netsmith view 3d --view`: the camera looks at the board's middle from that side,
 /// framed to fit it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "kebab-case")]
@@ -40,7 +40,7 @@ pub enum ColourBy {
     Margin,
 }
 
-/// How the case model (ADR 0109) is drawn, as `netsmith render --case` names it: not at all, see-through
+/// How the case model (ADR 0109) is drawn, as `netsmith view 3d --case` names it: not at all, see-through
 /// (the default), or solid, which hides the board inside it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "kebab-case")]
@@ -83,7 +83,7 @@ pub struct ViewChange {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub board: Option<String>,
-    /// A view of `render`; with `camera` too, an error.
+    /// A view of `view 3d`; with `camera` too, an error.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub view: Option<RenderView>,
@@ -91,11 +91,11 @@ pub struct ViewChange {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub camera: Option<CameraPlace>,
-    /// `x=13`, `y=8` or `z=-0.8` as `render --section` reads it, or `none` for no cut.
+    /// `x=13`, `y=8` or `z=-0.8` as `view 3d --section` reads it, or `none` for no cut.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub section: Option<String>,
-    /// What is lit, as `render --highlight` names it (a designator, a path, `net:<name>`,
+    /// What is lit, as `view 3d --highlight` names it (a designator, a path, `net:<name>`,
     /// `limit:<name>`, `case:<name>`; an item may be comma-separated): the parts and the net
     /// through the page's selection, the limits and the case models in the view. It replaces what
     /// was lit; `[]` lights nothing. In the System view a part and a net are a member's, `led/J1`
@@ -124,7 +124,7 @@ pub struct ViewChange {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub case: Option<CaseMode>,
-    /// The case models hidden one by one, by name (`render --case hidden:<name>[,<name>]`),
+    /// The case models hidden one by one, by name (`view 3d --case hidden:<name>[,<name>]`),
     /// whatever `case` says; it replaces the list, and `[]` shows every model. A model lit by
     /// `highlight` is shown. A board with no case model refuses it (409), and a name it has no
     /// case model of is refused (400) with the list.
@@ -163,7 +163,7 @@ pub struct ViewState {
     /// The 3D view of `board` is on screen and drawn. When false, `view`, `camera`, `section`,
     /// `exploded` and `ortho` are absent.
     pub shown: bool,
-    /// The view of `render` the camera is at (within a few degrees), else none.
+    /// The view of `view 3d` the camera is at (within a few degrees), else none.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub view: Option<RenderView>,
@@ -173,14 +173,14 @@ pub struct ViewState {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub ortho: Option<bool>,
-    /// The cut as `render --section` writes it (`x=13`), or none.
+    /// The cut as `view 3d --section` writes it (`x=13`), or none.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub section: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub exploded: Option<bool>,
-    /// What is lit, as `render --highlight` would name it: the parts picked by designator, the
+    /// What is lit, as `view 3d --highlight` would name it: the parts picked by designator, the
     /// net picked as `net:<name>`, the limits lit as `limit:<name>`, the case models lit as
     /// `case:<name>` (in the System view, the member first: `led/J1`, `net:led/GND`).
     pub highlight: Vec<String>,
@@ -205,9 +205,9 @@ pub struct ViewState {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub height_preview: Option<f64>,
-    /// The page's palette, as `render --theme` names one: `light` or `dark`. Read-only.
+    /// The page's palette, as `view 3d --theme` names one: `light` or `dark`. Read-only.
     pub theme: String,
-    /// The `netsmith render` command that draws what the view shows, as "Copy as command" has
+    /// The `netsmith view 3d` command that draws what the view shows, as "Copy as command" has
     /// it; absent when the view is not shown.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]

@@ -23,7 +23,7 @@
 //! copper as the router's again, not as fixed, so that it is a board to carry from in turn.
 //!
 //! The router's copper is also kept on disk ([`crate::kept`], issue #1019), so that a later
-//! editor session, `netsmith layout regenerate` and `fab --reuse-routes` carry from it too.
+//! editor session, `netsmith layout regenerate` and `board fab --reuse-routes` carry from it too.
 
 use std::collections::BTreeSet;
 

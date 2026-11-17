@@ -103,7 +103,7 @@ export interface LockView {
   tone: 'ok' | 'warn' | 'bad';
   /** A sentence that says what it means and what writes it. */
   says: string;
-  /** What `netsmith lock --check` prints for it, one line each. */
+  /** What `netsmith project lock --check` prints for it, one line each. */
   lines: string[];
 }
 
@@ -112,13 +112,13 @@ export function lockView(lock: PickLockInfo): LockView {
   if (lock.error) return { state: 'unreadable', tone: 'bad', says: lock.error, lines: [] };
   if (!lock.exists && lock.current) return { state: 'none needed', tone: 'ok', says: 'The source has no part to lock.', lines: [] };
   if (!lock.exists) {
-    return { state: 'absent', tone: 'warn', says: 'No lock file yet: `netsmith build` writes it, or `netsmith lock --update`.', lines: [] };
+    return { state: 'absent', tone: 'warn', says: 'No lock file yet: `netsmith board build` writes it, or `netsmith project lock --update`.', lines: [] };
   }
   if (lock.current) return { state: 'current', tone: 'ok', says: 'Every part is held to the row the solver picks now.', lines: [] };
   return {
     state: 'not current',
     tone: 'warn',
-    says: 'The solver now picks other rows than the file holds. `netsmith lock --update` writes them.',
+    says: 'The solver now picks other rows than the file holds. `netsmith project lock --update` writes them.',
     lines: lock.diff,
   };
 }

@@ -1,5 +1,5 @@
 //! What the power model finds wrong (issue #187) is reported where the other findings are:
-//! by `netsmith build` (an overdrawn supply stops it, the rest are notes), by the analysis the
+//! by `netsmith board build` (an overdrawn supply stops it, the rest are notes), by the analysis the
 //! editor serves, and in the power tree the page draws. The page does not work any of it out.
 //!
 //! Each kind has an invented small board: a rail that can draw more than its supply can give, a

@@ -3,7 +3,7 @@
 //! (`netlist.xml`, KiCad's netlist XML) and its parts and pads (`placements.toml`), with
 //! `source.toml`, which names the original: its URL at a pinned commit, its size and its sha256.
 //!
-//! `netsmith port tables` writes the two tables from the original, or checks the committed ones,
+//! `netsmith import port tables` writes the two tables from the original, or checks the committed ones,
 //! and holds the original against `source.toml`: a reviewer who fetches the file proves the
 //! tables come from it.
 
@@ -122,7 +122,7 @@ impl Source {
         table.insert("sha256".into(), self.sha256.clone().into());
         format!(
             "# The original that netlist.xml and placements.toml are derived from, by\n\
-             #   netsmith port tables <{}>\n\
+             #   netsmith import port tables <{}>\n\
              # (run in the project). The command checks the file against size and sha256.\n\n{}",
             self.file,
             toml::to_string(&table).expect("a table of text and an integer is TOML")
@@ -165,7 +165,7 @@ pub fn derive(pcb: &str, file: &str, must: &MustMatch) -> Result<Tables, String>
         ));
     }
     let header = format!(
-        "<!-- The netlist of {file}, derived by `netsmith port tables` (see source.toml).\n     \
+        "<!-- The netlist of {file}, derived by `netsmith import port tables` (see source.toml).\n     \
          Do not edit: run the command again. -->\n"
     );
     let netlist_xml = xml.replacen("<export", &format!("{header}<export"), 1);
@@ -306,7 +306,7 @@ pub fn write(
                 .collect();
             if !stale.is_empty() {
                 return Err(TablesError::Failed(format!(
-                    "{} not what {} gives: run `netsmith port tables` without --check",
+                    "{} not what {} gives: run `netsmith import port tables` without --check",
                     match stale.as_slice() {
                         [one] => format!("{one} is"),
                         many => format!("{} are", many.join(" and ")),

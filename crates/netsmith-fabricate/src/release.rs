@@ -7,7 +7,7 @@
 //! Each error names the spelling to write; [`note`] adds the one line that says why there are so
 //! many and where every change is listed: `docs/MIGRATING.md`.
 
-/// The release of this netsmith, the one `netsmith init` writes into a new manifest.
+/// The release of this netsmith, the one `netsmith project init` writes into a new manifest.
 pub const RELEASE: &str = env!("CARGO_PKG_VERSION");
 
 /// Where the changes that need an edit of a project's source are listed, release by release.

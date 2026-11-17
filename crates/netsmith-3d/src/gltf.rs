@@ -1,5 +1,5 @@
 //! The board's _Scene_ as glTF 2.0 binary (`.glb`, ADR 0105): the one file the editor's 3D view
-//! displays, `netsmith board3d --glb` writes and an agent or another tool reads. [`glb`] writes
+//! displays, `netsmith dev board3d --glb` writes and an agent or another tool reads. [`glb`] writes
 //! it from a [`Scene`] and its meshes ([`crate::mesh::pieces`], the same triangles the
 //! rasterizer draws). `docs/BOARD3D.md` describes the file for a reader of it.
 //!
@@ -13,7 +13,7 @@
 //!   `(x, z, -y) * 0.001`, in the vertex data itself: no node has a transform (but a member
 //!   of a system's file, [`system_glb`], whose `matrix` is its motion). The board's
 //!   top face is `y = 0`, its outline's bottom-left corner the origin, its top edge toward `-z`.
-//!   The numbers in the `extras` are in the scene's frame and in mm, as `board3d --json` has
+//!   The numbers in the `extras` are in the scene's frame and in mm, as `dev board3d --format json` has
 //!   them (their names end in `_mm`).
 //! - **Deterministic**: the same scene gives the same bytes. Nodes, meshes, materials,
 //!   accessors and buffer views are in a fixed order; a coordinate is the `f64` of the scene
@@ -25,7 +25,7 @@
 //!     width_mm, height_mm, layers: [{name, kind, thickness_mm, z_top_mm, z_bottom_mm}],
 //!     coverage: {known, total, standard}, findings: [{code, message, parts: [path...], limit?}]}`.
 //!     `board` is the board's label (`system/member` for a board of a system). `layers` is the
-//!     stackup from the top face down, as `board3d --json` has it in `board.layers` (`kind` is
+//!     stackup from the top face down, as `dev board3d --format json` has it in `board.layers` (`kind` is
 //!     `mask`, `copper`, `core` or `prepreg`), for a viewer that draws the stackup (a section,
 //!     the layers pulled apart); added in schema 1. A finding's `code` is `too_tall` (a part
 //!     over a height limit; `limit` names it), `height_unchecked` (a part of unknown height

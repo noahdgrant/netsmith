@@ -1,6 +1,6 @@
-# `netsmith board3d` and `netsmith render`: the board in 3D, as data, as glTF and as a picture
+# `netsmith dev board3d` and `netsmith view 3d`: the board in 3D, as data, as glTF and as a picture
 
-`netsmith board3d` places a board as `fab` and the editor place it and prints its _Scene_
+`netsmith dev board3d` places a board as `fab` and the editor place it and prints its _Scene_
 (ADR 0105): the board as its stackup makes it, a summary of its copper, each part's body box from
 its face to its height, each height limit as a volume with the tallest part under it, and what is
 unknown. It is for an
@@ -8,12 +8,12 @@ agent, a script or a person who wants the 3D facts of a board as numbers, with n
 and no KiCad. The editor's 3D view displays the same scene ([below](#the-editors-3d-view)).
 
 ```sh
-netsmith board3d examples/led.nsm                 # a short summary
-netsmith board3d examples/led.nsm --json          # the report below, on stdout
-netsmith board3d examples/two_boards.nsm --board TwoBoards/led --json
-netsmith board3d examples/two_boards.nsm --board TwoBoards --json   # the system scene (below)
-netsmith board3d examples/led.nsm --glb led.glb   # the scene as glTF 2.0 binary (below)
-netsmith board3d examples/led.nsm --step led.step # the board and its parts as STEP, for CAD (below)
+netsmith dev board3d examples/led.nsm                 # a short summary
+netsmith dev board3d examples/led.nsm --format json          # the report below, on stdout
+netsmith dev board3d examples/two_boards.nsm --board TwoBoards/led --format json
+netsmith dev board3d examples/two_boards.nsm --board TwoBoards --format json   # the system scene (below)
+netsmith dev board3d examples/led.nsm --glb led.glb   # the scene as glTF 2.0 binary (below)
+netsmith dev board3d examples/led.nsm --step led.step # the board and its parts as STEP, for CAD (below)
 ```
 
 - The board is placed exactly as `fab` places it: the pick lock beside the source holds the
@@ -21,8 +21,8 @@ netsmith board3d examples/led.nsm --step led.step # the board and its parts as S
   the layout file's positions are put on the board. Nothing is routed, so the copper has pads,
   planes and pours, and no tracks or vias.
 - Nothing is written but the `--glb` and `--step` files: not the pick lock, not the pin file,
-  not the layout file. With `--glb` or `--step` alone nothing is printed; with `--json` too the
-  report is printed as well.
+  not the layout file. With `--glb` or `--step` alone nothing is printed; with `--format json` too
+  the report is printed as well.
 - No KiCad is needed (ADR 0097); the `no-kicad` job runs it with KiCad hidden.
 - The same source gives the same bytes: every list is in a fixed order and every length is
   rounded to a nanometre.
@@ -127,18 +127,18 @@ from `z = -thickness` down to `z = -thickness - height`.
 | `parts[].model` | For a part drawn from its STEP model ([below](#a-parts-step-model)): `file` (as the design states it), `sha256` (of the file's bytes) and `top` (how far the model reaches out of the part's face, mm). A drawing only: `height`, `provenance` and every check are the part's own. Left out for a part with no model, or whose file is not there or cannot be read. |
 | `warnings` | What finding and drawing the models found: a file that is not there or cannot be read (the part keeps its generated shape), a model whose top is above its part's height, a model whose plan box reaches more than 0.25 mm past its footprint's courtyard or falls more than 0.25 mm short of the centres of its pads (a model turned or moved wrongly). Each is printed as a `warning:` line on stderr too. Added without a new schema. |
 | `case_models` | Each case model of the board (ADR 0109), by name: `file` as stated, `checked` (`false` for a model that is only a drawing, `.check &= "none"`: it is drawn, and no finding is about it), `status` (`read`, `missing` when the file is not there, `unreadable` when netsmith's reader cannot read it), `sha256` of its bytes, its `rotation` and `offset` in this frame, the check's figures `clearance`, `reach` and `boss_gap` (std's, unless the physical file states them), the `color` the board states for it (the name of a `std::parts::passive::Color` variant, issue #756; left out when it states none), the `file_colours` its file styles its faces in (`#rrggbb`, in the order first used; left out when it has none), its `triangles`, and its `solids` (each with its `name`, `triangles`, whether it is `closed`, and its box `min` to `max`). See _The case model's fit_ below. |
-| `placement` | The placement check's faults on the board as placed, each with `kind` (the editor's rule: `overlap`, `outside_outline`, `hole_too_near`...), `parts` (`refdes`, `path`, `courtyard`) and its numbers (`area`, `shared`, `past`, `distance`, `least`, `pads`, `near`, `cutout`, `keepout`, `height`, `limit`, `face`), as `fab --format json` has them (the guide's _Where a part goes_). **In the layout file's frame**: mm from the outline's top left corner, y down, not this one. Empty for a board `fab` places. A fault of a kind other than `too_tall` makes the command end with 1, the report printed and each fault said on stderr (issue #780). Added without a new schema. |
-| `conflicts` | The lines of the physical file and locks of the layout file that cannot all hold where the parts are, each with `kind`, `lines`, `parts` (with the box each courtyard lies within) and, where it has them, `overlap`, `area`, `by` and `outline`, as `fab --format json` has them; in the layout file's frame. Added without a new schema. |
+| `placement` | The placement check's faults on the board as placed, each with `kind` (the editor's rule: `overlap`, `outside_outline`, `hole_too_near`...), `parts` (`refdes`, `path`, `courtyard`) and its numbers (`area`, `shared`, `past`, `distance`, `least`, `pads`, `near`, `cutout`, `keepout`, `height`, `limit`, `face`), as `board fab --format json` has them (the guide's _Where a part goes_). **In the layout file's frame**: mm from the outline's top left corner, y down, not this one. Empty for a board `fab` places. A fault of a kind other than `too_tall` makes the command end with 1, the report printed and each fault said on stderr (issue #780). Added without a new schema. |
+| `conflicts` | The lines of the physical file and locks of the layout file that cannot all hold where the parts are, each with `kind`, `lines`, `parts` (with the box each courtyard lies within) and, where it has them, `overlap`, `area`, `by` and `outline`, as `board fab --format json` has them; in the layout file's frame. Added without a new schema. |
 | `placement_refused` | Why the placer refused the layout file (a lock that breaks a requirement, locks that overlap or leave the free parts no room), or `null`. When it is set the board is the layout file's places and the placer's last try for the rest, the faults are in `placement`, and the command ends with 1. Added without a new schema. |
 | `case_findings` | What the fit check found, each with `kind`, `severity` (`error` stops `fab`; `warning` otherwise), `strict_error` (an error when constraints are strict), `case`, `solid`, `subject` (`part`, `pins` for its pins below the far face, `board`, `solid` or `model`), the part's `path` and `refdes`, `at` (where to look, in this frame), its numbers (`depth`, `gap`, `limit`, `distance`, `edge`) and the `message` `fab` prints. |
 
-`board.mask_colour` is the colour the board states for its solder mask (`.process.stackup.mask_colour &= Color::Black`, issue #771; a variant of `std::parts::passive::Color`: `Red`, `Green`, `Blue`, `Yellow`, `White`, `Black` or `Purple`). It is in the report only for a board that states one, so the report of a board that does not is the report it was (no new schema). The `.glb` draws the mask in it and the root names it (below), `render` draws the mask in it, and the editor's 3D view draws it in the theme's own tone of that colour (`--pcb3d-mask-<colour>` in `themes.css`).
+`board.mask_colour` is the colour the board states for its solder mask (`.process.stackup.mask_colour &= Color::Black`, issue #771; a variant of `std::parts::passive::Color`: `Red`, `Green`, `Blue`, `Yellow`, `White`, `Black` or `Purple`). It is in the report only for a board that states one, so the report of a board that does not is the report it was (no new schema). The `.glb` draws the mask in it and the root names it (below), `view 3d` draws the mask in it, and the editor's 3D view draws it in the theme's own tone of that colour (`--pcb3d-mask-<colour>` in `themes.css`).
 
 Schema 2 added `copper`: raised, though a field added does not require it, so that a reader can tell a report that has the copper summary from one that has not. The `.glb` file draws the copper, the mask and the silkscreen (below).
 
 ## The case model's fit
 
-A board's physical file may name the STEP files of its case (`CaseModel`, the guide's _A case model_, ADR 0109). `board3d`, `fab` and the editor read each one with netsmith's own reader (ADR 0108) at 0.01 mm of chord, cached by its path and the SHA-256 of its bytes, turn it by `.rx`, then `.ry`, then `.rz` (degrees about x, y, z of this frame) and move it by `.x`, `.y`, `.z` (`netsmith case place` gives these six for a pose known as a matrix; `netsmith case import` prints the board's outline, cutouts and mounting holes from the model's section at the board's plane, for review), and measure the board against its solids (`crates/netsmith-3d/src/case.rs`). A file that is not there leaves the fit unchecked; `build` and `check` place nothing, so they only say that.
+A board's physical file may name the STEP files of its case (`CaseModel`, the guide's _A case model_, ADR 0109). `dev board3d`, `fab` and the editor read each one with netsmith's own reader (ADR 0108) at 0.01 mm of chord, cached by its path and the SHA-256 of its bytes, turn it by `.rx`, then `.ry`, then `.rz` (degrees about x, y, z of this frame) and move it by `.x`, `.y`, `.z` (`netsmith import case place` gives these six for a pose known as a matrix; `netsmith import case model` prints the board's outline, cutouts and mounting holes from the model's section at the board's plane, for review), and measure the board against its solids (`crates/netsmith-3d/src/case.rs`). A file that is not there leaves the fit unchecked; `build` and `check` place nothing, so they only say that.
 
 What is measured is what the height checks measure: each part's body box to its height (stated, catalog or standard), and the board's solid (its outline through its thickness, less its holes and cutouts). The pins of a through-hole part that the design states stand out of the far face (`.pin_protrusion`) are measured too, as a box: its plated pads in plan, from that face out by the stated length, as the scene's `protrusions` draw them; their findings have `subject: "pins"` and the same rules as a body's. Pins of no stated protrusion are not measured (how far they stand out is unknown, not zero), and a part's drawn `.model` is not read. A body of height zero (a hole, a fiducial) has no volume.
 
@@ -150,13 +150,13 @@ What is measured is what the height checks measure: each part's body box to its 
 | `case_boss` | A mounting hole whose ring (its body's box) has no case solid within `.boss_gap` (0.5 mm in std) above the top face or below the bottom face, in any case model. | No: a warning. |
 | `case_unchecked` | A part of unknown height with case material over its face; a part of standard height that collides (a part in that package may be lower); a solid whose shell is not closed (no body or board is tested for lying wholly inside it; its surface is still measured); a file that is not there. | With strict constraints (`--constraints error`, `constraints = "error"`). A file there that the reader cannot read stops `fab` always. |
 
-**Drawn.** The `.glb` holds each case model as a group `case:<name>` (`{kind: "case", name, file, sha256, triangles}`, and `color`, the name of the colour its board states, when it states one) with a node per solid `case:<name>:<solid>` (`{kind: "case_solid", case, solid, closed, triangles}`), material `case` (see-through), or one primitive for each colour the file styles its faces in or the board states, material `case:#rrggbb` (also `BLEND`, with the opacity of `case`; a model that states no `.color` is drawn in its file's own colours where it has them, and the case grey where it does not); the root's `findings` list the fit's findings with `severity`, `case`, `solid` (the node) and `at_mm`. `render` draws the case see-through (`--case solid` draws it opaque, so it hides the board inside it; `--case hidden` leaves it out and frames the board alone), `--highlight case:<name>` lights it (a lit case model is see-through, in the highlight colour, whatever `--case` says, so what is inside shows), and `--section` cuts it with the rest. A case is one board's: a system's scene (`--board System`, the System view) draws and checks no member's case, as a case round a system is not modelled yet. The editor's 3D view draws it see-through with a `Case` toggle to hide and show it and a `Solid` toggle beside it to draw it opaque (the key `Shift+C` steps through see-through, solid and hidden; the choice is kept for the session, as x-ray is). A solid case hides the board, and is in the way of a pick: a click on it or a hover over it finds nothing behind it. A case model that a finding or `highlight` lights stays see-through, in its colour, and a finding about a part or a height limit inside a solid case makes the case see-through, so what it is about shows. The fit's findings are in the problems dock and the PCB findings, and picking one flies the camera to its part (or its point) and lights the solid.
+**Drawn.** The `.glb` holds each case model as a group `case:<name>` (`{kind: "case", name, file, sha256, triangles}`, and `color`, the name of the colour its board states, when it states one) with a node per solid `case:<name>:<solid>` (`{kind: "case_solid", case, solid, closed, triangles}`), material `case` (see-through), or one primitive for each colour the file styles its faces in or the board states, material `case:#rrggbb` (also `BLEND`, with the opacity of `case`; a model that states no `.color` is drawn in its file's own colours where it has them, and the case grey where it does not); the root's `findings` list the fit's findings with `severity`, `case`, `solid` (the node) and `at_mm`. `view 3d` draws the case see-through (`--case solid` draws it opaque, so it hides the board inside it; `--case hidden` leaves it out and frames the board alone), `--highlight case:<name>` lights it (a lit case model is see-through, in the highlight colour, whatever `--case` says, so what is inside shows), and `--section` cuts it with the rest. A case is one board's: a system's scene (`--board System`, the System view) draws and checks no member's case, as a case round a system is not modelled yet. The editor's 3D view draws it see-through with a `Case` toggle to hide and show it and a `Solid` toggle beside it to draw it opaque (the key `Shift+C` steps through see-through, solid and hidden; the choice is kept for the session, as x-ray is). A solid case hides the board, and is in the way of a pick: a click on it or a hover over it finds nothing behind it. A case model that a finding or `highlight` lights stays see-through, in its colour, and a finding about a part or a height limit inside a solid case makes the case see-through, so what it is about shows. The fit's findings are in the problems dock and the PCB findings, and picking one flies the camera to its part (or its point) and lights the solid.
 
 `fab` runs the check on the placement, before routing, and writes a note per case model read (its file, SHA-256, solids and triangles) and each warning to `fab-notes.txt`. The STEP export leaves the case out (the owner's choice, ADR 0109): the engineer who reads it has the case, and a copy would spread the maker's file.
 
 ## A system's boards together: the system scene
 
-`board3d --board System` places each board of a system as `--board System/member` places it,
+`dev board3d --board System` places each board of a system as `--board System/member` places it,
 and puts the boards against each other by their mates (ADR 0110, the _System scene_,
 `crates/netsmith-3d/src/system.rs`). It is in the frame of the **base**, the first member the
 system declares, so the base's numbers are those of `--board System/base`.
@@ -181,7 +181,7 @@ system declares, so the base's numbers are those of `--board System/base`.
   along +x, 10 mm past their bounds, unturned, with the reason, and nothing across boards is
   checked for it.
 
-The report (`--json`; with no `--json` a short summary):
+The report (`--format json`; with none a short summary):
 
 ```json
 {
@@ -228,7 +228,7 @@ exempt against each other, and a body wholly inside another board's cutout does 
 
 ### The system's files
 
-- **`board3d --board System --glb <file>`**: the root node is `system` (`extras.netsmith`:
+- **`dev board3d --board System --glb <file>`**: the root node is `system` (`extras.netsmith`:
   `kind: "system"`, `schema`, `system`, `base`, `mates` with `mated_height_mm`, `residual_mm`
   and `gap_mm`, and `findings` as in the report), with one child per member in the order the
   system declares them, named by the member: `kind: "member"`, `member`, `board`
@@ -239,11 +239,11 @@ exempt against each other, and a body wholly inside another board's cutout does 
   name starting with the member (`led/board`, `led/J1`, `led/copper:F.Cu:GND`) and `member` in
   the `extras` of the board and each part; the vertex data are in the member's own frame. A
   board's own file is unchanged, byte for byte.
-- **`board3d --board System --step <file>`**: the root product is the system; its children, in
+- **`dev board3d --board System --step <file>`**: the root product is the system; its children, in
   order, are one product per member (id `System/member`), each the board's assembly as the
   board's own STEP file has it (its parts' ids `member/path`, its board `member/board`), placed
   by an `ITEM_DEFINED_TRANSFORMATION` that is the member's motion.
-- **`render --board System`** draws every member moved into the system's frame and frames the
+- **`view 3d --board System`** draws every member moved into the system's frame and frames the
   whole. `--highlight` names `member/<id>` (`led/J1`, `led/net:GND`, `led/limit:lid`), or a
   member alone for all of it. A net or a limit may also be written with the member after its
   prefix, `net:led/GND` and `limit:led/lid`, as the editor's 3D view names them: the same id. `--section` cuts in the system's frame; the cut faces are filled,
@@ -264,11 +264,11 @@ is drawn apart until it is modelled.
 
 ## The `.glb` file
 
-`board3d --glb <file.glb>` writes the same scene as glTF 2.0 binary
+`dev board3d --glb <file.glb>` writes the same scene as glTF 2.0 binary
 (`crates/netsmith-3d/src/gltf.rs`). It is the file the editor's 3D view displays: the editor
 serves it at `GET /api/pcb/3d?board=<name>` (`model/gltf-binary`), drawn from the placement its
 PCB view shows, with that placement's layout stamp in the `X-Netsmith-Layout-Stamp` header. For
-a board the editor has not routed, its bytes are the ones `board3d --glb` writes. Any glTF viewer
+a board the editor has not routed, its bytes are the ones `dev board3d --glb` writes. Any glTF viewer
 opens it, and a script reads the ids from the JSON chunk. The file passes the Khronos glTF
 validator with no errors and no warnings.
 
@@ -319,17 +319,17 @@ A node whose shape has no area has no mesh, and is still there.
 
 ### In the fab package
 
-`netsmith fab` writes the scene of each board it makes as `<board>.glb` into the board's folder in
+`netsmith board fab` writes the scene of each board it makes as `<board>.glb` into the board's folder in
 the package (`fab/<Board>/<Board>.glb`), beside `fab-notes.txt`, the `.kicad_pcb` and the pin map.
 It is not inside the Gerber zip, which holds what the board house takes and nothing else. It
-needs no KiCad (ADR 0097), and `fab --order` writes it for each board of the order.
+needs no KiCad (ADR 0097), and `project order` writes it for each board of the order.
 
-- **Which board.** The board `fab` made: placed as `board3d` places it, then routed, so the copper
+- **Which board.** The board `fab` made: placed as `dev board3d` places it, then routed, so the copper
   holds the routed tracks and vias (the editor's `GET /api/pcb/3d` draws the board it has routed
-  the same way). The file is `board3d --glb` of the same board with the routing added. A board
-  with nothing to route, or `board3d --glb` on a board `fab` has not routed, has the same bytes in
+  the same way). The file is `dev board3d --glb` of the same board with the routing added. A board
+  with nothing to route, or `dev board3d --glb` on a board `fab` has not routed, has the same bytes in
   both. A board `fab` writes as INCOMPLETE has the scene of its routed part.
-- **Off.** `fab --no-glb` leaves it out for one run, and `glb = false` under `[project]` in
+- **Off.** `board fab --no-glb` leaves it out for one run, and `glb = false` under `[project]` in
   `netsmith.toml` leaves it out for the project; the flag wins where both are given (the flag
   only turns it off: remove the key to turn it back on). A run that leaves it out removes the
   `<board>.glb` of an earlier run, so that the folder never holds the scene of another layout.
@@ -340,15 +340,15 @@ needs no KiCad (ADR 0097), and `fab --order` writes it for each board of the ord
 
 ## The STEP file
 
-`board3d --step <file.step>` writes the board and its parts as a STEP file (ISO 10303-21, AP214
+`dev board3d --step <file.step>` writes the board and its parts as a STEP file (ISO 10303-21, AP214
 `AUTOMOTIVE_DESIGN`; `crates/netsmith-3d/src/step/`, ADR 0107), for a mechanical engineer who
 fits a case to the board in FreeCAD, Fusion, SolidWorks or KiCad's own reader. It is written from
 the same scene as the `.glb`, by netsmith's own writer: no KiCad, no CAD kernel, and the same
 scene gives the same bytes (the header's time stamp is fixed at `1970-01-01T00:00:00`).
 
 ```sh
-netsmith board3d examples/four_layer.nsm --step four_layer.step
-netsmith board3d examples/two_boards.nsm --board TwoBoards/led --step led.step
+netsmith dev board3d examples/four_layer.nsm --step four_layer.step
+netsmith dev board3d examples/two_boards.nsm --board TwoBoards/led --step led.step
 ```
 
 - **Millimetres, Z up, the frame above**: the outline's bottom-left corner on the top face is
@@ -390,16 +390,16 @@ netsmith board3d examples/two_boards.nsm --board TwoBoards/led --step led.step
 
 ### In the fab package (STEP)
 
-`netsmith fab` writes the STEP file of each board it makes as `<board>.step` into the board's
+`netsmith board fab` writes the STEP file of each board it makes as `<board>.step` into the board's
 folder in the package (`fab/<Board>/<Board>.step`), beside the `.glb`, `fab-notes.txt` and the
-`.kicad_pcb`, and not inside the Gerber zip. It needs no KiCad (ADR 0097), and `fab --order`
+`.kicad_pcb`, and not inside the Gerber zip. It needs no KiCad (ADR 0097), and `project order`
 writes it for each board of the order.
 
 - **Which board.** The board `fab` made, placed and routed. The STEP holds no copper, so the
-  routing does not change it: the file is byte for byte what `board3d --step` writes for the same
+  routing does not change it: the file is byte for byte what `dev board3d --step` writes for the same
   placement. A board `fab` writes as INCOMPLETE has the STEP of its routed part, which is the same
   board.
-- **Off.** `fab --no-step` leaves it out for one run, and `step = false` under `[project]` in
+- **Off.** `board fab --no-step` leaves it out for one run, and `step = false` under `[project]` in
   `netsmith.toml` leaves it out for the project; the flag wins where both are given (the flag only
   turns it off: remove the key to turn it back on). `--no-glb` and `glb = false` do not touch it,
   nor the other way round. A run that leaves it out removes the `<board>.step` of an earlier run,
@@ -439,20 +439,20 @@ its bytes change, and draws its triangles at 0.01 mm.
 - **When it is not drawn.** A file that is not there, or that the reader refuses (an entity it
   does not read, a face it cannot cut into triangles: the message names the entity and its
   line), is a warning, and the part keeps its generated shape. A model is never half drawn.
-- **Where it shows.** `render`, the `.glb` (and so the editor's 3D view) and the STEP export
-  draw it, whatever the part's height. In the `.glb` and `render` it is the model's triangles,
+- **Where it shows.** `view 3d`, the `.glb` (and so the editor's 3D view) and the STEP export
+  draw it, whatever the part's height. In the `.glb` and `view 3d` it is the model's triangles,
   one mesh per colour, each in the colour the file gives its faces (a material
   `model:#rrggbb` after the fixed materials) or `body` where it gives none; the STEP export copies its
-  solids exactly ([below](#the-step-file)). `board3d --json` lists it per part
+  solids exactly ([below](#the-step-file)). `dev board3d --format json` lists it per part
   (`parts[].model`), and the `.glb` records its SHA-256 in the part's node, so a changed model
   shows in a diff. `fab-notes.txt` names the parts drawn from a model: the `.glb` and `.step` hold
   the model, and are the user's to share only as its maker's license allows.
 
 ## The editor's 3D view
 
-The PCB section of the editor (`netsmith editor`) shows the board in 3D: `3D` in the toolbar's
+The PCB section of the editor (`netsmith view editor`) shows the board in 3D: `3D` in the toolbar's
 `2D | 3D` switch, or the key `D`. It displays the `.glb` file above, the one
-`board3d --glb` writes, for the board and placement the 2D view shows; when the board is edited,
+`dev board3d --glb` writes, for the board and placement the 2D view shows; when the board is edited,
 routed or built again it fetches the file again and keeps the camera.
 
 What it is:
@@ -524,7 +524,7 @@ What it is:
     is over it. Each has its legend. A part of unknown height stays hatched in all three.
   - **Case** (on a board with a case model, in the tools beside _Layers apart_): `Case` hides and
     shows it and `Solid` draws it opaque instead of see-through (`Shift+C` steps through
-    see-through, solid and hidden), as `render --case` does. It is see-through at every start.
+    see-through, solid and hidden), as `view 3d --case` does. It is see-through at every start.
     A board with two or more case models also shows one checkbox for each, by name, above the
     legend: unchecking one hides that model alone, whatever the mode (as `render --case
     hidden:<name>` does), and a model lit by name or by a finding shows again. A model is drawn
@@ -569,7 +569,7 @@ Its tools, in the bar under the camera's (each also a command of the palette):
   file's numbers; a part of unknown height has neither.
 - **Section** (`S` on or off; `X`, `Y`, `Z` across that axis). The scene is cut at a place in mm
   of [the frame](#the-frame), dragged with the handle or typed; the side nearer the camera is not
-  drawn, as `netsmith render --section` decides. The cut of every closed solid is filled in its
+  drawn, as `netsmith view 3d --section` decides. The cut of every closed solid is filled in its
   colour, and the board's laminate is drawn as its layers, so the cut shows the stackup as bands
   at their true thickness: the mask, the copper where the file has it, the core and the prepreg
   in two laminate tones (a copper layer's band is the insulator round its copper, as the render
@@ -579,8 +579,8 @@ Its tools, in the bar under the camera's (each also a command of the palette):
   board's outline, with its name, its kind and its thickness beside it. A copper layer is a
   see-through sheet with its copper, where the file has it; the parts and the height limits lift
   with the face they stand on. `E` again puts them back. The measure tool waits until they are.
-- **Copy as command** (the `…` menu, or "3D view: Copy as a netsmith render command"). The
-  `netsmith render` command that draws the view: its view (the nearest of the command's, said
+- **Copy as command** (the `…` menu, or "3D view: Copy as a netsmith view 3d command"). The
+  `netsmith view 3d` command that draws the view: its view (the nearest of the command's, said
   when the camera is turned from it), its section, what is lit as `--highlight` (the parts picked
   by designator, the net picked as `net:<name>`, the limits lit as `limit:<name>`, the case
   models lit as `case:<name>`), the dark
@@ -620,13 +620,13 @@ What it is not:
 ## Driving the editor's 3D view: `/api/view`
 
 An agent can do in a running editor what a person does in its 3D view, with the names of
-[`netsmith render`](#pictures-for-agents-netsmith-render), and read back what the page shows.
+[`netsmith view 3d`](#pictures-for-agents-netsmith-view-3d), and read back what the page shows.
 Three routes of the editor's server, behind the same guard as every other route (the Host is
 `127.0.0.1:<port>` or `localhost:<port>`, an `Origin` must be the editor's own, and the `POST`
 carries `X-Netsmith: 1`):
 
 ```sh
-port=8080   # the editor's, as `netsmith editor` prints it
+port=8080   # the editor's, as `netsmith view editor` prints it
 curl -s localhost:$port/api/view                                          # the state, as JSON
 curl -s -X POST -H 'X-Netsmith: 1' localhost:$port/api/view \
   -d '{"board":"LedExample","view":"top","highlight":["J1"],"xray":true}' # change it
@@ -645,12 +645,12 @@ The others are not told.
 | `board` | the board the PCB section is on (`BoardSummary.name`, `Demo/main` for a board of a system), or the system (`Demo`) while the 3D view shows its [System view](#a-systems-boards-together-the-system-scene); null with none |
 | `member` | in the System view, the member the page's board is (`main`); absent otherwise |
 | `shown` | the 3D view of that board (or system) is on screen and drawn; when false, the next five are absent |
-| `view` | the view of `render` the camera is at (`top`, `bottom`, `front`, `back`, `left`, `right`, `iso`, `iso-bottom`), within a few degrees; absent when it is turned from all of them |
+| `view` | the view of `view 3d` the camera is at (`top`, `bottom`, `front`, `back`, `left`, `right`, `iso`, `iso-bottom`), within a few degrees; absent when it is turned from all of them |
 | `camera` | `position` (the eye), `target` and `up` (the screen's up), each `[x, y, z]` in mm of [the frame](#the-frame); for an orthographic camera the eye is where a perspective one would show the same at the target |
 | `ortho` | true for the parallel projection |
 | `section` | the cut as `--section` writes it (`x=13`), absent with none |
 | `exploded` | the stackup pulled apart |
-| `command` | the `netsmith render` command that draws the view, as "Copy as command" gives it |
+| `command` | the `netsmith view 3d` command that draws the view, as "Copy as command" gives it |
 | `highlight` | what is lit, as `--highlight` names it: the parts picked by designator, the net picked as `net:<name>`, the limits lit as `limit:<name>`, the case models lit as `case:<name>` (one lit by name, or the model of a solid a picked finding lights); in the System view a part and a net are their member's, `led/J1` and `net:led/GND` |
 | `selection` | the page's selection: parts by designator, or one `net:<name>` |
 | `hover` | what the pointer (or a row of another view) lights: a designator or `net:<name>`; absent with nothing |
@@ -667,7 +667,7 @@ page is on (`{}` only opens it):
 | Field | What it does |
 |---|---|
 | `board` | the board to show, or a system's name for its System view (on the member the page is on, else the first); a name the project does not have is `404` with the list of its boards and systems |
-| `view` | a view of `render --view`: the camera looks at the board's middle from that side, framed to fit, as the view's bar and keys move it (`iso` is the key `I`'s view, a few degrees from render's corner; `iso-bottom`, which the bar does not have, is render's) |
+| `view` | a view of `view 3d --view`: the camera looks at the board's middle from that side, framed to fit, as the view's bar and keys move it (`iso` is the key `I`'s view, a few degrees from render's corner; `iso-bottom`, which the bar does not have, is render's) |
 | `camera` | `{"position": [x, y, z], "target": [x, y, z]}` in mm of the frame (an `up` is not taken: the view keeps z up); not with `view` |
 | `section` | `x=13`, `y=8`, `z=-0.8` as `--section` reads it, or `none` |
 | `highlight` | `["J1", "net:GND", "limit:lid", "case:lid"]`, as `--highlight` reads it (an item may be comma-separated): the parts or the net become the page's selection, the limits are lit, and the case models (ADR 0109) are lit in the selection's colour and shown if the `Case` toggle hid them; it replaces what was lit, and `[]` lights nothing |
@@ -680,20 +680,20 @@ page is on (`{}` only opens it):
 | `heightPreview` | a height in mm (0.1 to 50) turns the preview on at it; true or false turns it on or off |
 
 In the System view a part and a net are their member's: `led/J1` (or the path, `led/power_in`)
-and `net:led/GND` (`led/net:GND`, `render`'s spelling, is the same). The page's selection is one
+and `net:led/GND` (`led/net:GND`, `view 3d`'s spelling, is the same). The page's selection is one
 board's, so the ids of `highlight` and `select` are of one member, which becomes the page's board
-as a click on it does; ids of two members are refused (`render --board System` lights them all),
+as a click on it does; ids of two members are refused (`view 3d --board System` lights them all),
 and a designator without its member (`J1`) is an id the system does not have, refused with the
 list. A case model is one board's and the System view draws none, so `case:<name>` there is
 refused with that reason.
 
 The change is checked against the board's scene before any of it is made, and one that is
 refused changes nothing (only the PCB section has been opened). An id the board does not have is
-`400`, with the message `render` gives: it names the id and lists the parts, nets, limits and case models
+`400`, with the message `view 3d` gives: it names the id and lists the parts, nets, limits and case models
 the board has (a case model whose file is not there or cannot be read is not drawn, so it is not
-one of them, as for `render`). The editor's selection holds parts or one net, so `highlight` with two nets, or with
-parts and a net, is refused, where `render --highlight` draws them all. `theme` is refused: the
-theme is the person's own setting for the whole editor, not a view of the board (`render --theme`
+one of them, as for `view 3d`). The editor's selection holds parts or one net, so `highlight` with two nets, or with
+parts and a net, is refused, where `view 3d --highlight` draws them all. `theme` is refused: the
+theme is the person's own setting for the whole editor, not a view of the board (`view 3d --theme`
 draws either).
 
 **`GET /api/view/picture`** answers a PNG of the 3D canvas, drawn for the ask: what the person
@@ -712,63 +712,64 @@ Nothing here changes the design or a file. The camera moves, the picture is cut,
 through, and the selection picks parts, as a person's clicks would; a part is still moved only in
 the 2D view.
 
-## Driving a running editor: `netsmith view`
+## Driving a running editor: `netsmith view editor-3d`
 
-`netsmith view` is the command for the routes above, with the flags of
-[`netsmith render`](#pictures-for-agents-netsmith-render) where they apply, so that an agent
-switches between the two by changing the verb. `render` draws a picture of the source on its own
-(no editor, no page, a theme of its choice, deterministic bytes). `view` shows what the editor's
-page shows, the view a person is looking at, and needs `netsmith editor` running with a page open.
+`netsmith view editor-3d` is the command for the routes above, with the flags of
+[`netsmith view 3d`](#pictures-for-agents-netsmith-view-3d) where they apply, so that an agent
+switches between the two by changing the verb. `view 3d` draws a picture of the source on its own
+(no editor, no page, a theme of its choice, deterministic bytes). `view editor-3d` shows what the
+editor's page shows, the view a person is looking at, and needs `netsmith view editor` running with
+a page open.
 
 ```sh
-netsmith view                                       # the state of the page: a short summary
-netsmith view --json                                # the route's JSON as it came (the table above)
-netsmith view --view top --highlight J1 --picture j1.png   # light J1, look from the top, save the page's picture
-netsmith view --board TwoBoards/led --section x=7 --xray   # another board, cut at x = 7 mm, seen through
-netsmith view --highlight none --section none       # nothing lit, no cut
-netsmith view --port 9001 --colour-by margin --height-preview 2.5 --layers-apart
+netsmith view editor-3d                                              # the state of the page: a short summary
+netsmith view editor-3d --format json                                # the route's JSON as it came (the table above)
+netsmith view editor-3d --view top --highlight J1 --picture j1.png   # light J1, look from the top, save the page's picture
+netsmith view editor-3d --board TwoBoards/led --section x=7 --xray   # another board, cut at x = 7 mm, seen through
+netsmith view editor-3d --highlight none --section none              # nothing lit, no cut
+netsmith view editor-3d --port 9001 --colour-by margin --height-preview 2.5 --layers-apart
 ```
 
-`--port` is the editor's (8787 unless `netsmith editor --port` said another). With no flag that
-changes something, `view` reads the page and prints its state: the board, the view and lens, the
+`--port` is the editor's (8787 unless `netsmith view editor --port` said another). With no flag that
+changes something, `view editor-3d` reads the page and prints its state: the board, the view and lens, the
 camera, the section, what is lit and selected, x-ray, the colouring, the height preview, the
-theme and the `netsmith render` command that draws the same. `--json` prints the editor's JSON
-instead, as it came. With a flag that changes something, it makes the change, waits until the
+theme and the `netsmith view 3d` command that draws the same. `--format json` prints the editor's
+JSON instead, as it came. With a flag that changes something, it makes the change, waits until the
 page has drawn it, and prints the state that results. The page driven is the one focused last.
 
 | Flag | The route's field | Notes |
 |---|---|---|
 | `--board <name>` | `board` | `System/member` for a board of a system, `System` for its System view (ids then `led/J1`, `net:led/GND`; the summary adds `member:`) |
-| `--view top\|bottom\|front\|back\|left\|right\|iso\|iso-bottom` | `view` | as `render --view`; the editor's `iso` is the key `I`'s view |
-| `--section x=<mm>\|y=<mm>\|z=<mm>\|none` | `section` | as `render --section` |
-| `--highlight <id>[,<id>...]`, repeatable | `highlight` | as `render --highlight`; `--highlight none` lights nothing |
+| `--view top\|bottom\|front\|back\|left\|right\|iso\|iso-bottom` | `view` | as `view 3d --view`; the editor's `iso` is the key `I`'s view |
+| `--section x=<mm>\|y=<mm>\|z=<mm>\|none` | `section` | as `view 3d --section` |
+| `--highlight <id>[,<id>...]`, repeatable | `highlight` | as `view 3d --highlight`; `--highlight none` lights nothing |
 | `--xray` \| `--no-xray` | `xray` | |
 | `--ortho` \| `--perspective` | `ortho` | |
 | `--select <id>[,<id>...]`, repeatable | `select` | the page's selection alone, as a click makes it: parts or one `net:<name>`; `none` clears it; not with `--highlight` |
 | `--colour-by provenance\|kind\|margin` | `colourBy` | `--color-by` too |
 | `--height-preview <mm>\|on\|off` | `heightPreview` | 0.1 to 50 mm |
 | `--layers-apart` \| `--no-layers-apart` | `exploded` | the stackup pulled apart or together |
-| `--case hidden\|see-through\|solid\|hidden:<name>[,<name>]` | `case`, `caseHidden` | as `render --case`; the flag repeats (`--case solid --case hidden:lid`), and any `--case` replaces the list of the models hidden (a mode alone shows every model again); a board with no case model refuses it |
-| `--json` | | print the JSON of the state, not the summary |
+| `--case hidden\|see-through\|solid\|hidden:<name>[,<name>]` | `case`, `caseHidden` | as `view 3d --case`; the flag repeats (`--case solid --case hidden:lid`), and any `--case` replaces the list of the models hidden (a mode alone shows every model again); a board with no case model refuses it |
+| `--format json` | | print the JSON of the state, not the summary |
 | `--picture <file.png>` | `GET /api/view/picture` | after the change, save what the canvas shows; with no other change flag it opens the 3D view first, as `POST {}` does |
 
 There is no `--theme`, `--size`, `--out` or `--no-caps`: the theme is the person's own setting for
-the whole editor (the state reports it; `view --theme` says so and exits 2), the picture has the
-canvas's size, and `--picture` is `--out`. A camera at a place (`camera`) is not a flag: use
+the whole editor (the state reports it; `view editor-3d --theme` says so and exits 2), the picture has the
+canvas's size, and the picture is saved with `--picture`, as `view 3d` saves its own. A camera at a place (`camera`) is not a flag: use
 `--view`, or `curl` the route.
 
 Exit status: 0 when the page answered; **2** with the message on stderr when a change is refused
 (the page's message, as the route sends it: an id the board does not have comes with the parts,
 nets and limits it has), when no page is open (`no editor page is open; open
 http://127.0.0.1:<port>`), when the editor does not answer in time, and when nothing is listening
-on the port (the message says to start `netsmith editor`). Flags that cannot work (`--theme`,
+on the port (the message says to start `netsmith view editor`). Flags that cannot work (`--theme`,
 `--ortho` with `--perspective`, `--highlight` with `--select`, a view or colouring the editor does
 not have) are refused before anything is asked. A refused change changes nothing. Like the routes,
 the command never changes the design or a file; `--picture` writes only its PNG.
 
-## Pictures for agents: `netsmith render`
+## Pictures for agents: `netsmith view 3d`
 
-`netsmith render` places the board exactly as `board3d` does (the same code: the pick lock, the
+`netsmith view 3d` places the board exactly as `dev board3d` does (the same code: the pick lock, the
 physical file and the layout file are read, nothing is routed, nothing is written but the
 picture), makes the scene's meshes (`netsmith_3d::meshes_of_scene`, the ones the `.glb` file is written
 from) and draws them to a PNG with netsmith's own software rasterizer
@@ -778,30 +779,30 @@ options give the same bytes on every machine (all geometry is `f64` arithmetic i
 coverage is decided in integers, and there are no threads).
 
 ```sh
-netsmith render examples/led.nsm                              # LedExample-iso.png, 1600x1000
-netsmith render examples/led.nsm --view top --out top.png     # straight down at the top face
-netsmith render examples/led.nsm --highlight J1               # the part lit up, the rest dimmed
-netsmith render lidded.nsm --highlight limit:lid --xray       # a height limit's volume, in x-ray
-netsmith render cased.nsm --highlight case:lid                # a case model, see-through, lit
-netsmith render cased.nsm --case solid                        # the case opaque, hiding the board inside it
-netsmith render cased.nsm --case hidden:lid                   # every case model but the lid, see-through
-netsmith render examples/led.nsm --view front --section x=7   # cut at x = 7 mm
-netsmith render examples/four_layer.nsm --view right --section x=13   # the stackup in the cut
-netsmith render examples/four_layer.nsm --view right --section x=13 --no-caps   # the cut left open
-netsmith render examples/two_boards.nsm --board TwoBoards/led --view iso-bottom --theme dark
+netsmith view 3d examples/led.nsm                              # LedExample-iso.png, 1600x1000
+netsmith view 3d examples/led.nsm --view top --picture top.png     # straight down at the top face
+netsmith view 3d examples/led.nsm --highlight J1               # the part lit up, the rest dimmed
+netsmith view 3d lidded.nsm --highlight limit:lid --xray       # a height limit's volume, in x-ray
+netsmith view 3d cased.nsm --highlight case:lid                # a case model, see-through, lit
+netsmith view 3d cased.nsm --case solid                        # the case opaque, hiding the board inside it
+netsmith view 3d cased.nsm --case hidden:lid                   # every case model but the lid, see-through
+netsmith view 3d examples/led.nsm --view front --section x=7   # cut at x = 7 mm
+netsmith view 3d examples/four_layer.nsm --view right --section x=13   # the stackup in the cut
+netsmith view 3d examples/four_layer.nsm --view right --section x=13 --no-caps   # the cut left open
+netsmith view 3d examples/two_boards.nsm --board TwoBoards/led --view iso-bottom --theme dark
 ```
 
 The command prints the path it wrote. Read the file with the image viewer of the agent (or
-open it): a picture to look at, with the numbers from `board3d --json` to quote.
+open it): a picture to look at, with the numbers from `dev board3d --format json` to quote.
 
 | Option | What it does |
 |---|---|
 | `--view` | `top`, `bottom`, `front`, `back`, `left`, `right`, `iso` (the default) or `iso-bottom`. See the table below. |
-| `--out <file.png>` | Where to write; default `<board>-<view>.png` in the current folder (a board of a system, `System/member`, is `System-member`). The folder must exist. |
+| `--picture <file.png>` | Where to write; default `<board>-<view>.png` in the current folder (a board of a system, `System/member`, is `System-member`). The folder must exist. |
 | `--size <w>x<h>` | The picture in pixels; default `1600x1000`. 64 to 8192 a side and at most 16 million pixels, else exit 2. |
 | `--section x=<mm>` (or `y=`, `z=`) | One cut at right angles to an axis, at that position in the scene's frame (below). The side nearer the camera is not drawn, so the cut is seen; for a view along the axis the lower side is kept. The cut faces are filled (caps, below). |
 | `--no-caps` | With `--section`: leave the cut faces open, as the cut of a hollow shell, and draw the board as one block, as without a section. |
-| `--highlight <id>[,<id>...]` | May be repeated. A part by **designator** (`J1`) or **path** (`power_in`), `net:<name>`, `limit:<name>` (a height limit, as `board3d` names it) and `case:<name>` (a case model, ADR 0109). What is named is drawn in the highlight colour and the rest is dimmed. An id the board does not have is an error (exit 2) that names it and lists the parts, nets, limits and case models the board has; nothing is written. |
+| `--highlight <id>[,<id>...]` | May be repeated. A part by **designator** (`J1`) or **path** (`power_in`), `net:<name>`, `limit:<name>` (a height limit, as `dev board3d` names it) and `case:<name>` (a case model, ADR 0109). What is named is drawn in the highlight colour and the rest is dimmed. An id the board does not have is an error (exit 2) that names it and lists the parts, nets, limits and case models the board has; nothing is written. |
 | `--xray` | Every mesh see-through, to look through the board and the bodies. |
 | `--case hidden\|see-through\|solid\|hidden:<name>[,<name>]` | How a case model is drawn: `see-through` (the default), `solid` (opaque: it hides the board inside it; x-ray still sees through it) or `hidden` (left out, the picture framed on the board alone). A case model that `--highlight case:<name>` names is drawn see-through, in the highlight colour, in every mode. A board with no case model draws the same in each. `--case hidden:<name>[,<name>]` leaves those case models out and draws the rest as the mode says (the flag repeats: `--case solid --case hidden:lid`); a name the board has no case model of is an error (exit 2) that lists the ones it has. |
 | `--theme light\|dark` | The palette; default `light`. The solder mask is drawn in the colour the board states (`.process.stackup.mask_colour`, issue #771), in the palette's tone of it (the mask over copper a lighter one); a board that states none keeps the palette's green. A system's scene (`--board System`) keeps the green: one palette draws every member. |
@@ -828,7 +829,7 @@ edge. A layout-file point (from the top-left corner, y down) is `(x, outline hei
 
 **A section is a drawing of the stackup.** Where the plane cuts a closed solid, the cut face is
 filled (a cap, flat in the plane, in the solid's colour), so the cut reads as a real
-cross-section. The board is drawn for it as the stackup `board3d --json` lists (`board.layers`):
+cross-section. The board is drawn for it as the stackup `dev board3d --format json` lists (`board.layers`):
 a slab per layer at its own Z and true thickness, the **solder mask** in green, the **core** and
 the **prepreg** in two laminate tones, and the **copper** of each layer in copper colour where
 the plane crosses it (the pads, tracks, pours and via rings the scene has, less the drilled
@@ -850,7 +851,7 @@ shape), a part of **unknown height as a flat orange outline** on the board (neve
 box, ADR 0094), pins that stand out below the far face where the design states a protrusion, and
 each height limit as a see-through blue volume, red where a part is too tall for it. `net:<name>`
 lights that net's copper on every layer and its vias' barrels. A picture
-is a view of the scene and not a check: the numbers of `board3d --json` are.
+is a view of the scene and not a check: the numbers of `dev board3d --format json` are.
 
 Exit 0 when the picture is written, 1 when the board does not build or cannot be placed (the
 error is `fab`'s), 2 when the command cannot start, an option is wrong (a view, a size, a section,

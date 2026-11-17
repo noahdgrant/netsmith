@@ -11,7 +11,7 @@ use super::common;
 #[derive(Debug, PartialEq, ClapArgs)]
 #[command(args_override_self = true)]
 #[command(
-    after_long_help = "`parity` compares a board that `fab` wrote with the original of a port (see the skill `netsmith-port-a-kicad-board`), part by part: the place, the rotation, the face and the pads of each part the table names.\n\nThe exit code is 1 when a part the table marks `must_match` fails, 0 when none does and 2 when a file cannot be read."
+    after_long_help = "`dev parity` compares a board that `fab` wrote with the original of a port (see the skill `netsmith-port-a-kicad-board`), part by part: the place, the rotation, the face and the pads of each part the table names.\n\nThe exit code is 1 when a part the table marks `must_match` fails, 0 when none does and 2 when a file cannot be read."
 )]
 pub struct Args {
     /// The board `fab` wrote.
@@ -47,7 +47,7 @@ pub fn run(args: Args) -> ExitCode {
     )
 }
 
-/// `netsmith parity`: compare a board that `fab` wrote with the board of a port's original
+/// `netsmith dev parity`: compare a board that `fab` wrote with the board of a port's original
 /// (#455; it was the example `parity`). The table and the parts default to those of the project's
 /// `reference/` folder, or of the current folder's when there is no project. The report goes to
 /// stdout; the exit code is 1 when a must-match item fails, 0 when none does, 2 when a file
@@ -103,15 +103,16 @@ fn run_parity(
 
 #[cfg(test)]
 mod tests {
+    use crate::commands::common::testing::Leaf;
     use crate::commands::common::testing::{kind, parse};
-    use crate::commands::{Command, common, parity};
+    use crate::commands::{common, parity};
     use clap::error::ErrorKind;
 
     #[test]
     fn parity_takes_the_board_and_its_files() {
         assert!(matches!(
-            parse(&["parity", "b.kicad_pcb", "--format", "json"]),
-            Ok(Command::Parity(parity::Args {
+            parse(&["dev", "parity", "b.kicad_pcb", "--format", "json"]),
+            Ok(Leaf::Parity(parity::Args {
                 table: None,
                 parts: None,
                 svg: None,
@@ -119,14 +120,14 @@ mod tests {
                 ..
             }))
         ));
-        assert_eq!(kind(&["parity"]), ErrorKind::MissingRequiredArgument);
+        assert_eq!(kind(&["dev", "parity"]), ErrorKind::MissingRequiredArgument);
         assert!(matches!(
-            parse(&["parity", "b.kicad_pcb", "--parts", "p.toml"]),
-            Ok(Command::Parity(parity::Args { parts: Some(_), .. }))
+            parse(&["dev", "parity", "b.kicad_pcb", "--parts", "p.toml"]),
+            Ok(Leaf::Parity(parity::Args { parts: Some(_), .. }))
         ));
         // `--map` (the designators file) is gone with the file (#456).
         assert_eq!(
-            kind(&["parity", "b.kicad_pcb", "--map", "d.toml"]),
+            kind(&["dev", "parity", "b.kicad_pcb", "--map", "d.toml"]),
             ErrorKind::UnknownArgument
         );
     }

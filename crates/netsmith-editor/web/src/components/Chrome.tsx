@@ -262,7 +262,7 @@ export function TopBar() {
             tip={
               "Writes a KiCad schematic (.kicad_sch) and project file (.kicad_pro) for every board of the project, " +
               "with the library tables, into the project's out folder (out/ unless netsmith.toml says another), " +
-              "one folder for each board. The same as `netsmith build`. Takes a few seconds."
+              "one folder for each board. The same as `netsmith board build`. Takes a few seconds."
             }
             start={() => runCommand('build.kicad')}
           />
@@ -275,7 +275,7 @@ export function TopBar() {
             tip={
               "Places and routes the board chosen here, runs netsmith's design rules check and, when it passes, " +
               "writes the Gerbers, bom.csv, cpl.csv and fab-notes.txt for JLCPCB into the project's fab folder " +
-              "(fab/ unless netsmith.toml says another). The same as `netsmith fab`. A long job: it can take minutes."
+              "(fab/ unless netsmith.toml says another). The same as `netsmith board fab`. A long job: it can take minutes."
             }
             start={() => runCommand('build.fab')}
           />

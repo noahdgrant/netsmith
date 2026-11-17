@@ -1,4 +1,4 @@
-//! The launcher with the real `netsmith editor`: the line it prints is the one the launcher
+//! The launcher with the real `netsmith view editor`: the line it prints is the one the launcher
 //! reads, two servers get two ports, and the address answers. It needs a `netsmith` binary, named
 //! by NETSMITH_BIN (the `desktop` job of CI sets it to the `build` job's binary); without one it
 //! skips and says so.
@@ -39,7 +39,7 @@ fn the_real_editor_starts_on_a_free_port_and_answers() {
     };
     let dir = TempDir::new("desktop-editor");
     let init = Command::new(&program)
-        .args(["init", "--name", "Board"])
+        .args(["project", "init", "--name", "Board"])
         .current_dir(dir.path())
         .output()
         .unwrap();

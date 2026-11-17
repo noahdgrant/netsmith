@@ -16,7 +16,7 @@ use super::common::{self, libraries, no_boards, sync_pins, target_offline};
 #[derive(Debug, PartialEq, ClapArgs)]
 #[command(args_override_self = true)]
 #[command(
-    after_long_help = "With no file, `fab` acts on the project's boards (see netsmith.toml).\n\n`fab` writes the Gerbers, drill files and placement file itself and runs netsmith's own design rules check (ADR 0037), so it does not need KiCad. An error of the check (a clearance, a short, a missing connection, a hole, the edge, a courtyard, a keepout) stops `fab` unless `--allow-drc-violations` is given, and `fab-notes.txt` then says the board is not clean; its warnings (silkscreen on a pad, a narrow mask web, a via in a pad) are listed in the notes. It writes, for each board, a Gerber zip, `bom.csv`, `cpl.csv`, `fab-notes.txt`, the `.kicad_pcb` and `.kicad_pro`, an `.svg`, and the board's 3D scene as `<board>.glb` (outside the Gerber zip; the scene of the routed board, the bytes `board3d --glb` writes for it; docs/BOARD3D.md), and the board as STEP, `<board>.step`, for mechanical CAD (outside the Gerber zip; the bytes `board3d --step` writes). Read `fab-notes.txt` before you order.\n\nA board the router cannot finish is still written, marked INCOMPLETE, and the run ends in an error. Beside it, `routing-failure.txt` lists each connection left with its net, its two pads and their places and the parts most of them end on, and then, for each line the router left, the stage it last failed in (the first pass, the try with less room, ripping up, the negotiation, the chain of rip-ups, or out of time) and the nets whose copper stands in its way; `routing-report.json` has the same for a program, with a crowding map of the board (1 mm squares, how often the router's searches across other nets' copper passed through each), which shows where the board is fought over.\n\nWith `--format json` the progress goes nowhere unless `--progress json` prints it as JSON lines on stderr, and the notes of `fab-notes.txt` (\"before you order\") are findings with the code `fab`. A finding about requirements of the physical file that are not met has them as data in `requirements` (the requirement, what was measured, the window it allows and how far out it is), and the refusal because the parts do not fit has every overlapping pair, every part outside and every part's final place in `does_not_fit`. The lines of the physical file and locks of the layout file that cannot all hold are in `conflicts` (each with its kind, the lines, the parts with the box each courtyard lies within, and the overlap); a courtyard past an edge nobody stated and a part bigger than the outline (`past_edge`, `too_big`), proved before placing, are there too. Each line of a conflict has the window it allows (`measure`, `unit`, `min` and `max`, or `allowed_side`). With constraints as warnings, the lines that cannot all hold are findings of code `place` (the code `build --format json` gives what is proved before placing) with their `conflicts`. The faults of the placement check where the placer ended are in `placement` (each with its kind, the parts with their courtyards, and its numbers). A lock of the layout file that breaks a requirement has `requirements` and `placement` of the board as the lock leaves it."
+    after_long_help = "With no file, `fab` acts on the project's boards (see netsmith.toml).\n\n`fab` writes the Gerbers, drill files and placement file itself and runs netsmith's own design rules check (ADR 0037), so it does not need KiCad. An error of the check (a clearance, a short, a missing connection, a hole, the edge, a courtyard, a keepout) stops `fab` unless `--allow-drc-violations` is given, and `fab-notes.txt` then says the board is not clean; its warnings (silkscreen on a pad, a narrow mask web, a via in a pad) are listed in the notes. It writes, for each board, a Gerber zip, `bom.csv`, `cpl.csv`, `fab-notes.txt`, the `.kicad_pcb` and `.kicad_pro`, an `.svg`, and the board's 3D scene as `<board>.glb` (outside the Gerber zip; the scene of the routed board, the bytes `dev board3d --glb` writes for it; docs/BOARD3D.md), and the board as STEP, `<board>.step`, for mechanical CAD (outside the Gerber zip; the bytes `dev board3d --step` writes). Read `fab-notes.txt` before you order.\n\nA board the router cannot finish is still written, marked INCOMPLETE, and the run ends in an error. Beside it, `routing-failure.txt` lists each connection left with its net, its two pads and their places and the parts most of them end on, and then, for each line the router left, the stage it last failed in (the first pass, the try with less room, ripping up, the negotiation, the chain of rip-ups, or out of time) and the nets whose copper stands in its way; `routing-report.json` has the same for a program, with a crowding map of the board (1 mm squares, how often the router's searches across other nets' copper passed through each), which shows where the board is fought over.\n\nWith `--format json` the progress goes nowhere unless `--progress json` prints it as JSON lines on stderr, and the notes of `fab-notes.txt` (\"before you order\") are findings with the code `fab`. A finding about requirements of the physical file that are not met has them as data in `requirements` (the requirement, what was measured, the window it allows and how far out it is), and the refusal because the parts do not fit has every overlapping pair, every part outside and every part's final place in `does_not_fit`. The lines of the physical file and locks of the layout file that cannot all hold are in `conflicts` (each with its kind, the lines, the parts with the box each courtyard lies within, and the overlap); a courtyard past an edge nobody stated and a part bigger than the outline (`past_edge`, `too_big`), proved before placing, are there too. Each line of a conflict has the window it allows (`measure`, `unit`, `min` and `max`, or `allowed_side`). With constraints as warnings, the lines that cannot all hold are findings of code `place` (the code `board build --format json` gives what is proved before placing) with their `conflicts`. The faults of the placement check where the placer ended are in `placement` (each with its kind, the parts with their courtyards, and its numbers). A lock of the layout file that breaks a requirement has `requirements` and `placement` of the board as the lock leaves it."
 )]
 pub struct Args {
     /// The source file; with none, the project's boards (see netsmith.toml).
@@ -49,8 +49,7 @@ pub struct Args {
     /// Stop when the pick lock or the pin file would change; implies `--pins locked`.
     ///
     /// With `fab` it also means `--pins locked`, so a board that does not route never has its pin
-    /// file rewritten (`--locked` wins over `--pins auto`). With `--order <name>` it applies to
-    /// each source file that builds a board of the order.
+    /// file rewritten (`--locked` wins over `--pins auto`).
     #[arg(long)]
     pub locked: bool,
     /// Whether an unmet requirement on where a part goes stops `fab`, over netsmith.toml.
@@ -76,12 +75,12 @@ pub struct Args {
     /// earlier run is removed. A system's STEP (`<System>/<System>.step`) is left out with it.
     #[arg(long)]
     pub no_step: bool,
-    /// Also write `<board>.placed.json`, the board before routing, for `netsmith route`.
+    /// Also write `<board>.placed.json`, the board before routing, for `netsmith dev route`.
     ///
     /// The file goes into the board's output folder, with the track margin `fab` routes with.
     /// Nothing else of the package changes, and a run without it removes the file an earlier run
-    /// saved. `--order` does not take it.
-    #[arg(long, conflicts_with = "order")]
+    /// saved. `project order` does not take it.
+    #[arg(long)]
     pub save_placed: bool,
     /// Start each route from the router's copper this machine kept, and keep it again.
     ///
@@ -89,14 +88,10 @@ pub struct Args {
     /// project's folder, which is not committed. With this flag the copper of every net the
     /// placement left alone is kept and only the rest is routed; a kept file of another router,
     /// other routes-file copper or other design rules is not used. Without it `fab` reads and
-    /// writes no kept file, so a clean checkout gives the same board. `--order` does not take it.
-    #[arg(long, conflicts_with = "order")]
+    /// writes no kept file, so a clean checkout gives the same board. `project order` does not
+    /// take it.
+    #[arg(long)]
     pub reuse_routes: bool,
-    /// Make one of the project's orders, or list them with no name (ADR 0035).
-    ///
-    /// An order names its boards in netsmith.toml, so `--order` takes no file. It prints text only.
-    #[arg(long, value_name = "NAME", num_args = 0..=1, conflicts_with = "file")]
-    pub order: Option<Option<String>>,
     /// Ask no supplier for stock or price; say in `fab-notes.txt` that they were not checked.
     ///
     /// No provider that would use the network is asked, and an answer kept earlier is used at any
@@ -127,26 +122,11 @@ impl Args {
     pub fn pins_locked(&self) -> Option<bool> {
         self.pins.map(|p| p == Pins::Locked)
     }
-
-    /// A named order to make, or the list of them, instead of every board.
-    pub fn order(&self) -> Option<OrderRequest> {
-        self.order.as_ref().map(|name| match name {
-            Some(name) => OrderRequest::Make(name.clone()),
-            None => OrderRequest::List,
-        })
-    }
 }
 
-/// Makes the fab package of each board, or an order.
+/// Makes the fab package of each board.
 pub fn run(args: Args) -> ExitCode {
-    let order = args.order();
     let format: Format = args.output.format.into();
-    if order.is_some() && format == Format::Json {
-        eprintln!(
-            "error: `fab --order` prints text only; `--format json` is for `fab` of a file or of the project's boards"
-        );
-        return ExitCode::from(2);
-    }
     if let Some(code) = sync_pins(args.file.as_deref(), args.locked) {
         return code;
     }
@@ -157,7 +137,7 @@ pub fn run(args: Args) -> ExitCode {
         args.quiet
             || (format == Format::Json && args.watching.progress == crate::progress::Print::Text),
     );
-    let code = common::with_stage_events(|| run_chosen(&args, order, format));
+    let code = common::with_stage_events(|| run_chosen(&args, format));
     crate::progress::ended(
         code == ExitCode::SUCCESS,
         if code == ExitCode::SUCCESS {
@@ -169,12 +149,12 @@ pub fn run(args: Args) -> ExitCode {
     code
 }
 
-/// `fab` of the files or the project's boards, or of an order.
-fn run_chosen(args: &Args, order: Option<OrderRequest>, format: Format) -> ExitCode {
+/// `fab` of the files or the project's boards.
+fn run_chosen(args: &Args, format: Format) -> ExitCode {
     let (constraints_warn, pins_locked) = (args.constraints_warn(), args.pins_locked());
-    match order {
-        Some(request) => run_order(
-            &request,
+    timings::stage("fab.total", "", || {
+        run_fab(
+            args.file.as_deref(),
             args.out.as_deref(),
             args.route_timeout,
             args.allow_drc_violations,
@@ -182,36 +162,20 @@ fn run_chosen(args: &Args, order: Option<OrderRequest>, format: Format) -> ExitC
             args.strict,
             args.locked,
             constraints_warn,
+            pins_locked,
             args.no_glb,
             args.no_step,
+            args.save_placed,
+            args.reuse_routes,
             args.offline,
             &args.placing,
-        ),
-        None => timings::stage("fab.total", "", || {
-            run_fab(
-                args.file.as_deref(),
-                args.out.as_deref(),
-                args.route_timeout,
-                args.allow_drc_violations,
-                args.cross_check,
-                args.strict,
-                args.locked,
-                constraints_warn,
-                pins_locked,
-                args.no_glb,
-                args.no_step,
-                args.save_placed,
-                args.reuse_routes,
-                args.offline,
-                &args.placing,
-                FabOutput {
-                    quiet: args.quiet,
-                    format,
-                    notes: args.output.notes.into(),
-                },
-            )
-        }),
-    }
+            FabOutput {
+                quiet: args.quiet,
+                format,
+                notes: args.output.notes.into(),
+            },
+        )
+    })
 }
 
 /// Whether constraints were asked to be strict, for this target and this run's
@@ -556,7 +520,7 @@ struct FabOutput {
     notes: NotesMode,
 }
 
-/// The lines `fab --format json` keeps as it goes, to make findings of the warnings and notes
+/// The lines `board fab --format json` keeps as it goes, to make findings of the warnings and notes
 /// among them at the end. `progress` is a plain `fn`, so they are kept here.
 static KEPT: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
 
@@ -566,13 +530,13 @@ fn keep_line(message: &str) {
     }
 }
 
-/// `fab --format json`: the line kept, and told as `--progress` says (as JSON, or not at all).
+/// `board fab --format json`: the line kept, and told as `--progress` says (as JSON, or not at all).
 fn keep_and_tell(message: &str) {
     keep_line(message);
     crate::progress::tell(message);
 }
 
-/// `fab --quiet`: the line printed if it is a warning or a note, and posted to `--to-editor`'s
+/// `board fab --quiet`: the line printed if it is a warning or a note, and posted to `--to-editor`'s
 /// editor whatever it is.
 fn quiet_and_post(message: &str) {
     quiet_line(message);
@@ -585,7 +549,7 @@ fn take_kept_lines() -> Vec<String> {
         .unwrap_or_default()
 }
 
-/// `fab --quiet`: the warnings and notes `fab` tells as it goes, and not its stages or the
+/// `board fab --quiet`: the warnings and notes `fab` tells as it goes, and not its stages or the
 /// router's passes.
 fn quiet_line(message: &str) {
     if finding_of_line(message).is_some() {
@@ -612,9 +576,9 @@ fn finding_of_line(line: &str) -> Option<Finding> {
     })
 }
 
-/// `netsmith fab --order`: list the project's orders, or make one (ADR 0035).
+/// `netsmith project order`: list the project's orders, or make one (ADR 0035).
 #[allow(clippy::too_many_arguments)]
-fn run_order(
+pub(super) fn run_order(
     request: &OrderRequest,
     out: Option<&Path>,
     route_timeout: Option<u64>,
@@ -736,7 +700,7 @@ fn run_order(
     }
 }
 
-/// `fab --constraints`.
+/// `board fab --constraints`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
 pub enum Constraints {
     /// An unmet requirement is listed instead of stopping `fab`.
@@ -745,7 +709,7 @@ pub enum Constraints {
     Error,
 }
 
-/// `fab --pins`.
+/// `board fab --pins`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
 pub enum Pins {
     /// Swap interchangeable pins that are not locked, place and route again (three rounds at
@@ -756,26 +720,26 @@ pub enum Pins {
     Locked,
 }
 
-/// What `netsmith fab --order` asks for (ADR 0035).
+/// What `netsmith project order` asks for (ADR 0035).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum OrderRequest {
-    /// `--order` with no name: list the project's orders.
+    /// No name: list the project's orders.
     List,
-    /// `--order <name>`: make that order.
+    /// A name: make that order.
     Make(String),
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::commands::common::testing::{kind, output, parse};
-    use crate::commands::{Command, fab};
-    use clap::error::ErrorKind;
+    use crate::commands::common::testing::Leaf;
+    use crate::commands::common::testing::{output, parse};
+    use crate::commands::fab;
 
     fn fab(args: &[&str]) -> fab::Args {
-        let mut line = vec!["fab"];
+        let mut line = vec!["board", "fab"];
         line.extend_from_slice(args);
         match parse(&line) {
-            Ok(Command::Fab(fab)) => fab,
+            Ok(Leaf::Fab(fab)) => fab,
             other => panic!("{args:?}: {other:?}"),
         }
     }
@@ -798,7 +762,6 @@ mod tests {
                 no_step: false,
                 save_placed: false,
                 reuse_routes: false,
-                order: None,
                 offline: false,
                 quiet: false,
                 placing: crate::commands::common::Placing {
@@ -812,7 +775,7 @@ mod tests {
                 output: output(),
             }
         );
-        assert!(parse(&["fab", "a.nsm", "--port", "9"]).is_err());
+        assert!(parse(&["board", "fab", "a.nsm", "--port", "9"]).is_err());
         // Issue #764: the progress as JSON lines, and to a running editor.
         let f = fab(&["--progress", "json", "--to-editor", "a.nsm"]);
         assert_eq!(f.watching.progress, crate::progress::Print::Json);
@@ -821,7 +784,7 @@ mod tests {
             fab(&["--to-editor=9000", "a.nsm"]).watching.to_editor,
             Some(9000)
         );
-        assert!(parse(&["fab", "a.nsm", "--progress", "nothing"]).is_err());
+        assert!(parse(&["board", "fab", "a.nsm", "--progress", "nothing"]).is_err());
         let f = fab(&[
             "--allow-drc-violations",
             "--cross-check",
@@ -830,30 +793,30 @@ mod tests {
             "--no-step",
         ]);
         assert!(f.allow_drc_violations && f.cross_check && f.quiet && f.no_glb && f.no_step);
-        assert!(parse(&["build", "--cross-check"]).is_err());
-        assert!(parse(&["build", "--no-glb"]).is_err());
-        assert!(parse(&["build", "--no-step"]).is_err());
+        assert!(parse(&["board", "build", "--cross-check"]).is_err());
+        assert!(parse(&["board", "build", "--no-glb"]).is_err());
+        assert!(parse(&["board", "build", "--no-step"]).is_err());
     }
 
     #[test]
     fn fab_and_the_editor_take_offline_and_the_other_commands_do_not() {
         assert!(!fab(&[]).offline);
         assert!(fab(&["--offline"]).offline);
-        assert!(fab(&["--order", "d", "--offline"]).offline);
+        assert!(fab(&["a.nsm", "--offline"]).offline);
         assert!(matches!(
-            parse(&["editor", "--offline"]),
-            Ok(Command::Editor(e)) if e.offline
+            parse(&["view", "editor", "--offline"]),
+            Ok(Leaf::Editor(e)) if e.offline
         ));
-        assert!(parse(&["build", "--offline"]).is_err());
+        assert!(parse(&["board", "build", "--offline"]).is_err());
     }
 
     #[test]
     fn fab_takes_a_route_timeout_in_whole_seconds() {
         assert_eq!(fab(&["--route-timeout", "30"]).route_timeout, Some(30));
-        let e = parse(&["fab", "--route-timeout", "soon"]).unwrap_err();
+        let e = parse(&["board", "fab", "--route-timeout", "soon"]).unwrap_err();
         assert!(e.contains("--route-timeout") && e.contains("soon"), "{e}");
-        assert!(parse(&["fab", "--route-timeout"]).is_err());
-        assert!(parse(&["build", "--route-timeout", "3"]).is_err());
+        assert!(parse(&["board", "fab", "--route-timeout"]).is_err());
+        assert!(parse(&["board", "build", "--route-timeout", "3"]).is_err());
     }
 
     #[test]
@@ -877,59 +840,30 @@ mod tests {
             })
         );
         for bad in ["0", "soon", "5tries+3tries", "1.5tries"] {
-            let e = parse(&["fab", "--place-budget", bad]).unwrap_err();
+            let e = parse(&["board", "fab", "--place-budget", bad]).unwrap_err();
             assert!(e.contains("--place-budget"), "{bad}: {e}");
         }
-        assert!(parse(&["fab", "--place-seeds", "0"]).is_err());
-        assert!(parse(&["fab", "--place-seeds", "33"]).is_err());
-        assert!(parse(&["build", "--place-budget", "9"]).is_err());
-        let Ok(Command::Board3d(b)) = parse(&["board3d", "--place-budget", "1try"]) else {
+        assert!(parse(&["board", "fab", "--place-seeds", "0"]).is_err());
+        assert!(parse(&["board", "fab", "--place-seeds", "33"]).is_err());
+        assert!(parse(&["board", "build", "--place-budget", "9"]).is_err());
+        let Ok(Leaf::Board3d(b)) = parse(&["dev", "board3d", "--place-budget", "1try"]) else {
             panic!()
         };
         assert_eq!(b.placing.place_budget.and_then(|l| l.tries), Some(1));
     }
 
     #[test]
-    fn fab_order_takes_a_name_or_lists_the_orders_and_no_file() {
-        assert_eq!(
-            fab(&["--order", "devkit"]).order(),
-            Some(fab::OrderRequest::Make("devkit".into()))
-        );
-        assert_eq!(fab(&["--order"]).order(), Some(fab::OrderRequest::List));
-        assert_eq!(fab(&[]).order(), None);
-        // A flag after `--order` is not its name.
-        let f = fab(&["--order", "--out", "x"]);
-        assert_eq!(
-            (f.order(), f.out),
-            (Some(fab::OrderRequest::List), Some("x".into()))
-        );
-        let f = fab(&["--out", "x", "--order", "d", "--route-timeout", "9"]);
-        assert_eq!(f.order(), Some(fab::OrderRequest::Make("d".into())));
-        assert_eq!(f.route_timeout, Some(9));
-        assert_eq!(
-            kind(&["fab", "a.nsm", "--order", "d"]),
-            ErrorKind::ArgumentConflict
-        );
-        assert_eq!(
-            kind(&["fab", "--order", "d", "--save-placed"]),
-            ErrorKind::ArgumentConflict
-        );
-        assert!(fab(&["a.nsm", "--save-placed"]).save_placed);
-        assert!(parse(&["build", "--order", "d"]).is_err());
-    }
-
-    #[test]
     fn build_and_fab_take_strict_and_locked_and_nothing_else_does() {
-        let Ok(Command::Build(b)) = parse(&["build", "--strict", "--locked"]) else {
+        let Ok(Leaf::Build(b)) = parse(&["board", "build", "--strict", "--locked"]) else {
             panic!()
         };
         assert!(b.strict && b.locked);
         let f = fab(&["a.nsm", "--locked", "--strict"]);
         assert!(f.locked && f.strict);
         assert!(!fab(&[]).locked, "a run may change the lock by default");
-        assert!(parse(&["editor", "--strict"]).is_err());
-        assert!(parse(&["editor", "--locked"]).is_err());
-        assert!(parse(&["compare", "a", "b", "--locked"]).is_err());
+        assert!(parse(&["view", "editor", "--strict"]).is_err());
+        assert!(parse(&["view", "editor", "--locked"]).is_err());
+        assert!(parse(&["board", "compare", "a", "b", "--locked"]).is_err());
     }
 
     #[test]
@@ -946,17 +880,17 @@ mod tests {
             Some(false)
         );
         assert_eq!(fab(&[]).constraints_warn(), None, "the manifest decides");
-        let e = parse(&["fab", "--pins", "swap"]).unwrap_err();
+        let e = parse(&["board", "fab", "--pins", "swap"]).unwrap_err();
         assert!(
             e.contains("swap") && e.contains("auto") && e.contains("locked"),
             "{e}"
         );
-        let e = parse(&["fab", "--constraints", "off"]).unwrap_err();
+        let e = parse(&["board", "fab", "--constraints", "off"]).unwrap_err();
         assert!(
             e.contains("off") && e.contains("warn") && e.contains("error"),
             "{e}"
         );
-        assert!(parse(&["fab", "--pins"]).is_err());
-        assert!(parse(&["build", "--constraints", "warn"]).is_err());
+        assert!(parse(&["board", "fab", "--pins"]).is_err());
+        assert!(parse(&["board", "build", "--constraints", "warn"]).is_err());
     }
 }

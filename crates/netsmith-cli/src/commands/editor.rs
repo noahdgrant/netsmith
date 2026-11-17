@@ -10,7 +10,7 @@ use super::common::DEFAULT_PORT;
 
 #[derive(Debug, PartialEq, ClapArgs)]
 #[command(
-    after_long_help = "With no file, `editor` acts on the project's boards (see netsmith.toml). It serves on 127.0.0.1 and prints the address to open."
+    after_long_help = "With no file, `view editor` acts on the project's boards (see netsmith.toml). It serves on 127.0.0.1 and prints the address to open."
 )]
 #[command(args_override_self = true)]
 pub struct Args {
@@ -84,25 +84,25 @@ fn run_editor(file: Option<&str>, port: u16, offline: bool) -> ExitCode {
 
 #[cfg(test)]
 mod tests {
-    use crate::commands::Command;
+    use crate::commands::common::testing::Leaf;
     use crate::commands::common::testing::parse;
 
     #[test]
     fn the_editor_takes_a_port_with_8787_as_the_default() {
         let port = |args: &[&str]| match parse(args) {
-            Ok(Command::Editor(e)) => e.port,
+            Ok(Leaf::Editor(e)) => e.port,
             other => panic!("{args:?}: {other:?}"),
         };
-        assert_eq!(port(&["editor", "a.nsm"]), 8787);
-        assert_eq!(port(&["editor", "--port", "9000"]), 9000);
+        assert_eq!(port(&["view", "editor", "a.nsm"]), 8787);
+        assert_eq!(port(&["view", "editor", "--port", "9000"]), 9000);
         assert!(
-            parse(&["editor", "--port", "http"])
+            parse(&["view", "editor", "--port", "http"])
                 .unwrap_err()
                 .contains("http")
         );
-        assert!(parse(&["editor", "--port", "70000"]).is_err());
-        assert!(parse(&["editor", "--port"]).is_err());
-        assert!(parse(&["editor", "--out", "x"]).is_err());
-        assert!(parse(&["build", "--port", "1"]).is_err());
+        assert!(parse(&["view", "editor", "--port", "70000"]).is_err());
+        assert!(parse(&["view", "editor", "--port"]).is_err());
+        assert!(parse(&["view", "editor", "--out", "x"]).is_err());
+        assert!(parse(&["board", "build", "--port", "1"]).is_err());
     }
 }
