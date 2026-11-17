@@ -11,7 +11,7 @@ Never place an order. Prepare the package and give the user a checklist.
 
 For each board, in `fab/<Board>/`:
 
-- `<Board>-gerbers.zip`: the Gerbers and drill files, written by netsmith itself (not KiCad; ADR 0034).
+- `<Board>-gerbers.zip`: the Gerbers and drill files, written by netsmith itself (not KiCad; ADR 0034). `netsmith view gerber fab/<Board>` draws them as the board house will see them, a side or a layer at a time, or sums them up with `--format json`.
 - `bom.csv`: bill of materials with LCSC part numbers.
 - `cpl.csv`: placement: designator, position, side, rotation.
 - `fab-notes.txt`: what netsmith could not verify. A run with `--offline` asked no supplier, and a line `offline: stock and price of the parts were not checked` says so: tell the user to look each part up at the supplier before ordering.
@@ -72,7 +72,7 @@ The surface finish is in `order.txt` (`finish HASL lead-free`, the process's `.f
 3. JLCPCB normally charges a loading fee for each unique Extended part, unless it flags the part Preferred. Count the Extended parts in the build report and confirm the fee on the order page.
 4. In JLCPCB's order preview, check the flagged rotations and that each part sits on its pads.
 5. Run JLCPCB's own design check. netsmith holds to the published limits but cannot run it. Pass its findings to the user.
-6. Boards with planes or pours: netsmith filled them for the Gerbers (JLCPCB has not yet been given these files in an order, so look at them first in the order preview). Run `netsmith board fab --cross-check` when KiCad is installed: it plots the board with KiCad too and says `the files agree`, or what differs. Open the `.kicad_pcb` in KiCad and press `B` to see KiCad's own fill.
+6. Boards with planes or pours: netsmith filled them for the Gerbers (JLCPCB has not yet been given these files in an order, so look at them first in the order preview). Look at the files themselves with `netsmith view gerber fab/<Board> --layer top` (and `bottom`, `inner1`, `all`): a PNG of what the board house gets, read back from the zip; open it and check the planes, the mask openings and the silkscreen. `--format json` lists the layers found, the holes by size and any file the reader could not read. Run `netsmith board fab --cross-check` when KiCad is installed: it plots the board with KiCad too and says `the files agree`, or what differs. Open the `.kicad_pcb` in KiCad and press `B` to see KiCad's own fill.
 7. Remind the user that capacitor values assume 25 C, with no temperature or ageing model.
 
 ## Report

@@ -16,6 +16,7 @@ The commands are grouped under nouns, each with its verbs (issue #1090): `netsmi
 - `routes`: the routes file, the copper fixed by hand or imported.
 - `schematic`: the schematic layout file (`<stem>.sch.toml`), how the schematic is arranged: `show` it, `set` an entry, `check` it against the board, `arrange` the sheets of a big board (issue #1093). It is `layout`'s counterpart for the drawing: a noun is the thing a file holds, so the PCB's solution is `layout` and the schematic's arrangement is `schematic`, and the picture of it is the verb `view schematic`.
 - `view`: look at a board: `3d` draws it to a PNG, `schematic` writes its schematic as a PDF, an SVG or a PNG, `pcb` draws its copper in 2D to a PNG or an SVG, `editor` serves the editor, `editor-3d` drives the 3D view of a running editor.
+- `view`: look at a board: `3d` draws it to a PNG, `schematic` writes its schematic as a PDF, an SVG or a PNG, `gerber` draws the files of its fab package, `editor` serves the editor, `editor-3d` drives the 3D view of a running editor.
 - `catalog`: the rows of the catalogs, checked against LCSC's record.
 - `import`: what comes into a project from outside: a DXF drawing (`dxf`), KiCad's library tables (`kicad-libs`), a part from a symbol (`part`), a port of a KiCad board (`port`), a case's STEP model (`case`).
 - `dev`: the tools for developing netsmith and checking ports: `route` routes a saved placed board with the router's tuning flags, `parity` compares a port with its original, `board3d` prints the 3D scene's report.
@@ -79,6 +80,7 @@ Each command, what it was before, and its flags (a test walks `--help` of every 
 | `netsmith view 3d` | `netsmith render` | `--board`, `--view`, `--picture` (was `--out`), `--size`, `--section`, `--highlight`, `--xray`, `--case`, `--no-caps`, `--theme`, `--ortho`, `--perspective` |
 | `netsmith view schematic` | new (#1091) | `--board`, `--format`, `--sheet`, `--picture` |
 | `netsmith view pcb` | new (#1086) | `--board`, `--layer`, `--side`, `--region`, `--scale`, `--format`, `--picture`, `--highlight`, `--only-open`, `--courtyards`, `--designators`, `--drc`, `--route`, `--route-timeout`, `--place-seeds`, `--place-budget` |
+| `netsmith view gerber` | new (#1105) | `--layer`, `--region`, `--scale`, `--format`, `--picture` |
 | `netsmith view editor` | `netsmith editor` | `--port`, `--offline` |
 | `netsmith view editor-3d` | `netsmith view` | `--port`, `--board`, `--view`, `--section`, `--highlight`, `--select`, `--xray`, `--no-xray`, `--ortho`, `--perspective`, `--case`, `--colour-by`, `--height-preview`, `--layers-apart`, `--no-layers-apart`, `--format` (was `--json`), `--picture` |
 | `netsmith catalog refresh` | the same | `--dry-run`, `--offline`, `--only`, `--lcsc`, `--delay`, `--cache-ttl`, `--no-cache` |
@@ -98,6 +100,7 @@ Each command, what it was before, and its flags (a test walks `--help` of every 
 | `netsmith mcp` | new | `--project` |
 
 The places left for commands to come, named by the same rules: `view gerber`; and `project fmt` and `project lint`.
+The places left for commands to come, named by the same rules: `view pcb`; and `project fmt` and `project lint`.
 
 ### The MCP server
 
@@ -179,6 +182,12 @@ netsmith view pcb --region 10,5,20,15 --scale 40 --only-open   # main-pcb.png: a
 netsmith view pcb --layer bottom --designators --drc            # main-pcb-bottom.png: the bottom seen from below
 netsmith view pcb --route --format svg --picture routed.svg     # route first, then draw the result
 ```
+`netsmith view gerber PACKAGE` reads the Gerber (RS-274X) and Excellon drill files of a fab package and draws them as the board house will get them, with netsmith's own reader and no KiCad (issue #1105): the files `board fab` wrote (the zip, or `board fab`'s output folder of a board, which opens as its `<board>-gerbers.zip`), or a package another tool made, zipped or in a folder. Each file's function is taken from its X2 attribute (`%TF.FileFunction`), or else from its name (KiCad's `<board>-F_Cu.gbr`, `-In1_Cu`, `-Edge_Cuts`; Protel's `.GTL`, `.GBL`, `.G1`, `.GTS`, `.GTO`, `.GTP`, `.GKO`; Eagle's `.cmp`, `.sol`); a file neither names is drawn only with `--layer all`. A file with a construct the reader does not support (a step and repeat `%SR`, a block aperture, an arc routed in a drill file) is never drawn: it is named on stderr with its line and command, the rest is drawn, and the exit code is 1.
+- `--layer top` (the default) draws the top copper, the mask's openings, the paste, the silkscreen, the outline and the holes, as a person sees the top; `bottom` the same of the bottom, mirrored as a person sees it; `inner<n>` that inner copper layer with the outline and the holes; `all` every layer, seen from the top. Each file is drawn in the colour of its function, the objects of each combined as its polarity says (a clear object takes away from what is under it in its own file, not from the other files).
+- `--region X,Y,W,H` draws that rectangle, in mm from the outline's top left corner, y down (the frame of the layout and routes files: the corner is the box of the outline file's centrelines), and `--scale` the PNG's pixels a millimetre (20 by default, fewer for a picture longer than 8192 pixels). With no region it draws everything the layer has, with a millimetre round it.
+- `--format png` (the default) or `svg` writes the picture to `--picture FILE` (by default `<package>-<layer>.png` in the current folder) and prints its path. The PNG is the SVG filled by netsmith's own rasterizer, and the same package gives the same bytes.
+- `--format json` prints a summary of every file instead: the `origin` of the frame in the files' coordinates, the `board`'s size (the outline's), the `extent` of everything drawn, the `views` `--layer` can draw, and for each of the `layers` its `file`, `format`, `function` (`copper`, `mask`, `paste`, `silk`, `outline`, `drill` or `other`), `layer`, how it was `identified_by`, its X2 `file_function` and `polarity`, whether it was `read`, its `extent`, and for a Gerber its `apertures`, `flashes`, `strokes`, `regions`, the objects drawn `clear` and the `area` it covers; for a drill file its `holes` and `slots`. Then the `holes` of the package by size (`diameter`, `plated`, `holes`, `slots`), the files not read (`unread`, with the `line` and the `message`), and the files that are neither Gerber nor Excellon (`skipped`).
+The exit code is 0 when every file was read, 1 when one could not be, and 2 when the command cannot run (no such package, a layer the package has no file for, a picture of more than 16384 pixels a side).
 
 ### Power findings
 

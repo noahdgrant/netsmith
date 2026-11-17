@@ -23,6 +23,10 @@ netsmith-sexp = { path = "../netsmith-sexp" }
 netsmith-kicad = { path = "../netsmith-kicad" }
 # The PNG writer of the debug pictures (`netsmith_core::png`).
 netsmith-core = { path = "../netsmith-core" }
+# The Gerber viewer's PNG: its SVG read back and filled (`viewer`, issue #1105).
+netsmith-draw = { path = "../netsmith-draw" }
+# The Gerber viewer combines a file's dark and clear objects as polygons (`viewer::shapes`).
+i_overlay = "9.1.0"
 
 [dev-dependencies]
 automod = "1.0.17"

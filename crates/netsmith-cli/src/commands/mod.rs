@@ -17,6 +17,7 @@ mod dxf;
 mod editor;
 mod explain;
 mod fab;
+mod gerber;
 mod init;
 mod kicad_libs;
 mod layout;
@@ -148,6 +149,8 @@ pub enum View {
     Schematic(schematic::Args),
     /// Draw a board's copper in 2D, a layer or all, a region or the whole, with the open connections, to a PNG or an SVG.
     Pcb(pcb::Args),
+    /// Draw the Gerber and drill files of a fab package to a PNG or an SVG, or sum them up.
+    Gerber(gerber::Args),
 }
 
 /// `netsmith import ...`.
@@ -211,6 +214,7 @@ pub fn run(command: Command) -> ExitCode {
             View::Editor3d(args) => view::run(args),
             View::Schematic(args) => schematic::run(args),
             View::Pcb(args) => pcb::run(args),
+            View::Gerber(args) => gerber::run(args),
         },
         Command::Catalog(args) => catalog::run(args),
         Command::Import(command) => match command {
