@@ -50,7 +50,8 @@ pub(crate) fn run(out: &mut Out<'_>) {
         if v.span.is_some() {
             let ring = (v.diameter - v.drill) / 2.0;
             let mut wrong = Vec::new();
-            if laser && (v.drill < want.min_laser_drill - EPS || v.drill > want.max_laser_drill + EPS)
+            if laser
+                && (v.drill < want.min_laser_drill - EPS || v.drill > want.max_laser_drill + EPS)
             {
                 wrong.push(format!(
                     "its {:.4} mm laser-drilled hole is not of {} to {} mm",
@@ -93,7 +94,11 @@ pub(crate) fn run(out: &mut Out<'_>) {
             let thickest = gaps.iter().copied().fold(0.0, f64::max);
             (thickest, want.max_laser_aspect, "a blind via's")
         } else {
-            (gaps.iter().sum::<f64>(), want.max_drill_aspect, "a drilled hole's")
+            (
+                gaps.iter().sum::<f64>(),
+                want.max_drill_aspect,
+                "a drilled hole's",
+            )
         };
         if ratio > 0.0 && depth > v.drill * ratio + EPS {
             out.push(
@@ -119,7 +124,10 @@ mod tests {
 
     /// A board of four copper layers with `vias`, each `(kind, layers, drill, diameter, x)`:
     /// KiCad's via type (`micro`, `blind` or none), its two layers, its hole and its copper.
-    fn board(vias: &[(&str, (&str, &str), f64, f64, f64)]) -> String {
+    /// A via of [`board`]: KiCad's type, its two layers, its hole, its copper and its x.
+    type TestVia<'a> = (&'a str, (&'a str, &'a str), f64, f64, f64);
+
+    fn board(vias: &[TestVia]) -> String {
         let vias: String = vias
             .iter()
             .map(|(kind, (a, b), drill, size, x)| {

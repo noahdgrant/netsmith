@@ -851,6 +851,10 @@ const AFTER_VIA: usize = 9;
 /// The directions a search state remembers.
 const DIRECTIONS: usize = 10;
 
+/// For each pair of layers of a [`Stack`], the layers of the stack the via between them is on,
+/// and the via (issue #1015).
+pub(crate) type SpanTable = std::rc::Rc<Vec<Vec<(Layers, netsmith_pcb::ViaOffer)>>>;
+
 /// The router's copper layers by index (issue #833): [`FRONT`], [`BACK`], then the board's
 /// inner signal layers from the top ([`Board::signal_layers`]). A board of two layers, or one
 /// whose inner layers are all planes, has the two outer layers only and routes as before.
@@ -861,7 +865,7 @@ pub(crate) struct Stack {
     /// layers of the stack the layers of the stack the via between them is on
     /// ([`Board::via_between`]), and the via; `None` on any other board, where every via is a
     /// through via.
-    pub(crate) spans: Option<std::rc::Rc<Vec<Vec<(Layers, netsmith_pcb::ViaOffer)>>>>,
+    pub(crate) spans: Option<SpanTable>,
     /// How many copper layers the board has, planes too.
     pub(crate) count: u32,
 }
@@ -918,7 +922,12 @@ impl Stack {
 
     /// The via the router draws from layer `a` to layer `b` of the stack: the board's through
     /// via, or of an HDI board the one [`Board::via_between`] picks.
-    pub(crate) fn via_between(&self, board: &Board, a: usize, b: usize) -> (f64, f64, Option<netsmith_pcb::ViaSpan>) {
+    pub(crate) fn via_between(
+        &self,
+        board: &Board,
+        a: usize,
+        b: usize,
+    ) -> (f64, f64, Option<netsmith_pcb::ViaSpan>) {
         match &self.spans {
             Some(spans) => {
                 let o = spans[a][b].1;

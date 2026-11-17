@@ -408,6 +408,12 @@ fn hole_to_track(out: &mut Out<'_>) {
         if h.item.net.is_some() && h.item.net == c.net {
             continue;
         }
+        // A blind or a buried via's hole is not on a layer it does not reach (issue #1015).
+        if let Some((a, b)) = h.span
+            && !c.layers.iter().any(|&l| a <= l && l <= b)
+        {
+            continue;
+        }
         let Some(least_gap) = limit(h) else { continue };
         let Some(g) = least(&c.shapes, std::slice::from_ref(&h.shape)) else {
             continue;

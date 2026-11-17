@@ -582,14 +582,20 @@ impl RouteVia {
         if !self.layers.is_empty() {
             let n = board.copper_count();
             let layer = |w: &str| {
-                CopperLayer::of_word(w).filter(|l| l.position(n) < n as usize && (l.is_outer() || l.position(n) + 1 < n as usize))
+                CopperLayer::of_word(w).filter(|l| {
+                    l.position(n) < n as usize && (l.is_outer() || l.position(n) + 1 < n as usize)
+                })
             };
             match self.layers.as_slice() {
                 [a, b] if layer(a).is_some() && layer(b).is_some() && layer(a) != layer(b) => {}
                 _ => {
                     return Err(format!(
                         "a via between {}: a blind or a buried via names the two layers it ends on, each `top`, `bottom` or an inner layer of the board (`inner1` to `inner{}`)",
-                        self.layers.iter().map(|l| format!("`{l}`")).collect::<Vec<_>>().join(" and "),
+                        self.layers
+                            .iter()
+                            .map(|l| format!("`{l}`"))
+                            .collect::<Vec<_>>()
+                            .join(" and "),
                         n.saturating_sub(2)
                     ));
                 }

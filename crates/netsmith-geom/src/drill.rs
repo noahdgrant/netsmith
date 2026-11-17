@@ -100,8 +100,14 @@ pub fn files(art: &Artwork, name: &str) -> Vec<Output> {
             let function = if plated { "Plated" } else { "NonPlated" };
             Output {
                 name: format!("{name}-{kind}.drl"),
-                bytes: file(holes, art.origin, function, &format!("1,{layers},{kind}"), kind)
-                    .into_bytes(),
+                bytes: file(
+                    holes,
+                    art.origin,
+                    function,
+                    &format!("1,{layers},{kind}"),
+                    kind,
+                )
+                .into_bytes(),
             }
         })
         .collect();
@@ -284,13 +290,37 @@ mod tests {
         .unwrap();
         let files = files(&art, "B");
         let names: Vec<&str> = files.iter().map(|f| f.name.as_str()).collect();
-        assert_eq!(names, ["B-PTH.drl", "B-NPTH.drl", "B-front-in1.drl", "B-in1-in2.drl"]);
+        assert_eq!(
+            names,
+            [
+                "B-PTH.drl",
+                "B-NPTH.drl",
+                "B-front-in1.drl",
+                "B-in1-in2.drl"
+            ]
+        );
         let text = |k: usize| String::from_utf8(files[k].bytes.clone()).unwrap();
         // The through via stays in the plated file, and each span's hole is in its own.
-        assert!(text(0).contains("T1\nX5.0Y-5.0\n") && !text(0).contains("X6.0"), "{}", text(0));
-        assert!(text(2).contains("; #@! TF.FileFunction,Plated,1,2,Blind\n"), "{}", text(2));
-        assert!(text(2).contains("T1C0.100\n") && text(2).contains("X6.0Y-5.0\n"), "{}", text(2));
-        assert!(text(3).contains("; #@! TF.FileFunction,Plated,2,3,Buried\n"), "{}", text(3));
+        assert!(
+            text(0).contains("T1\nX5.0Y-5.0\n") && !text(0).contains("X6.0"),
+            "{}",
+            text(0)
+        );
+        assert!(
+            text(2).contains("; #@! TF.FileFunction,Plated,1,2,Blind\n"),
+            "{}",
+            text(2)
+        );
+        assert!(
+            text(2).contains("T1C0.100\n") && text(2).contains("X6.0Y-5.0\n"),
+            "{}",
+            text(2)
+        );
+        assert!(
+            text(3).contains("; #@! TF.FileFunction,Plated,2,3,Buried\n"),
+            "{}",
+            text(3)
+        );
         assert!(text(3).contains("X7.0Y-5.0\n"), "{}", text(3));
         // A board with through vias only has its two files, as before.
         assert_eq!(files_of_plain(), 2);

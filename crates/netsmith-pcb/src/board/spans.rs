@@ -35,7 +35,11 @@ pub fn span_depth(process: &netsmith_core::Process, from: usize, to: usize) -> f
 /// `via_diameter` for a drilled one): the laser-drilled blind vias of each build-up layer from
 /// the top, then from the bottom, the buried via, and the through via last. A process that is
 /// not HDI makes the through via only.
-pub fn via_offers(process: &netsmith_core::Process, via_drill: f64, via_diameter: f64) -> Vec<ViaOffer> {
+pub fn via_offers(
+    process: &netsmith_core::Process,
+    via_drill: f64,
+    via_diameter: f64,
+) -> Vec<ViaOffer> {
     let n = process.stackup.layers;
     let through = ViaOffer {
         span: None,
@@ -97,7 +101,10 @@ impl Board {
     pub fn via_between(&self, a: CopperLayer, b: CopperLayer) -> ViaOffer {
         let n = self.copper_count();
         let offers = self.via_offers();
-        let size = |o: &ViaOffer| o.span.map_or(n as usize, |s| s.positions(n).1 - s.positions(n).0);
+        let size = |o: &ViaOffer| {
+            o.span
+                .map_or(n as usize, |s| s.positions(n).1 - s.positions(n).0)
+        };
         offers
             .iter()
             .filter(|o| o.span.is_none_or(|s| s.holds(a, n) && s.holds(b, n)))
@@ -174,8 +181,12 @@ mod tests {
             drill: 0.2,
             span,
         };
-        board.vias.push(via(span(CopperLayer::Front, CopperLayer::Inner(1))));
-        board.vias.push(via(span(CopperLayer::Inner(1), CopperLayer::Inner(4))));
+        board
+            .vias
+            .push(via(span(CopperLayer::Front, CopperLayer::Inner(1))));
+        board
+            .vias
+            .push(via(span(CopperLayer::Inner(1), CopperLayer::Inner(4))));
         board.vias.push(via(None));
         let pcb = crate::kicad_pcb(&board);
         assert!(
@@ -185,7 +196,11 @@ mod tests {
         assert!(pcb.contains("(layers \"F.Cu\" \"In1.Cu\")"), "{pcb}");
         assert!(pcb.contains("(via blind"), "{pcb}");
         assert!(pcb.contains("(layers \"In1.Cu\" \"In4.Cu\")"), "{pcb}");
-        assert_eq!(pcb.matches("(layers \"F.Cu\" \"B.Cu\")").count(), 1, "{pcb}");
+        assert_eq!(
+            pcb.matches("(layers \"F.Cu\" \"B.Cu\")").count(),
+            1,
+            "{pcb}"
+        );
         // The project file holds the laser's least hole and copper for KiCad's check.
         let pro = crate::kicad_pro(&board);
         assert!(pro.contains("\"min_microvia_drill\": 0.075"), "{pro}");
@@ -204,7 +219,10 @@ mod tests {
             span: span(CopperLayer::Front, CopperLayer::Inner(1)),
         });
         let notes = board.process_extras();
-        let hdi = notes.iter().find(|n| n.starts_with("HDI: ")).expect("an HDI note");
+        let hdi = notes
+            .iter()
+            .find(|n| n.starts_with("HDI: "))
+            .expect("an HDI note");
         assert!(
             hdi.contains("6-layer board of order 1 with the build-up `HDI-6L-1.2`")
                 && hdi.contains("1 blind via(s)")
@@ -237,14 +255,19 @@ mod tests {
             .insert(net.clone(), record);
         let text = routes.to_text();
         assert!(
-            text.contains("{ at = [2.0, 3.0], diameter = 0.25, drill = 0.1, layers = [\"top\", \"inner1\"] }"),
+            text.contains(
+                "{ at = [2.0, 3.0], diameter = 0.25, drill = 0.1, layers = [\"top\", \"inner1\"] }"
+            ),
             "{text}"
         );
         let read = crate::Routes::parse(&text, "t.routes.toml").unwrap();
         assert_eq!(read, routes);
         let mut fresh = hdi_board();
         crate::apply_routes(&mut fresh, &read, "t.routes.toml").unwrap();
-        assert_eq!(fresh.vias[0].span, span(CopperLayer::Front, CopperLayer::Inner(1)));
+        assert_eq!(
+            fresh.vias[0].span,
+            span(CopperLayer::Front, CopperLayer::Inner(1))
+        );
         // A through via writes no layers, as before.
         fresh.vias[0].span = None;
         let record = crate::record_of(&fresh, &net, false).unwrap();

@@ -378,7 +378,9 @@ pub(super) fn moves(
     if dir != AFTER_VIA {
         let cost = VIA + masks.pour.1 + masks.soft_via_cost(i, j) + masks.lane_via_cost(i, j);
         for other in (0..masks.layers()).filter(|&l| l != layer) {
-            if masks.via_open(i, j, layer, other) && (!masks.track[other][at] || open((i, j, other))) {
+            if masks.via_open(i, j, layer, other)
+                && (!masks.track[other][at] || open((i, j, other)))
+            {
                 relax((i, j, other), AFTER_VIA, cost);
             }
         }

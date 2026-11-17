@@ -592,7 +592,11 @@ mod tests {
         assert!(get(&p, "F_Cu").contains(via) && get(&p, "In1_Cu").contains(via));
         assert!(!get(&p, "In2_Cu").contains(via) && !get(&p, "B_Cu").contains(via));
         // Its mask opening is on the top only: 0.25 + 2 x 0.05.
-        assert!(get(&p, "F_Mask").contains("C,0.350000"), "{}", get(&p, "F_Mask"));
+        assert!(
+            get(&p, "F_Mask").contains("C,0.350000"),
+            "{}",
+            get(&p, "F_Mask")
+        );
         assert!(!get(&p, "B_Mask").contains("C,0.350000"));
     }
 

@@ -686,18 +686,32 @@ mod tests {
         let words = |p: &Process| {
             crate::via_offers(p, 0.2, 0.45)
                 .iter()
-                .map(|o| o.span.map_or("through".to_string(), |s| format!("{}-{}", s.from.word(), s.to.word())))
+                .map(|o| {
+                    o.span.map_or("through".to_string(), |s| {
+                        format!("{}-{}", s.from.word(), s.to.word())
+                    })
+                })
                 .collect::<Vec<_>>()
         };
         assert_eq!(words(&p), ["top-inner1", "inner4-bottom", "through"]);
         let p = hdi_process(&[".hdi_order &= 2", ".buried_vias &= \"core\""]);
         assert_eq!(
             words(&p),
-            ["top-inner1", "inner1-inner2", "inner4-bottom", "inner3-inner4", "inner2-inner3", "through"]
+            [
+                "top-inner1",
+                "inner1-inner2",
+                "inner4-bottom",
+                "inner3-inner4",
+                "inner2-inner3",
+                "through"
+            ]
         );
         // The second build-up layers are the 0.4 mm cores, too thick for a laser.
         let err = Rules::for_process(&p).unwrap_err();
-        assert!(err.contains("dielectric2") && err.contains("0.127"), "{err}");
+        assert!(
+            err.contains("dielectric2") && err.contains("0.127"),
+            "{err}"
+        );
         // The first order's core, 0.95 mm, takes a buried via.
         let p = hdi_process(&[".buried_vias &= \"core\""]);
         assert_eq!(words(&p)[2], "inner1-inner4");

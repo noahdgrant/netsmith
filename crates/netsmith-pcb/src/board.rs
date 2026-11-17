@@ -28,9 +28,9 @@ pub(crate) mod tests;
 mod unplaced;
 
 pub use features::*;
-pub use spans::{ViaOffer, span_depth, via_offers};
 pub use placed::*;
 pub use problems::*;
+pub use spans::{ViaOffer, span_depth, via_offers};
 pub use targets::PairCoupling;
 pub use unplaced::*;
 

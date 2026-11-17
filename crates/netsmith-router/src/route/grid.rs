@@ -349,7 +349,7 @@ pub(super) struct Masks {
     /// ([`Stack::spans`]): a via may stand where it has room on its own layers. Empty and
     /// `None` on any other board, where `via` says where a via may stand.
     pub(super) via_on: Vec<Vec<bool>>,
-    pub(super) spans: Option<std::rc::Rc<Vec<Vec<(Layers, netsmith_pcb::ViaOffer)>>>>,
+    pub(super) spans: Option<SpanTable>,
 }
 
 pub(super) struct Soft {
