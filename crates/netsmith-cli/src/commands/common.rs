@@ -522,8 +522,8 @@ pub(crate) mod testing {
     use crate::commands::{
         Board, Command, Dev, Import, Project, View, board3d, bom, build, case, catalog, check,
         common, compare, copper, drc, dxf, editor, explain, fab, gerber, init, kicad_libs, layout,
-        lint, lock, mcp, order, panel, parity, part, pcb, pins, port, power, render, route, routes,
-        schematic, schematic_layout, project_show, show, swap, system, view,
+        lint, lock, mcp, order, panel, parity, part, pcb, pins, port, power, project_show, render,
+        route, routes, schematic, schematic_layout, show, swap, system, view,
     };
 
     /// The command line as main.rs has it.

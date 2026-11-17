@@ -239,7 +239,8 @@ mod tests {
 
     #[test]
     fn it_takes_a_file_and_a_format() {
-        let Ok(Leaf::ProjectShow(a)) = parse(&["project", "show", "a.nsm", "--format", "json"]) else {
+        let Ok(Leaf::ProjectShow(a)) = parse(&["project", "show", "a.nsm", "--format", "json"])
+        else {
             panic!()
         };
         assert_eq!(a.file.as_deref(), Some("a.nsm"));
