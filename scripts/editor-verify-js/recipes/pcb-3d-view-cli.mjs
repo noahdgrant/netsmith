@@ -37,11 +37,11 @@ export async function run(tools) {
   const tall = partOf(s, 'tall');
   await page.selectOption('.boardpick select', BOARD);
 
-  step('view alone prints the state of the page, as a summary and as the editor\'s JSON');
+  step('view editor-3d alone prints the state of the page, as a summary and as the editor\'s JSON');
   let r = await view();
   expect(r.code === 0 && r.out.includes(`board: ${BOARD}`) && r.out.includes('3D view: not on screen'), `the summary says the 3D view is not shown:\n${r.out}`);
-  r = await view('--json');
-  expect(r.code === 0 && JSON.parse(r.out).board === BOARD && JSON.parse(r.out).shown === false, `--json is the route's JSON: ${r.out.trim()}`);
+  r = await view('--format', 'json');
+  expect(r.code === 0 && JSON.parse(r.out).board === BOARD && JSON.parse(r.out).shown === false, `--format json is the route's JSON: ${r.out.trim()}`);
 
   step('a change with a picture: the top, a part lit, x-ray; the page shows it and the PNG is its canvas');
   const png = path.join(path.dirname(await shot('before')), 'pcb-3d-view-cli-top.png');
@@ -70,10 +70,10 @@ export async function run(tools) {
   expect((await page.getByTestId('colour-by').inputValue()) === 'margin', 'the page colours by margin');
 
   step('a refusal exits 2 with the editor\'s message and changes nothing');
-  const before = JSON.parse((await view('--json')).out);
+  const before = JSON.parse((await view('--format', 'json')).out);
   r = await view('--view', 'front', '--highlight', 'NOPE');
   expect(r.code === 2 && r.out === '' && r.err.includes('`NOPE`') && r.err.includes('the parts are:') && r.err.includes(tall.refdes), `an unknown id lists what the board has: ${r.err.trim()}`);
-  const after = JSON.parse((await view('--json')).out);
+  const after = JSON.parse((await view('--format', 'json')).out);
   expect(after.view === before.view && JSON.stringify(after.camera) === JSON.stringify(before.camera), 'the camera did not move');
   r = await view('--board', 'NoSuchBoard');
   expect(r.code === 2 && r.err.includes(BOARD), `a board the project has not lists the ones it has: ${r.err.trim()}`);
