@@ -20,6 +20,7 @@
 //! ]
 //! vias = [
 //!   { at = [12.3, 4.56], diameter = 0.6, drill = 0.25 },
+//!   { at = [14.0, 4.56], diameter = 0.25, drill = 0.1, layers = ["top", "inner1"] },
 //! ]
 //!
 //! [[Rp2350Minimal.nets."+3V3".zones]]
@@ -39,7 +40,9 @@
 //!
 //! A track is straight from `from` to `to`, or an arc through `mid` (KiCad's `(arc (start)
 //! (mid) (end))`); `layer` is `top`, `bottom` or an inner signal layer of the process, `inner2`
-//! (issue #833; an inner plane holds no track); `width`, `diameter` and `drill` are in mm. An unknown key is an error.
+//! (issue #833; an inner plane holds no track); `width`, `diameter` and `drill` are in mm. A via joins every layer, unless it names the
+//! two `layers` a blind or a buried via of an HDI process ends on, the upper first (issue #1015);
+//! the design rules check says whether the process makes that span. An unknown key is an error.
 //!
 //! **Zones** ([`RouteZone`]) are KiCad's zones (issue #724): copper filled inside `outline`,
 //! less each of `holes`, on each of `layers` (`top`, `bottom`, `inner1`, ...), joined to the
@@ -113,13 +116,17 @@ pub struct RouteTrack {
     pub lock: bool,
 }
 
-/// A via of a record, through both outer layers.
+/// A via of a record: through every layer, or a blind or buried via between its two `layers`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RouteVia {
     pub at: [f64; 2],
     pub diameter: f64,
     pub drill: f64,
+    /// The layers a blind or a buried via ends on, the upper first (`["top", "inner1"]`, issue
+    /// #1015); empty for a through via.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub layers: Vec<String>,
     #[serde(default)]
     pub lock: bool,
 }
@@ -327,6 +334,10 @@ impl Routes {
                             num(v.diameter),
                             num(v.drill)
                         );
+                        if !v.layers.is_empty() {
+                            let layers: Vec<String> = v.layers.iter().map(|l| quoted(l)).collect();
+                            let _ = write!(out, ", layers = [{}]", layers.join(", "));
+                        }
                         if v.lock {
                             out.push_str(", lock = true");
                         }
@@ -538,7 +549,18 @@ impl RouteVia {
             at: board.outline.min + Pt::new(self.at[0], self.at[1]),
             diameter: self.diameter,
             drill: self.drill,
+            span: self.span(board),
         }
+    }
+
+    /// The span of a blind or a buried via; `None` for a through via. The layers must have been
+    /// checked ([`RouteVia::check`]).
+    fn span(&self, board: &Board) -> Option<crate::ViaSpan> {
+        let [a, b] = self.layers.as_slice() else {
+            return None;
+        };
+        let (a, b) = (CopperLayer::of_word(a)?, CopperLayer::of_word(b)?);
+        Some(crate::ViaSpan::between(a, b, board.copper_count()))
     }
 
     /// The record's form of a via of `board`.
@@ -548,11 +570,31 @@ impl RouteVia {
             at: [q.x, q.y],
             diameter: via.diameter,
             drill: via.drill,
+            layers: via
+                .span
+                .map(|s| vec![s.from.word().to_string(), s.to.word().to_string()])
+                .unwrap_or_default(),
             lock: false,
         }
     }
 
-    fn check(&self) -> Result<(), String> {
+    fn check(&self, board: &Board) -> Result<(), String> {
+        if !self.layers.is_empty() {
+            let n = board.copper_count();
+            let layer = |w: &str| {
+                CopperLayer::of_word(w).filter(|l| l.position(n) < n as usize && (l.is_outer() || l.position(n) + 1 < n as usize))
+            };
+            match self.layers.as_slice() {
+                [a, b] if layer(a).is_some() && layer(b).is_some() && layer(a) != layer(b) => {}
+                _ => {
+                    return Err(format!(
+                        "a via between {}: a blind or a buried via names the two layers it ends on, each `top`, `bottom` or an inner layer of the board (`inner1` to `inner{}`)",
+                        self.layers.iter().map(|l| format!("`{l}`")).collect::<Vec<_>>().join(" and "),
+                        n.saturating_sub(2)
+                    ));
+                }
+            }
+        }
         if self.at.iter().any(|v| !v.is_finite()) {
             return Err("a via at a place that is not a number".into());
         }
@@ -747,7 +789,7 @@ pub fn apply_routes(
             })?;
         }
         for v in &record.vias {
-            v.check().map_err(|why| RoutesError::BadShape {
+            v.check(board).map_err(|why| RoutesError::BadShape {
                 file: file.to_string(),
                 net: net.clone(),
                 why,
@@ -876,6 +918,7 @@ mod tests {
                     at: [3.125, 2.5],
                     diameter: 0.6,
                     drill: 0.3,
+                    layers: Vec::new(),
                     lock: false,
                 }],
                 zones: vec![zone()],
@@ -1056,6 +1099,7 @@ mod tests {
                 at: [2.0, 1.0],
                 diameter: 0.6,
                 drill: 0.3,
+                layers: Vec::new(),
                 lock: true,
             }],
             zones: Vec::new(),

@@ -142,6 +142,9 @@ impl Rules {
                 process.name, process.min_drill, process.min_via_diameter, process.min_via_ring
             ));
         }
+        if let Some(hdi) = &process.hdi {
+            hdi_rules(process, hdi, via_drill, via_diameter)?;
+        }
         Ok(Rules {
             clearance: process.min_clearance,
             min_track_width: process.min_track,
@@ -329,6 +332,95 @@ impl Rules {
         out.push('\n');
         out
     }
+}
+
+/// Whether the vias an HDI process's router draws can be made in the board's build-up (issue
+/// #1015): the order leaves a core, the blind via's hole and copper are the process's, each
+/// dielectric layer a blind via is drilled through is as thick as the process allows and no
+/// thicker than its hole's aspect ratio allows, and a buried via's core is thick enough and its
+/// hole small enough.
+fn hdi_rules(
+    process: &Process,
+    hdi: &netsmith_core::Hdi,
+    via_drill: f64,
+    via_diameter: f64,
+) -> Result<(), String> {
+    let name = &process.name;
+    let n = process.stackup.layers as usize;
+    let k = hdi.order as usize;
+    if k == 0 || n < 2 * k + 2 {
+        return Err(format!(
+            "the process `{name}` has {n} copper layers, which leave no core for {k} build-up layers on each face: `.process.hdi_order` is at most {}",
+            (n.saturating_sub(2)) / 2
+        ));
+    }
+    let (drill, diameter) = (hdi.laser_drill, hdi.laser_via_diameter);
+    if drill < hdi.min_laser_drill - 1e-9
+        || drill > hdi.max_laser_drill + 1e-9
+        || (diameter - drill) / 2.0 < hdi.min_ring - 1e-9
+    {
+        return Err(format!(
+            "the blind via of `{name}` is {diameter} mm with a {drill} mm hole, but the process drills a laser hole of {} to {} mm with {} mm of copper round it: change `.process.laser_drill` or `.process.laser_via_diameter`",
+            hdi.min_laser_drill, hdi.max_laser_drill, hdi.min_ring
+        ));
+    }
+    let dielectrics = process
+        .stackup
+        .inner
+        .as_ref()
+        .map_or(&[][..], |i| &i.dielectrics[..]);
+    if dielectrics.len() + 1 != n {
+        return Err(format!(
+            "the process `{name}` has {n} copper layers and its build-up states {} dielectric layers: an HDI board states each of its {} (`.process.stackup.dielectric1`...)",
+            dielectrics.len(),
+            n - 1
+        ));
+    }
+    let blind = (0..k).chain((0..k).map(|i| n - 2 - i));
+    for d in blind {
+        let t = dielectrics[d].thickness;
+        if t < hdi.min_laser_dielectric - 1e-9 || t > hdi.max_laser_dielectric + 1e-9 {
+            return Err(format!(
+                "`.process.stackup.dielectric{}` is {t} mm, which a blind via of `{name}` is drilled through, but the process drills one through {} to {} mm",
+                d + 1,
+                hdi.min_laser_dielectric,
+                hdi.max_laser_dielectric
+            ));
+        }
+        if t > drill * hdi.max_laser_aspect + 1e-9 {
+            return Err(format!(
+                "`.process.stackup.dielectric{}` is {t} mm, which a blind via of `{name}` with a {drill} mm hole is drilled through, but its depth is at most {} times its hole: widen `.process.laser_drill` or thin the dielectric",
+                d + 1,
+                hdi.max_laser_aspect
+            ));
+        }
+    }
+    let ring = (via_diameter - via_drill) / 2.0;
+    if hdi.buried {
+        let core = crate::span_depth(process, k, n - 1 - k);
+        if core < hdi.min_buried_core - 1e-9 {
+            return Err(format!(
+                "the core of `{name}` between its layers {} and {} is {core} mm, but a buried via is drilled through a core of at least {} mm",
+                k + 1,
+                n - k,
+                hdi.min_buried_core
+            ));
+        }
+        if via_drill > hdi.max_buried_drill + 1e-9 || ring < hdi.min_ring - 1e-9 {
+            return Err(format!(
+                "the via of `{name}` is {via_diameter} mm with a {via_drill} mm hole, but a buried via has a hole of at most {} mm with {} mm of copper round it",
+                hdi.max_buried_drill, hdi.min_ring
+            ));
+        }
+    }
+    let depth = crate::span_depth(process, 0, n - 1);
+    if depth > via_drill * hdi.max_drill_aspect + 1e-9 {
+        return Err(format!(
+            "the via of `{name}` has a {via_drill} mm hole through {depth} mm of dielectric, but a drilled hole is at most {} times as deep as it is wide: widen `.process.via_drill`",
+            hdi.max_drill_aspect
+        ));
+    }
+    Ok(())
 }
 
 impl Rules {

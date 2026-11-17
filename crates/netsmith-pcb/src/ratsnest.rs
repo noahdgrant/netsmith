@@ -803,6 +803,7 @@ mod tests {
             at: via_at,
             diameter: 0.6,
             drill: 0.3,
+            span: None,
         });
         assert_eq!(Ratsnest::of(&board).len(), 2);
     }
@@ -847,6 +848,7 @@ mod tests {
             at,
             diameter: 0.45,
             drill: 0.15,
+            span: None,
         };
         // A via of the net alone is on the plane but not on the pad.
         board.vias.push(via("GND", via_at));
@@ -944,6 +946,7 @@ mod tests {
             at: r1,
             diameter: 0.45,
             drill: 0.15,
+            span: None,
         });
         assert!(Ratsnest::of(&board).lines.iter().all(|l| l.net != "3V3"));
     }

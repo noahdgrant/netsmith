@@ -121,6 +121,7 @@ pub fn add(board: &mut Board) -> usize {
                             at,
                             diameter: rules.via_diameter,
                             drill: rules.via_drill,
+                            span: None,
                         });
                         need -= 1;
                         added += 1;

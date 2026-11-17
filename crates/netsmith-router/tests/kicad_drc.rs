@@ -116,6 +116,7 @@ fn a_board_that_breaks_the_rules_is_caught() {
         at: Pt::new(b.outline.max.x - 1.5, b.outline.min.y + 1.5),
         diameter: 0.6,
         drill: 0.1,
+        span: None,
     });
     // A pad 0.1 mm from the board edge, under the process's 0.2 mm.
     let j1 = b.part("J1").unwrap();
@@ -162,6 +163,7 @@ fn tracks_and_vias_that_are_too_close_are_caught() {
         // 0.025 mm of copper round the drill: under the process's 0.05 mm.
         diameter: 0.35,
         drill: 0.3,
+        span: None,
     });
     let Some(report) = check("tight", &b) else {
         return;

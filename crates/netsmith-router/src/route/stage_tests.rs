@@ -318,6 +318,7 @@ fn off_the_pours_of_the_led_board(names: [&str; 2]) -> (Board, Vec<Routed>) {
                 at,
                 diameter: rules.via_diameter,
                 drill: rules.via_drill,
+                span: None,
             })
             .to_vec();
     }
@@ -381,6 +382,7 @@ fn a_line_that_changed_layer_to_get_round_copper_no_longer_there_loses_its_vias(
         at,
         diameter: board.rules.via_diameter,
         drill: board.rules.via_drill,
+        span: None,
     };
     let track = |layer, a, b| Track {
         net: "net-led.anode".into(),

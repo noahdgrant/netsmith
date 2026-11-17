@@ -21,12 +21,14 @@ mod problems;
 mod process;
 mod queries;
 mod reports;
+mod spans;
 mod targets;
 #[cfg(test)]
 pub(crate) mod tests;
 mod unplaced;
 
 pub use features::*;
+pub use spans::{ViaOffer, span_depth, via_offers};
 pub use placed::*;
 pub use problems::*;
 pub use targets::PairCoupling;

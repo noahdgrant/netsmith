@@ -721,6 +721,7 @@ mod tests {
             at,
             diameter: 0.6,
             drill: 0.3,
+            span: None,
         });
         let c = copper(&board).unwrap();
         let via = c.vias.last().unwrap();

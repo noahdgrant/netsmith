@@ -72,6 +72,25 @@ impl CopperLayer {
         }
     }
 
+    /// Its place from the top on a board of `layers` copper layers: 0 for the top, `layers - 1`
+    /// for the bottom, `n` for `In{n}.Cu`.
+    pub fn position(self, layers: u32) -> usize {
+        match self {
+            Self::Front => 0,
+            Self::Back => layers.max(2) as usize - 1,
+            Self::Inner(n) => usize::from(n),
+        }
+    }
+
+    /// The layer at a place from the top, on a board of `layers` copper layers.
+    pub fn at_position(position: usize, layers: u32) -> CopperLayer {
+        match position {
+            0 => Self::Front,
+            p if p + 1 >= layers as usize => Self::Back,
+            p => Self::Inner(p as u8),
+        }
+    }
+
     /// Whether it is an outer layer, where parts stand.
     pub fn is_outer(self) -> bool {
         !matches!(self, Self::Inner(_))
@@ -324,11 +343,70 @@ pub struct Teardrop {
     pub points: Vec<Pt>,
 }
 
-/// A plated hole that joins the two copper layers.
+/// A plated hole that joins copper layers: every layer, or the layers of its `span`.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Via {
     pub net: String,
     pub at: Pt,
     pub diameter: f64,
     pub drill: f64,
+    /// The layers a blind or a buried via joins (issue #1015); `None` for a through via, which
+    /// joins every layer, and then not written.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub span: Option<ViaSpan>,
+}
+
+/// The copper layers a blind or a buried via joins, the upper first: its copper is on them and
+/// on the layers between, and its hole goes no further (issue #1015).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+pub struct ViaSpan {
+    pub from: CopperLayer,
+    pub to: CopperLayer,
+}
+
+impl ViaSpan {
+    /// The span from `a` to `b`, the upper first, on a board of `layers` copper layers.
+    pub fn between(a: CopperLayer, b: CopperLayer, layers: u32) -> ViaSpan {
+        if a.position(layers) <= b.position(layers) {
+            ViaSpan { from: a, to: b }
+        } else {
+            ViaSpan { from: b, to: a }
+        }
+    }
+
+    /// Whether it joins `layer`, or passes through it, on a board of `layers` copper layers.
+    pub fn holds(&self, layer: CopperLayer, layers: u32) -> bool {
+        let at = layer.position(layers);
+        self.from.position(layers) <= at && at <= self.to.position(layers)
+    }
+
+    /// Whether it ends on an outer layer: a blind via; else it is buried.
+    pub fn is_blind(&self) -> bool {
+        self.from.is_outer() || self.to.is_outer()
+    }
+
+    /// The layers' places from the top, 0 the top layer: its first and its last.
+    pub fn positions(&self, layers: u32) -> (usize, usize) {
+        (self.from.position(layers), self.to.position(layers))
+    }
+}
+
+impl Via {
+    /// Whether its copper is on `layer` of a board of `layers` copper layers: every layer for a
+    /// through via, else the layers of its span.
+    pub fn on(&self, layer: CopperLayer, layers: u32) -> bool {
+        self.span.is_none_or(|s| s.holds(layer, layers))
+    }
+
+    /// Whether it and `other` share a layer, so that their holes meet in the board.
+    pub fn meets(&self, other: &Via, layers: u32) -> bool {
+        match (self.span, other.span) {
+            (Some(a), Some(b)) => {
+                let (a0, a1) = a.positions(layers);
+                let (b0, b1) = b.positions(layers);
+                a0 <= b1 && b0 <= a1
+            }
+            _ => true,
+        }
+    }
 }

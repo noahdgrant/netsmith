@@ -982,6 +982,7 @@ mod tests {
             at: Pt::new(2.0, 2.0),
             diameter: 0.6,
             drill: 0.3,
+            span: None,
         });
         let view = render_view(&board);
         assert!(view.contains(&format!("<line data-net=\"{net}\" x1=\"0\"")));

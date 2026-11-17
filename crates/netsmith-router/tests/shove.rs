@@ -322,6 +322,7 @@ fn a_via_is_pushed_and_the_track_that_meets_it_follows() {
         at: at(c, 0.0, 0.0),
         diameter: 0.6,
         drill: 0.3,
+        span: None,
     };
     let pieces = [
         Piece {
@@ -472,6 +473,7 @@ fn more_new_copper_than_the_track_pushes_too_a_via_on_its_own_and_a_track_on_the
         at: at(c, -0.3, 0.0),
         diameter: 0.6,
         drill: 0.3,
+        span: None,
     };
     let pieces = [bar(1, "GND", at(c, 0.0, -1.5), at(c, 0.0, 1.5))];
     // A via placed alone, no track: the bar is pushed out of its way.

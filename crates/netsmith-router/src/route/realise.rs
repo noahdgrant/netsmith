@@ -94,6 +94,7 @@ impl<'a> Router<'a> {
                     at: self.grid.centre(path[k].0, path[k].1),
                     diameter: rules.via_diameter,
                     drill: rules.via_drill,
+                    span: None,
                 });
                 // The others of its cluster, where the masks left room (issue #431).
                 for at in self
@@ -105,6 +106,7 @@ impl<'a> Router<'a> {
                         at,
                         diameter: rules.via_diameter,
                         drill: rules.via_drill,
+                        span: None,
                     });
                 }
             }
@@ -118,6 +120,7 @@ impl<'a> Router<'a> {
                 at: self.grid.centre(last.0, last.1),
                 diameter: rules.via_diameter,
                 drill: rules.via_drill,
+                span: None,
             });
         } else {
             pads.push((l.to_at, last));
@@ -129,6 +132,7 @@ impl<'a> Router<'a> {
                 at: pad.at,
                 diameter: rules.via_diameter,
                 drill: rules.via_drill,
+                span: None,
             });
         }
         // A pad's centre is rarely on the grid, so join it to the first and last cell.

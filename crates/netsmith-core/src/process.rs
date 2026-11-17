@@ -110,6 +110,44 @@ pub struct Process {
     /// the process's own word, as the board chose it or the process's default (issue #842).
     pub finish: String,
     pub stackup: Stackup,
+    /// What an HDI process makes besides through vias (issue #1015): `None` for every other
+    /// process, and then not written to the design file.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hdi: Option<Hdi>,
+}
+
+/// The blind and buried vias of an HDI process (issue #1015), as its `.hdi_order`,
+/// `.buried_vias` and laser fields resolved them. Lengths are in mm.
+///
+/// A board of `n` layers and order `k` has `k` build-up layers on each face: laser-drilled blind
+/// vias join each pair of neighbouring layers among the top `k + 1` (`L1`-`L2` ... `Lk`-`Lk+1`)
+/// and the bottom `k + 1`, each through one dielectric layer; with buried vias, a mechanically
+/// drilled via joins the two outer layers of the core, `Lk+1`-`Ln-k`. A through via joins every
+/// layer, as on any process.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct Hdi {
+    /// The build-up layers on each face: 1, 2 or 3 (the fabricator's "1st-order" to "3rd-order").
+    pub order: u32,
+    /// Whether the board has buried vias through its core.
+    pub buried: bool,
+    /// The blind via the router draws: its laser-drilled hole and its copper.
+    pub laser_drill: f64,
+    pub laser_via_diameter: f64,
+    /// The smallest and the largest laser-drilled hole.
+    pub min_laser_drill: f64,
+    pub max_laser_drill: f64,
+    /// The least copper round the hole of a blind or a buried via.
+    pub min_ring: f64,
+    /// The most a blind via's dielectric may be thick for its hole's diameter (1 for 1:1), and
+    /// a mechanically drilled hole's depth for its diameter (16 for 16:1).
+    pub max_laser_aspect: f64,
+    pub max_drill_aspect: f64,
+    /// The thinnest and the thickest dielectric layer a blind via is drilled through.
+    pub min_laser_dielectric: f64,
+    pub max_laser_dielectric: f64,
+    /// The thinnest core a buried via is drilled through, and its largest hole.
+    pub min_buried_core: f64,
+    pub max_buried_drill: f64,
 }
 
 /// The fabricators std names that do not exist: `std::mfg::acme`'s ACME (ADR 0112). A board on

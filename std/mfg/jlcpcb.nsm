@@ -110,6 +110,49 @@
 //!   fiducials are held to the same rules as a board's (the fiducial rules above); where `fab`
 //!   puts them, 3.85 mm from the edge, is `VCutPanel`'s figure of the help article on panelization.
 //!
+//! The HDI processes (`HdiFourLayer`, `HdiSixLayer`, `HdiEightLayer`, issue #1015), from
+//! JLCPCB's two HDI pages, read with WebFetch on 2026-11-16 (a summary of the page by a tool,
+//! each figure asked for by name and quoted below):
+//!
+//! - https://jlcpcb.com/help/article/hdi-pcb-capabilities-faq (last updated 2026-11-09):
+//!   "currently supports 4-24 layer blind/buried-via boards (1st-, 2nd-, and 3rd-order HDI)";
+//!   "1st-order means one lamination cycle and one laser drilling operation; 2nd-order means
+//!   two"; a blind via "is formed by laser drilling", a buried via "connects only traces between
+//!   inner layers"; blind via diameter "0.075-0.15 mm", "the default laser-drilled hole diameter
+//!   is 0.1 mm", "the corresponding pad diameter should be at least 0.15 mm larger than the
+//!   blind-via diameter"; buried via diameter "0.15-0.55 mm" (mechanical drilling, the pad at
+//!   least 0.15 mm larger); through-hole "≥ 0.15 mm", the pad at least 0.10 mm larger; "the
+//!   aspect ratio for mechanical buried vias and through vias must be <= 16:1"; "the blind-via
+//!   thickness-to-diameter ratio must be <= 1:1"; "the annular ring for blind and buried vias
+//!   should be at least 0.075 mm"; hole spacing "≥ 0.13 mm" on the same net and "≥ 0.24 mm" on
+//!   different nets; hole to board edge "≥ 0.35 mm"; hole to trace "≥ 0.15 mm"; "3 mil / 3 mil"
+//!   least trace width and spacing ("the limit can reach 2.7 / 2.7 mil", at more cost); blind-via
+//!   dielectric thickness "0.05-0.127 mm"; buried-via core thickness "≥ 0.30 mm"; "blind vias
+//!   are filled and planarized by electroplating, while buried vias are resin plugged and capped
+//!   with plating"; a skip via "is split into stacked blind and buried vias"; finished board
+//!   thickness "0.5-2.4 mm" ("0.5 mm is limited to 4-layer boards"; "we can process HDI boards up
+//!   to 2.4 mm thick").
+//! - https://jlcpcb.com/pcb-fabrication/hdi-pcb (no date on the page): "supports 4-24 layer
+//!   boards, up to 3rd-order HDI structures"; the same laser and buried-via diameters and aspect
+//!   ratios; "supports structures with or without mechanically drilled buried vias";
+//!   "cross-layer laser-via structures, such as L1-L3 or L6-L4, are supported as skip-via
+//!   designs; they are manufactured as stacked blind/buried-via structures"; "staggered
+//!   microvias are generally preferred because they are easier to manufacture"; prepregs
+//!   "1078/1080 RC69, 86 μm", "106 × 2 RC72, 50 μm × 2", "2313 RC58, 103 μm", "2116 RC57, 150 μm",
+//!   "final PP selection is stack-up dependent and requires DFM confirmation"; board thickness
+//!   "0.5-3.0 mm".
+//!
+//! Where the pages differ, the stricter number is stated: the thickness is at most 2.4 mm. Not
+//! stated, and why: the HDI pages' build-ups. The FAQ names one by example ("JLCH081611Y2-1078A")
+//! and draws its naming rule and the cross-sections as images, which give no table to read, and
+//! the service behind https://jlcpcb.com/impedance (read 2026-11-16, as
+//! `std::mfg::jlcpcb_buildups` reads it) returns the standard build-ups only, for 8 layers too
+//! (`JLC08161H-2116` and the like), and no HDI one. So an HDI board states its own build-up. Not
+//! stated either: the same-net blind via spacing of 0.13 mm (one space between vias holds for
+//! every net, the 0.24 mm), the 0.15 mm hole to trace (the multilayer rows' 0.2 mm via hole to
+//! track is stated and holds), the 2.7 mil extreme track and the 0.10 mm extreme buried hole
+//! (each at extra cost, as the 0.10 mm drill of the standard rows).
+//!
 //! Where the page lists more than one number, the one stated here is the one that holds
 //! everywhere on the board: the pad to pad hole spacing, the mask bridge for any colour.
 //! A limit is a lower bound, so it is written `lo..`, a range with an open end: no upper
@@ -1140,6 +1183,826 @@ interface JlcSixLayerE06201H3313 provides SixLayer {
     .stackup.dielectric5.glass &= "3313"
     .stackup.dielectric5.thickness &= 0.0994mm
     .stackup.dielectric5.epsilon &= 4.1
+}
+
+/// JLCPCB's four-layer HDI board (issue #1015): the standard four-layer rules with the HDI
+/// pages' own, and blind and buried vias. `.process.hdi_order` is how many build-up layers each
+/// face has (one, on four layers: a laser-drilled blind via joins `top` and `inner1`, another
+/// `inner2` and `bottom`), and `.process.buried_vias &= "core"` adds a mechanically drilled
+/// buried via from `inner1` to `inner2`. A through via joins every layer, as on `FourLayer`.
+///
+/// The HDI pages publish no build-up table (see the header of this file), so the board states
+/// its own: `.process.stackup.thickness`, `.copper_weight`, `.build` (a name of the board's
+/// own, for the order), `.inner_copper` and each `.dielectricN`, which the aspect ratios are
+/// checked against. The pages say "final PP selection is stack-up dependent and requires DFM
+/// confirmation", so the build-up is the board's to confirm with JLCPCB before an order.
+///
+/// The rules the HDI pages give are theirs: the 3 mil track, blind vias of 0.075 to 0.15 mm
+/// (0.1 mm by default) with a pad 0.15 mm wider, blind via to via 0.24 mm on different nets
+/// (`.min_via_hole_to_hole`, held for every via), a hole 0.35 mm from the board edge
+/// (`.min_edge_clearance`, held for all copper), the aspect ratios, the dielectric of a blind
+/// via and the core of a buried one. The rest are `FourLayer`'s, from the capabilities page's
+/// multilayer rows, which the HDI pages do not restate; that they hold for an HDI board is this
+/// file's reading.
+interface HdiFourLayer {
+    /// Who makes it, and where the numbers are published.
+    .fabricator: String
+    .source:     String
+    .fabricator &= "JLCPCB"
+    .source     &= "https://jlcpcb.com/help/article/hdi-pcb-capabilities-faq"
+
+    /// The narrowest track: "3 mil / 3 mil" is the HDI pages' "min. trace width / spacing",
+    /// 0.0762 mm. The space stays the multilayer rows' 0.1 mm pad to track clearance.
+    .min_track: Length
+    .min_track &= 0.0762mm..
+    /// The least space between copper of different nets.
+    .min_clearance: Length
+    .min_clearance &= 0.1mm..
+    /// The smallest drilled hole, which is a via's drill.
+    .min_drill: Length
+    .min_drill &= 0.15mm..
+    /// The smallest copper disc of a via.
+    .min_via_diameter: Length
+    .min_via_diameter &= 0.25mm..
+    /// The least copper left round a plated pad's hole ("PTH annular ring"). A via's is
+    /// `.min_via_ring`.
+    .min_annular_ring: Length
+    .min_annular_ring &= 0.15mm..
+    /// The least space between the edges of two holes when one is a pad's ("pad hole-to-hole
+    /// spacing"), and between two vias' holes ("via hole-to-hole spacing").
+    .min_hole_to_hole: Length
+    .min_hole_to_hole &= 0.45mm..
+    .min_via_hole_to_hole: Length
+    .min_via_hole_to_hole &= 0.24mm..
+    /// The least space between copper and a routed board edge.
+    .min_edge_clearance: Length
+    .min_edge_clearance &= 0.35mm..
+    /// The least space between a plane and the hole of a via or a through-hole pad that is
+    /// not on its net.
+    .min_plane_hole_clearance: Length
+    .min_plane_hole_clearance &= 0.3mm..
+    /// The thinnest silkscreen stroke.
+    .min_silk_width: Length
+    .min_silk_width &= 0.15mm..
+    /// The smallest silkscreen text.
+    .min_text_height: Length
+    .min_text_height &= 1mm..
+    /// The least space between silkscreen and a pad.
+    .min_silk_to_pad: Length
+    .min_silk_to_pad &= 0.15mm..
+    /// The least solder mask left between two pads.
+    .min_mask_bridge: Length
+    .min_mask_bridge &= 0.13mm..
+    /// What the process asks of fiducials and test points (issue #761), each from the page
+    /// named in the header of this file. A limit stops `fab` and a guideline warns, by the
+    /// wording of the page: the fewest fiducials on each side that has assembled parts
+    /// ("a minimum of two, but three fiducial marks are strongly recommended") is a count and a
+    /// guideline; the diameter of the copper ("approximately 1.0 mm") and how many times it the
+    /// mask opening is at least ("at least twice the diameter of the fiducial pad") are
+    /// guidelines; the space from a fiducial's copper to the board edge ("must maintain a
+    /// minimum clearance of 3.35 mm") is a limit. The test point rules are the "absolute
+    /// minimum" column of the DFT blog's tables, advice for a probe fixture and so guidelines:
+    /// the pad 0.8 mm (a signal net), the pitch 1.27 mm, the space to a component body 0.5 mm
+    /// and to the board edge 3.2 mm; and the two rows that depend on the board: the pad of a
+    /// test point on a power or ground net, 1.0 mm, and the space to the body of a part above
+    /// 6.4 mm tall, 2.0 mm (`tall_part_height` is the 6.4 mm, an offer of the process like the
+    /// fiducial's diameter). Two more guidelines from the fiducial blog (issue #1006): the angle
+    /// between neighbouring fiducials about the centre of a round board (`fiducial_round_angle`,
+    /// degrees: "approximately 90 degrees apart", in an L of three), and the pitch at or under
+    /// which a part is ultra-fine-pitch to the finish advice (`fine_pitch`, "0.4mm pitch BGAs":
+    /// ENIG or OSP is ideal for it, the uneven surface HASL leaves is harder for the vision system).
+    .min_fiducials: Number
+    .min_fiducials &= 2..
+    .fiducial_diameter: Length
+    .fiducial_diameter ?= 1mm
+    .fiducial_mask_ratio: Number
+    .fiducial_mask_ratio &= 2..
+    .min_fiducial_edge: Length
+    .min_fiducial_edge &= 3.35mm..
+    .min_test_point_pad: Length
+    .min_test_point_pad &= 0.8mm..
+    .min_test_point_pitch: Length
+    .min_test_point_pitch &= 1.27mm..
+    .min_test_point_body: Length
+    .min_test_point_body &= 0.5mm..
+    .min_test_point_edge: Length
+    .min_test_point_edge &= 3.2mm..
+    .min_power_test_point_pad: Length
+    .min_power_test_point_pad &= 1mm..
+    .tall_part_height: Length
+    .tall_part_height ?= 6.4mm
+    .min_test_point_tall_body: Length
+    .min_test_point_tall_body &= 2mm..
+    .fiducial_round_angle: Number
+    .fiducial_round_angle ?= 90
+    .fine_pitch: Length
+    .fine_pitch ?= 0.4mm
+    /// The least copper round a via's hole: the page's "via diameter should be 0.1 mm (0.15
+    /// mm preferred) larger than via hole size", half of it on each side (issue #431).
+    .min_via_ring: Length
+    .min_via_ring &= 0.05mm..
+    /// The least space from the edge of a via's hole or a non-plated hole to a track of another
+    /// net: the page's "via hole to track" and "NPTH to track", 0.2 mm each.
+    .min_hole_clearance: Length
+    .min_hole_clearance &= 0.2mm..
+    /// The least space from a plated pad's hole to a track of another net: "PTH to track
+    /// 0.28 mm, 0.35 mm is recommended".
+    .min_plated_hole_clearance: Length
+    .min_plated_hole_clearance &= 0.28mm..
+    /// The least space between surface-mount pads of different nets: "SMD pad to pad
+    /// clearance (different nets) 0.15 mm".
+    .min_pad_to_pad: Length
+    .min_pad_to_pad &= 0.15mm..
+    /// The least space between a solder mask opening and a track of another net: "keep at
+    /// least 0.09 mm clearance between soldermask openings and neighboring traces".
+    .min_mask_to_track: Length
+    .min_mask_to_track &= 0.09mm..
+    /// The smallest non-plated hole ("min. non-plated holes 0.50 mm"), the narrowest plated
+    /// slot ("2-layer: 0.5 mm, multi-layer: 0.35 mm") and the narrowest non-plated slot
+    /// ("1.0 mm").
+    .min_npth_drill: Length
+    .min_npth_drill &= 0.5mm..
+    .min_plated_slot: Length
+    .min_plated_slot &= 0.35mm..
+    .min_npth_slot: Length
+    .min_npth_slot &= 1mm..
+    /// The via the router draws, its hole and its copper: an offer the board may replace
+    /// (`.process.via_drill &= 0.3mm`), checked against the rules above. 0.2 mm in a 0.45 mm
+    /// via is the smallest via at the standard price: the page says that "0.1 mm or 0.15 mm
+    /// hole size with any size via diameter, and 0.2 mm or 0.25 mm hole size with via diameter
+    /// less than 0.45 mm, will cost more", and 0.2 mm is its "preferred min. via hole size";
+    /// the copper is 0.25 mm wider than the hole, more than the 0.15 mm the page prefers.
+    .via_drill: Length
+    .via_drill ?= 0.2mm
+    .via_diameter: Length
+    .via_diameter ?= 0.45mm
+    /// The largest via JLCPCB fills with epoxy and caps with copper, which a via may be to
+    /// stand in a pad: 0.55 mm, the top of its range for filled and capped vias. This is an
+    /// upper bound, unlike the `min_` fields, and the router may use a via in a pad up to
+    /// it; the board narrows it to `0mm` where it does not want the extra process step
+    /// (`.process.via_in_pad &= 0mm`). A via in a pad that is not filled and capped
+    /// draws solder away from the joint, so a board that has one needs the fabricator to
+    /// fill and cap it, and `fab` says so in `fab-notes.txt` (the Gerbers do not say it, and
+    /// the note says how many vias and in which pads). The number is from JLCPCB's
+    /// capabilities page ("epoxy filled and capped" vias of 0.15 mm to 0.55 mm; "vias can be
+    /// placed within BGA pads using filled and plated-over vias"). The page calls the range
+    /// "via diameters", and the router uses a via in a pad only if the copper of its via is no
+    /// wider than the number. A soldermask-plugged via is not one: it needs no mask opening, so
+    /// it cannot stand in a pad (ADR 0031). The page says that this process "is the default for
+    /// 6-layer and above multilayer boards".
+    .via_in_pad: Length
+    .via_in_pad &= 0mm..0.55mm
+
+    /// How far above the board's temperature a loaded track may heat: the rise the
+    /// IPC-2221 track width check (ADR 0036) designs to. Not a number JLCPCB publishes, so
+    /// the process leaves it unstated; a board that states none is checked at 10 K, a
+    /// conservative default of this tool's and not a sourced figure, and the finding says
+    /// so.
+    /// It is an upper bound, like `via_in_pad`: `.process.max_temperature_rise &= 20K`
+    /// allows 20 K.
+    .max_temperature_rise: Temperature
+    /// The least angle, in degrees, between a track's centre line and the tangent of a round
+    /// copper edge at the point where the track leaves it, for netsmith's `acid_trap` rule: a
+    /// track that leaves a round pad, a via, an oval's end, a rounded corner or a custom pad's
+    /// circle or arc at less than this traps etchant in the wedge beside it (a warning). A
+    /// track that leaves along the radius is at 90. There is no JLCPCB figure, as for the
+    /// straight edges (which are judged against any acute angle): the process leaves it
+    /// unstated, and a board that wants round copper judged states one
+    /// (`.process.min_round_track_angle &= 60`). It is a lower bound: `&= 60..` allows 60
+    /// and over. Unstated, round copper is not judged.
+    .min_round_track_angle: Number
+    /// How much narrower than drawn a finished track may be, as a fraction: the page's "track
+    /// width tolerance ±20%: for a 0.1 mm track, the finished track width ranges from 0.08 and
+    /// 0.12 mm". The track width check sizes a net for the current at the narrowest track the
+    /// tolerance allows (issue #431).
+    .track_width_tolerance: Number
+    .track_width_tolerance &= 0.2
+    /// The copper plated on the wall of a hole: the page's "average hole plating thickness
+    /// 18 μm". The track width check rates a via for current by it (issue #431).
+    .hole_plating: Length
+    .hole_plating &= 0.018mm
+
+    /// The surface finish the board is made with: the page's "Surface Finish" lists "HASL
+    /// (leaded / lead-free), ENIG, OSP" (fetched 2026-11-16) and names no exclusion for four
+    /// layers. The default is lead-free HASL, as for `TwoLayer`, and not a figure of the page. A board chooses another of
+    /// `.finishes` with `.process.finish &= "ENIG"`; `fab` writes it to the board file and
+    /// the order summary, and the board house's order form has to match it (issue #842).
+    .finish: String
+    .finish ?= "HASL lead-free"
+    /// The finishes the process offers, separated by commas. The board's `.finish` is one of
+    /// them.
+    .finishes: String
+    .finishes &= "HASL leaded, HASL lead-free, ENIG, OSP"
+
+    /// The board states its build-up: the HDI pages give no table of one (see the header of
+    /// this file). The thickness is at most 2.4 mm ("we can process HDI boards up to 2.4 mm
+    /// thick"), and at least 0.5 mm ("0.5 mm is limited to 4-layer boards").
+    .stackup: Stackup
+    .stackup.layers        &= 4
+    .stackup.thickness     &= 0.5mm..2.4mm
+
+    /// The 2 inner layers, counted from the top: planes, or signal layers. The board says
+    /// what each is and names the net of a plane.
+    .inner1: InnerLayer
+    .inner2: InnerLayer
+
+    /// The blind and buried vias (issue #1015), each from the HDI pages named in the header of
+    /// this file. `.hdi_order` is how many build-up layers each face has, the board's choice of
+    /// the pages' "1st-, 2nd-, and 3rd-order HDI" ("1st-order means one lamination cycle and one
+    /// laser drilling operation"): the router joins each pair of neighbouring layers among the
+    /// top `.hdi_order + 1` and the bottom `.hdi_order + 1` with a laser-drilled blind via
+    /// through one dielectric layer, which the board's build-up states. `.buried_vias` is
+    /// `"none"`, the default, or `"core"`: a mechanically drilled via through the core, between
+    /// the inner layers that the build-up layers end on (the pages: "supports structures with or
+    /// without mechanically drilled buried vias"). A skip via ("L1-L3") is not drawn: the pages
+    /// say it is "manufactured as stacked blind/buried-via structures", and the router joins
+    /// the same layers with blind vias side by side ("staggered microvias are generally
+    /// preferred because they are easier to manufacture").
+    .hdi_order: Number
+    .hdi_order &= 1..3
+    .buried_vias: String
+    .buried_vias ?= "none"
+    /// The blind via the router draws: "the default laser-drilled hole diameter is 0.1 mm", and
+    /// its copper 0.15 mm wider ("the pad diameter must be at least 0.15 mm larger than the
+    /// hole diameter"). An offer the board may replace (`.process.laser_drill &= 0.125mm`).
+    .laser_drill: Length
+    .laser_drill ?= 0.1mm
+    .laser_via_diameter: Length
+    .laser_via_diameter ?= 0.25mm
+    /// The laser-drilled holes the process makes: "laser-drilled holes from 0.075 mm to 0.15 mm
+    /// can be processed" (`.max_laser_drill` is an upper bound, read at the top).
+    .min_laser_drill: Length
+    .min_laser_drill &= 0.075mm..
+    .max_laser_drill: Length
+    .max_laser_drill &= 0mm..0.15mm
+    /// The least copper round the hole of a blind or a buried via: "the annular ring for blind
+    /// and buried vias should be at least 0.075 mm".
+    .min_hdi_via_ring: Length
+    .min_hdi_via_ring &= 0.075mm..
+    /// The aspect ratios, upper bounds: "the blind-via thickness-to-diameter ratio must be <=
+    /// 1:1" (the dielectric a blind via is drilled through, over its hole), and "the aspect
+    /// ratio for mechanical buried vias and through vias must be <= 16:1" (the dielectric a
+    /// drilled via passes, over its hole).
+    .max_laser_aspect: Number
+    .max_laser_aspect &= 0..1
+    .max_drill_aspect: Number
+    .max_drill_aspect &= 0..16
+    /// The dielectric layer a blind via is drilled through, "blind-via dielectric thickness
+    /// 0.05-0.127 mm" (`.max_laser_dielectric` is an upper bound); the core a buried via is
+    /// drilled through, "buried-via core thickness >= 0.30 mm"; and a buried via's largest hole,
+    /// "buried via diameter 0.15-0.55 mm" (the least is `.min_drill`).
+    .min_laser_dielectric: Length
+    .min_laser_dielectric &= 0.05mm..
+    .max_laser_dielectric: Length
+    .max_laser_dielectric &= 0mm..0.127mm
+    .min_buried_core: Length
+    .min_buried_core &= 0.3mm..
+    .max_buried_drill: Length
+    .max_buried_drill &= 0mm..0.55mm
+
+    /// The pours on the outer layers, which the board names the nets of.
+    .top: Pour
+    .bottom: Pour
+}
+
+/// JLCPCB's six-layer HDI board (issue #1015), as `HdiFourLayer` with four inner layers:
+/// `.hdi_order` 1 or 2 (blind vias among the top and the bottom `.hdi_order + 1` layers) and,
+/// with `.buried_vias &= "core"`, a buried via between the layers the build-up ends on
+/// (`inner1` to `inner4` at order 1, `inner2` to `inner3` at order 2). The board states its
+/// build-up. The rules that are not the HDI pages' are `SixLayer`'s; as there, HASL is not
+/// offered ("FR-4/HDI boards with 6 or more layers ... do not support HASL").
+interface HdiSixLayer {
+    /// Who makes it, and where the numbers are published.
+    .fabricator: String
+    .source:     String
+    .fabricator &= "JLCPCB"
+    .source     &= "https://jlcpcb.com/help/article/hdi-pcb-capabilities-faq"
+
+    /// The narrowest track: "3 mil / 3 mil" is the HDI pages' "min. trace width / spacing",
+    /// 0.0762 mm. The space stays the multilayer rows' 0.1 mm pad to track clearance.
+    .min_track: Length
+    .min_track &= 0.0762mm..
+    /// The least space between copper of different nets.
+    .min_clearance: Length
+    .min_clearance &= 0.1mm..
+    /// The smallest drilled hole, which is a via's drill.
+    .min_drill: Length
+    .min_drill &= 0.15mm..
+    /// The smallest copper disc of a via.
+    .min_via_diameter: Length
+    .min_via_diameter &= 0.25mm..
+    /// The least copper left round a plated pad's hole ("PTH annular ring"). A via's is
+    /// `.min_via_ring`.
+    .min_annular_ring: Length
+    .min_annular_ring &= 0.15mm..
+    /// The least space between the edges of two holes when one is a pad's ("pad hole-to-hole
+    /// spacing"), and between two vias' holes ("via hole-to-hole spacing").
+    .min_hole_to_hole: Length
+    .min_hole_to_hole &= 0.45mm..
+    .min_via_hole_to_hole: Length
+    .min_via_hole_to_hole &= 0.24mm..
+    /// The least space between copper and a routed board edge.
+    .min_edge_clearance: Length
+    .min_edge_clearance &= 0.35mm..
+    /// The least space between a plane and the hole of a via or a through-hole pad that is
+    /// not on its net.
+    .min_plane_hole_clearance: Length
+    .min_plane_hole_clearance &= 0.3mm..
+    /// The thinnest silkscreen stroke.
+    .min_silk_width: Length
+    .min_silk_width &= 0.15mm..
+    /// The smallest silkscreen text.
+    .min_text_height: Length
+    .min_text_height &= 1mm..
+    /// The least space between silkscreen and a pad.
+    .min_silk_to_pad: Length
+    .min_silk_to_pad &= 0.15mm..
+    /// The least solder mask left between two pads.
+    .min_mask_bridge: Length
+    .min_mask_bridge &= 0.13mm..
+    /// What the process asks of fiducials and test points (issue #761), each from the page
+    /// named in the header of this file. A limit stops `fab` and a guideline warns, by the
+    /// wording of the page: the fewest fiducials on each side that has assembled parts
+    /// ("a minimum of two, but three fiducial marks are strongly recommended") is a count and a
+    /// guideline; the diameter of the copper ("approximately 1.0 mm") and how many times it the
+    /// mask opening is at least ("at least twice the diameter of the fiducial pad") are
+    /// guidelines; the space from a fiducial's copper to the board edge ("must maintain a
+    /// minimum clearance of 3.35 mm") is a limit. The test point rules are the "absolute
+    /// minimum" column of the DFT blog's tables, advice for a probe fixture and so guidelines:
+    /// the pad 0.8 mm (a signal net), the pitch 1.27 mm, the space to a component body 0.5 mm
+    /// and to the board edge 3.2 mm; and the two rows that depend on the board: the pad of a
+    /// test point on a power or ground net, 1.0 mm, and the space to the body of a part above
+    /// 6.4 mm tall, 2.0 mm (`tall_part_height` is the 6.4 mm, an offer of the process like the
+    /// fiducial's diameter). Two more guidelines from the fiducial blog (issue #1006): the angle
+    /// between neighbouring fiducials about the centre of a round board (`fiducial_round_angle`,
+    /// degrees: "approximately 90 degrees apart", in an L of three), and the pitch at or under
+    /// which a part is ultra-fine-pitch to the finish advice (`fine_pitch`, "0.4mm pitch BGAs":
+    /// ENIG or OSP is ideal for it, the uneven surface HASL leaves is harder for the vision system).
+    .min_fiducials: Number
+    .min_fiducials &= 2..
+    .fiducial_diameter: Length
+    .fiducial_diameter ?= 1mm
+    .fiducial_mask_ratio: Number
+    .fiducial_mask_ratio &= 2..
+    .min_fiducial_edge: Length
+    .min_fiducial_edge &= 3.35mm..
+    .min_test_point_pad: Length
+    .min_test_point_pad &= 0.8mm..
+    .min_test_point_pitch: Length
+    .min_test_point_pitch &= 1.27mm..
+    .min_test_point_body: Length
+    .min_test_point_body &= 0.5mm..
+    .min_test_point_edge: Length
+    .min_test_point_edge &= 3.2mm..
+    .min_power_test_point_pad: Length
+    .min_power_test_point_pad &= 1mm..
+    .tall_part_height: Length
+    .tall_part_height ?= 6.4mm
+    .min_test_point_tall_body: Length
+    .min_test_point_tall_body &= 2mm..
+    .fiducial_round_angle: Number
+    .fiducial_round_angle ?= 90
+    .fine_pitch: Length
+    .fine_pitch ?= 0.4mm
+    /// The least copper round a via's hole: the page's "via diameter should be 0.1 mm (0.15
+    /// mm preferred) larger than via hole size", half of it on each side (issue #431).
+    .min_via_ring: Length
+    .min_via_ring &= 0.05mm..
+    /// The least space from the edge of a via's hole or a non-plated hole to a track of another
+    /// net: the page's "via hole to track" and "NPTH to track", 0.2 mm each.
+    .min_hole_clearance: Length
+    .min_hole_clearance &= 0.2mm..
+    /// The least space from a plated pad's hole to a track of another net: "PTH to track
+    /// 0.28 mm, 0.35 mm is recommended".
+    .min_plated_hole_clearance: Length
+    .min_plated_hole_clearance &= 0.28mm..
+    /// The least space between surface-mount pads of different nets: "SMD pad to pad
+    /// clearance (different nets) 0.15 mm".
+    .min_pad_to_pad: Length
+    .min_pad_to_pad &= 0.15mm..
+    /// The least space between a solder mask opening and a track of another net: "keep at
+    /// least 0.09 mm clearance between soldermask openings and neighboring traces".
+    .min_mask_to_track: Length
+    .min_mask_to_track &= 0.09mm..
+    /// The smallest non-plated hole ("min. non-plated holes 0.50 mm"), the narrowest plated
+    /// slot ("2-layer: 0.5 mm, multi-layer: 0.35 mm") and the narrowest non-plated slot
+    /// ("1.0 mm").
+    .min_npth_drill: Length
+    .min_npth_drill &= 0.5mm..
+    .min_plated_slot: Length
+    .min_plated_slot &= 0.35mm..
+    .min_npth_slot: Length
+    .min_npth_slot &= 1mm..
+    /// The via the router draws, its hole and its copper: an offer the board may replace
+    /// (`.process.via_drill &= 0.3mm`), checked against the rules above. 0.2 mm in a 0.45 mm
+    /// via is the smallest via at the standard price: the page says that "0.1 mm or 0.15 mm
+    /// hole size with any size via diameter, and 0.2 mm or 0.25 mm hole size with via diameter
+    /// less than 0.45 mm, will cost more", and 0.2 mm is its "preferred min. via hole size";
+    /// the copper is 0.25 mm wider than the hole, more than the 0.15 mm the page prefers.
+    .via_drill: Length
+    .via_drill ?= 0.2mm
+    .via_diameter: Length
+    .via_diameter ?= 0.45mm
+    /// The largest via JLCPCB fills with epoxy and caps with copper, which a via may be to
+    /// stand in a pad: 0.55 mm, the top of its range for filled and capped vias. This is an
+    /// upper bound, unlike the `min_` fields, and the router may use a via in a pad up to
+    /// it; the board narrows it to `0mm` where it does not want the extra process step
+    /// (`.process.via_in_pad &= 0mm`). A via in a pad that is not filled and capped
+    /// draws solder away from the joint, so a board that has one needs the fabricator to
+    /// fill and cap it, and `fab` says so in `fab-notes.txt` (the Gerbers do not say it, and
+    /// the note says how many vias and in which pads). The number is from JLCPCB's
+    /// capabilities page ("epoxy filled and capped" vias of 0.15 mm to 0.55 mm; "vias can be
+    /// placed within BGA pads using filled and plated-over vias"). The page calls the range
+    /// "via diameters", and the router uses a via in a pad only if the copper of its via is no
+    /// wider than the number. A soldermask-plugged via is not one: it needs no mask opening, so
+    /// it cannot stand in a pad (ADR 0031). The page says that this process "is the default for
+    /// 6-layer and above multilayer boards".
+    .via_in_pad: Length
+    .via_in_pad &= 0mm..0.55mm
+
+    /// How far above the board's temperature a loaded track may heat: the rise the
+    /// IPC-2221 track width check (ADR 0036) designs to. Not a number JLCPCB publishes, so
+    /// the process leaves it unstated; a board that states none is checked at 10 K, a
+    /// conservative default of this tool's and not a sourced figure, and the finding says
+    /// so.
+    /// It is an upper bound, like `via_in_pad`: `.process.max_temperature_rise &= 20K`
+    /// allows 20 K.
+    .max_temperature_rise: Temperature
+    /// The least angle, in degrees, between a track's centre line and the tangent of a round
+    /// copper edge at the point where the track leaves it, for netsmith's `acid_trap` rule: a
+    /// track that leaves a round pad, a via, an oval's end, a rounded corner or a custom pad's
+    /// circle or arc at less than this traps etchant in the wedge beside it (a warning). A
+    /// track that leaves along the radius is at 90. There is no JLCPCB figure, as for the
+    /// straight edges (which are judged against any acute angle): the process leaves it
+    /// unstated, and a board that wants round copper judged states one
+    /// (`.process.min_round_track_angle &= 60`). It is a lower bound: `&= 60..` allows 60
+    /// and over. Unstated, round copper is not judged.
+    .min_round_track_angle: Number
+    /// How much narrower than drawn a finished track may be, as a fraction: the page's "track
+    /// width tolerance ±20%: for a 0.1 mm track, the finished track width ranges from 0.08 and
+    /// 0.12 mm". The track width check sizes a net for the current at the narrowest track the
+    /// tolerance allows (issue #431).
+    .track_width_tolerance: Number
+    .track_width_tolerance &= 0.2
+    /// The copper plated on the wall of a hole: the page's "average hole plating thickness
+    /// 18 μm". The track width check rates a via for current by it (issue #431).
+    .hole_plating: Length
+    .hole_plating &= 0.018mm
+
+    /// The surface finish the board is made with: the page's "Surface Finish" lists "HASL
+    /// (leaded / lead-free), ENIG, OSP" and says that FR-4 boards of six or more layers do not
+    /// support HASL (fetched 2026-11-16), so the offer is ENIG and OSP, the default ENIG (not
+    /// a figure of the page). A board chooses another of
+    /// `.finishes` with `.process.finish &= "ENIG"`; `fab` writes it to the board file and
+    /// the order summary, and the board house's order form has to match it (issue #842).
+    .finish: String
+    .finish ?= "ENIG"
+    /// The finishes the process offers, separated by commas. The board's `.finish` is one of
+    /// them.
+    .finishes: String
+    .finishes &= "ENIG, OSP"
+
+    /// The board states its build-up: the HDI pages give no table of one (see the header of
+    /// this file). The thickness is at most 2.4 mm ("we can process HDI boards up to 2.4 mm
+    /// thick"); the pages give a least thickness only for four layers.
+    .stackup: Stackup
+    .stackup.layers        &= 6
+    .stackup.thickness     &= 0mm..2.4mm
+
+    /// The 4 inner layers, counted from the top: planes, or signal layers. The board says
+    /// what each is and names the net of a plane.
+    .inner1: InnerLayer
+    .inner2: InnerLayer
+    .inner3: InnerLayer
+    .inner4: InnerLayer
+
+    /// The blind and buried vias (issue #1015), each from the HDI pages named in the header of
+    /// this file. `.hdi_order` is how many build-up layers each face has, the board's choice of
+    /// the pages' "1st-, 2nd-, and 3rd-order HDI" ("1st-order means one lamination cycle and one
+    /// laser drilling operation"): the router joins each pair of neighbouring layers among the
+    /// top `.hdi_order + 1` and the bottom `.hdi_order + 1` with a laser-drilled blind via
+    /// through one dielectric layer, which the board's build-up states. `.buried_vias` is
+    /// `"none"`, the default, or `"core"`: a mechanically drilled via through the core, between
+    /// the inner layers that the build-up layers end on (the pages: "supports structures with or
+    /// without mechanically drilled buried vias"). A skip via ("L1-L3") is not drawn: the pages
+    /// say it is "manufactured as stacked blind/buried-via structures", and the router joins
+    /// the same layers with blind vias side by side ("staggered microvias are generally
+    /// preferred because they are easier to manufacture").
+    .hdi_order: Number
+    .hdi_order &= 1..3
+    .buried_vias: String
+    .buried_vias ?= "none"
+    /// The blind via the router draws: "the default laser-drilled hole diameter is 0.1 mm", and
+    /// its copper 0.15 mm wider ("the pad diameter must be at least 0.15 mm larger than the
+    /// hole diameter"). An offer the board may replace (`.process.laser_drill &= 0.125mm`).
+    .laser_drill: Length
+    .laser_drill ?= 0.1mm
+    .laser_via_diameter: Length
+    .laser_via_diameter ?= 0.25mm
+    /// The laser-drilled holes the process makes: "laser-drilled holes from 0.075 mm to 0.15 mm
+    /// can be processed" (`.max_laser_drill` is an upper bound, read at the top).
+    .min_laser_drill: Length
+    .min_laser_drill &= 0.075mm..
+    .max_laser_drill: Length
+    .max_laser_drill &= 0mm..0.15mm
+    /// The least copper round the hole of a blind or a buried via: "the annular ring for blind
+    /// and buried vias should be at least 0.075 mm".
+    .min_hdi_via_ring: Length
+    .min_hdi_via_ring &= 0.075mm..
+    /// The aspect ratios, upper bounds: "the blind-via thickness-to-diameter ratio must be <=
+    /// 1:1" (the dielectric a blind via is drilled through, over its hole), and "the aspect
+    /// ratio for mechanical buried vias and through vias must be <= 16:1" (the dielectric a
+    /// drilled via passes, over its hole).
+    .max_laser_aspect: Number
+    .max_laser_aspect &= 0..1
+    .max_drill_aspect: Number
+    .max_drill_aspect &= 0..16
+    /// The dielectric layer a blind via is drilled through, "blind-via dielectric thickness
+    /// 0.05-0.127 mm" (`.max_laser_dielectric` is an upper bound); the core a buried via is
+    /// drilled through, "buried-via core thickness >= 0.30 mm"; and a buried via's largest hole,
+    /// "buried via diameter 0.15-0.55 mm" (the least is `.min_drill`).
+    .min_laser_dielectric: Length
+    .min_laser_dielectric &= 0.05mm..
+    .max_laser_dielectric: Length
+    .max_laser_dielectric &= 0mm..0.127mm
+    .min_buried_core: Length
+    .min_buried_core &= 0.3mm..
+    .max_buried_drill: Length
+    .max_buried_drill &= 0mm..0.55mm
+
+    /// The pours on the outer layers, which the board names the nets of.
+    .top: Pour
+    .bottom: Pour
+}
+
+/// JLCPCB's eight-layer HDI board (issue #1015), as `HdiSixLayer` with six inner layers and
+/// `.hdi_order` 1, 2 or 3. The board states its build-up. JLCPCB's HDI service makes 4 to 24
+/// layers; std states the HDI processes of 4, 6 and 8, because `Stackup` declares dielectric
+/// layers for up to ten copper layers.
+interface HdiEightLayer {
+    /// Who makes it, and where the numbers are published.
+    .fabricator: String
+    .source:     String
+    .fabricator &= "JLCPCB"
+    .source     &= "https://jlcpcb.com/help/article/hdi-pcb-capabilities-faq"
+
+    /// The narrowest track: "3 mil / 3 mil" is the HDI pages' "min. trace width / spacing",
+    /// 0.0762 mm. The space stays the multilayer rows' 0.1 mm pad to track clearance.
+    .min_track: Length
+    .min_track &= 0.0762mm..
+    /// The least space between copper of different nets.
+    .min_clearance: Length
+    .min_clearance &= 0.1mm..
+    /// The smallest drilled hole, which is a via's drill.
+    .min_drill: Length
+    .min_drill &= 0.15mm..
+    /// The smallest copper disc of a via.
+    .min_via_diameter: Length
+    .min_via_diameter &= 0.25mm..
+    /// The least copper left round a plated pad's hole ("PTH annular ring"). A via's is
+    /// `.min_via_ring`.
+    .min_annular_ring: Length
+    .min_annular_ring &= 0.15mm..
+    /// The least space between the edges of two holes when one is a pad's ("pad hole-to-hole
+    /// spacing"), and between two vias' holes ("via hole-to-hole spacing").
+    .min_hole_to_hole: Length
+    .min_hole_to_hole &= 0.45mm..
+    .min_via_hole_to_hole: Length
+    .min_via_hole_to_hole &= 0.24mm..
+    /// The least space between copper and a routed board edge.
+    .min_edge_clearance: Length
+    .min_edge_clearance &= 0.35mm..
+    /// The least space between a plane and the hole of a via or a through-hole pad that is
+    /// not on its net.
+    .min_plane_hole_clearance: Length
+    .min_plane_hole_clearance &= 0.3mm..
+    /// The thinnest silkscreen stroke.
+    .min_silk_width: Length
+    .min_silk_width &= 0.15mm..
+    /// The smallest silkscreen text.
+    .min_text_height: Length
+    .min_text_height &= 1mm..
+    /// The least space between silkscreen and a pad.
+    .min_silk_to_pad: Length
+    .min_silk_to_pad &= 0.15mm..
+    /// The least solder mask left between two pads.
+    .min_mask_bridge: Length
+    .min_mask_bridge &= 0.13mm..
+    /// What the process asks of fiducials and test points (issue #761), each from the page
+    /// named in the header of this file. A limit stops `fab` and a guideline warns, by the
+    /// wording of the page: the fewest fiducials on each side that has assembled parts
+    /// ("a minimum of two, but three fiducial marks are strongly recommended") is a count and a
+    /// guideline; the diameter of the copper ("approximately 1.0 mm") and how many times it the
+    /// mask opening is at least ("at least twice the diameter of the fiducial pad") are
+    /// guidelines; the space from a fiducial's copper to the board edge ("must maintain a
+    /// minimum clearance of 3.35 mm") is a limit. The test point rules are the "absolute
+    /// minimum" column of the DFT blog's tables, advice for a probe fixture and so guidelines:
+    /// the pad 0.8 mm (a signal net), the pitch 1.27 mm, the space to a component body 0.5 mm
+    /// and to the board edge 3.2 mm; and the two rows that depend on the board: the pad of a
+    /// test point on a power or ground net, 1.0 mm, and the space to the body of a part above
+    /// 6.4 mm tall, 2.0 mm (`tall_part_height` is the 6.4 mm, an offer of the process like the
+    /// fiducial's diameter). Two more guidelines from the fiducial blog (issue #1006): the angle
+    /// between neighbouring fiducials about the centre of a round board (`fiducial_round_angle`,
+    /// degrees: "approximately 90 degrees apart", in an L of three), and the pitch at or under
+    /// which a part is ultra-fine-pitch to the finish advice (`fine_pitch`, "0.4mm pitch BGAs":
+    /// ENIG or OSP is ideal for it, the uneven surface HASL leaves is harder for the vision system).
+    .min_fiducials: Number
+    .min_fiducials &= 2..
+    .fiducial_diameter: Length
+    .fiducial_diameter ?= 1mm
+    .fiducial_mask_ratio: Number
+    .fiducial_mask_ratio &= 2..
+    .min_fiducial_edge: Length
+    .min_fiducial_edge &= 3.35mm..
+    .min_test_point_pad: Length
+    .min_test_point_pad &= 0.8mm..
+    .min_test_point_pitch: Length
+    .min_test_point_pitch &= 1.27mm..
+    .min_test_point_body: Length
+    .min_test_point_body &= 0.5mm..
+    .min_test_point_edge: Length
+    .min_test_point_edge &= 3.2mm..
+    .min_power_test_point_pad: Length
+    .min_power_test_point_pad &= 1mm..
+    .tall_part_height: Length
+    .tall_part_height ?= 6.4mm
+    .min_test_point_tall_body: Length
+    .min_test_point_tall_body &= 2mm..
+    .fiducial_round_angle: Number
+    .fiducial_round_angle ?= 90
+    .fine_pitch: Length
+    .fine_pitch ?= 0.4mm
+    /// The least copper round a via's hole: the page's "via diameter should be 0.1 mm (0.15
+    /// mm preferred) larger than via hole size", half of it on each side (issue #431).
+    .min_via_ring: Length
+    .min_via_ring &= 0.05mm..
+    /// The least space from the edge of a via's hole or a non-plated hole to a track of another
+    /// net: the page's "via hole to track" and "NPTH to track", 0.2 mm each.
+    .min_hole_clearance: Length
+    .min_hole_clearance &= 0.2mm..
+    /// The least space from a plated pad's hole to a track of another net: "PTH to track
+    /// 0.28 mm, 0.35 mm is recommended".
+    .min_plated_hole_clearance: Length
+    .min_plated_hole_clearance &= 0.28mm..
+    /// The least space between surface-mount pads of different nets: "SMD pad to pad
+    /// clearance (different nets) 0.15 mm".
+    .min_pad_to_pad: Length
+    .min_pad_to_pad &= 0.15mm..
+    /// The least space between a solder mask opening and a track of another net: "keep at
+    /// least 0.09 mm clearance between soldermask openings and neighboring traces".
+    .min_mask_to_track: Length
+    .min_mask_to_track &= 0.09mm..
+    /// The smallest non-plated hole ("min. non-plated holes 0.50 mm"), the narrowest plated
+    /// slot ("2-layer: 0.5 mm, multi-layer: 0.35 mm") and the narrowest non-plated slot
+    /// ("1.0 mm").
+    .min_npth_drill: Length
+    .min_npth_drill &= 0.5mm..
+    .min_plated_slot: Length
+    .min_plated_slot &= 0.35mm..
+    .min_npth_slot: Length
+    .min_npth_slot &= 1mm..
+    /// The via the router draws, its hole and its copper: an offer the board may replace
+    /// (`.process.via_drill &= 0.3mm`), checked against the rules above. 0.2 mm in a 0.45 mm
+    /// via is the smallest via at the standard price: the page says that "0.1 mm or 0.15 mm
+    /// hole size with any size via diameter, and 0.2 mm or 0.25 mm hole size with via diameter
+    /// less than 0.45 mm, will cost more", and 0.2 mm is its "preferred min. via hole size";
+    /// the copper is 0.25 mm wider than the hole, more than the 0.15 mm the page prefers.
+    .via_drill: Length
+    .via_drill ?= 0.2mm
+    .via_diameter: Length
+    .via_diameter ?= 0.45mm
+    /// The largest via JLCPCB fills with epoxy and caps with copper, which a via may be to
+    /// stand in a pad: 0.55 mm, the top of its range for filled and capped vias. This is an
+    /// upper bound, unlike the `min_` fields, and the router may use a via in a pad up to
+    /// it; the board narrows it to `0mm` where it does not want the extra process step
+    /// (`.process.via_in_pad &= 0mm`). A via in a pad that is not filled and capped
+    /// draws solder away from the joint, so a board that has one needs the fabricator to
+    /// fill and cap it, and `fab` says so in `fab-notes.txt` (the Gerbers do not say it, and
+    /// the note says how many vias and in which pads). The number is from JLCPCB's
+    /// capabilities page ("epoxy filled and capped" vias of 0.15 mm to 0.55 mm; "vias can be
+    /// placed within BGA pads using filled and plated-over vias"). The page calls the range
+    /// "via diameters", and the router uses a via in a pad only if the copper of its via is no
+    /// wider than the number. A soldermask-plugged via is not one: it needs no mask opening, so
+    /// it cannot stand in a pad (ADR 0031). The page says that this process "is the default for
+    /// 6-layer and above multilayer boards".
+    .via_in_pad: Length
+    .via_in_pad &= 0mm..0.55mm
+
+    /// How far above the board's temperature a loaded track may heat: the rise the
+    /// IPC-2221 track width check (ADR 0036) designs to. Not a number JLCPCB publishes, so
+    /// the process leaves it unstated; a board that states none is checked at 10 K, a
+    /// conservative default of this tool's and not a sourced figure, and the finding says
+    /// so.
+    /// It is an upper bound, like `via_in_pad`: `.process.max_temperature_rise &= 20K`
+    /// allows 20 K.
+    .max_temperature_rise: Temperature
+    /// The least angle, in degrees, between a track's centre line and the tangent of a round
+    /// copper edge at the point where the track leaves it, for netsmith's `acid_trap` rule: a
+    /// track that leaves a round pad, a via, an oval's end, a rounded corner or a custom pad's
+    /// circle or arc at less than this traps etchant in the wedge beside it (a warning). A
+    /// track that leaves along the radius is at 90. There is no JLCPCB figure, as for the
+    /// straight edges (which are judged against any acute angle): the process leaves it
+    /// unstated, and a board that wants round copper judged states one
+    /// (`.process.min_round_track_angle &= 60`). It is a lower bound: `&= 60..` allows 60
+    /// and over. Unstated, round copper is not judged.
+    .min_round_track_angle: Number
+    /// How much narrower than drawn a finished track may be, as a fraction: the page's "track
+    /// width tolerance ±20%: for a 0.1 mm track, the finished track width ranges from 0.08 and
+    /// 0.12 mm". The track width check sizes a net for the current at the narrowest track the
+    /// tolerance allows (issue #431).
+    .track_width_tolerance: Number
+    .track_width_tolerance &= 0.2
+    /// The copper plated on the wall of a hole: the page's "average hole plating thickness
+    /// 18 μm". The track width check rates a via for current by it (issue #431).
+    .hole_plating: Length
+    .hole_plating &= 0.018mm
+
+    /// The surface finish the board is made with: the page's "Surface Finish" lists "HASL
+    /// (leaded / lead-free), ENIG, OSP" and says that FR-4 boards of six or more layers do not
+    /// support HASL (fetched 2026-11-16), so the offer is ENIG and OSP, the default ENIG (not
+    /// a figure of the page). A board chooses another of
+    /// `.finishes` with `.process.finish &= "ENIG"`; `fab` writes it to the board file and
+    /// the order summary, and the board house's order form has to match it (issue #842).
+    .finish: String
+    .finish ?= "ENIG"
+    /// The finishes the process offers, separated by commas. The board's `.finish` is one of
+    /// them.
+    .finishes: String
+    .finishes &= "ENIG, OSP"
+
+    /// The board states its build-up: the HDI pages give no table of one (see the header of
+    /// this file). The thickness is at most 2.4 mm ("we can process HDI boards up to 2.4 mm
+    /// thick"); the pages give a least thickness only for four layers.
+    .stackup: Stackup
+    .stackup.layers        &= 8
+    .stackup.thickness     &= 0mm..2.4mm
+
+    /// The 6 inner layers, counted from the top: planes, or signal layers. The board says
+    /// what each is and names the net of a plane.
+    .inner1: InnerLayer
+    .inner2: InnerLayer
+    .inner3: InnerLayer
+    .inner4: InnerLayer
+    .inner5: InnerLayer
+    .inner6: InnerLayer
+
+    /// The blind and buried vias (issue #1015), each from the HDI pages named in the header of
+    /// this file. `.hdi_order` is how many build-up layers each face has, the board's choice of
+    /// the pages' "1st-, 2nd-, and 3rd-order HDI" ("1st-order means one lamination cycle and one
+    /// laser drilling operation"): the router joins each pair of neighbouring layers among the
+    /// top `.hdi_order + 1` and the bottom `.hdi_order + 1` with a laser-drilled blind via
+    /// through one dielectric layer, which the board's build-up states. `.buried_vias` is
+    /// `"none"`, the default, or `"core"`: a mechanically drilled via through the core, between
+    /// the inner layers that the build-up layers end on (the pages: "supports structures with or
+    /// without mechanically drilled buried vias"). A skip via ("L1-L3") is not drawn: the pages
+    /// say it is "manufactured as stacked blind/buried-via structures", and the router joins
+    /// the same layers with blind vias side by side ("staggered microvias are generally
+    /// preferred because they are easier to manufacture").
+    .hdi_order: Number
+    .hdi_order &= 1..3
+    .buried_vias: String
+    .buried_vias ?= "none"
+    /// The blind via the router draws: "the default laser-drilled hole diameter is 0.1 mm", and
+    /// its copper 0.15 mm wider ("the pad diameter must be at least 0.15 mm larger than the
+    /// hole diameter"). An offer the board may replace (`.process.laser_drill &= 0.125mm`).
+    .laser_drill: Length
+    .laser_drill ?= 0.1mm
+    .laser_via_diameter: Length
+    .laser_via_diameter ?= 0.25mm
+    /// The laser-drilled holes the process makes: "laser-drilled holes from 0.075 mm to 0.15 mm
+    /// can be processed" (`.max_laser_drill` is an upper bound, read at the top).
+    .min_laser_drill: Length
+    .min_laser_drill &= 0.075mm..
+    .max_laser_drill: Length
+    .max_laser_drill &= 0mm..0.15mm
+    /// The least copper round the hole of a blind or a buried via: "the annular ring for blind
+    /// and buried vias should be at least 0.075 mm".
+    .min_hdi_via_ring: Length
+    .min_hdi_via_ring &= 0.075mm..
+    /// The aspect ratios, upper bounds: "the blind-via thickness-to-diameter ratio must be <=
+    /// 1:1" (the dielectric a blind via is drilled through, over its hole), and "the aspect
+    /// ratio for mechanical buried vias and through vias must be <= 16:1" (the dielectric a
+    /// drilled via passes, over its hole).
+    .max_laser_aspect: Number
+    .max_laser_aspect &= 0..1
+    .max_drill_aspect: Number
+    .max_drill_aspect &= 0..16
+    /// The dielectric layer a blind via is drilled through, "blind-via dielectric thickness
+    /// 0.05-0.127 mm" (`.max_laser_dielectric` is an upper bound); the core a buried via is
+    /// drilled through, "buried-via core thickness >= 0.30 mm"; and a buried via's largest hole,
+    /// "buried via diameter 0.15-0.55 mm" (the least is `.min_drill`).
+    .min_laser_dielectric: Length
+    .min_laser_dielectric &= 0.05mm..
+    .max_laser_dielectric: Length
+    .max_laser_dielectric &= 0mm..0.127mm
+    .min_buried_core: Length
+    .min_buried_core &= 0.3mm..
+    .max_buried_drill: Length
+    .max_buried_drill &= 0mm..0.55mm
+
+    /// The pours on the outer layers, which the board names the nets of.
+    .top: Pour
+    .bottom: Pour
 }
 
 /// JLCPCB's V-cut panel: one board repeated in a grid, the boards side by side with no space
