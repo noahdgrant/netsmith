@@ -613,12 +613,10 @@ board Charger {
     }
     .load: Rail {
         .pos.net &= "5V"
-        .neg.net &= "GND"
         .current &= 0A..8A
     }
     .source: Rail {
         .pos.net &= "5V"
-        .neg.net &= "GND"
         .current &= -8A..0A
     }
     .supply: Header1x2
@@ -2712,7 +2710,6 @@ board HandPicked {
     .supply: Rail {
         .voltage &= 5V +/- 5%
         .pos.net &= "VCC"
-        .neg.net &= "GND"
     }
     .led: Led { .current &= 5mA..15mA }
     // The solver would take a 330 ohm 0402 resistor; the bill of materials names this one.

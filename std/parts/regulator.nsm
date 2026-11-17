@@ -1,6 +1,5 @@
 //! Voltage regulators.
 
-import std::logic::Logic
 import std::parts::diode::Schottky
 import std::parts::passive::{Capacitor, CapacitorBank, Inductor, Resistor}
 import std::sources::Rail

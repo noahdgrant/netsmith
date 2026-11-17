@@ -37,6 +37,26 @@ pub fn code_fingerprint(src: &str) -> Option<u64> {
     Some(hasher.finish())
 }
 
+/// The names `src` writes that are not member names, each with its span: every identifier that
+/// does not follow a dot (`Resistor` in `.r1: Resistor`, `AssemblyMode` and `Hand` in
+/// `AssemblyMode::Hand`, `std`, `parts` and `Resistor` in an import), in the order written.
+/// Comments are left out. What reads it (the linter's unused import, issue #1104) needs the uses
+/// of a name, which the syntax tree spreads over many nodes. `None` if the text does not lex.
+pub fn bare_names(src: &str) -> Option<Vec<(String, Span)>> {
+    let tokens = lexer::lex(src).ok()?;
+    let mut out = Vec::new();
+    let mut after_dot = false;
+    for token in &tokens {
+        if let lexer::Tok::Ident(name) = &token.tok
+            && !after_dot
+        {
+            out.push((name.clone(), token.span));
+        }
+        after_dot = matches!(token.tok, lexer::Tok::Dot | lexer::Tok::LeadingDot);
+    }
+    Some(out)
+}
+
 #[cfg(test)]
 mod fingerprint_tests {
     use super::code_fingerprint as fp;
@@ -78,6 +98,20 @@ mod fingerprint_tests {
     #[test]
     fn a_slash_pair_in_a_string_is_text() {
         assert_ne!(fp("a \"x//y\"\n"), fp("a \"x//z\"\n"));
+    }
+
+    #[test]
+    fn bare_names_leave_out_member_names() {
+        let names: Vec<String> =
+            super::bare_names("import std::x::R\nboard B { .r1: R { .x &= A::V } }\n")
+                .unwrap()
+                .into_iter()
+                .map(|(n, _)| n)
+                .collect();
+        assert_eq!(
+            names,
+            ["import", "std", "x", "R", "board", "B", "R", "A", "V"]
+        );
     }
 
     #[test]

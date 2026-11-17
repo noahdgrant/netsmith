@@ -34,6 +34,7 @@ automod = "1.0.17"
 netsmith-check = { path = "../netsmith-check" }
 netsmith-design = { path = "../netsmith-design" }
 netsmith-kicad = { path = "../netsmith-kicad", features = ["test-support"] }
+netsmith-lint = { path = "../netsmith-lint" }
 # `Libraries::sample()`, over the sample libraries of netsmith-testkit.
 netsmith-pipeline = { path = "../netsmith-pipeline", features = ["test-support"] }
 netsmith-placer = { path = "../netsmith-placer" }

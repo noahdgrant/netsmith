@@ -322,7 +322,7 @@ board NamedMcu {
         .voltage &= 3.3V +/- 5%
         .pos.net &= "3V3"
     }
-    .u: Mcu32 { .package &= "QFN-32"; .mpn &= "MCU32-B" }
+    .u: Mcu32 { .mpn &= "MCU32-B" }
     .supply ~ .u.vdd
     .u.nrst ~ .supply.pos
 }

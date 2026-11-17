@@ -51,7 +51,9 @@
 #            workflows, .claude/, a path nothing here knows). A push to main runs every test.
 #            When only `recipes` is on (no Rust), it is `netsmith-cli`, for `build` alone.
 #   locks    the `locks` job: scripts/check-example-locks.sh runs `netsmith project lock --check` over every
-#            example (ADR 0100). A pick is what the solver, std/ and the catalogs in data/ say about
+#            example (ADR 0100), and scripts/check-example-lint.sh runs `netsmith project lint --strict`
+#            over them (issue #1104; the linter, netsmith-lint, reads the parser's and the checker's
+#            output and the catalogs, all of which turn `locks` on). A pick is what the solver, std/ and the catalogs in data/ say about
 #            the parts of an example, so it follows the same paths as `no_kicad`: the crates that
 #            are linked into the binary (the solver is netsmith-solve, the catalogs and the supply
 #            logic are netsmith-catalog, and the checker and the design stage change what it is asked), std/, examples/, data/ (the catalogs), and the

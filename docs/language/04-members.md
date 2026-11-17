@@ -111,7 +111,6 @@ board Groups {
     .supply: Rail {
         .voltage &= 3.3V +/- 5%
         .pos.net &= "3V3"
-        .neg.net &= "GND"
     }
     /// The decoupling of the supply, one by each supply pin.
     .decoupling: 4 x Capacitor { .capacitance &= 100nF +/- 10% }

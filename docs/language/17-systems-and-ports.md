@@ -654,7 +654,7 @@ board Carrier {
 }
 
 board Card {
-    .supply: Rail { .neg.net &= "GND" }
+    .supply: Rail
     .j1: Header1x2
     .supply.neg ~ .j1.p1
     .supply.pos ~ .j1.p2
@@ -725,7 +725,7 @@ import std::parts::connector::{Header1x2, Socket1x2}
 import std::sources::Rail
 
 board Carrier {
-    .main: Rail { .neg.net &= "GND" }
+    .main: Rail
     .iso: Rail {
         .isolated &= "isolated DC-DC"
         .neg.net &= "ISO_GND"
@@ -739,7 +739,7 @@ board Carrier {
 }
 
 board Card {
-    .supply: Rail { .neg.net &= "GND" }
+    .supply: Rail
     .field: Rail { .neg.net &= "FIELD_GND" }
     .j1: Header1x2
     .j2: Header1x2

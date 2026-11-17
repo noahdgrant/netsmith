@@ -189,6 +189,24 @@ pub struct Manifest {
     /// and written beside `[project]`.
     #[serde(skip)]
     pub dependencies: BTreeMap<String, Dependency>,
+    /// The `[lint]` table (issue #1104): the rules of `netsmith project lint` turned off for the
+    /// project, and whether its findings are errors. Read and written beside `[project]`.
+    #[serde(skip)]
+    pub lint: Option<LintConfig>,
+}
+
+/// The `[lint]` table of `netsmith.toml` (issue #1104). `netsmith project lint` reads it, and
+/// says so when `off` names a rule it does not have.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct LintConfig {
+    /// The rules turned off for the whole project, by name (`off = ["naming"]`).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub off: Vec<String>,
+    /// What a finding is: `"warn"`, the default, which `project lint` lists and passes, or
+    /// `"error"`, which fails it. A run asks for the second with `--strict`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub findings: Option<String>,
 }
 
 /// One entry of `[dependencies]`: where another project is. A folder (`path`), or a git
@@ -389,6 +407,8 @@ struct File {
     model: Vec<crate::models::ModelRow>,
     #[serde(default)]
     dependencies: BTreeMap<String, Dependency>,
+    #[serde(default)]
+    lint: Option<LintConfig>,
 }
 
 /// [`File`] as it is written back.
@@ -405,6 +425,8 @@ struct Rendered<'a> {
     model: &'a [crate::models::ModelRow],
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     dependencies: &'a BTreeMap<String, Dependency>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    lint: &'a Option<LintConfig>,
 }
 
 impl Manifest {
@@ -438,6 +460,7 @@ impl Manifest {
             models: None,
             model: Vec::new(),
             dependencies: BTreeMap::new(),
+            lint: None,
         }
     }
 
@@ -450,6 +473,7 @@ impl Manifest {
             models: &self.models,
             model: &self.model,
             dependencies: &self.dependencies,
+            lint: &self.lint,
         })
         .expect("a manifest of strings and a number is always TOML")
     }
@@ -463,6 +487,7 @@ impl Manifest {
         manifest.models = file.models;
         manifest.model = file.model;
         manifest.dependencies = file.dependencies;
+        manifest.lint = file.lint;
         manifest.validate()?;
         manifest.validate_revision(text)?;
         crate::models::check_table(manifest.models.as_ref(), &manifest.model)
@@ -592,6 +617,13 @@ impl Manifest {
         }
         if let Some(supply) = &self.supply {
             supply.validate()?;
+        }
+        if let Some(word) = self.lint.as_ref().and_then(|l| l.findings.as_ref())
+            && !["warn", "error"].contains(&word.as_str())
+        {
+            return Err(format!(
+                "{MANIFEST}: [lint] findings = {word:?} is not one of \"warn\" or \"error\""
+            ));
         }
         for (name, dependency) in &self.dependencies {
             dependency.validate(name)?;
