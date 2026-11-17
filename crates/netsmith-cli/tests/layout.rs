@@ -278,7 +278,7 @@ rotation = 0
 lock = true
 ";
     let dir = project("layout-check", Some(file));
-    let run = netsmith(&dir, &["board", "check"]);
+    let run = netsmith(&dir, &["check"]);
     assert_eq!(code(&run), 1, "{}{}", stdout(&run), stderr(&run));
     let text = stdout(&run);
     let lines: Vec<&str> = text.lines().collect();
@@ -308,7 +308,7 @@ lock = true
         "{text}"
     );
 
-    let run = netsmith(&dir, &["board", "check", "--format", "json"]);
+    let run = netsmith(&dir, &["check", "--format", "json"]);
     assert_eq!(code(&run), 1);
     let json: serde_json::Value = serde_json::from_str(&stdout(&run)).unwrap();
     assert_eq!(json["ok"], false);
@@ -327,13 +327,13 @@ lock = true
 fn check_passes_with_notes_for_parts_the_placer_places() {
     // The header locked where its requirements put it: left edge 1.5 mm in, turned 90.
     let dir = project("layout-check-ok", None);
-    let run = netsmith(&dir, &["board", "check"]);
+    let run = netsmith(&dir, &["check"]);
     assert_eq!(code(&run), 0, "{}{}", stdout(&run), stderr(&run));
     assert!(stdout(&run).contains("has no entry"), "{}", stdout(&run));
 
     let file = "version = 1\n\n[Widget.parts.led]\nat = [30.0, 12.0]\n";
     let dir = project("layout-check-ok-entry", Some(file));
-    let run = netsmith(&dir, &["board", "check", "--format", "json"]);
+    let run = netsmith(&dir, &["check", "--format", "json"]);
     assert_eq!(code(&run), 0, "{}{}", stdout(&run), stderr(&run));
     let json: serde_json::Value = serde_json::from_str(&stdout(&run)).unwrap();
     assert_eq!(json["ok"], true);
@@ -578,7 +578,7 @@ fn compare_says_which_parts_moved_between_two_layout_files() {
         PLACED.replace("at = [30.0, 12.0]", "at = [26.0, 9.0]"),
     )
     .unwrap();
-    let run = netsmith(&dir, &["board", "compare", "before.pcb.toml", "--format", "json"]);
+    let run = netsmith(&dir, &["compare", "before.pcb.toml", "--format", "json"]);
     assert_eq!(code(&run), 0, "{}", stderr(&run));
     let json: serde_json::Value = serde_json::from_str(&stdout(&run)).unwrap();
     assert_eq!(json["board"], "Widget");
@@ -596,12 +596,12 @@ fn compare_says_which_parts_moved_between_two_layout_files() {
     assert!(json["appeared"].as_array().is_some(), "{json}");
 
     // The same file on both sides: nothing moved.
-    let run = netsmith(&dir, &["board", "compare", "main.pcb.toml", "main.pcb.toml"]);
+    let run = netsmith(&dir, &["compare", "main.pcb.toml", "main.pcb.toml"]);
     assert_eq!(code(&run), 0, "{}", stderr(&run));
     assert!(stdout(&run).starts_with("Widget: 0 parts moved"), "{}", stdout(&run));
 
     // A layout file that is not there cannot be compared.
-    let run = netsmith(&dir, &["board", "compare", "nothing.pcb.toml"]);
+    let run = netsmith(&dir, &["compare", "nothing.pcb.toml"]);
     assert_eq!(code(&run), 2);
     assert!(stderr(&run).contains("nothing.pcb.toml"), "{}", stderr(&run));
 }
