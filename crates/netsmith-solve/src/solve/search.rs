@@ -4,7 +4,7 @@ use std::collections::{BTreeSet, HashSet};
 
 use super::{
     Accepted, Closest, Coupling, Failure, Job, MAX_BANK, Outcome, Passed, PassedWhy, Pick, Search,
-    Solver, Turn, Unpicked, Unresolved, choice_name, dcpass, give_up_message, nearer,
+    Solver, Turn, Unpicked, Unresolved, Verdict, choice_name, dcpass, give_up_message, nearer,
 };
 use crate::catalog::Candidate;
 use netsmith_check::{Domain, FieldId};
@@ -56,11 +56,25 @@ impl Solver<'_> {
             search.closest = Some(closest);
             search.first_level_fits = fits;
         }
-        let outcome = if starved.is_none() && culprit.is_none() {
+        let mut outcome = if starved.is_none() && culprit.is_none() {
             Some(self.search_group(jobs, group, &mut search, coupling))
         } else {
             None
         };
+        // A group that no choice served may fail only by bounds that no choice could meet
+        // (a load over the rating of an IC that the group's divider feeds, issue #904): those
+        // are set aside and the group is searched again, and the check after the picks says
+        // what they are. A part searched alone keeps its own message: it names the part and its
+        // closest row, and there is no other part to blame instead.
+        if group.len() > 1
+            && outcome.is_some()
+            && !matches!(outcome, Some(Outcome::Solved))
+            && let Some(again) = self.search_beyond(jobs, group, coupling, &search)
+        {
+            self.trials += search.trials;
+            search = again;
+            outcome = Some(Outcome::Solved);
+        }
         let solved = matches!(outcome, Some(Outcome::Solved));
         // What the search learned: the parts that no choice of candidates can serve together,
         // when that is fewer than the group.
@@ -491,6 +505,85 @@ impl Solver<'_> {
                 return Some((j, closest, fitting.len()));
             }
         }
+        None
+    }
+
+    /// Whether the design's bound `index`, or the design's bound that the solver's bound `index`
+    /// stands for (ADR 0065), is set aside (`Solver::aside`).
+    pub(super) fn set_aside(&self, index: usize) -> bool {
+        if self.aside.is_empty() {
+            return false;
+        }
+        let bound = if index >= self.original_relations {
+            match self.extras.get(index - self.original_relations) {
+                Some((_, t)) => t.bound(),
+                None => return false,
+            }
+        } else {
+            index
+        };
+        self.aside.contains_key(&bound)
+    }
+
+    /// The search again of a group whose search found nothing or gave up, with the bounds that
+    /// no choice of its parts can meet set aside (`beyond_the_group`, issue #904), or `None`
+    /// when there are none or it does not solve the group either. Solved, the bounds stay
+    /// aside for the groups after it, and the check after the picks reports them, as it
+    /// reported a load over an IC's rating before the divider's current reached the IC's
+    /// switch node (#746). Not solved, the solver is put back as the first search left it, and
+    /// that search's message stands. The first search proved that no choice of the group meets
+    /// every bound (or gave up, which fails the board as well), so a board that builds never
+    /// gets here: this changes which failure is reported, never whether a board builds.
+    fn search_beyond(
+        &mut self,
+        jobs: &[Job],
+        group: &[usize],
+        coupling: &Coupling,
+        first: &Search,
+    ) -> Option<Search> {
+        let aside = self.beyond_the_group(jobs, group, coupling, &first.elsewhere);
+        if aside.is_empty() {
+            return None;
+        }
+        let checkpoint = self.model.checkpoint();
+        let (derived, ends, active, before) = (
+            self.derived.clone(),
+            self.dc_ends.clone(),
+            self.network.active,
+            self.aside.clone(),
+        );
+        self.aside.extend(aside.iter().cloned());
+        let mut again = Search {
+            elsewhere: first.elsewhere.clone(),
+            work_from: self.work,
+            ..Search::default()
+        };
+        let outcome = self.search_group(jobs, group, &mut again, coupling);
+        if matches!(outcome, Outcome::Solved) {
+            // With the audit on, each bound set aside must fail for the choice the search again
+            // made: a bound that a choice meets was not beyond the group.
+            if self.catalogs.look_ahead_audit() {
+                let relations = std::sync::Arc::clone(self.model.shared_relations());
+                for (index, _) in &aside {
+                    let index = *index;
+                    assert!(
+                        !matches!(self.verify(&relations[index]), Verdict::Pass),
+                        "the bound `{}` was set aside as beyond the choice of {:?}, which meet it with {:?}",
+                        self.model.show_expr(&relations[index].lhs),
+                        group.iter().map(|&j| &jobs[j].path).collect::<Vec<_>>(),
+                        again.chosen
+                    );
+                }
+            }
+            self.model.commit(checkpoint);
+            return Some(again);
+        }
+        self.trials += again.trials;
+        self.model.rollback(checkpoint);
+        self.derived = derived;
+        self.dc_ends = ends;
+        self.network.active = active;
+        self.aside = before;
         None
     }
 

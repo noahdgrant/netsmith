@@ -826,13 +826,16 @@ fn a_sleep_budget_of_an_unloaded_stage_is_judged_with_the_divider_s_share() {
         (-input.lo() - (divider.hi() * 3.432 / (9.0 * 0.70) + 10e-6)).abs() < 1e-8,
         "{input} {divider}"
     );
-    // The least the divider may carry is 10 uA (`Buck`'s default bound), which takes up to
-    // 10 uA * 3.432 V / (9 V * 0.70), about 5.4 uA, from the input, and the IC 10 uA more:
-    // a 12 uA budget cannot be met, and the divider's search says no pair of resistors fits.
+    // The least the divider may carry is 10 uA (`Buck`'s default bound), which takes at least
+    // 10 uA * 3.168 V / (16 V * 0.95), about 2.1 uA, from the input, and the IC 10 uA more: a
+    // 12 uA budget cannot be met whatever pair of resistors the divider takes, so the budget
+    // is said alone, with the least any pick reaches (issue #904), and the resistors are not
+    // named.
     let (_, text) = solved(&board("3.3V +/- 4%", "0A", &budget("12uA")));
     assert!(
         text.contains("-input.current must always be at most 12uA")
-            && text.contains("`stage.divider.current` must stay within 10uA..1mA"),
+            && text.contains("whichever parts are picked, its range reaches 12.26uA or higher"),
         "{text}"
     );
+    assert!(!text.contains("stage.divider.r"), "{text}");
 }
