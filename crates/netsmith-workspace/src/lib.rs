@@ -55,6 +55,7 @@ use netsmith_fabricate::project::Target;
 
 pub use analysis::{Snapshot, module_groups, must_connect, rails_of, schematic_layout};
 pub use git::sweep_scratch;
+pub use pinwrite::PinsApplied;
 
 /// The project behind the editor.
 pub struct Workspace {

@@ -35,6 +35,11 @@ Each command, what it was before, and its flags (a test walks `--help` of every 
 | `netsmith board fab` | `netsmith fab` | `--out`, `--route-timeout`, `--allow-drc-violations`, `--cross-check`, `--strict`, `--locked`, `--constraints`, `--pins`, `--no-glb`, `--no-step`, `--save-placed`, `--reuse-routes`, `--offline`, `--quiet`, `--place-seeds`, `--place-budget`, `--progress`, `--to-editor`, `--format`, `--notes` |
 | `netsmith board explain` | `netsmith explain` | `--board`, `--all-rows` |
 | `netsmith board compare` | `netsmith compare` | `--board`, `--map`, `--by-refdes`, `--ignore-unconnected`, `--loose-values`, `--format` |
+| `netsmith board pins show` | new | `--file`, `--board`, `--format` |
+| `netsmith board pins lock` | new | `--file`, `--board`, `--format` |
+| `netsmith board pins unlock` | new | `--file`, `--board`, `--format` |
+| `netsmith board pins move` | new | `--file`, `--board`, `--format` |
+| `netsmith board pins apply` | new | `--proposal`, `--file`, `--board`, `--format` |
 | `netsmith layout show` | the same | `--file` (was `--into`), `--board`, `--format` |
 | `netsmith layout set` | the same | `--file` (was `--into`), `--board`, `--at`, `--turn`, `--side`, `--lock`, `--unlock`, `--format` |
 | `netsmith layout check` | the same | `--file` (was `--into`), `--board`, `--format` |
@@ -72,7 +77,7 @@ Each command, what it was before, and its flags (a test walks `--help` of every 
 | `netsmith dev parity` | `netsmith parity` | `--table`, `--parts`, `--svg`, `--format` |
 | `netsmith dev board3d` | `netsmith board3d` | `--board`, `--format` (was `--json`), `--glb`, `--step`, `--place-seeds`, `--place-budget`, `--progress`, `--to-editor` |
 
-The places left for commands to come, named by the same rules: `board bom`, `board power`, `board drc`, `board swap`, `board pins` and `board copper`; `view schematic`, `view pcb` and `view gerber`; `project fmt` and `project lint`; and `mcp`, the server that offers these commands to an agent.
+The places left for commands to come, named by the same rules: `board bom`, `board power`, `board drc`, `board swap` and `board copper`; `view schematic`, `view pcb` and `view gerber`; `project fmt` and `project lint`; and `mcp`, the server that offers these commands to an agent.
 
 ### The editor
 

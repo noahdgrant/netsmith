@@ -22,6 +22,7 @@ pub mod moved;
 mod order;
 mod parity;
 mod part;
+mod pins;
 mod port;
 mod render;
 mod route;
@@ -95,6 +96,8 @@ pub enum Board {
     Explain(explain::Args),
     /// Say whether two designs are the same circuit.
     Compare(compare::Args),
+    /// Show, lock, unlock and move the pins that the board's pin requests got, or apply a proposal.
+    Pins(pins::Args),
 }
 
 /// `netsmith view ...`.
@@ -152,6 +155,7 @@ pub fn run(command: Command) -> ExitCode {
             Board::Fab(args) => fab::run(args),
             Board::Explain(args) => explain::run(args),
             Board::Compare(args) => compare::run(args),
+            Board::Pins(args) => pins::run(args),
         },
         Command::Layout(args) => layout::run(args),
         Command::Routes(args) => routes::run(args),
