@@ -33,7 +33,7 @@ pub struct Args {
     /// Package a board that fails the design rules check (never an unmet `[constraint]`).
     #[arg(long)]
     pub allow_drc_violations: bool,
-    /// Compare the files and the findings with KiCad's own plot and check (needs kicad-cli).
+    /// Check the Gerbers against the board with netsmith's viewer (no KiCad), and with KiCad's plot and check when KiCad is installed.
     #[arg(long)]
     pub cross_check: bool,
     /// Make a guideline finding an error for this run.

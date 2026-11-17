@@ -1263,6 +1263,51 @@ fn cross_checked(name: &str, source: &str) {
             "{}",
             board.notes
         );
+        // With KiCad both checks run (issue #1158), and `fab-notes.txt` has the viewer's.
+        assert!(
+            board
+                .notes
+                .contains("cross-check against netsmith's viewer: the Gerbers agree"),
+            "{}",
+            board.notes
+        );
+        assert!(!board.notes.contains("viewer comparison alone"), "{}", board.notes);
+    }
+}
+
+/// `--cross-check` with no KiCad runs netsmith's viewer comparison alone (issue #1158): the
+/// notes, `fab-notes.txt` too, say that it agrees and that it was the only one that ran.
+#[test]
+fn the_cross_check_without_kicad_runs_the_viewer_comparison_alone() {
+    let dir = out("cross-viewer");
+    let made = fab_with_options(
+        "led.nsm",
+        LED,
+        &netsmith_check::Loader::std(),
+        &dir,
+        &Catalogs::jlcpcb(),
+        &Libraries::standard(),
+        None,
+        &FabOptions {
+            cross_check: true,
+            ..FabOptions::default()
+        },
+    )
+    .unwrap_or_else(|e| panic!("{e}"));
+    assert_eq!(made.len(), 1);
+    let board = &made[0];
+    for text in [
+        board.notes.clone(),
+        fs::read_to_string(board.dir.join("fab-notes.txt")).unwrap(),
+    ] {
+        assert!(
+            text.contains("cross-check against netsmith's viewer: the Gerbers agree with the board model"),
+            "{text}"
+        );
+        assert!(text.contains("top "), "{text}");
+        assert!(text.contains("bottom "), "{text}");
+        assert!(text.contains("viewer comparison alone"), "{text}");
+        assert!(!text.contains("against KiCad"), "{text}");
     }
 }
 

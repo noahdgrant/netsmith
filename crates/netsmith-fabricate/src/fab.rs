@@ -89,9 +89,10 @@ impl PrecheckReport {
 
 /// What `netsmith board fab` says when it finds no KiCad, and why there is none: KiCad is switched off
 /// (`NETSMITH_NO_KICAD`, which hides an install that may be there) or it was not found. netsmith's
-/// own design rules check and its Gerbers need none; KiCad is only the witness of
+/// own design rules check and its Gerbers need none; KiCad is only the second witness of
 /// `--cross-check`, which plots the boards and runs KiCad's design rules check to compare with
-/// netsmith's own (ADR 0034, ADR 0037). `scripts/check-no-kicad.sh` greps for either lead
+/// netsmith's own (ADR 0034, ADR 0037); the first, the viewer comparison of the Gerbers with the
+/// board model, needs none (issue #1158). `scripts/check-no-kicad.sh` greps for either lead
 /// ("KiCad is switched off", "KiCad is not installed") as the proof that KiCad was hidden.
 pub fn no_kicad_note(search: &netsmith_kicad::Search) -> String {
     let why = if search.is_off() {
@@ -103,7 +104,7 @@ pub fn no_kicad_note(search: &netsmith_kicad::Search) -> String {
         "KiCad is not installed".to_string()
     };
     format!(
-        "note: {why}, so --cross-check (KiCad's plots and design rules check, compared with netsmith's own) is not available; netsmith's own design rules check still runs"
+        "note: {why}, so --cross-check runs netsmith's viewer comparison alone (the Gerbers against the board model), not KiCad's plots and design rules check; netsmith's own design rules check still runs"
     )
 }
 
@@ -164,9 +165,12 @@ pub struct FabOptions {
     /// Package a board although netsmith's design rules check finds errors. The notes say
     /// so. Nothing else needs this: the check runs without KiCad.
     pub allow_drc_violations: bool,
-    /// After the files are written, plot each board with KiCad too and compare the two sets
+    /// After the files are written, compare the copper of each layer of the Gerbers with the
+    /// board model's with netsmith's own viewer (`gerber_compare`, issue #1158; needs no KiCad),
+    /// and with KiCad installed plot each board with KiCad too and compare the two sets
     /// (ADR 0034), and run KiCad's design rules check and compare its findings with
-    /// netsmith's (ADR 0037). Needs KiCad; a difference is an error.
+    /// netsmith's (ADR 0037). Without KiCad the viewer comparison runs alone, and the notes say
+    /// so; a difference is an error.
     pub cross_check: bool,
     /// Make only the boards with these labels (`Unit`, `DevKit/carrier`) and skip the rest of
     /// the file. `None` makes every board. An order uses it (ADR 0035).
@@ -1612,6 +1616,30 @@ fn fab_board(
             requirements: unmet_requirements(&e),
             ..FabFailure::default()
         })?;
+        // The viewer comparison of `--cross-check` (issue #1158): the copper of the board model
+        // and of the Gerbers just made, each layer, with no KiCad. Its lines are in the notes
+        // before they are written, so `fab-notes.txt` has them, a difference too.
+        let mut pkg = pkg;
+        let viewer_check = if options.cross_check {
+            say(format!(
+                "{}: cross-checking against netsmith's viewer",
+                built.label()
+            ));
+            let check = crate::gerber_compare::check_board(&board, &pkg.gerber_zip)
+                .map_err(|e| fail(format!("cross-check against netsmith's viewer: {e}")))?;
+            if !pkg.notes.is_empty() && !pkg.notes.ends_with('\n') {
+                pkg.notes.push('\n');
+            }
+            pkg.notes.push_str(&check.to_string());
+            if kicad.is_none() {
+                pkg.notes.push_str(
+                    "cross-check: ran netsmith's viewer comparison alone (KiCad's plots and design rules check need KiCad, which was not found)\n"
+                );
+            }
+            Some(check)
+        } else {
+            None
+        };
         let mut files = vec![pcb_path.clone()];
         files.extend(pin_files);
         files.extend(glb_file);
@@ -1622,13 +1650,13 @@ fn fab_board(
                 .map_err(|e| fail(e.to_string()))?,
         );
         let mut notes = pkg.notes.clone();
-        if options.cross_check {
-            let kicad = kicad.ok_or_else(|| {
-                fail(
-                    "--cross-check compares with KiCad's own files, and KiCad is not installed"
-                        .to_string(),
-                )
-            })?;
+        // What stops the run, from either check: the viewer's differences are in the notes
+        // already.
+        let mut differences = String::new();
+        if let Some(check) = viewer_check.as_ref().filter(|c| !c.ok()) {
+            differences.push_str(&check.to_string());
+        }
+        if let Some(kicad) = kicad.filter(|_| options.cross_check) {
             say(format!("{}: cross-checking against KiCad", built.label()));
             let report = netsmith_fab::cross_check(
                 &pcb_path,
@@ -1647,10 +1675,14 @@ fn fab_board(
                     files.push(file);
                 }
             }
-            if !report.ok() {
-                return Err(fail(format!("{report}")).into());
+            if report.ok() {
+                notes.push_str(&format!("{report}"));
+            } else {
+                differences.push_str(&format!("{report}"));
             }
-            notes.push_str(&format!("{report}"));
+        }
+        if !differences.is_empty() {
+            return Err(fail(differences).into());
         }
 
         let fabricated = Fabricated {
@@ -2613,9 +2645,11 @@ fn fab_panel(
     let mut files = pkg.write(dir).map_err(|e| fail(e.to_string()))?;
     let mut notes = pkg.notes.clone();
     if options.cross_check {
+        // The viewer comparison covers a board: a panel's files have no board model in memory to
+        // compare with, so its cross-check is KiCad's alone.
         let kicad = kicad.ok_or_else(|| {
             fail(
-                "--cross-check compares with KiCad's own files, and KiCad is not installed"
+                "--cross-check of a panel compares with KiCad's own files, and KiCad is not installed (netsmith's viewer comparison covers the board of a panel, not the panel)"
                     .to_string(),
             )
         })?;

@@ -221,6 +221,137 @@ pub fn compare(
     })
 }
 
+/// The copper layers of a board compared with the Gerbers `board fab` wrote for it
+/// ([`check_board`]).
+#[derive(Debug, Clone, PartialEq)]
+pub struct BoardCheck {
+    /// Each copper layer by name (`top`, `inner1`, `bottom`) with how its two pictures compare.
+    pub layers: Vec<(String, Agreement)>,
+    /// The limits the layers were compared within.
+    pub limits: Limits,
+}
+
+impl BoardCheck {
+    /// Whether every layer agrees within the limits.
+    pub fn ok(&self) -> bool {
+        self.layers.iter().all(|(_, a)| a.ok(&self.limits))
+    }
+}
+
+impl std::fmt::Display for BoardCheck {
+    /// The lines `fab-notes.txt` and the error of `fab` carry: one heading, then each layer, and
+    /// where a layer differs the places, as `--region` boxes to draw with `view pcb` and
+    /// `view gerber`.
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        writeln!(
+            f,
+            "cross-check against netsmith's viewer: {}",
+            if self.ok() {
+                "the Gerbers agree with the board model"
+            } else {
+                "DIFFERENCES between the board model and the Gerbers"
+            }
+        )?;
+        for (name, a) in &self.layers {
+            if a.ok(&self.limits) {
+                writeln!(
+                    f,
+                    "  {name:<8} copper: {} pixel(s) in the board model, {} in the Gerbers, differ {:.2}% of pixels, {:.2}% beyond the tolerance",
+                    a.model,
+                    a.files,
+                    a.pixels * 100.0,
+                    a.beyond * 100.0
+                )?;
+            } else {
+                writeln!(
+                    f,
+                    "  {name:<8} copper: {} pixel(s) in the board model, {} in the Gerbers, differ {:.2}% of pixels, {:.2}% beyond the tolerance  <- too different",
+                    a.model,
+                    a.files,
+                    a.pixels * 100.0,
+                    a.beyond * 100.0
+                )?;
+                for p in &a.places {
+                    writeln!(
+                        f,
+                        "    {name}: {p} (`view pcb` and `view gerber` with --layer {name})"
+                    )?;
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
+/// The most pixels of a side of the pictures [`check_board`] compares: a board longer than this
+/// at [`Limits::default`]'s scale is compared at a coarser one.
+const MOST_PIXELS: f64 = 8192.0;
+
+/// Compares the copper of every layer of `board` (the board `fab` routed, with its teardrops;
+/// what `view pcb` draws of it) with the copper of the Gerbers of `gerber_zip` (the zip `fab`
+/// wrote for it; what `view gerber` draws), as [`compare`] does, each over the board's outline
+/// with a millimetre round it. It needs no KiCad. The scale is [`Limits::default`]'s, coarser for
+/// a board that would be more than 8192 pixels a side. The error says why a layer could not be
+/// drawn or read (a Gerber file the reader does not support).
+pub fn check_board(board: &netsmith_pcb::Board, gerber_zip: &[u8]) -> Result<BoardCheck, String> {
+    let package = netsmith_fab::viewer::read_bytes("gerbers.zip", gerber_zip.to_vec())
+        .map_err(|e| e.to_string())?;
+    if let Some((file, why)) = package.unread().next() {
+        return Err(format!(
+            "the Gerber file {} cannot be read back: {why}",
+            file.name
+        ));
+    }
+    let whole = netsmith_pcb::picture_whole(board);
+    let region = [
+        whole.min.x - board.outline.min.x,
+        whole.min.y - board.outline.min.y,
+        whole.width(),
+        whole.height(),
+    ];
+    let limits = Limits {
+        scale: Limits::default()
+            .scale
+            .min(MOST_PIXELS / region[2].max(region[3]).max(1.0)),
+        ..Limits::default()
+    };
+    let mut layers = Vec::new();
+    for word in netsmith_pcb::copper_layers(board) {
+        let layer = match word.as_str() {
+            "top" => netsmith_pcb::CopperLayer::Front,
+            "bottom" => netsmith_pcb::CopperLayer::Back,
+            inner => match inner.strip_prefix("inner").and_then(|n| n.parse().ok()) {
+                Some(n) => netsmith_pcb::CopperLayer::Inner(n),
+                None => return Err(format!("the copper layer {word} is not one netsmith knows")),
+            },
+        };
+        let request = crate::pcb_picture::Request {
+            layers: netsmith_pcb::PictureLayers::One(layer),
+            from_below: None,
+            region: Some(region),
+            scale: limits.scale,
+            courtyards: false,
+            designators: false,
+            highlight: Vec::new(),
+            only_open: false,
+            drc: false,
+            format: crate::pcb_picture::Format::Svg,
+        };
+        let model =
+            crate::pcb_picture::draw(board, &request, None).map_err(|e| format!("{word}: {e}"))?;
+        let show = package
+            .parse_layer(&word)
+            .map_err(|e| format!("{word}: {e}"))?;
+        let files = netsmith_fab::viewer::draw(&package, show, Some(region))
+            .map_err(|e| format!("{word}: {e}"))?;
+        let model = String::from_utf8(model.bytes).map_err(|e| e.to_string())?;
+        let agreement = compare(&model, &files.svg, files.mirrored, &limits)
+            .map_err(|e| format!("{word}: {e}"))?;
+        layers.push((word, agreement));
+    }
+    Ok(BoardCheck { layers, limits })
+}
+
 /// `#rrggbb` as red, green and blue.
 fn rgb(hex: &str) -> Option<[u8; 3]> {
     let h = hex.strip_prefix('#')?;
