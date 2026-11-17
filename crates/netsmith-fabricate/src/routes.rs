@@ -487,6 +487,31 @@ pub fn edit_file_all(board: &Board, file: &Path, changes: &[Edit]) -> Result<Str
     Ok(format!("{said}; wrote {}", file.display()))
 }
 
+/// The most vias a group of `routes add-via` may have (`--count`): a row longer than this is a
+/// slip of the hand, and the design rules check of every via is made once for all of them.
+pub const MOST_VIAS_IN_A_GROUP: usize = 64;
+
+/// The places of a row of `count` vias side by side, `pitch` mm between centres, along x and
+/// centred on `at` (issue #1114: `netsmith routes add-via --count N --pitch MM --at X,Y`). A
+/// row of one is `at` itself. Places are rounded to the 0.000001 mm the routes file keeps.
+pub fn via_row(at: [f64; 2], count: usize, pitch: f64) -> Result<Vec<[f64; 2]>, Refusal> {
+    if count == 0 || count > MOST_VIAS_IN_A_GROUP {
+        return Err(Refusal::Refused(format!(
+            "a group has 1 to {MOST_VIAS_IN_A_GROUP} vias, not {count}"
+        )));
+    }
+    if !(pitch.is_finite() && pitch > 0.0) {
+        return Err(Refusal::Refused(format!(
+            "the pitch of a group of vias must be above 0 mm, not {pitch}"
+        )));
+    }
+    let to_um = |v: f64| (v * 1e6).round() / 1e6;
+    let first = at[0] - pitch * (count - 1) as f64 / 2.0;
+    Ok((0..count)
+        .map(|i| [to_um(first + pitch * i as f64), to_um(at[1])])
+        .collect())
+}
+
 /// The via of the process that ends on `layers` (issue #1071): the through via for `None` or
 /// for the top and the bottom, else the blind or the buried via of that span the process makes
 /// ([`netsmith_pcb::Board::via_offers`]), refused with the spans it does make when it makes

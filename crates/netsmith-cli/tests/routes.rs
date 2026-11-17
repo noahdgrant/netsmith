@@ -531,3 +531,61 @@ fn add_track_draws_on_an_inner_signal_layer_and_refuses_a_plane() {
     let shown = ok(&netsmith(&dir, &["routes", "show", "--file", "six_layer.nsm"]));
     assert!(shown.contains("inner2"), "{shown}");
 }
+
+/// The led example with a second load on its rail, so that net VCC carries 1.2 A and needs three
+/// vias side by side where it changes layer (issue #1114).
+fn heavy_rail(tag: &str) -> TempDir {
+    let dir = TempDir::new(tag);
+    let led = fs::read_to_string(repo().join("examples/led.nsm")).unwrap();
+    let led = led
+        .replace(
+            ".pos.net &= \"VCC\"",
+            ".pos.net &= \"VCC\"\n        .current &= -1.3A..-1.0A",
+        )
+        .replace(
+            "    .r1: Resistor {}",
+            "    .motor: Rail {\n        .voltage &= 5V +/- 5%\n        .pos.net &= \"VCC\"\n        .current &= 1.1A..1.2A\n    }\n    .motor.pos ~ .supply.pos\n    .motor.neg ~ .supply.neg\n\n    .r1: Resistor {}",
+        );
+    assert!(led.contains(".motor"), "{led}");
+    fs::write(dir.join("led.nsm"), led).unwrap();
+    dir
+}
+
+#[test]
+fn vias_side_by_side_are_checked_as_a_group_and_one_alone_is_refused() {
+    let dir = heavy_rail("routes-via-group");
+    let via = |args: &[&str]| {
+        let mut all = vec!["routes", "add-via", "--file", "led.nsm", "--net", "VCC"];
+        all.extend_from_slice(args);
+        netsmith(&dir, &all)
+    };
+    let file = dir.join("led.routes.toml");
+    // One via alone, or two of the three, is short of the net's current.
+    for run in [via(&["--at", "5,5"]), via(&["--at", "5,5", "--at", "5.45,5"])] {
+        let said = text(&run);
+        assert_eq!(run.status.code(), Some(1), "{said}");
+        assert!(said.contains("via_current") && said.contains("needs 3"), "{said}");
+        assert!(!file.exists(), "a refusal leaves the file as it was");
+    }
+    // Three places side by side (the process's via is 0.45 mm), or a row round one place.
+    let said = ok(&via(&["--at", "4.55,5", "--at", "5,5", "--at", "5.45,5"]));
+    assert!(said.contains("added a via to net VCC (3 times)"), "{said}");
+    fs::remove_file(&file).unwrap();
+    ok(&via(&["--at", "5,5", "--count", "3", "--pitch", "0.45"]));
+    let shown = ok(&netsmith(&dir, &["routes", "show", "--file", "led.nsm"]));
+    assert!(shown.contains("net VCC: 0 track(s), 3 via(s)"), "{shown}");
+    for place in ["(4.55, 5)", "(5, 5)", "(5.45, 5)"] {
+        assert!(shown.contains(place), "{place}: {shown}");
+    }
+    // A pitch that leaves them apart is no group: refused, and the file is as it was.
+    let before = fs::read_to_string(&file).unwrap();
+    let run = via(&["--at", "5,7", "--count", "3", "--pitch", "2"]);
+    assert_eq!(run.status.code(), Some(1), "{}", text(&run));
+    assert_eq!(fs::read_to_string(&file).unwrap(), before);
+    // `--count` goes round one `--at` and with `--pitch`.
+    let run = via(&["--at", "1,1", "--at", "2,2", "--count", "3", "--pitch", "0.45"]);
+    assert_eq!(run.status.code(), Some(2), "{}", text(&run));
+    assert!(text(&run).contains("round one `--at`"), "{}", text(&run));
+    let run = via(&["--at", "1,1", "--count", "3"]);
+    assert_eq!(run.status.code(), Some(2), "{}", text(&run));
+}
