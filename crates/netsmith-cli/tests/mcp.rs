@@ -8,7 +8,12 @@ use std::io::{BufRead, BufReader, Lines, Write};
 use std::path::Path;
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 
+use netsmith_editor::api::{
+    CameraPlace, CaseMode, ClientMessage, ColourBy, RenderView, ServerMessage, ViewState,
+};
+use netsmith_fabricate::project::Target;
 use netsmith_testkit::TempDir;
+use netsmith_workspace::Workspace;
 use serde_json::{Value, json};
 
 const LED: &str = include_str!("../../../examples/led.nsm");
@@ -112,9 +117,20 @@ impl Server {
 
     /// Sends a request and returns its answer, past any notification before it.
     fn request(&mut self, method: &str, params: Value) -> Value {
+        let id = self.ask(method, params);
+        self.answer_of(id)
+    }
+
+    /// Sends a request and returns its id, to read the answer later with [`Server::answer_of`].
+    fn ask(&mut self, method: &str, params: Value) -> u64 {
         let id = self.next;
         self.next += 1;
         self.send(json!({ "jsonrpc": "2.0", "id": id, "method": method, "params": params }));
+        id
+    }
+
+    /// The answer to the request `id`, past any notification before it.
+    fn answer_of(&mut self, id: u64) -> Value {
         loop {
             let line = self
                 .output
@@ -428,4 +444,183 @@ fn a_project_that_is_not_a_folder_is_an_error() {
     assert_eq!(run.status.code(), Some(2));
     let said = String::from_utf8_lossy(&run.stderr);
     assert!(said.contains("not a folder"), "{said}");
+}
+
+/// The editor's server over the project `root` (the LED example), on a free port.
+fn start_editor(root: &Path) -> u16 {
+    use std::net::{Ipv4Addr, TcpListener};
+    let workspace = Workspace::open(Target::resolve_from(root, None).unwrap()).unwrap();
+    let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
+    let port = listener.local_addr().unwrap().port();
+    std::thread::spawn(move || netsmith_editor::serve(listener, std::sync::Arc::new(workspace)));
+    port
+}
+
+type Page = tungstenite::WebSocket<std::net::TcpStream>;
+
+/// A page's socket, as the browser opens it.
+fn open_page(port: u16) -> Page {
+    let stream = std::net::TcpStream::connect((std::net::Ipv4Addr::LOCALHOST, port)).unwrap();
+    let url = format!("ws://127.0.0.1:{port}/api/events");
+    tungstenite::client(url.as_str(), stream).unwrap().0
+}
+
+/// The next ask for the view, skipping the pushes of the server.
+fn next_ask(page: &mut Page) -> ServerMessage {
+    loop {
+        let tungstenite::Message::Text(text) = page.read().expect("an ask of the view") else {
+            continue;
+        };
+        let m: ServerMessage = serde_json::from_str(&text).unwrap();
+        if matches!(m, ServerMessage::View { .. } | ServerMessage::ViewPicture { .. }) {
+            return m;
+        }
+    }
+}
+
+fn page_state() -> ViewState {
+    ViewState {
+        board: Some("Led".into()),
+        member: None,
+        shown: true,
+        view: Some(RenderView::Iso),
+        camera: Some(CameraPlace {
+            position: [40.0, -30.0, 40.0],
+            target: [10.0, 8.0, 0.0],
+            up: Some([0.0, 0.0, 1.0]),
+        }),
+        ortho: Some(true),
+        section: None,
+        exploded: Some(false),
+        highlight: vec!["J1".into()],
+        selection: vec![],
+        hover: None,
+        xray: false,
+        case: Some(CaseMode::SeeThrough),
+        case_hidden: None,
+        colour_by: ColourBy::Provenance,
+        height_preview: None,
+        theme: "dark".into(),
+        command: None,
+    }
+}
+
+/// Attached to an editor by its port, `view_editor_3d` changes the page the person looks at, as
+/// the person's own page answers, and the picture of its canvas is in the result as an image.
+#[test]
+fn attached_the_page_tool_changes_the_page_with_no_port_and_returns_its_picture() {
+    let root = led("mcp-attach");
+    let port = start_editor(&root);
+    let mut page = open_page(port);
+    let mut server = Server::start_with(&root, &["--editor", &port.to_string()]);
+
+    let init = server.request("initialize", json!({ "protocolVersion": "2025-06-18" }));
+    let told = init["result"]["instructions"].as_str().unwrap();
+    assert!(told.contains(&format!("127.0.0.1:{port}")), "{told}");
+    let listed = server.request("tools/list", json!({}));
+    let tool = listed["result"]["tools"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|t| t["name"] == "view_editor_3d")
+        .unwrap();
+    assert_eq!(tool["inputSchema"]["properties"]["port"]["default"], port);
+
+    // The call names no port and no editor but the attached one answers.
+    let dir = TempDir::new("mcp-attach-picture");
+    let png = dir.join("j1.png");
+    let id = server.ask(
+        "tools/call",
+        json!({
+            "name": "view_editor_3d",
+            "arguments": { "highlight": "J1", "view": "top", "picture": png.to_str().unwrap() },
+        }),
+    );
+    let ServerMessage::View { id: asked, change: Some(change) } = next_ask(&mut page) else {
+        panic!("a change was asked of the page")
+    };
+    assert_eq!(change.highlight, Some(vec!["J1".to_string()]));
+    let mut after = page_state();
+    after.view = Some(RenderView::Top);
+    let reply = ClientMessage::ViewState { id: asked, state: Box::new(after) };
+    page.send(tungstenite::Message::text(serde_json::to_string(&reply).unwrap())).unwrap();
+    let ServerMessage::ViewPicture { id: asked } = next_ask(&mut page) else {
+        panic!("a picture was asked of the page")
+    };
+    let mut frame = asked.to_le_bytes().to_vec();
+    frame.extend_from_slice(b"\x89PNG\r\n\x1a\nthe picture");
+    page.send(tungstenite::Message::binary(frame)).unwrap();
+
+    let result = server.answer_of(id)["result"].clone();
+    assert_eq!(result["isError"], false, "{result:#}");
+    // The state the page answered is the result, as the command's JSON and as structured content.
+    assert_eq!(result["structuredContent"]["view"], "top", "{result:#}");
+    assert_eq!(result["structuredContent"]["highlight"], json!(["J1"]), "{result:#}");
+    // The picture is saved where the call said and comes back as an image.
+    let saved = fs::read(&png).unwrap();
+    assert_eq!(saved, b"\x89PNG\r\n\x1a\nthe picture");
+    let image = result["content"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|c| c["type"] == "image")
+        .unwrap_or_else(|| panic!("no image in {result:#}"));
+    assert_eq!(image["mimeType"], "image/png");
+    let data = image["data"].as_str().unwrap();
+    assert!(data.starts_with("iVBORw0KG"), "{data}");
+    assert_eq!(data, base64_of(&saved));
+}
+
+/// A standard base64, written out here so that the test does not use the code it tests.
+fn base64_of(bytes: &[u8]) -> String {
+    let digits: Vec<char> =
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/".chars().collect();
+    let bits: String = bytes.iter().map(|b| format!("{b:08b}")).collect();
+    let mut out = String::new();
+    for chunk in bits.as_bytes().chunks(6) {
+        let mut six = String::from_utf8(chunk.to_vec()).unwrap();
+        while six.len() < 6 {
+            six.push('0');
+        }
+        out.push(digits[usize::from_str_radix(&six, 2).unwrap()]);
+    }
+    while !out.len().is_multiple_of(4) {
+        out.push('=');
+    }
+    out
+}
+
+/// With no port a call looks for the project's editor; where none is running the call says so
+/// and the other tools are not touched by it.
+#[test]
+fn attached_with_no_port_and_no_editor_the_page_tool_says_how_to_start_one() {
+    let root = led("mcp-attach-find");
+    let mut server = Server::start_with(&root, &["--editor"]);
+    let result = server.call("view_editor_3d", json!({}));
+    assert_eq!(result["isError"], true, "{result:#}");
+    let told = result["content"].to_string();
+    assert!(
+        told.contains("no editor of the project") && told.contains("netsmith view editor"),
+        "{told}"
+    );
+    // The server goes on, and a tool that does not need the editor runs.
+    let result = server.call("board_check", json!({}));
+    assert_eq!(result["isError"], false, "{result:#}");
+}
+
+/// Not attached, the server is as it was: no word of an editor and no port filled in.
+#[test]
+fn not_attached_the_page_tool_has_its_own_default_port() {
+    let root = led("mcp-no-attach");
+    let mut server = Server::start(&root);
+    let init = server.request("initialize", json!({ "protocolVersion": "2025-06-18" }));
+    assert!(!init["result"]["instructions"].as_str().unwrap().contains("attached"));
+    let listed = server.request("tools/list", json!({}));
+    let tool = listed["result"]["tools"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|t| t["name"] == "view_editor_3d")
+        .unwrap();
+    assert_eq!(tool["inputSchema"]["properties"]["port"]["default"], 8787);
 }

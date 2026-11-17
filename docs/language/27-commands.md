@@ -94,7 +94,7 @@ Each command, what it was before, and its flags (a test walks `--help` of every 
 | `netsmith dev route` | `netsmith route` | `--out`, `--route-timeout`, `--rip-rounds`, `--margin`, `--turn`, `--tries`, `--stages`, `--plan`, `--classes`, `--arcs` |
 | `netsmith dev parity` | `netsmith parity` | `--table`, `--parts`, `--svg`, `--format` |
 | `netsmith dev board3d` | `netsmith board3d` | `--board`, `--format` (was `--json`), `--glb`, `--step`, `--place-seeds`, `--place-budget`, `--progress`, `--to-editor` |
-| `netsmith mcp` | new | `--project` |
+| `netsmith mcp` | new | `--project`, `--editor` |
 
 The place left for a command to come, named by the same rules: `project fmt`.
 
@@ -127,6 +127,12 @@ Another host that starts a server on stdio takes the same: the command `netsmith
 
 ```text
 { "mcpServers": { "netsmith": { "command": "netsmith", "args": ["mcp", "--project", "/path/to/project"] } } }
+```
+
+**Attached to a running editor** (issue #1108). An agent that works while a person has the editor open can share the person's page. `netsmith mcp --editor 8787` (the port `netsmith view editor` printed) attaches the server to that editor, and `--editor` alone finds the editor that is running for the project: it asks the ports from 8787 to 8796 which project each serves, and takes the one that serves this server's project. The tools that read or change what the page shows, the state of its 3D view, the selection, the highlighted parts and nets, the camera and the cut, are the commands of `view editor-3d`, and attached, the tool `view_editor_3d` has the editor's port filled in (a `port` in a call still wins): its change is made on the page the person looks at, with the editor's own events (the page draws it, as it draws a click), and its `picture`, the file the canvas is saved to, is also returned in the result as an image. No tool is added: the tools are the command line's, and the other tools run as before. The editor is looked for at each call that needs it, so the host may start the server before the person starts the editor; a call that finds none says so, and says to start one with `netsmith view editor` or to give the port. Attached, the server's instructions say so to the model.
+
+```sh
+claude mcp add netsmith -- netsmith mcp --editor
 ```
 
 ### The editor's views on the command line
