@@ -168,10 +168,15 @@ pub enum Rule {
         width: Option<Expr>,
         length: Option<Expr>,
     },
+    /// `kelvin NAME SELECT to .pin`: the pin is a sense pin (a Kelvin connection, issue #1148).
+    /// The pin senses the pad of the part the selector finds on the pin's net: it is routed
+    /// from that pad, alone, and no other copper of the net joins its track on the way.
+    Kelvin { select: Select, to: Path },
 }
 
 impl Rule {
-    /// The statement's word: `near`, `away`, `loop`, `keepout`, `edge`, `vias`, `route`.
+    /// The statement's word: `near`, `away`, `loop`, `keepout`, `edge`, `vias`, `route`,
+    /// `kelvin`.
     pub fn word(&self) -> &'static str {
         match self {
             Rule::Near { .. } => "near",
@@ -181,6 +186,7 @@ impl Rule {
             Rule::Edge { .. } => "edge",
             Rule::Vias { .. } => "vias",
             Rule::Route { .. } => "route",
+            Rule::Kelvin { .. } => "kelvin",
         }
     }
 
@@ -193,7 +199,7 @@ impl Rule {
             }
         }
         match self {
-            Rule::Near { select: s, to, .. } => {
+            Rule::Near { select: s, to, .. } | Rule::Kelvin { select: s, to } => {
                 let mut out = select(s);
                 out.push(to);
                 out
@@ -226,7 +232,7 @@ pub struct KeepoutArea {
     pub forbid: Vec<Ident>,
 }
 
-/// Which parts of the board a `near` or an `away` is about, found from the nets of the part's
+/// Which parts of the board a `near`, an `away` or a `kelvin` is about, found from the nets of the part's
 /// pins.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Select {

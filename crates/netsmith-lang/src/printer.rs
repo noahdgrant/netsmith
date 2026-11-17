@@ -652,6 +652,9 @@ impl Guideline {
                 after(&mut out, "width", width);
                 after(&mut out, "length", length);
             }
+            Rule::Kelvin { select, to } => {
+                let _ = write!(out, " {} to {}", select.to_source(), to.to_source());
+            }
         }
         out
     }

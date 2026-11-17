@@ -1785,6 +1785,10 @@ pub(crate) fn layout(
                     length,
                 }
             }
+            GuidelineRule::Kelvin { select, to } => netsmith_core::LayoutRule::Kelvin {
+                select: near(select),
+                to: pin(to),
+            },
         };
         found.guidelines.push(netsmith_core::LayoutGuideline {
             part,

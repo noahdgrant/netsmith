@@ -20,6 +20,8 @@
 //! - `route`: the length of every track of the pin's net, in all. At most `length`. Checked on
 //!   the routed board. Its `width` is not measured here: the design adds it to the net's least
 //!   width (`Features::net_widths`), which the router keeps to.
+//! - `kelvin`: no number; the sense pin is routed alone from its tap, and `crate::kelvin` says
+//!   when it is not (issue #1148).
 //!
 //! The placer pulls each part a `near` or a `loop` finds as it pulls a decoupling capacitor,
 //! pushes the parts an `away` finds out to its distance, and pulls a part with an `edge`
@@ -44,7 +46,7 @@ pub struct PartGuideline {
 }
 
 /// The pins a rule names, in a fixed order: the selector's (both pins of `bridging`, the one of
-/// `on`) and then the pin after `to` or `from`; `.a` and `.b` of a `loop`; the one pin of
+/// `on`) and then the pin after `to` (of a `near` or a `kelvin`) or `from`; `.a` and `.b` of a `loop`; the one pin of
 /// `edge`, `vias` and `route`.
 pub fn pins_of(rule: &LayoutRule) -> Vec<&str> {
     fn select(s: &NearSelect) -> Vec<&str> {
@@ -54,7 +56,7 @@ pub fn pins_of(rule: &LayoutRule) -> Vec<&str> {
         }
     }
     match rule {
-        LayoutRule::Near { select: s, to, .. } => {
+        LayoutRule::Near { select: s, to, .. } | LayoutRule::Kelvin { select: s, to } => {
             let mut out = select(s);
             out.push(to);
             out
@@ -193,12 +195,12 @@ fn nearest(a: &[Pt], b: &[Pt]) -> Option<f64> {
 }
 
 /// The net of each pad of the board's parts, by (part index, pad number).
-struct Nets<'a> {
+pub(crate) struct Nets<'a> {
     of: HashMap<(usize, &'a str), usize>,
 }
 
 impl<'a> Nets<'a> {
-    fn new(parts: &[Placed], nets: &'a [BoardNet]) -> Self {
+    pub(crate) fn new(parts: &[Placed], nets: &'a [BoardNet]) -> Self {
         let index: HashMap<&str, usize> = parts
             .iter()
             .enumerate()
@@ -215,12 +217,12 @@ impl<'a> Nets<'a> {
         Nets { of }
     }
 
-    fn of(&self, part: usize, pad: &str) -> Option<usize> {
+    pub(crate) fn of(&self, part: usize, pad: &str) -> Option<usize> {
         self.of.get(&(part, pad)).copied()
     }
 
     /// The nets of these pads of a part, sorted, each once.
-    fn of_pads(&self, part: usize, pads: &[String]) -> Vec<usize> {
+    pub(crate) fn of_pads(&self, part: usize, pads: &[String]) -> Vec<usize> {
         let mut out: Vec<usize> = pads.iter().filter_map(|p| self.of(part, p)).collect();
         out.sort_unstable();
         out.dedup();
@@ -230,7 +232,7 @@ impl<'a> Nets<'a> {
 
 /// Whether part `j` (not `i`) is one a selector of part `i` finds, given the nets of the
 /// selector's pins (`sides`).
-fn selects(
+pub(crate) fn selects(
     select: &NearSelect,
     sides: &[Vec<usize>],
     other: &Placed,
@@ -654,6 +656,7 @@ pub fn layout_findings(board: &Board) -> Vec<LayoutFinding> {
             refdes,
         });
     }
+    out.extend(crate::kelvin::kelvin_findings(board));
     out
 }
 

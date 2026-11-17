@@ -439,3 +439,31 @@ board B {
     assert!(text.contains("std/layouts.nsm:3"), "{text}");
     assert!(text.contains("nope"), "{text}");
 }
+
+#[test]
+fn a_kelvin_statement_keeps_its_selector_and_its_sense_pin() {
+    let src = part(
+        "        source \"LD9, 9.1 Layout, p.12\"
+        kelvin sense bridging .vout.pos .vin.neg to .vout.pos",
+    );
+    let rules = rules(&src);
+    let [(name, GuidelineRule::Kelvin { select: NearSelect::Bridging(a, b), to })] =
+        rules.as_slice()
+    else {
+        panic!("{rules:?}")
+    };
+    assert_eq!(name, "sense");
+    assert!(a == to && b != to, "{rules:?}");
+}
+
+#[test]
+fn the_sense_pin_of_a_kelvin_statement_is_a_pin_of_its_selector() {
+    let m = message(
+        &part("        source \"LD9, p.12\"\n        kelvin sense on .vout.pos to .vin.pos"),
+        "sense pin",
+    );
+    assert!(
+        m.contains("`kelvin sense`") && m.contains("is a pin of its selector"),
+        "{m}"
+    );
+}

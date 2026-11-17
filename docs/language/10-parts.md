@@ -381,7 +381,50 @@ board Converter {
 - `edge NAME .pin [within LENGTH]`: the pin's pads go at the board's edge, within the length of it. The placer pulls the part to an edge as it pulls a connector.
 - `vias NAME .pin N`: the pin's pads take at least N vias of their net, each with its centre on one of them. It is checked on the routed board.
 - `route NAME .pin [width LENGTH] [length LENGTH]`, one of the two at least: the tracks of the pin's net are at least the width wide (the net's least width, which the router keeps to) and at most the length long in all (checked on the routed board).
+- `kelvin NAME SELECTOR to .pin`: the pin is a sense pin, a _Kelvin connection_ (issue #1148). It senses the pad of the part the selector finds on the pin's net (a shunt's terminal, say), and the router routes it from that pad alone: no other copper of the net joins its track on the way, so no load current flows in it and the sensed voltage is the pad's. The pin is one of the selector's (`bridging .in_p .in_n to .in_p`, `on .sense kind resistor to .sense`); of several pads of the part found on the net, the one nearest the pin is sensed. It has no number. `fab` warns, as for the other statements, when the statement finds no part or more than one, when the net has a pour, a plane or a zone (which would join the sense track to the rest of the net), and when the routed copper of the pin joins any other pad of the net (chapter _The shape of a board_, _Kelvin sense connections_).
 - `layout "TSOT-23-5" { }` holds the guidelines of one package of the part: a board uses them only when the part is in that package. The package is one that a pin table of the part names, when its tables name packages. A `keepout` or `vias` of a tab or an exposed pad goes in such a block.
+
+A current-sense amplifier's datasheet asks for Kelvin connections to its shunt:
+
+```nsm
+import std::parts::connector::Header1x2
+import std::parts::passive::Resistor
+
+/// An invented current-sense amplifier, with the pins of its inputs and supply.
+part Csa9 {
+    .designator &= "U"
+    pins {
+        .in_p input "IN+" "1"
+        .in_n input "IN-" "2"
+        .vs   power "VS"  "3"
+        .gnd  power "GND" "4"
+    }
+
+    layout {
+        source "CSA9 datasheet, 9.1 Layout Guidelines, p.18"
+        /// "Connect IN+ and IN- to the pads of the shunt with Kelvin connections."
+        kelvin sense_p bridging .in_p .in_n to .in_p
+        kelvin sense_n bridging .in_p .in_n to .in_n
+    }
+}
+
+board Monitor {
+    .feed: Header1x2
+    .load: Header1x2
+    .supply: Header1x2
+    .amp: Csa9
+    /// Found by both statements: one pad on IN+'s net, one on IN-'s.
+    .shunt: Resistor
+    .feed.p1 ~ .shunt.a
+    .shunt.a ~ .amp.in_p
+    .shunt.b ~ .amp.in_n
+    .shunt.b ~ .load.p1
+    .feed.p2 ~ .load.p2
+    .supply.p1 ~ .amp.vs
+    .supply.p2 ~ .amp.gnd
+    .supply.p2 ~ .load.p2
+}
+```
 
 A catalog row has no definition to hold a block, and a generic such as `LinearRegulator` picks rows that each have their own datasheet. The standard library's `std/layouts.nsm` therefore has one block for each row whose datasheet has a layout section, keyed by the row's manufacturer's part number, the `mpn` of its catalog file (issue #1032):
 

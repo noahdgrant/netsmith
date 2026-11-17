@@ -506,6 +506,125 @@ fn join_pieces(
     pairs
 }
 
+/// The pairs of a net's items whose copper touches, with no pour or plane: items `0..n` are the
+/// pads (`nodes`), then the tracks, then the vias. Pads whose copper lies one on the other, on
+/// a layer both have, are one piece (as in KiCad and in the design rules check): the plated
+/// holes drawn inside a QFN's exposed pad are the pad's own, and need no track to it or to
+/// each other. A blind or a buried via joins copper on its own layers only (issue #1015).
+fn copper_joins(
+    layers: u32,
+    nodes: &[Node],
+    tracks: &[&Track],
+    vias: &[&Via],
+) -> Vec<(usize, usize)> {
+    let (n, t) = (nodes.len(), tracks.len());
+    let mut out = Vec::new();
+    for (i, a) in nodes.iter().enumerate() {
+        for (j, b) in nodes.iter().enumerate().skip(i + 1) {
+            if (a.front && b.front || a.back && b.back) && overlap(a, b) {
+                out.push((i, j));
+            }
+        }
+    }
+    for (ti, track) in tracks.iter().enumerate() {
+        for (ni, node) in nodes.iter().enumerate() {
+            let touches = [track.from, track.to]
+                .iter()
+                .any(|&end| on_pad(node, end, Some(track.layer)))
+                || runs_over(node, track);
+            if touches {
+                out.push((ni, n + ti));
+            }
+        }
+        for (tj, other) in tracks.iter().enumerate().skip(ti + 1) {
+            let meet = track.layer == other.layer
+                && ([track.from, track.to]
+                    .iter()
+                    .any(|&a| [other.from, other.to].iter().any(|&b| near(a, b)))
+                    || tracks_touch(track, other));
+            if meet {
+                out.push((n + ti, n + tj));
+            }
+        }
+    }
+    for (vi, via) in vias.iter().enumerate() {
+        for (ni, node) in nodes.iter().enumerate() {
+            let shares = (node.front && via.on(CopperLayer::Front, layers))
+                || (node.back && via.on(CopperLayer::Back, layers))
+                || (node.front && node.back);
+            if shares && on_pad(node, via.at, None) {
+                out.push((ni, n + t + vi));
+            }
+        }
+        for (ti, track) in tracks.iter().enumerate() {
+            if !via.on(track.layer, layers) {
+                continue;
+            }
+            if near(via.at, track.from)
+                || near(via.at, track.to)
+                || track.distance_to(via.at) <= (track.width + via.diameter) / 2.0 + TOUCH
+            {
+                out.push((n + t + vi, n + ti));
+            }
+        }
+    }
+    out
+}
+
+/// What the copper of a net joins to the pads `from` when the pad `cut` is taken away: a sense
+/// pin's copper, without the pad it senses (issue #1148). Pours and planes are not counted (a net with
+/// one is never routed alone).
+#[derive(Debug, Clone, PartialEq, Default)]
+pub(crate) struct Reach {
+    /// The other pads of the net it joins, by index of `nodes`.
+    pub pads: Vec<usize>,
+    /// The tracks and the vias it holds.
+    pub tracks: usize,
+    pub vias: usize,
+    /// Whether a track or a via of it touches the pad `cut`.
+    pub touches_cut: bool,
+}
+
+/// [`Reach`] of the pads `from` of a net without its pad `cut`, by index of `nodes`.
+pub(crate) fn reach_without(
+    layers: u32,
+    nodes: &[Node],
+    (tracks, vias): (&[&Track], &[&Via]),
+    from: &[usize],
+    cut: usize,
+) -> Reach {
+    let (n, t) = (nodes.len(), tracks.len());
+    let joins = copper_joins(layers, nodes, tracks, vias);
+    let mut sets = Sets::new(n + t + vias.len());
+    for &(a, b) in &joins {
+        if a != cut && b != cut {
+            sets.join(a, b);
+        }
+    }
+    if let Some((&first, rest)) = from.split_first() {
+        for &other in rest {
+            sets.join(first, other);
+        }
+    }
+    let Some(&first) = from.first() else {
+        return Reach::default();
+    };
+    let root = sets.find(first);
+    let mut held = vec![false; n + t + vias.len()];
+    for (i, h) in held.iter_mut().enumerate() {
+        *h = i != cut && sets.find(i) == root;
+    }
+    let touches_cut = joins
+        .iter()
+        .any(|&(a, b)| (a == cut && b >= n && held[b]) || (b == cut && a >= n && held[a]));
+    Reach {
+        pads: (0..n).filter(|&i| held[i] && !from.contains(&i)).collect(),
+        tracks: (n..n + t).filter(|&i| held[i]).count(),
+        vias: (n + t..n + t + vias.len()).filter(|&i| held[i]).count(),
+        touches_cut,
+    }
+}
+
 /// Kruskal's algorithm, starting with everything the routed copper already joins (`joined`:
 /// pairs of items a zone joins, [`join_pieces`]). Of equal lines, the one between the pads listed
 /// first wins.
@@ -527,61 +646,15 @@ fn spanning_tree(
     for &(a, b) in joined {
         sets.join(a, b);
     }
-    // Pads whose copper lies one on the other, on a layer both have, are one piece (as in KiCad
-    // and in the design rules check): the plated holes drawn inside a QFN's exposed pad are the
-    // pad's own, and need no track to it or to each other.
-    for (i, a) in nodes.iter().enumerate() {
-        for (j, b) in nodes.iter().enumerate().skip(i + 1) {
-            if (a.front && b.front || a.back && b.back) && overlap(a, b) {
-                sets.join(i, j);
-            }
-        }
+    for (a, b) in copper_joins(layers, nodes, tracks, vias) {
+        sets.join(a, b);
     }
     for (ti, track) in tracks.iter().enumerate() {
-        for (ni, node) in nodes.iter().enumerate() {
-            let touches = [track.from, track.to]
-                .iter()
-                .any(|&end| on_pad(node, end, Some(track.layer)))
-                || runs_over(node, track);
-            if touches {
-                sets.join(ni, n + ti);
-            }
-        }
-        for (tj, other) in tracks.iter().enumerate().skip(ti + 1) {
-            let meet = track.layer == other.layer
-                && ([track.from, track.to]
-                    .iter()
-                    .any(|&a| [other.from, other.to].iter().any(|&b| near(a, b)))
-                    || tracks_touch(track, other));
-            if meet {
-                sets.join(n + ti, n + tj);
-            }
-        }
         if poured.iter().any(|&(l, _)| l == track.layer) {
             sets.join(n + ti, pour_item(track.layer));
         }
     }
     for (vi, via) in vias.iter().enumerate() {
-        // A blind or a buried via joins copper on its own layers only (issue #1015).
-        for (ni, node) in nodes.iter().enumerate() {
-            let shares = (node.front && via.on(CopperLayer::Front, layers))
-                || (node.back && via.on(CopperLayer::Back, layers))
-                || (node.front && node.back);
-            if shares && on_pad(node, via.at, None) {
-                sets.join(ni, n + t + vi);
-            }
-        }
-        for (ti, track) in tracks.iter().enumerate() {
-            if !via.on(track.layer, layers) {
-                continue;
-            }
-            if near(via.at, track.from)
-                || near(via.at, track.to)
-                || track.distance_to(via.at) <= (track.width + via.diameter) / 2.0 + TOUCH
-            {
-                sets.join(n + t + vi, n + ti);
-            }
-        }
         for &(layer, _) in poured.iter().filter(|&&(l, _)| via.on(l, layers)) {
             sets.join(n + t + vi, pour_item(layer));
         }

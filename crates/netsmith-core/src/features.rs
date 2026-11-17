@@ -191,10 +191,16 @@ pub enum LayoutRule {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         length: Option<f64>,
     },
+    /// `to` is a sense pin, a Kelvin connection (issue #1148): it senses the pad of the part
+    /// that [`NearSelect`] finds on the net of `to`, and the router routes `to` from that pad,
+    /// alone: no other copper of the net joins the sense track on the way. `to` is a pin of the
+    /// selector.
+    Kelvin { select: NearSelect, to: String },
 }
 
 impl LayoutRule {
-    /// The statement's word in the language: `near`, `away`, `loop`, `edge`, `vias`, `route`.
+    /// The statement's word in the language: `near`, `away`, `loop`, `edge`, `vias`, `route`,
+    /// `kelvin`.
     pub fn word(&self) -> &'static str {
         match self {
             LayoutRule::Near { .. } => "near",
@@ -203,11 +209,12 @@ impl LayoutRule {
             LayoutRule::Edge { .. } => "edge",
             LayoutRule::Vias { .. } => "vias",
             LayoutRule::Route { .. } => "route",
+            LayoutRule::Kelvin { .. } => "kelvin",
         }
     }
 }
 
-/// Which parts of the board a `near` or an `away` [`LayoutRule`] is about, found from the nets of the part's pins
+/// Which parts of the board a `near`, an `away` or a `kelvin` [`LayoutRule`] is about, found from the nets of the part's pins
 /// (named as its pin table names them).
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
