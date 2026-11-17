@@ -21,9 +21,9 @@
 //!   with vias and detours.
 //! - **Track overflow** (off unless asked for, [`overflow`]): the track the nets ask of each bin
 //!   of 1 mm or more, and the room the pads take there, beyond what the bin holds.
-//! - **Escape room** (off unless asked for, [`escape`]): the nets that leave each side of a busy
-//!   part beyond what the corridor in front of the side holds, where the board's edge or another
-//!   part on its face is nearer than the escape ring's 1.5 mm.
+//! - **Escape room** ([`escape`], 2 for each net unless the caller says otherwise): the nets
+//!   that leave each side of a busy part beyond what the corridor in front of the side holds,
+//!   where the board's edge or another part on its face is nearer than the escape ring's 1.5 mm.
 //! - **Cohesion**: the half perimeter of the box round the parts of each module instance
 //!   (each prefix of the instance path), so a module stays together.
 //! - **Decoupling**: the distance from a capacitor's pads to the power pins it decouples
@@ -59,7 +59,8 @@
 //! - **Moves.** Shift one part (a step that shrinks as the temperature falls), turn it about
 //!   its courtyard's centre, move its reference text to another side, swap two parts, put a
 //!   part beside a part it shares a net with (on the side of that part's courtyard nearest the
-//!   connected pad, sometimes turned), and shift a whole module instance. The cost of a move
+//!   connected pad, sometimes turned), shift a whole module instance, and, in a run that weighs
+//!   escape room, push a busy part with the parts it lands on ([`escape`]). The cost of a move
 //!   is the difference of the terms that involve the parts moved, so a move costs about the
 //!   same on a board of 70 parts as on one of 700.
 //! - **Schedule.** The first temperature is the median of the uphill changes a sample of 300
@@ -242,10 +243,10 @@
 //! with many pads and few ratsnest lines crossing. Its estimate of the track each bin of the
 //! board is asked for beyond what it holds ([`overflow`], issue #820) is built and measured, but
 //! off: it lowered that overflow without leaving the router clearly fewer lines on the boards
-//! here, so a board packed harder than the router can untangle is still not helped. Nor is its
-//! measure of the nets that cannot leave a busy part's sides ([`escape`], issue #997), which is
-//! built and off: on the tight board the module stays against the edge and the router leaves
-//! more lines. The placer shares the faces
+//! here, so a board packed harder than the router can untangle is still not helped. Its
+//! measure of the nets that cannot leave a busy part's sides ([`escape`], issues #997 and #1035)
+//! is on, and was measured on the tight board alone: it left the router 15 % fewer lines over 32
+//! seeds, with as wide a spread from seed to seed. The placer shares the faces
 //! only when a size to fit needs it, and never flips a part for wire length. Hierarchical
 //! placement (arrange each module, then place the blocks) is not built: cohesion is the cost
 //! above. The weights were tuned on four boards (one not in this repository) and a handful of
