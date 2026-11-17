@@ -1,0 +1,40 @@
+import std::parts::passive::Resistor
+import std::sources::Rail
+import std::mfg::jlcpcb::HdiSixLayer
+
+board Dense {
+    .process: HdiSixLayer {
+        .buried_vias &= "core"
+        .stackup.thickness &= 1.2mm
+        .stackup.copper_weight &= 1
+        .stackup.build &= "HDI-6L-1.2"
+        .stackup.inner_copper &= 0.0152mm
+        .stackup.dielectric1.kind &= "prepreg"
+        .stackup.dielectric1.glass &= "1080"
+        .stackup.dielectric1.thickness &= 0.086mm
+        .stackup.dielectric1.epsilon &= 3.91
+        .stackup.dielectric2.kind &= "core"
+        .stackup.dielectric2.thickness &= 0.4mm
+        .stackup.dielectric2.epsilon &= 4.6
+        .stackup.dielectric3.kind &= "prepreg"
+        .stackup.dielectric3.glass &= "2116"
+        .stackup.dielectric3.thickness &= 0.15mm
+        .stackup.dielectric3.epsilon &= 4.16
+        .stackup.dielectric4.kind &= "core"
+        .stackup.dielectric4.thickness &= 0.4mm
+        .stackup.dielectric4.epsilon &= 4.6
+        .stackup.dielectric5.kind &= "prepreg"
+        .stackup.dielectric5.glass &= "1080"
+        .stackup.dielectric5.thickness &= 0.086mm
+        .stackup.dielectric5.epsilon &= 3.91
+        .inner1.use &= "signal"
+        .inner2.net &= "GND"
+        .inner3.net &= "5V"
+        .inner4.use &= "signal"
+    }
+    .supply: Rail {
+        .pos.net &= "5V"
+    }
+    .r1: Resistor { .resistance &= 1kohm +/- 1% }
+    .supply.pos ~> .r1 ~> .supply.neg
+}

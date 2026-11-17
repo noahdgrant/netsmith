@@ -161,7 +161,7 @@ board Six {
 
 A six-layer HDI board of the first order with buried vias, in a build-up of its own:
 
-```nsm solve place
+```nsm solve place file=crates/netsmith-tools/tests/fixtures/hdi_dense.nsm
 import std::parts::passive::Resistor
 import std::sources::Rail
 import std::mfg::jlcpcb::HdiSixLayer
