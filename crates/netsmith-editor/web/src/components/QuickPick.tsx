@@ -16,7 +16,7 @@ import { kindOfType } from '../source/card';
 import { scanSymbols } from '../source/symbols';
 import { closePicker, picker, recentCommands, recentPicks, rememberQuery, usedCommand, usedPick } from '../quickpick';
 import { Icon, type IconName, SeverityIcon } from './Icons';
-import { activeFile, detail, goTo, openFile, openFiles, project, revealSection, say, viewBoardOfDefinition } from '../store';
+import { activeFile, board, detail, goTo, openFile, openFiles, project, revealSection, say, viewBoardOfDefinition } from '../store';
 import { giveFocusBack } from './layers';
 
 /** A name with the letters the query matched marked. */
@@ -221,7 +221,9 @@ function Dialog({ initial, fileScope }: { initial: string; fileScope: boolean })
   const input = useRef<HTMLInputElement>(null);
   const list = useRef<HTMLDivElement>(null);
   const before = useRef<Element | null>(document.activeElement);
-  const d = detail.value;
+  // The parts and nets of the board in front only: for a moment after the board is switched the detail is still the previous board's
+  // (its request is on the way), and a part of that board must not be offered, or chosen, on this one.
+  const d = detail.value && detail.value.name === board.value ? detail.value : null;
   const p = project.value;
   const drawn = drawnBuses.value;
   // Only the buses of the board in front: the drawing of the board before it is still there for a moment.

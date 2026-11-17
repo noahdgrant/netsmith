@@ -19,12 +19,20 @@ export async function run({ page, shot, step, expect }) {
   const board = await page.evaluate(async () => (await (await fetch('/api/analysis')).json()).boards.find((b) => b.name === 'TwoBoards/power')?.definition);
   expect(!!board, `the other board is drawn as ${board}`);
 
+  // Enter chooses the row that is active when it is pressed, and the rows change as the board's detail arrives (the page has no
+  // parts of the board until then), so Enter waits for the row of the part: the one named by its designator and its path.
   const goToAnything = async (text) => {
     await page.keyboard.press('Control+p');
     await page.waitForSelector('.qp[role=dialog]');
     await page.keyboard.press('Control+a');
     await page.keyboard.type(text);
-    await page.waitForSelector('.qp-row[role=option]');
+    await page.waitForFunction(
+      ([ref, path]) => {
+        const row = document.querySelector('.qp-row[role=option][aria-selected=true]');
+        return !!row && row.querySelector('.qp-label')?.textContent === ref && !!row.querySelector('.qp-detail')?.textContent?.includes(path);
+      },
+      [part.refdes, part.path],
+    );
     await page.keyboard.press('Enter');
     await page.waitForSelector('.qp[role=dialog]', { state: 'detached' });
   };
@@ -35,11 +43,9 @@ export async function run({ page, shot, step, expect }) {
   });
 
   step('a part of the new board is asked for while its drawing is on the way: it is shown on the new drawing only');
-  const detailIn = page.waitForResponse((r) => r.url().includes('/api/board?'));
   await page.selectOption('.boardpick select', to);
-  // The page knows the board now and its detail is in; the drawing is held.
+  // The page knows the board now; the drawing is held.
   await page.waitForFunction((n) => document.querySelector('.boardpick select')?.value === n, to);
-  await detailIn;
   await goToAnything(part.refdes.toLowerCase());
   const stale = await page.evaluate(() => ({
     drawing: document.querySelector('svg.schematic')?.getAttribute('data-board') ?? null,
