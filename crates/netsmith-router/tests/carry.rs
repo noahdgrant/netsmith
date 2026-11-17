@@ -94,6 +94,8 @@ fn the_copper_of_untouched_nets_is_carried_and_only_the_rest_is_left_to_route() 
     assert!(left.lines.len() < whole);
     let mut routed_again = again.clone();
     let done = reroute(&routed, &mut routed_again, &rip, RouteOptions::default());
+    // The carried copper is the router's again: the board is one to carry from in turn.
+    assert_eq!(routed_again.fixed, again.fixed);
     for net in &done.carried.kept {
         assert_eq!(copper_of(&routed, net), copper_of(&routed_again, net), "{net}");
     }

@@ -198,3 +198,51 @@ fn a_proposal_says_each_step_as_it_begins() {
         ["placing the parts of c again", "measuring the placement before and after"]
     );
 }
+
+#[test]
+fn a_later_session_keeps_the_copper_of_the_nets_a_regeneration_left_alone() {
+    let (root, editor) = project("later");
+    let say: netsmith_editor::Say = Arc::new(|_: &str| {});
+    let first = editor.route(BOARD, &say).unwrap();
+    assert!(first.unrouted.is_empty(), "{first:?}");
+    // The router's copper is kept on disk, in a folder git ignores.
+    let kept = root.join(".netsmith/routes/main.Lights.toml");
+    assert!(kept.is_file(), "no kept copper at {}", kept.display());
+    assert_eq!(fs::read_to_string(root.join(".netsmith/.gitignore")).unwrap().lines().last(), Some("*"));
+    drop(editor);
+
+    // A new session, which has routed nothing: a regeneration and a route after it.
+    let later = Workspace::open(Target::resolve_from(&root, None).unwrap()).unwrap_or_else(|e| panic!("{e}"));
+    let scene = later.pcb_scene(BOARD).unwrap();
+    assert!(!scene.routed);
+    let proposal = (0..12)
+        .map(|seed| later.pcb_regenerate(&ask(&scene.layout_stamp, "a", seed), &say).unwrap())
+        .find(|p| !p.changes.is_empty() && p.parts.iter().any(|q| {
+            scene.parts.iter().find(|r| r.path == q.path).is_some_and(|r| r.courtyard != q.courtyard)
+        }))
+        .expect("a seed moves a part of `a`");
+    later
+        .pcb_edit(&PcbEdit {
+            board: BOARD.into(),
+            stamp: scene.layout_stamp.clone(),
+            changes: proposal.changes.clone(),
+        })
+        .unwrap();
+    let heard = Arc::new(Mutex::new(Vec::<String>::new()));
+    let listen: netsmith_editor::Say = {
+        let heard = Arc::clone(&heard);
+        Arc::new(move |line: &str| heard.lock().unwrap().push(line.to_string()))
+    };
+    let second = later.route(BOARD, &listen).unwrap();
+    println!("kept {:?}, routed again {:?}", second.carried, second.rerouted);
+    let lines = heard.lock().unwrap().join("\n");
+    assert!(lines.contains("starting from the router's copper kept in"), "{lines}");
+    assert!(second.unrouted.is_empty(), "{second:?}");
+    for kept in ["net-b.led.anode", "net-c.led.anode"] {
+        assert!(second.carried.iter().any(|n| n == kept), "{kept} lost its copper: {second:?}");
+    }
+    for net in &proposal.nets {
+        assert!(!second.carried.contains(net), "{net} was kept: {second:?}");
+        assert!(second.rerouted.contains(net), "{net} was not routed again: {second:?}");
+    }
+}
