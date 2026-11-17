@@ -122,3 +122,173 @@ impl Board {
         span_depth(&self.process, a, b)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::board::tests::hdi_board;
+
+    fn span(from: CopperLayer, to: CopperLayer) -> Option<ViaSpan> {
+        Some(ViaSpan { from, to })
+    }
+
+    #[test]
+    fn the_via_between_two_layers_is_the_one_of_fewest_layers_that_joins_both() {
+        let board = hdi_board();
+        assert_eq!(board.planes[0].layer, "In1.Cu");
+        use CopperLayer::{Back, Front, Inner};
+        let between = |a, b| board.via_between(a, b);
+        // A blind via from the top to the layer under it: the laser's hole and copper.
+        let blind = between(Front, Inner(1));
+        assert_eq!(blind.span, span(Front, Inner(1)));
+        assert!(blind.laser && blind.drill == 0.1 && blind.diameter == 0.25);
+        assert_eq!(between(Inner(4), Back).span, span(Inner(4), Back));
+        // Inside the core, the buried via; from the top into the core, the through via.
+        let buried = between(Inner(2), Inner(3));
+        assert_eq!(buried.span, span(Inner(1), Inner(4)));
+        assert!(!buried.laser && buried.drill == board.rules.via_drill);
+        assert_eq!(between(Front, Inner(2)).span, None);
+        assert_eq!(between(Front, Back).span, None);
+        // A via's layers and depth: the blind via passes the first dielectric layer only.
+        let via = Via {
+            net: "GND".into(),
+            at: crate::Pt::new(0.0, 0.0),
+            diameter: 0.25,
+            drill: 0.1,
+            span: blind.span,
+        };
+        assert_eq!(board.via_layers(&via), [Front, Inner(1)]);
+        assert!((board.via_depth(&via) - 0.086).abs() < 1e-9);
+        // A board that is not HDI draws through vias only.
+        let six = crate::board::tests::six_layer_board();
+        assert_eq!(six.via_between(Front, Inner(1)).span, None);
+    }
+
+    #[test]
+    fn the_board_file_writes_a_blind_via_as_a_micro_via_and_a_buried_one_as_blind() {
+        let mut board = hdi_board();
+        let via = |span| Via {
+            net: "GND".into(),
+            at: crate::Pt::new(5.0, 5.0),
+            diameter: 0.45,
+            drill: 0.2,
+            span,
+        };
+        board.vias.push(via(span(CopperLayer::Front, CopperLayer::Inner(1))));
+        board.vias.push(via(span(CopperLayer::Inner(1), CopperLayer::Inner(4))));
+        board.vias.push(via(None));
+        let pcb = crate::kicad_pcb(&board);
+        assert!(
+            pcb.contains("(via micro\n") || pcb.contains("(via micro "),
+            "{pcb}"
+        );
+        assert!(pcb.contains("(layers \"F.Cu\" \"In1.Cu\")"), "{pcb}");
+        assert!(pcb.contains("(via blind"), "{pcb}");
+        assert!(pcb.contains("(layers \"In1.Cu\" \"In4.Cu\")"), "{pcb}");
+        assert_eq!(pcb.matches("(layers \"F.Cu\" \"B.Cu\")").count(), 1, "{pcb}");
+        // The project file holds the laser's least hole and copper for KiCad's check.
+        let pro = crate::kicad_pro(&board);
+        assert!(pro.contains("\"min_microvia_drill\": 0.075"), "{pro}");
+        assert!(pro.contains("\"min_microvia_diameter\": 0.225"), "{pro}");
+        assert!(!crate::kicad_pro(&crate::board::tests::six_layer_board()).contains("microvia"));
+    }
+
+    #[test]
+    fn a_routes_file_keeps_a_blind_vias_layers() {
+        let mut board = hdi_board();
+        let net = board.nets[0].name.clone();
+        board.vias.push(Via {
+            net: net.clone(),
+            at: board.outline.min + crate::Pt::new(2.0, 3.0),
+            diameter: 0.25,
+            drill: 0.1,
+            span: span(CopperLayer::Front, CopperLayer::Inner(1)),
+        });
+        let record = crate::record_of(&board, &net, false).unwrap();
+        let mut routes = crate::Routes::default();
+        routes
+            .boards
+            .entry(board.name.clone())
+            .or_default()
+            .nets
+            .insert(net.clone(), record);
+        let text = routes.to_text();
+        assert!(
+            text.contains("{ at = [2.0, 3.0], diameter = 0.25, drill = 0.1, layers = [\"top\", \"inner1\"] }"),
+            "{text}"
+        );
+        let read = crate::Routes::parse(&text, "t.routes.toml").unwrap();
+        assert_eq!(read, routes);
+        let mut fresh = hdi_board();
+        crate::apply_routes(&mut fresh, &read, "t.routes.toml").unwrap();
+        assert_eq!(fresh.vias[0].span, span(CopperLayer::Front, CopperLayer::Inner(1)));
+        // A through via writes no layers, as before.
+        fresh.vias[0].span = None;
+        let record = crate::record_of(&fresh, &net, false).unwrap();
+        assert!(record.vias[0].layers.is_empty());
+        // A via between layers the board does not have is an error of the file.
+        let bad = text.replace("\"inner1\"]", "\"inner9\"]");
+        let err = crate::apply_routes(
+            &mut hdi_board(),
+            &crate::Routes::parse(&bad, "t.routes.toml").unwrap(),
+            "t.routes.toml",
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(err.contains("inner9"), "{err}");
+    }
+
+    #[test]
+    fn a_blind_via_joins_the_copper_of_its_own_layers_only() {
+        let mut board = hdi_board();
+        let net = "net-led.anode";
+        let pad = |board: &Board, r: &str, n: &str| {
+            let part = board.part(r).unwrap();
+            part.pad_centre(part.footprint.pads_numbered(n).next().unwrap())
+        };
+        // R1.2 and D1.2, surface-mount pads on the top, joined by a run on the second inner
+        // layer between two vias.
+        let (r1, d1) = (pad(&board, "R1", "2"), pad(&board, "D1", "2"));
+        // R1 is under D1: the run leaves R1 downwards and D1 upwards, so neither top track
+        // passes the other pad.
+        let (a, b) = (
+            crate::Pt::new(r1.x, r1.y + 1.0),
+            crate::Pt::new(d1.x, d1.y - 2.0),
+        );
+        let track = |layer, from, to| Track {
+            net: net.into(),
+            layer,
+            from,
+            to,
+            width: 0.2,
+            mid: None,
+        };
+        board.tracks.push(track(CopperLayer::Front, r1, a));
+        board.tracks.push(track(CopperLayer::Inner(2), a, b));
+        board.tracks.push(track(CopperLayer::Front, b, d1));
+        let lines = |board: &Board| {
+            crate::Ratsnest::of(board)
+                .lines
+                .iter()
+                .filter(|l| l.net == net)
+                .count()
+        };
+        assert_eq!(lines(&board), 1);
+        // Blind vias from the top to the first inner layer do not reach the run on the second.
+        for at in [a, b] {
+            board.vias.push(Via {
+                net: net.into(),
+                at,
+                diameter: 0.25,
+                drill: 0.1,
+                span: span(CopperLayer::Front, CopperLayer::Inner(1)),
+            });
+        }
+        assert_eq!(lines(&board), 1);
+        // Through vias do.
+        for v in &mut board.vias {
+            v.span = None;
+        }
+        assert_eq!(lines(&board), 0);
+    }
+}

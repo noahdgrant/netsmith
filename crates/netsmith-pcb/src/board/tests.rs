@@ -63,6 +63,15 @@ pub fn six_layer_board() -> Board {
     fixture(include_str!("../../tests/fixtures/six_layer.board.json"))
 }
 
+/// The LED board placed on six layers, made with `HdiSixLayer` with buried vias (issue #1015):
+/// GND on its first inner layer, 3V3 on its last, as [`six_layer_board`].
+pub fn hdi_board() -> Board {
+    let mut board = six_layer_board();
+    board.process = crate::rules::hdi_process(&[".buried_vias &= \"core\""]);
+    board.rules = crate::Rules::for_process(&board.process).unwrap();
+    board
+}
+
 /// The LED board placed on ACME's ten layers.
 pub fn ten_layer_board() -> Board {
     fixture(include_str!("../../tests/fixtures/ten_layer.board.json"))
