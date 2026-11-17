@@ -1,4 +1,4 @@
-// Whether the PCB view draws the board in 2D or in 3D, and what the 3D view lets the commands do
+// Whether the PCB view draws the board in 2D, in 3D or as the Gerbers of its fab package (issue 1107), and what the 3D view lets the commands do
 // while it is on screen. This file is in the page's main chunk; the 3D view itself (three.js and
 // everything that draws) is a chunk of its own, loaded the first time 3D is opened (ADR 0105).
 
@@ -6,7 +6,7 @@ import { signal } from '@preact/signals';
 
 import type { ViewChange, ViewState } from '../api';
 
-export type PcbMode = '2d' | '3d';
+export type PcbMode = '2d' | '3d' | 'gerber';
 
 export type Preset = 'top' | 'bottom' | 'front' | 'back' | 'left' | 'right' | 'iso';
 
@@ -22,15 +22,16 @@ export const PRESETS: { id: Preset; label: string; key?: string }[] = [
   { id: 'iso', label: 'Isometric', key: 'I' },
 ];
 
-/** 2D or 3D, for the session (a reload opens 2D, where the board is edited). */
+/** 2D, 3D or the Gerbers, for the session (a reload opens 2D, where the board is edited). */
 export const pcbMode = signal<PcbMode>('2d');
 
 /** The system whose _System scene_ the 3D view shows in place of the board (ADR 0110): its name,
  * while the board is one of its members; null shows the board alone. */
 export const systemShown = signal<string | null>(null);
 
+/** 2D to 3D, and 3D (or the Gerbers) back to 2D. */
 export function togglePcbMode() {
-  pcbMode.value = pcbMode.peek() === '3d' ? '2d' : '3d';
+  pcbMode.value = pcbMode.peek() === '2d' ? '3d' : '2d';
 }
 
 /** An axis of the scene's frame, for the section plane. */

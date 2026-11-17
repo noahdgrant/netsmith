@@ -58,6 +58,8 @@ import { analysis, board, detail, fabReports, job, panelShown, pcbReports, pcbSt
 import { partPathsOf, revealRequest, sameSelection, selection } from '../selection';
 import { Board3d } from '../pcb3d/Lazy';
 import { pcbMode, systemShown } from '../pcb3d/mode';
+import { DrawingSwitch } from '../pcb/DrawingSwitch';
+import { GerberView } from '../gerber/GerberView';
 import { seconds } from '../util';
 
 const LAYERS: { id: string; label: string }[] = [
@@ -240,21 +242,18 @@ export function Pcb() {
       </div>
     );
   }
+  if (pcbMode.value === 'gerber') {
+    return (
+      <div class="pcb-view">
+        <GerberView board={name} />
+      </div>
+    );
+  }
   return (
     <div class="pcb-view" data-live-place={liveSeen.value.place} data-live-route={liveSeen.value.route}>
       <div class="toolbar pcb-bar" role="toolbar" aria-label="Board">
         {/* First in the bar, so it is where it was whichever view is shown and whatever the groups after it hold (issue 784). */}
-        <div class="tb-group">
-          <Segmented<'2d' | '3d'>
-            label="Drawing"
-            value={in3d ? '3d' : '2d'}
-            onChange={(v) => (pcbMode.value = v)}
-            options={[
-              { value: '2d', label: '2D', tip: 'The board in 2D, where parts are placed and moved', keys: 'D', testid: 'pcb-2d' },
-              { value: '3d', label: '3D', icon: 'cube', tip: 'The board in 3D, with the heights netsmith knows: drag a picked part to move it', keys: 'D', testid: 'pcb-3d-toggle' },
-            ]}
-          />
-        </div>
+        <DrawingSwitch />
         <div class="tb-group">
           {panels.map((p) => (
             <button key={p.name} class="tool" title={`Draw the panel ${p.name} of this board`} onClick={() => (panelShown.value = p.name)}>

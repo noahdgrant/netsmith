@@ -14,6 +14,7 @@ import type {
   Definition,
   FabReport,
   FileContent,
+  GerberView,
   GitInfo,
   OrderInfo,
   OrderReport,
@@ -244,6 +245,21 @@ export const api = {
   definition: (path: string, text: string, offset: number) =>
     post<Definition | null>('/api/definition', { path, text, offset }),
   downloadUrl: (board: string, file: string) => `/api/download?${q({ board, file })}`,
+  /** The package `fab` last wrote for the board, read and drawn by netsmith's Gerber reader as `netsmith view gerber`
+   * reads and draws it (issue 1107): its summary and the SVG of the view `layer` (the first of its views when none). */
+  gerber: (board: string, layer?: string) => getJson<GerberView>(`/api/gerber?${q(layer ? { board, layer } : { board })}`),
+  /** A package a person opens (a `.zip`, or one Gerber or drill file): the server reads it and keeps it for `gerberOpened`. */
+  gerberOpen: (name: string, bytes: ArrayBuffer, layer?: string): Promise<GerberView> =>
+    held(async () => {
+      const response = await fetch(`/api/gerber?${q(layer ? { name, layer } : { name })}`, {
+        method: 'POST',
+        headers: { ...GUARD, Accept: 'application/json', 'Content-Type': 'application/octet-stream' },
+        body: bytes,
+      });
+      return (await check(response)).json() as Promise<GerberView>;
+    }),
+  /** Another view of the package `gerberOpen` sent. */
+  gerberOpened: (name: string, layer?: string) => getJson<GerberView>(`/api/gerber?${q(layer ? { opened: name, layer } : { opened: name })}`),
   /** The git state of the project: refs, recent commits, whether the work tree has changes (ADR 0059). Needs no analysis. */
   git: () => getJson<GitInfo>('/api/git'),
   /** What changed in the circuit between `ref` and the files on disk. A ref that does not analyse is a 200 with `error`. */

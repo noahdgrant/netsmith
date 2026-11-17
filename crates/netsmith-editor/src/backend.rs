@@ -5,9 +5,10 @@ use netsmith_core::job::Cancel;
 
 use crate::api::{
     Analysis, BoardDetail, Bom, BuildReport, CatalogRefresh, Changed, Compare, Definition,
-    FabReport, FileContent, GitInfo, OrderInfo, OrderReport, PanelView, PcbCopper, PcbEdit,
-    PcbEdited, PcbFindings, PcbFit, PcbPours, PcbReport, PcbScene, PcbSummary, PinLock, PinMove,
-    PinWritten, PowerTree, Project, Saved, SchematicHints, Swap, SwapApply, Swapped, SystemView,
+    FabReport, FileContent, GerberView, GitInfo, OrderInfo, OrderReport, PanelView, PcbCopper,
+    PcbEdit, PcbEdited, PcbFindings, PcbFit, PcbPours, PcbReport, PcbScene, PcbSummary, PinLock,
+    PinMove, PinWritten, PowerTree, Project, Saved, SchematicHints, Swap, SwapApply, Swapped,
+    SystemView,
 };
 
 /// A refusal, with the HTTP status that says why.
@@ -381,6 +382,31 @@ pub trait Backend: Send + Sync + 'static {
         Err(ApiError::not_found(format!(
             "there is no copper summary of `{board}`"
         )))
+    }
+    /// The package `fab` last wrote for `board` (in this session, else the one an earlier run left
+    /// in the fab folder) read by netsmith's Gerber reader, and its view `layer` drawn (`None`:
+    /// the first of its views): the summary and the SVG `netsmith view gerber` prints and writes
+    /// (issue #1107). `404` when there is no package; `400` for a view it has no file for.
+    fn gerber(&self, board: &str, _layer: Option<&str>) -> Result<GerberView, ApiError> {
+        Err(ApiError::not_found(format!(
+            "`fab` has written no package for `{board}`"
+        )))
+    }
+    /// [`Backend::gerber`] of a package the page sends: `bytes` are a `.zip`, or one Gerber or
+    /// drill file, named `name`. It is kept, the one before dropped, for
+    /// [`Backend::gerber_opened`].
+    fn gerber_open(
+        &self,
+        name: &str,
+        _bytes: Vec<u8>,
+        _layer: Option<&str>,
+    ) -> Result<GerberView, ApiError> {
+        Err(ApiError::not_found(format!("`{name}` cannot be read here")))
+    }
+    /// Another view of the package [`Backend::gerber_open`] kept, by its name; `404` when the
+    /// package kept is not that one.
+    fn gerber_opened(&self, name: &str, _layer: Option<&str>) -> Result<GerberView, ApiError> {
+        Err(ApiError::not_found(format!("no package `{name}` is open")))
     }
     /// Where the part `part` (a path or a designator) fits on the board as placed now, every
     /// other part where it is (issue #1002): what `netsmith layout fit` says. `near` is a part

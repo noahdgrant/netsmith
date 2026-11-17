@@ -1790,6 +1790,105 @@ now: PcbFitPlace,
  */
 poses: Array<PcbFitPlace>, };
 
+export type GerberExtent = { x: number, y: number, width: number, height: number, };
+
+export type GerberFile = { 
+/**
+ * Its path in the package; the drawing's group of it has it as `data-file`.
+ */
+file: string, 
+/**
+ * `gerber` or `excellon`.
+ */
+format: string, 
+/**
+ * `copper`, `mask`, `paste`, `silk`, `outline`, `drill` or `other`.
+ */
+function: string, 
+/**
+ * The view that draws it as its own: `top`, `bottom`, `inner<n>`; null for the outline, the
+ * drill and a file of no known function.
+ */
+layer: string | null, 
+/**
+ * What said its function: `x2`, `name`, `format` (a drill file); null when nothing did.
+ */
+identifiedBy: string | null, 
+/**
+ * Its X2 `%TF.FileFunction`, as written.
+ */
+fileFunction: string | null, 
+/**
+ * Whether it was read; a file not read is in `unread` and is not drawn.
+ */
+read: boolean, extent: GerberExtent | null, 
+/**
+ * A drill file's round holes and slots.
+ */
+holes: number | null, slots: number | null, };
+
+export type GerberHoles = { 
+/**
+ * The tool's diameter in mm.
+ */
+diameter: number, plated: boolean, holes: number, slots: number, };
+
+export type GerberUnread = { file: string, 
+/**
+ * The line of the command, from 1.
+ */
+line: number | null, message: string, };
+
+export type GerberSkipped = { file: string, why: string, };
+
+export type GerberView = { 
+/**
+ * The zip's or the folder's name.
+ */
+package: string, 
+/**
+ * `fab`: the package `fab` wrote for the board; `opened`: one the page sent.
+ */
+source: string, 
+/**
+ * Where the package is, from the project's folder where it is in it, for the command that
+ * draws the same (`netsmith view gerber <path> --layer <layer>`); null for an opened one.
+ */
+path: string | null, 
+/**
+ * The board's size, the box of the outline's centrelines; null with no outline file.
+ */
+board: GerberExtent | null, 
+/**
+ * The views the package can be drawn as, in the reader's order (its `--layer` words).
+ */
+views: Array<string>, files: Array<GerberFile>, 
+/**
+ * Holes by size, smallest first, plated before not.
+ */
+holes: Array<GerberHoles>, unread: Array<GerberUnread>, skipped: Array<GerberSkipped>, 
+/**
+ * The view drawn.
+ */
+layer: string, 
+/**
+ * The SVG of the view: what `netsmith view gerber --format svg` writes. Its `viewBox` is
+ * `region`, in mm in the viewer's frame; the bottom is mirrored left to right.
+ */
+svg: string, 
+/**
+ * The region drawn: x, y, width, height in mm.
+ */
+region: Array<number>, 
+/**
+ * Whether the drawing is mirrored (the bottom, as a person sees it turned over).
+ */
+mirrored: boolean, 
+/**
+ * The files drawn, in the order drawn.
+ */
+drawn: Array<string>, };
+
 export type BuildReport = { ok: boolean, written: Array<string>, output: string, 
 /**
  * How long it took, in milliseconds.

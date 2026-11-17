@@ -13,6 +13,7 @@ mod export;
 mod fileops;
 mod files;
 mod findings;
+mod gerber;
 mod git;
 mod hints;
 mod keepouts;
@@ -47,10 +48,10 @@ use netsmith_editor::{
     AnalysisEvent, ApiError, Attachment, Backend, Observer, Say, Show,
     api::{
         Analysis, BoardDetail, Bom, BuildReport, CatalogRefresh, Changed, Compare, Definition,
-        FabReport, FileContent, GitInfo, KeepoutPlacement, OrderInfo, OrderReport, PanelView,
-        PcbChange, PcbCopper, PcbEdit, PcbEdited, PcbFindings, PcbFit, PcbReport, PcbScene,
-        PcbSummary, PinLock, PinMove, PinWritten, PowerTree, Project, Saved, SchematicHints,
-        SystemView,
+        FabReport, FileContent, GerberView, GitInfo, KeepoutPlacement, OrderInfo, OrderReport,
+        PanelView, PcbChange, PcbCopper, PcbEdit, PcbEdited, PcbFindings, PcbFit, PcbReport,
+        PcbScene, PcbSummary, PinLock, PinMove, PinWritten, PowerTree, Project, Saved,
+        SchematicHints, SystemView,
     },
 };
 
@@ -106,6 +107,9 @@ pub struct Workspace {
     /// scratch copy of a ref that a compare analyses): its analysis is stopped by that job's
     /// token, not by [`Backend::cancel_analysis`], and a cancelled one is told to no page.
     inherited: Option<Cancel>,
+    /// The fab package the page sent to the Gerber view last (issue #1107), kept so that another
+    /// view of it is drawn without sending it again.
+    gerber: Mutex<Option<netsmith_fab::viewer::Package>>,
 }
 
 /// Files the token of the analysis that is running where [`Backend::cancel_analysis`] finds it,
@@ -320,6 +324,7 @@ impl Workspace {
             compare_queue: compare::Queue::default(),
             analysis_cancel: Mutex::new(None),
             inherited: None,
+            gerber: Mutex::new(None),
         })
     }
 
@@ -1576,6 +1581,23 @@ impl Backend for Workspace {
             .filter(|e| e.is_routed())
             .map(|e| &e.board);
         pcb::copper(&data, board, routed)
+    }
+
+    fn gerber(&self, board: &str, layer: Option<&str>) -> Result<GerberView, ApiError> {
+        self.gerber_of_board(board, layer)
+    }
+
+    fn gerber_open(
+        &self,
+        name: &str,
+        bytes: Vec<u8>,
+        layer: Option<&str>,
+    ) -> Result<GerberView, ApiError> {
+        self.gerber_open_package(name, bytes, layer)
+    }
+
+    fn gerber_opened(&self, name: &str, layer: Option<&str>) -> Result<GerberView, ApiError> {
+        self.gerber_of_opened(name, layer)
     }
 
     fn pcb_fit(
