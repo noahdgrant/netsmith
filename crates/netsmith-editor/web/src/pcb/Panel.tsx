@@ -252,7 +252,7 @@ function NetList(props: {
 }
 
 /** The part's turn, which a person may type: any angle from 0 up to 360, not only the right
- * angles the Rotate button steps by (issue #996). Enter or leaving the field writes it to the
+ * angles the Rotate button steps by (issue 996). Enter or leaving the field writes it to the
  * layout file; a locked part shows its turn only. */
 function TurnField(props: { part: PcbPart }) {
   const { part } = props;

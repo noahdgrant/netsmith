@@ -93,7 +93,7 @@ describe('rotating', () => {
     expect(rotateParts([part('a', 1, 1, { locked: true })], frame, 90)).toEqual([]);
   });
 
-  it('turns parts to any angle, each about its own origin (issue #996)', () => {
+  it('turns parts to any angle, each about its own origin (issue 996)', () => {
     const [a, b] = turnPartsTo([part('a', 8, 10), part('b', 12, 10, { rotation: 90 })], frame, 45);
     const at = (c: typeof a) => (c.what === 'part' ? c.after! : (null as never));
     expect(at(a)).toMatchObject({ x: 8, y: 10, rotation: 45, source: 'hand' });
