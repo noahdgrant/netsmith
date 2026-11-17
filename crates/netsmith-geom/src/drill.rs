@@ -1,5 +1,8 @@
 //! The Excellon drill files: `<board>-PTH.drl` for plated holes (vias and pad holes) and
-//! `<board>-NPTH.drl` for the rest, in millimetres with decimal coordinates, as KiCad writes
+//! `<board>-NPTH.drl` for the rest, and one more for each span of a blind or buried via
+//! (issue #1015), named by its layers as KiCad names it, `<board>-front-in1.drl`,
+//! `<board>-in1-in4.drl`, `<board>-in4-back.drl`, its function `Plated,1,2,Blind` or
+//! `Plated,2,5,Buried`; in millimetres with decimal coordinates, as KiCad writes
 //! them and JLCPCB took them in earlier orders. Slots are routed (`G00`, `M15`, `G01`,
 //! `M16`) with a tool as wide as the slot. The origin is the board's drill/place origin and
 //! y points up, the same as the Gerbers.
@@ -20,6 +23,9 @@ pub struct Hole {
     pub via: bool,
     /// The index of the pad or via (in `Artwork::pads` or `Artwork::vias`) it is the hole of.
     pub index: usize,
+    /// A blind or a buried via's first and last layer, as places in `Artwork::copper`; `None`
+    /// for a hole through the board.
+    pub span: Option<(usize, usize)>,
 }
 
 /// Every hole of the board.
@@ -50,6 +56,7 @@ pub fn holes(art: &Artwork) -> Vec<Hole> {
             plated: pad.kind != PadKind::Npth,
             via: false,
             index,
+            span: None,
         });
     }
     for (index, via) in art.vias.iter().enumerate() {
@@ -60,6 +67,7 @@ pub fn holes(art: &Artwork) -> Vec<Hole> {
             plated: true,
             via: true,
             index,
+            span: via.span,
         });
     }
     out
@@ -77,21 +85,66 @@ fn coord(v: f64) -> String {
     if s == "-0.0" { "0.0".to_string() } else { s }
 }
 
-/// The two drill files of a board: plated first.
+/// The drill files of a board: plated through holes first, then the holes through no copper,
+/// then a file for each span of a blind or buried via, from the top.
 pub fn files(art: &Artwork, name: &str) -> Vec<Output> {
     let all = holes(art);
     let layers = art.copper.len().max(2);
-    [(true, "PTH"), (false, "NPTH")]
+    let mut out: Vec<Output> = [(true, "PTH"), (false, "NPTH")]
         .into_iter()
-        .map(|(plated, kind)| Output {
-            name: format!("{name}-{kind}.drl"),
-            bytes: file(&all, art.origin, plated, layers).into_bytes(),
+        .map(|(plated, kind)| {
+            let holes = all
+                .iter()
+                .filter(|h| h.plated == plated && h.span.is_none())
+                .collect();
+            let function = if plated { "Plated" } else { "NonPlated" };
+            Output {
+                name: format!("{name}-{kind}.drl"),
+                bytes: file(
+                    holes,
+                    art.origin,
+                    function,
+                    &format!("1,{layers},{kind}"),
+                    kind,
+                )
+                .into_bytes(),
+            }
         })
-        .collect()
+        .collect();
+    let mut spans: Vec<(usize, usize)> = all.iter().filter_map(|h| h.span).collect();
+    spans.sort_unstable();
+    spans.dedup();
+    // KiCad's word for a layer in a drill file's name: `front`, `back`, `in1`...
+    let word = |p: usize| match p {
+        0 => "front".to_string(),
+        p if p + 1 == layers => "back".to_string(),
+        p => format!("in{p}"),
+    };
+    for (a, b) in spans {
+        let kind = if a == 0 || b + 1 == layers {
+            "Blind"
+        } else {
+            "Buried"
+        };
+        let holes = all.iter().filter(|h| h.span == Some((a, b))).collect();
+        out.push(Output {
+            name: format!("{name}-{}-{}.drl", word(a), word(b)),
+            bytes: file(
+                holes,
+                art.origin,
+                "Plated",
+                &format!("{},{},{kind}", a + 1, b + 1),
+                "PTH",
+            )
+            .into_bytes(),
+        });
+    }
+    out
 }
 
-fn file(all: &[Hole], origin: Pt, plated: bool, layers: usize) -> String {
-    let mut holes: Vec<&Hole> = all.iter().filter(|h| h.plated == plated).collect();
+/// One drill file of `holes`: `function` is `Plated` or `NonPlated`, `span` the rest of its file
+/// function (`1,4,PTH`, `1,2,Blind`), `kind` the word of its tools' function (`PTH`, `NPTH`).
+fn file(mut holes: Vec<&Hole>, origin: Pt, function: &str, span: &str, kind: &str) -> String {
     // Tools: by diameter (to a micrometre), vias before pad holes of the same size.
     let tool_key = |h: &Hole| ((h.diameter * 1000.0).round() as i64, !h.via);
     let mut tools: Vec<(i64, bool)> = holes.iter().map(|h| tool_key(h)).collect();
@@ -105,18 +158,13 @@ fn file(all: &[Hole], origin: Pt, plated: bool, layers: usize) -> String {
             .then(at(a).1.total_cmp(&at(b).1))
     });
 
-    let (function, kind) = if plated {
-        ("Plated", "PTH")
-    } else {
-        ("NonPlated", "NPTH")
-    };
     let version = env!("CARGO_PKG_VERSION");
     let mut o = String::new();
     let _ = writeln!(o, "M48");
     let _ = writeln!(o, "; DRILL file {{netsmith {version}}}");
     let _ = writeln!(o, "; FORMAT={{-:-/ absolute / metric / decimal}}");
     let _ = writeln!(o, "; #@! TF.GenerationSoftware,netsmith,netsmith,{version}");
-    let _ = writeln!(o, "; #@! TF.FileFunction,{function},1,{layers},{kind}");
+    let _ = writeln!(o, "; #@! TF.FileFunction,{function},{span}");
     let _ = writeln!(o, "FMAT,2");
     let _ = writeln!(o, "METRIC");
     for (i, (um, not_via)) in tools.iter().enumerate() {
@@ -230,5 +278,55 @@ mod tests {
         assert_eq!(coord(-25.5), "-25.5");
         assert_eq!(coord(30.0), "30.0");
         assert_eq!(coord(1.234_567_8), "1.234568");
+    }
+
+    #[test]
+    fn each_span_of_a_blind_or_buried_via_has_a_drill_file_of_its_own() {
+        // Issue #1015: KiCad's names and file functions for the spans.
+        let art = Artwork::parse(&BOARD.replace(
+            "(via (at 105 205)",
+            "(via micro (at 106 205) (size 0.25) (drill 0.1) (layers \"F.Cu\" \"In1.Cu\") (net 0))\n        (via blind (at 107 205) (size 0.45) (drill 0.2) (layers \"In1.Cu\" \"In2.Cu\") (net 0))\n        (via (at 105 205)",
+        ))
+        .unwrap();
+        let files = files(&art, "B");
+        let names: Vec<&str> = files.iter().map(|f| f.name.as_str()).collect();
+        assert_eq!(
+            names,
+            [
+                "B-PTH.drl",
+                "B-NPTH.drl",
+                "B-front-in1.drl",
+                "B-in1-in2.drl"
+            ]
+        );
+        let text = |k: usize| String::from_utf8(files[k].bytes.clone()).unwrap();
+        // The through via stays in the plated file, and each span's hole is in its own.
+        assert!(
+            text(0).contains("T1\nX5.0Y-5.0\n") && !text(0).contains("X6.0"),
+            "{}",
+            text(0)
+        );
+        assert!(
+            text(2).contains("; #@! TF.FileFunction,Plated,1,2,Blind\n"),
+            "{}",
+            text(2)
+        );
+        assert!(
+            text(2).contains("T1C0.100\n") && text(2).contains("X6.0Y-5.0\n"),
+            "{}",
+            text(2)
+        );
+        assert!(
+            text(3).contains("; #@! TF.FileFunction,Plated,2,3,Buried\n"),
+            "{}",
+            text(3)
+        );
+        assert!(text(3).contains("X7.0Y-5.0\n"), "{}", text(3));
+        // A board with through vias only has its two files, as before.
+        assert_eq!(files_of_plain(), 2);
+    }
+
+    fn files_of_plain() -> usize {
+        files(&Artwork::parse(BOARD).unwrap(), "B").len()
     }
 }

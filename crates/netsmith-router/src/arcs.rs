@@ -34,7 +34,7 @@ use std::collections::HashMap;
 use netsmith_geom::ARC_ERROR;
 use netsmith_pcb::{Board, CopperLayer, Pt, Rect, Track};
 
-use crate::route::{EXACT_SLACK, Form, Layers, MARGIN, Obstacle, Stack, initial_obstacles};
+use crate::route::{EXACT_SLACK, Form, MARGIN, Obstacle, Stack, initial_obstacles};
 
 /// The largest radius of an arc at a bend, in widths of its track.
 pub const ARC_WIDTHS: f64 = 4.0;
@@ -97,7 +97,7 @@ pub fn round_bends(board: &mut Board, widths: f64) -> usize {
         .iter()
         .map(|v| Obstacle {
             net: net_index(&v.net),
-            layers: Layers::ALL,
+            layers: stack.via_layers(v),
             form: Form::Circle(v.at, v.diameter / 2.0),
             clearance: clearance(&v.net),
             copper: true,

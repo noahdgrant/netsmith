@@ -4,6 +4,10 @@
 A narrowing of a part's `.lcsc` or `.mpn` in the source (`.c1.lcsc &= "C307331"`), members every part has: the part is held to the catalog row with that number, before the _Pick lock_, and the row is judged by everything the design says; a row that fails, or a number no row has, stops the run at the narrowing (ADR 0122). The lock then records the row.
 _Avoid_: picks file (`<stem>.picks.toml`, which held them once and is now refused), override, pinned (a _Pin_ is a part's lead)
 
+**HDI process**:
+A manufacturing process that makes blind and buried vias besides through vias: `HdiFourLayer`, `HdiSixLayer` and `HdiEightLayer` of `std::mfg::jlcpcb` (issue #1015). Its `.hdi_order` is how many build-up layers each face has (the fabricator's "1st-order" to "3rd-order"), each crossed by a _Blind via_; its build-up is the board's to state.
+_Avoid_: High-density board (says nothing about the vias)
+
 **Heating current**:
 The DC current at which an inductor warms by the rise its datasheet states: `Inductor`'s optional `.rms_current`, a catalog column that the standard rows leave empty because the rise differs between makers and no row has a recorded value (ADR 0055, proposed). Distinct from the saturation current, which is where the inductance falls.
 _Avoid_: Rated current (a rating of what?), temperature-rise current, Irms (the symbol, not the term)

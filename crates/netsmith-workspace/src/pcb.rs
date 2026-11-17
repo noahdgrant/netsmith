@@ -1555,6 +1555,7 @@ fn process_via(
         at,
         diameter: diameter.unwrap_or(board.rules.via_diameter),
         drill: board.rules.via_drill,
+        span: None,
     }
 }
 

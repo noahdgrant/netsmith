@@ -165,6 +165,7 @@ pub fn parallel_vias(board: &mut Board) {
                             at: p,
                             diameter: r.via_diameter,
                             drill: r.via_drill,
+                            span: None,
                         });
                         members.push(board.vias.len() - 1);
                         continue 'grow;

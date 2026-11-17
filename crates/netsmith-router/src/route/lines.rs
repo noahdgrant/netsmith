@@ -274,6 +274,7 @@ impl<'a> Router<'a> {
                 at: pad.at,
                 diameter: rules.via_diameter,
                 drill: rules.via_drill,
+                span: None,
             };
             return Some((
                 Routed {

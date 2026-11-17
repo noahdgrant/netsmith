@@ -164,6 +164,7 @@ mod rules;
 pub(crate) mod shape;
 mod stackup;
 mod teardrop;
+mod vias;
 
 use crate::artwork::Artwork;
 use crate::geom::Pt;
@@ -322,10 +323,17 @@ pub enum Rule {
     /// A board file whose copper layers, thickness or stackup the process does not make
     /// (netsmith's, issue #993).
     Stackup,
+    /// A blind or a buried via between layers the process does not join with one, or whose hole
+    /// or copper the process does not make for it (netsmith's, issue #1015).
+    ViaSpan,
+    /// A via deeper for its hole than the process drills: a blind via through a dielectric
+    /// thicker than its aspect ratio allows, a drilled via through more (netsmith's, issue
+    /// #1015).
+    ViaAspectRatio,
 }
 
 impl Rule {
-    pub const ALL: [Rule; 53] = [
+    pub const ALL: [Rule; 55] = [
         Rule::Clearance,
         Rule::ShortingItems,
         Rule::TracksCrossing,
@@ -379,6 +387,8 @@ impl Rule {
         Rule::AcidTrap,
         Rule::CopperSliver,
         Rule::Stackup,
+        Rule::ViaSpan,
+        Rule::ViaAspectRatio,
     ];
 
     /// KiCad's name for the rule (its `type` in a JSON report).
@@ -437,6 +447,8 @@ impl Rule {
             Rule::AcidTrap => "acid_trap",
             Rule::CopperSliver => "copper_sliver",
             Rule::Stackup => "stackup",
+            Rule::ViaSpan => "via_span",
+            Rule::ViaAspectRatio => "via_aspect_ratio",
         }
     }
 
@@ -472,6 +484,8 @@ impl Rule {
                 | Rule::TestPointEdge
                 | Rule::AcidTrap
                 | Rule::Stackup
+                | Rule::ViaSpan
+                | Rule::ViaAspectRatio
         )
     }
 
@@ -710,6 +724,32 @@ pub struct Extras {
     pub marks: Option<Marks>,
     /// The stackup the process makes (issue #993); `None` is not checked.
     pub stackup: Option<Stackup>,
+    /// The vias the process makes (issue #1015); `None` is not checked.
+    pub vias: Option<ViaRules>,
+}
+
+/// What the check needs to judge a board's vias against the process (the `via_span` and
+/// `via_aspect_ratio` rules, issue #1015). Lengths are in mm.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct ViaRules {
+    /// The blind and buried vias the process makes: the first and last layer of each, as places
+    /// of the board's copper layers from the top (the upper first), and whether it is drilled by
+    /// laser. Empty for a process that makes through vias only.
+    pub spans: Vec<(usize, usize, bool)>,
+    /// The thickness of each dielectric layer between two copper layers, from the top: what a
+    /// via is drilled through. Empty where the build-up is not known, and then no aspect ratio
+    /// is judged.
+    pub dielectrics: Vec<f64>,
+    /// The laser-drilled holes the process makes, the least copper round a blind or a buried
+    /// via's hole, and a buried via's largest hole.
+    pub min_laser_drill: f64,
+    pub max_laser_drill: f64,
+    pub min_ring: f64,
+    pub max_buried_drill: f64,
+    /// The most a blind via's dielectric may be thick for its hole, and a drilled via's depth
+    /// for its hole; 0 is not judged.
+    pub max_laser_aspect: f64,
+    pub max_drill_aspect: f64,
 }
 
 /// What the check needs to judge a board file's stackup (the `stackup` rule, issue #993): the

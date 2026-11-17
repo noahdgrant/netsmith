@@ -189,6 +189,7 @@ pub fn stitch(board: &mut Board) {
                             at,
                             diameter: rules.via_diameter,
                             drill: rules.via_drill,
+                            span: None,
                         });
                     }
                     x += pitch;

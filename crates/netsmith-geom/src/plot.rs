@@ -199,7 +199,7 @@ fn copper(
     for pad in art.pads.iter().filter(|p| art.pad_copper_on(p, layer)) {
         pads::outline(pad).draw(g, Some(pad_function(pad)), &pad_attrs(pad));
     }
-    for via in &art.vias {
+    for via in art.vias.iter().filter(|v| art.via_on(v, layer)) {
         g.flash(
             Ap::Circle(via.diameter),
             Some("ViaPad"),
@@ -253,7 +253,17 @@ pub fn mask(
         }
     }
     let front = layer.starts_with('F');
-    for via in &art.vias {
+    // The outer copper of the face: a buried via has none to open the mask over.
+    let face = if front {
+        art.copper.first()
+    } else {
+        art.copper.last()
+    };
+    for via in art
+        .vias
+        .iter()
+        .filter(|v| face.is_none_or(|f| art.via_on(v, f)))
+    {
         let tented = if front { via.tented.0 } else { via.tented.1 };
         if !tented {
             g.flash(
@@ -562,6 +572,32 @@ mod tests {
             !b.contains("RoundRect"),
             "the surface pad stays on the front"
         );
+    }
+
+    #[test]
+    fn a_blind_via_is_copper_on_its_own_layers_only() {
+        // Issue #1015: a micro via from the top to the first inner layer of four.
+        let board = BOARD
+            .replace(
+                "(layers (0 \"F.Cu\" signal) (2 \"B.Cu\" signal))",
+                "(layers (0 \"F.Cu\" signal) (4 \"In1.Cu\" signal) (6 \"In2.Cu\" signal) (2 \"B.Cu\" signal))",
+            )
+            .replace(
+                "(via (at 5 10) (size 0.6) (drill 0.3) (layers \"F.Cu\" \"B.Cu\")",
+                "(via micro (at 5 10) (size 0.25) (drill 0.1) (layers \"F.Cu\" \"In1.Cu\")",
+            )
+            .replace("(tenting front back)", "");
+        let p = plot(&Artwork::parse(&board).unwrap(), "B", &rules()).unwrap();
+        let via = "C,0.250000";
+        assert!(get(&p, "F_Cu").contains(via) && get(&p, "In1_Cu").contains(via));
+        assert!(!get(&p, "In2_Cu").contains(via) && !get(&p, "B_Cu").contains(via));
+        // Its mask opening is on the top only: 0.25 + 2 x 0.05.
+        assert!(
+            get(&p, "F_Mask").contains("C,0.350000"),
+            "{}",
+            get(&p, "F_Mask")
+        );
+        assert!(!get(&p, "B_Mask").contains("C,0.350000"));
     }
 
     #[test]

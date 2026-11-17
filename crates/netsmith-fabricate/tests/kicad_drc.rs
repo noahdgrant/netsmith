@@ -558,6 +558,7 @@ fn kicad_reads_a_keepout_as_a_rule_area_and_flags_what_it_forbids() {
                 at: c,
                 diameter: 0.6,
                 drill: 0.3,
+                span: None,
             }),
             _ => {
                 let p = &mut b.parts[0];

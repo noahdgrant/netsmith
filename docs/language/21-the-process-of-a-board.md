@@ -29,7 +29,7 @@ Rules.
 - A board with no `process` builds and views as a schematic. `fab` stops and says to add `import std::mfg::jlcpcb::TwoLayer` and `.process: TwoLayer`. There is no default.
 - `.max_temperature_rise` is the rise in kelvin that the track width check designs to (see Track width against current). The process leaves it unstated and it is 10 K when the board does too: `.process.max_temperature_rise &= 20K`.
 - `.min_round_track_angle` is the least angle in degrees between a track's centre line and the tangent of a round copper edge (a round pad or via, an oval's end, a rounded corner) where the track leaves it, which the acid trap check judges (see the design rules check). No fabricator publishes a figure and the process leaves it unstated, so round copper is not judged; a board states one to opt in: `.process.min_round_track_angle &= 60`.
-- `std::mfg::jlcpcb::FourLayer` has two inner layers and `std::mfg::jlcpcb::SixLayer` four (`.inner1` to `.inner4`, counted from the top). The board says what each is (ADR 0111). A plane is one sheet of copper on a net, and the board names the net: `.process.inner1.net &= "GND"`. A signal layer names no net: `.process.inner2.use &= "signal"`. The router draws tracks on it as on the outer layers, and a line changes layer through a via, which goes through every layer (blind and buried vias are not drawn); a net with a known current (see Load current) is drawn on a signal layer at the width its current needs in the thinner inner copper, which is wider than outside (see "Track width from current" in The shape of a board). `netsmith routes add-track --layer inner2` and the editor's track tool draw on a signal layer too; a plane holds no track. A track on a signal layer keeps the process's space between inner copper and a hole (0.3 mm on JLCPCB) from every hole. A signal layer is written to the board file as a signal layer, plotted as an inner copper Gerber and checked like the outer layers. An inner layer that is neither is an error, and so is a plane on a net the board does not have. See `examples/four_layer.nsm` and `examples/six_layer.nsm`. A board that says nothing is made 1.6 mm thick, in the build-up `JLC04161H-7628` (four layers) or `JLC06161H-3313` (six); `fab-notes.txt` names the build-up and says what each inner layer is. Both are generics, as `TwoLayer` is, with a provider for the page's default build-up of each of 0.8, 1.0, 1.2, 1.6 and 2.0 mm (`JlcFourLayerD04121H7628` is `JLC04121H-7628`: a letter that orders the providers, then the build-up's name, see the doc comment of `FourLayer`): `.process.stackup.thickness &= 1.2mm` makes the board 1.2 mm thick, in that build-up, and `.process.stackup.build &= "JLC04121H-7628"` asks for a build-up by its name. The page lists many more build-ups (other prepregs, several sheets between two copper layers, a core with no copper between sheets). Each is a provider in `std/mfg/jlcpcb_buildups.nsm`, named for the build-up (`JLC04161H-7628C` is `JlcFourLayer04161H7628C`), and a board names it as the type of its process after importing it, as in the example below; nothing is searched then. They are in a file of their own because each provider a board reaches is one more choice of the provider search (Generics and providers), so a board that does not import the file never tries them, and asking for one of them by `.stackup.build` without importing the file is told that no provider has it. A dielectric layer of several sheets is stated ply by ply, from the top (`.stackup.dielectric1.ply1` to `.ply4`, each a `DielectricPly` with the fields of a one-sheet layer); the board file lists each ply as a sublayer of the layer, and the track impedance reads the layer as one dielectric, the plies' thicknesses added and their permittivities taken in series. The doc comment of `std/mfg/jlcpcb_buildups.nsm` says which of the page's build-ups are left out and why. JLCPCB's pages give no build-up of 8 or 10 layers, so std has no JLCPCB process for them; see the fictional fabricator below.
+- `std::mfg::jlcpcb::FourLayer` has two inner layers and `std::mfg::jlcpcb::SixLayer` four (`.inner1` to `.inner4`, counted from the top). The board says what each is (ADR 0111). A plane is one sheet of copper on a net, and the board names the net: `.process.inner1.net &= "GND"`. A signal layer names no net: `.process.inner2.use &= "signal"`. The router draws tracks on it as on the outer layers, and a line changes layer through a via, which goes through every layer (on an HDI process, below, through the blind or buried via of fewest layers that joins the two); a net with a known current (see Load current) is drawn on a signal layer at the width its current needs in the thinner inner copper, which is wider than outside (see "Track width from current" in The shape of a board). `netsmith routes add-track --layer inner2` and the editor's track tool draw on a signal layer too; a plane holds no track. A track on a signal layer keeps the process's space between inner copper and a hole (0.3 mm on JLCPCB) from every hole. A signal layer is written to the board file as a signal layer, plotted as an inner copper Gerber and checked like the outer layers. An inner layer that is neither is an error, and so is a plane on a net the board does not have. See `examples/four_layer.nsm` and `examples/six_layer.nsm`. A board that says nothing is made 1.6 mm thick, in the build-up `JLC04161H-7628` (four layers) or `JLC06161H-3313` (six); `fab-notes.txt` names the build-up and says what each inner layer is. Both are generics, as `TwoLayer` is, with a provider for the page's default build-up of each of 0.8, 1.0, 1.2, 1.6 and 2.0 mm (`JlcFourLayerD04121H7628` is `JLC04121H-7628`: a letter that orders the providers, then the build-up's name, see the doc comment of `FourLayer`): `.process.stackup.thickness &= 1.2mm` makes the board 1.2 mm thick, in that build-up, and `.process.stackup.build &= "JLC04121H-7628"` asks for a build-up by its name. The page lists many more build-ups (other prepregs, several sheets between two copper layers, a core with no copper between sheets). Each is a provider in `std/mfg/jlcpcb_buildups.nsm`, named for the build-up (`JLC04161H-7628C` is `JlcFourLayer04161H7628C`), and a board names it as the type of its process after importing it, as in the example below; nothing is searched then. They are in a file of their own because each provider a board reaches is one more choice of the provider search (Generics and providers), so a board that does not import the file never tries them, and asking for one of them by `.stackup.build` without importing the file is told that no provider has it. A dielectric layer of several sheets is stated ply by ply, from the top (`.stackup.dielectric1.ply1` to `.ply4`, each a `DielectricPly` with the fields of a one-sheet layer); the board file lists each ply as a sublayer of the layer, and the track impedance reads the layer as one dielectric, the plies' thicknesses added and their permittivities taken in series. The doc comment of `std/mfg/jlcpcb_buildups.nsm` says which of the page's build-ups are left out and why. JLCPCB's pages give no build-up of 8 or 10 layers, so std has no JLCPCB process for them; see the fictional fabricator below.
 - A board with a build-up gets its track impedance in `fab-notes.txt` (issues #759 and #1007): for each layer a track may be on (the outer layers and the signal layers, not the planes), the width of a 50 ohm track and the impedance of the router's track width, worked out from the build-up's dielectric layers, their thickness and relative permittivity, and the copper's thickness. An outer track is a microstrip over the next copper layer (Hammerstad and Jensen, 1980) and an inner one a stripline between the copper above and below (Wheeler, 1978); the doc comment of `netsmith_pcb::impedance` names the sources and the accuracy each states. A figure outside a formula's domain is refused with the reason, never extrapolated. An outer track is counted under the solder mask where the process states JLCPCB's calculator parameters (`.stackup.impedance_mask_thickness`, 1.2 mil, and `.stackup.impedance_mask_epsilon`, 3.8, from "Calculation Parameters Used" in its calculator's user guide, read 2026-11-16), with the copper thickness that calculator uses (`.stackup.impedance_outer_copper`, 1.6 mil); a process that states none, as ACME's does not, is counted without a mask, and the header line says which. An inner track between a prepreg and a core is an approximation of unstated error, and so is the mask's effect (JLCPCB's blog says a mask alone lowers a track by about 1 to 3 ohm, which the tests hold the figure to); a line says when a layer beside a track is not a plane. A two-layer process records no build-up, so its board has no lines. A net with an impedance target (below) is drawn at the width that gives it, and its lines say what that width gives. The lines are for a person who will order impedance control, to compare with the fabricator's own calculator. `data/jlcpcb/impedance_calculator.csv` has eight widths that JLCPCB's calculator gave on 2026-11-16 (single tracks and pairs, outer and inner layers, the four-layer 7628 and six-layer 3313 build-ups) and a test holds this calculator's impedance at each width within 5 % of the target for a single track and 8 % for a pair (it shows 4 % and 6 %; JLCPCB's own test passes a board within 10 %). The calculator's own method is not published, so the figures can differ by that much.
 
 A board with a black mask:
@@ -147,6 +147,81 @@ board Six {
     .r1: Resistor { .resistance &= 1kohm +/- 1% }
     .supply.pos ~> .r1 ~> .supply.neg
 }
+```
+
+### Blind and buried vias
+
+`std::mfg::jlcpcb::HdiFourLayer`, `HdiSixLayer` and `HdiEightLayer` are JLCPCB's HDI service (issue #1015), whose vias need not go through the board. The numbers are from JLCPCB's two HDI pages, quoted in the header of `std/mfg/jlcpcb.nsm`. Each face has `.hdi_order` build-up layers, 1 to 3 (the pages' "1st-order" to "3rd-order"; a four-layer board has room for 1, a six-layer one for 2): a laser-drilled **blind via** joins each pair of neighbouring layers among the top `.hdi_order + 1` and the bottom `.hdi_order + 1`, through one dielectric layer. With `.buried_vias &= "core"` a mechanically drilled **buried via** joins the two inner layers the build-up layers end on, through the core; `"none"`, the default, has none. A through via joins every layer, as on any process.
+
+- The router changes layer through the via of fewest layers that joins the two (the first of the order above on a tie): from `top` to `inner1` a blind via, from `top` to `inner2` on a first-order board a through via. A blind or buried via keeps clear of copper on its own layers only, and a plane it does not reach needs no room for it. A skip via ("L1-L3") is not drawn: the pages make one as stacked vias, and the router joins the same layers with blind vias side by side, which the pages say are easier to make.
+- The blind via the router draws is `.laser_drill` in `.laser_via_diameter`, 0.1 mm in 0.25 mm, an offer of the process as `.via_drill` is. The buried and the through via are `.via_drill` and `.via_diameter`. The process holds them to its rules when the board is placed: the laser's hole of `.min_laser_drill` to `.max_laser_drill` (0.075 to 0.15 mm), `.min_hdi_via_ring` (0.075 mm) of copper round a blind or a buried via's hole, a dielectric under a blind via of `.min_laser_dielectric` to `.max_laser_dielectric` (0.05 to 0.127 mm) and no thicker than its hole times `.max_laser_aspect` (1:1), a core under a buried via of at least `.min_buried_core` (0.3 mm) and a buried hole of at most `.max_buried_drill` (0.55 mm), and any drilled hole no deeper than `.max_drill_aspect` (16) times itself.
+- The HDI pages publish no build-up, so the board states its own: `.stackup.thickness` (at most 2.4 mm), `.copper_weight`, `.build` (a name of the board's), `.inner_copper` and every `.dielectricN`. The pages say the prepreg "requires DFM confirmation": the build-up is the board's to confirm with JLCPCB before an order.
+- The board file writes a blind via between neighbouring layers as KiCad's `micro` via and a buried one as `blind`, each with the two layers it ends on, and the project file states the laser's least hole and copper (`min_microvia_drill`, `min_microvia_diameter`). The Gerbers draw a via's copper and mask opening on its own layers only, and the drill files are one for each span besides `-PTH.drl` and `-NPTH.drl`, named as KiCad names them: `-front-in1.drl`, `-in1-in4.drl`, `-in4-back.drl`. The routes file writes a blind or a buried via with its layers, `{ at = [3.0, 4.0], diameter = 0.25, drill = 0.1, layers = ["top", "inner1"] }`, and `netsmith routes import` reads KiCad's.
+- netsmith's design rules check has two rules of its own for them, both errors: `via_span` (a blind or a buried via between layers the process does not join with one, on any process, or whose hole or copper is not one the process makes for it) and `via_aspect_ratio` (a via drilled through more dielectric than its hole allows). Two holes of vias that share no layer are not checked against each other.
+
+A six-layer HDI board of the first order with buried vias, in a build-up of its own:
+
+```nsm solve place file=crates/netsmith-tools/tests/fixtures/hdi_dense.nsm
+import std::parts::passive::Resistor
+import std::sources::Rail
+import std::mfg::jlcpcb::HdiSixLayer
+
+board Dense {
+    .process: HdiSixLayer {
+        .buried_vias &= "core"
+        .stackup.thickness &= 1.2mm
+        .stackup.copper_weight &= 1
+        .stackup.build &= "HDI-6L-1.2"
+        .stackup.inner_copper &= 0.0152mm
+        .stackup.dielectric1.kind &= "prepreg"
+        .stackup.dielectric1.glass &= "1080"
+        .stackup.dielectric1.thickness &= 0.086mm
+        .stackup.dielectric1.epsilon &= 3.91
+        .stackup.dielectric2.kind &= "core"
+        .stackup.dielectric2.thickness &= 0.4mm
+        .stackup.dielectric2.epsilon &= 4.6
+        .stackup.dielectric3.kind &= "prepreg"
+        .stackup.dielectric3.glass &= "2116"
+        .stackup.dielectric3.thickness &= 0.15mm
+        .stackup.dielectric3.epsilon &= 4.16
+        .stackup.dielectric4.kind &= "core"
+        .stackup.dielectric4.thickness &= 0.4mm
+        .stackup.dielectric4.epsilon &= 4.6
+        .stackup.dielectric5.kind &= "prepreg"
+        .stackup.dielectric5.glass &= "1080"
+        .stackup.dielectric5.thickness &= 0.086mm
+        .stackup.dielectric5.epsilon &= 3.91
+        .inner1.use &= "signal"
+        .inner2.net &= "GND"
+        .inner3.net &= "5V"
+        .inner4.use &= "signal"
+    }
+    .supply: Rail {
+        .pos.net &= "5V"
+    }
+    .r1: Resistor { .resistance &= 1kohm +/- 1% }
+    .supply.pos ~> .r1 ~> .supply.neg
+}
+```
+
+A four-layer board has room for one build-up layer on each face:
+
+```nsm fails
+import std::mfg::jlcpcb::HdiFourLayer
+
+board Deep {
+    .process: HdiFourLayer {
+        .hdi_order &= 2
+    }
+}
+```
+
+```text
+error: contradiction on `process.hdi_order`: it is already 1, which does not overlap 2
+  --> main.nsm:5:9
+  |
+5 |         .hdi_order &= 2
+  |         ^^^^^^^^^^^^^^^
 ```
 
 A board of eight or ten layers is made on ACME's process, `std::mfg::acme::EightLayer` (`.inner1` to `.inner6`) or `std::mfg::acme::TenLayer` (`.inner1` to `.inner8`). ACME is a fictional fabricator (ADR 0112). Its numbers were chosen, not sourced, and stand for no real fabricator's capability: the rules are JLCPCB's multilayer rows, and each build-up is a symmetric 1.6 mm stack of common prepregs and cores (`ACME-8L-1.6`, `ACME-10L-1.6`, listed in `std/mfg/acme.nsm`). The inner layers are planes or signal layers, as above. `fab` writes the package as for any process: a Gerber for each copper layer, the stackup in the board file, the 3D scene. `fab-notes.txt` says the process is fictional and the package is not for ordering, and `fab --order` refuses an order that names the board. See `examples/ten_layer.nsm`.

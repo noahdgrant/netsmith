@@ -288,6 +288,7 @@ impl Ratsnest {
             .flat_map(|z| z.layers.iter().map(String::as_str))
             .collect();
         Self::from_parts(
+            board.copper_count(),
             &board.parts,
             &board.nets,
             (&board.planes, &board.pours),
@@ -298,7 +299,9 @@ impl Ratsnest {
         )
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn from_parts(
+        layers: u32,
         parts: &[Placed],
         nets: &[BoardNet],
         (planes, pours): (&[Plane], &[BoardPour]),
@@ -312,9 +315,14 @@ impl Ratsnest {
             let nodes = nodes_of(parts, net);
             let tracks: Vec<&Track> = tracks.iter().filter(|t| t.net == net.name).collect();
             let vias: Vec<&Via> = vias.iter().filter(|v| v.net == net.name).collect();
-            let plane = planes
+            // The layers of the net's planes, which a via reaches if it has copper on one: every
+            // via but a blind or a buried one that ends short of them (issue #1015).
+            let plane_layers: Vec<CopperLayer> = planes
                 .iter()
-                .any(|p| p.net == net.name && !zoned.contains(&p.layer.as_str()));
+                .filter(|p| p.net == net.name && !zoned.contains(&p.layer.as_str()))
+                .filter_map(|p| CopperLayer::of_name(&p.layer))
+                .collect();
+            let plane = !plane_layers.is_empty();
             // A locked net's pours join it (the module's header).
             let poured: Vec<CopperLayer> = if fixed.is_locked(&net.name) {
                 pours
@@ -330,9 +338,19 @@ impl Ratsnest {
                 .filter(|f| f.net == net.name)
                 .flat_map(|f| f.areas.iter().filter_map(|a| Piece::of(&f.layer, a)))
                 .collect();
-            let joined = join_pieces(&nodes, &tracks, &vias, &pieces);
+            let joined = join_pieces(layers, &nodes, &tracks, &vias, &pieces);
+            let reaches_plane: Vec<bool> = vias
+                .iter()
+                .map(|v| plane_layers.iter().any(|&l| v.on(l, layers)))
+                .collect();
             lines.extend(spanning_tree(
-                &net.name, &nodes, &tracks, &vias, plane, &poured, &joined,
+                layers,
+                &net.name,
+                &nodes,
+                (&tracks, &vias),
+                (plane, &reaches_plane),
+                &poured,
+                &joined,
             ));
         }
         Ratsnest { lines }
@@ -360,6 +378,8 @@ struct Piece<'a> {
     /// `Some` on an outer layer; `None` on an inner one, which only through-hole pads and vias
     /// reach.
     layer: Option<CopperLayer>,
+    /// The layer, inner ones too, if it is a copper layer's name.
+    copper: Option<CopperLayer>,
     area: &'a Area,
     bounds: Rect,
 }
@@ -380,6 +400,7 @@ impl<'a> Piece<'a> {
                 "B.Cu" => Some(CopperLayer::Back),
                 _ => None,
             },
+            copper: CopperLayer::of_name(layer),
             area,
             bounds: bounds.expanded(TOUCH),
         })
@@ -424,6 +445,7 @@ fn inside(ring: &[Pt], p: Pt) -> bool {
 /// What the pieces of a net's zones join, as pairs of items in [`spanning_tree`]'s numbering
 /// (pads, then tracks, then vias): for each piece, each item it reaches with the first one.
 fn join_pieces(
+    layers: u32,
     nodes: &[Node],
     tracks: &[&Track],
     vias: &[&Via],
@@ -472,7 +494,7 @@ fn join_pieces(
             }
         }
         for (vi, via) in vias.iter().enumerate() {
-            if piece.covers(via.at) {
+            if piece.copper.is_none_or(|l| via.on(l, layers)) && piece.covers(via.at) {
                 reached.push(n + t + vi);
             }
         }
@@ -487,11 +509,11 @@ fn join_pieces(
 /// pairs of items a zone joins, [`join_pieces`]). Of equal lines, the one between the pads listed
 /// first wins.
 fn spanning_tree(
+    layers: u32,
     net: &str,
     nodes: &[Node],
-    tracks: &[&Track],
-    vias: &[&Via],
-    plane: bool,
+    (tracks, vias): (&[&Track], &[&Via]),
+    (plane, reaches_plane): (bool, &[bool]),
     poured: &[CopperLayer],
     joined: &[(usize, usize)],
 ) -> Vec<Ratline> {
@@ -539,12 +561,19 @@ fn spanning_tree(
         }
     }
     for (vi, via) in vias.iter().enumerate() {
+        // A blind or a buried via joins copper on its own layers only (issue #1015).
         for (ni, node) in nodes.iter().enumerate() {
-            if on_pad(node, via.at, None) {
+            let shares = (node.front && via.on(CopperLayer::Front, layers))
+                || (node.back && via.on(CopperLayer::Back, layers))
+                || (node.front && node.back);
+            if shares && on_pad(node, via.at, None) {
                 sets.join(ni, n + t + vi);
             }
         }
         for (ti, track) in tracks.iter().enumerate() {
+            if !via.on(track.layer, layers) {
+                continue;
+            }
             if near(via.at, track.from)
                 || near(via.at, track.to)
                 || track.distance_to(via.at) <= (track.width + via.diameter) / 2.0 + TOUCH
@@ -552,7 +581,7 @@ fn spanning_tree(
                 sets.join(n + t + vi, n + ti);
             }
         }
-        for &layer in poured {
+        for &layer in poured.iter().filter(|&&l| via.on(l, layers)) {
             sets.join(n + t + vi, pour_item(layer));
         }
     }
@@ -571,7 +600,7 @@ fn spanning_tree(
                 sets.join(ni, plane_item);
             }
         }
-        for vi in 0..vias.len() {
+        for vi in (0..vias.len()).filter(|&vi| reaches_plane[vi]) {
             sets.join(n + t + vi, plane_item);
         }
         // The plane joins every pad that reaches it, so the pads that do not need a line
@@ -803,6 +832,7 @@ mod tests {
             at: via_at,
             diameter: 0.6,
             drill: 0.3,
+            span: None,
         });
         assert_eq!(Ratsnest::of(&board).len(), 2);
     }
@@ -847,6 +877,7 @@ mod tests {
             at,
             diameter: 0.45,
             drill: 0.15,
+            span: None,
         };
         // A via of the net alone is on the plane but not on the pad.
         board.vias.push(via("GND", via_at));
@@ -944,6 +975,7 @@ mod tests {
             at: r1,
             diameter: 0.45,
             drill: 0.15,
+            span: None,
         });
         assert!(Ratsnest::of(&board).lines.iter().all(|l| l.net != "3V3"));
     }

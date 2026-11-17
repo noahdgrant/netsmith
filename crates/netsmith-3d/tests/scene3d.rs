@@ -148,6 +148,7 @@ pub(crate) fn board_with_plane_vias(process: netsmith_core::Process) -> Board {
             at: origin + Pt::new(x, 18.0),
             diameter: 0.6,
             drill: 0.3,
+            span: None,
         });
     }
     board
@@ -586,6 +587,7 @@ pub(crate) fn routed() -> Board {
         at: origin + Pt::new(14.0, 12.0),
         diameter: 0.6,
         drill: 0.3,
+        span: None,
     });
     board.pours.push(BoardPour {
         layer: CopperLayer::Front,

@@ -888,6 +888,7 @@ fn process_of(model: &Model, nets: &[String], errors: &mut Vec<String>) -> Optio
         track_width_tolerance: number("track_width_tolerance"),
         hole_plating: mm("hole_plating"),
         finish: text(find("finish")),
+        hdi: None,
         stackup: Stackup {
             layers,
             thickness: match find("stackup.thickness") {
@@ -1051,6 +1052,34 @@ fn process_of(model: &Model, nets: &[String], errors: &mut Vec<String>) -> Optio
             hole_clearance: mm("min_plane_hole_clearance"),
             mask,
             outer_copper: stated("stackup.impedance_outer_copper").map(round),
+        });
+    }
+    // An HDI process (issue #1015) states its order; no other process has the field.
+    if model.field_at("process.hdi_order").is_some() {
+        let top = |path: &str| match find(path) {
+            Some(Domain::Quantity(q)) => end(path, &q, true),
+            _ => 0.0,
+        };
+        let buried = text(find("buried_vias"));
+        if buried != "none" && buried != "core" {
+            problems.borrow_mut().push(format!(
+                "`process.buried_vias` is `{buried}`, but a `{kind}` board has buried vias `\"core\"` or `\"none\"`"
+            ));
+        }
+        built.hdi = Some(netsmith_core::Hdi {
+            order: number("hdi_order").round() as u32,
+            buried: buried == "core",
+            laser_drill: mm("laser_drill"),
+            laser_via_diameter: mm("laser_via_diameter"),
+            min_laser_drill: mm("min_laser_drill"),
+            max_laser_drill: (top("max_laser_drill") * 1e12).round() / 1e9,
+            min_ring: mm("min_hdi_via_ring"),
+            max_laser_aspect: top("max_laser_aspect"),
+            max_drill_aspect: top("max_drill_aspect"),
+            min_laser_dielectric: mm("min_laser_dielectric"),
+            max_laser_dielectric: (top("max_laser_dielectric") * 1e12).round() / 1e9,
+            min_buried_core: mm("min_buried_core"),
+            max_buried_drill: (top("max_buried_drill") * 1e12).round() / 1e9,
         });
     }
     let problems = problems.into_inner();

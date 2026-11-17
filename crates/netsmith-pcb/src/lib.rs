@@ -75,8 +75,8 @@ pub use board::{
     Board, BoardCutout, BoardError, BoardKeepout, BoardNet, BoardPour, BoardZone, CopperLayer,
     FixedCopper, Hang, HeightUnchecked, HoleNeighbour, KeepoutArea, Loaded as LoadedBoard, PadRef,
     PairCoupling, Placed, PlacementProblem, Plane, ReferenceSide, Side, Silk, StandardPass,
-    Teardrop, Track, Trim, Unplaced, Via, ZoneIslands, ZonePads, member as board_member,
-    outline_box, rect_distance,
+    Teardrop, Track, Trim, Unplaced, Via, ViaOffer, ViaSpan, ZoneIslands, ZonePads,
+    member as board_member, outline_box, rect_distance, span_depth, via_offers,
 };
 pub use body3d::{
     Axis as BodyAxis, Material as BodyMaterial, Primitive as BodyPrimitive, Solid as BodySolid,
@@ -149,7 +149,7 @@ pub use routes::{
     VERSION as ROUTES_VERSION, apply_routes, kicad_layer as routes_kicad_layer,
     layer_word as routes_layer_word, pad_hash, record_of, routes_path,
 };
-pub use rules::{NetClass, Rules};
+pub use rules::{HDI_SIX_BUILD_UP, NetClass, Rules};
 pub use shape::{Edge as ShapeEdge, RoundRect};
 pub use stackup::{
     LayerKind, StackLayer, layers as stackup_layers, round as round_nm, thickness_tolerance,

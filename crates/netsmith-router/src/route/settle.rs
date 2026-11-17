@@ -74,8 +74,11 @@ impl<'a> Router<'a> {
         }
         for via in &routed.vias {
             let radius = via.diameter / 2.0;
+            // A blind or a buried via keeps clear on its own layers only (issue #1015).
+            let on = self.stack.via_layers(via);
             if !others
                 .iter()
+                .filter(|o| via.span.is_none() || o.layers.meets(on))
                 .all(|o| o.form.distance(via.at) - radius >= apart(o))
             {
                 return Err(Unsettled::Clearance);

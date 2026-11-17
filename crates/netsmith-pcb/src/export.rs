@@ -1027,17 +1027,28 @@ pub(crate) fn board_tree(board: &Board) -> Sexp {
         items.push(Sexp::node(kind, fields));
     }
     for (i, via) in board.vias.iter().enumerate() {
-        items.push(Sexp::node(
-            "via",
-            vec![
-                Sexp::node("at", vec![Sexp::num(via.at.x), Sexp::num(via.at.y)]),
-                Sexp::node("size", vec![Sexp::num(via.diameter)]),
-                Sexp::node("drill", vec![Sexp::num(via.drill)]),
-                Sexp::node("layers", vec![Sexp::string("F.Cu"), Sexp::string("B.Cu")]),
-                net_number(&via.net),
-                uuid_for(&format!("{}/via/{i}", board.name)),
-            ],
-        ));
+        // A through via joins F.Cu and B.Cu. A blind or a buried via (issue #1015) names the two
+        // layers it ends on, and KiCad's type: `micro` for one between neighbouring layers, the
+        // laser-drilled blind via of an HDI process, `blind` for any other, as KiCad calls a
+        // buried via too.
+        let mut fields = Vec::new();
+        let (from, to) = match via.span {
+            None => ("F.Cu", "B.Cu"),
+            Some(span) => {
+                let (a, b) = span.positions(board.copper_count());
+                fields.push(Sexp::atom(if b == a + 1 { "micro" } else { "blind" }));
+                (span.from.name(), span.to.name())
+            }
+        };
+        fields.extend([
+            Sexp::node("at", vec![Sexp::num(via.at.x), Sexp::num(via.at.y)]),
+            Sexp::node("size", vec![Sexp::num(via.diameter)]),
+            Sexp::node("drill", vec![Sexp::num(via.drill)]),
+            Sexp::node("layers", vec![Sexp::string(from), Sexp::string(to)]),
+            net_number(&via.net),
+            uuid_for(&format!("{}/via/{i}", board.name)),
+        ]);
+        items.push(Sexp::node("via", fields));
     }
     for (i, drop) in board.teardrops.iter().enumerate() {
         items.push(teardrop(board, i, drop, net_number(&drop.net)));

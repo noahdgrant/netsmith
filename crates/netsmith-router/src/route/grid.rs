@@ -145,6 +145,11 @@ impl Layers {
     pub(crate) fn is_empty(self) -> bool {
         self.0 == 0
     }
+
+    /// Whether the two sets share a layer.
+    pub(crate) fn meets(self, other: Layers) -> bool {
+        self.0 & other.0 != 0
+    }
 }
 
 impl std::ops::Index<usize> for Layers {
@@ -339,6 +344,12 @@ pub(super) struct Masks {
     /// What a step costs beyond its length on each layer ([`POUR`] on another net's pour), and
     /// a via beyond [`VIA`] ([`POUR_VIA`]), in the pass off the pours; zero elsewhere.
     pub(super) pour: (Vec<i64>, i64),
+    /// On a board with blind and buried vias (issue #1015), the cells where no via may have
+    /// copper on each layer of the stack, and which layers the via between two layers is on
+    /// ([`Stack::spans`]): a via may stand where it has room on its own layers. Empty and
+    /// `None` on any other board, where `via` says where a via may stand.
+    pub(super) via_on: Vec<Vec<bool>>,
+    pub(super) spans: Option<SpanTable>,
 }
 
 pub(super) struct Soft {
@@ -371,6 +382,23 @@ impl Masks {
             follow: vec![Vec::new(); layers],
             estimate: (1, 1),
             pour: (vec![0; layers], 0),
+            via_on: Vec::new(),
+            spans: None,
+        }
+    }
+
+    /// Whether a via from layer `from` to layer `to` may stand on the cell: where the masks
+    /// leave room for a through via, or on a board with blind and buried vias where they leave
+    /// room on the layers of the via between the two (issue #1015). A line whose current needs
+    /// vias side by side keeps to the through vias [`Router::room_for_vias`] leaves room for.
+    pub(super) fn via_open(&self, i: usize, j: usize, from: usize, to: usize) -> bool {
+        let at = self.at(i, j);
+        match &self.spans {
+            Some(spans) if !self.via_on.is_empty() && self.via_alone.is_none() => {
+                let (on, _) = spans[from][to];
+                (0..self.layers()).all(|l| !on[l] || !self.via_on[l][at])
+            }
+            _ => !self.via[at],
         }
     }
 
@@ -503,6 +531,9 @@ pub(super) struct Counts {
     pub(super) window: Window,
     pub(super) track: Vec<Vec<u16>>,
     pub(super) via: Vec<u16>,
+    /// On a board with blind and buried vias, what keeps a via's copper from each layer
+    /// (issue #1015); empty on any other board.
+    pub(super) via_on: Vec<Vec<u16>>,
 }
 
 impl Counts {
@@ -511,6 +542,24 @@ impl Counts {
             window,
             track: vec![vec![0; window.cells()]; layers],
             via: vec![0; window.cells()],
+            via_on: Vec::new(),
+        }
+    }
+
+    /// The same, counting for each layer too where a via may not have copper.
+    pub(super) fn with_spans(window: Window, layers: usize, spans: bool) -> Counts {
+        let mut counts = Counts::new(window, layers);
+        if spans {
+            counts.via_on = vec![vec![0; window.cells()]; layers];
+        }
+        counts
+    }
+
+    /// One more obstacle to a via on every layer at `at`.
+    fn block_via(&mut self, at: usize) {
+        self.via[at] += 1;
+        for on in &mut self.via_on {
+            on[at] += 1;
         }
     }
 
@@ -564,6 +613,11 @@ impl Counts {
             }
             if d < via_reach {
                 bump(&mut self.via[at]);
+                for (layer, on) in self.via_on.iter_mut().enumerate() {
+                    if o.layers[layer] {
+                        bump(&mut on[at]);
+                    }
+                }
             }
         }
     }
@@ -572,7 +626,7 @@ impl Counts {
         for (i, j) in grid.cells_near(&self.window, &form.bounds(), reach) {
             if form.distance(grid.centre(i, j)) < reach {
                 let at = self.window.index(i, j);
-                self.via[at] += 1;
+                self.block_via(at);
             }
         }
     }
@@ -592,7 +646,7 @@ impl Base {
         reach: Reach,
         layers: usize,
     ) -> Base {
-        let mut counts = Counts::new(Window::full(grid), layers);
+        let mut counts = Counts::with_spans(Window::full(grid), layers, board.has_spans());
         let (outline, rules) = (&board.outline, &board.rules);
         // The grid lies over the outline's bounding box; a cell outside a polygon outline
         // (in a notch, past an arc) is closed to everything, as a cell off the box is.
@@ -605,7 +659,7 @@ impl Base {
                     for track in &mut counts.track {
                         track[at] += 1;
                     }
-                    counts.via[at] += 1;
+                    counts.block_via(at);
                 }
             }
         }
@@ -636,12 +690,15 @@ pub(super) fn masks_for(
 ) -> Masks {
     let rules = &board.rules;
     let layers = base.counts.track.len();
-    let mut counts = Counts::new(window, layers);
     let from = &base.counts;
+    let mut counts = Counts::with_spans(window, layers, !from.via_on.is_empty());
     for layer in 0..layers {
         copy_window(&from.track[layer], &mut counts.track[layer], grid, window);
     }
     copy_window(&from.via, &mut counts.via, grid, window);
+    for (whole, out) in from.via_on.iter().zip(counts.via_on.iter_mut()) {
+        copy_window(whole, out, grid, window);
+    }
     for o in own {
         counts.stamp(grid, rules, o, reach, false);
     }
@@ -656,6 +713,11 @@ pub(super) fn masks_for(
         m.track[layer] = counts.track[layer].iter().map(|&c| c > 0).collect();
     }
     m.via = counts.via.iter().map(|&c| c > 0).collect();
+    m.via_on = counts
+        .via_on
+        .iter()
+        .map(|on| on.iter().map(|&c| c > 0).collect())
+        .collect();
     m
 }
 

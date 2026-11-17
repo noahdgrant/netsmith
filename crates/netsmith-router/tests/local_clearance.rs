@@ -183,6 +183,7 @@ fn check(board: &Board) -> DrcReport {
         round_track_angle: None,
         marks: None,
         stackup: None,
+        vias: None,
     };
     drc_check(&kicad_pcb(board), Some(&kicad_pro(board)), &extras).unwrap()
 }

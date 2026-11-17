@@ -394,6 +394,7 @@ pub fn import(
 ) -> Result<Import, String> {
     let kicad = crate::reference_table::read_board(pcb, "the KiCad board")?;
     let signal = board.signal_layers();
+    let copper_layers = board.copper_count();
     // The design's reference of each KiCad reference.
     let ours_of: BTreeMap<String, String> = board
         .parts
@@ -462,17 +463,33 @@ pub fn import(
             ..NetRoutes::default()
         });
         if shape.kind == Kind::Via {
-            let layers: Vec<&str> = shape.layer.split('-').collect();
-            if !(layers.contains(&"F.Cu") && layers.contains(&"B.Cu")) {
-                out.skipped.push(format!(
-                    "a via of net `{theirs}` that is not a through via of F.Cu and B.Cu: left out"
-                ));
-                continue;
-            }
+            // A through via joins F.Cu and B.Cu; a blind or a buried via (KiCad's `blind` or
+            // `micro`) is kept with the two layers it ends on, the upper first (issue #1015),
+            // and the design rules check says whether the board's process makes it.
+            let ends: Vec<netsmith_pcb::CopperLayer> = shape
+                .layer
+                .split('-')
+                .filter_map(netsmith_pcb::CopperLayer::of_name)
+                .collect();
+            let layers = match ends.as_slice() {
+                [a, b] if a.is_outer() && b.is_outer() && a != b => Vec::new(),
+                [a, b] if a != b => {
+                    let span = netsmith_pcb::ViaSpan::between(*a, *b, copper_layers);
+                    vec![span.from.word().to_string(), span.to.word().to_string()]
+                }
+                _ => {
+                    out.skipped.push(format!(
+                        "a via of net `{theirs}` on `{}`, which names no two copper layers: left out",
+                        shape.layer
+                    ));
+                    continue;
+                }
+            };
             record.vias.push(RouteVia {
                 at: shape.from,
                 diameter: shape.width,
                 drill: shape.drill.unwrap_or_default(),
+                layers,
                 lock: false,
             });
             continue;

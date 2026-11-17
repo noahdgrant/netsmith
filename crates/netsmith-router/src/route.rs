@@ -851,19 +851,90 @@ const AFTER_VIA: usize = 9;
 /// The directions a search state remembers.
 const DIRECTIONS: usize = 10;
 
+/// For each pair of layers of a [`Stack`], the layers of the stack the via between them is on,
+/// and the via (issue #1015).
+pub(crate) type SpanTable = std::rc::Rc<Vec<Vec<(Layers, netsmith_pcb::ViaOffer)>>>;
+
 /// The router's copper layers by index (issue #833): [`FRONT`], [`BACK`], then the board's
 /// inner signal layers from the top ([`Board::signal_layers`]). A board of two layers, or one
 /// whose inner layers are all planes, has the two outer layers only and routes as before.
 #[derive(Clone, Debug)]
 pub(crate) struct Stack {
     pub(crate) copper: Vec<CopperLayer>,
+    /// On a board whose process makes blind and buried vias (issue #1015), for each pair of
+    /// layers of the stack the layers of the stack the via between them is on
+    /// ([`Board::via_between`]), and the via; `None` on any other board, where every via is a
+    /// through via.
+    pub(crate) spans: Option<SpanTable>,
+    /// How many copper layers the board has, planes too.
+    pub(crate) count: u32,
 }
 
 impl Stack {
     pub(crate) fn of(board: &Board) -> Stack {
         let mut copper = vec![CopperLayer::Front, CopperLayer::Back];
         copper.extend(board.signal_layers());
-        Stack { copper }
+        let count = board.copper_count();
+        let spans = board.has_spans().then(|| {
+            let on = |offer: &netsmith_pcb::ViaOffer| match offer.span {
+                None => Layers::ALL,
+                Some(s) => copper
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, l)| s.holds(**l, count))
+                    .fold(Layers::outer(false, false), |set, (k, _)| set.with(k)),
+            };
+            std::rc::Rc::new(
+                copper
+                    .iter()
+                    .map(|&a| {
+                        copper
+                            .iter()
+                            .map(|&b| {
+                                let offer = board.via_between(a, b);
+                                (on(&offer), offer)
+                            })
+                            .collect()
+                    })
+                    .collect(),
+            )
+        });
+        Stack {
+            copper,
+            spans,
+            count,
+        }
+    }
+
+    /// The layers of the stack a via's copper is on: every layer for a through via, else those
+    /// its span holds (issue #1015).
+    pub(crate) fn via_layers(&self, via: &Via) -> Layers {
+        match via.span {
+            None => Layers::ALL,
+            Some(s) => self
+                .copper
+                .iter()
+                .enumerate()
+                .filter(|(_, l)| s.holds(**l, self.count))
+                .fold(Layers::outer(false, false), |set, (k, _)| set.with(k)),
+        }
+    }
+
+    /// The via the router draws from layer `a` to layer `b` of the stack: the board's through
+    /// via, or of an HDI board the one [`Board::via_between`] picks.
+    pub(crate) fn via_between(
+        &self,
+        board: &Board,
+        a: usize,
+        b: usize,
+    ) -> (f64, f64, Option<netsmith_pcb::ViaSpan>) {
+        match &self.spans {
+            Some(spans) => {
+                let o = spans[a][b].1;
+                (o.diameter, o.drill, o.span)
+            }
+            None => (board.rules.via_diameter, board.rules.via_drill, None),
+        }
     }
 
     /// How many layers the router draws on.

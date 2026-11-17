@@ -81,6 +81,13 @@ pub struct Rules {
     /// fabricator charges for, so the router uses one only where a pad cannot be reached
     /// any other way.
     pub via_in_pad: bool,
+    /// The least hole and copper of a micro via, the laser-drilled blind via of an HDI process
+    /// (issue #1015), which the project file states for KiCad's check; `None` on any other
+    /// process, and then not written.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub microvia_drill: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub microvia_diameter: Option<f64>,
 }
 
 impl Rules {
@@ -142,6 +149,9 @@ impl Rules {
                 process.name, process.min_drill, process.min_via_diameter, process.min_via_ring
             ));
         }
+        if let Some(hdi) = &process.hdi {
+            hdi_rules(process, hdi, via_drill, via_diameter)?;
+        }
         Ok(Rules {
             clearance: process.min_clearance,
             min_track_width: process.min_track,
@@ -169,6 +179,11 @@ impl Rules {
             mask_bridge: process.min_mask_bridge,
             plane_clearance: process.min_clearance.max(plane_hole),
             via_in_pad: process.via_in_pad >= via_diameter,
+            microvia_drill: process.hdi.as_ref().map(|h| h.min_laser_drill),
+            microvia_diameter: process
+                .hdi
+                .as_ref()
+                .map(|h| ((h.min_laser_drill + 2.0 * h.min_ring) * 1e9).round() / 1e9),
         })
     }
 
@@ -298,7 +313,20 @@ impl Rules {
                                 ("min_track_width", N(self.min_track_width)),
                                 ("min_via_annular_width", N(self.via_ring)),
                                 ("min_via_diameter", N(self.min_via_diameter)),
-                            ]),
+                            ]
+                            .into_iter()
+                            .chain(
+                                self.microvia_drill
+                                    .zip(self.microvia_diameter)
+                                    .into_iter()
+                                    .flat_map(|(drill, diameter)| {
+                                        [
+                                            ("min_microvia_diameter", N(diameter)),
+                                            ("min_microvia_drill", N(drill)),
+                                        ]
+                                    }),
+                            )
+                            .collect()),
                         ),
                         ("rule_severities", o(severities)),
                         ("track_widths", Array(vec![N(0.0), N(self.track_width)])),
@@ -329,6 +357,95 @@ impl Rules {
         out.push('\n');
         out
     }
+}
+
+/// Whether the vias an HDI process's router draws can be made in the board's build-up (issue
+/// #1015): the order leaves a core, the blind via's hole and copper are the process's, each
+/// dielectric layer a blind via is drilled through is as thick as the process allows and no
+/// thicker than its hole's aspect ratio allows, and a buried via's core is thick enough and its
+/// hole small enough.
+fn hdi_rules(
+    process: &Process,
+    hdi: &netsmith_core::Hdi,
+    via_drill: f64,
+    via_diameter: f64,
+) -> Result<(), String> {
+    let name = &process.name;
+    let n = process.stackup.layers as usize;
+    let k = hdi.order as usize;
+    if k == 0 || n < 2 * k + 2 {
+        return Err(format!(
+            "the process `{name}` has {n} copper layers, which leave no core for {k} build-up layers on each face: `.process.hdi_order` is at most {}",
+            (n.saturating_sub(2)) / 2
+        ));
+    }
+    let (drill, diameter) = (hdi.laser_drill, hdi.laser_via_diameter);
+    if drill < hdi.min_laser_drill - 1e-9
+        || drill > hdi.max_laser_drill + 1e-9
+        || (diameter - drill) / 2.0 < hdi.min_ring - 1e-9
+    {
+        return Err(format!(
+            "the blind via of `{name}` is {diameter} mm with a {drill} mm hole, but the process drills a laser hole of {} to {} mm with {} mm of copper round it: change `.process.laser_drill` or `.process.laser_via_diameter`",
+            hdi.min_laser_drill, hdi.max_laser_drill, hdi.min_ring
+        ));
+    }
+    let dielectrics = process
+        .stackup
+        .inner
+        .as_ref()
+        .map_or(&[][..], |i| &i.dielectrics[..]);
+    if dielectrics.len() + 1 != n {
+        return Err(format!(
+            "the process `{name}` has {n} copper layers and its build-up states {} dielectric layers: an HDI board states each of its {} (`.process.stackup.dielectric1`...)",
+            dielectrics.len(),
+            n - 1
+        ));
+    }
+    let blind = (0..k).chain((0..k).map(|i| n - 2 - i));
+    for d in blind {
+        let t = dielectrics[d].thickness;
+        if t < hdi.min_laser_dielectric - 1e-9 || t > hdi.max_laser_dielectric + 1e-9 {
+            return Err(format!(
+                "`.process.stackup.dielectric{}` is {t} mm, which a blind via of `{name}` is drilled through, but the process drills one through {} to {} mm",
+                d + 1,
+                hdi.min_laser_dielectric,
+                hdi.max_laser_dielectric
+            ));
+        }
+        if t > drill * hdi.max_laser_aspect + 1e-9 {
+            return Err(format!(
+                "`.process.stackup.dielectric{}` is {t} mm, which a blind via of `{name}` with a {drill} mm hole is drilled through, but its depth is at most {} times its hole: widen `.process.laser_drill` or thin the dielectric",
+                d + 1,
+                hdi.max_laser_aspect
+            ));
+        }
+    }
+    let ring = (via_diameter - via_drill) / 2.0;
+    if hdi.buried {
+        let core = crate::span_depth(process, k, n - 1 - k);
+        if core < hdi.min_buried_core - 1e-9 {
+            return Err(format!(
+                "the core of `{name}` between its layers {} and {} is {core} mm, but a buried via is drilled through a core of at least {} mm",
+                k + 1,
+                n - k,
+                hdi.min_buried_core
+            ));
+        }
+        if via_drill > hdi.max_buried_drill + 1e-9 || ring < hdi.min_ring - 1e-9 {
+            return Err(format!(
+                "the via of `{name}` is {via_diameter} mm with a {via_drill} mm hole, but a buried via has a hole of at most {} mm with {} mm of copper round it",
+                hdi.max_buried_drill, hdi.min_ring
+            ));
+        }
+    }
+    let depth = crate::span_depth(process, 0, n - 1);
+    if depth > via_drill * hdi.max_drill_aspect + 1e-9 {
+        return Err(format!(
+            "the via of `{name}` has a {via_drill} mm hole through {depth} mm of dielectric, but a drilled hole is at most {} times as deep as it is wide: widen `.process.via_drill`",
+            hdi.max_drill_aspect
+        ));
+    }
+    Ok(())
 }
 
 impl Rules {
@@ -500,9 +617,112 @@ pub(crate) fn acme_process(layers: u32) -> Process {
     process_of(&source)
 }
 
+/// The build-up an HDI test board states for itself (issue #1015), six layers 1.2 mm thick: a
+/// 1080 prepreg of 0.086 mm under each outer layer (the HDI page's "1078/1080 RC69, 86 μm", at
+/// the impedance page's 3.91 for 1080), two 0.4 mm cores and a 2116 prepreg of 0.15 mm between
+/// them (the HDI page's "2116 RC57, 150 μm", at 4.16): a board's own choice, as an HDI board's
+/// build-up is, and not a figure of the process.
+pub const HDI_SIX_BUILD_UP: &[&str] = &[
+    ".stackup.thickness &= 1.2mm",
+    ".stackup.copper_weight &= 1",
+    ".stackup.build &= \"HDI-6L-1.2\"",
+    ".stackup.inner_copper &= 0.0152mm",
+    ".stackup.dielectric1.kind &= \"prepreg\"",
+    ".stackup.dielectric1.glass &= \"1080\"",
+    ".stackup.dielectric1.thickness &= 0.086mm",
+    ".stackup.dielectric1.epsilon &= 3.91",
+    ".stackup.dielectric2.kind &= \"core\"",
+    ".stackup.dielectric2.thickness &= 0.4mm",
+    ".stackup.dielectric2.epsilon &= 4.6",
+    ".stackup.dielectric3.kind &= \"prepreg\"",
+    ".stackup.dielectric3.glass &= \"2116\"",
+    ".stackup.dielectric3.thickness &= 0.15mm",
+    ".stackup.dielectric3.epsilon &= 4.16",
+    ".stackup.dielectric4.kind &= \"core\"",
+    ".stackup.dielectric4.thickness &= 0.4mm",
+    ".stackup.dielectric4.epsilon &= 4.6",
+    ".stackup.dielectric5.kind &= \"prepreg\"",
+    ".stackup.dielectric5.glass &= \"1080\"",
+    ".stackup.dielectric5.thickness &= 0.086mm",
+    ".stackup.dielectric5.epsilon &= 3.91",
+];
+
+/// `HdiSixLayer` with [`HDI_SIX_BUILD_UP`], GND on its first inner layer, 3V3 on its last and
+/// the two between signal layers, after the board has written each of `narrowings`.
+#[cfg(test)]
+pub(crate) fn hdi_process(narrowings: &[&str]) -> Process {
+    let body: String = HDI_SIX_BUILD_UP
+        .iter()
+        .chain(&[
+            ".inner1.net &= \"GND\"",
+            ".inner2.use &= \"signal\"",
+            ".inner3.use &= \"signal\"",
+            ".inner4.net &= \"3V3\"",
+        ])
+        .chain(narrowings)
+        .map(|n| format!("        {n}\n"))
+        .collect();
+    let source = format!(
+        "import std::mfg::jlcpcb::HdiSixLayer\nimport std::parts::passive::Resistor\nboard T {{\n    .process: HdiSixLayer {{\n{body}    }}\n    .r: Resistor {{\n        .a.net &= \"GND\"\n        .b.net &= \"3V3\"\n    }}\n}}\n"
+    );
+    process_of(&source)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_hdi_process_states_its_blind_and_buried_vias_and_its_build_up_is_checked() {
+        // Unstated, the board is of the first order with no buried via.
+        let p = hdi_process(&[]);
+        let hdi = p.hdi.clone().expect("an HDI process");
+        assert_eq!((hdi.order, hdi.buried), (1, false));
+        assert_eq!((hdi.laser_drill, hdi.laser_via_diameter), (0.1, 0.25));
+        assert_eq!((hdi.min_laser_drill, hdi.max_laser_drill), (0.075, 0.15));
+        assert_eq!((hdi.max_laser_aspect, hdi.max_drill_aspect), (1.0, 16.0));
+        assert_eq!(p.min_track, 0.0762);
+        assert!(Rules::for_process(&p).is_ok());
+        let words = |p: &Process| {
+            crate::via_offers(p, 0.2, 0.45)
+                .iter()
+                .map(|o| {
+                    o.span.map_or("through".to_string(), |s| {
+                        format!("{}-{}", s.from.word(), s.to.word())
+                    })
+                })
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(words(&p), ["top-inner1", "inner4-bottom", "through"]);
+        let p = hdi_process(&[".hdi_order &= 2", ".buried_vias &= \"core\""]);
+        assert_eq!(
+            words(&p),
+            [
+                "top-inner1",
+                "inner1-inner2",
+                "inner4-bottom",
+                "inner3-inner4",
+                "inner2-inner3",
+                "through"
+            ]
+        );
+        // The second build-up layers are the 0.4 mm cores, too thick for a laser.
+        let err = Rules::for_process(&p).unwrap_err();
+        assert!(
+            err.contains("dielectric2") && err.contains("0.127"),
+            "{err}"
+        );
+        // The first order's core, 0.95 mm, takes a buried via.
+        let p = hdi_process(&[".buried_vias &= \"core\""]);
+        assert_eq!(words(&p)[2], "inner1-inner4");
+        assert!(Rules::for_process(&p).is_ok());
+        // A 0.075 mm laser hole is shallower than the 0.086 mm prepreg it is drilled through.
+        let err = Rules::for_process(&hdi_process(&[".laser_drill &= 0.075mm"])).unwrap_err();
+        assert!(err.contains("at most 1 times its hole"), "{err}");
+        // A process that is not HDI states none.
+        assert_eq!(six_layer_process().hdi, None);
+        assert_eq!(words(&six_layer_process()), ["through"]);
+    }
 
     #[test]
     fn eight_and_ten_layer_processes_are_routed_on_the_outer_layers() {

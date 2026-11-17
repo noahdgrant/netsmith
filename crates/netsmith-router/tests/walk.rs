@@ -372,6 +372,7 @@ fn errors(board: &Board) -> Vec<String> {
         round_track_angle: None,
         marks: None,
         stackup: None,
+        vias: None,
     };
     drc_check(&kicad_pcb(board), Some(&kicad_pro(board)), &extras)
         .unwrap()
@@ -478,6 +479,7 @@ fn only_the_routers_copper_the_track_is_in_the_way_of_is_crossed() {
         at: at(c, x, 0.1),
         diameter: 0.45,
         drill: 0.2,
+        span: None,
     };
     let vias = [via("GND", -0.5), via("TEST", -0.6), via("GND", 2.0)];
     let corners = [at(c, -2.0, 0.0), at(c, 0.85, 0.0)];

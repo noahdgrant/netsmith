@@ -89,11 +89,16 @@ impl<'a> Router<'a> {
                 });
             }
             if k < path.len() {
+                // The via between the two layers: a through via, or on a board with blind and
+                // buried vias the one the search took (issue #1015).
+                let (diameter, drill, span) =
+                    self.stack.via_between(self.board, path[k - 1].2, path[k].2);
                 vias.push(Via {
                     net: l.net.clone(),
                     at: self.grid.centre(path[k].0, path[k].1),
-                    diameter: rules.via_diameter,
-                    drill: rules.via_drill,
+                    diameter,
+                    drill,
+                    span,
                 });
                 // The others of its cluster, where the masks left room (issue #431).
                 for at in self
@@ -105,6 +110,7 @@ impl<'a> Router<'a> {
                         at,
                         diameter: rules.via_diameter,
                         drill: rules.via_drill,
+                        span: None,
                     });
                 }
             }
@@ -118,6 +124,7 @@ impl<'a> Router<'a> {
                 at: self.grid.centre(last.0, last.1),
                 diameter: rules.via_diameter,
                 drill: rules.via_drill,
+                span: None,
             });
         } else {
             pads.push((l.to_at, last));
@@ -129,6 +136,7 @@ impl<'a> Router<'a> {
                 at: pad.at,
                 diameter: rules.via_diameter,
                 drill: rules.via_drill,
+                span: None,
             });
         }
         // A pad's centre is rarely on the grid, so join it to the first and last cell.

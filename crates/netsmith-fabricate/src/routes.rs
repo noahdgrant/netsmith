@@ -563,6 +563,7 @@ fn change_record(
                 at: *at,
                 diameter: diameter.unwrap_or(board.rules.via_diameter),
                 drill: drill.unwrap_or(board.rules.via_drill),
+                layers: Vec::new(),
                 lock: *lock,
             });
             Ok(format!("added a via to net {net}"))

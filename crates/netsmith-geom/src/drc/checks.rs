@@ -57,6 +57,16 @@ pub(crate) fn run(m: &Model<'_>, findings: &mut Vec<Finding>) {
     super::pour::run(&mut out);
     super::acid::run(&mut out);
     super::stackup::run(&mut out);
+    super::vias::run(&mut out);
+}
+
+/// Whether two holes share a layer: a hole through the board meets every hole, a blind or a
+/// buried via's (its first and last layer) those whose layers overlap its own (issue #1015).
+pub(crate) fn holes_meet(a: Option<(usize, usize)>, b: Option<(usize, usize)>) -> bool {
+    match (a, b) {
+        (Some((a0, a1)), Some((b0, b1))) => a0 <= b1 && b0 <= a1,
+        _ => true,
+    }
 }
 
 pub(crate) fn same_net(a: &Option<String>, b: &Option<String>) -> bool {
@@ -166,12 +176,16 @@ fn sizes(out: &mut Out<'_>) {
             }
             Kind::Via(i) => {
                 let v = &m.art.vias[i];
-                if v.diameter < r.via_diameter - EPS / 100.0 {
+                let least = match r.microvia_diameter {
+                    Some(micro) if v.micro => micro,
+                    _ => r.via_diameter,
+                };
+                if v.diameter < least - EPS / 100.0 {
                     out.push(
                         Rule::ViaDiameter,
                         format!(
                             "via is {:.4} mm across, the least is {:.4} mm",
-                            v.diameter, r.via_diameter
+                            v.diameter, least
                         ),
                         v.at,
                         None,
@@ -223,12 +237,17 @@ fn sizes(out: &mut Out<'_>) {
         }
     }
     for h in &m.holes {
-        if h.diameter < r.through_hole - EPS / 100.0 {
+        // A micro via's hole is the laser's, held to the project's least micro via drill.
+        let least = match (h.owner.map(|o| m.items[o].kind), r.microvia_drill) {
+            (Some(Kind::Via(v)), Some(micro)) if m.art.vias[v].micro => micro,
+            _ => r.through_hole,
+        };
+        if h.diameter < least - EPS / 100.0 {
             out.push(
                 Rule::DrillOutOfRange,
                 format!(
                     "hole is {:.4} mm, the least the process drills is {:.4} mm",
-                    h.diameter, r.through_hole
+                    h.diameter, least
                 ),
                 h.at,
                 None,
@@ -356,6 +375,10 @@ fn holes(out: &mut Out<'_>) {
         if a.owner.is_some() && a.owner == b.owner {
             continue;
         }
+        // Two holes of blind or buried vias that share no layer do not meet (issue #1015).
+        if !holes_meet(a.span, b.span) {
+            continue;
+        }
         let g = gap(&a.shape, &b.shape);
         if g.d < r.hole_to_hole - EPS {
             out.push(
@@ -370,7 +393,8 @@ fn holes(out: &mut Out<'_>) {
             );
         }
     }
-    // Hole to copper of another net, on any layer: the hole goes through them all.
+    // Hole to copper of another net, on any layer the hole goes through: every layer, or a blind
+    // or buried via's own (issue #1015).
     let item_boxes: Vec<Bounds> = m.items.iter().map(|c| c.bounds).collect();
     let mut all = item_boxes.clone();
     all.extend(hole_boxes);
@@ -381,6 +405,11 @@ fn holes(out: &mut Out<'_>) {
         }
         let (c, h) = (&m.items[i], &m.holes[j - n]);
         if h.owner == Some(i) {
+            continue;
+        }
+        if let Some((a, b)) = h.span
+            && !c.layers.iter().any(|&l| a <= l && l <= b)
+        {
             continue;
         }
         let hole_net = &h.item.net;
