@@ -53,6 +53,18 @@ fn catalogs(k: usize) -> Catalogs {
     c
 }
 
+/// Resistors of 100, 150, ... 300 ohms: five values that share no resistance, more sets than
+/// the look-ahead splits candidates into (`ahead.rs`, `core_sets`), so a bound such as
+/// `a + z >= 600ohm`, which only 300 and 300 come near, is left to the search.
+fn search_catalogs() -> Catalogs {
+    let mut c = Catalogs::empty();
+    c.insert(Catalog {
+        name: "resistor".into(),
+        candidates: (2..=6).map(|i| resistor(50.0 * i as f64)).collect(),
+    });
+    c
+}
+
 /// `n` chained parts between `a` and `z`; `conflict` says whether `z` can be satisfied.
 fn bench(n: usize, conflict: bool) -> String {
     let mut src = String::from("import std::parts::passive::Resistor\n\nboard Bench {\n");
@@ -124,7 +136,7 @@ fn unresolved(s: &Solution) -> Vec<String> {
 
 #[test]
 fn a_conflict_with_the_first_part_names_the_two_parts() {
-    let s = run(&bench(3, true), &catalogs(3));
+    let s = run(&bench(3, true), &search_catalogs());
     assert_eq!(
         messages(&s),
         [
@@ -139,7 +151,7 @@ fn a_conflict_with_the_first_part_names_the_two_parts() {
 fn a_conflict_with_a_middle_part_names_the_two_parts() {
     let s = run(
         &bench_mid(4, ".u02.resistance + .z.resistance >= 600ohm"),
-        &catalogs(3),
+        &search_catalogs(),
     );
     assert_eq!(
         messages(&s),

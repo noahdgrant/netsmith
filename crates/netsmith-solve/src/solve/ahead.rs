@@ -36,11 +36,21 @@
 //! from a wider range holds what is worked out from a narrower one. Seven LED branches whose
 //! current is over the regulator's only at the worst case are refused that way before a trial.
 //! Only where that holds: a column that feeds the bound and has no core (a bank, a row that leaves
-//! it open, derates it or lacks it, rows that share no value), a part of another group still to
-//! be chosen that feeds it, a pick-time analysis that may still write a voltage, and a
+//! it open, derates it or lacks it, rows that share no value but for the sets below), a part of
+//! another group still to be chosen that feeds it, a pick-time analysis that may still write a voltage, and a
 //! propagation that kept a value because what it worked out did not lie inside it
 //! (`Solver::kept_apart`) each leave the bound to the search. `Catalogs::with_look_ahead_audit`
 //! searches each refused choice again without the look and stops if it finds a completion.
+//!
+//! A quantity column whose rows share no value (LEDs of 1.8 V to 2.1 V beside one of 2.2 V to
+//! 2.4 V) has no core, and a board that needs most of its branches to take the one LED that
+//! works searched to the limit (issue #1017). Such a part's candidates are split into a few sets
+//! that each have a core (`core_sets`, at most `MOST_SETS`), and a bound that only those columns
+//! kept from `always_refused` is asked of every combination of the sets of the parts it reads
+//! (`split_refused`, at most `MOST_COMBINATIONS` in one look): each choice holds the cores of one
+//! combination, so what every combination puts across the bound, every choice puts across it.
+//! The same conditions hold, and a combination whose cores conflict or keep a value apart says
+//! nothing. Seven such branches are solved in about 130 trials instead of 250,000.
 //!
 //! What does not change: the picks of a group that is solved (a choice refused here had no
 //! choice of the later parts that a trial accepts, so the first solution is the same), and the
@@ -48,7 +58,7 @@
 //! that names the parts the bound reads and the range they can give, or, for a bound over the
 //! whole range, the range every choice of them takes in.
 
-use std::collections::{BTreeSet, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashSet};
 
 use netsmith_check::{Domain, FieldId};
 use netsmith_lang::ast::CmpOp;
@@ -65,6 +75,13 @@ pub(super) struct Ahead {
     pub(super) later: BTreeSet<usize>,
 }
 
+/// A part still to be chosen whose candidates split into sets that each have a core: its
+/// columns, and the cores of each set in the same order (`Hull::sets`).
+struct Split {
+    fields: Vec<FieldId>,
+    sets: Vec<Vec<Option<Option<Domain>>>>,
+}
+
 /// The hull of a part's candidates that fit, column by column, and the domains of its columns
 /// that decided which fit: it stands while they are the same.
 pub(super) struct Hull {
@@ -73,7 +90,16 @@ pub(super) struct Hull {
     /// The core of each column (`column_core`): `None` for a column with no core (every column
     /// when nothing fits), `Some(None)` for one that every row leaves without a value.
     cores: Vec<Option<Option<Domain>>>,
+    /// When some quantity column has no core because the rows' ranges share no value, the
+    /// candidates split into a few sets that each have one (`core_sets`): the cores of each
+    /// set, column by column. Empty when the candidates have one core, or split into too many.
+    sets: Vec<Vec<Option<Option<Domain>>>>,
 }
+
+/// The most sets a part's candidates are split into for `core_sets`, and the most combinations
+/// of sets that `split_refused` propagates in one look: each is about the cost of a trial.
+const MOST_SETS: usize = 4;
+const MOST_COMBINATIONS: usize = 64;
 
 impl Solver<'_> {
     /// Whether no choice of the parts of `group` from `from` on can be accepted with the choices
@@ -95,6 +121,9 @@ impl Solver<'_> {
         // The columns of the parts still to be chosen, each with its core, or `None` where it
         // has none: every column of a bank, and its count.
         let mut cores: Vec<(FieldId, Option<Option<Domain>>)> = Vec::new();
+        // The parts whose candidates split into sets that each have a core: their columns and
+        // the cores of each set.
+        let mut split: Vec<Split> = Vec::new();
         for &j in &group[from..] {
             let job = &jobs[j];
             if job.count.is_some() {
@@ -107,11 +136,17 @@ impl Solver<'_> {
                 );
                 continue;
             }
-            let (columns, core) = {
+            let (columns, core, sets) = {
                 let hull = self.hull_of(jobs, j);
-                (hull.columns.clone(), hull.cores.clone())
+                (hull.columns.clone(), hull.cores.clone(), hull.sets.clone())
             };
             cores.extend(job.columns.iter().map(|(f, _)| *f).zip(core));
+            if !sets.is_empty() {
+                split.push(Split {
+                    fields: job.columns.iter().map(|(f, _)| *f).collect(),
+                    sets,
+                });
+            }
             let mut any = false;
             for ((field, _), domain) in job.columns.iter().zip(columns) {
                 if let Some(domain) = domain {
@@ -132,6 +167,10 @@ impl Solver<'_> {
         self.model.rollback(backup);
         if found.is_none() {
             found = self.always_refused(group, from, coupling, elsewhere, &cores);
+            self.derived = derived.clone();
+        }
+        if found.is_none() && !split.is_empty() {
+            found = self.split_refused(group, from, coupling, elsewhere, &cores, &split);
             self.derived = derived;
         }
         found
@@ -156,18 +195,22 @@ impl Solver<'_> {
             self.work += job.catalog.candidates.len() as u64;
             // A part with nothing that fits is left alone: the search says so when it gets
             // there.
-            let (columns, cores) = if fitting.is_empty() {
-                (vec![None; job.columns.len()], vec![None; job.columns.len()])
-            } else {
+            let (columns, cores, sets) = if fitting.is_empty() {
                 (
-                    job.columns
-                        .iter()
-                        .map(|(_, key)| column_hull(&fitting, key))
-                        .collect(),
-                    job.columns
-                        .iter()
-                        .map(|(_, key)| column_core(&fitting, key))
-                        .collect(),
+                    vec![None; job.columns.len()],
+                    vec![None; job.columns.len()],
+                    Vec::new(),
+                )
+            } else {
+                let keys: Vec<&str> = job.columns.iter().map(|(_, key)| key.as_str()).collect();
+                let cores: Vec<Option<Option<Domain>>> =
+                    keys.iter().map(|key| column_core(&fitting, key)).collect();
+                self.work += fitting.len() as u64;
+                let sets = core_sets(&fitting, &keys, &cores);
+                (
+                    keys.iter().map(|key| column_hull(&fitting, key)).collect(),
+                    cores,
+                    sets,
                 )
             };
             self.hulls.insert(
@@ -176,6 +219,7 @@ impl Solver<'_> {
                     domains,
                     columns,
                     cores,
+                    sets,
                 },
             );
         }
@@ -260,29 +304,238 @@ impl Solver<'_> {
                     self.model.show_expr(&r.lhs),
                     self.model.show_expr(&r.rhs),
                 );
-                let message = self.relation_message(index, r, message);
-                let later: BTreeSet<usize> = (from..group.len())
-                    .filter(|&d| coupling.feeding[index].contains(&group[d]))
-                    .collect();
-                let mut own = Vec::new();
-                crate::eval::fields_in(&r.lhs, &mut own);
-                crate::eval::fields_in(&r.rhs, &mut own);
-                found = Some(Ahead {
-                    later,
-                    rejection: Rejection {
-                        message,
-                        margin,
-                        at: (r.source, r.span),
-                        own,
-                        relation: Some(index),
-                        network: false,
-                    },
-                });
+                found = Some(self.refused_always(index, message, margin, group, from, coupling));
                 break;
             }
         }
         self.model.rollback(backup);
         found
+    }
+
+    /// The refusal of a bound that must hold over the whole range of a value, by
+    /// `always_refused` or `split_refused`: the parts still to be chosen that feed it.
+    fn refused_always(
+        &mut self,
+        index: usize,
+        message: String,
+        margin: f64,
+        group: &[usize],
+        from: usize,
+        coupling: &Coupling,
+    ) -> Ahead {
+        let relations = std::sync::Arc::clone(self.model.shared_relations());
+        let r = &relations[index];
+        let message = self.relation_message(index, r, message);
+        let later: BTreeSet<usize> = (from..group.len())
+            .filter(|&d| coupling.feeding[index].contains(&group[d]))
+            .collect();
+        let mut own = Vec::new();
+        crate::eval::fields_in(&r.lhs, &mut own);
+        crate::eval::fields_in(&r.rhs, &mut own);
+        Ahead {
+            later,
+            rejection: Rejection {
+                message,
+                margin,
+                at: (r.source, r.span),
+                own,
+                relation: Some(index),
+                network: false,
+            },
+        }
+    }
+
+    /// `always_refused` for a bound that a column with no core feeds, where that column's
+    /// candidates split into a few sets that each have a core (`core_sets`; issue #1017). Every
+    /// candidate is in a set, and its range holds the core of its set, so every choice of the
+    /// parts holds the cores of one combination of sets: each combination of the sets of the
+    /// parts the bound needs split is propagated, and a bound that every combination puts
+    /// across its limit is put across it by every choice. Asked under the conditions of
+    /// `always_refused`, of the bounds it could not ask. The bounds that need the same parts
+    /// split are asked together, those that need the most parts first (the bounds of a long
+    /// chain, which the search judges last), and one look propagates at most
+    /// `MOST_COMBINATIONS` combinations in all.
+    fn split_refused(
+        &mut self,
+        group: &[usize],
+        from: usize,
+        coupling: &Coupling,
+        elsewhere: &HashSet<usize>,
+        cores: &[(FieldId, Option<Option<Domain>>)],
+        split: &[Split],
+    ) -> Option<Ahead> {
+        let relations = std::sync::Arc::clone(self.model.shared_relations());
+        let later: HashSet<usize> = group[from..].iter().copied().collect();
+        let design = self.reads();
+        let coreless: HashSet<FieldId> = cores
+            .iter()
+            .filter(|(_, core)| core.is_none())
+            .map(|(f, _)| *f)
+            .collect();
+        // The columns with no core that have one in every set of their part.
+        let in_sets: HashSet<FieldId> = split
+            .iter()
+            .flat_map(|s| {
+                s.fields
+                    .iter()
+                    .enumerate()
+                    .filter(|&(i, _)| s.sets.iter().all(|set| set[i].is_some()))
+                    .map(|(_, f)| *f)
+            })
+            .collect();
+        // The bounds, by the parts (indices into `split`) they need split.
+        let mut asks: BTreeMap<Vec<usize>, Vec<usize>> = BTreeMap::new();
+        for index in 0..self.original_relations {
+            let r = &relations[index];
+            let feeding = &coupling.feeding[index];
+            if !matches!(r.op, CmpOp::Ge | CmpOp::Le)
+                || !feeding.is_disjoint(elsewhere)
+                || feeding.intersection(&later).nth(1).is_none()
+                || relation_reads_end(r)
+                || self.place_side(r).is_some()
+            {
+                continue;
+            }
+            let sources = coupling.sources(design.fields_of(index));
+            let read: Vec<&FieldId> = coreless.intersection(&sources).collect();
+            if read.is_empty() || !read.iter().all(|f| in_sets.contains(f)) {
+                continue;
+            }
+            let needed: Vec<usize> = (0..split.len())
+                .filter(|&k| split[k].fields.iter().any(|f| read.contains(&f)))
+                .collect();
+            asks.entry(needed).or_default().push(index);
+        }
+        let mut asks: Vec<(Vec<usize>, Vec<usize>, usize)> = asks
+            .into_iter()
+            .filter_map(|(needed, bounds)| {
+                let combinations = needed
+                    .iter()
+                    .try_fold(1usize, |n, &k| n.checked_mul(split[k].sets.len()))
+                    .filter(|&n| n <= MOST_COMBINATIONS)?;
+                Some((needed, bounds, combinations))
+            })
+            .collect();
+        asks.sort_by_key(|(needed, _, combinations)| {
+            (std::cmp::Reverse(needed.len()), *combinations)
+        });
+        if asks.is_empty() || !self.network_quiet() {
+            return None;
+        }
+        let mut left = MOST_COMBINATIONS;
+        for (needed, bounds, combinations) in asks {
+            if combinations > left {
+                continue;
+            }
+            left -= combinations;
+            if let Some((index, message, margin)) =
+                self.refused_by_sets(&needed, bounds, cores, split)
+            {
+                return Some(self.refused_always(index, message, margin, group, from, coupling));
+            }
+        }
+        None
+    }
+
+    /// The first of `bounds` that every combination of the sets of the parts `needed` (indices
+    /// into `split`) puts across its limit, with its message and its smallest margin. The other
+    /// parts still to be chosen take their cores. A combination whose cores conflict, or whose
+    /// propagation keeps a value apart (`Solver::kept_apart`), says nothing, so nothing is
+    /// refused. The model is put back as it was.
+    fn refused_by_sets(
+        &mut self,
+        needed: &[usize],
+        bounds: Vec<usize>,
+        cores: &[(FieldId, Option<Option<Domain>>)],
+        split: &[Split],
+    ) -> Option<(usize, String, f64)> {
+        let relations = std::sync::Arc::clone(self.model.shared_relations());
+        // For each bound still put across by every combination so far: the end of its range
+        // nearest its limit over them, the limit, and the smallest margin.
+        type Nearest = Option<(f64, Quantity, f64)>;
+        let mut refused: Vec<(usize, Nearest)> =
+            bounds.into_iter().map(|index| (index, None)).collect();
+        let mut chosen = vec![0usize; needed.len()];
+        loop {
+            let backup = self.model.checkpoint();
+            for (field, core) in cores {
+                if let Some(Some(domain)) = core {
+                    self.model.set_domain(*field, domain.clone());
+                }
+            }
+            for (&k, &set) in needed.iter().zip(&chosen) {
+                for (field, core) in split[k].fields.iter().zip(&split[k].sets[set]) {
+                    if let Some(Some(domain)) = core {
+                        self.model.set_domain(*field, domain.clone());
+                    }
+                }
+            }
+            let kept = self.kept_apart;
+            self.work += 1;
+            let said = self.propagate().is_empty() && self.kept_apart == kept;
+            if said {
+                refused.retain_mut(|(index, nearest)| {
+                    let r = &relations[*index];
+                    self.work += 1;
+                    let Verdict::Fail { margin, .. } = self.verify(r) else {
+                        return false;
+                    };
+                    let (Ok(Val::Q(l)), Ok(Val::Q(v))) =
+                        (eval(&self.model, &r.lhs), eval(&self.model, &r.rhs))
+                    else {
+                        return false;
+                    };
+                    let end = if r.op == CmpOp::Ge { l.lo() } else { l.hi() };
+                    *nearest = Some(match nearest.take() {
+                        None => (end, v, margin),
+                        Some((e, w, m)) => {
+                            let nearer = if r.op == CmpOp::Ge {
+                                e.max(end)
+                            } else {
+                                e.min(end)
+                            };
+                            (nearer, w, m.min(margin))
+                        }
+                    });
+                    true
+                });
+            }
+            self.model.rollback(backup);
+            if !said || refused.is_empty() {
+                return None;
+            }
+            // The next combination of sets, the last part's first; done after the last.
+            let mut at = chosen.len();
+            let more = loop {
+                if at == 0 {
+                    break false;
+                }
+                at -= 1;
+                chosen[at] += 1;
+                if chosen[at] < split[needed[at]].sets.len() {
+                    break true;
+                }
+                chosen[at] = 0;
+            };
+            if !more {
+                break;
+            }
+        }
+        let (index, nearest) = refused.into_iter().next()?;
+        let (end, v, margin) = nearest?;
+        let r = &relations[index];
+        let (word, side, beyond) = if r.op == CmpOp::Ge {
+            ("at least", "below", "lower")
+        } else {
+            ("at most", "above", "higher")
+        };
+        let end = Quantity::point(v.dim(), end).ok()?;
+        let message = format!(
+            "{} must always be {word} {}, but its range reaches {end} or {beyond}, which is {side} {v}",
+            self.model.show_expr(&r.lhs),
+            self.model.show_expr(&r.rhs),
+        );
+        Some((index, message, margin))
     }
 
     fn ahead_refused(
@@ -451,4 +704,65 @@ fn column_core(candidates: &[&Candidate], key: &str) -> Option<Option<Domain>> {
         (None, Some(t)) => Some(Some(Domain::Text(t.to_string()))),
         _ => None,
     }
+}
+
+/// The candidates split into sets whose ranges share a value in every quantity column that has
+/// no core over all of them because the rows' ranges share none (`cores` holds the core of each
+/// column over all the candidates): each candidate goes to the first set it shares a value with
+/// in each such column, in catalog order, or starts one. The cores of each set, column by column
+/// (`column_core`). Empty when no column is split so, or the candidates need more than
+/// `MOST_SETS` sets.
+fn core_sets(
+    candidates: &[&Candidate],
+    keys: &[&str],
+    cores: &[Option<Option<Domain>>],
+) -> Vec<Vec<Option<Option<Domain>>>> {
+    let ranges = |key: &str| -> Option<Vec<(f64, f64)>> {
+        let mut dim = None;
+        candidates
+            .iter()
+            .map(|c| match c.column(key) {
+                Some(Value::Quantity(q)) if dim.is_none_or(|d| d == q.dim()) => {
+                    dim = Some(q.dim());
+                    Some((q.lo(), q.hi()))
+                }
+                _ => None,
+            })
+            .collect()
+    };
+    let columns: Vec<Vec<(f64, f64)>> = keys
+        .iter()
+        .zip(cores)
+        .filter(|(_, core)| core.is_none())
+        .filter_map(|(key, _)| ranges(key))
+        .collect();
+    if columns.is_empty() {
+        return Vec::new();
+    }
+    // Each set: its members, and the range they all share in each split column.
+    type Set<'a> = (Vec<&'a Candidate>, Vec<(f64, f64)>);
+    let mut sets: Vec<Set> = Vec::new();
+    for (i, c) in candidates.iter().enumerate() {
+        let own: Vec<(f64, f64)> = columns.iter().map(|ranges| ranges[i]).collect();
+        let joined = sets.iter_mut().find_map(|(members, shared)| {
+            let narrowed: Vec<(f64, f64)> = shared
+                .iter()
+                .zip(&own)
+                .map(|(&(l, h), &(lo, hi))| (l.max(lo), h.min(hi)))
+                .collect();
+            narrowed.iter().all(|(l, h)| l <= h).then(|| {
+                *shared = narrowed;
+                members.push(*c);
+            })
+        });
+        if joined.is_none() {
+            if sets.len() == MOST_SETS {
+                return Vec::new();
+            }
+            sets.push((vec![*c], own));
+        }
+    }
+    sets.iter()
+        .map(|(members, _)| keys.iter().map(|key| column_core(members, key)).collect())
+        .collect()
 }

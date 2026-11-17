@@ -1769,6 +1769,102 @@ C900402,ZZ-HIGH,High LED 0603,ZZ-HIGH,Red,2.2V..2.4V,0603,Extended,https://examp
     );
 }
 
+/// The LEDs of `with_unrated_led`, and one that drops at least 2.2 V: the LEDs that fit share no
+/// forward voltage (one drops 1.8 V to 2.1 V), so the look-ahead splits them into two sets that
+/// each share one (`ahead.rs`, issue #1017).
+fn with_high_led() -> Catalogs {
+    let mut catalogs = with_unrated_led();
+    catalogs
+        .add_file(
+            "led",
+            "catalogs/led_high.csv",
+            "lcsc,mpn,name,label,color,forward_voltage,package,library,source\n\
+C900402,ZZ-HIGH,High LED 0603,ZZ-HIGH,Red,2.2V..2.4V,0603,Extended,https://example.invalid/high\n",
+        )
+        .unwrap();
+    catalogs
+}
+
+fn high_leds(s: &Solution) -> usize {
+    s.picks
+        .iter()
+        .filter(|p| p.mpn.as_deref() == Some("ZZ-HIGH"))
+        .count()
+}
+
+#[test]
+fn seven_branches_that_need_the_higher_voltage_led_in_most_of_them_are_solved() {
+    // Seven branches of 100 ohm draw up to 16.82 mA each with an LED that drops 1.8 V and up to
+    // 12.78 mA with the LED that drops 2.2 V: within the regulator's 100 mA only with five or
+    // more of the second. The LEDs that fit share no forward voltage, so they have no core, and
+    // the look-ahead used to leave the bound to the search, which tried 250,000 combinations
+    // and gave up (issue #1017). The LEDs now split into two sets that each have a core, and a
+    // choice of the first branches that leaves too few branches for the second LED is refused
+    // before the rest are tried. (The audit of this board searches each refused choice again
+    // without the look-ahead, which takes minutes: the smaller boards below turn it on.)
+    let (_, s) = run_with(&with_branches(7, "100ohm +/- 1%", "0mA"), &with_high_led());
+    assert!(s.diagnostics.is_empty(), "{:?}", messages(&s));
+    assert_eq!(high_leds(&s), 5);
+    // 127 when written, against the 250,000 of the limit.
+    assert!(s.trials < 1_000, "{} trials", s.trials);
+}
+
+#[test]
+fn eight_branches_that_overload_the_regulator_with_every_led_are_refused_after_a_few_hundred_trials() {
+    // Eight branches of 100 ohm draw more than 100 mA whichever LEDs they take (eight of the
+    // second LED draw up to 102.2 mA). A look asks at most 64 combinations of sets, so the
+    // first ones (eight and seven LEDs still to be chosen, 256 and 128 combinations) are left
+    // to the search, and the later ones refuse each choice of the first branches.
+    let (_, s) = run_with(&with_branches(8, "100ohm +/- 1%", "0mA"), &with_high_led());
+    let msgs = messages(&s);
+    assert_eq!(msgs.len(), 1, "{msgs:#?}");
+    assert!(
+        msgs[0].starts_with("no combination of candidates satisfies `b1_led` and `b1_r` and "),
+        "{}",
+        msgs[0]
+    );
+    assert!(!msgs[0].contains("gave up"), "{}", msgs[0]);
+    // 354 when written.
+    assert!(s.trials < 2_000, "{} trials", s.trials);
+}
+
+#[test]
+fn branches_that_overload_the_regulator_with_every_led_are_refused_from_the_sets_of_the_leds() {
+    // Three branches of 36 ohm draw up to 35.5 mA each with the LED that drops 2.2 V, and more
+    // with the others: more than the regulator's 100 mA whichever LEDs they take. The core of
+    // the LEDs is empty, so `always_refused` cannot ask; each combination of the two sets of
+    // each LED puts the current over the limit, and the group is refused before a trial.
+    let (_, s) = run_with(
+        &with_branches(3, "36ohm +/- 1%", "0mA"),
+        &with_high_led().with_look_ahead_audit(true),
+    );
+    let msgs = messages(&s);
+    assert_eq!(msgs.len(), 1, "{msgs:#?}");
+    for needle in [
+        "no combination of candidates satisfies `b1_led` and `b1_r` and ",
+        "together: whichever candidates they take, -stage.regulator.vout.current must always be at most stage.regulator.max_current, but its range reaches ",
+        " or higher, which is above 100mA",
+    ] {
+        assert!(msgs[0].contains(needle), "`{needle}` is not in: {}", msgs[0]);
+    }
+    eprintln!("{} trials: {}", s.trials, msgs[0]);
+    // The few trials of the other groups of the board, and none of the branches'.
+    assert!(s.trials < 50, "{} trials", s.trials);
+}
+
+#[test]
+fn branches_that_need_the_higher_voltage_led_in_most_of_them_are_searched_with_the_audit() {
+    // Five branches of 68 ohm are within the regulator's limit with four or more of the LED
+    // that drops 2.2 V. The audit searches each choice the sets refuse again without the
+    // look-ahead and stops if that search completes it.
+    let (_, s) = run_with(
+        &with_branches(5, "68ohm +/- 1%", "0mA"),
+        &with_high_led().with_look_ahead_audit(true),
+    );
+    assert!(s.diagnostics.is_empty(), "{:?}", messages(&s));
+    assert_eq!(high_leds(&s), 4);
+}
+
 #[test]
 fn candidates_the_design_cannot_tell_apart_are_searched_once() {
     // 600 copies of the same 1k resistor that differ only in their package. Nothing relates

@@ -192,9 +192,14 @@
 //! the regulator's only at the worst case) is asked of the *cores* of the candidates instead,
 //! the range every row of a part holds: what they put across the bound every choice puts across
 //! it. `Catalogs::with_look_ahead_audit` searches every refused choice again without the look,
-//! for tests. Rejected: splitting the hulls into blocks and asking each combination of blocks
-//! (sound, but as many questions as a search of the blocks), and a lower budget for a chain
-//! (a board that has a solution may need the trials).
+//! for tests. Where a part's candidates share no value in a column (no core), they are split
+//! into a few sets that each have one, and every combination of the sets of the parts a bound
+//! reads is asked, up to 64 in one look (issue #1017): seven branches that need the one LED that
+//! works in most of them took 250,000 trials and gave up, and take about 130. Rejected:
+//! splitting the hulls into blocks and asking each combination of blocks (sound, but as many
+//! questions as a search of the blocks; the sets of the cores are few, a handful of rows that
+//! share no value), and a lower budget for a chain (a board that has a solution may need the
+//! trials).
 //!
 //! **The order of the groups must not decide the board** (9.3). Groups are picked in path
 //! order, and a bound that reads values of two groups waits for the parts that feed it, so the
