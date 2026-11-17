@@ -27,7 +27,7 @@
 //! other try completes, and otherwise the try with the fewest lines left.
 //!
 //! **Measured** (2026-11-17, main at db86ed84 against this; the agent's choice of the bounds).
-//! The three ported boards (`netsmith fab`, and `netsmith route --tries 1 --route-timeout 0
+//! The three ported boards (`netsmith board fab`, and `netsmith dev route --tries 1 --route-timeout 0
 //! --turn T` at T = 24 to 27) route before the rounds and write byte for byte the same board
 //! files. One try of the invented boards (`NETSMITH_TRIES=1`, `tight::measured` seeds 0 to 10,
 //! `mixed::measured` seeds 0 to 8): tight leaves 5 lines with the rounds and without; mixed 7

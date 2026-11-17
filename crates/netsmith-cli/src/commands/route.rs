@@ -23,7 +23,7 @@ pub struct Args {
     pub route_timeout: Option<u64>,
     /// Rounds of rip-up and re-route of whole nets for connections the router leaves; 0 is none.
     ///
-    /// As `fab --rip-rounds`: when a try ends with connections open, each round routes every one
+    /// As `board fab --rip-rounds`: when a try ends with connections open, each round routes every one
     /// of them through the copper of the nets in its way, removes those nets and routes them
     /// again after it. The default is the router's own, 6.
     #[arg(long, value_name = "N")]
@@ -261,12 +261,12 @@ mod tests {
 
     #[test]
     fn route_takes_the_rounds_of_rip_up() {
-        let Ok(Command::Route(args)) = parse(&["route", "b.placed.json", "--rip-rounds", "0"])
+        let Ok(Leaf::Route(args)) = parse(&["dev", "route", "b.placed.json", "--rip-rounds", "0"])
         else {
             panic!("--rip-rounds 0 parses");
         };
         assert_eq!(args.rip_rounds, Some(0));
-        assert!(parse(&["route", "b.placed.json", "--rip-rounds", "some"]).is_err());
+        assert!(parse(&["dev", "route", "b.placed.json", "--rip-rounds", "some"]).is_err());
     }
 
     #[test]
