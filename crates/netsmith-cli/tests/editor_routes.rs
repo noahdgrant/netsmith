@@ -81,8 +81,7 @@ const ROUTES: &[(&str, Way)] = &[
         PageOnly("where a name is defined, for a click in the page's source editor; an agent searches the sources"),
     ),
     // The solved design and its views.
-    // The board's parts and nets as the inspector shows them are #1137.
-    ("GET /api/board", Pending("board show", 1137)),
+    ("GET /api/board", Command(&["board show"])),
     ("GET /api/bom", Command(&["board bom"])),
     ("GET /api/power", Command(&["board power"])),
     ("GET /api/system", Command(&["board system"])),
