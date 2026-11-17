@@ -5,6 +5,9 @@ use std::cmp::Ordering;
 use super::*;
 use crate::ratsnest::Ratline;
 
+/// Vias of a board that stand in pads: each via's place in [`Board::vias`] and the pad.
+type ViasAt = Vec<(usize, PadRef)>;
+
 impl Board {
     /// The width the router draws a net's tracks at on the outer layers: the front's
     /// [`Board::track_width_on`]. For a net with no impedance target it is the widest its rails
@@ -448,6 +451,37 @@ impl Board {
         found
     }
 
+    /// [`Board::vias_in_pads`] split in two: the laser-drilled blind vias of an HDI process, which
+    /// the process fills and planarizes by plating as it makes every one (issue #1071), and the
+    /// drilled vias, which the board house fills with epoxy and caps at extra cost.
+    fn vias_in_pads_split(&self) -> (ViasAt, ViasAt) {
+        let offers = self.via_offers();
+        let laser = |k: usize| {
+            let span = self.vias[k].span;
+            span.is_some() && offers.iter().any(|o| o.laser && o.span == span)
+        };
+        self.vias_in_pads()
+            .into_iter()
+            .partition(|(k, _)| laser(*k))
+    }
+
+    /// The drilled vias that stand in pads, which the board house has to fill and cap (issue
+    /// #1118): how many, and the parts and pads that carry them. A laser-drilled blind via of an
+    /// HDI process is not one of them.
+    pub fn filled_vias_in_pads(&self) -> ViasInPads {
+        let (_, in_pad) = self.vias_in_pads_split();
+        let mut parts: Vec<String> = in_pad.iter().map(|(_, p)| p.refdes.clone()).collect();
+        parts.sort();
+        parts.dedup();
+        let mut pads: Vec<String> = in_pad.iter().map(|(_, p)| p.to_string()).collect();
+        pads.dedup();
+        ViasInPads {
+            count: in_pad.len(),
+            parts,
+            pads,
+        }
+    }
+
     /// What the board needs of the fabricator beyond its standard process, one line each for
     /// the fabrication notes; empty when the standard process makes it. A board of a fictional
     /// fabricator (ADR 0112) says first that it cannot be ordered. A board with a build-up
@@ -461,28 +495,11 @@ impl Board {
                 self.process.fabricator
             ));
         }
-        // A laser-drilled blind via of an HDI process is filled and planarized by plating, as the
-        // process makes every one (issue #1071): it is not ordered as a via in a pad is.
-        let offers = self.via_offers();
-        let laser = |k: usize| {
-            let span = self.vias[k].span;
-            span.is_some() && offers.iter().any(|o| o.laser && o.span == span)
-        };
-        let (blind_in_pad, in_pad): (Vec<_>, Vec<_>) = self
-            .vias_in_pads()
-            .into_iter()
-            .partition(|(k, _)| laser(*k));
-        if !in_pad.is_empty() {
-            let mut pads: Vec<String> = in_pad.iter().map(|(_, p)| p.to_string()).collect();
-            pads.dedup();
-            extras.push(format!(
-                "vias in pads: {} via(s) stand in pads ({}); order them as epoxy filled and capped (plated over) vias, which {} makes up to {} mm wide at extra cost, because an open via in a pad draws the solder away; this is on the order form and the Gerbers do not say it",
-                in_pad.len(),
-                pads.join(", "),
-                self.process.fabricator,
-                self.process.via_in_pad
-            ));
+        let in_pad = self.filled_vias_in_pads();
+        if in_pad.count > 0 {
+            extras.push(in_pad.line(&self.process.fabricator, self.process.via_in_pad));
         }
+        let blind_in_pad = self.vias_in_pads_split().0;
         if !blind_in_pad.is_empty() {
             let mut pads: Vec<String> = blind_in_pad.iter().map(|(_, p)| p.to_string()).collect();
             pads.dedup();
@@ -562,3 +579,43 @@ impl Board {
 /// target here: a design that states one (a `TrackImpedance` or a `PairImpedance`, issue
 /// #1007) gets its own lines.
 const IMPEDANCE_TARGET: f64 = 50.0;
+
+/// The drilled vias of a board that stand in pads ([`Board::filled_vias_in_pads`]): the board
+/// house fills them with epoxy and caps them with plating, an option of its order form that costs
+/// extra (issue #1118). `fab-notes.txt` says so in a line of its own, an order's summary says it
+/// for each board, and `project order` stops until the cost is accepted.
+#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ViasInPads {
+    /// How many vias stand in pads.
+    pub count: usize,
+    /// The parts whose pads carry them, `U1`, sorted, each once.
+    pub parts: Vec<String>,
+    /// The pads, `U1.5`, each once, in the order of the board's vias.
+    pub pads: Vec<String>,
+}
+
+impl ViasInPads {
+    /// `21 vias in pads: the board house's filled and capped option is needed (extra cost)` (`1 via
+    /// in a pad: ...`): the first words of the line, which an order's summary repeats.
+    pub fn headline(&self) -> String {
+        format!(
+            "{} {}: the board house's filled and capped option is needed (extra cost)",
+            self.count,
+            if self.count == 1 {
+                "via in a pad"
+            } else {
+                "vias in pads"
+            }
+        )
+    }
+
+    /// The line of `fab-notes.txt`: the headline, the parts and pads, and why.
+    pub fn line(&self, fabricator: &str, widest: f64) -> String {
+        format!(
+            "{}; on {} (pads {}); {fabricator} fills them with epoxy and caps them with plating up to {widest} mm wide, because an open via in a pad draws the solder away; choose it on the order form, the Gerbers do not say it; `.process.via_in_pad &= 0mm` forbids vias in pads",
+            self.headline(),
+            self.parts.join(", "),
+            self.pads.join(", "),
+        )
+    }
+}

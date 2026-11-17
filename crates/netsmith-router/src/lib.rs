@@ -41,6 +41,7 @@ pub mod route;
 pub mod shove;
 mod stitch;
 pub mod teardrop;
+pub mod via_in_pad;
 pub mod walk;
 
 #[cfg(test)]

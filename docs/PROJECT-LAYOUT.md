@@ -113,7 +113,7 @@ Each key is a board as its output folder is named: `Board`, or `System/member` f
 
 ```text
 fab/orders/devkit/
-├── order.txt                  begins with the project's revision (when it has one); boards, layers, size, thickness, hand-solder parts, the combined bill of
+├── order.txt                  begins with the project's revision (when it has one); boards, layers, size, thickness, hand-solder parts, vias in pads, the combined bill of
 │                              materials (priced at the whole order's quantity when a [supply] provider
 │                              is set), "before you order" notes of each board, the unverified items
 ├── order-bom.csv              LCSC number, value, footprint, quantity (copies x parts, no spares), used on

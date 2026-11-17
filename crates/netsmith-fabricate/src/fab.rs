@@ -1367,15 +1367,25 @@ fn fab_board(
             for line in &unrouted.lines {
                 msg.push_str(&format!("\n  {line}"));
             }
+            // A board that refuses vias in pads says what that cost (issue #1118).
+            let cost = netsmith_router::via_in_pad::cost_line(&board, &unrouted);
+            if let Some(cost) = &cost {
+                msg.push_str(&format!("\n{cost}"));
+            }
+            let mut report = routing_failure(
+                &built.label(),
+                board.outline.min,
+                &unrouted,
+                routing.tries,
+                &routing.why,
+            );
+            if let Some(cost) = &cost {
+                report.push_str(&format!("\n{cost}\n"));
+            }
             Incomplete {
                 message: msg,
-                report: routing_failure(
-                    &built.label(),
-                    board.outline.min,
-                    &unrouted,
-                    routing.tries,
-                    &routing.why,
-                ),
+                report,
+                cost,
                 json: routing_report(&routing.why, &routing.crowding),
                 lines: unrouted
                     .lines
@@ -1573,6 +1583,10 @@ fn fab_board(
                         incomplete.lines.len() - 10
                     ),
                 );
+            }
+            if let Some(cost) = &incomplete.cost {
+                let after = 1 + incomplete.lines.len().min(11);
+                extras.insert(after, cost.clone());
             }
         }
         let package_options = Options {
@@ -2436,6 +2450,9 @@ pub const ROUTING_REPORT: &str = "routing-report.json";
 struct Incomplete {
     message: String,
     report: String,
+    /// What refusing vias in pads cost in open connections, for a board that refuses them
+    /// (`netsmith_router::via_in_pad::cost_line`, issue #1118).
+    cost: Option<String>,
     /// The text of [`ROUTING_REPORT`].
     json: String,
     lines: Vec<String>,
@@ -2698,6 +2715,12 @@ fn fab_panel(
             cell_height_mm: pkg.geometry.cell_height,
             rail_mm: spec.rail,
         }),
+        // Each board of the panel has its cell's vias in pads (issue #1118).
+        vias_in_pads: {
+            let mut cell = run.board.filled_vias_in_pads();
+            cell.count *= (spec.columns * spec.rows) as usize;
+            cell
+        },
     };
     Ok(Fabricated {
         board: spec.name.clone(),
@@ -3634,6 +3657,7 @@ mod tests {
             message: "1 connections could not be routed (after 4 tries):\n  net A: U1.1 to R1.1"
                 .into(),
             report: "INCOMPLETE: Demo\n".into(),
+            cost: None,
             json: "{}\n".into(),
             lines: vec!["ERROR: not routed: net A: U1.1 to R1.1".into()],
         };

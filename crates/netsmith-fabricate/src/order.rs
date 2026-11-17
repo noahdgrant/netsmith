@@ -64,10 +64,17 @@
 //!   `std::mfg::jlcpcb` gives each process the finishes JLCPCB offers and the one it defaults to,
 //!   issue #842) and the solder mask colour where the board states one (`, solder mask Black`,
 //!   issue #771), the parts the board house assembles and on how many BOM lines, the hand-solder
-//!   parts; the combined bill of materials; with a `[supply]` provider, its `prices`
+//!   parts, and its vias in pads (`3 vias in pads: the board house's filled and capped option is
+//!   needed (extra cost): U1, U4`, issue #1118); the combined bill of materials; with a
+//!   `[supply]` provider, its `prices`
 //!   (below); "before you order", each board's
 //!   `fab-notes.txt` lines; and the total of unverified items, counted once for each board and not
 //!   once for each copy because the check is of the design (`Package::unverified`).
+//! - **Vias in pads** (issue #1118): the board house fills and caps them, an option of its order
+//!   form that costs extra, so an order whose boards have any stops after the packages are made,
+//!   before `order.txt`, naming each board with its count and parts, until the cost is accepted:
+//!   `via_in_pad = "accepted"` in the order's own table (`[order.<name>]`, beside its `boards`),
+//!   or `project order --accept-via-in-pad` for one run ([`refuse_vias_in_pads`]).
 //! - **The prices of `order.txt`** (issue #804): a line of the combined bill is priced at the
 //!   quantity of the whole order, so a part used on several boards, or on a panel (a panel's parts
 //!   are those of the whole panel and its quantity counts panels), gets the price break the total
@@ -106,7 +113,7 @@ use std::path::{Path, PathBuf};
 
 use netsmith_check::Loader;
 use netsmith_fab::{BomEntry, KicadCli, Package};
-use netsmith_pcb::Board;
+use netsmith_pcb::{Board, ViasInPads};
 use netsmith_solve::Catalogs;
 use serde::{Deserialize, Serialize};
 use toml::Spanned;
@@ -133,6 +140,10 @@ pub struct Order {
     pub line: usize,
     /// In the order they are written in the manifest.
     pub boards: Vec<OrderBoard>,
+    /// The order's `via_in_pad = "accepted"`: the cost of the board house's filled and capped
+    /// vias is accepted, and a board with vias in pads does not stop the order (issue #1118).
+    /// `project order --accept-via-in-pad` accepts it for one run.
+    pub via_in_pad_accepted: bool,
 }
 
 /// One line of an order: a board or a system, and how many.
@@ -165,6 +176,16 @@ impl Order {
 #[serde(deny_unknown_fields)]
 pub(crate) struct RawOrder {
     boards: BTreeMap<Spanned<String>, Spanned<u32>>,
+    #[serde(default)]
+    via_in_pad: Option<ViaInPadCost>,
+}
+
+/// What an order says of the cost of vias in pads (issue #1118): `via_in_pad = "accepted"`, the
+/// one word, so that a reader of the manifest sees what was agreed to.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub(crate) enum ViaInPadCost {
+    Accepted,
 }
 
 pub(crate) type RawOrders = BTreeMap<Spanned<String>, RawOrder>;
@@ -172,6 +193,8 @@ pub(crate) type RawOrders = BTreeMap<Spanned<String>, RawOrder>;
 /// What is written back: the same tables, without positions.
 #[derive(Serialize)]
 pub(crate) struct RenderedOrder {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    via_in_pad: Option<ViaInPadCost>,
     boards: BTreeMap<String, u32>,
 }
 
@@ -183,6 +206,7 @@ pub(crate) fn rendered(orders: &[Order]) -> BTreeMap<String, RenderedOrder> {
             (
                 o.name.clone(),
                 RenderedOrder {
+                    via_in_pad: o.via_in_pad_accepted.then_some(ViaInPadCost::Accepted),
                     boards: boards.collect(),
                 },
             )
@@ -245,6 +269,7 @@ pub(crate) fn check(text: &str, raw: RawOrders) -> Result<Vec<Order>, String> {
             name: name.into_inner(),
             line,
             boards,
+            via_in_pad_accepted: order.via_in_pad == Some(ViaInPadCost::Accepted),
         });
     }
     Ok(orders)
@@ -354,6 +379,11 @@ pub struct BoardFacts {
     /// For a panel (ADR 0040), what it is made of; `None` for a board. A panel's size, bill
     /// of materials and lists of parts are those of the whole panel.
     pub panel: Option<PanelFacts>,
+    /// The drilled vias that stand in pads, which the board house fills and caps at extra cost
+    /// (issue #1118); for a panel, those of all its boards. An order stops on them until the
+    /// cost is accepted ([`refuse_vias_in_pads`]).
+    #[serde(default)]
+    pub vias_in_pads: ViasInPads,
 }
 
 /// What a panel is made of, for an order's summary.
@@ -404,6 +434,7 @@ impl BoardFacts {
             unassembled: package.plan.unassembled.clone(),
             unverified: package.unverified.clone(),
             panel: None,
+            vias_in_pads: board.filled_vias_in_pads(),
         }
     }
 }
@@ -714,6 +745,19 @@ pub fn summary_text(
                 if count == 1 { "" } else { "s" },
                 if facts.panel.is_some() { "panel" } else { "board" },
                 count as u64 * u64::from(selected.quantity),
+            ));
+        }
+        let in_pads = &facts.vias_in_pads;
+        if in_pads.count > 0 {
+            s.push_str(&format!(
+                "    {}: {} (on each {})\n",
+                in_pads.headline(),
+                in_pads.parts.join(", "),
+                if facts.panel.is_some() {
+                    "panel"
+                } else {
+                    "board"
+                },
             ));
         }
         if !facts.not_fitted.is_empty() {
@@ -1081,6 +1125,12 @@ pub fn fab_order(
     }
     // In the project's order.
     made.sort_by_key(|(s, _)| labels.iter().position(|l| *l == s.label));
+    // Vias in pads cost extra, so the order needs a yes before it goes on (issue #1118).
+    let facts: Vec<(&str, &BoardFacts)> = made
+        .iter()
+        .map(|(s, f)| (s.label.as_str(), &f.facts))
+        .collect();
+    refuse_vias_in_pads(order, &facts)?;
 
     let rows: Vec<(Selected, &BoardFacts)> =
         made.iter().map(|(s, f)| (s.clone(), &f.facts)).collect();
@@ -1114,6 +1164,36 @@ pub fn fab_order(
         summary,
         files,
     })
+}
+
+/// Stops an order whose boards have vias in pads (issue #1118) until the cost is accepted: the
+/// board house's filled and capped vias are an option of the order form that costs extra, so the
+/// person ordering says yes to it, in the manifest (`via_in_pad = "accepted"` in the order's
+/// table) or for one run (`project order --accept-via-in-pad`). The packages are written by then;
+/// `order.txt` is not. Every board with vias in pads is named, with its count and parts.
+pub fn refuse_vias_in_pads(order: &Order, boards: &[(&str, &BoardFacts)]) -> Result<(), String> {
+    if order.via_in_pad_accepted {
+        return Ok(());
+    }
+    let with: Vec<String> = boards
+        .iter()
+        .filter(|(_, f)| f.vias_in_pads.count > 0)
+        .map(|(label, f)| {
+            format!(
+                "  {label}: {} (on {})\n",
+                f.vias_in_pads.headline(),
+                f.vias_in_pads.parts.join(", ")
+            )
+        })
+        .collect();
+    if with.is_empty() {
+        return Ok(());
+    }
+    Err(format!(
+        "error: order `{name}` has boards with vias in pads, which the board house fills and caps at extra cost; the order goes on only when that cost is accepted:\n{}  accept it with `via_in_pad = \"accepted\"` under `[order.{name}]` in {MANIFEST}, or with `--accept-via-in-pad` for this run; or forbid vias in pads on the board (`.process.via_in_pad &= 0mm`), and the router then takes every track out between the pads and says what that cost in open connections\n",
+        with.concat(),
+        name = order.name,
+    ))
 }
 
 /// What `netsmith project order` with no name prints.
@@ -1304,7 +1384,80 @@ mod tests {
             unassembled: vec![],
             unverified: vec!["D1".into()],
             panel: None,
+            vias_in_pads: ViasInPads::default(),
         }
+    }
+
+    /// A board with `count` vias in the pads of `parts`.
+    fn with_vias_in_pads(count: usize, parts: &[&str]) -> BoardFacts {
+        let mut f = facts(vec![entry(&["C1"], "100n", "C1525")]);
+        f.vias_in_pads = ViasInPads {
+            count,
+            parts: parts.iter().map(ToString::to_string).collect(),
+            pads: parts.iter().map(|p| format!("{p}.1")).collect(),
+        };
+        f
+    }
+
+    #[test]
+    fn an_order_with_vias_in_pads_stops_until_the_cost_is_accepted() {
+        // Issue #1118: one board with a via in a pad, one with none.
+        let carrier = with_vias_in_pads(3, &["U1", "U4"]);
+        let unit = facts(vec![entry(&["C1"], "100n", "C1525")]);
+        let boards = [("DevKit/carrier", &carrier), ("Unit", &unit)];
+        let mut o = order(DEVKIT);
+        assert!(!o.via_in_pad_accepted);
+        let err = refuse_vias_in_pads(&o, &boards).unwrap_err();
+        assert!(
+            err.contains("  DevKit/carrier: 3 vias in pads: the board house's filled and capped option is needed (extra cost) (on U1, U4)\n")
+                && err.contains("`via_in_pad = \"accepted\"` under `[order.devkit]` in netsmith.toml")
+                && err.contains("`--accept-via-in-pad`")
+                && !err.contains("Unit"),
+            "{err}"
+        );
+        // A board with none, or the cost accepted, goes on.
+        assert_eq!(refuse_vias_in_pads(&o, &[("Unit", &unit)]), Ok(()));
+        o.via_in_pad_accepted = true;
+        assert_eq!(refuse_vias_in_pads(&o, &boards), Ok(()));
+        // Accepted, the summary says it under the board.
+        let one = with_vias_in_pads(1, &["U1"]);
+        let bom = combined_bom(&[
+            (pick("DevKit/carrier", 2), &carrier),
+            (pick("Unit", 1), &one),
+        ]);
+        let text = summary_text(
+            "devkit",
+            &[
+                (pick("DevKit/carrier", 2), &carrier, ""),
+                (pick("Unit", 1), &one, ""),
+            ],
+            &bom,
+        );
+        assert!(
+            text.contains("    3 vias in pads: the board house's filled and capped option is needed (extra cost): U1, U4 (on each board)\n")
+                && text.contains("    1 via in a pad: the board house's filled and capped option is needed (extra cost): U1 (on each board)\n"),
+            "{text}"
+        );
+    }
+
+    #[test]
+    fn an_order_accepts_the_cost_of_vias_in_pads_in_the_manifest() {
+        let text =
+            "\n[order.devkit]\nvia_in_pad = \"accepted\"\n\n[order.devkit.boards]\nUnit = 10\n";
+        let m = manifest(text).unwrap();
+        assert!(m.orders[0].via_in_pad_accepted);
+        // It survives a round trip, and an order that does not say it writes nothing.
+        let again = Manifest::parse(&m.render()).unwrap();
+        assert!(again.orders[0].via_in_pad_accepted);
+        assert!(
+            m.render().contains("via_in_pad = \"accepted\""),
+            "{}",
+            m.render()
+        );
+        assert!(!manifest(DEVKIT).unwrap().render().contains("via_in_pad"));
+        // The one word is "accepted".
+        let err = manifest(&text.replace("\"accepted\"", "\"yes\"")).unwrap_err();
+        assert!(err.contains("accepted"), "{err}");
     }
 
     fn pick(label: &str, quantity: u32) -> Selected {

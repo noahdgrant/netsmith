@@ -628,6 +628,7 @@ pub(super) fn run_order(
     cross_check: bool,
     strict: bool,
     locked: bool,
+    accept_via_in_pad: bool,
     constraints_warn: Option<bool>,
     no_glb: bool,
     no_step: bool,
@@ -729,6 +730,11 @@ pub(super) fn run_order(
     let options = FabOptions {
         reuse: netsmith_fabricate::fab::Reuse::From(out.to_path_buf()),
         ..options
+    };
+    // `--accept-via-in-pad` accepts the cost of vias in pads for this run (issue #1118).
+    let order = &netsmith_fabricate::order::Order {
+        via_in_pad_accepted: order.via_in_pad_accepted || accept_via_in_pad,
+        ..order.clone()
     };
     match netsmith_fabricate::order::fab_order(
         order,
