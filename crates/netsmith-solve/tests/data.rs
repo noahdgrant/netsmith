@@ -312,7 +312,7 @@ fn every_esr_cell_is_one_resistance_and_its_source_names_the_page_and_the_point(
 }
 
 /// How many rows of the standard catalogs have a `height` (ADR 0094). Update it with the rows.
-const ROWS_WITH_HEIGHT: usize = 113;
+const ROWS_WITH_HEIGHT: usize = 136;
 
 #[test]
 fn every_height_is_one_length_that_a_document_says_and_its_source_names_where() {
@@ -367,12 +367,12 @@ fn every_height_is_one_length_that_a_document_says_and_its_source_names_where() 
     assert_eq!(with, ROWS_WITH_HEIGHT);
 }
 
-/// How many rows of the standard catalogs state `temp_min` and `temp_max` (ADR 0099): the seven
+/// How many rows of the standard catalogs state `temp_min` and `temp_max` (ADR 0099): the fifteen
 /// crystals, whose figure is the JLCPCB listing text, and 345 rows read from a datasheet (306
 /// ambient or operating ranges, 27 junction ranges of the diodes and the MOSFETs, and 12 operating
 /// ranges of LEDs; the 1N5819WS, whose range is the one figure of its operating and storage
 /// range, is counted with the ranges and not with the junction ones). Update it with the rows.
-const ROWS_WITH_TEMPERATURE: usize = 352;
+const ROWS_WITH_TEMPERATURE: usize = 360;
 
 /// The catalogs of semiconductors whose datasheets print a junction range (`TJ`) and no ambient
 /// one. A row of them that states a range says in its `notes` which temperature it is (ADR 0099): a
@@ -1399,6 +1399,15 @@ fn the_3225_four_pad_crystals_have_their_rows() {
         ("C9006", "X322525MOB4SI", 25e6, 12.0, Library::Basic),
         ("C12668", "X322516MOB4SI", 16e6, 12.0, Library::Extended),
         ("C13740", "X322525MSB4SI", 25e6, 20.0, Library::Extended),
+        // Issue #992: the other frequencies and loads of the same series.
+        ("C9002", "X322512MSB4SI", 12e6, 20.0, Library::Basic),
+        ("C2682774", "X32258MSB4SI", 8e6, 20.0, Library::Extended),
+        ("C9004", "X322520MSB4SI", 20e6, 20.0, Library::Extended),
+        ("C70590", "X322524MOB4SI", 24e6, 12.0, Library::Extended),
+        ("C15192", "X322526MMB4SI", 26e6, 10.0, Library::Extended),
+        ("C9008", "X322527MSB4SI", 27e6, 20.0, Library::Extended),
+        ("C9009", "X322532MOB4SI", 32e6, 12.0, Library::Extended),
+        ("C9010", "X322540MPB4SI", 40e6, 15.0, Library::Extended),
     ];
     for (lcsc, mpn, hz, pf, library) in rows {
         let r = row_of("crystal", lcsc);
@@ -1426,6 +1435,50 @@ fn the_tdk_slf7045_row_states_the_datasheets_numbers() {
     assert_eq!(value(&r, "saturation_current"), quantity(2.0, "A"));
     assert_eq!(value(&r, "dc_resistance"), quantity(0.036, "ohm"));
     assert_eq!(r.column("package"), Some(&Value::Text("SLF7045".into())));
+}
+
+/// The TDK SLF7045T-6R8M1R7-PF (issue #992): the same sheet and footprint as the 4.7 uH row;
+/// Rdc is the table's 0.039 ohm +/- 20% at its upper end.
+#[test]
+fn the_tdk_slf7045_6r8_row_states_the_datasheets_numbers() {
+    let r = row_of("inductor", "C136205");
+    assert_eq!(r.mpn.as_deref(), Some("SLF7045T-6R8M1R7-PF"));
+    assert_eq!(value(&r, "inductance"), tolerance(6.8, "uH", 20.0));
+    assert_eq!(value(&r, "saturation_current"), quantity(1.7, "A"));
+    assert_eq!(value(&r, "dc_resistance"), quantity(0.0468, "ohm"));
+    assert_eq!(r.column("package"), Some(&Value::Text("SLF7045".into())));
+}
+
+/// The Changjiang FNR shielded power inductors (issue #992): each row states the maximum Isat
+/// (30% inductance drop) and the maximum DCR of the series' table on the page `source` names, in
+/// the package named for the series, whose footprint netsmith generates.
+#[test]
+fn the_changjiang_fnr_rows_state_the_datasheets_maximum_isat_and_dcr() {
+    // (lcsc, mpn, uH, Isat A maximum, DCR ohm maximum, package)
+    for (lcsc, mpn, uh, isat, dcr, package) in [
+        ("C167828", "FNR4020S4R7MT", 4.7, 2.35, 0.098, "FNR4020S"),
+        ("C167832", "FNR4020S6R8MT", 6.8, 2.20, 0.163, "FNR4020S"),
+        ("C167835", "FNR4020S100MT", 10.0, 1.60, 0.215, "FNR4020S"),
+        ("C167838", "FNR4020S220MT", 22.0, 1.05, 0.455, "FNR4020S"),
+        ("C167965", "FNR5040S6R8MT", 6.8, 2.90, 0.056, "FNR5040S"),
+        ("C167967", "FNR5040S100MT", 10.0, 2.35, 0.083, "FNR5040S"),
+        ("C167971", "FNR5040S220MT", 22.0, 1.60, 0.168, "FNR5040S"),
+        ("C167973", "FNR5040S330MT", 33.0, 1.30, 0.244, "FNR5040S"),
+        ("C168031", "FNR6028S6R8MT", 6.8, 2.60, 0.061, "FNR6028S"),
+        ("C168034", "FNR6028S100MT", 10.0, 2.04, 0.094, "FNR6028S"),
+        ("C168038", "FNR6028S220MT", 22.0, 1.45, 0.182, "FNR6028S"),
+        ("C168125", "FNR8040S6R8MT", 6.8, 4.55, 0.031, "FNR8040S"),
+        ("C168127", "FNR8040S100MT", 10.0, 3.60, 0.038, "FNR8040S"),
+        ("C168131", "FNR8040S220MT", 22.0, 2.40, 0.090, "FNR8040S"),
+    ] {
+        let r = row_of("inductor", lcsc);
+        assert_eq!(r.mpn.as_deref(), Some(mpn));
+        assert_eq!(r.library, Some(Library::Extended), "{mpn}");
+        assert_eq!(value(&r, "inductance"), tolerance(uh, "uH", 20.0), "{mpn}");
+        assert_eq!(value(&r, "saturation_current"), quantity(isat, "A"), "{mpn}");
+        assert_eq!(value(&r, "dc_resistance"), quantity(dcr, "ohm"), "{mpn}");
+        assert_eq!(r.column("package"), Some(&Value::Text(package.into())), "{mpn}");
+    }
 }
 
 #[test]

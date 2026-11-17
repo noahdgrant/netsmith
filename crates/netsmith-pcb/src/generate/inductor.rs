@@ -17,6 +17,10 @@ use crate::geometry::Pt;
 
 const LIBRARY: &str = "Inductor_SMD";
 
+/// The datasheet of the Changjiang FNR series (the one that LCSC links for each of its rows).
+const FNR_SHEET: &str =
+    "https://datasheet.lcsc.com/datasheet/pdf/a0b12ba9dfe6b9e66b6bb852b7c71c03.pdf";
+
 /// One series.
 struct Inductor {
     name: &'static str,
@@ -43,6 +47,46 @@ const PACKAGES: &[Inductor] = &[
         terminal: 0.9,
         pads: &[("1", -3.15, 0.0, 1.5, 2.2), ("2", 3.15, 0.0, 1.5, 2.2)],
         courtyard: (-4.16, -3.75, 4.16, 3.75),
+    },
+    // Changjiang (CJIANG), Wire Wound SMD Power Inductors, FNR series (19 pages, no text
+    // layer, read as images), page 2/19, Shape and Dimensions: a body A x B, terminals E long
+    // over each end, and the recommended land pattern "a" (the gap between the pads), "b"
+    // (a pad's length) and "c" (its width). A pad's centre is at (a + b) / 2 from the middle.
+    // 4020: A 4.0, E 0.95, a 1.9, b 1.1, c 3.7.
+    Inductor {
+        name: "L_Changjiang_FNR4020S",
+        source: FNR_SHEET,
+        body: (4.0, 4.0),
+        terminal: 0.95,
+        pads: &[("1", -1.5, 0.0, 1.1, 3.7), ("2", 1.5, 0.0, 1.1, 3.7)],
+        courtyard: (-2.3, -2.25, 2.3, 2.25),
+    },
+    // 5040: A 5.0, E 1.25, a 2.3, b 1.4, c 4.2.
+    Inductor {
+        name: "L_Changjiang_FNR5040S",
+        source: FNR_SHEET,
+        body: (5.0, 5.0),
+        terminal: 1.25,
+        pads: &[("1", -1.85, 0.0, 1.4, 4.2), ("2", 1.85, 0.0, 1.4, 4.2)],
+        courtyard: (-2.8, -2.75, 2.8, 2.75),
+    },
+    // 6028: A 6.0, E 1.55, a 2.8, b 1.7, c 5.7.
+    Inductor {
+        name: "L_Changjiang_FNR6028S",
+        source: FNR_SHEET,
+        body: (6.0, 6.0),
+        terminal: 1.55,
+        pads: &[("1", -2.25, 0.0, 1.7, 5.7), ("2", 2.25, 0.0, 1.7, 5.7)],
+        courtyard: (-3.35, -3.25, 3.35, 3.25),
+    },
+    // 8040: A 8.0, E 2.0, a 3.8, b 2.2, c 7.5.
+    Inductor {
+        name: "L_Changjiang_FNR8040S",
+        source: FNR_SHEET,
+        body: (8.0, 8.0),
+        terminal: 2.0,
+        pads: &[("1", -3.0, 0.0, 2.2, 7.5), ("2", 3.0, 0.0, 2.2, 7.5)],
+        courtyard: (-4.35, -4.25, 4.35, 4.25),
     },
 ];
 

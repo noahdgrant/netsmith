@@ -356,9 +356,10 @@ fn a_load_over_the_ics_current_or_an_input_over_its_range_is_refused_with_the_nu
 
 #[test]
 fn an_inductor_that_would_saturate_under_load_plus_half_the_ripple_is_not_picked() {
-    // 3.4 A through the 2.2 uH inductor is under its 3.6 A, but 3.4 A and half of 0.67 A
-    // ripple is not. A 6 A IC lets the load through; the catalog has no inductor for it.
-    let src = converter(&ic(".fsw &= 1.2MHz +/- 15%", "6A", "10uF"), "0A..3.4A", "");
+    // 4.5 A is under the 4.55 A of the strongest row (the 8 mm Changjiang FNR8040S6R8MT), but
+    // 4.5 A and half of its ripple is not. A 6 A IC lets the load through; the catalog has no
+    // inductor for it.
+    let src = converter(&ic(".fsw &= 1.2MHz +/- 15%", "6A", "10uF"), "0A..4.5A", "");
     let m = messages(&run(&src));
     assert!(
         m.iter().any(
@@ -818,14 +819,15 @@ fn limits_the_inductor_meets_are_accepted() {
 
 #[test]
 fn an_inductor_too_weak_for_the_ic_is_refused_with_the_numbers() {
-    // No inductor of the catalog saturates at 4 A, though all of them carry this small load.
-    let ic = ic_with(".min_inductor_saturation &= 4A");
+    // No inductor of the catalog saturates at 10 A (the strongest row has 4.55 A), though all of
+    // them carry this small load.
+    let ic = ic_with(".min_inductor_saturation &= 10A");
     let m = messages(&run(&converter(&ic, "0mA..100mA", "")));
     assert!(
         m.iter().any(
             |m| m.contains("no `inductor` candidate satisfies `stage.inductor`")
                 && m.contains("stage.inductor.saturation_current must always be at least stage.ic.min_inductor_saturation")
-                && m.contains("is not always above 4A")
+                && m.contains("is not always above 10A")
         ),
         "{m:#?}"
     );
@@ -970,32 +972,32 @@ fn saturation_need(s: &Solution, path: &str) -> Need {
 
 #[test]
 fn a_generic_inductor_takes_the_stage_s_load_and_half_the_ripple_as_its_saturation_need() {
-    // No row of the catalog saturates at 4 A (see above), so a generic part is offered, and
+    // No row of the catalog saturates at 10 A (see above), so a generic part is offered, and
     // the stage's check `current + ripple / 2 <= saturation_current` asks more of it than the
     // part's own `current <= saturation_current` does: the load is 0.1 A and the ripple adds.
-    let ic = ic_with(".min_inductor_saturation &= 4A");
+    let ic = ic_with(".min_inductor_saturation &= 10A");
     let s = run_generic(&converter(&ic, "0mA..100mA", ""));
     assert!(messages(&s).is_empty(), "{:?}", messages(&s));
     let need = saturation_need(&s, "stage.inductor");
-    // The IC's 4 A is the larger demand here: the generic part takes exactly that.
-    assert_eq!(need, Need::AtLeast(4.0));
+    // The IC's 10 A is the larger demand here: the generic part takes exactly that.
+    assert_eq!(need, Need::AtLeast(10.0));
     // The check of the stage is made with it, and holds with nothing to spare.
     let isat = range(&s, "stage.inductor.saturation_current");
     assert!(
-        (isat.lo() - 4.0).abs() < 1e-9 && (isat.hi() - 4.0).abs() < 1e-9,
+        (isat.lo() - 10.0).abs() < 1e-9 && (isat.hi() - 10.0).abs() < 1e-9,
         "{isat}"
     );
 }
 
 #[test]
 fn the_half_ripple_reaches_the_row_a_generic_inductor_has_to_become() {
-    // A load of 3.9 A with 5 V in and 1.8 V out: the load alone is under the IC's 4 A, and the
-    // ripple takes the demand over it.
+    // A load of 5.5 A with 5 V in and 1.8 V out: the load alone is under the IC's 6 A, and the
+    // ripple takes the demand over 5.5 A.
     let ic = ic("", "6A", "10uF").replace(
         "    .max_output_current",
         "    .fsw &= 1.2MHz +/- 15%\n    .max_output_current",
     );
-    let s = run_generic(&converter(&ic, "0A..3.9A", ""));
+    let s = run_generic(&converter(&ic, "0A..5.5A", ""));
     assert!(messages(&s).is_empty(), "{:?}", messages(&s));
     let Need::AtLeast(demand) = saturation_need(&s, "stage.inductor") else {
         panic!("{:?}", saturation_need(&s, "stage.inductor"))
@@ -1004,7 +1006,7 @@ fn the_half_ripple_reaches_the_row_a_generic_inductor_has_to_become() {
     // The inductor carries the divider's current too (#746).
     let divider = range(&s, "stage.divider_current");
     assert!(
-        (demand - (3.9 + divider.hi() + ripple.hi() / 2.0)).abs() < 1e-6 && demand > 3.9,
+        (demand - (5.5 + divider.hi() + ripple.hi() / 2.0)).abs() < 1e-6 && demand > 5.5,
         "{demand} for a ripple of {ripple} and a divider of {divider}"
     );
     // The need is a requirement on the row: no row of the catalog meets it, and the step that
@@ -1020,7 +1022,7 @@ fn the_half_ripple_reaches_the_row_a_generic_inductor_has_to_become() {
         e.starts_with("unresolved: no row of the `inductor` catalog"),
         "{e}"
     );
-    assert!(e.contains("saturation current at least 4"), "{e}");
+    assert!(e.contains("saturation current at least 5"), "{e}");
 }
 
 #[test]

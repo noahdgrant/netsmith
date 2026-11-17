@@ -108,7 +108,7 @@ fn a_part_whose_range_does_not_cover_the_environment_is_refused_with_the_numbers
     );
     assert!(
         e.contains(
-            "7 rows were left out because the temperatures they state do not cover the board's environment, `.environment.temperature` 233.15 K to 398.15 K (-40degC to 125degC)"
+            "15 rows were left out because the temperatures they state do not cover the board's environment, `.environment.temperature` 233.15 K to 398.15 K (-40degC to 125degC)"
         ),
         "{e}"
     );

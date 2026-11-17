@@ -312,6 +312,46 @@ A = "1"
 B = "2"
 
 [[part]]
+kind = "Inductor"
+package = "FNR4020S"
+symbol = "Device:L"
+footprint = "Inductor_SMD:L_Changjiang_FNR4020S"
+
+[part.pin_names]
+A = "1"
+B = "2"
+
+[[part]]
+kind = "Inductor"
+package = "FNR5040S"
+symbol = "Device:L"
+footprint = "Inductor_SMD:L_Changjiang_FNR5040S"
+
+[part.pin_names]
+A = "1"
+B = "2"
+
+[[part]]
+kind = "Inductor"
+package = "FNR6028S"
+symbol = "Device:L"
+footprint = "Inductor_SMD:L_Changjiang_FNR6028S"
+
+[part.pin_names]
+A = "1"
+B = "2"
+
+[[part]]
+kind = "Inductor"
+package = "FNR8040S"
+symbol = "Device:L"
+footprint = "Inductor_SMD:L_Changjiang_FNR8040S"
+
+[part.pin_names]
+A = "1"
+B = "2"
+
+[[part]]
 kind = "FerriteBead"
 package = "0402"
 symbol = "Device:FerriteBead"
