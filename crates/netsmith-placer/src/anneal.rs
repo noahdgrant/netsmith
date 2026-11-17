@@ -323,6 +323,13 @@ const MAX_ESCAPE: f64 = 2.5;
 /// weight, as measured on the invented tight board (ADR 0031).
 const BUSY_ESCAPE: f64 = 16.0 * ESCAPE_PER_PAD;
 const BUSY_MOST: f64 = 2.0;
+/// One move in this many of a run that weighs escape room is a push of a busy part
+/// ([`Engine::push`]).
+const PUSH_ONE_IN: usize = 20;
+/// The longest step of a push, in grid units (1 mm).
+const PUSH_REACH: i64 = 20;
+/// The most parts a push moves, the busy part with them.
+const PUSH_MOST: usize = 24;
 /// How far the escape ring of a fine-pitch part reaches past its pads, in mm: the length of
 /// the router's escape lanes (`LANE_LENGTH` in `netsmith_router::route`), so that no other
 /// part stands on a lane.
@@ -997,7 +1004,14 @@ pub(crate) fn anneal(parts: &mut [Placed], p: &Problem, effort: f64) -> Outcome 
                 }
                 let after = e.eval(&set);
                 let delta = after.total() - before.total();
+                let pushed = moves::dbg_push::LAST.swap(false, std::sync::atomic::Ordering::Relaxed);
+                if pushed && after.hard > before.hard + HARD_EPS {
+                    moves::dbg_push::HARD.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                }
                 if delta <= 0.0 || rng.unit() < exp_neg(delta / t) {
+                    if pushed {
+                        moves::dbg_push::OK.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                    }
                     e.refresh(&set);
                     current.soft += after.soft - before.soft;
                     current.hard += after.hard - before.hard;
@@ -1047,6 +1061,17 @@ pub(crate) fn anneal(parts: &mut [Placed], p: &Problem, effort: f64) -> Outcome 
         }
     }
 
+    if std::env::var("NETSMITH_PUSH_DEBUG").is_ok() {
+        use std::sync::atomic::Ordering::Relaxed;
+        eprintln!(
+            "push: {} proposed, mean {:.1} parts, {} raised hard, {} kept; escape now {:.1}",
+            moves::dbg_push::N.swap(0, Relaxed),
+            moves::dbg_push::LEN.swap(0, Relaxed) as f64 / 1.0,
+            moves::dbg_push::HARD.swap(0, Relaxed),
+            moves::dbg_push::OK.swap(0, Relaxed),
+            if e.w_escape > 0.0 { e.escape_with(&e.escapers.clone()) } else { 0.0 },
+        );
+    }
     // Where the run ended, legalised: the last a view that watches it sees of this run.
     netsmith_pcb::show_glimpse(|| e.glimpse(&names));
     let ended = if feasible {

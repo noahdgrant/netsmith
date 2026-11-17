@@ -8,8 +8,8 @@ use netsmith_router::{RouteOptions, route_with};
 
 /// Prints, for each seed in `NETSMITH_SEEDS` (`0..8` by default) of the tight board, the lines
 /// one pass of the router leaves (no other orders, no rip-up, no negotiation: a fixed amount of
-/// work, so the count is the same on every machine) when the placer weighs escape room at
-/// `NETSMITH_ESCAPE` (10 by default) and when it does not, with how far the module's courtyard
+/// work, so the count is the same on every machine) when the placer does not weigh escape room
+/// and at each weight of `NETSMITH_ESCAPE` (a list such as `10,20,40`; 10 by default), with how far the module's courtyard
 /// is from each edge: `cargo test -p netsmith-router --test main escape_room::measured --
 /// --ignored --nocapture`.
 #[test]
@@ -18,14 +18,17 @@ fn measured() {
     let range = std::env::var("NETSMITH_SEEDS").unwrap_or_else(|_| "0..8".into());
     let (a, b) = range.split_once("..").expect("a..b");
     let (a, b): (u64, u64) = (a.parse().unwrap(), b.parse().unwrap());
-    let weight: f64 = std::env::var("NETSMITH_ESCAPE")
-        .ok()
-        .and_then(|w| w.parse().ok())
-        .unwrap_or(10.0);
-    let mut totals = [0usize; 2];
+    let mut weights = vec![0.0];
+    weights.extend(
+        std::env::var("NETSMITH_ESCAPE")
+            .unwrap_or_else(|_| "10".into())
+            .split(',')
+            .map(|w| w.trim().parse::<f64>().expect("a weight")),
+    );
+    let mut totals = vec![0usize; weights.len()];
     for seed in a..b {
         let mut line = format!("tight seed {seed}:");
-        for (k, w) in [0.0, weight].into_iter().enumerate() {
+        for (k, &w) in weights.iter().enumerate() {
             let Ok(mut board) =
                 std::panic::catch_unwind(|| tight_board_weighing(seed, (27.0, 25.0), 0.0, w))
             else {
@@ -52,9 +55,20 @@ fn measured() {
                 .iter()
                 .filter(|l| l.from.refdes == "U1" || l.to.refdes == "U1")
                 .count();
+            // The module's pads after the 44 of its outer ring are its inner ring.
+            let inner = routing
+                .left
+                .lines
+                .iter()
+                .filter(|l| {
+                    [&l.from, &l.to].iter().any(|p| {
+                        p.refdes == "U1" && p.number.parse::<usize>().is_ok_and(|n| n > 44)
+                    })
+                })
+                .count();
             totals[k] += routing.left.len();
             line += &format!(
-                " weight {w}: left {} ({on_u1} on U1), wire {:.0} mm, crossings {}, \
+                " weight {w}: left {} ({on_u1} on U1, {inner} of its inner ring), wire {:.0} mm, crossings {}, \
                  U1 from the edges {:.1}/{:.1}/{:.1}/{:.1} mm;",
                 routing.left.len(),
                 q.hpwl,
@@ -67,8 +81,7 @@ fn measured() {
         }
         eprintln!("{line}");
     }
-    eprintln!(
-        "tight: {} lines left without the term, {} with it at {weight}",
-        totals[0], totals[1]
-    );
+    for (w, total) in weights.iter().zip(&totals) {
+        eprintln!("tight: {total} lines left at weight {w}");
+    }
 }
