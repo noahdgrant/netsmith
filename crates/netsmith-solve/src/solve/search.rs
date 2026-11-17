@@ -522,7 +522,7 @@ impl Solver<'_> {
         } else {
             index
         };
-        self.aside.contains(&bound)
+        self.aside.contains_key(&bound)
     }
 
     /// The search again of a group whose search found nothing or gave up, with the bounds that
@@ -552,7 +552,7 @@ impl Solver<'_> {
             self.network.active,
             self.aside.clone(),
         );
-        self.aside.extend(aside.iter().copied());
+        self.aside.extend(aside.iter().cloned());
         let mut again = Search {
             elsewhere: first.elsewhere.clone(),
             work_from: self.work,
@@ -564,7 +564,8 @@ impl Solver<'_> {
             // made: a bound that a choice meets was not beyond the group.
             if self.catalogs.look_ahead_audit() {
                 let relations = std::sync::Arc::clone(self.model.shared_relations());
-                for &index in &aside {
+                for (index, _) in &aside {
+                    let index = *index;
                     assert!(
                         !matches!(self.verify(&relations[index]), Verdict::Pass),
                         "the bound `{}` was set aside as beyond the choice of {:?}, which meet it with {:?}",

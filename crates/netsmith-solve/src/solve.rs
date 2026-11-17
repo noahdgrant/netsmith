@@ -952,7 +952,7 @@ fn solve_model(model: &Model, catalogs: &Catalogs, unit: &str) -> Solution {
         dc_index: None,
         hulls: HashMap::new(),
         kept_apart: 0,
-        aside: HashSet::new(),
+        aside: HashMap::new(),
     };
     job::checkpoint();
     s.relax_pinned();
@@ -1044,6 +1044,11 @@ fn solve_model(model: &Model, catalogs: &Catalogs, unit: &str) -> Solution {
                     s.report(source, span, text);
                     continue;
                 }
+                // A bound set aside says what any choice reaches, which the picks need not show.
+                let message = match s.aside.get(&i) {
+                    Some(note) => format!("{message}, and {note}"),
+                    None => message,
+                };
                 let message = s.relation_message(i, r, message);
                 s.report(r.source, r.span, message)
             }
@@ -1421,6 +1426,7 @@ struct Solver<'a> {
     kept_apart: u64,
     /// The design's bounds that no choice of a group's parts could meet, set aside for the
     /// searches after the group's (`Solver::search_beyond`, issue #904): no trial judges them,
-    /// and the check after the picks reports them.
-    aside: HashSet<usize>,
+    /// and the check after the picks reports them, with what each adds to its message (the end
+    /// of its range every choice reaches).
+    aside: HashMap<usize, String>,
 }

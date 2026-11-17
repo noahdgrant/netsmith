@@ -340,6 +340,11 @@ fn assert_overload_alone(m: &[String]) {
         "{m:#?}"
     );
     assert!(
+        m.iter()
+            .all(|m| m.contains("whichever parts are picked, its range reaches 3A or higher")),
+        "{m:#?}"
+    );
+    assert!(
         m.iter().all(|m| !m.contains("no combination") && !m.contains("gave up")),
         "{m:#?}"
     );

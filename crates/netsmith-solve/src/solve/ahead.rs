@@ -569,6 +569,11 @@ impl Solver<'_> {
     /// nothing, and so does one that moves a range held at an end. The model and the solver are
     /// put back as they were.
     ///
+    /// Each bound comes with what its message adds: the end of its range that every choice
+    /// reaches, nearest the limit over the ends asked (`whichever parts are picked, its range
+    /// reaches 15.4uA or higher`), since the picks of the search again need not come near it.
+    /// With no stated range to hold, the one propagation is the parts' own.
+    ///
     /// This is asked only once the search has failed, so it changes no board that builds: the
     /// bounds it finds are set aside only for a search again, and the check after the picks
     /// still judges them.
@@ -578,7 +583,7 @@ impl Solver<'_> {
         group: &[usize],
         coupling: &Coupling,
         elsewhere: &HashSet<usize>,
-    ) -> Vec<usize> {
+    ) -> Vec<(usize, String)> {
         if !self.network_quiet() {
             return Vec::new();
         }
@@ -690,11 +695,16 @@ impl Solver<'_> {
             }
             todo.extend(coupling.from.get(&f).into_iter().flatten().copied());
         }
-        if held.is_empty() {
-            return Vec::new();
-        }
-        let mut found: Vec<usize> = Vec::new();
-        for high in [true, false] {
+        // For each bound found: the end of its range nearest its limit that every choice
+        // reaches (the greatest least value of a `<=`, the least greatest value of a `>=`), and
+        // its dimension.
+        let mut found: BTreeMap<usize, (f64, Dimension)> = BTreeMap::new();
+        let passes: &[bool] = if held.is_empty() {
+            &[true]
+        } else {
+            &[true, false]
+        };
+        for &high in passes {
             let backup = self.model.checkpoint();
             let derived = self.derived.clone();
             let mut ends: Vec<(FieldId, Domain)> = Vec::new();
@@ -713,23 +723,40 @@ impl Solver<'_> {
                     .all(|(f, end)| self.model.field(*f).domain == *end);
             if said {
                 for &index in &bounds {
-                    if found.contains(&index) {
+                    let r = &relations[index];
+                    self.work += 1;
+                    if !matches!(self.verify_possible(r), Verdict::Fail { .. }) {
                         continue;
                     }
-                    self.work += 1;
-                    if matches!(
-                        self.verify_possible(&relations[index]),
-                        Verdict::Fail { .. }
-                    ) {
-                        found.push(index);
-                    }
+                    let Ok(Val::Q(l)) = eval(&self.model, &r.lhs) else {
+                        continue;
+                    };
+                    let ge = r.op == CmpOp::Ge;
+                    let end = if ge { l.hi() } else { l.lo() };
+                    found
+                        .entry(index)
+                        .and_modify(|(e, _)| *e = if ge { e.min(end) } else { e.max(end) })
+                        .or_insert((end, l.dim()));
                 }
             }
             self.derived = derived;
             self.model.rollback(backup);
         }
-        found.sort_unstable();
         found
+            .into_iter()
+            .filter_map(|(index, (end, dim))| {
+                let end = Quantity::point(dim, end).ok()?;
+                let beyond = if relations[index].op == CmpOp::Ge {
+                    "lower"
+                } else {
+                    "higher"
+                };
+                Some((
+                    index,
+                    format!("whichever parts are picked, its range reaches {end} or {beyond}"),
+                ))
+            })
+            .collect()
     }
 
     fn ahead_refused(
