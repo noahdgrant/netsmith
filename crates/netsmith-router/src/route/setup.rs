@@ -328,14 +328,15 @@ impl<'a> Router<'a> {
     /// (half of each width and the clearance) out to [`PAIR_NEAR`]. A pair with an impedance
     /// target (issue #1025) keeps its stated spacing, which its clearance holds
     /// ([`netsmith_pcb::Board::clearance`]), and runs beside its partner only within a cell of
-    /// it, where the drawn gap is the spacing rounded up to the grid.
+    /// the nearest a track searched at [`ROOM_TIGHT`] comes ([`MARGIN`] and that room past the
+    /// spacing), where the drawn gap is the spacing rounded up to the grid (issue #1054).
     pub(super) fn pair_band(&self, net: usize, width: f64, partner_width: f64) -> (f64, f64) {
         let half = width / 2.0 + partner_width / 2.0;
         let name = &self.board.nets[net].name;
         match self.board.pair_spacing(name) {
             Some(_) => {
                 let lo = half + self.board.clearance(name);
-                (lo, lo + PITCH)
+                (lo, lo + MARGIN + ROOM_TIGHT + PITCH)
             }
             None => (half + self.board.rules.clearance, PAIR_NEAR),
         }

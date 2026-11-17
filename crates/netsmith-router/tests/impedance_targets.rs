@@ -155,9 +155,9 @@ fn pair_board(apart: f64, out: f64) -> Board {
 #[test]
 fn a_pair_with_a_target_is_drawn_at_its_width_and_never_nearer_than_its_spacing() {
     // `A` and `B` say by no name that they are a pair: the target says it. Their parts are 1.2
-    // mm apart, which the courtyards of 0402 parts leave no nearer; the router does not jog them
-    // together (issue #1025 leaves that to a coupled route), and the notes say how much of the
-    // pair keeps a gap that gives its impedance.
+    // mm apart, which the courtyards of 0402 parts leave no nearer; the router jogs them
+    // together to the spacing (issue #1054), and the notes say how much of the pair keeps a gap
+    // that gives its impedance.
     let mut board = pair_board(1.2, 0.0);
     board.set_impedance_targets(vec![target(&["A", "B"], 90.0, Some(0.2))]);
     let width = board.target_width("A", CopperLayer::Front).unwrap();
@@ -192,6 +192,8 @@ fn a_pair_with_a_target_is_drawn_at_its_width_and_never_nearer_than_its_spacing(
     let couplings = board.pair_couplings();
     assert_eq!(couplings.len(), 1);
     println!("{:?}", couplings[0]);
+    let share = couplings[0].within / couplings[0].length;
+    assert!(share > 0.8, "{:.0} % within the tolerance", share * 100.0);
     assert!(
         board
             .process_extras()
@@ -205,4 +207,40 @@ fn a_pair_with_a_target_is_drawn_at_its_width_and_never_nearer_than_its_spacing(
     let pro = netsmith_pcb::kicad_pro(&board);
     assert!(pro.contains("\"diff_pair_gap\": 0.2"), "{pro}");
     assert!(pro.contains(&format!("\"diff_pair_width\": {width}")), "{pro}");
+}
+
+#[test]
+fn a_pair_whose_pads_are_far_apart_is_pulled_together_to_its_spacing() {
+    // The second pair of parts 3 mm below the first and 1 mm further out to each side: the
+    // pair funnels from its pads to the spacing and runs coupled between (issue #1054).
+    let mut board = pair_board(3.0, 1.0);
+    board.set_impedance_targets(vec![target(&["A", "B"], 90.0, Some(0.2))]);
+    let routing = route_with(&mut board, RouteOptions::default());
+    assert!(routing.left.is_empty(), "{:?}", routing.left.lines);
+    println!("{} tries", routing.tries);
+    let couplings = board.pair_couplings();
+    assert_eq!(couplings.len(), 1);
+    println!("{:?}", couplings[0]);
+    let share = couplings[0].within / couplings[0].length;
+    assert!(share > 0.7, "{:.0} % within the tolerance", share * 100.0);
+    assert_eq!(findings(&board), Vec::<String>::new());
+}
+
+#[test]
+fn a_pair_with_no_target_keeps_its_pads_pitch() {
+    // The same parts with no target: the nets are no pair by name or target, so nothing pulls
+    // them together, and the board routes as before issue #1054 in as many tries.
+    let mut board = pair_board(1.2, 0.0);
+    let routing = route_with(&mut board, RouteOptions::default());
+    assert!(routing.left.is_empty(), "{:?}", routing.left.lines);
+    assert_eq!(routing.tries, 1);
+    for net in ["A", "B"] {
+        let length: f64 = board
+            .tracks
+            .iter()
+            .filter(|t| t.net == net)
+            .map(|t| t.length())
+            .sum();
+        assert!(length < 11.1, "{net} is {length} mm long");
+    }
 }
