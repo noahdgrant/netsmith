@@ -165,6 +165,9 @@ fn usb_board() -> Board {
         stitch_pitch: None,
         thermal_gap: None,
         spoke_width: None,
+        clearance: None,
+        min_width: None,
+        pads: None,
     });
     assert_eq!(board.check_placement(), vec![]);
     board

@@ -129,6 +129,10 @@ interface InnerLayer {
 /// layer, ADR 0111); an outer pour with no net is no pour. Thermal relief is KiCad's default
 /// unless the process states its gap and spoke width (`.thermal_gap`, `.spoke_width`, the
 /// owner's decision, 2026-11-15), which follow the range convention; the planes keep the default.
+/// A pour has the other settings of a zone the routes file draws by hand (`netsmith routes
+/// add-zone`) too: its clearance, its least width and how it joins its net's pads (`.clearance`,
+/// `.min_width`, `.pads`, issue #1084), so that a board whose source states its pour need not
+/// draw a hand zone beside it to tune them.
 interface Pour {
     /// The net the layer is poured on.
     .net: String
@@ -144,4 +148,34 @@ interface Pour {
     /// The width of the spokes of a thermal relief, in mm. The tool uses the bottom of the
     /// range: `.spoke_width &= 0.3mm..` leaves 0.3 mm. Unset means KiCad's default, 0.5 mm.
     .spoke_width: Length
+    /// The space between the pour and copper of other nets, in mm. The tool uses the bottom of
+    /// the range: `.clearance &= 0.3mm..` leaves 0.3 mm. Unset means the space the process
+    /// keeps round a plane: its `.min_clearance`, or its space to a hole in an inner layer if
+    /// that is more. A bottom under the process's `.min_clearance` is an error.
+    .clearance: Length
+    /// The narrowest copper the pour keeps, in mm: its fill drops what is narrower (KiCad's
+    /// minimum thickness of a zone). The tool uses the bottom of the range:
+    /// `.min_width &= 0.3mm..` leaves 0.3 mm. Unset means 0.25 mm. A bottom under the process's
+    /// `.min_track` is an error. A width over `.spoke_width` drops the spokes of the reliefs.
+    .min_width: Length
+    /// How the pour joins the pads of its net: `PadConnection::Thermal` (the default),
+    /// `Solid`, `None` or `ThruHoleOnly`.
+    .pads: PadConnection
+}
+
+/// How a pour or a zone joins the pads of its net (issue #1084): the `.pads` of a `Pour`,
+/// `.process.top.pads &= PadConnection::Solid`. The routes file and `netsmith routes add-zone
+/// --pads` spell the same four `thermal`, `solid`, `none` and `thru_hole_only` (the command
+/// line `thru-hole-only`); KiCad's zone writes them in its `connect_pads`.
+enum PadConnection {
+    /// A thermal relief: a gap round the pad (`.thermal_gap`), crossed by four spokes
+    /// (`.spoke_width`). It keeps the heat of soldering in the pad.
+    Thermal,
+    /// Solid copper up to the pad: the most current and heat, and a pad that is harder to solder.
+    Solid,
+    /// Not joined: the pad keeps the pour's clearance, as another net's pad would, and has to be
+    /// joined to its net by a track.
+    None,
+    /// A thermal relief round a through-hole pad, solid copper up to a surface pad.
+    ThruHoleOnly,
 }

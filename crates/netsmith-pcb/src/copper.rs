@@ -763,6 +763,9 @@ mod tests {
             stitch_pitch: None,
             thermal_gap: None,
             spoke_width: None,
+            clearance: None,
+            min_width: None,
+            pads: None,
         });
         let at = free_point(&board, 1.5);
         let (from, to) = (Pt::new(at.x - 1.0, at.y), Pt::new(at.x + 1.0, at.y));
@@ -798,6 +801,9 @@ mod tests {
             stitch_pitch: None,
             thermal_gap: None,
             spoke_width: None,
+            clearance: None,
+            min_width: None,
+            pads: None,
         });
         let c = copper(&board).unwrap();
         let top = layer(&c, "F.Cu");
@@ -845,6 +851,9 @@ mod tests {
                 stitch_pitch: None,
                 thermal_gap: gap,
                 spoke_width: spoke,
+                clearance: None,
+                min_width: None,
+                pads: None,
             });
             let c = copper(&board).unwrap();
             layer(&c, "F.Cu")
@@ -863,6 +872,96 @@ mod tests {
         assert!(narrow + 0.01 < wide, "{narrow} and {wide}");
     }
 
+    /// The four-layer board with a GND pour on the top that `pour` sets: the area of the pour's
+    /// copper in the Gerbers' fill, in mm², and the rules of what the design rules check finds.
+    fn poured_with(pour: impl Fn(&mut BoardPour)) -> (f64, Vec<&'static str>) {
+        let mut board = four();
+        let mut p = BoardPour {
+            layer: CopperLayer::Front,
+            net: "GND".into(),
+            stitch_pitch: None,
+            thermal_gap: None,
+            spoke_width: None,
+            clearance: None,
+            min_width: None,
+            pads: None,
+        };
+        pour(&mut p);
+        board.pours.push(p);
+        let c = copper(&board).unwrap();
+        let area = layer(&c, "F.Cu")
+            .pours
+            .iter()
+            .map(|p| p.area.size())
+            .sum::<f64>();
+        let report = netsmith_geom::drc_check(
+            &crate::kicad_pcb(&board),
+            Some(&crate::kicad_pro(&board)),
+            &Default::default(),
+        )
+        .unwrap();
+        let mut rules: Vec<&str> = report.findings.iter().map(|f| f.rule.id()).collect();
+        rules.sort_unstable();
+        (area, rules)
+    }
+
+    fn count(rules: &[&str], rule: &str) -> usize {
+        rules.iter().filter(|r| **r == rule).count()
+    }
+
+    #[test]
+    fn a_pours_clearance_widens_the_space_round_other_nets_and_can_starve_a_relief() {
+        let (default, before) = poured_with(|_| {});
+        // The same as saying the process's plane clearance.
+        let gap = four().rules.plane_clearance;
+        let (same, _) = poured_with(|p| p.clearance = Some(gap));
+        assert!((same - default).abs() < 1e-9);
+        let (wider, _) = poured_with(|p| p.clearance = Some(0.8));
+        assert!(wider + 0.01 < default, "{wider} and {default}");
+        // 1.5 mm round D1's anode pad cuts the spokes of its GND pad beside it, and the check
+        // finds the relief starved.
+        assert_eq!(count(&before, "starved_thermal"), 0, "{before:?}");
+        let (_, after) = poured_with(|p| p.clearance = Some(1.5));
+        assert_eq!(count(&after, "starved_thermal"), 1, "{after:?}");
+    }
+
+    #[test]
+    fn a_pours_min_width_over_the_spoke_width_drops_the_spokes() {
+        let (default, before) = poured_with(|_| {});
+        let (same, _) = poured_with(|p| p.min_width = Some(crate::export::ZONE_MIN_THICKNESS));
+        assert!((same - default).abs() < 1e-9);
+        // Spokes 0.5 mm wide are narrower than 0.6 mm: the fill drops them, the pour is left
+        // joined to nothing and goes, and both GND pads' reliefs are starved.
+        let (narrowest, after) = poured_with(|p| p.min_width = Some(0.6));
+        assert!(narrowest + 10.0 < default, "{narrowest} and {default}");
+        assert_eq!(count(&before, "starved_thermal"), 0, "{before:?}");
+        assert_eq!(count(&after, "starved_thermal"), 2, "{after:?}");
+    }
+
+    #[test]
+    fn a_pours_pad_connection_is_the_fill_round_its_own_pads() {
+        use crate::board::ZonePads;
+        let (default, before) = poured_with(|_| {});
+        let (thermal, _) = poured_with(|p| p.pads = Some(ZonePads::Thermal));
+        assert!((thermal - default).abs() < 1e-9);
+        // Solid fills the reliefs' gaps; through-hole only fills them round D1's surface pad
+        // and keeps J1's through-hole pad's.
+        let (solid, _) = poured_with(|p| p.pads = Some(ZonePads::Solid));
+        let (thru, _) = poured_with(|p| p.pads = Some(ZonePads::ThruHoleOnly));
+        assert!(
+            default + 0.01 < thru && thru + 0.01 < solid,
+            "{default}, {thru} and {solid}"
+        );
+        // None joins no pad: the pour joins nothing and goes, and GND is left unconnected.
+        let (none, after) = poured_with(|p| p.pads = Some(ZonePads::None));
+        assert!(none < 1e-6, "{none}");
+        assert_eq!(
+            count(&after, "unconnected_items"),
+            count(&before, "unconnected_items") + 1,
+            "{before:?} and {after:?}"
+        );
+    }
+
     #[test]
     fn the_pours_alone_are_the_pours_of_the_whole_copper_layer_by_layer() {
         let mut board = four();
@@ -872,6 +971,9 @@ mod tests {
             stitch_pitch: None,
             thermal_gap: None,
             spoke_width: None,
+            clearance: None,
+            min_width: None,
+            pads: None,
         });
         let whole = copper(&board).unwrap();
         let alone = pours(&board).unwrap();
@@ -895,6 +997,9 @@ mod tests {
             stitch_pitch: None,
             thermal_gap: None,
             spoke_width: None,
+            clearance: None,
+            min_width: None,
+            pads: None,
         });
         part(&mut board, "D1").side = Side::Back;
         let from_file = Artwork::parse(&crate::kicad_pcb(&board)).unwrap();

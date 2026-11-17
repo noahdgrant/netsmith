@@ -8,8 +8,8 @@
 use netsmith_check::{Domain, GuidelineRule, InstId, InstKind, Member, Model, SourceId};
 use netsmith_core::{
     CaseModel, Cutout, Features, ImpedanceTarget, Keepout, Label, Logo, LogoLayer, Offset,
-    OffsetEnd, Outline, PartHeight, PartKind, PartSilk, PartStandoff, PinProtrusion, PlaceBound,
-    PlaceField, Placement, Pour, SilkPrint, StepModel,
+    OffsetEnd, Outline, PadConnection, PartHeight, PartKind, PartSilk, PartStandoff, PinProtrusion,
+    PlaceBound, PlaceField, Placement, Pour, SilkPrint, StepModel,
 };
 use netsmith_lang::Span;
 use std::collections::{BTreeMap, BTreeSet};
@@ -807,8 +807,17 @@ pub(crate) fn case_models(
     (found, sites)
 }
 
+/// The least the process makes, in mm, that a pour's settings are judged against.
+#[derive(Debug, Clone, Copy, Default)]
+pub(crate) struct Least {
+    /// Its space between copper, `.min_clearance`.
+    pub clearance: f64,
+    /// Its narrowest track, `.min_track`.
+    pub track: f64,
+}
+
 /// The outer pours of the process: the layers whose pour has a net.
-fn pours(model: &Model, nets: &[String], errors: &mut Vec<String>) -> Vec<Pour> {
+fn pours(model: &Model, nets: &[String], floor: Least, errors: &mut Vec<String>) -> Vec<Pour> {
     let mut found = Vec::new();
     for layer in ["top", "bottom"] {
         let Some(Member::Inst(pour)) = model.member(model.root, "process").and_then(|m| match m {
@@ -858,12 +867,45 @@ fn pours(model: &Model, nets: &[String], errors: &mut Vec<String>) -> Vec<Pour> 
         };
         let thermal_gap = least("thermal_gap", "gap");
         let spoke_width = least("spoke_width", "spoke width");
+        // The clearance and the least width of the fill (issue #1084): the bottom of the range,
+        // and no less than the process makes (as `routes add-zone` refuses for a hand zone).
+        let mut at_least = |name: &str, (floor, what): (f64, &str)| {
+            let low = range(model, pour, name)
+                .map(|(lo, _)| lo)
+                .filter(|lo| lo.is_finite());
+            if let Some(v) = low
+                && (v <= 0.0 || v < floor - 1e-9)
+            {
+                errors.push(format!(
+                    "`process.{layer}.{name}` has a bottom of {v} mm, under {what} of {floor} mm: raise the bottom of the range"
+                ));
+            }
+            low
+        };
+        let clearance = at_least(
+            "clearance",
+            (
+                floor.clearance,
+                "the process's least space between copper (`.min_clearance`)",
+            ),
+        );
+        let min_width = at_least(
+            "min_width",
+            (floor.track, "the process's narrowest track (`.min_track`)"),
+        );
+        let pads = match domain(model, pour, "pads") {
+            Some(Domain::Text(variant)) => PadConnection::of_variant(&variant),
+            _ => None,
+        };
         found.push(Pour {
             layer: layer.to_string(),
             net,
             stitch_pitch,
             thermal_gap,
             spoke_width,
+            clearance,
+            min_width,
+            pads,
         });
     }
     found
@@ -1143,12 +1185,14 @@ pub(crate) fn logos(
 }
 
 /// Read every board feature of the model. `nets` are the board's net names, `layers` the
-/// copper layers of its process (2 when it has none) and `least_text` its smallest text.
+/// copper layers of its process (2 when it has none), `least_text` its smallest text and
+/// `least` its least clearance and track.
 pub(crate) fn features_of(
     model: &Model,
     nets: &[String],
     layers: u32,
     least_text: f64,
+    least: Least,
     errors: &mut Vec<String>,
 ) -> Features {
     let mut features = Features {
@@ -1156,7 +1200,7 @@ pub(crate) fn features_of(
         net_clearances: net_clearances(model),
         rail_nets: rail_nets(model),
         impedance_targets: impedance_targets(model, errors),
-        pours: pours(model, nets, errors),
+        pours: pours(model, nets, least, errors),
         labels: labels(model, least_text, errors),
         heights: heights(model, errors),
         standoffs: standoffs(model, errors),
