@@ -1429,9 +1429,9 @@ board Switch {
 
 ```text
 error: no `n_mosfet` candidate satisfies `q`: the closest of the 2 that fit, AO3400A 30V 5.7A N-MOSFET SOT-23 C20917, fails because q.gate_source_voltage must always be at least q.gate_threshold, but 285mV..315mV is not always above 650mV..1.45V
-   --> std/parts/transistor.nsm:79:5
+   --> std/parts/transistor.nsm:85:5
    |
-79 |     .gate_source_voltage >= .gate_threshold
+85 |     .gate_source_voltage >= .gate_threshold
    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -1463,14 +1463,14 @@ board Switch {
 
 ```text
 error: no `n_mosfet` candidate satisfies `q`: the closest of the 1 that fit, 2N7002 60V 115mA N-MOSFET SOT-23 C8545, fails because q.gate_source_voltage must always be at least q.on_resistance_vgs, but 3.135V..3.465V is not always above 5V
-   --> std/parts/transistor.nsm:80:5
+   --> std/parts/transistor.nsm:86:5
    |
-80 |     .gate_source_voltage >= .on_resistance_vgs
+86 |     .gate_source_voltage >= .on_resistance_vgs
    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 error: q.gate_source_voltage must always be at least q.on_resistance_vgs, but 3.135V..3.465V is not always above 5V
-   --> std/parts/transistor.nsm:80:5
+   --> std/parts/transistor.nsm:86:5
    |
-80 |     .gate_source_voltage >= .on_resistance_vgs
+86 |     .gate_source_voltage >= .on_resistance_vgs
    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -1530,9 +1530,9 @@ board HighSide {
 
 ```text
 error: no `p_mosfet` candidate satisfies `q`: the closest of the 2 that fit, ZP-40 40V 4A P-MOSFET, fails because q.drain_source_voltage must always be at most q.max_drain_source_voltage, but 95V..105V is not always below 40V
-    --> std/parts/transistor.nsm:136:5
+    --> std/parts/transistor.nsm:145:5
     |
-136 |     .drain_source_voltage <= .max_drain_source_voltage
+145 |     .drain_source_voltage <= .max_drain_source_voltage
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -2419,7 +2419,7 @@ A digital line is a `Logic` (`std::logic::Logic`): a pin `.line` and the rail `.
 
 After the rails are solved, the solver checks two things. A fault is an error; a check that cannot be made is a note `not evaluated: ...`, never a pass.
 
-- **Levels.** For every output or bidirectional `Logic` line on a net and every input or bidirectional `Logic` line on it, the output's `voh` must always be at least the input's `vih`, and its `vol` at most the input's `vil`, in the worst case of both ranges. A level with no value, or two lines whose grounds (`reference.neg`) are not on one net or in one ground group, is not evaluated. A pair in which neither line states a level is not looked at, and one whose other end has no levels at all (a plain pin, or a level that comes through a series part) is named, or, for a level through a series part from a driver the DC analysis models, judged by the voltage the analysis gives the receiver's net (see "A pin with no levels, and a level through a series part" below). An output that states a `vol` and no `voh` is open-drain, and the line's high is what its pull-up gives it (see "An open-drain line" below).
+- **Levels.** For every output or bidirectional `Logic` line on a net and every input or bidirectional `Logic` line on it, the output's `voh` must always be at least the input's `vih`, and its `vol` at most the input's `vil`, in the worst case of both ranges. A level with no value, or two lines whose grounds (`reference.neg`) are not on one net or in one ground group, is not evaluated. A pair in which neither line states a level is not looked at, and one whose other end has no levels at all (a plain pin, or a level that comes through a series part) is named, or, for a level through a series part from a driver the DC analysis models (also one that crosses into a net whose own drivers let go of it, as through a MOSFET translator), judged by the voltage the analysis gives the receiver's net (see "A pin with no levels, and a level through a series part" below). An output that states a `vol` and no `voh` is open-drain, and the line's high is what its pull-up gives it (see "An open-drain line" below).
 - **Absolute maximum.** A pin with `.abs_min` or `.abs_max` must have a net whose worst-case voltage relative to its ground stays within them. A net that the DC analysis solved (a divider's middle, a net behind a chain of resistors and diodes: see "DC analysis") has the range of voltage the analysis finds for it over every corner of the ranges and every state of the parts around it, and the finding says `(the DC analysis of the network it is in)` (ADR 0076, amendment 12). Any other net's voltage is the hull of: its ground (0 V), each rail whose `pos` is on it, each `Logic` line that drives it (between its reference rail's `neg` and its voltage), and each rail or ground that a resistor joins it to (a pull-up or a pull-down). It is not evaluated for a net that something drives that is not a `Logic` line, for a rail or driver on another ground, and for a net nothing sets. A pin that nothing outside its own part is joined to (an optional pin left to float, such as the `TR/SS` of the LT8641) has no voltage to judge and is skipped, with no note; a pin with only a capacitor on it is the note "nothing sets its voltage".
 
 A 5 V rail through a divider into a pin that survives 3.6 V is judged by the voltage the divider gives, not by the rail: 10 kohm over 20 kohm from 5.25 V is at most 3.52 V, inside the maximum, and the same divider over 30 kohm is 3.96 V, which is refused. The parts are invented.
@@ -2653,12 +2653,13 @@ A pair is judged only when both ends have levels. When one end states them and t
 
 - A pin that can drive the net and is not the `.line` of a `Logic` or a pin of an interface with `levels` (an `output`, `tri_state`, `bidirectional` or `open_drain` pin of a part that writes it plainly), on a net with a receiver that states `vih` or `vil`: `not evaluated: the logic levels from `m.stat` to `b.in` on net `...`: `m.stat` can drive it and is not the `line` of a `Logic` or a pin of an interface with `levels`, so its levels are not known`. A plain `open_drain` pin does not set its high: as for an `open_drain` line, the high is what the DC analysis or the pull-up gives the line, measured from the receiver's ground and judged against its `vih` (see "An open-drain line" below), and only its low is a note.
 - A pin that reads the net and has no levels (a plain `input` or `bidirectional` pin), on a net with a driver that states `voh`, `vol` or a swing: `... `q.en` reads it and is not the `line` of a `Logic` or a pin of an interface with `levels`, so the levels it needs are not known`. The gate of a `NMosfet` is such a pin: its own relations judge the voltage across it where the board states them.
-- A receiver that states levels on a net that nothing on it drives, joined by a part with a `bridge` to a net that something drives: a series resistor, the top of a divider, a diode, or the channel of a MOSFET that translates a level. When the driver on the far net is a `Logic` line that the DC analysis models (its `voh` and `vol` state the current they are measured at, `at 100uA`, or it states `.roh` and `.rol`), the analysis solves the network once with the driver held high and once held low, and the receiver is judged by the voltage that gives its net: the lowest high against its `vih`, the highest low against its `vil`, over every corner of the ranges and every state of the other parts. Any other driver (one with no test current, a swing, an open-drain line, a plain pin), a network the analysis does not solve, or a receiver on another ground is a note that names the part and the net the level comes from. A resistor to a rail or to ground only pulls the net there and is not named, and a net that has a driver of its own is judged on its own lines.
-- A receiver that states levels on a net whose own drivers can all let go of it (`tri_state`, `bidirectional` or `open_drain` pins), joined by a part with a `bridge` to a net with a driver that states levels: when the drivers on its own net let go, the far driver's level comes through the part. The low that one side of a MOSFET translator between two buses pulls the other side to is such a level. Each side's own lines are judged on that side, and what crosses is named: `not evaluated: the logic levels that cross `r` from net `...` into net `...`: every driver of net `...` can let go of it, and then the level that `a.out` drives reaches `b.in` through `r`, which the levels check does not follow`. A net with an `output` on it is held by that output and is not named.
+- A receiver that states levels on a net that nothing on it drives, joined by a part with a `bridge` to a net that something drives: a series resistor, the top of a divider, a diode, or the channel of a MOSFET that translates a level. When the driver on the far net is a `Logic` line that the DC analysis models (its `voh` and `vol` state the current they are measured at, `at 100uA`, or it states `.roh` and `.rol`), the analysis solves the network once with the driver held high and once held low, and the receiver is judged by the voltage that gives its net: the lowest high against its `vih`, the highest low against its `vil`, over every corner of the ranges and every state of the other parts. An open-drain driver does not drive high, so its high is the net's voltage with every driver of the two nets letting go (what the pull-up gives it). A driver the analysis does not model (one with no test current, or a swing), behind a resistor into a net that nothing else is on (its other pins are `input`s that state no leakage), is judged as a pair on the far net: no current flows through the resistor, so the receiver sees the driver's own levels, and the message names the far net. Any other driver (a plain pin, a driver the analysis does not model into a net with a pull-up or a pull-down), a network the analysis does not solve, or a receiver on another ground is a note that names the part and the net the level comes from. A resistor to a rail or to ground only pulls the net there and is not named, and a net that has a driver of its own is judged on its own lines.
+- A receiver that states levels on a net whose own drivers can all let go of it (`tri_state`, `bidirectional` or `open_drain` pins), joined by a part with a `bridge` to a net with a driver that states levels: when the drivers on its own net let go, the far driver's level comes through the part. The low that one side of a MOSFET translator between two buses pulls the other side to is such a level. Each side's own lines are judged on that side. What crosses is judged as above, with every driver of the receiver's own net held letting go of it, where the DC analysis models the far driver: `net `...`: with `b.io` driving low and every driver of net `...` letting go of it, the DC analysis holds the line at ... through `q` from net `...` but `a.io.vil` allows ...`. For any other far driver it is named: `not evaluated: the logic levels that cross `r` from net `...` into net `...`: every driver of net `...` can let go of it, and then the level that `a.out` drives reaches `b.in` through `r`, which the levels check does not follow`. A net with an `output` on it is held by that output and is not named.
+- A MOSFET between the two nets. The DC analysis takes a MOSFET as a switch, on or off by its gate, and a translator has a state that only the MOSFET's body diode rules out: the far side pulls the drain low, and the MOSFET stays off with the source still at its pull-up. A MOSFET whose `.body_diode_voltage` is stated (the datasheet's drain-source diode forward voltage, VSD, at its test current; a member of `NMosfet` and `PMosfet` that the design states, `.q.body_diode_voltage &= 1.4V`) has its body diode in the network these levels are judged in, and the low is judged with it. One that does not is solved again with its channel held on: a level that fails with the channel on is refused, and one that holds only with it on is a note that names the body diode: `not evaluated: the low level into `a.io` on net `...` through `q` from net `...` with `b.io` driving low and every driver of net `...` letting go of it: with `q` on, the DC analysis holds the line at ..., which `a.io.vil` reads as a low, but in some states it finds `q` off and the line at ...; whether `q` turns on there rests on its body diode, which the analysis models only when `q.body_diode_voltage` states its forward voltage`.
 
 A pair of which neither end states a level is not looked at, as before. A level translator that is a part with a `Logic` line or a bus on each side (`LevelTranslator`, or a part of a project's own, as in "Logic levels of a bus") is judged on each side's net.
 
-The driver below feeds the receiver through a 100 ohm resistor and also drives the enable pin of a part that states no levels. Both build, and among the notes of the build are these two: `not evaluated: the logic levels into `b.in` on net `net-b.in.line`: nothing on the net drives it, and its level comes through `r` from net `net-a.out.line`, which the levels check does not follow` and `not evaluated: the logic levels from `a.out` to `q.en` on net `net-a.out.line`: `q.en` reads it and is not the `line` of a `Logic` or a pin of an interface with `levels`, so the levels it needs are not known`. The parts are invented.
+The driver below feeds the receiver through a 100 ohm resistor and also drives the enable pin of a part that states no levels. Its levels state no test current, so the DC analysis does not model it, but nothing else is on the receiver's net: the receiver is judged against the driver's own levels, and holds. The enable pin is named among the notes of the build: `not evaluated: the logic levels from `a.out` to `q.en` on net `net-a.out.line`: `q.en` reads it and is not the `line` of a `Logic` or a pin of an interface with `levels`, so the levels it needs are not known`. With a pull-down on the receiver's net as well, the resistor would carry a current that the driver's levels do not say the drop of, and the level through it would be a note: `not evaluated: the logic levels into `b.in` on net `net-b.in.line`: nothing on the net drives it, and its level comes through `r` from net `net-a.out.line`, which the levels check does not follow`. The parts are invented.
 
 ```nsm evaluate
 import std::logic::Logic
@@ -2777,6 +2778,80 @@ error: net `net-b.in.line`: with `a.out` driving high, the DC analysis holds the
    |
 39 |     .b: Receiver
    |     ^^^^^^^^^^^^
+```
+
+A MOSFET translator between two open-drain lines, one pulled up to 3.3 V and one to 5 V: the gate is on the 3.3 V supply, the source on the 3.3 V line and the drain on the 5 V line. When the 5 V side pulls its line low, the 3.3 V side is judged with every driver of its own line letting go of it. The MOSFET's body diode is stated, so the analysis knows the source cannot stay more than 1.2 V above the drain; but with a gate threshold of up to 2.5 V and a gate at 3.135 V, the MOSFET may still be off with the source 1.2 V above the drain's low, which the 3.3 V side does not read as a low. A MOSFET with a lower threshold (up to 1.5 V) passes. The parts are invented.
+
+```nsm fails
+import std::logic::Logic
+import std::parts::passive::Resistor
+import std::sources::Rail
+
+/// Invented: an open-drain bus pin, a low of 0.4 V at 3 mA, and it reads a high from 70 % of
+/// its supply and a low up to 30 %.
+part BusPin {
+    .vdd: Rail
+    .io: Logic
+    .io.reference ~ .vdd
+    .io.vol &= 0.4V at 3mA
+    .io.vih &= 0.7 * .vdd.voltage
+    .io.vil &= 0.3 * .vdd.voltage
+    pins {
+        .vdd.pos  power         "VDD" "1"
+        .vdd.neg  power         "GND" "2"
+        .io.line  bidirectional "IO"  "3"
+    }
+}
+
+/// Invented: an N-channel MOSFET with a threshold of 1 V to 2.5 V and a body diode of 1.2 V.
+part Fet {
+    pins {
+        .gate   input   "G" "1"
+        .source passive "S" "2"
+        .drain  passive "D" "3"
+    }
+    .gate_threshold: Voltage
+    .on_resistance: Resistance
+    .body_diode_voltage: Voltage
+    .gate_threshold &= 1V..2.5V
+    .on_resistance &= 0.7ohm..3.5ohm
+    .body_diode_voltage &= 1.2V
+    #[role(current)]
+    .current: Current
+    bridge .drain ~> .source
+    dc nmos .gate .drain .source .gate_threshold .on_resistance
+}
+
+board Translated {
+    .low: Rail {
+        .voltage &= 3.3V +/- 5%
+        .pos.net &= "3V3"
+    }
+    .high: Rail {
+        .voltage &= 5V +/- 5%
+        .pos.net &= "5V"
+    }
+    .a: BusPin
+    .b: BusPin
+    .ra: Resistor { .resistance &= 10kohm +/- 1% }
+    .rb: Resistor { .resistance &= 10kohm +/- 1% }
+    .q: Fet
+    .low ~ .a.vdd
+    .high ~ .b.vdd
+    .low.pos ~> .ra ~> .a.io.line
+    .high.pos ~> .rb ~> .b.io.line
+    .q.gate ~ .low.pos
+    .q.source ~ .a.io.line
+    .q.drain ~ .b.io.line
+}
+```
+
+```text
+error: net `net-a.io.line`: with `b.io` driving low and every driver of net `net-a.io.line` letting go of it, the DC analysis holds the line at -1nV..1.299V through `q` from net `net-b.io.line` but `a.io.vil` allows 940.5mV..1.04V: a low of 1.299V is not always read as a low, which takes 940.5mV
+   --> main.nsm:49:5
+   |
+49 |     .a: BusPin
+   |     ^^^^^^^^^^
 ```
 
 #### Levels that are fractions of one supply

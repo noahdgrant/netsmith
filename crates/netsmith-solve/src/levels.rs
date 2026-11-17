@@ -59,7 +59,7 @@
 //! their checks. In `net_range` an `open_drain` pin only pulls its net to its ground.
 //!
 //! Not built from ADR 0046: more parts with datasheet levels (issue #64), and levels across a
-//! series part from a driver the DC analysis does not model (below); the voltage of a net is
+//! series part from a driver the DC analysis does not model into a loaded net (below); the voltage of a net is
 //! followed only through resistors, for its absolute maximum, where the DC analysis did not solve
 //! it. Open-drain lines have levels since ADR 0075,
 //! above. A level translator that is a part with a `Logic` line or a bus on each side
@@ -80,28 +80,44 @@
 //!   them where the part states any.
 //! - A receiver that states levels on a net that nothing on it drives, joined by a part with a
 //!   `bridge` to a net that something drives (a series resistor, a divider's top, a diode, the
-//!   channel of a MOSFET that translates a level). A push-pull `Logic` driver of the far net that
-//!   the DC analysis models (its levels state a test current, or it states `roh` and `rol`) is
-//!   judged: the analysis solves its island once with the driver held high and once held low
+//!   channel of a MOSFET that translates a level). A `Logic` driver of the far net that the DC
+//!   analysis models (its levels state a test current, or it states `roh` and `rol`) is judged:
+//!   the analysis solves its island once with the driver held high and once held low
 //!   (`NetReads::driven`), and the receiver's `vih` and `vil` are held against the range of its
 //!   net's voltage in each, over every corner and every state of the rest of the island, so a
-//!   load the island models (a pull-down, a pull-up, an input's leakage) is in the number. Any
-//!   other driver, an island the analysis did not solve, and a receiver whose ground is not the
-//!   island's are a note that names the part and the net the level comes from. A part that only
-//!   pulls the net to a rail or to ground has no driver on its far side and is not named.
+//!   load the island models (a pull-down, a pull-up, an input's leakage) is in the number. An
+//!   open-drain driver (#1045) has as its high the net's voltage with every driver of the two
+//!   nets letting go. A driver the analysis does not model, behind a resistor into a net that
+//!   nothing else is on (its other pins are `input`s that state no leakage), is judged as a pair
+//!   on the far net (#1045): no current flows through the resistor, so the two nets are at one
+//!   voltage. Any other driver, an island the analysis did not solve, and a receiver whose ground
+//!   is not the island's are a note that names the part and the net the level comes from. A part
+//!   that only pulls the net to a rail or to ground has no driver on its far side and is not
+//!   named.
 //! - A receiver that states levels on a net whose own drivers can all let go of it (none is an
 //!   `output`), joined by a part with a `bridge` to a net with a driver that states levels: the
 //!   far driver's level crosses the part when the near drivers let go, as the low of one bus
-//!   crosses the MOSFET of a translator into the other bus. Each side is judged on its own lines,
-//!   and one note for each part and net names what crosses. A net with an `output` is held by it.
+//!   crosses the MOSFET of a translator into the other bus. Each side is judged on its own lines.
+//!   What crosses is judged as above, with every driver of the receiver's net held letting go of
+//!   it (#1045), where the analysis models the far driver; for the rest, one note for each part
+//!   and net names what crosses. A net with an `output` is held by it.
+//! - A MOSFET between the two nets (#1045). The analysis takes a MOSFET as a switch, on or off by
+//!   its gate, and finds states that only its body diode rules out: the far side pulls the drain
+//!   of a translator low, and the MOSFET stays off with the source at its pull-up. A part that
+//!   states `.body_diode_voltage` (the datasheet's VSD, the most forward voltage of the diode
+//!   from the source to the drain of an N-channel part) has the diode in the island of these
+//!   solves, and is judged with it. One that does not is solved again with its channel held on:
+//!   a level that fails with the channel on is a fault, one that holds only with it on is a note
+//!   that names the body diode, never a pass.
 //!
-//! A pair of which neither end states a level is still not looked at. Not taken (#850): judging a
-//! receiver against a driver behind a series part from the driver's levels alone, which holds
-//! only when nothing else draws from the net (the DC analysis is what knows the load); judging
-//! what crosses into a net with drivers of its own, which needs the states in which those
-//! drivers let go and, for a bus translator, the open-drain islands that the analysis writes
-//! nothing for (ADR 0076, amendment 8); a note for a plain pin on a net whose lines state no
-//! level, which would name every gate that a line drives on a board that states no levels at all.
+//! A pair of which neither end states a level is still not looked at. Not taken (#850, #1045):
+//! judging a receiver against a driver the DC analysis does not model behind a series part into
+//! a net that something draws from, from the driver's levels alone (only the analysis knows the
+//! drop); the body diode in the analysis's other solves (what it writes for a part, the voltage
+//! of a net for an absolute maximum), which no level needs; a forward voltage the analysis assumes for
+//! a body diode that the part does not state (a datasheet gives it at a test current, and no
+//! number is sound for every part); a note for a plain pin on a net whose lines state no level,
+//! which would name every gate that a line drives on a board that states no levels at all.
 //!
 //! Levels stated as fractions of one rail are compared at one supply voltage (ADR 0082). The
 //! levels are compared as two intervals, and an interval counts a value once for each time it is
