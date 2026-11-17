@@ -50,6 +50,10 @@ _Avoid_: agent board, golden board, copy (alone)
 The `.reverse_peak` of a `Rail`: the highest voltage the rail reaches the wrong way round, a positive number, which a design states for its input (ADR 0091). The first part of a `~>` chain from the rail that has a `.supply_reverse_peak` (a `Diode`, a `Schottky` or a `Tvs`) is given it and checked against it: a reverse-polarity diode must block it, and a unidirectional TVS diode conducts it. A rail that states none checks nothing and lists nothing.
 _Avoid_: Negative peak, reverse transient
 
+**Rip-up round**:
+A round of the router's last stage of a try that leaves connections (issue #1088): for each connection left, the cheapest path that may cross other nets' copper names the nets it crosses, their copper the router laid is removed whole, the connection is routed through the room and those nets are routed again after it, and what does not fit is left for the next round. A try gets 6 rounds unless `--rip-rounds` or `rip_rounds` in `netsmith.toml` says otherwise (0 runs none), one net is ripped up at most 3 times, and the best state any round reaches is kept; a try the rounds finish is used only when no other try finishes the board without them. The routes file's copper is never ripped up.
+_Avoid_: Negotiation (the earlier stage, which stops when a round spreads the connections left), shove (moves copper aside without removing it)
+
 **Role**:
 A part's end of a bus: a variant of the bus's enum (`SpiRole::Slave`), stated with `&=` on the interface by the part or by the board (`.spi.role &= SpiRole::Slave`). The checker compares the part's pin table with the lines the role has, and counts the role against its `limit`. A part that states none is judged by the kinds of its table alone (a connector that the bus goes through states a **Pass-through**), and an interface of a bus with roles that is joined to another end and states none is a guideline finding, `bus role` (ADR 0064, ADR 0030). `~` between two interfaces does not equate it.
 _Avoid_: Mode, direction, master/slave (they are the variants of `SpiRole`, not the name of the construct)

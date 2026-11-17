@@ -130,6 +130,8 @@ fn the_lines_that_end_deep_in_the_fine_pitch_module_are_routed_first_so_an_easy_
 /// Prints, for each seed in `NETSMITH_SEEDS` (`0..8` by default; `a..b`), the lines left
 /// unrouted and the time: `NETSMITH_SEEDS=0..20 cargo test --release -p netsmith-router --test
 /// main tight::measured -- --ignored --nocapture`.
+/// `NETSMITH_TRIES=1` routes one try, and `NETSMITH_RIP_ROUNDS=0` without the rounds of rip-up
+/// (issue #1088).
 #[test]
 #[ignore = "a measurement, not a check"]
 fn measured() {
@@ -157,6 +159,8 @@ fn measured() {
             &mut board,
             RouteOptions {
                 time_limit: Some(guard::GUARD),
+                rip_rounds: guard::rip_rounds(),
+                most_tries: guard::most_tries(),
                 ..RouteOptions::default()
             },
         );
@@ -176,6 +180,7 @@ fn measured() {
             routing.tries,
             board.vias.len(),
         );
+        eprintln!("    {}", guard::rounds_line(&routing));
         for l in &routing.left.lines {
             eprintln!("    {l}");
         }

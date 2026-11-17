@@ -22,23 +22,36 @@ impl<'a> Router<'a> {
 
     /// Why each line left in `state` is left: the stage it last failed in (`failed_in`, of the
     /// try that gave the state), and the nets whose copper stands in its way, from one soft
-    /// search on the state at the least room. After the time limit that search gives up at once
-    /// and names no nets.
-    pub(super) fn why(&self, state: &State, failed_in: &[Stage]) -> Vec<LineReport> {
+    /// search on the state at the least room; when that search finds no path, what walls the line
+    /// in ([`Self::walls`]). With `late` (the time limit has passed, `route_with` lifted it) only
+    /// the first [`WHY_LATE`] lines are looked at, and the rest name nothing.
+    pub(super) fn why(&self, state: &State, failed_in: &[Stage], late: bool) -> Vec<LineReport> {
         self.counting.set(false);
         let mut failed = state.failed.clone();
         failed.sort_unstable();
         failed.dedup();
+        let name = |n: usize| self.board.nets[n].name.clone();
         failed
             .into_iter()
-            .map(|line| LineReport {
-                line: self.lines[line].clone(),
-                stage: failed_in.get(line).copied().unwrap_or(Stage::FirstPass),
-                blockers: self
-                    .blockers(line, state, ROOM_TIGHT)
-                    .into_iter()
-                    .map(|n| self.board.nets[n].name.clone())
-                    .collect(),
+            .enumerate()
+            .map(|(k, line)| {
+                let looked = !late || k < WHY_LATE;
+                let (nets, walls) = match looked.then(|| self.contested(line, state, ROOM_TIGHT)) {
+                    Some(Some((_, nets))) => (nets, walls::Walls::default()),
+                    Some(None) if !self.out_of_time() => {
+                        let walls = self.walls(line, state);
+                        (walls.nets.clone(), walls)
+                    }
+                    _ => (Vec::new(), walls::Walls::default()),
+                };
+                LineReport {
+                    line: self.lines[line].clone(),
+                    stage: failed_in.get(line).copied().unwrap_or(Stage::FirstPass),
+                    blockers: nets.into_iter().map(name).collect(),
+                    pads: walls.pads,
+                    vias: walls.vias,
+                    edge: walls.edge,
+                }
             })
             .collect()
     }
@@ -52,10 +65,23 @@ impl<'a> Router<'a> {
         state: &State,
         room: f64,
     ) -> Option<(Vec<Spot>, Vec<usize>)> {
+        self.contested_locked(line, state, room, &[])
+    }
+
+    /// [`Self::contested`], with the copper of the lines in `locked` hard too: it is not to be
+    /// crossed, and their nets are not named.
+    pub(super) fn contested_locked(
+        &self,
+        line: usize,
+        state: &State,
+        room: f64,
+        locked: &[usize],
+    ) -> Option<(Vec<Spot>, Vec<usize>)> {
         let net = self.nets[line];
         // A protected line's copper is no way through, and its net is not ripped up for this
         // line ([`Class::protected`]).
-        let protected = self.protected(line, state);
+        let mut protected = self.protected(line, state);
+        protected.extend_from_slice(locked);
         let (_, path) = self.try_line_locked(line, state, &[], room, true, &protected)?;
         self.count_crowding(&path);
         let reach = self.clearance_of(line) + self.widest_of(line) + PITCH;

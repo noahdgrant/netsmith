@@ -33,10 +33,10 @@ Each command, what it was before, and its flags (a test walks `--help` of every 
 | `netsmith project init` | `netsmith init` | `--name` |
 | `netsmith project refresh` | `netsmith init --refresh` | none |
 | `netsmith project lock` | `netsmith lock` | `--update`, `--check`, `--part`, `--except` |
-| `netsmith project order` | `netsmith fab --order [NAME]` | `--out`, `--route-timeout`, `--allow-drc-violations`, `--cross-check`, `--strict`, `--locked`, `--constraints`, `--no-glb`, `--no-step`, `--offline`, `--quiet`, `--place-seeds`, `--place-budget`, `--progress`, `--to-editor` |
+| `netsmith project order` | `netsmith fab --order [NAME]` | `--out`, `--route-timeout`, `--rip-rounds`, `--allow-drc-violations`, `--cross-check`, `--strict`, `--locked`, `--constraints`, `--no-glb`, `--no-step`, `--offline`, `--quiet`, `--place-seeds`, `--place-budget`, `--progress`, `--to-editor` |
 | `netsmith board check` | `netsmith check` | `--strict`, `--format`, `--notes` |
 | `netsmith board build` | `netsmith build` | `--out`, `--strict`, `--locked`, `--emit-design`, `--emit-solved`, `--format`, `--notes` |
-| `netsmith board fab` | `netsmith fab` | `--out`, `--route-timeout`, `--allow-drc-violations`, `--cross-check`, `--strict`, `--locked`, `--constraints`, `--pins`, `--no-glb`, `--no-step`, `--save-placed`, `--reuse-routes`, `--offline`, `--quiet`, `--place-seeds`, `--place-budget`, `--progress`, `--to-editor`, `--format`, `--notes` |
+| `netsmith board fab` | `netsmith fab` | `--out`, `--route-timeout`, `--rip-rounds`, `--allow-drc-violations`, `--cross-check`, `--strict`, `--locked`, `--constraints`, `--pins`, `--no-glb`, `--no-step`, `--save-placed`, `--reuse-routes`, `--offline`, `--quiet`, `--place-seeds`, `--place-budget`, `--progress`, `--to-editor`, `--format`, `--notes` |
 | `netsmith board drc` | new | `--board`, `--kicad-pcb`, `--place-seeds`, `--place-budget`, `--format` |
 | `netsmith board explain` | `netsmith explain` | `--board`, `--all-rows` |
 | `netsmith board compare` | `netsmith compare` | `--ref`, `--against-ref`, `--board`, `--map`, `--by-refdes`, `--ignore-unconnected`, `--loose-values`, `--format` |
@@ -84,7 +84,7 @@ Each command, what it was before, and its flags (a test walks `--help` of every 
 | `netsmith import port tables` | `netsmith port tables` | `--url`, `--reference`, `--check` |
 | `netsmith import case place` | `netsmith case place` | none |
 | `netsmith import case model` | `netsmith case import` | `--rx`, `--ry`, `--rz`, `--x`, `--y`, `--z`, `--at`, `--holes-at`, `--limits`, `--thickness`, `--limit-step`, `--board`, `--write` |
-| `netsmith dev route` | `netsmith route` | `--out`, `--route-timeout`, `--margin`, `--turn`, `--tries`, `--stages`, `--plan`, `--classes`, `--arcs` |
+| `netsmith dev route` | `netsmith route` | `--out`, `--route-timeout`, `--rip-rounds`, `--margin`, `--turn`, `--tries`, `--stages`, `--plan`, `--classes`, `--arcs` |
 | `netsmith dev parity` | `netsmith parity` | `--table`, `--parts`, `--svg`, `--format` |
 | `netsmith dev board3d` | `netsmith board3d` | `--board`, `--format` (was `--json`), `--glb`, `--step`, `--place-seeds`, `--place-budget`, `--progress`, `--to-editor` |
 

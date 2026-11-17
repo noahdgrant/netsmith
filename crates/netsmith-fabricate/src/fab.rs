@@ -194,6 +194,10 @@ pub struct FabOptions {
     /// routed again at the least, so the margin is kept where it fits and given up where it does
     /// not (issue #431). 1 is the least.
     pub track_margin: f64,
+    /// The rounds of rip-up and re-route of whole nets the router gives a try that leaves
+    /// connections (`rip_rounds` in `netsmith.toml`, `--rip-rounds`; issue #1088): the router's
+    /// own, [`netsmith_router::RIP_ROUNDS`], by default, and 0 runs none.
+    pub rip_rounds: usize,
     /// Write the board's 3D scene as `<board>.glb` into the board's package folder, beside the
     /// pin map and `fab-notes.txt` and outside the Gerber zip: the scene of the board as routed,
     /// as `dev board3d --glb` writes it (docs/BOARD3D.md). The default is `true`; the command line
@@ -364,6 +368,7 @@ impl Default for FabOptions {
             pins: None,
             pin_map_source: None,
             track_margin: DEFAULT_TRACK_MARGIN,
+            rip_rounds: netsmith_router::RIP_ROUNDS,
             glb: true,
             save_placed: false,
             step: true,
@@ -381,6 +386,14 @@ impl Default for FabOptions {
 /// The line of `fab-notes.txt` of a run with `--offline`: the stock and price of the parts were
 /// not checked (the bill of materials of the package names neither).
 pub const OFFLINE_NOTE: &str = "offline: stock and price of the parts were not checked (no supplier was asked); look each part up at the supplier before you order";
+
+/// The rounds of rip-up the router gives a try that leaves connections, as the project says
+/// (`rip_rounds` in `netsmith.toml`), or the router's own (issue #1088).
+pub fn rip_rounds(project: Option<&crate::project::Project>) -> usize {
+    project
+        .and_then(|p| p.manifest.rip_rounds)
+        .unwrap_or(netsmith_router::RIP_ROUNDS)
+}
 
 /// How many times the process's least track a signal is drawn at where there is room, when the
 /// project does not say (`track_margin` in `netsmith.toml`, issue #431): JLCPCB's page says of its
@@ -1242,7 +1255,10 @@ fn fab_board(
                         &from.before,
                         &from.rip,
                         options.route_timeout,
-                        RouteOptions::default(),
+                        RouteOptions {
+                            rip_rounds: options.rip_rounds,
+                            ..RouteOptions::default()
+                        },
                         options.track_margin,
                         say,
                     );
@@ -1262,7 +1278,10 @@ fn fab_board(
                 None => route_with_margin(
                     &mut board,
                     options.route_timeout,
-                    RouteOptions::default(),
+                    RouteOptions {
+                        rip_rounds: options.rip_rounds,
+                        ..RouteOptions::default()
+                    },
                     options.track_margin,
                     say,
                 ),
@@ -2398,13 +2417,40 @@ pub fn routing_failure(
     }
     if !why.is_empty() {
         text.push_str(&format!(
-            "\nWhy each line is left, by the router's own lines (which can pair the same pads otherwise than above): the stage of the router it last failed in, and the nets whose copper stands in its way (the fewest that a path allowed to cross other nets' copper meets). {ROUTING_REPORT} has the same, and a map of where the board was fought over, in the board's coordinates:\n"
+            "\nWhy each line is left, by the router's own lines (which can pair the same pads otherwise than above): the stage of the router it last failed in, and the nets whose copper stands in its way (the fewest that a path allowed to cross other nets' copper meets), or, where no such path exists, the pads, vias and edge that wall an end of it in. {ROUTING_REPORT} has the same, and a map of where the board was fought over, in the board's coordinates:\n"
         ));
         for w in why {
-            let nets = if w.blockers.is_empty() {
-                "no net's copper (the pads, holes or edge alone, or no time to look)".to_string()
+            let mut parts = Vec::new();
+            if !w.blockers.is_empty() {
+                parts.push(format!("net(s) {}", w.blockers.join(", ")));
+            }
+            if !w.pads.is_empty() {
+                let pads: Vec<String> = w
+                    .pads
+                    .iter()
+                    .map(|p| format!("{}.{}", p.refdes, p.number))
+                    .collect();
+                parts.push(format!("pad(s) {}", pads.join(", ")));
+            }
+            if !w.vias.is_empty() {
+                let vias: Vec<String> = w
+                    .vias
+                    .iter()
+                    .map(|v| {
+                        let (x, y) = at(v.at);
+                        format!("{} at ({x:.2}, {y:.2})", v.net)
+                    })
+                    .collect();
+                parts.push(format!("via(s) of {}", vias.join(", ")));
+            }
+            if w.edge {
+                parts.push("the board edge".to_string());
+            }
+            let nets = if parts.is_empty() {
+                "no net's copper, pad or edge found (no time to look, or the room a via needs)"
+                    .to_string()
             } else {
-                format!("net(s) {}", w.blockers.join(", "))
+                parts.join("; ")
             };
             text.push_str(&format!("  {}: {}; in its way: {nets}\n", w.line, w.stage));
         }
@@ -2770,12 +2816,15 @@ fn with_margin<T>(
     run: impl Fn(&mut Board, RouteOptions) -> T,
     left: impl Fn(&T) -> usize,
 ) -> T {
+    // The trial at the margin is one try with no rounds of rip-up (issue #1088): a board it
+    // leaves goes to the least track as before, where the rounds run.
     let route = |board: &mut Board, time: Option<Duration>, full: bool| {
         run(
             board,
             RouteOptions {
                 retry_orders: full,
                 time_limit: time,
+                rip_rounds: if full { base.rip_rounds } else { 0 },
                 ..base
             },
         )
@@ -3401,11 +3450,37 @@ mod tests {
                 line: left.lines[0].clone(),
                 stage: netsmith_router::Stage::Chain,
                 blockers: vec!["GND".into(), "SIG_C".into()],
+                pads: vec![],
+                vias: vec![],
+                edge: false,
             },
             netsmith_router::LineReport {
                 line: left.lines[1].clone(),
                 stage: netsmith_router::Stage::OutOfTime,
                 blockers: vec![],
+                pads: vec![],
+                vias: vec![],
+                edge: false,
+            },
+            netsmith_router::LineReport {
+                line: left.lines[1].clone(),
+                stage: netsmith_router::Stage::RipRounds,
+                blockers: vec!["SIG_D".into()],
+                pads: vec![
+                    netsmith_pcb::PadRef {
+                        refdes: "U1".into(),
+                        number: "C2".into(),
+                    },
+                    netsmith_pcb::PadRef {
+                        refdes: "U1".into(),
+                        number: "D1".into(),
+                    },
+                ],
+                vias: vec![netsmith_router::WallVia {
+                    net: "GND".into(),
+                    at: netsmith_pcb::Pt::new(16.5, 26.0),
+                }],
+                edge: true,
             },
         ];
         let text = routing_failure("Demo", netsmith_pcb::Pt::new(10.0, 20.0), &left, 4, &why);
@@ -3424,6 +3499,14 @@ mod tests {
         );
         assert!(
             text.contains("  net SIG_B: U1.C1 to J1.2: not finished, the time ran out; in its way: no net's copper"),
+            "{text}"
+        );
+        // A line walled in (issue #1088): the pads, the vias, in the outline's coordinates, and
+        // the edge.
+        assert!(
+            text.contains(
+                "  net SIG_B: U1.C1 to J1.2: failed in the rounds that rip up whole nets; in its way: net(s) SIG_D; pad(s) U1.C2, U1.D1; via(s) of GND at (6.50, 6.00); the board edge\n"
+            ),
             "{text}"
         );
         assert!(text.contains("routing-report.json"), "{text}");

@@ -219,6 +219,7 @@ pub fn key(inputs: &Inputs) -> Option<String> {
                     options.strict_heights,
                     options.pin_map_source.as_deref(),
                     options.track_margin.to_bits(),
+                    options.rip_rounds,
                 ),
                 (
                     options.glb,
