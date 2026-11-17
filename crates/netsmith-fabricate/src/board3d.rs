@@ -75,6 +75,12 @@ pub struct Report {
     pub too_tall: Vec<TooTallReport>,
     pub overlaps: Vec<OverlapReport>,
     pub unknown_heights: Vec<UnknownReport>,
+    /// The one warning `height_unknown` (issue #1117): every part of unknown height under a
+    /// height limit or under another part's body, with the limit that would apply, so that a
+    /// pass of the height check does not read as "fine". Left out when no part is in that case
+    /// (added without a new schema); `board fab` says the same line and still passes.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub height_unknown: Option<HeightUnknownReport>,
     pub standard_passes: Vec<StandardPassReport>,
     pub coverage: CoverageReport,
     pub tallest: TallestReport,
@@ -434,6 +440,36 @@ pub struct OverlapReport {
     pub face: &'static str,
     pub z_bottom: f64,
     pub z_top: f64,
+    /// The part that looks like a module on pin strips and states no `.standoff` (issue
+    /// #1117), with the statement that is missing; left out when neither part looks like one.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub missing_standoff: Option<MissingStandoffReport>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct MissingStandoffReport {
+    pub path: String,
+    pub refdes: String,
+    /// What to state in the physical file, as the finding says it.
+    pub statement: String,
+}
+
+/// The warning `height_unknown`: the line `fab` says, and the parts it is about.
+#[derive(Debug, Serialize)]
+pub struct HeightUnknownReport {
+    pub message: String,
+    pub parts: Vec<HeightUnknownPart>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct HeightUnknownPart {
+    pub path: String,
+    pub refdes: String,
+    pub face: &'static str,
+    /// What it stands under, the limits first: `{kind: "limit", name, limit}` for a height limit
+    /// (a keepout's, or `standoff of J1`), `{kind: "body", path, refdes, height}` for the body
+    /// of a part that states no `.standoff`.
+    pub under: Vec<serde_json::Value>,
 }
 
 #[derive(Debug, Serialize)]
@@ -784,9 +820,15 @@ pub fn report(
                 face: face(o.side),
                 z_bottom: o.z_bottom,
                 z_top: o.z_top,
+                missing_standoff: o.missing_standoff.as_ref().map(|m| MissingStandoffReport {
+                    path: m.path.clone(),
+                    refdes: m.refdes.clone(),
+                    statement: m.statement(),
+                }),
             })
             .collect(),
         unknown_heights,
+        height_unknown: height_unknown_report(&findings.unknown),
         standard_passes,
         coverage: CoverageReport {
             known: coverage.known,
@@ -816,6 +858,35 @@ impl Report {
         self.placement_refused = placing.refused;
         self
     }
+}
+
+/// The warning `height_unknown` of the scene's findings, as the report has it.
+fn height_unknown_report(unknown: &[netsmith_pcb::HeightUnknown]) -> Option<HeightUnknownReport> {
+    use netsmith_pcb::UnknownUnder;
+    let message = netsmith_pcb::heights_unknown_warning(unknown)?;
+    let parts = unknown
+        .iter()
+        .map(|u| HeightUnknownPart {
+            path: u.path.clone(),
+            refdes: u.refdes.clone(),
+            face: face(u.side),
+            under: u
+                .under
+                .iter()
+                .map(|x| match x {
+                    UnknownUnder::Limit { keepout, limit } => {
+                        serde_json::json!({"kind": "limit", "name": keepout, "limit": limit})
+                    }
+                    UnknownUnder::Body {
+                        refdes,
+                        path,
+                        height,
+                    } => serde_json::json!({"kind": "body", "path": path, "refdes": refdes, "height": height}),
+                })
+                .collect(),
+        })
+        .collect();
+    Some(HeightUnknownReport { message, parts })
 }
 
 /// Each case model of the design, read or not.
@@ -1068,9 +1139,19 @@ impl Report {
         }
         for o in &self.overlaps {
             text += &format!(
-                "overlap: {} and {} share space on the {} face, z {:.2} to {:.2} mm\n",
-                o.a_refdes, o.b_refdes, o.face, o.z_bottom, o.z_top
+                "overlap: {} and {} share space on the {} face, z {:.2} to {:.2} mm{}\n",
+                o.a_refdes,
+                o.b_refdes,
+                o.face,
+                o.z_bottom,
+                o.z_top,
+                o.missing_standoff
+                    .as_ref()
+                    .map_or(String::new(), |m| format!("; {}", m.statement))
             );
+        }
+        if let Some(w) = &self.height_unknown {
+            text += &format!("warning: {}\n", w.message);
         }
         for p in &self.standard_passes {
             text += &format!(

@@ -281,6 +281,89 @@ impl std::fmt::Display for HeightUnchecked {
     }
 }
 
+/// What a part of unknown height stands under, for [`HeightUnknown`] (issue #1117).
+#[derive(Debug, Clone, PartialEq)]
+pub enum UnknownUnder {
+    /// A height limit over it on its face: a keepout's `.max_height` or the standoff of a body
+    /// that states one (`standoff of J1`).
+    Limit { keepout: String, limit: f64 },
+    /// The body of another part of known height on its face that states no `.standoff`: the
+    /// body is taken to stand on the board, so no limit is over the part, though a part under a
+    /// module's body is under a limit that a standoff of the module would state.
+    Body {
+        refdes: String,
+        path: String,
+        /// The body's height, in mm.
+        height: f64,
+    },
+}
+
+/// A part of unknown height that stands under a height limit or under another part's body, so
+/// that the height check cannot say whether it fits (issue #1117). Not a pass: see
+/// [`Board::heights_unknown`] and [`heights_unknown_warning`].
+#[derive(Debug, Clone, PartialEq)]
+pub struct HeightUnknown {
+    pub refdes: String,
+    pub path: String,
+    pub side: Side,
+    /// Each limit or body it stands under, the limits first, in a fixed order.
+    pub under: Vec<UnknownUnder>,
+}
+
+impl std::fmt::Display for HeightUnknown {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{} on the {} face",
+            member(&self.path, &self.refdes),
+            self.side.word()
+        )?;
+        let mut sep = " under ";
+        for u in &self.under {
+            f.write_str(sep)?;
+            sep = " and ";
+            match u {
+                UnknownUnder::Limit { keepout, limit } => write!(
+                    f,
+                    "{}, which limits it to {limit:.2} mm",
+                    limit_word(keepout)
+                )?,
+                UnknownUnder::Body {
+                    refdes,
+                    path,
+                    height,
+                } => write!(
+                    f,
+                    "the body of {} ({height:.2} mm tall), which states no `.standoff` (the limit that a standoff would put over it)",
+                    member(path, refdes)
+                )?,
+            }
+        }
+        Ok(())
+    }
+}
+
+/// The one warning `height_unknown` of `fab` and `dev board3d` (issue #1117): every part of
+/// unknown height that stands under a height limit or under another part's body, with the limit
+/// that would apply, so that a pass of the height check does not read as "fine". `None` when no
+/// part is in that case. It is a warning always: `fab` still passes, whatever the constraints
+/// are (the per-part `height_unchecked` is the error of strict constraints).
+pub fn heights_unknown_warning(parts: &[HeightUnknown]) -> Option<String> {
+    if parts.is_empty() {
+        return None;
+    }
+    let list: Vec<String> = parts.iter().map(HeightUnknown::to_string).collect();
+    Some(format!(
+        "height_unknown: the height check cannot say whether {} part{} of unknown height fit{}, so a pass does not cover {}: {}; state each part's `.height` (for example `.{}.height &= 8mm`, with the real number from its datasheet)",
+        parts.len(),
+        if parts.len() == 1 { "" } else { "s" },
+        if parts.len() == 1 { "s" } else { "" },
+        if parts.len() == 1 { "it" } else { "them" },
+        list.join("; "),
+        parts[0].path
+    ))
+}
+
 /// A part under a height limit that fits it only by its package standard's height (ADR
 /// 0106): a pass, but on the standard's maximum and not on a figure of the part.
 #[derive(Debug, Clone, PartialEq)]

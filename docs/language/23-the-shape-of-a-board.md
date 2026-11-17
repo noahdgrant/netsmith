@@ -1031,6 +1031,14 @@ error: `r1` cannot be chosen from the `resistor` catalog: catalogs/resistor.csv:
   |     ^^^^^^^^^^^^^
 ```
 
+**The parts the check cannot check (`height_unknown`, issue #1117).** A pass of the height check says nothing about a part whose height is unknown, so `board fab` and `dev board3d` say which parts it left out: one warning, `height_unknown`, that lists every part of unknown height (no `.height`, no catalog row's height and no package standard's) that stands under a height limit (a keepout's `.max_height`, or the standoff of a body) or under the body of another part of known height on its face, each with the limit that would apply:
+
+```text
+warning: height_unknown: the height check cannot say whether 2 parts of unknown height fit, so a pass does not cover them: `u1` (U1) on the top face under the keepout `lid`, which limits it to 3.00 mm; `u2` (U2) on the top face under the body of `module` (J1) (8.00 mm tall), which states no `.standoff` (the limit that a standoff would put over it); state each part's `.height` (for example `.u1.height &= 8mm`, with the real number from its datasheet)
+```
+
+It is a warning always: `fab` still passes, with strict constraints too (the per-part `height_unchecked` of a part under a limit is the error that strict constraints make). `fab-notes.txt` has the line, `dev board3d --format json` has it as `height_unknown` (with the parts and what each stands under), and the `.glb` as a finding of that code. State each part's `.height` to leave the warning. The second part of the example is a module that stands on pin strips with a gap under its body and states no `.standoff` (the next section): its body is taken to stand on the board, so no limit is over `u2`; stating the `.standoff` of the module makes it the limit `standoff of J1`, and a part that is taller is `too tall`. Where such a module overlaps a part whose height is known, the overlap that `dev board3d` reports names the statement that is missing, `.module.standoff` and `.module.pin_protrusion` (the body of the part with plated holes that is the larger of the two, standing on the board).
+
 ### A body that stands off the board
 
 A plug-in module stands on pins, and its body has a gap under it. A part has the built-in member `.standoff` (a length, one value, zero or more): how far the underside of its body is above the face of the board it is on, so that the body stands from the standoff up to its `.height`. The board's physical file states it as it states `.height`, and a path may reach a part inside a module. A part that states none stands on the board, a standoff of zero, as every part did before. A standoff at or above the part's own `.height` is an error: `.height` is the top of the body, measured from the face, and the body would have no thickness.

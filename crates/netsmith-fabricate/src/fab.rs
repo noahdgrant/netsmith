@@ -1159,6 +1159,12 @@ fn fab_board(
         for u in &unchecked {
             say(format!("{}: warning: {u}", built.label()));
         }
+        // The parts the height check cannot check, under a limit or under another part's body:
+        // one warning, so that a pass does not read as "fine" (issue #1117). Always a warning.
+        let unknown = netsmith_pcb::heights_unknown_warning(&board.heights_unknown());
+        if let Some(w) = &unknown {
+            say(format!("{}: warning: {w}", built.label()));
+        }
         // A pass that rests on a package standard's height is said to be one (ADR 0106).
         for pass in board.standard_passes() {
             say(format!("{}: note: {pass}", built.label()));
@@ -1518,6 +1524,7 @@ fn fab_board(
         // is a warning (owner decision, 2026-11-03, ADR 0045 section 10).
         extras.extend(board.hangs().into_iter().map(|h| format!("warning: {h}")));
         extras.extend(unchecked.iter().map(|u| format!("warning: {u}")));
+        extras.extend(unknown.iter().map(|w| format!("warning: {w}")));
         extras.extend(netsmith_pipeline::heights::notes(
             &built.design,
             &built.catalog_heights,

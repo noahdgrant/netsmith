@@ -143,6 +143,71 @@ impl Board {
             .collect()
     }
 
+    /// The parts of unknown height that stand under a height limit or under another part's body,
+    /// each with what it stands under (issue #1117), so that a pass of the height check does not
+    /// read as "fine" where it could not check them. A part counts as unknown when it states no
+    /// height, its catalog row gives none and its footprint has no _Standard height_ (ADR 0106);
+    /// the limits are [`Board::heights_unchecked`]'s (a keepout's `.max_height`, and the standoff
+    /// of a body that states one). The bodies are those of a part of known height above zero on
+    /// the same face that states no `.standoff`, whose body box (a turned part's bounding box)
+    /// shares area with the part's: the body is taken to stand on the board, so no limit is over
+    /// the part and the overlap cannot be measured, and that is where a module on pin strips
+    /// with a gap under it, whose standoff the design has not stated, leaves the parts under it.
+    /// A part is listed once, by path.
+    pub fn heights_unknown(&self) -> Vec<HeightUnknown> {
+        let mut found: Vec<HeightUnknown> = Vec::new();
+        for u in self.heights_unchecked() {
+            let i = unknown_entry(&mut found, &u.refdes, &u.path, u.side);
+            found[i].under.push(UnknownUnder::Limit {
+                keepout: u.keepout,
+                limit: u.limit,
+            });
+        }
+        for a in self.parts.iter().filter(|a| {
+            a.height.is_none()
+                && a.standard_height().is_none()
+                && !netsmith_core::is_artwork(&a.kind)
+        }) {
+            let body = a.body();
+            for q in self.parts.iter().filter(|q| {
+                q.path != a.path
+                    && q.side == a.side
+                    && q.standoff <= 0.0
+                    && !netsmith_core::is_artwork(&q.kind)
+            }) {
+                let height = q.height.or(q.standard_height().map(|s| s.max));
+                if let Some(height) = height.filter(|h| *h > HEIGHT_TOLERANCE)
+                    && body.overlaps(&q.body())
+                {
+                    let i = unknown_entry(&mut found, &a.refdes, &a.path, a.side);
+                    found[i].under.push(UnknownUnder::Body {
+                        refdes: q.refdes.clone(),
+                        path: q.path.clone(),
+                        height,
+                    });
+                }
+            }
+        }
+        for h in &mut found {
+            // Limits first, then bodies, each in a fixed order.
+            h.under.sort_by(|x, y| match (x, y) {
+                (
+                    UnknownUnder::Limit { keepout: a, .. },
+                    UnknownUnder::Limit { keepout: b, .. },
+                ) => a.cmp(b),
+                (UnknownUnder::Limit { .. }, UnknownUnder::Body { .. }) => std::cmp::Ordering::Less,
+                (UnknownUnder::Body { .. }, UnknownUnder::Limit { .. }) => {
+                    std::cmp::Ordering::Greater
+                }
+                (UnknownUnder::Body { path: a, .. }, UnknownUnder::Body { path: b, .. }) => {
+                    a.cmp(b)
+                }
+            });
+        }
+        found.sort_by(|a, b| a.path.cmp(&b.path));
+        found
+    }
+
     /// The parts under a height limit that state no height and fit it by their package
     /// standard's maximum (ADR 0106). Each is a pass to be reported as one, not a silent pass.
     pub fn standard_passes(&self) -> Vec<StandardPass> {
@@ -202,4 +267,18 @@ impl Board {
         }
         found
     }
+}
+
+/// The index of the entry of `path` in `found`, added if it is not there.
+fn unknown_entry(found: &mut Vec<HeightUnknown>, refdes: &str, path: &str, side: Side) -> usize {
+    if let Some(i) = found.iter().position(|h| h.path == path) {
+        return i;
+    }
+    found.push(HeightUnknown {
+        refdes: refdes.to_string(),
+        path: path.to_string(),
+        side,
+        under: Vec::new(),
+    });
+    found.len() - 1
 }

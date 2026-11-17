@@ -28,7 +28,8 @@
 //!     stackup from the top face down, as `dev board3d --format json` has it in `board.layers` (`kind` is
 //!     `mask`, `copper`, `core` or `prepreg`), for a viewer that draws the stackup (a section,
 //!     the layers pulled apart); added in schema 1. A finding's `code` is `too_tall` (a part
-//!     over a height limit; `limit` names it), `height_unchecked` (a part of unknown height
+//!     over a height limit; `limit` names it), `height_unknown` (one warning for every part of unknown height under a limit or under another
+//!     part's body, with the limit that would apply; `parts` lists them), `height_unchecked` (a part of unknown height
 //!     under one) or `body_overlap` (two bodies that fill the same space); `face` says on which
 //!     face. A case model's fit (ADR 0109) adds `case_collision`, `case_clearance`,
 //!     `case_reach`, `case_boss` and `case_unchecked`, each with `severity` (`error` or
@@ -413,12 +414,22 @@ fn findings(scene: &Scene) -> Vec<Value> {
             "face": face(u.side),
         }));
     }
+    // One warning for every part of unknown height under a limit or another part's body, with
+    // the limit that would apply (issue #1117).
+    if let Some(message) = netsmith_pcb::heights_unknown_warning(&f.unknown) {
+        out.push(json!({
+            "code": "height_unknown",
+            "message": message,
+            "parts": f.unknown.iter().map(|u| u.path.clone()).collect::<Vec<_>>(),
+        }));
+    }
     for o in &f.overlaps {
         out.push(json!({
             "code": "body_overlap",
             "message": format!(
-                "{} and {} fill the same space on the {} face, z {:.2} to {:.2} mm",
-                o.a_refdes, o.b_refdes, face(o.side), o.z_bottom, o.z_top
+                "{} and {} fill the same space on the {} face, z {:.2} to {:.2} mm{}",
+                o.a_refdes, o.b_refdes, face(o.side), o.z_bottom, o.z_top,
+                o.missing_standoff.as_ref().map_or(String::new(), |m| format!("; {}", m.statement()))
             ),
             "parts": [o.a, o.b],
             "face": face(o.side),

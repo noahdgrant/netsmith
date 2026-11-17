@@ -27,8 +27,10 @@ pub struct Args {
     ///
     /// Each part's body box, its Z range and where its height came from (`stated`, `catalog` or
     /// `unknown`, never a guessed height), each height limit with the tallest part under it and the
-    /// margin, the parts too tall, bodies that overlap in 3D, the parts of unknown height with the
-    /// reason, and the height coverage; and the board's case models with what their fit check
+    /// margin, the parts too tall, bodies that overlap in 3D (with the `.standoff` a module on pin
+    /// strips is missing), the parts of unknown height with the reason, the one warning
+    /// `height_unknown` for the parts of unknown height under a limit or another part's body (with
+    /// the limit that would apply; also said on stderr, and `fab` still passes), and the height coverage; and the board's case models with what their fit check
     /// found (`case_collision`, `case_clearance`, `case_reach`, `case_boss`, `case_unchecked`,
     /// ADR 0109). With `--glb` as well it does both. `text` prints a short summary.
     #[arg(long, value_enum, default_value = "text")]
@@ -126,6 +128,10 @@ fn run_board3d(
     };
     let label = &report.board.name;
     for w in &scene.warnings {
+        eprintln!("warning: {label}: {w}");
+    }
+    // The one warning for the parts the height check cannot check (issue #1117).
+    if let Some(w) = netsmith_pcb::heights_unknown_warning(&scene.findings.unknown) {
         eprintln!("warning: {label}: {w}");
     }
     let files = [
