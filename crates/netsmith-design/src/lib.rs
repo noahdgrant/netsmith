@@ -1528,7 +1528,7 @@ fn design_model(name: &str, model: &Model, solution: &Solution) -> Result<Design
     let least_track = process.as_ref().map_or(0.0, |p| p.min_track);
     let (logos, logo_sites) = features::logos(model, least_text, least_track, &mut errors);
     features.logos = logos;
-    let part_layout = features::layout(model, layers);
+    let part_layout = features::layout(model, &solution.picks, layers);
     features.layout = part_layout.guidelines;
     features.keepouts.extend(part_layout.keepouts);
     let (mut constraint_sites, mut offset_sites) = (constraint_sites, offset_sites);

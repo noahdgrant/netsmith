@@ -188,3 +188,86 @@ fn the_other_statements_reach_the_design_as_what_uses_them() {
         .map(|(_, w)| *w);
     assert!(width.is_some_and(|w| w >= 0.8 - 1e-9), "{:?}", features.net_widths);
 }
+
+/// A board that picks a row of the `ldo` catalog, which has one row.
+const LDO_BOARD: &str = r#"import std::parts::regulator::LinearRegulator
+import std::sources::Rail
+
+board Supply {
+    .input: Rail {
+        .voltage &= 5V +/- 5%
+        .pos.net &= "VIN"
+    }
+    .reg: LinearRegulator {
+        .vout.voltage &= 3.3V +/- 5%
+        .vout.pos.net &= "V3V3"
+    }
+    .input ~ .reg.vin
+    .load: Rail { .current &= 0mA..50mA }
+    .reg.vout ~ .load
+}
+"#;
+
+/// A `std/layouts.nsm` with a block for the row the board picks and one for a row it does not.
+const LAYOUTS: &str = r#"
+layout "XC6206P332MR-G" for LinearRegulator {
+    source "XC invented, 9 Layout, p.9"
+    /// "Keep the input capacitor within 2 mm of VIN."
+    near input_cap bridging .vin.pos .vin.neg to .vin.pos within 2mm
+    vias ground .vin.neg 2
+}
+layout "OTHER-ROW" for LinearRegulator {
+    source "OTHER invented, 3 Layout, p.4"
+    near input_cap bridging .vin.pos .vin.neg to .vin.pos within 9mm
+    edge out_edge .vout.pos within 1mm
+}
+"#;
+
+fn ldo_layout(layouts: &str) -> Vec<netsmith_core::LayoutGuideline> {
+    let mut loader = Loader::std();
+    loader.insert("std::layouts", "std/layouts.nsm", layouts);
+    outcome_with("ldo.nsm", LDO_BOARD, &loader, &Catalogs::jlcpcb(), None)
+        .unwrap_or_else(|e| panic!("{e:?}"))
+        .boards
+        .remove(0)
+        .design
+        .features
+        .layout
+}
+
+#[test]
+fn the_block_of_the_picked_row_reaches_the_design() {
+    let layout = ldo_layout(LAYOUTS);
+    let seen: Vec<(&str, &str, &str)> = layout
+        .iter()
+        .map(|l| (l.part.as_str(), l.name.as_str(), l.source.as_str()))
+        .collect();
+    assert_eq!(
+        seen,
+        [
+            ("reg", "ground", "XC invented, 9 Layout, p.9"),
+            ("reg", "input_cap", "XC invented, 9 Layout, p.9"),
+        ],
+        "the guidelines of the row the solver picked, and none of the other row's"
+    );
+    assert_eq!(
+        layout[1].rule,
+        LayoutRule::Near {
+            select: NearSelect::Bridging {
+                a: "vin.pos".into(),
+                b: "vin.neg".into()
+            },
+            to: "vin.pos".into(),
+            within: Some(2.0),
+        }
+    );
+}
+
+#[test]
+fn a_row_with_no_block_adds_no_guideline() {
+    assert!(ldo_layout("//! no row has guidelines\n").is_empty());
+    assert!(
+        ldo_layout("layout \"OTHER-ROW\" for LinearRegulator {\n    source \"x, p.1\"\n    vias g .vin.neg 2\n}\n")
+            .is_empty()
+    );
+}

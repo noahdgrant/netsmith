@@ -249,6 +249,7 @@ impl Parser {
             imports: Vec::new(),
             definitions: Vec::new(),
             physicals: Vec::new(),
+            layouts: Vec::new(),
         };
         loop {
             self.skip_separators();
@@ -282,6 +283,19 @@ impl Parser {
                 {
                     file.physicals.push(self.physical(docs)?)
                 }
+                Tok::Ident(k) if k == "layout" && matches!(self.peek_second(), Tok::Str(_)) => {
+                    let start = t.span.start;
+                    if let Some(at) = docs.first {
+                        return Err(ParseError::new(
+                            at,
+                            "a doc comment belongs above a guideline statement, not above a `layout` block",
+                        ));
+                    }
+                    match self.layout(start, true)? {
+                        Item::Layout(block) => file.layouts.push(block),
+                        _ => unreachable!("`layout` reads a layout block"),
+                    }
+                }
                 // Docs only get the blame when the next thing really is not a definition.
                 Tok::Eof | Tok::Ident(_) if !docs.is_empty() && is_import_or_end(&t.tok) => {
                     return Err(ParseError::new(
@@ -292,7 +306,7 @@ impl Parser {
                 _ => {
                     return Err(unexpected(
                         &t,
-                        "`import`, `board`, `system`, `panel`, `part`, `interface`, `module`, `enum`, `generic`, `enclosure` or `physical for`",
+                        "`import`, `board`, `system`, `panel`, `part`, `interface`, `module`, `enum`, `generic`, `enclosure`, `physical for` or `layout \"MPN\" for`",
                     ));
                 }
             }
@@ -606,7 +620,7 @@ impl Parser {
                     }));
                 }
                 "layout" if matches!(self.peek_second(), Tok::LBrace | Tok::Str(_)) => {
-                    return only_decls(self.layout(start)?);
+                    return only_decls(self.layout(start, false)?);
                 }
                 "defaults" if matches!(self.peek_second(), Tok::LBrace) => {
                     self.bump();
@@ -1497,10 +1511,12 @@ impl Parser {
     }
 
     /// `layout ["PACKAGE"] { source "..." STATEMENT ... }` (ADR 0030, issues #829 and #994). A
-    /// guideline statement may have `///` lines above it: the datasheet's sentence.
-    fn layout(&mut self, start: usize) -> Res<Item> {
+    /// guideline statement may have `///` lines above it: the datasheet's sentence. At the top
+    /// of a file (`top`) it is `layout "MPN" for Generic { ... }`, the guidelines of one
+    /// catalog row.
+    fn layout(&mut self, start: usize, top: bool) -> Res<Item> {
         self.bump();
-        let package = match self.peek().clone() {
+        let string = match self.peek().clone() {
             Token {
                 tok: Tok::Str(text),
                 span,
@@ -1509,6 +1525,21 @@ impl Parser {
                 Some((text, span))
             }
             _ => None,
+        };
+        let (package, keyed) = if top {
+            let mpn = string.expect("a top-level layout starts with a string");
+            if !self.at_word("for") {
+                let t = self.peek().clone();
+                return Err(unexpected(
+                    &t,
+                    "`for` and the generic whose catalog has the row, after the manufacturer's part number of `layout \"MPN\"`",
+                ));
+            }
+            self.bump();
+            let generic = self.ident("the name of the generic whose catalog has the row")?;
+            (None, Some(Keyed { mpn, generic }))
+        } else {
+            (string, None)
         };
         if !self.at(&Tok::LBrace) {
             let t = self.peek().clone();
@@ -1577,6 +1608,7 @@ impl Parser {
         }
         Ok(Item::Layout(Layout {
             package,
+            keyed,
             statements,
             span: self.span_from(start),
         }))

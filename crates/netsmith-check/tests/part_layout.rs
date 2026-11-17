@@ -340,3 +340,102 @@ fn a_block_for_a_package_the_part_has_no_table_for_is_refused() {
     let m = message(&packaged("SOT-89"), "no pin table for the package");
     assert!(m.contains("\"SOT-89\"") && m.contains("\"SOT-23\", \"SOT-223\""), "{m}");
 }
+
+#[test]
+fn a_block_for_a_catalog_row_belongs_in_the_library_layouts_file() {
+    let src = "\
+import std::parts::regulator::LinearRegulator
+
+layout \"XC6206P332MR-G\" for LinearRegulator {
+    source \"XC6206 series, 9 Layout, p.9\"
+    vias ground .vin.neg 2
+}
+
+board B {
+    .reg: LinearRegulator
+}
+";
+    let m = message(src, "`layout \"MPN\" for ...` belongs in the standard library's `std/layouts.nsm`");
+    assert!(m.contains("a part of a project states its own in a `layout { }` block"), "{m}");
+}
+
+#[test]
+fn the_layouts_file_gives_a_generic_the_blocks_of_its_rows() {
+    let layouts = "\
+layout \"XC6206P332MR-G\" for LinearRegulator {
+    source \"XC invented, 9 Layout, p.9\"
+    near input_cap bridging .vin.pos .vin.neg to .vin.pos within 2mm
+    vias ground .vin.neg 2
+}
+layout \"OTHER-ROW\" for LinearRegulator {
+    source \"OTHER invented, 3 Layout, p.4\"
+    near input_cap bridging .vin.pos .vin.neg to .vin.pos
+}
+layout \"NOT-A-REGULATOR\" for Schottky {
+    source \"x\"
+    vias ground .cathode 2
+}
+";
+    let board = "\
+import std::parts::regulator::LinearRegulator
+
+board B {
+    .reg: LinearRegulator
+}
+";
+    let mut loader = Loader::std();
+    loader.insert("std::layouts", "std/layouts.nsm", layouts);
+    let c = check("test.nsm", board, &loader);
+    assert!(c.is_ok(), "{}", c.render());
+    let model = &c.board("B").unwrap().model;
+    let mut seen: Vec<(String, Option<String>, String)> = model
+        .layout
+        .iter()
+        .map(|l| (l.name.clone(), l.mpn.clone(), l.source.clone()))
+        .collect();
+    seen.sort();
+    assert_eq!(
+        seen,
+        [
+            (
+                "ground".to_string(),
+                Some("XC6206P332MR-G".to_string()),
+                "XC invented, 9 Layout, p.9".to_string()
+            ),
+            (
+                "input_cap".to_string(),
+                Some("OTHER-ROW".to_string()),
+                "OTHER invented, 3 Layout, p.4".to_string()
+            ),
+            (
+                "input_cap".to_string(),
+                Some("XC6206P332MR-G".to_string()),
+                "XC invented, 9 Layout, p.9".to_string()
+            ),
+        ],
+        "one name may be used in the blocks of two rows, and a block of another generic is not read"
+    );
+}
+
+#[test]
+fn a_mistake_in_a_row_block_is_reported_at_the_layouts_file() {
+    let layouts = "\
+layout \"XC6206P332MR-G\" for LinearRegulator {
+    source \"XC invented, 9 Layout, p.9\"
+    vias ground .nope 2
+}
+";
+    let board = "\
+import std::parts::regulator::LinearRegulator
+
+board B {
+    .reg: LinearRegulator
+}
+";
+    let mut loader = Loader::std();
+    loader.insert("std::layouts", "std/layouts.nsm", layouts);
+    let c = check("test.nsm", board, &loader);
+    let text = c.render();
+    assert!(text.contains("std/layouts.nsm:3"), "{text}");
+    assert!(text.contains("nope"), "{text}");
+}

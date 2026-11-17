@@ -1636,12 +1636,24 @@ pub(crate) struct PartLayout {
 }
 
 /// The guidelines of the parts' `layout` blocks. A guideline of a `layout "PACKAGE"` block is
-/// kept only for a part whose `.package` is that package.
-pub(crate) fn layout(model: &Model, copper_layers: u32) -> PartLayout {
+/// kept only for a part whose `.package` is that package, and one of a `layout "MPN" for ...`
+/// block only for a part whose solver pick is the row with that manufacturer's number.
+pub(crate) fn layout(
+    model: &Model,
+    picks: &[netsmith_solve::Pick],
+    copper_layers: u32,
+) -> PartLayout {
     let mut found = PartLayout::default();
     for l in &model.layout {
         if let Some(package) = &l.package
             && text(model, l.part, "package").as_deref() != Some(package.as_str())
+        {
+            continue;
+        }
+        if let Some(mpn) = &l.mpn
+            && !picks
+                .iter()
+                .any(|p| p.part == l.part && p.mpn.as_deref() == Some(mpn.as_str()))
         {
             continue;
         }

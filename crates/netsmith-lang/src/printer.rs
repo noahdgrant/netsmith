@@ -10,7 +10,10 @@ impl File {
         let mut out = String::new();
         write_docs(&mut out, &self.inner_docs, "//!", 0);
         let has_body =
-            !(self.imports.is_empty() && self.definitions.is_empty() && self.physicals.is_empty());
+            !(self.imports.is_empty()
+                && self.definitions.is_empty()
+                && self.physicals.is_empty()
+                && self.layouts.is_empty());
         if !self.inner_docs.is_empty() && has_body {
             out.push('\n');
         }
@@ -51,6 +54,17 @@ impl File {
             write_docs(&mut out, &unit.docs, "///", 0);
             let _ = write!(out, "physical for {} ", unit.board.to_source());
             write_block(&mut out, &unit.inner_docs, &unit.items, 0);
+            out.push('\n');
+        }
+        for (i, block) in self.layouts.iter().enumerate() {
+            if i > 0
+                || !(self.imports.is_empty()
+                    && self.definitions.is_empty()
+                    && self.physicals.is_empty())
+            {
+                out.push('\n');
+            }
+            write_layout(&mut out, block, 0);
             out.push('\n');
         }
         out
@@ -475,28 +489,7 @@ fn write_block(out: &mut String, inner_docs: &[String], items: &[Item], depth: u
                 out.push_str("defaults ");
                 write_block(out, &[], &c.items, depth + 1);
             }
-            Item::Layout(l) => {
-                match &l.package {
-                    Some((package, _)) => {
-                        let _ = writeln!(out, "layout {} {{", quote(package));
-                    }
-                    None => out.push_str("layout {\n"),
-                }
-                let indent = "    ".repeat(depth + 2);
-                for statement in &l.statements {
-                    match statement {
-                        LayoutStatement::Source { text, .. } => {
-                            let _ = writeln!(out, "{indent}source {}", quote(text));
-                        }
-                        LayoutStatement::Guideline(g) => {
-                            write_docs(out, &g.docs, "///", depth + 2);
-                            let _ = writeln!(out, "{indent}{}", g.to_source());
-                        }
-                    }
-                }
-                out.push_str(&"    ".repeat(depth + 1));
-                out.push('}');
-            }
+            Item::Layout(l) => write_layout(out, l, depth + 1),
             Item::Polygon(p) => {
                 out.push_str("polygon");
                 let point = |p: &Point| format!("({}, {})", p.x.to_source(), p.y.to_source());
@@ -663,4 +656,36 @@ impl Guideline {
         }
         out
     }
+}
+
+/// A `layout` block, from its keyword to its closing brace.
+fn write_layout(out: &mut String, l: &Layout, depth: usize) {
+    match (&l.keyed, &l.package) {
+        (Some(k), _) => {
+            let _ = writeln!(
+                out,
+                "layout {} for {} {{",
+                quote(&k.mpn.0),
+                k.generic.to_source()
+            );
+        }
+        (None, Some((package, _))) => {
+            let _ = writeln!(out, "layout {} {{", quote(package));
+        }
+        (None, None) => out.push_str("layout {\n"),
+    }
+    let indent = "    ".repeat(depth + 1);
+    for statement in &l.statements {
+        match statement {
+            LayoutStatement::Source { text, .. } => {
+                let _ = writeln!(out, "{indent}source {}", quote(text));
+            }
+            LayoutStatement::Guideline(g) => {
+                write_docs(out, &g.docs, "///", depth + 1);
+                let _ = writeln!(out, "{indent}{}", g.to_source());
+            }
+        }
+    }
+    out.push_str(&"    ".repeat(depth));
+    out.push('}');
 }

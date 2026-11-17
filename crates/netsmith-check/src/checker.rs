@@ -37,7 +37,13 @@ pub(crate) struct ModuleData {
     /// The module path of the file (`src::rf`, `std::parts::passive`): its name without
     /// `.nsm`, with `::` for `/`. What a provider's id starts with.
     pub key: String,
+    /// The `layout "MPN" for Generic { }` blocks of the file (issue #1032): only the standard
+    /// library's `layouts` file has any.
+    pub layouts: Vec<Rc<netsmith_lang::ast::Layout>>,
 }
+
+/// The module that holds the guidelines of the catalog rows of the standard generics.
+pub(crate) const LAYOUTS_MODULE: &str = "std::layouts";
 
 /// `src/rf.nsm` is the module `src::rf`.
 fn module_key(file_name: &str) -> String {
@@ -462,7 +468,7 @@ impl<'a> Checker<'a> {
         self.pin_input = Some(PinInput { source, file });
     }
 
-    fn load_module(&mut self, path: &[String]) -> Option<usize> {
+    pub(crate) fn load_module(&mut self, path: &[String]) -> Option<usize> {
         let key = path.join("::");
         if let Some(&id) = self.cache.get(&key) {
             return Some(id);
@@ -501,6 +507,7 @@ impl<'a> Checker<'a> {
                     imports: Vec::new(),
                     definitions: Vec::new(),
                     physicals: Vec::new(),
+                    layouts: Vec::new(),
                 }
             }
         };
@@ -516,6 +523,23 @@ impl<'a> Checker<'a> {
                 ),
             );
         }
+        let layouts: Vec<Rc<netsmith_lang::ast::Layout>> = if module_path == LAYOUTS_MODULE {
+            std::mem::take(&mut file.layouts)
+                .into_iter()
+                .map(Rc::new)
+                .collect()
+        } else {
+            for block in &file.layouts {
+                self.report(
+                    source,
+                    block.span,
+                    format!(
+                        "`layout \"MPN\" for ...` belongs in the standard library's `std/layouts.nsm`, which holds the guidelines of the catalog rows of its generics; a part of a project states its own in a `layout {{ }}` block"
+                    ),
+                );
+            }
+            Vec::new()
+        };
         let defs: Vec<Rc<Definition>> = file.definitions.into_iter().map(Rc::new).collect();
 
         self.check_attributes(source, &defs);
@@ -540,6 +564,7 @@ impl<'a> Checker<'a> {
             scope,
             std: name.starts_with("std/"),
             key: module_path,
+            layouts,
         });
         // Cached before the imports run so a cycle cannot recurse forever.
         if let Some(key) = key {
@@ -710,6 +735,13 @@ impl<'a> Checker<'a> {
                 return;
             }
         };
+        for block in &file.layouts {
+            self.report(
+                source,
+                block.span,
+                "a physical file holds `physical for` units and `enclosure` definitions and nothing else; a `layout` block belongs in a part",
+            );
+        }
         // An enclosure is physical intent, and the units of the file may share one (ADR 0132).
         let id = self.modules.len();
         let mut defs = Vec::new();
@@ -745,6 +777,7 @@ impl<'a> Checker<'a> {
             scope,
             std: false,
             key: module_key(name),
+            layouts: Vec::new(),
         });
         for import in &file.imports {
             self.apply_import(id, import);
@@ -1439,6 +1472,11 @@ impl<'a> Checker<'a> {
             let saved = self.enter_def(*gref);
             self.process(&items);
             self.leave_def(saved);
+        }
+        // The guidelines of the catalog rows of a standard generic, for the row the solver
+        // picks (issue #1032).
+        if kind == InstKind::Part && def.kind == DefKind::Generic && self.modules[def_ref.0].std {
+            self.keyed_layouts(id, def);
         }
         self.process(&provider_items);
         if kind == InstKind::Part {

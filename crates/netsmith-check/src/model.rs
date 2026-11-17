@@ -1313,6 +1313,10 @@ pub struct LayoutGuideline {
     /// The package of a `layout "SOT-223" { }` block: the guideline applies only to an
     /// instance in that package. None for every package.
     pub package: Option<String>,
+    /// The manufacturer's part number of a `layout "MPN" for Generic { }` block (issue #1032):
+    /// the guideline applies only to an instance whose solver pick is the row with that
+    /// number. None for a guideline of the part's own block.
+    pub mpn: Option<String>,
     pub rule: GuidelineRule,
 }
 
