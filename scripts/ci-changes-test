@@ -434,6 +434,49 @@ desktop_row true desktop/src/lib.rs std/kicad.toml
 desktop_row true std/kicad.toml desktop/src/lib.rs
 desktop_row true crates/netsmith-editor/src/server.rs examples/led.nsm
 
+# --- kicad_lookup=: the `kicad-lookup` job (the KiCad library lookup on three systems, issue #791) ---
+lookup_of() {
+    printf '%s\n' "$@" | CI_CHANGES_ROOT="$tree" "$script" | sed -n 's/^kicad_lookup=//p'
+}
+lookup_row() {
+    want="$1"
+    shift
+    got="$(lookup_of "$@")"
+    if [ "$got" != "$want" ]; then
+        echo "FAIL: $* -> kicad_lookup=$got, wanted kicad_lookup=$want"
+        failed=1
+    fi
+}
+# The lookup, what it exports, its manifest, its example program and the test that runs it on a real install.
+lookup_row true crates/netsmith-kicad/src/install.rs
+lookup_row true crates/netsmith-kicad/src/lib.rs
+lookup_row true crates/netsmith-kicad/Cargo.toml
+lookup_row true crates/netsmith-kicad/examples/locate.rs
+lookup_row true crates/netsmith-kicad/tests/real_install.rs
+# Not the rest of the crate, the other crates, the boards and data, prose, or the other jobs' own files.
+lookup_row false crates/netsmith-kicad/src/schematic.rs crates/netsmith-kicad/src/mapping.rs
+lookup_row false crates/netsmith-kicad/tests/library_files.rs crates/netsmith-kicad/tests/main.rs
+lookup_row false crates/netsmith-core/src/lib.rs crates/netsmith-testkit/src/lib.rs
+lookup_row false crates/netsmith-pipeline/src/lib.rs crates/netsmith-cli/src/commands/fab.rs
+lookup_row false std/kicad.toml data/jlcpcb/resistor.csv examples/led.nsm
+lookup_row false README.md docs/adr/0081-a-pin-states-its-own-swing.md docs/language/05-values.md
+lookup_row false desktop/src/lib.rs crates/netsmith-editor/src/server.rs
+lookup_row false scripts/editor-verify-js/recipes/pcb.mjs
+lookup_row false
+# What CI does runs it, so does a path nothing knows (the flags add up across paths, whatever the order).
+lookup_row true .github/workflows/ci.yml
+lookup_row true .github/actions/apt-cache/action.yml scripts/ci-apt-cache
+lookup_row true Cargo.toml
+lookup_row true Cargo.lock
+lookup_row true rust-toolchain.toml
+lookup_row true something/nothing/knows.txt
+lookup_row true README.md crates/netsmith-kicad/src/install.rs
+lookup_row true crates/netsmith-kicad/src/install.rs README.md
+lookup_row true crates/netsmith-kicad/src/schematic.rs crates/netsmith-kicad/src/install.rs
+# The lookup's files turn the other jobs on as before (the source runs all of them; the test file `rust` and `kicad`).
+row "1 1 1 1 1 1" crates/netsmith-kicad/src/install.rs
+row "1 1 0 0 0 0" crates/netsmith-kicad/tests/real_install.rs
+
 # --- the real repository: a test file that can skip without KiCad turns `kicad` on ------------
 # Independent of the token list of the script: these are the spellings of the repository's own
 # helpers (netsmith_kicad::install, netsmith_fab::KicadCliExe).

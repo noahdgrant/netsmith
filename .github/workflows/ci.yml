@@ -4,10 +4,10 @@
 # A pull request runs only the jobs its change needs, and `test` and `kicad` run only the tests of
 # the crates it changes and of their dependents (`crates`, below), and `build` and `clippy` compile
 # and lint only those packages (scripts/ci-rdeps, issue #618). The `changes` job lists the paths the pull
-# request changes and scripts/ci-changes turns them into seven flags, `rust`, `kicad`, `recipes`,
-# `no_kicad`, `locks`, `designs` and `desktop` (the rules, and why, are in that script). `fmt` always runs. `clippy` and `test`
+# request changes and scripts/ci-changes turns them into eight flags, `rust`, `kicad`, `recipes`,
+# `no_kicad`, `locks`, `designs`, `desktop` and `kicad_lookup` (the rules, and why, are in that script). `fmt` always runs. `clippy` and `test`
 # need `rust`, `kicad` needs `kicad`, `recipes` needs `recipes`, `no-kicad` needs `no_kicad`, `locks` needs `locks`,
-# `designs` needs `designs`, `desktop` needs `desktop`: a
+# `designs` needs `designs`, `desktop` needs `desktop`, `kicad-lookup` needs `kicad_lookup`: a
 # change to prose only runs `fmt`. A
 # push to main, a change to the workflows or to scripts/ (except the editor's recipes, which run
 # `recipes` and `build` of netsmith-cli only, and its fixtures, which run the tests of netsmith-cli and
@@ -85,7 +85,16 @@
 # its tests start the `build` job's `netsmith` binary (NETSMITH_BIN) and read the address the
 # editor prints. It compiles the shell itself: the `build` job's archive is of the main workspace.
 #
-# The Rust cache (Swatinem/rust-cache, in `build`, `clippy` and `desktop`) is saved by pushes to main only, and a pull request
+# The `kicad-lookup` job (issue #791) is the one job that runs on three systems: it installs KiCad 9 on
+# an Ubuntu, a macOS and a Windows runner and runs the lookup of KiCad's libraries
+# (`netsmith_kicad::install`) against the real folders there: the `locate` example, which fails
+# when a folder is not found, the unit tests of the lookup, and `tests/real_install.rs`, which
+# reads the stock Device symbol library and a stock footprint through the lookup with
+# NETSMITH_REQUIRE_KICAD_LIBRARIES set (a skip is then a failure). It compiles the netsmith-kicad crate
+# alone (and what that needs), so it does not wait for `build`, and it runs only when the lookup, its
+# example or its test changes (`kicad_lookup`, scripts/ci-changes), or what runs everything.
+#
+# The Rust cache (Swatinem/rust-cache, in `build`, `clippy`, `desktop` and `kicad-lookup`) is saved by pushes to main only, and a pull request
 # restores the newest of main's: the pull requests do not fill the repository's cache quota with
 # a copy each. (Measured 2026-11-13: the repository's caches held 10.8 GB against GitHub's 10 GB
 # quota, 75 caches all of main's, a `build` cache about 160 MB and one for `clippy` about as much;
@@ -130,6 +139,7 @@ jobs:
       locks: ${{ steps.flags.outputs.locks }}
       designs: ${{ steps.flags.outputs.designs }}
       desktop: ${{ steps.flags.outputs.desktop }}
+      kicad_lookup: ${{ steps.flags.outputs.kicad_lookup }}
       crates: ${{ steps.flags.outputs.crates }}
     steps:
       - uses: actions/checkout@v4
@@ -149,7 +159,7 @@ jobs:
         # being hidden by `tee` (no outputs would skip every job, and ci-ok accepts a skip).
         shell: bash
         run: |
-          everything() { printf 'rust=true\nkicad=true\nrecipes=true\nno_kicad=true\nlocks=true\ndesigns=true\ndesktop=true\ncrates=\n'; }
+          everything() { printf 'rust=true\nkicad=true\nrecipes=true\nno_kicad=true\nlocks=true\ndesigns=true\ndesktop=true\nkicad_lookup=true\ncrates=\n'; }
           if [ "$GITHUB_EVENT_NAME" != pull_request ]; then
             echo "not a pull request: everything runs"
             everything >> "$GITHUB_OUTPUT"
@@ -707,11 +717,6 @@ jobs:
           path: /tmp/netsmith-verify-all
           retention-days: 7
 
-  # The one check that says whether the run is good: it fails if a job failed or was cancelled,
-  # and passes if each one passed or was left out for want of a reason to run (`changes` says
-  # so). The result of `test`, `kicad` and `recipes` is the worst of their slices: it needs
-  # all of them. A required check named for one of the other jobs would block a pull request
-  # that does not run it.
   # The desktop shell (desktop/): a workspace of its own, with WebKitGTK for its window. Its format,
   # its lints with the window, its build, and its tests (the library's, which need no window, with
   # the real editor of the `build` job's binary).
@@ -761,9 +766,165 @@ jobs:
           NETSMITH_BIN: ${{ github.workspace }}/target/debug/netsmith
         run: cargo test
 
+  # The lookup of KiCad's libraries (netsmith_kicad::install) against a real install of KiCad 9 on
+  # each system (issue #791; the places of the lookup were only checked against invented trees
+  # before). No `build`: it compiles the netsmith-kicad crate and its few dependencies by itself,
+  # with the Rust cache of main (one per system). Nothing the lookup reads is set (no
+  # NETSMITH_KICAD_* variable, no KICAD_CLI), so the lookup has to find the folders itself.
+  #   ubuntu   KiCad 9 from the package cache (.github/actions/apt-cache, as the `kicad` job).
+  #   macos    the official universal disk image of the release, from the GitHub mirror of KiCad's
+  #            source (the Homebrew cask is KiCad 10 now, and has no version to ask for), copied to
+  #            /Applications/KiCad as a person drags it there.
+  #   windows  the official installer of the release, silent (`/S`, NSIS), into its default folder
+  #            under `%ProgramFiles%` (Chocolatey's package is that installer too).
+  # The downloads are pinned by their SHA-256; to move to another 9.0 release, change the three
+  # values below together (version, and the checksum of each file: `curl -sL <url> | sha256sum`).
+  kicad-lookup:
+    needs: changes
+    if: needs.changes.outputs.kicad_lookup == 'true'
+    name: kicad-lookup (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    defaults:
+      run:
+        shell: bash
+    env:
+      KICAD_VERSION: "9.0.8"
+      KICAD_DMG_SHA256: 6f08ff072eae1e2d0323c6cc3fbdf69708e4fb9a4f41672d84bc5acfe75c843d
+      KICAD_EXE_SHA256: f853f81dd6a90c769c521a35c438c5657fe39aaebe9967c8a74e743540920eb5
+      # A library that is not found (or is found through a variable) fails tests/real_install.rs.
+      NETSMITH_REQUIRE_KICAD_LIBRARIES: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Rust toolchain
+        # The version and components of rust-toolchain.toml.
+        run: rustup toolchain install
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      - name: Install KiCad 9 from the package cache
+        if: runner.os == 'Linux'
+        uses: ./.github/actions/apt-cache
+        with:
+          install: kicad
+
+      - name: Check KiCad 9
+        if: runner.os == 'Linux'
+        run: |
+          kicad-cli --version
+          dpkg -l kicad kicad-symbols kicad-footprints | tail -3
+          case "$(kicad-cli --version)" in
+            9.*) ;;
+            *) echo "::error::KiCad 9 is wanted, the runner installed $(kicad-cli --version)"; exit 1 ;;
+          esac
+
+      # The disk image holds a KiCad folder with KiCad.app in it: the folder goes to
+      # /Applications/KiCad, where the lookup looks. If the image holds the app alone, the app does.
+      - name: Install KiCad 9 from the official disk image
+        if: runner.os == 'macOS'
+        run: |
+          dmg="$RUNNER_TEMP/kicad.dmg"
+          curl --fail --silent --show-error --location --retry 5 --retry-all-errors \
+            -o "$dmg" \
+            "https://github.com/KiCad/kicad-source-mirror/releases/download/$KICAD_VERSION/kicad-unified-universal-$KICAD_VERSION.dmg"
+          echo "$KICAD_DMG_SHA256  $dmg" | shasum -a 256 --check
+          mount="$RUNNER_TEMP/kicad-dmg"
+          mkdir -p "$mount"
+          hdiutil attach "$dmg" -nobrowse -readonly -quiet -mountpoint "$mount"
+          app="$(find "$mount" -maxdepth 3 -name KiCad.app -type d | head -n 1)"
+          if [ -z "$app" ]; then
+            echo "::error::no KiCad.app in the disk image"
+            find "$mount" -maxdepth 3 | head -n 50
+            exit 1
+          fi
+          sudo mkdir -p /Applications/KiCad
+          if [ "$(dirname "$app")" = "$mount" ]; then
+            sudo ditto "$app" /Applications/KiCad/KiCad.app
+          else
+            sudo ditto "$(dirname "$app")" /Applications/KiCad
+          fi
+          hdiutil detach "$mount" -quiet
+          rm -f "$dmg"
+          ls /Applications/KiCad
+
+      - name: Check KiCad 9
+        if: runner.os == 'macOS'
+        run: |
+          cli=/Applications/KiCad/KiCad.app/Contents/MacOS/kicad-cli
+          "$cli" --version
+          case "$("$cli" --version)" in
+            9.*) ;;
+            *) echo "::error::KiCad 9 is wanted, the runner installed $("$cli" --version)"; exit 1 ;;
+          esac
+
+      # The silent installer (NSIS `/S`) installs every component into
+      # `%ProgramFiles%\KiCad\9.0`, and returns when it is done (`-Wait`).
+      - name: Install KiCad 9 from the official installer
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $exe = Join-Path $env:RUNNER_TEMP 'kicad-installer.exe'
+          curl.exe --fail --silent --show-error --location --retry 5 --retry-all-errors `
+            -o $exe `
+            "https://github.com/KiCad/kicad-source-mirror/releases/download/$env:KICAD_VERSION/kicad-$env:KICAD_VERSION-x86_64.exe"
+          if ($LASTEXITCODE -ne 0) { throw "the download failed ($LASTEXITCODE)" }
+          $hash = (Get-FileHash -Algorithm SHA256 $exe).Hash.ToLower()
+          if ($hash -ne $env:KICAD_EXE_SHA256) { throw "the installer's SHA-256 is $hash, wanted $env:KICAD_EXE_SHA256" }
+          $install = Start-Process -FilePath $exe -ArgumentList '/S' -Wait -PassThru
+          if ($install.ExitCode -ne 0) { throw "the installer exited with $($install.ExitCode)" }
+          Remove-Item $exe
+          Get-ChildItem "$env:ProgramFiles\KiCad"
+
+      - name: Check KiCad 9
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $version = & "$env:ProgramFiles\KiCad\9.0\bin\kicad-cli.exe" --version
+          Write-Output $version
+          if (-not "$version".StartsWith('9.')) { throw "KiCad 9 is wanted, the runner installed $version" }
+
+      # What the lookup finds with nothing set: the folders and how each was found. It exits with
+      # an error when a folder is not found.
+      - name: Show the KiCad library lookup
+        run: cargo run -p netsmith-kicad --example locate
+
+      # The unit tests of the lookup (over invented trees, here on each system's paths), and the
+      # test of the real folders. `cargo test`, not nextest: nothing here is archived. The output
+      # goes to a file, as in `kicad`, and the run proves that the real-install tests did not skip.
+      - name: Test the lookup
+        run: |
+          status=0
+          cargo test -p netsmith-kicad --lib install:: -- --nocapture > test.log 2>&1 || status=$?
+          cargo test -p netsmith-kicad --test main real_install:: -- --nocapture >> test.log 2>&1 || status=$?
+          cat test.log
+          if grep -n "skipped:" test.log; then
+            echo "::error::a test skipped itself although KiCad is installed"
+            status=1
+          fi
+          found="$(grep -c ' folder: .*(found: ' test.log || true)"
+          if [ "$found" -ne 2 ]; then
+            echo "::error::the real-install tests printed $found folders, wanted 2 (symbols and footprints)"
+            status=1
+          fi
+          exit "$status"
+
+  # The one check that says whether the run is good: it fails if a job failed or was cancelled,
+  # and passes if each one passed or was left out for want of a reason to run (`changes` says
+  # so). The result of `test`, `kicad`, `recipes` and `kicad-lookup` is the worst of their slices
+  # (their matrices): it needs all of them. A required check named for one of the other jobs
+  # would block a pull request that does not run it.
   ci-ok:
     if: always() && github.head_ref != 'release-please--branches--main'
-    needs: [changes, fmt, clippy, build, test, kicad, no-kicad, locks, designs, recipes, desktop]
+    needs: [changes, fmt, clippy, build, test, kicad, no-kicad, locks, designs, recipes, desktop, kicad-lookup]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     env:
