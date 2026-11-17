@@ -665,6 +665,42 @@ impl Fill {
     }
 }
 
+/// The zones the board's process states, each as the routes file would hold it (issue #1116):
+/// one for each inner plane and each outer pour, on its layer and net, with the outline and the
+/// settings [`zone_with`] writes (in the file's places, from the outline's top left corner), so
+/// that a zone of a KiCad board `fab` wrote can be told from a hand zone
+/// ([`crate::RouteZone::same_copper`]). Each is paired with its net.
+pub fn process_zones(board: &Board) -> Vec<(String, crate::RouteZone)> {
+    let inset = board.outline.expanded(-board.rules.copper_to_edge);
+    let outline: Vec<[f64; 2]> = inset
+        .corners()
+        .iter()
+        .map(|c| {
+            let q = *c - board.outline.min;
+            [q.x, q.y]
+        })
+        .collect();
+    let zone = |layer: &str, net: &str, fill: Fill| {
+        let word = crate::routes::layer_word(layer)?;
+        let mut zone = crate::RouteZone::new(board, vec![word], outline.clone());
+        zone.clearance = fill.clearance;
+        zone.min_width = fill.min_width;
+        zone.pads = fill.pads;
+        zone.thermal_gap = fill.thermal_gap;
+        zone.spoke_width = fill.spoke_width;
+        Some((net.to_string(), zone))
+    };
+    let planes = board
+        .planes
+        .iter()
+        .filter_map(|p| zone(&p.layer, &p.net, Fill::of(board, None)));
+    let pours = board
+        .pours
+        .iter()
+        .filter_map(|p| zone(p.layer.name(), &p.net, Fill::of(board, Some(p))));
+    planes.chain(pours).collect()
+}
+
 /// KiCad's `(connect_pads` of a zone that joins its net's pads so, `clearance` from other nets.
 fn connect_pads(pads: crate::board::ZonePads, clearance: f64) -> Sexp {
     use crate::board::ZonePads;
