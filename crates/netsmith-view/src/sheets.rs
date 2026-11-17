@@ -14,8 +14,10 @@
 //! The boxes are set out in the order of how they connect (`connection_order`): the boxes most
 //! tied by nets come one after the other, so they are neighbours in a row, with no random seed.
 //! A schematic layout file (ADR 0061) holds where a part is in its sheet, from the sheet's
-//! reference part, never where a sheet is on the page, so the order moves no part a person
-//! placed. A net between boxes is a stub with its name at each pin, ground is drawn in each box.
+//! reference part, so the order moves no part a person placed; it may also hold where a sheet's
+//! box is on the page (`at`, ADR 0139), and the boxes it does not place are set out by their
+//! connections round the ones it does. A net between boxes is a stub with its name at each pin,
+//! ground is drawn in each box.
 //! The editor's page has an outline of the boxes, zooms to one on a click, and fits the whole.
 
 use std::collections::{BTreeSet, HashMap};
@@ -864,11 +866,8 @@ fn placed_frames(
     found: &mut Vec<HintFinding>,
 ) -> Vec<Option<Pt>> {
     let mut fixed: Vec<Option<Pt>> = vec![None; frames.len()];
-    let mut places: Vec<(usize, &crate::hints::ResolvedSheet)> = hints
-        .sheets
-        .iter()
-        .map(|(&c, place)| (c, place))
-        .collect();
+    let mut places: Vec<(usize, &crate::hints::ResolvedSheet)> =
+        hints.sheets.iter().map(|(&c, place)| (c, place)).collect();
     places.sort_by_key(|(_, place)| (place.line, place.sheet.clone()));
     let mut taken: Vec<(Rect, String)> = Vec::new();
     for (c, place) in places {

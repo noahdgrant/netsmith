@@ -69,13 +69,13 @@
 //! - *Dragging a sheet in the overview* (all modules, ADR 0139). A press on a card and a move of 4
 //!   screen pixels is a drag; a press that does not move is a click (it opens the sheet). The
 //!   card follows the pointer and the card under it is marked; the drop writes the dragged
-//!   sheet's `at` as the top-left corner the sheet under the pointer has in the drawing (from each
-//!   card's `data-at`, in millimetres), so the dragged card takes that card's place and the
+//!   sheet's `at` as the top-left corner the sheet under the pointer has in the drawing (its
+//!   `.module-sheet` box, on the grid), so the dragged card takes that card's place and the
 //!   sheets never moved are set out again round it. When that sheet has a place of its own the
 //!   two swap: it is written at the dragged one's corner. A drop on its own card, or off every
 //!   card, writes nothing; Esc cancels. A sheet drawn as several boxes cannot be dragged.
 //!   `Backspace` or `Delete` on a card with a place removes `at`, and "Clear the layout of this
-//!   module" removes it with the module's entries. A placed card wears a pin mark.
+//!   module" removes it with the module's entries. A placed card wears a "placed" pill.
 //!
 //! Not built (issue #19): the preview of a drag moves the part and not its block, so satellites
 //! and wires jump when the file is written (showing the block needs its membership in the

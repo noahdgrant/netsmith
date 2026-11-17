@@ -15,6 +15,9 @@
 //! dx = 2.54                                # mm, a multiple of 1.27
 //! dy = -1.27
 //!
+//! [Trellis.sheets.stage]                  # the sheet of the module instance `stage`
+//! at = [101.6, 0]                          # its box's top-left corner on the page (ADR 0139)
+//!
 //! [Trellis.sheets.stage.parts."output_cap"] # a part of the module instance `stage`
 //! rotate = 90                              # counterclockwise on the page, as the library draws it at 0
 //! mirror = true                            # left to right, before the turn
@@ -83,6 +86,15 @@
 //! No entry ever holds a coordinate in the absolute page frame, which moves whenever a
 //! sheet's neighbour changes size.
 //!
+//! **A sheet's place on the page (ADR 0139).** `at = [x, y]` in a sheet's table (the board's
+//! table for its own sheet) puts the sheet's box, title included, with its top-left corner there,
+//! in millimetres on the grid from the page's origin: the corner the first box of the automatic
+//! arrangement has, which does not move when a sheet grows. It is what a drag in the editor's
+//! overview writes. Only a board drawn by module has boxes to place; the drawing sets the boxes
+//! with no `at` out by their connections round the placed ones (`sheets::arrange`). A sheet cut
+//! into numbered boxes, a board drawn as one sheet and a box that would lie on a box placed
+//! before it are findings, and the sheet is arranged as if it had no `at`.
+//!
 //! **Staleness is a finding, not an error.** ADR 0032 makes an entry for a part the board lacks
 //! an error, because a PCB layout that disagrees with its board is wrong to fab. A schematic hint
 //! is a convenience: a refactor that renames a part must not turn the view into an error. An
@@ -139,8 +151,7 @@
 //! in a module is keyed by its path from that instance, and if sheets ever become nested the key
 //! of a part changes with them. A part with several units (ADR 0050) is moved as the box of its
 //! primary unit and no unit has a key of its own (`u1#2` would be the shape; not built, not
-//! designed, issue #19). The sheets' arrangement on the page (the grid of boxes of a big board) is
-//! not hinted: only what is inside a sheet (not built, issue #19). Not built, at any stage: wires,
+//! designed, issue #19). Not built, at any stage: wires,
 //! labels, buses or nets in the file; a per-unit key; a tool that renames entries with a part.
 
 use std::collections::{BTreeMap, HashMap, HashSet};
