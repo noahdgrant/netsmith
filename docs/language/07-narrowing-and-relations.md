@@ -381,6 +381,41 @@ error: no part, module or generic `Resistr` is in scope; did you mean `Resistor`
   |         ^^^^^^^
 ```
 
+### The linter: a statement a default already makes
+
+`netsmith project lint` (_The linter_, in the chapter on commands) finds a statement the design gets without, `lint.redundant`:
+
+- a narrowing (`&=`) whose value a default already gives: a `?=` of the kind's own definition (a `Rail` is on `GND` by default), of a module round the part, or a line of the board's `defaults` block. The linter checks the project again without the statement, and finds it when every board that reads the file then checks and has every value it had;
+- a narrowing of a column of a part that a key picks (`catalog mcu by .mpn`) whose value is the cell of the row the key names: the row gives it. The linter finds it when the project still checks without it. A part in a use of a generic with several providers is left out: there a narrowing also chooses the provider.
+
+Delete the statement. A default (`?=`) is not judged: a second default of a field is the checker's error, and a line of a `defaults` block that no part takes is the checker's note.
+
+```nsm lints
+import std::parts::passive::Resistor
+import std::sources::Rail
+
+board Pulls {
+    defaults {
+        Resistor.package ?= "0402"
+    }
+    .input: Rail {
+        .voltage &= 5V +/- 5%
+        .pos.net &= "VCC"
+        .neg.net &= "GND"
+    }
+    .pull: Resistor {
+        .resistance &= 10kohm +/- 5%
+        .package &= "0402"
+    }
+    .input.pos ~> .pull ~> .input.neg
+}
+```
+
+```text
+main.nsm:11:9: lint.redundant: `.neg.net &= "GND"` says what the default at std/sources.nsm:95 already gives; delete it
+main.nsm:15:9: lint.redundant: `.package &= "0402"` says what the default at main.nsm:6 already gives; delete it
+```
+
 ### A value that nobody stated
 
 A board that leaves a number to the solver builds. The solver takes the first row of a catalog that fits, and a check that reads a value that nothing gives is listed as not evaluated. Two 330 ohm resistors that each drew 8 mA were once picked for a balancing resistance that nobody had stated, and the only trace was a note. Two findings say so (ADR 0065). They are guidelines, like the track width one (ADR 0036): a `warning:` line by default and an error with `--strict` or `guidelines = "error"` in `netsmith.toml`, because the design may be right and a board in progress should build.
@@ -688,7 +723,7 @@ part Receptacle {
 A board with no USB port says so, and builds with neither note:
 
 ```nsm evaluate
-import src::processor::{Pad, Processor}
+import src::processor::Processor
 import std::sources::Rail
 
 board Sensor {

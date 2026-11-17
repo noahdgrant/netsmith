@@ -521,8 +521,8 @@ pub(crate) mod testing {
 
     use crate::commands::{
         Board, Command, Dev, Import, Project, View, board3d, bom, build, case, catalog, check,
-        common, compare, copper, drc, dxf, editor, explain, fab, init, kicad_libs, layout, lock,
-        mcp, order, panel, parity, part, pins, port, power, render, route, routes, schematic,
+        common, compare, copper, drc, dxf, editor, explain, fab, init, kicad_libs, layout, lint,
+        lock, mcp, order, panel, parity, part, pins, port, power, render, route, routes, schematic,
         schematic_layout, swap, system, view,
     };
 
@@ -541,6 +541,7 @@ pub(crate) mod testing {
         Init(init::Args),
         Refresh(init::RefreshArgs),
         Lock(lock::Args),
+        Lint(lint::Args),
         Order(order::Args),
         Check(check::Args),
         Build(build::Args),
@@ -581,6 +582,7 @@ pub(crate) mod testing {
                     Project::Init(a) => Leaf::Init(a),
                     Project::Refresh(a) => Leaf::Refresh(a),
                     Project::Lock(a) => Leaf::Lock(a),
+                    Project::Lint(a) => Leaf::Lint(a),
                     Project::Order(a) => Leaf::Order(a),
                 },
                 Command::Board(c) => match c {

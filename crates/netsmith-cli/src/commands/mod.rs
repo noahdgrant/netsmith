@@ -20,6 +20,7 @@ mod fab;
 mod init;
 mod kicad_libs;
 mod layout;
+mod lint;
 mod lock;
 mod mcp;
 pub mod moved;
@@ -94,6 +95,8 @@ pub enum Project {
     Refresh(init::RefreshArgs),
     /// Refresh the pick lock, or check that it is current.
     Lock(lock::Args),
+    /// Report what is worth changing in the sources: unused imports and definitions, redundant statements, names.
+    Lint(lint::Args),
     /// Make one of the project's orders, or list them with no name (ADR 0035).
     Order(order::Args),
 }
@@ -178,6 +181,7 @@ pub fn run(command: Command) -> ExitCode {
             Project::Init(args) => init::run(args),
             Project::Refresh(args) => init::run_refresh(args),
             Project::Lock(args) => lock::run(args),
+            Project::Lint(args) => lint::run(args),
             Project::Order(args) => order::run(args),
         },
         Command::Board(command) => match command {

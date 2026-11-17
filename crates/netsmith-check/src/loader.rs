@@ -146,7 +146,7 @@ impl Loader {
     }
 
     /// The physical file paired with a source file: its name and text.
-    pub(crate) fn physical_of(&self, source_name: &str) -> Option<&(String, String)> {
+    pub fn physical_of(&self, source_name: &str) -> Option<&(String, String)> {
         self.physical.get(source_name)
     }
 

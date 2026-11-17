@@ -23,6 +23,7 @@ netsmith-editor = { path = "../netsmith-editor" }
 netsmith-fab = { path = "../netsmith-fab" }
 netsmith-fabricate = { path = "../netsmith-fabricate" }
 netsmith-kicad = { path = "../netsmith-kicad" }
+netsmith-lint = { path = "../netsmith-lint" }
 netsmith-pcb = { path = "../netsmith-pcb" }
 netsmith-pipeline = { path = "../netsmith-pipeline" }
 netsmith-3d = { path = "../netsmith-3d" }

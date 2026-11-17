@@ -106,3 +106,72 @@ board Uses {
 ```text
 error: Uses: U1: there is no KiCad symbol for a `Chip` yet
 ```
+
+### The linter: an unused definition or member
+
+`netsmith project lint` (_The linter_, in the chapter on commands) finds what the project declares and never uses, `lint.unused_definition`:
+
+- a definition (a module, an interface, a part, an enum, a generic, an enclosure) that no board, system or panel of the project reaches, through the names the definitions write, the physical files and the definition the manifest names as the `environment`. A provider is reached with the generic it provides. It is judged only when the whole project is linted (`project lint` with no file, or a file outside a project), and only in a project that has a board: a project of modules alone is a library of them;
+- a member that a module or a board declares and that no instance of it joins: a part, a module, an interface or a pin none of whose pins is on a net with another pin. A member with no pin (a mounting hole, an `Environment`) is not judged so, nor is one of a physical file;
+- a value member of a module or a board (`.gain: Voltage`) that no statement of any instance narrows, defaults or reads.
+
+Join the member, read or state the value, or delete it; use the definition, or delete it.
+
+```nsm lints
+import std::parts::passive::Resistor
+import std::sources::Rail
+
+/// Holds a line low until something drives it.
+module Pulldown {
+    .input: Rail
+    .r: Resistor { .resistance &= 10kohm +/- 1% }
+    .spare: Resistor { .resistance &= 1kohm +/- 1% }
+    .gain: Voltage
+    .input.pos ~> .r ~> .input.neg
+}
+
+/// A pull-up, which no board uses.
+module Pullup {
+    .input: Rail
+    .r: Resistor { .resistance &= 10kohm +/- 1% }
+    .input.pos ~> .r ~> .input.neg
+}
+
+board Probe {
+    .supply: Rail {
+        .voltage &= 3.3V +/- 5%
+        .pos.net &= "3V3"
+    }
+    .hold: Pulldown
+    .supply ~ .hold.input
+}
+```
+
+```text
+main.nsm:8:5: lint.unused_definition: `.spare` is declared and never joined: no pin of it is on a net; join it, or delete it
+main.nsm:9:5: lint.unused_definition: `.gain` is declared and never used: no statement states or reads it; state it, read it, or delete it
+main.nsm:14:8: lint.unused_definition: the module `Pullup` is never used: no board of the project reaches it; use it, or delete it
+```
+
+### The linter: names
+
+The linter finds a name that breaks the convention above, `lint.naming`: a definition, a variant of an enum and a type parameter are `CamelCase` (a capital first, and no `_` but between two digits, which keeps the numbers of a part number apart: `HroK3_1270`); a member, a pin of a pin table, a layout guideline and an anchor are `snake_case` (no capital). A quoted name (`'5'`) is as the datasheet prints it and is not judged, and neither is what a datasheet names: a peripheral, a function of a pin, a shared resource, a net. The finding gives the name to use.
+
+```nsm lints
+import std::parts::passive::Resistor
+import std::sources::Rail
+
+board probe_board {
+    .supply: Rail {
+        .voltage &= 3.3V +/- 5%
+        .pos.net &= "3V3"
+    }
+    .R1: Resistor { .resistance &= 10kohm +/- 5% }
+    .supply.pos ~> .R1 ~> .supply.neg
+}
+```
+
+```text
+main.nsm:4:7: lint.naming: `probe_board` is a board, whose name is `CamelCase` in the guide; call it `ProbeBoard`
+main.nsm:9:6: lint.naming: `.R1` is a member, whose name is `snake_case` in the guide; call it `.r1`
+```

@@ -179,7 +179,7 @@ board Bank {
         .voltage &= 5V
         .pos.net &= "5V"
     }
-    .bulk: CapacitorBank { .count &= 1..8 }
+    .bulk: CapacitorBank
     .bulk.total_effective_capacitance >= 60uF
     .bulk.max_voltage >= 6V
     .supply.pos ~> .bulk ~> .supply.neg

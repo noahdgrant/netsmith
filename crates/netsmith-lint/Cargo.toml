@@ -1,0 +1,22 @@
+[package]
+name = "netsmith-lint"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+# The tests are one executable, tests/main.rs, with the other files of the folder as its modules
+# (#190): without this, cargo builds and links every file of the folder as well.
+autotests = false
+
+[[test]]
+name = "main"
+path = "tests/main.rs"
+
+[dependencies]
+netsmith-check = { path = "../netsmith-check" }
+netsmith-lang = { path = "../netsmith-lang" }
+# The catalog rows, for a narrowing that the row a part is picked by already gives.
+netsmith-solve = { path = "../netsmith-solve" }
+
+[dev-dependencies]
+automod = "1.0.17"
+netsmith-testkit = { path = "../netsmith-testkit" }

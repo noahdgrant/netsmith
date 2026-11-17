@@ -770,6 +770,7 @@ dependencies = [
  "netsmith-geom",
  "netsmith-kicad",
  "netsmith-lang",
+ "netsmith-lint",
  "netsmith-netlist",
  "netsmith-pcb",
  "netsmith-pipeline",
@@ -921,6 +922,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "netsmith-lint"
+version = "0.2.0"
+dependencies = [
+ "automod",
+ "netsmith-check",
+ "netsmith-lang",
+ "netsmith-solve",
+ "netsmith-testkit",
+]
+
+[[package]]
 name = "netsmith-netlist"
 version = "0.2.0"
 dependencies = [
@@ -1054,6 +1066,7 @@ dependencies = [
  "netsmith-geom",
  "netsmith-kicad",
  "netsmith-lang",
+ "netsmith-lint",
  "netsmith-netlist",
  "netsmith-pcb",
  "netsmith-pipeline",

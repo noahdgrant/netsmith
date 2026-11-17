@@ -39,7 +39,7 @@ Only `name` is required.
 | `glb` | Optional. Whether `fab` writes the board's 3D scene as `<board>.glb` into the fab package: `true`, the default, writes it; `glb = false` leaves it out, and removes the one of an earlier run. `board fab --no-glb` leaves it out for one run. See `docs/BOARD3D.md`, "In the fab package". |
 | `pdf` | Optional. Whether `fab` writes the board's schematic as `<board>-schematic.pdf` into the fab package, a page for each sheet: `true`, the default, writes it; `pdf = false` leaves it out, and removes the one of an earlier run. `board fab --no-pdf` leaves it out for one run. See chapter 27, "The schematic as a document". |
 
-Beside `[project]`, the file may have `[order.<name>.boards]` tables (_Orders_, below), a `[supply]` table (_Catalog files_), a `[dependencies]` table (_Dependencies_, below), and a model table: a `[models]` table with `folder`, and `[[model]]` rows with `footprint`, `file`, `offset` and `rotation`, the STEP model a part is drawn from when it states none (_A model table_ in the chapter on the shape of a board). Any other table is refused.
+Beside `[project]`, the file may have `[order.<name>.boards]` tables (_Orders_, below), a `[supply]` table (_Catalog files_), a `[dependencies]` table (_Dependencies_, below), a `[lint]` table (the rules of `netsmith project lint` turned off for the project, `off = ["naming"]`, and `findings = "warn"` or `"error"`, which `--strict` asks for one run: _The linter_, in the chapter on commands), and a model table: a `[models]` table with `folder`, and `[[model]]` rows with `footprint`, `file`, `offset` and `rotation`, the STEP model a part is drawn from when it states none (_A model table_ in the chapter on the shape of a board). Any other table is refused.
 
 ### Orders
 

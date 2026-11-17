@@ -34,6 +34,11 @@ impl Sources {
         &self.0[id.0]
     }
 
+    /// Every file loaded, in the order loaded.
+    pub fn iter(&self) -> impl Iterator<Item = &Source> {
+        self.0.iter()
+    }
+
     /// How many files are loaded.
     pub fn len(&self) -> usize {
         self.0.len()

@@ -104,6 +104,8 @@ installed KiCad library only for a KiCad id of a project's `kicad.toml` that it 
 0097). `fab` repeats stages 1 to 4 in the same process, then goes on
 (ADR 0076 gives about 1.25 s for a 60-part board, optimised build; the router may take up to 300 s).
 
+The linter (`netsmith project lint`, `crates/netsmith-lint`, issue #1104) is not a stage: it runs stage 1 on the top-level files as `check` does, reads the syntax trees and the checked models (and the catalogs, for a narrowing the row a part is picked by gives), and writes nothing. A rule that asks whether a statement changes anything checks the files again without it.
+
 ## Inside the solver
 
 The solver is where the analysis happens. There is no separate simulation stage. It is the DC

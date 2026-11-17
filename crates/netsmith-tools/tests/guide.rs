@@ -50,6 +50,13 @@
 //!   catalog: it must load, and every `lcsc` it names must be a row of the standard catalogs.
 //! - ` module=src::power ` makes the block a project module that other blocks may import.
 //! - ` ```nsm-fragment ` is a piece of a file and is not run.
+//! - Every complete ` ```nsm ` block that checks lints with no finding (`netsmith project lint`,
+//!   issue #1104), the block and the ` module= ` blocks it imports as a project, unless it says
+//!   ` lints `: then the next ` ```text ` block is its findings, one per line as the command line
+//!   prints them after `warning: `, and the block shows nothing else (it is checked only). The one
+//!   listed exception: an example shows one construct and is no whole design (a part on a board
+//!   with nothing joined to it, a part defined and not used), so the rule `unused_definition` is
+//!   off for every block but a ` lints ` one.
 //!
 //! Run with `GUIDE_BLESS=1` to rewrite the message blocks from what the tool prints.
 //!
@@ -754,6 +761,124 @@ fn every_complete_example_checks_solves_and_fails_as_the_guide_says() {
     if bless && !rewrites.is_empty() {
         // Each chapter that has a message to rewrite is written back, the last block first so
         // that the line numbers of the ones before it hold.
+        for (file, text) in chapters() {
+            let mut mine: Vec<_> = rewrites.iter().filter(|r| r.0 == file).collect();
+            if mine.is_empty() {
+                continue;
+            }
+            let mut lines: Vec<String> = text.lines().map(str::to_string).collect();
+            mine.sort_by_key(|r| std::cmp::Reverse(r.1));
+            for (_, start, end, new) in mine {
+                lines.splice(*start..*end, new.lines().map(str::to_string));
+            }
+            fs::write(root().join(&file), lines.join("\n") + "\n").unwrap();
+        }
+    }
+}
+
+/// The guide's examples are what the linter asks a source to be (issue #1104): each complete
+/// example lints with no finding, and one that shows a rule (` lints `) has the findings the
+/// guide prints after it.
+#[test]
+fn every_complete_example_lints_as_the_guide_says() {
+    let blocks = guide_blocks();
+    let modules: HashMap<&str, &Block> = blocks
+        .iter()
+        .filter(|b| b.is("nsm"))
+        .filter_map(|b| b.value("module").map(|m| (m, b)))
+        .collect();
+    let sets = catalog_sets(&blocks);
+    let standard = Catalogs::jlcpcb();
+    let bless = std::env::var_os("GUIDE_BLESS").is_some();
+    let mut rewrites: Vec<(String, usize, usize, String)> = Vec::new();
+    let mut wrong = Vec::new();
+    let mut shown = 0;
+    for (n, b) in blocks.iter().enumerate() {
+        if !b.is("nsm") || b.has("fails") || b.value("module").is_some() {
+            continue;
+        }
+        let at = b.at();
+        // The block's project: the standard library and the module blocks it imports, and
+        // theirs.
+        let mut loader = Loader::std();
+        let mut todo = vec![b.text.as_str()];
+        let mut added = std::collections::HashSet::new();
+        while let Some(text) = todo.pop() {
+            for line in text.lines() {
+                let Some(path) = line.trim().strip_prefix("import ") else {
+                    continue;
+                };
+                let path = path.split(['{', ' ']).next().unwrap_or("").trim_end_matches("::");
+                for (key, block) in &modules {
+                    if (path == *key || path.starts_with(&format!("{key}::"))) && added.insert(*key) {
+                        loader.insert(key, &format!("{}.nsm", key.replace("::", "/")), &block.text);
+                        todo.push(&block.text);
+                    }
+                }
+            }
+        }
+        if let Some(p) = blocks
+            .get(n + 1)
+            .filter(|next| next.file == b.file && next.is("nsm-physical"))
+        {
+            loader.attach_physical("main.nsm", "main.physical.nsm", &p.text);
+        }
+        let catalogs = match sets.get(b.value("catalogs").unwrap_or("")) {
+            Some(Ok(c)) => c.clone(),
+            _ => standard.clone(),
+        };
+        let project = netsmith_lint::Project {
+            loader: &loader,
+            roots: vec![netsmith_lint::Root {
+                name: "main.nsm".into(),
+                text: b.text.clone(),
+                assignment: Default::default(),
+            }],
+            whole: true,
+            catalogs: Some(&catalogs),
+            // The listed exception (the module's header): an example is no whole design.
+            off: if b.has("lints") {
+                Default::default()
+            } else {
+                [netsmith_lint::Rule::UnusedDefinition].into()
+            },
+            named: Vec::new(),
+        };
+        let found = match netsmith_lint::lint(&project) {
+            Ok(found) => found,
+            // A block that checks only when it is solved (a use that tries its providers) is
+            // not the linter's to judge.
+            Err(_) => continue,
+        };
+        let lines = found
+            .iter()
+            .map(|l| l.render())
+            .collect::<Vec<_>>()
+            .join("\n");
+        if b.has("lints") {
+            shown += 1;
+            let after = n + 1 + usize::from(
+                blocks
+                    .get(n + 1)
+                    .is_some_and(|next| next.file == b.file && next.is("nsm-physical")),
+            );
+            let next = blocks
+                .get(after)
+                .filter(|next| next.file == b.file && next.is("text"))
+                .unwrap_or_else(|| panic!("{at}: the next block must be a ```text block"));
+            assert!(!lines.is_empty(), "{at}: this block should have a finding of the linter and has none");
+            if bless {
+                rewrites.push((next.file.clone(), next.body.0, next.body.1, lines));
+            } else if !same(&next.text, &lines) {
+                wrong.push(format!("{at}: the findings differ.\n--- guide\n{}\n--- tool\n{lines}", next.text));
+            }
+        } else if !lines.is_empty() {
+            wrong.push(format!("{at}: the linter finds (mark the block `lints` if it shows them):\n{lines}"));
+        }
+    }
+    assert!(wrong.is_empty(), "{}", wrong.join("\n\n"));
+    assert!(shown >= 4, "the guide shows only {shown} findings of the linter: one for each rule");
+    if bless && !rewrites.is_empty() {
         for (file, text) in chapters() {
             let mut mine: Vec<_> = rewrites.iter().filter(|r| r.0 == file).collect();
             if mine.is_empty() {
