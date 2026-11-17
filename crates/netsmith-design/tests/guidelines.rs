@@ -381,12 +381,13 @@ board Planes {
 // ---- the router sizes every net (issue #4, ADR 0036 amendment) -----------------------
 
 /// A fuse and a diode in series between a 12 V input and a load that draws `load`: the
-/// node between them belongs to no rail.
+/// node between them belongs to no rail. The diode is a `Schottky`: the standard `Diode` rows are
+/// rated for 1 A, and a load of 2 A needs a row of 3 A.
 fn fuse_diode(load: &str, supply: &str, fuse: &str) -> String {
     format!(
         "import std::mfg::jlcpcb::TwoLayer
 import std::parts::connector::Header1x2
-import std::parts::diode::Diode
+import std::parts::diode::Schottky
 import std::parts::passive::Fuse
 import std::sources::Rail
 board B {{
@@ -403,7 +404,7 @@ board B {{
         .neg.net &= \"GND\"
 {load}    }}
     .fuse: Fuse{fuse}
-    .diode: Diode
+    .diode: Schottky
     .inlet: Header1x2
     .outlet: Header1x2
     .supply.pos ~> .fuse ~> .diode ~> .load.pos

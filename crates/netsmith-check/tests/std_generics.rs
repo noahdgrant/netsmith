@@ -11,7 +11,7 @@ use netsmith_lang::parse;
 /// A pin of a contract: its name and the word of its kind.
 type Pins = &'static [(&'static str, &'static str)];
 
-const GENERICS: [(&str, &str, Pins); 15] = [
+const GENERICS: [(&str, &str, Pins); 16] = [
     ("Resistor", "passive", AB),
     ("Capacitor", "passive", AB),
     ("Led", "passive", DIODE),
@@ -19,6 +19,7 @@ const GENERICS: [(&str, &str, Pins); 15] = [
     ("FerriteBead", "passive", AB),
     ("Crystal", "passive", CRYSTAL),
     ("Fuse", "passive", AB),
+    ("Diode", "diode", DIODE),
     ("Schottky", "diode", DIODE),
     ("Zener", "diode", DIODE),
     ("Tvs", "diode", DIODE),
@@ -134,9 +135,7 @@ fn the_standard_catalog_kinds_are_generics_and_the_rest_stay_parts() {
         assert_eq!(kind_of(file, name), DefKind::Generic, "{name}");
     }
     // No catalog, so nothing to be the first provider of: they are not in the list of generics.
-    for (name, file) in [("Diode", "diode"), ("Switch", "passive")] {
-        assert_eq!(kind_of(file, name), DefKind::Part, "{name}");
-    }
+    assert_eq!(kind_of("passive", "Switch"), DefKind::Part, "Switch");
 }
 
 #[test]

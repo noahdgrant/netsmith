@@ -6,7 +6,15 @@
 //! its sign, `.bridge_voltage`, and its `.bias`, the voltage it blocks, follows from that:
 //! a diode wired the wrong way round across a rail is found (ADR 0088, see `Diode`).
 
-/// A rectifier or switching diode. Current flows from anode to cathode.
+/// A rectifier or switching diode. Current flows from anode to cathode. A generic like
+/// `Schottky`, its own first provider, with the catalog `diode` (issue #846): its pins, members
+/// and relations are those it had as a part, and a design that states the ratings by hand states
+/// requirements that a row of the catalog, a project's row or a provider must meet.
+///
+/// The standard file `data/jlcpcb/catalog/diode.csv` has the 1N4148W (Basic), 1N4148WS and M7 rows,
+/// read from the JLCPCB and LCSC records and each datasheet (`data/jlcpcb/README.md`). Each
+/// `.forward_voltage` is the datasheet's maximum at the rated current, so a design that needs a
+/// lower drop states it and gets a `Schottky` or a project's own row.
 ///
 /// `.bias` is the voltage across the diode in the direction it blocks: the voltage at the
 /// cathode relative to the anode, so it is negative when the diode conducts. A diode placed
@@ -41,9 +49,8 @@
 /// series, across no rail, has nothing derived and the board states `.bias`; `.bridge_voltage`
 /// is `optional` so that the relations reading it are dropped for it, with no note (a first
 /// version without `optional` listed them as not evaluated for every diode in series). The
-/// orientation check of a bare `Diode` compares with `.forward_voltage`, which a `Schottky`
-/// has from its catalog row and a bare `Diode` only when the design states it; without it a
-/// reversed one is not found. Not taken: a signed `.bias` for every part (a capacitor's would
+/// orientation check compares with `.forward_voltage`, which every row of the `diode` catalog
+/// states, so a reversed diode is found. Not taken: a signed `.bias` for every part (a capacitor's would
 /// go negative on a reversed rail, and a bridge direction does not say which end is the
 /// cathode: the bridge of a `Diode` is the way it conducts, of a `Zener` the way it clamps);
 /// the cathode from a pin's name or a marker in the `pins` grammar (a name is a convention in
@@ -54,7 +61,7 @@
 /// OR-ing diode) is across no rail and is not checked. The name, and the field-name convention
 /// (ADR 0105), are accepted as built (the owner, 2026-11-11).
 #[kind(diode)]
-part Diode {
+generic Diode {
     .designator &= "D"
 
     pins {
@@ -102,6 +109,7 @@ part Diode {
     dc diode .anode .cathode .forward_voltage
 
     .package: Package
+    catalog diode { .forward_voltage, .max_reverse_voltage, .max_forward_current, .package }
 }
 
 /// A Schottky diode: a `Diode` with a low forward voltage and a metal junction. It has the

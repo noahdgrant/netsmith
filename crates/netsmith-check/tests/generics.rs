@@ -826,16 +826,16 @@ fn a_module_does_not_provide_a_generic_that_has_a_pin_table() {
 
 #[test]
 fn only_a_generic_is_provided() {
-    // `Diode` is a part of the standard library that is not a generic (`Resistor` is one,
+    // `Switch` is a part of the standard library that is not a generic (`Resistor` is one,
     // ADR 0068 stage 2).
     let acme =
-        "import std::parts::diode::Diode\npart Fake provides Diode {\n    .package: Package\n}\n";
+        "import std::parts::passive::Switch\npart Fake provides Switch {\n    .package: Package\n}\n";
     let board = "import src::acme::Fake\nboard B {\n .f: Fake\n}\n";
     let c = run(board, &[("src::acme", acme)]);
     let m = messages(&c);
     assert!(
         m.iter()
-            .any(|m| m.starts_with("`Diode` is a part, and only a `generic` is provided")),
+            .any(|m| m.starts_with("`Switch` is a part, and only a `generic` is provided")),
         "{m:?}"
     );
 }

@@ -35,14 +35,14 @@ board Conducts {
 
 ```text
 error: no `zener` candidate satisfies `z`: the closest of the 1 that fit, BZT52C3V3 3.3V 500mW Zener SOD-123 C2112, fails because min(z.bias) must be at most max(z.zener_voltage), but 11.4V is above 3.5V: no value of the two ranges meets it, so change one of them
-    --> std/parts/diode.nsm:297:5
+    --> std/parts/diode.nsm:305:5
     |
-297 |     min(.bias) <= max(.zener_voltage)
+305 |     min(.bias) <= max(.zener_voltage)
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 error: min(z.bias) must be at most max(z.zener_voltage), but 11.4V is above 3.5V: no value of the two ranges meets it, so change one of them
-    --> std/parts/diode.nsm:297:5
+    --> std/parts/diode.nsm:305:5
     |
-297 |     min(.bias) <= max(.zener_voltage)
+305 |     min(.bias) <= max(.zener_voltage)
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -179,9 +179,9 @@ board Standoff {
 
 ```text
 error: no `tvs` candidate satisfies `tvs`: the closest of the 10 that fit, SMAJ12A 12V TVS SMA C113957, fails because tvs.bias must always be at most tvs.standoff_voltage, but 11.4V..12.6V is not always below 12V
-    --> std/parts/diode.nsm:415:5
+    --> std/parts/diode.nsm:423:5
     |
-415 |     .bias <= .standoff_voltage
+423 |     .bias <= .standoff_voltage
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -247,16 +247,21 @@ board Clamp {
 ```
 
 ```text
+error: the `diode` catalog has nothing for `d`, which needs max_reverse_voltage within 10V
+   --> main.nsm:11:5
+   |
+11 |     .d: Diode { .max_reverse_voltage &= 10V }
+   |     ^^^^^^^^^
 error: no `zener` candidate satisfies `z`: the closest of the 1 that fit, BZT52C12 12V 500mW Zener SOD-123 C43491, fails because z.bias must always be at most z.zener_voltage, but 11.4V..12.6V is not always below 11.4V..12.7V
    --> main.nsm:10:5
    |
 10 |     .z.bias <= .z.zener_voltage
    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^
 error: d.bias must always be at most d.max_reverse_voltage, but 11.4V..12.6V is not always below 10V
-   --> std/parts/diode.nsm:97:5
-   |
-97 |     .bias <= .max_reverse_voltage
-   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    --> std/parts/diode.nsm:104:5
+    |
+104 |     .bias <= .max_reverse_voltage
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 error: z.bias must always be at most z.zener_voltage, but 11.4V..12.6V is not always below 11V..13V
    --> main.nsm:10:5
    |
@@ -264,7 +269,7 @@ error: z.bias must always be at most z.zener_voltage, but 11.4V..12.6V is not al
    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
-A diode wired the wrong way round across a rail conducts and is a short, and a rating of the voltage it blocks cannot see that by itself. The bias of one is negative, so the part's relation on `.bias` fails and names it. Here the rectifier has its anode on `pos`, and the Zener its anode on `pos` too. The rectifier's check compares with its `.forward_voltage`, which a `Schottky` has from its catalog row and a `Diode` has when the design states it; a `Diode` with none is listed as not evaluated:
+A diode wired the wrong way round across a rail conducts and is a short, and a rating of the voltage it blocks cannot see that by itself. The bias of one is negative, so the part's relation on `.bias` fails and names it. Here the rectifier has its anode on `pos`, and the Zener its anode on `pos` too. The rectifier's check compares with its `.forward_voltage`, which every row of the `diode` catalog states, so a `Diode` is picked from rows and no row of it can be wired this way round:
 
 ```nsm fails
 import std::parts::diode::{Diode, Zener}
@@ -275,10 +280,7 @@ board Reversed {
         .voltage &= 12V +/- 5%
         .pos.net &= "VIN"
     }
-    .d: Diode {
-        .max_reverse_voltage &= 40V
-        .forward_voltage &= 0.7V
-    }
+    .d: Diode
     .z: Zener { .zener_voltage &= 4.7V..5.5V }
     .input.pos ~> .d ~> .input.neg
     .input.neg ~> .z ~> .input.pos
@@ -286,20 +288,20 @@ board Reversed {
 ```
 
 ```text
+error: no `diode` candidate satisfies `d`: the closest of the 3 that fit, 1N4148W 75V 150mA Switching Diode SOD-123 C81598, fails because d.bias must always be at least -d.forward_voltage, but -12.6V..-11.4V is not always above -1.25V
+    --> std/parts/diode.nsm:105:5
+    |
+105 |     .bias >= -.forward_voltage
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^
 error: no `zener` candidate satisfies `z`: the closest of the 1 that fit, BZT52C5V1 5.1V 500mW Zener SOD-123 C2117, fails because z.bias must always be at least 0V, but -12.6V..-11.4V is not always above 0V
-    --> std/parts/diode.nsm:296:5
+    --> std/parts/diode.nsm:304:5
     |
-296 |     .bias >= 0V
+304 |     .bias >= 0V
     |     ^^^^^^^^^^^
-error: d.bias must always be at least -d.forward_voltage, but -12.6V..-11.4V is not always above -700mV
-   --> std/parts/diode.nsm:98:5
-   |
-98 |     .bias >= -.forward_voltage
-   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^
 error: z.bias must always be at least 0V, but -12.6V..-11.4V is not always above 0V
-    --> std/parts/diode.nsm:296:5
+    --> std/parts/diode.nsm:304:5
     |
-296 |     .bias >= 0V
+304 |     .bias >= 0V
     |     ^^^^^^^^^^^
 ```
 
@@ -1385,14 +1387,14 @@ board Overloaded {
 
 ```text
 error: no combination of candidates satisfies `d` and `fuse` together: the closest, d = 1N5819WS 40V 1A Schottky SOD-323 C191023, fails because d.supply_fault_current must always be at most d.max_forward_current, but 3A is not always below 1A
-    --> std/parts/diode.nsm:154:5
+    --> std/parts/diode.nsm:162:5
     |
-154 |     .supply_fault_current <= .max_forward_current
+162 |     .supply_fault_current <= .max_forward_current
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 error: d.supply_fault_current must always be at most d.max_forward_current, but 3A is not always below 1A
-    --> std/parts/diode.nsm:154:5
+    --> std/parts/diode.nsm:162:5
     |
-154 |     .supply_fault_current <= .max_forward_current
+162 |     .supply_fault_current <= .max_forward_current
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -1474,7 +1476,7 @@ error: q.gate_source_voltage must always be at least q.on_resistance_vgs, but 3.
    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
-`PMosfet` is a generic like `NMosfet`, with the catalog `p_mosfet` (the same columns as `n_mosfet`), and its standard catalog has one row, the Alpha & Omega AO3401A (30 V, 4 A, `.gate_threshold` 0.5 V to 1.3 V, 85 mohm at a gate drive of 2.5 V, SOT-23, Basic; its sources are in `data/jlcpcb/README.md`). A project that needs another writes the rows of its parts in a file named `p_mosfet.csv` in `catalogs/`; the rows are added after the standard one, as for any standard catalog. This is a high-side switch with an invented part for a supply the AO3401A cannot take: the source of a P-channel MOSFET is the supply, its gate is pulled to ground to turn it on, and `.gate_source_voltage` is the magnitude of the drive.
+`PMosfet` is a generic like `NMosfet`, with the catalog `p_mosfet` (the same columns as `n_mosfet`), and its standard catalog has three rows, all Alpha & Omega in SOT-23: the AO3401A (30 V, 4 A, `.gate_threshold` 0.5 V to 1.3 V, 85 mohm at a gate drive of 2.5 V, Basic), the AO3407A (30 V, 4.3 A, 1.5 V to 2.5 V, 78 mohm at 4.5 V) and the AO3415A (20 V, 5 A, 0.3 V to 0.9 V, 65 mohm at 1.8 V); the sources are in `data/jlcpcb/README.md`. A project that needs another writes the rows of its parts in a file named `p_mosfet.csv` in `catalogs/`; the rows are added after the standard one, as for any standard catalog. This is a high-side switch with an invented part for a supply that none of them can take: the source of a P-channel MOSFET is the supply, its gate is pulled to ground to turn it on, and `.gate_source_voltage` is the magnitude of the drive.
 
 ```csv file=catalogs/p_mosfet.csv set=pfet
 mpn,name,max_drain_source_voltage,max_drain_current,max_gate_source_voltage,gate_threshold,on_resistance,package,library,source
@@ -1529,10 +1531,10 @@ board HighSide {
 ```
 
 ```text
-error: no `p_mosfet` candidate satisfies `q`: the closest of the 2 that fit, ZP-40 40V 4A P-MOSFET, fails because q.drain_source_voltage must always be at most q.max_drain_source_voltage, but 95V..105V is not always below 40V
-    --> std/parts/transistor.nsm:145:5
+error: no `p_mosfet` candidate satisfies `q`: the closest of the 4 that fit, ZP-40 40V 4A P-MOSFET, fails because q.drain_source_voltage must always be at most q.max_drain_source_voltage, but 95V..105V is not always below 40V
+    --> std/parts/transistor.nsm:146:5
     |
-145 |     .drain_source_voltage <= .max_drain_source_voltage
+146 |     .drain_source_voltage <= .max_drain_source_voltage
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
