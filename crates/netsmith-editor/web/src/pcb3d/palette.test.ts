@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { contrast, parseHex } from '../contrast';
 import css from '../themes.css?raw';
-import { FILE_MATERIALS, LOOKS, MASK_COLOURS, allTokens, lit, maskColourOf, maskTokens, modelColour, roleOf } from './palette';
+import { FILE_MATERIALS, LOOKS, MASK_COLOURS, allTokens, caseColour, lit, maskColourOf, maskTokens, modelColour, roleOf } from './palette';
 
 const THEMES = {
   dark: ':root, :root[data-theme="dark"]',
@@ -44,6 +44,12 @@ describe('the 3D palette', () => {
     expect(modelColour('model:#d91a1a')).toBe('#d91a1a');
     expect(modelColour('body')).toBeNull();
     expect(LOOKS['body-unknown'].hatch).toBe(true);
+    // A piece of a case model in a colour of its own (issue 756) is still the case, in that colour.
+    expect(roleOf('case:#cc3366', null)).toBe('case');
+    expect(caseColour('case:#cc3366')).toBe('#cc3366');
+    expect(caseColour('case')).toBeNull();
+    expect(caseColour('model:#cc3366')).toBeNull();
+    expect(roleOf('case', null)).toBe('case');
     expect(LOOKS.limit.opacity).toBeLessThan(1);
     expect(LOOKS['limit-violated'].opacity).toBeLessThan(1);
   });

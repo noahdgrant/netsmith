@@ -460,3 +460,98 @@ fn a_stated_mask_colour_is_on_the_root_and_in_the_three_mask_materials() {
         .unwrap();
     assert_eq!(doc["materials"][at], plain["materials"][at]);
 }
+
+/// A scene with one case model of two solids: a triangle the file colours and one it leaves
+/// unstyled.
+fn cased(colour: Option<&str>) -> Scene {
+    use crate::case::{CaseSolid, PlacedCase};
+    let tri = |z: f64| vec![[[0.0, 0.0, z], [4.0, 0.0, z], [0.0, 4.0, z]]];
+    let mut s = scene();
+    s.case.models.push(PlacedCase {
+        name: "lid".into(),
+        file: "case/lid.step".into(),
+        sha256: "0".repeat(64),
+        figures: netsmith_core::CaseFigures::default(),
+        checked: true,
+        colour: colour.map(str::to_string),
+        solids: vec![
+            CaseSolid::new("plate", tri(8.0), false).with_runs(vec![(Some([200, 30, 30]), 1)]),
+            CaseSolid::new("bar", tri(9.0), false),
+        ],
+    });
+    s
+}
+
+fn material<'a>(doc: &'a Value, name: &str) -> &'a Value {
+    doc["materials"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|m| m["name"] == name)
+        .unwrap_or_else(|| panic!("no material `{name}`"))
+}
+
+#[test]
+fn a_case_model_in_its_files_colour_has_a_see_through_material_of_that_colour() {
+    // Issue #756: `case:#rrggbb`, after the `model:` ones, with the `case` material's opacity;
+    // the unstyled solid keeps `case`; and the group has no `color` key.
+    let doc = json_chunk(&glb(&cased(None), "Demo")).unwrap();
+    let m = material(&doc, "case:#c81e1e");
+    assert_eq!(m["alphaMode"], "BLEND");
+    assert_eq!(m["doubleSided"], true);
+    assert_eq!(m["pbrMetallicRoughness"]["baseColorFactor"][0], linear(200));
+    let case = Material::ALL
+        .iter()
+        .position(|&x| x == Material::Case)
+        .unwrap();
+    assert_eq!(
+        m["pbrMetallicRoughness"]["baseColorFactor"][3],
+        doc["materials"][case]["pbrMetallicRoughness"]["baseColorFactor"][3]
+    );
+    let used = |solid: &str| {
+        let mesh = node(&doc, &format!("case:lid:{solid}"))["mesh"]
+            .as_u64()
+            .unwrap();
+        doc["meshes"][mesh as usize]["primitives"][0]["material"]
+            .as_u64()
+            .unwrap() as usize
+    };
+    assert_eq!(doc["materials"][used("plate")]["name"], "case:#c81e1e");
+    assert_eq!(used("bar"), case);
+    assert!(
+        node(&doc, "case:lid")["extras"]["netsmith"]
+            .get("color")
+            .is_none()
+    );
+}
+
+#[test]
+fn a_stated_case_colour_is_on_the_group_and_every_solid_takes_it() {
+    let doc = json_chunk(&glb(&cased(Some("Black")), "Demo")).unwrap();
+    assert_eq!(
+        node(&doc, "case:lid")["extras"]["netsmith"]["color"],
+        "Black"
+    );
+    // Black is [38, 40, 44]: both solids are in one material, and the file's red is not there.
+    let m = material(&doc, "case:#26282c");
+    assert_eq!(m["alphaMode"], "BLEND");
+    assert!(
+        doc["materials"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|m| m["name"] != "case:#c81e1e"),
+        "{}",
+        doc["materials"]
+    );
+    let used = |solid: &str| {
+        let mesh = node(&doc, &format!("case:lid:{solid}"))["mesh"]
+            .as_u64()
+            .unwrap();
+        doc["meshes"][mesh as usize]["primitives"][0]["material"]
+            .as_u64()
+            .unwrap() as usize
+    };
+    assert_eq!(used("plate"), used("bar"));
+    assert_eq!(doc["materials"][used("bar")]["name"], "case:#26282c");
+}

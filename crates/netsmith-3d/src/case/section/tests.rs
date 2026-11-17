@@ -106,6 +106,7 @@ fn a_solid_that_is_not_closed_is_an_error_that_says_where() {
         sha256: String::new(),
         figures: CaseFigures::default(),
         checked: true,
+        colour: None,
         solids: vec![solid],
     };
     let e = case.section(5.0).unwrap_err();

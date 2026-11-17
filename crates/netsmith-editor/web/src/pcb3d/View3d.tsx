@@ -211,6 +211,7 @@ export function View3d({ board }: { board: string }) {
       caseMode: () => v.caseModeState(),
       caseHidden: () => v.hiddenCaseList(),
       caseVisible: () => v.caseVisibleState(),
+      caseTints: () => v.caseTintState(),
       focusedSolids: () => v.focusedSolidList(),
       litCases: () => v.litCaseList(),
       litReport: () => v.litReport(),

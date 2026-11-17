@@ -82,6 +82,10 @@ pub(crate) const REACH_RAY: f64 = 25.0;
 /// A triangle's three corners, in mm.
 pub(crate) type Triangle = [[f64; 3]; 3];
 
+/// The colour of a run of a case solid's triangles and how many there are (issue #756): the
+/// colour the file styles them in, `None` where it does not.
+pub type ColourRun = (Option<[u8; 3]>, usize);
+
 /// One solid of a case model, placed in the scene's frame.
 #[derive(Debug, Clone, PartialEq)]
 pub struct CaseSolid {
@@ -92,6 +96,10 @@ pub struct CaseSolid {
     /// Whether every shell of the solid is closed, so that a point can be inside it.
     pub closed: bool,
     pub bounds: Aabb,
+    /// The colour of the triangles, in their order, as runs: the colour the file styles them
+    /// in (`None` where it does not) and how many triangles it holds (issue #756). A solid the
+    /// file colours alike is one run; the runs add up to `triangles.len()`.
+    pub runs: Vec<ColourRun>,
     /// The box of each triangle, for the prefilter.
     boxes: Vec<Aabb>,
 }
@@ -107,13 +115,31 @@ impl CaseSolid {
             min: [0.0; 3],
             max: [0.0; 3],
         });
+        let runs = if triangles.is_empty() {
+            Vec::new()
+        } else {
+            vec![(None, triangles.len())]
+        };
         CaseSolid {
             name: name.into(),
             triangles,
             closed,
             bounds,
+            runs,
             boxes,
         }
+    }
+
+    /// The solid with its triangles coloured in `runs` (see [`CaseSolid::runs`]).
+    #[must_use]
+    pub fn with_runs(mut self, runs: Vec<ColourRun>) -> CaseSolid {
+        debug_assert_eq!(
+            runs.iter().map(|r| r.1).sum::<usize>(),
+            self.triangles.len(),
+            "the runs hold every triangle"
+        );
+        self.runs = runs;
+        self
     }
 
     /// The triangles whose boxes meet `b`.
@@ -139,6 +165,10 @@ pub struct PlacedCase {
     /// Whether the board is measured against it (`.check`, `"fit"`); a model that is only a
     /// drawing (`"none"`) is drawn and placed as any other and has no finding.
     pub checked: bool,
+    /// The colour the board states for the model (`.color`, the name of a
+    /// `std::parts::passive::Color` variant, issue #756): every piece is drawn in its tone.
+    /// `None` draws each piece in its file's colour where it has one, else the case grey.
+    pub colour: Option<String>,
     /// In the order of the file.
     pub solids: Vec<CaseSolid>,
 }
@@ -159,16 +189,23 @@ impl PlacedCase {
 }
 
 impl PlacedCase {
-    /// One mesh per solid, its id `case:<name>` (what `render --highlight` names), material
-    /// [`Material::Case`], each triangle shaded flat; closed when the solid is.
+    /// The meshes of the model, in the order of its solids and, in each, of its colour runs
+    /// ([`CaseSolid::runs`]): its id `case:<name>` (what `render --highlight` names), material
+    /// [`Material::Case`], each triangle shaded flat; closed when the solid is. A mesh has the
+    /// colour the board states for the model, else the file's own where it styles the faces,
+    /// else none (the case grey of the palette).
     pub fn meshes(&self) -> Vec<Mesh> {
-        self.solids
-            .iter()
-            .filter(|s| !s.triangles.is_empty())
-            .map(|s| {
+        let stated = self.colour.as_deref().and_then(case_tone);
+        let mut out = Vec::new();
+        for s in self.solids.iter().filter(|s| !s.triangles.is_empty()) {
+            let mut at = 0;
+            for &(own, count) in &s.runs {
+                let triangles = &s.triangles[at..at + count];
+                at += count;
                 let mut mesh = Mesh::new(format!("case:{}", self.name), Material::Case);
-                let mut normals = Vec::with_capacity(3 * s.triangles.len());
-                for t in &s.triangles {
+                mesh.colour = stated.or(own);
+                let mut normals = Vec::with_capacity(3 * triangles.len());
+                for t in triangles {
                     let (u, v) = (
                         [t[1][0] - t[0][0], t[1][1] - t[0][1], t[1][2] - t[0][2]],
                         [t[2][0] - t[0][0], t[2][1] - t[0][1], t[2][2] - t[0][2]],
@@ -191,10 +228,27 @@ impl PlacedCase {
                 }
                 mesh.normals = Some(normals);
                 mesh.closed = s.closed;
-                mesh
-            })
-            .collect()
+                out.push(mesh);
+            }
+        }
+        out
     }
+}
+
+/// The tone a case model is drawn in when its board states `.color` (issue #756): the name of
+/// a `std::parts::passive::Color` variant, in sRGB, the same in the light and the dark picture
+/// (a part's model keeps its file's colour in both). `None` for a word that is not a variant.
+pub(crate) fn case_tone(colour: &str) -> Option<[u8; 3]> {
+    Some(match colour {
+        "Red" => [196, 52, 52],
+        "Green" => [56, 142, 80],
+        "Blue" => [52, 96, 184],
+        "Yellow" => [228, 186, 44],
+        "White" => [234, 234, 230],
+        "Black" => [38, 40, 44],
+        "Purple" => [112, 64, 158],
+        _ => return None,
+    })
 }
 
 /// What a scene holds of its case models: each model read and placed, and what the fit check
@@ -361,7 +415,7 @@ pub fn place(
         [0, 1, 2].map(|r| nm(m[r][0] * p[0] + m[r][1] * p[1] + m[r][2] * p[2] + d[r]))
     };
     // A turn never mirrors, so each triangle keeps the reader's order and still faces out.
-    let mut solids: Vec<(String, Vec<Triangle>, bool)> = Vec::new();
+    let mut solids: Vec<(String, Vec<Triangle>, bool, Vec<ColourRun>)> = Vec::new();
     for piece in &model.pieces {
         let mesh = &piece.mesh;
         let triangles = mesh
@@ -370,12 +424,24 @@ pub fn place(
             .0
             .iter()
             .map(|t| t.map(|i| apply(mesh.positions[i as usize])));
+        // The runs: the colour of each piece, joined to the one before it when it is the same.
+        let count = mesh.indices.len() / 3;
+        let run = |runs: &mut Vec<ColourRun>| match runs.last_mut() {
+            Some((c, n)) if *c == piece.colour => *n += count,
+            _ if count == 0 => {}
+            _ => runs.push((piece.colour, count)),
+        };
         match solids.last_mut() {
-            Some((n, tris, closed)) if *n == mesh.id => {
+            Some((n, tris, closed, runs)) if *n == mesh.id => {
                 tris.extend(triangles);
                 *closed &= mesh.closed;
+                run(runs);
             }
-            _ => solids.push((mesh.id.clone(), triangles.collect(), mesh.closed)),
+            _ => {
+                let mut runs = Vec::new();
+                run(&mut runs);
+                solids.push((mesh.id.clone(), triangles.collect(), mesh.closed, runs));
+            }
         }
     }
     PlacedCase {
@@ -384,9 +450,10 @@ pub fn place(
         sha256: sha256.to_string(),
         figures,
         checked: true,
+        colour: None,
         solids: solids
             .into_iter()
-            .map(|(n, t, c)| CaseSolid::new(n, t, c))
+            .map(|(n, t, c, r)| CaseSolid::new(n, t, c).with_runs(r))
             .collect(),
     }
 }

@@ -793,6 +793,11 @@ pub(crate) fn case_models(
             rotation,
             figures,
             checked,
+            // The board's choice (issue #756): a variant's name, or nothing where it says none.
+            color: match domain(model, id, "color") {
+                Some(Domain::Text(t)) if !t.is_empty() => Some(t),
+                _ => None,
+            },
             source: String::new(),
             stated_in: Vec::new(),
             resolved: None,

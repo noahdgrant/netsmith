@@ -695,3 +695,42 @@ fn a_stated_mask_colour_changes_the_three_mask_materials_and_nothing_else() {
         .colour(Material::MaskTop);
     assert!(r > 2 * g && r > 2 * b);
 }
+
+#[test]
+fn a_case_in_a_colour_is_drawn_in_it_and_is_as_see_through_as_a_grey_one() {
+    // Issue #756: the colour of a case mesh keeps the case's opacity (not an opaque body), and
+    // the case drawn solid is opaque in it.
+    let o = plain(100, 100);
+    let cam = top_camera(5.0);
+    let body = Mesh::axis_box("U1", Material::Body, [-2.0, -2.0, 0.0], [2.0, 2.0, 1.0]);
+    let grey = Mesh::axis_box(
+        "case:lid",
+        Material::Case,
+        [-4.0, -4.0, 2.0],
+        [4.0, 4.0, 3.0],
+    );
+    let mut red = grey.clone();
+    red.colour = Some([196, 52, 52]);
+    let at = |o: &RenderOptions, meshes: &[Mesh]| render(meshes, &cam, o).pixel(50, 50);
+    let (g, r) = (
+        at(&o, &[grey.clone(), body.clone()]),
+        at(&o, &[red.clone(), body.clone()]),
+    );
+    assert_ne!(g, r);
+    // The body still shows through the red case: it is not the red case alone.
+    assert_ne!(r, at(&o, std::slice::from_ref(&red)));
+    assert!(r[0] > r[2], "a red tone: {r:?}");
+    // Solid, the case alone is the picture, in its own colour.
+    let solid = RenderOptions {
+        case_solid: true,
+        ..o.clone()
+    };
+    assert_eq!(
+        at(&solid, &[red.clone(), body.clone()]),
+        at(&solid, std::slice::from_ref(&red))
+    );
+    assert_ne!(
+        at(&solid, std::slice::from_ref(&red)),
+        at(&solid, std::slice::from_ref(&grey))
+    );
+}

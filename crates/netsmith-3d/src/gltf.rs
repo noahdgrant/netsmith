@@ -77,9 +77,12 @@
 //!     `finish` where it is open). None when the copper cannot be drawn.
 //!
 //!   - One group per case model (ADR 0109), `case:<name>`: `{kind: "case", name, file,
-//!     sha256, triangles}`, with a child per solid of the file, `case:<name>:<solid>`
-//!     (`{kind: "case_solid", case, solid, closed, triangles}`), its triangles as the mesh,
-//!     material `case` (see-through). Added without a new schema.
+//!     sha256, triangles}` (and `color`, the name of the `std::parts::passive::Color` variant
+//!     the board states for the model, only when it states one, issue #756), with a child per
+//!     solid of the file, `case:<name>:<solid>` (`{kind: "case_solid", case, solid, closed,
+//!     triangles}`), its triangles as the mesh, material `case` (see-through), or one primitive
+//!     for each colour the file styles its faces in or the board states, `case:#rrggbb`
+//!     (`BLEND` too, the opacity of `case`). Added without a new schema.
 //!
 //!   A node whose shape has no area has no mesh, and is still there.
 //! - **Materials**, by name, PBR metallic-roughness, in the order of [`Material::ALL`]:
@@ -92,7 +95,8 @@
 //!   double-sided.
 //!   A part drawn from its STEP model (ADR 0108) has the model's triangles as its mesh: a
 //!   piece the file colours has a material of its own after these (after `case`), `model:#rrggbb`,
-//!   in the order the colours are first used; a piece it does not colour is `body`.
+//!   in the order the colours are first used; a piece it does not colour is `body`. A case
+//!   model's pieces take theirs from the same list, `case:#rrggbb`, see-through as `case` is.
 //! - No extension is used or required.
 
 use serde_json::{Map, Value, json};
@@ -136,9 +140,10 @@ struct Builder {
     accessors: Vec<Value>,
     meshes: Vec<Value>,
     nodes: Vec<Value>,
-    /// The colours of the STEP models' pieces (ADR 0108), in the order they are first used:
-    /// each a material after [`Material::ALL`]'s.
-    colours: Vec<[u8; 3]>,
+    /// The colours of the STEP models' pieces (ADR 0108), in the order they are first used, and
+    /// the material they replace the colour of (a part's `body`, or a case model's `case`,
+    /// issue #756): each a material after [`Material::ALL`]'s.
+    colours: Vec<(Material, [u8; 3])>,
     /// The colour the board states for its solder mask (issue #771), which its three mask
     /// materials take; `None` for the default tone, and for a system's file (its materials are
     /// shared by every member).
@@ -240,10 +245,11 @@ impl Builder {
             let indices = self.indices(&m.indices);
             let material = match m.colour {
                 Some(c) => {
-                    let k = match self.colours.iter().position(|&x| x == c) {
+                    let of = (m.material, c);
+                    let k = match self.colours.iter().position(|&x| x == of) {
                         Some(k) => k,
                         None => {
-                            self.colours.push(c);
+                            self.colours.push(of);
                             self.colours.len() - 1
                         }
                     };
@@ -307,9 +313,25 @@ fn linear(c: u8) -> f64 {
 
 /// The thirteen materials of [`Material::ALL`], then one per colour of a STEP model, named
 /// `model:#rrggbb`, opaque, as the `body` material is but for its colour.
-fn materials(colours: &[[u8; 3]], mask: Option<&str>) -> Vec<Value> {
+fn materials(colours: &[(Material, [u8; 3])], mask: Option<&str>) -> Vec<Value> {
     let palette = Theme::Light.palette_with_mask(mask);
-    let model = colours.iter().map(|&[r, g, b]| {
+    let model = colours.iter().map(|&(of, [r, g, b])| {
+        // A case model's colour is see-through as the `case` material is (issue #756), named
+        // `case:#rrggbb`.
+        if of == Material::Case {
+            let alpha = (f64::from(palette.colour(Material::Case)[3]) / 255.0 * 10_000.0).round()
+                / 10_000.0;
+            return json!({
+                "name": format!("case:#{r:02x}{g:02x}{b:02x}"),
+                "pbrMetallicRoughness": {
+                    "baseColorFactor": [linear(r), linear(g), linear(b), alpha],
+                    "metallicFactor": 0.0,
+                    "roughnessFactor": 0.8,
+                },
+                "alphaMode": "BLEND",
+                "doubleSided": true,
+            });
+        }
         json!({
             "name": format!("model:#{r:02x}{g:02x}{b:02x}"),
             "pbrMetallicRoughness": {
@@ -653,6 +675,12 @@ fn board_node(b: &mut Builder, scene: &Scene, board: &str, member: Option<&str>)
                 "triangles": model.triangle_count(),
             }),
         );
+        // Only a model whose board states the colour has the key, so the file of one that does
+        // not is the file it was (issue #756).
+        if let Some(colour) = &model.colour {
+            group.extras["color"] = json!(colour);
+        }
+        // A solid has a mesh of one piece for each colour of its triangles (issue #756).
         let mut drawn = meshes.iter();
         for solid in &model.solids {
             let name = named(&format!("case:{}:{}", model.name, solid.name));
@@ -667,7 +695,8 @@ fn board_node(b: &mut Builder, scene: &Scene, board: &str, member: Option<&str>)
                 }),
             );
             if !solid.triangles.is_empty() {
-                node.mesh = drawn.next().and_then(|m| b.mesh(&name, &[m]));
+                let of: Vec<&Mesh> = drawn.by_ref().take(solid.runs.len()).collect();
+                node.mesh = b.mesh(&name, &of);
             }
             group.children.push(node);
         }

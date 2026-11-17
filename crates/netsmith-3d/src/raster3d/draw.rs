@@ -294,6 +294,10 @@ pub(super) fn render(meshes: &[Mesh], camera: &Camera, options: &RenderOptions) 
     let mut tmp = Vec::with_capacity(8);
     for (mi, mesh) in meshes.iter().enumerate() {
         let colour = match mesh.colour {
+            // A case model's colour keeps the case's see-through opacity (issue #756).
+            Some([r, g, b]) if mesh.material == Material::Case => {
+                [r, g, b, palette.colour(Material::Case)[3]]
+            }
             Some([r, g, b]) => [r, g, b, 255],
             None => palette.colour(mesh.material),
         };

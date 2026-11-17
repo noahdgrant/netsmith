@@ -45,6 +45,7 @@ fn case(name: &str, solids: Vec<CaseSolid>) -> PlacedCase {
         sha256: String::new(),
         figures: CaseFigures::default(),
         checked: true,
+        colour: None,
         solids,
     }
 }
@@ -525,6 +526,85 @@ fn a_case_model_is_turned_about_x_then_y_then_z_and_then_moved() {
     assert_eq!(placed.solids.len(), 1);
     assert_eq!(placed.triangle_count(), 2);
     assert_eq!(placed.solids[0].triangles[0][1], [1.0, 0.0, 8.0]);
+    // The colour of each piece stays with its triangles (issue #756).
+    assert_eq!(
+        placed.solids[0].runs,
+        [(None, 1), (Some([255, 0, 0]), 1)],
+        "{:?}",
+        placed.solids[0].runs
+    );
+}
+
+/// A lid of two solids: a plate of a file colour and a bar that the file leaves unstyled.
+fn coloured_lid() -> PlacedCase {
+    let mut lid = case(
+        "lid",
+        vec![
+            cube("plate", [0.0, 0.0, 8.0], [10.0, 10.0, 9.0])
+                .with_runs(vec![(Some([200, 30, 30]), 6), (Some([30, 30, 200]), 6)]),
+            cube("bar", [0.0, 0.0, 9.0], [10.0, 2.0, 10.0]),
+        ],
+    );
+    lid.colour = None;
+    lid
+}
+
+#[test]
+fn a_case_model_is_drawn_in_the_colours_of_its_file_one_mesh_for_each() {
+    // Issue #756: a run of one colour is a mesh of its own, the file's colour; what the file
+    // leaves unstyled has none (the case grey); the triangles are all there, once.
+    let lid = coloured_lid();
+    let meshes = lid.meshes();
+    let colours: Vec<_> = meshes.iter().map(|m| m.colour).collect();
+    assert_eq!(
+        colours,
+        [Some([200, 30, 30]), Some([30, 30, 200]), None],
+        "{colours:?}"
+    );
+    assert!(
+        meshes
+            .iter()
+            .all(|m| m.id == "case:lid" && m.material == Material::Case)
+    );
+    let triangles: usize = meshes.iter().map(Mesh::triangle_count).sum();
+    assert_eq!(triangles, lid.triangle_count());
+}
+
+#[test]
+fn a_stated_colour_replaces_every_colour_of_the_file() {
+    let mut lid = coloured_lid();
+    lid.colour = Some("Black".into());
+    let colours: Vec<_> = lid.meshes().iter().map(|m| m.colour).collect();
+    assert_eq!(colours, [Some([38, 40, 44]); 3], "{colours:?}");
+    // A word that is not a colour leaves the file's own.
+    lid.colour = Some("Plaid".into());
+    let colours: Vec<_> = lid.meshes().iter().map(|m| m.colour).collect();
+    assert_eq!(
+        colours,
+        [Some([200, 30, 30]), Some([30, 30, 200]), None],
+        "{colours:?}"
+    );
+}
+
+#[test]
+fn every_colour_std_names_has_a_case_tone() {
+    // `std::parts::passive::Color`'s variants, each a different tone.
+    let names = ["Red", "Green", "Blue", "Yellow", "White", "Black", "Purple"];
+    let tones: Vec<_> = names.iter().map(|n| case_tone(n).expect(n)).collect();
+    for (i, a) in tones.iter().enumerate() {
+        assert!(
+            tones[i + 1..].iter().all(|b| a != b),
+            "{names:?}: {tones:?}"
+        );
+    }
+}
+
+#[test]
+fn the_mirrored_case_keeps_the_colours() {
+    let lid = coloured_lid();
+    let flipped = lid.mirrored(1.6);
+    let colours = |c: &PlacedCase| c.meshes().iter().map(|m| m.colour).collect::<Vec<_>>();
+    assert_eq!(colours(&flipped), colours(&lid));
 }
 
 /// A through-hole part on the top face whose pins, under its pads from `min` to `max`, stand
