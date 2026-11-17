@@ -323,15 +323,33 @@ impl<'a> Router<'a> {
         masks.free_turn = free;
     }
 
-    /// [`Masks::follow`] for a line of `net`: the cells from the pair's spacing (half of each
-    /// width and the clearance) out to [`PAIR_NEAR`] from the centre line of the partner's
-    /// routed tracks, on their layers; empty when the net has no routed partner.
+    /// The centre distances from a track of a pair's partner at which a track of `net` runs
+    /// beside it, for tracks `width` and `partner_width` wide: from the nearest the rules allow
+    /// (half of each width and the clearance) out to [`PAIR_NEAR`]. A pair with an impedance
+    /// target (issue #1025) keeps its stated spacing, which its clearance holds
+    /// ([`netsmith_pcb::Board::clearance`]), and runs beside its partner only within a cell of
+    /// it, where the drawn gap is the spacing rounded up to the grid.
+    pub(super) fn pair_band(&self, net: usize, width: f64, partner_width: f64) -> (f64, f64) {
+        let half = width / 2.0 + partner_width / 2.0;
+        let name = &self.board.nets[net].name;
+        match self.board.pair_spacing(name) {
+            Some(_) => {
+                let lo = half + self.board.clearance(name);
+                (lo, lo + PITCH)
+            }
+            None => (half + self.board.rules.clearance, PAIR_NEAR),
+        }
+    }
+
+    /// [`Masks::follow`] for a line of `net`: the cells of [`Router::pair_band`] round the
+    /// centre line of the partner's routed tracks, on their layers, for the line's width on
+    /// each (`line`); empty when the net has no routed partner.
     pub(super) fn follow_cells(
         &self,
         net: usize,
         routed: &[&Routed],
         w: Window,
-        width: f64,
+        line: usize,
     ) -> Vec<Vec<bool>> {
         let layers = self.stack.len();
         let Some(partner) = self.partners[net] else {
@@ -347,14 +365,14 @@ impl<'a> Router<'a> {
         }
         let mut cells = vec![vec![false; w.cells()]; layers];
         for t in tracks {
-            let spacing = t.width / 2.0 + width / 2.0 + self.board.rules.clearance;
             let Some(layer) = self.stack.index(t.layer) else {
                 continue;
             };
+            let (lo, hi) = self.pair_band(net, self.width_on(line, layer), t.width);
             let form = Form::Segment(t.from, t.to, 0.0);
-            for (i, j) in self.grid.cells_near(&w, &form.bounds(), PAIR_NEAR) {
+            for (i, j) in self.grid.cells_near(&w, &form.bounds(), hi) {
                 let d = point_to_line(self.grid.centre(i, j), t.from, t.to);
-                if d >= spacing - PITCH * 0.75 && d <= PAIR_NEAR {
+                if d >= lo - PITCH * 0.75 && d <= hi {
                     cells[layer][w.index(i, j)] = true;
                 }
             }

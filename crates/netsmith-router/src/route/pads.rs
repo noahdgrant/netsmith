@@ -385,7 +385,8 @@ pub(super) fn escape_lanes(board: &Board, grid: &Grid) -> Option<Lanes> {
 }
 
 /// For each net, the other net of its diff pair, if it has one: two nets whose names differ only
-/// in a suffix pair the route scorecard knows (`netsmith_geom::PAIR_SUFFIXES`).
+/// in a suffix pair the route scorecard knows (`netsmith_geom::PAIR_SUFFIXES`), or the two nets
+/// of a pair with an impedance target (a `PairImpedance`, issue #1025), which says they are one.
 pub(super) fn diff_pair_partners(board: &Board) -> Vec<Option<usize>> {
     let index: HashMap<&str, usize> = board
         .nets
@@ -402,6 +403,14 @@ pub(super) fn diff_pair_partners(board: &Board) -> Vec<Option<usize>> {
                 partner[n] = Some(other);
                 partner[other] = Some(n);
             }
+        }
+    }
+    for (n, net) in board.nets.iter().enumerate() {
+        if let Some((other, _)) = board.pair_spacing(&net.name)
+            && let Some(&other) = index.get(other)
+        {
+            partner[n] = Some(other);
+            partner[other] = Some(n);
         }
     }
     partner

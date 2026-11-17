@@ -17,6 +17,10 @@ use netsmith_kicad::fmt_num;
 pub struct NetClass {
     pub width: f64,
     pub clearance: f64,
+    /// The gap between the two tracks of a pair with an impedance target, edge to edge (issue
+    /// #1025): the class's `diff_pair_gap`, with its width as `diff_pair_width`, which KiCad
+    /// draws a pair of the class with.
+    pub pair_gap: Option<f64>,
     pub nets: Vec<String>,
 }
 
@@ -229,9 +233,15 @@ impl Rules {
             if c.clearance > self.clearance {
                 fields.insert(0, ("clearance", N(c.clearance)));
             }
+            if let Some(gap) = c.pair_gap {
+                fields.extend([
+                    ("diff_pair_gap", N(gap)),
+                    ("diff_pair_width", N(c.width)),
+                ]);
+            }
             fields.extend([
                 ("priority", N(priority as f64)),
-                ("track_width", N(c.width.max(self.track_width))),
+                ("track_width", N(c.width)),
                 ("via_diameter", N(self.via_diameter)),
                 ("via_drill", N(self.via_drill)),
             ]);
@@ -326,14 +336,18 @@ impl Rules {
 
 impl Rules {
     /// The name of a net class in the project file: what it changes from the board's rules,
-    /// `Track_0.8mm`, `Clearance_0.5mm` or both, `Track_0.8mm_Clearance_0.5mm`.
+    /// `Track_0.8mm`, `Clearance_0.5mm` or both, `Track_0.8mm_Clearance_0.5mm`, and a pair's
+    /// gap last, `Track_0.3mm_Clearance_0.15mm_Gap_0.15mm`.
     fn class_name(&self, c: &NetClass) -> String {
         let mut parts = Vec::new();
-        if c.width > self.track_width {
+        if (c.width - self.track_width).abs() > 1e-9 {
             parts.push(format!("Track_{}mm", fmt_num(c.width)));
         }
         if c.clearance > self.clearance {
             parts.push(format!("Clearance_{}mm", fmt_num(c.clearance)));
+        }
+        if let Some(gap) = c.pair_gap {
+            parts.push(format!("Gap_{}mm", fmt_num(gap)));
         }
         parts.join("_")
     }
@@ -676,6 +690,7 @@ mod tests {
         let class = |width: f64, nets: &[&str]| NetClass {
             width,
             clearance: rules().clearance,
+            pair_gap: None,
             nets: nets.iter().map(|n| n.to_string()).collect(),
         };
         let wide = [class(0.5, &["3V3"]), class(0.8, &["GND", "VIN"])];
@@ -704,11 +719,13 @@ mod tests {
             NetClass {
                 width: r.track_width,
                 clearance: 0.5,
+                pair_gap: None,
                 nets: vec!["HV".to_string()],
             },
             NetClass {
                 width: 0.8,
                 clearance: 0.5,
+                pair_gap: None,
                 nets: vec!["VIN".to_string()],
             },
         ];
