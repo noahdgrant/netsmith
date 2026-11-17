@@ -198,8 +198,9 @@ impl<'a> Engine<'a> {
         let Some(want) = &self.models[i].want else {
             return pose;
         };
-        let turn = (0..4)
-            .map(|k| (pose.turn + k) % 4)
+        let n = self.models[i].turns();
+        let turn = (0..n)
+            .map(|k| (pose.turn + k) % n)
             .find(|&t| want.turns[usize::from(t)].is_some())
             .unwrap_or(pose.turn);
         match want.turns[usize::from(turn)] {

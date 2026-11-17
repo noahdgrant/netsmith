@@ -206,6 +206,7 @@ pub fn board(
                         .collect(),
                     side: p.side.map(str::to_string),
                     side_source: String::new(),
+                    turn_step: None,
                 })
                 .collect(),
             ..Features::default()

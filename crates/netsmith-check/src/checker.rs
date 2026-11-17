@@ -1554,8 +1554,10 @@ impl<'a> Checker<'a> {
 
     /// The built-in `.place` of a part or module (ADR 0045): an interface `Place` with the
     /// box of the body in the board's frame (`x` and `y` of its centre, `left`, `right`,
-    /// `top` and `bottom` of its edges), the turn in degrees and the face. A module's has
-    /// no `rotation`: the placer does not turn a module as a block. Its `side` is a hard
+    /// `top` and `bottom` of its edges), the turn in degrees, the step the placer may turn
+    /// it by (`turn_step`, 90 unless stated, 45 to allow the turns between: issue #1046) and
+    /// the face. A module's has no `rotation` and no `turn_step`: the placer does not turn a
+    /// module as a block. Its `side` is a hard
     /// requirement on every part of it (ADR 0048, "Syntax decisions" 5). A board's has only
     /// `side`, the same requirement on every part of the board.
     /// The built-in `.model` of a part (ADR 0108): an instance of the prelude's `StepModel`,
@@ -1610,6 +1612,7 @@ impl<'a> Checker<'a> {
             ("top", FieldKind::Quantity(Dimension::LENGTH), false),
             ("bottom", FieldKind::Quantity(Dimension::LENGTH), false),
             ("rotation", FieldKind::Quantity(Dimension::NONE), true),
+            ("turn_step", FieldKind::Quantity(Dimension::NONE), true),
             ("side", FieldKind::Text, false),
         ];
         for (name, kind, part_only) in fields {

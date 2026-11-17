@@ -690,7 +690,7 @@ fn apply_fixed(parts: &mut [Placed], options: &PlaceOptions) -> Vec<bool> {
             None => {
                 if let Some(want) = options.wants.get(&p.refdes)
                     && want.turn(p.rotation).is_none()
-                    && let Some(q) = (0..4).find(|&q| want.reach[q].is_some())
+                    && let Some(q) = (0..want.turns()).find(|&q| want.reach[q].is_some())
                 {
                     p.rotation = want.angle(q);
                 }
@@ -930,7 +930,9 @@ fn face_load(part: &Placed, fixed: bool, fit: (f64, f64), options: &PlaceOptions
 /// state a rotation keeps to the turns they leave, and if none of them fits, the error names
 /// it. A part that fits as it is, one that fits in neither turn (the annealer tries them
 /// all; the error says so, see [`oversize`]), one the layout file locks and one that may hang
-/// over an edge stay as they are.
+/// over an edge stay as they are. A part whose `.place.turn_step` is 45 (issue #1046) and
+/// that fits in no right angle is turned to the first step of 45 degrees from its turn that
+/// fits, if one does.
 fn turn_to_fit(parts: &mut [Placed], fixed: &[bool], options: &PlaceOptions) {
     let Some(fit) = options.fit else { return };
     let (width, height) = fit_inside(fit, options);
@@ -940,16 +942,31 @@ fn turn_to_fit(parts: &mut [Placed], fixed: &[bool], options: &PlaceOptions) {
         }
         let court = part.courtyard();
         let fits = |w: f64, h: f64| w <= width + 1e-9 && h <= height + 1e-9;
-        if fits(court.width(), court.height()) || !fits(court.height(), court.width()) {
+        if fits(court.width(), court.height()) {
             continue;
         }
         let want = options.wants.get(&part.refdes);
         let allowed = |angle: f64| want.is_none_or(|w| w.allows(angle));
-        let turned = [90.0, 270.0]
-            .into_iter()
-            .map(|extra| (part.rotation + extra).rem_euclid(360.0))
-            .find(|&angle| allowed(angle));
-        if let Some(angle) = turned {
+        let quarter = fits(court.height(), court.width())
+            .then(|| {
+                [90.0, 270.0]
+                    .into_iter()
+                    .map(|extra| (part.rotation + extra).rem_euclid(360.0))
+                    .find(|&angle| allowed(angle))
+            })
+            .flatten();
+        // A part that may turn by 45 degrees (issue #1046) and fits in no right angle tries
+        // the turns between them, in order, the first whose courtyard's box fits.
+        let between = || {
+            let w = want.filter(|w| w.step != netsmith_pcb::RIGHT)?;
+            (1..w.turns())
+                .map(|k| (part.rotation + w.step * k as f64).rem_euclid(360.0))
+                .find(|&angle| {
+                    let c = part.footprint.courtyard.rotated_for(part.mirrored(), angle);
+                    allowed(angle) && fits(c.width(), c.height())
+                })
+        };
+        if let Some(angle) = quarter.or_else(between) {
             part.rotation = angle;
         }
     }

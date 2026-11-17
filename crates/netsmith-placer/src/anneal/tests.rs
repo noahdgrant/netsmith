@@ -1642,3 +1642,49 @@ fn the_placer_keeps_a_decoupling_capacitor_off_the_fine_pitch_parts_other_pins()
         assert_eq!(board.check_placement(), vec![]);
     }
 }
+
+#[test]
+fn a_part_that_may_turn_by_45_degrees_is_offered_all_eight_turns_and_another_four() {
+    // Issue #1046: R1's want has a step of 45 degrees and leaves every turn and every place;
+    // R2 has no want. The moves the annealer proposes turn R1 to each of the eight steps of
+    // 45 degrees, and R2 only to the right angles.
+    let board = resistors(&["", ""]);
+    let fixed = vec![false; 2];
+    let rules = board.rules.clone();
+    let anywhere = netsmith_pcb::Reach {
+        x: (f64::NEG_INFINITY, f64::INFINITY),
+        y: (f64::NEG_INFINITY, f64::INFINITY),
+    };
+    let wants = vec![
+        Some(Want {
+            reach: vec![Some(anywhere); 8],
+            base: 0.0,
+            step: 45.0,
+            holds_x: false,
+            holds_y: false,
+            overhangs: false,
+        }),
+        None,
+    ];
+    let mut problem = problem_of(&board, &fixed, &rules);
+    problem.wants = &wants;
+    let mut parts = board.parts.clone();
+    let mut e = Engine::new(&mut parts, &problem);
+    assert_eq!((e.models[0].turns(), e.models[1].turns()), (8, 4));
+    let mut seen = [
+        std::collections::BTreeSet::new(),
+        std::collections::BTreeSet::new(),
+    ];
+    let mut rng = Rng::new(3);
+    for _ in 0..5000 {
+        for (i, pose) in e.propose(&mut rng, 20) {
+            seen[i].insert(e.models[i].angle(pose.turn) as i64);
+        }
+    }
+    let eighths: Vec<i64> = (0..8).map(|k| k * 45).collect();
+    assert_eq!(seen[0].iter().copied().collect::<Vec<_>>(), eighths);
+    assert_eq!(
+        seen[1].iter().copied().collect::<Vec<_>>(),
+        vec![0, 90, 180, 270]
+    );
+}

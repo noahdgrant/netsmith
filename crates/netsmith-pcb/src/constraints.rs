@@ -116,13 +116,17 @@ pub struct Reach {
 /// What a part's requirements leave to the placer.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Want {
-    /// For the turns `base`, `base + 90`, `base + 180` and `base + 270` degrees: where the
-    /// origin may be, or `None` if the requirements rule that turn out.
-    pub reach: [Option<Reach>; 4],
+    /// For the turns `base`, `base + step`, `base + 2 * step`, ... degrees (four of them for a
+    /// step of 90, eight for 45): where the origin may be, or `None` if the requirements rule
+    /// that turn out.
+    pub reach: Vec<Option<Reach>>,
     /// The turn of `reach[0]`, in degrees from 0 up to 90: 0 unless the requirements allow no
     /// right angle and state another turn (issue #822), which the part then keeps, give or
     /// take right angles ([`base_turn`]).
     pub base: f64,
+    /// The step between two turns the part may take, in degrees: 90, or 45 for a part whose
+    /// `.place.turn_step` allows the turns between the right angles (issue #1046).
+    pub step: f64,
     /// Whether any requirement is about where the part is along x, or along y.
     pub holds_x: bool,
     pub holds_y: bool,
@@ -134,27 +138,36 @@ pub struct Want {
 /// The index of a right angle in [`Want::reach`] of a want whose `base` is 0, or `None` for
 /// any other angle.
 pub fn quarter(angle: f64) -> Option<usize> {
-    quarter_from(0.0, angle)
+    steps_from(0.0, RIGHT, angle)
 }
 
-/// How many right angles `angle` is past `base`, from 0 to 3, or `None` if the two differ by
-/// other than right angles.
-fn quarter_from(base: f64, angle: f64) -> Option<usize> {
+/// A right angle, the step a part turns by unless it says otherwise, in degrees.
+pub const RIGHT: f64 = 90.0;
+
+/// How many steps of `step` degrees `angle` is past `base`, from 0 up to `360 / step`, or
+/// `None` if the two differ by other than whole steps.
+fn steps_from(base: f64, step: f64, angle: f64) -> Option<usize> {
+    let n = (360.0 / step).round() as usize;
     let a = (angle - base).rem_euclid(360.0);
-    let q = (a / 90.0).round();
-    ((a - q * 90.0).abs() < 1e-6).then_some((q as usize) % 4)
+    let q = (a / step).round();
+    ((a - q * step).abs() < 1e-6).then_some((q as usize) % n)
 }
 
 impl Want {
     /// The index in [`Want::reach`] of a part turned `angle`, or `None` if the angle is not
-    /// one of the four turns of the want.
+    /// one of the turns of the want.
     pub fn turn(&self, angle: f64) -> Option<usize> {
-        quarter_from(self.base, angle)
+        steps_from(self.base, self.step, angle)
     }
 
     /// The turn of `reach[q]`, in degrees.
     pub fn angle(&self, q: usize) -> f64 {
-        (self.base + 90.0 * q as f64).rem_euclid(360.0)
+        (self.base + self.step * q as f64).rem_euclid(360.0)
+    }
+
+    /// How many turns the want has: four, or eight for a step of 45 degrees.
+    pub fn turns(&self) -> usize {
+        self.reach.len()
     }
 
     /// Whether `angle` is a turn the requirements allow.
@@ -528,10 +541,25 @@ pub(crate) fn base_turn(reqs: &[Req]) -> Option<f64> {
         .map(|angle| angle.rem_euclid(90.0))
 }
 
-/// Which of the four turns `base`, `base + 90`, `base + 180` and `base + 270` every
-/// requirement on the rotation allows.
-pub(crate) fn turns_allowed(reqs: &[Req], base: f64) -> [bool; 4] {
-    std::array::from_fn(|q| turn_meets(reqs, base + q as f64 * 90.0))
+/// Which of the turns `base`, `base + step`, `base + 2 * step`, ... (four for a step of 90
+/// degrees, eight for 45) every requirement on the rotation allows.
+pub(crate) fn turns_allowed(reqs: &[Req], base: f64, step: f64) -> Vec<bool> {
+    let n = (360.0 / step).round() as usize;
+    (0..n)
+        .map(|q| turn_meets(reqs, base + q as f64 * step))
+        .collect()
+}
+
+/// The step the part at `path` may be turned by, in degrees: its own `.place.turn_step`
+/// (issue #1046), else a right angle. A module's says nothing (it has none).
+pub(crate) fn turn_step(design: &Design, path: &str) -> f64 {
+    design
+        .features
+        .constraints
+        .iter()
+        .find(|p| p.path == path && !p.module)
+        .and_then(|p| p.turn_step)
+        .unwrap_or(RIGHT)
 }
 
 pub(crate) fn number(v: f64) -> String {
@@ -640,7 +668,8 @@ pub fn plan(
 
     for part in parts {
         let (reqs, side_req) = requirements(design, &part.path);
-        if reqs.is_empty() && side_req.is_none() {
+        let step = turn_step(design, &part.path);
+        if reqs.is_empty() && side_req.is_none() && step == RIGHT {
             continue;
         }
         let name = crate::board::member(&part.path, &part.refdes);
@@ -693,14 +722,14 @@ pub fn plan(
             ));
             continue;
         };
-        let allowed = turns_allowed(&reqs, base);
-        let mut reach = [None; 4];
+        let allowed = turns_allowed(&reqs, base, step);
+        let mut reach = vec![None; allowed.len()];
         let mut why: Vec<String> = Vec::new();
         for (q, ok) in allowed.iter().enumerate() {
             if !ok {
                 continue;
             }
-            let angle = base + q as f64 * 90.0;
+            let angle = base + q as f64 * step;
             let body = body_at(part, angle, side);
             let (x, y) = (interval(&reqs, 0, body), interval(&reqs, 1, body));
             match (x, y) {
@@ -741,7 +770,7 @@ pub fn plan(
         // the overhang rule's. A window on `x` or `y` keeps the old rule.
         for (q, slot) in reach.iter_mut().enumerate() {
             let Some(r) = *slot else { continue };
-            let body = body_at(part, base + q as f64 * 90.0, side);
+            let body = body_at(part, base + q as f64 * step, side);
             let c = body.centre();
             for (axis, range, size) in [(0, r.x, width), (1, r.y, height)] {
                 let Some(size) = size else { continue };
@@ -772,7 +801,7 @@ pub fn plan(
         }
 
         plan.sides.insert(part.refdes.clone(), side);
-        let live: Vec<usize> = (0..4).filter(|&q| reach[q].is_some()).collect();
+        let live: Vec<usize> = (0..reach.len()).filter(|&q| reach[q].is_some()).collect();
         if let Some(stated) = stated_overhang(&reqs, may) {
             plan.overhang.insert(part.refdes.clone(), stated);
         }
@@ -783,7 +812,7 @@ pub fn plan(
         if pinned {
             let q = live[0];
             let r = reach[q].expect("live");
-            let rotation = base + q as f64 * 90.0;
+            let rotation = base + q as f64 * step;
             plan.fixed.insert(
                 part.refdes.clone(),
                 Fixed {
@@ -809,14 +838,16 @@ pub fn plan(
                     || r.x.1 != f64::INFINITY
                     || r.y.0 != f64::NEG_INFINITY
                     || r.y.1 != f64::INFINITY
-            }) || live.len() < 4
-                || base != 0.0;
+            }) || live.len() < reach.len()
+                || base != 0.0
+                || step != RIGHT;
             if needs_search {
                 plan.wants.insert(
                     part.refdes.clone(),
                     Want {
                         reach,
                         base,
+                        step,
                         holds_x,
                         holds_y,
                         overhangs: may.any(),

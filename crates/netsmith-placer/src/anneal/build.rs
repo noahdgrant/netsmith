@@ -12,7 +12,15 @@ impl<'a> Engine<'a> {
         let mut models: Vec<Model> = (0..n)
             .map(|i| {
                 let base = parts[i].rotation;
-                let angles = [base, base + 90.0, base + 180.0, base + 270.0];
+                let want = p.wants.get(i).and_then(Option::as_ref);
+                // The right angles from the turn it began at, or the eight steps of 45 degrees
+                // for a part whose requirements allow them (issue #1046).
+                let angles: Vec<f64> = match want {
+                    Some(w) if w.step != netsmith_pcb::RIGHT => {
+                        (0..w.turns()).map(|t| base + w.step * t as f64).collect()
+                    }
+                    _ => vec![base, base + 90.0, base + 180.0, base + 270.0],
+                };
                 // A part that stays has the one shape it has; any other, every turn with the
                 // text on every side.
                 let mut shapes: Vec<Shape> = Vec::new();
@@ -47,7 +55,7 @@ impl<'a> Engine<'a> {
                     .collect();
                 Model {
                     shapes,
-                    angles,
+                    angles: angles.clone(),
                     side: parts[i].side,
                     hole: parts[i].has_hole(),
                     protrusion: parts[i].protrusion.as_ref().map(|t| t.length),
@@ -69,7 +77,7 @@ impl<'a> Engine<'a> {
                         .get(i)
                         .and_then(Option::as_ref)
                         .filter(|_| !p.fixed[i])
-                        .map(|w| Limits::of(w, base)),
+                        .map(|w| Limits::of(w, &angles)),
                     overhangs: p
                         .wants
                         .get(i)

@@ -377,3 +377,31 @@ fn the_solver_lists_no_relation_between_parts_as_not_evaluated() {
         .collect();
     assert_eq!(shown.len(), 1, "{shown:?}");
 }
+
+#[test]
+fn a_turn_step_of_45_is_carried_and_one_of_90_is_the_default() {
+    // Issue #1046: a part that states a step of 45 degrees has it in the design, alone or
+    // with other requirements; 90, the default, is written as nothing at all.
+    let l = designed("    .j.place.turn_step &= 45\n").unwrap();
+    let p = placement(&l, "j");
+    assert_eq!((p.turn_step, p.bounds.len()), (Some(45.0), 0));
+    let l = designed("    .j.place.turn_step &= 45\n    .j.place.left >= 2mm\n").unwrap();
+    assert_eq!(placement(&l, "j").turn_step, Some(45.0));
+    let l = designed("    .j.place.turn_step &= 90\n").unwrap();
+    assert!(l.design.features.constraints.is_empty());
+}
+
+#[test]
+fn a_turn_step_other_than_45_or_90_is_refused_with_what_was_stated() {
+    for (said, shown) in [("30", "is 30,"), ("45..90", "is 45..90,")] {
+        let errors = designed(&format!("    .j.place.turn_step &= {said}\n"))
+            .err()
+            .unwrap_or_else(|| panic!("{said} is accepted"))
+            .join("\n");
+        assert!(
+            errors.contains(&format!("`j.place.turn_step` {shown}"))
+                && errors.contains("90 or 45 degrees"),
+            "{errors}"
+        );
+    }
+}

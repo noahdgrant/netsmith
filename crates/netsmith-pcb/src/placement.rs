@@ -659,7 +659,7 @@ pub fn oversize(
         let turns: Vec<f64> = if fixed[i] {
             vec![part.rotation]
         } else if let Some(want) = options.wants.get(&part.refdes) {
-            (0..4)
+            (0..want.turns())
                 .filter(|&q| want.reach[q].is_some())
                 .map(|q| want.angle(q))
                 .collect()

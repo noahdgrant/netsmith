@@ -173,7 +173,7 @@ impl<'a> Engine<'a> {
     /// Busy part `b`'s rim as it lies now.
     pub(super) fn rim(&self, b: usize) -> Option<&Rim> {
         let rims = &self.models[b].rims;
-        let k = (self.shape_index(b) / 4).min(rims.len().checked_sub(1)?);
+        let k = (self.shape_index(b) / TEXT_SIDES).min(rims.len().checked_sub(1)?);
         rims[k].as_ref()
     }
 

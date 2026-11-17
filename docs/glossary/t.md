@@ -46,6 +46,10 @@ _Avoid_: congestion (the router's negotiation over cells), crowding (the coarse 
 A bound on a member that a part's field is held to (`.top.resistance &= .balance`, `.balance >= 20kohm`), read as a bound on the field too, because `&=` puts the field inside the member and a bound on all of the member is a bound on every part of it (ADR 0065). The solver adds it as a relation of its own while it picks and checks the parts, and takes it out of the model it returns. It adds a refusal and never a value.
 _Avoid_: Propagated bound, inherited bound, derived bound (ADR 0057 uses that for a bound on a value worked out from a part)
 
+**Turn step**:
+The step in degrees by which the placer may turn a part, its `.place.turn_step` in the board's physical file (issue #1046): 90 unless stated, so a part takes 0, 90, 180 or 270 degrees from the turn it starts at, or 45 (`.r1.place.turn_step &= 45`), so the annealer tries the eight turns and a part that fits the outline in no right angle starts at the first that fits. It is a part's statement, never a module's or a footprint's; a requirement on the rotation still limits the turns, and a part the layout file locks keeps its own.
+_Avoid_: rotation step, angle grid, snap angle
+
 **Type parameter**:
 A part that a module takes, written after its name with the generic that bounds it: `module Buck<Ic: BuckIc>` (ADR 0115). Inside the module it is the type of a member (`.ic: Ic`) or the argument of another module (`Buck<Ic>`), and a path through such a member reaches only what the bound declares. A board names the part, `Buck<Lt8641>` (a **type argument**), or uses a generic the module provides, and then each provider of the bound is a candidate (`Buck<Lt8641>`, `Buck<Zbk2>`).
 _Avoid_: Template, generic module (a _Generic_ is a definition, not a module with a parameter), wrapper per IC

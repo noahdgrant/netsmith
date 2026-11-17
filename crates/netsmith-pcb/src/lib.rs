@@ -87,7 +87,7 @@ pub use conflict::{
     Turn,
 };
 pub use constraints::{
-    PartWindow, PlanOffset, Want, axis_of as constraint_axis_of,
+    PartWindow, PlanOffset, RIGHT, Reach, Want, axis_of as constraint_axis_of,
     locked_breaks as constraint_locked_breaks, offset as constraint_offset, part_windows,
     plan as constraint_plan, quarter as constraint_quarter,
 };
