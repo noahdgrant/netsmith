@@ -149,7 +149,7 @@ pub use routes::{
     VERSION as ROUTES_VERSION, apply_routes, kicad_layer as routes_kicad_layer,
     layer_word as routes_layer_word, pad_hash, record_of, routes_path,
 };
-pub use rules::{NetClass, Rules};
+pub use rules::{HDI_SIX_BUILD_UP, NetClass, Rules};
 pub use shape::{Edge as ShapeEdge, RoundRect};
 pub use stackup::{
     LayerKind, StackLayer, layers as stackup_layers, round as round_nm, thickness_tolerance,

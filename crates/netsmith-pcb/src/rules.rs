@@ -592,9 +592,98 @@ pub(crate) fn acme_process(layers: u32) -> Process {
     process_of(&source)
 }
 
+/// The build-up an HDI test board states for itself (issue #1015), six layers 1.2 mm thick: a
+/// 1080 prepreg of 0.086 mm under each outer layer (the HDI page's "1078/1080 RC69, 86 μm", at
+/// the impedance page's 3.91 for 1080), two 0.4 mm cores and a 2116 prepreg of 0.15 mm between
+/// them (the HDI page's "2116 RC57, 150 μm", at 4.16): a board's own choice, as an HDI board's
+/// build-up is, and not a figure of the process.
+pub const HDI_SIX_BUILD_UP: &[&str] = &[
+    ".stackup.thickness &= 1.2mm",
+    ".stackup.copper_weight &= 1",
+    ".stackup.build &= \"HDI-6L-1.2\"",
+    ".stackup.inner_copper &= 0.0152mm",
+    ".stackup.dielectric1.kind &= \"prepreg\"",
+    ".stackup.dielectric1.glass &= \"1080\"",
+    ".stackup.dielectric1.thickness &= 0.086mm",
+    ".stackup.dielectric1.epsilon &= 3.91",
+    ".stackup.dielectric2.kind &= \"core\"",
+    ".stackup.dielectric2.thickness &= 0.4mm",
+    ".stackup.dielectric2.epsilon &= 4.6",
+    ".stackup.dielectric3.kind &= \"prepreg\"",
+    ".stackup.dielectric3.glass &= \"2116\"",
+    ".stackup.dielectric3.thickness &= 0.15mm",
+    ".stackup.dielectric3.epsilon &= 4.16",
+    ".stackup.dielectric4.kind &= \"core\"",
+    ".stackup.dielectric4.thickness &= 0.4mm",
+    ".stackup.dielectric4.epsilon &= 4.6",
+    ".stackup.dielectric5.kind &= \"prepreg\"",
+    ".stackup.dielectric5.glass &= \"1080\"",
+    ".stackup.dielectric5.thickness &= 0.086mm",
+    ".stackup.dielectric5.epsilon &= 3.91",
+];
+
+/// `HdiSixLayer` with [`HDI_SIX_BUILD_UP`], GND on its first inner layer, 3V3 on its last and
+/// the two between signal layers, after the board has written each of `narrowings`.
+#[cfg(test)]
+pub(crate) fn hdi_process(narrowings: &[&str]) -> Process {
+    let body: String = HDI_SIX_BUILD_UP
+        .iter()
+        .chain(&[
+            ".inner1.net &= \"GND\"",
+            ".inner2.use &= \"signal\"",
+            ".inner3.use &= \"signal\"",
+            ".inner4.net &= \"3V3\"",
+        ])
+        .chain(narrowings)
+        .map(|n| format!("        {n}\n"))
+        .collect();
+    let source = format!(
+        "import std::mfg::jlcpcb::HdiSixLayer\nimport std::parts::passive::Resistor\nboard T {{\n    .process: HdiSixLayer {{\n{body}    }}\n    .r: Resistor {{\n        .a.net &= \"GND\"\n        .b.net &= \"3V3\"\n    }}\n}}\n"
+    );
+    process_of(&source)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_hdi_process_states_its_blind_and_buried_vias_and_its_build_up_is_checked() {
+        // Unstated, the board is of the first order with no buried via.
+        let p = hdi_process(&[]);
+        let hdi = p.hdi.clone().expect("an HDI process");
+        assert_eq!((hdi.order, hdi.buried), (1, false));
+        assert_eq!((hdi.laser_drill, hdi.laser_via_diameter), (0.1, 0.25));
+        assert_eq!((hdi.min_laser_drill, hdi.max_laser_drill), (0.075, 0.15));
+        assert_eq!((hdi.max_laser_aspect, hdi.max_drill_aspect), (1.0, 16.0));
+        assert_eq!(p.min_track, 0.0762);
+        assert!(Rules::for_process(&p).is_ok());
+        let words = |p: &Process| {
+            crate::via_offers(p, 0.2, 0.45)
+                .iter()
+                .map(|o| o.span.map_or("through".to_string(), |s| format!("{}-{}", s.from.word(), s.to.word())))
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(words(&p), ["top-inner1", "inner4-bottom", "through"]);
+        let p = hdi_process(&[".hdi_order &= 2", ".buried_vias &= \"core\""]);
+        assert_eq!(
+            words(&p),
+            ["top-inner1", "inner1-inner2", "inner4-bottom", "inner3-inner4", "inner2-inner3", "through"]
+        );
+        // The second build-up layers are the 0.4 mm cores, too thick for a laser.
+        let err = Rules::for_process(&p).unwrap_err();
+        assert!(err.contains("dielectric2") && err.contains("0.127"), "{err}");
+        // The first order's core, 0.95 mm, takes a buried via.
+        let p = hdi_process(&[".buried_vias &= \"core\""]);
+        assert_eq!(words(&p)[2], "inner1-inner4");
+        assert!(Rules::for_process(&p).is_ok());
+        // A 0.075 mm laser hole is shallower than the 0.086 mm prepreg it is drilled through.
+        let err = Rules::for_process(&hdi_process(&[".laser_drill &= 0.075mm"])).unwrap_err();
+        assert!(err.contains("at most 1 times its hole"), "{err}");
+        // A process that is not HDI states none.
+        assert_eq!(six_layer_process().hdi, None);
+        assert_eq!(words(&six_layer_process()), ["through"]);
+    }
 
     #[test]
     fn eight_and_ten_layer_processes_are_routed_on_the_outer_layers() {
