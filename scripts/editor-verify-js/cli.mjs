@@ -51,6 +51,8 @@ const FIXTURES = {
   four_layer: 'examples/four_layer.nsm',
   // Two planes and two inner signal layers: the track tool draws on a signal layer (issue 833).
   six_layer: 'examples/six_layer.nsm',
+  // Three resistors on JLCPCB's six-layer HDI process with buried vias: the via tool's blind and buried vias (issue 1071).
+  hdi_vias: 'scripts/editor-verify-js/fixtures/hdi_vias.nsm',
   // The LED board with copper in a routes file (epic #599): a locked net with a via, an unlocked net with a locked track, a net left to the router.
   routed_led: 'scripts/editor-verify-js/fixtures/routed_led.nsm',
   // The same board on four layers, with the design's planes and pour and zones in the routes file, for the pours and zones (epic #599).
@@ -490,7 +492,7 @@ function cleanup() {
 
 const commands = { doctor, launch, drive, groups, evidence, cleanup };
 if (!commands[command]) {
-  console.error('usage: scripts/editor-verify doctor [--no-browser] | launch [--fixture two_boards|led|regulator|lights|four_layer|six_layer|outline_and_pours|routed_pours|carrier_and_cards|led_panel|catalog_refresh|constrained|height_limits|enclosure_limits|case_fit|inspect_3d|mask_colour_3d|case_colour_3d|empty|tri_state|shared_module|schematic_bench|big|tree] [--file f.nsm] | drive <recipe>|all | groups | evidence | cleanup [--keep-evidence]  (launch also takes --git)');
+  console.error('usage: scripts/editor-verify doctor [--no-browser] | launch [--fixture two_boards|led|regulator|lights|four_layer|six_layer|hdi_vias|outline_and_pours|routed_pours|carrier_and_cards|led_panel|catalog_refresh|constrained|height_limits|enclosure_limits|case_fit|inspect_3d|mask_colour_3d|case_colour_3d|empty|tri_state|shared_module|schematic_bench|big|tree] [--file f.nsm] | drive <recipe>|all | groups | evidence | cleanup [--keep-evidence]  (launch also takes --git)');
   process.exit(2);
 }
 await commands[command]();

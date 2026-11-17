@@ -3,7 +3,7 @@
 // a track drawn, a via placed and a drag are. The server makes them as `netsmith routes` makes
 // them and refuses what that refuses.
 
-import type { PcbBox, PcbPoint, PcbRouteNet, PcbRouteTrack, PcbRouteVia, PcbScene, RoutesChange } from '../api';
+import type { PcbBox, PcbPoint, PcbRouteNet, PcbRouteTrack, PcbRouteVia, PcbScene, PcbViaOffer, RoutesChange } from '../api';
 import type { RoutePick } from '../pcbstore';
 
 /** The SVG path of a track: a line, or the arc through `mid` (the circle through the three points). */
@@ -59,6 +59,29 @@ export function shapeOf(net: PcbRouteNet, pick: RoutePick): PcbRouteTrack | PcbR
   if (pick.track != null) return net.tracks[pick.track - 1] ?? null;
   if (pick.via != null) return net.vias[pick.via - 1] ?? null;
   return null;
+}
+
+/** What a via is by its two layers (issue 1071): a through via for none, a blind via when one is an outer layer, else a buried via. */
+export function viaKind(layers: string[] | null | undefined): string {
+  if (!layers || layers.length !== 2) return 'through via';
+  const outer = layers.some((l) => l === 'top' || l === 'bottom');
+  return `${outer ? 'blind' : 'buried'} via ${layers[0]} to ${layers[1]}`;
+}
+
+/** The via between layers `a` and `b` (issue 1071), as `netsmith_pcb::Board::via_between` picks it: of the vias the process makes
+ * (`offers`) that join both, the one of fewest layers, the first on a tie; `order` is the board's copper layers, top first. `null` is
+ * the through via. */
+export function viaBetween(offers: PcbViaOffer[], order: string[], a: string, b: string): string[] | null {
+  const at = (l: string) => order.indexOf(l);
+  const span = (o: PcbViaOffer): [number, number] => (o.layers.length === 2 ? [at(o.layers[0]), at(o.layers[1])] : [0, order.length - 1]);
+  let best: PcbViaOffer | null = null;
+  for (const o of offers) {
+    const [from, to] = span(o);
+    const holds = (l: string) => from <= at(l) && at(l) <= to;
+    if (at(a) < 0 || at(b) < 0 || !holds(a) || !holds(b)) continue;
+    if (!best || to - from < span(best)[1] - span(best)[0]) best = o;
+  }
+  return best && best.layers.length === 2 ? best.layers : null;
 }
 
 /** What a pick is called in a message: `track 2 of net VCC`, `net VCC`. */
@@ -122,7 +145,7 @@ export function labelOf(changes: RoutesChange[]): string {
       return withShoved(through, changes);
     }
     case 'add_via':
-      return withShoved(`place a via on net ${c.net}`, changes);
+      return withShoved(c.layers ? `place a ${viaKind(c.layers)} on net ${c.net}` : `place a via on net ${c.net}`, changes);
     case 'move_track':
     case 'move_via': {
       // A drag moves shapes of one net; the moves of other nets are what it shoved (issue 1009).

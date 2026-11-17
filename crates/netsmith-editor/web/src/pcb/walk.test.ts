@@ -215,6 +215,15 @@ describe('a track on several layers, a via and a drag (issue 1009)', () => {
       { what: 'add_track', net: 'VCC', layer: 'bottom', width: null, from: p(1, 0), to: p(1, 1) },
       { what: 'add_via', net: 'VCC', at: p(1, 0) },
     ]);
+    // On an HDI board, the via between the two layers is the one the process makes (issue 1071).
+    const blind = (a: string, b: string) => (a === 'top' && b === 'inner1' ? ['top', 'inner1'] : null);
+    expect(drawLayered({ ...changeLayer(draft, 'inner1'), points: [p(1, 0), p(1, 1)] }, blind)[2]).toEqual({
+      what: 'add_via',
+      net: 'VCC',
+      at: p(1, 0),
+      layers: ['top', 'inner1'],
+    });
+    expect(viaShove('B', 'VCC', p(1, 2), false, ['top', 'inner1']).vias).toEqual([{ at: p(1, 2), diameter: null, layers: ['top', 'inner1'] }]);
     // Ended right after a layer change: the via would go nowhere.
     expect(drawLayered(changeLayer(draft, 'bottom'))).toEqual([{ what: 'add_track', net: 'VCC', layer: 'top', width: null, from: p(0, 0), to: p(1, 0) }]);
   });

@@ -558,8 +558,10 @@ fn draw(board: &Board, with_key: bool) -> String {
             escape(&plane.layer),
             n(r.min.x),
             n(r.min.y),
-            n(r.width()),
-            n(r.height()),
+            // A board too small for the border draws it as a line or a point (a negative size
+            // is no SVG).
+            n(r.width().max(0.0)),
+            n(r.height().max(0.0)),
             net_colour(net_index(board, &plane.net))
         );
     }

@@ -85,7 +85,8 @@ use netsmith_editor::{
         PcbPad, PcbPart, PcbPoint, PcbRegenerate, PcbRegenerated, PcbRegeneratedPart, PcbReport,
         PcbRequirement, PcbRerouted, PcbRouteNet, PcbRouteTrack, PcbRouteVia, PcbScene,
         PcbShapeRef, PcbShove, PcbShoveAnswer, PcbShoved, PcbShovedTrack, PcbShovedVia, PcbSide,
-        PcbSummary, PcbTotals, PcbWalk, PcbWalked, RequiredPlace, RoutesChange, Severity,
+        PcbSummary, PcbTotals, PcbViaOffer, PcbWalk, PcbWalked, RequiredPlace, RoutesChange,
+        Severity,
     },
 };
 use netsmith_pcb::{
@@ -1192,6 +1193,18 @@ pub fn scene(entry: &Entry, data: &BoardData, name: &str) -> PcbScene {
             .collect(),
         via_diameter: board.rules.via_diameter,
         via_drill: board.rules.via_drill,
+        via_offers: board
+            .via_offers()
+            .iter()
+            .map(|o| PcbViaOffer {
+                layers: o
+                    .span
+                    .map(|s| vec![s.from.word().to_string(), s.to.word().to_string()])
+                    .unwrap_or_default(),
+                diameter: o.diameter,
+                drill: o.drill,
+            })
+            .collect(),
         board: name.to_string(),
         svg: render_svg_view(board),
         origin_x: board.outline.min.x,
@@ -1255,6 +1268,7 @@ fn route_nets(entry: &Entry) -> Vec<PcbRouteNet> {
                         at: at(v.at),
                         diameter: v.diameter,
                         drill: v.drill,
+                        layers: v.layers.clone(),
                         lock: v.lock,
                         drawn: known && (current || v.lock),
                     })
@@ -1314,11 +1328,12 @@ pub fn routes_edit(
             to: at(to),
             lock: false,
         },
-        RoutesChange::AddVia { net, at: p } => Edit::AddVia {
+        RoutesChange::AddVia { net, at: p, layers } => Edit::AddVia {
             net: net.clone(),
             at: at(p),
             diameter: None,
             drill: None,
+            layers: via_layers(board, layers.as_deref())?,
             lock: false,
         },
         RoutesChange::MoveTrack {
@@ -1538,24 +1553,61 @@ fn earlier_copper(
         }
     }
     for v in &walk.vias {
-        out.push(What::Via(process_via(board, &walk.net, point(v), None)));
+        out.push(What::Via(process_via(
+            board,
+            &walk.net,
+            point(v),
+            None,
+            None,
+        )?));
     }
     Ok(out)
 }
 
-/// A via of `net` at `at`, of the process's size unless `diameter` is given.
+/// A via of `net` at `at`, of the process's size unless `diameter` is given: a through via, or
+/// with `layers` the process's blind or buried via that ends on them (issue 1071).
 fn process_via(
     board: &Board,
     net: &str,
     at: netsmith_pcb::Pt,
     diameter: Option<f64>,
-) -> netsmith_pcb::Via {
-    netsmith_pcb::Via {
+    layers: Option<&[String]>,
+) -> Result<netsmith_pcb::Via, ApiError> {
+    let offer = netsmith_fabricate::routes::via_offer(board, via_layers(board, layers)?.as_ref())
+        .map_err(|r| match r {
+        netsmith_fabricate::routes::Refusal::Refused(why)
+        | netsmith_fabricate::routes::Refusal::Failed(why) => ApiError::bad_request(why),
+    })?;
+    Ok(netsmith_pcb::Via {
         net: net.to_string(),
         at,
-        diameter: diameter.unwrap_or(board.rules.via_diameter),
-        drill: board.rules.via_drill,
-        span: None,
+        diameter: diameter.unwrap_or(offer.diameter),
+        drill: offer.drill,
+        span: offer.span,
+    })
+}
+
+/// The two layers a via of the view names (`["top", "inner1"]`), `None` for none.
+fn via_layers(
+    board: &Board,
+    words: Option<&[String]>,
+) -> Result<Option<[CopperLayer; 2]>, ApiError> {
+    let Some(words) = words else {
+        return Ok(None);
+    };
+    match words {
+        [a, b] => match (CopperLayer::of_word(a), CopperLayer::of_word(b)) {
+            (Some(a), Some(b)) if a != b => Ok(Some([a, b])),
+            _ => Err(ApiError::bad_request(format!(
+                "a via of {} ends on two layers, `top`, `bottom` or `inner1`, ..., not `{a}` and `{b}`",
+                board.name
+            ))),
+        },
+        _ => Err(ApiError::bad_request(format!(
+            "a via of {} ends on two layers, not {}",
+            board.name,
+            words.len()
+        ))),
     }
 }
 
@@ -1735,7 +1787,8 @@ pub fn shove_answer(
             &ask.net,
             point(&v.at),
             v.diameter,
-        )));
+            v.layers.as_deref(),
+        )?));
     }
     let mut answer = PcbShoveAnswer {
         reason: None,

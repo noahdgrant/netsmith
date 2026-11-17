@@ -18,7 +18,7 @@ import {
   select,
   selection,
 } from '../pcbstore';
-import { boxOf, deleteChange, lockChange, nameOf, samePick, shapeOf } from './routes';
+import { boxOf, deleteChange, lockChange, nameOf, samePick, shapeOf, viaKind } from './routes';
 import { Defs, InspectorAction, InspectorHead, PinChip } from '../components/Inspector';
 import { Icon } from '../components/Icons';
 import { EmptyState } from '../components/ui';
@@ -590,6 +590,7 @@ function RouteList(props: { scene: PcbScene; onFocus: (box: PcbBox) => void }) {
             >
               <span class="ref">via {i + 1}</span>
               <span class="faint kind">
+                {v.layers?.length ? `${viaKind(v.layers)}, ` : ''}
                 {fmt(v.diameter)} mm, drill {fmt(v.drill)} mm
               </span>
               {v.lock && <span class="tag lock" title="locked: kept when the net's pads move">lock</span>}
@@ -625,6 +626,7 @@ function RouteInspector(props: { scene: PcbScene; pick: RoutePick; record: PcbRo
         ]
       : [
           { label: 'At', value: at(shape.at) },
+          { label: 'Kind', value: viaKind(shape.layers) },
           { label: 'Size', value: `${fmt(shape.diameter)} mm, drill ${fmt(shape.drill)} mm` },
           { label: 'On the board', value: shape.drawn ? 'yes' : 'no (stale record)' },
         ];

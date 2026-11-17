@@ -14,6 +14,7 @@ import { Icon } from '../components/Icons';
 import { EmptyState, Segmented, Spinner } from '../components/ui';
 import { Canvas, type Tip } from '../pcb/Canvas';
 import { crossedText, reroutedText, shovedText } from '../pcb/walk';
+import { viaKind } from '../pcb/routes';
 import { FindingsList } from '../pcb/Findings';
 import { SummaryTab } from '../pcb/Summary';
 import { Panel } from '../pcb/Panel';
@@ -47,6 +48,7 @@ import {
   trackLayer,
   trackShove,
   undo,
+  viaSpan,
   crossedShown,
   shoveShown,
   rerouted,
@@ -380,6 +382,27 @@ export function Pcb() {
                 {(sc?.trackLayers ?? ['top', 'bottom']).map((l) => (
                   <option key={l} value={l}>
                     {l} layer
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+          {!in3d && activeTool === 'via' && sc && sc.viaOffers.length > 1 && (
+            <label class="grid-pick" data-testid="via-options" title="The via placed: the through via, or a blind or buried via the board's HDI process makes, by the two layers it ends on; its size is the process's for it">
+              <Icon name="via" size={14} />
+              <select
+                value={sc.viaOffers.some((o) => o.layers.join(',') === viaSpan.value) ? viaSpan.value : ''}
+                onChange={(e) => {
+                  const el = e.target as HTMLSelectElement;
+                  viaSpan.value = el.value;
+                  el.blur();
+                }}
+                data-testid="via-span"
+                aria-label="Via span"
+              >
+                {[...sc.viaOffers.slice(-1), ...sc.viaOffers.slice(0, -1)].map((o) => (
+                  <option key={o.layers.join(',')} value={o.layers.join(',')}>
+                    {viaKind(o.layers)}, {o.diameter} mm
                   </option>
                 ))}
               </select>

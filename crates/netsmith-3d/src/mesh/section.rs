@@ -38,8 +38,9 @@ pub fn of_scene_section(scene: &Scene, axis: Axis, at: f64) -> Vec<Mesh> {
     let outline = board_outline(solid);
     let mut out = slabs(scene, &outline);
     if let Ok(copper) = &scene.copper {
-        for layer in &copper.layers {
-            out.extend(copper_cap(scene, layer, &copper.vias, axis, at));
+        for (k, layer) in copper.layers.iter().enumerate() {
+            let vias: Vec<_> = copper.vias.iter().filter(|v| v.on(k)).cloned().collect();
+            out.extend(copper_cap(scene, layer, &vias, axis, at));
         }
     }
     out.extend(barrels(scene));
@@ -121,6 +122,8 @@ fn barrels(scene: &Scene) -> Vec<Mesh> {
                 HoleOwner::Via { net } => net.clone(),
             };
             let ring = Polygon::new(hole_ring(h, PLATING)).with_hole(hole_ring(h, 0.0));
+            // A blind or a buried via's barrel spans its own layers (issue #1071).
+            let (z0, z1) = h.depth.map_or((z0, z1), |(top, under)| (under, top));
             Mesh::prism(id, Material::Copper, &ring, z0, z1).ok()
         })
         .collect()
@@ -249,7 +252,12 @@ fn copper_cap(
         }
     }
     let mut drills = Vec::new();
-    for h in &scene.board.holes {
+    for h in scene
+        .board
+        .holes
+        .iter()
+        .filter(|h| h.passes(layer.z_top, layer.z_bottom))
+    {
         drills.extend(pairs(&crossings(
             std::iter::once(hole_ring(h, 0.0).as_slice()),
             k,

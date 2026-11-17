@@ -1058,7 +1058,7 @@ fn in_opening(board: &BoardSolid, p: [f64; 3]) -> bool {
             && p[1] >= c.at.min.y - CONTACT
             && p[1] <= c.at.max.y + CONTACT
     });
-    cut || board.holes.iter().any(|h| {
+    cut || board.holes.iter().filter(|h| h.is_through()).any(|h| {
         // The distance from the hole's axis (a point, or a slot's segment).
         let (ax, ay, bx, by) = (h.from.x, h.from.y, h.to.x, h.to.y);
         let (dx, dy) = (bx - ax, by - ay);

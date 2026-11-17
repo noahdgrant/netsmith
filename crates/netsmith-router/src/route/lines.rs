@@ -88,7 +88,7 @@ impl<'a> Router<'a> {
         // rules' space from the copper there is now.
         let net = self.nets[line];
         let usable =
-            |pad: Option<InPad>| pad.filter(|p| self.via_fits(p, net, &obstacles, &keepouts));
+            |pad: Option<InPad>| pad.and_then(|p| self.via_fits(&p, net, &obstacles, &keepouts));
         let (in_from, in_to) = (usable(self.in_pads[line].0), usable(self.in_pads[line].1));
         let from_extra: Vec<Spot> = in_from.iter().flat_map(InPad::spots).collect();
         let to_extra: Vec<Spot> = in_to.iter().flat_map(InPad::spots).collect();

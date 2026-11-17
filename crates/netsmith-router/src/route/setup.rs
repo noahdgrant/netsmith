@@ -79,9 +79,9 @@ impl<'a> Router<'a> {
                 let to = if l.to_plane {
                     None
                 } else {
-                    in_pad(board, &l.to, l.to_at, &grid, layers)
+                    in_pad(board, &stack, &l.to, l.to_at, &grid, layers)
                 };
-                (in_pad(board, &l.from, l.from_at, &grid, layers), to)
+                (in_pad(board, &stack, &l.from, l.from_at, &grid, layers), to)
             })
             .collect();
         let necks = lines

@@ -70,3 +70,57 @@ fn a_process_with_no_blind_vias_crosses_through_vias() {
     assert!(board.vias.iter().all(|v| v.span.is_none()));
     assert!(!kicad_pcb(&board).contains("(via micro"));
 }
+
+#[test]
+fn a_walled_in_pad_is_reached_by_a_blind_via_in_the_pad_where_no_drilled_via_may_stand() {
+    // Issue #1071: the HDI process fills and planarizes its blind vias by plating, so one stands
+    // in a pad though the board takes no drilled via in a pad (`.via_in_pad &= 0mm`).
+    let process = common::hdi_six_layer_process(&[".via_in_pad &= 0mm"]);
+    let (mut board, walled) = common::land_grid_board_on(7, 12, 0.9, process);
+    assert!(!board.rules.via_in_pad);
+    assert!(!walled.is_empty());
+    let routing = route_with(&mut board, RouteOptions::default());
+    assert!(routing.left.is_empty(), "{:?}", routing.left.lines);
+    assert_eq!(Ratsnest::of(&board).len(), 0);
+    // Every via in a pad is the laser's blind via from the pad's face to the layer under it,
+    // and every pad that was walled in has one of its own net.
+    let blind = ViaSpan {
+        from: CopperLayer::Front,
+        to: CopperLayer::Inner(1),
+    };
+    let in_pads = board.vias_in_pads();
+    for (k, pad) in &in_pads {
+        let v = &board.vias[*k];
+        assert_eq!(
+            (v.span, v.diameter, v.drill),
+            (Some(blind), 0.25, 0.1),
+            "the via in {pad}"
+        );
+    }
+    for pad in &walled {
+        assert!(
+            in_pads
+                .iter()
+                .any(|(k, p)| p.refdes == "U1" && &p.number == pad && board.vias[*k].net.starts_with('S')),
+            "pad {pad} has no blind via of its own: {in_pads:?}"
+        );
+    }
+    assert_eq!(own_findings(&board), Vec::<String>::new());
+    // The notes say the pads have blind vias, which need no epoxy fill, and ask for no drilled
+    // via in a pad.
+    let extras = board.process_extras();
+    assert!(
+        !extras.iter().any(|e| e.starts_with("vias in pads")),
+        "{extras:?}"
+    );
+    let line = extras
+        .iter()
+        .find(|e| e.starts_with("blind vias in pads"))
+        .unwrap_or_else(|| panic!("{extras:?}"));
+    assert!(
+        line.starts_with(&format!("blind vias in pads: {} blind via(s)", in_pads.len()))
+            && line.contains("U1.")
+            && line.contains("fills and planarizes its blind vias by plating"),
+        "{line}"
+    );
+}

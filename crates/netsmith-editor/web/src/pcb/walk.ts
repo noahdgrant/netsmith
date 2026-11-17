@@ -49,12 +49,16 @@ export interface Layered {
 
 /** The changes that draw a track of several layers: each run's segments on its layer and a via at each change. A via after the last
  * run's only corner (a layer changed and nothing drawn after) is left out. */
-export function drawLayered(d: Layered): RoutesChange[] {
+export function drawLayered(d: Layered, between?: (a: string, b: string) => string[] | null): RoutesChange[] {
   const runs = [...d.earlier, { layer: d.layer, points: d.points }];
   const vias = d.points.length < 2 && d.earlier.length > 0 ? d.vias.slice(0, -1) : d.vias;
   return [
     ...runs.flatMap((r) => drawChanges(d.net, r.layer, r.points)),
-    ...vias.map((at): RoutesChange => ({ what: 'add_via', net: d.net, at })),
+    // On a board with blind and buried vias, the via between the two runs' layers (issue 1071).
+    ...vias.map((at, i): RoutesChange => {
+      const layers = between?.(runs[i].layer, runs[i + 1].layer) ?? null;
+      return { what: 'add_via', net: d.net, at, ...(layers ? { layers } : {}) };
+    }),
   ];
 }
 
@@ -100,8 +104,8 @@ export function shoveAnswerTo(s: PcbShove, got: PcbShoveAnswer | Error): ShoveAn
 }
 
 /** The ask for a via of the process on `net` at `at`. */
-export function viaShove(board: string, net: string, at: PcbPoint, shove: boolean): PcbShove {
-  return { board, net, tracks: [], vias: [{ at, diameter: null }], moving: [], shove };
+export function viaShove(board: string, net: string, at: PcbPoint, shove: boolean, layers?: string[] | null): PcbShove {
+  return { board, net, tracks: [], vias: [{ at, diameter: null, ...(layers ? { layers } : {}) }], moving: [], shove };
 }
 
 /** The ask for a drag: the shapes of `record` the changes of the drag (`dragChanges`) move, where they go, and which they are. */
@@ -116,7 +120,7 @@ export function dragShove(board: string, record: PcbRouteNet, changes: RoutesCha
     } else if (c.what === 'move_via') {
       const v = record.vias[c.via - 1];
       if (!v) continue;
-      ask.vias.push({ at: c.at, diameter: v.diameter });
+      ask.vias.push({ at: c.at, diameter: v.diameter, ...(v.layers?.length ? { layers: v.layers } : {}) });
       ask.moving.push({ net: c.net, track: null, via: c.via });
     }
   }

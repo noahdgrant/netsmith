@@ -757,6 +757,17 @@ pub fn land_grid_board_sized(
     pad_size: f64,
     narrowings: &[&str],
 ) -> (Board, Vec<String>) {
+    land_grid_board_on(side, nets, pad_size, four_layer_process_with(narrowings))
+}
+
+/// [`land_grid_board_sized`] on `process`, which has GND and 3V3 planes (an HDI process, issue
+/// #1071).
+pub fn land_grid_board_on(
+    side: usize,
+    nets: usize,
+    pad_size: f64,
+    process: netsmith_core::Process,
+) -> (Board, Vec<String>) {
     let inside = |p: usize| {
         let (row, col) = ((p - 1) / side, (p - 1) % side);
         (1..side - 1).contains(&row) && (1..side - 1).contains(&col)
@@ -845,7 +856,7 @@ pub fn land_grid_board_sized(
     let design = Design {
         modules: Vec::new(),
         name: "LandGrid".into(),
-        process: Some(four_layer_process_with(narrowings)),
+        process: Some(process),
         features: Default::default(),
         interfaces: Vec::new(),
         notes: Vec::new(),

@@ -1129,6 +1129,11 @@ fn via_in_pad(out: &mut Out<'_>) {
         if v.diameter <= widest + EPS / 100.0 {
             continue;
         }
+        // An HDI process fills and planarizes its laser-drilled blind vias by plating, so one
+        // stands in a pad whatever the process fills of its drilled vias (issue #1071).
+        if v.micro && m.extras.vias.is_some() {
+            continue;
+        }
         let via = &m.items[m.via_item[vi]];
         for c in m.items.iter().filter(|c| matches!(c.kind, Kind::Pad(_))) {
             let centre = Shape::disc(v.at, 0.0);

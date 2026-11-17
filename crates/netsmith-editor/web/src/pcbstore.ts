@@ -63,6 +63,10 @@ export const pcbSide = signal<Side>('both');
  * scene's `trackLayers`. */
 export const trackLayer = signal<string>('top');
 
+/** The via the via tool places (issue 1071): `''` for the through via, else a blind or a buried via's two layers, `top,inner1`, one
+ * of the scene's `viaOffers`. */
+export const viaSpan = signal<string>('');
+
 /** How the track tool treats the unlocked copper of the routes file that is in the way (issue 726): shoved aside (the default), or
  * only walked round, which leaves every shape where it is. */
 export const trackShove = signal<boolean>(true);

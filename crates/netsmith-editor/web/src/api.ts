@@ -1136,7 +1136,13 @@ netWidths: Array<PcbNetWidth>,
 /**
  * The process's via, which a via placed in the view gets: diameter and drill in mm.
  */
-viaDiameter: number, viaDrill: number, };
+viaDiameter: number, viaDrill: number, 
+/**
+ * The kinds of via the process makes, which the via tool chooses from (issue 1071): the
+ * blind and buried vias of an HDI process, then the through via, which is the only one of
+ * any other process.
+ */
+viaOffers: Array<PcbViaOffer>, };
 
 export type PcbPours = { board: string, 
 /**
@@ -1196,13 +1202,24 @@ lock: boolean,
  */
 drawn: boolean, };
 
-export type PcbRouteVia = { at: PcbPoint, diameter: number, drill: number, lock: boolean, drawn: boolean, };
+export type PcbRouteVia = { at: PcbPoint, diameter: number, drill: number, 
+/**
+ * The two layers a blind or a buried via ends on, the upper first; empty for a through via.
+ */
+layers: Array<string>, lock: boolean, drawn: boolean, };
+
+export type PcbViaOffer = { 
+/**
+ * The two layers a blind or a buried via ends on, the upper first (`top`, `inner1`); empty
+ * for the through via.
+ */
+layers: Array<string>, diameter: number, drill: number, };
 
 export type RoutesChange = { "what": "delete", net: string, track: number | null, via: number | null, } | { "what": "lock", net: string, track: number | null, via: number | null, 
 /**
  * Lock, or unlock.
  */
-lock: boolean, } | { "what": "add_track", net: string, layer: string, width: number | null, from: PcbPoint, to: PcbPoint, } | { "what": "add_via", net: string, at: PcbPoint, } | { "what": "move_track", net: string, track: number, from: PcbPoint, to: PcbPoint, mid?: PcbPoint, } | { "what": "move_via", net: string, via: number, at: PcbPoint, } | { "what": "restore", net: string, before: string | null, after: string | null, };
+lock: boolean, } | { "what": "add_track", net: string, layer: string, width: number | null, from: PcbPoint, to: PcbPoint, } | { "what": "add_via", net: string, at: PcbPoint, layers?: Array<string>, } | { "what": "move_track", net: string, track: number, from: PcbPoint, to: PcbPoint, mid?: PcbPoint, } | { "what": "move_via", net: string, via: number, at: PcbPoint, } | { "what": "restore", net: string, before: string | null, after: string | null, };
 
 export type PcbRoutesEdit = { board: string, 
 /**
@@ -1311,7 +1328,7 @@ export type PcbShove = { board: string, net: string, tracks: Array<PcbShoveTrack
 
 export type PcbShoveTrack = { layer: string, width: number | null, from: PcbPoint, to: PcbPoint, };
 
-export type PcbShoveVia = { at: PcbPoint, diameter: number | null, };
+export type PcbShoveVia = { at: PcbPoint, diameter: number | null, layers?: Array<string>, };
 
 export type PcbShapeRef = { net: string, track: number | null, via: number | null, };
 

@@ -1413,6 +1413,20 @@ pub struct PcbScene {
     /// The process's via, which a via placed in the view gets: diameter and drill in mm.
     pub via_diameter: f64,
     pub via_drill: f64,
+    /// The kinds of via the process makes, which the via tool chooses from (issue 1071): the
+    /// blind and buried vias of an HDI process, then the through via, which is the only one of
+    /// any other process.
+    pub via_offers: Vec<PcbViaOffer>,
+}
+
+/// One kind of via a board's process makes (`netsmith_pcb::Board::via_offers`).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+pub struct PcbViaOffer {
+    /// The two layers a blind or a buried via ends on, the upper first (`top`, `inner1`); empty
+    /// for the through via.
+    pub layers: Vec<String>,
+    pub diameter: f64,
+    pub drill: f64,
 }
 
 /// The copper pours of a board as the PCB view draws them under the tracks and pads: the fill of
@@ -1499,6 +1513,8 @@ pub struct PcbRouteVia {
     pub at: PcbPoint,
     pub diameter: f64,
     pub drill: f64,
+    /// The two layers a blind or a buried via ends on, the upper first; empty for a through via.
+    pub layers: Vec<String>,
     pub lock: bool,
     pub drawn: bool,
 }
@@ -1531,8 +1547,15 @@ pub enum RoutesChange {
         from: PcbPoint,
         to: PcbPoint,
     },
-    /// A via of the net, of the process's size.
-    AddVia { net: String, at: PcbPoint },
+    /// A via of the net, of the process's size: a through via, or with `layers` the blind or
+    /// buried via of the process that ends on those two layers (issue 1071), of its size.
+    AddVia {
+        net: String,
+        at: PcbPoint,
+        #[serde(default)]
+        #[ts(optional)]
+        layers: Option<Vec<String>>,
+    },
     /// A track of the net with its ends at `from` and `to`; refused while it is locked. An arc
     /// is moved whole, with its middle at `mid` (what a shove does, issue 1009); a straight
     /// track has none.
@@ -1658,11 +1681,15 @@ pub struct PcbShoveTrack {
     pub to: PcbPoint,
 }
 
-/// A via of a [`PcbShove`]. `diameter` `None` is the process's via.
+/// A via of a [`PcbShove`]. `diameter` `None` is the process's via; `layers` are a blind or a
+/// buried via's two layers, as in [`RoutesChange::AddVia`].
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 pub struct PcbShoveVia {
     pub at: PcbPoint,
     pub diameter: Option<f64>,
+    #[serde(default)]
+    #[ts(optional)]
+    pub layers: Option<Vec<String>>,
 }
 
 /// One shape of a net's record of the routes file: track or via `n`, numbered from 1.
@@ -2413,6 +2440,7 @@ pub fn typescript() -> String {
         PcbRouteNet,
         PcbRouteTrack,
         PcbRouteVia,
+        PcbViaOffer,
         RoutesChange,
         PcbRoutesEdit,
         PcbRoutesEdited,

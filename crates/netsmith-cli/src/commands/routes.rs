@@ -138,6 +138,11 @@ pub struct AddViaArgs {
     /// The drill in mm (default: the process's via drill).
     #[arg(long, value_name = "MM")]
     pub drill: Option<f64>,
+    /// A blind or a buried via: the two layers it ends on, `top,inner1`, a via the board's HDI
+    /// process makes; its size is then that via's (the laser's for a blind via). Default: a
+    /// through via.
+    #[arg(long, value_name = "LAYER,LAYER", value_parser = parse_layer_pair)]
+    pub layers: Option<[CopperLayer; 2]>,
     /// Lock the via: it is kept when the net's pads move.
     #[arg(long)]
     pub lock: bool,
@@ -225,6 +230,19 @@ pub(super) fn parse_layer(text: &str) -> Result<CopperLayer, String> {
     })
 }
 
+fn parse_layer_pair(text: &str) -> Result<[CopperLayer; 2], String> {
+    let (a, b) = text
+        .split_once(',')
+        .ok_or_else(|| format!("`{text}` is not two layers, `top,inner1`"))?;
+    let (a, b) = (parse_layer(a.trim())?, parse_layer(b.trim())?);
+    if a == b {
+        return Err(format!(
+            "`{text}` names one layer twice: a via joins two layers"
+        ));
+    }
+    Ok([a, b])
+}
+
 pub(super) fn parse_point(text: &str) -> Result<[f64; 2], String> {
     let (x, y) = text
         .split_once(',')
@@ -276,6 +294,7 @@ pub fn run(args: Args) -> ExitCode {
             at: a.at,
             diameter: a.diameter,
             drill: a.drill,
+            layers: a.layers,
             lock: a.lock,
         }),
         Command::AddZone(a) => edit(&a.target, |board| lib::Edit::AddZone {
@@ -550,6 +569,27 @@ mod tests {
         ));
         assert!(matches!(
             parse(&[
+                "routes",
+                "add-via",
+                "--net",
+                "GND",
+                "--at",
+                "1,1",
+                "--layers",
+                "inner4,bottom"
+            ]),
+            Ok(Command::Routes(routes::Args {
+                command: routes::Command::AddVia(routes::AddViaArgs {
+                    layers: Some([
+                        netsmith_pcb::CopperLayer::Inner(4),
+                        netsmith_pcb::CopperLayer::Back
+                    ]),
+                    ..
+                })
+            }))
+        ));
+        assert!(matches!(
+            parse(&[
                 "routes", "delete", "--net", "GND", "--via", "2", "--into", "a.nsm"
             ]),
             Ok(Command::Routes(routes::Args {
@@ -623,5 +663,15 @@ mod tests {
             kind(&["routes", "add-via", "--net", "GND", "--at", "1"]),
             ErrorKind::ValueValidation
         );
+        // A blind via's two layers (issue #1071): two different layers.
+        for bad in ["top", "top,top", "top,middle"] {
+            assert_eq!(
+                kind(&[
+                    "routes", "add-via", "--net", "GND", "--at", "1,1", "--layers", bad
+                ]),
+                ErrorKind::ValueValidation,
+                "{bad}"
+            );
+        }
     }
 }

@@ -728,7 +728,8 @@ fn board_solid(solid: &BoardSolid) -> Option<Extrusion> {
     for c in &solid.cutouts {
         loops.push(rounded(xy(c.at.min), xy(c.at.max), c.radius));
     }
-    for h in &solid.holes {
+    // A blind or a buried via's hole is filled and stops inside the board (issue #1071).
+    for h in solid.holes.iter().filter(|h| h.is_through()) {
         loops.push(slot(xy(h.from), xy(h.to), h.diameter));
     }
     Extrusion {
