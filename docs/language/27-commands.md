@@ -76,8 +76,36 @@ Each command, what it was before, and its flags (a test walks `--help` of every 
 | `netsmith dev route` | `netsmith route` | `--out`, `--route-timeout`, `--margin`, `--turn`, `--tries`, `--stages`, `--plan`, `--classes`, `--arcs` |
 | `netsmith dev parity` | `netsmith parity` | `--table`, `--parts`, `--svg`, `--format` |
 | `netsmith dev board3d` | `netsmith board3d` | `--board`, `--format` (was `--json`), `--glb`, `--step`, `--place-seeds`, `--place-budget`, `--progress`, `--to-editor` |
+| `netsmith mcp` | new | none |
 
-The places left for commands to come, named by the same rules: `board bom`, `board power`, `board drc`, `board swap` and `board copper`; `view schematic`, `view pcb` and `view gerber`; `project fmt` and `project lint`; and `mcp`, the server that offers these commands to an agent.
+The places left for commands to come, named by the same rules: `board bom`, `board power`, `board drc`, `board swap` and `board copper`; `view schematic`, `view pcb` and `view gerber`; and `project fmt` and `project lint`.
+
+### The MCP server
+
+`netsmith mcp` offers the command line to an agent host that speaks the Model Context Protocol (Claude Code, Claude Desktop, an editor), on stdin and stdout (issue #1106). The host starts it, and it serves until the host closes its stdin. It adds nothing the command line lacks:
+
+- Each command is a tool, named by its words (`board check` is `board_check`, `view editor-3d` is `view_editor_3d`), with an argument for each of its flags and positional arguments, under the name of the field clap gives it (`place_seeds` for `--place-seeds`, `file` for `FILE.NSM`), and with its help, type, choices and default. They are read from the command line itself, so a new command or flag is a tool or an argument with no change to the server. `view editor`, a server that never ends, is not a tool, nor is `mcp`.
+- A call runs the command in the folder the server was started in, as a person runs it there: the commands that write files (`board build`, `board fab`, `layout set`) write them. Where a command has `--format json` the call asks for it unless its `format` says `text`, and the result is the command's JSON document, as text and as structured content; otherwise the result is the command's text. What it says on stderr follows. An exit code of 1 (what the command checked failed) or 2 (it could not run, a mistake in the arguments included) makes the result an error, with the code.
+- Each line the command says on stderr is a progress notification when the host asks for progress, and `--progress json` is asked for where the command has it. A call the host cancels stops its command as Ctrl+C does in a terminal, and is not answered (ADR 0062).
+- The resources are the project's files (`netsmith://project/src/main.nsm`: its source and the other text files netsmith reads and writes, from the nearest folder up with a `netsmith.toml`) and the language guide (`netsmith://guide/LANGUAGE.md` and its chapters, `netsmith://guide/language/27-commands.md`). The prompts are the skills `netsmith project init` writes, one for each, with an optional `request` that follows the skill's text.
+
+To use it from Claude Code, in the project's folder:
+
+```sh
+claude mcp add netsmith -- netsmith mcp
+```
+
+or, to share it with everyone who opens the project, a `.mcp.json` beside `netsmith.toml`:
+
+```json
+{ "mcpServers": { "netsmith": { "command": "netsmith", "args": ["mcp"] } } }
+```
+
+Another host that starts a server on stdio takes the same: the command `netsmith`, the argument `mcp`, started in the project's folder. A host that cannot say the folder (Claude Desktop's `claude_desktop_config.json` has no such key) starts it through a shell that changes to it first:
+
+```json
+{ "mcpServers": { "netsmith": { "command": "sh", "args": ["-c", "cd /path/to/project && exec netsmith mcp"] } } }
+```
 
 ### The editor
 

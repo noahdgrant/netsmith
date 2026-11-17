@@ -18,6 +18,7 @@ mod init;
 mod kicad_libs;
 mod layout;
 mod lock;
+mod mcp;
 pub mod moved;
 mod order;
 mod parity;
@@ -68,6 +69,8 @@ pub enum Command {
     /// Tools to develop netsmith with: route a saved board, a port's parity, the 3D scene's report.
     #[command(subcommand)]
     Dev(Dev),
+    /// Serve these commands to an agent host over the Model Context Protocol, on stdin and stdout.
+    Mcp(mcp::Args),
 }
 
 /// `netsmith project ...`.
@@ -177,6 +180,7 @@ pub fn run(command: Command) -> ExitCode {
             Dev::Parity(args) => parity::run(args),
             Dev::Board3d(args) => board3d::run(args),
         },
+        Command::Mcp(args) => mcp::run(args),
     }
 }
 

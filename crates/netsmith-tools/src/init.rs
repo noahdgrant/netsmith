@@ -89,6 +89,23 @@ const SKILLS: [(&str, &str); 8] = [
     ),
 ];
 
+/// The language guide this netsmith writes into a project, as its files are named under
+/// `docs/netsmith/` there: `LANGUAGE.md`, then each chapter as `language/NN-topic.md` in order.
+/// `netsmith mcp` offers them as resources (issue #1106).
+pub fn guide() -> Vec<(String, &'static str)> {
+    let mut all = vec![("LANGUAGE.md".to_string(), GUIDE_TEXT)];
+    for (name, text) in GUIDE_CHAPTERS {
+        all.push((format!("language/{name}"), text));
+    }
+    all
+}
+
+/// The skills this netsmith writes into a project, as `(name, the text of its SKILL.md)`.
+/// `netsmith mcp` offers them as prompts (issue #1106).
+pub fn skills() -> &'static [(&'static str, &'static str)] {
+    &SKILLS
+}
+
 /// Make a project in `dir` named `name`, or after the directory if `None`. On success the
 /// text to show: what was made and what to run next.
 pub fn init(dir: &Path, name: Option<&str>) -> Result<String, String> {
