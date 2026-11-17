@@ -35,6 +35,10 @@ _Avoid_: Intrinsic diode, parasitic diode (as a field)
 A part with a `bridge` and no `dc` statement. A DC analysis cannot see through it, so it ends the network there and says which part and pin it stopped at, and the currents that depend on it stay not evaluated (ADR 0076).
 _Avoid_: Black box, unmodelled part
 
+**Branch**:
+The copper from the pads of a part's pin to the rest of its net, when the pin states the most it carries with `.current` (`.bias.current &= 1mA`, issue #1113): a converter's bias pin, a feedback divider's top, a meter's probe on a rail of amps. The router joins each such pad to the nearest pad of the net that is no branch by a line of its own, so the pad is a leaf, and draws that line, and its vias, for the branch's current and not the net's; the design rules check holds that copper to it. The rest of the net, what joins its pads that are no branch, is its **trunk**. A branch's current is no term of a balance. Only a pin of a part has one; a port's pin stands for every pin joined to it.
+_Avoid_: Stub (a stub is a track that ends at nothing), tap (a sense pin's join to a pad, issue #1148, is another thing), spur
+
 **Bridge**:
 The two terminals of a part that a series chain enters and leaves by.
 

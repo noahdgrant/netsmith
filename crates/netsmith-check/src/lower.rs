@@ -759,6 +759,9 @@ impl Checker<'_> {
             (Res::Field(f), _) if self.is_pin_limit(f) && !self.stating_row_limits => {
                 self.refuse_limit_statement(p, c);
             }
+            (Res::Field(f), _) if self.is_branch_off_part(f) => {
+                self.refuse_branch_off_part(f, p, c);
+            }
             (Res::Field(f), rhs) => {
                 self.refuse_own_statement(f, symbol, c.span);
                 if let Some(t) = &rhs {
@@ -808,6 +811,38 @@ impl Checker<'_> {
         let f = self.model.field(field);
         matches!(f.name.as_str(), "abs_min" | "abs_max")
             && self.model.instance(f.owner).kind == InstKind::Pin
+    }
+
+    /// Whether the field is the `.current` of a pin that no part has: a pin of a module, a
+    /// board or an interface of one (issue #1113).
+    fn is_branch_off_part(&self, field: FieldId) -> bool {
+        let f = self.model.field(field);
+        f.name == "current"
+            && self.model.instance(f.owner).kind == InstKind::Pin
+            && self
+                .model
+                .owner_of(f.owner)
+                .is_none_or(|o| self.model.instance(o).kind != InstKind::Part)
+    }
+
+    /// The current of a branch is stated on the pin of the part at its end (issue #1113): a
+    /// port's pin stands for whatever pins the module or board joins to it, so its branch is
+    /// no one piece of copper.
+    fn refuse_branch_off_part(&mut self, field: FieldId, path: &ast::Path, c: &ast::Constraint) {
+        let pin = self.model.field(field).owner;
+        let word = self
+            .model
+            .owner_of(pin)
+            .map_or("board", |o| self.model.instance(o).kind.word());
+        let mut owner = path.clone();
+        owner.segments.pop();
+        self.error(
+            c.span,
+            format!(
+                "`{}` is a pin of a {word}, not of a part: the current of a branch is stated on the pin of the part the branch ends at, such as `.ldo.bias.current &= 1mA`, since a {word}'s pin stands for every pin joined to it",
+                owner.to_source()
+            ),
+        );
     }
 
     /// A pin's absolute limit is written in its pin row and nowhere else (ADR 0126): the

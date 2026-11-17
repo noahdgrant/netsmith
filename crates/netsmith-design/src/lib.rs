@@ -1481,6 +1481,8 @@ fn design_model(name: &str, model: &Model, solution: &Solution) -> Result<Design
     let mut nets = Vec::new();
     // Pins with no pad, gathered per part so each part is reported once.
     let mut padless: BTreeMap<InstId, Vec<String>> = BTreeMap::new();
+    // The pads of each part's pin, for the pins that state the current of their branch.
+    let mut pads_of: HashMap<InstId, Vec<PinRef>> = HashMap::new();
     for net in model.nets() {
         netsmith_core::job::checkpoint();
         let mut pins: Vec<PinRef> = Vec::new();
@@ -1508,6 +1510,7 @@ fn design_model(name: &str, model: &Model, solution: &Solution) -> Result<Design
                         refdes: refdes.clone(),
                         pin: pad.clone(),
                     };
+                    pads_of.entry(terminal).or_default().push(pin.clone());
                     // Two pins of one part on the same pad are one physical pin.
                     if !pins.contains(&pin) {
                         pins.push(pin);
@@ -1600,6 +1603,7 @@ fn design_model(name: &str, model: &Model, solution: &Solution) -> Result<Design
     };
     features.net_widths.extend(plan.widths);
     // A `route` statement of a part's `layout` block widens its net (issue #994).
+    let part_layout_widths = part_layout.widths.clone();
     for (net, width) in part_layout.widths {
         match features.net_widths.iter_mut().find(|(n, _)| *n == net) {
             Some((_, least)) => *least = least.max(width),
@@ -1609,6 +1613,30 @@ fn design_model(name: &str, model: &Model, solution: &Solution) -> Result<Design
     features.net_widths.sort_by(|a, b| a.0.cmp(&b.0));
     features.net_currents = plan.currents;
     features.net_currents.sort_by(|a, b| a.net.cmp(&b.net));
+    // The branches whose pins state their current (issue #1113), never narrower than a `route`
+    // statement of a part's `layout` block asks of their net.
+    for b in plan.branches {
+        let Some(pins) = pads_of.remove(&b.pin) else {
+            continue;
+        };
+        let floor = part_layout_widths
+            .iter()
+            .filter(|(n, _)| *n == b.net)
+            .map(|(_, w)| *w)
+            .fold(0.0, f64::max);
+        features.branch_currents.push(netsmith_core::BranchCurrent {
+            net: b.net,
+            path: model.path_of(b.pin),
+            pins,
+            current: b.current,
+            width: b.width.max(floor),
+            least_width: b.least_width,
+            inner_least_width: b.inner_least_width,
+            vias: b.vias,
+        });
+    }
+    features.branch_currents.sort_by(|a, b| a.path.cmp(&b.path));
+    errors.extend(plan.errors);
     let mut guideline_findings = plan.findings;
     // Every fitted part against the board's environment, if it states one (ADR 0099).
     let judged = environment::judge(model, &fitted, &mut errors);

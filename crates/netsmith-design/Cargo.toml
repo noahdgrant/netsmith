@@ -14,6 +14,8 @@ path = "tests/main.rs"
 [dependencies]
 netsmith-check = { path = "../netsmith-check" }
 netsmith-core = { path = "../netsmith-core" }
+# The IPC-2221 formula, shared with the design rules check (issue #1113).
+netsmith-geom = { path = "../netsmith-geom" }
 netsmith-lang = { path = "../netsmith-lang" }
 netsmith-quantity = { path = "../netsmith-quantity" }
 netsmith-solve = { path = "../netsmith-solve" }

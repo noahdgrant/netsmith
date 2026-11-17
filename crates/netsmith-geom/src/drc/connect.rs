@@ -118,6 +118,49 @@ pub(crate) fn run(m: &Model<'_>, findings: &mut Vec<Finding>) {
     dangling(&mut out, &neighbours, &poured);
 }
 
+/// The copper of one net as a graph (issue #1113): its items (indices into the model's), then
+/// its pours, joined as [`run`] joins them.
+pub(crate) struct NetGraph {
+    pub items: Vec<usize>,
+    /// The neighbours of each node: `0..items.len()` are the items, the rest the pours.
+    pub adj: Vec<Vec<usize>>,
+}
+
+/// The graph of `net`'s copper.
+pub(crate) fn net_graph(m: &Model<'_>, net: &str) -> NetGraph {
+    let items: Vec<usize> = (0..m.items.len())
+        .filter(|&i| m.items[i].net.as_deref() == Some(net))
+        .collect();
+    let pours: Vec<usize> = (0..m.pours.len())
+        .filter(|&p| m.pours[p].net.as_deref() == Some(net))
+        .collect();
+    let mut adj: Vec<Vec<usize>> = vec![Vec::new(); items.len() + pours.len()];
+    let boxes: Vec<Bounds> = items.iter().map(|&i| m.items[i].bounds).collect();
+    for (a, b) in near_pairs(&boxes, 0.0) {
+        let (x, y) = (&m.items[items[a]], &m.items[items[b]]);
+        if x.layers.iter().any(|l| y.layers.contains(l)) && touches(x, y) {
+            adj[a].push(b);
+            adj[b].push(a);
+        }
+    }
+    for (k, &p) in pours.iter().enumerate() {
+        let node = items.len() + k;
+        for (a, &i) in items.iter().enumerate() {
+            if pour_reaches(m, &m.pours[p], &m.items[i]) {
+                adj[node].push(a);
+                adj[a].push(node);
+            }
+        }
+        for (j, &q) in pours.iter().enumerate().skip(k + 1) {
+            if m.pours[q].layer == m.pours[p].layer && polygons_touch(&m.pours[p], &m.pours[q]) {
+                adj[node].push(items.len() + j);
+                adj[items.len() + j].push(node);
+            }
+        }
+    }
+    NetGraph { items, adj }
+}
+
 fn polygons_touch(a: &super::model::Pour, b: &super::model::Pour) -> bool {
     a.polygons.iter().any(|pa| {
         b.polygons.iter().any(|pb| {

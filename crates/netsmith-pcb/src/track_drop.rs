@@ -32,6 +32,9 @@
 //!   file is not measured: its copper is an area. Two pads that only a zone joins are not a
 //!   pair. Layers are not told apart: tracks of the net that end at one place are joined there,
 //!   which the router draws only through a via.
+//! - **A branch is not a pair's end** (issue #1113). The pad of a pin that states the current of
+//!   its branch carries that current and not the net's, so it is left out of the pairs: the
+//!   net's whole current through its thin track would be a drop that never happens.
 
 use std::cmp::Reverse;
 use std::collections::BinaryHeap;
@@ -307,7 +310,12 @@ impl Board {
                 .map(|v| v.at)
                 .collect();
             let mut pads = Vec::new();
-            for r in &net.pads {
+            // A branch's pad carries its own current and not the net's (issue #1113).
+            for r in net
+                .pads
+                .iter()
+                .filter(|r| self.branch_of(&c.net, r).is_none())
+            {
                 let Some(part) = self.part(&r.refdes) else {
                     continue;
                 };

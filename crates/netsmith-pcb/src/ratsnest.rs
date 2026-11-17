@@ -296,6 +296,7 @@ impl Ratsnest {
             &board.vias,
             &board.fixed,
             (&zoned, &fills),
+            &board.branch_currents,
         )
     }
 
@@ -309,10 +310,23 @@ impl Ratsnest {
         vias: &[Via],
         fixed: &FixedCopper,
         (zoned, fills): (&[&str], &[ZoneFill]),
+        branches: &[netsmith_core::BranchCurrent],
     ) -> Ratsnest {
         let mut lines = Vec::new();
         for net in nets {
             let nodes = nodes_of(parts, net);
+            // The pads of the pins that state the current of their branch (issue #1113).
+            let branch: Vec<bool> = nodes
+                .iter()
+                .map(|node| {
+                    branches.iter().any(|b| {
+                        b.net == net.name
+                            && b.pins
+                                .iter()
+                                .any(|p| p.refdes == node.pad.refdes && p.pin == node.pad.number)
+                    })
+                })
+                .collect();
             let tracks: Vec<&Track> = tracks.iter().filter(|t| t.net == net.name).collect();
             let vias: Vec<&Via> = vias.iter().filter(|v| v.net == net.name).collect();
             // The layers of the net's planes, which a via reaches if it has copper on one: every
@@ -352,6 +366,7 @@ impl Ratsnest {
                 (plane, &reaches_plane),
                 &poured,
                 &joined,
+                &branch,
             ));
         }
         Ratsnest { lines }
@@ -628,6 +643,13 @@ pub(crate) fn reach_without(
 /// Kruskal's algorithm, starting with everything the routed copper already joins (`joined`:
 /// pairs of items a zone joins, [`join_pieces`]). Of equal lines, the one between the pads listed
 /// first wins.
+///
+/// A pad of a branch (`branch`, a pin that states the current of its branch, issue #1113) is a
+/// leaf: the pads of no branch are joined first, then each branch's pad by its shortest line to
+/// one of them, and only last the lines between two branches' pads, which a net with a pad of no
+/// branch never needs. So no current but the branch's passes through its line, and the router
+/// draws that line for it. A net with no branch is joined as it was.
+#[allow(clippy::too_many_arguments)]
 fn spanning_tree(
     layers: u32,
     net: &str,
@@ -636,6 +658,7 @@ fn spanning_tree(
     (plane, reaches_plane): (bool, &[bool]),
     poured: &[(CopperLayer, bool)],
     joined: &[(usize, usize)],
+    branch: &[bool],
 ) -> Vec<Ratline> {
     let (n, t) = (nodes.len(), tracks.len());
     // Items 0..n are pads, then tracks, then vias, then the net's plane, then its pours on the
@@ -700,7 +723,16 @@ fn spanning_tree(
             pairs.push((nodes[i].centre.distance(nodes[j].centre), i, j));
         }
     }
-    pairs.sort_by(|a, b| a.0.total_cmp(&b.0).then(a.1.cmp(&b.1)).then(a.2.cmp(&b.2)));
+    // Pads of no branch with each other first, then a branch's pad with one of them, then two
+    // branches' pads.
+    let rank = |i: usize, j: usize| usize::from(branch[i]) + usize::from(branch[j]);
+    pairs.sort_by(|a, b| {
+        rank(a.1, a.2)
+            .cmp(&rank(b.1, b.2))
+            .then(a.0.total_cmp(&b.0))
+            .then(a.1.cmp(&b.1))
+            .then(a.2.cmp(&b.2))
+    });
     let mut lines = Vec::new();
     for (_, i, j) in pairs {
         if sets.join(i, j) {
@@ -791,6 +823,38 @@ mod tests {
         let rats = Ratsnest::of(&board);
         assert_eq!(rats.len(), 3);
         assert!((rats.total_length() - 30.0).abs() < 1e-9);
+
+        // Issue #1113: R2's pad states the current of its branch. It is a leaf, joined by one
+        // line to the nearest of the others, and R1 and R3 are joined past it.
+        board.branch_currents.push(netsmith_core::BranchCurrent {
+            net: board.nets[0].name.clone(),
+            path: "r2.a".into(),
+            pins: vec![PinRef {
+                refdes: "R2".into(),
+                pin: "1".into(),
+            }],
+            current: 0.001,
+            width: 0.1,
+            least_width: 0.01,
+            inner_least_width: None,
+            vias: 1,
+        });
+        let rats = Ratsnest::of(&board);
+        assert_eq!(rats.len(), 3);
+        let at_r2 = |l: &&Ratline| l.from.refdes == "R2" || l.to.refdes == "R2";
+        let r2: Vec<&Ratline> = rats.lines.iter().filter(at_r2).collect();
+        assert_eq!(r2.len(), 1, "{:?}", rats.lines);
+        assert!(board.line_branch(r2[0]).is_some());
+        assert!(
+            rats.lines
+                .iter()
+                .any(|l| [&l.from.refdes, &l.to.refdes] == [&"R1".to_string(), &"R3".to_string()]),
+            "{:?}",
+            rats.lines
+        );
+        assert!((rats.total_length() - 40.0).abs() < 1e-9);
+        let others: Vec<&Ratline> = rats.lines.iter().filter(|l| !at_r2(l)).collect();
+        assert!(others.iter().all(|l| board.line_branch(l).is_none()));
     }
 
     #[test]

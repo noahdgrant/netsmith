@@ -152,6 +152,7 @@
 //! in issue #10).
 
 mod acid;
+mod branches;
 mod checks;
 mod connect;
 pub(crate) mod constraints;
@@ -726,6 +727,24 @@ pub struct Extras {
     pub stackup: Option<Stackup>,
     /// The vias the process makes (issue #1015); `None` is not checked.
     pub vias: Option<ViaRules>,
+    /// The pins of parts that state the current of their branch (issue #1113), and how copper
+    /// is sized for a current on the board. A track narrower than its net's current needs, or a
+    /// via cluster smaller than it needs, passes where it only feeds such branches: its net's
+    /// copper without it falls apart into pieces of which one alone has a pad of no branch or a
+    /// pour, and it carries what it needs for the branches of the others. Not checked without
+    /// `sizing`.
+    pub branches: Vec<Branch>,
+    pub sizing: Option<crate::ipc2221::TrackSizing>,
+}
+
+/// A pin of a part that states the current of its branch (issue #1113): its pads, by the
+/// footprint's designator and the pad numbers, and the most it carries, in amperes.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct Branch {
+    pub net: String,
+    pub part: String,
+    pub pads: Vec<String>,
+    pub current: f64,
 }
 
 /// What the check needs to judge a board's vias against the process (the `via_span` and

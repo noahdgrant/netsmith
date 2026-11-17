@@ -61,12 +61,7 @@ impl<'a> Router<'a> {
         let in_pads = lines
             .iter()
             .map(|l| {
-                let needs = board
-                    .net_currents
-                    .iter()
-                    .find(|c| c.net == l.net)
-                    .map_or(1, |c| c.vias);
-                if needs > 1 {
+                if board.line_vias(l) > 1 {
                     return (None, None);
                 }
                 // A via in a pad leads to the far outer layer and to every signal layer the
@@ -129,6 +124,12 @@ impl<'a> Router<'a> {
                     .iter()
                     .map(|&l| board.track_width_on(&n.name, l))
             })
+            .chain(
+                lines
+                    .iter()
+                    .filter(|l| board.line_branch(l).is_some())
+                    .flat_map(|l| stack.copper.iter().map(|&c| board.line_width_on(l, c))),
+            )
             .fold(rules.via_diameter, f64::max);
         let print_reach = 1.0
             + widest
@@ -256,16 +257,17 @@ impl<'a> Router<'a> {
         self.board.clearance(&self.lines[line].net) + MARGIN
     }
 
-    /// The width a line's tracks are drawn at on the outer layers: its net's (ADR 0020).
+    /// The width a line's tracks are drawn at on the outer layers: its net's (ADR 0020), or its
+    /// branch's when it carries the current of a pin that states one (issue #1113).
     pub(super) fn width_of(&self, line: usize) -> f64 {
-        self.board.track_width(&self.lines[line].net)
+        self.width_on(line, FRONT)
     }
 
     /// The width a line's tracks are drawn at on a layer of the stack: on an inner signal
     /// layer, a net with a known current is drawn for the inner copper (issue #833).
     pub(super) fn width_on(&self, line: usize, layer: usize) -> f64 {
         self.board
-            .track_width_on(&self.lines[line].net, self.stack.layer(layer))
+            .line_width_on(&self.lines[line], self.stack.layer(layer))
     }
 
     /// The widest a line's tracks are drawn on any layer of the stack.
@@ -286,7 +288,7 @@ impl<'a> Router<'a> {
     /// in the inner copper (issue #833).
     pub(super) fn neck_width_on(&self, line: usize, layer: usize) -> f64 {
         self.board
-            .least_width_on(&self.lines[line].net, self.stack.layer(layer))
+            .line_least_width_on(&self.lines[line], self.stack.layer(layer))
             .min(self.width_on(line, layer))
     }
 
@@ -402,12 +404,7 @@ impl<'a> Router<'a> {
 
     /// How many vias side by side the line's net needs where it changes layer.
     pub(super) fn vias_needed(&self, line: usize) -> usize {
-        let net = &self.lines[line].net;
-        self.board
-            .net_currents
-            .iter()
-            .find(|c| &c.net == net)
-            .map_or(1, |c| c.vias)
+        self.board.line_vias(&self.lines[line])
     }
 
     /// Where the other vias of the line's cluster stand round a via at cell (i, j): a cluster's

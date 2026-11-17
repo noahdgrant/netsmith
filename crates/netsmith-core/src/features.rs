@@ -2,7 +2,7 @@
 
 use crate::{
     CaseModel, Cutout, Keepout, Label, Logo, Offset, Outline, PartHeight, PartKind, PartSilk,
-    PartStandoff, PinProtrusion, Placement, Pour, StepModel,
+    PartStandoff, PinProtrusion, PinRef, Placement, Pour, StepModel,
 };
 
 /// The current a net carries, and the least track that carries it (issue #431).
@@ -21,6 +21,32 @@ pub struct NetCurrent {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub inner_least_width: Option<f64>,
     /// How many of the process's vias, side by side, carry it where a track changes layer.
+    pub vias: usize,
+}
+
+/// A branch of a net that carries a current of its own (issue #1113): the copper from the pads
+/// of a part's pin that states `.current` to the rest of its net. A bias pin, a feedback
+/// divider's top or a sense tap on a rail of amps carries a few milliamps, and its copper is
+/// drawn, and checked, for that and not for the net's current.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct BranchCurrent {
+    pub net: String,
+    /// The pin's path in the design (`ldo.bias`).
+    pub path: String,
+    /// The pads of the pin: one for each pad, and for each part of a bank.
+    pub pins: Vec<PinRef>,
+    /// The most the branch carries, in amperes.
+    pub current: f64,
+    /// The width its tracks are drawn at on the outer layers, in mm: what its current needs,
+    /// and never less than the process's least track, a rail's `.min_track` on the net or a
+    /// part's `route` statement for it.
+    pub width: f64,
+    /// The narrowest a track of it may be, in mm, before the process's least track.
+    pub least_width: f64,
+    /// The same on an inner signal layer; `None` when the board has none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub inner_least_width: Option<f64>,
+    /// How many of the process's vias, side by side, carry it.
     pub vias: usize,
 }
 
@@ -71,6 +97,11 @@ pub struct Features {
     /// the net below, away from its pads, and what the design rules check holds the routed
     /// copper to (issue #431). Sorted by net name.
     pub net_currents: Vec<NetCurrent>,
+    /// The branches whose pins state their current (issue #1113), by the pin's path: the
+    /// router draws the line to such a pad, and its vias, for the branch's current, and the
+    /// design rules check holds that copper to it. Left out of a design file when empty.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub branch_currents: Vec<BranchCurrent>,
     pub outline: Option<Outline>,
     pub cutouts: Vec<Cutout>,
     pub pours: Vec<Pour>,
