@@ -575,6 +575,28 @@ mod tests {
     }
 
     #[test]
+    fn a_blind_via_is_copper_on_its_own_layers_only() {
+        // Issue #1015: a micro via from the top to the first inner layer of four.
+        let board = BOARD
+            .replace(
+                "(layers (0 \"F.Cu\" signal) (2 \"B.Cu\" signal))",
+                "(layers (0 \"F.Cu\" signal) (4 \"In1.Cu\" signal) (6 \"In2.Cu\" signal) (2 \"B.Cu\" signal))",
+            )
+            .replace(
+                "(via (at 5 10) (size 0.6) (drill 0.3) (layers \"F.Cu\" \"B.Cu\")",
+                "(via micro (at 5 10) (size 0.25) (drill 0.1) (layers \"F.Cu\" \"In1.Cu\")",
+            )
+            .replace("(tenting front back)", "");
+        let p = plot(&Artwork::parse(&board).unwrap(), "B", &rules()).unwrap();
+        let via = "C,0.250000";
+        assert!(get(&p, "F_Cu").contains(via) && get(&p, "In1_Cu").contains(via));
+        assert!(!get(&p, "In2_Cu").contains(via) && !get(&p, "B_Cu").contains(via));
+        // Its mask opening is on the top only: 0.25 + 2 x 0.05.
+        assert!(get(&p, "F_Mask").contains("C,0.350000"), "{}", get(&p, "F_Mask"));
+        assert!(!get(&p, "B_Mask").contains("C,0.350000"));
+    }
+
+    #[test]
     fn the_mask_is_a_negative_with_the_pads_grown_by_the_margin() {
         let p = files();
         let m = get(&p, "F_Mask");

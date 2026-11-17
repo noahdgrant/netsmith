@@ -273,4 +273,30 @@ mod tests {
         assert_eq!(coord(30.0), "30.0");
         assert_eq!(coord(1.234_567_8), "1.234568");
     }
+
+    #[test]
+    fn each_span_of_a_blind_or_buried_via_has_a_drill_file_of_its_own() {
+        // Issue #1015: KiCad's names and file functions for the spans.
+        let art = Artwork::parse(&BOARD.replace(
+            "(via (at 105 205)",
+            "(via micro (at 106 205) (size 0.25) (drill 0.1) (layers \"F.Cu\" \"In1.Cu\") (net 0))\n        (via blind (at 107 205) (size 0.45) (drill 0.2) (layers \"In1.Cu\" \"In2.Cu\") (net 0))\n        (via (at 105 205)",
+        ))
+        .unwrap();
+        let files = files(&art, "B");
+        let names: Vec<&str> = files.iter().map(|f| f.name.as_str()).collect();
+        assert_eq!(names, ["B-PTH.drl", "B-NPTH.drl", "B-front-in1.drl", "B-in1-in2.drl"]);
+        let text = |k: usize| String::from_utf8(files[k].bytes.clone()).unwrap();
+        // The through via stays in the plated file, and each span's hole is in its own.
+        assert!(text(0).contains("T1\nX5.0Y-5.0\n") && !text(0).contains("X6.0"), "{}", text(0));
+        assert!(text(2).contains("; #@! TF.FileFunction,Plated,1,2,Blind\n"), "{}", text(2));
+        assert!(text(2).contains("T1C0.100\n") && text(2).contains("X6.0Y-5.0\n"), "{}", text(2));
+        assert!(text(3).contains("; #@! TF.FileFunction,Plated,2,3,Buried\n"), "{}", text(3));
+        assert!(text(3).contains("X7.0Y-5.0\n"), "{}", text(3));
+        // A board with through vias only has its two files, as before.
+        assert_eq!(files_of_plain(), 2);
+    }
+
+    fn files_of_plain() -> usize {
+        files(&Artwork::parse(BOARD).unwrap(), "B").len()
+    }
 }
