@@ -48,8 +48,11 @@ pub enum Command {
     /// Add a track to a net, refused if it breaks the design rules.
     #[command(name = "add-track")]
     AddTrack(AddTrackArgs),
-    /// Add a via to a net, refused if it breaks the design rules.
-    #[command(name = "add-via")]
+    /// Add a via, or a group of vias side by side, to a net, refused if it breaks the design rules.
+    #[command(
+        name = "add-via",
+        after_long_help = "One via is checked alone: for a net whose current needs several vias side by side where it changes layer, a lone via is refused by the design rules check (`via_current`). A group is added and checked together, as the router's own group is, and is accepted or refused as a whole (the file is then as it was). Name the places of a group with `--at X,Y` once for each via, or give `--count N --pitch MM` with one `--at`: N vias in a row along x, PITCH mm between their centres, centred on that place. The vias of a group count as side by side when they touch, so a pitch above the via's diameter leaves them apart (and the check says so). All vias of a group share the net, `--diameter`, `--drill`, `--layers` and `--lock`; a group has at most 64 vias."
+    )]
     AddVia(AddViaArgs),
     /// Add a zone (copper area) of a net on a layer, refused if it breaks the design rules.
     #[command(
@@ -129,9 +132,16 @@ pub struct AddViaArgs {
     /// The net, by its name in the design.
     #[arg(long, value_name = "NET")]
     pub net: String,
-    /// Where it stands, `X,Y` in mm from the outline's top left corner.
-    #[arg(long, value_name = "X,Y", value_parser = parse_point, allow_hyphen_values = true)]
-    pub at: [f64; 2],
+    /// Where it stands, `X,Y` in mm from the outline's top left corner; repeat it for each via of
+    /// a group.
+    #[arg(long, value_name = "X,Y", value_parser = parse_point, allow_hyphen_values = true, required = true, action = clap::ArgAction::Append)]
+    pub at: Vec<[f64; 2]>,
+    /// A group of N vias in a row along x, centred on the one `--at` (needs `--pitch`).
+    #[arg(long, value_name = "N", requires = "pitch", value_parser = clap::value_parser!(u32).range(1..))]
+    pub count: Option<u32>,
+    /// The space between the centres of a group's vias, in mm (needs `--count`).
+    #[arg(long, value_name = "MM", requires = "count", value_parser = parse_pitch, allow_hyphen_values = true)]
+    pub pitch: Option<f64>,
     /// The diameter in mm (default: the process's via).
     #[arg(long, value_name = "MM")]
     pub diameter: Option<f64>,
@@ -257,6 +267,14 @@ pub(super) fn parse_point(text: &str) -> Result<[f64; 2], String> {
     Ok([n(x)?, n(y)?])
 }
 
+fn parse_pitch(text: &str) -> Result<f64, String> {
+    text.trim()
+        .parse::<f64>()
+        .ok()
+        .filter(|v| v.is_finite() && *v > 0.0)
+        .ok_or_else(|| format!("`{text}` is not a pitch above 0 mm"))
+}
+
 fn parse_rect(text: &str) -> Result<[f64; 4], String> {
     let parts: Vec<&str> = text.split(',').collect();
     let [x, y, w, h] = parts[..] else {
@@ -289,14 +307,25 @@ pub fn run(args: Args) -> ExitCode {
             to: a.to,
             lock: a.lock,
         }),
-        Command::AddVia(a) => edit(&a.target, |_| lib::Edit::AddVia {
-            net: a.net.clone(),
-            at: a.at,
-            diameter: a.diameter,
-            drill: a.drill,
-            layers: a.layers,
-            lock: a.lock,
-        }),
+        Command::AddVia(a) => match via_places(&a) {
+            Ok(places) => edit_all(&a.target, |_| {
+                places
+                    .iter()
+                    .map(|&at| lib::Edit::AddVia {
+                        net: a.net.clone(),
+                        at,
+                        diameter: a.diameter,
+                        drill: a.drill,
+                        layers: a.layers,
+                        lock: a.lock,
+                    })
+                    .collect()
+            }),
+            Err(e) => {
+                eprintln!("error: {e}");
+                ExitCode::from(2)
+            }
+        },
         Command::AddZone(a) => edit(&a.target, |board| lib::Edit::AddZone {
             net: a.net.clone(),
             layers: a.layer.clone(),
@@ -323,6 +352,18 @@ pub fn run(args: Args) -> ExitCode {
             shape: shape(&a),
             on: false,
         }),
+    }
+}
+
+/// The places of the vias `add-via` adds: each `--at`, or the row `--count` and `--pitch` make
+/// round the one `--at` (issue #1114).
+fn via_places(args: &AddViaArgs) -> Result<Vec<[f64; 2]>, String> {
+    match (args.count, args.pitch, args.at.as_slice()) {
+        (Some(count), Some(pitch), &[at]) => {
+            lib::via_row(at, count as usize, pitch).map_err(|e| e.to_string())
+        }
+        (Some(_), Some(_), _) => Err("`--count` and `--pitch` go round one `--at`; for several places give each with `--at` and no `--count`".to_string()),
+        _ => Ok(args.at.clone()),
     }
 }
 
@@ -399,16 +440,22 @@ fn show(args: &ShowArgs) -> ExitCode {
 /// which the editor's PCB view calls too): `change` is made from the placed board; exit 0 when
 /// it is written, 1 when it is refused, 2 when it could not be tried.
 fn edit(target: &Target, change: impl Fn(&Board) -> lib::Edit) -> ExitCode {
+    edit_all(target, |board| vec![change(board)])
+}
+
+/// [`edit`] of several changes at once, checked together (`netsmith_fabricate::routes::edit_all`):
+/// all are made or none.
+fn edit_all(target: &Target, changes: impl Fn(&Board) -> Vec<lib::Edit>) -> ExitCode {
     let outcome = common::with_placed_board(
         target.file.as_deref(),
         target.board.as_deref(),
         None,
         |placed| {
             let board = placed.with_board(|_, board| board.clone())?;
-            Ok(lib::edit_file(
+            Ok(lib::edit_file_all(
                 &board,
                 &routes_file(placed),
-                &change(&board),
+                &changes(&board),
             ))
         },
     );
@@ -663,6 +710,49 @@ mod tests {
         assert_eq!(
             kind(&["routes", "add-via", "--net", "GND", "--at", "1"]),
             ErrorKind::ValueValidation
+        );
+        // A group of vias (issue #1114): several places, or a count with a pitch.
+        assert!(matches!(
+            parse(&[
+                "routes", "add-via", "--net", "GND", "--at", "1,1", "--at", "2,1", "--at", "-3,1"
+            ]),
+            Ok(Leaf::Routes(routes::Args {
+                command: routes::Command::AddVia(routes::AddViaArgs { ref at, count: None, pitch: None, .. })
+            })) if at == &[[1.0, 1.0], [2.0, 1.0], [-3.0, 1.0]]
+        ));
+        assert!(matches!(
+            parse(&[
+                "routes", "add-via", "--net", "GND", "--at", "1,1", "--count", "3", "--pitch",
+                "0.45"
+            ]),
+            Ok(Leaf::Routes(routes::Args {
+                command: routes::Command::AddVia(routes::AddViaArgs {
+                    count: Some(3),
+                    pitch: Some(0.45),
+                    ..
+                })
+            }))
+        ));
+        for args in [
+            &["--at", "1,1", "--count", "3"][..],
+            &["--at", "1,1", "--pitch", "0.45"],
+        ] {
+            let mut all = vec!["routes", "add-via", "--net", "GND"];
+            all.extend_from_slice(args);
+            assert_eq!(kind(&all), ErrorKind::MissingRequiredArgument, "{args:?}");
+        }
+        for bad in [
+            &["--count", "0", "--pitch", "1"][..],
+            &["--count", "2", "--pitch", "0"],
+            &["--count", "2", "--pitch", "-1"],
+        ] {
+            let mut all = vec!["routes", "add-via", "--net", "GND", "--at", "1,1"];
+            all.extend_from_slice(bad);
+            assert_eq!(kind(&all), ErrorKind::ValueValidation, "{bad:?}");
+        }
+        assert_eq!(
+            kind(&["routes", "add-via", "--net", "GND"]),
+            ErrorKind::MissingRequiredArgument
         );
         // A blind via's two layers (issue #1071): two different layers.
         for bad in ["top", "top,top", "top,middle"] {

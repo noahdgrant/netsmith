@@ -65,7 +65,7 @@ Each command, what it was before, and its flags (a test walks `--help` of every 
 | `netsmith routes import` | the same | `--file` (was `--into`), `--board`, `--parts`, `--no-places`, `--unlocked` |
 | `netsmith routes show` | the same | `--file` (was `--into`), `--board`, `--format` |
 | `netsmith routes add-track` | the same | `--file` (was `--into`), `--board`, `--net`, `--layer`, `--width`, `--from`, `--to`, `--mid`, `--lock` |
-| `netsmith routes add-via` | the same | `--file` (was `--into`), `--board`, `--net`, `--at`, `--diameter`, `--drill`, `--layers`, `--lock` |
+| `netsmith routes add-via` | the same | `--file` (was `--into`), `--board`, `--net`, `--at`, `--count`, `--pitch`, `--diameter`, `--drill`, `--layers`, `--lock` |
 | `netsmith routes add-zone` | the same | `--file` (was `--into`), `--board`, `--net`, `--layer`, `--outline`, `--rect`, `--board-outline`, `--clearance`, `--min-width`, `--thermal-gap`, `--spoke-width`, `--priority`, `--pads`, `--lock` |
 | `netsmith routes delete` | the same | `--file` (was `--into`), `--board`, `--net`, `--track`, `--via`, `--zone` |
 | `netsmith routes lock` | the same | `--file` (was `--into`), `--board`, `--net`, `--track`, `--via`, `--zone` |
