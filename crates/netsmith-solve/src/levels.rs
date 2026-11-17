@@ -205,8 +205,12 @@ pub(crate) struct Driven {
     /// For each MOSFET between the two nets, the high and the low again with its channel held
     /// on: the analysis does not model a MOSFET's body diode, which turns the channel of a
     /// translator on when the far side pulls its drain low (#1045).
-    pub on: Vec<(InstId, Option<(f64, f64)>, Option<(f64, f64)>)>,
+    pub on: Vec<HeldOn>,
 }
+
+/// A MOSFET, and the high and the low of [`Driven`] with its channel held on (none where that
+/// state has no consistent combination).
+pub(crate) type HeldOn = (InstId, Option<(f64, f64)>, Option<(f64, f64)>);
 
 /// The readers of the logic interfaces and resistors of a model, for the passes that need
 /// them and make no check of their own.
