@@ -479,6 +479,67 @@ impl Island {
         island
     }
 
+    /// The island with a logic pin held high impedance: it neither drives high nor low, and
+    /// keeps its leakage (#1045: a net whose own drivers let go of it).
+    pub fn letting_go(&self, element: usize) -> Island {
+        let mut island = self.clone();
+        if let Kind::Pin { high, low, z, .. } = &mut island.elements[element].kind {
+            *high = None;
+            *low = None;
+            *z = true;
+        }
+        island
+    }
+
+    /// The island with a MOSFET held on: its channel is its on resistance between the drain and
+    /// the source in every combination, whatever its gate says (#1045).
+    pub fn conducting(&self, element: usize) -> Island {
+        let mut island = self.clone();
+        if let Kind::Mosfet {
+            drain, source, ron, ..
+        } = island.elements[element].kind
+        {
+            island.elements[element].kind = Kind::Resistor {
+                a: drain,
+                b: source,
+                r: ron,
+            };
+        }
+        island
+    }
+
+    /// The island with the body diode of a MOSFET in it (#1045): a diode across its channel,
+    /// from the source to the drain of an N-channel part and from the drain to the source of a
+    /// P-channel one, whose forward voltage is at most `vf` (the datasheet's at its test current,
+    /// which is more than at the small current of a logic line).
+    pub fn with_body_diode(&self, element: usize, vf: f64) -> Island {
+        let mut island = self.clone();
+        if let Kind::Mosfet {
+            drain,
+            source,
+            p_channel,
+            ..
+        } = island.elements[element].kind
+        {
+            let (anode, cathode) = if p_channel {
+                (drain, source)
+            } else {
+                (source, drain)
+            };
+            let name = format!("{} (body diode)", island.elements[element].name);
+            island.elements.push(Element {
+                name,
+                kind: Kind::Diode {
+                    anode,
+                    cathode,
+                    vf: Range::new(0.0, vf),
+                },
+                group: None,
+            });
+        }
+        island
+    }
+
     pub fn nodes(&self) -> usize {
         self.free + self.held.len()
     }

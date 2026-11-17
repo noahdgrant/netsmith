@@ -660,9 +660,38 @@ fn a_plain_open_drain_pin_whose_pull_up_cannot_be_read_names_its_high() {
 }
 
 #[test]
-fn a_level_through_a_series_resistor_is_named_with_the_resistor_and_the_net_it_comes_from() {
+fn a_level_through_a_resistor_into_a_net_nothing_else_is_on_is_judged_as_a_pair() {
+    // The driver states no test current, so the DC analysis does not model it; but nothing draws
+    // from the receiver's net, so no current flows through the resistor and the receiver sees
+    // the driver's own levels (#1045).
     let s = solved(&format!(
         "{S3}    .a: Driver\n    .b: Receiver\n    .r: Resistor {{ .resistance &= 100ohm +/- 1% }}\n    .s3 ~ .a.vdd\n    .s3 ~ .b.vdd\n    .a.out.line ~> .r ~> .b.in.line\n"
+    ));
+    assert_eq!(faults(&s), Vec::<String>::new());
+    assert!(
+        notes(&s).iter().all(|n| !n.contains("comes through")),
+        "{:#?}",
+        notes(&s)
+    );
+    // A low of 1 V is not a low of 30 % of 3.3 V, behind the resistor as on the driver's net.
+    let s = solved(&format!(
+        "{S3}    .a: Weak\n    .b: Receiver\n    .r: Resistor {{ .resistance &= 100ohm +/- 1% }}\n    .s3 ~ .a.vdd\n    .s3 ~ .b.vdd\n    .a.out.line ~> .r ~> .b.in.line\n"
+    ));
+    let f = faults(&s);
+    assert_eq!(f.len(), 1, "{f:?}");
+    assert!(
+        f[0].starts_with("net `net-a.out.line`: `a.out.vol` is 1V but `b.in.vil` allows "),
+        "{f:?}"
+    );
+}
+
+#[test]
+fn a_level_through_a_series_resistor_into_a_loaded_net_is_named_with_the_resistor_and_the_net_it_comes_from()
+ {
+    // A pull-down on the receiver's net draws through the resistor, and the driver's output
+    // resistance is not known: the level is not judged.
+    let s = solved(&format!(
+        "{S3}    .a: Driver\n    .b: Receiver\n    .r: Resistor {{ .resistance &= 100ohm +/- 1% }}\n    .p: Resistor {{ .resistance &= 10kohm +/- 1% }}\n    .s3 ~ .a.vdd\n    .s3 ~ .b.vdd\n    .a.out.line ~> .r ~> .b.in.line\n    .b.in.line ~> .p ~> .s3.neg\n"
     ));
     assert_eq!(faults(&s), Vec::<String>::new());
     let through: Vec<String> = notes(&s)

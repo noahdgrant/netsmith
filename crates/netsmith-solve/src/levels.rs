@@ -134,7 +134,7 @@
 //! planned until a board needs it.
 
 use std::cell::OnceCell;
-use std::collections::{BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use netsmith_check::{
     Diagnostic, Domain, FieldId, InstId, InstKind, Member, Model, Net, PinKind, RExpr,
@@ -169,19 +169,27 @@ pub(crate) struct NetReads {
     /// Only the free nets of an island that has no pin taken to be open drain by inference: a held
     /// net's voltage is its source's, which the check reads from the rail.
     pub volts: HashMap<usize, (usize, f64, f64)>,
-    /// By the pin of a push-pull `Logic` line and a net of its island that a series part joins
-    /// it to (#850): the net of the ground, and the range of the net's voltage with the pin
-    /// held driving high and held driving low, over every corner and every state of the rest of
-    /// the island. Only for the pins [`series_drivers`] lists.
+    /// By the pin of a `Logic` line and a net of its island that a series part joins it to
+    /// (#850, #1045): the net of the ground, and the range of the net's voltage with the pin
+    /// held driving high and held driving low and every driver of the net itself letting go of
+    /// it, over every corner and every state of the rest of the island. Only for the pins and
+    /// nets [`series_drivers`] lists.
     pub driven: HashMap<(InstId, usize), Driven>,
 }
 
 /// The voltage of a net with one logic pin held high and held low (see [`NetReads::driven`]).
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub(crate) struct Driven {
     pub ground: usize,
+    /// With the pin driving high, or, for a pin that cannot (open drain, `idle`), with every
+    /// driver of its net and of this one letting go: the high it leaves to the circuit.
     pub high: (f64, f64),
     pub low: (f64, f64),
+    pub idle: bool,
+    /// For each MOSFET between the two nets, the high and the low again with its channel held
+    /// on: the analysis does not model a MOSFET's body diode, which turns the channel of a
+    /// translator on when the far side pulls its drain low (#1045).
+    pub on: Vec<(InstId, Option<(f64, f64)>, Option<(f64, f64)>)>,
 }
 
 /// The readers of the logic interfaces and resistors of a model, for the passes that need
@@ -197,23 +205,26 @@ pub(crate) fn reader(model: &Model) -> Run<'_> {
     }
 }
 
-/// The pins whose level reaches a receiver only through a series part (#850): each driver of a
-/// net that a part with a `bridge` joins to a net that nothing drives and on which a receiver
-/// states `vih` or `vil`. The DC analysis solves their islands once with each held high and
-/// once held low, for the levels check to judge the receiver by.
-pub(crate) fn series_drivers(model: &Model) -> BTreeSet<InstId> {
+/// The pins whose level reaches a receiver through a series part (#850, #1045), with the net of
+/// the receiver and the parts between: each driver of a net that a part with a `bridge` joins to
+/// a net on which a receiver states `vih` or `vil` and that nothing drives, or whose own drivers
+/// can all let go of it. The DC analysis solves their islands once with each held high and once
+/// held low, and the receiver's net let go of, for the levels check to judge the receiver by.
+pub(crate) fn series_drivers(model: &Model) -> BTreeMap<(InstId, usize), BTreeSet<InstId>> {
     let run = reader(model);
-    let mut out = BTreeSet::new();
+    let mut out: BTreeMap<(InstId, usize), BTreeSet<InstId>> = BTreeMap::new();
     for index in 0..model.nets().len() {
         let lines = run.lines_on(&model.nets()[index]);
-        for (_, far) in run.series_sources(index, &lines) {
-            out.extend(
-                model.nets()[far]
-                    .terminals
-                    .iter()
-                    .filter(|&&t| model.unused_by(t).is_none())
-                    .filter(|&&t| model.pin_kind(t).is_some_and(is_driver)),
-            );
+        let sources = run.series_sources(index, &lines);
+        for (part, far) in sources.into_iter().chain(run.crossings(index, &lines)) {
+            for &t in &model.nets()[far].terminals {
+                if model.unused_by(t).is_none()
+                    && model.owner_of(t) != Some(part)
+                    && model.pin_kind(t).is_some_and(is_driver)
+                {
+                    out.entry((t, index)).or_default().insert(part);
+                }
+            }
         }
     }
     out
@@ -640,11 +651,14 @@ impl Run<'_> {
     /// A receiver that states levels on a net that nothing on it drives, joined through a
     /// series part (a part with a `bridge`: a resistor, a diode, a transistor's channel) to a
     /// net that something drives (#850). Where the DC analysis solved the receiver's net with a
-    /// push-pull `Logic` driver of the far net held high and held low ([`NetReads::driven`]),
-    /// the receiver is judged by the voltage it gives the net, measured from the receiver's
-    /// ground; for any other driver the note names the part and the net the level comes from.
-    /// A net that has a driver of its own is judged on its own lines, as above, and a part that
-    /// only pulls the net to a rail or to ground has no driver on its far side.
+    /// `Logic` driver of the far net held high and held low ([`NetReads::driven`]), the receiver
+    /// is judged by the voltage it gives the net, measured from the receiver's ground. A driver
+    /// the analysis does not model, behind a resistor into a net that nothing else is on, is
+    /// judged as a pair on the far net (#1045): no current flows through the resistor, so the
+    /// two nets are at one voltage. For any other driver the note names the part and the net the
+    /// level comes from. A net that has a driver of its own is judged on its own lines, as
+    /// above, and a part that only pulls the net to a rail or to ground has no driver on its far
+    /// side.
     fn through_series(&mut self, index: usize, lines: &[Line]) {
         let model = self.model;
         let net = &model.nets()[index];
@@ -662,20 +676,20 @@ impl Run<'_> {
                 .filter(|&t| model.unused_by(t).is_none())
                 .filter(|&t| model.pin_kind(t).is_some_and(is_driver))
                 .collect();
+            let unloaded = self.unloaded_through(index, part);
             for r in &receivers {
                 if r.part == part {
                     continue;
                 }
-                let ground = self.ground_pin(r.logic).and_then(|g| self.net_index(g));
                 for &t in &drivers {
-                    let solved = far_lines.iter().find(|l| l.pin == t).zip(
-                        self.reads
-                            .and_then(|reads| reads.driven.get(&(t, index)))
-                            .filter(|d| Some(d.ground) == ground),
-                    );
-                    if let Some((d, &driven)) = solved {
-                        self.judge_through(net, d, r, part, from, driven);
-                        continue;
+                    if let Some(d) = far_lines.iter().find(|l| l.pin == t) {
+                        if self.judged_across(net, d, r, part, from, index, false) {
+                            continue;
+                        }
+                        if unloaded {
+                            self.pair(from, d, r);
+                            continue;
+                        }
                     }
                     self.note(
                         r.part,
@@ -695,46 +709,160 @@ impl Run<'_> {
         self.across_series(index, lines);
     }
 
+    /// Whether a net is one that nothing draws from but its receivers, joined to the net of its
+    /// level by a resistor (#1045): every pin on it is the resistor's or an `input` that states
+    /// no leakage (or a leakage of nothing), so no current flows through the resistor and the
+    /// net is at the voltage of the other end.
+    fn unloaded_through(&self, index: usize, part: InstId) -> bool {
+        let model = self.model;
+        let net = &model.nets()[index];
+        let resistor = net
+            .terminals
+            .iter()
+            .any(|&t| model.owner_of(t) == Some(part) && self.resistor_far_end(t).is_some());
+        resistor
+            && net.terminals.iter().all(|&t| {
+                if model.owner_of(t) == Some(part) {
+                    return true;
+                }
+                model.pin_kind(t) == Some(PinKind::Input)
+                    && self.logic_of(t).is_some_and(|logic| {
+                        self.value(logic, "ii").is_none_or(|(_, q)| q.hi() <= 0.0)
+                    })
+            })
+    }
+
     /// A receiver judged by the voltage the DC analysis gives its net with a driver behind a
-    /// series part held high and held low: the lowest high against its `vih`, the highest low
-    /// against its `vil`. A level the receiver does not state is a note, as for a pair.
-    fn judge_through(
+    /// series part held high and held low, and, with `let_go`, every driver of the receiver's
+    /// own net letting go of it (#1045): the lowest high against its `vih`, the highest low
+    /// against its `vil`. A level the receiver does not state is a note, as for a pair. False
+    /// when the analysis has no such reading (the check is the caller's).
+    #[allow(clippy::too_many_arguments)]
+    fn judged_across(
         &mut self,
         net: &Net,
         d: &Line,
         r: &Line,
         part: InstId,
         from: &Net,
-        driven: Driven,
-    ) {
+        index: usize,
+        let_go: bool,
+    ) -> bool {
         let model = self.model;
+        let ground = self.ground_pin(r.logic).and_then(|g| self.net_index(g));
+        let Some(driven) = self
+            .reads
+            .and_then(|reads| reads.driven.get(&(d.pin, index)))
+            .filter(|x| Some(x.ground) == ground)
+            .cloned()
+        else {
+            return false;
+        };
         let (dl, rl) = (model.path_of(d.logic), model.path_of(r.logic));
-        let through = format!("through `{}` from net `{}`", model.path_of(part), from.name);
+        let across = Across {
+            part,
+            through: format!("through `{}` from net `{}`", model.path_of(part), from.name),
+        };
+        let near = if let_go {
+            format!(" and every driver of net `{}` letting go of it", net.name)
+        } else {
+            String::new()
+        };
+        let on = driven.on.iter().find(|o| o.0 == part);
+        let (on_high, on_low) = (on.and_then(|o| o.1), on.and_then(|o| o.2));
         match self.value(r.logic, "vih") {
-            Some(vih) => self.held_high(net, r, vih, driven.high, |high| {
-                format!(
-                    "with `{dl}` driving high, the DC analysis holds the line at {high} {through}"
-                )
-            }),
+            Some(vih) => {
+                let state = if driven.idle {
+                    let nets = if let_go {
+                        format!("nets `{}` and `{}`", from.name, net.name)
+                    } else {
+                        format!("net `{}`", from.name)
+                    };
+                    format!(
+                        "with every driver of {nets} letting go ({} leaves the high to its circuit)",
+                        open_drain_why(d)
+                    )
+                } else {
+                    format!("with `{dl}` driving high{near}")
+                };
+                self.judge_level(net, r, vih, true, (driven.high, on_high), &state, &across);
+            }
             None => self.missing(net, d, r, "high", [(&dl, "voh", false), (&rl, "vih", true)]),
         }
         match self.value(r.logic, "vil") {
-            Some(vil) => self.held_low(net, r, vil, driven.low, |low| {
-                format!(
-                    "with `{dl}` driving low, the DC analysis holds the line at {low} {through}"
-                )
-            }),
+            Some(vil) => {
+                let state = format!("with `{dl}` driving low{near}");
+                self.judge_level(net, r, vil, false, (driven.low, on_low), &state, &across);
+            }
             None => self.missing(net, d, r, "low", [(&dl, "vol", false), (&rl, "vil", true)]),
+        }
+        true
+    }
+
+    /// One level of a receiver behind a series part against the range the DC analysis holds its
+    /// net at in one state (`full`), and, for a MOSFET between, the range with its channel held
+    /// on (`on`). A range the receiver reads holds. When only the range with the MOSFET on is
+    /// read, the states that fail are ones in which the analysis finds it off, which a body
+    /// diode the analysis does not model may rule out: a note, not a fault (#1045).
+    #[allow(clippy::too_many_arguments)]
+    fn judge_level(
+        &mut self,
+        net: &Net,
+        r: &Line,
+        (fi, limit): (FieldId, Quantity),
+        high: bool,
+        (full, on): ((f64, f64), Option<(f64, f64)>),
+        state: &str,
+        across: &Across,
+    ) {
+        let model = self.model;
+        let holds = |(lo, hi): (f64, f64)| {
+            if high {
+                lo >= limit.hi()
+            } else {
+                hi <= limit.lo()
+            }
+        };
+        if holds(full) {
+            return;
+        }
+        let through = &across.through;
+        let p = model.path_of(across.part);
+        let report = |me: &mut Self, range: (f64, f64), words: String| {
+            let holder =
+                |v: &str| format!("{words}, the DC analysis holds the line at {v} {through}");
+            if high {
+                me.held_high(net, r, (fi, limit), range, holder);
+            } else {
+                me.held_low(net, r, (fi, limit), range, holder);
+            }
+        };
+        match on {
+            Some(on) if holds(on) => {
+                let level = if high { "high" } else { "low" };
+                self.note(
+                    r.part,
+                    vec![across.part],
+                    Cause::Unjudged,
+                    format!(
+                        "not evaluated: the {level} level into `{}` on net `{}` {through} {state}: with `{p}` on, the DC analysis holds the line at {}, which `{}` reads as a {level}, but in some states it finds `{p}` off and the line at {}; whether `{p}` turns on there rests on its body diode, which the analysis models only when `{p}.body_diode_voltage` states its forward voltage",
+                        model.path_of(r.logic),
+                        net.name,
+                        range_text(on),
+                        model.path_of_field(fi),
+                        range_text(full),
+                    ),
+                );
+            }
+            Some(on) => report(self, on, format!("{state} and `{p}` on")),
+            None => report(self, full, state.to_string()),
         }
     }
 
-    /// A level that crosses a series part into a net whose own drivers can all let go of it
-    /// (#850): the low that one side of a MOSFET translator between two buses pulls the other
-    /// side to, or the level of a bidirectional pin behind a series resistor. Each side's own
-    /// lines are judged on that side; what comes across is not, and the note names the part, the
-    /// drivers on the far side that state levels and the receivers on the near side that do. A
-    /// net with a push-pull `output` on it is held by that output, and is not named.
-    fn across_series(&mut self, index: usize, lines: &[Line]) {
+    /// The parts a level crosses into a net whose own drivers can all let go of it (#850): when
+    /// a pin on the net can drive it, none is an `output`, and a receiver on it states `vih` or
+    /// `vil`, each part with a `bridge` from the net to another net, with that net.
+    fn crossings(&self, index: usize, lines: &[Line]) -> Vec<(InstId, usize)> {
         let model = self.model;
         let net = &model.nets()[index];
         let own: Vec<PinKind> = net
@@ -744,15 +872,13 @@ impl Run<'_> {
             .filter_map(|&t| model.pin_kind(t))
             .filter(|&k| is_driver(k))
             .collect();
-        if own.is_empty() || own.contains(&PinKind::Output) {
-            return;
-        }
-        let receivers: Vec<&Line> = lines
-            .iter()
-            .filter(|l| is_receiver(l.kind) && self.states_input_levels(l.logic))
-            .collect();
-        if receivers.is_empty() {
-            return;
+        if own.is_empty()
+            || own.contains(&PinKind::Output)
+            || !lines
+                .iter()
+                .any(|l| is_receiver(l.kind) && self.states_input_levels(l.logic))
+        {
+            return Vec::new();
         }
         let mut parts: Vec<(InstId, usize)> = Vec::new();
         for &t in &net.terminals {
@@ -762,26 +888,42 @@ impl Run<'_> {
                 parts.push(found);
             }
         }
-        for (part, far) in parts {
+        parts
+    }
+
+    /// A level that crosses a series part into a net whose own drivers can all let go of it
+    /// (#850, #1045): the low that one side of a MOSFET translator between two buses pulls the
+    /// other side to, or the level of a bidirectional pin behind a series resistor. Each side's
+    /// own lines are judged on that side. What comes across is judged where the DC analysis
+    /// solved the two nets with the far driver held high and held low and every driver of the
+    /// near net letting go ([`NetReads::driven`]); for the rest the note names the part, the
+    /// drivers on the far side and the receivers on the near side. A net with a push-pull
+    /// `output` on it is held by that output, and is not looked at.
+    fn across_series(&mut self, index: usize, lines: &[Line]) {
+        let model = self.model;
+        let net = &model.nets()[index];
+        let receivers: Vec<&Line> = lines
+            .iter()
+            .filter(|l| is_receiver(l.kind) && self.states_input_levels(l.logic))
+            .collect();
+        for (part, far) in self.crossings(index, lines) {
             let from = &model.nets()[far];
-            let names = |ls: &[InstId]| {
-                ls.iter()
-                    .map(|&l| format!("`{}`", model.path_of(l)))
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            };
-            let mut drivers: Vec<InstId> = self
-                .lines_on(from)
+            let far_lines = self.lines_on(from);
+            let mut drivers: Vec<InstId> = Vec::new();
+            let mut readers: Vec<InstId> = Vec::new();
+            let far_drivers: Vec<&Line> = far_lines
                 .iter()
                 .filter(|d| is_driver(d.kind) && d.part != part)
                 .filter(|d| self.states_output_levels(d.logic))
-                .map(|d| d.logic)
                 .collect();
-            let mut readers: Vec<InstId> = receivers
-                .iter()
-                .filter(|r| r.part != part)
-                .map(|r| r.logic)
-                .collect();
+            for d in far_drivers {
+                for r in receivers.iter().filter(|r| r.part != part) {
+                    if !self.judged_across(net, d, r, part, from, index, true) {
+                        drivers.push(d.logic);
+                        readers.push(r.logic);
+                    }
+                }
+            }
             for v in [&mut drivers, &mut readers] {
                 v.sort_unstable();
                 v.dedup();
@@ -789,6 +931,12 @@ impl Run<'_> {
             if drivers.is_empty() || readers.is_empty() {
                 continue;
             }
+            let names = |ls: &[InstId]| {
+                ls.iter()
+                    .map(|&l| format!("`{}`", model.path_of(l)))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            };
             self.note(
                 part,
                 Vec::new(),
@@ -1642,6 +1790,21 @@ impl Swing {
             self.hi_from = from.to_string();
         }
         self.any = true;
+    }
+}
+
+/// The series part a level comes through, and the words for it.
+struct Across {
+    part: InstId,
+    through: String,
+}
+
+/// A range of voltages as a message gives it (`1.477V..1.75V`), or one voltage.
+fn range_text((lo, hi): (f64, f64)) -> String {
+    let point = |v| Quantity::point(Dimension::VOLTAGE, v);
+    match (point(lo), point(hi)) {
+        (Ok(a), Ok(b)) => Quantity::range(&a, &b).map_or_else(|_| volts(lo), |q| q.to_string()),
+        _ => volts(lo),
     }
 }
 
