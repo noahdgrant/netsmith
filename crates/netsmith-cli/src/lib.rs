@@ -2,5 +2,6 @@
 //! the library lets the tests read clap's model of the commands.
 
 pub mod commands;
+mod mcp;
 pub mod progress;
 mod view_client;

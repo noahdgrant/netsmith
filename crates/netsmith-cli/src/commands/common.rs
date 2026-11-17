@@ -522,7 +522,7 @@ pub(crate) mod testing {
     use crate::commands::{
         Board, Command, Dev, Import, Project, View, board3d, bom, build, case, catalog, check,
         common, compare, copper, drc, dxf, editor, explain, fab, init, kicad_libs, layout, lock,
-        order, panel, parity, part, pins, port, power, render, route, routes, schematic,
+        mcp, order, panel, parity, part, pins, port, power, render, route, routes, schematic,
         schematic_layout, swap, system, view,
     };
 
@@ -571,6 +571,7 @@ pub(crate) mod testing {
         Route(route::Args),
         Parity(parity::Args),
         Board3d(board3d::Args),
+        Mcp(mcp::Args),
     }
 
     impl From<Command> for Leaf {
@@ -619,6 +620,7 @@ pub(crate) mod testing {
                     Dev::Parity(a) => Leaf::Parity(a),
                     Dev::Board3d(a) => Leaf::Board3d(a),
                 },
+                Command::Mcp(a) => Leaf::Mcp(a),
             }
         }
     }
