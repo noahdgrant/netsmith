@@ -145,6 +145,15 @@ impl<'a> Router<'a> {
                         // it is no longer.
                         if masks.follow.iter().any(|f| !f.is_empty()) {
                             masks.estimate = FOLLOW;
+                            // A pair with a stated spacing jogs from its pads' pitch to the
+                            // spacing at a bend that costs little (issue #1054).
+                            if self
+                                .board
+                                .pair_spacing(&self.board.nets[net].name)
+                                .is_some()
+                            {
+                                masks.turn = masks.turn.min(PAIR_TURN);
+                            }
                         }
                     }
                 }

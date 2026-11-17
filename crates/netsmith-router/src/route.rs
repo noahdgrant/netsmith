@@ -341,6 +341,14 @@
 //! issue #1010). A line is never left and no other net moves, so a board routes exactly as
 //! completely as before; the pass takes 0.1 to 0.3 s.
 //!
+//! **Pulled to its spacing** (issue #1054, the agent's decision). A pair with a stated spacing
+//! (a `PairImpedance`) is pulled together from its pads' pitch to the spacing: its slack is
+//! [`PAIR_SLACK`] plus what jogs of 45 degrees from each end of a net to its partner's pitch
+//! add ([`Router::funnel_slack`]), a bend beside the partner costs [`PAIR_TURN`] instead of
+//! [`TURN`], and its nets are routed again at [`ROOM_TIGHT`] first, since at [`ROOM_LOOSE`]
+//! the partner's track keeps the net a cell past the spacing. A pair with no stated spacing
+//! routes as before.
+//!
 //! **Both together** (issue #1010, the agent's decision while the owner was away). On Orbit
 //! at seed 3 (placed with each capacitor kept 1 mm from a QFN's other pins), `dm` has 2 vias
 //! and `dp` none: `dp` beside `dm` takes `dm`'s 2 vias and 7 mm, and `dm` beside `dp` finds no
@@ -900,23 +908,33 @@ const CHAMFERS: [f64; 4] = [0.3, 0.2, 0.1, 0.05];
 /// it beside its partner: what a grid path of the same length measures differently once drawn.
 const PAIR_SLACK: f64 = 0.2;
 
+/// What a bend of 45 degrees costs a net of a pair with a stated spacing in
+/// [`Router::side_by_side`] (issue #1054): a fifth of [`TURN`], so that the jogs from its pads'
+/// pitch to the spacing cost less than the run beside the partner saves.
+const PAIR_TURN: i64 = TURN / 5;
+
+/// What a jog of 45 degrees adds to a track for each mm it moves the track sideways:
+/// sqrt(2) - 1.
+const JOG: f64 = std::f64::consts::SQRT_2 - 1.0;
+
 /// Whether [`Router::side_by_side`] keeps a net's new copper, from its length in mm, its vias
 /// and the share of it that runs coupled, before and after: more of it coupled, by a point at
-/// least, no longer than [`PAIR_SLACK`] more, and no more vias.
-fn keeps_pair(before: (f64, usize, f64), after: (f64, usize, f64)) -> bool {
-    after.2 > before.2 + 0.01 && after.0 <= before.0 + PAIR_SLACK + 1e-6 && after.1 <= before.1
+/// least, no longer than `slack` more ([`PAIR_SLACK`], or [`Router::funnel_slack`] for a pair
+/// with a stated spacing), and no more vias.
+fn keeps_pair(before: (f64, usize, f64), after: (f64, usize, f64), slack: f64) -> bool {
+    after.2 > before.2 + 0.01 && after.0 <= before.0 + slack + 1e-6 && after.1 <= before.1
 }
 
 /// Whether [`Router::side_by_side`] keeps the new copper of both nets of a pair routed again
 /// together, from the length in mm of the longer net, the vias of the net with more and the
 /// share of their length that runs coupled, before and after (issue #1010): more of it
-/// coupled, by a point at least, the longer net no more than [`PAIR_SLACK`] longer than the
-/// longer was, and no net with more vias than the net with more had. The shorter net may grow
-/// up to the longer, which the meanders would make it anyway, and may take as many vias as its
-/// partner, so that both change layer alike, but the pair's vias never outgrow those of its
-/// net with the most.
-fn keeps_both(before: (f64, usize, f64), after: (f64, usize, f64)) -> bool {
-    after.2 > before.2 + 0.01 && after.0 <= before.0 + PAIR_SLACK + 1e-6 && after.1 <= before.1
+/// coupled, by a point at least, the longer net no more than `slack` longer than the longer
+/// was (as for [`keeps_pair`]), and no net with more vias than the net with more had. The
+/// shorter net may grow up to the longer, which the meanders would make it anyway, and may
+/// take as many vias as its partner, so that both change layer alike, but the pair's vias never
+/// outgrow those of its net with the most.
+fn keeps_both(before: (f64, usize, f64), after: (f64, usize, f64), slack: f64) -> bool {
+    keeps_pair(before, after, slack)
 }
 
 /// Whether [`Router::fewer_vias`] keeps new copper, from its length in mm, its vias and its

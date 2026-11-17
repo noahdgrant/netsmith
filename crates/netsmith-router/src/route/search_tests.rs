@@ -168,11 +168,19 @@ fn a_pairs_net_goes_out_of_its_way_to_run_beside_its_partner() {
 #[test]
 fn a_pairs_new_copper_is_kept_only_if_more_is_coupled_at_no_more_length_or_vias() {
     let before = (10.0, 2, 0.30);
-    assert!(keeps_pair(before, (10.0, 2, 0.60)));
-    assert!(keeps_pair(before, (10.0 + PAIR_SLACK, 1, 0.60)));
-    assert!(!keeps_pair(before, (10.5, 2, 0.60)), "longer");
-    assert!(!keeps_pair(before, (9.0, 3, 0.60)), "a via more");
-    assert!(!keeps_pair(before, (9.0, 2, 0.305)), "no more coupled");
+    assert!(keeps_pair(before, (10.0, 2, 0.60), PAIR_SLACK));
+    assert!(keeps_pair(before, (10.0 + PAIR_SLACK, 1, 0.60), PAIR_SLACK));
+    assert!(!keeps_pair(before, (10.5, 2, 0.60), PAIR_SLACK), "longer");
+    assert!(
+        !keeps_pair(before, (9.0, 3, 0.60), PAIR_SLACK),
+        "a via more"
+    );
+    assert!(
+        !keeps_pair(before, (9.0, 2, 0.305), PAIR_SLACK),
+        "no more coupled"
+    );
+    // A pair with a stated spacing may grow by its funnel's jogs (issue #1054).
+    assert!(keeps_pair(before, (10.5, 2, 0.60), PAIR_SLACK + 0.4));
 }
 
 #[test]
@@ -182,18 +190,25 @@ fn a_pair_routed_again_together_is_kept_by_its_longer_net_and_its_net_with_more_
     // coupled. The shorter net grew and took its partner's vias, which the pass for one net
     // never keeps; the pair's longer net is no longer and no net has more vias than `dm` had.
     let before = (23.07, 2, 0.002);
-    assert!(keeps_both(before, (23.05, 2, 0.59)));
-    assert!(!keeps_pair((19.43, 0, 0.0), (20.26, 2, 0.63)));
-    assert!(keeps_both(before, (23.07 + PAIR_SLACK, 1, 0.59)));
+    assert!(keeps_both(before, (23.05, 2, 0.59), PAIR_SLACK));
+    assert!(!keeps_pair((19.43, 0, 0.0), (20.26, 2, 0.63), PAIR_SLACK));
+    assert!(keeps_both(
+        before,
+        (23.07 + PAIR_SLACK, 1, 0.59),
+        PAIR_SLACK
+    ));
     assert!(
-        !keeps_both(before, (23.5, 2, 0.59)),
+        !keeps_both(before, (23.5, 2, 0.59), PAIR_SLACK),
         "the longer net longer"
     );
     assert!(
-        !keeps_both(before, (23.0, 3, 0.59)),
+        !keeps_both(before, (23.0, 3, 0.59), PAIR_SLACK),
         "a net with a via more"
     );
-    assert!(!keeps_both(before, (23.0, 2, 0.01)), "no more coupled");
+    assert!(
+        !keeps_both(before, (23.0, 2, 0.01), PAIR_SLACK),
+        "no more coupled"
+    );
 }
 
 #[test]

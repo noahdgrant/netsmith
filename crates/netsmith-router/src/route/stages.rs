@@ -116,7 +116,11 @@ impl<'a> Router<'a> {
                     continue;
                 };
                 let (len1, vias1, c1) = self.pair_measure(&trial, x, y);
-                if keeps_pair((len0, vias0, c0), (len1, vias1, c1)) {
+                if keeps_pair(
+                    (len0, vias0, c0),
+                    (len1, vias1, c1),
+                    self.funnel_slack(x, y),
+                ) {
                     *state = trial;
                 }
             }
@@ -134,7 +138,8 @@ impl<'a> Router<'a> {
                 };
                 let after = self.both_measure(&trial, n, p);
                 let better = best.as_ref().is_none_or(|(_, b)| after.2 > b.2);
-                if keeps_both(before, after) && better {
+                let slack = self.funnel_slack(n, p).max(self.funnel_slack(p, n));
+                if keeps_both(before, after, slack) && better {
                     best = Some((trial, after));
                 }
             }
@@ -145,6 +150,32 @@ impl<'a> Router<'a> {
         *self.failed_in.borrow_mut() = failed_in;
         self.fine.set(false);
         self.pairing.set(false);
+    }
+
+    /// How much longer a net of a pair may become in [`Self::side_by_side`]: [`PAIR_SLACK`],
+    /// and for a pair with a stated spacing (issue #1054) also what the jogs of 45 degrees from
+    /// its pads to the spacing add, [`JOG`] for each mm by which each end of the net's lines is
+    /// farther from the nearest end of the partner's than the pair's pitch (its widths and the
+    /// spacing), as if the net alone moved over to its partner.
+    fn funnel_slack(&self, net: usize, partner: usize) -> f64 {
+        let Some((_, spacing)) = self.board.pair_spacing(&self.board.nets[net].name) else {
+            return PAIR_SLACK;
+        };
+        let ends = |n: usize| -> Vec<Pt> {
+            (0..self.lines.len())
+                .filter(|&l| self.nets[l] == n && !self.lines[l].to_plane)
+                .flat_map(|l| [self.lines[l].from_at, self.lines[l].to_at])
+                .collect()
+        };
+        let theirs = ends(partner);
+        let width = |n: usize| self.board.track_width(&self.board.nets[n].name);
+        let pitch = width(net) / 2.0 + width(partner) / 2.0 + spacing;
+        let far: f64 = ends(net)
+            .iter()
+            .filter_map(|p| theirs.iter().map(|q| p.distance(*q)).min_by(f64::total_cmp))
+            .map(|d| (d - pitch).max(0.0))
+            .sum();
+        PAIR_SLACK + JOG * far
     }
 
     /// `state` with the lines of `nets` routed again against all the other copper, the lines of
@@ -164,10 +195,21 @@ impl<'a> Router<'a> {
                 .map(|r| r.line)
                 .collect();
             again.sort_by(|&a, &b| self.lines[a].length().total_cmp(&self.lines[b].length()));
+            // A net of a pair with a stated spacing is searched for at the least room first:
+            // at the usual room, its partner's track keeps it a cell past the spacing.
+            let rooms = if self
+                .board
+                .pair_spacing(&self.board.nets[net].name)
+                .is_some()
+            {
+                [ROOM_TIGHT, ROOM_LOOSE]
+            } else {
+                [ROOM_LOOSE, ROOM_TIGHT]
+            };
             for l in again {
                 let (r, _) = self
-                    .try_line(l, &trial, &[], ROOM_LOOSE, false)
-                    .or_else(|| self.try_line(l, &trial, &[], ROOM_TIGHT, false))?;
+                    .try_line(l, &trial, &[], rooms[0], false)
+                    .or_else(|| self.try_line(l, &trial, &[], rooms[1], false))?;
                 trial.routed.push(r);
             }
         }
