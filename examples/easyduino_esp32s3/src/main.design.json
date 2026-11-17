@@ -2298,6 +2298,26 @@
         "name": "+3.3V",
         "pins": [
           {
+            "refdes": "R4",
+            "pin": "1"
+          },
+          {
+            "refdes": "J1",
+            "pin": "1"
+          },
+          {
+            "refdes": "J1",
+            "pin": "2"
+          },
+          {
+            "refdes": "U2",
+            "pin": "2"
+          },
+          {
+            "refdes": "U3",
+            "pin": "2"
+          },
+          {
             "refdes": "C5",
             "pin": "1"
           },
@@ -2308,26 +2328,6 @@
           {
             "refdes": "C7",
             "pin": "1"
-          },
-          {
-            "refdes": "J1",
-            "pin": "1"
-          },
-          {
-            "refdes": "J1",
-            "pin": "2"
-          },
-          {
-            "refdes": "R4",
-            "pin": "1"
-          },
-          {
-            "refdes": "U2",
-            "pin": "2"
-          },
-          {
-            "refdes": "U3",
-            "pin": "2"
           }
         ]
       },
@@ -2335,12 +2335,20 @@
         "name": "GND",
         "pins": [
           {
+            "refdes": "SW1",
+            "pin": "1"
+          },
+          {
             "refdes": "C1",
             "pin": "2"
           },
           {
-            "refdes": "C10",
-            "pin": "2"
+            "refdes": "U1",
+            "pin": "29"
+          },
+          {
+            "refdes": "U1",
+            "pin": "3"
           },
           {
             "refdes": "C2",
@@ -2353,34 +2361,6 @@
           {
             "refdes": "C4",
             "pin": "2"
-          },
-          {
-            "refdes": "C5",
-            "pin": "2"
-          },
-          {
-            "refdes": "C6",
-            "pin": "2"
-          },
-          {
-            "refdes": "C7",
-            "pin": "2"
-          },
-          {
-            "refdes": "C8",
-            "pin": "2"
-          },
-          {
-            "refdes": "C9",
-            "pin": "2"
-          },
-          {
-            "refdes": "D1",
-            "pin": "1"
-          },
-          {
-            "refdes": "D4",
-            "pin": "1"
           },
           {
             "refdes": "J1",
@@ -2399,48 +2379,28 @@
             "pin": "44"
           },
           {
-            "refdes": "J2",
-            "pin": "A1"
+            "refdes": "U2",
+            "pin": "1"
           },
           {
-            "refdes": "J2",
-            "pin": "A12"
+            "refdes": "U2",
+            "pin": "40"
           },
           {
-            "refdes": "J2",
-            "pin": "B1"
+            "refdes": "U2",
+            "pin": "41"
           },
           {
-            "refdes": "J2",
-            "pin": "B12"
+            "refdes": "D1",
+            "pin": "1"
           },
           {
-            "refdes": "J2",
-            "pin": "S1"
+            "refdes": "U3",
+            "pin": "1"
           },
           {
-            "refdes": "J3",
-            "pin": "A1"
-          },
-          {
-            "refdes": "J3",
-            "pin": "A12"
-          },
-          {
-            "refdes": "J3",
-            "pin": "B1"
-          },
-          {
-            "refdes": "J3",
-            "pin": "B12"
-          },
-          {
-            "refdes": "J3",
-            "pin": "S1"
-          },
-          {
-            "refdes": "R10",
-            "pin": "2"
+            "refdes": "SW2",
+            "pin": "1"
           },
           {
             "refdes": "R6",
@@ -2455,40 +2415,80 @@
             "pin": "2"
           },
           {
+            "refdes": "J2",
+            "pin": "A1"
+          },
+          {
+            "refdes": "J2",
+            "pin": "A12"
+          },
+          {
+            "refdes": "J2",
+            "pin": "B1"
+          },
+          {
+            "refdes": "J2",
+            "pin": "B12"
+          },
+          {
+            "refdes": "J2",
+            "pin": "S1"
+          },
+          {
             "refdes": "R9",
             "pin": "2"
           },
           {
-            "refdes": "SW1",
+            "refdes": "R10",
+            "pin": "2"
+          },
+          {
+            "refdes": "J3",
+            "pin": "A1"
+          },
+          {
+            "refdes": "J3",
+            "pin": "A12"
+          },
+          {
+            "refdes": "J3",
+            "pin": "B1"
+          },
+          {
+            "refdes": "J3",
+            "pin": "B12"
+          },
+          {
+            "refdes": "J3",
+            "pin": "S1"
+          },
+          {
+            "refdes": "D4",
             "pin": "1"
           },
           {
-            "refdes": "SW2",
-            "pin": "1"
+            "refdes": "C5",
+            "pin": "2"
           },
           {
-            "refdes": "U1",
-            "pin": "29"
+            "refdes": "C6",
+            "pin": "2"
           },
           {
-            "refdes": "U1",
-            "pin": "3"
+            "refdes": "C7",
+            "pin": "2"
           },
           {
-            "refdes": "U2",
-            "pin": "1"
+            "refdes": "C8",
+            "pin": "2"
           },
           {
-            "refdes": "U2",
-            "pin": "40"
+            "refdes": "C9",
+            "pin": "2"
           },
           {
-            "refdes": "U2",
-            "pin": "41"
-          },
-          {
-            "refdes": "U3",
-            "pin": "1"
+            "refdes": "C10",
+            "pin": "2"
           }
         ]
       },
@@ -2496,7 +2496,35 @@
         "name": "VBUS",
         "pins": [
           {
-            "refdes": "C10",
+            "refdes": "U1",
+            "pin": "7"
+          },
+          {
+            "refdes": "U1",
+            "pin": "8"
+          },
+          {
+            "refdes": "R3",
+            "pin": "1"
+          },
+          {
+            "refdes": "J1",
+            "pin": "21"
+          },
+          {
+            "refdes": "R5",
+            "pin": "1"
+          },
+          {
+            "refdes": "U3",
+            "pin": "3"
+          },
+          {
+            "refdes": "D2",
+            "pin": "1"
+          },
+          {
+            "refdes": "D3",
             "pin": "1"
           },
           {
@@ -2508,36 +2536,8 @@
             "pin": "1"
           },
           {
-            "refdes": "D2",
+            "refdes": "C10",
             "pin": "1"
-          },
-          {
-            "refdes": "D3",
-            "pin": "1"
-          },
-          {
-            "refdes": "J1",
-            "pin": "21"
-          },
-          {
-            "refdes": "R3",
-            "pin": "1"
-          },
-          {
-            "refdes": "R5",
-            "pin": "1"
-          },
-          {
-            "refdes": "U1",
-            "pin": "7"
-          },
-          {
-            "refdes": "U1",
-            "pin": "8"
-          },
-          {
-            "refdes": "U3",
-            "pin": "3"
           }
         ]
       },
@@ -2545,10 +2545,6 @@
         "name": "VBUS1",
         "pins": [
           {
-            "refdes": "D3",
-            "pin": "2"
-          },
-          {
             "refdes": "J3",
             "pin": "A4"
           },
@@ -2563,6 +2559,10 @@
           {
             "refdes": "J3",
             "pin": "B9"
+          },
+          {
+            "refdes": "D3",
+            "pin": "2"
           }
         ]
       },
@@ -2570,10 +2570,6 @@
         "name": "VBUS2",
         "pins": [
           {
-            "refdes": "D2",
-            "pin": "2"
-          },
-          {
             "refdes": "J2",
             "pin": "A4"
           },
@@ -2588,6 +2584,10 @@
           {
             "refdes": "J2",
             "pin": "B9"
+          },
+          {
+            "refdes": "D2",
+            "pin": "2"
           }
         ]
       },
@@ -2625,20 +2625,20 @@
         "name": "net-auto_reset.q_boot.emitter",
         "pins": [
           {
-            "refdes": "C1",
-            "pin": "1"
-          },
-          {
-            "refdes": "J1",
-            "pin": "31"
-          },
-          {
             "refdes": "Q1",
             "pin": "2"
           },
           {
             "refdes": "SW1",
             "pin": "2"
+          },
+          {
+            "refdes": "C1",
+            "pin": "1"
+          },
+          {
+            "refdes": "J1",
+            "pin": "31"
           },
           {
             "refdes": "U2",
@@ -2680,6 +2680,10 @@
         "name": "net-auto_reset.q_en.emitter",
         "pins": [
           {
+            "refdes": "Q2",
+            "pin": "2"
+          },
+          {
             "refdes": "C3",
             "pin": "1"
           },
@@ -2688,24 +2692,20 @@
             "pin": "1"
           },
           {
-            "refdes": "J1",
-            "pin": "3"
-          },
-          {
-            "refdes": "Q2",
-            "pin": "2"
-          },
-          {
             "refdes": "R4",
             "pin": "2"
           },
           {
-            "refdes": "SW2",
-            "pin": "2"
+            "refdes": "J1",
+            "pin": "3"
           },
           {
             "refdes": "U2",
             "pin": "3"
+          },
+          {
+            "refdes": "SW2",
+            "pin": "2"
           }
         ]
       },
@@ -2713,16 +2713,16 @@
         "name": "net-bridge.dm",
         "pins": [
           {
+            "refdes": "U1",
+            "pin": "5"
+          },
+          {
             "refdes": "J3",
             "pin": "A7"
           },
           {
             "refdes": "J3",
             "pin": "B7"
-          },
-          {
-            "refdes": "U1",
-            "pin": "5"
           }
         ]
       },
@@ -2730,16 +2730,16 @@
         "name": "net-bridge.dp",
         "pins": [
           {
+            "refdes": "U1",
+            "pin": "4"
+          },
+          {
             "refdes": "J3",
             "pin": "A6"
           },
           {
             "refdes": "J3",
             "pin": "B6"
-          },
-          {
-            "refdes": "U1",
-            "pin": "4"
           }
         ]
       },
@@ -2747,12 +2747,12 @@
         "name": "net-bridge.rstb",
         "pins": [
           {
-            "refdes": "R3",
-            "pin": "2"
-          },
-          {
             "refdes": "U1",
             "pin": "9"
+          },
+          {
+            "refdes": "R3",
+            "pin": "2"
           }
         ]
       },
@@ -2760,12 +2760,12 @@
         "name": "net-bridge.suspendb",
         "pins": [
           {
-            "refdes": "R6",
-            "pin": "1"
-          },
-          {
             "refdes": "U1",
             "pin": "11"
+          },
+          {
+            "refdes": "R6",
+            "pin": "1"
           }
         ]
       },
@@ -2773,12 +2773,12 @@
         "name": "net-bridge.uart.rx",
         "pins": [
           {
-            "refdes": "J1",
-            "pin": "43"
-          },
-          {
             "refdes": "U1",
             "pin": "25"
+          },
+          {
+            "refdes": "J1",
+            "pin": "43"
           },
           {
             "refdes": "U2",
@@ -2790,12 +2790,12 @@
         "name": "net-bridge.uart.tx",
         "pins": [
           {
-            "refdes": "J1",
-            "pin": "42"
-          },
-          {
             "refdes": "U1",
             "pin": "26"
+          },
+          {
+            "refdes": "J1",
+            "pin": "42"
           },
           {
             "refdes": "U2",
@@ -2807,12 +2807,12 @@
         "name": "net-bridge.vdd",
         "pins": [
           {
-            "refdes": "C2",
-            "pin": "1"
-          },
-          {
             "refdes": "U1",
             "pin": "6"
+          },
+          {
+            "refdes": "C2",
+            "pin": "1"
           }
         ]
       },
@@ -2954,16 +2954,16 @@
             "pin": "25"
           },
           {
+            "refdes": "U2",
+            "pin": "13"
+          },
+          {
             "refdes": "J2",
             "pin": "A7"
           },
           {
             "refdes": "J2",
             "pin": "B7"
-          },
-          {
-            "refdes": "U2",
-            "pin": "13"
           }
         ]
       },
@@ -2988,16 +2988,16 @@
             "pin": "26"
           },
           {
+            "refdes": "U2",
+            "pin": "14"
+          },
+          {
             "refdes": "J2",
             "pin": "A6"
           },
           {
             "refdes": "J2",
             "pin": "B6"
-          },
-          {
-            "refdes": "U2",
-            "pin": "14"
           }
         ]
       },
@@ -3074,12 +3074,12 @@
             "pin": "35"
           },
           {
-            "refdes": "R11",
-            "pin": "2"
-          },
-          {
             "refdes": "U2",
             "pin": "31"
+          },
+          {
+            "refdes": "R11",
+            "pin": "2"
           }
         ]
       },
@@ -3282,12 +3282,12 @@
         "name": "net-usb_native.cc1_rd.a",
         "pins": [
           {
-            "refdes": "J2",
-            "pin": "A5"
-          },
-          {
             "refdes": "R7",
             "pin": "1"
+          },
+          {
+            "refdes": "J2",
+            "pin": "A5"
           }
         ]
       },
@@ -3295,12 +3295,12 @@
         "name": "net-usb_native.cc2_rd.a",
         "pins": [
           {
-            "refdes": "J2",
-            "pin": "B5"
-          },
-          {
             "refdes": "R8",
             "pin": "1"
+          },
+          {
+            "refdes": "J2",
+            "pin": "B5"
           }
         ]
       },
@@ -3308,12 +3308,12 @@
         "name": "net-usb_uart.cc1_rd.a",
         "pins": [
           {
-            "refdes": "J3",
-            "pin": "A5"
-          },
-          {
             "refdes": "R9",
             "pin": "1"
+          },
+          {
+            "refdes": "J3",
+            "pin": "A5"
           }
         ]
       },
@@ -3321,12 +3321,12 @@
         "name": "net-usb_uart.cc2_rd.a",
         "pins": [
           {
-            "refdes": "J3",
-            "pin": "B5"
-          },
-          {
             "refdes": "R10",
             "pin": "1"
+          },
+          {
+            "refdes": "J3",
+            "pin": "B5"
           }
         ]
       },
