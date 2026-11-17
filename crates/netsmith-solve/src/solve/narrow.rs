@@ -213,7 +213,7 @@ impl Solver<'_> {
                         && fields.iter().any(|f| changed.contains(f)),
                 )
             };
-            if !judged && !waiting {
+            if (!judged && !waiting) || self.set_aside(index) {
                 continue;
             }
             self.work += 1;

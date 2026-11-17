@@ -60,7 +60,7 @@
 
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 
-use netsmith_check::{Domain, FieldId};
+use netsmith_check::{Domain, FieldId, RExpr};
 use netsmith_lang::ast::CmpOp;
 use netsmith_quantity::{Dimension, Quantity};
 
@@ -257,6 +257,7 @@ impl Solver<'_> {
                 let r = &relations[index];
                 let feeding = &coupling.feeding[index];
                 if !matches!(r.op, CmpOp::Ge | CmpOp::Le)
+                    || self.set_aside(index)
                     || !feeding.is_disjoint(elsewhere)
                     || feeding.intersection(&later).nth(1).is_none()
                     || relation_reads_end(r)
@@ -389,6 +390,7 @@ impl Solver<'_> {
             let r = &relations[index];
             let feeding = &coupling.feeding[index];
             if !matches!(r.op, CmpOp::Ge | CmpOp::Le)
+                || self.set_aside(index)
                 || !feeding.is_disjoint(elsewhere)
                 || feeding.intersection(&later).nth(1).is_none()
                 || relation_reads_end(r)
@@ -538,6 +540,189 @@ impl Solver<'_> {
         Some((index, message, margin))
     }
 
+    /// After the search of a group found no choice, or gave up (issue #904): the bounds that the
+    /// group's parts feed and that no choice of them can meet, which a search again without them
+    /// may then solve (`Solver::search_beyond`). A bound is one when, with every part of the
+    /// group given the hull of its candidates and every range the design states that the bound
+    /// is worked out from (a load's current, a rail's voltage) held at one end, no value of it
+    /// meets its limit (`verify_possible`). A choice of the parts lies inside the hulls and the
+    /// end lies inside the stated range, so what is worked out from them lies inside what is
+    /// worked out here, and holds no value that meets the limit either: the bound, which must
+    /// hold over the whole range, fails for every choice. A load of 0 A to 3 A on a 2 A
+    /// converter is one: its current at 3 A is over the rating whatever the divider beside it
+    /// draws, so the divider's resistors are not the cause.
+    ///
+    /// Each end is asked in turn, every stated range at its high end and then every one at its
+    /// low end. A range is held at an end only where the design states it and nothing works it
+    /// out: not a column of a part (that is the choice), not the left side of an equation or a
+    /// field joined to one (a divider's current is worked out from its resistors, so its window
+    /// is no range of the load's), not a range that narrows one of those (the IC's recommended
+    /// divider current, which narrows the divider's), and not a current a balance worked out. Asked only while the
+    /// pick-time analysis can write nothing (`network_quiet`), of a bound that no part of another
+    /// group still to be chosen and no bank feeds, and not of a bound on a position or one that
+    /// reads the end of a range. A propagation that finds a conflict says nothing, and so does
+    /// one that moves a range held at an end. The model and the solver are put back as they
+    /// were.
+    ///
+    /// This is asked only once the search has failed, so it changes no board that builds: the
+    /// bounds it finds are set aside only for a search again, and the check after the picks
+    /// still judges them.
+    pub(super) fn beyond_the_group(
+        &mut self,
+        jobs: &[Job],
+        group: &[usize],
+        coupling: &Coupling,
+        elsewhere: &HashSet<usize>,
+    ) -> Vec<usize> {
+        if !self.network_quiet() {
+            return Vec::new();
+        }
+        let relations = std::sync::Arc::clone(self.model.shared_relations());
+        let members: HashSet<usize> = group.iter().copied().collect();
+        let bounds: Vec<usize> = (0..self.original_relations)
+            .filter(|&index| {
+                let r = &relations[index];
+                let feeding = &coupling.feeding[index];
+                matches!(r.op, CmpOp::Ge | CmpOp::Le)
+                    && !self.set_aside(index)
+                    && !feeding.is_disjoint(&members)
+                    && feeding.is_disjoint(elsewhere)
+                    && feeding.iter().all(|&j| jobs[j].count.is_none())
+                    && !relation_reads_end(r)
+                    && self.place_side(r).is_none()
+            })
+            .collect();
+        if bounds.is_empty() {
+            return Vec::new();
+        }
+        // The fields a pick or an equation works out, and those joined to them.
+        let mut worked: HashSet<FieldId> = jobs
+            .iter()
+            .flat_map(|job| job.columns.iter().map(|(f, _)| *f).chain(job.count))
+            .collect();
+        for r in relations.iter() {
+            if let (CmpOp::EqEq, RExpr::Field(out)) = (&r.op, &r.lhs) {
+                let mut reads = Vec::new();
+                crate::eval::fields_in(&r.rhs, &mut reads);
+                if !reads.is_empty() {
+                    worked.insert(*out);
+                }
+            }
+        }
+        // A range that narrows such a field (`.divider.current ?= .ic.recommended_divider_current`)
+        // is the field's window, not a range of the load's: held at an end it would put the
+        // field there, which no choice need do.
+        let narrowings: Vec<(FieldId, Vec<FieldId>)> = relations
+            .iter()
+            .filter_map(|r| match (&r.op, &r.lhs) {
+                (CmpOp::Narrow, RExpr::Field(out)) => {
+                    let mut reads = Vec::new();
+                    crate::eval::fields_in(&r.rhs, &mut reads);
+                    Some((*out, reads))
+                }
+                _ => None,
+            })
+            .collect();
+        let equalities = self.model.equalities().to_vec();
+        loop {
+            let before = worked.len();
+            for &(a, b) in &equalities {
+                if worked.contains(&a) || worked.contains(&b) {
+                    worked.insert(a);
+                    worked.insert(b);
+                }
+            }
+            for (out, reads) in &narrowings {
+                if worked.contains(out) {
+                    worked.extend(reads.iter().copied());
+                }
+            }
+            if worked.len() == before {
+                break;
+            }
+        }
+        // The stated ranges the bounds are worked out from.
+        let mut held: BTreeSet<FieldId> = BTreeSet::new();
+        let mut seen: HashSet<FieldId> = HashSet::new();
+        let mut todo: Vec<FieldId> = Vec::new();
+        for &index in &bounds {
+            let r = &relations[index];
+            crate::eval::fields_in(&r.lhs, &mut todo);
+            crate::eval::fields_in(&r.rhs, &mut todo);
+        }
+        while let Some(f) = todo.pop() {
+            if !seen.insert(f) {
+                continue;
+            }
+            let field = self.model.field(f);
+            if !worked.contains(&f)
+                && !self.derived.contains(&f)
+                && !field.narrowed_at.is_empty()
+                && matches!(&field.domain, Domain::Quantity(q) if !q.is_point())
+            {
+                held.insert(f);
+            }
+            todo.extend(coupling.from.get(&f).into_iter().flatten().copied());
+        }
+        if held.is_empty() {
+            return Vec::new();
+        }
+        let hulls: Vec<(FieldId, Domain)> = group
+            .iter()
+            .filter(|&&j| jobs[j].count.is_none())
+            .flat_map(|&j| {
+                let columns = self.hull_of(jobs, j).columns.clone();
+                jobs[j]
+                    .columns
+                    .iter()
+                    .map(|(f, _)| *f)
+                    .zip(columns)
+                    .filter_map(|(f, d)| d.map(|d| (f, d)))
+                    .collect::<Vec<_>>()
+            })
+            .collect();
+        let mut found: Vec<usize> = Vec::new();
+        for high in [true, false] {
+            let backup = self.model.checkpoint();
+            let derived = self.derived.clone();
+            for (field, domain) in &hulls {
+                self.model.set_domain(*field, domain.clone());
+            }
+            let mut ends: Vec<(FieldId, Domain)> = Vec::new();
+            for &f in &held {
+                if let Domain::Quantity(q) = &self.model.field(f).domain
+                    && let Ok(end) = Quantity::point(q.dim(), if high { q.hi() } else { q.lo() })
+                {
+                    self.model.set_domain(f, Domain::Quantity(end));
+                    ends.push((f, Domain::Quantity(end)));
+                }
+            }
+            self.work += 1;
+            let said = self.propagate().is_empty()
+                && ends
+                    .iter()
+                    .all(|(f, end)| self.model.field(*f).domain == *end);
+            if said {
+                for &index in &bounds {
+                    if found.contains(&index) {
+                        continue;
+                    }
+                    self.work += 1;
+                    if matches!(
+                        self.verify_possible(&relations[index]),
+                        Verdict::Fail { .. }
+                    ) {
+                        found.push(index);
+                    }
+                }
+            }
+            self.derived = derived;
+            self.model.rollback(backup);
+        }
+        found.sort_unstable();
+        found
+    }
+
     fn ahead_refused(
         &mut self,
         jobs: &[Job],
@@ -591,6 +776,7 @@ impl Solver<'_> {
             // A bound that a part given a hull feeds: the trial of that part judges it, so what
             // no value meets here is refused there.
             if index >= self.original_relations
+                || self.set_aside(index)
                 || !matches!(r.op, CmpOp::Ge | CmpOp::Le)
                 || coupling.feeding[index].is_disjoint(hulled)
                 || self.place_side(r).is_some()

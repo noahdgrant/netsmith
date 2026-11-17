@@ -934,6 +934,7 @@ fn solve_model(model: &Model, catalogs: &Catalogs, unit: &str) -> Solution {
         dc_index: None,
         hulls: HashMap::new(),
         kept_apart: 0,
+        aside: HashSet::new(),
     };
     job::checkpoint();
     s.relax_pinned();
@@ -1400,4 +1401,8 @@ struct Solver<'a> {
     /// nothing changed: the steps whose result is not narrower for narrower inputs. The cores of
     /// `ahead.rs` conclude nothing from a propagation that took one.
     kept_apart: u64,
+    /// The design's bounds that no choice of a group's parts could meet, set aside for the
+    /// searches after the group's (`Solver::search_beyond`, issue #904): no trial judges them,
+    /// and the check after the picks reports them.
+    aside: HashSet<usize>,
 }

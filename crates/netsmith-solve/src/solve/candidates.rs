@@ -731,6 +731,11 @@ impl Solver<'_> {
             .iter()
             .copied()
             .filter(|&index| {
+                // A bound no choice of a group could meet is left to the check after the picks
+                // (`Solver::search_beyond`).
+                if self.set_aside(index) {
+                    return false;
+                }
                 let fields = design.fields_of(index);
                 let inside = fields
                     .iter()
@@ -757,6 +762,7 @@ impl Solver<'_> {
             .copied()
             .filter(|&index| {
                 index < self.original_relations
+                    && !self.set_aside(index)
                     && matches!(relations[index].op, CmpOp::Ge | CmpOp::Le)
                     && !coupling.feeding[index].is_disjoint(later)
                     && !relevant.contains(&index)
