@@ -37,7 +37,7 @@ A value the checker gives a member of a module from the parts it cannot reach, b
 _Avoid_: Computed value, inferred value, rollup
 
 **Derived placement**:
-The placer's way of choosing where parts go: from the circuit alone, with nothing written in the source. It keeps the parts of a module instance together, puts a decoupling capacitor next to the power pins it bridges, connectors at the edges and wire short, turns parts by right angles, and keeps reference text clear of other parts, all by simulated annealing with a seeded random generator (ADR 0033).
+The placer's way of choosing where parts go: from the circuit alone, with nothing written in the source. It keeps the parts of a module instance together, puts a decoupling capacitor next to the power pins it bridges, connectors at the edges and wire short, turns parts by right angles (by 45 degrees a part whose _Turn step_ allows it), and keeps reference text clear of other parts, all by simulated annealing with a seeded random generator (ADR 0033).
 _Avoid_: Autoplace, autorouter placement
 
 **Design rules check**:

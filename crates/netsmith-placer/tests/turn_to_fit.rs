@@ -619,3 +619,43 @@ fn parts_pack_round_a_part_turned_off_the_right_angles_by_its_turned_courtyard()
             .any(|p| p.courtyard().overlaps(&around))
     );
 }
+
+/// The long part of 26 x 2 mm on a 22 x 22 mm outline with two small parts: it fits in no
+/// right angle, and across the diagonal (a box of 19.8 mm square) it does. `turn_step` is what
+/// its `.place.turn_step` says.
+fn diagonal(turn_step: Option<f64>) -> Result<Board, BoardError> {
+    let mut constraints = states(None, &[]);
+    constraints[0].turn_step = turn_step;
+    board_of_kind(
+        "Module",
+        (26.0, 2.0),
+        (22.0, 22.0),
+        2,
+        constraints,
+        &PlaceOptions::default(),
+    )
+}
+
+#[test]
+fn a_part_that_may_turn_by_45_degrees_is_turned_across_the_outline_when_no_right_angle_fits() {
+    // Issue #1046: `turn_step &= 45` lets the placer turn the part between the right angles;
+    // `turn_to_fit` starts it at the first step that fits and the annealer keeps it on one.
+    let b = diagonal(Some(45.0)).unwrap_or_else(|e| panic!("{e}"));
+    assert_eq!(b.check_placement(), vec![]);
+    let j = b.part("J1").unwrap();
+    assert!(
+        (j.rotation.rem_euclid(90.0) - 45.0).abs() < 1e-9,
+        "turned {}",
+        j.rotation
+    );
+    // The default step, 90 degrees, has no turn that fits: the refusal names the four.
+    let message = diagonal(None)
+        .expect_err("a part that may only take right angles cannot fit")
+        .to_string();
+    assert!(
+        message.contains("26.0 x 2.0 mm turned 0 degrees")
+            && message.contains("2.0 x 26.0 mm turned 90 degrees"),
+        "{message}"
+    );
+    assert!(!message.contains("turned 45 degrees"), "{message}");
+}
