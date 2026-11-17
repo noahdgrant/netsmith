@@ -144,6 +144,9 @@ Parts are numbered by their letters in the order of their paths in the board (a 
 | `std::mfg::jlcpcb::JlcSixLayerC06101H3313` | The provider of `SixLayer` for JLCPCB's `JLC06101H-3313`, 1.0 mm (1.04 mm in all), the page's default build-up of that thickness. |
 | `std::mfg::jlcpcb::JlcSixLayerD06121H3313` | The provider of `SixLayer` for JLCPCB's `JLC06121H-3313`, 1.2 mm (1.1384 mm in all), the page's default build-up of that thickness. |
 | `std::mfg::jlcpcb::JlcSixLayerE06201H3313` | The provider of `SixLayer` for JLCPCB's `JLC06201H-3313`, 2.0 mm (1.9324 mm in all), the page's default build-up of that thickness. |
+| `std::mfg::jlcpcb::HdiFourLayer` | JLCPCB's four-layer HDI board (issue #1015): blind vias from each outer layer to the inner layer beside it (`.hdi_order` 1), buried vias through the core with `.buried_vias &= "core"`, and the build-up the board states. Inner layers `.inner1` and `.inner2`. |
+| `std::mfg::jlcpcb::HdiSixLayer` | JLCPCB's six-layer HDI board, as `HdiFourLayer` with `.hdi_order` 1 or 2 and inner layers `.inner1` to `.inner4`. |
+| `std::mfg::jlcpcb::HdiEightLayer` | JLCPCB's eight-layer HDI board, as `HdiFourLayer` with `.hdi_order` 1 to 3 and inner layers `.inner1` to `.inner6`. |
 | `std::mfg::jlcpcb_buildups::JlcFourLayer04081H1080` | A provider of `FourLayer` for JLCPCB's `JLC04081H-1080`, 0.8 mm (0.8032 mm in all). |
 | `std::mfg::jlcpcb_buildups::JlcFourLayer04081H1080A` | A provider of `FourLayer` for JLCPCB's `JLC04081H-1080A`, 0.8 mm (0.7892 mm in all), with plies in dielectric layers 1 and 3. |
 | `std::mfg::jlcpcb_buildups::JlcFourLayer04081H2116` | A provider of `FourLayer` for JLCPCB's `JLC04081H-2116`, 0.8 mm (0.7812 mm in all), with plies in dielectric layers 1 and 3. |

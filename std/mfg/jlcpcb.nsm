@@ -1409,7 +1409,8 @@ interface HdiFourLayer {
     /// The blind and buried vias (issue #1015), each from the HDI pages named in the header of
     /// this file. `.hdi_order` is how many build-up layers each face has, the board's choice of
     /// the pages' "1st-, 2nd-, and 3rd-order HDI" ("1st-order means one lamination cycle and one
-    /// laser drilling operation"): the router joins each pair of neighbouring layers among the
+    /// laser drilling operation"), as many as the layers leave a core of two for (1 on four layers,
+    /// up to 2 on six and 3 on eight): the router joins each pair of neighbouring layers among the
     /// top `.hdi_order + 1` and the bottom `.hdi_order + 1` with a laser-drilled blind via
     /// through one dielectric layer, which the board's build-up states. `.buried_vias` is
     /// `"none"`, the default, or `"core"`: a mechanically drilled via through the core, between
@@ -1419,7 +1420,7 @@ interface HdiFourLayer {
     /// the same layers with blind vias side by side ("staggered microvias are generally
     /// preferred because they are easier to manufacture").
     .hdi_order: Number
-    .hdi_order &= 1..3
+    .hdi_order &= 1
     .buried_vias: String
     .buried_vias ?= "none"
     /// The blind via the router draws: "the default laser-drilled hole diameter is 0.1 mm", and
@@ -1679,7 +1680,8 @@ interface HdiSixLayer {
     /// The blind and buried vias (issue #1015), each from the HDI pages named in the header of
     /// this file. `.hdi_order` is how many build-up layers each face has, the board's choice of
     /// the pages' "1st-, 2nd-, and 3rd-order HDI" ("1st-order means one lamination cycle and one
-    /// laser drilling operation"): the router joins each pair of neighbouring layers among the
+    /// laser drilling operation"), as many as the layers leave a core of two for (1 on four layers,
+    /// up to 2 on six and 3 on eight): the router joins each pair of neighbouring layers among the
     /// top `.hdi_order + 1` and the bottom `.hdi_order + 1` with a laser-drilled blind via
     /// through one dielectric layer, which the board's build-up states. `.buried_vias` is
     /// `"none"`, the default, or `"core"`: a mechanically drilled via through the core, between
@@ -1689,7 +1691,7 @@ interface HdiSixLayer {
     /// the same layers with blind vias side by side ("staggered microvias are generally
     /// preferred because they are easier to manufacture").
     .hdi_order: Number
-    .hdi_order &= 1..3
+    .hdi_order &= 1..2
     .buried_vias: String
     .buried_vias ?= "none"
     /// The blind via the router draws: "the default laser-drilled hole diameter is 0.1 mm", and
@@ -1949,7 +1951,8 @@ interface HdiEightLayer {
     /// The blind and buried vias (issue #1015), each from the HDI pages named in the header of
     /// this file. `.hdi_order` is how many build-up layers each face has, the board's choice of
     /// the pages' "1st-, 2nd-, and 3rd-order HDI" ("1st-order means one lamination cycle and one
-    /// laser drilling operation"): the router joins each pair of neighbouring layers among the
+    /// laser drilling operation"), as many as the layers leave a core of two for (1 on four layers,
+    /// up to 2 on six and 3 on eight): the router joins each pair of neighbouring layers among the
     /// top `.hdi_order + 1` and the bottom `.hdi_order + 1` with a laser-drilled blind via
     /// through one dielectric layer, which the board's build-up states. `.buried_vias` is
     /// `"none"`, the default, or `"core"`: a mechanically drilled via through the core, between
