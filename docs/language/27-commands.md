@@ -114,13 +114,13 @@ claude mcp add netsmith -- netsmith mcp
 
 or, to share it with everyone who opens the project, a `.mcp.json` beside `netsmith.toml`:
 
-```json
+```text
 { "mcpServers": { "netsmith": { "command": "netsmith", "args": ["mcp"] } } }
 ```
 
 Another host that starts a server on stdio takes the same: the command `netsmith`, the argument `mcp`, started in the project's folder. A host that cannot say the folder (Claude Desktop's `claude_desktop_config.json` has no such key) starts it through a shell that changes to it first:
 
-```json
+```text
 { "mcpServers": { "netsmith": { "command": "sh", "args": ["-c", "cd /path/to/project && exec netsmith mcp"] } } }
 ```
 
