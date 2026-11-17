@@ -27,7 +27,7 @@
 //! SMB, SMC, SOT-23 (-3, -5, -6), SOT-223, SC-70 (SOT-323, -343, -353, -363, SC-70-8, each for
 //! reflow and for hand soldering), SOIC, TSSOP, MSOP, SSOP, QFN, DFN, WSON, HVSON and the other
 //! no-lead rows (`Package_DFN_QFN`, `Package_SON`, `Package_CSP`), LQFP, TQFP, VQFP, DPAK
-//! (TO-252), D2PAK (TO-263), SOT-89, SMD crystals, shielded power inductors of one maker's series (`inductor.rs`: the TDK SLF7045), BGA on a full regular grid, and pin headers
+//! (TO-252), D2PAK (TO-263), SOT-89, SMD crystals, shielded power inductors of one maker's series (`inductor.rs`: the TDK SLF7045 and the Changjiang FNR4020S, 5040S, 6028S and 8040S), BGA on a full regular grid, and pin headers
 //! and sockets (1 or 2 rows, 1 to 40 per row, pad 0.7 of the pitch, drill 1.0 mm or 0.8 mm at
 //! 2.0 mm, pin 1 square). The QFN family is a list of named packages, because the lead and
 //! exposed pad dimensions of a QFN of a given outline differ from one maker to the next (KiCad has
@@ -837,5 +837,25 @@ mod tests {
             assert!(near(pad.width, 1.5) && near(pad.height, 2.2));
         }
         assert!(near(at("2").x - at("1").x - 1.5, 4.8), "pads 4.8 mm apart");
+    }
+
+    #[test]
+    fn the_changjiang_fnr_inductors_have_the_land_patterns_of_their_datasheet() {
+        // The FNR sheet's page 2/19: the gap between the pads (a), a pad's length (b) and its
+        // width (c), for each series.
+        for (name, gap, length, width) in [
+            ("FNR4020S", 1.9, 1.1, 3.7),
+            ("FNR5040S", 2.3, 1.4, 4.2),
+            ("FNR6028S", 2.8, 1.7, 5.7),
+            ("FNR8040S", 3.8, 2.2, 7.5),
+        ] {
+            let fp = generate(&format!("Inductor_SMD:L_Changjiang_{name}")).unwrap();
+            assert_eq!(fp.pad_numbers(), ["1", "2"], "{name}");
+            let at = |n: &str| fp.pads_numbered(n).next().unwrap().at;
+            assert!(near(at("2").x - at("1").x - length, gap), "{name}: pads {gap} mm apart");
+            for pad in &fp.pads {
+                assert!(near(pad.width, length) && near(pad.height, width), "{name}");
+            }
+        }
     }
 }
