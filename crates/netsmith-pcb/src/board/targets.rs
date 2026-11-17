@@ -144,7 +144,11 @@ impl Board {
             .iter()
             .filter_map(|w| {
                 let layer = CopperLayer::of_name(&w.layer)?;
-                Some((w.net.clone(), w.layer.clone(), self.track_width_on(&w.net, layer)))
+                Some((
+                    w.net.clone(),
+                    w.layer.clone(),
+                    self.track_width_on(&w.net, layer),
+                ))
             })
             .collect()
     }
@@ -201,9 +205,9 @@ impl Board {
                             .is_ok_and(|z| (z - t.ohms).abs() <= t.ohms * TEST_TOLERANCE);
                         if ok {
                             within += step;
-                            gaps = Some(gaps.map_or((gap, gap), |(lo, hi)| {
-                                (lo.min(gap), hi.max(gap))
-                            }));
+                            gaps = Some(
+                                gaps.map_or((gap, gap), |(lo, hi)| (lo.min(gap), hi.max(gap))),
+                            );
                         }
                     }
                 }

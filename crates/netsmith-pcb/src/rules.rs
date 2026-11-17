@@ -234,10 +234,7 @@ impl Rules {
                 fields.insert(0, ("clearance", N(c.clearance)));
             }
             if let Some(gap) = c.pair_gap {
-                fields.extend([
-                    ("diff_pair_gap", N(gap)),
-                    ("diff_pair_width", N(c.width)),
-                ]);
+                fields.extend([("diff_pair_gap", N(gap)), ("diff_pair_width", N(c.width))]);
             }
             fields.extend([
                 ("priority", N(priority as f64)),

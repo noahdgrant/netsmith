@@ -1325,12 +1325,12 @@ fn fab_board(
         }
         // The impedance targets no width gives, or that a floor moves off (issue #1025): a
         // guideline too, as the width against current is.
-        drops.extend(board.impedance_findings().into_iter().map(|m| {
-            format!(
-                "{}: {IMPEDANCE_RULE} guideline: {m}",
-                built.label()
-            )
-        }));
+        drops.extend(
+            board
+                .impedance_findings()
+                .into_iter()
+                .map(|m| format!("{}: {IMPEDANCE_RULE} guideline: {m}", built.label())),
+        );
         if catalogs.strict_guidelines() && !drops.is_empty() {
             return Err(FabFailure {
                 text: drops

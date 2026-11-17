@@ -371,7 +371,11 @@ impl<'a> Router<'a> {
             };
             // A pair with a target is drawn at its width on each layer; any other at the outer
             // width, as before (issue #1025).
-            let width = if self.board.pair_spacing(&self.board.nets[net].name).is_some() {
+            let width = if self
+                .board
+                .pair_spacing(&self.board.nets[net].name)
+                .is_some()
+            {
                 self.width_on(line, layer)
             } else {
                 self.width_of(line)

@@ -211,9 +211,10 @@ impl Board {
             {
                 continue;
             }
-            match classes.iter_mut().find(|c| {
-                c.width == width && c.clearance == clearance && c.pair_gap == pair_gap
-            }) {
+            match classes
+                .iter_mut()
+                .find(|c| c.width == width && c.clearance == clearance && c.pair_gap == pair_gap)
+            {
                 Some(c) => c.nets.push(net.name.clone()),
                 None => classes.push(NetClass {
                     width,
@@ -227,7 +228,11 @@ impl Board {
             a.width
                 .total_cmp(&b.width)
                 .then(a.clearance.total_cmp(&b.clearance))
-                .then(a.pair_gap.partial_cmp(&b.pair_gap).unwrap_or(Ordering::Equal))
+                .then(
+                    a.pair_gap
+                        .partial_cmp(&b.pair_gap)
+                        .unwrap_or(Ordering::Equal),
+                )
         });
         classes
     }

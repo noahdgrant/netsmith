@@ -42,10 +42,8 @@ impl Unplaced {
             ..
         } = self;
         // The widths the design's impedance targets give, solved once (issue #1025).
-        let impedance_widths = crate::impedance::target_widths(
-            &process.stackup,
-            &design.features.impedance_targets,
-        );
+        let impedance_widths =
+            crate::impedance::target_widths(&process.stackup, &design.features.impedance_targets);
         let cutouts = design
             .features
             .cutouts

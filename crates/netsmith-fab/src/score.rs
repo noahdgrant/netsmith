@@ -260,9 +260,7 @@ impl Scorecard {
             vias.iter().copied().fold(0.0, f64::max)
         );
         for p in &self.pairs {
-            let gap = p
-                .gap
-                .map_or(String::new(), |g| format!(", gap {g:.3} mm"));
+            let gap = p.gap.map_or(String::new(), |g| format!(", gap {g:.3} mm"));
             let _ = writeln!(
                 s,
                 "pair {}/{}: {:.1} and {:.1} mm, skew {:.2} mm, coupled {:.0}%{gap}",
@@ -1184,6 +1182,10 @@ mod tests {
         // The tracks are 0.4 mm apart centre to centre and 0.2 mm wide: a gap of 0.2 mm, which
         // the text says.
         assert!((p.gap.unwrap() - 0.2).abs() < 1e-9, "{:?}", p.gap);
-        assert!(s.text().contains("coupled 100%, gap 0.200 mm"), "{}", s.text());
+        assert!(
+            s.text().contains("coupled 100%, gap 0.200 mm"),
+            "{}",
+            s.text()
+        );
     }
 }

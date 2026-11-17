@@ -68,7 +68,7 @@ fn a_stated_target_is_in_the_design_and_in_the_fab_notes_with_the_routers_width(
         "{notes}"
     );
     // Each target has a line for each layer a track may be on, with the width that gives it
-    // and what the router draws; the net's own width is the router's.
+    // and what the router draws there (issue #1025).
     let targets: Vec<&str> = notes
         .lines()
         .skip_while(|l| !l.starts_with("track impedance target: net `3V3`"))
@@ -82,7 +82,7 @@ fn a_stated_target_is_in_the_design_and_in_the_fab_notes_with_the_routers_width(
                 && line.contains("mm wide tracks give 50 ohm")
                 && line.contains(&format!(
                     "the {} mm tracks the router draws give ",
-                    board.track_width("3V3")
+                    board.track_width_on("3V3", netsmith_pcb::CopperLayer::of_name(layer).unwrap())
                 )),
             "{line}"
         );
@@ -146,3 +146,4 @@ fn a_design_with_no_target_has_no_target_lines() {
     .remove(0);
     assert!(built.design.features.impedance_targets.is_empty());
 }
+
