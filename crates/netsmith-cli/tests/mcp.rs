@@ -64,8 +64,14 @@ struct Server {
 
 impl Server {
     fn start(cwd: &Path) -> Server {
+        Server::start_with(cwd, &[])
+    }
+
+    /// `netsmith mcp` with `args`, started in `cwd`.
+    fn start_with(cwd: &Path, args: &[&str]) -> Server {
         let mut child = netsmith(cwd)
             .arg("mcp")
+            .args(args)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .spawn()
@@ -293,4 +299,133 @@ fn the_projects_files_and_the_guide_are_resources_and_the_skills_prompts() {
         .as_str()
         .unwrap();
     assert!(text.ends_with("The request: add an LED"), "{text}");
+}
+
+/// The listed tools are short (issue #1133): a host sends the whole list to its model. The limit
+/// counts the bytes of the list, not a time; the list was about 140 KB with each command's
+/// whole help, and is under half of that now.
+const MOST_BYTES: usize = 70_000;
+
+#[test]
+fn the_tool_list_is_short() {
+    let root = led("mcp-short");
+    let mut server = Server::start(&root);
+    let listed = server.request("tools/list", json!({}));
+    let tools = listed["result"]["tools"].as_array().unwrap();
+    let bytes = serde_json::to_string(tools).unwrap().len();
+    eprintln!("{} tools, {bytes} bytes", tools.len());
+    assert!(bytes < MOST_BYTES, "the tool list is {bytes} bytes");
+    for tool in tools {
+        // The first line of the command's help, and one line for each argument.
+        let description = tool["description"].as_str().unwrap();
+        assert!(!description.contains('\n'), "{description}");
+        for (key, property) in tool["inputSchema"]["properties"].as_object().unwrap() {
+            let help = property["description"].as_str().unwrap();
+            assert!(!help.contains('\n'), "{}: {key}: {help}", tool["name"]);
+        }
+    }
+    // The choices and the default of an argument are in its schema.
+    let check = tools.iter().find(|t| t["name"] == "board_check").unwrap();
+    let format = &check["inputSchema"]["properties"]["format"];
+    assert_eq!(format["enum"], json!(["text", "json"]), "{format}");
+    assert_eq!(format["default"], "json");
+}
+
+#[test]
+fn every_command_has_a_help_resource_whose_text_is_its_help() {
+    let root = led("mcp-help");
+    let mut server = Server::start(&root);
+    let listed = server.request("resources/list", json!({}));
+    let uris: Vec<String> = listed["result"]["resources"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|r| r["uri"].as_str().unwrap().to_string())
+        .filter(|u| u.starts_with("netsmith://help/"))
+        .collect();
+    let commands = commands();
+    // One help resource for each tool, and no other.
+    let mut expected: Vec<String> = commands
+        .iter()
+        .map(|(words, _)| format!("netsmith://help/{}", words.join("-")))
+        .collect();
+    expected.sort();
+    let mut listed_uris = uris.clone();
+    listed_uris.sort();
+    assert_eq!(listed_uris, expected);
+    let mut unique = expected.clone();
+    unique.dedup();
+    assert_eq!(unique.len(), expected.len(), "two commands share a name");
+    for (words, _) in &commands {
+        let uri = format!("netsmith://help/{}", words.join("-"));
+        let read = server.request("resources/read", json!({ "uri": uri }));
+        let text = read["result"]["contents"][0]["text"]
+            .as_str()
+            .unwrap_or_else(|| panic!("{uri}: {read}"));
+        let help = netsmith(&root).args(words).arg("--help").output().unwrap();
+        assert_eq!(
+            text,
+            String::from_utf8_lossy(&help.stdout),
+            "`netsmith {} --help`",
+            words.join(" ")
+        );
+    }
+    let read = server.request(
+        "resources/read",
+        json!({ "uri": "netsmith://help/no-such-command" }),
+    );
+    assert!(read["error"].is_object(), "{read}");
+}
+
+#[test]
+fn project_is_the_folder_the_server_works_in() {
+    let root = led("mcp-project");
+    // Started in a folder that is not the project, which the host cannot choose.
+    let elsewhere = TempDir::new("mcp-elsewhere");
+    let project = root.to_str().unwrap();
+    let mut server = Server::start_with(&elsewhere, &["--project", project]);
+    let (expected, code) = command_line(&root, &["board", "check"]);
+    assert_eq!(code, Some(0), "{expected:#}");
+    let result = server.call("board_check", json!({}));
+    assert_eq!(result["isError"], false, "{result:#}");
+    assert_eq!(result["structuredContent"], expected);
+    // The commands write there, not in the folder the server was started in.
+    let built = server.call("board_build", json!({}));
+    assert_eq!(built["isError"], false, "{built:#}");
+    assert!(root.join("out").is_dir());
+    assert!(!elsewhere.join("out").exists());
+    // The resources are the project's, and a path outside it is still refused.
+    let listed = server.request("resources/list", json!({}));
+    assert!(
+        listed["result"]["resources"]
+            .to_string()
+            .contains("netsmith://project/src/main.nsm"),
+        "{listed}"
+    );
+    let read = server.request(
+        "resources/read",
+        json!({ "uri": "netsmith://project/src/main.nsm" }),
+    );
+    assert_eq!(read["result"]["contents"][0]["text"], LED, "{read}");
+    fs::write(elsewhere.join("secret.txt"), "x").unwrap();
+    for uri in [
+        "netsmith://project/../secret.txt",
+        &format!("netsmith://project/{}/secret.txt", elsewhere.to_str().unwrap()),
+    ] {
+        let read = server.request("resources/read", json!({ "uri": uri }));
+        assert!(read["error"].is_object(), "{uri}: {read}");
+    }
+}
+
+#[test]
+fn a_project_that_is_not_a_folder_is_an_error() {
+    let root = led("mcp-no-folder");
+    let run = netsmith(&root)
+        .args(["mcp", "--project", "no-such-folder"])
+        .stdin(Stdio::null())
+        .output()
+        .unwrap();
+    assert_eq!(run.status.code(), Some(2));
+    let said = String::from_utf8_lossy(&run.stderr);
+    assert!(said.contains("not a folder"), "{said}");
 }

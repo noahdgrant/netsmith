@@ -19,7 +19,7 @@ mod tools;
 
 use std::collections::HashMap;
 use std::io::{BufRead, Write};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 use serde_json::{Map, Value, json};
@@ -32,7 +32,7 @@ use tools::Tool;
 const VERSIONS: [&str; 4] = ["2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"];
 
 /// What the server tells the host's model when it starts.
-const INSTRUCTIONS: &str = "netsmith is a language and tools for designing electronics as code. Each tool runs one command of the `netsmith` command line, in the project folder this server was started in, as a person runs it; the commands that write files write them there. Read the resource netsmith://guide/LANGUAGE.md and the chapters it links before writing .nsm source, and use the prompts (netsmith's skills) for a task they name. A result with `--format json` is the command's JSON document; an exit code of 1 means what the command checked failed, 2 that it could not run.";
+const INSTRUCTIONS: &str = "netsmith is a language and tools for designing electronics as code. Each tool runs one command of the `netsmith` command line, in the project folder of this server, as a person runs it; the commands that write files write them there. A tool has the first line of its command's help: the whole `--help` of a command is the resource netsmith://help/<its words joined by `-`> (netsmith://help/board-fab), to read when a command's flags or output are in doubt. Where a command has `--format json` or `--progress json` a call asks for `json` unless its arguments give another; the result is then the command's JSON document, also as structured content, and what the command says on stderr follows. An exit code of 1 (what the command checked failed) or 2 (it could not run, a usage mistake included) makes the result an error. Read the resource netsmith://guide/LANGUAGE.md and the chapters it links before writing .nsm source, and use the prompts (netsmith's skills) for a task they name.";
 
 /// JSON-RPC's codes.
 const PARSE_ERROR: i64 = -32700;
@@ -43,9 +43,20 @@ const INVALID_PARAMS: i64 = -32602;
 const RESOURCE_NOT_FOUND: i64 = -32002;
 
 /// Serves on this process's stdin and stdout until stdin closes; the commands run from this
-/// binary in the current folder.
-pub fn serve_stdio() -> std::io::Result<()> {
-    let server = Server::new(std::env::current_exe()?, std::env::current_dir()?);
+/// binary in `project`, or in the current folder when there is none (issue #1133).
+pub fn serve_stdio(project: Option<&Path>) -> std::io::Result<()> {
+    let dir = match project {
+        // Not `canonicalize`: on Windows it gives the `\\?\` form, which the commands print.
+        Some(project) => std::path::absolute(project)?,
+        None => std::env::current_dir()?,
+    };
+    if !dir.is_dir() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            format!("--project {}: not a folder", dir.display()),
+        ));
+    }
+    let server = Server::new(std::env::current_exe()?, dir);
     server.serve(std::io::stdin().lock(), std::io::stdout());
     Ok(())
 }
@@ -53,7 +64,7 @@ pub fn serve_stdio() -> std::io::Result<()> {
 struct Server {
     /// The `netsmith` binary a tool call runs.
     program: PathBuf,
-    /// The folder the commands run in.
+    /// The folder the commands run in: `--project`, or the folder the server was started in.
     dir: PathBuf,
     tools: Vec<Tool>,
     /// The tool calls running, by their request id (as its JSON text).
@@ -182,13 +193,14 @@ impl Server {
             "tools/list" => Ok(json!({
                 "tools": self.tools.iter().map(Tool::listed).collect::<Vec<_>>(),
             })),
-            "resources/list" => Ok(content::resources(root().as_deref())),
+            "resources/list" => Ok(content::resources(root().as_deref(), &self.tools)),
             "resources/templates/list" => Ok(json!({ "resourceTemplates": [] })),
             "resources/read" => {
                 let uri = params["uri"]
                     .as_str()
                     .ok_or((INVALID_PARAMS, "`uri` is missing".to_string()))?;
-                content::read(root().as_deref(), uri).map_err(|e| (RESOURCE_NOT_FOUND, e))
+                content::read(root().as_deref(), &self.tools, uri)
+                    .map_err(|e| (RESOURCE_NOT_FOUND, e))
             }
             "prompts/list" => Ok(content::prompts()),
             "prompts/get" => {
