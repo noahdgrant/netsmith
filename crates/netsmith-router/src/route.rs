@@ -1569,7 +1569,6 @@ pub fn route_with(board: &mut Board, options: RouteOptions) -> Routing {
     // A sense pin's tap is cut in two while the board is routed, so its track keeps apart from
     // the rest of its net (`crate::kelvin`, issue #1148); the board is put back at the end.
     let split = crate::kelvin::split(board);
-    let (best, stopped, tries, why, crowding, stages, drops, rip_rounds) = {
     let (best, stopped, tries, why, crowding, stages, drops, rip_rounds, line_vias) = {
         let mut router = Router::new(board, &options);
         let mut orders = router.tries(&options);
