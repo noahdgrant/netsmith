@@ -81,7 +81,7 @@ Parts are numbered by their letters in the order of their paths in the board (a 
 | `std::bus::Swd` | Pins `swdio`, `swclk`, `swo`, `reset`, a `.role` (`SwdRole`) and a `.frequency`. One probe on a port. |
 | `std::bus::Usb2` | Pins `dp` and `dm`, a rail `vbus` and a `.role` (`UsbRole`). One host and one device on a bus; a receptacle states `UsbRole::Passthrough` and is not an end of it. |
 | `std::parts::connector::Mating` | What a connector says about how it meets another (ADR 0040), the member `.mating` of a header or socket: `.kind` (`"pin_header"`), `.gender` (`"header"` or `"socket"`), `.pitch`, `.rows`, `.positions`, `.pin_current` (the rated current of one contact, from the `header` catalog; unset is unrated), `.seat` (how far above its board its partner rests, from the `header` catalog, an `optional` column; unset is unknown, ADR 0110) and `.keyed` (`"none"`, or `"shrouded"` or `"polarised"`; unset is the same as `"none"`). A system mates two with `~`. |
-| `std::mfg::stackup::Stackup` | Layers, thickness, copper weight and, for inner layers, the build-up: its name, the inner copper and each dielectric layer from the top. |
+| `std::mfg::stackup::Stackup` | Layers, thickness, copper weight and, for inner layers, the build-up: its name, the inner copper and each dielectric layer from the top. A board may state `.mask_colour`, a `Color` (below), for its solder mask (chapter 21). |
 | `std::mfg::stackup::DielectricLayer` | The dielectric between two copper layers of a build-up: one prepreg or core, with its glass style, thickness and relative permittivity, or several plies pressed together, `.ply1` to `.ply4` from the top. |
 | `std::mfg::stackup::DielectricPly` | One ply of a dielectric layer of several: a sheet of prepreg, or a core with no copper, with the fields of a one-ply layer. |
 | `std::mfg::stackup::InnerLayer` | An inner copper layer: a plane on a net the board names, or a signal layer (`.use &= "signal"`). |
@@ -120,7 +120,7 @@ Parts are numbered by their letters in the order of their paths in the board (a 
 | `std::bus::SwdRole` | The role of a part on a debug port: `Probe` or `Target`. |
 | `std::bus::SpiMode` | The clock mode of an SPI bus: `Mode0` to `Mode3`. The type of `Spi`'s `.mode`, equated along the bus. |
 | `std::bus::UsbRole` | The role of a part on a USB port: `Host` or `Device`, or `Passthrough` for a connector that the bus goes through (no `lines`, no limit, judged from the end behind it). |
-| `std::parts::passive::Color` | The colour of an LED, `Red`, `Green`, `Blue`, `White` or `Yellow`: the type of `Led`'s `.color` and of the `color` column of the LED catalogs. Import it with the part (`.color &= Color::Red`), or import a variant to write it bare (ADR 0118). |
+| `std::parts::passive::Color` | A colour, `Red`, `Green`, `Blue`, `White`, `Yellow`, `Black` or `Purple`: the type of `Led`'s `.color`, of the `color` column of the LED catalogs and of a board's `.process.stackup.mask_colour`. Import it with the part (`.color &= Color::Red`), or import a variant to write it bare (ADR 0118). |
 | `std::parts::passive::Dielectric` | The class of a ceramic capacitor, `C0G`, `X5R` or `X7R`: the type of `Capacitor`'s `.dielectric` and of the `dielectric` column of the capacitor catalog (ADR 0055). Import it with the part. |
 | `std::prelude::AssemblyMode` | Who puts a part on the board: `Fab`, `Hand` or `None`. The type of the built-in `.assembly` of every part and of the `.assembly_mode` a module offers. In scope in every file without an import (ADR 0054). |
 

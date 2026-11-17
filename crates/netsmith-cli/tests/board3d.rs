@@ -1991,3 +1991,50 @@ fn a_place_budget_ends_the_placing_with_the_closest_try_and_the_placer_says_how_
     }
     assert!(!stderr.contains("seed 1 (2 of 8)"), "{stderr}");
 }
+
+// ---- the solder mask colour a board states (issue #771) -------------------------------------
+
+#[test]
+fn a_board_that_states_its_mask_colour_has_it_in_the_report_the_glb_and_the_picture() {
+    let (r, _) = json(&fixtures(), &["mask_colour_3d.nsm", "--json"]);
+    assert_eq!(r["board"]["mask_colour"], "Red");
+    // A board that states none has no key at all, so its report is the report it was.
+    let (plain, _) = json(&fixtures(), &["height_limits.nsm", "--json"]);
+    assert!(plain["board"].get("mask_colour").is_none(), "{plain}");
+
+    let dir = netsmith_testkit::TempDir::new("mask-colour");
+    let glb = dir.path().join("crimson.glb");
+    let out = board3d(
+        &fixtures(),
+        &["mask_colour_3d.nsm", "--glb", glb.to_str().unwrap()],
+    );
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    let doc = glb_json(&std::fs::read(&glb).unwrap());
+    assert_eq!(
+        glb_node(&doc, "board")["extras"]["netsmith"]["mask_colour"],
+        "Red"
+    );
+
+    // The same board with another stated colour is another picture, and the colour is the mask's:
+    // the source is the fixture with its colour changed.
+    let source = std::fs::read_to_string(fixtures().join("mask_colour_3d.nsm")).unwrap();
+    let physical = std::fs::read_to_string(fixtures().join("mask_colour_3d.physical.nsm")).unwrap();
+    let draw = |colour: &str| {
+        let folder = dir.path().join(colour);
+        std::fs::create_dir_all(&folder).unwrap();
+        std::fs::write(
+            folder.join("mask_colour_3d.nsm"),
+            source.replace("Color::Red", &format!("Color::{colour}")),
+        )
+        .unwrap();
+        std::fs::write(folder.join("mask_colour_3d.physical.nsm"), &physical).unwrap();
+        picture(
+            &folder.join("mask_colour_3d.nsm"),
+            &folder.join("out.png"),
+            &["--view", "top", "--size", "160x100"],
+        )
+    };
+    let (red, blue) = (draw("Red"), draw("Blue"));
+    assert_ne!(red, blue);
+    assert_eq!(red, draw("Red"), "the same bytes twice");
+}

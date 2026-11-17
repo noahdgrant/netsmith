@@ -424,3 +424,39 @@ fn the_colours_are_the_light_palette_in_linear_light() {
         linear(r)
     );
 }
+
+#[test]
+fn a_stated_mask_colour_is_on_the_root_and_in_the_three_mask_materials() {
+    // Issue #771. A board that states none has no key and the default materials.
+    let plain = json_chunk(&glb(&scene(), "Demo")).unwrap();
+    let extras = &node(&plain, "board")["extras"]["netsmith"];
+    assert!(extras.get("mask_colour").is_none(), "{extras}");
+
+    let mut red = scene();
+    red.board.mask_colour = Some("Red".into());
+    let doc = json_chunk(&glb(&red, "Demo")).unwrap();
+    assert_eq!(
+        node(&doc, "board")["extras"]["netsmith"]["mask_colour"],
+        "Red"
+    );
+    let palette = Theme::Light.palette_with_mask(Some("Red"));
+    for m in [
+        Material::MaskTop,
+        Material::MaskBottom,
+        Material::MaskOverCopper,
+    ] {
+        let at = Material::ALL.iter().position(|&x| x == m).unwrap();
+        let [r, ..] = palette.colour(m);
+        assert_eq!(
+            doc["materials"][at]["pbrMetallicRoughness"]["baseColorFactor"][0],
+            linear(r),
+            "{m}"
+        );
+    }
+    // Every other material is the default's.
+    let at = Material::ALL
+        .iter()
+        .position(|&x| x == Material::Copper)
+        .unwrap();
+    assert_eq!(doc["materials"][at], plain["materials"][at]);
+}

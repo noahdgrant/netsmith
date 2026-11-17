@@ -1326,6 +1326,33 @@ mod tests {
     }
 
     #[test]
+    fn the_summary_names_the_solder_mask_colour_the_board_states_and_says_nothing_otherwise() {
+        // Issue #771: the order form has to match the colour, so the line says it.
+        let mut black = facts(vec![entry(&["C1"], "100n", "C1525")]);
+        black.mask_colour = Some("Black".into());
+        let plain = facts(vec![entry(&["C1"], "100n", "C1525")]);
+        let bom = combined_bom(&[(pick("Dark", 1), &black), (pick("Plain", 1), &plain)]);
+        let text = summary_text(
+            "colours",
+            &[
+                (pick("Dark", 1), &black, ""),
+                (pick("Plain", 1), &plain, ""),
+            ],
+            &bom,
+        );
+        assert!(
+            text.contains("Dark x1: 2 layers, 50 x 40.5 mm, 1.6 mm thick, finish HASL lead-free, solder mask Black\n"),
+            "{text}"
+        );
+        assert!(
+            text.contains(
+                "Plain x1: 2 layers, 50 x 40.5 mm, 1.6 mm thick, finish HASL lead-free\n"
+            ),
+            "{text}"
+        );
+    }
+
+    #[test]
     fn the_summary_lists_each_board_the_bom_the_notes_and_the_unverified_total() {
         let carrier = facts(vec![entry(&["C1", "C2"], "100n", "C1525")]);
         let unit = facts(vec![entry(&["C1"], "100n", "C1525")]);

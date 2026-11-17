@@ -166,14 +166,14 @@ fn a_misspelt_colour_is_refused_at_its_line_with_the_nearest() {
     );
     assert_eq!(
         messages(&c),
-        ["`Color` has no variant `Gren`; its variants are `Color::Red`, `Color::Green`, `Color::Blue`, `Color::White` and `Color::Yellow`; did you mean `Color::Green`?"]
+        ["`Color` has no variant `Gren`; its variants are `Color::Red`, `Color::Green`, `Color::Blue`, `Color::White`, `Color::Yellow`, `Color::Black` and `Color::Purple`; did you mean `Color::Green`?"]
     );
     let c = checked(
         "import std::parts::passive::Led\nimport std::parts::passive::Color::Gren\nboard B {\n    .led: Led\n}\n",
     );
     assert_eq!(
         messages(&c),
-        ["`Color` has no variant `Gren`; its variants are `Red`, `Green`, `Blue`, `White` and `Yellow`; did you mean `Green`?"]
+        ["`Color` has no variant `Gren`; its variants are `Red`, `Green`, `Blue`, `White`, `Yellow`, `Black` and `Purple`; did you mean `Green`?"]
     );
 }
 
@@ -191,7 +191,7 @@ fn a_quoted_colour_is_refused_and_names_the_variant() {
     assert_eq!(
         messages(&c),
         [
-            "`led.color` holds a variant of `Color`, but this value is text; a variant of `Color` is not written as text: write `Color::Red` (the variants are `Color::Red`, `Color::Green`, `Color::Blue`, `Color::White` and `Color::Yellow`)"
+            "`led.color` holds a variant of `Color`, but this value is text; a variant of `Color` is not written as text: write `Color::Red` (the variants are `Color::Red`, `Color::Green`, `Color::Blue`, `Color::White`, `Color::Yellow`, `Color::Black` and `Color::Purple`)"
         ]
     );
 }

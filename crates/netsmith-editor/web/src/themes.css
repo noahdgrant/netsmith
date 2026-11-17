@@ -502,17 +502,17 @@
   --pcb3d-finish: #8f6a12;
   --pcb3d-mask-copper: #cddcd3;
   /* the solder mask in the colour a board states (`.stackup.mask_colour`, issue 771): the mask, the mask over copper, and the silkscreen ink that reads on it */
-  --pcb3d-mask-red: #c98a8a;
-  --pcb3d-mask-copper-red: #dba8a8;
+  --pcb3d-mask-red: #ad7777;
+  --pcb3d-mask-copper-red: #bc9090;
   --pcb3d-silk-red: var(--pcb3d-silk);
-  --pcb3d-mask-green: #9fc9ae;
-  --pcb3d-mask-copper-green: #bcdcc7;
+  --pcb3d-mask-green: #89ad96;
+  --pcb3d-mask-copper-green: #a2bdab;
   --pcb3d-silk-green: var(--pcb3d-silk);
-  --pcb3d-mask-blue: #9db4d9;
-  --pcb3d-mask-copper-blue: #bccbe6;
+  --pcb3d-mask-blue: #879bbb;
+  --pcb3d-mask-copper-blue: #a2afc6;
   --pcb3d-silk-blue: var(--pcb3d-silk);
-  --pcb3d-mask-yellow: #d9c77a;
-  --pcb3d-mask-copper-yellow: #e6d89c;
+  --pcb3d-mask-yellow: #bbab69;
+  --pcb3d-mask-copper-yellow: #c6ba86;
   --pcb3d-silk-yellow: var(--pcb3d-silk);
   --pcb3d-mask-white: #d3d3cb;
   --pcb3d-mask-copper-white: #e2e2da;
@@ -520,8 +520,8 @@
   --pcb3d-mask-black: #4d535b;
   --pcb3d-mask-copper-black: #666d76;
   --pcb3d-silk-black: #f4f1e6;
-  --pcb3d-mask-purple: #b19ad4;
-  --pcb3d-mask-copper-purple: #c8b6e3;
+  --pcb3d-mask-purple: #9884b6;
+  --pcb3d-mask-copper-purple: #ac9dc3;
   --pcb3d-silk-purple: var(--pcb3d-silk);
   /* colour by kind, the height map and the height preview (pcb3d/inspect.ts) */
   --pcb3d-kind-ic: #2b2f38;
@@ -982,17 +982,17 @@
   --pcb3d-finish: #8a6500;
   --pcb3d-mask-copper: #d2e3d9;
   /* the solder mask in the colour a board states (`.stackup.mask_colour`, issue 771): the mask, the mask over copper, and the silkscreen ink that reads on it */
-  --pcb3d-mask-red: #c27a7a;
-  --pcb3d-mask-copper-red: #dba0a0;
+  --pcb3d-mask-red: #a76969;
+  --pcb3d-mask-copper-red: #bc8a8a;
   --pcb3d-silk-red: var(--pcb3d-silk);
-  --pcb3d-mask-green: #8cc4a0;
-  --pcb3d-mask-copper-green: #b0d9bf;
+  --pcb3d-mask-green: #78a98a;
+  --pcb3d-mask-copper-green: #97bba4;
   --pcb3d-silk-green: var(--pcb3d-silk);
-  --pcb3d-mask-blue: #8aa6d6;
-  --pcb3d-mask-copper-blue: #b0c4e6;
+  --pcb3d-mask-blue: #778fb8;
+  --pcb3d-mask-copper-blue: #97a9c6;
   --pcb3d-silk-blue: var(--pcb3d-silk);
-  --pcb3d-mask-yellow: #d6c060;
-  --pcb3d-mask-copper-yellow: #e6d48c;
+  --pcb3d-mask-yellow: #b8a553;
+  --pcb3d-mask-copper-yellow: #c6b678;
   --pcb3d-silk-yellow: var(--pcb3d-silk);
   --pcb3d-mask-white: #cdcdc5;
   --pcb3d-mask-copper-white: #e0e0d8;
@@ -1000,8 +1000,8 @@
   --pcb3d-mask-black: #454b53;
   --pcb3d-mask-copper-black: #656c75;
   --pcb3d-silk-black: #ffffff;
-  --pcb3d-mask-purple: #a58acf;
-  --pcb3d-mask-copper-purple: #c4aee2;
+  --pcb3d-mask-purple: #8e77b2;
+  --pcb3d-mask-copper-purple: #a996c2;
   --pcb3d-silk-purple: var(--pcb3d-silk);
   /* colour by kind, the height map and the height preview (pcb3d/inspect.ts) */
   --pcb3d-kind-ic: #000000;
