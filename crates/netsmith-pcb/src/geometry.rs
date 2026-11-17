@@ -56,6 +56,21 @@ fn cos_sin(degrees: f64) -> (f64, f64) {
     }
 }
 
+/// The widest strip of [`Rect::turned_cover`], in mm, while there are no more strips than
+/// [`TURNED_STRIPS`].
+pub const TURNED_STRIP: f64 = 0.25;
+
+/// The most strips [`Rect::turned_cover`] cuts one rectangle into: a part's courtyard turned off
+/// the right angles is this many rooms at most, for the placer and the check to measure.
+pub const TURNED_STRIPS: usize = 24;
+
+/// Whether a turn is a right angle (0, 90, 180 or 270 degrees, give or take a millionth of a
+/// degree), at which a box turned is a box.
+pub fn is_right_angle(degrees: f64) -> bool {
+    let off = degrees.rem_euclid(90.0);
+    off < 1e-6 || 90.0 - off < 1e-6
+}
+
 /// An axis-aligned rectangle with `min` at the top left.
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Rect {
@@ -170,6 +185,49 @@ impl Rect {
         r.rotated(degrees)
     }
 
+    /// The rectangle as it lies on a board, seen in a mirror and turned as
+    /// [`Rect::rotated_for`] does, covered by boxes that hold it: at a right angle the one box
+    /// that is the turned rectangle, at another angle a row of strips across the board's x
+    /// (issue #996). Each strip is the box of the turned rectangle's part in it, so the strips
+    /// hold the turned rectangle and reach past it only by less than a strip's width (at most
+    /// [`TURNED_STRIP`] mm while there are no more than [`TURNED_STRIPS`]). The one box that
+    /// holds it all (`rotated_for`) takes twice the room of a square turned 45 degrees, and far
+    /// more for a long part.
+    pub fn turned_cover(&self, mirrored: bool, degrees: f64) -> Vec<Rect> {
+        let r = if mirrored { self.mirrored_x() } else { *self };
+        let whole = r.rotated(degrees);
+        if is_right_angle(degrees) || whole.width() <= 0.0 || whole.height() <= 0.0 {
+            return vec![whole];
+        }
+        let polygon = r.corners().map(|c| c.rotate(degrees));
+        let n = ((whole.width() / TURNED_STRIP).ceil() as usize).clamp(2, TURNED_STRIPS);
+        let step = whole.width() / n as f64;
+        (0..n)
+            .filter_map(|k| {
+                let x0 = whole.min.x + step * k as f64;
+                let x1 = if k + 1 == n { whole.max.x } else { x0 + step };
+                // The convex polygon cut by the strip: its corners inside the strip and where
+                // its edges cross the strip's two sides.
+                let mut ys: Vec<f64> = Vec::new();
+                for (i, a) in polygon.iter().enumerate() {
+                    let b = polygon[(i + 1) % 4];
+                    if a.x >= x0 - 1e-12 && a.x <= x1 + 1e-12 {
+                        ys.push(a.y);
+                    }
+                    for x in [x0, x1] {
+                        let (lo, hi) = (a.x.min(b.x), a.x.max(b.x));
+                        if hi - lo > 1e-12 && x >= lo && x <= hi {
+                            ys.push(a.y + (b.y - a.y) * (x - a.x) / (b.x - a.x));
+                        }
+                    }
+                }
+                let y0 = ys.iter().copied().fold(f64::INFINITY, f64::min);
+                let y1 = ys.iter().copied().fold(f64::NEG_INFINITY, f64::max);
+                (y0 <= y1).then(|| Rect::new(Pt::new(x0, y0), Pt::new(x1, y1)))
+            })
+            .collect()
+    }
+
     /// True if the two share area. Rectangles that only touch do not overlap.
     pub fn overlaps(&self, o: &Rect) -> bool {
         const TOLERANCE: f64 = 1e-6;
@@ -191,6 +249,69 @@ impl Rect {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_rectangle_at_a_right_angle_is_covered_by_its_turned_box() {
+        let r = Rect::new(Pt::new(-2.0, -1.0), Pt::new(3.0, 1.0));
+        for deg in [0.0, 90.0, 180.0, 270.0, -90.0, 450.0] {
+            for mirrored in [false, true] {
+                assert_eq!(
+                    r.turned_cover(mirrored, deg),
+                    vec![r.rotated_for(mirrored, deg)]
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn a_rectangle_off_the_right_angles_is_strips_that_hold_it_and_little_more() {
+        // A 4 x 1 mm rectangle at 30 and 45 degrees, on each face.
+        let r = Rect::new(Pt::new(-2.0, -0.5), Pt::new(2.0, 0.5));
+        for deg in [30.0, 45.0, 315.0] {
+            for mirrored in [false, true] {
+                let cover = r.turned_cover(mirrored, deg);
+                let whole = r.rotated_for(mirrored, deg);
+                assert!(cover.len() >= 2 && cover.len() <= TURNED_STRIPS);
+                // The strips hold every point of the turned rectangle.
+                let base = if mirrored { r.mirrored_x() } else { r };
+                for i in 0..=40 {
+                    for j in 0..=10 {
+                        let local = Pt::new(
+                            base.min.x + base.width() * f64::from(i) / 40.0,
+                            base.min.y + base.height() * f64::from(j) / 10.0,
+                        );
+                        let p = local.rotate(deg);
+                        assert!(
+                            cover.iter().any(|c| p.x >= c.min.x - 1e-9
+                                && p.x <= c.max.x + 1e-9
+                                && p.y >= c.min.y - 1e-9
+                                && p.y <= c.max.y + 1e-9),
+                            "{p:?} at {deg} is in no strip"
+                        );
+                    }
+                }
+                // Each strip is in the box round it, and together they take far less room.
+                assert!(cover.iter().all(|c| whole.contains(c)));
+                let area = Rect::union_area(&cover);
+                assert!(
+                    area < whole.width() * whole.height() * 0.7,
+                    "{area} at {deg}"
+                );
+                // More than the rectangle's own 4 mm2, by less than a strip along its outline.
+                assert!(
+                    area > 4.0 - 1e-9 && area < 4.0 + 10.0 * TURNED_STRIP,
+                    "{area}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn right_angles_are_told_from_other_turns() {
+        assert!(is_right_angle(0.0) && is_right_angle(270.0) && is_right_angle(-90.0));
+        assert!(is_right_angle(359.999_999_9));
+        assert!(!is_right_angle(45.0) && !is_right_angle(89.9));
+    }
 
     #[test]
     fn right_angle_rotations_are_exact() {

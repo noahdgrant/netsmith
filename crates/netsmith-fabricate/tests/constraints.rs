@@ -185,6 +185,16 @@ fn a_part_turned_off_the_right_angles_is_placed_checked_and_exported_at_its_turn
         .find(|l| l.trim_start_matches('"').starts_with("R1"))
         .unwrap_or_else(|| panic!("{cpl}"));
     assert!(row.contains(",45") || row.contains(",225"), "{row}");
+    // JLCPCB's correction for such a turn is not measured: the notes ask for a look at the
+    // order preview (issue #996).
+    assert!(
+        made[0]
+            .notes
+            .contains("turn off the right angles unverified")
+            && made[0].notes.contains("R1 (45 degrees)"),
+        "{}",
+        made[0].notes
+    );
 }
 
 #[test]

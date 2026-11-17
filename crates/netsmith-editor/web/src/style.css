@@ -1146,5 +1146,6 @@ h1, h2, h3 { font-weight: var(--fw-semibold); }
 .summary-line .chip { margin-left: 0.375rem; cursor: pointer; }
 .summary-line .tag { margin-left: 0.375rem; }
 .summary-line input[type='number'] { width: 4.5rem; }
+.turn-field input[type='number'] { width: 4.5rem; }
 .summary-pads { display: flex; flex-wrap: wrap; gap: 0.375rem; padding: 0.25rem 0.75rem; }
 .summary-pads .filter { width: 5.5rem; }

@@ -913,7 +913,8 @@ pub fn plan(
                 p.footprint
                     .courtyard_shapes
                     .iter()
-                    .map(|r| r.rotated_for(side == Side::Back, rotation).translated(at))
+                    .flat_map(|r| r.turned_cover(side == Side::Back, rotation))
+                    .map(|r| r.translated(at))
                     .collect()
             };
             // A part that hangs over the edge takes only the room it has on the board.

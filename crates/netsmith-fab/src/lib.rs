@@ -601,6 +601,7 @@ pub fn package(pcb: &Path, entries: &[BomEntry], options: &Options) -> Result<Pa
         .values()
         .flatten()
         .chain(&placed.bottom)
+        .chain(placed.turned.iter().map(|(d, _)| d))
         .cloned()
         .collect();
     unverified.sort_by(|a, b| bom::designator_cmp(a, b));
@@ -737,6 +738,17 @@ fn notes(
         lines.push(format!(
             "bottom side unverified (rotation and mirroring): check JLCPCB's order preview: {}",
             placed.bottom.join(", ")
+        ));
+    }
+    if !placed.turned.is_empty() {
+        let turns: Vec<String> = placed
+            .turned
+            .iter()
+            .map(|(d, turn)| format!("{d} ({} degrees)", cpl::number(*turn)))
+            .collect();
+        lines.push(format!(
+            "turn off the right angles unverified (JLCPCB's correction for such a turn is not measured; cpl.csv has KiCad's turn plus the footprint's offset): check JLCPCB's order preview: {}",
+            turns.join(", ")
         ));
     }
     lines.push(match board.origin {

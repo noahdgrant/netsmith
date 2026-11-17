@@ -83,6 +83,10 @@ pub(crate) struct Cpl {
     pub unverified: BTreeMap<String, Vec<String>>,
     /// Designators on the bottom side, whose rotation and mirroring have not been measured.
     pub bottom: Vec<String>,
+    /// Designators on the top side turned off the right angles, with KiCad's turn: the
+    /// correction JLCPCB needs for such a turn has not been measured (issue #996), so the row
+    /// has KiCad's turn plus the footprint's offset, as for any turn, and is checked by eye.
+    pub turned: Vec<(String, f64)>,
 }
 
 /// Placements for `parts`: where each footprint's origin is, from the drill/place `origin`
@@ -145,12 +149,17 @@ fn finish(raw: Vec<(&BoardPart, f64, f64, Side, f64)>) -> Cpl {
     let mut rows = Vec::new();
     let mut unverified: BTreeMap<String, Vec<String>> = BTreeMap::new();
     let mut bottom = Vec::new();
+    let mut turned = Vec::new();
     for (part, x, y, side, rot) in raw {
         let d = &part.designator;
         let offset = if side == Side::Bottom {
             bottom.push(d.clone());
             0.0
         } else {
+            let off = rot.rem_euclid(90.0);
+            if off > 1e-6 && 90.0 - off > 1e-6 {
+                turned.push((d.clone(), rotation::normalize(rot)));
+            }
             match rotation::lookup(part.footprint_name()) {
                 Correction::Offset(o) => o,
                 Correction::Unverified => {
@@ -175,10 +184,12 @@ fn finish(raw: Vec<(&BoardPart, f64, f64, Side, f64)>) -> Cpl {
         ds.sort_by(|a, b| designator_cmp(a, b));
     }
     bottom.sort_by(|a, b| designator_cmp(a, b));
+    turned.sort_by(|a, b| designator_cmp(&a.0, &b.0));
     Cpl {
         rows,
         unverified,
         bottom,
+        turned,
     }
 }
 
@@ -322,6 +333,23 @@ mod tests {
             .map(|r| (r.designator.as_str(), r.rotation))
             .collect();
         assert_eq!(rot, [("D1", 180.0), ("R1", 270.0), ("R2", 90.0)]);
+    }
+
+    #[test]
+    fn a_part_on_the_top_turned_off_the_right_angles_is_unverified_and_keeps_its_offset() {
+        let board = Board::parse(SAMPLE).unwrap();
+        let ps = parts(&board, &["R1", "R2", "J1"]);
+        let pos = "Ref,Val,Package,PosX,PosY,Rot,Side\n\
+            R1,10k,R_0603_1608Metric,10.0,10.0,-45.000000,top\n\
+            R2,10k,R_0603_1608Metric,20.0,10.5,30.0,bottom\n\
+            J1,Conn,PinHeader,30.0,10.0,90.0,top\n";
+        let cpl = from_kicad_pos(pos, &ps.iter().collect::<Vec<_>>()).unwrap();
+        // R1 at 315: its footprint's offset (0) is added as for any turn. R2 is on the bottom,
+        // already unverified; J1 is at a right angle.
+        assert_eq!(cpl.turned, [("R1".to_string(), 315.0)]);
+        assert_eq!(cpl.bottom, ["R2"]);
+        assert_eq!(cpl.rows[1].designator, "R1");
+        assert_eq!(cpl.rows[1].rotation, 315.0);
     }
 
     #[test]

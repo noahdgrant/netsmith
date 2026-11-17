@@ -482,12 +482,15 @@ impl Placed {
     }
 
     /// The courtyard's shapes on the board, each its own room: what the placement check and
-    /// the placer keep other parts out of ([`Footprint::courtyard_shapes`]).
+    /// the placer keep other parts out of ([`Footprint::courtyard_shapes`]). A part turned off
+    /// the right angles has each shape as the strips that hold it turned
+    /// ([`Rect::turned_cover`]), not the one box round it, so that it packs closer (issue #996).
     pub fn courtyards(&self) -> Vec<Rect> {
         self.footprint
             .courtyard_shapes
             .iter()
-            .map(|r| self.rect_to_board(*r))
+            .flat_map(|r| r.turned_cover(self.mirrored(), self.rotation))
+            .map(|r| r.translated(self.at))
             .collect()
     }
 

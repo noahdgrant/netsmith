@@ -1226,6 +1226,7 @@ pub fn build(spec: &Spec, cell: &CellInput, options: &Options) -> Result<PanelPa
         .values()
         .flatten()
         .chain(&placed.bottom)
+        .chain(placed.turned.iter().map(|(d, _)| d))
         .map(|d| unsuffixed(d).to_string())
         .collect();
     unverified.sort_by(|a, b| bom::designator_cmp(a, b));

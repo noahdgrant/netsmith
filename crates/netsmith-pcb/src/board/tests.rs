@@ -1237,3 +1237,40 @@ fn the_impedance_header_says_that_the_mask_and_the_calculators_copper_are_counte
         lines[0]
     );
 }
+
+#[test]
+fn parts_turned_off_the_right_angles_are_measured_by_their_turned_courtyards() {
+    // Two copies of R1 at 45 degrees, side by side across their length and 0.3 mm apart (the
+    // strips reach past a turned courtyard by up to half their width): the boxes that hold
+    // their courtyards overlap, the turned courtyards do not (issue #996).
+    let mut board = led_board();
+    let mut r1 = board.part("R1").unwrap().clone();
+    r1.rotation = 45.0;
+    r1.side = Side::Front;
+    r1.at = board.outline.centre();
+    let court = r1.footprint.courtyard;
+    let across = |by: f64| {
+        let mut r9 = r1.clone();
+        r9.refdes = "R9".into();
+        r9.at = r1.to_board(Pt::new(court.centre().x, court.max.y + by - court.min.y));
+        r9.at = r9.at - r1.to_board(court.centre()) + r1.at;
+        r9
+    };
+    let clash = |board: &Board| {
+        board.check_placement().into_iter().any(|p| {
+            matches!(&p, PlacementProblem::Overlap { a, b, .. }
+                if (a == "R1" && b == "R9") || (a == "R9" && b == "R1"))
+        })
+    };
+    board.parts.retain(|p| p.refdes != "R1");
+    board.parts.push(r1.clone());
+    board.parts.push(across(0.3));
+    let r9 = board.part("R9").unwrap();
+    assert!(r1.courtyard().overlaps(&r9.courtyard()));
+    assert!(r1.courtyards().len() > 1);
+    assert!(!clash(&board), "{:?}", board.check_placement());
+    // Nearer than the courtyard's width, they overlap.
+    board.parts.pop();
+    board.parts.push(across(-0.3));
+    assert!(clash(&board), "{:?}", board.check_placement());
+}

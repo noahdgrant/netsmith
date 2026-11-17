@@ -13,8 +13,9 @@ import {
   moveParts,
   releaseParts,
   rotateParts,
+  turnPartsTo,
 } from './edits';
-import { tidy } from './geometry';
+import { normAngle, tidy } from './geometry';
 import { isRequired, requiredHere } from './windows';
 
 export function frameOf(sc: PcbScene): Frame {
@@ -53,6 +54,13 @@ export const rotateSelection = (degrees: number) =>
   edit(
     (c) => rotateParts(c.parts, c.frame, degrees),
     (p) => `rotate ${names(p)}`,
+  );
+
+/** Turn the selection to `degrees`, any angle: what the inspector's turn field writes. */
+export const turnSelectionTo = (degrees: number) =>
+  edit(
+    (c) => turnPartsTo(c.parts, c.frame, degrees),
+    (p) => `turn ${names(p)} to ${tidy(normAngle(degrees))}°`,
   );
 
 export const flipSelection = () =>
