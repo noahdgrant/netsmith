@@ -12,6 +12,8 @@ The commands are grouped under nouns, each with its verbs (issue #1090): `netsmi
 - `board`: what is done to the boards of a file or of the project: `check`, `build`, `fab`, `explain` a pick, `compare` two designs, `copper` (the planes, pours, hand zones and teardrop fills).
 - `board`: what is done to the boards of a file or of the project: `check`, `build`, `fab`, `drc` alone, `explain` a pick, `compare` two designs.
 - `board`: what is done to the boards of a file or of the project: `check`, `build`, `fab`, `explain` a pick, `compare` two designs or the project with a git ref.
+- `project`: the project as a whole: make one (`init`), bring its agent files up to this netsmith (`refresh`), refresh or check its pick lock (`lock`), make one of its orders (`order`).
+- `board`: what is done to the boards of a file or of the project: `check`, `build`, `fab`, `drc` alone, `explain` a pick, `compare` two designs or the project with a git ref, `swap` a part for another row, `pins` (show, lock, move), `copper` (the planes, pours, hand zones and teardrop fills), and the views of the solved design the editor shows, printed as text or `--format json`: `bom`, `power`, `system`, `panel`.
 - `layout`: the layout file, where each part is.
 - `routes`: the routes file, the copper fixed by hand or imported.
 - `schematic`: the schematic layout file (`<stem>.sch.toml`), how the schematic is arranged: `show` it, `set` an entry, `check` it against the board, `arrange` the sheets of a big board (issue #1093). It is `layout`'s counterpart for the drawing: a noun is the thing a file holds, so the PCB's solution is `layout` and the schematic's arrangement is `schematic`, and the picture of it is the verb `view schematic`.
@@ -149,6 +151,16 @@ netsmith board panel                      # a panel's grid, size and checks
 - `board panel` prints a `panel`'s board, grid, cell and panel size, rails and the panel checks; the drawing is only in the JSON (`svg`).
 
 `bom` and `power` take the source file (or, with none, the project's boards) and `--board NAME`; `system` and `panel` take `--name NAME`. A name is as the editor names it, `System/Board` for a board of a system, and `Board` alone when no other board has that name. With one board (one system, one panel) the name may be left out; with several, the command exits 2 and lists them. The exit code is 0 when the view is printed, 1 when the source does not build (with its errors), and 2 when the command cannot run.
+
+### Every editor route has a command
+
+An agent must be able to drive and read everything a person does in the editor (issue #1098). A test holds the editor to that: `crates/netsmith-cli/tests/editor_routes.rs` reads the routes of the editor's server (`crates/netsmith-editor/src/server.rs`, the `.route("/api/...")` table) and has a row for each method of each route, which says one of three things:
+
+- the command (or commands) that does the same through the same code, by the words clap's model names it by (`board pins lock` for `POST /api/pins/lock`). The test fails when a command named there does not exist;
+- the command that is still to come, with the issue that builds it (`GET /api/pcb/pours` is `view pcb`, issue #1086, which draws the 2D picture of the copper). The test accepts the row until a command of that name exists and then fails, so that the row is changed to name it;
+- why the route is an affordance of the page and needs no command, in one line: the previews of a track being drawn (`/api/pcb/walk`, `/api/pcb/shove`, `/api/pcb/reroute`), the socket (`/api/events`) and the progress post (`/api/progress`), the page's reads and writes of the files of the text editor and the project tree (`/api/file`, `/api/fs/...`), the cancels (a command stops with Ctrl+C, an MCP call with the host's cancel), and the choice of the page's analysis (`/api/analysis/run` and `/api/analysis/auto`).
+
+A route of the server with no row fails the test, and so does a row with no route, so a pull request that adds a route to the editor adds its command, or the reason it has none, in the same change. The audit that made the first table found two routes whose command is not there yet: the board's parts and nets as the inspector shows them (`GET /api/board`, issue #1137) and the project's boards, systems, panels and files (`GET /api/project`, issue #1138).
 
 ### The editor
 

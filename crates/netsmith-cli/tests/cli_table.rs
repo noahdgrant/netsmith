@@ -16,7 +16,7 @@ fn repo() -> PathBuf {
 }
 
 /// Every command that runs (a leaf of clap's model) as the words that name it, with its model.
-fn leaves() -> Vec<(String, clap::Command)> {
+pub(crate) fn leaves() -> Vec<(String, clap::Command)> {
     fn walk(path: &[String], command: &clap::Command, all: &mut Vec<(String, clap::Command)>) {
         let subs: Vec<_> = command
             .get_subcommands()
