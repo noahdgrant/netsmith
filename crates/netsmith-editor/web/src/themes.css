@@ -502,8 +502,8 @@
   --pcb3d-finish: #8f6a12;
   --pcb3d-mask-copper: #cddcd3;
   /* the solder mask in the colour a board states (`.stackup.mask_colour`, issue 771): the mask, the mask over copper, and the silkscreen ink that reads on it */
-  --pcb3d-mask-red: #ad7777;
-  --pcb3d-mask-copper-red: #bc9090;
+  --pcb3d-mask-red: #b94f4f;
+  --pcb3d-mask-copper-red: #cf7272;
   --pcb3d-silk-red: var(--pcb3d-silk);
   --pcb3d-mask-green: #89ad96;
   --pcb3d-mask-copper-green: #a2bdab;
@@ -982,8 +982,8 @@
   --pcb3d-finish: #8a6500;
   --pcb3d-mask-copper: #d2e3d9;
   /* the solder mask in the colour a board states (`.stackup.mask_colour`, issue 771): the mask, the mask over copper, and the silkscreen ink that reads on it */
-  --pcb3d-mask-red: #a76969;
-  --pcb3d-mask-copper-red: #bc8a8a;
+  --pcb3d-mask-red: #b04848;
+  --pcb3d-mask-copper-red: #c96868;
   --pcb3d-silk-red: var(--pcb3d-silk);
   --pcb3d-mask-green: #78a98a;
   --pcb3d-mask-copper-green: #97bba4;
