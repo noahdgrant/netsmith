@@ -312,7 +312,7 @@ fn every_esr_cell_is_one_resistance_and_its_source_names_the_page_and_the_point(
 }
 
 /// How many rows of the standard catalogs have a `height` (ADR 0094). Update it with the rows.
-const ROWS_WITH_HEIGHT: usize = 128;
+const ROWS_WITH_HEIGHT: usize = 137;
 
 #[test]
 fn every_height_is_one_length_that_a_document_says_and_its_source_names_where() {
@@ -367,12 +367,12 @@ fn every_height_is_one_length_that_a_document_says_and_its_source_names_where() 
     assert_eq!(with, ROWS_WITH_HEIGHT);
 }
 
-/// How many rows of the standard catalogs state `temp_min` and `temp_max` (ADR 0099): the seven
+/// How many rows of the standard catalogs state `temp_min` and `temp_max` (ADR 0099): the sixteen
 /// crystals, whose figure is the JLCPCB listing text, and 345 rows read from a datasheet (306
 /// ambient or operating ranges, 27 junction ranges of the diodes and the MOSFETs, and 12 operating
 /// ranges of LEDs; the 1N5819WS, whose range is the one figure of its operating and storage
 /// range, is counted with the ranges and not with the junction ones). Update it with the rows.
-const ROWS_WITH_TEMPERATURE: usize = 352;
+const ROWS_WITH_TEMPERATURE: usize = 361;
 
 /// The catalogs of semiconductors whose datasheets print a junction range (`TJ`) and no ambient
 /// one. A row of them that states a range says in its `notes` which temperature it is (ADR 0099): a
@@ -1399,6 +1399,16 @@ fn the_3225_four_pad_crystals_have_their_rows() {
         ("C9006", "X322525MOB4SI", 25e6, 12.0, Library::Basic),
         ("C12668", "X322516MOB4SI", 16e6, 12.0, Library::Extended),
         ("C13740", "X322525MSB4SI", 25e6, 20.0, Library::Extended),
+        // Issue #992: the other frequencies and loads of the same series.
+        ("C9002", "X322512MSB4SI", 12e6, 20.0, Library::Basic),
+        ("C13738", "X322516MLB4SI", 16e6, 9.0, Library::Basic),
+        ("C2682774", "X32258MSB4SI", 8e6, 20.0, Library::Extended),
+        ("C9004", "X322520MSB4SI", 20e6, 20.0, Library::Extended),
+        ("C70590", "X322524MOB4SI", 24e6, 12.0, Library::Extended),
+        ("C15192", "X322526MMB4SI", 26e6, 10.0, Library::Extended),
+        ("C9008", "X322527MSB4SI", 27e6, 20.0, Library::Extended),
+        ("C9009", "X322532MOB4SI", 32e6, 12.0, Library::Extended),
+        ("C9010", "X322540MPB4SI", 40e6, 15.0, Library::Extended),
     ];
     for (lcsc, mpn, hz, pf, library) in rows {
         let r = row_of("crystal", lcsc);
