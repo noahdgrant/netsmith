@@ -13,7 +13,7 @@ import { signal } from '@preact/signals';
 import type { SchematicHints } from '../api';
 import { ApiFailure, api, wasCancelled } from '../client';
 import { notify } from '../feedback/state';
-import { type HintAddress, type NoteEntry, type PartEntry, type Tables, tablesOf, toToml, withNote, withPart } from '../schematic/hints';
+import { type HintAddress, type NoteEntry, type PartEntry, type Tables, tablesOf, toToml, withNote, withPart, withSheetAt } from '../schematic/hints';
 import { OneAtATime } from '../schematic/writes';
 import { awaitRebuild, refreshAfterChange, say } from '../store';
 
@@ -37,15 +37,30 @@ export interface Edit {
    * reference part moves the whole drawing and no distance in it. The change is then undone, as a refusal is. */
   after?: (drawing: ParentNode) => string | null;
   /** The entry the change is about, to see whether the drawing refused it and to put it back: `before` is what it was. */
-  entry?: { kind: 'part'; at: HintAddress; before: PartEntry | undefined } | { kind: 'note'; at: HintAddress; before: NoteEntry | undefined };
+  entry?:
+    | { kind: 'part'; at: HintAddress; before: PartEntry | undefined }
+    | { kind: 'note'; at: HintAddress; before: NoteEntry | undefined }
+    /** The places of sheets on the page the change writes (a swap writes two): the first is the one dragged, whose refusal undoes them all. */
+    | { kind: 'sheet'; places: { sheet: string | null; before: [number, number] | undefined }[] };
 }
 
 /** The line of the table header of the entry in what the server read, or null when it has none. */
 export function entryLine(data: SchematicHints, definition: string, e: NonNullable<Edit['entry']>): number | null {
   const b = data.boards[definition];
+  if (e.kind === 'sheet') {
+    const s = e.places[0]?.sheet;
+    return (s === null ? b : s === undefined ? undefined : b?.sheets[s])?.at?.line ?? null;
+  }
   const t = e.at.sheet === null ? b : b?.sheets[e.at.sheet];
   const found = e.kind === 'part' ? t?.parts[e.at.key] : t?.notes[e.at.key];
   return found?.line ?? null;
+}
+
+/** The tables with the entry the change is about put back to what it was. */
+function undone(tables: Tables, definition: string, e: NonNullable<Edit['entry']>): Tables {
+  if (e.kind === 'part') return withPart(tables, definition, e.at, e.before ?? null);
+  if (e.kind === 'note') return withNote(tables, definition, e.at, e.before ?? null);
+  return e.places.reduce((t, p) => withSheetAt(t, definition, p.sheet, p.before ?? null), tables);
 }
 
 /** The reason the drawing refused the entry at `line`, as the server words it, or null if it did not. */
@@ -110,7 +125,7 @@ async function perform(job: Edit): Promise<void> {
     }
     if (refused && job.entry) {
       // The drawing could not honour it: the entry goes back to what it was, and the block with it.
-      const back = job.entry.kind === 'part' ? withPart(next, job.definition, job.entry.at, job.entry.before ?? null) : withNote(next, job.definition, job.entry.at, job.entry.before ?? null);
+      const back = undone(next, job.definition, job.entry);
       notify({ kind: 'bad', title: `${job.label}: ${said}`, detail: `${refused}. It is back where it was.` });
       if (!data.exists && Object.keys(back).length === 0) {
         // The drop made the file, and nothing is left in it: it goes, as it was not there before.

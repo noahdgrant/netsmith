@@ -18,7 +18,8 @@ mod svg;
 
 pub use hints::{
     BoardHints, FindingKind, HintError, HintFinding, LayoutHints, Located, NoteHint, PartHint,
-    Place, ResolvedHints, ResolvedNote, ResolvedPart, SheetHints, Steps, schematic_hints_path,
+    Place, ResolvedHints, ResolvedNote, ResolvedPart, ResolvedSheet, SheetHints, Steps,
+    schematic_hints_path,
 };
 pub use layout::{
     Bus, BusEntry, BusFlag, BusMember, Layout, MarkKind, Marks, MemberFlow, PinMark, Port,

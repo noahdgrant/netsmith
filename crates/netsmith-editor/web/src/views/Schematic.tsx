@@ -11,6 +11,7 @@ import { type PartFacts, hintSheet, moduleNames, readFacts, readNotes } from '..
 import { beginDrag, dragReadout } from '../schematic/dragdom';
 import { addHalos, hintRectOf } from '../schematic/halo';
 import { countAll, countIn, tablesOf } from '../schematic/hints';
+import { type PlaceCtx, clearPlaceEdit, cornerOf, placeEdit, placeOf, placeable } from '../schematic/sheetplace';
 import {
   type Ctx,
   clearAllEdit,
@@ -62,7 +63,7 @@ import { hintsState, lastWriteAt, loadHints, redrawing, submitEdit, writing } fr
 import { Inspector, type PinRef } from './SchematicInspector';
 import { type SchematicActions, netFacts, schematicActions } from './schematic-actions';
 import { SheetNavPanel, SheetBar, rowOf } from './SheetNav';
-import { SheetOverview } from './SheetOverview';
+import { type Placing, SheetOverview } from './SheetOverview';
 import {
   clearSelection,
   cursorParts,
@@ -276,6 +277,24 @@ export function Schematic() {
     if (module) selectModule(module);
     open(sheet);
   };
+
+  // Dragging a card of the overview places its sheet on the page (ADR 0139): the layout file's `at`, written as parts' moves are.
+  const placeCtx: PlaceCtx | null = hintData && definition && name && hintData.errors.length === 0 ? { board: name, definition, data: hintData, modules } : null;
+  const placing: Placing | undefined = placeCtx
+    ? {
+        can: (sheet) => placeable(sheet, modules) !== undefined,
+        placed: (sheet) => placeOf(placeCtx, sheet) !== undefined,
+        drop: (from, to) => {
+          const corners = new Map((drawing?.sheets ?? []).map((s) => [s.name, cornerOf(s, drawing!.mm)] as const));
+          const edit = placeEdit(placeCtx, from, to, corners);
+          if (edit) submitEdit(edit);
+        },
+        clear: (sheet) => {
+          const edit = clearPlaceEdit(placeCtx, sheet);
+          if (edit) submitEdit(edit);
+        },
+      }
+    : undefined;
 
   /** A part's path from the board to its designator: what a relation note's words name. */
   const partRefs = useMemo(() => new Map((d?.parts ?? []).map((p) => [p.path, p.refdes] as const)), [d]);
@@ -974,6 +993,7 @@ export function Schematic() {
               source={() => holder.current}
               lit={!!selNet || !!selPart}
               stamp={painted}
+              placing={placing}
             />
           )}
           <RedrawChip board={name} />

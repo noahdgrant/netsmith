@@ -145,6 +145,25 @@ fn random_file(design: &Design, groups: &[netsmith_view::Group], rng: &mut Rng) 
             .or_default()
             .push(body);
     }
+    // Places of sheets on the page (ADR 0139), some of them on one another.
+    for g in groups {
+        if rng.chance(25) {
+            tables
+                .entry(format!("[{board}.sheets.{}]", g.name))
+                .or_default()
+                .push(format!(
+                    "at = [{:.2}, {:.2}]\n",
+                    f64::from(rng.between(-20, 300)) * GRID,
+                    f64::from(rng.between(-20, 200)) * GRID
+                ));
+        }
+    }
+    if rng.chance(10) {
+        tables
+            .entry(format!("[{board}]"))
+            .or_default()
+            .push(format!("at = [{:.2}, 0]\n", f64::from(rng.between(0, 300)) * GRID));
+    }
     // Entries that match nothing: a part that is gone, a sheet that is gone.
     if rng.chance(50) {
         tables

@@ -2323,6 +2323,7 @@ pub fn typescript() -> String {
         HintFindingInfo,
         HintPart,
         HintNote,
+        HintAt,
         HintSheet,
         HintBoard,
         SchematicHints,

@@ -517,3 +517,23 @@ fn a_check_of_the_files_unsaved_text_reads_that_text() {
     assert_eq!(fs::read_to_string(root.join(FILE)).unwrap(), MOVED);
     assert!(layout_problems(&editor.analysis()).is_empty());
 }
+
+#[test]
+fn a_sheets_place_is_written_and_read_back_and_on_a_board_of_one_sheet_is_a_finding() {
+    let (root, editor, _) = project("sheet-at");
+    let before = editor.schematic(LED).unwrap();
+    // The page writes a sheet's place (ADR 0139) as its table's `at`, for the board's own sheet in
+    // the board's table.
+    let text = "version = 1\n\n[LedBoard]\nat = [25.4, 0]\n";
+    let answer = editor.write_schematic_hints(LED, text, None).unwrap();
+    assert_eq!(fs::read_to_string(root.join(FILE)).unwrap(), text);
+    let at = answer.boards["LedBoard"].at.as_ref().unwrap();
+    assert_eq!((at.x, at.y, at.line), (25.4, 0.0, 4));
+    // The LED board is drawn as one sheet: no sheet has a place of its own, and the entry is a note.
+    let kinds: Vec<HintFindingKind> = answer.findings.iter().map(|f| f.kind).collect();
+    assert_eq!(kinds, [HintFindingKind::Unusable], "{:?}", answer.findings);
+    assert_eq!(answer.findings[0].line, 4);
+    assert_eq!(editor.schematic(LED).unwrap(), before, "ignored");
+    let analysis = editor.analysis();
+    assert_eq!(layout_problems(&analysis).len(), 1);
+}

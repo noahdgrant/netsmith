@@ -27,6 +27,8 @@ Which part can move: not the **reference part** of its sheet (the drawing marks 
 
 `layout-clear`: with no entry neither clear command is in the palette; entries make the outline (`--sch-muted`, dashed, read from the computed style against the token); the file is in the tree ("Schematic layout" section) and opens in Source with TOML colouring; "Clear the layout of this module" asks (`[data-testid=confirm]`, the count of entries and the file's name), Cancel keeps the file, the yes removes this module's entries and keeps the other modules' and boards'; "Clear every layout entry of the file" leaves `version = 1`; a file with a fault gives a warning in the dock whose click opens the file in Source on the line of the fault; an edit by another program (and the file's deletion) redraws and moves the marks.
 
+`schematic-sheet-drag` (fixture `big`, ADR 0139): in "All modules" a press on a card that moves 4 px is a drag: the card (`.ov-item.ov-dragging`, shrunk) follows the pointer and the card under it is ringed (`.ov-target`); each card carries `data-sheet-card` with its sheet's name. The drop writes `[BigBoard.sheets.<name>]` with `at = [x, y]`, the corner of the card dropped on; the dragged card comes first in the grid, the others keep their order, it wears a "placed" pill (`.ov-placed`) and no sheet opens. A card dropped on a placed card swaps with it (both `at`s are written). Esc while dragging writes nothing. `Delete` on a focused placed card takes `at` out (the file is `version = 1`) and the cards go back to their first order. A press that does not move opens the sheet as before. A sheet cut into numbered boxes (`stage (2/3)`) cannot be dragged.
+
 ## Gotchas
 
 - The browser logs a request that answers 4xx as a console error, which fails a recipe: a recipe that makes the page get a `409` says so (`allowConsole(/409/)`).
@@ -36,3 +38,4 @@ Which part can move: not the **reference part** of its sheet (the drawing marks 
 - Alt+drag is taken by some Linux window managers; the recipes drive Chromium, which gets the keys as they are.
 - The pointer's press on a part stops the canvas's pan (`stopPropagation` at the part); the reference part and a file with a fault do not, so those presses pan.
 - The toasts of earlier steps are still on screen: a recipe looks for the toast by its words.
+- The dragged card sits over the card under the pointer: the card under it is found with `elementsFromPoint`, skipping the dragged one; a test reads `.ov-target`, not what is under the mouse.

@@ -63,7 +63,7 @@ use std::{
 use netsmith_editor::{
     ApiError,
     api::{
-        Cause, HintBoard, HintFault, HintFindingInfo, HintFindingKind, HintNote, HintPart,
+        Cause, HintAt, HintBoard, HintFault, HintFindingInfo, HintFindingKind, HintNote, HintPart,
         HintSheet, Location, Problem, ProblemStage, SchematicHints, Severity,
     },
 };
@@ -251,7 +251,22 @@ fn part_of(hint: &netsmith_view::Located<netsmith_view::PartHint>) -> HintPart {
 
 fn sheet_of(sheet: &SheetHints) -> HintSheet {
     let (parts, notes) = entries(sheet);
-    HintSheet { parts, notes }
+    HintSheet {
+        at: at_of(sheet),
+        parts,
+        notes,
+    }
+}
+
+fn at_of(sheet: &SheetHints) -> Option<HintAt> {
+    sheet.at.map(|place| {
+        let (x, y) = place.mm();
+        HintAt {
+            x: mm(x),
+            y: mm(y),
+            line: place.line,
+        }
+    })
 }
 
 type Entries = (BTreeMap<String, HintPart>, BTreeMap<String, HintNote>);
@@ -295,6 +310,7 @@ fn boards_of(hints: &LayoutHints) -> BTreeMap<String, HintBoard> {
             (
                 name.clone(),
                 HintBoard {
+                    at: at_of(&board.board),
                     parts,
                     notes,
                     sheets,

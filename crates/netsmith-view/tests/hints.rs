@@ -180,6 +180,7 @@ fn the_text_is_in_the_order_of_board_sheet_and_path_however_the_hints_were_made(
     };
     let sheet = |parts: &[(&str, PartHint)]| {
         Located::new(SheetHints {
+            at: None,
             parts: parts
                 .iter()
                 .map(|(k, v)| (k.to_string(), Located::new(*v)))
@@ -355,8 +356,8 @@ frobnicate = 1
             "line 4: unknown key `spin` in [Trellis.parts.j1] (a part has: dx, dy, pin, rotate, mirror)",
             "line 6: unknown key `colour` in [Trellis.sheets.stage.parts.c1] (a part has: dx, dy, pin, rotate, mirror)",
             "line 8: unknown key `rotate` in [Trellis.sheets.stage.notes.\"c1#doc\"] (a note has: dx, dy)",
-            "line 10: unknown key `extra` in [Trellis.sheets.stage] (it has: parts, notes)",
-            "line 12: unknown key `frobnicate` in [Trellis] (it has: parts, notes, sheets)",
+            "line 10: unknown key `extra` in [Trellis.sheets.stage] (it has: at, parts, notes)",
+            "line 12: unknown key `frobnicate` in [Trellis] (it has: at, parts, notes, sheets)",
         ]
     );
     // A value that is not a table where a table belongs.
@@ -817,4 +818,78 @@ fn a_finding_that_the_drawing_makes_reads_like_the_others() {
         f.render("main.sch.toml"),
         "main.sch.toml:8: [Trellis.sheets.stage.parts.output_cap]: its block would lie on the body of `stage.filter.l1`; it is ignored"
     );
+}
+
+#[test]
+fn a_sheet_place_is_read_written_and_resolved_to_its_sheet() {
+    let text = "\
+version = 1
+
+[Trellis]
+at = [0, 127]
+
+[Trellis.parts.j1]
+dx = 1.27
+dy = 0
+
+[Trellis.sheets.radio]
+at = [254, -12.7]
+
+[Trellis.sheets.stage.parts.output_cap]
+rotate = 90
+";
+    let h = parse(text).unwrap();
+    let board = &h.boards["Trellis"];
+    assert_eq!(board.board.at.map(|a| a.value), Some(Steps::new(0, 100)));
+    assert_eq!(board.board.at.map(|a| a.line), Some(4));
+    assert_eq!(board.sheets["radio"].at.map(|a| a.value), Some(Steps::new(200, -10)));
+    assert!(board.sheets["stage"].at.is_none());
+    // The canonical text is the text: a sheet's `at` goes first in its sheet, under its header.
+    assert_eq!(hints::to_toml(&h), text);
+
+    let (design, groups) = trellis();
+    let (resolved, findings) = h.resolve(&design, &groups);
+    assert!(findings.is_empty(), "{findings:?}");
+    // The sheets are indexed as the groups' sheets are: stage, radio, then the board's own.
+    let places: Vec<(usize, &str, Steps, u32, &str)> = resolved
+        .sheets
+        .iter()
+        .map(|(&c, s)| (c, s.sheet.as_str(), s.at, s.line, s.entry.as_str()))
+        .collect();
+    assert_eq!(
+        places,
+        [
+            (1, "radio", Steps::new(200, -10), 11, "[Trellis.sheets.radio]"),
+            (2, "Trellis", Steps::new(0, 100), 4, "[Trellis]"),
+        ]
+    );
+}
+
+#[test]
+fn a_sheet_place_off_the_grid_or_not_a_pair_is_an_error_and_a_gone_sheet_a_finding() {
+    assert_eq!(
+        messages("version = 1\n[Trellis.sheets.stage]\nat = 3\n"),
+        ["line 3: [Trellis.sheets.stage]: `at` is 3, and must be two numbers of millimetres, `[x, y]`"]
+    );
+    assert_eq!(messages("version = 1\n[Trellis]\nat = [1, 0]\n").len(), 1);
+
+    let (design, groups) = trellis();
+    let (resolved, findings) = parse("version = 1\n[Trellis.sheets.old]\nat = [0, 0]\n")
+        .unwrap()
+        .resolve(&design, &groups);
+    assert!(resolved.is_empty());
+    assert_eq!(
+        findings.iter().map(|f| f.message.as_str()).collect::<Vec<_>>(),
+        ["[Trellis.sheets.old]: the board has no sheet `old` (its sheets: `radio`, `stage`); its 1 entry is ignored"]
+    );
+    // A board whose parts are all in modules has no sheet of its own to place.
+    let mut grouped = groups.clone();
+    grouped[0].parts.extend([0, 1]);
+    let (resolved, findings) = parse("version = 1\n[Trellis]\nat = [0, 0]\n")
+        .unwrap()
+        .resolve(&design, &grouped);
+    assert!(resolved.is_empty());
+    assert_eq!(findings.len(), 1);
+    assert_eq!(findings[0].kind, FindingKind::StaleSheet);
+    assert_eq!(findings[0].line, 3);
 }

@@ -15,6 +15,9 @@
 //! dx = 2.54                                # mm, a multiple of 1.27
 //! dy = -1.27
 //!
+//! [Trellis.sheets.stage]                  # the sheet of the module instance `stage`
+//! at = [101.6, 0]                          # its box's top-left corner on the page (ADR 0139)
+//!
 //! [Trellis.sheets.stage.parts."output_cap"] # a part of the module instance `stage`
 //! rotate = 90                              # counterclockwise on the page, as the library draws it at 0
 //! mirror = true                            # left to right, before the turn
@@ -83,6 +86,15 @@
 //! No entry ever holds a coordinate in the absolute page frame, which moves whenever a
 //! sheet's neighbour changes size.
 //!
+//! **A sheet's place on the page (ADR 0139).** `at = [x, y]` in a sheet's table (the board's
+//! table for its own sheet) puts the sheet's box, title included, with its top-left corner there,
+//! in millimetres on the grid from the page's origin: the corner the first box of the automatic
+//! arrangement has, which does not move when a sheet grows. It is what a drag in the editor's
+//! overview writes. Only a board drawn by module has boxes to place; the drawing sets the boxes
+//! with no `at` out by their connections round the placed ones (`sheets::arrange`). A sheet cut
+//! into numbered boxes, a board drawn as one sheet and a box that would lie on a box placed
+//! before it are findings, and the sheet is arranged as if it had no `at`.
+//!
 //! **Staleness is a finding, not an error.** ADR 0032 makes an entry for a part the board lacks
 //! an error, because a PCB layout that disagrees with its board is wrong to fab. A schematic hint
 //! is a convenience: a refactor that renames a part must not turn the view into an error. An
@@ -139,8 +151,7 @@
 //! in a module is keyed by its path from that instance, and if sheets ever become nested the key
 //! of a part changes with them. A part with several units (ADR 0050) is moved as the box of its
 //! primary unit and no unit has a key of its own (`u1#2` would be the shape; not built, not
-//! designed, issue #19). The sheets' arrangement on the page (the grid of boxes of a big board) is
-//! not hinted: only what is inside a sheet (not built, issue #19). Not built, at any stage: wires,
+//! designed, issue #19). Not built, at any stage: wires,
 //! labels, buses or nets in the file; a per-unit key; a tool that renames entries with a part.
 
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -264,20 +275,25 @@ impl<T: Default> Default for Located<T> {
 /// `stage.filter.l1` on the sheet `stage`; the path itself for a part of the board), so a
 /// module that is renamed or moved keeps its entries, which are about it and not about where
 /// it is. A note is keyed by `<path>#doc` or `<path>#relation` (`#relation2` for the second
-/// relation of one path), the path being given the same way.
+/// relation of one path), the path being given the same way. `at` is where the sheet's box
+/// goes on the page of a board drawn by module (ADR 0139).
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct SheetHints {
+    /// The top-left corner of the sheet's box, title included, from the page's origin (the
+    /// corner the first box of the automatic arrangement has). Written by a drag in the
+    /// overview; `None` leaves the sheet to the arrangement by connections.
+    pub at: Option<Located<Steps>>,
     pub parts: BTreeMap<String, Located<PartHint>>,
     pub notes: BTreeMap<String, Located<NoteHint>>,
 }
 
 impl SheetHints {
     pub fn is_empty(&self) -> bool {
-        self.parts.is_empty() && self.notes.is_empty()
+        self.at.is_none() && self.parts.is_empty() && self.notes.is_empty()
     }
 
     fn len(&self) -> usize {
-        self.parts.len() + self.notes.len()
+        usize::from(self.at.is_some()) + self.parts.len() + self.notes.len()
     }
 }
 
@@ -486,7 +502,8 @@ impl Reader<'_> {
                         }
                     }
                 }
-                _ => self.unknown(key.span(), &here, "parts, notes, sheets"),
+                "at" => board.board.at = self.place(key.span(), value, at),
+                _ => self.unknown(key.span(), &here, "at, parts, notes, sheets"),
             }
         }
         board
@@ -509,10 +526,25 @@ impl Reader<'_> {
                         self.notes(t, &here, &mut sheet);
                     }
                 }
-                _ => self.unknown(key.span(), &here, "parts, notes"),
+                "at" => sheet.at = self.place(key.span(), value, at),
+                _ => self.unknown(key.span(), &here, "at, parts, notes"),
             }
         }
         sheet
+    }
+
+    /// A sheet's `at`, with the line of its key.
+    fn place(
+        &mut self,
+        key: Range<usize>,
+        value: &Spanned<DeValue<'_>>,
+        at: &[String],
+    ) -> Option<Located<Steps>> {
+        let place = self.pair(value, at, "at")?;
+        Some(Located {
+            value: place,
+            line: self.line(key),
+        })
     }
 
     fn unknown(&mut self, span: Range<usize>, at: &[String], known: &str) {
@@ -879,7 +911,7 @@ fn mm_text(steps: i32) -> String {
 }
 
 /// The text of the file for `hints`: `version`, then each board in name order; in a board its
-/// own sheet, then the sheets in name order; in a sheet the parts, then the notes, in the order
+/// own sheet, then the sheets in name order; in a sheet its `at`, the parts, then the notes, in the order
 /// of their keys. The same hints always give the same text, and [`parse`] reads it back to the
 /// same hints. A comment in a file that was edited by hand is not kept.
 pub fn to_toml(hints: &LayoutHints) -> String {
@@ -902,6 +934,13 @@ pub fn to_toml(hints: &LayoutHints) -> String {
 
 fn write_sheet(out: &mut String, at: &[String], sheet: &SheetHints) {
     let prefix = at.join(".");
+    if let Some(place) = &sheet.at {
+        out.push_str(&format!(
+            "\n[{prefix}]\nat = [{}, {}]\n",
+            mm_text(place.x),
+            mm_text(place.y)
+        ));
+    }
     for (path, hint) in &sheet.parts {
         out.push_str(&format!("\n[{prefix}.parts.{}]\n", quote_key(path)));
         match hint.place {
@@ -1010,18 +1049,35 @@ pub struct ResolvedNote {
     pub entry: String,
 }
 
-/// The entries of a file that match a design, by the index of the part in `design.parts` and
-/// of the note in `design.notes`. The drawing reads this and never the file. An empty one
-/// (`ResolvedHints::default()`) draws what the drawing draws with no file.
+/// A sheet's place on the page, with where it is in the design.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ResolvedSheet {
+    /// The sheet's name: the module instance (`stage`), or the board's name for its own sheet.
+    pub sheet: String,
+    /// The top-left corner of the sheet's box from the page's origin.
+    pub at: Steps,
+    /// The line of `at` in the file.
+    pub line: u32,
+    /// The entry as the file names it (`[Trellis.sheets.stage]`), for a finding the drawing
+    /// raises about it.
+    pub entry: String,
+}
+
+/// The entries of a file that match a design, by the index of the part in `design.parts`, of
+/// the note in `design.notes` and of the sheet in the sheets of the groups (the groups that
+/// have parts, then the board's own sheet, before a big sheet is cut). The drawing reads this
+/// and never the file. An empty one (`ResolvedHints::default()`) draws what the drawing draws
+/// with no file.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct ResolvedHints {
     pub parts: BTreeMap<usize, ResolvedPart>,
     pub notes: BTreeMap<usize, ResolvedNote>,
+    pub sheets: BTreeMap<usize, ResolvedSheet>,
 }
 
 impl ResolvedHints {
     pub fn is_empty(&self) -> bool {
-        self.parts.is_empty() && self.notes.is_empty()
+        self.parts.is_empty() && self.notes.is_empty() && self.sheets.is_empty()
     }
 }
 
@@ -1170,6 +1226,33 @@ impl LayoutHints {
             at.push(key.to_string());
             header(&at)
         };
+        // A module's sheet that is not there has a finding of its own, made by the caller; the
+        // board's own sheet is not there when every part is in a module.
+        match (&entries.at, c) {
+            (Some(place), Some(c)) => {
+                resolved.sheets.insert(
+                    c,
+                    ResolvedSheet {
+                        sheet: sheets.title(c),
+                        at: place.value,
+                        line: place.line,
+                        entry: header(&sheet.at),
+                    },
+                );
+            }
+            (Some(place), None) => {
+                let entry = header(&sheet.at);
+                findings.push(HintFinding {
+                    kind: FindingKind::StaleSheet,
+                    line: place.line,
+                    message: format!(
+                        "{entry}: every part of the board is in a module, so the board has no sheet of its own to place; `at` is ignored"
+                    ),
+                    entry,
+                });
+            }
+            (None, _) => {}
+        }
         for (key, hint) in &entries.parts {
             let entry = name(key, "parts");
             let found = c.and_then(|c| sheets.parts[c].get(key.as_str()).copied());
